@@ -4,14 +4,14 @@
 use std::collections::HashMap;
 
 use reifydb_core::interface::{
-	catalog::metrics::MetricsId,
+	catalog::metrics::{MetricsId, storage::MultiStorageMetrics},
 	store::{SingleVersionStore, Tier},
 };
 use reifydb_value::{Result, byte_size::ByteSize};
 
 use crate::metrics::storage::{
 	cdc::{CdcMetrics, CdcMetricsReader},
-	multi::{MultiStorageMetrics, StorageMetricsReader},
+	multi::StorageMetricsReader,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -21,16 +21,16 @@ pub struct CombinedMetrics {
 }
 
 impl CombinedMetrics {
-	pub fn current_bytes(&self) -> u64 {
-		self.storage.current_bytes()
+	pub fn estimated_current_bytes(&self) -> u64 {
+		self.storage.estimated_current_bytes()
 	}
 
-	pub fn historical_bytes(&self) -> u64 {
-		self.storage.historical_bytes()
+	pub fn estimated_historical_bytes(&self) -> u64 {
+		self.storage.estimated_historical_bytes()
 	}
 
-	pub fn total_bytes(&self) -> u64 {
-		self.storage.total_bytes()
+	pub fn estimated_total_bytes(&self) -> u64 {
+		self.storage.estimated_total_bytes()
 	}
 
 	pub fn cdc_total_bytes(&self) -> ByteSize {

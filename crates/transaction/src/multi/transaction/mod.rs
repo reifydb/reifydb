@@ -16,13 +16,11 @@ use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
 	interface::{
-		catalog::config::{ConfigKey, GetConfig},
-		store::{MultiVersionContains, MultiVersionGet},
+		catalog::config::GetConfig,
+		store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet},
 	},
 	testing::ProfileConfig,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_runtime::{
 	actor::system::{ActorSpawner, ActorSystem},
 	context::{
@@ -32,13 +30,7 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::MultiStore;
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_sub_raft::driver::Raft;
-use reifydb_value::{
-	Result, reifydb_assertions,
-	util::hex,
-	value::{Value, duration::Duration},
-};
+use reifydb_value::{Result, util::hex, value::duration::Duration};
 use tracing::{instrument, warn};
 use version::{StandardVersionProvider, VersionProvider};
 
@@ -47,14 +39,13 @@ use crate::{TransactionId, error::TransactionError, multi::types::*, single::Sin
 
 pub mod manager;
 pub mod read;
-pub mod replica;
 pub(crate) mod version;
 pub mod write;
 
 use reifydb_store_single::SingleStore;
 
 use crate::multi::{
-	MultiReadTransaction, MultiReplicaTransaction, MultiWriteTransaction,
+	MultiReadTransaction, MultiWriteTransaction,
 	lease::{VersionLeaseGuard, VersionLeases},
 	transaction::manager::TransactionManagerQuery,
 };
@@ -81,14 +72,16 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
+	#[allow(clippy::too_many_arguments)]
 	#[instrument(
 		name = "transaction::manager::new",
 		level = "debug",
-		skip(clock, spawner, metrics_clock, version_epoch, rng, config)
+		skip(clock, spawner, store, metrics_clock, version_epoch, rng, config)
 	)]
 	pub fn new(
 		clock: L,
 		spawner: ActorSpawner,
+		store: Arc<dyn MultiVersionCommit>,
 		metrics_clock: Clock,
 		version_epoch: VersionEpoch,
 		rng: Rng,
@@ -98,7 +91,7 @@ where
 		L: 'static,
 	{
 		let version = clock.next()?;
-		let oracle = Oracle::new(clock, spawner, metrics_clock, version_epoch, rng, config);
+		let oracle = Oracle::new(clock, spawner, store, metrics_clock, version_epoch, rng, config);
 		oracle.query.advance_to(version);
 		oracle.command.advance_to(version);
 		Ok(Self {
@@ -150,21 +143,6 @@ where
 			)
 		} else {
 			let safe_version = self.inner.query.register_in_flight_with(|| self.inner.version())?;
-			let applied = self.inner.command.wait_for_mark(safe_version.0);
-			if !applied {
-				warn!(
-					version = safe_version.0,
-					"query opened before the commit watermark reached its snapshot; reads at this version may miss commits that are still being applied"
-				);
-			}
-			reifydb_assertions! {
-				assert!(
-					applied,
-					"waiting for the commit watermark to reach snapshot {} timed out; opening \
-					 the query anyway reads a snapshot whose commits are not yet all applied",
-					safe_version.0
-				);
-			}
 			TransactionManagerQuery::new_current(
 				TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
 				self.clone(),
@@ -179,10 +157,6 @@ where
 
 	pub fn done_commit(&self, version: CommitVersion) {
 		self.inner.done_commit(version);
-	}
-
-	pub fn advance_clock_to(&self, version: CommitVersion) {
-		self.inner.clock.advance_to(version);
 	}
 
 	#[instrument(name = "transaction::manager::done_until", level = "trace", skip(self))]
@@ -204,8 +178,8 @@ where
 		self.inner.command.notify_on_mark(version, callback);
 	}
 
-	pub fn advance_version_for_replica(&self, version: CommitVersion) {
-		self.inner.advance_version_for_replica(version);
+	pub fn advance_version_to(&self, version: CommitVersion) {
+		self.inner.clock.advance_to(version);
 		self.inner.command.advance_to(version);
 		self.inner.query.advance_to(version);
 	}
@@ -235,8 +209,6 @@ pub struct Inner {
 	pub(crate) tm: TransactionManager<StandardVersionProvider>,
 	pub(crate) store: MultiStore,
 	pub(crate) event_bus: EventBus,
-	#[cfg(not(target_arch = "wasm32"))]
-	pub(crate) raft: RwLock<Option<Raft>>,
 }
 
 impl Deref for MultiTransaction {
@@ -266,14 +238,20 @@ impl Inner {
 		config: Arc<dyn GetConfig>,
 	) -> Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
-		let tm = TransactionManager::new(version_provider, spawner, metrics_clock, version_epoch, rng, config)?;
+		let tm = TransactionManager::new(
+			version_provider,
+			spawner,
+			Arc::new(store.clone()),
+			metrics_clock,
+			version_epoch,
+			rng,
+			config,
+		)?;
 
 		Ok(Self {
 			tm,
 			store,
 			event_bus,
-			#[cfg(not(target_arch = "wasm32"))]
-			raft: RwLock::new(None),
 		})
 	}
 
@@ -354,18 +332,9 @@ impl MultiTransaction {
 	pub fn config(&self) -> Arc<dyn GetConfig> {
 		self.0.tm.config()
 	}
-	#[cfg(not(target_arch = "wasm32"))]
-	pub fn set_raft(&self, handle: Raft) {
-		*self.0.raft.write() = Some(handle);
-	}
-
-	#[cfg(not(target_arch = "wasm32"))]
-	pub fn clear_raft(&self) {
-		*self.0.raft.write() = None;
-	}
 
 	pub fn advance_version_to(&self, version: CommitVersion) {
-		self.0.tm.advance_version_for_replica(version);
+		self.0.tm.advance_version_to(version);
 	}
 
 	pub fn bootstrapping_completed(&self) {
@@ -411,11 +380,6 @@ impl MultiTransaction {
 	#[instrument(name = "transaction::begin_command", level = "debug", skip(self))]
 	pub fn begin_command(&self) -> Result<MultiWriteTransaction> {
 		MultiWriteTransaction::new(self.clone())
-	}
-
-	#[instrument(name = "transaction::begin_replica", level = "debug", skip(self), fields(version = %version.0))]
-	pub fn begin_replica(&self, version: CommitVersion) -> Result<MultiReplicaTransaction> {
-		MultiReplicaTransaction::new(self.clone(), version)
 	}
 }
 

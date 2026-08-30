@@ -24,11 +24,11 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_sqlite::SqliteConfig;
+use reifydb_store_commit::{MultiVersionScope, store::CommitStore};
 use reifydb_store_multi::{
-	MultiVersionScope,
-	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
+	config::{CommitStoreConfig, MultiStoreConfig, PersistentConfig},
 	store::StandardMultiStore,
-	tier::{TierStorage, commit::buffer::MultiCommitBufferTier, point::MultiPointConfig, range::MultiRangeConfig},
+	tier::{TierStorage, point::MultiPointConfig, range::MultiRangeConfig},
 };
 use reifydb_value::{
 	util::cowvec::CowVec,
@@ -58,8 +58,8 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	let event_bus = EventBus::new(&spawner);
 	let (sqlite_config, _guard) = SqliteConfig::in_memory();
 	let store = StandardMultiStore::new(MultiStoreConfig {
-		commit: CommitBufferConfig {
-			storage: MultiCommitBufferTier::memory(),
+		commit: CommitStoreConfig {
+			storage: CommitStore::new(),
 		},
 		point: Some(MultiPointConfig::testing()),
 		range: Some(MultiRangeConfig::testing()),

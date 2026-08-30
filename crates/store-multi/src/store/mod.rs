@@ -28,17 +28,17 @@ use reifydb_runtime::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
+use reifydb_store_commit::store::{CommitStore, MultiCommitMetrics};
 use reifydb_value::{count::Count, util::cowvec::CowVec};
 use tracing::instrument;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::filter::source::MultiCurrentKeySource;
 use crate::{
-	CommitBufferConfig,
+	CommitStoreConfig,
 	config::MultiStoreConfig,
 	flush::ObjectPersistence,
 	tier::{
-		commit::buffer::{MultiCommitBufferTier, MultiCommitMetrics},
 		persistent::MultiPersistentTier,
 		point::{MultiPointShardMetrics, MultiPointTier},
 		range::{MultiRangeShardMetrics, MultiRangeTier},
@@ -86,7 +86,7 @@ pub struct MultiPersistentProbeMetrics {
 pub struct StandardMultiStore(Arc<StandardMultiStoreInner>);
 
 pub struct StandardMultiStoreInner {
-	pub(crate) commit: MultiCommitBufferTier,
+	pub(crate) commit: CommitStore,
 	pub(crate) persistent: Option<MultiPersistentTier>,
 	pub(crate) point: Option<MultiPointTier>,
 	pub(crate) range: Option<MultiRangeTier>,
@@ -223,7 +223,7 @@ impl StandardMultiStore {
 		*self.eviction_watermark.write() = None;
 	}
 
-	pub fn commit(&self) -> &MultiCommitBufferTier {
+	pub fn commit(&self) -> &CommitStore {
 		&self.commit
 	}
 
@@ -317,8 +317,8 @@ impl StandardMultiStore {
 		let spawner = actor_system.spawner();
 		let event_bus = EventBus::new(&spawner);
 		Self::new(MultiStoreConfig {
-			commit: CommitBufferConfig {
-				storage: MultiCommitBufferTier::memory(),
+			commit: CommitStoreConfig {
+				storage: CommitStore::new(),
 			},
 			persistent: None,
 			point: None,
@@ -337,8 +337,8 @@ impl StandardMultiStore {
 		let actor_system = ActorSystem::testing(clock.clone());
 		let spawner = actor_system.spawner();
 		Self::new(MultiStoreConfig {
-			commit: CommitBufferConfig {
-				storage: MultiCommitBufferTier::memory(),
+			commit: CommitStoreConfig {
+				storage: CommitStore::new(),
 			},
 			persistent: None,
 			point: None,
@@ -371,8 +371,8 @@ impl StandardMultiStore {
 		let event_bus = EventBus::new(&spawner);
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 		let store = Self::new(MultiStoreConfig {
-			commit: CommitBufferConfig {
-				storage: MultiCommitBufferTier::memory(),
+			commit: CommitStoreConfig {
+				storage: CommitStore::new(),
 			},
 			persistent: Some(persistent),
 			point: Some(point),
@@ -394,8 +394,8 @@ impl StandardMultiStore {
 		let spawner = actor_system.spawner();
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 		let store = Self::new(MultiStoreConfig {
-			commit: CommitBufferConfig {
-				storage: MultiCommitBufferTier::memory(),
+			commit: CommitStoreConfig {
+				storage: CommitStore::new(),
 			},
 			persistent: Some(persistent),
 			point: Some(MultiPointConfig::testing()),

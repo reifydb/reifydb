@@ -1299,7 +1299,7 @@ mod tests {
 
 	#[test]
 	fn test_query_memory_limit_defaults_and_round_trips() {
-		assert_eq!(ConfigKey::QueryMemoryLimit.default_value(), Value::Uint8(1024 * 1024 * 1024));
+		assert_eq!(ConfigKey::QueryMemoryLimit.production_value(), Value::Uint8(1024 * 1024 * 1024));
 		assert_eq!(ConfigKey::QueryMemoryLimit.expected_types(), &[ValueType::Uint8]);
 		let key: ConfigKey = "QUERY_MEMORY_LIMIT".parse().unwrap();
 		assert_eq!(key, ConfigKey::QueryMemoryLimit);
@@ -1498,11 +1498,11 @@ mod tests {
 
 	#[test]
 	fn test_threads_defaults() {
-		assert_eq!(ConfigKey::ThreadsAsync.default_value(), Value::Uint2(1));
-		assert_eq!(ConfigKey::ThreadsCoordination.default_value(), Value::Uint2(2));
-		assert_eq!(ConfigKey::ThreadsFlow.default_value(), Value::Uint2(2));
-		assert_eq!(ConfigKey::ThreadsTask.default_value(), Value::Uint2(2));
-		assert_eq!(ConfigKey::ThreadsCompute.default_value(), Value::Uint2(2));
+		assert_eq!(ConfigKey::ThreadsAsync.production_value(), Value::Uint2(1));
+		assert_eq!(ConfigKey::ThreadsCoordination.production_value(), Value::Uint2(2));
+		assert_eq!(ConfigKey::ThreadsFlow.production_value(), Value::Uint2(2));
+		assert_eq!(ConfigKey::ThreadsTask.production_value(), Value::Uint2(2));
+		assert_eq!(ConfigKey::ThreadsCompute.production_value(), Value::Uint2(2));
 	}
 
 	#[test]
@@ -1552,7 +1552,7 @@ mod tests {
 
 	#[test]
 	fn test_query_row_batch_size_default_is_uint2_128() {
-		assert_eq!(ConfigKey::QueryRowBatchSize.default_value(), Value::Uint2(128));
+		assert_eq!(ConfigKey::QueryRowBatchSize.production_value(), Value::Uint2(128));
 	}
 
 	#[test]
@@ -1685,8 +1685,8 @@ mod tests {
 
 	#[test]
 	fn test_historical_gc_defaults() {
-		assert_eq!(ConfigKey::HistoricalGcBatchSize.default_value(), Value::Uint8(50_000));
-		assert!(matches!(ConfigKey::HistoricalGcInterval.default_value(), Value::Duration(_)));
+		assert_eq!(ConfigKey::HistoricalGcBatchSize.production_value(), Value::Uint8(50_000));
+		assert!(matches!(ConfigKey::HistoricalGcInterval.production_value(), Value::Duration(_)));
 	}
 
 	#[test]
@@ -1712,7 +1712,7 @@ mod tests {
 
 	#[test]
 	fn test_operator_flush_budget_bytes_metadata() {
-		assert_eq!(ConfigKey::OperatorResidentBudget.default_value(), Value::Uint8(100 * 1024 * 1024));
+		assert_eq!(ConfigKey::OperatorResidentBudget.production_value(), Value::Uint8(100 * 1024 * 1024));
 		assert_eq!(ConfigKey::OperatorResidentBudget.expected_types(), &[ValueType::Uint8]);
 		assert!(!ConfigKey::OperatorResidentBudget.is_optional());
 		assert!(
@@ -1743,7 +1743,7 @@ mod tests {
 
 	#[test]
 	fn test_operator_wal_autocheckpoint_metadata() {
-		assert_eq!(ConfigKey::OperatorWalAutocheckpoint.default_value(), Value::Uint8(1000000));
+		assert_eq!(ConfigKey::OperatorWalAutocheckpoint.production_value(), Value::Uint8(1000000));
 		assert_eq!(ConfigKey::OperatorWalAutocheckpoint.expected_types(), &[ValueType::Uint8]);
 		assert!(!ConfigKey::OperatorWalAutocheckpoint.is_optional());
 		assert!(ConfigKey::OperatorWalAutocheckpoint.requires_restart());

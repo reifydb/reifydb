@@ -125,12 +125,6 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(procedure) = self.cache.find_procedure_at(id, rep.version()) {
-					return Ok(Some(procedure));
-				}
-				Ok(None)
-			}
 		}
 	}
 
@@ -195,14 +189,6 @@ impl Catalog {
 					return Ok(Some(procedure));
 				}
 
-				Ok(None)
-			}
-			Transaction::Replica(rep) => {
-				if let Some(procedure) =
-					self.cache.find_procedure_by_name_at(namespace, name, rep.version())
-				{
-					return Ok(Some(procedure));
-				}
 				Ok(None)
 			}
 		}
@@ -294,9 +280,6 @@ impl Catalog {
 				procedures.retain(|p| !t.inner.is_procedure_deleted(p.id()));
 
 				Ok(procedures)
-			}
-			Transaction::Replica(rep) => {
-				Ok(self.cache.list_procedures_for_variant_at(variant, rep.version()))
 			}
 		}
 	}

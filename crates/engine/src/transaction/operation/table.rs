@@ -419,7 +419,6 @@ impl TableOperations for Transaction<'_> {
 			Transaction::Admin(txn) => txn.insert_table(table, shape, ids, rows),
 			Transaction::Test(t) => t.inner.insert_table(table, shape, ids, rows),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}
 	}
 
@@ -435,7 +434,6 @@ impl TableOperations for Transaction<'_> {
 			Transaction::Admin(txn) => txn.update_table(table, ids, partitions, rows),
 			Transaction::Test(t) => t.inner.update_table(table, ids, partitions, rows),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}
 	}
 
@@ -450,7 +448,6 @@ impl TableOperations for Transaction<'_> {
 			Transaction::Admin(txn) => txn.remove_from_table(table, ids, partitions),
 			Transaction::Test(t) => t.inner.remove_from_table(table, ids, partitions),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}
 	}
 }

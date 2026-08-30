@@ -16,7 +16,11 @@ use commit_queue::spawn_sequencer;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::config::{ConfigKey, GetConfig},
+	delta::Delta,
+	interface::{
+		catalog::config::{ConfigKey, GetConfig},
+		store::MultiVersionCommit,
+	},
 	util::bloom::hash_item,
 };
 use reifydb_runtime::{
@@ -28,7 +32,7 @@ use reifydb_runtime::{
 	sync::rwlock::RwLock,
 	version_epoch::{EpochSeconds, VersionEpoch},
 };
-use reifydb_value::{Result, reifydb_assertions};
+use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
 use smallvec::SmallVec;
 use tracing::{Span, field, instrument};
 
@@ -164,6 +168,7 @@ where
 	pub(crate) inner: OracleLock,
 	pub(crate) query: WaterMark,
 	pub(crate) command: WaterMark,
+	store: Arc<dyn MultiVersionCommit>,
 	metrics_clock: Clock,
 	version_epoch: VersionEpoch,
 	config: Arc<dyn GetConfig>,
@@ -198,9 +203,11 @@ impl<L> Oracle<L>
 where
 	L: VersionProvider,
 {
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		clock: L,
 		spawner: ActorSpawner,
+		store: Arc<dyn MultiVersionCommit>,
 		metrics_clock: Clock,
 		version_epoch: VersionEpoch,
 		rng: Rng,
@@ -217,6 +224,7 @@ where
 			}),
 			query: WaterMark::with_advancer("txn-mark-query".into(), &spawner),
 			command: WaterMark::with_advancer("txn-mark-cmd".into(), &spawner),
+			store,
 			metrics_clock,
 			version_epoch,
 			config,
@@ -254,7 +262,7 @@ where
 		self.inner.read().time_windows.len()
 	}
 
-	#[instrument(name = "transaction::oracle::new_commit", level = "debug", skip(self, conflicts), fields(
+	#[instrument(name = "transaction::oracle::new_commit", level = "debug", skip(self, conflicts, deltas), fields(
 		%version,
 		read_keys = field::Empty,
 		write_keys = field::Empty,
@@ -270,9 +278,10 @@ where
 		&self,
 		version: CommitVersion,
 		conflicts: ConflictManager,
+		deltas: CowVec<Delta>,
 	) -> Result<CreateCommitResult> {
 		let window_size = self.shared.config.get_config_uint8(ConfigKey::OracleWindowSize);
-		self.shared.commit(version, conflicts, window_size)
+		self.shared.commit(version, conflicts, deltas, window_size)
 	}
 	pub(crate) fn bootstrapping_completed(&self) {
 		let mut inner = self.inner.write();
@@ -309,17 +318,17 @@ where
 		self.command.mark_finished(version);
 	}
 
-	pub(crate) fn advance_version_for_replica(&self, version: CommitVersion) {
-		self.clock.advance_to(version);
-	}
-
-	pub(crate) fn advance_unchecked(&self, version: CommitVersion) -> Result<CreateCommitResult> {
+	pub(crate) fn advance_unchecked(
+		&self,
+		version: CommitVersion,
+		deltas: CowVec<Delta>,
+	) -> Result<CreateCommitResult> {
 		let inner = self.inner.write();
 		if version < inner.evicted_up_through {
 			return Ok(CreateCommitResult::TooOld);
 		}
 
-		let commit_version = self.allocate_commit_version(SpanTiming::current())?;
+		let commit_version = self.allocate_commit_version(SpanTiming::current(), deltas)?;
 		drop(inner);
 
 		Ok(CreateCommitResult::Success(commit_version))
@@ -335,6 +344,7 @@ where
 		state: &mut OracleState,
 		version: CommitVersion,
 		conflicts: ConflictManager,
+		deltas: CowVec<Delta>,
 		window_size: u64,
 		timing: SpanTiming,
 	) -> Result<CreateCommitResult> {
@@ -346,7 +356,7 @@ where
 			return Ok(CreateCommitResult::Conflict(conflicts));
 		}
 
-		let commit_version = self.allocate_commit_version(timing)?;
+		let commit_version = self.allocate_commit_version(timing, deltas)?;
 
 		let add_start = timing.mark(&self.metrics_clock);
 		state.add_committed_transaction(commit_version, conflicts, window_size);
@@ -428,7 +438,7 @@ where
 	}
 
 	#[inline]
-	fn allocate_commit_version(&self, timing: SpanTiming) -> Result<CommitVersion> {
+	fn allocate_commit_version(&self, timing: SpanTiming, deltas: CowVec<Delta>) -> Result<CommitVersion> {
 		let clock_start = timing.mark(&self.metrics_clock);
 		let commit_version = self.clock.reserve()?;
 		self.query.register_in_flight(commit_version);
@@ -442,7 +452,14 @@ where
 				commit_version.0
 			);
 		}
+
+		let installed = self.store.commit(deltas, commit_version);
 		self.clock.publish(commit_version);
+		if let Err(err) = installed {
+			self.query.mark_finished(commit_version);
+			self.command.mark_finished(commit_version);
+			return Err(err);
+		}
 		timing.record_micros(clock_start, "clock_next_us");
 
 		self.version_epoch.record(EpochSeconds::new(self.metrics_clock.now().to_secs()), commit_version.0);
@@ -491,6 +508,7 @@ mod tests {
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::testing::ProfileConfig;
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::MockClock};
+	use reifydb_store_multi::MultiStore;
 	use reifydb_value::value::{Value, duration::Duration};
 
 	use super::*;
@@ -535,16 +553,46 @@ mod tests {
 		EncodedKey::new(s.as_bytes())
 	}
 
+	const PINNED_WINDOW_SIZE: u64 = 500;
+
+	struct PinnedWindowConfig;
+
+	impl GetConfig for PinnedWindowConfig {
+		fn get_config(&self, key: ConfigKey) -> Value {
+			// Window boundaries are placed by arithmetic below, so the size must never follow the profile.
+			match key {
+				ConfigKey::OracleWindowSize => Value::Uint8(PINNED_WINDOW_SIZE),
+				other => other.default_value(),
+			}
+		}
+
+		fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
+			self.get_config(key)
+		}
+	}
+
 	fn create_test_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
+		build_oracle(start, Arc::new(ProfileConfig))
+	}
+
+	fn create_windowed_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
+		build_oracle(start, Arc::new(PinnedWindowConfig))
+	}
+
+	fn no_deltas() -> CowVec<Delta> {
+		// These tests assert conflict detection and windowing only, so the store install must stay a no-op.
+		CowVec::new(vec![])
+	}
+
+	fn build_oracle(start: impl Into<CommitVersion>, config: Arc<dyn GetConfig>) -> Oracle<MockVersionProvider> {
 		let clock = MockVersionProvider::new(start);
 		let actor_system = ActorSystem::testing(Clock::Real);
 		let spawner = actor_system.spawner();
 
-		let config = Arc::new(ProfileConfig);
-
 		Oracle::new(
 			clock,
 			spawner,
+			Arc::new(MultiStore::testing_memory()),
 			Clock::Mock(MockClock::from_millis(1000)),
 			VersionEpoch::new(),
 			Rng::seeded(42),
@@ -562,7 +610,7 @@ mod tests {
 		conflicts.mark_write(&key1);
 		conflicts.mark_write(&key2);
 
-		let result = oracle.new_commit(CommitVersion(1), conflicts).unwrap();
+		let result = oracle.new_commit(CommitVersion(1), conflicts, no_deltas()).unwrap();
 
 		match result {
 			CreateCommitResult::Success(version) => {
@@ -598,7 +646,7 @@ mod tests {
 			}
 
 			let version_start = CommitVersion(i as u64 * 500 + 1);
-			let result = oracle.new_commit(version_start, conflicts).unwrap();
+			let result = oracle.new_commit(version_start, conflicts, no_deltas()).unwrap();
 			assert!(matches!(result, CreateCommitResult::Success(_)));
 		}
 
@@ -621,7 +669,7 @@ mod tests {
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&key1);
 
-		let result1 = oracle.new_commit(CommitVersion(1), conflicts1).unwrap();
+		let result1 = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas()).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		let mut conflicts2 = ConflictManager::new();
@@ -629,7 +677,7 @@ mod tests {
 		conflicts2.mark_range(range);
 		conflicts2.mark_write(&create_test_key("other_key"));
 
-		let result2 = oracle.new_commit(CommitVersion(1), conflicts2).unwrap();
+		let result2 = oracle.new_commit(CommitVersion(1), conflicts2, no_deltas()).unwrap();
 
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
@@ -638,14 +686,14 @@ mod tests {
 	fn test_range_only_read_finds_conflict_in_older_window() {
 		// A range-only read must still conflict with a write committed after its read version,
 		// even when that write lives in a window whose start is below the read version.
-		// OracleWindowSize defaults to 500, so a clock at 749 puts T1's commit (750) in window 500.
-		let oracle = create_test_oracle(749);
+		// The window size is pinned to 500, so a clock at 749 puts T1's commit (750) in window 500.
+		let oracle = create_windowed_oracle(749);
 
 		let key_k = create_test_key("k");
 
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&key_k);
-		let r1 = oracle.new_commit(CommitVersion(1), conflicts1).unwrap();
+		let r1 = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas()).unwrap();
 		let commit_v1 = match r1 {
 			CreateCommitResult::Success(v) => v,
 			_ => panic!("T1 should commit"),
@@ -657,7 +705,7 @@ mod tests {
 			let inner = oracle.inner.read();
 			assert!(
 				inner.time_windows.contains_key(&CommitVersion(500)),
-				"expected T1's window_start to be 500 (default OracleWindowSize=500); \
+				"expected T1's window_start to be 500 (PINNED_WINDOW_SIZE=500); \
 				 test assumptions invalidated"
 			);
 		}
@@ -665,7 +713,7 @@ mod tests {
 		// Read version 510 sits inside T1's window but before T1's commit, so the conflict is real.
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_range(EncodedKeyRange::parse("a..z"));
-		let r2 = oracle.new_commit(CommitVersion(510), conflicts2).unwrap();
+		let r2 = oracle.new_commit(CommitVersion(510), conflicts2, no_deltas()).unwrap();
 
 		assert!(
 			matches!(r2, CreateCommitResult::Conflict(_)),
@@ -679,15 +727,15 @@ mod tests {
 	fn test_range_op_with_keys_scans_all_windows_not_just_bloom_matches() {
 		// A range op must scan every retained window: a bloom match on the transaction's own keys
 		// would skip the window where the range conflict actually lives.
-		// OracleWindowSize defaults to 500, so v=50 and v=750 land in different windows.
-		let oracle = create_test_oracle(49);
+		// The window size is pinned to 500, so v=50 and v=750 land in different windows.
+		let oracle = create_windowed_oracle(49);
 
 		let key_alpha = create_test_key("alpha");
 		let key_beta = create_test_key("beta");
 
 		let mut conflicts_b = ConflictManager::new();
 		conflicts_b.mark_write(&key_beta);
-		let r_b = oracle.new_commit(CommitVersion(1), conflicts_b).unwrap();
+		let r_b = oracle.new_commit(CommitVersion(1), conflicts_b, no_deltas()).unwrap();
 		let commit_v_b = match r_b {
 			CreateCommitResult::Success(v) => v,
 			_ => panic!("T_b should commit"),
@@ -695,11 +743,11 @@ mod tests {
 		assert_eq!(commit_v_b, CommitVersion(50));
 
 		// Skip the clock forward so T_a lands in window @ 500 with a bloom disjoint from window @ 0.
-		oracle.advance_version_for_replica(CommitVersion(749));
+		oracle.clock.advance_to(CommitVersion(749));
 
 		let mut conflicts_a = ConflictManager::new();
 		conflicts_a.mark_write(&key_alpha);
-		let r_a = oracle.new_commit(CommitVersion(1), conflicts_a).unwrap();
+		let r_a = oracle.new_commit(CommitVersion(1), conflicts_a, no_deltas()).unwrap();
 		let commit_v_a = match r_a {
 			CreateCommitResult::Success(v) => v,
 			_ => panic!("T_a should commit"),
@@ -711,12 +759,12 @@ mod tests {
 			let inner = oracle.inner.read();
 			assert!(
 				inner.time_windows.contains_key(&CommitVersion(0)),
-				"expected T_b's window_start to be 0 (default OracleWindowSize=500); \
+				"expected T_b's window_start to be 0 (PINNED_WINDOW_SIZE=500); \
 				 test assumptions invalidated"
 			);
 			assert!(
 				inner.time_windows.contains_key(&CommitVersion(500)),
-				"expected T_a's window_start to be 500 (default OracleWindowSize=500); \
+				"expected T_a's window_start to be 500 (PINNED_WINDOW_SIZE=500); \
 				 test assumptions invalidated"
 			);
 		}
@@ -725,7 +773,7 @@ mod tests {
 		let mut conflicts_3 = ConflictManager::new();
 		conflicts_3.mark_write(&key_beta);
 		conflicts_3.mark_range(EncodedKeyRange::parse("a..z"));
-		let r_3 = oracle.new_commit(CommitVersion(100), conflicts_3).unwrap();
+		let r_3 = oracle.new_commit(CommitVersion(100), conflicts_3, no_deltas()).unwrap();
 
 		assert!(
 			matches!(r_3, CreateCommitResult::Conflict(_)),
@@ -741,7 +789,7 @@ mod tests {
 
 		let conflicts = ConflictManager::new();
 
-		let result = oracle.new_commit(CommitVersion(1), conflicts).unwrap();
+		let result = oracle.new_commit(CommitVersion(1), conflicts, no_deltas()).unwrap();
 
 		match result {
 			CreateCommitResult::Success(_) => {
@@ -766,13 +814,13 @@ mod tests {
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&shared_key);
 
-		let result1 = oracle.new_commit(CommitVersion(1), conflicts1).unwrap();
+		let result1 = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas()).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_write(&shared_key);
 
-		let result2 = oracle.new_commit(CommitVersion(1), conflicts2).unwrap();
+		let result2 = oracle.new_commit(CommitVersion(1), conflicts2, no_deltas()).unwrap();
 
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
@@ -786,13 +834,13 @@ mod tests {
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&shared_key);
 
-		let result1 = oracle.new_commit(CommitVersion(1), conflicts1).unwrap();
+		let result1 = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas()).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_read(&shared_key);
 
-		let result2 = oracle.new_commit(CommitVersion(1), conflicts2).unwrap();
+		let result2 = oracle.new_commit(CommitVersion(1), conflicts2, no_deltas()).unwrap();
 
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
@@ -817,7 +865,9 @@ mod tests {
 					let mut conflicts = ConflictManager::new();
 					conflicts.mark_write(&key);
 
-					let result = oracle_clone.new_commit(CommitVersion(1), conflicts).unwrap();
+					let result = oracle_clone
+						.new_commit(CommitVersion(1), conflicts, no_deltas())
+						.unwrap();
 
 					match result {
 						CreateCommitResult::Success(version) => {
@@ -886,7 +936,7 @@ mod tests {
 				let mut conflicts = ConflictManager::new();
 				conflicts.mark_write(&key);
 
-				let result = oracle_clone.new_commit(CommitVersion(1), conflicts).unwrap();
+				let result = oracle_clone.new_commit(CommitVersion(1), conflicts, no_deltas()).unwrap();
 
 				if let CreateCommitResult::Success(version) = result {
 					oracle_clone.done_commit(version);
@@ -948,7 +998,7 @@ mod tests {
 					let key = create_test_key(&format!("key_{}_{}", t, i));
 					let mut conflicts = ConflictManager::new();
 					conflicts.mark_write(&key);
-					match oracle.new_commit(CommitVersion(1), conflicts).unwrap() {
+					match oracle.new_commit(CommitVersion(1), conflicts, no_deltas()).unwrap() {
 						CreateCommitResult::Success(version) => {
 							oracle.done_commit(version);
 							max_version = max_version.max(version);
@@ -987,7 +1037,7 @@ mod tests {
 
 		let mut conflicts = ConflictManager::new();
 		conflicts.mark_write(&create_test_key("pre_stop"));
-		let result = oracle.new_commit(CommitVersion(1), conflicts).unwrap();
+		let result = oracle.new_commit(CommitVersion(1), conflicts, no_deltas()).unwrap();
 		assert!(matches!(result, CreateCommitResult::Success(_)));
 
 		oracle.stop();
@@ -1012,7 +1062,7 @@ mod tests {
 			 an empty window for this transaction"
 		);
 
-		let v1 = match oracle.new_commit(CommitVersion(1), cm1).unwrap() {
+		let v1 = match oracle.new_commit(CommitVersion(1), cm1, no_deltas()).unwrap() {
 			CreateCommitResult::Success(v) => v,
 			other => panic!("T1 should commit, got variant {:?}", discriminant(&other)),
 		};
@@ -1022,7 +1072,7 @@ mod tests {
 		let mut cm2 = ConflictManager::new();
 		cm2.mark_read(&key);
 		cm2.mark_write(&key);
-		let r2 = oracle.new_commit(CommitVersion(1), cm2).unwrap();
+		let r2 = oracle.new_commit(CommitVersion(1), cm2, no_deltas()).unwrap();
 
 		assert!(
 			matches!(r2, CreateCommitResult::Conflict(_)),

@@ -20,11 +20,10 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
+use reifydb_store_commit::{MultiVersionScope, store::CommitStore};
 use reifydb_store_multi::{
-	MultiVersionScope,
-	config::{CommitBufferConfig, MultiStoreConfig},
+	config::{CommitStoreConfig, MultiStoreConfig},
 	store::StandardMultiStore,
-	tier::commit::buffer::MultiCommitBufferTier,
 };
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
@@ -34,8 +33,8 @@ fn memory_store() -> StandardMultiStore {
 	let spawner = actor_system.spawner();
 	std::mem::forget(actor_system);
 	StandardMultiStore::new(MultiStoreConfig {
-		commit: CommitBufferConfig {
-			storage: MultiCommitBufferTier::memory(),
+		commit: CommitStoreConfig {
+			storage: CommitStore::new(),
 		},
 		persistent: None,
 		point: None,

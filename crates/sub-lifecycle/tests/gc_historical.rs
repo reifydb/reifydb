@@ -35,7 +35,7 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 	version_epoch::VersionEpoch,
 };
-use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
+use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_sub_lifecycle::{
 	gc::historical::actor::HistoricalGcTask,
 	plane::{RetentionPlane, ledger::FloorSource},

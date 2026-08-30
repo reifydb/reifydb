@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{
+use reifydb_runtime::sync::{
 	Arc,
 	atomic::{AtomicU64, Ordering},
+	waiter::WaiterHandle,
 };
-
-use reifydb_runtime::sync::waiter::WaiterHandle;
 use reifydb_value::reifydb_assertions;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;

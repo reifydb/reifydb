@@ -62,8 +62,8 @@ fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 	DeferredTransaction::new(DeferredParams {
 		version,
 		pending: PendingLayers::empty(),
-		query: parent.multi.begin_query().unwrap(),
-		state_query: parent.multi.begin_query().unwrap(),
+		query: Some(parent.multi.begin_query().unwrap()),
+		state_query: Some(parent.multi.begin_query().unwrap()),
 		catalog: Catalog::testing(),
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(MockClock::from_millis(1000)),
@@ -474,8 +474,8 @@ fn deferred_read_sees_state_committed_above_object_version() {
 	let mut txn = DeferredTransaction::new(DeferredParams {
 		version: object_version,
 		pending: PendingLayers::empty(),
-		query: engine.multi().begin_query().unwrap(),
-		state_query: engine.multi().begin_query().unwrap(),
+		query: Some(engine.multi().begin_query().unwrap()),
+		state_query: Some(engine.multi().begin_query().unwrap()),
 		catalog: Catalog::testing(),
 		interceptors: engine.create_interceptors(),
 		clock: engine.clock().clone(),
@@ -514,8 +514,8 @@ fn deferred_read_sees_base_pending_overlay() {
 	let mut txn = DeferredTransaction::new(DeferredParams {
 		version: low_version,
 		pending: PendingLayers::over(vec![base_pending]),
-		query: engine.multi().begin_query().unwrap(),
-		state_query: engine.multi().begin_query().unwrap(),
+		query: Some(engine.multi().begin_query().unwrap()),
+		state_query: Some(engine.multi().begin_query().unwrap()),
 		catalog: Catalog::testing(),
 		interceptors: engine.create_interceptors(),
 		clock: engine.clock().clone(),
@@ -572,8 +572,8 @@ fn deferred_reads_owned_rows_at_state_version() {
 	let mut txn = DeferredTransaction::new(DeferredParams {
 		version: low_version,
 		pending: PendingLayers::empty(),
-		query: engine.multi().begin_query().unwrap(),
-		state_query: engine.multi().begin_query().unwrap(),
+		query: Some(engine.multi().begin_query().unwrap()),
+		state_query: Some(engine.multi().begin_query().unwrap()),
 		catalog: Catalog::testing(),
 		interceptors: engine.create_interceptors(),
 		clock: engine.clock().clone(),

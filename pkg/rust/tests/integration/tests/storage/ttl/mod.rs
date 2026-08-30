@@ -18,13 +18,24 @@ pub const EVICT_TIMEOUT: Duration = Duration::from_secs(30);
 pub const DRAIN_TIMEOUT: Duration = Duration::from_secs(90);
 
 pub fn ttl_db(path: impl AsRef<std::path::Path>, extra: impl IntoIterator<Item = (ConfigKey, Value)>) -> TestDb {
-	let mut configs = vec![
+	// These drains are timed against a wall clock, so the evict budget must be the production one; the testing
+	// profile's 4x2 rows per tick is 1024x too slow, and extra wins because bootstrap rejects a duplicate key.
+	let overrides: Vec<(ConfigKey, Value)> = extra.into_iter().collect();
+	let mut configs: Vec<(ConfigKey, Value)> = vec![
 		(ConfigKey::RetentionStartupGrace, Value::duration_seconds(1)),
 		(ConfigKey::RetentionEvictInterval, Value::duration_seconds(1)),
 		(ConfigKey::EpochBucketInterval, Value::duration_seconds(1)),
 		(ConfigKey::MultiFlushInterval, Value::duration_seconds(1)),
-	];
-	configs.extend(extra);
+		(ConfigKey::RetentionEvictBatchSize, ConfigKey::RetentionEvictBatchSize.production_value()),
+		(
+			ConfigKey::RetentionEvictMaxBatchesPerTick,
+			ConfigKey::RetentionEvictMaxBatchesPerTick.production_value(),
+		),
+	]
+	.into_iter()
+	.filter(|(key, _)| !overrides.iter().any(|(over, _)| over == key))
+	.collect();
+	configs.extend(overrides);
 	TestDb::from(embedded::sqlite(SqliteConfig::new(path)).with_configs(configs).build().unwrap())
 }
 

@@ -121,23 +121,6 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(attribute) =
-					self.cache.find_identity_attribute_by_name_at(name, rep.version())
-				{
-					return Ok(Some(attribute));
-				}
-
-				if let Some(attribute) = CatalogStore::find_identity_attribute_by_name(
-					&mut Transaction::Replica(&mut *rep),
-					name,
-				)? {
-					warn!("User attribute '{}' found in storage but not in CatalogCache", name);
-					return Ok(Some(attribute));
-				}
-
-				Ok(None)
-			}
 		}
 	}
 
@@ -201,7 +184,6 @@ impl Catalog {
 				let version = match txn.reborrow() {
 					Transaction::Command(cmd) => cmd.version(),
 					Transaction::Query(qry) => qry.version(),
-					Transaction::Replica(rep) => rep.version(),
 					_ => unreachable!(),
 				};
 
@@ -248,7 +230,6 @@ impl Catalog {
 				attributes.retain(|a| !t.inner.is_identity_attribute_deleted(a.id));
 				Ok(attributes)
 			}
-			Transaction::Replica(rep) => Ok(self.cache.list_all_identity_attributes_at(rep.version())),
 		}
 	}
 
@@ -395,7 +376,6 @@ impl Catalog {
 				let version = match txn.reborrow() {
 					Transaction::Command(cmd) => cmd.version(),
 					Transaction::Query(qry) => qry.version(),
-					Transaction::Replica(rep) => rep.version(),
 					_ => unreachable!(),
 				};
 
@@ -467,7 +447,6 @@ impl Catalog {
 				let version = match txn.reborrow() {
 					Transaction::Command(cmd) => cmd.version(),
 					Transaction::Query(qry) => qry.version(),
-					Transaction::Replica(rep) => rep.version(),
 					_ => unreachable!(),
 				};
 

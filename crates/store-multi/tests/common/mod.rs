@@ -33,11 +33,11 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
+use reifydb_store_commit::{MultiVersionScope, VersionedGetResult, store::CommitStore};
 use reifydb_store_multi::{
-	MultiVersionScope,
-	config::{CommitBufferConfig, MultiStoreConfig},
+	config::{CommitStoreConfig, MultiStoreConfig},
 	store::StandardMultiStore,
-	tier::{TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier},
+	tier::TierStorage,
 };
 use reifydb_testing::testscript;
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
@@ -56,13 +56,13 @@ impl Runner {
 	/// Buffer-only constructor (no persistent tier). Each test binary compiles its own copy of `common`
 	/// and only `store_multi.rs` consumes this, so the others see it as dead code.
 	#[allow(dead_code)]
-	pub fn new(storage: MultiCommitBufferTier) -> Self {
+	pub fn new(storage: CommitStore) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let spawner = actor_system.spawner();
 		std::mem::forget(actor_system);
 		let store = StandardMultiStore::new(MultiStoreConfig {
-			commit: CommitBufferConfig {
+			commit: CommitStoreConfig {
 				storage,
 			},
 			persistent: None,

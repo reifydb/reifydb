@@ -148,7 +148,7 @@ pub mod threads {
 	pub const COORDINATION_TESTING: u16 = 1;
 
 	pub const FLOW: u16 = 2;
-	pub const FLOW_TESTING: u16 = 1;
+	pub const FLOW_TESTING: u16 = 2;
 
 	pub const TASK: u16 = 2;
 	pub const TASK_TESTING: u16 = 1;

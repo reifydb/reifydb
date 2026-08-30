@@ -110,20 +110,6 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(auth) = self.cache.find_authentication_at(id, rep.version()) {
-					return Ok(Some(auth));
-				}
-
-				if let Some(auth) =
-					CatalogStore::find_authentication(&mut Transaction::Replica(&mut *rep), id)?
-				{
-					warn!("Authentication '{}' found in storage but not in CatalogCache", id);
-					return Ok(Some(auth));
-				}
-
-				Ok(None)
-			}
 		}
 	}
 
@@ -253,29 +239,6 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(auth) = self.cache.find_authentication_by_identity_and_method_at(
-					identity,
-					method,
-					rep.version(),
-				) {
-					return Ok(Some(auth));
-				}
-
-				if let Some(auth) = CatalogStore::find_authentication_by_identity_and_method(
-					&mut Transaction::Replica(&mut *rep),
-					identity,
-					method,
-				)? {
-					warn!(
-						"Authentication for identity {} method '{}' found in storage but not in CatalogCache",
-						identity, method
-					);
-					return Ok(Some(auth));
-				}
-
-				Ok(None)
-			}
 		}
 	}
 
@@ -319,9 +282,6 @@ impl Catalog {
 				}
 				auths.retain(|a| !t.inner.is_authentication_deleted(a.id));
 				Ok(auths)
-			}
-			Transaction::Replica(rep) => {
-				Ok(self.cache.list_authentications_by_method_at(method, rep.version()))
 			}
 		}
 	}

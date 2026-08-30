@@ -7,7 +7,6 @@ mod get;
 mod iter;
 mod lost_update;
 mod range;
-mod replica;
 mod rollback;
 mod too_large;
 mod version;

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	any::{Any, TypeId},
+	any::{Any, TypeId, type_name},
 	collections::HashMap,
 	sync,
 	sync::Arc,
@@ -127,7 +127,7 @@ impl Actor for EventBusActor {
 #[derive(Clone)]
 pub struct EventBus {
 	actor_ref: ActorRef<EventBusMessage>,
-	_spawner: ActorSpawner,
+	spawner: ActorSpawner,
 }
 
 impl EventBus {
@@ -135,7 +135,7 @@ impl EventBus {
 		let handle = spawner.spawn_coordination("event-bus", EventBusActor);
 		Self {
 			actor_ref: handle.actor_ref().clone(),
-			_spawner: spawner.clone(),
+			spawner: spawner.clone(),
 		}
 	}
 
@@ -152,9 +152,20 @@ impl EventBus {
 			list.as_any_mut().downcast_mut::<EventListenerListImpl<E>>().unwrap().add(listener);
 		});
 
-		let _ = self.actor_ref.send(EventBusMessage::Register {
-			installer,
-		});
+		if self.actor_ref
+			.send(EventBusMessage::Register {
+				installer,
+			})
+			.is_err()
+		{
+			let shutting_down = self.spawner.cancellation_token().is_none_or(|token| token.is_cancelled());
+			assert!(
+				shutting_down,
+				"the event bus rejected a listener for {} while the system was running; the \
+				 listener would never install and every later event of this type is lost silently",
+				type_name::<E>()
+			);
+		}
 	}
 
 	pub fn emit<E>(&self, event: E)
@@ -162,10 +173,21 @@ impl EventBus {
 		E: Event,
 	{
 		let type_id = TypeId::of::<E>();
-		let _ = self.actor_ref.send(EventBusMessage::Emit(EventEnvelope {
-			type_id,
-			event: event.into_any(),
-		}));
+		if self.actor_ref
+			.send(EventBusMessage::Emit(EventEnvelope {
+				type_id,
+				event: event.into_any(),
+			}))
+			.is_err()
+		{
+			let shutting_down = self.spawner.cancellation_token().is_none_or(|token| token.is_cancelled());
+			assert!(
+				shutting_down,
+				"the event bus rejected a {} while the system was running; dropping it silently \
+				 loses a post-commit update no subscriber will ever see",
+				type_name::<E>()
+			);
+		}
 	}
 
 	pub fn wait_for_completion(&self) {

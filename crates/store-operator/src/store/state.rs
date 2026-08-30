@@ -43,6 +43,7 @@ impl StandardOperatorStore {
 		reifydb_assertions! {
 			self.verify_classification(writes);
 		}
+		let _flushing = self.resident.flush_guard();
 		self.resident.apply_batch(writes);
 		self.invalidate_read_batch(writes);
 	}
@@ -57,6 +58,7 @@ impl StandardOperatorStore {
 		reifydb_assertions! {
 			self.verify_classification(writes);
 		}
+		let _flushing = self.resident.flush_guard();
 		self.resident.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes);
 		self.invalidate_read_batch(writes);
 	}
@@ -697,90 +699,33 @@ impl StandardOperatorStore {
 		}
 	}
 
-	#[instrument(name = "store::operator::state_last", level = "trace", skip(self, range), fields(operator = operator.0))]
-	pub fn state_last(&self, operator: OperatorId, range: EncodedKeyRange) -> Option<(EncodedKey, EncodedPodRow)> {
-		let mut buffer_end = range.end.clone();
+	#[instrument(name = "store::operator::state_last_iter", level = "trace", skip(self, range), fields(operator = operator.0))]
+	pub fn state_last_iter(&self, operator: OperatorId, range: EncodedKeyRange) -> StateLastIter<'_> {
 		let first = self.resident.state_last_page(
 			operator,
 			range.start.as_ref(),
-			buffer_end.as_ref(),
+			range.end.as_ref(),
 			STATE_LAST_PAGE,
 		);
-		let mut stored_done = first.dropped || self.persistent.is_none();
-		let mut buffer = first.items;
-		let mut buffer_done = buffer.len() < STATE_LAST_PAGE;
-		let mut buffer_index = 0usize;
-		if let Some((key, _)) = buffer.last() {
+		let stored_done = first.dropped || self.persistent.is_none();
+		let buffer_done = first.items.len() < STATE_LAST_PAGE;
+		let mut buffer_end = range.end.clone();
+		if let Some((key, _)) = first.items.last() {
 			buffer_end = Bound::Excluded(key.clone());
 		}
 
-		let mut stored: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
-		let mut stored_index = 0usize;
-		let mut stored_end = range.end.clone();
-
-		loop {
-			if buffer_index == buffer.len() && !buffer_done {
-				let page = self.resident.state_last_page(
-					operator,
-					range.start.as_ref(),
-					buffer_end.as_ref(),
-					STATE_LAST_PAGE,
-				);
-				buffer = page.items;
-				buffer_index = 0;
-				buffer_done = buffer.len() < STATE_LAST_PAGE;
-				if let Some((key, _)) = buffer.last() {
-					buffer_end = Bound::Excluded(key.clone());
-				}
-			}
-			if stored_index == stored.len() && !stored_done {
-				let persistent = self
-					.persistent
-					.as_ref()
-					.expect("a store without a persistent tier never reaches a stored page");
-				let batch = persistent.last_batch(
-					operator,
-					EncodedKeyRange::new(range.start.clone(), stored_end.clone()),
-					STATE_LAST_PAGE as u64,
-				);
-				stored_done = !batch.has_more;
-				stored = batch.items;
-				stored_index = 0;
-				if let Some((key, _)) = stored.last() {
-					stored_end = Bound::Excluded(key.clone());
-				}
-			}
-
-			match (buffer.get(buffer_index), stored.get(stored_index)) {
-				(None, None) => return None,
-				(Some((key, entry)), None) => {
-					buffer_index += 1;
-					if let Some(row) = entry {
-						return Some((key.clone(), row.clone()));
-					}
-				}
-				(None, Some((key, row))) => return Some((key.clone(), row.clone())),
-				(Some((buffer_key, entry)), Some((stored_key, stored_row))) => {
-					match buffer_key.cmp(stored_key) {
-						Ordering::Greater => {
-							buffer_index += 1;
-							if let Some(row) = entry {
-								return Some((buffer_key.clone(), row.clone()));
-							}
-						}
-						Ordering::Less => {
-							return Some((stored_key.clone(), stored_row.clone()));
-						}
-						Ordering::Equal => {
-							buffer_index += 1;
-							stored_index += 1;
-							if let Some(row) = entry {
-								return Some((buffer_key.clone(), row.clone()));
-							}
-						}
-					}
-				}
-			}
+		StateLastIter {
+			store: self,
+			operator,
+			start: range.start,
+			buffer: first.items,
+			buffer_index: 0,
+			buffer_end,
+			buffer_done,
+			stored: Vec::new(),
+			stored_index: 0,
+			stored_end: range.end,
+			stored_done,
 		}
 	}
 }
@@ -841,9 +786,9 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn state_last(&self, operator: OperatorId, range: EncodedKeyRange) -> Option<(EncodedKey, EncodedPodRow)> {
+	pub fn state_last_iter(&self, operator: OperatorId, range: EncodedKeyRange) -> StateLastIter<'_> {
 		match self {
-			Self::Standard(store) => store.state_last(operator, range),
+			Self::Standard(store) => store.state_last_iter(operator, range),
 		}
 	}
 }
@@ -862,4 +807,95 @@ enum SizeProbe {
 
 fn row_size(row: &EncodedPodRow) -> ByteSize {
 	ByteSize::from_bytes(row.bytes().len() as u64)
+}
+
+pub struct StateLastIter<'a> {
+	store: &'a StandardOperatorStore,
+	operator: OperatorId,
+	start: Bound<EncodedKey>,
+	buffer: Vec<(EncodedKey, Option<EncodedPodRow>)>,
+	buffer_index: usize,
+	buffer_end: Bound<EncodedKey>,
+	buffer_done: bool,
+	stored: Vec<(EncodedKey, EncodedPodRow)>,
+	stored_index: usize,
+	stored_end: Bound<EncodedKey>,
+	stored_done: bool,
+}
+
+impl Iterator for StateLastIter<'_> {
+	type Item = (EncodedKey, EncodedPodRow);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		loop {
+			if self.buffer_index == self.buffer.len() && !self.buffer_done {
+				let page = self.store.resident.state_last_page(
+					self.operator,
+					self.start.as_ref(),
+					self.buffer_end.as_ref(),
+					STATE_LAST_PAGE,
+				);
+				self.buffer = page.items;
+				self.buffer_index = 0;
+				self.buffer_done = self.buffer.len() < STATE_LAST_PAGE;
+				if let Some((key, _)) = self.buffer.last() {
+					self.buffer_end = Bound::Excluded(key.clone());
+				}
+			}
+			if self.stored_index == self.stored.len() && !self.stored_done {
+				let persistent =
+					self.store.persistent.as_ref().expect(
+						"a store without a persistent tier never reaches a stored page",
+					);
+				let batch = persistent.last_batch(
+					self.operator,
+					EncodedKeyRange::new(self.start.clone(), self.stored_end.clone()),
+					STATE_LAST_PAGE as u64,
+				);
+				self.stored_done = !batch.has_more;
+				self.stored = batch.items;
+				self.stored_index = 0;
+				if let Some((key, _)) = self.stored.last() {
+					self.stored_end = Bound::Excluded(key.clone());
+				}
+			}
+
+			let buffered = self.buffer.get(self.buffer_index).cloned();
+			let stored = self.stored.get(self.stored_index).cloned();
+			match (buffered, stored) {
+				(None, None) => return None,
+				(Some((key, entry)), None) => {
+					self.buffer_index += 1;
+					if let Some(row) = entry {
+						return Some((key, row));
+					}
+				}
+				(None, Some((key, row))) => {
+					self.stored_index += 1;
+					return Some((key, row));
+				}
+				(Some((buffer_key, entry)), Some((stored_key, stored_row))) => {
+					match buffer_key.cmp(&stored_key) {
+						Ordering::Greater => {
+							self.buffer_index += 1;
+							if let Some(row) = entry {
+								return Some((buffer_key, row));
+							}
+						}
+						Ordering::Less => {
+							self.stored_index += 1;
+							return Some((stored_key, stored_row));
+						}
+						Ordering::Equal => {
+							self.buffer_index += 1;
+							self.stored_index += 1;
+							if let Some(row) = entry {
+								return Some((buffer_key, row));
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 }

@@ -78,7 +78,6 @@ impl QueueOperations for Transaction<'_> {
 			Transaction::Admin(txn) => txn.insert_queue(queue, rows),
 			Transaction::Test(t) => t.inner.insert_queue(queue, rows),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}
 	}
 }

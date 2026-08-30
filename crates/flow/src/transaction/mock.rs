@@ -40,8 +40,8 @@ impl<'a> FlowTxnBuilder<'a> {
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version,
 			pending: PendingLayers::empty(),
-			query: self.engine.multi().begin_query().unwrap(),
-			state_query: self.engine.multi().begin_query().unwrap(),
+			query: Some(self.engine.multi().begin_query().unwrap()),
+			state_query: Some(self.engine.multi().begin_query().unwrap()),
 			catalog: self.catalog,
 			interceptors: Interceptors::new(),
 			clock: self.clock,

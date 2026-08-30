@@ -25,8 +25,8 @@ use tracing::instrument;
 
 use crate::{
 	TransactionId,
+	accumulator::ChangeAccumulator,
 	change::{RowChange, TransactionalCatalogChanges, TransactionalChanges},
-	change_accumulator::ChangeAccumulator,
 	dictionary::DictionaryAllocatorRegistry,
 	error::TransactionError,
 	interceptor::{

@@ -30,8 +30,8 @@ fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> DeferredTransac
 	DeferredTransaction::new(DeferredParams {
 		version,
 		pending: PendingLayers::empty(),
-		query: parent.multi.begin_query().unwrap(),
-		state_query: parent.multi.begin_query().unwrap(),
+		query: Some(parent.multi.begin_query().unwrap()),
+		state_query: Some(parent.multi.begin_query().unwrap()),
 		catalog: Catalog::testing(),
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(clock),

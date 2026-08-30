@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
-
 use reifydb_runtime::{
 	actor::{
 		context::Context,
 		system::ActorConfig,
 		traits::{Actor, Directive},
 	},
-	sync::{mutex::Mutex, waiter::WaiterHandle},
+	sync::{Arc, mutex::Mutex, waiter::WaiterHandle},
 };
 
 use super::{

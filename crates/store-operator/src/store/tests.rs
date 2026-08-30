@@ -100,7 +100,7 @@ fn remove(store: &StandardOperatorStore, suffix: u8) -> OperatorWrite {
 }
 
 fn last(store: &StandardOperatorStore) -> Option<(u8, String)> {
-	store.state_last(OP, all()).map(|(key, row)| (key.as_slice()[key.len() - 1], body(&row)))
+	store.state_last_iter(OP, all()).next().map(|(key, row)| (key.as_slice()[key.len() - 1], body(&row)))
 }
 
 #[test]

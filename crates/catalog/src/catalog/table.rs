@@ -147,19 +147,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(table) = self.cache.find_table_at(id, rep.version()) {
-					return Ok(Some(table));
-				}
-
-				if let Some(table) = CatalogStore::find_table(&mut Transaction::Replica(&mut *rep), id)?
-				{
-					warn!("Table with ID {:?} found in storage but not in CatalogCache", id);
-					return Ok(Some(table));
-				}
-
-				Ok(None)
-			}
 		}
 	}
 
@@ -255,25 +242,6 @@ impl Catalog {
 				)? {
 					return Ok(Some(table));
 				}
-				Ok(None)
-			}
-			Transaction::Replica(rep) => {
-				if let Some(table) = self.cache.find_table_by_name_at(namespace, name, rep.version()) {
-					return Ok(Some(table));
-				}
-
-				if let Some(table) = CatalogStore::find_table_by_name(
-					&mut Transaction::Replica(&mut *rep),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"Table '{}' in namespace {:?} found in storage but not in CatalogCache",
-						name, namespace
-					);
-					return Ok(Some(table));
-				}
-
 				Ok(None)
 			}
 		}

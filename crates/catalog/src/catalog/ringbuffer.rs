@@ -139,18 +139,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(ringbuffer) = self.cache.find_ringbuffer_at(id, rep.version()) {
-					return Ok(Some(ringbuffer));
-				}
-				if let Some(ringbuffer) =
-					CatalogStore::find_ringbuffer(&mut Transaction::Replica(&mut *rep), id)?
-				{
-					warn!("RingBuffer {:?} found in storage but not in CatalogCache", id);
-					return Ok(Some(ringbuffer));
-				}
-				Ok(None)
-			}
 		}
 	}
 
@@ -244,25 +232,6 @@ impl Catalog {
 					namespace,
 					name,
 				)? {
-					return Ok(Some(ringbuffer));
-				}
-				Ok(None)
-			}
-			Transaction::Replica(rep) => {
-				if let Some(ringbuffer) =
-					self.cache.find_ringbuffer_by_name_at(namespace, name, rep.version())
-				{
-					return Ok(Some(ringbuffer));
-				}
-				if let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(
-					&mut Transaction::Replica(&mut *rep),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"RingBuffer '{}' in namespace {:?} found in storage but not in CatalogCache",
-						name, namespace
-					);
 					return Ok(Some(ringbuffer));
 				}
 				Ok(None)

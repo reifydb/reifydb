@@ -33,12 +33,8 @@ use reifydb_store::{
 		Materialize, RangeConfig, RangeDomain, RangeMetrics, RangeRows, RangeShardMetrics, RangeTier, RowBytes,
 	},
 };
+use reifydb_store_commit::{MultiVersionScope, RangeBatch, RangeCursor, RawEntry};
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
-
-use crate::{
-	MultiVersionScope,
-	tier::{RangeBatch, RangeCursor, RawEntry},
-};
 
 #[derive(Clone, Copy, Debug)]
 pub struct MultiRangeConfig {

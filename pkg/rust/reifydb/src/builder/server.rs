@@ -25,10 +25,8 @@ use reifydb_runtime::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_store_cdc::{config::CdcCommitConfig, tier::read::CdcReadConfig};
-use reifydb_store_multi::tier::{
-	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, point::MultiPointConfig,
-	range::MultiRangeConfig,
-};
+use reifydb_store_commit::store::CommitStore;
+use reifydb_store_multi::tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig};
 use reifydb_store_operator::tier::{point::OperatorPointConfig, range::OperatorRangeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -48,12 +46,6 @@ use reifydb_sub_metrics::profiler::{
 	sink::EventBusSink,
 	subsystem::ProfilerSubsystem,
 };
-#[cfg(feature = "sub_raft")]
-use reifydb_sub_raft::config::RaftConfig;
-#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
-use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
-#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
-use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_server::interceptor::{RequestInterceptor, RequestInterceptorChain};
 #[cfg(all(feature = "sub_server_admin", not(reifydb_single_threaded)))]
@@ -73,12 +65,10 @@ use reifydb_value::{byte_size::ByteSize, value::Value};
 #[cfg(feature = "sub_metric_profiler")]
 use tracing_subscriber::filter::LevelFilter;
 
-#[cfg(feature = "sub_raft")]
-use crate::raft::RaftSubsystemFactory;
 use crate::system::raise_fd_limit;
 
 type PoolConfigSources = (
-	MultiCommitBufferTier,
+	CommitStore,
 	Option<MultiPersistentTier>,
 	PoolConfig,
 	Option<MultiPointConfig>,
@@ -93,14 +83,14 @@ type PoolConfigSources = (
 );
 
 fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, Value)]) -> Result<PoolConfigSources> {
-	let multi_commit_buffer = factory.open_multi_commit_buffer();
+	let multi_commit_store = factory.open_multi_commit_store();
 	let multi_persistent = factory.open_multi_persistent();
-	let resolved = resolve_startup_configs(&multi_commit_buffer, multi_persistent.as_ref(), overrides)?;
+	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
 		persistent.set_checkpoint_threshold(resolved.multi_wal_autocheckpoint);
 	}
 	Ok((
-		multi_commit_buffer,
+		multi_commit_store,
 		multi_persistent,
 		resolved.pools,
 		resolved.multi_point,
@@ -145,14 +135,10 @@ pub struct ServerBuilder {
 	profiler_configurator: Option<Box<dyn FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static>>,
-	#[cfg(feature = "sub_replication")]
-	replication_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 	otel_tracing_config: Option<OtelTracingConfig>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
 	auth_providers: Vec<Box<dyn AuthenticationProvider>>,
-	#[cfg(feature = "sub_replication")]
-	is_replica: bool,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
 	fast_shutdown: bool,
 	cdc_memory: bool,
@@ -178,10 +164,6 @@ impl ServerBuilder {
 			profiler_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
-			#[cfg(feature = "sub_replication")]
-			replication_factory: None,
-			#[cfg(feature = "sub_replication")]
-			is_replica: false,
 			#[cfg(all(
 				feature = "sub_tracing",
 				feature = "sub_server_otel",
@@ -322,13 +304,6 @@ impl ServerBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_raft")]
-	pub fn with_raft(mut self, config: RaftConfig) -> Self {
-		let factory = RaftSubsystemFactory::new(config);
-		self.subsystem_factories.push(Box::new(factory));
-		self
-	}
-
 	#[cfg(all(feature = "sub_server_admin", not(reifydb_single_threaded)))]
 	pub fn with_admin<F>(mut self, configurator: F) -> Self
 	where
@@ -347,7 +322,7 @@ impl ServerBuilder {
 		raise_fd_limit();
 
 		let (
-			multi_commit_buffer,
+			multi_commit_store,
 			multi_persistent,
 			pool_config,
 			multi_point_buffer,
@@ -370,8 +345,8 @@ impl ServerBuilder {
 		let rng = runtime.rng().clone();
 
 		let (multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus) =
-			self.storage_factory.create_with_multi_commit_buffer(
-				multi_commit_buffer,
+			self.storage_factory.create_with_multi_commit_store(
+				multi_commit_store,
 				multi_persistent,
 				multi_point_buffer,
 				multi_range_buffer,
@@ -403,11 +378,6 @@ impl ServerBuilder {
 
 		if self.fast_shutdown {
 			database_builder = database_builder.with_fast_shutdown();
-		}
-
-		#[cfg(feature = "sub_replication")]
-		if self.is_replica {
-			database_builder = database_builder.is_replica();
 		}
 
 		#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
@@ -572,11 +542,6 @@ impl ServerBuilder {
 			database_builder = database_builder.with_flow(configurator);
 		}
 
-		#[cfg(feature = "sub_replication")]
-		if let Some(factory) = self.replication_factory {
-			database_builder = database_builder.add_replication_factory(factory);
-		}
-
 		for factory in self.subsystem_factories {
 			database_builder = database_builder.add_subsystem_factory(factory);
 		}
@@ -612,18 +577,6 @@ impl WithSubsystem for ServerBuilder {
 		F: FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static,
 	{
 		self.profiler_configurator = Some(Box::new(configurator));
-		self
-	}
-
-	#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
-	fn with_replication<F, C>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(ReplicationConfigurator) -> C + Send + 'static,
-		C: Into<ReplicationConfig> + 'static,
-	{
-		let config = configurator(ReplicationConfigurator).into();
-		self.is_replica = matches!(config, ReplicationConfig::Replica(_));
-		self.replication_factory = Some(Box::new(ReplicationSubsystemFactory::from_config(config)));
 		self
 	}
 

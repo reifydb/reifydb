@@ -22,7 +22,7 @@ use reifydb_value::{
 };
 
 pub(crate) fn require_command_transaction(procedure: &'static str, txn: &Transaction<'_>) -> Result<(), RoutineError> {
-	if matches!(txn, Transaction::Query(..) | Transaction::Replica(..)) {
+	if matches!(txn, Transaction::Query(..)) {
 		return Err(RoutineError::ProcedureExecutionFailed {
 			procedure: Fragment::internal(procedure),
 			reason: "must run in a command transaction".to_string(),

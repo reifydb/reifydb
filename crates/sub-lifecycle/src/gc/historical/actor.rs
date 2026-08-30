@@ -19,10 +19,8 @@ use reifydb_core::{
 	},
 };
 use reifydb_runtime::context::clock::Clock;
-use reifydb_store_multi::{
-	store::StandardMultiStore,
-	tier::{HistoricalCursor, commit::buffer::MultiCommitBufferTier},
-};
+use reifydb_store_commit::{HistoricalCursor, store::CommitStore};
+use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::{Result, value::duration::Duration};
 use tracing::{debug, instrument, trace, warn};
 
@@ -51,14 +49,7 @@ impl Actor {
 	}
 
 	#[inline]
-	fn finish_sweep(
-		&self,
-		buffer: &MultiCommitBufferTier,
-		cutoff: CommitVersion,
-		binding: FloorTerm,
-		backlog: u64,
-		stats: &GcMetrics,
-	) {
+	fn finish_sweep(&self, cutoff: CommitVersion, binding: FloorTerm, backlog: u64, stats: &GcMetrics) {
 		self.plane.record_reclamation(
 			RetentionClass::BufferHistoricalGc,
 			Some((Floor::Version(cutoff), binding)),
@@ -67,7 +58,6 @@ impl Actor {
 		);
 
 		if stats.versions_dropped > 0 {
-			buffer.maintenance();
 			debug!(
 				cutoff = cutoff.0,
 				objects_scanned = stats.objects_scanned,
@@ -82,7 +72,7 @@ impl Actor {
 	#[instrument(name = "lifecycle::gc::historical::sweep_shape", level = "trace", skip_all, fields(?entry_kind, cutoff = cutoff.0, dropped))]
 	fn sweep_shape(
 		&self,
-		buffer: &MultiCommitBufferTier,
+		buffer: &CommitStore,
 		entry_kind: EntryKind,
 		cutoff: CommitVersion,
 		batch_size: usize,
@@ -152,7 +142,7 @@ impl Actor {
 			stats.objects_scanned += 1;
 			stats.versions_dropped += dropped;
 		}
-		self.finish_sweep(buffer, cutoff, binding, pending(cursors), &stats);
+		self.finish_sweep(cutoff, binding, pending(cursors), &stats);
 	}
 }
 

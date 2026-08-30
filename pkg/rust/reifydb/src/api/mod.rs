@@ -15,16 +15,14 @@ use reifydb_store_cdc::{
 	store::CdcStore,
 	tier::read::CdcReadConfig,
 };
+use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::{
 	MultiStore,
 	config::{
-		CommitBufferConfig as MultiCommitBufferConfig, MultiStoreConfig,
+		CommitStoreConfig as MultiCommitStoreConfig, MultiStoreConfig,
 		PersistentConfig as MultiPersistentConfig,
 	},
-	tier::{
-		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, point::MultiPointConfig,
-		range::MultiRangeConfig,
-	},
+	tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig},
 };
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorResidentStateConfig, OperatorStoreConfig},
@@ -57,8 +55,8 @@ pub enum StorageFactory {
 }
 
 impl StorageFactory {
-	pub(crate) fn open_multi_commit_buffer(&self) -> MultiCommitBufferTier {
-		MultiCommitBufferTier::memory()
+	pub(crate) fn open_multi_commit_store(&self) -> CommitStore {
+		CommitStore::new()
 	}
 
 	pub(crate) fn open_multi_persistent(&self) -> Option<MultiPersistentTier> {
@@ -71,9 +69,9 @@ impl StorageFactory {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub(crate) fn create_with_multi_commit_buffer(
+	pub(crate) fn create_with_multi_commit_store(
 		&self,
-		multi_commit_buffer: MultiCommitBufferTier,
+		multi_commit_store: CommitStore,
 		multi_persistent: Option<MultiPersistentTier>,
 		multi_point: Option<MultiPointConfig>,
 		multi_range: Option<MultiRangeConfig>,
@@ -89,10 +87,10 @@ impl StorageFactory {
 	) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
 		match self {
 			StorageFactory::Memory => {
-				create_memory_store_with(multi_commit_buffer, cdc_commit, cdc_read, spawner)
+				create_memory_store_with(multi_commit_store, cdc_commit, cdc_read, spawner)
 			}
 			StorageFactory::Sqlite(config) => create_sqlite_store_with(
-				multi_commit_buffer,
+				multi_commit_store,
 				multi_persistent.expect("sqlite storage must supply an opened persistent tier"),
 				multi_point,
 				multi_range,
@@ -157,7 +155,7 @@ pub(crate) fn cdc_sqlite_config(config: &SqliteConfig, wal_autocheckpoint: u32) 
 }
 
 fn create_memory_store_with(
-	multi_commit_buffer: MultiCommitBufferTier,
+	multi_commit_store: CommitStore,
 	cdc_commit: CdcCommitConfig,
 	cdc_read: Option<CdcReadConfig>,
 	spawner: &ActorSpawner,
@@ -165,8 +163,8 @@ fn create_memory_store_with(
 	let eventbus = EventBus::new(spawner);
 
 	let multi_store = MultiStore::standard(MultiStoreConfig {
-		commit: MultiCommitBufferConfig {
-			storage: multi_commit_buffer,
+		commit: MultiCommitStoreConfig {
+			storage: multi_commit_store,
 		},
 		persistent: None,
 		point: None,
@@ -203,7 +201,7 @@ fn create_memory_store_with(
 
 #[allow(clippy::too_many_arguments)]
 fn create_sqlite_store_with(
-	multi_commit_buffer: MultiCommitBufferTier,
+	multi_commit_store: CommitStore,
 	multi_persistent: MultiPersistentTier,
 	multi_point: Option<MultiPointConfig>,
 	multi_range: Option<MultiRangeConfig>,
@@ -221,8 +219,8 @@ fn create_sqlite_store_with(
 	let eventbus = EventBus::new(spawner);
 
 	let multi_store = MultiStore::standard(MultiStoreConfig {
-		commit: MultiCommitBufferConfig {
-			storage: multi_commit_buffer,
+		commit: MultiCommitStoreConfig {
+			storage: multi_commit_store,
 		},
 		persistent: Some(MultiPersistentConfig::opened(multi_persistent)),
 		point: multi_point,

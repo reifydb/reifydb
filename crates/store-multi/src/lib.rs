@@ -21,7 +21,7 @@ pub mod store;
 
 use std::{collections::HashMap, sync::Arc};
 
-use config::{CommitBufferConfig, MultiStoreConfig};
+use config::{CommitStoreConfig, MultiStoreConfig};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
@@ -37,9 +37,13 @@ use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
+use reifydb_store_commit::{
+	MultiVersionScope, VersionedGetResult,
+	store::{CommitStore, MultiCommitMetrics},
+};
 use reifydb_value::util::cowvec::CowVec;
 use store::{MultiPersistentProbeMetrics, StandardMultiStore};
-use tier::{commit::buffer::MultiCommitMetrics, point::MultiPointShardMetrics, range::MultiRangeShardMetrics};
+use tier::{point::MultiPointShardMetrics, range::MultiRangeShardMetrics};
 
 pub mod memory {}
 pub mod sqlite {}
@@ -105,7 +109,7 @@ impl MultiStore {
 		}
 	}
 
-	pub fn commit(&self) -> &tier::commit::buffer::MultiCommitBufferTier {
+	pub fn commit(&self) -> &CommitStore {
 		match self {
 			MultiStore::Standard(store) => store.commit(),
 		}
@@ -216,45 +220,6 @@ impl MultiVersionGetPrevious for MultiStore {
 
 pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum MultiVersionScope {
-	AsOf {
-		read: CommitVersion,
-	},
-	Between {
-		after: CommitVersion,
-		read: CommitVersion,
-	},
-}
-
-impl MultiVersionScope {
-	#[inline]
-	pub fn read(&self) -> CommitVersion {
-		match self {
-			Self::AsOf {
-				read,
-			}
-			| Self::Between {
-				read,
-				..
-			} => *read,
-		}
-	}
-
-	#[inline]
-	pub fn contains(&self, v: CommitVersion) -> bool {
-		match self {
-			Self::AsOf {
-				read,
-			} => v <= *read,
-			Self::Between {
-				after,
-				read,
-			} => v > *after && v <= *read,
-		}
-	}
-}
-
 impl MultiStore {
 	pub fn range(
 		&self,
@@ -307,6 +272,16 @@ impl MultiStore {
 	) -> Result<HashMap<EncodedKey, MultiVersionRow>> {
 		match self {
 			MultiStore::Standard(store) => store.get_many(keys, version),
+		}
+	}
+
+	pub fn get_many_versioned(
+		&self,
+		keys: &[EncodedKey],
+		version: CommitVersion,
+	) -> Result<HashMap<EncodedKey, VersionedGetResult>> {
+		match self {
+			MultiStore::Standard(store) => store.get_many_versioned(keys, version),
 		}
 	}
 }

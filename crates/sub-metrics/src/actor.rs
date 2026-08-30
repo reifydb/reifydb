@@ -7,7 +7,7 @@ use reifydb_catalog::{
 	metrics::storage::{
 		cdc::{CdcMetrics, CdcMetricsWriter},
 		metrics::MetricsReader,
-		multi::{MultiStorageMetrics, StorageMetricsWriter},
+		multi::StorageMetricsWriter,
 	},
 	vtable::system::metrics::MetricsObject,
 };
@@ -25,7 +25,10 @@ use reifydb_core::{
 	},
 	fingerprint::RequestFingerprint,
 	interface::{
-		catalog::config::{ConfigKey, GetConfig},
+		catalog::{
+			config::{ConfigKey, GetConfig},
+			metrics::storage::MultiStorageMetrics,
+		},
 		store::Tier,
 	},
 	key::operator::state::KeyspaceId,
@@ -43,6 +46,7 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
+use reifydb_store_commit::VersionedGetResult;
 use reifydb_store_multi::MultiStore;
 use reifydb_store_operator::{
 	store::OperatorStore,
@@ -151,7 +155,7 @@ impl MetricsFlushActor {
 		);
 
 		self.record_writes(state, writes, version);
-		record_deletes(state, deletes);
+		self.record_deletes(state, deletes, version);
 		advance_max_version(&mut state.max_version, version);
 	}
 
@@ -173,24 +177,48 @@ impl MetricsFlushActor {
 
 	#[inline]
 	fn record_writes(&self, state: &mut MetricsFlushActorState, writes: &[MultiWrite], version: CommitVersion) {
-		let pre_sizes = self.read_prior_sizes(writes, version);
+		let keys: Vec<EncodedKey> = writes.iter().map(|write| write.key.clone()).collect();
+		let pre_sizes = self.read_prior_sizes(&keys, version);
 		record_each_write(state, writes, &pre_sizes);
 	}
 
 	#[inline]
-	fn read_prior_sizes(&self, writes: &[MultiWrite], version: CommitVersion) -> HashMap<EncodedKey, u64> {
+	fn record_deletes(&self, state: &mut MetricsFlushActorState, deletes: &[MultiDelete], version: CommitVersion) {
+		let keys: Vec<EncodedKey> = deletes.iter().map(|delete| delete.key.clone()).collect();
+		let pre_sizes = self.read_prior_sizes(&keys, version);
+		for delete in deletes {
+			if let Err(e) = state.storage_writer.record_delete(
+				Tier::Buffer,
+				delete.key.as_ref(),
+				pre_sizes.get(&delete.key).copied(),
+			) {
+				error!("Failed to record delete: {}", e);
+			}
+		}
+	}
+
+	#[inline]
+	fn read_prior_sizes(&self, keys: &[EncodedKey], version: CommitVersion) -> HashMap<EncodedKey, u64> {
 		let mut pre_sizes: HashMap<EncodedKey, u64> = HashMap::new();
-		if version.0 > 0 {
-			let lookup_keys: Vec<EncodedKey> = writes.iter().map(|w| w.key.clone()).collect();
-			if !lookup_keys.is_empty() {
-				match self.resolver.get_many(&lookup_keys, CommitVersion(version.0 - 1)) {
-					Ok(rows) => {
-						for (key, row) in rows {
-							pre_sizes.insert(key, row.bytes.len() as u64);
+		if version.0 > 0 && !keys.is_empty() {
+			match self.resolver.get_many_versioned(keys, CommitVersion(version.0 - 1)) {
+				Ok(rows) => {
+					for (key, result) in rows {
+						match result {
+							VersionedGetResult::Value {
+								value,
+								..
+							} => {
+								pre_sizes.insert(key, value.len() as u64);
+							}
+							VersionedGetResult::Tombstone => {
+								pre_sizes.insert(key, 0);
+							}
+							VersionedGetResult::NotFound => {}
 						}
 					}
-					Err(e) => error!("Failed to read previous versions for write metrics: {}", e),
 				}
+				Err(e) => error!("Failed to read previous versions for write metrics: {}", e),
 			}
 		}
 		pre_sizes
@@ -236,17 +264,6 @@ fn record_each_write(state: &mut MetricsFlushActorState, writes: &[MultiWrite], 
 			pre_value_bytes,
 		) {
 			error!("Failed to record write: {}", e);
-		}
-	}
-}
-
-#[inline]
-fn record_deletes(state: &mut MetricsFlushActorState, deletes: &[MultiDelete]) {
-	for delete in deletes {
-		if let Err(e) =
-			state.storage_writer.record_delete(Tier::Buffer, delete.key.as_ref(), Some(delete.value_bytes))
-		{
-			error!("Failed to record delete: {}", e);
 		}
 	}
 }
@@ -577,15 +594,15 @@ fn storage_row(
 			Value::Utf8(tier_name(tier).to_string()),
 		],
 		measures: vec![
-			level_bytes("live_key_bytes", storage.current_key_bytes),
-			level_bytes("live_value_bytes", storage.current_value_bytes),
-			level_bytes("live_bytes", storage.current_bytes()),
-			level_count("live_count", storage.current_count),
-			level_bytes("superseded_key_bytes", storage.historical_key_bytes),
-			level_bytes("superseded_value_bytes", storage.historical_value_bytes),
-			level_bytes("superseded_bytes", storage.historical_bytes()),
-			level_count("superseded_count", storage.historical_count),
-			level_bytes("total_bytes", storage.total_bytes()),
+			level_bytes("estimated_live_key_bytes", storage.estimated_current_key_bytes),
+			level_bytes("estimated_live_value_bytes", storage.estimated_current_value_bytes),
+			level_bytes("estimated_live_bytes", storage.estimated_current_bytes()),
+			level_count("estimated_live_count", storage.estimated_current_count),
+			level_bytes("estimated_superseded_key_bytes", storage.estimated_historical_key_bytes),
+			level_bytes("estimated_superseded_value_bytes", storage.estimated_historical_value_bytes),
+			level_bytes("estimated_superseded_bytes", storage.estimated_historical_bytes()),
+			level_count("estimated_superseded_count", storage.estimated_historical_count),
+			level_bytes("estimated_total_bytes", storage.estimated_total_bytes()),
 		],
 	}
 }

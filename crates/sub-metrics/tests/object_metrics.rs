@@ -31,7 +31,7 @@ fn storage_current_reports_a_written_table_under_its_object_kind() {
 	db.command("insert test::t [{ id: 1 }]");
 
 	let rows = db.await_row_count(
-		"from system::metrics::storage::current filter { object_kind == 'table' and live_count > 0 }",
+		"from system::metrics::storage::current filter { object_kind == 'table' and estimated_live_count > 0 }",
 		1,
 		TIMEOUT,
 	);

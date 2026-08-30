@@ -19,7 +19,7 @@ use reifydb_core::{
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
-	change_accumulator::ChangeAccumulator,
+	accumulator::ChangeAccumulator,
 	interceptor::{
 		WithInterceptors,
 		authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
@@ -95,8 +95,8 @@ use crate::{
 pub struct DeferredTransaction {
 	pub version: CommitVersion,
 	pub pending: PendingLayers,
-	pub query: MultiReadTransaction,
-	pub state_query: MultiReadTransaction,
+	pub query: Option<MultiReadTransaction>,
+	pub state_query: Option<MultiReadTransaction>,
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub accumulator: ChangeAccumulator,
@@ -114,7 +114,9 @@ impl DeferredTransaction {
 	#[instrument(name = "flow::transaction::deferred", level = "debug", skip(params), fields(version = params.version.0))]
 	pub fn new(params: DeferredParams) -> Self {
 		let mut query = params.query;
-		query.read_as_of_version_inclusive(params.version);
+		if let Some(query) = query.as_mut() {
+			query.read_as_of_version_inclusive(params.version);
+		}
 
 		Self {
 			version: params.version,
@@ -134,11 +136,12 @@ impl DeferredTransaction {
 }
 
 const NO_OPERATOR_STORE: &str = "flow transaction was built without an operator store";
+const NO_READ_TRANSACTION: &str = "flow transaction was built without a read transaction";
 
 pub(crate) fn deferred_storage_get(
 	operators: Option<&OperatorStore>,
-	query: &MultiReadTransaction,
-	state_query: &MultiReadTransaction,
+	query: Option<&MultiReadTransaction>,
+	state_query: Option<&MultiReadTransaction>,
 	key: &EncodedKey,
 ) -> Result<Option<EncodedBytes>> {
 	let route = read_from(key);
@@ -154,13 +157,13 @@ pub(crate) fn deferred_storage_get(
 		ReadFrom::Query => query,
 		ReadFrom::OperatorState => unreachable!(),
 	};
-	Ok(query.get(key)?.map(|multi| multi.bytes().clone()))
+	Ok(query.expect(NO_READ_TRANSACTION).get(key)?.map(|multi| multi.bytes().clone()))
 }
 
 pub(crate) fn deferred_storage_contains(
 	operators: Option<&OperatorStore>,
-	query: &MultiReadTransaction,
-	state_query: &MultiReadTransaction,
+	query: Option<&MultiReadTransaction>,
+	state_query: Option<&MultiReadTransaction>,
 	key: &EncodedKey,
 ) -> Result<bool> {
 	let query = match read_from(key) {
@@ -175,13 +178,13 @@ pub(crate) fn deferred_storage_contains(
 		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
 		ReadFrom::Query => query,
 	};
-	query.contains_key(key)
+	query.expect(NO_READ_TRANSACTION).contains_key(key)
 }
 
 pub(crate) fn deferred_storage_range<'a>(
 	operators: Option<&OperatorStore>,
-	query: &'a MultiReadTransaction,
-	state_query: &'a MultiReadTransaction,
+	query: Option<&'a MultiReadTransaction>,
+	state_query: Option<&'a MultiReadTransaction>,
 	version: CommitVersion,
 	range: EncodedKeyRange,
 	scope: RangeScope,
@@ -205,8 +208,8 @@ pub(crate) fn deferred_storage_range<'a>(
 }
 
 fn deferred_range_target<'a>(
-	query: &'a MultiReadTransaction,
-	state_query: &'a MultiReadTransaction,
+	query: Option<&'a MultiReadTransaction>,
+	state_query: Option<&'a MultiReadTransaction>,
 	range: &EncodedKeyRange,
 ) -> &'a MultiReadTransaction {
 	match range.start.as_ref() {
@@ -219,6 +222,7 @@ fn deferred_range_target<'a>(
 		},
 		Unbounded => query,
 	}
+	.expect(NO_READ_TRANSACTION)
 }
 
 pub(crate) fn deferred_fetch_state_external(
@@ -274,7 +278,7 @@ impl FlowTransaction for DeferredTransaction {
 	}
 
 	fn query(&self) -> MultiReadTransaction {
-		self.query.clone()
+		self.query.clone().expect(NO_READ_TRANSACTION)
 	}
 
 	fn substrate(&self) -> &FlowSubstrate {
@@ -322,11 +326,21 @@ impl FlowTransaction for DeferredTransaction {
 	}
 
 	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		deferred_storage_get(self.substrate.operators.as_ref(), &self.query, &self.state_query, key)
+		deferred_storage_get(
+			self.substrate.operators.as_ref(),
+			self.query.as_ref(),
+			self.state_query.as_ref(),
+			key,
+		)
 	}
 
 	fn storage_contains(&mut self, key: &EncodedKey) -> Result<bool> {
-		deferred_storage_contains(self.substrate.operators.as_ref(), &self.query, &self.state_query, key)
+		deferred_storage_contains(
+			self.substrate.operators.as_ref(),
+			self.query.as_ref(),
+			self.state_query.as_ref(),
+			key,
+		)
 	}
 
 	fn storage_range(
@@ -337,8 +351,8 @@ impl FlowTransaction for DeferredTransaction {
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		deferred_storage_range(
 			self.substrate.operators.as_ref(),
-			&self.query,
-			&self.state_query,
+			self.query.as_ref(),
+			self.state_query.as_ref(),
 			self.version,
 			range,
 			scope,

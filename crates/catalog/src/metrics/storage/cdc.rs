@@ -7,14 +7,14 @@ use std::{
 };
 
 use reifydb_codec::row::bytes::EncodedBytes;
-use reifydb_core::interface::{catalog::metrics::MetricsId, store::SingleVersionStore};
+use reifydb_core::interface::{
+	catalog::metrics::{MetricsId, parser::parse_id},
+	store::SingleVersionStore,
+};
 use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::CowVec};
 
-use crate::metrics::storage::{
-	encoding::{
-		cdc_stats_key_prefix, decode_cdc_stats, decode_cdc_stats_key, encode_cdc_stats, encode_cdc_stats_key,
-	},
-	parser::parse_id,
+use crate::metrics::storage::encoding::{
+	cdc_stats_key_prefix, decode_cdc_stats, decode_cdc_stats_key, encode_cdc_stats, encode_cdc_stats_key,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

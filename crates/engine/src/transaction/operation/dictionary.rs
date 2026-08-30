@@ -120,9 +120,6 @@ impl DictionaryOperations for Transaction<'_> {
 			Transaction::Query(_) => {
 				Err(internal_error!("Cannot insert into dictionary during a query transaction"))
 			}
-			Transaction::Replica(_) => {
-				Err(internal_error!("Cannot insert into dictionary during a replica transaction"))
-			}
 		}
 	}
 
@@ -131,11 +128,6 @@ impl DictionaryOperations for Transaction<'_> {
 			Transaction::Command(cmd) => return cmd.get_from_dictionary(dictionary, id),
 			Transaction::Admin(admin) => return admin.get_from_dictionary(dictionary, id),
 			Transaction::Test(t) => return t.inner.get_from_dictionary(dictionary, id),
-			Transaction::Replica(_) => {
-				return Err(internal_error!(
-					"dictionary reads are not supported on a replica transaction"
-				));
-			}
 			Transaction::Query(_) => {}
 		}
 
@@ -159,11 +151,6 @@ impl DictionaryOperations for Transaction<'_> {
 			Transaction::Command(cmd) => return cmd.find_in_dictionary(dictionary, value),
 			Transaction::Admin(admin) => return admin.find_in_dictionary(dictionary, value),
 			Transaction::Test(t) => return t.inner.find_in_dictionary(dictionary, value),
-			Transaction::Replica(_) => {
-				return Err(internal_error!(
-					"dictionary reads are not supported on a replica transaction"
-				));
-			}
 			Transaction::Query(_) => {}
 		}
 

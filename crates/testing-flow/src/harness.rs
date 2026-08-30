@@ -94,8 +94,8 @@ impl<O> Harness<O> {
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: CommitVersion(self.version),
 			pending: PendingLayers::with_top(mem::take(&mut self.pending)),
-			query,
-			state_query,
+			query: Some(query),
+			state_query: Some(state_query),
 			catalog: self.catalog.clone(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(self.clock.clone()),
@@ -307,7 +307,7 @@ mod tests {
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 	use super::coordinate_of;
-	use crate::generator;
+	use crate::generator::{insert, row};
 
 	#[test]
 	fn the_coordinate_is_the_latest_row_time() {
@@ -330,12 +330,11 @@ mod tests {
 	fn change_at(times: &[DateTime]) -> Change {
 		// The event time lives on the encoded row, not on Columns, so this has to go through the same
 		// builder the window workload uses rather than assembling Columns directly.
-		generator::insert(
-			times.iter()
-				.enumerate()
-				.map(|(index, at)| generator::row(RowNumber(index as u64 + 1), 1, index as i64, *at))
-				.collect(),
-		)
+		insert(times
+			.iter()
+			.enumerate()
+			.map(|(index, at)| row(RowNumber(index as u64 + 1), 1, index as i64, *at))
+			.collect())
 	}
 }
 

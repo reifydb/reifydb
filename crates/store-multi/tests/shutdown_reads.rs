@@ -23,10 +23,10 @@ use reifydb_core::{
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::shutdown::Shutdown;
+use reifydb_store_commit::{MultiVersionScope, RangeCursor};
 use reifydb_store_multi::{
-	MultiVersionScope,
 	store::{StandardMultiStore, multi::MultiVersionRangeCursor},
-	tier::{RangeCursor, TierStorage, persistent::MultiPersistentTier},
+	tier::{TierStorage, persistent::MultiPersistentTier},
 };
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 

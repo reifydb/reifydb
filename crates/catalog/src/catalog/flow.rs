@@ -101,18 +101,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(flow) = self.cache.find_flow_at(id, rep.version()) {
-					return Ok(Some(flow));
-				}
-
-				if let Some(flow) = CatalogStore::find_flow(&mut Transaction::Replica(&mut *rep), id)? {
-					warn!("Flow with ID {:?} found in storage but not in CatalogCache", id);
-					return Ok(Some(flow));
-				}
-
-				Ok(None)
-			}
 		}
 	}
 
@@ -206,25 +194,6 @@ impl Catalog {
 				)? {
 					return Ok(Some(flow));
 				}
-				Ok(None)
-			}
-			Transaction::Replica(rep) => {
-				if let Some(flow) = self.cache.find_flow_by_name_at(namespace, name, rep.version()) {
-					return Ok(Some(flow));
-				}
-
-				if let Some(flow) = CatalogStore::find_flow_by_name(
-					&mut Transaction::Replica(&mut *rep),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"Flow '{}' in namespace {:?} found in storage but not in CatalogCache",
-						name, namespace
-					);
-					return Ok(Some(flow));
-				}
-
 				Ok(None)
 			}
 		}

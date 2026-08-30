@@ -39,11 +39,6 @@ pub enum TransactionError {
 		cause: Box<Diagnostic>,
 	},
 
-	#[error("Raft proposal failed: {message}")]
-	RaftProposeFailed {
-		message: String,
-	},
-
 	#[error("Snapshot version {} evicted by GC; cutoff is {}", version.0, cutoff.0)]
 	SnapshotVersionEvicted {
 		version: CommitVersion,
@@ -196,19 +191,6 @@ impl IntoDiagnostic for TransactionError {
 				help: Some("A previous statement failed, invalidating this transaction. Start a new transaction.".to_string()),
 				notes: vec![],
 				cause: Some(cause),
-				operator_chain: None,
-			},
-
-			TransactionError::RaftProposeFailed { message } => Diagnostic {
-				code: "TXN_013".to_string(),
-				rql: None,
-				message: format!("Raft proposal failed: {message}"),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: Some("The write could not be replicated. Retry or check cluster health.".to_string()),
-				notes: vec![],
-				cause: None,
 				operator_chain: None,
 			},
 

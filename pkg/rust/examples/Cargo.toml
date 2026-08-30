@@ -93,11 +93,6 @@ path = "examples/storage/02_sqlite_storage.rs"
 name = "intercept-table-view"
 path = "examples/intercept/01_table_view_interceptors.rs"
 
-# Replication examples (CDC-based primary/replica)
-[[bin]]
-name = "replication-basic"
-path = "examples/replication/01_basic_replication.rs"
-
 # Router examples (remote namespace / query forwarding)
 [[bin]]
 name = "router-data"

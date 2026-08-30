@@ -33,7 +33,6 @@ pub struct MultiWrite {
 #[derive(Clone, Debug)]
 pub struct MultiDelete {
 	pub key: EncodedKey,
-	pub value_bytes: u64,
 }
 
 define_event! {

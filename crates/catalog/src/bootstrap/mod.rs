@@ -10,11 +10,8 @@ use reifydb_core::{
 	key::config::ConfigStorageKey,
 };
 use reifydb_runtime::context::clock::Clock;
-use reifydb_store_multi::{
-	MultiVersionScope,
-	store::multi::scan_tiers_latest,
-	tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier},
-};
+use reifydb_store_commit::{MultiVersionScope, store::CommitStore};
+use reifydb_store_multi::{store::multi::scan_tiers_latest, tier::persistent::MultiPersistentTier};
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
@@ -140,7 +137,7 @@ pub fn load_catalog_cache(multi: &MultiTransaction, single: &SingleTransaction, 
 }
 
 pub fn read_configs(
-	buffer: Option<&MultiCommitBufferTier>,
+	buffer: Option<&CommitStore>,
 	persistent: Option<&MultiPersistentTier>,
 	keys: &[ConfigKey],
 ) -> Result<HashMap<ConfigKey, Value>> {
@@ -192,13 +189,13 @@ mod read_configs_tests {
 		interface::{catalog::config::ConfigKey, store::EntryKind},
 		key::config::ConfigStorageKey,
 	};
-	use reifydb_store_multi::tier::{TierStorage, commit::buffer::MultiCommitBufferTier};
+	use reifydb_store_commit::store::CommitStore;
 	use reifydb_value::value::Value;
 
 	use super::read_configs;
 	use crate::store::config::shape::config;
 
-	fn write_config(buffer: &MultiCommitBufferTier, key: ConfigKey, value: Value, version: CommitVersion) {
+	fn write_config(buffer: &CommitStore, key: ConfigKey, value: Value, version: CommitVersion) {
 		let mut row = config::allocate();
 		config::set_value(&mut row, &Value::any(value));
 		let key_bytes = ConfigStorageKey::for_key(key);
@@ -207,7 +204,7 @@ mod read_configs_tests {
 		buffer.set(version, batches).unwrap();
 	}
 
-	fn delete_config(buffer: &MultiCommitBufferTier, key: ConfigKey, version: CommitVersion) {
+	fn delete_config(buffer: &CommitStore, key: ConfigKey, version: CommitVersion) {
 		let key_bytes = ConfigStorageKey::for_key(key);
 		let mut batches = HashMap::new();
 		batches.insert(EntryKind::Multi, vec![(key_bytes, None)]);
@@ -229,7 +226,7 @@ mod read_configs_tests {
 	fn returns_defaults_when_buffer_is_empty() {
 		// A buffer holding nothing must read the same as no buffer at all; the values are the key's own
 		// defaults rather than literals because the default is profile dependent.
-		let buffer = MultiCommitBufferTier::memory();
+		let buffer = CommitStore::new();
 		let keys = [ConfigKey::ThreadsAsync, ConfigKey::ThreadsCoordination, ConfigKey::ThreadsTask];
 		let out = read_configs(Some(&buffer), None, &keys).unwrap();
 		for key in keys {
@@ -239,7 +236,7 @@ mod read_configs_tests {
 
 	#[test]
 	fn reads_persisted_value_from_buffer() {
-		let buffer = MultiCommitBufferTier::memory();
+		let buffer = CommitStore::new();
 		write_config(&buffer, ConfigKey::ThreadsTask, Value::Uint2(8), CommitVersion(1));
 
 		let out =
@@ -261,7 +258,7 @@ mod read_configs_tests {
 
 	#[test]
 	fn latest_version_wins() {
-		let buffer = MultiCommitBufferTier::memory();
+		let buffer = CommitStore::new();
 		write_config(&buffer, ConfigKey::ThreadsCoordination, Value::Uint2(4), CommitVersion(1));
 		write_config(&buffer, ConfigKey::ThreadsCoordination, Value::Uint2(16), CommitVersion(5));
 		write_config(&buffer, ConfigKey::ThreadsCoordination, Value::Uint2(8), CommitVersion(3));
@@ -273,7 +270,7 @@ mod read_configs_tests {
 
 	#[test]
 	fn tombstone_returns_default() {
-		let buffer = MultiCommitBufferTier::memory();
+		let buffer = CommitStore::new();
 		write_config(&buffer, ConfigKey::ThreadsTask, Value::Uint2(12), CommitVersion(1));
 		delete_config(&buffer, ConfigKey::ThreadsTask, CommitVersion(2));
 
@@ -287,7 +284,7 @@ mod read_configs_tests {
 
 	#[test]
 	fn rejects_invalid_persisted_value_and_falls_back_to_default() {
-		let buffer = MultiCommitBufferTier::memory();
+		let buffer = CommitStore::new();
 		write_config(&buffer, ConfigKey::ThreadsAsync, Value::Uint2(0), CommitVersion(1));
 
 		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsAsync]).unwrap();
@@ -303,7 +300,7 @@ mod read_configs_tests {
 
 	#[test]
 	fn unrequested_keys_are_ignored() {
-		let buffer = MultiCommitBufferTier::memory();
+		let buffer = CommitStore::new();
 		write_config(&buffer, ConfigKey::ThreadsTask, Value::Uint2(8), CommitVersion(1));
 		write_config(&buffer, ConfigKey::OracleWindowSize, Value::Uint8(999), CommitVersion(1));
 
@@ -316,7 +313,7 @@ mod read_configs_tests {
 
 	#[test]
 	fn shape_stays_in_sync_with_set_config_path() {
-		let buffer = MultiCommitBufferTier::memory();
+		let buffer = CommitStore::new();
 		let mut row = config::allocate();
 		config::set_value(&mut row, &Value::any(Value::Uint2(5)));
 

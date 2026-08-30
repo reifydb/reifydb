@@ -18,7 +18,7 @@ use reifydb_runtime::{
 use reifydb_store_multi::{
 	config::{MultiStoreConfig, PersistentConfig},
 	store::StandardMultiStore,
-	tier::{TierStorage, commit::buffer::MultiCommitBufferTier, point::MultiPointConfig, range::MultiRangeConfig},
+	tier::{TierStorage, point::MultiPointConfig, range::MultiRangeConfig},
 };
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 
@@ -70,11 +70,8 @@ pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 	for kind in commit.list_all_entry_kinds().unwrap() {
 		// The oracle assumes a complete flush, so a budgeted call would leave a tail and the
 		// differential check would compare against a state the model never reaches.
-		let (to_persist, to_compact, _consumed, more) = match commit {
-			MultiCommitBufferTier::Memory(s) => {
-				s.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX))
-			}
-		};
+		let (to_persist, to_compact, _consumed, more) =
+			commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX));
 		assert!(!more, "an unbounded collect must never report a remaining tail");
 		if to_compact.is_empty() {
 			continue;

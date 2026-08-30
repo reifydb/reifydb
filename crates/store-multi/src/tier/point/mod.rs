@@ -15,9 +15,8 @@ use reifydb_store::tier::{
 	point::{PointConfig, PointDomain, PointMetrics, PointTier},
 	range::RowBytes,
 };
+use reifydb_store_commit::VersionedGetResult;
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
-
-use crate::tier::VersionedGetResult;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MultiPointConfig {

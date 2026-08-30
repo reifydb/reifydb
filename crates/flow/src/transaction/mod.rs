@@ -20,7 +20,7 @@ use reifydb_core::{
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
-	change_accumulator::ChangeAccumulator,
+	accumulator::ChangeAccumulator,
 	dictionary::DictionaryAllocatorRegistry,
 	interceptor::interceptors::Interceptors,
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
@@ -57,8 +57,8 @@ pub struct ChangeCoordinate {
 pub struct DeferredParams {
 	pub version: CommitVersion,
 	pub pending: PendingLayers,
-	pub query: MultiReadTransaction,
-	pub state_query: MultiReadTransaction,
+	pub query: Option<MultiReadTransaction>,
+	pub state_query: Option<MultiReadTransaction>,
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub clock: Clock,
@@ -78,8 +78,8 @@ impl DeferredParams {
 		Self {
 			version,
 			pending: PendingLayers::empty(),
-			query: parent.multi.begin_query().unwrap(),
-			state_query: parent.multi.begin_query().unwrap(),
+			query: Some(parent.multi.begin_query().unwrap()),
+			state_query: Some(parent.multi.begin_query().unwrap()),
 			catalog,
 			interceptors,
 			clock,

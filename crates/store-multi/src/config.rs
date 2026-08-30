@@ -5,16 +5,14 @@ use reifydb_core::event::EventBus;
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
+use reifydb_store_commit::store::CommitStore;
 use reifydb_value::value::duration::Duration;
 
-use crate::tier::{
-	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, point::MultiPointConfig,
-	range::MultiRangeConfig,
-};
+use crate::tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig};
 
 #[derive(Clone)]
 pub struct MultiStoreConfig {
-	pub commit: CommitBufferConfig,
+	pub commit: CommitStoreConfig,
 	pub persistent: Option<PersistentConfig>,
 	pub point: Option<MultiPointConfig>,
 	pub range: Option<MultiRangeConfig>,
@@ -28,8 +26,8 @@ pub struct MultiStoreConfig {
 impl MultiStoreConfig {
 	pub fn memory(spawner: ActorSpawner, clock: Clock, event_bus: EventBus) -> Self {
 		Self {
-			commit: CommitBufferConfig {
-				storage: MultiCommitBufferTier::memory(),
+			commit: CommitStoreConfig {
+				storage: CommitStore::new(),
 			},
 			persistent: None,
 			point: None,
@@ -45,8 +43,8 @@ impl MultiStoreConfig {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(persistent: PersistentConfig, spawner: ActorSpawner, clock: Clock, event_bus: EventBus) -> Self {
 		Self {
-			commit: CommitBufferConfig {
-				storage: MultiCommitBufferTier::memory(),
+			commit: CommitStoreConfig {
+				storage: CommitStore::new(),
 			},
 			persistent: Some(persistent),
 			point: None,
@@ -61,8 +59,8 @@ impl MultiStoreConfig {
 }
 
 #[derive(Clone)]
-pub struct CommitBufferConfig {
-	pub storage: MultiCommitBufferTier,
+pub struct CommitStoreConfig {
+	pub storage: CommitStore,
 }
 
 #[derive(Clone)]

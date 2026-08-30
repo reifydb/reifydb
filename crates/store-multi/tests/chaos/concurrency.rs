@@ -28,7 +28,8 @@ use reifydb_core::{
 		row::RowKey,
 	},
 };
-use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
+use reifydb_store_commit::MultiVersionScope;
+use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 
 const STORAGE: StorageId = StorageId::Table(TableId(1));

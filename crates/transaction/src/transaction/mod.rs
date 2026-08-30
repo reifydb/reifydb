@@ -82,10 +82,7 @@ use crate::{
 	},
 	multi::{RangeScope, transaction::write::WriteSavepoint},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::{
-		admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
-		replica::ReplicaTransaction, write::Write,
-	},
+	transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction, write::Write},
 };
 
 pub trait RqlExecutor: Send + Sync {
@@ -96,7 +93,6 @@ pub mod admin;
 pub mod catalog;
 pub mod command;
 pub mod query;
-pub mod replica;
 pub mod write;
 
 use crate::multi::{pending::PendingWrites, transaction::write::MultiWriteTransaction};
@@ -290,7 +286,6 @@ pub enum Transaction<'a> {
 	Admin(&'a mut AdminTransaction),
 	Query(&'a mut QueryTransaction),
 	Test(Box<TestTransaction<'a>>),
-	Replica(&'a mut ReplicaTransaction),
 }
 
 impl<'a> Transaction<'a> {
@@ -300,7 +295,6 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.version(),
 			Self::Query(txn) => txn.version(),
 			Self::Test(t) => t.inner.version(),
-			Self::Replica(txn) => txn.version(),
 		}
 	}
 
@@ -310,7 +304,6 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.id(),
 			Self::Query(txn) => txn.id(),
 			Self::Test(t) => t.inner.id(),
-			Self::Replica(txn) => txn.id(),
 		}
 	}
 
@@ -318,7 +311,7 @@ impl<'a> Transaction<'a> {
 		match self {
 			Self::Command(txn) => !txn.accumulator.is_empty(),
 			Self::Admin(txn) => !txn.accumulator.is_empty(),
-			Self::Query(_) | Self::Test(_) | Self::Replica(_) => false,
+			Self::Query(_) | Self::Test(_) => false,
 		}
 	}
 
@@ -326,7 +319,7 @@ impl<'a> Transaction<'a> {
 		match self {
 			Self::Command(txn) => txn.accumulator.pending_objects(),
 			Self::Admin(txn) => txn.accumulator.pending_objects(),
-			Self::Query(_) | Self::Test(_) | Self::Replica(_) => Vec::new(),
+			Self::Query(_) | Self::Test(_) => Vec::new(),
 		}
 	}
 
@@ -336,7 +329,6 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.get(key),
 			Self::Query(txn) => txn.get(key),
 			Self::Test(t) => t.inner.get(key),
-			Self::Replica(txn) => txn.get(key),
 		}
 	}
 
@@ -346,7 +338,6 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.get_committed(key),
 			Self::Query(txn) => txn.get(key),
 			Self::Test(t) => t.inner.get_committed(key),
-			Self::Replica(txn) => txn.get(key),
 		}
 	}
 
@@ -356,7 +347,6 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.contains_key(key),
 			Self::Query(txn) => txn.contains_key(key),
 			Self::Test(t) => t.inner.contains_key(key),
-			Self::Replica(txn) => txn.contains_key(key),
 		}
 	}
 
@@ -366,7 +356,6 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.prefix(prefix),
 			Self::Query(txn) => txn.prefix(prefix),
 			Self::Test(t) => t.inner.prefix(prefix),
-			Self::Replica(txn) => txn.prefix(prefix),
 		}
 	}
 
@@ -376,7 +365,6 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.prefix_rev(prefix),
 			Self::Query(txn) => txn.prefix_rev(prefix),
 			Self::Test(t) => t.inner.prefix_rev(prefix),
-			Self::Replica(txn) => txn.prefix_rev(prefix),
 		}
 	}
 
@@ -386,9 +374,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.read_as_of_version_exclusive(version),
 			Transaction::Query(txn) => txn.read_as_of_version_exclusive(version),
 			Transaction::Test(t) => t.inner.read_as_of_version_exclusive(version),
-			Transaction::Replica(_) => {
-				panic!("read_as_of_version_exclusive not supported on Replica transaction")
-			}
 		}
 	}
 
@@ -403,7 +388,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.range(range, scope, batch_size),
 			Transaction::Query(txn) => Ok(txn.range(range, scope, batch_size)),
 			Transaction::Test(t) => t.inner.range(range, scope, batch_size),
-			Transaction::Replica(txn) => txn.range(range, scope, batch_size),
 		}
 	}
 
@@ -418,7 +402,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.range_rev(range, scope, batch_size),
 			Transaction::Query(txn) => Ok(txn.range_rev(range, scope, batch_size)),
 			Transaction::Test(t) => t.inner.range_rev(range, scope, batch_size),
-			Transaction::Replica(txn) => txn.range_rev(range, scope, batch_size),
 		}
 	}
 }
@@ -441,12 +424,6 @@ impl<'a> From<&'a mut QueryTransaction> for Transaction<'a> {
 	}
 }
 
-impl<'a> From<&'a mut ReplicaTransaction> for Transaction<'a> {
-	fn from(txn: &'a mut ReplicaTransaction) -> Self {
-		Self::Replica(txn)
-	}
-}
-
 impl<'a> Transaction<'a> {
 	pub fn identity(&self) -> IdentityId {
 		match self {
@@ -454,7 +431,6 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.identity,
 			Self::Query(txn) => txn.identity,
 			Self::Test(t) => t.inner.identity,
-			Self::Replica(_) => IdentityId::system(),
 		}
 	}
 
@@ -464,7 +440,6 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.identity = identity,
 			Self::Query(txn) => txn.identity = identity,
 			Self::Test(t) => t.inner.identity = identity,
-			Self::Replica(_) => {}
 		}
 	}
 
@@ -474,7 +449,6 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.executor.clone(),
 			Self::Query(txn) => txn.executor.clone(),
 			Self::Test(t) => t.inner.executor.clone(),
-			Self::Replica(_) => None,
 		}
 	}
 
@@ -494,7 +468,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.poison(cause),
 			Transaction::Query(_) => {}
 			Transaction::Test(t) => t.inner.poison(cause),
-			Transaction::Replica(_) => {}
 		}
 	}
 
@@ -514,7 +487,6 @@ impl<'a> Transaction<'a> {
 				session_type: t.session_type,
 				session_default_deny: t.session_default_deny,
 			})),
-			Transaction::Replica(rep) => Transaction::Replica(rep),
 		}
 	}
 
@@ -540,13 +512,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn replica(self) -> &'a mut ReplicaTransaction {
-		match self {
-			Self::Replica(txn) => txn,
-			_ => panic!("Expected Replica transaction"),
-		}
-	}
-
 	pub fn admin_mut(&mut self) -> &mut AdminTransaction {
 		match self {
 			Self::Admin(txn) => txn,
@@ -564,7 +529,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.begin_single_query(keys),
 			Transaction::Query(txn) => txn.begin_single_query(keys),
 			Transaction::Test(t) => t.inner.begin_single_query(keys),
-			Transaction::Replica(_) => panic!("Single queries not supported on Replica transaction"),
 		}
 	}
 
@@ -577,7 +541,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.begin_single_command(keys),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Test(t) => t.inner.begin_single_command(keys),
-			Transaction::Replica(_) => panic!("Single commands not supported on Replica transaction"),
 		}
 	}
 
@@ -587,7 +550,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => Some(&txn.single),
 			Transaction::Query(txn) => txn.single.as_ref(),
 			Transaction::Test(t) => Some(&t.inner.single),
-			Transaction::Replica(_) => None,
 		}
 	}
 
@@ -597,7 +559,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => &mut **txn,
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Test(t) => &mut *t.inner,
-			Transaction::Replica(txn) => &mut **txn,
 		}
 	}
 
@@ -663,7 +624,6 @@ macro_rules! delegate_interceptor {
 				Transaction::Admin(txn) => txn.$method(),
 				Transaction::Query(_) => panic!("Interceptors not supported on Query transaction"),
 				Transaction::Test(t) => t.inner.$method(),
-				Transaction::Replica(_) => panic!("Interceptors not supported on Replica transaction"),
 			}
 		}
 	};

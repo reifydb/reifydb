@@ -9,7 +9,6 @@ use std::sync::Arc;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::CommitVersion,
 	event::EventBus,
 	interface::catalog::{id::TableId, storage::StorageId},
 	key::row::RowKey,
@@ -33,10 +32,7 @@ use reifydb_transaction::{
 	},
 	single::SingleTransaction,
 };
-use reifydb_value::{
-	util::cowvec::CowVec,
-	value::{Value, row_number::RowNumber},
-};
+use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
 
 fn test_engine() -> MultiTransaction {
 	let multi_store = MultiStore::testing_memory();

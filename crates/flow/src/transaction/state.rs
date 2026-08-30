@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cmp::Ordering, collections::BTreeMap, ops::Bound};
+use std::{cmp::Ordering, collections::BTreeMap};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -22,7 +22,7 @@ use reifydb_core::{
 	},
 	metrics::scan::ScanCounters,
 };
-use reifydb_store_operator::{store::OperatorStore, types::JOIN_EXPIRY_VALUE_BYTES};
+use reifydb_store_operator::{store::state::StateLastIter, types::JOIN_EXPIRY_VALUE_BYTES};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{Span, field, instrument};
@@ -201,7 +201,8 @@ pub trait StateExtension: FlowTransaction {
 		let version = self.version();
 		let store = self.operator_store();
 		let mut index = 0usize;
-		let mut stored = stored_candidate(&store, id, &prefix, range.clone());
+		let mut scan = store.state_last_iter(id, range);
+		let mut stored = next_stored(&mut scan, &prefix);
 
 		let found = loop {
 			match (pending.get(index), stored.take()) {
@@ -252,11 +253,7 @@ pub trait StateExtension: FlowTransaction {
 									version,
 								});
 							}
-							let shadowed = EncodedKeyRange::new(
-								range.start.clone(),
-								Bound::Excluded(inner),
-							);
-							stored = stored_candidate(&store, id, &prefix, shadowed);
+							stored = next_stored(&mut scan, &prefix);
 						}
 					}
 				}
@@ -283,13 +280,8 @@ pub trait StateExtension: FlowTransaction {
 
 impl<T: FlowTransaction> StateExtension for T {}
 
-fn stored_candidate(
-	store: &OperatorStore,
-	id: OperatorId,
-	prefix: &[u8],
-	range: EncodedKeyRange,
-) -> Option<(EncodedKey, EncodedKey, EncodedBytes)> {
-	store.state_last(id, range).map(|(inner, row)| {
+fn next_stored(scan: &mut StateLastIter<'_>, prefix: &[u8]) -> Option<(EncodedKey, EncodedKey, EncodedBytes)> {
+	scan.next().map(|(inner, row)| {
 		let mut scoped = Vec::with_capacity(prefix.len() + inner.len());
 		scoped.extend_from_slice(prefix);
 		scoped.extend_from_slice(inner.as_slice());

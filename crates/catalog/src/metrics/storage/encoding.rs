@@ -9,7 +9,10 @@ use reifydb_codec::{
 	reader::Reader,
 };
 use reifydb_core::{
-	interface::{catalog::metrics::MetricsId, store::Tier},
+	interface::{
+		catalog::metrics::{MetricsId, storage::MultiStorageMetrics},
+		store::Tier,
+	},
 	key::{
 		catalog::{EncodedKeyBuilderCatalogExt, KeyDeserializerCatalogExt},
 		kind::KeyKind,
@@ -17,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_value::{byte_size::ByteSize, count::Count};
 
-use crate::metrics::storage::{cdc::CdcMetrics, multi::MultiStorageMetrics};
+use crate::metrics::storage::cdc::CdcMetrics;
 
 const KEY_VERSION: u8 = 0x01;
 
@@ -83,24 +86,24 @@ pub const STORAGE_STATS_SIZE: usize = 48;
 
 pub fn encode_storage_stats(stats: &MultiStorageMetrics) -> Vec<u8> {
 	let mut buf = Vec::with_capacity(STORAGE_STATS_SIZE);
-	buf.extend_from_slice(&stats.current_key_bytes.to_le_bytes());
-	buf.extend_from_slice(&stats.current_value_bytes.to_le_bytes());
-	buf.extend_from_slice(&stats.historical_key_bytes.to_le_bytes());
-	buf.extend_from_slice(&stats.historical_value_bytes.to_le_bytes());
-	buf.extend_from_slice(&stats.current_count.to_le_bytes());
-	buf.extend_from_slice(&stats.historical_count.to_le_bytes());
+	buf.extend_from_slice(&stats.estimated_current_key_bytes.to_le_bytes());
+	buf.extend_from_slice(&stats.estimated_current_value_bytes.to_le_bytes());
+	buf.extend_from_slice(&stats.estimated_historical_key_bytes.to_le_bytes());
+	buf.extend_from_slice(&stats.estimated_historical_value_bytes.to_le_bytes());
+	buf.extend_from_slice(&stats.estimated_current_count.to_le_bytes());
+	buf.extend_from_slice(&stats.estimated_historical_count.to_le_bytes());
 	buf
 }
 
 pub fn decode_storage_stats(bytes: &[u8]) -> Option<MultiStorageMetrics> {
 	let mut r = Reader::new(bytes);
 	Some(MultiStorageMetrics {
-		current_key_bytes: r.u64().ok()?,
-		current_value_bytes: r.u64().ok()?,
-		historical_key_bytes: r.u64().ok()?,
-		historical_value_bytes: r.u64().ok()?,
-		current_count: r.u64().ok()?,
-		historical_count: r.u64().ok()?,
+		estimated_current_key_bytes: r.u64().ok()?,
+		estimated_current_value_bytes: r.u64().ok()?,
+		estimated_historical_key_bytes: r.u64().ok()?,
+		estimated_historical_value_bytes: r.u64().ok()?,
+		estimated_current_count: r.u64().ok()?,
+		estimated_historical_count: r.u64().ok()?,
 	})
 }
 
@@ -224,12 +227,12 @@ pub mod tests {
 	#[test]
 	fn test_storage_stats_roundtrip() {
 		let stats = MultiStorageMetrics {
-			current_key_bytes: 100,
-			current_value_bytes: 200,
-			historical_key_bytes: 50,
-			historical_value_bytes: 150,
-			current_count: 10,
-			historical_count: 5,
+			estimated_current_key_bytes: 100,
+			estimated_current_value_bytes: 200,
+			estimated_historical_key_bytes: 50,
+			estimated_historical_value_bytes: 150,
+			estimated_current_count: 10,
+			estimated_historical_count: 5,
 		};
 
 		let encoded = encode_storage_stats(&stats);

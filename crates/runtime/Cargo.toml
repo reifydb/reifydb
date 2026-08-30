@@ -39,6 +39,9 @@ parking_lot = { workspace = true }
 dashmap = { workspace = true }
 moka = { workspace = true }
 
+[target.'cfg(loom)'.dependencies]
+loom = { workspace = true }
+
 [target.'cfg(all(target_arch = "wasm32", not(target_os = "wasi")))'.dependencies]
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }

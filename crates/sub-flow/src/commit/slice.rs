@@ -19,7 +19,7 @@ use reifydb_flow::{
 	engine::{COMPLETENESS_OBJECT, FlowEngineInner, frontier::WatermarkHolds},
 	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction},
 };
-use reifydb_transaction::{change_accumulator::ChangeAccumulator, transaction::Transaction};
+use reifydb_transaction::{accumulator::ChangeAccumulator, transaction::Transaction};
 use reifydb_value::{
 	Result,
 	value::{Value, identity::IdentityId},
@@ -149,18 +149,11 @@ impl SliceComputer {
 		let catalog: Catalog = self.engine.catalog();
 		let interceptors = self.engine.create_interceptors();
 
-		let (_current, state_lease) = self.engine.acquire_current_snapshot_lease()?;
-		let base_query = self.engine.multi().begin_query_at_version(&state_lease)?;
-		let state_query = self.engine.multi().begin_query_at_version(&state_lease)?;
-
-		let mut query = base_query;
-		query.read_as_of_version_inclusive(state_version);
-
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: state_version,
 			pending: PendingLayers::empty(),
-			query,
-			state_query,
+			query: None,
+			state_query: None,
 			catalog,
 			interceptors,
 			clock: self.engine.clock().clone(),
@@ -193,8 +186,8 @@ impl SliceComputer {
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: state_version,
 			pending,
-			query,
-			state_query,
+			query: Some(query),
+			state_query: Some(state_query),
 			catalog,
 			interceptors,
 			clock: self.engine.clock().clone(),
@@ -235,8 +228,8 @@ impl SliceComputer {
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: state_version,
 			pending: PendingLayers::empty(),
-			query,
-			state_query,
+			query: Some(query),
+			state_query: Some(state_query),
 			catalog: self.engine.catalog(),
 			interceptors: self.engine.create_interceptors(),
 			clock: self.engine.clock().clone(),
@@ -592,8 +585,8 @@ mod integration {
 		DeferredTransaction::new(DeferredParams {
 			version,
 			pending: PendingLayers::empty(),
-			query,
-			state_query,
+			query: Some(query),
+			state_query: Some(state_query),
 			catalog: engine.catalog(),
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
@@ -991,8 +984,8 @@ mod integration {
 						DeferredTransaction::new(DeferredParams {
 							version: advance_to,
 							pending,
-							query: engine.multi().begin_query().unwrap(),
-							state_query: engine.multi().begin_query().unwrap(),
+							query: Some(engine.multi().begin_query().unwrap()),
+							state_query: Some(engine.multi().begin_query().unwrap()),
 							catalog: engine.catalog(),
 							interceptors: engine.create_interceptors(),
 							clock: engine.clock().clone(),
@@ -1124,8 +1117,8 @@ mod integration {
 					let mut empty_overlay = DeferredTransaction::new(DeferredParams {
 						version: advance_to,
 						pending: PendingLayers::empty(),
-						query: engine.multi().begin_query().unwrap(),
-						state_query: engine.multi().begin_query().unwrap(),
+						query: Some(engine.multi().begin_query().unwrap()),
+						state_query: Some(engine.multi().begin_query().unwrap()),
 						catalog: engine.catalog(),
 						interceptors: engine.create_interceptors(),
 						clock: engine.clock().clone(),

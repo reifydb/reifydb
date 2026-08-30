@@ -4,7 +4,7 @@
 mod census;
 mod checkpoint;
 mod join_expiry;
-mod state;
+pub mod state;
 #[cfg(test)]
 mod tests;
 

@@ -22,6 +22,9 @@ use reifydb_core::{
 	},
 	key::typed::Key,
 };
+use reifydb_store_commit::{
+	MultiVersionScope, RangeBatch, RangeCursor, RangeStop, TierBatch, VersionedGetResult, store::CommitStore,
+};
 use reifydb_value::{
 	reifydb_assertions,
 	util::{cowvec::CowVec, hex},
@@ -30,11 +33,8 @@ use tracing::instrument;
 
 use super::StandardMultiStore;
 use crate::{
-	MultiVersionScope, Result,
-	tier::{
-		DisplacedValues, RangeBatch, RangeCursor, RangeStop, TierBatch, TierStorage, VersionedGetResult,
-		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, range::ServedChunk,
-	},
+	Result,
+	tier::{TierStorage, persistent::MultiPersistentTier, range::ServedChunk},
 };
 
 const TIER_SCAN_CHUNK_SIZE: usize = 32;
@@ -167,9 +167,9 @@ impl MultiVersionCommit for StandardMultiStore {
 
 		self.update_read_cache_on_commit(&classified.batches);
 
-		let displaced = self.write_batches(version, classified.batches)?;
+		self.write_batches(version, classified.batches)?;
 
-		self.emit_commit_metrics(classified.writes, classified.deletes, displaced, version);
+		self.emit_commit_metrics(classified.writes, classified.deletes, version);
 
 		Ok(())
 	}
@@ -208,7 +208,6 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 			} => {
 				deletes.push(MultiDelete {
 					key: key.clone(),
-					value_bytes: 0,
 				});
 				batches.entry(table).or_default().push((key.clone(), None));
 			}
@@ -241,14 +240,42 @@ impl StandardMultiStore {
 		Ok(out)
 	}
 
+	pub fn get_many_versioned(
+		&self,
+		keys: &[EncodedKey],
+		version: CommitVersion,
+	) -> Result<HashMap<EncodedKey, VersionedGetResult>> {
+		let mut by_table: HashMap<EntryKind, Vec<&EncodedKey>> = HashMap::new();
+		for key in keys {
+			by_table.entry(classify_key(key)).or_default().push(key);
+		}
+
+		let mut out: HashMap<EncodedKey, VersionedGetResult> = HashMap::new();
+		for (table, table_keys) in by_table {
+			let (commit_results, read_aligned, persistent_aligned) =
+				self.probe_tiers(table, &table_keys, version)?;
+			for (i, key) in table_keys.iter().enumerate() {
+				let resolved = match &commit_results[i] {
+					VersionedGetResult::NotFound => match &read_aligned[i] {
+						VersionedGetResult::NotFound => &persistent_aligned[i],
+						found => found,
+					},
+					found => found,
+				};
+				out.insert((*key).clone(), resolved.clone());
+			}
+		}
+
+		Ok(out)
+	}
+
 	#[inline]
-	fn get_many_for_table(
+	fn probe_tiers(
 		&self,
 		table: EntryKind,
 		table_keys: &[&EncodedKey],
 		version: CommitVersion,
-		out: &mut HashMap<EncodedKey, MultiVersionRow>,
-	) -> Result<()> {
+	) -> Result<(Vec<VersionedGetResult>, Vec<VersionedGetResult>, Vec<VersionedGetResult>)> {
 		let key_slices: Vec<&[u8]> = table_keys.iter().map(|k| k.as_ref()).collect();
 
 		let commit_results = self.probe_commit_batch(table, &key_slices, version)?;
@@ -260,8 +287,22 @@ impl StandardMultiStore {
 			version,
 		)?;
 
+		Ok((commit_results, read_aligned, persistent_aligned))
+	}
+
+	#[inline]
+	fn get_many_for_table(
+		&self,
+		table: EntryKind,
+		table_keys: &[&EncodedKey],
+		version: CommitVersion,
+		out: &mut HashMap<EncodedKey, MultiVersionRow>,
+	) -> Result<()> {
+		let (commit_results, read_aligned, persistent_aligned) =
+			self.probe_tiers(table, table_keys, version)?;
+
 		reifydb_assertions! {
-			let n = key_slices.len();
+			let n = table_keys.len();
 			assert!(
 				commit_results.len() == n && read_aligned.len() == n && persistent_aligned.len() == n,
 				"per-tier result vectors must stay index-aligned with the table's keys, otherwise collect_resolved_rows \
@@ -422,26 +463,14 @@ impl StandardMultiStore {
 	}
 
 	#[inline]
-	fn write_batches(&self, version: CommitVersion, batches: TierBatch) -> Result<DisplacedValues> {
+	fn write_batches(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
 		self.commit.set(version, batches)
 	}
 
 	#[inline]
-	fn emit_commit_metrics(
-		&self,
-		writes: Vec<MultiWrite>,
-		mut deletes: Vec<MultiDelete>,
-		displaced: DisplacedValues,
-		version: CommitVersion,
-	) {
+	fn emit_commit_metrics(&self, writes: Vec<MultiWrite>, deletes: Vec<MultiDelete>, version: CommitVersion) {
 		if writes.is_empty() && deletes.is_empty() {
 			return;
-		}
-		if !deletes.is_empty() {
-			let displaced: HashMap<&EncodedKey, u64> = displaced.iter().map(|(k, b)| (k, *b)).collect();
-			for delete in deletes.iter_mut() {
-				delete.value_bytes = displaced.get(&delete.key).copied().unwrap_or(0);
-			}
 		}
 		self.event_bus.emit(MultiCommittedEvent::new(writes, deletes, version));
 	}
@@ -572,7 +601,7 @@ pub fn collected_to_batch(
 
 #[inline]
 fn step_all_tiers(
-	buffer: Option<&MultiCommitBufferTier>,
+	buffer: Option<&CommitStore>,
 	buffer_cursor: &mut RangeCursor,
 	persistent: Option<&MultiPersistentTier>,
 	persistent_cursor: &mut RangeCursor,
@@ -593,7 +622,7 @@ fn step_all_tiers(
 }
 
 pub fn scan_tiers_latest(
-	buffer: Option<&MultiCommitBufferTier>,
+	buffer: Option<&CommitStore>,
 	persistent: Option<&MultiPersistentTier>,
 	range: EncodedKeyRange,
 	scope: MultiVersionScope,
@@ -1301,15 +1330,14 @@ mod cache_tests {
 			row::RowKey,
 		},
 	};
+	use reifydb_store_commit::{MultiVersionScope, RangeStop, RawEntry, VersionedGetResult};
 	use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec};
 
 	use super::MultiVersionRangeCursor;
 	use crate::{
-		MultiVersionScope,
 		store::StandardMultiStore,
 		tier::{
-			RangeStop, RawEntry, TierStorage, VersionedGetResult,
-			commit::buffer::MultiCommitBufferTier,
+			TierStorage,
 			point::MultiPointConfig,
 			range::{MultiRangeConfig, PartitionId},
 		},
@@ -1332,11 +1360,8 @@ mod cache_tests {
 	fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 		let commit = store.commit();
 		for kind in commit.list_all_entry_kinds().unwrap() {
-			let (to_persist, to_compact, _consumed, _more) = match commit {
-				MultiCommitBufferTier::Memory(s) => {
-					s.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX))
-				}
-			};
+			let (to_persist, to_compact, _consumed, _more) =
+				commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX));
 			if to_compact.is_empty() {
 				continue;
 			}
@@ -1754,13 +1779,13 @@ mod probe_tests {
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown};
 	use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
+	use reifydb_store_commit::{TierBatch, store::CommitStore};
 	use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 	use crate::{
-		config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
+		config::{CommitStoreConfig, MultiStoreConfig, PersistentConfig},
 		store::StandardMultiStore,
 		tier::{
-			TierBatch, commit::buffer::MultiCommitBufferTier,
 			persistent::sqlite::storage::SqlitePersistentStorage, point::MultiPointConfig,
 			range::MultiRangeConfig,
 		},
@@ -1804,8 +1829,8 @@ mod probe_tests {
 		let spawner = actor_system.spawner();
 		let event_bus = EventBus::new(&spawner);
 		let store = StandardMultiStore::new(MultiStoreConfig {
-			commit: CommitBufferConfig {
-				storage: MultiCommitBufferTier::memory(),
+			commit: CommitStoreConfig {
+				storage: CommitStore::new(),
 			},
 			persistent: Some(PersistentConfig::sqlite(sqlite_config)),
 			point: Some(MultiPointConfig::testing()),

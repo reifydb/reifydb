@@ -22,6 +22,7 @@ reifydb-build = { workspace = true }
 [dependencies]
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
+reifydb-store-commit = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-value = { workspace = true }
@@ -36,9 +37,6 @@ rustc-hash = { workspace = true }
 smallvec = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-reifydb-sub-raft = { workspace = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }

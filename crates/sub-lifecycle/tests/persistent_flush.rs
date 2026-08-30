@@ -12,6 +12,7 @@ use std::sync::Arc;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
+	default,
 	delta::Delta,
 	interface::{
 		catalog::{
@@ -148,5 +149,9 @@ fn the_catalog_default_budget_matches_the_engine_compiled_fallback() {
 		Value::Uint8(FLUSH_BYTE_BUDGET.as_bytes()),
 		"the catalog default and the engine fallback must be the same number of bytes"
 	);
-	assert_eq!(FLUSH_BYTE_BUDGET, ByteSize::from_mib(4), "the compiled fallback is the documented 4 MiB");
+	assert_eq!(
+		default::store::MULTI_FLUSH_BUDGET,
+		ByteSize::from_mib(4),
+		"the compiled fallback is the documented 4 MiB"
+	);
 }

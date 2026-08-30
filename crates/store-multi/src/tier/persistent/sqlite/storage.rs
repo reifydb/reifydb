@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::HashMap,
+	collections::{HashMap, HashSet},
 	iter::repeat_n,
 	ops::Bound,
 	sync::{
@@ -34,6 +34,9 @@ use reifydb_store::{
 	metrics::PageCacheMetrics,
 	sqlite::{OpenMessages, open, page_cache_metrics, pool::ReadPool},
 };
+use reifydb_store_commit::{
+	MultiVersionScope, RangeBatch, RangeCursor, RangeStop, RawEntry, TierBatch, VersionedGetResult,
+};
 use reifydb_value::{Result, error, util::cowvec::CowVec, value::datetime::DateTime};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, Row, ToSql, Transaction, TransactionBehavior,
@@ -42,11 +45,9 @@ use rusqlite::{
 use tracing::{instrument, warn};
 
 use crate::{
-	MultiVersionScope,
 	filter::{ARMED_CAPACITY_KEYS, MultiKeys},
 	tier::{
-		DisplacedValues, RangeBatch, RangeCursor, RangeStop, RawEntry, TierBackend, TierBatch, TierStorage,
-		VersionedGetResult,
+		TierStorage,
 		persistent::sqlite::{
 			entry::{current_table_name, current_table_name_to_entry},
 			query::{
@@ -634,12 +635,15 @@ impl SqlitePersistentStorage {
 		let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
 			.map_err(|e| error!(internal(format!("Failed to start persistent transaction: {}", e))))?;
 
+		let mut ensured: HashSet<EntryKind> = HashSet::new();
 		for (version, batch) in batches {
 			for (table, entries) in batch {
 				let table_sql = self.table_sql(table);
-				Self::create_table_if_needed(&tx, &table_sql.create_sql).map_err(|e| {
-					error!(internal(format!("Failed to ensure persistent table: {}", e)))
-				})?;
+				if ensured.insert(table) {
+					Self::create_table_if_needed(&tx, &table_sql.create_sql).map_err(|e| {
+						error!(internal(format!("Failed to ensure persistent table: {}", e)))
+					})?;
+				}
 
 				self.upsert_entries_collecting_accepted(
 					&tx,
@@ -989,9 +993,9 @@ impl TierStorage for SqlitePersistentStorage {
 		}
 	}
 
-	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<DisplacedValues> {
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
 		self.set_collecting_accepted(version, batches)?;
-		Ok(DisplacedValues::new())
+		Ok(())
 	}
 
 	#[instrument(name = "store::multi::persistent::sqlite::range", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
@@ -1068,8 +1072,6 @@ impl TierStorage for SqlitePersistentStorage {
 		Ok(())
 	}
 }
-
-impl TierBackend for SqlitePersistentStorage {}
 
 impl Shutdown for SqlitePersistentStorage {
 	fn shutdown(&self) {

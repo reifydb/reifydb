@@ -23,6 +23,8 @@ ALLOWED=(
     "wasmtime_wasi;"
     "reifydb_macro::"
     "serde::"
+    "std::"
+    "loom::"
 )
 
 echo "Checking for internal pub use re-exports in /crates/..."

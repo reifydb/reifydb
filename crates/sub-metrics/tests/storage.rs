@@ -10,8 +10,7 @@ use std::{
 
 use reifydb_catalog::metrics::storage::{
 	cdc::{CdcMetrics, CdcMetricsReader},
-	multi::{MultiStorageMetrics, StorageMetricsReader},
-	parser::parse_id,
+	multi::StorageMetricsReader,
 };
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -28,7 +27,10 @@ use reifydb_core::{
 		},
 		store::MetricsProcessedEvent,
 	},
-	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, Tier},
+	interface::{
+		catalog::metrics::{parser::parse_id, storage::MultiStorageMetrics},
+		store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, Tier},
+	},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 };
 use reifydb_runtime::{
@@ -36,11 +38,11 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
+use reifydb_store_commit::{MultiVersionScope, store::CommitStore};
 use reifydb_store_multi::{
-	MultiStore, MultiVersionScope,
-	config::{CommitBufferConfig, MultiStoreConfig},
+	MultiStore,
+	config::{CommitStoreConfig, MultiStoreConfig},
 	store::StandardMultiStore,
-	tier::commit::buffer::MultiCommitBufferTier,
 };
 use reifydb_store_single::SingleStore;
 use reifydb_sub_metrics::{
@@ -58,7 +60,7 @@ use test_each_file::test_each_path;
 test_each_path! { in "crates/sub-metrics/tests/scripts/storage" as metric_memory => test_memory }
 
 fn test_memory(path: &Path) {
-	let data_storage = MultiCommitBufferTier::memory();
+	let data_storage = CommitStore::new();
 	runner::run_path(&mut Runner::new(data_storage), path).expect("test failed")
 }
 
@@ -109,7 +111,7 @@ pub struct Runner {
 }
 
 impl Runner {
-	fn new(data_storage: MultiCommitBufferTier) -> Self {
+	fn new(data_storage: CommitStore) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let spawner = actor_system.spawner();
@@ -120,7 +122,7 @@ impl Runner {
 
 		let multi_store = MultiStore::Standard(
 			StandardMultiStore::new(MultiStoreConfig {
-				commit: CommitBufferConfig {
+				commit: CommitStoreConfig {
 					storage: data_storage,
 				},
 				persistent: None,
@@ -324,16 +326,28 @@ impl TestRunner for Runner {
 					total_cdc += stats;
 				}
 
-				writeln!(output, "current_count: {}", total_storage.current_count)?;
-				writeln!(output, "current_key_bytes: {}", total_storage.current_key_bytes)?;
-				writeln!(output, "current_value_bytes: {}", total_storage.current_value_bytes)?;
-				writeln!(output, "historical_count: {}", total_storage.historical_count)?;
-				writeln!(output, "historical_key_bytes: {}", total_storage.historical_key_bytes)?;
-				writeln!(output, "historical_value_bytes: {}", total_storage.historical_value_bytes)?;
+				writeln!(output, "current_count: {}", total_storage.estimated_current_count)?;
+				writeln!(output, "current_key_bytes: {}", total_storage.estimated_current_key_bytes)?;
+				writeln!(
+					output,
+					"current_value_bytes: {}",
+					total_storage.estimated_current_value_bytes
+				)?;
+				writeln!(output, "historical_count: {}", total_storage.estimated_historical_count)?;
+				writeln!(
+					output,
+					"historical_key_bytes: {}",
+					total_storage.estimated_historical_key_bytes
+				)?;
+				writeln!(
+					output,
+					"historical_value_bytes: {}",
+					total_storage.estimated_historical_value_bytes
+				)?;
 				writeln!(output, "cdc_count: {}", total_cdc.entry_count)?;
 				writeln!(output, "cdc_key_bytes: {}", total_cdc.key_bytes.as_bytes())?;
 				writeln!(output, "cdc_value_bytes: {}", total_cdc.value_bytes.as_bytes())?;
-				writeln!(output, "total_bytes: {}", total_storage.total_bytes())?;
+				writeln!(output, "total_bytes: {}", total_storage.estimated_total_bytes())?;
 			}
 
 			"stats_current" => {
@@ -350,9 +364,13 @@ impl TestRunner for Runner {
 					total_storage += stats;
 				}
 
-				writeln!(output, "current_count: {}", total_storage.current_count)?;
-				writeln!(output, "current_key_bytes: {}", total_storage.current_key_bytes)?;
-				writeln!(output, "current_value_bytes: {}", total_storage.current_value_bytes)?;
+				writeln!(output, "current_count: {}", total_storage.estimated_current_count)?;
+				writeln!(output, "current_key_bytes: {}", total_storage.estimated_current_key_bytes)?;
+				writeln!(
+					output,
+					"current_value_bytes: {}",
+					total_storage.estimated_current_value_bytes
+				)?;
 			}
 
 			"stats_historical" => {
@@ -369,9 +387,17 @@ impl TestRunner for Runner {
 					total_storage += stats;
 				}
 
-				writeln!(output, "historical_count: {}", total_storage.historical_count)?;
-				writeln!(output, "historical_key_bytes: {}", total_storage.historical_key_bytes)?;
-				writeln!(output, "historical_value_bytes: {}", total_storage.historical_value_bytes)?;
+				writeln!(output, "historical_count: {}", total_storage.estimated_historical_count)?;
+				writeln!(
+					output,
+					"historical_key_bytes: {}",
+					total_storage.estimated_historical_key_bytes
+				)?;
+				writeln!(
+					output,
+					"historical_value_bytes: {}",
+					total_storage.estimated_historical_value_bytes
+				)?;
 			}
 
 			"stats_cdc" => {
@@ -407,11 +433,13 @@ impl TestRunner for Runner {
 					total_storage += stats;
 				}
 
-				let total_count = total_storage.current_count + total_storage.historical_count;
-				let current_bytes = total_storage.current_key_bytes + total_storage.current_value_bytes;
-				let historical_bytes =
-					total_storage.historical_key_bytes + total_storage.historical_value_bytes;
-				let total_bytes = total_storage.total_bytes();
+				let total_count = total_storage.estimated_current_count
+					+ total_storage.estimated_historical_count;
+				let current_bytes = total_storage.estimated_current_key_bytes
+					+ total_storage.estimated_current_value_bytes;
+				let historical_bytes = total_storage.estimated_historical_key_bytes
+					+ total_storage.estimated_historical_value_bytes;
+				let total_bytes = total_storage.estimated_total_bytes();
 
 				writeln!(output, "total_count: {}", total_count)?;
 				writeln!(output, "current_bytes: {}", current_bytes)?;

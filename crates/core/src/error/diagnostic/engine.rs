@@ -106,11 +106,12 @@ pub fn read_only_rejection(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "ENG_007".to_string(),
 		rql: None,
-		message: "Cannot execute write operations on a read-only replica".to_string(),
+		message: "Cannot execute write operations on a read-only engine".to_string(),
 		column: None,
 		fragment,
 		label: Some("write rejected".to_string()),
-		help: Some("Send write operations (admin, command, subscription) to the primary operator".to_string()),
+		help: Some("Disable read-only mode before issuing write operations (admin, command, subscription)"
+			.to_string()),
 		notes: vec![],
 		cause: None,
 		operator_chain: None,

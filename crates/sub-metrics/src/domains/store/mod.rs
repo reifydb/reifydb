@@ -7,10 +7,11 @@ use reifydb_store_cdc::{
 	store::CdcStore,
 	tier::{commit::CdcCommitMetrics, persistent::CdcPersistentMetrics, read::CdcReadShardMetrics},
 };
+use reifydb_store_commit::store::MultiCommitMetrics;
 use reifydb_store_multi::{
 	MultiStore,
 	store::MultiPersistentProbeMetrics,
-	tier::{commit::buffer::MultiCommitMetrics, point::MultiPointShardMetrics, range::MultiRangeShardMetrics},
+	tier::{point::MultiPointShardMetrics, range::MultiRangeShardMetrics},
 };
 use reifydb_store_operator::{
 	store::OperatorStore,

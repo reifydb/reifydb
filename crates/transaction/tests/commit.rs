@@ -31,7 +31,7 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	util::cowvec::CowVec,
-	value::{Value, duration::Duration, identity::IdentityId},
+	value::{duration::Duration, identity::IdentityId},
 };
 
 struct Harness {

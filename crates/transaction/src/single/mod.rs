@@ -11,8 +11,6 @@ use reifydb_codec::{
 use reifydb_core::{delta::Delta, event::EventBus, interface::WithEventBus};
 use reifydb_runtime::sync::rwlock::{ArcRwLock, RwLock};
 use reifydb_store_single::SingleStore;
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_sub_raft::driver::Raft;
 
 pub mod read;
 pub mod write;
@@ -31,8 +29,6 @@ pub(crate) struct SingleTransactionInner {
 	pub(crate) store: RwLock<SingleStore>,
 	pub(crate) event_bus: EventBus,
 	pub(crate) key_locks: SkipMap<EncodedKey, ArcRwLock<()>>,
-	#[cfg(not(target_arch = "wasm32"))]
-	pub(crate) raft: RwLock<Option<Raft>>,
 }
 
 impl SingleTransactionInner {
@@ -52,20 +48,8 @@ impl SingleTransaction {
 				store: RwLock::new(store),
 				event_bus,
 				key_locks: SkipMap::new(),
-				#[cfg(not(target_arch = "wasm32"))]
-				raft: RwLock::new(None),
 			}),
 		}
-	}
-
-	#[cfg(not(target_arch = "wasm32"))]
-	pub fn set_raft(&self, handle: Raft) {
-		*self.inner.raft.write() = Some(handle);
-	}
-
-	#[cfg(not(target_arch = "wasm32"))]
-	pub fn clear_raft(&self) {
-		*self.inner.raft.write() = None;
 	}
 
 	pub fn read_store(&self) -> SingleStore {

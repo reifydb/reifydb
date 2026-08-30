@@ -7,6 +7,7 @@ use std::sync::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::common::CommitVersion;
 use reifydb_transaction::multi::transaction::write::MultiWriteTransaction;
 
 use super::test_multi;
@@ -18,6 +19,49 @@ fn read_counter(txn: &mut MultiWriteTransaction, key: &EncodedKey) -> u64 {
 	let sv = txn.get(key).unwrap().unwrap();
 	let row = sv.bytes();
 	from_bytes!(u64, row)
+}
+
+#[test]
+fn test_self_cancelling_writer_still_takes_a_commit_version() {
+	// Set-then-remove on a never-read key optimizes to zero deltas, which must never gate the commit.
+	let key: EncodedKey = as_key!(COUNTER);
+	let engine = test_multi();
+
+	let mut txn = engine.begin_command().unwrap();
+	txn.set(&key, as_values!(1u64)).unwrap();
+	txn.remove(&key).unwrap();
+
+	let version = txn.commit(vec![]).unwrap();
+	assert_ne!(
+		version,
+		CommitVersion(0),
+		"a transaction that wrote a key must take a commit version even when its writes cancel out; \
+		 CommitVersion(0) is the nothing-was-written sentinel and returning it means the write set \
+		 never reached the oracle"
+	);
+}
+
+#[test]
+fn test_self_cancelling_writer_is_still_validated_against_a_concurrent_writer() {
+	// The optimized delta set is empty here, so only the write set can carry this into conflict detection.
+	let key: EncodedKey = as_key!(COUNTER);
+	let engine = test_multi();
+
+	let mut winner = engine.begin_command().unwrap();
+	let mut canceller = engine.begin_command().unwrap();
+
+	winner.set(&key, as_values!(1u64)).unwrap();
+	canceller.set(&key, as_values!(2u64)).unwrap();
+	canceller.remove(&key).unwrap();
+
+	winner.commit(vec![]).unwrap();
+
+	let err = canceller.commit(vec![]).unwrap_err();
+	assert!(
+		err.to_string().contains("conflict"),
+		"both transactions wrote the same key while concurrent, so the second must abort. It \
+		 committed instead, which means its write set bypassed the oracle: {err}"
+	);
 }
 
 #[test]

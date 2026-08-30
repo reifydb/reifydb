@@ -1241,6 +1241,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "generator"
+version = "0.8.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52f04ae4152da20c76fe800fa48659201d5cf627c5149ca0b707b69d7eef6cf9"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc",
+ "log",
+ "rustversion",
+ "windows-link",
+ "windows-result",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1957,6 +1972,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a"
 
 [[package]]
+name = "loom"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "419e0dc8046cb947daa77eb95ae174acfbddb7673b4151f56d1eed8e93fbfaca"
+dependencies = [
+ "cfg-if",
+ "generator",
+ "scoped-tls",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "mach2"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2625,22 +2653,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "raft"
-version = "0.9.0"
-dependencies = [
- "reifydb",
-]
-
-[[package]]
-name = "raft-cluster"
-version = "0.9.0"
-dependencies = [
- "reifydb-sub-raft",
- "reifydb-value",
- "tokio",
-]
-
-[[package]]
 name = "rand"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2833,6 +2845,7 @@ dependencies = [
  "reifydb-sqlite",
  "reifydb-store",
  "reifydb-store-cdc",
+ "reifydb-store-commit",
  "reifydb-store-multi",
  "reifydb-store-operator",
  "reifydb-store-single",
@@ -2840,8 +2853,6 @@ dependencies = [
  "reifydb-sub-flow",
  "reifydb-sub-lifecycle",
  "reifydb-sub-metrics",
- "reifydb-sub-raft",
- "reifydb-sub-replication",
  "reifydb-sub-server",
  "reifydb-sub-server-admin",
  "reifydb-sub-server-grpc",
@@ -2945,6 +2956,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-macro",
  "reifydb-runtime",
+ "reifydb-store-commit",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-test-harness",
@@ -3382,6 +3394,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.2",
  "js-sys",
+ "loom",
  "moka",
  "parking_lot",
  "rand 0.10.1",
@@ -3466,6 +3479,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-store-commit"
+version = "0.9.0"
+dependencies = [
+ "reifydb-build",
+ "reifydb-codec",
+ "reifydb-core",
+ "reifydb-runtime",
+ "reifydb-store",
+ "reifydb-value",
+ "tracing",
+]
+
+[[package]]
 name = "reifydb-store-multi"
 version = "0.9.0"
 dependencies = [
@@ -3477,6 +3503,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-sqlite",
  "reifydb-store",
+ "reifydb-store-commit",
  "reifydb-testing",
  "reifydb-testing-chaos",
  "reifydb-testing-macro",
@@ -3600,6 +3627,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-runtime",
  "reifydb-store-cdc",
+ "reifydb-store-commit",
  "reifydb-store-multi",
  "reifydb-sub-api",
  "reifydb-test-harness",
@@ -3628,6 +3656,7 @@ dependencies = [
  "reifydb-sqlite",
  "reifydb-store",
  "reifydb-store-cdc",
+ "reifydb-store-commit",
  "reifydb-store-multi",
  "reifydb-store-operator",
  "reifydb-store-single",
@@ -3638,47 +3667,6 @@ dependencies = [
  "reifydb-transaction",
  "reifydb-value",
  "test_each_file",
- "tracing",
-]
-
-[[package]]
-name = "reifydb-sub-raft"
-version = "0.9.0"
-dependencies = [
- "postcard",
- "prost",
- "rand 0.10.1",
- "reifydb-build",
- "reifydb-codec",
- "reifydb-core",
- "reifydb-runtime",
- "reifydb-value",
- "serde",
- "tokio",
- "tonic",
- "tonic-prost",
-]
-
-[[package]]
-name = "reifydb-sub-replication"
-version = "0.9.0"
-dependencies = [
- "prost",
- "reifydb-build",
- "reifydb-catalog",
- "reifydb-cdc",
- "reifydb-codec",
- "reifydb-core",
- "reifydb-engine",
- "reifydb-runtime",
- "reifydb-store-cdc",
- "reifydb-sub-api",
- "reifydb-transaction",
- "reifydb-value",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-prost",
  "tracing",
 ]
 
@@ -4029,9 +4017,9 @@ dependencies = [
  "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-store-commit",
  "reifydb-store-multi",
  "reifydb-store-single",
- "reifydb-sub-raft",
  "reifydb-testing",
  "reifydb-testing-chaos",
  "reifydb-testing-macro",
@@ -4111,6 +4099,7 @@ dependencies = [
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-store-cdc",
+ "reifydb-store-commit",
  "reifydb-store-multi",
  "reifydb-store-operator",
  "reifydb-store-single",
@@ -4149,6 +4138,7 @@ dependencies = [
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-store-cdc",
+ "reifydb-store-commit",
  "reifydb-store-multi",
  "reifydb-store-operator",
  "reifydb-store-single",
@@ -4452,6 +4442,12 @@ checksum = "91c1b7e4904c873ef0710c1f407dde2e6287de2bebc1bbbf7d430bb7cbffd939"
 dependencies = [
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "scoped-tls"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
 
 [[package]]
 name = "scopeguard"

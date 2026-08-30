@@ -6,7 +6,7 @@
 use std::{collections::BTreeMap, ops::Bound};
 
 use reifydb_core::{common::CommitVersion, key::row::RowKey};
-use reifydb_store_multi::MultiVersionScope;
+use reifydb_store_commit::MultiVersionScope;
 
 use crate::STORAGE;
 

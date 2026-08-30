@@ -20,7 +20,8 @@ use reifydb_core::{
 	},
 	key::{partitioned_row::PartitionedRowKey, row::RowKey},
 };
-use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore, tier::TierStorage};
+use reifydb_store_commit::MultiVersionScope;
+use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
 use reifydb_value::{
 	cow_vec,
 	util::cowvec::CowVec,
@@ -48,7 +49,7 @@ fn persistent_only_set(store: &StandardMultiStore, k: &EncodedKey, version: u64,
 fn persistent_row(store: &StandardMultiStore, k: &EncodedKey) -> Option<(u64, Vec<u8>)> {
 	let persistent = store.persistent().expect("persistent tier configured");
 	match persistent.get(classify_key(k), k.as_ref(), CommitVersion(u64::MAX)).unwrap() {
-		reifydb_store_multi::tier::VersionedGetResult::Value {
+		reifydb_store_commit::VersionedGetResult::Value {
 			value,
 			version,
 		} => Some((version.0, value.to_vec())),
