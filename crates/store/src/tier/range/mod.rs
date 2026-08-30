@@ -70,6 +70,10 @@ pub trait RangeDomain: Copy + Debug + 'static {
 
 	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key>;
 
+	fn partition_walk_end(_partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
+		ExclusiveUpperEnd::Top
+	}
+
 	fn supersedes(_resident: &Self::Row, _incoming: &Self::Row) -> bool {
 		true
 	}

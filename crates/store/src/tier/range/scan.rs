@@ -331,8 +331,14 @@ impl<D: RangeDomain> RangeTier<D> {
 		let mut materialized = false;
 		let mut claim: Option<Interval<D::Key>> = None;
 		let mut claimed: Vec<usize> = Vec::new();
+		let mut walk_end: Option<ExclusiveUpperEnd<D::Key>> = None;
 		if !span.is_empty() {
 			loop {
+				if let Some(limit) = walk_end.as_ref()
+					&& !limit.covers(&start)
+				{
+					break;
+				}
 				let Some(partition) = scan.confined.or_else(|| D::partition(scan.dimension, &start))
 				else {
 					let Some(anchor) = rows
@@ -350,6 +356,9 @@ impl<D: RangeDomain> RangeTier<D> {
 					continue;
 				};
 				head = false;
+				if walk_end.is_none() {
+					walk_end = Some(D::partition_walk_end(&partition));
+				}
 				let (_, bound) = D::span(&partition);
 				let end = bound.min(span.end.clone());
 				let piece = Interval::new(start, end.clone());
@@ -718,8 +727,21 @@ fn split_at_partitions<D: RangeDomain>(
 	};
 
 	let mut start = whole.start.clone();
+	let mut walk_end: Option<ExclusiveUpperEnd<D::Key>> = None;
 	loop {
 		if !whole.end.covers(&start) {
+			return;
+		}
+		if let Some(limit) = walk_end.as_ref()
+			&& !limit.covers(&start)
+		{
+			out.push((
+				Segment::Gap {
+					interval: Interval::new(start, whole.end.clone()),
+					exempt: false,
+				},
+				None,
+			));
 			return;
 		}
 		let Some(partition) = confined.or_else(|| D::partition(dimension, &start)) else {
@@ -751,6 +773,9 @@ fn split_at_partitions<D: RangeDomain>(
 		let bound = if ram {
 			D::span(&partition).1
 		} else {
+			if walk_end.is_none() {
+				walk_end = Some(D::partition_walk_end(&partition));
+			}
 			D::cache_tiers_run_end(&partition)
 		};
 		let end = bound.min(whole.end.clone());
@@ -1087,6 +1112,75 @@ mod tests {
 				.all(|(segment, partition)| matches!(segment, Segment::Resident(_))
 					&& partition.is_some()),
 			"every RAM piece must name the partition that serves it"
+		);
+	}
+
+	#[test]
+	fn a_gap_reaching_past_its_group_stops_splitting_and_hands_the_remainder_back_unattributed() {
+		// A scan bounded only by the operator leaves the gap's upper end open, and splitting it one cache
+		// tier run at a time then walked every group the key space can express, so the planner never
+		// returned and grew a piece per turn until the process died. The walk must stop at the group it
+		// entered and hand back what is left as a single piece.
+		let ExclusiveUpperEnd::Key(boundary) = partition(KeyspaceId(u8::MAX)).group_end() else {
+			panic!("a group below the top of the key space must have a boundary");
+		};
+
+		let mut pieces = Vec::new();
+		split_at_partitions::<D>(
+			OP,
+			None,
+			&Segment::Gap {
+				interval: Interval::new(whole(KeyspaceId(u8::MAX)).start, ExclusiveUpperEnd::Top),
+				exempt: false,
+			},
+			&mut pieces,
+		);
+
+		let (tail, attributed) = pieces.last().expect("an unbounded gap must still yield pieces");
+		assert_eq!(
+			tail,
+			&Segment::Gap {
+				interval: Interval::new(boundary, ExclusiveUpperEnd::Top),
+				exempt: false,
+			},
+			"everything past the group must come back as one piece running to the top of the key space"
+		);
+		assert!(attributed.is_none(), "the tail covers more partitions than one, so it may name none");
+		assert!(
+			pieces[..pieces.len() - 1]
+				.iter()
+				.all(|(_, at)| at.as_ref().is_some_and(|at| at.group == GROUP)),
+			"every attributed piece must belong to the group the walk entered, or the walk left it"
+		);
+	}
+
+	#[test]
+	fn materialising_a_span_reaching_past_its_group_claims_no_further_than_the_group() {
+		// materialize walks the span partition by partition to decide what it may claim, so an open ended
+		// span hung there for the same reason the planner did. Stopping at the group under claims rather
+		// than over claims: a claim wider than the rows proved would answer later reads from a cache that
+		// never held them.
+		let tier = roomy();
+		let range = keyspace_inner_range(GROUP, CACHED);
+		let at = |suffix: &[u8]| key(CACHED, suffix);
+
+		assert!(
+			claim(
+				&tier,
+				&range,
+				&Interval::new(at(b"a"), ExclusiveUpperEnd::Top),
+				&[(at(b"a"), row("a1"))]
+			) == Materialize::Materialized
+		);
+
+		let ExclusiveUpperEnd::Key(boundary) = partition(CACHED).group_end() else {
+			panic!("a group below the top of the key space must have a boundary");
+		};
+		assert!(
+			intervals(&tier)
+				.iter()
+				.all(|held| held.end <= ExclusiveUpperEnd::Key(boundary.clone())),
+			"no claim may reach past the group the span started in"
 		);
 	}
 

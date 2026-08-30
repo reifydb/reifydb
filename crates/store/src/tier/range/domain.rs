@@ -64,6 +64,15 @@ impl TestPartition {
 		(start, end)
 	}
 
+	pub fn group_end(&self) -> ExclusiveUpperEnd<MultiKey> {
+		let prefix = self.prefix();
+		let group = &prefix.as_slice()[..OperatorStateKey::KEYSPACE_INNER_OFFSET as usize];
+		match prefix_successor(group) {
+			Some(successor) => ExclusiveUpperEnd::of(successor),
+			None => ExclusiveUpperEnd::Top,
+		}
+	}
+
 	pub fn caches_ranges(&self) -> bool {
 		self.keyspace.cache_tiers().caches_ranges()
 	}
@@ -142,6 +151,10 @@ impl RangeDomain for TestDomain {
 		}
 		.span()
 		.1
+	}
+
+	fn partition_walk_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
+		partition.group_end()
 	}
 
 	fn metric_bucket(partition: &Self::Partition) -> usize {

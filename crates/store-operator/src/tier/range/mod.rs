@@ -106,6 +106,15 @@ impl PartitionId {
 		(start, end)
 	}
 
+	pub fn group_end(&self) -> ExclusiveUpperEnd<MultiKey> {
+		let prefix = self.prefix();
+		let group = &prefix.as_slice()[..OperatorStateKey::KEYSPACE_INNER_OFFSET as usize];
+		match prefix_successor(group) {
+			Some(successor) => ExclusiveUpperEnd::of(successor),
+			None => ExclusiveUpperEnd::Top,
+		}
+	}
+
 	pub fn caches_ranges(&self) -> bool {
 		self.keyspace.cache_tiers().caches_ranges()
 	}
@@ -186,6 +195,10 @@ impl RangeDomain for OperatorDomain {
 		.1
 	}
 
+	fn partition_walk_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
+		partition.group_end()
+	}
+
 	fn metric_bucket(partition: &Self::Partition) -> usize {
 		partition.keyspace.0 as usize
 	}
@@ -206,7 +219,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::{
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
-			typed::range::KeyRange,
+			typed::{ExclusiveUpperEnd, range::KeyRange},
 		},
 	};
 	use reifydb_store::{
@@ -214,10 +227,10 @@ mod tests {
 			cursor::{RangeCursor, ServedChunk},
 			plan::Segment,
 		},
-		tier::range::Materialize,
+		tier::range::{Materialize, RangeDomain},
 	};
 
-	use super::{OperatorRangeConfig, OperatorRangeTier};
+	use super::{OperatorDomain, OperatorRangeConfig, OperatorRangeTier, PartitionId};
 
 	const OP_A: OperatorId = OperatorId(1);
 	const OP_B: OperatorId = OperatorId(2);
@@ -279,6 +292,37 @@ mod tests {
 			}
 		}
 		resident.then_some(out)
+	}
+
+	#[test]
+	fn a_partition_walk_stops_at_the_group_it_started_in() {
+		// The planner and the claim loop both step the key space one partition at a time, so whatever they
+		// are handed must name a finite stop. A group holds at most two hundred fifty six keyspaces; the
+		// groups above it are a hundred twenty eight bit space, and walking into them never returns.
+		let partition = PartitionId {
+			operator: OP_A,
+			group: GROUP_A,
+			keyspace: KeyspaceId::ACCUMULATOR,
+		};
+
+		let walk_end = OperatorDomain::partition_walk_end(&partition);
+		assert!(
+			walk_end > partition.span().1,
+			"the walk must reach past the partition it started in, or a gap never splits per keyspace"
+		);
+
+		let ExclusiveUpperEnd::Key(boundary) = walk_end else {
+			panic!("a group below the top of the key space must have a boundary");
+		};
+		assert_eq!(
+			boundary.len(),
+			OperatorStateKey::KEYSPACE_INNER_OFFSET as usize,
+			"the boundary must be the group prefix stepped once, so no keyspace byte can sort past it"
+		);
+		assert!(
+			PartitionId::of(OP_A, &boundary).is_none_or(|at| at.group != GROUP_A),
+			"the boundary must fall outside the group, or the walk stops inside it and drops keyspaces"
+		);
 	}
 
 	#[test]
