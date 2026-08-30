@@ -199,27 +199,25 @@ impl MetricsFlushActor {
 	#[inline]
 	fn read_prior_sizes(&self, keys: &[EncodedKey], version: CommitVersion) -> HashMap<EncodedKey, u64> {
 		let mut pre_sizes: HashMap<EncodedKey, u64> = HashMap::new();
-		if version.0 > 0 {
-			if !keys.is_empty() {
-				match self.resolver.get_many_versioned(keys, CommitVersion(version.0 - 1)) {
-					Ok(rows) => {
-						for (key, result) in rows {
-							match result {
-								VersionedGetResult::Value {
-									value,
-									..
-								} => {
-									pre_sizes.insert(key, value.len() as u64);
-								}
-								VersionedGetResult::Tombstone => {
-									pre_sizes.insert(key, 0);
-								}
-								VersionedGetResult::NotFound => {}
+		if version.0 > 0 && !keys.is_empty() {
+			match self.resolver.get_many_versioned(keys, CommitVersion(version.0 - 1)) {
+				Ok(rows) => {
+					for (key, result) in rows {
+						match result {
+							VersionedGetResult::Value {
+								value,
+								..
+							} => {
+								pre_sizes.insert(key, value.len() as u64);
 							}
+							VersionedGetResult::Tombstone => {
+								pre_sizes.insert(key, 0);
+							}
+							VersionedGetResult::NotFound => {}
 						}
 					}
-					Err(e) => error!("Failed to read previous versions for write metrics: {}", e),
 				}
+				Err(e) => error!("Failed to read previous versions for write metrics: {}", e),
 			}
 		}
 		pre_sizes

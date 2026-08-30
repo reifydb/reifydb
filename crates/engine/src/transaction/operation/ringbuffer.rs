@@ -416,7 +416,6 @@ impl RingBufferOperations for Transaction<'_> {
 				t.inner.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, bytes)
 			}
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}
 	}
 
@@ -432,7 +431,6 @@ impl RingBufferOperations for Transaction<'_> {
 			Transaction::Admin(txn) => txn.update_ringbuffer(ringbuffer, partition, id, bytes),
 			Transaction::Test(t) => t.inner.update_ringbuffer(ringbuffer, partition, id, bytes),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}
 	}
 
@@ -447,7 +445,6 @@ impl RingBufferOperations for Transaction<'_> {
 			Transaction::Admin(txn) => txn.remove_from_ringbuffer(ringbuffer, partition, id),
 			Transaction::Test(t) => t.inner.remove_from_ringbuffer(ringbuffer, partition, id),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}
 	}
 }

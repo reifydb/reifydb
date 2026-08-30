@@ -6,8 +6,6 @@ use std::{mem::take, ops::RangeBounds};
 use indexmap::IndexMap;
 use reifydb_core::interface::store::{SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRow};
 use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockWriteGuard};
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_sub_raft::message::Command;
 use reifydb_value::{
 	Result, reifydb_assertions,
 	util::{cowvec::CowVec, hex::encode},
@@ -135,7 +133,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		let deltas = self.drain_pending();
 
 		if !deltas.is_empty() {
-			self.propose_or_commit(deltas)?;
+			self.commit_deltas(deltas)?;
 		}
 
 		self.completed = true;
@@ -148,30 +146,16 @@ impl<'a> SingleWriteTransaction<'a> {
 	}
 
 	#[inline]
-	fn propose_or_commit(&self, deltas: Vec<Delta>) -> Result<()> {
+	fn commit_deltas(&self, deltas: Vec<Delta>) -> Result<()> {
 		reifydb_assertions! {
 			let count = deltas.len();
 			assert!(
 				count > 0,
-				"propose_or_commit must not run on an empty delta set; an empty raft proposal \
-				 or store commit acquires a lock and emits a needless command for a no-op \
-				 transaction (count={count})"
+				"commit_deltas must not run on an empty delta set; an empty store commit \
+				 acquires the store write lock for a no-op transaction (count={count})"
 			);
 		}
 
-		#[cfg(not(target_arch = "wasm32"))]
-		{
-			let raft_handle = self.inner.raft.read().clone();
-			if let Some(raft) = raft_handle {
-				let cmd = Command::WriteSingle {
-					deltas,
-				};
-				raft.propose(cmd).map_err(|e| TransactionError::RaftProposeFailed {
-					message: e.to_string(),
-				})?;
-				return Ok(());
-			}
-		}
 		let mut store = self.inner.store.write();
 		SingleVersionCommit::commit(&mut *store, CowVec::new(deltas))
 	}

@@ -150,18 +150,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(rel) = self.cache.find_relationship_at(id, rep.version()) {
-					return Ok(Some(rel));
-				}
-				if let Some(rel) =
-					CatalogStore::find_relationship(&mut Transaction::Replica(&mut *rep), id)?
-				{
-					warn!("Relationship with ID {:?} found in storage but not in CatalogCache", id);
-					return Ok(Some(rel));
-				}
-				Ok(None)
-			}
 		}
 	}
 
@@ -286,29 +274,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(rel) = self.cache.find_relationship_by_name_at(
-					namespace,
-					source_table,
-					name,
-					rep.version(),
-				) {
-					return Ok(Some(rel));
-				}
-				if let Some(rel) = CatalogStore::find_relationship_by_name(
-					&mut Transaction::Replica(&mut *rep),
-					namespace,
-					source_table,
-					name,
-				)? {
-					warn!(
-						"Relationship '{}' for source_table {:?} in namespace {:?} found in storage but not in CatalogCache",
-						name, source_table, namespace
-					);
-					return Ok(Some(rel));
-				}
-				Ok(None)
-			}
 		}
 	}
 
@@ -329,9 +294,6 @@ impl Catalog {
 			}
 			Transaction::Query(qry) => {
 				Ok(self.cache.list_relationships_from_at(source_table, qry.version()))
-			}
-			Transaction::Replica(rep) => {
-				Ok(self.cache.list_relationships_from_at(source_table, rep.version()))
 			}
 			Transaction::Admin(admin) => {
 				let mut base = self.cache.list_relationships_from_at(source_table, admin.version());

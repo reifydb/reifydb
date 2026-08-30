@@ -5,9 +5,7 @@ use reifydb_core::common::CommitVersion;
 use reifydb_store_multi::MultiVersionScope;
 use reifydb_value::{Result, value::duration::Duration};
 
-use crate::multi::transaction::{
-	MultiTransaction, read::MultiReadTransaction, replica::MultiReplicaTransaction, write::MultiWriteTransaction,
-};
+use crate::multi::transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum RangeScope {
@@ -56,9 +54,5 @@ impl MultiTransaction {
 
 	pub fn notify_on_mark(&self, version: CommitVersion, callback: Box<dyn FnOnce() + Send>) {
 		self.tm.notify_on_mark(version, callback);
-	}
-
-	pub fn advance_version_for_replica(&self, version: CommitVersion) {
-		self.tm.advance_version_for_replica(version);
 	}
 }

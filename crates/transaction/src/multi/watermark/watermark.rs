@@ -641,7 +641,7 @@ pub mod tests {
 	#[should_panic(expected = "leap over the live in-flight")]
 	fn fiat_advance_over_a_live_in_flight_version_panics_under_assertions() {
 		// advance_to is a bare fetch_max on done_until that bypasses the ring entirely
-		// (bootstrap and replica-apply use it); if it ever leaps over a version that is
+		// (bootstrap uses it); if it ever leaps over a version that is
 		// registered but not yet finished, consumers treat that commit as applied before
 		// its writes exist - torn snapshots and permanently skipped CDC events. The
 		// tripwire must turn that silent downstream corruption into a loud local panic.

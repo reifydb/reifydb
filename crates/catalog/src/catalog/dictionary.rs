@@ -107,20 +107,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(dict) = self.cache.find_dictionary_at(id, rep.version()) {
-					return Ok(Some(dict));
-				}
-
-				if let Some(dict) =
-					CatalogStore::find_dictionary(&mut Transaction::Replica(&mut *rep), id)?
-				{
-					warn!("Dictionary with ID {:?} found in storage but not in CatalogCache", id);
-					return Ok(Some(dict));
-				}
-
-				Ok(None)
-			}
 		}
 	}
 
@@ -224,27 +210,6 @@ impl Catalog {
 				)? {
 					return Ok(Some(dict));
 				}
-				Ok(None)
-			}
-			Transaction::Replica(rep) => {
-				if let Some(dict) =
-					self.cache.find_dictionary_by_name_at(namespace, name, rep.version())
-				{
-					return Ok(Some(dict));
-				}
-
-				if let Some(dict) = CatalogStore::find_dictionary_by_name(
-					&mut Transaction::Replica(&mut *rep),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"Dictionary '{}' in namespace {:?} found in storage but not in CatalogCache",
-						name, namespace
-					);
-					return Ok(Some(dict));
-				}
-
 				Ok(None)
 			}
 		}

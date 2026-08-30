@@ -63,10 +63,6 @@ use reifydb_sub_lifecycle::factory::LifecycleSubsystemFactory;
 use reifydb_sub_metrics::factory::MetricsSubsystemFactory;
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_sub_metrics::profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
-#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
-use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
-#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
-use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_server::interceptor::RequestInterceptorChain;
 #[cfg(feature = "column")]
@@ -118,14 +114,11 @@ pub struct DatabaseBuilder {
 	tracing_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(feature = "sub_flow")]
 	flow_factory: Option<Box<dyn SubsystemFactory>>,
-	#[cfg(feature = "sub_replication")]
-	replication_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(not(reifydb_single_threaded))]
 	task_factory: Option<Box<dyn SubsystemFactory>>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
 	auth_providers: Vec<Box<dyn AuthenticationProvider>>,
 	migrations: Vec<MigrationStatement>,
-	is_replica: bool,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
 	fast_shutdown: bool,
 }
@@ -168,14 +161,11 @@ impl DatabaseBuilder {
 			tracing_factory: None,
 			#[cfg(feature = "sub_flow")]
 			flow_factory: None,
-			#[cfg(feature = "sub_replication")]
-			replication_factory: None,
 			#[cfg(not(reifydb_single_threaded))]
 			task_factory: None,
 			auth_configurator: None,
 			auth_providers: Vec::new(),
 			migrations: Vec::new(),
-			is_replica: false,
 			bootstrap_configs: Vec::new(),
 			fast_shutdown: false,
 		}
@@ -224,22 +214,6 @@ impl DatabaseBuilder {
 		F: FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static,
 	{
 		self.flow_factory = Some(Box::new(FlowSubsystemFactory::with_configurator(configurator)));
-		self
-	}
-
-	#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
-	pub fn with_replication<F, C>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(ReplicationConfigurator) -> C + Send + 'static,
-		C: Into<ReplicationConfig> + 'static,
-	{
-		self.replication_factory = Some(Box::new(ReplicationSubsystemFactory::new(configurator)));
-		self
-	}
-
-	#[cfg(feature = "sub_replication")]
-	pub fn add_replication_factory(mut self, factory: Box<dyn SubsystemFactory>) -> Self {
-		self.replication_factory = Some(factory);
 		self
 	}
 
@@ -329,7 +303,6 @@ impl DatabaseBuilder {
 	}
 
 	/// Overwrites any previously persisted override for this key on every `build()`.
-	/// Skipped on replicas.
 	pub fn with_config(mut self, key: ConfigKey, value: Value) -> Self {
 		self.bootstrap_configs.push((key, value));
 		self
@@ -337,11 +310,6 @@ impl DatabaseBuilder {
 
 	pub fn with_configs(mut self, configs: impl IntoIterator<Item = (ConfigKey, Value)>) -> Self {
 		self.bootstrap_configs.extend(configs);
-		self
-	}
-
-	pub fn is_replica(mut self) -> Self {
-		self.is_replica = true;
 		self
 	}
 
@@ -364,11 +332,6 @@ impl DatabaseBuilder {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
-		#[cfg(feature = "sub_replication")]
-		if let Some(ref factory) = self.replication_factory {
-			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
-		}
-
 		#[cfg(not(reifydb_single_threaded))]
 		if let Some(ref factory) = self.task_factory {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
@@ -385,13 +348,7 @@ impl DatabaseBuilder {
 
 		load_catalog_cache(&multi, &single, &catalog)?;
 
-		if !self.is_replica {
-			seed_bootstrap_configs(&multi, &catalog, &self.bootstrap_configs)?;
-		}
-		#[cfg(reifydb_assertions)]
-		if self.is_replica {
-			catalog.clear_pending_config_overrides();
-		}
+		seed_bootstrap_configs(&multi, &catalog, &self.bootstrap_configs)?;
 
 		multi.bootstrapping_completed();
 
@@ -546,10 +503,8 @@ impl DatabaseBuilder {
 		self.ioc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
 
 		// Bootstrap AFTER CDC producer is active so commits are captured.
-		if !self.is_replica {
-			bootstrap_system_objects(&multi, &single, &catalog, &eventbus)?;
-			apply_bootstrap_configs(&multi, &single, &catalog, &eventbus, &self.bootstrap_configs)?;
-		}
+		bootstrap_system_objects(&multi, &single, &catalog, &eventbus)?;
+		apply_bootstrap_configs(&multi, &single, &catalog, &eventbus, &self.bootstrap_configs)?;
 
 		let bootloader = Bootloader::new(engine.clone());
 		bootloader.load()?;
@@ -619,13 +574,6 @@ impl DatabaseBuilder {
 		#[cfg(feature = "sub_flow")]
 		{
 			let factory = Box::new(SubscriptionSubsystemFactory);
-			let subsystem = factory.create(&self.ioc)?;
-			all_versions.push(subsystem.version());
-			subsystems.add_subsystem(subsystem);
-		}
-
-		#[cfg(feature = "sub_replication")]
-		if let Some(factory) = self.replication_factory {
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);

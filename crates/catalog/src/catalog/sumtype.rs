@@ -106,19 +106,6 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(def) = self.cache.find_sumtype_at(id, rep.version()) {
-					return Ok(Some(def));
-				}
-
-				if let Some(def) = CatalogStore::find_sumtype(&mut Transaction::Replica(&mut *rep), id)?
-				{
-					warn!("SumType with ID {:?} found in storage but not in CatalogCache", id);
-					return Ok(Some(def));
-				}
-
-				Ok(None)
-			}
 		}
 	}
 
@@ -214,25 +201,6 @@ impl Catalog {
 					namespace,
 					name,
 				)? {
-					return Ok(Some(def));
-				}
-
-				Ok(None)
-			}
-			Transaction::Replica(rep) => {
-				if let Some(def) = self.cache.find_sumtype_by_name_at(namespace, name, rep.version()) {
-					return Ok(Some(def));
-				}
-
-				if let Some(def) = CatalogStore::find_sumtype_by_name(
-					&mut Transaction::Replica(&mut *rep),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"SumType '{}' in namespace {:?} found in storage but not in CatalogCache",
-						name, namespace
-					);
 					return Ok(Some(def));
 				}
 

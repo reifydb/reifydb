@@ -2625,22 +2625,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "raft"
-version = "0.9.0"
-dependencies = [
- "reifydb",
-]
-
-[[package]]
-name = "raft-cluster"
-version = "0.9.0"
-dependencies = [
- "reifydb-sub-raft",
- "reifydb-value",
- "tokio",
-]
-
-[[package]]
 name = "rand"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2840,8 +2824,6 @@ dependencies = [
  "reifydb-sub-flow",
  "reifydb-sub-lifecycle",
  "reifydb-sub-metrics",
- "reifydb-sub-raft",
- "reifydb-sub-replication",
  "reifydb-sub-server",
  "reifydb-sub-server-admin",
  "reifydb-sub-server-grpc",
@@ -3642,47 +3624,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-sub-raft"
-version = "0.9.0"
-dependencies = [
- "postcard",
- "prost",
- "rand 0.10.1",
- "reifydb-build",
- "reifydb-codec",
- "reifydb-core",
- "reifydb-runtime",
- "reifydb-value",
- "serde",
- "tokio",
- "tonic",
- "tonic-prost",
-]
-
-[[package]]
-name = "reifydb-sub-replication"
-version = "0.9.0"
-dependencies = [
- "prost",
- "reifydb-build",
- "reifydb-catalog",
- "reifydb-cdc",
- "reifydb-codec",
- "reifydb-core",
- "reifydb-engine",
- "reifydb-runtime",
- "reifydb-store-cdc",
- "reifydb-sub-api",
- "reifydb-transaction",
- "reifydb-value",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-prost",
- "tracing",
-]
-
-[[package]]
 name = "reifydb-sub-server"
 version = "0.9.0"
 dependencies = [
@@ -4031,7 +3972,6 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
- "reifydb-sub-raft",
  "reifydb-testing",
  "reifydb-testing-chaos",
  "reifydb-testing-macro",

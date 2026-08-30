@@ -25,7 +25,6 @@ members = [
     "crates/profiler",
     "crates/macro",
     "crates/macro-impl",
-    "crates/sub-raft",
     "crates/runtime",
     "crates/sdk",
     "crates/rql",
@@ -62,7 +61,6 @@ members = [
     "crates/sub-server-otel",
     "crates/sub-server-ws",
     "crates/sub-console",
-    "crates/sub-replication",
     "crates/sub-subscription",
     "crates/subscription",
     "crates/remote-proxy",
@@ -72,8 +70,6 @@ members = [
     "bin/playground",
     "bin/testcontainer",
     "bin/load-test",
-    "pkg/rust/examples/raft",
-    "bin/raft",
     "bin/dev",
     # Package/library projects
     "pkg/rust/reifydb",
@@ -134,7 +130,6 @@ default-members = [
     "crates/transaction",
     "crates/value",
     "crates/wasm",
-    "crates/sub-raft",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-lifecycle",
@@ -149,7 +144,6 @@ default-members = [
     "crates/sub-server-http",
     "crates/sub-server-otel",
     "crates/sub-server-ws",
-    "crates/sub-replication",
     "crates/sub-subscription",
     "crates/subscription",
     "crates/remote-proxy",
@@ -215,7 +209,7 @@ strip = "symbols"
 reifydb = { version = "0.9.0", path = "pkg/rust/reifydb", features = [
     "sub_flow", "sub_tracing", "sub_server", "sub_server_admin",
     "sub_server_grpc", "sub_server_http", "sub_server_ws",
-    "sub_server_otel", "sub_replication",
+    "sub_server_otel",
 ] }
 reifydb-derive = { version = "0.9.0", path = "pkg/rust/reifydb-derive" }
 reifydb-build = { version = "0.9.0", path = "crates/build" }
@@ -251,7 +245,6 @@ reifydb-store-cdc = { version = "0.9.0", path = "crates/store-cdc" }
 reifydb-store-multi = { version = "0.9.0", path = "crates/store-multi" }
 reifydb-store-operator = { version = "0.9.0", path = "crates/store-operator" }
 reifydb-store-single = { version = "0.9.0", path = "crates/store-single" }
-reifydb-sub-raft = { version = "0.9.0", path = "crates/sub-raft" }
 reifydb-testing = { version = "0.9.0", path = "crates/testing" }
 reifydb-testing-chaos = { version = "0.9.0", path = "crates/testing-chaos" }
 reifydb-testing-flow = { version = "0.9.0", path = "crates/testing-flow" }
@@ -280,7 +273,6 @@ reifydb-sub-server-grpc = { version = "0.9.0", path = "crates/sub-server-grpc" }
 reifydb-sub-server-http = { version = "0.9.0", path = "crates/sub-server-http" }
 reifydb-sub-server-otel = { version = "0.9.0", path = "crates/sub-server-otel" }
 reifydb-sub-server-ws = { version = "0.9.0", path = "crates/sub-server-ws" }
-reifydb-sub-replication = { version = "0.9.0", path = "crates/sub-replication" }
 reifydb-sub-subscription = { version = "0.9.0", path = "crates/sub-subscription" }
 reifydb-remote-proxy = { version = "0.9.0", path = "crates/remote-proxy" }
 reifydb-subscription = { version = "0.9.0", path = "crates/subscription" }

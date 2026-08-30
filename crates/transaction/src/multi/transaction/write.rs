@@ -19,8 +19,6 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionContains, MultiVersionGet, MultiVersionRow},
 	},
 };
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_sub_raft::message::Command;
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
@@ -604,60 +602,9 @@ impl MultiWriteTransaction {
 		if let Some(v) = self.pending_query_pin.take() {
 			self.oracle.query.mark_finished(v);
 		}
-		let proposed = match self.propose_to_raft(commit_version, &deltas, flow_changes) {
-			Ok(proposed) => proposed,
-			Err(err) => {
-				self.oracle.done_commit(commit_version);
-				return Err(err);
-			}
-		};
-		let flow_changes = match proposed {
-			Ok(version) => return Ok(version),
-			Err(flow_changes) => flow_changes,
-		};
 		self.discard();
 		self.publish(commit_version, deltas, flow_changes);
 		Ok(commit_version)
-	}
-
-	#[cfg(not(target_arch = "wasm32"))]
-	#[inline]
-	fn propose_to_raft(
-		&mut self,
-		commit_version: CommitVersion,
-		deltas: &CowVec<Delta>,
-		flow_changes: Vec<Change>,
-	) -> Result<core::result::Result<CommitVersion, Vec<Change>>> {
-		let raft_handle = self.engine.raft.read().clone();
-		let Some(raft) = raft_handle else {
-			return Ok(Err(flow_changes));
-		};
-		let cmd = Command::WriteMulti {
-			deltas: deltas.to_vec(),
-			version: commit_version,
-			changes: flow_changes,
-		};
-		let propose_result = raft.propose(cmd);
-		self.oracle.done_commit(commit_version);
-		self.discard();
-		match propose_result {
-			Ok(_) => Ok(Ok(commit_version)),
-			Err(e) => Err(TransactionError::RaftProposeFailed {
-				message: e.to_string(),
-			}
-			.into()),
-		}
-	}
-
-	#[cfg(target_arch = "wasm32")]
-	#[inline]
-	fn propose_to_raft(
-		&mut self,
-		_commit_version: CommitVersion,
-		_deltas: &CowVec<Delta>,
-		flow_changes: Vec<Change>,
-	) -> Result<core::result::Result<CommitVersion, Vec<Change>>> {
-		Ok(Err(flow_changes))
 	}
 
 	#[inline]

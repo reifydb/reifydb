@@ -318,10 +318,6 @@ where
 		self.command.mark_finished(version);
 	}
 
-	pub(crate) fn advance_version_for_replica(&self, version: CommitVersion) {
-		self.clock.advance_to(version);
-	}
-
 	pub(crate) fn advance_unchecked(
 		&self,
 		version: CommitVersion,
@@ -747,7 +743,7 @@ mod tests {
 		assert_eq!(commit_v_b, CommitVersion(50));
 
 		// Skip the clock forward so T_a lands in window @ 500 with a bloom disjoint from window @ 0.
-		oracle.advance_version_for_replica(CommitVersion(749));
+		oracle.clock.advance_to(CommitVersion(749));
 
 		let mut conflicts_a = ConflictManager::new();
 		conflicts_a.mark_write(&key_alpha);

@@ -20,7 +20,7 @@ use reifydb_core::{
 	key::operator_state::{GroupStateKey, KeyspaceId, OperatorStateKey, node_prefix},
 	metrics::scan::ScanCounters,
 };
-use reifydb_store_operator::{store::StateLastIter, types::JOIN_EXPIRY_VALUE_BYTES};
+use reifydb_store_operator::{store::state::StateLastIter, types::JOIN_EXPIRY_VALUE_BYTES};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{Span, field, instrument};

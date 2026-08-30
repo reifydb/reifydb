@@ -139,18 +139,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(series) = self.cache.find_series_at(id, rep.version()) {
-					return Ok(Some(series));
-				}
-				if let Some(series) =
-					CatalogStore::find_series(&mut Transaction::Replica(&mut *rep), id)?
-				{
-					warn!("Series {:?} found in storage but not in CatalogCache", id);
-					return Ok(Some(series));
-				}
-				Ok(None)
-			}
 		}
 	}
 
@@ -239,24 +227,6 @@ impl Catalog {
 					namespace,
 					name,
 				)? {
-					return Ok(Some(series));
-				}
-				Ok(None)
-			}
-			Transaction::Replica(rep) => {
-				if let Some(series) = self.cache.find_series_by_name_at(namespace, name, rep.version())
-				{
-					return Ok(Some(series));
-				}
-				if let Some(series) = CatalogStore::find_series_by_name(
-					&mut Transaction::Replica(&mut *rep),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"Series '{}' in namespace {:?} found in storage but not in CatalogCache",
-						name, namespace
-					);
 					return Ok(Some(series));
 				}
 				Ok(None)

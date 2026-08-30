@@ -21,8 +21,6 @@ use reifydb_core::{
 	},
 	testing::ProfileConfig,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_runtime::{
 	actor::system::{ActorSpawner, ActorSystem},
 	context::{
@@ -32,8 +30,6 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::MultiStore;
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_sub_raft::driver::Raft;
 use reifydb_value::{Result, util::hex, value::duration::Duration};
 use tracing::{instrument, warn};
 use version::{StandardVersionProvider, VersionProvider};
@@ -43,14 +39,13 @@ use crate::{TransactionId, error::TransactionError, multi::types::*, single::Sin
 
 pub mod manager;
 pub mod read;
-pub mod replica;
 pub(crate) mod version;
 pub mod write;
 
 use reifydb_store_single::SingleStore;
 
 use crate::multi::{
-	MultiReadTransaction, MultiReplicaTransaction, MultiWriteTransaction,
+	MultiReadTransaction, MultiWriteTransaction,
 	lease::{VersionLeaseGuard, VersionLeases},
 	transaction::manager::TransactionManagerQuery,
 };
@@ -164,10 +159,6 @@ where
 		self.inner.done_commit(version);
 	}
 
-	pub fn advance_clock_to(&self, version: CommitVersion) {
-		self.inner.clock.advance_to(version);
-	}
-
 	#[instrument(name = "transaction::manager::done_until", level = "trace", skip(self))]
 	pub fn done_until(&self) -> CommitVersion {
 		self.inner.command.done_until()
@@ -187,8 +178,8 @@ where
 		self.inner.command.notify_on_mark(version, callback);
 	}
 
-	pub fn advance_version_for_replica(&self, version: CommitVersion) {
-		self.inner.advance_version_for_replica(version);
+	pub fn advance_version_to(&self, version: CommitVersion) {
+		self.inner.clock.advance_to(version);
 		self.inner.command.advance_to(version);
 		self.inner.query.advance_to(version);
 	}
@@ -218,8 +209,6 @@ pub struct Inner {
 	pub(crate) tm: TransactionManager<StandardVersionProvider>,
 	pub(crate) store: MultiStore,
 	pub(crate) event_bus: EventBus,
-	#[cfg(not(target_arch = "wasm32"))]
-	pub(crate) raft: RwLock<Option<Raft>>,
 }
 
 impl Deref for MultiTransaction {
@@ -263,8 +252,6 @@ impl Inner {
 			tm,
 			store,
 			event_bus,
-			#[cfg(not(target_arch = "wasm32"))]
-			raft: RwLock::new(None),
 		})
 	}
 
@@ -345,18 +332,9 @@ impl MultiTransaction {
 	pub fn config(&self) -> Arc<dyn GetConfig> {
 		self.0.tm.config()
 	}
-	#[cfg(not(target_arch = "wasm32"))]
-	pub fn set_raft(&self, handle: Raft) {
-		*self.0.raft.write() = Some(handle);
-	}
-
-	#[cfg(not(target_arch = "wasm32"))]
-	pub fn clear_raft(&self) {
-		*self.0.raft.write() = None;
-	}
 
 	pub fn advance_version_to(&self, version: CommitVersion) {
-		self.0.tm.advance_version_for_replica(version);
+		self.0.tm.advance_version_to(version);
 	}
 
 	pub fn bootstrapping_completed(&self) {
@@ -402,11 +380,6 @@ impl MultiTransaction {
 	#[instrument(name = "transaction::begin_command", level = "debug", skip(self))]
 	pub fn begin_command(&self) -> Result<MultiWriteTransaction> {
 		MultiWriteTransaction::new(self.clone())
-	}
-
-	#[instrument(name = "transaction::begin_replica", level = "debug", skip(self), fields(version = %version.0))]
-	pub fn begin_replica(&self, version: CommitVersion) -> Result<MultiReplicaTransaction> {
-		MultiReplicaTransaction::new(self.clone(), version)
 	}
 }
 

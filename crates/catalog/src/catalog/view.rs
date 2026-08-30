@@ -131,18 +131,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(view) = self.cache.find_view_at(id, rep.version()) {
-					return Ok(Some(view));
-				}
-
-				if let Some(view) = CatalogStore::find_view(&mut Transaction::Replica(&mut *rep), id)? {
-					warn!("View with ID {:?} found in storage but not in CatalogCache", id);
-					return Ok(Some(view));
-				}
-
-				Ok(None)
-			}
 		}
 	}
 
@@ -236,25 +224,6 @@ impl Catalog {
 				)? {
 					return Ok(Some(view));
 				}
-				Ok(None)
-			}
-			Transaction::Replica(rep) => {
-				if let Some(view) = self.cache.find_view_by_name_at(namespace, name, rep.version()) {
-					return Ok(Some(view));
-				}
-
-				if let Some(view) = CatalogStore::find_view_by_name(
-					&mut Transaction::Replica(&mut *rep),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"View '{}' in namespace {:?} found in storage but not in CatalogCache",
-						name, namespace
-					);
-					return Ok(Some(view));
-				}
-
 				Ok(None)
 			}
 		}

@@ -161,9 +161,8 @@ pub mod tests {
 
 	#[test]
 	fn delta_log_sourcing_cancels_an_insert_delete_pair() {
-		// Pinned divergence: the primary path retains both writes and cancels them, while the
-		// replica path (next test) sees only the Remove and emits a tombstone for the same
-		// transaction. The two must eventually agree, so any unification has to be deliberate.
+		// The two sourcing paths must eventually agree: delta-log cancels the pair, pending-writes emits a
+		// tombstone.
 		let from_delta_log = vec![
 			Delta::Set {
 				key: make_key("key_a"),
@@ -174,7 +173,7 @@ pub mod tests {
 
 		let optimized = optimize_deltas(from_delta_log, &HashSet::new());
 
-		assert!(optimized.is_empty(), "the primary path sees both writes and cancels them");
+		assert!(optimized.is_empty(), "the delta-log path sees both writes and cancels them");
 	}
 
 	#[test]
@@ -186,7 +185,7 @@ pub mod tests {
 		assert_eq!(
 			optimized.len(),
 			1,
-			"the replica path only retains the latest write per key, so the Set is gone before \
+			"the pending-writes path only retains the latest write per key, so the Set is gone before \
 			 optimize_deltas runs and the Remove survives as a tombstone"
 		);
 		assert!(matches!(optimized[0], Delta::Remove { .. }));

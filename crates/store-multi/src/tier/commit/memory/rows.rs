@@ -49,7 +49,6 @@ impl RowMap {
 			} else {
 				self.historical_bytes = self.historical_bytes.saturating_sub(replaced_bytes);
 			}
-		} else {
 		}
 
 		if let Some(demoted) = demoted_bytes {

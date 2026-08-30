@@ -13,8 +13,6 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_cdc::storage::CdcStorage;
-#[cfg(feature = "sub_replication")]
-use reifydb_sub_replication::replica::watermark::ReplicaWatermark;
 use reifydb_value::{Result, value::duration::Duration};
 
 use crate::Database;
@@ -59,15 +57,6 @@ impl<'a> Watermarks<'a> {
 		})
 	}
 
-	#[cfg(feature = "sub_replication")]
-	pub fn replica(&self) -> Option<ReplicaWatermarks<'a>> {
-		let watermark = self.db.engine().ioc().resolve::<ReplicaWatermark>().ok()?;
-		Some(ReplicaWatermarks {
-			watermark,
-			_marker: PhantomData,
-		})
-	}
-
 	/// The only fallible read is `tx().current()`.
 	pub fn snapshot(&self) -> Result<WatermarkSnapshot> {
 		let tx = self.tx();
@@ -83,10 +72,6 @@ impl<'a> Watermarks<'a> {
 				consumer: cdc.consumer(),
 			},
 			flow: self.flow().map(|f| f.all()),
-			#[cfg(feature = "sub_replication")]
-			replica: self.replica().map(|r| r.current()),
-			#[cfg(not(feature = "sub_replication"))]
-			replica: None,
 		})
 	}
 }
@@ -97,7 +82,7 @@ pub struct TxWatermarks<'a> {
 
 impl TxWatermarks<'_> {
 	/// Highest committed version on the engine. Advances on every successful
-	/// commit, regardless of CDC or replication.
+	/// commit, regardless of CDC.
 	pub fn current(&self) -> Result<CommitVersion> {
 		self.db.engine().current_version()
 	}
@@ -207,26 +192,11 @@ impl SubscriptionWatermarks<'_> {
 	}
 }
 
-#[cfg(feature = "sub_replication")]
-pub struct ReplicaWatermarks<'a> {
-	watermark: ReplicaWatermark,
-	_marker: PhantomData<&'a Database>,
-}
-
-#[cfg(feature = "sub_replication")]
-impl ReplicaWatermarks<'_> {
-	/// Last commit version successfully applied by the replica applier.
-	pub fn current(&self) -> CommitVersion {
-		self.watermark.get()
-	}
-}
-
 #[derive(Debug, Clone)]
 pub struct WatermarkSnapshot {
 	pub tx: TxSnapshot,
 	pub cdc: CdcSnapshot,
 	pub flow: Option<Vec<FlowWatermarkRow>>,
-	pub replica: Option<CommitVersion>,
 }
 
 #[derive(Debug, Clone, Copy)]

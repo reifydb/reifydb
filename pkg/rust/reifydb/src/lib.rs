@@ -11,8 +11,6 @@ mod context;
 mod database;
 pub mod event;
 mod health;
-#[cfg(feature = "sub_raft")]
-pub mod raft;
 mod session;
 #[cfg(feature = "sub_flow")]
 mod subscribe;
@@ -90,10 +88,6 @@ pub use reifydb_sub_api as sub;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
 pub use reifydb_sub_metrics as sub_metrics;
-#[cfg(feature = "sub_raft")]
-pub use reifydb_sub_raft as sub_raft;
-#[cfg(feature = "sub_replication")]
-pub use reifydb_sub_replication as sub_replication;
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
 #[cfg(feature = "sub_server")]

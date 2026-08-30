@@ -89,12 +89,6 @@ impl Catalog {
 				}
 				CatalogStore::find_column_snapshot(&mut Transaction::Test(Box::new(t.reborrow())), id)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(snap) = self.cache.find_column_snapshot_at(id, rep.version()) {
-					return Ok(Some(snap));
-				}
-				CatalogStore::find_column_snapshot(&mut Transaction::Replica(&mut *rep), id)
-			}
 		}
 	}
 
@@ -161,14 +155,6 @@ impl Catalog {
 				series_id,
 				bucket_start,
 			),
-			Transaction::Replica(rep) => Ok(self
-				.cache
-				.find_column_snapshot_for_series_bucket_at(series_id, bucket_start, rep.version())
-				.or(CatalogStore::find_column_snapshot_for_series_bucket(
-					&mut Transaction::Replica(&mut *rep),
-					series_id,
-					bucket_start,
-				)?)),
 		}
 	}
 
@@ -182,7 +168,6 @@ impl Catalog {
 			Transaction::Command(cmd) => cmd.version(),
 			Transaction::Admin(admin) => admin.version(),
 			Transaction::Query(qry) => qry.version(),
-			Transaction::Replica(rep) => rep.version(),
 			Transaction::Test(_) => {
 				return CatalogStore::find_latest_column_snapshot_for_table(txn, table_id);
 			}
@@ -203,7 +188,6 @@ impl Catalog {
 			Transaction::Command(cmd) => Some(cmd.version()),
 			Transaction::Admin(admin) => Some(admin.version()),
 			Transaction::Query(qry) => Some(qry.version()),
-			Transaction::Replica(rep) => Some(rep.version()),
 			Transaction::Test(_) => None,
 		};
 		if let Some(version) = version_opt {
@@ -225,7 +209,6 @@ impl Catalog {
 			Transaction::Command(cmd) => Some(cmd.version()),
 			Transaction::Admin(admin) => Some(admin.version()),
 			Transaction::Query(qry) => Some(qry.version()),
-			Transaction::Replica(rep) => Some(rep.version()),
 			Transaction::Test(_) => None,
 		};
 		if let Some(version) = version_opt {

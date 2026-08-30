@@ -23,10 +23,6 @@ use reifydb_sub_api::subsystem::SubsystemFactory;
 use reifydb_sub_flow::builder::FlowConfigurator;
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_sub_metrics::profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
-#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
-use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
-#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
-use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
@@ -93,8 +89,6 @@ pub struct EmbeddedBuilder {
 	tracing_configurator: Option<Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static>>,
-	#[cfg(feature = "sub_replication")]
-	replication_factory: Option<Box<dyn SubsystemFactory>>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
 	auth_providers: Vec<Box<dyn AuthenticationProvider>>,
 	migrations: Option<MigrationSource>,
@@ -121,8 +115,6 @@ impl EmbeddedBuilder {
 			tracing_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
-			#[cfg(feature = "sub_replication")]
-			replication_factory: None,
 			auth_configurator: None,
 			auth_providers: Vec::new(),
 			migrations: None,
@@ -321,11 +313,6 @@ impl EmbeddedBuilder {
 			builder = builder.with_flow(configurator);
 		}
 
-		#[cfg(feature = "sub_replication")]
-		if let Some(factory) = self.replication_factory {
-			builder = builder.add_replication_factory(factory);
-		}
-
 		for factory in self.subsystem_factories {
 			builder = builder.add_subsystem_factory(factory);
 		}
@@ -370,16 +357,6 @@ impl WithSubsystem for EmbeddedBuilder {
 		F: FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static,
 	{
 		self.subsystem_factories.push(Box::new(ProfilerSubsystemFactory::with_configurator(configurator)));
-		self
-	}
-
-	#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
-	fn with_replication<F, C>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(ReplicationConfigurator) -> C + Send + 'static,
-		C: Into<ReplicationConfig> + 'static,
-	{
-		self.replication_factory = Some(Box::new(ReplicationSubsystemFactory::new(configurator)));
 		self
 	}
 

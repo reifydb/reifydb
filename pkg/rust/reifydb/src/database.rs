@@ -55,8 +55,6 @@ use reifydb_value::{
 use reifydb_value::{error::Error, value::Value};
 use tracing::{info, instrument, warn};
 
-#[cfg(feature = "sub_raft")]
-use crate::raft::RaftSubsystem;
 #[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 use crate::subscribe::Subscription;
 use crate::{
@@ -111,11 +109,6 @@ impl Database {
 	#[cfg(all(feature = "sub_server_http", not(reifydb_single_threaded)))]
 	pub fn sub_server_http(&self) -> Option<&HttpSubsystem> {
 		self.subsystem::<HttpSubsystem>()
-	}
-
-	#[cfg(feature = "sub_raft")]
-	pub fn sub_raft(&self) -> Option<&RaftSubsystem> {
-		self.subsystem::<RaftSubsystem>()
 	}
 
 	#[cfg(all(feature = "sub_server_ws", not(reifydb_single_threaded)))]

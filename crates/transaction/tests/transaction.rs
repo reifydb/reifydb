@@ -41,10 +41,7 @@ use reifydb_testing::testscript::{
 	runner::{Runner, run_path},
 };
 use reifydb_transaction::{
-	multi::transaction::{
-		MultiTransaction, read::MultiReadTransaction, replica::MultiReplicaTransaction,
-		write::MultiWriteTransaction,
-	},
+	multi::transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction},
 	single::SingleTransaction,
 };
 use reifydb_value::util::cowvec::CowVec;
@@ -52,7 +49,6 @@ use reifydb_value::util::cowvec::CowVec;
 enum TransactionHandle {
 	Read(MultiReadTransaction),
 	Write(MultiWriteTransaction),
-	Replica(MultiReplicaTransaction),
 }
 use reifydb_transaction::multi::RangeScope;
 use test_each_file::test_each_path;
@@ -147,23 +143,6 @@ impl<'a> Runner for MvccRunner {
 				self.transactions.insert(name.to_string(), t);
 			}
 
-			// tx: begin_replica version=VERSION
-			"begin_replica" => {
-				let name = Self::tx_name(&command.prefix)?;
-				if self.transactions.contains_key(name) {
-					return Err(format!("tx {name} already exists").into());
-				}
-				let mut args = command.consume_args();
-				let version: u64 =
-					args.lookup_parse("version")?.ok_or("version required for begin_replica")?;
-				args.reject_rest()?;
-				let t = TransactionHandle::Replica(
-					MultiReplicaTransaction::new(self.engine.clone(), CommitVersion(version))
-						.unwrap(),
-				);
-				self.transactions.insert(name.to_string(), t);
-			}
-
 			// tx: commit
 			"commit" => {
 				let name = Self::tx_name(&command.prefix)?;
@@ -177,36 +156,7 @@ impl<'a> Runner for MvccRunner {
 					TransactionHandle::Write(mut tx) => {
 						tx.commit(vec![])?;
 					}
-					TransactionHandle::Replica(_) => {
-						unreachable!("use commit_replica for replica transactions")
-					}
 				}
-			}
-
-			// tx: commit_replica
-			"commit_replica" => {
-				let name = Self::tx_name(&command.prefix)?;
-				let t = self.transactions.remove(name).ok_or(format!("unknown tx {name}"))?;
-				command.consume_args().reject_rest()?;
-
-				match t {
-					TransactionHandle::Replica(mut tx) => {
-						tx.commit_at_version()?;
-					}
-					_ => {
-						return Err("commit_replica only works on replica transactions".into());
-					}
-				}
-			}
-
-			// advance_replica version=VERSION
-			"advance_replica" => {
-				Self::no_tx(command)?;
-				let mut args = command.consume_args();
-				let version: u64 =
-					args.lookup_parse("version")?.ok_or("version required for advance_replica")?;
-				args.reject_rest()?;
-				self.engine.advance_version_for_replica(CommitVersion(version));
 			}
 
 			// tx: remove KEY...
@@ -221,9 +171,6 @@ impl<'a> Runner for MvccRunner {
 							unreachable!("can not call remove on rx")
 						}
 						TransactionHandle::Write(tx) => {
-							tx.remove(&key).unwrap();
-						}
-						TransactionHandle::Replica(tx) => {
 							tx.remove(&key).unwrap();
 						}
 					}
@@ -245,9 +192,6 @@ impl<'a> Runner for MvccRunner {
 						TransactionHandle::Write(tx) => {
 							tx.remove_with_pre(&key, row).unwrap();
 						}
-						TransactionHandle::Replica(tx) => {
-							tx.remove_with_pre(&key, row).unwrap();
-						}
 					}
 				}
 				args.reject_rest()?;
@@ -259,7 +203,6 @@ impl<'a> Runner for MvccRunner {
 				let version = match t {
 					TransactionHandle::Read(rx) => rx.version(),
 					TransactionHandle::Write(tx) => tx.version(),
-					TransactionHandle::Replica(tx) => tx.version(),
 				};
 				writeln!(output, "{}", version)?;
 			}
@@ -279,9 +222,6 @@ impl<'a> Runner for MvccRunner {
 							rx.get(&key).map(|r| r.and_then(|tv| Some(tv.bytes().to_vec())))
 						}
 						TransactionHandle::Write(tx) => {
-							tx.get(&key).map(|r| r.and_then(|tv| Some(tv.bytes().to_vec())))
-						}
-						TransactionHandle::Replica(tx) => {
 							tx.get(&key).map(|r| r.and_then(|tv| Some(tv.bytes().to_vec())))
 						}
 					}
@@ -327,9 +267,6 @@ impl<'a> Runner for MvccRunner {
 					TransactionHandle::Write(mut tx) => {
 						tx.rollback()?;
 					}
-					TransactionHandle::Replica(mut tx) => {
-						tx.rollback()?;
-					}
 				}
 			}
 
@@ -353,15 +290,6 @@ impl<'a> Runner for MvccRunner {
 						}
 					}
 					TransactionHandle::Write(tx) => {
-						let items: Vec<_> = tx
-							.range(EncodedKeyRange::all(), RangeScope::All, 1024)
-							.collect::<Result<Vec<_>, _>>()
-							.unwrap();
-						for item in items {
-							kvs.push((item.key.clone(), item.bytes.to_vec()));
-						}
-					}
-					TransactionHandle::Replica(tx) => {
 						let items: Vec<_> = tx
 							.range(EncodedKeyRange::all(), RangeScope::All, 1024)
 							.collect::<Result<Vec<_>, _>>()
@@ -422,21 +350,6 @@ impl<'a> Runner for MvccRunner {
 							print_rx(&mut output, items.into_iter())
 						}
 					}
-					TransactionHandle::Replica(tx) => {
-						if !reverse {
-							let items: Vec<_> = tx
-								.range(range, RangeScope::All, 1024)
-								.collect::<Result<Vec<_>, _>>()
-								.unwrap();
-							print_rx(&mut output, items.into_iter())
-						} else {
-							let items: Vec<_> = tx
-								.range_rev(range, RangeScope::All, 1024)
-								.collect::<Result<Vec<_>, _>>()
-								.unwrap();
-							print_rx(&mut output, items.into_iter())
-						}
-					}
 				}
 				self.transactions.insert(name.to_string(), t);
 			}
@@ -473,15 +386,6 @@ impl<'a> Runner for MvccRunner {
 							print_rx(&mut output, batch.items.into_iter())
 						}
 					}
-					TransactionHandle::Replica(tx) => {
-						if !reverse {
-							let batch = tx.prefix(&prefix).unwrap();
-							print_rx(&mut output, batch.items.into_iter())
-						} else {
-							let batch = tx.prefix_rev(&prefix).unwrap();
-							print_rx(&mut output, batch.items.into_iter())
-						}
-					}
 				}
 				self.transactions.insert(name.to_string(), t);
 			}
@@ -498,9 +402,6 @@ impl<'a> Runner for MvccRunner {
 							unreachable!("can not call set on rx")
 						}
 						TransactionHandle::Write(tx) => {
-							tx.set(&key, row).unwrap();
-						}
-						TransactionHandle::Replica(tx) => {
 							tx.set(&key, row).unwrap();
 						}
 					}
@@ -528,10 +429,6 @@ impl<'a> Runner for MvccRunner {
 					TransactionHandle::Write(tx) => {
 						tx.read_as_of_version_inclusive(version)?;
 					}
-					TransactionHandle::Replica(_) => {
-						return Err("set_as_of_inclusive not supported on Replica transaction"
-							.into());
-					}
 				}
 			}
 
@@ -554,10 +451,6 @@ impl<'a> Runner for MvccRunner {
 					}
 					TransactionHandle::Write(tx) => {
 						tx.read_as_of_version_exclusive(version);
-					}
-					TransactionHandle::Replica(_) => {
-						return Err("set_as_of_exclusive not supported on Replica transaction"
-							.into());
 					}
 				}
 			}

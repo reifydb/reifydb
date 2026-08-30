@@ -6,5 +6,4 @@ pub mod cdc;
 pub mod flow;
 pub mod metrics;
 pub mod pending;
-pub mod replication;
 pub mod server;

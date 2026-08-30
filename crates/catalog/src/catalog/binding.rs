@@ -80,12 +80,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(binding) = self.cache.find_binding_at(id, rep.version()) {
-					return Ok(Some(binding));
-				}
-				Ok(None)
-			}
 		}
 	}
 
@@ -153,14 +147,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(binding) =
-					self.cache.find_binding_by_name_at(namespace, name, rep.version())
-				{
-					return Ok(Some(binding));
-				}
-				Ok(None)
-			}
 		}
 	}
 
@@ -210,9 +196,6 @@ impl Catalog {
 
 				bindings.retain(|b| !t.inner.is_binding_deleted(b.id));
 				Ok(bindings)
-			}
-			Transaction::Replica(rep) => {
-				Ok(self.cache.list_bindings_for_procedure_at(procedure_id, rep.version()))
 			}
 		}
 	}

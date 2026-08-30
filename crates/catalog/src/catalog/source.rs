@@ -135,26 +135,6 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(source) = self.cache.find_source_by_name_at(namespace, name, rep.version())
-				{
-					return Ok(Some(source));
-				}
-
-				if let Some(source) = CatalogStore::find_source_by_name(
-					&mut Transaction::Replica(&mut *rep),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"Source '{}' in namespace {:?} found in storage but not in CatalogCache",
-						name, namespace
-					);
-					return Ok(Some(source));
-				}
-
-				Ok(None)
-			}
 		}
 	}
 

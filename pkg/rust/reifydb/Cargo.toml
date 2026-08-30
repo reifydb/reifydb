@@ -57,9 +57,7 @@ reifydb-sub-server = { workspace = true, optional = true }
 reifydb-sub-server-grpc = { workspace = true, optional = true }
 reifydb-sub-server-http = { workspace = true, optional = true }
 reifydb-sub-server-otel = { workspace = true, optional = true }
-reifydb-sub-raft = { workspace = true, optional = true }
 reifydb-sub-server-ws = { workspace = true, optional = true }
-reifydb-sub-replication = { workspace = true, optional = true }
 reifydb-testing = { workspace = true, optional = true }
 reifydb-testing-chaos = { workspace = true, optional = true, features = ["operator"] }
 reifydb-testing-flow = { workspace = true, optional = true }
@@ -100,9 +98,7 @@ sub_server_admin = ["dep:reifydb-sub-server-admin", "sub_server"]
 sub_server_grpc = ["dep:reifydb-sub-server-grpc", "sub_server"]
 sub_server_http = ["dep:reifydb-sub-server-http", "sub_server"]
 sub_server_otel = ["dep:reifydb-sub-server-otel", "dep:opentelemetry", "dep:tracing-opentelemetry", "sub_server"]
-sub_raft = ["dep:reifydb-sub-raft"]
 sub_server_ws = ["dep:reifydb-sub-server-ws", "sub_server"]
-sub_replication = ["dep:reifydb-sub-replication"]
 testing = ["reifydb-core/testing", "dep:reifydb-testing", "dep:reifydb-testing-chaos", "dep:reifydb-testing-sdk", "dep:reifydb-test-harness"]
 
 [[test]]

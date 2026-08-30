@@ -63,12 +63,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(test) = self.cache.find_test_at(id, rep.version()) {
-					return Ok(Some(test));
-				}
-				Ok(None)
-			}
 		}
 	}
 
@@ -117,12 +111,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Replica(rep) => {
-				if let Some(test) = self.cache.find_test_by_name_at(namespace, name, rep.version()) {
-					return Ok(Some(test));
-				}
-				Ok(None)
-			}
 		}
 	}
 
@@ -165,9 +153,6 @@ impl Catalog {
 				tests.retain(|tst| !t.inner.is_test_deleted(tst.id));
 				Ok(tests)
 			}
-			Transaction::Replica(rep) => {
-				Ok(self.cache.list_tests_in_namespace_at(namespace, rep.version()))
-			}
 		}
 	}
 
@@ -202,7 +187,6 @@ impl Catalog {
 				tests.retain(|tst| !t.inner.is_test_deleted(tst.id));
 				Ok(tests)
 			}
-			Transaction::Replica(rep) => Ok(self.cache.list_all_tests_at(rep.version())),
 		}
 	}
 
