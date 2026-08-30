@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, GroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
 	state::timer::TimerKind,
 };
 use reifydb_flow::operator::state::reclaim::ReclaimOutcome;
@@ -26,22 +26,26 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeyBound<'a> {
-	Included(&'a GroupStateKey),
-	Excluded(&'a GroupStateKey),
+pub enum GuestBound<'a> {
+	Unbounded,
+	Included(&'a [u8]),
+	Excluded(&'a [u8]),
 }
 
-impl<'a> KeyBound<'a> {
-	pub fn key(&self) -> &'a GroupStateKey {
-		match *self {
-			Self::Included(key) | Self::Excluded(key) => key,
+impl<'a> GuestBound<'a> {
+	pub fn of(bound: &'a Bound<Vec<u8>>) -> Self {
+		match bound {
+			Bound::Unbounded => Self::Unbounded,
+			Bound::Included(suffix) => Self::Included(suffix),
+			Bound::Excluded(suffix) => Self::Excluded(suffix),
 		}
 	}
 
-	pub fn to_encoded(&self) -> Bound<EncodedKey> {
-		match *self {
-			Self::Included(key) => Bound::Included(key.as_encoded().clone()),
-			Self::Excluded(key) => Bound::Excluded(key.as_encoded().clone()),
+	pub fn to_bound(self) -> Bound<&'a [u8]> {
+		match self {
+			Self::Unbounded => Bound::Unbounded,
+			Self::Included(suffix) => Bound::Included(suffix),
+			Self::Excluded(suffix) => Bound::Excluded(suffix),
 		}
 	}
 }
@@ -68,7 +72,13 @@ pub trait GuestState {
 	fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> Result<Vec<(GroupStateKey, T)>>;
 	fn get_many<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, T)>>;
 	fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>>;
-	fn range<T: OperatorState>(&self, start: KeyBound<'_>, end: KeyBound<'_>) -> Result<Vec<(GroupStateKey, T)>>;
+	fn range<T: OperatorState>(
+		&self,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
+	) -> Result<Vec<(GroupStateKey, T)>>;
 	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>>;
 
 	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()>;
@@ -81,15 +91,23 @@ pub trait GuestState {
 
 	fn range_bytes_visit(
 		&self,
-		start: KeyBound<'_>,
-		end: KeyBound<'_>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()>;
 
-	fn last_bytes(&self, start: KeyBound<'_>, end: KeyBound<'_>) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+	fn last_bytes(
+		&self,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
+	) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 		let mut last = None;
-		self.range_bytes_visit(start, end, None, &mut |key, payload| {
+		self.range_bytes_visit(group, keyspace, start, end, None, &mut |key, payload| {
 			last = Some((key, payload));
 			Ok(())
 		})?;

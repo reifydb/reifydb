@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, GroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
 	state::timer::TimerKind,
 };
 use reifydb_flow::operator::state::reclaim::ReclaimOutcome;
@@ -25,7 +25,7 @@ use crate::{
 	error::Result,
 	flow::operator::{
 		column::row::Row,
-		context::{GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit, KeyBound},
+		context::{GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit, GuestBound},
 		dictionary::Dictionary,
 		diff::DiffStart,
 		extern_c::{
@@ -216,8 +216,14 @@ impl GuestState for State<'_> {
 	fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>> {
 		State::keys_with_prefix(self, prefix)
 	}
-	fn range<T: OperatorState>(&self, start: KeyBound<'_>, end: KeyBound<'_>) -> Result<Vec<(GroupStateKey, T)>> {
-		State::range(self, start, end)
+	fn range<T: OperatorState>(
+		&self,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
+	) -> Result<Vec<(GroupStateKey, T)>> {
+		State::range(self, group, keyspace, start, end)
 	}
 
 	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
@@ -238,12 +244,14 @@ impl GuestState for State<'_> {
 
 	fn range_bytes_visit(
 		&self,
-		start: KeyBound<'_>,
-		end: KeyBound<'_>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
-		State::range_bytes_visit(self, start, end, limit, visit)
+		State::range_bytes_visit(self, group, keyspace, start, end, limit, visit)
 	}
 }
 

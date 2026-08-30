@@ -8,7 +8,8 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
-	key::operator::state::{GroupId, GroupStateKey},
+	interface::catalog::flow::OperatorId,
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range_in},
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{
@@ -289,10 +290,42 @@ pub(super) extern "C" fn host_state_get_many(
 	}
 }
 
+fn guest_may_address(_operator: OperatorId, keyspace: KeyspaceId) -> bool {
+	keyspace.is_guest_owned()
+}
+
+/// # Safety
+/// `ptr` must be null, or valid for reads of `len` bytes.
+unsafe fn suffix_bound(ptr: *const u8, len: usize, bound_type: u8) -> Option<Bound<Vec<u8>>> {
+	let suffix = || match len {
+		0 => Some(Vec::new()),
+		// SAFETY: forwards this function's own contract; `len` is non-zero here, so a null `ptr`
+		// cannot be valid and is refused rather than read.
+		_ if !ptr.is_null() => Some(unsafe { from_raw_parts(ptr, len) }.to_vec()),
+		_ => None,
+	};
+	match bound_type {
+		BOUND_UNBOUNDED => Some(Bound::Unbounded),
+		BOUND_INCLUDED => suffix().map(Bound::Included),
+		BOUND_EXCLUDED => suffix().map(Bound::Excluded),
+		_ => None,
+	}
+}
+
+fn bound_as_slice(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
+	match bound {
+		Bound::Unbounded => Bound::Unbounded,
+		Bound::Included(suffix) => Bound::Included(suffix),
+		Bound::Excluded(suffix) => Bound::Excluded(suffix),
+	}
+}
+
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_range(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
+	group: u128,
+	keyspace: u8,
 	start_ptr: *const u8,
 	start_len: usize,
 	start_bound_type: u8,
@@ -306,53 +339,31 @@ pub(super) extern "C" fn host_state_range(
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: `ctx` and `iterator_out` are null-checked above, and each bound pointer is null-checked
-	// on the arm that reads it; the guest must pass back the ExternCContextRaw the host handed it for this
-	// call, bound pointers valid for their stated lengths, and an `iterator_out` valid for one pointer
-	// write; the handle is freed via state.iterator_free.
+	// SAFETY: `ctx` and `iterator_out` are null-checked above, and each bound pointer is read only by
+	// suffix_bound, which null-checks it on the arm that reads it; the guest must pass back the
+	// ExternCContextRaw the host handed it for this call, bound pointers valid for their stated lengths,
+	// and an `iterator_out` valid for one pointer write; the handle is freed via state.iterator_free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
+		let keyspace = KeyspaceId(keyspace);
+		if !guest_may_address(OperatorId(ctx_handle.operator_id), keyspace) {
+			return EXTERN_C_ERROR_INTERNAL;
+		}
 		let host = get_host_mut(ctx_handle);
 
-		let start_bound = match start_bound_type {
-			BOUND_UNBOUNDED => return EXTERN_C_ERROR_INTERNAL,
-			BOUND_INCLUDED | BOUND_EXCLUDED => {
-				if start_ptr.is_null() {
-					return EXTERN_C_ERROR_NULL_PTR;
-				}
-				let Some(key) = state_key(start_ptr, start_len) else {
-					return EXTERN_C_ERROR_INTERNAL;
-				};
-				let key = key.into_encoded();
-				if start_bound_type == BOUND_INCLUDED {
-					Bound::Included(key)
-				} else {
-					Bound::Excluded(key)
-				}
-			}
-			_ => return EXTERN_C_ERROR_INTERNAL,
+		let Some(start_bound) = suffix_bound(start_ptr, start_len, start_bound_type) else {
+			return EXTERN_C_ERROR_INTERNAL;
+		};
+		let Some(end_bound) = suffix_bound(end_ptr, end_len, end_bound_type) else {
+			return EXTERN_C_ERROR_INTERNAL;
 		};
 
-		let end_bound = match end_bound_type {
-			BOUND_UNBOUNDED => return EXTERN_C_ERROR_INTERNAL,
-			BOUND_INCLUDED | BOUND_EXCLUDED => {
-				if end_ptr.is_null() {
-					return EXTERN_C_ERROR_NULL_PTR;
-				}
-				let Some(key) = state_key(end_ptr, end_len) else {
-					return EXTERN_C_ERROR_INTERNAL;
-				};
-				let key = key.into_encoded();
-				if end_bound_type == BOUND_INCLUDED {
-					Bound::Included(key)
-				} else {
-					Bound::Excluded(key)
-				}
-			}
-			_ => return EXTERN_C_ERROR_INTERNAL,
-		};
-
-		let range = EncodedKeyRange::new(start_bound, end_bound);
+		let range = keyspace_inner_range_in(
+			GroupId(group),
+			keyspace,
+			bound_as_slice(&start_bound),
+			bound_as_slice(&end_bound),
+		);
 		let result = host.state_range_limited(range, (limit != usize::MAX).then_some(limit));
 
 		match result {
@@ -715,7 +726,11 @@ pub(super) extern "C" fn host_get_or_create_row_numbers_for_pairs(
 
 #[cfg(test)]
 mod join_row_expiry_guard_tests {
-	use std::{cell::Cell, iter::empty, rc::Rc};
+	use std::{
+		cell::{Cell, RefCell},
+		iter::empty,
+		rc::Rc,
+	};
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{
@@ -724,7 +739,13 @@ mod join_row_expiry_guard_tests {
 			catalog::{config::ConfigKey, flow::OperatorId},
 			store::MultiVersionRow,
 		},
-		key::operator::{keyspace::join::JoinRowMappingKey, state::{GroupId, KeyspaceId, OperatorStateKey}},
+		key::operator::{
+			keyspace::join::JoinRowMappingKey,
+			state::{
+				GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range,
+				keyspace_inner_range_split,
+			},
+		},
 		state::timer::{StateStore, TimerStore},
 	};
 	use reifydb_flow::{
@@ -754,6 +775,7 @@ mod join_row_expiry_guard_tests {
 	/// Records whether a write reached the host at all; the guard has to reject before that, not after.
 	struct RecordingHost {
 		reached: Rc<Cell<bool>>,
+		range: Rc<RefCell<Option<EncodedKeyRange>>>,
 	}
 
 	impl TimerStore for RecordingHost {
@@ -888,9 +910,11 @@ mod join_row_expiry_guard_tests {
 
 		fn state_range_limited(
 			&mut self,
-			_range: EncodedKeyRange,
+			range: EncodedKeyRange,
 			_limit: Option<usize>,
 		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+			self.reached.set(true);
+			*self.range.borrow_mut() = Some(range);
 			Ok(Vec::new())
 		}
 
@@ -978,14 +1002,118 @@ mod join_row_expiry_guard_tests {
 	}
 
 	fn with_context(call: impl FnOnce(*mut ExternCContextRaw) -> i32) -> (i32, bool) {
+		let (status, reached, _) = with_recording_context(call);
+		(status, reached)
+	}
+
+	fn with_recording_context(
+		call: impl FnOnce(*mut ExternCContextRaw) -> i32,
+	) -> (i32, bool, Option<EncodedKeyRange>) {
 		let reached = Rc::new(Cell::new(false));
+		let range = Rc::new(RefCell::new(None));
 		let mut recording = RecordingHost {
 			reached: Rc::clone(&reached),
+			range: Rc::clone(&range),
 		};
 		let mut host = ExternCHostContext::new(&mut recording);
 		let mut ctx = new_extern_c_context(&mut host, OperatorId(1), create_host_callbacks());
 		let status = call(&mut ctx as *mut ExternCContextRaw);
-		(status, reached.get())
+		let seen = range.borrow().clone();
+		(status, reached.get(), seen)
+	}
+
+	fn guest_range(
+		ctx: *mut ExternCContextRaw,
+		keyspace: KeyspaceId,
+		start: Option<&[u8]>,
+		end: Option<&[u8]>,
+	) -> i32 {
+		let mut iterator: *mut ExternCStateIterator = ptr::null_mut();
+		let (start_ptr, start_len, start_type) = match start {
+			None => (ptr::null(), 0, BOUND_UNBOUNDED),
+			Some(suffix) => (suffix.as_ptr(), suffix.len(), BOUND_INCLUDED),
+		};
+		let (end_ptr, end_len, end_type) = match end {
+			None => (ptr::null(), 0, BOUND_UNBOUNDED),
+			Some(suffix) => (suffix.as_ptr(), suffix.len(), BOUND_EXCLUDED),
+		};
+		host_state_range(
+			1,
+			ctx,
+			GROUP.0,
+			keyspace.0,
+			start_ptr,
+			start_len,
+			start_type,
+			end_ptr,
+			end_len,
+			end_type,
+			usize::MAX,
+			&mut iterator,
+		)
+	}
+
+	const GROUP: GroupId = GroupId(7);
+
+	#[test]
+	fn a_guest_range_naming_a_host_keyspace_is_refused() {
+		// The guard that only checked the two bound keys let a guest name its own keyspace at each end and
+		// still be served every host keyspace lying between them, because keys sort by group before
+		// keyspace. The keyspace is now a parameter, so it is the one thing the check has to look at.
+		let (status, reached, seen) =
+			with_recording_context(|ctx| guest_range(ctx, KeyspaceId::TIMER_WHEEL, None, None));
+
+		assert_eq!(status, EXTERN_C_ERROR_INTERNAL, "a guest must not be able to scan the timer wheel");
+		assert!(!reached, "and the refusal must land before the host is touched");
+		assert!(seen.is_none());
+	}
+
+	#[test]
+	fn a_guest_range_in_its_own_keyspace_reaches_the_host() {
+		// A guard keyed on anything wider than the one keyspace would silently break every guest operator.
+		let (status, reached, seen) =
+			with_recording_context(|ctx| guest_range(ctx, KeyspaceId::CUSTOM_NOT_CACHED, None, None));
+
+		assert_eq!(status, EXTERN_C_OK);
+		assert!(reached, "a guest keyspace must still reach the host");
+		assert!(seen.is_some());
+	}
+
+	#[test]
+	fn a_guest_range_cannot_widen_past_the_keyspace_it_names() {
+		// The invariant the leak violated: with both ends unbounded, the widest range a guest can ask for
+		// is still one keyspace of one group. Bounds no longer decide the span, so no choice of bounds can
+		// reach a neighbouring keyspace or a neighbouring group.
+		let (_, _, seen) =
+			with_recording_context(|ctx| guest_range(ctx, KeyspaceId::CUSTOM_NOT_CACHED, None, None));
+		let range = seen.expect("an allowed guest range must reach the host");
+
+		let whole = keyspace_inner_range(GROUP, KeyspaceId::CUSTOM_NOT_CACHED);
+		assert_eq!(range.start, whole.start, "an unbounded start is the keyspace's own first key");
+		assert_eq!(range.end, whole.end, "and an unbounded end is the keyspace's own last key");
+
+		let (group, keyspace, _, _) =
+			keyspace_inner_range_split(&range).expect("a guest range must confine to one keyspace");
+		assert_eq!(group, GROUP);
+		assert_eq!(keyspace, KeyspaceId::CUSTOM_NOT_CACHED);
+	}
+
+	#[test]
+	fn a_guest_range_narrows_inside_the_keyspace_it_names() {
+		// The companion to the widening test: suffix bounds still narrow, they just cannot escape. A guest
+		// that could not narrow would have to scan a whole keyspace to read one row.
+		let (status, _, seen) = with_recording_context(|ctx| {
+			guest_range(ctx, KeyspaceId::CUSTOM_NOT_CACHED, Some(&[1u8; 4]), Some(&[9u8; 4]))
+		});
+		let range = seen.expect("an allowed guest range must reach the host");
+
+		assert_eq!(status, EXTERN_C_OK);
+		let (group, keyspace, start, end) =
+			keyspace_inner_range_split(&range).expect("a guest range must confine to one keyspace");
+		assert_eq!(group, GROUP);
+		assert_eq!(keyspace, KeyspaceId::CUSTOM_NOT_CACHED);
+		assert_eq!(start, Bound::Included(vec![1u8; 4]));
+		assert_eq!(end, Bound::Excluded(vec![9u8; 4]));
 	}
 
 	#[test]

@@ -279,8 +279,7 @@ pub fn is_framed_inner(inner: &[u8]) -> bool {
 }
 
 pub fn is_guest_framed_inner(inner: &[u8]) -> bool {
-	inner.is_empty()
-		|| OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_guest_owned())
+	OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_guest_owned())
 }
 
 pub fn is_identity_framed_inner(inner: &[u8]) -> bool {
@@ -503,6 +502,65 @@ pub fn keyspace_inner_range(group: GroupId, keyspace: KeyspaceId) -> EncodedKeyR
 	EncodedKeyRange::prefix(&keyspace_inner_prefix(group, keyspace))
 }
 
+pub fn keyspace_inner_range_in(
+	group: GroupId,
+	keyspace: KeyspaceId,
+	start: Bound<&[u8]>,
+	end: Bound<&[u8]>,
+) -> EncodedKeyRange {
+	let prefix = keyspace_inner_prefix(group, keyspace);
+	let whole = EncodedKeyRange::prefix(&prefix);
+	let at = |suffix: &[u8]| {
+		let mut key = prefix.clone();
+		key.extend_from_slice(suffix);
+		EncodedKey::new(key)
+	};
+	let lower = match start {
+		Bound::Unbounded => whole.start.clone(),
+		Bound::Included(suffix) => Bound::Included(at(suffix)),
+		Bound::Excluded(suffix) => Bound::Excluded(at(suffix)),
+	};
+	let upper = match end {
+		Bound::Unbounded => whole.end.clone(),
+		Bound::Included(suffix) => Bound::Included(at(suffix)),
+		Bound::Excluded(suffix) => Bound::Excluded(at(suffix)),
+	};
+	EncodedKeyRange::new(lower, upper)
+}
+
+pub fn keyspace_inner_range_split(
+	range: &EncodedKeyRange,
+) -> Option<(GroupId, KeyspaceId, Bound<Vec<u8>>, Bound<Vec<u8>>)> {
+	let (group, keyspace, start) = match &range.start {
+		Bound::Included(key) => {
+			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
+			(group, keyspace, Bound::Included(suffix))
+		}
+		Bound::Excluded(key) => {
+			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
+			(group, keyspace, Bound::Excluded(suffix))
+		}
+		Bound::Unbounded => return None,
+	};
+	let whole = EncodedKeyRange::prefix(&keyspace_inner_prefix(group, keyspace));
+	let end = if range.end == whole.end {
+		Bound::Unbounded
+	} else {
+		match &range.end {
+			Bound::Included(key) => match OperatorStateKey::decode_inner(key.as_slice())? {
+				(g, k, suffix) if g == group && k == keyspace => Bound::Included(suffix),
+				_ => return None,
+			},
+			Bound::Excluded(key) => match OperatorStateKey::decode_inner(key.as_slice())? {
+				(g, k, suffix) if g == group && k == keyspace => Bound::Excluded(suffix),
+				_ => return None,
+			},
+			Bound::Unbounded => return None,
+		}
+	};
+	Some((group, keyspace, start, end))
+}
+
 pub const ROW_NUMBER_COUNTER_SUFFIX: &[u8] = b"rn";
 
 pub fn row_number_counter_key() -> GroupStateKey {
@@ -587,7 +645,7 @@ mod tests {
 		CacheTiers, EncodedKey, EncodedKeyRange, GroupId, GroupSet, KeySerializer, KeyspaceId,
 		OperatorStateKey, group_data_inner_range, group_data_of_inner, group_data_range,
 		group_identity_inner_range, group_identity_range, group_inner_prefix, group_inner_range, group_range,
-		is_framed_inner, keyspace_range, node_prefix, node_range,
+		GroupStateKey, is_framed_inner, is_guest_framed_inner, keyspace_range, node_prefix, node_range,
 	};
 	use crate::{interface::catalog::flow::OperatorId, key::EncodableKey};
 
@@ -720,6 +778,21 @@ mod tests {
 				"the empty key must sit outside group {group}'s range, not merely be unattributed"
 			);
 		}
+	}
+
+	#[test]
+	fn the_empty_key_is_not_guest_framing_even_though_it_is_host_framing() {
+		// the host reads an empty inner key as a sentinel sorting below every group, but a guest bound of
+		// zero length used to inherit that and open a scan at the very bottom of the operator's keyspace,
+		// sweeping every host keyspace on the way up; a guest key must name its keyspace or be refused
+		let empty: &[u8] = &[];
+		assert!(is_framed_inner(empty));
+		assert!(!is_guest_framed_inner(empty));
+		assert!(GroupStateKey::from_guest_framed(EncodedKey::new(Vec::new())).is_none());
+
+		assert!(is_guest_framed_inner(
+			OperatorStateKey::inner_encoded(GroupId(3), KeyspaceId::CUSTOM_NOT_CACHED, []).as_slice()
+		));
 	}
 
 	#[test]

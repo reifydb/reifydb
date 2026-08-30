@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Diff},
-	key::operator::state::{GroupId, GroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range_in},
 	state::timer::TimerKind,
 };
 use reifydb_flow::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
@@ -17,7 +17,7 @@ use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
 		column::{row::Row, sink::in_process::InProcessRowSink},
-		context::{GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit, KeyBound},
+		context::{GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit, GuestBound},
 		state::{decode_payload, encode_payload},
 	},
 };
@@ -180,10 +180,12 @@ impl GuestState for InProcessState<'_> {
 	}
 	fn range<T: OperatorState>(
 		&self,
-		start: KeyBound<'_>,
-		end: KeyBound<'_>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 	) -> SdkResult<Vec<(GroupStateKey, T)>> {
-		let range = EncodedKeyRange::new(start.to_encoded(), end.to_encoded());
+		let range = keyspace_inner_range_in(group, keyspace, start.to_bound(), end.to_bound());
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let rows = unsafe { (*self.host).state_range(range) }.map_err(to_sdk_err)?;
@@ -214,12 +216,14 @@ impl GuestState for InProcessState<'_> {
 
 	fn range_bytes_visit(
 		&self,
-		start: KeyBound<'_>,
-		end: KeyBound<'_>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
-		let range = EncodedKeyRange::new(start.to_encoded(), end.to_encoded());
+		let range = keyspace_inner_range_in(group, keyspace, start.to_bound(), end.to_bound());
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
 		// cannot reach the context, so it cannot re-enter the host while this borrow is live.
@@ -229,10 +233,12 @@ impl GuestState for InProcessState<'_> {
 
 	fn last_bytes(
 		&self,
-		start: KeyBound<'_>,
-		end: KeyBound<'_>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 	) -> SdkResult<Option<(GroupStateKey, EncodedPodRow)>> {
-		let range = EncodedKeyRange::new(start.to_encoded(), end.to_encoded());
+		let range = keyspace_inner_range_in(group, keyspace, start.to_bound(), end.to_bound());
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_last(range) }.map_err(to_sdk_err)

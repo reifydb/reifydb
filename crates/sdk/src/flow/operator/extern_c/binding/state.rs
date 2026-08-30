@@ -5,7 +5,7 @@ use std::{ptr, ptr::null_mut, slice::from_raw_parts};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	key::operator::state::{GroupId, GroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
 	state::timer::TimerKind,
 };
 use reifydb_flow::operator::state::reclaim::ReclaimOutcome;
@@ -24,7 +24,7 @@ use crate::{
 	},
 	error::{Result, SdkError},
 	flow::operator::{
-		context::KeyBound,
+		context::GuestBound,
 		extern_c::{
 			binding::context::ExternCContext,
 			wire::{
@@ -215,8 +215,17 @@ pub(crate) fn prefix(
 	}
 }
 
+const BOUND_UNBOUNDED: u8 = 0;
 const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
+
+fn wire_bound(bound: GuestBound<'_>) -> (*const u8, usize, u8) {
+	match bound {
+		GuestBound::Unbounded => (null_mut(), 0, BOUND_UNBOUNDED),
+		GuestBound::Included(suffix) => (suffix.as_ptr(), suffix.len(), BOUND_INCLUDED),
+		GuestBound::Excluded(suffix) => (suffix.as_ptr(), suffix.len(), BOUND_EXCLUDED),
+	}
+}
 
 #[instrument(name = "flow::operator::extern_c::binding::state::range", level = "debug", skip(ctx), fields(
 	operator_id = ctx.operator_id().0,
@@ -224,41 +233,26 @@ const BOUND_EXCLUDED: u8 = 2;
 ))]
 pub(crate) fn range(
 	ctx: &ExternCContext,
-	start: KeyBound<'_>,
-	end: KeyBound<'_>,
+	group: GroupId,
+	keyspace: KeyspaceId,
+	start: GuestBound<'_>,
+	end: GuestBound<'_>,
 	limit: usize,
 ) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	let mut iterator: *mut ExternCStateIterator = null_mut();
 
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; each bound pointer is null with length 0 or borrows a key that outlives the
+	// for the whole guest call; each bound pointer is null with length 0 or borrows a suffix that outlives the
 	// callback. The handle the host opens is passed once to collect_iterator_results, which owns and frees it.
 	unsafe {
-		let (start_ptr, start_len, start_bound_type) = match start {
-			KeyBound::Included(key) => {
-				let bytes = key.as_bytes();
-				(bytes.as_ptr(), bytes.len(), BOUND_INCLUDED)
-			}
-			KeyBound::Excluded(key) => {
-				let bytes = key.as_bytes();
-				(bytes.as_ptr(), bytes.len(), BOUND_EXCLUDED)
-			}
-		};
-
-		let (end_ptr, end_len, end_bound_type) = match end {
-			KeyBound::Included(key) => {
-				let bytes = key.as_bytes();
-				(bytes.as_ptr(), bytes.len(), BOUND_INCLUDED)
-			}
-			KeyBound::Excluded(key) => {
-				let bytes = key.as_bytes();
-				(bytes.as_ptr(), bytes.len(), BOUND_EXCLUDED)
-			}
-		};
+		let (start_ptr, start_len, start_bound_type) = wire_bound(start);
+		let (end_ptr, end_len, end_bound_type) = wire_bound(end);
 
 		let result = ((*ctx.ctx).callbacks.state.range)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
+			group.0,
+			keyspace.0,
 			start_ptr,
 			start_len,
 			start_bound_type,

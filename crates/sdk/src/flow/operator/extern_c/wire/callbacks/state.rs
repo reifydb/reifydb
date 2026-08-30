@@ -44,6 +44,8 @@ pub struct StateCallbacks {
 	pub range: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
+		group: u128,
+		keyspace: u8,
 		start: *const u8,
 		start_len: usize,
 		start_bound_type: u8,

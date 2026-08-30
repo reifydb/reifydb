@@ -8,7 +8,10 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
-	key::operator::state::{GroupId, GroupStateKey},
+	key::operator::{
+		keyspace::KEYSPACES,
+		state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range, keyspace_inner_range_split},
+	},
 	state::timer::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_flow::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
@@ -17,34 +20,16 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::flow::operator::context::{GuestContext, GuestState, KeyBound};
+use crate::flow::operator::context::{GuestContext, GuestState, GuestBound};
 
 pub struct GuestAsHost<'a, C: GuestContext>(pub &'a mut C);
 
-enum OwnedBound {
-	Included(GroupStateKey),
-	Excluded(GroupStateKey),
-}
-
-impl OwnedBound {
-	fn of(bound: &Bound<EncodedKey>) -> Self {
-		match bound {
-			Bound::Included(key) => Self::Included(GroupStateKey::bound_unchecked(key.clone())),
-			Bound::Excluded(key) => Self::Excluded(GroupStateKey::bound_unchecked(key.clone())),
-			Bound::Unbounded => unreachable!(
-				"a guest state scan must name both ends; the window engine builds only keyspace \
-				 ranges, so an unbounded end means a caller invented a range the guest boundary \
-				 cannot admit"
-			),
-		}
-	}
-
-	fn borrow(&self) -> KeyBound<'_> {
-		match self {
-			Self::Included(key) => KeyBound::Included(key),
-			Self::Excluded(key) => KeyBound::Excluded(key),
-		}
-	}
+fn confine(range: &EncodedKeyRange) -> (GroupId, KeyspaceId, Bound<Vec<u8>>, Bound<Vec<u8>>) {
+	keyspace_inner_range_split(range).expect(
+		"a guest state scan must stay inside one group and keyspace; the window engine builds only \
+		 keyspace ranges, so a range that does not split is one a caller invented and the guest \
+		 boundary cannot admit"
+	)
 }
 
 impl<C: GuestContext> TimerStore for GuestAsHost<'_, C> {
@@ -97,23 +82,48 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(())
 	}
 
+	fn group_sweep(&mut self, group: GroupId, data_only: bool, limit: Option<usize>) -> Result<Vec<GroupStateKey>> {
+		let mut keyspaces: Vec<KeyspaceId> =
+			KEYSPACES.iter().map(|spec| spec.id).filter(|id| !data_only || id.is_data()).collect();
+		keyspaces.sort_by(|left, right| right.0.cmp(&left.0));
+
+		let mut swept = Vec::new();
+		for keyspace in keyspaces {
+			let remaining = match limit {
+				Some(limit) if swept.len() >= limit => break,
+				Some(limit) => Some(limit - swept.len()),
+				None => None,
+			};
+			let page = self.state_page(keyspace_inner_range(group, keyspace), remaining)?;
+			swept.extend(page.into_iter().map(|(key, _)| key));
+		}
+		Ok(swept)
+	}
+
 	fn state_page(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		let (start, end) = (OwnedBound::of(&range.start), OwnedBound::of(&range.end));
+		let (group, keyspace, start, end) = confine(&range);
 		let mut out = Vec::new();
-		self.0.state().range_bytes_visit(start.borrow(), end.borrow(), limit, &mut |k, v| {
-			out.push((k, v));
-			Ok(())
-		})?;
+		self.0.state().range_bytes_visit(
+			group,
+			keyspace,
+			GuestBound::of(&start),
+			GuestBound::of(&end),
+			limit,
+			&mut |k, v| {
+				out.push((k, v));
+				Ok(())
+			},
+		)?;
 		Ok(out)
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
-		let (start, end) = (OwnedBound::of(&range.start), OwnedBound::of(&range.end));
-		Ok(self.0.state().last_bytes(start.borrow(), end.borrow())?)
+		let (group, keyspace, start, end) = confine(&range);
+		Ok(self.0.state().last_bytes(group, keyspace, GuestBound::of(&start), GuestBound::of(&end))?)
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
