@@ -699,8 +699,8 @@ impl MultiWriteTransaction {
 
 	#[inline]
 	fn publish(&self, commit_version: CommitVersion, deltas: CowVec<Delta>, flow_changes: Vec<Change>) {
-		self.engine.event_bus.emit(PostCommitEvent::new(deltas, commit_version, flow_changes));
 		self.oracle.done_commit(commit_version);
+		self.engine.event_bus.emit(PostCommitEvent::new(deltas, commit_version, flow_changes));
 	}
 }
 
