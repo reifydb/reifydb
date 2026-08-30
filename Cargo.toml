@@ -315,6 +315,7 @@ bumpalo = { version = "3.20.3", features = ["collections", "boxed"] }
 smallvec = { version = "1.13", features = ["serde", "const_generics", "union"] }
 rustc-hash = { version = "2.1.2" }
 parking_lot = {version = "0.12.5", features = ["arc_lock"]}
+loom = { version = "0.7" }
 crossbeam-channel = { version = "0.5.15" }
 
 # Network and server

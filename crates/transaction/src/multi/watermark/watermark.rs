@@ -1,15 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	fmt,
-	fmt::Debug,
-	result::Result,
-	sync::{
-		Arc,
-		atomic::{AtomicU64, Ordering},
-	},
-};
+use std::{fmt, fmt::Debug, result::Result};
 
 use reifydb_core::common::CommitVersion;
 use reifydb_runtime::{
@@ -17,7 +9,12 @@ use reifydb_runtime::{
 		mailbox::{ActorRef, SendError},
 		system::ActorSpawner,
 	},
-	sync::{mutex::Mutex, waiter::WaiterHandle},
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+		mutex::Mutex,
+		waiter::WaiterHandle,
+	},
 };
 use reifydb_value::{reifydb_assertions, value::duration::Duration};
 use tracing::instrument;

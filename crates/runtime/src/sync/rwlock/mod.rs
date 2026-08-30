@@ -11,11 +11,20 @@ use cfg_if::cfg_if;
 
 #[cfg(not(reifydb_single_threaded))]
 pub(crate) mod host;
+#[cfg(loom)]
+pub(crate) mod loom;
 #[cfg(reifydb_single_threaded)]
 pub(crate) mod wasm;
 
 cfg_if! {
-	if #[cfg(not(reifydb_single_threaded))] {
+	if #[cfg(loom)] {
+		type RwLockInnerImpl<T> = loom::RwLockInner<T>;
+		type RwLockReadGuardInnerImpl<'a, T> = loom::RwLockReadGuardInner<'a, T>;
+		type RwLockWriteGuardInnerImpl<'a, T> = loom::RwLockWriteGuardInner<'a, T>;
+		type ArcRwLockInnerImpl<T> = host::ArcRwLockInner<T>;
+		type OwnedRwLockReadGuardInnerImpl<T> = host::OwnedRwLockReadGuardInner<T>;
+		type OwnedRwLockWriteGuardInnerImpl<T> = host::OwnedRwLockWriteGuardInner<T>;
+	} else if #[cfg(not(reifydb_single_threaded))] {
 		type RwLockInnerImpl<T> = host::RwLockInner<T>;
 		type RwLockReadGuardInnerImpl<'a, T> = host::RwLockReadGuardInner<'a, T>;
 		type RwLockWriteGuardInnerImpl<'a, T> = host::RwLockWriteGuardInner<'a, T>;
@@ -80,20 +89,6 @@ impl<T> RwLock<T> {
 	#[inline]
 	pub fn try_write(&self) -> Option<RwLockWriteGuard<'_, T>> {
 		self.inner.try_write().map(|inner| RwLockWriteGuard {
-			inner,
-		})
-	}
-
-	#[inline]
-	pub fn read_recursive(&self) -> RwLockReadGuard<'_, T> {
-		RwLockReadGuard {
-			inner: self.inner.read_recursive(),
-		}
-	}
-
-	#[inline]
-	pub fn try_read_recursive(&self) -> Option<RwLockReadGuard<'_, T>> {
-		self.inner.try_read_recursive().map(|inner| RwLockReadGuard {
 			inner,
 		})
 	}

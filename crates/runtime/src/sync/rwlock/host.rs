@@ -11,6 +11,7 @@ use std::{
 
 use parking_lot::{ArcRwLockReadGuard, ArcRwLockWriteGuard, RawRwLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+#[cfg_attr(loom, allow(dead_code))]
 pub struct RwLockInner<T> {
 	inner: RwLock<T>,
 }
@@ -21,6 +22,7 @@ impl<T: fmt::Debug> fmt::Debug for RwLockInner<T> {
 	}
 }
 
+#[cfg_attr(loom, allow(dead_code))]
 impl<T> RwLockInner<T> {
 	pub fn new(value: T) -> Self {
 		Self {
@@ -51,20 +53,9 @@ impl<T> RwLockInner<T> {
 			inner: guard,
 		})
 	}
-
-	pub fn read_recursive(&self) -> RwLockReadGuardInner<'_, T> {
-		RwLockReadGuardInner {
-			inner: self.inner.read_recursive(),
-		}
-	}
-
-	pub fn try_read_recursive(&self) -> Option<RwLockReadGuardInner<'_, T>> {
-		self.inner.try_read_recursive().map(|guard| RwLockReadGuardInner {
-			inner: guard,
-		})
-	}
 }
 
+#[cfg_attr(loom, allow(dead_code))]
 pub struct RwLockReadGuardInner<'a, T> {
 	inner: RwLockReadGuard<'a, T>,
 }
@@ -77,6 +68,7 @@ impl<'a, T> Deref for RwLockReadGuardInner<'a, T> {
 	}
 }
 
+#[cfg_attr(loom, allow(dead_code))]
 pub struct RwLockWriteGuardInner<'a, T> {
 	inner: RwLockWriteGuard<'a, T>,
 }

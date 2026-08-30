@@ -26,6 +26,7 @@ pub fn emit_target_cfg() {
 	println!("cargo::rustc-check-cfg=cfg(reifydb_dst)");
 	println!("cargo::rustc-check-cfg=cfg(reifydb_single_threaded)");
 	println!("cargo::rustc-check-cfg=cfg(reifydb_assertions)");
+	println!("cargo::rustc-check-cfg=cfg(loom)");
 	println!("cargo:rustc-cfg=reifydb_target=\"{}\"", reifydb_target);
 	if dst {
 		println!("cargo:rustc-cfg=reifydb_dst");
