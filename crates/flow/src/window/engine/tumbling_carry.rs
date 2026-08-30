@@ -265,7 +265,9 @@ where
 
 			let pairs: Vec<(GroupId, EncodedKey)> =
 				pending.iter().map(|p| (p.group_id, p.key.clone())).collect();
-			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+			let rows = store.get_or_create_row_numbers_for_groups(
+			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+		)?;
 			reifydb_assertions! {
 				let requested = pairs.len();
 				let returned = rows.len();
@@ -278,7 +280,7 @@ where
 			}
 			for (emit, (row_number, is_new)) in pending.into_iter().zip(rows) {
 				let kind = if emit.withdraw {
-					store.remove_row_number(emit.group_id, &emit.key)?;
+					store.remove_row_number_for_group(emit.group_id)?;
 					EmitKind::Remove
 				} else if is_new {
 					EmitKind::Insert
@@ -320,7 +322,7 @@ where
 					meta.sealed_carry = carry_out;
 					let sealed_group = GroupId::of(&sealed_key);
 					remove(store, &WindowStateKey::new(sealed_group, sealed_key.clone()))?;
-					store.remove_row_number(sealed_group, &sealed_key)?;
+					store.remove_row_number_for_group(sealed_group)?;
 				}
 			}
 		}
@@ -568,14 +570,15 @@ mod tests {
 		) -> Result<Vec<(RowNumber, bool)>> {
 			Ok(keys.iter().map(|key| self.row_number_for(group, key)).collect())
 		}
-		fn get_or_create_row_numbers_for_pairs(
-			&mut self,
-			pairs: &[(GroupId, EncodedKey)],
-		) -> Result<Vec<(RowNumber, bool)>> {
-			Ok(pairs.iter().map(|(group, key)| self.row_number_for(*group, key)).collect())
+		fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
+			Ok(groups.iter().map(|group| self.row_number_for(*group, &EncodedKey::new(Vec::new()))).collect())
 		}
 		fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 			self.rows.remove(&(group, key.as_bytes().to_vec()));
+			Ok(())
+		}
+		fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {
+			self.rows.remove(&(group, Vec::new()));
 			Ok(())
 		}
 		fn written_at(&self) -> DateTime {

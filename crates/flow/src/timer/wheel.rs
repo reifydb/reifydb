@@ -3,17 +3,24 @@
 
 use std::collections::HashMap;
 
-use reifydb_codec::{
-	key::{decode_datetime_asc, encode_datetime_asc, encoded::EncodedKey},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+		operator::{
+			keyspace::timer::{
+				TimerIndex as TimerIndexSpace, TimerIndexKey, TimerWheel as TimerWheelSpace,
+				TimerWheelKey, timer_id,
+			},
+			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+		},
+		typed::direction::Asc,
 	},
-	state::timer::TimerKind,
+	state::{
+		timer::TimerKind,
+		typed::{SuffixBytes, typed_key},
+	},
 };
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
@@ -34,7 +41,7 @@ pub struct TimerWheel;
 impl TimerWheel {
 	pub fn arm(operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
 		if !timer.kind.is_unique() {
-			txn.state_set(operator, &timer_key(timer.due, timer.kind, &timer.key), encode_payload(&1u64)?)?;
+			txn.state_set(operator, &timer_key(timer.due, timer.kind, &timer.key), encode_payload(&timer.key.to_vec())?)?;
 			return Ok(());
 		}
 		let index = index_key(timer.kind, &timer.key);
@@ -58,7 +65,7 @@ impl TimerWheel {
 			}
 			txn.state_remove(operator, &stale)?;
 		}
-		txn.state_set(operator, &timer_key(timer.due, timer.kind, &timer.key), encode_payload(&1u64)?)?;
+		txn.state_set(operator, &timer_key(timer.due, timer.kind, &timer.key), encode_payload(&timer.key.to_vec())?)?;
 		txn.state_set(operator, &index, encode_payload(&timer.due)?)?;
 		Ok(())
 	}
@@ -106,7 +113,7 @@ impl TimerWheel {
 		let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
 		Some(TimerDue {
 			operator_id: operator,
-			due: decode_timer(&suffix).due,
+			due: TimerWheelKey::from_suffix_bytes(&suffix)?.due.0,
 		})
 	}
 
@@ -130,7 +137,13 @@ impl TimerWheel {
 		for item in &batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)
 				.expect("state_range must return OperatorState keys");
-			let timer = decode_timer(&decoded.suffix);
+			let suffix = TimerWheelKey::from_suffix_bytes(&decoded.suffix)
+				.expect("state_range must return timer wheel suffixes");
+			let timer = Timer {
+				due: suffix.due.0,
+				kind: suffix.kind.0,
+				key: armed_key(&EncodedPodRow::from(item.bytes.clone()))?,
+			};
 			if timer.due > watermark || due.len() == take {
 				next = Some(timer.due);
 				break;
@@ -165,39 +178,32 @@ impl TimerWheel {
 	}
 }
 
-fn timer_suffix(due: DateTime, kind: TimerKind, key: &EncodedKey) -> Vec<u8> {
-	let mut suffix = Vec::with_capacity(9 + key.len());
-	suffix.extend_from_slice(&encode_datetime_asc(due));
-	suffix.push(kind as u8);
-	suffix.extend_from_slice(key.as_ref());
-	suffix
+fn wheel_suffix(due: DateTime, kind: TimerKind, key: &EncodedKey) -> TimerWheelKey {
+	TimerWheelKey {
+		due: Asc(due),
+		kind: Asc(kind),
+		id: Asc(timer_id(key.as_slice())),
+	}
 }
 
 fn timer_key(due: DateTime, kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::TIMER_WHEEL, timer_suffix(due, kind, key))
+	typed_key::<TimerWheelSpace>(GroupId::ROOT, &wheel_suffix(due, kind, key))
 }
 
 fn index_key(kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
-	let mut suffix = Vec::with_capacity(1 + key.len());
-	suffix.push(kind as u8);
-	suffix.extend_from_slice(key.as_ref());
-	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::TIMER_INDEX, suffix)
+	typed_key::<TimerIndexSpace>(GroupId::ROOT, &TimerIndexKey {
+		kind: Asc(kind),
+		id: Asc(timer_id(key.as_slice())),
+	})
+}
+
+fn armed_key(row: &EncodedPodRow) -> Result<EncodedKey> {
+	Ok(EncodedKey::new(&decode_payload::<Vec<u8>>(row)?))
 }
 
 fn armed_at(operator: OperatorId, txn: &mut impl FlowTransaction, index: &GroupStateKey) -> Result<Option<DateTime>> {
 	match txn.state_get(operator, index)? {
 		Some(row) => Ok(Some(decode_payload::<DateTime>(&row)?)),
 		None => Ok(None),
-	}
-}
-
-fn decode_timer(suffix: &[u8]) -> Timer {
-	assert!(suffix.len() >= 9, "a timer wheel suffix must carry at least the instant and the kind");
-	let due = decode_datetime_asc(suffix[..8].try_into().expect("eight instant bytes"));
-	let kind = TimerKind::from_u8(suffix[8]).expect("a timer wheel suffix must carry a known kind");
-	Timer {
-		due,
-		kind,
-		key: EncodedKey::new(&suffix[9..]),
 	}
 }

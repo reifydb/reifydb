@@ -177,7 +177,7 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 	let erased = erase_group_data(&op, &mut txn, groups[0]);
 	assert!(erased > 0, "precondition: compaction must have erased the entry");
 	assert!(
-		txn.get_row_numbers_for_groups(op.plan.operator, &[groups[0]], &store::empty_key())
+		txn.get_row_numbers_for_groups(op.plan.operator, &[groups[0]])
 			.unwrap()
 			.into_iter()
 			.next()

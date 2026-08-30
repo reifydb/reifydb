@@ -163,7 +163,7 @@ impl GuestOperator for RowNumberProbe {
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
-		// A row-number key is a SUFFIX - the host frames it under ROW_NUMBER_MAPPING itself.
+		// A row-number key is a SUFFIX - the host frames it under the guest row mapping itself.
 		let key = EncodedKey::new(b"fixed-window-key");
 		let (rn, is_new) = ctx.get_or_create_row_numbers(GroupId::ROOT, &[key])?.remove(0);
 		ctx.emit_insert(

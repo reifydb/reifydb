@@ -163,7 +163,9 @@ where
 			state_lookup_keys.iter().map(|key| (GroupId::of(key), key.clone())).collect();
 		let resolved_rows: Vec<(GroupId, RowNumber)> = state_pairs
 			.iter()
-			.zip(store.get_or_create_row_numbers_for_pairs(&state_pairs)?)
+			.zip(store.get_or_create_row_numbers_for_groups(
+			&state_pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+		)?)
 			.map(|((group_id, _), (row_number, _is_new))| (*group_id, row_number))
 			.collect();
 		reifydb_assertions! {
@@ -207,13 +209,15 @@ where
 		}
 		let pairs: Vec<(GroupId, EncodedKey)> =
 			lookup_keys.iter().map(|key| (GroupId::of(key), key.clone())).collect();
-		let resolved_rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+		let resolved_rows = store.get_or_create_row_numbers_for_groups(
+			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+		)?;
 		reifydb_assertions! {
 			let resolved = resolved_rows.len();
 			let requested = lookup_keys.len();
 			assert!(
 				resolved == requested,
-				"get_or_create_row_numbers_for_pairs returned {resolved} rows for {requested} group \
+				"get_or_create_row_numbers_for_groups returned {resolved} rows for {requested} group \
 				 keys; the zip below pairs resolve_order with the resolved rows by position, so a \
 				 length mismatch would leave a group that only carries late buckets without any \
 				 resolved state row and panic the slot lookup instead of ranking it"
@@ -523,7 +527,7 @@ mod tests {
 		let group = GroupId::of(&state_key(&1));
 		assert!(store.drop_group_data_entries() > 0, "precondition: the sweep must have erased something");
 		assert!(
-			store.contains_row_mapping(group, &ranked_key),
+			store.contains_guest_row_mapping(group, &ranked_key),
 			"precondition: the identity half must survive the data phase"
 		);
 
@@ -561,13 +565,13 @@ mod tests {
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		// the mapping is scoped to the group, not ROOT, and reclamation deletes by group prefix
 		let group = GroupId::of(&state_key(&1));
-		assert!(store.contains_row_mapping(group, &ranked_key), "publishing the ranking mints its mapping");
+		assert!(store.contains_guest_row_mapping(group, &ranked_key), "publishing the ranking mints its mapping");
 
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		assert!(
-			!store.contains_row_mapping(group, &ranked_key),
+			!store.contains_guest_row_mapping(group, &ranked_key),
 			"withdrawing the ranking must reclaim its row-number mapping, not leak it"
 		);
 	}

@@ -94,7 +94,6 @@ pub struct KeyspaceId(pub u8);
 impl KeyspaceId {
 	pub const HIGHEST_DATA: u8 = 0x7F;
 
-	pub const ROW_NUMBER_MAPPING: Self = Self(0xFE);
 
 	pub const NODE_COUNTER: Self = Self(0xFC);
 
@@ -118,7 +117,7 @@ impl KeyspaceId {
 
 	pub const EMIT: Self = Self(0x13);
 
-	pub const EXPIRY: Self = Self(0x14);
+	pub const ROLLING_EXPIRY: Self = Self(0x14);
 
 	pub const COUNT: Self = Self(0x16);
 
@@ -184,7 +183,6 @@ impl KeyspaceId {
 
 	pub fn name(&self) -> Cow<'static, str> {
 		match *self {
-			Self::ROW_NUMBER_MAPPING => "ROW_NUMBER_MAPPING",
 			Self::NODE_COUNTER => "NODE_COUNTER",
 			Self::SOURCE_WATERMARK => "SOURCE_WATERMARK",
 			Self::TIMER_WHEEL => "TIMER_WHEEL",
@@ -196,7 +194,7 @@ impl KeyspaceId {
 			Self::BUFFER => "BUFFER",
 			Self::RUNNING => "RUNNING",
 			Self::EMIT => "EMIT",
-			Self::EXPIRY => "EXPIRY",
+			Self::ROLLING_EXPIRY => "ROLLING_EXPIRY",
 			Self::COUNT => "COUNT",
 			Self::ROW_INDEX => "ROW_INDEX",
 			Self::SESSION => "SESSION",
@@ -244,11 +242,10 @@ impl KeyspaceId {
 	pub fn cache_tiers(&self) -> CacheTiers {
 		match *self {
 			Self::CUSTOM_NOT_CACHED => CacheTiers::Neither,
-			Self::EXPIRY => CacheTiers::Range,
+			Self::ROLLING_EXPIRY => CacheTiers::Range,
 			Self::TIMER_WHEEL => CacheTiers::Range,
 			Self::ENGINE_META => CacheTiers::Range,
 			Self::JOIN_PIN => CacheTiers::Range,
-			Self::ROW_NUMBER_MAPPING => CacheTiers::Range,
 			Self::JOIN_ROW_MAPPING => CacheTiers::Range,
 			Self::GROUP_ROW_MAPPING => CacheTiers::Range,
 			Self::GUEST_ROW_MAPPING => CacheTiers::Range,
@@ -268,8 +265,8 @@ impl KeyspaceId {
 		self.is_data()
 			|| matches!(
 				*self,
-				Self::ROW_NUMBER_MAPPING
-					| Self::NODE_COUNTER | Self::SOURCE_WATERMARK
+				Self::NODE_COUNTER
+					| Self::SOURCE_WATERMARK
 					| Self::TIMER_WHEEL | Self::TIMER_INDEX
 					| Self::JOIN_ROW_MAPPING | Self::GROUP_ROW_MAPPING
 					| Self::GUEST_ROW_MAPPING
@@ -598,7 +595,7 @@ mod tests {
 	const GROUPS: [u128; 8] = [1, 2, 127, 128, 1000, 100_000, 1 << 30, u128::MAX];
 	const DATA_KEYSPACES: [KeyspaceId; 4] =
 		[KeyspaceId::ACCUMULATOR, KeyspaceId::BUFFER, KeyspaceId::RUNNING, KeyspaceId::CUSTOM_NOT_CACHED];
-	const IDENTITY_KEYSPACES: [KeyspaceId; 1] = [KeyspaceId::ROW_NUMBER_MAPPING];
+	const IDENTITY_KEYSPACES: [KeyspaceId; 1] = [KeyspaceId::GUEST_ROW_MAPPING];
 
 	#[derive(Clone, Copy, PartialEq, Debug)]
 	enum Phase {
@@ -609,8 +606,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and `cache_tiers`, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, CacheTiers); 44] = [
-		("ROW_NUMBER_MAPPING", KeyspaceId::ROW_NUMBER_MAPPING, Phase::Identity, CacheTiers::Range),
+	const CENSUS: [(&str, KeyspaceId, Phase, CacheTiers); 43] = [
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, CacheTiers::Both),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, CacheTiers::Both),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, CacheTiers::Range),
@@ -622,7 +618,7 @@ mod tests {
 		("BUFFER", KeyspaceId::BUFFER, Phase::Data, CacheTiers::Both),
 		("RUNNING", KeyspaceId::RUNNING, Phase::Data, CacheTiers::Both),
 		("EMIT", KeyspaceId::EMIT, Phase::Data, CacheTiers::Both),
-		("EXPIRY", KeyspaceId::EXPIRY, Phase::Data, CacheTiers::Range),
+		("ROLLING_EXPIRY", KeyspaceId::ROLLING_EXPIRY, Phase::Data, CacheTiers::Range),
 		("COUNT", KeyspaceId::COUNT, Phase::Data, CacheTiers::Both),
 		("ROW_INDEX", KeyspaceId::ROW_INDEX, Phase::Data, CacheTiers::Both),
 		("SESSION", KeyspaceId::SESSION, Phase::Data, CacheTiers::Both),
@@ -1015,7 +1011,7 @@ mod tests {
 		let inside = OperatorStateKey::new(operator, group, KeyspaceId::BUFFER, vec![1]).encode();
 		assert!(contains(&range, inside.as_slice()));
 
-		for other in [KeyspaceId::ACCUMULATOR, KeyspaceId::RUNNING, KeyspaceId::ROW_NUMBER_MAPPING] {
+		for other in [KeyspaceId::ACCUMULATOR, KeyspaceId::RUNNING, KeyspaceId::GUEST_ROW_MAPPING] {
 			let key = OperatorStateKey::new(operator, group, other, vec![1]).encode();
 			assert!(!contains(&range, key.as_slice()), "keyspace {other:?} leaked into the buffer range");
 		}

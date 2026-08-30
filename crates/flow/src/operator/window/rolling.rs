@@ -780,14 +780,15 @@ mod tests {
 		) -> ValueResult<Vec<(RowNumber, bool)>> {
 			Ok(keys.iter().map(|key| self.row_number_for(group, key)).collect())
 		}
-		fn get_or_create_row_numbers_for_pairs(
-			&mut self,
-			pairs: &[(GroupId, EncodedKey)],
-		) -> ValueResult<Vec<(RowNumber, bool)>> {
-			Ok(pairs.iter().map(|(group, key)| self.row_number_for(*group, key)).collect())
+		fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> ValueResult<Vec<(RowNumber, bool)>> {
+			Ok(groups.iter().map(|group| self.row_number_for(*group, &EncodedKey::new(Vec::new()))).collect())
 		}
 		fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> ValueResult<()> {
 			self.rows.remove(&(group, key.as_bytes().to_vec()));
+			Ok(())
+		}
+		fn remove_row_number_for_group(&mut self, group: GroupId) -> ValueResult<()> {
+			self.rows.remove(&(group, Vec::new()));
 			Ok(())
 		}
 		fn written_at(&self) -> DateTime {

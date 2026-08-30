@@ -27,7 +27,7 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use crate::{
 	operator::{
 		state::{
-			expiry::{ExpiryIndex, expiry_drop, expiry_key},
+			expiry::{ExpiryIndex, expiry_drop, rolling_expiry_key},
 			seal::coord::{Coord, IsZero},
 		},
 		state_access::{get, get_classified, put, remove},
@@ -410,13 +410,13 @@ where
 					if let Some(old) = group_slot.prior_index_key {
 						expiry_drop(
 							store,
-							&expiry_key::<Expiry>(old, group_hash(&group)?, &[]),
+							&rolling_expiry_key(old, group_hash(&group)?),
 						)?;
 					}
 					if let Some(new) = new_index_key {
 						self.expiry.set(
 							store,
-							expiry_key::<Expiry>(new, group_hash(&group)?, &[]),
+							rolling_expiry_key(new, group_hash(&group)?),
 							RollingIndexEntry {
 								group: group.clone(),
 								slot_key: group_slot.key.as_bytes().to_vec(),
@@ -449,13 +449,15 @@ where
 		if pairs.is_empty() {
 			return Ok(Vec::new());
 		}
-		let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+		let rows = store.get_or_create_row_numbers_for_groups(
+			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+		)?;
 		let mut results: Vec<RollingResult<G, Output>> = Vec::with_capacity(pending.len());
 		for (((group, value, withdrawn), (group_id, key)), (row_number, is_new)) in
 			pending.into_iter().zip(pairs).zip(rows)
 		{
 			if withdrawn {
-				store.remove_row_number(group_id, &key)?;
+				store.remove_row_number_for_group(group_id)?;
 				results.push(RollingResult {
 					row_number,
 					group,
@@ -648,12 +650,12 @@ where
 			let new_min = coord_min_key(&group_slot.buffer);
 			if new_min != group_slot.prior_min {
 				if let Some(old) = group_slot.prior_min {
-					expiry_drop(store, &expiry_key::<Expiry>(old, group_hash(&group)?, &[]))?;
+					expiry_drop(store, &rolling_expiry_key(old, group_hash(&group)?))?;
 				}
 				if let Some(new) = new_min {
 					self.expiry.set(
 						store,
-						expiry_key::<Expiry>(new, group_hash(&group)?, &[]),
+						rolling_expiry_key(new, group_hash(&group)?),
 						RollingIndexEntry {
 							group: group.clone(),
 							slot_key: group_slot.key.as_bytes().to_vec(),
@@ -699,12 +701,14 @@ where
 
 		let mut results: Vec<RollingResult<G, Accumulator::Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {
-			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+			let rows = store.get_or_create_row_numbers_for_groups(
+			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+		)?;
 			for (((group, value, withdrawn), (group_id, key)), (row_number, is_new)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{
 				if withdrawn {
-					store.remove_row_number(group_id, &key)?;
+					store.remove_row_number_for_group(group_id)?;
 					results.push(RollingResult {
 						row_number,
 						group,
@@ -766,7 +770,7 @@ where
 				if let Some(new) = coord_min_key(&buffer) {
 					self.expiry.set(
 						store,
-						expiry_key::<Expiry>(new, group_hash(&entry.group)?, &[]),
+						rolling_expiry_key(new, group_hash(&entry.group)?),
 						RollingIndexEntry {
 							group: entry.group.clone(),
 							slot_key: entry.slot_key.clone(),
@@ -799,7 +803,7 @@ where
 				(Some(new), true, Some(value)) => {
 					self.expiry.set(
 						store,
-						expiry_key::<Expiry>(new, group_hash(&entry.group)?, &[]),
+						rolling_expiry_key(new, group_hash(&entry.group)?),
 						RollingIndexEntry {
 							group: entry.group.clone(),
 							slot_key: entry.slot_key.clone(),
@@ -814,7 +818,7 @@ where
 				(Some(new), false, _) => {
 					self.expiry.set(
 						store,
-						expiry_key::<Expiry>(new, group_hash(&entry.group)?, &[]),
+						rolling_expiry_key(new, group_hash(&entry.group)?),
 						RollingIndexEntry {
 							group: entry.group.clone(),
 							slot_key: entry.slot_key.clone(),
@@ -841,7 +845,9 @@ where
 
 		let mut out: Vec<RollingExpiry<G, Accumulator::Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {
-			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+			let rows = store.get_or_create_row_numbers_for_groups(
+			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+		)?;
 			for (((group, value), (group_id, key)), (row_number, _)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{
@@ -853,7 +859,7 @@ where
 						value,
 					}),
 					None => {
-						store.remove_row_number(group_id, &key)?;
+						store.remove_row_number_for_group(group_id)?;
 						out.push(RollingExpiry::Remove {
 							row_number,
 							group,
@@ -904,7 +910,7 @@ where
 				if let Some(new) = coord_min_key(&buffer) {
 					self.expiry.set(
 						store,
-						expiry_key::<Expiry>(new, group_hash(&entry.group)?, &[]),
+						rolling_expiry_key(new, group_hash(&entry.group)?),
 						RollingIndexEntry {
 							group: entry.group.clone(),
 							slot_key: entry.slot_key.clone(),
@@ -919,7 +925,7 @@ where
 					if let Some(new) = coord_min_key(&buffer) {
 						self.expiry.set(
 							store,
-							expiry_key::<Expiry>(new, group_hash(&entry.group)?, &[]),
+							rolling_expiry_key(new, group_hash(&entry.group)?),
 							RollingIndexEntry {
 								group: entry.group.clone(),
 								slot_key: entry.slot_key.clone(),
@@ -943,7 +949,9 @@ where
 
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {
-			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+			let rows = store.get_or_create_row_numbers_for_groups(
+			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+		)?;
 			for (((group, value), (group_id, key)), (row_number, _)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{
@@ -955,7 +963,7 @@ where
 						value,
 					}),
 					None => {
-						store.remove_row_number(group_id, &key)?;
+						store.remove_row_number_for_group(group_id)?;
 						out.push(RollingExpiry::Remove {
 							row_number,
 							group,
@@ -1009,7 +1017,7 @@ mod tests {
 	}
 
 	fn row_key(group: &u32) -> (GroupId, EncodedKey) {
-		(GroupId::ROOT, node_row_key(group))
+		(GroupId::of(&node_row_key(group)), EncodedKey::new(Vec::new()))
 	}
 
 	fn node_row_key(group: &u32) -> EncodedKey {

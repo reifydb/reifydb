@@ -228,7 +228,7 @@ mod distinct {
 		for keyspace in [
 			KeyspaceId::DISTINCT_ENTRY,
 			KeyspaceId::DISTINCT_LAYOUT,
-			KeyspaceId::ROW_NUMBER_MAPPING,
+			KeyspaceId::GUEST_ROW_MAPPING,
 			KeyspaceId::NODE_COUNTER,
 		] {
 			assert!(

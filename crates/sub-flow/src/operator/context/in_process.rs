@@ -323,9 +323,10 @@ impl GuestContext for InProcessContext<'_> {
 		&mut self,
 		pairs: &[(GroupId, EncodedKey)],
 	) -> SdkResult<Vec<(RowNumber, bool)>> {
+		let groups: Vec<GroupId> = pairs.iter().map(|(group, _)| *group).collect();
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).get_or_create_row_numbers_for_pairs(pairs) }.map_err(to_sdk_err)
+		unsafe { (*self.host).get_or_create_row_numbers_for_groups(&groups) }.map_err(to_sdk_err)
 	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<()> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps

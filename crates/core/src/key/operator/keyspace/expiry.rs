@@ -41,8 +41,8 @@ pub struct ReapQueueKey {
 pub struct Expiry;
 
 impl Keyspace for Expiry {
-	const ID: KeyspaceId = KeyspaceId::EXPIRY;
-	const NAME: &'static str = "EXPIRY";
+	const ID: KeyspaceId = KeyspaceId::ROLLING_EXPIRY;
+	const NAME: &'static str = "ROLLING_EXPIRY";
 	const CACHE: CacheTiers = CacheTiers::Range;
 
 	type Key = ExpiryKey;

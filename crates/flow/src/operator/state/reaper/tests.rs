@@ -11,7 +11,9 @@ const DOOMED: GroupId = GroupId(7);
 const BYSTANDER: GroupId = GroupId(8);
 
 fn key(group: GroupId, keyspace: KeyspaceId, suffix: u8) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(group, keyspace, vec![suffix])
+	let mut bytes = vec![0u8; 16];
+	bytes[15] = suffix;
+	OperatorStateKey::inner_encoded(group, keyspace, bytes)
 }
 
 fn seed(store: &mut MockStore, key: &GroupStateKey) {
@@ -26,7 +28,7 @@ fn present(store: &mut MockStore, key: &GroupStateKey) -> bool {
 fn reaps_the_data_phase_and_spares_the_identity_phase_of_the_same_group() {
 	let mut store = MockStore::default();
 	let accumulator = key(DOOMED, KeyspaceId::ACCUMULATOR, 1);
-	let mapping = key(DOOMED, KeyspaceId::ROW_NUMBER_MAPPING, 1);
+	let mapping = key(DOOMED, KeyspaceId::GUEST_ROW_MAPPING, 1);
 	seed(&mut store, &accumulator);
 	seed(&mut store, &mapping);
 
@@ -56,7 +58,7 @@ fn reaps_nothing_outside_the_named_group() {
 fn spares_the_root_group_so_the_expiry_index_drains_on_its_own() {
 	let mut store = MockStore::default();
 	let doomed = key(DOOMED, KeyspaceId::ACCUMULATOR, 1);
-	let index = key(GroupId::ROOT, KeyspaceId::EXPIRY, 1);
+	let index = key(GroupId::ROOT, KeyspaceId::ROLLING_EXPIRY, 1);
 	seed(&mut store, &doomed);
 	seed(&mut store, &index);
 
@@ -114,7 +116,7 @@ fn a_group_that_hits_the_budget_stays_queued_for_the_next_tick() {
 fn draining_frees_the_identity_phase_once_the_data_phase_is_gone() {
 	let mut store = MockStore::default();
 	let accumulator = key(DOOMED, KeyspaceId::ACCUMULATOR, 1);
-	let mapping = key(DOOMED, KeyspaceId::ROW_NUMBER_MAPPING, 1);
+	let mapping = key(DOOMED, KeyspaceId::GUEST_ROW_MAPPING, 1);
 	seed(&mut store, &accumulator);
 	seed(&mut store, &mapping);
 	enqueue(&mut store, DOOMED).unwrap();
@@ -130,7 +132,7 @@ fn draining_frees_the_identity_phase_once_the_data_phase_is_gone() {
 #[test]
 fn a_budget_spent_on_the_data_phase_defers_identity_to_the_next_tick() {
 	let mut store = MockStore::default();
-	let mapping = key(DOOMED, KeyspaceId::ROW_NUMBER_MAPPING, 1);
+	let mapping = key(DOOMED, KeyspaceId::GUEST_ROW_MAPPING, 1);
 	for i in 0..2 {
 		seed(&mut store, &key(DOOMED, KeyspaceId::ACCUMULATOR, i));
 	}
@@ -169,7 +171,7 @@ fn reaping_takes_both_ends_of_the_data_range_and_spares_both_ends_of_the_identit
 	let lowest_data = key(DOOMED, KeyspaceId(0x00), 1);
 	let highest_data = key(DOOMED, KeyspaceId(KeyspaceId::HIGHEST_DATA), 1);
 	let lowest_identity = key(DOOMED, KeyspaceId::TIMER_INDEX, 1);
-	let highest_identity = key(DOOMED, KeyspaceId::ROW_NUMBER_MAPPING, 1);
+	let highest_identity = key(DOOMED, KeyspaceId::GUEST_ROW_MAPPING, 1);
 	for k in [&lowest_data, &highest_data, &lowest_identity, &highest_identity] {
 		seed(&mut store, k);
 	}
@@ -190,7 +192,7 @@ fn a_group_larger_than_the_budget_still_drains_the_queue_to_empty() {
 	for k in &keys {
 		seed(&mut store, k);
 	}
-	seed(&mut store, &key(DOOMED, KeyspaceId::ROW_NUMBER_MAPPING, 1));
+	seed(&mut store, &key(DOOMED, KeyspaceId::GUEST_ROW_MAPPING, 1));
 	enqueue(&mut store, DOOMED).unwrap();
 
 	let mut rounds = 0;
@@ -214,7 +216,7 @@ fn the_reap_scan_never_fetches_an_identity_key() {
 		seed(&mut store, &key(DOOMED, KeyspaceId::ACCUMULATOR, i));
 	}
 	for i in 0..2 {
-		seed(&mut store, &key(DOOMED, KeyspaceId::ROW_NUMBER_MAPPING, i));
+		seed(&mut store, &key(DOOMED, KeyspaceId::GUEST_ROW_MAPPING, i));
 		seed(&mut store, &key(DOOMED, KeyspaceId::TIMER_INDEX, i));
 	}
 	let before = store.rows_visited();
@@ -251,7 +253,7 @@ fn the_reap_scan_stops_fetching_at_the_budget() {
 fn one_merged_scan_reaps_data_and_reclaims_identity_and_dequeues_the_group() {
 	let mut store = MockStore::default();
 	let accumulator = key(DOOMED, KeyspaceId::ACCUMULATOR, 1);
-	let mapping = key(DOOMED, KeyspaceId::ROW_NUMBER_MAPPING, 1);
+	let mapping = key(DOOMED, KeyspaceId::GUEST_ROW_MAPPING, 1);
 	seed(&mut store, &accumulator);
 	seed(&mut store, &mapping);
 	seed(&mut store, &queue_key(DOOMED));
@@ -270,7 +272,7 @@ fn the_merged_scan_partitions_by_keyspace_not_by_scan_order() {
 	let lowest_data = key(DOOMED, KeyspaceId(0x00), 1);
 	let highest_data = key(DOOMED, KeyspaceId(KeyspaceId::HIGHEST_DATA), 1);
 	let lowest_identity = key(DOOMED, KeyspaceId::TIMER_INDEX, 1);
-	let highest_identity = key(DOOMED, KeyspaceId::ROW_NUMBER_MAPPING, 1);
+	let highest_identity = key(DOOMED, KeyspaceId::GUEST_ROW_MAPPING, 1);
 	for k in [&lowest_data, &highest_data, &lowest_identity, &highest_identity] {
 		seed(&mut store, k);
 	}
@@ -289,7 +291,7 @@ fn the_merged_scan_leaves_a_neighbouring_group_untouched() {
 	let mut store = MockStore::default();
 	let doomed_data = key(DOOMED, KeyspaceId::ACCUMULATOR, 1);
 	let neighbour_data = key(BYSTANDER, KeyspaceId::ACCUMULATOR, 1);
-	let neighbour_identity = key(BYSTANDER, KeyspaceId::ROW_NUMBER_MAPPING, 1);
+	let neighbour_identity = key(BYSTANDER, KeyspaceId::GUEST_ROW_MAPPING, 1);
 	for k in [&doomed_data, &neighbour_data, &neighbour_identity] {
 		seed(&mut store, k);
 	}
@@ -309,7 +311,7 @@ fn a_group_too_large_for_the_budget_falls_back_and_keeps_its_identity() {
 	for k in &data {
 		seed(&mut store, k);
 	}
-	let mapping = key(DOOMED, KeyspaceId::ROW_NUMBER_MAPPING, 1);
+	let mapping = key(DOOMED, KeyspaceId::GUEST_ROW_MAPPING, 1);
 	seed(&mut store, &mapping);
 	seed(&mut store, &queue_key(DOOMED));
 
@@ -325,7 +327,7 @@ fn a_group_too_large_for_the_budget_falls_back_and_keeps_its_identity() {
 #[test]
 fn a_group_whose_identity_alone_exceeds_the_budget_still_makes_progress() {
 	let mut store = MockStore::default();
-	let identity: Vec<GroupStateKey> = (0..5).map(|i| key(DOOMED, KeyspaceId::ROW_NUMBER_MAPPING, i)).collect();
+	let identity: Vec<GroupStateKey> = (0..5).map(|i| key(DOOMED, KeyspaceId::GUEST_ROW_MAPPING, i)).collect();
 	for k in &identity {
 		seed(&mut store, k);
 	}
@@ -355,7 +357,7 @@ impl Reaper for RecordingReaper {
 fn the_reaper_is_handed_the_data_keys_and_never_an_identity_key() {
 	let mut store = MockStore::default();
 	let data = key(DOOMED, KeyspaceId::ACCUMULATOR, 1);
-	let mapping = key(DOOMED, KeyspaceId::ROW_NUMBER_MAPPING, 1);
+	let mapping = key(DOOMED, KeyspaceId::GUEST_ROW_MAPPING, 1);
 	seed(&mut store, &data);
 	seed(&mut store, &mapping);
 	seed(&mut store, &queue_key(DOOMED));
@@ -370,7 +372,7 @@ fn the_reaper_is_handed_the_data_keys_and_never_an_identity_key() {
 fn a_drainable_group_is_covered_by_a_single_scan_that_spans_both_phases() {
 	let mut store = MockStore::default();
 	seed(&mut store, &key(DOOMED, KeyspaceId::ACCUMULATOR, 1));
-	seed(&mut store, &key(DOOMED, KeyspaceId::ROW_NUMBER_MAPPING, 1));
+	seed(&mut store, &key(DOOMED, KeyspaceId::GUEST_ROW_MAPPING, 1));
 	seed(&mut store, &queue_key(DOOMED));
 	let before = store.rows_visited();
 

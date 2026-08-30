@@ -6,7 +6,13 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::pending::PendingLayers,
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::{
+		operator::{
+			keyspace::join::JoinRowMappingKey,
+			state::{GroupId, KeyspaceId, OperatorStateKey},
+		},
+		typed::direction::{Asc, Desc},
+	},
 };
 use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,
@@ -25,6 +31,16 @@ const NEIGHBOUR: GroupId = GroupId(8);
 
 fn key(s: &str) -> EncodedKey {
 	EncodedKey::new(s.as_bytes())
+}
+
+const TAG: u8 = b'L';
+
+fn join_key(left: u64, right: u64) -> JoinRowMappingKey {
+	JoinRowMappingKey {
+		tag: Asc(TAG),
+		left: Desc(left),
+		right: Desc(right),
+	}
 }
 
 fn deferred(engine: &TestEngine) -> DeferredTransaction {
@@ -274,28 +290,27 @@ fn nodes_are_isolated() {
 }
 
 #[test]
-fn remove_by_prefix_reclaims_every_mapping_under_the_prefix() {
-	// Prefix removal must take the whole subtree and nothing that merely sorts beside it.
+fn dropping_one_left_reclaims_every_join_mapping_under_it() {
+	// Dropping a left row must take every join it produced and nothing that merely sorts beside it.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	let doomed = EncodedKey::builder().u64(1u64).u32(7u32).build();
-	let kept = EncodedKey::builder().u64(2u64).u32(7u32).build();
-	txn.get_or_create_row_numbers(NODE, GROUP, &[doomed.clone()]).unwrap().remove(0);
-	let (kept_rn, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[kept.clone()]).unwrap().remove(0);
+	let doomed = join_key(1, 7);
+	let kept = join_key(2, 7);
+	txn.get_or_create_join_row_numbers(NODE, &[doomed.clone()]).unwrap().remove(0);
+	let (kept_rn, _) = txn.get_or_create_join_row_numbers(NODE, &[kept.clone()]).unwrap().remove(0);
 
-	let prefix = EncodedKey::builder().u64(1u64).build();
-	txn.remove_row_numbers_by_prefix(NODE, GROUP, prefix.as_slice()).unwrap();
+	txn.remove_join_row_numbers_for_left(NODE, TAG, 1).unwrap();
 
 	assert_eq!(
-		txn.get_row_numbers(NODE, GROUP, &[doomed]).unwrap().remove(0),
+		txn.get_join_row_numbers(NODE, &[doomed]).unwrap().remove(0),
 		None,
-		"the prefixed mapping is reclaimed"
+		"the dropped left's mapping is reclaimed"
 	);
 	assert_eq!(
-		txn.get_row_numbers(NODE, GROUP, &[kept]).unwrap().remove(0),
+		txn.get_join_row_numbers(NODE, &[kept]).unwrap().remove(0),
 		Some(kept_rn),
-		"a sibling prefix survives"
+		"a neighbouring left survives"
 	);
 }
 
@@ -304,30 +319,38 @@ fn the_row_number_counter_never_collides_with_the_interners_group_counter() {
 	// Both counters live in the root group's NODE_COUNTER keyspace and must not alias.
 	let group_counter = OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::NODE_COUNTER, vec![]);
 	assert_ne!(counter_key(), group_counter, "the row-number counter must not alias the group-id counter");
-	assert_ne!(mapping_key(GROUP, &key("x")), counter_key(), "a mapping key must never equal the counter key");
+	assert_ne!(
+		guest_mapping_key(GROUP, &key("x")).unwrap(),
+		counter_key(),
+		"a guest mapping key must never equal the counter key"
+	);
+	assert_ne!(group_mapping_key(GROUP), counter_key(), "a group mapping key must never equal the counter key");
+	assert_ne!(
+		join_mapping_key(&join_key(1, 1)),
+		counter_key(),
+		"a join mapping key must never equal the counter key"
+	);
 }
 
 #[test]
-fn remove_by_prefix_reclaims_a_subtree_that_spans_more_than_one_scan_page() {
-	// Same paging contract for prefix removal, and the page boundary must not become a second
-	// stopping condition that spares part of the subtree while a sibling prefix stays untouched.
+fn dropping_one_left_reclaims_joins_that_span_more_than_one_scan_page() {
+	// Same paging contract for the left sweep, and the page boundary must not become a second
+	// stopping condition that spares part of the left's joins while a neighbouring left stays untouched.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	let doomed: Vec<EncodedKey> =
-		(0..1027u32).map(|slot| EncodedKey::builder().u64(1u64).u32(slot).build()).collect();
-	let kept = EncodedKey::builder().u64(2u64).u32(7u32).build();
-	txn.get_or_create_row_numbers(NODE, GROUP, &doomed).unwrap();
-	let (kept_rn, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[kept.clone()]).unwrap().remove(0);
+	let doomed: Vec<JoinRowMappingKey> = (1..=1027u64).map(|right| join_key(1, right)).collect();
+	let kept = join_key(2, 7);
+	txn.get_or_create_join_row_numbers(NODE, &doomed).unwrap();
+	let (kept_rn, _) = txn.get_or_create_join_row_numbers(NODE, &[kept.clone()]).unwrap().remove(0);
 
-	let prefix = EncodedKey::builder().u64(1u64).build();
-	txn.remove_row_numbers_by_prefix(NODE, GROUP, prefix.as_slice()).unwrap();
+	txn.remove_join_row_numbers_for_left(NODE, TAG, 1).unwrap();
 
-	let gone = txn.get_row_numbers(NODE, GROUP, &doomed).unwrap();
-	assert!(gone.iter().all(Option::is_none), "the whole prefixed subtree is reclaimed, not just one page of it");
+	let gone = txn.get_join_row_numbers(NODE, &doomed).unwrap();
+	assert!(gone.iter().all(Option::is_none), "every join under the left is reclaimed, not just one page of them");
 	assert_eq!(
-		txn.get_row_numbers(NODE, GROUP, &[kept]).unwrap().remove(0),
+		txn.get_join_row_numbers(NODE, &[kept]).unwrap().remove(0),
 		Some(kept_rn),
-		"a sibling prefix survives"
+		"a neighbouring left survives"
 	);
 }

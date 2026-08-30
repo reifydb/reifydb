@@ -292,14 +292,15 @@ mod tests {
 			Ok(keys.iter().enumerate().map(|(i, _)| (RowNumber(i as u64 + 1), true)).collect())
 		}
 
-		fn get_or_create_row_numbers_for_pairs(
-			&mut self,
-			pairs: &[(GroupId, EncodedKey)],
-		) -> Result<Vec<(RowNumber, bool)>> {
-			Ok(pairs.iter().enumerate().map(|(i, _)| (RowNumber(i as u64 + 1), true)).collect())
+		fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
+			Ok(groups.iter().enumerate().map(|(i, _)| (RowNumber(i as u64 + 1), true)).collect())
 		}
 
 		fn remove_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<()> {
+			Ok(())
+		}
+
+		fn remove_row_number_for_group(&mut self, _group: GroupId) -> Result<()> {
 			Ok(())
 		}
 

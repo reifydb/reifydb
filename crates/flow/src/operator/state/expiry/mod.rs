@@ -4,16 +4,13 @@
 use std::{marker::PhantomData, ops::Bound};
 
 use reifydb_codec::{
-	key::{
-		encode_u64,
-		encoded::{EncodedKeyRange, IntoEncodedKey},
-	},
+	key::encoded::EncodedKeyRange,
 	row::operator::state::{OperatorState, decode},
 };
 use reifydb_core::{
 	key::{
 		operator::{
-			keyspace::expiry::{ExpiryKey, TumblingExpiryKey},
+			keyspace::expiry::{Expiry, ExpiryKey, TumblingExpiry, TumblingExpiryKey},
 			state::{GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range},
 			traits::Keyspace,
 		},
@@ -31,14 +28,19 @@ pub(crate) fn expiry_range<K: Keyspace>() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::ROOT, K::ID)
 }
 
-pub(crate) fn expiry_key<K: Keyspace>(expiry: u64, group: Hash128, suffix: &[u8]) -> GroupStateKey {
-	let group = (&group).into_encoded_key();
-	let group = group.as_ref();
-	let mut tail = Vec::with_capacity(8 + group.len() + suffix.len());
-	tail.extend_from_slice(&encode_u64(expiry));
-	tail.extend_from_slice(group);
-	tail.extend_from_slice(suffix);
-	OperatorStateKey::inner_encoded(GroupId::ROOT, K::ID, tail)
+pub(crate) fn rolling_expiry_key(threshold: u64, owner: Hash128) -> GroupStateKey {
+	typed_key::<Expiry>(GroupId::ROOT, &ExpiryKey {
+		threshold: Desc(threshold),
+		owner: Desc(owner),
+	})
+}
+
+pub(crate) fn tumbling_expiry_key(threshold: u64, owner: Hash128, window_start: u64) -> GroupStateKey {
+	typed_key::<TumblingExpiry>(GroupId::ROOT, &TumblingExpiryKey {
+		threshold: Desc(threshold),
+		owner: Desc(owner),
+		window_start: Desc(window_start),
+	})
 }
 
 pub(crate) trait ExpirySuffix: SuffixBytes {
@@ -206,7 +208,7 @@ mod tests {
 	use reifydb_core::key::operator::{keyspace::expiry::Expiry, state::GroupStateKey};
 	use reifydb_macro::operator_state;
 
-	use super::{ExpiryIndex, expiry_drop, expiry_due, expiry_earliest, expiry_key, expiry_set};
+	use super::{ExpiryIndex, expiry_drop, expiry_due, expiry_earliest, expiry_set, rolling_expiry_key};
 	use crate::{operator::state::mock::MockStore, window::engine::group_hash};
 
 	#[operator_state]
@@ -217,7 +219,7 @@ mod tests {
 
 	fn key(expiry: u64, group: u32) -> GroupStateKey {
 		// Hashes the group the way the engines do, so these keys are the ones the index really holds.
-		expiry_key::<Expiry>(expiry, group_hash(&group).unwrap(), &[])
+		rolling_expiry_key(expiry, group_hash(&group).unwrap())
 	}
 
 	#[test]

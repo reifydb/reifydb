@@ -209,12 +209,14 @@ where
 
 		let mut results: Vec<RollingResult<G, Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {
-			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+			let rows = store.get_or_create_row_numbers_for_groups(
+			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+		)?;
 			for (((group, value, withdrawn), (group_id, key)), (row_number, is_new)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{
 				if withdrawn {
-					store.remove_row_number(group_id, &key)?;
+					store.remove_row_number_for_group(group_id)?;
 					results.push(RollingResult {
 						row_number,
 						group,
@@ -382,7 +384,7 @@ mod tests {
 		let group_id = GroupId::of(&row_key(&1));
 		assert!(store.drop_group_data_entries() > 0, "precondition: the sweep must have erased something");
 		assert!(
-			store.contains_row_mapping(group_id, &row_key(&1)),
+			store.contains_row_mapping(group_id),
 			"precondition: the identity half must survive the data phase"
 		);
 

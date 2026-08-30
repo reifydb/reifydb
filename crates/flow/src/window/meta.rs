@@ -4,9 +4,18 @@
 use std::mem::size_of;
 
 use reifydb_core::{
-	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey},
+	key::{
+		operator::{
+			keyspace::window::{
+				Count, EngineMeta as EngineMetaSpace, RollingMeta as RollingMetaSpace, RowIndex,
+				Session,
+			},
+			state::{GroupId, GroupStateKey, IntoGroupStateKey},
+		},
+		typed::direction::Asc,
+	},
 	metrics::heap::HeapSize,
-	state::timer::StateStore,
+	state::{timer::StateStore, typed::typed_key},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -118,7 +127,7 @@ impl HeapSize for CountKey {
 
 impl IntoGroupStateKey for &CountKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.0, KeyspaceId::COUNT, vec![])
+		typed_key::<Count>(self.0, &())
 	}
 }
 
@@ -133,7 +142,7 @@ impl HeapSize for RowIndexKey {
 
 impl IntoGroupStateKey for &RowIndexKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.0, KeyspaceId::ROW_INDEX, self.1.0.to_be_bytes())
+		typed_key::<RowIndex>(self.0, &Asc(self.1))
 	}
 }
 
@@ -148,7 +157,7 @@ impl HeapSize for SessionKey {
 
 impl IntoGroupStateKey for &SessionKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.0, KeyspaceId::SESSION, vec![])
+		typed_key::<Session>(self.0, &())
 	}
 }
 
@@ -163,7 +172,7 @@ impl HeapSize for EngineMetaKey {
 
 impl IntoGroupStateKey for &EngineMetaKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.0, KeyspaceId::ENGINE_META, vec![])
+		typed_key::<EngineMetaSpace>(self.0, &())
 	}
 }
 
@@ -178,7 +187,7 @@ impl HeapSize for RollingMetaKey {
 
 impl IntoGroupStateKey for &RollingMetaKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.0, KeyspaceId::ROLLING_META, vec![])
+		typed_key::<RollingMetaSpace>(self.0, &())
 	}
 }
 

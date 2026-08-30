@@ -499,7 +499,12 @@ pub(super) extern "C" fn host_remove_row_number(
 	unsafe {
 		let host = get_host_mut(&mut *ctx);
 		let key = encoded_key(key_ptr, key_len);
-		match host.remove_row_number(GroupId(group), &key) {
+		let removed = if key.is_empty() {
+			host.remove_row_number_for_group(GroupId(group))
+		} else {
+			host.remove_row_number(GroupId(group), &key)
+		};
+		match removed {
 			Ok(_) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
@@ -694,12 +699,8 @@ pub(super) extern "C" fn host_get_or_create_row_numbers_for_pairs(
 		let Some(encoded) = encoded_keys(keys, pairs_len) else {
 			return EXTERN_C_ERROR_NULL_PTR;
 		};
-		let pairs: Vec<(GroupId, EncodedKey)> = encoded
-			.into_iter()
-			.enumerate()
-			.map(|(index, key)| (GroupId(*groups.add(index)), key))
-			.collect();
-		match host.get_or_create_row_numbers_for_pairs(&pairs) {
+		let group_ids: Vec<GroupId> = (0..encoded.len()).map(|index| GroupId(*groups.add(index))).collect();
+		match host.get_or_create_row_numbers_for_groups(&group_ids) {
 			Ok(results) => {
 				for (index, (row_number, is_new)) in results.iter().enumerate() {
 					*row_numbers_out.add(index) = row_number.0;
@@ -723,7 +724,7 @@ mod join_row_expiry_guard_tests {
 			catalog::{config::ConfigKey, flow::OperatorId},
 			store::MultiVersionRow,
 		},
-		key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+		key::operator::{keyspace::join::JoinRowMappingKey, state::{GroupId, KeyspaceId, OperatorStateKey}},
 		state::timer::{StateStore, TimerStore},
 	};
 	use reifydb_flow::{
@@ -812,14 +813,15 @@ mod join_row_expiry_guard_tests {
 			Ok(Vec::new())
 		}
 
-		fn get_or_create_row_numbers_for_pairs(
-			&mut self,
-			_pairs: &[(GroupId, EncodedKey)],
-		) -> Result<Vec<(RowNumber, bool)>> {
+		fn get_or_create_row_numbers_for_groups(&mut self, _groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
 			Ok(Vec::new())
 		}
 
 		fn remove_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<()> {
+			Ok(())
+		}
+
+		fn remove_row_number_for_group(&mut self, _group: GroupId) -> Result<()> {
 			Ok(())
 		}
 
@@ -919,23 +921,26 @@ mod join_row_expiry_guard_tests {
 			Ok(Vec::new())
 		}
 
-		fn get_row_numbers_for_groups(
-			&mut self,
-			_groups: &[GroupId],
-			_key: &EncodedKey,
-		) -> Result<Vec<Option<RowNumber>>> {
+		fn get_row_numbers_for_groups(&mut self, _groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
 			Ok(Vec::new())
 		}
 
-		fn get_or_create_row_numbers_for_groups(
+		fn get_join_row_numbers(&mut self, _keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>> {
+			Ok(Vec::new())
+		}
+
+		fn get_or_create_join_row_numbers(
 			&mut self,
-			_groups: &[GroupId],
-			_key: &EncodedKey,
+			_keys: &[JoinRowMappingKey],
 		) -> Result<Vec<(RowNumber, bool)>> {
 			Ok(Vec::new())
 		}
 
-		fn remove_row_numbers_by_prefix(&mut self, _group: GroupId, _key_prefix: &[u8]) -> Result<()> {
+		fn remove_join_row_numbers(&mut self, _keys: &[JoinRowMappingKey]) -> Result<()> {
+			Ok(())
+		}
+
+		fn remove_join_row_numbers_for_left(&mut self, _tag: u8, _left: u64) -> Result<()> {
 			Ok(())
 		}
 

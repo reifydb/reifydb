@@ -9,7 +9,7 @@ use std::{
 };
 
 use reifydb_codec::{
-	key::{encode_u64, encoded::EncodedKey},
+	key::encoded::EncodedKey,
 	row::operator::state::{OperatorState, StateCodec},
 };
 use reifydb_core::{
@@ -25,7 +25,7 @@ use reifydb_value::{Result, reifydb_assertions};
 use crate::{
 	operator::{
 		state::{
-			expiry::{ExpiryIndex, expiry_drop, expiry_key},
+			expiry::{ExpiryIndex, expiry_drop, tumbling_expiry_key},
 			reaper::Reaper,
 		},
 		state_access::{get_classified, put, remove},
@@ -136,9 +136,9 @@ where
 		if prior == new {
 			return Ok(());
 		}
-		let suffix = encode_u64(window_start.order_key().to_order());
+		let order = window_start.order_key().to_order();
 		if let Some(old) = prior {
-			expiry_drop(store, &expiry_key::<TumblingExpiry>(old, group_hash(group)?, &suffix))?;
+			expiry_drop(store, &tumbling_expiry_key(old, group_hash(group)?, order))?;
 		}
 		if let Some(new) = new {
 			let entry = TumblingIndexEntry {
@@ -149,7 +149,7 @@ where
 			};
 			self.expiry.set(
 				store,
-				expiry_key::<TumblingExpiry>(new, group_hash(group)?, &suffix),
+				tumbling_expiry_key(new, group_hash(group)?, order),
 				entry,
 			)?;
 		}
@@ -315,10 +315,10 @@ where
 			);
 		}
 
-		let pairs: Vec<(GroupId, EncodedKey)> = pending.iter().map(|p| (p.group_id, p.key.clone())).collect();
-		let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+		let groups: Vec<GroupId> = pending.iter().map(|p| p.group_id).collect();
+		let rows = store.get_or_create_row_numbers_for_groups(&groups)?;
 		reifydb_assertions! {
-			let requested = pairs.len();
+			let requested = groups.len();
 			let returned = rows.len();
 			assert!(
 				returned == requested,
@@ -341,7 +341,7 @@ where
 						 (group={group_id:?}, row={row_number:?})"
 					);
 				}
-				store.remove_row_number(emit.group_id, &emit.key)?;
+				store.remove_row_number_for_group(emit.group_id)?;
 				EmitKind::Remove
 			} else if is_new {
 				EmitKind::Insert
@@ -429,7 +429,7 @@ mod tests {
 	}
 
 	fn slot_key(group: &u32, window_start: DateTime) -> (GroupId, EncodedKey) {
-		(GroupId::ROOT, row_key(group, window_start))
+		(GroupId::of(&row_key(group, window_start)), EncodedKey::new(Vec::new()))
 	}
 
 	fn order_of<Contribution>(
@@ -591,11 +591,11 @@ mod tests {
 		assert_eq!(expired.len(), 1);
 		assert_eq!(expired[0].group_id, group, "the entry must name the group whose state it drained");
 		assert!(
-			store.contains_row_mapping(group, &EncodedKey::new(Vec::new())),
+			store.contains_row_mapping(group),
 			"the identity the driver is about to release must still be resolvable from that group alone"
 		);
 		assert!(
-			store.contains_row_mapping(group, &EncodedKey::new(Vec::new())),
+			store.contains_row_mapping(group),
 			"sealing releases no identity of its own; the reaper collects it at or below the ledger"
 		);
 	}
@@ -692,7 +692,7 @@ mod tests {
 		let published = seed_window(&mut store, 0, 5);
 		assert_eq!(store.drop_accumulator_entries(), 1, "precondition: reclaim erased the accumulator");
 		assert!(
-			store.contains_row_mapping(GroupId::ROOT, &row_key(&1, at_millis(0))),
+			store.contains_row_mapping(GroupId::of(&row_key(&1, at_millis(0)))),
 			"precondition: the identity half must survive the data phase"
 		);
 
@@ -722,7 +722,7 @@ mod tests {
 
 		assert!(results.is_empty(), "a window that finalizes to nothing publishes nothing");
 		assert!(
-			!store.contains_row_mapping(GroupId::ROOT, &row_key(&1, at_millis(0))),
+			!store.contains_row_mapping(GroupId::of(&row_key(&1, at_millis(0)))),
 			"and must leave no identity behind for a row it never published"
 		);
 

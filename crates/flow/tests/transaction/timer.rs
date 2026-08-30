@@ -139,9 +139,11 @@ fn a_fired_unique_timer_can_be_armed_again_at_a_later_instant() {
 }
 
 #[test]
-fn due_timers_return_in_at_then_kind_then_key_order() {
-	// Due timers return in (at, kind, key) order, which is what makes a replay fire
-	// byte-identically. That order falls out of the key encoding, so this pins the encoding too.
+fn due_timers_return_in_at_then_kind_then_id_order() {
+	// Due timers return in (at, kind, id) order, which is what makes a replay fire byte-identically.
+	// That order falls out of the key encoding, so this pins the encoding too. The id is a hash of
+	// the key, so "z" leads "a" at the same instant and kind: the tie break is the hash, not the key
+	// bytes, and asserting the concrete order is what would catch the hash silently changing.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
@@ -153,8 +155,8 @@ fn due_timers_return_in_at_then_kind_then_key_order() {
 	assert_eq!(
 		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap().0,
 		vec![
-			timer(5_000, TimerKind::Seal, "a"),
 			timer(5_000, TimerKind::Seal, "z"),
+			timer(5_000, TimerKind::Seal, "a"),
 			timer(5_000, TimerKind::Grace, "a"),
 			timer(7_000, TimerKind::Grace, "a"),
 		]

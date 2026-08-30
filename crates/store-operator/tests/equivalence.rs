@@ -52,7 +52,7 @@ const CACHED_KEYSPACES: [KeyspaceId; 2] = [CACHED, KeyspaceId::JOIN_PUBLISHED];
 const KEYSPACES: [KeyspaceId; 5] = [
 	CACHED,
 	KeyspaceId::JOIN_PUBLISHED,
-	KeyspaceId::EXPIRY,
+	KeyspaceId::ROLLING_EXPIRY,
 	KeyspaceId::CUSTOM_NOT_CACHED,
 	KeyspaceId::TIMER_WHEEL,
 ];

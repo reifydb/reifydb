@@ -680,7 +680,7 @@ extern "C" fn test_get_or_create_row_numbers(
 			let map_key = test_state_envelope(
 				operator_id,
 				GroupId(group),
-				KeyspaceId::ROW_NUMBER_MAPPING,
+				KeyspaceId::GUEST_ROW_MAPPING,
 				key_bytes.to_vec(),
 			);
 			match test_ctx.get_state(&map_key) {
@@ -745,7 +745,7 @@ extern "C" fn test_get_or_create_row_numbers_for_pairs(
 			let map_key = test_state_envelope(
 				operator_id,
 				GroupId(*groups.add(i)),
-				KeyspaceId::ROW_NUMBER_MAPPING,
+				KeyspaceId::GUEST_ROW_MAPPING,
 				key_bytes.to_vec(),
 			);
 			match test_ctx.get_state(&map_key) {
@@ -792,7 +792,7 @@ extern "C" fn test_remove_row_number(
 		let map_key = test_state_envelope(
 			operator_id,
 			GroupId(group),
-			KeyspaceId::ROW_NUMBER_MAPPING,
+			KeyspaceId::GUEST_ROW_MAPPING,
 			key_bytes.to_vec(),
 		);
 		test_ctx.remove_state(&map_key);

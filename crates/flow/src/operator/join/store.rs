@@ -4,7 +4,7 @@
 use std::ops::Bound;
 
 use reifydb_codec::{
-	key::{encode_u64_asc, encode_u128_asc, encoded::EncodedKey},
+	key::{encode_u128_asc, encoded::EncodedKey},
 	row::{
 		bytes::EncodedBytes,
 		operator::state::{decode_body, encode},
@@ -20,12 +20,12 @@ use reifydb_core::interface::catalog::{
 use reifydb_core::{
 	key::{
 		operator::{
-			keyspace::join::{JoinLeft, JoinRight},
-			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+			keyspace::join::{JoinLeft, JoinRight, JoinSchema, JoinSchemaKey},
+			state::{GroupId, GroupStateKey},
 		},
 		typed::direction::Asc,
 	},
-	state::typed::TypedStateStore,
+	state::typed::{TypedStateStore, typed_key},
 	value::column::columns::Columns,
 };
 use reifydb_value::{
@@ -86,10 +86,10 @@ impl Store {
 	}
 
 	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> GroupStateKey {
-		let mut suffix = Vec::with_capacity(1 + 8);
-		suffix.push(self.side.tag());
-		suffix.extend_from_slice(&encode_u64_asc(fingerprint.as_u64()));
-		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::JOIN_SCHEMA, suffix)
+		typed_key::<JoinSchema>(GroupId::ROOT, &JoinSchemaKey {
+			side: Asc(self.side.tag()),
+			fingerprint: Asc(fingerprint),
+		})
 	}
 
 	fn read_row(

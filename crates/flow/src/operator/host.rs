@@ -13,7 +13,10 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator::state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
+		operator::{
+			keyspace::join::JoinRowMappingKey,
+			state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
+		},
 	},
 	state::timer::{StateStore, TimerKind, TimerStore},
 };
@@ -107,19 +110,15 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>>;
 
-	fn get_row_numbers_for_groups(
-		&mut self,
-		groups: &[GroupId],
-		key: &EncodedKey,
-	) -> Result<Vec<Option<RowNumber>>>;
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>>;
 
-	fn get_or_create_row_numbers_for_groups(
-		&mut self,
-		groups: &[GroupId],
-		key: &EncodedKey,
-	) -> Result<Vec<(RowNumber, bool)>>;
+	fn get_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>>;
 
-	fn remove_row_numbers_by_prefix(&mut self, group: GroupId, key_prefix: &[u8]) -> Result<()>;
+	fn get_or_create_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<(RowNumber, bool)>>;
+
+	fn remove_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<()>;
+
+	fn remove_join_row_numbers_for_left(&mut self, tag: u8, left: u64) -> Result<()>;
 
 	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>>;
 
@@ -252,19 +251,23 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.get_or_create_row_numbers(self.operator, group, keys)
 	}
 
-	fn get_or_create_row_numbers_for_pairs(
-		&mut self,
-		pairs: &[(GroupId, EncodedKey)],
-	) -> Result<Vec<(RowNumber, bool)>> {
-		self.txn.get_or_create_row_numbers_for_pairs(self.operator, pairs)
+	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
+		self.txn.get_or_create_row_numbers_for_groups(self.operator, groups)
 	}
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		self.txn.remove_row_number(self.operator, group, key)
 	}
 
+	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {
+		self.txn.remove_row_number_for_group(self.operator, group)
+	}
+
 	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-		self.txn.remove_row_numbers(self.operator, group, keys)
+		for key in keys {
+			self.txn.remove_row_number(self.operator, group, key)?;
+		}
+		Ok(())
 	}
 
 	fn written_at(&self) -> DateTime {
@@ -375,24 +378,24 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.get_row_numbers(self.operator, group, keys)
 	}
 
-	fn get_row_numbers_for_groups(
-		&mut self,
-		groups: &[GroupId],
-		key: &EncodedKey,
-	) -> Result<Vec<Option<RowNumber>>> {
-		self.txn.get_row_numbers_for_groups(self.operator, groups, key)
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
+		self.txn.get_row_numbers_for_groups(self.operator, groups)
 	}
 
-	fn get_or_create_row_numbers_for_groups(
-		&mut self,
-		groups: &[GroupId],
-		key: &EncodedKey,
-	) -> Result<Vec<(RowNumber, bool)>> {
-		self.txn.get_or_create_row_numbers_for_groups(self.operator, groups, key)
+	fn get_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>> {
+		self.txn.get_join_row_numbers(self.operator, keys)
 	}
 
-	fn remove_row_numbers_by_prefix(&mut self, group: GroupId, key_prefix: &[u8]) -> Result<()> {
-		self.txn.remove_row_numbers_by_prefix(self.operator, group, key_prefix)
+	fn get_or_create_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<(RowNumber, bool)>> {
+		self.txn.get_or_create_join_row_numbers(self.operator, keys)
+	}
+
+	fn remove_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<()> {
+		self.txn.remove_join_row_numbers(self.operator, keys)
+	}
+
+	fn remove_join_row_numbers_for_left(&mut self, tag: u8, left: u64) -> Result<()> {
+		self.txn.remove_join_row_numbers_for_left(self.operator, tag, left)
 	}
 
 	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>> {

@@ -74,12 +74,11 @@ pub trait StateStore {
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 
-	fn get_or_create_row_numbers_for_pairs(
-		&mut self,
-		pairs: &[(GroupId, EncodedKey)],
-	) -> Result<Vec<(RowNumber, bool)>>;
+	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>>;
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
+
+	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()>;
 
 	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
 		for key in keys {

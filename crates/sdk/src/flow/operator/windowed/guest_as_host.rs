@@ -120,15 +120,18 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(self.0.get_or_create_row_numbers(group, keys)?)
 	}
 
-	fn get_or_create_row_numbers_for_pairs(
-		&mut self,
-		pairs: &[(GroupId, EncodedKey)],
-	) -> Result<Vec<(RowNumber, bool)>> {
-		Ok(self.0.get_or_create_row_numbers_for_pairs(pairs)?)
+	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
+		let pairs: Vec<(GroupId, EncodedKey)> =
+			groups.iter().map(|group| (*group, EncodedKey::new(Vec::new()))).collect();
+		Ok(self.0.get_or_create_row_numbers_for_pairs(&pairs)?)
 	}
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		Ok(self.0.remove_row_number(group, key)?)
+	}
+
+	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {
+		Ok(self.0.remove_row_number(group, &EncodedKey::new(Vec::new()))?)
 	}
 
 	fn written_at(&self) -> DateTime {

@@ -507,7 +507,7 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 fn contains_charges_the_same_keyspace_slots_as_get() {
 	let tier = roomy();
 	let known = key(GROUP_A, KeyspaceId::EMIT, b"a");
-	let unknown = key(GROUP_A, KeyspaceId::EXPIRY, b"a");
+	let unknown = key(GROUP_A, KeyspaceId::ROLLING_EXPIRY, b"a");
 
 	tier.overwrite(OP_A, known.clone(), row("v"));
 	assert_eq!(tier.contains(OP_A, &known), Some(true));
@@ -515,8 +515,8 @@ fn contains_charges_the_same_keyspace_slots_as_get() {
 
 	assert_eq!(keyspace_row(&tier, KeyspaceId::EMIT).counters.hits, 1);
 	assert_eq!(keyspace_row(&tier, KeyspaceId::EMIT).counters.misses, 0);
-	assert_eq!(keyspace_row(&tier, KeyspaceId::EXPIRY).counters.misses, 1);
-	assert_eq!(keyspace_row(&tier, KeyspaceId::EXPIRY).counters.hits, 0);
+	assert_eq!(keyspace_row(&tier, KeyspaceId::ROLLING_EXPIRY).counters.misses, 1);
+	assert_eq!(keyspace_row(&tier, KeyspaceId::ROLLING_EXPIRY).counters.hits, 0);
 }
 
 #[test]
@@ -678,7 +678,7 @@ const EXCLUDED: [KeyspaceId; 5] = [
 	KeyspaceId::CUSTOM_NOT_CACHED,
 	KeyspaceId::JOIN_PIN,
 	KeyspaceId::ENGINE_META,
-	KeyspaceId::EXPIRY,
+	KeyspaceId::ROLLING_EXPIRY,
 	KeyspaceId::TIMER_WHEEL,
 ];
 

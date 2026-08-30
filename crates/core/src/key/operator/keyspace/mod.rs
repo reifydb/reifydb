@@ -188,13 +188,31 @@ mod tests {
 	}
 
 	#[test]
-	fn the_legacy_row_number_mapping_is_the_only_declared_id_without_a_keyspace() {
-		// operator_state.rs declares forty four ids and counts them from its own source text; the one
-		// this catalogue does not cover is 0xFE, which still has live callers and is replaced by the three
-		// R22 mappings when S10 ports them
-		assert!(
-			!catalogue().iter().any(|(_, id, _)| *id == KeyspaceId::ROW_NUMBER_MAPPING),
-			"0xFE must stay out of the typed catalogue until its callers move"
+	fn the_catalogue_covers_every_id_the_substrate_declares() {
+		// A declared id with no keyspace has no typed key, so its writers fall back to raw suffix bytes
+		// nothing round-trips and the range tier rebuilds a key it cannot decode. There is no reflection
+		// over associated constants, so counting the declarations in the source is the only way to notice
+		// an id nobody gave a keyspace; 0xFE was the last one and S10 retired it.
+		let source = include_str!("../state.rs");
+		let body = source
+			.split("impl KeyspaceId {")
+			.nth(1)
+			.expect("the KeyspaceId impl block is where the constants are declared");
+		let declared = body
+			.split("\n}\n")
+			.next()
+			.expect("the impl block is closed")
+			.lines()
+			.filter(|line| {
+				let line = line.trim_start();
+				line.starts_with("pub const") && line.contains("Self(")
+			})
+			.count();
+		assert_eq!(
+			catalogue().len(),
+			declared,
+			"the substrate declares {declared} keyspace ids and the catalogue types {}",
+			catalogue().len()
 		);
 	}
 }

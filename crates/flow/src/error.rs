@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::error::diagnostic::flow::{
-	flow_extern_unsupported_on_wasm, flow_missing_input_edge, flow_operator_input_arity,
+	flow_extern_unsupported_on_wasm, flow_guest_key_too_wide, flow_missing_input_edge, flow_operator_input_arity,
 	flow_parent_operator_not_found, flow_sink_dictionary_not_found, flow_sink_missing_series_key,
 	flow_sink_missing_system_column, flow_sink_not_a_source_family, flow_span_on_unageable_node,
 	flow_state_decode_failed, flow_state_encode_failed, flow_unknown_diff_origin, flow_unknown_operator,
@@ -23,6 +23,11 @@ pub enum FlowStateError {
 		state: &'static str,
 		cause: String,
 	},
+
+	#[error("a guest row mapping key is {len} bytes, the key holds at most 16")]
+	GuestKeyTooWide {
+		len: usize,
+	},
 }
 
 impl IntoDiagnostic for FlowStateError {
@@ -36,6 +41,9 @@ impl IntoDiagnostic for FlowStateError {
 				state,
 				cause,
 			} => flow_state_decode_failed(state, cause),
+			FlowStateError::GuestKeyTooWide {
+				len,
+			} => flow_guest_key_too_wide(len),
 		}
 	}
 }

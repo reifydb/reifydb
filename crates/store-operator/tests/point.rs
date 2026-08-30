@@ -602,7 +602,7 @@ fn an_expiry_write_never_occupies_the_point_tier() {
 	// The expiry index is drained by range scans and never point read, so an entry the write-through admits can
 	// never win its budget back with a hit.
 	let (store, _storage, _guard) = cached_store();
-	let key = key_in(KeyspaceId::EXPIRY, 1);
+	let key = key_in(KeyspaceId::ROLLING_EXPIRY, 1);
 	put(&store, OP_A, key.clone(), row("armed"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
 
@@ -610,19 +610,19 @@ fn an_expiry_write_never_occupies_the_point_tier() {
 		assert_eq!(
 			body(&store.get(OP_A, &key).expect("a refused keyspace must still read correctly")),
 			"armed",
-			"EXPIRY bypasses the tier, it does not lose its rows"
+			"ROLLING_EXPIRY bypasses the tier, it does not lose its rows"
 		);
 	}
 
 	assert_eq!(
 		point_entries(&store),
 		0,
-		"EXPIRY must leave nothing behind: neither the flush write-through nor a read fill may admit it"
+		"ROLLING_EXPIRY must leave nothing behind: neither the flush write-through nor a read fill may admit it"
 	);
 	assert_eq!(
 		point_tier(&store).metrics().fills_started,
 		0,
-		"EXPIRY must be refused before the fill starts; a fill that can only be thrown away still takes the shard lock"
+		"ROLLING_EXPIRY must be refused before the fill starts; a fill that can only be thrown away still takes the shard lock"
 	);
 }
 
@@ -659,8 +659,8 @@ fn a_timer_wheel_write_never_occupies_the_point_tier() {
 fn a_point_read_of_an_expiry_key_remembers_neither_the_row_nor_the_absence() {
 	// A refused keyspace that still caches "nothing here" gives back exactly the budget the refusal freed.
 	let (store, storage, _guard) = cached_store();
-	let present = key_in(KeyspaceId::EXPIRY, 1);
-	let absent = key_in(KeyspaceId::EXPIRY, 2);
+	let present = key_in(KeyspaceId::ROLLING_EXPIRY, 1);
+	let absent = key_in(KeyspaceId::ROLLING_EXPIRY, 2);
 	storage.apply_batch(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: present.clone(),
@@ -680,7 +680,7 @@ fn a_point_read_of_an_expiry_key_remembers_neither_the_row_nor_the_absence() {
 	assert_eq!(body(&store.get(OP_A, &present).expect("the seeded row is readable")), "armed");
 	assert_eq!(store.get(OP_A, &absent), None, "the key is gone from sqlite but still passes the filter");
 
-	assert_eq!(point_entries(&store), 0, "neither the row nor the absence may be remembered for EXPIRY");
+	assert_eq!(point_entries(&store), 0, "neither the row nor the absence may be remembered for ROLLING_EXPIRY");
 }
 
 #[test]

@@ -13,19 +13,22 @@ use std::{collections::HashMap, ops::Bound};
 use reifydb_codec::{
 	key::{
 		encode_u64_asc,
-		encoded::{EncodedKey, IntoEncodedKey},
+		encoded::EncodedKey,
 	},
 	row::operator::state::{OperatorState, StateCodec, decode, encode},
 };
 use reifydb_core::{
-	key::operator::{
-		keyspace::window::{WindowMeta, WindowMetaKey},
-		state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey},
+	key::{
+		operator::{
+			keyspace::window::{Emit, WindowMeta, WindowMetaKey},
+			state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey},
+		},
+		typed::direction::{Asc, Desc},
 	},
 	metrics::heap::HeapSize,
 	state::{
 		timer::StateStore,
-		typed::{SuffixBytes, TypedStateStore},
+		typed::{TypedStateStore, typed_key},
 	},
 };
 use reifydb_macro::operator_state;
@@ -194,7 +197,7 @@ impl MetaSweep {
 		for (suffix, bytes) in page {
 			if let Some(hw) = decode::<M>(&bytes)?.high_water_order() {
 				if hw < threshold {
-					stale.push(MetaKey(EncodedKey::new(suffix.to_suffix_bytes())));
+					stale.push(MetaKey(suffix));
 				} else {
 					surviving = Some(surviving.map_or(hw, |m| m.min(hw)));
 				}
@@ -218,7 +221,7 @@ impl MetaSweep {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
-pub struct MetaKey(pub EncodedKey);
+pub struct MetaKey(pub WindowMetaKey);
 
 impl HeapSize for MetaKey {
 	fn heap_size(&self) -> usize {
@@ -346,13 +349,13 @@ impl HeapSize for EmitKey {
 
 impl IntoGroupStateKey for &EmitKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.group, KeyspaceId::EMIT, encode_u64_asc(self.row.0))
+		typed_key::<Emit>(self.group, &Asc(self.row))
 	}
 }
 
 impl IntoGroupStateKey for &MetaKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::WINDOW_META, &self.0)
+		typed_key::<WindowMeta>(GroupId::ROOT, &self.0)
 	}
 }
 
@@ -361,7 +364,9 @@ pub(crate) fn group_hash<G: StateCodec>(group: &G) -> Result<Hash128> {
 }
 
 pub fn meta_key_for(group: Hash128) -> MetaKey {
-	MetaKey((&group).into_encoded_key())
+	MetaKey(WindowMetaKey {
+		window: Desc(group),
+	})
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
