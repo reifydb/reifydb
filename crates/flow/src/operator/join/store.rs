@@ -297,7 +297,6 @@ impl Store {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
-	use reifydb_core::key::operator::state::node_range;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::value::value_type::ValueType;
 
@@ -308,7 +307,7 @@ mod tests {
 			FlowTransaction,
 			deferred::DeferredTransaction,
 			mock::FlowTxn,
-			state::{StateExtension, StateRange},
+			state::StateExtension,
 		},
 	};
 
@@ -397,7 +396,7 @@ mod tests {
 		let store = Store::new(JoinSide::Left);
 
 		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		let before = txn.state_range(operator, StateRange::forward(node_range(operator), "test")).unwrap();
+		let before = txn.state_scan_all(operator).unwrap();
 
 		assert!(get_row(&store, operator, &mut txn, &h(0xCCC), rn(1)).unwrap().is_none());
 		assert!(store.rows_for_key(&mut b(&mut txn, operator), &h(0xCCC), None, 8).unwrap().is_empty());
@@ -405,7 +404,7 @@ mod tests {
 		assert!(!store.remove_row(&mut b(&mut txn, operator), &h(0xCCC), rn(1)).unwrap());
 		assert!(!store.update_row(&mut b(&mut txn, operator), &h(0xCCC), rn(1), &row(0x20)).unwrap());
 
-		let after = txn.state_range(operator, StateRange::forward(node_range(operator), "test")).unwrap();
+		let after = txn.state_scan_all(operator).unwrap();
 		assert_eq!(after.items.len(), before.items.len(), "no probe may leave a row behind");
 	}
 

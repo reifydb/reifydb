@@ -3,7 +3,6 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use reifydb_codec::key::encoded::EncodedKeyRange;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -38,7 +37,7 @@ use crate::{
 		deferred::DeferredTransaction,
 		mock::FlowTxn,
 		row_number::RowNumberExtension,
-		state::{StateExtension, StateRange},
+		state::StateExtension,
 	},
 };
 
@@ -84,7 +83,7 @@ fn build_remove(value: i64, row_num: u64) -> Change {
 
 fn persisted_rows(op: &DistinctOperator, txn: &mut DeferredTransaction) -> BTreeMap<Vec<u8>, Vec<u8>> {
 	let mut out = BTreeMap::new();
-	let batch = txn.state_range(op.plan.operator, StateRange::forward(EncodedKeyRange::all(), "test")).unwrap();
+	let batch = txn.state_scan_all(op.plan.operator).unwrap();
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
 		if decoded.keyspace == KeyspaceId::DISTINCT_ENTRY {
@@ -105,7 +104,7 @@ fn layout_row(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Option<Ve
 
 fn entry_groups(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Vec<GroupId> {
 	let mut out = Vec::new();
-	let batch = txn.state_range(op.plan.operator, StateRange::forward(EncodedKeyRange::all(), "test")).unwrap();
+	let batch = txn.state_scan_all(op.plan.operator).unwrap();
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
 		if decoded.keyspace == KeyspaceId::DISTINCT_ENTRY {
@@ -116,7 +115,7 @@ fn entry_groups(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Vec<Gro
 }
 
 fn erase_group_data(op: &DistinctOperator, txn: &mut DeferredTransaction, group: GroupId) -> usize {
-	let batch = txn.state_range(op.plan.operator, StateRange::forward(EncodedKeyRange::all(), "test")).unwrap();
+	let batch = txn.state_scan_all(op.plan.operator).unwrap();
 	let mut erased = 0;
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");

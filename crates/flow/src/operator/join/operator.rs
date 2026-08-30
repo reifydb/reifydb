@@ -1051,10 +1051,13 @@ mod seal_tests {
 	use reifydb_codec::row::operator::state::decode;
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator::{
-			keyspace::join::{JoinLeft, JoinRight},
-			state::{KeyspaceId, group_inner_range, keyspace_inner_range},
-			traits::Keyspace,
+		key::{
+			EncodableKey,
+			operator::{
+				keyspace::join::{JoinLeft, JoinRight},
+				state::{KeyspaceId, OperatorStateKey, keyspace_inner_range},
+				traits::Keyspace,
+			},
 		},
 		value::column::buffer::ColumnBuffer,
 	};
@@ -1222,7 +1225,13 @@ mod seal_tests {
 	}
 
 	fn group_rows(op: &JoinOperator, txn: &mut DeferredTransaction, group: GroupId) -> usize {
-		txn.state_range(op.operator, StateRange::forward(group_inner_range(group), "test")).unwrap().items.len()
+		// no single range spans a group's keyspaces, so the group filter has to happen after the scan
+		txn.state_scan_all(op.operator)
+			.unwrap()
+			.items
+			.iter()
+			.filter(|item| OperatorStateKey::decode(&item.key).is_some_and(|key| key.group == group))
+			.count()
 	}
 
 	fn side_rows(op: &JoinOperator, txn: &mut DeferredTransaction, group: GroupId, side: JoinSide) -> usize {
