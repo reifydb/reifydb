@@ -215,6 +215,7 @@ pub struct RangeMetrics {
 	pub materializes_raced: u64,
 	pub evictions: u64,
 	pub point_hits: u64,
+	pub point_absences: u64,
 	pub point_misses: u64,
 }
 

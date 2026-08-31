@@ -88,7 +88,9 @@ impl<D: RangeDomain> RangeTier<D> {
 		let mut shard = self.shard(index).lock();
 		let slot = D::slot(partition);
 		shard.metrics.point_hits += 1;
+		shard.metrics.point_absences += 1;
 		shard.slot_metrics[slot].point_hits += 1;
+		shard.slot_metrics[slot].point_absences += 1;
 	}
 
 	fn record_point_miss(&self, index: usize, partition: &D::Partition) {

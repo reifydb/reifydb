@@ -357,6 +357,7 @@ impl<D: RangeDomain> MetricsCollector for RangeTier<D> {
 		out.push(MetricsSample::counter(D::SCOPE, "materializes_raced", counters.materializes_raced));
 		out.push(MetricsSample::counter(D::SCOPE, "evictions", counters.evictions));
 		out.push(MetricsSample::counter(D::SCOPE, "point_hits", counters.point_hits));
+		out.push(MetricsSample::counter(D::SCOPE, "point_absences", counters.point_absences));
 		out.push(MetricsSample::counter(D::SCOPE, "point_misses", counters.point_misses));
 		out.push(MetricsSample::bytes(D::SCOPE, "shard_limit_bytes", self.shard_limit_bytes()));
 		for (index, shard) in self.inner.shards.iter().enumerate() {
@@ -377,6 +378,11 @@ impl<D: RangeDomain> MetricsCollector for RangeTier<D> {
 			out.push(MetricsSample::counter(scope.clone(), "materializes", keyspace.counters.materializes));
 			out.push(MetricsSample::counter(scope.clone(), "evictions", keyspace.counters.evictions));
 			out.push(MetricsSample::counter(scope.clone(), "point_hits", keyspace.counters.point_hits));
+			out.push(MetricsSample::counter(
+				scope.clone(),
+				"point_absences",
+				keyspace.counters.point_absences,
+			));
 			out.push(MetricsSample::counter(scope, "point_misses", keyspace.counters.point_misses));
 		}
 		let gaps = self.gap_histogram();
@@ -400,6 +406,7 @@ fn accumulate(target: &mut RangeMetrics, source: &RangeMetrics) {
 	target.materializes_raced += source.materializes_raced;
 	target.evictions += source.evictions;
 	target.point_hits += source.point_hits;
+	target.point_absences += source.point_absences;
 	target.point_misses += source.point_misses;
 }
 
