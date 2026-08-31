@@ -43,7 +43,7 @@ impl<T: KeyLayout> SuffixBytes for T {
 		let mut values = Vec::with_capacity(T::COLUMNS.len());
 		let mut rest = bytes;
 		for column in T::COLUMNS {
-			let width = column_width(column.ty);
+			let width = column.ty.width();
 			if rest.len() < width {
 				return None;
 			}
@@ -55,14 +55,6 @@ impl<T: KeyLayout> SuffixBytes for T {
 			return None;
 		}
 		T::from_key_values(&values)
-	}
-}
-
-fn column_width(ty: KeyColumnType) -> usize {
-	match ty {
-		KeyColumnType::U8 => 1,
-		KeyColumnType::U64 => 8,
-		KeyColumnType::Blob16 => 16,
 	}
 }
 
@@ -96,28 +88,22 @@ fn key_value_from_bytes(ty: KeyColumnType, direction: Direction, bytes: &[u8]) -
 	}
 }
 
-pub fn typed_key<K: Keyspace>(group: GroupId, suffix: &K::Suffix) -> GroupStateKey
-where
-	K::Suffix: SuffixBytes,
-{
+pub fn typed_key<K: Keyspace>(group: GroupId, suffix: &K::Suffix) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(group, K::ID, suffix.to_suffix_bytes())
 }
 
 pub trait TypedStateStore: StateStore {
 	fn state_get_in<K>(&mut self, group: GroupId, suffix: &K::Suffix) -> Result<Option<EncodedPodRow>>
 	where
-		K: Keyspace,
-		K::Suffix: SuffixBytes;
+		K: Keyspace;
 
 	fn state_set_in<K>(&mut self, group: GroupId, suffix: &K::Suffix, row: EncodedPodRow) -> Result<()>
 	where
-		K: Keyspace,
-		K::Suffix: SuffixBytes;
+		K: Keyspace;
 
 	fn state_remove_in<K>(&mut self, group: GroupId, suffix: &K::Suffix) -> Result<()>
 	where
-		K: Keyspace,
-		K::Suffix: SuffixBytes;
+		K: Keyspace;
 
 	fn state_scan_in<K>(
 		&mut self,
@@ -126,15 +112,13 @@ pub trait TypedStateStore: StateStore {
 		limit: Option<usize>,
 	) -> Result<Vec<(K::Suffix, EncodedPodRow)>>
 	where
-		K: Keyspace,
-		K::Suffix: SuffixBytes;
+		K: Keyspace;
 }
 
 impl<T: StateStore + ?Sized> TypedStateStore for T {
 	fn state_get_in<K>(&mut self, group: GroupId, suffix: &K::Suffix) -> Result<Option<EncodedPodRow>>
 	where
 		K: Keyspace,
-		K::Suffix: SuffixBytes,
 	{
 		self.state_get(&typed_key::<K>(group, suffix))
 	}
@@ -142,7 +126,6 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 	fn state_set_in<K>(&mut self, group: GroupId, suffix: &K::Suffix, row: EncodedPodRow) -> Result<()>
 	where
 		K: Keyspace,
-		K::Suffix: SuffixBytes,
 	{
 		self.state_set(&typed_key::<K>(group, suffix), row)
 	}
@@ -150,7 +133,6 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 	fn state_remove_in<K>(&mut self, group: GroupId, suffix: &K::Suffix) -> Result<()>
 	where
 		K: Keyspace,
-		K::Suffix: SuffixBytes,
 	{
 		self.state_remove(&typed_key::<K>(group, suffix))
 	}
@@ -163,7 +145,6 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 	) -> Result<Vec<(K::Suffix, EncodedPodRow)>>
 	where
 		K: Keyspace,
-		K::Suffix: SuffixBytes,
 	{
 		let mut range = keyspace_inner_range(group, K::ID);
 		range.start = match from {

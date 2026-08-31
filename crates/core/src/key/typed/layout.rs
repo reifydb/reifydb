@@ -80,6 +80,16 @@ pub enum KeyColumnType {
 	Blob16,
 }
 
+impl KeyColumnType {
+	pub const fn width(self) -> usize {
+		match self {
+			Self::U8 => 1,
+			Self::U64 => 8,
+			Self::Blob16 => 16,
+		}
+	}
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum KeyValue {
 	U8(u8),

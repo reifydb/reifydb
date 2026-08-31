@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+	key::operator::state::{GroupId, KeyspaceId, keyspace_inner_range},
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::SqliteTempPathGuard;
@@ -27,6 +27,7 @@ use crate::{
 	},
 	types::{DurablePre, OperatorWrite},
 };
+use reifydb_testing::keyspace::state_key;
 
 const FLOW_A: FlowId = FlowId(1);
 const FLOW_B: FlowId = FlowId(2);
@@ -63,9 +64,10 @@ fn flush_once_interlock() -> CheckpointInterlock {
 
 const OP: OperatorId = OperatorId(1);
 const GROUP: GroupId = GroupId(7);
+const KEYSPACE: KeyspaceId = KeyspaceId::JOIN_LEFT;
 
 fn key(suffix: u8) -> EncodedKey {
-	OperatorStateKey::inner_encoded(GROUP, KeyspaceId::ACCUMULATOR, [suffix]).as_encoded().clone()
+	state_key(GROUP, KEYSPACE, suffix as u64)
 }
 
 fn row(body: &str) -> EncodedPodRow {
@@ -77,7 +79,7 @@ fn body(row: &EncodedPodRow) -> String {
 }
 
 fn all() -> EncodedKeyRange {
-	keyspace_inner_range(GROUP, KeyspaceId::ACCUMULATOR)
+	keyspace_inner_range(GROUP, KEYSPACE)
 }
 
 fn insert(suffix: u8, value: &str) -> OperatorWrite {

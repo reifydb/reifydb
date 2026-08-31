@@ -50,6 +50,29 @@ pub struct KeyspaceSpec {
 	pub id: KeyspaceId,
 	pub cache: CacheTiers,
 	pub columns: &'static [KeyColumn],
+	pub suffix: &'static [KeyColumn],
+}
+
+pub const fn columns_width(columns: &[KeyColumn]) -> usize {
+	let mut width = 0;
+	let mut index = 0;
+	while index < columns.len() {
+		width += columns[index].ty.width();
+		index += 1;
+	}
+	width
+}
+
+impl KeyspaceSpec {
+	pub const fn suffix_width(&self) -> usize {
+		columns_width(self.suffix)
+	}
+}
+
+pub trait KeyspaceVisitor {
+	type Output;
+
+	fn visit<K: Keyspace>(self) -> Self::Output;
 }
 
 macro_rules! catalogue {
@@ -60,8 +83,23 @@ macro_rules! catalogue {
 				id: <$keyspace as Keyspace>::ID,
 				cache: <$keyspace as Keyspace>::CACHE,
 				columns: <<$keyspace as Keyspace>::Key as KeyLayout>::COLUMNS,
+				suffix: <<$keyspace as Keyspace>::Suffix as KeyLayout>::COLUMNS,
 			}),*
 		];
+
+		pub fn suffix_width_of(id: KeyspaceId) -> Option<usize> {
+			$(if id == <$keyspace as Keyspace>::ID {
+				return Some(columns_width(<<$keyspace as Keyspace>::Suffix as KeyLayout>::COLUMNS));
+			})*
+			None
+		}
+
+		pub fn dispatch<V: KeyspaceVisitor>(id: KeyspaceId, visitor: V) -> Option<V::Output> {
+			$(if id == <$keyspace as Keyspace>::ID {
+				return Some(visitor.visit::<$keyspace>());
+			})*
+			None
+		}
 
 		#[cfg(test)]
 		fn every_keyspace_round_trips() {
@@ -216,3 +254,4 @@ mod tests {
 		);
 	}
 }
+

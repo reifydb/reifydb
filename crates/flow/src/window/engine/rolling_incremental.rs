@@ -20,7 +20,8 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaSweep, RunningKey, WindowStateKey,
+			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep, RunningKey,
+			WindowStateKey,
 			config::WindowEngineConfig,
 			group_hash, load_batch_meta, meta_key_for, persist_batch_meta,
 			rolling::{RollingBuckets, RollingBuffer, RollingResult},
@@ -42,6 +43,7 @@ struct GroupSlot<S, Accumulator, Running, Output> {
 }
 
 pub struct RollingIncrementalEngine<G, S, Accumulator, Running> {
+	family: KeyspaceFamily,
 	meta_sweep: MetaSweep,
 	_pd: PhantomData<(G, S, Accumulator, Running)>,
 }
@@ -57,8 +59,9 @@ where
 	GroupMeta<S>: OperatorState,
 	RollingBuffer<S, Accumulator>: OperatorState + HeapSize,
 {
-	pub fn new(_config: WindowEngineConfig) -> Self {
+	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
+			family: config.family(),
 			meta_sweep: MetaSweep::default(),
 			_pd: PhantomData,
 		}
@@ -106,10 +109,10 @@ where
 						}
 					};
 					let buffer: RollingBuffer<S, Accumulator> =
-						get_classified(store, &WindowStateKey::new(group_id, key.clone()))?
+						get_classified(store, &WindowStateKey::new(self.family, group_id, key.clone()))?
 							.unwrap_or_default();
 					let running: Running =
-						get_classified(store, &RunningKey::new(group_id, key.clone()))?
+						get_classified(store, &RunningKey::new(self.family, group_id, key.clone()))?
 							.unwrap_or_default();
 					let prior_output = match buffer.iter().next_back() {
 						Some((slot, accumulator)) => {
@@ -193,10 +196,10 @@ where
 			};
 			put(
 				store,
-				&WindowStateKey::new(group_slot.group_id, group_slot.key.clone()),
+				&WindowStateKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
 				group_slot.buffer,
 			)?;
-			put(store, &RunningKey::new(group_slot.group_id, group_slot.key.clone()), group_slot.running)?;
+			put(store, &RunningKey::new(self.family, group_slot.group_id, group_slot.key.clone()), group_slot.running)?;
 
 			if let Some(out) = output {
 				pairs.push((group_slot.group_id, group_slot.key));

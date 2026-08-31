@@ -20,7 +20,7 @@ use reifydb_sdk::{
 		GuestOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::GuestContext,
-		state::GuestRawOperator,
+		state::{GuestRawOperator, utils::custom_state_key_in},
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
@@ -134,7 +134,7 @@ impl GuestOperator for Alarm {
 		// Per-group state, so the group has something for the retention pass to erase once it ages
 		// past its horizon. Without it a group is nothing but an identity and reclaim has no work.
 		let fired_at = timer.due.to_millis() as i64;
-		self.state_set(ctx, &OperatorStateKey::inner_encoded(group, ALARM_STATE, []), &fired_at)?;
+		self.state_set(ctx, &custom_state_key_in(group, &[])?, &fired_at)?;
 
 		let (row_number, _is_new) = ctx.get_or_create_row_numbers(group, &[key])?.remove(0);
 		ctx.emit_insert(
@@ -323,7 +323,7 @@ impl GuestOperator for Snooze {
 					.expect("the substrate must populate #time on an event-time source");
 				let key = group_key(g);
 				let group = GroupId::of(&key);
-				let armed_key = OperatorStateKey::inner_encoded(group, SNOOZE_ARMED, []);
+				let armed_key = custom_state_key_in(group, &[])?;
 
 				if let Some(prior) = self.state_get::<i64>(ctx, &armed_key)? {
 					// Zero in the honest case; non-zero aims the disarm past what

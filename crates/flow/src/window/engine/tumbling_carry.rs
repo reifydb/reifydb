@@ -25,7 +25,8 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, MetaHighWater, MetaSweep, WindowResult, WindowStateKey,
+			AccumulatorEvent, EmitKind, KeyspaceFamily, MetaHighWater, MetaSweep, WindowResult,
+			WindowStateKey,
 			config::TumblingCarryConfig, group_hash, meta_key_for, tumbling::TumblingBuckets,
 		},
 		span::{SlotSpan, WindowAnchor, WindowSpan},
@@ -96,6 +97,7 @@ struct PendingCarry<S, Output> {
 }
 
 pub struct TumblingCarryEngine<G, S: WindowAnchor, Accumulator, Carry, Output> {
+	family: KeyspaceFamily,
 	meta_sweep: MetaSweep,
 	retention: Option<SlotSpan<S>>,
 	_pd: PhantomData<(G, Accumulator, Carry, Output)>,
@@ -116,6 +118,7 @@ where
 {
 	pub fn new(config: TumblingCarryConfig<S>) -> Self {
 		Self {
+			family: config.base().family(),
 			meta_sweep: MetaSweep::default(),
 			retention: config.retention(),
 			_pd: PhantomData,
@@ -165,7 +168,7 @@ where
 			}
 
 			let mut accumulator: Accumulator =
-				get_classified(store, &WindowStateKey::new(group_id, slot_key.clone()))?
+				get_classified(store, &WindowStateKey::new(self.family, group_id, slot_key.clone()))?
 					.unwrap_or_else(&new_accumulator);
 			let mut changed = false;
 			for event in events {
@@ -186,7 +189,7 @@ where
 			if !changed {
 				continue;
 			}
-			put(store, &WindowStateKey::new(group_id, slot_key), accumulator)?;
+			put(store, &WindowStateKey::new(self.family, group_id, slot_key), accumulator)?;
 
 			entry.windows.entry(span.start).or_insert_with(|| WindowEntry {
 				span,
@@ -221,7 +224,7 @@ where
 				let slot_group = GroupId::of(&slot_key);
 				let finalized = get::<_, Accumulator>(
 					store,
-					&WindowStateKey::new(slot_group, slot_key.clone()),
+					&WindowStateKey::new(self.family, slot_group, slot_key.clone()),
 				)?
 				.and_then(|a| a.finalize())
 				.map(|value| (slot_group, value));
@@ -321,7 +324,7 @@ where
 					meta.sealed_up_to = Some(first);
 					meta.sealed_carry = carry_out;
 					let sealed_group = GroupId::of(&sealed_key);
-					remove(store, &WindowStateKey::new(sealed_group, sealed_key.clone()))?;
+					remove(store, &WindowStateKey::new(self.family, sealed_group, sealed_key.clone()))?;
 					store.remove_row_number_for_group(sealed_group)?;
 				}
 			}

@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::window::span::{SlotSpan, WindowAnchor};
+use crate::window::{
+	engine::KeyspaceFamily,
+	span::{SlotSpan, WindowAnchor},
+};
 
 pub const DEFAULT_EXPIRE_BATCH: usize = 256;
 
 #[derive(Clone)]
 pub struct WindowEngineConfig {
 	expire_batch: usize,
+	family: KeyspaceFamily,
 }
 
 impl WindowEngineConfig {
@@ -18,16 +22,22 @@ impl WindowEngineConfig {
 	pub fn expire_batch(&self) -> usize {
 		self.expire_batch
 	}
+
+	pub fn family(&self) -> KeyspaceFamily {
+		self.family
+	}
 }
 
 pub struct WindowEngineConfigBuilder {
 	expire_batch: usize,
+	family: KeyspaceFamily,
 }
 
 impl WindowEngineConfigBuilder {
 	fn new() -> Self {
 		Self {
 			expire_batch: DEFAULT_EXPIRE_BATCH,
+			family: KeyspaceFamily::Host,
 		}
 	}
 
@@ -36,9 +46,15 @@ impl WindowEngineConfigBuilder {
 		self
 	}
 
+	pub fn family(mut self, family: KeyspaceFamily) -> Self {
+		self.family = family;
+		self
+	}
+
 	pub fn build(self) -> WindowEngineConfig {
 		WindowEngineConfig {
 			expire_batch: self.expire_batch,
+			family: self.family,
 		}
 	}
 }

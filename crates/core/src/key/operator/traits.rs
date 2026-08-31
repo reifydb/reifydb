@@ -7,7 +7,7 @@ use crate::{
 	interface::store::CacheTiers,
 	key::{
 		operator::state::{GroupId, KeyspaceId},
-		typed::{Key, layout::KeyLayout},
+		typed::layout::KeyLayout,
 	},
 };
 
@@ -17,7 +17,7 @@ pub trait Keyspace: Copy + Debug + 'static {
 	const CACHE: CacheTiers;
 
 	type Key: KeyLayout;
-	type Suffix: Key;
+	type Suffix: KeyLayout;
 
 	fn split(key: &Self::Key) -> (GroupId, Self::Suffix);
 

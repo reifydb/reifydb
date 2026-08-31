@@ -215,9 +215,9 @@ impl SqliteOperatorStorage {
 		if !batch.state.is_empty() {
 			self.mark_state_written();
 		}
-		for ((operator, key), entry) in &batch.state {
+		for ((operator, key), entry) in batch.state.iter_encoded() {
 			if entry.post.is_some() {
-				self.filter().add((operator, key));
+				self.filter().add((operator, &key));
 			}
 		}
 		for ((operator, group, side, row_number), entry) in &batch.join_expiries {
@@ -267,7 +267,7 @@ impl SqliteOperatorStorage {
 
 		let mut state_sets: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
 		let mut state_removes: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
-		for ((operator, key), entry) in &batch.state {
+		for ((operator, key), entry) in batch.state.iter_encoded() {
 			match &entry.post {
 				Some(row) => state_sets.push(vec![
 					Box::new(operator.0 as i64),
@@ -401,10 +401,10 @@ fn verify_flush_classification(transaction: &Transaction, batch: &FlushBatch) {
 			_ => None,
 		})
 		.collect();
-	for ((operator, key), entry) in &batch.state {
+	for ((operator, key), entry) in batch.state.iter_encoded() {
 		let observed = match dropped.contains(&operator) {
 			true => None,
-			false => durable_value_len(transaction, operator, key),
+			false => durable_value_len(transaction, operator, &key),
 		};
 		assert_claim(operator, entry.durable_pre, observed);
 	}

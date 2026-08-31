@@ -14,7 +14,12 @@ use reifydb_value::util::hash::xxh3_128;
 use super::super::{EncodableKey, KeyKind};
 use crate::{
 	interface::{catalog::flow::OperatorId, store::CacheTiers},
+	key::operator::keyspace::{
+		root::{CustomNotCachedKey, NodeCounter, NodeCounterKey, NodeCounterKind},
+		suffix_width_of,
+	},
 	metrics::heap::HeapSize,
+	state::typed::{SuffixBytes, typed_key},
 };
 
 #[repr(transparent)]
@@ -277,7 +282,9 @@ pub fn is_framed_inner(inner: &[u8]) -> bool {
 }
 
 pub fn is_guest_framed_inner(inner: &[u8]) -> bool {
-	OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_guest_owned())
+	OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, suffix)| {
+		keyspace.is_guest_owned() && suffix_width_of(keyspace) == Some(suffix.len())
+	})
 }
 
 pub fn is_identity_framed_inner(inner: &[u8]) -> bool {
@@ -559,10 +566,22 @@ pub fn keyspace_inner_range_split(
 	Some((group, keyspace, start, end))
 }
 
-pub const ROW_NUMBER_COUNTER_SUFFIX: &[u8] = b"rn";
+pub fn custom_not_cached_key_in(group: GroupId, id: &[u8]) -> Option<GroupStateKey> {
+	CustomNotCachedKey::of(id).map(|key| {
+		OperatorStateKey::inner_encoded(group, KeyspaceId::CUSTOM_NOT_CACHED, key.to_suffix_bytes())
+	})
+}
+
+pub fn custom_not_cached_key(id: &[u8]) -> Option<GroupStateKey> {
+	custom_not_cached_key_in(GroupId::ROOT, id)
+}
+
+pub fn node_counter_key(kind: NodeCounterKind) -> GroupStateKey {
+	typed_key::<NodeCounter>(GroupId::ROOT, &NodeCounterKey::of(kind))
+}
 
 pub fn row_number_counter_key() -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX)
+	node_counter_key(NodeCounterKind::RowNumber)
 }
 
 pub fn keyspace_inner_range_upto(group: GroupId, keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKeyRange {
@@ -643,7 +662,8 @@ mod tests {
 		CacheTiers, EncodedKey, EncodedKeyRange, GroupId, GroupSet, GroupStateKey, KeySerializer, KeyspaceId,
 		OperatorStateKey, group_data_inner_range, group_data_of_inner, group_data_range,
 		group_identity_inner_range, group_identity_range, group_inner_prefix, group_inner_range, group_range,
-		is_framed_inner, is_guest_framed_inner, keyspace_range, node_prefix, node_range,
+		custom_not_cached_key_in, is_framed_inner, is_guest_framed_inner, keyspace_range, node_prefix,
+		node_range,
 	};
 	use crate::{interface::catalog::flow::OperatorId, key::EncodableKey};
 
@@ -789,8 +809,15 @@ mod tests {
 		assert!(GroupStateKey::from_guest_framed(EncodedKey::new(Vec::new())).is_none());
 
 		assert!(is_guest_framed_inner(
-			OperatorStateKey::inner_encoded(GroupId(3), KeyspaceId::CUSTOM_NOT_CACHED, []).as_slice()
+			custom_not_cached_key_in(GroupId(3), &[]).expect("an empty id fits the keyspace").as_slice()
 		));
+		assert!(
+			!is_guest_framed_inner(
+				OperatorStateKey::inner_encoded(GroupId(3), KeyspaceId::CUSTOM_NOT_CACHED, [])
+					.as_slice()
+			),
+			"a suffix narrower than its keyspace declares must be refused at the wall, or it reaches the 			 typed bucket and panics there instead"
+		);
 	}
 
 	#[test]

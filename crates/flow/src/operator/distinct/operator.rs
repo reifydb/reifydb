@@ -42,8 +42,6 @@ use crate::{
 	},
 };
 
-const LAYOUT_KEY_PREFIX: u8 = 0x02;
-
 const DROP_REASON: &str = "removes whose distinct entry was reclaimed";
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -114,7 +112,7 @@ impl DistinctPlan {
 	}
 
 	pub(super) fn layout_storage_key() -> GroupStateKey {
-		GroupStateKey::root(KeyspaceId::DISTINCT_LAYOUT, vec![LAYOUT_KEY_PREFIX])
+		GroupStateKey::root(KeyspaceId::DISTINCT_LAYOUT, vec![])
 	}
 
 	#[instrument(name = "flow::operator::distinct::load_entry", level = "trace", skip_all)]

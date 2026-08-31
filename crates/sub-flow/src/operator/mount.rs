@@ -125,7 +125,9 @@ mod tests {
 	};
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+		key::operator::state::{
+			GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, custom_not_cached_key_in,
+		},
 		state::timer::StateStore,
 	};
 	use reifydb_flow::{
@@ -171,8 +173,9 @@ mod tests {
 		assert!(host.group_sweep(group, false, None).unwrap().is_empty(), "the probe must leave no row");
 	}
 
-	fn stored_key(suffix: &str) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::ACCUMULATOR, suffix.as_bytes())
+	fn stored_key(id: &str) -> GroupStateKey {
+		// the guest owns only this keyspace, and its id column is what the round trip must hand back intact
+		custom_not_cached_key_in(GroupId::ROOT, id.as_bytes()).expect("a fixture id fits the keyspace")
 	}
 
 	#[test]

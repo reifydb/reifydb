@@ -3,7 +3,7 @@
 
 pub mod batch;
 pub mod flush;
-pub mod state_map;
+
 
 mod census;
 mod checkpoint;
@@ -29,6 +29,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	default,
 	interface::catalog::flow::{FlowId, OperatorId},
+	key::operator::state::OperatorStateKey,
 	util::budget::MemoryBudget,
 };
 use reifydb_runtime::{
@@ -147,7 +148,7 @@ impl Shared {
 		if let Some(slot) = self.slot(operator) {
 			return slot;
 		}
-		Arc::clone(self.slots.entry(operator).or_default().value())
+		Arc::clone(self.slots.entry(operator).or_insert_with(|| Arc::new(Slot::new(operator))).value())
 	}
 
 	pub(crate) fn operators(&self) -> Vec<OperatorId> {
@@ -501,12 +502,12 @@ impl OperatorResidentState {
 				census,
 				..
 			} = &mut *inner;
-			for (key, entry) in pending.state.iter() {
-				if live.state.contains_key(key) {
+			for (key, entry) in pending.entries() {
+				if live.contains_key(&key) {
 					continue;
 				}
 				if let Some(row) = &entry.post {
-					census.retract_state(key, row.bytes().len() as u64);
+					census.retract_state(&key, row.bytes().len() as u64);
 				}
 			}
 			for (key, entry) in pending.join_expiries.iter() {
@@ -718,6 +719,7 @@ fn clear_drop(inner: &mut SlotInner, marker: DropMarker) {
 
 fn take_all(inner: &mut SlotInner) -> OperatorLive {
 	let taken = OperatorLive {
+		operator: inner.live.operator,
 		state: mem::take(&mut inner.live.state),
 		join_expiries: mem::take(&mut inner.live.join_expiries),
 		durable_join_expiries: BTreeSet::new(),
@@ -734,8 +736,10 @@ fn take_all(inner: &mut SlotInner) -> OperatorLive {
 }
 
 fn merge_into_batch(batch: &mut FlushBatch, operator: OperatorId, taken: &OperatorLive) {
-	for (key, entry) in taken.state.iter() {
-		batch.state.insert(operator, key.clone(), entry.clone());
+	for (key, entry) in taken.entries() {
+		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
+			.expect("an operator state key must decode as its own framing");
+		batch.state.record_bytes(operator, keyspace, group, &suffix, entry.post, entry.durable_pre);
 	}
 	for ((group, side, row_number), entry) in taken.join_expiries.iter() {
 		batch.join_expiries.insert((operator, *group, *side, *row_number), *entry);
@@ -757,22 +761,24 @@ fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&Operator
 			DropMarker::JoinExpiriesOperator(_) | DropMarker::JoinExpiriesGroup(_, _) => {}
 		}
 	}
-	for ((operator, key), entry) in &batch.state {
-		match &entry.post {
-			Some(row) => {
-				if let Some(range) = range {
-					range.overwrite(operator, key.clone(), row.clone());
+	for operator in batch.state.operators() {
+		for (key, entry) in batch.state.encoded_entries(operator) {
+			match &entry.post {
+				Some(row) => {
+					if let Some(range) = range {
+						range.overwrite(operator, key.clone(), row.clone());
+					}
+					if let Some(point) = point {
+						point.overwrite(operator, key.clone(), row.clone());
+					}
 				}
-				if let Some(point) = point {
-					point.overwrite(operator, key.clone(), row.clone());
-				}
-			}
-			None => {
-				if let Some(range) = range {
-					range.retract(operator, key);
-				}
-				if let Some(point) = point {
-					point.invalidate(operator, key);
+				None => {
+					if let Some(range) = range {
+						range.retract(operator, &key);
+					}
+					if let Some(point) = point {
+						point.invalidate(operator, &key);
+					}
 				}
 			}
 		}

@@ -402,7 +402,7 @@ pub mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(6);
-		let key = test_key("non_existent");
+		let key = test_key("absent");
 
 		state_remove(&mut host(&mut txn, operator_id), &key).unwrap();
 

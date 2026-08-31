@@ -2,14 +2,35 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::key::operator::state::GroupStateKey;
+use reifydb_core::key::operator::{
+	keyspace::root::CustomNotCachedKey,
+	state::{GroupId, GroupStateKey, custom_not_cached_key, custom_not_cached_key_in},
+};
+
+use crate::error::{Result, SdkError};
 
 pub fn empty_key() -> EncodedKey {
 	EncodedKey::new(Vec::new())
 }
 
 pub fn empty_state_key() -> GroupStateKey {
-	GroupStateKey::from_framed(empty_key()).expect("the empty key is framing-valid")
+	custom_not_cached_key(&[]).expect("an empty id fits the keyspace")
+}
+
+pub fn custom_state_key(id: &[u8]) -> Result<GroupStateKey> {
+	custom_not_cached_key(id).ok_or_else(|| too_wide(id))
+}
+
+pub fn custom_state_key_in(group: GroupId, id: &[u8]) -> Result<GroupStateKey> {
+	custom_not_cached_key_in(group, id).ok_or_else(|| too_wide(id))
+}
+
+fn too_wide(id: &[u8]) -> SdkError {
+	SdkError::InvalidInput(format!(
+		"a custom operator state key is at most {} bytes, got {}",
+		CustomNotCachedKey::ID_LEN,
+		id.len()
+	))
 }
 
 #[cfg(test)]

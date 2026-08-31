@@ -17,11 +17,12 @@ use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 
 use crate::{
-	tier::resident::batch::{JOIN_EXPIRY_ENTRY_BYTES, StateEntry, state_entry_bytes},
+	tier::{
+		bucket::{BucketMap, write::WriteEntry},
+		resident::batch::JOIN_EXPIRY_ENTRY_BYTES,
+	},
 	types::{DurablePre, OperatorStateCensus},
 };
-
-pub type OperatorKeys = BTreeMap<EncodedKey, StateEntry>;
 
 pub type SlotJoinKey = (GroupId, u8, RowNumber);
 
@@ -90,43 +91,56 @@ pub fn keyspace_of(key: &EncodedKey) -> Option<u8> {
 	key.as_slice().get(OperatorStateKey::KEYSPACE_INNER_OFFSET as usize).copied()
 }
 
-#[derive(Debug, Default)]
 pub struct OperatorLive {
-	pub state: OperatorKeys,
+	pub operator: OperatorId,
+	pub state: BucketMap,
 	pub join_expiries: SlotJoinExpiries,
 	pub durable_join_expiries: BTreeSet<SlotJoinKey>,
 	pub bytes: ByteSize,
 }
 
+impl Default for OperatorLive {
+	fn default() -> Self {
+		Self::new(OperatorId(0))
+	}
+}
+
 impl OperatorLive {
+	pub fn new(operator: OperatorId) -> Self {
+		Self {
+			operator,
+			state: BucketMap::default(),
+			join_expiries: SlotJoinExpiries::new(),
+			durable_join_expiries: BTreeSet::new(),
+			bytes: ByteSize::ZERO,
+		}
+	}
+
 	pub fn is_empty(&self) -> bool {
 		self.state.is_empty() && self.join_expiries.is_empty()
 	}
 
+	pub fn lookup(&self, key: &EncodedKey) -> Option<WriteEntry> {
+		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
+		self.state.get_bytes_ref(self.operator, keyspace, group, &suffix)
+	}
+
+	pub fn contains_key(&self, key: &EncodedKey) -> bool {
+		self.lookup(key).is_some()
+	}
+
+	pub fn entries(&self) -> Vec<(EncodedKey, WriteEntry)> {
+		self.state.encoded_entries(self.operator)
+	}
+
 	pub fn record_state(&mut self, key: EncodedKey, post: Option<EncodedPodRow>, durable_pre: DurablePre) {
-		let incoming = post_bytes(&post);
-		let key_bytes = ByteSize::from_bytes(key.len() as u64);
-		let mut admitted = false;
-		let outgoing = match self.state.entry(key) {
-			Entry::Occupied(mut slot) => {
-				let entry = slot.get_mut();
-				let outgoing = post_bytes(&entry.post);
-				entry.post = post;
-				outgoing
-			}
-			Entry::Vacant(slot) => {
-				slot.insert(StateEntry {
-					post,
-					durable_pre,
-				});
-				admitted = true;
-				ByteSize::ZERO
-			}
-		};
-		if admitted {
-			self.bytes = self.bytes.saturating_add(key_bytes);
-		}
-		self.bytes = self.bytes.saturating_sub(outgoing).saturating_add(incoming);
+		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
+			.expect("an operator state key must decode as its own framing");
+		let operator = self.operator;
+		let before = self.state.footprint();
+		self.state.record_bytes(operator, keyspace, group, &suffix, post, durable_pre);
+		let after = self.state.footprint();
+		self.bytes = self.bytes.saturating_add(after).saturating_sub(before);
 	}
 
 	pub fn record_join_expiry(&mut self, key: SlotJoinKey, expiry: Option<u64>, durable: bool) {
@@ -144,15 +158,15 @@ impl OperatorLive {
 		}
 	}
 
-	pub fn clear_state(&mut self, census: &mut SlotCensus) -> OperatorKeys {
-		let keys = mem::take(&mut self.state);
-		for (key, entry) in keys.iter() {
-			self.bytes = self.bytes.saturating_sub(state_entry_bytes(key, entry));
+	pub fn clear_state(&mut self, census: &mut SlotCensus) -> BucketMap {
+		let taken = mem::take(&mut self.state);
+		self.bytes = self.bytes.saturating_sub(taken.footprint());
+		for (key, entry) in taken.encoded_entries(self.operator) {
 			if let Some(row) = &entry.post {
-				census.retract_state(key, row.bytes().len() as u64);
+				census.retract_state(&key, row.bytes().len() as u64);
 			}
 		}
-		keys
+		taken
 	}
 
 	pub fn retain_join_expiries(&mut self, keep: impl Fn(&SlotJoinKey) -> bool, census: &mut SlotCensus) {
@@ -175,7 +189,7 @@ impl OperatorLive {
 	}
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct SlotInner {
 	pub live: OperatorLive,
 	pub in_flight: Option<Arc<OperatorLive>>,
@@ -190,15 +204,15 @@ impl SlotInner {
 		self.live.bytes.saturating_add(self.in_flight.as_ref().map_or(ByteSize::ZERO, |batch| batch.bytes))
 	}
 
-	pub fn lookup(&self, key: &EncodedKey) -> Option<&StateEntry> {
-		match self.live.state.get(key) {
+	pub fn lookup(&self, key: &EncodedKey) -> Option<WriteEntry> {
+		match self.live.lookup(key) {
 			Some(entry) => Some(entry),
-			None => self.in_flight.as_ref()?.state.get(key),
+			None => self.in_flight.as_ref()?.lookup(key),
 		}
 	}
 
 	pub fn merged_value_bytes(&self, key: &EncodedKey) -> Option<u64> {
-		self.lookup(key).and_then(|entry| entry.post.as_ref()).map(|row| row.bytes().len() as u64)
+		self.lookup(key).and_then(|entry| entry.post).map(|row| row.len() as u64)
 	}
 
 	pub fn merged_join_expiry(&self, key: &SlotJoinKey) -> bool {
@@ -213,11 +227,18 @@ impl SlotInner {
 	}
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Slot {
 	pub inner: Mutex<SlotInner>,
 }
 
-fn post_bytes(post: &Option<EncodedPodRow>) -> ByteSize {
-	post.as_ref().map_or(ByteSize::ZERO, |row| ByteSize::from_bytes(row.bytes().len() as u64))
+impl Slot {
+	pub fn new(operator: OperatorId) -> Self {
+		Self {
+			inner: Mutex::new(SlotInner {
+				live: OperatorLive::new(operator),
+				..SlotInner::default()
+			}),
+		}
+	}
 }

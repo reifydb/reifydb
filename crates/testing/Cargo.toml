@@ -14,6 +14,7 @@ doctest = false
 default = []
 
 [dependencies]
+reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-value = {workspace = true}

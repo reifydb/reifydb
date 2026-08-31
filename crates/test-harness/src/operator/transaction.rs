@@ -11,7 +11,10 @@ use reifydb_core::{
 	key::{
 		Key,
 		kind::KeyKind,
-		operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+		operator::{
+			keyspace::KEYSPACES,
+			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+		},
 	},
 };
 use reifydb_flow::transaction::{
@@ -32,7 +35,16 @@ pub fn make_row(body: &str) -> EncodedPodRow {
 }
 
 pub fn key(s: &str) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::CUSTOM_NOT_CACHED, s.as_bytes())
+	let width = KEYSPACES
+		.iter()
+		.find(|spec| spec.id == KeyspaceId::CUSTOM_NOT_CACHED)
+		.expect("the fixture keyspace must appear in the catalogue")
+		.suffix_width();
+	let mut suffix = vec![0u8; width];
+	for (slot, byte) in suffix.iter_mut().zip(s.as_bytes()) {
+		*slot = *byte;
+	}
+	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::CUSTOM_NOT_CACHED, suffix)
 }
 
 pub fn engine() -> TestEngine {

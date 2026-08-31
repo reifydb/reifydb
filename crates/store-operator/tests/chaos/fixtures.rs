@@ -18,6 +18,7 @@ use reifydb_store_operator::{
 	store::OperatorStore,
 	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
 };
+use reifydb_testing::keyspace::state_key;
 
 /// Only data keyspaces, so every key the workload writes lands in a census bucket.
 pub const KEYSPACES: [u8; 4] = [0x10, 0x11, 0x1D, 0x40];
@@ -148,9 +149,7 @@ fn store_from(spawner: &ActorSpawner, config: SqliteConfig) -> OperatorStore {
 }
 
 pub fn key(group: u64, keyspace: u8, suffix: u64) -> EncodedKey {
-	OperatorStateKey::inner_encoded(GroupId(group.into()), KeyspaceId(keyspace), (suffix as u16).to_be_bytes())
-		.as_encoded()
-		.clone()
+	state_key(GroupId(group.into()), KeyspaceId(keyspace), suffix)
 }
 
 pub fn row(operator: u64, suffix: u64, step: u32) -> EncodedPodRow {

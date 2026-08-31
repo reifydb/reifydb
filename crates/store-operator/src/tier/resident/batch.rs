@@ -3,7 +3,6 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
@@ -12,11 +11,9 @@ use reifydb_core::{
 use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 
 use crate::{
-	tier::resident::state_map::StateMap,
-	types::{DurablePre, JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES},
+	tier::bucket::BucketMap,
+	types::{JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES},
 };
-
-pub type StateKey = (OperatorId, EncodedKey);
 
 pub type JoinExpiryKey = (OperatorId, GroupId, u8, RowNumber);
 
@@ -31,15 +28,9 @@ pub enum DropMarker {
 	JoinExpiriesGroup(OperatorId, GroupId),
 }
 
-#[derive(Debug, Clone)]
-pub struct StateEntry {
-	pub post: Option<EncodedPodRow>,
-	pub durable_pre: DurablePre,
-}
-
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct FlushBatch {
-	pub state: StateMap,
+	pub state: BucketMap,
 	pub join_expiries: BTreeMap<JoinExpiryKey, Option<u64>>,
 	pub checkpoints: BTreeMap<FlowId, Option<CommitVersion>>,
 	pub drops: Vec<DropMarker>,
@@ -55,10 +46,4 @@ impl FlushBatch {
 	}
 }
 
-fn post_bytes(post: &Option<EncodedPodRow>) -> ByteSize {
-	post.as_ref().map_or(ByteSize::ZERO, |row| ByteSize::from_bytes(row.bytes().len() as u64))
-}
 
-pub(crate) fn state_entry_bytes(key: &EncodedKey, entry: &StateEntry) -> ByteSize {
-	ByteSize::from_bytes(key.len() as u64).saturating_add(post_bytes(&entry.post))
-}

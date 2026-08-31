@@ -22,7 +22,10 @@ use reifydb_flow::{
 		ledger::{FiredAt, SealLedger},
 	},
 	timer::Timer as FlowTimer,
-	window::{engine::config::WindowEngineConfig, span::WindowSpan},
+	window::{
+		engine::{KeyspaceFamily, config::WindowEngineConfig},
+		span::WindowSpan,
+	},
 };
 use reifydb_value::{Result, config::Config};
 
@@ -79,7 +82,7 @@ where
 }
 
 pub(crate) fn window_engine_config(_config: &Config) -> WindowEngineConfig {
-	WindowEngineConfig::builder().build()
+	WindowEngineConfig::builder().family(KeyspaceFamily::Guest).build()
 }
 
 #[cfg(test)]

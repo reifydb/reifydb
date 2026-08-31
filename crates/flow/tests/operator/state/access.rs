@@ -3,9 +3,14 @@
 
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId},
+	key::operator::{
+		keyspace::window::Accumulator,
+		state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, custom_not_cached_key},
+	},
 	metrics::heap::HeapSize,
+	state::typed::typed_key,
 };
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_flow::{
 	operator::{
 		host::TxnHostContext,
@@ -64,13 +69,13 @@ impl IntoGroupStateKey for &TestPair {
 		suffix.extend_from_slice(self.0.0.as_bytes());
 		suffix.push(0xFF);
 		suffix.extend_from_slice(self.1.0.as_bytes());
-		GroupStateKey::root(KeyspaceId::CUSTOM_NOT_CACHED, suffix)
+		custom_not_cached_key(&suffix).expect("a fixture pair must fit the keyspace's id width")
 	}
 }
 
 impl IntoGroupStateKey for &TestKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		GroupStateKey::root(KeyspaceId::CUSTOM_NOT_CACHED, self.0.as_bytes())
+		custom_not_cached_key(self.0.as_bytes()).expect("a fixture name must fit the keyspace's id width")
 	}
 }
 
@@ -429,7 +434,7 @@ impl HeapSize for CachedKey {
 
 impl IntoGroupStateKey for &CachedKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		GroupStateKey::root(KeyspaceId::ACCUMULATOR, self.0.as_bytes())
+		typed_key::<Accumulator>(GroupId::of(&EncodedKey::new(self.0.as_bytes())), &())
 	}
 }
 

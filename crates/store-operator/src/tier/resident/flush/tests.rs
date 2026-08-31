@@ -46,6 +46,11 @@ use crate::{
 	types::{BufferedState, DurablePre, OperatorWrite},
 };
 
+use reifydb_core::{
+	key::{operator::keyspace::join::JoinLeft, typed::direction::Asc},
+	state::typed::typed_key,
+};
+
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
 const GROUP_A: GroupId = GroupId(10);
@@ -92,18 +97,25 @@ fn buffer_fixture() -> (OperatorResidentState, SqliteOperatorStorage, ActorRef<F
 }
 
 fn key(suffix: u8) -> EncodedKey {
-	let mut bytes = 7u128.to_be_bytes().to_vec();
-	bytes.push(0x10);
-	bytes.push(suffix);
-	EncodedKey::new(bytes)
+	typed_key::<JoinLeft>(GroupId(7), &Asc(RowNumber(suffix as u64))).into_encoded()
 }
 
 fn row(body: &str) -> EncodedPodRow {
 	EncodedPodRow::new(body.as_bytes())
 }
 
-fn entry_bytes(suffix: u8, body: &str) -> ByteSize {
-	ByteSize::from_bytes((key(suffix).len() + row(body).bytes().len()) as u64)
+fn entry_bytes(_suffix: u8, body: &str) -> ByteSize {
+	// a typed bucket charges the suffix per key, never the whole encoded key, so one more key in a group
+	// that already exists costs suffix + row
+	ByteSize::from_bytes((size_of::<Asc<RowNumber>>() + row(body).bytes().len()) as u64)
+}
+
+fn group_bytes() -> ByteSize {
+	ByteSize::from_bytes(size_of::<GroupId>() as u64)
+}
+
+fn bucket_bytes(entries: u64, body: &str) -> ByteSize {
+	group_bytes().saturating_add(entry_bytes(0, body) * entries)
 }
 
 fn body(row: &EncodedPodRow) -> String {
@@ -535,7 +547,7 @@ fn the_memory_tier_reports_a_flush_as_complete_without_a_flusher() {
 #[test]
 fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorResidentState::with_budget(entry_bytes(0, "v00") * 8);
+	let buffer = OperatorResidentState::with_budget(bucket_bytes(8, "v00"));
 	buffer.attach_sinks(tier(&storage), None, None);
 	for index in 0..67 {
 		buffer.record_state_set(OP_A, key(index), row(&format!("v{index}")), DurablePre::Absent);
@@ -556,7 +568,7 @@ fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer =
-		OperatorResidentState::with_budget(entry_bytes(1, "early").saturating_add(entry_bytes(2, "filler")));
+		OperatorResidentState::with_budget(group_bytes().saturating_add(entry_bytes(1, "early")).saturating_add(entry_bytes(2, "filler")));
 	buffer.attach_sinks(tier(&storage), None, None);
 	buffer.record_state_set(OP_A, key(1), row("early"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key(2), row("filler"), DurablePre::Absent);
@@ -590,7 +602,7 @@ fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorResidentState::with_budget(entry_bytes(0, "at-shutdown") * 4);
+	let buffer = OperatorResidentState::with_budget(bucket_bytes(4, "at-shutdown"));
 	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone());
 
@@ -620,7 +632,7 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorResidentState::with_budget(entry_bytes(0, "at-cancel") * 4);
+	let buffer = OperatorResidentState::with_budget(bucket_bytes(4, "at-cancel"));
 	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone());
 
@@ -658,7 +670,7 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let entries = 16u8;
-	let budget = entry_bytes(0, "under-the-budget") * (entries - 1) as u64;
+	let budget = bucket_bytes((entries - 1) as u64, "under-the-budget");
 	let buffer = OperatorResidentState::with_budget(budget);
 	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone());
@@ -698,7 +710,7 @@ fn a_hair_over_the_cap_drains_the_whole_flow_and_its_checkpoint_in_one_batch() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let large = "x".repeat(64 * 1024);
 	let resident = 64u8;
-	let cap = entry_bytes(0, &large) * resident as u64;
+	let cap = bucket_bytes(resident as u64, &large);
 	let buffer = OperatorResidentState::with_budget(cap);
 	buffer.attach_sinks(tier(&storage), None, None);
 

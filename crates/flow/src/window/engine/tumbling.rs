@@ -28,13 +28,14 @@ use crate::{
 			expiry::{ExpiryIndex, expiry_drop, tumbling_expiry_key},
 			reaper::Reaper,
 		},
-		state_access::{get_classified, put, remove},
+		state_access::{get_classified, put},
 	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaSweep, WindowResult, WindowStateKey,
-			config::WindowEngineConfig, decode_window_state_key, group_hash, load_batch_meta, meta_key_for,
+			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep, WindowResult,
+			WindowStateKey,
+			config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for,
 			note_when_expiry_capped, persist_batch_meta,
 		},
 		span::{WindowAnchor, WindowSpan},
@@ -84,14 +85,12 @@ where
 	Accumulator: WindowAccumulator,
 {
 	fn reap(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
-		match decode_window_state_key(key.as_encoded()) {
-			Some(slot_key) => remove(store, &slot_key),
-			None => store.state_remove(key),
-		}
+		store.state_remove(key)
 	}
 }
 
 pub struct TumblingEngine<G, S, Accumulator> {
+	family: KeyspaceFamily,
 	meta_sweep: MetaSweep,
 	expire_batch: usize,
 	dropped_retractions: u64,
@@ -110,6 +109,7 @@ where
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
+			family: config.family(),
 			meta_sweep: MetaSweep::default(),
 			expire_batch: config.expire_batch(),
 			dropped_retractions: 0,
@@ -248,7 +248,7 @@ where
 			else {
 				continue;
 			};
-			let state_key = WindowStateKey::new(id, key.clone());
+			let state_key = WindowStateKey::new(self.family, id, key.clone());
 
 			let mut accumulator: Accumulator =
 				get_classified(store, &state_key)?.unwrap_or_else(new_accumulator);

@@ -13,7 +13,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+	key::operator::{keyspace::KEYSPACES, state::{GroupId, KeyspaceId, keyspace_inner_range}},
 	metrics::scan::ScanCounters,
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
@@ -29,8 +29,13 @@ use reifydb_store_operator::{
 	types::{DurablePre, OperatorBatch, OperatorWrite},
 };
 use reifydb_value::byte_size::ByteSize;
+use reifydb_testing::keyspace::state_key;
 
-const CACHED_BELOW_UNCACHED: KeyspaceId = KeyspaceId(KeyspaceId::CUSTOM_NOT_CACHED.0 - 1);
+const CACHED_BELOW_UNCACHED: KeyspaceId = KeyspaceId::PARTITIONED_RINGBUFFER_META;
+
+const RANGE_ONLY: KeyspaceId = KeyspaceId::JOIN_PIN;
+
+const RANGE_ONLY_ABOVE: KeyspaceId = KeyspaceId::GUEST_RUNNING;
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
@@ -62,7 +67,7 @@ fn cached_store_with(
 }
 
 fn key_in(keyspace: KeyspaceId, suffix: u8) -> EncodedKey {
-	OperatorStateKey::inner_encoded(GROUP, keyspace, [suffix]).as_encoded().clone()
+	state_key(GROUP, keyspace, suffix as u64)
 }
 
 fn row(body: &str) -> EncodedPodRow {
@@ -77,15 +82,15 @@ fn bodies(batch: &OperatorBatch) -> Vec<String> {
 	batch.items.iter().map(|(_, row)| body(row)).collect()
 }
 
-fn accumulator_range() -> EncodedKeyRange {
-	keyspace_inner_range(GROUP, KeyspaceId::ACCUMULATOR)
+fn seeded_range() -> EncodedKeyRange {
+	keyspace_inner_range(GROUP, RANGE_ONLY)
 }
 
-fn seed_accumulator(storage: &SqliteOperatorStorage, count: u8) {
+fn seed_rows(storage: &SqliteOperatorStorage, count: u8) {
 	for suffix in 1..=count {
 		storage.apply_batch(&[OperatorWrite::Insert {
 			operator: OP_A,
-			key: key_in(KeyspaceId::ACCUMULATOR, suffix),
+			key: key_in(RANGE_ONLY, suffix),
 			post: row(&format!("v{suffix}")),
 		}]);
 	}
@@ -133,9 +138,9 @@ fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: Encode
 fn a_range_over_a_claimed_span_is_served_without_reaching_the_persistent_tier() {
 	// A repeat scan that still fetches from sqlite charges for the rows while serving nothing.
 	let (store, storage, _guard) = cached_store();
-	seed_accumulator(&storage, 3);
+	seed_rows(&storage, 3);
 
-	let primed = store.range_batch(OP_A, accumulator_range(), 64);
+	let primed = store.range_batch(OP_A, seeded_range(), 64);
 	assert_eq!(bodies(&primed), ["v1", "v2", "v3"], "the priming scan must read every durable row");
 	assert_eq!(
 		range_partitions(&store),
@@ -145,7 +150,7 @@ fn a_range_over_a_claimed_span_is_served_without_reaching_the_persistent_tier() 
 	assert_eq!(range_intervals(&store), 1, "one uninterrupted scan must prove one claim, not a claim per row");
 
 	let before = ScanCounters::sample();
-	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let served = store.range_batch(OP_A, seeded_range(), 64);
 	let scanned = before.since();
 
 	assert_eq!(bodies(&served), ["v1", "v2", "v3"], "a tier-served range must return the same rows sqlite would");
@@ -159,9 +164,9 @@ fn a_range_over_a_claimed_span_is_served_without_reaching_the_persistent_tier() 
 fn a_range_over_a_keyspace_no_scan_proved_falls_through_and_still_answers_in_full() {
 	// A key warmed by a point read proves nothing about its neighbours; a range from it drops rows.
 	let (store, storage, _guard) = cached_store();
-	seed_accumulator(&storage, 3);
+	seed_rows(&storage, 3);
 
-	assert!(store.get(OP_A, &key_in(KeyspaceId::ACCUMULATOR, 2)).is_some(), "the point read warms one key");
+	assert!(store.get(OP_A, &key_in(RANGE_ONLY, 2)).is_some(), "the point read warms one key");
 	assert_eq!(
 		range_partitions(&store),
 		0,
@@ -169,7 +174,7 @@ fn a_range_over_a_keyspace_no_scan_proved_falls_through_and_still_answers_in_ful
 	);
 
 	let before = ScanCounters::sample();
-	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let served = store.range_batch(OP_A, seeded_range(), 64);
 	let scanned = before.since();
 
 	assert_eq!(
@@ -187,14 +192,14 @@ fn a_range_over_a_keyspace_no_scan_proved_falls_through_and_still_answers_in_ful
 fn a_new_key_and_a_rewrite_together_leave_the_claim_whole_and_current() {
 	// A claim short of a row sqlite holds answers "no such key", and only a scan sees the shortfall.
 	let (store, storage, _guard) = cached_store();
-	seed_accumulator(&storage, 3);
+	seed_rows(&storage, 3);
 
-	let primed = store.range_batch(OP_A, accumulator_range(), 64);
+	let primed = store.range_batch(OP_A, seeded_range(), 64);
 	assert_eq!(bodies(&primed), ["v1", "v2", "v3"]);
 	assert_eq!(range_partitions(&store), 1, "the claim must start standing or the writes prove nothing");
 
-	put(&store, OP_A, key_in(KeyspaceId::ACCUMULATOR, 4), row("v4"));
-	put(&store, OP_A, key_in(KeyspaceId::ACCUMULATOR, 1), row("rewritten"));
+	put(&store, OP_A, key_in(RANGE_ONLY, 4), row("v4"));
+	put(&store, OP_A, key_in(RANGE_ONLY, 1), row("rewritten"));
 	assert!(store.flush_pending_blocking(), "both writes must reach sqlite before the claim is put to the test");
 
 	assert_eq!(
@@ -205,7 +210,7 @@ fn a_new_key_and_a_rewrite_together_leave_the_claim_whole_and_current() {
 	assert_eq!(range_intervals(&store), 1, "a write inside a standing claim must not split it");
 
 	let before = ScanCounters::sample();
-	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let served = store.range_batch(OP_A, seeded_range(), 64);
 	let scanned = before.since();
 
 	assert_eq!(
@@ -231,19 +236,19 @@ fn a_range_materialize_that_does_not_fit_its_own_budget_evicts_no_point_entry() 
 			..OperatorRangeConfig::testing()
 		},
 	);
-	seed_accumulator(&storage, 8);
+	seed_rows(&storage, 8);
 	storage.apply_batch(&[OperatorWrite::Insert {
 		operator: OP_A,
-		key: key_in(KeyspaceId::COUNT, 1),
+		key: key_in(RANGE_ONLY_ABOVE, 1),
 		post: row("pinned"),
 	}]);
 
-	assert!(store.get(OP_A, &key_in(KeyspaceId::COUNT, 1)).is_some(), "the point read warms an entry of its own");
+	assert!(store.get(OP_A, &key_in(RANGE_ONLY_ABOVE, 1)).is_some(), "the point read warms an entry of its own");
 	let point_used = point_tier(&store).resident_bytes();
 	let point_held = point_entries(&store);
 	assert!(point_used.as_bytes() > 0, "the point budget must be carrying something or eviction is unobservable");
 
-	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let served = store.range_batch(OP_A, seeded_range(), 64);
 
 	assert_eq!(
 		bodies(&served),
@@ -268,7 +273,7 @@ fn a_range_materialize_that_does_not_fit_its_own_budget_evicts_no_point_entry() 
 	);
 	assert_eq!(
 		body(&store
-			.get(OP_A, &key_in(KeyspaceId::COUNT, 1))
+			.get(OP_A, &key_in(RANGE_ONLY_ABOVE, 1))
 			.expect("the point entry survives the refused materialize")),
 		"pinned"
 	);
@@ -278,22 +283,22 @@ fn a_range_materialize_that_does_not_fit_its_own_budget_evicts_no_point_entry() 
 fn a_range_spanning_two_claimed_keyspaces_is_served_from_the_claims_it_crosses() {
 	// Every row inside a claim must come from RAM, the unscanned ground between them from sqlite.
 	let (store, storage, _guard) = cached_store();
-	seed_accumulator(&storage, 3);
+	seed_rows(&storage, 3);
 	for suffix in 1..=2u8 {
 		storage.apply_batch(&[OperatorWrite::Insert {
 			operator: OP_A,
-			key: key_in(KeyspaceId::COUNT, suffix),
+			key: key_in(RANGE_ONLY_ABOVE, suffix),
 			post: row(&format!("c{suffix}")),
 		}]);
 	}
 
-	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
-	assert_eq!(bodies(&store.range_batch(OP_A, keyspace_inner_range(GROUP, KeyspaceId::COUNT), 64)), ["c1", "c2"]);
+	assert_eq!(bodies(&store.range_batch(OP_A, seeded_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(bodies(&store.range_batch(OP_A, keyspace_inner_range(GROUP, RANGE_ONLY_ABOVE), 64)), ["c1", "c2"]);
 	assert_eq!(range_partitions(&store), 2, "both keyspaces must be claimed or the span proves nothing");
 
 	let spanning = EncodedKeyRange::new(
-		keyspace_inner_range(GROUP, KeyspaceId::COUNT).start,
-		keyspace_inner_range(GROUP, KeyspaceId::ACCUMULATOR).end,
+		keyspace_inner_range(GROUP, RANGE_ONLY_ABOVE).start,
+		keyspace_inner_range(GROUP, RANGE_ONLY).end,
 	);
 	let counters = range_tier(&store).metrics();
 	let before = ScanCounters::sample();
@@ -314,12 +319,12 @@ fn a_range_spanning_two_claimed_keyspaces_is_served_from_the_claims_it_crosses()
 fn a_write_of_a_key_the_claim_never_held_keeps_the_claim_and_still_serves_it() {
 	// A claim that serves a range without a key just written to it is a silent short answer.
 	let (store, storage, _guard) = cached_store();
-	seed_accumulator(&storage, 3);
+	seed_rows(&storage, 3);
 
-	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(bodies(&store.range_batch(OP_A, seeded_range(), 64)), ["v1", "v2", "v3"]);
 	assert_eq!(range_partitions(&store), 1, "the claim must start standing or the write proves nothing");
 
-	put(&store, OP_A, key_in(KeyspaceId::ACCUMULATOR, 4), row("v4"));
+	put(&store, OP_A, key_in(RANGE_ONLY, 4), row("v4"));
 
 	assert_eq!(
 		range_partitions(&store),
@@ -328,7 +333,7 @@ fn a_write_of_a_key_the_claim_never_held_keeps_the_claim_and_still_serves_it() {
 	);
 	assert_eq!(range_intervals(&store), 1, "a key written inside a claim joins it rather than splitting it");
 	assert_eq!(
-		bodies(&store.range_batch(OP_A, accumulator_range(), 64)),
+		bodies(&store.range_batch(OP_A, seeded_range(), 64)),
 		["v1", "v2", "v3", "v4"],
 		"the shadowed write must still reach the answer through the resident state merge"
 	);
@@ -341,7 +346,7 @@ fn a_write_of_a_key_the_claim_never_held_keeps_the_claim_and_still_serves_it() {
 	);
 
 	let before = ScanCounters::sample();
-	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let served = store.range_batch(OP_A, seeded_range(), 64);
 	let scanned = before.since();
 
 	assert_eq!(
@@ -357,12 +362,12 @@ fn a_write_of_a_key_the_claim_never_held_keeps_the_claim_and_still_serves_it() {
 fn a_write_of_a_key_the_claim_holds_updates_it_in_place() {
 	// Retracting the whole claim would spend every other key in it to absorb one write.
 	let (store, storage, _guard) = cached_store();
-	seed_accumulator(&storage, 3);
+	seed_rows(&storage, 3);
 
-	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(bodies(&store.range_batch(OP_A, seeded_range(), 64)), ["v1", "v2", "v3"]);
 	assert_eq!(range_partitions(&store), 1, "the claim must start standing or the write proves nothing");
 
-	put(&store, OP_A, key_in(KeyspaceId::ACCUMULATOR, 2), row("rewritten"));
+	put(&store, OP_A, key_in(RANGE_ONLY, 2), row("rewritten"));
 
 	assert_eq!(
 		range_partitions(&store),
@@ -371,7 +376,7 @@ fn a_write_of_a_key_the_claim_holds_updates_it_in_place() {
 	);
 	assert_eq!(range_intervals(&store), 1, "and it must leave the claim in one piece");
 	assert_eq!(
-		bodies(&store.range_batch(OP_A, accumulator_range(), 64)),
+		bodies(&store.range_batch(OP_A, seeded_range(), 64)),
 		["v1", "rewritten", "v3"],
 		"and the answer must stay right whichever tier serves it"
 	);
@@ -379,7 +384,7 @@ fn a_write_of_a_key_the_claim_holds_updates_it_in_place() {
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite before the kept claim is put to the test");
 
 	let before = ScanCounters::sample();
-	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let served = store.range_batch(OP_A, seeded_range(), 64);
 	let scanned = before.since();
 
 	assert_eq!(
@@ -394,14 +399,14 @@ fn a_write_of_a_key_the_claim_holds_updates_it_in_place() {
 fn a_removal_of_a_key_the_claim_holds_hides_that_key_and_keeps_the_claim() {
 	// Erasing the key would let a scan rematerialize the row sqlite still holds until the flush.
 	let (store, storage, _guard) = cached_store();
-	seed_accumulator(&storage, 3);
+	seed_rows(&storage, 3);
 
-	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(bodies(&store.range_batch(OP_A, seeded_range(), 64)), ["v1", "v2", "v3"]);
 	assert_eq!(range_partitions(&store), 1, "the claim must start standing or the removal proves nothing");
 
 	store.apply_batch(&[OperatorWrite::Remove {
 		operator: OP_A,
-		key: key_in(KeyspaceId::ACCUMULATOR, 2),
+		key: key_in(RANGE_ONLY, 2),
 		pre: DurablePre::Present(ByteSize::from_bytes(row("v2").bytes().len() as u64)),
 	}]);
 
@@ -413,7 +418,7 @@ fn a_removal_of_a_key_the_claim_holds_hides_that_key_and_keeps_the_claim() {
 	assert_eq!(range_intervals(&store), 1, "and it must not punch the claim into two");
 
 	let before = ScanCounters::sample();
-	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let served = store.range_batch(OP_A, seeded_range(), 64);
 	let scanned = before.since();
 
 	assert_eq!(bodies(&served), ["v1", "v3"], "the removed row must not come back from either tier");
@@ -427,13 +432,13 @@ fn a_removal_of_a_key_the_claim_holds_hides_that_key_and_keeps_the_claim() {
 fn a_flushed_removal_demotes_its_row_to_a_proven_absence_and_leaves_the_rest_standing() {
 	// Only the flush may mark the key absent; erasing it or leaving a row both serve wrong data.
 	let (store, storage, _guard) = cached_store();
-	seed_accumulator(&storage, 3);
+	seed_rows(&storage, 3);
 
-	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(bodies(&store.range_batch(OP_A, seeded_range(), 64)), ["v1", "v2", "v3"]);
 
 	store.apply_batch(&[OperatorWrite::Remove {
 		operator: OP_A,
-		key: key_in(KeyspaceId::ACCUMULATOR, 2),
+		key: key_in(RANGE_ONLY, 2),
 		pre: DurablePre::Present(ByteSize::from_bytes(row("v2").bytes().len() as u64)),
 	}]);
 	assert!(store.flush_pending_blocking(), "the tombstone must reach sqlite before the claim is put to the test");
@@ -442,13 +447,13 @@ fn a_flushed_removal_demotes_its_row_to_a_proven_absence_and_leaves_the_rest_sta
 	assert_eq!(range_intervals(&store), 1, "and it must leave the claim in one piece");
 
 	let before = ScanCounters::sample();
-	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let served = store.range_batch(OP_A, seeded_range(), 64);
 	let scanned = before.since();
 
 	assert_eq!(bodies(&served), ["v1", "v3"], "the kept claim must not serve the row the flush erased");
 	assert_eq!(scanned.fetched, 0, "the answer must have come from the claim the flushed removal left standing");
 	assert_eq!(
-		store.get(OP_A, &key_in(KeyspaceId::ACCUMULATOR, 2)),
+		store.get(OP_A, &key_in(RANGE_ONLY, 2)),
 		None,
 		"and the demoted key must answer a point read as a proven absence, not fall through to sqlite"
 	);
@@ -458,14 +463,14 @@ fn a_flushed_removal_demotes_its_row_to_a_proven_absence_and_leaves_the_rest_sta
 fn a_removal_of_a_key_the_claim_never_held_keeps_the_claim() {
 	// Retracting on every erase of a key no claim held grinds the whole feature down to nothing.
 	let (store, storage, _guard) = cached_store();
-	seed_accumulator(&storage, 3);
+	seed_rows(&storage, 3);
 
-	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(bodies(&store.range_batch(OP_A, seeded_range(), 64)), ["v1", "v2", "v3"]);
 	assert_eq!(range_partitions(&store), 1, "the claim must start standing or the removal proves nothing");
 
 	store.apply_batch(&[OperatorWrite::Remove {
 		operator: OP_A,
-		key: key_in(KeyspaceId::ACCUMULATOR, 9),
+		key: key_in(RANGE_ONLY, 9),
 		pre: DurablePre::Absent,
 	}]);
 	assert!(store.flush_pending_blocking(), "the tombstone must reach sqlite through the same flush path");
@@ -477,7 +482,7 @@ fn a_removal_of_a_key_the_claim_never_held_keeps_the_claim() {
 	);
 
 	let before = ScanCounters::sample();
-	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let served = store.range_batch(OP_A, seeded_range(), 64);
 	let scanned = before.since();
 
 	assert_eq!(bodies(&served), ["v1", "v2", "v3"], "the surviving rows must still all be there");
@@ -498,13 +503,13 @@ fn a_written_row_too_big_for_the_range_budget_takes_the_whole_claim_with_it() {
 			..OperatorRangeConfig::testing()
 		},
 	);
-	seed_accumulator(&storage, 3);
+	seed_rows(&storage, 3);
 
-	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(bodies(&store.range_batch(OP_A, seeded_range(), 64)), ["v1", "v2", "v3"]);
 	assert_eq!(range_partitions(&store), 1, "the small materialize must fit its budget or nothing below is tested");
 
 	let huge = "x".repeat(8192);
-	put(&store, OP_A, key_in(KeyspaceId::ACCUMULATOR, 4), row(&huge));
+	put(&store, OP_A, key_in(RANGE_ONLY, 4), row(&huge));
 	assert_eq!(
 		range_partitions(&store),
 		0,
@@ -517,7 +522,7 @@ fn a_written_row_too_big_for_the_range_budget_takes_the_whole_claim_with_it() {
 
 	assert_eq!(range_partitions(&store), 0, "the flush must not resurrect a claim over a row it cannot hold");
 
-	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let served = store.range_batch(OP_A, seeded_range(), 64);
 	assert_eq!(
 		bodies(&served),
 		["v1", "v2", "v3", huge.as_str()],
@@ -529,17 +534,17 @@ fn a_written_row_too_big_for_the_range_budget_takes_the_whole_claim_with_it() {
 fn dropping_one_operators_state_forgets_every_claim_and_row_it_cached() {
 	// A drop that clears only the point entries lets the range tier resurrect every row it erased.
 	let (store, storage, _guard) = cached_store();
-	seed_accumulator(&storage, 3);
+	seed_rows(&storage, 3);
 	for suffix in 1..=3u8 {
 		storage.apply_batch(&[OperatorWrite::Insert {
 			operator: OP_B,
-			key: key_in(KeyspaceId::ACCUMULATOR, suffix),
+			key: key_in(RANGE_ONLY, suffix),
 			post: row(&format!("b{suffix}")),
 		}]);
 	}
 
-	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
-	assert_eq!(bodies(&store.range_batch(OP_B, accumulator_range(), 64)), ["b1", "b2", "b3"]);
+	assert_eq!(bodies(&store.range_batch(OP_A, seeded_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(bodies(&store.range_batch(OP_B, seeded_range(), 64)), ["b1", "b2", "b3"]);
 	assert_eq!(range_partitions(&store), 2, "both operators must hold a claim or the scoping below proves nothing");
 
 	store.drop_operator_state(OP_A);
@@ -551,7 +556,7 @@ fn dropping_one_operators_state_forgets_every_claim_and_row_it_cached() {
 	);
 
 	let before = ScanCounters::sample();
-	assert_eq!(bodies(&store.range_batch(OP_B, accumulator_range(), 64)), ["b1", "b2", "b3"]);
+	assert_eq!(bodies(&store.range_batch(OP_B, seeded_range(), 64)), ["b1", "b2", "b3"]);
 	assert_eq!(
 		before.since().fetched,
 		0,
@@ -560,16 +565,16 @@ fn dropping_one_operators_state_forgets_every_claim_and_row_it_cached() {
 
 	assert!(store.flush_pending_blocking(), "the drop must reach sqlite before the mask stops hiding the tiers");
 	assert_eq!(
-		store.get(OP_A, &key_in(KeyspaceId::ACCUMULATOR, 1)),
+		store.get(OP_A, &key_in(RANGE_ONLY, 1)),
 		None,
 		"a claim that outlived the drop answers the point read and resurrects a row sqlite no longer holds"
 	);
 	assert!(
-		bodies(&store.range_batch(OP_A, accumulator_range(), 64)).is_empty(),
+		bodies(&store.range_batch(OP_A, seeded_range(), 64)).is_empty(),
 		"and the range answer must be empty once the drop marker is drained"
 	);
 	assert_eq!(
-		bodies(&store.range_batch(OP_B, accumulator_range(), 64)),
+		bodies(&store.range_batch(OP_B, seeded_range(), 64)),
 		["b1", "b2", "b3"],
 		"the neighbour operator keeps every row across the flushed drop"
 	);
@@ -592,7 +597,10 @@ fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_still_materializes_th
 		cached.cache_tiers().caches_ranges(),
 		"the fixture needs a keyspace the range tier admits and the scan reaches second"
 	);
-	assert_eq!(cached.0 + 1, uncached.0, "the two keyspaces must be adjacent, or the scan never orders them");
+	assert!(
+		!KEYSPACES.iter().any(|spec| spec.id.0 > cached.0 && spec.id.0 < uncached.0),
+		"no keyspace may sit between the two, or the scan never orders them next to each other"
+	);
 
 	for suffix in 1..=3u8 {
 		storage.apply_batch(&[

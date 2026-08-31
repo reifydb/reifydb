@@ -20,7 +20,7 @@ use reifydb_store_operator::{
 	store::OperatorStore,
 	types::{BufferedState, DurablePre, OperatorWrite},
 };
-use reifydb_testing::testscript;
+use reifydb_testing::{keyspace::suffix_width, testscript};
 use reifydb_value::{
 	byte_size::ByteSize,
 	value::{datetime::DateTime, row_number::RowNumber},
@@ -35,7 +35,7 @@ const DEFAULT_OPERATOR: u64 = 1;
 
 const DEFAULT_GROUP: u128 = 1;
 
-const DEFAULT_KEYSPACE: u8 = 0x10;
+const DEFAULT_KEYSPACE: u8 = KeyspaceId::WINDOW_META.0;
 
 const DEFAULT_SIDE: u8 = 0;
 
@@ -493,12 +493,21 @@ impl testscript::runner::Runner for Runner {
 	}
 }
 
-fn encode_key(suffix: &[u8], keyspace: u8) -> EncodedKey {
+fn encode_key(name: &[u8], keyspace: u8) -> EncodedKey {
+	let width = suffix_width(KeyspaceId(keyspace));
+	assert!(
+		name.len() <= width,
+		"a script key name must fit its keyspace's suffix, or two names collapse onto one key"
+	);
+	let mut suffix = vec![0u8; width];
+	suffix[..name.len()].copy_from_slice(name);
 	OperatorStateKey::inner_encoded(GroupId(DEFAULT_GROUP), KeyspaceId(keyspace), suffix).as_encoded().clone()
 }
 
 fn key_name(key: &EncodedKey) -> Vec<u8> {
-	key.as_slice()[KEY_PREFIX_LEN..].to_vec()
+	let suffix = &key.as_slice()[KEY_PREFIX_LEN..];
+	let end = suffix.iter().rposition(|byte| *byte != 0).map_or(0, |last| last + 1);
+	suffix[..end].to_vec()
 }
 
 fn frame_bound(bound: Bound<EncodedKey>, keyspace: u8) -> Bound<EncodedKey> {

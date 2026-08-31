@@ -14,7 +14,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+	key::operator::state::{GroupId, KeyspaceId, keyspace_inner_range},
 	metrics::scan::ScanCounters,
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
@@ -31,6 +31,7 @@ use reifydb_store_operator::{
 	types::{DurablePre, OperatorBatch, OperatorWrite},
 };
 use reifydb_value::byte_size::ByteSize;
+use reifydb_testing::keyspace::state_key;
 
 const CACHED: KeyspaceId = KeyspaceId::JOIN_LEFT;
 
@@ -71,11 +72,11 @@ fn cached_store_on(storage: SqliteOperatorStorage) -> OperatorStore {
 }
 
 fn key(suffix: u8) -> EncodedKey {
-	OperatorStateKey::inner_encoded(GROUP, CACHED, [suffix]).as_encoded().clone()
+	state_key(GROUP, CACHED, suffix as u64)
 }
 
 fn key_in(keyspace: KeyspaceId, suffix: u8) -> EncodedKey {
-	OperatorStateKey::inner_encoded(GROUP, keyspace, [suffix]).as_encoded().clone()
+	state_key(GROUP, keyspace, suffix as u64)
 }
 
 fn row(body: &str) -> EncodedPodRow {
@@ -700,7 +701,7 @@ fn a_root_group_key_round_trips_through_the_point_tier() {
 	// A key carrying the root group rather than a real one must still be admitted, or every read of it pays a
 	// persistent lookup while the tier reads correctly and hides the cost.
 	let (store, _storage, _guard) = cached_store();
-	let key = OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::NODE_COUNTER, [1]).as_encoded().clone();
+	let key = state_key(GroupId::ROOT, KeyspaceId::NODE_COUNTER, 1);
 	put(&store, OP_A, key.clone(), row("counter"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
 

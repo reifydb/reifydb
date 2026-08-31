@@ -14,7 +14,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::{GroupId, OperatorStateKey},
+	key::operator::state::{GroupId, KeyspaceId},
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -24,13 +24,19 @@ use reifydb_value::{
 use crate::{
 	tier::resident::{
 		OperatorResidentState,
-		batch::{DropMarker, FlushBatch, JOIN_EXPIRY_ENTRY_BYTES, StateEntry},
+		batch::{DropMarker, FlushBatch, JOIN_EXPIRY_ENTRY_BYTES},
 	},
 	types::{
 		BufferedJoinExpiry, BufferedState, DurablePre, JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES,
 		OperatorStateCensus, OperatorWrite, StoredJoinRowExpiryCensus,
 	},
 };
+
+use reifydb_core::{
+	key::{operator::keyspace::join::JoinLeft, typed::direction::Asc},
+	state::typed::typed_key,
+};
+use crate::tier::bucket::write::WriteEntry;
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
@@ -58,15 +64,26 @@ fn operators_of(batch: &FlushBatch) -> Vec<OperatorId> {
 	seen
 }
 
-fn key(bytes: &str) -> EncodedKey {
-	EncodedKey::new(bytes.as_bytes())
+fn row_number_of(name: &str) -> RowNumber {
+	// the fixtures address rows by name, so a name must become a row number that sorts the way the
+	// name does; a hash here would make every scan order assertion assert the hash's order instead
+	let mut bytes = [0u8; 8];
+	for (slot, byte) in bytes.iter_mut().zip(name.as_bytes()) {
+		*slot = *byte;
+	}
+	RowNumber(u64::from_be_bytes(bytes))
+}
+
+fn key_in(group: u128, name: &str) -> EncodedKey {
+	typed_key::<JoinLeft>(GroupId(group), &Asc(row_number_of(name))).into_encoded()
+}
+
+fn key(name: &str) -> EncodedKey {
+	key_in(7, name)
 }
 
 fn state_key(tail: &str) -> EncodedKey {
-	let mut bytes = vec![0u8; OperatorStateKey::KEYSPACE_INNER_OFFSET as usize];
-	bytes.push(0x10);
-	bytes.extend_from_slice(tail.as_bytes());
-	EncodedKey::new(bytes)
+	key_in(9, tail)
 }
 
 fn row(body: &str) -> EncodedPodRow {
@@ -77,7 +94,7 @@ fn body(row: &Option<EncodedPodRow>) -> String {
 	row_body(row.as_ref().expect("the slot must carry a row"))
 }
 
-fn entry_body(entry: &StateEntry) -> String {
+fn entry_body(entry: &WriteEntry) -> String {
 	body(&entry.post)
 }
 
@@ -85,8 +102,12 @@ fn row_body(row: &EncodedPodRow) -> String {
 	String::from_utf8(row.body().to_vec()).expect("test bodies are utf8")
 }
 
-fn entry_bytes(key_body: &str, row_body: &str) -> ByteSize {
-	ByteSize::from_bytes((key(key_body).len() + row(row_body).bytes().len()) as u64)
+fn entry_bytes(_key_body: &str, row_body: &str) -> ByteSize {
+	// a typed bucket charges the group once per partition and the suffix once per key, never the whole
+	// encoded key, so an entry standing alone in its own bucket costs group + suffix + row
+	let group = size_of::<GroupId>();
+	let suffix = size_of::<Asc<RowNumber>>();
+	ByteSize::from_bytes((group + suffix + row(row_body).bytes().len()) as u64)
 }
 
 fn live_bytes(buffer: &OperatorResidentState) -> ByteSize {
@@ -269,7 +290,7 @@ fn state_range_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
 	let keys: Vec<Vec<u8>> = all.iter().map(|(k, _)| k.to_vec()).collect();
 	assert_eq!(
 		keys,
-		vec![b"a".to_vec(), b"b".to_vec(), b"c".to_vec(), b"d".to_vec()],
+		vec![key("a").to_vec(), key("b").to_vec(), key("c").to_vec(), key("d").to_vec()],
 		"the merge cursor advances in key order, so an unordered range drops or duplicates keys"
 	);
 
@@ -289,7 +310,7 @@ fn state_range_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
 	let window_keys: Vec<Vec<u8>> = window.iter().map(|(k, _)| k.to_vec()).collect();
 	assert_eq!(
 		window_keys,
-		vec![b"b".to_vec(), b"c".to_vec()],
+		vec![key("b").to_vec(), key("c").to_vec()],
 		"both layers must honour the bounds, otherwise the page over-reads past its end"
 	);
 
@@ -297,7 +318,7 @@ fn state_range_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
 	let resumed_keys: Vec<Vec<u8>> = resumed.iter().map(|(k, _)| k.to_vec()).collect();
 	assert_eq!(
 		resumed_keys,
-		vec![b"b".to_vec()],
+		vec![key("b").to_vec()],
 		"an excluded lower bound is how the cursor resumes a page, so it must skip the seen key"
 	);
 }
@@ -323,7 +344,7 @@ fn a_window_closed_on_one_key_still_returns_that_key() {
 
 	let window = buffer.state_range(OP_A, Bound::Included(&key("b")), Bound::Included(&key("b"))).items;
 	let keys: Vec<Vec<u8>> = window.iter().map(|(k, _)| k.to_vec()).collect();
-	assert_eq!(keys, vec![b"b".to_vec()], "an inclusive pair on one key must still read that key");
+	assert_eq!(keys, vec![key("b").to_vec()], "an inclusive pair on one key must still read that key");
 	assert_eq!(body(&window[0].1), "live-b", "the overlay must still apply inside a one-key window");
 }
 
@@ -624,7 +645,7 @@ fn a_combined_apply_lands_the_state_and_the_checkpoints_in_one_taken_batch() {
 	let batch = buffer.take_for_flush().expect("the combined apply must dirty the buffer");
 
 	assert_eq!(
-		entry_body(batch.state.get(&(OP_A, key("state"))).expect("the state write must be in the batch")),
+		entry_body(&batch.state.get(&(OP_A, key("state"))).expect("the state write must be in the batch")),
 		"v",
 		"the state of the committed slice must ride the same batch as its checkpoint"
 	);
@@ -758,7 +779,7 @@ fn a_buffer_far_past_the_budget_drains_whole_flows_and_loses_nothing() {
 		write_in_flow(&buffer, FLOW_B, index + 1, &[insert(OP_B, &format!("k{index}"), &format!("v{index}"))]);
 	}
 
-	let mut seen: Vec<String> = Vec::new();
+	let mut seen: Vec<Vec<u8>> = Vec::new();
 	let mut slices = 0;
 	while let Some(batch) = buffer.take_for_flush() {
 		slices += 1;
@@ -776,7 +797,7 @@ fn a_buffer_far_past_the_budget_drains_whole_flows_and_loses_nothing() {
 				"the operator kept live state behind, so this slice split it; its flow checkpoint \
 				 would then promise state that never reached sqlite"
 			);
-			seen.push(String::from_utf8(taken.as_slice().to_vec()).expect("test keys are utf8"));
+			seen.push(taken.as_slice().to_vec());
 		}
 		buffer.complete_flush();
 	}
@@ -804,7 +825,7 @@ fn a_key_rewritten_during_its_flush_flushes_as_the_later_value() {
 	buffer.record_state_set(OP_A, key("k1"), row("early"), DurablePre::Absent);
 
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
-	assert_eq!(first.state.get(&(OP_A, key("k1"))).map(entry_body), Some("early".to_string()));
+	assert_eq!(first.state.get(&(OP_A, key("k1"))).as_ref().map(entry_body), Some("early".to_string()));
 
 	buffer.record_state_set(OP_A, key("k1"), row("late"), DurablePre::Absent);
 	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k1")) else {
@@ -820,7 +841,7 @@ fn a_key_rewritten_during_its_flush_flushes_as_the_later_value() {
 
 	let second = buffer.take_for_flush().expect("the rewrite recorded during the flush makes a second slice");
 	assert_eq!(
-		second.state.get(&(OP_A, key("k1"))).map(entry_body),
+		second.state.get(&(OP_A, key("k1"))).as_ref().map(entry_body),
 		Some("late".to_string()),
 		"the later slice must carry the later value; carrying the earlier one would overwrite the rewrite \
 		 in sqlite and silently roll the key back"
@@ -982,7 +1003,7 @@ fn a_tombstone_keeps_its_key_charged() {
 
 	assert_eq!(
 		live_bytes(&buffer),
-		ByteSize::from_bytes(key("k1").len() as u64),
+		entry_bytes("k1", ""),
 		"a tombstone still holds its key in memory; charging it zero hides a keyspace that is all deletes"
 	);
 	assert_eq!(
@@ -1000,7 +1021,7 @@ fn a_tombstone_recorded_first_charges_its_key() {
 
 	assert_eq!(
 		live_bytes(&buffer),
-		ByteSize::from_bytes(key("k1").len() as u64),
+		entry_bytes("k1", ""),
 		"a delete-only key is resident too; a free tombstone lets a delete storm escape the budget"
 	);
 }
@@ -1351,7 +1372,7 @@ fn every_mutation_path_keeps_the_census_equal_to_a_fresh_scan() {
 		buffer.census(),
 		vec![OperatorStateCensus {
 			operator: OP_B,
-			keyspace: OperatorStateKey::decode_keyspace(0x10),
+			keyspace: KeyspaceId::JOIN_LEFT,
 			keys: 1,
 			key_bytes: ByteSize::from_bytes(neighbour.len() as u64),
 			value_bytes: ByteSize::from_bytes(row("v5").bytes().len() as u64),

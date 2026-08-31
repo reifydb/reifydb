@@ -226,22 +226,46 @@ impl HeapSize for MetaKey {
 	}
 }
 
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum KeyspaceFamily {
+	Host,
+	Guest,
+}
+
+impl KeyspaceFamily {
+	fn keyspace(&self, host: KeyspaceId, guest: KeyspaceId) -> KeyspaceId {
+		match self {
+			Self::Host => host,
+			Self::Guest => guest,
+		}
+	}
+
+	fn suffix(&self, slot: &EncodedKey) -> Vec<u8> {
+		match self {
+			Self::Host => slot.as_bytes().to_vec(),
+			Self::Guest => xxh3_128(slot.as_bytes()).0.to_be_bytes().to_vec(),
+		}
+	}
+}
+
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct RunningKey {
+	pub family: KeyspaceFamily,
 	pub group: GroupId,
 	pub slot: EncodedKey,
 }
 
 impl RunningKey {
-	pub fn new(group: GroupId, slot: EncodedKey) -> Self {
+	pub fn new(family: KeyspaceFamily, group: GroupId, slot: EncodedKey) -> Self {
 		Self {
+			family,
 			group,
 			slot,
 		}
 	}
 
-	pub fn of_row(group: GroupId, row: RowNumber) -> Self {
-		Self::new(group, EncodedKey::new(encode_u64_asc(row.0)))
+	pub fn of_row(family: KeyspaceFamily, group: GroupId, row: RowNumber) -> Self {
+		Self::new(family, group, EncodedKey::new(encode_u64_asc(row.0)))
 	}
 }
 
@@ -253,30 +277,32 @@ impl HeapSize for RunningKey {
 
 impl IntoGroupStateKey for &RunningKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.group, KeyspaceId::RUNNING, self.slot.as_bytes())
+		OperatorStateKey::inner_encoded(
+			self.group,
+			self.family.keyspace(KeyspaceId::RUNNING, KeyspaceId::GUEST_RUNNING),
+			self.family.suffix(&self.slot),
+		)
 	}
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct WindowStateKey {
+	pub family: KeyspaceFamily,
 	pub group: GroupId,
 	pub slot: EncodedKey,
 }
 
 impl WindowStateKey {
-	pub fn new(group: GroupId, slot: EncodedKey) -> Self {
+	pub fn new(family: KeyspaceFamily, group: GroupId, slot: EncodedKey) -> Self {
 		Self {
+			family,
 			group,
 			slot,
 		}
 	}
 
-	pub fn root(slot: EncodedKey) -> Self {
-		Self::new(GroupId::ROOT, slot)
-	}
-
-	pub fn of_row(group: GroupId, row: RowNumber) -> Self {
-		Self::new(group, EncodedKey::new(encode_u64_asc(row.0)))
+	pub fn of_row(family: KeyspaceFamily, group: GroupId, row: RowNumber) -> Self {
+		Self::new(family, group, EncodedKey::new(encode_u64_asc(row.0)))
 	}
 }
 
@@ -288,26 +314,32 @@ impl HeapSize for WindowStateKey {
 
 impl IntoGroupStateKey for &WindowStateKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.group, KeyspaceId::ACCUMULATOR, self.slot.as_bytes())
+		OperatorStateKey::inner_encoded(
+			self.group,
+			self.family.keyspace(KeyspaceId::ACCUMULATOR, KeyspaceId::GUEST_ACCUMULATOR),
+			self.family.suffix(&self.slot),
+		)
 	}
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct BufferKey {
+	pub family: KeyspaceFamily,
 	pub group: GroupId,
 	pub slot: EncodedKey,
 }
 
 impl BufferKey {
-	pub fn new(group: GroupId, slot: EncodedKey) -> Self {
+	pub fn new(family: KeyspaceFamily, group: GroupId, slot: EncodedKey) -> Self {
 		Self {
+			family,
 			group,
 			slot,
 		}
 	}
 
-	pub fn of_row(group: GroupId, row: RowNumber) -> Self {
-		Self::new(group, EncodedKey::new(encode_u64_asc(row.0)))
+	pub fn of_row(family: KeyspaceFamily, group: GroupId, row: RowNumber) -> Self {
+		Self::new(family, group, EncodedKey::new(encode_u64_asc(row.0)))
 	}
 }
 
@@ -319,7 +351,11 @@ impl HeapSize for BufferKey {
 
 impl IntoGroupStateKey for &BufferKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.group, KeyspaceId::BUFFER, self.slot.as_bytes())
+		OperatorStateKey::inner_encoded(
+			self.group,
+			self.family.keyspace(KeyspaceId::BUFFER, KeyspaceId::GUEST_BUFFER),
+			self.family.suffix(&self.slot),
+		)
 	}
 }
 
@@ -381,14 +417,6 @@ impl ExpiryAnchor {
 			ExpiryAnchor::LastEvent => last_event,
 		}
 	}
-}
-
-pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey> {
-	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
-	if keyspace != KeyspaceId::ACCUMULATOR {
-		return None;
-	}
-	Some(WindowStateKey::new(group, EncodedKey::new(suffix)))
 }
 
 #[cfg(test)]

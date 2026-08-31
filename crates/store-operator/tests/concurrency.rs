@@ -16,7 +16,7 @@ use std::{
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, KeyspaceId},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -31,6 +31,7 @@ use reifydb_store_operator::{
 	types::{DurablePre, OperatorWrite},
 };
 use reifydb_value::byte_size::ByteSize;
+use reifydb_testing::keyspace::state_key;
 
 const OP: OperatorId = OperatorId(1);
 
@@ -61,7 +62,7 @@ fn store() -> (OperatorStore, SqliteTempPathGuard) {
 }
 
 fn key(suffix: u64) -> EncodedKey {
-	OperatorStateKey::inner_encoded(GROUP, KeyspaceId::ACCUMULATOR, suffix.to_be_bytes()).as_encoded().clone()
+	state_key(GROUP, KeyspaceId::JOIN_LEFT, suffix)
 }
 
 fn row(body: &str) -> EncodedPodRow {

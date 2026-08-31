@@ -14,7 +14,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{
-		GroupId, KeyspaceId, OperatorStateKey, group_data_inner_range, keyspace_inner_range,
+		GroupId, KeyspaceId, group_data_inner_range, keyspace_inner_range,
 		keyspace_inner_range_upto,
 	},
 	metrics::scan::ScanCounters,
@@ -33,6 +33,7 @@ use reifydb_store_operator::{
 	types::{DurablePre, OperatorWrite},
 };
 use reifydb_value::byte_size::ByteSize;
+use reifydb_testing::keyspace::state_key;
 
 const CACHED: KeyspaceId = KeyspaceId::JOIN_LEFT;
 
@@ -116,7 +117,7 @@ fn key(rng: &mut Rng) -> (OperatorId, EncodedKey) {
 	let group = GroupId((1 + rng.below(GROUPS)) as u128);
 	let keyspace = KEYSPACES[rng.below(KEYSPACES.len() as u64) as usize];
 	let suffix = rng.below(SUFFIXES);
-	(operator, OperatorStateKey::inner_encoded(group, keyspace, suffix.to_be_bytes()).as_encoded().clone())
+	(operator, state_key(group, keyspace, suffix as u64))
 }
 
 fn drain(

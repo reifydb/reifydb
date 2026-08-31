@@ -35,7 +35,7 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaSweep, RunningKey,
+			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep, RunningKey,
 			config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for, note_when_expiry_capped,
 			persist_batch_meta,
 		},
@@ -100,6 +100,7 @@ struct GroupSlot<S, Accumulator, Output> {
 }
 
 pub struct RollingEngine<G, S: Slot, Accumulator> {
+	family: KeyspaceFamily,
 	runnable: bool,
 	meta_sweep: MetaSweep,
 	expire_batch: usize,
@@ -168,6 +169,7 @@ where
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
+			family: config.family(),
 			runnable: false,
 			meta_sweep: MetaSweep::default(),
 			expire_batch: config.expire_batch(),
@@ -313,7 +315,7 @@ where
 						None => row_key(&group),
 					};
 					let buffer: RollingBuffer<S, Accumulator> =
-						get_classified(store, &BufferKey::new(group_id, key.clone()))?
+						get_classified(store, &BufferKey::new(self.family, group_id, key.clone()))?
 							.unwrap_or_default();
 					let was_empty_before = buffer.is_empty();
 					let prior_output = if was_empty_before {
@@ -425,11 +427,11 @@ where
 			}
 			let output = combine(&group, &group_slot.buffer);
 			if group_slot.buffer.is_empty() {
-				remove(store, &BufferKey::new(group_slot.group_id, group_slot.key.clone()))?;
+				remove(store, &BufferKey::new(self.family, group_slot.group_id, group_slot.key.clone()))?;
 			} else {
 				put(
 					store,
-					&BufferKey::new(group_slot.group_id, group_slot.key.clone()),
+					&BufferKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
 					group_slot.buffer,
 				)?;
 			}
@@ -488,7 +490,7 @@ where
 		slot_key: &EncodedKey,
 		frontier: Option<S::Coord>,
 	) -> Result<Accumulator> {
-		if let Some(running) = get_classified(store, &RunningKey::new(group_id, slot_key.clone()))? {
+		if let Some(running) = get_classified(store, &RunningKey::new(self.family, group_id, slot_key.clone()))? {
 			return Ok(running);
 		}
 		Ok(running_below(buffer, frontier))
@@ -537,7 +539,7 @@ where
 						None => row_key(&group),
 					};
 					let buffer: RollingBuffer<S, Accumulator> =
-						get_classified(store, &BufferKey::new(group_id, key.clone()))?
+						get_classified(store, &BufferKey::new(self.family, group_id, key.clone()))?
 							.unwrap_or_default();
 					let old_frontier = frontier_for(self.lag, &meta.high_water());
 					let prior_min = coord_min_key(&buffer);
@@ -669,22 +671,22 @@ where
 				None
 			};
 			if group_slot.buffer.is_empty() {
-				remove(store, &BufferKey::new(group_slot.group_id, group_slot.key.clone()))?;
+				remove(store, &BufferKey::new(self.family, group_slot.group_id, group_slot.key.clone()))?;
 			} else {
 				put(
 					store,
-					&BufferKey::new(group_slot.group_id, group_slot.key.clone()),
+					&BufferKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
 					group_slot.buffer,
 				)?;
 			}
 			if merged_any {
 				put(
 					store,
-					&RunningKey::new(group_slot.group_id, group_slot.key.clone()),
+					&RunningKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
 					group_slot.running,
 				)?;
 			} else {
-				remove(store, &RunningKey::new(group_slot.group_id, group_slot.key.clone()))?;
+				remove(store, &RunningKey::new(self.family, group_slot.group_id, group_slot.key.clone()))?;
 			}
 
 			if let Some(out) = output {
@@ -761,7 +763,7 @@ where
 					.and_then(|meta| frontier_for::<S>(lag, &meta.high_water))
 			};
 			let mut buffer: RollingBuffer<S, Accumulator> =
-				get_classified(store, &BufferKey::new(group_id, slot_key.clone()))?.unwrap_or_default();
+				get_classified(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?.unwrap_or_default();
 			let expired: Vec<S> = buffer.range(..=cutoff).map(|(slot, _)| *slot).collect();
 			if expired.is_empty() {
 				if let Some(new) = coord_min_key(&buffer) {
@@ -807,8 +809,8 @@ where
 							group_id: entry.group_id,
 						},
 					)?;
-					put(store, &BufferKey::new(group_id, slot_key.clone()), buffer)?;
-					put(store, &RunningKey::new(group_id, slot_key.clone()), running)?;
+					put(store, &BufferKey::new(self.family, group_id, slot_key.clone()), buffer)?;
+					put(store, &RunningKey::new(self.family, group_id, slot_key.clone()), running)?;
 					pairs.push((group_id, slot_key));
 					pending.push((entry.group, Some(value)));
 				}
@@ -822,16 +824,16 @@ where
 							group_id: entry.group_id,
 						},
 					)?;
-					put(store, &BufferKey::new(group_id, slot_key.clone()), buffer)?;
-					remove(store, &RunningKey::new(group_id, slot_key.clone()))?;
+					put(store, &BufferKey::new(self.family, group_id, slot_key.clone()), buffer)?;
+					remove(store, &RunningKey::new(self.family, group_id, slot_key.clone()))?;
 					if unmerged_any {
 						pairs.push((group_id, slot_key));
 						pending.push((entry.group, None));
 					}
 				}
 				_ => {
-					remove(store, &BufferKey::new(group_id, slot_key.clone()))?;
-					remove(store, &RunningKey::new(group_id, slot_key.clone()))?;
+					remove(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?;
+					remove(store, &RunningKey::new(self.family, group_id, slot_key.clone()))?;
 					pairs.push((group_id, slot_key));
 					pending.push((entry.group, None));
 				}
@@ -897,7 +899,7 @@ where
 			let group_id = GroupId(entry.group_id);
 			expiry_drop(store, &index_key)?;
 			let mut buffer: RollingBuffer<S, Accumulator> =
-				get_classified(store, &BufferKey::new(group_id, slot_key.clone()))?.unwrap_or_default();
+				get_classified(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?.unwrap_or_default();
 			if buffer.is_empty() {
 				continue;
 			}
@@ -930,12 +932,12 @@ where
 							},
 						)?;
 					}
-					put(store, &BufferKey::new(group_id, slot_key.clone()), buffer)?;
+					put(store, &BufferKey::new(self.family, group_id, slot_key.clone()), buffer)?;
 					pairs.push((group_id, slot_key));
 					pending.push((entry.group, Some(value)));
 				}
 				_ => {
-					remove(store, &BufferKey::new(group_id, slot_key.clone()))?;
+					remove(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?;
 					pairs.push((group_id, slot_key));
 					pending.push((entry.group, None));
 				}

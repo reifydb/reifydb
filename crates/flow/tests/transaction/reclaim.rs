@@ -12,7 +12,10 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+		operator::{
+			keyspace::suffix_width_of,
+			state::{GroupId, KeyspaceId, OperatorStateKey},
+		},
 	},
 };
 use reifydb_flow::transaction::{
@@ -66,8 +69,10 @@ fn seed_identity(txn: &mut DeferredTransaction, id: GroupId) {
 }
 
 fn write(txn: &mut DeferredTransaction, group: GroupId, keyspace: KeyspaceId, suffix: u8) {
-	let mut bytes = vec![0u8; 16];
-	bytes[15] = suffix;
+	// the width comes from the catalogue because a suffix narrower than its keyspace declares never reaches storage
+	let width = suffix_width_of(keyspace).expect("a fixture keyspace must appear in the catalogue");
+	let mut bytes = vec![0u8; width];
+	bytes[width - 1] = suffix;
 	let key = OperatorStateKey::inner_encoded(group, keyspace, bytes);
 	txn.state_set(NODE, &key, payload()).unwrap();
 }

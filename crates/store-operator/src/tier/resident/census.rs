@@ -14,20 +14,20 @@ use crate::{
 };
 
 fn scan_state(inner: &SlotInner, mut visit: impl FnMut(&EncodedKey, &EncodedPodRow)) {
-	for (key, entry) in inner.live.state.iter() {
+	for (key, entry) in inner.live.entries() {
 		if let Some(row) = &entry.post {
-			visit(key, row);
+			visit(&key, row);
 		}
 	}
 	let Some(pending) = inner.in_flight.as_deref() else {
 		return;
 	};
-	for (key, entry) in pending.state.iter() {
-		if inner.live.state.contains_key(key) {
+	for (key, entry) in pending.entries() {
+		if inner.live.contains_key(&key) {
 			continue;
 		}
 		if let Some(row) = &entry.post {
-			visit(key, row);
+			visit(&key, row);
 		}
 	}
 }

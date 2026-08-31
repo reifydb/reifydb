@@ -20,7 +20,7 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, MetaSweep,
+			AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, KeyspaceFamily, MetaSweep,
 			config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for, persist_batch_meta,
 			rolling::RollingBuckets,
 		},
@@ -60,6 +60,7 @@ struct GroupSlot<S, Accumulator, SK, Output> {
 }
 
 pub struct RollingTopKEngine<G, S, Accumulator, SK, Output> {
+	family: KeyspaceFamily,
 	meta_sweep: MetaSweep,
 	_pd: PhantomData<(G, S, Accumulator, SK, Output)>,
 }
@@ -79,8 +80,9 @@ where
 	RollingTopKEmit<SK, Output>: OperatorState,
 	RollingTopKBuffer<S, Accumulator>: OperatorState,
 {
-	pub fn new(_config: WindowEngineConfig) -> Self {
+	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
+			family: config.family(),
 			meta_sweep: MetaSweep::default(),
 			_pd: PhantomData,
 		}
@@ -260,7 +262,7 @@ where
 							.expect("every group outside state_rows was resolved upfront"),
 					};
 					let buffer: RollingTopKBuffer<S, Accumulator> =
-						get_classified(store, &BufferKey::of_row(group_id, state_row_number))?
+						get_classified(store, &BufferKey::of_row(self.family, group_id, state_row_number))?
 							.unwrap_or_default();
 					let prior_emit: RollingTopKEmit<SK, Output> =
 						get_classified(store, &EmitKey::new(group_id, state_row_number))?
@@ -396,11 +398,11 @@ where
 			}
 
 			if group_slot.buffer.is_empty() {
-				remove(store, &BufferKey::of_row(group_slot.group_id, group_slot.state_row_number))?;
+				remove(store, &BufferKey::of_row(self.family, group_slot.group_id, group_slot.state_row_number))?;
 			} else {
 				put(
 					store,
-					&BufferKey::of_row(group_slot.group_id, group_slot.state_row_number),
+					&BufferKey::of_row(self.family, group_slot.group_id, group_slot.state_row_number),
 					group_slot.buffer,
 				)?;
 			}

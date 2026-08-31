@@ -14,7 +14,7 @@ use reifydb_sdk::{
 		GuestOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::GuestContext,
-		state::GuestRawOperator,
+		state::{GuestRawOperator, utils::custom_state_key},
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
 	row,
@@ -96,11 +96,7 @@ impl GuestOperator for ParityWindow {
 					continue;
 				};
 				let window_bucket = (timestamp / WINDOW_SIZE) * WINDOW_SIZE;
-				let key = OperatorStateKey::inner_encoded(
-					GroupId::ROOT,
-					KeyspaceId::CUSTOM_NOT_CACHED,
-					window_bucket.to_be_bytes(),
-				);
+				let key = custom_state_key(&window_bucket.to_be_bytes())?;
 				let new_count = self.state_get::<i64>(ctx, &key)?.unwrap_or(0) + 1;
 				self.state_set(ctx, &key, &new_count)?;
 				emissions.push((window_bucket, new_count));

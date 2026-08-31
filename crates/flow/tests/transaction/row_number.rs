@@ -8,8 +8,8 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::{
-			keyspace::join::JoinRowMappingKey,
-			state::{GroupId, KeyspaceId, OperatorStateKey},
+			keyspace::{join::JoinRowMappingKey, root::NodeCounterKind},
+			state::{GroupId, node_counter_key},
 		},
 		typed::direction::{Asc, Desc},
 	},
@@ -317,7 +317,7 @@ fn dropping_one_left_reclaims_every_join_mapping_under_it() {
 #[test]
 fn the_row_number_counter_never_collides_with_the_interners_group_counter() {
 	// Both counters live in the root group's NODE_COUNTER keyspace and must not alias.
-	let group_counter = OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::NODE_COUNTER, vec![]);
+	let group_counter = node_counter_key(NodeCounterKind::Group);
 	assert_ne!(counter_key(), group_counter, "the row-number counter must not alias the group-id counter");
 	assert_ne!(
 		guest_mapping_key(GROUP, &key("x")).unwrap(),

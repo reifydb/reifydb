@@ -740,7 +740,7 @@ mod join_row_expiry_guard_tests {
 			store::MultiVersionRow,
 		},
 		key::operator::{
-			keyspace::join::JoinRowMappingKey,
+			keyspace::{join::JoinRowMappingKey, suffix_width_of},
 			state::{
 				GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range, keyspace_inner_range_split,
 			},
@@ -1000,7 +1000,8 @@ mod join_row_expiry_guard_tests {
 	}
 
 	fn framed(keyspace: KeyspaceId) -> Vec<u8> {
-		OperatorStateKey::inner_encoded(GroupId(7), keyspace, [0u8; 9]).as_slice().to_vec()
+		let width = suffix_width_of(keyspace).expect("a fixture keyspace must appear in the catalogue");
+		OperatorStateKey::inner_encoded(GroupId(7), keyspace, vec![0u8; width]).as_slice().to_vec()
 	}
 
 	fn with_context(call: impl FnOnce(*mut ExternCContextRaw) -> i32) -> (i32, bool) {

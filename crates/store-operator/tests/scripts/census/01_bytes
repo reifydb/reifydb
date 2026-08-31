@@ -8,24 +8,24 @@ bytes
 ---
 bytes 1 => 0
 
-# A framed key is 16 group bytes plus 1 keyspace byte plus its suffix, and a row is its body alone: "a" costs
-# 18 + 1.
+# A framed key is 16 group bytes plus 1 keyspace byte plus its keyspace's fixed suffix width, and a row is
+# its body alone: "a" costs 33 + 1.
 
 set a=1
 flush
 bytes
 ---
 ok
-bytes 1 => 19
+bytes 1 => 34
 
-# "bb" costs 19 + 2.
+# "bb" costs the same 33 key bytes as "a", plus 2.
 
 set bb=22
 flush
 bytes
 ---
 ok
-bytes 1 => 40
+bytes 1 => 69
 
 # A join expiry is charged a flat 33 key bytes plus 8 value bytes.
 
@@ -34,7 +34,7 @@ flush
 bytes
 ---
 ok
-bytes 1 => 81
+bytes 1 => 110
 
 # A neighbouring operator is billed separately.
 
@@ -44,8 +44,8 @@ bytes
 bytes op=2
 ---
 ok
-bytes 1 => 81
-bytes 2 => 19
+bytes 1 => 110
+bytes 2 => 34
 
 # A removed key stops being counted.
 
@@ -54,7 +54,7 @@ flush
 bytes
 ---
 ok
-bytes 1 => 62
+bytes 1 => 76
 
 # A removed join expiry stops being counted too.
 
@@ -63,7 +63,7 @@ flush
 bytes
 ---
 ok
-bytes 1 => 21
+bytes 1 => 35
 
 # An operator that owns nothing costs nothing.
 

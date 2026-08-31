@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::GroupId,
+	key::operator::state::{GroupId, KeyspaceId},
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
@@ -28,6 +28,7 @@ use reifydb_value::{
 	byte_size::ByteSize,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
+use reifydb_testing::keyspace::state_key;
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
@@ -67,10 +68,7 @@ fn store_at(config: SqliteConfig) -> OperatorStore {
 }
 
 fn key(suffix: u8) -> EncodedKey {
-	let mut bytes = 7u128.to_be_bytes().to_vec();
-	bytes.push(0x10);
-	bytes.push(suffix);
-	EncodedKey::new(bytes)
+	state_key(GroupId(7), KeyspaceId::JOIN_LEFT, suffix as u64)
 }
 
 fn row(body: &str) -> EncodedPodRow {
