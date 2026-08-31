@@ -7,3 +7,6 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod error;
+pub mod index;
+pub mod segment;
+pub mod vote;

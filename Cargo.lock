@@ -3040,6 +3040,7 @@ name = "reifydb-codec"
 version = "0.9.0"
 dependencies = [
  "bigdecimal",
+ "crc32fast",
  "num-bigint",
  "num-traits",
  "postcard",
@@ -3496,7 +3497,9 @@ name = "reifydb-store-log"
 version = "0.9.0"
 dependencies = [
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-runtime",
+ "reifydb-value",
 ]
 
 [[package]]

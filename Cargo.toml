@@ -359,6 +359,7 @@ rusqlite = { version = "0.39.0", features = ["bundled"] }
 zstd = { version = "0.13" }
 
 # hashing
+crc32fast = { version = "1.5.0" }
 hashbrown = { version = "0.15" }
 xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
 

@@ -18,6 +18,26 @@ pub enum LogError {
 	AlreadyExists(PathBuf),
 	NoSpace(PathBuf),
 	NotADirectory(PathBuf),
+	SegmentFull {
+		path: PathBuf,
+		needed: u64,
+		remaining: u64,
+	},
+	IndexShort {
+		path: PathBuf,
+		len: u64,
+	},
+	IndexMagic {
+		path: PathBuf,
+		found: u32,
+	},
+	VoteShort {
+		path: PathBuf,
+		len: u64,
+	},
+	VoteCorrupt {
+		path: PathBuf,
+	},
 	Io {
 		path: PathBuf,
 		message: String,
@@ -49,6 +69,25 @@ impl LogError {
 			LogError::AlreadyExists(path) => path,
 			LogError::NoSpace(path) => path,
 			LogError::NotADirectory(path) => path,
+			LogError::SegmentFull {
+				path,
+				..
+			} => path,
+			LogError::IndexShort {
+				path,
+				..
+			} => path,
+			LogError::IndexMagic {
+				path,
+				..
+			} => path,
+			LogError::VoteShort {
+				path,
+				..
+			} => path,
+			LogError::VoteCorrupt {
+				path,
+			} => path,
 			LogError::Io {
 				path,
 				..
@@ -64,6 +103,36 @@ impl Display for LogError {
 			LogError::AlreadyExists(path) => write!(f, "log file already exists: {}", path.display()),
 			LogError::NoSpace(path) => write!(f, "log device out of space: {}", path.display()),
 			LogError::NotADirectory(path) => write!(f, "log path is not a directory: {}", path.display()),
+			LogError::SegmentFull {
+				path,
+				needed,
+				remaining,
+			} => write!(
+				f,
+				"log segment {} is full: {} bytes needed, {} remaining",
+				path.display(),
+				needed,
+				remaining
+			),
+			LogError::IndexShort {
+				path,
+				len,
+			} => write!(f, "log index {} is shorter than its header: {} bytes", path.display(), len),
+			LogError::IndexMagic {
+				path,
+				found,
+			} => write!(f, "log index {} has magic 0x{:08x}, not an index", path.display(), found),
+			LogError::VoteShort {
+				path,
+				len,
+			} => write!(f, "vote file {} is shorter than its two slots: {} bytes", path.display(), len),
+			LogError::VoteCorrupt {
+				path,
+			} => write!(
+				f,
+				"neither slot of vote file {} verifies, so the durable vote is lost",
+				path.display()
+			),
 			LogError::Io {
 				path,
 				message,

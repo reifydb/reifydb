@@ -1,0 +1,343 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::path::{Path, PathBuf};
+
+use reifydb_codec::log::{
+	Position,
+	record::{HEADER_BYTES, Header, Record},
+};
+use reifydb_runtime::io::fs::{Create, Filesystem, Len, Open, OpenMut, Pread, Pwrite, SyncData, SyncDir, Truncate};
+use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
+
+use crate::error::{LogError, Result};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stop {
+	Unwritten,
+	Eof,
+	Corrupt(Position),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Scan {
+	pub records: Vec<Record>,
+	pub end: Position,
+	pub stop: Stop,
+}
+
+pub struct Segment<F: Filesystem> {
+	path: PathBuf,
+	file: F::FileMut,
+	capacity: ByteSize,
+	head: Position,
+}
+
+impl<F: Filesystem> Segment<F> {
+	pub fn create(fs: &F, path: &Path, capacity: ByteSize) -> Result<Self>
+	where
+		F: Create + SyncDir,
+	{
+		let file = fs.create(path, capacity.as_bytes())?;
+		fs.sync_dir(parent(path))?;
+		Ok(Self {
+			path: path.to_path_buf(),
+			file,
+			capacity,
+			head: Position::ZERO,
+		})
+	}
+
+	pub fn recover(fs: &F, path: &Path) -> Result<(Self, Scan)>
+	where
+		F: OpenMut,
+	{
+		let file = fs.open_mut(path)?;
+		let capacity = ByteSize::from_bytes(file.len()?);
+		let scan = walk(&file, capacity, Position::ZERO)?;
+		let segment = Self {
+			path: path.to_path_buf(),
+			file,
+			capacity,
+			head: scan.end,
+		};
+		segment.discard_tail()?;
+		Ok((segment, scan))
+	}
+
+	pub fn append(&mut self, record: &Record) -> Result<Position> {
+		let bytes = record.encode();
+		let needed = bytes.len() as u64;
+		let remaining = self.capacity.as_bytes() - self.head.as_u64();
+		if remaining < needed {
+			return Err(LogError::SegmentFull {
+				path: self.path.clone(),
+				needed,
+				remaining,
+			});
+		}
+		let offset = self.head;
+		write_all(&self.file, &self.path, offset.as_u64(), &bytes)?;
+		self.head = self.head.advance(needed);
+		Ok(offset)
+	}
+
+	pub fn truncate_to(&mut self, position: Position) -> Result<()> {
+		reifydb_assertions! {
+			assert!(
+				position <= self.head,
+				"truncating to {} moves the head above the {} bytes actually written, so the next \
+				 append lands past a gap of unwritten zeros that terminates every later scan",
+				position,
+				self.head
+			);
+		}
+		self.head = position;
+		self.discard_tail()
+	}
+
+	pub fn sync(&self) -> Result<()> {
+		Ok(self.file.sync_data()?)
+	}
+
+	pub fn path(&self) -> &Path {
+		&self.path
+	}
+
+	pub fn head(&self) -> Position {
+		self.head
+	}
+
+	pub fn capacity(&self) -> ByteSize {
+		self.capacity
+	}
+
+	fn discard_tail(&self) -> Result<()> {
+		self.file.truncate(self.head.as_u64())?;
+		self.file.truncate(self.capacity.as_bytes())?;
+		Ok(self.file.sync_data()?)
+	}
+}
+
+pub fn scan<F: Open>(fs: &F, path: &Path) -> Result<Scan> {
+	scan_from(fs, path, Position::ZERO)
+}
+
+pub fn scan_from<F: Open>(fs: &F, path: &Path, from: Position) -> Result<Scan> {
+	let file = fs.open(path)?;
+	let capacity = ByteSize::from_bytes(file.len()?);
+	walk(&file, capacity, from)
+}
+
+fn walk<H: Pread>(file: &H, capacity: ByteSize, from: Position) -> Result<Scan> {
+	let mut records = Vec::new();
+	let mut position = from;
+	loop {
+		if capacity.as_bytes().saturating_sub(position.as_u64()) < HEADER_BYTES as u64 {
+			return Ok(stopped(records, position, Stop::Eof));
+		}
+		let mut header = [0u8; HEADER_BYTES];
+		if !read_exact(file, position.as_u64(), &mut header)? {
+			return Ok(stopped(records, position, Stop::Eof));
+		}
+		let header = Header::decode(&header);
+		if header.is_end() {
+			return Ok(stopped(records, position, Stop::Unwritten));
+		}
+		let Some(payload_len) = header.payload_len() else {
+			return Ok(stopped(records, position, Stop::Corrupt(position)));
+		};
+		let total = HEADER_BYTES as u64 + payload_len as u64;
+		if capacity.as_bytes().saturating_sub(position.as_u64()) < total {
+			return Ok(stopped(records, position, Stop::Corrupt(position)));
+		}
+		let mut payload = vec![0u8; payload_len];
+		read_exact(file, position.as_u64() + HEADER_BYTES as u64, &mut payload)?;
+		if !header.verify(&payload) {
+			return Ok(stopped(records, position, Stop::Corrupt(position)));
+		}
+		records.push(header.into_record(payload));
+		position = position.advance(total);
+	}
+}
+
+fn stopped(records: Vec<Record>, end: Position, stop: Stop) -> Scan {
+	Scan {
+		records,
+		end,
+		stop,
+	}
+}
+
+pub(crate) fn read_exact<H: Pread>(file: &H, mut offset: u64, buf: &mut [u8]) -> Result<bool> {
+	let mut read = 0;
+	while read < buf.len() {
+		let n = file.pread(offset, &mut buf[read..])?;
+		if n == 0 {
+			return Ok(false);
+		}
+		read += n;
+		offset += n as u64;
+	}
+	Ok(true)
+}
+
+pub(crate) fn write_all<H: Pwrite>(file: &H, path: &Path, mut offset: u64, buf: &[u8]) -> Result<()> {
+	let mut written = 0;
+	while written < buf.len() {
+		let n = file.pwrite(offset, &buf[written..])?;
+		if n == 0 {
+			return Err(LogError::Io {
+				path: path.to_path_buf(),
+				message: format!("write made no progress at offset {offset}"),
+			});
+		}
+		written += n;
+		offset += n as u64;
+	}
+	Ok(())
+}
+
+fn parent(path: &Path) -> &Path {
+	match path.parent() {
+		Some(parent) if !parent.as_os_str().is_empty() => parent,
+		_ => Path::new("."),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_codec::log::{LogIndex, LogVersion, RecordKind, Term};
+	use reifydb_runtime::io::fs::{Mkdir, memory::MemoryFs};
+	use reifydb_value::value::datetime::DateTime;
+
+	use super::*;
+
+	const CAPACITY: ByteSize = ByteSize::from_bytes(4096);
+
+	fn fixture() -> (MemoryFs, PathBuf) {
+		let fs = MemoryFs::new();
+		fs.mkdir(Path::new("/log")).unwrap();
+		(fs, PathBuf::from("/log/0.log"))
+	}
+
+	fn record(version: u64, payload: &[u8]) -> Record {
+		Record::new(
+			LogVersion::new(version),
+			LogIndex::new(version),
+			Term::new(1),
+			DateTime::from_bits(1000 + version),
+			RecordKind::new(0),
+			payload.to_vec(),
+		)
+	}
+
+	fn poke(fs: &MemoryFs, path: &Path, offset: u64, bytes: &[u8]) {
+		let file = fs.open_mut(path).unwrap();
+		assert_eq!(file.pwrite(offset, bytes).unwrap(), bytes.len());
+	}
+
+	#[test]
+	fn a_fresh_segment_scans_as_empty_and_terminates_on_unwritten_bytes() {
+		// create preallocates zeros, so the very first header must read as the end of the
+		// written region rather than as a record or as a corruption.
+		let (fs, path) = fixture();
+		Segment::create(&fs, &path, CAPACITY).unwrap();
+
+		let scan = scan(&fs, &path).unwrap();
+
+		assert_eq!(scan.records, vec![]);
+		assert_eq!(scan.end, Position::ZERO);
+		assert_eq!(scan.stop, Stop::Unwritten);
+	}
+
+	#[test]
+	fn appended_records_scan_back_in_order_and_byte_identical() {
+		let (fs, path) = fixture();
+		let mut segment = Segment::create(&fs, &path, CAPACITY).unwrap();
+		let written = vec![record(1, b"alpha"), record(2, b""), record(3, &[0xffu8; 300])];
+		for entry in &written {
+			segment.append(entry).unwrap();
+		}
+		segment.sync().unwrap();
+
+		let scan = scan(&fs, &path).unwrap();
+
+		assert_eq!(scan.records, written);
+		assert_eq!(scan.stop, Stop::Unwritten);
+	}
+
+	#[test]
+	fn a_flipped_payload_bit_stops_the_scan_at_that_record() {
+		let (fs, path) = fixture();
+		let mut segment = Segment::create(&fs, &path, CAPACITY).unwrap();
+		let first = record(1, b"survivor");
+		segment.append(&first).unwrap();
+		let second_at = segment.append(&record(2, b"victim")).unwrap();
+		segment.sync().unwrap();
+		let mut byte = [0u8; 1];
+		fs.open(&path).unwrap().pread(second_at.as_u64() + HEADER_BYTES as u64, &mut byte).unwrap();
+		poke(&fs, &path, second_at.as_u64() + HEADER_BYTES as u64, &[byte[0] ^ 0x01]);
+
+		let scan = scan(&fs, &path).unwrap();
+
+		assert_eq!(scan.records, vec![first]);
+		assert_eq!(scan.stop, Stop::Corrupt(second_at));
+	}
+
+	#[test]
+	fn truncate_to_drops_the_records_above_a_position_and_zeroes_them() {
+		// a follower overwrites a conflicting tail, so the bytes above must read back as
+		// unwritten rather than as the records the old leader left there.
+		let (fs, path) = fixture();
+		let mut segment = Segment::create(&fs, &path, CAPACITY).unwrap();
+		segment.append(&record(1, b"one")).unwrap();
+		let second = segment.append(&record(2, b"two")).unwrap();
+		segment.append(&record(3, b"three")).unwrap();
+		segment.sync().unwrap();
+
+		segment.truncate_to(second).unwrap();
+		let scanned = scan(&fs, &path).unwrap();
+
+		assert_eq!(scanned.records, vec![record(1, b"one")]);
+		assert_eq!(scanned.stop, Stop::Unwritten);
+		assert_eq!(segment.head(), second);
+		assert_eq!(segment.capacity(), CAPACITY);
+	}
+
+	#[test]
+	fn an_append_after_a_truncate_reuses_the_freed_position() {
+		// the head must follow the truncate, otherwise the new record is written above a
+		// gap of zeros and no scan ever reaches it.
+		let (fs, path) = fixture();
+		let mut segment = Segment::create(&fs, &path, CAPACITY).unwrap();
+		segment.append(&record(1, b"one")).unwrap();
+		let second = segment.append(&record(2, b"two")).unwrap();
+		segment.truncate_to(second).unwrap();
+
+		assert_eq!(segment.append(&record(9, b"nine")).unwrap(), second);
+		assert_eq!(scan(&fs, &path).unwrap().records, vec![record(1, b"one"), record(9, b"nine")]);
+	}
+
+	#[test]
+	fn recover_is_a_fixed_point() {
+		// I7: a second recovery pass must not move the head, or a crash during recovery
+		// would eat one more record on every restart.
+		let (fs, path) = fixture();
+		let mut segment = Segment::create(&fs, &path, CAPACITY).unwrap();
+		segment.append(&record(1, b"a")).unwrap();
+		segment.append(&record(2, b"b")).unwrap();
+		let torn_at = segment.append(&record(3, b"c")).unwrap();
+		segment.sync().unwrap();
+		poke(&fs, &path, torn_at.as_u64() + 8, &[0xff]);
+
+		let (first_pass, first_scan) = Segment::<MemoryFs>::recover(&fs, &path).unwrap();
+		let (second_pass, second_scan) = Segment::<MemoryFs>::recover(&fs, &path).unwrap();
+
+		assert_eq!(first_scan.records, second_scan.records);
+		assert_eq!(first_scan.end, second_scan.end);
+		assert_eq!(first_pass.head(), second_pass.head());
+		assert_eq!(first_pass.head(), torn_at);
+		assert_eq!(second_scan.stop, Stop::Unwritten);
+	}
+}
