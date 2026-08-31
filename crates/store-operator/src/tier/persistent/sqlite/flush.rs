@@ -2,23 +2,17 @@
 // Copyright (c) 2026 ReifyDB
 
 #[cfg(reifydb_assertions)]
-use std::collections::BTreeSet;
 use std::sync::LazyLock;
 
 #[cfg(reifydb_assertions)]
-use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(reifydb_assertions)]
-use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_sqlite::batch::values_placeholders;
 #[cfg(reifydb_assertions)]
-use reifydb_value::byte_size::ByteSize;
-use reifydb_value::reifydb_assertions;
 #[cfg(reifydb_assertions)]
 use rusqlite::{ToSql, Transaction, TransactionBehavior, params, params_from_iter};
 use tracing::instrument;
 
 #[cfg(reifydb_assertions)]
-use crate::types::DurablePre;
 use crate::{
 	tier::{
 		persistent::sqlite::{
@@ -90,10 +84,6 @@ impl SqliteOperatorStorage {
 		let conn = guard.as_ref().expect("operator state flush ran without an open connection");
 		let transaction = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
 			.expect("operator state flush could not begin");
-		reifydb_assertions! {
-			verify_flush_classification(&transaction, batch);
-		}
-
 		for marker in &batch.drops {
 			match marker {
 				DropMarker::OperatorState(operator) => {
@@ -169,40 +159,3 @@ impl SqliteOperatorStorage {
 	}
 }
 
-#[cfg(reifydb_assertions)]
-fn durable_value_len(transaction: &Transaction, operator: OperatorId, key: &EncodedKey) -> Option<ByteSize> {
-	route::get(transaction, operator, key).map(|bytes| ByteSize::from_bytes(bytes.len() as u64))
-}
-
-#[cfg(reifydb_assertions)]
-fn assert_claim(operator: OperatorId, claimed: DurablePre, observed: Option<ByteSize>) {
-	let claimed = match claimed {
-		DurablePre::Absent => None,
-		DurablePre::Present(bytes) => Some(bytes),
-	};
-	assert_eq!(
-		claimed, observed,
-		"operator {} classified a durable write against a pre-image sqlite does not hold; the census is \
-		 delta arithmetic over that claim, so a wrong one drifts the bucket until the next reseed",
-		operator.0
-	);
-}
-
-#[cfg(reifydb_assertions)]
-fn verify_flush_classification(transaction: &Transaction, batch: &FlushBatch) {
-	let dropped: BTreeSet<OperatorId> = batch
-		.drops
-		.iter()
-		.filter_map(|marker| match marker {
-			DropMarker::OperatorState(operator) => Some(*operator),
-			_ => None,
-		})
-		.collect();
-	for ((operator, key), entry) in batch.state.iter_encoded() {
-		let observed = match dropped.contains(&operator) {
-			true => None,
-			false => durable_value_len(transaction, operator, &key),
-		};
-		assert_claim(operator, entry.durable_pre, observed);
-	}
-}

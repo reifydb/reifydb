@@ -11,7 +11,7 @@ use crate::{
 		bucket::write::WriteEntry,
 		resident::{OperatorResidentState, batch::DropMarker, record_state},
 	},
-	types::{BufferedState, BufferedStateRange, DurablePre},
+	types::{BufferedState, BufferedStateRange},
 };
 
 type Page = Vec<(EncodedKey, WriteEntry)>;
@@ -19,12 +19,12 @@ type Page = Vec<(EncodedKey, WriteEntry)>;
 type CombineFn = fn(&Page, &Page, usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)>;
 
 impl OperatorResidentState {
-	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow, pre: DurablePre) {
-		self.write_slot(operator, |inner| record_state(inner, key, Some(row), pre));
+	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
+		self.write_slot(operator, |inner| record_state(inner, key, Some(row)));
 	}
 
-	pub fn record_state_remove(&self, operator: OperatorId, key: EncodedKey, pre: DurablePre) {
-		self.write_slot(operator, |inner| record_state(inner, key, None, pre));
+	pub fn record_state_remove(&self, operator: OperatorId, key: EncodedKey) {
+		self.write_slot(operator, |inner| record_state(inner, key, None));
 	}
 
 	pub fn lookup_state(&self, operator: OperatorId, key: &EncodedKey) -> BufferedState {

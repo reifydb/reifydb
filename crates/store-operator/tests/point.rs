@@ -896,28 +896,28 @@ impl SeedDurable for SqliteOperatorStorage {
 	fn seed_durable(&self, writes: &[OperatorWrite]) {
 		let mut batch = FlushBatch::default();
 		for write in writes {
-			let (operator, key, post, pre) = match write {
+			let (operator, key, post) = match write {
 				OperatorWrite::Insert {
 					operator,
 					key,
 					post,
-				} => (*operator, key, Some(post.clone()), DurablePre::Absent),
+				} => (*operator, key, Some(post.clone())),
 				OperatorWrite::Replace {
 					operator,
 					key,
-					pre_value_bytes,
 					post,
-				} => (*operator, key, Some(post.clone()), DurablePre::Present(*pre_value_bytes)),
+					..
+				} => (*operator, key, Some(post.clone())),
 				OperatorWrite::Remove {
 					operator,
 					key,
-					pre,
-				} => (*operator, key, None, *pre),
+					..
+				} => (*operator, key, None),
 				_ => continue,
 			};
 			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
 				.expect("a seeded key must name a group and a keyspace");
-			batch.state.record_bytes(operator, keyspace, group, &suffix, post, pre);
+			batch.state.record_bytes(operator, keyspace, group, &suffix, post);
 		}
 		self.flush_batch(&batch);
 	}

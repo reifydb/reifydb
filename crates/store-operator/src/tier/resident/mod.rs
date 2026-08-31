@@ -28,7 +28,6 @@ use reifydb_core::{
 	common::CommitVersion,
 	default,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::OperatorStateKey,
 	util::budget::MemoryBudget,
 };
 use reifydb_runtime::{
@@ -602,13 +601,8 @@ fn drop_operator(marker: &DropMarker) -> OperatorId {
 	}
 }
 
-pub(crate) fn record_state(
-	inner: &mut SlotInner,
-	key: EncodedKey,
-	post: Option<EncodedPodRow>,
-	durable_pre: DurablePre,
-) {
-	inner.live.record_state(key, post, durable_pre);
+pub(crate) fn record_state(inner: &mut SlotInner, key: EncodedKey, post: Option<EncodedPodRow>) {
+	inner.live.record_state(key, post);
 }
 
 pub(crate) fn record_join_expiry(inner: &mut SlotInner, key: SlotJoinKey, expiry: Option<u64>, durable: bool) {
@@ -621,18 +615,16 @@ fn apply_write(inner: &mut SlotInner, write: &OperatorWrite) {
 			key,
 			post,
 			..
-		} => record_state(inner, key.clone(), Some(post.clone()), DurablePre::Absent),
+		} => record_state(inner, key.clone(), Some(post.clone())),
 		OperatorWrite::Replace {
 			key,
-			pre_value_bytes,
 			post,
 			..
-		} => record_state(inner, key.clone(), Some(post.clone()), DurablePre::Present(*pre_value_bytes)),
+		} => record_state(inner, key.clone(), Some(post.clone())),
 		OperatorWrite::Remove {
 			key,
-			pre,
 			..
-		} => record_state(inner, key.clone(), None, *pre),
+		} => record_state(inner, key.clone(), None),
 		OperatorWrite::JoinExpiryInsert {
 			group,
 			side,
@@ -692,11 +684,9 @@ fn take_all(inner: &mut SlotInner) -> OperatorLive {
 }
 
 fn merge_into_batch(batch: &mut FlushBatch, operator: OperatorId, taken: &OperatorLive) {
-	for (key, entry) in taken.entries() {
-		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
-			.expect("an operator state key must decode as its own framing");
-		batch.state.record_bytes(operator, keyspace, group, &suffix, entry.post, entry.durable_pre);
-	}
+	taken.state.for_each_entry(operator, |keyspace, group, suffix, entry| {
+		batch.state.record_bytes(operator, keyspace, group, suffix, entry.post.clone());
+	});
 	for ((group, side, row_number), entry) in taken.join_expiries.iter() {
 		batch.join_expiries.insert((operator, *group, *side, *row_number), *entry);
 	}

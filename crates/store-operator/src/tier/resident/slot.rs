@@ -21,7 +21,6 @@ use crate::{
 		bucket::{BucketMap, write::WriteEntry},
 		resident::batch::JOIN_EXPIRY_ENTRY_BYTES,
 	},
-	types::DurablePre,
 };
 
 pub type SlotJoinKey = (GroupId, u8, RowNumber);
@@ -70,12 +69,12 @@ impl OperatorLive {
 		self.state.encoded_entries(self.operator)
 	}
 
-	pub fn record_state(&mut self, key: EncodedKey, post: Option<EncodedPodRow>, durable_pre: DurablePre) {
+	pub fn record_state(&mut self, key: EncodedKey, post: Option<EncodedPodRow>) {
 		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
 			.expect("an operator state key must decode as its own framing");
 		let operator = self.operator;
 		let before = self.state.footprint();
-		self.state.record_bytes(operator, keyspace, group, &suffix, post, durable_pre);
+		self.state.record_bytes(operator, keyspace, group, &suffix, post);
 		let after = self.state.footprint();
 		self.bytes = self.bytes.saturating_add(after).saturating_sub(before);
 	}

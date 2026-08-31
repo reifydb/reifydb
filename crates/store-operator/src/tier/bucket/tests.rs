@@ -13,7 +13,6 @@ use reifydb_core::{
 use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 
 use super::{BucketMap, write::TypedBucket};
-use crate::types::DurablePre;
 
 const OP: OperatorId = OperatorId(1);
 
@@ -32,7 +31,7 @@ fn suffix(n: u64) -> Asc<RowNumber> {
 #[test]
 fn a_write_bucket_reads_back_what_it_recorded_without_being_proven() {
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("written")), DurablePre::Absent);
+	bucket.record(GroupId(7), suffix(1), Some(row("written")));
 
 	let entry = bucket.get(GroupId(7), &suffix(1)).expect("a recorded write must be readable at once");
 	assert_eq!(
@@ -46,8 +45,8 @@ fn a_write_bucket_reads_back_what_it_recorded_without_being_proven() {
 #[test]
 fn two_groups_in_one_write_bucket_never_read_each_other() {
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("seven")), DurablePre::Absent);
-	bucket.record(GroupId(9), suffix(1), Some(row("nine")), DurablePre::Absent);
+	bucket.record(GroupId(7), suffix(1), Some(row("seven")));
+	bucket.record(GroupId(9), suffix(1), Some(row("nine")));
 
 	for (group, expected) in [(7u128, "seven"), (9, "nine")] {
 		let entry = bucket.get(GroupId(group), &suffix(1)).expect("each group holds its own suffix");
@@ -64,7 +63,7 @@ fn two_groups_in_one_write_bucket_never_read_each_other() {
 fn a_write_bucket_ranges_its_suffixes_in_the_order_the_key_type_declares() {
 	let mut bucket = bucket();
 	for n in [3u64, 1, 2] {
-		bucket.record(GroupId(7), suffix(n), Some(row(&format!("v{n}"))), DurablePre::Absent);
+		bucket.record(GroupId(7), suffix(n), Some(row(&format!("v{n}"))));
 	}
 
 	let order: Vec<u64> = bucket.range(GroupId(7), ..).map(|(key, _)| key.0.0).collect();
@@ -78,25 +77,19 @@ fn a_write_bucket_ranges_its_suffixes_in_the_order_the_key_type_declares() {
 #[test]
 fn a_tombstone_is_recorded_rather_than_dropped() {
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("live")), DurablePre::Absent);
-	bucket.record(GroupId(7), suffix(1), None, DurablePre::Present(ByteSize::from_bytes(4)));
+	bucket.record(GroupId(7), suffix(1), Some(row("live")));
+	bucket.record(GroupId(7), suffix(1), None);
 
 	let entry = bucket.get(GroupId(7), &suffix(1)).expect("a removal must stay visible until it is flushed");
 	assert!(entry.post.is_none(), "a removal is a tombstone, not an absence; dropping it would resurrect the row");
-	assert_eq!(
-		entry.durable_pre,
-		DurablePre::Absent,
-		"the pre image describes what sqlite held when the key entered the bucket, never what a later \
-		 write claimed; restating it makes the flush size a delete against a row the buffer itself wrote"
-	);
 }
 
 #[test]
 fn overwriting_a_suffix_does_not_count_it_twice() {
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("first")), DurablePre::Absent);
+	bucket.record(GroupId(7), suffix(1), Some(row("first")));
 	let after_first = bucket.footprint();
-	bucket.record(GroupId(7), suffix(1), Some(row("first")), DurablePre::Absent);
+	bucket.record(GroupId(7), suffix(1), Some(row("first")));
 
 	assert_eq!(bucket.len(), 1, "one suffix written twice is one row");
 	assert_eq!(
@@ -111,8 +104,8 @@ fn reaping_a_group_releases_only_that_group() {
 	use super::{AnyBucket, Budget, Resume};
 
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("seven")), DurablePre::Absent);
-	bucket.record(GroupId(9), suffix(1), Some(row("nine")), DurablePre::Absent);
+	bucket.record(GroupId(7), suffix(1), Some(row("seven")));
+	bucket.record(GroupId(9), suffix(1), Some(row("nine")));
 
 	let mut budget = Budget {
 		rows: 16,
@@ -132,7 +125,7 @@ fn a_reap_that_runs_out_of_budget_asks_to_be_resumed() {
 
 	let mut bucket = bucket();
 	for n in 0..4u64 {
-		bucket.record(GroupId(7), suffix(n), Some(row("v")), DurablePre::Absent);
+		bucket.record(GroupId(7), suffix(n), Some(row("v")));
 	}
 
 	let mut budget = Budget {
@@ -151,7 +144,7 @@ fn a_reap_that_runs_out_of_budget_asks_to_be_resumed() {
 fn the_bucket_map_hands_back_the_same_bucket_for_one_operator_and_keyspace() {
 	let mut map = BucketMap::default();
 
-	map.bucket::<JoinLeft>(OP).record(GroupId(7), suffix(1), Some(row("first")), DurablePre::Absent);
+	map.bucket::<JoinLeft>(OP).record(GroupId(7), suffix(1), Some(row("first")));
 	let entry = map
 		.bucket::<JoinLeft>(OP)
 		.get(GroupId(7), &suffix(1))
@@ -169,7 +162,7 @@ fn two_operators_never_share_a_bucket() {
 	let mut map = BucketMap::default();
 	let other = OperatorId(2);
 
-	map.bucket::<JoinLeft>(OP).record(GroupId(7), suffix(1), Some(row("mine")), DurablePre::Absent);
+	map.bucket::<JoinLeft>(OP).record(GroupId(7), suffix(1), Some(row("mine")));
 
 	assert!(
 		map.bucket::<JoinLeft>(other).get(GroupId(7), &suffix(1)).is_none(),
@@ -188,8 +181,8 @@ fn a_flush_writes_every_group_into_the_keyspaces_own_table() {
 	ensure_schema(&conn);
 
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("seven")), DurablePre::Absent);
-	bucket.record(GroupId(9), suffix(2), Some(row("nine")), DurablePre::Absent);
+	bucket.record(GroupId(7), suffix(1), Some(row("seven")));
+	bucket.record(GroupId(9), suffix(2), Some(row("nine")));
 	bucket.flush(&conn).expect("flush");
 
 	let rows = typed::scan::<JoinLeft>(&conn, OP);
@@ -213,10 +206,10 @@ fn a_flushed_tombstone_deletes_the_row_rather_than_storing_a_none() {
 	ensure_schema(&conn);
 
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("live")), DurablePre::Absent);
+	bucket.record(GroupId(7), suffix(1), Some(row("live")));
 	bucket.flush(&conn).expect("first flush");
 
-	bucket.record(GroupId(7), suffix(1), None, DurablePre::Present(ByteSize::from_bytes(4)));
+	bucket.record(GroupId(7), suffix(1), None);
 	bucket.flush(&conn).expect("second flush");
 
 	assert!(
@@ -239,7 +232,7 @@ fn a_flushed_row_survives_the_round_trip_through_its_payload() {
 	ensure_schema(&conn);
 
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("payload")), DurablePre::Absent);
+	bucket.record(GroupId(7), suffix(1), Some(row("payload")));
 	bucket.flush(&conn).expect("flush");
 
 	let stored = typed::get::<JoinLeft>(&conn, OP, &JoinLeft::join(GroupId(7), suffix(1))).expect("the row");
@@ -262,7 +255,6 @@ fn an_erased_write_reaches_the_same_bucket_a_typed_one_does() {
 		GroupId(7),
 		&suffix(1).to_suffix_bytes(),
 		Some(row("erased")),
-		DurablePre::Absent,
 	);
 
 	let entry = map
@@ -325,7 +317,6 @@ fn an_erased_page_returns_its_suffixes_in_the_key_types_order() {
 			GroupId(7),
 			&suffix(n).to_suffix_bytes(),
 			Some(row("v")),
-			DurablePre::Absent,
 		);
 	}
 
@@ -354,7 +345,6 @@ fn an_erased_page_honours_its_limit() {
 			GroupId(7),
 			&suffix(n).to_suffix_bytes(),
 			Some(row("v")),
-			DurablePre::Absent,
 		);
 	}
 

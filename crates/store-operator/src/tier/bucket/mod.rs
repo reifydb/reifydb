@@ -23,7 +23,6 @@ use rusqlite::{Connection, Transaction};
 
 use crate::{
 	tier::bucket::write::{TypedBucket, WriteEntry},
-	types::DurablePre,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,6 +42,8 @@ pub trait AnyBucket: Any + Send + Sync {
 	fn footprint(&self) -> ByteSize;
 
 	fn len(&self) -> usize;
+
+	fn for_each(&self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry));
 
 	fn encoded_entries(&self) -> Vec<(EncodedKey, WriteEntry)>;
 
@@ -81,7 +82,6 @@ impl BucketMap {
 		group: GroupId,
 		suffix: &[u8],
 		post: Option<EncodedPodRow>,
-		durable_pre: DurablePre,
 	) {
 		struct Record<'a> {
 			map: &'a mut BucketMap,
@@ -89,7 +89,6 @@ impl BucketMap {
 			group: GroupId,
 			suffix: &'a [u8],
 			post: Option<EncodedPodRow>,
-			durable_pre: DurablePre,
 		}
 
 		impl KeyspaceVisitor for Record<'_> {
@@ -98,12 +97,7 @@ impl BucketMap {
 			fn visit<K: Keyspace>(self) -> Self::Output {
 				let suffix = <K::Suffix as SuffixBytes>::from_suffix_bytes(self.suffix)
 					.expect("a stored suffix must decode as its own keyspace's suffix type");
-				self.map.bucket::<K>(self.operator).record(
-					self.group,
-					suffix,
-					self.post,
-					self.durable_pre,
-				);
+				self.map.bucket::<K>(self.operator).record(self.group, suffix, self.post);
 			}
 		}
 
@@ -115,7 +109,6 @@ impl BucketMap {
 				group,
 				suffix,
 				post,
-				durable_pre,
 			},
 		)
 		.expect("a write must name a keyspace the catalogue declares");
@@ -214,6 +207,21 @@ impl BucketMap {
 			},
 		)
 		.unwrap_or_default()
+	}
+
+	pub fn for_each_entry(
+		&self,
+		operator: OperatorId,
+		mut visit: impl FnMut(KeyspaceId, GroupId, &[u8], &WriteEntry),
+	) {
+		let mut ids = self.keyspaces_of(operator);
+		ids.reverse();
+		for keyspace in ids {
+			let Some(bucket) = self.buckets.get(&(operator, keyspace)) else {
+				continue;
+			};
+			bucket.for_each(&mut |group, suffix, entry| visit(keyspace, group, suffix, entry));
+		}
 	}
 
 	pub fn encoded_entries(&self, operator: OperatorId) -> Vec<(EncodedKey, WriteEntry)> {

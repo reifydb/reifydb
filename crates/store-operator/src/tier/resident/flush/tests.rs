@@ -385,11 +385,11 @@ fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorResidentState::new();
 	buffer.attach_sinks(tier(&storage), None, None);
-	buffer.record_state_set(OP_A, key(1), row("first"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(1), row("first"));
 
 	let held = buffer.flush_guard();
 	let batch = buffer.take_for_flush().expect("the running flusher takes the seeded batch");
-	buffer.record_state_set(OP_A, key(2), row("second"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(2), row("second"));
 
 	let ran = Arc::new(AtomicBool::new(false));
 	let second = {
@@ -446,7 +446,7 @@ fn a_cancelled_flusher_answers_the_pending_flush_instead_of_eating_it() {
 	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
 	let mut state = actor.init(&ctx);
 
-	buffer.record_state_set(OP_A, key(1), row("pending-at-cancel"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(1), row("pending-at-cancel"));
 	cancel.cancel();
 
 	let waiter = Arc::new(WaiterHandle::new());
@@ -478,7 +478,7 @@ fn a_flush_that_cannot_reach_sqlite_panics_instead_of_dropping_the_batch() {
 	let buffer = OperatorResidentState::new();
 	buffer.attach_sinks(tier(&storage), None, None);
 
-	buffer.record_state_set(OP_A, key(1), row("never-written"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(1), row("never-written"));
 	storage.shutdown();
 
 	flush_now(&buffer);
@@ -488,7 +488,7 @@ fn a_flush_that_cannot_reach_sqlite_panics_instead_of_dropping_the_batch() {
 #[should_panic(expected = "flushed before its sinks were attached")]
 fn a_flush_before_the_sinks_are_attached_panics_instead_of_dropping_the_batch() {
 	let buffer = OperatorResidentState::new();
-	buffer.record_state_set(OP_A, key(1), row("never-written"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(1), row("never-written"));
 
 	flush_now(&buffer);
 }
@@ -549,7 +549,7 @@ fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 	let buffer = OperatorResidentState::with_budget(bucket_bytes(8, "v00"));
 	buffer.attach_sinks(tier(&storage), None, None);
 	for index in 0..67 {
-		buffer.record_state_set(OP_A, key(index), row(&format!("v{index}")), DurablePre::Absent);
+		buffer.record_state_set(OP_A, key(index), row(&format!("v{index}")));
 	}
 
 	flush_now(&buffer);
@@ -570,9 +570,9 @@ fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 		group_bytes().saturating_add(entry_bytes(1, "early")).saturating_add(entry_bytes(2, "filler")),
 	);
 	buffer.attach_sinks(tier(&storage), None, None);
-	buffer.record_state_set(OP_A, key(1), row("early"), DurablePre::Absent);
-	buffer.record_state_set(OP_A, key(2), row("filler"), DurablePre::Absent);
-	buffer.record_state_set(OP_A, key(3), row("tail"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(1), row("early"));
+	buffer.record_state_set(OP_A, key(2), row("filler"));
+	buffer.record_state_set(OP_A, key(3), row("tail"));
 
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
 	storage.flush_batch(&first);
@@ -583,7 +583,6 @@ fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 		OP_A,
 		key(1),
 		row("late"),
-		DurablePre::Present(ByteSize::from_bytes(row("early").bytes().len() as u64)),
 	);
 	flush_now(&buffer);
 
@@ -611,7 +610,7 @@ fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
 	let mut state = actor.init(&ctx);
 
 	for index in 0..41 {
-		buffer.record_state_set(OP_A, key(index), row("at-shutdown"), DurablePre::Absent);
+		buffer.record_state_set(OP_A, key(index), row("at-shutdown"));
 	}
 	let directive = actor.handle(&mut state, FlushMessage::Shutdown, &ctx);
 
@@ -642,7 +641,7 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 	let mut state = actor.init(&ctx);
 
 	for index in 0..37 {
-		buffer.record_state_set(OP_A, key(index), row("at-cancel"), DurablePre::Absent);
+		buffer.record_state_set(OP_A, key(index), row("at-cancel"));
 	}
 	cancel.cancel();
 	let waiter = Arc::new(WaiterHandle::new());
@@ -677,7 +676,7 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	buffer.attach_flusher(actor_ref);
 
 	for index in 0..entries - 1 {
-		buffer.record_state_set(OP_A, key(index), row("under-the-budget"), DurablePre::Absent);
+		buffer.record_state_set(OP_A, key(index), row("under-the-budget"));
 	}
 	thread::sleep(Duration::from_milliseconds_const(100).to_std());
 	assert!(
@@ -686,7 +685,7 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 		 and a trigger that fires on it stops the buffer batching at all"
 	);
 
-	buffer.record_state_set(OP_A, key(entries - 1), row("under-the-budget"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(entries - 1), row("under-the-budget"));
 
 	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
 	while Instant::now() < deadline && storage.get(OP_A, &key(0)).is_none() {
@@ -795,28 +794,28 @@ impl SeedDurable for SqliteOperatorStorage {
 	fn seed_durable(&self, writes: &[OperatorWrite]) {
 		let mut batch = FlushBatch::default();
 		for write in writes {
-			let (operator, key, post, pre) = match write {
+			let (operator, key, post) = match write {
 				OperatorWrite::Insert {
 					operator,
 					key,
 					post,
-				} => (*operator, key, Some(post.clone()), DurablePre::Absent),
+				} => (*operator, key, Some(post.clone())),
 				OperatorWrite::Replace {
 					operator,
 					key,
-					pre_value_bytes,
 					post,
-				} => (*operator, key, Some(post.clone()), DurablePre::Present(*pre_value_bytes)),
+					..
+				} => (*operator, key, Some(post.clone())),
 				OperatorWrite::Remove {
 					operator,
 					key,
-					pre,
-				} => (*operator, key, None, *pre),
+					..
+				} => (*operator, key, None),
 				_ => continue,
 			};
 			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
 				.expect("a seeded key must name a group and a keyspace");
-			batch.state.record_bytes(operator, keyspace, group, &suffix, post, pre);
+			batch.state.record_bytes(operator, keyspace, group, &suffix, post);
 		}
 		self.flush_batch(&batch);
 	}

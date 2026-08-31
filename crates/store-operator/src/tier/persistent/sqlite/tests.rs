@@ -22,10 +22,7 @@ use crate::{
 	tier::persistent::sqlite::{
 		SqliteOperatorStorage as OperatorStore, sql::JOIN_EXPIRIES_BY_TIME_SQL,
 	},
-	types::{
-		DurablePre, JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES, StoredJoinRowExpiry,
-		StoredJoinRowExpiryCensus,
-	},
+	types::{JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES, StoredJoinRowExpiry, StoredJoinRowExpiryCensus},
 };
 
 const LEFT: u8 = 0;
@@ -41,18 +38,15 @@ fn join_left_key(group: GroupId, row_num: u64) -> EncodedKey {
 	real_key(group, KeyspaceId::JOIN_LEFT, &Asc(RowNumber(row_num)).to_suffix_bytes())
 }
 
-fn state_batch(writes: &[(OperatorId, GroupId, u64, Option<EncodedPodRow>, DurablePre)]) -> FlushBatch {
-	// the durable pre-image is a claim the flush asserts against sqlite, so a batch that removes an
-	// already durable row must say Present or the census arithmetic drifts
+fn state_batch(writes: &[(OperatorId, GroupId, u64, Option<EncodedPodRow>)]) -> FlushBatch {
 	let mut batch = FlushBatch::default();
-	for (operator, group, row_num, post, pre) in writes {
+	for (operator, group, row_num, post) in writes {
 		batch.state.record_bytes(
 			*operator,
 			KeyspaceId::JOIN_LEFT,
 			*group,
 			&Asc(RowNumber(*row_num)).to_suffix_bytes(),
 			post.clone(),
-			*pre,
 		);
 	}
 	batch
@@ -315,7 +309,7 @@ fn the_by_expiry_scan_is_answered_by_a_covering_index() {
 fn a_batch_lands_operator_state_and_its_join_expiries_together() {
 	let (store, _guard) = OperatorStore::in_memory();
 
-	let mut batch = state_batch(&[(OperatorId(1), GroupId(7), 1, Some(row(4)), DurablePre::Absent)]);
+	let mut batch = state_batch(&[(OperatorId(1), GroupId(7), 1, Some(row(4)))]);
 	batch.join_expiries.insert((OperatorId(1), GroupId(7), LEFT, RowNumber(1)), Some(5_000));
 	store.flush_batch(&batch);
 
@@ -361,7 +355,7 @@ fn join_expiries_are_counted_in_the_byte_accounting_of_their_operator() {
 #[test]
 fn dropping_an_operators_state_takes_its_join_expiries_with_it() {
 	let (store, _guard) = OperatorStore::in_memory();
-	store.flush_batch(&state_batch(&[(OperatorId(1), GroupId(7), 1, Some(row(4)), DurablePre::Absent)]));
+	store.flush_batch(&state_batch(&[(OperatorId(1), GroupId(7), 1, Some(row(4)))]));
 	store.join_expiry_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
 	store.join_expiry_set(OperatorId(2), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(6_000));
 
@@ -426,12 +420,12 @@ fn a_pooled_reader_sees_a_write_the_moment_the_writer_commits() {
 	let store = OperatorStore::new(config);
 	let probe = join_left_key(GroupId(7), 1);
 
-	store.flush_batch(&state_batch(&[(OperatorId(1), GroupId(7), 1, Some(row(4)), DurablePre::Absent)]));
+	store.flush_batch(&state_batch(&[(OperatorId(1), GroupId(7), 1, Some(row(4)))]));
 
 	assert!(store.contains(OperatorId(1), &probe));
 	assert!(store.get(OperatorId(1), &probe).is_some());
 
-	store.flush_batch(&state_batch(&[(OperatorId(1), GroupId(7), 1, None, DurablePre::Present(ByteSize::from_bytes(4)))]));
+	store.flush_batch(&state_batch(&[(OperatorId(1), GroupId(7), 1, None)]));
 
 	assert!(!store.contains(OperatorId(1), &probe), "a committed batch must be visible to the pool too");
 }

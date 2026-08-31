@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{any::Any, collections::HashMap, mem::size_of, ops::RangeBounds};
+use std::{any::Any, collections::BTreeMap, mem::size_of, ops::RangeBounds};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
@@ -21,13 +21,11 @@ use crate::{
 		bucket::{AnyBucket, Budget, Resume},
 		persistent::sqlite::typed,
 	},
-	types::DurablePre,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteEntry {
 	pub post: Option<EncodedPodRow>,
-	pub durable_pre: DurablePre,
 }
 
 impl WriteEntry {
@@ -42,7 +40,7 @@ impl WriteEntry {
 
 pub struct TypedBucket<K: Keyspace> {
 	operator: OperatorId,
-	partitions: HashMap<GroupId, SortedVecMap<K::Suffix, WriteEntry>>,
+	partitions: BTreeMap<GroupId, SortedVecMap<K::Suffix, WriteEntry>>,
 	bytes: ByteSize,
 }
 
@@ -50,7 +48,7 @@ impl<K: Keyspace> TypedBucket<K> {
 	pub fn new(operator: OperatorId) -> Self {
 		Self {
 			operator,
-			partitions: HashMap::new(),
+			partitions: BTreeMap::new(),
 			bytes: ByteSize::ZERO,
 		}
 	}
@@ -88,7 +86,6 @@ impl<K: Keyspace> TypedBucket<K> {
 		group: GroupId,
 		suffix: K::Suffix,
 		post: Option<EncodedPodRow>,
-		durable_pre: DurablePre,
 	) {
 		if !self.partitions.contains_key(&group) {
 			self.partitions.insert(group, SortedVecMap::new());
@@ -107,7 +104,6 @@ impl<K: Keyspace> TypedBucket<K> {
 					suffix,
 					WriteEntry {
 						post,
-						durable_pre,
 					},
 				);
 				self.bytes = self.bytes.saturating_add(Self::suffix_bytes());
@@ -134,7 +130,7 @@ impl<K: Keyspace> TypedBucket<K> {
 	}
 
 	pub fn entries(&self) -> impl Iterator<Item = (GroupId, &K::Suffix, &WriteEntry)> {
-		self.partitions.iter().flat_map(|(group, partition)| {
+		self.partitions.iter().rev().flat_map(|(group, partition)| {
 			partition.iter().map(move |(suffix, entry)| (*group, suffix, entry))
 		})
 	}
@@ -142,7 +138,7 @@ impl<K: Keyspace> TypedBucket<K> {
 	pub fn absorb(&mut self, other: Self) {
 		for (group, partition) in other.partitions {
 			for (suffix, entry) in partition {
-				self.record(group, suffix, entry.post, entry.durable_pre);
+				self.record(group, suffix, entry.post);
 			}
 		}
 	}
@@ -181,7 +177,7 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 	}
 
 	fn flush(&mut self, conn: &Connection) -> Result<()> {
-		for (group, partition) in self.partitions.drain() {
+		for (group, partition) in std::mem::take(&mut self.partitions) {
 			for (suffix, entry) in partition {
 				let key = K::join(group, suffix);
 				match entry.post {
@@ -214,6 +210,12 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 			return Ok(Resume::Done);
 		}
 		Ok(Resume::More)
+	}
+
+	fn for_each(&self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) {
+		for (group, suffix, entry) in self.entries() {
+			visit(group, &suffix.to_suffix_bytes(), entry);
+		}
 	}
 
 	fn encoded_entries(&self) -> Vec<(EncodedKey, WriteEntry)> {
