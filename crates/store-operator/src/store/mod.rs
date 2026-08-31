@@ -15,8 +15,7 @@ use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::{common::CommitVersion, lifecycle::watermark::CheckpointFloor, metrics::collect::MetricsCollector};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_filter::{actor::FilterActor, config::FilterConfig};
-use reifydb_filter::{actor::FilterMessage, adaptive::FilterMetrics};
+use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_runtime::{
 	actor::{
 		mailbox::ActorRef,
@@ -33,9 +32,7 @@ use reifydb_store::metrics::PageCacheMetrics;
 use crate::{
 	config::OperatorPersistentConfig,
 	tier::{
-		persistent::sqlite::{SqliteOperatorStorage, filter::OperatorStateKeySource},
-		point::OperatorPointConfig,
-		range::OperatorRangeConfig,
+		persistent::sqlite::SqliteOperatorStorage, point::OperatorPointConfig, range::OperatorRangeConfig,
 		resident::flush::actor::ResidentFlushActor,
 	},
 };
@@ -72,7 +69,6 @@ pub struct StandardOperatorStoreInner {
 	pub(crate) point: Option<PointTiers>,
 	pub(crate) range: Option<RangeTiers>,
 	pub(crate) flush: Option<ActorRef<FlushMessage>>,
-	pub(crate) filter: Option<ActorRef<FilterMessage>>,
 	#[allow(dead_code)]
 	pub(crate) spawner: ActorSpawner,
 	#[cfg(test)]
@@ -103,7 +99,7 @@ impl StandardOperatorStore {
 			.flatten();
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		let (persistent, flush, filter) = {
+		let (persistent, flush) = {
 			if let Some(persistent) = config.persistent.as_ref() {
 				resident.attach_sinks(persistent.storage.clone(), point.clone(), range.clone());
 			}
@@ -111,28 +107,13 @@ impl StandardOperatorStore {
 				.persistent
 				.as_ref()
 				.map(|_| ResidentFlushActor::spawn(&spawner, resident.clone()));
-			let filter = config.persistent.as_ref().map(|persistent| {
-				let storage = persistent.storage.sqlite_storage().clone();
-				let actor = FilterActor::spawn(&spawner);
-				actor.send(FilterMessage::Register {
-					filter: storage.filter().handle(),
-					source: Box::new(OperatorStateKeySource::new(storage)),
-					config: FilterConfig::default(),
-				})
-				.expect("operator state filter source could not be registered");
-				actor
-			});
-			(config.persistent.map(|persistent| persistent.storage), flush, filter)
+			(config.persistent.map(|persistent| persistent.storage), flush)
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let (persistent, flush, filter): (
-			Option<OperatorPersistentTier>,
-			Option<ActorRef<FlushMessage>>,
-			Option<ActorRef<FilterMessage>>,
-		) = match config.persistent {
+		let (persistent, flush): (Option<OperatorPersistentTier>, Option<ActorRef<FlushMessage>>) = match config.persistent {
 			Some(persistent) => match persistent.storage {},
-			None => (None, None, None),
+			None => (None, None),
 		};
 
 		let point = persistent.as_ref().and(point);
@@ -147,7 +128,6 @@ impl StandardOperatorStore {
 			point,
 			range,
 			flush,
-			filter,
 			spawner,
 			#[cfg(test)]
 			checkpoint_interlock: OnceLock::new(),
@@ -205,10 +185,6 @@ impl StandardOperatorStore {
 		self.persistent.as_ref().map(OperatorPersistentTier::page_cache_metrics)
 	}
 
-	pub fn persistent_filter_metrics(&self) -> Option<FilterMetrics> {
-		self.persistent.as_ref().map(|tier| tier.filter().metrics())
-	}
-
 	pub fn persistent_join_expiry_filter_metrics(&self) -> Option<FilterMetrics> {
 		self.persistent.as_ref().map(|tier| tier.join_expiry_filter().metrics())
 	}
@@ -228,9 +204,6 @@ impl StandardOperatorStore {
 
 impl Shutdown for StandardOperatorStore {
 	fn shutdown(&self) {
-		if let Some(filter) = self.filter.as_ref() {
-			let _ = filter.send(FilterMessage::Shutdown);
-		}
 		let Some(persistent) = self.persistent.as_ref() else {
 			return;
 		};
@@ -322,12 +295,6 @@ impl OperatorStore {
 	pub fn persistent_page_cache_metrics(&self) -> Option<PageCacheMetrics> {
 		match self {
 			Self::Standard(store) => store.persistent_page_cache_metrics(),
-		}
-	}
-
-	pub fn persistent_filter_metrics(&self) -> Option<FilterMetrics> {
-		match self {
-			Self::Standard(store) => store.persistent_filter_metrics(),
 		}
 	}
 

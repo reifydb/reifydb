@@ -30,8 +30,8 @@ use reifydb_store_operator::{
 	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
 	types::{DurablePre, OperatorWrite},
 };
-use reifydb_value::byte_size::ByteSize;
 use reifydb_testing::keyspace::state_key;
+use reifydb_value::byte_size::ByteSize;
 
 const OP: OperatorId = OperatorId(1);
 
@@ -137,7 +137,7 @@ fn a_read_racing_the_flush_never_sees_the_value_the_flush_is_replacing() {
 	let persistent = store.persistent().expect("the sqlite tier is configured");
 	// only the flusher may advance sqlite past this seed, otherwise a torn two-tier read reports a false regression
 	for index in 0..KEYS_PER_WRITER {
-		persistent.apply_batch(&[OperatorWrite::Insert {
+		persistent.seed_durable(&[OperatorWrite::Insert {
 			operator: OP,
 			key: key(index),
 			post: row(&version(0)),
@@ -221,7 +221,7 @@ fn a_write_that_lands_after_a_drop_marker_survives_the_drop() {
 	let (store, _guard) = store();
 	let persistent = store.persistent().expect("the sqlite tier is configured");
 	for index in 0..KEYS_PER_WRITER {
-		persistent.apply_batch(&[OperatorWrite::Insert {
+		persistent.seed_durable(&[OperatorWrite::Insert {
 			operator: OP,
 			key: key(index),
 			post: row("pre-drop"),
@@ -336,4 +336,41 @@ fn interleaved_writes_and_removals_converge_on_the_last_write() {
 		Some(b"final".to_vec()),
 		"a delete flushed after the write it follows would leave sqlite empty while memory reports the key"
 	);
+}
+use reifydb_core::key::operator::state::OperatorStateKey;
+use reifydb_store_operator::{tier::persistent::sqlite::SqliteOperatorStorage, tier::resident::batch::FlushBatch};
+
+trait SeedDurable {
+	fn seed_durable(&self, writes: &[OperatorWrite]);
+}
+
+impl SeedDurable for SqliteOperatorStorage {
+	fn seed_durable(&self, writes: &[OperatorWrite]) {
+		let mut batch = FlushBatch::default();
+		for write in writes {
+			let (operator, key, post, pre) = match write {
+				OperatorWrite::Insert {
+					operator,
+					key,
+					post,
+				} => (*operator, key, Some(post.clone()), DurablePre::Absent),
+				OperatorWrite::Replace {
+					operator,
+					key,
+					pre_value_bytes,
+					post,
+				} => (*operator, key, Some(post.clone()), DurablePre::Present(*pre_value_bytes)),
+				OperatorWrite::Remove {
+					operator,
+					key,
+					pre,
+				} => (*operator, key, None, *pre),
+				_ => continue,
+			};
+			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
+				.expect("a seeded key must name a group and a keyspace");
+			batch.state.record_bytes(operator, keyspace, group, &suffix, post, pre);
+		}
+		self.flush_batch(&batch);
+	}
 }

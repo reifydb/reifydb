@@ -91,7 +91,7 @@ fn seeded_range() -> EncodedKeyRange {
 
 fn seed_rows(storage: &SqliteOperatorStorage, count: u8) {
 	for suffix in 1..=count {
-		storage.apply_batch(&[OperatorWrite::Insert {
+		storage.seed_durable(&[OperatorWrite::Insert {
 			operator: OP_A,
 			key: key_in(RANGE_ONLY, suffix),
 			post: row(&format!("v{suffix}")),
@@ -238,7 +238,7 @@ fn a_range_materialize_that_does_not_fit_its_own_budget_evicts_no_point_entry() 
 		},
 	);
 	seed_rows(&storage, 8);
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key_in(RANGE_ONLY_ABOVE, 1),
 		post: row("pinned"),
@@ -290,7 +290,7 @@ fn a_range_spanning_two_keyspaces_bypasses_the_tier_and_reads_every_row_out_of_s
 	let (store, storage, _guard) = cached_store();
 	seed_rows(&storage, 3);
 	for suffix in 1..=2u8 {
-		storage.apply_batch(&[OperatorWrite::Insert {
+		storage.seed_durable(&[OperatorWrite::Insert {
 			operator: OP_A,
 			key: key_in(RANGE_ONLY_ABOVE, suffix),
 			post: row(&format!("c{suffix}")),
@@ -549,7 +549,7 @@ fn dropping_one_operators_state_forgets_every_claim_and_row_it_cached() {
 	let (store, storage, _guard) = cached_store();
 	seed_rows(&storage, 3);
 	for suffix in 1..=3u8 {
-		storage.apply_batch(&[OperatorWrite::Insert {
+		storage.seed_durable(&[OperatorWrite::Insert {
 			operator: OP_B,
 			key: key_in(RANGE_ONLY, suffix),
 			post: row(&format!("b{suffix}")),
@@ -617,7 +617,7 @@ fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_reads_both_keyspaces_
 	);
 
 	for suffix in 1..=3u8 {
-		storage.apply_batch(&[
+		storage.seed_durable(&[
 			OperatorWrite::Insert {
 				operator: OP_A,
 				key: key_in(uncached, suffix),
@@ -669,4 +669,42 @@ fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_reads_both_keyspaces_
 		0,
 		"and answers the next pass from ram, or the fallback above is measuring a dead tier"
 	);
+}
+
+use reifydb_core::key::operator::state::OperatorStateKey;
+use reifydb_store_operator::tier::resident::batch::FlushBatch;
+
+trait SeedDurable {
+	fn seed_durable(&self, writes: &[OperatorWrite]);
+}
+
+impl SeedDurable for SqliteOperatorStorage {
+	fn seed_durable(&self, writes: &[OperatorWrite]) {
+		let mut batch = FlushBatch::default();
+		for write in writes {
+			let (operator, key, post, pre) = match write {
+				OperatorWrite::Insert {
+					operator,
+					key,
+					post,
+				} => (*operator, key, Some(post.clone()), DurablePre::Absent),
+				OperatorWrite::Replace {
+					operator,
+					key,
+					pre_value_bytes,
+					post,
+				} => (*operator, key, Some(post.clone()), DurablePre::Present(*pre_value_bytes)),
+				OperatorWrite::Remove {
+					operator,
+					key,
+					pre,
+				} => (*operator, key, None, *pre),
+				_ => continue,
+			};
+			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
+				.expect("a seeded key must name a group and a keyspace");
+			batch.state.record_bytes(operator, keyspace, group, &suffix, post, pre);
+		}
+		self.flush_batch(&batch);
+	}
 }

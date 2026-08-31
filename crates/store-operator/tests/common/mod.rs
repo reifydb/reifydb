@@ -463,7 +463,7 @@ impl testscript::runner::Runner for Runner {
 				let pre = persistent
 					.get(operator, &key)
 					.map(|held| ByteSize::from_bytes(held.bytes().len() as u64));
-				persistent.apply_batch(&[state_write(operator, key.clone(), row, pre)]);
+				persistent.seed_durable(&[state_write(operator, key.clone(), row, pre)]);
 				self.invalidate_read(operator, &key);
 			}
 
@@ -481,7 +481,7 @@ impl testscript::runner::Runner for Runner {
 				let pre = persistent
 					.get(operator, &key)
 					.map(|held| ByteSize::from_bytes(held.bytes().len() as u64));
-				persistent.apply_batch(&[state_remove(operator, key.clone(), pre)]);
+				persistent.seed_durable(&[state_remove(operator, key.clone(), pre)]);
 				self.invalidate_read(operator, &key);
 			}
 
@@ -696,5 +696,41 @@ fn state_remove(operator: OperatorId, key: EncodedKey, pre: Option<ByteSize>) ->
 			Some(bytes) => DurablePre::Present(bytes),
 			None => DurablePre::Absent,
 		},
+	}
+}
+use reifydb_store_operator::{tier::persistent::sqlite::SqliteOperatorStorage, tier::resident::batch::FlushBatch};
+
+trait SeedDurable {
+	fn seed_durable(&self, writes: &[OperatorWrite]);
+}
+
+impl SeedDurable for SqliteOperatorStorage {
+	fn seed_durable(&self, writes: &[OperatorWrite]) {
+		let mut batch = FlushBatch::default();
+		for write in writes {
+			let (operator, key, post, pre) = match write {
+				OperatorWrite::Insert {
+					operator,
+					key,
+					post,
+				} => (*operator, key, Some(post.clone()), DurablePre::Absent),
+				OperatorWrite::Replace {
+					operator,
+					key,
+					pre_value_bytes,
+					post,
+				} => (*operator, key, Some(post.clone()), DurablePre::Present(*pre_value_bytes)),
+				OperatorWrite::Remove {
+					operator,
+					key,
+					pre,
+				} => (*operator, key, None, *pre),
+				_ => continue,
+			};
+			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
+				.expect("a seeded key must name a group and a keyspace");
+			batch.state.record_bytes(operator, keyspace, group, &suffix, post, pre);
+		}
+		self.flush_batch(&batch);
 	}
 }

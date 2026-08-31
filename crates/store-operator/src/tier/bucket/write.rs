@@ -3,6 +3,7 @@
 
 use std::{any::Any, collections::HashMap, mem::size_of, ops::RangeBounds};
 
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::{
@@ -12,9 +13,8 @@ use reifydb_core::{
 	state::typed::SuffixBytes,
 	util::sorted::SortedVecMap,
 };
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_value::{Result, byte_size::ByteSize};
-use rusqlite::Connection;
+use rusqlite::{Connection, Transaction};
 
 use crate::{
 	tier::{
@@ -83,7 +83,13 @@ impl<K: Keyspace> TypedBucket<K> {
 		self.partitions.keys().copied()
 	}
 
-	pub fn record(&mut self, group: GroupId, suffix: K::Suffix, post: Option<EncodedPodRow>, durable_pre: DurablePre) {
+	pub fn record(
+		&mut self,
+		group: GroupId,
+		suffix: K::Suffix,
+		post: Option<EncodedPodRow>,
+		durable_pre: DurablePre,
+	) {
 		if !self.partitions.contains_key(&group) {
 			self.partitions.insert(group, SortedVecMap::new());
 			self.bytes = self.bytes.saturating_add(Self::group_bytes());
@@ -128,9 +134,9 @@ impl<K: Keyspace> TypedBucket<K> {
 	}
 
 	pub fn entries(&self) -> impl Iterator<Item = (GroupId, &K::Suffix, &WriteEntry)> {
-		self.partitions
-			.iter()
-			.flat_map(|(group, partition)| partition.iter().map(move |(suffix, entry)| (*group, suffix, entry)))
+		self.partitions.iter().flat_map(|(group, partition)| {
+			partition.iter().map(move |(suffix, entry)| (*group, suffix, entry))
+		})
 	}
 
 	pub fn absorb(&mut self, other: Self) {
@@ -158,6 +164,20 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 
 	fn len(&self) -> usize {
 		TypedBucket::len(self)
+	}
+
+	fn write_into(&self, txn: &Transaction) {
+		let mut sets: Vec<(OperatorId, K::Key, Vec<u8>)> = Vec::new();
+		let mut removes: Vec<(OperatorId, K::Key)> = Vec::new();
+		for (group, suffix, entry) in self.entries() {
+			let key = K::join(group, suffix.clone());
+			match &entry.post {
+				Some(row) => sets.push((self.operator, key, row.as_slice().to_vec())),
+				None => removes.push((self.operator, key)),
+			}
+		}
+		typed::set_chunked::<K>(txn, &sets);
+		typed::remove_chunked::<K>(txn, &removes);
 	}
 
 	fn flush(&mut self, conn: &Connection) -> Result<()> {
@@ -221,8 +241,7 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 			};
 			census.keys += 1;
 			census.key_bytes = census.key_bytes.saturating_add(Self::suffix_bytes());
-			census.value_bytes =
-				census.value_bytes.saturating_add(ByteSize::from_bytes(row.len() as u64));
+			census.value_bytes = census.value_bytes.saturating_add(ByteSize::from_bytes(row.len() as u64));
 		}
 		census
 	}

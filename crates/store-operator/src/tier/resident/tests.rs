@@ -14,7 +14,14 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::{GroupId, KeyspaceId},
+	key::{
+		operator::{
+			keyspace::join::JoinLeft,
+			state::{GroupId, KeyspaceId},
+		},
+		typed::direction::Asc,
+	},
+	state::typed::typed_key,
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -22,21 +29,18 @@ use reifydb_value::{
 };
 
 use crate::{
-	tier::resident::{
-		OperatorResidentState,
-		batch::{DropMarker, FlushBatch, JOIN_EXPIRY_ENTRY_BYTES},
+	tier::{
+		bucket::write::WriteEntry,
+		resident::{
+			OperatorResidentState,
+			batch::{DropMarker, FlushBatch, JOIN_EXPIRY_ENTRY_BYTES},
+		},
 	},
 	types::{
 		BufferedJoinExpiry, BufferedState, DurablePre, JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES,
 		OperatorStateCensus, OperatorWrite, StoredJoinRowExpiryCensus,
 	},
 };
-
-use reifydb_core::{
-	key::{operator::keyspace::join::JoinLeft, typed::direction::Asc},
-	state::typed::typed_key,
-};
-use crate::tier::bucket::write::WriteEntry;
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);

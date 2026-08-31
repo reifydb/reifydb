@@ -97,7 +97,7 @@ fn accumulator_range() -> EncodedKeyRange {
 
 fn seed_accumulator(storage: &SqliteOperatorStorage, count: u8) {
 	for suffix in 1..=count {
-		storage.apply_batch(&[OperatorWrite::Insert {
+		storage.seed_durable(&[OperatorWrite::Insert {
 			operator: OP_A,
 			key: key_in(CACHED, suffix),
 			post: row(&format!("v{suffix}")),
@@ -156,7 +156,7 @@ fn erase(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) {
 fn a_flushed_write_is_served_fresh_after_the_point_tier_cached_the_previous_row() {
 	// Without invalidate-on-write the drained shadow uncovers the pre-write row and it is served forever.
 	let (store, storage, _guard) = cached_store();
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable"),
@@ -185,12 +185,12 @@ fn a_flushed_write_is_served_fresh_after_the_point_tier_cached_the_previous_row(
 fn a_cached_absence_does_not_survive_the_write_that_fills_the_key() {
 	// A remembered absence answers as a hit, so it must never outlive the write that fills the key.
 	let (store, storage, _guard) = cached_store();
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("seed"),
 	}]);
-	storage.apply_batch(&[OperatorWrite::Remove {
+	storage.seed_durable(&[OperatorWrite::Remove {
 		operator: OP_A,
 		key: key(1),
 		pre: DurablePre::Present(ByteSize::from_bytes(row("seed").bytes().len() as u64)),
@@ -214,7 +214,7 @@ fn a_cached_absence_does_not_survive_the_write_that_fills_the_key() {
 fn repeated_reads_of_one_key_cost_a_single_persistent_lookup() {
 	// One fill for many reads is the whole point of the tier; a second fill means it never retained the row.
 	let (store, storage, _guard) = cached_store();
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable"),
@@ -238,12 +238,12 @@ fn repeated_reads_of_one_key_cost_a_single_persistent_lookup() {
 fn dropping_one_operators_state_clears_only_its_cached_entries() {
 	// Two operators sharing identical key bytes must not be collected together by a drop of either one.
 	let (store, storage, _guard) = cached_store();
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("a-durable"),
 	}]);
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_B,
 		key: key(1),
 		post: row("b-durable"),
@@ -276,13 +276,13 @@ fn dropping_one_operators_state_clears_only_its_cached_entries() {
 }
 
 #[test]
-fn a_lookup_under_a_disabled_filter_caches_the_absence() {
-	// While the bloom is disabled nothing is ruled out, so an absence must be bought from sqlite once and then
-	// remembered, or every lookup of a missing key pays a persistent read for as long as the rebuild lasts.
+fn a_lookup_of_a_missing_key_caches_the_absence() {
+	// Nothing rules a key out before sqlite is asked, so an absence must be bought once and then remembered,
+	// or every lookup of a missing key pays a persistent read forever.
 	let (config, _guard) = SqliteConfig::in_memory();
 	{
 		let seed = SqliteOperatorStorage::new(config.clone());
-		seed.apply_batch(&[OperatorWrite::Insert {
+		seed.seed_durable(&[OperatorWrite::Insert {
 			operator: OP_B,
 			key: key(9),
 			post: row("seed"),
@@ -290,8 +290,6 @@ fn a_lookup_under_a_disabled_filter_caches_the_absence() {
 	}
 
 	let store = cached_store_on(SqliteOperatorStorage::new(config));
-	let metrics = store.persistent().expect("the fixture configures a persistent tier").filter().metrics();
-	assert!(!metrics.enabled, "a reopen over durable rows must not arm the filter, or those rows read back absent");
 
 	assert!(store.get(OP_A, &key(1)).is_none());
 	assert!(!store.contains(OP_A, &key(1)));
@@ -338,7 +336,7 @@ fn a_memory_only_store_builds_no_read_caches() {
 fn contains_is_invalidated_by_a_write_exactly_as_get_is() {
 	// contains and get read the same entry, so they must never disagree across a removal or a rewrite.
 	let (store, storage, _guard) = cached_store();
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable"),
@@ -366,17 +364,17 @@ fn contains_is_invalidated_by_a_write_exactly_as_get_is() {
 fn a_batch_write_invalidates_every_state_key_it_carries() {
 	// The bulk path must invalidate exactly like the point path, or it leaves the same stale row unseen.
 	let (store, storage, _guard) = cached_store();
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable-1"),
 	}]);
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(2),
 		post: row("durable-2"),
 	}]);
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(3),
 		post: row("durable-3"),
@@ -419,7 +417,7 @@ fn a_batch_write_invalidates_every_state_key_it_carries() {
 fn a_write_in_flight_is_still_shadowed_and_never_lets_the_tier_cache_the_old_row() {
 	// A lookup that read only the live batch would fall through as absent here and cache the pre-write row.
 	let (store, storage, _guard) = cached_store();
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable"),
@@ -489,8 +487,8 @@ fn a_read_modify_write_key_stays_cached_across_repeated_flush_cycles() {
 
 	let counters = point_tier(&store).metrics();
 	assert_eq!(
-		counters.fills_started, 0,
-		"the armed filter rules out the pre-write read and the flush feeds the tier every row it persists, so any fill at all means a flush threw away the row it had just written"
+		counters.fills_started, 1,
+		"only tick zero reads a key that does not exist yet; the flush feeds the tier every row it persists, so a second fill would mean a flush threw away the row it had just written"
 	);
 	assert_eq!(
 		counters.hits, 7,
@@ -583,12 +581,12 @@ fn a_refused_keyspace_reads_absent_without_remembering_the_absence() {
 	// An absence costs the same entry overhead as a row, so the refusal must cover the absence path too.
 	let (store, storage, _guard) = cached_store();
 	let key = key_in(KeyspaceId::JOIN_PIN, 1);
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key.clone(),
 		post: row("seed"),
 	}]);
-	storage.apply_batch(&[OperatorWrite::Remove {
+	storage.seed_durable(&[OperatorWrite::Remove {
 		operator: OP_A,
 		key: key.clone(),
 		pre: DurablePre::Present(ByteSize::from_bytes(row("seed").bytes().len() as u64)),
@@ -662,17 +660,17 @@ fn a_point_read_of_an_expiry_key_remembers_neither_the_row_nor_the_absence() {
 	let (store, storage, _guard) = cached_store();
 	let present = key_in(KeyspaceId::ROLLING_EXPIRY, 1);
 	let absent = key_in(KeyspaceId::ROLLING_EXPIRY, 2);
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: present.clone(),
 		post: row("armed"),
 	}]);
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: absent.clone(),
 		post: row("seed"),
 	}]);
-	storage.apply_batch(&[OperatorWrite::Remove {
+	storage.seed_durable(&[OperatorWrite::Remove {
 		operator: OP_A,
 		key: absent.clone(),
 		pre: DurablePre::Present(ByteSize::from_bytes(row("seed").bytes().len() as u64)),
@@ -733,12 +731,12 @@ fn a_cached_absence_survives_the_range_fill_that_materializes_over_it() {
 	// A range materialize must not cost the point tier the absences its reads paid sqlite to learn.
 	let (store, storage, _guard) = cached_store();
 	seed_accumulator(&storage, 3);
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key_in(CACHED, 9),
 		post: row("gone"),
 	}]);
-	storage.apply_batch(&[OperatorWrite::Remove {
+	storage.seed_durable(&[OperatorWrite::Remove {
 		operator: OP_A,
 		key: key_in(CACHED, 9),
 		pre: DurablePre::Present(ByteSize::from_bytes(row("gone").bytes().len() as u64)),
@@ -785,12 +783,12 @@ fn a_proven_span_outranks_the_absence_the_point_tier_remembers() {
 	let (store, storage, _guard) = cached_store();
 	seed_accumulator(&storage, 3);
 	for suffix in 4..=5u8 {
-		storage.apply_batch(&[OperatorWrite::Insert {
+		storage.seed_durable(&[OperatorWrite::Insert {
 			operator: OP_A,
 			key: key_in(CACHED, suffix),
 			post: row("later"),
 		}]);
-		storage.apply_batch(&[OperatorWrite::Remove {
+		storage.seed_durable(&[OperatorWrite::Remove {
 			operator: OP_A,
 			key: key_in(CACHED, suffix),
 			pre: DurablePre::Present(ByteSize::from_bytes(row("later").bytes().len() as u64)),
@@ -801,12 +799,12 @@ fn a_proven_span_outranks_the_absence_the_point_tier_remembers() {
 	assert!(!store.contains(OP_A, &key_in(CACHED, 5)), "and so does the one contains will read");
 	assert_eq!(point_entries(&store), 2, "both absences must be remembered, or the contradiction never arises");
 
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key_in(CACHED, 4),
 		post: row("v4"),
 	}]);
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key_in(CACHED, 5),
 		post: row("v5"),
@@ -885,4 +883,42 @@ fn a_drain_that_runs_many_slices_writes_back_every_slice_and_not_just_one() {
 		"every slice of the drain must write its own rows back; a first-slice-only or last-slice-only \
 		 write-back leaves the rest durable but uncached"
 	);
+}
+
+use reifydb_core::key::operator::state::OperatorStateKey;
+use reifydb_store_operator::tier::resident::batch::FlushBatch;
+
+trait SeedDurable {
+	fn seed_durable(&self, writes: &[OperatorWrite]);
+}
+
+impl SeedDurable for SqliteOperatorStorage {
+	fn seed_durable(&self, writes: &[OperatorWrite]) {
+		let mut batch = FlushBatch::default();
+		for write in writes {
+			let (operator, key, post, pre) = match write {
+				OperatorWrite::Insert {
+					operator,
+					key,
+					post,
+				} => (*operator, key, Some(post.clone()), DurablePre::Absent),
+				OperatorWrite::Replace {
+					operator,
+					key,
+					pre_value_bytes,
+					post,
+				} => (*operator, key, Some(post.clone()), DurablePre::Present(*pre_value_bytes)),
+				OperatorWrite::Remove {
+					operator,
+					key,
+					pre,
+				} => (*operator, key, None, *pre),
+				_ => continue,
+			};
+			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
+				.expect("a seeded key must name a group and a keyspace");
+			batch.state.record_bytes(operator, keyspace, group, &suffix, post, pre);
+		}
+		self.flush_batch(&batch);
+	}
 }

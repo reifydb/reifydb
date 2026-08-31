@@ -11,7 +11,8 @@ use reifydb_core::{
 		},
 	},
 };
-use rusqlite::{Connection, Row, params_from_iter, types::Value};
+use reifydb_sqlite::batch::values_placeholders;
+use rusqlite::{Connection, Row, Transaction, params_from_iter, types::Value};
 
 pub fn table_of(name: &str) -> String {
 	format!("operator_{}", name.to_ascii_lowercase())
@@ -138,6 +139,105 @@ pub fn set<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::Key, b
 	conn.execute(&sql, params_from_iter(params)).expect("operator state row could not be written");
 }
 
+pub const WRITE_CHUNK: usize = 100;
+
+fn set_sql<K: Keyspace>(rows: usize) -> String {
+	let cols = K::columns().len() + 2;
+	format!(
+		"INSERT INTO \"{}\" (\"operator\", {}, \"bytes\") VALUES {}\n\
+		 ON CONFLICT (\"operator\", {}) DO UPDATE SET \"bytes\" = excluded.\"bytes\"",
+		K::table(),
+		K::column_list(),
+		values_placeholders(rows, cols),
+		K::column_list()
+	)
+}
+
+fn remove_sql<K: Keyspace>(rows: usize) -> String {
+	format!(
+		"DELETE FROM \"{}\" WHERE (\"operator\", {}) IN (VALUES {})",
+		K::table(),
+		K::column_list(),
+		values_placeholders(rows, K::columns().len() + 1)
+	)
+}
+
+pub fn set_chunked<K: Keyspace>(txn: &Transaction, rows: &[(OperatorId, K::Key, Vec<u8>)]) {
+	if rows.is_empty() {
+		return;
+	}
+	let bind = |row: &(OperatorId, K::Key, Vec<u8>), params: &mut Vec<Value>| {
+		params.push(Value::Integer(row.0.0 as i64));
+		params.extend(K::bind_key(&row.1));
+		params.push(Value::Blob(row.2.clone()));
+	};
+	let mut chunks = rows.chunks_exact(WRITE_CHUNK);
+	let chunk_sql = set_sql::<K>(WRITE_CHUNK);
+	for full in chunks.by_ref() {
+		let mut params = Vec::with_capacity(WRITE_CHUNK * (K::columns().len() + 2));
+		for row in full {
+			bind(row, &mut params);
+		}
+		txn.prepare_cached(&chunk_sql)
+			.expect("chunked operator state write could not be prepared")
+			.execute(params_from_iter(params))
+			.expect("chunked operator state write failed");
+	}
+	let rest = chunks.remainder();
+	if rest.is_empty() {
+		return;
+	}
+	let rest_sql = set_sql::<K>(rest.len());
+	let mut params = Vec::with_capacity(rest.len() * (K::columns().len() + 2));
+	for row in rest {
+		bind(row, &mut params);
+	}
+	txn.prepare_cached(&rest_sql)
+		.expect("operator state write could not be prepared")
+		.execute(params_from_iter(params))
+		.expect("operator state write failed");
+}
+
+pub fn remove_chunked<K: Keyspace>(txn: &Transaction, keys: &[(OperatorId, K::Key)]) {
+	if keys.is_empty() {
+		return;
+	}
+	let bind = |row: &(OperatorId, K::Key), params: &mut Vec<Value>| {
+		params.push(Value::Integer(row.0.0 as i64));
+		params.extend(K::bind_key(&row.1));
+	};
+	let mut chunks = keys.chunks_exact(WRITE_CHUNK);
+	let chunk_sql = remove_sql::<K>(WRITE_CHUNK);
+	for full in chunks.by_ref() {
+		let mut params = Vec::with_capacity(WRITE_CHUNK * (K::columns().len() + 1));
+		for row in full {
+			bind(row, &mut params);
+		}
+		txn.prepare_cached(&chunk_sql)
+			.expect("chunked operator state delete could not be prepared")
+			.execute(params_from_iter(params))
+			.expect("chunked operator state delete failed");
+	}
+	let rest = chunks.remainder();
+	if rest.is_empty() {
+		return;
+	}
+	let rest_sql = remove_sql::<K>(rest.len());
+	let mut params = Vec::with_capacity(rest.len() * (K::columns().len() + 1));
+	for row in rest {
+		bind(row, &mut params);
+	}
+	txn.prepare_cached(&rest_sql)
+		.expect("operator state delete could not be prepared")
+		.execute(params_from_iter(params))
+		.expect("operator state delete failed");
+}
+
+pub fn drop_operator_in<K: Keyspace>(txn: &Transaction, operator: OperatorId) {
+	let sql = format!("DELETE FROM \"{}\" WHERE \"operator\" = ?1", K::table());
+	txn.execute(&sql, [operator.0 as i64]).expect("operator state rows could not be dropped");
+}
+
 pub fn get<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::Key) -> Option<Vec<u8>> {
 	let sql =
 		format!("SELECT \"bytes\" FROM \"{}\" WHERE \"operator\" = ?1 AND {}", K::table(), K::key_predicate(2));
@@ -207,7 +307,7 @@ mod tests {
 			operator::{
 				keyspace::{
 					KEYSPACES,
-					join::{JoinLeft, JoinLeftKey},
+					join::{JoinLeft, JoinLeftKey, JoinRight, JoinRightKey},
 					timer::TimerWheel,
 				},
 				state::GroupId,
@@ -230,6 +330,13 @@ mod tests {
 
 	fn left(group: u128, row: u64) -> JoinLeftKey {
 		JoinLeftKey {
+			group: Desc(GroupId(group)),
+			row: Asc(RowNumber(row)),
+		}
+	}
+
+	fn right(group: u128, row: u64) -> JoinRightKey {
+		JoinRightKey {
 			group: Desc(GroupId(group)),
 			row: Asc(RowNumber(row)),
 		}
@@ -340,6 +447,60 @@ mod tests {
 		let mut counted = census::<JoinLeft>(&conn);
 		counted.sort_by_key(|(operator, _, _)| operator.0);
 		assert_eq!(counted, vec![(OperatorId(1), 2, 5), (OperatorId(2), 1, 1)]);
+	}
+
+	#[test]
+	fn a_removed_key_leaves_the_census() {
+		// the census is what the budget spends against, so a delete that left its row counted would keep
+		// charging for state that is gone and never let the budget recover
+		let conn = db();
+		set::<JoinLeft>(&conn, OperatorId(1), &left(1, 1), b"aaa");
+		set::<JoinLeft>(&conn, OperatorId(1), &left(1, 2), b"bb");
+		remove::<JoinLeft>(&conn, OperatorId(1), &left(1, 1));
+		assert_eq!(census::<JoinLeft>(&conn), vec![(OperatorId(1), 1, 2)]);
+	}
+
+	#[test]
+	fn overwriting_a_key_moves_its_bytes_without_counting_it_twice() {
+		// an upsert must replace, not append; a census that counted the key twice would report a table
+		// twice its real size and the budget would evict state that was never there
+		let conn = db();
+		set::<JoinLeft>(&conn, OperatorId(1), &left(1, 1), b"aaaaa");
+		set::<JoinLeft>(&conn, OperatorId(1), &left(1, 1), b"b");
+		assert_eq!(census::<JoinLeft>(&conn), vec![(OperatorId(1), 1, 1)]);
+	}
+
+	#[test]
+	fn dropping_an_operator_empties_its_census_entry_and_leaves_the_others() {
+		// a dropped flow must stop being charged entirely; a lingering entry would hold budget forever
+		// because nothing will ever write to that operator again to correct it
+		let conn = db();
+		set::<JoinLeft>(&conn, OperatorId(1), &left(1, 1), b"aa");
+		set::<JoinLeft>(&conn, OperatorId(2), &left(1, 1), b"bbb");
+		drop_operator::<JoinLeft>(&conn, OperatorId(1));
+		assert_eq!(census::<JoinLeft>(&conn), vec![(OperatorId(2), 1, 3)]);
+	}
+
+	#[test]
+	fn an_empty_keyspace_reports_no_rows_rather_than_a_zero_row() {
+		// callers sum the census to size a keyspace; a phantom zero row would name an operator that owns
+		// nothing here and make an empty table look like a live one
+		let conn = db();
+		assert_eq!(census::<JoinLeft>(&conn), vec![]);
+		set::<JoinLeft>(&conn, OperatorId(1), &left(1, 1), b"a");
+		remove::<JoinLeft>(&conn, OperatorId(1), &left(1, 1));
+		assert_eq!(census::<JoinLeft>(&conn), vec![]);
+	}
+
+	#[test]
+	fn one_keyspaces_census_never_sees_another_keyspaces_rows() {
+		// two keyspaces of one operator share the group and the key shape and differ only by table; a
+		// census that read across them would charge each keyspace for the other's bytes
+		let conn = db();
+		set::<JoinLeft>(&conn, OperatorId(1), &left(1, 1), b"aaaa");
+		set::<JoinRight>(&conn, OperatorId(1), &right(1, 1), b"bb");
+		assert_eq!(census::<JoinLeft>(&conn), vec![(OperatorId(1), 1, 4)]);
+		assert_eq!(census::<JoinRight>(&conn), vec![(OperatorId(1), 1, 2)]);
 	}
 
 	#[test]

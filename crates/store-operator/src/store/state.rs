@@ -296,9 +296,9 @@ impl StandardOperatorStore {
 			BufferedState::Tombstone | BufferedState::Dropped => return SizeProbe::Known(None),
 			BufferedState::Absent => {}
 		}
-		let Some(persistent) = self.persistent.as_ref() else {
+		if self.persistent.is_none() {
 			return SizeProbe::Known(None);
-		};
+		}
 		let cached = self.point.as_ref().and_then(|point| point.get(operator, key));
 		if let Some(Some(row)) = &cached {
 			return SizeProbe::Known(Some(row_size(row)));
@@ -307,9 +307,6 @@ impl StandardOperatorStore {
 			return SizeProbe::Known(authoritative.as_ref().map(row_size));
 		}
 		if cached.is_some() {
-			return SizeProbe::Known(None);
-		}
-		if !persistent.filter().may_contain((operator, key)) {
 			return SizeProbe::Known(None);
 		}
 		SizeProbe::Persistent
@@ -359,9 +356,6 @@ impl StandardOperatorStore {
 			if cached.is_some() {
 				continue;
 			}
-			if !persistent.filter().may_contain((operator, key)) {
-				continue;
-			}
 			fetch.push((index, key));
 		}
 		if fetch.is_empty() {
@@ -399,9 +393,6 @@ impl StandardOperatorStore {
 		if cached.is_some() {
 			return None;
 		}
-		if !persistent.filter().may_contain((operator, key)) {
-			return None;
-		}
 		match self.point.as_ref() {
 			Some(point) if point.begin_fill(operator, key) => {
 				let row = persistent.get(operator, key);
@@ -436,9 +427,6 @@ impl StandardOperatorStore {
 			return authoritative.is_some();
 		}
 		if cached.is_some() {
-			return false;
-		}
-		if !persistent.filter().may_contain((operator, key)) {
 			return false;
 		}
 		match self.point.as_ref() {

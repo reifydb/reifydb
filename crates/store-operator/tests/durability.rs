@@ -26,8 +26,7 @@ use reifydb_store_operator::{
 	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
 	types::OperatorWrite,
 };
-use reifydb_testing::keyspace::state_key;
-use reifydb_testing::tempdir::temp_dir;
+use reifydb_testing::{keyspace::state_key, tempdir::temp_dir};
 use reifydb_value::{
 	byte_size::ByteSize,
 	value::{datetime::DateTime, row_number::RowNumber},

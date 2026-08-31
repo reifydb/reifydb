@@ -89,10 +89,6 @@ impl StoreReader {
 		self.operator.persistent_page_cache_metrics()
 	}
 
-	pub fn operator_filter(&self) -> Option<FilterMetrics> {
-		self.operator.persistent_filter_metrics()
-	}
-
 	pub fn cdc_commit(&self) -> CdcCommitMetrics {
 		self.cdc.commit_metrics()
 	}

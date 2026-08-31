@@ -22,7 +22,7 @@ use crate::{
 		resident::batch::FlushBatch,
 	},
 	types::{
-		DurablePre, JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES, OperatorStateCensus, OperatorWrite,
+		DurablePre, JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES, OperatorStateCensus,
 		StoredJoinRowExpiryCensus,
 	},
 };
@@ -171,45 +171,6 @@ impl CensusDelta {
 				.expect("operator state census update failed");
 		}
 	}
-}
-
-pub(super) fn batch_delta(writes: &[OperatorWrite]) -> CensusDelta {
-	let mut delta = CensusDelta::default();
-	for write in writes {
-		match write {
-			OperatorWrite::Insert {
-				operator,
-				key,
-				post,
-			} => delta.record(*operator, key, DurablePre::Absent, Some(post.bytes().len() as u64)),
-			OperatorWrite::Replace {
-				operator,
-				key,
-				pre_value_bytes,
-				post,
-			} => delta.record(
-				*operator,
-				key,
-				DurablePre::Present(*pre_value_bytes),
-				Some(post.bytes().len() as u64),
-			),
-			OperatorWrite::Remove {
-				operator,
-				key,
-				pre,
-			} => delta.record(*operator, key, *pre, None),
-			OperatorWrite::JoinExpiryInsert {
-				..
-			}
-			| OperatorWrite::JoinExpiryReplace {
-				..
-			}
-			| OperatorWrite::JoinExpiryRemove {
-				..
-			} => {}
-		}
-	}
-	delta
 }
 
 pub(super) fn flush_delta(batch: &FlushBatch) -> CensusDelta {

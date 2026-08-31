@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 #[cfg(reifydb_assertions)]
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::sync::LazyLock;
 
 #[cfg(reifydb_assertions)]
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(reifydb_assertions)]
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_sqlite::batch::values_placeholders;
@@ -24,7 +24,7 @@ use crate::{
 	tier::{
 		persistent::sqlite::{
 			SqliteOperatorStorage,
-			census::{batch_delta, flush_delta, zero_operator_buckets},
+			census::{flush_delta, zero_operator_buckets},
 			join_expiry::encode_group,
 			sql::{
 				CHECKPOINT_REMOVE_SQL, CHECKPOINT_SET_SQL, JOIN_EXPIRIES_DROP_GROUP_SQL,
@@ -34,7 +34,6 @@ use crate::{
 		},
 		resident::batch::{DropMarker, FlushBatch},
 	},
-	types::OperatorWrite,
 };
 
 const FLUSH_CHUNK: usize = 100;
@@ -89,122 +88,6 @@ fn execute_chunked(txn: &Transaction, chunk_sql: &str, single_sql: &str, rows: &
 }
 
 impl SqliteOperatorStorage {
-	#[instrument(name = "store::operator::persistent::sqlite::apply_batch", level = "debug", skip(self, writes), fields(write_count = writes.len()))]
-	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
-		if writes.is_empty() {
-			return;
-		}
-		self.mark_state_written();
-		for write in writes {
-			match write {
-				OperatorWrite::Insert {
-					operator,
-					key,
-					..
-				}
-				| OperatorWrite::Replace {
-					operator,
-					key,
-					..
-				} => self.filter().add((*operator, key)),
-				OperatorWrite::JoinExpiryInsert {
-					operator,
-					group,
-					side,
-					row_num,
-					..
-				}
-				| OperatorWrite::JoinExpiryReplace {
-					operator,
-					group,
-					side,
-					row_num,
-					..
-				} => self.join_expiry_filter().add((*operator, *group, *side, *row_num)),
-				_ => {}
-			}
-		}
-		let guard = self.inner.conn.lock();
-		let Some(conn) = guard.as_ref() else {
-			return;
-		};
-		let transaction = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
-			.expect("operator state batch could not begin");
-		reifydb_assertions! {
-			verify_batch_classification(&transaction, writes);
-		}
-		for write in writes {
-			match write {
-				OperatorWrite::Insert {
-					operator,
-					key,
-					post,
-				}
-				| OperatorWrite::Replace {
-					operator,
-					key,
-					post,
-					..
-				} => transaction
-					.prepare_cached(STATE_SET_SQL)
-					.expect("operator state write could not be prepared")
-					.execute(params![operator.0 as i64, key.as_slice(), &post.bytes()[..]])
-					.expect("operator state write failed"),
-				OperatorWrite::Remove {
-					operator,
-					key,
-					..
-				} => transaction
-					.prepare_cached(STATE_REMOVE_SQL)
-					.expect("operator state delete could not be prepared")
-					.execute(params![operator.0 as i64, key.as_slice()])
-					.expect("operator state delete failed"),
-				OperatorWrite::JoinExpiryInsert {
-					operator,
-					group,
-					side,
-					row_num: row_number,
-					at,
-				}
-				| OperatorWrite::JoinExpiryReplace {
-					operator,
-					group,
-					side,
-					row_num: row_number,
-					at,
-				} => transaction
-					.prepare_cached(JOIN_EXPIRY_SET_SQL)
-					.expect("join expiry write could not be prepared")
-					.execute(params![
-						operator.0 as i64,
-						encode_group(*group),
-						*side as i64,
-						row_number.0 as i64,
-						at.to_millis() as i64
-					])
-					.expect("join expiry write failed"),
-				OperatorWrite::JoinExpiryRemove {
-					operator,
-					group,
-					side,
-					row_num: row_number,
-					..
-				} => transaction
-					.prepare_cached(JOIN_EXPIRY_REMOVE_SQL)
-					.expect("join expiry delete could not be prepared")
-					.execute(params![
-						operator.0 as i64,
-						encode_group(*group),
-						*side as i64,
-						row_number.0 as i64
-					])
-					.expect("join expiry delete failed"),
-			};
-		}
-		batch_delta(writes).apply(&transaction);
-		transaction.commit().expect("operator state batch could not commit");
-	}
-
 	#[instrument(name = "store::operator::persistent::sqlite::flush_batch", level = "debug", skip(self, batch), fields(
 		drop_count = batch.drops.len(),
 		state_count = batch.state.len(),
@@ -214,11 +97,6 @@ impl SqliteOperatorStorage {
 	pub fn flush_batch(&self, batch: &FlushBatch) {
 		if !batch.state.is_empty() {
 			self.mark_state_written();
-		}
-		for ((operator, key), entry) in batch.state.iter_encoded() {
-			if entry.post.is_some() {
-				self.filter().add((operator, &key));
-			}
 		}
 		for ((operator, group, side, row_number), entry) in &batch.join_expiries {
 			if entry.is_some() {
@@ -329,11 +207,6 @@ impl SqliteOperatorStorage {
 }
 
 #[cfg(reifydb_assertions)]
-fn value_bytes(row: &EncodedPodRow) -> ByteSize {
-	ByteSize::from_bytes(row.bytes().len() as u64)
-}
-
-#[cfg(reifydb_assertions)]
 fn durable_value_len(transaction: &Transaction, operator: OperatorId, key: &EncodedKey) -> Option<ByteSize> {
 	transaction
 		.prepare_cached(STATE_VALUE_LEN_SQL)
@@ -356,39 +229,6 @@ fn assert_claim(operator: OperatorId, claimed: DurablePre, observed: Option<Byte
 		 delta arithmetic over that claim, so a wrong one drifts the bucket until the next reseed",
 		operator.0
 	);
-}
-
-#[cfg(reifydb_assertions)]
-fn verify_batch_classification(transaction: &Transaction, writes: &[OperatorWrite]) {
-	let mut overlay: BTreeMap<(OperatorId, EncodedKey), Option<ByteSize>> = BTreeMap::new();
-	for write in writes {
-		let (operator, key, claimed, post) = match write {
-			OperatorWrite::Insert {
-				operator,
-				key,
-				post,
-			} => (*operator, key, DurablePre::Absent, Some(value_bytes(post))),
-			OperatorWrite::Replace {
-				operator,
-				key,
-				pre_value_bytes,
-				post,
-			} => (*operator, key, DurablePre::Present(*pre_value_bytes), Some(value_bytes(post))),
-			OperatorWrite::Remove {
-				operator,
-				key,
-				pre,
-			} => (*operator, key, *pre, None),
-			_ => continue,
-		};
-		let slot = (operator, key.clone());
-		let observed = match overlay.get(&slot) {
-			Some(pending) => *pending,
-			None => durable_value_len(transaction, operator, key),
-		};
-		assert_claim(operator, claimed, observed);
-		overlay.insert(slot, post);
-	}
 }
 
 #[cfg(reifydb_assertions)]

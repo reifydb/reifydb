@@ -14,8 +14,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{
-		GroupId, KeyspaceId, group_data_inner_range, keyspace_inner_range,
-		keyspace_inner_range_upto,
+		GroupId, KeyspaceId, group_data_inner_range, keyspace_inner_range, keyspace_inner_range_upto,
 	},
 	metrics::scan::ScanCounters,
 };
@@ -32,8 +31,8 @@ use reifydb_store_operator::{
 	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
 	types::{DurablePre, OperatorWrite},
 };
-use reifydb_value::byte_size::ByteSize;
 use reifydb_testing::keyspace::state_key;
+use reifydb_value::byte_size::ByteSize;
 
 const CACHED: KeyspaceId = KeyspaceId::JOIN_LEFT;
 

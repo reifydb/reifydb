@@ -8,8 +8,8 @@ use reifydb_core::{
 		operator::{keyspace::join::JoinLeft, state::GroupId},
 		typed::direction::Asc,
 	},
+	state::typed::SuffixBytes,
 };
-use reifydb_core::state::typed::SuffixBytes;
 use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 
 use super::{BucketMap, write::TypedBucket};
@@ -152,7 +152,10 @@ fn the_bucket_map_hands_back_the_same_bucket_for_one_operator_and_keyspace() {
 	let mut map = BucketMap::default();
 
 	map.bucket::<JoinLeft>(OP).record(GroupId(7), suffix(1), Some(row("first")), DurablePre::Absent);
-	let entry = map.bucket::<JoinLeft>(OP).get(GroupId(7), &suffix(1)).expect("the second lookup must reach the first bucket");
+	let entry = map
+		.bucket::<JoinLeft>(OP)
+		.get(GroupId(7), &suffix(1))
+		.expect("the second lookup must reach the first bucket");
 
 	assert_eq!(
 		String::from_utf8(entry.post.as_ref().expect("a set write keeps its row").body().to_vec())
@@ -224,13 +227,12 @@ fn a_flushed_tombstone_deletes_the_row_rather_than_storing_a_none() {
 
 #[test]
 fn a_flushed_row_survives_the_round_trip_through_its_payload() {
+	use reifydb_codec::row::bytes::EncodedBytes;
+	use reifydb_core::key::operator::traits::Keyspace;
+	use reifydb_value::util::cowvec::CowVec;
 	use rusqlite::Connection;
 
 	use super::AnyBucket;
-	use reifydb_core::key::operator::traits::Keyspace;
-	use reifydb_codec::row::bytes::EncodedBytes;
-	use reifydb_value::util::cowvec::CowVec;
-
 	use crate::tier::persistent::sqlite::{schema::ensure_schema, typed};
 
 	let conn = Connection::open_in_memory().expect("in memory db");
@@ -263,9 +265,13 @@ fn an_erased_write_reaches_the_same_bucket_a_typed_one_does() {
 		DurablePre::Absent,
 	);
 
-	let entry = map.bucket::<JoinLeft>(OP).get(GroupId(7), &suffix(1)).expect("a byte keyed write must land in the typed bucket");
+	let entry = map
+		.bucket::<JoinLeft>(OP)
+		.get(GroupId(7), &suffix(1))
+		.expect("a byte keyed write must land in the typed bucket");
 	assert_eq!(
-		String::from_utf8(entry.post.as_ref().expect("a set write keeps its row").body().to_vec()).expect("utf8"),
+		String::from_utf8(entry.post.as_ref().expect("a set write keeps its row").body().to_vec())
+			.expect("utf8"),
 		"erased",
 		"the erased entry point is how every byte keyed caller reaches a bucket; if it misses, their writes vanish"
 	);
@@ -273,8 +279,11 @@ fn an_erased_write_reaches_the_same_bucket_a_typed_one_does() {
 
 #[test]
 fn every_keyspace_in_the_catalogue_is_reachable_through_the_dispatch() {
-	use reifydb_core::key::operator::keyspace::{KEYSPACES, KeyspaceVisitor, dispatch};
-	use reifydb_core::key::operator::{state::KeyspaceId, traits::Keyspace};
+	use reifydb_core::key::operator::{
+		keyspace::{KEYSPACES, KeyspaceVisitor, dispatch},
+		state::KeyspaceId,
+		traits::Keyspace,
+	};
 
 	struct Name;
 
@@ -304,8 +313,9 @@ fn every_keyspace_in_the_catalogue_is_reachable_through_the_dispatch() {
 
 #[test]
 fn an_erased_page_returns_its_suffixes_in_the_key_types_order() {
-	use reifydb_core::key::operator::traits::Keyspace;
 	use std::ops::Bound;
+
+	use reifydb_core::key::operator::traits::Keyspace;
 
 	let mut map = BucketMap::default();
 	for n in [3u64, 1, 2] {
@@ -332,8 +342,9 @@ fn an_erased_page_returns_its_suffixes_in_the_key_types_order() {
 
 #[test]
 fn an_erased_page_honours_its_limit() {
-	use reifydb_core::key::operator::traits::Keyspace;
 	use std::ops::Bound;
+
+	use reifydb_core::key::operator::traits::Keyspace;
 
 	let mut map = BucketMap::default();
 	for n in 0..5u64 {

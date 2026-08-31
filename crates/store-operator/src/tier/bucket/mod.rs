@@ -19,14 +19,12 @@ use reifydb_core::{
 	state::typed::SuffixBytes,
 };
 use reifydb_value::{Result, byte_size::ByteSize};
-use rusqlite::Connection;
+use rusqlite::{Connection, Transaction};
 
 use crate::{
 	tier::bucket::write::{TypedBucket, WriteEntry},
 	types::DurablePre,
 };
-
-
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Budget {
@@ -63,6 +61,8 @@ pub trait AnyBucket: Any + Send + Sync {
 	fn as_any(&self) -> &dyn Any;
 
 	fn flush(&mut self, conn: &Connection) -> Result<()>;
+
+	fn write_into(&self, txn: &Transaction);
 
 	fn reap_group(&mut self, group: GroupId, budget: &mut Budget) -> Result<Resume>;
 
@@ -108,12 +108,27 @@ impl BucketMap {
 			fn visit<K: Keyspace>(self) -> Self::Output {
 				let suffix = <K::Suffix as SuffixBytes>::from_suffix_bytes(self.suffix)
 					.expect("a stored suffix must decode as its own keyspace's suffix type");
-				self.map.bucket::<K>(self.operator).record(self.group, suffix, self.post, self.durable_pre);
+				self.map.bucket::<K>(self.operator).record(
+					self.group,
+					suffix,
+					self.post,
+					self.durable_pre,
+				);
 			}
 		}
 
-		dispatch(keyspace, Record { map: self, operator, group, suffix, post, durable_pre })
-			.expect("a write must name a keyspace the catalogue declares");
+		dispatch(
+			keyspace,
+			Record {
+				map: self,
+				operator,
+				group,
+				suffix,
+				post,
+				durable_pre,
+			},
+		)
+		.expect("a write must name a keyspace the catalogue declares");
 	}
 
 	pub fn get_bytes(
@@ -139,7 +154,16 @@ impl BucketMap {
 			}
 		}
 
-		dispatch(keyspace, Get { map: self, operator, group, suffix }).flatten()
+		dispatch(
+			keyspace,
+			Get {
+				map: self,
+				operator,
+				group,
+				suffix,
+			},
+		)
+		.flatten()
 	}
 
 	pub fn page_bytes(
@@ -177,11 +201,10 @@ impl BucketMap {
 
 			fn visit<K: Keyspace>(self) -> Self::Output {
 				let bounds = (decode::<K::Suffix>(self.from), decode::<K::Suffix>(self.until));
-				let rows = self
-					.map
-					.bucket::<K>(self.operator)
-					.range(self.group, bounds)
-					.map(|(suffix, entry)| (suffix.to_suffix_bytes(), entry.clone()));
+				let rows =
+					self.map.bucket::<K>(self.operator)
+						.range(self.group, bounds)
+						.map(|(suffix, entry)| (suffix.to_suffix_bytes(), entry.clone()));
 				match self.limit {
 					Some(limit) => rows.take(limit).collect(),
 					None => rows.collect(),
@@ -189,7 +212,18 @@ impl BucketMap {
 			}
 		}
 
-		dispatch(keyspace, Page { map: self, operator, group, from, until, limit }).unwrap_or_default()
+		dispatch(
+			keyspace,
+			Page {
+				map: self,
+				operator,
+				group,
+				from,
+				until,
+				limit,
+			},
+		)
+		.unwrap_or_default()
 	}
 
 	pub fn encoded_entries(&self, operator: OperatorId) -> Vec<(EncodedKey, WriteEntry)> {
@@ -290,7 +324,10 @@ impl BucketMap {
 			let Some(bucket) = self.buckets.get(&(operator, keyspace)) else {
 				continue;
 			};
-			out.extend(bucket.encoded_entries().into_iter().filter(|(key, _)| in_bounds(key, lower, upper)));
+			out.extend(bucket
+				.encoded_entries()
+				.into_iter()
+				.filter(|(key, _)| in_bounds(key, lower, upper)));
 		}
 		out.sort_by(|(left, _), (right, _)| left.cmp(right));
 		out
@@ -299,11 +336,10 @@ impl BucketMap {
 	pub fn iter_encoded(&self) -> Vec<((OperatorId, EncodedKey), WriteEntry)> {
 		let mut out = Vec::new();
 		for operator in self.operators() {
-			out.extend(
-				self.encoded_entries(operator)
-					.into_iter()
-					.map(|(key, entry)| ((operator, key), entry)),
-			);
+			out.extend(self
+				.encoded_entries(operator)
+				.into_iter()
+				.map(|(key, entry)| ((operator, key), entry)));
 		}
 		out
 	}

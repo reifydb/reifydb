@@ -7,15 +7,6 @@ use reifydb_codec::key::encoded::EncodedKey;
 
 pub(super) const STATE_GET_SQL: &str = r#"SELECT "bytes" FROM "operator_state" WHERE "operator" = ?1 AND "key" = ?2"#;
 
-pub(super) const STATE_KEYS_FIRST_SQL: &str =
-	r#"SELECT "operator", "key" FROM "operator_state" ORDER BY "operator", "key" LIMIT ?1"#;
-
-pub(super) const STATE_KEYS_AFTER_SQL: &str = r#"SELECT "operator", "key" FROM "operator_state"
-	   WHERE ("operator", "key") > (?1, ?2)
-	   ORDER BY "operator", "key" LIMIT ?3"#;
-
-pub(super) const STATE_KEY_COUNT_SQL: &str = r#"SELECT COALESCE(SUM("keys"), 0) FROM "operator_state_census""#;
-
 pub(super) const STATE_EXISTS_SQL: &str = r#"SELECT EXISTS(SELECT 1 FROM "operator_state")"#;
 
 pub(super) const STATE_CONTAINS_SQL: &str =

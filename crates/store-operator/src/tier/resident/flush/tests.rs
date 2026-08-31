@@ -14,7 +14,11 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::GroupId,
+	key::{
+		operator::{keyspace::join::JoinLeft, state::GroupId},
+		typed::direction::Asc,
+	},
+	state::typed::typed_key,
 };
 use reifydb_runtime::{
 	actor::{
@@ -44,11 +48,6 @@ use crate::{
 		resident::{FLUSH_BUDGET_BYTES, OperatorResidentState, batch::FlushBatch},
 	},
 	types::{BufferedState, DurablePre, OperatorWrite},
-};
-
-use reifydb_core::{
-	key::{operator::keyspace::join::JoinLeft, typed::direction::Asc},
-	state::typed::typed_key,
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -184,7 +183,7 @@ fn a_buffered_write_becomes_durable_and_the_buffer_stops_shadowing_it() {
 #[test]
 fn a_buffered_tombstone_flushes_as_a_delete_so_the_row_cannot_resurrect() {
 	let (store, storage, _guard) = store_fixture();
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable"),
@@ -207,12 +206,12 @@ fn a_buffered_tombstone_flushes_as_a_delete_so_the_row_cannot_resurrect() {
 #[test]
 fn a_drop_flushes_before_the_writes_recorded_after_it() {
 	let (store, storage, _guard) = store_fixture();
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("pre-drop-durable"),
 	}]);
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_B,
 		key: key(1),
 		post: row("neighbour"),
@@ -256,7 +255,7 @@ fn a_join_expiry_drop_erases_only_the_group_it_names() {
 	let (store, storage, _guard) = store_fixture();
 	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
 	storage.join_expiry_set(OP_A, GROUP_B, SIDE, RowNumber(2), DateTime::from_millis(200));
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable"),
@@ -567,8 +566,9 @@ fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 #[test]
 fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer =
-		OperatorResidentState::with_budget(group_bytes().saturating_add(entry_bytes(1, "early")).saturating_add(entry_bytes(2, "filler")));
+	let buffer = OperatorResidentState::with_budget(
+		group_bytes().saturating_add(entry_bytes(1, "early")).saturating_add(entry_bytes(2, "filler")),
+	);
 	buffer.attach_sinks(tier(&storage), None, None);
 	buffer.record_state_set(OP_A, key(1), row("early"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key(2), row("filler"), DurablePre::Absent);
@@ -783,4 +783,41 @@ fn a_flusher_with_no_config_attached_keeps_the_compiled_default_budget() {
 		ByteSize::from_kib(64),
 		"the compiled fallback must be the testing budget under a test build"
 	);
+}
+
+use reifydb_core::key::operator::state::OperatorStateKey;
+
+trait SeedDurable {
+	fn seed_durable(&self, writes: &[OperatorWrite]);
+}
+
+impl SeedDurable for SqliteOperatorStorage {
+	fn seed_durable(&self, writes: &[OperatorWrite]) {
+		let mut batch = FlushBatch::default();
+		for write in writes {
+			let (operator, key, post, pre) = match write {
+				OperatorWrite::Insert {
+					operator,
+					key,
+					post,
+				} => (*operator, key, Some(post.clone()), DurablePre::Absent),
+				OperatorWrite::Replace {
+					operator,
+					key,
+					pre_value_bytes,
+					post,
+				} => (*operator, key, Some(post.clone()), DurablePre::Present(*pre_value_bytes)),
+				OperatorWrite::Remove {
+					operator,
+					key,
+					pre,
+				} => (*operator, key, None, *pre),
+				_ => continue,
+			};
+			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
+				.expect("a seeded key must name a group and a keyspace");
+			batch.state.record_bytes(operator, keyspace, group, &suffix, post, pre);
+		}
+		self.flush_batch(&batch);
+	}
 }

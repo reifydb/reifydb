@@ -519,7 +519,6 @@ fn operator_persistent_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 	let Some(metrics) = store.persistent_page_cache_metrics() else {
 		return Vec::new();
 	};
-	let filter = store.persistent_filter_metrics().unwrap_or_default();
 	vec![MetricsRow {
 		dimensions: Vec::new(),
 		measures: vec![
@@ -528,11 +527,6 @@ fn operator_persistent_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 			level_count("connections_total", metrics.connections_total.as_u64()),
 			counter_count("hits", metrics.hits.as_u64()),
 			counter_count("misses", metrics.misses.as_u64()),
-			level_ratio("filter_fill_ratio", filter.fill_ratio),
-			level_count("filter_estimated_keys", filter.estimated_keys),
-			level_count("filter_rejected", filter.rejected),
-			level_count("filter_enabled", filter.enabled as u64),
-			level_count("filter_rebuilds", filter.rebuilds),
 		],
 	}]
 }
