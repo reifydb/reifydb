@@ -5,7 +5,7 @@
 //! commit buffer and the persistent tier are consulted: a value written by a previous run lives only
 //! in persistent, and reading the buffer alone would silently fall back to the default.
 
-use reifydb_catalog::bootstrap::read_configs;
+use reifydb_catalog::{bootstrap::read_configs, error::CatalogError};
 use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_runtime::pool::PoolConfig;
 use reifydb_store::coverage::plan::DEFAULT_GAP_GUARD;
@@ -62,6 +62,7 @@ pub(crate) fn resolve_startup_configs(
 	buffer: &CommitStore,
 	persistent: Option<&MultiPersistentTier>,
 	overrides: &[(ConfigKey, Value)],
+	cdc_memory: bool,
 ) -> Result<StartupConfig> {
 	let persisted = read_configs(Some(buffer), persistent, STARTUP_KEYS)?;
 
@@ -146,10 +147,26 @@ pub(crate) fn resolve_startup_configs(
 		ceiling,
 	};
 
-	let cdc_read = uint8_opt(ConfigKey::CdcReadBufferBytes).map(|resident_bytes| CdcReadConfig {
-		resident_bytes: Some(ByteSize::from_bytes(resident_bytes)),
-		shards: CdcReadConfig::default().shards,
-	});
+	let cdc_read = if cdc_memory {
+		if overrides.iter().any(|(key, value)| {
+			*key == ConfigKey::CdcReadBufferBytes && !matches!(value, Value::None { .. })
+		}) {
+			return Err(CatalogError::ConfigInvalidValue {
+				key: ConfigKey::CdcReadBufferBytes.to_string(),
+				reason: "an in-memory CDC persistent tier already holds every block resident, \
+					 so a block cache in front of it would duplicate each block in the heap; \
+					 set it to none or use a persistent CDC tier"
+					.to_string(),
+			}
+			.into());
+		}
+		None
+	} else {
+		uint8_opt(ConfigKey::CdcReadBufferBytes).map(|resident_bytes| CdcReadConfig {
+			resident_bytes: Some(ByteSize::from_bytes(resident_bytes)),
+			shards: CdcReadConfig::default().shards,
+		})
+	};
 
 	Ok(StartupConfig {
 		pools,
@@ -164,4 +181,61 @@ pub(crate) fn resolve_startup_configs(
 		cdc_commit,
 		cdc_read,
 	})
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_store_commit::store::CommitStore;
+
+	use super::*;
+
+	#[test]
+	fn an_in_memory_cdc_tier_builds_no_read_buffer() {
+		// The memory persistent tier keeps every sealed block resident, so a read tier in front of it
+		// holds a second Arc<Block> for the same data. cdc_read must be None whatever the catalog
+		// resolves, otherwise every flushed block is charged and retained twice in the heap.
+		let buffer = CommitStore::new();
+
+		let memory = resolve_startup_configs(&buffer, None, &[], true).unwrap();
+		assert!(memory.cdc_read.is_none(), "an in-memory cdc tier must not build a block cache");
+
+		let persistent = resolve_startup_configs(&buffer, None, &[], false).unwrap();
+		assert!(
+			persistent.cdc_read.is_some(),
+			"a persistent cdc tier still needs its block cache to amortise deserialization"
+		);
+	}
+
+	#[test]
+	fn an_explicit_read_buffer_with_an_in_memory_cdc_tier_is_rejected() {
+		// Silently dropping the setting would let an operator believe a block cache is configured
+		// while none exists, so the contradiction must fail the build rather than be ignored.
+		let buffer = CommitStore::new();
+
+		let sized = [(ConfigKey::CdcReadBufferBytes, Value::Uint8(ByteSize::from_mib(64).as_bytes()))];
+		let Err(err) = resolve_startup_configs(&buffer, None, &sized, true) else {
+			panic!("a sized read buffer must be rejected against an in-memory cdc tier");
+		};
+		assert_eq!(err.diagnostic().code, "CA_053");
+
+		let disabled = [(
+			ConfigKey::CdcReadBufferBytes,
+			Value::None {
+				inner: reifydb_value::value::value_type::ValueType::Uint8,
+			},
+		)];
+		let resolved = resolve_startup_configs(&buffer, None, &disabled, true).unwrap();
+		assert!(resolved.cdc_read.is_none(), "an explicit none agrees with the memory tier");
+	}
+
+	#[test]
+	fn a_read_buffer_override_still_applies_to_a_persistent_cdc_tier() {
+		// The reject must be scoped to the memory tier; narrowing it wrongly would break the only
+		// supported way to size the block cache.
+		let buffer = CommitStore::new();
+
+		let sized = [(ConfigKey::CdcReadBufferBytes, Value::Uint8(ByteSize::from_mib(64).as_bytes()))];
+		let resolved = resolve_startup_configs(&buffer, None, &sized, false).unwrap();
+		assert_eq!(resolved.cdc_read.unwrap().resident_bytes, Some(ByteSize::from_mib(64)));
+	}
 }
