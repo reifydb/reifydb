@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 	key::{
 		operator::{
-			keyspace::root::{CustomNotCached, CustomNotCachedKey},
+			keyspace::root::{CustomNotCached, CustomNotCachedSuffix},
 			state::{GroupId, GroupStateKey},
 		},
 		typed::direction::Asc,
@@ -150,7 +150,7 @@ impl TakePlan {
 	fn state_key() -> GroupStateKey {
 		typed_key::<CustomNotCached>(
 			GroupId::ROOT,
-			&CustomNotCachedKey {
+			&CustomNotCachedSuffix {
 				id: Asc([0u8; 16]),
 			},
 		)

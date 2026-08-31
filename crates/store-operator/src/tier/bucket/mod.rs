@@ -37,14 +37,6 @@ pub enum Resume {
 	More,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BucketCensus {
-	pub keyspace: KeyspaceId,
-	pub keys: u64,
-	pub key_bytes: ByteSize,
-	pub value_bytes: ByteSize,
-}
-
 pub trait AnyBucket: Any + Send + Sync {
 	fn keyspace(&self) -> KeyspaceId;
 
@@ -53,8 +45,6 @@ pub trait AnyBucket: Any + Send + Sync {
 	fn len(&self) -> usize;
 
 	fn encoded_entries(&self) -> Vec<(EncodedKey, WriteEntry)>;
-
-	fn census(&self) -> BucketCensus;
 
 	fn absorb_any(&mut self, other: &mut dyn AnyBucket);
 
@@ -247,18 +237,6 @@ impl BucketMap {
 		ids
 	}
 
-	pub fn census(&self, operator: OperatorId) -> Vec<BucketCensus> {
-		let mut out: Vec<BucketCensus> = self
-			.buckets
-			.iter()
-			.filter(|((id, _), _)| *id == operator)
-			.map(|(_, bucket)| bucket.census())
-			.filter(|census| census.keys > 0)
-			.collect();
-		out.sort_by_key(|census| census.keyspace.0);
-		out
-	}
-
 	pub fn absorb(&mut self, mut other: BucketMap) {
 		for (address, mut bucket) in other.buckets.drain() {
 			match self.buckets.get_mut(&address) {
@@ -375,6 +353,12 @@ impl BucketMap {
 
 	pub fn remove_operator(&mut self, operator: OperatorId) {
 		self.buckets.retain(|(id, _), _| *id != operator);
+	}
+
+	pub fn write_into(&self, txn: &Transaction) {
+		for bucket in self.buckets.values() {
+			bucket.write_into(txn);
+		}
 	}
 
 	pub fn len(&self) -> usize {

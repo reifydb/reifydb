@@ -492,31 +492,7 @@ impl OperatorResidentState {
 			let Some(slot) = self.shared.slot(operator) else {
 				continue;
 			};
-			let mut inner = slot.inner.lock();
-			let Some(pending) = inner.in_flight.take() else {
-				continue;
-			};
-			let SlotInner {
-				live,
-				census,
-				..
-			} = &mut *inner;
-			for (key, entry) in pending.entries() {
-				if live.contains_key(&key) {
-					continue;
-				}
-				if let Some(row) = &entry.post {
-					census.retract_state(&key, row.bytes().len() as u64);
-				}
-			}
-			for (key, entry) in pending.join_expiries.iter() {
-				if live.join_expiries.contains_key(key) {
-					continue;
-				}
-				if entry.is_some() {
-					census.retract_join_expiry();
-				}
-			}
+			slot.inner.lock().in_flight.take();
 		}
 		global.in_flight_checkpoints.clear();
 		global.in_flight_drops.clear();
@@ -632,26 +608,11 @@ pub(crate) fn record_state(
 	post: Option<EncodedPodRow>,
 	durable_pre: DurablePre,
 ) {
-	let previous = inner.merged_value_bytes(&key);
-	let incoming = post.as_ref().map(|row| row.bytes().len() as u64);
-	if let Some(bytes) = previous {
-		inner.census.retract_state(&key, bytes);
-	}
-	if let Some(bytes) = incoming {
-		inner.census.admit_state(&key, bytes);
-	}
 	inner.live.record_state(key, post, durable_pre);
 }
 
 pub(crate) fn record_join_expiry(inner: &mut SlotInner, key: SlotJoinKey, expiry: Option<u64>, durable: bool) {
-	let before = inner.merged_join_expiry(&key);
 	inner.live.record_join_expiry(key, expiry, durable);
-	let after = inner.merged_join_expiry(&key);
-	match (before, after) {
-		(false, true) => inner.census.admit_join_expiry(),
-		(true, false) => inner.census.retract_join_expiry(),
-		_ => {}
-	}
 }
 
 fn apply_write(inner: &mut SlotInner, write: &OperatorWrite) {
@@ -697,21 +658,17 @@ fn apply_write(inner: &mut SlotInner, write: &OperatorWrite) {
 }
 
 fn clear_drop(inner: &mut SlotInner, marker: DropMarker) {
-	let SlotInner {
-		live,
-		census,
-		..
-	} = inner;
+	let live = &mut inner.live;
 	match marker {
 		DropMarker::OperatorState(_) => {
-			live.clear_state(census);
-			live.retain_join_expiries(|_| false, census);
+			live.clear_state();
+			live.retain_join_expiries(|_| false);
 		}
 		DropMarker::JoinExpiriesOperator(_) => {
-			live.retain_join_expiries(|_| false, census);
+			live.retain_join_expiries(|_| false);
 		}
 		DropMarker::JoinExpiriesGroup(_, group) => {
-			live.retain_join_expiries(|(candidate, _, _)| *candidate != group, census);
+			live.retain_join_expiries(|(candidate, _, _)| *candidate != group);
 		}
 	}
 }

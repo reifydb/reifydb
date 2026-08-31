@@ -3,7 +3,7 @@
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::key::operator::{
-	keyspace::root::CustomNotCachedKey,
+	keyspace::root::CustomNotCachedSuffix,
 	state::{GroupId, GroupStateKey, custom_not_cached_key, custom_not_cached_key_in},
 };
 
@@ -28,7 +28,7 @@ pub fn custom_state_key_in(group: GroupId, id: &[u8]) -> Result<GroupStateKey> {
 fn too_wide(id: &[u8]) -> SdkError {
 	SdkError::InvalidInput(format!(
 		"a custom operator state key is at most {} bytes, got {}",
-		CustomNotCachedKey::ID_LEN,
+		CustomNotCachedSuffix::ID_LEN,
 		id.len()
 	))
 }

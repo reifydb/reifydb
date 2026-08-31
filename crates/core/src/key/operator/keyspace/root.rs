@@ -78,10 +78,16 @@ pub struct GuestRowMappingKey {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
 pub struct CustomNotCachedKey {
+	pub group: Desc<GroupId>,
 	pub id: Asc<[u8; 16]>,
 }
 
-impl CustomNotCachedKey {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+pub struct CustomNotCachedSuffix {
+	pub id: Asc<[u8; 16]>,
+}
+
+impl CustomNotCachedSuffix {
 	pub const ID_LEN: usize = 16;
 
 	pub fn of(id: &[u8]) -> Option<Self> {
@@ -227,13 +233,21 @@ impl Keyspace for CustomNotCached {
 	const CACHE: CacheTiers = CacheTiers::Neither;
 
 	type Key = CustomNotCachedKey;
-	type Suffix = CustomNotCachedKey;
+	type Suffix = CustomNotCachedSuffix;
 
 	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
-		(GroupId::ROOT, *key)
+		(
+			key.group.0,
+			CustomNotCachedSuffix {
+				id: key.id,
+			},
+		)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
-		suffix
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+		CustomNotCachedKey {
+			group: Desc(group),
+			id: suffix.id,
+		}
 	}
 }

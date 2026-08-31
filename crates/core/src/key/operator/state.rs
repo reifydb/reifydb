@@ -15,7 +15,7 @@ use super::super::{EncodableKey, KeyKind};
 use crate::{
 	interface::{catalog::flow::OperatorId, store::CacheTiers},
 	key::operator::keyspace::{
-		root::{CustomNotCachedKey, NodeCounter, NodeCounterKey, NodeCounterKind},
+		root::{CustomNotCachedSuffix, NodeCounter, NodeCounterKey, NodeCounterKind},
 		suffix_width_of,
 	},
 	metrics::heap::HeapSize,
@@ -567,7 +567,7 @@ pub fn keyspace_inner_range_split(
 }
 
 pub fn custom_not_cached_key_in(group: GroupId, id: &[u8]) -> Option<GroupStateKey> {
-	CustomNotCachedKey::of(id).map(|key| {
+	CustomNotCachedSuffix::of(id).map(|key| {
 		OperatorStateKey::inner_encoded(group, KeyspaceId::CUSTOM_NOT_CACHED, key.to_suffix_bytes())
 	})
 }

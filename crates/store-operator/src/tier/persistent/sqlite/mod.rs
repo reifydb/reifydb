@@ -8,6 +8,7 @@ mod join_expiry;
 pub mod metrics;
 pub mod schema;
 pub mod sql;
+mod route;
 mod state;
 pub mod typed;
 

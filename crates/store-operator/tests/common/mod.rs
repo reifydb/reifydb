@@ -35,7 +35,7 @@ const DEFAULT_OPERATOR: u64 = 1;
 
 const DEFAULT_GROUP: u128 = 1;
 
-const DEFAULT_KEYSPACE: u8 = KeyspaceId::WINDOW_META.0;
+const DEFAULT_KEYSPACE: u8 = KeyspaceId::GUEST_ACCUMULATOR.0;
 
 const DEFAULT_SIDE: u8 = 0;
 

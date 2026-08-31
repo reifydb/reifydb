@@ -1,17 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::BTreeMap;
+
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::{
+	interface::catalog::flow::OperatorId,
+	key::operator::{
+		keyspace::{KEYSPACES, columns_width},
+		state::{KeyspaceId, OperatorStateKey},
+	},
+};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
-	tier::resident::{
-		OperatorResidentState,
-		slot::{SlotCensus, SlotInner},
-	},
+	tier::resident::{OperatorResidentState, slot::SlotInner},
 	types::{JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES, OperatorStateCensus, StoredJoinRowExpiryCensus},
 };
+
+fn key_bytes(key: &EncodedKey) -> (KeyspaceId, u64) {
+	let (_, keyspace, _) = OperatorStateKey::decode_inner(key.as_slice())
+		.expect("an operator state key must name a group and a keyspace");
+	let spec = KEYSPACES
+		.iter()
+		.find(|spec| spec.id == keyspace)
+		.expect("an operator state key must name a keyspace in the catalogue");
+	(keyspace, columns_width(spec.columns) as u64)
+}
 
 fn scan_state(inner: &SlotInner, mut visit: impl FnMut(&EncodedKey, &EncodedPodRow)) {
 	for (key, entry) in inner.live.entries() {
@@ -53,13 +68,6 @@ fn scan_join_expiries(inner: &SlotInner) -> u64 {
 	keys
 }
 
-fn scanned_census(inner: &SlotInner) -> SlotCensus {
-	let mut census = SlotCensus::default();
-	scan_state(inner, |key, row| census.admit_state(key, row.bytes().len() as u64));
-	census.join_expiries = scan_join_expiries(inner);
-	census
-}
-
 fn join_expiry_bytes(join_expiries: u64) -> ByteSize {
 	(JOIN_EXPIRY_KEY_BYTES + JOIN_EXPIRY_VALUE_BYTES) * join_expiries
 }
@@ -72,7 +80,8 @@ impl OperatorResidentState {
 		let inner = slot.inner.lock();
 		let mut total = ByteSize::ZERO;
 		scan_state(&inner, |key, row| {
-			total = total.saturating_add(ByteSize::from_bytes(key.len() as u64 + row.bytes().len() as u64));
+			let (_, key_bytes) = key_bytes(key);
+			total = total.saturating_add(ByteSize::from_bytes(key_bytes + row.bytes().len() as u64));
 		});
 		total.saturating_add(join_expiry_bytes(scan_join_expiries(&inner)))
 	}
@@ -91,41 +100,28 @@ impl OperatorResidentState {
 			let Some(slot) = self.shared().slot(operator) else {
 				continue;
 			};
-			entries.extend(slot.inner.lock().census.entries(operator));
+			let mut buckets: BTreeMap<KeyspaceId, OperatorStateCensus> = BTreeMap::new();
+			scan_state(&slot.inner.lock(), |key, row| {
+				let (keyspace, key_bytes) = key_bytes(key);
+				let bucket = buckets.entry(keyspace).or_insert(OperatorStateCensus {
+					operator,
+					keyspace,
+					keys: 0,
+					key_bytes: ByteSize::ZERO,
+					value_bytes: ByteSize::ZERO,
+				});
+				bucket.keys += 1;
+				bucket.key_bytes = bucket.key_bytes.saturating_add(ByteSize::from_bytes(key_bytes));
+				bucket.value_bytes = bucket
+					.value_bytes
+					.saturating_add(ByteSize::from_bytes(row.bytes().len() as u64));
+			});
+			entries.extend(buckets.into_values());
 		}
 		entries
 	}
 
 	pub fn join_expiry_census(&self) -> Vec<StoredJoinRowExpiryCensus> {
-		let mut entries = Vec::new();
-		for operator in self.shared().operators() {
-			let Some(slot) = self.shared().slot(operator) else {
-				continue;
-			};
-			let keys = slot.inner.lock().census.join_expiries;
-			if keys == 0 {
-				continue;
-			}
-			entries.push(StoredJoinRowExpiryCensus {
-				operator,
-				keys,
-			});
-		}
-		entries
-	}
-
-	pub fn census_by_scan(&self) -> Vec<OperatorStateCensus> {
-		let mut entries = Vec::new();
-		for operator in self.shared().operators() {
-			let Some(slot) = self.shared().slot(operator) else {
-				continue;
-			};
-			entries.extend(scanned_census(&slot.inner.lock()).entries(operator));
-		}
-		entries
-	}
-
-	pub fn join_expiry_census_by_scan(&self) -> Vec<StoredJoinRowExpiryCensus> {
 		let mut entries = Vec::new();
 		for operator in self.shared().operators() {
 			let Some(slot) = self.shared().slot(operator) else {

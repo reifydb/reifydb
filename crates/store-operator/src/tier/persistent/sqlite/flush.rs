@@ -14,22 +14,20 @@ use reifydb_sqlite::batch::values_placeholders;
 use reifydb_value::byte_size::ByteSize;
 use reifydb_value::reifydb_assertions;
 #[cfg(reifydb_assertions)]
-use rusqlite::OptionalExtension;
 use rusqlite::{ToSql, Transaction, TransactionBehavior, params, params_from_iter};
 use tracing::instrument;
 
 #[cfg(reifydb_assertions)]
-use crate::{tier::persistent::sqlite::sql::STATE_VALUE_LEN_SQL, types::DurablePre};
+use crate::types::DurablePre;
 use crate::{
 	tier::{
 		persistent::sqlite::{
 			SqliteOperatorStorage,
-			census::{flush_delta, zero_operator_buckets},
 			join_expiry::encode_group,
+			route,
 			sql::{
 				CHECKPOINT_REMOVE_SQL, CHECKPOINT_SET_SQL, JOIN_EXPIRIES_DROP_GROUP_SQL,
 				JOIN_EXPIRIES_DROP_OPERATOR_SQL, JOIN_EXPIRY_REMOVE_SQL, JOIN_EXPIRY_SET_SQL,
-				STATE_DROP_SQL, STATE_REMOVE_SQL, STATE_SET_SQL,
 			},
 		},
 		resident::batch::{DropMarker, FlushBatch},
@@ -37,21 +35,6 @@ use crate::{
 };
 
 const FLUSH_CHUNK: usize = 100;
-
-static STATE_SET_CHUNK_SQL: LazyLock<String> = LazyLock::new(|| {
-	format!(
-		r#"INSERT INTO "operator_state" ("operator", "key", "bytes") VALUES {}
-		   ON CONFLICT ("operator", "key") DO UPDATE SET "bytes" = excluded."bytes""#,
-		values_placeholders(FLUSH_CHUNK, 3)
-	)
-});
-
-static STATE_REMOVE_CHUNK_SQL: LazyLock<String> = LazyLock::new(|| {
-	format!(
-		r#"DELETE FROM "operator_state" WHERE ("operator", "key") IN (VALUES {})"#,
-		values_placeholders(FLUSH_CHUNK, 2)
-	)
-});
 
 static JOIN_EXPIRY_SET_CHUNK_SQL: LazyLock<String> = LazyLock::new(|| {
 	format!(
@@ -114,17 +97,12 @@ impl SqliteOperatorStorage {
 		for marker in &batch.drops {
 			match marker {
 				DropMarker::OperatorState(operator) => {
-					transaction
-						.prepare_cached(STATE_DROP_SQL)
-						.expect("operator state drop could not be prepared")
-						.execute(params![operator.0 as i64])
-						.expect("operator state drop failed");
+					route::drop_operator(&transaction, *operator);
 					transaction
 						.prepare_cached(JOIN_EXPIRIES_DROP_OPERATOR_SQL)
 						.expect("join expiry operator delete could not be prepared")
 						.execute(params![operator.0 as i64])
 						.expect("join expiry operator delete failed");
-					zero_operator_buckets(&transaction, *operator);
 				}
 				DropMarker::JoinExpiriesOperator(operator) => {
 					transaction
@@ -143,22 +121,7 @@ impl SqliteOperatorStorage {
 			}
 		}
 
-		let mut state_sets: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
-		let mut state_removes: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
-		for ((operator, key), entry) in batch.state.iter_encoded() {
-			match &entry.post {
-				Some(row) => state_sets.push(vec![
-					Box::new(operator.0 as i64),
-					Box::new(key.as_slice().to_vec()),
-					Box::new(row.bytes()[..].to_vec()),
-				]),
-				None => state_removes
-					.push(vec![Box::new(operator.0 as i64), Box::new(key.as_slice().to_vec())]),
-			}
-		}
-		execute_chunked(&transaction, &STATE_SET_CHUNK_SQL, STATE_SET_SQL, &state_sets);
-		execute_chunked(&transaction, &STATE_REMOVE_CHUNK_SQL, STATE_REMOVE_SQL, &state_removes);
-		flush_delta(batch).apply(&transaction);
+		batch.state.write_into(&transaction);
 
 		let mut join_expiry_sets: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
 		let mut join_expiry_removes: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
@@ -208,13 +171,7 @@ impl SqliteOperatorStorage {
 
 #[cfg(reifydb_assertions)]
 fn durable_value_len(transaction: &Transaction, operator: OperatorId, key: &EncodedKey) -> Option<ByteSize> {
-	transaction
-		.prepare_cached(STATE_VALUE_LEN_SQL)
-		.expect("operator state pre-image probe could not be prepared")
-		.query_row(params![operator.0 as i64, key.as_slice()], |row| row.get::<_, i64>(0))
-		.optional()
-		.expect("operator state pre-image probe failed")
-		.map(|len| ByteSize::from_bytes(len as u64))
+	route::get(transaction, operator, key).map(|bytes| ByteSize::from_bytes(bytes.len() as u64))
 }
 
 #[cfg(reifydb_assertions)]

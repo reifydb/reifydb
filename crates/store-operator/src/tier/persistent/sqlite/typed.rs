@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::ops::Bound;
+
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
@@ -8,6 +10,7 @@ use reifydb_core::{
 		typed::{
 			direction::Direction,
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue},
+			range::KeyRange,
 		},
 	},
 };
@@ -26,7 +29,7 @@ pub fn create_table(spec: &KeyspaceSpec) -> String {
 	}
 	sql.push_str("\t\"bytes\" BLOB NOT NULL,\n\tPRIMARY KEY (\"operator\"");
 	for column in spec.columns {
-		sql.push_str(&format!(", \"{}\" {}", column.name, direction_of(column)));
+		sql.push_str(&format!(", \"{}\"", column.name));
 	}
 	sql.push_str(")\n) WITHOUT ROWID;");
 	sql
@@ -39,31 +42,41 @@ fn sql_type(ty: KeyColumnType) -> &'static str {
 	}
 }
 
-fn direction_of(column: &KeyColumn) -> &'static str {
-	match column.direction {
-		Direction::Asc => "ASC",
-		Direction::Desc => "DESC",
+fn flip(direction: Direction, byte: u8) -> u8 {
+	match direction {
+		Direction::Asc => byte,
+		Direction::Desc => !byte,
 	}
 }
 
-pub fn to_sql(value: KeyValue) -> Value {
+fn flipped(direction: Direction, bytes: &[u8]) -> Vec<u8> {
+	bytes.iter().map(|byte| flip(direction, *byte)).collect()
+}
+
+pub fn to_sql(value: KeyValue, direction: Direction) -> Value {
 	match value {
-		KeyValue::U8(v) => Value::Integer(i64::from(v)),
-		KeyValue::U64(v) => Value::Blob(v.to_be_bytes().to_vec()),
-		KeyValue::Blob16(v) => Value::Blob(v.to_vec()),
+		KeyValue::U8(v) => Value::Integer(i64::from(flip(direction, v))),
+		KeyValue::U64(v) => Value::Blob(flipped(direction, &v.to_be_bytes())),
+		KeyValue::Blob16(v) => Value::Blob(flipped(direction, &v)),
 	}
 }
 
 pub fn from_sql(row: &Row<'_>, at: usize, column: &KeyColumn) -> Option<KeyValue> {
 	match column.ty {
-		KeyColumnType::U8 => row.get::<_, i64>(at).ok().and_then(|v| u8::try_from(v).ok()).map(KeyValue::U8),
+		KeyColumnType::U8 => row
+			.get::<_, i64>(at)
+			.ok()
+			.and_then(|v| u8::try_from(v).ok())
+			.map(|v| KeyValue::U8(flip(column.direction, v))),
 		KeyColumnType::U64 => {
 			let blob: Vec<u8> = row.get(at).ok()?;
-			<[u8; 8]>::try_from(blob.as_slice()).ok().map(|bytes| KeyValue::U64(u64::from_be_bytes(bytes)))
+			<[u8; 8]>::try_from(flipped(column.direction, &blob).as_slice())
+				.ok()
+				.map(|bytes| KeyValue::U64(u64::from_be_bytes(bytes)))
 		}
 		KeyColumnType::Blob16 => {
 			let blob: Vec<u8> = row.get(at).ok()?;
-			<[u8; 16]>::try_from(blob.as_slice()).ok().map(KeyValue::Blob16)
+			<[u8; 16]>::try_from(flipped(column.direction, &blob).as_slice()).ok().map(KeyValue::Blob16)
 		}
 	}
 }
@@ -82,6 +95,14 @@ pub trait SqlKey: Keyspace {
 	fn placeholders(from: usize) -> String;
 
 	fn key_predicate(from: usize) -> String;
+
+	fn key_columns() -> String;
+
+	fn key_values(from: usize) -> String;
+
+	fn conflict_target() -> String;
+
+	fn ordering(order: &str) -> String;
 }
 
 impl<K: Keyspace> SqlKey for K {
@@ -90,7 +111,11 @@ impl<K: Keyspace> SqlKey for K {
 	}
 
 	fn bind_key(key: &Self::Key) -> Vec<Value> {
-		key.key_values().into_iter().map(to_sql).collect()
+		key.key_values()
+			.into_iter()
+			.zip(Self::columns())
+			.map(|(value, column)| to_sql(value, column.direction))
+			.collect()
 	}
 
 	fn read_key(row: &Row<'_>, at: usize) -> Option<Self::Key> {
@@ -117,21 +142,56 @@ impl<K: Keyspace> SqlKey for K {
 		Self::columns()
 			.iter()
 			.enumerate()
-			.map(|(at, column)| format!("\"{}\" = ?{}", column.name, from + at))
+			.map(|(at, column)| format!(" AND \"{}\" = ?{}", column.name, from + at))
 			.collect::<Vec<_>>()
-			.join(" AND ")
+			.join("")
+	}
+
+	fn key_columns() -> String {
+		match Self::columns().is_empty() {
+			true => String::new(),
+			false => format!("{}, ", Self::column_list()),
+		}
+	}
+
+	fn key_values(from: usize) -> String {
+		match Self::columns().is_empty() {
+			true => String::new(),
+			false => format!("{}, ", Self::placeholders(from)),
+		}
+	}
+
+	fn conflict_target() -> String {
+		match Self::columns().is_empty() {
+			true => String::new(),
+			false => format!(", {}", Self::column_list()),
+		}
+	}
+
+	fn ordering(order: &str) -> String {
+		match Self::columns().is_empty() {
+			true => String::new(),
+			false => format!(
+				" ORDER BY {}",
+				Self::columns()
+					.iter()
+					.map(|column| format!("\"{}\" {}", column.name, order))
+					.collect::<Vec<_>>()
+					.join(", ")
+			),
+		}
 	}
 }
 
 pub fn set<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::Key, bytes: &[u8]) {
 	let sql = format!(
-		"INSERT INTO \"{}\" (\"operator\", {}, \"bytes\") VALUES (?1, {}, ?{})\n\
-		 ON CONFLICT (\"operator\", {}) DO UPDATE SET \"bytes\" = excluded.\"bytes\"",
+		"INSERT INTO \"{}\" (\"operator\", {}\"bytes\") VALUES (?1, {}?{})\n\
+		 ON CONFLICT (\"operator\"{}) DO UPDATE SET \"bytes\" = excluded.\"bytes\"",
 		K::table(),
-		K::column_list(),
-		K::placeholders(2),
+		K::key_columns(),
+		K::key_values(2),
 		K::columns().len() + 2,
-		K::column_list()
+		K::conflict_target()
 	);
 	let mut params = vec![Value::Integer(operator.0 as i64)];
 	params.extend(K::bind_key(key));
@@ -144,20 +204,20 @@ pub const WRITE_CHUNK: usize = 100;
 fn set_sql<K: Keyspace>(rows: usize) -> String {
 	let cols = K::columns().len() + 2;
 	format!(
-		"INSERT INTO \"{}\" (\"operator\", {}, \"bytes\") VALUES {}\n\
-		 ON CONFLICT (\"operator\", {}) DO UPDATE SET \"bytes\" = excluded.\"bytes\"",
+		"INSERT INTO \"{}\" (\"operator\", {}\"bytes\") VALUES {}\n\
+		 ON CONFLICT (\"operator\"{}) DO UPDATE SET \"bytes\" = excluded.\"bytes\"",
 		K::table(),
-		K::column_list(),
+		K::key_columns(),
 		values_placeholders(rows, cols),
-		K::column_list()
+		K::conflict_target()
 	)
 }
 
 fn remove_sql<K: Keyspace>(rows: usize) -> String {
 	format!(
-		"DELETE FROM \"{}\" WHERE (\"operator\", {}) IN (VALUES {})",
+		"DELETE FROM \"{}\" WHERE (\"operator\"{}) IN (VALUES {})",
 		K::table(),
-		K::column_list(),
+		K::conflict_target(),
 		values_placeholders(rows, K::columns().len() + 1)
 	)
 }
@@ -239,15 +299,14 @@ pub fn drop_operator_in<K: Keyspace>(txn: &Transaction, operator: OperatorId) {
 }
 
 pub fn get<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::Key) -> Option<Vec<u8>> {
-	let sql =
-		format!("SELECT \"bytes\" FROM \"{}\" WHERE \"operator\" = ?1 AND {}", K::table(), K::key_predicate(2));
+	let sql = format!("SELECT \"bytes\" FROM \"{}\" WHERE \"operator\" = ?1{}", K::table(), K::key_predicate(2));
 	let mut params = vec![Value::Integer(operator.0 as i64)];
 	params.extend(K::bind_key(key));
 	conn.query_row(&sql, params_from_iter(params), |row| row.get::<_, Vec<u8>>(0)).ok()
 }
 
 pub fn remove<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::Key) {
-	let sql = format!("DELETE FROM \"{}\" WHERE \"operator\" = ?1 AND {}", K::table(), K::key_predicate(2));
+	let sql = format!("DELETE FROM \"{}\" WHERE \"operator\" = ?1{}", K::table(), K::key_predicate(2));
 	let mut params = vec![Value::Integer(operator.0 as i64)];
 	params.extend(K::bind_key(key));
 	conn.execute(&sql, params_from_iter(params)).expect("operator state row could not be removed");
@@ -260,14 +319,10 @@ pub fn drop_operator<K: Keyspace>(conn: &Connection, operator: OperatorId) {
 
 pub fn scan<K: Keyspace>(conn: &Connection, operator: OperatorId) -> Vec<(K::Key, Vec<u8>)> {
 	let sql = format!(
-		"SELECT {}, \"bytes\" FROM \"{}\" WHERE \"operator\" = ?1 ORDER BY {}",
-		K::column_list(),
+		"SELECT {}\"bytes\" FROM \"{}\" WHERE \"operator\" = ?1{}",
+		K::key_columns(),
 		K::table(),
-		K::columns()
-			.iter()
-			.map(|column| format!("\"{}\" {}", column.name, direction_of(column)))
-			.collect::<Vec<_>>()
-			.join(", ")
+		K::ordering("ASC")
 	);
 	let mut stmt = conn.prepare_cached(&sql).expect("operator state scan could not be prepared");
 	let mut rows = stmt.query([operator.0 as i64]).expect("operator state scan failed");
@@ -278,6 +333,88 @@ pub fn scan<K: Keyspace>(conn: &Connection, operator: OperatorId) -> Vec<(K::Key
 		out.push((key, bytes));
 	}
 	out
+}
+
+fn bound_clause<K: Keyspace>(bound: Bound<&K::Key>, op_included: &str, op_excluded: &str, from: usize) -> String {
+	if K::columns().is_empty() {
+		return String::new();
+	}
+	match bound {
+		Bound::Unbounded => String::new(),
+		Bound::Included(_) => format!(" AND ({}) {} ({})", K::column_list(), op_included, K::placeholders(from)),
+		Bound::Excluded(_) => format!(" AND ({}) {} ({})", K::column_list(), op_excluded, K::placeholders(from)),
+	}
+}
+
+fn bound_key<K: Keyspace>(bound: Bound<&K::Key>) -> Option<&K::Key> {
+	match bound {
+		Bound::Unbounded => None,
+		Bound::Included(key) | Bound::Excluded(key) => Some(key),
+	}
+}
+
+fn bounded<K: Keyspace>(
+	conn: &Connection,
+	operator: OperatorId,
+	range: &KeyRange<K::Key>,
+	limit: u64,
+	order: &str,
+) -> Vec<(K::Key, Vec<u8>)> {
+	let width = K::columns().len();
+	let mut at = 2;
+	let start = bound_clause::<K>(range.start.as_ref(), ">=", ">", at);
+	if bound_key::<K>(range.start.as_ref()).is_some() {
+		at += width;
+	}
+	let end = bound_clause::<K>(range.end.as_ref(), "<=", "<", at);
+	if bound_key::<K>(range.end.as_ref()).is_some() {
+		at += width;
+	}
+	let sql = format!(
+		"SELECT {}\"bytes\" FROM \"{}\" WHERE \"operator\" = ?1{}{}{} LIMIT ?{}",
+		K::key_columns(),
+		K::table(),
+		start,
+		end,
+		K::ordering(order),
+		at
+	);
+	let mut params = vec![Value::Integer(operator.0 as i64)];
+	if !K::columns().is_empty() {
+		for bound in [range.start.as_ref(), range.end.as_ref()] {
+			if let Some(key) = bound_key::<K>(bound) {
+				params.extend(K::bind_key(key));
+			}
+		}
+	}
+	params.push(Value::Integer(limit as i64));
+	let mut stmt = conn.prepare_cached(&sql).expect("operator state range could not be prepared");
+	let mut rows = stmt.query(params_from_iter(params)).expect("operator state range failed");
+	let mut out = Vec::new();
+	while let Some(row) = rows.next().expect("operator state range row failed") {
+		let key = K::read_key(row, 0).expect("an operator state row does not decode as its own key layout");
+		let bytes: Vec<u8> = row.get(width).expect("operator state row has no payload");
+		out.push((key, bytes));
+	}
+	out
+}
+
+pub fn range<K: Keyspace>(
+	conn: &Connection,
+	operator: OperatorId,
+	range: &KeyRange<K::Key>,
+	limit: u64,
+) -> Vec<(K::Key, Vec<u8>)> {
+	bounded::<K>(conn, operator, range, limit, "ASC")
+}
+
+pub fn last<K: Keyspace>(
+	conn: &Connection,
+	operator: OperatorId,
+	range: &KeyRange<K::Key>,
+	limit: u64,
+) -> Vec<(K::Key, Vec<u8>)> {
+	bounded::<K>(conn, operator, range, limit, "DESC")
 }
 
 pub fn census<K: Keyspace>(conn: &Connection) -> Vec<(OperatorId, u64, u64)> {
@@ -313,13 +450,14 @@ mod tests {
 				state::GroupId,
 				traits::Keyspace,
 			},
-			typed::direction::{Asc, Desc},
+			typed::{direction::{Asc, Desc}, range::KeyRange},
 		},
 	};
 	use reifydb_value::value::row_number::RowNumber;
 	use rusqlite::Connection;
+	use std::ops::Bound;
 
-	use super::{SqlKey, census, create_table, drop_operator, get, remove, scan, set, table_of};
+	use super::{SqlKey, census, create_table, drop_operator, get, last, range, remove, scan, set, table_of};
 	use crate::tier::persistent::sqlite::schema::ensure_schema;
 
 	fn db() -> Connection {
@@ -366,14 +504,33 @@ mod tests {
 	}
 
 	#[test]
-	fn the_primary_key_carries_every_column_in_order_with_its_own_direction() {
-		// sqlite orders the index by this clause while the in memory tiers order by Ord; a dropped DESC
-		// makes a scan return the reverse of what the tier expects and neither side reports anything
+	fn the_primary_key_carries_every_column_in_order_and_never_a_direction_keyword() {
+		// direction lives in the stored bytes now, so every column must compare ASC; a DESC left in the
+		// clause would invert an already inverted column and a bounded row value compare could not be
+		// written against this table at all
 		let ddl = create_table(&KEYSPACES.iter().find(|spec| spec.name == "JOIN_LEFT").unwrap());
-		assert!(ddl.contains(r#"PRIMARY KEY ("operator", "group" DESC, "row" ASC)"#), "{ddl}");
+		assert!(ddl.contains(r#"PRIMARY KEY ("operator", "group", "row")"#), "{ddl}");
+		assert!(!ddl.contains("DESC"), "{ddl}");
+		assert!(!ddl.contains(" ASC"), "{ddl}");
 		assert!(ddl.contains(r#""group" BLOB NOT NULL"#), "{ddl}");
 		assert!(ddl.contains(r#""row" BLOB NOT NULL"#), "{ddl}");
 		assert!(ddl.contains("WITHOUT ROWID"), "{ddl}");
+	}
+
+	#[test]
+	fn a_descending_column_is_stored_as_the_complement_of_its_ascending_bytes() {
+		// this is the whole mechanism: memcmp on the stored bytes must be the key's Ord, so a Desc column
+		// stores ~bytes and a read that forgot to complement back would hand out a different group id
+		let conn = db();
+		set::<JoinLeft>(&conn, OperatorId(1), &left(0, 0), b"x");
+		let (group, row): (Vec<u8>, Vec<u8>) = conn
+			.query_row(r#"SELECT "group", "row" FROM "operator_join_left""#, [], |r| {
+				Ok((r.get(0).unwrap(), r.get(1).unwrap()))
+			})
+			.unwrap();
+		assert_eq!(group, vec![0xFF; 16], "Desc<GroupId> of zero must store as all ones");
+		assert_eq!(row, vec![0x00; 8], "Asc<RowNumber> of zero must store unchanged");
+		assert_eq!(scan::<JoinLeft>(&conn, OperatorId(1))[0].0, left(0, 0));
 	}
 
 	#[test]
@@ -434,6 +591,123 @@ mod tests {
 		remove::<JoinLeft>(&conn, OperatorId(1), &left(1, 1));
 		assert_eq!(get::<JoinLeft>(&conn, OperatorId(1), &left(1, 1)), None);
 		assert_eq!(get::<JoinLeft>(&conn, OperatorId(1), &left(1, 2)).as_deref(), Some(b"b".as_slice()));
+	}
+
+	fn seeded() -> Connection {
+		let conn = db();
+		for group in [1u128, 2] {
+			for row in 0u64..4 {
+				set::<JoinLeft>(&conn, OperatorId(1), &left(group, row), &[group as u8, row as u8]);
+			}
+		}
+		set::<JoinLeft>(&conn, OperatorId(2), &left(1, 0), b"other");
+		conn
+	}
+
+	fn served(rows: Vec<(JoinLeftKey, Vec<u8>)>) -> Vec<(u128, u64)> {
+		rows.into_iter().map(|(key, _)| (key.group.0.0, key.row.0.0)).collect()
+	}
+
+	#[test]
+	fn a_bounded_range_serves_the_keys_between_its_bounds_in_key_order() {
+		// the tier merges this page with its in memory runs assuming both are in Ord order, and Desc<GroupId>
+		// means group 2 comes first; a range that walked the raw integer order would corrupt the merge
+		let conn = seeded();
+		let all = served(range::<JoinLeft>(
+			&conn,
+			OperatorId(1),
+			&KeyRange::new(Bound::Unbounded, Bound::Unbounded),
+			100,
+		));
+		assert_eq!(all, vec![(2, 0), (2, 1), (2, 2), (2, 3), (1, 0), (1, 1), (1, 2), (1, 3)]);
+	}
+
+	#[test]
+	fn an_included_start_serves_its_own_key_and_an_excluded_one_skips_it() {
+		// the two bounds differ by exactly one key, and getting them backwards either drops a live row or
+		// re-serves the cursor the caller already consumed, which loops a paged scan forever
+		let conn = seeded();
+		let included = served(range::<JoinLeft>(
+			&conn,
+			OperatorId(1),
+			&KeyRange::new(Bound::Included(left(2, 2)), Bound::Unbounded),
+			100,
+		));
+		assert_eq!(included, vec![(2, 2), (2, 3), (1, 0), (1, 1), (1, 2), (1, 3)]);
+		let excluded = served(range::<JoinLeft>(
+			&conn,
+			OperatorId(1),
+			&KeyRange::new(Bound::Excluded(left(2, 2)), Bound::Unbounded),
+			100,
+		));
+		assert_eq!(excluded, vec![(2, 3), (1, 0), (1, 1), (1, 2), (1, 3)]);
+	}
+
+	#[test]
+	fn an_end_bound_stops_the_range_and_excluded_drops_the_last_key() {
+		let conn = seeded();
+		let included = served(range::<JoinLeft>(
+			&conn,
+			OperatorId(1),
+			&KeyRange::new(Bound::Unbounded, Bound::Included(left(2, 2))),
+			100,
+		));
+		assert_eq!(included, vec![(2, 0), (2, 1), (2, 2)]);
+		let excluded = served(range::<JoinLeft>(
+			&conn,
+			OperatorId(1),
+			&KeyRange::new(Bound::Unbounded, Bound::Excluded(left(2, 2))),
+			100,
+		));
+		assert_eq!(excluded, vec![(2, 0), (2, 1)]);
+	}
+
+	#[test]
+	fn a_range_bounded_on_both_sides_compares_the_whole_key_not_its_leading_column() {
+		// a row value compare is the point of the direction encoding: bounds that land inside one group
+		// must still cut on the trailing column, which a per column AND chain gets wrong
+		let conn = seeded();
+		let inside = served(range::<JoinLeft>(
+			&conn,
+			OperatorId(1),
+			&KeyRange::new(Bound::Included(left(2, 2)), Bound::Excluded(left(1, 1))),
+			100,
+		));
+		assert_eq!(inside, vec![(2, 2), (2, 3), (1, 0)]);
+	}
+
+	#[test]
+	fn a_range_stops_at_its_limit_and_never_crosses_into_another_operator() {
+		// the limit is what makes a scan pageable, and operator is the leading column; a range that lost
+		// either would either read a whole table into memory or hand one flow another flow's state
+		let conn = seeded();
+		let paged =
+			served(range::<JoinLeft>(&conn, OperatorId(1), &KeyRange::new(Bound::Unbounded, Bound::Unbounded), 3));
+		assert_eq!(paged, vec![(2, 0), (2, 1), (2, 2)]);
+		let other =
+			served(range::<JoinLeft>(&conn, OperatorId(2), &KeyRange::new(Bound::Unbounded, Bound::Unbounded), 100));
+		assert_eq!(other, vec![(1, 0)]);
+	}
+
+	#[test]
+	fn last_serves_the_tail_of_the_range_in_reverse_key_order() {
+		// last_batch exists to answer the largest key without walking the table, so it must order by every
+		// column descending; a DESC applied to the trailing column alone silently returns the wrong row
+		let conn = seeded();
+		let tail = served(last::<JoinLeft>(
+			&conn,
+			OperatorId(1),
+			&KeyRange::new(Bound::Unbounded, Bound::Unbounded),
+			3,
+		));
+		assert_eq!(tail, vec![(1, 3), (1, 2), (1, 1)]);
+		let bounded = served(last::<JoinLeft>(
+			&conn,
+			OperatorId(1),
+			&KeyRange::new(Bound::Unbounded, Bound::Excluded(left(1, 1))),
+			2,
+		));
+		assert_eq!(bounded, vec![(1, 0), (2, 3)]);
 	}
 
 	#[test]

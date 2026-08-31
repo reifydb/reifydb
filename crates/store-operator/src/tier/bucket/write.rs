@@ -18,7 +18,7 @@ use rusqlite::{Connection, Transaction};
 
 use crate::{
 	tier::{
-		bucket::{AnyBucket, BucketCensus, Budget, Resume},
+		bucket::{AnyBucket, Budget, Resume},
 		persistent::sqlite::typed,
 	},
 	types::DurablePre,
@@ -226,24 +226,6 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 				)
 			})
 			.collect()
-	}
-
-	fn census(&self) -> BucketCensus {
-		let mut census = BucketCensus {
-			keyspace: K::ID,
-			keys: 0,
-			key_bytes: ByteSize::ZERO,
-			value_bytes: ByteSize::ZERO,
-		};
-		for (_, _, entry) in self.entries() {
-			let Some(row) = &entry.post else {
-				continue;
-			};
-			census.keys += 1;
-			census.key_bytes = census.key_bytes.saturating_add(Self::suffix_bytes());
-			census.value_bytes = census.value_bytes.saturating_add(ByteSize::from_bytes(row.len() as u64));
-		}
-		census
 	}
 
 	fn absorb_any(&mut self, other: &mut dyn AnyBucket) {

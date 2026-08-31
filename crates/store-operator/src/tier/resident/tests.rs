@@ -16,10 +16,11 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::{
 		operator::{
-			keyspace::join::JoinLeft,
+			keyspace::{columns_width, join::JoinLeft},
 			state::{GroupId, KeyspaceId},
+			traits::Keyspace,
 		},
-		typed::direction::Asc,
+		typed::{direction::Asc, layout::KeyLayout},
 	},
 	state::typed::typed_key,
 };
@@ -88,6 +89,10 @@ fn key(name: &str) -> EncodedKey {
 
 fn state_key(tail: &str) -> EncodedKey {
 	key_in(9, tail)
+}
+
+fn state_key_bytes() -> ByteSize {
+	ByteSize::from_bytes(columns_width(<<JoinLeft as Keyspace>::Key as KeyLayout>::COLUMNS) as u64)
 }
 
 fn row(body: &str) -> EncodedPodRow {
@@ -926,8 +931,8 @@ fn a_key_rewritten_while_its_flush_is_in_flight_is_counted_once() {
 	assert_eq!(census[0].keys, 1, "the key is one key, however many batches happen to hold a copy of it");
 	assert_eq!(
 		census[0].key_bytes,
-		ByteSize::from_bytes(k.len() as u64),
-		"the key is billed once, not once per resident batch"
+		state_key_bytes(),
+		"the key is billed once, not once per resident batch, and only for what its keyspace stores"
 	);
 	assert_eq!(
 		census[0].value_bytes,
@@ -936,7 +941,7 @@ fn a_key_rewritten_while_its_flush_is_in_flight_is_counted_once() {
 	);
 	assert_eq!(
 		buffer.total_bytes(),
-		ByteSize::from_bytes((k.len() + row("rewritten").bytes().len()) as u64),
+		state_key_bytes() + ByteSize::from_bytes(row("rewritten").bytes().len() as u64),
 		"total bytes must agree with the census it is derived from"
 	);
 	assert_eq!(buffer.bytes(OP_A), buffer.total_bytes(), "one operator holds everything here");
@@ -1315,17 +1320,8 @@ fn dropping_a_group_clears_the_durable_marks_that_would_block_a_later_collapse()
 	);
 }
 
-fn assert_census_holds(buffer: &OperatorResidentState, step: &str) {
-	assert_eq!(buffer.census(), buffer.census_by_scan(), "the state census drifted after {step}");
-	assert_eq!(
-		buffer.join_expiry_census(),
-		buffer.join_expiry_census_by_scan(),
-		"the join expiry census drifted after {step}"
-	);
-}
-
 #[test]
-fn every_mutation_path_keeps_the_census_equal_to_a_fresh_scan() {
+fn a_full_mutation_sequence_leaves_only_the_untouched_operator_in_the_census() {
 	let buffer = OperatorResidentState::new();
 	let first = state_key("k1");
 	let second = state_key("k2");
@@ -1333,44 +1329,32 @@ fn every_mutation_path_keeps_the_census_equal_to_a_fresh_scan() {
 	let neighbour = state_key("k5");
 
 	buffer.record_state_set(OP_A, first.clone(), row("v1"), DurablePre::Absent);
-	assert_census_holds(&buffer, "the first write");
 
 	buffer.record_state_set(OP_A, second.clone(), row("v2"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, flushed.clone(), row("v4"), DurablePre::Absent);
-	assert_census_holds(&buffer, "two more writes");
 
 	buffer.record_state_set(OP_A, first.clone(), row("v1-longer"), DurablePre::Absent);
-	assert_census_holds(&buffer, "an overwrite inside the live batch");
 
 	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	buffer.record_join_expiry_set(OP_A, GROUP_B, 0, RowNumber(2), DateTime::from_millis(200));
-	assert_census_holds(&buffer, "two armed join expiries");
 
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
-	assert_census_holds(&buffer, "the slice moving into flight");
 
 	buffer.record_state_set(OP_A, first.clone(), row("v1-live"), DurablePre::Absent);
-	assert_census_holds(&buffer, "an overwrite of a key only the in-flight batch holds");
 
 	buffer.record_state_remove(OP_A, second.clone(), DurablePre::Absent);
-	assert_census_holds(&buffer, "a tombstone over a key only the in-flight batch holds");
 
 	buffer.record_join_expiry_remove(OP_A, GROUP_A, 0, RowNumber(1));
-	assert_census_holds(&buffer, "a join expiry collapsed while its arm is in flight");
 
 	buffer.complete_flush();
-	assert_census_holds(&buffer, "the flush completing");
 
 	buffer.record_state_set(OP_B, neighbour.clone(), row("v5"), DurablePre::Absent);
 	buffer.record_join_expiry_set(OP_A, GROUP_B, 0, RowNumber(2), DateTime::from_millis(300));
 	buffer.record_join_expiry_set(OP_B, GROUP_A, 0, RowNumber(3), DateTime::from_millis(400));
-	assert_census_holds(&buffer, "a second operator joining");
 
 	buffer.record_drop(DropMarker::JoinExpiriesGroup(OP_A, GROUP_B));
-	assert_census_holds(&buffer, "a group join expiry drop");
 
 	buffer.record_drop(DropMarker::OperatorState(OP_A));
-	assert_census_holds(&buffer, "an operator drop");
 
 	assert_eq!(
 		buffer.census(),
@@ -1378,7 +1362,7 @@ fn every_mutation_path_keeps_the_census_equal_to_a_fresh_scan() {
 			operator: OP_B,
 			keyspace: KeyspaceId::JOIN_LEFT,
 			keys: 1,
-			key_bytes: ByteSize::from_bytes(neighbour.len() as u64),
+			key_bytes: state_key_bytes(),
 			value_bytes: ByteSize::from_bytes(row("v5").bytes().len() as u64),
 		}],
 		"only the untouched operator's key may survive the drop"
