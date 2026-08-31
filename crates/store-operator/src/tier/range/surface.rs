@@ -36,8 +36,7 @@ const GROUP_B: GroupId = GroupId(11);
 fn tier(limit: u64) -> OperatorRangeTier {
 	OperatorRangeTier::new(
 		OperatorRangeConfig {
-			shard_bytes: Some(ByteSize::from_bytes(limit)),
-			shards: 1,
+			tier_bytes: Some(ByteSize::from_bytes(limit)),
 			gap_guard: DEFAULT_GAP_GUARD,
 		}
 		.into(),
@@ -386,16 +385,14 @@ fn a_gap_over_an_excluded_keyspace_never_degrades_the_plan() {
 fn a_tier_without_a_byte_budget_is_not_constructed() {
 	assert!(OperatorRangeTier::new(
 		OperatorRangeConfig {
-			shard_bytes: None,
-			shards: 16,
+			tier_bytes: None,
 			gap_guard: DEFAULT_GAP_GUARD,
 		}
 		.into()
 	)
 	.is_none());
 	assert!(OperatorRangeTier::new(OperatorRangeConfig::testing().into()).is_some());
-	assert_eq!(OperatorRangeConfig::testing().shards, 2);
-	assert_eq!(OperatorRangeConfig::testing().shard_bytes, Some(ByteSize::from_kib(16)));
+	assert_eq!(OperatorRangeConfig::testing().tier_bytes, Some(ByteSize::from_kib(32)));
 	assert_eq!(OperatorRangeConfig::testing().gap_guard, DEFAULT_GAP_GUARD);
 }
 
@@ -465,45 +462,6 @@ fn point_counters_are_charged_to_the_keyspace_that_was_looked_up() {
 	assert_eq!(keyspace_row(&tier, KeyspaceId::JOIN_LEFT).counters.point_misses, 1);
 	assert_eq!(keyspace_row(&tier, KeyspaceId::JOIN_LEFT).counters.point_hits, 0);
 	assert_eq!(keyspace_row(&tier, KeyspaceId::EMIT).counters.hits, 0, "a point read is not a range hit");
-}
-
-#[test]
-fn keyspace_counters_are_summed_across_every_shard() {
-	let tier = OperatorRangeTier::new(
-		OperatorRangeConfig {
-			shard_bytes: Some(ByteSize::from_mib(64)),
-			shards: 4,
-			gap_guard: DEFAULT_GAP_GUARD,
-		}
-		.into(),
-	)
-	.expect("a sharded tier must be constructed");
-
-	for group in 0..64u128 {
-		one_row_partition(&tier, OP_A, GroupId(group), KeyspaceId::SOURCE_WATERMARK);
-	}
-	for group in 0..64u128 {
-		assert!(serve_ram(
-			&tier,
-			OP_A,
-			&keyspace_inner_range(GroupId(group), KeyspaceId::SOURCE_WATERMARK),
-			64
-		)
-		.is_some());
-	}
-
-	assert!(
-		tier.shard_metrics().iter().filter(|shard| shard.counters.hits > 0).count() > 1,
-		"the fixture must spread hits over more than one shard, or summation is not under test"
-	);
-
-	let reported = tier.bucket_metrics();
-	assert_eq!(reported.len(), 1, "one keyspace spread over four shards must collapse to a single row");
-	assert_eq!(reported[0].bucket, KeyspaceId::SOURCE_WATERMARK);
-	assert_eq!(reported[0].counters.hits, 64);
-	assert_eq!(reported[0].counters.materializes, 64);
-	assert_eq!(reported[0].partitions, 64);
-	assert_eq!(reported[0].entries, 64);
 }
 
 #[test]

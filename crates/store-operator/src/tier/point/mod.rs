@@ -22,15 +22,13 @@ use reifydb_value::byte_size::ByteSize;
 
 #[derive(Clone, Copy, Debug)]
 pub struct OperatorPointConfig {
-	pub shard_bytes: Option<ByteSize>,
-	pub shards: usize,
+	pub tier_bytes: Option<ByteSize>,
 }
 
 impl OperatorPointConfig {
 	pub fn testing() -> Self {
 		Self {
-			shard_bytes: Some(default::store::OPERATOR_POINT_BUFFER_SHARD_TESTING),
-			shards: default::store::OPERATOR_POINT_BUFFER_SHARDS_TESTING as usize,
+			tier_bytes: Some(default::store::OPERATOR_POINT_TIER_TESTING),
 		}
 	}
 }
@@ -38,8 +36,8 @@ impl OperatorPointConfig {
 impl From<OperatorPointConfig> for PointConfig {
 	fn from(config: OperatorPointConfig) -> Self {
 		Self {
-			shard_bytes: config.shard_bytes,
-			shards: config.shards,
+			shard_bytes: config.tier_bytes,
+			shards: 1,
 		}
 	}
 }

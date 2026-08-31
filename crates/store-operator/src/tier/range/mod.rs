@@ -35,16 +35,14 @@ fn prefix_successor(prefix: &[u8]) -> Option<Vec<u8>> {
 
 #[derive(Clone, Copy, Debug)]
 pub struct OperatorRangeConfig {
-	pub shard_bytes: Option<ByteSize>,
-	pub shards: usize,
+	pub tier_bytes: Option<ByteSize>,
 	pub gap_guard: usize,
 }
 
 impl OperatorRangeConfig {
 	pub fn testing() -> Self {
 		Self {
-			shard_bytes: Some(default::store::OPERATOR_RANGE_BUFFER_SHARD_TESTING),
-			shards: default::store::OPERATOR_RANGE_BUFFER_SHARDS_TESTING as usize,
+			tier_bytes: Some(default::store::OPERATOR_RANGE_TIER_TESTING),
 			gap_guard: DEFAULT_GAP_GUARD,
 		}
 	}
@@ -53,8 +51,8 @@ impl OperatorRangeConfig {
 impl From<OperatorRangeConfig> for RangeConfig {
 	fn from(config: OperatorRangeConfig) -> Self {
 		Self {
-			shard_bytes: config.shard_bytes,
-			shards: config.shards,
+			shard_bytes: config.tier_bytes,
+			shards: 1,
 			gap_guard: config.gap_guard,
 		}
 	}

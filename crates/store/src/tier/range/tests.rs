@@ -407,6 +407,44 @@ fn every_shard_is_reachable_and_carries_the_configured_per_shard_budget() {
 	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
 }
 
+#[test]
+fn keyspace_counters_are_summed_across_every_shard() {
+	// one keyspace spreads its partitions over every shard, so a bucket row that reads a single shard
+	// undercounts; the summation is tier behaviour and only a sharded tier can exercise it
+	let tier = RangeTier::<D>::new(RangeConfig {
+		shard_bytes: Some(ByteSize::from_mib(64)),
+		shards: 4,
+		gap_guard: DEFAULT_GAP_GUARD,
+	})
+	.expect("a sharded tier must be constructed");
+
+	for group in 0..64u128 {
+		one_row_partition(&tier, OP_A, GroupId(group), KeyspaceId::SOURCE_WATERMARK);
+	}
+	for group in 0..64u128 {
+		assert!(serve_ram(
+			&tier,
+			OP_A,
+			&keyspace_inner_range(GroupId(group), KeyspaceId::SOURCE_WATERMARK),
+			64
+		)
+		.is_some());
+	}
+
+	assert!(
+		tier.shard_metrics().iter().filter(|shard| shard.counters.hits > 0).count() > 1,
+		"the fixture must spread hits over more than one shard, or summation is not under test"
+	);
+
+	let reported = tier.bucket_metrics();
+	assert_eq!(reported.len(), 1, "one keyspace spread over four shards must collapse to a single row");
+	assert_eq!(reported[0].bucket, KeyspaceId::SOURCE_WATERMARK);
+	assert_eq!(reported[0].counters.hits, 64);
+	assert_eq!(reported[0].counters.materializes, 64);
+	assert_eq!(reported[0].partitions, 64);
+	assert_eq!(reported[0].entries, 64);
+}
+
 fn keyspace_row(tier: &RangeTier<D>, keyspace: KeyspaceId) -> RangeBucketMetrics<D> {
 	tier.bucket_metrics()
 		.into_iter()

@@ -96,14 +96,12 @@ fn store_with_range_budget(cached: bool, range_bytes: u64) -> (OperatorStore, Sq
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(config)),
-		// small shard budgets force evictions so the sampled-LRU and abort paths run, not just fills
+		// small tier budgets force evictions so the sampled-LRU and abort paths run, not just fills
 		point: cached.then(|| OperatorPointConfig {
-			shard_bytes: Some(ByteSize::from_bytes(128 * 1024)),
-			shards: 4,
+			tier_bytes: Some(ByteSize::from_bytes(128 * 1024)),
 		}),
 		range: cached.then(|| OperatorRangeConfig {
-			shard_bytes: Some(ByteSize::from_bytes(range_bytes)),
-			shards: 4,
+			tier_bytes: Some(ByteSize::from_bytes(range_bytes)),
 			gap_guard: DEFAULT_GAP_GUARD,
 		}),
 		spawner,

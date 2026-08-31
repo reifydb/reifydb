@@ -227,12 +227,10 @@ fn a_range_materialize_that_does_not_fit_its_own_budget_evicts_no_point_entry() 
 	// A shared budget would let one range scan flush the point entries that serve their keyspaces.
 	let (store, storage, _guard) = cached_store_with(
 		OperatorPointConfig {
-			shard_bytes: Some(ByteSize::from_bytes(1024)),
-			shards: 1,
+			tier_bytes: Some(ByteSize::from_bytes(1024)),
 		},
 		OperatorRangeConfig {
-			shard_bytes: Some(ByteSize::from_bytes(256)),
-			shards: 1,
+			tier_bytes: Some(ByteSize::from_bytes(256)),
 			..OperatorRangeConfig::testing()
 		},
 	);
@@ -494,12 +492,10 @@ fn a_written_row_too_big_for_the_range_budget_takes_the_whole_claim_with_it() {
 	// A claim that cannot hold the key just written to it must be retracted, never left short.
 	let (store, storage, _guard) = cached_store_with(
 		OperatorPointConfig {
-			shard_bytes: Some(ByteSize::from_mib(1)),
-			shards: 1,
+			tier_bytes: Some(ByteSize::from_mib(1)),
 		},
 		OperatorRangeConfig {
-			shard_bytes: Some(ByteSize::from_bytes(4096)),
-			shards: 1,
+			tier_bytes: Some(ByteSize::from_bytes(4096)),
 			..OperatorRangeConfig::testing()
 		},
 	);
