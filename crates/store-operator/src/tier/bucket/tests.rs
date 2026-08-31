@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::pod::EncodedPodRow;
+use std::ops::Bound;
+
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
-		operator::{keyspace::join::JoinLeft, state::GroupId},
+		operator::{
+			keyspace::join::{JoinLeft, JoinRight},
+			state::{GroupId, OperatorStateKey},
+			traits::Keyspace,
+		},
 		typed::direction::Asc,
 	},
 	state::typed::SuffixBytes,
@@ -350,4 +356,113 @@ fn an_erased_page_honours_its_limit() {
 
 	let page = map.page_bytes(OP, JoinLeft::ID, GroupId(7), Bound::Unbounded, Bound::Unbounded, Some(2));
 	assert_eq!(page.len(), 2, "an unbounded page would blow the caller's budget on a large group");
+}
+
+fn seeded_pair() -> BucketMap {
+	// two groups crossed with two keyspaces is the smallest shape that can tell group-major order
+	// apart from keyspace-major order; one group or one keyspace hides the difference entirely
+	let mut map = BucketMap::default();
+	for group in [GroupId(7), GroupId(9)] {
+		for keyspace in [JoinLeft::ID, JoinRight::ID] {
+			for n in [2u64, 1] {
+				map.record_bytes(OP, keyspace, group, &suffix(n).to_suffix_bytes(), Some(row("v")));
+			}
+		}
+	}
+	map
+}
+
+fn expected_order() -> Vec<EncodedKey> {
+	let mut keys = Vec::new();
+	for group in [GroupId(7), GroupId(9)] {
+		for keyspace in [JoinLeft::ID, JoinRight::ID] {
+			for n in [1u64, 2] {
+				keys.push(
+					OperatorStateKey::inner_encoded(
+						group,
+						keyspace,
+						suffix(n).to_suffix_bytes(),
+					)
+					.into_encoded(),
+				);
+			}
+		}
+	}
+	keys.sort();
+	keys
+}
+
+#[test]
+fn a_scan_across_two_keyspaces_orders_by_group_before_keyspace() {
+	// an inner key is [group][keyspace][suffix], so the group outranks the keyspace; iterating
+	// keyspace by keyspace yields a different sequence and silently breaks the merge downstream,
+	// which compares live against in-flight and relies on both sides agreeing exactly
+	let map = seeded_pair();
+
+	let scanned: Vec<EncodedKey> = map.encoded_entries(OP).into_iter().map(|(key, _)| key).collect();
+
+	assert_eq!(
+		scanned,
+		expected_order(),
+		"a scan that groups by keyspace first reorders every multi group operator, and the merge it \
+		 feeds then misses its equal arm and serves a stale row"
+	);
+}
+
+#[test]
+fn a_range_spanning_two_keyspaces_pages_without_skipping_a_key() {
+	// paging one key at a time must reconstruct the whole scan; a range that filters after
+	// ordering by the wrong dimension drops keys between pages rather than failing loudly
+	let map = seeded_pair();
+	let whole: Vec<EncodedKey> =
+		map.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded).into_iter().map(|(key, _)| key).collect();
+
+	assert_eq!(whole, expected_order(), "an unbounded range must agree with an unbounded scan");
+
+	let mut paged = Vec::new();
+	let mut cursor = Bound::Unbounded;
+	loop {
+		let page = map.encoded_range(OP, &cursor, &Bound::Unbounded);
+		let Some((key, _)) = page.first() else {
+			break;
+		};
+		paged.push(key.clone());
+		cursor = Bound::Excluded(key.clone());
+	}
+
+	assert_eq!(paged, expected_order(), "walking one key at a time must visit every key exactly once");
+}
+
+#[test]
+fn a_bounded_range_keeps_the_keys_between_its_bounds_and_no_others() {
+	// the bound is a whole encoded key, so a range that compares only the leading column would
+	// admit neighbours from the wrong group or keyspace
+	let map = seeded_pair();
+	let all = expected_order();
+	let lower = all[2].clone();
+	let upper = all[5].clone();
+
+	let seen: Vec<EncodedKey> = map
+		.encoded_range(OP, &Bound::Included(lower.clone()), &Bound::Excluded(upper.clone()))
+		.into_iter()
+		.map(|(key, _)| key)
+		.collect();
+
+	assert_eq!(seen, all[2..5].to_vec(), "an included start belongs to the range and an excluded end does not");
+}
+
+#[test]
+fn a_reverse_scan_is_the_exact_mirror_of_a_forward_one() {
+	// last_batch feeds merge_back, which is merge with its comparison flipped; if the forward and
+	// reverse orders are not exact mirrors the two pagers disagree about what the last key is
+	let map = seeded_pair();
+	let forward: Vec<EncodedKey> =
+		map.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded).into_iter().map(|(key, _)| key).collect();
+
+	let mut reverse = forward.clone();
+	reverse.reverse();
+	let mut expected = expected_order();
+	expected.reverse();
+
+	assert_eq!(reverse, expected, "a reverse walk must mirror the forward one key for key");
 }

@@ -16,7 +16,10 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::{
 		operator::{
-			keyspace::{columns_width, join::JoinLeft},
+			keyspace::{
+				columns_width,
+				join::{JoinLeft, JoinRight},
+			},
 			state::{GroupId, KeyspaceId},
 			traits::Keyspace,
 		},
@@ -85,6 +88,10 @@ fn key_in(group: u128, name: &str) -> EncodedKey {
 
 fn key(name: &str) -> EncodedKey {
 	key_in(7, name)
+}
+
+fn right_key_in(group: u128, name: &str) -> EncodedKey {
+	typed_key::<JoinRight>(GroupId(group), &Asc(row_number_of(name))).into_encoded()
 }
 
 fn state_key(tail: &str) -> EncodedKey {
@@ -1375,4 +1382,93 @@ fn a_full_mutation_sequence_leaves_only_the_untouched_operator_in_the_census() {
 		}],
 		"and only the untouched operator's join expiry"
 	);
+}
+
+#[test]
+fn a_live_row_shadows_its_in_flight_twin_across_keyspaces() {
+	// the merge walks the live and in-flight layers in lockstep and only collapses a pair when the
+	// two cursors compare equal; an inner key is [group][keyspace][suffix], so a layer that
+	// iterated keyspace before group would let the cursors pass each other, the equal arm would
+	// never fire, and the superseded row would be served alongside its own replacement
+	let buffer = OperatorResidentState::new();
+	let mut flight = Vec::new();
+	for group in [7u128, 9] {
+		for name in ["a", "b"] {
+			flight.push(key_in(group, name));
+			flight.push(right_key_in(group, name));
+		}
+	}
+	for key in &flight {
+		buffer.record_state_set(OP_A, key.clone(), row("flight"));
+	}
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+
+	let shadowed = [key_in(7, "a"), right_key_in(9, "b")];
+	let added = right_key_in(7, "c");
+	for key in shadowed.iter().chain([&added]) {
+		buffer.record_state_set(OP_A, key.clone(), row("live"));
+	}
+
+	let mut expected = flight.clone();
+	expected.push(added.clone());
+	expected.sort();
+
+	let seen = buffer.state_range(OP_A, Bound::Unbounded, Bound::Unbounded).items;
+	assert_eq!(
+		seen.iter().map(|(key, _)| key.to_vec()).collect::<Vec<_>>(),
+		expected.iter().map(|key| key.to_vec()).collect::<Vec<_>>(),
+		"a key must appear exactly once, in encoded order, however many keyspaces the operator spans"
+	);
+
+	for ((_, found), key) in seen.iter().zip(expected.iter()) {
+		let want = if shadowed.contains(key) || key == &added {
+			"live"
+		} else {
+			"flight"
+		};
+		assert_eq!(body(found), want, "the live layer must win for every key it shadows");
+	}
+}
+
+#[test]
+fn a_last_page_is_the_exact_reverse_tail_of_a_forward_page() {
+	// state_last_page runs merge_back, which is merge with its comparison flipped; both walk the
+	// same two layers from opposite ends, so a page taken from the back must be the tail of the
+	// forward page reversed at every limit, or the two cursors disagree about where a page ends
+	// and a reverse scan skips keys the forward one served
+	let buffer = OperatorResidentState::new();
+	let mut seeded = Vec::new();
+	for group in [7u128, 9] {
+		for name in ["a", "b"] {
+			seeded.push(key_in(group, name));
+			seeded.push(right_key_in(group, name));
+		}
+	}
+	for key in &seeded {
+		buffer.record_state_set(OP_A, key.clone(), row("flight"));
+	}
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+	buffer.record_state_set(OP_A, seeded[0].clone(), row("live"));
+	buffer.record_state_remove(OP_A, seeded[5].clone());
+
+	let mut expected = seeded.clone();
+	expected.sort();
+
+	let forward = buffer.state_page(OP_A, Bound::Unbounded, Bound::Unbounded, seeded.len()).items;
+	assert_eq!(
+		forward.iter().map(|(key, _)| key.to_vec()).collect::<Vec<_>>(),
+		expected.iter().map(|key| key.to_vec()).collect::<Vec<_>>(),
+		"the forward page must serve every key once in encoded order before the reverse can mirror it"
+	);
+
+	for limit in 1..=seeded.len() {
+		let back = buffer.state_last_page(OP_A, Bound::Unbounded, Bound::Unbounded, limit).items;
+		let mut tail = forward[forward.len() - limit..].to_vec();
+		tail.reverse();
+		assert_eq!(
+			back.iter().map(|(key, value)| (key.to_vec(), value.as_ref().map(row_body))).collect::<Vec<_>>(),
+			tail.iter().map(|(key, value)| (key.to_vec(), value.as_ref().map(row_body))).collect::<Vec<_>>(),
+			"a page taken from the back must mirror the tail of the forward page, values included"
+		);
+	}
 }
