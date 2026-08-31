@@ -12,7 +12,7 @@ use reifydb_core::{
 			state::{GroupId, OperatorStateKey},
 			traits::Keyspace,
 		},
-		typed::{layout::KeyLayout, range::KeyRange},
+		typed::{Key, layout::KeyLayout, range::KeyRange},
 	},
 	state::typed::SuffixBytes,
 };
@@ -32,14 +32,24 @@ fn encode<K: Keyspace>(key: &K::Key) -> EncodedKey {
 	OperatorStateKey::inner_encoded(group, K::ID, suffix.to_suffix_bytes()).into_encoded()
 }
 
-fn typed_key<K: Keyspace>(group: GroupId, suffix: &[u8], fill: u8) -> K::Key {
+fn typed_key<K: Keyspace>(group: GroupId, suffix: &[u8], edge: K::Suffix) -> K::Key {
+	let template = edge.to_suffix_bytes();
 	let mut bytes = suffix.to_vec();
-	bytes.resize(columns_width(<K::Suffix as KeyLayout>::COLUMNS), fill);
+	bytes.truncate(template.len());
+	bytes.extend_from_slice(&template[bytes.len()..]);
 	K::join(
 		group,
 		<K::Suffix as SuffixBytes>::from_suffix_bytes(&bytes)
 			.expect("an operator state suffix must decode as its own keyspace layout"),
 	)
+}
+
+fn lowest<K: Keyspace>() -> K::Suffix {
+	<K::Suffix as Key>::low()
+}
+
+fn highest<K: Keyspace>() -> K::Suffix {
+	<K::Suffix as KeyLayout>::high()
 }
 
 struct Get<'a> {
@@ -53,7 +63,7 @@ impl KeyspaceVisitor for Get<'_> {
 	type Output = Option<Vec<u8>>;
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
-		typed::get::<K>(self.conn, self.operator, &typed_key::<K>(self.group, self.suffix, 0x00))
+		typed::get::<K>(self.conn, self.operator, &typed_key::<K>(self.group, self.suffix, lowest::<K>()))
 	}
 }
 
@@ -87,15 +97,23 @@ impl KeyspaceVisitor for Bounded<'_> {
 	fn visit<K: Keyspace>(self) -> Self::Output {
 		let start = match (self.group, &self.start) {
 			(None, _) => Bound::Unbounded,
-			(Some(group), Bound::Unbounded) => Bound::Included(typed_key::<K>(group, &[], 0x00)),
-			(Some(group), Bound::Included(suffix)) => Bound::Included(typed_key::<K>(group, suffix, 0x00)),
-			(Some(group), Bound::Excluded(suffix)) => Bound::Excluded(typed_key::<K>(group, suffix, 0x00)),
+			(Some(group), Bound::Unbounded) => Bound::Included(typed_key::<K>(group, &[], lowest::<K>())),
+			(Some(group), Bound::Included(suffix)) => {
+				Bound::Included(typed_key::<K>(group, suffix, lowest::<K>()))
+			}
+			(Some(group), Bound::Excluded(suffix)) => {
+				Bound::Excluded(typed_key::<K>(group, suffix, lowest::<K>()))
+			}
 		};
 		let end = match (self.group, &self.end) {
 			(None, _) => Bound::Unbounded,
-			(Some(group), Bound::Unbounded) => Bound::Included(typed_key::<K>(group, &[], 0xFF)),
-			(Some(group), Bound::Included(suffix)) => Bound::Included(typed_key::<K>(group, suffix, 0x00)),
-			(Some(group), Bound::Excluded(suffix)) => Bound::Excluded(typed_key::<K>(group, suffix, 0x00)),
+			(Some(group), Bound::Unbounded) => Bound::Included(typed_key::<K>(group, &[], highest::<K>())),
+			(Some(group), Bound::Included(suffix)) => {
+				Bound::Included(typed_key::<K>(group, suffix, highest::<K>()))
+			}
+			(Some(group), Bound::Excluded(suffix)) => {
+				Bound::Excluded(typed_key::<K>(group, suffix, lowest::<K>()))
+			}
 		};
 		let range = KeyRange::new(start, end);
 		let rows = match self.reverse {

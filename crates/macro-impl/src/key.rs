@@ -279,6 +279,11 @@ fn expand(name: &str, fields: &[KeyField]) -> TokenStream {
 		low.push_str(&format!("\n\t\t\t{}: Key::low(),", field.name));
 	}
 
+	let mut high = String::new();
+	for field in fields {
+		high.push_str(&format!("\n\t\t\t{}: KeyLayout::high(),", field.name));
+	}
+
 	let mut successor = String::new();
 	for (at, field) in fields.iter().enumerate().rev() {
 		successor.push_str(&format!("\t\tif let Some({0}) = Key::successor(&self.{0}) {{\n", field.name));
@@ -310,7 +315,8 @@ fn expand(name: &str, fields: &[KeyField]) -> TokenStream {
 	out.push_str(&format!("\t\t::std::vec![{values}\n\t\t]\n\t}}\n\n"));
 	out.push_str("\tfn from_key_values(values: &[KeyValue]) -> Option<Self> {\n");
 	out.push_str(&format!("\t\tif values.len() != {} {{\n\t\t\treturn None;\n\t\t}}\n", fields.len()));
-	out.push_str(&format!("\t\tSome(Self {{{reads}\n\t\t}})\n\t}}\n}}\n\n"));
+	out.push_str(&format!("\t\tSome(Self {{{reads}\n\t\t}})\n\t}}\n\n"));
+	out.push_str(&format!("\tfn high() -> Self {{\n\t\tSelf {{{high}\n\t\t}}\n\t}}\n}}\n\n"));
 	out.push_str(&format!("#[automatically_derived]\nimpl Key for {name} {{\n"));
 	out.push_str(&format!("\tfn low() -> Self {{\n\t\tSelf {{{low}\n\t\t}}\n\t}}\n\n"));
 	out.push_str("\tfn successor(&self) -> Option<Self> {\n");

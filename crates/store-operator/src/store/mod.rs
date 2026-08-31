@@ -14,7 +14,6 @@ use std::sync::OnceLock;
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::{common::CommitVersion, lifecycle::watermark::CheckpointFloor, metrics::collect::MetricsCollector};
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_runtime::{
 	actor::{

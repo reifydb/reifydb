@@ -19,6 +19,7 @@ use reifydb_core::{
 	state::typed::SuffixBytes,
 };
 use reifydb_value::{Result, byte_size::ByteSize};
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use rusqlite::{Connection, Transaction};
 
 use crate::tier::{
@@ -61,8 +62,10 @@ pub trait AnyBucket: Any + Send + Sync {
 
 	fn as_any(&self) -> &dyn Any;
 
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	fn flush(&mut self, conn: &Connection) -> Result<()>;
 
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	fn write_into(&self, txn: &Transaction);
 
 	fn reap_group(&mut self, group: GroupId, budget: &mut Budget) -> Result<Resume>;
@@ -405,6 +408,7 @@ impl BucketMap {
 		self.buckets.retain(|(id, _), _| *id != operator);
 	}
 
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn write_into(&self, txn: &Transaction) {
 		for bucket in self.buckets.values() {
 			bucket.write_into(txn);

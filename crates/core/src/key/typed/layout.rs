@@ -14,6 +14,10 @@ pub trait KeyLayout: Key {
 	fn from_key_values(values: &[KeyValue]) -> Option<Self>
 	where
 		Self: Sized;
+
+	fn high() -> Self
+	where
+		Self: Sized;
 }
 
 impl KeyLayout for () {
@@ -26,6 +30,8 @@ impl KeyLayout for () {
 	fn from_key_values(values: &[KeyValue]) -> Option<Self> {
 		values.is_empty().then_some(())
 	}
+
+	fn high() -> Self {}
 }
 
 impl<T: KeyScalar> KeyLayout for Asc<T> {
@@ -45,6 +51,10 @@ impl<T: KeyScalar> KeyLayout for Asc<T> {
 			_ => None,
 		}
 	}
+
+	fn high() -> Self {
+		Asc(T::MAX)
+	}
 }
 
 impl<T: KeyScalar> KeyLayout for Desc<T> {
@@ -63,6 +73,10 @@ impl<T: KeyScalar> KeyLayout for Desc<T> {
 			[value] => T::from_key_value(*value).map(Desc),
 			_ => None,
 		}
+	}
+
+	fn high() -> Self {
+		Desc(T::MIN)
 	}
 }
 

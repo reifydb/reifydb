@@ -4,7 +4,10 @@
 use std::{
 	any::Any,
 	collections::HashMap,
-	sync::{Arc, atomic::{AtomicU64, Ordering}},
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
 };
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};

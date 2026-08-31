@@ -14,9 +14,16 @@ use reifydb_value::util::hash::xxh3_128;
 use super::super::{EncodableKey, KeyKind};
 use crate::{
 	interface::{catalog::flow::OperatorId, store::CacheTiers},
-	key::operator::keyspace::{
-		root::{CustomNotCachedSuffix, NodeCounter, NodeCounterKey, NodeCounterKind},
-		suffix_width_of,
+	key::{
+		operator::{
+			keyspace::{
+				KeyspaceVisitor, dispatch,
+				root::{CustomNotCachedSuffix, NodeCounter, NodeCounterKey, NodeCounterKind},
+				suffix_width_of,
+			},
+			traits::Keyspace,
+		},
+		typed::{Key, layout::KeyLayout},
 	},
 	metrics::heap::HeapSize,
 	state::typed::{SuffixBytes, typed_key},
@@ -507,6 +514,42 @@ pub fn keyspace_inner_range(group: GroupId, keyspace: KeyspaceId) -> EncodedKeyR
 	EncodedKeyRange::prefix(&keyspace_inner_prefix(group, keyspace))
 }
 
+enum SuffixEdge {
+	Low,
+	High,
+}
+
+fn suffix_at_edge(keyspace: KeyspaceId, suffix: &[u8], edge: SuffixEdge) -> Vec<u8> {
+	struct Pad<'a> {
+		suffix: &'a [u8],
+		edge: SuffixEdge,
+	}
+
+	impl KeyspaceVisitor for Pad<'_> {
+		type Output = Vec<u8>;
+
+		fn visit<K: Keyspace>(self) -> Self::Output {
+			let template = match self.edge {
+				SuffixEdge::Low => <K::Suffix as Key>::low().to_suffix_bytes(),
+				SuffixEdge::High => <K::Suffix as KeyLayout>::high().to_suffix_bytes(),
+			};
+			let mut bytes = self.suffix.to_vec();
+			bytes.truncate(template.len());
+			bytes.extend_from_slice(&template[bytes.len()..]);
+			bytes
+		}
+	}
+
+	dispatch(
+		keyspace,
+		Pad {
+			suffix,
+			edge,
+		},
+	)
+	.unwrap_or_else(|| suffix.to_vec())
+}
+
 pub fn keyspace_inner_range_in(
 	group: GroupId,
 	keyspace: KeyspaceId,
@@ -515,20 +558,20 @@ pub fn keyspace_inner_range_in(
 ) -> EncodedKeyRange {
 	let prefix = keyspace_inner_prefix(group, keyspace);
 	let whole = EncodedKeyRange::prefix(&prefix);
-	let at = |suffix: &[u8]| {
+	let at = |suffix: &[u8], edge: SuffixEdge| {
 		let mut key = prefix.clone();
-		key.extend_from_slice(suffix);
+		key.extend_from_slice(&suffix_at_edge(keyspace, suffix, edge));
 		EncodedKey::new(key)
 	};
 	let lower = match start {
 		Bound::Unbounded => whole.start.clone(),
-		Bound::Included(suffix) => Bound::Included(at(suffix)),
-		Bound::Excluded(suffix) => Bound::Excluded(at(suffix)),
+		Bound::Included(suffix) => Bound::Included(at(suffix, SuffixEdge::Low)),
+		Bound::Excluded(suffix) => Bound::Excluded(at(suffix, SuffixEdge::High)),
 	};
 	let upper = match end {
 		Bound::Unbounded => whole.end.clone(),
-		Bound::Included(suffix) => Bound::Included(at(suffix)),
-		Bound::Excluded(suffix) => Bound::Excluded(at(suffix)),
+		Bound::Included(suffix) => Bound::Included(at(suffix, SuffixEdge::High)),
+		Bound::Excluded(suffix) => Bound::Excluded(at(suffix, SuffixEdge::Low)),
 	};
 	EncodedKeyRange::new(lower, upper)
 }

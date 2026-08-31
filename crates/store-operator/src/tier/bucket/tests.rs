@@ -438,9 +438,6 @@ fn a_reverse_scan_is_the_exact_mirror_of_a_forward_one() {
 
 #[test]
 fn a_whole_operator_scan_names_no_group_and_still_sweeps_every_one() {
-	// A node wide scan is a prefix over the outer operator key, so once the outer prefix is stripped the
-	// inner bound is empty: it names no group and no keyspace. Decoded as a real bound it addresses
-	// nothing, and a multi group operator then serves back part of its state as if the rest were gone.
 	let map = seeded_pair();
 	let empty = EncodedKey::new(Vec::new());
 
@@ -455,9 +452,6 @@ fn a_whole_operator_scan_names_no_group_and_still_sweeps_every_one() {
 
 #[test]
 fn a_group_data_sweep_stops_at_its_own_group() {
-	// The upper bound of a group wide sweep is an excluded group prefix and carries no keyspace byte.
-	// Read as naming no group at all it stops nothing, and the sweep runs on into every later group;
-	// the reaper deletes whatever the sweep returns, so a neighbour loses state it never sealed.
 	let map = seeded_pair();
 	let range = group_data_inner_range(GroupId(9));
 

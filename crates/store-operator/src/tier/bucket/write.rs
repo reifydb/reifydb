@@ -23,12 +23,12 @@ use reifydb_core::{
 	util::sorted::SortedVecMap,
 };
 use reifydb_value::{Result, byte_size::ByteSize};
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use rusqlite::{Connection, Transaction};
 
-use crate::tier::{
-	bucket::{AnyBucket, Budget, Resume},
-	persistent::sqlite::typed,
-};
+use crate::tier::bucket::{AnyBucket, Budget, Resume};
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::tier::persistent::sqlite::typed;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteEntry {
@@ -164,6 +164,7 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 		TypedBucket::len(self)
 	}
 
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	fn write_into(&self, txn: &Transaction) {
 		let mut sets: Vec<(OperatorId, K::Key, Vec<u8>)> = Vec::new();
 		let mut removes: Vec<(OperatorId, K::Key)> = Vec::new();
@@ -178,6 +179,7 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 		typed::remove_chunked::<K>(txn, &removes);
 	}
 
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	fn flush(&mut self, conn: &Connection) -> Result<()> {
 		for (group, partition) in std::mem::take(&mut self.partitions) {
 			for (suffix, entry) in partition {
