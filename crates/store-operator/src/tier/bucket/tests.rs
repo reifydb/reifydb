@@ -9,7 +9,7 @@ use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::join::{JoinLeft, JoinRight},
-			state::{GroupId, OperatorStateKey},
+			state::{GroupId, OperatorStateKey, group_data_inner_range},
 			traits::Keyspace,
 		},
 		typed::direction::Asc,
@@ -255,13 +255,7 @@ fn an_erased_write_reaches_the_same_bucket_a_typed_one_does() {
 	use reifydb_core::key::operator::traits::Keyspace;
 
 	let mut map = BucketMap::default();
-	map.record_bytes(
-		OP,
-		JoinLeft::ID,
-		GroupId(7),
-		&suffix(1).to_suffix_bytes(),
-		Some(row("erased")),
-	);
+	map.record_bytes(OP, JoinLeft::ID, GroupId(7), &suffix(1).to_suffix_bytes(), Some(row("erased")));
 
 	let entry = map
 		.bucket::<JoinLeft>(OP)
@@ -317,13 +311,7 @@ fn an_erased_page_returns_its_suffixes_in_the_key_types_order() {
 
 	let mut map = BucketMap::default();
 	for n in [3u64, 1, 2] {
-		map.record_bytes(
-			OP,
-			JoinLeft::ID,
-			GroupId(7),
-			&suffix(n).to_suffix_bytes(),
-			Some(row("v")),
-		);
+		map.record_bytes(OP, JoinLeft::ID, GroupId(7), &suffix(n).to_suffix_bytes(), Some(row("v")));
 	}
 
 	let page = map.page_bytes(OP, JoinLeft::ID, GroupId(7), Bound::Unbounded, Bound::Unbounded, None);
@@ -345,13 +333,7 @@ fn an_erased_page_honours_its_limit() {
 
 	let mut map = BucketMap::default();
 	for n in 0..5u64 {
-		map.record_bytes(
-			OP,
-			JoinLeft::ID,
-			GroupId(7),
-			&suffix(n).to_suffix_bytes(),
-			Some(row("v")),
-		);
+		map.record_bytes(OP, JoinLeft::ID, GroupId(7), &suffix(n).to_suffix_bytes(), Some(row("v")));
 	}
 
 	let page = map.page_bytes(OP, JoinLeft::ID, GroupId(7), Bound::Unbounded, Bound::Unbounded, Some(2));
@@ -359,8 +341,6 @@ fn an_erased_page_honours_its_limit() {
 }
 
 fn seeded_pair() -> BucketMap {
-	// two groups crossed with two keyspaces is the smallest shape that can tell group-major order
-	// apart from keyspace-major order; one group or one keyspace hides the difference entirely
 	let mut map = BucketMap::default();
 	for group in [GroupId(7), GroupId(9)] {
 		for keyspace in [JoinLeft::ID, JoinRight::ID] {
@@ -377,14 +357,12 @@ fn expected_order() -> Vec<EncodedKey> {
 	for group in [GroupId(7), GroupId(9)] {
 		for keyspace in [JoinLeft::ID, JoinRight::ID] {
 			for n in [1u64, 2] {
-				keys.push(
-					OperatorStateKey::inner_encoded(
-						group,
-						keyspace,
-						suffix(n).to_suffix_bytes(),
-					)
-					.into_encoded(),
-				);
+				keys.push(OperatorStateKey::inner_encoded(
+					group,
+					keyspace,
+					suffix(n).to_suffix_bytes(),
+				)
+				.into_encoded());
 			}
 		}
 	}
@@ -394,9 +372,6 @@ fn expected_order() -> Vec<EncodedKey> {
 
 #[test]
 fn a_scan_across_two_keyspaces_orders_by_group_before_keyspace() {
-	// an inner key is [group][keyspace][suffix], so the group outranks the keyspace; iterating
-	// keyspace by keyspace yields a different sequence and silently breaks the merge downstream,
-	// which compares live against in-flight and relies on both sides agreeing exactly
 	let map = seeded_pair();
 
 	let scanned: Vec<EncodedKey> = map.encoded_entries(OP).into_iter().map(|(key, _)| key).collect();
@@ -411,8 +386,6 @@ fn a_scan_across_two_keyspaces_orders_by_group_before_keyspace() {
 
 #[test]
 fn a_range_spanning_two_keyspaces_pages_without_skipping_a_key() {
-	// paging one key at a time must reconstruct the whole scan; a range that filters after
-	// ordering by the wrong dimension drops keys between pages rather than failing loudly
 	let map = seeded_pair();
 	let whole: Vec<EncodedKey> =
 		map.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded).into_iter().map(|(key, _)| key).collect();
@@ -435,8 +408,6 @@ fn a_range_spanning_two_keyspaces_pages_without_skipping_a_key() {
 
 #[test]
 fn a_bounded_range_keeps_the_keys_between_its_bounds_and_no_others() {
-	// the bound is a whole encoded key, so a range that compares only the leading column would
-	// admit neighbours from the wrong group or keyspace
 	let map = seeded_pair();
 	let all = expected_order();
 	let lower = all[2].clone();
@@ -453,8 +424,6 @@ fn a_bounded_range_keeps_the_keys_between_its_bounds_and_no_others() {
 
 #[test]
 fn a_reverse_scan_is_the_exact_mirror_of_a_forward_one() {
-	// last_batch feeds merge_back, which is merge with its comparison flipped; if the forward and
-	// reverse orders are not exact mirrors the two pagers disagree about what the last key is
 	let map = seeded_pair();
 	let forward: Vec<EncodedKey> =
 		map.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded).into_iter().map(|(key, _)| key).collect();
@@ -465,4 +434,39 @@ fn a_reverse_scan_is_the_exact_mirror_of_a_forward_one() {
 	expected.reverse();
 
 	assert_eq!(reverse, expected, "a reverse walk must mirror the forward one key for key");
+}
+
+#[test]
+fn a_whole_operator_scan_names_no_group_and_still_sweeps_every_one() {
+	// A node wide scan is a prefix over the outer operator key, so once the outer prefix is stripped the
+	// inner bound is empty: it names no group and no keyspace. Decoded as a real bound it addresses
+	// nothing, and a multi group operator then serves back part of its state as if the rest were gone.
+	let map = seeded_pair();
+	let empty = EncodedKey::new(Vec::new());
+
+	let seen: Vec<EncodedKey> = map
+		.encoded_range(OP, &Bound::Included(empty.clone()), &Bound::Excluded(empty.clone()))
+		.into_iter()
+		.map(|(key, _)| key)
+		.collect();
+
+	assert_eq!(seen, expected_order(), "an empty bound must sweep every group and keyspace the operator holds");
+}
+
+#[test]
+fn a_group_data_sweep_stops_at_its_own_group() {
+	// The upper bound of a group wide sweep is an excluded group prefix and carries no keyspace byte.
+	// Read as naming no group at all it stops nothing, and the sweep runs on into every later group;
+	// the reaper deletes whatever the sweep returns, so a neighbour loses state it never sealed.
+	let map = seeded_pair();
+	let range = group_data_inner_range(GroupId(9));
+
+	let strayed: Vec<GroupId> = map
+		.encoded_range(OP, &range.start, &range.end)
+		.into_iter()
+		.map(|(key, _)| OperatorStateKey::decode_inner(key.as_slice()).expect("a stored key decodes").0)
+		.filter(|group| *group != GroupId(9))
+		.collect();
+
+	assert!(strayed.is_empty(), "a sweep of one group must never return another group's keys, got {strayed:?}");
 }

@@ -12,8 +12,29 @@ use reifydb_core::key::operator::{
 const GROUP_BYTES: usize = 16;
 
 pub(crate) fn parts(key: &EncodedKey) -> (GroupId, KeyspaceId, Vec<u8>) {
-	OperatorStateKey::decode_inner(key.as_slice())
-		.expect("an operator state key must name a group and a keyspace")
+	OperatorStateKey::decode_inner(key.as_slice()).expect("an operator state key must name a group and a keyspace")
+}
+
+fn group_at(bytes: &[u8]) -> GroupId {
+	let mut padded = bytes.to_vec();
+	padded.resize(GROUP_BYTES, 0);
+	padded.push(0);
+	parts(&EncodedKey::new(padded)).0
+}
+
+fn group_below(bytes: &[u8]) -> GroupId {
+	let mut padded = bytes.to_vec();
+	padded.resize(GROUP_BYTES, 0);
+	for index in (0..GROUP_BYTES).rev() {
+		if padded[index] == 0 {
+			padded[index] = u8::MAX;
+			continue;
+		}
+		padded[index] -= 1;
+		break;
+	}
+	padded.push(0);
+	parts(&EncodedKey::new(padded)).0
 }
 
 pub(crate) fn split_bound(bound: Bound<&EncodedKey>) -> (Bound<Vec<u8>>, Option<GroupId>, Option<KeyspaceId>) {
@@ -23,14 +44,14 @@ pub(crate) fn split_bound(bound: Bound<&EncodedKey>) -> (Bound<Vec<u8>>, Option<
 		Bound::Excluded(key) => (key, Bound::Excluded),
 	};
 	let bytes = key.as_slice();
-	assert!(bytes.len() >= GROUP_BYTES, "an operator state range bound must at least name its group");
-	if bytes.len() == GROUP_BYTES {
-		if matches!(bound, Bound::Excluded(_)) {
-			return (Bound::Unbounded, None, None);
-		}
-		let mut padded = bytes.to_vec();
-		padded.push(0);
-		let (group, _, _) = parts(&EncodedKey::new(padded));
+	if bytes.is_empty() {
+		return (Bound::Unbounded, None, None);
+	}
+	if bytes.len() <= GROUP_BYTES {
+		let group = match bound {
+			Bound::Excluded(_) => group_below(bytes),
+			_ => group_at(bytes),
+		};
 		return (Bound::Unbounded, Some(group), None);
 	}
 	let (group, keyspace, suffix) = parts(key);
