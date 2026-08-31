@@ -12,7 +12,7 @@ doctest = false
 
 [features]
 default = []
-testing = []
+testing = ["reifydb-runtime/testing"]
 
 [build-dependencies]
 reifydb-build = { workspace = true }

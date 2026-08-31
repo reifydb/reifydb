@@ -11,6 +11,8 @@ pub mod context;
 
 pub mod fatal;
 
+pub mod io;
+
 pub mod pool;
 
 pub mod shutdown;
