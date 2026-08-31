@@ -35,6 +35,10 @@ impl CdcStore {
 		self.persistent.metrics()
 	}
 
+	pub fn persistent_is_resident(&self) -> bool {
+		self.persistent.is_resident()
+	}
+
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		vec![Arc::new(self.clone())]
 	}

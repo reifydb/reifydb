@@ -42,6 +42,14 @@ impl CdcPersistentTier {
 		Self::Memory(memory::MemoryCdcPersistent::new())
 	}
 
+	pub fn is_resident(&self) -> bool {
+		match self {
+			Self::Memory(_) => true,
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(_) => false,
+		}
+	}
+
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(config: SqliteConfig) -> Self {
 		Self::Sqlite(sqlite::SqliteCdcPersistent::new(config))
