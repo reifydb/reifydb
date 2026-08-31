@@ -77,6 +77,31 @@ impl CoverageSet {
 		self.intervals.insert(merged_start, merged_end);
 	}
 
+	pub fn drop_overlapping(&mut self, start: &EncodedKey, end: &ExclusiveUpperEnd) {
+		if !end.covers(start) {
+			return;
+		}
+
+		let mut doomed = Vec::new();
+
+		if let Some((left_start, left_end)) = self.intervals.range::<EncodedKey, _>(..=start).next_back()
+			&& left_end.cmp_key(start) == Ordering::Greater
+		{
+			doomed.push(left_start.clone());
+		}
+
+		for (next_start, _) in self.intervals.range::<EncodedKey, _>((Excluded(start), Unbounded)) {
+			if end.cmp_key(next_start) != Ordering::Greater {
+				break;
+			}
+			doomed.push(next_start.clone());
+		}
+
+		for key in doomed {
+			self.intervals.remove(&key);
+		}
+	}
+
 	pub fn shrink_key(&mut self, key: &EncodedKey) {
 		self.shrink_range(key, &ExclusiveUpperEnd::Key(successor(key)));
 	}
@@ -332,6 +357,53 @@ mod tests {
 		set.extend(k("b"), ExclusiveUpperEnd::Key(successor(&k("b"))));
 		set.shrink_key(&k("b"));
 		assert_eq!(snapshot(&set), vec![]);
+	}
+
+	#[test]
+	fn drop_overlapping_never_splits_an_interval() {
+		// Retraction must not fragment: punching a hole would leave two intervals where one stood,
+		// and the eviction path calls this once per evicted partition forever.
+		let mut set = CoverageSet::new();
+		set.extend(k("a"), ExclusiveUpperEnd::of("z"));
+		set.drop_overlapping(&k("d"), &ExclusiveUpperEnd::of("m"));
+		assert_eq!(snapshot(&set), vec![]);
+	}
+
+	#[test]
+	fn drop_overlapping_removes_every_interval_the_span_touches() {
+		// Every island under the span goes, not just the first one the walk meets; a survivor
+		// would claim coverage over keys whose partition was just evicted.
+		let mut set = CoverageSet::new();
+		set.extend(k("a"), ExclusiveUpperEnd::of("c"));
+		set.extend(k("e"), ExclusiveUpperEnd::of("g"));
+		set.extend(k("h"), ExclusiveUpperEnd::of("j"));
+		set.extend(k("m"), ExclusiveUpperEnd::of("p"));
+		set.drop_overlapping(&k("b"), &ExclusiveUpperEnd::of("i"));
+		assert_eq!(snapshot(&set), vec![iv("m", "p")]);
+	}
+
+	#[test]
+	fn drop_overlapping_leaves_untouched_intervals_alone() {
+		// The interval starting left of the span must survive when it ends before the span opens,
+		// and the one starting at the exclusive end is not covered either; dropping either would
+		// discard coverage the evicted partition never held.
+		let mut set = CoverageSet::new();
+		set.extend(k("a"), ExclusiveUpperEnd::of("c"));
+		set.extend(k("m"), ExclusiveUpperEnd::of("p"));
+		set.drop_overlapping(&k("f"), &ExclusiveUpperEnd::of("m"));
+		assert_eq!(snapshot(&set), vec![iv("a", "c"), iv("m", "p")]);
+	}
+
+	#[test]
+	fn repeated_evict_and_reclaim_cycles_do_not_grow_the_interval_count() {
+		// The leak shape: 3.07M intervals against 11k partitions. Cycling a middle span must
+		// return to a bounded count, never accumulate one interval per eviction.
+		let mut set = CoverageSet::new();
+		for _ in 0..64 {
+			set.extend(k("a"), ExclusiveUpperEnd::of("z"));
+			set.drop_overlapping(&k("d"), &ExclusiveUpperEnd::of("m"));
+		}
+		assert!(set.len() <= 1, "coverage grew to {} intervals across 64 evict/reclaim cycles", set.len());
 	}
 
 	#[test]

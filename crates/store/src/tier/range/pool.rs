@@ -155,7 +155,7 @@ impl<D: RangeDomain> RangeTier<D> {
 	fn retract_partition(&self, victim: &D::Partition) {
 		let (start, end) = D::span(victim);
 		let mut coverage = self.coverage().write();
-		coverage.shrink_range(D::dimension(victim), &start, &end);
+		coverage.drop_overlapping(D::dimension(victim), &start, &end);
 		self.record_retraction();
 	}
 
@@ -683,8 +683,10 @@ mod tests {
 	}
 
 	#[test]
-	fn eviction_splits_a_claim_that_coalesced_across_two_partitions() {
-		// A coalesced claim must split on eviction, or it covers the evicted partition or loses the survivor.
+	fn eviction_drops_the_claim_that_coalesced_across_two_partitions() {
+		// A coalesced claim goes whole on eviction, never splits: splitting adds one interval per
+		// eviction and the index then grows without bound. The survivor keeps answering from ram
+		// and only forfeits its proven-absence claim until the next scan re-claims the span.
 		let cold = key(KeyspaceId::ACCUMULATOR, b"a");
 		let hot = key(KeyspaceId::BUFFER, b"b");
 		let cold_rows = vec![(cold.clone(), Entry::row(row("v")))];
@@ -697,10 +699,10 @@ mod tests {
 
 		tier.evict_to_capacity(0);
 
-		let (start, end) = part(KeyspaceId::BUFFER).span();
-		assert_eq!(claims(&tier), vec![Interval::new(start, end)], "only the survivor stays claimed");
+		assert!(claims(&tier).is_empty(), "the coalesced claim must go whole");
+		assert!(tier.intervals() <= 1, "retraction must never raise the interval count");
 		assert_eq!(probe(&tier, &cold), None, "the evicted partition falls through");
-		assert_eq!(probe(&tier, &hot), Some(Some(row("v"))), "the survivor still answers");
+		assert_eq!(probe(&tier, &hot), Some(Some(row("v"))), "the survivor still answers from ram");
 	}
 
 	#[test]

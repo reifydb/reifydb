@@ -46,6 +46,10 @@ impl<D: Hash + Eq + Copy> CoverageIndex<D> {
 		self.shrink(dimension, |set| set.shrink_range(start, end));
 	}
 
+	pub fn drop_overlapping(&mut self, dimension: D, start: &EncodedKey, end: &ExclusiveUpperEnd) {
+		self.shrink(dimension, |set| set.drop_overlapping(start, end));
+	}
+
 	pub fn head(&self, dimension: D) -> Option<&EncodedKey> {
 		self.heads.get(&dimension)
 	}
