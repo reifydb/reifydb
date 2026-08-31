@@ -45,7 +45,7 @@ use crate::{
 	tier::{
 		persistent::OperatorPersistentTier,
 		point::OperatorPointTier,
-		range::OperatorRangeTier,
+		range::tiers::RangeTiers,
 		resident::{
 			batch::{DropMarker, FlushBatch},
 			flush::actor::FlushMessage,
@@ -104,7 +104,7 @@ struct PendingGroup {
 struct OperatorSinks {
 	persistent: OperatorPersistentTier,
 	point: Option<OperatorPointTier>,
-	range: Option<OperatorRangeTier>,
+	range: Option<RangeTiers>,
 }
 
 pub struct Shared {
@@ -205,7 +205,7 @@ impl OperatorResidentState {
 		&self,
 		persistent: OperatorPersistentTier,
 		point: Option<OperatorPointTier>,
-		range: Option<OperatorRangeTier>,
+		range: Option<RangeTiers>,
 	) {
 		let _ = self.shared.sinks.set(OperatorSinks {
 			persistent,
@@ -747,7 +747,7 @@ fn merge_into_batch(batch: &mut FlushBatch, operator: OperatorId, taken: &Operat
 	batch.bytes = batch.bytes.saturating_add(taken.bytes);
 }
 
-fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&OperatorRangeTier>, batch: &FlushBatch) {
+fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&RangeTiers>, batch: &FlushBatch) {
 	for marker in &batch.drops {
 		match marker {
 			DropMarker::OperatorState(operator) => {
@@ -766,7 +766,7 @@ fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&Operator
 			match &entry.post {
 				Some(row) => {
 					if let Some(range) = range {
-						range.overwrite(operator, key.clone(), row.clone());
+						range.overwrite(operator, &key, row.clone());
 					}
 					if let Some(point) = point {
 						point.overwrite(operator, key.clone(), row.clone());

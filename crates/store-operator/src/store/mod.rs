@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 mod census;
+mod pager;
 mod checkpoint;
 mod join_expiry;
 pub mod state;
@@ -43,7 +44,10 @@ use crate::{
 	tier::{
 		persistent::OperatorPersistentTier,
 		point::{OperatorPointKeyspaceMetrics, OperatorPointShardMetrics, OperatorPointTier},
-		range::{OperatorRangeKeyspaceMetrics, OperatorRangeShardMetrics, OperatorRangeTier},
+		range::{
+			OperatorRangeShardMetrics,
+			tiers::{OperatorRangeKeyspaceMetrics, RangeTiers},
+		},
 		resident::{
 			OperatorResidentState,
 			flush::actor::{FlushMessage, flush_now, flush_pending},
@@ -69,7 +73,7 @@ pub struct StandardOperatorStoreInner {
 	pub(crate) resident: OperatorResidentState,
 	pub(crate) persistent: Option<OperatorPersistentTier>,
 	pub(crate) point: Option<OperatorPointTier>,
-	pub(crate) range: Option<OperatorRangeTier>,
+	pub(crate) range: Option<RangeTiers>,
 	pub(crate) flush: Option<ActorRef<FlushMessage>>,
 	pub(crate) filter: Option<ActorRef<FilterMessage>>,
 	#[allow(dead_code)]
@@ -98,7 +102,7 @@ impl StandardOperatorStore {
 		let range = config
 			.persistent
 			.is_some()
-			.then(|| config.range.map(Into::into).and_then(OperatorRangeTier::new))
+			.then(|| config.range.map(Into::into).and_then(RangeTiers::new))
 			.flatten();
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -188,7 +192,7 @@ impl StandardOperatorStore {
 		self.point.as_ref()
 	}
 
-	pub fn range(&self) -> Option<&OperatorRangeTier> {
+	pub fn range(&self) -> Option<&RangeTiers> {
 		self.range.as_ref()
 	}
 
@@ -201,11 +205,11 @@ impl StandardOperatorStore {
 	}
 
 	pub fn range_shard_metrics(&self) -> Vec<OperatorRangeShardMetrics> {
-		self.range.as_ref().map(OperatorRangeTier::shard_metrics).unwrap_or_default()
+		self.range.as_ref().map(RangeTiers::shard_metrics).unwrap_or_default()
 	}
 
 	pub fn range_keyspace_metrics(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
-		self.range.as_ref().map(OperatorRangeTier::bucket_metrics).unwrap_or_default()
+		self.range.as_ref().map(RangeTiers::keyspace_metrics).unwrap_or_default()
 	}
 
 	pub fn persistent_page_cache_metrics(&self) -> Option<PageCacheMetrics> {
@@ -308,7 +312,7 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn range(&self) -> Option<&OperatorRangeTier> {
+	pub fn range(&self) -> Option<&RangeTiers> {
 		match self {
 			Self::Standard(store) => store.range(),
 		}

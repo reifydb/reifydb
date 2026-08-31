@@ -5,103 +5,102 @@
 mod tests {
 	use std::ops::Bound;
 
-	use reifydb_codec::{
-		key::encoded::{EncodedKey, EncodedKeyRange},
-		row::pod::EncodedPodRow,
-	};
+	use reifydb_codec::row::pod::EncodedPodRow;
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
 		key::{
-			operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
-			typed::{ExclusiveUpperEnd, MultiKey, range::KeyRange},
+			operator::{keyspace::join::JoinLeft, state::GroupId},
+			typed::{ExclusiveUpperEnd, Key, direction::Asc, range::KeyRange},
 		},
 	};
 	use reifydb_store::{
 		coverage::{
-			cursor::{RangeCursor, ServedChunk},
+			cursor::{Cursor, ServedChunk},
 			interval::Interval,
 			plan::Segment,
 		},
-		tier::range::Materialize,
+		tier::range::{Materialize, RangeScan, RangeTier},
 	};
-	use reifydb_value::byte_size::ByteSize;
+	use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 
-	use crate::tier::range::{OperatorRangeConfig, OperatorRangeTier, PartitionId, RangeScan};
+	use crate::tier::range::{
+		OperatorRangeConfig,
+		tiers::RangeTiers,
+		typed::{TypedDomain, TypedPartition},
+	};
+
+	type Suffix = Asc<RowNumber>;
+	type Tier = RangeTier<TypedDomain<JoinLeft>>;
 
 	const OP: OperatorId = OperatorId(1);
 	const GROUP: GroupId = GroupId(10);
-	const CACHED: KeyspaceId = KeyspaceId::ACCUMULATOR;
-	const UNCACHED: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
 
-	fn tier(limit: u64, gap_guard: usize) -> OperatorRangeTier {
-		OperatorRangeTier::new(
+	fn tiers(limit: u64, gap_guard: usize) -> RangeTiers {
+		RangeTiers::new(
 			OperatorRangeConfig {
 				tier_bytes: Some(ByteSize::from_bytes(limit)),
 				gap_guard,
 			}
 			.into(),
 		)
-		.expect("a tier with a byte budget must be constructed")
+		.expect("a tier set with a byte budget must be constructed")
 	}
 
-	const CACHED_ABOVE_UNCACHED: KeyspaceId = KeyspaceId(KeyspaceId::CUSTOM_NOT_CACHED.0 + 2);
-
-	fn roomy() -> OperatorRangeTier {
-		tier(ByteSize::from_mib(1).as_bytes(), 4)
+	fn roomy() -> RangeTiers {
+		tiers(ByteSize::from_mib(1).as_bytes(), 4)
 	}
 
-	fn key(keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKey {
-		OperatorStateKey::inner_encoded(GROUP, keyspace, suffix).into_encoded()
+	fn tier(tiers: &RangeTiers) -> &Tier {
+		tiers.typed::<JoinLeft>().expect("join left must own a range tier")
+	}
+
+	fn at(row: u64) -> Suffix {
+		Asc(RowNumber(row))
+	}
+
+	fn part() -> TypedPartition {
+		TypedPartition {
+			operator: OP,
+			group: GROUP,
+		}
 	}
 
 	fn row(body: &str) -> EncodedPodRow {
 		EncodedPodRow::new(body.as_bytes())
 	}
 
-	fn partition(keyspace: KeyspaceId) -> PartitionId {
-		PartitionId {
-			operator: OP,
-			group: GROUP,
-			keyspace,
-		}
+	fn range() -> KeyRange<Suffix> {
+		KeyRange::new(Bound::Included(Suffix::low()), Bound::Unbounded)
 	}
 
-	fn whole(keyspace: KeyspaceId) -> Interval<MultiKey> {
-		let (start, end) = partition(keyspace).span();
-		Interval::new(start, end)
+	fn whole() -> Interval<Suffix> {
+		Interval::new(Suffix::low(), ExclusiveUpperEnd::Top)
 	}
 
-	/// A range from the start of `top` to the end of `bottom`; keyspaces encode inverted, so `top`
-	/// must be the numerically larger of the two to give an ascending key range.
-	fn across(top: KeyspaceId, bottom: KeyspaceId) -> EncodedKeyRange {
-		EncodedKeyRange::new(Bound::Included(key(top, b"")), keyspace_inner_range(GROUP, bottom).end)
+	fn spanning(from: Suffix, to: Suffix) -> Interval<Suffix> {
+		Interval::new(from, ExclusiveUpperEnd::Key(to))
 	}
 
-	fn claim(
-		tier: &OperatorRangeTier,
-		range: &EncodedKeyRange,
-		span: &Interval<MultiKey>,
-		rows: &[(EncodedKey, EncodedPodRow)],
-	) -> Materialize {
-		let scan = tier.plan_scan(OP, &KeyRange::from(range)).expect("the fixture range must be plannable");
-		tier.materialize(&scan, span, rows)
+	fn plan(tiers: &RangeTiers) -> RangeScan<TypedDomain<JoinLeft>> {
+		tier(tiers).plan_scan_in(part(), part(), &range()).expect("a whole-keyspace range must be plannable")
 	}
 
-	fn spanning(from: &EncodedKey, to: &EncodedKey) -> Interval<MultiKey> {
-		Interval::new(from.clone(), ExclusiveUpperEnd::Key(to.clone()))
+	fn claim(tiers: &RangeTiers, span: &Interval<Suffix>, rows: &[(Suffix, EncodedPodRow)]) -> Materialize {
+		let scan = plan(tiers);
+		tier(tiers).materialize(&scan, span, rows)
 	}
 
 	fn drain(
-		tier: &OperatorRangeTier,
-		scan: &RangeScan,
-		segment: &Interval<MultiKey>,
+		tiers: &RangeTiers,
+		scan: &RangeScan<TypedDomain<JoinLeft>>,
+		segment: &Interval<Suffix>,
 		limit: usize,
 	) -> Vec<String> {
-		let mut cursor = RangeCursor::new();
+		let mut cursor: Cursor<(), Suffix> = Cursor::new();
 		let mut out = Vec::new();
 		while !cursor.is_exhausted() {
 			let before = out.len();
-			match tier.serve(scan, segment, &mut cursor, limit) {
+			match tier(tiers).serve(scan, segment, &mut cursor, limit) {
 				ServedChunk::Served(rows) => out.extend(rows
 					.into_iter()
 					.map(|(_, row)| String::from_utf8(row.body().to_vec()).expect("utf8"))),
@@ -118,45 +117,34 @@ mod tests {
 	#[test]
 	fn a_plan_tiles_the_range_with_a_head_gap_a_tail_gap_and_no_merge_across_a_real_gap() {
 		// Claims either side of an uncovered span must stay apart, or the hole serves as proven.
-		let tier = roomy();
-		let range = keyspace_inner_range(GROUP, CACHED);
-		let at = |suffix: &[u8]| key(CACHED, suffix);
+		let tiers = roomy();
 
-		assert!(claim(
-			&tier,
-			&range,
-			&spanning(&at(b"c"), &at(b"e")),
-			&[(at(b"c"), row("c")), (at(b"d"), row("d"))]
-		) == Materialize::Materialized);
-		assert!(claim(
-			&tier,
-			&range,
-			&spanning(&at(b"f"), &at(b"h")),
-			&[(at(b"f"), row("f")), (at(b"g"), row("g"))]
-		) == Materialize::Materialized);
+		assert!(
+			claim(&tiers, &spanning(at(3), at(5)), &[(at(3), row("c")), (at(4), row("d"))])
+				== Materialize::Materialized
+		);
+		assert!(
+			claim(&tiers, &spanning(at(6), at(8)), &[(at(6), row("f")), (at(7), row("g"))])
+				== Materialize::Materialized
+		);
 
-		let scan =
-			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
-		let keyspace = whole(CACHED);
+		let scan = plan(&tiers);
 
 		assert_eq!(
 			scan.segments(),
 			[
 				Segment::Gap {
-					interval: Interval::new(
-						keyspace.start.clone(),
-						ExclusiveUpperEnd::Key(at(b"c"))
-					),
+					interval: Interval::new(Suffix::low(), ExclusiveUpperEnd::Key(at(3))),
 					exempt: false,
 				},
-				Segment::Resident(spanning(&at(b"c"), &at(b"e"))),
+				Segment::Resident(spanning(at(3), at(5))),
 				Segment::Gap {
-					interval: spanning(&at(b"e"), &at(b"f")),
+					interval: spanning(at(5), at(6)),
 					exempt: false,
 				},
-				Segment::Resident(spanning(&at(b"f"), &at(b"h"))),
+				Segment::Resident(spanning(at(6), at(8))),
 				Segment::Gap {
-					interval: Interval::new(at(b"h"), keyspace.end.clone()),
+					interval: Interval::new(at(8), ExclusiveUpperEnd::Top),
 					exempt: false,
 				},
 			],
@@ -165,29 +153,24 @@ mod tests {
 		assert_eq!(scan.gaps(), 3);
 		assert!(!scan.degraded());
 
-		assert_eq!(drain(&tier, &scan, &spanning(&at(b"c"), &at(b"e")), 64), ["c", "d"]);
-		assert_eq!(drain(&tier, &scan, &spanning(&at(b"f"), &at(b"h")), 64), ["f", "g"]);
+		assert_eq!(drain(&tiers, &scan, &spanning(at(3), at(5)), 64), ["c", "d"]);
+		assert_eq!(drain(&tiers, &scan, &spanning(at(6), at(8)), 64), ["f", "g"]);
 	}
 
 	#[test]
 	fn a_plan_with_more_non_exempt_gaps_than_the_guard_degrades_to_one_full_scan() {
 		// A plan of many small persistent reads must be abandoned, or the caller pays a trip per hole.
-		let tier = tier(ByteSize::from_mib(1).as_bytes(), 1);
-		let range = keyspace_inner_range(GROUP, CACHED);
-		let at = |suffix: &[u8]| key(CACHED, suffix);
+		let tiers = tiers(ByteSize::from_mib(1).as_bytes(), 1);
 
-		assert!(claim(&tier, &range, &spanning(&at(b"b"), &at(b"c")), &[(at(b"b"), row("b"))])
-			== Materialize::Materialized);
-		assert!(claim(&tier, &range, &spanning(&at(b"d"), &at(b"e")), &[(at(b"d"), row("d"))])
-			== Materialize::Materialized);
+		assert!(claim(&tiers, &spanning(at(2), at(3)), &[(at(2), row("b"))]) == Materialize::Materialized);
+		assert!(claim(&tiers, &spanning(at(4), at(5)), &[(at(4), row("d"))]) == Materialize::Materialized);
 
-		let scan =
-			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
-		assert!(scan.degraded(), "three non-exempt gaps against a guard of one must abandon the plan");
+		let scan = plan(&tiers);
+		assert!(scan.degraded(), "three gaps against a guard of one must abandon the plan");
 		assert_eq!(
 			scan.segments(),
 			[Segment::Gap {
-				interval: whole(CACHED),
+				interval: whole(),
 				exempt: false,
 			}],
 			"a degraded plan must be one full scan, not the fragmented plan it replaced"
@@ -195,99 +178,21 @@ mod tests {
 	}
 
 	#[test]
-	fn a_plan_whose_excess_gaps_are_all_exempt_never_degrades() {
-		// A gap that can never close must not count, or the guard trips forever on cross-keyspace reads.
-		// Groups encode inverted just like keyspaces, so a range spanning two of them crosses the one
-		// uncacheable keyspace once per group, giving two exempt gaps against a guard of one.
-		let tier = tier(ByteSize::from_mib(1).as_bytes(), 1);
-		let top = GROUP;
-		let bottom = GroupId(GROUP.0 - 1);
-		let span_of = |group: GroupId, keyspace: KeyspaceId| {
-			PartitionId {
-				operator: OP,
-				group,
-				keyspace,
-			}
-			.span()
-		};
-		let range = EncodedKeyRange::new(
-			Bound::Included(OperatorStateKey::inner_encoded(top, UNCACHED, b"").into_encoded()),
-			keyspace_inner_range(bottom, UNCACHED).end,
-		);
-
-		let upper = Interval::new(span_of(top, KeyspaceId(UNCACHED.0 - 1)).0, span_of(top, KeyspaceId(0x00)).1);
-		let lower = Interval::new(
-			span_of(bottom, KeyspaceId(0xff)).0,
-			span_of(bottom, KeyspaceId(UNCACHED.0 + 1)).1,
-		);
-		assert!(
-			claim(&tier, &range, &upper, &[]) == Materialize::Materialized,
-			"an empty proven span is still a claim"
-		);
-		assert!(
-			claim(&tier, &range, &lower, &[]) == Materialize::Materialized,
-			"an empty proven span is still a claim"
-		);
-
-		let scan = tier.plan_scan(OP, &KeyRange::from(&range)).expect("a cross-group range must be plannable");
-		assert_eq!(scan.gaps(), 0, "both remaining gaps lie in a keyspace that is never cached");
-		assert!(
-			!scan.degraded(),
-			"two exempt gaps against a guard of one must not degrade, or every cross-keyspace read \
-             collapses to a full scan forever"
-		);
-		assert_eq!(
-			scan.segments()
-				.iter()
-				.filter(|segment| matches!(
-					segment,
-					Segment::Gap {
-						exempt: true,
-						..
-					}
-				))
-				.count(),
-			2,
-			"the fixture must actually produce two exempt gaps"
-		);
-		assert_eq!(
-			scan.segments()
-				.iter()
-				.filter(|segment| matches!(
-					segment,
-					Segment::Gap {
-						exempt: false,
-						..
-					}
-				))
-				.count(),
-			0,
-			"the sliver at a group boundary holds no key a row could occupy, so planning a read over \
-             it spends one sqlite call per boundary crossed and can never return a row"
-		);
-	}
-
-	#[test]
 	fn serve_never_returns_an_empty_chunk_that_reports_more_work() {
 		// Only rows may count against the limit, or the cursor stays put and the scan loop spins.
-		let tier = roomy();
-		let range = keyspace_inner_range(GROUP, CACHED);
-		let at = |suffix: &[u8]| key(CACHED, suffix);
-		let span = spanning(&at(b"a"), &at(b"d"));
+		let tiers = roomy();
+		let span = spanning(at(1), at(4));
 
-		assert!(claim(
-			&tier,
-			&range,
-			&span,
-			&[(at(b"a"), row("a")), (at(b"b"), row("b")), (at(b"c"), row("c"))]
-		) == Materialize::Materialized);
-		tier.mark_deleted(OP, &at(b"a"));
-		tier.mark_deleted(OP, &at(b"b"));
+		assert!(
+			claim(&tiers, &span, &[(at(1), row("a")), (at(2), row("b")), (at(3), row("c"))])
+				== Materialize::Materialized
+		);
+		tier(&tiers).mark_deleted_in(part(), part(), &at(1));
+		tier(&tiers).mark_deleted_in(part(), part(), &at(2));
 
-		let scan =
-			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
-		let mut cursor = RangeCursor::new();
-		let chunk = tier.serve(&scan, &span, &mut cursor, 1);
+		let scan = plan(&tiers);
+		let mut cursor: Cursor<(), Suffix> = Cursor::new();
+		let chunk = tier(&tiers).serve(&scan, &span, &mut cursor, 1);
 		assert_eq!(
 			chunk.served().map(|rows| rows.len()),
 			Some(1),
@@ -295,11 +200,10 @@ mod tests {
 		);
 		assert!(cursor.is_exhausted(), "the segment held nothing after the row, so the chunk must be final");
 
-		tier.mark_deleted(OP, &at(b"c"));
-		let scan =
-			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
-		let mut cursor = RangeCursor::new();
-		let chunk = tier.serve(&scan, &span, &mut cursor, 1);
+		tier(&tiers).mark_deleted_in(part(), part(), &at(3));
+		let scan = plan(&tiers);
+		let mut cursor: Cursor<(), Suffix> = Cursor::new();
+		let chunk = tier(&tiers).serve(&scan, &span, &mut cursor, 1);
 		assert_eq!(
 			chunk.served(),
 			Some(Vec::new()),
@@ -312,105 +216,32 @@ mod tests {
 	}
 
 	#[test]
-	fn a_materialize_into_a_keyspace_that_is_never_cached_leaves_the_tier_exactly_as_it_found_it() {
-		// Taking these rows would admit a keyspace the tier is configured never to hold.
-		let tier = roomy();
-		let range = across(UNCACHED, KeyspaceId(UNCACHED.0 - 1));
-		let at = key(UNCACHED, b"a");
+	fn a_materialize_lands_every_row_of_the_span_it_was_given() {
+		// A gap is handed to materialize whole. Landing only the rows near the span start, or dropping the
+		// tail, leaves keys inside a claimed span reading back as proven absences while sqlite still holds
+		// them.
+		let tiers = roomy();
+		let head = at(1);
+		let tail = at(9_000_000);
+		let span = Interval::new(head, ExclusiveUpperEnd::Top);
+		let rows = [(head, row("head")), (tail, row("tail"))];
 
+		let scan = plan(&tiers);
 		assert!(
-			claim(&tier, &range, &whole(UNCACHED), &[(at.clone(), row("v"))])
-				== Materialize::NothingCacheable,
-			"a span holding no cacheable partition must report nothing to cache, never refusal, or the \
-             caller stops materializing for the rest of the scan"
+			tier(&tiers).materialize(&scan, &span, &rows) == Materialize::Materialized,
+			"a materialize over the partition's own span must be accepted"
 		);
 
-		assert_eq!(
-			tier.partitions(),
-			0,
-			"an excluded keyspace must not occupy a partition, not even an empty one"
-		);
-		assert_eq!(tier.entries(), 0);
-		assert_eq!(tier.intervals(), 0);
-		assert_eq!(tier.resident_bytes(), ByteSize::ZERO);
-		assert_eq!(tier.lookup(OP, &at), None);
-		assert_eq!(tier.metrics().materializes, 0);
-	}
-
-	#[test]
-	fn a_materialize_whose_span_crosses_a_partition_boundary_lands_rows_in_both_keyspaces() {
-		// A coalesced gap hands materialize one multi-keyspace span; refusing it whole leaves cross-keyspace
-		// reads permanently uncached.
-		let tier = roomy();
-		let top = KeyspaceId::BUFFER;
-		let bottom = KeyspaceId::ACCUMULATOR;
-		let head = key(top, b"a");
-		let tail = key(bottom, b"m");
-		let span = Interval::new(head.clone(), whole(bottom).end);
-		let rows = [(head.clone(), row("top")), (tail.clone(), row("bottom"))];
-
-		let scan = tier
-			.plan_scan(OP, &KeyRange::from(&across(top, bottom)))
-			.expect("a two-keyspace range must be plannable");
-		assert!(
-			tier.materialize(&scan, &span, &rows) == Materialize::Materialized,
-			"a materialize spanning two cached partitions must be accepted"
-		);
-
-		let body = |key: &EncodedKey| {
-			tier.lookup(OP, key)
+		let body = |key: &Suffix| {
+			tier(&tiers)
+				.lookup_in(part(), part(), key)
 				.map(|found| found.map(|row| String::from_utf8(row.body().to_vec()).expect("utf8")))
 		};
-		assert_eq!(
-			body(&head),
-			Some(Some("top".to_string())),
-			"the partition holding the span start must keep its row"
-		);
+		assert_eq!(body(&head), Some(Some("head".to_string())), "the row at the span start must be kept");
 		assert_eq!(
 			body(&tail),
-			Some(Some("bottom".to_string())),
-			"the partition past the boundary must be materialized too, not discarded with the rest of the span"
-		);
-	}
-
-	#[test]
-	fn a_plan_merges_contiguous_gaps_into_one_read_but_never_across_an_exempt_boundary() {
-		// One read per uncovered run is the point: splitting every gap at a keyspace boundary issued a separate
-		// store read per keyspace byte the scan crossed. Folding an exempt keyspace into a cached run would
-		// also hide it from the gap guard.
-		let tier = roomy();
-		let top = KeyspaceId::BUFFER;
-		let bottom = KeyspaceId::ACCUMULATOR;
-
-		let merged = tier
-			.plan_scan(OP, &KeyRange::from(&across(top, bottom)))
-			.expect("a two-keyspace range must be plannable");
-		assert_eq!(
-			merged.segments(),
-			[Segment::Gap {
-				interval: Interval::new(whole(top).start, whole(bottom).end),
-				exempt: false,
-			}],
-			"two adjacent uncovered cached keyspaces must read as one span, not one read per keyspace"
-		);
-
-		let split = tier
-			.plan_scan(OP, &KeyRange::from(&across(CACHED_ABOVE_UNCACHED, KeyspaceId::JOIN_ROW_EXPIRY)))
-			.expect("a range straddling an uncacheable keyspace must be plannable");
-		assert_eq!(
-			split.segments().len(),
-			3,
-			"an uncacheable keyspace must break the run, or its gap stops counting against the guard"
-		);
-		assert!(
-			matches!(
-				split.segments()[1],
-				Segment::Gap {
-					exempt: true,
-					..
-				}
-			),
-			"the fixture must actually straddle an exempt keyspace"
+			Some(Some("tail".to_string())),
+			"and so must the one far from it, rather than being discarded with the rest of the span"
 		);
 	}
 
@@ -418,18 +249,29 @@ mod tests {
 	fn a_materialize_that_proves_an_empty_span_claims_it_without_paying_for_a_partition() {
 		// A span the persistent tier answered with nothing is worth claiming, but the claim lives in the
 		// coverage index and the partition would hold no row. Charging one anyway lets a scan that crosses
-		// many empty keyspaces spend the whole budget on structures holding nothing, which evicts the rows
-		// the tier exists to serve.
-		let tier = roomy();
-		let range = keyspace_inner_range(GROUP, CACHED);
+		// many empty spans spend the whole budget on structures holding nothing, which evicts the rows the
+		// tier exists to serve.
+		let tiers = roomy();
 
-		assert!(claim(&tier, &range, &whole(CACHED), &[]) == Materialize::Materialized);
+		assert!(claim(&tiers, &whole(), &[]) == Materialize::Materialized);
 
-		assert_eq!(tier.partitions(), 0, "a proof of emptiness must not materialise a partition to hold it");
-		assert_eq!(tier.intervals(), 1, "the claim itself must survive, or the span is read again forever");
-		assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "an unmaterialised proof must cost no budget");
 		assert_eq!(
-			tier.lookup(OP, &key(CACHED, b"a")),
+			tier(&tiers).partitions(),
+			0,
+			"a proof of emptiness must not materialise a partition to hold it"
+		);
+		assert_eq!(
+			tier(&tiers).intervals(),
+			1,
+			"the claim itself must survive, or the span is read again forever"
+		);
+		assert_eq!(
+			tier(&tiers).resident_bytes(),
+			ByteSize::ZERO,
+			"an unmaterialised proof must cost no budget"
+		);
+		assert_eq!(
+			tier(&tiers).lookup_in(part(), part(), &at(1)),
 			Some(None),
 			"the claim must still answer a point read as a proven absence"
 		);
@@ -440,23 +282,25 @@ mod tests {
 		// Before, a claim implied a partition, so a write finding none could be dropped: no partition meant
 		// no claim to contradict. Once a claim can outlive its partition that reasoning inverts, and a
 		// dropped write leaves the claim asserting the tier holds every key in a span it no longer does.
-		let tier = roomy();
-		let range = keyspace_inner_range(GROUP, CACHED);
-		let at = key(CACHED, b"a");
+		let tiers = roomy();
 
-		assert!(claim(&tier, &range, &whole(CACHED), &[]) == Materialize::Materialized);
-		assert_eq!(tier.partitions(), 0, "precondition: the claim stands with nothing behind it");
+		assert!(claim(&tiers, &whole(), &[]) == Materialize::Materialized);
+		assert_eq!(
+			tier(&tiers).partitions(),
+			0,
+			"precondition: the claim stands with nothing behind it"
+		);
 
-		tier.insert(OP, at.clone(), row("v"));
+		tier(&tiers).insert_in(part(), part(), at(1), row("v"));
 
 		assert_eq!(
-			tier.lookup(OP, &at),
+			tier(&tiers).lookup_in(part(), part(), &at(1)),
 			Some(Some(row("v"))),
 			"a write the tier swallowed while keeping the claim reads back as a proven absence, which is \
              the claim answering for a row sqlite holds"
 		);
 		assert_eq!(
-			tier.partitions(),
+			tier(&tiers).partitions(),
 			1,
 			"the write is what pays for the partition, not the scan that crossed it"
 		);

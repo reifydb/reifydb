@@ -24,7 +24,7 @@ use reifydb_store_operator::{
 	tier::{
 		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
 		point::{OperatorPointConfig, OperatorPointTier},
-		range::{OperatorRangeConfig, OperatorRangeTier},
+		range::{OperatorRangeConfig, tiers::RangeTiers},
 	},
 	types::{DurablePre, OperatorBatch, OperatorWrite},
 };
@@ -100,7 +100,7 @@ fn point_tier(store: &OperatorStore) -> &OperatorPointTier {
 	store.point().expect("the fixture configures a point tier")
 }
 
-fn range_tier(store: &OperatorStore) -> &OperatorRangeTier {
+fn range_tier(store: &OperatorStore) -> &RangeTiers {
 	store.range().expect("the fixture configures a range tier")
 }
 
@@ -278,8 +278,12 @@ fn a_range_materialize_that_does_not_fit_its_own_budget_evicts_no_point_entry() 
 }
 
 #[test]
-fn a_range_spanning_two_claimed_keyspaces_is_served_from_the_claims_it_crosses() {
-	// Every row inside a claim must come from RAM, the unscanned ground between them from sqlite.
+fn a_range_spanning_two_keyspaces_bypasses_the_tier_and_reads_every_row_out_of_sqlite() {
+	// A tier is one keyspace, so a range whose ends sit in different keyspaces names no tier to ask and
+	// falls through to sqlite whole. The rows must still be exactly right and in order: a fallback that
+	// answers correctly is a cost, but one that drops or reorders rows is a wrong answer. The single
+	// keyspace scans above the fallback are the control, and they must still be cached, or this test
+	// would also pass with the tier switched off entirely.
 	let (store, storage, _guard) = cached_store();
 	seed_rows(&storage, 3);
 	for suffix in 1..=2u8 {
@@ -306,11 +310,21 @@ fn a_range_spanning_two_claimed_keyspaces_is_served_from_the_claims_it_crosses()
 	assert_eq!(
 		bodies(&served),
 		["c1", "c2", "v1", "v2", "v3"],
-		"a span must answer for every claim it crosses, and for the ground between them"
+		"the fallback must answer for both keyspaces in full and in key order"
 	);
-	assert_eq!(scanned.fetched, 0, "no row inside a standing claim may be re-read out of sqlite");
+	assert_eq!(scanned.fetched, 5, "the fallback reads every row out of sqlite, claims or no claims");
 	let after = range_tier(&store).metrics();
-	assert!(after.hits >= counters.hits + 2, "each claim the span crossed must be attributed as its own hit");
+	assert_eq!(
+		(after.hits, after.misses),
+		(counters.hits, counters.misses),
+		"a range that names no tier must not be charged to one either, or the counters attribute a read \
+         to a keyspace that never saw it"
+	);
+	assert_eq!(
+		range_partitions(&store),
+		2,
+		"and the standing claims must survive untouched, so the next single keyspace scan still hits them"
+	);
 }
 
 #[test]
@@ -577,11 +591,12 @@ fn dropping_one_operators_state_forgets_every_claim_and_row_it_cached() {
 }
 
 #[test]
-fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_still_materializes_the_ones_after_it() {
-	// Keycode inverts, so a scan walks keyspaces downward and every cached keyspace sitting one slot
-	// below an uncached one is reached only after the tier has already declined a span. Reading that
-	// decline as "the tier is full" starves the rest of the scan, and the starved keyspaces re-read
-	// sqlite on every pass forever.
+fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_reads_both_keyspaces_out_of_sqlite() {
+	// Keycode inverts, so a scan walks keyspaces downward and this span starts in a keyspace the tier
+	// never holds and ends in one it does. Spanning two keyspaces names no tier, so the whole span falls
+	// through to sqlite and neither keyspace is claimed. The rows must still be exactly right: a
+	// fallback is a cost, a short or reordered answer is a wrong result. The control at the end scans
+	// the cached keyspace on its own and must be cached, or this test would pass with the tier off.
 	let (store, storage, _guard) = cached_store();
 	let uncached = KeyspaceId::CUSTOM_NOT_CACHED;
 	let cached = CACHED_BELOW_UNCACHED;
@@ -626,8 +641,8 @@ fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_still_materializes_th
 	);
 	assert_eq!(
 		range_partitions(&store),
-		1,
-		"crossing an uncached keyspace must not stop the scan from materializing the cached one behind it"
+		0,
+		"a span naming no single keyspace must claim nothing, not even the cached half of it"
 	);
 
 	let before = ScanCounters::sample();
@@ -636,8 +651,19 @@ fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_still_materializes_th
 
 	assert_eq!(bodies(&second), ["pin1", "pin2", "pin3", "pub1", "pub2", "pub3"]);
 	assert_eq!(
-		scanned.fetched, 3,
-		"only the three rows of the uncacheable keyspace may reach sqlite twice; the cached keyspace \
-         must be answered from ram"
+		scanned.fetched, 6,
+		"with nothing claimed both keyspaces reach sqlite again, the uncacheable one because it must \
+         and the cached one because the span never asked its tier"
+	);
+
+	let alone = keyspace_inner_range(GROUP, cached);
+	assert_eq!(bodies(&store.range_batch(OP_A, alone.clone(), 64)), ["pub1", "pub2", "pub3"]);
+	assert_eq!(range_partitions(&store), 1, "the control: scanned on its own, the cached keyspace claims");
+	let before = ScanCounters::sample();
+	assert_eq!(bodies(&store.range_batch(OP_A, alone, 64)), ["pub1", "pub2", "pub3"]);
+	assert_eq!(
+		before.since().fetched,
+		0,
+		"and answers the next pass from ram, or the fallback above is measuring a dead tier"
 	);
 }

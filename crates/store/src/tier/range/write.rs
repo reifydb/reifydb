@@ -104,7 +104,15 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	pub fn retract(&self, dimension: D::Dimension, key: &D::Key) {
-		let Some(partition) = self.cacheable(dimension, None, key) else {
+		self.retract_within(dimension, None, key)
+	}
+
+	pub fn retract_in(&self, dimension: D::Dimension, partition: D::Partition, key: &D::Key) {
+		self.retract_within(dimension, Some(partition), key)
+	}
+
+	fn retract_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: &D::Key) {
+		let Some(partition) = self.cacheable(dimension, confined, key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
@@ -114,7 +122,15 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	pub fn invalidate(&self, dimension: D::Dimension, key: &D::Key) {
-		let Some(partition) = self.cacheable(dimension, None, key) else {
+		self.invalidate_within(dimension, None, key)
+	}
+
+	pub fn invalidate_in(&self, dimension: D::Dimension, partition: D::Partition, key: &D::Key) {
+		self.invalidate_within(dimension, Some(partition), key)
+	}
+
+	fn invalidate_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: &D::Key) {
+		let Some(partition) = self.cacheable(dimension, confined, key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
@@ -136,9 +152,13 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	pub fn invalidate_operator(&self, dimension: D::Dimension) {
+		self.invalidate_dimensions_where(|candidate| *candidate == dimension)
+	}
+
+	pub fn invalidate_dimensions_where(&self, victim: impl Fn(&D::Dimension) -> bool) {
 		{
 			let mut coverage = self.coverage().write();
-			coverage.remove(dimension);
+			coverage.retain(|candidate| !victim(candidate));
 			self.record_retraction();
 		}
 		for shard in self.all_shards() {
@@ -149,9 +169,9 @@ impl<D: RangeDomain> RangeTier<D> {
 				..
 			} = &mut *shard;
 			let victims: Vec<D::Partition> =
-				partitions.keys().filter(|id| D::dimension(id) == dimension).copied().collect();
-			for victim in victims {
-				if let Some(target) = partitions.remove(&victim) {
+				partitions.keys().filter(|id| victim(&D::dimension(id))).copied().collect();
+			for target in victims {
+				if let Some(target) = partitions.remove(&target) {
 					budget.release(ByteSize::from_bytes(target.bytes as u64));
 				}
 			}

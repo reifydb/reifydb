@@ -59,6 +59,11 @@ impl<D: Hash + Eq + Copy, K: Key> CoverageIndex<D, K> {
 		self.heads.remove(&dimension);
 	}
 
+	pub fn retain(&mut self, keep: impl Fn(&D) -> bool) {
+		self.sets.retain(|dimension, _| keep(dimension));
+		self.heads.retain(|dimension, _| keep(dimension));
+	}
+
 	pub fn clear(&mut self) {
 		self.sets.clear();
 		self.heads.clear();

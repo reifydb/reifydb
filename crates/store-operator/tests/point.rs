@@ -25,7 +25,7 @@ use reifydb_store_operator::{
 	tier::{
 		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
 		point::{OperatorPointConfig, OperatorPointTier},
-		range::{OperatorRangeConfig, OperatorRangeTier},
+		range::{OperatorRangeConfig, tiers::RangeTiers},
 		resident::OperatorResidentState,
 	},
 	types::{DurablePre, OperatorBatch, OperatorWrite},
@@ -109,7 +109,7 @@ fn point_tier(store: &OperatorStore) -> &OperatorPointTier {
 	store.point().expect("the fixture configures a point tier")
 }
 
-fn range_tier(store: &OperatorStore) -> &OperatorRangeTier {
+fn range_tier(store: &OperatorStore) -> &RangeTiers {
 	store.range().expect("the fixture configures a range tier")
 }
 
