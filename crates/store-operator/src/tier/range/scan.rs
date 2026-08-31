@@ -119,8 +119,14 @@ mod tests {
 		// Claims either side of an uncovered span must stay apart, or the hole serves as proven.
 		let tiers = roomy();
 
-		assert_eq!(claim(&tiers, &spanning(at(3), at(5)), &[(at(3), row("c")), (at(4), row("d"))]), Materialize::Materialized);
-		assert_eq!(claim(&tiers, &spanning(at(6), at(8)), &[(at(6), row("f")), (at(7), row("g"))]), Materialize::Materialized);
+		assert_eq!(
+			claim(&tiers, &spanning(at(3), at(5)), &[(at(3), row("c")), (at(4), row("d"))]),
+			Materialize::Materialized
+		);
+		assert_eq!(
+			claim(&tiers, &spanning(at(6), at(8)), &[(at(6), row("f")), (at(7), row("g"))]),
+			Materialize::Materialized
+		);
 
 		let scan = plan(&tiers);
 
@@ -177,10 +183,8 @@ mod tests {
 		let tiers = roomy();
 		let span = spanning(at(1), at(4));
 
-		assert!(
-			claim(&tiers, &span, &[(at(1), row("a")), (at(2), row("b")), (at(3), row("c"))])
-				== Materialize::Materialized
-		);
+		assert!(claim(&tiers, &span, &[(at(1), row("a")), (at(2), row("b")), (at(3), row("c"))])
+			== Materialize::Materialized);
 		tier(&tiers).mark_deleted_in(part(), part(), &at(1));
 		tier(&tiers).mark_deleted_in(part(), part(), &at(2));
 
@@ -279,11 +283,7 @@ mod tests {
 		let tiers = roomy();
 
 		assert_eq!(claim(&tiers, &whole(), &[]), Materialize::Materialized);
-		assert_eq!(
-			tier(&tiers).partitions(),
-			0,
-			"precondition: the claim stands with nothing behind it"
-		);
+		assert_eq!(tier(&tiers).partitions(), 0, "precondition: the claim stands with nothing behind it");
 
 		tier(&tiers).insert_in(part(), part(), at(1), row("v"));
 
