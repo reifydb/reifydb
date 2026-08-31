@@ -234,6 +234,12 @@ impl StandardMultiStore {
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		let mut collectors: Vec<Arc<dyn MetricsCollector>> = Vec::new();
 		collectors.push(Arc::new(self.commit.clone()));
+		if let Some(point) = &self.point {
+			collectors.push(Arc::new(point.clone()));
+		}
+		if let Some(range) = &self.range {
+			collectors.push(Arc::new(range.clone()));
+		}
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		if let Some(persistent) = &self.persistent {
 			collectors.push(Arc::new(SqlitePageCacheCollector {

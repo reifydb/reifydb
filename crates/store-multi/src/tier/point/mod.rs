@@ -10,7 +10,11 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, default};
+use reifydb_core::{
+	common::CommitVersion,
+	default,
+	metrics::{collect::MetricsCollector, sample::MetricsSample},
+};
 use reifydb_store::tier::{
 	point::{PointConfig, PointDomain, PointMetrics, PointTier},
 	range::RowBytes,
@@ -558,5 +562,11 @@ mod tests {
 			"after a supersede, an echo that clears the displaced slot, and two invalidates, only one entry remains and the total must say so"
 		);
 		assert!(used(&churned) > 0, "an empty total would satisfy the comparison without proving anything");
+	}
+}
+
+impl MetricsCollector for MultiPointTier {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		self.tier.collect(out);
 	}
 }

@@ -14,6 +14,7 @@ use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
 	default,
+	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	interface::{
 		catalog::storage::StorageId,
 		store::{EntryKind, classify_key},
@@ -1193,5 +1194,11 @@ mod tests {
 				);
 			}
 		}
+	}
+}
+
+impl MetricsCollector for MultiRangeTier {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		self.tier.collect(out);
 	}
 }

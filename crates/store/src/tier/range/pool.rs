@@ -321,6 +321,10 @@ impl<D: RangeDomain> RangeTier<D> {
 			.collect()
 	}
 
+	pub fn coverage_bytes(&self) -> ByteSize {
+		ByteSize::from_bytes(self.coverage().read().bytes())
+	}
+
 	pub fn gap_histogram(&self) -> GapHistogram {
 		let mut merged = GapHistogram::new();
 		for shard in self.all_shards() {
@@ -346,6 +350,7 @@ impl<D: RangeDomain> MetricsCollector for RangeTier<D> {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
 		let counters = self.metrics();
 		out.push(MetricsSample::heap(D::SCOPE, "resident_bytes", self.resident_bytes()));
+		out.push(MetricsSample::heap(D::SCOPE, "coverage_bytes", self.coverage_bytes()));
 		out.push(MetricsSample::count(D::SCOPE, "resident_intervals", self.intervals() as u64));
 		out.push(MetricsSample::count(D::SCOPE, "resident_partitions", self.partitions() as u64));
 		out.push(MetricsSample::count(D::SCOPE, "resident_entries", self.entries() as u64));

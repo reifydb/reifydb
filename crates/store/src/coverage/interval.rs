@@ -7,6 +7,7 @@ use std::{
 		BTreeMap,
 		Bound::{Excluded, Unbounded},
 	},
+	mem,
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
@@ -203,6 +204,20 @@ impl CoverageSet {
 
 	pub fn iter(&self) -> impl Iterator<Item = Interval> + '_ {
 		self.intervals.iter().map(|(start, end)| Interval::new(start.clone(), end.clone()))
+	}
+
+	pub fn bytes(&self) -> u64 {
+		let per_entry = mem::size_of::<EncodedKey>() + mem::size_of::<ExclusiveUpperEnd>();
+		self.intervals
+			.iter()
+			.map(|(start, end)| {
+				per_entry
+					+ start.heap_bytes() + match end {
+					ExclusiveUpperEnd::Key(key) => key.heap_bytes(),
+					ExclusiveUpperEnd::Top => 0,
+				}
+			})
+			.sum::<usize>() as u64
 	}
 
 	pub fn len(&self) -> usize {

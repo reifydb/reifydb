@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::HashMap, hash::Hash, mem};
 
 use reifydb_codec::key::encoded::EncodedKey;
 
@@ -66,6 +66,20 @@ impl<D: Hash + Eq + Copy> CoverageIndex<D> {
 	pub fn clear(&mut self) {
 		self.sets.clear();
 		self.heads.clear();
+	}
+
+	pub fn bytes(&self) -> u64 {
+		let sets: u64 = self
+			.sets
+			.values()
+			.map(|set| (mem::size_of::<D>() + mem::size_of::<CoverageSet>()) as u64 + set.bytes())
+			.sum();
+		let heads: u64 = self
+			.heads
+			.values()
+			.map(|key| (mem::size_of::<D>() + mem::size_of::<EncodedKey>() + key.heap_bytes()) as u64)
+			.sum();
+		sets + heads
 	}
 
 	pub fn intervals(&self) -> usize {
