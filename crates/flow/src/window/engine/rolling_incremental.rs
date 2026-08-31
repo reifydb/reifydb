@@ -108,12 +108,16 @@ where
 							(group_id, key)
 						}
 					};
-					let buffer: RollingBuffer<S, Accumulator> =
-						get_classified(store, &WindowStateKey::new(self.family, group_id, key.clone()))?
-							.unwrap_or_default();
-					let running: Running =
-						get_classified(store, &RunningKey::new(self.family, group_id, key.clone()))?
-							.unwrap_or_default();
+					let buffer: RollingBuffer<S, Accumulator> = get_classified(
+						store,
+						&WindowStateKey::new(self.family, group_id, key.clone()),
+					)?
+					.unwrap_or_default();
+					let running: Running = get_classified(
+						store,
+						&RunningKey::new(self.family, group_id, key.clone()),
+					)?
+					.unwrap_or_default();
 					let prior_output = match buffer.iter().next_back() {
 						Some((slot, accumulator)) => {
 							accumulator.finalize().and_then(|newest| {
@@ -199,7 +203,11 @@ where
 				&WindowStateKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
 				group_slot.buffer,
 			)?;
-			put(store, &RunningKey::new(self.family, group_slot.group_id, group_slot.key.clone()), group_slot.running)?;
+			put(
+				store,
+				&RunningKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
+				group_slot.running,
+			)?;
 
 			if let Some(out) = output {
 				pairs.push((group_slot.group_id, group_slot.key));

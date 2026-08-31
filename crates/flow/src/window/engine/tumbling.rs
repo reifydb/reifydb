@@ -34,8 +34,7 @@ use crate::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep, WindowResult,
-			WindowStateKey,
-			config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for,
+			WindowStateKey, config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for,
 			note_when_expiry_capped, persist_batch_meta,
 		},
 		span::{WindowAnchor, WindowSpan},

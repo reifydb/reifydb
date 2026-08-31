@@ -11,7 +11,7 @@ use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::operator::state::GroupId,
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{
@@ -42,8 +42,6 @@ const DELAY_MS: u64 = 1_000;
 // Far beyond anything these event times reach, so retention never reclaims a group underneath an
 // assertion. It is declared only because declaring it is what puts the node in the event domain.
 const LATENESS_MS: u64 = 3_600_000;
-
-const ALARM_STATE: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
 
 struct AlarmRow {
 	g: i32,
@@ -272,8 +270,6 @@ fn interning_inside_a_callback_stamps_the_firing_instant_not_the_change_that_wok
 		 the callback"
 	);
 }
-
-const SNOOZE_ARMED: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
 
 struct Snooze {
 	disarm_offset_ms: u64,

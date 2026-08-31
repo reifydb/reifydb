@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::{
 		keyspace::window::Accumulator,
-		state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, custom_not_cached_key},
+		state::{GroupId, GroupStateKey, IntoGroupStateKey, custom_not_cached_key},
 	},
 	metrics::heap::HeapSize,
 	state::typed::typed_key,
 };
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_flow::{
 	operator::{
 		host::TxnHostContext,
