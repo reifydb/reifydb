@@ -220,6 +220,24 @@ pub fn flow_unsupported_aggregate_expression(output: &str) -> Diagnostic {
 	}
 }
 
+pub fn flow_window_span_unavailable(output: &str, kind: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_015".to_string(),
+		rql: None,
+		message: format!("aggregate output '{}' needs a window boundary, but a {} window has none", output, kind),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("window::start, window::end and window::duration are available on tumbling, sliding \
+			and session windows sized by a duration. A rolling window and a window sized by a row \
+			count have no boundary; window::last works on every window kind."
+			.to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn flow_supervisor_stopped() -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_020".to_string(),

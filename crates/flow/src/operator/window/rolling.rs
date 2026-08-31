@@ -231,7 +231,7 @@ fn route_rolling_columns<S: RollingDomain>(
 		return Ok(());
 	}
 	let groups = operator.core.compute_groups(columns)?;
-	let timestamps = if S::arms_timer() {
+	let timestamps = if S::arms_timer() || operator.core.needs_event_time() {
 		operator.row_times(columns, row_count)?
 	} else {
 		Vec::new()
@@ -240,7 +240,7 @@ fn route_rolling_columns<S: RollingDomain>(
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 		let slot = S::slot(columns, row_idx, &timestamps);
 		let slot_key = S::slot_key(slot, columns.row_numbers()[row_idx].0);
-		let contribution = (slot_key, operator.core.build_contribution(columns, &slot_cols, row_idx));
+		let contribution = (slot_key, operator.core.build_contribution(columns, &slot_cols, row_idx, timestamps[row_idx]));
 		let event = if is_add {
 			AccumulatorEvent::Add(contribution)
 		} else {
@@ -431,7 +431,6 @@ fn finish_rolling_results(
 	groups: &WindowGroups,
 ) -> Result<Vec<Diff>> {
 	let ts = change.changed_at;
-	let time = ts;
 	let mut diffs = Vec::new();
 	for r in results {
 		let group_id = group_of(groups, r.group, 0);
@@ -443,7 +442,7 @@ fn finish_rolling_results(
 					&m.last_value,
 					RowNumber(m.row_number),
 					ts,
-					time,
+					None,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
 				operator.meta_slot().drop_rolling_meta(host, group_id)?;
@@ -451,7 +450,7 @@ fn finish_rolling_results(
 			continue;
 		}
 		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
-		let post = operator.core.build_engine_row(&gvals, &r.value, r.row_number, ts, time)?;
+		let post = operator.core.build_engine_row(&gvals, &r.value, r.row_number, ts, None)?;
 		match (r.kind, prior) {
 			(EmitKind::Insert, _) => diffs.push(Diff::insert(Columns::from_row(&post))),
 			(_, Some(m)) => {
@@ -460,7 +459,7 @@ fn finish_rolling_results(
 					&m.last_value,
 					r.row_number,
 					ts,
-					time,
+					None,
 				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 			}
@@ -498,7 +497,6 @@ pub fn seal_rolling_engine(
 	let ts = fired.at();
 	operator.advance_seal_ledger(host, fired)?;
 	let cutoff = rolling_over_time(operator, lag).eviction_cutoff(ts);
-	let time = ts;
 	let runnable = rolling_runnable(operator, &kinds);
 	let armed_before = rolling_earliest_expiry::<DateTime>(operator, host, runnable, lag)?;
 
@@ -536,14 +534,14 @@ pub fn seal_rolling_engine(
 					&meta.last_value,
 					row_number,
 					ts,
-					time,
+					None,
 				)?;
 				let post = operator.core.build_engine_row(
 					&meta.group_values,
 					&value,
 					row_number,
 					ts,
-					time,
+					None,
 				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 				operator.meta_slot().put_rolling_meta(
@@ -570,7 +568,7 @@ pub fn seal_rolling_engine(
 					&meta.last_value,
 					row_number,
 					ts,
-					time,
+					None,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
 				operator.meta_slot().drop_rolling_meta(host, group_id)?;

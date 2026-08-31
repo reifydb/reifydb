@@ -87,6 +87,9 @@ pub enum AggregateSlot {
 	MaxSealed(SealingMax<WindowSlotKey, Value>),
 	First(SealingEndpoint<WindowSlotKey, Value>),
 	Last(SealingEndpoint<WindowSlotKey, Value>),
+	Span {
+		n: i64,
+	},
 }
 
 fn endpoint(immutable: Option<Duration>) -> SealingEndpoint<WindowSlotKey, Value> {
@@ -126,7 +129,12 @@ impl AggregateSlot {
 				None => AggregateSlot::Max(Multiset::default()),
 			},
 			SlotKind::First => AggregateSlot::First(endpoint(immutable)),
-			SlotKind::Last => AggregateSlot::Last(endpoint(immutable)),
+			SlotKind::Last | SlotKind::WindowLast => AggregateSlot::Last(endpoint(immutable)),
+			SlotKind::WindowStart | SlotKind::WindowEnd | SlotKind::WindowDuration => {
+				AggregateSlot::Span {
+					n: 0,
+				}
+			}
 		}
 	}
 
@@ -198,6 +206,9 @@ impl AggregateSlot {
 					e.add(&(coord, v.clone()));
 				}
 			}
+			AggregateSlot::Span {
+				n,
+			} => *n += 1,
 		}
 	}
 
@@ -263,6 +274,9 @@ impl AggregateSlot {
 					e.remove(&(coord, v.clone()));
 				}
 			}
+			AggregateSlot::Span {
+				n,
+			} => *n -= 1,
 		}
 	}
 
@@ -350,6 +364,14 @@ impl AggregateSlot {
 				AggregateSlot::First(a) | AggregateSlot::Last(a),
 				AggregateSlot::First(b) | AggregateSlot::Last(b),
 			) => a.absorb(b),
+			(
+				AggregateSlot::Span {
+					n,
+				},
+				AggregateSlot::Span {
+					n: on,
+				},
+			) => *n += *on,
 			_ => {}
 		}
 	}
@@ -432,6 +454,14 @@ impl AggregateSlot {
 				AggregateSlot::Min(set) | AggregateSlot::Max(set),
 				AggregateSlot::Min(oset) | AggregateSlot::Max(oset),
 			) => set.unmerge(oset),
+			(
+				AggregateSlot::Span {
+					n,
+				},
+				AggregateSlot::Span {
+					n: on,
+				},
+			) => *n = (*n - *on).max(0),
 			_ => {
 				#[cfg(reifydb_assertions)]
 				panic!("unmerge on non-invertible aggregate slot");
@@ -465,6 +495,9 @@ impl AggregateSlot {
 			AggregateSlot::MaxSealed(s) => s.max().unwrap_or_else(Value::none),
 			AggregateSlot::First(e) => e.open().cloned().unwrap_or_else(Value::none),
 			AggregateSlot::Last(e) => e.close().cloned().unwrap_or_else(Value::none),
+			AggregateSlot::Span {
+				..
+			} => Value::none(),
 		}
 	}
 
@@ -486,6 +519,9 @@ impl AggregateSlot {
 			AggregateSlot::MinSealed(s) => s.is_empty(),
 			AggregateSlot::MaxSealed(s) => s.is_empty(),
 			AggregateSlot::First(e) | AggregateSlot::Last(e) => e.is_empty(),
+			AggregateSlot::Span {
+				n,
+			} => *n == 0,
 		}
 	}
 }
@@ -529,7 +565,8 @@ impl RowAccumulator {
 			| SlotKind::Sum
 			| SlotKind::Avg => true,
 			SlotKind::Min | SlotKind::Max => immutable.is_none(),
-			SlotKind::First | SlotKind::Last => false,
+			SlotKind::WindowStart | SlotKind::WindowEnd | SlotKind::WindowDuration => true,
+			SlotKind::First | SlotKind::Last | SlotKind::WindowLast => false,
 		})
 	}
 }
@@ -780,6 +817,90 @@ mod tests {
 
 	fn accumulator(kinds: &[SlotKind]) -> RowAccumulator {
 		RowAccumulator::new(kinds, None)
+	}
+
+	fn at_time(secs: u64, seq: u64) -> WindowSlotKey {
+		WindowSlotKey::new(DateTime::from_epoch_secs(secs as i64).unwrap(), seq)
+	}
+
+	fn dt(secs: u64) -> Value {
+		Value::DateTime(DateTime::from_epoch_secs(secs as i64).unwrap())
+	}
+
+	#[test]
+	fn window_last_reports_the_newest_event_time_not_the_newest_arrival() {
+		// Rows reach a window out of order: the 30s trade arrives first, the 20s trade last. The answer to
+		// "when did this bucket last see a trade" is 30s. Ordering by arrival sequence instead of by event
+		// time would answer 20s, and every late-arriving row would silently rewind the reported time.
+		let mut a = accumulator(&[SlotKind::WindowLast]);
+		a.add(&(at_time(30, 1), vec![Some(dt(30))]));
+		a.add(&(at_time(10, 2), vec![Some(dt(10))]));
+		a.add(&(at_time(20, 3), vec![Some(dt(20))]));
+		assert_eq!(a.finalize(), Some(vec![dt(30)]));
+	}
+
+	#[test]
+	fn removing_the_newest_row_moves_window_last_back_to_the_runner_up() {
+		// A window recomputes by retracting rows. Holding a running maximum that never retracts would leave
+		// the reported time pinned to a trade that is no longer in the bucket.
+		let mut a = accumulator(&[SlotKind::WindowLast]);
+		a.add(&(at_time(10, 1), vec![Some(dt(10))]));
+		a.add(&(at_time(30, 2), vec![Some(dt(30))]));
+		a.remove(&(at_time(30, 2), vec![Some(dt(30))]));
+		assert_eq!(a.finalize(), Some(vec![dt(10)]));
+	}
+
+	#[test]
+	fn a_span_slot_counts_its_rows_so_a_lone_boundary_window_still_emits() {
+		// A boundary is a property of the window, not of its rows, so the slot keeps no row value - it is
+		// overwritten from the span at emit. But an accumulator that reports empty is dropped rather than
+		// emitted, so a window whose only output is a boundary would silently produce nothing. The slot
+		// must still count the rows that reached it, and stop being populated once they are all retracted.
+		let mut a = accumulator(&[SlotKind::WindowStart]);
+		assert!(a.is_empty());
+		a.add(&(at_time(10, 1), vec![Some(dt(10))]));
+		assert!(!a.is_empty(), "a window holding a row must not report empty");
+		assert_eq!(a.finalize(), Some(vec![Value::none()]), "the value is filled from the span at emit");
+		a.remove(&(at_time(10, 1), vec![Some(dt(10))]));
+		assert!(a.is_empty());
+	}
+
+	#[test]
+	fn a_span_slot_does_not_make_a_populated_window_look_empty() {
+		// An empty accumulator is dropped rather than emitted. A span slot reports empty because it holds
+		// nothing, so it must not drag a window that really has rows down with it.
+		let mut a = accumulator(&[
+			SlotKind::Count {
+				count_star: true,
+			},
+			SlotKind::WindowStart,
+		]);
+		a.add(&(at_time(10, 1), vec![None, None]));
+		assert!(!a.is_empty());
+		assert_eq!(a.finalize().unwrap()[0], Value::Int8(1));
+	}
+
+	#[test]
+	fn merging_two_accumulators_keeps_the_later_window_last() {
+		// Windows merge partial accumulators from separate batches. Taking the merge target's value rather
+		// than the later of the two would report a stale time whenever the newer batch merged in second.
+		let mut a = accumulator(&[SlotKind::WindowLast]);
+		a.add(&(at_time(10, 1), vec![Some(dt(10))]));
+		let mut b = accumulator(&[SlotKind::WindowLast]);
+		b.add(&(at_time(40, 2), vec![Some(dt(40))]));
+		a.merge(&b);
+		assert_eq!(a.finalize(), Some(vec![dt(40)]));
+	}
+
+	#[test]
+	fn a_span_slot_is_invertible_and_window_last_is_not() {
+		// invertible() decides whether a window may retract by unmerging instead of recomputing. A span
+		// slot holds nothing so it can always be unmerged; window_last keeps per-row entries and must not
+		// claim it can, or a retraction would leave the wrong time behind.
+		assert!(RowAccumulator::invertible(&[SlotKind::WindowStart], None));
+		assert!(RowAccumulator::invertible(&[SlotKind::WindowEnd], None));
+		assert!(RowAccumulator::invertible(&[SlotKind::WindowDuration], None));
+		assert!(!RowAccumulator::invertible(&[SlotKind::WindowLast], None));
 	}
 
 	fn at(seq: u64) -> WindowSlotKey {

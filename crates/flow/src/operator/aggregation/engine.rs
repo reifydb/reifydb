@@ -102,7 +102,7 @@ where
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 		let (span, event_ts) = assign(row_idx);
 		let coord = slot_coord(false, event_ts, columns.row_numbers()[row_idx].0);
-		let contribution = (coord, core.build_contribution(columns, &slot_cols, row_idx));
+		let contribution = (coord, core.build_contribution(columns, &slot_cols, row_idx, event_ts));
 		let key = (*hash, span);
 		let event = if is_add {
 			let entry = window_max_ts.entry(key).or_default();
@@ -207,18 +207,18 @@ pub(crate) fn finish_tumbling_engine(
 		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
 		match r.kind {
 			EmitKind::Insert => {
-				let row = core.build_engine_row(&gvals, &r.value, r.row_number, ts, r.span.start)?;
+				let row = core.build_engine_row(&gvals, &r.value, r.row_number, ts, Some(r.span))?;
 				diffs.push(Diff::insert(Columns::from_row(&row)));
 			}
 			EmitKind::Update => {
 				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
-				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts, r.span.start)?;
-				let post = core.build_engine_row(&gvals, &r.value, r.row_number, ts, r.span.start)?;
+				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts, Some(r.span))?;
+				let post = core.build_engine_row(&gvals, &r.value, r.row_number, ts, Some(r.span))?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 			}
 			EmitKind::Remove => {
 				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
-				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts, r.span.start)?;
+				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts, Some(r.span))?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
 			}
 		}
