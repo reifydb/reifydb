@@ -6,3 +6,4 @@ pub mod persistent;
 pub mod point;
 pub mod range;
 pub mod resident;
+pub mod typed;

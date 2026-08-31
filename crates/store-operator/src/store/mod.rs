@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 mod census;
-mod pager;
 mod checkpoint;
 mod join_expiry;
+mod pager;
 pub mod state;
 #[cfg(test)]
 mod tests;
@@ -43,11 +43,8 @@ use crate::{
 	config::OperatorStoreConfig,
 	tier::{
 		persistent::OperatorPersistentTier,
-		point::{OperatorPointKeyspaceMetrics, OperatorPointShardMetrics, OperatorPointTier},
-		range::{
-			OperatorRangeShardMetrics,
-			tiers::{OperatorRangeKeyspaceMetrics, RangeTiers},
-		},
+		point::{OperatorPointKeyspaceMetrics, tiers::PointTiers},
+		range::tiers::{OperatorRangeKeyspaceMetrics, RangeTiers},
 		resident::{
 			OperatorResidentState,
 			flush::actor::{FlushMessage, flush_now, flush_pending},
@@ -72,7 +69,7 @@ pub struct StandardOperatorStore(Arc<StandardOperatorStoreInner>);
 pub struct StandardOperatorStoreInner {
 	pub(crate) resident: OperatorResidentState,
 	pub(crate) persistent: Option<OperatorPersistentTier>,
-	pub(crate) point: Option<OperatorPointTier>,
+	pub(crate) point: Option<PointTiers>,
 	pub(crate) range: Option<RangeTiers>,
 	pub(crate) flush: Option<ActorRef<FlushMessage>>,
 	pub(crate) filter: Option<ActorRef<FilterMessage>>,
@@ -97,7 +94,7 @@ impl StandardOperatorStore {
 		let point = config
 			.persistent
 			.is_some()
-			.then(|| config.point.map(Into::into).and_then(OperatorPointTier::new))
+			.then(|| config.point.map(Into::into).and_then(PointTiers::new))
 			.flatten();
 		let range = config
 			.persistent
@@ -188,7 +185,7 @@ impl StandardOperatorStore {
 		}
 	}
 
-	pub fn point(&self) -> Option<&OperatorPointTier> {
+	pub fn point(&self) -> Option<&PointTiers> {
 		self.point.as_ref()
 	}
 
@@ -196,16 +193,8 @@ impl StandardOperatorStore {
 		self.range.as_ref()
 	}
 
-	pub fn point_shard_metrics(&self) -> Vec<OperatorPointShardMetrics> {
-		self.point.as_ref().map(OperatorPointTier::shard_metrics).unwrap_or_default()
-	}
-
 	pub fn point_keyspace_metrics(&self) -> Vec<OperatorPointKeyspaceMetrics> {
-		self.point.as_ref().map(OperatorPointTier::bucket_metrics).unwrap_or_default()
-	}
-
-	pub fn range_shard_metrics(&self) -> Vec<OperatorRangeShardMetrics> {
-		self.range.as_ref().map(RangeTiers::shard_metrics).unwrap_or_default()
+		self.point.as_ref().map(PointTiers::keyspace_metrics).unwrap_or_default()
 	}
 
 	pub fn range_keyspace_metrics(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
@@ -306,7 +295,7 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn point(&self) -> Option<&OperatorPointTier> {
+	pub fn point(&self) -> Option<&PointTiers> {
 		match self {
 			Self::Standard(store) => store.point(),
 		}
@@ -318,21 +307,9 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn point_shard_metrics(&self) -> Vec<OperatorPointShardMetrics> {
-		match self {
-			Self::Standard(store) => store.point_shard_metrics(),
-		}
-	}
-
 	pub fn point_keyspace_metrics(&self) -> Vec<OperatorPointKeyspaceMetrics> {
 		match self {
 			Self::Standard(store) => store.point_keyspace_metrics(),
-		}
-	}
-
-	pub fn range_shard_metrics(&self) -> Vec<OperatorRangeShardMetrics> {
-		match self {
-			Self::Standard(store) => store.range_shard_metrics(),
 		}
 	}
 

@@ -14,7 +14,7 @@ use reifydb_core::{
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	state::typed::SuffixBytes,
 };
-use reifydb_store::tier::range::{RangeConfig, RangeMetrics, RangeShardMetrics, RangeTier};
+use reifydb_store::tier::range::{RangeConfig, RangeMetrics, RangeTier};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::range::typed::{TypedDomain, TypedPartition};
@@ -23,6 +23,7 @@ use crate::tier::range::typed::{TypedDomain, TypedPartition};
 pub struct OperatorRangeKeyspaceMetrics {
 	pub bucket: KeyspaceId,
 	pub used: ByteSize,
+	pub limit: ByteSize,
 	pub partitions: usize,
 	pub intervals: usize,
 	pub entries: usize,
@@ -45,8 +46,6 @@ pub trait AnyRangeTier: Send + Sync {
 	fn invalidate_operator(&self, operator: OperatorId);
 
 	fn keyspace_metrics(&self) -> Option<OperatorRangeKeyspaceMetrics>;
-
-	fn shard_metrics(&self) -> Vec<RangeShardMetrics>;
 
 	fn entries(&self) -> usize;
 
@@ -129,15 +128,12 @@ impl<K: Keyspace> AnyRangeTier for RangeTier<TypedDomain<K>> {
 		self.bucket_metrics().into_iter().next().map(|row| OperatorRangeKeyspaceMetrics {
 			bucket: K::ID,
 			used: row.used,
+			limit: RangeTier::shard_limit_bytes(self),
 			partitions: row.partitions,
 			intervals: row.intervals,
 			entries: row.entries,
 			counters: row.counters,
 		})
-	}
-
-	fn shard_metrics(&self) -> Vec<RangeShardMetrics> {
-		RangeTier::shard_metrics(self)
 	}
 
 	fn entries(&self) -> usize {
@@ -256,19 +252,6 @@ impl RangeTiers {
 			self.tiers.values().filter_map(|tier| tier.keyspace_metrics()).collect();
 		out.sort_by_key(|row| row.bucket.0);
 		out
-	}
-
-	pub fn shard_metrics(&self) -> Vec<RangeShardMetrics> {
-		let mut ids: Vec<KeyspaceId> = self.tiers.keys().copied().collect();
-		ids.sort_by_key(|id| id.0);
-		ids.iter()
-			.enumerate()
-			.filter_map(|(index, id)| {
-				let mut row = self.of(*id)?.shard_metrics().into_iter().next()?;
-				row.shard = index;
-				Some(row)
-			})
-			.collect()
 	}
 
 	pub fn entries(&self) -> usize {

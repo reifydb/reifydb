@@ -8,23 +8,13 @@ use std::{
 };
 
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_core::{
-	interface::catalog::flow::OperatorId,
-	key::{
-		operator::{
-			state::{GroupId, KeyspaceId},
-			traits::Keyspace,
-		},
-		typed::{ExclusiveUpperEnd, Key},
-	},
+use reifydb_core::key::{
+	operator::{state::KeyspaceId, traits::Keyspace},
+	typed::{ExclusiveUpperEnd, Key},
 };
 use reifydb_store::tier::range::RangeDomain;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct TypedPartition {
-	pub operator: OperatorId,
-	pub group: GroupId,
-}
+pub use crate::tier::typed::TypedPartition;
 
 pub struct TypedDomain<K: Keyspace>(PhantomData<K>);
 

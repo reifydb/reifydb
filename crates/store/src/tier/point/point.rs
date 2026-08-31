@@ -161,10 +161,14 @@ impl<D: PointDomain> PointTier<D> {
 	}
 
 	pub fn invalidate_operator(&self, dimension: D::Dimension) {
+		self.invalidate_dimensions_where(|candidate| *candidate == dimension)
+	}
+
+	pub fn invalidate_dimensions_where(&self, victim: impl Fn(&D::Dimension) -> bool) {
 		for shard in self.all_shards() {
 			let mut shard = shard.lock();
 			for (key, dirty) in shard.filling.iter_mut() {
-				if key.dimension == dimension {
+				if victim(&key.dimension) {
 					*dirty = true;
 				}
 			}
@@ -176,7 +180,7 @@ impl<D: PointDomain> PointTier<D> {
 					..
 				} = &mut *shard;
 				entries.retain(|entry| {
-					if entry.key.dimension != dimension {
+					if !victim(&entry.key.dimension) {
 						return true;
 					}
 					released += entry_footprint::<D>(&entry.key, &entry.row);

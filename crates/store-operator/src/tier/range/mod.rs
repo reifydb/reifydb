@@ -11,7 +11,7 @@ pub mod typed;
 use reifydb_core::default;
 use reifydb_store::{
 	coverage::plan::DEFAULT_GAP_GUARD,
-	tier::range::{RangeConfig, RangeMetrics, RangeShardMetrics},
+	tier::range::{RangeConfig, RangeMetrics},
 };
 use reifydb_value::byte_size::ByteSize;
 
@@ -42,4 +42,3 @@ impl From<OperatorRangeConfig> for RangeConfig {
 pub use tiers::OperatorRangeKeyspaceMetrics;
 
 pub type OperatorRangeMetrics = RangeMetrics;
-pub type OperatorRangeShardMetrics = RangeShardMetrics;

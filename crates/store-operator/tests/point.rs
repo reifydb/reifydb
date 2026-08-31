@@ -24,14 +24,14 @@ use reifydb_store_operator::{
 	store::OperatorStore,
 	tier::{
 		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
-		point::{OperatorPointConfig, OperatorPointTier},
+		point::{OperatorPointConfig, tiers::PointTiers},
 		range::{OperatorRangeConfig, tiers::RangeTiers},
 		resident::OperatorResidentState,
 	},
 	types::{DurablePre, OperatorBatch, OperatorWrite},
 };
-use reifydb_value::byte_size::ByteSize;
 use reifydb_testing::keyspace::state_key;
+use reifydb_value::byte_size::ByteSize;
 
 const CACHED: KeyspaceId = KeyspaceId::JOIN_LEFT;
 
@@ -105,7 +105,7 @@ fn seed_accumulator(storage: &SqliteOperatorStorage, count: u8) {
 	}
 }
 
-fn point_tier(store: &OperatorStore) -> &OperatorPointTier {
+fn point_tier(store: &OperatorStore) -> &PointTiers {
 	store.point().expect("the fixture configures a point tier")
 }
 

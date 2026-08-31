@@ -4,7 +4,6 @@
 pub mod batch;
 pub mod flush;
 
-
 mod census;
 mod checkpoint;
 mod join_expiry;
@@ -44,7 +43,7 @@ use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
 use crate::{
 	tier::{
 		persistent::OperatorPersistentTier,
-		point::OperatorPointTier,
+		point::tiers::PointTiers,
 		range::tiers::RangeTiers,
 		resident::{
 			batch::{DropMarker, FlushBatch},
@@ -103,7 +102,7 @@ struct PendingGroup {
 
 struct OperatorSinks {
 	persistent: OperatorPersistentTier,
-	point: Option<OperatorPointTier>,
+	point: Option<PointTiers>,
 	range: Option<RangeTiers>,
 }
 
@@ -204,7 +203,7 @@ impl OperatorResidentState {
 	pub fn attach_sinks(
 		&self,
 		persistent: OperatorPersistentTier,
-		point: Option<OperatorPointTier>,
+		point: Option<PointTiers>,
 		range: Option<RangeTiers>,
 	) {
 		let _ = self.shared.sinks.set(OperatorSinks {
@@ -747,7 +746,7 @@ fn merge_into_batch(batch: &mut FlushBatch, operator: OperatorId, taken: &Operat
 	batch.bytes = batch.bytes.saturating_add(taken.bytes);
 }
 
-fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&RangeTiers>, batch: &FlushBatch) {
+fn invalidate_flushed(point: Option<&PointTiers>, range: Option<&RangeTiers>, batch: &FlushBatch) {
 	for marker in &batch.drops {
 		match marker {
 			DropMarker::OperatorState(operator) => {
@@ -769,7 +768,7 @@ fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&RangeTie
 						range.overwrite(operator, &key, row.clone());
 					}
 					if let Some(point) = point {
-						point.overwrite(operator, key.clone(), row.clone());
+						point.overwrite(operator, &key, row.clone());
 					}
 				}
 				None => {

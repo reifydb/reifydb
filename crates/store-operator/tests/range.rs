@@ -13,7 +13,10 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::{keyspace::KEYSPACES, state::{GroupId, KeyspaceId, keyspace_inner_range}},
+	key::operator::{
+		keyspace::KEYSPACES,
+		state::{GroupId, KeyspaceId, keyspace_inner_range},
+	},
 	metrics::scan::ScanCounters,
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
@@ -23,13 +26,13 @@ use reifydb_store_operator::{
 	store::OperatorStore,
 	tier::{
 		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
-		point::{OperatorPointConfig, OperatorPointTier},
+		point::{OperatorPointConfig, tiers::PointTiers},
 		range::{OperatorRangeConfig, tiers::RangeTiers},
 	},
 	types::{DurablePre, OperatorBatch, OperatorWrite},
 };
-use reifydb_value::byte_size::ByteSize;
 use reifydb_testing::keyspace::state_key;
+use reifydb_value::byte_size::ByteSize;
 
 const CACHED_BELOW_UNCACHED: KeyspaceId = KeyspaceId::PARTITIONED_RINGBUFFER_META;
 
@@ -96,7 +99,7 @@ fn seed_rows(storage: &SqliteOperatorStorage, count: u8) {
 	}
 }
 
-fn point_tier(store: &OperatorStore) -> &OperatorPointTier {
+fn point_tier(store: &OperatorStore) -> &PointTiers {
 	store.point().expect("the fixture configures a point tier")
 }
 

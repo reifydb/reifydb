@@ -225,7 +225,7 @@ impl StandardOperatorStore {
 
 	fn repair_absence(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
 		if let Some(point) = self.point.as_ref() {
-			point.overwrite(operator, key.clone(), row.clone());
+			point.overwrite(operator, key, row.clone());
 		}
 	}
 
@@ -377,7 +377,7 @@ impl StandardOperatorStore {
 		for ((index, key), filling) in fetch.into_iter().zip(filling) {
 			let row = found.get(key).cloned();
 			if filling && let Some(point) = self.point.as_ref() {
-				point.finish_fill(operator, key.clone(), row.clone());
+				point.finish_fill(operator, key, row.clone());
 			}
 			results[index] = row;
 		}
@@ -405,7 +405,7 @@ impl StandardOperatorStore {
 		match self.point.as_ref() {
 			Some(point) if point.begin_fill(operator, key) => {
 				let row = persistent.get(operator, key);
-				point.finish_fill(operator, key.clone(), row.clone());
+				point.finish_fill(operator, key, row.clone());
 				row
 			}
 			_ => persistent.get(operator, key),
@@ -444,7 +444,7 @@ impl StandardOperatorStore {
 		match self.point.as_ref() {
 			Some(point) if point.begin_fill(operator, key) => {
 				let row = persistent.get(operator, key);
-				point.finish_fill(operator, key.clone(), row.clone());
+				point.finish_fill(operator, key, row.clone());
 				row.is_some()
 			}
 			_ => persistent.contains(operator, key),
