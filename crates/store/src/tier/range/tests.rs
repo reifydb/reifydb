@@ -19,6 +19,7 @@ use reifydb_core::{
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 		typed::{MultiKey, range::KeyRange},
 	},
+	metrics::heap::HeapSize,
 };
 use reifydb_value::byte_size::ByteSize;
 
@@ -65,7 +66,7 @@ fn row(body: &str) -> EncodedPodRow {
 }
 
 fn footprint(key: &EncodedKey, row: &EncodedPodRow) -> usize {
-	ENTRY_OVERHEAD + key.heap_bytes() + row.len()
+	ENTRY_OVERHEAD + key.heap_size() + row.len()
 }
 
 fn per_partition_bytes() -> u64 {
@@ -358,8 +359,8 @@ fn a_long_key_charges_its_heap_bytes() {
 	let tier = roomy();
 	let short = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
 	let long = key(GROUP_A, KeyspaceId::ACCUMULATOR, &[7u8; 64]);
-	assert_eq!(short.heap_bytes(), 0, "the short fixture must stay inline, or the comparison below is meaningless");
-	assert!(long.heap_bytes() > 0, "the long fixture must spill to the heap, or nothing tests heap accounting");
+	assert_eq!(short.heap_size(), 0, "the short fixture must stay inline, or the comparison below is meaningless");
+	assert!(long.heap_size() > 0, "the long fixture must spill to the heap, or nothing tests heap accounting");
 
 	materialize(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR, &[(short.clone(), row("v"))]);
 	let after_short = tier.resident_bytes().as_bytes();
@@ -367,7 +368,7 @@ fn a_long_key_charges_its_heap_bytes() {
 
 	assert_eq!(
 		tier.resident_bytes().as_bytes() - after_short,
-		(ENTRY_OVERHEAD + long.heap_bytes() + 1) as u64,
+		(ENTRY_OVERHEAD + long.heap_size() + 1) as u64,
 		"a heap allocated key must be charged for its allocation, or long keys are cached for free"
 	);
 	tier.invalidate_operator(OP_A);

@@ -21,8 +21,9 @@ use reifydb_core::{
 use reifydb_value::{Result, byte_size::ByteSize};
 use rusqlite::{Connection, Transaction};
 
-use crate::{
-	tier::bucket::write::{TypedBucket, WriteEntry},
+use crate::tier::{
+	bound::{span, split_bound},
+	bucket::write::{TypedBucket, WriteEntry},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,6 +47,15 @@ pub trait AnyBucket: Any + Send + Sync {
 	fn for_each(&self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry));
 
 	fn encoded_entries(&self) -> Vec<(EncodedKey, WriteEntry)>;
+
+	fn group_ids(&self) -> Vec<GroupId>;
+
+	fn encoded_range_in(
+		&self,
+		group: GroupId,
+		start: &Bound<Vec<u8>>,
+		end: &Bound<Vec<u8>>,
+	) -> Vec<(EncodedKey, WriteEntry)>;
 
 	fn absorb_any(&mut self, other: &mut dyn AnyBucket);
 
@@ -295,27 +305,59 @@ impl BucketMap {
 		.flatten()
 	}
 
+	fn groups_of(&self, operator: OperatorId) -> Vec<GroupId> {
+		let mut ids = Vec::new();
+		for keyspace in self.keyspaces_of(operator) {
+			let Some(bucket) = self.buckets.get(&(operator, keyspace)) else {
+				continue;
+			};
+			ids.extend(bucket.group_ids());
+		}
+		ids.sort_by(|left, right| right.0.cmp(&left.0));
+		ids.dedup();
+		ids
+	}
+
 	pub fn encoded_range(
 		&self,
 		operator: OperatorId,
 		lower: &Bound<EncodedKey>,
 		upper: &Bound<EncodedKey>,
 	) -> Vec<(EncodedKey, WriteEntry)> {
-		let ids = match confined_keyspace(lower, upper) {
-			Some(keyspace) => vec![keyspace],
-			None => self.keyspaces_of(operator),
-		};
+		let (start, start_group, start_at) = split_bound(lower.as_ref());
+		let (end, end_group, end_at) = split_bound(upper.as_ref());
+		let end_open = matches!(end, Bound::Excluded(ref suffix) if suffix.is_empty());
+
 		let mut out = Vec::new();
-		for keyspace in ids {
-			let Some(bucket) = self.buckets.get(&(operator, keyspace)) else {
+		for group in self.groups_of(operator) {
+			if start_group.is_some_and(|first| group.0 > first.0) {
 				continue;
-			};
-			out.extend(bucket
-				.encoded_entries()
-				.into_iter()
-				.filter(|(key, _)| in_bounds(key, lower, upper)));
+			}
+			if end_group.is_some_and(|last| group.0 < last.0) {
+				continue;
+			}
+			let opens = start_group == Some(group);
+			let closes = end_group == Some(group);
+			let ids = span(
+				opens.then_some(start_at).flatten(),
+				closes.then_some(end_at).flatten(),
+				closes && end_open,
+			);
+			for keyspace in ids {
+				let Some(bucket) = self.buckets.get(&(operator, keyspace)) else {
+					continue;
+				};
+				let from = match opens && start_at == Some(keyspace) {
+					true => start.clone(),
+					false => Bound::Unbounded,
+				};
+				let to = match closes && end_at == Some(keyspace) {
+					true => end.clone(),
+					false => Bound::Unbounded,
+				};
+				out.extend(bucket.encoded_range_in(group, &from, &to));
+			}
 		}
-		out.sort_by(|(left, _), (right, _)| left.cmp(right));
 		out
 	}
 
@@ -380,36 +422,6 @@ impl BucketMap {
 	pub fn footprint(&self) -> ByteSize {
 		ByteSize::from_bytes(self.buckets.values().map(|bucket| bucket.footprint().as_bytes()).sum())
 	}
-}
-
-fn address(bound: &Bound<EncodedKey>) -> Option<(GroupId, KeyspaceId)> {
-	let (Bound::Included(key) | Bound::Excluded(key)) = bound else {
-		return None;
-	};
-	OperatorStateKey::decode_inner(key.as_slice()).map(|(group, keyspace, _)| (group, keyspace))
-}
-
-fn confined_keyspace(lower: &Bound<EncodedKey>, upper: &Bound<EncodedKey>) -> Option<KeyspaceId> {
-	let (group, keyspace) = address(lower)?;
-	match address(upper) {
-		Some((end_group, end_keyspace)) if end_group == group && end_keyspace == keyspace => Some(keyspace),
-		Some(_) => None,
-		None => None,
-	}
-}
-
-fn in_bounds(key: &EncodedKey, lower: &Bound<EncodedKey>, upper: &Bound<EncodedKey>) -> bool {
-	let above = match lower {
-		Bound::Unbounded => true,
-		Bound::Included(start) => key >= start,
-		Bound::Excluded(start) => key > start,
-	};
-	let below = match upper {
-		Bound::Unbounded => true,
-		Bound::Included(end) => key <= end,
-		Bound::Excluded(end) => key < end,
-	};
-	above && below
 }
 
 impl<'a> IntoIterator for &'a BucketMap {

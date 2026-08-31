@@ -452,7 +452,7 @@ where
 			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
 		)?;
 		let mut results: Vec<RollingResult<G, Output>> = Vec::with_capacity(pending.len());
-		for (((group, value, withdrawn), (group_id, key)), (row_number, is_new)) in
+		for (((group, value, withdrawn), (group_id, _key)), (row_number, is_new)) in
 			pending.into_iter().zip(pairs).zip(rows)
 		{
 			if withdrawn {
@@ -703,7 +703,7 @@ where
 			let rows = store.get_or_create_row_numbers_for_groups(
 				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
 			)?;
-			for (((group, value, withdrawn), (group_id, key)), (row_number, is_new)) in
+			for (((group, value, withdrawn), (group_id, _key)), (row_number, is_new)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{
 				if withdrawn {
@@ -847,7 +847,7 @@ where
 			let rows = store.get_or_create_row_numbers_for_groups(
 				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
 			)?;
-			for (((group, value), (group_id, key)), (row_number, _)) in
+			for (((group, value), (group_id, _key)), (row_number, _)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{
 				match value {
@@ -951,7 +951,7 @@ where
 			let rows = store.get_or_create_row_numbers_for_groups(
 				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
 			)?;
-			for (((group, value), (group_id, key)), (row_number, _)) in
+			for (((group, value), (group_id, _key)), (row_number, _)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{
 				match value {

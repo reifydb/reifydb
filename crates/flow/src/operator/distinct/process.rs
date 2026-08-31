@@ -21,7 +21,6 @@ use crate::operator::{
 		state::{DistinctEntry, DistinctState, SerializedRow},
 	},
 	host::HostContext,
-	state::store,
 };
 
 fn row_time(host: &dyn HostContext, columns: &Columns, row_idx: usize) -> DateTime {

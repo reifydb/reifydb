@@ -119,14 +119,8 @@ mod tests {
 		// Claims either side of an uncovered span must stay apart, or the hole serves as proven.
 		let tiers = roomy();
 
-		assert!(
-			claim(&tiers, &spanning(at(3), at(5)), &[(at(3), row("c")), (at(4), row("d"))])
-				== Materialize::Materialized
-		);
-		assert!(
-			claim(&tiers, &spanning(at(6), at(8)), &[(at(6), row("f")), (at(7), row("g"))])
-				== Materialize::Materialized
-		);
+		assert_eq!(claim(&tiers, &spanning(at(3), at(5)), &[(at(3), row("c")), (at(4), row("d"))]), Materialize::Materialized);
+		assert_eq!(claim(&tiers, &spanning(at(6), at(8)), &[(at(6), row("f")), (at(7), row("g"))]), Materialize::Materialized);
 
 		let scan = plan(&tiers);
 
@@ -162,8 +156,8 @@ mod tests {
 		// A plan of many small persistent reads must be abandoned, or the caller pays a trip per hole.
 		let tiers = tiers(ByteSize::from_mib(1).as_bytes(), 1);
 
-		assert!(claim(&tiers, &spanning(at(2), at(3)), &[(at(2), row("b"))]) == Materialize::Materialized);
-		assert!(claim(&tiers, &spanning(at(4), at(5)), &[(at(4), row("d"))]) == Materialize::Materialized);
+		assert_eq!(claim(&tiers, &spanning(at(2), at(3)), &[(at(2), row("b"))]), Materialize::Materialized);
+		assert_eq!(claim(&tiers, &spanning(at(4), at(5)), &[(at(4), row("d"))]), Materialize::Materialized);
 
 		let scan = plan(&tiers);
 		assert!(scan.degraded(), "three gaps against a guard of one must abandon the plan");
@@ -253,7 +247,7 @@ mod tests {
 		// tier exists to serve.
 		let tiers = roomy();
 
-		assert!(claim(&tiers, &whole(), &[]) == Materialize::Materialized);
+		assert_eq!(claim(&tiers, &whole(), &[]), Materialize::Materialized);
 
 		assert_eq!(
 			tier(&tiers).partitions(),
@@ -284,7 +278,7 @@ mod tests {
 		// dropped write leaves the claim asserting the tier holds every key in a span it no longer does.
 		let tiers = roomy();
 
-		assert!(claim(&tiers, &whole(), &[]) == Materialize::Materialized);
+		assert_eq!(claim(&tiers, &whole(), &[]), Materialize::Materialized);
 		assert_eq!(
 			tier(&tiers).partitions(),
 			0,

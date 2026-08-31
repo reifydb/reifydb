@@ -5,7 +5,7 @@ use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::{
-		decode_u64_asc, encode_u64_asc, encode_u128_asc,
+		encode_u64_asc, encode_u128_asc,
 		encoded::{EncodedKey, EncodedKeyRange},
 	},
 	row::{

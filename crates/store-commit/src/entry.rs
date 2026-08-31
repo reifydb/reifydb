@@ -4,7 +4,7 @@
 use std::{collections::VecDeque, mem::size_of, sync::Arc};
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind, metrics::heap::HeapSize};
 use reifydb_runtime::sync::{
 	map::Map,
 	rwlock::{RwLock, RwLockWriteGuard},
@@ -19,7 +19,7 @@ pub(super) type Value = Option<CowVec<u8>>;
 pub(super) const ENTRY_OVERHEAD: usize = size_of::<EncodedKey>() + size_of::<CommitVersion>() + size_of::<Value>();
 
 pub(super) fn entry_bytes(key: &EncodedKey, value: &Value) -> u64 {
-	entry_bytes_with(key.heap_bytes(), value)
+	entry_bytes_with(key.heap_size(), value)
 }
 
 pub(super) fn entry_bytes_with(key_heap: usize, value: &Value) -> u64 {

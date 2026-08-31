@@ -4,6 +4,7 @@
 use std::{collections::BTreeMap, mem::size_of, ops::RangeBounds, vec::IntoIter as VecIntoIter};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_core::metrics::heap::HeapSize;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::multi::types::DeltaEntry;
@@ -52,7 +53,7 @@ impl PendingWrites {
 
 	#[inline]
 	pub fn estimate_size(&self, entry: &DeltaEntry) -> ByteSize {
-		let payload = entry.key().heap_bytes() + entry.bytes().map_or(0, |row| row.len());
+		let payload = entry.key().heap_size() + entry.bytes().map_or(0, |row| row.len());
 		ByteSize::from_bytes((ENTRY_OVERHEAD + payload) as u64)
 	}
 

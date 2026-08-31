@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{any::Any, collections::BTreeMap, mem::size_of, ops::RangeBounds};
+use std::{any::Any, collections::BTreeMap, mem::size_of, ops::{Bound, RangeBounds}};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::{
-		state::{GroupId, KeyspaceId, OperatorStateKey},
-		traits::Keyspace,
+	key::{
+		operator::{
+			keyspace::columns_width,
+			state::{GroupId, KeyspaceId, OperatorStateKey},
+			traits::Keyspace,
+		},
+		typed::layout::KeyLayout,
 	},
 	state::typed::SuffixBytes,
 	util::sorted::SortedVecMap,
@@ -230,6 +234,27 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 			.collect()
 	}
 
+	fn group_ids(&self) -> Vec<GroupId> {
+		self.groups().collect()
+	}
+
+	fn encoded_range_in(
+		&self,
+		group: GroupId,
+		start: &Bound<Vec<u8>>,
+		end: &Bound<Vec<u8>>,
+	) -> Vec<(EncodedKey, WriteEntry)> {
+		self.range(group, (suffix_bound::<K>(start, 0x00), suffix_bound::<K>(end, 0xFF)))
+			.map(|(suffix, entry)| {
+				(
+					OperatorStateKey::inner_encoded(group, K::ID, suffix.to_suffix_bytes())
+						.into_encoded(),
+					entry.clone(),
+				)
+			})
+			.collect()
+	}
+
 	fn absorb_any(&mut self, other: &mut dyn AnyBucket) {
 		let other = other
 			.as_any_mut()
@@ -249,4 +274,18 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
+}
+
+fn suffix_bound<K: Keyspace>(bound: &Bound<Vec<u8>>, fill: u8) -> Bound<K::Suffix> {
+	match bound {
+		Bound::Unbounded => Bound::Unbounded,
+		Bound::Included(bytes) => Bound::Included(padded::<K>(bytes, fill)),
+		Bound::Excluded(bytes) => Bound::Excluded(padded::<K>(bytes, fill)),
+	}
+}
+
+fn padded<K: Keyspace>(bytes: &[u8], fill: u8) -> K::Suffix {
+	let mut out = bytes.to_vec();
+	out.resize(columns_width(<K::Suffix as KeyLayout>::COLUMNS), fill);
+	K::Suffix::from_suffix_bytes(&out).expect("a padded suffix must decode as its own key type")
 }

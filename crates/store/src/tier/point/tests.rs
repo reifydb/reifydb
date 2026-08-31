@@ -13,6 +13,7 @@ use reifydb_core::{
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 		typed::MultiKey,
 	},
+	metrics::heap::HeapSize,
 };
 use reifydb_value::byte_size::ByteSize;
 
@@ -63,7 +64,7 @@ fn fill(tier: &PointTier<D>, operator: OperatorId, key: EncodedKey, row: Option<
 }
 
 fn footprint(key: &EncodedKey, row: &Option<EncodedPodRow>) -> usize {
-	ENTRY_OVERHEAD + key.heap_bytes() + row.as_ref().map_or(0, EncodedPodRow::len)
+	ENTRY_OVERHEAD + key.heap_size() + row.as_ref().map_or(0, EncodedPodRow::len)
 }
 
 fn keyspace_row(tier: &PointTier<D>, keyspace: KeyspaceId) -> PointBucketMetrics<D> {
@@ -234,8 +235,8 @@ fn a_long_key_charges_its_heap_bytes() {
 	let tier = roomy();
 	let short = key(GROUP_A, CACHED, b"a");
 	let long = key(GROUP_A, CACHED, &[7u8; 64]);
-	assert_eq!(short.heap_bytes(), 0, "the short fixture must stay inline, or the comparison below is meaningless");
-	assert!(long.heap_bytes() > 0, "the long fixture must spill to the heap, or nothing tests heap accounting");
+	assert_eq!(short.heap_size(), 0, "the short fixture must stay inline, or the comparison below is meaningless");
+	assert!(long.heap_size() > 0, "the long fixture must spill to the heap, or nothing tests heap accounting");
 
 	tier.overwrite(OP_A, short, row("v"));
 	let after_short = tier.resident_bytes().as_bytes();
@@ -243,7 +244,7 @@ fn a_long_key_charges_its_heap_bytes() {
 
 	assert_eq!(
 		tier.resident_bytes().as_bytes() - after_short,
-		(ENTRY_OVERHEAD + long.heap_bytes() + 1) as u64,
+		(ENTRY_OVERHEAD + long.heap_size() + 1) as u64,
 		"a heap allocated key must be charged for its allocation"
 	);
 	tier.clear();

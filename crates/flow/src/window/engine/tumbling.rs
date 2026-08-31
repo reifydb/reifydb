@@ -56,7 +56,6 @@ type SlotResolved<G, S> = HashMap<(G, WindowSpan<S>), ResolvedSlot>;
 
 struct PendingEmit<G, S, Output> {
 	group_id: GroupId,
-	key: EncodedKey,
 	group: G,
 	span: WindowSpan<S>,
 	value: Output,
@@ -280,7 +279,6 @@ where
 			match value {
 				Some(value) => pending.push(PendingEmit {
 					group_id: id,
-					key,
 					group,
 					span,
 					value,
@@ -291,7 +289,6 @@ where
 					if let Some(p) = prior.clone() {
 						pending.push(PendingEmit {
 							group_id: id,
-							key,
 							group,
 							span,
 							value: p,

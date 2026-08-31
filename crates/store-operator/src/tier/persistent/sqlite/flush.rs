@@ -1,31 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[cfg(reifydb_assertions)]
 use std::sync::LazyLock;
 
-#[cfg(reifydb_assertions)]
-#[cfg(reifydb_assertions)]
 use reifydb_sqlite::batch::values_placeholders;
-#[cfg(reifydb_assertions)]
-#[cfg(reifydb_assertions)]
 use rusqlite::{ToSql, Transaction, TransactionBehavior, params, params_from_iter};
 use tracing::instrument;
 
-#[cfg(reifydb_assertions)]
-use crate::{
-	tier::{
-		persistent::sqlite::{
-			SqliteOperatorStorage,
-			join_expiry::encode_group,
-			route,
-			sql::{
-				CHECKPOINT_REMOVE_SQL, CHECKPOINT_SET_SQL, JOIN_EXPIRIES_DROP_GROUP_SQL,
-				JOIN_EXPIRIES_DROP_OPERATOR_SQL, JOIN_EXPIRY_REMOVE_SQL, JOIN_EXPIRY_SET_SQL,
-			},
+use crate::tier::{
+	persistent::sqlite::{
+		SqliteOperatorStorage,
+		join_expiry::encode_group,
+		route,
+		sql::{
+			CHECKPOINT_REMOVE_SQL, CHECKPOINT_SET_SQL, JOIN_EXPIRIES_DROP_GROUP_SQL,
+			JOIN_EXPIRIES_DROP_OPERATOR_SQL, JOIN_EXPIRY_REMOVE_SQL, JOIN_EXPIRY_SET_SQL,
 		},
-		resident::batch::{DropMarker, FlushBatch},
 	},
+	resident::batch::{DropMarker, FlushBatch},
 };
 
 const FLUSH_CHUNK: usize = 100;
