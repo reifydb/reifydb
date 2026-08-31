@@ -14,7 +14,6 @@ mod metric;
 mod persistence;
 mod queue;
 mod storage;
-mod store;
 mod system;
 mod virtual_table;
 mod wire_format;
