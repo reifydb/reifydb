@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{any::Any, collections::HashMap, sync::Arc};
+use std::{
+	any::Any,
+	collections::HashMap,
+	sync::{Arc, atomic::{AtomicU64, Ordering}},
+};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
@@ -209,18 +213,35 @@ impl KeyspaceVisitor for Build {
 #[derive(Clone)]
 pub struct PointTiers {
 	tiers: Arc<HashMap<KeyspaceId, Box<dyn AnyPointTier>>>,
+	excluded: Arc<HashMap<KeyspaceId, AtomicU64>>,
 }
 
 impl PointTiers {
 	pub fn new(config: PointConfig) -> Option<Self> {
 		let mut tiers: HashMap<KeyspaceId, Box<dyn AnyPointTier>> = HashMap::new();
-		for spec in KEYSPACES.iter().filter(|spec| spec.cache.caches_points()) {
+		let mut excluded: HashMap<KeyspaceId, AtomicU64> = HashMap::new();
+		for spec in KEYSPACES {
+			if !spec.cache.caches_points() {
+				excluded.insert(spec.id, AtomicU64::new(0));
+				continue;
+			}
 			let tier = dispatch(spec.id, Build(config)).expect("a catalogued keyspace must dispatch")?;
 			tiers.insert(spec.id, tier);
 		}
 		Some(Self {
 			tiers: Arc::new(tiers),
+			excluded: Arc::new(excluded),
 		})
+	}
+
+	fn charge_excluded(&self, keyspace: KeyspaceId) {
+		if let Some(counter) = self.excluded.get(&keyspace) {
+			counter.fetch_add(1, Ordering::Relaxed);
+		}
+	}
+
+	fn excluded_misses(&self, keyspace: KeyspaceId) -> u64 {
+		self.excluded.get(&keyspace).map(|counter| counter.load(Ordering::Relaxed)).unwrap_or(0)
 	}
 
 	pub fn of(&self, keyspace: KeyspaceId) -> Option<&dyn AnyPointTier> {
@@ -233,12 +254,20 @@ impl PointTiers {
 
 	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<Option<EncodedPodRow>> {
 		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
-		self.of(keyspace)?.get(operator, group, &suffix)
+		let Some(tier) = self.of(keyspace) else {
+			self.charge_excluded(keyspace);
+			return None;
+		};
+		tier.get(operator, group, &suffix)
 	}
 
 	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> Option<bool> {
 		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
-		self.of(keyspace)?.contains(operator, group, &suffix)
+		let Some(tier) = self.of(keyspace) else {
+			self.charge_excluded(keyspace);
+			return None;
+		};
+		tier.contains(operator, group, &suffix)
 	}
 
 	pub fn begin_fill(&self, operator: OperatorId, key: &EncodedKey) -> bool {
@@ -291,6 +320,18 @@ impl PointTiers {
 	pub fn keyspace_metrics(&self) -> Vec<OperatorPointKeyspaceMetrics> {
 		let mut out: Vec<OperatorPointKeyspaceMetrics> =
 			self.tiers.values().filter_map(|tier| tier.keyspace_metrics()).collect();
+		for keyspace in self.excluded.keys() {
+			out.push(OperatorPointKeyspaceMetrics {
+				bucket: *keyspace,
+				used: ByteSize::ZERO,
+				limit: ByteSize::ZERO,
+				entries: 0,
+				counters: PointMetrics {
+					misses: self.excluded_misses(*keyspace),
+					..PointMetrics::default()
+				},
+			});
+		}
 		out.sort_by_key(|row| row.bucket.0);
 		out
 	}
@@ -304,7 +345,7 @@ impl PointTiers {
 	}
 
 	pub fn metrics(&self) -> PointMetrics {
-		self.tiers.values().fold(PointMetrics::default(), |mut total, tier| {
+		let mut totals = self.tiers.values().fold(PointMetrics::default(), |mut total, tier| {
 			let counters = tier.metrics();
 			total.hits += counters.hits;
 			total.misses += counters.misses;
@@ -314,7 +355,9 @@ impl PointTiers {
 			total.fills_dirty_aborted += counters.fills_dirty_aborted;
 			total.fills_duplicate += counters.fills_duplicate;
 			total
-		})
+		});
+		totals.misses += self.excluded.values().map(|counter| counter.load(Ordering::Relaxed)).sum::<u64>();
+		totals
 	}
 
 	pub fn hits(&self) -> u64 {
