@@ -16,8 +16,8 @@ use reifydb_store_operator::{
 	store::OperatorStore,
 	types::{DurablePre, OperatorWrite},
 };
-use reifydb_value::byte_size::ByteSize;
 use reifydb_testing::keyspace::state_key;
+use reifydb_value::byte_size::ByteSize;
 
 fn store() -> OperatorStore {
 	let pools = Pools::new(PoolConfig::default());

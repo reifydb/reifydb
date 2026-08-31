@@ -16,11 +16,9 @@ use reifydb_core::{
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 
-use crate::{
-	tier::{
-		bucket::{BucketMap, write::WriteEntry},
-		resident::batch::JOIN_EXPIRY_ENTRY_BYTES,
-	},
+use crate::tier::{
+	bucket::{BucketMap, write::WriteEntry},
+	resident::batch::JOIN_EXPIRY_ENTRY_BYTES,
 };
 
 pub type SlotJoinKey = (GroupId, u8, RowNumber);

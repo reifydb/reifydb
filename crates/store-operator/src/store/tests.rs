@@ -14,6 +14,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::SqliteTempPathGuard;
+use reifydb_testing::keyspace::state_key;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
@@ -27,7 +28,6 @@ use crate::{
 	},
 	types::{DurablePre, OperatorWrite},
 };
-use reifydb_testing::keyspace::state_key;
 
 const FLOW_A: FlowId = FlowId(1);
 const FLOW_B: FlowId = FlowId(2);

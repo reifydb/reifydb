@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{any::Any, collections::BTreeMap, mem::size_of, ops::{Bound, RangeBounds}};
+use std::{
+	any::Any,
+	collections::BTreeMap,
+	mem::size_of,
+	ops::{Bound, RangeBounds},
+};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
@@ -20,11 +25,9 @@ use reifydb_core::{
 use reifydb_value::{Result, byte_size::ByteSize};
 use rusqlite::{Connection, Transaction};
 
-use crate::{
-	tier::{
-		bucket::{AnyBucket, Budget, Resume},
-		persistent::sqlite::typed,
-	},
+use crate::tier::{
+	bucket::{AnyBucket, Budget, Resume},
+	persistent::sqlite::typed,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,12 +88,7 @@ impl<K: Keyspace> TypedBucket<K> {
 		self.partitions.keys().copied()
 	}
 
-	pub fn record(
-		&mut self,
-		group: GroupId,
-		suffix: K::Suffix,
-		post: Option<EncodedPodRow>,
-	) {
+	pub fn record(&mut self, group: GroupId, suffix: K::Suffix, post: Option<EncodedPodRow>) {
 		if !self.partitions.contains_key(&group) {
 			self.partitions.insert(group, SortedVecMap::new());
 			self.bytes = self.bytes.saturating_add(Self::group_bytes());

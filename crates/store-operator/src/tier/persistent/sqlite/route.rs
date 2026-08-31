@@ -88,22 +88,14 @@ impl KeyspaceVisitor for Bounded<'_> {
 		let start = match (self.group, &self.start) {
 			(None, _) => Bound::Unbounded,
 			(Some(group), Bound::Unbounded) => Bound::Included(typed_key::<K>(group, &[], 0x00)),
-			(Some(group), Bound::Included(suffix)) => {
-				Bound::Included(typed_key::<K>(group, suffix, 0x00))
-			}
-			(Some(group), Bound::Excluded(suffix)) => {
-				Bound::Excluded(typed_key::<K>(group, suffix, 0x00))
-			}
+			(Some(group), Bound::Included(suffix)) => Bound::Included(typed_key::<K>(group, suffix, 0x00)),
+			(Some(group), Bound::Excluded(suffix)) => Bound::Excluded(typed_key::<K>(group, suffix, 0x00)),
 		};
 		let end = match (self.group, &self.end) {
 			(None, _) => Bound::Unbounded,
 			(Some(group), Bound::Unbounded) => Bound::Included(typed_key::<K>(group, &[], 0xFF)),
-			(Some(group), Bound::Included(suffix)) => {
-				Bound::Included(typed_key::<K>(group, suffix, 0x00))
-			}
-			(Some(group), Bound::Excluded(suffix)) => {
-				Bound::Excluded(typed_key::<K>(group, suffix, 0x00))
-			}
+			(Some(group), Bound::Included(suffix)) => Bound::Included(typed_key::<K>(group, suffix, 0x00)),
+			(Some(group), Bound::Excluded(suffix)) => Bound::Excluded(typed_key::<K>(group, suffix, 0x00)),
 		};
 		let range = KeyRange::new(start, end);
 		let rows = match self.reverse {
@@ -215,15 +207,13 @@ impl KeyspaceVisitor for Census<'_> {
 pub(super) fn census(conn: &Connection) -> Vec<OperatorStateCensus> {
 	let mut out = Vec::new();
 	for spec in KEYSPACES {
-		out.extend(
-			dispatch(
-				spec.id,
-				Census {
-					conn,
-				},
-			)
-			.expect("every catalogue entry must dispatch to its own keyspace"),
-		);
+		out.extend(dispatch(
+			spec.id,
+			Census {
+				conn,
+			},
+		)
+		.expect("every catalogue entry must dispatch to its own keyspace"));
 	}
 	out
 }

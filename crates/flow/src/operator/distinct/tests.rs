@@ -34,10 +34,7 @@ use crate::{
 		state::store,
 	},
 	transaction::{
-		deferred::DeferredTransaction,
-		mock::FlowTxn,
-		row_number::RowNumberExtension,
-		state::StateExtension,
+		deferred::DeferredTransaction, mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension,
 	},
 };
 

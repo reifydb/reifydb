@@ -45,5 +45,3 @@ impl FlushBatch {
 			&& self.drops.is_empty()
 	}
 }
-
-

@@ -79,9 +79,8 @@ impl OperatorResidentState {
 		let inner = slot.inner.lock();
 		let mut total = ByteSize::ZERO;
 		scan_state(&inner, |keyspace, row| {
-			total = total.saturating_add(ByteSize::from_bytes(
-				key_bytes(keyspace) + row.bytes().len() as u64,
-			));
+			total = total
+				.saturating_add(ByteSize::from_bytes(key_bytes(keyspace) + row.bytes().len() as u64));
 		});
 		total.saturating_add(join_expiry_bytes(scan_join_expiries(&inner)))
 	}

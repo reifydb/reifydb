@@ -698,7 +698,7 @@ fn state_remove(operator: OperatorId, key: EncodedKey, pre: Option<ByteSize>) ->
 		},
 	}
 }
-use reifydb_store_operator::{tier::persistent::sqlite::SqliteOperatorStorage, tier::resident::batch::FlushBatch};
+use reifydb_store_operator::tier::{persistent::sqlite::SqliteOperatorStorage, resident::batch::FlushBatch};
 
 trait SeedDurable {
 	fn seed_durable(&self, writes: &[OperatorWrite]);

@@ -410,8 +410,6 @@ fn every_shard_is_reachable_and_carries_the_configured_per_shard_budget() {
 
 #[test]
 fn keyspace_counters_are_summed_across_every_shard() {
-	// one keyspace spreads its partitions over every shard, so a bucket row that reads a single shard
-	// undercounts; the summation is tier behaviour and only a sharded tier can exercise it
 	let tier = RangeTier::<D>::new(RangeConfig {
 		shard_bytes: Some(ByteSize::from_mib(64)),
 		shards: 4,

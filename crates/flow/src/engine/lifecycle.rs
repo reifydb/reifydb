@@ -165,7 +165,9 @@ mod tests {
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
 		store.apply_batch(&[OperatorWrite::Insert {
 			operator,
-			key: custom_not_cached_key(b"k").expect("a fixture name must fit the keyspace's id width").into_encoded(),
+			key: custom_not_cached_key(b"k")
+				.expect("a fixture name must fit the keyspace's id width")
+				.into_encoded(),
 			post: EncodedPodRow::new(&[1u8; 64]),
 		}]);
 		assert!(store.bytes(operator) > ByteSize::ZERO, "precondition: the operator's state is resident");
@@ -276,7 +278,9 @@ mod tests {
 		let operator = OperatorId(1);
 		store.apply_batch(&[OperatorWrite::Insert {
 			operator,
-			key: custom_not_cached_key(b"k").expect("a fixture name must fit the keyspace's id width").into_encoded(),
+			key: custom_not_cached_key(b"k")
+				.expect("a fixture name must fit the keyspace's id width")
+				.into_encoded(),
 			post: EncodedPodRow::new(&[1u8; 64]),
 		}]);
 		let durable_bytes = store.bytes(operator);

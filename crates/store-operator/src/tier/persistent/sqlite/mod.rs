@@ -6,9 +6,9 @@ mod checkpoint;
 mod flush;
 mod join_expiry;
 pub mod metrics;
+mod route;
 pub mod schema;
 pub mod sql;
-mod route;
 mod state;
 pub mod typed;
 

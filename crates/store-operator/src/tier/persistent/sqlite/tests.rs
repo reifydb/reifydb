@@ -18,9 +18,9 @@ use reifydb_value::{
 use rusqlite::params;
 
 use crate::{
-	tier::resident::batch::FlushBatch,
-	tier::persistent::sqlite::{
-		SqliteOperatorStorage as OperatorStore, sql::JOIN_EXPIRIES_BY_TIME_SQL,
+	tier::{
+		persistent::sqlite::{SqliteOperatorStorage as OperatorStore, sql::JOIN_EXPIRIES_BY_TIME_SQL},
+		resident::batch::FlushBatch,
 	},
 	types::{JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES, StoredJoinRowExpiry, StoredJoinRowExpiryCensus},
 };

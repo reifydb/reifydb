@@ -73,8 +73,6 @@ fn operators_of(batch: &FlushBatch) -> Vec<OperatorId> {
 }
 
 fn row_number_of(name: &str) -> RowNumber {
-	// the fixtures address rows by name, so a name must become a row number that sorts the way the
-	// name does; a hash here would make every scan order assertion assert the hash's order instead
 	let mut bytes = [0u8; 8];
 	for (slot, byte) in bytes.iter_mut().zip(name.as_bytes()) {
 		*slot = *byte;
@@ -119,8 +117,6 @@ fn row_body(row: &EncodedPodRow) -> String {
 }
 
 fn entry_bytes(_key_body: &str, row_body: &str) -> ByteSize {
-	// a typed bucket charges the group once per partition and the suffix once per key, never the whole
-	// encoded key, so an entry standing alone in its own bucket costs group + suffix + row
 	let group = size_of::<GroupId>();
 	let suffix = size_of::<Asc<RowNumber>>();
 	ByteSize::from_bytes((group + suffix + row(row_body).bytes().len()) as u64)
@@ -1386,10 +1382,6 @@ fn a_full_mutation_sequence_leaves_only_the_untouched_operator_in_the_census() {
 
 #[test]
 fn a_live_row_shadows_its_in_flight_twin_across_keyspaces() {
-	// the merge walks the live and in-flight layers in lockstep and only collapses a pair when the
-	// two cursors compare equal; an inner key is [group][keyspace][suffix], so a layer that
-	// iterated keyspace before group would let the cursors pass each other, the equal arm would
-	// never fire, and the superseded row would be served alongside its own replacement
 	let buffer = OperatorResidentState::new();
 	let mut flight = Vec::new();
 	for group in [7u128, 9] {
@@ -1432,10 +1424,6 @@ fn a_live_row_shadows_its_in_flight_twin_across_keyspaces() {
 
 #[test]
 fn a_last_page_is_the_exact_reverse_tail_of_a_forward_page() {
-	// state_last_page runs merge_back, which is merge with its comparison flipped; both walk the
-	// same two layers from opposite ends, so a page taken from the back must be the tail of the
-	// forward page reversed at every limit, or the two cursors disagree about where a page ends
-	// and a reverse scan skips keys the forward one served
 	let buffer = OperatorResidentState::new();
 	let mut seeded = Vec::new();
 	for group in [7u128, 9] {
@@ -1466,8 +1454,12 @@ fn a_last_page_is_the_exact_reverse_tail_of_a_forward_page() {
 		let mut tail = forward[forward.len() - limit..].to_vec();
 		tail.reverse();
 		assert_eq!(
-			back.iter().map(|(key, value)| (key.to_vec(), value.as_ref().map(row_body))).collect::<Vec<_>>(),
-			tail.iter().map(|(key, value)| (key.to_vec(), value.as_ref().map(row_body))).collect::<Vec<_>>(),
+			back.iter()
+				.map(|(key, value)| (key.to_vec(), value.as_ref().map(row_body)))
+				.collect::<Vec<_>>(),
+			tail.iter()
+				.map(|(key, value)| (key.to_vec(), value.as_ref().map(row_body)))
+				.collect::<Vec<_>>(),
 			"a page taken from the back must mirror the tail of the forward page, values included"
 		);
 	}

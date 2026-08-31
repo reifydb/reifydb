@@ -338,7 +338,7 @@ fn interleaved_writes_and_removals_converge_on_the_last_write() {
 	);
 }
 use reifydb_core::key::operator::state::OperatorStateKey;
-use reifydb_store_operator::{tier::persistent::sqlite::SqliteOperatorStorage, tier::resident::batch::FlushBatch};
+use reifydb_store_operator::tier::{persistent::sqlite::SqliteOperatorStorage, resident::batch::FlushBatch};
 
 trait SeedDurable {
 	fn seed_durable(&self, writes: &[OperatorWrite]);

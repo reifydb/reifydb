@@ -567,9 +567,8 @@ pub fn keyspace_inner_range_split(
 }
 
 pub fn custom_not_cached_key_in(group: GroupId, id: &[u8]) -> Option<GroupStateKey> {
-	CustomNotCachedSuffix::of(id).map(|key| {
-		OperatorStateKey::inner_encoded(group, KeyspaceId::CUSTOM_NOT_CACHED, key.to_suffix_bytes())
-	})
+	CustomNotCachedSuffix::of(id)
+		.map(|key| OperatorStateKey::inner_encoded(group, KeyspaceId::CUSTOM_NOT_CACHED, key.to_suffix_bytes()))
 }
 
 pub fn custom_not_cached_key(id: &[u8]) -> Option<GroupStateKey> {
@@ -660,9 +659,9 @@ mod tests {
 
 	use super::{
 		CacheTiers, EncodedKey, EncodedKeyRange, GroupId, GroupSet, GroupStateKey, KeySerializer, KeyspaceId,
-		OperatorStateKey, group_data_inner_range, group_data_of_inner, group_data_range,
-		group_identity_inner_range, group_identity_range, group_inner_prefix, group_inner_range, group_range,
-		custom_not_cached_key_in, is_framed_inner, is_guest_framed_inner, keyspace_range, node_prefix,
+		OperatorStateKey, custom_not_cached_key_in, group_data_inner_range, group_data_of_inner,
+		group_data_range, group_identity_inner_range, group_identity_range, group_inner_prefix,
+		group_inner_range, group_range, is_framed_inner, is_guest_framed_inner, keyspace_range, node_prefix,
 		node_range,
 	};
 	use crate::{interface::catalog::flow::OperatorId, key::EncodableKey};

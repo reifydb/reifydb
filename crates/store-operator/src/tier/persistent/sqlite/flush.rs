@@ -150,4 +150,3 @@ impl SqliteOperatorStorage {
 		transaction.commit().expect("operator state flush could not commit");
 	}
 }
-

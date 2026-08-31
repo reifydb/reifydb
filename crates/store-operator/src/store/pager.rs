@@ -77,8 +77,11 @@ impl PageSource for PersistentPager<'_> {
 			self.exhausted = true;
 			return Vec::new();
 		};
-		let batch =
-			persistent.range_batch(self.operator, EncodedKeyRange::new(self.lower.clone(), self.end.clone()), limit);
+		let batch = persistent.range_batch(
+			self.operator,
+			EncodedKeyRange::new(self.lower.clone(), self.end.clone()),
+			limit,
+		);
 		self.exhausted = !batch.has_more || batch.items.is_empty();
 		if let Some((key, _)) = batch.items.last() {
 			self.lower = Bound::Excluded(key.clone());
@@ -177,8 +180,9 @@ impl<K: Keyspace> PageSource for TierPager<'_, K> {
 					if let Some(proven) = proven_span(&span, last, complete) {
 						match self.tier.materialize(&self.scan, &proven, &typed) {
 							Materialize::Materialized | Materialize::NothingCacheable => {
-								self.claim_start =
-									typed.last().and_then(|(key, _)| key.successor());
+								self.claim_start = typed
+									.last()
+									.and_then(|(key, _)| key.successor());
 							}
 							Materialize::Refused => self.materializing = false,
 						}

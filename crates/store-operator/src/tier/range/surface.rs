@@ -3,6 +3,7 @@
 
 use std::ops::Bound;
 
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
@@ -17,7 +18,6 @@ use reifydb_core::{
 		typed::{Key, direction::Asc, range::KeyRange},
 	},
 };
-use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_store::{
 	coverage::{
 		cursor::{Cursor, ServedChunk},
@@ -353,16 +353,14 @@ fn a_keyspace_that_caches_no_ranges_owns_no_tier_at_all() {
 
 #[test]
 fn a_tier_without_a_byte_budget_is_not_constructed() {
-	assert!(
-		RangeTiers::new(
-			OperatorRangeConfig {
-				tier_bytes: None,
-				gap_guard: DEFAULT_GAP_GUARD,
-			}
-			.into()
-		)
-		.is_none()
-	);
+	assert!(RangeTiers::new(
+		OperatorRangeConfig {
+			tier_bytes: None,
+			gap_guard: DEFAULT_GAP_GUARD,
+		}
+		.into()
+	)
+	.is_none());
 	assert!(RangeTiers::new(OperatorRangeConfig::testing().into()).is_some());
 	assert_eq!(OperatorRangeConfig::testing().tier_bytes, Some(ByteSize::from_kib(32)));
 	assert_eq!(OperatorRangeConfig::testing().gap_guard, DEFAULT_GAP_GUARD);
@@ -404,10 +402,7 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 	let right = keyspace_row(&tiers, KeyspaceId::JOIN_RIGHT);
 	assert_eq!(right.counters.hits, 0, "a miss in one keyspace must not borrow the other keyspace's hit");
 	assert_eq!(right.counters.misses, 1);
-	assert_eq!(
-		right.partitions, 0,
-		"a keyspace with no resident partition is still reported once a counter moved"
-	);
+	assert_eq!(right.partitions, 0, "a keyspace with no resident partition is still reported once a counter moved");
 
 	assert_eq!(tiers.metrics().hits, 1, "the aggregate must survive alongside the keyspace table");
 	assert_eq!(
@@ -490,7 +485,6 @@ fn keys<K: Keyspace<Suffix = Asc<RowNumber>>>(
 
 #[test]
 fn a_claim_and_a_serve_round_trip_for_the_operator_that_made_it() {
-	// The operator must reach the coverage index, or one operator's claim answers another operator's read.
 	let tiers = roomy();
 	let tier = tier_of::<JoinLeft>(&tiers);
 	let k = one_row_partition::<JoinLeft>(&tiers, GROUP_A);
@@ -508,7 +502,6 @@ fn a_claim_and_a_serve_round_trip_for_the_operator_that_made_it() {
 
 #[test]
 fn invalidating_an_operator_withdraws_the_claim_it_made() {
-	// A claim that outlives its operator answers absences for rows the persistent tier still holds.
 	let tiers = roomy();
 	let tier = tier_of::<JoinLeft>(&tiers);
 	let k = one_row_partition::<JoinLeft>(&tiers, GROUP_A);
@@ -524,9 +517,6 @@ fn invalidating_an_operator_withdraws_the_claim_it_made() {
 
 #[test]
 fn invalidating_one_operator_leaves_every_group_of_every_other_operator_claimed() {
-	// The coverage set is keyed by operator and group together, so a purge has to sweep every group the
-	// operator claimed and stop at the operator boundary. Sweeping by operator alone would leave the other
-	// groups claiming rows that are gone; sweeping one group would leave the rest.
 	let tiers = roomy();
 	let tier = tier_of::<JoinLeft>(&tiers);
 	let k = at(1);

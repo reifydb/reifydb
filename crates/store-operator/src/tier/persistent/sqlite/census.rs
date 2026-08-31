@@ -8,9 +8,8 @@ use tracing::instrument;
 
 use crate::{
 	tier::persistent::sqlite::{
-		SqliteOperatorStorage,
-		route,
-		sql::{JOIN_EXPIRY_COUNT_SQL, JOIN_EXPIRY_CENSUS_SQL, JOIN_EXPIRY_TOTAL_COUNT_SQL},
+		SqliteOperatorStorage, route,
+		sql::{JOIN_EXPIRY_CENSUS_SQL, JOIN_EXPIRY_COUNT_SQL, JOIN_EXPIRY_TOTAL_COUNT_SQL},
 	},
 	types::{JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES, OperatorStateCensus, StoredJoinRowExpiryCensus},
 };

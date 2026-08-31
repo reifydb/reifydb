@@ -119,10 +119,7 @@ impl<C: GuestOperator + 'static> HostOperator for GuestAdapter<C> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::{
-		key::encoded::EncodedKey,
-		row::pod::EncodedPodRow,
-	};
+	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		common::CommitVersion,
 		key::operator::state::{

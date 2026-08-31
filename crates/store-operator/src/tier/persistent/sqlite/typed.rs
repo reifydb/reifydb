@@ -341,8 +341,12 @@ fn bound_clause<K: Keyspace>(bound: Bound<&K::Key>, op_included: &str, op_exclud
 	}
 	match bound {
 		Bound::Unbounded => String::new(),
-		Bound::Included(_) => format!(" AND ({}) {} ({})", K::column_list(), op_included, K::placeholders(from)),
-		Bound::Excluded(_) => format!(" AND ({}) {} ({})", K::column_list(), op_excluded, K::placeholders(from)),
+		Bound::Included(_) => {
+			format!(" AND ({}) {} ({})", K::column_list(), op_included, K::placeholders(from))
+		}
+		Bound::Excluded(_) => {
+			format!(" AND ({}) {} ({})", K::column_list(), op_excluded, K::placeholders(from))
+		}
 	}
 }
 
@@ -436,7 +440,7 @@ pub fn census<K: Keyspace>(conn: &Connection) -> Vec<(OperatorId, u64, u64)> {
 
 #[cfg(test)]
 mod tests {
-	use std::collections::HashSet;
+	use std::{collections::HashSet, ops::Bound};
 
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
@@ -450,12 +454,14 @@ mod tests {
 				state::GroupId,
 				traits::Keyspace,
 			},
-			typed::{direction::{Asc, Desc}, range::KeyRange},
+			typed::{
+				direction::{Asc, Desc},
+				range::KeyRange,
+			},
 		},
 	};
 	use reifydb_value::value::row_number::RowNumber;
 	use rusqlite::Connection;
-	use std::ops::Bound;
 
 	use super::{SqlKey, census, create_table, drop_operator, get, last, range, remove, scan, set, table_of};
 	use crate::tier::persistent::sqlite::schema::ensure_schema;
@@ -681,11 +687,19 @@ mod tests {
 		// the limit is what makes a scan pageable, and operator is the leading column; a range that lost
 		// either would either read a whole table into memory or hand one flow another flow's state
 		let conn = seeded();
-		let paged =
-			served(range::<JoinLeft>(&conn, OperatorId(1), &KeyRange::new(Bound::Unbounded, Bound::Unbounded), 3));
+		let paged = served(range::<JoinLeft>(
+			&conn,
+			OperatorId(1),
+			&KeyRange::new(Bound::Unbounded, Bound::Unbounded),
+			3,
+		));
 		assert_eq!(paged, vec![(2, 0), (2, 1), (2, 2)]);
-		let other =
-			served(range::<JoinLeft>(&conn, OperatorId(2), &KeyRange::new(Bound::Unbounded, Bound::Unbounded), 100));
+		let other = served(range::<JoinLeft>(
+			&conn,
+			OperatorId(2),
+			&KeyRange::new(Bound::Unbounded, Bound::Unbounded),
+			100,
+		));
 		assert_eq!(other, vec![(1, 0)]);
 	}
 

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-
-
-
-
 pub(crate) const JOIN_EXPIRIES_BY_TIME_SQL: &str = r#"SELECT "side", "row_number", "at" FROM "operator_join_expiry"
 	   WHERE "operator" = ?1 AND "group" = ?2
 	   ORDER BY "at" ASC LIMIT ?3"#;
@@ -48,4 +44,3 @@ pub(super) const CHECKPOINT_REMOVE_SQL: &str = r#"DELETE FROM "flow_checkpoint" 
 pub(super) const CHECKPOINT_FLOOR_SQL: &str = r#"SELECT MIN("version") FROM "flow_checkpoint""#;
 
 pub(super) const CHECKPOINT_LIST_SQL: &str = r#"SELECT "flow" FROM "flow_checkpoint" ORDER BY "flow" ASC"#;
-

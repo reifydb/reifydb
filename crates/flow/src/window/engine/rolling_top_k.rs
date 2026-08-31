@@ -261,9 +261,11 @@ where
 							.get(&group)
 							.expect("every group outside state_rows was resolved upfront"),
 					};
-					let buffer: RollingTopKBuffer<S, Accumulator> =
-						get_classified(store, &BufferKey::of_row(self.family, group_id, state_row_number))?
-							.unwrap_or_default();
+					let buffer: RollingTopKBuffer<S, Accumulator> = get_classified(
+						store,
+						&BufferKey::of_row(self.family, group_id, state_row_number),
+					)?
+					.unwrap_or_default();
 					let prior_emit: RollingTopKEmit<SK, Output> =
 						get_classified(store, &EmitKey::new(group_id, state_row_number))?
 							.unwrap_or_default();
@@ -398,11 +400,22 @@ where
 			}
 
 			if group_slot.buffer.is_empty() {
-				remove(store, &BufferKey::of_row(self.family, group_slot.group_id, group_slot.state_row_number))?;
+				remove(
+					store,
+					&BufferKey::of_row(
+						self.family,
+						group_slot.group_id,
+						group_slot.state_row_number,
+					),
+				)?;
 			} else {
 				put(
 					store,
-					&BufferKey::of_row(self.family, group_slot.group_id, group_slot.state_row_number),
+					&BufferKey::of_row(
+						self.family,
+						group_slot.group_id,
+						group_slot.state_row_number,
+					),
 					group_slot.buffer,
 				)?;
 			}

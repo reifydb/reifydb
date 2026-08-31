@@ -13,10 +13,7 @@ use rusqlite::{Connection, Transaction, TransactionBehavior, params};
 use tracing::instrument;
 
 use crate::{
-	tier::persistent::sqlite::{
-		SqliteOperatorStorage, route,
-		sql::JOIN_EXPIRIES_DROP_OPERATOR_SQL,
-	},
+	tier::persistent::sqlite::{SqliteOperatorStorage, route, sql::JOIN_EXPIRIES_DROP_OPERATOR_SQL},
 	types::OperatorBatch,
 };
 
@@ -89,13 +86,7 @@ impl SqliteOperatorStorage {
 		self.page(operator, range, batch_size, true)
 	}
 
-	fn page(
-		&self,
-		operator: OperatorId,
-		range: EncodedKeyRange,
-		batch_size: u64,
-		reverse: bool,
-	) -> OperatorBatch {
+	fn page(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64, reverse: bool) -> OperatorBatch {
 		if !self.state_written() {
 			return OperatorBatch::empty();
 		}

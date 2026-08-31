@@ -26,8 +26,8 @@ use crate::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind, KeyspaceFamily, MetaHighWater, MetaSweep, WindowResult,
-			WindowStateKey,
-			config::TumblingCarryConfig, group_hash, meta_key_for, tumbling::TumblingBuckets,
+			WindowStateKey, config::TumblingCarryConfig, group_hash, meta_key_for,
+			tumbling::TumblingBuckets,
 		},
 		span::{SlotSpan, WindowAnchor, WindowSpan},
 	},
@@ -324,7 +324,10 @@ where
 					meta.sealed_up_to = Some(first);
 					meta.sealed_carry = carry_out;
 					let sealed_group = GroupId::of(&sealed_key);
-					remove(store, &WindowStateKey::new(self.family, sealed_group, sealed_key.clone()))?;
+					remove(
+						store,
+						&WindowStateKey::new(self.family, sealed_group, sealed_key.clone()),
+					)?;
 					store.remove_row_number_for_group(sealed_group)?;
 				}
 			}

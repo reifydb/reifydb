@@ -104,8 +104,6 @@ fn row(body: &str) -> EncodedPodRow {
 }
 
 fn entry_bytes(_suffix: u8, body: &str) -> ByteSize {
-	// a typed bucket charges the suffix per key, never the whole encoded key, so one more key in a group
-	// that already exists costs suffix + row
 	ByteSize::from_bytes((size_of::<Asc<RowNumber>>() + row(body).bytes().len()) as u64)
 }
 
@@ -579,11 +577,7 @@ fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 	buffer.complete_flush();
 	assert_eq!(storage.get(OP_A, &key(1)).map(|row| body(&row)), Some("early".to_string()));
 
-	buffer.record_state_set(
-		OP_A,
-		key(1),
-		row("late"),
-	);
+	buffer.record_state_set(OP_A, key(1), row("late"));
 	flush_now(&buffer);
 
 	assert_eq!(
