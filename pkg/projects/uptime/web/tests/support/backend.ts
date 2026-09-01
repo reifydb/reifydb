@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { loadTestFactory, type TestDb, type TestFactory } from '@reifydb/reifydb'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const ADDON_PATH = path.resolve(__dirname, '../../../../../../target/release/libbridge.so')
+const ADDON_PATH = path.resolve(__dirname, '../../../../../../target/dst/release/libbridge.so')
 
 export type { TestDb, TestFactory }
 
