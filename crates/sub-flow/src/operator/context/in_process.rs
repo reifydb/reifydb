@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Diff},
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range_in},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, is_guest_framed_inner, keyspace_inner_range_in},
 	state::timer::TimerKind,
 };
 use reifydb_flow::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
@@ -27,6 +27,16 @@ use reifydb_value::value::{
 	dictionary::{DictionaryEntryId, DictionaryId},
 	row_number::RowNumber,
 };
+
+fn guest_addressable(key: &GroupStateKey) -> SdkResult<()> {
+	if is_guest_framed_inner(key.as_slice()) {
+		return Ok(());
+	}
+	Err(SdkError::Other(format!(
+		"a guest operator state key must name a guest keyspace and carry that keyspace's exact suffix width, got {} bytes",
+		key.as_slice().len()
+	)))
+}
 
 fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 	SdkError::Other(e.to_string())
@@ -131,6 +141,7 @@ pub struct InProcessState<'a> {
 
 impl GuestState for InProcessState<'_> {
 	fn get<T: OperatorState>(&self, key: &GroupStateKey) -> SdkResult<Option<T>> {
+		guest_addressable(key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		match unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)? {
@@ -139,16 +150,19 @@ impl GuestState for InProcessState<'_> {
 		}
 	}
 	fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> SdkResult<()> {
+		guest_addressable(key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_set(key, encode(value)?) }.map_err(to_sdk_err)
 	}
 	fn remove(&mut self, key: &GroupStateKey) -> SdkResult<()> {
+		guest_addressable(key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_remove(key) }.map_err(to_sdk_err)
 	}
 	fn contains(&self, key: &GroupStateKey) -> SdkResult<bool> {
+		guest_addressable(key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		Ok(unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)?.is_some())
@@ -201,6 +215,12 @@ impl GuestState for InProcessState<'_> {
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_set(key, payload) }.map_err(to_sdk_err)
+	}
+
+	fn remove_bytes(&mut self, key: &GroupStateKey) -> SdkResult<()> {
+		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
+		unsafe { (*self.host).state_remove(key) }.map_err(to_sdk_err)
 	}
 
 	fn get_many_bytes_visit(

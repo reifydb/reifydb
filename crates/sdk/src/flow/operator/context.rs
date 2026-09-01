@@ -83,6 +83,8 @@ pub trait GuestState {
 
 	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()>;
 
+	fn remove_bytes(&mut self, key: &GroupStateKey) -> Result<()>;
+
 	fn get_many_bytes_visit(
 		&self,
 		keys: &[GroupStateKey],

@@ -1031,14 +1031,28 @@ mod join_row_expiry_guard_tests {
 		start: Option<&[u8]>,
 		end: Option<&[u8]>,
 	) -> i32 {
+		guest_range_bounds(
+			ctx,
+			keyspace,
+			start.map(|suffix| (suffix, BOUND_INCLUDED)),
+			end.map(|suffix| (suffix, BOUND_EXCLUDED)),
+		)
+	}
+
+	fn guest_range_bounds(
+		ctx: *mut ExternCContextRaw,
+		keyspace: KeyspaceId,
+		start: Option<(&[u8], u8)>,
+		end: Option<(&[u8], u8)>,
+	) -> i32 {
 		let mut iterator: *mut ExternCStateIterator = ptr::null_mut();
 		let (start_ptr, start_len, start_type) = match start {
 			None => (ptr::null(), 0, BOUND_UNBOUNDED),
-			Some(suffix) => (suffix.as_ptr(), suffix.len(), BOUND_INCLUDED),
+			Some((suffix, tag)) => (suffix.as_ptr(), suffix.len(), tag),
 		};
 		let (end_ptr, end_len, end_type) = match end {
 			None => (ptr::null(), 0, BOUND_UNBOUNDED),
-			Some(suffix) => (suffix.as_ptr(), suffix.len(), BOUND_EXCLUDED),
+			Some((suffix, tag)) => (suffix.as_ptr(), suffix.len(), tag),
 		};
 		host_state_range(
 			1,
@@ -1057,6 +1071,14 @@ mod join_row_expiry_guard_tests {
 	}
 
 	const GROUP: GroupId = GroupId(7);
+
+	fn padded(prefix: &[u8], fill: u8) -> Vec<u8> {
+		let width = suffix_width_of(KeyspaceId::CUSTOM_NOT_CACHED)
+			.expect("a fixture keyspace must appear in the catalogue");
+		let mut bytes = prefix.to_vec();
+		bytes.resize(width, fill);
+		bytes
+	}
 
 	#[test]
 	fn a_guest_range_naming_a_host_keyspace_is_refused() {
@@ -1104,7 +1126,9 @@ mod join_row_expiry_guard_tests {
 	#[test]
 	fn a_guest_range_narrows_inside_the_keyspace_it_names() {
 		// The companion to the widening test: suffix bounds still narrow, they just cannot escape. A guest
-		// that could not narrow would have to scan a whole keyspace to read one row.
+		// that could not narrow would have to scan a whole keyspace to read one row. A partial suffix is a
+		// prefix, so each bound pads to the keyspace's full width at the edge that keeps that prefix whole:
+		// an included start and an excluded end both pad low, so both sit before every key under the prefix.
 		let (status, _, seen) = with_recording_context(|ctx| {
 			guest_range(ctx, KeyspaceId::CUSTOM_NOT_CACHED, Some(&[1u8; 4]), Some(&[9u8; 4]))
 		});
@@ -1115,8 +1139,29 @@ mod join_row_expiry_guard_tests {
 			keyspace_inner_range_split(&range).expect("a guest range must confine to one keyspace");
 		assert_eq!(group, GROUP);
 		assert_eq!(keyspace, KeyspaceId::CUSTOM_NOT_CACHED);
-		assert_eq!(start, Bound::Included(vec![1u8; 4]));
-		assert_eq!(end, Bound::Excluded(vec![9u8; 4]));
+		assert_eq!(start, Bound::Included(padded(&[1u8; 4], 0x00)));
+		assert_eq!(end, Bound::Excluded(padded(&[9u8; 4], 0x00)));
+	}
+
+	#[test]
+	fn a_guest_range_pads_an_excluded_start_to_the_high_edge() {
+		// The one bound that pads high. An excluded start must land after every key under its prefix, so
+		// padding it low would leak back the very rows the guest excluded; the other three bounds pad low,
+		// which makes this the edge a copy-paste silently gets wrong.
+		let (status, _, seen) = with_recording_context(|ctx| {
+			guest_range_bounds(
+				ctx,
+				KeyspaceId::CUSTOM_NOT_CACHED,
+				Some((&[1u8; 4], BOUND_EXCLUDED)),
+				None,
+			)
+		});
+		let range = seen.expect("an allowed guest range must reach the host");
+
+		assert_eq!(status, EXTERN_C_OK);
+		let (_, _, start, _) =
+			keyspace_inner_range_split(&range).expect("a guest range must confine to one keyspace");
+		assert_eq!(start, Bound::Excluded(padded(&[1u8; 4], 0xff)));
 	}
 
 	#[test]

@@ -75,7 +75,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 	}
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		self.0.state().remove(key)?;
+		self.0.state().remove_bytes(key)?;
 		Ok(())
 	}
 

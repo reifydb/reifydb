@@ -102,7 +102,7 @@ impl KeyspaceVisitor for Bounded<'_> {
 				Bound::Included(typed_key::<K>(group, suffix, lowest::<K>()))
 			}
 			(Some(group), Bound::Excluded(suffix)) => {
-				Bound::Excluded(typed_key::<K>(group, suffix, lowest::<K>()))
+				Bound::Excluded(typed_key::<K>(group, suffix, highest::<K>()))
 			}
 		};
 		let end = match (self.group, &self.end) {

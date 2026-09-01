@@ -234,6 +234,10 @@ impl GuestState for State<'_> {
 		State::set_bytes(self, key, payload)
 	}
 
+	fn remove_bytes(&mut self, key: &GroupStateKey) -> Result<()> {
+		State::remove(self, key)
+	}
+
 	fn get_many_bytes_visit(
 		&self,
 		keys: &[GroupStateKey],
