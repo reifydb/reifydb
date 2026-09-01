@@ -5,7 +5,7 @@ use crc32fast::Hasher;
 
 use crate::log::{LogIndex, NodeId, Term, VoteSeq};
 
-pub const SLOT_BYTES: usize = 40;
+pub const SLOT_BYTES: usize = 56;
 
 pub const SLOTS: usize = 2;
 
@@ -20,6 +20,8 @@ pub struct State {
 	pub term: Term,
 	pub voted_for: Option<NodeId>,
 	pub commit_index: LogIndex,
+	pub snapshot_index: LogIndex,
+	pub snapshot_term: Term,
 }
 
 impl State {
@@ -27,6 +29,8 @@ impl State {
 		term: Term::ZERO,
 		voted_for: None,
 		commit_index: LogIndex::ZERO,
+		snapshot_index: LogIndex::ZERO,
+		snapshot_term: Term::ZERO,
 	};
 
 	pub fn encode(&self, seq: VoteSeq) -> [u8; SLOT_BYTES] {
@@ -36,6 +40,8 @@ impl State {
 		out[16..24].copy_from_slice(&self.term.as_u64().to_le_bytes());
 		out[24..32].copy_from_slice(&voted_for_bits(self.voted_for).to_le_bytes());
 		out[32..40].copy_from_slice(&self.commit_index.as_u64().to_le_bytes());
+		out[40..48].copy_from_slice(&self.snapshot_index.as_u64().to_le_bytes());
+		out[48..56].copy_from_slice(&self.snapshot_term.as_u64().to_le_bytes());
 		let checksum = checksum(&out[8..]);
 		out[4..8].copy_from_slice(&checksum.to_le_bytes());
 		out
@@ -52,6 +58,8 @@ impl State {
 			term: Term::new(u64::from_le_bytes(buf[16..24].try_into().unwrap())),
 			voted_for: voted_for_of(u64::from_le_bytes(buf[24..32].try_into().unwrap())),
 			commit_index: LogIndex::new(u64::from_le_bytes(buf[32..40].try_into().unwrap())),
+			snapshot_index: LogIndex::new(u64::from_le_bytes(buf[40..48].try_into().unwrap())),
+			snapshot_term: Term::new(u64::from_le_bytes(buf[48..56].try_into().unwrap())),
 		};
 		Some((state, VoteSeq::new(u64::from_le_bytes(buf[8..16].try_into().unwrap()))))
 	}
@@ -90,6 +98,8 @@ mod tests {
 			term: Term::new(0x0102030405060708),
 			voted_for: Some(NodeId::new(0x1112131415161718)),
 			commit_index: LogIndex::new(0x2122232425262728),
+			snapshot_index: LogIndex::new(0x4142434445464748),
+			snapshot_term: Term::new(0x5152535455565758),
 		}
 		.encode(VoteSeq::new(0x3132333435363738));
 
@@ -99,6 +109,8 @@ mod tests {
 		assert_eq!(&raw[16..24], &0x0102030405060708u64.to_le_bytes());
 		assert_eq!(&raw[24..32], &0x1112131415161718u64.to_le_bytes());
 		assert_eq!(&raw[32..40], &0x2122232425262728u64.to_le_bytes());
+		assert_eq!(&raw[40..48], &0x4142434445464748u64.to_le_bytes());
+		assert_eq!(&raw[48..56], &0x5152535455565758u64.to_le_bytes());
 	}
 
 	#[test]

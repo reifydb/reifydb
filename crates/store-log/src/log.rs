@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use reifydb_codec::log::{
-	LogIndex, LogVersion, Position,
+	LogIndex, LogVersion, Position, Term,
 	meta::{FORMAT_VERSION, MAGIC, META_BYTES, Meta},
 	record::Record,
 };
@@ -133,6 +133,14 @@ where
 
 	pub fn truncate_from(&self, partition: u32, index: LogIndex) -> Result<()> {
 		self.writer(partition)?.truncate_from(index)
+	}
+
+	pub fn compact_to(&self, partition: u32, index: LogIndex) -> Result<()> {
+		self.with(partition, |found| found.compact_to(index))?
+	}
+
+	pub fn rebase(&self, partition: u32, index: LogIndex, term: Term) -> Result<()> {
+		self.writer(partition)?.rebase(index, term)
 	}
 
 	pub fn wait(&self, partition: u32, version: LogVersion) -> Result<()> {

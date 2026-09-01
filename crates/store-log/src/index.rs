@@ -116,6 +116,13 @@ impl<F: Filesystem> Index<F> {
 		Ok(self.file.sync_data()?)
 	}
 
+	pub fn rebase(&mut self, base_index: LogIndex) -> Result<()> {
+		self.header.base_index = base_index;
+		self.header.timestamps = None;
+		write_all(&self.file, &self.path, 0, &self.header.encode())?;
+		Ok(self.file.sync_data()?)
+	}
+
 	pub fn seal(&mut self, timestamps: Option<TimestampRange>) -> Result<()> {
 		self.header.timestamps = timestamps;
 		write_all(&self.file, &self.path, 0, &self.header.encode())?;

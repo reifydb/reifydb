@@ -96,17 +96,18 @@ pub enum LogError {
 		dir: PathBuf,
 		version: LogVersion,
 	},
-	TruncateBelowFloor {
-		dir: PathBuf,
-		low: LogIndex,
-		found: LogIndex,
-	},
 	TruncateCommitted {
 		dir: PathBuf,
 		commit: LogIndex,
 		found: LogIndex,
 	},
 	CommitOutOfRange {
+		dir: PathBuf,
+		low: LogIndex,
+		high: LogIndex,
+		found: LogIndex,
+	},
+	CompactOutOfRange {
 		dir: PathBuf,
 		low: LogIndex,
 		high: LogIndex,
@@ -211,15 +212,15 @@ impl LogError {
 				dir,
 				..
 			} => dir,
-			LogError::TruncateBelowFloor {
-				dir,
-				..
-			} => dir,
 			LogError::TruncateCommitted {
 				dir,
 				..
 			} => dir,
 			LogError::CommitOutOfRange {
+				dir,
+				..
+			} => dir,
+			LogError::CompactOutOfRange {
 				dir,
 				..
 			} => dir,
@@ -373,17 +374,6 @@ impl Display for LogError {
 				dir.display(),
 				version.as_u64()
 			),
-			LogError::TruncateBelowFloor {
-				dir,
-				low,
-				found,
-			} => write!(
-				f,
-				"log {} starts at index {}, so it cannot be truncated from {}",
-				dir.display(),
-				low.as_u64(),
-				found.as_u64()
-			),
 			LogError::TruncateCommitted {
 				dir,
 				commit,
@@ -403,6 +393,19 @@ impl Display for LogError {
 			} => write!(
 				f,
 				"log {} can only commit between {} and {}, so {} is out of range",
+				dir.display(),
+				low.as_u64(),
+				high.as_u64(),
+				found.as_u64()
+			),
+			LogError::CompactOutOfRange {
+				dir,
+				low,
+				high,
+				found,
+			} => write!(
+				f,
+				"log {} can only compact between {} and {}, so {} is out of range",
 				dir.display(),
 				low.as_u64(),
 				high.as_u64(),

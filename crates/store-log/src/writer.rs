@@ -6,7 +6,7 @@ use std::{
 	thread,
 };
 
-use reifydb_codec::log::{LogIndex, LogVersion, Position, record::Record};
+use reifydb_codec::log::{LogIndex, LogVersion, Position, Term, record::Record};
 use reifydb_runtime::{
 	fatal::{
 		fatal, is_armed,
@@ -183,11 +183,19 @@ where
 	}
 
 	pub fn truncate_from(&self, index: LogIndex) -> Result<()> {
+		self.cut(|partition| partition.truncate_from(index))
+	}
+
+	pub fn rebase(&self, index: LogIndex, term: Term) -> Result<()> {
+		self.cut(|partition| partition.rebase(index, term))
+	}
+
+	fn cut(&self, act: impl FnOnce(&mut Partition<F, C>) -> Result<()>) -> Result<()> {
 		let mut state = self.inner.state.lock();
 		if state.stopped {
 			return Err(stopped_error(&state));
 		}
-		state.partition.truncate_from(index)?;
+		act(&mut state.partition)?;
 		let head = state.partition.head();
 		state.written = head;
 		state.durable = head;
@@ -579,5 +587,21 @@ mod tests {
 
 		let error = waiter.join().unwrap().unwrap_err();
 		assert!(matches!(error, LogError::Truncated { .. }), "{error}");
+	}
+
+	#[test]
+	fn a_rebase_resets_the_watermarks_like_a_cut() {
+		// the writer caches what it wrote and what is durable; a rebase empties the partition
+		// underneath, so both marks must fall or wait() would report a vanished record as durable.
+		let writer = detached();
+		writer.commit(&record(0)).unwrap();
+		writer.flush().unwrap();
+		assert_eq!(writer.durable(), Some(BASE));
+
+		writer.rebase(LogIndex::new(20), Term::new(5)).unwrap();
+
+		assert_eq!(writer.durable(), None);
+		assert!(matches!(writer.wait(BASE).unwrap_err(), LogError::Truncated { .. }));
+		assert_eq!(writer.with(|partition| partition.last_index()), Some(LogIndex::new(20)));
 	}
 }

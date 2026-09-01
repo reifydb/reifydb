@@ -169,6 +169,7 @@ mod tests {
 			term: Term::new(term),
 			voted_for: Some(NodeId::new(voted_for)),
 			commit_index: LogIndex::new(commit_index),
+			..State::EMPTY
 		}
 	}
 

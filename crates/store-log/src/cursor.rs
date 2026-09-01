@@ -382,6 +382,9 @@ mod tests {
 		partition.seal().unwrap();
 		partition.append(&record_at(600, 7, b"next")).unwrap();
 		sync(&fs, partition.dir(), partition.base()).unwrap();
+		let tail = partition.last_index().unwrap();
+		partition.commit(tail).unwrap();
+		partition.compact_to(tail).unwrap();
 		partition.purge(Duration::from_seconds_const(0)).unwrap();
 		assert_eq!(partition.bases(), [LogVersion::new(600)]);
 
