@@ -22,6 +22,7 @@ pub enum Stop {
 	Eof,
 	Corrupt(Position),
 	Stale(Position),
+	Limit,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,7 +67,7 @@ impl<F: Filesystem> Segment<F> {
 	{
 		let file = fs.open_mut(path)?;
 		let capacity = ByteSize::from_bytes(file.len()?);
-		let scan = walk(&file, capacity, Position::ZERO)?;
+		let scan = walk(&file, capacity, Position::ZERO, None, None)?;
 		let segment = Self {
 			path: path.to_path_buf(),
 			file,
@@ -123,14 +124,35 @@ pub fn scan<F: Open>(fs: &F, path: &Path) -> Result<Scan> {
 pub fn scan_from<F: Open>(fs: &F, path: &Path, from: Position) -> Result<Scan> {
 	let file = fs.open(path)?;
 	let capacity = ByteSize::from_bytes(file.len()?);
-	walk(&file, capacity, from)
+	walk(&file, capacity, from, None, None)
 }
 
-fn walk<H: Pread>(file: &H, capacity: ByteSize, from: Position) -> Result<Scan> {
+pub fn scan_upto<F: Open>(
+	fs: &F,
+	path: &Path,
+	from: Position,
+	after: Option<LogVersion>,
+	limit: usize,
+) -> Result<Scan> {
+	let file = fs.open(path)?;
+	let capacity = ByteSize::from_bytes(file.len()?);
+	walk(&file, capacity, from, after, Some(limit))
+}
+
+fn walk<H: Pread>(
+	file: &H,
+	capacity: ByteSize,
+	from: Position,
+	after: Option<LogVersion>,
+	limit: Option<usize>,
+) -> Result<Scan> {
 	let mut records = Vec::new();
 	let mut position = from;
-	let mut previous: Option<LogVersion> = None;
+	let mut previous = after;
 	loop {
+		if limit.is_some_and(|max| records.len() >= max) {
+			return Ok(stopped(records, position, Stop::Limit));
+		}
 		if capacity.as_bytes().saturating_sub(position.as_u64()) < HEADER_BYTES as u64 {
 			return Ok(stopped(records, position, Stop::Eof));
 		}

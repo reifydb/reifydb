@@ -43,6 +43,10 @@ pub fn record<F: Filesystem + Create + Open + Rename + Unlink>(
 	publish(fs, &path, version)
 }
 
+pub fn version_of<F: Filesystem + Open>(fs: &F, dir: &Path, id: &str) -> Result<LogVersion> {
+	Ok(read(fs, &path_of(dir, id)?)?.unwrap_or(LogVersion::ZERO))
+}
+
 pub fn floor<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Option<LogVersion>> {
 	let entries = match fs.read_dir(&dir.join(DIR_NAME)) {
 		Ok(entries) => entries,

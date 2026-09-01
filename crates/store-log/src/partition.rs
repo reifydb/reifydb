@@ -21,9 +21,10 @@ use reifydb_value::{
 };
 
 use crate::{
+	cursor::Cursor,
 	error::{LogError, Result},
 	index::{Index, header},
-	reader::{floor, record, register, unregister},
+	reader::{floor, record, register, unregister, version_of},
 	segment::{STAGING_SUFFIX, Scan, Segment, scan},
 };
 
@@ -181,6 +182,10 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		record(&self.fs, &self.dir, id, version)
 	}
 
+	pub fn cursor(&self, id: &str) -> Result<Cursor<'_, F>> {
+		Cursor::open(&self.fs, &self.dir, version_of(&self.fs, &self.dir, id)?)
+	}
+
 	pub fn sync(&self) -> Result<()> {
 		self.segment.sync()?;
 		self.index.sync()
@@ -307,7 +312,7 @@ fn name_of(path: &Path) -> Option<&str> {
 	path.file_name().and_then(|name| name.to_str())
 }
 
-fn bases_in<F: ReadDir>(fs: &F, dir: &Path) -> Result<Vec<LogVersion>> {
+pub fn bases_in<F: ReadDir>(fs: &F, dir: &Path) -> Result<Vec<LogVersion>> {
 	let mut bases: Vec<LogVersion> = fs
 		.read_dir(dir)?
 		.iter()

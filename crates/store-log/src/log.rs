@@ -14,6 +14,7 @@ use reifydb_runtime::io::fs::{
 use reifydb_value::{clock::ClockNow, value::duration::Duration};
 
 use crate::{
+	cursor::Cursor,
 	error::{LogError, Result},
 	partition::{Config, Partition},
 	segment::{Scan, discard, staging, write_all},
@@ -120,6 +121,10 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 
 	pub fn record(&self, partition: u32, id: &str, version: LogVersion) -> Result<()> {
 		self.at(partition)?.record(id, version)
+	}
+
+	pub fn cursor(&self, partition: u32, id: &str) -> Result<Cursor<'_, F>> {
+		self.at(partition)?.cursor(id)
 	}
 
 	pub fn head(&self) -> Option<LogVersion> {

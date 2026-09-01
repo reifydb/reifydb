@@ -72,6 +72,11 @@ pub enum LogError {
 		dir: PathBuf,
 		id: String,
 	},
+	Purged {
+		dir: PathBuf,
+		requested: LogVersion,
+		oldest: LogVersion,
+	},
 	Io {
 		path: PathBuf,
 		message: String,
@@ -148,6 +153,10 @@ impl LogError {
 				..
 			} => dir,
 			LogError::InvalidReaderId {
+				dir,
+				..
+			} => dir,
+			LogError::Purged {
 				dir,
 				..
 			} => dir,
@@ -247,6 +256,17 @@ impl Display for LogError {
 				"log {} was given the reader id {:?}, which is not a usable file name",
 				dir.display(),
 				id
+			),
+			LogError::Purged {
+				dir,
+				requested,
+				oldest,
+			} => write!(
+				f,
+				"log {} was asked to read after version {}, but everything below version {} has been purged",
+				dir.display(),
+				requested.as_u64(),
+				oldest.as_u64()
 			),
 			LogError::Io {
 				path,
