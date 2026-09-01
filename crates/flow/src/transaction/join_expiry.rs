@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use reifydb_codec::{
 	key::{
-		decode_u64_asc, encode_u64_asc,
+		decode_u64_asc,
 		encoded::{EncodedKey, EncodedKeyRange},
 	},
 	row::{bytes::EncodedBytes, operator::state::OperatorState, pod::EncodedPodRow},
@@ -15,10 +15,15 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::{
-			GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range, node_prefix,
+		operator::{
+			keyspace::join::{JoinRowExpiry as JoinRowExpirySpace, JoinRowExpirySuffix},
+			state::{
+				GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range, node_prefix,
+			},
 		},
+		typed::direction::Asc,
 	},
+	state::typed::typed_key,
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -46,10 +51,13 @@ pub struct JoinDuePage {
 }
 
 pub fn join_expiry_key(group: GroupId, side: u8, row_number: RowNumber) -> GroupStateKey {
-	let mut suffix = Vec::with_capacity(JOIN_EXPIRY_SUFFIX_LEN);
-	suffix.push(side);
-	suffix.extend_from_slice(&encode_u64_asc(row_number.0));
-	OperatorStateKey::inner_encoded(group, KeyspaceId::JOIN_ROW_EXPIRY, suffix)
+	typed_key::<JoinRowExpirySpace>(
+		group,
+		&JoinRowExpirySuffix {
+			side: Asc(side),
+			row: Asc(row_number),
+		},
+	)
 }
 
 pub fn join_expiry_range(group: GroupId) -> EncodedKeyRange {

@@ -13,9 +13,8 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{
-		GroupId, KeyspaceId, OperatorStateKey, group_data_inner_range, keyspace_inner_range,
-		keyspace_inner_range_upto,
+	key::operator::state::{
+		GroupId, KeyspaceId, group_data_inner_range, keyspace_inner_range, keyspace_inner_range_upto,
 	},
 	metrics::scan::ScanCounters,
 };
@@ -32,9 +31,10 @@ use reifydb_store_operator::{
 	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
 	types::{DurablePre, OperatorWrite},
 };
+use reifydb_testing::keyspace::state_key;
 use reifydb_value::byte_size::ByteSize;
 
-const CACHED: KeyspaceId = KeyspaceId::CUSTOM_CACHED;
+const CACHED: KeyspaceId = KeyspaceId::JOIN_LEFT;
 
 const SEED: u64 = 0x9E3779B97F4A7C15;
 
@@ -52,9 +52,9 @@ const CACHED_KEYSPACES: [KeyspaceId; 2] = [CACHED, KeyspaceId::JOIN_PUBLISHED];
 const KEYSPACES: [KeyspaceId; 5] = [
 	CACHED,
 	KeyspaceId::JOIN_PUBLISHED,
-	KeyspaceId::EXPIRY,
+	KeyspaceId::GUEST_ACCUMULATOR,
 	KeyspaceId::CUSTOM_NOT_CACHED,
-	KeyspaceId::TIMER_WHEEL,
+	KeyspaceId::EMIT,
 ];
 
 const BATCHES: [u64; 4] = [2, 7, 64, 1024];
@@ -95,14 +95,12 @@ fn store_with_range_budget(cached: bool, range_bytes: u64) -> (OperatorStore, Sq
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(config)),
-		// small shard budgets force evictions so the sampled-LRU and abort paths run, not just fills
+		// small tier budgets force evictions so the sampled-LRU and abort paths run, not just fills
 		point: cached.then(|| OperatorPointConfig {
-			shard_bytes: Some(ByteSize::from_bytes(128 * 1024)),
-			shards: 4,
+			tier_bytes: Some(ByteSize::from_bytes(128 * 1024)),
 		}),
 		range: cached.then(|| OperatorRangeConfig {
-			shard_bytes: Some(ByteSize::from_bytes(range_bytes)),
-			shards: 4,
+			tier_bytes: Some(ByteSize::from_bytes(range_bytes)),
 			gap_guard: DEFAULT_GAP_GUARD,
 		}),
 		spawner,
@@ -116,7 +114,7 @@ fn key(rng: &mut Rng) -> (OperatorId, EncodedKey) {
 	let group = GroupId((1 + rng.below(GROUPS)) as u128);
 	let keyspace = KEYSPACES[rng.below(KEYSPACES.len() as u64) as usize];
 	let suffix = rng.below(SUFFIXES);
-	(operator, OperatorStateKey::inner_encoded(group, keyspace, suffix.to_be_bytes()).as_encoded().clone())
+	(operator, state_key(group, keyspace, suffix as u64))
 }
 
 fn drain(

@@ -12,7 +12,7 @@
 
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change},
-	key::operator_state::KeyspaceId,
+	key::operator::state::KeyspaceId,
 	value::column::columns::Columns,
 };
 use reifydb_flow::operator::aggregation::operator::AggregateOperator;
@@ -45,7 +45,7 @@ fn row(number: u64, value: i64) -> reifydb_core::row::Row {
 fn engine_meta_lookups(store: &OperatorStore) -> u64 {
 	store.point_keyspace_metrics()
 		.into_iter()
-		.filter(|m| m.slot == KeyspaceId::ENGINE_META)
+		.filter(|m| m.bucket == KeyspaceId::ENGINE_META)
 		.map(|m| m.counters.hits + m.counters.misses)
 		.sum()
 }

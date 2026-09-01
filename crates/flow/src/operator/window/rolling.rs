@@ -590,7 +590,7 @@ mod tests {
 		row::pod::EncodedPodRow,
 	};
 	use reifydb_core::{
-		key::operator_state::{GroupId, GroupStateKey},
+		key::operator::state::{GroupId, GroupStateKey},
 		state::timer::{StateStore, TimerKind, TimerStore},
 	};
 	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
@@ -732,15 +732,13 @@ mod tests {
 			self.state.remove(key.as_slice());
 			Ok(())
 		}
-		fn state_range_visit(
+		fn state_page_inner(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> ValueResult<()>,
-		) -> ValueResult<()> {
-			// The backing map is a HashMap, so without this sort the visit order is arbitrary and the real
+		) -> ValueResult<Vec<(GroupStateKey, EncodedPodRow)>> {
+			// The backing map is a HashMap, so without this sort the page order is arbitrary and the real
 			// store's key order is not reproduced.
-			let mut seen = 0usize;
 			let mut entries: Vec<(Vec<u8>, EncodedPodRow)> = self
 				.state
 				.iter()
@@ -761,18 +759,17 @@ mod tests {
 				.map(|(k, v)| (k.clone(), v.clone()))
 				.collect();
 			entries.sort_by(|a, b| a.0.cmp(&b.0));
-			for (k, v) in entries {
-				if let Some(limit) = limit
-					&& seen >= limit
-				{
-					break;
-				}
-				let k = GroupStateKey::from_framed(EncodedKey::new(k))
-					.expect("fake store holds an unframed state key");
-				visit(k, v)?;
-				seen += 1;
+			if let Some(limit) = limit {
+				entries.truncate(limit);
 			}
-			Ok(())
+			Ok(entries
+				.into_iter()
+				.map(|(k, v)| {
+					let k = GroupStateKey::from_framed(EncodedKey::new(k))
+						.expect("fake store holds an unframed state key");
+					(k, v)
+				})
+				.collect())
 		}
 		fn get_or_create_row_numbers(
 			&mut self,
@@ -781,14 +778,21 @@ mod tests {
 		) -> ValueResult<Vec<(RowNumber, bool)>> {
 			Ok(keys.iter().map(|key| self.row_number_for(group, key)).collect())
 		}
-		fn get_or_create_row_numbers_for_pairs(
+		fn get_or_create_row_numbers_for_groups(
 			&mut self,
-			pairs: &[(GroupId, EncodedKey)],
+			groups: &[GroupId],
 		) -> ValueResult<Vec<(RowNumber, bool)>> {
-			Ok(pairs.iter().map(|(group, key)| self.row_number_for(*group, key)).collect())
+			Ok(groups
+				.iter()
+				.map(|group| self.row_number_for(*group, &EncodedKey::new(Vec::new())))
+				.collect())
 		}
 		fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> ValueResult<()> {
 			self.rows.remove(&(group, key.as_bytes().to_vec()));
+			Ok(())
+		}
+		fn remove_row_number_for_group(&mut self, group: GroupId) -> ValueResult<()> {
+			self.rows.remove(&(group, Vec::new()));
 			Ok(())
 		}
 		fn written_at(&self) -> DateTime {

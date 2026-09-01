@@ -8,7 +8,7 @@ use std::{
 
 use postcard::to_extend;
 use reifydb_codec::{
-	key::{decode_u128, encode_u128, encoded::EncodedKey, serializer::KeySerializer},
+	key::{decode_u128, encode_u128, encoded::EncodedKey},
 	row::operator::state::OperatorState,
 };
 use reifydb_core::{
@@ -18,7 +18,13 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{GroupId, GroupStateKey},
+	key::{
+		operator::{
+			keyspace::join::JoinRowMappingKey,
+			state::{GroupId, GroupStateKey},
+		},
+		typed::direction::{Asc, Desc},
+	},
 	metrics::{heap::OperatorSample, instruments::counter::Counter},
 	state::timer::TimerKind,
 	value::column::{ColumnWithName, columns::Columns},
@@ -62,6 +68,10 @@ use crate::{
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
+
+const JOIN_MAPPING_TAG: u8 = b'L';
+
+const UNMATCHED_RIGHT: u64 = 0;
 
 const SEAL_BATCH: usize = 256;
 
@@ -429,13 +439,13 @@ impl JoinOperator {
 				state.left.remove_row_in(host, group, row_number)?;
 			}
 			JoinSide::Right => {
-				let composites: Vec<EncodedKey> = state
+				let composites: Vec<JoinRowMappingKey> = state
 					.left
 					.row_numbers_in(host, group)?
 					.into_iter()
 					.map(|left_number| Self::make_composite_key(left_number, row_number))
 					.collect();
-				host.remove_row_numbers(GroupId::ROOT, &composites)?;
+				host.remove_join_row_numbers(&composites)?;
 				state.right.remove_row_in(host, group, row_number)?;
 			}
 		}
@@ -583,12 +593,8 @@ impl JoinOperator {
 	) -> Result<Emitted> {
 		let left_row_number = left.row_numbers()[left_idx];
 
-		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'L');
-		serializer.extend_u64(left_row_number.0);
-		let composite_key = serializer.finish();
-
-		let (row_numbers, fresh, existing) = self.identities(host, &[composite_key], identity)?;
+		let (row_numbers, fresh, existing) =
+			self.identities(host, &[Self::unmatched_left_key(left_row_number)], identity)?;
 		if fresh.is_empty() && existing.is_empty() {
 			return Ok(Emitted::empty());
 		}
@@ -601,7 +607,7 @@ impl JoinOperator {
 	fn identities(
 		&self,
 		host: &mut dyn HostContext,
-		keys: &[EncodedKey],
+		keys: &[JoinRowMappingKey],
 		identity: Identity<'_>,
 	) -> Result<(Vec<RowNumber>, Vec<usize>, Vec<usize>)> {
 		match identity {
@@ -610,21 +616,21 @@ impl JoinOperator {
 				Ok((supplied.iter().map(|(number, _)| *number).collect(), fresh, existing))
 			}
 			Identity::Mint => {
-				let minted = host.get_or_create_row_numbers(GroupId::ROOT, keys)?;
+				let minted = host.get_or_create_join_row_numbers(keys)?;
 				let (fresh, existing) = (0..keys.len()).partition(|index| minted[*index].1);
 				Ok((minted.iter().map(|(number, _)| *number).collect(), fresh, existing))
 			}
 			Identity::Existing | Identity::Consume => {
-				let resolved = host.get_row_numbers(GroupId::ROOT, keys)?;
+				let resolved = host.get_join_row_numbers(keys)?;
 				let existing: Vec<usize> = resolved
 					.iter()
 					.enumerate()
 					.filter_map(|(index, number)| number.map(|_| index))
 					.collect();
 				if identity == Identity::Consume {
-					for index in &existing {
-						host.remove_row_number(GroupId::ROOT, &keys[*index])?;
-					}
+					let consumed: Vec<JoinRowMappingKey> =
+						existing.iter().map(|index| keys[*index]).collect();
+					host.remove_join_row_numbers(&consumed)?;
 				}
 				Ok((
 					resolved.into_iter().map(|number| number.unwrap_or(RowNumber(0))).collect(),
@@ -653,16 +659,8 @@ impl JoinOperator {
 			return Ok(Emitted::empty());
 		}
 
-		let composite_keys: Vec<EncodedKey> = left_indices
-			.iter()
-			.map(|&idx| {
-				let left_row_number = left.row_numbers()[idx];
-				let mut serializer = KeySerializer::new();
-				serializer.extend_u8(b'L');
-				serializer.extend_u64(left_row_number.0);
-				serializer.finish()
-			})
-			.collect();
+		let composite_keys: Vec<JoinRowMappingKey> =
+			left_indices.iter().map(|&idx| Self::unmatched_left_key(left.row_numbers()[idx])).collect();
 
 		let (row_numbers, fresh, existing) = self.identities(host, &composite_keys, identity)?;
 
@@ -677,20 +675,23 @@ impl JoinOperator {
 			JoinStrategy::Left(_) | JoinStrategy::Inner(_) => {}
 		}
 
-		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'L');
-		serializer.extend_u64(left_number);
-		let prefix = serializer.finish();
-
-		host.remove_row_numbers_by_prefix(GroupId::ROOT, &prefix)
+		host.remove_join_row_numbers_for_left(JOIN_MAPPING_TAG, left_number)
 	}
 
-	fn make_composite_key(left_num: RowNumber, right_num: RowNumber) -> EncodedKey {
-		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'L');
-		serializer.extend_u64(left_num.0);
-		serializer.extend_u64(right_num.0);
-		serializer.finish()
+	fn make_composite_key(left_num: RowNumber, right_num: RowNumber) -> JoinRowMappingKey {
+		JoinRowMappingKey {
+			tag: Asc(JOIN_MAPPING_TAG),
+			left: Desc(left_num.0),
+			right: Desc(right_num.0),
+		}
+	}
+
+	fn unmatched_left_key(left_num: RowNumber) -> JoinRowMappingKey {
+		JoinRowMappingKey {
+			tag: Asc(JOIN_MAPPING_TAG),
+			left: Desc(left_num.0),
+			right: Desc(UNMATCHED_RIGHT),
+		}
 	}
 
 	pub(crate) fn join_columns_one_to_many(
@@ -708,7 +709,7 @@ impl JoinOperator {
 
 		let left_row_number = left.row_numbers()[left_idx];
 
-		let composite_keys: Vec<EncodedKey> = (0..right_count)
+		let composite_keys: Vec<JoinRowMappingKey> = (0..right_count)
 			.map(|right_idx| {
 				let right_row_number = right.row_numbers()[right_idx];
 				Self::make_composite_key(left_row_number, right_row_number)
@@ -737,7 +738,7 @@ impl JoinOperator {
 
 		let right_row_number = right.row_numbers()[right_idx];
 
-		let composite_keys: Vec<EncodedKey> = (0..left_count)
+		let composite_keys: Vec<JoinRowMappingKey> = (0..left_count)
 			.map(|left_idx| {
 				let left_row_number = left.row_numbers()[left_idx];
 				Self::make_composite_key(left_row_number, right_row_number)
@@ -1050,7 +1051,14 @@ mod seal_tests {
 	use reifydb_codec::row::operator::state::decode;
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator_state::{KeyspaceId, group_inner_range, keyspace_inner_range},
+		key::{
+			EncodableKey,
+			operator::{
+				keyspace::join::{JoinLeft, JoinRight},
+				state::{KeyspaceId, OperatorStateKey, keyspace_inner_range},
+				traits::Keyspace,
+			},
+		},
 		value::column::buffer::ColumnBuffer,
 	};
 	use reifydb_rql::expression::parse_expression;
@@ -1217,11 +1225,22 @@ mod seal_tests {
 	}
 
 	fn group_rows(op: &JoinOperator, txn: &mut DeferredTransaction, group: GroupId) -> usize {
-		txn.state_range(op.operator, StateRange::forward(group_inner_range(group), "test")).unwrap().items.len()
+		// no single range spans a group's keyspaces, so the group filter has to happen after the scan
+		txn.state_scan_all(op.operator)
+			.unwrap()
+			.items
+			.iter()
+			.filter(|item| OperatorStateKey::decode(&item.key).is_some_and(|key| key.group == group))
+			.count()
 	}
 
 	fn side_rows(op: &JoinOperator, txn: &mut DeferredTransaction, group: GroupId, side: JoinSide) -> usize {
-		txn.state_range(op.operator, StateRange::forward(keyspace_inner_range(group, side.keyspace()), "test"))
+		// Names the keyspace through the typed constants so a renumbered side fails here, not silently.
+		let keyspace = match side {
+			JoinSide::Left => JoinLeft::ID,
+			JoinSide::Right => JoinRight::ID,
+		};
+		txn.state_range(op.operator, StateRange::forward(keyspace_inner_range(group, keyspace), "test"))
 			.unwrap()
 			.items
 			.len()
@@ -1240,10 +1259,9 @@ mod seal_tests {
 	}
 
 	fn unmatched_mapping(op: &JoinOperator, txn: &mut DeferredTransaction, left: u64) -> Option<RowNumber> {
-		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'L');
-		serializer.extend_u64(left);
-		txn.get_row_numbers(op.operator, GroupId::ROOT, &[serializer.finish()]).unwrap().remove(0)
+		txn.get_join_row_numbers(op.operator, &[JoinOperator::unmatched_left_key(RowNumber(left))])
+			.unwrap()
+			.remove(0)
 	}
 
 	fn fire(op: &mut JoinOperator, txn: &mut DeferredTransaction, due: DateTime, group: GroupId) -> Option<Change> {

@@ -11,7 +11,7 @@ use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::operator::state::GroupId,
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{
@@ -20,7 +20,7 @@ use reifydb_sdk::{
 		GuestOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::GuestContext,
-		state::GuestRawOperator,
+		state::{GuestRawOperator, utils::custom_state_key_in},
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
@@ -42,8 +42,6 @@ const DELAY_MS: u64 = 1_000;
 // Far beyond anything these event times reach, so retention never reclaims a group underneath an
 // assertion. It is declared only because declaring it is what puts the node in the event domain.
 const LATENESS_MS: u64 = 3_600_000;
-
-const ALARM_STATE: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
 
 struct AlarmRow {
 	g: i32,
@@ -134,7 +132,7 @@ impl GuestOperator for Alarm {
 		// Per-group state, so the group has something for the retention pass to erase once it ages
 		// past its horizon. Without it a group is nothing but an identity and reclaim has no work.
 		let fired_at = timer.due.to_millis() as i64;
-		self.state_set(ctx, &OperatorStateKey::inner_encoded(group, ALARM_STATE, []), &fired_at)?;
+		self.state_set(ctx, &custom_state_key_in(group, &[])?, &fired_at)?;
 
 		let (row_number, _is_new) = ctx.get_or_create_row_numbers(group, &[key])?.remove(0);
 		ctx.emit_insert(
@@ -273,8 +271,6 @@ fn interning_inside_a_callback_stamps_the_firing_instant_not_the_change_that_wok
 	);
 }
 
-const SNOOZE_ARMED: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
-
 struct Snooze {
 	disarm_offset_ms: u64,
 }
@@ -323,7 +319,7 @@ impl GuestOperator for Snooze {
 					.expect("the substrate must populate #time on an event-time source");
 				let key = group_key(g);
 				let group = GroupId::of(&key);
-				let armed_key = OperatorStateKey::inner_encoded(group, SNOOZE_ARMED, []);
+				let armed_key = custom_state_key_in(group, &[])?;
 
 				if let Some(prior) = self.state_get::<i64>(ctx, &armed_key)? {
 					// Zero in the honest case; non-zero aims the disarm past what

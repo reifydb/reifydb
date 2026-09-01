@@ -31,7 +31,7 @@ use reifydb_core::{
 		},
 		store::Tier,
 	},
-	key::operator_state::KeyspaceId,
+	key::operator::state::KeyspaceId,
 	metrics::{
 		execution::StatementMetrics,
 		sample::{MetricKind, Reading},

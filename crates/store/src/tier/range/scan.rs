@@ -3,18 +3,18 @@
 
 use std::ops::Bound::{Excluded, Included, Unbounded};
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
-use reifydb_core::util::sorted::SortedVecMap;
+use reifydb_core::{
+	key::typed::{ExclusiveUpperEnd, Key, range::KeyRange},
+	util::sorted::SortedVecMap,
+};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
 	coverage::{
-		ExclusiveUpperEnd,
-		cursor::{RangeCursor, ServedChunk},
+		cursor::{Cursor, ServedChunk},
 		entry::{Entry, PinnedCount},
 		interval::{CoverageSet, Interval},
 		plan::{Segment, plan},
-		successor,
 	},
 	tier::range::{
 		Materialize, Partition, RangeDomain, RangeRows, RangeScan, RangeTier, Shard, entry_footprint,
@@ -28,7 +28,7 @@ enum PartitionAction {
 }
 
 impl<D: RangeDomain> RangeScan<D> {
-	pub fn segments(&self) -> &[Segment] {
+	pub fn segments(&self) -> &[Segment<D::Key>] {
 		&self.segments
 	}
 
@@ -50,14 +50,32 @@ impl<D: RangeDomain> RangeScan<D> {
 }
 
 impl<D: RangeDomain> RangeTier<D> {
-	pub fn plan_scan(&self, dimension: D::Dimension, range: &EncodedKeyRange) -> Option<RangeScan<D>> {
+	pub fn plan_scan(&self, dimension: D::Dimension, range: &KeyRange<D::Key>) -> Option<RangeScan<D>> {
+		self.plan_scan_within(dimension, None, range)
+	}
+
+	pub fn plan_scan_in(
+		&self,
+		dimension: D::Dimension,
+		partition: D::Partition,
+		range: &KeyRange<D::Key>,
+	) -> Option<RangeScan<D>> {
+		self.plan_scan_within(dimension, Some(partition), range)
+	}
+
+	fn plan_scan_within(
+		&self,
+		dimension: D::Dimension,
+		confined: Option<D::Partition>,
+		range: &KeyRange<D::Key>,
+	) -> Option<RangeScan<D>> {
 		let lo = match range.start.as_ref() {
 			Included(key) => key.clone(),
-			Excluded(key) => successor(key),
+			Excluded(key) => key.successor()?,
 			Unbounded => return None,
 		};
 		let hi = match range.end.as_ref() {
-			Included(key) => ExclusiveUpperEnd::Key(successor(key)),
+			Included(key) => ExclusiveUpperEnd::just_past(key),
 			Excluded(key) => ExclusiveUpperEnd::Key(key.clone()),
 			Unbounded => ExclusiveUpperEnd::Top,
 		};
@@ -67,7 +85,10 @@ impl<D: RangeDomain> RangeTier<D> {
 			let anchor = lo.clone();
 			let lo = advance_to_head::<D>(&coverage, dimension, lo, &hi);
 			let advanced = lo != anchor;
-			let head = partition_at::<D>(dimension, &lo)?;
+			let head = match confined {
+				Some(partition) => partition,
+				None => partition_at::<D>(dimension, &lo)?,
+			};
 			let (_, head_end) = D::span(&head);
 			if hi <= head_end && !D::caches_ranges(&head) {
 				return None;
@@ -75,7 +96,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			let vacant = CoverageSet::new();
 			let claims = coverage.set(dimension).unwrap_or(&vacant);
 			let planned = plan(claims, lo.clone(), hi.clone(), self.gap_guard(), |gap| {
-				exempt_gap::<D>(dimension, gap)
+				exempt_gap::<D>(dimension, confined, gap)
 			});
 			let held = claims.contains(&lo);
 			(lo, head, planned, held, self.retractions(), advanced)
@@ -97,12 +118,13 @@ impl<D: RangeDomain> RangeTier<D> {
 			));
 		}
 		for segment in &planned.segments {
-			split_at_partitions::<D>(dimension, segment, &mut pieces);
+			split_at_partitions::<D>(dimension, confined, segment, &mut pieces);
 		}
 		let pieces = coalesce_gaps::<D>(pieces);
 		if pieces.is_empty() {
 			return Some(RangeScan {
 				dimension,
+				confined,
 				advanced,
 				segments: Vec::new(),
 				gaps: planned.gaps - planned.exempted,
@@ -159,19 +181,19 @@ impl<D: RangeDomain> RangeTier<D> {
 				let Some(partition) = partition else {
 					continue;
 				};
-				let slot = D::slot(&partition);
+				let bucket = D::metric_bucket(&partition);
 				match tally {
 					Tally::Hit => {
 						shard.metrics.hits += 1;
-						shard.slot_metrics[slot].hits += 1;
+						shard.bucket_metrics[bucket].hits += 1;
 					}
 					Tally::Miss => {
 						shard.metrics.misses += 1;
-						shard.slot_metrics[slot].misses += 1;
+						shard.bucket_metrics[bucket].misses += 1;
 					}
 					Tally::Untallied => {
 						shard.metrics.exempt += 1;
-						shard.slot_metrics[slot].exempt += 1;
+						shard.bucket_metrics[bucket].exempt += 1;
 					}
 				}
 				if D::caches_ranges(&partition) {
@@ -201,6 +223,7 @@ impl<D: RangeDomain> RangeTier<D> {
 
 		Some(RangeScan {
 			dimension,
+			confined,
 			advanced,
 			segments: pieces.into_iter().map(|(segment, _)| segment).collect(),
 			gaps: planned.gaps - planned.exempted,
@@ -212,20 +235,20 @@ impl<D: RangeDomain> RangeTier<D> {
 	pub fn serve(
 		&self,
 		scan: &RangeScan<D>,
-		segment: &Interval,
-		cursor: &mut RangeCursor,
+		segment: &Interval<D::Key>,
+		cursor: &mut Cursor<(), D::Key>,
 		limit: usize,
 	) -> ServedChunk<RangeRows<D>> {
 		let start = match cursor.last_key() {
-			Some(last) if last.as_slice() >= segment.start.as_slice() => successor(last),
-			_ => segment.start.clone(),
+			Some(last) if *last >= segment.start => last.successor(),
+			_ => Some(segment.start.clone()),
 		};
-		if !segment.end.covers(&start) {
+		let Some(start) = start.filter(|start| segment.end.covers(start)) else {
 			cursor.finish();
 			return ServedChunk::Served(Vec::new());
-		}
+		};
 
-		let Some(partition) = D::partition(scan.dimension, &segment.start) else {
+		let Some(partition) = scan.confined.or_else(|| D::partition(scan.dimension, &segment.start)) else {
 			return ServedChunk::Gap;
 		};
 		if !D::caches_ranges(&partition) {
@@ -297,15 +320,27 @@ impl<D: RangeDomain> RangeTier<D> {
 		ServedChunk::Served(rows)
 	}
 
-	pub fn materialize(&self, scan: &RangeScan<D>, span: &Interval, rows: &[(EncodedKey, D::Row)]) -> Materialize {
+	pub fn materialize(
+		&self,
+		scan: &RangeScan<D>,
+		span: &Interval<D::Key>,
+		rows: &[(D::Key, D::Row)],
+	) -> Materialize {
 		let mut start = span.start.clone();
 		let mut head = true;
 		let mut materialized = false;
-		let mut claim: Option<Interval> = None;
+		let mut claim: Option<Interval<D::Key>> = None;
 		let mut claimed: Vec<usize> = Vec::new();
+		let mut walk_end: Option<ExclusiveUpperEnd<D::Key>> = None;
 		if !span.is_empty() {
 			loop {
-				let Some(partition) = D::partition(scan.dimension, &start) else {
+				if let Some(limit) = walk_end.as_ref()
+					&& !limit.covers(&start)
+				{
+					break;
+				}
+				let Some(partition) = scan.confined.or_else(|| D::partition(scan.dimension, &start))
+				else {
 					let Some(anchor) = rows
 						.first()
 						.and_then(|(key, _)| D::partition(scan.dimension, key))
@@ -313,7 +348,7 @@ impl<D: RangeDomain> RangeTier<D> {
 					else {
 						break;
 					};
-					if !head || anchor.as_slice() <= start.as_slice() || !span.end.covers(&anchor) {
+					if !head || anchor <= start || !span.end.covers(&anchor) {
 						break;
 					}
 					head = false;
@@ -321,6 +356,9 @@ impl<D: RangeDomain> RangeTier<D> {
 					continue;
 				};
 				head = false;
+				if walk_end.is_none() {
+					walk_end = Some(D::partition_walk_end(&partition));
+				}
 				let (_, bound) = D::span(&partition);
 				let end = bound.min(span.end.clone());
 				let piece = Interval::new(start, end.clone());
@@ -370,9 +408,9 @@ impl<D: RangeDomain> RangeTier<D> {
 
 	fn classify(
 		&self,
-		piece: &Interval,
+		piece: &Interval<D::Key>,
 		partition: D::Partition,
-		rows: &[(EncodedKey, D::Row)],
+		rows: &[(D::Key, D::Row)],
 	) -> PartitionAction {
 		if rows.iter().any(|(key, _)| piece.contains(key)) {
 			return PartitionAction::Materialize;
@@ -386,7 +424,12 @@ impl<D: RangeDomain> RangeTier<D> {
 		PartitionAction::Claim(index)
 	}
 
-	fn flush_claims(&self, scan: &RangeScan<D>, claim: &mut Option<Interval>, claimed: &mut Vec<usize>) -> bool {
+	fn flush_claims(
+		&self,
+		scan: &RangeScan<D>,
+		claim: &mut Option<Interval<D::Key>>,
+		claimed: &mut Vec<usize>,
+	) -> bool {
 		let Some(span) = claim.take() else {
 			return true;
 		};
@@ -417,8 +460,13 @@ impl<D: RangeDomain> RangeTier<D> {
 		claimed.clear();
 	}
 
-	fn materialize_partition(&self, scan: &RangeScan<D>, span: &Interval, rows: &[(EncodedKey, D::Row)]) -> bool {
-		let Some(partition) = D::partition(scan.dimension, &span.start) else {
+	fn materialize_partition(
+		&self,
+		scan: &RangeScan<D>,
+		span: &Interval<D::Key>,
+		rows: &[(D::Key, D::Row)],
+	) -> bool {
+		let Some(partition) = scan.confined.or_else(|| D::partition(scan.dimension, &span.start)) else {
 			return false;
 		};
 		if !D::caches_ranges(&partition) {
@@ -430,21 +478,21 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 
 		let index = self.shard_index(&partition);
-		let slot = D::slot(&partition);
+		let bucket = D::metric_bucket(&partition);
 		let lands = rows.iter().any(|(key, _)| span.contains(key));
 		let (fresh, inserted, writes) = {
 			let mut inserted = Vec::new();
 			let mut shard = self.shard(index).lock();
 			if !lands && !shard.partitions.contains_key(&partition) {
 				drop(shard);
-				return self.claim_only(scan, span, index, slot);
+				return self.claim_only(scan, span, index, bucket);
 			}
 			let tick = shard.next_tick;
 			let Shard {
 				partitions,
 				budget,
 				metrics,
-				slot_metrics,
+				bucket_metrics,
 				..
 			} = &mut *shard;
 
@@ -487,7 +535,7 @@ impl<D: RangeDomain> RangeTier<D> {
 					partitions.remove(&partition);
 				}
 				metrics.materializes_refused += 1;
-				slot_metrics[slot].materializes_refused += 1;
+				bucket_metrics[bucket].materializes_refused += 1;
 				return false;
 			}
 
@@ -511,7 +559,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				self.roll_back_materialize(index, partition, fresh, &inserted, writes);
 				let mut shard = self.shard(index).lock();
 				shard.metrics.materializes_raced += 1;
-				shard.slot_metrics[slot].materializes_raced += 1;
+				shard.bucket_metrics[bucket].materializes_raced += 1;
 				return false;
 			}
 			coverage.extend(scan.dimension, span.start.clone(), span.end.clone());
@@ -519,18 +567,18 @@ impl<D: RangeDomain> RangeTier<D> {
 
 		let mut shard = self.shard(index).lock();
 		shard.metrics.materializes += 1;
-		shard.slot_metrics[slot].materializes += 1;
+		shard.bucket_metrics[bucket].materializes += 1;
 		true
 	}
 
-	fn claim_only(&self, scan: &RangeScan<D>, span: &Interval, index: usize, slot: usize) -> bool {
+	fn claim_only(&self, scan: &RangeScan<D>, span: &Interval<D::Key>, index: usize, bucket: usize) -> bool {
 		{
 			let mut coverage = self.coverage().write();
 			if !self.retractions_unchanged(scan.retractions) {
 				drop(coverage);
 				let mut shard = self.shard(index).lock();
 				shard.metrics.materializes_raced += 1;
-				shard.slot_metrics[slot].materializes_raced += 1;
+				shard.bucket_metrics[bucket].materializes_raced += 1;
 				return false;
 			}
 			coverage.extend(scan.dimension, span.start.clone(), span.end.clone());
@@ -538,7 +586,7 @@ impl<D: RangeDomain> RangeTier<D> {
 
 		let mut shard = self.shard(index).lock();
 		shard.metrics.materializes += 1;
-		shard.slot_metrics[slot].materializes += 1;
+		shard.bucket_metrics[bucket].materializes += 1;
 		true
 	}
 
@@ -547,7 +595,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		index: usize,
 		partition: D::Partition,
 		fresh: bool,
-		inserted: &[EncodedKey],
+		inserted: &[D::Key],
 		writes: u64,
 	) {
 		let dimension = D::dimension(&partition);
@@ -560,14 +608,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 	}
 
-	fn drop_placed(
-		&self,
-		index: usize,
-		partition: D::Partition,
-		fresh: bool,
-		inserted: &[EncodedKey],
-		writes: u64,
-	) {
+	fn drop_placed(&self, index: usize, partition: D::Partition, fresh: bool, inserted: &[D::Key], writes: u64) {
 		let mut shard = self.shard(index).lock();
 		if shard.writes != writes {
 			return;
@@ -610,28 +651,22 @@ enum Tally {
 	Untallied,
 }
 
-fn pad_to_prefix<D: RangeDomain>(key: &EncodedKey) -> EncodedKey {
-	let mut padded = key.as_slice().to_vec();
-	padded.resize(D::PREFIX_LEN, 0);
-	EncodedKey::new(padded)
-}
-
-fn partition_at<D: RangeDomain>(dimension: D::Dimension, key: &EncodedKey) -> Option<D::Partition> {
+fn partition_at<D: RangeDomain>(dimension: D::Dimension, key: &D::Key) -> Option<D::Partition> {
 	match D::partition(dimension, key) {
 		Some(partition) => Some(partition),
-		None => D::partition(dimension, &pad_to_prefix::<D>(key)),
+		None => D::first_addressable(key).and_then(|aligned| D::partition(dimension, &aligned)),
 	}
 }
 
-fn unaddressable_gap<D: RangeDomain>(gap: &Interval) -> bool {
-	gap.start.as_slice().len() < D::PREFIX_LEN && gap.end <= ExclusiveUpperEnd::Key(pad_to_prefix::<D>(&gap.start))
+fn unaddressable_gap<D: RangeDomain>(gap: &Interval<D::Key>) -> bool {
+	D::first_addressable(&gap.start).is_some_and(|aligned| gap.end <= ExclusiveUpperEnd::Key(aligned))
 }
 
-fn exempt_gap<D: RangeDomain>(dimension: D::Dimension, gap: &Interval) -> bool {
+fn exempt_gap<D: RangeDomain>(dimension: D::Dimension, confined: Option<D::Partition>, gap: &Interval<D::Key>) -> bool {
 	if unaddressable_gap::<D>(gap) {
 		return true;
 	}
-	let Some(partition) = D::partition(dimension, &gap.start) else {
+	let Some(partition) = confined.or_else(|| D::partition(dimension, &gap.start)) else {
 		return false;
 	};
 	if D::caches_ranges(&partition) {
@@ -641,8 +676,10 @@ fn exempt_gap<D: RangeDomain>(dimension: D::Dimension, gap: &Interval) -> bool {
 	gap.end <= end
 }
 
-fn coalesce_gaps<D: RangeDomain>(pieces: Vec<(Segment, Option<D::Partition>)>) -> Vec<(Segment, Option<D::Partition>)> {
-	let mut out: Vec<(Segment, Option<D::Partition>)> = Vec::with_capacity(pieces.len());
+type Piece<D> = (Segment<<D as RangeDomain>::Key>, Option<<D as RangeDomain>::Partition>);
+
+fn coalesce_gaps<D: RangeDomain>(pieces: Vec<Piece<D>>) -> Vec<Piece<D>> {
+	let mut out: Vec<Piece<D>> = Vec::with_capacity(pieces.len());
 	for (segment, partition) in pieces {
 		let Segment::Gap {
 			interval,
@@ -677,8 +714,9 @@ fn coalesce_gaps<D: RangeDomain>(pieces: Vec<(Segment, Option<D::Partition>)>) -
 
 fn split_at_partitions<D: RangeDomain>(
 	dimension: D::Dimension,
-	segment: &Segment,
-	out: &mut Vec<(Segment, Option<D::Partition>)>,
+	confined: Option<D::Partition>,
+	segment: &Segment<D::Key>,
+	out: &mut Vec<Piece<D>>,
 ) {
 	let (whole, ram) = match segment {
 		Segment::Resident(interval) => (interval, true),
@@ -689,16 +727,27 @@ fn split_at_partitions<D: RangeDomain>(
 	};
 
 	let mut start = whole.start.clone();
-	let mut head = true;
+	let mut walk_end: Option<ExclusiveUpperEnd<D::Key>> = None;
 	loop {
 		if !whole.end.covers(&start) {
 			return;
 		}
-		let Some(partition) = D::partition(dimension, &start) else {
-			let bound = if head {
-				ExclusiveUpperEnd::Key(pad_to_prefix::<D>(&start))
-			} else {
-				whole.end.clone()
+		if let Some(limit) = walk_end.as_ref()
+			&& !limit.covers(&start)
+		{
+			out.push((
+				Segment::Gap {
+					interval: Interval::new(start, whole.end.clone()),
+					exempt: false,
+				},
+				None,
+			));
+			return;
+		}
+		let Some(partition) = confined.or_else(|| D::partition(dimension, &start)) else {
+			let bound = match D::first_addressable(&start) {
+				Some(aligned) => ExclusiveUpperEnd::Key(aligned),
+				None => whole.end.clone(),
 			};
 			let end = bound.min(whole.end.clone());
 			let interval = Interval::new(start, end.clone());
@@ -711,7 +760,6 @@ fn split_at_partitions<D: RangeDomain>(
 					None,
 				));
 			}
-			head = false;
 			match end {
 				_ if end == whole.end => return,
 				ExclusiveUpperEnd::Key(key) => {
@@ -721,11 +769,13 @@ fn split_at_partitions<D: RangeDomain>(
 				ExclusiveUpperEnd::Top => return,
 			}
 		};
-		head = false;
 
 		let bound = if ram {
 			D::span(&partition).1
 		} else {
+			if walk_end.is_none() {
+				walk_end = Some(D::partition_walk_end(&partition));
+			}
 			D::cache_tiers_run_end(&partition)
 		};
 		let end = bound.min(whole.end.clone());
@@ -768,14 +818,16 @@ mod tests {
 	};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+		key::{
+			operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+			typed::{ExclusiveUpperEnd, MultiKey, range::KeyRange},
+		},
 	};
 	use reifydb_value::byte_size::ByteSize;
 
 	use super::split_at_partitions;
 	use crate::{
 		coverage::{
-			ExclusiveUpperEnd,
 			cursor::{RangeCursor, ServedChunk},
 			interval::Interval,
 			plan::Segment,
@@ -816,11 +868,11 @@ mod tests {
 		TestPartition {
 			dimension: OP,
 			group: GROUP,
-			slot: keyspace,
+			keyspace,
 		}
 	}
 
-	fn whole(keyspace: KeyspaceId) -> Interval {
+	fn whole(keyspace: KeyspaceId) -> Interval<MultiKey> {
 		let (start, end) = partition(keyspace).span();
 		Interval::new(start, end)
 	}
@@ -834,18 +886,18 @@ mod tests {
 	fn claim(
 		tier: &RangeTier<D>,
 		range: &EncodedKeyRange,
-		span: &Interval,
+		span: &Interval<MultiKey>,
 		rows: &[(EncodedKey, EncodedPodRow)],
 	) -> Materialize {
-		let scan = tier.plan_scan(OP, range).expect("the fixture range must be plannable");
+		let scan = tier.plan_scan(OP, &KeyRange::from(range)).expect("the fixture range must be plannable");
 		tier.materialize(&scan, span, rows)
 	}
 
-	fn spanning(from: &EncodedKey, to: &EncodedKey) -> Interval {
+	fn spanning(from: &EncodedKey, to: &EncodedKey) -> Interval<MultiKey> {
 		Interval::new(from.clone(), ExclusiveUpperEnd::Key(to.clone()))
 	}
 
-	fn drain(tier: &RangeTier<D>, scan: &RangeScan<D>, segment: &Interval, limit: usize) -> Vec<String> {
+	fn drain(tier: &RangeTier<D>, scan: &RangeScan<D>, segment: &Interval<MultiKey>, limit: usize) -> Vec<String> {
 		let mut cursor = RangeCursor::new();
 		let mut out = Vec::new();
 		while !cursor.is_exhausted() {
@@ -864,7 +916,7 @@ mod tests {
 		out
 	}
 
-	fn intervals(tier: &RangeTier<D>) -> Vec<Interval> {
+	fn intervals(tier: &RangeTier<D>) -> Vec<Interval<MultiKey>> {
 		tier.coverage().read().set(OP).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
@@ -890,7 +942,8 @@ mod tests {
 
 		assert_eq!(intervals(&tier), [spanning(&at(b"a"), &at(b"e"))], "two touching claims must coalesce");
 
-		let scan = tier.plan_scan(OP, &range).expect("a whole-keyspace range must be plannable");
+		let scan =
+			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 		assert_eq!(
 			drain(&tier, &scan, &spanning(&at(b"a"), &at(b"e")), 64),
 			["a1", "b1", "c1", "d1"],
@@ -927,7 +980,8 @@ mod tests {
 		let tier = roomy();
 		let range = keyspace_inner_range(GROUP, CACHED);
 		let at = key(CACHED, b"a");
-		let scan = tier.plan_scan(OP, &range).expect("a whole-keyspace range must be plannable");
+		let scan =
+			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 
 		tier.record_retraction();
 
@@ -964,7 +1018,8 @@ mod tests {
 
 		assert_eq!(intervals(&tier).len(), 1, "the three claims must coalesce, or the split is not under test");
 
-		let scan = tier.plan_scan(OP, &range).expect("a cross-keyspace range must be plannable");
+		let scan =
+			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a cross-keyspace range must be plannable");
 		assert_eq!(
 			scan.segments(),
 			[
@@ -1006,6 +1061,7 @@ mod tests {
 		let mut gap = Vec::new();
 		split_at_partitions::<D>(
 			OP,
+			None,
 			&Segment::Gap {
 				interval: span.clone(),
 				exempt: false,
@@ -1045,7 +1101,7 @@ mod tests {
 		);
 
 		let mut ram = Vec::new();
-		split_at_partitions::<D>(OP, &Segment::Resident(span), &mut ram);
+		split_at_partitions::<D>(OP, None, &Segment::Resident(span), &mut ram);
 		assert_eq!(
 			ram.len(),
 			(bottom.0..=top.0).len(),
@@ -1056,6 +1112,71 @@ mod tests {
 				.all(|(segment, partition)| matches!(segment, Segment::Resident(_))
 					&& partition.is_some()),
 			"every RAM piece must name the partition that serves it"
+		);
+	}
+
+	#[test]
+	fn a_gap_reaching_past_its_group_stops_splitting_and_hands_the_remainder_back_unattributed() {
+		// A scan bounded only by the operator leaves the gap's upper end open, and splitting it one cache
+		// tier run at a time then walked every group the key space can express, so the planner never
+		// returned and grew a piece per turn until the process died. The walk must stop at the group it
+		// entered and hand back what is left as a single piece.
+		let ExclusiveUpperEnd::Key(boundary) = partition(KeyspaceId(u8::MAX)).group_end() else {
+			panic!("a group below the top of the key space must have a boundary");
+		};
+
+		let mut pieces = Vec::new();
+		split_at_partitions::<D>(
+			OP,
+			None,
+			&Segment::Gap {
+				interval: Interval::new(whole(KeyspaceId(u8::MAX)).start, ExclusiveUpperEnd::Top),
+				exempt: false,
+			},
+			&mut pieces,
+		);
+
+		let (tail, attributed) = pieces.last().expect("an unbounded gap must still yield pieces");
+		assert_eq!(
+			tail,
+			&Segment::Gap {
+				interval: Interval::new(boundary, ExclusiveUpperEnd::Top),
+				exempt: false,
+			},
+			"everything past the group must come back as one piece running to the top of the key space"
+		);
+		assert!(attributed.is_none(), "the tail covers more partitions than one, so it may name none");
+		assert!(
+			pieces[..pieces.len() - 1]
+				.iter()
+				.all(|(_, at)| at.as_ref().is_some_and(|at| at.group == GROUP)),
+			"every attributed piece must belong to the group the walk entered, or the walk left it"
+		);
+	}
+
+	#[test]
+	fn materialising_a_span_reaching_past_its_group_claims_no_further_than_the_group() {
+		// materialize walks the span partition by partition to decide what it may claim, so an open ended
+		// span hung there for the same reason the planner did. Stopping at the group under claims rather
+		// than over claims: a claim wider than the rows proved would answer later reads from a cache that
+		// never held them.
+		let tier = roomy();
+		let range = keyspace_inner_range(GROUP, CACHED);
+		let at = |suffix: &[u8]| key(CACHED, suffix);
+
+		assert!(claim(
+			&tier,
+			&range,
+			&Interval::new(at(b"a"), ExclusiveUpperEnd::Top),
+			&[(at(b"a"), row("a1"))]
+		) == Materialize::Materialized);
+
+		let ExclusiveUpperEnd::Key(boundary) = partition(CACHED).group_end() else {
+			panic!("a group below the top of the key space must have a boundary");
+		};
+		assert!(
+			intervals(&tier).iter().all(|held| held.end <= ExclusiveUpperEnd::Key(boundary.clone())),
+			"no claim may reach past the group the span started in"
 		);
 	}
 
@@ -1078,7 +1199,7 @@ mod tests {
 		assert_eq!(tier.partitions(), 1, "only the keyspace holding a row may hold a partition");
 
 		let before = tier.metrics().hits;
-		let scan = tier.plan_scan(OP, &range).expect("a two-keyspace range must be plannable");
+		let scan = tier.plan_scan(OP, &KeyRange::from(&range)).expect("a two-keyspace range must be plannable");
 
 		assert_eq!(
 			scan.segments(),
@@ -1139,7 +1260,8 @@ mod tests {
 		);
 
 		armed.store(true, Ordering::SeqCst);
-		let scan = tier.plan_scan(OP, &range).expect("a whole-keyspace range must be plannable");
+		let scan =
+			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 		let mut cursor = RangeCursor::new();
 		let served = tier.serve(&scan, &whole(CACHED), &mut cursor, 64);
 

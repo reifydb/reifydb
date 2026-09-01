@@ -3,21 +3,24 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
 	actors::pending::PendingLayers,
 	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, group_inner_range},
+	key::{
+		EncodableKey,
+		operator::{
+			keyspace::suffix_width_of,
+			state::{GroupId, KeyspaceId, OperatorStateKey},
+		},
+	},
 };
 use reifydb_flow::transaction::{
-	ChangeCoordinate, DeferredParams, FlowTransaction,
-	deferred::DeferredTransaction,
-	reclaim::ReclaimExtension,
-	state::{StateExtension, StateRange},
-	substrate::FlowSubstrate,
+	ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction, reclaim::ReclaimExtension,
+	state::StateExtension, substrate::FlowSubstrate,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
@@ -58,17 +61,27 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 }
 
 fn seed_identity(txn: &mut DeferredTransaction, id: GroupId) {
-	write(txn, id, KeyspaceId::ROW_NUMBER_MAPPING, 1);
-	write(txn, id, KeyspaceId::ROW_NUMBER_MAPPING, 2);
+	write(txn, id, KeyspaceId::GUEST_ROW_MAPPING, 1);
+	write(txn, id, KeyspaceId::GUEST_ROW_MAPPING, 2);
 }
 
 fn write(txn: &mut DeferredTransaction, group: GroupId, keyspace: KeyspaceId, suffix: u8) {
-	let key = OperatorStateKey::inner_encoded(group, keyspace, vec![suffix]);
+	// the width comes from the catalogue because a suffix narrower than its keyspace declares never reaches storage
+	let width = suffix_width_of(keyspace).expect("a fixture keyspace must appear in the catalogue");
+	let mut bytes = vec![0u8; width];
+	bytes[width - 1] = suffix;
+	let key = OperatorStateKey::inner_encoded(group, keyspace, bytes);
 	txn.state_set(NODE, &key, payload()).unwrap();
 }
 
-fn count(txn: &mut DeferredTransaction, range: EncodedKeyRange) -> usize {
-	txn.state_range(NODE, StateRange::forward(range, "test")).unwrap().items.len()
+fn count(txn: &mut DeferredTransaction, group: GroupId) -> usize {
+	// no single range spans a group's keyspaces, so the group filter has to happen after the scan
+	txn.state_scan_all(NODE)
+		.unwrap()
+		.items
+		.iter()
+		.filter(|item| OperatorStateKey::decode(&item.key).is_some_and(|key| key.group == group))
+		.count()
 }
 
 #[test]
@@ -83,7 +96,7 @@ fn the_identity_reclaim_erases_the_whole_range() {
 
 	assert_eq!(outcome.removed, Count::new(2), "both seeded mapping rows");
 	assert!(!outcome.more);
-	assert_eq!(count(&mut txn, group_inner_range(id)), 0, "the group's range must be empty");
+	assert_eq!(count(&mut txn, id), 0, "the group's range must be empty");
 }
 
 #[test]
@@ -93,7 +106,7 @@ fn a_bounded_identity_reclaim_reports_that_rows_remain() {
 	let mut txn = deferred(&engine);
 	let id = GroupId::of(&EncodedKey::new(b"chunky"));
 	for suffix in 0..4u8 {
-		write(&mut txn, id, KeyspaceId::ROW_NUMBER_MAPPING, suffix);
+		write(&mut txn, id, KeyspaceId::GUEST_ROW_MAPPING, suffix);
 	}
 
 	let partial = txn.reclaim_group_identity(NODE, id, 2).unwrap();
@@ -103,7 +116,7 @@ fn a_bounded_identity_reclaim_reports_that_rows_remain() {
 	let rest = txn.reclaim_group_identity(NODE, id, 100).unwrap();
 	assert_eq!(rest.removed, Count::new(2));
 	assert!(!rest.more);
-	assert_eq!(count(&mut txn, group_inner_range(id)), 0);
+	assert_eq!(count(&mut txn, id), 0);
 }
 
 #[test]
@@ -112,8 +125,8 @@ fn a_budget_stopping_between_keyspaces_resumes_where_it_left_off() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let id = GroupId::of(&EncodedKey::new(b"outlives-its-budget"));
-	write(&mut txn, id, KeyspaceId::ROW_NUMBER_MAPPING, 1);
-	write(&mut txn, id, KeyspaceId::ROW_NUMBER_MAPPING, 2);
+	write(&mut txn, id, KeyspaceId::GUEST_ROW_MAPPING, 1);
+	write(&mut txn, id, KeyspaceId::GUEST_ROW_MAPPING, 2);
 	write(&mut txn, id, KeyspaceId::TIMER_WHEEL, 1);
 	write(&mut txn, id, KeyspaceId::TIMER_WHEEL, 2);
 
@@ -126,7 +139,7 @@ fn a_budget_stopping_between_keyspaces_resumes_where_it_left_off() {
 
 	assert_eq!(rest.removed, Count::new(1), "exactly the row the budget could not reach");
 	assert!(!rest.more);
-	assert_eq!(count(&mut txn, group_inner_range(id)), 0, "and nothing may be left under the id");
+	assert_eq!(count(&mut txn, id), 0, "and nothing may be left under the id");
 }
 
 #[test]
@@ -141,8 +154,8 @@ fn reclaiming_one_groups_identity_leaves_its_neighbour_untouched() {
 
 	txn.reclaim_group_identity(NODE, id, 100).unwrap();
 
-	assert_eq!(count(&mut txn, group_inner_range(id)), 0);
-	assert_eq!(count(&mut txn, group_inner_range(neighbour)), 2, "the neighbour must be whole");
+	assert_eq!(count(&mut txn, id), 0);
+	assert_eq!(count(&mut txn, neighbour), 2, "the neighbour must be whole");
 }
 
 #[test]
@@ -156,5 +169,5 @@ fn a_reclaimed_group_reborn_reuses_its_id() {
 	txn.reclaim_group_identity(NODE, id, 100).unwrap();
 
 	assert_eq!(GroupId::of(&bytes), id);
-	assert_eq!(count(&mut txn, group_inner_range(id)), 0, "and the reborn scope must start empty");
+	assert_eq!(count(&mut txn, id), 0, "and the reborn scope must start empty");
 }

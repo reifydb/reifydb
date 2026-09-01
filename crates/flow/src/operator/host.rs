@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, pod::EncodedPodRow},
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -13,7 +13,10 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
+		operator::{
+			keyspace::join::JoinRowMappingKey,
+			state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
+		},
 	},
 	state::timer::{StateStore, TimerKind, TimerStore},
 };
@@ -97,31 +100,21 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn state_clear(&mut self) -> Result<()>;
 
-	fn state_scan_all(&mut self) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
-		self.state_range_iter(EncodedKeyRange::all()).collect()
-	}
-
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;
 
 	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome>;
 
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>>;
 
-	fn get_row_numbers_for_groups(
-		&mut self,
-		groups: &[GroupId],
-		key: &EncodedKey,
-	) -> Result<Vec<Option<RowNumber>>>;
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>>;
 
-	fn get_or_create_row_numbers_for_groups(
-		&mut self,
-		groups: &[GroupId],
-		key: &EncodedKey,
-	) -> Result<Vec<(RowNumber, bool)>>;
+	fn get_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>>;
 
-	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
+	fn get_or_create_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<(RowNumber, bool)>>;
 
-	fn remove_row_numbers_by_prefix(&mut self, group: GroupId, key_prefix: &[u8]) -> Result<()>;
+	fn remove_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<()>;
+
+	fn remove_join_row_numbers_for_left(&mut self, tag: u8, left: u64) -> Result<()>;
 
 	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>>;
 
@@ -214,28 +207,28 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.state_remove(self.operator, key)
 	}
 
-	fn state_range_visit(
+	fn state_page_inner(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let batch = self.txn.state_range(
 			self.operator,
 			StateRange {
 				range,
 				limit,
-				site: "operator::host_visit",
+				site: "operator::host_page",
 			},
 		)?;
+		let mut out = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
 			if let Some(decoded) = OperatorStateKey::decode(&r.key)
 				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 			{
-				visit(inner, EncodedPodRow::from(r.bytes))?;
+				out.push((inner, EncodedPodRow::from(r.bytes)));
 			}
 		}
-		Ok(())
+		Ok(out)
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
@@ -254,19 +247,23 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.get_or_create_row_numbers(self.operator, group, keys)
 	}
 
-	fn get_or_create_row_numbers_for_pairs(
-		&mut self,
-		pairs: &[(GroupId, EncodedKey)],
-	) -> Result<Vec<(RowNumber, bool)>> {
-		self.txn.get_or_create_row_numbers_for_pairs(self.operator, pairs)
+	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
+		self.txn.get_or_create_row_numbers_for_groups(self.operator, groups)
 	}
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		self.txn.remove_row_number(self.operator, group, key)
 	}
 
+	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {
+		self.txn.remove_row_number_for_group(self.operator, group)
+	}
+
 	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-		self.txn.remove_row_numbers(self.operator, group, keys)
+		for key in keys {
+			self.txn.remove_row_number(self.operator, group, key)?;
+		}
+		Ok(())
 	}
 
 	fn written_at(&self) -> DateTime {
@@ -377,28 +374,24 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.get_row_numbers(self.operator, group, keys)
 	}
 
-	fn get_row_numbers_for_groups(
-		&mut self,
-		groups: &[GroupId],
-		key: &EncodedKey,
-	) -> Result<Vec<Option<RowNumber>>> {
-		self.txn.get_row_numbers_for_groups(self.operator, groups, key)
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
+		self.txn.get_row_numbers_for_groups(self.operator, groups)
 	}
 
-	fn get_or_create_row_numbers_for_groups(
-		&mut self,
-		groups: &[GroupId],
-		key: &EncodedKey,
-	) -> Result<Vec<(RowNumber, bool)>> {
-		self.txn.get_or_create_row_numbers_for_groups(self.operator, groups, key)
+	fn get_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>> {
+		self.txn.get_join_row_numbers(self.operator, keys)
 	}
 
-	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		self.txn.remove_row_numbers_below(self.operator, group, upper)
+	fn get_or_create_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<(RowNumber, bool)>> {
+		self.txn.get_or_create_join_row_numbers(self.operator, keys)
 	}
 
-	fn remove_row_numbers_by_prefix(&mut self, group: GroupId, key_prefix: &[u8]) -> Result<()> {
-		self.txn.remove_row_numbers_by_prefix(self.operator, group, key_prefix)
+	fn remove_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<()> {
+		self.txn.remove_join_row_numbers(self.operator, keys)
+	}
+
+	fn remove_join_row_numbers_for_left(&mut self, tag: u8, left: u64) -> Result<()> {
+		self.txn.remove_join_row_numbers_for_left(self.operator, tag, left)
 	}
 
 	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>> {

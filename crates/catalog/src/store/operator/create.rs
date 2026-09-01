@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::{change::CatalogTrackOperatorChangeOperations, flow::Operator},
-	key::operator::{OperatorByFlowKey, OperatorKey},
+	key::operator::key::{OperatorByFlowKey, OperatorKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 

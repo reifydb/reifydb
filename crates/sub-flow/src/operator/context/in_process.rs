@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{marker::PhantomData, mem, ops::Bound};
+use std::{marker::PhantomData, mem};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Diff},
-	key::operator_state::{GroupId, GroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, is_guest_framed_inner, keyspace_inner_range_in},
 	state::timer::TimerKind,
 };
 use reifydb_flow::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
@@ -17,7 +17,7 @@ use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
 		column::{row::Row, sink::in_process::InProcessRowSink},
-		context::{GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit},
+		context::{GuestBound, GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit},
 		state::{decode_payload, encode_payload},
 	},
 };
@@ -27,6 +27,16 @@ use reifydb_value::value::{
 	dictionary::{DictionaryEntryId, DictionaryId},
 	row_number::RowNumber,
 };
+
+fn guest_addressable(key: &GroupStateKey) -> SdkResult<()> {
+	if is_guest_framed_inner(key.as_slice()) {
+		return Ok(());
+	}
+	Err(SdkError::Other(format!(
+		"a guest operator state key must name a guest keyspace and carry that keyspace's exact suffix width, got {} bytes",
+		key.as_slice().len()
+	)))
+}
 
 fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 	SdkError::Other(e.to_string())
@@ -131,6 +141,7 @@ pub struct InProcessState<'a> {
 
 impl GuestState for InProcessState<'_> {
 	fn get<T: OperatorState>(&self, key: &GroupStateKey) -> SdkResult<Option<T>> {
+		guest_addressable(key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		match unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)? {
@@ -139,16 +150,19 @@ impl GuestState for InProcessState<'_> {
 		}
 	}
 	fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> SdkResult<()> {
+		guest_addressable(key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_set(key, encode(value)?) }.map_err(to_sdk_err)
 	}
 	fn remove(&mut self, key: &GroupStateKey) -> SdkResult<()> {
+		guest_addressable(key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_remove(key) }.map_err(to_sdk_err)
 	}
 	fn contains(&self, key: &GroupStateKey) -> SdkResult<bool> {
+		guest_addressable(key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		Ok(unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)?.is_some())
@@ -180,13 +194,12 @@ impl GuestState for InProcessState<'_> {
 	}
 	fn range<T: OperatorState>(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 	) -> SdkResult<Vec<(GroupStateKey, T)>> {
-		let range = EncodedKeyRange::new(
-			start.map(|k| k.as_encoded().clone()),
-			end.map(|k| k.as_encoded().clone()),
-		);
+		let range = keyspace_inner_range_in(group, keyspace, start.to_bound(), end.to_bound());
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let rows = unsafe { (*self.host).state_range(range) }.map_err(to_sdk_err)?;
@@ -204,6 +217,12 @@ impl GuestState for InProcessState<'_> {
 		unsafe { (*self.host).state_set(key, payload) }.map_err(to_sdk_err)
 	}
 
+	fn remove_bytes(&mut self, key: &GroupStateKey) -> SdkResult<()> {
+		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
+		unsafe { (*self.host).state_remove(key) }.map_err(to_sdk_err)
+	}
+
 	fn get_many_bytes_visit(
 		&self,
 		keys: &[GroupStateKey],
@@ -217,15 +236,14 @@ impl GuestState for InProcessState<'_> {
 
 	fn range_bytes_visit(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
-		let range = EncodedKeyRange::new(
-			start.map(|k| k.as_encoded().clone()),
-			end.map(|k| k.as_encoded().clone()),
-		);
+		let range = keyspace_inner_range_in(group, keyspace, start.to_bound(), end.to_bound());
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
 		// cannot reach the context, so it cannot re-enter the host while this borrow is live.
@@ -235,13 +253,12 @@ impl GuestState for InProcessState<'_> {
 
 	fn last_bytes(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 	) -> SdkResult<Option<(GroupStateKey, EncodedPodRow)>> {
-		let range = EncodedKeyRange::new(
-			start.map(|k| k.as_encoded().clone()),
-			end.map(|k| k.as_encoded().clone()),
-		);
+		let range = keyspace_inner_range_in(group, keyspace, start.to_bound(), end.to_bound());
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_last(range) }.map_err(to_sdk_err)
@@ -332,19 +349,15 @@ impl GuestContext for InProcessContext<'_> {
 		&mut self,
 		pairs: &[(GroupId, EncodedKey)],
 	) -> SdkResult<Vec<(RowNumber, bool)>> {
+		let groups: Vec<GroupId> = pairs.iter().map(|(group, _)| *group).collect();
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).get_or_create_row_numbers_for_pairs(pairs) }.map_err(to_sdk_err)
+		unsafe { (*self.host).get_or_create_row_numbers_for_groups(&groups) }.map_err(to_sdk_err)
 	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<()> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).remove_row_number(group, key) }.map_err(to_sdk_err)
-	}
-	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> SdkResult<Vec<RowNumber>> {
-		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
-		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).remove_row_numbers_below(group, upper) }.map_err(to_sdk_err)
 	}
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> SdkResult<ReclaimOutcome> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps

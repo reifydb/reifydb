@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator_state::GroupId,
+	key::operator::state::{GroupId, KeyspaceId},
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
@@ -24,6 +24,7 @@ use reifydb_store_operator::{
 	},
 	types::{DurablePre, OperatorBatch, OperatorWrite, StoredJoinRowExpiry},
 };
+use reifydb_testing::keyspace::state_key;
 use reifydb_value::{
 	byte_size::ByteSize,
 	value::{datetime::DateTime, row_number::RowNumber},
@@ -67,10 +68,7 @@ fn store_at(config: SqliteConfig) -> OperatorStore {
 }
 
 fn key(suffix: u8) -> EncodedKey {
-	let mut bytes = 7u128.to_be_bytes().to_vec();
-	bytes.push(0x10);
-	bytes.push(suffix);
-	EncodedKey::new(bytes)
+	state_key(GroupId(7), KeyspaceId::JOIN_LEFT, suffix as u64)
 }
 
 fn row(body: &str) -> EncodedPodRow {
@@ -123,7 +121,7 @@ fn erase(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) {
 #[test]
 fn a_buffered_write_shadows_the_flushed_row_for_the_same_key() {
 	let (store, storage, _guard) = flushed_store();
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable"),
@@ -151,7 +149,7 @@ fn a_buffered_write_shadows_the_flushed_row_for_the_same_key() {
 #[test]
 fn a_buffered_tombstone_hides_the_flushed_row_from_every_read() {
 	let (store, storage, _guard) = flushed_store();
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable"),
@@ -182,7 +180,7 @@ fn a_buffered_tombstone_hides_the_flushed_row_from_every_read() {
 fn paging_interleaved_layers_yields_every_key_once_in_order() {
 	let (store, storage, _guard) = flushed_store();
 	for suffix in [1u8, 3, 5] {
-		storage.apply_batch(&[OperatorWrite::Insert {
+		storage.seed_durable(&[OperatorWrite::Insert {
 			operator: OP_A,
 			key: key(suffix),
 			post: row(&format!("durable-{suffix}")),
@@ -231,7 +229,7 @@ fn paging_interleaved_layers_yields_every_key_once_in_order() {
 fn a_page_whose_flushed_rows_are_all_hidden_keeps_pulling_until_the_scan_is_exhausted() {
 	let (store, storage, _guard) = flushed_store();
 	for suffix in 1u8..=6 {
-		storage.apply_batch(&[OperatorWrite::Insert {
+		storage.seed_durable(&[OperatorWrite::Insert {
 			operator: OP_A,
 			key: key(suffix),
 			post: row(&format!("durable-{suffix}")),
@@ -260,12 +258,12 @@ fn a_page_whose_flushed_rows_are_all_hidden_keeps_pulling_until_the_scan_is_exha
 fn a_scan_stays_inside_its_operator_when_a_neighbour_holds_the_same_keys() {
 	let (store, storage, _guard) = flushed_store();
 	for suffix in [1u8, 2, 3] {
-		storage.apply_batch(&[OperatorWrite::Insert {
+		storage.seed_durable(&[OperatorWrite::Insert {
 			operator: OP_A,
 			key: key(suffix),
 			post: row(&format!("a-durable-{suffix}")),
 		}]);
-		storage.apply_batch(&[OperatorWrite::Insert {
+		storage.seed_durable(&[OperatorWrite::Insert {
 			operator: OP_B,
 			key: key(suffix),
 			post: row(&format!("b-durable-{suffix}")),
@@ -359,12 +357,12 @@ fn a_buffered_expiry_reorders_the_flushed_join_expiries() {
 #[test]
 fn a_buffered_state_drop_masks_sqlite_while_later_writes_survive() {
 	let (store, storage, _guard) = flushed_store();
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable"),
 	}]);
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_B,
 		key: key(1),
 		post: row("neighbour"),
@@ -662,7 +660,7 @@ fn a_group_join_expiry_drop_does_not_mask_a_sibling_group() {
 	let (store, storage, _guard) = flushed_store();
 	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
 	storage.join_expiry_set(OP_A, GROUP_B, SIDE, RowNumber(2), DateTime::from_millis(200));
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable"),
@@ -720,7 +718,7 @@ fn a_zero_length_row_survives_the_sqlite_blob_column_distinctly_from_absence() {
 	// as an empty slice; a driver that mapped it to NULL would turn every flushed marker into a missing key.
 	let (_store, storage, _guard) = flushed_store();
 
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: EncodedPodRow::new(&[]),
@@ -778,4 +776,42 @@ fn a_join_expiry_the_store_never_wrote_is_rejected_without_reaching_sqlite() {
 		None,
 		"the filter must key on the group as well as the row number"
 	);
+}
+
+use reifydb_core::key::operator::state::OperatorStateKey;
+use reifydb_store_operator::tier::resident::batch::FlushBatch;
+
+trait SeedDurable {
+	fn seed_durable(&self, writes: &[OperatorWrite]);
+}
+
+impl SeedDurable for SqliteOperatorStorage {
+	fn seed_durable(&self, writes: &[OperatorWrite]) {
+		let mut batch = FlushBatch::default();
+		for write in writes {
+			let (operator, key, post) = match write {
+				OperatorWrite::Insert {
+					operator,
+					key,
+					post,
+				} => (*operator, key, Some(post.clone())),
+				OperatorWrite::Replace {
+					operator,
+					key,
+					post,
+					..
+				} => (*operator, key, Some(post.clone())),
+				OperatorWrite::Remove {
+					operator,
+					key,
+					..
+				} => (*operator, key, None),
+				_ => continue,
+			};
+			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
+				.expect("a seeded key must name a group and a keyspace");
+			batch.state.record_bytes(operator, keyspace, group, &suffix, post);
+		}
+		self.flush_batch(&batch);
+	}
 }

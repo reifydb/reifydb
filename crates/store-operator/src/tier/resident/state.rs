@@ -1,42 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	cmp::Ordering,
-	collections::btree_map,
-	iter::{Peekable, Rev},
-	ops::Bound,
-};
+use std::{cmp::Ordering, ops::Bound};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
 
 use crate::{
-	tier::resident::{
-		OperatorResidentState,
-		batch::{DropMarker, StateEntry},
-		record_state,
-		slot::OperatorKeys,
+	tier::{
+		bucket::write::WriteEntry,
+		resident::{OperatorResidentState, batch::DropMarker, record_state},
 	},
-	types::{BufferedState, BufferedStateRange, DurablePre},
+	types::{BufferedState, BufferedStateRange},
 };
 
-type KeyRange<'a> = btree_map::Range<'a, EncodedKey, StateEntry>;
+type Page = Vec<(EncodedKey, WriteEntry)>;
 
-type CombineFn = fn(KeyRange<'_>, KeyRange<'_>, usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)>;
+type CombineFn = fn(&Page, &Page, usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)>;
 
 impl OperatorResidentState {
-	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow, pre: DurablePre) {
-		self.write_slot(operator, |inner| record_state(inner, key, Some(row), pre));
+	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
+		self.write_slot(operator, |inner| record_state(inner, key, Some(row)));
 	}
 
-	pub fn record_state_remove(&self, operator: OperatorId, key: EncodedKey, pre: DurablePre) {
-		self.write_slot(operator, |inner| record_state(inner, key, None, pre));
+	pub fn record_state_remove(&self, operator: OperatorId, key: EncodedKey) {
+		self.write_slot(operator, |inner| record_state(inner, key, None));
 	}
 
 	pub fn lookup_state(&self, operator: OperatorId, key: &EncodedKey) -> BufferedState {
 		if let Some(slot) = self.shared().slot(operator) {
-			let found = slot.inner.lock().lookup(key).map(buffered_state);
+			let found = slot.inner.lock().lookup(key).as_ref().map(buffered_state);
 			if let Some(found) = found {
 				return found;
 			}
@@ -86,18 +79,17 @@ impl OperatorResidentState {
 	) -> BufferedStateRange {
 		let lower = owned(start);
 		let upper = owned(end);
-		let empty = OperatorKeys::new();
 		let mut items = Vec::new();
 
 		if let Some(slot) = self.shared().slot(operator) {
 			let inner = slot.inner.lock();
 			if limit > 0 && !is_empty_range(&lower, &upper) {
-				let live = inner.live.state.range((lower.clone(), upper.clone()));
+				let live = inner.live.state.encoded_range(operator, &lower, &upper);
 				let flight = match inner.in_flight.as_ref() {
-					Some(pending) => pending.state.range((lower, upper)),
-					None => empty.range::<EncodedKey, _>(..),
+					Some(pending) => pending.state.encoded_range(operator, &lower, &upper),
+					None => Page::new(),
 				};
-				items = combine(live, flight, limit);
+				items = combine(&live, &flight, limit);
 			}
 		}
 
@@ -108,9 +100,9 @@ impl OperatorResidentState {
 	}
 }
 
-fn merge(live: KeyRange<'_>, flight: KeyRange<'_>, limit: usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)> {
-	let mut live: Peekable<KeyRange<'_>> = live.peekable();
-	let mut flight: Peekable<KeyRange<'_>> = flight.peekable();
+fn merge(live: &Page, flight: &Page, limit: usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)> {
+	let mut live = live.iter().peekable();
+	let mut flight = flight.iter().peekable();
 	let mut items = Vec::new();
 	while items.len() < limit {
 		let winner = match (live.peek(), flight.peek()) {
@@ -142,9 +134,9 @@ fn merge(live: KeyRange<'_>, flight: KeyRange<'_>, limit: usize) -> Vec<(Encoded
 	items
 }
 
-fn merge_back(live: KeyRange<'_>, flight: KeyRange<'_>, limit: usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)> {
-	let mut live: Peekable<Rev<KeyRange<'_>>> = live.rev().peekable();
-	let mut flight: Peekable<Rev<KeyRange<'_>>> = flight.rev().peekable();
+fn merge_back(live: &Page, flight: &Page, limit: usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)> {
+	let mut live = live.iter().rev().peekable();
+	let mut flight = flight.iter().rev().peekable();
 	let mut items = Vec::new();
 	while items.len() < limit {
 		let winner = match (live.peek(), flight.peek()) {
@@ -190,7 +182,7 @@ fn owned(bound: Bound<&EncodedKey>) -> Bound<EncodedKey> {
 	}
 }
 
-fn buffered_state(entry: &StateEntry) -> BufferedState {
+fn buffered_state(entry: &WriteEntry) -> BufferedState {
 	match &entry.post {
 		Some(row) => BufferedState::Row(row.clone()),
 		None => BufferedState::Tombstone,

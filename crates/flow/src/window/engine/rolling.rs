@@ -10,11 +10,14 @@ use std::{
 };
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::state::OperatorState,
+	key::encoded::EncodedKey,
+	row::operator::state::{OperatorState, StateCodec},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey},
+	key::operator::{
+		keyspace::expiry::Expiry,
+		state::{GroupId, GroupStateKey},
+	},
 	metrics::heap::HeapSize,
 	state::timer::StateStore,
 };
@@ -24,7 +27,7 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use crate::{
 	operator::{
 		state::{
-			expiry::{ExpiryIndex, expiry_drop, expiry_key},
+			expiry::{ExpiryIndex, expiry_drop, rolling_expiry_key},
 			seal::coord::{Coord, IsZero},
 		},
 		state_access::{get, get_classified, put, remove},
@@ -32,9 +35,9 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaSweep, RunningKey,
-			config::WindowEngineConfig, load_batch_meta, meta_key_for, note_when_expiry_capped,
-			persist_batch_meta,
+			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep,
+			RunningKey, config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for,
+			note_when_expiry_capped, persist_batch_meta,
 		},
 		span::Slot,
 	},
@@ -97,11 +100,12 @@ struct GroupSlot<S, Accumulator, Output> {
 }
 
 pub struct RollingEngine<G, S: Slot, Accumulator> {
+	family: KeyspaceFamily,
 	runnable: bool,
 	meta_sweep: MetaSweep,
 	expire_batch: usize,
 	lag: <S::Coord as Coord>::Span,
-	expiry: ExpiryIndex,
+	expiry: ExpiryIndex<Expiry>,
 	_pd: PhantomData<(G, S, Accumulator)>,
 }
 
@@ -158,13 +162,14 @@ where
 	G: Clone + Eq + Ord + Hash + Debug,
 	S: Slot + Hash + HeapSize,
 	Accumulator: WindowAccumulator,
-	for<'a> &'a G: IntoEncodedKey,
+	G: StateCodec,
 	GroupMeta<S>: OperatorState,
 	RollingIndexEntry<G>: OperatorState,
 	RollingBuffer<S, Accumulator>: OperatorState,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
+			family: config.family(),
 			runnable: false,
 			meta_sweep: MetaSweep::default(),
 			expire_batch: config.expire_batch(),
@@ -251,7 +256,7 @@ where
 		let mut meta_loaded: MetaLoaded<G, S> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let batch = load_batch_meta(store, &meta_key_for(group))?;
+				let batch = load_batch_meta(store, &meta_key_for(group_hash(group)?))?;
 				meta_loaded.insert(group.clone(), batch);
 			}
 		}
@@ -309,9 +314,11 @@ where
 						Some(resolved) => resolved.clone(),
 						None => row_key(&group),
 					};
-					let buffer: RollingBuffer<S, Accumulator> =
-						get_classified(store, &BufferKey::new(group_id, key.clone()))?
-							.unwrap_or_default();
+					let buffer: RollingBuffer<S, Accumulator> = get_classified(
+						store,
+						&BufferKey::new(self.family, group_id, key.clone()),
+					)?
+					.unwrap_or_default();
 					let was_empty_before = buffer.is_empty();
 					let prior_output = if was_empty_before {
 						None
@@ -405,12 +412,12 @@ where
 				let new_index_key = coord_min_key(&group_slot.buffer);
 				if new_index_key != group_slot.prior_index_key {
 					if let Some(old) = group_slot.prior_index_key {
-						expiry_drop(store, &expiry_key(old, &group, &[]))?;
+						expiry_drop(store, &rolling_expiry_key(old, group_hash(&group)?))?;
 					}
 					if let Some(new) = new_index_key {
 						self.expiry.set(
 							store,
-							expiry_key(new, &group, &[]),
+							rolling_expiry_key(new, group_hash(&group)?),
 							RollingIndexEntry {
 								group: group.clone(),
 								slot_key: group_slot.key.as_bytes().to_vec(),
@@ -422,11 +429,14 @@ where
 			}
 			let output = combine(&group, &group_slot.buffer);
 			if group_slot.buffer.is_empty() {
-				remove(store, &BufferKey::new(group_slot.group_id, group_slot.key.clone()))?;
+				remove(
+					store,
+					&BufferKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
+				)?;
 			} else {
 				put(
 					store,
-					&BufferKey::new(group_slot.group_id, group_slot.key.clone()),
+					&BufferKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
 					group_slot.buffer,
 				)?;
 			}
@@ -443,13 +453,15 @@ where
 		if pairs.is_empty() {
 			return Ok(Vec::new());
 		}
-		let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+		let rows = store.get_or_create_row_numbers_for_groups(
+			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+		)?;
 		let mut results: Vec<RollingResult<G, Output>> = Vec::with_capacity(pending.len());
-		for (((group, value, withdrawn), (group_id, key)), (row_number, is_new)) in
+		for (((group, value, withdrawn), (group_id, _key)), (row_number, is_new)) in
 			pending.into_iter().zip(pairs).zip(rows)
 		{
 			if withdrawn {
-				store.remove_row_number(group_id, &key)?;
+				store.remove_row_number_for_group(group_id)?;
 				results.push(RollingResult {
 					row_number,
 					group,
@@ -483,7 +495,8 @@ where
 		slot_key: &EncodedKey,
 		frontier: Option<S::Coord>,
 	) -> Result<Accumulator> {
-		if let Some(running) = get_classified(store, &RunningKey::new(group_id, slot_key.clone()))? {
+		if let Some(running) = get_classified(store, &RunningKey::new(self.family, group_id, slot_key.clone()))?
+		{
 			return Ok(running);
 		}
 		Ok(running_below(buffer, frontier))
@@ -531,9 +544,11 @@ where
 						Some(resolved) => resolved.clone(),
 						None => row_key(&group),
 					};
-					let buffer: RollingBuffer<S, Accumulator> =
-						get_classified(store, &BufferKey::new(group_id, key.clone()))?
-							.unwrap_or_default();
+					let buffer: RollingBuffer<S, Accumulator> = get_classified(
+						store,
+						&BufferKey::new(self.family, group_id, key.clone()),
+					)?
+					.unwrap_or_default();
 					let old_frontier = frontier_for(self.lag, &meta.high_water());
 					let prior_min = coord_min_key(&buffer);
 					let merged_before = prior_min.is_some_and(|m| {
@@ -642,12 +657,12 @@ where
 			let new_min = coord_min_key(&group_slot.buffer);
 			if new_min != group_slot.prior_min {
 				if let Some(old) = group_slot.prior_min {
-					expiry_drop(store, &expiry_key(old, &group, &[]))?;
+					expiry_drop(store, &rolling_expiry_key(old, group_hash(&group)?))?;
 				}
 				if let Some(new) = new_min {
 					self.expiry.set(
 						store,
-						expiry_key(new, &group, &[]),
+						rolling_expiry_key(new, group_hash(&group)?),
 						RollingIndexEntry {
 							group: group.clone(),
 							slot_key: group_slot.key.as_bytes().to_vec(),
@@ -664,22 +679,28 @@ where
 				None
 			};
 			if group_slot.buffer.is_empty() {
-				remove(store, &BufferKey::new(group_slot.group_id, group_slot.key.clone()))?;
+				remove(
+					store,
+					&BufferKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
+				)?;
 			} else {
 				put(
 					store,
-					&BufferKey::new(group_slot.group_id, group_slot.key.clone()),
+					&BufferKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
 					group_slot.buffer,
 				)?;
 			}
 			if merged_any {
 				put(
 					store,
-					&RunningKey::new(group_slot.group_id, group_slot.key.clone()),
+					&RunningKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
 					group_slot.running,
 				)?;
 			} else {
-				remove(store, &RunningKey::new(group_slot.group_id, group_slot.key.clone()))?;
+				remove(
+					store,
+					&RunningKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
+				)?;
 			}
 
 			if let Some(out) = output {
@@ -693,12 +714,14 @@ where
 
 		let mut results: Vec<RollingResult<G, Accumulator::Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {
-			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
-			for (((group, value, withdrawn), (group_id, key)), (row_number, is_new)) in
+			let rows = store.get_or_create_row_numbers_for_groups(
+				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?;
+			for (((group, value, withdrawn), (group_id, _key)), (row_number, is_new)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{
 				if withdrawn {
-					store.remove_row_number(group_id, &key)?;
+					store.remove_row_number_for_group(group_id)?;
 					results.push(RollingResult {
 						row_number,
 						group,
@@ -750,17 +773,18 @@ where
 				Some(<S::Coord as Coord>::MAX)
 			} else {
 				let lag = self.lag;
-				get::<_, GroupMeta<S>>(store, &meta_key_for(&entry.group))?
+				get::<_, GroupMeta<S>>(store, &meta_key_for(group_hash(&entry.group)?))?
 					.and_then(|meta| frontier_for::<S>(lag, &meta.high_water))
 			};
 			let mut buffer: RollingBuffer<S, Accumulator> =
-				get_classified(store, &BufferKey::new(group_id, slot_key.clone()))?.unwrap_or_default();
+				get_classified(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?
+					.unwrap_or_default();
 			let expired: Vec<S> = buffer.range(..=cutoff).map(|(slot, _)| *slot).collect();
 			if expired.is_empty() {
 				if let Some(new) = coord_min_key(&buffer) {
 					self.expiry.set(
 						store,
-						expiry_key(new, &entry.group, &[]),
+						rolling_expiry_key(new, group_hash(&entry.group)?),
 						RollingIndexEntry {
 							group: entry.group.clone(),
 							slot_key: entry.slot_key.clone(),
@@ -793,38 +817,38 @@ where
 				(Some(new), true, Some(value)) => {
 					self.expiry.set(
 						store,
-						expiry_key(new, &entry.group, &[]),
+						rolling_expiry_key(new, group_hash(&entry.group)?),
 						RollingIndexEntry {
 							group: entry.group.clone(),
 							slot_key: entry.slot_key.clone(),
 							group_id: entry.group_id,
 						},
 					)?;
-					put(store, &BufferKey::new(group_id, slot_key.clone()), buffer)?;
-					put(store, &RunningKey::new(group_id, slot_key.clone()), running)?;
+					put(store, &BufferKey::new(self.family, group_id, slot_key.clone()), buffer)?;
+					put(store, &RunningKey::new(self.family, group_id, slot_key.clone()), running)?;
 					pairs.push((group_id, slot_key));
 					pending.push((entry.group, Some(value)));
 				}
 				(Some(new), false, _) => {
 					self.expiry.set(
 						store,
-						expiry_key(new, &entry.group, &[]),
+						rolling_expiry_key(new, group_hash(&entry.group)?),
 						RollingIndexEntry {
 							group: entry.group.clone(),
 							slot_key: entry.slot_key.clone(),
 							group_id: entry.group_id,
 						},
 					)?;
-					put(store, &BufferKey::new(group_id, slot_key.clone()), buffer)?;
-					remove(store, &RunningKey::new(group_id, slot_key.clone()))?;
+					put(store, &BufferKey::new(self.family, group_id, slot_key.clone()), buffer)?;
+					remove(store, &RunningKey::new(self.family, group_id, slot_key.clone()))?;
 					if unmerged_any {
 						pairs.push((group_id, slot_key));
 						pending.push((entry.group, None));
 					}
 				}
 				_ => {
-					remove(store, &BufferKey::new(group_id, slot_key.clone()))?;
-					remove(store, &RunningKey::new(group_id, slot_key.clone()))?;
+					remove(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?;
+					remove(store, &RunningKey::new(self.family, group_id, slot_key.clone()))?;
 					pairs.push((group_id, slot_key));
 					pending.push((entry.group, None));
 				}
@@ -835,8 +859,10 @@ where
 
 		let mut out: Vec<RollingExpiry<G, Accumulator::Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {
-			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
-			for (((group, value), (group_id, key)), (row_number, _)) in
+			let rows = store.get_or_create_row_numbers_for_groups(
+				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?;
+			for (((group, value), (group_id, _key)), (row_number, _)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{
 				match value {
@@ -847,7 +873,7 @@ where
 						value,
 					}),
 					None => {
-						store.remove_row_number(group_id, &key)?;
+						store.remove_row_number_for_group(group_id)?;
 						out.push(RollingExpiry::Remove {
 							row_number,
 							group,
@@ -888,7 +914,8 @@ where
 			let group_id = GroupId(entry.group_id);
 			expiry_drop(store, &index_key)?;
 			let mut buffer: RollingBuffer<S, Accumulator> =
-				get_classified(store, &BufferKey::new(group_id, slot_key.clone()))?.unwrap_or_default();
+				get_classified(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?
+					.unwrap_or_default();
 			if buffer.is_empty() {
 				continue;
 			}
@@ -898,7 +925,7 @@ where
 				if let Some(new) = coord_min_key(&buffer) {
 					self.expiry.set(
 						store,
-						expiry_key(new, &entry.group, &[]),
+						rolling_expiry_key(new, group_hash(&entry.group)?),
 						RollingIndexEntry {
 							group: entry.group.clone(),
 							slot_key: entry.slot_key.clone(),
@@ -913,7 +940,7 @@ where
 					if let Some(new) = coord_min_key(&buffer) {
 						self.expiry.set(
 							store,
-							expiry_key(new, &entry.group, &[]),
+							rolling_expiry_key(new, group_hash(&entry.group)?),
 							RollingIndexEntry {
 								group: entry.group.clone(),
 								slot_key: entry.slot_key.clone(),
@@ -921,12 +948,12 @@ where
 							},
 						)?;
 					}
-					put(store, &BufferKey::new(group_id, slot_key.clone()), buffer)?;
+					put(store, &BufferKey::new(self.family, group_id, slot_key.clone()), buffer)?;
 					pairs.push((group_id, slot_key));
 					pending.push((entry.group, Some(value)));
 				}
 				_ => {
-					remove(store, &BufferKey::new(group_id, slot_key.clone()))?;
+					remove(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?;
 					pairs.push((group_id, slot_key));
 					pending.push((entry.group, None));
 				}
@@ -937,8 +964,10 @@ where
 
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {
-			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
-			for (((group, value), (group_id, key)), (row_number, _)) in
+			let rows = store.get_or_create_row_numbers_for_groups(
+				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?;
+			for (((group, value), (group_id, _key)), (row_number, _)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{
 				match value {
@@ -949,7 +978,7 @@ where
 						value,
 					}),
 					None => {
-						store.remove_row_number(group_id, &key)?;
+						store.remove_row_number_for_group(group_id)?;
 						out.push(RollingExpiry::Remove {
 							row_number,
 							group,
@@ -973,7 +1002,7 @@ mod tests {
 	use std::collections::{BTreeMap, BTreeSet};
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::key::operator_state::GroupId;
+	use reifydb_core::key::operator::state::GroupId;
 	use reifydb_value::{
 		factory::time::{at_millis, millis},
 		value::datetime::DateTime,
@@ -1003,7 +1032,7 @@ mod tests {
 	}
 
 	fn row_key(group: &u32) -> (GroupId, EncodedKey) {
-		(GroupId::ROOT, node_row_key(group))
+		(GroupId::of(&node_row_key(group)), EncodedKey::new(Vec::new()))
 	}
 
 	fn node_row_key(group: &u32) -> EncodedKey {

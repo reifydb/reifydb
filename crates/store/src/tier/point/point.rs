@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::point::{
@@ -10,10 +9,10 @@ use crate::tier::point::{
 };
 
 impl<D: PointDomain> PointTier<D> {
-	pub fn get(&self, dimension: D::Dimension, key: &EncodedKey) -> Option<Option<D::Row>> {
-		let slot = D::slot(key)?;
-		if !D::caches_points(slot) {
-			self.charge_excluded_miss(slot);
+	pub fn get(&self, dimension: D::Dimension, key: &D::Key) -> Option<Option<D::Row>> {
+		let bucket = D::metric_bucket(key)?;
+		if !D::caches_points(bucket) {
+			self.charge_excluded_miss(bucket);
 			return None;
 		}
 		let hash = bucket_hash(&dimension, key);
@@ -21,7 +20,7 @@ impl<D: PointDomain> PointTier<D> {
 		let next = shard.next_tick;
 		let Some(position) = find_position(&shard, hash, dimension, key) else {
 			shard.metrics.misses += 1;
-			shard.slot_metrics[slot].misses += 1;
+			shard.bucket_metrics[bucket].misses += 1;
 			return None;
 		};
 		let row = {
@@ -31,14 +30,14 @@ impl<D: PointDomain> PointTier<D> {
 		};
 		shard.next_tick = next + 1;
 		shard.metrics.hits += 1;
-		shard.slot_metrics[slot].hits += 1;
+		shard.bucket_metrics[bucket].hits += 1;
 		Some(row)
 	}
 
-	pub fn contains(&self, dimension: D::Dimension, key: &EncodedKey) -> Option<bool> {
-		let slot = D::slot(key)?;
-		if !D::caches_points(slot) {
-			self.charge_excluded_miss(slot);
+	pub fn contains(&self, dimension: D::Dimension, key: &D::Key) -> Option<bool> {
+		let bucket = D::metric_bucket(key)?;
+		if !D::caches_points(bucket) {
+			self.charge_excluded_miss(bucket);
 			return None;
 		}
 		let hash = bucket_hash(&dimension, key);
@@ -46,7 +45,7 @@ impl<D: PointDomain> PointTier<D> {
 		let next = shard.next_tick;
 		let Some(position) = find_position(&shard, hash, dimension, key) else {
 			shard.metrics.misses += 1;
-			shard.slot_metrics[slot].misses += 1;
+			shard.bucket_metrics[bucket].misses += 1;
 			return None;
 		};
 		let present = {
@@ -56,15 +55,15 @@ impl<D: PointDomain> PointTier<D> {
 		};
 		shard.next_tick = next + 1;
 		shard.metrics.hits += 1;
-		shard.slot_metrics[slot].hits += 1;
+		shard.bucket_metrics[bucket].hits += 1;
 		Some(present)
 	}
 
-	pub fn begin_fill(&self, dimension: D::Dimension, key: &EncodedKey) -> bool {
-		let Some(slot) = D::slot(key) else {
+	pub fn begin_fill(&self, dimension: D::Dimension, key: &D::Key) -> bool {
+		let Some(bucket) = D::metric_bucket(key) else {
 			return false;
 		};
-		if !D::caches_points(slot) {
+		if !D::caches_points(bucket) {
 			return false;
 		}
 		let mut shard = self.shard_at(dimension, key).lock();
@@ -74,17 +73,17 @@ impl<D: PointDomain> PointTier<D> {
 		};
 		if shard.filling.contains_key(&id) {
 			shard.metrics.fills_duplicate += 1;
-			shard.slot_metrics[slot].fills_duplicate += 1;
+			shard.bucket_metrics[bucket].fills_duplicate += 1;
 			return false;
 		}
 		shard.filling.insert(id, false);
 		shard.metrics.fills_started += 1;
-		shard.slot_metrics[slot].fills_started += 1;
+		shard.bucket_metrics[bucket].fills_started += 1;
 		true
 	}
 
-	pub fn finish_fill(&self, dimension: D::Dimension, key: EncodedKey, row: Option<D::Row>) -> bool {
-		let Some(slot) = D::slot(&key) else {
+	pub fn finish_fill(&self, dimension: D::Dimension, key: D::Key, row: Option<D::Row>) -> bool {
+		let Some(bucket) = D::metric_bucket(&key) else {
 			return false;
 		};
 		let mut shard = self.shard_at(dimension, &key).lock();
@@ -96,7 +95,7 @@ impl<D: PointDomain> PointTier<D> {
 			Some(false) => {}
 			Some(true) | None => {
 				shard.metrics.fills_dirty_aborted += 1;
-				shard.slot_metrics[slot].fills_dirty_aborted += 1;
+				shard.bucket_metrics[bucket].fills_dirty_aborted += 1;
 				return false;
 			}
 		}
@@ -104,12 +103,12 @@ impl<D: PointDomain> PointTier<D> {
 		if let Some(interlock) = self.inner.interlock.as_ref() {
 			interlock(self, &id);
 		}
-		insert_entry(&mut shard, slot, id, row);
+		insert_entry(&mut shard, bucket, id, row);
 		true
 	}
 
-	pub fn abort_fill(&self, dimension: D::Dimension, key: &EncodedKey) {
-		if D::slot(key).is_none() {
+	pub fn abort_fill(&self, dimension: D::Dimension, key: &D::Key) {
+		if D::metric_bucket(key).is_none() {
 			return;
 		}
 		let mut shard = self.shard_at(dimension, key).lock();
@@ -122,8 +121,8 @@ impl<D: PointDomain> PointTier<D> {
 		});
 	}
 
-	pub fn overwrite(&self, dimension: D::Dimension, key: EncodedKey, row: D::Row) {
-		let Some(slot) = D::slot(&key) else {
+	pub fn overwrite(&self, dimension: D::Dimension, key: D::Key, row: D::Row) {
+		let Some(bucket) = D::metric_bucket(&key) else {
 			return;
 		};
 		let mut shard = self.shard_at(dimension, &key).lock();
@@ -134,14 +133,14 @@ impl<D: PointDomain> PointTier<D> {
 		if let Some(dirty) = shard.filling.get_mut(&id) {
 			*dirty = true;
 		}
-		insert_entry(&mut shard, slot, id, Some(row));
+		insert_entry(&mut shard, bucket, id, Some(row));
 	}
 
-	pub fn invalidate(&self, dimension: D::Dimension, key: &EncodedKey) {
-		let Some(slot) = D::slot(key) else {
+	pub fn invalidate(&self, dimension: D::Dimension, key: &D::Key) {
+		let Some(bucket) = D::metric_bucket(key) else {
 			return;
 		};
-		if !D::caches_points(slot) {
+		if !D::caches_points(bucket) {
 			return;
 		}
 		let hash = bucket_hash(&dimension, key);
@@ -162,10 +161,14 @@ impl<D: PointDomain> PointTier<D> {
 	}
 
 	pub fn invalidate_operator(&self, dimension: D::Dimension) {
+		self.invalidate_dimensions_where(|candidate| *candidate == dimension)
+	}
+
+	pub fn invalidate_dimensions_where(&self, victim: impl Fn(&D::Dimension) -> bool) {
 		for shard in self.all_shards() {
 			let mut shard = shard.lock();
 			for (key, dirty) in shard.filling.iter_mut() {
-				if key.dimension == dimension {
+				if victim(&key.dimension) {
 					*dirty = true;
 				}
 			}
@@ -177,7 +180,7 @@ impl<D: PointDomain> PointTier<D> {
 					..
 				} = &mut *shard;
 				entries.retain(|entry| {
-					if entry.key.dimension != dimension {
+					if !victim(&entry.key.dimension) {
 						return true;
 					}
 					released += entry_footprint::<D>(&entry.key, &entry.row);
@@ -207,8 +210,13 @@ impl<D: PointDomain> PointTier<D> {
 	}
 }
 
-fn insert_entry<D: PointDomain>(shard: &mut Shard<D>, slot: usize, id: PointKey<D::Dimension>, row: Option<D::Row>) {
-	if !D::caches_points(slot) {
+fn insert_entry<D: PointDomain>(
+	shard: &mut Shard<D>,
+	bucket: usize,
+	id: PointKey<D::Dimension, D::Key>,
+	row: Option<D::Row>,
+) {
+	if !D::caches_points(bucket) {
 		return;
 	}
 	let next = shard.next_tick;
@@ -248,7 +256,7 @@ fn insert_entry<D: PointDomain>(shard: &mut Shard<D>, slot: usize, id: PointKey<
 		}
 	}
 	shard.metrics.insertions += 1;
-	shard.slot_metrics[slot].insertions += 1;
+	shard.bucket_metrics[bucket].insertions += 1;
 	shard.next_tick = next + 1;
 	shard.evict_to_capacity();
 }

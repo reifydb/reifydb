@@ -3,13 +3,14 @@
 
 mod census;
 mod checkpoint;
-pub mod filter;
 mod flush;
 mod join_expiry;
 pub mod metrics;
+mod route;
 pub mod schema;
 pub mod sql;
 mod state;
+pub mod typed;
 
 #[cfg(test)]
 mod tests;
@@ -33,7 +34,7 @@ use rusqlite::Connection;
 use tracing::instrument;
 
 use crate::tier::persistent::{
-	filter::{ARMED_CAPACITY_JOIN_EXPIRIES, ARMED_CAPACITY_KEYS, JoinExpiryKeys, OperatorKeys},
+	filter::{ARMED_CAPACITY_JOIN_EXPIRIES, JoinExpiryKeys},
 	sqlite::{join_expiry::join_expiry_exists, schema::ensure_schema, state::state_exists},
 };
 
@@ -49,7 +50,6 @@ struct StoreInner {
 	cache_misses: AtomicU64,
 	state_written: AtomicBool,
 	join_expiries_out_of_band: AtomicBool,
-	filter: KeyFilter<OperatorKeys>,
 	join_expiry_filter: KeyFilter<JoinExpiryKeys>,
 }
 
@@ -83,11 +83,6 @@ impl SqliteOperatorStorage {
 	fn with_connections(conn: Connection, readers: ReadPool) -> Self {
 		ensure_schema(&conn);
 		let state_written = state_exists(&conn);
-		let filter = if state_written {
-			KeyFilter::<OperatorKeys>::new()
-		} else {
-			KeyFilter::<OperatorKeys>::armed(ARMED_CAPACITY_KEYS)
-		};
 		let join_expiries_preexisting = join_expiry_exists(&conn);
 		let join_expiry_filter = if join_expiries_preexisting {
 			KeyFilter::<JoinExpiryKeys>::new()
@@ -102,7 +97,6 @@ impl SqliteOperatorStorage {
 				cache_misses: AtomicU64::new(0),
 				state_written: AtomicBool::new(state_written),
 				join_expiries_out_of_band: AtomicBool::new(join_expiries_preexisting),
-				filter,
 				join_expiry_filter,
 			}),
 		}
@@ -121,10 +115,6 @@ impl SqliteOperatorStorage {
 
 	pub(super) fn mark_state_written(&self) {
 		self.inner.state_written.store(true, Ordering::Release);
-	}
-
-	pub fn filter(&self) -> &KeyFilter<OperatorKeys> {
-		&self.inner.filter
 	}
 
 	pub fn join_expiry_filter(&self) -> &KeyFilter<JoinExpiryKeys> {

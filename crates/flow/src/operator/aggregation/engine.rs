@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use reifydb_codec::key::{encode_u64_asc, encode_u128_asc, encoded::EncodedKey};
 use reifydb_core::{
 	interface::change::{Change, Diff},
-	key::operator_state::GroupId,
+	key::operator::state::GroupId,
 	value::column::columns::Columns,
 };
 use reifydb_rql::flow::aggregate::SlotKind;

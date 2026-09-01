@@ -9,7 +9,7 @@ use reifydb_codec::{
 	row::bytes::EncodedBytes,
 };
 #[cfg(reifydb_assertions)]
-use reifydb_core::key::{EncodableKey, operator_state::OperatorStateKey};
+use reifydb_core::key::{EncodableKey, operator::state::OperatorStateKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::{Delta, RemoveAnnounce},

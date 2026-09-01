@@ -119,13 +119,12 @@ impl<C: GuestOperator + 'static> HostOperator for GuestAdapter<C> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::{
-		key::encoded::{EncodedKey, EncodedKeyRange},
-		row::pod::EncodedPodRow,
-	};
+	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+		key::operator::state::{
+			GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, custom_not_cached_key_in,
+		},
 		state::timer::StateStore,
 	};
 	use reifydb_flow::{
@@ -163,15 +162,17 @@ mod tests {
 			version: CommitVersion(7),
 		});
 		let mut host = TxnHostContext::new(&mut txn, NODE);
-		let absent = OperatorStateKey::inner_encoded(GroupId::of(&key("absent")), KeyspaceId::ACCUMULATOR, []);
+		let group = GroupId::of(&key("absent"));
+		let absent = OperatorStateKey::inner_encoded(group, KeyspaceId::ACCUMULATOR, []);
 
 		assert!(host.state_get(&absent).unwrap().is_none());
 
-		assert!(host.state_range(EncodedKeyRange::all()).unwrap().is_empty(), "the probe must leave no row");
+		assert!(host.group_sweep(group, false, None).unwrap().is_empty(), "the probe must leave no row");
 	}
 
-	fn stored_key(suffix: &str) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::ACCUMULATOR, suffix.as_bytes())
+	fn stored_key(id: &str) -> GroupStateKey {
+		// the guest owns only this keyspace, and its id column is what the round trip must hand back intact
+		custom_not_cached_key_in(GroupId::ROOT, id.as_bytes()).expect("a fixture id fits the keyspace")
 	}
 
 	#[test]
@@ -192,9 +193,8 @@ mod tests {
 			host.state_get_many(&[written.clone()]).unwrap().into_iter().map(|(key, _)| key).collect();
 		assert_eq!(from_get_many, vec![written.clone()], "state_get_many must return the key that was written");
 
-		let from_range: Vec<GroupStateKey> =
-			host.state_range(EncodedKeyRange::all()).unwrap().into_iter().map(|(key, _)| key).collect();
-		assert_eq!(from_range, vec![written.clone()], "state_range must return the key that was written");
+		let from_range: Vec<GroupStateKey> = host.group_sweep(GroupId::ROOT, false, None).unwrap();
+		assert_eq!(from_range, vec![written.clone()], "a group sweep must return the key that was written");
 
 		let mut visited = Vec::new();
 		host.state_get_many_visit(&[written.clone()], &mut |key, _| {

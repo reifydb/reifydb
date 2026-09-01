@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::{
+	interface::catalog::flow::OperatorId,
+	key::operator::state::{GroupId, KeyspaceId},
+};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,
@@ -13,6 +16,7 @@ use reifydb_store_operator::{
 	store::OperatorStore,
 	types::{DurablePre, OperatorWrite},
 };
+use reifydb_testing::keyspace::state_key;
 use reifydb_value::byte_size::ByteSize;
 
 fn store() -> OperatorStore {
@@ -30,6 +34,10 @@ fn store() -> OperatorStore {
 	})
 }
 
+fn key() -> EncodedKey {
+	state_key(GroupId(1), KeyspaceId::JOIN_LEFT, 1)
+}
+
 #[test]
 #[cfg_attr(not(reifydb_assertions), ignore)]
 #[should_panic(expected = "classified a write against a pre-image")]
@@ -38,7 +46,7 @@ fn a_replace_over_an_absent_key_is_rejected() {
 	let store = store();
 	store.apply_batch(&[OperatorWrite::Replace {
 		operator: OperatorId(1),
-		key: EncodedKey::new(b"k"),
+		key: key(),
 		pre_value_bytes: ByteSize::from_bytes(3),
 		post: EncodedPodRow::new(b"new"),
 	}]);
@@ -52,12 +60,12 @@ fn an_insert_over_a_present_key_is_rejected() {
 	let store = store();
 	store.apply_batch(&[OperatorWrite::Insert {
 		operator: OperatorId(1),
-		key: EncodedKey::new(b"k"),
+		key: key(),
 		post: EncodedPodRow::new(b"one"),
 	}]);
 	store.apply_batch(&[OperatorWrite::Insert {
 		operator: OperatorId(1),
-		key: EncodedKey::new(b"k"),
+		key: key(),
 		post: EncodedPodRow::new(b"two"),
 	}]);
 }
@@ -70,22 +78,22 @@ fn a_correct_chain_of_claims_is_accepted() {
 	store.apply_batch(&[
 		OperatorWrite::Insert {
 			operator: OperatorId(1),
-			key: EncodedKey::new(b"k"),
+			key: key(),
 			post: EncodedPodRow::new(b"one"),
 		},
 		OperatorWrite::Replace {
 			operator: OperatorId(1),
-			key: EncodedKey::new(b"k"),
+			key: key(),
 			pre_value_bytes: ByteSize::from_bytes(EncodedPodRow::new(b"one").bytes().len() as u64),
 			post: EncodedPodRow::new(b"twelve"),
 		},
 		OperatorWrite::Remove {
 			operator: OperatorId(1),
-			key: EncodedKey::new(b"k"),
+			key: key(),
 			pre: DurablePre::Present(ByteSize::from_bytes(
 				EncodedPodRow::new(b"twelve").bytes().len() as u64
 			)),
 		},
 	]);
-	assert!(store.get(OperatorId(1), &EncodedKey::new(b"k")).is_none());
+	assert!(store.get(OperatorId(1), &key()).is_none());
 }

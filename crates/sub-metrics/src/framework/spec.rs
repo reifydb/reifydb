@@ -23,9 +23,7 @@ pub enum MetricsDomain {
 	StoreMultiPersistent,
 	StoreSingleCommit,
 	StoreSinglePersistent,
-	StoreOperatorPoint,
 	StoreOperatorPointKeyspace,
-	StoreOperatorRange,
 	StoreOperatorRangeKeyspace,
 	StoreOperatorPersistent,
 	StoreCdcCommit,
@@ -284,7 +282,7 @@ mod tests {
 }
 
 impl MetricsDomain {
-	pub const ALL: [MetricsDomain; 31] = [
+	pub const ALL: [MetricsDomain; 29] = [
 		MetricsDomain::RuntimeMemory,
 		MetricsDomain::RuntimeWatermarks,
 		MetricsDomain::RuntimeOperators,
@@ -301,9 +299,7 @@ impl MetricsDomain {
 		MetricsDomain::StoreMultiPersistent,
 		MetricsDomain::StoreSingleCommit,
 		MetricsDomain::StoreSinglePersistent,
-		MetricsDomain::StoreOperatorPoint,
 		MetricsDomain::StoreOperatorPointKeyspace,
-		MetricsDomain::StoreOperatorRange,
 		MetricsDomain::StoreOperatorRangeKeyspace,
 		MetricsDomain::StoreOperatorPersistent,
 		MetricsDomain::StoreCdcCommit,
@@ -339,9 +335,7 @@ impl MetricsDomain {
 			| MetricsDomain::StoreMultiPersistent
 			| MetricsDomain::StoreSingleCommit
 			| MetricsDomain::StoreSinglePersistent
-			| MetricsDomain::StoreOperatorPoint
 			| MetricsDomain::StoreOperatorPointKeyspace
-			| MetricsDomain::StoreOperatorRange
 			| MetricsDomain::StoreOperatorRangeKeyspace
 			| MetricsDomain::StoreOperatorPersistent
 			| MetricsDomain::StoreCdcCommit
@@ -379,9 +373,7 @@ impl MetricsDomain {
 			| MetricsDomain::StoreMultiPersistent
 			| MetricsDomain::StoreSingleCommit
 			| MetricsDomain::StoreSinglePersistent
-			| MetricsDomain::StoreOperatorPoint
 			| MetricsDomain::StoreOperatorPointKeyspace
-			| MetricsDomain::StoreOperatorRange
 			| MetricsDomain::StoreOperatorRangeKeyspace
 			| MetricsDomain::StoreOperatorPersistent
 			| MetricsDomain::StoreCdcCommit
@@ -633,25 +625,6 @@ impl MetricsDomain {
 				],
 				has_total: true,
 			},
-			MetricsDomain::StoreOperatorPoint => DomainSpec {
-				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_POINT,
-				shape: DomainShape::Wide,
-				dimensions: vec![dim("shard", ValueType::Uint2)],
-				measures: vec![
-					level("used", ValueType::Uint8),
-					level("limit", ValueType::Uint8),
-					level("entries", ValueType::Uint8),
-					counter("hits", ValueType::Uint8),
-					counter("misses", ValueType::Uint8),
-					counter("insertions", ValueType::Uint8),
-					counter("evictions", ValueType::Uint8),
-					counter("fills_started", ValueType::Uint8),
-					counter("fills_dirty_aborted", ValueType::Uint8),
-					counter("fills_duplicate", ValueType::Uint8),
-				],
-				has_total: true,
-			},
 			MetricsDomain::StoreOperatorPointKeyspace => DomainSpec {
 				domain: self,
 				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_POINT_KEYSPACE,
@@ -659,6 +632,7 @@ impl MetricsDomain {
 				dimensions: vec![dim("keyspace", ValueType::Utf8)],
 				measures: vec![
 					level("used", ValueType::Uint8),
+					level("limit", ValueType::Uint8),
 					level("entries", ValueType::Uint8),
 					counter("hits", ValueType::Uint8),
 					counter("misses", ValueType::Uint8),
@@ -667,28 +641,6 @@ impl MetricsDomain {
 					counter("fills_started", ValueType::Uint8),
 					counter("fills_dirty_aborted", ValueType::Uint8),
 					counter("fills_duplicate", ValueType::Uint8),
-				],
-				has_total: true,
-			},
-			MetricsDomain::StoreOperatorRange => DomainSpec {
-				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_RANGE,
-				shape: DomainShape::Wide,
-				dimensions: vec![dim("shard", ValueType::Uint2)],
-				measures: vec![
-					level("used", ValueType::Uint8),
-					level("limit", ValueType::Uint8),
-					level("partitions", ValueType::Uint8),
-					level("entries", ValueType::Uint8),
-					counter("hits", ValueType::Uint8),
-					counter("misses", ValueType::Uint8),
-					counter("exempt", ValueType::Uint8),
-					counter("materializes", ValueType::Uint8),
-					counter("materializes_refused", ValueType::Uint8),
-					counter("materializes_raced", ValueType::Uint8),
-					counter("evictions", ValueType::Uint8),
-					counter("point_hits", ValueType::Uint8),
-					counter("point_misses", ValueType::Uint8),
 				],
 				has_total: true,
 			},
@@ -699,6 +651,7 @@ impl MetricsDomain {
 				dimensions: vec![dim("keyspace", ValueType::Utf8)],
 				measures: vec![
 					level("used", ValueType::Uint8),
+					level("limit", ValueType::Uint8),
 					level("partitions", ValueType::Uint8),
 					level("intervals", ValueType::Uint8),
 					level("entries", ValueType::Uint8),
@@ -725,11 +678,6 @@ impl MetricsDomain {
 					level("connections_total", ValueType::Uint8),
 					counter("hits", ValueType::Uint8),
 					counter("misses", ValueType::Uint8),
-					level("filter_fill_ratio", ValueType::Float8),
-					level("filter_estimated_keys", ValueType::Uint8),
-					level("filter_rejected", ValueType::Uint8),
-					level("filter_enabled", ValueType::Uint8),
-					level("filter_rebuilds", ValueType::Uint8),
 				],
 				has_total: true,
 			},

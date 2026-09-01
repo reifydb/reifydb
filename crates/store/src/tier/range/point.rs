@@ -4,8 +4,6 @@
 #[cfg(test)]
 use std::cell::RefCell;
 
-use reifydb_codec::key::encoded::EncodedKey;
-
 use crate::tier::range::{RangeDomain, RangeTier, Shard};
 
 #[cfg(test)]
@@ -28,8 +26,26 @@ fn absence_interlock() {
 }
 
 impl<D: RangeDomain> RangeTier<D> {
-	pub fn lookup(&self, dimension: D::Dimension, key: &EncodedKey) -> Option<Option<D::Row>> {
-		let partition = D::partition(dimension, key)?;
+	pub fn lookup(&self, dimension: D::Dimension, key: &D::Key) -> Option<Option<D::Row>> {
+		self.lookup_within(dimension, None, key)
+	}
+
+	pub fn lookup_in(
+		&self,
+		dimension: D::Dimension,
+		partition: D::Partition,
+		key: &D::Key,
+	) -> Option<Option<D::Row>> {
+		self.lookup_within(dimension, Some(partition), key)
+	}
+
+	fn lookup_within(
+		&self,
+		dimension: D::Dimension,
+		confined: Option<D::Partition>,
+		key: &D::Key,
+	) -> Option<Option<D::Row>> {
+		let partition = confined.or_else(|| D::partition(dimension, key))?;
 		if !D::caches_ranges(&partition) {
 			return None;
 		}
@@ -57,16 +73,16 @@ impl<D: RangeDomain> RangeTier<D> {
 		Some(None)
 	}
 
-	fn resolve(&self, index: usize, partition: &D::Partition, key: &EncodedKey) -> Option<Option<D::Row>> {
+	fn resolve(&self, index: usize, partition: &D::Partition, key: &D::Key) -> Option<Option<D::Row>> {
 		let mut shard = self.shard(index).lock();
 		let next = shard.next_tick;
-		let slot = D::slot(partition);
+		let bucket = D::metric_bucket(partition);
 		let mut answer = None;
 		{
 			let Shard {
 				partitions,
 				metrics,
-				slot_metrics,
+				bucket_metrics,
 				..
 			} = &mut *shard;
 			if let Some(target) = partitions.get_mut(partition)
@@ -75,7 +91,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				answer = Some(entry.value().cloned());
 				target.tick = next;
 				metrics.point_hits += 1;
-				slot_metrics[slot].point_hits += 1;
+				bucket_metrics[bucket].point_hits += 1;
 			}
 		}
 		if answer.is_some() {
@@ -86,18 +102,18 @@ impl<D: RangeDomain> RangeTier<D> {
 
 	fn record_point_hit(&self, index: usize, partition: &D::Partition) {
 		let mut shard = self.shard(index).lock();
-		let slot = D::slot(partition);
+		let bucket = D::metric_bucket(partition);
 		shard.metrics.point_hits += 1;
 		shard.metrics.point_absences += 1;
-		shard.slot_metrics[slot].point_hits += 1;
-		shard.slot_metrics[slot].point_absences += 1;
+		shard.bucket_metrics[bucket].point_hits += 1;
+		shard.bucket_metrics[bucket].point_absences += 1;
 	}
 
 	fn record_point_miss(&self, index: usize, partition: &D::Partition) {
 		let mut shard = self.shard(index).lock();
-		let slot = D::slot(partition);
+		let bucket = D::metric_bucket(partition);
 		shard.metrics.point_misses += 1;
-		shard.slot_metrics[slot].point_misses += 1;
+		shard.bucket_metrics[bucket].point_misses += 1;
 	}
 }
 
@@ -107,17 +123,17 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+		key::{
+			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+			typed::ExclusiveUpperEnd,
+		},
 		util::sorted::SortedVecMap,
 	};
 	use reifydb_value::byte_size::ByteSize;
 
 	use super::arm_absence_interlock;
 	use crate::{
-		coverage::{
-			ExclusiveUpperEnd,
-			entry::{Entry, PinnedCount},
-		},
+		coverage::entry::{Entry, PinnedCount},
 		tier::range::{
 			Partition, RangeConfig, RangeTier,
 			domain::{TestDomain as D, TestPartition},
@@ -153,7 +169,7 @@ mod tests {
 		TestPartition {
 			dimension: OP_A,
 			group: GROUP_A,
-			slot: keyspace,
+			keyspace,
 		}
 	}
 
@@ -393,7 +409,7 @@ mod tests {
 
 	#[test]
 	fn a_hit_bumps_the_keyspace_counter_of_its_own_keyspace() {
-		// A counter charged to the wrong slot makes the per-keyspace shape signal meaningless.
+		// A counter charged to the wrong bucket makes the per-keyspace shape signal meaningless.
 		let tier = tier();
 		let id = partition(CACHED);
 		let at = key(CACHED, b"m");
@@ -402,7 +418,7 @@ mod tests {
 		tier.lookup(OP_A, &at);
 
 		let shard = tier.shard_for(&id).lock();
-		assert_eq!(shard.slot_metrics[CACHED.0 as usize].point_hits, 1);
-		assert_eq!(shard.slot_metrics[UNCACHED.0 as usize].point_hits, 0);
+		assert_eq!(shard.bucket_metrics[CACHED.0 as usize].point_hits, 1);
+		assert_eq!(shard.bucket_metrics[UNCACHED.0 as usize].point_hits, 0);
 	}
 }

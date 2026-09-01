@@ -14,7 +14,7 @@ use reifydb_core::{
 	interface::catalog::{flow::OperatorId, id::TableId, storage::StorageId},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+		operator::state::{GroupStateKey, OperatorStateKey, custom_not_cached_key},
 		row::RowKey,
 	},
 };
@@ -77,7 +77,7 @@ fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 fn make_key(s: &str) -> GroupStateKey {
 	// Framed as an operator composes its keys, or these tests would assert against a key reclamation could
 	// prefix-delete.
-	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::CUSTOM_NOT_CACHED, s.as_bytes())
+	custom_not_cached_key(s.as_bytes()).expect("a fixture name must fit the keyspace's id width")
 }
 
 fn make_value(s: &str) -> EncodedPodRow {

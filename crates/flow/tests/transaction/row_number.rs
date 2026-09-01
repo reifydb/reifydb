@@ -6,7 +6,13 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::pending::PendingLayers,
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::{
+		operator::{
+			keyspace::{join::JoinRowMappingKey, root::NodeCounterKind},
+			state::{GroupId, node_counter_key},
+		},
+		typed::direction::{Asc, Desc},
+	},
 };
 use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,
@@ -27,9 +33,14 @@ fn key(s: &str) -> EncodedKey {
 	EncodedKey::new(s.as_bytes())
 }
 
-fn slot_key(slot: u64) -> EncodedKey {
-	// The shape the block operators reclaim over: (slot, base, quote).
-	EncodedKey::builder().u64(slot).u32(1u32).u32(2u32).build()
+const TAG: u8 = b'L';
+
+fn join_key(left: u64, right: u64) -> JoinRowMappingKey {
+	JoinRowMappingKey {
+		tag: Asc(TAG),
+		left: Desc(left),
+		right: Desc(right),
+	}
 }
 
 fn deferred(engine: &TestEngine) -> DeferredTransaction {
@@ -279,105 +290,67 @@ fn nodes_are_isolated() {
 }
 
 #[test]
-fn drop_below_reclaims_only_mappings_under_the_bound() {
-	// Keys lead with a slot, so dropping below a bound must leave every higher slot mapped.
+fn dropping_one_left_reclaims_every_join_mapping_under_it() {
+	// Dropping a left row must take every join it produced and nothing that merely sorts beside it.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	let (rn10, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(10)]).unwrap().remove(0);
-	let (rn20, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(20)]).unwrap().remove(0);
-	let (rn30, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(30)]).unwrap().remove(0);
+	let doomed = join_key(1, 7);
+	let kept = join_key(2, 7);
+	txn.get_or_create_join_row_numbers(NODE, &[doomed.clone()]).unwrap().remove(0);
+	let (kept_rn, _) = txn.get_or_create_join_row_numbers(NODE, &[kept.clone()]).unwrap().remove(0);
 
-	let upper = EncodedKey::builder().u64(25u64).u32(0u32).u32(0u32).build();
-	let mut dropped = txn.remove_row_numbers_below(NODE, GROUP, &upper).unwrap();
-	dropped.sort_by_key(|rn| rn.0);
-	assert_eq!(dropped, vec![rn10, rn20], "exactly the below-bound mappings are reclaimed");
-
-	let (rn30_again, is_new30) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(30)]).unwrap().remove(0);
-	assert!(!is_new30, "slot 30 sat above the bound and must remain mapped");
-	assert_eq!(rn30, rn30_again);
-
-	let (rn10_again, is_new10) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(10)]).unwrap().remove(0);
-	assert!(is_new10, "reclaimed slot 10 mints fresh");
-	assert_ne!(rn10, rn10_again, "a reclaimed row number is never reused");
-}
-
-#[test]
-fn remove_by_prefix_reclaims_every_mapping_under_the_prefix() {
-	// Prefix removal must take the whole subtree and nothing that merely sorts beside it.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	let doomed = EncodedKey::builder().u64(1u64).u32(7u32).build();
-	let kept = EncodedKey::builder().u64(2u64).u32(7u32).build();
-	txn.get_or_create_row_numbers(NODE, GROUP, &[doomed.clone()]).unwrap().remove(0);
-	let (kept_rn, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[kept.clone()]).unwrap().remove(0);
-
-	let prefix = EncodedKey::builder().u64(1u64).build();
-	txn.remove_row_numbers_by_prefix(NODE, GROUP, prefix.as_slice()).unwrap();
+	txn.remove_join_row_numbers_for_left(NODE, TAG, 1).unwrap();
 
 	assert_eq!(
-		txn.get_row_numbers(NODE, GROUP, &[doomed]).unwrap().remove(0),
+		txn.get_join_row_numbers(NODE, &[doomed]).unwrap().remove(0),
 		None,
-		"the prefixed mapping is reclaimed"
+		"the dropped left's mapping is reclaimed"
 	);
 	assert_eq!(
-		txn.get_row_numbers(NODE, GROUP, &[kept]).unwrap().remove(0),
+		txn.get_join_row_numbers(NODE, &[kept]).unwrap().remove(0),
 		Some(kept_rn),
-		"a sibling prefix survives"
+		"a neighbouring left survives"
 	);
 }
 
 #[test]
 fn the_row_number_counter_never_collides_with_the_interners_group_counter() {
 	// Both counters live in the root group's NODE_COUNTER keyspace and must not alias.
-	let group_counter = OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::NODE_COUNTER, vec![]);
+	let group_counter = node_counter_key(NodeCounterKind::Group);
 	assert_ne!(counter_key(), group_counter, "the row-number counter must not alias the group-id counter");
-	assert_ne!(mapping_key(GROUP, &key("x")), counter_key(), "a mapping key must never equal the counter key");
+	assert_ne!(
+		guest_mapping_key(GROUP, &key("x")).unwrap(),
+		counter_key(),
+		"a guest mapping key must never equal the counter key"
+	);
+	assert_ne!(group_mapping_key(GROUP), counter_key(), "a group mapping key must never equal the counter key");
+	assert_ne!(
+		join_mapping_key(&join_key(1, 1)),
+		counter_key(),
+		"a join mapping key must never equal the counter key"
+	);
 }
 
 #[test]
-fn drop_below_reclaims_a_bound_that_spans_more_than_one_scan_page() {
-	// The scan is paged, so a bound covering more mappings than fit in one page must still reclaim
-	// every one of them. Stopping at the first page strands the tail: those keys keep their row
-	// numbers forever and a re-lookup resolves to a row the operator has already emitted a remove
-	// for.
+fn dropping_one_left_reclaims_joins_that_span_more_than_one_scan_page() {
+	// Same paging contract for the left sweep, and the page boundary must not become a second
+	// stopping condition that spares part of the left's joins while a neighbouring left stays untouched.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	let slots: Vec<EncodedKey> = (1..=1027u64).map(slot_key).collect();
-	let minted = txn.get_or_create_row_numbers(NODE, GROUP, &slots).unwrap();
-	assert_eq!(minted.len(), slots.len());
+	let doomed: Vec<JoinRowMappingKey> = (1..=1027u64).map(|right| join_key(1, right)).collect();
+	let kept = join_key(2, 7);
+	txn.get_or_create_join_row_numbers(NODE, &doomed).unwrap();
+	let (kept_rn, _) = txn.get_or_create_join_row_numbers(NODE, &[kept.clone()]).unwrap().remove(0);
 
-	let upper = EncodedKey::builder().u64(2000u64).u32(0u32).u32(0u32).build();
-	let dropped = txn.remove_row_numbers_below(NODE, GROUP, &upper).unwrap();
-	assert_eq!(dropped.len(), slots.len(), "every mapping under the bound is reclaimed, not just one page of them");
+	txn.remove_join_row_numbers_for_left(NODE, TAG, 1).unwrap();
 
-	let remaining = txn.get_row_numbers(NODE, GROUP, &slots).unwrap();
-	assert!(remaining.iter().all(Option::is_none), "no mapping under the bound survives the reclaim");
-}
-
-#[test]
-fn remove_by_prefix_reclaims_a_subtree_that_spans_more_than_one_scan_page() {
-	// Same paging contract for prefix removal, and the page boundary must not become a second
-	// stopping condition that spares part of the subtree while a sibling prefix stays untouched.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	let doomed: Vec<EncodedKey> =
-		(0..1027u32).map(|slot| EncodedKey::builder().u64(1u64).u32(slot).build()).collect();
-	let kept = EncodedKey::builder().u64(2u64).u32(7u32).build();
-	txn.get_or_create_row_numbers(NODE, GROUP, &doomed).unwrap();
-	let (kept_rn, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[kept.clone()]).unwrap().remove(0);
-
-	let prefix = EncodedKey::builder().u64(1u64).build();
-	txn.remove_row_numbers_by_prefix(NODE, GROUP, prefix.as_slice()).unwrap();
-
-	let gone = txn.get_row_numbers(NODE, GROUP, &doomed).unwrap();
-	assert!(gone.iter().all(Option::is_none), "the whole prefixed subtree is reclaimed, not just one page of it");
+	let gone = txn.get_join_row_numbers(NODE, &doomed).unwrap();
+	assert!(gone.iter().all(Option::is_none), "every join under the left is reclaimed, not just one page of them");
 	assert_eq!(
-		txn.get_row_numbers(NODE, GROUP, &[kept]).unwrap().remove(0),
+		txn.get_join_row_numbers(NODE, &[kept]).unwrap().remove(0),
 		Some(kept_rn),
-		"a sibling prefix survives"
+		"a neighbouring left survives"
 	);
 }

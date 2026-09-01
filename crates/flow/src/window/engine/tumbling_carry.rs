@@ -9,11 +9,11 @@ use std::{
 };
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::state::{OperatorState, decode},
+	key::encoded::EncodedKey,
+	row::operator::state::{OperatorState, StateCodec, decode},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	metrics::heap::HeapSize,
 	state::timer::StateStore,
 };
@@ -25,8 +25,9 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, MetaHighWater, MetaSweep, WindowResult, WindowStateKey,
-			config::TumblingCarryConfig, meta_key_for, tumbling::TumblingBuckets,
+			AccumulatorEvent, EmitKind, KeyspaceFamily, MetaHighWater, MetaSweep, WindowResult,
+			WindowStateKey, config::TumblingCarryConfig, group_hash, meta_key_for,
+			tumbling::TumblingBuckets,
 		},
 		span::{SlotSpan, WindowAnchor, WindowSpan},
 	},
@@ -96,6 +97,7 @@ struct PendingCarry<S, Output> {
 }
 
 pub struct TumblingCarryEngine<G, S: WindowAnchor, Accumulator, Carry, Output> {
+	family: KeyspaceFamily,
 	meta_sweep: MetaSweep,
 	retention: Option<SlotSpan<S>>,
 	_pd: PhantomData<(G, Accumulator, Carry, Output)>,
@@ -108,7 +110,7 @@ where
 	Accumulator: WindowAccumulator,
 	Carry: Clone + Debug,
 	Output: Clone + Debug,
-	for<'a> &'a G: IntoEncodedKey,
+	G: StateCodec,
 	S: HeapSize,
 	Carry: HeapSize,
 	Output: HeapSize,
@@ -116,6 +118,7 @@ where
 {
 	pub fn new(config: TumblingCarryConfig<S>) -> Self {
 		Self {
+			family: config.base().family(),
 			meta_sweep: MetaSweep::default(),
 			retention: config.retention(),
 			_pd: PhantomData,
@@ -165,7 +168,7 @@ where
 			}
 
 			let mut accumulator: Accumulator =
-				get_classified(store, &WindowStateKey::new(group_id, slot_key.clone()))?
+				get_classified(store, &WindowStateKey::new(self.family, group_id, slot_key.clone()))?
 					.unwrap_or_else(&new_accumulator);
 			let mut changed = false;
 			for event in events {
@@ -186,7 +189,7 @@ where
 			if !changed {
 				continue;
 			}
-			put(store, &WindowStateKey::new(group_id, slot_key), accumulator)?;
+			put(store, &WindowStateKey::new(self.family, group_id, slot_key), accumulator)?;
 
 			entry.windows.entry(span.start).or_insert_with(|| WindowEntry {
 				span,
@@ -221,7 +224,7 @@ where
 				let slot_group = GroupId::of(&slot_key);
 				let finalized = get::<_, Accumulator>(
 					store,
-					&WindowStateKey::new(slot_group, slot_key.clone()),
+					&WindowStateKey::new(self.family, slot_group, slot_key.clone()),
 				)?
 				.and_then(|a| a.finalize())
 				.map(|value| (slot_group, value));
@@ -265,7 +268,9 @@ where
 
 			let pairs: Vec<(GroupId, EncodedKey)> =
 				pending.iter().map(|p| (p.group_id, p.key.clone())).collect();
-			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+			let rows = store.get_or_create_row_numbers_for_groups(
+				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?;
 			reifydb_assertions! {
 				let requested = pairs.len();
 				let returned = rows.len();
@@ -278,7 +283,7 @@ where
 			}
 			for (emit, (row_number, is_new)) in pending.into_iter().zip(rows) {
 				let kind = if emit.withdraw {
-					store.remove_row_number(emit.group_id, &emit.key)?;
+					store.remove_row_number_for_group(emit.group_id)?;
 					EmitKind::Remove
 				} else if is_new {
 					EmitKind::Insert
@@ -319,8 +324,11 @@ where
 					meta.sealed_up_to = Some(first);
 					meta.sealed_carry = carry_out;
 					let sealed_group = GroupId::of(&sealed_key);
-					remove(store, &WindowStateKey::new(sealed_group, sealed_key.clone()))?;
-					store.remove_row_number(sealed_group, &sealed_key)?;
+					remove(
+						store,
+						&WindowStateKey::new(self.family, sealed_group, sealed_key.clone()),
+					)?;
+					store.remove_row_number_for_group(sealed_group)?;
 				}
 			}
 		}
@@ -341,7 +349,7 @@ where
 				continue;
 			}
 			meta_loaded.insert(group.clone(), CarryMeta::default());
-			by_key.insert((&meta_key_for(group)).into_group_state_key(), group.clone());
+			by_key.insert((&meta_key_for(group_hash(group)?)).into_group_state_key(), group.clone());
 		}
 		let keys: Vec<GroupStateKey> = by_key.keys().cloned().collect();
 		store.state_get_many_visit(&keys, &mut |key, bytes| {
@@ -392,7 +400,7 @@ where
 		meta_loaded: MetaLoaded<G, S, Carry, Output>,
 	) -> Result<()> {
 		for (group, meta) in meta_loaded {
-			put(store, &meta_key_for(&group), meta)?;
+			put(store, &meta_key_for(group_hash(&group)?), meta)?;
 		}
 		Ok(())
 	}
@@ -407,7 +415,7 @@ mod tests {
 		row::{operator::state::decode, pod::EncodedPodRow},
 	};
 	use reifydb_core::{
-		key::operator_state::{GroupStateKey, KeyspaceId, OperatorStateKey},
+		key::operator::state::{GroupStateKey, KeyspaceId, OperatorStateKey},
 		state::timer::{TimerKind, TimerStore},
 	};
 	use reifydb_value::{
@@ -527,12 +535,11 @@ mod tests {
 			self.data.remove(key.as_slice());
 			Ok(())
 		}
-		fn state_range_visit(
+		fn state_page_inner(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-		) -> Result<()> {
+		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
 				Bound::Excluded(s) => k > s.as_bytes(),
@@ -553,12 +560,14 @@ mod tests {
 			if let Some(limit) = limit {
 				matched.truncate(limit);
 			}
-			for (k, b) in matched {
-				let k = GroupStateKey::from_framed(EncodedKey::new(k))
-					.expect("fake store holds an unframed state key");
-				visit(k, b)?;
-			}
-			Ok(())
+			Ok(matched
+				.into_iter()
+				.map(|(k, b)| {
+					let k = GroupStateKey::from_framed(EncodedKey::new(k))
+						.expect("fake store holds an unframed state key");
+					(k, b)
+				})
+				.collect())
 		}
 		fn get_or_create_row_numbers(
 			&mut self,
@@ -567,14 +576,21 @@ mod tests {
 		) -> Result<Vec<(RowNumber, bool)>> {
 			Ok(keys.iter().map(|key| self.row_number_for(group, key)).collect())
 		}
-		fn get_or_create_row_numbers_for_pairs(
+		fn get_or_create_row_numbers_for_groups(
 			&mut self,
-			pairs: &[(GroupId, EncodedKey)],
+			groups: &[GroupId],
 		) -> Result<Vec<(RowNumber, bool)>> {
-			Ok(pairs.iter().map(|(group, key)| self.row_number_for(*group, key)).collect())
+			Ok(groups
+				.iter()
+				.map(|group| self.row_number_for(*group, &EncodedKey::new(Vec::new())))
+				.collect())
 		}
 		fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 			self.rows.remove(&(group, key.as_bytes().to_vec()));
+			Ok(())
+		}
+		fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {
+			self.rows.remove(&(group, Vec::new()));
 			Ok(())
 		}
 		fn written_at(&self) -> DateTime {

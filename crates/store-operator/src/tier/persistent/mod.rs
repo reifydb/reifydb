@@ -14,7 +14,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator_state::GroupId,
+	key::operator::state::GroupId,
 	metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::shutdown::Shutdown;
@@ -29,10 +29,7 @@ use reifydb_value::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::persistent::sqlite::SqliteOperatorStorage;
 use crate::{
-	tier::{
-		persistent::filter::{JoinExpiryKeys, OperatorKeys},
-		resident::batch::FlushBatch,
-	},
+	tier::{persistent::filter::JoinExpiryKeys, resident::batch::FlushBatch},
 	types::{OperatorBatch, OperatorStateCensus, StoredJoinRowExpiry, StoredJoinRowExpiryCensus},
 };
 
@@ -75,12 +72,6 @@ impl OperatorPersistentTier {
 	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
 		match self {
 			Self::Sqlite(storage) => storage.contains(operator, key),
-		}
-	}
-
-	pub fn filter(&self) -> &KeyFilter<OperatorKeys> {
-		match self {
-			Self::Sqlite(storage) => storage.filter(),
 		}
 	}
 
@@ -227,10 +218,6 @@ impl OperatorPersistentTier {
 	}
 
 	pub fn contains(&self, _operator: OperatorId, _key: &EncodedKey) -> bool {
-		match *self {}
-	}
-
-	pub fn filter(&self) -> &KeyFilter<OperatorKeys> {
 		match *self {}
 	}
 

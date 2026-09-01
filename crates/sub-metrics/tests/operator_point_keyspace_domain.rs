@@ -35,29 +35,17 @@ fn operator_point_keyspace_is_dimensioned_by_keyspace_name_not_by_shard() {
 }
 
 #[test]
-fn operator_point_keyspace_drops_the_per_shard_limit_measure() {
-	// `limit` is a per-shard budget and means nothing per keyspace, which is why this is its own domain.
-	let spec = MetricsDomain::StoreOperatorPointKeyspace.spec();
-	assert!(spec.measures.iter().all(|m| m.name != "limit"), "no per-shard budget on a keyspace row");
-
-	let shard_spec = MetricsDomain::StoreOperatorPoint.spec();
-	assert!(shard_spec.measures.iter().any(|m| m.name == "limit"), "the shard domain still owns limit");
-	assert_ne!(spec.namespace, shard_spec.namespace, "keyspace rows must not merge into the shard namespace");
-	assert_eq!(spec.namespace, NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_POINT_KEYSPACE);
-}
-
-#[test]
-fn operator_point_carries_no_bucket_measure_on_either_surface() {
+fn operator_point_carries_no_bucket_measure_on_its_surface() {
 	// The point tier keys on the whole inner key and is flat; a `buckets` count here would publish a
 	// number no structure produces, and would re-merge the point rows with the range tier's shape.
-	for domain in [MetricsDomain::StoreOperatorPoint, MetricsDomain::StoreOperatorPointKeyspace] {
-		let spec = domain.spec();
-		assert!(spec.measures.iter().all(|m| m.name != "partitions"), "{domain:?} must own no partition count");
-		assert!(
-			spec.measures.iter().any(|m| m.name == "insertions"),
-			"{domain:?} must publish insertions, which only the point tier counts"
-		);
-	}
+	let domain = MetricsDomain::StoreOperatorPointKeyspace;
+	let spec = domain.spec();
+	assert!(spec.measures.iter().all(|m| m.name != "partitions"), "{domain:?} must own no partition count");
+	assert!(
+		spec.measures.iter().any(|m| m.name == "insertions"),
+		"{domain:?} must publish insertions, which only the point tier counts"
+	);
+	assert_eq!(spec.namespace, NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_POINT_KEYSPACE);
 }
 
 #[test]
@@ -67,11 +55,11 @@ fn operator_point_keyspace_pins_the_published_layout() {
 
 	let levels = spec.measures.iter().filter(|m| m.kind == MetricKind::Level).count();
 	let counters = spec.measures.iter().filter(|m| m.kind == MetricKind::Counter).count();
-	assert_eq!((levels, counters), (2, 7), "used/entries are levels, the rest counters");
-	assert_eq!(spec.measures.len(), 9, "no measure outside the level/counter split");
+	assert_eq!((levels, counters), (3, 7), "used/limit/entries are levels, the rest counters");
+	assert_eq!(spec.measures.len(), 10, "no measure outside the level/counter split");
 
 	let current = spec.columns(Surface::Current);
-	assert_eq!(current.len(), 11, "ts + keyspace + 2 levels + 7 counters");
+	assert_eq!(current.len(), 12, "ts + keyspace + 3 levels + 7 counters");
 	assert_eq!(current[0].name, "ts");
 	assert_eq!(current[1].name, "keyspace");
 	assert!(
@@ -93,10 +81,6 @@ fn operator_point_keyspace_updates_rows_and_writes_no_snapshot_series() {
 	assert_eq!(MetricsDomain::StoreOperatorPointKeyspace.snapshots_path(), None);
 	assert!(
 		MetricsDomain::ALL.contains(&MetricsDomain::StoreOperatorPointKeyspace),
-		"a domain outside ALL is never registered and never sampled"
-	);
-	assert!(
-		MetricsDomain::ALL.contains(&MetricsDomain::StoreOperatorPoint),
 		"a domain outside ALL is never registered and never sampled"
 	);
 }

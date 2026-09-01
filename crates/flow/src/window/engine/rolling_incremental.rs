@@ -9,10 +9,10 @@ use std::{
 };
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::state::OperatorState,
+	key::encoded::EncodedKey,
+	row::operator::state::{OperatorState, StateCodec},
 };
-use reifydb_core::{key::operator_state::GroupId, metrics::heap::HeapSize, state::timer::StateStore};
+use reifydb_core::{key::operator::state::GroupId, metrics::heap::HeapSize, state::timer::StateStore};
 use reifydb_value::Result;
 
 use crate::{
@@ -20,9 +20,10 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaSweep, RunningKey, WindowStateKey,
+			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep, RunningKey,
+			WindowStateKey,
 			config::WindowEngineConfig,
-			load_batch_meta, meta_key_for, persist_batch_meta,
+			group_hash, load_batch_meta, meta_key_for, persist_batch_meta,
 			rolling::{RollingBuckets, RollingBuffer, RollingResult},
 		},
 		span::Slot,
@@ -42,6 +43,7 @@ struct GroupSlot<S, Accumulator, Running, Output> {
 }
 
 pub struct RollingIncrementalEngine<G, S, Accumulator, Running> {
+	family: KeyspaceFamily,
 	meta_sweep: MetaSweep,
 	_pd: PhantomData<(G, S, Accumulator, Running)>,
 }
@@ -52,13 +54,14 @@ where
 	S: Slot + Hash,
 	Accumulator: WindowAccumulator,
 	Running: WindowAccumulator,
-	for<'a> &'a G: IntoEncodedKey,
+	G: StateCodec,
 	S: HeapSize,
 	GroupMeta<S>: OperatorState,
 	RollingBuffer<S, Accumulator>: OperatorState + HeapSize,
 {
-	pub fn new(_config: WindowEngineConfig) -> Self {
+	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
+			family: config.family(),
 			meta_sweep: MetaSweep::default(),
 			_pd: PhantomData,
 		}
@@ -105,12 +108,16 @@ where
 							(group_id, key)
 						}
 					};
-					let buffer: RollingBuffer<S, Accumulator> =
-						get_classified(store, &WindowStateKey::new(group_id, key.clone()))?
-							.unwrap_or_default();
-					let running: Running =
-						get_classified(store, &RunningKey::new(group_id, key.clone()))?
-							.unwrap_or_default();
+					let buffer: RollingBuffer<S, Accumulator> = get_classified(
+						store,
+						&WindowStateKey::new(self.family, group_id, key.clone()),
+					)?
+					.unwrap_or_default();
+					let running: Running = get_classified(
+						store,
+						&RunningKey::new(self.family, group_id, key.clone()),
+					)?
+					.unwrap_or_default();
 					let prior_output = match buffer.iter().next_back() {
 						Some((slot, accumulator)) => {
 							accumulator.finalize().and_then(|newest| {
@@ -193,10 +200,14 @@ where
 			};
 			put(
 				store,
-				&WindowStateKey::new(group_slot.group_id, group_slot.key.clone()),
+				&WindowStateKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
 				group_slot.buffer,
 			)?;
-			put(store, &RunningKey::new(group_slot.group_id, group_slot.key.clone()), group_slot.running)?;
+			put(
+				store,
+				&RunningKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
+				group_slot.running,
+			)?;
 
 			if let Some(out) = output {
 				pairs.push((group_slot.group_id, group_slot.key));
@@ -209,12 +220,14 @@ where
 
 		let mut results: Vec<RollingResult<G, Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {
-			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
-			for (((group, value, withdrawn), (group_id, key)), (row_number, is_new)) in
+			let rows = store.get_or_create_row_numbers_for_groups(
+				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?;
+			for (((group, value, withdrawn), (group_id, _key)), (row_number, is_new)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{
 				if withdrawn {
-					store.remove_row_number(group_id, &key)?;
+					store.remove_row_number_for_group(group_id)?;
 					results.push(RollingResult {
 						row_number,
 						group,
@@ -250,7 +263,7 @@ where
 		let mut meta_loaded: MetaLoaded<G, S> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let batch = load_batch_meta(store, &meta_key_for(group))?;
+				let batch = load_batch_meta(store, &meta_key_for(group_hash(group)?))?;
 				meta_loaded.insert(group.clone(), batch);
 			}
 		}
@@ -294,7 +307,7 @@ mod tests {
 	use std::collections::BTreeMap;
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::key::operator_state::GroupId;
+	use reifydb_core::key::operator::state::GroupId;
 	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
 
 	use crate::{
@@ -382,7 +395,7 @@ mod tests {
 		let group_id = GroupId::of(&row_key(&1));
 		assert!(store.drop_group_data_entries() > 0, "precondition: the sweep must have erased something");
 		assert!(
-			store.contains_row_mapping(group_id, &row_key(&1)),
+			store.contains_row_mapping(group_id),
 			"precondition: the identity half must survive the data phase"
 		);
 

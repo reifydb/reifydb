@@ -4,10 +4,7 @@
 use std::{mem, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::EncodedBytes,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
@@ -17,7 +14,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	key::{EncodableKey, Key, kind::KeyKind, operator_state::OperatorStateKey},
+	key::{EncodableKey, Key, kind::KeyKind, operator::state::OperatorStateKey},
 	state::timer::TimerKind,
 };
 use reifydb_flow::{
@@ -26,7 +23,7 @@ use reifydb_flow::{
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
-		state::{StateExtension, StateRange},
+		state::StateExtension,
 		substrate::{FlowSubstrate, apply_operator_state},
 	},
 };
@@ -188,7 +185,7 @@ impl<O: HostOperator> Harness<O> {
 	pub fn footprint(&mut self) -> Result<StateFootprint> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(DateTime::default());
-		let batch = txn.state_range(operator, StateRange::forward(EncodedKeyRange::all(), "test::harness"))?;
+		let batch = txn.state_scan_all(operator)?;
 		let mut footprint = StateFootprint::default();
 		for item in &batch.items {
 			let decoded = OperatorStateKey::decode(&item.key);
@@ -205,7 +202,7 @@ impl<O: HostOperator> Harness<O> {
 	pub fn state_items(&mut self) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(DateTime::default());
-		let batch = txn.state_range(operator, StateRange::forward(EncodedKeyRange::all(), "test::harness"))?;
+		let batch = txn.state_scan_all(operator)?;
 		let items = batch.items.into_iter().map(|item| (item.key, item.bytes)).collect();
 		self.end(txn);
 		Ok(items)

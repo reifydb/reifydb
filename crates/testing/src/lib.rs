@@ -9,6 +9,7 @@
 extern crate self as reifydb_testing;
 
 pub mod goldenfile;
+pub mod keyspace;
 pub mod network;
 pub mod tempdir;
 pub mod testscript;

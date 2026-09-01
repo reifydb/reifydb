@@ -13,6 +13,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	default,
+	key::typed::MultiKey,
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
 use reifydb_store::tier::{
@@ -90,14 +91,15 @@ pub struct MultiPointDomain;
 
 impl PointDomain for MultiPointDomain {
 	type Dimension = ();
-	type Slot = ();
+	type Key = MultiKey;
+	type MetricBucket = ();
 	type Row = MultiPointRow;
 
-	const SLOTS: usize = 1;
+	const METRIC_BUCKETS: usize = 1;
 
 	const SCOPE: &'static str = "multi_point";
 
-	fn slot(_key: &EncodedKey) -> Option<usize> {
+	fn metric_bucket(_key: &EncodedKey) -> Option<usize> {
 		Some(0)
 	}
 
@@ -119,9 +121,9 @@ impl PointDomain for MultiPointDomain {
 		true
 	}
 
-	fn slot_at(_index: usize) -> Self::Slot {}
+	fn metric_bucket_at(_index: usize) -> Self::MetricBucket {}
 
-	fn slot_name(_slot: Self::Slot) -> Cow<'static, str> {
+	fn metric_bucket_name(_slot: Self::MetricBucket) -> Cow<'static, str> {
 		Cow::Borrowed("row")
 	}
 }

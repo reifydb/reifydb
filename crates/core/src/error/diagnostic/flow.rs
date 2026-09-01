@@ -543,3 +543,13 @@ pub fn flow_span_on_unageable_node(flow: &str, operator: &str) -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+pub fn flow_guest_key_too_wide(len: usize) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_051",
+		format!("a guest row mapping key is {} bytes, the key holds at most 16", len),
+		"A guest operator supplied a row mapping key wider than the key can hold. Shorten the key or hash it \
+		 to sixteen bytes before passing it; the host refuses it rather than truncating it, because a \
+		 truncated key silently collides with every other key sharing its first sixteen bytes.",
+	)
+}

@@ -24,7 +24,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 		row::RowKey,
 	},
 };

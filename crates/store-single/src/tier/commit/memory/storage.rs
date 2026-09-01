@@ -4,6 +4,7 @@
 use std::{collections::BTreeMap, mem::size_of, ops::Bound, sync::Arc};
 
 use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::metrics::heap::HeapSize;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_value::{Result, util::cowvec::CowVec};
 use tracing::instrument;
@@ -42,7 +43,7 @@ impl MemoryRowStorage {
 		let map = self.inner.data.read();
 		let payload: usize = map
 			.iter()
-			.map(|(key, value)| key.heap_bytes() + value.as_ref().map(CowVec::len).unwrap_or(0))
+			.map(|(key, value)| key.heap_size() + value.as_ref().map(CowVec::len).unwrap_or(0))
 			.sum();
 		(map.len(), map.len() * ENTRY_OVERHEAD + payload)
 	}

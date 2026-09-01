@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
@@ -20,7 +20,7 @@ use reifydb_store_operator::{
 	store::OperatorStore,
 	types::{BufferedState, DurablePre, OperatorWrite},
 };
-use reifydb_testing::testscript;
+use reifydb_testing::{keyspace::suffix_width, testscript};
 use reifydb_value::{
 	byte_size::ByteSize,
 	value::{datetime::DateTime, row_number::RowNumber},
@@ -35,7 +35,7 @@ const DEFAULT_OPERATOR: u64 = 1;
 
 const DEFAULT_GROUP: u128 = 1;
 
-const DEFAULT_KEYSPACE: u8 = 0x10;
+const DEFAULT_KEYSPACE: u8 = KeyspaceId::GUEST_ACCUMULATOR.0;
 
 const DEFAULT_SIDE: u8 = 0;
 
@@ -463,7 +463,7 @@ impl testscript::runner::Runner for Runner {
 				let pre = persistent
 					.get(operator, &key)
 					.map(|held| ByteSize::from_bytes(held.bytes().len() as u64));
-				persistent.apply_batch(&[state_write(operator, key.clone(), row, pre)]);
+				persistent.seed_durable(&[state_write(operator, key.clone(), row, pre)]);
 				self.invalidate_read(operator, &key);
 			}
 
@@ -481,7 +481,7 @@ impl testscript::runner::Runner for Runner {
 				let pre = persistent
 					.get(operator, &key)
 					.map(|held| ByteSize::from_bytes(held.bytes().len() as u64));
-				persistent.apply_batch(&[state_remove(operator, key.clone(), pre)]);
+				persistent.seed_durable(&[state_remove(operator, key.clone(), pre)]);
 				self.invalidate_read(operator, &key);
 			}
 
@@ -493,12 +493,21 @@ impl testscript::runner::Runner for Runner {
 	}
 }
 
-fn encode_key(suffix: &[u8], keyspace: u8) -> EncodedKey {
+fn encode_key(name: &[u8], keyspace: u8) -> EncodedKey {
+	let width = suffix_width(KeyspaceId(keyspace));
+	assert!(
+		name.len() <= width,
+		"a script key name must fit its keyspace's suffix, or two names collapse onto one key"
+	);
+	let mut suffix = vec![0u8; width];
+	suffix[..name.len()].copy_from_slice(name);
 	OperatorStateKey::inner_encoded(GroupId(DEFAULT_GROUP), KeyspaceId(keyspace), suffix).as_encoded().clone()
 }
 
 fn key_name(key: &EncodedKey) -> Vec<u8> {
-	key.as_slice()[KEY_PREFIX_LEN..].to_vec()
+	let suffix = &key.as_slice()[KEY_PREFIX_LEN..];
+	let end = suffix.iter().rposition(|byte| *byte != 0).map_or(0, |last| last + 1);
+	suffix[..end].to_vec()
 }
 
 fn frame_bound(bound: Bound<EncodedKey>, keyspace: u8) -> Bound<EncodedKey> {
@@ -687,5 +696,41 @@ fn state_remove(operator: OperatorId, key: EncodedKey, pre: Option<ByteSize>) ->
 			Some(bytes) => DurablePre::Present(bytes),
 			None => DurablePre::Absent,
 		},
+	}
+}
+use reifydb_store_operator::tier::{persistent::sqlite::SqliteOperatorStorage, resident::batch::FlushBatch};
+
+trait SeedDurable {
+	fn seed_durable(&self, writes: &[OperatorWrite]);
+}
+
+impl SeedDurable for SqliteOperatorStorage {
+	fn seed_durable(&self, writes: &[OperatorWrite]) {
+		let mut batch = FlushBatch::default();
+		for write in writes {
+			let (operator, key, post) = match write {
+				OperatorWrite::Insert {
+					operator,
+					key,
+					post,
+				} => (*operator, key, Some(post.clone())),
+				OperatorWrite::Replace {
+					operator,
+					key,
+					post,
+					..
+				} => (*operator, key, Some(post.clone())),
+				OperatorWrite::Remove {
+					operator,
+					key,
+					..
+				} => (*operator, key, None),
+				_ => continue,
+			};
+			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
+				.expect("a seeded key must name a group and a keyspace");
+			batch.state.record_bytes(operator, keyspace, group, &suffix, post);
+		}
+		self.flush_batch(&batch);
 	}
 }

@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{
-	key::encode_u64_asc,
-	row::{
-		bytes::EncodedBytes,
-		operator::state::{decode, encode},
-		pod::EncodedPodRow,
-	},
+use reifydb_codec::row::{
+	bytes::EncodedBytes,
+	operator::state::{decode, encode},
+	pod::EncodedPodRow,
 };
 use reifydb_core::{
 	interface::change::Diff,
-	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+	key::{
+		operator::{
+			keyspace::join::{JoinPin, JoinPinSuffix, JoinPublished},
+			state::{GroupId, GroupStateKey},
+		},
+		typed::direction::Asc,
+	},
+	state::{join::ContentVersion, typed::typed_key},
 	value::column::columns::Columns,
 };
 use reifydb_macro::operator_state;
@@ -19,10 +23,7 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	reifydb_assertions,
-	util::{
-		cowvec::CowVec,
-		hash::{Hash128, xxh3_64},
-	},
+	util::{cowvec::CowVec, hash::Hash128},
 	value::row_number::RowNumber,
 };
 
@@ -44,7 +45,6 @@ use crate::{
 	},
 };
 
-const ROW_NUMBER_BYTES: usize = 8;
 const TAG_JOINED: u8 = 0;
 const TAG_UNMATCHED: u8 = 1;
 const SLOT: RowNumber = RowNumber::MAX;
@@ -60,15 +60,6 @@ pub(crate) struct Published {
 	pub(crate) right: PublishedRight,
 	pub(crate) version: ContentVersion,
 	pub(crate) row_number: RowNumber,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct ContentVersion(u64);
-
-impl ContentVersion {
-	pub(crate) fn of(encoded: &EncodedBytes) -> Self {
-		Self(xxh3_64(&encoded.0).0)
-	}
 }
 
 #[operator_state]
@@ -114,7 +105,7 @@ impl SnapshotLedger {
 	}
 
 	fn published_key(&self, group: GroupId, left: RowNumber) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(group, KeyspaceId::JOIN_PUBLISHED, encode_u64_asc(left.0))
+		typed_key::<JoinPublished>(group, &Asc(left))
 	}
 
 	fn published_set(&self, host: &mut dyn HostContext, group: GroupId, left: RowNumber) -> Result<PublishedSet> {
@@ -148,10 +139,13 @@ impl SnapshotLedger {
 	}
 
 	fn pin_key(&self, group: GroupId, right: RowNumber, version: ContentVersion) -> GroupStateKey {
-		let mut suffix = Vec::with_capacity(2 * ROW_NUMBER_BYTES);
-		suffix.extend_from_slice(&encode_u64_asc(right.0));
-		suffix.extend_from_slice(&encode_u64_asc(version.0));
-		OperatorStateKey::inner_encoded(group, KeyspaceId::JOIN_PIN, suffix)
+		typed_key::<JoinPin>(
+			group,
+			&JoinPinSuffix {
+				row: Asc(right),
+				version: Asc(version),
+			},
+		)
 	}
 
 	pub(crate) fn publish(

@@ -332,9 +332,51 @@ const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
 
 #[unsafe(no_mangle)]
+/// # Safety
+/// `ptr` must be null, or valid for reads of `len` bytes.
+unsafe fn test_suffix_bound(ptr: *const u8, len: usize, bound_type: u8) -> Option<Bound<Vec<u8>>> {
+	let suffix = || match len {
+		0 => Some(Vec::new()),
+		// SAFETY: forwards this function's own contract; `len` is non-zero here, so a null `ptr`
+		// cannot be valid and is refused rather than read.
+		_ if !ptr.is_null() => Some(unsafe { from_raw_parts(ptr, len) }.to_vec()),
+		_ => None,
+	};
+	match bound_type {
+		BOUND_UNBOUNDED => Some(Bound::Unbounded),
+		BOUND_INCLUDED => suffix().map(Bound::Included),
+		BOUND_EXCLUDED => suffix().map(Bound::Excluded),
+		_ => None,
+	}
+}
+
+fn in_range(range: &EncodedKeyRange, key: &EncodedKey) -> bool {
+	let above = match &range.start {
+		Bound::Unbounded => true,
+		Bound::Included(start) => key >= start,
+		Bound::Excluded(start) => key > start,
+	};
+	let below = match &range.end {
+		Bound::Unbounded => true,
+		Bound::Included(end) => key <= end,
+		Bound::Excluded(end) => key < end,
+	};
+	above && below
+}
+
+fn test_bound_as_slice(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
+	match bound {
+		Bound::Unbounded => Bound::Unbounded,
+		Bound::Included(suffix) => Bound::Included(suffix),
+		Bound::Excluded(suffix) => Bound::Excluded(suffix),
+	}
+}
+
 extern "C" fn test_state_range(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
+	group: u128,
+	keyspace: u8,
 	start_ptr: *const u8,
 	start_len: usize,
 	start_bound_type: u8,
@@ -352,42 +394,25 @@ extern "C" fn test_state_range(
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
-		let start_key = if start_bound_type == BOUND_UNBOUNDED || start_ptr.is_null() {
-			None
-		} else {
-			Some(from_raw_parts(start_ptr, start_len).to_vec())
+		let Some(start_bound) = test_suffix_bound(start_ptr, start_len, start_bound_type) else {
+			return EXTERN_C_ERROR_INTERNAL;
 		};
-
-		let end_key = if end_bound_type == BOUND_UNBOUNDED || end_ptr.is_null() {
-			None
-		} else {
-			Some(from_raw_parts(end_ptr, end_len).to_vec())
+		let Some(end_bound) = test_suffix_bound(end_ptr, end_len, end_bound_type) else {
+			return EXTERN_C_ERROR_INTERNAL;
 		};
+		let range = keyspace_inner_range_in(
+			GroupId(group),
+			KeyspaceId(keyspace),
+			test_bound_as_slice(&start_bound),
+			test_bound_as_slice(&end_bound),
+		);
 
 		let state_store = test_ctx.state_store();
 		let state = state_store.lock();
 
 		let mut items: Vec<(Vec<u8>, Vec<u8>)> = state
 			.iter()
-			.filter(|(key, _)| {
-				let key_bytes = key.as_slice();
-
-				let start_ok = match (&start_key, start_bound_type) {
-					(None, _) => true,
-					(Some(start), BOUND_INCLUDED) => key_bytes >= start.as_slice(),
-					(Some(start), BOUND_EXCLUDED) => key_bytes > start.as_slice(),
-					_ => true,
-				};
-
-				let end_ok = match (&end_key, end_bound_type) {
-					(None, _) => true,
-					(Some(end), BOUND_INCLUDED) => key_bytes <= end.as_slice(),
-					(Some(end), BOUND_EXCLUDED) => key_bytes < end.as_slice(),
-					_ => true,
-				};
-
-				start_ok && end_ok
-			})
+			.filter(|(key, _)| in_range(&range, key))
 			.map(|(key, value)| (key.to_vec(), value.0.to_vec()))
 			.collect();
 
@@ -410,7 +435,9 @@ use std::{ops::Bound, ptr};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, group_identity_inner_range, node_prefix},
+	key::operator::state::{
+		GroupId, KeyspaceId, OperatorStateKey, group_identity_inner_range, keyspace_inner_range_in, node_prefix,
+	},
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{
@@ -680,7 +707,7 @@ extern "C" fn test_get_or_create_row_numbers(
 			let map_key = test_state_envelope(
 				operator_id,
 				GroupId(group),
-				KeyspaceId::ROW_NUMBER_MAPPING,
+				KeyspaceId::GUEST_ROW_MAPPING,
 				key_bytes.to_vec(),
 			);
 			match test_ctx.get_state(&map_key) {
@@ -745,7 +772,7 @@ extern "C" fn test_get_or_create_row_numbers_for_pairs(
 			let map_key = test_state_envelope(
 				operator_id,
 				GroupId(*groups.add(i)),
-				KeyspaceId::ROW_NUMBER_MAPPING,
+				KeyspaceId::GUEST_ROW_MAPPING,
 				key_bytes.to_vec(),
 			);
 			match test_ctx.get_state(&map_key) {
@@ -792,87 +819,10 @@ extern "C" fn test_remove_row_number(
 		let map_key = test_state_envelope(
 			operator_id,
 			GroupId(group),
-			KeyspaceId::ROW_NUMBER_MAPPING,
+			KeyspaceId::GUEST_ROW_MAPPING,
 			key_bytes.to_vec(),
 		);
 		test_ctx.remove_state(&map_key);
-		EXTERN_C_OK
-	}
-}
-
-extern "C" fn test_remove_row_numbers_below(
-	operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	group: u128,
-	upper_ptr: *const u8,
-	upper_len: usize,
-	output: *mut ExternCBuffer,
-) -> i32 {
-	if ctx.is_null() || output.is_null() || (upper_len > 0 && upper_ptr.is_null()) {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-	// SAFETY: ctx and output are null-checked above and upper_ptr is null-checked whenever
-	// upper_len is non-zero. The buffer written into output is allocated here and its pointer is
-	// null-checked before the copy.
-	unsafe {
-		let test_ctx = get_test_context(ctx);
-		let upper_bytes = if upper_len == 0 {
-			&[][..]
-		} else {
-			from_raw_parts(upper_ptr, upper_len)
-		};
-		let boundary = test_state_envelope(
-			operator_id,
-			GroupId(group),
-			KeyspaceId::ROW_NUMBER_MAPPING,
-			upper_bytes.to_vec(),
-		)
-		.as_slice()
-		.to_vec();
-		let prefix = test_state_envelope(
-			operator_id,
-			GroupId(group),
-			KeyspaceId::ROW_NUMBER_MAPPING,
-			Vec::<u8>::new(),
-		)
-		.as_slice()
-		.to_vec();
-
-		let mut dropped: Vec<u64> = Vec::new();
-		let mut to_remove: Vec<EncodedKey> = Vec::new();
-		for key in test_ctx.state_keys() {
-			let bytes = key.as_slice();
-			if bytes.starts_with(&prefix) && bytes > boundary.as_slice() {
-				if let Some(value) = test_ctx.get_state(&key)
-					&& value.len() >= 8
-				{
-					dropped.push(u64::from_le_bytes(value[..8].try_into().unwrap()));
-				}
-				to_remove.push(key);
-			}
-		}
-		for key in to_remove {
-			test_ctx.remove_state(&key);
-		}
-
-		let mut packed = Vec::with_capacity(dropped.len() * 8);
-		for row_number in dropped {
-			packed.extend_from_slice(&row_number.to_le_bytes());
-		}
-		if packed.is_empty() {
-			(*output).ptr = ptr::null_mut();
-			(*output).len = 0;
-			(*output).cap = 0;
-		} else {
-			let out_ptr = test_alloc(packed.len());
-			if out_ptr.is_null() {
-				return EXTERN_C_ERROR_INTERNAL;
-			}
-			ptr::copy_nonoverlapping(packed.as_ptr(), out_ptr, packed.len());
-			(*output).ptr = out_ptr;
-			(*output).len = packed.len();
-			(*output).cap = packed.len();
-		}
 		EXTERN_C_OK
 	}
 }
@@ -987,7 +937,6 @@ pub fn create_test_callbacks() -> OperatorCallbacks {
 			get_or_create_row_numbers: test_get_or_create_row_numbers,
 			get_or_create_row_numbers_for_pairs: test_get_or_create_row_numbers_for_pairs,
 			remove_row_number: test_remove_row_number,
-			remove_row_numbers_below: test_remove_row_numbers_below,
 			arm_timer: test_arm_timer,
 			disarm_timer: test_disarm_timer,
 			flow_watermark: test_flow_watermark,

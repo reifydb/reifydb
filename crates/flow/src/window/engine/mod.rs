@@ -11,21 +11,29 @@ pub mod tumbling_carry;
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
-	key::{
-		encode_u64_asc,
-		encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
-	},
-	row::operator::state::{OperatorState, decode},
+	key::{encode_u64_asc, encoded::EncodedKey},
+	row::operator::state::{OperatorState, StateCodec, decode, encode},
 };
 use reifydb_core::{
-	key::operator_state::{
-		GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range,
+	key::{
+		operator::{
+			keyspace::window::{Emit, WindowMeta, WindowMetaKey},
+			state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey},
+		},
+		typed::direction::{Asc, Desc},
 	},
 	metrics::heap::HeapSize,
-	state::timer::StateStore,
+	state::{
+		timer::StateStore,
+		typed::{TypedStateStore, typed_key},
+	},
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	util::hash::{Hash128, xxh3_128},
+	value::row_number::RowNumber,
+};
 use tracing::{debug, instrument};
 
 use crate::{
@@ -134,7 +142,7 @@ where
 
 pub(crate) fn persist_batch_meta<G, S>(store: &mut dyn StateStore, loaded: HashMap<G, BatchMeta<S>>) -> Result<()>
 where
-	for<'a> &'a G: IntoEncodedKey,
+	G: StateCodec,
 	S: Slot,
 {
 	for (group, batch) in loaded {
@@ -143,7 +151,7 @@ where
 		};
 		set(
 			store,
-			&meta_key_for(&group),
+			&meta_key_for(group_hash(&group)?),
 			&GroupMeta {
 				high_water: Some(bumped),
 			},
@@ -152,16 +160,12 @@ where
 	Ok(())
 }
 
-pub(crate) fn meta_range() -> EncodedKeyRange {
-	keyspace_inner_range(GroupId::ROOT, KeyspaceId::WINDOW_META)
-}
-
 const META_SWEEP_PAGE: usize = 1024;
 
 #[derive(Default)]
 pub(crate) struct MetaSweep {
 	low_water: Option<u64>,
-	cursor: Option<EncodedKey>,
+	cursor: Option<WindowMetaKey>,
 	surviving: Option<u64>,
 }
 
@@ -174,31 +178,29 @@ impl MetaSweep {
 		if self.cursor.is_none() && self.low_water.is_some_and(|lw| lw >= threshold) {
 			return Ok(0);
 		}
-		let full = meta_range();
-		let range = match self.cursor.take() {
-			Some(key) => EncodedKeyRange::new(Bound::Excluded(key), full.end),
-			None => full,
-		};
+		let cursor = self.cursor.take();
+		let page = store.state_scan_in::<WindowMeta>(
+			GroupId::ROOT,
+			match &cursor {
+				Some(key) => Bound::Excluded(key),
+				None => Bound::Unbounded,
+			},
+			Some(META_SWEEP_PAGE),
+		)?;
+		let visited = page.len();
 		let mut stale: Vec<MetaKey> = Vec::new();
 		let mut surviving = self.surviving;
-		let mut visited = 0usize;
-		let mut furthest: Option<EncodedKey> = None;
-		store.state_range_visit(range, Some(META_SWEEP_PAGE), &mut |key, bytes| {
-			visited += 1;
-			let high_water = decode::<M>(&bytes)?.high_water_order();
-			let encoded = key.into_encoded();
-			if let Some(hw) = high_water {
+		let mut furthest: Option<WindowMetaKey> = None;
+		for (suffix, bytes) in page {
+			if let Some(hw) = decode::<M>(&bytes)?.high_water_order() {
 				if hw < threshold {
-					if let Some(meta) = decode_meta_key(&encoded) {
-						stale.push(meta);
-					}
+					stale.push(MetaKey(suffix));
 				} else {
 					surviving = Some(surviving.map_or(hw, |m| m.min(hw)));
 				}
 			}
-			furthest = Some(encoded);
-			Ok(())
-		})?;
+			furthest = Some(suffix);
+		}
 		if visited < META_SWEEP_PAGE {
 			self.low_water = surviving;
 			self.surviving = None;
@@ -216,7 +218,7 @@ impl MetaSweep {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
-pub struct MetaKey(pub EncodedKey);
+pub struct MetaKey(pub WindowMetaKey);
 
 impl HeapSize for MetaKey {
 	fn heap_size(&self) -> usize {
@@ -224,115 +226,136 @@ impl HeapSize for MetaKey {
 	}
 }
 
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum KeyspaceFamily {
+	Host,
+	Guest,
+}
+
+impl KeyspaceFamily {
+	fn keyspace(&self, host: KeyspaceId, guest: KeyspaceId) -> KeyspaceId {
+		match self {
+			Self::Host => host,
+			Self::Guest => guest,
+		}
+	}
+
+	fn suffix(&self, slot: &EncodedKey) -> Vec<u8> {
+		match self {
+			Self::Host => slot.as_bytes().to_vec(),
+			Self::Guest => xxh3_128(slot.as_bytes()).0.to_be_bytes().to_vec(),
+		}
+	}
+}
+
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct RunningKey {
+	pub family: KeyspaceFamily,
 	pub group: GroupId,
 	pub slot: EncodedKey,
 }
 
 impl RunningKey {
-	pub fn new(group: GroupId, slot: EncodedKey) -> Self {
+	pub fn new(family: KeyspaceFamily, group: GroupId, slot: EncodedKey) -> Self {
 		Self {
+			family,
 			group,
 			slot,
 		}
 	}
 
-	pub fn of_row(group: GroupId, row: RowNumber) -> Self {
-		Self::new(group, EncodedKey::new(encode_u64_asc(row.0)))
+	pub fn of_row(family: KeyspaceFamily, group: GroupId, row: RowNumber) -> Self {
+		Self::new(family, group, EncodedKey::new(encode_u64_asc(row.0)))
 	}
 }
 
 impl HeapSize for RunningKey {
 	fn heap_size(&self) -> usize {
-		match &self.slot {
-			EncodedKey::Inline {
-				..
-			} => 0,
-			EncodedKey::Shared(bytes) => bytes.len(),
-		}
+		self.slot.heap_size()
 	}
 }
 
 impl IntoGroupStateKey for &RunningKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.group, KeyspaceId::RUNNING, self.slot.as_bytes())
+		OperatorStateKey::inner_encoded(
+			self.group,
+			self.family.keyspace(KeyspaceId::RUNNING, KeyspaceId::GUEST_RUNNING),
+			self.family.suffix(&self.slot),
+		)
 	}
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct WindowStateKey {
+	pub family: KeyspaceFamily,
 	pub group: GroupId,
 	pub slot: EncodedKey,
 }
 
 impl WindowStateKey {
-	pub fn new(group: GroupId, slot: EncodedKey) -> Self {
+	pub fn new(family: KeyspaceFamily, group: GroupId, slot: EncodedKey) -> Self {
 		Self {
+			family,
 			group,
 			slot,
 		}
 	}
 
-	pub fn root(slot: EncodedKey) -> Self {
-		Self::new(GroupId::ROOT, slot)
-	}
-
-	pub fn of_row(group: GroupId, row: RowNumber) -> Self {
-		Self::new(group, EncodedKey::new(encode_u64_asc(row.0)))
+	pub fn of_row(family: KeyspaceFamily, group: GroupId, row: RowNumber) -> Self {
+		Self::new(family, group, EncodedKey::new(encode_u64_asc(row.0)))
 	}
 }
 
 impl HeapSize for WindowStateKey {
 	fn heap_size(&self) -> usize {
-		match &self.slot {
-			EncodedKey::Inline {
-				..
-			} => 0,
-			EncodedKey::Shared(bytes) => bytes.len(),
-		}
+		self.slot.heap_size()
 	}
 }
 
 impl IntoGroupStateKey for &WindowStateKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.group, KeyspaceId::ACCUMULATOR, self.slot.as_bytes())
+		OperatorStateKey::inner_encoded(
+			self.group,
+			self.family.keyspace(KeyspaceId::ACCUMULATOR, KeyspaceId::GUEST_ACCUMULATOR),
+			self.family.suffix(&self.slot),
+		)
 	}
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct BufferKey {
+	pub family: KeyspaceFamily,
 	pub group: GroupId,
 	pub slot: EncodedKey,
 }
 
 impl BufferKey {
-	pub fn new(group: GroupId, slot: EncodedKey) -> Self {
+	pub fn new(family: KeyspaceFamily, group: GroupId, slot: EncodedKey) -> Self {
 		Self {
+			family,
 			group,
 			slot,
 		}
 	}
 
-	pub fn of_row(group: GroupId, row: RowNumber) -> Self {
-		Self::new(group, EncodedKey::new(encode_u64_asc(row.0)))
+	pub fn of_row(family: KeyspaceFamily, group: GroupId, row: RowNumber) -> Self {
+		Self::new(family, group, EncodedKey::new(encode_u64_asc(row.0)))
 	}
 }
 
 impl HeapSize for BufferKey {
 	fn heap_size(&self) -> usize {
-		match &self.slot {
-			EncodedKey::Inline {
-				..
-			} => 0,
-			EncodedKey::Shared(bytes) => bytes.len(),
-		}
+		self.slot.heap_size()
 	}
 }
 
 impl IntoGroupStateKey for &BufferKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.group, KeyspaceId::BUFFER, self.slot.as_bytes())
+		OperatorStateKey::inner_encoded(
+			self.group,
+			self.family.keyspace(KeyspaceId::BUFFER, KeyspaceId::GUEST_BUFFER),
+			self.family.suffix(&self.slot),
+		)
 	}
 }
 
@@ -359,21 +382,24 @@ impl HeapSize for EmitKey {
 
 impl IntoGroupStateKey for &EmitKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.group, KeyspaceId::EMIT, encode_u64_asc(self.row.0))
+		typed_key::<Emit>(self.group, &Asc(self.row))
 	}
 }
 
 impl IntoGroupStateKey for &MetaKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::WINDOW_META, &self.0)
+		typed_key::<WindowMeta>(GroupId::ROOT, &self.0)
 	}
 }
 
-pub fn meta_key_for<G>(group: &G) -> MetaKey
-where
-	for<'a> &'a G: IntoEncodedKey,
-{
-	MetaKey(group.into_encoded_key())
+pub(crate) fn group_hash<G: StateCodec>(group: &G) -> Result<Hash128> {
+	Ok(xxh3_128(encode(group)?.body()))
+}
+
+pub fn meta_key_for(group: Hash128) -> MetaKey {
+	MetaKey(WindowMetaKey {
+		window: Desc(group),
+	})
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -391,19 +417,6 @@ impl ExpiryAnchor {
 			ExpiryAnchor::LastEvent => last_event,
 		}
 	}
-}
-
-pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey> {
-	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
-	if keyspace != KeyspaceId::ACCUMULATOR {
-		return None;
-	}
-	Some(WindowStateKey::new(group, EncodedKey::new(suffix)))
-}
-
-pub(crate) fn decode_meta_key(key: &EncodedKey) -> Option<MetaKey> {
-	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
-	(group == GroupId::ROOT && keyspace == KeyspaceId::WINDOW_META).then(|| MetaKey(EncodedKey::new(suffix)))
 }
 
 #[cfg(test)]
@@ -457,7 +470,9 @@ mod meta_sweep_tests {
 	use crate::operator::state::mock::MockStore;
 
 	fn meta_key(index: u32) -> MetaKey {
-		MetaKey(EncodedKey::new(index.to_be_bytes().to_vec()))
+		// Built through the production constructor so the fixture can never seed a key shape the
+		// typed sweep would refuse to read back.
+		meta_key_for(Hash128::from(index as u128))
 	}
 
 	fn seed(store: &mut MockStore, count: u32, high_water: impl Fn(u32) -> DateTime) {
@@ -525,9 +540,14 @@ mod meta_sweep_tests {
 			"a completed revolution must publish a low water the guard can skip on"
 		);
 
+		// Driven to the end of the revolution rather than one page: which page holds the stale group
+		// is a property of the key order, and the guarantee under test is that a revolution reaches it.
+		let mut reclaimed = 0;
+		for _ in 0..2 {
+			reclaimed += sweep.sweep::<GroupMeta<DateTime>>(&mut store, at_millis(150).to_order()).unwrap();
+		}
 		assert_eq!(
-			sweep.sweep::<GroupMeta<DateTime>>(&mut store, at_millis(150).to_order()).unwrap(),
-			1,
+			reclaimed, 1,
 			"the group whose high water sits below the threshold is stale and must be reclaimed"
 		);
 	}

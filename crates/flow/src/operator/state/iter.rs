@@ -4,7 +4,7 @@
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	interface::store::MultiVersionRow,
-	key::{EncodableKey, operator_state::OperatorStateKey},
+	key::{EncodableKey, operator::state::OperatorStateKey},
 };
 use reifydb_value::Result;
 

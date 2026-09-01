@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, GroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
 	state::timer::TimerKind,
 };
 use reifydb_flow::operator::state::reclaim::ReclaimOutcome;
@@ -24,6 +24,31 @@ use crate::{
 	error::Result,
 	flow::operator::column::{row::Row, sink::RowSink},
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GuestBound<'a> {
+	Unbounded,
+	Included(&'a [u8]),
+	Excluded(&'a [u8]),
+}
+
+impl<'a> GuestBound<'a> {
+	pub fn of(bound: &'a Bound<Vec<u8>>) -> Self {
+		match bound {
+			Bound::Unbounded => Self::Unbounded,
+			Bound::Included(suffix) => Self::Included(suffix),
+			Bound::Excluded(suffix) => Self::Excluded(suffix),
+		}
+	}
+
+	pub fn to_bound(self) -> Bound<&'a [u8]> {
+		match self {
+			Self::Unbounded => Bound::Unbounded,
+			Self::Included(suffix) => Bound::Included(suffix),
+			Self::Excluded(suffix) => Bound::Excluded(suffix),
+		}
+	}
+}
 
 pub trait GuestEmit {
 	type Sink: RowSink;
@@ -49,12 +74,16 @@ pub trait GuestState {
 	fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>>;
 	fn range<T: OperatorState>(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 	) -> Result<Vec<(GroupStateKey, T)>>;
 	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>>;
 
 	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()>;
+
+	fn remove_bytes(&mut self, key: &GroupStateKey) -> Result<()>;
 
 	fn get_many_bytes_visit(
 		&self,
@@ -64,19 +93,23 @@ pub trait GuestState {
 
 	fn range_bytes_visit(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()>;
 
 	fn last_bytes(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 	) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 		let mut last = None;
-		self.range_bytes_visit(start, end, None, &mut |key, payload| {
+		self.range_bytes_visit(group, keyspace, start, end, None, &mut |key, payload| {
 			last = Some((key, payload));
 			Ok(())
 		})?;
@@ -111,7 +144,6 @@ pub trait GuestContext {
 		pairs: &[(GroupId, EncodedKey)],
 	) -> Result<Vec<(RowNumber, bool)>>;
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
-	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;
 	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome>;
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;

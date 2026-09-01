@@ -14,7 +14,11 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator_state::GroupId,
+	key::{
+		operator::{keyspace::join::JoinLeft, state::GroupId},
+		typed::direction::Asc,
+	},
+	state::typed::typed_key,
 };
 use reifydb_runtime::{
 	actor::{
@@ -92,18 +96,23 @@ fn buffer_fixture() -> (OperatorResidentState, SqliteOperatorStorage, ActorRef<F
 }
 
 fn key(suffix: u8) -> EncodedKey {
-	let mut bytes = 7u128.to_be_bytes().to_vec();
-	bytes.push(0x10);
-	bytes.push(suffix);
-	EncodedKey::new(bytes)
+	typed_key::<JoinLeft>(GroupId(7), &Asc(RowNumber(suffix as u64))).into_encoded()
 }
 
 fn row(body: &str) -> EncodedPodRow {
 	EncodedPodRow::new(body.as_bytes())
 }
 
-fn entry_bytes(suffix: u8, body: &str) -> ByteSize {
-	ByteSize::from_bytes((key(suffix).len() + row(body).bytes().len()) as u64)
+fn entry_bytes(_suffix: u8, body: &str) -> ByteSize {
+	ByteSize::from_bytes((size_of::<Asc<RowNumber>>() + row(body).bytes().len()) as u64)
+}
+
+fn group_bytes() -> ByteSize {
+	ByteSize::from_bytes(size_of::<GroupId>() as u64)
+}
+
+fn bucket_bytes(entries: u64, body: &str) -> ByteSize {
+	group_bytes().saturating_add(entry_bytes(0, body) * entries)
 }
 
 fn body(row: &EncodedPodRow) -> String {
@@ -172,7 +181,7 @@ fn a_buffered_write_becomes_durable_and_the_buffer_stops_shadowing_it() {
 #[test]
 fn a_buffered_tombstone_flushes_as_a_delete_so_the_row_cannot_resurrect() {
 	let (store, storage, _guard) = store_fixture();
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable"),
@@ -195,12 +204,12 @@ fn a_buffered_tombstone_flushes_as_a_delete_so_the_row_cannot_resurrect() {
 #[test]
 fn a_drop_flushes_before_the_writes_recorded_after_it() {
 	let (store, storage, _guard) = store_fixture();
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("pre-drop-durable"),
 	}]);
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_B,
 		key: key(1),
 		post: row("neighbour"),
@@ -244,7 +253,7 @@ fn a_join_expiry_drop_erases_only_the_group_it_names() {
 	let (store, storage, _guard) = store_fixture();
 	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
 	storage.join_expiry_set(OP_A, GROUP_B, SIDE, RowNumber(2), DateTime::from_millis(200));
-	storage.apply_batch(&[OperatorWrite::Insert {
+	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable"),
@@ -374,11 +383,11 @@ fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorResidentState::new();
 	buffer.attach_sinks(tier(&storage), None, None);
-	buffer.record_state_set(OP_A, key(1), row("first"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(1), row("first"));
 
 	let held = buffer.flush_guard();
 	let batch = buffer.take_for_flush().expect("the running flusher takes the seeded batch");
-	buffer.record_state_set(OP_A, key(2), row("second"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(2), row("second"));
 
 	let ran = Arc::new(AtomicBool::new(false));
 	let second = {
@@ -435,7 +444,7 @@ fn a_cancelled_flusher_answers_the_pending_flush_instead_of_eating_it() {
 	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
 	let mut state = actor.init(&ctx);
 
-	buffer.record_state_set(OP_A, key(1), row("pending-at-cancel"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(1), row("pending-at-cancel"));
 	cancel.cancel();
 
 	let waiter = Arc::new(WaiterHandle::new());
@@ -467,7 +476,7 @@ fn a_flush_that_cannot_reach_sqlite_panics_instead_of_dropping_the_batch() {
 	let buffer = OperatorResidentState::new();
 	buffer.attach_sinks(tier(&storage), None, None);
 
-	buffer.record_state_set(OP_A, key(1), row("never-written"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(1), row("never-written"));
 	storage.shutdown();
 
 	flush_now(&buffer);
@@ -477,7 +486,7 @@ fn a_flush_that_cannot_reach_sqlite_panics_instead_of_dropping_the_batch() {
 #[should_panic(expected = "flushed before its sinks were attached")]
 fn a_flush_before_the_sinks_are_attached_panics_instead_of_dropping_the_batch() {
 	let buffer = OperatorResidentState::new();
-	buffer.record_state_set(OP_A, key(1), row("never-written"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(1), row("never-written"));
 
 	flush_now(&buffer);
 }
@@ -535,10 +544,10 @@ fn the_memory_tier_reports_a_flush_as_complete_without_a_flusher() {
 #[test]
 fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorResidentState::with_budget(entry_bytes(0, "v00") * 8);
+	let buffer = OperatorResidentState::with_budget(bucket_bytes(8, "v00"));
 	buffer.attach_sinks(tier(&storage), None, None);
 	for index in 0..67 {
-		buffer.record_state_set(OP_A, key(index), row(&format!("v{index}")), DurablePre::Absent);
+		buffer.record_state_set(OP_A, key(index), row(&format!("v{index}")));
 	}
 
 	flush_now(&buffer);
@@ -555,24 +564,20 @@ fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 #[test]
 fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer =
-		OperatorResidentState::with_budget(entry_bytes(1, "early").saturating_add(entry_bytes(2, "filler")));
+	let buffer = OperatorResidentState::with_budget(
+		group_bytes().saturating_add(entry_bytes(1, "early")).saturating_add(entry_bytes(2, "filler")),
+	);
 	buffer.attach_sinks(tier(&storage), None, None);
-	buffer.record_state_set(OP_A, key(1), row("early"), DurablePre::Absent);
-	buffer.record_state_set(OP_A, key(2), row("filler"), DurablePre::Absent);
-	buffer.record_state_set(OP_A, key(3), row("tail"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(1), row("early"));
+	buffer.record_state_set(OP_A, key(2), row("filler"));
+	buffer.record_state_set(OP_A, key(3), row("tail"));
 
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
 	storage.flush_batch(&first);
 	buffer.complete_flush();
 	assert_eq!(storage.get(OP_A, &key(1)).map(|row| body(&row)), Some("early".to_string()));
 
-	buffer.record_state_set(
-		OP_A,
-		key(1),
-		row("late"),
-		DurablePre::Present(ByteSize::from_bytes(row("early").bytes().len() as u64)),
-	);
+	buffer.record_state_set(OP_A, key(1), row("late"));
 	flush_now(&buffer);
 
 	assert_eq!(
@@ -590,7 +595,7 @@ fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorResidentState::with_budget(entry_bytes(0, "at-shutdown") * 4);
+	let buffer = OperatorResidentState::with_budget(bucket_bytes(4, "at-shutdown"));
 	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone());
 
@@ -599,7 +604,7 @@ fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
 	let mut state = actor.init(&ctx);
 
 	for index in 0..41 {
-		buffer.record_state_set(OP_A, key(index), row("at-shutdown"), DurablePre::Absent);
+		buffer.record_state_set(OP_A, key(index), row("at-shutdown"));
 	}
 	let directive = actor.handle(&mut state, FlushMessage::Shutdown, &ctx);
 
@@ -620,7 +625,7 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorResidentState::with_budget(entry_bytes(0, "at-cancel") * 4);
+	let buffer = OperatorResidentState::with_budget(bucket_bytes(4, "at-cancel"));
 	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone());
 
@@ -630,7 +635,7 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 	let mut state = actor.init(&ctx);
 
 	for index in 0..37 {
-		buffer.record_state_set(OP_A, key(index), row("at-cancel"), DurablePre::Absent);
+		buffer.record_state_set(OP_A, key(index), row("at-cancel"));
 	}
 	cancel.cancel();
 	let waiter = Arc::new(WaiterHandle::new());
@@ -658,14 +663,14 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let entries = 16u8;
-	let budget = entry_bytes(0, "under-the-budget") * (entries - 1) as u64;
+	let budget = bucket_bytes((entries - 1) as u64, "under-the-budget");
 	let buffer = OperatorResidentState::with_budget(budget);
 	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone());
 	buffer.attach_flusher(actor_ref);
 
 	for index in 0..entries - 1 {
-		buffer.record_state_set(OP_A, key(index), row("under-the-budget"), DurablePre::Absent);
+		buffer.record_state_set(OP_A, key(index), row("under-the-budget"));
 	}
 	thread::sleep(Duration::from_milliseconds_const(100).to_std());
 	assert!(
@@ -674,7 +679,7 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 		 and a trigger that fires on it stops the buffer batching at all"
 	);
 
-	buffer.record_state_set(OP_A, key(entries - 1), row("under-the-budget"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(entries - 1), row("under-the-budget"));
 
 	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
 	while Instant::now() < deadline && storage.get(OP_A, &key(0)).is_none() {
@@ -698,7 +703,7 @@ fn a_hair_over_the_cap_drains_the_whole_flow_and_its_checkpoint_in_one_batch() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let large = "x".repeat(64 * 1024);
 	let resident = 64u8;
-	let cap = entry_bytes(0, &large) * resident as u64;
+	let cap = bucket_bytes(resident as u64, &large);
 	let buffer = OperatorResidentState::with_budget(cap);
 	buffer.attach_sinks(tier(&storage), None, None);
 
@@ -771,4 +776,41 @@ fn a_flusher_with_no_config_attached_keeps_the_compiled_default_budget() {
 		ByteSize::from_kib(64),
 		"the compiled fallback must be the testing budget under a test build"
 	);
+}
+
+use reifydb_core::key::operator::state::OperatorStateKey;
+
+trait SeedDurable {
+	fn seed_durable(&self, writes: &[OperatorWrite]);
+}
+
+impl SeedDurable for SqliteOperatorStorage {
+	fn seed_durable(&self, writes: &[OperatorWrite]) {
+		let mut batch = FlushBatch::default();
+		for write in writes {
+			let (operator, key, post) = match write {
+				OperatorWrite::Insert {
+					operator,
+					key,
+					post,
+				} => (*operator, key, Some(post.clone())),
+				OperatorWrite::Replace {
+					operator,
+					key,
+					post,
+					..
+				} => (*operator, key, Some(post.clone())),
+				OperatorWrite::Remove {
+					operator,
+					key,
+					..
+				} => (*operator, key, None),
+				_ => continue,
+			};
+			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
+				.expect("a seeded key must name a group and a keyspace");
+			batch.state.record_bytes(operator, keyspace, group, &suffix, post);
+		}
+		self.flush_batch(&batch);
+	}
 }

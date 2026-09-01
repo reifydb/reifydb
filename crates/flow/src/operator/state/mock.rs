@@ -11,7 +11,7 @@ use reifydb_codec::{
 	row::{operator::state::decode, pod::EncodedPodRow},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	state::timer::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_value::{
@@ -94,7 +94,11 @@ impl MockStore {
 	}
 
 	pub(crate) fn index_entry_count(&mut self) -> usize {
-		self.keyspace_count(KeyspaceId::EXPIRY)
+		self.keyspace_count(KeyspaceId::ROLLING_EXPIRY)
+	}
+
+	pub(crate) fn tumbling_index_entry_count(&mut self) -> usize {
+		self.keyspace_count(KeyspaceId::TUMBLING_EXPIRY)
 	}
 
 	pub(crate) fn buffer_entry_count(&mut self) -> usize {
@@ -155,19 +159,25 @@ impl MockStore {
 	}
 
 	pub(crate) fn mapping_entry_count(&mut self) -> usize {
-		self.keyspace_count(KeyspaceId::ROW_NUMBER_MAPPING)
+		self.keyspace_count(KeyspaceId::GUEST_ROW_MAPPING)
 	}
 
 	pub(crate) fn seed_mapping_key(&mut self, suffix: u8) {
+		let mut bytes = vec![0u8; 16];
+		bytes[15] = suffix;
 		self.data.insert(
-			OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::ROW_NUMBER_MAPPING, vec![suffix])
+			OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::GUEST_ROW_MAPPING, bytes)
 				.as_slice()
 				.to_vec(),
 			EncodedPodRow::new(&[0u8]),
 		);
 	}
 
-	pub(crate) fn contains_row_mapping(&self, group: GroupId, key: &EncodedKey) -> bool {
+	pub(crate) fn contains_row_mapping(&self, group: GroupId) -> bool {
+		self.rows.contains_key(&(group, Vec::new()))
+	}
+
+	pub(crate) fn contains_guest_row_mapping(&self, group: GroupId, key: &EncodedKey) -> bool {
 		self.rows.contains_key(&(group, key.as_bytes().to_vec()))
 	}
 
@@ -277,12 +287,11 @@ impl StateStore for MockStore {
 		self.data.remove(key.as_slice());
 		Ok(())
 	}
-	fn state_range_visit(
+	fn state_page_inner(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let after_start = |k: &[u8]| match &range.start {
 			Bound::Included(s) => k >= s.as_bytes(),
 			Bound::Excluded(s) => k > s.as_bytes(),
@@ -303,25 +312,28 @@ impl StateStore for MockStore {
 		if let Some(limit) = limit {
 			matched.truncate(limit);
 		}
-		for (k, b) in matched {
-			let k = GroupStateKey::from_framed(EncodedKey::new(k))
-				.expect("fake store holds an unframed state key");
-			self.rows_visited += 1;
-			visit(k, b)?;
-		}
-		Ok(())
+		Ok(matched
+			.into_iter()
+			.map(|(k, b)| {
+				let k = GroupStateKey::from_framed(EncodedKey::new(k))
+					.expect("fake store holds an unframed state key");
+				self.rows_visited += 1;
+				(k, b)
+			})
+			.collect())
 	}
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		Ok(keys.iter().map(|key| self.row_number_for(group, key)).collect())
 	}
-	fn get_or_create_row_numbers_for_pairs(
-		&mut self,
-		pairs: &[(GroupId, EncodedKey)],
-	) -> Result<Vec<(RowNumber, bool)>> {
-		Ok(pairs.iter().map(|(group, key)| self.row_number_for(*group, key)).collect())
+	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
+		Ok(groups.iter().map(|group| self.row_number_for(*group, &EncodedKey::new(Vec::new()))).collect())
 	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		self.rows.remove(&(group, key.as_bytes().to_vec()));
+		Ok(())
+	}
+	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {
+		self.rows.remove(&(group, Vec::new()));
 		Ok(())
 	}
 	fn written_at(&self) -> DateTime {

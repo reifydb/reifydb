@@ -4,6 +4,7 @@
 mod census;
 mod checkpoint;
 mod join_expiry;
+mod pager;
 pub mod state;
 #[cfg(test)]
 mod tests;
@@ -13,9 +14,7 @@ use std::sync::OnceLock;
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::{common::CommitVersion, lifecycle::watermark::CheckpointFloor, metrics::collect::MetricsCollector};
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_filter::{actor::FilterActor, config::FilterConfig};
-use reifydb_filter::{actor::FilterMessage, adaptive::FilterMetrics};
+use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_runtime::{
 	actor::{
 		mailbox::ActorRef,
@@ -32,9 +31,7 @@ use reifydb_store::metrics::PageCacheMetrics;
 use crate::{
 	config::OperatorPersistentConfig,
 	tier::{
-		persistent::sqlite::{SqliteOperatorStorage, filter::OperatorStateKeySource},
-		point::OperatorPointConfig,
-		range::OperatorRangeConfig,
+		persistent::sqlite::SqliteOperatorStorage, point::OperatorPointConfig, range::OperatorRangeConfig,
 		resident::flush::actor::ResidentFlushActor,
 	},
 };
@@ -42,8 +39,8 @@ use crate::{
 	config::OperatorStoreConfig,
 	tier::{
 		persistent::OperatorPersistentTier,
-		point::{OperatorPointKeyspaceMetrics, OperatorPointShardMetrics, OperatorPointTier},
-		range::{OperatorRangeKeyspaceMetrics, OperatorRangeShardMetrics, OperatorRangeTier},
+		point::tiers::{OperatorPointKeyspaceMetrics, PointTiers},
+		range::tiers::{OperatorRangeKeyspaceMetrics, RangeTiers},
 		resident::{
 			OperatorResidentState,
 			flush::actor::{FlushMessage, flush_now, flush_pending},
@@ -68,10 +65,9 @@ pub struct StandardOperatorStore(Arc<StandardOperatorStoreInner>);
 pub struct StandardOperatorStoreInner {
 	pub(crate) resident: OperatorResidentState,
 	pub(crate) persistent: Option<OperatorPersistentTier>,
-	pub(crate) point: Option<OperatorPointTier>,
-	pub(crate) range: Option<OperatorRangeTier>,
+	pub(crate) point: Option<PointTiers>,
+	pub(crate) range: Option<RangeTiers>,
 	pub(crate) flush: Option<ActorRef<FlushMessage>>,
-	pub(crate) filter: Option<ActorRef<FilterMessage>>,
 	#[allow(dead_code)]
 	pub(crate) spawner: ActorSpawner,
 	#[cfg(test)]
@@ -93,16 +89,16 @@ impl StandardOperatorStore {
 		let point = config
 			.persistent
 			.is_some()
-			.then(|| config.point.map(Into::into).and_then(OperatorPointTier::new))
+			.then(|| config.point.map(Into::into).and_then(PointTiers::new))
 			.flatten();
 		let range = config
 			.persistent
 			.is_some()
-			.then(|| config.range.map(Into::into).and_then(OperatorRangeTier::new))
+			.then(|| config.range.map(Into::into).and_then(RangeTiers::new))
 			.flatten();
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		let (persistent, flush, filter) = {
+		let (persistent, flush) = {
 			if let Some(persistent) = config.persistent.as_ref() {
 				resident.attach_sinks(persistent.storage.clone(), point.clone(), range.clone());
 			}
@@ -110,28 +106,13 @@ impl StandardOperatorStore {
 				.persistent
 				.as_ref()
 				.map(|_| ResidentFlushActor::spawn(&spawner, resident.clone()));
-			let filter = config.persistent.as_ref().map(|persistent| {
-				let storage = persistent.storage.sqlite_storage().clone();
-				let actor = FilterActor::spawn(&spawner);
-				actor.send(FilterMessage::Register {
-					filter: storage.filter().handle(),
-					source: Box::new(OperatorStateKeySource::new(storage)),
-					config: FilterConfig::default(),
-				})
-				.expect("operator state filter source could not be registered");
-				actor
-			});
-			(config.persistent.map(|persistent| persistent.storage), flush, filter)
+			(config.persistent.map(|persistent| persistent.storage), flush)
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let (persistent, flush, filter): (
-			Option<OperatorPersistentTier>,
-			Option<ActorRef<FlushMessage>>,
-			Option<ActorRef<FilterMessage>>,
-		) = match config.persistent {
+		let (persistent, flush): (Option<OperatorPersistentTier>, Option<ActorRef<FlushMessage>>) = match config.persistent {
 			Some(persistent) => match persistent.storage {},
-			None => (None, None, None),
+			None => (None, None),
 		};
 
 		let point = persistent.as_ref().and(point);
@@ -146,7 +127,6 @@ impl StandardOperatorStore {
 			point,
 			range,
 			flush,
-			filter,
 			spawner,
 			#[cfg(test)]
 			checkpoint_interlock: OnceLock::new(),
@@ -184,36 +164,24 @@ impl StandardOperatorStore {
 		}
 	}
 
-	pub fn point(&self) -> Option<&OperatorPointTier> {
+	pub fn point(&self) -> Option<&PointTiers> {
 		self.point.as_ref()
 	}
 
-	pub fn range(&self) -> Option<&OperatorRangeTier> {
+	pub fn range(&self) -> Option<&RangeTiers> {
 		self.range.as_ref()
 	}
 
-	pub fn point_shard_metrics(&self) -> Vec<OperatorPointShardMetrics> {
-		self.point.as_ref().map(OperatorPointTier::shard_metrics).unwrap_or_default()
-	}
-
 	pub fn point_keyspace_metrics(&self) -> Vec<OperatorPointKeyspaceMetrics> {
-		self.point.as_ref().map(OperatorPointTier::slot_metrics).unwrap_or_default()
-	}
-
-	pub fn range_shard_metrics(&self) -> Vec<OperatorRangeShardMetrics> {
-		self.range.as_ref().map(OperatorRangeTier::shard_metrics).unwrap_or_default()
+		self.point.as_ref().map(PointTiers::keyspace_metrics).unwrap_or_default()
 	}
 
 	pub fn range_keyspace_metrics(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
-		self.range.as_ref().map(OperatorRangeTier::slot_metrics).unwrap_or_default()
+		self.range.as_ref().map(RangeTiers::keyspace_metrics).unwrap_or_default()
 	}
 
 	pub fn persistent_page_cache_metrics(&self) -> Option<PageCacheMetrics> {
 		self.persistent.as_ref().map(OperatorPersistentTier::page_cache_metrics)
-	}
-
-	pub fn persistent_filter_metrics(&self) -> Option<FilterMetrics> {
-		self.persistent.as_ref().map(|tier| tier.filter().metrics())
 	}
 
 	pub fn persistent_join_expiry_filter_metrics(&self) -> Option<FilterMetrics> {
@@ -235,9 +203,6 @@ impl StandardOperatorStore {
 
 impl Shutdown for StandardOperatorStore {
 	fn shutdown(&self) {
-		if let Some(filter) = self.filter.as_ref() {
-			let _ = filter.send(FilterMessage::Shutdown);
-		}
 		let Some(persistent) = self.persistent.as_ref() else {
 			return;
 		};
@@ -302,33 +267,21 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn point(&self) -> Option<&OperatorPointTier> {
+	pub fn point(&self) -> Option<&PointTiers> {
 		match self {
 			Self::Standard(store) => store.point(),
 		}
 	}
 
-	pub fn range(&self) -> Option<&OperatorRangeTier> {
+	pub fn range(&self) -> Option<&RangeTiers> {
 		match self {
 			Self::Standard(store) => store.range(),
-		}
-	}
-
-	pub fn point_shard_metrics(&self) -> Vec<OperatorPointShardMetrics> {
-		match self {
-			Self::Standard(store) => store.point_shard_metrics(),
 		}
 	}
 
 	pub fn point_keyspace_metrics(&self) -> Vec<OperatorPointKeyspaceMetrics> {
 		match self {
 			Self::Standard(store) => store.point_keyspace_metrics(),
-		}
-	}
-
-	pub fn range_shard_metrics(&self) -> Vec<OperatorRangeShardMetrics> {
-		match self {
-			Self::Standard(store) => store.range_shard_metrics(),
 		}
 	}
 
@@ -341,12 +294,6 @@ impl OperatorStore {
 	pub fn persistent_page_cache_metrics(&self) -> Option<PageCacheMetrics> {
 		match self {
 			Self::Standard(store) => store.persistent_page_cache_metrics(),
-		}
-	}
-
-	pub fn persistent_filter_metrics(&self) -> Option<FilterMetrics> {
-		match self {
-			Self::Standard(store) => store.persistent_filter_metrics(),
 		}
 	}
 

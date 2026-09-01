@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId};
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::GroupId};
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use tracing::instrument;
 

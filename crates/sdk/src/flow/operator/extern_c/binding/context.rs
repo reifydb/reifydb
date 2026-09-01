@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use core::ffi::c_void;
-use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
@@ -10,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, GroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
 	state::timer::TimerKind,
 };
 use reifydb_flow::operator::state::reclaim::ReclaimOutcome;
@@ -26,7 +25,7 @@ use crate::{
 	error::Result,
 	flow::operator::{
 		column::row::Row,
-		context::{GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit},
+		context::{GuestBound, GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit},
 		dictionary::Dictionary,
 		diff::DiffStart,
 		extern_c::{
@@ -35,7 +34,7 @@ use crate::{
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
 					get_or_create_row_numbers_for_pairs, reclaim_group_identity,
-					reclaim_group_identity_keys, remove_row_number, remove_row_numbers_below,
+					reclaim_group_identity_keys, remove_row_number,
 				},
 			},
 			wire::context::ExternCContextRaw,
@@ -169,10 +168,6 @@ impl ExternCContext {
 		remove_row_number(self, group, key)
 	}
 
-	pub fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		remove_row_numbers_below(self, group, upper)
-	}
-
 	pub fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		reclaim_group_identity(self, group, limit)
 	}
@@ -223,10 +218,12 @@ impl GuestState for State<'_> {
 	}
 	fn range<T: OperatorState>(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 	) -> Result<Vec<(GroupStateKey, T)>> {
-		State::range(self, start, end)
+		State::range(self, group, keyspace, start, end)
 	}
 
 	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
@@ -235,6 +232,10 @@ impl GuestState for State<'_> {
 
 	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
 		State::set_bytes(self, key, payload)
+	}
+
+	fn remove_bytes(&mut self, key: &GroupStateKey) -> Result<()> {
+		State::remove(self, key)
 	}
 
 	fn get_many_bytes_visit(
@@ -247,12 +248,14 @@ impl GuestState for State<'_> {
 
 	fn range_bytes_visit(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
-		State::range_bytes_visit(self, start, end, limit, visit)
+		State::range_bytes_visit(self, group, keyspace, start, end, limit, visit)
 	}
 }
 
@@ -308,9 +311,6 @@ impl GuestContext for ExternCContext {
 	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		ExternCContext::remove_row_number(self, group, key)
-	}
-	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		ExternCContext::remove_row_numbers_below(self, group, upper)
 	}
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		ExternCContext::reclaim_group_identity(self, group, limit)

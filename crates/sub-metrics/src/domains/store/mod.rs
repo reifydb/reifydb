@@ -16,17 +16,16 @@ use reifydb_store_multi::{
 use reifydb_store_operator::{
 	store::OperatorStore,
 	tier::{
-		point::{OperatorPointKeyspaceMetrics, OperatorPointShardMetrics},
-		range::{OperatorRangeKeyspaceMetrics, OperatorRangeShardMetrics},
+		point::tiers::OperatorPointKeyspaceMetrics, range::tiers::OperatorRangeKeyspaceMetrics,
 		resident::OperatorResidentStateMetrics,
 	},
 };
-use reifydb_value::byte_size::ByteSize;
 use reifydb_store_single::{
 	SingleStore,
 	store::SinglePersistentProbeMetrics,
 	tier::{commit::buffer::SingleCommitMetrics, persistent::SinglePageCacheMetrics},
 };
+use reifydb_value::byte_size::ByteSize;
 
 #[derive(Clone)]
 pub struct StoreReader {
@@ -82,16 +81,8 @@ impl StoreReader {
 		self.single.persistent_probe_metrics()
 	}
 
-	pub fn operator_point(&self) -> Vec<OperatorPointShardMetrics> {
-		self.operator.point_shard_metrics()
-	}
-
 	pub fn operator_point_by_keyspace(&self) -> Vec<OperatorPointKeyspaceMetrics> {
 		self.operator.point_keyspace_metrics()
-	}
-
-	pub fn operator_range(&self) -> Vec<OperatorRangeShardMetrics> {
-		self.operator.range_shard_metrics()
 	}
 
 	pub fn operator_range_by_keyspace(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
@@ -108,10 +99,6 @@ impl StoreReader {
 
 	pub fn operator_persistent(&self) -> Option<PageCacheMetrics> {
 		self.operator.persistent_page_cache_metrics()
-	}
-
-	pub fn operator_filter(&self) -> Option<FilterMetrics> {
-		self.operator.persistent_filter_metrics()
 	}
 
 	pub fn cdc_commit(&self) -> CdcCommitMetrics {

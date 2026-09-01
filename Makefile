@@ -30,6 +30,9 @@ endif
 # Export target directory for sharing artifacts between workspace and external test suites
 export CARGO_TARGET_DIR := $(CURDIR)/target
 
+# Build scripts gate reifydb_assertions on this via rerun-if-env-changed, so an unset value recompiles the whole workspace.
+export REIFYDB_ASSERTIONS := 1
+
 # =============================================================================
 # Help & Documentation
 # =============================================================================
@@ -100,6 +103,9 @@ help:
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@printf "  %-25s %s\n" "build" "Build release version"
 	@printf "  %-25s %s\n" "clean" "Clean all reifydb packages"
+	@printf "  %-25s %s\n" "sweep" "Delete build artifacts unused for SWEEP_DAYS=1 days"
+	@printf "  %-25s %s\n" "sweep-dry" "Show what sweep would delete"
+	@printf "  %-25s %s\n" "sweep-install" "Install cargo-sweep (one-time)"
 	@printf "  %-25s %s\n" "format" "Format all code with rustfmt (nightly)"
 	@printf "  %-25s %s\n" "format-check" "Format code and fail if files changed"
 	@printf "  %-25s %s\n" "build-wasm" "Build WebAssembly packages (requires wasm-pack)"
@@ -219,6 +225,7 @@ include mk/test-bench.mk
 endif
 
 include mk/clean.mk
+include mk/sweep.mk
 include mk/build.mk
 include mk/format.mk
 include mk/container.mk

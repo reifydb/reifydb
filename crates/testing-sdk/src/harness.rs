@@ -24,7 +24,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+		operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	},
 	row::Row,
 	state::timer::TimerKind,
@@ -1035,11 +1035,11 @@ pub mod tests {
 		const NODE: OperatorId = OperatorId(1);
 		const GROUP: GroupId = GroupId(7);
 		let accumulator = group_state_key(NODE, GROUP, KeyspaceId::ACCUMULATOR).encode();
-		let mapping = group_state_key(NODE, GROUP, KeyspaceId::ROW_NUMBER_MAPPING).encode();
+		let mapping = group_state_key(NODE, GROUP, KeyspaceId::GUEST_ROW_MAPPING).encode();
 		let mut harness = ExternCOperatorHarnessBuilder::<TestOperator>::new()
 			.with_node_id(NODE)
 			.with_initial_state(group_state_key(NODE, GROUP, KeyspaceId::ACCUMULATOR), vec![1])
-			.with_initial_state(group_state_key(NODE, GROUP, KeyspaceId::ROW_NUMBER_MAPPING), vec![2])
+			.with_initial_state(group_state_key(NODE, GROUP, KeyspaceId::GUEST_ROW_MAPPING), vec![2])
 			.build()
 			.unwrap();
 

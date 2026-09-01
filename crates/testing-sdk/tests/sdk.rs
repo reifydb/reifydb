@@ -24,3 +24,6 @@ mod tumbling_carry;
 
 #[path = "sdk/rolling_incremental.rs"]
 mod rolling_incremental;
+
+#[path = "sdk/guest_sweep.rs"]
+mod guest_sweep;

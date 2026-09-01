@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, ptr, ptr::null_mut, slice::from_raw_parts};
+use std::{ptr, ptr::null_mut, slice::from_raw_parts};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
 	state::timer::TimerKind,
 };
 use reifydb_flow::operator::state::reclaim::ReclaimOutcome;
@@ -23,11 +23,14 @@ use crate::{
 		status::{EXTERN_C_END_OF_ITERATION, EXTERN_C_NOT_FOUND, EXTERN_C_OK},
 	},
 	error::{Result, SdkError},
-	flow::operator::extern_c::{
-		binding::context::ExternCContext,
-		wire::{
-			iterators::ExternCStateIterator,
-			state::{ExternCStateEntry, ExternCStateSlice},
+	flow::operator::{
+		context::GuestBound,
+		extern_c::{
+			binding::context::ExternCContext,
+			wire::{
+				iterators::ExternCStateIterator,
+				state::{ExternCStateEntry, ExternCStateSlice},
+			},
 		},
 	},
 };
@@ -216,37 +219,40 @@ const BOUND_UNBOUNDED: u8 = 0;
 const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
 
+fn wire_bound(bound: GuestBound<'_>) -> (*const u8, usize, u8) {
+	match bound {
+		GuestBound::Unbounded => (null_mut(), 0, BOUND_UNBOUNDED),
+		GuestBound::Included(suffix) => (suffix.as_ptr(), suffix.len(), BOUND_INCLUDED),
+		GuestBound::Excluded(suffix) => (suffix.as_ptr(), suffix.len(), BOUND_EXCLUDED),
+	}
+}
+
 #[instrument(name = "flow::operator::extern_c::binding::state::range", level = "debug", skip(ctx), fields(
 	operator_id = ctx.operator_id().0,
 	result_count
 ))]
 pub(crate) fn range(
 	ctx: &ExternCContext,
-	start: Bound<&EncodedKey>,
-	end: Bound<&EncodedKey>,
+	group: GroupId,
+	keyspace: KeyspaceId,
+	start: GuestBound<'_>,
+	end: GuestBound<'_>,
 	limit: usize,
 ) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	let mut iterator: *mut ExternCStateIterator = null_mut();
 
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; each bound pointer is null with length 0 or borrows a key that outlives the
+	// for the whole guest call; each bound pointer is null with length 0 or borrows a suffix that outlives the
 	// callback. The handle the host opens is passed once to collect_iterator_results, which owns and frees it.
 	unsafe {
-		let (start_ptr, start_len, start_bound_type) = match start {
-			Bound::Unbounded => (ptr::null(), 0, BOUND_UNBOUNDED),
-			Bound::Included(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_INCLUDED),
-			Bound::Excluded(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_EXCLUDED),
-		};
-
-		let (end_ptr, end_len, end_bound_type) = match end {
-			Bound::Unbounded => (ptr::null(), 0, BOUND_UNBOUNDED),
-			Bound::Included(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_INCLUDED),
-			Bound::Excluded(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_EXCLUDED),
-		};
+		let (start_ptr, start_len, start_bound_type) = wire_bound(start);
+		let (end_ptr, end_len, end_bound_type) = wire_bound(end);
 
 		let result = ((*ctx.ctx).callbacks.state.range)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
+			group.0,
+			keyspace.0,
 			start_ptr,
 			start_len,
 			start_bound_type,
@@ -612,47 +618,5 @@ pub(crate) fn remove_row_number(ctx: &mut ExternCContext, group: GroupId, key: &
 		} else {
 			Err(SdkError::Other(format!("host_remove_row_number failed with code {}", result)))
 		}
-	}
-}
-
-pub(crate) fn remove_row_numbers_below(
-	ctx: &mut ExternCContext,
-	group: GroupId,
-	upper: &EncodedKey,
-) -> Result<Vec<RowNumber>> {
-	let upper_bytes = upper.as_bytes();
-	let mut output = ExternCBuffer {
-		ptr: null_mut(),
-		len: 0,
-		cap: 0,
-	};
-	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; upper_bytes outlives the callback. On EXTERN_C_OK the host writes a buffer of
-	// output.len initialised bytes, read before memory.free releases it with the length it was allocated with.
-	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.remove_row_numbers_below)(
-			(*ctx.ctx).operator_id,
-			ctx.ctx,
-			group.0,
-			upper_bytes.as_ptr(),
-			upper_bytes.len(),
-			&mut output,
-		);
-		if result != EXTERN_C_OK {
-			return Err(SdkError::Other(format!(
-				"host_remove_row_numbers_below failed with code {}",
-				result
-			)));
-		}
-		if output.ptr.is_null() || output.len == 0 {
-			return Ok(Vec::new());
-		}
-		let bytes = from_raw_parts(output.ptr, output.len);
-		let dropped = bytes
-			.chunks_exact(8)
-			.map(|chunk| RowNumber(u64::from_le_bytes(chunk.try_into().unwrap())))
-			.collect();
-		((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
-		Ok(dropped)
 	}
 }

@@ -36,7 +36,7 @@ const TIMEOUT: StdDuration = StdDuration::from_secs(15);
 const APPLY_NODE_TYPE: u8 = 13;
 
 const ACCUMULATORS: &str = "from system::metrics::flow::state::current
-	filter { keyspace == 'ACCUMULATOR' }";
+	filter { keyspace == 'GUEST_ACCUMULATOR' }";
 
 const SURFACE: &str = "from system::metrics::flow::state::current";
 

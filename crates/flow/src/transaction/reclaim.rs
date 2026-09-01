@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::EncodedKeyRange;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, OperatorStateKey, group_identity_inner_range},
+		operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 	},
 };
 use reifydb_value::{Result, count::Count, reifydb_assertions};
@@ -32,7 +31,7 @@ pub trait ReclaimExtension: StateExtension {
 		if group.is_root() {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
-		self.reclaim_range(operator, group_identity_inner_range(group), limit)
+		self.reclaim_identity_keyspaces(operator, group, limit)
 	}
 
 	fn reclaim_group_identity_keys(
@@ -59,33 +58,48 @@ pub trait ReclaimExtension: StateExtension {
 		})
 	}
 
-	fn reclaim_range(
+	fn reclaim_identity_keyspaces(
 		&mut self,
 		operator: OperatorId,
-		range: EncodedKeyRange,
+		group: GroupId,
 		limit: usize,
 	) -> Result<ReclaimOutcome> {
 		if limit == 0 {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
-		let batch = self.state_range(operator, StateRange::forward(range, "reclaim::range").limit(limit))?;
-		let keys: Vec<GroupStateKey> = batch
-			.items
-			.iter()
-			.map(|item| {
-				let decoded = OperatorStateKey::decode(&item.key)
-					.expect("state_range must return OperatorState keys");
-				GroupStateKey::from_framed(decoded.inner())
-					.expect("operator state rows carry a framed inner key")
-			})
-			.collect();
-		let removed = Count::new(keys.len() as u64);
-		for key in &keys {
-			self.state_remove(operator, key)?;
+		let mut removed = 0u64;
+		let mut more = false;
+		for id in (u8::MIN..=u8::MAX).rev() {
+			let keyspace = KeyspaceId(id);
+			if !keyspace.is_identity() {
+				continue;
+			}
+			if removed as usize >= limit {
+				more = true;
+				break;
+			}
+			let range = keyspace_inner_range(group, keyspace);
+			let query = StateRange::forward(range, "reclaim::keyspace").limit(limit - removed as usize);
+			let batch = self.state_range(operator, query)?;
+			more |= batch.has_more;
+			let keys: Vec<GroupStateKey> = batch
+				.items
+				.iter()
+				.map(|item| {
+					let decoded = OperatorStateKey::decode(&item.key)
+						.expect("state_range must return OperatorState keys");
+					GroupStateKey::from_framed(decoded.inner())
+						.expect("operator state rows carry a framed inner key")
+				})
+				.collect();
+			removed += keys.len() as u64;
+			for key in &keys {
+				self.state_remove(operator, key)?;
+			}
 		}
 		Ok(ReclaimOutcome {
-			removed,
-			more: batch.has_more,
+			removed: Count::new(removed),
+			more,
 		})
 	}
 }

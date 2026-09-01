@@ -42,12 +42,10 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::ThreadsCompute,
 	ConfigKey::MultiPointBufferShardBytes,
 	ConfigKey::MultiRangeBufferShardBytes,
-	ConfigKey::OperatorPointBufferShardBytes,
-	ConfigKey::OperatorRangeBufferShardBytes,
+	ConfigKey::OperatorPointTierBytes,
+	ConfigKey::OperatorRangeTierBytes,
 	ConfigKey::MultiPointBufferShards,
 	ConfigKey::MultiRangeBufferShards,
-	ConfigKey::OperatorPointBufferShards,
-	ConfigKey::OperatorRangeBufferShards,
 	ConfigKey::MultiWalAutocheckpoint,
 	ConfigKey::CdcWalAutocheckpoint,
 	ConfigKey::OperatorWalAutocheckpoint,
@@ -126,18 +124,14 @@ pub(crate) fn resolve_startup_configs(
 		gap_guard: DEFAULT_GAP_GUARD,
 	});
 
-	let operator_point =
-		uint8_opt(ConfigKey::OperatorPointBufferShardBytes).map(|shard_bytes| OperatorPointConfig {
-			shard_bytes: Some(ByteSize::from_bytes(shard_bytes)),
-			shards: shard_count(ConfigKey::OperatorPointBufferShards),
-		});
+	let operator_point = uint8_opt(ConfigKey::OperatorPointTierBytes).map(|tier_bytes| OperatorPointConfig {
+		tier_bytes: Some(ByteSize::from_bytes(tier_bytes)),
+	});
 
-	let operator_range =
-		uint8_opt(ConfigKey::OperatorRangeBufferShardBytes).map(|shard_bytes| OperatorRangeConfig {
-			shard_bytes: Some(ByteSize::from_bytes(shard_bytes)),
-			shards: shard_count(ConfigKey::OperatorRangeBufferShards),
-			gap_guard: DEFAULT_GAP_GUARD,
-		});
+	let operator_range = uint8_opt(ConfigKey::OperatorRangeTierBytes).map(|tier_bytes| OperatorRangeConfig {
+		tier_bytes: Some(ByteSize::from_bytes(tier_bytes)),
+		gap_guard: DEFAULT_GAP_GUARD,
+	});
 
 	let cut_bytes = ByteSize::from_bytes(uint8(ConfigKey::CdcBlockCutBytes));
 	let ceiling = ByteSize::from_bytes(uint8(ConfigKey::CdcCommitBufferBytes));

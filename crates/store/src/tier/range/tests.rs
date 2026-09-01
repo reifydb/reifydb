@@ -15,7 +15,11 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+	key::{
+		operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+		typed::{MultiKey, range::KeyRange},
+	},
+	metrics::heap::HeapSize,
 };
 use reifydb_value::byte_size::ByteSize;
 
@@ -26,8 +30,8 @@ use crate::{
 		plan::{DEFAULT_GAP_GUARD, Segment},
 	},
 	tier::range::{
-		ENTRY_OVERHEAD, Materialize, MaterializeInterlock, RangeConfig, RangeDomain, RangeMetrics, RangeScan,
-		RangeSlotMetrics, RangeTier,
+		ENTRY_OVERHEAD, Materialize, MaterializeInterlock, RangeBucketMetrics, RangeConfig, RangeDomain,
+		RangeMetrics, RangeScan, RangeTier,
 		domain::{AdmittingDomain as A, TestDomain as D, TestPartition},
 		partition_overhead,
 	},
@@ -62,7 +66,7 @@ fn row(body: &str) -> EncodedPodRow {
 }
 
 fn footprint(key: &EncodedKey, row: &EncodedPodRow) -> usize {
-	ENTRY_OVERHEAD + key.heap_bytes() + row.len()
+	ENTRY_OVERHEAD + key.heap_size() + row.len()
 }
 
 fn per_partition_bytes() -> u64 {
@@ -77,7 +81,7 @@ fn materialize(
 	page: &[(EncodedKey, EncodedPodRow)],
 ) -> TestPartition {
 	let range = keyspace_inner_range(group, keyspace);
-	let scan = tier.plan_scan(operator, &range).expect("a whole-keyspace range must be plannable");
+	let scan = tier.plan_scan(operator, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap the fixture can materialize over");
 	assert!(
 		tier.materialize(&scan, &gap, page) == Materialize::Materialized,
@@ -86,11 +90,11 @@ fn materialize(
 	TestPartition {
 		dimension: operator,
 		group,
-		slot: keyspace,
+		keyspace,
 	}
 }
 
-fn first_gap<X: RangeDomain>(scan: &RangeScan<X>) -> Option<Interval> {
+fn first_gap<X: RangeDomain>(scan: &RangeScan<X>) -> Option<Interval<X::Key>> {
 	scan.segments().iter().find_map(|segment| match segment {
 		Segment::Gap {
 			interval,
@@ -112,7 +116,7 @@ fn serve_ram(
 	range: &EncodedKeyRange,
 	limit: usize,
 ) -> Option<Vec<(EncodedKey, EncodedPodRow)>> {
-	let scan = tier.plan_scan(operator, range)?;
+	let scan = tier.plan_scan(operator, &KeyRange::from(range))?;
 	let mut out: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 	let mut resident = false;
 
@@ -143,7 +147,7 @@ fn serve_ram(
 }
 
 fn covers(tier: &RangeTier<D>, operator: OperatorId, range: &EncodedKeyRange) -> bool {
-	tier.plan_scan(operator, range)
+	tier.plan_scan(operator, &KeyRange::from(range))
 		.map(|scan| scan.segments().iter().any(|segment| matches!(segment, Segment::Resident(_))))
 		.unwrap_or(false)
 }
@@ -191,7 +195,7 @@ fn a_materialize_that_does_not_fit_the_budget_is_refused_whole_and_evicts_nothin
 
 	let third = GroupId(12);
 	let range = keyspace_inner_range(third, KeyspaceId::ACCUMULATOR);
-	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
+	let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("the uncovered keyspace must plan as a gap");
 	let page: Vec<(EncodedKey, EncodedPodRow)> = (0..64u8)
 		.map(|index| (key(third, KeyspaceId::ACCUMULATOR, &[index]), row("a fairly long row body")))
@@ -355,8 +359,8 @@ fn a_long_key_charges_its_heap_bytes() {
 	let tier = roomy();
 	let short = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
 	let long = key(GROUP_A, KeyspaceId::ACCUMULATOR, &[7u8; 64]);
-	assert_eq!(short.heap_bytes(), 0, "the short fixture must stay inline, or the comparison below is meaningless");
-	assert!(long.heap_bytes() > 0, "the long fixture must spill to the heap, or nothing tests heap accounting");
+	assert_eq!(short.heap_size(), 0, "the short fixture must stay inline, or the comparison below is meaningless");
+	assert!(long.heap_size() > 0, "the long fixture must spill to the heap, or nothing tests heap accounting");
 
 	materialize(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR, &[(short.clone(), row("v"))]);
 	let after_short = tier.resident_bytes().as_bytes();
@@ -364,7 +368,7 @@ fn a_long_key_charges_its_heap_bytes() {
 
 	assert_eq!(
 		tier.resident_bytes().as_bytes() - after_short,
-		(ENTRY_OVERHEAD + long.heap_bytes() + 1) as u64,
+		(ENTRY_OVERHEAD + long.heap_size() + 1) as u64,
 		"a heap allocated key must be charged for its allocation, or long keys are cached for free"
 	);
 	tier.invalidate_operator(OP_A);
@@ -404,10 +408,46 @@ fn every_shard_is_reachable_and_carries_the_configured_per_shard_budget() {
 	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
 }
 
-fn keyspace_row(tier: &RangeTier<D>, keyspace: KeyspaceId) -> RangeSlotMetrics<D> {
-	tier.slot_metrics()
+#[test]
+fn keyspace_counters_are_summed_across_every_shard() {
+	let tier = RangeTier::<D>::new(RangeConfig {
+		shard_bytes: Some(ByteSize::from_mib(64)),
+		shards: 4,
+		gap_guard: DEFAULT_GAP_GUARD,
+	})
+	.expect("a sharded tier must be constructed");
+
+	for group in 0..64u128 {
+		one_row_partition(&tier, OP_A, GroupId(group), KeyspaceId::SOURCE_WATERMARK);
+	}
+	for group in 0..64u128 {
+		assert!(serve_ram(
+			&tier,
+			OP_A,
+			&keyspace_inner_range(GroupId(group), KeyspaceId::SOURCE_WATERMARK),
+			64
+		)
+		.is_some());
+	}
+
+	assert!(
+		tier.shard_metrics().iter().filter(|shard| shard.counters.hits > 0).count() > 1,
+		"the fixture must spread hits over more than one shard, or summation is not under test"
+	);
+
+	let reported = tier.bucket_metrics();
+	assert_eq!(reported.len(), 1, "one keyspace spread over four shards must collapse to a single row");
+	assert_eq!(reported[0].bucket, KeyspaceId::SOURCE_WATERMARK);
+	assert_eq!(reported[0].counters.hits, 64);
+	assert_eq!(reported[0].counters.materializes, 64);
+	assert_eq!(reported[0].partitions, 64);
+	assert_eq!(reported[0].entries, 64);
+}
+
+fn keyspace_row(tier: &RangeTier<D>, keyspace: KeyspaceId) -> RangeBucketMetrics<D> {
+	tier.bucket_metrics()
 		.into_iter()
-		.find(|row| row.slot == keyspace)
+		.find(|row| row.bucket == keyspace)
 		.unwrap_or_else(|| panic!("keyspace {} must be reported", keyspace.name()))
 }
 
@@ -432,18 +472,18 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 	assert_eq!(buffer.entries, 1);
 	assert_eq!(buffer.used, ByteSize::from_bytes(per_partition));
 
-	let total: u64 = tier.slot_metrics().iter().map(|row| row.used.as_bytes()).sum();
+	let total: u64 = tier.bucket_metrics().iter().map(|row| row.used.as_bytes()).sum();
 	assert_eq!(
 		ByteSize::from_bytes(total),
 		tier.tallied_bytes(),
 		"every resident byte must be attributed to exactly one keyspace, or the table leaks or double counts"
 	);
-	assert_eq!(tier.slot_metrics().iter().map(|row| row.partitions).sum::<usize>(), tier.partitions());
+	assert_eq!(tier.bucket_metrics().iter().map(|row| row.partitions).sum::<usize>(), tier.partitions());
 	assert!(
-		tier.slot_metrics().iter().map(|row| row.intervals).sum::<usize>() >= tier.intervals(),
+		tier.bucket_metrics().iter().map(|row| row.intervals).sum::<usize>() >= tier.intervals(),
 		"every claim must be counted in at least one keyspace, or a fragmenting keyspace reports none"
 	);
-	assert_eq!(tier.slot_metrics().iter().map(|row| row.entries).sum::<usize>(), tier.entries());
+	assert_eq!(tier.bucket_metrics().iter().map(|row| row.entries).sum::<usize>(), tier.entries());
 }
 
 #[test]
@@ -489,7 +529,7 @@ fn a_materialize_that_races_a_retraction_refuses_rather_than_reinstating_the_cla
 	.expect("a tier with a byte budget must be constructed");
 
 	let range = keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR);
-	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
+	let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
 
 	let published = tier.materialize(&scan, &gap, &[(victim.clone(), row("stale"))]);
@@ -538,7 +578,7 @@ fn a_refused_materialize_must_not_delete_a_row_written_while_it_was_placing() {
 	.expect("a tier with a byte budget must be constructed");
 
 	let range = keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR);
-	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
+	let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
 
 	let published = tier.materialize(&scan, &gap, &[(contested.clone(), row("scanned"))]);
@@ -587,7 +627,7 @@ fn a_concurrent_materialize_never_refuses_another_materialize() {
 	.expect("a tier with a byte budget must be constructed");
 
 	let range = keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR);
-	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
+	let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
 	let k = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
 
@@ -627,7 +667,7 @@ fn a_materialize_places_its_rows_before_it_publishes_the_claim() {
 	.expect("a tier with a byte budget must be constructed");
 
 	let range = keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR);
-	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
+	let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
 
 	assert!(tier.materialize(&scan, &gap, &[(scanned.clone(), row("v"))]) == Materialize::Materialized);
@@ -671,7 +711,7 @@ fn sweep_page(group: u128) -> Vec<(EncodedKey, EncodedPodRow)> {
 	(0..SWEEP_KEYS).map(|n| (sweep_key(group, n), row("m"))).collect()
 }
 
-trait Sweep: RangeDomain<Dimension = OperatorId, Partition = TestPartition, Row = EncodedPodRow> {}
+trait Sweep: RangeDomain<Dimension = OperatorId, Partition = TestPartition, Key = MultiKey, Row = EncodedPodRow> {}
 
 impl Sweep for D {}
 
@@ -688,7 +728,7 @@ fn sweep_tier<X: Sweep>(budget: u64) -> RangeTier<X> {
 
 fn sweep_materialize<X: Sweep>(tier: &RangeTier<X>, group: u128) {
 	let range = keyspace_inner_range(GroupId(group), KeyspaceId::ACCUMULATOR);
-	let Some(scan) = tier.plan_scan(OP_A, &range) else {
+	let Some(scan) = tier.plan_scan(OP_A, &KeyRange::from(&range)) else {
 		return;
 	};
 	let Some(gap) = first_gap(&scan) else {

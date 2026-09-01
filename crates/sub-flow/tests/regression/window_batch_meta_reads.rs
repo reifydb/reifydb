@@ -16,7 +16,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change},
-	key::operator_state::KeyspaceId,
+	key::operator::state::KeyspaceId,
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
@@ -52,7 +52,7 @@ fn row(number: u64) -> reifydb_core::row::Row {
 fn window_meta_lookups(store: &OperatorStore) -> u64 {
 	store.point_keyspace_metrics()
 		.into_iter()
-		.filter(|m| m.slot == KeyspaceId::WINDOW_META)
+		.filter(|m| m.bucket == KeyspaceId::WINDOW_META)
 		.map(|m| m.counters.hits + m.counters.misses)
 		.sum()
 }

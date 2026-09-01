@@ -19,19 +19,19 @@ use reifydb_core::{
 		catalog::storage::StorageId,
 		store::{EntryKind, classify_key},
 	},
-	key::row::RowKey,
+	key::{
+		row::RowKey,
+		typed::{ExclusiveUpperEnd, Key, MultiKey, range::KeyRange},
+	},
 };
 use reifydb_store::{
 	coverage::{
-		ExclusiveUpperEnd,
 		cursor::{RangeCursor as TierCursor, ServedChunk as TierChunk},
 		interval::Interval,
 		plan::{DEFAULT_GAP_GUARD, Segment},
-		successor,
 	},
 	tier::range::{
 		Materialize, RangeConfig, RangeDomain, RangeMetrics, RangeRows, RangeShardMetrics, RangeTier, RowBytes,
-		prefix_successor,
 	},
 };
 use reifydb_store_commit::{MultiVersionScope, RangeBatch, RangeCursor, RawEntry};
@@ -73,6 +73,13 @@ const BUCKET_BYTES: usize = (u64::BITS - ROW_BUCKET_SHIFT) as usize / 8;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MultiDomain;
+
+fn prefix_successor(prefix: &[u8]) -> Option<Vec<u8>> {
+	let last = prefix.iter().rposition(|&byte| byte != 0xff)?;
+	let mut out = prefix[..=last].to_vec();
+	out[last] += 1;
+	Some(out)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PartitionId {
@@ -120,13 +127,23 @@ impl PartitionId {
 		EncodedKey::new(bytes)
 	}
 
-	pub fn span(&self) -> (EncodedKey, ExclusiveUpperEnd) {
+	pub fn span(&self) -> (MultiKey, ExclusiveUpperEnd<MultiKey>) {
 		let start = self.prefix();
 		let end = match prefix_successor(start.as_slice()) {
 			Some(successor) => ExclusiveUpperEnd::of(successor),
 			None => ExclusiveUpperEnd::Top,
 		};
 		(start, end)
+	}
+
+	fn first_addressable(key: &EncodedKey) -> Option<EncodedKey> {
+		let bytes = key.as_slice();
+		if bytes.len() >= Self::PREFIX_LEN {
+			return None;
+		}
+		let mut padded = bytes.to_vec();
+		padded.resize(Self::PREFIX_LEN, 0);
+		Some(EncodedKey::new(padded))
 	}
 }
 
@@ -152,29 +169,33 @@ impl RowBytes for MultiRow {
 impl RangeDomain for MultiDomain {
 	type Dimension = EntryKind;
 	type Partition = PartitionId;
-	type Slot = ();
+	type Key = MultiKey;
+	type MetricBucket = ();
 	type Row = MultiRow;
 
-	const PREFIX_LEN: usize = PartitionId::PREFIX_LEN;
-	const SLOTS: usize = 1;
+	const METRIC_BUCKETS: usize = 1;
 
 	const SCOPE: &'static str = "multi_range";
 
 	const GAP_SCOPE: &'static str = "multi_range::gaps";
 
-	fn partition(dimension: Self::Dimension, key: &EncodedKey) -> Option<Self::Partition> {
+	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Option<Self::Partition> {
 		PartitionId::of(dimension, key)
+	}
+
+	fn first_addressable(key: &Self::Key) -> Option<Self::Key> {
+		PartitionId::first_addressable(key)
 	}
 
 	fn dimension(partition: &Self::Partition) -> Self::Dimension {
 		partition.kind
 	}
 
-	fn span(partition: &Self::Partition) -> (EncodedKey, ExclusiveUpperEnd) {
+	fn span(partition: &Self::Partition) -> (Self::Key, ExclusiveUpperEnd<Self::Key>) {
 		partition.span()
 	}
 
-	fn head_band(dimension: Self::Dimension) -> Option<(EncodedKey, EncodedKey)> {
+	fn head_band(dimension: Self::Dimension) -> Option<(Self::Key, Self::Key)> {
 		row_band(dimension)
 	}
 
@@ -182,7 +203,7 @@ impl RangeDomain for MultiDomain {
 		partition.kind.cache_tiers().caches_ranges()
 	}
 
-	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd {
+	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
 		ExclusiveUpperEnd::Key(RowKey::storage_end(partition.storage()))
 	}
 
@@ -194,13 +215,13 @@ impl RangeDomain for MultiDomain {
 		true
 	}
 
-	fn slot(_partition: &Self::Partition) -> usize {
+	fn metric_bucket(_partition: &Self::Partition) -> usize {
 		0
 	}
 
-	fn slot_at(_index: usize) -> Self::Slot {}
+	fn metric_bucket_at(_index: usize) -> Self::MetricBucket {}
 
-	fn slot_name(_slot: Self::Slot) -> Cow<'static, str> {
+	fn metric_bucket_name(_slot: Self::MetricBucket) -> Cow<'static, str> {
 		Cow::Borrowed("row")
 	}
 }
@@ -330,7 +351,7 @@ impl MultiRangeTier {
 			self.tier.retractions(),
 		);
 		let range = EncodedKeyRange::new(Bound::Included(lo.clone()), Bound::Included(through.clone()));
-		let Some(scan) = self.tier.plan_scan(table, &range) else {
+		let Some(scan) = self.tier.plan_scan(table, &KeyRange::from(&range)) else {
 			return false;
 		};
 		let rows: RangeRows<MultiDomain> = entries
@@ -345,7 +366,7 @@ impl MultiRangeTier {
 				)
 			})
 			.collect();
-		let span = Interval::new(lo.clone(), ExclusiveUpperEnd::Key(successor(through)));
+		let span = Interval::new(lo.clone(), ExclusiveUpperEnd::just_past(through));
 		matches!(self.tier.materialize(&scan, &span, &rows), Materialize::Materialized)
 	}
 
@@ -369,16 +390,16 @@ impl MultiRangeTier {
 			return ServedChunk::Gap;
 		}
 		let lo = match cursor.last_key() {
-			Some(last) if *last >= range_lo => successor(last),
-			_ => range_lo.clone(),
+			Some(last) if *last >= range_lo => last.successor(),
+			_ => Some(range_lo.clone()),
 		};
-		if lo > range_hi {
+		let Some(lo) = lo.filter(|lo| *lo <= range_hi) else {
 			return ServedChunk::Gap;
-		}
-		let hi = ExclusiveUpperEnd::Key(successor(&range_hi));
+		};
+		let hi = ExclusiveUpperEnd::just_past(&range_hi);
 		let range = EncodedKeyRange::new(Bound::Included(lo.clone()), Bound::Included(range_hi.clone()));
 
-		let Some(scan) = self.tier.plan_scan(table, &range) else {
+		let Some(scan) = self.tier.plan_scan(table, &KeyRange::from(&range)) else {
 			return self.chunk_proven_empty(table, &lo, &range_hi, cursor);
 		};
 		let Some(Segment::Resident(segment)) = scan.segments().first() else {
@@ -430,7 +451,7 @@ impl MultiRangeTier {
 	}
 }
 
-fn band_ends_the_range(table: EntryKind, stop: &ExclusiveUpperEnd, range_hi: &EncodedKey) -> bool {
+fn band_ends_the_range(table: EntryKind, stop: &ExclusiveUpperEnd<MultiKey>, range_hi: &EncodedKey) -> bool {
 	let Some((_, band_end)) = row_band(table) else {
 		return false;
 	};
@@ -461,7 +482,7 @@ mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::catalog::{id::TableId, storage::StorageId},
-		key::{EncodableKey, row::RowKey, series_row::SeriesRowKey},
+		key::{EncodableKey, row::RowKey, series_row::SeriesRowKey, typed::range::KeyRange},
 	};
 	use reifydb_store::coverage::plan::DEFAULT_GAP_GUARD;
 	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};
@@ -1145,7 +1166,10 @@ mod tests {
 		fill_bucket(&tier, 0, &[1, 2, 3], 10);
 
 		let range = EncodedKeyRange::new(Bound::Included(storage_start()), Bound::Included(storage_end()));
-		let plan = tier.tier.plan_scan(source(), &range).expect("a whole storage must be plannable");
+		let plan = tier
+			.tier
+			.plan_scan(source(), &KeyRange::from(&range))
+			.expect("a whole storage must be plannable");
 		assert!(
 			matches!(plan.segments().first(), Some(Segment::Gap { .. })),
 			"a claim reached below the lowest key its materialize observed, down to a prefix nothing proved"

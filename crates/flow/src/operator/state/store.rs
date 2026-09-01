@@ -3,9 +3,9 @@
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, pod::EncodedPodRow},
+	row::pod::EncodedPodRow,
 };
-use reifydb_core::key::operator_state::GroupStateKey;
+use reifydb_core::key::operator::state::GroupStateKey;
 use reifydb_value::Result;
 
 use super::iter::StateIterator;
@@ -21,10 +21,6 @@ pub fn state_set(host: &mut dyn HostContext, key: &GroupStateKey, row: EncodedPo
 
 pub fn state_remove(host: &mut dyn HostContext, key: &GroupStateKey) -> Result<()> {
 	host.state_remove(key)
-}
-
-pub fn state_scan_all(host: &mut dyn HostContext) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
-	host.state_scan_all()
 }
 
 pub fn state_range<'a>(host: &'a mut dyn HostContext, range: EncodedKeyRange) -> StateIterator<'a> {
@@ -43,9 +39,10 @@ pub fn empty_key() -> EncodedKey {
 pub mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
+	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{OperatorStateKey, node_prefix},
+		key::operator::state::{OperatorStateKey, node_prefix},
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
@@ -58,6 +55,11 @@ pub mod tests {
 
 	fn host(txn: &mut DeferredTransaction, operator: OperatorId) -> TxnHostContext<'_, DeferredTransaction> {
 		TxnHostContext::new(txn, operator)
+	}
+
+	fn scan_all(txn: &mut DeferredTransaction, operator: OperatorId) -> Vec<(EncodedKey, EncodedBytes)> {
+		// production reads are all keyspace-scoped; an unscoped sweep must exist only in tests
+		state_range(&mut host(txn, operator), EncodedKeyRange::all()).collect::<Result<Vec<_>>>().unwrap()
 	}
 
 	#[test]
@@ -115,27 +117,6 @@ pub mod tests {
 
 		state_remove(&mut host(&mut txn, operator_id), &key).unwrap();
 		assert!(state_get(&mut host(&mut txn, operator_id), &key).unwrap().is_none());
-	}
-
-	#[test]
-	fn test_state_scan_all() {
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator_id = OperatorId(1);
-
-		for i in 0..5 {
-			let key = test_key(&format!("scan_{:02}", i)); // padded so the keys sort numerically
-			state_set(&mut host(&mut txn, operator_id), &key, EncodedPodRow::new(&[i as u8])).unwrap();
-		}
-
-		let entries: Vec<_> = state_scan_all(&mut host(&mut txn, operator_id)).unwrap();
-		assert_eq!(entries.len(), 5);
-
-		// The scan path is untyped, so the payload only surfaces once the row header is stripped.
-		for i in 0..5 {
-			let row = EncodedPodRow::from(entries[i].1.clone());
-			assert_eq!(row.body()[0], i as u8);
-		}
 	}
 
 	#[test]
@@ -311,22 +292,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_simple_state_scan_all() {
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator_id = OperatorId(1);
-
-		let entries = vec![("key_a", vec![1, 2]), ("key_b", vec![3, 4]), ("key_c", vec![5, 6])];
-		for (key_suffix, data) in &entries {
-			let key = test_key(key_suffix);
-			state_set(&mut host(&mut txn, operator_id), &key, EncodedPodRow::new(data)).unwrap();
-		}
-
-		let scanned: Vec<_> = state_scan_all(&mut host(&mut txn, operator_id)).unwrap();
-		assert_eq!(scanned.len(), 3);
-	}
-
-	#[test]
 	fn test_simple_state_range() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
@@ -364,12 +329,12 @@ pub mod tests {
 			state_set(&mut host(&mut txn, operator_id), &key, EncodedPodRow::new(&[i as u8])).unwrap();
 		}
 
-		let count = state_scan_all(&mut host(&mut txn, operator_id)).unwrap().len();
+		let count = scan_all(&mut txn, operator_id).len();
 		assert_eq!(count, 5);
 
 		state_clear(&mut host(&mut txn, operator_id)).unwrap();
 
-		let count = state_scan_all(&mut host(&mut txn, operator_id)).unwrap().len();
+		let count = scan_all(&mut txn, operator_id).len();
 		assert_eq!(count, 0);
 	}
 
@@ -437,7 +402,7 @@ pub mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(6);
-		let key = test_key("non_existent");
+		let key = test_key("absent");
 
 		state_remove(&mut host(&mut txn, operator_id), &key).unwrap();
 
@@ -459,7 +424,7 @@ pub mod tests {
 		state_remove(&mut host(&mut txn, operator_id), &test_key("partial_3")).unwrap();
 
 		// 0, 2 and 4 survive.
-		let remaining: Vec<_> = state_scan_all(&mut host(&mut txn, operator_id)).unwrap();
+		let remaining = scan_all(&mut txn, operator_id);
 		assert_eq!(remaining.len(), 3);
 	}
 }

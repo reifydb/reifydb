@@ -5,7 +5,7 @@ use std::hash::Hash;
 
 use reifydb_codec::row::operator::state::{OperatorState, decode};
 use reifydb_core::{
-	key::operator_state::{IntoGroupStateKey, row_number_counter_key},
+	key::operator::state::{IntoGroupStateKey, row_number_counter_key},
 	metrics::heap::HeapSize,
 	state::timer::StateStore,
 };
@@ -137,7 +137,7 @@ mod tests {
 		row::pod::EncodedPodRow,
 	};
 	use reifydb_core::{
-		key::operator_state::{GroupId, GroupStateKey, KeyspaceId},
+		key::operator::state::{GroupId, GroupStateKey, custom_not_cached_key},
 		state::timer::{TimerKind, TimerStore},
 	};
 	use reifydb_macro::operator_state;
@@ -167,7 +167,8 @@ mod tests {
 
 	impl IntoGroupStateKey for &Key {
 		fn into_group_state_key(self) -> GroupStateKey {
-			GroupStateKey::root(KeyspaceId::CUSTOM_NOT_CACHED, self.0.as_bytes())
+			custom_not_cached_key(self.0.as_bytes())
+				.expect("a custom state key must be at most sixteen bytes")
 		}
 	}
 
@@ -249,12 +250,11 @@ mod tests {
 			Ok(())
 		}
 
-		fn state_range_visit(
+		fn state_page_inner(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-		) -> Result<()> {
+		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
 				Bound::Excluded(s) => k > s.as_bytes(),
@@ -275,12 +275,14 @@ mod tests {
 			if let Some(limit) = limit {
 				matched.truncate(limit);
 			}
-			for (k, b) in matched {
-				let k = GroupStateKey::from_framed(EncodedKey::new(k))
-					.expect("fake store holds an unframed state key");
-				visit(k, b)?;
-			}
-			Ok(())
+			Ok(matched
+				.into_iter()
+				.map(|(k, b)| {
+					let k = GroupStateKey::from_framed(EncodedKey::new(k))
+						.expect("fake store holds an unframed state key");
+					(k, b)
+				})
+				.collect())
 		}
 
 		fn get_or_create_row_numbers(
@@ -291,14 +293,18 @@ mod tests {
 			Ok(keys.iter().enumerate().map(|(i, _)| (RowNumber(i as u64 + 1), true)).collect())
 		}
 
-		fn get_or_create_row_numbers_for_pairs(
+		fn get_or_create_row_numbers_for_groups(
 			&mut self,
-			pairs: &[(GroupId, EncodedKey)],
+			groups: &[GroupId],
 		) -> Result<Vec<(RowNumber, bool)>> {
-			Ok(pairs.iter().enumerate().map(|(i, _)| (RowNumber(i as u64 + 1), true)).collect())
+			Ok(groups.iter().enumerate().map(|(i, _)| (RowNumber(i as u64 + 1), true)).collect())
 		}
 
 		fn remove_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<()> {
+			Ok(())
+		}
+
+		fn remove_row_number_for_group(&mut self, _group: GroupId) -> Result<()> {
 			Ok(())
 		}
 

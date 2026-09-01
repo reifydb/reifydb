@@ -9,7 +9,7 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{common::CommitVersion, metrics::heap::HeapSize};
 use reifydb_value::reifydb_assertions;
 
 use crate::entry::{Value, entry_bytes_with};
@@ -30,7 +30,7 @@ impl RowMap {
 	}
 
 	pub fn insert(&mut self, key: EncodedKey, version: CommitVersion, value: Value) {
-		let key_heap = key.heap_bytes();
+		let key_heap = key.heap_size();
 		let bytes = entry_bytes_with(key_heap, &value);
 
 		let versions = self.entries.entry(key).or_default();
@@ -298,7 +298,7 @@ mod tests {
 	fn walked_bytes(rows: &RowMap) -> u64 {
 		rows.iter()
 			.map(|(key, versions)| {
-				let heap = key.heap_bytes();
+				let heap = key.heap_size();
 				versions.values().map(|value| entry_bytes_with(heap, value)).sum::<u64>()
 			})
 			.sum()
@@ -311,7 +311,7 @@ mod tests {
 	fn walked_current_bytes(rows: &RowMap) -> u64 {
 		rows.iter()
 			.filter_map(|(key, versions)| {
-				versions.values().next().map(|value| entry_bytes_with(key.heap_bytes(), value))
+				versions.values().next().map(|value| entry_bytes_with(key.heap_size(), value))
 			})
 			.sum()
 	}

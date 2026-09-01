@@ -3,8 +3,6 @@
 
 pub mod utils;
 
-use std::ops::Bound;
-
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
@@ -12,13 +10,13 @@ use reifydb_codec::{
 		pod::EncodedPodRow,
 	},
 };
-use reifydb_core::key::operator_state::GroupStateKey;
+use reifydb_core::key::operator::state::{GroupId, GroupStateKey, KeyspaceId};
 use reifydb_value::error::Error as ValueError;
 
 use crate::{
 	error::{Result, SdkError},
 	flow::operator::{
-		context::{GuestContext, GuestState},
+		context::{GuestBound, GuestContext, GuestState},
 		extern_c::binding::{context::ExternCContext, state as extern_c},
 	},
 };
@@ -82,18 +80,15 @@ impl<'a> State<'a> {
 
 	pub fn range<T: OperatorState>(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 	) -> Result<Vec<(GroupStateKey, T)>> {
-		extern_c::range(
-			self.ctx,
-			start.map(GroupStateKey::as_encoded),
-			end.map(GroupStateKey::as_encoded),
-			usize::MAX,
-		)?
-		.into_iter()
-		.map(|(k, row)| Ok((framed(k)?, decode_payload(&EncodedPodRow::from(row))?)))
-		.collect()
+		extern_c::range(self.ctx, group, keyspace, start, end, usize::MAX)?
+			.into_iter()
+			.map(|(k, row)| Ok((framed(k)?, decode_payload(&EncodedPodRow::from(row))?)))
+			.collect()
 	}
 
 	pub fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
@@ -121,19 +116,17 @@ impl<'a> State<'a> {
 
 	pub fn range_bytes_visit(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
-		for (seen, (k, row)) in extern_c::range(
-			self.ctx,
-			start.map(GroupStateKey::as_encoded),
-			end.map(GroupStateKey::as_encoded),
-			limit.unwrap_or(usize::MAX),
-		)?
-		.into_iter()
-		.enumerate()
+		for (seen, (k, row)) in
+			extern_c::range(self.ctx, group, keyspace, start, end, limit.unwrap_or(usize::MAX))?
+				.into_iter()
+				.enumerate()
 		{
 			if limit.is_some_and(|l| seen >= l) {
 				break;

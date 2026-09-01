@@ -96,17 +96,11 @@ pub mod store {
 	pub const MULTI_WAL_AUTOCHECKPOINT_PAGES: u64 = 50_000;
 	pub const MULTI_WAL_AUTOCHECKPOINT_PAGES_TESTING: u64 = 64;
 
-	pub const OPERATOR_POINT_BUFFER_SHARD: ByteSize = ByteSize::from_kib(512);
-	pub const OPERATOR_POINT_BUFFER_SHARD_TESTING: ByteSize = ByteSize::from_kib(16);
+	pub const OPERATOR_POINT_TIER: ByteSize = ByteSize::from_mib(1);
+	pub const OPERATOR_POINT_TIER_TESTING: ByteSize = ByteSize::from_kib(32);
 
-	pub const OPERATOR_RANGE_BUFFER_SHARD: ByteSize = ByteSize::from_mib(2);
-	pub const OPERATOR_RANGE_BUFFER_SHARD_TESTING: ByteSize = ByteSize::from_kib(16);
-
-	pub const OPERATOR_POINT_BUFFER_SHARDS: u16 = 16;
-	pub const OPERATOR_POINT_BUFFER_SHARDS_TESTING: u16 = 2;
-
-	pub const OPERATOR_RANGE_BUFFER_SHARDS: u16 = 16;
-	pub const OPERATOR_RANGE_BUFFER_SHARDS_TESTING: u16 = 2;
+	pub const OPERATOR_RANGE_TIER: ByteSize = ByteSize::from_mib(1);
+	pub const OPERATOR_RANGE_TIER_TESTING: ByteSize = ByteSize::from_kib(32);
 
 	pub const OPERATOR_RESIDENT_BUDGET: ByteSize = ByteSize::from_mib(100);
 	pub const OPERATOR_RESIDENT_BUDGET_TESTING: ByteSize = ByteSize::from_kib(64);

@@ -3,16 +3,16 @@
 
 use std::{collections::HashMap, hash::Hash, mem};
 
-use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::key::typed::{ExclusiveUpperEnd, Key};
 
-use crate::coverage::{ExclusiveUpperEnd, interval::CoverageSet};
+use crate::coverage::interval::CoverageSet;
 
-pub struct CoverageIndex<D> {
-	sets: HashMap<D, CoverageSet>,
-	heads: HashMap<D, EncodedKey>,
+pub struct CoverageIndex<D, K> {
+	sets: HashMap<D, CoverageSet<K>>,
+	heads: HashMap<D, K>,
 }
 
-impl<D> Default for CoverageIndex<D> {
+impl<D, K> Default for CoverageIndex<D, K> {
 	fn default() -> Self {
 		Self {
 			sets: HashMap::new(),
@@ -21,46 +21,51 @@ impl<D> Default for CoverageIndex<D> {
 	}
 }
 
-impl<D: Hash + Eq + Copy> CoverageIndex<D> {
+impl<D: Hash + Eq + Copy, K: Key> CoverageIndex<D, K> {
 	pub fn new() -> Self {
 		Self::default()
 	}
 
-	pub fn set(&self, dimension: D) -> Option<&CoverageSet> {
+	pub fn set(&self, dimension: D) -> Option<&CoverageSet<K>> {
 		self.sets.get(&dimension)
 	}
 
-	pub fn contains(&self, dimension: D, key: &EncodedKey) -> bool {
+	pub fn contains(&self, dimension: D, key: &K) -> bool {
 		self.sets.get(&dimension).is_some_and(|set| set.contains(key))
 	}
 
-	pub fn extend(&mut self, dimension: D, start: EncodedKey, end: ExclusiveUpperEnd) {
+	pub fn extend(&mut self, dimension: D, start: K, end: ExclusiveUpperEnd<K>) {
 		self.sets.entry(dimension).or_default().extend(start, end);
 	}
 
-	pub fn shrink_key(&mut self, dimension: D, key: &EncodedKey) {
+	pub fn shrink_key(&mut self, dimension: D, key: &K) {
 		self.shrink(dimension, |set| set.shrink_key(key));
 	}
 
-	pub fn shrink_range(&mut self, dimension: D, start: &EncodedKey, end: &ExclusiveUpperEnd) {
+	pub fn shrink_range(&mut self, dimension: D, start: &K, end: &ExclusiveUpperEnd<K>) {
 		self.shrink(dimension, |set| set.shrink_range(start, end));
 	}
 
-	pub fn drop_overlapping(&mut self, dimension: D, start: &EncodedKey, end: &ExclusiveUpperEnd) {
+	pub fn drop_overlapping(&mut self, dimension: D, start: &K, end: &ExclusiveUpperEnd<K>) {
 		self.shrink(dimension, |set| set.drop_overlapping(start, end));
 	}
 
-	pub fn head(&self, dimension: D) -> Option<&EncodedKey> {
+	pub fn head(&self, dimension: D) -> Option<&K> {
 		self.heads.get(&dimension)
 	}
 
-	pub fn set_head(&mut self, dimension: D, key: EncodedKey) {
+	pub fn set_head(&mut self, dimension: D, key: K) {
 		self.heads.insert(dimension, key);
 	}
 
 	pub fn remove(&mut self, dimension: D) {
 		self.sets.remove(&dimension);
 		self.heads.remove(&dimension);
+	}
+
+	pub fn retain(&mut self, keep: impl Fn(&D) -> bool) {
+		self.sets.retain(|dimension, _| keep(dimension));
+		self.heads.retain(|dimension, _| keep(dimension));
 	}
 
 	pub fn clear(&mut self) {
@@ -72,12 +77,12 @@ impl<D: Hash + Eq + Copy> CoverageIndex<D> {
 		let sets: u64 = self
 			.sets
 			.values()
-			.map(|set| (mem::size_of::<D>() + mem::size_of::<CoverageSet>()) as u64 + set.bytes())
+			.map(|set| (mem::size_of::<D>() + mem::size_of::<CoverageSet<K>>()) as u64 + set.bytes())
 			.sum();
 		let heads: u64 = self
 			.heads
 			.values()
-			.map(|key| (mem::size_of::<D>() + mem::size_of::<EncodedKey>() + key.heap_bytes()) as u64)
+			.map(|key| (mem::size_of::<D>() + mem::size_of::<K>() + key.heap_size()) as u64)
 			.sum();
 		sets + heads
 	}
@@ -86,11 +91,11 @@ impl<D: Hash + Eq + Copy> CoverageIndex<D> {
 		self.sets.values().map(|set| set.len()).sum()
 	}
 
-	pub fn iter(&self) -> impl Iterator<Item = (D, &CoverageSet)> + '_ {
+	pub fn iter(&self) -> impl Iterator<Item = (D, &CoverageSet<K>)> + '_ {
 		self.sets.iter().map(|(dimension, set)| (*dimension, set))
 	}
 
-	fn shrink(&mut self, dimension: D, apply: impl FnOnce(&mut CoverageSet)) {
+	fn shrink(&mut self, dimension: D, apply: impl FnOnce(&mut CoverageSet<K>)) {
 		let Some(set) = self.sets.get_mut(&dimension) else {
 			return;
 		};
@@ -104,19 +109,20 @@ impl<D: Hash + Eq + Copy> CoverageIndex<D> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_core::key::typed::{ExclusiveUpperEnd, MultiKey};
 
 	use super::CoverageIndex;
-	use crate::coverage::{ExclusiveUpperEnd, interval::Interval, successor};
+	use crate::coverage::interval::Interval;
 
 	fn k(bytes: &str) -> EncodedKey {
 		EncodedKey::new(bytes)
 	}
 
-	fn index() -> CoverageIndex<u8> {
+	fn index() -> CoverageIndex<u8, MultiKey> {
 		CoverageIndex::new()
 	}
 
-	fn intervals(index: &CoverageIndex<u8>, dimension: u8) -> Vec<Interval> {
+	fn intervals(index: &CoverageIndex<u8, MultiKey>, dimension: u8) -> Vec<Interval<MultiKey>> {
 		index.set(dimension).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
@@ -168,7 +174,7 @@ mod tests {
 	fn a_dimension_shrunk_to_nothing_leaves_the_map() {
 		// An emptied set reads exactly like an absent one, so keeping it is retention without a reader.
 		let mut index = index();
-		index.extend(1, k("c"), ExclusiveUpperEnd::Key(successor(&k("c"))));
+		index.extend(1, k("c"), ExclusiveUpperEnd::just_past(&k("c")));
 
 		index.shrink_key(1, &k("c"));
 
@@ -256,7 +262,7 @@ mod tests {
 		index.extend(1, k("c"), ExclusiveUpperEnd::of("f"));
 		index.extend(2, k("m"), ExclusiveUpperEnd::of("p"));
 
-		let mut seen: Vec<(u8, Vec<Interval>)> =
+		let mut seen: Vec<(u8, Vec<Interval<MultiKey>>)> =
 			index.iter().map(|(dimension, set)| (dimension, set.iter().collect())).collect();
 		seen.sort_by_key(|(dimension, _)| *dimension);
 

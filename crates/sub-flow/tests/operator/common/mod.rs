@@ -6,7 +6,7 @@
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::operator::state::GroupId,
 };
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
@@ -14,7 +14,7 @@ use reifydb_sdk::{
 		GuestOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::GuestContext,
-		state::GuestRawOperator,
+		state::{GuestRawOperator, utils::custom_state_key},
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
 	row,
@@ -96,11 +96,7 @@ impl GuestOperator for ParityWindow {
 					continue;
 				};
 				let window_bucket = (timestamp / WINDOW_SIZE) * WINDOW_SIZE;
-				let key = OperatorStateKey::inner_encoded(
-					GroupId::ROOT,
-					KeyspaceId::CUSTOM_NOT_CACHED,
-					window_bucket.to_be_bytes(),
-				);
+				let key = custom_state_key(&window_bucket.to_be_bytes())?;
 				let new_count = self.state_get::<i64>(ctx, &key)?.unwrap_or(0) + 1;
 				self.state_set(ctx, &key, &new_count)?;
 				emissions.push((window_bucket, new_count));
@@ -163,7 +159,7 @@ impl GuestOperator for RowNumberProbe {
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
-		// A row-number key is a SUFFIX - the host frames it under ROW_NUMBER_MAPPING itself.
+		// A row-number key is a SUFFIX - the host frames it under the guest row mapping itself.
 		let key = EncodedKey::new(b"fixed-window-key");
 		let (rn, is_new) = ctx.get_or_create_row_numbers(GroupId::ROOT, &[key])?.remove(0);
 		ctx.emit_insert(

@@ -64,6 +64,7 @@ test-chaos:
 		$(foreach p,$(strip $(PACKAGES) $(PACKAGE)),-p $(p)) \
 		--features chaos -E '$(SELECT)' \
 		--no-fail-fast --status-level fail --final-status-level fail $(CARGO_OFFLINE)
+	@$(MAKE) --no-print-directory sweep-auto
 
 list-chaos:
 	@echo "   packages: $(strip $(PACKAGES) $(PACKAGE))"

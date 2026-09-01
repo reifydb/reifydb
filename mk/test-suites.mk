@@ -14,13 +14,16 @@ TEST_SUITES := $(shell find $(TEST_SUITE_DIR) -maxdepth 1 -type d -exec basename
 test-suite:
 	@echo "🔍 Running all test suites..."
 	cd $(TEST_SUITE_DIR) && $(MAKE) test
+	@$(MAKE) --no-print-directory sweep-auto
 
 # Run fast development tests for all test suites - delegate to testsuite Makefile
 test-suite-dev:
 	@echo "🚀 Running fast development tests for all test suites..."
 	cd $(TEST_SUITE_DIR) && $(MAKE) test-dev
+	@$(MAKE) --no-print-directory sweep-auto
 
 # Individual test suite targets - delegate to testsuite Makefile
 $(TEST_SUITES):
 	@echo "🔍 Running $@ tests..."
 	cd $(TEST_SUITE_DIR) && $(MAKE) $@
+	@$(MAKE) --no-print-directory sweep-auto

@@ -12,7 +12,7 @@ use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, store::MultiVersionRow},
-	key::{Key, kind::KeyKind, operator_state::OperatorStateKey},
+	key::{Key, kind::KeyKind, operator::state::OperatorStateKey},
 };
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_value::Result;

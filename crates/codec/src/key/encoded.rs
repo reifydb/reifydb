@@ -100,15 +100,6 @@ impl EncodedKey {
 	pub fn to_vec(&self) -> Vec<u8> {
 		self.as_slice().to_vec()
 	}
-
-	pub fn heap_bytes(&self) -> usize {
-		match self {
-			EncodedKey::Inline {
-				..
-			} => 0,
-			EncodedKey::Shared(bytes) => bytes.len() + 2 * mem::size_of::<usize>(),
-		}
-	}
 }
 
 impl Deref for EncodedKey {

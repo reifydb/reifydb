@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::key::operator_state::GroupId;
+use reifydb_core::key::operator::state::GroupId;
 
 fn group(s: &str) -> EncodedKey {
 	EncodedKey::new(s.as_bytes())

@@ -9,7 +9,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{flow::OperatorId, id::TableId, storage::StorageId},
 	key::{
-		operator_state::{GroupStateKey, OperatorStateKey},
+		operator::state::{GroupStateKey, OperatorStateKey},
 		row::RowKey,
 	},
 };

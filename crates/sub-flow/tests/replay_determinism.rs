@@ -26,7 +26,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		consolidate::consolidate_diffs,
 	},
-	key::operator_state::KeyspaceId,
+	key::operator::state::KeyspaceId,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_flow::{
@@ -228,7 +228,7 @@ mod distinct {
 		for keyspace in [
 			KeyspaceId::DISTINCT_ENTRY,
 			KeyspaceId::DISTINCT_LAYOUT,
-			KeyspaceId::ROW_NUMBER_MAPPING,
+			KeyspaceId::GROUP_ROW_MAPPING,
 			KeyspaceId::NODE_COUNTER,
 		] {
 			assert!(

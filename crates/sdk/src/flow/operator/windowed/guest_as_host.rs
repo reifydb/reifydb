@@ -8,7 +8,7 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range_split},
 	state::timer::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_flow::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
@@ -17,9 +17,17 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::flow::operator::context::{GuestContext, GuestState};
+use crate::flow::operator::context::{GuestBound, GuestContext, GuestState};
 
 pub struct GuestAsHost<'a, C: GuestContext>(pub &'a mut C);
+
+fn confine(range: &EncodedKeyRange) -> (GroupId, KeyspaceId, Bound<Vec<u8>>, Bound<Vec<u8>>) {
+	keyspace_inner_range_split(range).expect(
+		"a guest state scan must stay inside one group and keyspace; the window engine builds only \
+		 keyspace ranges, so a range that does not split is one a caller invented and the guest \
+		 boundary cannot admit",
+	)
+}
 
 impl<C: GuestContext> TimerStore for GuestAsHost<'_, C> {
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
@@ -67,50 +75,52 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 	}
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		self.0.state().remove(key)?;
+		self.0.state().remove_bytes(key)?;
 		Ok(())
 	}
 
-	fn state_range_visit(
+	fn state_page_inner(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
-		let bound = |b: &Bound<EncodedKey>| match b {
-			Bound::Included(k) => Bound::Included(GroupStateKey::bound_unchecked(k.clone())),
-			Bound::Excluded(k) => Bound::Excluded(GroupStateKey::bound_unchecked(k.clone())),
-			Bound::Unbounded => Bound::Unbounded,
-		};
-		let (start, end) = (bound(&range.start), bound(&range.end));
-		let (start, end) = (start.as_ref(), end.as_ref());
-		self.0.state().range_bytes_visit(start, end, limit, &mut |k, v| visit(k, v).map_err(Into::into))?;
-		Ok(())
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		let (group, keyspace, start, end) = confine(&range);
+		let mut out = Vec::new();
+		self.0.state().range_bytes_visit(
+			group,
+			keyspace,
+			GuestBound::of(&start),
+			GuestBound::of(&end),
+			limit,
+			&mut |k, v| {
+				out.push((k, v));
+				Ok(())
+			},
+		)?;
+		Ok(out)
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
-		let bound = |b: &Bound<EncodedKey>| match b {
-			Bound::Included(k) => Bound::Included(GroupStateKey::bound_unchecked(k.clone())),
-			Bound::Excluded(k) => Bound::Excluded(GroupStateKey::bound_unchecked(k.clone())),
-			Bound::Unbounded => Bound::Unbounded,
-		};
-		let (start, end) = (bound(&range.start), bound(&range.end));
-		Ok(self.0.state().last_bytes(start.as_ref(), end.as_ref())?)
+		let (group, keyspace, start, end) = confine(&range);
+		Ok(self.0.state().last_bytes(group, keyspace, GuestBound::of(&start), GuestBound::of(&end))?)
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		Ok(self.0.get_or_create_row_numbers(group, keys)?)
 	}
 
-	fn get_or_create_row_numbers_for_pairs(
-		&mut self,
-		pairs: &[(GroupId, EncodedKey)],
-	) -> Result<Vec<(RowNumber, bool)>> {
-		Ok(self.0.get_or_create_row_numbers_for_pairs(pairs)?)
+	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
+		let pairs: Vec<(GroupId, EncodedKey)> =
+			groups.iter().map(|group| (*group, EncodedKey::new(Vec::new()))).collect();
+		Ok(self.0.get_or_create_row_numbers_for_pairs(&pairs)?)
 	}
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		Ok(self.0.remove_row_number(group, key)?)
+	}
+
+	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {
+		Ok(self.0.remove_row_number(group, &EncodedKey::new(Vec::new()))?)
 	}
 
 	fn written_at(&self) -> DateTime {

@@ -180,6 +180,7 @@ edition = "2024"
 [profile.dev]
 opt-level = 0
 debug = true
+split-debuginfo = "unpacked"
 debug-assertions = true
 overflow-checks = true
 incremental = true
@@ -190,6 +191,7 @@ panic = "unwind"
 [profile.test]
 opt-level = 0
 debug = true
+split-debuginfo = "unpacked"
 lto = false
 codegen-units = 256
 incremental = true

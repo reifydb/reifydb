@@ -11,9 +11,11 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::key::operator_state::{GroupId, GroupStateKey};
+use crate::key::operator::state::{
+	GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range, keyspace_inner_range_split,
+};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 pub enum TimerKind {
 	Seal = 0,
@@ -53,31 +55,53 @@ pub trait StateStore {
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()>;
 
-	// FIXME remove
-	fn state_range_visit(
+	fn state_page(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()>;
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		debug_assert!(
+			keyspace_inner_range_split(&range).is_some(),
+			"a state page must stay inside one group and one keyspace; {range:?} spans more than one"
+		);
+		self.state_page_inner(range, limit)
+	}
+
+	fn state_page_inner(
+		&mut self,
+		range: EncodedKeyRange,
+		limit: Option<usize>,
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
+
+	fn group_sweep(&mut self, group: GroupId, data_only: bool, limit: Option<usize>) -> Result<Vec<GroupStateKey>> {
+		let mut swept = Vec::new();
+		for id in (u8::MIN..=u8::MAX).rev() {
+			let keyspace = KeyspaceId(id);
+			if data_only && !keyspace.is_data() {
+				continue;
+			}
+			let remaining = match limit {
+				Some(limit) if swept.len() >= limit => break,
+				Some(limit) => Some(limit - swept.len()),
+				None => None,
+			};
+			let page = self.state_page(keyspace_inner_range(group, keyspace), remaining)?;
+			swept.extend(page.into_iter().map(|(key, _)| key));
+		}
+		Ok(swept)
+	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
-		let mut last = None;
-		self.state_range_visit(range, None, &mut |key, payload| {
-			last = Some((key, payload));
-			Ok(())
-		})?;
-		Ok(last)
+		Ok(self.state_page(range, None)?.pop())
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 
-	fn get_or_create_row_numbers_for_pairs(
-		&mut self,
-		pairs: &[(GroupId, EncodedKey)],
-	) -> Result<Vec<(RowNumber, bool)>>;
+	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>>;
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
+
+	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()>;
 
 	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
 		for key in keys {

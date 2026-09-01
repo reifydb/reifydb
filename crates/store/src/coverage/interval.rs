@@ -10,26 +10,24 @@ use std::{
 	mem,
 };
 
-use reifydb_codec::key::encoded::EncodedKey;
-
-use crate::coverage::{ExclusiveUpperEnd, successor};
+use reifydb_core::key::typed::{ExclusiveUpperEnd, Key};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Interval {
-	pub start: EncodedKey,
-	pub end: ExclusiveUpperEnd,
+pub struct Interval<K> {
+	pub start: K,
+	pub end: ExclusiveUpperEnd<K>,
 }
 
-impl Interval {
-	pub fn new(start: EncodedKey, end: ExclusiveUpperEnd) -> Self {
+impl<K: Key> Interval<K> {
+	pub fn new(start: K, end: ExclusiveUpperEnd<K>) -> Self {
 		Self {
 			start,
 			end,
 		}
 	}
 
-	pub fn contains(&self, key: &EncodedKey) -> bool {
-		self.start.as_slice() <= key.as_slice() && self.end.covers(key)
+	pub fn contains(&self, key: &K) -> bool {
+		&self.start <= key && self.end.covers(key)
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -37,17 +35,25 @@ impl Interval {
 	}
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct CoverageSet {
-	intervals: BTreeMap<EncodedKey, ExclusiveUpperEnd>,
+#[derive(Clone, Debug)]
+pub struct CoverageSet<K> {
+	intervals: BTreeMap<K, ExclusiveUpperEnd<K>>,
 }
 
-impl CoverageSet {
+impl<K: Key> Default for CoverageSet<K> {
+	fn default() -> Self {
+		Self {
+			intervals: BTreeMap::new(),
+		}
+	}
+}
+
+impl<K: Key> CoverageSet<K> {
 	pub fn new() -> Self {
 		Self::default()
 	}
 
-	pub fn extend(&mut self, start: EncodedKey, end: ExclusiveUpperEnd) {
+	pub fn extend(&mut self, start: K, end: ExclusiveUpperEnd<K>) {
 		if !end.covers(&start) {
 			return;
 		}
@@ -56,7 +62,7 @@ impl CoverageSet {
 		let mut merged_end = end;
 		let mut doomed = Vec::new();
 
-		if let Some((left_start, left_end)) = self.intervals.range::<EncodedKey, _>(..=&start).next_back()
+		if let Some((left_start, left_end)) = self.intervals.range::<K, _>(..=&start).next_back()
 			&& left_end.cmp_key(&start) != Ordering::Less
 		{
 			merged_start = left_start.clone();
@@ -64,7 +70,7 @@ impl CoverageSet {
 			doomed.push(left_start.clone());
 		}
 
-		for (next_start, next_end) in self.intervals.range::<EncodedKey, _>((Excluded(&start), Unbounded)) {
+		for (next_start, next_end) in self.intervals.range::<K, _>((Excluded(&start), Unbounded)) {
 			if merged_end.cmp_key(next_start) == Ordering::Less {
 				break;
 			}
@@ -78,20 +84,20 @@ impl CoverageSet {
 		self.intervals.insert(merged_start, merged_end);
 	}
 
-	pub fn drop_overlapping(&mut self, start: &EncodedKey, end: &ExclusiveUpperEnd) {
+	pub fn drop_overlapping(&mut self, start: &K, end: &ExclusiveUpperEnd<K>) {
 		if !end.covers(start) {
 			return;
 		}
 
 		let mut doomed = Vec::new();
 
-		if let Some((left_start, left_end)) = self.intervals.range::<EncodedKey, _>(..=start).next_back()
+		if let Some((left_start, left_end)) = self.intervals.range::<K, _>(..=start).next_back()
 			&& left_end.cmp_key(start) == Ordering::Greater
 		{
 			doomed.push(left_start.clone());
 		}
 
-		for (next_start, _) in self.intervals.range::<EncodedKey, _>((Excluded(start), Unbounded)) {
+		for (next_start, _) in self.intervals.range::<K, _>((Excluded(start), Unbounded)) {
 			if end.cmp_key(next_start) != Ordering::Greater {
 				break;
 			}
@@ -103,24 +109,24 @@ impl CoverageSet {
 		}
 	}
 
-	pub fn shrink_key(&mut self, key: &EncodedKey) {
-		self.shrink_range(key, &ExclusiveUpperEnd::Key(successor(key)));
+	pub fn shrink_key(&mut self, key: &K) {
+		self.shrink_range(key, &ExclusiveUpperEnd::just_past(key));
 	}
 
-	pub fn shrink_range(&mut self, start: &EncodedKey, end: &ExclusiveUpperEnd) {
+	pub fn shrink_range(&mut self, start: &K, end: &ExclusiveUpperEnd<K>) {
 		if !end.covers(start) {
 			return;
 		}
 
 		let mut doomed = Vec::new();
 
-		if let Some((left_start, left_end)) = self.intervals.range::<EncodedKey, _>(..=start).next_back()
+		if let Some((left_start, left_end)) = self.intervals.range::<K, _>(..=start).next_back()
 			&& left_end.cmp_key(start) == Ordering::Greater
 		{
 			doomed.push(left_start.clone());
 		}
 
-		for (next_start, _) in self.intervals.range::<EncodedKey, _>((Excluded(start), Unbounded)) {
+		for (next_start, _) in self.intervals.range::<K, _>((Excluded(start), Unbounded)) {
 			if end.cmp_key(next_start) != Ordering::Greater {
 				break;
 			}
@@ -129,7 +135,7 @@ impl CoverageSet {
 
 		for key in doomed {
 			let old_end = self.intervals.remove(&key).unwrap();
-			if key.as_slice() < start.as_slice() {
+			if &key < start {
 				self.intervals.insert(key, ExclusiveUpperEnd::Key(start.clone()));
 			}
 			if *end < old_end {
@@ -139,12 +145,12 @@ impl CoverageSet {
 		}
 	}
 
-	pub fn contains(&self, key: &EncodedKey) -> bool {
+	pub fn contains(&self, key: &K) -> bool {
 		self.covering(key).is_some()
 	}
 
-	pub fn covering(&self, key: &EncodedKey) -> Option<Interval> {
-		self.intervals.range::<EncodedKey, _>(..=key).next_back().and_then(|(start, end)| {
+	pub fn covering(&self, key: &K) -> Option<Interval<K>> {
+		self.intervals.range::<K, _>(..=key).next_back().and_then(|(start, end)| {
 			if end.covers(key) {
 				Some(Interval::new(start.clone(), end.clone()))
 			} else {
@@ -153,19 +159,19 @@ impl CoverageSet {
 		})
 	}
 
-	pub fn overlapping(&self, lo: &EncodedKey, hi: &ExclusiveUpperEnd) -> Vec<Interval> {
+	pub fn overlapping(&self, lo: &K, hi: &ExclusiveUpperEnd<K>) -> Vec<Interval<K>> {
 		let mut clipped = Vec::new();
 		if !hi.covers(lo) {
 			return clipped;
 		}
 
-		if let Some((_, end)) = self.intervals.range::<EncodedKey, _>(..=lo).next_back()
+		if let Some((_, end)) = self.intervals.range::<K, _>(..=lo).next_back()
 			&& end.cmp_key(lo) == Ordering::Greater
 		{
 			clipped.push(Interval::new(lo.clone(), end.clone().min(hi.clone())));
 		}
 
-		for (start, end) in self.intervals.range::<EncodedKey, _>((Excluded(lo), Unbounded)) {
+		for (start, end) in self.intervals.range::<K, _>((Excluded(lo), Unbounded)) {
 			if hi.cmp_key(start) != Ordering::Greater {
 				break;
 			}
@@ -175,7 +181,7 @@ impl CoverageSet {
 		clipped
 	}
 
-	pub fn gaps(&self, lo: &EncodedKey, hi: &ExclusiveUpperEnd) -> Vec<Interval> {
+	pub fn gaps(&self, lo: &K, hi: &ExclusiveUpperEnd<K>) -> Vec<Interval<K>> {
 		let mut holes = Vec::new();
 		if !hi.covers(lo) {
 			return holes;
@@ -187,7 +193,7 @@ impl CoverageSet {
 				Some(at) => at,
 				None => break,
 			};
-			if at.as_slice() < covered.start.as_slice() {
+			if at < covered.start {
 				holes.push(Interval::new(at, ExclusiveUpperEnd::Key(covered.start.clone())));
 			}
 			cursor = covered.end.key().cloned();
@@ -202,18 +208,18 @@ impl CoverageSet {
 		holes
 	}
 
-	pub fn iter(&self) -> impl Iterator<Item = Interval> + '_ {
+	pub fn iter(&self) -> impl Iterator<Item = Interval<K>> + '_ {
 		self.intervals.iter().map(|(start, end)| Interval::new(start.clone(), end.clone()))
 	}
 
 	pub fn bytes(&self) -> u64 {
-		let per_entry = mem::size_of::<EncodedKey>() + mem::size_of::<ExclusiveUpperEnd>();
+		let per_entry = mem::size_of::<K>() + mem::size_of::<ExclusiveUpperEnd<K>>();
 		self.intervals
 			.iter()
 			.map(|(start, end)| {
 				per_entry
-					+ start.heap_bytes() + match end {
-					ExclusiveUpperEnd::Key(key) => key.heap_bytes(),
+					+ start.heap_size() + match end {
+					ExclusiveUpperEnd::Key(key) => key.heap_size(),
 					ExclusiveUpperEnd::Top => 0,
 				}
 			})
@@ -236,23 +242,27 @@ impl CoverageSet {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_core::key::typed::{ExclusiveUpperEnd, Key, MultiKey};
 
 	use super::{CoverageSet, Interval};
-	use crate::coverage::{ExclusiveUpperEnd, successor};
 
 	fn k(bytes: &str) -> EncodedKey {
 		EncodedKey::new(bytes)
 	}
 
-	fn iv(start: &str, end: &str) -> Interval {
+	fn successor_of(key: &EncodedKey) -> EncodedKey {
+		key.successor().expect("a byte string has no greatest element, so it always has a successor")
+	}
+
+	fn iv(start: &str, end: &str) -> Interval<MultiKey> {
 		Interval::new(k(start), ExclusiveUpperEnd::of(end))
 	}
 
-	fn open(start: &str) -> Interval {
+	fn open(start: &str) -> Interval<MultiKey> {
 		Interval::new(k(start), ExclusiveUpperEnd::Top)
 	}
 
-	fn snapshot(set: &CoverageSet) -> Vec<Interval> {
+	fn snapshot(set: &CoverageSet<MultiKey>) -> Vec<Interval<MultiKey>> {
 		set.iter().collect()
 	}
 
@@ -307,10 +317,10 @@ mod tests {
 		// Key "b" itself is uncovered, so merging across it would overstate RAM.
 		let mut set = CoverageSet::new();
 		set.extend(k("a"), ExclusiveUpperEnd::of("b"));
-		set.extend(successor(&k("b")), ExclusiveUpperEnd::of("c"));
+		set.extend(successor_of(&k("b")), ExclusiveUpperEnd::of("c"));
 		assert_eq!(
 			snapshot(&set),
-			vec![iv("a", "b"), Interval::new(successor(&k("b")), ExclusiveUpperEnd::of("c"))]
+			vec![iv("a", "b"), Interval::new(successor_of(&k("b")), ExclusiveUpperEnd::of("c"))]
 		);
 	}
 
@@ -352,7 +362,7 @@ mod tests {
 		set.shrink_key(&k("m"));
 		assert_eq!(
 			snapshot(&set),
-			vec![iv("a", "m"), Interval::new(successor(&k("m")), ExclusiveUpperEnd::of("z"))]
+			vec![iv("a", "m"), Interval::new(successor_of(&k("m")), ExclusiveUpperEnd::of("z"))]
 		);
 	}
 
@@ -362,14 +372,14 @@ mod tests {
 		let mut set = CoverageSet::new();
 		set.extend(k("a"), ExclusiveUpperEnd::of("z"));
 		set.shrink_key(&k("a"));
-		assert_eq!(snapshot(&set), vec![Interval::new(successor(&k("a")), ExclusiveUpperEnd::of("z"))]);
+		assert_eq!(snapshot(&set), vec![Interval::new(successor_of(&k("a")), ExclusiveUpperEnd::of("z"))]);
 	}
 
 	#[test]
 	fn shrink_key_removes_a_single_key_interval_entirely() {
 		// An interval reduced to nothing must vanish, not linger as a zero-width entry.
 		let mut set = CoverageSet::new();
-		set.extend(k("b"), ExclusiveUpperEnd::Key(successor(&k("b"))));
+		set.extend(k("b"), ExclusiveUpperEnd::Key(successor_of(&k("b"))));
 		set.shrink_key(&k("b"));
 		assert_eq!(snapshot(&set), vec![]);
 	}

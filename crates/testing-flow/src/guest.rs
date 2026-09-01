@@ -10,7 +10,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::RemoveVisibility,
 	interface::{catalog::flow::OperatorId, change::Change},
-	key::{Key, kind::KeyKind, operator_state::GroupStateKey},
+	key::{Key, kind::KeyKind, operator::state::GroupStateKey},
 	row::Row,
 	value::column::columns::Columns,
 };

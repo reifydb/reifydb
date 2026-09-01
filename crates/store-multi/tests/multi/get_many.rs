@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, store::MultiVersionCommit},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 	},
 };
 use reifydb_store_multi::store::StandardMultiStore;

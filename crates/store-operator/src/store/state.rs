@@ -10,20 +10,11 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 #[cfg(reifydb_assertions)]
-use reifydb_core::key::operator_state::GroupId;
+use reifydb_core::key::operator::state::GroupId;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-};
-use reifydb_store::{
-	coverage::{
-		ExclusiveUpperEnd,
-		cursor::{RangeCursor, ServedChunk},
-		interval::Interval,
-		plan::Segment,
-		successor,
-	},
-	tier::range::{Materialize, proven_span, scan_range},
+	key::operator::{keyspace::dispatch, state::keyspace_inner_range_split},
 };
 #[cfg(reifydb_assertions)]
 use reifydb_value::value::row_number::RowNumber;
@@ -33,7 +24,10 @@ use tracing::instrument;
 #[cfg(reifydb_assertions)]
 use crate::types::DurablePre;
 use crate::{
-	store::{OperatorStore, StandardOperatorStore},
+	store::{
+		OperatorStore, StandardOperatorStore,
+		pager::{ExhaustedPager, PageSource, PersistentPager, PlanScan},
+	},
 	tier::resident::batch::DropMarker,
 	types::{BufferedState, OperatorBatch, OperatorWrite},
 };
@@ -204,7 +198,7 @@ impl StandardOperatorStore {
 
 	fn overwrite_range_read(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
 		if let Some(range) = self.range.as_ref() {
-			range.overwrite(operator, key.clone(), row.clone());
+			range.overwrite(operator, key, row.clone());
 		}
 		if let Some(point) = self.point.as_ref() {
 			point.invalidate(operator, key);
@@ -213,7 +207,7 @@ impl StandardOperatorStore {
 
 	fn insert_range_read(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
 		if let Some(range) = self.range.as_ref() {
-			range.insert(operator, key.clone(), row.clone());
+			range.insert(operator, key, row.clone());
 		}
 		if let Some(point) = self.point.as_ref() {
 			point.invalidate(operator, key);
@@ -231,7 +225,7 @@ impl StandardOperatorStore {
 
 	fn repair_absence(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
 		if let Some(point) = self.point.as_ref() {
-			point.overwrite(operator, key.clone(), row.clone());
+			point.overwrite(operator, key, row.clone());
 		}
 	}
 
@@ -302,9 +296,9 @@ impl StandardOperatorStore {
 			BufferedState::Tombstone | BufferedState::Dropped => return SizeProbe::Known(None),
 			BufferedState::Absent => {}
 		}
-		let Some(persistent) = self.persistent.as_ref() else {
+		if self.persistent.is_none() {
 			return SizeProbe::Known(None);
-		};
+		}
 		let cached = self.point.as_ref().and_then(|point| point.get(operator, key));
 		if let Some(Some(row)) = &cached {
 			return SizeProbe::Known(Some(row_size(row)));
@@ -313,9 +307,6 @@ impl StandardOperatorStore {
 			return SizeProbe::Known(authoritative.as_ref().map(row_size));
 		}
 		if cached.is_some() {
-			return SizeProbe::Known(None);
-		}
-		if !persistent.filter().may_contain((operator, key)) {
 			return SizeProbe::Known(None);
 		}
 		SizeProbe::Persistent
@@ -365,9 +356,6 @@ impl StandardOperatorStore {
 			if cached.is_some() {
 				continue;
 			}
-			if !persistent.filter().may_contain((operator, key)) {
-				continue;
-			}
 			fetch.push((index, key));
 		}
 		if fetch.is_empty() {
@@ -383,7 +371,7 @@ impl StandardOperatorStore {
 		for ((index, key), filling) in fetch.into_iter().zip(filling) {
 			let row = found.get(key).cloned();
 			if filling && let Some(point) = self.point.as_ref() {
-				point.finish_fill(operator, key.clone(), row.clone());
+				point.finish_fill(operator, key, row.clone());
 			}
 			results[index] = row;
 		}
@@ -405,13 +393,10 @@ impl StandardOperatorStore {
 		if cached.is_some() {
 			return None;
 		}
-		if !persistent.filter().may_contain((operator, key)) {
-			return None;
-		}
 		match self.point.as_ref() {
 			Some(point) if point.begin_fill(operator, key) => {
 				let row = persistent.get(operator, key);
-				point.finish_fill(operator, key.clone(), row.clone());
+				point.finish_fill(operator, key, row.clone());
 				row
 			}
 			_ => persistent.get(operator, key),
@@ -444,13 +429,10 @@ impl StandardOperatorStore {
 		if cached.is_some() {
 			return false;
 		}
-		if !persistent.filter().may_contain((operator, key)) {
-			return false;
-		}
 		match self.point.as_ref() {
 			Some(point) if point.begin_fill(operator, key) => {
 				let row = persistent.get(operator, key);
-				point.finish_fill(operator, key.clone(), row.clone());
+				point.finish_fill(operator, key, row.clone());
 				row.is_some()
 			}
 			_ => persistent.contains(operator, key),
@@ -468,24 +450,11 @@ impl StandardOperatorStore {
 		if let Some((key, _)) = buffered.last() {
 			buffer_lower = Bound::Excluded(key.clone());
 		}
-		let mut exhausted = snapshot.dropped;
+		let mut source = self.page_source(operator, &range, snapshot.dropped);
 		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 		let mut buffer_index = 0usize;
 		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 		let mut page_index = 0usize;
-		let mut lower = range.start.clone();
-
-		let tier = self.range.as_ref();
-		let scan = if exhausted {
-			None
-		} else {
-			tier.and_then(|tier| tier.plan_scan(operator, &range))
-		};
-		let mut segment_index = 0usize;
-		let mut cursor = RangeCursor::new();
-		let mut pending: Option<(Interval, bool, usize)> = None;
-		let mut claim_start: Option<EncodedKey> = None;
-		let mut materializing = true;
 
 		while items.len() < target {
 			if buffer_index == buffered.len() && !buffer_exhausted {
@@ -503,154 +472,9 @@ impl StandardOperatorStore {
 				buffer_index = 0;
 				continue;
 			}
-			if page_index == page.len() && !exhausted {
-				page = Vec::new();
+			if page_index == page.len() && !source.is_exhausted() {
+				page = source.next_page(limit);
 				page_index = 0;
-
-				match (tier, scan.as_ref()) {
-					(Some(tier), Some(scan)) => loop {
-						if let Some((interval, materializable, consumed)) = pending.take() {
-							let Some(persistent) = self.persistent.as_ref() else {
-								exhausted = true;
-								break;
-							};
-							let from = match cursor.last_key() {
-								Some(key) => Bound::Excluded(key.clone()),
-								None => Bound::Included(interval.start.clone()),
-							};
-							let read = scan_range(&interval);
-							let batch = persistent.range_batch(
-								operator,
-								EncodedKeyRange::new(from, read.end),
-								limit,
-							);
-							let complete = !batch.has_more || batch.items.is_empty();
-
-							if materializable && materializing {
-								let start = claim_start
-									.clone()
-									.unwrap_or_else(|| interval.start.clone());
-								let span = Interval::new(start, interval.end.clone());
-								let last = batch.items.last().map(|(key, _)| key);
-								if let Some(proven) = proven_span(&span, last, complete)
-								{
-									match tier.materialize(
-										scan,
-										&proven,
-										&batch.items,
-									) {
-										Materialize::Materialized
-										| Materialize::NothingCacheable => {
-											claim_start = batch
-												.items
-												.last()
-												.map(|(key, _)| {
-													successor(key)
-												});
-										}
-										Materialize::Refused => {
-											materializing = false
-										}
-									}
-								}
-							}
-
-							if let Some((key, _)) = batch.items.last() {
-								cursor.advance(key.clone());
-							}
-							if complete {
-								segment_index += consumed;
-								cursor.reset();
-								claim_start = None;
-							} else {
-								pending = Some((interval, materializable, consumed));
-							}
-
-							if batch.items.is_empty() {
-								continue;
-							}
-							page = batch.items;
-							break;
-						}
-
-						let Some(segment) = scan.segments().get(segment_index) else {
-							exhausted = true;
-							break;
-						};
-						match segment {
-							Segment::Resident(interval) => {
-								match tier.serve(
-									scan,
-									interval,
-									&mut cursor,
-									limit as usize,
-								) {
-									ServedChunk::Served(rows) => {
-										let done = cursor.is_exhausted();
-										assert!(
-											done || !rows.is_empty(),
-											"a served chunk that reports more work must carry a row, or the cursor never advances"
-										);
-										if done {
-											segment_index += 1;
-											cursor.reset();
-										}
-										if rows.is_empty() {
-											continue;
-										}
-										page = rows;
-										break;
-									}
-									ServedChunk::Gap => {
-										pending = Some((
-											interval.clone(),
-											false,
-											1,
-										));
-									}
-								}
-							}
-							Segment::Gap {
-								interval,
-								..
-							} => {
-								let mut span = interval.clone();
-								let mut consumed = 1usize;
-								while let Some(Segment::Gap {
-									interval: next,
-									..
-								}) = scan.segments().get(segment_index + consumed)
-								{
-									if span.end
-										!= ExclusiveUpperEnd::Key(
-											next.start.clone(),
-										) {
-										break;
-									}
-									span.end = next.end.clone();
-									consumed += 1;
-								}
-								pending = Some((span, true, consumed));
-							}
-						}
-					},
-					_ => {
-						let Some(persistent) = self.persistent.as_ref() else {
-							exhausted = true;
-							continue;
-						};
-						let batch = persistent.range_batch(
-							operator,
-							EncodedKeyRange::new(lower.clone(), range.end.clone()),
-							limit,
-						);
-						exhausted = !batch.has_more || batch.items.is_empty();
-						if let Some((key, _)) = batch.items.last() {
-							lower = Bound::Excluded(key.clone());
-						}
-						page = batch.items;
-					}
-				}
 				continue;
 			}
 
@@ -696,6 +520,37 @@ impl StandardOperatorStore {
 			items,
 			has_more,
 		}
+	}
+
+	fn page_source<'a>(
+		&'a self,
+		operator: OperatorId,
+		range: &EncodedKeyRange,
+		dropped: bool,
+	) -> Box<dyn PageSource + 'a> {
+		if dropped {
+			return Box::new(ExhaustedPager);
+		}
+		let persistent = self.persistent.as_ref();
+		let Some((group, keyspace, start, end)) = keyspace_inner_range_split(range) else {
+			return Box::new(PersistentPager::new(operator, persistent, range));
+		};
+		let Some(tiers) = self.range.as_ref() else {
+			return Box::new(PersistentPager::new(operator, persistent, range));
+		};
+		dispatch(
+			keyspace,
+			PlanScan {
+				tiers,
+				operator,
+				group,
+				persistent,
+				start,
+				end,
+			},
+		)
+		.flatten()
+		.unwrap_or_else(|| Box::new(PersistentPager::new(operator, persistent, range)))
 	}
 
 	#[instrument(name = "store::operator::state_last_iter", level = "trace", skip(self, range), fields(operator = operator.0))]

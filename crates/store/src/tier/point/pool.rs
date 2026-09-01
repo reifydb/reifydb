@@ -11,7 +11,6 @@ use std::{
 };
 
 use hashbrown::HashTable;
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	util::budget::MemoryBudget,
@@ -24,8 +23,8 @@ use crate::tier::point::FillInterlock;
 #[cfg(test)]
 use crate::tier::point::PointKey;
 use crate::tier::point::{
-	EVICTION_SAMPLE, Entry, PointConfig, PointDomain, PointMetrics, PointShardMetrics, PointSlotMetrics, PointTier,
-	PoolInner, Shard, entry_footprint, entry_hash,
+	EVICTION_SAMPLE, Entry, PointBucketMetrics, PointConfig, PointDomain, PointMetrics, PointShardMetrics,
+	PointTier, PoolInner, Shard, entry_footprint, entry_hash,
 };
 
 impl<D: PointDomain> PointTier<D> {
@@ -53,19 +52,19 @@ impl<D: PointDomain> PointTier<D> {
 		})
 	}
 
-	pub fn shard_index(&self, dimension: D::Dimension, key: &EncodedKey) -> usize {
+	pub fn shard_index(&self, dimension: D::Dimension, key: &D::Key) -> usize {
 		let mut hasher = DefaultHasher::new();
 		dimension.hash(&mut hasher);
-		key.as_slice().hash(&mut hasher);
+		key.hash(&mut hasher);
 		(hasher.finish() % self.inner.shards.len() as u64) as usize
 	}
 
-	pub(super) fn shard_at(&self, dimension: D::Dimension, key: &EncodedKey) -> &Mutex<Shard<D>> {
+	pub(super) fn shard_at(&self, dimension: D::Dimension, key: &D::Key) -> &Mutex<Shard<D>> {
 		&self.inner.shards[self.shard_index(dimension, key)]
 	}
 
 	#[cfg(test)]
-	pub(super) fn shard_for(&self, key: &PointKey<D::Dimension>) -> &Mutex<Shard<D>> {
+	pub(super) fn shard_for(&self, key: &PointKey<D::Dimension, D::Key>) -> &Mutex<Shard<D>> {
 		self.shard_at(key.dimension, &key.key)
 	}
 
@@ -73,16 +72,16 @@ impl<D: PointDomain> PointTier<D> {
 		self.inner.shards.iter()
 	}
 
-	pub(super) fn charge_excluded_miss(&self, slot: usize) {
-		self.inner.excluded_misses[slot].fetch_add(1, Ordering::Relaxed);
+	pub(super) fn charge_excluded_miss(&self, bucket: usize) {
+		self.inner.excluded_misses[bucket].fetch_add(1, Ordering::Relaxed);
 	}
 
-	fn excluded_misses(&self, slot: usize) -> u64 {
-		self.inner.excluded_misses[slot].load(Ordering::Relaxed)
+	fn excluded_misses(&self, bucket: usize) -> u64 {
+		self.inner.excluded_misses[bucket].load(Ordering::Relaxed)
 	}
 
 	fn excluded_misses_total(&self) -> u64 {
-		self.inner.excluded_misses.iter().map(|slot| slot.load(Ordering::Relaxed)).sum()
+		self.inner.excluded_misses.iter().map(|counter| counter.load(Ordering::Relaxed)).sum()
 	}
 
 	pub fn resident_bytes(&self) -> ByteSize {
@@ -132,34 +131,34 @@ impl<D: PointDomain> PointTier<D> {
 		out
 	}
 
-	pub fn slot_metrics(&self) -> Vec<PointSlotMetrics<D>> {
-		let mut used = vec![0u64; D::SLOTS];
-		let mut entries = vec![0usize; D::SLOTS];
-		let mut counters = vec![PointMetrics::default(); D::SLOTS];
+	pub fn bucket_metrics(&self) -> Vec<PointBucketMetrics<D>> {
+		let mut used = vec![0u64; D::METRIC_BUCKETS];
+		let mut entries = vec![0usize; D::METRIC_BUCKETS];
+		let mut counters = vec![PointMetrics::default(); D::METRIC_BUCKETS];
 
 		for shard in self.all_shards() {
 			let shard = shard.lock();
 			for entry in &shard.entries {
-				let slot = entry_slot::<D>(entry);
-				used[slot] += entry_footprint::<D>(&entry.key, &entry.row) as u64;
-				entries[slot] += 1;
+				let bucket = entry_bucket::<D>(entry);
+				used[bucket] += entry_footprint::<D>(&entry.key, &entry.row) as u64;
+				entries[bucket] += 1;
 			}
-			for (slot, source) in shard.slot_metrics.iter().enumerate() {
-				accumulate(&mut counters[slot], source);
+			for (bucket, source) in shard.bucket_metrics.iter().enumerate() {
+				accumulate(&mut counters[bucket], source);
 			}
 		}
-		for (slot, counter) in counters.iter_mut().enumerate() {
-			counter.misses += self.excluded_misses(slot);
+		for (bucket, counter) in counters.iter_mut().enumerate() {
+			counter.misses += self.excluded_misses(bucket);
 		}
 
 		let empty = PointMetrics::default();
-		(0..D::SLOTS)
-			.filter(|slot| entries[*slot] > 0 || counters[*slot] != empty)
-			.map(|slot| PointSlotMetrics {
-				slot: D::slot_at(slot),
-				used: ByteSize::from_bytes(used[slot]),
-				entries: entries[slot],
-				counters: counters[slot],
+		(0..D::METRIC_BUCKETS)
+			.filter(|bucket| entries[*bucket] > 0 || counters[*bucket] != empty)
+			.map(|bucket| PointBucketMetrics {
+				bucket: D::metric_bucket_at(bucket),
+				used: ByteSize::from_bytes(used[bucket]),
+				entries: entries[bucket],
+				counters: counters[bucket],
 			})
 			.collect()
 	}
@@ -230,8 +229,8 @@ impl<D: PointDomain> MetricsCollector for PointTier<D> {
 				shard.lock().budget.used(),
 			));
 		}
-		for keyspace in self.slot_metrics() {
-			let scope = format!("{}::keyspace::{}", D::SCOPE, D::slot_name(keyspace.slot));
+		for keyspace in self.bucket_metrics() {
+			let scope = format!("{}::keyspace::{}", D::SCOPE, D::metric_bucket_name(keyspace.bucket));
 			out.push(MetricsSample::bytes(scope.clone(), "used_bytes", keyspace.used));
 			out.push(MetricsSample::count(scope.clone(), "entries", keyspace.entries as u64));
 			out.push(MetricsSample::counter(scope.clone(), "hits", keyspace.counters.hits));
@@ -251,12 +250,12 @@ fn accumulate(target: &mut PointMetrics, source: &PointMetrics) {
 	target.fills_duplicate += source.fills_duplicate;
 }
 
-fn entry_slot<D: PointDomain>(entry: &Entry<D>) -> usize {
-	D::slot(&entry.key.key).expect("a resident entry carries a slot, or it was admitted past the guard")
+fn entry_bucket<D: PointDomain>(entry: &Entry<D>) -> usize {
+	D::metric_bucket(&entry.key.key).expect("a resident entry carries a bucket, or it was admitted past the guard")
 }
 
 fn build_excluded_misses<D: PointDomain>() -> Box<[AtomicU64]> {
-	(0..D::SLOTS).map(|_| AtomicU64::new(0)).collect::<Vec<_>>().into_boxed_slice()
+	(0..D::METRIC_BUCKETS).map(|_| AtomicU64::new(0)).collect::<Vec<_>>().into_boxed_slice()
 }
 
 fn build_shards<D: PointDomain>(config: PointConfig, shard_bytes: ByteSize) -> Box<[Mutex<Shard<D>>]> {
@@ -272,7 +271,7 @@ fn build_shards<D: PointDomain>(config: PointConfig, shard_bytes: ByteSize) -> B
 				next_tick: 0,
 				rng: 0x9E37_79B9_7F4A_7C15 ^ (index as u64 + 1),
 				metrics: PointMetrics::default(),
-				slot_metrics: vec![PointMetrics::default(); D::SLOTS].into_boxed_slice(),
+				bucket_metrics: vec![PointMetrics::default(); D::METRIC_BUCKETS].into_boxed_slice(),
 			})
 		})
 		.collect::<Vec<_>>()
@@ -336,10 +335,10 @@ impl<D: PointDomain> Shard<D> {
 			let Some(victim) = self.pick_victim() else {
 				break;
 			};
-			let slot = entry_slot::<D>(&self.entries[victim]);
+			let bucket = entry_bucket::<D>(&self.entries[victim]);
 			self.remove_at(victim);
 			self.metrics.evictions += 1;
-			self.slot_metrics[slot].evictions += 1;
+			self.bucket_metrics[bucket].evictions += 1;
 		}
 	}
 }

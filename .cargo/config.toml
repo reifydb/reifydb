@@ -7,6 +7,9 @@ directory = "vendor"
 [net]
 offline = true
 
+[env]
+REIFYDB_ASSERTIONS = "1"
+
 [build]
 rustc-wrapper = "sccache"
 

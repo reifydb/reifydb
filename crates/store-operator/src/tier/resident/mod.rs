@@ -3,7 +3,6 @@
 
 pub mod batch;
 pub mod flush;
-pub mod state_map;
 
 mod census;
 mod checkpoint;
@@ -43,8 +42,8 @@ use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
 use crate::{
 	tier::{
 		persistent::OperatorPersistentTier,
-		point::OperatorPointTier,
-		range::OperatorRangeTier,
+		point::tiers::PointTiers,
+		range::tiers::RangeTiers,
 		resident::{
 			batch::{DropMarker, FlushBatch},
 			flush::actor::FlushMessage,
@@ -102,8 +101,8 @@ struct PendingGroup {
 
 struct OperatorSinks {
 	persistent: OperatorPersistentTier,
-	point: Option<OperatorPointTier>,
-	range: Option<OperatorRangeTier>,
+	point: Option<PointTiers>,
+	range: Option<RangeTiers>,
 }
 
 pub struct Shared {
@@ -147,7 +146,7 @@ impl Shared {
 		if let Some(slot) = self.slot(operator) {
 			return slot;
 		}
-		Arc::clone(self.slots.entry(operator).or_default().value())
+		Arc::clone(self.slots.entry(operator).or_insert_with(|| Arc::new(Slot::new(operator))).value())
 	}
 
 	pub(crate) fn operators(&self) -> Vec<OperatorId> {
@@ -203,8 +202,8 @@ impl OperatorResidentState {
 	pub fn attach_sinks(
 		&self,
 		persistent: OperatorPersistentTier,
-		point: Option<OperatorPointTier>,
-		range: Option<OperatorRangeTier>,
+		point: Option<PointTiers>,
+		range: Option<RangeTiers>,
 	) {
 		let _ = self.shared.sinks.set(OperatorSinks {
 			persistent,
@@ -492,31 +491,7 @@ impl OperatorResidentState {
 			let Some(slot) = self.shared.slot(operator) else {
 				continue;
 			};
-			let mut inner = slot.inner.lock();
-			let Some(pending) = inner.in_flight.take() else {
-				continue;
-			};
-			let SlotInner {
-				live,
-				census,
-				..
-			} = &mut *inner;
-			for (key, entry) in pending.state.iter() {
-				if live.state.contains_key(key) {
-					continue;
-				}
-				if let Some(row) = &entry.post {
-					census.retract_state(key, row.bytes().len() as u64);
-				}
-			}
-			for (key, entry) in pending.join_expiries.iter() {
-				if live.join_expiries.contains_key(key) {
-					continue;
-				}
-				if entry.is_some() {
-					census.retract_join_expiry();
-				}
-			}
+			slot.inner.lock().in_flight.take();
 		}
 		global.in_flight_checkpoints.clear();
 		global.in_flight_drops.clear();
@@ -626,32 +601,12 @@ fn drop_operator(marker: &DropMarker) -> OperatorId {
 	}
 }
 
-pub(crate) fn record_state(
-	inner: &mut SlotInner,
-	key: EncodedKey,
-	post: Option<EncodedPodRow>,
-	durable_pre: DurablePre,
-) {
-	let previous = inner.merged_value_bytes(&key);
-	let incoming = post.as_ref().map(|row| row.bytes().len() as u64);
-	if let Some(bytes) = previous {
-		inner.census.retract_state(&key, bytes);
-	}
-	if let Some(bytes) = incoming {
-		inner.census.admit_state(&key, bytes);
-	}
-	inner.live.record_state(key, post, durable_pre);
+pub(crate) fn record_state(inner: &mut SlotInner, key: EncodedKey, post: Option<EncodedPodRow>) {
+	inner.live.record_state(key, post);
 }
 
 pub(crate) fn record_join_expiry(inner: &mut SlotInner, key: SlotJoinKey, expiry: Option<u64>, durable: bool) {
-	let before = inner.merged_join_expiry(&key);
 	inner.live.record_join_expiry(key, expiry, durable);
-	let after = inner.merged_join_expiry(&key);
-	match (before, after) {
-		(false, true) => inner.census.admit_join_expiry(),
-		(true, false) => inner.census.retract_join_expiry(),
-		_ => {}
-	}
 }
 
 fn apply_write(inner: &mut SlotInner, write: &OperatorWrite) {
@@ -660,18 +615,16 @@ fn apply_write(inner: &mut SlotInner, write: &OperatorWrite) {
 			key,
 			post,
 			..
-		} => record_state(inner, key.clone(), Some(post.clone()), DurablePre::Absent),
+		} => record_state(inner, key.clone(), Some(post.clone())),
 		OperatorWrite::Replace {
 			key,
-			pre_value_bytes,
 			post,
 			..
-		} => record_state(inner, key.clone(), Some(post.clone()), DurablePre::Present(*pre_value_bytes)),
+		} => record_state(inner, key.clone(), Some(post.clone())),
 		OperatorWrite::Remove {
 			key,
-			pre,
 			..
-		} => record_state(inner, key.clone(), None, *pre),
+		} => record_state(inner, key.clone(), None),
 		OperatorWrite::JoinExpiryInsert {
 			group,
 			side,
@@ -697,27 +650,24 @@ fn apply_write(inner: &mut SlotInner, write: &OperatorWrite) {
 }
 
 fn clear_drop(inner: &mut SlotInner, marker: DropMarker) {
-	let SlotInner {
-		live,
-		census,
-		..
-	} = inner;
+	let live = &mut inner.live;
 	match marker {
 		DropMarker::OperatorState(_) => {
-			live.clear_state(census);
-			live.retain_join_expiries(|_| false, census);
+			live.clear_state();
+			live.retain_join_expiries(|_| false);
 		}
 		DropMarker::JoinExpiriesOperator(_) => {
-			live.retain_join_expiries(|_| false, census);
+			live.retain_join_expiries(|_| false);
 		}
 		DropMarker::JoinExpiriesGroup(_, group) => {
-			live.retain_join_expiries(|(candidate, _, _)| *candidate != group, census);
+			live.retain_join_expiries(|(candidate, _, _)| *candidate != group);
 		}
 	}
 }
 
 fn take_all(inner: &mut SlotInner) -> OperatorLive {
 	let taken = OperatorLive {
+		operator: inner.live.operator,
 		state: mem::take(&mut inner.live.state),
 		join_expiries: mem::take(&mut inner.live.join_expiries),
 		durable_join_expiries: BTreeSet::new(),
@@ -734,16 +684,16 @@ fn take_all(inner: &mut SlotInner) -> OperatorLive {
 }
 
 fn merge_into_batch(batch: &mut FlushBatch, operator: OperatorId, taken: &OperatorLive) {
-	for (key, entry) in taken.state.iter() {
-		batch.state.insert(operator, key.clone(), entry.clone());
-	}
+	taken.state.for_each_entry(operator, |keyspace, group, suffix, entry| {
+		batch.state.record_bytes(operator, keyspace, group, suffix, entry.post.clone());
+	});
 	for ((group, side, row_number), entry) in taken.join_expiries.iter() {
 		batch.join_expiries.insert((operator, *group, *side, *row_number), *entry);
 	}
 	batch.bytes = batch.bytes.saturating_add(taken.bytes);
 }
 
-fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&OperatorRangeTier>, batch: &FlushBatch) {
+fn invalidate_flushed(point: Option<&PointTiers>, range: Option<&RangeTiers>, batch: &FlushBatch) {
 	for marker in &batch.drops {
 		match marker {
 			DropMarker::OperatorState(operator) => {
@@ -757,22 +707,24 @@ fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&Operator
 			DropMarker::JoinExpiriesOperator(_) | DropMarker::JoinExpiriesGroup(_, _) => {}
 		}
 	}
-	for ((operator, key), entry) in &batch.state {
-		match &entry.post {
-			Some(row) => {
-				if let Some(range) = range {
-					range.overwrite(operator, key.clone(), row.clone());
+	for operator in batch.state.operators() {
+		for (key, entry) in batch.state.encoded_entries(operator) {
+			match &entry.post {
+				Some(row) => {
+					if let Some(range) = range {
+						range.overwrite(operator, &key, row.clone());
+					}
+					if let Some(point) = point {
+						point.overwrite(operator, &key, row.clone());
+					}
 				}
-				if let Some(point) = point {
-					point.overwrite(operator, key.clone(), row.clone());
-				}
-			}
-			None => {
-				if let Some(range) = range {
-					range.retract(operator, key);
-				}
-				if let Some(point) = point {
-					point.invalidate(operator, key);
+				None => {
+					if let Some(range) = range {
+						range.retract(operator, &key);
+					}
+					if let Some(point) = point {
+						point.invalidate(operator, &key);
+					}
 				}
 			}
 		}

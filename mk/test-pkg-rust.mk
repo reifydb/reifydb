@@ -15,8 +15,10 @@ test-pkg-rust: test-rust-limit test-rust-regression
 test-rust-limit:
 	@echo "🧪 Running limit tests..."
 	@cd pkg/rust/tests/limit && MAKEFLAGS= cargo nextest run --release --no-fail-fast --status-level fail --final-status-level fail $(CARGO_OFFLINE)
+	@$(MAKE) --no-print-directory sweep-auto
 
 # Run regression tests  
 test-rust-regression:
 	@echo "🧪 Running regression tests..."
 	@cd pkg/rust/tests/regression && MAKEFLAGS= cargo nextest run --release --no-fail-fast --status-level fail --final-status-level fail $(CARGO_OFFLINE)
+	@$(MAKE) --no-print-directory sweep-auto

@@ -9,10 +9,10 @@ use std::{
 };
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::state::OperatorState,
+	key::encoded::EncodedKey,
+	row::operator::state::{OperatorState, StateCodec},
 };
-use reifydb_core::{key::operator_state::GroupId, metrics::heap::HeapSize, state::timer::StateStore};
+use reifydb_core::{key::operator::state::GroupId, metrics::heap::HeapSize, state::timer::StateStore};
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
@@ -20,8 +20,8 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, MetaSweep,
-			config::WindowEngineConfig, load_batch_meta, meta_key_for, persist_batch_meta,
+			AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, KeyspaceFamily, MetaSweep,
+			config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for, persist_batch_meta,
 			rolling::RollingBuckets,
 		},
 		span::Slot,
@@ -60,6 +60,7 @@ struct GroupSlot<S, Accumulator, SK, Output> {
 }
 
 pub struct RollingTopKEngine<G, S, Accumulator, SK, Output> {
+	family: KeyspaceFamily,
 	meta_sweep: MetaSweep,
 	_pd: PhantomData<(G, S, Accumulator, SK, Output)>,
 }
@@ -71,7 +72,7 @@ where
 	Accumulator: WindowAccumulator,
 	SK: Clone + Eq + Ord + Hash + Debug,
 	Output: Clone + Debug + PartialEq,
-	for<'a> &'a G: IntoEncodedKey,
+	G: StateCodec,
 	S: HeapSize,
 	SK: HeapSize,
 	Output: HeapSize,
@@ -79,8 +80,9 @@ where
 	RollingTopKEmit<SK, Output>: OperatorState,
 	RollingTopKBuffer<S, Accumulator>: OperatorState,
 {
-	pub fn new(_config: WindowEngineConfig) -> Self {
+	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
+			family: config.family(),
 			meta_sweep: MetaSweep::default(),
 			_pd: PhantomData,
 		}
@@ -131,7 +133,7 @@ where
 		let mut meta_loaded: MetaLoaded<G, S> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let batch = load_batch_meta(store, &meta_key_for(group))?;
+				let batch = load_batch_meta(store, &meta_key_for(group_hash(group)?))?;
 				meta_loaded.insert(group.clone(), batch);
 			}
 		}
@@ -163,7 +165,9 @@ where
 			state_lookup_keys.iter().map(|key| (GroupId::of(key), key.clone())).collect();
 		let resolved_rows: Vec<(GroupId, RowNumber)> = state_pairs
 			.iter()
-			.zip(store.get_or_create_row_numbers_for_pairs(&state_pairs)?)
+			.zip(store.get_or_create_row_numbers_for_groups(
+				&state_pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?)
 			.map(|((group_id, _), (row_number, _is_new))| (*group_id, row_number))
 			.collect();
 		reifydb_assertions! {
@@ -207,13 +211,15 @@ where
 		}
 		let pairs: Vec<(GroupId, EncodedKey)> =
 			lookup_keys.iter().map(|key| (GroupId::of(key), key.clone())).collect();
-		let resolved_rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+		let resolved_rows = store.get_or_create_row_numbers_for_groups(
+			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+		)?;
 		reifydb_assertions! {
 			let resolved = resolved_rows.len();
 			let requested = lookup_keys.len();
 			assert!(
 				resolved == requested,
-				"get_or_create_row_numbers_for_pairs returned {resolved} rows for {requested} group \
+				"get_or_create_row_numbers_for_groups returned {resolved} rows for {requested} group \
 				 keys; the zip below pairs resolve_order with the resolved rows by position, so a \
 				 length mismatch would leave a group that only carries late buckets without any \
 				 resolved state row and panic the slot lookup instead of ranking it"
@@ -255,9 +261,11 @@ where
 							.get(&group)
 							.expect("every group outside state_rows was resolved upfront"),
 					};
-					let buffer: RollingTopKBuffer<S, Accumulator> =
-						get_classified(store, &BufferKey::of_row(group_id, state_row_number))?
-							.unwrap_or_default();
+					let buffer: RollingTopKBuffer<S, Accumulator> = get_classified(
+						store,
+						&BufferKey::of_row(self.family, group_id, state_row_number),
+					)?
+					.unwrap_or_default();
 					let prior_emit: RollingTopKEmit<SK, Output> =
 						get_classified(store, &EmitKey::new(group_id, state_row_number))?
 							.unwrap_or_default();
@@ -392,11 +400,22 @@ where
 			}
 
 			if group_slot.buffer.is_empty() {
-				remove(store, &BufferKey::of_row(group_slot.group_id, group_slot.state_row_number))?;
+				remove(
+					store,
+					&BufferKey::of_row(
+						self.family,
+						group_slot.group_id,
+						group_slot.state_row_number,
+					),
+				)?;
 			} else {
 				put(
 					store,
-					&BufferKey::of_row(group_slot.group_id, group_slot.state_row_number),
+					&BufferKey::of_row(
+						self.family,
+						group_slot.group_id,
+						group_slot.state_row_number,
+					),
 					group_slot.buffer,
 				)?;
 			}
@@ -420,7 +439,7 @@ mod tests {
 	use std::collections::BTreeMap;
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::key::operator_state::GroupId;
+	use reifydb_core::key::operator::state::GroupId;
 	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
 
 	use super::{RollingTopKBuffer, RollingTopKEmit, RollingTopKEngine, TopKEmit};
@@ -523,7 +542,7 @@ mod tests {
 		let group = GroupId::of(&state_key(&1));
 		assert!(store.drop_group_data_entries() > 0, "precondition: the sweep must have erased something");
 		assert!(
-			store.contains_row_mapping(group, &ranked_key),
+			store.contains_guest_row_mapping(group, &ranked_key),
 			"precondition: the identity half must survive the data phase"
 		);
 
@@ -561,13 +580,16 @@ mod tests {
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		// the mapping is scoped to the group, not ROOT, and reclamation deletes by group prefix
 		let group = GroupId::of(&state_key(&1));
-		assert!(store.contains_row_mapping(group, &ranked_key), "publishing the ranking mints its mapping");
+		assert!(
+			store.contains_guest_row_mapping(group, &ranked_key),
+			"publishing the ranking mints its mapping"
+		);
 
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		assert!(
-			!store.contains_row_mapping(group, &ranked_key),
+			!store.contains_guest_row_mapping(group, &ranked_key),
 			"withdrawing the ranking must reclaim its row-number mapping, not leak it"
 		);
 	}

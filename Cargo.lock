@@ -3933,6 +3933,7 @@ dependencies = [
 name = "reifydb-testing"
 version = "0.9.0"
 dependencies = [
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-value",

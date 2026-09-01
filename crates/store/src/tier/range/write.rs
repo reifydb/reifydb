@@ -4,12 +4,11 @@
 #[cfg(test)]
 use std::cell::RefCell;
 
-use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::util::sorted::SortedVecMap;
+use reifydb_core::{key::typed::ExclusiveUpperEnd, util::sorted::SortedVecMap};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
-	coverage::{ExclusiveUpperEnd, entry::Entry, successor},
+	coverage::entry::Entry,
 	tier::range::{
 		Partition, PinnedCount, RangeDomain, RangeTier, Shard, account, entry_footprint, head::in_head_band,
 		partition_overhead,
@@ -35,9 +34,17 @@ fn write_interlock() {
 }
 
 impl<D: RangeDomain> RangeTier<D> {
-	pub fn overwrite(&self, dimension: D::Dimension, key: EncodedKey, row: D::Row) {
+	pub fn overwrite(&self, dimension: D::Dimension, key: D::Key, row: D::Row) {
+		self.overwrite_within(dimension, None, key, row)
+	}
+
+	pub fn overwrite_in(&self, dimension: D::Dimension, partition: D::Partition, key: D::Key, row: D::Row) {
+		self.overwrite_within(dimension, Some(partition), key, row)
+	}
+
+	fn overwrite_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: D::Key, row: D::Row) {
 		self.lower_head(dimension, &key);
-		let Some(partition) = self.cacheable(dimension, &key) else {
+		let Some(partition) = self.cacheable(dimension, confined, &key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
@@ -46,9 +53,17 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 	}
 
-	pub fn insert(&self, dimension: D::Dimension, key: EncodedKey, row: D::Row) {
+	pub fn insert(&self, dimension: D::Dimension, key: D::Key, row: D::Row) {
+		self.insert_within(dimension, None, key, row)
+	}
+
+	pub fn insert_in(&self, dimension: D::Dimension, partition: D::Partition, key: D::Key, row: D::Row) {
+		self.insert_within(dimension, Some(partition), key, row)
+	}
+
+	fn insert_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: D::Key, row: D::Row) {
 		self.lower_head(dimension, &key);
-		let Some(partition) = self.cacheable(dimension, &key) else {
+		let Some(partition) = self.cacheable(dimension, confined, &key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
@@ -62,8 +77,16 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.evict_to_capacity(index);
 	}
 
-	pub fn mark_deleted(&self, dimension: D::Dimension, key: &EncodedKey) {
-		let Some(partition) = self.cacheable(dimension, key) else {
+	pub fn mark_deleted(&self, dimension: D::Dimension, key: &D::Key) {
+		self.mark_deleted_within(dimension, None, key)
+	}
+
+	pub fn mark_deleted_in(&self, dimension: D::Dimension, partition: D::Partition, key: &D::Key) {
+		self.mark_deleted_within(dimension, Some(partition), key)
+	}
+
+	fn mark_deleted_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: &D::Key) {
+		let Some(partition) = self.cacheable(dimension, confined, key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
@@ -80,8 +103,16 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.discard(index, &partition, key);
 	}
 
-	pub fn retract(&self, dimension: D::Dimension, key: &EncodedKey) {
-		let Some(partition) = self.cacheable(dimension, key) else {
+	pub fn retract(&self, dimension: D::Dimension, key: &D::Key) {
+		self.retract_within(dimension, None, key)
+	}
+
+	pub fn retract_in(&self, dimension: D::Dimension, partition: D::Partition, key: &D::Key) {
+		self.retract_within(dimension, Some(partition), key)
+	}
+
+	fn retract_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: &D::Key) {
+		let Some(partition) = self.cacheable(dimension, confined, key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
@@ -90,8 +121,16 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 	}
 
-	pub fn invalidate(&self, dimension: D::Dimension, key: &EncodedKey) {
-		let Some(partition) = self.cacheable(dimension, key) else {
+	pub fn invalidate(&self, dimension: D::Dimension, key: &D::Key) {
+		self.invalidate_within(dimension, None, key)
+	}
+
+	pub fn invalidate_in(&self, dimension: D::Dimension, partition: D::Partition, key: &D::Key) {
+		self.invalidate_within(dimension, Some(partition), key)
+	}
+
+	fn invalidate_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: &D::Key) {
+		let Some(partition) = self.cacheable(dimension, confined, key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
@@ -113,9 +152,13 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	pub fn invalidate_operator(&self, dimension: D::Dimension) {
+		self.invalidate_dimensions_where(|candidate| *candidate == dimension)
+	}
+
+	pub fn invalidate_dimensions_where(&self, victim: impl Fn(&D::Dimension) -> bool) {
 		{
 			let mut coverage = self.coverage().write();
-			coverage.remove(dimension);
+			coverage.retain(|candidate| !victim(candidate));
 			self.record_retraction();
 		}
 		for shard in self.all_shards() {
@@ -126,24 +169,29 @@ impl<D: RangeDomain> RangeTier<D> {
 				..
 			} = &mut *shard;
 			let victims: Vec<D::Partition> =
-				partitions.keys().filter(|id| D::dimension(id) == dimension).copied().collect();
-			for victim in victims {
-				if let Some(target) = partitions.remove(&victim) {
+				partitions.keys().filter(|id| victim(&D::dimension(id))).copied().collect();
+			for target in victims {
+				if let Some(target) = partitions.remove(&target) {
 					budget.release(ByteSize::from_bytes(target.bytes as u64));
 				}
 			}
 		}
 	}
 
-	fn cacheable(&self, dimension: D::Dimension, key: &EncodedKey) -> Option<D::Partition> {
-		D::partition(dimension, key).filter(D::caches_ranges)
+	fn cacheable(
+		&self,
+		dimension: D::Dimension,
+		confined: Option<D::Partition>,
+		key: &D::Key,
+	) -> Option<D::Partition> {
+		confined.or_else(|| D::partition(dimension, key)).filter(D::caches_ranges)
 	}
 
 	fn participates(&self, index: usize, partition: &D::Partition) -> bool {
 		self.shard(index).lock().partitions.get(partition).is_some_and(|target| target.covered)
 	}
 
-	fn place(&self, index: usize, partition: &D::Partition, key: EncodedKey, entry: Entry<D::Row>) -> bool {
+	fn place(&self, index: usize, partition: &D::Partition, key: D::Key, entry: Entry<D::Row>) -> bool {
 		let mut shard = self.shard(index).lock();
 		let resident = shard.partitions.get(partition).map(|target| target.covered);
 		let admit = D::admits_unproven_writes()
@@ -205,11 +253,11 @@ impl<D: RangeDomain> RangeTier<D> {
 		true
 	}
 
-	fn claims(&self, partition: &D::Partition, key: &EncodedKey) -> bool {
+	fn claims(&self, partition: &D::Partition, key: &D::Key) -> bool {
 		self.coverage().read().contains(D::dimension(partition), key)
 	}
 
-	fn discard(&self, index: usize, partition: &D::Partition, key: &EncodedKey) {
+	fn discard(&self, index: usize, partition: &D::Partition, key: &D::Key) {
 		let mut shard = self.shard(index).lock();
 		let Shard {
 			partitions,
@@ -232,18 +280,16 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.record_retraction();
 	}
 
-	pub(super) fn withdraw(&self, dimension: D::Dimension, key: &EncodedKey) {
+	pub(super) fn withdraw(&self, dimension: D::Dimension, key: &D::Key) {
 		let mut coverage = self.coverage().write();
 		coverage.shrink_key(dimension, key);
-		if in_head_band::<D>(dimension, key)
-			&& coverage.head(dimension).is_some_and(|current| current.as_slice() > key.as_slice())
-		{
+		if in_head_band::<D>(dimension, key) && coverage.head(dimension).is_some_and(|current| current > key) {
 			coverage.set_head(dimension, key.clone());
 		}
 		self.record_retraction();
 	}
 
-	fn claim_island(&self, dimension: D::Dimension, key: &EncodedKey, token: u64) {
+	fn claim_island(&self, dimension: D::Dimension, key: &D::Key, token: u64) {
 		if self.coverage().read().contains(dimension, key) {
 			return;
 		}
@@ -251,7 +297,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		if !self.retractions_unchanged(token) {
 			return;
 		}
-		coverage.extend(dimension, key.clone(), ExclusiveUpperEnd::Key(successor(key)));
+		coverage.extend(dimension, key.clone(), ExclusiveUpperEnd::just_past(key));
 	}
 }
 
@@ -272,7 +318,10 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+		key::{
+			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+			typed::{ExclusiveUpperEnd, MultiKey},
+		},
 		util::sorted::SortedVecMap,
 	};
 	use reifydb_value::byte_size::ByteSize;
@@ -280,10 +329,8 @@ mod tests {
 	use super::arm_write_interlock;
 	use crate::{
 		coverage::{
-			ExclusiveUpperEnd,
 			entry::{Entry, PinnedCount},
 			interval::Interval,
-			successor,
 		},
 		tier::range::{
 			Partition, RangeConfig, RangeTier,
@@ -322,7 +369,7 @@ mod tests {
 		TestPartition {
 			dimension: operator,
 			group: GROUP_A,
-			slot: keyspace,
+			keyspace,
 		}
 	}
 
@@ -379,12 +426,12 @@ mod tests {
 		tier.coverage().read().contains(operator, at)
 	}
 
-	fn intervals(tier: &RangeTier<D>, operator: OperatorId) -> Vec<Interval> {
+	fn intervals(tier: &RangeTier<D>, operator: OperatorId) -> Vec<Interval<MultiKey>> {
 		tier.coverage().read().set(operator).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
-	fn island(at: &EncodedKey) -> Interval {
-		Interval::new(at.clone(), ExclusiveUpperEnd::Key(successor(at)))
+	fn island(at: &EncodedKey) -> Interval<MultiKey> {
+		Interval::new(at.clone(), ExclusiveUpperEnd::just_past(at))
 	}
 
 	#[test]

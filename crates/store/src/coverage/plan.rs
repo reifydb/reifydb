@@ -1,32 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::key::typed::{ExclusiveUpperEnd, Key};
 
-use crate::coverage::{
-	ExclusiveUpperEnd,
-	interval::{CoverageSet, Interval},
-};
+use crate::coverage::interval::{CoverageSet, Interval};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Segment {
-	Resident(Interval),
+pub enum Segment<K> {
+	Resident(Interval<K>),
 	Gap {
-		interval: Interval,
+		interval: Interval<K>,
 		exempt: bool,
 	},
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ScanPlan {
-	pub segments: Vec<Segment>,
+pub struct ScanPlan<K> {
+	pub segments: Vec<Segment<K>>,
 	pub gaps: usize,
 	pub exempted: usize,
 	pub degraded: bool,
 }
 
-impl ScanPlan {
-	pub fn full(interval: Interval) -> Self {
+impl<K: Key> ScanPlan<K> {
+	pub fn full(interval: Interval<K>) -> Self {
 		Self {
 			segments: vec![Segment::Gap {
 				interval,
@@ -50,9 +47,10 @@ impl ScanPlan {
 
 pub const DEFAULT_GAP_GUARD: usize = 4;
 
-pub fn plan<F>(coverage: &CoverageSet, lo: EncodedKey, hi: ExclusiveUpperEnd, guard: usize, exempt: F) -> ScanPlan
+pub fn plan<K, F>(coverage: &CoverageSet<K>, lo: K, hi: ExclusiveUpperEnd<K>, guard: usize, exempt: F) -> ScanPlan<K>
 where
-	F: Fn(&Interval) -> bool,
+	K: Key,
+	F: Fn(&Interval<K>) -> bool,
 {
 	if !hi.covers(&lo) {
 		return ScanPlan::empty();
@@ -125,7 +123,7 @@ impl GapHistogram {
 		Self::default()
 	}
 
-	pub fn record(&mut self, plan: &ScanPlan) {
+	pub fn record<K: Key>(&mut self, plan: &ScanPlan<K>) {
 		let count = plan.gaps - plan.exempted;
 		let bounds = Self::bounds();
 		let slot = bounds.iter().rposition(|bound| count >= *bound).unwrap_or(0);
@@ -184,18 +182,16 @@ impl GapHistogram {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_core::key::typed::{ExclusiveUpperEnd, MultiKey};
 
 	use super::{DEFAULT_GAP_GUARD, GapHistogram, ScanPlan, Segment, plan};
-	use crate::coverage::{
-		ExclusiveUpperEnd,
-		interval::{CoverageSet, Interval},
-	};
+	use crate::coverage::interval::{CoverageSet, Interval};
 
 	fn key(bytes: &[u8]) -> EncodedKey {
 		EncodedKey::new(bytes)
 	}
 
-	fn interval_of(segment: &Segment) -> &Interval {
+	fn interval_of(segment: &Segment<MultiKey>) -> &Interval<MultiKey> {
 		match segment {
 			Segment::Resident(interval) => interval,
 			Segment::Gap {
@@ -205,11 +201,11 @@ mod tests {
 		}
 	}
 
-	fn is_gap(segment: &Segment) -> bool {
+	fn is_gap(segment: &Segment<MultiKey>) -> bool {
 		matches!(segment, Segment::Gap { .. })
 	}
 
-	fn counted(gaps: usize, exempt_gaps: usize, degraded: bool) -> ScanPlan {
+	fn counted(gaps: usize, exempt_gaps: usize, degraded: bool) -> ScanPlan<MultiKey> {
 		ScanPlan {
 			segments: Vec::new(),
 			gaps,
@@ -218,7 +214,7 @@ mod tests {
 		}
 	}
 
-	fn punched() -> CoverageSet {
+	fn punched() -> CoverageSet<MultiKey> {
 		let mut coverage = CoverageSet::new();
 		coverage.extend(key(b"b"), ExclusiveUpperEnd::of(b"c"));
 		coverage.extend(key(b"d"), ExclusiveUpperEnd::of(b"e"));

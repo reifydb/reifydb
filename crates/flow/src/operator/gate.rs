@@ -10,7 +10,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey},
 	metrics::heap::{HeapSize, OperatorSample},
 	value::column::columns::Columns,
 };
@@ -317,7 +317,7 @@ impl GateOperator {
 mod tests {
 	use std::ops::Bound;
 
-	use reifydb_core::key::operator_state::{
+	use reifydb_core::key::operator::state::{
 		GroupId, IntoGroupStateKey, KeyspaceId, OperatorStateKey, group_inner_range,
 	};
 	use reifydb_value::value::row_number::RowNumber;

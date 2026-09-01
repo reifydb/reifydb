@@ -5,7 +5,7 @@ use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::{
-		decode_u64_asc, encode_u64_asc, encode_u128_asc,
+		encode_u64_asc, encode_u128_asc,
 		encoded::{EncodedKey, EncodedKeyRange},
 	},
 	row::{
@@ -29,14 +29,28 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, node_prefix},
+		operator::{
+			keyspace::ringbuffer::{
+				PartitionedRingbufferEntry, PartitionedRingbufferEntryKey, PartitionedRingbufferExpiry,
+				PartitionedRingbufferExpiryKey, PartitionedRingbufferMeta,
+				PartitionedRingbufferMetaKey, PartitionedRingbufferTtlArm,
+				PartitionedRingbufferTtlArmKey, RingbufferEntry, RingbufferEntryKey, RingbufferExpiry,
+				RingbufferExpiryKey, RingbufferMeta, RingbufferMetaKey, RingbufferTtlArm,
+				RingbufferTtlArmKey,
+			},
+			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, node_prefix},
+		},
 		partitioned_row::PartitionedRowKey,
 		ringbuffer::RingBufferMetadataKey,
 		row::RowKey,
+		typed::direction::Asc,
 	},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
-	state::timer::TimerKind,
+	state::{
+		timer::TimerKind,
+		typed::{SuffixBytes, typed_key},
+	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_macro::operator_state;
@@ -65,25 +79,42 @@ use crate::{
 	transaction::{FlowTransaction, deferred::DeferredTransaction, state::StateExtension},
 };
 
-fn partition_suffix(partition: Option<Partition>) -> Vec<u8> {
+fn row_entry_prefix(partition: Option<Partition>) -> Vec<u8> {
 	match partition {
-		Some(partition) => encode_u128_asc(partition.0).to_vec(),
-		None => Vec::new(),
+		Some(partition) => {
+			let mut prefix = OperatorStateKey::inner_encoded(
+				GroupId::ROOT,
+				KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY,
+				[],
+			)
+			.as_slice()
+			.to_vec();
+			prefix.extend_from_slice(&encode_u128_asc(partition.0));
+			prefix
+		}
+		None => OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::RINGBUFFER_ENTRY, [])
+			.as_slice()
+			.to_vec(),
 	}
 }
 
-fn row_entry_prefix(partition: Option<Partition>) -> Vec<u8> {
-	let mut prefix =
-		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::RINGBUFFER_ENTRY, []).as_slice().to_vec();
-	prefix.extend_from_slice(&partition_suffix(partition));
-	prefix
-}
-
 fn expiry_scan_prefix(partition: Option<Partition>) -> Vec<u8> {
-	let mut prefix =
-		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::RINGBUFFER_EXPIRY, []).as_slice().to_vec();
-	prefix.extend_from_slice(&partition_suffix(partition));
-	prefix
+	match partition {
+		Some(partition) => {
+			let mut prefix = OperatorStateKey::inner_encoded(
+				GroupId::ROOT,
+				KeyspaceId::PARTITIONED_RINGBUFFER_EXPIRY,
+				[],
+			)
+			.as_slice()
+			.to_vec();
+			prefix.extend_from_slice(&encode_u128_asc(partition.0));
+			prefix
+		}
+		None => OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::RINGBUFFER_EXPIRY, [])
+			.as_slice()
+			.to_vec(),
+	}
 }
 
 fn note_touched(touched: &mut Vec<Vec<Value>>, partition_values: Vec<Value>) {
@@ -96,17 +127,47 @@ fn partition_of_values(partition_values: &[Value]) -> Option<Partition> {
 	(!partition_values.is_empty()).then(|| Partition::of(partition_values))
 }
 
-fn decode_expiry_key(bytes: &[u8]) -> Result<(u64, u64)> {
-	if bytes.len() < 16 {
-		return Err(Error::from(FlowStateError::Decode {
+fn decode_expiry_key(partition: Option<Partition>, key: &EncodedKey) -> Result<(u64, u64)> {
+	let suffix = OperatorStateKey::decode_inner(key.as_slice()).map(|(_, _, suffix)| suffix.to_vec()).ok_or_else(
+		|| {
+			Error::from(FlowStateError::Decode {
+				state: "RingBufferExpiry",
+				cause: "expiry key is not a framed operator-state key".to_string(),
+			})
+		},
+	)?;
+	let decoded = match partition {
+		Some(_) => PartitionedRingbufferExpiryKey::from_suffix_bytes(&suffix)
+			.map(|key| (key.expires_at.0, key.row.0.0)),
+		None => RingbufferExpiryKey::from_suffix_bytes(&suffix).map(|key| (key.expires_at.0, key.row.0.0)),
+	};
+	decoded.ok_or_else(|| {
+		Error::from(FlowStateError::Decode {
 			state: "RingBufferExpiry",
-			cause: "expiry key shorter than 16 bytes".to_string(),
-		}));
-	}
-	let tail = &bytes[bytes.len() - 16..];
-	let expires_at = decode_u64_asc(tail[..8].try_into().expect("a 16-byte tail has an 8-byte head"));
-	let storage_rn = decode_u64_asc(tail[8..].try_into().expect("a 16-byte tail has an 8-byte tail"));
-	Ok((expires_at, storage_rn))
+			cause: "expiry key does not match its keyspace layout".to_string(),
+		})
+	})
+}
+
+fn decode_row_entry_key(partition: Option<Partition>, key: &EncodedKey) -> Result<u64> {
+	let suffix = OperatorStateKey::decode_inner(key.as_slice()).map(|(_, _, suffix)| suffix.to_vec()).ok_or_else(
+		|| {
+			Error::from(FlowStateError::Decode {
+				state: "RingBufferRowEntry",
+				cause: "row-entry key is not a framed operator-state key".to_string(),
+			})
+		},
+	)?;
+	let decoded = match partition {
+		Some(_) => PartitionedRingbufferEntryKey::from_suffix_bytes(&suffix).map(|key| key.row.0.0),
+		None => RingbufferEntryKey::from_suffix_bytes(&suffix).map(|key| key.row.0.0),
+	};
+	decoded.ok_or_else(|| {
+		Error::from(FlowStateError::Decode {
+			state: "RingBufferRowEntry",
+			cause: "row-entry key does not match its keyspace layout".to_string(),
+		})
+	})
 }
 
 pub struct SinkRingBufferViewOperator {
@@ -155,7 +216,15 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn meta_key(&self, partition: Option<Partition>) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::RINGBUFFER_META, partition_suffix(partition))
+		match partition {
+			Some(partition) => typed_key::<PartitionedRingbufferMeta>(
+				GroupId::ROOT,
+				&PartitionedRingbufferMetaKey {
+					partition: Asc(partition),
+				},
+			),
+			None => typed_key::<RingbufferMeta>(GroupId::ROOT, &RingbufferMetaKey {}),
+		}
 	}
 
 	fn read_meta_mirror(
@@ -294,27 +363,53 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn row_entry_key(&self, partition: Option<Partition>, storage_rn: RowNumber) -> GroupStateKey {
-		let mut suffix = Vec::with_capacity(24);
-		if let Some(partition) = partition {
-			suffix.extend_from_slice(&encode_u128_asc(partition.0));
+		match partition {
+			Some(partition) => typed_key::<PartitionedRingbufferEntry>(
+				GroupId::ROOT,
+				&PartitionedRingbufferEntryKey {
+					partition: Asc(partition),
+					row: Asc(storage_rn),
+				},
+			),
+			None => typed_key::<RingbufferEntry>(
+				GroupId::ROOT,
+				&RingbufferEntryKey {
+					row: Asc(storage_rn),
+				},
+			),
 		}
-		suffix.extend_from_slice(&encode_u64_asc(storage_rn.0));
-		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::RINGBUFFER_ENTRY, suffix)
 	}
 
 	fn expiry_key(&self, partition: Option<Partition>, expires_at: u64, storage_rn: RowNumber) -> GroupStateKey {
-		let mut suffix = partition_suffix(partition);
-		suffix.extend_from_slice(&encode_u64_asc(expires_at));
-		suffix.extend_from_slice(&encode_u64_asc(storage_rn.0));
-		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::RINGBUFFER_EXPIRY, suffix)
+		match partition {
+			Some(partition) => typed_key::<PartitionedRingbufferExpiry>(
+				GroupId::ROOT,
+				&PartitionedRingbufferExpiryKey {
+					partition: Asc(partition),
+					expires_at: Asc(expires_at),
+					row: Asc(storage_rn),
+				},
+			),
+			None => typed_key::<RingbufferExpiry>(
+				GroupId::ROOT,
+				&RingbufferExpiryKey {
+					expires_at: Asc(expires_at),
+					row: Asc(storage_rn),
+				},
+			),
+		}
 	}
 
 	fn arm_key(&self, partition: Option<Partition>) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(
-			GroupId::ROOT,
-			KeyspaceId::RINGBUFFER_TTL_ARM,
-			partition_suffix(partition),
-		)
+		match partition {
+			Some(partition) => typed_key::<PartitionedRingbufferTtlArm>(
+				GroupId::ROOT,
+				&PartitionedRingbufferTtlArmKey {
+					partition: Asc(partition),
+				},
+			),
+			None => typed_key::<RingbufferTtlArm>(GroupId::ROOT, &RingbufferTtlArmKey {}),
+		}
 	}
 
 	fn expires_at(&self, time: Option<DateTime>) -> Option<u64> {
@@ -575,7 +670,7 @@ impl SinkRingBufferViewOperator {
 		self.state_range(txn, range)
 			.map(|result| {
 				let (key, _row) = result?;
-				Ok(decode_expiry_key(key.as_ref())?.1)
+				Ok(decode_expiry_key(partition, &key)?.1)
 			})
 			.collect()
 	}
@@ -589,14 +684,7 @@ impl SinkRingBufferViewOperator {
 		match self.state_range(txn, range).next() {
 			Some(result) => {
 				let (key, _row) = result?;
-				let bytes = key.as_ref();
-				let rn: [u8; 8] = bytes[bytes.len() - 8..].try_into().map_err(|_| {
-					Error::from(FlowStateError::Decode {
-						state: "RingBufferRowEntry",
-						cause: "row-entry key shorter than 8 bytes".to_string(),
-					})
-				})?;
-				Ok(Some(decode_u64_asc(rn)))
+				Ok(Some(decode_row_entry_key(partition, &key)?))
 			}
 			None => Ok(None),
 		}
@@ -607,7 +695,7 @@ impl SinkRingBufferViewOperator {
 		match self.state_range(txn, range).next() {
 			Some(result) => {
 				let (key, _row) = result?;
-				Ok(Some(decode_expiry_key(key.as_ref())?.0))
+				Ok(Some(decode_expiry_key(partition, &key)?.0))
 			}
 			None => Ok(None),
 		}
@@ -1251,14 +1339,22 @@ mod tests {
 	#[test]
 	fn every_ringbuffer_state_key_lives_in_the_root_group_in_its_own_keyspace() {
 		// A hand-rolled leading byte aliases a group-id varint, so only the root group is exempt from both
-		// reclaim phases' range deletes.
+		// reclaim phases' range deletes. Partitioned keys must also land in their own keyspace: sharing one
+		// with the unpartitioned keys puts them under a prefix scan that reads the partition bytes as a row
+		// number, so an unpartitioned scan would sweep every partition's rows.
 		let op = build_op(true, None);
 		let partition = Partition::of(&[Value::Utf8("sol".to_string())]);
 
 		for (key, expected) in [
 			(op.forward_key(RowNumber(42)), KeyspaceId::RINGBUFFER_FORWARD),
-			(op.row_entry_key(Some(partition), RowNumber(42)), KeyspaceId::RINGBUFFER_ENTRY),
 			(op.row_entry_key(None, RowNumber(42)), KeyspaceId::RINGBUFFER_ENTRY),
+			(op.expiry_key(None, 7, RowNumber(42)), KeyspaceId::RINGBUFFER_EXPIRY),
+			(op.arm_key(None), KeyspaceId::RINGBUFFER_TTL_ARM),
+			(op.meta_key(None), KeyspaceId::RINGBUFFER_META),
+			(op.row_entry_key(Some(partition), RowNumber(42)), KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY),
+			(op.expiry_key(Some(partition), 7, RowNumber(42)), KeyspaceId::PARTITIONED_RINGBUFFER_EXPIRY),
+			(op.arm_key(Some(partition)), KeyspaceId::PARTITIONED_RINGBUFFER_TTL_ARM),
+			(op.meta_key(Some(partition)), KeyspaceId::PARTITIONED_RINGBUFFER_META),
 		] {
 			let (group, keyspace, _) = OperatorStateKey::decode_inner(key.as_bytes())
 				.expect("a ringbuffer state key must decode as a structured operator-state key");
