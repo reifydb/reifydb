@@ -832,9 +832,27 @@ fn sweep<X: Sweep>() -> RangeMetrics {
 	total
 }
 
+fn sweep_until_raced<X: Sweep>() -> RangeMetrics {
+	// One unlucky interleaving must not fail the run; never opening the race window at all must.
+	const ATTEMPTS: usize = 16;
+
+	let mut total = RangeMetrics::default();
+	for _ in 0..ATTEMPTS {
+		let round = sweep::<X>();
+		total.materializes += round.materializes;
+		total.materializes_refused += round.materializes_refused;
+		total.materializes_raced += round.materializes_raced;
+		total.evictions += round.evictions;
+		if total.materializes_raced > 0 {
+			break;
+		}
+	}
+	total
+}
+
 #[test]
 fn a_handoff_domain_never_overstates_coverage_under_concurrent_writes_and_invalidates() {
-	let total = sweep::<D>();
+	let total = sweep_until_raced::<D>();
 
 	assert!(
 		total.materializes > 100,
@@ -843,7 +861,7 @@ fn a_handoff_domain_never_overstates_coverage_under_concurrent_writes_and_invali
 	);
 	assert!(
 		total.materializes_raced > 0,
-		"no materialize was refused by a token, so the claim-versus-shrink race never ran"
+		"no materialize was refused by a token across every attempt, so the claim-versus-shrink race never ran"
 	);
 	assert_eq!(
 		total.evictions, 0,
@@ -853,7 +871,7 @@ fn a_handoff_domain_never_overstates_coverage_under_concurrent_writes_and_invali
 
 #[test]
 fn an_admitting_domain_never_overstates_coverage_under_concurrent_writes_and_evictions() {
-	let total = sweep::<A>();
+	let total = sweep_until_raced::<A>();
 
 	assert!(
 		total.materializes > 100,
@@ -867,6 +885,6 @@ fn an_admitting_domain_never_overstates_coverage_under_concurrent_writes_and_evi
 	);
 	assert!(
 		total.materializes_raced > 0,
-		"no materialize was refused by a token, so the claim-versus-shrink race never ran"
+		"no materialize was refused by a token across every attempt, so the claim-versus-shrink race never ran"
 	);
 }

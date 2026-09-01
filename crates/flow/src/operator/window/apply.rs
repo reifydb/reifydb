@@ -429,7 +429,7 @@ pub fn apply_sliding_engine(
 					};
 					let window_ids =
 						sliding_insert_anchors(operator, host, *hash, event_ts, is_count)?;
-					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx, timestamps[row_idx]);
+					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx, timestamps.get(row_idx).copied().unwrap_or_default());
 					let coord = slot_coord(is_count, event_ts, post.row_numbers()[row_idx].0);
 					for wid in &window_ids {
 						operator.store_row_index(
@@ -471,7 +471,7 @@ pub fn apply_sliding_engine(
 					} else {
 						timestamps[row_idx]
 					};
-					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx, timestamps[row_idx]);
+					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx, timestamps.get(row_idx).copied().unwrap_or_default());
 					let coord = slot_coord(is_count, event_ts, pre.row_numbers()[row_idx].0);
 					for wid in operator.lookup_row_index(host, *hash, pre.row_numbers()[row_idx])? {
 						push_count_event(
@@ -517,7 +517,7 @@ pub fn apply_sliding_engine(
 							operator, host, *hash, event_ts, is_count,
 						)?;
 						let contribution =
-							operator.core.build_contribution(post, &post_cols, row_idx, timestamps[row_idx]);
+							operator.core.build_contribution(post, &post_cols, row_idx, timestamps.get(row_idx).copied().unwrap_or_default());
 						let coord = slot_coord(is_count, event_ts, row_number.0);
 						for wid in &window_ids {
 							operator.store_row_index(
@@ -541,9 +541,9 @@ pub fn apply_sliding_engine(
 						}
 					} else {
 						let pre_contrib =
-							operator.core.build_contribution(pre, &pre_cols, row_idx, timestamps[row_idx]);
+							operator.core.build_contribution(pre, &pre_cols, row_idx, timestamps.get(row_idx).copied().unwrap_or_default());
 						let post_contrib =
-							operator.core.build_contribution(post, &post_cols, row_idx, timestamps[row_idx]);
+							operator.core.build_contribution(post, &post_cols, row_idx, timestamps.get(row_idx).copied().unwrap_or_default());
 						let coord = slot_coord(is_count, event_ts, row_number.0);
 						for wid in existing {
 							push_count_event(

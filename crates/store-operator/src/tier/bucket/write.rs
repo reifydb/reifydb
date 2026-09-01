@@ -84,10 +84,6 @@ impl<K: Keyspace> TypedBucket<K> {
 		self.bytes
 	}
 
-	pub fn groups(&self) -> impl Iterator<Item = GroupId> + '_ {
-		self.partitions.keys().copied()
-	}
-
 	pub fn record(&mut self, group: GroupId, suffix: K::Suffix, post: Option<EncodedPodRow>) {
 		if let Entry::Vacant(entry) = self.partitions.entry(group) {
 			entry.insert(SortedVecMap::new());
@@ -234,8 +230,8 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 			.collect()
 	}
 
-	fn group_ids(&self) -> Vec<GroupId> {
-		self.groups().collect()
+	fn groups_in_range(&self, lower: &Bound<GroupId>, upper: &Bound<GroupId>) -> Vec<GroupId> {
+		self.partitions.range((*lower, *upper)).map(|(group, _)| *group).collect()
 	}
 
 	fn encoded_range_in(

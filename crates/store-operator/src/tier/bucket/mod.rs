@@ -53,7 +53,7 @@ pub trait AnyBucket: Any + Send + Sync {
 
 	fn encoded_entries(&self) -> Vec<(EncodedKey, WriteEntry)>;
 
-	fn group_ids(&self) -> Vec<GroupId>;
+	fn groups_in_range(&self, lower: &Bound<GroupId>, upper: &Bound<GroupId>) -> Vec<GroupId>;
 
 	fn encoded_range_in(
 		&self,
@@ -312,13 +312,13 @@ impl BucketMap {
 		.flatten()
 	}
 
-	fn groups_of(&self, operator: OperatorId) -> Vec<GroupId> {
+	fn groups_of(&self, operator: OperatorId, lower: Bound<GroupId>, upper: Bound<GroupId>) -> Vec<GroupId> {
 		let mut ids = Vec::new();
 		for keyspace in self.keyspaces_of(operator) {
 			let Some(bucket) = self.buckets.get(&(operator, keyspace)) else {
 				continue;
 			};
-			ids.extend(bucket.group_ids());
+			ids.extend(bucket.groups_in_range(&lower, &upper));
 		}
 		ids.sort_by(|left, right| right.0.cmp(&left.0));
 		ids.dedup();
@@ -335,14 +335,16 @@ impl BucketMap {
 		let (end, end_group, end_at) = split_bound(upper.as_ref());
 		let end_open = matches!(end, Bound::Excluded(ref suffix) if suffix.is_empty());
 
+		if let (Some(low), Some(high)) = (end_group, start_group) {
+			if low > high {
+				return Vec::new();
+			}
+		}
+		let lower = end_group.map_or(Bound::Unbounded, Bound::Included);
+		let upper = start_group.map_or(Bound::Unbounded, Bound::Included);
+
 		let mut out = Vec::new();
-		for group in self.groups_of(operator) {
-			if start_group.is_some_and(|first| group.0 > first.0) {
-				continue;
-			}
-			if end_group.is_some_and(|last| group.0 < last.0) {
-				continue;
-			}
+		for group in self.groups_of(operator, lower, upper) {
 			let opens = start_group == Some(group);
 			let closes = end_group == Some(group);
 			let ids = span(

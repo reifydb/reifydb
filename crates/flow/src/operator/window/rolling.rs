@@ -240,7 +240,7 @@ fn route_rolling_columns<S: RollingDomain>(
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 		let slot = S::slot(columns, row_idx, &timestamps);
 		let slot_key = S::slot_key(slot, columns.row_numbers()[row_idx].0);
-		let contribution = (slot_key, operator.core.build_contribution(columns, &slot_cols, row_idx, timestamps[row_idx]));
+		let contribution = (slot_key, operator.core.build_contribution(columns, &slot_cols, row_idx, timestamps.get(row_idx).copied().unwrap_or_default()));
 		let event = if is_add {
 			AccumulatorEvent::Add(contribution)
 		} else {
