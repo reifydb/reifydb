@@ -8,7 +8,7 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use reifydb_codec::log::{LogVersion, Position};
+use reifydb_codec::log::{LogIndex, LogVersion, Position};
 use reifydb_runtime::io::fs::FsError;
 
 pub type Result<T> = std::result::Result<T, LogError>;
@@ -76,6 +76,16 @@ pub enum LogError {
 		dir: PathBuf,
 		requested: LogVersion,
 		oldest: LogVersion,
+	},
+	OutOfOrder {
+		dir: PathBuf,
+		head: LogVersion,
+		found: LogVersion,
+	},
+	IndexGap {
+		dir: PathBuf,
+		expected: LogIndex,
+		found: LogIndex,
 	},
 	Io {
 		path: PathBuf,
@@ -157,6 +167,14 @@ impl LogError {
 				..
 			} => dir,
 			LogError::Purged {
+				dir,
+				..
+			} => dir,
+			LogError::OutOfOrder {
+				dir,
+				..
+			} => dir,
+			LogError::IndexGap {
 				dir,
 				..
 			} => dir,
@@ -267,6 +285,28 @@ impl Display for LogError {
 				dir.display(),
 				requested.as_u64(),
 				oldest.as_u64()
+			),
+			LogError::OutOfOrder {
+				dir,
+				head,
+				found,
+			} => write!(
+				f,
+				"log {} is at version {}, so version {} cannot be appended after it",
+				dir.display(),
+				head.as_u64(),
+				found.as_u64()
+			),
+			LogError::IndexGap {
+				dir,
+				expected,
+				found,
+			} => write!(
+				f,
+				"log {} expects raft index {}, so index {} would leave a gap",
+				dir.display(),
+				expected.as_u64(),
+				found.as_u64()
 			),
 			LogError::Io {
 				path,

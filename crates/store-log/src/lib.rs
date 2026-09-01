@@ -14,3 +14,4 @@ pub mod partition;
 pub mod reader;
 pub mod segment;
 pub mod vote;
+pub mod writer;

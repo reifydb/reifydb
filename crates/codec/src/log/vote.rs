@@ -9,7 +9,7 @@ pub const SLOT_BYTES: usize = 40;
 
 pub const SLOTS: usize = 2;
 
-pub const FILE_BYTES: usize = SLOT_BYTES * SLOTS;
+pub const FILE_BYTES: usize = SLOT_BYTES;
 
 pub const MAGIC: u32 = u32::from_le_bytes(*b"RVOT");
 

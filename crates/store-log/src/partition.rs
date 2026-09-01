@@ -7,9 +7,10 @@ use std::{
 };
 
 use reifydb_codec::log::{
-	LogIndex, LogVersion, Position,
+	LogIndex, LogVersion, Position, Term,
 	index::{DEFAULT_INTERVAL, TimestampRange},
 	record::Record,
+	vote::State,
 };
 use reifydb_runtime::io::fs::{
 	Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, ReadDir, Rename, SyncDir, Unlink,
@@ -26,6 +27,7 @@ use crate::{
 	index::{Index, header},
 	reader::{floor, record, register, unregister, version_of},
 	segment::{STAGING_SUFFIX, Scan, Segment, scan},
+	vote::Vote,
 };
 
 pub const NAME_DIGITS: usize = 20;
@@ -57,8 +59,10 @@ pub struct Partition<F: Filesystem, C: ClockNow> {
 	bases: Vec<LogVersion>,
 	segment: Segment<F>,
 	index: Index<F>,
+	vote: Vote<F>,
 	timestamps: Option<TimestampRange>,
 	head: Option<LogVersion>,
+	last: Option<(LogIndex, Term)>,
 	opened_at: DateTime,
 }
 
@@ -75,6 +79,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 	) -> Result<Self> {
 		fs.mkdir(dir)?;
 		let opened_at = clock.now();
+		let vote = Vote::create(&fs, dir)?;
 		let (segment, index) = new_pair(&fs, dir, config, base, base_index)?;
 		Ok(Self {
 			fs,
@@ -84,8 +89,10 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 			bases: vec![base],
 			segment,
 			index,
+			vote,
 			timestamps: None,
 			head: None,
+			last: None,
 			opened_at,
 		})
 	}
@@ -112,7 +119,10 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 				Err(_) => rebuild(&fs, dir, config, base, &scan)?,
 			};
 			let timestamps = scan.records.iter().fold(None, |range, record| widen(range, record.timestamp));
-			let head = head_of(&fs, dir, &bases, scan.records.last().map(|record| record.version))?;
+			let tail = last_of(&fs, dir, &bases, scan.records.last())?;
+			let head = tail.map(|(version, _, _)| version);
+			let last = tail.map(|(_, index, term)| (index, term));
+			let vote = Vote::open(&fs, dir)?;
 			let partition = Self {
 				fs,
 				clock,
@@ -121,8 +131,10 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 				bases,
 				segment,
 				index,
+				vote,
 				timestamps,
 				head,
+				last,
 				opened_at,
 			};
 			return Ok((partition, scan));
@@ -130,6 +142,15 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 	}
 
 	pub fn append(&mut self, record: &Record) -> Result<Position> {
+		if let Some((index, _)) = self.last
+			&& record.index.as_u64() != index.as_u64() + 1
+		{
+			return Err(LogError::IndexGap {
+				dir: self.dir.clone(),
+				expected: LogIndex::new(index.as_u64() + 1),
+				found: record.index,
+			});
+		}
 		if self.must_roll(record) {
 			self.roll(record.version, record.index)?;
 		}
@@ -137,6 +158,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		self.index.append(record.version, record.index, position)?;
 		self.timestamps = widen(self.timestamps, record.timestamp);
 		self.head = Some(record.version);
+		self.last = Some((record.index, record.term));
 		Ok(position)
 	}
 
@@ -246,12 +268,28 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		&self.index
 	}
 
+	pub fn vote(&self) -> &Vote<F> {
+		&self.vote
+	}
+
+	pub fn save_vote(&mut self, state: State) -> Result<()> {
+		self.vote.save(state)
+	}
+
 	pub fn timestamps(&self) -> Option<TimestampRange> {
 		self.timestamps
 	}
 
 	pub fn head(&self) -> Option<LogVersion> {
 		self.head
+	}
+
+	pub fn last_index(&self) -> Option<LogIndex> {
+		self.last.map(|(index, _)| index)
+	}
+
+	pub fn last_term(&self) -> Option<Term> {
+		self.last.map(|(_, term)| term)
 	}
 
 	fn must_roll(&self, record: &Record) -> bool {
@@ -397,19 +435,19 @@ fn new_pair<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(
 	Ok((segment, index))
 }
 
-fn head_of<F: Filesystem + Open>(
+fn last_of<F: Filesystem + Open>(
 	fs: &F,
 	dir: &Path,
 	bases: &[LogVersion],
-	active: Option<LogVersion>,
-) -> Result<Option<LogVersion>> {
-	if active.is_some() {
-		return Ok(active);
+	active: Option<&Record>,
+) -> Result<Option<(LogVersion, LogIndex, Term)>> {
+	if let Some(record) = active {
+		return Ok(Some((record.version, record.index, record.term)));
 	}
 	for base in bases.iter().rev().skip(1) {
 		let scanned = scan(fs, &dir.join(log_name(*base)))?;
 		if let Some(record) = scanned.records.last() {
-			return Ok(Some(record.version));
+			return Ok(Some((record.version, record.index, record.term)));
 		}
 	}
 	Ok(None)

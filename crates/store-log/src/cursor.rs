@@ -166,9 +166,13 @@ mod tests {
 	}
 
 	fn record(version: u64, payload: &[u8]) -> Record {
+		record_at(version, version - BASE.as_u64() + 1, payload)
+	}
+
+	fn record_at(version: u64, index: u64, payload: &[u8]) -> Record {
 		Record::new(
 			LogVersion::new(version),
-			LogIndex::new(version - BASE.as_u64() + 1),
+			LogIndex::new(index),
 			Term::new(1),
 			DateTime::from_bits(1000 + version),
 			RecordKind::new(0),
@@ -268,7 +272,7 @@ mod tests {
 		// stops at the seal silently loses every record written after the roll.
 		let (fs, mut partition) = fixture(6);
 		partition.seal().unwrap();
-		partition.append(&record(600, b"next")).unwrap();
+		partition.append(&record_at(600, 7, b"next")).unwrap();
 		partition.sync().unwrap();
 		assert_eq!(partition.bases().len(), 2);
 
@@ -283,7 +287,7 @@ mod tests {
 		// leave the cursor parked on a segment that will never grow again.
 		let (fs, mut partition) = fixture(6);
 		partition.seal().unwrap();
-		partition.append(&record(600, b"next")).unwrap();
+		partition.append(&record_at(600, 7, b"next")).unwrap();
 		partition.sync().unwrap();
 		let mut cursor = Cursor::open(&fs, Path::new(DIR), LogVersion::ZERO).unwrap();
 
@@ -297,7 +301,7 @@ mod tests {
 		// believing it had seen every record between its hint and the first one it got.
 		let (fs, mut partition) = fixture(6);
 		partition.seal().unwrap();
-		partition.append(&record(600, b"next")).unwrap();
+		partition.append(&record_at(600, 7, b"next")).unwrap();
 		partition.sync().unwrap();
 		partition.purge(Duration::from_seconds_const(0)).unwrap();
 		assert_eq!(partition.bases(), [LogVersion::new(600)]);
