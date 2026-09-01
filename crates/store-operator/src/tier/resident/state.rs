@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::flow::OperatorId;
 
 use crate::{
 	tier::{
-		bucket::write::WriteEntry,
+		bucket::{Scan, write::WriteEntry},
 		resident::{OperatorResidentState, batch::DropMarker, record_state},
 	},
 	types::{BufferedState, BufferedStateRange},
@@ -56,7 +56,7 @@ impl OperatorResidentState {
 		end: Bound<&EncodedKey>,
 		limit: usize,
 	) -> BufferedStateRange {
-		self.page(operator, start, end, limit, merge)
+		self.page(operator, start, end, limit, Scan::Forward)
 	}
 
 	pub fn state_last_page(
@@ -66,7 +66,7 @@ impl OperatorResidentState {
 		end: Bound<&EncodedKey>,
 		limit: usize,
 	) -> BufferedStateRange {
-		self.page(operator, start, end, limit, merge_back)
+		self.page(operator, start, end, limit, Scan::Backward)
 	}
 
 	fn page(
@@ -75,8 +75,12 @@ impl OperatorResidentState {
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 		limit: usize,
-		combine: CombineFn,
+		scan: Scan,
 	) -> BufferedStateRange {
+		let combine: CombineFn = match scan {
+			Scan::Forward => merge,
+			Scan::Backward => merge_back,
+		};
 		let lower = owned(start);
 		let upper = owned(end);
 		let mut items = Vec::new();
@@ -84,9 +88,11 @@ impl OperatorResidentState {
 		if let Some(slot) = self.shared().slot(operator) {
 			let inner = slot.inner.lock();
 			if limit > 0 && !is_empty_range(&lower, &upper) {
-				let live = inner.live.state.encoded_range(operator, &lower, &upper);
+				let live = inner.live.state.encoded_range(operator, &lower, &upper, scan, limit);
 				let flight = match inner.in_flight.as_ref() {
-					Some(pending) => pending.state.encoded_range(operator, &lower, &upper),
+					Some(pending) => {
+						pending.state.encoded_range(operator, &lower, &upper, scan, limit)
+					}
 					None => Page::new(),
 				};
 				items = combine(&live, &flight, limit);

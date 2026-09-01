@@ -38,6 +38,12 @@ pub enum Resume {
 	More,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scan {
+	Forward,
+	Backward,
+}
+
 pub trait AnyBucket: Any + Send + Sync {
 	fn keyspace(&self) -> KeyspaceId;
 
@@ -60,6 +66,8 @@ pub trait AnyBucket: Any + Send + Sync {
 		group: GroupId,
 		start: &Bound<Vec<u8>>,
 		end: &Bound<Vec<u8>>,
+		scan: Scan,
+		limit: usize,
 	) -> Vec<(EncodedKey, WriteEntry)>;
 
 	fn absorb_any(&mut self, other: &mut dyn AnyBucket);
@@ -330,6 +338,8 @@ impl BucketMap {
 		operator: OperatorId,
 		lower: &Bound<EncodedKey>,
 		upper: &Bound<EncodedKey>,
+		scan: Scan,
+		limit: usize,
 	) -> Vec<(EncodedKey, WriteEntry)> {
 		let (start, start_group, start_at) = split_bound(lower.as_ref());
 		let (end, end_group, end_at) = split_bound(upper.as_ref());
@@ -343,15 +353,24 @@ impl BucketMap {
 		let lower = end_group.map_or(Bound::Unbounded, Bound::Included);
 		let upper = start_group.map_or(Bound::Unbounded, Bound::Included);
 
-		let mut out = Vec::new();
-		for group in self.groups_of(operator, lower, upper) {
+		let mut groups = self.groups_of(operator, lower, upper);
+		if scan == Scan::Backward {
+			groups.reverse();
+		}
+
+		let mut chunks: Vec<Vec<(EncodedKey, WriteEntry)>> = Vec::new();
+		let mut taken = 0usize;
+		'groups: for group in groups {
 			let opens = start_group == Some(group);
 			let closes = end_group == Some(group);
-			let ids = span(
+			let mut ids = span(
 				opens.then_some(start_at).flatten(),
 				closes.then_some(end_at).flatten(),
 				closes && end_open,
 			);
+			if scan == Scan::Backward {
+				ids.reverse();
+			}
 			for keyspace in ids {
 				let Some(bucket) = self.buckets.get(&(operator, keyspace)) else {
 					continue;
@@ -364,10 +383,18 @@ impl BucketMap {
 					true => end.clone(),
 					false => Bound::Unbounded,
 				};
-				out.extend(bucket.encoded_range_in(group, &from, &to));
+				let chunk = bucket.encoded_range_in(group, &from, &to, scan, limit - taken);
+				taken += chunk.len();
+				chunks.push(chunk);
+				if taken >= limit {
+					break 'groups;
+				}
 			}
 		}
-		out
+		if scan == Scan::Backward {
+			chunks.reverse();
+		}
+		chunks.into_iter().flatten().collect()
 	}
 
 	pub fn iter_encoded(&self) -> Vec<((OperatorId, EncodedKey), WriteEntry)> {

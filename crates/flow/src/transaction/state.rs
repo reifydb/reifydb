@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cmp::Ordering, collections::BTreeMap};
+use std::{cmp::Ordering, collections::BTreeMap, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -29,6 +29,8 @@ use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{Span, field, instrument};
 
 use crate::transaction::{FlowTransaction, join_expiry::decode_join_expiry_suffix, scope::scoped_key};
+
+const PENDING_LAST_PAGE: usize = 64;
 
 pub(crate) fn encode_payload<T: OperatorState>(value: &T) -> Result<EncodedPodRow> {
 	Ok(value.encode_state()?)
@@ -195,18 +197,33 @@ pub trait StateExtension: FlowTransaction {
 	fn state_last(&mut self, id: OperatorId, range: EncodedKeyRange) -> Result<Option<MultiVersionRow>> {
 		let prefix = node_prefix(id);
 		let prefixed_range = range.with_prefix(EncodedKey::new(prefix.clone()));
-		let mut merged = BTreeMap::new();
-		self.pending_layers()
-			.collect_range((prefixed_range.start.as_ref(), prefixed_range.end.as_ref()), &mut merged);
-		let pending: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
 
 		let version = self.version();
 		let store = self.operator_store();
-		let mut index = 0usize;
 		let mut scan = store.state_last_iter(id, range);
 		let mut stored = next_stored(&mut scan, &prefix);
 
+		let mut pending: Vec<(EncodedKey, PendingWrite)> = Vec::new();
+		let mut pending_end = prefixed_range.end.clone();
+		let mut pending_done = false;
+		let mut index = 0usize;
+
 		let found = loop {
+			if index == pending.len() && !pending_done {
+				let mut merged = BTreeMap::new();
+				self.pending_layers().collect_range_back(
+					(prefixed_range.start.as_ref(), pending_end.as_ref()),
+					PENDING_LAST_PAGE,
+					&mut merged,
+				);
+				pending_done = merged.len() < PENDING_LAST_PAGE;
+				pending = merged.into_iter().rev().collect();
+				index = 0;
+				if let Some((key, _)) = pending.last() {
+					pending_end = Bound::Excluded(key.clone());
+				}
+				continue;
+			}
 			match (pending.get(index), stored.take()) {
 				(None, None) => break None,
 				(None, Some((_, key, bytes))) => {

@@ -26,7 +26,7 @@ use reifydb_value::{Result, byte_size::ByteSize};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use rusqlite::{Connection, Transaction};
 
-use crate::tier::bucket::{AnyBucket, Budget, Resume};
+use crate::tier::bucket::{AnyBucket, Budget, Resume, Scan};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::persistent::sqlite::typed;
 
@@ -119,7 +119,7 @@ impl<K: Keyspace> TypedBucket<K> {
 		&self,
 		group: GroupId,
 		bounds: R,
-	) -> impl Iterator<Item = (&K::Suffix, &WriteEntry)> {
+	) -> impl DoubleEndedIterator<Item = (&K::Suffix, &WriteEntry)> {
 		self.partitions.get(&group).map(|partition| partition.range(bounds)).into_iter().flatten()
 	}
 
@@ -239,16 +239,33 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 		group: GroupId,
 		start: &Bound<Vec<u8>>,
 		end: &Bound<Vec<u8>>,
+		scan: Scan,
+		limit: usize,
 	) -> Vec<(EncodedKey, WriteEntry)> {
-		self.range(group, (suffix_bound::<K>(start, 0x00), suffix_bound::<K>(end, 0xFF)))
-			.map(|(suffix, entry)| {
-				(
-					OperatorStateKey::inner_encoded(group, K::ID, suffix.to_suffix_bytes())
-						.into_encoded(),
-					entry.clone(),
-				)
-			})
-			.collect()
+		let bounds = (suffix_bound::<K>(start, 0x00), suffix_bound::<K>(end, 0xFF));
+		let encode = |suffix: &K::Suffix, entry: &WriteEntry| {
+			(
+				OperatorStateKey::inner_encoded(group, K::ID, suffix.to_suffix_bytes()).into_encoded(),
+				entry.clone(),
+			)
+		};
+		match scan {
+			Scan::Forward => self
+				.range(group, bounds)
+				.take(limit)
+				.map(|(suffix, entry)| encode(suffix, entry))
+				.collect(),
+			Scan::Backward => {
+				let mut out: Vec<(EncodedKey, WriteEntry)> = self
+					.range(group, bounds)
+					.rev()
+					.take(limit)
+					.map(|(suffix, entry)| encode(suffix, entry))
+					.collect();
+				out.reverse();
+				out
+			}
+		}
 	}
 
 	fn absorb_any(&mut self, other: &mut dyn AnyBucket) {

@@ -629,6 +629,42 @@ fn a_pending_remove_hides_the_stored_row_it_deleted_from_the_last_read() {
 }
 
 #[test]
+fn a_last_read_walks_past_more_pending_removes_than_one_page_holds() {
+	// The overlay now pulls pending writes in pages from the greatest key down instead of collecting the
+	// whole range. A page boundary the walk does not step past either repeats the same page forever or
+	// stops on a key it already suppressed, which reports a removed row as the range's last one.
+	let engine = TestEngine::new();
+	let operator = OperatorId(1);
+	let names: Vec<String> = (0..=65).map(|n| format!("k{n:03}")).collect();
+	for name in &names {
+		seed_state_row(&engine, operator, &make_key(name), make_value("row"));
+	}
+	let range = || {
+		EncodedKeyRange::new(
+			Bound::Included(make_key("k000").into_encoded()),
+			Bound::Included(make_key("k999").into_encoded()),
+		)
+	};
+
+	let mut txn = deferred_shared(&engine);
+	assert_eq!(
+		txn.state_last(operator, range()).unwrap().map(|r| r.key),
+		Some(full_key(operator, &make_key("k065"))),
+		"the greatest seeded row must answer before anything is removed"
+	);
+
+	for name in &names[1..] {
+		txn.state_remove(operator, &make_key(name)).unwrap();
+	}
+
+	assert_eq!(
+		txn.state_last(operator, range()).unwrap().map(|r| r.key),
+		Some(full_key(operator, &make_key("k000"))),
+		"65 pending removes outrun a 64 key page, so the walk must cross the boundary to reach the row below them"
+	);
+}
+
+#[test]
 fn a_deferred_state_write_still_classifies_against_the_durable_pre_image() {
 	// The write path no longer reads a pre-image; classify_pending resolves every unclassified key in one
 	// batch at drain. A key that is already durable must still emit Replace carrying its exact byte size,

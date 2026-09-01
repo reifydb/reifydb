@@ -25,7 +25,7 @@ use reifydb_core::{
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};
 use rusqlite::Connection;
 
-use super::{AnyBucket, BucketMap, Budget, Resume, write::TypedBucket};
+use super::{AnyBucket, BucketMap, Budget, Resume, Scan, write::TypedBucket};
 use crate::tier::persistent::sqlite::{schema::ensure_schema, typed};
 
 const OP: OperatorId = OperatorId(1);
@@ -357,15 +357,18 @@ fn a_scan_across_two_keyspaces_orders_by_group_before_keyspace() {
 #[test]
 fn a_range_spanning_two_keyspaces_pages_without_skipping_a_key() {
 	let map = seeded_pair();
-	let whole: Vec<EncodedKey> =
-		map.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded).into_iter().map(|(key, _)| key).collect();
+	let whole: Vec<EncodedKey> = map
+		.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded, Scan::Forward, usize::MAX)
+		.into_iter()
+		.map(|(key, _)| key)
+		.collect();
 
 	assert_eq!(whole, expected_order(), "an unbounded range must agree with an unbounded scan");
 
 	let mut paged = Vec::new();
 	let mut cursor = Bound::Unbounded;
 	loop {
-		let page = map.encoded_range(OP, &cursor, &Bound::Unbounded);
+		let page = map.encoded_range(OP, &cursor, &Bound::Unbounded, Scan::Forward, usize::MAX);
 		let Some((key, _)) = page.first() else {
 			break;
 		};
@@ -384,7 +387,13 @@ fn a_bounded_range_keeps_the_keys_between_its_bounds_and_no_others() {
 	let upper = all[5].clone();
 
 	let seen: Vec<EncodedKey> = map
-		.encoded_range(OP, &Bound::Included(lower.clone()), &Bound::Excluded(upper.clone()))
+		.encoded_range(
+			OP,
+			&Bound::Included(lower.clone()),
+			&Bound::Excluded(upper.clone()),
+			Scan::Forward,
+			usize::MAX,
+		)
 		.into_iter()
 		.map(|(key, _)| key)
 		.collect();
@@ -393,10 +402,88 @@ fn a_bounded_range_keeps_the_keys_between_its_bounds_and_no_others() {
 }
 
 #[test]
+fn a_forward_page_stops_at_its_limit_and_keeps_the_leading_keys() {
+	let map = seeded_pair();
+	let all = expected_order();
+
+	let page: Vec<EncodedKey> = map
+		.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded, Scan::Forward, 3)
+		.into_iter()
+		.map(|(key, _)| key)
+		.collect();
+
+	assert_eq!(page, all[..3].to_vec(), "a forward page must be the first keys of the range, in order");
+}
+
+#[test]
+fn a_backward_page_returns_the_trailing_keys_in_ascending_order() {
+	let map = seeded_pair();
+	let all = expected_order();
+
+	let page: Vec<EncodedKey> = map
+		.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded, Scan::Backward, 3)
+		.into_iter()
+		.map(|(key, _)| key)
+		.collect();
+
+	assert_eq!(page, all[5..].to_vec(), "a backward page must be the last keys of the range, still ascending");
+}
+
+#[test]
+fn a_backward_page_that_crosses_a_group_stays_one_ascending_run() {
+	let map = seeded_pair();
+	let all = expected_order();
+
+	let page: Vec<EncodedKey> = map
+		.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded, Scan::Backward, 5)
+		.into_iter()
+		.map(|(key, _)| key)
+		.collect();
+
+	assert_eq!(page, all[3..].to_vec(), "a limit that spans two groups must still come back as one ascending run");
+}
+
+#[test]
+fn a_limit_wider_than_the_range_returns_every_key() {
+	let map = seeded_pair();
+
+	let forward: Vec<EncodedKey> = map
+		.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded, Scan::Forward, 99)
+		.into_iter()
+		.map(|(key, _)| key)
+		.collect();
+	let backward: Vec<EncodedKey> = map
+		.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded, Scan::Backward, 99)
+		.into_iter()
+		.map(|(key, _)| key)
+		.collect();
+
+	assert_eq!(forward, expected_order(), "a limit past the end must not truncate the range");
+	assert_eq!(backward, expected_order(), "a backward page wider than the range must still be ascending");
+}
+
+#[test]
+fn a_zero_limit_returns_nothing_without_underflowing_the_remainder() {
+	let map = seeded_pair();
+
+	assert!(
+		map.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded, Scan::Forward, 0).is_empty(),
+		"a zero limit must take nothing"
+	);
+	assert!(
+		map.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded, Scan::Backward, 0).is_empty(),
+		"a zero limit must take nothing backward either"
+	);
+}
+
+#[test]
 fn a_reverse_scan_is_the_exact_mirror_of_a_forward_one() {
 	let map = seeded_pair();
-	let forward: Vec<EncodedKey> =
-		map.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded).into_iter().map(|(key, _)| key).collect();
+	let forward: Vec<EncodedKey> = map
+		.encoded_range(OP, &Bound::Unbounded, &Bound::Unbounded, Scan::Forward, usize::MAX)
+		.into_iter()
+		.map(|(key, _)| key)
+		.collect();
 
 	let mut reverse = forward.clone();
 	reverse.reverse();
@@ -412,7 +499,13 @@ fn a_whole_operator_scan_names_no_group_and_still_sweeps_every_one() {
 	let empty = EncodedKey::new(Vec::new());
 
 	let seen: Vec<EncodedKey> = map
-		.encoded_range(OP, &Bound::Included(empty.clone()), &Bound::Excluded(empty.clone()))
+		.encoded_range(
+			OP,
+			&Bound::Included(empty.clone()),
+			&Bound::Excluded(empty.clone()),
+			Scan::Forward,
+			usize::MAX,
+		)
 		.into_iter()
 		.map(|(key, _)| key)
 		.collect();
@@ -426,7 +519,7 @@ fn a_group_data_sweep_stops_at_its_own_group() {
 	let range = group_data_inner_range(GroupId(9));
 
 	let strayed: Vec<GroupId> = map
-		.encoded_range(OP, &range.start, &range.end)
+		.encoded_range(OP, &range.start, &range.end, Scan::Forward, usize::MAX)
 		.into_iter()
 		.map(|(key, _)| OperatorStateKey::decode_inner(key.as_slice()).expect("a stored key decodes").0)
 		.filter(|group| *group != GroupId(9))
