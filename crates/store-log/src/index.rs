@@ -110,6 +110,12 @@ impl<F: Filesystem> Index<F> {
 		Ok(true)
 	}
 
+	pub fn truncate_to(&mut self, index: LogIndex) -> Result<()> {
+		self.entries.retain(|entry| entry.index < index);
+		self.file.truncate(self.end())?;
+		Ok(self.file.sync_data()?)
+	}
+
 	pub fn seal(&mut self, timestamps: Option<TimestampRange>) -> Result<()> {
 		self.header.timestamps = timestamps;
 		write_all(&self.file, &self.path, 0, &self.header.encode())?;
@@ -167,6 +173,15 @@ pub fn find<F: Open>(fs: &F, path: &Path, entries: &[Entry], version: LogVersion
 
 pub fn position_of(entries: &[Entry], version: LogVersion) -> Position {
 	at_or_before(entries.partition_point(|entry| entry.version <= version), entries)
+}
+
+pub fn find_at<F: Open>(fs: &F, path: &Path, entries: &[Entry], index: LogIndex) -> Result<Option<Record>> {
+	let scan = scan_from(fs, path, position_of_index(entries, index))?;
+	Ok(scan.records.into_iter().find(|record| record.index == index))
+}
+
+pub fn position_of_index(entries: &[Entry], index: LogIndex) -> Position {
+	at_or_before(entries.partition_point(|entry| entry.index <= index), entries)
 }
 
 fn at_or_before(at: usize, entries: &[Entry]) -> Position {
@@ -240,7 +255,7 @@ mod tests {
 	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
-	use crate::segment::{Segment, scan};
+	use crate::segment::{Segment, scan, sync_path};
 
 	const BASE: LogVersion = LogVersion::new(100);
 	const BASE_INDEX: LogIndex = LogIndex::new(1);
@@ -327,7 +342,7 @@ mod tests {
 			b"a".to_vec(),
 		))
 		.unwrap();
-		segment.sync().unwrap();
+		sync_path(&fs, &log).unwrap();
 		let mut index = Index::create(&fs, &path, BASE, BASE_INDEX, INTERVAL).unwrap();
 		index.append(BASE, BASE_INDEX, Position::ZERO).unwrap();
 		index.append(version(1), index_at(1), Position::new(2048)).unwrap();

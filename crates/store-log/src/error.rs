@@ -8,7 +8,7 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use reifydb_codec::log::{LogIndex, LogVersion, Position};
+use reifydb_codec::log::{LogIndex, LogVersion, Position, Term};
 use reifydb_runtime::io::fs::FsError;
 
 pub type Result<T> = std::result::Result<T, LogError>;
@@ -85,6 +85,31 @@ pub enum LogError {
 	IndexGap {
 		dir: PathBuf,
 		expected: LogIndex,
+		found: LogIndex,
+	},
+	TermRegression {
+		dir: PathBuf,
+		last: Term,
+		found: Term,
+	},
+	Truncated {
+		dir: PathBuf,
+		version: LogVersion,
+	},
+	TruncateBelowFloor {
+		dir: PathBuf,
+		low: LogIndex,
+		found: LogIndex,
+	},
+	TruncateCommitted {
+		dir: PathBuf,
+		commit: LogIndex,
+		found: LogIndex,
+	},
+	CommitOutOfRange {
+		dir: PathBuf,
+		low: LogIndex,
+		high: LogIndex,
 		found: LogIndex,
 	},
 	Io {
@@ -175,6 +200,26 @@ impl LogError {
 				..
 			} => dir,
 			LogError::IndexGap {
+				dir,
+				..
+			} => dir,
+			LogError::TermRegression {
+				dir,
+				..
+			} => dir,
+			LogError::Truncated {
+				dir,
+				..
+			} => dir,
+			LogError::TruncateBelowFloor {
+				dir,
+				..
+			} => dir,
+			LogError::TruncateCommitted {
+				dir,
+				..
+			} => dir,
+			LogError::CommitOutOfRange {
 				dir,
 				..
 			} => dir,
@@ -306,6 +351,61 @@ impl Display for LogError {
 				"log {} expects raft index {}, so index {} would leave a gap",
 				dir.display(),
 				expected.as_u64(),
+				found.as_u64()
+			),
+			LogError::TermRegression {
+				dir,
+				last,
+				found,
+			} => write!(
+				f,
+				"log {} is at term {}, so a record in term {} cannot be appended after it",
+				dir.display(),
+				last.as_u64(),
+				found.as_u64()
+			),
+			LogError::Truncated {
+				dir,
+				version,
+			} => write!(
+				f,
+				"log {} no longer holds version {}, so it can never become durable",
+				dir.display(),
+				version.as_u64()
+			),
+			LogError::TruncateBelowFloor {
+				dir,
+				low,
+				found,
+			} => write!(
+				f,
+				"log {} starts at index {}, so it cannot be truncated from {}",
+				dir.display(),
+				low.as_u64(),
+				found.as_u64()
+			),
+			LogError::TruncateCommitted {
+				dir,
+				commit,
+				found,
+			} => write!(
+				f,
+				"log {} has committed through index {}, so it cannot be truncated from {}",
+				dir.display(),
+				commit.as_u64(),
+				found.as_u64()
+			),
+			LogError::CommitOutOfRange {
+				dir,
+				low,
+				high,
+				found,
+			} => write!(
+				f,
+				"log {} can only commit between {} and {}, so {} is out of range",
+				dir.display(),
+				low.as_u64(),
+				high.as_u64(),
 				found.as_u64()
 			),
 			LogError::Io {

@@ -6,13 +6,13 @@ use std::{
 	thread,
 };
 
-use reifydb_codec::log::{LogVersion, Position, record::Record};
+use reifydb_codec::log::{LogIndex, LogVersion, Position, record::Record};
 use reifydb_runtime::{
 	fatal::{
-		is_armed,
+		fatal, is_armed,
 		report::{FatalKind, FatalReport},
 	},
-	io::fs::{Create, Filesystem, Mkdir, Open, OpenMut, ReadDir, Rename, SyncData, SyncDir, Unlink},
+	io::fs::{Create, Filesystem, Mkdir, Open, OpenMut, ReadDir, Rename, SyncDir, Unlink},
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -25,6 +25,7 @@ use reifydb_value::clock::ClockNow;
 use crate::{
 	error::{LogError, Result},
 	partition::{Partition, log_name},
+	segment::sync_path,
 };
 
 struct State<F: Filesystem, C: ClockNow> {
@@ -33,6 +34,8 @@ struct State<F: Filesystem, C: ClockNow> {
 	durable: Option<LogVersion>,
 	active: PathBuf,
 	stopped: bool,
+	waiting: usize,
+	ceiling: Option<LogVersion>,
 }
 
 struct Inner<F: Filesystem, C: ClockNow> {
@@ -85,6 +88,8 @@ where
 				durable,
 				active,
 				stopped: false,
+				waiting: 0,
+				ceiling: durable,
 			}),
 			progress: Condvar::new(),
 			work: Condvar::new(),
@@ -118,6 +123,7 @@ where
 			}
 			let position = state.partition.append(record)?;
 			state.written = Some(record.version);
+			state.ceiling = Some(record.version);
 			state.active = active_of(&state.partition);
 			position
 		};
@@ -137,7 +143,17 @@ where
 			if state.stopped {
 				return Err(stopped_error(&state));
 			}
+			if state.ceiling.is_some_and(|found| found >= version)
+				&& state.written.is_none_or(|found| found < version)
+			{
+				return Err(LogError::Truncated {
+					dir: state.partition.dir().to_path_buf(),
+					version,
+				});
+			}
+			state.waiting += 1;
 			self.inner.progress.wait(&mut state);
+			state.waiting -= 1;
 		}
 		Ok(())
 	}
@@ -164,6 +180,21 @@ where
 
 	pub fn written(&self) -> Option<LogVersion> {
 		self.inner.state.lock().written
+	}
+
+	pub fn truncate_from(&self, index: LogIndex) -> Result<()> {
+		let mut state = self.inner.state.lock();
+		if state.stopped {
+			return Err(stopped_error(&state));
+		}
+		state.partition.truncate_from(index)?;
+		let head = state.partition.head();
+		state.written = head;
+		state.durable = head;
+		state.active = active_of(&state.partition);
+		drop(state);
+		self.inner.progress.notify_all();
+		Ok(())
 	}
 
 	pub fn with<R>(&self, act: impl FnOnce(&mut Partition<F, C>) -> R) -> R {
@@ -268,16 +299,12 @@ fn terminate<F: Filesystem, C: ClockNow>(inner: &Inner<F, C>, path: &Path, error
 		.component("log syncer")
 		.with("segment", path.display().to_string());
 	if is_armed() {
-		reifydb_runtime::fatal::fatal(report);
+		fatal(report);
 	}
 	let mut state = inner.state.lock();
 	state.stopped = true;
 	drop(state);
 	inner.progress.notify_all();
-}
-
-fn sync_path<F: Filesystem + OpenMut>(fs: &F, path: &Path) -> Result<()> {
-	Ok(fs.open_mut(path)?.sync_data()?)
 }
 
 fn active_of<F, C>(partition: &Partition<F, C>) -> PathBuf
@@ -308,7 +335,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::partition::Config;
+	use crate::partition::{Config, drain};
 
 	const DIR: &str = "/log/p0";
 	const BASE: LogVersion = LogVersion::new(500);
@@ -322,6 +349,25 @@ mod tests {
 			RecordKind::new(0),
 			vec![0x10u8.wrapping_add(offset as u8); 40],
 		)
+	}
+
+	fn detached() -> Writer<MemoryFs, Clock> {
+		let fs = MemoryFs::new();
+		fs.mkdir(Path::new("/log")).unwrap();
+		let partition = Partition::create(
+			fs.clone(),
+			Clock::Mock(MockClock::from_millis(1_000)),
+			Path::new(DIR),
+			Config {
+				segment_bytes: ByteSize::from_bytes(4096),
+				segment_age: Duration::from_seconds_const(60),
+				index_interval: ByteSize::from_bytes(64),
+			},
+			BASE,
+			LogIndex::new(1),
+		)
+		.unwrap();
+		Writer::detached(fs, partition)
 	}
 
 	fn writer() -> Writer<MemoryFs, Clock> {
@@ -448,12 +494,12 @@ mod tests {
 		// on disk and the error is cosmetic.
 		let writer = writer();
 		writer.commit_durable(&record(3)).unwrap();
-		let before = writer.with(|partition| partition.records().unwrap());
+		let before = writer.with(|partition| drain(partition).unwrap());
 
 		writer.commit(&record(2)).err().unwrap();
 		writer.flush().unwrap();
 
-		assert_eq!(writer.with(|partition| partition.records().unwrap()), before);
+		assert_eq!(writer.with(|partition| drain(partition).unwrap()), before);
 		assert_eq!(writer.durable(), Some(LogVersion::new(BASE.as_u64() + 3)));
 	}
 
@@ -477,5 +523,61 @@ mod tests {
 		writer.wait(BASE).unwrap();
 
 		assert_eq!(writer.durable(), Some(BASE));
+	}
+
+	#[test]
+	fn a_wait_for_a_version_the_cut_removed_is_refused_rather_than_blocking() {
+		// the cut lowers both marks, so the version can never become durable and a plain
+		// wait-until-durable loop would sleep on it for good. The written mark is what proves the
+		// version is gone rather than merely late.
+		let writer = detached();
+		writer.commit(&record(0)).unwrap();
+		writer.commit(&record(1)).unwrap();
+		let cut = LogVersion::new(BASE.as_u64() + 1);
+
+		writer.truncate_from(LogIndex::new(2)).unwrap();
+
+		let error = writer.wait(cut).unwrap_err();
+		assert!(matches!(error, LogError::Truncated { .. }), "{error}");
+	}
+
+	#[test]
+	fn a_wait_for_a_version_that_was_never_written_parks_rather_than_being_refused() {
+		// the refusal keys on a version the log once held. A version above everything ever written
+		// is early, not gone, and refusing it breaks every caller that waits ahead of its append,
+		// which is how a failed flush releases the waiters parked behind it.
+		let writer = Arc::new(writer());
+		writer.commit(&record(0)).unwrap();
+		let ahead = LogVersion::new(BASE.as_u64() + 1);
+		let waiting = Arc::clone(&writer);
+		let waiter = thread::spawn(move || waiting.wait(ahead));
+		while writer.inner.state.lock().waiting == 0 {
+			thread::yield_now();
+		}
+
+		writer.commit(&record(1)).unwrap();
+		writer.flush().unwrap();
+
+		waiter.join().unwrap().unwrap();
+	}
+
+	#[test]
+	fn a_waiter_already_blocked_is_woken_by_the_cut() {
+		// the waiter is asleep on the condvar when the cut lands, so the refusal alone is not
+		// enough: without a notify it sleeps for good, and this test hangs rather than fails.
+		let writer = Arc::new(detached());
+		writer.commit(&record(0)).unwrap();
+		writer.commit(&record(1)).unwrap();
+		let cut = LogVersion::new(BASE.as_u64() + 1);
+		let blocked = Arc::clone(&writer);
+		let waiter = thread::spawn(move || blocked.wait(cut));
+		while writer.inner.state.lock().waiting == 0 {
+			thread::yield_now();
+		}
+
+		writer.truncate_from(LogIndex::new(2)).unwrap();
+
+		let error = waiter.join().unwrap().unwrap_err();
+		assert!(matches!(error, LogError::Truncated { .. }), "{error}");
 	}
 }

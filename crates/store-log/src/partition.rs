@@ -12,21 +12,21 @@ use reifydb_codec::log::{
 	record::Record,
 	vote::State,
 };
-use reifydb_runtime::io::fs::{
-	Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, ReadDir, Rename, SyncDir, Unlink,
-};
+use reifydb_runtime::io::fs::{Create, Filesystem, FsError, Mkdir, Open, OpenMut, ReadDir, Rename, SyncDir, Unlink};
 use reifydb_value::{
 	byte_size::ByteSize,
 	clock::ClockNow,
 	value::{datetime::DateTime, duration::Duration},
 };
 
+#[cfg(test)]
+use crate::cursor::drain as drain_cursor;
 use crate::{
 	cursor::Cursor,
 	error::{LogError, Result},
-	index::{Index, header},
-	reader::{floor, record, register, unregister, version_of},
-	segment::{STAGING_SUFFIX, Scan, Segment, scan},
+	index::{Index, find_at, header, read},
+	reader::{clamp, floor, record, register, unregister, version_of},
+	segment::{STAGING_SUFFIX, Scan, Segment, scan, sync_path},
 	vote::Vote,
 };
 
@@ -57,6 +57,7 @@ pub struct Partition<F: Filesystem, C: ClockNow> {
 	dir: PathBuf,
 	config: Config,
 	bases: Vec<LogVersion>,
+	base_indexes: Vec<LogIndex>,
 	segment: Segment<F>,
 	index: Index<F>,
 	vote: Vote<F>,
@@ -87,6 +88,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 			dir: dir.to_path_buf(),
 			config,
 			bases: vec![base],
+			base_indexes: vec![base_index],
 			segment,
 			index,
 			vote,
@@ -123,12 +125,14 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 			let head = tail.map(|(version, _, _)| version);
 			let last = tail.map(|(_, index, term)| (index, term));
 			let vote = Vote::open(&fs, dir)?;
+			let base_indexes = base_indexes_of(&fs, dir, &bases, index.header().base_index)?;
 			let partition = Self {
 				fs,
 				clock,
 				dir: dir.to_path_buf(),
 				config,
 				bases,
+				base_indexes,
 				segment,
 				index,
 				vote,
@@ -151,6 +155,15 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 				found: record.index,
 			});
 		}
+		if let Some((_, term)) = self.last
+			&& record.term < term
+		{
+			return Err(LogError::TermRegression {
+				dir: self.dir.clone(),
+				last: term,
+				found: record.term,
+			});
+		}
 		if self.must_roll(record) {
 			self.roll(record.version, record.index)?;
 		}
@@ -160,6 +173,63 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		self.head = Some(record.version);
 		self.last = Some((record.index, record.term));
 		Ok(position)
+	}
+
+	pub fn truncate_from(&mut self, index: LogIndex) -> Result<()> {
+		let commit = self.commit_index();
+		if index <= commit {
+			return Err(LogError::TruncateCommitted {
+				dir: self.dir.clone(),
+				commit,
+				found: index,
+			});
+		}
+		let low = self.base_indexes[0];
+		if index < low {
+			return Err(LogError::TruncateBelowFloor {
+				dir: self.dir.clone(),
+				low,
+				found: index,
+			});
+		}
+		if self.last_index().is_none_or(|last| index > last) {
+			return Ok(());
+		}
+		let at = self.base_indexes.partition_point(|base| *base < index).saturating_sub(1);
+		for base in self.bases[at + 1..].iter().rev() {
+			remove(&self.fs, &self.dir.join(log_name(*base)))?;
+			remove(&self.fs, &self.dir.join(index_name(*base)))?;
+		}
+		self.bases.truncate(at + 1);
+		self.base_indexes.truncate(at + 1);
+		let base = self.bases[at];
+		let log = self.dir.join(log_name(base));
+		let entries = self.dir.join(index_name(base));
+		let (mut segment, scanned) = Segment::recover(&self.fs, &log)?;
+		let mut cut = Position::ZERO;
+		for record in &scanned.records {
+			if record.index >= index {
+				break;
+			}
+			cut = cut.advance(record.encoded_len() as u64);
+		}
+		if cut == Position::ZERO {
+			segment.reset(self.config.segment_bytes)?;
+			self.opened_at = self.clock.now();
+		} else {
+			segment.truncate_to(cut)?;
+		}
+		let kept = scan(&self.fs, &log)?;
+		let (rebuilt, _) = Index::recover(&self.fs, &entries, self.config.index_interval, &kept)?;
+		let kept = kept.records;
+		self.fs.sync_dir(&self.dir)?;
+		self.segment = segment;
+		self.index = rebuilt;
+		self.timestamps = kept.iter().fold(None, |range, record| widen(range, record.timestamp));
+		self.head = kept.last().map(|record| record.version);
+		self.last = kept.last().map(|record| (record.index, record.term));
+		clamp(&self.fs, &self.dir, self.head.unwrap_or(LogVersion::ZERO))?;
+		Ok(())
 	}
 
 	pub fn seal(&mut self) -> Result<()> {
@@ -184,6 +254,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 			remove(&self.fs, &self.dir.join(log_name(base)))?;
 			remove(&self.fs, &self.dir.join(index_name(base)))?;
 			self.bases.remove(0);
+			self.base_indexes.remove(0);
 			dropped.push(base);
 		}
 		if !dropped.is_empty() {
@@ -208,39 +279,22 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		Cursor::open(&self.fs, &self.dir, version_of(&self.fs, &self.dir, id)?)
 	}
 
-	pub fn sync(&self) -> Result<()> {
-		self.segment.sync()?;
-		self.index.sync()
+	pub fn record_at(&self, index: LogIndex) -> Result<Option<Record>> {
+		let at = self.base_indexes.partition_point(|base| *base <= index);
+		if at == 0 {
+			return Ok(None);
+		}
+		let base = self.bases[at - 1];
+		let log = self.dir.join(log_name(base));
+		if base == self.base() {
+			return find_at(&self.fs, &log, self.index.entries(), index);
+		}
+		let (_, entries) = read(&self.fs, &self.dir.join(index_name(base)))?;
+		find_at(&self.fs, &log, &entries, index)
 	}
 
-	pub fn records(&self) -> Result<Vec<Record>> {
-		let mut out: Vec<Record> = Vec::new();
-		let active = self.bases.len() - 1;
-		for (at, base) in self.bases.iter().enumerate() {
-			let path = self.dir.join(log_name(*base));
-			let scanned = scan(&self.fs, &path)?;
-			if at < active {
-				let len = self.fs.open(&path)?.len()?;
-				if scanned.end.as_u64() != len {
-					return Err(LogError::SegmentIncomplete {
-						path,
-						end: scanned.end,
-						len,
-					});
-				}
-			}
-			if let (Some(previous), Some(first)) = (out.last(), scanned.records.first())
-				&& first.version <= previous.version
-			{
-				return Err(LogError::SegmentOutOfOrder {
-					path,
-					previous: previous.version,
-					found: first.version,
-				});
-			}
-			out.extend(scanned.records);
-		}
-		Ok(out)
+	pub fn base_indexes(&self) -> &[LogIndex] {
+		&self.base_indexes
 	}
 
 	pub fn route(&self, version: LogVersion) -> PathBuf {
@@ -274,6 +328,25 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 
 	pub fn save_vote(&mut self, state: State) -> Result<()> {
 		self.vote.save(state)
+	}
+
+	pub fn commit(&mut self, index: LogIndex) -> Result<()> {
+		let low = self.commit_index();
+		let high = self.last_index().unwrap_or(LogIndex::ZERO);
+		if index < low || index > high {
+			return Err(LogError::CommitOutOfRange {
+				dir: self.dir.clone(),
+				low,
+				high,
+				found: index,
+			});
+		}
+		self.vote.advance(index);
+		Ok(())
+	}
+
+	pub fn commit_index(&self) -> LogIndex {
+		self.vote.state().commit_index.min(self.last_index().unwrap_or(LogIndex::ZERO))
 	}
 
 	pub fn timestamps(&self) -> Option<TimestampRange> {
@@ -316,10 +389,41 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		self.segment = segment;
 		self.index = index;
 		self.bases.push(base);
+		self.base_indexes.push(base_index);
 		self.timestamps = None;
 		self.opened_at = self.clock.now();
 		Ok(())
 	}
+}
+
+fn base_indexes_of<F: Filesystem + Open>(
+	fs: &F,
+	dir: &Path,
+	bases: &[LogVersion],
+	active: LogIndex,
+) -> Result<Vec<LogIndex>> {
+	let mut out = vec![active; bases.len()];
+	for at in (0..bases.len() - 1).rev() {
+		out[at] = match header(fs, &dir.join(index_name(bases[at]))) {
+			Ok(found) => found.base_index,
+			Err(error) if !rebuildable(&error) => return Err(error),
+			Err(_) => match scan(fs, &dir.join(log_name(bases[at])))?.records.first() {
+				Some(record) => record.index,
+				None => out[at + 1],
+			},
+		};
+	}
+	Ok(out)
+}
+
+#[cfg(test)]
+pub(crate) fn drain<F: Filesystem + Open + ReadDir, C: ClockNow>(partition: &Partition<F, C>) -> Result<Vec<Record>> {
+	drain_cursor(&partition.fs, &partition.dir)
+}
+
+pub fn sync<F: Filesystem + OpenMut>(fs: &F, dir: &Path, base: LogVersion) -> Result<()> {
+	sync_path(fs, &dir.join(log_name(base)))?;
+	sync_path(fs, &dir.join(index_name(base)))
 }
 
 pub fn log_name(base: LogVersion) -> String {
@@ -468,10 +572,16 @@ fn widen(range: Option<TimestampRange>, timestamp: DateTime) -> Option<Timestamp
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::log::{RecordKind, Term, index::Header};
+	use std::sync::Arc;
+
+	use reifydb_codec::log::{NodeId, RecordKind, Term, index::Header};
 	use reifydb_runtime::{
 		context::clock::{Clock, MockClock},
-		io::fs::{Len, Open, Pwrite, memory::MemoryFs},
+		io::fs::{
+			Len, Open, Pwrite,
+			memory::MemoryFs,
+			testing::{NoFaults, TestingFs},
+		},
 	};
 
 	use super::*;
@@ -638,7 +748,7 @@ mod tests {
 		partition.append(&record(500, &[0u8; 200])).unwrap();
 		partition.append(&record(501, &[0u8; 200])).unwrap();
 		partition.append(&record(502, b"in the new segment")).unwrap();
-		partition.sync().unwrap();
+		sync(&fs, partition.dir(), partition.base()).unwrap();
 
 		let (reopened, scan) =
 			Partition::<MemoryFs, Clock>::open(fs, Clock::Mock(mock), Path::new(DIR), config()).unwrap();
@@ -670,6 +780,71 @@ mod tests {
 		assert_eq!(reopened.bases(), [BASE, LogVersion::new(501)]);
 	}
 
+	fn versions<C: ClockNow>(partition: &Partition<MemoryFs, C>) -> Vec<u64> {
+		drain(partition).unwrap().iter().map(|record| record.version.as_u64()).collect()
+	}
+
+	fn at_index(version: u64, index: u64) -> Record {
+		// the replacement tail carries the leader's version, which has no relation to the
+		// index it lands on, so both are set explicitly.
+		let mut record = record(version, b"replacement");
+		record.index = LogIndex::new(index);
+		record
+	}
+
+	fn in_term(version: u64, term: u64) -> Record {
+		// the term is the only field that moves, so a refusal can only be the term guard.
+		let mut record = record(version, b"x");
+		record.term = Term::new(term);
+		record
+	}
+
+	#[test]
+	fn a_term_below_the_tail_is_refused_and_changes_nothing() {
+		// a term that goes backwards means this node accepted an entry from a leader it has
+		// already moved past, and once it is on the platter the log claims a history raft
+		// says never happened. The tail must be untouched, or the refusal has already cost
+		// what it was meant to protect.
+		let (_, _, mut partition) = fixture();
+		partition.append(&in_term(500, 4)).unwrap();
+
+		let error = partition.append(&in_term(501, 3)).unwrap_err();
+
+		assert!(matches!(error, LogError::TermRegression { last, found, .. }
+			if last == Term::new(4) && found == Term::new(3)));
+		assert_eq!(partition.last_index(), Some(BASE_INDEX));
+		assert_eq!(partition.last_term(), Some(Term::new(4)));
+		assert_eq!(drain(&partition).unwrap().len(), 1);
+	}
+
+	#[test]
+	fn a_term_that_holds_or_rises_is_accepted() {
+		// terms are monotonic, not strictly increasing: a leader appends many entries in one
+		// term, so an equal term is the common case and must not be caught by the guard.
+		let (_, _, mut partition) = fixture();
+
+		partition.append(&in_term(500, 4)).unwrap();
+		partition.append(&in_term(501, 4)).unwrap();
+		partition.append(&in_term(502, 9)).unwrap();
+
+		assert_eq!(partition.last_term(), Some(Term::new(9)));
+	}
+
+	#[test]
+	fn the_term_guard_survives_a_reopen() {
+		// the guard reads the tail recovered at open, so a partition that forgets its term on
+		// the way back in accepts the first regression after every restart.
+		let (fs, mock, mut partition) = fixture();
+		partition.append(&in_term(500, 4)).unwrap();
+		drop(partition);
+
+		let (mut reopened, _) =
+			Partition::<MemoryFs, Clock>::open(fs, Clock::Mock(mock), Path::new(DIR), config()).unwrap();
+		let error = reopened.append(&in_term(501, 1)).unwrap_err();
+
+		assert!(matches!(error, LogError::TermRegression { .. }));
+	}
+
 	fn rolled() -> (MemoryFs, MockClock, Partition<MemoryFs, Clock>) {
 		let (fs, mock, mut partition) = fixture();
 		for version in 500..=507 {
@@ -682,6 +857,183 @@ mod tests {
 	fn clobber(fs: &MemoryFs, base: LogVersion, bytes: &[u8]) {
 		let path = PathBuf::from(DIR).join(index_name(base));
 		fs.open_mut(&path).unwrap().pwrite(0, bytes).unwrap();
+	}
+
+	#[test]
+	fn the_base_index_map_holds_one_entry_per_segment_and_ascends() {
+		// every index keyed lookup binary searches this, so a map that drifts out of step with
+		// bases routes to the wrong file and answers with a record that exists but is not the one
+		// asked for, which is worse than answering nothing.
+		let (_, _, partition) = rolled();
+
+		assert_eq!(partition.bases().len(), partition.base_indexes().len());
+		assert_eq!(
+			partition.base_indexes(),
+			[LogIndex::new(1), LogIndex::new(3), LogIndex::new(5), LogIndex::new(7)]
+		);
+	}
+
+	#[test]
+	fn the_base_index_map_is_rebuilt_from_disk_on_open() {
+		// the map is derived, not stored as a whole, so a reopen has to reconstruct exactly what
+		// the live handle held or every lookup after a restart routes differently.
+		let (fs, mock, partition) = rolled();
+		let live = partition.base_indexes().to_vec();
+		drop(partition);
+
+		let (reopened, _) =
+			Partition::<MemoryFs, Clock>::open(fs, Clock::Mock(mock), Path::new(DIR), config()).unwrap();
+
+		assert_eq!(reopened.base_indexes(), live.as_slice());
+	}
+
+	#[test]
+	fn a_record_is_found_by_index_in_a_sealed_segment() {
+		// raft addresses entries by index and never by version, so a lookup has to cross into a
+		// segment that was sealed and closed long before the question was asked.
+		let (_, _, partition) = rolled();
+
+		let found = partition.record_at(LogIndex::new(3)).unwrap().unwrap();
+
+		assert_eq!(found.version, LogVersion::new(502));
+		assert_eq!(found.index, LogIndex::new(3));
+	}
+
+	#[test]
+	fn a_record_is_found_by_index_in_the_active_segment() {
+		// the active segment's entries live in memory rather than in a readable index file, so it
+		// is the one segment the sealed path cannot answer for.
+		let (_, _, partition) = rolled();
+
+		let found = partition.record_at(LogIndex::new(8)).unwrap().unwrap();
+
+		assert_eq!(found.version, LogVersion::new(507));
+	}
+
+	#[test]
+	fn an_index_above_the_tail_is_absent_rather_than_an_error() {
+		// a follower routinely asks for an index this node has not reached yet, and raft reads
+		// absent as "send me from here"; an error would turn ordinary replication into a fault.
+		let (_, _, partition) = rolled();
+
+		assert!(partition.record_at(LogIndex::new(9)).unwrap().is_none());
+	}
+
+	#[test]
+	fn an_index_below_the_oldest_segment_is_absent_rather_than_misrouted() {
+		// after a purge the entry is genuinely gone, and the binary search must not clamp to the
+		// first segment and hand back an unrelated record as if it were the one asked for.
+		let (_, _, mut partition) = rolled();
+		partition.purge(EXPIRED).unwrap();
+
+		assert_eq!(partition.base_indexes(), [LogIndex::new(7)]);
+		assert!(partition.record_at(LogIndex::new(3)).unwrap().is_none());
+	}
+
+	#[test]
+	fn an_index_below_the_oldest_segment_costs_no_syscall_at_all() {
+		// answering absent is not enough: without the floor check the lookup clamps to the oldest
+		// segment and scans it whole, because an index below every entry resolves to position zero.
+		// A lagging follower probes exactly this range, so the cost would be a full segment read per
+		// probe, and the answer would be identical either way.
+		let fs = TestingFs::new(MemoryFs::new(), Arc::new(NoFaults));
+		fs.mkdir(Path::new("/log")).unwrap();
+		let mock = MockClock::from_millis(1_000);
+		let mut partition = Partition::create(
+			fs.clone(),
+			Clock::Mock(mock.clone()),
+			Path::new(DIR),
+			config(),
+			BASE,
+			BASE_INDEX,
+		)
+		.unwrap();
+		for version in 500..=507 {
+			partition.append(&record(version, &[0u8; 200])).unwrap();
+		}
+		partition.purge(EXPIRED).unwrap();
+		let before = fs.calls();
+
+		assert!(partition.record_at(LogIndex::new(3)).unwrap().is_none());
+
+		assert_eq!(fs.calls(), before, "a lookup below the floor reached the filesystem");
+	}
+
+	#[test]
+	fn a_commit_index_advances_and_rides_out_on_the_next_vote() {
+		// the commit index advances far more often than a vote does, so it is not made durable on
+		// its own: it is a hint that may lag, and it reaches disk whenever the vote next does.
+		let (fs, mock, mut partition) = fixture();
+		for version in 500..=503 {
+			partition.append(&record(version, b"x")).unwrap();
+		}
+
+		partition.commit(LogIndex::new(3)).unwrap();
+		partition
+			.save_vote(State {
+				term: Term::new(2),
+				voted_for: Some(NodeId::new(7)),
+				commit_index: partition.commit_index(),
+			})
+			.unwrap();
+		drop(partition);
+
+		let (reopened, _) =
+			Partition::<MemoryFs, Clock>::open(fs, Clock::Mock(mock), Path::new(DIR), config()).unwrap();
+
+		assert_eq!(reopened.commit_index(), LogIndex::new(3));
+	}
+
+	#[test]
+	fn a_commit_index_above_the_tail_is_refused() {
+		// committing past the tail claims entries this node never wrote, and a follower that reports
+		// it would have the leader believe those entries are replicated here.
+		let (_, _, mut partition) = fixture();
+		partition.append(&record(500, b"x")).unwrap();
+
+		let error = partition.commit(LogIndex::new(2)).unwrap_err();
+
+		assert!(matches!(error, LogError::CommitOutOfRange { high, found, .. }
+			if high == LogIndex::new(1) && found == LogIndex::new(2)));
+		assert_eq!(partition.commit_index(), LogIndex::ZERO);
+	}
+
+	#[test]
+	fn a_commit_index_that_goes_backwards_is_refused_rather_than_ignored() {
+		// raft only ever raises the commit index, so a decrease is a confused caller; taking the
+		// maximum silently would leave that caller believing it had rewound and carry on.
+		let (_, _, mut partition) = fixture();
+		for version in 500..=502 {
+			partition.append(&record(version, b"x")).unwrap();
+		}
+		partition.commit(LogIndex::new(3)).unwrap();
+
+		let error = partition.commit(LogIndex::new(1)).unwrap_err();
+
+		assert!(matches!(error, LogError::CommitOutOfRange { low, .. } if low == LogIndex::new(3)));
+		assert_eq!(partition.commit_index(), LogIndex::new(3));
+	}
+
+	#[test]
+	fn a_stored_commit_index_above_the_recovered_tail_is_clamped_when_read() {
+		// the vote and the log sync separately, so a crash can leave a vote naming entries the log
+		// never kept. The clamp sits on the accessor and not on the file: the vote must keep
+		// reporting exactly what was written, or a crash sweep sees a state the group never cast.
+		let (fs, mock, mut partition) = fixture();
+		partition.append(&record(500, b"x")).unwrap();
+		partition
+			.save_vote(State {
+				term: Term::new(2),
+				voted_for: None,
+				commit_index: LogIndex::new(9),
+			})
+			.unwrap();
+		drop(partition);
+
+		let (reopened, _) =
+			Partition::<MemoryFs, Clock>::open(fs, Clock::Mock(mock), Path::new(DIR), config()).unwrap();
+
+		assert_eq!(reopened.commit_index(), LogIndex::new(1));
 	}
 
 	const RECENT: Duration = Duration::from_seconds_const(1);
@@ -728,7 +1080,7 @@ mod tests {
 
 		assert_eq!(reopened.purge(EXPIRED).unwrap(), []);
 		assert_eq!(reopened.bases(), [BASE]);
-		assert_eq!(reopened.records().unwrap().len(), 1);
+		assert_eq!(drain(&reopened).unwrap().len(), 1);
 	}
 
 	#[test]
@@ -812,5 +1164,227 @@ mod tests {
 
 		assert_eq!(reopened.bases(), [LogVersion::new(502), LogVersion::new(504), LogVersion::new(506)]);
 		assert!(fs.open(&PathBuf::from(DIR).join(index_name(BASE))).is_err());
+	}
+
+	#[test]
+	fn a_truncation_inside_the_active_segment_drops_only_its_tail() {
+		// decision 180: a new leader overwrites a conflicting tail on purpose, so the cut is a
+		// first class operation and not a recovery side effect. only the records at or above
+		// the cut may go, and the segment list must not move when the cut lands inside the
+		// active segment.
+		let (_, _, mut partition) = rolled();
+
+		partition.truncate_from(LogIndex::new(8)).unwrap();
+
+		assert_eq!(partition.bases(), [BASE, LogVersion::new(502), LogVersion::new(504), LogVersion::new(506)]);
+		assert_eq!(partition.last_index(), Some(LogIndex::new(7)));
+		assert_eq!(partition.head(), Some(LogVersion::new(506)));
+		assert_eq!(versions(&partition), (500..=506).collect::<Vec<_>>());
+	}
+
+	#[test]
+	fn a_truncation_drops_every_segment_that_starts_at_or_above_the_cut() {
+		// a cut two segments down must unlink the whole segments above it, not just forget
+		// them in memory, or a reopen would scan them back in and undo the truncation.
+		let (fs, _, mut partition) = rolled();
+
+		partition.truncate_from(LogIndex::new(5)).unwrap();
+
+		assert_eq!(partition.bases(), [BASE, LogVersion::new(502)]);
+		assert_eq!(partition.last_index(), Some(LogIndex::new(4)));
+		assert_eq!(versions(&partition), vec![500, 501, 502, 503]);
+		for base in [LogVersion::new(504), LogVersion::new(506)] {
+			assert!(fs.open(&PathBuf::from(DIR).join(log_name(base))).is_err());
+			assert!(fs.open(&PathBuf::from(DIR).join(index_name(base))).is_err());
+		}
+	}
+
+	#[test]
+	fn a_cut_on_a_segment_boundary_keeps_the_segment_below_it_whole() {
+		// the cut is the first index that goes, so a segment whose every record sits below it
+		// survives untouched even though the cut names the base of the segment after it.
+		let (_, _, mut partition) = rolled();
+
+		partition.truncate_from(LogIndex::new(7)).unwrap();
+
+		assert_eq!(partition.bases(), [BASE, LogVersion::new(502), LogVersion::new(504)]);
+		assert_eq!(partition.last_index(), Some(LogIndex::new(6)));
+		assert_eq!(versions(&partition), (500..=505).collect::<Vec<_>>());
+	}
+
+	#[test]
+	fn a_truncation_below_the_oldest_surviving_index_is_refused() {
+		// the records the caller wants gone are already gone, so the request cannot be
+		// honoured: a follower this far behind needs a snapshot, and emptying the log would
+		// hide that behind something that looks healthy.
+		let (_, _, mut partition) = rolled();
+		partition.purge(EXPIRED).unwrap();
+
+		let error = partition.truncate_from(LogIndex::new(6)).unwrap_err();
+
+		assert!(matches!(error, LogError::TruncateBelowFloor { .. }), "{error}");
+		assert_eq!(partition.last_index(), Some(LogIndex::new(8)));
+		assert_eq!(versions(&partition), (506..=507).collect::<Vec<_>>());
+	}
+
+	#[test]
+	fn a_cut_at_the_oldest_index_empties_the_partition() {
+		// a follower whose whole uncommitted log disagrees with its leader is told to drop all of
+		// it, and that cut has to land rather than be refused as if a snapshot were needed.
+		let (fs, _, mut partition) = rolled();
+
+		partition.truncate_from(LogIndex::new(1)).unwrap();
+
+		assert_eq!(partition.bases(), [BASE]);
+		assert_eq!(partition.base_indexes(), [LogIndex::new(1)]);
+		assert_eq!(partition.last_index(), None);
+		assert_eq!(partition.head(), None);
+		assert!(versions(&partition).is_empty());
+		for base in [LogVersion::new(502), LogVersion::new(504), LogVersion::new(506)] {
+			assert!(fs.open(&PathBuf::from(DIR).join(log_name(base))).is_err());
+		}
+	}
+
+	#[test]
+	fn an_emptied_partition_takes_records_again() {
+		// truncating in place leaves the capacity at the cut, so an emptied segment would report
+		// itself full at zero bytes and never roll: every later append is refused and the follower
+		// the cut was meant to repair can never be repaired.
+		let (_, _, mut partition) = rolled();
+		partition.truncate_from(LogIndex::new(1)).unwrap();
+
+		partition.append(&at_index(600, 1)).unwrap();
+
+		assert_eq!(partition.last_index(), Some(LogIndex::new(1)));
+		assert_eq!(versions(&partition), vec![600]);
+	}
+
+	#[test]
+	fn an_emptied_partition_reopens_empty_rather_than_missing() {
+		// recovery discards a base whose segment holds no records, so an emptied partition left
+		// with a zero byte pair would lose its last base and reopen as a log that does not exist.
+		let (fs, mock, mut partition) = rolled();
+		partition.truncate_from(LogIndex::new(1)).unwrap();
+		drop(partition);
+
+		let (reopened, _) = Partition::open(fs, Clock::Mock(mock), Path::new(DIR), config()).unwrap();
+
+		assert_eq!(reopened.bases(), [BASE]);
+		assert_eq!(reopened.last_index(), None);
+		assert_eq!(reopened.head(), None);
+	}
+
+	#[test]
+	fn a_reader_pinned_when_the_partition_empties_is_pulled_back_to_the_start() {
+		// there is no surviving head to clamp to, so the ceiling has to fall to the start sentinel
+		// register publishes; leaving the reader where it was skips everything the leader sends
+		// next.
+		let (fs, _, mut partition) = rolled();
+		partition.register("sub").unwrap();
+		partition.record("sub", LogVersion::new(507)).unwrap();
+
+		partition.truncate_from(LogIndex::new(1)).unwrap();
+
+		assert_eq!(version_of(&fs, Path::new(DIR), "sub").unwrap(), LogVersion::ZERO);
+	}
+
+	#[test]
+	fn a_truncation_at_or_below_the_commit_index_is_refused() {
+		// a committed entry is one a quorum has already acknowledged, so deleting it would
+		// let two leaders disagree about a decided value. the guard fires at the commit index
+		// itself, not one below it.
+		let (_, _, mut partition) = rolled();
+		partition.commit(LogIndex::new(4)).unwrap();
+
+		let at = partition.truncate_from(LogIndex::new(4)).unwrap_err();
+		let below = partition.truncate_from(LogIndex::new(3)).unwrap_err();
+
+		assert!(matches!(at, LogError::TruncateCommitted { .. }), "{at}");
+		assert!(matches!(below, LogError::TruncateCommitted { .. }), "{below}");
+		assert_eq!(versions(&partition), (500..=507).collect::<Vec<_>>());
+		partition.truncate_from(LogIndex::new(5)).unwrap();
+	}
+
+	#[test]
+	fn a_truncation_above_the_tail_changes_nothing() {
+		// a leader that repeats a cut this node has already applied must not be treated as an
+		// error, and must not unlink a segment on the way through.
+		let (_, _, mut partition) = rolled();
+
+		partition.truncate_from(LogIndex::new(9)).unwrap();
+
+		assert_eq!(partition.bases(), [BASE, LogVersion::new(502), LogVersion::new(504), LogVersion::new(506)]);
+		assert_eq!(partition.last_index(), Some(LogIndex::new(8)));
+		assert_eq!(versions(&partition), (500..=507).collect::<Vec<_>>());
+	}
+
+	#[test]
+	fn a_truncated_partition_takes_the_replacement_records() {
+		// the point of the cut is to make room for the leader's version of the tail, so the
+		// index guard must accept the very index that was just deleted.
+		let (_, _, mut partition) = rolled();
+		partition.truncate_from(LogIndex::new(7)).unwrap();
+
+		partition.append(&at_index(600, 7)).unwrap();
+
+		assert_eq!(partition.last_index(), Some(LogIndex::new(7)));
+		assert_eq!(versions(&partition), vec![500, 501, 502, 503, 504, 505, 600]);
+	}
+
+	#[test]
+	fn a_truncation_holds_across_a_reopen() {
+		// the cut has to reach the files, not only the in memory lists, or recovery scans the
+		// deleted tail back in.
+		let (fs, mock, mut partition) = rolled();
+		partition.truncate_from(LogIndex::new(5)).unwrap();
+		drop(partition);
+
+		let (reopened, _) = Partition::open(fs, Clock::Mock(mock), Path::new(DIR), config()).unwrap();
+
+		assert_eq!(reopened.bases(), [BASE, LogVersion::new(502)]);
+		assert_eq!(reopened.last_index(), Some(LogIndex::new(4)));
+		assert_eq!(reopened.head(), Some(LogVersion::new(503)));
+	}
+
+	#[test]
+	fn a_reader_pinned_above_the_cut_is_pulled_down_to_it() {
+		// a reader left above the cut would open a cursor past everything that survives and
+		// silently skip the replacement records the leader sends next, which is data loss for
+		// the subscriber rather than a stale position.
+		let (fs, _, mut partition) = rolled();
+		partition.register("sub").unwrap();
+		partition.record("sub", LogVersion::new(507)).unwrap();
+
+		partition.truncate_from(LogIndex::new(6)).unwrap();
+
+		assert_eq!(version_of(&fs, Path::new(DIR), "sub").unwrap(), LogVersion::new(504));
+	}
+
+	#[test]
+	fn a_reader_below_the_cut_is_left_where_it_is() {
+		// clamping is a ceiling, not an assignment: a reader that has not reached the cut has
+		// lost nothing and must keep its place.
+		let (fs, _, mut partition) = rolled();
+		partition.register("sub").unwrap();
+		partition.record("sub", LogVersion::new(501)).unwrap();
+
+		partition.truncate_from(LogIndex::new(6)).unwrap();
+
+		assert_eq!(version_of(&fs, Path::new(DIR), "sub").unwrap(), LogVersion::new(501));
+	}
+
+	#[test]
+	fn a_truncated_segment_is_full_so_the_next_append_rolls() {
+		// decision 254: the cut leaves capacity at the cut rather than growing the file back,
+		// so the segment reports itself full and the existing roll path takes over. without
+		// this the next append would extend a file recovery believes was sealed.
+		let (_, _, mut partition) = rolled();
+		partition.truncate_from(LogIndex::new(8)).unwrap();
+		let before = partition.bases().len();
+
+		partition.append(&at_index(600, 8)).unwrap();
+
+		assert_eq!(partition.bases().len(), before + 1);
+		assert_eq!(partition.base(), LogVersion::new(600));
 	}
 }

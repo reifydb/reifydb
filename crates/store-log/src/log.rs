@@ -11,28 +11,53 @@ use reifydb_codec::log::{
 use reifydb_runtime::io::fs::{
 	Create, Filesystem, Len, Mkdir, Open, OpenMut, Pread, ReadDir, Rename, SyncData, SyncDir, Unlink,
 };
-use reifydb_value::{clock::ClockNow, value::duration::Duration};
+use reifydb_value::{byte_size::ByteSize, clock::ClockNow, value::duration::Duration};
 
 use crate::{
 	cursor::Cursor,
 	error::{LogError, Result},
-	partition::{Config, Partition},
+	partition::{Config, Partition, sync},
+	reader::{record, register, unregister, version_of},
 	segment::{Scan, discard, staging, write_all},
+	writer::Writer,
 };
 
 pub const META_NAME: &str = "meta";
 
 pub struct Log<F: Filesystem, C: ClockNow> {
+	fs: F,
 	dir: PathBuf,
 	meta: Meta,
-	partitions: Vec<Partition<F, C>>,
-	head: Option<LogVersion>,
+	writers: Vec<Writer<F, C>>,
 }
 
-impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDir + Unlink + Clone, C: ClockNow + Clone>
-	Log<F, C>
+impl<F, C> Log<F, C>
+where
+	F: Filesystem
+		+ Create
+		+ Mkdir
+		+ Open
+		+ OpenMut
+		+ ReadDir
+		+ Rename
+		+ SyncDir
+		+ Unlink
+		+ Clone
+		+ Send
+		+ Sync
+		+ 'static,
+	C: ClockNow + Clone + Send + 'static,
+	Partition<F, C>: Send,
 {
 	pub fn create(fs: F, clock: C, dir: &Path, config: Config, partitions: u32) -> Result<Self> {
+		Self::created(fs, clock, dir, config, partitions, true)
+	}
+
+	pub fn create_detached(fs: F, clock: C, dir: &Path, config: Config, partitions: u32) -> Result<Self> {
+		Self::created(fs, clock, dir, config, partitions, false)
+	}
+
+	fn created(fs: F, clock: C, dir: &Path, config: Config, partitions: u32, threaded: bool) -> Result<Self> {
 		if partitions == 0 {
 			return Err(LogError::MetaCorrupt(dir.join(META_NAME)));
 		}
@@ -45,90 +70,115 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 			segment_age: config.segment_age,
 		};
 		publish(&fs, &dir.join(META_NAME), &meta)?;
-		let opened = (0..partitions)
+		let writers = (0..partitions)
 			.map(|at| {
-				Partition::create(
+				let partition = Partition::create(
 					fs.clone(),
 					clock.clone(),
 					&dir.join(partition_name(at)),
 					config,
 					LogVersion::ZERO,
 					LogIndex::ZERO,
-				)
+				)?;
+				Ok(writer(fs.clone(), partition, threaded))
 			})
 			.collect::<Result<Vec<_>>>()?;
 		Ok(Self {
+			fs,
 			dir: dir.to_path_buf(),
 			meta,
-			partitions: opened,
-			head: None,
+			writers,
 		})
 	}
 
 	pub fn open(fs: F, clock: C, dir: &Path) -> Result<(Self, Vec<Scan>)> {
+		Self::opened(fs, clock, dir, true)
+	}
+
+	pub fn open_detached(fs: F, clock: C, dir: &Path) -> Result<(Self, Vec<Scan>)> {
+		Self::opened(fs, clock, dir, false)
+	}
+
+	fn opened(fs: F, clock: C, dir: &Path, threaded: bool) -> Result<(Self, Vec<Scan>)> {
 		let meta = load(&fs, &dir.join(META_NAME))?;
 		let config = Config {
 			segment_bytes: meta.segment_bytes,
 			segment_age: meta.segment_age,
 			index_interval: meta.index_interval,
 		};
-		let mut partitions = Vec::with_capacity(meta.partitions as usize);
+		let mut writers = Vec::with_capacity(meta.partitions as usize);
 		let mut scans = Vec::with_capacity(meta.partitions as usize);
 		for at in 0..meta.partitions {
 			let (partition, scan) =
 				Partition::open(fs.clone(), clock.clone(), &dir.join(partition_name(at)), config)?;
-			partitions.push(partition);
+			writers.push(writer(fs.clone(), partition, threaded));
 			scans.push(scan);
 		}
-		let head = partitions.iter().filter_map(Partition::head).max();
 		let log = Self {
+			fs,
 			dir: dir.to_path_buf(),
 			meta,
-			partitions,
-			head,
+			writers,
 		};
 		Ok((log, scans))
 	}
 
-	pub fn append(&mut self, partition: u32, record: &Record) -> Result<Position> {
-		let position = self.at_mut(partition)?.append(record)?;
-		self.head = self.head.max(Some(record.version));
-		Ok(position)
+	pub fn append(&self, partition: u32, record: &Record) -> Result<Position> {
+		self.writer(partition)?.commit(record)
+	}
+
+	pub fn append_durable(&self, partition: u32, record: &Record) -> Result<Position> {
+		self.writer(partition)?.commit_durable(record)
+	}
+
+	pub fn truncate_from(&self, partition: u32, index: LogIndex) -> Result<()> {
+		self.writer(partition)?.truncate_from(index)
+	}
+
+	pub fn wait(&self, partition: u32, version: LogVersion) -> Result<()> {
+		self.writer(partition)?.wait(version)
+	}
+
+	pub fn durable(&self, partition: u32) -> Result<Option<LogVersion>> {
+		Ok(self.writer(partition)?.durable())
 	}
 
 	pub fn sync(&self) -> Result<()> {
-		for partition in &self.partitions {
-			partition.sync()?;
+		for writer in &self.writers {
+			let (dir, base) = writer.with(|partition| (partition.dir().to_path_buf(), partition.base()));
+			sync(&self.fs, &dir, base)?;
 		}
 		Ok(())
 	}
 
-	pub fn purge(&mut self, ttl: Duration) -> Result<Vec<(u32, Vec<LogVersion>)>> {
-		let mut dropped = Vec::with_capacity(self.partitions.len());
-		for (at, partition) in self.partitions.iter_mut().enumerate() {
-			dropped.push((at as u32, partition.purge(ttl)?));
+	pub fn purge(&self, ttl: Duration) -> Result<Vec<(u32, Vec<LogVersion>)>> {
+		let mut dropped = Vec::with_capacity(self.writers.len());
+		for (at, writer) in self.writers.iter().enumerate() {
+			dropped.push((at as u32, writer.with(|partition| partition.purge(ttl))?));
 		}
 		Ok(dropped)
 	}
 
 	pub fn register(&self, partition: u32, id: &str) -> Result<()> {
-		self.at(partition)?.register(id)
+		register(&self.fs, &self.dir_of(partition)?, id)
 	}
 
 	pub fn unregister(&self, partition: u32, id: &str) -> Result<()> {
-		self.at(partition)?.unregister(id)
+		unregister(&self.fs, &self.dir_of(partition)?, id)
 	}
 
 	pub fn record(&self, partition: u32, id: &str, version: LogVersion) -> Result<()> {
-		self.at(partition)?.record(id, version)
+		record(&self.fs, &self.dir_of(partition)?, id, version)
 	}
 
 	pub fn cursor(&self, partition: u32, id: &str) -> Result<Cursor<'_, F>> {
-		self.at(partition)?.cursor(id)
+		let dir = self.dir_of(partition)?;
+		let after = version_of(&self.fs, &dir, id)?;
+		Cursor::open(&self.fs, &dir, after)
 	}
 
 	pub fn head(&self) -> Option<LogVersion> {
-		self.head
+		self.writers.iter().filter_map(Writer::written).max()
 	}
 
 	pub fn meta(&self) -> Meta {
@@ -139,26 +189,58 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		&self.dir
 	}
 
-	pub fn partitions(&self) -> &[Partition<F, C>] {
-		&self.partitions
+	pub fn dir_of(&self, partition: u32) -> Result<PathBuf> {
+		self.writer(partition)?;
+		Ok(self.dir.join(partition_name(partition)))
 	}
 
-	pub fn at(&self, partition: u32) -> Result<&Partition<F, C>> {
-		self.partitions.get(partition as usize).ok_or_else(|| LogError::NoSuchPartition {
+	pub fn base(&self, partition: u32) -> Result<LogVersion> {
+		Ok(self.writer(partition)?.with(|partition| partition.base()))
+	}
+
+	pub fn bases(&self, partition: u32) -> Result<Vec<LogVersion>> {
+		Ok(self.writer(partition)?.with(|partition| partition.bases().to_vec()))
+	}
+
+	pub fn segment_bytes(&self, partition: u32) -> Result<ByteSize> {
+		Ok(self.writer(partition)?.with(|partition| partition.segment().capacity()))
+	}
+
+	pub fn with<R>(&self, partition: u32, act: impl FnOnce(&mut Partition<F, C>) -> R) -> Result<R> {
+		Ok(self.writer(partition)?.with(act))
+	}
+
+	fn writer(&self, partition: u32) -> Result<&Writer<F, C>> {
+		self.writers.get(partition as usize).ok_or_else(|| LogError::NoSuchPartition {
 			dir: self.dir.clone(),
 			requested: partition,
 			count: self.meta.partitions,
 		})
 	}
+}
 
-	pub fn at_mut(&mut self, partition: u32) -> Result<&mut Partition<F, C>> {
-		let count = self.meta.partitions;
-		let dir = self.dir.clone();
-		self.partitions.get_mut(partition as usize).ok_or(LogError::NoSuchPartition {
-			dir,
-			requested: partition,
-			count,
-		})
+fn writer<F, C>(fs: F, partition: Partition<F, C>, threaded: bool) -> Writer<F, C>
+where
+	F: Filesystem
+		+ Create
+		+ Mkdir
+		+ Open
+		+ OpenMut
+		+ ReadDir
+		+ Rename
+		+ SyncDir
+		+ Unlink
+		+ Clone
+		+ Send
+		+ Sync
+		+ 'static,
+	C: ClockNow + Send + 'static,
+	Partition<F, C>: Send,
+{
+	if threaded {
+		Writer::new(fs, partition)
+	} else {
+		Writer::detached(fs, partition)
 	}
 }
 
@@ -234,6 +316,7 @@ mod tests {
 	};
 
 	use super::*;
+	use crate::partition::drain;
 
 	const DIR: &str = "/log";
 
@@ -267,7 +350,12 @@ mod tests {
 	}
 
 	fn versions(log: &Log<MemoryFs, Clock>, partition: u32) -> Vec<u64> {
-		log.at(partition).unwrap().records().unwrap().iter().map(|r| r.version.as_u64()).collect()
+		log.with(partition, |partition| drain(partition))
+			.unwrap()
+			.unwrap()
+			.iter()
+			.map(|r| r.version.as_u64())
+			.collect()
 	}
 
 	#[test]
@@ -284,7 +372,7 @@ mod tests {
 	fn meta_config_survives_a_reopen_and_drives_the_partitions() {
 		// Decision 223: the segment config lives in meta and meta wins on open, so a segment
 		// size cannot drift between boots and silently move every roll boundary.
-		let (fs, mut log) = fixture();
+		let (fs, log) = fixture();
 		log.append(0, &record(1, 1)).unwrap();
 		log.sync().unwrap();
 		drop(log);
@@ -293,14 +381,14 @@ mod tests {
 
 		assert_eq!(reopened.meta().segment_bytes, ByteSize::from_bytes(512));
 		assert_eq!(reopened.meta().index_interval, ByteSize::from_bytes(64));
-		assert_eq!(reopened.at(0).unwrap().segment().capacity(), ByteSize::from_bytes(512));
+		assert_eq!(reopened.segment_bytes(0).unwrap(), ByteSize::from_bytes(512));
 	}
 
 	#[test]
 	fn opening_is_a_fixed_point() {
 		// Invariant I7. A second open that moves anything means the first left the directory in a
 		// state it does not itself accept, which turns every restart into a slow leak.
-		let (fs, mut log) = fixture();
+		let (fs, log) = fixture();
 		log.append(0, &record(10, 1)).unwrap();
 		log.append(1, &record(20, 1)).unwrap();
 		log.append(1, &record(30, 2)).unwrap();
@@ -320,7 +408,7 @@ mod tests {
 		// Decision 230 is exactly this case: p1 is written once and never again, and under a
 		// minimum taken across partitions that pinned the whole log to version 1 and destroyed
 		// every record p0 had been told was durable.
-		let (fs, mut log) = fixture();
+		let (fs, log) = fixture();
 		log.append(1, &record(1, 1)).unwrap();
 		for version in 2..=8u64 {
 			log.append(0, &record(version, version)).unwrap();
@@ -338,7 +426,7 @@ mod tests {
 	fn the_head_is_the_highest_version_durable_anywhere() {
 		// The allocator is seeded from this, so it has to sit above every version on the platter
 		// or a restart reissues one that already names a different commit.
-		let (fs, mut log) = fixture();
+		let (fs, log) = fixture();
 		log.append(0, &record(10, 1)).unwrap();
 		log.append(1, &record(40, 1)).unwrap();
 		log.append(0, &record(20, 2)).unwrap();
@@ -355,7 +443,7 @@ mod tests {
 		// Decision 230 gives this up deliberately: p1 kept commit 30 and p0 never got it, and
 		// nothing puts that back together. No reader before stage 5 reads across partitions,
 		// and the alternative pinned the log to whichever partition was idle.
-		let (fs, mut log) = fixture();
+		let (fs, log) = fixture();
 		log.append(0, &record(10, 1)).unwrap();
 		log.append(1, &record(30, 1)).unwrap();
 		log.sync().unwrap();
@@ -398,7 +486,7 @@ mod tests {
 
 	#[test]
 	fn a_partition_beyond_the_count_is_named_in_the_error() {
-		let (_fs, mut log) = fixture();
+		let (_fs, log) = fixture();
 
 		let appended = log.append(DEFAULT_PARTITIONS, &record(1, 1)).err();
 

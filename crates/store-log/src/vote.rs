@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use reifydb_codec::log::{
-	VoteSeq,
+	LogIndex, VoteSeq,
 	vote::{FILE_BYTES, SLOT_BYTES, SLOTS, State},
 };
 use reifydb_runtime::io::fs::{Create, Filesystem, Len, Open, OpenMut, Pread, SyncData, SyncDir};
@@ -66,6 +66,10 @@ impl<F: Filesystem> Vote<F> {
 		self.seq = seq;
 		self.next = (self.next + 1) % SLOTS;
 		Ok(())
+	}
+
+	pub fn advance(&mut self, commit_index: LogIndex) {
+		self.state.commit_index = commit_index;
 	}
 
 	pub fn state(&self) -> State {

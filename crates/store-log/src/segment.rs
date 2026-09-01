@@ -94,13 +94,26 @@ impl<F: Filesystem> Segment<F> {
 		Ok(offset)
 	}
 
+	pub fn reset(&mut self, capacity: ByteSize) -> Result<()> {
+		self.file.truncate(0)?;
+		self.file.truncate(capacity.as_bytes())?;
+		self.file.sync_data()?;
+		self.head = Position::ZERO;
+		self.capacity = capacity;
+		Ok(())
+	}
+
+	pub fn truncate_to(&mut self, position: Position) -> Result<()> {
+		self.file.truncate(position.as_u64())?;
+		self.file.sync_data()?;
+		self.head = position;
+		self.capacity = ByteSize::from_bytes(position.as_u64());
+		Ok(())
+	}
+
 	pub fn seal(&mut self) -> Result<()> {
 		self.capacity = ByteSize::from_bytes(self.head.as_u64());
 		self.file.truncate(self.head.as_u64())?;
-		Ok(self.file.sync_data()?)
-	}
-
-	pub fn sync(&self) -> Result<()> {
 		Ok(self.file.sync_data()?)
 	}
 
@@ -223,6 +236,10 @@ pub(crate) fn write_all<H: Pwrite>(file: &H, path: &Path, mut offset: u64, buf: 
 	Ok(())
 }
 
+pub fn sync_path<F: Filesystem + OpenMut>(fs: &F, path: &Path) -> Result<()> {
+	Ok(fs.open_mut(path)?.sync_data()?)
+}
+
 pub fn staging(path: &Path) -> PathBuf {
 	let mut name = path.as_os_str().to_os_string();
 	name.push(STAGING_SUFFIX);
@@ -297,7 +314,7 @@ mod tests {
 		for entry in &written {
 			segment.append(entry).unwrap();
 		}
-		segment.sync().unwrap();
+		sync_path(&fs, &path).unwrap();
 
 		let scan = scan(&fs, &path).unwrap();
 
@@ -312,7 +329,7 @@ mod tests {
 		let first = record(1, b"survivor");
 		segment.append(&first).unwrap();
 		let second_at = segment.append(&record(2, b"victim")).unwrap();
-		segment.sync().unwrap();
+		sync_path(&fs, &path).unwrap();
 		let mut byte = [0u8; 1];
 		fs.open(&path).unwrap().pread(second_at.as_u64() + HEADER_BYTES as u64, &mut byte).unwrap();
 		poke(&fs, &path, second_at.as_u64() + HEADER_BYTES as u64, &[byte[0] ^ 0x01]);
@@ -332,7 +349,7 @@ mod tests {
 		segment.append(&record(1, b"a")).unwrap();
 		segment.append(&record(2, b"b")).unwrap();
 		let torn_at = segment.append(&record(3, b"c")).unwrap();
-		segment.sync().unwrap();
+		sync_path(&fs, &path).unwrap();
 		poke(&fs, &path, torn_at.as_u64() + 8, &[0xff]);
 
 		let (first_pass, first_scan) = Segment::<MemoryFs>::recover(&fs, &path).unwrap();

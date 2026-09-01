@@ -67,8 +67,23 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 					if !self.followed()? {
 						break;
 					}
+					let len = self.fs.open(&path)?.len()?;
+					if self.position.as_u64() != len {
+						return Err(LogError::SegmentIncomplete {
+							end: self.position,
+							len,
+							path,
+						});
+					}
 					self.at += 1;
 					self.position = Position::ZERO;
+				}
+				Stop::Stale(_) if self.position == Position::ZERO && self.last.is_some() => {
+					return Err(LogError::SegmentOutOfOrder {
+						previous: self.last.expect("guarded above"),
+						found: first_version(self.fs, &path)?,
+						path,
+					});
 				}
 				Stop::Corrupt(_) | Stop::Stale(_) => {
 					if self.followed()? {
@@ -116,6 +131,30 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 	}
 }
 
+#[cfg(test)]
+pub(crate) fn drain<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Vec<Record>> {
+	let mut cursor = Cursor::open(fs, dir, LogVersion::ZERO)?;
+	let mut out = Vec::new();
+	loop {
+		let batch = cursor.next_batch(1024)?;
+		if batch.is_empty() {
+			return Ok(out);
+		}
+		out.extend(batch);
+	}
+}
+
+fn first_version<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<LogVersion> {
+	match scan_upto(fs, path, Position::ZERO, None, 1)?.records.first() {
+		Some(record) => Ok(record.version),
+		None => Err(LogError::SegmentIncomplete {
+			end: Position::ZERO,
+			len: fs.open(path)?.len()?,
+			path: path.to_path_buf(),
+		}),
+	}
+}
+
 fn seek<F: Filesystem + Open>(
 	fs: &F,
 	path: &Path,
@@ -144,7 +183,7 @@ mod tests {
 	use reifydb_codec::log::{LogIndex, RecordKind, Term};
 	use reifydb_runtime::{
 		context::clock::{Clock, MockClock},
-		io::fs::{Mkdir, memory::MemoryFs},
+		io::fs::{Mkdir, OpenMut, Pwrite, memory::MemoryFs},
 	};
 	use reifydb_value::{
 		byte_size::ByteSize,
@@ -152,7 +191,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::partition::{Config, Partition};
+	use crate::partition::{Config, Partition, sync};
 
 	const DIR: &str = "/log/p0";
 	const BASE: LogVersion = LogVersion::new(500);
@@ -199,8 +238,48 @@ mod tests {
 		for step in 0..count {
 			partition.append(&record(BASE.as_u64() + step, &[step as u8; 40])).unwrap();
 		}
-		partition.sync().unwrap();
+		sync(&fs, partition.dir(), partition.base()).unwrap();
 		(fs, partition)
+	}
+
+	#[test]
+	fn a_sealed_segment_with_a_hole_before_its_end_is_refused() {
+		// a sealed segment is shrunk to exactly the bytes it holds, so a scan that stops on zeros
+		// before the file ends means a write in the middle never landed. The scan itself reports
+		// nothing wrong, it simply ends early, and without the length check the cursor moves to the
+		// next segment and hands the reader a gap indistinguishable from the end of the log.
+		let (fs, partition) = fixture(80);
+		let sealed = partition.bases()[0];
+		assert!(partition.bases().len() > 1, "the fixture must roll for there to be a sealed segment");
+		drop(partition);
+		let path = PathBuf::from(DIR).join(log_name(sealed));
+		let len = fs.open(&path).unwrap().len().unwrap();
+		fs.open_mut(&path).unwrap().pwrite(len, &[0u8; 64]).unwrap();
+
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), LogVersion::ZERO).unwrap();
+
+		let error = cursor.next_batch(1000).unwrap_err();
+		assert!(matches!(error, LogError::SegmentIncomplete { end, len: found, .. }
+			if end.as_u64() == len && found == len + 64));
+	}
+
+	#[test]
+	fn a_segment_that_starts_at_or_below_the_one_before_it_is_refused() {
+		// segments are a chain, and the only thing making the chain a total order is that each one
+		// starts above the last. A cursor that reads on regardless would emit versions going
+		// backwards and a consumer bookmarking by version would loop over the same records for good.
+		let (fs, partition) = fixture(80);
+		let bases = partition.bases().to_vec();
+		assert!(bases.len() > 1, "the fixture must roll for there to be a boundary to cross");
+		drop(partition);
+		let second = PathBuf::from(DIR).join(log_name(bases[1]));
+		let stale = record(BASE.as_u64(), &[0u8; 40]);
+		fs.open_mut(&second).unwrap().pwrite(0, &stale.encode()).unwrap();
+
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), LogVersion::ZERO).unwrap();
+
+		let error = cursor.next_batch(1000).unwrap_err();
+		assert!(matches!(error, LogError::SegmentOutOfOrder { found, .. } if found == BASE));
 	}
 
 	#[test]
@@ -261,7 +340,7 @@ mod tests {
 		assert_eq!(versions(&cursor.next_batch(10).unwrap()), vec![500, 501, 502]);
 
 		partition.append(&record(503, b"later")).unwrap();
-		partition.sync().unwrap();
+		sync(&fs, partition.dir(), partition.base()).unwrap();
 
 		assert_eq!(versions(&cursor.next_batch(10).unwrap()), vec![503]);
 	}
@@ -273,7 +352,7 @@ mod tests {
 		let (fs, mut partition) = fixture(6);
 		partition.seal().unwrap();
 		partition.append(&record_at(600, 7, b"next")).unwrap();
-		partition.sync().unwrap();
+		sync(&fs, partition.dir(), partition.base()).unwrap();
 		assert_eq!(partition.bases().len(), 2);
 
 		let mut cursor = Cursor::open(&fs, Path::new(DIR), LogVersion::ZERO).unwrap();
@@ -288,7 +367,7 @@ mod tests {
 		let (fs, mut partition) = fixture(6);
 		partition.seal().unwrap();
 		partition.append(&record_at(600, 7, b"next")).unwrap();
-		partition.sync().unwrap();
+		sync(&fs, partition.dir(), partition.base()).unwrap();
 		let mut cursor = Cursor::open(&fs, Path::new(DIR), LogVersion::ZERO).unwrap();
 
 		assert_eq!(versions(&cursor.next_batch(6).unwrap()), vec![500, 501, 502, 503, 504, 505]);
@@ -302,7 +381,7 @@ mod tests {
 		let (fs, mut partition) = fixture(6);
 		partition.seal().unwrap();
 		partition.append(&record_at(600, 7, b"next")).unwrap();
-		partition.sync().unwrap();
+		sync(&fs, partition.dir(), partition.base()).unwrap();
 		partition.purge(Duration::from_seconds_const(0)).unwrap();
 		assert_eq!(partition.bases(), [LogVersion::new(600)]);
 

@@ -64,6 +64,27 @@ pub fn floor<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Optio
 	Ok(lowest)
 }
 
+pub fn clamp<F: Filesystem + Create + Open + ReadDir + Rename + Unlink>(
+	fs: &F,
+	dir: &Path,
+	ceiling: LogVersion,
+) -> Result<()> {
+	let entries = match fs.read_dir(&dir.join(DIR_NAME)) {
+		Ok(entries) => entries,
+		Err(FsError::NotFound(_)) => return Ok(()),
+		Err(error) => return Err(error.into()),
+	};
+	for path in entries {
+		if path.as_os_str().as_encoded_bytes().ends_with(STAGING_SUFFIX.as_bytes()) {
+			continue;
+		}
+		if read(fs, &path)?.is_some_and(|pinned| pinned > ceiling) {
+			publish(fs, &path, ceiling)?;
+		}
+	}
+	Ok(())
+}
+
 pub fn path_of(dir: &Path, id: &str) -> Result<PathBuf> {
 	if !valid(id) {
 		return Err(LogError::InvalidReaderId {
