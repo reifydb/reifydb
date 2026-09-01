@@ -8,6 +8,7 @@ use std::{
 	path::{Path, PathBuf},
 };
 
+use reifydb_codec::log::{LogVersion, Position};
 use reifydb_runtime::io::fs::FsError;
 
 pub type Result<T> = std::result::Result<T, LogError>;
@@ -37,6 +38,35 @@ pub enum LogError {
 	},
 	VoteCorrupt {
 		path: PathBuf,
+	},
+	SegmentIncomplete {
+		path: PathBuf,
+		end: Position,
+		len: u64,
+	},
+	SegmentOutOfOrder {
+		path: PathBuf,
+		previous: LogVersion,
+		found: LogVersion,
+	},
+	MetaShort {
+		path: PathBuf,
+		len: u64,
+	},
+	MetaMagic {
+		path: PathBuf,
+		found: u32,
+	},
+	MetaVersion {
+		path: PathBuf,
+		found: u32,
+		expected: u32,
+	},
+	MetaCorrupt(PathBuf),
+	NoSuchPartition {
+		dir: PathBuf,
+		requested: u32,
+		count: u32,
 	},
 	Io {
 		path: PathBuf,
@@ -88,6 +118,31 @@ impl LogError {
 			LogError::VoteCorrupt {
 				path,
 			} => path,
+			LogError::SegmentIncomplete {
+				path,
+				..
+			} => path,
+			LogError::SegmentOutOfOrder {
+				path,
+				..
+			} => path,
+			LogError::MetaShort {
+				path,
+				..
+			} => path,
+			LogError::MetaMagic {
+				path,
+				..
+			} => path,
+			LogError::MetaVersion {
+				path,
+				..
+			} => path,
+			LogError::MetaCorrupt(path) => path,
+			LogError::NoSuchPartition {
+				dir,
+				..
+			} => dir,
 			LogError::Io {
 				path,
 				..
@@ -126,6 +181,22 @@ impl Display for LogError {
 				path,
 				len,
 			} => write!(f, "vote file {} is shorter than its two slots: {} bytes", path.display(), len),
+			LogError::SegmentIncomplete {
+				path,
+				end,
+				len,
+			} => write!(f, "sealed log segment {} stops at {} of {} bytes", path.display(), end, len),
+			LogError::SegmentOutOfOrder {
+				path,
+				previous,
+				found,
+			} => write!(
+				f,
+				"log segment {} starts at version {} at or below the preceding {}",
+				path.display(),
+				found,
+				previous
+			),
 			LogError::VoteCorrupt {
 				path,
 			} => write!(
@@ -133,6 +204,33 @@ impl Display for LogError {
 				"neither slot of vote file {} verifies, so the durable vote is lost",
 				path.display()
 			),
+			LogError::MetaShort {
+				path,
+				len,
+			} => write!(f, "log meta {} is shorter than its header: {} bytes", path.display(), len),
+			LogError::MetaMagic {
+				path,
+				found,
+			} => write!(f, "log meta {} has magic 0x{:08x}, not a meta file", path.display(), found),
+			LogError::MetaVersion {
+				path,
+				found,
+				expected,
+			} => write!(
+				f,
+				"log meta {} is format version {}, this build reads {}",
+				path.display(),
+				found,
+				expected
+			),
+			LogError::MetaCorrupt(path) => {
+				write!(f, "log meta {} does not verify against its checksum", path.display())
+			}
+			LogError::NoSuchPartition {
+				dir,
+				requested,
+				count,
+			} => write!(f, "log {} has {} partitions, {} was requested", dir.display(), count, requested),
 			LogError::Io {
 				path,
 				message,

@@ -1,19 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::path::{Path, PathBuf};
+use std::{
+	collections::HashSet,
+	path::{Path, PathBuf},
+};
 
 use reifydb_codec::log::{
 	LogIndex, LogVersion, Position,
-	index::{ENTRY_BYTES, Entry, HEADER_BYTES, Header, MAGIC, decode_entry, encode_entry},
+	index::{ENTRY_BYTES, Entry, HEADER_BYTES, Header, MAGIC, TimestampRange, decode_entry, encode_entry},
 	record::Record,
 };
-use reifydb_runtime::io::fs::{Create, Filesystem, Len, Open, OpenMut, Pread, SyncData, SyncDir, Truncate};
+use reifydb_runtime::io::fs::{
+	Create, Filesystem, Len, Open, OpenMut, Pread, Rename, SyncData, SyncDir, Truncate, Unlink,
+};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
 	error::{LogError, Result},
-	segment::{Scan, read_exact, scan_from, write_all},
+	segment::{Scan, discard, read_exact, scan_from, staging, write_all},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,11 +45,18 @@ impl<F: Filesystem> Index<F> {
 		interval: ByteSize,
 	) -> Result<Self>
 	where
-		F: Create + SyncDir,
+		F: Create + Open + Rename + SyncDir + Unlink,
 	{
+		if fs.open(path).is_ok() {
+			return Err(LogError::AlreadyExists(path.to_path_buf()));
+		}
 		let header = Header::new(base_version, base_index);
-		let file = fs.create(path, HEADER_BYTES as u64)?;
-		write_all(&file, path, 0, &header.encode())?;
+		let staging = staging(path);
+		discard(fs, &staging)?;
+		let file = fs.create(&staging, HEADER_BYTES as u64)?;
+		write_all(&file, &staging, 0, &header.encode())?;
+		file.sync_data()?;
+		fs.rename(&staging, path)?;
 		fs.sync_dir(parent(path))?;
 		Ok(Self {
 			path: path.to_path_buf(),
@@ -65,12 +77,7 @@ impl<F: Filesystem> Index<F> {
 		let truncated = !(len - HEADER_BYTES as u64).is_multiple_of(ENTRY_BYTES as u64);
 		let read = entries.len();
 		let anchors = anchors(log);
-		while let Some(last) = entries.last() {
-			if anchors.contains(&(last.version, last.index, last.position)) {
-				break;
-			}
-			entries.pop();
-		}
+		entries.retain(|entry| anchors.contains(&(entry.version, entry.index, entry.position)));
 		let recovery = Recovery {
 			read,
 			kept: entries.len(),
@@ -103,16 +110,18 @@ impl<F: Filesystem> Index<F> {
 		Ok(true)
 	}
 
+	pub fn seal(&mut self, timestamps: Option<TimestampRange>) -> Result<()> {
+		self.header.timestamps = timestamps;
+		write_all(&self.file, &self.path, 0, &self.header.encode())?;
+		Ok(self.file.sync_data()?)
+	}
+
 	pub fn sync(&self) -> Result<()> {
 		Ok(self.file.sync_data()?)
 	}
 
 	pub fn lookup(&self, version: LogVersion) -> Position {
 		position_of(&self.entries, version)
-	}
-
-	pub fn lookup_index(&self, index: LogIndex) -> Position {
-		position_of_index(&self.entries, index)
 	}
 
 	pub fn truncate_to(&mut self, index: LogIndex) -> Result<()> {
@@ -156,17 +165,8 @@ pub fn find<F: Open>(fs: &F, path: &Path, entries: &[Entry], version: LogVersion
 	Ok(scan.records.into_iter().find(|record| record.version == version))
 }
 
-pub fn find_index<F: Open>(fs: &F, path: &Path, entries: &[Entry], index: LogIndex) -> Result<Option<Record>> {
-	let scan = scan_from(fs, path, position_of_index(entries, index))?;
-	Ok(scan.records.into_iter().find(|record| record.index == index))
-}
-
 pub fn position_of(entries: &[Entry], version: LogVersion) -> Position {
 	at_or_before(entries.partition_point(|entry| entry.version <= version), entries)
-}
-
-pub fn position_of_index(entries: &[Entry], index: LogIndex) -> Position {
-	at_or_before(entries.partition_point(|entry| entry.index <= index), entries)
 }
 
 fn at_or_before(at: usize, entries: &[Entry]) -> Position {
@@ -211,11 +211,11 @@ fn load<H: Pread>(file: &H, path: &Path, len: u64) -> Result<(Header, Vec<Entry>
 	Ok((header, entries))
 }
 
-fn anchors(log: &Scan) -> Vec<(LogVersion, LogIndex, Position)> {
-	let mut out = Vec::with_capacity(log.records.len());
+fn anchors(log: &Scan) -> HashSet<(LogVersion, LogIndex, Position)> {
+	let mut out = HashSet::with_capacity(log.records.len());
 	let mut at = Position::ZERO;
 	for record in &log.records {
-		out.push((record.version, record.index, at));
+		out.insert((record.version, record.index, at));
 		at = at.advance(record.encoded_len() as u64);
 	}
 	out
@@ -303,28 +303,6 @@ mod tests {
 		assert_eq!(position_of(&entries, LogVersion::new(19)), Position::ZERO);
 		assert_eq!(position_of(&entries, LogVersion::new(20)), Position::new(800));
 		assert_eq!(position_of(&entries, LogVersion::new(999)), Position::new(800));
-	}
-
-	#[test]
-	fn a_lookup_by_index_never_lands_above_the_index_it_was_given() {
-		// the raft index is the key a follower seeks by, and it is dense where the version is gappy.
-		let entries = pair();
-
-		assert_eq!(position_of_index(&entries, LogIndex::new(0)), Position::ZERO);
-		assert_eq!(position_of_index(&entries, LogIndex::new(1)), Position::ZERO);
-		assert_eq!(position_of_index(&entries, LogIndex::new(6)), Position::ZERO);
-		assert_eq!(position_of_index(&entries, LogIndex::new(7)), Position::new(800));
-		assert_eq!(position_of_index(&entries, LogIndex::new(999)), Position::new(800));
-	}
-
-	#[test]
-	fn an_entry_resolves_the_same_position_from_either_key() {
-		// the two keys index the same entry, so a version and its index must never disagree.
-		let entries = pair();
-
-		for entry in &entries {
-			assert_eq!(position_of(&entries, entry.version), position_of_index(&entries, entry.index));
-		}
 	}
 
 	#[test]

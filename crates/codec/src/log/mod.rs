@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod index;
+pub mod meta;
 pub mod record;
 pub mod vote;
 

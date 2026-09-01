@@ -4,19 +4,24 @@
 use std::path::{Path, PathBuf};
 
 use reifydb_codec::log::{
-	Position,
+	LogVersion, Position,
 	record::{HEADER_BYTES, Header, Record},
 };
-use reifydb_runtime::io::fs::{Create, Filesystem, Len, Open, OpenMut, Pread, Pwrite, SyncData, SyncDir, Truncate};
+use reifydb_runtime::io::fs::{
+	Create, Filesystem, FsError, Len, Open, OpenMut, Pread, Pwrite, Rename, SyncData, SyncDir, Truncate, Unlink,
+};
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
 
 use crate::error::{LogError, Result};
+
+pub const STAGING_SUFFIX: &str = ".staging";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stop {
 	Unwritten,
 	Eof,
 	Corrupt(Position),
+	Stale(Position),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,9 +41,16 @@ pub struct Segment<F: Filesystem> {
 impl<F: Filesystem> Segment<F> {
 	pub fn create(fs: &F, path: &Path, capacity: ByteSize) -> Result<Self>
 	where
-		F: Create + SyncDir,
+		F: Create + Open + Rename + SyncDir + Unlink,
 	{
-		let file = fs.create(path, capacity.as_bytes())?;
+		if fs.open(path).is_ok() {
+			return Err(LogError::AlreadyExists(path.to_path_buf()));
+		}
+		let staging = staging(path);
+		discard(fs, &staging)?;
+		let file = fs.create(&staging, capacity.as_bytes())?;
+		file.sync_data()?;
+		fs.rename(&staging, path)?;
 		fs.sync_dir(parent(path))?;
 		Ok(Self {
 			path: path.to_path_buf(),
@@ -61,7 +73,6 @@ impl<F: Filesystem> Segment<F> {
 			capacity,
 			head: scan.end,
 		};
-		segment.discard_tail()?;
 		Ok((segment, scan))
 	}
 
@@ -94,6 +105,12 @@ impl<F: Filesystem> Segment<F> {
 		}
 		self.head = position;
 		self.discard_tail()
+	}
+
+	pub fn seal(&mut self) -> Result<()> {
+		self.capacity = ByteSize::from_bytes(self.head.as_u64());
+		self.file.truncate(self.head.as_u64())?;
+		Ok(self.file.sync_data()?)
 	}
 
 	pub fn sync(&self) -> Result<()> {
@@ -132,6 +149,7 @@ pub fn scan_from<F: Open>(fs: &F, path: &Path, from: Position) -> Result<Scan> {
 fn walk<H: Pread>(file: &H, capacity: ByteSize, from: Position) -> Result<Scan> {
 	let mut records = Vec::new();
 	let mut position = from;
+	let mut previous: Option<LogVersion> = None;
 	loop {
 		if capacity.as_bytes().saturating_sub(position.as_u64()) < HEADER_BYTES as u64 {
 			return Ok(stopped(records, position, Stop::Eof));
@@ -156,7 +174,12 @@ fn walk<H: Pread>(file: &H, capacity: ByteSize, from: Position) -> Result<Scan> 
 		if !header.verify(&payload) {
 			return Ok(stopped(records, position, Stop::Corrupt(position)));
 		}
-		records.push(header.into_record(payload));
+		let record = header.into_record(payload);
+		if previous.is_some_and(|earlier| record.version <= earlier) {
+			return Ok(stopped(records, position, Stop::Stale(position)));
+		}
+		previous = Some(record.version);
+		records.push(record);
 		position = position.advance(total);
 	}
 }
@@ -196,6 +219,19 @@ pub(crate) fn write_all<H: Pwrite>(file: &H, path: &Path, mut offset: u64, buf: 
 		offset += n as u64;
 	}
 	Ok(())
+}
+
+pub fn staging(path: &Path) -> PathBuf {
+	let mut name = path.as_os_str().to_os_string();
+	name.push(STAGING_SUFFIX);
+	PathBuf::from(name)
+}
+
+pub fn discard<F: Unlink>(fs: &F, path: &Path) -> Result<()> {
+	match fs.unlink(path) {
+		Err(FsError::NotFound(_)) => Ok(()),
+		other => Ok(other?),
+	}
 }
 
 fn parent(path: &Path) -> &Path {
@@ -338,6 +374,6 @@ mod tests {
 		assert_eq!(first_scan.end, second_scan.end);
 		assert_eq!(first_pass.head(), second_pass.head());
 		assert_eq!(first_pass.head(), torn_at);
-		assert_eq!(second_scan.stop, Stop::Unwritten);
+		assert_eq!(second_scan.stop, Stop::Corrupt(torn_at));
 	}
 }

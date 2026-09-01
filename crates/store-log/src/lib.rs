@@ -8,5 +8,7 @@
 
 pub mod error;
 pub mod index;
+pub mod log;
+pub mod partition;
 pub mod segment;
 pub mod vote;

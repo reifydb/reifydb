@@ -1,0 +1,392 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::path::{Path, PathBuf};
+
+use reifydb_codec::log::{
+	LogIndex, LogVersion, Position,
+	meta::{FORMAT_VERSION, MAGIC, META_BYTES, Meta},
+	record::Record,
+};
+use reifydb_runtime::io::fs::{
+	Create, Filesystem, Len, Mkdir, Open, OpenMut, Pread, ReadDir, Rename, SyncData, SyncDir, Unlink,
+};
+use reifydb_value::clock::ClockNow;
+
+use crate::{
+	error::{LogError, Result},
+	partition::{Config, Partition},
+	segment::{Scan, discard, staging, write_all},
+};
+
+pub const META_NAME: &str = "meta";
+
+pub struct Log<F: Filesystem, C: ClockNow> {
+	dir: PathBuf,
+	meta: Meta,
+	partitions: Vec<Partition<F, C>>,
+	head: Option<LogVersion>,
+}
+
+impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDir + Unlink + Clone, C: ClockNow + Clone>
+	Log<F, C>
+{
+	pub fn create(fs: F, clock: C, dir: &Path, config: Config, partitions: u32) -> Result<Self> {
+		if partitions == 0 {
+			return Err(LogError::MetaCorrupt(dir.join(META_NAME)));
+		}
+		fs.mkdir(dir)?;
+		let meta = Meta {
+			version: FORMAT_VERSION,
+			partitions,
+			segment_bytes: config.segment_bytes,
+			index_interval: config.index_interval,
+			segment_age: config.segment_age,
+		};
+		publish(&fs, &dir.join(META_NAME), &meta)?;
+		let opened = (0..partitions)
+			.map(|at| {
+				Partition::create(
+					fs.clone(),
+					clock.clone(),
+					&dir.join(partition_name(at)),
+					config,
+					LogVersion::ZERO,
+					LogIndex::ZERO,
+				)
+			})
+			.collect::<Result<Vec<_>>>()?;
+		Ok(Self {
+			dir: dir.to_path_buf(),
+			meta,
+			partitions: opened,
+			head: None,
+		})
+	}
+
+	pub fn open(fs: F, clock: C, dir: &Path) -> Result<(Self, Vec<Scan>)> {
+		let meta = load(&fs, &dir.join(META_NAME))?;
+		let config = Config {
+			segment_bytes: meta.segment_bytes,
+			segment_age: meta.segment_age,
+			index_interval: meta.index_interval,
+		};
+		let mut partitions = Vec::with_capacity(meta.partitions as usize);
+		let mut scans = Vec::with_capacity(meta.partitions as usize);
+		for at in 0..meta.partitions {
+			let (partition, scan) =
+				Partition::open(fs.clone(), clock.clone(), &dir.join(partition_name(at)), config)?;
+			partitions.push(partition);
+			scans.push(scan);
+		}
+		let head = partitions.iter().filter_map(Partition::head).max();
+		let log = Self {
+			dir: dir.to_path_buf(),
+			meta,
+			partitions,
+			head,
+		};
+		Ok((log, scans))
+	}
+
+	pub fn append(&mut self, partition: u32, record: &Record) -> Result<Position> {
+		let position = self.at_mut(partition)?.append(record)?;
+		self.head = self.head.max(Some(record.version));
+		Ok(position)
+	}
+
+	pub fn sync(&self) -> Result<()> {
+		for partition in &self.partitions {
+			partition.sync()?;
+		}
+		Ok(())
+	}
+
+	pub fn head(&self) -> Option<LogVersion> {
+		self.head
+	}
+
+	pub fn meta(&self) -> Meta {
+		self.meta
+	}
+
+	pub fn dir(&self) -> &Path {
+		&self.dir
+	}
+
+	pub fn partitions(&self) -> &[Partition<F, C>] {
+		&self.partitions
+	}
+
+	pub fn at(&self, partition: u32) -> Result<&Partition<F, C>> {
+		self.partitions.get(partition as usize).ok_or_else(|| LogError::NoSuchPartition {
+			dir: self.dir.clone(),
+			requested: partition,
+			count: self.meta.partitions,
+		})
+	}
+
+	pub fn at_mut(&mut self, partition: u32) -> Result<&mut Partition<F, C>> {
+		let count = self.meta.partitions;
+		let dir = self.dir.clone();
+		self.partitions.get_mut(partition as usize).ok_or(LogError::NoSuchPartition {
+			dir,
+			requested: partition,
+			count,
+		})
+	}
+}
+
+pub fn partition_name(at: u32) -> String {
+	format!("p{at}")
+}
+
+fn publish<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(fs: &F, path: &Path, meta: &Meta) -> Result<()>
+where
+	F::FileMut: SyncData,
+{
+	if fs.open(path).is_ok() {
+		return Err(LogError::AlreadyExists(path.to_path_buf()));
+	}
+	let staging = staging(path);
+	discard(fs, &staging)?;
+	let file = fs.create(&staging, META_BYTES as u64)?;
+	write_all(&file, &staging, 0, &meta.encode())?;
+	file.sync_data()?;
+	fs.rename(&staging, path)?;
+	fs.sync_dir(path.parent().expect("a meta file always sits inside a log directory"))?;
+	Ok(())
+}
+
+fn load<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<Meta> {
+	let file = fs.open(path)?;
+	let len = file.len()?;
+	if len < META_BYTES as u64 {
+		return Err(LogError::MetaShort {
+			path: path.to_path_buf(),
+			len,
+		});
+	}
+	let mut buf = [0u8; META_BYTES];
+	let read = file.pread(0, &mut buf)?;
+	if read < META_BYTES {
+		return Err(LogError::MetaShort {
+			path: path.to_path_buf(),
+			len: read as u64,
+		});
+	}
+	let found = u32::from_le_bytes(buf[0..4].try_into().unwrap());
+	if found != MAGIC {
+		return Err(LogError::MetaMagic {
+			path: path.to_path_buf(),
+			found,
+		});
+	}
+	let meta = Meta::decode(&buf).ok_or_else(|| LogError::MetaCorrupt(path.to_path_buf()))?;
+	if meta.version != FORMAT_VERSION {
+		return Err(LogError::MetaVersion {
+			path: path.to_path_buf(),
+			found: meta.version,
+			expected: FORMAT_VERSION,
+		});
+	}
+	if meta.partitions == 0 {
+		return Err(LogError::MetaCorrupt(path.to_path_buf()));
+	}
+	Ok(meta)
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_codec::log::{RecordKind, Term, meta::DEFAULT_PARTITIONS};
+	use reifydb_runtime::{
+		context::clock::{Clock, MockClock},
+		io::fs::{Pwrite, memory::MemoryFs},
+	};
+	use reifydb_value::{
+		byte_size::ByteSize,
+		value::{datetime::DateTime, duration::Duration},
+	};
+
+	use super::*;
+
+	const DIR: &str = "/log";
+
+	fn config() -> Config {
+		Config {
+			segment_bytes: ByteSize::from_bytes(512),
+			segment_age: Duration::from_seconds_const(60),
+			index_interval: ByteSize::from_bytes(64),
+		}
+	}
+
+	fn record(version: u64, index: u64) -> Record {
+		Record::new(
+			LogVersion::new(version),
+			LogIndex::new(index),
+			Term::new(1),
+			DateTime::from_bits(1000 + version),
+			RecordKind::new(0),
+			vec![0xab; 20],
+		)
+	}
+
+	fn clock() -> Clock {
+		Clock::Mock(MockClock::from_millis(1_000))
+	}
+
+	fn fixture() -> (MemoryFs, Log<MemoryFs, Clock>) {
+		let fs = MemoryFs::new();
+		let log = Log::create(fs.clone(), clock(), Path::new(DIR), config(), 2).unwrap();
+		(fs, log)
+	}
+
+	fn versions(log: &Log<MemoryFs, Clock>, partition: u32) -> Vec<u64> {
+		log.at(partition).unwrap().records().unwrap().iter().map(|r| r.version.as_u64()).collect()
+	}
+
+	#[test]
+	fn a_created_log_writes_its_meta_and_one_directory_per_partition() {
+		let (fs, log) = fixture();
+
+		assert_eq!(log.meta().partitions, 2);
+		assert_eq!(load(&fs, Path::new("/log/meta")).unwrap(), log.meta());
+		assert!(fs.open(Path::new("/log/p0")).is_ok() || fs.read_dir(Path::new("/log/p0")).is_ok());
+		assert!(fs.read_dir(Path::new("/log/p1")).is_ok());
+	}
+
+	#[test]
+	fn meta_config_survives_a_reopen_and_drives_the_partitions() {
+		// Decision 223: the segment config lives in meta and meta wins on open, so a segment
+		// size cannot drift between boots and silently move every roll boundary.
+		let (fs, mut log) = fixture();
+		log.append(0, &record(1, 1)).unwrap();
+		log.sync().unwrap();
+		drop(log);
+
+		let (reopened, _) = Log::open(fs, clock(), Path::new(DIR)).unwrap();
+
+		assert_eq!(reopened.meta().segment_bytes, ByteSize::from_bytes(512));
+		assert_eq!(reopened.meta().index_interval, ByteSize::from_bytes(64));
+		assert_eq!(reopened.at(0).unwrap().segment().capacity(), ByteSize::from_bytes(512));
+	}
+
+	#[test]
+	fn opening_is_a_fixed_point() {
+		// Invariant I7. A second open that moves anything means the first left the directory in a
+		// state it does not itself accept, which turns every restart into a slow leak.
+		let (fs, mut log) = fixture();
+		log.append(0, &record(10, 1)).unwrap();
+		log.append(1, &record(20, 1)).unwrap();
+		log.append(1, &record(30, 2)).unwrap();
+		log.sync().unwrap();
+		drop(log);
+
+		let (once, _) = Log::open(fs.clone(), clock(), Path::new(DIR)).unwrap();
+		let after_once = (versions(&once, 0), versions(&once, 1), once.head());
+		drop(once);
+		let (twice, _) = Log::open(fs, clock(), Path::new(DIR)).unwrap();
+
+		assert_eq!((versions(&twice, 0), versions(&twice, 1), twice.head()), after_once);
+	}
+
+	#[test]
+	fn an_idle_partition_costs_the_others_nothing() {
+		// Decision 230 is exactly this case: p1 is written once and never again, and under a
+		// minimum taken across partitions that pinned the whole log to version 1 and destroyed
+		// every record p0 had been told was durable.
+		let (fs, mut log) = fixture();
+		log.append(1, &record(1, 1)).unwrap();
+		for version in 2..=8u64 {
+			log.append(0, &record(version, version)).unwrap();
+		}
+		log.sync().unwrap();
+		drop(log);
+
+		let (reopened, _) = Log::open(fs, clock(), Path::new(DIR)).unwrap();
+
+		assert_eq!(versions(&reopened, 0), vec![2, 3, 4, 5, 6, 7, 8]);
+		assert_eq!(versions(&reopened, 1), vec![1]);
+	}
+
+	#[test]
+	fn the_head_is_the_highest_version_durable_anywhere() {
+		// The allocator is seeded from this, so it has to sit above every version on the platter
+		// or a restart reissues one that already names a different commit.
+		let (fs, mut log) = fixture();
+		log.append(0, &record(10, 1)).unwrap();
+		log.append(1, &record(40, 1)).unwrap();
+		log.append(0, &record(20, 2)).unwrap();
+		log.sync().unwrap();
+		drop(log);
+
+		let (reopened, _) = Log::open(fs, clock(), Path::new(DIR)).unwrap();
+
+		assert_eq!(reopened.head(), Some(LogVersion::new(40)));
+	}
+
+	#[test]
+	fn a_commit_may_half_survive_across_partitions() {
+		// Decision 230 gives this up deliberately: p1 kept commit 30 and p0 never got it, and
+		// nothing puts that back together. No consumer before stage 5 reads across partitions,
+		// and the alternative pinned the log to whichever partition was idle.
+		let (fs, mut log) = fixture();
+		log.append(0, &record(10, 1)).unwrap();
+		log.append(1, &record(30, 1)).unwrap();
+		log.sync().unwrap();
+		drop(log);
+
+		let (reopened, _) = Log::open(fs, clock(), Path::new(DIR)).unwrap();
+
+		assert_eq!(versions(&reopened, 0), vec![10]);
+		assert_eq!(versions(&reopened, 1), vec![30]);
+	}
+
+	#[test]
+	fn a_meta_with_a_foreign_magic_is_refused() {
+		let (fs, log) = fixture();
+		drop(log);
+		let file = fs.open_mut(Path::new("/log/meta")).unwrap();
+		file.pwrite(0, &0u32.to_le_bytes()).unwrap();
+		file.sync_data().unwrap();
+
+		let opened = Log::open(fs, clock(), Path::new(DIR)).err();
+
+		assert!(matches!(opened, Some(LogError::MetaMagic { .. })), "got {opened:?}");
+	}
+
+	#[test]
+	fn a_meta_with_a_flipped_bit_is_refused_rather_than_opened_on_the_wrong_partition_count() {
+		let (fs, log) = fixture();
+		drop(log);
+		let file = fs.open_mut(Path::new("/log/meta")).unwrap();
+		let mut buf = [0u8; META_BYTES];
+		file.pread(0, &mut buf).unwrap();
+		buf[12] ^= 0x01;
+		file.pwrite(0, &buf).unwrap();
+		file.sync_data().unwrap();
+
+		let opened = Log::open(fs, clock(), Path::new(DIR)).err();
+
+		assert!(matches!(opened, Some(LogError::MetaCorrupt(_))), "got {opened:?}");
+	}
+
+	#[test]
+	fn a_partition_beyond_the_count_is_named_in_the_error() {
+		let (_fs, mut log) = fixture();
+
+		let appended = log.append(DEFAULT_PARTITIONS, &record(1, 1)).err();
+
+		assert!(
+			matches!(
+				appended,
+				Some(LogError::NoSuchPartition {
+					count: 2,
+					requested: 4,
+					..
+				})
+			),
+			"got {appended:?}"
+		);
+	}
+}
