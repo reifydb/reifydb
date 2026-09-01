@@ -17,7 +17,10 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::operator::state::{GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range_split, node_prefix},
+	key::operator::state::{
+		GroupStateKey, KeyspaceId, OperatorStateKey, group_inner_range_split, keyspace_inner_range_split,
+		node_prefix,
+	},
 	metrics::scan::ScanCounters,
 };
 use reifydb_store_operator::{store::state::StateLastIter, types::JOIN_EXPIRY_VALUE_BYTES};
@@ -157,8 +160,9 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_range(&mut self, id: OperatorId, query: StateRange) -> Result<MultiVersionBatch> {
 		debug_assert!(
-			keyspace_inner_range_split(&query.range).is_some(),
-			"a state range must stay inside one group and one keyspace; {} passed a range spanning more than one",
+			keyspace_inner_range_split(&query.range).is_some()
+				|| group_inner_range_split(&query.range).is_some(),
+			"a state range must stay inside one group; {} passed a range spanning more than one",
 			query.site
 		);
 		let before = ScanCounters::sample();

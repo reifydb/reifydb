@@ -440,6 +440,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			return false;
 		}
 		coverage.extend(scan.dimension, span.start, span.end);
+		self.enforce_coverage_limits(&mut coverage, scan.dimension);
 		drop(coverage);
 		claimed.clear();
 		true
@@ -563,6 +564,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				return false;
 			}
 			coverage.extend(scan.dimension, span.start.clone(), span.end.clone());
+			self.enforce_coverage_limits(&mut coverage, scan.dimension);
 		}
 
 		let mut shard = self.shard(index).lock();
@@ -582,6 +584,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				return false;
 			}
 			coverage.extend(scan.dimension, span.start.clone(), span.end.clone());
+			self.enforce_coverage_limits(&mut coverage, scan.dimension);
 		}
 
 		let mut shard = self.shard(index).lock();
@@ -833,7 +836,7 @@ mod tests {
 			plan::Segment,
 		},
 		tier::range::{
-			Materialize, RangeConfig, RangeScan, RangeTier,
+			DEFAULT_COVERAGE_INTERVALS, Materialize, RangeConfig, RangeScan, RangeTier,
 			domain::{TestDomain as D, TestPartition},
 		},
 	};
@@ -848,6 +851,8 @@ mod tests {
 			shard_bytes: Some(ByteSize::from_bytes(limit)),
 			shards: 1,
 			gap_guard,
+			coverage_bytes: None,
+			coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 		})
 		.expect("a tier with a byte budget must be constructed")
 	}
@@ -1239,6 +1244,8 @@ mod tests {
 					shard_bytes: Some(ByteSize::from_mib(1)),
 					shards: 1,
 					gap_guard: 4,
+					coverage_bytes: None,
+					coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 				},
 				Box::new(move |tier: &RangeTier<D>| {
 					if armed.swap(false, Ordering::SeqCst) {

@@ -9,7 +9,10 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Diff},
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, is_guest_framed_inner, keyspace_inner_range_in},
+	key::operator::state::{
+		GroupId, GroupStateKey, KeyspaceId, group_data_inner_range, group_inner_range, is_guest_framed_inner,
+		keyspace_inner_range_in,
+	},
 	state::timer::TimerKind,
 };
 use reifydb_flow::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
@@ -244,6 +247,25 @@ impl GuestState for InProcessState<'_> {
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		let range = keyspace_inner_range_in(group, keyspace, start.to_bound(), end.to_bound());
+		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
+		// cannot reach the context, so it cannot re-enter the host while this borrow is live.
+		unsafe { (*self.host).state_range_limited_visit(range, limit, &mut |k, row| Ok(visit(k, row)?)) }
+			.map_err(to_sdk_err)
+	}
+
+	fn sweep_bytes_visit(
+		&self,
+		group: GroupId,
+		data_only: bool,
+		limit: Option<usize>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		let range = if data_only {
+			group_data_inner_range(group)
+		} else {
+			group_inner_range(group)
+		};
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
 		// cannot reach the context, so it cannot re-enter the host while this borrow is live.

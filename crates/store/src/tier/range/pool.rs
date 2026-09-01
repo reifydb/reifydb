@@ -36,6 +36,8 @@ impl<D: RangeDomain> RangeTier<D> {
 				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
+				coverage_bytes: config.coverage_bytes.unwrap_or(shard_bytes).as_bytes(),
+				coverage_intervals: config.coverage_intervals,
 				#[cfg(test)]
 				interlock: None,
 				#[cfg(test)]
@@ -53,6 +55,8 @@ impl<D: RangeDomain> RangeTier<D> {
 				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
+				coverage_bytes: config.coverage_bytes.unwrap_or(shard_bytes).as_bytes(),
+				coverage_intervals: config.coverage_intervals,
 				interlock: Some(interlock),
 				serve_interlock: None,
 			}),
@@ -68,6 +72,8 @@ impl<D: RangeDomain> RangeTier<D> {
 				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
+				coverage_bytes: config.coverage_bytes.unwrap_or(shard_bytes).as_bytes(),
+				coverage_intervals: config.coverage_intervals,
 				interlock: None,
 				serve_interlock: Some(interlock),
 			}),
@@ -109,6 +115,16 @@ impl<D: RangeDomain> RangeTier<D> {
 
 	pub(super) fn retractions_unchanged(&self, token: u64) -> bool {
 		self.inner.retractions.unchanged(token)
+	}
+
+	pub(super) fn enforce_coverage_limits(
+		&self,
+		coverage: &mut CoverageIndex<D::Dimension, D::Key>,
+		dimension: D::Dimension,
+	) {
+		if coverage.enforce_limits(dimension, self.inner.coverage_intervals, self.inner.coverage_bytes) {
+			self.record_retraction();
+		}
 	}
 
 	pub(super) fn record_retraction(&self) {
@@ -463,7 +479,7 @@ mod tests {
 			plan::{DEFAULT_GAP_GUARD, ScanPlan},
 		},
 		tier::range::{
-			Partition, RangeConfig, RangeTier, Shard,
+			DEFAULT_COVERAGE_INTERVALS, Partition, RangeConfig, RangeTier, Shard,
 			domain::{TestDomain as D, TestPartition},
 			entry_footprint, partition_overhead,
 		},
@@ -479,6 +495,8 @@ mod tests {
 			shard_bytes: Some(ByteSize::from_bytes(limit_bytes)),
 			shards,
 			gap_guard: DEFAULT_GAP_GUARD,
+			coverage_bytes: None,
+			coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 		}
 	}
 

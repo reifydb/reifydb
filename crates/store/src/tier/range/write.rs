@@ -298,6 +298,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			return;
 		}
 		coverage.extend(dimension, key.clone(), ExclusiveUpperEnd::just_past(key));
+		self.enforce_coverage_limits(&mut coverage, dimension);
 	}
 }
 

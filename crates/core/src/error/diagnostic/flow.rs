@@ -224,7 +224,10 @@ pub fn flow_window_span_unavailable(output: &str, kind: &str) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_015".to_string(),
 		rql: None,
-		message: format!("aggregate output '{}' needs a window boundary, but a {} window has none", output, kind),
+		message: format!(
+			"aggregate output '{}' needs a window boundary, but a {} window has none",
+			output, kind
+		),
 		column: None,
 		fragment: Fragment::None,
 		label: None,

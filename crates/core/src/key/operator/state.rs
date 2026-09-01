@@ -609,6 +609,20 @@ pub fn keyspace_inner_range_split(range: &EncodedKeyRange) -> Option<KeyspaceInn
 	Some((group, keyspace, start, end))
 }
 
+pub fn group_inner_range_split(range: &EncodedKeyRange) -> Option<GroupId> {
+	let key = match &range.start {
+		Bound::Included(key) | Bound::Excluded(key) => key,
+		Bound::Unbounded => return None,
+	};
+	let group = GroupId(KeyDeserializer::from_bytes(key.as_slice()).read_u128().ok()?);
+	for candidate in [group_inner_range(group), group_data_inner_range(group)] {
+		if range.start == candidate.start && range.end == candidate.end {
+			return Some(group);
+		}
+	}
+	None
+}
+
 pub fn custom_not_cached_key_in(group: GroupId, id: &[u8]) -> Option<GroupStateKey> {
 	CustomNotCachedSuffix::of(id)
 		.map(|key| OperatorStateKey::inner_encoded(group, KeyspaceId::CUSTOM_NOT_CACHED, key.to_suffix_bytes()))

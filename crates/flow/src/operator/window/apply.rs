@@ -127,7 +127,12 @@ fn route_count_tumbling(
 					let ordinal = operator.get_and_increment_global_count(host, *hash)?;
 					let window_id = rows.window_id(ordinal);
 					operator.store_row_index(host, *hash, post.row_numbers()[row_idx], window_id)?;
-					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx, times[row_idx]);
+					let contribution = operator.core.build_contribution(
+						post,
+						&slot_cols,
+						row_idx,
+						times[row_idx],
+					);
 					let coord = slot_coord(true, times[row_idx], post.row_numbers()[row_idx].0);
 					push_count_event(
 						buckets,
@@ -151,7 +156,12 @@ fn route_count_tumbling(
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let times = operator.row_times(pre, pre.row_count())?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx, times[row_idx]);
+					let contribution = operator.core.build_contribution(
+						pre,
+						&slot_cols,
+						row_idx,
+						times[row_idx],
+					);
 					let coord = slot_coord(true, times[row_idx], pre.row_numbers()[row_idx].0);
 					for window_id in
 						operator.lookup_row_index(host, *hash, pre.row_numbers()[row_idx])?
@@ -193,8 +203,12 @@ fn route_count_tumbling(
 							post.row_numbers()[row_idx],
 							window_id,
 						)?;
-						let contribution =
-							operator.core.build_contribution(post, &post_cols, row_idx, times[row_idx]);
+						let contribution = operator.core.build_contribution(
+							post,
+							&post_cols,
+							row_idx,
+							times[row_idx],
+						);
 						let coord =
 							slot_coord(true, times[row_idx], post.row_numbers()[row_idx].0);
 						push_count_event(
@@ -210,10 +224,18 @@ fn route_count_tumbling(
 							times[row_idx],
 						);
 					} else {
-						let pre_contrib =
-							operator.core.build_contribution(pre, &pre_cols, row_idx, times[row_idx]);
-						let post_contrib =
-							operator.core.build_contribution(post, &post_cols, row_idx, times[row_idx]);
+						let pre_contrib = operator.core.build_contribution(
+							pre,
+							&pre_cols,
+							row_idx,
+							times[row_idx],
+						);
+						let post_contrib = operator.core.build_contribution(
+							post,
+							&post_cols,
+							row_idx,
+							times[row_idx],
+						);
 						let coord =
 							slot_coord(true, times[row_idx], pre.row_numbers()[row_idx].0);
 						for window_id in existing {
@@ -429,7 +451,12 @@ pub fn apply_sliding_engine(
 					};
 					let window_ids =
 						sliding_insert_anchors(operator, host, *hash, event_ts, is_count)?;
-					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx, timestamps.get(row_idx).copied().unwrap_or_default());
+					let contribution = operator.core.build_contribution(
+						post,
+						&slot_cols,
+						row_idx,
+						timestamps.get(row_idx).copied().unwrap_or_default(),
+					);
 					let coord = slot_coord(is_count, event_ts, post.row_numbers()[row_idx].0);
 					for wid in &window_ids {
 						operator.store_row_index(
@@ -471,7 +498,12 @@ pub fn apply_sliding_engine(
 					} else {
 						timestamps[row_idx]
 					};
-					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx, timestamps.get(row_idx).copied().unwrap_or_default());
+					let contribution = operator.core.build_contribution(
+						pre,
+						&slot_cols,
+						row_idx,
+						timestamps.get(row_idx).copied().unwrap_or_default(),
+					);
 					let coord = slot_coord(is_count, event_ts, pre.row_numbers()[row_idx].0);
 					for wid in operator.lookup_row_index(host, *hash, pre.row_numbers()[row_idx])? {
 						push_count_event(
@@ -516,8 +548,12 @@ pub fn apply_sliding_engine(
 						let window_ids = sliding_insert_anchors(
 							operator, host, *hash, event_ts, is_count,
 						)?;
-						let contribution =
-							operator.core.build_contribution(post, &post_cols, row_idx, timestamps.get(row_idx).copied().unwrap_or_default());
+						let contribution = operator.core.build_contribution(
+							post,
+							&post_cols,
+							row_idx,
+							timestamps.get(row_idx).copied().unwrap_or_default(),
+						);
 						let coord = slot_coord(is_count, event_ts, row_number.0);
 						for wid in &window_ids {
 							operator.store_row_index(
@@ -540,10 +576,18 @@ pub fn apply_sliding_engine(
 							);
 						}
 					} else {
-						let pre_contrib =
-							operator.core.build_contribution(pre, &pre_cols, row_idx, timestamps.get(row_idx).copied().unwrap_or_default());
-						let post_contrib =
-							operator.core.build_contribution(post, &post_cols, row_idx, timestamps.get(row_idx).copied().unwrap_or_default());
+						let pre_contrib = operator.core.build_contribution(
+							pre,
+							&pre_cols,
+							row_idx,
+							timestamps.get(row_idx).copied().unwrap_or_default(),
+						);
+						let post_contrib = operator.core.build_contribution(
+							post,
+							&post_cols,
+							row_idx,
+							timestamps.get(row_idx).copied().unwrap_or_default(),
+						);
 						let coord = slot_coord(is_count, event_ts, row_number.0);
 						for wid in existing {
 							push_count_event(
@@ -670,8 +714,12 @@ pub fn apply_session_engine(
 							post.row_numbers()[row_idx],
 							session_id,
 						)?;
-						let contribution =
-							operator.core.build_contribution(post, &slot_cols, row_idx, timestamps[row_idx]);
+						let contribution = operator.core.build_contribution(
+							post,
+							&slot_cols,
+							row_idx,
+							timestamps[row_idx],
+						);
 						let coord = slot_coord(false, event_ts, post.row_numbers()[row_idx].0);
 						push_count_event(
 							&mut buckets,
@@ -698,7 +746,12 @@ pub fn apply_session_engine(
 				for row_idx in 0..pre.row_count() {
 					let (hash, gvals) = &groups[row_idx];
 					let event_ts = timestamps[row_idx];
-					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx, timestamps[row_idx]);
+					let contribution = operator.core.build_contribution(
+						pre,
+						&slot_cols,
+						row_idx,
+						timestamps[row_idx],
+					);
 					let coord = slot_coord(false, event_ts, pre.row_numbers()[row_idx].0);
 					for session_id in
 						operator.lookup_row_index(host, *hash, pre.row_numbers()[row_idx])?
@@ -748,9 +801,12 @@ pub fn apply_session_engine(
 								post.row_numbers()[row_idx],
 								session_id,
 							)?;
-							let contribution = operator
-								.core
-								.build_contribution(post, &post_cols, row_idx, timestamps[row_idx]);
+							let contribution = operator.core.build_contribution(
+								post,
+								&post_cols,
+								row_idx,
+								timestamps[row_idx],
+							);
 							let coord = slot_coord(
 								false,
 								event_ts,
@@ -770,10 +826,18 @@ pub fn apply_session_engine(
 							);
 						}
 					} else {
-						let pre_contrib =
-							operator.core.build_contribution(pre, &pre_cols, row_idx, timestamps[row_idx]);
-						let post_contrib =
-							operator.core.build_contribution(post, &post_cols, row_idx, timestamps[row_idx]);
+						let pre_contrib = operator.core.build_contribution(
+							pre,
+							&pre_cols,
+							row_idx,
+							timestamps[row_idx],
+						);
+						let post_contrib = operator.core.build_contribution(
+							post,
+							&post_cols,
+							row_idx,
+							timestamps[row_idx],
+						);
 						let coord = slot_coord(false, event_ts, pre.row_numbers()[row_idx].0);
 						for session_id in existing {
 							push_count_event(

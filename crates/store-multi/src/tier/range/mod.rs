@@ -14,7 +14,6 @@ use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
 	default,
-	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	interface::{
 		catalog::storage::StorageId,
 		store::{EntryKind, classify_key},
@@ -23,6 +22,7 @@ use reifydb_core::{
 		row::RowKey,
 		typed::{ExclusiveUpperEnd, Key, MultiKey, range::KeyRange},
 	},
+	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
 use reifydb_store::{
 	coverage::{
@@ -31,7 +31,8 @@ use reifydb_store::{
 		plan::{DEFAULT_GAP_GUARD, Segment},
 	},
 	tier::range::{
-		Materialize, RangeConfig, RangeDomain, RangeMetrics, RangeRows, RangeShardMetrics, RangeTier, RowBytes,
+		DEFAULT_COVERAGE_INTERVALS, Materialize, RangeConfig, RangeDomain, RangeMetrics, RangeRows,
+		RangeShardMetrics, RangeTier, RowBytes,
 	},
 };
 use reifydb_store_commit::{MultiVersionScope, RangeBatch, RangeCursor, RawEntry};
@@ -60,6 +61,8 @@ impl From<MultiRangeConfig> for RangeConfig {
 			shard_bytes: config.shard_bytes,
 			shards: config.shards,
 			gap_guard: config.gap_guard,
+			coverage_bytes: None,
+			coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 		}
 	}
 }

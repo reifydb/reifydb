@@ -1,14 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	cmp::Ordering,
-	collections::{
-		BTreeMap,
-		Bound::{Excluded, Unbounded},
-	},
-	mem,
-};
+use std::{cmp::Ordering, mem};
 
 use reifydb_core::key::typed::{ExclusiveUpperEnd, Key};
 
@@ -37,13 +30,17 @@ impl<K: Key> Interval<K> {
 
 #[derive(Clone, Debug)]
 pub struct CoverageSet<K> {
-	intervals: BTreeMap<K, ExclusiveUpperEnd<K>>,
+	intervals: Vec<(K, ExclusiveUpperEnd<K>)>,
+	last_used: u64,
+	bytes: u64,
 }
 
 impl<K: Key> Default for CoverageSet<K> {
 	fn default() -> Self {
 		Self {
-			intervals: BTreeMap::new(),
+			intervals: Vec::new(),
+			last_used: 0,
+			bytes: 0,
 		}
 	}
 }
@@ -53,6 +50,44 @@ impl<K: Key> CoverageSet<K> {
 		Self::default()
 	}
 
+	pub fn touch(&mut self, clock: u64) {
+		self.last_used = clock;
+	}
+
+	pub fn last_used(&self) -> u64 {
+		self.last_used
+	}
+
+	fn entry_bytes(start: &K, end: &ExclusiveUpperEnd<K>) -> u64 {
+		let per_entry = mem::size_of::<K>() + mem::size_of::<ExclusiveUpperEnd<K>>();
+		(per_entry
+			+ start.heap_size() + match end {
+			ExclusiveUpperEnd::Key(key) => key.heap_size(),
+			ExclusiveUpperEnd::Top => 0,
+		}) as u64
+	}
+
+	fn recount(&mut self) {
+		self.bytes = self.intervals.iter().map(|(start, end)| Self::entry_bytes(start, end)).sum();
+	}
+
+	fn upper_bound(&self, key: &K) -> usize {
+		self.intervals.partition_point(|(start, _)| start <= key)
+	}
+
+	fn span_touching(&self, start: &K, end: &ExclusiveUpperEnd<K>) -> (usize, usize) {
+		let at = self.upper_bound(start);
+		let mut lo = at;
+		if at > 0 && self.intervals[at - 1].1.cmp_key(start) == Ordering::Greater {
+			lo = at - 1;
+		}
+		let mut hi = at;
+		while hi < self.intervals.len() && end.cmp_key(&self.intervals[hi].0) == Ordering::Greater {
+			hi += 1;
+		}
+		(lo, hi)
+	}
+
 	pub fn extend(&mut self, start: K, end: ExclusiveUpperEnd<K>) {
 		if !end.covers(&start) {
 			return;
@@ -60,53 +95,39 @@ impl<K: Key> CoverageSet<K> {
 
 		let mut merged_start = start.clone();
 		let mut merged_end = end;
-		let mut doomed = Vec::new();
+		let at = self.upper_bound(&start);
+		let mut lo = at;
 
-		if let Some((left_start, left_end)) = self.intervals.range::<K, _>(..=&start).next_back()
-			&& left_end.cmp_key(&start) != Ordering::Less
-		{
-			merged_start = left_start.clone();
-			merged_end = merged_end.max(left_end.clone());
-			doomed.push(left_start.clone());
+		if at > 0 {
+			let (left_start, left_end) = &self.intervals[at - 1];
+			if left_end.cmp_key(&start) != Ordering::Less {
+				merged_start = left_start.clone();
+				merged_end = merged_end.max(left_end.clone());
+				lo = at - 1;
+			}
 		}
 
-		for (next_start, next_end) in self.intervals.range::<K, _>((Excluded(&start), Unbounded)) {
+		let mut hi = at;
+		while hi < self.intervals.len() {
+			let (next_start, next_end) = &self.intervals[hi];
 			if merged_end.cmp_key(next_start) == Ordering::Less {
 				break;
 			}
 			merged_end = merged_end.max(next_end.clone());
-			doomed.push(next_start.clone());
+			hi += 1;
 		}
 
-		for key in doomed {
-			self.intervals.remove(&key);
-		}
-		self.intervals.insert(merged_start, merged_end);
+		self.intervals.splice(lo..hi, [(merged_start, merged_end)]);
+		self.recount();
 	}
 
 	pub fn drop_overlapping(&mut self, start: &K, end: &ExclusiveUpperEnd<K>) {
 		if !end.covers(start) {
 			return;
 		}
-
-		let mut doomed = Vec::new();
-
-		if let Some((left_start, left_end)) = self.intervals.range::<K, _>(..=start).next_back()
-			&& left_end.cmp_key(start) == Ordering::Greater
-		{
-			doomed.push(left_start.clone());
-		}
-
-		for (next_start, _) in self.intervals.range::<K, _>((Excluded(start), Unbounded)) {
-			if end.cmp_key(next_start) != Ordering::Greater {
-				break;
-			}
-			doomed.push(next_start.clone());
-		}
-
-		for key in doomed {
-			self.intervals.remove(&key);
-		}
+		let (lo, hi) = self.span_touching(start, end);
+		self.intervals.drain(lo..hi);
+		self.recount();
 	}
 
 	pub fn shrink_key(&mut self, key: &K) {
@@ -117,32 +138,20 @@ impl<K: Key> CoverageSet<K> {
 		if !end.covers(start) {
 			return;
 		}
-
-		let mut doomed = Vec::new();
-
-		if let Some((left_start, left_end)) = self.intervals.range::<K, _>(..=start).next_back()
-			&& left_end.cmp_key(start) == Ordering::Greater
-		{
-			doomed.push(left_start.clone());
-		}
-
-		for (next_start, _) in self.intervals.range::<K, _>((Excluded(start), Unbounded)) {
-			if end.cmp_key(next_start) != Ordering::Greater {
-				break;
-			}
-			doomed.push(next_start.clone());
-		}
-
-		for key in doomed {
-			let old_end = self.intervals.remove(&key).unwrap();
+		let (lo, hi) = self.span_touching(start, end);
+		let removed: Vec<(K, ExclusiveUpperEnd<K>)> = self.intervals.drain(lo..hi).collect();
+		let mut kept = Vec::new();
+		for (key, old_end) in removed {
 			if &key < start {
-				self.intervals.insert(key, ExclusiveUpperEnd::Key(start.clone()));
+				kept.push((key, ExclusiveUpperEnd::Key(start.clone())));
 			}
 			if *end < old_end {
-				let resume = end.key().unwrap().clone();
-				self.intervals.insert(resume, old_end);
+				let resume = end.key().expect("a bounded end must carry a key").clone();
+				kept.push((resume, old_end));
 			}
 		}
+		self.intervals.splice(lo..lo, kept);
+		self.recount();
 	}
 
 	pub fn contains(&self, key: &K) -> bool {
@@ -150,13 +159,16 @@ impl<K: Key> CoverageSet<K> {
 	}
 
 	pub fn covering(&self, key: &K) -> Option<Interval<K>> {
-		self.intervals.range::<K, _>(..=key).next_back().and_then(|(start, end)| {
-			if end.covers(key) {
-				Some(Interval::new(start.clone(), end.clone()))
-			} else {
-				None
-			}
-		})
+		let at = self.upper_bound(key);
+		if at == 0 {
+			return None;
+		}
+		let (start, end) = &self.intervals[at - 1];
+		if end.covers(key) {
+			Some(Interval::new(start.clone(), end.clone()))
+		} else {
+			None
+		}
 	}
 
 	pub fn overlapping(&self, lo: &K, hi: &ExclusiveUpperEnd<K>) -> Vec<Interval<K>> {
@@ -165,13 +177,15 @@ impl<K: Key> CoverageSet<K> {
 			return clipped;
 		}
 
-		if let Some((_, end)) = self.intervals.range::<K, _>(..=lo).next_back()
-			&& end.cmp_key(lo) == Ordering::Greater
-		{
-			clipped.push(Interval::new(lo.clone(), end.clone().min(hi.clone())));
+		let at = self.upper_bound(lo);
+		if at > 0 {
+			let (_, end) = &self.intervals[at - 1];
+			if end.cmp_key(lo) == Ordering::Greater {
+				clipped.push(Interval::new(lo.clone(), end.clone().min(hi.clone())));
+			}
 		}
 
-		for (start, end) in self.intervals.range::<K, _>((Excluded(lo), Unbounded)) {
+		for (start, end) in &self.intervals[at..] {
 			if hi.cmp_key(start) != Ordering::Greater {
 				break;
 			}
@@ -213,17 +227,7 @@ impl<K: Key> CoverageSet<K> {
 	}
 
 	pub fn bytes(&self) -> u64 {
-		let per_entry = mem::size_of::<K>() + mem::size_of::<ExclusiveUpperEnd<K>>();
-		self.intervals
-			.iter()
-			.map(|(start, end)| {
-				per_entry
-					+ start.heap_size() + match end {
-					ExclusiveUpperEnd::Key(key) => key.heap_size(),
-					ExclusiveUpperEnd::Top => 0,
-				}
-			})
-			.sum::<usize>() as u64
+		self.bytes
 	}
 
 	pub fn len(&self) -> usize {
@@ -236,6 +240,7 @@ impl<K: Key> CoverageSet<K> {
 
 	pub fn clear(&mut self) {
 		self.intervals.clear();
+		self.bytes = 0;
 	}
 }
 

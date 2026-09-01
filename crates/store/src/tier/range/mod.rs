@@ -89,11 +89,15 @@ pub trait RangeDomain: Copy + Debug + 'static {
 	fn metric_bucket_name(bucket: Self::MetricBucket) -> Cow<'static, str>;
 }
 
+pub const DEFAULT_COVERAGE_INTERVALS: usize = 256;
+
 #[derive(Clone, Copy, Debug)]
 pub struct RangeConfig {
 	pub shard_bytes: Option<ByteSize>,
 	pub shards: usize,
 	pub gap_guard: usize,
+	pub coverage_bytes: Option<ByteSize>,
+	pub coverage_intervals: usize,
 }
 
 impl RangeConfig {
@@ -102,6 +106,8 @@ impl RangeConfig {
 			shard_bytes: Some(ByteSize::from_mib(4)),
 			shards: 16,
 			gap_guard: DEFAULT_GAP_GUARD,
+			coverage_bytes: None,
+			coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 		}
 	}
 }
@@ -253,6 +259,8 @@ struct PoolInner<D: RangeDomain> {
 	coverage: RwLock<CoverageIndex<D::Dimension, D::Key>>,
 	retractions: Retractions,
 	gap_guard: usize,
+	coverage_bytes: u64,
+	coverage_intervals: usize,
 	#[cfg(test)]
 	interlock: Option<MaterializeInterlock<D>>,
 	#[cfg(test)]

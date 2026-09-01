@@ -10,6 +10,8 @@ use crate::coverage::interval::CoverageSet;
 pub struct CoverageIndex<D, K> {
 	sets: HashMap<D, CoverageSet<K>>,
 	heads: HashMap<D, K>,
+	clock: u64,
+	sets_bytes: u64,
 }
 
 impl<D, K> Default for CoverageIndex<D, K> {
@@ -17,6 +19,8 @@ impl<D, K> Default for CoverageIndex<D, K> {
 		Self {
 			sets: HashMap::new(),
 			heads: HashMap::new(),
+			clock: 0,
+			sets_bytes: 0,
 		}
 	}
 }
@@ -34,8 +38,54 @@ impl<D: Hash + Eq + Copy, K: Key> CoverageIndex<D, K> {
 		self.sets.get(&dimension).is_some_and(|set| set.contains(key))
 	}
 
+	fn dimension_overhead() -> u64 {
+		(mem::size_of::<D>() + mem::size_of::<CoverageSet<K>>()) as u64
+	}
+
 	pub fn extend(&mut self, dimension: D, start: K, end: ExclusiveUpperEnd<K>) {
-		self.sets.entry(dimension).or_default().extend(start, end);
+		self.clock += 1;
+		let clock = self.clock;
+		let fresh = !self.sets.contains_key(&dimension);
+		let set = self.sets.entry(dimension).or_default();
+		let before = set.bytes();
+		set.extend(start, end);
+		set.touch(clock);
+		let after = set.bytes();
+		self.sets_bytes = self.sets_bytes + after - before;
+		if fresh {
+			self.sets_bytes += Self::dimension_overhead();
+		}
+	}
+
+	fn forget_set(&mut self, dimension: D) -> bool {
+		let Some(set) = self.sets.remove(&dimension) else {
+			return false;
+		};
+		self.sets_bytes = self.sets_bytes.saturating_sub(set.bytes() + Self::dimension_overhead());
+		true
+	}
+
+	pub fn enforce_limits(&mut self, dimension: D, max_intervals: usize, max_bytes: u64) -> bool {
+		let mut retracted = false;
+		if self.sets.get(&dimension).is_some_and(|set| set.len() > max_intervals) {
+			self.forget_set(dimension);
+			retracted = true;
+		}
+		if self.sets_bytes > max_bytes {
+			let target = max_bytes - max_bytes / 10;
+			let mut stamps: Vec<(u64, D)> =
+				self.sets.iter().map(|(dimension, set)| (set.last_used(), *dimension)).collect();
+			stamps.sort_unstable_by_key(|(stamp, _)| *stamp);
+			for (_, coldest) in stamps {
+				if self.sets_bytes <= target {
+					break;
+				}
+				if self.forget_set(coldest) {
+					retracted = true;
+				}
+			}
+		}
+		retracted
 	}
 
 	pub fn shrink_key(&mut self, dimension: D, key: &K) {
@@ -59,18 +109,24 @@ impl<D: Hash + Eq + Copy, K: Key> CoverageIndex<D, K> {
 	}
 
 	pub fn remove(&mut self, dimension: D) {
-		self.sets.remove(&dimension);
+		self.forget_set(dimension);
 		self.heads.remove(&dimension);
 	}
 
 	pub fn retain(&mut self, keep: impl Fn(&D) -> bool) {
 		self.sets.retain(|dimension, _| keep(dimension));
 		self.heads.retain(|dimension, _| keep(dimension));
+		self.recount();
+	}
+
+	fn recount(&mut self) {
+		self.sets_bytes = self.sets.values().map(|set| set.bytes() + Self::dimension_overhead()).sum();
 	}
 
 	pub fn clear(&mut self) {
 		self.sets.clear();
 		self.heads.clear();
+		self.sets_bytes = 0;
 	}
 
 	pub fn bytes(&self) -> u64 {
@@ -99,9 +155,12 @@ impl<D: Hash + Eq + Copy, K: Key> CoverageIndex<D, K> {
 		let Some(set) = self.sets.get_mut(&dimension) else {
 			return;
 		};
+		let before = set.bytes();
 		apply(set);
+		let after = set.bytes();
+		self.sets_bytes = self.sets_bytes + after - before;
 		if set.is_empty() {
-			self.sets.remove(&dimension);
+			self.forget_set(dimension);
 		}
 	}
 }

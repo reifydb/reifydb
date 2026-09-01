@@ -101,6 +101,39 @@ pub trait GuestState {
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()>;
 
+	fn sweep_bytes_visit(
+		&self,
+		group: GroupId,
+		data_only: bool,
+		limit: Option<usize>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
+	) -> Result<()> {
+		let mut seen = 0usize;
+		for id in (u8::MIN..=u8::MAX).rev() {
+			let keyspace = KeyspaceId(id);
+			if data_only && !keyspace.is_data() {
+				continue;
+			}
+			let remaining = match limit {
+				Some(limit) if seen >= limit => break,
+				Some(limit) => Some(limit - seen),
+				None => None,
+			};
+			self.range_bytes_visit(
+				group,
+				keyspace,
+				GuestBound::Unbounded,
+				GuestBound::Unbounded,
+				remaining,
+				&mut |key, payload| {
+					seen += 1;
+					visit(key, payload)
+				},
+			)?;
+		}
+		Ok(())
+	}
+
 	fn last_bytes(
 		&self,
 		group: GroupId,

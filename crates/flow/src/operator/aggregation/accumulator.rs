@@ -130,11 +130,9 @@ impl AggregateSlot {
 			},
 			SlotKind::First => AggregateSlot::First(endpoint(immutable)),
 			SlotKind::Last | SlotKind::WindowLast => AggregateSlot::Last(endpoint(immutable)),
-			SlotKind::WindowStart | SlotKind::WindowEnd | SlotKind::WindowDuration => {
-				AggregateSlot::Span {
-					n: 0,
-				}
-			}
+			SlotKind::WindowStart | SlotKind::WindowEnd | SlotKind::WindowDuration => AggregateSlot::Span {
+				n: 0,
+			},
 		}
 	}
 

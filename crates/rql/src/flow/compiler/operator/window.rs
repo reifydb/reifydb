@@ -40,7 +40,12 @@ impl From<WindowNode> for WindowCompiler {
 
 impl CompileOperator for WindowCompiler {
 	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
-		validate_flow_aggregations(&compiler.routines, &self.aggregations, AggregateContext::Windowed, Some(&self.kind))?;
+		validate_flow_aggregations(
+			&compiler.routines,
+			&self.aggregations,
+			AggregateContext::Windowed,
+			Some(&self.kind),
+		)?;
 
 		let input_node = if let Some(input) = self.input {
 			Some(compiler.compile_plan(txn, *input)?)

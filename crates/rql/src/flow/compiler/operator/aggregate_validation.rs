@@ -60,12 +60,7 @@ fn time_based(window: Option<&WindowKind>) -> bool {
 }
 
 fn bounded_span(window: Option<&WindowKind>) -> bool {
-	!matches!(
-		window,
-		Some(WindowKind::Rolling {
-			..
-		})
-	) && time_based(window)
+	!matches!(window, Some(WindowKind::Rolling { .. })) && time_based(window)
 }
 
 fn span_label(window: &WindowKind) -> &'static str {

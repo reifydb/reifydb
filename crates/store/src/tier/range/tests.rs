@@ -30,8 +30,8 @@ use crate::{
 		plan::{DEFAULT_GAP_GUARD, Segment},
 	},
 	tier::range::{
-		ENTRY_OVERHEAD, Materialize, MaterializeInterlock, RangeBucketMetrics, RangeConfig, RangeDomain,
-		RangeMetrics, RangeScan, RangeTier,
+		DEFAULT_COVERAGE_INTERVALS, ENTRY_OVERHEAD, Materialize, MaterializeInterlock, RangeBucketMetrics,
+		RangeConfig, RangeDomain, RangeMetrics, RangeScan, RangeTier,
 		domain::{AdmittingDomain as A, TestDomain as D, TestPartition},
 		partition_overhead,
 	},
@@ -49,6 +49,8 @@ fn tier(limit: u64) -> RangeTier<D> {
 		shard_bytes: Some(ByteSize::from_bytes(limit)),
 		shards: 1,
 		gap_guard: DEFAULT_GAP_GUARD,
+		coverage_bytes: None,
+		coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 	})
 	.expect("a tier with a byte budget must be constructed")
 }
@@ -381,6 +383,8 @@ fn every_shard_is_reachable_and_carries_the_configured_per_shard_budget() {
 		shard_bytes: Some(ByteSize::from_mib(64)),
 		shards: 4,
 		gap_guard: DEFAULT_GAP_GUARD,
+		coverage_bytes: None,
+		coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 	})
 	.expect("a sharded tier must be constructed");
 
@@ -414,6 +418,8 @@ fn keyspace_counters_are_summed_across_every_shard() {
 		shard_bytes: Some(ByteSize::from_mib(64)),
 		shards: 4,
 		gap_guard: DEFAULT_GAP_GUARD,
+		coverage_bytes: None,
+		coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 	})
 	.expect("a sharded tier must be constructed");
 
@@ -523,6 +529,8 @@ fn a_materialize_that_races_a_retraction_refuses_rather_than_reinstating_the_cla
 			shard_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
 			gap_guard: DEFAULT_GAP_GUARD,
+			coverage_bytes: None,
+			coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 		},
 		hook,
 	)
@@ -572,6 +580,8 @@ fn a_refused_materialize_must_not_delete_a_row_written_while_it_was_placing() {
 			shard_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
 			gap_guard: DEFAULT_GAP_GUARD,
+			coverage_bytes: None,
+			coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 		},
 		hook,
 	)
@@ -621,6 +631,8 @@ fn a_concurrent_materialize_never_refuses_another_materialize() {
 			shard_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
 			gap_guard: DEFAULT_GAP_GUARD,
+			coverage_bytes: None,
+			coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 		},
 		hook,
 	)
@@ -661,6 +673,8 @@ fn a_materialize_places_its_rows_before_it_publishes_the_claim() {
 			shard_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
 			gap_guard: DEFAULT_GAP_GUARD,
+			coverage_bytes: None,
+			coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 		},
 		hook,
 	)
@@ -722,6 +736,8 @@ fn sweep_tier<X: Sweep>(budget: u64) -> RangeTier<X> {
 		shard_bytes: Some(ByteSize::from_bytes(budget)),
 		shards: 1,
 		gap_guard: DEFAULT_GAP_GUARD,
+		coverage_bytes: None,
+		coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 	})
 	.expect("a tier with a byte budget must be constructed")
 }
@@ -833,7 +849,6 @@ fn sweep<X: Sweep>() -> RangeMetrics {
 }
 
 fn sweep_until_raced<X: Sweep>() -> RangeMetrics {
-	// One unlucky interleaving must not fail the run; never opening the race window at all must.
 	const ATTEMPTS: usize = 16;
 
 	let mut total = RangeMetrics::default();

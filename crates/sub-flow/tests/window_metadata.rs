@@ -37,13 +37,11 @@ fn start_and_end_report_the_bucket_the_rows_fell_into() {
 	// no overlap - a boundary that drifts to the data would leave holes between consecutive buckets.
 	let db = setup();
 	source(&db);
-	db.admin(
-		r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
 			FROM app::t
 				| window tumbling { n: math::count(), s: window::start(), e: window::end() }
 					by { g } with { duration: 60s, lateness: 0s }
-		}"#,
-	);
+		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
 	insert(&db, 2, 1, 7, "2026-01-01T00:01:50Z");
@@ -59,10 +57,21 @@ fn start_and_end_report_the_bucket_the_rows_fell_into() {
 		.collect();
 	buckets.sort();
 
-	assert_eq!(buckets, vec![
-		("2026-01-01T00:01:00.000000000Z".to_string(), "2026-01-01T00:02:00.000000000Z".to_string(), Value::Int8(2)),
-		("2026-01-01T00:02:00.000000000Z".to_string(), "2026-01-01T00:03:00.000000000Z".to_string(), Value::Int8(1)),
-	]);
+	assert_eq!(
+		buckets,
+		vec![
+			(
+				"2026-01-01T00:01:00.000000000Z".to_string(),
+				"2026-01-01T00:02:00.000000000Z".to_string(),
+				Value::Int8(2)
+			),
+			(
+				"2026-01-01T00:02:00.000000000Z".to_string(),
+				"2026-01-01T00:03:00.000000000Z".to_string(),
+				Value::Int8(1)
+			),
+		]
+	);
 }
 
 #[test]
@@ -72,13 +81,11 @@ fn a_partial_window_reports_its_whole_span_not_the_part_it_has_filled() {
 	// pre-seal read report a shorter bucket, and a consumer bucketing on it would double-count.
 	let db = setup();
 	source(&db);
-	db.admin(
-		r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
 			FROM app::t
 				| window tumbling { n: math::count(), s: window::start(), e: window::end() }
 					by { g } with { duration: 60s, lateness: 300s }
-		}"#,
-	);
+		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
 	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
@@ -94,13 +101,11 @@ fn duration_is_measured_from_the_boundary_not_read_from_the_configured_size() {
 	// identical here and be wrong for a session window, whose length is decided by its data.
 	let db = setup();
 	source(&db);
-	db.admin(
-		r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, d: duration } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, d: duration } AS {
 			FROM app::t
 				| window tumbling { n: math::count(), d: window::duration() }
 					by { g } with { duration: 45s, lateness: 0s }
-		}"#,
-	);
+		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
 	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
@@ -122,13 +127,11 @@ fn window_last_reports_the_newest_event_in_the_bucket_not_the_boundary() {
 	// whole reason to ask for it, and it must never run past the end.
 	let db = setup();
 	source(&db);
-	db.admin(
-		r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, l: datetime } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, l: datetime } AS {
 			FROM app::t
 				| window tumbling { n: math::count(), l: window::last() }
 					by { g } with { duration: 60s, lateness: 300s }
-		}"#,
-	);
+		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:50Z");
 	insert(&db, 2, 1, 7, "2026-01-01T00:01:10Z");
@@ -150,13 +153,11 @@ fn time_still_stamps_the_window_start() {
 	// Threading the span through the emit path must not change what lands in the stamp.
 	let db = setup();
 	source(&db);
-	db.admin(
-		r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
 			FROM app::t
 				| window tumbling { n: math::count(), s: window::start() }
 					by { g } with { duration: 60s, lateness: 0s }
-		}"#,
-	);
+		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
 	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
@@ -192,13 +193,11 @@ fn a_rolling_window_still_answers_window_last() {
 	// window::last needs an event time, not a boundary, so the rolling rejection must not swallow it.
 	let db = setup();
 	source(&db);
-	db.admin(
-		r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, l: datetime } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, l: datetime } AS {
 			FROM app::t
 				| window rolling { n: math::count(), l: window::last() }
 					by { g } with { duration: 60s }
-		}"#,
-	);
+		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
 	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
@@ -221,8 +220,5 @@ fn a_grouped_aggregate_is_refused_a_window_function() {
 		)
 		.expect_err("a grouped aggregate must not accept window::start");
 	let message = err.to_string();
-	assert!(
-		message.contains("FLOW_013") || message.contains("FLOW_015"),
-		"expected a rejection, got: {message}"
-	);
+	assert!(message.contains("FLOW_013") || message.contains("FLOW_015"), "expected a rejection, got: {message}");
 }

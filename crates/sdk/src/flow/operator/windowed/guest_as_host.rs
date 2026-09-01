@@ -100,6 +100,15 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(out)
 	}
 
+	fn group_sweep(&mut self, group: GroupId, data_only: bool, limit: Option<usize>) -> Result<Vec<GroupStateKey>> {
+		let mut swept = Vec::new();
+		self.0.state().sweep_bytes_visit(group, data_only, limit, &mut |key, _| {
+			swept.push(key);
+			Ok(())
+		})?;
+		Ok(swept)
+	}
+
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 		let (group, keyspace, start, end) = confine(&range);
 		Ok(self.0.state().last_bytes(group, keyspace, GuestBound::of(&start), GuestBound::of(&end))?)
