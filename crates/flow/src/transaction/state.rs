@@ -331,10 +331,8 @@ fn classify_durable_join_expiry<T: FlowTransaction>(
 	if txn.is_classified(scoped) {
 		return Ok(());
 	}
-	let Some((group, side, row_number)) =
-		OperatorStateKey::decode_inner(key.as_slice()).and_then(|(group, _, suffix)| {
-			decode_join_expiry_suffix(suffix).map(|(side, row)| (group, side, row))
-		})
+	let Some((group, side, row_number)) = OperatorStateKey::decode_inner(key.as_slice())
+		.and_then(|(group, _, suffix)| decode_join_expiry_suffix(suffix).map(|(side, row)| (group, side, row)))
 	else {
 		return Ok(());
 	};

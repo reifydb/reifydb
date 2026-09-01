@@ -15,7 +15,6 @@ use reifydb_core::{
 	interface::store::{EntryKind, MultiVersionCommit},
 	key::row::RowKey,
 };
-use reifydb_store_commit::HistoricalCursor;
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_testing_chaos::fuzz::pick;
 use reifydb_value::util::cowvec::CowVec;
@@ -99,14 +98,12 @@ fn historical_gc(store: &StandardMultiStore, cutoff: CommitVersion) {
 	// Buffer-only: superseded versions below the cutoff go, the current version must survive untouched.
 	let buffer = store.commit();
 	let kind = EntryKind::Source(STORAGE);
-	let mut cursor = HistoricalCursor::new();
 	loop {
-		let entries = buffer.scan_historical_below(kind, cutoff, &mut cursor, 64).unwrap();
-		if entries.is_empty() {
-			break;
+		let sweep = buffer.sweep_historical_below(kind, cutoff, 64).unwrap();
+		if !sweep.entries.is_empty() {
+			buffer.compact(HashMap::from([(kind, sweep.entries)])).unwrap();
 		}
-		buffer.compact(HashMap::from([(kind, entries)])).unwrap();
-		if cursor.is_exhausted() {
+		if sweep.remaining == 0 {
 			break;
 		}
 	}

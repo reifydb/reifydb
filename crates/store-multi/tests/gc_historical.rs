@@ -15,7 +15,7 @@ use reifydb_core::{
 		store::EntryKind,
 	},
 };
-use reifydb_store_commit::{HistoricalCursor, store::CommitStore};
+use reifydb_store_commit::store::CommitStore;
 use reifydb_value::util::cowvec::CowVec;
 
 fn object() -> EntryKind {
@@ -51,18 +51,14 @@ fn write_n_versions(storage: &CommitStore, k: &EncodedKey, n: u64) {
 
 fn sweep(storage: &CommitStore, kind: EntryKind, cutoff: CommitVersion, batch_size: usize) -> u64 {
 	// Returns the total versions deleted across every batch, not just the last one.
-	let mut cursor = HistoricalCursor::default();
 	let mut total = 0u64;
 	loop {
-		let entries = storage.scan_historical_below(kind, cutoff, &mut cursor, batch_size).unwrap();
-		if entries.is_empty() {
-			break;
+		let sweep = storage.sweep_historical_below(kind, cutoff, batch_size).unwrap();
+		total += sweep.entries.len() as u64;
+		if !sweep.entries.is_empty() {
+			storage.compact(HashMap::from([(kind, sweep.entries)])).unwrap();
 		}
-		total += entries.len() as u64;
-		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
-		batches.insert(kind, entries);
-		storage.compact(batches).unwrap();
-		if cursor.is_exhausted() {
+		if sweep.remaining == 0 {
 			break;
 		}
 	}

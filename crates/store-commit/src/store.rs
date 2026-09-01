@@ -3,10 +3,10 @@
 
 use std::{
 	cmp::Reverse,
-	collections::{HashMap, HashSet, VecDeque},
+	collections::{BTreeSet, HashMap, HashSet, VecDeque},
 	iter, mem,
 	ops::Bound,
-	sync::Arc,
+	sync::{Arc, atomic::Ordering},
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
@@ -19,15 +19,15 @@ use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::Cow
 use tracing::{Span, field, instrument};
 
 use crate::{
-	HistoricalCursor, MultiVersionScope, RangeBatch, RangeCursor, RawEntry, TierBatch, VersionedGetResult,
+	HistoricalSweep, MultiVersionScope, RangeBatch, RangeCursor, RawEntry, TierBatch, VersionedGetResult,
 	entry::{Entries, Entry, entry_bytes},
-	rows::{ActiveRows, MergedRows, Removed, RowMap, newest_across},
+	rows::{ActiveRows, MergedRows, Removed, RowMap, lookup, newest_across},
 };
 
 type EvictablePersist = Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>;
 type EvictableDrop = Vec<EvictedVersion>;
 
-const CLOSE_BYTE_THRESHOLD: ByteSize = ByteSize::from_mib(1);
+const CLOSE_BYTE_THRESHOLD: ByteSize = ByteSize::from_mib(16);
 
 #[derive(Clone, Debug)]
 pub struct EvictedVersion {
@@ -76,9 +76,7 @@ impl CommitStore {
 		let Some(entry) = self.inner.entries.data.get(&table) else {
 			return Ok(0);
 		};
-		let active = entry.active.read().rows().key_count() as u64;
-		let closed: u64 = entry.closed_snapshot().iter().map(|map| map.rows().key_count() as u64).sum();
-		Ok(active + closed)
+		Ok(entry.key_count.load(Ordering::Relaxed))
 	}
 
 	pub fn list_all_entry_kinds(&self) -> Result<Vec<EntryKind>> {
@@ -104,7 +102,7 @@ impl CommitStore {
 	pub fn oldest_pending_for(&self, kind: EntryKind) -> Option<CommitVersion> {
 		let entry = self.inner.entries.data.get(&kind)?;
 		let active = entry.active.read().min_version();
-		let closed = entry.closed_snapshot().iter().map(|map| map.min_version()).min();
+		let closed = entry.closed.read().iter().map(|map| map.min_version()).min();
 		match (active, closed) {
 			(Some(a), Some(c)) => Some(a.min(c)),
 			(Some(a), None) => Some(a),
@@ -129,7 +127,7 @@ impl CommitStore {
 					}
 				};
 				let active = pick(entry.active.read().rows());
-				let closed: u64 = entry.closed_snapshot().iter().map(|map| pick(map.rows())).sum();
+				let closed: u64 = entry.closed.read().iter().map(|map| pick(map.rows())).sum();
 				active + closed
 			})
 			.sum();
@@ -146,8 +144,8 @@ impl CommitStore {
 
 	#[inline]
 	#[instrument(name = "store::multi::memory::get_or_create_table", level = "trace", skip(self), fields(table = ?table))]
-	fn get_or_create_table(&self, table: EntryKind) -> Entry {
-		self.inner.entries.data.get_or_insert_with(table, Entry::new)
+	fn get_or_create_table(&self, table: EntryKind) -> Arc<Entry> {
+		self.inner.entries.data.get_or_insert_with(table, || Arc::new(Entry::new()))
 	}
 
 	fn close_active(entry: &Entry, active: &mut ActiveRows) {
@@ -171,9 +169,15 @@ impl CommitStore {
 	) {
 		let table_entry = self.get_or_create_table(table);
 		let mut active = table_entry.active_write();
+		let keys_before = active.rows().key_count();
+		let mut pending = table_entry.pending.lock();
 		for (key, value) in entries {
+			pending.insert(key.clone());
 			active.insert(key, version, value);
 		}
+		drop(pending);
+		let keys_added = active.rows().key_count() - keys_before;
+		table_entry.key_count.fetch_add(keys_added as u64, Ordering::Relaxed);
 		if active.bytes() >= self.inner.close_threshold {
 			Self::close_active(&table_entry, &mut active);
 		}
@@ -264,11 +268,12 @@ impl CommitStore {
 		};
 
 		let active = entry.active.read();
-		let closed = entry.closed_snapshot();
-		let found = iter::once(active.rows())
-			.chain(closed.iter().map(|map| map.rows()))
-			.filter_map(|rows| rows.get(key, version))
-			.max_by_key(|(found, _)| *found);
+		let closed = entry.closed.read();
+		let found = lookup(
+			iter::once(active.rows()).chain(closed.iter().rev().map(|map| map.rows())),
+			key,
+			version,
+		);
 
 		Ok(match found {
 			Some((found, Some(value))) => VersionedGetResult::Value {
@@ -288,11 +293,12 @@ impl CommitStore {
 		};
 
 		let active = entry.active.read();
-		let closed = entry.closed_snapshot();
-		let found = iter::once(active.rows())
-			.chain(closed.iter().map(|map| map.rows()))
-			.filter_map(|rows| rows.get(key, version))
-			.max_by_key(|(found, _)| *found);
+		let closed = entry.closed.read();
+		let found = lookup(
+			iter::once(active.rows()).chain(closed.iter().rev().map(|map| map.rows())),
+			key,
+			version,
+		);
 
 		Ok(found.is_some_and(|(_, value)| value.is_some()))
 	}
@@ -337,7 +343,7 @@ impl CommitStore {
 
 		let cursor_key = cursor.last_key().cloned();
 		let active = entry.active.read();
-		let closed = entry.closed_snapshot();
+		let closed = entry.closed.read();
 
 		let iter_start: Bound<&[u8]> = match &cursor_key {
 			Some(last) => Bound::Excluded(last.as_slice()),
@@ -410,7 +416,7 @@ impl CommitStore {
 
 		let cursor_key = cursor.last_key().cloned();
 		let active = entry.active.read();
-		let closed = entry.closed_snapshot();
+		let closed = entry.closed.read();
 
 		let iter_end: Bound<&[u8]> = match &cursor_key {
 			Some(last) => Bound::Excluded(last.as_slice()),
@@ -471,6 +477,7 @@ impl CommitStore {
 			let mut active = entry.active_write();
 			*active = ActiveRows::new();
 			*entry.closed.write() = VecDeque::new();
+			entry.key_count.store(0, Ordering::Relaxed);
 		}
 		Ok(())
 	}
@@ -499,14 +506,16 @@ impl CommitStore {
 
 			let mut active = table_entry.active_write();
 			let mut closed = table_entry.closed.write();
+			let keys_before = active.rows().key_count()
+				+ closed.iter().map(|slot| slot.rows().key_count()).sum::<usize>();
 
 			let newest: HashMap<EncodedKey, CommitVersion> = dropped
 				.keys()
 				.filter_map(|key| {
-					newest_across(
+					lookup(
 						iter::once(active.rows())
-							.chain(closed.iter().map(|slot| slot.rows()))
-							.filter_map(|rows| rows.versions_for(key)),
+							.chain(closed.iter().rev().map(|slot| slot.rows())),
+						key,
 						CommitVersion(u64::MAX),
 					)
 					.map(|(version, _)| (key.clone(), version))
@@ -528,14 +537,12 @@ impl CommitStore {
 				if slot.min_version() > below {
 					continue;
 				}
-				let compacted = slot.compact(&dropped);
-				if compacted.removed.is_empty() {
-					continue;
-				}
-				removed.extend(compacted.removed.iter().map(&mut record));
-				*slot = Arc::new(compacted.rows);
+				removed.extend(Arc::make_mut(slot).compact(&dropped).iter().map(&mut record));
 			}
 			closed.retain(|map| !map.rows().is_empty());
+			let keys_after = active.rows().key_count()
+				+ closed.iter().map(|slot| slot.rows().key_count()).sum::<usize>();
+			table_entry.key_count.fetch_sub((keys_before - keys_after) as u64, Ordering::Relaxed);
 		}
 
 		Span::current().record("total_entry_count", total_entries);
@@ -554,7 +561,7 @@ impl CommitStore {
 		};
 
 		let active = entry.active.read();
-		let closed = entry.closed_snapshot();
+		let closed = entry.closed.read();
 
 		let mut versions: Vec<(CommitVersion, Option<CowVec<u8>>)> = iter::once(active.rows())
 			.chain(closed.iter().map(|map| map.rows()))
@@ -568,75 +575,72 @@ impl CommitStore {
 		Ok(versions)
 	}
 
-	#[instrument(name = "store::multi::memory::scan_historical_below", level = "trace", skip(self, cursor), fields(table = ?table, cutoff = cutoff.0, batch_size = batch_size))]
-	pub fn scan_historical_below(
+	#[instrument(name = "store::multi::memory::sweep_historical_below", level = "trace", skip(self), fields(table = ?table, cutoff = cutoff.0, batch_size = batch_size))]
+	pub fn sweep_historical_below(
 		&self,
 		table: EntryKind,
 		cutoff: CommitVersion,
-		cursor: &mut HistoricalCursor,
 		batch_size: usize,
-	) -> Result<Vec<(EncodedKey, CommitVersion)>> {
-		if cursor.exhausted || batch_size == 0 {
-			return Ok(Vec::new());
-		}
-
-		let entry = match self.inner.entries.data.get(&table) {
-			Some(e) => e,
-			None => {
-				cursor.exhausted = true;
-				return Ok(Vec::new());
-			}
+	) -> Result<HistoricalSweep> {
+		let Some(entry) = self.inner.entries.data.get(&table) else {
+			return Ok(HistoricalSweep::default());
 		};
 
-		let active = entry.active.read();
-		let closed = entry.closed_snapshot();
+		let queued = mem::take(&mut *entry.pending.lock());
+		let queued = if queued.is_empty() {
+			mem::take(&mut *entry.retained.lock())
+		} else {
+			queued
+		};
+		let mut queued = queued.into_iter();
+		let keys: Vec<EncodedKey> = queued.by_ref().take(batch_size).collect();
+		let mut unexamined: BTreeSet<EncodedKey> = queued.collect();
+		let remaining = unexamined.len() as u64;
 
-		let mut merged = MergedRows::new(
-			iter::once(active.rows())
-				.chain(closed.iter().map(|map| map.rows()))
-				.map(|rows| rows.iter())
-				.collect(),
-			false,
-		);
-
-		let mut collected: Vec<(EncodedKey, CommitVersion)> = Vec::new();
-		while let Some((key, group)) = merged.next_group() {
-			let newest = newest_across(group.iter().copied(), CommitVersion(u64::MAX)).map(|(v, _)| v);
-			for versions in group.iter() {
-				for (Reverse(version), _value) in versions.iter() {
-					if newest == Some(*version) || *version >= cutoff {
-						continue;
-					}
-					match (cursor.last_key.as_ref(), cursor.last_version) {
-						(Some(last), Some(seen))
-							if key < last || (key == last && *version <= seen) =>
-						{
-							continue;
-						}
-						_ => {}
-					}
-					collected.push((key.clone(), *version));
+		let mut entries: Vec<(EncodedKey, CommitVersion)> = Vec::new();
+		let mut retained: Vec<EncodedKey> = Vec::new();
+		let mut versions: Vec<CommitVersion> = Vec::new();
+		for key in keys {
+			versions.clear();
+			{
+				let active = entry.active.read();
+				if let Some(found) = active.rows().versions_for(key.as_slice()) {
+					versions.extend(found.keys().map(|Reverse(version)| *version));
 				}
+			}
+			{
+				let closed = entry.closed.read();
+				for map in closed.iter() {
+					if let Some(found) = map.rows().versions_for(key.as_slice()) {
+						versions.extend(found.keys().map(|Reverse(version)| *version));
+					}
+				}
+			}
+			versions.sort_unstable();
+			versions.dedup();
+			let Some((_, older)) = versions.split_last() else {
+				continue;
+			};
+			let mut above_cutoff = false;
+			for version in older {
+				if *version < cutoff {
+					entries.push((key.clone(), *version));
+				} else {
+					above_cutoff = true;
+				}
+			}
+			if above_cutoff {
+				retained.push(key);
 			}
 		}
 
-		collected.sort_by(|a, b| a.0.as_slice().cmp(b.0.as_slice()).then(a.1.0.cmp(&b.1.0)));
-		collected.dedup();
+		entry.pending.lock().append(&mut unexamined);
+		entry.retained.lock().extend(retained);
 
-		let has_more = collected.len() > batch_size;
-		if has_more {
-			collected.truncate(batch_size);
-		}
-
-		if let Some(last) = collected.last() {
-			cursor.last_key = Some(last.0.clone());
-			cursor.last_version = Some(last.1);
-		}
-		if !has_more {
-			cursor.exhausted = true;
-		}
-
-		Ok(collected)
+		Ok(HistoricalSweep {
+			entries,
+			remaining,
+		})
 	}
 }
 
@@ -1075,6 +1079,181 @@ pub mod tests {
 
 		assert_eq!(&*batch2.entries[0].key, &[6]);
 		assert_eq!(&*batch2.entries[2].key, &[4]);
+	}
+
+	fn sweep_all(storage: &CommitStore, cutoff: u64, batch: usize) -> Vec<(EncodedKey, CommitVersion)> {
+		// Drives one full pass the way the actor does: keep sweeping while unexamined keys remain, compacting
+		// each batch, so a bug in batching or requeueing shows up as missing or duplicated rows.
+		let mut all = Vec::new();
+		let mut calls = 0;
+		loop {
+			let sweep =
+				storage.sweep_historical_below(EntryKind::Multi, CommitVersion(cutoff), batch).unwrap();
+			calls += 1;
+			assert!(calls <= 64, "a pass must terminate even when every key is retained");
+			all.extend(sweep.entries.iter().cloned());
+			if !sweep.entries.is_empty() {
+				storage.compact(HashMap::from([(EntryKind::Multi, sweep.entries)])).unwrap();
+			}
+			if sweep.remaining == 0 {
+				return all;
+			}
+		}
+	}
+
+	#[test]
+	fn sweep_drops_versions_below_cutoff_across_closed_maps_and_forgets_finished_keys() {
+		// Every set closes the active map, so each (key, version) sits in its own closed map and a key's
+		// versions must be gathered across maps; a per-map view would see nothing to reclaim. The newest
+		// version survives even when it is below the cutoff, and a key with nothing left to reclaim must
+		// not be examined again on the next pass.
+		let storage = CommitStore::with_close_threshold(ByteSize::from_bytes(1));
+		for (name, version) in [
+			("a", 1),
+			("a", 2),
+			("a", 3),
+			("b", 1),
+			("b", 2),
+			("c", 1),
+			("d", 1),
+			("d", 2),
+			("d", 4),
+			("e", 3),
+			("e", 2),
+			("e", 1),
+		] {
+			seed(&storage, version, &[keyed(name, b"v")]);
+		}
+		let row =
+			|name: &str, version: u64| (EncodedKey::new(name.as_bytes().to_vec()), CommitVersion(version));
+		let expected =
+			vec![row("a", 1), row("a", 2), row("b", 1), row("d", 1), row("d", 2), row("e", 1), row("e", 2)];
+
+		assert_eq!(sweep_all(&storage, 4, 100), expected);
+		for (name, survivors) in
+			[("a", vec![3]), ("b", vec![2]), ("c", vec![1]), ("d", vec![4]), ("e", vec![3])]
+		{
+			let left: Vec<u64> = storage
+				.get_all_versions(EntryKind::Multi, name.as_bytes())
+				.unwrap()
+				.into_iter()
+				.map(|(v, _)| v.0)
+				.collect();
+			assert_eq!(left, survivors, "key {name}");
+		}
+
+		let again = storage.sweep_historical_below(EntryKind::Multi, CommitVersion(100), 100).unwrap();
+		assert!(again.entries.is_empty());
+		assert_eq!(again.remaining, 0);
+	}
+
+	#[test]
+	fn sweep_requeues_keys_whose_older_versions_are_still_above_cutoff() {
+		// A version that is historical but not yet below the cutoff must be reclaimed by a later pass without
+		// a new write to the key, so the key has to stay queued; but it must not count as backlog, or the
+		// actor would spin re-examining it before the cutoff moves.
+		let storage = CommitStore::new();
+		let key = EncodedKey::new(b"k".to_vec());
+		for version in [1, 2, 3] {
+			seed(&storage, version, &[keyed("k", b"v")]);
+		}
+
+		let first = storage.sweep_historical_below(EntryKind::Multi, CommitVersion(2), 100).unwrap();
+		assert_eq!(first.entries, vec![(key.clone(), CommitVersion(1))]);
+		assert_eq!(first.remaining, 0, "a retained key is not backlog");
+		storage.compact(HashMap::from([(EntryKind::Multi, first.entries)])).unwrap();
+
+		let second = storage.sweep_historical_below(EntryKind::Multi, CommitVersion(3), 100).unwrap();
+		assert_eq!(
+			second.entries,
+			vec![(key.clone(), CommitVersion(2))],
+			"requeued key reclaimed once the cutoff passed"
+		);
+		storage.compact(HashMap::from([(EntryKind::Multi, second.entries)])).unwrap();
+
+		let third = storage.sweep_historical_below(EntryKind::Multi, CommitVersion(100), 100).unwrap();
+		assert!(third.entries.is_empty(), "nothing historical is left for the key");
+	}
+
+	#[test]
+	fn a_retained_key_waits_for_the_next_pass_instead_of_displacing_unexamined_ones() {
+		// Keys kept back because a version is still above the cutoff must not be handed to the next batch
+		// ahead of keys nobody has looked at yet: they sort first, so re-queueing them straight away makes
+		// every batch re-examine the same keys, drop nothing, and report the same backlog forever.
+		let storage = CommitStore::new();
+		let names = ["a", "b", "c", "d", "e"];
+		for name in names {
+			seed(&storage, 1, &[keyed(name, b"v1")]);
+			seed(&storage, 2, &[keyed(name, b"v2")]);
+			seed(&storage, 3, &[keyed(name, b"v3")]);
+		}
+
+		let dropped = |sweep: &HistoricalSweep| -> Vec<(String, u64)> {
+			sweep.entries
+				.iter()
+				.map(|(key, version)| (String::from_utf8(key.as_slice().to_vec()).unwrap(), version.0))
+				.collect()
+		};
+
+		let first = storage.sweep_historical_below(EntryKind::Multi, CommitVersion(2), 2).unwrap();
+		assert_eq!(dropped(&first), vec![("a".into(), 1), ("b".into(), 1)]);
+		assert_eq!(first.remaining, 3);
+		storage.compact(HashMap::from([(EntryKind::Multi, first.entries)])).unwrap();
+
+		let second = storage.sweep_historical_below(EntryKind::Multi, CommitVersion(2), 2).unwrap();
+		assert_eq!(
+			dropped(&second),
+			vec![("c".into(), 1), ("d".into(), 1)],
+			"a and b were retained, not re-batched"
+		);
+		assert_eq!(second.remaining, 1);
+		storage.compact(HashMap::from([(EntryKind::Multi, second.entries)])).unwrap();
+
+		let third = storage.sweep_historical_below(EntryKind::Multi, CommitVersion(2), 2).unwrap();
+		assert_eq!(dropped(&third), vec![("e".into(), 1)]);
+		assert_eq!(third.remaining, 0, "the pass ends once every fresh key was examined");
+		storage.compact(HashMap::from([(EntryKind::Multi, third.entries)])).unwrap();
+
+		let next_pass = storage.sweep_historical_below(EntryKind::Multi, CommitVersion(3), 2).unwrap();
+		assert_eq!(
+			dropped(&next_pass),
+			vec![("a".into(), 2), ("b".into(), 2)],
+			"retained keys come back once the queue is empty"
+		);
+		assert_eq!(next_pass.remaining, 3, "the rest of the retained keys are the new backlog");
+	}
+
+	#[test]
+	fn sweep_examines_at_most_batch_keys_and_reports_the_rest_as_backlog() {
+		// The batch bounds how many keys one call looks up, and the unexamined keys must be reported so the
+		// actor keeps going instead of waiting a full interval; across the pass every key is examined
+		// exactly once and no row is dropped twice.
+		let storage = CommitStore::new();
+		let names = ["k1", "k2", "k3", "k4", "k5"];
+		for name in names {
+			seed(&storage, 1, &[keyed(name, b"old")]);
+			seed(&storage, 2, &[keyed(name, b"new")]);
+		}
+		seed(&storage, 2, &[keyed("z-single", b"single")]);
+
+		let first = storage.sweep_historical_below(EntryKind::Multi, CommitVersion(10), 2).unwrap();
+		assert_eq!(first.entries.len(), 2);
+		assert_eq!(first.remaining, 4, "six keys queued, two examined");
+		storage.compact(HashMap::from([(EntryKind::Multi, first.entries.clone())])).unwrap();
+
+		let mut all = first.entries;
+		all.extend(sweep_all(&storage, 10, 2));
+		let mut expected: Vec<(EncodedKey, CommitVersion)> = names
+			.iter()
+			.map(|name| (EncodedKey::new(name.as_bytes().to_vec()), CommitVersion(1)))
+			.collect();
+		expected.sort();
+		all.sort();
+		assert_eq!(all, expected);
+
+		let after = storage.sweep_historical_below(EntryKind::Multi, CommitVersion(10), 100).unwrap();
+		assert!(after.entries.is_empty());
+		assert_eq!(after.remaining, 0, "a single-version key does not linger in the queue");
 	}
 
 	#[test]
@@ -1969,5 +2148,121 @@ pub mod tests {
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
 		assert!(cursor.is_exhausted());
+	}
+
+	#[test]
+	fn a_point_read_finds_the_newest_version_at_or_below_the_asked_one_across_closed_maps() {
+		// Point reads skip maps whose version range cannot beat the best hit; a skip that fires one
+		// version too early hands back an older row, and one that fires too late is only slow.
+		let storage = CommitStore::with_close_threshold(ByteSize::from_bytes(1));
+		let k = EncodedKey::new(b"k");
+		for (version, value) in [(5u64, b"v5".as_slice()), (1, b"v1"), (9, b"v9")] {
+			storage.set(
+				CommitVersion(version),
+				HashMap::from([(
+					EntryKind::Multi,
+					vec![(k.clone(), Some(CowVec::new(value.to_vec())))],
+				)]),
+			)
+			.unwrap();
+		}
+		let entry = storage.inner.entries.data.get(&EntryKind::Multi).unwrap();
+		assert_eq!(entry.closed.read().len(), 3, "precondition: one closed map per write");
+
+		let read = |version: u64| match storage.get(EntryKind::Multi, b"k", CommitVersion(version)).unwrap() {
+			VersionedGetResult::Value {
+				value,
+				version,
+			} => Some((version.0, value.to_vec())),
+			VersionedGetResult::Tombstone => panic!("no tombstone was written"),
+			VersionedGetResult::NotFound => None,
+		};
+		assert_eq!(read(7), Some((5, b"v5".to_vec())));
+		assert_eq!(
+			read(5),
+			Some((5, b"v5".to_vec())),
+			"a read at exactly a map's oldest version keeps that map"
+		);
+		assert_eq!(read(3), Some((1, b"v1".to_vec())));
+		assert_eq!(read(100), Some((9, b"v9".to_vec())));
+		assert_eq!(read(0), None);
+		assert!(storage.contains(EntryKind::Multi, b"k", CommitVersion(7)).unwrap());
+		assert!(!storage.contains(EntryKind::Multi, b"k", CommitVersion(0)).unwrap());
+	}
+
+	#[test]
+	fn the_key_count_follows_writes_closes_compaction_and_clearing() {
+		// The flush sizes its backlog from this count without walking the maps; a count that drifts from
+		// the stored keys makes the flush report work that is not there or hide work that is.
+		let storage = CommitStore::with_close_threshold(ByteSize::from_bytes(1));
+		let walked = |storage: &CommitStore| -> u64 {
+			let entry = storage.inner.entries.data.get(&EntryKind::Multi).unwrap();
+			let active = entry.active.read().rows().key_count();
+			let closed: usize = entry.closed.read().iter().map(|map| map.rows().key_count()).sum();
+			(active + closed) as u64
+		};
+		seed(&storage, 1, &[keyed("a", b"a1"), keyed("b", b"b1")]);
+		assert_eq!(storage.estimated_current_count(EntryKind::Multi).unwrap(), 2);
+		seed(&storage, 2, &[keyed("a", b"a2")]);
+		assert_eq!(
+			storage.estimated_current_count(EntryKind::Multi).unwrap(),
+			3,
+			"a key rewritten into a new map counts once per map"
+		);
+		assert_eq!(storage.estimated_current_count(EntryKind::Multi).unwrap(), walked(&storage));
+
+		storage.compact(HashMap::from([(EntryKind::Multi, vec![(EncodedKey::new(b"a"), CommitVersion(1))])]))
+			.unwrap();
+		assert_eq!(storage.estimated_current_count(EntryKind::Multi).unwrap(), 2);
+		assert_eq!(storage.estimated_current_count(EntryKind::Multi).unwrap(), walked(&storage));
+
+		storage.clear_table(EntryKind::Multi).unwrap();
+		assert_eq!(storage.estimated_current_count(EntryKind::Multi).unwrap(), 0);
+
+		let same_map = CommitStore::new();
+		seed(&same_map, 1, &[keyed("a", b"a1")]);
+		seed(&same_map, 2, &[keyed("a", b"a2")]);
+		assert_eq!(
+			same_map.estimated_current_count(EntryKind::Multi).unwrap(),
+			1,
+			"a rewrite inside the active map adds no key"
+		);
+	}
+
+	#[test]
+	fn compaction_never_alters_a_map_a_reader_still_holds() {
+		// The flush walks a snapshot of the closed maps while the store keeps compacting; a drop that
+		// mutated the shared map underneath would let the walk skip or double-read rows.
+		let storage = CommitStore::with_close_threshold(ByteSize::from_bytes(1));
+		seed(&storage, 1, &[keyed("a", b"a1")]);
+		seed(&storage, 2, &[keyed("a", b"a2")]);
+		let entry = storage.inner.entries.data.get(&EntryKind::Multi).unwrap();
+		let held = entry.closed_snapshot();
+
+		storage.compact(HashMap::from([(EntryKind::Multi, vec![(EncodedKey::new(b"a"), CommitVersion(1))])]))
+			.unwrap();
+
+		let held_versions: usize = held
+			.iter()
+			.map(|map| map.rows().iter().map(|(_, versions)| versions.len()).sum::<usize>())
+			.sum();
+		assert_eq!(held_versions, 2, "the held snapshot still sees v1");
+		assert_eq!(storage.get_all_versions(EntryKind::Multi, b"a").unwrap().len(), 1, "the store dropped v1");
+	}
+
+	#[test]
+	fn the_oldest_pending_version_rises_when_the_oldest_row_leaves_a_map_that_keeps_others() {
+		// Dropping a map's oldest row in place must move the map's oldest version to the next one it
+		// still holds; a version range that stays put freezes the retention floor on a version nothing
+		// holds any more.
+		let storage = CommitStore::new();
+		seed(&storage, 3, &[keyed("a", b"a3")]);
+		seed(&storage, 5, &[keyed("b", b"b5")]);
+		assert_eq!(storage.oldest_pending_version(), Some(CommitVersion(3)));
+
+		storage.compact(HashMap::from([(EntryKind::Multi, vec![(EncodedKey::new(b"a"), CommitVersion(3))])]))
+			.unwrap();
+
+		assert_eq!(storage.oldest_pending_version(), Some(CommitVersion(5)));
 	}
 }

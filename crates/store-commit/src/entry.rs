@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::VecDeque, mem::size_of, sync::Arc};
+use std::{
+	collections::{BTreeSet, VecDeque},
+	mem::size_of,
+	sync::{Arc, atomic::AtomicU64},
+};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind, metrics::heap::HeapSize};
 use reifydb_runtime::sync::{
 	map::Map,
+	mutex::Mutex,
 	rwlock::{RwLock, RwLockWriteGuard},
 };
 use reifydb_value::util::cowvec::CowVec;
@@ -27,16 +32,25 @@ pub(super) fn entry_bytes_with(key_heap: usize, value: &Value) -> u64 {
 }
 
 pub(super) struct Entry {
-	pub active: Arc<RwLock<ActiveRows>>,
+	pub active: RwLock<ActiveRows>,
 
-	pub closed: Arc<RwLock<VecDeque<Arc<ClosedRows>>>>,
+	pub closed: RwLock<VecDeque<Arc<ClosedRows>>>,
+
+	pub pending: Mutex<BTreeSet<EncodedKey>>,
+
+	pub retained: Mutex<BTreeSet<EncodedKey>>,
+
+	pub key_count: AtomicU64,
 }
 
 impl Entry {
 	pub fn new() -> Self {
 		Self {
-			active: Arc::new(RwLock::new(ActiveRows::new())),
-			closed: Arc::new(RwLock::new(VecDeque::new())),
+			active: RwLock::new(ActiveRows::new()),
+			closed: RwLock::new(VecDeque::new()),
+			pending: Mutex::new(BTreeSet::new()),
+			retained: Mutex::new(BTreeSet::new()),
+			key_count: AtomicU64::new(0),
 		}
 	}
 
@@ -50,17 +64,8 @@ impl Entry {
 	}
 }
 
-impl Clone for Entry {
-	fn clone(&self) -> Self {
-		Self {
-			active: Arc::clone(&self.active),
-			closed: Arc::clone(&self.closed),
-		}
-	}
-}
-
 pub(super) struct Entries {
-	pub(super) data: Map<EntryKind, Entry>,
+	pub(super) data: Map<EntryKind, Arc<Entry>>,
 }
 
 impl Default for Entries {
