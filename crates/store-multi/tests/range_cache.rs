@@ -74,7 +74,7 @@ fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 			}
 		}
 		for evicted in &to_compact {
-			store.invalidate_read_key(&evicted.key);
+			store.invalidate_read_key(kind, &evicted.key);
 		}
 		commit.compact(HashMap::from([(kind, to_compact.into_iter().map(|e| (e.key, e.version)).collect())]))
 			.unwrap();
@@ -308,7 +308,7 @@ fn physical_delete_then_range_omits_row_no_ghost() {
 
 	let removed = RowKey::encoded(STORAGE, 5);
 	store.persistent().unwrap().delete_keys(EntryKind::Source(STORAGE.into()), &[removed.clone()]).unwrap();
-	store.invalidate_read_key(&removed);
+	store.invalidate_read_key(EntryKind::Source(STORAGE.into()), &removed);
 
 	let rows = scan_fwd(&store, 1000, 64);
 	assert_eq!(rows.len(), (BUCKET_ROWS - 1) as usize, "exactly one row removed");

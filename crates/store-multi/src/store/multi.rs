@@ -66,7 +66,7 @@ impl StandardMultiStore {
 		if let Some(found) = self.get_probe_commit(table, key, version)? {
 			return Ok(found);
 		}
-		if let Some(found) = self.get_probe_read(key, version) {
+		if let Some(found) = self.get_probe_read(table, key, version) {
 			return Ok(found);
 		}
 		if let Some(found) = self.get_probe_persistent(table, key, version)? {
@@ -100,9 +100,9 @@ impl StandardMultiStore {
 	}
 
 	#[inline]
-	fn get_probe_read(&self, key: &EncodedKey, version: CommitVersion) -> Option<Option<MultiVersionRow>> {
+	fn get_probe_read(&self, table: EntryKind, key: &EncodedKey, version: CommitVersion) -> Option<Option<MultiVersionRow>> {
 		let point = self.point.as_ref()?;
-		match point.get(key, version) {
+		match point.get(table, key, version) {
 			VersionedGetResult::Value {
 				value,
 				version: v,
@@ -136,7 +136,7 @@ impl StandardMultiStore {
 				version: v,
 			} => {
 				if let Some(point) = &self.point {
-					point.insert(key.clone(), v, Some(value.clone()));
+					point.insert(table, key.clone(), v, Some(value.clone()));
 				}
 				Some(Some(MultiVersionRow {
 					key: key.clone(),
@@ -346,7 +346,7 @@ impl StandardMultiStore {
 			let read_hit = self
 				.point
 				.as_ref()
-				.map(|c| c.get(table_keys[i], version))
+				.map(|c| c.get(table, table_keys[i], version))
 				.unwrap_or(VersionedGetResult::NotFound);
 			match read_hit {
 				VersionedGetResult::Value {
@@ -391,7 +391,7 @@ impl StandardMultiStore {
 					version: v,
 				} = &result && let Some(point) = &self.point
 				{
-					point.insert(table_keys[slot].clone(), *v, Some(value.clone()));
+					point.insert(table, table_keys[slot].clone(), *v, Some(value.clone()));
 				}
 				persistent_aligned[slot] = result;
 			}
@@ -450,13 +450,13 @@ impl StandardMultiStore {
 		if self.point.is_none() && self.range.is_none() {
 			return;
 		}
-		for entries in batches.values() {
+		for (table, entries) in batches.iter() {
 			for (key, _) in entries {
 				if let Some(range) = &self.range {
-					range.invalidate(key);
+					range.invalidate(*table, key);
 				}
 				if let Some(point) = &self.point {
-					point.invalidate(key);
+					point.invalidate(*table, key);
 				}
 			}
 		}
@@ -1120,7 +1120,7 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 		if let Some(found) = self.previous_probe_commit(table, key, prev_version)? {
 			return Ok(found);
 		}
-		if let Some(found) = self.previous_probe_read(key, prev_version) {
+		if let Some(found) = self.previous_probe_read(table, key, prev_version) {
 			return Ok(found);
 		}
 		if let Some(found) = self.previous_probe_persistent(table, key, prev_version)? {
@@ -1156,11 +1156,12 @@ impl StandardMultiStore {
 	#[inline]
 	fn previous_probe_read(
 		&self,
+		table: EntryKind,
 		key: &EncodedKey,
 		prev_version: CommitVersion,
 	) -> Option<Option<MultiVersionRow>> {
 		let point = self.point.as_ref()?;
-		match point.get(key, prev_version) {
+		match point.get(table, key, prev_version) {
 			VersionedGetResult::Value {
 				value,
 				version,
@@ -1194,7 +1195,7 @@ impl StandardMultiStore {
 				version,
 			} => {
 				if let Some(point) = &self.point {
-					point.insert(key.clone(), version, Some(value.clone()));
+					point.insert(table, key.clone(), version, Some(value.clone()));
 				}
 				Some(Some(MultiVersionRow {
 					key: key.clone(),
@@ -1384,7 +1385,7 @@ mod cache_tests {
 				}
 			}
 			for evicted in &to_compact {
-				store.invalidate_read_key(&evicted.key);
+				store.invalidate_read_key(kind, &evicted.key);
 			}
 			commit.compact(HashMap::from([(
 				kind,
@@ -1458,7 +1459,7 @@ mod cache_tests {
 		.unwrap();
 
 		assert!(
-			matches!(point.get(&opkey, CommitVersion(10)), VersionedGetResult::NotFound),
+			matches!(point.get(classify_key(&opkey), &opkey, CommitVersion(10)), VersionedGetResult::NotFound),
 			"an operator commit must not write through into the point tier"
 		);
 		assert_eq!(
@@ -1474,7 +1475,7 @@ mod cache_tests {
 		assert_eq!(row.version, CommitVersion(10));
 
 		assert!(
-			matches!(point.get(&opkey, CommitVersion(10)), VersionedGetResult::NotFound),
+			matches!(point.get(classify_key(&opkey), &opkey, CommitVersion(10)), VersionedGetResult::NotFound),
 			"a store-level operator read must not back-populate the point tier"
 		);
 	}

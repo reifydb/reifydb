@@ -94,7 +94,7 @@ pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 				persistent.set(version, batch).unwrap();
 			}
 			for (key, version, value) in to_persist {
-				store.insert_read_key(key, version, value);
+				store.insert_read_key(kind, key, version, value);
 			}
 		}
 		let to_compact: Vec<(EncodedKey, CommitVersion)> =

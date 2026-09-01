@@ -92,7 +92,7 @@ fn ttl_sweep_storage(store: &StandardMultiStore, storage_id: StorageId, rows: &[
 		}
 	}
 	for key in &keys {
-		store.invalidate_read_key(key);
+		store.invalidate_read_key(kind, key);
 	}
 	if let Some(persistent) = store.persistent() {
 		let deleted = persistent.delete_below_version(kind, cutoff_version, None, None, usize::MAX).unwrap().0;
@@ -121,7 +121,7 @@ fn physical_delete_storage(store: &StandardMultiStore, storage_id: StorageId, ro
 		}
 	}
 	for key in &keys {
-		store.invalidate_read_key(key);
+		store.invalidate_read_key(kind, key);
 	}
 }
 

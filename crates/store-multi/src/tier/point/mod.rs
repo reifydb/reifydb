@@ -10,7 +10,7 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, default, key::typed::MultiKey};
+use reifydb_core::{common::CommitVersion, default, interface::store::EntryKind, key::typed::MultiKey};
 use reifydb_store::tier::{
 	point::{PointConfig, PointDomain, PointMetrics, PointTier},
 	range::RowBytes,
@@ -85,7 +85,7 @@ impl RowBytes for MultiPointRow {
 pub struct MultiPointDomain;
 
 impl PointDomain for MultiPointDomain {
-	type Dimension = ();
+	type Dimension = EntryKind;
 	type Key = MultiKey;
 	type MetricBucket = ();
 	type Row = MultiPointRow;
@@ -163,9 +163,9 @@ impl MultiPointTier {
 		})
 	}
 
-	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> VersionedGetResult {
-		let counters = &self.reads[self.tier.shard_index((), key)];
-		let Some(Some(row)) = self.tier.get((), key) else {
+	pub fn get(&self, table: EntryKind, key: &EncodedKey, version: CommitVersion) -> VersionedGetResult {
+		let counters = &self.reads[self.tier.shard_index(table, key)];
+		let Some(Some(row)) = self.tier.get(table, key) else {
 			counters.misses.fetch_add(1, Ordering::Relaxed);
 			return VersionedGetResult::NotFound;
 		};
@@ -189,12 +189,12 @@ impl MultiPointTier {
 		}
 	}
 
-	pub fn insert(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
-		self.tier.overwrite((), key, MultiPointRow::new(version, value));
+	pub fn insert(&self, table: EntryKind, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
+		self.tier.overwrite(table, key, MultiPointRow::new(version, value));
 	}
 
-	pub fn invalidate(&self, key: &EncodedKey) {
-		self.tier.invalidate((), key);
+	pub fn invalidate(&self, table: EntryKind, key: &EncodedKey) {
+		self.tier.invalidate(table, key);
 	}
 
 	pub fn clear(&self) {
@@ -242,7 +242,10 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
-		interface::catalog::{id::TableId, storage::StorageId},
+		interface::{
+			catalog::{id::TableId, storage::StorageId},
+			store::EntryKind,
+		},
 		key::{Key, row::RowKey},
 	};
 	use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
@@ -251,6 +254,8 @@ mod tests {
 		CommitVersion, CowVec, MultiPointConfig, MultiPointDomain, MultiPointRow, MultiPointTier,
 		MultiReadMetrics, PointDomain, RowBytes, VersionedGetResult,
 	};
+
+	const TABLE: EntryKind = EntryKind::Source(StorageId::Table(TableId(1)));
 
 	fn tier() -> MultiPointTier {
 		MultiPointTier::new(MultiPointConfig {
@@ -416,9 +421,9 @@ mod tests {
 	fn a_read_at_the_current_version_is_a_hit() {
 		let tier = tier();
 		let key = row_key(1);
-		tier.insert(key.clone(), CommitVersion(5), value("five"));
+		tier.insert(TABLE, key.clone(), CommitVersion(5), value("five"));
 
-		match tier.get(&key, CommitVersion(7)) {
+		match tier.get(TABLE, &key, CommitVersion(7)) {
 			VersionedGetResult::Value {
 				value,
 				version,
@@ -442,10 +447,10 @@ mod tests {
 	fn a_read_below_the_newest_version_is_served_from_previous_and_counted_apart() {
 		let tier = tier();
 		let key = row_key(2);
-		tier.insert(key.clone(), CommitVersion(5), value("five"));
-		tier.insert(key.clone(), CommitVersion(9), value("nine"));
+		tier.insert(TABLE, key.clone(), CommitVersion(5), value("five"));
+		tier.insert(TABLE, key.clone(), CommitVersion(9), value("nine"));
 
-		match tier.get(&key, CommitVersion(6)) {
+		match tier.get(TABLE, &key, CommitVersion(6)) {
 			VersionedGetResult::Value {
 				value,
 				version,
@@ -470,10 +475,10 @@ mod tests {
 	fn a_read_below_every_cached_version_is_a_miss_not_a_hit() {
 		let tier = tier();
 		let key = row_key(3);
-		tier.insert(key.clone(), CommitVersion(5), value("five"));
-		tier.insert(key.clone(), CommitVersion(9), value("nine"));
+		tier.insert(TABLE, key.clone(), CommitVersion(5), value("five"));
+		tier.insert(TABLE, key.clone(), CommitVersion(9), value("nine"));
 
-		assert!(matches!(tier.get(&key, CommitVersion(2)), VersionedGetResult::NotFound));
+		assert!(matches!(tier.get(TABLE, &key, CommitVersion(2)), VersionedGetResult::NotFound));
 		assert_eq!(
 			totals(&tier),
 			MultiReadMetrics {
@@ -489,9 +494,9 @@ mod tests {
 	fn a_cached_tombstone_reads_back_as_a_tombstone() {
 		let tier = tier();
 		let key = row_key(4);
-		tier.insert(key.clone(), CommitVersion(5), None);
+		tier.insert(TABLE, key.clone(), CommitVersion(5), None);
 
-		assert!(matches!(tier.get(&key, CommitVersion(7)), VersionedGetResult::Tombstone));
+		assert!(matches!(tier.get(TABLE, &key, CommitVersion(7)), VersionedGetResult::Tombstone));
 		assert_eq!(
 			totals(&tier),
 			MultiReadMetrics {
@@ -506,10 +511,10 @@ mod tests {
 	fn an_invalidated_key_reads_as_a_miss() {
 		let tier = tier();
 		let key = row_key(5);
-		tier.insert(key.clone(), CommitVersion(5), value("five"));
-		tier.invalidate(&key);
+		tier.insert(TABLE, key.clone(), CommitVersion(5), value("five"));
+		tier.invalidate(TABLE, &key);
 
-		assert!(matches!(tier.get(&key, CommitVersion(7)), VersionedGetResult::NotFound));
+		assert!(matches!(tier.get(TABLE, &key, CommitVersion(7)), VersionedGetResult::NotFound));
 		assert_eq!(
 			totals(&tier),
 			MultiReadMetrics {
@@ -526,10 +531,10 @@ mod tests {
 		// serve stale rows and tally its own reads, and neither shows up as a compile error.
 		let original = tier();
 		let clone = original.clone();
-		original.insert(row_key(9), CommitVersion(5), value("five"));
+		original.insert(TABLE, row_key(9), CommitVersion(5), value("five"));
 
 		assert!(
-			matches!(clone.get(&row_key(9), CommitVersion(7)), VersionedGetResult::Value { .. }),
+			matches!(clone.get(TABLE, &row_key(9), CommitVersion(7)), VersionedGetResult::Value { .. }),
 			"a clone must observe a write made through the original"
 		);
 		assert_eq!(totals(&original).hits, 1, "the read counters must be shared, not duplicated per handle");
@@ -541,17 +546,17 @@ mod tests {
 		// against a tier holding only the survivor pins the exact figure without restating the per-entry
 		// overhead, which would rot the moment the entry layout changes.
 		let churned = tier();
-		churned.insert(row_key(1), CommitVersion(5), value("aaa"));
-		churned.insert(row_key(1), CommitVersion(9), value("bbbbb"));
-		churned.insert(row_key(1), CommitVersion(9), value("bbbbb"));
-		churned.insert(row_key(2), CommitVersion(5), value("cc"));
-		churned.insert(row_key(2), CommitVersion(9), value("d"));
-		churned.invalidate(&row_key(2));
-		churned.insert(row_key(3), CommitVersion(5), value("x"));
-		churned.invalidate(&row_key(3));
+		churned.insert(TABLE, row_key(1), CommitVersion(5), value("aaa"));
+		churned.insert(TABLE, row_key(1), CommitVersion(9), value("bbbbb"));
+		churned.insert(TABLE, row_key(1), CommitVersion(9), value("bbbbb"));
+		churned.insert(TABLE, row_key(2), CommitVersion(5), value("cc"));
+		churned.insert(TABLE, row_key(2), CommitVersion(9), value("d"));
+		churned.invalidate(TABLE, &row_key(2));
+		churned.insert(TABLE, row_key(3), CommitVersion(5), value("x"));
+		churned.invalidate(TABLE, &row_key(3));
 
 		let survivor = tier();
-		survivor.insert(row_key(1), CommitVersion(9), value("bbbbb"));
+		survivor.insert(TABLE, row_key(1), CommitVersion(9), value("bbbbb"));
 
 		assert_eq!(
 			used(&churned),
@@ -559,5 +564,43 @@ mod tests {
 			"after a supersede, an echo that clears the displaced slot, and two invalidates, only one entry remains and the total must say so"
 		);
 		assert!(used(&churned) > 0, "an empty total would satisfy the comparison without proving anything");
+	}
+
+	#[test]
+	fn two_tables_sharing_identical_key_bytes_do_not_collide() {
+		// The cache used to key on raw bytes alone; two tables whose row keys ever produced identical bytes
+		// would silently share one slot and serve each other's values.
+		let tier = tier();
+		let shared_bytes = EncodedKey::new(b"same-bytes-different-tables".to_vec());
+		let table_a = EntryKind::Source(StorageId::Table(TableId(1)));
+		let table_b = EntryKind::Source(StorageId::Table(TableId(2)));
+
+		tier.insert(table_a, shared_bytes.clone(), CommitVersion(5), value("a"));
+		tier.insert(table_b, shared_bytes.clone(), CommitVersion(5), value("b"));
+
+		match tier.get(table_a, &shared_bytes, CommitVersion(7)) {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => assert_eq!(value.as_ref(), b"a", "table a's write must not be shadowed by table b's"),
+			other => panic!("expected table a's value, got {other:?}"),
+		}
+		match tier.get(table_b, &shared_bytes, CommitVersion(7)) {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => assert_eq!(value.as_ref(), b"b", "table b's write must not be shadowed by table a's"),
+			other => panic!("expected table b's value, got {other:?}"),
+		}
+
+		tier.invalidate(table_a, &shared_bytes);
+		assert!(
+			matches!(tier.get(table_a, &shared_bytes, CommitVersion(7)), VersionedGetResult::NotFound),
+			"invalidating table a's entry must remove it"
+		);
+		assert!(
+			matches!(tier.get(table_b, &shared_bytes, CommitVersion(7)), VersionedGetResult::Value { .. }),
+			"invalidating table a must not evict table b's entry sharing the same bytes"
+		);
 	}
 }

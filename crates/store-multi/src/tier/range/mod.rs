@@ -16,7 +16,7 @@ use reifydb_core::{
 	default,
 	interface::{
 		catalog::storage::StorageId,
-		store::{EntryKind, classify_key},
+		store::EntryKind,
 	},
 	key::{
 		row::RowKey,
@@ -282,9 +282,9 @@ impl MultiRangeTier {
 		self.tier.complete_partitions()
 	}
 
-	pub fn insert(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
+	pub fn insert(&self, table: EntryKind, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
 		self.tier.insert(
-			classify_key(&key),
+			table,
 			key,
 			MultiRow {
 				version,
@@ -293,8 +293,8 @@ impl MultiRangeTier {
 		);
 	}
 
-	pub fn invalidate(&self, key: &EncodedKey) {
-		self.tier.invalidate(classify_key(key), key);
+	pub fn invalidate(&self, table: EntryKind, key: &EncodedKey) {
+		self.tier.invalidate(table, key);
 	}
 
 	pub fn clear(&self) {
@@ -629,7 +629,7 @@ mod tests {
 		// A declined write leaves a later materialize free to claim the span and answer the row absent.
 		let tier = tier();
 
-		tier.insert(RowKey::encoded(STORAGE, 1), CommitVersion(1), Some(CowVec::new(b"v".to_vec())));
+		tier.insert(source(), RowKey::encoded(STORAGE, 1), CommitVersion(1), Some(CowVec::new(b"v".to_vec())));
 
 		let entries: usize = tier.shard_metrics().iter().map(|shard| shard.entries).sum();
 		assert_eq!(entries, 1, "the write was dropped, so a claim taken across it answers the row absent");
@@ -649,7 +649,7 @@ mod tests {
 			"row keys encode descending, so the low end of the span is the highest row number"
 		);
 
-		tier.insert(flushed.clone(), CommitVersion(1), Some(CowVec::new(b"flushed".to_vec())));
+		tier.insert(kind, flushed.clone(), CommitVersion(1), Some(CowVec::new(b"flushed".to_vec())));
 
 		let stale = [RawEntry {
 			key: lo.clone(),
@@ -727,7 +727,7 @@ mod tests {
 			"the chunk must claim its span, or the write below never lands on a resident row"
 		);
 
-		tier.insert(key.clone(), CommitVersion(2), Some(CowVec::new(b"v2".to_vec())));
+		tier.insert(kind, key.clone(), CommitVersion(2), Some(CowVec::new(b"v2".to_vec())));
 
 		let mut cursor = RangeCursor::new();
 		let served = tier.serve_persistent_chunk(
@@ -774,7 +774,7 @@ mod tests {
 		);
 
 		for n in 1..=512 {
-			tier.insert(row(n), CommitVersion(1), Some(CowVec::new(vec![n as u8; 8])));
+			tier.insert(source(), row(n), CommitVersion(1), Some(CowVec::new(vec![n as u8; 8])));
 		}
 
 		assert!(
@@ -803,7 +803,7 @@ mod tests {
 			tier.tier.retractions(),
 		);
 
-		tier.insert(row(7), CommitVersion(1), Some(CowVec::new(vec![1])));
+		tier.insert(source(), row(7), CommitVersion(1), Some(CowVec::new(vec![1])));
 
 		assert_eq!(
 			tier.tier.head(source()).as_ref(),
@@ -820,7 +820,7 @@ mod tests {
 		let tier = tier();
 		let token = tier.tier.retractions();
 
-		tier.invalidate(&row(7));
+		tier.invalidate(source(), &row(7));
 
 		tier.tier.raise_head(source(), &storage_start(), &storage_end(), Some(&row(3)), token);
 		assert_eq!(tier.tier.head(source()), None, "a head published across a withdrawal");
@@ -887,7 +887,7 @@ mod tests {
 			"the materialize must have recorded a head"
 		);
 
-		tier.invalidate(&row(7));
+		tier.invalidate(source(), &row(7));
 
 		assert_eq!(
 			tier.tier.head(source()).as_ref(),
@@ -932,7 +932,7 @@ mod tests {
 		// the keys the caller asked for and onto the rows, reporting everything below proven absent.
 		let tier = tier();
 		materialize_from_prefix(&tier, &[3, 2, 1], 10);
-		tier.insert(series(1), CommitVersion(10), Some(CowVec::new(vec![1])));
+		tier.insert(source(), series(1), CommitVersion(10), Some(CowVec::new(vec![1])));
 		assert!(
 			series(1).as_slice() < storage_start().as_slice(),
 			"the series band must sort below the row band, or this range never crosses the boundary"
@@ -987,8 +987,8 @@ mod tests {
 			"the materialize must name the first row as the head"
 		);
 
-		tier.invalidate(&row(5));
-		tier.invalidate(&row(3));
+		tier.invalidate(source(), &row(5));
+		tier.invalidate(source(), &row(3));
 
 		let mut cursor = RangeCursor::new();
 		let chunk = tier.serve_persistent_chunk(
@@ -1022,7 +1022,7 @@ mod tests {
 
 		let punched = tier();
 		fill_bucket(&punched, 0, &[2, 4, 6], 10);
-		punched.invalidate(&row(1));
+		punched.invalidate(source(), &row(1));
 
 		let mut clipped = RangeCursor::new();
 		let chunk = serve(&punched, &mut clipped, 0, BUCKET - 1, 64);
@@ -1057,7 +1057,7 @@ mod tests {
 		// nothing past it and reporting exhausted there silently drops every remaining row.
 		let tier = tier();
 		materialize_from_prefix(&tier, &[3, 2, 1], 10);
-		tier.invalidate(&row(1));
+		tier.invalidate(source(), &row(1));
 
 		let mut cursor = RangeCursor::new();
 		cursor.advance(row(3));
@@ -1143,7 +1143,7 @@ mod tests {
 		// it must still serve from the claim, where a whole-partition claim would serve nothing at all.
 		let tier = tier();
 		fill_bucket(&tier, 0, &[1, 2, 3, 4, 5], 10);
-		tier.invalidate(&row(3));
+		tier.invalidate(source(), &row(3));
 
 		let mut cursor = RangeCursor::new();
 		let chunk = serve(&tier, &mut cursor, 0, BUCKET - 1, 64);

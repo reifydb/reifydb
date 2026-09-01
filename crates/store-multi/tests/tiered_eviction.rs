@@ -134,7 +134,7 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 
 		if !persistent_object {
 			for evicted in &to_compact {
-				store.invalidate_read_key(&evicted.key);
+				store.invalidate_read_key(kind, &evicted.key);
 			}
 		}
 
@@ -477,7 +477,7 @@ fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it()
 	assert_eq!(deleted.len(), 1, "the expired row must be physically deleted from the persistent tier");
 
 	// The staleness itself is deliberately not asserted; only the post-invalidation read is pinned.
-	store.invalidate_read_key(&k);
+	store.invalidate_read_key(kind, &k);
 
 	assert_eq!(
 		get(&store, &k, 1),

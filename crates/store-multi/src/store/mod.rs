@@ -13,7 +13,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::metrics::sample::MetricsSample;
 use reifydb_core::{
-	common::CommitVersion, event::EventBus, lifecycle::watermark::EvictionWatermark,
+	common::CommitVersion, event::EventBus, interface::store::EntryKind, lifecycle::watermark::EvictionWatermark,
 	metrics::collect::MetricsCollector,
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -184,21 +184,21 @@ impl StandardMultiStore {
 		self.flush_engine.clone()
 	}
 
-	pub fn insert_read_key(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
+	pub fn insert_read_key(&self, table: EntryKind, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
 		if let Some(range) = &self.range {
-			range.insert(key.clone(), version, value.clone());
+			range.insert(table, key.clone(), version, value.clone());
 		}
 		if let Some(point) = &self.point {
-			point.insert(key, version, value);
+			point.insert(table, key, version, value);
 		}
 	}
 
-	pub fn invalidate_read_key(&self, key: &EncodedKey) {
+	pub fn invalidate_read_key(&self, table: EntryKind, key: &EncodedKey) {
 		if let Some(range) = &self.range {
-			range.invalidate(key);
+			range.invalidate(table, key);
 		}
 		if let Some(point) = &self.point {
-			point.invalidate(key);
+			point.invalidate(table, key);
 		}
 	}
 

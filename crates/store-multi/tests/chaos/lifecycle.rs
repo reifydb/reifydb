@@ -61,7 +61,7 @@ fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVer
 		}
 	}
 	for key in &keys {
-		store.invalidate_read_key(key);
+		store.invalidate_read_key(kind, key);
 	}
 	if let Some(persistent) = store.persistent() {
 		let deleted = persistent.delete_below_version(kind, cutoff_version, None, None, usize::MAX).unwrap().0;
@@ -91,7 +91,7 @@ fn physical_delete(store: &StandardMultiStore, rows: &[u64]) {
 		}
 	}
 	for key in &keys {
-		store.invalidate_read_key(key);
+		store.invalidate_read_key(kind, key);
 	}
 }
 
