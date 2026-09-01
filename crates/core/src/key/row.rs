@@ -144,6 +144,24 @@ impl RowKey {
 	}
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RowIdent(pub RowNumber);
+
+impl From<RowKey> for RowIdent {
+	fn from(key: RowKey) -> Self {
+		RowIdent(key.row)
+	}
+}
+
+impl RowIdent {
+	pub fn with_storage(self, storage: StorageId) -> RowKey {
+		RowKey {
+			storage,
+			row: self.0,
+		}
+	}
+}
+
 #[cfg(test)]
 pub mod row_key_tests {
 	use reifydb_value::value::row_number::RowNumber;
@@ -213,6 +231,32 @@ pub mod row_key_tests {
 
 		assert!(encoded3 < encoded2, "ordering not preserved");
 		assert!(encoded2 < encoded1, "ordering not preserved");
+	}
+
+	#[test]
+	fn test_row_ident_roundtrip() {
+		use super::RowIdent;
+
+		let key = RowKey {
+			storage: StorageId::table(7),
+			row: RowNumber(42),
+		};
+
+		// dropping storage and re-supplying the same value must recover the original key
+		let ident: RowIdent = key.clone().into();
+		let restored = ident.with_storage(key.storage);
+		assert_eq!(restored, key);
+	}
+
+	#[test]
+	fn test_row_ident_ordering_matches_row_number() {
+		use super::RowIdent;
+
+		let low = RowIdent(RowNumber(1));
+		let high = RowIdent(RowNumber(2));
+
+		// narrow identity must sort ascending by row number, same as the full key does today
+		assert!(low < high);
 	}
 }
 
@@ -559,6 +603,41 @@ impl PartitionedRowKey {
 	}
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PartitionedRowIdent {
+	pub partition_hi: u64,
+	pub partition_lo: u64,
+	pub row: RowNumber,
+}
+
+impl PartitionedRowIdent {
+	pub fn new(partition: Partition, row: RowNumber) -> Self {
+		Self {
+			partition_hi: (partition.0 >> 64) as u64,
+			partition_lo: partition.0 as u64,
+			row,
+		}
+	}
+
+	pub fn partition(self) -> Partition {
+		Partition(((self.partition_hi as u128) << 64) | self.partition_lo as u128)
+	}
+
+	pub fn with_storage(self, storage: StorageId) -> PartitionedRowKey {
+		PartitionedRowKey {
+			storage,
+			partition: self.partition(),
+			row: self.row,
+		}
+	}
+}
+
+impl From<PartitionedRowKey> for PartitionedRowIdent {
+	fn from(key: PartitionedRowKey) -> Self {
+		PartitionedRowIdent::new(key.partition, key.row)
+	}
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartitionedRowKeyRange {
 	pub storage: StorageId,
@@ -694,5 +773,48 @@ mod partitioned_row_key_tests {
 		let eu = PartitionedRowKey::encoded(storage, part("eu"), RowNumber(1));
 		assert!(range.contains(&us), "us row must be inside the us partition range");
 		assert!(!range.contains(&eu), "eu row must be outside the us partition range");
+	}
+
+	#[test]
+	fn test_partitioned_row_ident_roundtrip() {
+		use super::PartitionedRowIdent;
+
+		let key = PartitionedRowKey {
+			storage: StorageId::Table(TableId(7)),
+			partition: part("us"),
+			row: RowNumber(42),
+		};
+
+		// dropping storage and re-supplying it must recover the original key, halves included
+		let ident: PartitionedRowIdent = key.clone().into();
+		let restored = ident.with_storage(key.storage);
+		assert_eq!(restored, key);
+	}
+
+	#[test]
+	fn test_partitioned_row_ident_halves_split_correctly() {
+		use super::PartitionedRowIdent;
+
+		let partition = Partition(0x1122334455667788_99AABBCCDDEEFF00);
+		let ident = PartitionedRowIdent::new(partition, RowNumber(1));
+
+		// the two native halves must reassemble into the exact original 128-bit value
+		assert_eq!(ident.partition_hi, 0x1122334455667788);
+		assert_eq!(ident.partition_lo, 0x99AABBCCDDEEFF00);
+		assert_eq!(ident.partition(), partition);
+	}
+
+	#[test]
+	fn test_partitioned_row_ident_ordering_matches_field_order() {
+		use super::PartitionedRowIdent;
+
+		let lower_partition = PartitionedRowIdent::new(Partition(1), RowNumber(999));
+		let higher_partition = PartitionedRowIdent::new(Partition(2), RowNumber(1));
+		let same_partition_lower_row = PartitionedRowIdent::new(Partition(2), RowNumber(1));
+		let same_partition_higher_row = PartitionedRowIdent::new(Partition(2), RowNumber(2));
+
+		// partition must dominate row in ordering, matching PartitionedRowKey's field order
+		assert!(lower_partition < higher_partition);
+		assert!(same_partition_lower_row < same_partition_higher_row);
 	}
 }

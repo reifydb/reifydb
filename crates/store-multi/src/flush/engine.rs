@@ -372,7 +372,14 @@ mod tests {
 	use crate::tier::point::MultiPointConfig;
 
 	fn ek(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes())
+		use std::hash::{Hash, Hasher};
+
+		use reifydb_core::key::row::RowKey;
+		use reifydb_value::value::row_number::RowNumber;
+
+		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		s.hash(&mut hasher);
+		RowKey::encoded(StorageId::table(TableId(1)), RowNumber(hasher.finish()))
 	}
 
 	fn val(s: &str) -> CowVec<u8> {
@@ -1098,10 +1105,17 @@ mod tests {
 		let kinds: Vec<EntryKind> =
 			(0..KINDS).map(|i| EntryKind::Source(StorageId::Table(TableId(i + 1)))).collect();
 
+		let chronological_key = |version: u64, key: u64| {
+			use reifydb_core::key::row::RowKey;
+			use reifydb_value::value::row_number::RowNumber;
+			let sequence = version * KEYS_PER_ROUND + key;
+			RowKey::encoded(StorageId::table(TableId(1)), RowNumber(u64::MAX - sequence))
+		};
+
 		let round_writes = |version: u64| {
 			for kind in &kinds {
 				for key in 0..KEYS_PER_ROUND {
-					write(&actor.commit, *kind, &ek(&format!("v{version}-k{key}")), version, "x");
+					write(&actor.commit, *kind, &chronological_key(version, key), version, "x");
 				}
 			}
 		};

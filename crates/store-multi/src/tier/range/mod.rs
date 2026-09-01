@@ -14,10 +14,7 @@ use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
 	default,
-	interface::{
-		catalog::storage::StorageId,
-		store::EntryKind,
-	},
+	interface::{catalog::storage::StorageId, store::EntryKind},
 	key::{
 		row::RowKey,
 		typed::{ExclusiveUpperEnd, MultiKey, TypedKey, range::KeyRange},

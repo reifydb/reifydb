@@ -5,6 +5,34 @@ use reifydb_core::interface::{catalog::storage::StorageId, store::EntryKind};
 
 const CURRENT_SUFFIX: &str = "__current";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SqliteSchema {
+	Blob,
+	Row,
+	Partitioned,
+}
+
+fn storage_uses_row_schema(storage: StorageId) -> bool {
+	matches!(storage, StorageId::Table(_) | StorageId::RingBuffer(_) | StorageId::Queue(_))
+}
+
+impl SqliteSchema {
+	pub(super) fn key_column_count(self) -> usize {
+		match self {
+			SqliteSchema::Blob | SqliteSchema::Row => 1,
+			SqliteSchema::Partitioned => 3,
+		}
+	}
+}
+
+pub(super) fn sqlite_schema(table: EntryKind) -> SqliteSchema {
+	match table {
+		EntryKind::Source(storage) if storage_uses_row_schema(storage) => SqliteSchema::Row,
+		EntryKind::PartitionedSource(storage) if storage_uses_row_schema(storage) => SqliteSchema::Partitioned,
+		_ => SqliteSchema::Blob,
+	}
+}
+
 pub(super) fn entry_id_to_name(kind: EntryKind) -> String {
 	match kind {
 		EntryKind::Multi => "multi".to_string(),

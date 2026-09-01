@@ -100,7 +100,12 @@ impl StandardMultiStore {
 	}
 
 	#[inline]
-	fn get_probe_read(&self, table: EntryKind, key: &EncodedKey, version: CommitVersion) -> Option<Option<MultiVersionRow>> {
+	fn get_probe_read(
+		&self,
+		table: EntryKind,
+		key: &EncodedKey,
+		version: CommitVersion,
+	) -> Option<Option<MultiVersionRow>> {
 		let point = self.point.as_ref()?;
 		match point.get(table, key, version) {
 			VersionedGetResult::Value {
@@ -1459,7 +1464,10 @@ mod cache_tests {
 		.unwrap();
 
 		assert!(
-			matches!(point.get(classify_key(&opkey), &opkey, CommitVersion(10)), VersionedGetResult::NotFound),
+			matches!(
+				point.get(classify_key(&opkey), &opkey, CommitVersion(10)),
+				VersionedGetResult::NotFound
+			),
 			"an operator commit must not write through into the point tier"
 		);
 		assert_eq!(
@@ -1475,7 +1483,10 @@ mod cache_tests {
 		assert_eq!(row.version, CommitVersion(10));
 
 		assert!(
-			matches!(point.get(classify_key(&opkey), &opkey, CommitVersion(10)), VersionedGetResult::NotFound),
+			matches!(
+				point.get(classify_key(&opkey), &opkey, CommitVersion(10)),
+				VersionedGetResult::NotFound
+			),
 			"a store-level operator read must not back-populate the point tier"
 		);
 	}

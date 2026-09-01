@@ -75,8 +75,18 @@ fn a_read_below_every_cached_version_is_counted_a_miss_not_a_hit() {
 	// The key must be seated with both versions first, or this exercises a plain absence instead.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let key = row_key(2);
-	store.insert_read_key(classify_key(&key), key.clone(), CommitVersion(20), Some(CowVec::new(b"twenty".to_vec())));
-	store.insert_read_key(classify_key(&key), key.clone(), CommitVersion(30), Some(CowVec::new(b"thirty".to_vec())));
+	store.insert_read_key(
+		classify_key(&key),
+		key.clone(),
+		CommitVersion(20),
+		Some(CowVec::new(b"twenty".to_vec())),
+	);
+	store.insert_read_key(
+		classify_key(&key),
+		key.clone(),
+		CommitVersion(30),
+		Some(CowVec::new(b"thirty".to_vec())),
+	);
 
 	assert_eq!(get(&store, &key, 30).as_deref(), Some(b"thirty".as_slice()));
 	assert_eq!(get(&store, &key, 25).as_deref(), Some(b"twenty".as_slice()));

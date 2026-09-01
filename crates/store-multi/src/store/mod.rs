@@ -184,7 +184,13 @@ impl StandardMultiStore {
 		self.flush_engine.clone()
 	}
 
-	pub fn insert_read_key(&self, table: EntryKind, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
+	pub fn insert_read_key(
+		&self,
+		table: EntryKind,
+		key: EncodedKey,
+		version: CommitVersion,
+		value: Option<CowVec<u8>>,
+	) {
 		if let Some(range) = &self.range {
 			range.insert(table, key.clone(), version, value.clone());
 		}
