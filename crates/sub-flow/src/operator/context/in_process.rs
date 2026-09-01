@@ -264,7 +264,7 @@ impl GuestState for InProcessState<'_> {
 		let mut seen = 0usize;
 		for id in (u8::MIN..=u8::MAX).rev() {
 			let keyspace = KeyspaceId(id);
-			if data_only && !keyspace.is_data() {
+			if !keyspace.is_known() || (data_only && !keyspace.is_data()) {
 				continue;
 			}
 			let remaining = match limit {
