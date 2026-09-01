@@ -40,15 +40,6 @@ impl OperatorResidentState {
 		BufferedState::Absent
 	}
 
-	pub fn state_range(
-		&self,
-		operator: OperatorId,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-	) -> BufferedStateRange {
-		self.state_page(operator, start, end, usize::MAX)
-	}
-
 	pub fn state_page(
 		&self,
 		operator: OperatorId,

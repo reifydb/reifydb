@@ -14,6 +14,7 @@ use reifydb_core::{
 use reifydb_flow::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
 use reifydb_value::{
 	Result,
+	util::hash::xxh3_128,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
@@ -27,6 +28,10 @@ fn confine(range: &EncodedKeyRange) -> (GroupId, KeyspaceId, Bound<Vec<u8>>, Bou
 		 keyspace ranges, so a range that does not split is one a caller invented and the guest \
 		 boundary cannot admit",
 	)
+}
+
+fn mapping_key(key: &EncodedKey) -> EncodedKey {
+	EncodedKey::builder().u128(xxh3_128(key.as_slice()).0).build()
 }
 
 impl<C: GuestContext> TimerStore for GuestAsHost<'_, C> {
@@ -115,7 +120,8 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		Ok(self.0.get_or_create_row_numbers(group, keys)?)
+		let keys: Vec<EncodedKey> = keys.iter().map(mapping_key).collect();
+		Ok(self.0.get_or_create_row_numbers(group, &keys)?)
 	}
 
 	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
@@ -125,7 +131,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 	}
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		Ok(self.0.remove_row_number(group, key)?)
+		Ok(self.0.remove_row_number(group, &mapping_key(key))?)
 	}
 
 	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {

@@ -286,7 +286,7 @@ fn a_live_write_shadows_the_same_key_in_the_in_flight_batch() {
 }
 
 #[test]
-fn state_range_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
+fn a_state_page_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
 	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("a"), row("flushing-a"));
 	buffer.record_state_set(OP_A, key("b"), row("flushing-b"));
@@ -298,7 +298,7 @@ fn state_range_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
 	buffer.record_state_remove(OP_A, key("c"));
 	buffer.record_state_set(OP_A, key("d"), row("live-d"));
 
-	let all = buffer.state_range(OP_A, Bound::Unbounded, Bound::Unbounded).items;
+	let all = buffer.state_page(OP_A, Bound::Unbounded, Bound::Unbounded, usize::MAX).items;
 	let keys: Vec<Vec<u8>> = all.iter().map(|(k, _)| k.to_vec()).collect();
 	assert_eq!(
 		keys,
@@ -314,11 +314,11 @@ fn state_range_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
 	);
 	assert_eq!(body(&all[3].1), "live-d");
 
-	let other = buffer.state_range(OP_B, Bound::Unbounded, Bound::Unbounded).items;
+	let other = buffer.state_page(OP_B, Bound::Unbounded, Bound::Unbounded, usize::MAX).items;
 	assert_eq!(other.len(), 1, "a range must stay inside its operator, otherwise operators read each other");
 	assert_eq!(body(&other[0].1), "other-operator");
 
-	let window = buffer.state_range(OP_A, Bound::Included(&key("b")), Bound::Excluded(&key("d"))).items;
+	let window = buffer.state_page(OP_A, Bound::Included(&key("b")), Bound::Excluded(&key("d")), usize::MAX).items;
 	let window_keys: Vec<Vec<u8>> = window.iter().map(|(k, _)| k.to_vec()).collect();
 	assert_eq!(
 		window_keys,
@@ -326,7 +326,7 @@ fn state_range_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
 		"both layers must honour the bounds, otherwise the page over-reads past its end"
 	);
 
-	let resumed = buffer.state_range(OP_A, Bound::Excluded(&key("a")), Bound::Included(&key("b"))).items;
+	let resumed = buffer.state_page(OP_A, Bound::Excluded(&key("a")), Bound::Included(&key("b")), usize::MAX).items;
 	let resumed_keys: Vec<Vec<u8>> = resumed.iter().map(|(k, _)| k.to_vec()).collect();
 	assert_eq!(
 		resumed_keys,
@@ -345,7 +345,7 @@ fn a_window_that_spans_nothing_reads_empty_instead_of_panicking() {
 		("an excluded start under the included end", Bound::Excluded(key("b")), Bound::Included(key("b"))),
 		("a start past its end", Bound::Included(key("d")), Bound::Included(key("b"))),
 	] {
-		let window = buffer.state_range(OP_A, start.as_ref(), end.as_ref()).items;
+		let window = buffer.state_page(OP_A, start.as_ref(), end.as_ref(), usize::MAX).items;
 		assert!(window.is_empty(), "{label} spans no key, so the range must report no rows");
 	}
 }
@@ -354,7 +354,7 @@ fn a_window_that_spans_nothing_reads_empty_instead_of_panicking() {
 fn a_window_closed_on_one_key_still_returns_that_key() {
 	let buffer = seeded_two_layer_buffer();
 
-	let window = buffer.state_range(OP_A, Bound::Included(&key("b")), Bound::Included(&key("b"))).items;
+	let window = buffer.state_page(OP_A, Bound::Included(&key("b")), Bound::Included(&key("b")), usize::MAX).items;
 	let keys: Vec<Vec<u8>> = window.iter().map(|(k, _)| k.to_vec()).collect();
 	assert_eq!(keys, vec![key("b").to_vec()], "an inclusive pair on one key must still read that key");
 	assert_eq!(body(&window[0].1), "live-b", "the overlay must still apply inside a one-key window");
@@ -364,7 +364,7 @@ fn a_window_closed_on_one_key_still_returns_that_key() {
 fn a_window_that_spans_nothing_still_reports_a_pending_drop() {
 	let buffer = seeded_two_layer_buffer_with_dropped_operator();
 
-	let window = buffer.state_range(OP_A, Bound::Excluded(&key("b")), Bound::Excluded(&key("b")));
+	let window = buffer.state_page(OP_A, Bound::Excluded(&key("b")), Bound::Excluded(&key("b")), usize::MAX);
 	assert!(window.items.is_empty(), "an empty span carries no rows");
 	assert!(window.dropped, "a pending drop must be reported even when the span is empty");
 }
@@ -1405,7 +1405,7 @@ fn a_live_row_shadows_its_in_flight_twin_across_keyspaces() {
 	expected.push(added.clone());
 	expected.sort();
 
-	let seen = buffer.state_range(OP_A, Bound::Unbounded, Bound::Unbounded).items;
+	let seen = buffer.state_page(OP_A, Bound::Unbounded, Bound::Unbounded, usize::MAX).items;
 	assert_eq!(
 		seen.iter().map(|(key, _)| key.to_vec()).collect::<Vec<_>>(),
 		expected.iter().map(|key| key.to_vec()).collect::<Vec<_>>(),
