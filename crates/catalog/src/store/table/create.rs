@@ -9,7 +9,7 @@ use reifydb_core::{
 		property::ColumnPropertyKind,
 		table::Table,
 	},
-	key::{namespace_table::NamespaceTableKey, table::TableKey},
+	key::{catalog::TableKey, namespace::NamespaceTableKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
@@ -194,7 +194,7 @@ pub mod tests {
 	use reifydb_core::{
 		common::TimeSource,
 		interface::catalog::id::{NamespaceId, TableId},
-		key::namespace_table::NamespaceTableKey,
+		key::namespace::NamespaceTableKey,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::multi::RangeScope;

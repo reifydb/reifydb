@@ -23,9 +23,10 @@ use reifydb_core::{
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
 	key::{
-		EncodableKey, Key,
+		EncodableKey,
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 		row::RowKey,
+		typed::key::Key,
 	},
 };
 use reifydb_store_commit::MultiVersionScope;

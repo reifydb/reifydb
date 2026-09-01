@@ -5,7 +5,7 @@ use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{CheckpointState, ConsumerClass},
-	key::cdc_consumer::ToConsumerKey,
+	key::cdc::ToConsumerKey,
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{Result, util::cowvec::CowVec};

@@ -15,7 +15,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 	},
-	key::partitioned_row::PartitionedRowKey,
+	key::row::PartitionedRowKey,
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::{

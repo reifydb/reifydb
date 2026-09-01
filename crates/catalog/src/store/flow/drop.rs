@@ -7,8 +7,9 @@ use reifydb_core::{
 		cdc::CdcConsumerId,
 	},
 	key::{
-		cdc_consumer::CdcConsumerKey, flow::FlowKey, flow_version::FlowVersionKey,
-		namespace_flow::NamespaceFlowKey,
+		cdc::CdcConsumerKey,
+		flow::{FlowKey, FlowVersionKey},
+		namespace::NamespaceFlowKey,
 	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};

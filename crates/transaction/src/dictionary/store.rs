@@ -14,7 +14,7 @@ use reifydb_core::{
 	interface::store::{SingleVersionGet, SingleVersionRange},
 	key::{
 		EncodableKey,
-		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
+		catalog::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
 	},
 };
 use reifydb_store_single::{

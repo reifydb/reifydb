@@ -9,7 +9,7 @@ use reifydb_core::{
 		catalog::queue::{Queue, decode_queue_item_state},
 		store::SingleVersionGet,
 	},
-	key::queue_schedule::QueueItemStateKey,
+	key::queue::QueueItemStateKey,
 	value::column::columns::Columns,
 };
 use reifydb_routine_abi::{

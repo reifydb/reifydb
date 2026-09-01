@@ -4,7 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{id::NamespaceId, sumtype::SumType},
-	key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey},
+	key::{catalog::SumTypeKey, namespace::NamespaceSumTypeKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::sumtype::SumTypeId;

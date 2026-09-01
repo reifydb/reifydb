@@ -8,8 +8,8 @@ use reifydb_core::{
 		store::{SingleVersionGet, SingleVersionRangeRev},
 	},
 	key::{
-		Key,
-		queue_schedule::{QueueDueKey, QueuePartitionKey},
+		queue::{QueueDueKey, QueuePartitionKey},
+		typed::key::Key,
 	},
 };
 use reifydb_transaction::transaction::Transaction;

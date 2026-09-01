@@ -16,7 +16,7 @@ use reifydb_core::{
 		cdc::{Cdc, CdcChange},
 		store::MultiVersionGetPrevious,
 	},
-	key::{cdc_exclude::should_exclude_from_cdc, kind::KeyKind},
+	key::{cdc::should_exclude_from_cdc, kind::KeyKind},
 };
 use reifydb_runtime::{
 	actor::{

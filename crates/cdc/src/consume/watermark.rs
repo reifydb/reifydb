@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::cdc::ConsumerClass,
 	key::{
 		EncodableKey,
-		cdc_consumer::{CdcConsumerKey, CdcConsumerKeyRange},
+		cdc::{CdcConsumerKey, CdcConsumerKeyRange},
 	},
 	lifecycle::watermark::CheckpointFloor,
 };

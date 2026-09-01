@@ -478,7 +478,11 @@ mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::catalog::{id::TableId, storage::StorageId},
-		key::{Key, row::RowKey, series_row::SeriesRowKey, typed::range::KeyRange},
+		key::{
+			row::RowKey,
+			series::SeriesRowKey,
+			typed::{key::Key, range::KeyRange},
+		},
 	};
 	use reifydb_store::coverage::plan::DEFAULT_GAP_GUARD;
 	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};

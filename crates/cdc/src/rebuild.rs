@@ -19,8 +19,10 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 	key::{
-		Key, kind::KeyKind, partitioned_row::PartitionedRowKey,
-		partitioned_series_row::PartitionedSeriesRowKey, row::RowKey, series_row::SeriesRowKey,
+		kind::KeyKind,
+		row::{PartitionedRowKey, RowKey},
+		series::{PartitionedSeriesRowKey, SeriesRowKey},
+		typed::key::Key,
 	},
 	value::column::columns::Columns,
 };
@@ -251,8 +253,9 @@ mod tests {
 			storage::StorageId,
 		},
 		key::{
-			Key, partitioned_row::PartitionedRowKey, partitioned_series_row::PartitionedSeriesRowKey,
-			row::RowKey, series_row::SeriesRowKey,
+			row::{PartitionedRowKey, RowKey},
+			series::{PartitionedSeriesRowKey, SeriesRowKey},
+			typed::key::Key,
 		},
 	};
 	use reifydb_value::value::partition::Partition;

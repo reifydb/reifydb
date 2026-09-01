@@ -7,7 +7,7 @@ use reifydb::{
 			catalog::{id::QueueId, queue::decode_queue_partition_counters},
 			store::{SingleVersionGet, SingleVersionRange},
 		},
-		key::queue_schedule::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
+		key::queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 	},
 	testing::db::{TempDbPath, TestDb},
 	transaction::transaction::Transaction,

@@ -20,8 +20,9 @@ use reifydb_core::{
 		store::classify_range,
 	},
 	key::{
-		Key, partitioned_row::PartitionedRowKey, partitioned_series_row::PartitionedSeriesRowKeyRange,
-		row::RowKey, series_row::SeriesRowKeyRange,
+		row::{PartitionedRowKey, RowKey},
+		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
+		typed::key::Key,
 	},
 	lifecycle::{
 		class::{Floor, FloorTerm, RetentionClass},

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::procedure::Procedure,
-	key::{Key, procedure::ProcedureKey},
+	key::{procedure::ProcedureKey, typed::key::Key},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

@@ -3,7 +3,6 @@
 
 use kind::KeyKind;
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
-pub use typed::key::Key;
 
 pub mod catalog;
 pub mod cdc;
@@ -24,181 +23,6 @@ pub mod row;
 pub mod series;
 pub mod system;
 pub mod typed;
-
-pub mod authentication {
-	pub use super::identity::*;
-}
-pub mod binding {
-	pub use super::catalog::*;
-}
-pub mod cdc_consumer {
-	pub use super::cdc::*;
-}
-pub mod cdc_exclude {
-	pub use super::cdc::*;
-}
-pub mod column_sequence {
-	pub use super::column::*;
-}
-pub mod column_snapshot {
-	pub use super::column::*;
-}
-pub mod columns {
-	pub use super::column::*;
-}
-pub mod dictionary {
-	pub use super::catalog::*;
-}
-pub mod flow_edge {
-	pub use super::flow::*;
-}
-pub mod flow_version {
-	pub use super::flow::*;
-}
-pub mod granted_role {
-	pub use super::identity::*;
-}
-pub mod handler {
-	pub use super::catalog::*;
-}
-pub mod identity_attribute {
-	pub use super::identity::*;
-}
-pub mod identity_attribute_value {
-	pub use super::identity::*;
-}
-pub mod index {
-	pub use super::catalog::*;
-}
-pub mod index_entry {
-	pub use super::catalog::*;
-}
-pub mod migration {
-	pub use super::system::*;
-}
-pub mod migration_event {
-	pub use super::system::*;
-}
-pub mod namespace_binding {
-	pub use super::namespace::*;
-}
-pub mod namespace_dictionary {
-	pub use super::namespace::*;
-}
-pub mod namespace_flow {
-	pub use super::namespace::*;
-}
-pub mod namespace_handler {
-	pub use super::namespace::*;
-}
-pub mod namespace_procedure {
-	pub use super::namespace::*;
-}
-pub mod namespace_queue {
-	pub use super::namespace::*;
-}
-pub mod namespace_ringbuffer {
-	pub use super::namespace::*;
-}
-pub mod namespace_series {
-	pub use super::namespace::*;
-}
-pub mod namespace_sink {
-	pub use super::namespace::*;
-}
-pub mod namespace_source {
-	pub use super::namespace::*;
-}
-pub mod namespace_sumtype {
-	pub use super::namespace::*;
-}
-pub mod namespace_table {
-	pub use super::namespace::*;
-}
-pub mod namespace_view {
-	pub use super::namespace::*;
-}
-pub mod partitioned_row {
-	pub use super::row::*;
-}
-pub mod partitioned_series_row {
-	pub use super::series::*;
-}
-pub mod policy {
-	pub use super::identity::*;
-}
-pub mod policy_op {
-	pub use super::identity::*;
-}
-pub mod primary_key {
-	pub use super::catalog::*;
-}
-pub mod procedure_param {
-	pub use super::procedure::*;
-}
-pub mod property {
-	pub use super::catalog::*;
-}
-pub mod queue_attempt {
-	pub use super::queue::*;
-}
-pub mod queue_deduplication {
-	pub use super::queue::*;
-}
-pub mod queue_schedule {
-	pub use super::queue::*;
-}
-pub mod relationship {
-	pub use super::catalog::*;
-}
-pub mod role {
-	pub use super::identity::*;
-}
-pub mod row_sequence {
-	pub use super::row::*;
-}
-pub mod row_settings {
-	pub use super::row::*;
-}
-pub mod row_shape {
-	pub use super::row::*;
-}
-pub mod series_row {
-	pub use super::series::*;
-}
-pub mod sink {
-	pub use super::catalog::*;
-}
-pub mod source {
-	pub use super::catalog::*;
-}
-pub mod sumtype {
-	pub use super::catalog::*;
-}
-pub mod system_sequence {
-	pub use super::system::*;
-}
-pub mod system_version {
-	pub use super::system::*;
-}
-pub mod table {
-	pub use super::catalog::*;
-}
-pub mod token {
-	pub use super::identity::*;
-}
-pub mod transaction_version {
-	pub use super::system::*;
-}
-pub mod variant_handler {
-	pub use super::catalog::*;
-}
-pub mod version_epoch {
-	pub use super::system::*;
-}
-pub mod view {
-	pub use super::catalog::*;
-}
 
 pub trait EncodableKey {
 	const KIND: KeyKind;
@@ -234,24 +58,15 @@ pub mod tests {
 			storage::StorageId,
 		},
 		key::{
-			EncodableKey, Key,
-			column::ColumnKey,
-			column_sequence::ColumnSequenceKey,
-			columns::ColumnsKey,
-			index::IndexKey,
-			namespace::NamespaceKey,
-			namespace_sumtype::NamespaceSumTypeKey,
-			namespace_table::NamespaceTableKey,
+			EncodableKey,
+			catalog::{ColumnPropertyKey, IndexKey, RelationshipKey, SumTypeKey, TableKey},
+			column::{ColumnKey, ColumnSequenceKey, ColumnsKey},
+			namespace::{NamespaceKey, NamespaceSumTypeKey, NamespaceTableKey},
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-			property::ColumnPropertyKey,
-			relationship::RelationshipKey,
-			row::RowKey,
-			row_sequence::RowSequenceKey,
-			series_row::SeriesRowKey,
-			sumtype::SumTypeKey,
-			system_sequence::SystemSequenceKey,
-			table::TableKey,
-			transaction_version::TransactionVersionKey,
+			row::{RowKey, RowSequenceKey},
+			series::SeriesRowKey,
+			system::{SystemSequenceKey, TransactionVersionKey},
+			typed::key::Key,
 		},
 	};
 

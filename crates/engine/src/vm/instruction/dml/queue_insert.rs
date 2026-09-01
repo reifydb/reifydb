@@ -24,7 +24,7 @@ use reifydb_core::{
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedQueue},
 	},
 	internal_error,
-	key::{queue_deduplication::QueueDeduplicationKey, row::RowKey},
+	key::{queue::QueueDeduplicationKey, row::RowKey},
 	return_internal_error,
 	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
@@ -218,7 +218,7 @@ fn write_deduplication_record(
 ) -> Result<()> {
 	let ttl = queue.deduplicate.as_ref().map(|d| d.ttl).unwrap_or(Duration::MAX);
 	let record = encode_queue_deduplication(row_number, now.saturating_add(ttl));
-	txn.set(&QueueDeduplicationKey::encoded(queue.id, key.to_vec()), record.into_bytes())?;
+	txn.set(&QueueDeduplicationKey::encoded(queue.id, key), record.into_bytes())?;
 	Ok(())
 }
 

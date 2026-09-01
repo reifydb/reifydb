@@ -3,7 +3,10 @@
 
 use reifydb_core::{
 	interface::catalog::id::HandlerId,
-	key::{handler::HandlerKey, namespace_handler::NamespaceHandlerKey, variant_handler::VariantHandlerKey},
+	key::{
+		catalog::{HandlerKey, VariantHandlerKey},
+		namespace::NamespaceHandlerKey,
+	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 

@@ -4,7 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::migration::{Migration, MigrationEvent},
-	key::{migration::MigrationKey, migration_event::MigrationEventKey},
+	key::system::{MigrationEventKey, MigrationKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

@@ -9,7 +9,7 @@ use reifydb_core::{
 		catalog::flow::FlowId,
 		cdc::{Cdc, CdcChange},
 	},
-	key::{Key, flow::FlowKey},
+	key::{flow::FlowKey, typed::key::Key},
 };
 
 pub fn extract_new_flows(cdcs: &[Arc<Cdc>]) -> Vec<(FlowId, CommitVersion)> {

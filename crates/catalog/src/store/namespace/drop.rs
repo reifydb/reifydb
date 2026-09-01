@@ -4,10 +4,11 @@
 use reifydb_core::{
 	interface::catalog::id::NamespaceId,
 	key::{
-		Key, namespace::NamespaceKey, namespace_dictionary::NamespaceDictionaryKey,
-		namespace_flow::NamespaceFlowKey, namespace_queue::NamespaceQueueKey,
-		namespace_ringbuffer::NamespaceRingBufferKey, namespace_sumtype::NamespaceSumTypeKey,
-		namespace_table::NamespaceTableKey, namespace_view::NamespaceViewKey,
+		namespace::{
+			NamespaceDictionaryKey, NamespaceFlowKey, NamespaceKey, NamespaceQueueKey,
+			NamespaceRingBufferKey, NamespaceSumTypeKey, NamespaceTableKey, NamespaceViewKey,
+		},
+		typed::key::Key,
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};

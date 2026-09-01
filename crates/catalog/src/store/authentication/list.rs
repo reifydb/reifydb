@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
-use reifydb_core::{interface::catalog::authentication::Authentication, key::authentication::AuthenticationKey};
+use reifydb_core::{interface::catalog::authentication::Authentication, key::identity::AuthenticationKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::identity::IdentityId;
 

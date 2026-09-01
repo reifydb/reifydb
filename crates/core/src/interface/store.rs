@@ -12,12 +12,11 @@ use crate::{
 	delta::Delta,
 	interface::catalog::storage::StorageId,
 	key::{
-		EncodableKeyRange, Key,
+		EncodableKeyRange,
 		kind::KeyKind,
-		partitioned_row::{PartitionedRowKey, PartitionedRowKeyRange},
-		partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
-		row::{RowKey, RowKeyRange},
-		series_row::{SeriesRowKey, SeriesRowKeyRange},
+		row::{PartitionedRowKey, PartitionedRowKeyRange, RowKey, RowKeyRange},
+		series::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange},
+		typed::key::Key,
 	},
 };
 
@@ -263,11 +262,11 @@ mod tests {
 			storage::StorageId,
 		},
 		key::{
-			Key,
-			partitioned_row::PartitionedRowKey,
-			partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
-			row::RowKey,
-			series_row::{SeriesRowKey, SeriesRowKeyRange},
+			row::{PartitionedRowKey, RowKey},
+			series::{
+				PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
+			},
+			typed::key::Key,
 		},
 	};
 

@@ -10,7 +10,7 @@ use reifydb_core::{
 		series::{Series, SeriesKey, SeriesMetadata, encode_series_metadata},
 	},
 	key::{
-		namespace_series::NamespaceSeriesKey,
+		namespace::NamespaceSeriesKey,
 		series::{SeriesKey as SeriesStorageKey, SeriesMetadataKey},
 	},
 };

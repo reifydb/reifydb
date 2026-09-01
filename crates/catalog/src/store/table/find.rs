@@ -7,7 +7,7 @@ use reifydb_core::{
 		id::{NamespaceId, TableId},
 		table::Table,
 	},
-	key::{namespace_table::NamespaceTableKey, table::TableKey},
+	key::{catalog::TableKey, namespace::NamespaceTableKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

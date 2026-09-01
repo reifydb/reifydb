@@ -7,11 +7,10 @@ use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::storage::StorageId,
 	key::{
-		Key,
 		catalog::KeyDeserializerCatalogExt,
 		kind::KeyKind,
-		partitioned_row::{PartitionedRowIdent, PartitionedRowKey},
-		row::{RowIdent, RowKey},
+		row::{PartitionedRowIdent, PartitionedRowKey, RowIdent, RowKey},
+		typed::key::Key,
 	},
 };
 use reifydb_value::value::{partition::Partition, row_number::RowNumber};
@@ -30,8 +29,8 @@ pub(super) fn partitioned_ident_of(key: &[u8]) -> Option<PartitionedRowIdent> {
 
 pub(super) fn partitioned_key_for(storage: StorageId, partition_hi: i64, partition_lo: i64, row: i64) -> EncodedKey {
 	let ident = PartitionedRowIdent {
-		partition_hi: partition_hi as u64,
-		partition_lo: partition_lo as u64,
+		partition_hi: partition_half_from_sql(partition_hi),
+		partition_lo: partition_half_from_sql(partition_lo),
 		row: RowNumber(row as u64),
 	};
 	PartitionedRowKey::encoded(storage, ident.partition(), ident.row)
@@ -51,8 +50,16 @@ fn partition_only_of(key: &[u8]) -> Option<Partition> {
 	Some(Partition(partition))
 }
 
+pub(super) fn partition_half_to_sql(half: u64) -> i64 {
+	(half ^ (1u64 << 63)) as i64
+}
+
+pub(super) fn partition_half_from_sql(value: i64) -> u64 {
+	(value as u64) ^ (1u64 << 63)
+}
+
 fn partition_halves(partition: Partition) -> (i64, i64) {
-	((partition.0 >> 64) as u64 as i64, partition.0 as u64 as i64)
+	(partition_half_to_sql((partition.0 >> 64) as u64), partition_half_to_sql(partition.0 as u64))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,8 +118,8 @@ enum PartitionedBoundary {
 fn partitioned_boundary(key: &[u8]) -> PartitionedBoundary {
 	match partitioned_ident_of(key) {
 		Some(ident) => PartitionedBoundary::Full(
-			ident.partition_hi as i64,
-			ident.partition_lo as i64,
+			partition_half_to_sql(ident.partition_hi),
+			partition_half_to_sql(ident.partition_lo),
 			ident.row.0 as i64,
 		),
 		None => PartitionedBoundary::Unbounded,

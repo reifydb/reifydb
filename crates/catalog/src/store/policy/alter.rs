@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::policy::PolicyId, key::policy::PolicyKey};
+use reifydb_core::{interface::catalog::policy::PolicyId, key::identity::PolicyKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::{CatalogStore, Result, store::policy::shape::policy};

@@ -3,10 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::{id::ViewId, storage::StorageId, view::ViewStorageKind},
-	key::{
-		namespace_view::NamespaceViewKey, ringbuffer::RingBufferMetadataKey, row_settings::RowSettingsKey,
-		view::ViewKey,
-	},
+	key::{catalog::ViewKey, namespace::NamespaceViewKey, ringbuffer::RingBufferMetadataKey, row::RowSettingsKey},
 };
 use reifydb_transaction::{
 	multi::RangeScope,

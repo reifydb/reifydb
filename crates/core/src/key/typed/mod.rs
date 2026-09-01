@@ -3,7 +3,6 @@
 
 use std::{cmp::Ordering, fmt::Debug, hash::Hash};
 
-pub use key::Key;
 use reifydb_codec::key::encoded::EncodedKey;
 pub use reifydb_macro::{Key, TypedKey};
 

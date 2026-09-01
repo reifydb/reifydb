@@ -25,7 +25,7 @@ use reifydb_core::{
 		catalog::{config::ConfigKey, id::TableId, storage::StorageId},
 		cdc::{Cdc, CdcChange, CdcConsumerId, ConsumerClass},
 	},
-	key::{EncodableKey, Key, cdc_consumer::CdcConsumerKey, row::RowKey},
+	key::{EncodableKey, cdc::CdcConsumerKey, row::RowKey, typed::key::Key},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{

@@ -23,9 +23,8 @@ use reifydb_core::{
 		store::{SingleVersionGet, SingleVersionRange},
 	},
 	key::{
-		Key,
-		queue_attempt::QueueAttemptKey,
-		queue_schedule::{QueueItemStateKey, QueuePartitionKey},
+		queue::{QueueAttemptKey, QueueItemStateKey, QueuePartitionKey},
+		typed::key::Key,
 	},
 	lifecycle::{metrics::RetentionMetrics, progress::Progress, task::LifecycleTask},
 };

@@ -4,8 +4,9 @@
 use reifydb_core::{
 	interface::catalog::id::ProcedureId,
 	key::{
-		Key, namespace_procedure::NamespaceProcedureKey, procedure::ProcedureKey,
-		procedure_param::ProcedureParamKey,
+		namespace::NamespaceProcedureKey,
+		procedure::{ProcedureKey, ProcedureParamKey},
+		typed::key::Key,
 	},
 };
 use reifydb_transaction::{

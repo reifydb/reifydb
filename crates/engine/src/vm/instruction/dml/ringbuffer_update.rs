@@ -24,7 +24,7 @@ use reifydb_core::{
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
 	internal_error,
-	key::{partitioned_row::PartitionedRowKey, row::RowKey},
+	key::row::{PartitionedRowKey, RowKey},
 	partition::{PartitionError, partition_col_indices},
 	value::column::columns::Columns,
 };

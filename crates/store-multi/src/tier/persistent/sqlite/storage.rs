@@ -72,8 +72,9 @@ use crate::{
 				build_upsert_current_sql_row, prefix_upper_bound, version_from_bytes, version_to_bytes,
 			},
 			schema::{
-				PartitionedRangeBounds, RowRangeBounds, partitioned_ident_of, partitioned_key_for,
-				partitioned_range_bounds, row_ident_of, row_key_for, row_range_bounds,
+				PartitionedRangeBounds, RowRangeBounds, partition_half_to_sql, partitioned_ident_of,
+				partitioned_key_for, partitioned_range_bounds, row_ident_of, row_key_for,
+				row_range_bounds,
 			},
 		},
 	},
@@ -558,9 +559,10 @@ impl SqlitePersistentStorage {
 					} => {
 						let cursor_row = match cursor_ident {
 							Some(ident)
-								if ident.partition_hi as i64 == partition_hi
-									&& ident.partition_lo as i64
-										== partition_lo =>
+								if partition_half_to_sql(ident.partition_hi)
+									== partition_hi && partition_half_to_sql(
+									ident.partition_lo,
+								) == partition_lo =>
 							{
 								Some(ident.row.0 as i64)
 							}
@@ -613,8 +615,12 @@ impl SqlitePersistentStorage {
 							params.push(Box::new(r));
 						}
 						if let Some(ident) = &cursor_ident {
-							params.push(Box::new(ident.partition_hi as i64));
-							params.push(Box::new(ident.partition_lo as i64));
+							params.push(Box::new(partition_half_to_sql(
+								ident.partition_hi,
+							)));
+							params.push(Box::new(partition_half_to_sql(
+								ident.partition_lo,
+							)));
 							params.push(Box::new(ident.row.0 as i64));
 						}
 						(sql, params)
@@ -1293,26 +1299,26 @@ impl SqlitePersistentStorage {
 						lower,
 						upper,
 					} => {
-						let last_triple = cursor
-							.last_key()
-							.map(|k| {
-								partitioned_ident_of(k.as_slice())
-									.map(|ident| {
-										(
-											ident.partition_hi as i64,
-											ident.partition_lo as i64,
+						let last_triple =
+							cursor.last_key()
+								.map(|k| {
+									partitioned_ident_of(k.as_slice())
+										.map(|ident| {
+											(
+											partition_half_to_sql(ident.partition_hi),
+											partition_half_to_sql(ident.partition_lo),
 											ident.row.0 as i64,
 										)
-									})
-									.ok_or_else(|| {
-										error!(internal(
+										})
+										.ok_or_else(|| {
+											error!(internal(
 											"a range cursor does not decode as a \
 											 PartitionedRowKey"
 												.to_string()
 										))
-									})
-							})
-							.transpose()?;
+										})
+								})
+								.transpose()?;
 						let sql = build_range_current_sql_partitioned(
 							&table_sql.table_name,
 							bound_shape_triple(&lower),
@@ -1487,8 +1493,8 @@ fn push_key_params(schema: SqliteSchema, key: &[u8], boxed: &mut Vec<Box<dyn ToS
 						.to_string()
 				))
 			})?;
-			boxed.push(Box::new(ident.partition_hi as i64));
-			boxed.push(Box::new(ident.partition_lo as i64));
+			boxed.push(Box::new(partition_half_to_sql(ident.partition_hi)));
+			boxed.push(Box::new(partition_half_to_sql(ident.partition_lo)));
 			boxed.push(Box::new(ident.row.0 as i64));
 		}
 	}
@@ -1523,8 +1529,13 @@ fn key_ints(schema: SqliteSchema, key: &[u8]) -> Option<Vec<i64>> {
 	match schema {
 		SqliteSchema::Blob => None,
 		SqliteSchema::Row => row_ident_of(key).map(|ident| vec![ident.0.0 as i64]),
-		SqliteSchema::Partitioned => partitioned_ident_of(key)
-			.map(|ident| vec![ident.partition_hi as i64, ident.partition_lo as i64, ident.row.0 as i64]),
+		SqliteSchema::Partitioned => partitioned_ident_of(key).map(|ident| {
+			vec![
+				partition_half_to_sql(ident.partition_hi),
+				partition_half_to_sql(ident.partition_lo),
+				ident.row.0 as i64,
+			]
+		}),
 	}
 }
 
@@ -1952,10 +1963,13 @@ mod tests {
 	use std::collections::HashMap;
 
 	use reifydb_core::{
-		interface::catalog::{id::TableId, storage::StorageId},
+		interface::catalog::{
+			id::{TableId, ViewId},
+			storage::StorageId,
+		},
 		key::{
-			Key,
 			row::{PartitionedRowKey, RowKey, RowKeyRange},
+			typed::key::Key,
 		},
 	};
 	use reifydb_value::value::{partition::Partition, row_number::RowNumber};
@@ -2254,7 +2268,7 @@ mod tests {
 	#[test]
 	fn delete_below_version_with_prefix_only_touches_matching_keys() {
 		// A byte prefix is only meaningful against an opaque key, never a narrow row's integer column.
-		let blob_table = EntryKind::Source(StorageId::view(reifydb_core::interface::catalog::id::ViewId(1)));
+		let blob_table = EntryKind::Source(StorageId::view(ViewId(1)));
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		let left = EncodedKey::new(vec![0x01, 0xAA]);
 		let right = EncodedKey::new(vec![0x02, 0xBB]);
@@ -2840,6 +2854,57 @@ mod tests {
 			vec![1],
 			"the narrow partitioned schema must still surface expiry candidates through its own columns"
 		);
+	}
+
+	#[test]
+	fn partitioned_schema_paginated_full_scan_reaches_every_row_across_many_partitions() {
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		let t = partitioned_table();
+		let mut writes = Vec::new();
+		let mut seed = 0x9E3779B97F4A7C15u64;
+		for _ in 1u128..=64 {
+			// xorshift64*, mimicking the scattered sign bits real xxh3_128 partition hashes produce.
+			seed ^= seed << 13;
+			seed ^= seed >> 7;
+			seed ^= seed << 17;
+			let hi = seed as u128;
+			seed ^= seed << 13;
+			seed ^= seed >> 7;
+			seed ^= seed << 17;
+			let lo = seed as u128;
+			let p = (hi << 64) | lo;
+			writes.push((partitioned_key(p, 1), Some(row(b"a"))));
+			writes.push((partitioned_key(p, 2), Some(row(b"b"))));
+		}
+		s.set(CommitVersion(1), HashMap::from([(t, writes)])).unwrap();
+
+		let range = PartitionedRowKey::full_scan(StorageId::Table(TableId(2)));
+		let (start, end) = match (&range.start, &range.end) {
+			(Bound::Included(s), Bound::Included(e)) => (s.as_slice(), e.as_slice()),
+			other => panic!("expected two prefix-only included bounds, got {other:?}"),
+		};
+
+		let mut cursor = RangeCursor::default();
+		let mut total = 0usize;
+		loop {
+			let batch = s
+				.range_next(
+					t,
+					&mut cursor,
+					Bound::Included(start),
+					Bound::Included(end),
+					MultiVersionScope::AsOf {
+						read: CommitVersion(10),
+					},
+					4,
+				)
+				.unwrap();
+			total += batch.entries.len();
+			if cursor.is_exhausted() {
+				break;
+			}
+		}
+		assert_eq!(total, 128, "a paginated full-table scan with a small batch size must reach every row");
 	}
 
 	#[test]

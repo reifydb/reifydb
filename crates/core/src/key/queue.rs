@@ -183,7 +183,7 @@ impl QueueAttemptKey {
 mod queue_item_state_key_tests {
 	use std::ops::Bound;
 
-	use super::{super::queue_schedule::QueueItemStateKey, *};
+	use super::*;
 
 	fn contains(range: &EncodedKeyRange, key: &EncodedKey) -> bool {
 		let after_start = match &range.start {

@@ -10,7 +10,7 @@ use reifydb_core::{
 		},
 		store::MultiVersionRow,
 	},
-	key::sumtype::SumTypeKey,
+	key::catalog::SumTypeKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::sumtype::SumTypeId;

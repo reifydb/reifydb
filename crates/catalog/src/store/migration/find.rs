@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
-use reifydb_core::{interface::catalog::migration::Migration, key::migration::MigrationKey};
+use reifydb_core::{interface::catalog::migration::Migration, key::system::MigrationKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{CatalogStore, Result, store::migration::migration_from_row};

@@ -23,10 +23,10 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		EncodableKey, EncodableKeyRange, Key,
-		index_entry::IndexEntryKey,
-		partitioned_row::PartitionedRowKey,
-		row::{RowKey, RowKeyRange},
+		EncodableKey, EncodableKeyRange,
+		catalog::IndexEntryKey,
+		row::{PartitionedRowKey, RowKey, RowKeyRange},
+		typed::key::Key,
 	},
 	value::column::columns::Columns,
 };

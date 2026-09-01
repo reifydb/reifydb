@@ -449,7 +449,7 @@ impl DictionaryEntryKey {
 	}
 
 	pub fn encoded(dictionary: impl Into<DictionaryId>, hash: [u8; 16]) -> EncodedKey {
-		super::EncodableKey::encode(&Self::new(dictionary.into(), hash))
+		EncodableKey::encode(&Self::new(dictionary.into(), hash))
 	}
 
 	pub fn full_scan(dictionary: DictionaryId) -> EncodedKeyRange {
@@ -458,18 +458,18 @@ impl DictionaryEntryKey {
 
 	fn entry_start(dictionary: DictionaryId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<Self as super::EncodableKey>::KIND as u8).extend_u64(dictionary);
+		serializer.extend_u8(<Self as EncodableKey>::KIND as u8).extend_u64(dictionary);
 		serializer.to_encoded_key()
 	}
 
 	fn entry_end(dictionary: DictionaryId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<Self as super::EncodableKey>::KIND as u8).extend_u64(*dictionary - 1);
+		serializer.extend_u8(<Self as EncodableKey>::KIND as u8).extend_u64(*dictionary - 1);
 		serializer.to_encoded_key()
 	}
 }
 
-impl super::EncodableKey for DictionaryEntryKey {
+impl EncodableKey for DictionaryEntryKey {
 	const KIND: KeyKind = KeyKind::DictionaryEntry;
 
 	fn encode(&self) -> EncodedKey {
@@ -513,7 +513,7 @@ impl DictionaryEntryIndexKey {
 	}
 
 	pub fn encoded(dictionary: impl Into<DictionaryId>, id: u128) -> EncodedKey {
-		super::EncodableKey::encode(&Self::new(dictionary.into(), id))
+		EncodableKey::encode(&Self::new(dictionary.into(), id))
 	}
 
 	pub fn full_scan(dictionary: DictionaryId) -> EncodedKeyRange {
@@ -522,18 +522,18 @@ impl DictionaryEntryIndexKey {
 
 	fn index_start(dictionary: DictionaryId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<Self as super::EncodableKey>::KIND as u8).extend_u64(dictionary);
+		serializer.extend_u8(<Self as EncodableKey>::KIND as u8).extend_u64(dictionary);
 		serializer.to_encoded_key()
 	}
 
 	fn index_end(dictionary: DictionaryId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<Self as super::EncodableKey>::KIND as u8).extend_u64(*dictionary - 1);
+		serializer.extend_u8(<Self as EncodableKey>::KIND as u8).extend_u64(*dictionary - 1);
 		serializer.to_encoded_key()
 	}
 }
 
-impl super::EncodableKey for DictionaryEntryIndexKey {
+impl EncodableKey for DictionaryEntryIndexKey {
 	const KIND: KeyKind = KeyKind::DictionaryEntryIndex;
 
 	fn encode(&self) -> EncodedKey {
@@ -639,8 +639,8 @@ pub mod dictionary_key_tests {
 				0x0f, 0x10,
 			],
 		};
-		let encoded = crate::key::EncodableKey::encode(&key);
-		let decoded = <DictionaryEntryKey as crate::key::EncodableKey>::decode(&encoded).unwrap();
+		let encoded = EncodableKey::encode(&key);
+		let decoded = <DictionaryEntryKey as EncodableKey>::decode(&encoded).unwrap();
 		assert_eq!(decoded.dictionary, key.dictionary);
 		assert_eq!(decoded.hash, key.hash);
 	}
@@ -651,8 +651,8 @@ pub mod dictionary_key_tests {
 			dictionary: DictionaryId(99),
 			id: 12345,
 		};
-		let encoded = crate::key::EncodableKey::encode(&key);
-		let decoded = <DictionaryEntryIndexKey as crate::key::EncodableKey>::decode(&encoded).unwrap();
+		let encoded = EncodableKey::encode(&key);
+		let decoded = <DictionaryEntryIndexKey as EncodableKey>::decode(&encoded).unwrap();
 		assert_eq!(decoded.dictionary, key.dictionary);
 		assert_eq!(decoded.id, key.id);
 	}

@@ -3,7 +3,10 @@
 
 use reifydb_core::{
 	interface::catalog::{handler::Handler, id::NamespaceId},
-	key::{handler::HandlerKey, namespace_handler::NamespaceHandlerKey, variant_handler::VariantHandlerKey},
+	key::{
+		catalog::{HandlerKey, VariantHandlerKey},
+		namespace::NamespaceHandlerKey,
+	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{fragment::Fragment, value::sumtype::VariantRef};
@@ -91,7 +94,7 @@ pub mod tests {
 	use reifydb_codec::row::catalog::EncodedCatalogRow;
 	use reifydb_core::{
 		interface::catalog::id::{HandlerId, NamespaceId},
-		key::namespace_handler::NamespaceHandlerKey,
+		key::namespace::NamespaceHandlerKey,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::multi::RangeScope;

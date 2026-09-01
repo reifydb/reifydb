@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::{change::CatalogTrackRowSettingsChangeOperations, storage::StorageId},
-	key::row_settings::RowSettingsKey,
+	key::row::RowSettingsKey,
 	row::RowSettings,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;

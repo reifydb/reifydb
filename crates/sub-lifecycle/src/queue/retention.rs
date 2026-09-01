@@ -23,8 +23,9 @@ use reifydb_core::{
 		store::SingleVersionRange,
 	},
 	key::{
-		Key, queue_attempt::QueueAttemptKey, queue_deduplication::QueueDeduplicationKey,
-		queue_schedule::QueueItemStateKey, row::RowKey,
+		queue::{QueueAttemptKey, QueueDeduplicationKey, QueueItemStateKey},
+		row::RowKey,
+		typed::key::Key,
 	},
 	lifecycle::{
 		class::{Floor, FloorTerm, RetentionClass},

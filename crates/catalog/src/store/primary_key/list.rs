@@ -6,7 +6,7 @@ use std::ops::Bound;
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::catalog::EncodedCatalogRow};
 use reifydb_core::{
 	interface::catalog::{column::Column, id::PrimaryKeyId, key::PrimaryKey},
-	key::{Key, primary_key::PrimaryKeyKey},
+	key::{catalog::PrimaryKeyKey, typed::key::Key},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

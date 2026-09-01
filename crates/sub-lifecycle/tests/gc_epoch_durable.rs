@@ -14,7 +14,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		cdc::{CdcConsumerId, ConsumerClass},
 	},
-	key::{Key, version_epoch::VersionEpochKey},
+	key::{system::VersionEpochKey, typed::key::Key},
 	lifecycle::{gate::RetentionStartupGate, progress::Progress, task::LifecycleTask},
 };
 use reifydb_engine::engine::StandardEngine;

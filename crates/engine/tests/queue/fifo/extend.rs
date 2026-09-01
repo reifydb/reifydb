@@ -10,7 +10,7 @@ use reifydb_core::{
 		},
 		store::SingleVersionRange,
 	},
-	key::queue_schedule::QueueItemStateKey,
+	key::queue::QueueItemStateKey,
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;

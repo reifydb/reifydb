@@ -74,7 +74,9 @@ impl SeriesMetadataKey {
 
 #[cfg(test)]
 mod series_metadata_key_tests {
-	use super::SeriesMetadataKey;
+	use reifydb_codec::key::serializer::KeySerializer;
+
+	use super::{KeyKind, SeriesKey, SeriesMetadataKey};
 	use crate::{
 		interface::catalog::{
 			id::{SeriesId, ViewId},
@@ -109,14 +111,10 @@ mod series_metadata_key_tests {
 
 	#[test]
 	fn test_series_key_matches_legacy_byte_layout() {
-		use reifydb_codec::key::serializer::KeySerializer;
-
-		use super::super::KeyKind;
-
 		for id in [SeriesId(0), SeriesId(1), SeriesId(u64::MAX)] {
 			let mut legacy = KeySerializer::with_capacity(9);
 			legacy.extend_u8(KeyKind::Series as u8).extend_u64(id);
-			assert_eq!(legacy.to_encoded_key().as_slice(), super::SeriesKey::encoded(id).as_slice());
+			assert_eq!(legacy.to_encoded_key().as_slice(), SeriesKey::encoded(id).as_slice());
 		}
 	}
 }
@@ -655,7 +653,7 @@ mod partitioned_row_key_tests {
 	use super::*;
 	use crate::{
 		interface::catalog::id::{SeriesId, TableId, ViewId},
-		key::partitioned_row::PartitionedRowKey,
+		key::row::PartitionedRowKey,
 	};
 
 	fn part(v: &str) -> Partition {

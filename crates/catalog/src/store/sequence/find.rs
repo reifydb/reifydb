@@ -4,7 +4,7 @@
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::id::{NamespaceId, SequenceId},
-	key::system_sequence::SystemSequenceKey,
+	key::system::SystemSequenceKey,
 	return_internal_error,
 };
 use reifydb_transaction::transaction::Transaction;

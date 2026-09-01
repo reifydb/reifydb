@@ -1331,9 +1331,10 @@ mod cache_tests {
 			store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 		},
 		key::{
-			EncodableKey, Key,
+			EncodableKey,
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 			row::RowKey,
+			typed::key::Key,
 		},
 	};
 	use reifydb_store_commit::{MultiVersionScope, RangeStop, RawEntry, VersionedGetResult};
@@ -1787,12 +1788,16 @@ mod probe_tests {
 			catalog::{id::TableId, storage::StorageId},
 			store::{MultiVersionCommit, MultiVersionGet, MultiVersionGetPrevious, classify_key},
 		},
-		key::row::RowKey,
+		key::row::{PartitionedRowKey, RowKey},
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown};
 	use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-	use reifydb_store_commit::{TierBatch, store::CommitStore};
-	use reifydb_value::{cow_vec, util::cowvec::CowVec};
+	use reifydb_store_commit::{MultiVersionScope, TierBatch, store::CommitStore};
+	use reifydb_value::{
+		cow_vec,
+		util::cowvec::CowVec,
+		value::{partition::Partition, row_number::RowNumber},
+	};
 
 	use crate::{
 		config::{CommitStoreConfig, MultiStoreConfig, PersistentConfig},
@@ -2012,5 +2017,33 @@ mod probe_tests {
 		let store = StandardMultiStore::testing_memory();
 		assert!(store.get(&RowKey::encoded(STORAGE, 1), CommitVersion(9)).unwrap().is_none());
 		assert!(store.persistent_probe_metrics().is_none());
+	}
+
+	#[test]
+	fn a_paginated_range_over_many_partitions_reaches_every_row() {
+		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+
+		let mut entries = Vec::new();
+		for p in 0u128..64 {
+			let partition = Partition(p.wrapping_mul(0x9E3779B97F4A7C15) ^ 0xA5A5_A5A5_A5A5_A5A5);
+			for r in 0u64..2 {
+				let key = PartitionedRowKey::encoded(STORAGE, partition, RowNumber(r + 1));
+				entries.push((key, value("v")));
+			}
+		}
+		seed_persistent(&store, entries);
+
+		let range = PartitionedRowKey::full_scan(STORAGE);
+		let collected: Vec<_> = store
+			.range(
+				range,
+				MultiVersionScope::AsOf {
+					read: CommitVersion(9),
+				},
+				4,
+			)
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap();
+		assert_eq!(collected.len(), 128, "a paginated scan across 64 partitions must reach every row");
 	}
 }

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::view::View,
-	key::{Key, view::ViewKey},
+	key::{catalog::ViewKey, typed::key::Key},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

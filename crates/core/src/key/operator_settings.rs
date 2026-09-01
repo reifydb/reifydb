@@ -51,7 +51,7 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		interface::catalog::{id::TableId, storage::StorageId},
-		key::row_settings::RowSettingsKey,
+		key::row::RowSettingsKey,
 	};
 
 	#[test]

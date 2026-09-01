@@ -3,7 +3,7 @@
 
 use once_cell::sync::Lazy;
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{interface::catalog::id::SinkId, key::system_sequence::SystemSequenceKey};
+use reifydb_core::{interface::catalog::id::SinkId, key::system::SystemSequenceKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{Result, store::sequence::generator::u64::GeneratorU64, system::ids::sequences::SINK_CONNECTOR};

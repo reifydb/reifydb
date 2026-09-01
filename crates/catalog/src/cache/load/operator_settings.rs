@@ -3,8 +3,8 @@
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::key::{
-	Key,
 	operator_settings::{OperatorSettingsKey, OperatorSettingsKeyRange},
+	typed::key::Key,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use tracing::warn;

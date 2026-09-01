@@ -11,7 +11,7 @@ use reifydb_core::{
 		},
 		store::MultiVersionRow,
 	},
-	key::{Key, source::SourceKey},
+	key::{catalog::SourceKey, typed::key::Key},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use serde_json::from_str;

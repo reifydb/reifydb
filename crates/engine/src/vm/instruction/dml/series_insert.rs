@@ -25,7 +25,10 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
 	},
 	internal_error,
-	key::{Key, partitioned_series_row::PartitionedSeriesRowKey, series_row::SeriesRowKey},
+	key::{
+		series::{PartitionedSeriesRowKey, SeriesRowKey},
+		typed::key::Key,
+	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_evaluate::stack::SymbolTable;

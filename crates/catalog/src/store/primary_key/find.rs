@@ -9,7 +9,7 @@ use reifydb_core::{
 		key::PrimaryKey,
 		object::ObjectId,
 	},
-	key::primary_key::PrimaryKeyKey,
+	key::catalog::PrimaryKeyKey,
 	return_internal_error,
 };
 use reifydb_transaction::transaction::Transaction;

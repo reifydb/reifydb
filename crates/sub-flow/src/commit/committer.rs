@@ -334,7 +334,7 @@ mod commit_integration {
 		internal_error,
 		key::{
 			EncodableKey,
-			cdc_consumer::{CdcConsumerKey, CdcConsumerKeyRange},
+			cdc::{CdcConsumerKey, CdcConsumerKeyRange},
 			operator::state::{GroupStateKey, OperatorStateKey, custom_not_cached_key},
 		},
 	};

@@ -11,8 +11,8 @@ use reifydb_codec::{
 use reifydb_core::{
 	error::diagnostic::internal::internal,
 	key::{
-		Key,
-		row_shape::{RowShapeFieldKey, RowShapeKey},
+		row::{RowShapeFieldKey, RowShapeKey},
+		typed::key::Key,
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};

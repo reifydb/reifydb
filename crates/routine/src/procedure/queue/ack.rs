@@ -12,7 +12,7 @@ use reifydb_core::{
 		},
 		store::SingleVersionGet,
 	},
-	key::{queue_attempt::QueueAttemptKey, queue_schedule::QueueItemStateKey},
+	key::queue::{QueueAttemptKey, QueueItemStateKey},
 	value::column::columns::Columns,
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};

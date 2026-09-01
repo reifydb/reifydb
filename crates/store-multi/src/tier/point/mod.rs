@@ -246,7 +246,7 @@ mod tests {
 			catalog::{id::TableId, storage::StorageId},
 			store::EntryKind,
 		},
-		key::{Key, row::RowKey},
+		key::{row::RowKey, typed::key::Key},
 	};
 	use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 

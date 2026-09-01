@@ -6,7 +6,7 @@ use reifydb_core::{
 		id::{NamespaceId, QueueId},
 		queue::Queue,
 	},
-	key::{Key, queue::QueueKey},
+	key::{queue::QueueKey, typed::key::Key},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

@@ -6,7 +6,7 @@ use reifydb_core::{
 		flow::{Flow, FlowId, FlowStatus},
 		id::NamespaceId,
 	},
-	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
+	key::{flow::FlowKey, namespace::NamespaceFlowKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::fragment::Fragment;
@@ -116,7 +116,7 @@ pub mod tests {
 			flow::{FlowId, FlowStatus},
 			id::NamespaceId,
 		},
-		key::namespace_flow::NamespaceFlowKey,
+		key::namespace::NamespaceFlowKey,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::multi::RangeScope;

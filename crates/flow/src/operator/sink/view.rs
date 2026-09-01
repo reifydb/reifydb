@@ -24,7 +24,7 @@ use reifydb_core::{
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
-	key::{catalog::serialize_object_id, kind::KeyKind, partitioned_row::PartitionedRowKey},
+	key::{catalog::serialize_object_id, kind::KeyKind, row::PartitionedRowKey},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
 	value::column::{buffer::ColumnBuffer, columns::Columns},
@@ -427,7 +427,7 @@ mod tests {
 			resolved::ResolvedNamespace,
 			store::SingleVersionGet,
 		},
-		key::dictionary::DictionaryEntryIndexKey,
+		key::catalog::DictionaryEntryIndexKey,
 		value::column::ColumnWithName,
 	};
 	use reifydb_test_harness::engine::TestEngine;

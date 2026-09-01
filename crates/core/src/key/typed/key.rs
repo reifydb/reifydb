@@ -15,6 +15,8 @@ pub trait Key: Sized {
 
 #[cfg(test)]
 mod tests {
+	use std::iter::once;
+
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_macro::Key;
 	use reifydb_value::value::row_number::RowNumber;
@@ -60,7 +62,7 @@ mod tests {
 			row: RowNumber(0x0910111213141516),
 		};
 		let encoded = key.encode();
-		let expected: Vec<u8> = std::iter::once(!(KeyKind::Row as u8))
+		let expected: Vec<u8> = once(!(KeyKind::Row as u8))
 			.chain((!0x0102030405060708u64).to_be_bytes())
 			.chain((!0x0910111213141516u64).to_be_bytes())
 			.collect();

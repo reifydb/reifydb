@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	key::{
 		catalog::KeyDeserializerCatalogExt,
-		namespace_ringbuffer::NamespaceRingBufferKey,
+		namespace::NamespaceRingBufferKey,
 		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
 	},
 };

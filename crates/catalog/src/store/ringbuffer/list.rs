@@ -8,7 +8,7 @@ use reifydb_core::{
 		id::{NamespaceId, RingBufferId},
 		ringbuffer::RingBuffer,
 	},
-	key::{Key, ringbuffer::RingBufferKey},
+	key::{ringbuffer::RingBufferKey, typed::key::Key},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

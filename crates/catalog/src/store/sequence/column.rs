@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::{id::ColumnId, object::ObjectId},
-	key::column_sequence::ColumnSequenceKey,
+	key::column::ColumnSequenceKey,
 };
 use reifydb_value::{
 	reifydb_assertions,

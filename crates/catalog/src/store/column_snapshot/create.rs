@@ -7,7 +7,7 @@ use reifydb_core::{
 		column_snapshot::{ColumnSnapshot, ColumnSnapshotKind, ColumnSnapshotSource},
 		id::{ColumnSnapshotId, NamespaceId},
 	},
-	key::column_snapshot::{ColumnSnapshotKey, SeriesColumnSnapshotKey, TableColumnSnapshotKey},
+	key::column::{ColumnSnapshotKey, SeriesColumnSnapshotKey, TableColumnSnapshotKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 

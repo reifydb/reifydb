@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::key::{
 	EncodableKey,
-	system_version::{SystemVersion, SystemVersionKey},
+	system::{SystemVersion, SystemVersionKey},
 };
 use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
 use reifydb_store_multi::MultiStore;

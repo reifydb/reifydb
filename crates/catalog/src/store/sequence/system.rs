@@ -15,7 +15,7 @@ use reifydb_core::{
 		policy::PolicyId,
 		token::TokenId,
 	},
-	key::system_sequence::SystemSequenceKey,
+	key::system::SystemSequenceKey,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::{dictionary::DictionaryId, sumtype::SumTypeId};

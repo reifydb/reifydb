@@ -6,7 +6,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::config::{ConfigKey, GetConfig},
-	key::{Key, version_epoch::VersionEpochKey},
+	key::{system::VersionEpochKey, typed::key::Key},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::version_epoch::{BUCKET_WIDTH, EpochSeconds, EpochSpan};

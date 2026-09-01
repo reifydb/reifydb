@@ -9,7 +9,7 @@ use std::sync::{
 use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::{
 	common::CommitVersion,
-	key::{Key, transaction_version::TransactionVersionKey},
+	key::{system::TransactionVersionKey, typed::key::Key},
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{Result, reifydb_assertions, value::value_type::ValueType};

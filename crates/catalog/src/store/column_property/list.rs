@@ -7,7 +7,7 @@ use reifydb_core::{
 		id::{ColumnId, ColumnPropertyId},
 		property::{ColumnProperty, ColumnPropertyKind},
 	},
-	key::property::ColumnPropertyKey,
+	key::catalog::ColumnPropertyKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

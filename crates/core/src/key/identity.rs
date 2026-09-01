@@ -149,6 +149,9 @@ impl IdentityAttributeValueKey {
 
 #[cfg(test)]
 mod byte_identical_identity_attribute_value_key {
+	use reifydb_value::value::uuid::Uuid7;
+	use uuid::Uuid;
+
 	use super::*;
 
 	fn legacy_encode(key: &IdentityAttributeValueKey) -> EncodedKey {
@@ -162,9 +165,6 @@ mod byte_identical_identity_attribute_value_key {
 
 	#[test]
 	fn matches_the_flat_key_encoding() {
-		use reifydb_value::value::uuid::Uuid7;
-		use uuid::Uuid;
-
 		for byte in [0u8, 1, 2] {
 			let identity = IdentityId::from(Uuid7::from(Uuid::from_bytes([byte; 16])));
 			for attribute in [0u64, 1, u64::MAX] {
@@ -381,6 +381,9 @@ impl GrantedRoleKey {
 
 #[cfg(test)]
 mod byte_identical_granted_role_key {
+	use reifydb_value::value::uuid::Uuid7;
+	use uuid::Uuid;
+
 	use super::*;
 
 	fn legacy_encode(key: &GrantedRoleKey) -> EncodedKey {
@@ -391,9 +394,6 @@ mod byte_identical_granted_role_key {
 
 	#[test]
 	fn matches_the_flat_key_encoding() {
-		use reifydb_value::value::uuid::Uuid7;
-		use uuid::Uuid;
-
 		for byte in [0u8, 1, 2] {
 			let identity = IdentityId::from(Uuid7::from(Uuid::from_bytes([byte; 16])));
 			for role in [0u64, 1, u64::MAX] {

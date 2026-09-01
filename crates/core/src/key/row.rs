@@ -166,7 +166,7 @@ impl RowIdent {
 pub mod row_key_tests {
 	use reifydb_value::value::row_number::RowNumber;
 
-	use super::RowKey;
+	use super::{RowIdent, RowKey};
 	use crate::{interface::catalog::storage::StorageId, key::typed::key::Key};
 
 	#[test]
@@ -235,8 +235,6 @@ pub mod row_key_tests {
 
 	#[test]
 	fn test_row_ident_roundtrip() {
-		use super::RowIdent;
-
 		let key = RowKey {
 			storage: StorageId::table(7),
 			row: RowNumber(42),
@@ -250,8 +248,6 @@ pub mod row_key_tests {
 
 	#[test]
 	fn test_row_ident_ordering_matches_row_number() {
-		use super::RowIdent;
-
 		let low = RowIdent(RowNumber(1));
 		let high = RowIdent(RowNumber(2));
 
@@ -700,7 +696,7 @@ mod partitioned_row_key_tests {
 	use reifydb_codec::key::serializer::KeySerializer;
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
-	use super::PartitionedRowKey;
+	use super::{PartitionedRowIdent, PartitionedRowKey};
 	use crate::{
 		interface::catalog::{
 			id::{TableId, ViewId},
@@ -777,8 +773,6 @@ mod partitioned_row_key_tests {
 
 	#[test]
 	fn test_partitioned_row_ident_roundtrip() {
-		use super::PartitionedRowIdent;
-
 		let key = PartitionedRowKey {
 			storage: StorageId::Table(TableId(7)),
 			partition: part("us"),
@@ -793,8 +787,6 @@ mod partitioned_row_key_tests {
 
 	#[test]
 	fn test_partitioned_row_ident_halves_split_correctly() {
-		use super::PartitionedRowIdent;
-
 		let partition = Partition(0x1122334455667788_99AABBCCDDEEFF00);
 		let ident = PartitionedRowIdent::new(partition, RowNumber(1));
 
@@ -806,8 +798,6 @@ mod partitioned_row_key_tests {
 
 	#[test]
 	fn test_partitioned_row_ident_ordering_matches_field_order() {
-		use super::PartitionedRowIdent;
-
 		let lower_partition = PartitionedRowIdent::new(Partition(1), RowNumber(999));
 		let higher_partition = PartitionedRowIdent::new(Partition(2), RowNumber(1));
 		let same_partition_lower_row = PartitionedRowIdent::new(Partition(2), RowNumber(1));

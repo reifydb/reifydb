@@ -8,7 +8,7 @@ use reifydb_core::{
 		column_snapshot::{ColumnSnapshot, ColumnSnapshotKind, ColumnSnapshotSource},
 		id::{ColumnSnapshotId, NamespaceId, SeriesId, TableId},
 	},
-	key::column_snapshot::{ColumnSnapshotKey, SeriesColumnSnapshotKey, TableColumnSnapshotKey},
+	key::column::{ColumnSnapshotKey, SeriesColumnSnapshotKey, TableColumnSnapshotKey},
 	return_internal_error,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};

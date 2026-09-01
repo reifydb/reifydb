@@ -6,7 +6,7 @@ use reifydb_core::{
 		binding::{Binding, BindingFormat, BindingProtocol},
 		id::{NamespaceId, ProcedureId},
 	},
-	key::{binding::BindingKey, namespace_binding::NamespaceBindingKey},
+	key::{catalog::BindingKey, namespace::NamespaceBindingKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 

@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::{interface::catalog::authentication::Authentication, key::authentication::AuthenticationKey};
+use reifydb_core::{interface::catalog::authentication::Authentication, key::identity::AuthenticationKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::{
 	error::{Diagnostic, Error},

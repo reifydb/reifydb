@@ -7,7 +7,7 @@ use reifydb_core::{
 		handler::Handler,
 		id::{HandlerId, NamespaceId},
 	},
-	key::{handler::HandlerKey, namespace_handler::NamespaceHandlerKey},
+	key::{catalog::HandlerKey, namespace::NamespaceHandlerKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::storage::StorageId,
 	key::{
 		EncodableKey,
-		row_settings::{RowSettingsKey, RowSettingsKeyRange},
+		row::{RowSettingsKey, RowSettingsKeyRange},
 	},
 	row::RowSettings,
 };

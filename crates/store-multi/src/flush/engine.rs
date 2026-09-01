@@ -359,25 +359,26 @@ impl FlushEngine {
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod tests {
+	use std::{
+		collections::hash_map::DefaultHasher,
+		hash::{Hash, Hasher},
+	};
+
 	use reifydb_core::{
 		event::EventListener,
 		interface::catalog::{id::TableId, storage::StorageId},
+		key::row::RowKey,
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, shutdown::Shutdown};
 	use reifydb_sqlite::SqliteTempPathGuard;
 	use reifydb_store_commit::VersionedGetResult;
-	use reifydb_value::util::cowvec::CowVec;
+	use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
 
 	use super::*;
 	use crate::tier::point::MultiPointConfig;
 
 	fn ek(s: &str) -> EncodedKey {
-		use std::hash::{Hash, Hasher};
-
-		use reifydb_core::key::row::RowKey;
-		use reifydb_value::value::row_number::RowNumber;
-
-		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		let mut hasher = DefaultHasher::new();
 		s.hash(&mut hasher);
 		RowKey::encoded(StorageId::table(TableId(1)), RowNumber(hasher.finish()))
 	}
@@ -1106,8 +1107,6 @@ mod tests {
 			(0..KINDS).map(|i| EntryKind::Source(StorageId::Table(TableId(i + 1)))).collect();
 
 		let chronological_key = |version: u64, key: u64| {
-			use reifydb_core::key::row::RowKey;
-			use reifydb_value::value::row_number::RowNumber;
 			let sequence = version * KEYS_PER_ROUND + key;
 			RowKey::encoded(StorageId::table(TableId(1)), RowNumber(u64::MAX - sequence))
 		};

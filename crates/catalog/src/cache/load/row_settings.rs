@@ -4,7 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::key::{
 	EncodableKey,
-	row_settings::{RowSettingsKey, RowSettingsKeyRange},
+	row::{RowSettingsKey, RowSettingsKeyRange},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use tracing::warn;
