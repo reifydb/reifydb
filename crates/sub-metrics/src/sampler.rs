@@ -27,7 +27,7 @@ use reifydb_store_multi::{
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
-	tier::{point::OperatorPointKeyspaceMetrics, range::OperatorRangeKeyspaceMetrics},
+	tier::{point::tiers::OperatorPointKeyspaceMetrics, range::tiers::OperatorRangeKeyspaceMetrics},
 };
 use reifydb_store_single::SingleStore;
 use reifydb_value::{

@@ -17,6 +17,11 @@ pub fn suffix_width(keyspace: KeyspaceId) -> usize {
 
 pub fn suffix_bytes(keyspace: KeyspaceId, seed: u64) -> Vec<u8> {
 	let width = suffix_width(keyspace);
+	assert!(
+		width >= 8 || seed >> (width * 8) == 0,
+		"seed {seed} does not fit the {width} byte suffix of {}, so distinct seeds collapse onto one key",
+		keyspace.name()
+	);
 	let mut bytes = vec![0u8; width];
 	let seed = seed.to_be_bytes();
 	let take = seed.len().min(width);

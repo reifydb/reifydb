@@ -52,9 +52,9 @@ const CACHED_KEYSPACES: [KeyspaceId; 2] = [CACHED, KeyspaceId::JOIN_PUBLISHED];
 const KEYSPACES: [KeyspaceId; 5] = [
 	CACHED,
 	KeyspaceId::JOIN_PUBLISHED,
-	KeyspaceId::ACCUMULATOR,
+	KeyspaceId::GUEST_ACCUMULATOR,
 	KeyspaceId::CUSTOM_NOT_CACHED,
-	KeyspaceId::ENGINE_META,
+	KeyspaceId::EMIT,
 ];
 
 const BATCHES: [u64; 4] = [2, 7, 64, 1024];

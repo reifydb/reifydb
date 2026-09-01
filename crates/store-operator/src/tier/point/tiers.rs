@@ -24,7 +24,7 @@ use reifydb_core::{
 use reifydb_store::tier::point::{PointConfig, PointMetrics, PointTier};
 use reifydb_value::byte_size::ByteSize;
 
-use crate::tier::point::typed::{TypedDomain, TypedPartition};
+use crate::tier::{point::typed::TypedDomain, typed::TypedPartition};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OperatorPointKeyspaceMetrics {

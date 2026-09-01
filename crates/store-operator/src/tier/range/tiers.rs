@@ -17,7 +17,7 @@ use reifydb_core::{
 use reifydb_store::tier::range::{RangeConfig, RangeMetrics, RangeTier};
 use reifydb_value::byte_size::ByteSize;
 
-use crate::tier::range::typed::{TypedDomain, TypedPartition};
+use crate::tier::{range::typed::TypedDomain, typed::TypedPartition};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OperatorRangeKeyspaceMetrics {

@@ -1149,12 +1149,7 @@ mod join_row_expiry_guard_tests {
 		// padding it low would leak back the very rows the guest excluded; the other three bounds pad low,
 		// which makes this the edge a copy-paste silently gets wrong.
 		let (status, _, seen) = with_recording_context(|ctx| {
-			guest_range_bounds(
-				ctx,
-				KeyspaceId::CUSTOM_NOT_CACHED,
-				Some((&[1u8; 4], BOUND_EXCLUDED)),
-				None,
-			)
+			guest_range_bounds(ctx, KeyspaceId::CUSTOM_NOT_CACHED, Some((&[1u8; 4], BOUND_EXCLUDED)), None)
 		});
 		let range = seen.expect("an allowed guest range must reach the host");
 

@@ -4,6 +4,7 @@
 # Build and run all examples
 .PHONY: test-examples
 test-examples: build-examples run-examples
+	@$(MAKE) --no-print-directory sweep-auto
 
 # Build all examples in release mode
 .PHONY: build-examples

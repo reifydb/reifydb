@@ -13,3 +13,4 @@ test-dst:
 	@echo "🧪 Running DST tests..."
 	MAKEFLAGS= CARGO_TARGET_DIR=$(DST_TARGET_DIR) REIFYDB_DST=1 cargo test --release -p reifydb-runtime --no-fail-fast $(CARGO_OFFLINE)
 	MAKEFLAGS= CARGO_TARGET_DIR=$(DST_TARGET_DIR) REIFYDB_DST=1 cargo test --release -p reifydb-client --features dst --no-fail-fast $(CARGO_OFFLINE)
+	@$(MAKE) --no-print-directory sweep-auto

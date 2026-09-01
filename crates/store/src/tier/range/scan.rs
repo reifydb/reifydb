@@ -676,10 +676,10 @@ fn exempt_gap<D: RangeDomain>(dimension: D::Dimension, confined: Option<D::Parti
 	gap.end <= end
 }
 
-fn coalesce_gaps<D: RangeDomain>(
-	pieces: Vec<(Segment<D::Key>, Option<D::Partition>)>,
-) -> Vec<(Segment<D::Key>, Option<D::Partition>)> {
-	let mut out: Vec<(Segment<D::Key>, Option<D::Partition>)> = Vec::with_capacity(pieces.len());
+type Piece<D> = (Segment<<D as RangeDomain>::Key>, Option<<D as RangeDomain>::Partition>);
+
+fn coalesce_gaps<D: RangeDomain>(pieces: Vec<Piece<D>>) -> Vec<Piece<D>> {
+	let mut out: Vec<Piece<D>> = Vec::with_capacity(pieces.len());
 	for (segment, partition) in pieces {
 		let Segment::Gap {
 			interval,
@@ -716,7 +716,7 @@ fn split_at_partitions<D: RangeDomain>(
 	dimension: D::Dimension,
 	confined: Option<D::Partition>,
 	segment: &Segment<D::Key>,
-	out: &mut Vec<(Segment<D::Key>, Option<D::Partition>)>,
+	out: &mut Vec<Piece<D>>,
 ) {
 	let (whole, ram) = match segment {
 		Segment::Resident(interval) => (interval, true),

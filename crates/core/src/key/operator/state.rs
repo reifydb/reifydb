@@ -576,9 +576,9 @@ pub fn keyspace_inner_range_in(
 	EncodedKeyRange::new(lower, upper)
 }
 
-pub fn keyspace_inner_range_split(
-	range: &EncodedKeyRange,
-) -> Option<(GroupId, KeyspaceId, Bound<Vec<u8>>, Bound<Vec<u8>>)> {
+pub type KeyspaceInnerRangeSplit = (GroupId, KeyspaceId, Bound<Vec<u8>>, Bound<Vec<u8>>);
+
+pub fn keyspace_inner_range_split(range: &EncodedKeyRange) -> Option<KeyspaceInnerRangeSplit> {
 	let (group, keyspace, start) = match &range.start {
 		Bound::Included(key) => {
 			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;

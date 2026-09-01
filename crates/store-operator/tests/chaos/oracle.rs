@@ -132,7 +132,8 @@ impl Oracle {
 	}
 
 	/// Census buckets in the order every tier emits them: by operator, then by the ENCODED keyspace byte, which
-	/// is the byte actually stored in the key and indexed by sqlite.
+	/// is the byte actually stored in the key and indexed by sqlite. A key is billed for its group and suffix
+	/// only: the keyspace byte names the table the row lands in and costs nothing per row.
 	pub fn census(&self) -> Vec<CensusRow> {
 		let offset = OperatorStateKey::KEYSPACE_INNER_OFFSET as usize;
 		let mut buckets: BTreeMap<(u64, u8), CensusRow> = BTreeMap::new();
@@ -146,7 +147,7 @@ impl Oracle {
 				value_bytes: 0,
 			});
 			bucket.keys += 1;
-			bucket.key_bytes += key.len() as u64;
+			bucket.key_bytes += (key.len() - 1) as u64;
 			bucket.value_bytes += row.bytes().len() as u64;
 		}
 		buckets.into_values().collect()
@@ -165,7 +166,7 @@ impl Oracle {
 			.state
 			.iter()
 			.filter(|((candidate, _), _)| *candidate == operator)
-			.map(|((_, key), row)| (key.len() + row.bytes().len()) as u64)
+			.map(|((_, key), row)| (key.len() - 1 + row.bytes().len()) as u64)
 			.sum();
 		let join_expiries =
 			self.join_expiries.keys().filter(|(candidate, _, _, _)| *candidate == operator).count() as u64;
@@ -173,7 +174,8 @@ impl Oracle {
 	}
 
 	pub fn total_bytes(&self) -> u64 {
-		let state: u64 = self.state.iter().map(|((_, key), row)| (key.len() + row.bytes().len()) as u64).sum();
+		let state: u64 =
+			self.state.iter().map(|((_, key), row)| (key.len() - 1 + row.bytes().len()) as u64).sum();
 		state + join_expiry_bytes(self.join_expiries.len() as u64)
 	}
 

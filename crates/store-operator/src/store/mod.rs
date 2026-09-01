@@ -39,7 +39,7 @@ use crate::{
 	config::OperatorStoreConfig,
 	tier::{
 		persistent::OperatorPersistentTier,
-		point::{OperatorPointKeyspaceMetrics, tiers::PointTiers},
+		point::tiers::{OperatorPointKeyspaceMetrics, PointTiers},
 		range::tiers::{OperatorRangeKeyspaceMetrics, RangeTiers},
 		resident::{
 			OperatorResidentState,

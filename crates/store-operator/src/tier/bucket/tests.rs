@@ -3,22 +3,30 @@
 
 use std::ops::Bound;
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, pod::EncodedPodRow},
+};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::{
-			keyspace::join::{JoinLeft, JoinRight},
-			state::{GroupId, OperatorStateKey, group_data_inner_range},
+			keyspace::{
+				KEYSPACES, KeyspaceVisitor, dispatch,
+				join::{JoinLeft, JoinRight},
+			},
+			state::{GroupId, KeyspaceId, OperatorStateKey, group_data_inner_range},
 			traits::Keyspace,
 		},
 		typed::direction::Asc,
 	},
 	state::typed::SuffixBytes,
 };
-use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
+use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};
+use rusqlite::Connection;
 
-use super::{BucketMap, write::TypedBucket};
+use super::{AnyBucket, BucketMap, Budget, Resume, write::TypedBucket};
+use crate::tier::persistent::sqlite::{schema::ensure_schema, typed};
 
 const OP: OperatorId = OperatorId(1);
 
@@ -107,8 +115,6 @@ fn overwriting_a_suffix_does_not_count_it_twice() {
 
 #[test]
 fn reaping_a_group_releases_only_that_group() {
-	use super::{AnyBucket, Budget, Resume};
-
 	let mut bucket = bucket();
 	bucket.record(GroupId(7), suffix(1), Some(row("seven")));
 	bucket.record(GroupId(9), suffix(1), Some(row("nine")));
@@ -127,8 +133,6 @@ fn reaping_a_group_releases_only_that_group() {
 
 #[test]
 fn a_reap_that_runs_out_of_budget_asks_to_be_resumed() {
-	use super::{AnyBucket, Budget, Resume};
-
 	let mut bucket = bucket();
 	for n in 0..4u64 {
 		bucket.record(GroupId(7), suffix(n), Some(row("v")));
@@ -178,11 +182,6 @@ fn two_operators_never_share_a_bucket() {
 
 #[test]
 fn a_flush_writes_every_group_into_the_keyspaces_own_table() {
-	use rusqlite::Connection;
-
-	use super::AnyBucket;
-	use crate::tier::persistent::sqlite::{schema::ensure_schema, typed};
-
 	let conn = Connection::open_in_memory().expect("in memory db");
 	ensure_schema(&conn);
 
@@ -203,11 +202,6 @@ fn a_flush_writes_every_group_into_the_keyspaces_own_table() {
 
 #[test]
 fn a_flushed_tombstone_deletes_the_row_rather_than_storing_a_none() {
-	use rusqlite::Connection;
-
-	use super::AnyBucket;
-	use crate::tier::persistent::sqlite::{schema::ensure_schema, typed};
-
 	let conn = Connection::open_in_memory().expect("in memory db");
 	ensure_schema(&conn);
 
@@ -226,14 +220,6 @@ fn a_flushed_tombstone_deletes_the_row_rather_than_storing_a_none() {
 
 #[test]
 fn a_flushed_row_survives_the_round_trip_through_its_payload() {
-	use reifydb_codec::row::bytes::EncodedBytes;
-	use reifydb_core::key::operator::traits::Keyspace;
-	use reifydb_value::util::cowvec::CowVec;
-	use rusqlite::Connection;
-
-	use super::AnyBucket;
-	use crate::tier::persistent::sqlite::{schema::ensure_schema, typed};
-
 	let conn = Connection::open_in_memory().expect("in memory db");
 	ensure_schema(&conn);
 
@@ -252,8 +238,6 @@ fn a_flushed_row_survives_the_round_trip_through_its_payload() {
 
 #[test]
 fn an_erased_write_reaches_the_same_bucket_a_typed_one_does() {
-	use reifydb_core::key::operator::traits::Keyspace;
-
 	let mut map = BucketMap::default();
 	map.record_bytes(OP, JoinLeft::ID, GroupId(7), &suffix(1).to_suffix_bytes(), Some(row("erased")));
 
@@ -271,12 +255,6 @@ fn an_erased_write_reaches_the_same_bucket_a_typed_one_does() {
 
 #[test]
 fn every_keyspace_in_the_catalogue_is_reachable_through_the_dispatch() {
-	use reifydb_core::key::operator::{
-		keyspace::{KEYSPACES, KeyspaceVisitor, dispatch},
-		state::KeyspaceId,
-		traits::Keyspace,
-	};
-
 	struct Name;
 
 	impl KeyspaceVisitor for Name {
@@ -305,10 +283,6 @@ fn every_keyspace_in_the_catalogue_is_reachable_through_the_dispatch() {
 
 #[test]
 fn an_erased_page_returns_its_suffixes_in_the_key_types_order() {
-	use std::ops::Bound;
-
-	use reifydb_core::key::operator::traits::Keyspace;
-
 	let mut map = BucketMap::default();
 	for n in [3u64, 1, 2] {
 		map.record_bytes(OP, JoinLeft::ID, GroupId(7), &suffix(n).to_suffix_bytes(), Some(row("v")));
@@ -327,10 +301,6 @@ fn an_erased_page_returns_its_suffixes_in_the_key_types_order() {
 
 #[test]
 fn an_erased_page_honours_its_limit() {
-	use std::ops::Bound;
-
-	use reifydb_core::key::operator::traits::Keyspace;
-
 	let mut map = BucketMap::default();
 	for n in 0..5u64 {
 		map.record_bytes(OP, JoinLeft::ID, GroupId(7), &suffix(n).to_suffix_bytes(), Some(row("v")));

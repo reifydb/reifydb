@@ -37,8 +37,10 @@ fn group_below(bytes: &[u8]) -> GroupId {
 	parts(&EncodedKey::new(padded)).0
 }
 
+type BoundWrap = fn(Vec<u8>) -> Bound<Vec<u8>>;
+
 pub(crate) fn split_bound(bound: Bound<&EncodedKey>) -> (Bound<Vec<u8>>, Option<GroupId>, Option<KeyspaceId>) {
-	let (key, wrap): (&EncodedKey, fn(Vec<u8>) -> Bound<Vec<u8>>) = match bound {
+	let (key, wrap): (&EncodedKey, BoundWrap) = match bound {
 		Bound::Unbounded => return (Bound::Unbounded, None, None),
 		Bound::Included(key) => (key, Bound::Included),
 		Bound::Excluded(key) => (key, Bound::Excluded),

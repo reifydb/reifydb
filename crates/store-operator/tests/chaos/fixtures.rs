@@ -21,7 +21,7 @@ use reifydb_store_operator::{
 use reifydb_testing::keyspace::state_key;
 
 /// Only data keyspaces, so every key the workload writes lands in a census bucket.
-pub const KEYSPACES: [u8; 4] = [0x10, 0x11, 0x1D, 0x40];
+pub const KEYSPACES: [u8; 4] = [0x13, 0x1D, 0x2C, 0x40];
 
 pub struct Config {
 	pub name: &'static str,

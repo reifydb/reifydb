@@ -29,6 +29,5 @@ impl From<OperatorPointConfig> for PointConfig {
 		}
 	}
 }
-pub use tiers::OperatorPointKeyspaceMetrics;
 
 pub type OperatorPointMetrics = PointMetrics;

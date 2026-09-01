@@ -46,3 +46,4 @@ test-workspace:
 		echo ""; \
 		echo "==> ALL $(N) iterations PASSED (total=$$((total_end - total_start))s)"; \
 	fi
+	@$(MAKE) --no-print-directory sweep-auto

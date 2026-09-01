@@ -26,6 +26,7 @@ test-pkg-typescript: ensure-testcontainer
 	else \
 		echo "⚠️ Skipping TypeScript tests – directory pkg/typescript not found"; \
 	fi
+	@$(MAKE) --no-print-directory sweep-auto
 
 # Start the test container
 start-testcontainer:

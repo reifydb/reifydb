@@ -23,10 +23,9 @@ mod tests {
 	};
 	use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 
-	use crate::tier::range::{
-		OperatorRangeConfig,
-		tiers::RangeTiers,
-		typed::{TypedDomain, TypedPartition},
+	use crate::tier::{
+		range::{OperatorRangeConfig, tiers::RangeTiers, typed::TypedDomain},
+		typed::TypedPartition,
 	};
 
 	type Suffix = Asc<RowNumber>;

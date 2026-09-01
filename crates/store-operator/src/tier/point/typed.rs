@@ -11,7 +11,7 @@ use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::key::operator::{state::KeyspaceId, traits::Keyspace};
 use reifydb_store::tier::point::PointDomain;
 
-pub use crate::tier::typed::TypedPartition;
+use crate::tier::typed::TypedPartition;
 
 pub struct TypedDomain<K: Keyspace>(PhantomData<K>);
 

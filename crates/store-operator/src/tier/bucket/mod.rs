@@ -45,6 +45,10 @@ pub trait AnyBucket: Any + Send + Sync {
 
 	fn len(&self) -> usize;
 
+	fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
 	fn for_each(&self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry));
 
 	fn encoded_entries(&self) -> Vec<(EncodedKey, WriteEntry)>;
@@ -428,7 +432,7 @@ impl BucketMap {
 	}
 }
 
-impl<'a> IntoIterator for &'a BucketMap {
+impl IntoIterator for &BucketMap {
 	type Item = ((OperatorId, EncodedKey), WriteEntry);
 	type IntoIter = std::vec::IntoIter<((OperatorId, EncodedKey), WriteEntry)>;
 

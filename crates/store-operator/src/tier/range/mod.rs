@@ -39,6 +39,5 @@ impl From<OperatorRangeConfig> for RangeConfig {
 		}
 	}
 }
-pub use tiers::OperatorRangeKeyspaceMetrics;
 
 pub type OperatorRangeMetrics = RangeMetrics;

@@ -14,7 +14,7 @@ use reifydb_core::key::{
 };
 use reifydb_store::tier::range::RangeDomain;
 
-pub use crate::tier::typed::TypedPartition;
+use crate::tier::typed::TypedPartition;
 
 pub struct TypedDomain<K: Keyspace>(PhantomData<K>);
 

@@ -9,7 +9,7 @@ use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::{KEYSPACES, KeyspaceVisitor, columns_width, dispatch},
-			state::{GroupId, OperatorStateKey},
+			state::{GroupId, KeyspaceId, OperatorStateKey},
 			traits::Keyspace,
 		},
 		typed::{Key, layout::KeyLayout, range::KeyRange},
@@ -84,8 +84,9 @@ pub(super) fn get(conn: &Connection, operator: OperatorId, key: &EncodedKey) -> 
 struct Bounded<'a> {
 	conn: &'a Connection,
 	operator: OperatorId,
-	group: Option<GroupId>,
+	start_group: Option<GroupId>,
 	start: Bound<Vec<u8>>,
+	end_group: Option<GroupId>,
 	end: Bound<Vec<u8>>,
 	limit: u64,
 	reverse: bool,
@@ -95,7 +96,7 @@ impl KeyspaceVisitor for Bounded<'_> {
 	type Output = Vec<(EncodedKey, Vec<u8>)>;
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
-		let start = match (self.group, &self.start) {
+		let start = match (self.start_group, &self.start) {
 			(None, _) => Bound::Unbounded,
 			(Some(group), Bound::Unbounded) => Bound::Included(typed_key::<K>(group, &[], lowest::<K>())),
 			(Some(group), Bound::Included(suffix)) => {
@@ -105,7 +106,7 @@ impl KeyspaceVisitor for Bounded<'_> {
 				Bound::Excluded(typed_key::<K>(group, suffix, highest::<K>()))
 			}
 		};
-		let end = match (self.group, &self.end) {
+		let end = match (self.end_group, &self.end) {
 			(None, _) => Bound::Unbounded,
 			(Some(group), Bound::Unbounded) => Bound::Included(typed_key::<K>(group, &[], highest::<K>())),
 			(Some(group), Bound::Included(suffix)) => {
@@ -124,6 +125,54 @@ impl KeyspaceVisitor for Bounded<'_> {
 	}
 }
 
+fn keyspace_start(
+	id: KeyspaceId,
+	group: Option<GroupId>,
+	at: Option<KeyspaceId>,
+	suffix: &Bound<Vec<u8>>,
+) -> Option<(Option<GroupId>, Bound<Vec<u8>>)> {
+	let Some(group) = group else {
+		return Some((None, Bound::Unbounded));
+	};
+	let Some(at) = at else {
+		return Some((Some(group), Bound::Unbounded));
+	};
+	if id == at {
+		return Some((Some(group), suffix.clone()));
+	}
+	if id.0 < at.0 {
+		return Some((Some(group), Bound::Unbounded));
+	}
+	group.0.checked_sub(1).map(|next| (Some(GroupId(next)), Bound::Unbounded))
+}
+
+fn keyspace_end(
+	id: KeyspaceId,
+	group: Option<GroupId>,
+	at: Option<KeyspaceId>,
+	suffix: &Bound<Vec<u8>>,
+) -> Option<(Option<GroupId>, Bound<Vec<u8>>)> {
+	let Some(group) = group else {
+		return Some((None, Bound::Unbounded));
+	};
+	let Some(at) = at else {
+		return Some((Some(group), Bound::Unbounded));
+	};
+	if id == at {
+		return Some((Some(group), suffix.clone()));
+	}
+	if id.0 > at.0 {
+		return Some((Some(group), Bound::Unbounded));
+	}
+	group.0.checked_add(1).map(|previous| (Some(GroupId(previous)), Bound::Unbounded))
+}
+
+fn every_keyspace() -> Vec<KeyspaceId> {
+	let mut ids: Vec<KeyspaceId> = KEYSPACES.iter().map(|spec| spec.id).collect();
+	ids.sort_by(|left, right| right.0.cmp(&left.0));
+	ids
+}
+
 pub(super) fn bounded(
 	conn: &Connection,
 	operator: OperatorId,
@@ -133,43 +182,54 @@ pub(super) fn bounded(
 ) -> Vec<(EncodedKey, Vec<u8>)> {
 	let (start, start_group, start_at) = split_bound(range.start.as_ref());
 	let (end, end_group, end_at) = split_bound(range.end.as_ref());
-	let group = start_group.or(end_group);
-	if let (Some(first), Some(second)) = (start_group, end_group) {
-		assert_eq!(first, second, "an operator state range must not span groups");
-	}
 	let end_open = matches!(end, Bound::Excluded(ref suffix) if suffix.is_empty());
-	let mut ids = span(start_at, end_at, end_open);
+	let one_group = matches!((start_group, end_group), (Some(first), Some(second)) if first == second);
+
+	let mut ids = match one_group {
+		true => span(start_at, end_at, end_open),
+		false => every_keyspace(),
+	};
 	if reverse {
 		ids.reverse();
 	}
 
-	let mut out = Vec::new();
+	let mut out: Vec<(EncodedKey, Vec<u8>)> = Vec::new();
 	let mut remaining = limit;
 	for id in ids {
-		if remaining == 0 {
+		if one_group && remaining == 0 {
 			break;
 		}
+		let (Some((keyspace_start_group, keyspace_start)), Some((keyspace_end_group, keyspace_end))) =
+			(keyspace_start(id, start_group, start_at, &start), keyspace_end(id, end_group, end_at, &end))
+		else {
+			continue;
+		};
 		let rows = dispatch(
 			id,
 			Bounded {
 				conn,
 				operator,
-				group,
-				start: match Some(id) == start_at {
-					true => start.clone(),
-					false => Bound::Unbounded,
+				start_group: keyspace_start_group,
+				start: keyspace_start,
+				end_group: keyspace_end_group,
+				end: keyspace_end,
+				limit: match one_group {
+					true => remaining,
+					false => limit,
 				},
-				end: match Some(id) == end_at && !end_open {
-					true => end.clone(),
-					false => Bound::Unbounded,
-				},
-				limit: remaining,
 				reverse,
 			},
 		)
 		.expect("an operator state range must name a keyspace in the catalogue");
 		remaining -= rows.len().min(remaining as usize) as u64;
 		out.extend(rows);
+	}
+	if !one_group {
+		out.sort_by(|left, right| match reverse {
+			false => left.0.as_slice().cmp(right.0.as_slice()),
+			true => right.0.as_slice().cmp(left.0.as_slice()),
+		});
+		out.truncate(limit as usize);
 	}
 	out
 }

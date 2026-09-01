@@ -3,8 +3,8 @@
 
 use std::{
 	any::Any,
-	collections::BTreeMap,
-	mem::size_of,
+	collections::{BTreeMap, btree_map::Entry},
+	mem::{replace, size_of, take},
 	ops::{Bound, RangeBounds},
 };
 
@@ -89,8 +89,8 @@ impl<K: Keyspace> TypedBucket<K> {
 	}
 
 	pub fn record(&mut self, group: GroupId, suffix: K::Suffix, post: Option<EncodedPodRow>) {
-		if !self.partitions.contains_key(&group) {
-			self.partitions.insert(group, SortedVecMap::new());
+		if let Entry::Vacant(entry) = self.partitions.entry(group) {
+			entry.insert(SortedVecMap::new());
 			self.bytes = self.bytes.saturating_add(Self::group_bytes());
 		}
 		let partition = self.partitions.get_mut(&group).expect("the partition was just inserted");
@@ -181,7 +181,7 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	fn flush(&mut self, conn: &Connection) -> Result<()> {
-		for (group, partition) in std::mem::take(&mut self.partitions) {
+		for (group, partition) in take(&mut self.partitions) {
 			for (suffix, entry) in partition {
 				let key = K::join(group, suffix);
 				match entry.post {
@@ -262,8 +262,8 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 			.expect("a keyspace id must map to exactly one key type");
 		self.absorb(Self {
 			operator: other.operator,
-			partitions: std::mem::take(&mut other.partitions),
-			bytes: std::mem::replace(&mut other.bytes, ByteSize::ZERO),
+			partitions: take(&mut other.partitions),
+			bytes: replace(&mut other.bytes, ByteSize::ZERO),
 		});
 	}
 

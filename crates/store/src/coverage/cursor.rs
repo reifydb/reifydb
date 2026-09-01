@@ -3,8 +3,9 @@
 
 use reifydb_core::key::typed::MultiKey;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum Cursor<S, K> {
+	#[default]
 	NotStarted,
 	InProgress {
 		last_key: K,
@@ -13,12 +14,6 @@ pub enum Cursor<S, K> {
 		last_key: Option<K>,
 		stop: Option<S>,
 	},
-}
-
-impl<S, K> Default for Cursor<S, K> {
-	fn default() -> Self {
-		Cursor::NotStarted
-	}
 }
 
 pub type RangeCursor = Cursor<(), MultiKey>;

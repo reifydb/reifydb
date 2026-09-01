@@ -31,8 +31,9 @@ use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 use super::{
 	OperatorRangeConfig, OperatorRangeMetrics,
 	tiers::{OperatorRangeKeyspaceMetrics, RangeTiers},
-	typed::{TypedDomain, TypedPartition},
+	typed::TypedDomain,
 };
+use crate::tier::typed::TypedPartition;
 
 const OP_A: OperatorId = OperatorId(1);
 const GROUP_A: GroupId = GroupId(10);

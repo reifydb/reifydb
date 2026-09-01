@@ -16,3 +16,4 @@ test-projects:
 		fi; \
 	done
 	@echo "✅ All pkg/projects tests completed!"
+	@$(MAKE) --no-print-directory sweep-auto

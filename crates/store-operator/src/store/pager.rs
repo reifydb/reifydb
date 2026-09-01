@@ -31,10 +31,8 @@ use reifydb_store::{
 use crate::{
 	tier::{
 		persistent::OperatorPersistentTier,
-		range::{
-			tiers::RangeTiers,
-			typed::{TypedDomain, TypedPartition},
-		},
+		range::{tiers::RangeTiers, typed::TypedDomain},
+		typed::TypedPartition,
 	},
 	types::OperatorBatch,
 };

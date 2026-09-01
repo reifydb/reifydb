@@ -537,7 +537,7 @@ fn a_keyspace_declared_not_cached_never_occupies_the_point_tier() {
 	// is one a hot keyspace loses to eviction.
 	for keyspace in [KeyspaceId::CUSTOM_NOT_CACHED, KeyspaceId::JOIN_PIN, KeyspaceId::ENGINE_META] {
 		let (store, _storage, _guard) = cached_store();
-		let key = key_in(keyspace, 1);
+		let key = key_in(keyspace, 0);
 		put(&store, OP_A, key.clone(), row("durable"));
 		assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
 

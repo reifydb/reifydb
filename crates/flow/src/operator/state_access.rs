@@ -167,7 +167,8 @@ mod tests {
 
 	impl IntoGroupStateKey for &Key {
 		fn into_group_state_key(self) -> GroupStateKey {
-			custom_not_cached_key(self.0.as_bytes()).expect("a custom state key must be at most sixteen bytes")
+			custom_not_cached_key(self.0.as_bytes())
+				.expect("a custom state key must be at most sixteen bytes")
 		}
 	}
 
