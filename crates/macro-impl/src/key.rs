@@ -5,14 +5,14 @@ use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 
 use crate::generate::compile_error;
 
-struct FlatField {
+struct KeyField {
 	name: String,
-	column: FlatColumn,
+	column: KeyColumn,
 	ty: String,
 }
 
 #[derive(Clone, Copy)]
-enum FlatColumn {
+enum KeyColumn {
 	U8,
 	U16,
 	U32,
@@ -52,100 +52,97 @@ enum FlatColumn {
 	MigrationEventId,
 	PrimaryKeyId,
 	IndexId,
-	SystemVersion,
 	OptionU8,
 }
 
-impl FlatColumn {
+impl KeyColumn {
 	fn width(self) -> usize {
 		match self {
-			FlatColumn::U8 => 1,
-			FlatColumn::U16 => 2,
-			FlatColumn::U32 => 4,
-			FlatColumn::U64
-			| FlatColumn::RowNumber
-			| FlatColumn::TableId
-			| FlatColumn::ColumnId
-			| FlatColumn::FlowId
-			| FlatColumn::FlowEdgeId
-			| FlatColumn::OperatorId
-			| FlatColumn::HandlerId
-			| FlatColumn::NamespaceId
-			| FlatColumn::SumTypeId
-			| FlatColumn::SequenceId
-			| FlatColumn::EpochSeconds
-			| FlatColumn::ViewId
-			| FlatColumn::SeriesId
-			| FlatColumn::SinkId
-			| FlatColumn::SourceId
-			| FlatColumn::QueueId
-			| FlatColumn::RingBufferId
-			| FlatColumn::BindingId
-			| FlatColumn::DictionaryId
-			| FlatColumn::ProcedureId
-			| FlatColumn::DateTime
-			| FlatColumn::ColumnPropertyId
-			| FlatColumn::RowShapeFingerprint
-			| FlatColumn::RelationshipId
-			| FlatColumn::MigrationId
-			| FlatColumn::MigrationEventId
-			| FlatColumn::PrimaryKeyId
-			| FlatColumn::IndexId => 8,
-			FlatColumn::ObjectId | FlatColumn::StorageId => 9,
-			FlatColumn::SystemVersion => 1,
-			FlatColumn::OptionU8 => 2,
-			FlatColumn::U128
-			| FlatColumn::GroupId
-			| FlatColumn::Blob16
-			| FlatColumn::Partition
-			| FlatColumn::IdentityId => 16,
+			KeyColumn::U8 => 1,
+			KeyColumn::U16 => 2,
+			KeyColumn::U32 => 4,
+			KeyColumn::U64
+			| KeyColumn::RowNumber
+			| KeyColumn::TableId
+			| KeyColumn::ColumnId
+			| KeyColumn::FlowId
+			| KeyColumn::FlowEdgeId
+			| KeyColumn::OperatorId
+			| KeyColumn::HandlerId
+			| KeyColumn::NamespaceId
+			| KeyColumn::SumTypeId
+			| KeyColumn::SequenceId
+			| KeyColumn::EpochSeconds
+			| KeyColumn::ViewId
+			| KeyColumn::SeriesId
+			| KeyColumn::SinkId
+			| KeyColumn::SourceId
+			| KeyColumn::QueueId
+			| KeyColumn::RingBufferId
+			| KeyColumn::BindingId
+			| KeyColumn::DictionaryId
+			| KeyColumn::ProcedureId
+			| KeyColumn::DateTime
+			| KeyColumn::ColumnPropertyId
+			| KeyColumn::RowShapeFingerprint
+			| KeyColumn::RelationshipId
+			| KeyColumn::MigrationId
+			| KeyColumn::MigrationEventId
+			| KeyColumn::PrimaryKeyId
+			| KeyColumn::IndexId => 8,
+			KeyColumn::ObjectId | KeyColumn::StorageId => 9,
+			KeyColumn::OptionU8 => 2,
+			KeyColumn::U128
+			| KeyColumn::GroupId
+			| KeyColumn::Blob16
+			| KeyColumn::Partition
+			| KeyColumn::IdentityId => 16,
 		}
 	}
 
 	fn encode_stmt(self, field: &str) -> String {
 		match self {
-			FlatColumn::U8 => format!("serializer.extend_u8(self.{field});"),
-			FlatColumn::U16 => format!("serializer.extend_u16(self.{field});"),
-			FlatColumn::U32 => format!("serializer.extend_u32(self.{field});"),
-			FlatColumn::U64 => format!("serializer.extend_u64(self.{field});"),
-			FlatColumn::U128 => format!("serializer.extend_u128(self.{field});"),
-			FlatColumn::RowNumber => format!("serializer.extend_u64(self.{field}.0);"),
-			FlatColumn::GroupId => format!("serializer.extend_u128(self.{field}.0);"),
-			FlatColumn::Blob16 => format!("serializer.extend_raw(&self.{field});"),
-			FlatColumn::IdentityId => format!("serializer.extend_identity_id(&self.{field});"),
-			FlatColumn::TableId
-			| FlatColumn::ColumnId
-			| FlatColumn::FlowId
-			| FlatColumn::FlowEdgeId
-			| FlatColumn::OperatorId
-			| FlatColumn::HandlerId
-			| FlatColumn::NamespaceId
-			| FlatColumn::SumTypeId
-			| FlatColumn::SequenceId
-			| FlatColumn::ViewId
-			| FlatColumn::SeriesId
-			| FlatColumn::SinkId
-			| FlatColumn::SourceId
-			| FlatColumn::QueueId
-			| FlatColumn::RingBufferId
-			| FlatColumn::BindingId
-			| FlatColumn::DictionaryId
-			| FlatColumn::ColumnPropertyId
-			| FlatColumn::RelationshipId
-			| FlatColumn::MigrationId
-			| FlatColumn::MigrationEventId
-			| FlatColumn::PrimaryKeyId => format!("serializer.extend_u64(self.{field}.0);"),
-			FlatColumn::ProcedureId => format!("serializer.extend_u64(*self.{field});"),
-			FlatColumn::EpochSeconds => format!("serializer.extend_u64(self.{field}.seconds());"),
-			FlatColumn::DateTime => format!("serializer.extend_datetime(&self.{field});"),
-			FlatColumn::RowShapeFingerprint => format!("serializer.extend_u64(self.{field}.as_u64());"),
-			FlatColumn::Partition => format!("serializer.extend_u128(self.{field}.0);"),
-			FlatColumn::IndexId => format!("serializer.extend_u64(self.{field}.as_u64());"),
-			FlatColumn::SystemVersion => format!("serializer.extend_u8(self.{field} as u8);"),
-			FlatColumn::ObjectId | FlatColumn::StorageId => {
+			KeyColumn::U8 => format!("serializer.extend_u8(self.{field});"),
+			KeyColumn::U16 => format!("serializer.extend_u16(self.{field});"),
+			KeyColumn::U32 => format!("serializer.extend_u32(self.{field});"),
+			KeyColumn::U64 => format!("serializer.extend_u64(self.{field});"),
+			KeyColumn::U128 => format!("serializer.extend_u128(self.{field});"),
+			KeyColumn::RowNumber => format!("serializer.extend_u64(self.{field}.0);"),
+			KeyColumn::GroupId => format!("serializer.extend_u128(self.{field}.0);"),
+			KeyColumn::Blob16 => format!("serializer.extend_raw(&self.{field});"),
+			KeyColumn::IdentityId => format!("serializer.extend_identity_id(&self.{field});"),
+			KeyColumn::TableId
+			| KeyColumn::ColumnId
+			| KeyColumn::FlowId
+			| KeyColumn::FlowEdgeId
+			| KeyColumn::OperatorId
+			| KeyColumn::HandlerId
+			| KeyColumn::NamespaceId
+			| KeyColumn::SumTypeId
+			| KeyColumn::SequenceId
+			| KeyColumn::ViewId
+			| KeyColumn::SeriesId
+			| KeyColumn::SinkId
+			| KeyColumn::SourceId
+			| KeyColumn::QueueId
+			| KeyColumn::RingBufferId
+			| KeyColumn::BindingId
+			| KeyColumn::DictionaryId
+			| KeyColumn::ColumnPropertyId
+			| KeyColumn::RelationshipId
+			| KeyColumn::MigrationId
+			| KeyColumn::MigrationEventId
+			| KeyColumn::PrimaryKeyId => format!("serializer.extend_u64(self.{field}.0);"),
+			KeyColumn::ProcedureId => format!("serializer.extend_u64(*self.{field});"),
+			KeyColumn::EpochSeconds => format!("serializer.extend_u64(self.{field}.seconds());"),
+			KeyColumn::DateTime => format!("serializer.extend_datetime(&self.{field});"),
+			KeyColumn::RowShapeFingerprint => format!("serializer.extend_u64(self.{field}.as_u64());"),
+			KeyColumn::Partition => format!("serializer.extend_u128(self.{field}.0);"),
+			KeyColumn::IndexId => format!("serializer.extend_u64(self.{field}.as_u64());"),
+			KeyColumn::ObjectId | KeyColumn::StorageId => {
 				format!("serializer.extend_object_id(self.{field});")
 			}
-			FlatColumn::OptionU8 => format!(
+			KeyColumn::OptionU8 => format!(
 				"match self.{field} {{ Some(v) => {{ serializer.extend_u8(1u8).extend_u8(v); }} \
 				 None => {{ serializer.extend_u8(0u8).extend_u8(0u8); }} }}"
 			),
@@ -154,49 +151,48 @@ impl FlatColumn {
 
 	fn decode_expr(self, field_type: &str) -> String {
 		match self {
-			FlatColumn::U8 => "de.read_u8().ok()?".to_string(),
-			FlatColumn::U16 => "de.read_u16().ok()?".to_string(),
-			FlatColumn::U32 => "de.read_u32().ok()?".to_string(),
-			FlatColumn::U64 => "de.read_u64().ok()?".to_string(),
-			FlatColumn::U128 => "de.read_u128().ok()?".to_string(),
-			FlatColumn::RowNumber => "RowNumber(de.read_u64().ok()?)".to_string(),
-			FlatColumn::GroupId => "GroupId(de.read_u128().ok()?)".to_string(),
-			FlatColumn::Blob16 => "{ let bytes = de.read_raw(16).ok()?; let mut buf = [0u8; 16]; \
+			KeyColumn::U8 => "de.read_u8().ok()?".to_string(),
+			KeyColumn::U16 => "de.read_u16().ok()?".to_string(),
+			KeyColumn::U32 => "de.read_u32().ok()?".to_string(),
+			KeyColumn::U64 => "de.read_u64().ok()?".to_string(),
+			KeyColumn::U128 => "de.read_u128().ok()?".to_string(),
+			KeyColumn::RowNumber => "RowNumber(de.read_u64().ok()?)".to_string(),
+			KeyColumn::GroupId => "GroupId(de.read_u128().ok()?)".to_string(),
+			KeyColumn::Blob16 => "{ let bytes = de.read_raw(16).ok()?; let mut buf = [0u8; 16]; \
 				 buf.copy_from_slice(bytes); buf }"
 				.to_string(),
-			FlatColumn::IdentityId => "de.read_identity_id().ok()?".to_string(),
-			FlatColumn::TableId
-			| FlatColumn::ColumnId
-			| FlatColumn::FlowId
-			| FlatColumn::FlowEdgeId
-			| FlatColumn::OperatorId
-			| FlatColumn::HandlerId
-			| FlatColumn::NamespaceId
-			| FlatColumn::SumTypeId
-			| FlatColumn::SequenceId
-			| FlatColumn::ViewId
-			| FlatColumn::SeriesId
-			| FlatColumn::SinkId
-			| FlatColumn::SourceId
-			| FlatColumn::QueueId
-			| FlatColumn::RingBufferId
-			| FlatColumn::BindingId
-			| FlatColumn::DictionaryId
-			| FlatColumn::ColumnPropertyId
-			| FlatColumn::RelationshipId
-			| FlatColumn::MigrationId
-			| FlatColumn::MigrationEventId
-			| FlatColumn::PrimaryKeyId => format!("{field_type}(de.read_u64().ok()?)"),
-			FlatColumn::ProcedureId => "ProcedureId::from_raw(de.read_u64().ok()?)".to_string(),
-			FlatColumn::EpochSeconds => "EpochSeconds::new(de.read_u64().ok()?)".to_string(),
-			FlatColumn::DateTime => "de.read_datetime().ok()?".to_string(),
-			FlatColumn::RowShapeFingerprint => "RowShapeFingerprint::new(de.read_u64().ok()?)".to_string(),
-			FlatColumn::Partition => "Partition(de.read_u128().ok()?)".to_string(),
-			FlatColumn::IndexId => "IndexId::Primary(PrimaryKeyId(de.read_u64().ok()?))".to_string(),
-			FlatColumn::SystemVersion => format!("{field_type}::try_from(de.read_u8().ok()?).ok()?"),
-			FlatColumn::ObjectId => "de.read_object_id().ok()?".to_string(),
-			FlatColumn::StorageId => "StorageId::from_object(de.read_object_id().ok()?)?".to_string(),
-			FlatColumn::OptionU8 => "match de.read_u8().ok()? { 1u8 => Some(de.read_u8().ok()?), 0u8 => { \
+			KeyColumn::IdentityId => "de.read_identity_id().ok()?".to_string(),
+			KeyColumn::TableId
+			| KeyColumn::ColumnId
+			| KeyColumn::FlowId
+			| KeyColumn::FlowEdgeId
+			| KeyColumn::OperatorId
+			| KeyColumn::HandlerId
+			| KeyColumn::NamespaceId
+			| KeyColumn::SumTypeId
+			| KeyColumn::SequenceId
+			| KeyColumn::ViewId
+			| KeyColumn::SeriesId
+			| KeyColumn::SinkId
+			| KeyColumn::SourceId
+			| KeyColumn::QueueId
+			| KeyColumn::RingBufferId
+			| KeyColumn::BindingId
+			| KeyColumn::DictionaryId
+			| KeyColumn::ColumnPropertyId
+			| KeyColumn::RelationshipId
+			| KeyColumn::MigrationId
+			| KeyColumn::MigrationEventId
+			| KeyColumn::PrimaryKeyId => format!("{field_type}(de.read_u64().ok()?)"),
+			KeyColumn::ProcedureId => "ProcedureId::from_raw(de.read_u64().ok()?)".to_string(),
+			KeyColumn::EpochSeconds => "EpochSeconds::new(de.read_u64().ok()?)".to_string(),
+			KeyColumn::DateTime => "de.read_datetime().ok()?".to_string(),
+			KeyColumn::RowShapeFingerprint => "RowShapeFingerprint::new(de.read_u64().ok()?)".to_string(),
+			KeyColumn::Partition => "Partition(de.read_u128().ok()?)".to_string(),
+			KeyColumn::IndexId => "IndexId::Primary(PrimaryKeyId(de.read_u64().ok()?))".to_string(),
+			KeyColumn::ObjectId => "de.read_object_id().ok()?".to_string(),
+			KeyColumn::StorageId => "StorageId::from_object(de.read_object_id().ok()?)?".to_string(),
+			KeyColumn::OptionU8 => "match de.read_u8().ok()? { 1u8 => Some(de.read_u8().ok()?), 0u8 => { \
 				de.read_u8().ok()?; None }, _ => return None }"
 				.to_string(),
 		}
@@ -293,7 +289,7 @@ fn parse_key_attribute(group: &Group) -> Option<String> {
 	}
 }
 
-fn parse_fields(body: &Group) -> Result<Vec<FlatField>, TokenStream> {
+fn parse_fields(body: &Group) -> Result<Vec<KeyField>, TokenStream> {
 	let tokens: Vec<TokenTree> = body.stream().into_iter().collect();
 	let mut iter = tokens.iter().peekable();
 	let mut fields = Vec::new();
@@ -364,7 +360,7 @@ fn parse_fields(body: &Group) -> Result<Vec<FlatField>, TokenStream> {
 			}
 		};
 
-		fields.push(FlatField {
+		fields.push(KeyField {
 			name: field_name,
 			column,
 			ty,
@@ -374,14 +370,14 @@ fn parse_fields(body: &Group) -> Result<Vec<FlatField>, TokenStream> {
 	Ok(fields)
 }
 
-fn column_type(tokens: &[TokenTree]) -> Option<FlatColumn> {
+fn column_type(tokens: &[TokenTree]) -> Option<KeyColumn> {
 	if let [TokenTree::Group(group)] = tokens {
 		return (group.delimiter() == Delimiter::Bracket && is_byte_array_16(group))
-			.then_some(FlatColumn::Blob16);
+			.then_some(KeyColumn::Blob16);
 	}
 
 	if is_option_u8(tokens) {
-		return Some(FlatColumn::OptionU8);
+		return Some(KeyColumn::OptionU8);
 	}
 
 	let unqualified = strip_path(tokens);
@@ -395,41 +391,45 @@ fn column_type(tokens: &[TokenTree]) -> Option<FlatColumn> {
 	};
 
 	match head.as_str() {
-		"u8" => Some(FlatColumn::U8),
-		"u16" => Some(FlatColumn::U16),
-		"u32" => Some(FlatColumn::U32),
-		"u64" => Some(FlatColumn::U64),
-		"u128" => Some(FlatColumn::U128),
-		"RowNumber" => Some(FlatColumn::RowNumber),
-		"GroupId" => Some(FlatColumn::GroupId),
-		"TableId" => Some(FlatColumn::TableId),
-		"ColumnId" => Some(FlatColumn::ColumnId),
-		"ObjectId" => Some(FlatColumn::ObjectId),
-		"StorageId" => Some(FlatColumn::StorageId),
-		"QueueId" => Some(FlatColumn::QueueId),
-		"RingBufferId" => Some(FlatColumn::RingBufferId),
-		"SeriesId" => Some(FlatColumn::SeriesId),
-		"DateTime" => Some(FlatColumn::DateTime),
-		"Partition" => Some(FlatColumn::Partition),
-		"FlowId" => Some(FlatColumn::FlowId),
-		"FlowEdgeId" => Some(FlatColumn::FlowEdgeId),
-		"OperatorId" => Some(FlatColumn::OperatorId),
-		"HandlerId" => Some(FlatColumn::HandlerId),
-		"NamespaceId" => Some(FlatColumn::NamespaceId),
-		"SumTypeId" => Some(FlatColumn::SumTypeId),
-		"SequenceId" => Some(FlatColumn::SequenceId),
-		"EpochSeconds" => Some(FlatColumn::EpochSeconds),
-		"IdentityId" => Some(FlatColumn::IdentityId),
-		"AuthenticationId" | "IdentityAttributeId" | "RoleId" | "PolicyId" | "TokenId" => Some(FlatColumn::U64),
-		"ViewId" => Some(FlatColumn::ViewId),
-		"SinkId" => Some(FlatColumn::SinkId),
-		"SourceId" => Some(FlatColumn::SourceId),
-		"BindingId" => Some(FlatColumn::BindingId),
-		"DictionaryId" => Some(FlatColumn::DictionaryId),
-		"ProcedureId" => Some(FlatColumn::ProcedureId),
-		"ColumnPropertyId" => Some(FlatColumn::ColumnPropertyId),
-		"RowShapeFingerprint" => Some(FlatColumn::RowShapeFingerprint),
-		"IndexId" => Some(FlatColumn::IndexId),
+		"u8" => Some(KeyColumn::U8),
+		"u16" => Some(KeyColumn::U16),
+		"u32" => Some(KeyColumn::U32),
+		"u64" => Some(KeyColumn::U64),
+		"u128" => Some(KeyColumn::U128),
+		"RowNumber" => Some(KeyColumn::RowNumber),
+		"GroupId" => Some(KeyColumn::GroupId),
+		"TableId" => Some(KeyColumn::TableId),
+		"ColumnId" => Some(KeyColumn::ColumnId),
+		"ObjectId" => Some(KeyColumn::ObjectId),
+		"StorageId" => Some(KeyColumn::StorageId),
+		"QueueId" => Some(KeyColumn::QueueId),
+		"RingBufferId" => Some(KeyColumn::RingBufferId),
+		"SeriesId" => Some(KeyColumn::SeriesId),
+		"DateTime" => Some(KeyColumn::DateTime),
+		"Partition" => Some(KeyColumn::Partition),
+		"FlowId" => Some(KeyColumn::FlowId),
+		"FlowEdgeId" => Some(KeyColumn::FlowEdgeId),
+		"OperatorId" => Some(KeyColumn::OperatorId),
+		"HandlerId" => Some(KeyColumn::HandlerId),
+		"NamespaceId" => Some(KeyColumn::NamespaceId),
+		"SumTypeId" => Some(KeyColumn::SumTypeId),
+		"SequenceId" => Some(KeyColumn::SequenceId),
+		"EpochSeconds" => Some(KeyColumn::EpochSeconds),
+		"IdentityId" => Some(KeyColumn::IdentityId),
+		"AuthenticationId" | "IdentityAttributeId" | "RoleId" | "PolicyId" | "TokenId" => Some(KeyColumn::U64),
+		"ViewId" => Some(KeyColumn::ViewId),
+		"SinkId" => Some(KeyColumn::SinkId),
+		"SourceId" => Some(KeyColumn::SourceId),
+		"BindingId" => Some(KeyColumn::BindingId),
+		"DictionaryId" => Some(KeyColumn::DictionaryId),
+		"ProcedureId" => Some(KeyColumn::ProcedureId),
+		"ColumnPropertyId" => Some(KeyColumn::ColumnPropertyId),
+		"RowShapeFingerprint" => Some(KeyColumn::RowShapeFingerprint),
+		"IndexId" => Some(KeyColumn::IndexId),
+		"RelationshipId" => Some(KeyColumn::RelationshipId),
+		"MigrationId" => Some(KeyColumn::MigrationId),
+		"MigrationEventId" => Some(KeyColumn::MigrationEventId),
+		"PrimaryKeyId" => Some(KeyColumn::PrimaryKeyId),
 		_ => None,
 	}
 }
@@ -474,7 +474,7 @@ fn render(tokens: &[TokenTree]) -> String {
 	tokens.iter().map(|token| token.to_string()).collect()
 }
 
-fn expand(name: &str, kind: &str, fields: &[FlatField]) -> TokenStream {
+fn expand(name: &str, kind: &str, fields: &[KeyField]) -> TokenStream {
 	let capacity: usize = 1 + fields.iter().map(|f| f.column.width()).sum::<usize>();
 
 	let mut encode_body = String::new();

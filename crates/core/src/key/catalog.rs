@@ -1535,34 +1535,10 @@ pub mod sink_key_tests {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Key)]
+#[key(kind = Relationship)]
 pub struct RelationshipKey {
 	pub relationship: RelationshipId,
-}
-
-impl Key for RelationshipKey {
-	const KIND: KeyKind = KeyKind::Relationship;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<RelationshipKey as Key>::KIND as u8).extend_u64(self.relationship);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <RelationshipKey as Key>::KIND {
-			return None;
-		}
-
-		let relationship = de.read_u64().ok()?;
-
-		Some(Self {
-			relationship: RelationshipId(relationship),
-		})
-	}
 }
 
 impl RelationshipKey {
@@ -2054,34 +2030,10 @@ pub mod binding_key_tests {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Key)]
+#[key(kind = PrimaryKey)]
 pub struct PrimaryKeyKey {
 	pub primary_key: PrimaryKeyId,
-}
-
-impl Key for PrimaryKeyKey {
-	const KIND: KeyKind = KeyKind::PrimaryKey;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<PrimaryKeyKey as Key>::KIND as u8).extend_u64(self.primary_key);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <PrimaryKeyKey as Key>::KIND {
-			return None;
-		}
-
-		let primary_key = de.read_u64().ok()?;
-
-		Some(Self {
-			primary_key: PrimaryKeyId(primary_key),
-		})
-	}
 }
 
 impl PrimaryKeyKey {

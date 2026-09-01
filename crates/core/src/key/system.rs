@@ -245,7 +245,8 @@ mod version_epoch_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Key)]
+#[key(kind = Migration)]
 pub struct MigrationKey {
 	pub migration: MigrationId,
 }
@@ -278,31 +279,6 @@ impl MigrationKey {
 	}
 }
 
-impl Key for MigrationKey {
-	const KIND: KeyKind = KeyKind::Migration;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<MigrationKey as Key>::KIND as u8).extend_u64(self.migration);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <MigrationKey as Key>::KIND {
-			return None;
-		}
-
-		let migration = de.read_u64().ok()?;
-
-		Some(Self {
-			migration: MigrationId(migration),
-		})
-	}
-}
-
 #[cfg(test)]
 mod migration_key_tests {
 	use super::{Key, MigrationKey};
@@ -319,7 +295,8 @@ mod migration_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Key)]
+#[key(kind = MigrationEvent)]
 pub struct MigrationEventKey {
 	pub event: MigrationEventId,
 }
@@ -349,31 +326,6 @@ impl MigrationEventKey {
 		let mut serializer = KeySerializer::with_capacity(1);
 		serializer.extend_u8(<MigrationEventKey as Key>::KIND as u8 - 1);
 		serializer.to_encoded_key()
-	}
-}
-
-impl Key for MigrationEventKey {
-	const KIND: KeyKind = KeyKind::MigrationEvent;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<MigrationEventKey as Key>::KIND as u8).extend_u64(self.event);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <MigrationEventKey as Key>::KIND {
-			return None;
-		}
-
-		let event = de.read_u64().ok()?;
-
-		Some(Self {
-			event: MigrationEventId(event),
-		})
 	}
 }
 
