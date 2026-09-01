@@ -311,8 +311,8 @@ fn expand(name: &str, fields: &[KeyField]) -> TokenStream {
 	out.push_str("\t\tSome(Ord::cmp(self, other))\n\t}\n}\n\n");
 	out.push_str(&format!("#[automatically_derived]\nimpl KeyLayout for {name} {{\n"));
 	out.push_str(&format!("\tconst COLUMNS: &'static [KeyColumn] = &[{columns}\n\t];\n\n"));
-	out.push_str("\tfn key_values(&self) -> ::std::vec::Vec<KeyValue> {\n");
-	out.push_str(&format!("\t\t::std::vec![{values}\n\t\t]\n\t}}\n\n"));
+	out.push_str("\tfn key_values(&self) -> KeyValues {\n");
+	out.push_str(&format!("\t\tKeyValues::from_slice(&[{values}\n\t\t])\n\t}}\n\n"));
 	out.push_str("\tfn from_key_values(values: &[KeyValue]) -> Option<Self> {\n");
 	out.push_str(&format!("\t\tif values.len() != {} {{\n\t\t\treturn None;\n\t\t}}\n", fields.len()));
 	out.push_str(&format!("\t\tSome(Self {{{reads}\n\t\t}})\n\t}}\n\n"));

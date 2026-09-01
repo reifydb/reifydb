@@ -32,6 +32,8 @@ use crate::{
 	types::{BufferedState, OperatorBatch, OperatorWrite},
 };
 
+const SCAN_BUDGET_FACTOR: usize = 16;
+
 impl StandardOperatorStore {
 	#[instrument(name = "store::operator::apply_batch", level = "debug", skip(self, writes), fields(write_count = writes.len()))]
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
@@ -455,8 +457,18 @@ impl StandardOperatorStore {
 		let mut buffer_index = 0usize;
 		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 		let mut page_index = 0usize;
+		let scan_budget = target.saturating_mul(SCAN_BUDGET_FACTOR);
+		let mut consumed = 0usize;
+		let mut walked: Option<EncodedKey> = None;
+		let mut resume: Option<EncodedKey> = None;
 
 		while items.len() < target {
+			if consumed >= scan_budget
+				&& let Some(key) = walked.take()
+			{
+				resume = Some(key);
+				break;
+			}
 			if buffer_index == buffered.len() && !buffer_exhausted {
 				let next = self.resident.state_page(
 					operator,
@@ -482,29 +494,39 @@ impl StandardOperatorStore {
 				(None, None) => break,
 				(Some((key, entry)), None) => {
 					buffer_index += 1;
+					consumed += 1;
+					walked = Some(key.clone());
 					if let Some(row) = entry {
 						items.push((key.clone(), row.clone()));
 					}
 				}
 				(None, Some((key, row))) => {
 					page_index += 1;
+					consumed += 1;
+					walked = Some(key.clone());
 					items.push((key.clone(), row.clone()));
 				}
 				(Some((buffer_key, entry)), Some((page_key, page_row))) => {
 					match buffer_key.cmp(page_key) {
 						Ordering::Less => {
 							buffer_index += 1;
+							consumed += 1;
+							walked = Some(buffer_key.clone());
 							if let Some(row) = entry {
 								items.push((buffer_key.clone(), row.clone()));
 							}
 						}
 						Ordering::Greater => {
 							page_index += 1;
+							consumed += 1;
+							walked = Some(page_key.clone());
 							items.push((page_key.clone(), page_row.clone()));
 						}
 						Ordering::Equal => {
 							buffer_index += 1;
 							page_index += 1;
+							consumed += 2;
+							walked = Some(buffer_key.clone());
 							if let Some(row) = entry {
 								items.push((buffer_key.clone(), row.clone()));
 							}
@@ -514,11 +536,12 @@ impl StandardOperatorStore {
 			}
 		}
 
-		let has_more = items.len() > limit as usize;
+		let has_more = items.len() > limit as usize || resume.is_some();
 		items.truncate(limit as usize);
 		OperatorBatch {
 			items,
 			has_more,
+			resume,
 		}
 	}
 

@@ -357,11 +357,11 @@ impl OperatorStateKey {
 		GroupStateKey(serializer.to_encoded_key())
 	}
 
-	pub fn decode_inner(inner: &[u8]) -> Option<(GroupId, KeyspaceId, Vec<u8>)> {
+	pub fn decode_inner(inner: &[u8]) -> Option<(GroupId, KeyspaceId, &[u8])> {
 		let mut de = KeyDeserializer::from_bytes(inner);
 		let group = de.read_u128().ok()?;
 		let keyspace = de.read_u8().ok()?;
-		let suffix = de.read_raw(de.remaining()).ok()?.to_vec();
+		let suffix = de.read_raw(de.remaining()).ok()?;
 		Some((GroupId(group), KeyspaceId(keyspace), suffix))
 	}
 
@@ -582,11 +582,11 @@ pub fn keyspace_inner_range_split(range: &EncodedKeyRange) -> Option<KeyspaceInn
 	let (group, keyspace, start) = match &range.start {
 		Bound::Included(key) => {
 			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
-			(group, keyspace, Bound::Included(suffix))
+			(group, keyspace, Bound::Included(suffix.to_vec()))
 		}
 		Bound::Excluded(key) => {
 			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
-			(group, keyspace, Bound::Excluded(suffix))
+			(group, keyspace, Bound::Excluded(suffix.to_vec()))
 		}
 		Bound::Unbounded => return None,
 	};
@@ -596,11 +596,11 @@ pub fn keyspace_inner_range_split(range: &EncodedKeyRange) -> Option<KeyspaceInn
 	} else {
 		match &range.end {
 			Bound::Included(key) => match OperatorStateKey::decode_inner(key.as_slice())? {
-				(g, k, suffix) if g == group && k == keyspace => Bound::Included(suffix),
+				(g, k, suffix) if g == group && k == keyspace => Bound::Included(suffix.to_vec()),
 				_ => return None,
 			},
 			Bound::Excluded(key) => match OperatorStateKey::decode_inner(key.as_slice())? {
-				(g, k, suffix) if g == group && k == keyspace => Bound::Excluded(suffix),
+				(g, k, suffix) if g == group && k == keyspace => Bound::Excluded(suffix.to_vec()),
 				_ => return None,
 			},
 			Bound::Unbounded => return None,
@@ -1256,12 +1256,13 @@ mod tests {
 	#[test]
 	fn decode_inner_round_trips_the_tail() {
 		let key = OperatorStateKey::new(OperatorId(3), GroupId(77), KeyspaceId::EMIT, vec![4, 5, 6]);
+		let inner = key.inner();
 		let (group, keyspace, suffix) =
-			OperatorStateKey::decode_inner(key.inner().as_slice()).expect("inner must decode");
+			OperatorStateKey::decode_inner(inner.as_slice()).expect("inner must decode");
 
 		assert_eq!(group, GroupId(77));
 		assert_eq!(keyspace, KeyspaceId::EMIT);
-		assert_eq!(suffix, vec![4, 5, 6]);
+		assert_eq!(suffix, [4, 5, 6]);
 	}
 
 	#[test]

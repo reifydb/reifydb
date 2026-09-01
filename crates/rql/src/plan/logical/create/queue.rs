@@ -8,7 +8,6 @@ use reifydb_catalog::{
 use reifydb_core::interface::catalog::queue::{Queue, QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::{AstErrorKind, Error, TypeError},
 	fragment::Fragment,
 	value::{
 		constraint::{Constraint, TypeConstraint},
@@ -23,7 +22,7 @@ use crate::{
 		AstQueueRetry,
 	},
 	convert_data_type_with_constraints,
-	duration::{DurationBound, FOREVER, compile_duration},
+	duration::{DurationBound, FOREVER, compile_duration, invalid_option},
 	plan::logical::{
 		Compiler, CreateQueueNode, LogicalPlan,
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
@@ -271,15 +270,5 @@ fn compile_retry(ast: Option<&AstQueueRetry<'_>>) -> Result<QueueRetry> {
 	Ok(QueueRetry {
 		attempts,
 		backoff,
-	})
-}
-
-fn invalid_option(token: &Token<'_>, expected: &str) -> Error {
-	Error::from(TypeError::Ast {
-		kind: AstErrorKind::UnexpectedToken {
-			expected: expected.to_string(),
-		},
-		message: format!("expected {}, found `{}`", expected, token.fragment.text()),
-		fragment: token.fragment.to_owned(),
 	})
 }

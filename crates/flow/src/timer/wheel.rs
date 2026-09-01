@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Bound};
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::pod::EncodedPodRow,
+};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
@@ -115,14 +118,18 @@ impl TimerWheel {
 	}
 
 	pub fn next_due_stored(operator: OperatorId, store: &OperatorStore) -> Option<TimerDue> {
-		let wheel = keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL);
-		let batch = store.range_batch(operator, wheel, 1);
-		let (key, _) = batch.items.first()?;
-		let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
-		Some(TimerDue {
-			operator_id: operator,
-			due: TimerWheelKey::from_suffix_bytes(&suffix)?.due.0,
-		})
+		let mut wheel = keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL);
+		loop {
+			let batch = store.range_batch(operator, wheel.clone(), 1);
+			if let Some((key, _)) = batch.items.first() {
+				let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
+				return Some(TimerDue {
+					operator_id: operator,
+					due: TimerWheelKey::from_suffix_bytes(suffix)?.due.0,
+				});
+			}
+			wheel = EncodedKeyRange::new(Bound::Excluded(batch.resume?), wheel.end);
+		}
 	}
 
 	pub fn take_due(

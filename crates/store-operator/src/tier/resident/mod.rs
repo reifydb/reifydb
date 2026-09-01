@@ -59,6 +59,12 @@ pub const FLUSH_BUDGET_BYTES: ByteSize = if default::TESTING {
 	default::store::OPERATOR_RESIDENT_BUDGET
 };
 
+pub const FLUSH_ENTRY_LIMIT: u64 = if default::TESTING {
+	default::store::OPERATOR_RESIDENT_ENTRIES_TESTING
+} else {
+	default::store::OPERATOR_RESIDENT_ENTRIES
+};
+
 pub const SLICE_BYTES: ByteSize = if default::TESTING {
 	default::store::OPERATOR_FLUSH_SLICE_TESTING
 } else {
@@ -114,6 +120,8 @@ pub struct Shared {
 	drain: Mutex<()>,
 	sinks: OnceLock<OperatorSinks>,
 	budget: Arc<MemoryBudget>,
+	entries: AtomicU64,
+	entry_limit: u64,
 	slice: ByteSize,
 	waker: Mutex<Option<ActorRef<FlushMessage>>>,
 	metrics: Mutex<OperatorResidentStateMetrics>,
@@ -121,7 +129,7 @@ pub struct Shared {
 }
 
 impl Shared {
-	fn new(cap: ByteSize) -> Self {
+	fn new(cap: ByteSize, entry_limit: u64) -> Self {
 		Self {
 			slots: DashMap::new(),
 			global: Mutex::new(GlobalInner::default()),
@@ -131,11 +139,33 @@ impl Shared {
 			drain: Mutex::new(()),
 			sinks: OnceLock::new(),
 			budget: Arc::new(MemoryBudget::new(cap)),
+			entries: AtomicU64::new(0),
+			entry_limit,
 			slice: cap.min(SLICE_BYTES),
 			waker: Mutex::new(None),
 			metrics: Mutex::new(OperatorResidentStateMetrics::default()),
 			triggered: AtomicBool::new(false),
 		}
+	}
+
+	fn charge_entries(&self, count: usize) {
+		self.entries.fetch_add(count as u64, Ordering::Relaxed);
+	}
+
+	fn release_entries(&self, count: usize) {
+		let amount = count as u64;
+		let mut current = self.entries.load(Ordering::Relaxed);
+		loop {
+			let next = current.saturating_sub(amount);
+			match self.entries.compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed) {
+				Ok(_) => return,
+				Err(observed) => current = observed,
+			}
+		}
+	}
+
+	fn over_entry_limit(&self) -> bool {
+		self.entries.load(Ordering::Relaxed) > self.entry_limit
 	}
 
 	pub(crate) fn slot(&self, operator: OperatorId) -> Option<Arc<Slot>> {
@@ -176,7 +206,7 @@ impl fmt::Debug for OperatorResidentState {
 
 impl Default for OperatorResidentState {
 	fn default() -> Self {
-		Self::with_budget(FLUSH_BUDGET_BYTES)
+		Self::with_limits(FLUSH_BUDGET_BYTES, FLUSH_ENTRY_LIMIT)
 	}
 }
 
@@ -186,8 +216,12 @@ impl OperatorResidentState {
 	}
 
 	pub fn with_budget(budget: ByteSize) -> Self {
+		Self::with_limits(budget, FLUSH_ENTRY_LIMIT)
+	}
+
+	pub fn with_limits(budget: ByteSize, entries: u64) -> Self {
 		Self {
-			shared: Arc::new(Shared::new(budget)),
+			shared: Arc::new(Shared::new(budget, entries)),
 		}
 	}
 
@@ -237,6 +271,18 @@ impl OperatorResidentState {
 		total
 	}
 
+	#[cfg(any(test, reifydb_assertions))]
+	pub(crate) fn resident_entries(&self) -> usize {
+		let mut total = 0usize;
+		for operator in self.shared.operators() {
+			let Some(slot) = self.shared.slot(operator) else {
+				continue;
+			};
+			total = total.saturating_add(slot.inner.lock().resident_entries());
+		}
+		total
+	}
+
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
 		if writes.is_empty() {
 			return;
@@ -277,12 +323,16 @@ impl OperatorResidentState {
 			let slot = self.shared.slot_or_create(operator);
 			let mut inner = slot.inner.lock();
 			let before = inner.live.bytes;
+			let before_entries = inner.live.entry_count();
 			for write in group {
 				apply_write(&mut inner, write);
 			}
 			let after = inner.live.bytes;
+			let after_entries = inner.live.entry_count();
 			self.shared.budget.charge(after.saturating_sub(before));
 			self.shared.budget.release(before.saturating_sub(after));
+			self.shared.charge_entries(after_entries.saturating_sub(before_entries));
+			self.shared.release_entries(before_entries.saturating_sub(after_entries));
 			if flow.is_some() {
 				inner.flow = flow;
 			}
@@ -305,10 +355,14 @@ impl OperatorResidentState {
 		let out = {
 			let mut inner = slot.inner.lock();
 			let before = inner.live.bytes;
+			let before_entries = inner.live.entry_count();
 			let out = mutate(&mut inner);
 			let after = inner.live.bytes;
+			let after_entries = inner.live.entry_count();
 			self.shared.budget.charge(after.saturating_sub(before));
 			self.shared.budget.release(before.saturating_sub(after));
+			self.shared.charge_entries(after_entries.saturating_sub(before_entries));
+			self.shared.release_entries(before_entries.saturating_sub(after_entries));
 			self.mark_pending(&mut inner);
 			out
 		};
@@ -331,9 +385,12 @@ impl OperatorResidentState {
 		};
 		let mut inner = slot.inner.lock();
 		let before = inner.live.bytes;
+		let before_entries = inner.live.entry_count();
 		clear_drop(&mut inner, marker);
 		let after = inner.live.bytes;
+		let after_entries = inner.live.entry_count();
 		self.shared.budget.release(before.saturating_sub(after));
+		self.shared.release_entries(before_entries.saturating_sub(after_entries));
 		self.mark_pending(&mut inner);
 	}
 
@@ -525,10 +582,11 @@ impl OperatorResidentState {
 			global.flushing = false;
 		}
 		self.shared.idle.notify_all();
+		let entries = (batch.state.len() + batch.join_expiries.len()) as u64;
 		self.shared.budget.release(batch.bytes);
+		self.shared.release_entries(entries as usize);
 		self.shared.triggered.store(false, Ordering::Release);
 
-		let entries = (batch.state.len() + batch.join_expiries.len()) as u64;
 		{
 			let mut metrics = self.shared.metrics.lock();
 			metrics.slices += 1;
@@ -546,11 +604,18 @@ impl OperatorResidentState {
 				"store::operator::resident resident state byte counter drifted: the budget carries {}, the resident set walks to {}",
 				counted, walked
 			);
+			let counted = self.shared.entries.load(Ordering::Relaxed) as usize;
+			let walked = self.resident_entries();
+			assert_eq!(
+				counted, walked,
+				"store::operator::resident resident state entry counter drifted: the budget carries {}, the resident set walks to {}",
+				counted, walked
+			);
 		}
 	}
 
 	fn observe_write(&self) {
-		if !self.shared.budget.over_budget() {
+		if !self.shared.budget.over_budget() && !self.shared.over_entry_limit() {
 			return;
 		}
 		if self.shared.triggered.swap(true, Ordering::AcqRel) {

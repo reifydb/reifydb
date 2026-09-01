@@ -7,6 +7,8 @@
 //! answers a missed point read as a definitive absence; outside one it declines. Anything that can leave a
 //! claim short of a key sqlite holds must shrink that claim, since a short answer reads like a correct one.
 
+use std::ops::Bound;
+
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
@@ -707,4 +709,81 @@ impl SeedDurable for SqliteOperatorStorage {
 		}
 		self.flush_batch(&batch);
 	}
+}
+
+fn bury_under_tombstones(store: &OperatorStore, count: u8) {
+	// a remove on a key sqlite never held still lands a masking entry in the resident map, which is exactly
+	// the shape that makes a resident page come back full while carrying no rows
+	for suffix in 1..=count {
+		store.apply_batch(&[OperatorWrite::Remove {
+			operator: OP_A,
+			key: key_in(RANGE_ONLY, suffix),
+			pre: DurablePre::Absent,
+		}]);
+	}
+	put(store, OP_A, key_in(RANGE_ONLY, 250), row("live"));
+}
+
+#[test]
+fn a_range_dominated_by_tombstones_stops_on_a_scan_budget_and_reports_where_it_stopped() {
+	// a page of tombstones comes back full but yields no rows, so a refill loop that only stops on a short
+	// page walks the entire graveyard within one call; the budget must cap that and name a resume point
+	let (store, _storage, _guard) = cached_store();
+	bury_under_tombstones(&store, 200);
+
+	let batch = store.range_batch(OP_A, seeded_range(), 1);
+
+	assert!(batch.items.is_empty(), "every entry inside the budget was a tombstone, so the page carries no rows");
+	assert!(batch.has_more, "a scan that stopped on its budget is not finished");
+	let resume = batch.resume.expect("a batch that stopped short of its target must name where to continue");
+	assert!(
+		resume < key_in(RANGE_ONLY, 250),
+		"the resume point must sit inside the tombstone run; naming a point past the live row would skip it"
+	);
+}
+
+#[test]
+fn a_scan_that_stops_on_its_budget_still_returns_every_row_when_it_resumes() {
+	// an empty page that ends the scan drops rows sitting past a long tombstone run, and a short answer is
+	// indistinguishable from a correct one at the caller
+	let (store, _storage, _guard) = cached_store();
+	bury_under_tombstones(&store, 200);
+
+	let mut range = seeded_range();
+	let mut seen: Vec<String> = Vec::new();
+	let mut rounds = 0;
+	loop {
+		rounds += 1;
+		assert!(rounds < 1000, "a resume point that does not advance past what it consumed loops forever");
+		let batch = store.range_batch(OP_A, range.clone(), 1);
+		seen.extend(bodies(&batch));
+		if !batch.has_more {
+			break;
+		}
+		let next = match batch.resume {
+			Some(key) => key,
+			None => batch
+				.items
+				.last()
+				.expect("a batch with more to give carries a row or a resume point")
+				.0
+				.clone(),
+		};
+		range = EncodedKeyRange::new(Bound::Excluded(next), range.end.clone());
+	}
+
+	assert_eq!(seen, vec!["live".to_string()], "the row past the graveyard must survive the whole scan");
+}
+
+#[test]
+fn a_range_that_fits_inside_the_scan_budget_names_no_resume_point() {
+	// the budget is a ceiling, not a page size; an ordinary range must answer in one call as it always did
+	let (store, storage, _guard) = cached_store();
+	seed_rows(&storage, 3);
+
+	let batch = store.range_batch(OP_A, seeded_range(), 64);
+
+	assert_eq!(bodies(&batch), ["v1", "v2", "v3"]);
+	assert!(!batch.has_more, "the whole range fit in one page");
+	assert!(batch.resume.is_none(), "a scan that ran to the end of its range has nothing to resume from");
 }

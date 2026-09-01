@@ -103,7 +103,7 @@ pub fn operator_writes(pending: &Pending, deferred: &DeferredClassification) -> 
 			.map(|(group, _, suffix)| {
 				(
 					group,
-					decode_join_expiry_suffix(&suffix)
+					decode_join_expiry_suffix(suffix)
 						.expect("join expiry keys are written only through join_expiry_key"),
 				)
 			});

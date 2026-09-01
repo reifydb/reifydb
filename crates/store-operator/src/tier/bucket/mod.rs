@@ -21,11 +21,14 @@ use reifydb_core::{
 use reifydb_value::{Result, byte_size::ByteSize};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use rusqlite::{Connection, Transaction};
+use smallvec::SmallVec;
 
 use crate::tier::{
-	bound::{span, split_bound},
+	bound::{KeyspaceIds, span, split_bound},
 	bucket::write::{TypedBucket, WriteEntry},
 };
+
+pub type GroupIds = SmallVec<[GroupId; 4]>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Budget {
@@ -59,7 +62,7 @@ pub trait AnyBucket: Any + Send + Sync {
 
 	fn encoded_entries(&self) -> Vec<(EncodedKey, WriteEntry)>;
 
-	fn groups_in_range(&self, lower: &Bound<GroupId>, upper: &Bound<GroupId>) -> Vec<GroupId>;
+	fn groups_in_range(&self, lower: &Bound<GroupId>, upper: &Bound<GroupId>) -> GroupIds;
 
 	fn encoded_range_in(
 		&self,
@@ -320,8 +323,8 @@ impl BucketMap {
 		.flatten()
 	}
 
-	fn groups_of(&self, operator: OperatorId, lower: Bound<GroupId>, upper: Bound<GroupId>) -> Vec<GroupId> {
-		let mut ids = Vec::new();
+	fn groups_of(&self, operator: OperatorId, lower: Bound<GroupId>, upper: Bound<GroupId>) -> GroupIds {
+		let mut ids = GroupIds::new();
 		for keyspace in self.keyspaces_of(operator) {
 			let Some(bucket) = self.buckets.get(&(operator, keyspace)) else {
 				continue;
@@ -345,10 +348,10 @@ impl BucketMap {
 		let (end, end_group, end_at) = split_bound(upper.as_ref());
 		let end_open = matches!(end, Bound::Excluded(ref suffix) if suffix.is_empty());
 
-		if let (Some(low), Some(high)) = (end_group, start_group) {
-			if low > high {
-				return Vec::new();
-			}
+		if let (Some(low), Some(high)) = (end_group, start_group)
+			&& low > high
+		{
+			return Vec::new();
 		}
 		let lower = end_group.map_or(Bound::Unbounded, Bound::Included);
 		let upper = start_group.map_or(Bound::Unbounded, Bound::Included);
@@ -358,7 +361,7 @@ impl BucketMap {
 			groups.reverse();
 		}
 
-		let mut chunks: Vec<Vec<(EncodedKey, WriteEntry)>> = Vec::new();
+		let mut chunks: SmallVec<[Vec<(EncodedKey, WriteEntry)>; 4]> = SmallVec::new();
 		let mut taken = 0usize;
 		'groups: for group in groups {
 			let opens = start_group == Some(group);
@@ -411,7 +414,7 @@ impl BucketMap {
 	pub fn get(&self, address: &(OperatorId, EncodedKey)) -> Option<WriteEntry> {
 		let (operator, key) = address;
 		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
-		self.get_bytes_ref(*operator, keyspace, group, &suffix)
+		self.get_bytes_ref(*operator, keyspace, group, suffix)
 	}
 
 	pub fn contains_key(&self, address: &(OperatorId, EncodedKey)) -> bool {
@@ -430,8 +433,8 @@ impl BucketMap {
 		self.buckets.iter_mut()
 	}
 
-	pub fn keyspaces_of(&self, operator: OperatorId) -> Vec<KeyspaceId> {
-		let mut ids: Vec<KeyspaceId> =
+	pub fn keyspaces_of(&self, operator: OperatorId) -> KeyspaceIds {
+		let mut ids: KeyspaceIds =
 			self.buckets.keys().filter(|(id, _)| *id == operator).map(|(_, keyspace)| *keyspace).collect();
 		ids.sort_by_key(|keyspace| keyspace.0);
 		ids

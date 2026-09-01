@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use smallvec::SmallVec;
+
 use crate::key::typed::{
 	Key,
 	direction::{Asc, Desc, Direction, KeyScalar},
 };
 
+pub type KeyValues = SmallVec<[KeyValue; 4]>;
+
 pub trait KeyLayout: Key {
 	const COLUMNS: &'static [KeyColumn];
 
-	fn key_values(&self) -> Vec<KeyValue>;
+	fn key_values(&self) -> KeyValues;
 
 	fn from_key_values(values: &[KeyValue]) -> Option<Self>
 	where
@@ -23,8 +27,8 @@ pub trait KeyLayout: Key {
 impl KeyLayout for () {
 	const COLUMNS: &'static [KeyColumn] = &[];
 
-	fn key_values(&self) -> Vec<KeyValue> {
-		Vec::new()
+	fn key_values(&self) -> KeyValues {
+		KeyValues::new()
 	}
 
 	fn from_key_values(values: &[KeyValue]) -> Option<Self> {
@@ -41,8 +45,8 @@ impl<T: KeyScalar> KeyLayout for Asc<T> {
 		direction: Direction::Asc,
 	}];
 
-	fn key_values(&self) -> Vec<KeyValue> {
-		vec![self.0.to_key_value()]
+	fn key_values(&self) -> KeyValues {
+		KeyValues::from_slice(&[self.0.to_key_value()])
 	}
 
 	fn from_key_values(values: &[KeyValue]) -> Option<Self> {
@@ -64,8 +68,8 @@ impl<T: KeyScalar> KeyLayout for Desc<T> {
 		direction: Direction::Desc,
 	}];
 
-	fn key_values(&self) -> Vec<KeyValue> {
-		vec![self.0.to_key_value()]
+	fn key_values(&self) -> KeyValues {
+		KeyValues::from_slice(&[self.0.to_key_value()])
 	}
 
 	fn from_key_values(values: &[KeyValue]) -> Option<Self> {
@@ -125,7 +129,7 @@ impl KeyValue {
 mod tests {
 	use reifydb_value::value::row_number::RowNumber;
 
-	use super::{KeyColumn, KeyColumnType, KeyLayout, KeyValue};
+	use super::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues};
 	use crate::{
 		key::{
 			operator::state::GroupId,

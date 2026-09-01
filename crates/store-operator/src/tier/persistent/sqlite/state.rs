@@ -104,6 +104,7 @@ impl SqliteOperatorStorage {
 		OperatorBatch {
 			items,
 			has_more,
+			resume: None,
 		}
 	}
 

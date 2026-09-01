@@ -91,7 +91,10 @@ pub mod tests {
 	}
 
 	fn decoded_suffix(framed: &[u8]) -> Vec<u8> {
-		OperatorStateKey::decode_inner(framed).expect("iterator must hand back a framed group state key").2
+		OperatorStateKey::decode_inner(framed)
+			.expect("iterator must hand back a framed group state key")
+			.2
+			.to_vec()
 	}
 
 	fn make_value(data: &[u8]) -> EncodedBytes {

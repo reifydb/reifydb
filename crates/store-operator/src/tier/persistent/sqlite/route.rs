@@ -21,7 +21,7 @@ use rusqlite::{Connection, Transaction};
 
 use crate::{
 	tier::{
-		bound::{parts, span, split_bound},
+		bound::{KeyspaceIds, parts, span, split_bound},
 		persistent::sqlite::typed,
 	},
 	types::OperatorStateCensus,
@@ -75,7 +75,7 @@ pub(super) fn get(conn: &Connection, operator: OperatorId, key: &EncodedKey) -> 
 			conn,
 			operator,
 			group,
-			suffix: &suffix,
+			suffix,
 		},
 	)
 	.expect("an operator state key must name a keyspace in the catalogue")
@@ -167,8 +167,8 @@ fn keyspace_end(
 	group.0.checked_add(1).map(|previous| (Some(GroupId(previous)), Bound::Unbounded))
 }
 
-fn every_keyspace() -> Vec<KeyspaceId> {
-	let mut ids: Vec<KeyspaceId> = KEYSPACES.iter().map(|spec| spec.id).collect();
+fn every_keyspace() -> KeyspaceIds {
+	let mut ids: KeyspaceIds = KEYSPACES.iter().map(|spec| spec.id).collect();
 	ids.sort_by(|left, right| right.0.cmp(&left.0));
 	ids
 }

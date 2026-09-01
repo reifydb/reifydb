@@ -54,9 +54,13 @@ impl OperatorLive {
 		self.state.is_empty() && self.join_expiries.is_empty()
 	}
 
+	pub fn entry_count(&self) -> usize {
+		self.state.len().saturating_add(self.join_expiries.len())
+	}
+
 	pub fn lookup(&self, key: &EncodedKey) -> Option<WriteEntry> {
 		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
-		self.state.get_bytes_ref(self.operator, keyspace, group, &suffix)
+		self.state.get_bytes_ref(self.operator, keyspace, group, suffix)
 	}
 
 	pub fn contains_key(&self, key: &EncodedKey) -> bool {
@@ -72,7 +76,7 @@ impl OperatorLive {
 			.expect("an operator state key must decode as its own framing");
 		let operator = self.operator;
 		let before = self.state.footprint();
-		self.state.record_bytes(operator, keyspace, group, &suffix, post);
+		self.state.record_bytes(operator, keyspace, group, suffix, post);
 		let after = self.state.footprint();
 		self.bytes = self.bytes.saturating_add(after).saturating_sub(before);
 	}
@@ -123,6 +127,10 @@ pub struct SlotInner {
 impl SlotInner {
 	pub fn resident_bytes(&self) -> ByteSize {
 		self.live.bytes.saturating_add(self.in_flight.as_ref().map_or(ByteSize::ZERO, |batch| batch.bytes))
+	}
+
+	pub fn resident_entries(&self) -> usize {
+		self.live.entry_count().saturating_add(self.in_flight.as_ref().map_or(0, |batch| batch.entry_count()))
 	}
 
 	pub fn lookup(&self, key: &EncodedKey) -> Option<WriteEntry> {

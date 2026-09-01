@@ -55,6 +55,16 @@ fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey
 	store.apply_batch(&[write]);
 }
 
+fn seed_state_tombstone(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey) {
+	// A remove of a key the persistent tier never held leaves a masking entry in the resident map. Those pages
+	// come back full and carry no rows, which is what makes a scan believe it has reached the end.
+	engine.inner().operator_state().apply_batch(&[OperatorWrite::Remove {
+		operator,
+		key: EncodedKey::new(key.as_slice()),
+		pre: DurablePre::Absent,
+	}]);
+}
+
 fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 	// Shares the engine's operator state store like every production deferred txn.
 	let parent = engine.begin_admin(IdentityId::system()).unwrap();
@@ -774,5 +784,31 @@ fn clearing_state_claims_a_pre_image_only_for_the_keys_the_store_actually_holds(
 		pre_of(&fresh_inner),
 		DurablePre::Absent,
 		"a key that exists only as this transaction's own write must never be removed as Present"
+	);
+}
+
+#[test]
+fn a_state_range_whose_head_is_all_tombstones_still_reaches_the_row_behind_them() {
+	// The store caps how far one page walks and answers with no rows plus a resume point. A scan that reads an
+	// empty page as the end of the range silently drops every row sitting behind the graveyard, and a short
+	// answer is indistinguishable from a correct one at the caller.
+	let engine = TestEngine::new();
+	let operator = OperatorId(1);
+	for index in 0..64 {
+		seed_state_tombstone(&engine, operator, &make_key(&format!("a{index:03}")));
+	}
+	seed_state_row(&engine, operator, &make_key("zzzz"), make_value("behind"));
+
+	let mut txn = deferred_shared(&engine);
+	let range = EncodedKeyRange::new(
+		Bound::Included(make_key("a000").into_encoded()),
+		Bound::Included(make_key("zzzz").into_encoded()),
+	);
+	let batch = txn.state_range(operator, StateRange::forward(range, "test").limit(1)).unwrap();
+
+	assert_eq!(
+		batch.items.len(),
+		1,
+		"the row behind the tombstone run must survive a scan that had to stop and resume to reach it"
 	);
 }

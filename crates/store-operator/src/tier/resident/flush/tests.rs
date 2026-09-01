@@ -111,6 +111,10 @@ fn group_bytes() -> ByteSize {
 	ByteSize::from_bytes(size_of::<GroupId>() as u64)
 }
 
+fn tombstone_entry_bytes() -> ByteSize {
+	ByteSize::from_bytes(size_of::<Asc<RowNumber>>() as u64)
+}
+
 fn bucket_bytes(entries: u64, body: &str) -> ByteSize {
 	group_bytes().saturating_add(entry_bytes(0, body) * entries)
 }
@@ -813,4 +817,65 @@ impl SeedDurable for SqliteOperatorStorage {
 		}
 		self.flush_batch(&batch);
 	}
+}
+
+#[test]
+fn a_buffer_that_fills_with_tombstones_flushes_even_though_they_cost_almost_no_bytes() {
+	let limit = 32u64;
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let spawner = actor_system.spawner();
+	let (storage, _guard) = SqliteOperatorStorage::in_memory();
+	let buffer = OperatorResidentState::with_limits(FLUSH_BUDGET_BYTES, limit);
+	buffer.attach_sinks(tier(&storage), None, None);
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone());
+	buffer.attach_flusher(actor_ref);
+
+	let tombstone_bytes = group_bytes().saturating_add(tombstone_entry_bytes() * (limit + 1));
+	assert!(
+		tombstone_bytes.as_bytes() * 8 < FLUSH_BUDGET_BYTES.as_bytes(),
+		"the flood must stay an order of magnitude under the byte budget, or this test proves nothing about \
+		 the entry trigger"
+	);
+
+	for index in 0..=limit as u8 {
+		buffer.record_state_remove(OP_A, key(index));
+	}
+
+	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
+	while Instant::now() < deadline && buffer.resident_entries() > 0 {
+		thread::sleep(Duration::from_milliseconds_const(5).to_std());
+	}
+	assert_eq!(
+		buffer.resident_entries(),
+		0,
+		"a tombstone carries a key but no row, so it is nearly free in bytes and can never trip the byte \
+		 budget; without an entry ceiling the resident map grows without bound and every range read walks \
+		 the whole graveyard"
+	);
+}
+
+#[test]
+fn a_tombstone_count_resting_on_the_entry_limit_does_not_flush() {
+	let limit = 32u64;
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let spawner = actor_system.spawner();
+	let (storage, _guard) = SqliteOperatorStorage::in_memory();
+	let buffer = OperatorResidentState::with_limits(FLUSH_BUDGET_BYTES, limit);
+	buffer.attach_sinks(tier(&storage), None, None);
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone());
+	buffer.attach_flusher(actor_ref);
+
+	for index in 0..limit as u8 {
+		buffer.record_state_remove(OP_A, key(index));
+	}
+
+	thread::sleep(Duration::from_milliseconds_const(100).to_std());
+	assert_eq!(
+		buffer.resident_entries(),
+		limit as usize,
+		"the entry limit is the window, exactly as the byte budget is; a trigger that fires on it stops the \
+		 buffer batching at all"
+	);
 }

@@ -21,6 +21,7 @@ pub const JOIN_EXPIRY_VALUE_BYTES: ByteSize = ByteSize::from_bytes(8);
 pub struct OperatorBatch {
 	pub items: Vec<(EncodedKey, EncodedPodRow)>,
 	pub has_more: bool,
+	pub resume: Option<EncodedKey>,
 }
 
 impl OperatorBatch {
@@ -28,6 +29,7 @@ impl OperatorBatch {
 		Self {
 			items: Vec::new(),
 			has_more: false,
+			resume: None,
 		}
 	}
 }

@@ -150,7 +150,7 @@ impl<'a, K: Keyspace> TierPager<'a, K> {
 			.map(|(key, row)| {
 				let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_slice())
 					.expect("a row read from the keyspace must carry a decodable inner key");
-				let suffix = <K::Suffix as SuffixBytes>::from_suffix_bytes(&suffix)
+				let suffix = <K::Suffix as SuffixBytes>::from_suffix_bytes(suffix)
 					.expect("a stored suffix must match the width its keyspace declares");
 				(suffix, row.clone())
 			})

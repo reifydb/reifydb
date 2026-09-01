@@ -261,7 +261,7 @@ impl PointTiers {
 			self.charge_excluded(keyspace);
 			return None;
 		};
-		tier.get(operator, group, &suffix)
+		tier.get(operator, group, suffix)
 	}
 
 	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> Option<bool> {
@@ -270,21 +270,21 @@ impl PointTiers {
 			self.charge_excluded(keyspace);
 			return None;
 		};
-		tier.contains(operator, group, &suffix)
+		tier.contains(operator, group, suffix)
 	}
 
 	pub fn begin_fill(&self, operator: OperatorId, key: &EncodedKey) -> bool {
 		let Some((group, keyspace, suffix)) = OperatorStateKey::decode_inner(key.as_slice()) else {
 			return false;
 		};
-		self.of(keyspace).is_some_and(|tier| tier.begin_fill(operator, group, &suffix))
+		self.of(keyspace).is_some_and(|tier| tier.begin_fill(operator, group, suffix))
 	}
 
 	pub fn finish_fill(&self, operator: OperatorId, key: &EncodedKey, row: Option<EncodedPodRow>) -> bool {
 		let Some((group, keyspace, suffix)) = OperatorStateKey::decode_inner(key.as_slice()) else {
 			return false;
 		};
-		self.of(keyspace).is_some_and(|tier| tier.finish_fill(operator, group, &suffix, row))
+		self.of(keyspace).is_some_and(|tier| tier.finish_fill(operator, group, suffix, row))
 	}
 
 	pub fn abort_fill(&self, operator: OperatorId, key: &EncodedKey) {
@@ -292,7 +292,7 @@ impl PointTiers {
 			return;
 		};
 		if let Some(tier) = self.of(keyspace) {
-			tier.abort_fill(operator, group, &suffix);
+			tier.abort_fill(operator, group, suffix);
 		}
 	}
 
@@ -301,7 +301,7 @@ impl PointTiers {
 			return;
 		};
 		if let Some(tier) = self.of(keyspace) {
-			tier.overwrite(operator, group, &suffix, row);
+			tier.overwrite(operator, group, suffix, row);
 		}
 	}
 
@@ -310,7 +310,7 @@ impl PointTiers {
 			return;
 		};
 		if let Some(tier) = self.of(keyspace) {
-			tier.invalidate(operator, group, &suffix);
+			tier.invalidate(operator, group, suffix);
 		}
 	}
 

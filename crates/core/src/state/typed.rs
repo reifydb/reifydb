@@ -9,6 +9,7 @@ use reifydb_value::Result;
 use crate::{
 	key::{
 		operator::{
+			keyspace::columns_width,
 			state::{GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range},
 			traits::Keyspace,
 		},
@@ -32,9 +33,9 @@ pub trait SuffixBytes: Key {
 impl<T: KeyLayout> SuffixBytes for T {
 	fn to_suffix_bytes(&self) -> Vec<u8> {
 		let values = self.key_values();
-		let mut out = Vec::new();
+		let mut out = Vec::with_capacity(columns_width(T::COLUMNS));
 		for (value, column) in values.iter().zip(T::COLUMNS) {
-			out.extend_from_slice(&key_value_bytes(*value, column.direction));
+			push_key_value(&mut out, *value, column.direction);
 		}
 		out
 	}
@@ -58,33 +59,51 @@ impl<T: KeyLayout> SuffixBytes for T {
 	}
 }
 
-fn key_value_bytes(value: KeyValue, direction: Direction) -> Vec<u8> {
-	let mut bytes = match value {
-		KeyValue::U8(v) => vec![v],
-		KeyValue::U64(v) => v.to_be_bytes().to_vec(),
-		KeyValue::Blob16(v) => v.to_vec(),
-	};
+fn push_key_value(out: &mut Vec<u8>, value: KeyValue, direction: Direction) {
+	let start = out.len();
+	match value {
+		KeyValue::U8(v) => out.push(v),
+		KeyValue::U64(v) => out.extend_from_slice(&v.to_be_bytes()),
+		KeyValue::Blob16(v) => out.extend_from_slice(&v),
+	}
 	if direction == Direction::Desc {
-		for byte in &mut bytes {
+		for byte in &mut out[start..] {
 			*byte = !*byte;
 		}
 	}
-	bytes
 }
 
 fn key_value_from_bytes(ty: KeyColumnType, direction: Direction, bytes: &[u8]) -> Option<KeyValue> {
-	let mut owned = bytes.to_vec();
-	if direction == Direction::Desc {
-		for byte in &mut owned {
-			*byte = !*byte;
+	let flipped = direction == Direction::Desc;
+	let at = |index: usize| {
+		if flipped {
+			!bytes[index]
+		} else {
+			bytes[index]
 		}
-	}
+	};
 	match ty {
-		KeyColumnType::U8 => (owned.len() == 1).then(|| KeyValue::U8(owned[0])),
+		KeyColumnType::U8 => (bytes.len() == 1).then(|| KeyValue::U8(at(0))),
 		KeyColumnType::U64 => {
-			<[u8; 8]>::try_from(owned.as_slice()).ok().map(|b| KeyValue::U64(u64::from_be_bytes(b)))
+			let mut out = [0u8; 8];
+			if bytes.len() != out.len() {
+				return None;
+			}
+			for (index, byte) in out.iter_mut().enumerate() {
+				*byte = at(index);
+			}
+			Some(KeyValue::U64(u64::from_be_bytes(out)))
 		}
-		KeyColumnType::Blob16 => <[u8; 16]>::try_from(owned.as_slice()).ok().map(KeyValue::Blob16),
+		KeyColumnType::Blob16 => {
+			let mut out = [0u8; 16];
+			if bytes.len() != out.len() {
+				return None;
+			}
+			for (index, byte) in out.iter_mut().enumerate() {
+				*byte = at(index);
+			}
+			Some(KeyValue::Blob16(out))
+		}
 	}
 }
 
@@ -156,7 +175,7 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 		for (key, row) in self.state_page(range, limit)? {
 			let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_slice())
 				.expect("a group state key must decode as its own framing");
-			let suffix = <K::Suffix as SuffixBytes>::from_suffix_bytes(&suffix)
+			let suffix = <K::Suffix as SuffixBytes>::from_suffix_bytes(suffix)
 				.expect("a stored suffix must decode as the keyspace's own suffix type");
 			out.push((suffix, row));
 		}

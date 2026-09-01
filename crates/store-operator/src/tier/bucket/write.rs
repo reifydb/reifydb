@@ -26,7 +26,7 @@ use reifydb_value::{Result, byte_size::ByteSize};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use rusqlite::{Connection, Transaction};
 
-use crate::tier::bucket::{AnyBucket, Budget, Resume, Scan};
+use crate::tier::bucket::{AnyBucket, Budget, GroupIds, Resume, Scan};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::persistent::sqlite::typed;
 
@@ -49,6 +49,7 @@ pub struct TypedBucket<K: Keyspace> {
 	operator: OperatorId,
 	partitions: BTreeMap<GroupId, SortedVecMap<K::Suffix, WriteEntry>>,
 	bytes: ByteSize,
+	entries: usize,
 }
 
 impl<K: Keyspace> TypedBucket<K> {
@@ -57,6 +58,7 @@ impl<K: Keyspace> TypedBucket<K> {
 			operator,
 			partitions: BTreeMap::new(),
 			bytes: ByteSize::ZERO,
+			entries: 0,
 		}
 	}
 
@@ -73,11 +75,11 @@ impl<K: Keyspace> TypedBucket<K> {
 	}
 
 	pub fn len(&self) -> usize {
-		self.partitions.values().map(SortedVecMap::len).sum()
+		self.entries
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.partitions.values().all(SortedVecMap::is_empty)
+		self.entries == 0
 	}
 
 	pub fn footprint(&self) -> ByteSize {
@@ -105,6 +107,7 @@ impl<K: Keyspace> TypedBucket<K> {
 					},
 				);
 				self.bytes = self.bytes.saturating_add(Self::suffix_bytes());
+				self.entries += 1;
 				ByteSize::ZERO
 			}
 		};
@@ -144,6 +147,7 @@ impl<K: Keyspace> TypedBucket<K> {
 	pub fn clear(&mut self) {
 		self.partitions.clear();
 		self.bytes = ByteSize::ZERO;
+		self.entries = 0;
 	}
 }
 
@@ -187,6 +191,7 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 			}
 		}
 		self.bytes = ByteSize::ZERO;
+		self.entries = 0;
 		Ok(())
 	}
 
@@ -200,6 +205,7 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 				break;
 			};
 			budget.rows -= 1;
+			self.entries -= 1;
 			released = released.saturating_add(Self::suffix_bytes()).saturating_add(entry.row_bytes());
 		}
 		let drained = partition.is_empty();
@@ -230,7 +236,7 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 			.collect()
 	}
 
-	fn groups_in_range(&self, lower: &Bound<GroupId>, upper: &Bound<GroupId>) -> Vec<GroupId> {
+	fn groups_in_range(&self, lower: &Bound<GroupId>, upper: &Bound<GroupId>) -> GroupIds {
 		self.partitions.range((*lower, *upper)).map(|(group, _)| *group).collect()
 	}
 
@@ -277,6 +283,7 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 			operator: other.operator,
 			partitions: take(&mut other.partitions),
 			bytes: replace(&mut other.bytes, ByteSize::ZERO),
+			entries: replace(&mut other.entries, 0),
 		});
 	}
 

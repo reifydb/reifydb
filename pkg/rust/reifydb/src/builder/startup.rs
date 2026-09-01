@@ -180,6 +180,7 @@ pub(crate) fn resolve_startup_configs(
 #[cfg(test)]
 mod tests {
 	use reifydb_store_commit::store::CommitStore;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 
@@ -215,7 +216,7 @@ mod tests {
 		let disabled = [(
 			ConfigKey::CdcReadBufferBytes,
 			Value::None {
-				inner: reifydb_value::value::value_type::ValueType::Uint8,
+				inner: ValueType::Uint8,
 			},
 		)];
 		let resolved = resolve_startup_configs(&buffer, None, &disabled, true).unwrap();

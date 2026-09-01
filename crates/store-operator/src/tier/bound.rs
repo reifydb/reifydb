@@ -8,10 +8,13 @@ use reifydb_core::key::operator::{
 	keyspace::KEYSPACES,
 	state::{GroupId, KeyspaceId, OperatorStateKey},
 };
+use smallvec::SmallVec;
+
+pub(crate) type KeyspaceIds = SmallVec<[KeyspaceId; 48]>;
 
 const GROUP_BYTES: usize = 16;
 
-pub(crate) fn parts(key: &EncodedKey) -> (GroupId, KeyspaceId, Vec<u8>) {
+pub(crate) fn parts(key: &EncodedKey) -> (GroupId, KeyspaceId, &[u8]) {
 	OperatorStateKey::decode_inner(key.as_slice()).expect("an operator state key must name a group and a keyspace")
 }
 
@@ -57,17 +60,17 @@ pub(crate) fn split_bound(bound: Bound<&EncodedKey>) -> (Bound<Vec<u8>>, Option<
 		return (Bound::Unbounded, Some(group), None);
 	}
 	let (group, keyspace, suffix) = parts(key);
-	(wrap(suffix), Some(group), Some(keyspace))
+	(wrap(suffix.to_vec()), Some(group), Some(keyspace))
 }
 
-pub(crate) fn span(start: Option<KeyspaceId>, end: Option<KeyspaceId>, end_open: bool) -> Vec<KeyspaceId> {
+pub(crate) fn span(start: Option<KeyspaceId>, end: Option<KeyspaceId>, end_open: bool) -> KeyspaceIds {
 	let high = start.map(|id| id.0).unwrap_or(u8::MAX);
 	let low = match (end, end_open) {
 		(Some(id), true) => id.0.saturating_add(1),
 		(Some(id), false) => id.0,
 		(None, _) => 0,
 	};
-	let mut ids: Vec<KeyspaceId> =
+	let mut ids: KeyspaceIds =
 		KEYSPACES.iter().map(|spec| spec.id).filter(|id| id.0 <= high && id.0 >= low).collect();
 	ids.sort_by(|left, right| right.0.cmp(&left.0));
 	ids

@@ -184,8 +184,18 @@ impl Iterator for OperatorStateRangeIter {
 			let range = EncodedKeyRange::new(self.cursor.clone(), self.end.clone());
 			let batch = self.store.range_batch(self.operator, range, self.batch_size);
 			self.exhausted = !batch.has_more;
+			let resumed = match batch.resume {
+				Some(key) => {
+					self.cursor = Bound::Excluded(key);
+					true
+				}
+				None => false,
+			};
 			if batch.items.is_empty() {
-				return None;
+				if !resumed {
+					return None;
+				}
+				continue;
 			}
 			self.buffered = batch
 				.items

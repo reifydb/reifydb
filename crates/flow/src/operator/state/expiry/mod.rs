@@ -120,7 +120,7 @@ where
 		return Ok(None);
 	};
 	let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_bytes()).expect("an expiry key must decode");
-	Ok(K::Suffix::from_suffix_bytes(&suffix).map(|suffix| suffix.threshold()))
+	Ok(K::Suffix::from_suffix_bytes(suffix).map(|suffix| suffix.threshold()))
 }
 
 fn expiry_of<K>(key: &GroupStateKey) -> u64
@@ -129,7 +129,7 @@ where
 	K::Suffix: ExpirySuffix,
 {
 	let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_bytes()).expect("expiry key must decode");
-	K::Suffix::from_suffix_bytes(&suffix)
+	K::Suffix::from_suffix_bytes(suffix)
 		.expect("an expiry key must carry every column its keyspace declares")
 		.threshold()
 }

@@ -182,7 +182,7 @@ mod tests {
 	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnObject};
 
 	use super::*;
-	use crate::expression::{CallExpression, ColumnExpression, IdentExpression};
+	use crate::expression::{AliasExpression, CallExpression, ColumnExpression, IdentExpression};
 
 	fn call(name: &str, args: Vec<Expression>) -> Expression {
 		Expression::Call(CallExpression {
@@ -278,7 +278,6 @@ mod tests {
 	fn an_aliased_window_function_classifies_through_its_alias() {
 		// Every real use is aliased (bucket_start: window::start()); missing the alias unwrap would reject
 		// the only form anyone writes.
-		use crate::expression::AliasExpression;
 		let expr = Expression::Alias(AliasExpression {
 			alias: IdentExpression(Fragment::internal("bucket_start".to_string())),
 			expression: Box::new(call("window::start", vec![])),
