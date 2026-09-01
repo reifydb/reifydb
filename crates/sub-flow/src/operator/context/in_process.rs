@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Diff},
 	key::operator::state::{
-		GroupId, GroupStateKey, KeyspaceId, group_data_inner_range, group_inner_range, is_guest_framed_inner,
+		GroupId, GroupStateKey, KeyspaceId, is_guest_framed_inner, keyspace_inner_range,
 		keyspace_inner_range_in,
 	},
 	state::timer::TimerKind,
@@ -261,16 +261,30 @@ impl GuestState for InProcessState<'_> {
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
-		let range = if data_only {
-			group_data_inner_range(group)
-		} else {
-			group_inner_range(group)
-		};
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
-		// cannot reach the context, so it cannot re-enter the host while this borrow is live.
-		unsafe { (*self.host).state_range_limited_visit(range, limit, &mut |k, row| Ok(visit(k, row)?)) }
-			.map_err(to_sdk_err)
+		let mut seen = 0usize;
+		for id in (u8::MIN..=u8::MAX).rev() {
+			let keyspace = KeyspaceId(id);
+			if data_only && !keyspace.is_data() {
+				continue;
+			}
+			let remaining = match limit {
+				Some(limit) if seen >= limit => break,
+				Some(limit) => Some(limit - seen),
+				None => None,
+			};
+			let range = keyspace_inner_range(group, keyspace);
+			// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
+			// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the
+			// visitor cannot reach the context, so it cannot re-enter the host while this borrow is live.
+			unsafe {
+				(*self.host).state_range_limited_visit(range, remaining, &mut |k, row| {
+					seen += 1;
+					Ok(visit(k, row)?)
+				})
+			}
+			.map_err(to_sdk_err)?;
+		}
+		Ok(())
 	}
 
 	fn last_bytes(

@@ -15,10 +15,7 @@ use reifydb_core::{
 		EncodableKey,
 		operator::{
 			keyspace::join::JoinRowMappingKey,
-			state::{
-				GroupId, GroupStateKey, OperatorStateKey, group_data_inner_range, group_inner_range,
-				node_prefix,
-			},
+			state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
 		},
 	},
 	state::timer::{StateStore, TimerKind, TimerStore},
@@ -232,15 +229,6 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 			}
 		}
 		Ok(out)
-	}
-
-	fn group_sweep(&mut self, group: GroupId, data_only: bool, limit: Option<usize>) -> Result<Vec<GroupStateKey>> {
-		let range = if data_only {
-			group_data_inner_range(group)
-		} else {
-			group_inner_range(group)
-		};
-		Ok(self.state_page_inner(range, limit)?.into_iter().map(|(key, _)| key).collect())
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
