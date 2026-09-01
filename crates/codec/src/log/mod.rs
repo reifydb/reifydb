@@ -3,6 +3,7 @@
 
 pub mod index;
 pub mod meta;
+pub mod reader;
 pub mod record;
 pub mod vote;
 

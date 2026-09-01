@@ -10,7 +10,7 @@ use reifydb_codec::log::{
 use reifydb_runtime::io::fs::{
 	Create, Filesystem, FsError, Len, Open, OpenMut, Pread, Pwrite, Rename, SyncData, SyncDir, Truncate, Unlink,
 };
-use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
+use reifydb_value::byte_size::ByteSize;
 
 use crate::error::{LogError, Result};
 
@@ -93,20 +93,6 @@ impl<F: Filesystem> Segment<F> {
 		Ok(offset)
 	}
 
-	pub fn truncate_to(&mut self, position: Position) -> Result<()> {
-		reifydb_assertions! {
-			assert!(
-				position <= self.head,
-				"truncating to {} moves the head above the {} bytes actually written, so the next \
-				 append lands past a gap of unwritten zeros that terminates every later scan",
-				position,
-				self.head
-			);
-		}
-		self.head = position;
-		self.discard_tail()
-	}
-
 	pub fn seal(&mut self) -> Result<()> {
 		self.capacity = ByteSize::from_bytes(self.head.as_u64());
 		self.file.truncate(self.head.as_u64())?;
@@ -127,12 +113,6 @@ impl<F: Filesystem> Segment<F> {
 
 	pub fn capacity(&self) -> ByteSize {
 		self.capacity
-	}
-
-	fn discard_tail(&self) -> Result<()> {
-		self.file.truncate(self.head.as_u64())?;
-		self.file.truncate(self.capacity.as_bytes())?;
-		Ok(self.file.sync_data()?)
 	}
 }
 
@@ -319,40 +299,6 @@ mod tests {
 
 		assert_eq!(scan.records, vec![first]);
 		assert_eq!(scan.stop, Stop::Corrupt(second_at));
-	}
-
-	#[test]
-	fn truncate_to_drops_the_records_above_a_position_and_zeroes_them() {
-		// a follower overwrites a conflicting tail, so the bytes above must read back as
-		// unwritten rather than as the records the old leader left there.
-		let (fs, path) = fixture();
-		let mut segment = Segment::create(&fs, &path, CAPACITY).unwrap();
-		segment.append(&record(1, b"one")).unwrap();
-		let second = segment.append(&record(2, b"two")).unwrap();
-		segment.append(&record(3, b"three")).unwrap();
-		segment.sync().unwrap();
-
-		segment.truncate_to(second).unwrap();
-		let scanned = scan(&fs, &path).unwrap();
-
-		assert_eq!(scanned.records, vec![record(1, b"one")]);
-		assert_eq!(scanned.stop, Stop::Unwritten);
-		assert_eq!(segment.head(), second);
-		assert_eq!(segment.capacity(), CAPACITY);
-	}
-
-	#[test]
-	fn an_append_after_a_truncate_reuses_the_freed_position() {
-		// the head must follow the truncate, otherwise the new record is written above a
-		// gap of zeros and no scan ever reaches it.
-		let (fs, path) = fixture();
-		let mut segment = Segment::create(&fs, &path, CAPACITY).unwrap();
-		segment.append(&record(1, b"one")).unwrap();
-		let second = segment.append(&record(2, b"two")).unwrap();
-		segment.truncate_to(second).unwrap();
-
-		assert_eq!(segment.append(&record(9, b"nine")).unwrap(), second);
-		assert_eq!(scan(&fs, &path).unwrap().records, vec![record(1, b"one"), record(9, b"nine")]);
 	}
 
 	#[test]

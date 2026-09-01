@@ -68,6 +68,10 @@ pub enum LogError {
 		requested: u32,
 		count: u32,
 	},
+	InvalidReaderId {
+		dir: PathBuf,
+		id: String,
+	},
 	Io {
 		path: PathBuf,
 		message: String,
@@ -140,6 +144,10 @@ impl LogError {
 			} => path,
 			LogError::MetaCorrupt(path) => path,
 			LogError::NoSuchPartition {
+				dir,
+				..
+			} => dir,
+			LogError::InvalidReaderId {
 				dir,
 				..
 			} => dir,
@@ -231,6 +239,15 @@ impl Display for LogError {
 				requested,
 				count,
 			} => write!(f, "log {} has {} partitions, {} was requested", dir.display(), count, requested),
+			LogError::InvalidReaderId {
+				dir,
+				id,
+			} => write!(
+				f,
+				"log {} was given the reader id {:?}, which is not a usable file name",
+				dir.display(),
+				id
+			),
 			LogError::Io {
 				path,
 				message,

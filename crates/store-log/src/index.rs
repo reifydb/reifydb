@@ -124,12 +124,6 @@ impl<F: Filesystem> Index<F> {
 		position_of(&self.entries, version)
 	}
 
-	pub fn truncate_to(&mut self, index: LogIndex) -> Result<()> {
-		self.entries.retain(|entry| entry.index <= index);
-		self.file.truncate(self.end())?;
-		Ok(self.file.sync_data()?)
-	}
-
 	pub fn entries(&self) -> &[Entry] {
 		&self.entries
 	}
@@ -160,6 +154,12 @@ pub fn read<F: Open>(fs: &F, path: &Path) -> Result<(Header, Vec<Entry>)> {
 	load(&file, path, len)
 }
 
+pub fn header<F: Open>(fs: &F, path: &Path) -> Result<Header> {
+	let file = fs.open(path)?;
+	let len = file.len()?;
+	head(&file, path, len)
+}
+
 pub fn find<F: Open>(fs: &F, path: &Path, entries: &[Entry], version: LogVersion) -> Result<Option<Record>> {
 	let scan = scan_from(fs, path, position_of(entries, version))?;
 	Ok(scan.records.into_iter().find(|record| record.version == version))
@@ -177,7 +177,7 @@ fn at_or_before(at: usize, entries: &[Entry]) -> Position {
 	}
 }
 
-fn load<H: Pread>(file: &H, path: &Path, len: u64) -> Result<(Header, Vec<Entry>)> {
+fn head<H: Pread>(file: &H, path: &Path, len: u64) -> Result<Header> {
 	if len < HEADER_BYTES as u64 {
 		return Err(LogError::IndexShort {
 			path: path.to_path_buf(),
@@ -198,6 +198,11 @@ fn load<H: Pread>(file: &H, path: &Path, len: u64) -> Result<(Header, Vec<Entry>
 			found: header.magic,
 		});
 	}
+	Ok(header)
+}
+
+fn load<H: Pread>(file: &H, path: &Path, len: u64) -> Result<(Header, Vec<Entry>)> {
+	let header = head(file, path, len)?;
 	let count = ((len - HEADER_BYTES as u64) / ENTRY_BYTES as u64) as usize;
 	let mut entries = Vec::with_capacity(count);
 	for slot in 0..count {
@@ -303,22 +308,6 @@ mod tests {
 		assert_eq!(position_of(&entries, LogVersion::new(19)), Position::ZERO);
 		assert_eq!(position_of(&entries, LogVersion::new(20)), Position::new(800));
 		assert_eq!(position_of(&entries, LogVersion::new(999)), Position::new(800));
-	}
-
-	#[test]
-	fn truncate_to_drops_every_entry_above_the_index() {
-		// a new leader overwrites a conflicting tail, and an entry left pointing into it seeks
-		// into bytes that are no longer the record it named.
-		let (fs, path) = fixture();
-		let mut index = Index::create(&fs, &path, BASE, BASE_INDEX, INTERVAL).unwrap();
-		index.append(BASE, BASE_INDEX, Position::ZERO).unwrap();
-		index.append(version(9), index_at(1), Position::new(512)).unwrap();
-		index.append(version(18), index_at(2), Position::new(1024)).unwrap();
-
-		index.truncate_to(index_at(1)).unwrap();
-
-		assert_eq!(index.entries().len(), 2);
-		assert_eq!(read(&fs, &path).unwrap().1, index.entries());
 	}
 
 	#[test]

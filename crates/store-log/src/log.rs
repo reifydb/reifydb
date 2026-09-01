@@ -11,7 +11,7 @@ use reifydb_codec::log::{
 use reifydb_runtime::io::fs::{
 	Create, Filesystem, Len, Mkdir, Open, OpenMut, Pread, ReadDir, Rename, SyncData, SyncDir, Unlink,
 };
-use reifydb_value::clock::ClockNow;
+use reifydb_value::{clock::ClockNow, value::duration::Duration};
 
 use crate::{
 	error::{LogError, Result},
@@ -100,6 +100,26 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 			partition.sync()?;
 		}
 		Ok(())
+	}
+
+	pub fn purge(&mut self, ttl: Duration) -> Result<Vec<(u32, Vec<LogVersion>)>> {
+		let mut dropped = Vec::with_capacity(self.partitions.len());
+		for (at, partition) in self.partitions.iter_mut().enumerate() {
+			dropped.push((at as u32, partition.purge(ttl)?));
+		}
+		Ok(dropped)
+	}
+
+	pub fn register(&self, partition: u32, id: &str) -> Result<()> {
+		self.at(partition)?.register(id)
+	}
+
+	pub fn unregister(&self, partition: u32, id: &str) -> Result<()> {
+		self.at(partition)?.unregister(id)
+	}
+
+	pub fn record(&self, partition: u32, id: &str, version: LogVersion) -> Result<()> {
+		self.at(partition)?.record(id, version)
 	}
 
 	pub fn head(&self) -> Option<LogVersion> {
@@ -328,7 +348,7 @@ mod tests {
 	#[test]
 	fn a_commit_may_half_survive_across_partitions() {
 		// Decision 230 gives this up deliberately: p1 kept commit 30 and p0 never got it, and
-		// nothing puts that back together. No consumer before stage 5 reads across partitions,
+		// nothing puts that back together. No reader before stage 5 reads across partitions,
 		// and the alternative pinned the log to whichever partition was idle.
 		let (fs, mut log) = fixture();
 		log.append(0, &record(10, 1)).unwrap();

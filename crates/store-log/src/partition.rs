@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::path::{Path, PathBuf};
+use std::{
+	collections::HashSet,
+	path::{Path, PathBuf},
+};
 
 use reifydb_codec::log::{
 	LogIndex, LogVersion, Position,
@@ -19,7 +22,8 @@ use reifydb_value::{
 
 use crate::{
 	error::{LogError, Result},
-	index::Index,
+	index::{Index, header},
+	reader::{floor, record, register, unregister},
 	segment::{STAGING_SUFFIX, Scan, Segment, scan},
 };
 
@@ -86,7 +90,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 	}
 
 	pub fn open(fs: F, clock: C, dir: &Path, config: Config) -> Result<(Self, Scan)> {
-		sweep_staging(&fs, dir)?;
+		sweep(&fs, dir)?;
 		let mut bases = bases_in(&fs, dir)?;
 		let opened_at = clock.now();
 		loop {
@@ -138,6 +142,43 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 	pub fn seal(&mut self) -> Result<()> {
 		self.index.seal(self.timestamps)?;
 		self.segment.seal()
+	}
+
+	pub fn purge(&mut self, ttl: Duration) -> Result<Vec<LogVersion>> {
+		let Some(deadline) = self.clock.now().checked_sub(ttl) else {
+			return Ok(Vec::new());
+		};
+		let pinned = floor(&self.fs, &self.dir)?;
+		let mut dropped = Vec::new();
+		while self.bases.len() > 1 {
+			let base = self.bases[0];
+			if !expired(&self.fs, &self.dir, base, deadline)? {
+				break;
+			}
+			if pinned.is_some_and(|low| self.bases[1] > low) {
+				break;
+			}
+			remove(&self.fs, &self.dir.join(log_name(base)))?;
+			remove(&self.fs, &self.dir.join(index_name(base)))?;
+			self.bases.remove(0);
+			dropped.push(base);
+		}
+		if !dropped.is_empty() {
+			self.fs.sync_dir(&self.dir)?;
+		}
+		Ok(dropped)
+	}
+
+	pub fn register(&self, id: &str) -> Result<()> {
+		register(&self.fs, &self.dir, id)
+	}
+
+	pub fn unregister(&self, id: &str) -> Result<()> {
+		unregister(&self.fs, &self.dir, id)
+	}
+
+	pub fn record(&self, id: &str, version: LogVersion) -> Result<()> {
+		record(&self.fs, &self.dir, id, version)
 	}
 
 	pub fn sync(&self) -> Result<()> {
@@ -247,11 +288,23 @@ pub fn index_name(base: LogVersion) -> String {
 }
 
 pub fn base_of(name: &str) -> Option<LogVersion> {
-	let digits = name.strip_suffix(LOG_SUFFIX)?;
+	base_from(name, LOG_SUFFIX)
+}
+
+fn index_base_of(name: &str) -> Option<LogVersion> {
+	base_from(name, INDEX_SUFFIX)
+}
+
+fn base_from(name: &str, suffix: &str) -> Option<LogVersion> {
+	let digits = name.strip_suffix(suffix)?;
 	if digits.len() != NAME_DIGITS {
 		return None;
 	}
 	digits.parse().ok().map(LogVersion::new)
+}
+
+fn name_of(path: &Path) -> Option<&str> {
+	path.file_name().and_then(|name| name.to_str())
 }
 
 fn bases_in<F: ReadDir>(fs: &F, dir: &Path) -> Result<Vec<LogVersion>> {
@@ -266,13 +319,29 @@ fn bases_in<F: ReadDir>(fs: &F, dir: &Path) -> Result<Vec<LogVersion>> {
 	Ok(bases)
 }
 
-fn sweep_staging<F: ReadDir + Unlink>(fs: &F, dir: &Path) -> Result<()> {
-	for path in fs.read_dir(dir)? {
+fn sweep<F: ReadDir + Unlink>(fs: &F, dir: &Path) -> Result<()> {
+	let entries = fs.read_dir(dir)?;
+	let bases: HashSet<LogVersion> = entries.iter().filter_map(|path| name_of(path)).filter_map(base_of).collect();
+	for path in &entries {
 		if path.as_os_str().as_encoded_bytes().ends_with(STAGING_SUFFIX.as_bytes()) {
-			remove(fs, &path)?;
+			remove(fs, path)?;
+			continue;
+		}
+		if let Some(base) = name_of(path).and_then(index_base_of)
+			&& !bases.contains(&base)
+		{
+			remove(fs, path)?;
 		}
 	}
 	Ok(())
+}
+
+fn expired<F: Filesystem + Open>(fs: &F, dir: &Path, base: LogVersion, deadline: DateTime) -> Result<bool> {
+	match header(fs, &dir.join(index_name(base))) {
+		Ok(found) => Ok(found.timestamps.is_some_and(|range| range.max <= deadline)),
+		Err(error) if rebuildable(&error) => Ok(false),
+		Err(error) => Err(error),
+	}
 }
 
 fn rebuildable(error: &LogError) -> bool {
@@ -356,10 +425,10 @@ fn widen(range: Option<TimestampRange>, timestamp: DateTime) -> Option<Timestamp
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::log::{RecordKind, Term};
+	use reifydb_codec::log::{RecordKind, Term, index::Header};
 	use reifydb_runtime::{
 		context::clock::{Clock, MockClock},
-		io::fs::{Len, Open, memory::MemoryFs},
+		io::fs::{Len, Open, Pwrite, memory::MemoryFs},
 	};
 
 	use super::*;
@@ -556,5 +625,149 @@ mod tests {
 		reopened.append(&record(501, b"after the gap")).unwrap();
 
 		assert_eq!(reopened.bases(), [BASE, LogVersion::new(501)]);
+	}
+
+	fn rolled() -> (MemoryFs, MockClock, Partition<MemoryFs, Clock>) {
+		let (fs, mock, mut partition) = fixture();
+		for version in 500..=507 {
+			partition.append(&record(version, &[0u8; 200])).unwrap();
+		}
+		assert_eq!(partition.bases(), [BASE, LogVersion::new(502), LogVersion::new(504), LogVersion::new(506)]);
+		(fs, mock, partition)
+	}
+
+	fn clobber(fs: &MemoryFs, base: LogVersion, bytes: &[u8]) {
+		let path = PathBuf::from(DIR).join(index_name(base));
+		fs.open_mut(&path).unwrap().pwrite(0, bytes).unwrap();
+	}
+
+	const RECENT: Duration = Duration::from_seconds_const(1);
+	const EXPIRED: Duration = Duration::from_milliseconds_const(1);
+
+	#[test]
+	fn purge_unlinks_a_sealed_pair_older_than_the_ttl() {
+		// this is the whole point of the crate: retention is an unlink of a whole segment, never a
+		// delete inside a file, so both halves of the pair have to leave the directory.
+		let (fs, _, mut partition) = rolled();
+
+		let dropped = partition.purge(EXPIRED).unwrap();
+
+		assert_eq!(dropped, [BASE, LogVersion::new(502), LogVersion::new(504)]);
+		assert_eq!(partition.bases(), [LogVersion::new(506)]);
+		for base in dropped {
+			assert!(fs.open(&PathBuf::from(DIR).join(log_name(base))).is_err());
+			assert!(fs.open(&PathBuf::from(DIR).join(index_name(base))).is_err());
+		}
+	}
+
+	#[test]
+	fn purge_never_unlinks_the_active_segment() {
+		// the active segment holds the records nothing has read yet and is the only one still open
+		// for write; unlinking it loses acknowledged records and leaves the partition unopenable.
+		let (_, _, mut partition) = fixture();
+		partition.append(&record(500, b"only")).unwrap();
+
+		assert_eq!(partition.purge(EXPIRED).unwrap(), []);
+		assert_eq!(partition.bases(), [BASE]);
+	}
+
+	#[test]
+	fn a_sealed_segment_that_is_still_the_active_one_is_never_purged() {
+		// a crash between the seal and the pair that should have followed it leaves the newest segment
+		// sealed and carrying a range, so it looks exactly like a purge candidate. The rule that the
+		// last base is never a candidate is the only thing between retention and the head of the log.
+		let (fs, mock, mut partition) = fixture();
+		partition.append(&record(500, b"only")).unwrap();
+		partition.seal().unwrap();
+		drop(partition);
+		let (mut reopened, _) =
+			Partition::open(fs.clone(), Clock::Mock(mock), Path::new(DIR), config()).unwrap();
+
+		assert_eq!(reopened.purge(EXPIRED).unwrap(), []);
+		assert_eq!(reopened.bases(), [BASE]);
+		assert_eq!(reopened.records().unwrap().len(), 1);
+	}
+
+	#[test]
+	fn a_segment_inside_the_ttl_is_kept() {
+		// without the age test purge would unlink on the reader floor alone, and a log with no
+		// readers registered would drop every sealed segment the moment it rolled.
+		let (_, _, mut partition) = rolled();
+
+		assert_eq!(partition.purge(RECENT).unwrap(), []);
+		assert_eq!(partition.bases().len(), 4);
+	}
+
+	#[test]
+	fn purge_stops_at_the_first_segment_a_reader_still_needs() {
+		// decision 232: it drops a leading run, never a set. Skipping over a pinned segment to
+		// unlink an older one behind it would leave a hole, and a hole in the middle is worse than
+		// a short log because a reader cannot tell it from the end.
+		let (_, _, mut partition) = rolled();
+		partition.register("flow-3").unwrap();
+		partition.record("flow-3", LogVersion::new(503)).unwrap();
+
+		let dropped = partition.purge(EXPIRED).unwrap();
+
+		assert_eq!(dropped, [BASE]);
+		assert_eq!(partition.bases(), [LogVersion::new(502), LogVersion::new(504), LogVersion::new(506)]);
+	}
+
+	#[test]
+	fn a_reader_that_has_recorded_nothing_holds_every_segment() {
+		// a registered reader pins at zero, so registering before reading must not be a window in
+		// which retention races ahead and unlinks what the reader was about to read.
+		let (_, _, mut partition) = rolled();
+		partition.register("flow-3").unwrap();
+
+		assert_eq!(partition.purge(EXPIRED).unwrap(), []);
+		assert_eq!(partition.bases().len(), 4);
+	}
+
+	#[test]
+	fn a_sealed_index_with_no_timestamp_range_is_never_purged() {
+		// decision 188 lets a range be absent, and absent means the age of the segment was never
+		// written down. Purging on a guess is not recoverable, so every "I cannot tell" answers keep.
+		let (fs, _, mut partition) = rolled();
+		clobber(&fs, BASE, &Header::new(BASE, BASE_INDEX).encode());
+
+		assert_eq!(partition.purge(EXPIRED).unwrap(), []);
+		assert_eq!(partition.bases().len(), 4);
+	}
+
+	#[test]
+	fn a_sealed_index_that_cannot_be_read_is_never_purged() {
+		// same answer one file over: without the index header there is no range, and unlinking a
+		// segment whose age is unknown throws away records no scan can bring back.
+		let (fs, _, mut partition) = rolled();
+		clobber(&fs, BASE, &[0u8; 4]);
+
+		assert_eq!(partition.purge(EXPIRED).unwrap(), []);
+		assert_eq!(partition.bases().len(), 4);
+	}
+
+	#[test]
+	fn purging_twice_drops_nothing_the_second_time() {
+		// purge is an explicit call a caller can make on any schedule, so a second pass over a
+		// directory it already trimmed must be a no op rather than reaching into the active segment.
+		let (_, _, mut partition) = rolled();
+		partition.purge(EXPIRED).unwrap();
+
+		assert_eq!(partition.purge(EXPIRED).unwrap(), []);
+		assert_eq!(partition.bases(), [LogVersion::new(506)]);
+	}
+
+	#[test]
+	fn an_index_whose_log_is_gone_is_swept_on_open() {
+		// decision 235: purge unlinks the log first, so a crash between the two leaves an orphan
+		// index. Nothing lists it, so it would sit there forever unless open removes it.
+		let (fs, mock, partition) = rolled();
+		drop(partition);
+		remove(&fs, &PathBuf::from(DIR).join(log_name(BASE))).unwrap();
+
+		let (reopened, _) = Partition::open(fs.clone(), Clock::Mock(mock), Path::new(DIR), config()).unwrap();
+
+		assert_eq!(reopened.bases(), [LogVersion::new(502), LogVersion::new(504), LogVersion::new(506)]);
+		assert!(fs.open(&PathBuf::from(DIR).join(index_name(BASE))).is_err());
 	}
 }
