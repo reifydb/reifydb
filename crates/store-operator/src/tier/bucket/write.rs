@@ -166,8 +166,8 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	fn write_into(&self, txn: &Transaction) {
-		let mut sets: Vec<(OperatorId, K::Key, Vec<u8>)> = Vec::new();
-		let mut removes: Vec<(OperatorId, K::Key)> = Vec::new();
+		let mut sets: Vec<(OperatorId, K::GroupedKey, Vec<u8>)> = Vec::new();
+		let mut removes: Vec<(OperatorId, K::GroupedKey)> = Vec::new();
 		for (group, suffix, entry) in self.entries() {
 			let key = K::join(group, suffix.clone());
 			match &entry.post {

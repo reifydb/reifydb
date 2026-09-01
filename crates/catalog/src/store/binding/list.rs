@@ -17,7 +17,7 @@ impl CatalogStore {
 		let stream = rx.range(BindingKey::full_scan(), RangeScope::All, 1024)?;
 		for entry in stream {
 			let entry = entry?;
-			if let Some(Key::Binding(_)) = Key::decode(&entry.key) {
+			if BindingKey::decode(&entry.key).is_some() {
 				out.push(decode_binding(EncodedCatalogRow::view(&entry.bytes)));
 			}
 		}

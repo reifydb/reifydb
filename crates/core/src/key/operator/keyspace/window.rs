@@ -11,7 +11,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			Key,
+			TypedKey,
 			direction::{Asc, Desc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue},
 		},
@@ -19,71 +19,71 @@ use crate::{
 	metrics::heap::HeapSize,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct AccumulatorKey {
 	pub group: Desc<GroupId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct BufferKey {
 	pub group: Desc<GroupId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct RunningKey {
 	pub group: Desc<GroupId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct CountKey {
 	pub group: Desc<GroupId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct SessionKey {
 	pub group: Desc<GroupId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct RollingMetaKey {
 	pub group: Desc<GroupId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct EngineMetaKey {
 	pub group: Desc<GroupId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct EmitKey {
 	pub group: Desc<GroupId>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct RowIndexKey {
 	pub group: Desc<GroupId>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct WindowMetaKey {
 	pub window: Desc<Hash128>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct GuestAccumulatorKey {
 	pub group: Desc<GroupId>,
 	pub slot: Asc<[u8; 16]>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct GuestBufferKey {
 	pub group: Desc<GroupId>,
 	pub slot: Asc<[u8; 16]>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct GuestRunningKey {
 	pub group: Desc<GroupId>,
 	pub slot: Asc<[u8; 16]>,
@@ -97,14 +97,14 @@ impl Keyspace for Accumulator {
 	const NAME: &'static str = "ACCUMULATOR";
 	const CACHE: CacheTiers = CacheTiers::Range;
 
-	type Key = AccumulatorKey;
+	type GroupedKey = AccumulatorKey;
 	type Suffix = ();
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, ())
 	}
 
-	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
 		AccumulatorKey {
 			group: Desc(group),
 		}
@@ -119,14 +119,14 @@ impl Keyspace for Buffer {
 	const NAME: &'static str = "BUFFER";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = BufferKey;
+	type GroupedKey = BufferKey;
 	type Suffix = ();
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, ())
 	}
 
-	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
 		BufferKey {
 			group: Desc(group),
 		}
@@ -141,14 +141,14 @@ impl Keyspace for Running {
 	const NAME: &'static str = "RUNNING";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = RunningKey;
+	type GroupedKey = RunningKey;
 	type Suffix = ();
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, ())
 	}
 
-	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
 		RunningKey {
 			group: Desc(group),
 		}
@@ -163,14 +163,14 @@ impl Keyspace for Count {
 	const NAME: &'static str = "COUNT";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = CountKey;
+	type GroupedKey = CountKey;
 	type Suffix = ();
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, ())
 	}
 
-	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
 		CountKey {
 			group: Desc(group),
 		}
@@ -185,14 +185,14 @@ impl Keyspace for Session {
 	const NAME: &'static str = "SESSION";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = SessionKey;
+	type GroupedKey = SessionKey;
 	type Suffix = ();
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, ())
 	}
 
-	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
 		SessionKey {
 			group: Desc(group),
 		}
@@ -207,14 +207,14 @@ impl Keyspace for RollingMeta {
 	const NAME: &'static str = "ROLLING_META";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = RollingMetaKey;
+	type GroupedKey = RollingMetaKey;
 	type Suffix = ();
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, ())
 	}
 
-	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
 		RollingMetaKey {
 			group: Desc(group),
 		}
@@ -229,14 +229,14 @@ impl Keyspace for EngineMeta {
 	const NAME: &'static str = "ENGINE_META";
 	const CACHE: CacheTiers = CacheTiers::Range;
 
-	type Key = EngineMetaKey;
+	type GroupedKey = EngineMetaKey;
 	type Suffix = ();
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, ())
 	}
 
-	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
 		EngineMetaKey {
 			group: Desc(group),
 		}
@@ -251,14 +251,14 @@ impl Keyspace for Emit {
 	const NAME: &'static str = "EMIT";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = EmitKey;
+	type GroupedKey = EmitKey;
 	type Suffix = Asc<RowNumber>;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, key.row)
 	}
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		EmitKey {
 			group: Desc(group),
 			row: suffix,
@@ -274,14 +274,14 @@ impl Keyspace for RowIndex {
 	const NAME: &'static str = "ROW_INDEX";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = RowIndexKey;
+	type GroupedKey = RowIndexKey;
 	type Suffix = Asc<RowNumber>;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, key.row)
 	}
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		RowIndexKey {
 			group: Desc(group),
 			row: suffix,
@@ -297,14 +297,14 @@ impl Keyspace for WindowMeta {
 	const NAME: &'static str = "WINDOW_META";
 	const CACHE: CacheTiers = CacheTiers::Range;
 
-	type Key = WindowMetaKey;
+	type GroupedKey = WindowMetaKey;
 	type Suffix = WindowMetaKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -317,14 +317,14 @@ impl Keyspace for GuestAccumulator {
 	const NAME: &'static str = "GUEST_ACCUMULATOR";
 	const CACHE: CacheTiers = CacheTiers::Range;
 
-	type Key = GuestAccumulatorKey;
+	type GroupedKey = GuestAccumulatorKey;
 	type Suffix = Asc<[u8; 16]>;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, key.slot)
 	}
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		GuestAccumulatorKey {
 			group: Desc(group),
 			slot: suffix,
@@ -340,14 +340,14 @@ impl Keyspace for GuestBuffer {
 	const NAME: &'static str = "GUEST_BUFFER";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = GuestBufferKey;
+	type GroupedKey = GuestBufferKey;
 	type Suffix = Asc<[u8; 16]>;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, key.slot)
 	}
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		GuestBufferKey {
 			group: Desc(group),
 			slot: suffix,
@@ -363,14 +363,14 @@ impl Keyspace for GuestRunning {
 	const NAME: &'static str = "GUEST_RUNNING";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = GuestRunningKey;
+	type GroupedKey = GuestRunningKey;
 	type Suffix = Asc<[u8; 16]>;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, key.slot)
 	}
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		GuestRunningKey {
 			group: Desc(group),
 			slot: suffix,

@@ -322,15 +322,16 @@ fn rebuild_maps_a_view_row_key_to_the_view_object() {
 		.into_iter()
 		.find(|cdc| cdc.version == insert_version)
 		.expect("the insert must produce a cdc record");
-	let post = match table_commit.changes.iter().find(|change| {
-		matches!(change, CdcChange::Insert { .. }) && matches!(Key::decode(change.key()), Some(Key::Row(_)))
-	}) {
-		Some(CdcChange::Insert {
-			post,
-			..
-		}) => post.clone(),
-		other => panic!("expected a row insert cdc change, got {other:?}"),
-	};
+	let post =
+		match table_commit.changes.iter().find(|change| {
+			matches!(change, CdcChange::Insert { .. }) && RowKey::decode(change.key()).is_some()
+		}) {
+			Some(CdcChange::Insert {
+				post,
+				..
+			}) => post.clone(),
+			other => panic!("expected a row insert cdc change, got {other:?}"),
+		};
 
 	let view_commit = Cdc::new(
 		table_commit.version,
@@ -365,9 +366,9 @@ fn rebuild_emits_no_change_for_queue_rows() {
 		queue_row_keys += cdc
 			.changes
 			.iter()
-			.filter(|change| match Key::decode(change.key()) {
-				Some(Key::Row(row)) => matches!(row.storage, StorageId::Queue(_)),
-				_ => false,
+			.filter(|change| match RowKey::decode(change.key()) {
+				Some(row) => matches!(row.storage, StorageId::Queue(_)),
+				None => false,
 			})
 			.count();
 		let original = tracked.get(&cdc.version).cloned().unwrap_or_default();

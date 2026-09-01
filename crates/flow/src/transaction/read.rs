@@ -12,7 +12,7 @@ use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, store::MultiVersionRow},
-	key::{Key, kind::KeyKind, operator::state::OperatorStateKey},
+	key::{kind::KeyKind, operator::state::OperatorStateKey},
 };
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_value::Result;
@@ -30,7 +30,7 @@ pub enum ReadFrom {
 }
 
 pub fn read_from(key: &EncodedKey) -> ReadFrom {
-	match Key::kind(key) {
+	match KeyKind::of(key) {
 		None => ReadFrom::Query,
 		Some(kind) => match kind {
 			KeyKind::OperatorState => ReadFrom::OperatorState,

@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::key::{
-	EncodableKey,
+	Key,
 	operator_settings::{OperatorSettingsKey, OperatorSettingsKeyRange},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};

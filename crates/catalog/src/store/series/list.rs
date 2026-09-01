@@ -19,9 +19,7 @@ impl CatalogStore {
 
 			for entry in stream {
 				let entry = entry?;
-				if let Some(key) = Key::decode(&entry.key)
-					&& let Key::Series(series_key) = key
-				{
+				if let Some(series_key) = SeriesKey::decode(&entry.key) {
 					series_data.push(series_key.series);
 				}
 			}

@@ -23,7 +23,7 @@ use reifydb_core::{
 		store::SingleVersionRange,
 	},
 	key::{
-		EncodableKey, queue_attempt::QueueAttemptKey, queue_deduplication::QueueDeduplicationKey,
+		Key, queue_attempt::QueueAttemptKey, queue_deduplication::QueueDeduplicationKey,
 		queue_schedule::QueueItemStateKey, row::RowKey,
 	},
 	lifecycle::{

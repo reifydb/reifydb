@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use crate::key::typed::{
-	Key,
+	TypedKey,
 	direction::{Asc, Desc, Direction, KeyScalar},
 };
 
-pub trait KeyLayout: Key {
+pub trait KeyLayout: TypedKey {
 	const COLUMNS: &'static [KeyColumn];
 
 	fn key_values(&self) -> Vec<KeyValue>;
@@ -130,20 +130,20 @@ mod tests {
 		key::{
 			operator::state::GroupId,
 			typed::{
-				Key,
+				TypedKey,
 				direction::{Asc, Desc, Direction, KeyField},
 			},
 		},
 		metrics::heap::HeapSize,
 	};
 
-	#[derive(Clone, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+	#[derive(Clone, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 	struct ProbeKey {
 		threshold: Desc<u64>,
 		side: Asc<u8>,
 	}
 
-	#[derive(Clone, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+	#[derive(Clone, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 	struct JoinLeftKey {
 		group: Desc<GroupId>,
 		row: Asc<RowNumber>,

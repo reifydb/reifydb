@@ -12,7 +12,7 @@ pub mod watermark;
 
 use reifydb_core::{
 	interface::cdc::{Cdc, CdcChange},
-	key::{Key, kind::KeyKind},
+	key::kind::KeyKind,
 };
 
 pub fn is_relevant_cdc(cdc: &Cdc) -> bool {
@@ -34,7 +34,7 @@ fn is_relevant_cdc_change(change: &CdcChange) -> bool {
 			..
 		} => key,
 	};
-	Key::kind(key)
+	KeyKind::of(key)
 		.map(|kind| {
 			matches!(
 				kind,

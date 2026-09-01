@@ -2,8 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::key::{
-	EncodableKey, granted_role::GrantedRoleKey, identity::IdentityKey,
-	identity_attribute_value::IdentityAttributeValueKey,
+	Key, granted_role::GrantedRoleKey, identity::IdentityKey, identity_attribute_value::IdentityAttributeValueKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 use reifydb_value::value::identity::IdentityId;

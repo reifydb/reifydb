@@ -14,7 +14,7 @@ pub(crate) fn load_handlers(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 		for entry in stream {
 			let entry = entry?;
 			let version = entry.version;
-			if let Some(Key::Handler(k)) = Key::decode(&entry.key) {
+			if let Some(k) = HandlerKey::decode(&entry.key) {
 				entries.push((k.handler, version));
 			}
 		}

@@ -4,7 +4,7 @@
 use std::ops::Bound::{Excluded, Included, Unbounded};
 
 use reifydb_core::{
-	key::typed::{ExclusiveUpperEnd, Key, range::KeyRange},
+	key::typed::{ExclusiveUpperEnd, TypedKey, range::KeyRange},
 	util::sorted::SortedVecMap,
 };
 use reifydb_value::byte_size::ByteSize;

@@ -11,7 +11,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::storage::StorageId, resolved::ResolvedSeries, store::MultiVersionRow},
 	key::{
-		EncodableKey,
+		Key,
 		partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},

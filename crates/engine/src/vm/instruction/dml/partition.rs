@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	interface::catalog::ringbuffer::{RingBuffer, RingBufferMetadata},
-	key::{EncodableKey, partitioned_row::PartitionedRowKey, row::RowKey},
+	key::{Key, partitioned_row::PartitionedRowKey, row::RowKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};

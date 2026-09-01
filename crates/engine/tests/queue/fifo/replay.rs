@@ -14,7 +14,7 @@ use reifydb_core::{
 		store::{SingleVersionGet, SingleVersionRange},
 	},
 	key::{
-		EncodableKey,
+		Key,
 		queue_attempt::QueueAttemptKey,
 		queue_schedule::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 	},

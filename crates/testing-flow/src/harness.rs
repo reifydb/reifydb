@@ -14,7 +14,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	key::{EncodableKey, Key, kind::KeyKind, operator::state::OperatorStateKey},
+	key::{EncodableKey, kind::KeyKind, operator::state::OperatorStateKey},
 	state::timer::TimerKind,
 };
 use reifydb_flow::{
@@ -113,7 +113,7 @@ impl<O> Harness<O> {
 		);
 		let mut rest = Pending::new();
 		for (key, write) in pending.iter_sorted() {
-			if matches!(Key::kind(key), Some(KeyKind::OperatorState)) {
+			if matches!(KeyKind::of(key), Some(KeyKind::OperatorState)) {
 				continue;
 			}
 			match write {

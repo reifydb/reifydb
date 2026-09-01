@@ -11,7 +11,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	error::diagnostic::internal::internal,
 	key::{
-		EncodableKey,
+		Key,
 		row_shape::{RowShapeFieldKey, RowShapeKey},
 	},
 };

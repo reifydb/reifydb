@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::typed::{ExclusiveUpperEnd, Key};
+use reifydb_core::key::typed::{ExclusiveUpperEnd, TypedKey};
 
 use crate::{
 	coverage::index::CoverageIndex,

@@ -15,7 +15,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		EncodableKey,
+		Key,
 		queue_schedule::QueueItemStateKey,
 		row::{RowKey, RowKeyRange},
 	},

@@ -3,16 +3,18 @@
 
 use std::{cmp::Ordering, fmt::Debug, hash::Hash};
 
+pub use key::Key;
 use reifydb_codec::key::encoded::EncodedKey;
-pub use reifydb_macro::Key;
+pub use reifydb_macro::{Key, TypedKey};
 
 use crate::metrics::heap::HeapSize;
 
 pub mod direction;
+pub mod key;
 pub mod layout;
 pub mod range;
 
-pub trait Key: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {
+pub trait TypedKey: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {
 	fn low() -> Self;
 
 	fn successor(&self) -> Option<Self>;
@@ -37,7 +39,7 @@ impl<K> ExclusiveUpperEnd<K> {
 	}
 }
 
-impl<K: Key> ExclusiveUpperEnd<K> {
+impl<K: TypedKey> ExclusiveUpperEnd<K> {
 	pub fn just_past(key: &K) -> Self {
 		match key.successor() {
 			Some(next) => ExclusiveUpperEnd::Key(next),
@@ -111,7 +113,7 @@ impl<K: Ord> Ord for ExclusiveUpperEnd<K> {
 
 pub type MultiKey = EncodedKey;
 
-impl Key for () {
+impl TypedKey for () {
 	fn low() -> Self {}
 
 	fn successor(&self) -> Option<Self> {
@@ -119,7 +121,7 @@ impl Key for () {
 	}
 }
 
-impl Key for EncodedKey {
+impl TypedKey for EncodedKey {
 	fn low() -> Self {
 		EncodedKey::new([])
 	}
@@ -136,18 +138,18 @@ impl Key for EncodedKey {
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use super::{ExclusiveUpperEnd, Key, MultiKey};
+	use super::{ExclusiveUpperEnd, MultiKey, TypedKey};
 
 	#[test]
 	fn unit_key_has_no_successor() {
 		// a group only keyspace subtracts its whole key, so the empty key must report the top of its space
-		assert_eq!(<() as Key>::low(), ());
-		assert_eq!(<() as Key>::successor(&()), None);
+		assert_eq!(<() as TypedKey>::low(), ());
+		assert_eq!(<() as TypedKey>::successor(&()), None);
 	}
 
 	#[test]
 	fn encoded_key_low_is_empty() {
-		assert_eq!(<MultiKey as Key>::low().as_slice(), &[] as &[u8]);
+		assert_eq!(<MultiKey as TypedKey>::low().as_slice(), &[] as &[u8]);
 	}
 
 	#[test]

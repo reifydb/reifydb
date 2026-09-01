@@ -19,7 +19,7 @@ use std::{
 };
 
 use hashbrown::HashTable;
-use reifydb_core::{key::typed::Key, metrics::heap::HeapSize, util::budget::MemoryBudget};
+use reifydb_core::{key::typed::TypedKey, metrics::heap::HeapSize, util::budget::MemoryBudget};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::byte_size::ByteSize;
 
@@ -27,7 +27,7 @@ use crate::tier::range::RowBytes;
 
 pub trait PointDomain: Copy + Debug + 'static {
 	type Dimension: Copy + Eq + Hash + Send + Sync + 'static;
-	type Key: Key;
+	type Key: TypedKey;
 	type MetricBucket: Copy + Eq + Debug + Send + Sync + 'static;
 	type Row: RowBytes + Clone + Send + Sync + 'static;
 

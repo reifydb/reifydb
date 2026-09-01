@@ -11,7 +11,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			Key,
+			TypedKey,
 			direction::{Asc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue},
 		},
@@ -19,47 +19,47 @@ use crate::{
 	metrics::heap::HeapSize,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct RingbufferForwardKey {
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct RingbufferEntryKey {
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct RingbufferExpiryKey {
 	pub expires_at: Asc<u64>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct RingbufferTtlArmKey {}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct RingbufferMetaKey {}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct PartitionedRingbufferEntryKey {
 	pub partition: Asc<Partition>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct PartitionedRingbufferExpiryKey {
 	pub partition: Asc<Partition>,
 	pub expires_at: Asc<u64>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct PartitionedRingbufferTtlArmKey {
 	pub partition: Asc<Partition>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct PartitionedRingbufferMetaKey {
 	pub partition: Asc<Partition>,
 }
@@ -72,14 +72,14 @@ impl Keyspace for RingbufferForward {
 	const NAME: &'static str = "RINGBUFFER_FORWARD";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = RingbufferForwardKey;
+	type GroupedKey = RingbufferForwardKey;
 	type Suffix = RingbufferForwardKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -92,14 +92,14 @@ impl Keyspace for RingbufferEntry {
 	const NAME: &'static str = "RINGBUFFER_ENTRY";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = RingbufferEntryKey;
+	type GroupedKey = RingbufferEntryKey;
 	type Suffix = RingbufferEntryKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -112,14 +112,14 @@ impl Keyspace for RingbufferExpiry {
 	const NAME: &'static str = "RINGBUFFER_EXPIRY";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = RingbufferExpiryKey;
+	type GroupedKey = RingbufferExpiryKey;
 	type Suffix = RingbufferExpiryKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -132,14 +132,14 @@ impl Keyspace for RingbufferTtlArm {
 	const NAME: &'static str = "RINGBUFFER_TTL_ARM";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = RingbufferTtlArmKey;
+	type GroupedKey = RingbufferTtlArmKey;
 	type Suffix = RingbufferTtlArmKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -152,14 +152,14 @@ impl Keyspace for RingbufferMeta {
 	const NAME: &'static str = "RINGBUFFER_META";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = RingbufferMetaKey;
+	type GroupedKey = RingbufferMetaKey;
 	type Suffix = RingbufferMetaKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -172,14 +172,14 @@ impl Keyspace for PartitionedRingbufferEntry {
 	const NAME: &'static str = "PARTITIONED_RINGBUFFER_ENTRY";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = PartitionedRingbufferEntryKey;
+	type GroupedKey = PartitionedRingbufferEntryKey;
 	type Suffix = PartitionedRingbufferEntryKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -192,14 +192,14 @@ impl Keyspace for PartitionedRingbufferExpiry {
 	const NAME: &'static str = "PARTITIONED_RINGBUFFER_EXPIRY";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = PartitionedRingbufferExpiryKey;
+	type GroupedKey = PartitionedRingbufferExpiryKey;
 	type Suffix = PartitionedRingbufferExpiryKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -212,14 +212,14 @@ impl Keyspace for PartitionedRingbufferTtlArm {
 	const NAME: &'static str = "PARTITIONED_RINGBUFFER_TTL_ARM";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = PartitionedRingbufferTtlArmKey;
+	type GroupedKey = PartitionedRingbufferTtlArmKey;
 	type Suffix = PartitionedRingbufferTtlArmKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -232,14 +232,14 @@ impl Keyspace for PartitionedRingbufferMeta {
 	const NAME: &'static str = "PARTITIONED_RINGBUFFER_META";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = PartitionedRingbufferMetaKey;
+	type GroupedKey = PartitionedRingbufferMetaKey;
 	type Suffix = PartitionedRingbufferMetaKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }

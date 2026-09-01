@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedQueue, store::MultiVersionRow},
 	internal_error,
 	key::{
-		EncodableKey,
+		Key,
 		row::{RowKey, RowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},

@@ -16,7 +16,7 @@ use reifydb_core::{
 		cdc::{Cdc, CdcChange},
 		store::MultiVersionGetPrevious,
 	},
-	key::{Key, cdc_exclude::should_exclude_from_cdc},
+	key::{cdc_exclude::should_exclude_from_cdc, kind::KeyKind},
 };
 use reifydb_runtime::{
 	actor::{
@@ -88,7 +88,7 @@ where
 
 	#[inline]
 	fn is_excluded_kind(delta: &Delta) -> bool {
-		Key::kind(delta.key()).map(should_exclude_from_cdc).unwrap_or(false)
+		KeyKind::of(delta.key()).map(should_exclude_from_cdc).unwrap_or(false)
 	}
 
 	#[inline]

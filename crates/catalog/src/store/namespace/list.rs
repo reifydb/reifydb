@@ -20,9 +20,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let entry = entry?;
-			if let Some(key) = Key::decode(&entry.key)
-				&& let Key::Namespace(namespace_key) = key
-			{
+			if let Some(namespace_key) = NamespaceKey::decode(&entry.key) {
 				let namespace_id = namespace_key.namespace;
 
 				let name = namespace::get_name(EncodedCatalogRow::view(&entry.bytes)).to_string();

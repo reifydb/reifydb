@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::key as keycode;
 use reifydb_value::error::Error;
 use serde::{Deserialize, Serialize, de};
 
@@ -97,6 +98,17 @@ pub enum KeyKind {
 	QueueDue = 0x57,
 	QueueAttempt = 0x58,
 	QueueKeyActive = 0x59,
+}
+
+impl KeyKind {
+	pub fn of(key: impl AsRef<[u8]>) -> Option<Self> {
+		let key = key.as_ref();
+		if key.is_empty() {
+			return None;
+		}
+
+		keycode::decode_u8(key[0]).try_into().ok()
+	}
 }
 
 impl From<KeyKind> for u8 {

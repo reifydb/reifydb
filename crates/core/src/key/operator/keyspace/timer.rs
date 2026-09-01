@@ -11,7 +11,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			Key,
+			TypedKey,
 			direction::{Asc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue},
 		},
@@ -20,14 +20,14 @@ use crate::{
 	state::timer::TimerKind,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct TimerWheelKey {
 	pub due: Asc<DateTime>,
 	pub kind: Asc<TimerKind>,
 	pub id: Asc<[u8; 16]>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct TimerIndexKey {
 	pub kind: Asc<TimerKind>,
 	pub id: Asc<[u8; 16]>,
@@ -45,14 +45,14 @@ impl Keyspace for TimerWheel {
 	const NAME: &'static str = "TIMER_WHEEL";
 	const CACHE: CacheTiers = CacheTiers::Range;
 
-	type Key = TimerWheelKey;
+	type GroupedKey = TimerWheelKey;
 	type Suffix = TimerWheelKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -65,14 +65,14 @@ impl Keyspace for TimerIndex {
 	const NAME: &'static str = "TIMER_INDEX";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = TimerIndexKey;
+	type GroupedKey = TimerIndexKey;
 	type Suffix = TimerIndexKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }

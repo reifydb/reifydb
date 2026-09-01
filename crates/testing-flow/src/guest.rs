@@ -10,7 +10,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::RemoveVisibility,
 	interface::{catalog::flow::OperatorId, change::Change},
-	key::{Key, kind::KeyKind, operator::state::GroupStateKey},
+	key::{kind::KeyKind, operator::state::GroupStateKey},
 	row::Row,
 	value::column::columns::Columns,
 };
@@ -83,7 +83,7 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 		);
 		let mut rest = Pending::new();
 		for (key, write) in pending.iter_sorted() {
-			if matches!(Key::kind(key), Some(KeyKind::OperatorState)) {
+			if matches!(KeyKind::of(key), Some(KeyKind::OperatorState)) {
 				continue;
 			}
 			match write {

@@ -10,7 +10,7 @@ use reifydb_core::{
 		resolved::ResolvedRingBuffer,
 	},
 	internal_error,
-	key::{EncodableKey, partitioned_row::PartitionedRowKey, row::RowKey},
+	key::{Key, partitioned_row::PartitionedRowKey, row::RowKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};

@@ -20,7 +20,7 @@ use reifydb_core::{
 		EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
 		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore, classify_key, classify_range,
 	},
-	key::typed::Key,
+	key::typed::TypedKey,
 };
 use reifydb_store_commit::{
 	MultiVersionScope, RangeBatch, RangeCursor, RangeStop, TierBatch, VersionedGetResult, store::CommitStore,
@@ -1325,7 +1325,7 @@ mod cache_tests {
 			store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 		},
 		key::{
-			EncodableKey,
+			EncodableKey, Key,
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 			row::RowKey,
 		},

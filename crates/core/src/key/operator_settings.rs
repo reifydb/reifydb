@@ -2,16 +2,17 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::{
-	deserializer::KeyDeserializer,
 	encoded::{EncodedKey, EncodedKeyRange},
 	serializer::KeySerializer,
 };
+use reifydb_macro::Key;
 use serde::{Deserialize, Serialize};
 
-use super::{EncodableKey, KeyKind};
+use super::{KeyKind, typed::key::Key};
 use crate::interface::catalog::flow::OperatorId;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Key)]
+#[key(kind = OperatorSettings)]
 pub struct OperatorSettingsKey {
 	pub operator: OperatorId,
 }
@@ -22,29 +23,6 @@ impl OperatorSettingsKey {
 			operator: operator.into(),
 		}
 		.encode()
-	}
-}
-
-impl EncodableKey for OperatorSettingsKey {
-	const KIND: KeyKind = KeyKind::OperatorSettings;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.operator);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
-			return None;
-		}
-
-		Some(Self {
-			operator: OperatorId(de.read_u64().ok()?),
-		})
 	}
 }
 
@@ -91,5 +69,44 @@ pub mod tests {
 	fn test_operator_settings_key_rejects_other_kind() {
 		let other = RowSettingsKey::encoded(StorageId::Table(TableId(1)));
 		assert!(OperatorSettingsKey::decode(&other).is_none());
+	}
+
+	#[test]
+	fn test_order_preserving() {
+		let key1 = OperatorSettingsKey {
+			operator: OperatorId(1),
+		};
+		let key2 = OperatorSettingsKey {
+			operator: OperatorId(2),
+		};
+
+		let encoded1 = key1.encode();
+		let encoded2 = key2.encode();
+
+		assert!(encoded2 < encoded1, "ordering not preserved");
+	}
+}
+
+#[cfg(test)]
+mod verify_byte_identical {
+	use reifydb_codec::key::serializer::KeySerializer;
+
+	use super::{Key, OperatorSettingsKey};
+	use crate::interface::catalog::flow::OperatorId;
+
+	fn legacy_encode(key: &OperatorSettingsKey) -> Vec<u8> {
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(OperatorSettingsKey::KIND as u8).extend_u64(key.operator);
+		serializer.to_encoded_key().as_slice().to_vec()
+	}
+
+	#[test]
+	fn matches_legacy_byte_layout() {
+		for operator in [0u64, 1, 42, 12345, u64::MAX] {
+			let key = OperatorSettingsKey {
+				operator: OperatorId(operator),
+			};
+			assert_eq!(legacy_encode(&key), key.encode().as_slice().to_vec(), "operator={operator:#x}");
+		}
 	}
 }

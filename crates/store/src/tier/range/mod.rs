@@ -15,7 +15,7 @@ use std::{borrow::Cow, collections::HashMap, fmt::Debug, hash::Hash, mem::size_o
 
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
-	key::typed::{ExclusiveUpperEnd, Key, MultiKey},
+	key::typed::{ExclusiveUpperEnd, MultiKey, TypedKey},
 	util::{budget::MemoryBudget, sorted::SortedVecMap},
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
@@ -42,7 +42,7 @@ impl RowBytes for EncodedPodRow {
 pub trait RangeDomain: Copy + Debug + 'static {
 	type Dimension: Copy + Eq + Hash + Send + Sync + 'static;
 	type Partition: Copy + Eq + Hash + Send + Sync + 'static;
-	type Key: Key;
+	type Key: TypedKey;
 	type MetricBucket: Copy + Eq + Debug + Send + Sync + 'static;
 	type Row: RowBytes + Clone + Send + Sync + 'static;
 
@@ -116,7 +116,7 @@ pub fn scan_range(gap: &Interval<MultiKey>) -> EncodedKeyRange {
 	EncodedKeyRange::new(Bound::Included(gap.start.clone()), end)
 }
 
-pub fn proven_span<K: Key>(gap: &Interval<K>, last_key: Option<&K>, exhausted: bool) -> Option<Interval<K>> {
+pub fn proven_span<K: TypedKey>(gap: &Interval<K>, last_key: Option<&K>, exhausted: bool) -> Option<Interval<K>> {
 	if exhausted {
 		return Some(gap.clone());
 	}
@@ -173,7 +173,7 @@ const fn partition_overhead<D: RangeDomain>() -> usize {
 	size_of::<D::Partition>() + size_of::<Partition<D::Key, D::Row>>()
 }
 
-fn entry_footprint<K: Key, R: RowBytes>(key: &K, entry: &Entry<R>) -> usize {
+fn entry_footprint<K: TypedKey, R: RowBytes>(key: &K, entry: &Entry<R>) -> usize {
 	entry_overhead::<K, R>() + key.heap_size() + entry.value().map_or(0, RowBytes::row_bytes)
 }
 

@@ -10,7 +10,7 @@ pub mod timer;
 pub mod window;
 
 #[cfg(test)]
-use crate::key::{operator::state::GroupId, typed::Key};
+use crate::key::{operator::state::GroupId, typed::TypedKey};
 use crate::{
 	interface::store::CacheTiers,
 	key::{
@@ -82,7 +82,7 @@ macro_rules! catalogue {
 				name: <$keyspace as Keyspace>::NAME,
 				id: <$keyspace as Keyspace>::ID,
 				cache: <$keyspace as Keyspace>::CACHE,
-				columns: <<$keyspace as Keyspace>::Key as KeyLayout>::COLUMNS,
+				columns: <<$keyspace as Keyspace>::GroupedKey as KeyLayout>::COLUMNS,
 				suffix: <<$keyspace as Keyspace>::Suffix as KeyLayout>::COLUMNS,
 			}),*
 		];
@@ -159,7 +159,7 @@ fn round_trips<K: Keyspace>() {
 	// low() is every column at the start of its own order, so a join that hardcoded a column to its
 	// minimum would round trip against low() alone; stepping the suffix first is what makes the
 	// probe able to fail
-	let mut suffix = <K::Suffix as Key>::low();
+	let mut suffix = <K::Suffix as TypedKey>::low();
 	for step in 0..4 {
 		let key = K::join(GroupId(9), suffix.clone());
 		let (group, split) = K::split(&key);

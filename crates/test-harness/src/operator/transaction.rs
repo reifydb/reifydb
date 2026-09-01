@@ -9,7 +9,6 @@ use reifydb_core::{
 	delta::RemoveVisibility,
 	interface::catalog::flow::OperatorId,
 	key::{
-		Key,
 		kind::KeyKind,
 		operator::{
 			keyspace::KEYSPACES,
@@ -122,7 +121,7 @@ impl FlowTxn for TestEngine {
 		let mut cmd = self.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();
 		for (key, pw) in pending.iter_sorted() {
-			if matches!(Key::kind(key), Some(KeyKind::OperatorState)) {
+			if matches!(KeyKind::of(key), Some(KeyKind::OperatorState)) {
 				continue;
 			}
 			match pw {

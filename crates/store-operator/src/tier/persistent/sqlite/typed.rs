@@ -84,9 +84,9 @@ pub fn from_sql(row: &Row<'_>, at: usize, column: &KeyColumn) -> Option<KeyValue
 pub trait SqlKey: Keyspace {
 	fn table() -> String;
 
-	fn bind_key(key: &Self::Key) -> Vec<Value>;
+	fn bind_key(key: &Self::GroupedKey) -> Vec<Value>;
 
-	fn read_key(row: &Row<'_>, at: usize) -> Option<Self::Key>;
+	fn read_key(row: &Row<'_>, at: usize) -> Option<Self::GroupedKey>;
 
 	fn columns() -> &'static [KeyColumn];
 
@@ -110,7 +110,7 @@ impl<K: Keyspace> SqlKey for K {
 		table_of(K::NAME)
 	}
 
-	fn bind_key(key: &Self::Key) -> Vec<Value> {
+	fn bind_key(key: &Self::GroupedKey) -> Vec<Value> {
 		key.key_values()
 			.into_iter()
 			.zip(Self::columns())
@@ -118,16 +118,16 @@ impl<K: Keyspace> SqlKey for K {
 			.collect()
 	}
 
-	fn read_key(row: &Row<'_>, at: usize) -> Option<Self::Key> {
+	fn read_key(row: &Row<'_>, at: usize) -> Option<Self::GroupedKey> {
 		let mut values = Vec::with_capacity(Self::columns().len());
 		for (offset, column) in Self::columns().iter().enumerate() {
 			values.push(from_sql(row, at + offset, column)?);
 		}
-		<Self::Key as KeyLayout>::from_key_values(&values)
+		<Self::GroupedKey as KeyLayout>::from_key_values(&values)
 	}
 
 	fn columns() -> &'static [KeyColumn] {
-		<Self::Key as KeyLayout>::COLUMNS
+		<Self::GroupedKey as KeyLayout>::COLUMNS
 	}
 
 	fn column_list() -> String {
@@ -183,7 +183,7 @@ impl<K: Keyspace> SqlKey for K {
 	}
 }
 
-pub fn set<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::Key, bytes: &[u8]) {
+pub fn set<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::GroupedKey, bytes: &[u8]) {
 	let sql = format!(
 		"INSERT INTO \"{}\" (\"operator\", {}\"bytes\") VALUES (?1, {}?{})\n\
 		 ON CONFLICT (\"operator\"{}) DO UPDATE SET \"bytes\" = excluded.\"bytes\"",
@@ -222,11 +222,11 @@ fn remove_sql<K: Keyspace>(rows: usize) -> String {
 	)
 }
 
-pub fn set_chunked<K: Keyspace>(txn: &Transaction, rows: &[(OperatorId, K::Key, Vec<u8>)]) {
+pub fn set_chunked<K: Keyspace>(txn: &Transaction, rows: &[(OperatorId, K::GroupedKey, Vec<u8>)]) {
 	if rows.is_empty() {
 		return;
 	}
-	let bind = |row: &(OperatorId, K::Key, Vec<u8>), params: &mut Vec<Value>| {
+	let bind = |row: &(OperatorId, K::GroupedKey, Vec<u8>), params: &mut Vec<Value>| {
 		params.push(Value::Integer(row.0.0 as i64));
 		params.extend(K::bind_key(&row.1));
 		params.push(Value::Blob(row.2.clone()));
@@ -258,11 +258,11 @@ pub fn set_chunked<K: Keyspace>(txn: &Transaction, rows: &[(OperatorId, K::Key, 
 		.expect("operator state write failed");
 }
 
-pub fn remove_chunked<K: Keyspace>(txn: &Transaction, keys: &[(OperatorId, K::Key)]) {
+pub fn remove_chunked<K: Keyspace>(txn: &Transaction, keys: &[(OperatorId, K::GroupedKey)]) {
 	if keys.is_empty() {
 		return;
 	}
-	let bind = |row: &(OperatorId, K::Key), params: &mut Vec<Value>| {
+	let bind = |row: &(OperatorId, K::GroupedKey), params: &mut Vec<Value>| {
 		params.push(Value::Integer(row.0.0 as i64));
 		params.extend(K::bind_key(&row.1));
 	};
@@ -298,14 +298,14 @@ pub fn drop_operator_in<K: Keyspace>(txn: &Transaction, operator: OperatorId) {
 	txn.execute(&sql, [operator.0 as i64]).expect("operator state rows could not be dropped");
 }
 
-pub fn get<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::Key) -> Option<Vec<u8>> {
+pub fn get<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::GroupedKey) -> Option<Vec<u8>> {
 	let sql = format!("SELECT \"bytes\" FROM \"{}\" WHERE \"operator\" = ?1{}", K::table(), K::key_predicate(2));
 	let mut params = vec![Value::Integer(operator.0 as i64)];
 	params.extend(K::bind_key(key));
 	conn.query_row(&sql, params_from_iter(params), |row| row.get::<_, Vec<u8>>(0)).ok()
 }
 
-pub fn remove<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::Key) {
+pub fn remove<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::GroupedKey) {
 	let sql = format!("DELETE FROM \"{}\" WHERE \"operator\" = ?1{}", K::table(), K::key_predicate(2));
 	let mut params = vec![Value::Integer(operator.0 as i64)];
 	params.extend(K::bind_key(key));
@@ -317,7 +317,7 @@ pub fn drop_operator<K: Keyspace>(conn: &Connection, operator: OperatorId) {
 	conn.execute(&sql, [operator.0 as i64]).expect("operator state rows could not be dropped");
 }
 
-pub fn scan<K: Keyspace>(conn: &Connection, operator: OperatorId) -> Vec<(K::Key, Vec<u8>)> {
+pub fn scan<K: Keyspace>(conn: &Connection, operator: OperatorId) -> Vec<(K::GroupedKey, Vec<u8>)> {
 	let sql = format!(
 		"SELECT {}\"bytes\" FROM \"{}\" WHERE \"operator\" = ?1{}",
 		K::key_columns(),
@@ -335,7 +335,12 @@ pub fn scan<K: Keyspace>(conn: &Connection, operator: OperatorId) -> Vec<(K::Key
 	out
 }
 
-fn bound_clause<K: Keyspace>(bound: Bound<&K::Key>, op_included: &str, op_excluded: &str, from: usize) -> String {
+fn bound_clause<K: Keyspace>(
+	bound: Bound<&K::GroupedKey>,
+	op_included: &str,
+	op_excluded: &str,
+	from: usize,
+) -> String {
 	if K::columns().is_empty() {
 		return String::new();
 	}
@@ -350,7 +355,7 @@ fn bound_clause<K: Keyspace>(bound: Bound<&K::Key>, op_included: &str, op_exclud
 	}
 }
 
-fn bound_key<K: Keyspace>(bound: Bound<&K::Key>) -> Option<&K::Key> {
+fn bound_key<K: Keyspace>(bound: Bound<&K::GroupedKey>) -> Option<&K::GroupedKey> {
 	match bound {
 		Bound::Unbounded => None,
 		Bound::Included(key) | Bound::Excluded(key) => Some(key),
@@ -360,10 +365,10 @@ fn bound_key<K: Keyspace>(bound: Bound<&K::Key>) -> Option<&K::Key> {
 fn bounded<K: Keyspace>(
 	conn: &Connection,
 	operator: OperatorId,
-	range: &KeyRange<K::Key>,
+	range: &KeyRange<K::GroupedKey>,
 	limit: u64,
 	order: &str,
-) -> Vec<(K::Key, Vec<u8>)> {
+) -> Vec<(K::GroupedKey, Vec<u8>)> {
 	let width = K::columns().len();
 	let mut at = 2;
 	let start = bound_clause::<K>(range.start.as_ref(), ">=", ">", at);
@@ -406,18 +411,18 @@ fn bounded<K: Keyspace>(
 pub fn range<K: Keyspace>(
 	conn: &Connection,
 	operator: OperatorId,
-	range: &KeyRange<K::Key>,
+	range: &KeyRange<K::GroupedKey>,
 	limit: u64,
-) -> Vec<(K::Key, Vec<u8>)> {
+) -> Vec<(K::GroupedKey, Vec<u8>)> {
 	bounded::<K>(conn, operator, range, limit, "ASC")
 }
 
 pub fn last<K: Keyspace>(
 	conn: &Connection,
 	operator: OperatorId,
-	range: &KeyRange<K::Key>,
+	range: &KeyRange<K::GroupedKey>,
 	limit: u64,
-) -> Vec<(K::Key, Vec<u8>)> {
+) -> Vec<(K::GroupedKey, Vec<u8>)> {
 	bounded::<K>(conn, operator, range, limit, "DESC")
 }
 

@@ -18,7 +18,7 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
-	key::{EncodableKey, partitioned_row::PartitionedRowKey, row::RowKey},
+	key::{Key, partitioned_row::PartitionedRowKey, row::RowKey},
 	value::column::columns::Columns,
 };
 use reifydb_evaluate::stack::SymbolTable;

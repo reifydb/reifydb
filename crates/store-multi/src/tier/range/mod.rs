@@ -20,7 +20,7 @@ use reifydb_core::{
 	},
 	key::{
 		row::RowKey,
-		typed::{ExclusiveUpperEnd, Key, MultiKey, range::KeyRange},
+		typed::{ExclusiveUpperEnd, MultiKey, TypedKey, range::KeyRange},
 	},
 };
 use reifydb_store::{
@@ -481,7 +481,7 @@ mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::catalog::{id::TableId, storage::StorageId},
-		key::{EncodableKey, row::RowKey, series_row::SeriesRowKey, typed::range::KeyRange},
+		key::{Key, row::RowKey, series_row::SeriesRowKey, typed::range::KeyRange},
 	};
 	use reifydb_store::coverage::plan::DEFAULT_GAP_GUARD;
 	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};

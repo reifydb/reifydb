@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, hash::Hash};
 
-use reifydb_core::key::typed::{ExclusiveUpperEnd, Key};
+use reifydb_core::key::typed::{ExclusiveUpperEnd, TypedKey};
 
 use crate::coverage::interval::CoverageSet;
 
@@ -21,7 +21,7 @@ impl<D, K> Default for CoverageIndex<D, K> {
 	}
 }
 
-impl<D: Hash + Eq + Copy, K: Key> CoverageIndex<D, K> {
+impl<D: Hash + Eq + Copy, K: TypedKey> CoverageIndex<D, K> {
 	pub fn new() -> Self {
 		Self::default()
 	}

@@ -29,9 +29,7 @@ impl CatalogStore {
 
 			for entry in stream {
 				let entry = entry?;
-				if let Some(key) = Key::decode(&entry.key)
-					&& let Key::RingBuffer(ringbuffer_key) = key
-				{
+				if let Some(ringbuffer_key) = RingBufferKey::decode(&entry.key) {
 					let ringbuffer_id = ringbuffer_key.ringbuffer;
 
 					let namespace_id = NamespaceId(ringbuffer::get_namespace(

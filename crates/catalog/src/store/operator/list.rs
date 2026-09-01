@@ -5,7 +5,7 @@ use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::flow::{FlowId, Operator, OperatorId},
 	key::{
-		EncodableKey,
+		Key,
 		operator::key::{OperatorByFlowKey, OperatorKey},
 	},
 };

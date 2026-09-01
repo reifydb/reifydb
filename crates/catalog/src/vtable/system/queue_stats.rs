@@ -8,7 +8,7 @@ use reifydb_core::{
 		store::{SingleVersionGet, SingleVersionRangeRev},
 	},
 	key::{
-		EncodableKey,
+		Key,
 		queue_schedule::{QueueDueKey, QueuePartitionKey},
 	},
 };

@@ -1158,7 +1158,7 @@ mod tests {
 			},
 			resolved::ResolvedNamespace,
 		},
-		key::{Key, kind::KeyKind},
+		key::kind::KeyKind,
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::value::{constraint::TypeConstraint, datetime::DateTime, identity::IdentityId};
@@ -1242,7 +1242,7 @@ mod tests {
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		for (key, pw) in pending.iter_sorted() {
-			if matches!(Key::kind(key), Some(KeyKind::OperatorState)) {
+			if matches!(KeyKind::of(key), Some(KeyKind::OperatorState)) {
 				continue;
 			}
 			match pw {

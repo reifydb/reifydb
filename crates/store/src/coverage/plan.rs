@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::typed::{ExclusiveUpperEnd, Key};
+use reifydb_core::key::typed::{ExclusiveUpperEnd, TypedKey};
 
 use crate::coverage::interval::{CoverageSet, Interval};
 
@@ -22,7 +22,7 @@ pub struct ScanPlan<K> {
 	pub degraded: bool,
 }
 
-impl<K: Key> ScanPlan<K> {
+impl<K: TypedKey> ScanPlan<K> {
 	pub fn full(interval: Interval<K>) -> Self {
 		Self {
 			segments: vec![Segment::Gap {
@@ -49,7 +49,7 @@ pub const DEFAULT_GAP_GUARD: usize = 4;
 
 pub fn plan<K, F>(coverage: &CoverageSet<K>, lo: K, hi: ExclusiveUpperEnd<K>, guard: usize, exempt: F) -> ScanPlan<K>
 where
-	K: Key,
+	K: TypedKey,
 	F: Fn(&Interval<K>) -> bool,
 {
 	if !hi.covers(&lo) {
@@ -123,7 +123,7 @@ impl GapHistogram {
 		Self::default()
 	}
 
-	pub fn record<K: Key>(&mut self, plan: &ScanPlan<K>) {
+	pub fn record<K: TypedKey>(&mut self, plan: &ScanPlan<K>) {
 		let count = plan.gaps - plan.exempted;
 		let bounds = Self::bounds();
 		let slot = bounds.iter().rposition(|bound| count >= *bound).unwrap_or(0);

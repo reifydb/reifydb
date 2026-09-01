@@ -22,9 +22,7 @@ impl CatalogStore {
 			let stream = rx.range(TableKey::full_scan(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
-				if let Some(key) = Key::decode(&entry.key)
-					&& let Key::Table(table_key) = key
-				{
+				if let Some(table_key) = TableKey::decode(&entry.key) {
 					let table_id = table_key.table;
 					let namespace_id = NamespaceId(table::get_namespace(EncodedCatalogRow::view(
 						&entry.bytes,

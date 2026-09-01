@@ -23,7 +23,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		EncodableKey, EncodableKeyRange,
+		EncodableKey, EncodableKeyRange, Key,
 		index_entry::IndexEntryKey,
 		partitioned_row::PartitionedRowKey,
 		row::{RowKey, RowKeyRange},

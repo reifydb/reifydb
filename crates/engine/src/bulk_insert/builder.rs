@@ -27,7 +27,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		EncodableKey, index_entry::IndexEntryKey, partitioned_row::PartitionedRowKey,
+		EncodableKey, Key, index_entry::IndexEntryKey, partitioned_row::PartitionedRowKey,
 		partitioned_series_row::PartitionedSeriesRowKey, row::RowKey, series_row::SeriesRowKey,
 	},
 };

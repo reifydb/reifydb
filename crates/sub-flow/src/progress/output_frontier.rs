@@ -5,7 +5,7 @@ use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::object::ObjectId, store::SingleVersionRange},
-	key::{EncodableKey, output_frontier::OutputFrontierKey},
+	key::{Key, output_frontier::OutputFrontierKey},
 };
 use reifydb_flow::transaction::frontier::{FrontierEntries, FrontierEntry, OutputFrontiers};
 use reifydb_store_single::SingleStore;

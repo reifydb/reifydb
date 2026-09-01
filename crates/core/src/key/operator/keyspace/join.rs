@@ -12,7 +12,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			Key,
+			TypedKey,
 			direction::{Asc, Desc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue},
 		},
@@ -21,57 +21,57 @@ use crate::{
 	state::join::ContentVersion,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct JoinLeftKey {
 	pub group: Desc<GroupId>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct JoinRightKey {
 	pub group: Desc<GroupId>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct JoinPublishedKey {
 	pub group: Desc<GroupId>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct JoinPinKey {
 	pub group: Desc<GroupId>,
 	pub row: Asc<RowNumber>,
 	pub version: Asc<ContentVersion>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct JoinSchemaKey {
 	pub side: Asc<u8>,
 	pub fingerprint: Asc<RowShapeFingerprint>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct JoinRowExpiryKey {
 	pub group: Desc<GroupId>,
 	pub side: Asc<u8>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct JoinPinSuffix {
 	pub row: Asc<RowNumber>,
 	pub version: Asc<ContentVersion>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct JoinRowExpirySuffix {
 	pub side: Asc<u8>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct JoinRowMappingKey {
 	pub tag: Asc<u8>,
 	pub left: Desc<u64>,
@@ -86,14 +86,14 @@ impl Keyspace for JoinLeft {
 	const NAME: &'static str = "JOIN_LEFT";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = JoinLeftKey;
+	type GroupedKey = JoinLeftKey;
 	type Suffix = Asc<RowNumber>;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, key.row)
 	}
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		JoinLeftKey {
 			group: Desc(group),
 			row: suffix,
@@ -109,14 +109,14 @@ impl Keyspace for JoinRight {
 	const NAME: &'static str = "JOIN_RIGHT";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = JoinRightKey;
+	type GroupedKey = JoinRightKey;
 	type Suffix = Asc<RowNumber>;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, key.row)
 	}
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		JoinRightKey {
 			group: Desc(group),
 			row: suffix,
@@ -132,14 +132,14 @@ impl Keyspace for JoinPublished {
 	const NAME: &'static str = "JOIN_PUBLISHED";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = JoinPublishedKey;
+	type GroupedKey = JoinPublishedKey;
 	type Suffix = Asc<RowNumber>;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, key.row)
 	}
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		JoinPublishedKey {
 			group: Desc(group),
 			row: suffix,
@@ -155,10 +155,10 @@ impl Keyspace for JoinPin {
 	const NAME: &'static str = "JOIN_PIN";
 	const CACHE: CacheTiers = CacheTiers::Range;
 
-	type Key = JoinPinKey;
+	type GroupedKey = JoinPinKey;
 	type Suffix = JoinPinSuffix;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(
 			key.group.0,
 			JoinPinSuffix {
@@ -168,7 +168,7 @@ impl Keyspace for JoinPin {
 		)
 	}
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		JoinPinKey {
 			group: Desc(group),
 			row: suffix.row,
@@ -185,14 +185,14 @@ impl Keyspace for JoinSchema {
 	const NAME: &'static str = "JOIN_SCHEMA";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = JoinSchemaKey;
+	type GroupedKey = JoinSchemaKey;
 	type Suffix = JoinSchemaKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -205,10 +205,10 @@ impl Keyspace for JoinRowExpiry {
 	const NAME: &'static str = "JOIN_ROW_EXPIRY";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = JoinRowExpiryKey;
+	type GroupedKey = JoinRowExpiryKey;
 	type Suffix = JoinRowExpirySuffix;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(
 			key.group.0,
 			JoinRowExpirySuffix {
@@ -218,7 +218,7 @@ impl Keyspace for JoinRowExpiry {
 		)
 	}
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		JoinRowExpiryKey {
 			group: Desc(group),
 			side: suffix.side,
@@ -235,14 +235,14 @@ impl Keyspace for JoinRowMapping {
 	const NAME: &'static str = "JOIN_ROW_MAPPING";
 	const CACHE: CacheTiers = CacheTiers::Range;
 
-	type Key = JoinRowMappingKey;
+	type GroupedKey = JoinRowMappingKey;
 	type Suffix = JoinRowMappingKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }

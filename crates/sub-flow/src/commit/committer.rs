@@ -13,7 +13,7 @@ use reifydb_core::{
 		cdc::{CdcConsumerId, ConsumerClass},
 		change::Change,
 	},
-	key::{Key, kind::KeyKind},
+	key::kind::KeyKind,
 };
 #[cfg(test)]
 use reifydb_engine::engine::StandardEngine;
@@ -281,7 +281,7 @@ impl Committer {
 #[instrument(name = "flow::committer::apply_pending", level = "debug", skip_all)]
 fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
 	for (key, pw) in combined.iter_ordered() {
-		if matches!(Key::kind(key), Some(KeyKind::OperatorState)) {
+		if matches!(KeyKind::of(key), Some(KeyKind::OperatorState)) {
 			continue;
 		}
 		match pw {
@@ -289,7 +289,7 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Announced,
 			} => {
-				if matches!(Key::kind(key), Some(KeyKind::Row | KeyKind::SeriesRow)) {
+				if matches!(KeyKind::of(key), Some(KeyKind::Row | KeyKind::SeriesRow)) {
 					match transaction.get(key)? {
 						Some(existing) => transaction.remove_with_pre(key, existing.bytes)?,
 						None => transaction.remove(key)?,
@@ -301,7 +301,7 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Unobserved,
 			} => {
-				if matches!(Key::kind(key), Some(KeyKind::Row | KeyKind::SeriesRow)) {
+				if matches!(KeyKind::of(key), Some(KeyKind::Row | KeyKind::SeriesRow)) {
 					match transaction.get(key)? {
 						Some(existing) => {
 							transaction.remove_unobserved_with_pre(key, existing.bytes)?

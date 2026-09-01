@@ -9,7 +9,7 @@ use std::{
 	},
 };
 
-use reifydb_core::key::typed::{ExclusiveUpperEnd, Key};
+use reifydb_core::key::typed::{ExclusiveUpperEnd, TypedKey};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Interval<K> {
@@ -17,7 +17,7 @@ pub struct Interval<K> {
 	pub end: ExclusiveUpperEnd<K>,
 }
 
-impl<K: Key> Interval<K> {
+impl<K: TypedKey> Interval<K> {
 	pub fn new(start: K, end: ExclusiveUpperEnd<K>) -> Self {
 		Self {
 			start,
@@ -39,7 +39,7 @@ pub struct CoverageSet<K> {
 	intervals: BTreeMap<K, ExclusiveUpperEnd<K>>,
 }
 
-impl<K: Key> Default for CoverageSet<K> {
+impl<K: TypedKey> Default for CoverageSet<K> {
 	fn default() -> Self {
 		Self {
 			intervals: BTreeMap::new(),
@@ -47,7 +47,7 @@ impl<K: Key> Default for CoverageSet<K> {
 	}
 }
 
-impl<K: Key> CoverageSet<K> {
+impl<K: TypedKey> CoverageSet<K> {
 	pub fn new() -> Self {
 		Self::default()
 	}
@@ -202,7 +202,7 @@ impl<K: Key> CoverageSet<K> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::key::typed::{ExclusiveUpperEnd, Key, MultiKey};
+	use reifydb_core::key::typed::{ExclusiveUpperEnd, MultiKey, TypedKey};
 
 	use super::{CoverageSet, Interval};
 
@@ -274,7 +274,7 @@ mod tests {
 
 	#[test]
 	fn extend_keeps_intervals_one_key_apart_separate() {
-		// Key "b" itself is uncovered, so merging across it would overstate RAM.
+		// TypedKey "b" itself is uncovered, so merging across it would overstate RAM.
 		let mut set = CoverageSet::new();
 		set.extend(k("a"), ExclusiveUpperEnd::of("b"));
 		set.extend(successor_of(&k("b")), ExclusiveUpperEnd::of("c"));

@@ -16,10 +16,10 @@ pub trait Keyspace: Copy + Debug + 'static {
 	const NAME: &'static str;
 	const CACHE: CacheTiers;
 
-	type Key: KeyLayout;
+	type GroupedKey: KeyLayout;
 	type Suffix: KeyLayout;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix);
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix);
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key;
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey;
 }

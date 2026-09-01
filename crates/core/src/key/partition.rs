@@ -2,19 +2,23 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::{
-	deserializer::KeyDeserializer,
 	encoded::{EncodedKey, EncodedKeyRange},
 	serializer::KeySerializer,
 };
+use reifydb_macro::Key;
 use reifydb_value::value::partition::Partition;
 
-use super::{EncodableKey, KeyKind};
+use super::KeyKind;
 use crate::{
 	interface::catalog::object::ObjectId,
-	key::catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
+	key::{
+		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
+		typed::key::Key,
+	},
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Key)]
+#[key(kind = Partition)]
 pub struct PartitionKey {
 	pub object: ObjectId,
 	pub partition: Partition,
@@ -42,38 +46,17 @@ impl PartitionKey {
 	}
 }
 
-impl EncodableKey for PartitionKey {
-	const KIND: KeyKind = KeyKind::Partition;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(26);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object).extend_u128(self.partition.0);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
-			return None;
-		}
-		let object = de.read_object_id().ok()?;
-		let partition = Partition(de.read_u128().ok()?);
-		Some(Self {
-			object,
-			partition,
-		})
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use std::ops::RangeBounds;
 
 	use reifydb_value::value::{Value, partition::Partition};
 
-	use super::{EncodableKey, PartitionKey};
-	use crate::interface::catalog::{id::TableId, object::ObjectId};
+	use super::PartitionKey;
+	use crate::{
+		interface::catalog::{id::TableId, object::ObjectId},
+		key::typed::key::Key,
+	};
 
 	#[test]
 	fn test_roundtrip() {

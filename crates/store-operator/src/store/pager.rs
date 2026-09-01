@@ -15,7 +15,7 @@ use reifydb_core::{
 			state::{GroupId, OperatorStateKey, keyspace_inner_range},
 			traits::Keyspace,
 		},
-		typed::{ExclusiveUpperEnd, Key, range::KeyRange},
+		typed::{ExclusiveUpperEnd, TypedKey, range::KeyRange},
 	},
 	state::typed::SuffixBytes,
 };

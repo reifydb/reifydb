@@ -12,8 +12,12 @@ use crate::{
 	delta::Delta,
 	interface::catalog::storage::StorageId,
 	key::{
-		EncodableKeyRange, Key, partitioned_row::PartitionedRowKeyRange,
-		partitioned_series_row::PartitionedSeriesRowKeyRange, row::RowKeyRange, series_row::SeriesRowKeyRange,
+		EncodableKeyRange, Key,
+		kind::KeyKind,
+		partitioned_row::{PartitionedRowKey, PartitionedRowKeyRange},
+		partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
+		row::{RowKey, RowKeyRange},
+		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
 };
 
@@ -60,13 +64,23 @@ impl EntryKind {
 }
 
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
-	match Key::decode(key) {
-		Some(Key::Row(row_key)) => EntryKind::Source(row_key.storage),
-		Some(Key::SeriesRow(series_key)) => EntryKind::Source(series_key.storage),
-		Some(Key::PartitionedRow(partitioned_key)) => EntryKind::PartitionedSource(partitioned_key.storage),
-		Some(Key::PartitionedSeriesRow(partitioned_key)) => {
-			EntryKind::PartitionedSource(partitioned_key.storage)
-		}
+	match KeyKind::of(key) {
+		Some(KeyKind::Row) => match RowKey::decode(key) {
+			Some(row_key) => EntryKind::Source(row_key.storage),
+			None => EntryKind::Multi,
+		},
+		Some(KeyKind::SeriesRow) => match SeriesRowKey::decode(key) {
+			Some(series_key) => EntryKind::Source(series_key.storage),
+			None => EntryKind::Multi,
+		},
+		Some(KeyKind::PartitionedRow) => match PartitionedRowKey::decode(key) {
+			Some(partitioned_key) => EntryKind::PartitionedSource(partitioned_key.storage),
+			None => EntryKind::Multi,
+		},
+		Some(KeyKind::PartitionedSeriesRow) => match PartitionedSeriesRowKey::decode(key) {
+			Some(partitioned_key) => EntryKind::PartitionedSource(partitioned_key.storage),
+			None => EntryKind::Multi,
+		},
 		_ => EntryKind::Multi,
 	}
 }
@@ -249,7 +263,7 @@ mod tests {
 			storage::StorageId,
 		},
 		key::{
-			EncodableKey,
+			Key,
 			partitioned_row::PartitionedRowKey,
 			partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
 			row::RowKey,

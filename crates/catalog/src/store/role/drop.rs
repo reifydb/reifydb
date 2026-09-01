@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::identity::RoleId,
-	key::{EncodableKey, granted_role::GrantedRoleKey, role::RoleKey},
+	key::{Key, granted_role::GrantedRoleKey, role::RoleKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 

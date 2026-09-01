@@ -23,7 +23,7 @@ use crate::{
 			},
 			traits::Keyspace,
 		},
-		typed::{Key, layout::KeyLayout},
+		typed::{TypedKey, layout::KeyLayout},
 	},
 	metrics::heap::HeapSize,
 	state::typed::{SuffixBytes, typed_key},
@@ -530,7 +530,7 @@ fn suffix_at_edge(keyspace: KeyspaceId, suffix: &[u8], edge: SuffixEdge) -> Vec<
 
 		fn visit<K: Keyspace>(self) -> Self::Output {
 			let template = match self.edge {
-				SuffixEdge::Low => <K::Suffix as Key>::low().to_suffix_bytes(),
+				SuffixEdge::Low => <K::Suffix as TypedKey>::low().to_suffix_bytes(),
 				SuffixEdge::High => <K::Suffix as KeyLayout>::high().to_suffix_bytes(),
 			};
 			let mut bytes = self.suffix.to_vec();

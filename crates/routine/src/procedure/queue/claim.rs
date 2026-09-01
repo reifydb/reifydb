@@ -13,7 +13,7 @@ use reifydb_core::{
 		store::SingleVersionRangeRev,
 	},
 	key::{
-		EncodableKey,
+		Key,
 		queue_schedule::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 		row::RowKey,
 	},

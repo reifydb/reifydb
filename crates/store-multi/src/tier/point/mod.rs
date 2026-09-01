@@ -243,7 +243,7 @@ mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		interface::catalog::{id::TableId, storage::StorageId},
-		key::{EncodableKey, row::RowKey},
+		key::{Key, row::RowKey},
 	};
 	use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 

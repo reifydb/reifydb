@@ -3,10 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::identity::IdentityAttributeId,
-	key::{
-		EncodableKey, identity_attribute::IdentityAttributeKey,
-		identity_attribute_value::IdentityAttributeValueKey,
-	},
+	key::{Key, identity_attribute::IdentityAttributeKey, identity_attribute_value::IdentityAttributeValueKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 

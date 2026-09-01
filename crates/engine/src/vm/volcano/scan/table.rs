@@ -12,7 +12,7 @@ use reifydb_core::{
 	error::diagnostic,
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedTable, store::MultiVersionRow},
 	key::{
-		EncodableKey,
+		Key,
 		partitioned_row::PartitionedRowKey,
 		row::{RowKey, RowKeyRange},
 	},

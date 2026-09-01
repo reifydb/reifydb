@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::id::NamespaceId,
 	key::{
-		EncodableKey, namespace::NamespaceKey, namespace_dictionary::NamespaceDictionaryKey,
+		Key, namespace::NamespaceKey, namespace_dictionary::NamespaceDictionaryKey,
 		namespace_flow::NamespaceFlowKey, namespace_queue::NamespaceQueueKey,
 		namespace_ringbuffer::NamespaceRingBufferKey, namespace_sumtype::NamespaceSumTypeKey,
 		namespace_table::NamespaceTableKey, namespace_view::NamespaceViewKey,

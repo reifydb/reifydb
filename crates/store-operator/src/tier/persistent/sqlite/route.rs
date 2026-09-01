@@ -12,7 +12,7 @@ use reifydb_core::{
 			state::{GroupId, KeyspaceId, OperatorStateKey},
 			traits::Keyspace,
 		},
-		typed::{Key, layout::KeyLayout, range::KeyRange},
+		typed::{TypedKey, layout::KeyLayout, range::KeyRange},
 	},
 	state::typed::SuffixBytes,
 };
@@ -27,12 +27,12 @@ use crate::{
 	types::OperatorStateCensus,
 };
 
-fn encode<K: Keyspace>(key: &K::Key) -> EncodedKey {
+fn encode<K: Keyspace>(key: &K::GroupedKey) -> EncodedKey {
 	let (group, suffix) = K::split(key);
 	OperatorStateKey::inner_encoded(group, K::ID, suffix.to_suffix_bytes()).into_encoded()
 }
 
-fn typed_key<K: Keyspace>(group: GroupId, suffix: &[u8], edge: K::Suffix) -> K::Key {
+fn typed_key<K: Keyspace>(group: GroupId, suffix: &[u8], edge: K::Suffix) -> K::GroupedKey {
 	let template = edge.to_suffix_bytes();
 	let mut bytes = suffix.to_vec();
 	bytes.truncate(template.len());
@@ -45,7 +45,7 @@ fn typed_key<K: Keyspace>(group: GroupId, suffix: &[u8], edge: K::Suffix) -> K::
 }
 
 fn lowest<K: Keyspace>() -> K::Suffix {
-	<K::Suffix as Key>::low()
+	<K::Suffix as TypedKey>::low()
 }
 
 fn highest<K: Keyspace>() -> K::Suffix {
@@ -268,7 +268,7 @@ impl KeyspaceVisitor for Census<'_> {
 	type Output = Vec<OperatorStateCensus>;
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
-		let width = columns_width(<K::Key as KeyLayout>::COLUMNS) as u64;
+		let width = columns_width(<K::GroupedKey as KeyLayout>::COLUMNS) as u64;
 		typed::census::<K>(self.conn)
 			.into_iter()
 			.map(|(operator, keys, value_bytes)| OperatorStateCensus {
