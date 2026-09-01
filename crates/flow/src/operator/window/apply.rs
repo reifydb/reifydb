@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
+	common::WindowKind,
 	interface::change::{Change, Diff},
 	key::operator::state::GroupId,
 	state::timer::TimerKind,
@@ -996,7 +997,18 @@ fn seal_due_windows(
 	Ok(Vec::new())
 }
 
-pub fn reap_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostContext) -> Result<usize> {
+fn maintenance_rule(operator: &WindowOperator) -> Option<SealRule> {
+	match operator.kind {
+		WindowKind::Session {
+			..
+		} => Some(operator.session_rule()),
+		_ => operator
+			.size_duration()
+			.map(|size| SealRule::tumbling(size, operator.lateness().unwrap_or_else(Duration::zero))),
+	}
+}
+
+pub fn reap_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostContext, fired: FiredAt) -> Result<usize> {
 	let config = operator.engine_config();
 	let budget = config.expire_batch();
 	let mut engine = operator
@@ -1006,6 +1018,12 @@ pub fn reap_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostCont
 		.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config)));
 	let drained = drain(host, &mut *engine, budget)?;
 	*operator.core.tumbling_engine_slot() = Some(engine);
+	if !drained.queue_is_empty()
+		&& let Some(rule) = maintenance_rule(operator)
+	{
+		let due = fired.at().saturating_add(rule.admissible().duration());
+		host.arm_timer(due, TimerKind::Maintenance, &EncodedKey::new(Vec::new()))?;
+	}
 	Ok(drained.freed)
 }
 
@@ -1082,5 +1100,113 @@ mod tests {
 			is_sealed(at_millis(4), seal_horizon(at_millis(20), lateness)),
 			"anchor below watermark - lateness is sealed"
 		);
+	}
+}
+
+#[cfg(test)]
+mod reap_tests {
+	use std::sync::Arc;
+
+	use reifydb_core::{
+		common::{CommitVersion, WindowSize},
+		interface::catalog::flow::OperatorId,
+		key::operator::state::{KeyspaceId, keyspace_inner_range},
+	};
+	use reifydb_routine_abi::registry::Routines;
+	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_value::{factory::time::at_millis, value::duration::Duration};
+
+	use super::*;
+	use crate::{
+		context::FlowContext,
+		operator::{
+			host::TxnHostContext,
+			window::operator::{WindowConfig, WindowOperator},
+		},
+		timer::Timer,
+		transaction::{
+			ChangeCoordinate, FlowTransaction,
+			deferred::DeferredTransaction,
+			mock::FlowTxn,
+			state::{StateExtension, StateRange},
+		},
+	};
+
+	fn window(operator: u64) -> WindowOperator {
+		WindowOperator::new(WindowConfig {
+			parent_schema: None,
+			operator: OperatorId(operator),
+			kind: WindowKind::Tumbling {
+				size: WindowSize::Duration(Duration::from_seconds(10).unwrap()),
+			},
+			group_by: Vec::new(),
+			aggregations: Vec::new(),
+			runtime_context: RuntimeContext::testing(0, 1),
+			routines: Routines::empty(),
+			lateness: None,
+			immutable: None,
+			ctx: Arc::new(FlowContext::default()),
+		})
+	}
+
+	fn txn_at(engine: &TestEngine, coordinate: u64) -> DeferredTransaction {
+		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
+		txn.set_change_coordinate(ChangeCoordinate {
+			at: Some(DateTime::from_nanos(coordinate)),
+			version: CommitVersion(coordinate),
+		});
+		txn
+	}
+
+	fn armed_timers(txn: &mut DeferredTransaction, operator: OperatorId) -> usize {
+		txn.state_range(
+			operator,
+			StateRange::forward(keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL), "test"),
+		)
+		.unwrap()
+		.items
+		.len()
+	}
+
+	fn fired() -> FiredAt {
+		FiredAt::of(&Timer {
+			due: at_millis(1_000),
+			kind: TimerKind::Maintenance,
+			key: EncodedKey::new(Vec::new()),
+		})
+	}
+
+	fn reap_with_queued(groups: u128) -> usize {
+		let engine = TestEngine::new();
+		let mut operator = window(1);
+		let id = operator.core.operator;
+		let mut txn = txn_at(&engine, 100);
+		{
+			let mut host = TxnHostContext::new(&mut txn, id);
+			for n in 0..groups {
+				enqueue(&mut host, GroupId(n + 1)).unwrap();
+			}
+			reap_sealed_groups(&mut operator, &mut host, fired()).unwrap();
+		}
+		armed_timers(&mut txn, id)
+	}
+
+	#[test]
+	fn a_reap_backlog_larger_than_one_budget_arms_another_maintenance_pass() {
+		// one maintenance pass drains at most expire_batch groups; if the pass does not re-arm
+		// itself the remainder is never revisited and the reap queue grows without bound
+		let budget = window(1).engine_config().expire_batch() as u128;
+
+		assert!(
+			reap_with_queued(budget + 5) > 0,
+			"a queue deeper than one budget must leave a maintenance timer armed to finish it"
+		);
+	}
+
+	#[test]
+	fn a_reap_queue_that_empties_in_one_pass_arms_nothing_further() {
+		// re-arming unconditionally would spin the maintenance timer forever on an empty queue
+		assert_eq!(reap_with_queued(2), 0, "a queue the pass drained to empty must not schedule another pass");
 	}
 }

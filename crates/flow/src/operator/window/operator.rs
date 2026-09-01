@@ -204,11 +204,11 @@ impl HostOperator for WindowOperator {
 	}
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
+		let fired = FiredAt::of(&timer);
 		if timer.kind == TimerKind::Maintenance {
-			reap_sealed_groups(self, host)?;
+			reap_sealed_groups(self, host, fired)?;
 			return Ok(None);
 		}
-		let fired = FiredAt::of(&timer);
 		let diffs = match self.kind {
 			WindowKind::Tumbling {
 				..
