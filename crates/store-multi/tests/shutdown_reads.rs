@@ -101,6 +101,15 @@ fn tier_chunk(tier: &MultiPersistentTier, cursor: &mut RangeCursor) -> reifydb_v
 	.len())
 }
 
+/// The row number and value a returned row carries, so a dropped or stale row shows as a gap in the
+/// sequence rather than a byte diff nobody can read.
+fn row_and_value(row: &reifydb_core::interface::store::MultiVersionRow) -> (u64, String) {
+	let key = row.key.as_slice();
+	let mut encoded = [0u8; 8];
+	encoded.copy_from_slice(&key[key.len() - 8..]);
+	(!u64::from_be_bytes(encoded), String::from_utf8(row.bytes.to_vec()).unwrap())
+}
+
 /// A refusal must be debuggable from its message alone, so it names the condition and not just the failure.
 fn names_the_shutdown(error: &reifydb_value::error::Error) {
 	let message = error.to_string();
@@ -137,7 +146,8 @@ fn a_range_chunk_on_a_live_tier_still_reads_to_the_range_end() {
 
 #[test]
 fn a_store_scan_resumed_across_a_shutdown_fails_instead_of_returning_a_short_result() {
-	// The refusal must survive the store's buffer-then-persistent step loop, not stop at the tier.
+	// The refusal must survive the store's buffer-then-persistent step loop, and because the read tier serves the
+	// rows it still holds, nothing may go missing on the way to it.
 	let (store, _g) = store();
 	for row in 1..=(CHUNK * 6) {
 		commit_set(&store, row, 10);
@@ -152,15 +162,29 @@ fn a_store_scan_resumed_across_a_shutdown_fails_instead_of_returning_a_short_res
 
 	Shutdown::shutdown(&store);
 
-	let error = store
-		.range_next(&mut cursor, RowKey::full_scan(STORAGE), as_of(30), CHUNK)
-		.expect_err("the scan returned a short result and called it complete");
-	names_the_shutdown(&error);
+	let mut seen: Vec<(u64, String)> = first.items.iter().map(row_and_value).collect();
+	loop {
+		assert!(seen.len() as u64 <= CHUNK * 6, "the scan returned more rows than were ever written");
+		match store.range_next(&mut cursor, RowKey::full_scan(STORAGE), as_of(30), CHUNK) {
+			Err(error) => {
+				names_the_shutdown(&error);
+				break;
+			}
+			Ok(batch) => {
+				assert!(batch.has_more, "the scan called the range over across a drained pool");
+				seen.extend(batch.items.iter().map(row_and_value));
+			}
+		}
+	}
+
+	let expected: Vec<(u64, String)> = (1..=(CHUNK * 6)).rev().map(|row| (row, format!("v{row}"))).collect();
+	assert_eq!(seen, expected, "the scan dropped or altered rows on the way to the refusal");
 }
 
 #[test]
 fn an_iteration_that_straddles_a_shutdown_yields_an_error_rather_than_ending() {
-	// A None here reads as the end of the data, so every row past it is silently deleted downstream.
+	// A None reads as the end of the data, so every row past it is silently deleted downstream, and the drained
+	// pool must surface as an error however many resident rows the iteration walks first.
 	let (store, _g) = store();
 	for row in 1..=(CHUNK * 6) {
 		commit_set(&store, row, 10);
@@ -174,13 +198,26 @@ fn an_iteration_that_straddles_a_shutdown_yields_an_error_rather_than_ending() {
 
 	Shutdown::shutdown(&store);
 
-	match rows.next() {
-		None => panic!(
-			"the iteration ended at {CHUNK} of {} rows and reported that as the end of the range",
-			CHUNK * 6
-		),
-		Some(Ok(row)) => panic!("a drained pool served row {:?}", row.key),
-		Some(Err(error)) => names_the_shutdown(&error),
+	let mut served = CHUNK;
+	loop {
+		match rows.next() {
+			None => panic!(
+				"the iteration ended at {served} of {} rows and reported that as the end of the range",
+				CHUNK * 6
+			),
+			Some(Ok(_)) => {
+				served += 1;
+				assert!(
+					served <= CHUNK * 6,
+					"the iteration outlived the {} rows it was given",
+					CHUNK * 6
+				);
+			}
+			Some(Err(error)) => {
+				names_the_shutdown(&error);
+				break;
+			}
+		}
 	}
 }
 
@@ -204,4 +241,45 @@ fn the_install_floor_of_a_live_tier_answers_the_highest_version_on_disk() {
 		CommitVersion(WRITTEN_AT),
 		"a live tier must report the highest version it holds"
 	);
+}
+
+#[test]
+fn a_scan_that_keeps_reading_past_a_shutdown_errors_before_it_reports_the_range_over() {
+	// The read tier can answer chunks the drained pool never sees, so the refusal may arrive several
+	// chunks late. What may never happen is the scan calling the range over while any part of it rests on
+	// a tier it could not reach: that is a short result wearing a completed result's clothes.
+	let (store, _g) = store();
+	for row in 1..=(CHUNK * 6) {
+		commit_set(&store, row, 10);
+	}
+	flush(&store, 20);
+
+	let mut cursor = MultiVersionRangeCursor::new();
+	let first = store.range_next(&mut cursor, RowKey::full_scan(STORAGE), as_of(30), CHUNK).unwrap();
+	assert_eq!(first.items.len() as u64, CHUNK, "the first chunk must fill");
+	assert!(first.has_more, "rows must remain behind the resume point");
+
+	Shutdown::shutdown(&store);
+
+	let mut seen = first.items.len() as u64;
+	let mut calls = 1;
+	loop {
+		calls += 1;
+		assert!(calls <= 64, "the scan neither ended nor failed after {calls} chunks over a drained pool");
+		match store.range_next(&mut cursor, RowKey::full_scan(STORAGE), as_of(30), CHUNK) {
+			Err(error) => {
+				names_the_shutdown(&error);
+				break;
+			}
+			Ok(batch) => {
+				seen += batch.items.len() as u64;
+				assert!(
+					batch.has_more,
+					"call {calls} reported the range over with {seen} of {} rows and never once \
+					 reached the drained pool; completion past the cached span was never proven",
+					CHUNK * 6
+				);
+			}
+		}
+	}
 }

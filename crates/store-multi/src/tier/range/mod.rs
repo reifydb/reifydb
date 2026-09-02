@@ -3,26 +3,29 @@
 
 use std::{
 	borrow::Cow,
-	ops::Bound,
+	ops::Bound::{self, Included},
 	sync::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
 	},
 };
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	default,
-	interface::{catalog::storage::StorageId, store::EntryKind},
+	interface::{
+		catalog::storage::StorageId,
+		store::{EntryKind, EntryLayout},
+	},
 	key::{
-		row::RowKey,
-		typed::{Edge, MultiKey, TypedKey, range::KeyRange},
+		row::{RowKey, StorageRowKey},
+		typed::{Edge, TypedKey, key::Key, range::KeyRange},
 	},
 };
 use reifydb_store::{
 	coverage::{
-		cursor::{RangeCursor as TierCursor, ServedChunk as TierChunk},
+		cursor::{Cursor, ServedChunk as TierChunk},
 		interval::Interval,
 		plan::{DEFAULT_GAP_GUARD, Segment},
 	},
@@ -31,7 +34,7 @@ use reifydb_store::{
 	},
 };
 use reifydb_store_commit::{MultiVersionScope, RangeBatch, RangeCursor, RawEntry};
-use reifydb_value::{byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::{byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec, value::row_number::RowNumber};
 
 #[derive(Clone, Copy, Debug)]
 pub struct MultiRangeConfig {
@@ -62,19 +65,47 @@ impl From<MultiRangeConfig> for RangeConfig {
 pub type ServedChunk = reifydb_store::coverage::cursor::ServedChunk<RangeBatch>;
 
 const ROW_BUCKET_SHIFT: u32 = 16;
-const KIND_BYTES: usize = 1;
-const STORAGE_ID_BYTES: usize = 9;
-const BAND_BYTES: usize = KIND_BYTES + STORAGE_ID_BYTES;
-const BUCKET_BYTES: usize = (u64::BITS - ROW_BUCKET_SHIFT) as usize / 8;
+const BUCKETS: u64 = 1 << (u64::BITS - ROW_BUCKET_SHIFT);
 
 #[derive(Clone, Copy, Debug)]
 pub struct MultiDomain;
 
-fn prefix_successor(prefix: &[u8]) -> Option<Vec<u8>> {
-	let last = prefix.iter().rposition(|&byte| byte != 0xff)?;
-	let mut out = prefix[..=last].to_vec();
-	out[last] += 1;
-	Some(out)
+pub fn row_storage(kind: EntryKind) -> Option<StorageId> {
+	match kind {
+		EntryKind::Source(storage, EntryLayout::Row) => Some(storage),
+		_ => None,
+	}
+}
+
+pub fn narrow(kind: EntryKind, key: &EncodedKey) -> Option<StorageRowKey> {
+	let storage = row_storage(kind)?;
+	let row = RowKey::decode(key)?;
+	(row.storage == storage).then(|| StorageRowKey::from(row))
+}
+
+fn stops_in_band(kind: EntryKind, bytes: &[u8]) -> bool {
+	row_storage(kind).is_some_and(|storage| bytes <= RowKey::storage_end(storage).as_slice())
+}
+
+pub fn widen(storage: StorageId, key: &StorageRowKey) -> EncodedKey {
+	RowKey::encoded(storage, key.row())
+}
+
+pub fn resume_after(kind: EntryKind, last: &EncodedKey) -> Option<EncodedKey> {
+	let storage = row_storage(kind)?;
+	let next = narrow(kind, last)?.successor()?;
+	Some(widen(storage, &next))
+}
+
+pub fn narrow_bound(kind: EntryKind, bytes: &[u8]) -> Option<Edge<StorageRowKey>> {
+	let storage = row_storage(kind)?;
+	if bytes == RowKey::storage_start(storage).as_slice() {
+		return Some(Edge::Bottom);
+	}
+	if bytes >= RowKey::storage_end(storage).as_slice() {
+		return Some(Edge::Top);
+	}
+	narrow(kind, &EncodedKey::new(bytes)).map(Edge::Key)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -84,30 +115,11 @@ pub struct PartitionId {
 }
 
 impl PartitionId {
-	pub const PREFIX_LEN: usize = BAND_BYTES + BUCKET_BYTES;
-
-	pub fn of(dimension: EntryKind, key: &EncodedKey) -> Option<Self> {
-		let bytes = key.as_slice();
-		if bytes.len() < Self::PREFIX_LEN {
-			return None;
-		}
-		let (band, _) = row_band(dimension)?;
-		reifydb_assertions! {
-			assert_eq!(
-				band.len(),
-				BAND_BYTES,
-				"the row band prefix must be the kind byte plus the storage id, or the bucket bytes are read from the wrong offset and every claim covers a span it never proved"
-			);
-		}
-		if bytes[..BAND_BYTES] != *band.as_slice() {
-			return None;
-		}
-		let mut bucket = [0u8; 8];
-		bucket[8 - BUCKET_BYTES..].copy_from_slice(&bytes[BAND_BYTES..Self::PREFIX_LEN]);
-		Some(Self {
+	pub fn of(dimension: EntryKind, key: &StorageRowKey) -> Self {
+		Self {
 			kind: dimension,
-			bucket: u64::from_be_bytes(bucket),
-		})
+			bucket: bucket_of(key),
+		}
 	}
 
 	fn storage(&self) -> StorageId {
@@ -117,30 +129,22 @@ impl PartitionId {
 		}
 	}
 
-	pub fn prefix(&self) -> EncodedKey {
-		let mut bytes = RowKey::storage_start(self.storage()).as_slice().to_vec();
-		bytes.extend_from_slice(&self.bucket.to_be_bytes()[8 - BUCKET_BYTES..]);
-		EncodedKey::new(bytes)
-	}
-
-	pub fn span(&self) -> (MultiKey, Edge<MultiKey>) {
-		let start = self.prefix();
-		let end = match prefix_successor(start.as_slice()) {
-			Some(successor) => Edge::of(successor),
-			None => Edge::Top,
+	pub fn span(&self) -> (Edge<StorageRowKey>, Edge<StorageRowKey>) {
+		let start = Edge::Key(bucket_start(self.bucket));
+		let end = match self.bucket + 1 {
+			next if next < BUCKETS => Edge::Key(bucket_start(next)),
+			_ => Edge::Top,
 		};
 		(start, end)
 	}
+}
 
-	fn first_addressable(key: &EncodedKey) -> Option<EncodedKey> {
-		let bytes = key.as_slice();
-		if bytes.len() >= Self::PREFIX_LEN {
-			return None;
-		}
-		let mut padded = bytes.to_vec();
-		padded.resize(Self::PREFIX_LEN, 0);
-		Some(EncodedKey::new(padded))
-	}
+fn bucket_of(key: &StorageRowKey) -> u64 {
+	!key.row().0 >> ROW_BUCKET_SHIFT
+}
+
+fn bucket_start(bucket: u64) -> StorageRowKey {
+	StorageRowKey::new(RowNumber(!(bucket << ROW_BUCKET_SHIFT)))
 }
 
 pub fn row_band(kind: EntryKind) -> Option<(EncodedKey, EncodedKey)> {
@@ -165,7 +169,7 @@ impl RowBytes for MultiRow {
 impl RangeDomain for MultiDomain {
 	type Dimension = EntryKind;
 	type Partition = PartitionId;
-	type Key = MultiKey;
+	type Key = StorageRowKey;
 	type MetricBucket = ();
 	type Row = MultiRow;
 
@@ -175,32 +179,28 @@ impl RangeDomain for MultiDomain {
 
 	const GAP_SCOPE: &'static str = "multi_range::gaps";
 
-	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Option<Self::Partition> {
+	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Self::Partition {
 		PartitionId::of(dimension, key)
-	}
-
-	fn first_addressable(key: &Self::Key) -> Option<Self::Key> {
-		PartitionId::first_addressable(key)
 	}
 
 	fn dimension(partition: &Self::Partition) -> Self::Dimension {
 		partition.kind
 	}
 
-	fn span(partition: &Self::Partition) -> (Self::Key, Edge<Self::Key>) {
+	fn span(partition: &Self::Partition) -> (Edge<Self::Key>, Edge<Self::Key>) {
 		partition.span()
 	}
 
-	fn head_band(dimension: Self::Dimension) -> Option<(Self::Key, Self::Key)> {
-		row_band(dimension)
+	fn head_band(dimension: Self::Dimension) -> Option<(Edge<Self::Key>, Edge<Self::Key>)> {
+		row_storage(dimension).map(|_| (Edge::Bottom, Edge::Top))
 	}
 
 	fn caches_ranges(partition: &Self::Partition) -> bool {
-		partition.kind.cache_tiers().caches_ranges()
+		row_storage(partition.kind).is_some() && partition.kind.cache_tiers().caches_ranges()
 	}
 
-	fn cache_tiers_run_end(partition: &Self::Partition) -> Edge<Self::Key> {
-		Edge::Key(RowKey::storage_end(partition.storage()))
+	fn cache_tiers_run_end(_partition: &Self::Partition) -> Edge<Self::Key> {
+		Edge::Top
 	}
 
 	fn supersedes(resident: &Self::Row, incoming: &Self::Row) -> bool {
@@ -280,6 +280,9 @@ impl MultiRangeTier {
 	}
 
 	pub fn insert(&self, table: EntryKind, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
+		let Some(key) = narrow(table, &key) else {
+			return;
+		};
 		self.tier.insert(
 			table,
 			key,
@@ -291,7 +294,10 @@ impl MultiRangeTier {
 	}
 
 	pub fn invalidate(&self, table: EntryKind, key: &EncodedKey) {
-		self.tier.invalidate(table, key);
+		let Some(key) = narrow(table, key) else {
+			return;
+		};
+		self.tier.invalidate(table, &key);
 	}
 
 	pub fn clear(&self) {
@@ -339,30 +345,37 @@ impl MultiRangeTier {
 		if !table.cache_tiers().caches_ranges() {
 			return false;
 		}
-		self.tier.raise_head(
-			table,
-			lo,
-			through,
-			entries.first().map(|entry| &entry.key),
-			self.tier.retractions(),
-		);
-		let range = EncodedKeyRange::new(Bound::Included(lo.clone()), Bound::Included(through.clone()));
-		let Some(scan) = self.tier.plan_scan(table, &KeyRange::from(&range)) else {
+		let (Some(lo), Some(through)) =
+			(narrow_bound(table, lo.as_slice()), narrow_bound(table, through.as_slice()))
+		else {
 			return false;
 		};
 		let rows: RangeRows<MultiDomain> = entries
 			.iter()
-			.map(|entry| {
-				(
-					entry.key.clone(),
-					MultiRow {
-						version: entry.version,
-						value: entry.value.clone(),
-					},
-				)
+			.filter_map(|entry| {
+				narrow(table, &entry.key).map(|key| {
+					(
+						key,
+						MultiRow {
+							version: entry.version,
+							value: entry.value.clone(),
+						},
+					)
+				})
 			})
 			.collect();
-		let span = Interval::new(lo.clone(), Edge::just_past(through));
+		let proven = just_past(&through);
+		self.tier.raise_head(table, &lo, &proven, rows.first().map(|(key, _)| key), self.tier.retractions());
+		let Some(start) = anchor(table, &lo, &rows) else {
+			return false;
+		};
+		if !proven.covers(&start) {
+			return false;
+		}
+		let Some(scan) = self.tier.plan_scan(table, &KeyRange::new(Included(start), bound(&through))) else {
+			return false;
+		};
+		let span = Interval::new(start, proven);
 		matches!(self.tier.materialize(&scan, &span, &rows), Materialize::Materialized)
 	}
 
@@ -380,36 +393,44 @@ impl MultiRangeTier {
 		if descending || !table.cache_tiers().caches_ranges() {
 			return ServedChunk::Gap;
 		}
-		let range_lo = EncodedKey::new(start);
-		let range_hi = EncodedKey::new(end);
-		if range_lo > range_hi {
+		let (Some(range_lo), Some(range_hi)) = (narrow_bound(table, start), narrow_bound(table, end)) else {
+			return ServedChunk::Gap;
+		};
+		let hi = just_past(&range_hi);
+		if hi <= range_lo {
 			return ServedChunk::Gap;
 		}
 		let lo = match cursor.last_key() {
-			Some(last) if *last >= range_lo => last.successor(),
-			_ => Some(range_lo.clone()),
+			Some(last) if last.as_slice() >= start => match narrow(table, last) {
+				Some(last) => match last.successor() {
+					Some(next) => Edge::Key(next),
+					None => return ServedChunk::Gap,
+				},
+				None => return ServedChunk::Gap,
+			},
+			_ => range_lo,
 		};
-		let Some(lo) = lo.filter(|lo| *lo <= range_hi) else {
+		if hi <= lo {
+			return ServedChunk::Gap;
+		}
+		let Some(low) = lo.lowest() else {
 			return ServedChunk::Gap;
 		};
-		let hi = Edge::just_past(&range_hi);
-		let range = EncodedKeyRange::new(Bound::Included(lo.clone()), Bound::Included(range_hi.clone()));
 
-		let Some(scan) = self.tier.plan_scan(table, &KeyRange::from(&range)) else {
+		let Some(scan) = self.tier.plan_scan(table, &KeyRange::new(Included(low), bound(&range_hi))) else {
 			return self.chunk_proven_empty(table, &lo, &range_hi, cursor);
 		};
 		let Some(Segment::Resident(segment)) = scan.segments().first() else {
 			return self.chunk_proven_empty(table, &lo, &range_hi, cursor);
 		};
-		let Some(partition) = PartitionId::of(table, &segment.start) else {
-			return ServedChunk::Gap;
-		};
+		let partition = PartitionId::of(table, &segment.start);
 		let counters = &self.serves[self.tier.shard_index(&partition)];
 		if scan.advanced() {
 			counters.head_advances.fetch_add(1, Ordering::Relaxed);
 		}
 
-		let mut served = TierCursor::new();
+		let storage = partition.storage();
+		let mut served = Cursor::<(), StorageRowKey>::new();
 		let TierChunk::Served(rows) = self.tier.serve(&scan, segment, &mut served, batch_size) else {
 			return ServedChunk::Gap;
 		};
@@ -417,14 +438,13 @@ impl MultiRangeTier {
 			.into_iter()
 			.filter(|(_, row)| scope.contains(row.version))
 			.map(|(key, row)| RawEntry {
-				key,
+				key: widen(storage, &key),
 				version: row.version,
 				value: row.value,
 			})
 			.collect();
 
-		let exhausted = served.is_exhausted()
-			&& (segment.end >= hi || band_ends_the_range(table, &segment.end, &range_hi));
+		let exhausted = served.is_exhausted() && stops_in_band(table, end) && segment.end >= hi;
 		if !exhausted && out.is_empty() {
 			return ServedChunk::Gap;
 		}
@@ -436,8 +456,8 @@ impl MultiRangeTier {
 	fn chunk_proven_empty(
 		&self,
 		table: EntryKind,
-		lo: &EncodedKey,
-		range_hi: &EncodedKey,
+		lo: &Edge<StorageRowKey>,
+		range_hi: &Edge<StorageRowKey>,
 		cursor: &mut RangeCursor,
 	) -> ServedChunk {
 		if self.tier.head_proves_empty(table, lo, range_hi) {
@@ -447,11 +467,30 @@ impl MultiRangeTier {
 	}
 }
 
-fn band_ends_the_range(table: EntryKind, stop: &Edge<MultiKey>, range_hi: &EncodedKey) -> bool {
-	let Some((_, band_end)) = row_band(table) else {
-		return false;
-	};
-	range_hi.as_slice() <= band_end.as_slice() && *stop >= Edge::Key(band_end)
+fn just_past(end: &Edge<StorageRowKey>) -> Edge<StorageRowKey> {
+	match end {
+		Edge::Key(key) => Edge::just_past(key),
+		other => other.clone(),
+	}
+}
+
+fn bound(end: &Edge<StorageRowKey>) -> Bound<StorageRowKey> {
+	match end {
+		Edge::Bottom => Bound::Excluded(StorageRowKey::low()),
+		Edge::Key(key) => Included(*key),
+		Edge::Top => Bound::Unbounded,
+	}
+}
+
+fn anchor(table: EntryKind, lo: &Edge<StorageRowKey>, rows: &RangeRows<MultiDomain>) -> Option<StorageRowKey> {
+	match lo {
+		Edge::Bottom => {
+			let (first, _) = rows.first()?;
+			MultiDomain::span(&PartitionId::of(table, first)).0.lowest()
+		}
+		Edge::Key(key) => Some(*key),
+		Edge::Top => None,
+	}
 }
 
 fn served_chunk(out: Vec<RawEntry>, cursor: &mut RangeCursor, exhausted: bool) -> ServedChunk {
@@ -482,7 +521,7 @@ mod tests {
 			store::EntryLayout,
 		},
 		key::{
-			row::RowKey,
+			row::{RowKey, StorageRowKey},
 			series::SeriesRowKey,
 			typed::{key::Key, range::KeyRange},
 		},
@@ -491,9 +530,9 @@ mod tests {
 	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};
 
 	use super::{
-		Bound, Edge, EncodedKey, EncodedKeyRange, EntryKind, MultiDomain, MultiRangeConfig, MultiRangeTier,
-		MultiVersionScope, PartitionId, ROW_BUCKET_SHIFT, RangeCursor, RangeDomain, RawEntry, Segment,
-		ServedChunk,
+		Bound, Edge, EncodedKey, EntryKind, MultiDomain, MultiRangeConfig, MultiRangeTier, MultiVersionScope,
+		PartitionId, ROW_BUCKET_SHIFT, RangeCursor, RangeDomain, RawEntry, Segment, ServedChunk, narrow,
+		narrow_bound,
 	};
 
 	const STORAGE: StorageId = StorageId::Table(TableId(1));
@@ -525,6 +564,10 @@ mod tests {
 			row: RowNumber(n),
 		}
 		.encode()
+	}
+
+	fn key(n: u64) -> StorageRowKey {
+		StorageRowKey::new(RowNumber(n))
 	}
 
 	fn series(n: u64) -> EncodedKey {
@@ -698,17 +741,24 @@ mod tests {
 	#[test]
 	fn a_key_the_domain_cannot_attribute_names_no_partition() {
 		// A key outside the row band must be declined outright. Attributed to a neighbouring partition it
-		// would fall under that partition's span, which would then answer for rows it never held.
+		// would fall under that partition's span, which would then answer for rows it never held. Partition
+		// is total on a narrow key now, so the refusal lives in narrow, which is the only way a key becomes
+		// one; a key it declines never reaches a partition at all.
 		let stray = EncodedKey::new(vec![0u8, 1, 2]);
 		assert_eq!(
-			MultiDomain::partition(EntryKind::Source(STORAGE, EntryLayout::Row), &stray),
+			narrow(EntryKind::Source(STORAGE, EntryLayout::Row), &stray),
 			None,
 			"a key shorter than the band prefix carries no bucket to attribute it by"
 		);
 		assert_eq!(
-			MultiDomain::partition(EntryKind::Multi, &RowKey::encoded(STORAGE, 5)),
+			narrow(EntryKind::Multi, &RowKey::encoded(STORAGE, 5)),
 			None,
 			"a row key under a kind with no row band must not be attributed either"
+		);
+		assert_eq!(
+			narrow(EntryKind::Source(NEIGHBOUR, EntryLayout::Row), &RowKey::encoded(STORAGE, 5)),
+			None,
+			"a row key of another storage must not be attributed to this one"
 		);
 	}
 
@@ -768,12 +818,12 @@ mod tests {
 			"the chunk must publish its claim, or the test never reaches the case it is here to pin"
 		);
 		assert_eq!(
-			tier.tier.head(source()).as_ref(),
-			Some(&row(BUCKET * 4 + 3)),
+			tier.tier.head(source()),
+			Some(Edge::Key(key(BUCKET * 4 + 3))),
 			"the materialize must have recorded a head"
 		);
 		assert!(
-			tier.tier.lookup(source(), &row(BUCKET * 4 + 2)).is_some(),
+			tier.tier.lookup(source(), &key(BUCKET * 4 + 2)).is_some(),
 			"the materialize must have published a claim"
 		);
 
@@ -782,12 +832,12 @@ mod tests {
 		}
 
 		assert!(
-			tier.tier.lookup(source(), &row(BUCKET * 4 + 2)).is_none(),
+			tier.tier.lookup(source(), &key(BUCKET * 4 + 2)).is_none(),
 			"the evicted partition's claim must be withdrawn, or it answers for rows ram no longer holds"
 		);
 		assert_eq!(
-			tier.tier.head(source()).as_ref(),
-			Some(&row(BUCKET * 4 + 3)),
+			tier.tier.head(source()),
+			Some(Edge::Key(key(BUCKET * 4 + 3))),
 			"eviction cannot create a row, so the proof of absence must survive it"
 		);
 	}
@@ -799,19 +849,13 @@ mod tests {
 		// never read it from any tier. Placing a row can only ever be evidence that the span below the head
 		// is not empty after all, so the head must yield to it.
 		let tier = tier();
-		tier.tier.raise_head(
-			source(),
-			&storage_start(),
-			&storage_end(),
-			Some(&row(3)),
-			tier.tier.retractions(),
-		);
+		tier.tier.raise_head(source(), &Edge::Bottom, &Edge::Top, Some(&key(3)), tier.tier.retractions());
 
 		tier.insert(source(), row(7), CommitVersion(1), Some(CowVec::new(vec![1])));
 
 		assert_eq!(
-			tier.tier.head(source()).as_ref(),
-			Some(&row(7)),
+			tier.tier.head(source()),
+			Some(Edge::Key(key(7))),
 			"a row placed inside the head span must pull the head back to it"
 		);
 	}
@@ -826,27 +870,31 @@ mod tests {
 
 		tier.invalidate(source(), &row(7));
 
-		tier.tier.raise_head(source(), &storage_start(), &storage_end(), Some(&row(3)), token);
+		tier.tier.raise_head(source(), &Edge::Bottom, &Edge::Top, Some(&key(3)), token);
 		assert_eq!(tier.tier.head(source()), None, "a head published across a withdrawal");
 
-		tier.tier.raise_head(
-			source(),
-			&storage_start(),
-			&storage_end(),
-			Some(&row(3)),
-			tier.tier.retractions(),
-		);
-		assert_eq!(tier.tier.head(source()).as_ref(), Some(&row(3)), "a fresh token must publish");
+		tier.tier.raise_head(source(), &Edge::Bottom, &Edge::Top, Some(&key(3)), tier.tier.retractions());
+		assert_eq!(tier.tier.head(source()), Some(Edge::Key(key(3))), "a fresh token must publish");
 	}
 
 	#[test]
 	fn a_scan_below_the_row_band_never_raises_a_head_over_it() {
 		// Row keys and series row keys of one storage share an entry kind but occupy disjoint byte bands,
 		// with the series band wholly below the row band. A series scan proves nothing about the rows, so a
-		// head raised from one would report every row of the storage absent.
+		// head raised from one would report every row of the storage absent. The head is keyed by
+		// StorageRowKey now, so the refusal moved down into the bound decode: a series bound narrows to
+		// nothing at all, and materialize stops before it can reach raise_head.
 		let tier = tier();
 
-		tier.tier.raise_head(source(), &series(9), &storage_end(), Some(&series(1)), tier.tier.retractions());
+		assert_eq!(
+			narrow_bound(source(), series(9).as_slice()),
+			None,
+			"a bound below the row band must not resolve to an edge of it"
+		);
+		assert!(
+			!tier.materialize_scanned_chunk(source(), &series(9), &storage_end(), &[]),
+			"a scan that started below the row band must not be claimed"
+		);
 
 		assert_eq!(
 			tier.tier.head(source()),
@@ -886,16 +934,16 @@ mod tests {
 		let tier = tier();
 		materialize_from_prefix(&tier, &[3, 2, 1], 10);
 		assert_eq!(
-			tier.tier.head(source()).as_ref(),
-			Some(&row(3)),
+			tier.tier.head(source()),
+			Some(Edge::Key(key(3))),
 			"the materialize must have recorded a head"
 		);
 
 		tier.invalidate(source(), &row(7));
 
 		assert_eq!(
-			tier.tier.head(source()).as_ref(),
-			Some(&row(7)),
+			tier.tier.head(source()),
+			Some(Edge::Key(key(7))),
 			"a row committed inside the head span must pull the head back to it"
 		);
 		let mut cursor = RangeCursor::new();
@@ -915,8 +963,8 @@ mod tests {
 		let tier = tier();
 		materialize_from_prefix(&tier, &[3, 2, 1], 10);
 		assert_eq!(
-			tier.tier.head(source()).as_ref(),
-			Some(&row(3)),
+			tier.tier.head(source()),
+			Some(Edge::Key(key(3))),
 			"the materialize must have recorded a head"
 		);
 
@@ -986,8 +1034,8 @@ mod tests {
 		let tier = tier();
 		materialize_from_prefix(&tier, &[5, 3], 10);
 		assert_eq!(
-			tier.tier.head(source()).as_ref(),
-			Some(&row(5)),
+			tier.tier.head(source()),
+			Some(Edge::Key(key(5))),
 			"the materialize must name the first row as the head"
 		);
 
@@ -1168,11 +1216,20 @@ mod tests {
 		let tier = tier();
 		fill_bucket(&tier, 0, &[1, 2, 3], 10);
 
-		let range = EncodedKeyRange::new(Bound::Included(storage_start()), Bound::Included(storage_end()));
-		let plan = tier
-			.tier
-			.plan_scan(source(), &KeyRange::from(&range))
-			.expect("a whole storage must be plannable");
+		let (lo, hi) = (
+			narrow_bound(source(), storage_start().as_slice()).expect("a row source narrows its bounds"),
+			narrow_bound(source(), storage_end().as_slice()).expect("a row source narrows its bounds"),
+		);
+		assert_eq!(
+			(lo.clone(), hi),
+			(Edge::Bottom, Edge::Top),
+			"the storage prefix and the storage end are the two edges of the band"
+		);
+		let range = KeyRange::new(
+			Bound::Included(lo.lowest().expect("the bottom edge lowers to the lowest key")),
+			Bound::Unbounded,
+		);
+		let plan = tier.tier.plan_scan(source(), &range).expect("a whole storage must be plannable");
 		assert!(
 			matches!(plan.segments().first(), Some(Segment::Gap { .. })),
 			"a claim reached below the lowest key its materialize observed, down to a prefix nothing proved"
@@ -1188,38 +1245,70 @@ mod tests {
 	}
 
 	#[test]
-	fn a_partition_span_never_reaches_the_series_band_of_the_same_storage() {
-		// One entry kind covers a storage's row keys and its series row keys, and the series band sorts wholly
-		// below the row band. A span reaching into it would retract coverage over keys the partition never
-		// held, and a series key answered from a row partition reads as a row that is not there.
-		let bucket = PartitionId::of(source(), &row(1)).expect("a row key must name a partition");
-		let (start, _) = bucket.span();
-
-		assert!(series(1).as_slice() < start.as_slice(), "the series band must sort below every row partition");
-		assert_eq!(PartitionId::of(source(), &series(1)), None, "a series key must name no row partition");
+	fn a_series_key_is_never_attributed_to_a_row_partition() {
+		// The series band of a storage sorts wholly below its row band. A series key answered from a row
+		// partition reads as a row that is not there, and a claim over it retracts coverage the partition
+		// never held. The row partition space is StorageRowKey now, which no series key can enter, so the
+		// refusal is checked at narrow, the only door into that space.
+		assert!(
+			series(1).as_slice() < RowKey::storage_start(STORAGE).as_slice(),
+			"the series band must sort below the row band"
+		);
+		assert_eq!(narrow(source(), &series(1)), None, "a series key must name no row partition");
 		assert_eq!(
-			PartitionId::of(source(), &series(u64::MAX)),
+			narrow(source(), &series(u64::MAX)),
 			None,
 			"no series key of the band may be attributed to a row partition"
+		);
+		assert_eq!(
+			narrow_bound(source(), series(1).as_slice()),
+			None,
+			"a bound in the series band must resolve to no edge of the row band, or a scan starting there \
+			 slides onto rows it never asked for"
 		);
 	}
 
 	#[test]
-	fn a_partition_span_never_reaches_the_top_of_the_key_space() {
-		// A span running to the top of the key space retracts the coverage of everything sorting above it, so
-		// the row band must always leave a successor for the span to stop at.
-		for storage in [STORAGE, NEIGHBOUR, StorageId::Table(TableId(u64::MAX))] {
-			for bucket in [0u64, 1, u64::MAX >> ROW_BUCKET_SHIFT] {
+	fn the_last_bucket_spans_to_the_top_of_its_own_dimension() {
+		// This inverted in the narrowing, and the reason is worth keeping. While the key was a whole encoded
+		// key, Top meant the top of every key in the database, so a span reaching it retracted coverage over
+		// the next storage's band too; the row band had to leave a successor for every span to stop at. The
+		// key is a StorageRowKey now and the dimension holds one storage's rows and nothing else, so Top is
+		// that storage's own ceiling. The last bucket must reach it, or the rows above the last successor
+		// are covered by no span at all.
+		for (storage, other) in
+			[(STORAGE, NEIGHBOUR), (NEIGHBOUR, STORAGE), (StorageId::Table(TableId(u64::MAX)), STORAGE)]
+		{
+			let kind = EntryKind::Source(storage, EntryLayout::Row);
+			let last = u64::MAX >> ROW_BUCKET_SHIFT;
+
+			let (_, end) = PartitionId {
+				kind,
+				bucket: last,
+			}
+			.span();
+			assert!(
+				matches!(end, Edge::Top),
+				"the last bucket of {storage:?} must span to the top of its own dimension"
+			);
+
+			for bucket in [0u64, 1] {
 				let (_, end) = PartitionId {
-					kind: EntryKind::Source(storage, EntryLayout::Row),
+					kind,
 					bucket,
 				}
 				.span();
 				assert!(
 					!matches!(end, Edge::Top),
-					"partition {bucket} of {storage:?} spans to the top of the key space"
+					"bucket {bucket} of {storage:?} must stop at a successor, not at the ceiling"
 				);
 			}
+
+			assert_eq!(
+				narrow(kind, &RowKey::encoded(other, 1)),
+				None,
+				"a row of {other:?} names no key of {storage:?}, so reaching Top retracts nothing of it"
+			);
 		}
 	}
 }

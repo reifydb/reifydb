@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_store::tier::{
-	point::{PointConfig, PointDomain, PointMetrics, PointTier, shard_budgets},
+	point::{PointConfig, PointDomain, PointMetrics, PointTier, pool::shard_budgets},
 	range::RowBytes,
 };
 use reifydb_store_commit::VersionedGetResult;

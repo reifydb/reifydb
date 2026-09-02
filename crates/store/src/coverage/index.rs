@@ -9,7 +9,7 @@ use crate::coverage::interval::CoverageSet;
 
 pub struct CoverageIndex<D, K> {
 	sets: HashMap<D, CoverageSet<K>>,
-	heads: HashMap<D, K>,
+	heads: HashMap<D, Edge<K>>,
 }
 
 impl<D, K> Default for CoverageIndex<D, K> {
@@ -46,11 +46,11 @@ impl<D: Hash + Eq + Copy, K: TypedKey> CoverageIndex<D, K> {
 		self.shrink(dimension, |set| set.shrink_range(start, end));
 	}
 
-	pub fn head(&self, dimension: D) -> Option<&K> {
+	pub fn head(&self, dimension: D) -> Option<&Edge<K>> {
 		self.heads.get(&dimension)
 	}
 
-	pub fn set_head(&mut self, dimension: D, key: K) {
+	pub fn set_head(&mut self, dimension: D, key: Edge<K>) {
 		self.heads.insert(dimension, key);
 	}
 

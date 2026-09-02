@@ -21,7 +21,6 @@ use reifydb_core::{
 		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore, StorageKey, classify_key, classify_range,
 		storage_key,
 	},
-	key::typed::TypedKey,
 };
 use reifydb_store_commit::{
 	MultiVersionScope, RangeBatch, RangeCursor, RangeStop, TierBatch, VersionedGetResult, store::CommitStore,
@@ -35,7 +34,11 @@ use tracing::instrument;
 use super::StandardMultiStore;
 use crate::{
 	Result,
-	tier::{TierStorage, persistent::MultiPersistentTier, range::ServedChunk},
+	tier::{
+		TierStorage,
+		persistent::MultiPersistentTier,
+		range::{ServedChunk, resume_after},
+	},
 };
 
 const TIER_SCAN_CHUNK_SIZE: usize = 32;
@@ -1017,7 +1020,7 @@ impl StandardMultiStore {
 		}
 		let range_start = EncodedKey::new(scan.start);
 		let lo = match resumed_at {
-			Some(last) => match last.successor() {
+			Some(last) => match resume_after(scan.table, last) {
 				Some(next) => next.max(range_start),
 				None => return Ok(()),
 			},
@@ -1377,12 +1380,12 @@ mod cache_tests {
 		key::{
 			EncodableKey,
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-			row::RowKey,
+			row::{RowKey, StorageRowKey},
 			typed::key::Key,
 		},
 	};
 	use reifydb_store_commit::{MultiVersionScope, RangeStop, RawEntry, VersionedGetResult};
-	use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec};
+	use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
 
 	use super::MultiVersionRangeCursor;
 	use crate::{
@@ -1461,9 +1464,8 @@ mod cache_tests {
 
 		let range = store.range.clone().expect("range tier configured");
 		let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
-		let heavy = PartitionId::of(kind, &RowKey::encoded(STORAGE, 1)).expect("a row key names a bucket");
-		let light =
-			PartitionId::of(kind, &RowKey::encoded(STORAGE, 1u64 << 16)).expect("a row key names a bucket");
+		let heavy = PartitionId::of(kind, &StorageRowKey::new(RowNumber(1)));
+		let light = PartitionId::of(kind, &StorageRowKey::new(RowNumber(1u64 << 16)));
 		assert_ne!(heavy, light, "the two row groups must land in different buckets");
 		assert_eq!(range.complete_partitions().iter().sum::<usize>(), 0, "nothing is claimed before the scan");
 
@@ -1543,10 +1545,10 @@ mod cache_tests {
 
 		let neighbor = RowKey::encoded(STORAGE, 1);
 		let kind = classify_key(&neighbor);
-		let partition = PartitionId::of(kind, &neighbor).expect("a source row key must name a partition");
+		let partition = PartitionId::of(kind, &StorageRowKey::new(RowNumber(1)));
 		assert_eq!(
-			PartitionId::of(kind, &RowKey::encoded(STORAGE, 2)),
-			Some(partition),
+			PartitionId::of(kind, &StorageRowKey::new(RowNumber(2))),
+			partition,
 			"both source rows must share a partition for this test to exercise the retraction"
 		);
 		assert!(

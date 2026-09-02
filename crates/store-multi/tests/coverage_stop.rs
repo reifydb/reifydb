@@ -122,7 +122,8 @@ fn tier_chunk(tier: &MultiPersistentTier, cursor: &mut RangeCursor, read: u64) -
 
 #[test]
 fn a_scan_stopped_by_a_drained_reader_pool_materializes_no_claim() {
-	// The defect: an empty chunk still stretched its claim to the range end; the read now refuses outright instead.
+	// RAM holds one coalesced claim and answers until it runs out, so the refusal moved off the next chunk and
+	// every chunk before it must still claim nothing.
 	let (store, _g) = store();
 	for row in 1..=(CHUNK * 6) {
 		commit_set(&store, row, 10);
@@ -138,21 +139,32 @@ fn a_scan_stopped_by_a_drained_reader_pool_materializes_no_claim() {
 
 	Shutdown::shutdown(&store);
 
-	let refused = store.range_next(
-		&mut cursor,
-		RowKey::full_scan(STORAGE),
-		MultiVersionScope::AsOf {
-			read: CommitVersion(30),
-		},
-		CHUNK,
-	);
-	assert!(refused.is_err(), "a drained pool must refuse the read, not answer it as a finished range");
-	assert_eq!(
-		materializes(&store),
-		materialized,
-		"a chunk that read nothing because the tier is shut down claimed the rest of the range anyway; \
-		 every row past the resume point is now absent as far as RAM is concerned"
-	);
+	let mut calls = 1;
+	loop {
+		calls += 1;
+		assert!(calls <= 64, "the scan neither ended nor failed after {calls} chunks over a drained pool");
+		let outcome = store.range_next(
+			&mut cursor,
+			RowKey::full_scan(STORAGE),
+			MultiVersionScope::AsOf {
+				read: CommitVersion(30),
+			},
+			CHUNK,
+		);
+		assert_eq!(
+			materializes(&store),
+			materialized,
+			"chunk {calls} claimed a span after the shutdown; a claim taken from a read that never \
+			 reached the tier answers absent for every row past the resume point"
+		);
+		match outcome {
+			Err(_) => break,
+			Ok(batch) => assert!(
+				batch.has_more,
+				"chunk {calls} called the range over without the drained pool ever refusing it"
+			),
+		}
+	}
 }
 
 #[test]

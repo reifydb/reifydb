@@ -45,15 +45,19 @@ impl<K: Keyspace> RangeDomain for TypedDomain<K> {
 
 	const GAP_SCOPE: &'static str = "operator_range::gaps";
 
+	fn partition(dimension: Self::Dimension, _key: &Self::Key) -> Self::Partition {
+		dimension
+	}
+
 	fn dimension(partition: &Self::Partition) -> Self::Dimension {
 		*partition
 	}
 
-	fn span(_partition: &Self::Partition) -> (Self::Key, Edge<Self::Key>) {
-		(K::Suffix::low(), Edge::Top)
+	fn span(_partition: &Self::Partition) -> (Edge<Self::Key>, Edge<Self::Key>) {
+		(Edge::Key(K::Suffix::low()), Edge::Top)
 	}
 
-	fn head_band(_dimension: Self::Dimension) -> Option<(Self::Key, Self::Key)> {
+	fn head_band(_dimension: Self::Dimension) -> Option<(Edge<Self::Key>, Edge<Self::Key>)> {
 		None
 	}
 

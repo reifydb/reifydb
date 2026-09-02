@@ -87,7 +87,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			let advanced = lo != anchor;
 			let head = match confined {
 				Some(partition) => partition,
-				None => partition_at::<D>(dimension, &lo)?,
+				None => D::partition(dimension, &lo),
 			};
 			let (_, head_end) = D::span(&head);
 			if hi <= head_end && !D::caches_ranges(&head) {
@@ -248,9 +248,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			return ServedChunk::Served(Vec::new());
 		};
 
-		let Some(partition) = scan.confined.or_else(|| D::partition(scan.dimension, &segment.start)) else {
-			return ServedChunk::Gap;
-		};
+		let partition = scan.confined.unwrap_or_else(|| D::partition(scan.dimension, &segment.start));
 		if !D::caches_ranges(&partition) {
 			return ServedChunk::Gap;
 		}
@@ -328,7 +326,6 @@ impl<D: RangeDomain> RangeTier<D> {
 		rows: &[(D::Key, D::Row)],
 	) -> Materialize {
 		let mut start = span.start.clone();
-		let mut head = true;
 		let mut materialized = false;
 		let mut claim: Option<Interval<D::Key>> = None;
 		let mut claimed: Vec<usize> = Vec::new();
@@ -340,23 +337,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				{
 					break;
 				}
-				let Some(partition) = scan.confined.or_else(|| D::partition(scan.dimension, &start))
-				else {
-					let Some(anchor) = rows
-						.first()
-						.and_then(|(key, _)| D::partition(scan.dimension, key))
-						.map(|at| D::span(&at).0)
-					else {
-						break;
-					};
-					if !head || anchor <= start || !span.end.covers(&anchor) {
-						break;
-					}
-					head = false;
-					start = anchor;
-					continue;
-				};
-				head = false;
+				let partition = scan.confined.unwrap_or_else(|| D::partition(scan.dimension, &start));
 				if walk_end.is_none() {
 					walk_end = Some(D::partition_walk_end(&partition));
 				}
@@ -467,9 +448,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		span: &Interval<D::Key>,
 		rows: &[(D::Key, D::Row)],
 	) -> bool {
-		let Some(partition) = scan.confined.or_else(|| D::partition(scan.dimension, &span.start)) else {
-			return false;
-		};
+		let partition = scan.confined.unwrap_or_else(|| D::partition(scan.dimension, &span.start));
 		if !D::caches_ranges(&partition) {
 			return false;
 		}
@@ -652,24 +631,8 @@ enum Tally {
 	Untallied,
 }
 
-fn partition_at<D: RangeDomain>(dimension: D::Dimension, key: &D::Key) -> Option<D::Partition> {
-	match D::partition(dimension, key) {
-		Some(partition) => Some(partition),
-		None => D::first_addressable(key).and_then(|aligned| D::partition(dimension, &aligned)),
-	}
-}
-
-fn unaddressable_gap<D: RangeDomain>(gap: &Interval<D::Key>) -> bool {
-	D::first_addressable(&gap.start).is_some_and(|aligned| gap.end <= Edge::Key(aligned))
-}
-
 fn exempt_gap<D: RangeDomain>(dimension: D::Dimension, confined: Option<D::Partition>, gap: &Interval<D::Key>) -> bool {
-	if unaddressable_gap::<D>(gap) {
-		return true;
-	}
-	let Some(partition) = confined.or_else(|| D::partition(dimension, &gap.start)) else {
-		return false;
-	};
+	let partition = confined.unwrap_or_else(|| D::partition(dimension, &gap.start));
 	if D::caches_ranges(&partition) {
 		return false;
 	}
@@ -745,31 +708,7 @@ fn split_at_partitions<D: RangeDomain>(
 			));
 			return;
 		}
-		let Some(partition) = confined.or_else(|| D::partition(dimension, &start)) else {
-			let bound = match D::first_addressable(&start) {
-				Some(aligned) => Edge::Key(aligned),
-				None => whole.end.clone(),
-			};
-			let end = bound.min(whole.end.clone());
-			let interval = Interval::new(start, end.clone());
-			if !unaddressable_gap::<D>(&interval) {
-				out.push((
-					Segment::Gap {
-						interval,
-						exempt: false,
-					},
-					None,
-				));
-			}
-			match end {
-				_ if end == whole.end => return,
-				Edge::Key(key) => {
-					start = key;
-					continue;
-				}
-				Edge::Bottom | Edge::Top => return,
-			}
-		};
+		let partition = confined.unwrap_or_else(|| D::partition(dimension, &start));
 
 		let bound = if ram {
 			D::span(&partition).1
@@ -875,7 +814,7 @@ mod tests {
 
 	fn whole(keyspace: KeyspaceId) -> Interval<MultiKey> {
 		let (start, end) = partition(keyspace).span();
-		Interval::new(start, end)
+		Interval::new(start.lowest().expect("a partition span starts at a key"), end)
 	}
 
 	/// A range from the start of `top` to the end of `bottom`; keyspaces encode inverted, so `top`

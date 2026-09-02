@@ -5,7 +5,7 @@
 mod domain;
 #[allow(clippy::module_inception)]
 mod point;
-mod pool;
+pub mod pool;
 #[cfg(test)]
 mod tests;
 
@@ -23,7 +23,6 @@ use reifydb_core::{key::typed::TypedKey, metrics::heap::HeapSize, util::budget::
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::byte_size::ByteSize;
 
-pub use crate::tier::point::pool::shard_budgets;
 use crate::tier::range::RowBytes;
 
 pub trait PointDomain: Copy + Debug + 'static {

@@ -184,7 +184,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		confined: Option<D::Partition>,
 		key: &D::Key,
 	) -> Option<D::Partition> {
-		confined.or_else(|| D::partition(dimension, key)).filter(D::caches_ranges)
+		Some(confined.unwrap_or_else(|| D::partition(dimension, key))).filter(D::caches_ranges)
 	}
 
 	fn participates(&self, index: usize, partition: &D::Partition) -> bool {
@@ -283,8 +283,10 @@ impl<D: RangeDomain> RangeTier<D> {
 	pub(super) fn withdraw(&self, dimension: D::Dimension, key: &D::Key) {
 		let mut coverage = self.coverage().write();
 		coverage.shrink_key(dimension, key);
-		if in_head_band::<D>(dimension, key) && coverage.head(dimension).is_some_and(|current| current > key) {
-			coverage.set_head(dimension, key.clone());
+		if in_head_band::<D>(dimension, key)
+			&& coverage.head(dimension).is_some_and(|current| current.covers(key))
+		{
+			coverage.set_head(dimension, Edge::Key(key.clone()));
 		}
 		self.record_retraction();
 	}

@@ -45,7 +45,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		confined: Option<D::Partition>,
 		key: &D::Key,
 	) -> Option<Option<D::Row>> {
-		let partition = confined.or_else(|| D::partition(dimension, key))?;
+		let partition = confined.unwrap_or_else(|| D::partition(dimension, key));
 		if !D::caches_ranges(&partition) {
 			return None;
 		}

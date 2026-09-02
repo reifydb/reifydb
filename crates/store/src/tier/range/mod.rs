@@ -33,6 +33,8 @@ pub trait RowBytes {
 	fn row_bytes(&self) -> usize;
 }
 
+type EdgeSpan<K> = (Edge<K>, Edge<K>);
+
 impl RowBytes for EncodedPodRow {
 	fn row_bytes(&self) -> usize {
 		self.len()
@@ -52,19 +54,13 @@ pub trait RangeDomain: Copy + Debug + 'static {
 
 	const GAP_SCOPE: &'static str;
 
-	fn partition(_dimension: Self::Dimension, _key: &Self::Key) -> Option<Self::Partition> {
-		None
-	}
-
-	fn first_addressable(_key: &Self::Key) -> Option<Self::Key> {
-		None
-	}
+	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Self::Partition;
 
 	fn dimension(partition: &Self::Partition) -> Self::Dimension;
 
-	fn span(partition: &Self::Partition) -> (Self::Key, Edge<Self::Key>);
+	fn span(partition: &Self::Partition) -> EdgeSpan<Self::Key>;
 
-	fn head_band(dimension: Self::Dimension) -> Option<(Self::Key, Self::Key)>;
+	fn head_band(dimension: Self::Dimension) -> Option<EdgeSpan<Self::Key>>;
 
 	fn caches_ranges(partition: &Self::Partition) -> bool;
 

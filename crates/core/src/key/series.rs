@@ -1065,9 +1065,12 @@ mod storage_series_key_tests {
 	use reifydb_value::value::partition::Partition;
 
 	use super::{PartitionedSeriesRowKey, SeriesRowKey, StorageId, StoragePartitionedSeriesKey, StorageSeriesKey};
-	use crate::key::typed::{TypedKey, key::Key};
+	use crate::{
+		interface::catalog::id::SeriesId,
+		key::typed::{TypedKey, key::Key},
+	};
 
-	const STORAGE: StorageId = StorageId::Series(crate::interface::catalog::id::SeriesId(7));
+	const STORAGE: StorageId = StorageId::Series(SeriesId(7));
 
 	fn series(variant_tag: Option<u8>, key: u64, sequence: u64) -> StorageSeriesKey {
 		StorageSeriesKey::new(variant_tag, key, sequence)
