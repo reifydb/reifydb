@@ -38,6 +38,7 @@ use crate::{
 			strategy::{
 				UpdateKeys,
 				hash::{columns_from_block, stream_join_blocks_encoded},
+				latest::winning_right_row,
 			},
 		},
 		state::store::{state_get, state_remove, state_set},
@@ -47,7 +48,6 @@ use crate::{
 
 const TAG_JOINED: u8 = 0;
 const TAG_UNMATCHED: u8 = 1;
-const SLOT: RowNumber = RowNumber::MAX;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PublishedRight {
@@ -754,7 +754,8 @@ pub(crate) fn publish_slot(
 	let group = ctx.right_store.group_of(key_hash);
 	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
 
-	let Some((content, slot)) = ctx.right_store.slot(host, group)? else {
+	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group, ctx.operator.pick())?
+	else {
 		if !outer {
 			return Ok(None);
 		}
@@ -765,7 +766,7 @@ pub(crate) fn publish_slot(
 	};
 
 	for left_number in &left_numbers {
-		ctx.ledger.publish(host, group, *left_number, SLOT, &content)?;
+		ctx.ledger.publish(host, group, *left_number, number, &content)?;
 	}
 	Ok(Some(ctx.operator.join_left_with_slot(left, left_indices, &slot)))
 }
@@ -806,7 +807,8 @@ pub(crate) fn retain_published_slot(
 	group: GroupId,
 	left: RowNumber,
 ) -> Result<Option<Columns>> {
-	let Some((content, slot)) = ctx.right_store.slot(host, group)? else {
+	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group, ctx.operator.pick())?
+	else {
 		return Ok(None);
 	};
 	let mut records = ctx.ledger.published(host, group, left)?;
@@ -814,7 +816,7 @@ pub(crate) fn retain_published_slot(
 		return Ok(None);
 	};
 	if !records.is_empty()
-		|| entry.right != PublishedRight::Row(SLOT)
+		|| entry.right != PublishedRight::Row(number)
 		|| entry.version != ContentVersion::of(&content)
 	{
 		return Ok(None);
@@ -823,7 +825,11 @@ pub(crate) fn retain_published_slot(
 }
 
 pub(crate) fn retire_slot(host: &mut dyn HostContext, ctx: &SnapshotJoinContext, key_hash: &Hash128) -> Result<()> {
-	retire_right(host, ctx, key_hash, SLOT)
+	let group = ctx.right_store.group_of(key_hash);
+	match winning_right_row(host, ctx.right_store, group, ctx.operator.pick())? {
+		Some((number, _, _)) => retire_right(host, ctx, key_hash, number),
+		None => Ok(()),
+	}
 }
 
 pub(crate) fn retire_right(

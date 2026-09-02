@@ -229,7 +229,7 @@ impl FlowEngineInner {
 				alias,
 				snapshot,
 				natural,
-				latest,
+				pick,
 			} => self.add_join(
 				txn,
 				flow_id,
@@ -241,7 +241,7 @@ impl FlowEngineInner {
 				alias,
 				snapshot,
 				natural,
-				latest,
+				pick,
 				ctx,
 			)?,
 			Distinct {

@@ -28,7 +28,7 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (retention, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (retention, snapshot, pick) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
@@ -37,7 +37,7 @@ impl<'bump> Parser<'bump> {
 			alias,
 			retention,
 			snapshot,
-			latest,
+			pick,
 			rql: self.source_since(start),
 		})
 	}
@@ -62,7 +62,7 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(As)?;
 		let alias = self.consume_identifier()?.fragment;
-		let (retention, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (retention, snapshot, pick) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::NaturalJoin {
 			token,
@@ -71,7 +71,7 @@ impl<'bump> Parser<'bump> {
 			alias,
 			retention,
 			snapshot,
-			latest,
+			pick,
 			rql: self.source_since(start),
 		})
 	}
@@ -87,7 +87,7 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (retention, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (retention, snapshot, pick) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
@@ -96,7 +96,7 @@ impl<'bump> Parser<'bump> {
 			alias,
 			retention,
 			snapshot,
-			latest,
+			pick,
 			rql: self.source_since(start),
 		})
 	}
@@ -112,7 +112,7 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (retention, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (retention, snapshot, pick) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::LeftJoin {
 			token,
@@ -121,7 +121,7 @@ impl<'bump> Parser<'bump> {
 			alias,
 			retention,
 			snapshot,
-			latest,
+			pick,
 			rql: self.source_since(start),
 		})
 	}
@@ -179,7 +179,7 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::common::JoinType;
+	use reifydb_core::{common::JoinType, sort::SortDirection};
 
 	use crate::{
 		ast::{
@@ -745,42 +745,140 @@ pub mod tests {
 		assert!(ttl.right.is_none());
 	}
 
-	#[test]
-	fn test_join_with_latest_flag() {
+	fn parse_inner(source: &str) -> (bool, Option<Vec<(String, SortDirection)>>) {
+		// Reduces the pick to (column name, resolved direction) pairs so every assertion below reads
+		// as the ordering the RQL asked for, with the keyword's default already applied.
 		let bump = Bump::new();
-		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { snapshot: true, latest: true, retention: { left: 10s } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		let result = result.pop().unwrap();
 		let AstJoin::InnerJoin {
 			snapshot,
-			latest,
+			pick,
 			..
 		} = result.first_unchecked().as_join()
 		else {
 			panic!("Expected InnerJoin");
 		};
-		assert!(*snapshot, "snapshot must parse alongside latest");
-		assert!(*latest, "latest flag must parse from the join WITH clause");
+		let pick = pick.as_ref().map(|p| {
+			p.columns
+				.iter()
+				.zip(&p.directions)
+				.map(|(c, d)| {
+					(
+						c.name.text().to_string(),
+						d.clone().unwrap_or_else(|| p.default_direction.clone()),
+					)
+				})
+				.collect()
+		});
+		(*snapshot, pick)
+	}
+
+	fn join(clause: &str) -> String {
+		format!("inner join {{ from orders }} as o using (id, o.user_id) with {{ {clause} }}")
+	}
+
+	#[test]
+	fn test_join_with_latest_flag() {
+		// `latest: true` predates this feature and must keep meaning a pick by #time, which the
+		// parser represents as an empty column list for the logical layer to expand.
+		let (snapshot, pick) = parse_inner(&join("snapshot: true, latest: true, retention: { left: 10s }"));
+		assert!(snapshot, "snapshot must parse alongside latest");
+		assert_eq!(pick, Some(vec![]), "latest: true must parse as a pick with no ordering columns");
 	}
 
 	#[test]
 	fn test_join_latest_defaults_false() {
+		let (_, pick) = parse_inner("inner join { from orders } as o using (id, o.user_id)");
+		assert_eq!(pick, None, "a join with no with clause must not pick");
+	}
+
+	#[test]
+	fn test_join_latest_defaults_each_column_to_descending() {
+		// The keyword sets the default direction: `latest` means the greatest, so a bare column
+		// must not silently order ascending and return the smallest row.
+		let (_, pick) = parse_inner(&join("latest: { o.total }"));
+		assert_eq!(pick, Some(vec![("total".to_string(), SortDirection::Desc)]));
+	}
+
+	#[test]
+	fn test_join_earliest_defaults_each_column_to_ascending() {
+		let (_, pick) = parse_inner(&join("earliest: { o.total }"));
+		assert_eq!(pick, Some(vec![("total".to_string(), SortDirection::Asc)]));
+	}
+
+	#[test]
+	fn test_join_pick_mixes_directions_across_columns() {
+		// The whole reason directions are per column: "greatest total, ties to the smallest seq"
+		// is unsayable when one keyword fixes the direction for every column.
+		let (_, pick) = parse_inner(&join("latest: { o.total, o.seq: asc }"));
+		assert_eq!(
+			pick,
+			Some(
+				vec![
+					("total".to_string(), SortDirection::Desc),
+					("seq".to_string(), SortDirection::Asc),
+				]
+			),
+			"an explicit direction must override the keyword default, and only for its own column"
+		);
+	}
+
+	#[test]
+	fn test_join_pick_binds_four_columns_in_written_order() {
+		let (_, pick) = parse_inner(&join("earliest: { o.a, o.b: desc, o.c, o.d: desc }"));
+		assert_eq!(
+			pick,
+			Some(vec![
+				("a".to_string(), SortDirection::Asc),
+				("b".to_string(), SortDirection::Desc),
+				("c".to_string(), SortDirection::Asc),
+				("d".to_string(), SortDirection::Desc),
+			]),
+			"lexicographic order is written order, and each column keeps its own direction"
+		);
+	}
+
+	#[test]
+	fn test_join_explicit_direction_equals_the_mirrored_keyword() {
+		// R3 admits two spellings of one ordering; they must produce the same pick, or a view
+		// silently changes meaning when rewritten.
+		let (_, explicit) = parse_inner(&join("latest: { o.total: asc }"));
+		let (_, keyword) = parse_inner(&join("earliest: { o.total }"));
+		assert_eq!(explicit, keyword);
+	}
+
+	#[test]
+	fn test_join_empty_pick_braces_equal_the_boolean_form() {
+		let (_, braces) = parse_inner(&join("latest: { }"));
+		let (_, boolean) = parse_inner(&join("latest: true"));
+		assert_eq!(braces, boolean, "an empty brace list and the boolean form must be the same pick");
+	}
+
+	#[test]
+	fn test_join_latest_false_is_no_pick() {
+		let (_, pick) = parse_inner(&join("latest: false"));
+		assert_eq!(pick, None, "latest: false must leave the join an ordinary fan-out");
+	}
+
+	fn parse_err(source: &str) -> String {
 		let bump = Bump::new();
-		let source = "inner join { from orders } as o using (id, o.user_id)";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
-		let result = result.pop().unwrap();
-		let AstJoin::InnerJoin {
-			latest,
-			..
-		} = result.first_unchecked().as_join()
-		else {
-			panic!("Expected InnerJoin");
-		};
-		assert!(!*latest, "latest must default to false when omitted");
+		parser.parse().expect_err("must be rejected").to_string()
+	}
+
+	#[test]
+	fn test_join_pick_rejects_a_direction_that_is_not_asc_or_desc() {
+		let err = parse_err(&join("latest: { o.total: sideways }"));
+		assert!(err.contains("asc"), "the rejection must name what is allowed, got: {err}");
+	}
+
+	#[test]
+	fn test_join_rejects_latest_and_earliest_together() {
+		let err = parse_err(&join("latest: { o.total }, earliest: { o.seq }"));
+		assert!(err.contains("earliest"), "the rejection must name the clash, got: {err}");
 	}
 }

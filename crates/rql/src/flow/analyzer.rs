@@ -437,7 +437,7 @@ pub mod tests {
 					alias: None,
 					snapshot: false,
 					natural: false,
-					latest: false,
+					pick: None,
 				},
 				SinkTableView {
 					view: ViewId(700),

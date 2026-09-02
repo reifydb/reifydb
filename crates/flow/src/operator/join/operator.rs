@@ -26,6 +26,7 @@ use reifydb_core::{
 		typed::direction::{Asc, Desc},
 	},
 	metrics::{heap::OperatorSample, instruments::counter::Counter},
+	row::JoinPick,
 	state::timer::TimerKind,
 	value::column::{ColumnWithName, columns::Columns},
 };
@@ -162,7 +163,7 @@ pub struct JoinOperator {
 	runtime_context: RuntimeContext,
 	pub(crate) snapshot: bool,
 	natural: bool,
-	pub(crate) latest: bool,
+	pub(crate) pick: Option<JoinPick>,
 	left_retention: Option<Duration>,
 	right_retention: Option<Duration>,
 	ctx: Arc<FlowContext>,
@@ -181,7 +182,7 @@ impl JoinOperator {
 		runtime_context: RuntimeContext,
 		snapshot: bool,
 		natural: bool,
-		latest: bool,
+		pick: Option<JoinPick>,
 		left_retention: Option<Duration>,
 		right_retention: Option<Duration>,
 		ctx: Arc<FlowContext>,
@@ -191,7 +192,7 @@ impl JoinOperator {
 		let left_exprs = left.exprs;
 		let right_exprs = right.exprs;
 		let right_schema = right.schema;
-		let strategy = JoinStrategy::from(join_type, latest);
+		let strategy = JoinStrategy::from(join_type, pick.is_some());
 
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
@@ -222,7 +223,7 @@ impl JoinOperator {
 			runtime_context,
 			snapshot,
 			natural,
-			latest,
+			pick,
 			left_retention: left_retention.filter(|span| !span.is_zero()),
 			right_retention: right_retention.filter(|span| !span.is_zero()),
 			ctx,
@@ -233,10 +234,7 @@ impl JoinOperator {
 	pub(crate) fn retention_of(&self, side: JoinSide) -> Option<Duration> {
 		match side {
 			JoinSide::Left => self.left_retention,
-			JoinSide::Right => match self.snapshot || self.latest {
-				true => None,
-				false => self.right_retention,
-			},
+			JoinSide::Right => self.right_retention,
 		}
 	}
 
@@ -439,6 +437,11 @@ impl JoinOperator {
 				state.left.remove_row_in(host, group, row_number)?;
 			}
 			JoinSide::Right => {
+				if self.snapshot
+					&& let Some(content) = state.right.get_row_in(host, group, row_number)?
+				{
+					self.snapshot_ledger().retire(host, group, row_number, &content)?;
+				}
 				let composites: Vec<JoinRowMappingKey> = state
 					.left
 					.row_numbers_in(host, group)?
@@ -785,6 +788,10 @@ impl JoinOperator {
 		Ok(Self::split(built, &fresh, &existing))
 	}
 
+	pub(crate) fn pick(&self) -> &JoinPick {
+		self.pick.as_ref().expect("a latest strategy runs only when the join carries a pick")
+	}
+
 	pub(crate) fn join_left_with_slot(&self, left: &Columns, left_indices: &[usize], slot: &Columns) -> Columns {
 		let row_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
 		let builder = JoinedColumnsBuilder::new(left, slot, &self.alias, self.natural);
@@ -1080,13 +1087,13 @@ mod seal_tests {
 	};
 
 	fn join(operator: u64, left_retention: Option<Duration>, right_retention: Option<Duration>) -> JoinOperator {
-		join_with(operator, false, false, left_retention, right_retention)
+		join_with(operator, false, None, left_retention, right_retention)
 	}
 
 	fn join_with(
 		operator: u64,
 		snapshot: bool,
-		latest: bool,
+		pick: Option<JoinPick>,
 		left_retention: Option<Duration>,
 		right_retention: Option<Duration>,
 	) -> JoinOperator {
@@ -1108,7 +1115,7 @@ mod seal_tests {
 			RuntimeContext::testing(0, 1),
 			snapshot,
 			false,
-			latest,
+			pick,
 			left_retention,
 			right_retention,
 			Arc::new(FlowContext::default()),
@@ -1531,11 +1538,11 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_latest_join_expires_its_left_side_and_arms_nothing_on_the_right() {
-		// A slot overwritten in place carries no per-row join expiry, so a right retention there could never
-		// fire.
+	fn a_latest_join_expires_both_sides_on_their_own_retentions() {
+		// A latest join keeps every right row per key, so a right retention must arm or that growth is
+		// unbounded.
 		let engine = TestEngine::new();
-		let op = join_with(12, false, true, Some(seconds(10)), Some(seconds(10)));
+		let op = join_with(12, false, Some(JoinPick::latest()), Some(seconds(10)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
 		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
@@ -1550,17 +1557,17 @@ mod seal_tests {
 		);
 		assert_eq!(
 			join_expiry_of(&op, &mut txn, group, JoinSide::Right, 99),
-			None,
-			"the right slot must arm nothing"
+			Some(at_millis(19_001)),
+			"the right row is an ordinary kept row and must expire on its own retention"
 		);
-		assert_eq!(armed_timers(&op, &mut txn), 1, "so only the left join expiry addresses the group");
+		assert_eq!(armed_timers(&op, &mut txn), 1, "and one timer covers the group's earliest join expiry");
 	}
 
 	#[test]
-	fn a_snapshot_join_expires_its_left_side_and_arms_nothing_on_the_right() {
-		// A pinned right row must outlive the left rows that published against it, so it must never expire.
+	fn a_snapshot_join_expires_both_sides_on_their_own_retentions() {
+		// A sealed right row retires its bytes into the pin, so pinning it no longer means it may never expire.
 		let engine = TestEngine::new();
-		let op = join_with(13, true, false, Some(seconds(10)), Some(seconds(10)));
+		let op = join_with(13, true, None, Some(seconds(10)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
 		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
@@ -1575,17 +1582,17 @@ mod seal_tests {
 		);
 		assert_eq!(
 			join_expiry_of(&op, &mut txn, group, JoinSide::Right, 99),
-			None,
-			"the pinned right row must not arm"
+			Some(at_millis(19_001)),
+			"and the pinned right row must arm too, or a snapshot join grows without bound"
 		);
-		assert_eq!(armed_timers(&op, &mut txn), 1, "so only the left join expiry addresses the group");
+		assert_eq!(armed_timers(&op, &mut txn), 1, "and one timer covers the group's earliest join expiry");
 	}
 
 	#[test]
 	fn an_expired_left_row_releases_the_snapshot_ledger_it_held() {
 		// A pin is refcounted, so a left row that expires without releasing holds its retired copy forever.
 		let engine = TestEngine::new();
-		let mut op = join_with(14, true, false, Some(seconds(10)), None);
+		let mut op = join_with(14, true, None, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
 		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
@@ -1617,7 +1624,7 @@ mod seal_tests {
 	fn a_siblings_pin_on_the_same_right_row_survives_its_neighbours_expiry() {
 		// Release must be scoped to the expiring left row, or a live sibling loses the version it published.
 		let engine = TestEngine::new();
-		let mut op = join_with(15, true, false, Some(seconds(10)), None);
+		let mut op = join_with(15, true, None, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let early = rows(&[7], &[1], at_millis(5_000));
 		let late = rows(&[7], &[2], at_millis(50_000));

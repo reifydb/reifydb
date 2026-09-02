@@ -4,7 +4,7 @@
 use reifydb_core::{
 	common::JoinType::{self, Inner, Left},
 	interface::catalog::flow::OperatorId,
-	row::JoinRetention,
+	row::{JoinPick, JoinRetention},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
@@ -28,7 +28,7 @@ pub(crate) struct JoinCompiler {
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
 	pub natural: bool,
-	pub latest: bool,
+	pub pick: Option<JoinPick>,
 }
 
 impl From<JoinInnerNode> for JoinCompiler {
@@ -42,7 +42,7 @@ impl From<JoinInnerNode> for JoinCompiler {
 			retention: node.retention,
 			snapshot: node.snapshot,
 			natural: false,
-			latest: node.latest,
+			pick: node.pick,
 		}
 	}
 }
@@ -58,7 +58,7 @@ impl From<JoinLeftNode> for JoinCompiler {
 			retention: node.retention,
 			snapshot: node.snapshot,
 			natural: false,
-			latest: node.latest,
+			pick: node.pick,
 		}
 	}
 }
@@ -74,7 +74,7 @@ impl From<JoinNaturalNode> for JoinCompiler {
 			retention: node.retention,
 			snapshot: node.snapshot,
 			natural: true,
-			latest: node.latest,
+			pick: node.pick,
 		}
 	}
 }
@@ -148,7 +148,7 @@ impl CompileOperator for JoinCompiler {
 				alias: effective_alias,
 				snapshot: self.snapshot,
 				natural: self.natural,
-				latest: self.latest,
+				pick: self.pick,
 			},
 		)?;
 

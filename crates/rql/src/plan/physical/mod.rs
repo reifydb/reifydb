@@ -30,7 +30,7 @@ use reifydb_core::{
 			ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedView,
 		},
 	},
-	row::{JoinRetention, Ttl},
+	row::{JoinPick, JoinRetention, Ttl},
 	sort::SortKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -521,7 +521,7 @@ pub struct JoinInnerNode<'bump> {
 	pub alias: Option<Fragment>,
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
-	pub latest: bool,
+	pub pick: Option<JoinPick>,
 }
 
 #[derive(Debug)]
@@ -532,7 +532,7 @@ pub struct JoinLeftNode<'bump> {
 	pub alias: Option<Fragment>,
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
-	pub latest: bool,
+	pub pick: Option<JoinPick>,
 }
 
 #[derive(Debug)]
@@ -543,7 +543,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub alias: Option<Fragment>,
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
-	pub latest: bool,
+	pub pick: Option<JoinPick>,
 }
 
 #[derive(Debug)]
@@ -1992,7 +1992,7 @@ impl<'bump> Compiler<'bump> {
 						alias,
 						retention: join.retention,
 						snapshot: join.snapshot,
-						latest: join.latest,
+						pick: join.pick,
 					}));
 				}
 
@@ -2018,7 +2018,7 @@ impl<'bump> Compiler<'bump> {
 						alias,
 						retention: join.retention,
 						snapshot: join.snapshot,
-						latest: join.latest,
+						pick: join.pick,
 					}));
 				}
 
@@ -2044,7 +2044,7 @@ impl<'bump> Compiler<'bump> {
 						alias,
 						retention: join.retention,
 						snapshot: join.snapshot,
-						latest: join.latest,
+						pick: join.pick,
 					}));
 				}
 
