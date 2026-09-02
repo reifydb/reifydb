@@ -14,8 +14,14 @@ use crate::{
 	key::{
 		EncodableKeyRange,
 		kind::KeyKind,
-		row::{PartitionedRowKey, PartitionedRowKeyRange, RowKey, RowKeyRange},
-		series::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange},
+		row::{
+			PartitionedRowKey, PartitionedRowKeyRange, RowKey, RowKeyRange, StoragePartitionedRowKey,
+			StorageRowKey,
+		},
+		series::{
+			PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
+			StoragePartitionedSeriesKey, StorageSeriesKey,
+		},
 		typed::key::Key,
 	},
 };
@@ -62,26 +68,103 @@ impl EntryKind {
 	}
 }
 
-pub fn classify_key(key: &EncodedKey) -> EntryKind {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StorageKey {
+	Table(StorageRowKey),
+	RingBuffer(StorageRowKey),
+	Queue(StorageRowKey),
+	View(StorageRowKey),
+
+	PartitionedTable(StoragePartitionedRowKey),
+	PartitionedRingBuffer(StoragePartitionedRowKey),
+	PartitionedQueue(StoragePartitionedRowKey),
+	PartitionedView(StoragePartitionedRowKey),
+
+	Series(StorageSeriesKey),
+	SeriesView(StorageSeriesKey),
+
+	PartitionedSeries(StoragePartitionedSeriesKey),
+	PartitionedSeriesView(StoragePartitionedSeriesKey),
+}
+
+fn row_storage_key(storage: StorageId, row: StorageRowKey) -> Option<StorageKey> {
+	match storage {
+		StorageId::Table(_) => Some(StorageKey::Table(row)),
+		StorageId::RingBuffer(_) => Some(StorageKey::RingBuffer(row)),
+		StorageId::Queue(_) => Some(StorageKey::Queue(row)),
+		StorageId::View(_) => Some(StorageKey::View(row)),
+		StorageId::Series(_) => None,
+	}
+}
+
+fn partitioned_row_storage_key(storage: StorageId, row: StoragePartitionedRowKey) -> Option<StorageKey> {
+	match storage {
+		StorageId::Table(_) => Some(StorageKey::PartitionedTable(row)),
+		StorageId::RingBuffer(_) => Some(StorageKey::PartitionedRingBuffer(row)),
+		StorageId::Queue(_) => Some(StorageKey::PartitionedQueue(row)),
+		StorageId::View(_) => Some(StorageKey::PartitionedView(row)),
+		StorageId::Series(_) => None,
+	}
+}
+
+fn series_storage_key(storage: StorageId, series: StorageSeriesKey) -> Option<StorageKey> {
+	match storage {
+		StorageId::Series(_) => Some(StorageKey::Series(series)),
+		StorageId::View(_) => Some(StorageKey::SeriesView(series)),
+		StorageId::Table(_) | StorageId::RingBuffer(_) | StorageId::Queue(_) => None,
+	}
+}
+
+fn partitioned_series_storage_key(storage: StorageId, series: StoragePartitionedSeriesKey) -> Option<StorageKey> {
+	match storage {
+		StorageId::Series(_) => Some(StorageKey::PartitionedSeries(series)),
+		StorageId::View(_) => Some(StorageKey::PartitionedSeriesView(series)),
+		StorageId::Table(_) | StorageId::RingBuffer(_) | StorageId::Queue(_) => None,
+	}
+}
+
+pub fn storage_key(key: &EncodedKey) -> (EntryKind, Option<StorageKey>) {
 	match KeyKind::of(key) {
 		Some(KeyKind::Row) => match RowKey::decode(key) {
-			Some(row_key) => EntryKind::Source(row_key.storage),
-			None => EntryKind::Multi,
+			Some(row_key) => (
+				EntryKind::Source(row_key.storage),
+				row_storage_key(row_key.storage, StorageRowKey::new(row_key.row)),
+			),
+			None => (EntryKind::Multi, None),
 		},
 		Some(KeyKind::SeriesRow) => match SeriesRowKey::decode(key) {
-			Some(series_key) => EntryKind::Source(series_key.storage),
-			None => EntryKind::Multi,
+			Some(series_key) => (
+				EntryKind::Source(series_key.storage),
+				series_storage_key(series_key.storage, StorageSeriesKey::from(series_key)),
+			),
+			None => (EntryKind::Multi, None),
 		},
 		Some(KeyKind::PartitionedRow) => match PartitionedRowKey::decode(key) {
-			Some(partitioned_key) => EntryKind::PartitionedSource(partitioned_key.storage),
-			None => EntryKind::Multi,
+			Some(partitioned_key) => (
+				EntryKind::PartitionedSource(partitioned_key.storage),
+				partitioned_row_storage_key(
+					partitioned_key.storage,
+					StoragePartitionedRowKey::new(partitioned_key.partition, partitioned_key.row),
+				),
+			),
+			None => (EntryKind::Multi, None),
 		},
 		Some(KeyKind::PartitionedSeriesRow) => match PartitionedSeriesRowKey::decode(key) {
-			Some(partitioned_key) => EntryKind::PartitionedSource(partitioned_key.storage),
-			None => EntryKind::Multi,
+			Some(partitioned_key) => (
+				EntryKind::PartitionedSource(partitioned_key.storage),
+				partitioned_series_storage_key(
+					partitioned_key.storage,
+					StoragePartitionedSeriesKey::from(partitioned_key),
+				),
+			),
+			None => (EntryKind::Multi, None),
 		},
-		_ => EntryKind::Multi,
+		_ => (EntryKind::Multi, None),
 	}
+}
+
+pub fn classify_key(key: &EncodedKey) -> EntryKind {
+	storage_key(key).0
 }
 
 pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
@@ -255,16 +338,17 @@ pub trait SingleVersionStore:
 mod tests {
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
-	use super::{EntryKind, classify_key, classify_range};
+	use super::{EntryKind, StorageKey, classify_key, classify_range, storage_key};
 	use crate::{
 		interface::catalog::{
 			id::{SeriesId, TableId, ViewId},
 			storage::StorageId,
 		},
 		key::{
-			row::{PartitionedRowKey, RowKey},
+			row::{PartitionedRowKey, RowKey, RowSequenceKey, StoragePartitionedRowKey, StorageRowKey},
 			series::{
 				PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
+				StoragePartitionedSeriesKey, StorageSeriesKey,
 			},
 			typed::key::Key,
 		},
@@ -272,6 +356,132 @@ mod tests {
 
 	fn part(v: &str) -> Partition {
 		Partition::of(&[Value::Utf8(v.to_string())])
+	}
+
+	#[test]
+	fn storage_key_hands_back_the_identity_it_decoded() {
+		// the store classifies a key and the tier below then decodes the same bytes again for the row
+		// number; the route must carry that identity so the second decode has nothing left to do
+		let storage = StorageId::Table(TableId(7));
+
+		let row = RowKey::encoded(storage, RowNumber(5));
+		assert_eq!(
+			storage_key(&row),
+			(EntryKind::Source(storage), Some(StorageKey::Table(StorageRowKey::new(RowNumber(5)))))
+		);
+
+		let partitioned = PartitionedRowKey::encoded(storage, part("us"), RowNumber(5));
+		assert_eq!(
+			storage_key(&partitioned),
+			(
+				EntryKind::PartitionedSource(storage),
+				Some(StorageKey::PartitionedTable(StoragePartitionedRowKey::new(
+					part("us"),
+					RowNumber(5)
+				)))
+			)
+		);
+	}
+
+	#[test]
+	fn storage_key_names_the_storage_a_row_belongs_to() {
+		// the variant is what keeps a queue row out of a ringbuffer's cache drawer, so every storage kind
+		// that writes plain rows must get its own one rather than a shared Row
+		let row = StorageRowKey::new(RowNumber(5));
+		for (storage, expected) in [
+			(StorageId::table(7), StorageKey::Table(row)),
+			(StorageId::ringbuffer(7), StorageKey::RingBuffer(row)),
+			(StorageId::queue(7), StorageKey::Queue(row)),
+			(StorageId::view(7), StorageKey::View(row)),
+		] {
+			assert_eq!(storage_key(&RowKey::encoded(storage, RowNumber(5))).1, Some(expected));
+		}
+	}
+
+	#[test]
+	fn a_series_key_carries_its_own_identity_on_a_series_and_on_a_view() {
+		// a view's series rows and its plain rows both classify to Source(view); the storage key is what
+		// keeps them in separate cache drawers now that neither is stored by its whole encoded key
+		let series = StorageSeriesKey::new(None, 5, 1);
+		for (storage, expected) in [
+			(StorageId::series(7), StorageKey::Series(series)),
+			(StorageId::view(7), StorageKey::SeriesView(series)),
+		] {
+			let series = SeriesRowKey {
+				storage,
+				variant_tag: None,
+				key: 5,
+				sequence: 1,
+			}
+			.encode();
+			assert_eq!(storage_key(&series), (EntryKind::Source(storage), Some(expected)));
+		}
+
+		let partitioned = StoragePartitionedSeriesKey::new(part("us"), None, 5, 1);
+		for (storage, expected) in [
+			(StorageId::series(7), StorageKey::PartitionedSeries(partitioned)),
+			(StorageId::view(7), StorageKey::PartitionedSeriesView(partitioned)),
+		] {
+			let partitioned = PartitionedSeriesRowKey::encoded(storage, part("us"), None, 5, 1);
+			assert_eq!(storage_key(&partitioned), (EntryKind::PartitionedSource(storage), Some(expected)));
+		}
+	}
+
+	#[test]
+	fn a_view_row_and_a_view_series_row_do_not_share_a_storage_key() {
+		// one view entry holds both layouts, so the two must stay distinguishable after routing or the
+		// point tier hands a series row back for a plain row lookup
+		let storage = StorageId::view(7);
+		let row = storage_key(&RowKey::encoded(storage, RowNumber(5))).1.unwrap();
+		let series = storage_key(
+			&SeriesRowKey {
+				storage,
+				variant_tag: None,
+				key: 5,
+				sequence: 5,
+			}
+			.encode(),
+		)
+		.1
+		.unwrap();
+		assert_ne!(row, series);
+	}
+
+	#[test]
+	fn a_layout_its_storage_cannot_hold_gets_no_storage_key() {
+		// a plain row key naming a series storage is nonsense; it must fall back to whole key caching
+		// rather than claim a row identity read out of the wrong field
+		let storage = StorageId::series(7);
+		assert_eq!(storage_key(&RowKey::encoded(storage, RowNumber(5))), (EntryKind::Source(storage), None));
+
+		let series_on_a_table = SeriesRowKey {
+			storage: StorageId::table(7),
+			variant_tag: None,
+			key: 5,
+			sequence: 1,
+		}
+		.encode();
+		assert_eq!(storage_key(&series_on_a_table).1, None);
+	}
+
+	#[test]
+	fn storage_key_agrees_with_classify_key_on_the_entry() {
+		let storage = StorageId::Table(TableId(7));
+		for key in [
+			RowKey::encoded(storage, RowNumber(5)),
+			PartitionedRowKey::encoded(storage, part("us"), RowNumber(5)),
+			RowSequenceKey::encoded(storage),
+		] {
+			assert_eq!(storage_key(&key).0, classify_key(&key));
+		}
+	}
+
+	#[test]
+	fn storage_key_leaves_a_key_it_does_not_own_without_an_identity() {
+		assert_eq!(
+			storage_key(&RowSequenceKey::encoded(StorageId::Table(TableId(7)))),
+			(EntryKind::Multi, None)
+		);
 	}
 
 	#[test]

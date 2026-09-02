@@ -9,26 +9,26 @@ use reifydb_core::{
 	key::{
 		catalog::KeyDeserializerCatalogExt,
 		kind::KeyKind,
-		row::{PartitionedRowIdent, PartitionedRowKey, RowIdent, RowKey},
+		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey, StorageRowKey},
 		typed::key::Key,
 	},
 };
 use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 
-pub(super) fn row_ident_of(key: &[u8]) -> Option<RowIdent> {
-	RowKey::decode(&EncodedKey::new(key)).map(RowIdent::from)
+pub(super) fn row_ident_of(key: &[u8]) -> Option<StorageRowKey> {
+	RowKey::decode(&EncodedKey::new(key)).map(StorageRowKey::from)
 }
 
 pub(super) fn row_key_for(storage: StorageId, row: i64) -> EncodedKey {
 	RowKey::encoded(storage, RowNumber(row_from_sql(row)))
 }
 
-pub(super) fn partitioned_ident_of(key: &[u8]) -> Option<PartitionedRowIdent> {
-	PartitionedRowKey::decode(&EncodedKey::new(key)).map(PartitionedRowIdent::from)
+pub(super) fn partitioned_ident_of(key: &[u8]) -> Option<StoragePartitionedRowKey> {
+	PartitionedRowKey::decode(&EncodedKey::new(key)).map(StoragePartitionedRowKey::from)
 }
 
 pub(super) fn partitioned_key_for(storage: StorageId, partition_hi: i64, partition_lo: i64, row: i64) -> EncodedKey {
-	let ident = PartitionedRowIdent::from_halves(
+	let ident = StoragePartitionedRowKey::from_halves(
 		partition_half_from_sql(partition_hi),
 		partition_half_from_sql(partition_lo),
 		RowNumber(row_from_sql(row)),

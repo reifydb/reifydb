@@ -16,8 +16,9 @@ use crate::{
 	interface::catalog::{id::SeriesId, object::ObjectId, storage::StorageId},
 	key::{
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
-		typed::key::Key,
+		typed::{TypedKey, direction::Desc, key::Key},
 	},
+	metrics::heap::HeapSize,
 };
 
 #[derive(Debug, Clone, PartialEq, Key)]
@@ -242,6 +243,100 @@ impl SeriesRowKeyRange {
 			serializer.extend_u8(SeriesRowKey::KIND as u8).extend_object_id(object.prev());
 			serializer.to_encoded_key()
 		}
+	}
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct StorageSeriesKey {
+	pub variant_tag: Desc<Option<u8>>,
+	pub key: Desc<u64>,
+	pub sequence: Desc<u64>,
+}
+
+impl StorageSeriesKey {
+	pub fn new(variant_tag: Option<u8>, key: u64, sequence: u64) -> Self {
+		Self {
+			variant_tag: Desc(variant_tag),
+			key: Desc(key),
+			sequence: Desc(sequence),
+		}
+	}
+
+	pub fn variant_tag(self) -> Option<u8> {
+		self.variant_tag.0
+	}
+
+	pub fn key(self) -> u64 {
+		self.key.0
+	}
+
+	pub fn sequence(self) -> u64 {
+		self.sequence.0
+	}
+
+	pub fn with_storage(self, storage: StorageId) -> SeriesRowKey {
+		SeriesRowKey {
+			storage,
+			variant_tag: self.variant_tag(),
+			key: self.key(),
+			sequence: self.sequence(),
+		}
+	}
+}
+
+impl From<SeriesRowKey> for StorageSeriesKey {
+	fn from(key: SeriesRowKey) -> Self {
+		StorageSeriesKey::new(key.variant_tag, key.key, key.sequence)
+	}
+}
+
+impl HeapSize for StorageSeriesKey {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
+
+impl TypedKey for StorageSeriesKey {
+	fn low() -> Self {
+		Self {
+			variant_tag: lowest_variant_tag(),
+			key: <Desc<u64> as TypedKey>::low(),
+			sequence: <Desc<u64> as TypedKey>::low(),
+		}
+	}
+
+	fn successor(&self) -> Option<Self> {
+		if let Some(sequence) = self.sequence.successor() {
+			return Some(Self {
+				variant_tag: self.variant_tag,
+				key: self.key,
+				sequence,
+			});
+		}
+		if let Some(key) = self.key.successor() {
+			return Some(Self {
+				variant_tag: self.variant_tag,
+				key,
+				sequence: <Desc<u64> as TypedKey>::low(),
+			});
+		}
+		Some(Self {
+			variant_tag: next_variant_tag(self.variant_tag)?,
+			key: <Desc<u64> as TypedKey>::low(),
+			sequence: <Desc<u64> as TypedKey>::low(),
+		})
+	}
+}
+
+fn lowest_variant_tag() -> Desc<Option<u8>> {
+	Desc(Some(u8::MAX))
+}
+
+fn next_variant_tag(tag: Desc<Option<u8>>) -> Option<Desc<Option<u8>>> {
+	match tag.0 {
+		Some(0) => Some(Desc(None)),
+		Some(value) => Some(Desc(Some(value - 1))),
+		None => None,
 	}
 }
 
@@ -644,6 +739,104 @@ impl PartitionedSeriesRowKeyRange {
 	}
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct StoragePartitionedSeriesKey {
+	pub partition: Desc<Partition>,
+	pub variant_tag: Desc<Option<u8>>,
+	pub key: Desc<u64>,
+	pub sequence: Desc<u64>,
+}
+
+impl StoragePartitionedSeriesKey {
+	pub fn new(partition: Partition, variant_tag: Option<u8>, key: u64, sequence: u64) -> Self {
+		Self {
+			partition: Desc(partition),
+			variant_tag: Desc(variant_tag),
+			key: Desc(key),
+			sequence: Desc(sequence),
+		}
+	}
+
+	pub fn partition(self) -> Partition {
+		self.partition.0
+	}
+
+	pub fn variant_tag(self) -> Option<u8> {
+		self.variant_tag.0
+	}
+
+	pub fn key(self) -> u64 {
+		self.key.0
+	}
+
+	pub fn sequence(self) -> u64 {
+		self.sequence.0
+	}
+
+	pub fn with_storage(self, storage: StorageId) -> PartitionedSeriesRowKey {
+		PartitionedSeriesRowKey {
+			storage,
+			partition: self.partition(),
+			variant_tag: self.variant_tag(),
+			key: self.key(),
+			sequence: self.sequence(),
+		}
+	}
+}
+
+impl From<PartitionedSeriesRowKey> for StoragePartitionedSeriesKey {
+	fn from(key: PartitionedSeriesRowKey) -> Self {
+		StoragePartitionedSeriesKey::new(key.partition, key.variant_tag, key.key, key.sequence)
+	}
+}
+
+impl HeapSize for StoragePartitionedSeriesKey {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
+
+impl TypedKey for StoragePartitionedSeriesKey {
+	fn low() -> Self {
+		Self {
+			partition: <Desc<Partition> as TypedKey>::low(),
+			variant_tag: lowest_variant_tag(),
+			key: <Desc<u64> as TypedKey>::low(),
+			sequence: <Desc<u64> as TypedKey>::low(),
+		}
+	}
+
+	fn successor(&self) -> Option<Self> {
+		if let Some(sequence) = self.sequence.successor() {
+			return Some(Self {
+				sequence,
+				..*self
+			});
+		}
+		if let Some(key) = self.key.successor() {
+			return Some(Self {
+				key,
+				sequence: <Desc<u64> as TypedKey>::low(),
+				..*self
+			});
+		}
+		if let Some(variant_tag) = next_variant_tag(self.variant_tag) {
+			return Some(Self {
+				partition: self.partition,
+				variant_tag,
+				key: <Desc<u64> as TypedKey>::low(),
+				sequence: <Desc<u64> as TypedKey>::low(),
+			});
+		}
+		Some(Self {
+			partition: self.partition.successor()?,
+			variant_tag: lowest_variant_tag(),
+			key: <Desc<u64> as TypedKey>::low(),
+			sequence: <Desc<u64> as TypedKey>::low(),
+		})
+	}
+}
+
 #[cfg(test)]
 mod partitioned_row_key_tests {
 	use std::ops::RangeBounds;
@@ -864,5 +1057,118 @@ mod partitioned_row_key_tests {
 
 		assert!(range.contains(&untagged), "an untagged row above the lower bound must stay in range");
 		assert!(!range.contains(&tagged), "a tagged row must never leak into an untagged key-bounded range");
+	}
+}
+
+#[cfg(test)]
+mod storage_series_key_tests {
+	use reifydb_value::value::partition::Partition;
+
+	use super::{PartitionedSeriesRowKey, SeriesRowKey, StorageId, StoragePartitionedSeriesKey, StorageSeriesKey};
+	use crate::key::typed::{TypedKey, key::Key};
+
+	const STORAGE: StorageId = StorageId::Series(crate::interface::catalog::id::SeriesId(7));
+
+	fn series(variant_tag: Option<u8>, key: u64, sequence: u64) -> StorageSeriesKey {
+		StorageSeriesKey::new(variant_tag, key, sequence)
+	}
+
+	#[test]
+	fn storage_key_order_matches_the_encoded_byte_order() {
+		// the storage key is the cache key for the same rows the encoded key orders on disk, so a disagreement
+		// here silently hands back a neighbouring row on any ordered lookup
+		let mut keys = vec![
+			series(None, 5, 1),
+			series(Some(0), 5, 1),
+			series(Some(9), 5, 1),
+			series(Some(9), 5, 2),
+			series(Some(9), 6, 1),
+		];
+		let mut encoded: Vec<_> =
+			keys.iter().map(|it| Key::encode(&it.with_storage(STORAGE)).to_vec()).collect();
+		keys.sort();
+		encoded.sort();
+
+		let reordered: Vec<_> = keys.iter().map(|it| Key::encode(&it.with_storage(STORAGE)).to_vec()).collect();
+		assert_eq!(reordered, encoded);
+	}
+
+	#[test]
+	fn a_tagged_row_sorts_before_an_untagged_one() {
+		// none is written as a zero presence flag, which inverts to 0xff and therefore lands last; rust's
+		// natural Option order puts none first, so Desc must be what reconciles the two
+		assert!(series(Some(0), 1, 1) < series(None, 1, 1));
+		assert!(series(Some(255), 1, 1) < series(Some(0), 1, 1));
+	}
+
+	#[test]
+	fn low_is_the_first_key_the_encoder_can_produce() {
+		let low = <StorageSeriesKey as TypedKey>::low();
+		assert_eq!(low, series(Some(u8::MAX), u64::MAX, u64::MAX));
+		for other in [series(None, 0, 0), series(Some(0), 0, 0), series(Some(200), 7, 3)] {
+			assert!(low < other, "low must not sort above a real key");
+		}
+	}
+
+	#[test]
+	fn successor_walks_the_sequence_then_the_key_then_the_tag() {
+		// the odometer must carry left, otherwise an exclusive upper end skips every row that sorts
+		// between a key and the value successor hands back
+		assert_eq!(series(Some(9), 5, 2).successor(), Some(series(Some(9), 5, 1)));
+		assert_eq!(series(Some(9), 5, 0).successor(), Some(series(Some(9), 4, u64::MAX)));
+		assert_eq!(series(Some(9), 0, 0).successor(), Some(series(Some(8), u64::MAX, u64::MAX)));
+		assert_eq!(series(Some(0), 0, 0).successor(), Some(series(None, u64::MAX, u64::MAX)));
+		assert_eq!(series(None, 0, 0).successor(), None);
+	}
+
+	#[test]
+	fn every_successor_is_the_immediate_next_storage_key() {
+		let mut walk = vec![series(Some(1), 1, 1)];
+		for _ in 0..4 {
+			walk.push(walk.last().unwrap().successor().unwrap());
+		}
+		assert!(walk.windows(2).all(|pair| pair[0] < pair[1]), "the walk must ascend: {walk:?}");
+	}
+
+	#[test]
+	fn partitioned_storage_key_order_matches_the_encoded_byte_order() {
+		let mut keys = vec![
+			StoragePartitionedSeriesKey::new(Partition(2), None, 5, 1),
+			StoragePartitionedSeriesKey::new(Partition(2), Some(3), 5, 1),
+			StoragePartitionedSeriesKey::new(Partition(1), Some(3), 5, 1),
+			StoragePartitionedSeriesKey::new(Partition(2), Some(3), 5, 2),
+		];
+		let mut encoded: Vec<_> =
+			keys.iter().map(|it| Key::encode(&it.with_storage(STORAGE)).to_vec()).collect();
+		keys.sort();
+		encoded.sort();
+
+		let reordered: Vec<_> = keys.iter().map(|it| Key::encode(&it.with_storage(STORAGE)).to_vec()).collect();
+		assert_eq!(reordered, encoded);
+	}
+
+	#[test]
+	fn partitioned_successor_carries_into_the_partition() {
+		// the partition is the outermost column, so it may only step once every inner column is exhausted
+		let last_of_partition = StoragePartitionedSeriesKey::new(Partition(5), None, 0, 0);
+		assert_eq!(
+			last_of_partition.successor(),
+			Some(StoragePartitionedSeriesKey::new(Partition(4), Some(u8::MAX), u64::MAX, u64::MAX))
+		);
+		assert_eq!(StoragePartitionedSeriesKey::new(Partition(0), None, 0, 0).successor(), None);
+	}
+
+	#[test]
+	fn a_storage_key_round_trips_through_its_row_key() {
+		let key = SeriesRowKey {
+			storage: STORAGE,
+			variant_tag: Some(4),
+			key: 900,
+			sequence: 12,
+		};
+		assert_eq!(StorageSeriesKey::from(key.clone()).with_storage(STORAGE), key);
+
+		let partitioned = PartitionedSeriesRowKey::new(STORAGE, Partition(3), None, 900, 12);
+		assert_eq!(StoragePartitionedSeriesKey::from(partitioned.clone()).with_storage(STORAGE), partitioned);
 	}
 }

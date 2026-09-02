@@ -146,17 +146,17 @@ impl RowKey {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RowIdent(pub Desc<RowNumber>);
+pub struct StorageRowKey(pub Desc<RowNumber>);
 
-impl From<RowKey> for RowIdent {
+impl From<RowKey> for StorageRowKey {
 	fn from(key: RowKey) -> Self {
-		RowIdent::new(key.row)
+		StorageRowKey::new(key.row)
 	}
 }
 
-impl RowIdent {
+impl StorageRowKey {
 	pub fn new(row: RowNumber) -> Self {
-		RowIdent(Desc(row))
+		StorageRowKey(Desc(row))
 	}
 
 	pub fn row(self) -> RowNumber {
@@ -171,19 +171,19 @@ impl RowIdent {
 	}
 }
 
-impl HeapSize for RowIdent {
+impl HeapSize for StorageRowKey {
 	fn heap_size(&self) -> usize {
 		0
 	}
 }
 
-impl TypedKey for RowIdent {
+impl TypedKey for StorageRowKey {
 	fn low() -> Self {
-		RowIdent(<Desc<RowNumber> as TypedKey>::low())
+		StorageRowKey(<Desc<RowNumber> as TypedKey>::low())
 	}
 
 	fn successor(&self) -> Option<Self> {
-		self.0.successor().map(RowIdent)
+		self.0.successor().map(StorageRowKey)
 	}
 }
 
@@ -191,7 +191,7 @@ impl TypedKey for RowIdent {
 pub mod row_key_tests {
 	use reifydb_value::value::row_number::RowNumber;
 
-	use super::{RowIdent, RowKey};
+	use super::{RowKey, StorageRowKey};
 	use crate::{
 		interface::catalog::storage::StorageId,
 		key::typed::{TypedKey, key::Key},
@@ -269,7 +269,7 @@ pub mod row_key_tests {
 		};
 
 		// dropping storage and re-supplying the same value must recover the original key
-		let ident: RowIdent = key.clone().into();
+		let ident: StorageRowKey = key.clone().into();
 		let restored = ident.with_storage(key.storage);
 		assert_eq!(restored, key);
 	}
@@ -277,8 +277,8 @@ pub mod row_key_tests {
 	#[test]
 	fn test_row_ident_ordering_matches_the_encoded_key() {
 		let storage = StorageId::table(1);
-		let one = RowIdent::new(RowNumber(1));
-		let two = RowIdent::new(RowNumber(2));
+		let one = StorageRowKey::new(RowNumber(1));
+		let two = StorageRowKey::new(RowNumber(2));
 
 		// the narrow identity stands in for the encoded key in the tiers, so it must sort the same way:
 		// descending by row number, not ascending
@@ -294,23 +294,23 @@ pub mod row_key_tests {
 	fn test_row_ident_low_is_the_greatest_row() {
 		// low() names the first key a scan meets. Under descending order that is the highest row,
 		// and a scan seeded from the lowest row would start past every key it meant to cover.
-		assert_eq!(<RowIdent as TypedKey>::low(), RowIdent::new(RowNumber(u64::MAX)));
+		assert_eq!(<StorageRowKey as TypedKey>::low(), StorageRowKey::new(RowNumber(u64::MAX)));
 	}
 
 	#[test]
 	fn test_row_ident_successor_is_the_next_key_in_scan_order() {
 		// nothing may sort between a key and its successor, or an exclusive upper end drops a row
-		let ident = RowIdent::new(RowNumber(5));
+		let ident = StorageRowKey::new(RowNumber(5));
 		let next = ident.successor().unwrap();
-		assert_eq!(next, RowIdent::new(RowNumber(4)));
+		assert_eq!(next, StorageRowKey::new(RowNumber(4)));
 		assert!(next > ident);
-		assert!(RowIdent::new(RowNumber(3)) > next);
+		assert!(StorageRowKey::new(RowNumber(3)) > next);
 	}
 
 	#[test]
 	fn test_row_ident_successor_runs_out_at_row_zero() {
 		// row zero is the last key in descending order, so it has no successor to hand back
-		assert_eq!(RowIdent::new(RowNumber(0)).successor(), None);
+		assert_eq!(StorageRowKey::new(RowNumber(0)).successor(), None);
 	}
 }
 
@@ -635,12 +635,12 @@ impl PartitionedRowKey {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PartitionedRowIdent {
+pub struct StoragePartitionedRowKey {
 	pub partition: Desc<Partition>,
 	pub row: Desc<RowNumber>,
 }
 
-impl PartitionedRowIdent {
+impl StoragePartitionedRowKey {
 	pub fn new(partition: Partition, row: RowNumber) -> Self {
 		Self {
 			partition: Desc(partition),
@@ -677,19 +677,19 @@ impl PartitionedRowIdent {
 	}
 }
 
-impl From<PartitionedRowKey> for PartitionedRowIdent {
+impl From<PartitionedRowKey> for StoragePartitionedRowKey {
 	fn from(key: PartitionedRowKey) -> Self {
-		PartitionedRowIdent::new(key.partition, key.row)
+		StoragePartitionedRowKey::new(key.partition, key.row)
 	}
 }
 
-impl HeapSize for PartitionedRowIdent {
+impl HeapSize for StoragePartitionedRowKey {
 	fn heap_size(&self) -> usize {
 		0
 	}
 }
 
-impl TypedKey for PartitionedRowIdent {
+impl TypedKey for StoragePartitionedRowKey {
 	fn low() -> Self {
 		Self {
 			partition: <Desc<Partition> as TypedKey>::low(),
@@ -773,7 +773,7 @@ mod partitioned_row_key_tests {
 	use reifydb_codec::key::serializer::KeySerializer;
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
-	use super::{PartitionedRowIdent, PartitionedRowKey};
+	use super::{PartitionedRowKey, StoragePartitionedRowKey};
 	use crate::{
 		interface::catalog::{
 			id::{TableId, ViewId},
@@ -860,7 +860,7 @@ mod partitioned_row_key_tests {
 		};
 
 		// dropping storage and re-supplying it must recover the original key, halves included
-		let ident: PartitionedRowIdent = key.clone().into();
+		let ident: StoragePartitionedRowKey = key.clone().into();
 		let restored = ident.with_storage(key.storage);
 		assert_eq!(restored, key);
 	}
@@ -868,24 +868,24 @@ mod partitioned_row_key_tests {
 	#[test]
 	fn test_partitioned_row_ident_halves_split_correctly() {
 		let partition = Partition(0x1122334455667788_99AABBCCDDEEFF00);
-		let ident = PartitionedRowIdent::new(partition, RowNumber(1));
+		let ident = StoragePartitionedRowKey::new(partition, RowNumber(1));
 
 		// the two native halves must reassemble into the exact original 128-bit value
 		assert_eq!(ident.partition_hi(), 0x1122334455667788);
 		assert_eq!(ident.partition_lo(), 0x99AABBCCDDEEFF00);
 		assert_eq!(ident.partition(), partition);
 		assert_eq!(
-			PartitionedRowIdent::from_halves(ident.partition_hi(), ident.partition_lo(), RowNumber(1)),
+			StoragePartitionedRowKey::from_halves(ident.partition_hi(), ident.partition_lo(), RowNumber(1)),
 			ident
 		);
 	}
 
 	#[test]
 	fn test_partitioned_row_ident_ordering_matches_field_order() {
-		let lower_partition = PartitionedRowIdent::new(Partition(1), RowNumber(999));
-		let higher_partition = PartitionedRowIdent::new(Partition(2), RowNumber(1));
-		let same_partition_lower_row = PartitionedRowIdent::new(Partition(2), RowNumber(1));
-		let same_partition_higher_row = PartitionedRowIdent::new(Partition(2), RowNumber(2));
+		let lower_partition = StoragePartitionedRowKey::new(Partition(1), RowNumber(999));
+		let higher_partition = StoragePartitionedRowKey::new(Partition(2), RowNumber(1));
+		let same_partition_lower_row = StoragePartitionedRowKey::new(Partition(2), RowNumber(1));
+		let same_partition_higher_row = StoragePartitionedRowKey::new(Partition(2), RowNumber(2));
 
 		// partition must dominate row in ordering, matching PartitionedRowKey's field order, and both
 		// run descending so the identity sorts exactly as the encoded key does
@@ -897,18 +897,18 @@ mod partitioned_row_key_tests {
 	fn test_partitioned_row_ident_successor_carries_into_the_partition() {
 		// row zero ends a partition. Without the carry the scan stops at that boundary and never
 		// reaches the next partition, which is the whole point of an ordered walk across many.
-		let last_row = PartitionedRowIdent::new(Partition(5), RowNumber(0));
+		let last_row = StoragePartitionedRowKey::new(Partition(5), RowNumber(0));
 		let next = last_row.successor().unwrap();
 
-		assert_eq!(next, PartitionedRowIdent::new(Partition(4), RowNumber(u64::MAX)));
+		assert_eq!(next, StoragePartitionedRowKey::new(Partition(4), RowNumber(u64::MAX)));
 		assert!(next > last_row);
 	}
 
 	#[test]
 	fn test_partitioned_row_ident_low_is_the_greatest_partition_and_row() {
 		assert_eq!(
-			<PartitionedRowIdent as TypedKey>::low(),
-			PartitionedRowIdent::new(Partition(u128::MAX), RowNumber(u64::MAX))
+			<StoragePartitionedRowKey as TypedKey>::low(),
+			StoragePartitionedRowKey::new(Partition(u128::MAX), RowNumber(u64::MAX))
 		);
 	}
 }

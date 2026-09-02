@@ -13,7 +13,10 @@ use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::metrics::sample::MetricsSample;
 use reifydb_core::{
-	common::CommitVersion, event::EventBus, interface::store::EntryKind, lifecycle::watermark::EvictionWatermark,
+	common::CommitVersion,
+	event::EventBus,
+	interface::store::{EntryKind, storage_key},
+	lifecycle::watermark::EvictionWatermark,
 	metrics::collect::MetricsCollector,
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -195,7 +198,8 @@ impl StandardMultiStore {
 			range.insert(table, key.clone(), version, value.clone());
 		}
 		if let Some(point) = &self.point {
-			point.insert(table, key, version, value);
+			let storage_key = storage_key(&key).1;
+			point.insert(table, storage_key, key, version, value);
 		}
 	}
 
@@ -204,7 +208,7 @@ impl StandardMultiStore {
 			range.invalidate(table, key);
 		}
 		if let Some(point) = &self.point {
-			point.invalidate(table, key);
+			point.invalidate(table, storage_key(key).1, key);
 		}
 	}
 

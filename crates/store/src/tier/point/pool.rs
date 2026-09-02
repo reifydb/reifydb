@@ -29,10 +29,17 @@ use crate::tier::point::{
 
 impl<D: PointDomain> PointTier<D> {
 	pub fn new(config: PointConfig) -> Option<Self> {
-		let shard_bytes = config.shard_bytes?;
+		Self::sharing(config, &shard_budgets(config)?)
+	}
+
+	pub fn sharing(config: PointConfig, budgets: &[Arc<MemoryBudget>]) -> Option<Self> {
+		config.shard_bytes?;
+		if budgets.len() < config.shards.max(1) {
+			return None;
+		}
 		Some(Self {
 			inner: Arc::new(PoolInner {
-				shards: build_shards::<D>(config, shard_bytes),
+				shards: build_shards::<D>(config, budgets),
 				excluded_misses: build_excluded_misses::<D>(),
 				#[cfg(test)]
 				interlock: None,
@@ -42,10 +49,10 @@ impl<D: PointDomain> PointTier<D> {
 
 	#[cfg(test)]
 	pub(crate) fn with_interlock(config: PointConfig, interlock: FillInterlock<D>) -> Option<Self> {
-		let shard_bytes = config.shard_bytes?;
+		let budgets = shard_budgets(config)?;
 		Some(Self {
 			inner: Arc::new(PoolInner {
-				shards: build_shards::<D>(config, shard_bytes),
+				shards: build_shards::<D>(config, &budgets),
 				excluded_misses: build_excluded_misses::<D>(),
 				interlock: Some(interlock),
 			}),
@@ -258,16 +265,21 @@ fn build_excluded_misses<D: PointDomain>() -> Box<[AtomicU64]> {
 	(0..D::METRIC_BUCKETS).map(|_| AtomicU64::new(0)).collect::<Vec<_>>().into_boxed_slice()
 }
 
-fn build_shards<D: PointDomain>(config: PointConfig, shard_bytes: ByteSize) -> Box<[Mutex<Shard<D>>]> {
-	let shard_count = config.shards.max(1);
+pub fn shard_budgets(config: PointConfig) -> Option<Vec<Arc<MemoryBudget>>> {
+	let shard_bytes = config.shard_bytes?;
 	let byte_cap = ByteSize::from_bytes(shard_bytes.as_bytes().max(1));
+	Some((0..config.shards.max(1)).map(|_| Arc::new(MemoryBudget::new(byte_cap))).collect())
+}
+
+fn build_shards<D: PointDomain>(config: PointConfig, budgets: &[Arc<MemoryBudget>]) -> Box<[Mutex<Shard<D>>]> {
+	let shard_count = config.shards.max(1);
 	(0..shard_count)
 		.map(|index| {
 			Mutex::new(Shard {
 				index: HashTable::new(),
 				entries: Vec::new(),
 				filling: HashMap::new(),
-				budget: MemoryBudget::new(byte_cap),
+				budget: budgets[index].clone(),
 				next_tick: 0,
 				rng: 0x9E37_79B9_7F4A_7C15 ^ (index as u64 + 1),
 				metrics: PointMetrics::default(),

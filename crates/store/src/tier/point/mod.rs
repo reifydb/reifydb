@@ -23,6 +23,7 @@ use reifydb_core::{key::typed::TypedKey, metrics::heap::HeapSize, util::budget::
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::byte_size::ByteSize;
 
+pub use crate::tier::point::pool::shard_budgets;
 use crate::tier::range::RowBytes;
 
 pub trait PointDomain: Copy + Debug + 'static {
@@ -160,7 +161,7 @@ struct Shard<D: PointDomain> {
 	index: HashTable<u32>,
 	entries: Vec<Entry<D>>,
 	filling: HashMap<PointKey<D::Dimension, D::Key>, bool>,
-	budget: MemoryBudget,
+	budget: Arc<MemoryBudget>,
 	next_tick: u64,
 	rng: u64,
 	metrics: PointMetrics,

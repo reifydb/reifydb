@@ -12,7 +12,11 @@ use reifydb_core::event::metric::{MultiEviction, MultiPersist, MultiSweptEvent};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::lifecycle::progress::Progress;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_core::{common::CommitVersion, default, interface::store::EntryKind};
+use reifydb_core::{
+	common::CommitVersion,
+	default,
+	interface::store::{EntryKind, storage_key},
+};
 use reifydb_core::{event::EventBus, lifecycle::watermark::EvictionWatermark};
 use reifydb_runtime::{
 	context::clock::Clock,
@@ -313,14 +317,20 @@ impl FlushEngine {
 						range.insert(table, key.clone(), *version, value.clone());
 					}
 					if let Some(point) = &self.point {
-						point.insert(table, key.clone(), *version, value.clone());
+						point.insert(
+							table,
+							storage_key(key).1,
+							key.clone(),
+							*version,
+							value.clone(),
+						);
 					}
 				} else {
 					if let Some(range) = &self.range {
 						range.invalidate(table, key);
 					}
 					if let Some(point) = &self.point {
-						point.invalidate(table, key);
+						point.invalidate(table, storage_key(key).1, key);
 					}
 				}
 			}
@@ -330,7 +340,7 @@ impl FlushEngine {
 					range.invalidate(table, &evicted.key);
 				}
 				if let Some(point) = &self.point {
-					point.invalidate(table, &evicted.key);
+					point.invalidate(table, storage_key(&evicted.key).1, &evicted.key);
 				}
 			}
 		}
@@ -720,11 +730,11 @@ mod tests {
 		write(&actor.commit, kind, &key, 1, "v1");
 		write(&actor.commit, kind, &key, 2, "v2");
 
-		point.insert(kind, key.clone(), CommitVersion(2), Some(val("stale")));
+		point.insert(kind, storage_key(&key).1, key.clone(), CommitVersion(2), Some(val("stale")));
 
 		actor.sweep(CommitVersion(2));
 
-		match point.get(kind, &key, CommitVersion(2)) {
+		match point.get(kind, storage_key(&key).1, &key, CommitVersion(2)) {
 			VersionedGetResult::Value {
 				value,
 				..
@@ -746,14 +756,17 @@ mod tests {
 		actor.persistent
 			.set(CommitVersion(1), HashMap::from([(kind, vec![(key.clone(), Some(val("v1")))])]))
 			.unwrap();
-		point.insert(kind, key.clone(), CommitVersion(1), Some(val("v1")));
+		point.insert(kind, storage_key(&key).1, key.clone(), CommitVersion(1), Some(val("v1")));
 		write(&actor.commit, kind, &key, 1, "v1");
 		actor.commit.set(CommitVersion(2), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();
 
 		actor.sweep(CommitVersion(2));
 
 		assert!(
-			matches!(point.get(kind, &key, CommitVersion(2)), VersionedGetResult::Tombstone),
+			matches!(
+				point.get(kind, storage_key(&key).1, &key, CommitVersion(2)),
+				VersionedGetResult::Tombstone
+			),
 			"an evicted delete that matched a persisted row must be seeded into the point tier as a \
 			 definitive miss, never left holding the value it deleted"
 		);
@@ -771,7 +784,7 @@ mod tests {
 			.set(CommitVersion(3), HashMap::from([(kind, vec![(rejected.clone(), Some(val("high")))])]))
 			.unwrap();
 
-		point.insert(kind, rejected.clone(), CommitVersion(2), Some(val("stale")));
+		point.insert(kind, storage_key(&rejected).1, rejected.clone(), CommitVersion(2), Some(val("stale")));
 
 		write(&actor.commit, kind, &rejected, 2, "low");
 		write(&actor.commit, kind, &accepted, 2, "b");
@@ -779,11 +792,14 @@ mod tests {
 		actor.sweep(CommitVersion(2));
 
 		assert!(
-			matches!(point.get(kind, &rejected, CommitVersion(2)), VersionedGetResult::NotFound),
+			matches!(
+				point.get(kind, storage_key(&rejected).1, &rejected, CommitVersion(2)),
+				VersionedGetResult::NotFound
+			),
 			"a guard-rejected key must be invalidated in the point tier so reads fall through to the newer \
 			 persisted value, never serving the stale entry"
 		);
-		match point.get(kind, &accepted, CommitVersion(2)) {
+		match point.get(kind, storage_key(&accepted).1, &accepted, CommitVersion(2)) {
 			VersionedGetResult::Value {
 				value,
 				..
@@ -799,12 +815,12 @@ mod tests {
 		let kind = EntryKind::Source(StorageId::Table(TableId(23)));
 		let key = ek("k");
 
-		point.insert(kind, key.clone(), CommitVersion(5), Some(val("newer")));
+		point.insert(kind, storage_key(&key).1, key.clone(), CommitVersion(5), Some(val("newer")));
 
 		write(&actor.commit, kind, &key, 2, "older");
 		actor.sweep(CommitVersion(2));
 
-		match point.get(kind, &key, CommitVersion(5)) {
+		match point.get(kind, storage_key(&key).1, &key, CommitVersion(5)) {
 			VersionedGetResult::Value {
 				value,
 				..
@@ -825,13 +841,16 @@ mod tests {
 		let kind = EntryKind::Source(StorageId::Table(TableId(24)));
 		let key = ek("k");
 
-		point.insert(kind, key.clone(), CommitVersion(2), Some(val("stale")));
+		point.insert(kind, storage_key(&key).1, key.clone(), CommitVersion(2), Some(val("stale")));
 		write(&actor.commit, kind, &key, 2, "v2");
 
 		actor.sweep(CommitVersion(2));
 
 		assert!(
-			matches!(point.get(kind, &key, CommitVersion(2)), VersionedGetResult::NotFound),
+			matches!(
+				point.get(kind, storage_key(&key).1, &key, CommitVersion(2)),
+				VersionedGetResult::NotFound
+			),
 			"an ephemeral (persistent:false) object must be invalidated in the point tier, never seeded"
 		);
 		assert!(
@@ -857,14 +876,14 @@ mod tests {
 
 		actor.sweep(CommitVersion(4));
 
-		match point.get(kind, &a, CommitVersion(4)) {
+		match point.get(kind, storage_key(&a).1, &a, CommitVersion(4)) {
 			VersionedGetResult::Value {
 				value,
 				..
 			} => assert_eq!(value.as_ref(), val("a2").as_ref(), "a's latest-<=W (v2) must be seeded"),
 			other => panic!("key a must be seeded across version buckets, got {other:?}"),
 		}
-		match point.get(kind, &b, CommitVersion(4)) {
+		match point.get(kind, storage_key(&b).1, &b, CommitVersion(4)) {
 			VersionedGetResult::Value {
 				value,
 				..
