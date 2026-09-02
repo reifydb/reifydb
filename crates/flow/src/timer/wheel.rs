@@ -42,18 +42,6 @@ const MAX_TIMERS_PER_SCAN: usize = 64;
 pub struct TimerWheel;
 
 impl TimerWheel {
-	pub fn armed(
-		operator: OperatorId,
-		txn: &mut impl FlowTransaction,
-		kind: TimerKind,
-		key: &EncodedKey,
-	) -> Result<Option<DateTime>> {
-		if !kind.is_maintenance() {
-			return Ok(None);
-		}
-		armed_at(operator, txn, &index_key(kind, key))
-	}
-
 	pub fn arm(operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
 		if !timer.kind.is_maintenance() {
 			txn.state_set(

@@ -3,7 +3,7 @@
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{interface::catalog::flow::OperatorId, state::timer::TimerKind};
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::Result;
 
 use crate::{
 	timer::{Timer, TimerDue, wheel::TimerWheel},
@@ -18,15 +18,6 @@ pub trait TimerExtension: FlowTransaction {
 			due: timer.due,
 		});
 		Ok(())
-	}
-
-	fn armed_timer_at(
-		&mut self,
-		operator: OperatorId,
-		kind: TimerKind,
-		key: &EncodedKey,
-	) -> Result<Option<DateTime>> {
-		TimerWheel::armed(operator, self, kind, key)
 	}
 
 	fn disarm_timer(&mut self, operator: OperatorId, timer: &Timer) -> Result<()> {
