@@ -24,7 +24,7 @@ use reifydb_core::{
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
-	key::row::{PartitionedRowKey, RowKey},
+	key::row::{ClusteredRowKey, PartitionedClusteredRowKey, PartitionedRowKey, RowKey},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
 	value::column::{buffer::ColumnBuffer, columns::Columns},
@@ -66,8 +66,8 @@ pub struct SinkTableViewOperator {
 impl SinkTableViewOperator {
 	pub fn new(operator: OperatorId, view: ResolvedView, partition_by: Vec<String>) -> Self {
 		let storage = view.def().storage_id();
-		let key_prefix: Vec<u8> = RowKey::storage_start(storage).as_slice().to_vec();
-		let partitioned_prefix: Vec<u8> = PartitionedRowKey::storage_start(storage).as_slice().to_vec();
+		let key_prefix: Vec<u8> = ClusteredRowKey::storage_start(storage).as_slice().to_vec();
+		let partitioned_prefix: Vec<u8> = PartitionedClusteredRowKey::storage_start(storage).as_slice().to_vec();
 		let shape = row_shape_from_columns(RowFamily::Table, view.def().columns());
 		let sort = view.def().sort().to_vec();
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);

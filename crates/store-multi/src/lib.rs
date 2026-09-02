@@ -19,17 +19,21 @@ pub mod tier;
 pub mod config;
 pub mod store;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use config::{CommitStoreConfig, MultiStoreConfig};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	interface::store::{
-		MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious, MultiVersionRow,
-		MultiVersionStore,
+	interface::{
+		catalog::storage::StorageId,
+		store::{
+			MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious,
+			MultiVersionRow, MultiVersionStore,
+		},
 	},
+	key::row::StorageRowKey,
 	metrics::collect::MetricsCollector,
 };
 use reifydb_filter::adaptive::FilterMetrics;
@@ -219,6 +223,8 @@ impl MultiVersionGetPrevious for MultiStore {
 }
 
 pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>;
+pub type MultiVersionRowRangeIterator<'a> =
+	Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + 'a>;
 
 impl MultiStore {
 	pub fn range(
@@ -229,6 +235,19 @@ impl MultiStore {
 	) -> MultiVersionRangeIterator<'_> {
 		match self {
 			MultiStore::Standard(store) => Box::new(store.range(range, scope, batch_size)),
+		}
+	}
+
+	pub fn range_row(
+		&self,
+		storage: StorageId,
+		start: Bound<StorageRowKey>,
+		end: Bound<StorageRowKey>,
+		scope: MultiVersionScope,
+		batch_size: usize,
+	) -> MultiVersionRowRangeIterator<'_> {
+		match self {
+			MultiStore::Standard(store) => Box::new(store.range_row(storage, start, end, scope, batch_size)),
 		}
 	}
 

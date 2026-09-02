@@ -41,6 +41,8 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 			KeyKind::SeriesRow => ReadFrom::OwnedRow,
 			KeyKind::PartitionedRow => ReadFrom::OwnedRow,
 			KeyKind::PartitionedSeriesRow => ReadFrom::OwnedRow,
+			KeyKind::ClusteredRow => ReadFrom::OwnedRow,
+			KeyKind::PartitionedClusteredRow => ReadFrom::OwnedRow,
 			KeyKind::Partition => ReadFrom::OwnedRow,
 
 			KeyKind::Namespace => ReadFrom::Query,

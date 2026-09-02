@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::ops::Bound;
+use reifydb_core::interface::catalog::storage::StorageId;
+use reifydb_core::key::row::StorageRowKey;
 use std::sync::Arc;
 
 use reifydb_codec::{
@@ -12,7 +15,7 @@ use reifydb_core::{
 	error::diagnostic,
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedTable, store::MultiVersionRow},
 	key::{
-		row::{PartitionedRowKey, RowKey, RowKeyRange},
+		row::{PartitionedRowKey, RowKey},
 		typed::key::Key,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
@@ -43,6 +46,7 @@ pub struct TableScanNode {
 
 	shape: Option<RowShape>,
 	last_key: Option<EncodedKey>,
+	last_row: Option<StorageRowKey>,
 	exhausted: bool,
 
 	partition: Option<Partition>,
@@ -92,6 +96,7 @@ impl TableScanNode {
 			dictionaries,
 			shape: None,
 			last_key: None,
+			last_row: None,
 			exhausted: false,
 			partition,
 			min_commit_version: None,
@@ -166,6 +171,31 @@ impl TableScanNode {
 		Ok(batch)
 	}
 
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::drain_row")]
+	fn drain_batch_row(
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>>,
+		batch_size: u64,
+	) -> Result<ScannedRowBatch> {
+		let mut batch = ScannedRowBatch::default();
+
+		for _ in 0..batch_size {
+			match stream.next() {
+				Some(Ok(multi)) => {
+					batch.rows.push(multi.bytes);
+					batch.row_numbers.push(multi.key.row());
+					batch.last_row = Some(multi.key);
+				}
+				Some(Err(e)) => return Err(e),
+				None => {
+					batch.exhausted = true;
+					break;
+				}
+			}
+		}
+
+		Ok(batch)
+	}
+
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::column_alloc")]
 	fn storage_columns(&self) -> Vec<ColumnWithName> {
 		self.table
@@ -206,11 +236,20 @@ impl TableScanNode {
 }
 
 #[derive(Default)]
+struct ScannedRowBatch {
+	rows: Vec<EncodedBytes>,
+	row_numbers: Vec<RowNumber>,
+	last_row: Option<StorageRowKey>,
+	exhausted: bool,
+}
+
+#[derive(Default)]
 struct ScannedBatch {
 	rows: Vec<EncodedBytes>,
 	row_numbers: Vec<RowNumber>,
 	partitions: Vec<Partition>,
 	last_key: Option<EncodedKey>,
+	last_row: Option<StorageRowKey>,
 	exhausted: bool,
 }
 
@@ -234,48 +273,70 @@ impl QueryNode for TableScanNode {
 		let batch_size = stored_ctx.batch_size;
 
 		let partitioned = !self.table.def().partition_by.is_empty();
-		let range = if partitioned {
-			match self.partition {
-				Some(partition) => PartitionedRowKey::partition_scan_range(
-					self.table.def().id,
-					partition,
-					self.last_key.as_ref(),
-				),
-				None => PartitionedRowKey::scan_range(self.table.def().id, self.last_key.as_ref()),
-			}
-		} else {
-			RowKeyRange::scan_range(self.table.def().id.into(), self.last_key.as_ref())
-		};
 
 		let scope = match self.min_commit_version {
 			Some(v) => RangeScope::After(v),
 			None => RangeScope::All,
 		};
 
-		let batch = {
+		let scanned = if partitioned {
+			let range = match self.partition {
+				Some(partition) => PartitionedRowKey::partition_scan_range(
+					self.table.def().id,
+					partition,
+					self.last_key.as_ref(),
+				),
+				None => PartitionedRowKey::scan_range(self.table.def().id, self.last_key.as_ref()),
+			};
 			let mut stream = Self::open_range(rx, range, scope, batch_size)?;
-			Self::drain_batch(&mut stream, batch_size, partitioned)?
+			Self::drain_batch(&mut stream, batch_size, true)?
+		} else {
+			let storage: StorageId = self.table.def().id.into();
+			let start = match &self.last_row {
+				Some(key) => Bound::Excluded(*key),
+				None => Bound::Unbounded,
+			};
+			let mut stream = rx.range_row(storage, start, Bound::Unbounded, scope, batch_size as usize)?;
+			let rows = Self::drain_batch_row(&mut stream, batch_size)?;
+			ScannedBatch {
+				rows: rows.rows,
+				row_numbers: rows.row_numbers,
+				partitions: Vec::new(),
+				last_key: None,
+				last_row: rows.last_row,
+				exhausted: rows.exhausted,
+			}
 		};
 
-		if batch.exhausted {
+		if scanned.exhausted {
 			self.exhausted = true;
 		}
 
-		if batch.rows.is_empty() {
+		let resumed = if partitioned {
+			self.last_key.is_some()
+		} else {
+			self.last_row.is_some()
+		};
+
+		if scanned.rows.is_empty() {
 			self.exhausted = true;
-			if self.last_key.is_none() {
+			if !resumed {
 				return Ok(Some(Columns::new(self.empty_columns())));
 			}
 			return Ok(None);
 		}
 
-		self.last_key = batch.last_key;
+		if partitioned {
+			self.last_key = scanned.last_key;
+		} else {
+			self.last_row = scanned.last_row;
+		}
 
 		let mut columns = Columns::with_system(self.storage_columns(), SystemColumns::default());
-		self.append_batch(rx, &mut columns, batch.rows, batch.row_numbers)?;
+		self.append_batch(rx, &mut columns, scanned.rows, scanned.row_numbers)?;
 
 		if partitioned {
-			columns.system.set_partitions(batch.partitions);
+			columns.system.set_partitions(scanned.partitions);
 		}
 
 		decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;

@@ -16,12 +16,17 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	event::metric::{MultiCommittedEvent, MultiDelete, MultiWrite},
-	interface::store::{
-		EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
-		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore, StorageKey, classify_key, classify_range,
-		storage_key,
+	interface::{
+		catalog::storage::StorageId,
+		store::{
+			EntryKind, EntryLayout, MultiVersionBatch, MultiVersionCommit, MultiVersionContains,
+			MultiVersionGet, MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore, StorageKey,
+			classify_key, classify_range, storage_key,
+		},
 	},
+	key::row::{RowKey, StorageRowKey},
 };
+use reifydb_store::coverage::cursor::Cursor;
 use reifydb_store_commit::{
 	MultiVersionScope, RangeBatch, RangeCursor, RangeStop, TierBatch, VersionedGetResult, store::CommitStore,
 };
@@ -37,7 +42,7 @@ use crate::{
 	tier::{
 		TierStorage,
 		persistent::MultiPersistentTier,
-		range::{ServedChunk, resume_after},
+		range::{ServedChunk, narrow, resume_after, widen},
 	},
 };
 
@@ -1301,6 +1306,74 @@ impl Iterator for MultiVersionRangeIter {
 	}
 }
 
+pub struct MultiVersionRowRangeIter {
+	store: StandardMultiStore,
+	cursor: RowRangeCursor,
+	storage: StorageId,
+	start: Bound<StorageRowKey>,
+	end: Bound<StorageRowKey>,
+	scope: MultiVersionScope,
+	batch_size: usize,
+	current_batch: vec::IntoIter<MultiVersionRow<StorageRowKey>>,
+}
+
+impl Iterator for MultiVersionRowRangeIter {
+	type Item = Result<MultiVersionRow<StorageRowKey>>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		if let Some(item) = self.current_batch.next() {
+			return Some(Ok(item));
+		}
+
+		if self.cursor.exhausted {
+			return None;
+		}
+
+		match self.store.range_next_row(
+			&mut self.cursor,
+			self.storage,
+			self.start.clone(),
+			self.end.clone(),
+			self.scope,
+			self.batch_size as u64,
+		) {
+			Ok(batch) => {
+				if batch.items.is_empty() {
+					if self.cursor.exhausted {
+						return None;
+					}
+					return self.next();
+				}
+				self.current_batch = batch.items.into_iter();
+				self.next()
+			}
+			Err(e) => Some(Err(e)),
+		}
+	}
+}
+
+impl StandardMultiStore {
+	pub fn range_row(
+		&self,
+		storage: StorageId,
+		start: Bound<StorageRowKey>,
+		end: Bound<StorageRowKey>,
+		scope: MultiVersionScope,
+		batch_size: usize,
+	) -> MultiVersionRowRangeIter {
+		MultiVersionRowRangeIter {
+			store: self.clone(),
+			cursor: RowRangeCursor::default(),
+			storage,
+			start,
+			end,
+			scope,
+			batch_size,
+			current_batch: Vec::new().into_iter(),
+		}
+	}
+}
+
 pub struct MultiVersionRangeRevIter {
 	store: StandardMultiStore,
 	cursor: MultiVersionRangeCursor,
@@ -1365,7 +1438,7 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod cache_tests {
-	use std::collections::HashMap;
+	use std::{collections::HashMap, ops::Bound};
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::{
@@ -1380,14 +1453,14 @@ mod cache_tests {
 		key::{
 			EncodableKey,
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-			row::{RowKey, StorageRowKey},
+			row::{RowKey, RowKeyRange, StorageRowKey},
 			typed::key::Key,
 		},
 	};
 	use reifydb_store_commit::{MultiVersionScope, RangeStop, RawEntry, VersionedGetResult};
 	use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
 
-	use super::MultiVersionRangeCursor;
+	use super::{MultiVersionRangeCursor, RowRangeCursor};
 	use crate::{
 		store::StandardMultiStore,
 		tier::{
@@ -1398,6 +1471,108 @@ mod cache_tests {
 	};
 
 	const STORAGE: StorageId = StorageId::Table(TableId(1));
+
+	#[test]
+	fn typed_row_scan_terminates_without_a_persistent_tier() {
+		// A store with no persistent tier never advances that cursor, so nothing marks it exhausted
+		// and the merge loop spins forever. Every in-memory deployment takes this path.
+		let store = StandardMultiStore::testing_memory();
+		for n in 1..=5u64 {
+			commit_row(&store, n, n);
+		}
+
+		let mut cursor = RowRangeCursor::default();
+		let batch = store
+			.range_next_row(
+				&mut cursor,
+				STORAGE,
+				Bound::Unbounded,
+				Bound::Unbounded,
+				MultiVersionScope::AsOf {
+					read: CommitVersion(100),
+				},
+				16,
+			)
+			.unwrap();
+
+		assert_eq!(batch.items.len(), 5, "an in-memory store must serve its rows from the commit tier alone");
+		assert!(!batch.has_more, "the scan must report itself over rather than spin on an unconfigured tier");
+	}
+
+	#[test]
+	fn typed_row_scan_returns_exactly_what_the_encoded_scan_returns() {
+		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		for n in 1..=40u64 {
+			commit_row(&store, n, n);
+		}
+		flush(&store, CommitVersion(20));
+		for n in 41..=60u64 {
+			commit_row(&store, n, n);
+		}
+
+		let scope = MultiVersionScope::AsOf {
+			read: CommitVersion(1000),
+		};
+
+		let mut encoded_cursor = MultiVersionRangeCursor::new();
+		let mut encoded: Vec<(u64, Vec<u8>, u64)> = Vec::new();
+		loop {
+			let batch = store
+				.range_next(&mut encoded_cursor, RowKeyRange::scan_range(STORAGE, None), scope, 16)
+				.unwrap();
+			for item in &batch.items {
+				let key = RowKey::decode(&item.key).unwrap();
+				encoded.push((key.row.0, item.bytes.0.to_vec(), item.version.0));
+			}
+			if !batch.has_more {
+				break;
+			}
+		}
+
+		let mut typed_cursor = RowRangeCursor::default();
+		let mut typed: Vec<(u64, Vec<u8>, u64)> = Vec::new();
+		loop {
+			let batch = store
+				.range_next_row(
+					&mut typed_cursor,
+					STORAGE,
+					Bound::Unbounded,
+					Bound::Unbounded,
+					scope,
+					16,
+				)
+				.unwrap();
+			for item in &batch.items {
+				typed.push((item.key.row().0, item.bytes.0.to_vec(), item.version.0));
+			}
+			if !batch.has_more {
+				break;
+			}
+		}
+
+		assert_eq!(encoded.len(), 60, "the encoded scan must see every committed row or it is not a baseline");
+		assert_eq!(typed, encoded, "the typed scan must be indistinguishable from the encoded one");
+
+		// Resuming past a consumed key is what every chunk after the first does, and both tiers must
+		// agree the bound is exclusive: if either leg re-includes it the row is served twice.
+		let resume = StorageRowKey::new(RowNumber(50));
+		let mut resumed_cursor = RowRangeCursor::default();
+		let mut resumed: Vec<u64> = Vec::new();
+		loop {
+			let batch = store
+				.range_next_row(&mut resumed_cursor, STORAGE, Bound::Excluded(resume), Bound::Unbounded, scope, 16)
+				.unwrap();
+			for item in &batch.items {
+				resumed.push(item.key.row().0);
+			}
+			if !batch.has_more {
+				break;
+			}
+		}
+
+		let expected: Vec<u64> = (1..=49).rev().collect();
+		assert_eq!(resumed, expected, "an excluded start must drop the key itself and every row before it");
+	}
 
 	fn commit_row(store: &StandardMultiStore, n: u64, version: u64) {
 		MultiVersionCommit::commit(
@@ -2091,5 +2266,173 @@ mod probe_tests {
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();
 		assert_eq!(collected.len(), 128, "a paginated scan across 64 partitions must reach every row");
+	}
+}
+
+#[derive(Default)]
+pub struct RowRangeCursor {
+	pub commit: RangeCursor,
+	pub persistent: Cursor<RangeStop, StorageRowKey>,
+	pub exhausted: bool,
+}
+
+impl StandardMultiStore {
+	pub fn range_next_row(
+		&self,
+		cursor: &mut RowRangeCursor,
+		storage: StorageId,
+		start: Bound<StorageRowKey>,
+		end: Bound<StorageRowKey>,
+		scope: MultiVersionScope,
+		batch_size: u64,
+	) -> Result<MultiVersionBatch<StorageRowKey>> {
+		if cursor.exhausted {
+			return Ok(MultiVersionBatch {
+				items: Vec::new(),
+				has_more: false,
+			});
+		}
+
+		if self.persistent.is_none() {
+			cursor.persistent.finish();
+		}
+
+		let table = EntryKind::Source(storage, EntryLayout::Row);
+		let batch_size = batch_size as usize;
+
+		let enc_start = match &start {
+			Bound::Included(k) | Bound::Excluded(k) => widen(storage, k).as_ref().to_vec(),
+			Bound::Unbounded => RowKey::storage_start(storage).as_ref().to_vec(),
+		};
+		let enc_end = match &end {
+			Bound::Included(k) | Bound::Excluded(k) => widen(storage, k).as_ref().to_vec(),
+			Bound::Unbounded => RowKey::storage_end(storage).as_ref().to_vec(),
+		};
+		let commit_start = match &start {
+			Bound::Excluded(_) => Bound::Excluded(enc_start.as_slice()),
+			_ => Bound::Included(enc_start.as_slice()),
+		};
+		let commit_end = match &end {
+			Bound::Excluded(_) => Bound::Excluded(enc_end.as_slice()),
+			_ => Bound::Included(enc_end.as_slice()),
+		};
+
+		let mut collected: BTreeMap<StorageRowKey, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
+
+		while collected.len() < batch_size {
+			if !cursor.commit.is_exhausted() {
+				let batch = self.commit.range_next(
+					table,
+					&mut cursor.commit,
+					commit_start,
+					commit_end,
+					scope,
+					TIER_SCAN_CHUNK_SIZE,
+				)?;
+				for entry in batch.entries {
+					let Some(key) = narrow(table, &entry.key) else {
+						continue;
+					};
+					merge_row(&mut collected, key, entry.version, entry.value);
+				}
+			}
+
+			if let Some(persistent) = &self.persistent {
+				if !cursor.persistent.is_exhausted() {
+					let batch = persistent.range_next_row(
+						table,
+						&mut cursor.persistent,
+						bound_ref(&start),
+						bound_ref(&end),
+						scope,
+						TIER_SCAN_CHUNK_SIZE,
+						false,
+					)?;
+					for entry in batch.entries {
+						merge_row(&mut collected, entry.key, entry.version, entry.value);
+					}
+				}
+			}
+
+			if cursor.commit.is_exhausted() && cursor.persistent.is_exhausted() {
+				cursor.exhausted = true;
+				break;
+			}
+		}
+
+		if let Some(h) = forward_horizon_row(table, cursor) {
+			collected.retain(|k, _| *k <= h);
+			if let Some(last) = cursor.commit.last_key()
+				&& narrow(table, last).is_some_and(|n| n > h)
+			{
+				cursor.commit.resume(widen(storage, &h));
+			}
+			if cursor.persistent.last_key().is_some_and(|last| *last > h) {
+				cursor.persistent.resume(h);
+			}
+		}
+
+		let items: Vec<MultiVersionRow<StorageRowKey>> = collected
+			.into_iter()
+			.filter_map(|(key, (v, value))| {
+				value.map(|val| MultiVersionRow {
+					key,
+					bytes: EncodedBytes(val),
+					version: v,
+				})
+			})
+			.collect();
+
+		Ok(MultiVersionBatch {
+			items,
+			has_more: !cursor.exhausted,
+		})
+	}
+}
+
+fn forward_horizon_row(table: EntryKind, cursor: &RowRangeCursor) -> Option<StorageRowKey> {
+	let mut horizon: Option<StorageRowKey> = None;
+	if !cursor.commit.is_exhausted() {
+		horizon = Some(narrow(table, cursor.commit.last_key()?)?);
+	}
+	if !cursor.persistent.is_exhausted() {
+		let last = cursor.persistent.last_key()?.clone();
+		horizon = Some(match horizon {
+			None => last,
+			Some(prev) => {
+				if last < prev {
+					last
+				} else {
+					prev
+				}
+			}
+		});
+	}
+	horizon
+}
+
+fn bound_ref(bound: &Bound<StorageRowKey>) -> Bound<&StorageRowKey> {
+	match bound {
+		Bound::Included(k) => Bound::Included(k),
+		Bound::Excluded(k) => Bound::Excluded(k),
+		Bound::Unbounded => Bound::Unbounded,
+	}
+}
+
+fn merge_row(
+	collected: &mut BTreeMap<StorageRowKey, (CommitVersion, Option<CowVec<u8>>)>,
+	key: StorageRowKey,
+	version: CommitVersion,
+	value: Option<CowVec<u8>>,
+) {
+	match collected.entry(key) {
+		Entry::Vacant(slot) => {
+			slot.insert((version, value));
+		}
+		Entry::Occupied(mut slot) => {
+			if version > slot.get().0 {
+				slot.insert((version, value));
+			}
+		}
 	}
 }

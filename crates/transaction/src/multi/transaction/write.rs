@@ -2,19 +2,25 @@
 // Copyright (c) 2026 ReifyDB
 
 use core::mem;
-use std::{cmp::Ordering, collections::HashSet, iter, ops::RangeBounds, sync::Arc, vec};
+use std::{cmp::Ordering, collections::HashSet, iter, ops::{Bound, RangeBounds}, sync::Arc, vec};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::bytes::EncodedBytes,
 };
 #[cfg(reifydb_assertions)]
-use reifydb_core::key::{EncodableKey, operator::state::OperatorStateKey};
+use reifydb_core::key::{
+	EncodableKey,
+	operator::state::OperatorStateKey,
+	row::{RowKey, StorageRowKey},
+	typed::key::Key,
+};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::{Delta, RemoveAnnounce},
 	event::transaction::PostCommitEvent,
 	interface::{
+		catalog::storage::StorageId,
 		change::Change,
 		store::{MultiVersionBatch, MultiVersionContains, MultiVersionGet, MultiVersionRow},
 	},
@@ -679,6 +685,34 @@ impl MultiWriteTransaction {
 		Box::new(MergePendingIterator::new(pending, storage_iter, false))
 	}
 
+	pub fn range_row(
+		&mut self,
+		storage: StorageId,
+		start: Bound<StorageRowKey>,
+		end: Bound<StorageRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.version());
+		let encoded = row_bounds_to_encoded(storage, &start, &end);
+		let (mut marker, pw) = self.marker_with_pending_writes();
+
+		marker.mark_range(encoded.clone());
+
+		let pending: Vec<(StorageRowKey, DeltaEntry)> = pw
+			.range((encoded.start_bound(), encoded.end_bound()))
+			.filter_map(|(k, v)| {
+				let decoded = RowKey::decode(k)?;
+				(decoded.storage == storage)
+					.then(|| (StorageRowKey::new(decoded.row), v.clone()))
+			})
+			.collect();
+
+		let storage_iter = self.engine.store.range_row(storage, start, end, multi_scope, batch_size);
+
+		Box::new(MergePendingIterator::new(pending, storage_iter, false))
+	}
+
 	pub fn range_persistence(
 		&mut self,
 		range: EncodedKeyRange,
@@ -803,18 +837,19 @@ mod tests {
 	}
 }
 
-pub(crate) struct MergePendingIterator<I> {
-	pending_iter: iter::Peekable<vec::IntoIter<(EncodedKey, DeltaEntry)>>,
+pub(crate) struct MergePendingIterator<I, K = EncodedKey> {
+	pending_iter: iter::Peekable<vec::IntoIter<(K, DeltaEntry)>>,
 	storage_iter: I,
-	next_storage: Option<MultiVersionRow>,
+	next_storage: Option<MultiVersionRow<K>>,
 	reverse: bool,
 }
 
-impl<I> MergePendingIterator<I>
+impl<I, K> MergePendingIterator<I, K>
 where
-	I: Iterator<Item = Result<MultiVersionRow>>,
+	K: Ord,
+	I: Iterator<Item = Result<MultiVersionRow<K>>>,
 {
-	pub(crate) fn new(pending: Vec<(EncodedKey, DeltaEntry)>, storage_iter: I, reverse: bool) -> Self {
+	pub(crate) fn new(pending: Vec<(K, DeltaEntry)>, storage_iter: I, reverse: bool) -> Self {
 		Self {
 			pending_iter: pending.into_iter().peekable(),
 			storage_iter,
@@ -824,11 +859,12 @@ where
 	}
 }
 
-impl<I> Iterator for MergePendingIterator<I>
+impl<I, K> Iterator for MergePendingIterator<I, K>
 where
-	I: Iterator<Item = Result<MultiVersionRow>>,
+	K: Ord,
+	I: Iterator<Item = Result<MultiVersionRow<K>>>,
 {
-	type Item = Result<MultiVersionRow>;
+	type Item = Result<MultiVersionRow<K>>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -889,4 +925,22 @@ where
 			}
 		}
 	}
+}
+
+fn row_bounds_to_encoded(
+	storage: StorageId,
+	start: &Bound<StorageRowKey>,
+	end: &Bound<StorageRowKey>,
+) -> EncodedKeyRange {
+	let lower = match start {
+		Bound::Included(k) => Bound::Included(RowKey::encoded(storage, k.row())),
+		Bound::Excluded(k) => Bound::Excluded(RowKey::encoded(storage, k.row())),
+		Bound::Unbounded => Bound::Included(RowKey::storage_start(storage)),
+	};
+	let upper = match end {
+		Bound::Included(k) => Bound::Included(RowKey::encoded(storage, k.row())),
+		Bound::Excluded(k) => Bound::Excluded(RowKey::encoded(storage, k.row())),
+		Bound::Unbounded => Bound::Included(RowKey::storage_end(storage)),
+	};
+	EncodedKeyRange::new(lower, upper)
 }

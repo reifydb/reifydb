@@ -4,12 +4,12 @@
 use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind, key::row::StorageRowKey};
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_store::{filter::KeyFilter, metrics::PageCacheMetrics};
-use reifydb_store_commit::{MultiVersionScope, RangeBatch, RangeCursor, TierBatch, VersionedGetResult};
+use reifydb_store::{coverage::cursor::Cursor, filter::KeyFilter, metrics::PageCacheMetrics};
+use reifydb_store_commit::{MultiVersionScope, RangeBatch, RangeCursor, RangeStop, TierBatch, VersionedGetResult};
 use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{filter::MultiKeys, tier::TierStorage};
@@ -18,13 +18,41 @@ use crate::{filter::MultiKeys, tier::TierStorage};
 pub mod sqlite;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use sqlite::storage::SqlitePersistentStorage;
+use sqlite::storage::{RowRangeChunkRequest, SqlitePersistentStorage};
 
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
 pub enum MultiPersistentTier {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	Sqlite(SqlitePersistentStorage) = 0,
+}
+
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+impl MultiPersistentTier {
+	pub(crate) fn range_next_row(
+		&self,
+		table: EntryKind,
+		cursor: &mut Cursor<RangeStop, StorageRowKey>,
+		start: Bound<&StorageRowKey>,
+		end: Bound<&StorageRowKey>,
+		scope: MultiVersionScope,
+		batch_size: usize,
+		descending: bool,
+	) -> Result<RangeBatch<StorageRowKey>> {
+		match self {
+			Self::Sqlite(s) => s.range_chunk_row(
+				cursor,
+				RowRangeChunkRequest {
+					table,
+					start,
+					end,
+					scope,
+					batch_size,
+					descending,
+				},
+			),
+		}
+	}
 }
 
 impl Shutdown for MultiPersistentTier {

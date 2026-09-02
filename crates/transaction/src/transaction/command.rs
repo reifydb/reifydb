@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::ops::Bound;
+use reifydb_core::interface::catalog::storage::StorageId;
+use reifydb_core::key::row::StorageRowKey;
 use std::{mem::take, sync::Arc};
 
 use reifydb_codec::{
@@ -484,6 +487,18 @@ impl CommandTransaction {
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range(range, scope, batch_size))
+	}
+
+	pub fn range_row(
+		&mut self,
+		storage: StorageId,
+		start: Bound<StorageRowKey>,
+		end: Bound<StorageRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_>> {
+		self.check_active()?;
+		Ok(self.cmd.as_mut().unwrap().range_row(storage, start, end, scope, batch_size))
 	}
 
 	#[inline]

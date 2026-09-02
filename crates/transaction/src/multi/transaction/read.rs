@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::store::{MultiVersionBatch, MultiVersionRow},
+	interface::{catalog::storage::StorageId, store::{MultiVersionBatch, MultiVersionRow}},
+	key::row::StorageRowKey,
 };
 use reifydb_value::Result;
 use tracing::instrument;
@@ -108,6 +109,18 @@ impl MultiReadTransaction {
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range(range, multi_scope, batch_size))
+	}
+
+	pub fn range_row(
+		&self,
+		storage: StorageId,
+		start: Bound<StorageRowKey>,
+		end: Bound<StorageRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.tm.version());
+		Box::new(self.engine.store.range_row(storage, start, end, multi_scope, batch_size))
 	}
 
 	pub fn range_rev(

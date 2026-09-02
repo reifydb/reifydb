@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::ops::Bound;
+use reifydb_core::interface::catalog::storage::StorageId;
+use reifydb_core::key::row::StorageRowKey;
 use std::sync::Arc;
 
 use reifydb_codec::{
@@ -388,6 +391,22 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.range(range, scope, batch_size),
 			Transaction::Query(txn) => Ok(txn.range(range, scope, batch_size)),
 			Transaction::Test(t) => t.inner.range(range, scope, batch_size),
+		}
+	}
+
+	pub fn range_row(
+		&mut self,
+		storage: StorageId,
+		start: Bound<StorageRowKey>,
+		end: Bound<StorageRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_>> {
+		match self {
+			Transaction::Command(txn) => txn.range_row(storage, start, end, scope, batch_size),
+			Transaction::Admin(txn) => txn.range_row(storage, start, end, scope, batch_size),
+			Transaction::Query(txn) => Ok(txn.range_row(storage, start, end, scope, batch_size)),
+			Transaction::Test(t) => t.inner.range_row(storage, start, end, scope, batch_size),
 		}
 	}
 

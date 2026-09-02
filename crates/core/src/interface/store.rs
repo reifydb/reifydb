@@ -237,8 +237,8 @@ pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 }
 
 #[derive(Debug, Clone)]
-pub struct MultiVersionRow {
-	pub key: EncodedKey,
+pub struct MultiVersionRow<K = EncodedKey> {
+	pub key: K,
 	pub bytes: EncodedBytes,
 	pub version: CommitVersion,
 }
@@ -250,13 +250,13 @@ pub struct SingleVersionRow {
 }
 
 #[derive(Debug, Clone)]
-pub struct MultiVersionBatch {
-	pub items: Vec<MultiVersionRow>,
+pub struct MultiVersionBatch<K = EncodedKey> {
+	pub items: Vec<MultiVersionRow<K>>,
 
 	pub has_more: bool,
 }
 
-impl MultiVersionBatch {
+impl<K> MultiVersionBatch<K> {
 	pub fn empty() -> Self {
 		Self {
 			items: Vec::new(),
@@ -385,9 +385,8 @@ pub trait SingleVersionStore:
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
-
 	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
 	use super::{EntryKind, EntryLayout, StorageKey, classify_key, classify_range, storage_key};
 	use crate::{
@@ -396,7 +395,10 @@ mod tests {
 			storage::StorageId,
 		},
 		key::{
-			row::{PartitionedRowKey, RowKey, RowSequenceKey, StoragePartitionedRowKey, StorageRowKey},
+			row::{
+				ClusteredRowKey, PartitionedClusteredRowKey, PartitionedRowKey, RowKey, RowSequenceKey,
+				StoragePartitionedRowKey, StorageRowKey,
+			},
 			series::{
 				PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
 				StoragePartitionedSeriesKey, StorageSeriesKey,
@@ -615,6 +617,49 @@ mod tests {
 		clustered.extend_from_slice(&99u64.to_be_bytes());
 
 		assert_eq!(storage_key(&EncodedKey::new(clustered)), (EntryKind::Multi, None));
+	}
+
+	#[test]
+	fn a_clustered_key_and_a_clustered_scan_range_classify_the_same_way() {
+		// The sink classifies the key it writes; the scan classifies a range over the same keyspace.
+		// When the two disagree the rows are written to one bucket and read from another, and the
+		// view comes back empty with no error raised anywhere along the way.
+		let storage = StorageId::view(3);
+
+		let mut clustered = ClusteredRowKey::storage_start(storage).as_slice().to_vec();
+		clustered.extend_from_slice(&[0xAA; 8]);
+		clustered.extend_from_slice(&99u64.to_be_bytes());
+		let clustered = EncodedKey::new(clustered);
+		let range = ClusteredRowKey::scan_range(storage, None);
+		assert_eq!(classify_key(&clustered), EntryKind::Multi);
+		assert_eq!(classify_range(&range).unwrap_or(EntryKind::Multi), classify_key(&clustered));
+
+		let mut partitioned = PartitionedClusteredRowKey::storage_start(storage).as_slice().to_vec();
+		partitioned.extend_from_slice(&[0xBB; 16]);
+		partitioned.extend_from_slice(&[0xAA; 8]);
+		partitioned.extend_from_slice(&99u64.to_be_bytes());
+		let partitioned = EncodedKey::new(partitioned);
+		let partitioned_range = PartitionedClusteredRowKey::scan_range(storage, None);
+		assert_eq!(classify_key(&partitioned), EntryKind::Multi);
+		assert_eq!(
+			classify_range(&partitioned_range).unwrap_or(EntryKind::Multi),
+			classify_key(&partitioned)
+		);
+	}
+
+	#[test]
+	fn a_clustered_scan_range_never_reaches_the_narrowed_row_bucket() {
+		// The narrowed bucket keys on StorageRowKey alone, which cannot carry the sort prefix that
+		// orders these rows, so routing a clustered range there loses the view's order outright.
+		let storage = StorageId::view(3);
+		assert_ne!(
+			classify_range(&ClusteredRowKey::scan_range(storage, None)),
+			Some(EntryKind::Source(storage, EntryLayout::Row))
+		);
+		assert_ne!(
+			classify_range(&PartitionedClusteredRowKey::scan_range(storage, None)),
+			Some(EntryKind::PartitionedSource(storage, EntryLayout::Row))
+		);
 	}
 
 	#[test]

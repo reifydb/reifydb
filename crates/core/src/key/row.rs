@@ -145,6 +145,219 @@ impl RowKey {
 	}
 }
 
+pub struct ClusteredRowKey;
+
+impl ClusteredRowKey {
+	pub const KIND: KeyKind = KeyKind::ClusteredRow;
+
+	pub fn storage_start(storage: impl Into<StorageId>) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(storage.into());
+		serializer.to_encoded_key()
+	}
+
+	fn storage_end(storage: impl Into<StorageId>) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(ObjectId::from(storage.into()).prev());
+		serializer.to_encoded_key()
+	}
+
+	pub fn scan_range(storage: impl Into<StorageId>, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
+		let storage = storage.into();
+		let start = match last_key {
+			Some(last) => Bound::Excluded(last.clone()),
+			None => Bound::Included(Self::storage_start(storage)),
+		};
+		EncodedKeyRange::new(start, Bound::Included(Self::storage_end(storage)))
+	}
+
+	pub fn storage_of(key: &EncodedKey) -> Option<StorageId> {
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::KIND {
+			return None;
+		}
+		StorageId::from_object(de.read_object_id().ok()?)
+	}
+
+	pub fn row_of(key: &EncodedKey) -> Option<RowNumber> {
+		let bytes = key.as_slice();
+		if KeyKind::of(bytes)? != Self::KIND {
+			return None;
+		}
+		let tail = bytes.len().checked_sub(8)?;
+		Some(RowNumber(u64::from_be_bytes(bytes[tail..].try_into().ok()?)))
+	}
+}
+
+pub struct PartitionedClusteredRowKey;
+
+impl PartitionedClusteredRowKey {
+	pub const KIND: KeyKind = KeyKind::PartitionedClusteredRow;
+
+	pub fn storage_start(storage: impl Into<StorageId>) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(storage.into());
+		serializer.to_encoded_key()
+	}
+
+	fn storage_end(storage: impl Into<StorageId>) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(ObjectId::from(storage.into()).prev());
+		serializer.to_encoded_key()
+	}
+
+	pub fn scan_range(storage: impl Into<StorageId>, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
+		let storage = storage.into();
+		let start = match last_key {
+			Some(last) => Bound::Excluded(last.clone()),
+			None => Bound::Included(Self::storage_start(storage)),
+		};
+		EncodedKeyRange::new(start, Bound::Included(Self::storage_end(storage)))
+	}
+
+	pub fn partition_range(storage: impl Into<StorageId>, partition: Partition) -> EncodedKeyRange {
+		let mut prefix = KeySerializer::with_capacity(26);
+		prefix.extend_u8(Self::KIND as u8).extend_object_id(storage.into()).extend_u128(partition.0);
+		EncodedKeyRange::prefix(prefix.to_encoded_key().as_slice())
+	}
+
+	pub fn partition_scan_range(
+		storage: impl Into<StorageId>,
+		partition: Partition,
+		last_key: Option<&EncodedKey>,
+	) -> EncodedKeyRange {
+		let base = Self::partition_range(storage, partition);
+		match last_key {
+			Some(last) => EncodedKeyRange::new(Bound::Excluded(last.clone()), base.end),
+			None => base,
+		}
+	}
+
+	pub fn storage_of(key: &EncodedKey) -> Option<StorageId> {
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::KIND {
+			return None;
+		}
+		StorageId::from_object(de.read_object_id().ok()?)
+	}
+
+	pub fn row_of(key: &EncodedKey) -> Option<RowNumber> {
+		let bytes = key.as_slice();
+		if KeyKind::of(bytes)? != Self::KIND {
+			return None;
+		}
+		let tail = bytes.len().checked_sub(8)?;
+		Some(RowNumber(u64::from_be_bytes(bytes[tail..].try_into().ok()?)))
+	}
+}
+
+#[cfg(test)]
+mod clustered_row_key_tests {
+	use std::ops::RangeBounds;
+
+	use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
+	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
+
+	use super::{ClusteredRowKey, PartitionedClusteredRowKey, RowKey};
+	use crate::{interface::catalog::storage::StorageId, key::typed::key::Key};
+
+	fn part(v: &str) -> Partition {
+		Partition::of(&[Value::Utf8(v.to_string())])
+	}
+
+	fn clustered(storage: StorageId, sort: &[u8], row: RowNumber) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_raw(ClusteredRowKey::storage_start(storage).as_slice());
+		serializer.extend_raw(sort);
+		serializer.extend_raw(&row.0.to_be_bytes());
+		serializer.to_encoded_key()
+	}
+
+	fn partitioned(storage: StorageId, partition: Partition, sort: &[u8], row: RowNumber) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_raw(PartitionedClusteredRowKey::storage_start(storage).as_slice());
+		serializer.extend_u128(partition.0);
+		serializer.extend_raw(sort);
+		serializer.extend_raw(&row.0.to_be_bytes());
+		serializer.to_encoded_key()
+	}
+
+	#[test]
+	fn test_row_comes_from_the_tail_not_the_sort_prefix() {
+		// The sort payload sits between the storage and the row, so reading a fixed offset picks up
+		// sort bytes instead: two rows that sort differently would report the same row number.
+		let storage = StorageId::view(3);
+		let a = clustered(storage, &[0xAA; 8], RowNumber(7));
+		let b = clustered(storage, &[0xBB; 24], RowNumber(9));
+
+		assert_eq!(ClusteredRowKey::row_of(&a), Some(RowNumber(7)));
+		assert_eq!(ClusteredRowKey::row_of(&b), Some(RowNumber(9)));
+		assert_eq!(ClusteredRowKey::storage_of(&a), Some(storage));
+	}
+
+	#[test]
+	fn test_row_of_rejects_a_plain_row_key() {
+		// A plain row key ends in the keycode-inverted row, so reading its tail raw yields a
+		// different number entirely; the kind check is what keeps the two keyspaces apart.
+		let plain = RowKey::encoded(StorageId::view(3), RowNumber(7));
+		assert_eq!(ClusteredRowKey::row_of(&plain), None);
+		assert_eq!(PartitionedClusteredRowKey::row_of(&plain), None);
+	}
+
+	#[test]
+	fn test_scan_range_covers_its_storage_and_nothing_else() {
+		let storage = StorageId::view(3);
+		let range = ClusteredRowKey::scan_range(storage, None);
+
+		assert!(range.contains(&clustered(storage, &[0x00; 8], RowNumber(1))));
+		assert!(range.contains(&clustered(storage, &[0xFF; 8], RowNumber(u64::MAX))));
+		assert!(!range.contains(&clustered(StorageId::view(4), &[0x00; 8], RowNumber(1))));
+	}
+
+	#[test]
+	fn test_scan_range_resumes_strictly_after_the_last_key() {
+		// Resuming inclusively re-serves the last row of the previous chunk, duplicating it in the view.
+		let storage = StorageId::view(3);
+		let last = clustered(storage, &[0x40; 8], RowNumber(5));
+		let range = ClusteredRowKey::scan_range(storage, Some(&last));
+
+		assert!(!range.contains(&last));
+		assert!(range.contains(&clustered(storage, &[0x41; 8], RowNumber(1))));
+	}
+
+	#[test]
+	fn test_sort_prefix_orders_the_keyspace() {
+		// The clustered key exists so a plain forward scan returns the view already sorted; if the
+		// row bytes outranked the sort prefix the scan would come back in insertion order.
+		let storage = StorageId::view(3);
+		let early_sort_late_row = clustered(storage, &[0x10; 8], RowNumber(999));
+		let late_sort_early_row = clustered(storage, &[0x20; 8], RowNumber(1));
+
+		assert!(early_sort_late_row < late_sort_early_row);
+	}
+
+	#[test]
+	fn test_partition_range_contains_only_its_partition() {
+		let storage = StorageId::view(3);
+		let range = PartitionedClusteredRowKey::partition_range(storage, part("us"));
+
+		assert!(range.contains(&partitioned(storage, part("us"), &[0x10; 8], RowNumber(1))));
+		assert!(!range.contains(&partitioned(storage, part("eu"), &[0x10; 8], RowNumber(1))));
+	}
+
+	#[test]
+	fn test_partitioned_row_comes_from_the_tail() {
+		let storage = StorageId::view(3);
+		let key = partitioned(storage, part("us"), &[0xAA; 8], RowNumber(42));
+
+		assert_eq!(PartitionedClusteredRowKey::row_of(&key), Some(RowNumber(42)));
+		assert_eq!(PartitionedClusteredRowKey::storage_of(&key), Some(storage));
+		assert_eq!(ClusteredRowKey::row_of(&key), None);
+	}
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StorageRowKey(pub Desc<RowNumber>);
 
@@ -919,7 +1132,13 @@ mod partitioned_row_key_tests {
 		// field offsets read a different key's payload as a valid row.
 		let exact = RowKey::encoded(StorageId::table(7), RowNumber(42));
 		assert_eq!(exact.as_slice().len(), 18);
-		assert_eq!(RowKey::decode(&exact), Some(RowKey { storage: StorageId::table(7), row: RowNumber(42) }));
+		assert_eq!(
+			RowKey::decode(&exact),
+			Some(RowKey {
+				storage: StorageId::table(7),
+				row: RowNumber(42)
+			})
+		);
 
 		let mut longer = exact.as_slice().to_vec();
 		longer.push(0x00);
@@ -937,5 +1156,4 @@ mod partitioned_row_key_tests {
 
 		assert_eq!(RowKey::decode(&EncodedKey::new(clustered)), None);
 	}
-
 }

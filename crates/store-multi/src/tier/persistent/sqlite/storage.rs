@@ -21,6 +21,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	error::diagnostic::internal::internal,
 	interface::{catalog::storage::StorageId, store::EntryKind},
+	key::row::StorageRowKey,
 	metrics::scan::record_page,
 };
 use reifydb_runtime::{
@@ -32,6 +33,7 @@ use reifydb_runtime::{
 };
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard, pragma};
 use reifydb_store::{
+	coverage::cursor::Cursor,
 	filter::KeyFilter,
 	metrics::PageCacheMetrics,
 	sqlite::{OpenMessages, open, page_cache_metrics, pool::ReadPool},
@@ -39,13 +41,18 @@ use reifydb_store::{
 use reifydb_store_commit::{
 	MultiVersionScope, RangeBatch, RangeCursor, RangeStop, RawEntry, TierBatch, VersionedGetResult,
 };
-use reifydb_value::{Result, error, util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::{
+	Result, error,
+	util::cowvec::CowVec,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, Row, ToSql, Transaction, TransactionBehavior,
 	params_from_iter,
 };
 use tracing::{instrument, warn};
 
+use super::schema::row_from_sql;
 use crate::{
 	filter::{ARMED_CAPACITY_KEYS, MultiKeys},
 	tier::{
@@ -715,6 +722,106 @@ impl SqlitePersistentStorage {
 		Ok(())
 	}
 
+	pub(crate) fn range_chunk_row(
+		&self,
+		cursor: &mut Cursor<RangeStop, StorageRowKey>,
+		req: RowRangeChunkRequest<'_>,
+	) -> Result<RangeBatch<StorageRowKey>> {
+		if cursor.is_exhausted() {
+			return Ok(RangeBatch::empty());
+		}
+
+		let table_sql = self.table_sql(req.table);
+		let guard = self.inner.readers.acquire();
+		let Some(conn) = guard.as_ref() else {
+			return Err(error!(internal(
+				"Persistent storage is shut down; refusing to report a range chunk exhausted \
+				 having read nothing, which hands the caller a short scan reported as a \
+				 complete one"
+					.to_string()
+			)));
+		};
+
+		let version_bytes = version_to_bytes(req.scope.read()).to_vec();
+		let limit_i64 = req.batch_size as i64;
+
+		let to_sql_bound = |bound: Bound<&StorageRowKey>| match bound {
+			Bound::Included(key) => Bound::Included(row_to_sql(key.row().0)),
+			Bound::Excluded(key) => Bound::Excluded(row_to_sql(key.row().0)),
+			Bound::Unbounded => Bound::Unbounded,
+		};
+		let lower = to_sql_bound(req.start);
+		let upper = to_sql_bound(req.end);
+		let last_row = cursor.last_key().map(|key| row_to_sql(key.row().0));
+
+		let sql = build_range_current_sql_row(
+			&table_sql.table_name,
+			bound_shape_i64(&lower),
+			bound_shape_i64(&upper),
+			last_row.is_some(),
+			req.descending,
+		);
+		let mut stmt = match conn.prepare_cached(&sql) {
+			Ok(s) => s,
+			Err(e) if e.to_string().contains("no such table") => {
+				cursor.finish_with(RangeStop::AbsentTable);
+				return Ok(RangeBatch::empty());
+			}
+			Err(e) => {
+				return Err(error!(internal(format!("Failed to prepare persistent range: {}", e))));
+			}
+		};
+
+		let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+		if let Some(v) = bound_value(lower) {
+			params.push(Box::new(v));
+		}
+		if let Some(v) = bound_value(upper) {
+			params.push(Box::new(v));
+		}
+		if let Some(v) = last_row {
+			params.push(Box::new(v));
+		}
+		params.push(Box::new(version_bytes));
+		params.push(Box::new(limit_i64));
+		let flat: Vec<&dyn ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+		let raw: Vec<RawEntry<StorageRowKey>> = match stmt.query_map(params_from_iter(flat), |row| {
+			let r: i64 = row.get(0)?;
+			let version_blob: Vec<u8> = row.get(1)?;
+			let value: Option<Vec<u8>> = row.get(2)?;
+			Ok(RawEntry {
+				key: StorageRowKey::new(RowNumber(row_from_sql(r))),
+				version: version_from_bytes(&version_blob),
+				value: value.map(CowVec::new),
+			})
+		}) {
+			Ok(rows) => rows
+				.collect::<SqliteResult<Vec<_>>>()
+				.map_err(|e| error!(internal(format!("Failed to read persistent row: {}", e))))?,
+			Err(e) if e.to_string().contains("no such table") => {
+				cursor.finish_with(RangeStop::AbsentTable);
+				return Ok(RangeBatch::empty());
+			}
+			Err(e) => {
+				return Err(error!(internal(format!("Failed to scan persistent range: {}", e))));
+			}
+		};
+
+		record_page(raw.len() as u64, raw.iter().filter(|e| e.value.is_none()).count() as u64);
+		let has_more = raw.len() == req.batch_size;
+		if let Some(last) = raw.last() {
+			cursor.advance(last.key);
+		}
+		if !has_more {
+			cursor.finish_with(RangeStop::Scanned);
+		}
+		Ok(RangeBatch {
+			entries: raw,
+			has_more,
+		})
+	}
+
 	fn range_chunk(&self, cursor: &mut RangeCursor, req: RangeChunkRequest<'_>) -> Result<RangeBatch> {
 		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
@@ -1259,6 +1366,15 @@ struct RangeChunkRequest<'a> {
 	scope: MultiVersionScope,
 	batch_size: usize,
 	descending: bool,
+}
+
+pub(crate) struct RowRangeChunkRequest<'a> {
+	pub(crate) table: EntryKind,
+	pub(crate) start: Bound<&'a StorageRowKey>,
+	pub(crate) end: Bound<&'a StorageRowKey>,
+	pub(crate) scope: MultiVersionScope,
+	pub(crate) batch_size: usize,
+	pub(crate) descending: bool,
 }
 
 impl SqlitePersistentStorage {

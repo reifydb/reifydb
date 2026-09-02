@@ -18,7 +18,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		row::{PartitionedRowKey, RowKey, RowKeyRange},
+		row::{ClusteredRowKey, PartitionedClusteredRowKey, PartitionedRowKey, RowKey, RowKeyRange},
 		series::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange},
 		typed::key::Key,
 	},
@@ -84,7 +84,8 @@ impl ViewScanNode {
 			columns: view.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
 		let series = view.def().storage_kind() == ViewStorageKind::Series;
-		let sorted = !view.def().sort().is_empty();
+		let sorted = !view.def().sort().is_empty()
+			&& view.def().storage_kind() == ViewStorageKind::Table;
 		let partitioned = !view.def().partition_by().is_empty();
 
 		Ok(Self {
@@ -160,10 +161,15 @@ impl ViewScanNode {
 							}
 						}
 					} else if self.sorted {
-						let bytes = multi.key.as_slice();
-						RowNumber(u64::from_be_bytes(
-							bytes[bytes.len() - 8..].try_into().unwrap(),
-						))
+						let row = if self.partitioned {
+							PartitionedClusteredRowKey::row_of(&multi.key)
+						} else {
+							ClusteredRowKey::row_of(&multi.key)
+						};
+						match row {
+							Some(row) => row,
+							None => continue,
+						}
 					} else if self.partitioned {
 						match PartitionedRowKey::decode(&multi.key) {
 							Some(key) => key.row,
@@ -247,6 +253,15 @@ impl QueryNode for ViewScanNode {
 			(true, false, _) => {
 				SeriesRowKeyRange::scan_range(storage, None, None, None, self.last_key.as_ref())
 			}
+			(false, true, Some(partition)) if self.sorted => PartitionedClusteredRowKey::partition_scan_range(
+				storage,
+				partition,
+				self.last_key.as_ref(),
+			),
+			(false, true, None) if self.sorted => {
+				PartitionedClusteredRowKey::scan_range(storage, self.last_key.as_ref())
+			}
+			(false, false, _) if self.sorted => ClusteredRowKey::scan_range(storage, self.last_key.as_ref()),
 			(false, true, Some(partition)) => {
 				PartitionedRowKey::partition_scan_range(storage, partition, self.last_key.as_ref())
 			}
