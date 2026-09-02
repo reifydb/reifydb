@@ -49,11 +49,25 @@ pub trait ReclaimExtension: StateExtension {
 		if group.is_root() {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
+		let mut removed = 0u64;
 		for key in keys {
+			let carried = OperatorStateKey::decode_inner(key.as_encoded().as_bytes()).map(|(id, _, _)| id);
+			reifydb_assertions! {
+				assert!(
+					carried == Some(group),
+					"reclaiming group {} was handed a key stamped group {:?}; removing it would delete state belonging to another partition",
+					group.0,
+					carried.map(|id| id.0)
+				);
+			}
+			if carried != Some(group) {
+				continue;
+			}
 			self.state_remove(operator, key)?;
+			removed += 1;
 		}
 		Ok(ReclaimOutcome {
-			removed: Count::new(keys.len() as u64),
+			removed: Count::new(removed),
 			more: false,
 		})
 	}

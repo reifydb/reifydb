@@ -52,6 +52,13 @@ fn highest<K: Keyspace>() -> K::Suffix {
 	<K::Suffix as KeyLayout>::high()
 }
 
+fn outside_root_only<K: Keyspace>(start: Option<GroupId>, end: Option<GroupId>) -> bool {
+	match (K::GROUP_SCOPED, start, end) {
+		(false, Some(start), Some(end)) => !start.is_root() && !end.is_root(),
+		_ => false,
+	}
+}
+
 struct Get<'a> {
 	conn: &'a Connection,
 	operator: OperatorId,
@@ -63,6 +70,9 @@ impl KeyspaceVisitor for Get<'_> {
 	type Output = Option<Vec<u8>>;
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
+		if !K::GROUP_SCOPED && !self.group.is_root() {
+			return None;
+		}
 		typed::get::<K>(self.conn, self.operator, &typed_key::<K>(self.group, self.suffix, lowest::<K>()))
 	}
 }
@@ -96,6 +106,9 @@ impl KeyspaceVisitor for Bounded<'_> {
 	type Output = Vec<(EncodedKey, Vec<u8>)>;
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
+		if outside_root_only::<K>(self.start_group, self.end_group) {
+			return Vec::new();
+		}
 		let start = match (self.start_group, &self.start) {
 			(None, _) => Bound::Unbounded,
 			(Some(group), Bound::Unbounded) => Bound::Included(typed_key::<K>(group, &[], lowest::<K>())),
