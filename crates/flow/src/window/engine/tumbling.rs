@@ -22,6 +22,8 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
 
+#[cfg(reifydb_assertions)]
+use crate::operator::state::expiry::expiry_all;
 use crate::{
 	operator::{
 		state::{
@@ -366,6 +368,16 @@ where
 			});
 		}
 		self.expiry.settle(store)?;
+		reifydb_assertions! {
+			for entry in expiry_all::<TumblingExpiry, TumblingIndexEntry<G, S>>(store)? {
+				assert!(
+					!out.iter().any(|window| window.group_id.0 == entry.group_id),
+					"the expiry index still holds a row for a group that is about to be queued for \
+					 reaping; a window group must own exactly one index row, or reaping it orphans \
+					 the rows left behind under a group id nothing resolves again"
+				);
+			}
+		}
 		note_when_expiry_capped(out.len(), self.expire_batch);
 		Ok(out)
 	}
@@ -469,7 +481,7 @@ mod tests {
 			store,
 			group,
 			window_start,
-			GroupId::ROOT,
+			slot_key(group, window_start).0,
 			&row_key(group, window_start),
 			prior,
 			new,

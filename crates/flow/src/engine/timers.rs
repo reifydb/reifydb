@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::HashMap,
-	sync::OnceLock,
-	time::{Duration, Instant},
-};
+use std::collections::HashMap;
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -24,41 +20,6 @@ use crate::{
 
 const MAX_TIMER_ROUNDS: u32 = 4_096;
 const MAX_TIMERS_PER_DISPATCH: usize = 8_192;
-
-static TIMER_PROFILE: OnceLock<bool> = OnceLock::new();
-
-fn timer_profile() -> bool {
-	*TIMER_PROFILE.get_or_init(|| std::env::var_os("REIFYDB_TIMER_PROFILE").is_some())
-}
-
-#[derive(Default)]
-struct DispatchProfile {
-	loops: u32,
-	watermark: Duration,
-	take_due: Duration,
-	on_timer: Duration,
-	topology: Duration,
-}
-
-impl DispatchProfile {
-	fn report(&self, flow: u64, version: u64, rounds: u32, fired: u32) {
-		let total = self.watermark + self.take_due + self.on_timer + self.topology;
-		println!(
-			"TIMERPROF flow={} version={} loops={} rounds={} fired={} total_us={} watermark_us={} \
-			 take_due_us={} on_timer_us={} topology_us={}",
-			flow,
-			version,
-			self.loops,
-			rounds,
-			fired,
-			total.as_micros(),
-			self.watermark.as_micros(),
-			self.take_due.as_micros(),
-			self.on_timer.as_micros(),
-			self.topology.as_micros()
-		);
-	}
-}
 
 impl FlowEngineInner {
 	pub(super) fn dispatch_due_timers<T: FlowTransaction>(
@@ -92,17 +53,12 @@ impl FlowEngineInner {
 		sources: &[OperatorId],
 		stage: &mut TimerStage,
 	) -> Result<u32> {
-		let profile_on = timer_profile();
-		let mut profile = DispatchProfile::default();
 		let mut fired_total = 0u32;
 		let mut rounds = 0u32;
 		let mut budget = MAX_TIMERS_PER_DISPATCH;
 		let mut cursors: HashMap<OperatorId, TimerWheelKey> = HashMap::new();
 		loop {
-			profile.loops += 1;
-			let started = Instant::now();
 			let watermark = SourceWatermarks::flow_watermark(sources, txn)?;
-			profile.watermark += started.elapsed();
 			txn.set_flow_watermark(watermark);
 			let armed = txn.take_armed();
 			for entry in &armed {
@@ -110,15 +66,19 @@ impl FlowEngineInner {
 					cursors.remove(&entry.operator_id);
 				}
 			}
-			let started = Instant::now();
 			let mut due: Vec<(OperatorId, Timer)> = Vec::new();
 			for candidate in stage.due_before(armed, watermark) {
 				if budget == 0 {
 					break;
 				}
 				let operator_id = candidate.operator_id;
-				let taken =
-					TimerWheel::take_due(operator_id, txn, watermark, budget, cursors.get(&operator_id))?;
+				let taken = TimerWheel::take_due(
+					operator_id,
+					txn,
+					watermark,
+					budget,
+					cursors.get(&operator_id),
+				)?;
 				for timer in taken.timers {
 					budget -= 1;
 					due.push((operator_id, timer));
@@ -134,11 +94,7 @@ impl FlowEngineInner {
 					}),
 				);
 			}
-			profile.take_due += started.elapsed();
 			if due.is_empty() {
-				if profile_on && fired_total > 0 {
-					profile.report(flow.id.0, version.0, rounds, fired_total);
-				}
 				return Ok(fired_total);
 			}
 			rounds += 1;
@@ -166,7 +122,6 @@ impl FlowEngineInner {
 				))
 			});
 
-			let started = Instant::now();
 			let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
 			for (operator_id, timer) in due {
 				fired_total += 1;
@@ -202,10 +157,7 @@ impl FlowEngineInner {
 					pending.entry(*child_id).or_default().push(combined.clone());
 				}
 			}
-			profile.on_timer += started.elapsed();
-			let started = Instant::now();
 			self.run_topology(txn, flow, pending, topo)?;
-			profile.topology += started.elapsed();
 		}
 	}
 }
@@ -360,18 +312,8 @@ mod tests {
 		probe(&mut inner, false);
 
 		let mut txn = engine.flow_txn().deferred();
-		let started = std::time::Instant::now();
-		let fired = inner
-			.dispatch_due_timers(&mut txn, &flow, CommitVersion(1), flow.topological_order())
-			.unwrap();
-		let elapsed = started.elapsed();
-		println!(
-			"TIMERBURST kind={:?} armed={} fired={} wall_us={}",
-			kind,
-			count,
-			fired,
-			elapsed.as_micros()
-		);
+		let fired =
+			inner.dispatch_due_timers(&mut txn, &flow, CommitVersion(1), flow.topological_order()).unwrap();
 
 		assert_eq!(
 			fired as usize,

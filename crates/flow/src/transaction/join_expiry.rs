@@ -1,52 +1,51 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::ops::Bound;
 
 use reifydb_codec::{
-	key::{
-		decode_u64_asc,
-		encoded::{EncodedKey, EncodedKeyRange},
-	},
-	row::{bytes::EncodedBytes, operator::state::OperatorState, pod::EncodedPodRow},
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
+pub use reifydb_core::key::operator::keyspace::join::JoinRowExpiryState as JoinRowExpiry;
 use reifydb_core::{
-	actors::pending::PendingWrite,
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
 		operator::{
-			keyspace::join::{JoinRowExpiry as JoinRowExpirySpace, JoinRowExpirySuffix},
-			state::{
-				GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range, node_prefix,
+			keyspace::join::{
+				JoinExpiryDue, JoinExpiryDueKey, JoinRowExpiry as JoinRowExpirySpace,
+				JoinRowExpiryState, JoinRowExpirySuffix, join_expiry_due_key,
 			},
+			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 		},
 		typed::direction::Asc,
 	},
-	state::typed::typed_key,
+	state::typed::{SuffixBytes, typed_key},
 };
-use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	error::Error as ValueError,
-	reifydb_assertions,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::transaction::{FlowTransaction, scope::scoped_key};
+use crate::transaction::{
+	FlowTransaction,
+	state::{StateExtension, StateRange},
+};
 
-pub const JOIN_EXPIRY_SUFFIX_LEN: usize = 9;
-
-#[operator_state]
-#[derive(Clone)]
-pub struct JoinRowExpiry {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JoinDueEntry {
 	pub at: DateTime,
+	pub group: GroupId,
+	pub side: u8,
+	pub row_number: RowNumber,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JoinDuePage {
-	pub due: Vec<(u8, RowNumber)>,
-	pub next: Option<DateTime>,
+	pub due: Vec<JoinDueEntry>,
+	pub resume: Option<JoinExpiryDueKey>,
 	pub more: bool,
 }
 
@@ -64,30 +63,17 @@ pub fn join_expiry_range(group: GroupId) -> EncodedKeyRange {
 	keyspace_inner_range(group, KeyspaceId::JOIN_ROW_EXPIRY)
 }
 
-pub fn decode_join_expiry_suffix(suffix: &[u8]) -> Option<(u8, RowNumber)> {
-	let tail = <[u8; 8]>::try_from(suffix.get(1..)?).ok()?;
-	Some((suffix[0], RowNumber(decode_u64_asc(tail))))
+pub fn join_due_range() -> EncodedKeyRange {
+	keyspace_inner_range(GroupId::ROOT, KeyspaceId::JOIN_EXPIRY_DUE)
 }
 
-pub fn decode_join_expiry(bytes: &EncodedBytes) -> Result<DateTime> {
-	let row = EncodedPodRow::from(bytes.clone());
-	Ok(JoinRowExpiry::decode_state(&row).map_err(ValueError::from)?.at)
-}
-
-struct ShadowEntry {
-	side: u8,
-	row_number: RowNumber,
-	at: Option<DateTime>,
+pub fn join_expiry_slot(key: &GroupStateKey) -> Option<JoinRowExpirySuffix> {
+	let (_, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())?;
+	(keyspace == KeyspaceId::JOIN_ROW_EXPIRY).then_some(())?;
+	JoinRowExpirySuffix::from_suffix_bytes(suffix)
 }
 
 pub trait JoinRowExpiryExtension: FlowTransaction {
-	fn join_expiry_shadow(&self, id: OperatorId, group: GroupId) -> Result<BTreeMap<EncodedKey, PendingWrite>> {
-		let range = join_expiry_range(group).with_prefix(EncodedKey::new(node_prefix(id)));
-		let mut out = BTreeMap::new();
-		self.pending_layers().collect_range((range.start.as_ref(), range.end.as_ref()), &mut out);
-		Ok(out)
-	}
-
 	fn join_expiry_at(
 		&mut self,
 		id: OperatorId,
@@ -95,113 +81,128 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 		side: u8,
 		row_number: RowNumber,
 	) -> Result<Option<DateTime>> {
-		let key = scoped_key(id, &join_expiry_key(group, side, row_number));
-		match self.lookup_overlays(&key) {
-			Some(None) => Ok(None),
-			Some(Some(bytes)) => decode_join_expiry(&bytes).map(Some),
-			None => Ok(self.operator_store().join_expiry_get(id, group, side, row_number)),
+		match self.state_get(id, &join_expiry_key(group, side, row_number))? {
+			Some(row) => Ok(Some(JoinRowExpiryState::decode_state(&row).map_err(ValueError::from)?.at)),
+			None => Ok(None),
 		}
 	}
 
-	fn join_expiry_min(&mut self, id: OperatorId, group: GroupId) -> Result<Option<DateTime>> {
-		let shadow = self.join_expiry_shadow(id, group)?;
-		let mut best: Option<DateTime> = None;
-		for entry in decode_shadow(&shadow)? {
-			if let Some(at) = entry.at {
-				best = Some(best.map_or(at, |current: DateTime| current.min(at)));
+	fn join_expiry_arm(
+		&mut self,
+		id: OperatorId,
+		group: GroupId,
+		side: u8,
+		row_number: RowNumber,
+		at: DateTime,
+	) -> Result<()> {
+		if let Some(previous) = self.join_expiry_at(id, group, side, row_number)? {
+			if previous == at {
+				return Ok(());
 			}
+			self.state_remove(id, &join_expiry_due_key(previous, group, side, row_number))?;
 		}
+		self.state_set(
+			id,
+			&join_expiry_key(group, side, row_number),
+			JoinRowExpiryState {
+				at,
+			}
+			.encode_state()
+			.map_err(ValueError::from)?,
+		)?;
+		self.state_set(id, &join_expiry_due_key(at, group, side, row_number), EncodedPodRow::new(&[]))
+	}
 
-		let limit = shadow.len() + 1;
-		let rows = self.operator_store().join_expiries_by_time(id, group, limit as u64);
-		#[cfg(reifydb_assertions)]
-		let returned = rows.len();
-		let unshadowed = rows.into_iter().find(|row| {
-			!shadow.contains_key(&scoped_key(id, &join_expiry_key(group, row.side, row.row_number)))
-		});
-		if let Some(row) = &unshadowed {
-			best = Some(best.map_or(row.at, |current: DateTime| current.min(row.at)));
-		}
-		reifydb_assertions! {
-			assert!(
-				unshadowed.is_some() || returned < limit,
-				"a full page of {returned} join expiries was entirely shadowed by {} pending writes, so \
-				 the group's true earliest expiry was never read",
-				shadow.len()
-			);
-		}
+	fn join_expiry_clear(&mut self, id: OperatorId, group: GroupId, side: u8, row_number: RowNumber) -> Result<()> {
+		let Some(at) = self.join_expiry_at(id, group, side, row_number)? else {
+			return Ok(());
+		};
+		self.join_expiry_free(
+			id,
+			&JoinDueEntry {
+				at,
+				group,
+				side,
+				row_number,
+			},
+		)
+	}
 
-		Ok(best)
+	fn join_expiry_free(&mut self, id: OperatorId, entry: &JoinDueEntry) -> Result<()> {
+		self.state_remove(id, &join_expiry_key(entry.group, entry.side, entry.row_number))?;
+		self.state_remove(id, &join_expiry_due_key(entry.at, entry.group, entry.side, entry.row_number))
+	}
+
+	fn join_expiry_min(&mut self, id: OperatorId) -> Result<Option<DateTime>> {
+		let Some(row) = self.state_last(id, join_due_range())? else {
+			return Ok(None);
+		};
+		Ok(decode_due_suffix(&row.key).map(|suffix| suffix.at.0))
 	}
 
 	fn join_due_page(
 		&mut self,
 		id: OperatorId,
-		group: GroupId,
 		at: DateTime,
 		budget: usize,
+		from: Option<&JoinExpiryDueKey>,
 	) -> Result<JoinDuePage> {
-		let shadow = self.join_expiry_shadow(id, group)?;
-		let limit = shadow.len() + budget + 1;
-		let rows = self.operator_store().join_expiries_by_time(id, group, limit as u64);
-		let capped = rows.len() == limit;
-
-		let mut merged: Vec<(DateTime, u8, RowNumber)> = decode_shadow(&shadow)?
-			.into_iter()
-			.filter_map(|entry| entry.at.map(|expiry| (expiry, entry.side, entry.row_number)))
-			.collect();
-		for row in rows {
-			if shadow.contains_key(&scoped_key(id, &join_expiry_key(group, row.side, row.row_number))) {
-				continue;
-			}
-			merged.push((row.at, row.side, row.row_number));
+		if budget == 0 {
+			return Ok(JoinDuePage {
+				due: Vec::new(),
+				resume: None,
+				more: false,
+			});
 		}
-		merged.sort_unstable();
+		let mut range = join_due_range();
+		range.start = match from {
+			Some(cursor) => {
+				Bound::Excluded(typed_key::<JoinExpiryDue>(GroupId::ROOT, cursor).into_encoded())
+			}
+			None => Bound::Included(
+				typed_key::<JoinExpiryDue>(GroupId::ROOT, &JoinExpiryDueKey::at_threshold(at))
+					.into_encoded(),
+			),
+		};
+		let batch = self.state_range(
+			id,
+			StateRange::forward(range, "join::due_page").limit(budget.saturating_add(1)),
+		)?;
 
-		let mut due = Vec::new();
-		let mut next = None;
+		let mut due = Vec::with_capacity(batch.items.len().min(budget));
 		let mut more = false;
-		for (expiry, side, row_number) in merged {
-			if expiry > at {
-				next = Some(expiry);
+		let mut resume = None;
+		for item in &batch.items {
+			let Some(suffix) = decode_due_suffix(&item.key) else {
+				continue;
+			};
+			if suffix.at.0 > at {
 				break;
 			}
 			if due.len() == budget {
 				more = true;
 				break;
 			}
-			due.push((side, row_number));
+			resume = Some(suffix);
+			due.push(JoinDueEntry {
+				at: suffix.at.0,
+				group: suffix.group.0,
+				side: suffix.side.0,
+				row_number: suffix.row.0,
+			});
 		}
 
 		Ok(JoinDuePage {
 			due,
-			next,
-			more: more || (next.is_none() && capped),
+			resume,
+			more,
 		})
 	}
 }
 
 impl<T: FlowTransaction> JoinRowExpiryExtension for T {}
 
-fn decode_shadow(shadow: &BTreeMap<EncodedKey, PendingWrite>) -> Result<Vec<ShadowEntry>> {
-	let mut out = Vec::with_capacity(shadow.len());
-	for (key, write) in shadow {
-		let Some((side, row_number)) =
-			OperatorStateKey::decode(key).and_then(|decoded| decode_join_expiry_suffix(&decoded.suffix))
-		else {
-			continue;
-		};
-		let at = match write {
-			PendingWrite::Set(bytes) => Some(decode_join_expiry(bytes)?),
-			PendingWrite::Remove {
-				..
-			} => None,
-		};
-		out.push(ShadowEntry {
-			side,
-			row_number,
-			at,
-		});
-	}
-	Ok(out)
+fn decode_due_suffix(key: &EncodedKey) -> Option<JoinExpiryDueKey> {
+	let decoded = OperatorStateKey::decode(key)?;
+	JoinExpiryDueKey::from_suffix_bytes(&decoded.suffix)
 }

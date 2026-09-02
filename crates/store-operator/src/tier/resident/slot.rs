@@ -1,35 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, BTreeSet},
-	mem,
-	sync::Arc,
-};
+use std::{mem, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::{GroupId, OperatorStateKey},
+	key::operator::state::OperatorStateKey,
 };
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
+use reifydb_value::byte_size::ByteSize;
 
-use crate::tier::{
-	bucket::{BucketMap, write::WriteEntry},
-	resident::batch::JOIN_EXPIRY_ENTRY_BYTES,
-};
-
-pub type SlotJoinKey = (GroupId, u8, RowNumber);
-
-pub type SlotJoinExpiries = BTreeMap<SlotJoinKey, Option<u64>>;
+use crate::tier::bucket::{BucketMap, write::WriteEntry};
 
 pub struct OperatorLive {
 	pub operator: OperatorId,
 	pub state: BucketMap,
-	pub join_expiries: SlotJoinExpiries,
-	pub durable_join_expiries: BTreeSet<SlotJoinKey>,
 	pub bytes: ByteSize,
 }
 
@@ -44,18 +31,16 @@ impl OperatorLive {
 		Self {
 			operator,
 			state: BucketMap::default(),
-			join_expiries: SlotJoinExpiries::new(),
-			durable_join_expiries: BTreeSet::new(),
 			bytes: ByteSize::ZERO,
 		}
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.state.is_empty() && self.join_expiries.is_empty()
+		self.state.is_empty()
 	}
 
 	pub fn entry_count(&self) -> usize {
-		self.state.len().saturating_add(self.join_expiries.len())
+		self.state.len()
 	}
 
 	pub fn lookup(&self, key: &EncodedKey) -> Option<WriteEntry> {
@@ -81,37 +66,10 @@ impl OperatorLive {
 		self.bytes = self.bytes.saturating_add(after).saturating_sub(before);
 	}
 
-	pub fn record_join_expiry(&mut self, key: SlotJoinKey, expiry: Option<u64>, durable: bool) {
-		if durable && !self.join_expiries.contains_key(&key) {
-			self.durable_join_expiries.insert(key);
-		}
-		if expiry.is_none() && !self.durable_join_expiries.contains(&key) {
-			if self.join_expiries.remove(&key).is_some() {
-				self.bytes = self.bytes.saturating_sub(JOIN_EXPIRY_ENTRY_BYTES);
-			}
-			return;
-		}
-		if self.join_expiries.insert(key, expiry).is_none() {
-			self.bytes = self.bytes.saturating_add(JOIN_EXPIRY_ENTRY_BYTES);
-		}
-	}
-
 	pub fn clear_state(&mut self) -> BucketMap {
 		let taken = mem::take(&mut self.state);
 		self.bytes = self.bytes.saturating_sub(taken.footprint());
 		taken
-	}
-
-	pub fn retain_join_expiries(&mut self, keep: impl Fn(&SlotJoinKey) -> bool) {
-		let bytes = &mut self.bytes;
-		self.join_expiries.retain(|key, _| {
-			if keep(key) {
-				return true;
-			}
-			*bytes = bytes.saturating_sub(JOIN_EXPIRY_ENTRY_BYTES);
-			false
-		});
-		self.durable_join_expiries.retain(&keep);
 	}
 }
 

@@ -10,7 +10,7 @@ use reifydb_core::{
 		operator::{
 			keyspace::{KEYSPACES, KeyspaceVisitor, columns_width, dispatch},
 			state::{GroupId, KeyspaceId, OperatorStateKey},
-			traits::Keyspace,
+			traits::{Keyspace, group_scoped},
 		},
 		typed::{Key, layout::KeyLayout, range::KeyRange},
 	},
@@ -67,7 +67,7 @@ fn within(range: &EncodedKeyRange, key: &EncodedKey) -> bool {
 }
 
 fn outside_root_only<K: Keyspace>(start: Option<GroupId>, end: Option<GroupId>) -> bool {
-	match (K::GROUP_SCOPED, start, end) {
+	match (const { group_scoped::<K>() }, start, end) {
 		(false, Some(start), Some(end)) => !start.is_root() && !end.is_root(),
 		_ => false,
 	}
@@ -84,7 +84,7 @@ impl KeyspaceVisitor for Get<'_> {
 	type Output = Option<Vec<u8>>;
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
-		if !K::GROUP_SCOPED && !self.group.is_root() {
+		if !const { group_scoped::<K>() } && !self.group.is_root() {
 			return None;
 		}
 		typed::get::<K>(self.conn, self.operator, &typed_key::<K>(self.group, self.suffix, lowest::<K>()))
@@ -150,9 +150,10 @@ impl KeyspaceVisitor for Bounded<'_> {
 			true => typed::last::<K>(self.conn, self.operator, &range, self.limit),
 		};
 		let full = self.full;
+		let inside_one_group = const { group_scoped::<K>() };
 		rows.into_iter()
 			.map(|(key, bytes)| (encode::<K>(&key), bytes))
-			.filter(|(key, _)| K::GROUP_SCOPED || within(full, key))
+			.filter(|(key, _)| inside_one_group || within(full, key))
 			.collect()
 	}
 }

@@ -18,17 +18,16 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	key::operator::state::{
-		GroupStateKey, KeyspaceId, OperatorStateKey, group_inner_range_split, keyspace_inner_range_split,
-		node_prefix,
+		GroupStateKey, OperatorStateKey, group_inner_range_split, keyspace_inner_range_split, node_prefix,
 	},
 	metrics::scan::ScanCounters,
 };
-use reifydb_store_operator::{store::state::StateLastIter, types::JOIN_EXPIRY_VALUE_BYTES};
+use reifydb_store_operator::store::state::StateLastIter;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{Span, field, instrument};
 
-use crate::transaction::{FlowTransaction, join_expiry::decode_join_expiry_suffix, scope::scoped_key};
+use crate::transaction::{FlowTransaction, scope::scoped_key};
 
 const PENDING_LAST_PAGE: usize = 64;
 
@@ -122,7 +121,6 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedPodRow) -> Result<()> {
 		let scoped = scoped_key(id, key);
-		classify_state_write(self, id, key, &scoped)?;
 		self.set(&scoped, row.into_bytes())
 	}
 
@@ -132,7 +130,6 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_remove(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<()> {
 		let scoped = scoped_key(id, key);
-		classify_state_write(self, id, key, &scoped)?;
 		self.remove_silent(&scoped)
 	}
 
@@ -306,39 +303,6 @@ fn next_stored(scan: &mut StateLastIter<'_>, prefix: &[u8]) -> Option<(EncodedKe
 		scoped.extend_from_slice(inner.as_slice());
 		(inner, EncodedKey::new(scoped), row.into_bytes())
 	})
-}
-
-#[inline]
-fn classify_state_write<T: FlowTransaction>(
-	txn: &mut T,
-	id: OperatorId,
-	key: &GroupStateKey,
-	scoped: &EncodedKey,
-) -> Result<()> {
-	if key.keyspace() == Some(KeyspaceId::JOIN_ROW_EXPIRY) {
-		return classify_durable_join_expiry(txn, id, key, scoped);
-	}
-	Ok(())
-}
-
-#[inline]
-fn classify_durable_join_expiry<T: FlowTransaction>(
-	txn: &mut T,
-	id: OperatorId,
-	key: &GroupStateKey,
-	scoped: &EncodedKey,
-) -> Result<()> {
-	if txn.is_classified(scoped) {
-		return Ok(());
-	}
-	let Some((group, side, row_number)) = OperatorStateKey::decode_inner(key.as_slice())
-		.and_then(|(group, _, suffix)| decode_join_expiry_suffix(suffix).map(|(side, row)| (group, side, row)))
-	else {
-		return Ok(());
-	};
-	let present = txn.operator_store().join_expiry_get(id, group, side, row_number).is_some();
-	txn.classify(scoped, present.then_some(JOIN_EXPIRY_VALUE_BYTES));
-	Ok(())
 }
 
 #[inline]

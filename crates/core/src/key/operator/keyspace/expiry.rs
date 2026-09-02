@@ -52,7 +52,6 @@ impl Keyspace for Expiry {
 	const ID: KeyspaceId = KeyspaceId::ROLLING_EXPIRY;
 	const NAME: &'static str = "ROLLING_EXPIRY";
 	const CACHE: CacheTiers = CacheTiers::Range;
-	const GROUP_SCOPED: bool = false;
 
 	type Key = ExpiryKey;
 	type Suffix = ExpiryKey;
@@ -73,7 +72,6 @@ impl Keyspace for TumblingExpiry {
 	const ID: KeyspaceId = KeyspaceId::TUMBLING_EXPIRY;
 	const NAME: &'static str = "TUMBLING_EXPIRY";
 	const CACHE: CacheTiers = CacheTiers::Range;
-	const GROUP_SCOPED: bool = true;
 
 	type Key = TumblingExpiryKey;
 	type Suffix = TumblingExpirySuffix;
@@ -106,7 +104,6 @@ impl Keyspace for ReapQueue {
 	const ID: KeyspaceId = KeyspaceId::REAP_QUEUE;
 	const NAME: &'static str = "REAP_QUEUE";
 	const CACHE: CacheTiers = CacheTiers::Both;
-	const GROUP_SCOPED: bool = false;
 
 	type Key = ReapQueueKey;
 	type Suffix = ReapQueueKey;

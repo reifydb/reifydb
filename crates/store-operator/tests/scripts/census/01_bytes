@@ -27,15 +27,6 @@ bytes
 ok
 bytes 1 => 67
 
-# A join expiry is charged a flat 33 key bytes plus 8 value bytes.
-
-join_expiry_set row=1 at=100
-flush
-bytes
----
-ok
-bytes 1 => 108
-
 # A neighbouring operator is billed separately.
 
 set z=9 op=2
@@ -44,21 +35,12 @@ bytes
 bytes op=2
 ---
 ok
-bytes 1 => 108
+bytes 1 => 67
 bytes 2 => 33
 
 # A removed key stops being counted.
 
 remove a
-flush
-bytes
----
-ok
-bytes 1 => 75
-
-# A removed join expiry stops being counted too.
-
-join_expiry_remove row=1
 flush
 bytes
 ---

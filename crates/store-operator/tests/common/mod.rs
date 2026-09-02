@@ -21,10 +21,7 @@ use reifydb_store_operator::{
 	types::{BufferedState, DurablePre, OperatorWrite},
 };
 use reifydb_testing::{keyspace::suffix_width, testscript};
-use reifydb_value::{
-	byte_size::ByteSize,
-	value::{datetime::DateTime, row_number::RowNumber},
-};
+use reifydb_value::byte_size::ByteSize;
 use testscript::command::{ArgumentConsumer, Command};
 
 /// Every script names its keys by a short suffix; the runner wraps that suffix in the group/keyspace frame the
@@ -36,10 +33,6 @@ const DEFAULT_OPERATOR: u64 = 1;
 const DEFAULT_GROUP: u128 = 1;
 
 const DEFAULT_KEYSPACE: u8 = KeyspaceId::GUEST_ACCUMULATOR.0;
-
-const DEFAULT_SIDE: u8 = 0;
-
-const DEFAULT_LIMIT: u64 = 64;
 
 const DEFAULT_BATCH: u64 = 1024;
 
@@ -244,128 +237,6 @@ impl testscript::runner::Runner for Runner {
 				}
 			}
 
-			"join_expiry_set" => {
-				let mut args = command.consume_args();
-				let operator = operator_of(&mut args)?;
-				let group = group_of(&mut args)?;
-				let side = side_of(&mut args)?;
-				let row_number = RowNumber(args.lookup_parse("row")?.ok_or("row not given")?);
-				let expiry: u64 = args.lookup_parse("at")?.ok_or("at not given")?;
-				args.reject_rest()?;
-
-				self.store.join_expiry_set(
-					operator,
-					group,
-					side,
-					row_number,
-					DateTime::from_millis(expiry),
-				);
-				self.maybe_flush();
-			}
-
-			"join_expiry_get" => {
-				let mut args = command.consume_args();
-				let operator = operator_of(&mut args)?;
-				let group = group_of(&mut args)?;
-				let side = side_of(&mut args)?;
-				let row_number = RowNumber(args.lookup_parse("row")?.ok_or("row not given")?);
-				args.reject_rest()?;
-
-				match self.store.join_expiry_get(operator, group, side, row_number) {
-					Some(expiry) => writeln!(
-						output,
-						"join_expiry {}/{} => {}",
-						side,
-						row_number.0,
-						expiry.to_millis()
-					)?,
-					None => writeln!(output, "join_expiry {}/{} => None", side, row_number.0)?,
-				}
-			}
-
-			"join_expiry_remove" => {
-				let mut args = command.consume_args();
-				let operator = operator_of(&mut args)?;
-				let group = group_of(&mut args)?;
-				let side = side_of(&mut args)?;
-				let row_number = RowNumber(args.lookup_parse("row")?.ok_or("row not given")?);
-				args.reject_rest()?;
-
-				self.store.join_expiry_remove(operator, group, side, row_number);
-				self.maybe_flush();
-			}
-
-			"join_expiries_group_remove" => {
-				let mut args = command.consume_args();
-				let operator = operator_of(&mut args)?;
-				let group = group_of(&mut args)?;
-				args.reject_rest()?;
-
-				self.store.join_expiries_remove_group(operator, group);
-				self.maybe_flush();
-			}
-
-			"join_expiries_drop" => {
-				let mut args = command.consume_args();
-				let operator = operator_of(&mut args)?;
-				args.reject_rest()?;
-
-				self.store.join_expiries_drop_operator(operator);
-				self.maybe_flush();
-			}
-
-			"join_expiries_by_time" => {
-				let mut args = command.consume_args();
-				let operator = operator_of(&mut args)?;
-				let group = group_of(&mut args)?;
-				let limit: u64 = args.lookup_parse("limit")?.unwrap_or(DEFAULT_LIMIT);
-				args.reject_rest()?;
-
-				let expiries = self.store.join_expiries_by_time(operator, group, limit);
-				for expiry in &expiries {
-					writeln!(
-						output,
-						"{}/{} => {}",
-						expiry.side,
-						expiry.row_number.0,
-						expiry.at.to_millis()
-					)?;
-				}
-				writeln!(output, "count={}", expiries.len())?;
-			}
-
-			"join_expiries_due" => {
-				let mut args = command.consume_args();
-				let operator = operator_of(&mut args)?;
-				let group = group_of(&mut args)?;
-				let limit: u64 = args.lookup_parse("limit")?.unwrap_or(DEFAULT_LIMIT);
-				let at: u64 = args.lookup_parse("at")?.ok_or("at not given")?;
-				args.reject_rest()?;
-
-				let expiries =
-					self.store.join_expiries_due(operator, group, DateTime::from_millis(at), limit);
-				for expiry in &expiries {
-					writeln!(
-						output,
-						"{}/{} => {}",
-						expiry.side,
-						expiry.row_number.0,
-						expiry.at.to_millis()
-					)?;
-				}
-				writeln!(output, "count={}", expiries.len())?;
-			}
-
-			"join_expiry_census" => {
-				command.consume_args().reject_rest()?;
-
-				let census = self.store.join_expiry_census();
-				for entry in &census {
-					writeln!(output, "operator {} => {}", entry.operator.0, entry.keys)?;
-				}
-				writeln!(output, "count={}", census.len())?;
-			}
-
 			"bytes" => {
 				let mut args = command.consume_args();
 				let operator = operator_of(&mut args)?;
@@ -522,14 +393,6 @@ fn operator_of(args: &mut ArgumentConsumer<'_>) -> Result<OperatorId, Box<dyn St
 	Ok(OperatorId(args.lookup_parse("op")?.unwrap_or(DEFAULT_OPERATOR)))
 }
 
-fn group_of(args: &mut ArgumentConsumer<'_>) -> Result<GroupId, Box<dyn StdError>> {
-	Ok(GroupId(args.lookup_parse("group")?.unwrap_or(DEFAULT_GROUP)))
-}
-
-fn side_of(args: &mut ArgumentConsumer<'_>) -> Result<u8, Box<dyn StdError>> {
-	Ok(args.lookup_parse("side")?.unwrap_or(DEFAULT_SIDE))
-}
-
 fn keyspace_of(args: &mut ArgumentConsumer<'_>) -> Result<u8, Box<dyn StdError>> {
 	match args.lookup("ks") {
 		Some(arg) => parse_keyspace(&arg.value),
@@ -551,7 +414,6 @@ fn parse_batch(store: &OperatorStore, command: &Command) -> Result<BatchArgs, Bo
 	let mut operator = OperatorId(DEFAULT_OPERATOR);
 	let mut keyspace = DEFAULT_KEYSPACE;
 	let mut pending_state: BTreeMap<(OperatorId, EncodedKey), Option<ByteSize>> = BTreeMap::new();
-	let mut pending_join_expiries: BTreeMap<(OperatorId, GroupId, u8, RowNumber), bool> = BTreeMap::new();
 	let mut writes: Vec<OperatorWrite> = Vec::new();
 	let mut checkpoints: Vec<(FlowId, CommitVersion)> = Vec::new();
 	let mut deletes: Vec<FlowId> = Vec::new();
@@ -578,58 +440,6 @@ fn parse_batch(store: &OperatorStore, command: &Command) -> Result<BatchArgs, Bo
 				pending_state.insert((operator, key.clone()), None);
 				writes.push(state_remove(operator, key, pre));
 			}
-			"join_expiry_set" => {
-				let parts: Vec<&str> = arg.value.split('/').collect();
-				if parts.len() != 4 {
-					return Err("join_expiry_set needs group/side/row/millis".into());
-				}
-				let group = GroupId(parts[0].parse()?);
-				let side: u8 = parts[1].parse()?;
-				let row_num = RowNumber(parts[2].parse()?);
-				let at = DateTime::from_millis(parts[3].parse()?);
-				let held = pending_join_expiry(
-					store,
-					&pending_join_expiries,
-					operator,
-					group,
-					side,
-					row_num,
-				);
-				pending_join_expiries.insert((operator, group, side, row_num), true);
-				writes.push(match held {
-					true => OperatorWrite::JoinExpiryReplace {
-						operator,
-						group,
-						side,
-						row_num,
-						at,
-					},
-					false => OperatorWrite::JoinExpiryInsert {
-						operator,
-						group,
-						side,
-						row_num,
-						at,
-					},
-				});
-			}
-			"join_expiry_remove" => {
-				let parts: Vec<&str> = arg.value.split('/').collect();
-				if parts.len() != 3 {
-					return Err("join_expiry_remove needs group/side/row".into());
-				}
-				let group = GroupId(parts[0].parse()?);
-				let side: u8 = parts[1].parse()?;
-				let row_num = RowNumber(parts[2].parse()?);
-				pending_join_expiries.insert((operator, group, side, row_num), false);
-				writes.push(OperatorWrite::JoinExpiryRemove {
-					operator,
-					group,
-					side,
-					row_num,
-					pre: DurablePre::Present(ByteSize::ZERO),
-				});
-			}
 			"ckpt" => {
 				let (flow, version) = arg.value.split_once('/').ok_or("ckpt needs flow/version")?;
 				checkpoints.push((FlowId(flow.parse()?), CommitVersion(version.parse()?)));
@@ -655,20 +465,6 @@ fn pending_pre(
 	match overlay.get(&(operator, key.clone())) {
 		Some(pending) => *pending,
 		None => durable_pre(store, operator, key),
-	}
-}
-
-fn pending_join_expiry(
-	store: &OperatorStore,
-	overlay: &BTreeMap<(OperatorId, GroupId, u8, RowNumber), bool>,
-	operator: OperatorId,
-	group: GroupId,
-	side: u8,
-	row_num: RowNumber,
-) -> bool {
-	match overlay.get(&(operator, group, side, row_num)) {
-		Some(pending) => *pending,
-		None => store.join_expiry_get(operator, group, side, row_num).is_some(),
 	}
 }
 
@@ -725,7 +521,6 @@ impl SeedDurable for SqliteOperatorStorage {
 					key,
 					..
 				} => (*operator, key, None),
-				_ => continue,
 			};
 			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
 				.expect("a seeded key must name a group and a keyspace");

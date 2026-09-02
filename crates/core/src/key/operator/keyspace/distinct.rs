@@ -32,7 +32,6 @@ impl Keyspace for DistinctEntry {
 	const ID: KeyspaceId = KeyspaceId::DISTINCT_ENTRY;
 	const NAME: &'static str = "DISTINCT_ENTRY";
 	const CACHE: CacheTiers = CacheTiers::Both;
-	const GROUP_SCOPED: bool = true;
 
 	type Key = DistinctEntryKey;
 	type Suffix = ();
@@ -55,7 +54,6 @@ impl Keyspace for DistinctLayout {
 	const ID: KeyspaceId = KeyspaceId::DISTINCT_LAYOUT;
 	const NAME: &'static str = "DISTINCT_LAYOUT";
 	const CACHE: CacheTiers = CacheTiers::Both;
-	const GROUP_SCOPED: bool = false;
 
 	type Key = DistinctLayoutKey;
 	type Suffix = DistinctLayoutKey;

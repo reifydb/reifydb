@@ -9,11 +9,10 @@ pub mod root;
 pub mod timer;
 pub mod window;
 
+use reifydb_codec::row::{operator::state::OperatorState, pod::EncodedPodRow};
+
 #[cfg(test)]
-use crate::{
-	key::{operator::state::GroupId, typed::Key},
-	state::typed::SuffixBytes,
-};
+use crate::key::{operator::traits::group_scoped, typed::Key};
 use crate::{
 	interface::store::CacheTiers,
 	key::{
@@ -22,8 +21,9 @@ use crate::{
 				distinct::{DistinctEntry, DistinctLayout},
 				expiry::{Expiry, ReapQueue, TumblingExpiry},
 				join::{
-					JoinLeft, JoinPin, JoinPublished, JoinRight, JoinRowExpiry, JoinRowMapping,
-					JoinSchema,
+					JoinExpiryDue, JoinLeft, JoinPin, JoinPublished, JoinRight, JoinRowExpiry,
+					JoinRowExpiryState, JoinRowExpirySuffix, JoinRowMapping, JoinSchema,
+					join_expiry_due_key,
 				},
 				ringbuffer::{
 					PartitionedRingbufferEntry, PartitionedRingbufferExpiry,
@@ -40,11 +40,12 @@ use crate::{
 					GuestRunning, RollingMeta, RowIndex, Running, Session, WindowMeta,
 				},
 			},
-			state::KeyspaceId,
+			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 			traits::Keyspace,
 		},
 		typed::layout::{KeyColumn, KeyLayout},
 	},
+	state::typed::SuffixBytes,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -124,8 +125,12 @@ macro_rules! catalogue {
 		}
 
 		#[cfg(test)]
-		fn every_keyspace_declares_its_shape() {
-			$(declares_its_shape::<$keyspace>();)*
+		fn group_scoped_keyspaces() -> usize {
+			let mut count = 0;
+			$(if group_scoped::<$keyspace>() {
+				count += 1;
+			})*
+			count
 		}
 	};
 }
@@ -150,6 +155,7 @@ catalogue!(
 	JoinPin,
 	JoinSchema,
 	JoinRowExpiry,
+	JoinExpiryDue,
 	JoinRowMapping,
 	RingbufferForward,
 	RingbufferEntry,
@@ -175,6 +181,89 @@ catalogue!(
 	GuestRowMapping,
 	CustomNotCached,
 );
+
+#[derive(Clone, Debug)]
+pub enum RootSibling {
+	Derived(GroupStateKey),
+	OwnerCleared,
+	None,
+}
+
+pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &EncodedPodRow) -> RootSibling {
+	match keyspace {
+		KeyspaceId::JOIN_ROW_EXPIRY => join_row_expiry_sibling(group, suffix, row),
+
+		KeyspaceId::ACCUMULATOR
+		| KeyspaceId::BUFFER
+		| KeyspaceId::RUNNING
+		| KeyspaceId::COUNT
+		| KeyspaceId::SESSION
+		| KeyspaceId::ROLLING_META
+		| KeyspaceId::ENGINE_META
+		| KeyspaceId::EMIT
+		| KeyspaceId::ROW_INDEX
+		| KeyspaceId::WINDOW_META
+		| KeyspaceId::GUEST_ACCUMULATOR
+		| KeyspaceId::GUEST_BUFFER
+		| KeyspaceId::GUEST_RUNNING
+		| KeyspaceId::JOIN_LEFT
+		| KeyspaceId::JOIN_RIGHT => RootSibling::OwnerCleared,
+
+		KeyspaceId::JOIN_PUBLISHED
+		| KeyspaceId::JOIN_PIN
+		| KeyspaceId::JOIN_SCHEMA
+		| KeyspaceId::JOIN_EXPIRY_DUE
+		| KeyspaceId::JOIN_ROW_MAPPING
+		| KeyspaceId::DISTINCT_ENTRY
+		| KeyspaceId::DISTINCT_LAYOUT
+		| KeyspaceId::ROLLING_EXPIRY
+		| KeyspaceId::TUMBLING_EXPIRY
+		| KeyspaceId::REAP_QUEUE
+		| KeyspaceId::SOURCE_WATERMARK
+		| KeyspaceId::SEAL_LEDGER
+		| KeyspaceId::NODE_COUNTER
+		| KeyspaceId::GATE_VISIBILITY
+		| KeyspaceId::GROUP_ROW_MAPPING
+		| KeyspaceId::GUEST_ROW_MAPPING
+		| KeyspaceId::CUSTOM_NOT_CACHED
+		| KeyspaceId::RINGBUFFER_FORWARD
+		| KeyspaceId::RINGBUFFER_ENTRY
+		| KeyspaceId::RINGBUFFER_EXPIRY
+		| KeyspaceId::RINGBUFFER_TTL_ARM
+		| KeyspaceId::RINGBUFFER_META
+		| KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY
+		| KeyspaceId::PARTITIONED_RINGBUFFER_EXPIRY
+		| KeyspaceId::PARTITIONED_RINGBUFFER_TTL_ARM
+		| KeyspaceId::PARTITIONED_RINGBUFFER_META
+		| KeyspaceId::TIMER_WHEEL
+		| KeyspaceId::TIMER_INDEX => RootSibling::None,
+
+		other => panic!(
+			"keyspace {} answers nothing about root siblings; a keyspace that reaches a group sweep \
+			 unclassified would leave whatever it points at outside the group orphaned behind a group \
+			 id nothing can resolve again",
+			other.name()
+		),
+	}
+}
+
+fn join_row_expiry_sibling(group: GroupId, suffix: &[u8], row: &EncodedPodRow) -> RootSibling {
+	let Some(suffix) = JoinRowExpirySuffix::from_suffix_bytes(suffix) else {
+		panic!("a join row expiry key carries a suffix that keyspace cannot decode");
+	};
+	let at = match JoinRowExpiryState::decode_state(row) {
+		Ok(state) => state.at,
+		Err(err) => {
+			panic!("a join row expiry row will not decode, so its due index key cannot be derived: {err}")
+		}
+	};
+	RootSibling::Derived(join_expiry_due_key(at, group, suffix.side.0, suffix.row.0))
+}
+
+pub fn root_sibling_of(key: &GroupStateKey, row: &EncodedPodRow) -> Option<RootSibling> {
+	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())?;
+	Some(root_sibling(group, keyspace, suffix, row))
+}
 
 #[cfg(test)]
 fn round_trips<K: Keyspace>() {
@@ -208,22 +297,6 @@ fn round_trips<K: Keyspace>() {
 }
 
 #[cfg(test)]
-fn declares_its_shape<K: Keyspace>() {
-	// GROUP_SCOPED is written by hand on all forty three impls and nothing stops it drifting from the key
-	// it describes; a keyspace is group-scoped exactly when its key is its suffix behind one leading group
-	// column, so the layout is the only witness that can contradict the declaration
-	let key_columns = <K::Key as KeyLayout>::COLUMNS;
-	let suffix_columns = <K::Suffix as KeyLayout>::COLUMNS;
-	let carries_group = key_columns.len() == suffix_columns.len() + 1 && key_columns[0].name == "group";
-	assert_eq!(
-		K::GROUP_SCOPED,
-		carries_group,
-		"{}: GROUP_SCOPED disagrees with the key layout it is meant to describe",
-		K::NAME
-	);
-}
-
-#[cfg(test)]
 fn carries_its_group<K: Keyspace>() {
 	// a keyspace whose typed layout drops the group answers every group's read with one shared row: the
 	// sqlite primary key loses the column, so writes from different groups overwrite each other and reads
@@ -231,14 +304,15 @@ fn carries_its_group<K: Keyspace>() {
 	// hardcodes ROOT still returns the suffix it was handed. A keyspace is group-scoped exactly when its
 	// key is its suffix behind a leading group column; one whose key adds nothing to its suffix carries
 	// the group as payload at most, is ROOT-only by construction, and must collapse every group to ROOT.
-	let group_scoped = K::GROUP_SCOPED;
+	let inside_one_group = group_scoped::<K>();
 	let mut suffix = <K::Suffix as Key>::low();
 	for step in 0..4 {
 		for group in [GroupId::ROOT, GroupId(1), GroupId(9), GroupId(u128::MAX)] {
 			let (back, _) = K::split(&K::join(group, suffix.clone()));
-			if group_scoped {
+			if inside_one_group {
 				assert_eq!(
-					back, group,
+					back,
+					group,
 					"{}: step {step}: a group must survive join then split",
 					K::NAME
 				);
@@ -252,7 +326,7 @@ fn carries_its_group<K: Keyspace>() {
 				);
 			}
 		}
-		if group_scoped {
+		if inside_one_group {
 			let distinct = K::join(GroupId(1), suffix.clone());
 			let other = K::join(GroupId(9), suffix.clone());
 			assert_ne!(
@@ -273,14 +347,55 @@ fn carries_its_group<K: Keyspace>() {
 mod tests {
 	use std::collections::HashSet;
 
+	use reifydb_codec::row::operator::state::OperatorState;
+	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+
 	use super::{
-		KEYSPACES, every_keyspace_carries_its_group, every_keyspace_declares_its_shape,
-		every_keyspace_round_trips,
+		KEYSPACES, RootSibling, every_keyspace_carries_its_group, every_keyspace_round_trips,
+		group_scoped_keyspaces, root_sibling,
 	};
-	use crate::{interface::store::CacheTiers, key::operator::state::KeyspaceId};
+	use crate::{
+		interface::store::CacheTiers,
+		key::{
+			operator::{
+				keyspace::join::{JoinRowExpiryState, JoinRowExpirySuffix},
+				state::{GroupId, KeyspaceId},
+			},
+			typed::direction::Asc,
+		},
+		state::typed::SuffixBytes,
+	};
 
 	fn catalogue() -> Vec<(&'static str, KeyspaceId, CacheTiers)> {
 		KEYSPACES.iter().map(|spec| (spec.name, spec.id, spec.cache)).collect()
+	}
+
+	#[test]
+	fn every_registered_keyspace_answers_what_it_implies_outside_its_group() {
+		// A keyspace that never answers reaches a group sweep unclassified and orphans whatever it points at
+		// outside the group.
+		let suffix = JoinRowExpirySuffix {
+			side: Asc(0),
+			row: Asc(RowNumber(1)),
+		}
+		.to_suffix_bytes();
+		let row = JoinRowExpiryState {
+			at: DateTime::default(),
+		}
+		.encode_state()
+		.unwrap();
+		let mut derived = Vec::new();
+		for spec in KEYSPACES {
+			if let RootSibling::Derived(_) = root_sibling(GroupId(7), spec.id, &suffix, &row) {
+				derived.push(spec.name);
+			}
+		}
+		assert_eq!(
+			derived,
+			vec!["JOIN_ROW_EXPIRY"],
+			"only a keyspace whose ROOT key is a function of its own key and row may be reaped by \
+			 construction; any other name here claims a derivation it does not have"
+		);
 	}
 
 	#[test]
@@ -302,7 +417,7 @@ mod tests {
 		for (name, id, _) in catalogue() {
 			assert!(seen.insert(id), "{name} reuses an id another keyspace already claims");
 		}
-		assert_eq!(seen.len(), 43, "the catalogue is forty three keyspaces");
+		assert_eq!(seen.len(), 44, "the catalogue is forty four keyspaces");
 	}
 
 	#[test]
@@ -322,10 +437,18 @@ mod tests {
 	}
 
 	#[test]
-	fn every_keyspace_declares_the_scope_its_key_layout_shows() {
-		// the declaration is what the write guard and the sweep both trust; if it says group-scoped while the
-		// key holds no group column, every group's row collapses onto one primary key and the guard stays quiet
-		every_keyspace_declares_its_shape();
+	fn exactly_twenty_four_of_the_forty_four_keyspaces_are_group_scoped() {
+		// a dropped group column silently reclassifies a keyspace and the sweep follows it
+		assert_eq!(
+			KEYSPACES.len(),
+			44,
+			"a keyspace was added or removed without revisiting the group scope split"
+		);
+		assert_eq!(
+			group_scoped_keyspaces(),
+			24,
+			"a keyspace changed group scope; confirm its key layout meant to"
+		);
 	}
 
 	#[test]

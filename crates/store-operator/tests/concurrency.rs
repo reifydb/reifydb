@@ -365,7 +365,6 @@ impl SeedDurable for SqliteOperatorStorage {
 					key,
 					..
 				} => (*operator, key, None),
-				_ => continue,
 			};
 			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
 				.expect("a seeded key must name a group and a keyspace");

@@ -19,21 +19,7 @@ total_bytes => 66
 bytes 1 => 33
 bytes 2 => 33
 
-# Join expiries count towards the total at the same flat rate they do per operator.
-
-join_expiry_set row=1 at=100
-join_expiry_set row=2 at=200 op=2
-flush
-total_bytes
-bytes
-bytes op=2
----
-ok
-total_bytes => 148
-bytes 1 => 74
-bytes 2 => 74
-
-# Dropping one operator's state takes its join expiries with it and leaves the neighbour's share standing.
+# Dropping one operator's state leaves the neighbour's share standing.
 
 drop_state
 flush
@@ -42,6 +28,6 @@ bytes
 bytes op=2
 ---
 ok
-total_bytes => 74
+total_bytes => 33
 bytes 1 => 0
-bytes 2 => 74
+bytes 2 => 33

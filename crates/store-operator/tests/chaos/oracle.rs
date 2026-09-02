@@ -9,12 +9,9 @@ use std::{collections::BTreeMap, ops::Bound};
 
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::key::operator::state::OperatorStateKey;
-use reifydb_store_operator::types::{JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES};
 use reifydb_value::byte_size::ByteSize;
 
 type StateKey = (u64, Vec<u8>);
-
-type JoinExpiryKey = (u64, u64, u8, u64);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CensusRow {
@@ -25,17 +22,9 @@ pub struct CensusRow {
 	pub value_bytes: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct JoinExpiryRow {
-	pub expiry: u64,
-	pub side: u8,
-	pub row_number: u64,
-}
-
 #[derive(Clone, Default)]
 pub struct Oracle {
 	state: BTreeMap<StateKey, EncodedPodRow>,
-	join_expiries: BTreeMap<JoinExpiryKey, u64>,
 	checkpoints: BTreeMap<u64, u64>,
 }
 
@@ -50,25 +39,6 @@ impl Oracle {
 
 	pub fn drop_operator_state(&mut self, operator: u64) {
 		self.state.retain(|(candidate, _), _| *candidate != operator);
-		self.join_expiries.retain(|(candidate, _, _, _), _| *candidate != operator);
-	}
-
-	pub fn join_expiry_set(&mut self, operator: u64, group: u64, side: u8, row_number: u64, expiry: u64) {
-		self.join_expiries.insert((operator, group, side, row_number), expiry);
-	}
-
-	pub fn join_expiry_remove(&mut self, operator: u64, group: u64, side: u8, row_number: u64) {
-		self.join_expiries.remove(&(operator, group, side, row_number));
-	}
-
-	pub fn join_expiries_remove_group(&mut self, operator: u64, group: u64) {
-		self.join_expiries.retain(|(candidate, candidate_group, _, _), _| {
-			*candidate != operator || *candidate_group != group
-		});
-	}
-
-	pub fn join_expiries_drop_operator(&mut self, operator: u64) {
-		self.join_expiries.retain(|(candidate, _, _, _), _| *candidate != operator);
 	}
 
 	pub fn checkpoint_set(&mut self, flow: u64, version: u64) {
@@ -101,15 +71,6 @@ impl Oracle {
 	/// held key happen at all.
 	pub fn nth_state_slot(&self, index: usize) -> Option<(u64, Vec<u8>)> {
 		self.state.keys().nth(index).cloned()
-	}
-
-	pub fn join_expiry_len(&self) -> usize {
-		self.join_expiries.len()
-	}
-
-	/// Indexed sampling over the live join expiry slots, for the same reason `nth_state_slot` exists.
-	pub fn nth_join_expiry_slot(&self, index: usize) -> Option<(u64, u64, u8, u64)> {
-		self.join_expiries.keys().nth(index).copied()
 	}
 
 	pub fn checkpoint_get(&self, flow: u64) -> Option<u64> {
@@ -153,59 +114,17 @@ impl Oracle {
 		buckets.into_values().collect()
 	}
 
-	pub fn join_expiry_census(&self) -> Vec<(u64, u64)> {
-		let mut buckets: BTreeMap<u64, u64> = BTreeMap::new();
-		for (operator, _, _, _) in self.join_expiries.keys() {
-			*buckets.entry(*operator).or_insert(0) += 1;
-		}
-		buckets.into_iter().collect()
-	}
-
 	pub fn bytes(&self, operator: u64) -> u64 {
-		let state: u64 = self
-			.state
+		self.state
 			.iter()
 			.filter(|((candidate, _), _)| *candidate == operator)
 			.map(|((_, key), row)| (key.len() - 1 + row.bytes().len()) as u64)
-			.sum();
-		let join_expiries =
-			self.join_expiries.keys().filter(|(candidate, _, _, _)| *candidate == operator).count() as u64;
-		state + join_expiry_bytes(join_expiries)
+			.sum()
 	}
 
 	pub fn total_bytes(&self) -> u64 {
-		let state: u64 =
-			self.state.iter().map(|((_, key), row)| (key.len() - 1 + row.bytes().len()) as u64).sum();
-		state + join_expiry_bytes(self.join_expiries.len() as u64)
+		self.state.iter().map(|((_, key), row)| (key.len() - 1 + row.bytes().len()) as u64).sum()
 	}
-
-	pub fn join_expiry_get(&self, operator: u64, group: u64, side: u8, row_number: u64) -> Option<u64> {
-		self.join_expiries.get(&(operator, group, side, row_number)).copied()
-	}
-
-	/// Every join expiry of the group that qualifies, ordered by expiry then by slot. A tier is free to break
-	/// expiry ties differently, so callers compare expiries positionally and slots as a set.
-	pub fn eligible_join_expiries(&self, operator: u64, group: u64, due: Option<u64>) -> Vec<JoinExpiryRow> {
-		let mut rows: Vec<JoinExpiryRow> = self
-			.join_expiries
-			.iter()
-			.filter(|((candidate, candidate_group, _, _), _)| {
-				*candidate == operator && *candidate_group == group
-			})
-			.filter(|(_, expiry)| due.is_none_or(|at| **expiry <= at))
-			.map(|((_, _, side, row_number), expiry)| JoinExpiryRow {
-				expiry: *expiry,
-				side: *side,
-				row_number: *row_number,
-			})
-			.collect();
-		rows.sort_by_key(|row| (row.expiry, row.side, row.row_number));
-		rows
-	}
-}
-
-fn join_expiry_bytes(count: u64) -> u64 {
-	(JOIN_EXPIRY_KEY_BYTES.as_bytes() + JOIN_EXPIRY_VALUE_BYTES.as_bytes()) * count
 }
 
 fn in_bounds(key: &[u8], start: &Bound<Vec<u8>>, end: &Bound<Vec<u8>>) -> bool {

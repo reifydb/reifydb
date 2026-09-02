@@ -181,9 +181,6 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		let mut merged = BTreeMap::new();
 		self.pending_layers().collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 		let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
-		if pending_vec.len() >= 64 && std::env::var_os("REIFYDB_TIMER_PROFILE").is_some() {
-			println!("RANGEPROF pending_in_range={}", pending_vec.len());
-		}
 		let version = self.version();
 		let storage_iter = self.storage_range(range, scope, batch_size);
 		Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, version))

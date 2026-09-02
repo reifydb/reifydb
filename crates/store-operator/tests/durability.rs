@@ -27,18 +27,13 @@ use reifydb_store_operator::{
 	types::OperatorWrite,
 };
 use reifydb_testing::{keyspace::state_key, tempdir::temp_dir};
-use reifydb_value::{
-	byte_size::ByteSize,
-	value::{datetime::DateTime, row_number::RowNumber},
-};
+use reifydb_value::byte_size::ByteSize;
 
 const OP: OperatorId = OperatorId(1);
 
 const OTHER: OperatorId = OperatorId(2);
 
 const GROUP: GroupId = GroupId(1);
-
-const SIDE: u8 = 0;
 
 const FLOW: FlowId = FlowId(7);
 
@@ -231,7 +226,6 @@ fn a_drop_recorded_before_a_flush_is_still_a_drop_after_a_restart() {
 		let store = store_at(dir);
 		put(&store, OP, key(1), row("before"));
 		put(&store, OTHER, key(1), row("neighbour"));
-		store.join_expiry_set(OP, GROUP, SIDE, RowNumber(1), DateTime::from_millis(100));
 		assert!(store.flush_pending_blocking(), "the pre-drop rows must be durable for the drop to have work");
 
 		store.drop_operator_state(OP);
@@ -244,10 +238,6 @@ fn a_drop_recorded_before_a_flush_is_still_a_drop_after_a_restart() {
 			booted.get(OP, &key(1)).is_none(),
 			"the marker must erase the rows it only masked in memory, otherwise the drop is undone by the \
 			 first restart"
-		);
-		assert!(
-			booted.join_expiry_get(OP, GROUP, SIDE, RowNumber(1)).is_none(),
-			"dropping operator state takes that operator's join expiries with it"
 		);
 		assert_eq!(
 			body(&booted, OP, 2).as_deref(),

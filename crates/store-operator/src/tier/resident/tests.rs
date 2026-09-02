@@ -29,7 +29,7 @@ use reifydb_core::{
 };
 use reifydb_value::{
 	byte_size::ByteSize,
-	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{duration::Duration, row_number::RowNumber},
 };
 
 use crate::{
@@ -37,21 +37,16 @@ use crate::{
 		bucket::write::WriteEntry,
 		resident::{
 			OperatorResidentState,
-			batch::{DropMarker, FlushBatch, JOIN_EXPIRY_ENTRY_BYTES},
+			batch::{DropMarker, FlushBatch},
 		},
 	},
-	types::{
-		BufferedJoinExpiry, BufferedState, DurablePre, JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES,
-		OperatorStateCensus, OperatorWrite, StoredJoinRowExpiryCensus,
-	},
+	types::{BufferedState, DurablePre, OperatorStateCensus, OperatorWrite},
 };
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
 const FLOW_A: FlowId = FlowId(101);
 const FLOW_B: FlowId = FlowId(102);
-const GROUP_A: GroupId = GroupId(10);
-const GROUP_B: GroupId = GroupId(11);
 
 fn insert(operator: OperatorId, name: &str, value: &str) -> OperatorWrite {
 	OperatorWrite::Insert {
@@ -210,7 +205,6 @@ fn taken_entries_stay_readable_until_the_flush_completes() {
 	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k"), row("v"));
 	buffer.record_state_remove(OP_A, key("gone"));
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(500));
 	buffer.record_checkpoint_set(FlowId(3), CommitVersion(9));
 
 	let batch = buffer.take_for_flush().expect("a non-empty live batch must be handed to the flusher");
@@ -231,11 +225,6 @@ fn taken_entries_stay_readable_until_the_flush_completes() {
 		"a taken tombstone must stay a tombstone until the delete is durable"
 	);
 	assert_eq!(
-		buffer.lookup_join_expiry(OP_A, GROUP_A, 0, RowNumber(1)),
-		BufferedJoinExpiry::Expiry(500),
-		"join expiries ride the same in-flight layer as state"
-	);
-	assert_eq!(
 		buffer.lookup_checkpoint(FlowId(3)),
 		Some(Some(CommitVersion(9))),
 		"the checkpoint is only durable once its transaction commits"
@@ -253,7 +242,6 @@ fn taken_entries_stay_readable_until_the_flush_completes() {
 		BufferedState::Absent,
 		"a flushed tombstone must stop shadowing sqlite, otherwise the key is hidden forever"
 	);
-	assert_eq!(buffer.lookup_join_expiry(OP_A, GROUP_A, 0, RowNumber(1)), BufferedJoinExpiry::Absent);
 	assert!(buffer.lookup_checkpoint(FlowId(3)).is_none());
 }
 
@@ -262,12 +250,10 @@ fn a_live_write_shadows_the_same_key_in_the_in_flight_batch() {
 	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k"), row("old"));
 	buffer.record_state_set(OP_A, key("doomed"), row("old"));
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
 
 	buffer.record_state_set(OP_A, key("k"), row("new"));
 	buffer.record_state_remove(OP_A, key("doomed"));
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(900));
 
 	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k")) else {
 		panic!("the live write must be visible")
@@ -277,11 +263,6 @@ fn a_live_write_shadows_the_same_key_in_the_in_flight_batch() {
 		buffer.lookup_state(OP_A, &key("doomed")),
 		BufferedState::Tombstone,
 		"a live tombstone must hide the in-flight value, otherwise a delete is silently undone"
-	);
-	assert_eq!(
-		buffer.lookup_join_expiry(OP_A, GROUP_A, 0, RowNumber(1)),
-		BufferedJoinExpiry::Expiry(900),
-		"the newer expiry must win, otherwise the seal fires against a superseded deadline"
 	);
 }
 
@@ -395,33 +376,10 @@ fn seeded_two_layer_buffer_with_dropped_operator() -> OperatorResidentState {
 }
 
 #[test]
-fn join_expiries_for_group_overlays_the_in_flight_batch_and_keeps_tombstones() {
-	let buffer = OperatorResidentState::new();
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(2), DateTime::from_millis(200));
-	buffer.record_join_expiry_set(OP_A, GROUP_B, 0, RowNumber(3), DateTime::from_millis(300));
-	buffer.record_join_expiry_set(OP_B, GROUP_A, 0, RowNumber(4), DateTime::from_millis(400));
-	buffer.take_for_flush().expect("the seeded batch must be takeable");
-
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(2), DateTime::from_millis(250));
-	buffer.record_join_expiry_remove(OP_A, GROUP_A, 1, RowNumber(5));
-
-	let join_expiries = buffer.join_expiries_for_group(OP_A, GROUP_A).join_expiries;
-	assert_eq!(
-		join_expiries,
-		vec![((0u8, RowNumber(1)), Some(100)), ((0u8, RowNumber(2)), Some(250)), ((1u8, RowNumber(5)), None),],
-		"the scan must stay inside one operator and group, overlay the live expiry, and keep the \
-		 tombstone so the sqlite merge never re-arms a removed join expiry"
-	);
-}
-
-#[test]
 fn a_drop_clears_what_came_before_it_and_keeps_what_came_after() {
 	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("before"), row("v"));
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	buffer.record_state_set(OP_B, key("untouched"), row("v"));
-	buffer.record_join_expiry_set(OP_B, GROUP_A, 0, RowNumber(2), DateTime::from_millis(200));
 
 	buffer.record_drop(DropMarker::OperatorState(OP_A));
 
@@ -432,11 +390,6 @@ fn a_drop_clears_what_came_before_it_and_keeps_what_came_after() {
 		BufferedState::Dropped,
 		"a write the drop erased must never be replayed into sqlite behind the drop"
 	);
-	assert_eq!(
-		buffer.lookup_join_expiry(OP_A, GROUP_A, 0, RowNumber(1)),
-		BufferedJoinExpiry::Dropped,
-		"dropping operator state takes that operator's join expiries with it"
-	);
 	assert!(
 		matches!(buffer.lookup_state(OP_A, &key("after")), BufferedState::Row(_)),
 		"a write recorded after the drop must survive it, otherwise a recreated operator loses state"
@@ -445,7 +398,6 @@ fn a_drop_clears_what_came_before_it_and_keeps_what_came_after() {
 		matches!(buffer.lookup_state(OP_B, &key("untouched")), BufferedState::Row(_)),
 		"the drop is scoped to one operator"
 	);
-	assert!(matches!(buffer.lookup_join_expiry(OP_B, GROUP_A, 0, RowNumber(2)), BufferedJoinExpiry::Expiry(_)));
 
 	let batch = buffer.take_for_flush().expect("the batch carries the marker and the later write");
 	assert_eq!(
@@ -454,42 +406,6 @@ fn a_drop_clears_what_came_before_it_and_keeps_what_came_after() {
 		"the marker must reach the flusher; clearing memory alone leaves the sqlite rows behind"
 	);
 	assert_eq!(batch.state.len(), 2, "only the post-drop write and the other operator's write remain");
-}
-
-#[test]
-fn a_join_expiry_drop_clears_only_the_join_expiries_it_names() {
-	let buffer = OperatorResidentState::new();
-	buffer.record_state_set(OP_A, key("k"), row("v"));
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
-	buffer.record_join_expiry_set(OP_A, GROUP_B, 0, RowNumber(2), DateTime::from_millis(200));
-
-	buffer.record_drop(DropMarker::JoinExpiriesGroup(OP_A, GROUP_A));
-
-	assert_eq!(
-		buffer.lookup_join_expiry(OP_A, GROUP_A, 0, RowNumber(1)),
-		BufferedJoinExpiry::Dropped,
-		"the named group's join expiries must be gone"
-	);
-	assert!(
-		matches!(buffer.lookup_join_expiry(OP_A, GROUP_B, 0, RowNumber(2)), BufferedJoinExpiry::Expiry(_)),
-		"a sibling group keeps its join expiries, otherwise one group's drop wipes another's timers"
-	);
-	assert!(
-		matches!(buffer.lookup_state(OP_A, &key("k")), BufferedState::Row(_)),
-		"a join expiry drop must never touch operator state"
-	);
-
-	buffer.record_drop(DropMarker::JoinExpiriesOperator(OP_A));
-
-	assert_eq!(
-		buffer.lookup_join_expiry(OP_A, GROUP_B, 0, RowNumber(2)),
-		BufferedJoinExpiry::Dropped,
-		"an operator-wide join expiry drop covers every group"
-	);
-	assert!(
-		matches!(buffer.lookup_state(OP_A, &key("k")), BufferedState::Row(_)),
-		"an operator-wide join expiry drop still leaves the state alone"
-	);
 }
 
 #[test]
@@ -594,20 +510,6 @@ fn apply_batch_maps_every_write_variant_onto_its_entry() {
 			key: key("removed"),
 			pre: DurablePre::Absent,
 		},
-		OperatorWrite::JoinExpiryInsert {
-			operator: OP_A,
-			group: GROUP_A,
-			side: 1,
-			row_num: RowNumber(7),
-			at: DateTime::from_millis(1_234),
-		},
-		OperatorWrite::JoinExpiryRemove {
-			operator: OP_A,
-			group: GROUP_A,
-			side: 1,
-			row_num: RowNumber(8),
-			pre: DurablePre::Present(JOIN_EXPIRY_ENTRY_BYTES),
-		},
 	]);
 
 	let BufferedState::Row(set) = buffer.lookup_state(OP_A, &key("set")) else {
@@ -619,16 +521,6 @@ fn apply_batch_maps_every_write_variant_onto_its_entry() {
 		BufferedState::Tombstone,
 		"a Remove must land as a tombstone, not as a missing entry"
 	);
-	assert_eq!(
-		buffer.lookup_join_expiry(OP_A, GROUP_A, 1, RowNumber(7)),
-		BufferedJoinExpiry::Expiry(1_234),
-		"a join expiry set is stored as millis, matching the memory tier and the sqlite column"
-	);
-	assert_eq!(
-		buffer.lookup_join_expiry(OP_A, GROUP_A, 1, RowNumber(8)),
-		BufferedJoinExpiry::Tombstone,
-		"a JoinExpiryRemove must tombstone the slot so the sqlite join expiry is not read back as live"
-	);
 }
 
 #[test]
@@ -636,20 +528,11 @@ fn a_combined_apply_lands_the_state_and_the_checkpoints_in_one_taken_batch() {
 	let buffer = OperatorResidentState::new();
 
 	buffer.apply_batch_with_checkpoints(
-		&[
-			OperatorWrite::Insert {
-				operator: OP_A,
-				key: key("state"),
-				post: row("v"),
-			},
-			OperatorWrite::JoinExpiryInsert {
-				operator: OP_A,
-				group: GROUP_A,
-				side: 0,
-				row_num: RowNumber(1),
-				at: DateTime::from_millis(700),
-			},
-		],
+		&[OperatorWrite::Insert {
+			operator: OP_A,
+			key: key("state"),
+			post: row("v"),
+		}],
 		&[(FlowId(3), CommitVersion(12))],
 		&[FlowId(4)],
 	);
@@ -660,11 +543,6 @@ fn a_combined_apply_lands_the_state_and_the_checkpoints_in_one_taken_batch() {
 		entry_body(&batch.state.get(&(OP_A, key("state"))).expect("the state write must be in the batch")),
 		"v",
 		"the state of the committed slice must ride the same batch as its checkpoint"
-	);
-	assert_eq!(
-		batch.join_expiries.get(&(OP_A, GROUP_A, 0, RowNumber(1))).copied(),
-		Some(Some(700)),
-		"join expiries are part of the same slice, so they must not be split from the checkpoint either"
 	);
 	assert_eq!(
 		batch.checkpoints.get(&FlowId(3)).copied(),
@@ -898,30 +776,6 @@ fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
 }
 
 #[test]
-fn join_expiries_travel_with_their_operators_state_in_one_slice() {
-	let buffer = OperatorResidentState::with_budget(entry_bytes("k1", "v"));
-	buffer.record_state_set(OP_A, key("k1"), row("v"));
-	buffer.record_state_set(OP_A, key("k2"), row("v"));
-	for row_number in 0..10u64 {
-		buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(row_number), DateTime::from_millis(100));
-	}
-
-	let first = buffer.take_for_flush().expect("the seeded buffer yields a slice");
-	assert_eq!(first.state.len(), 2, "the operator hands out all of its state at once, budget or not");
-	assert_eq!(
-		first.join_expiries.len(),
-		10,
-		"every armed expiry must leave with the state of the same operator, not trail it by a slice"
-	);
-	buffer.complete_flush();
-
-	assert!(
-		buffer.take_for_flush().is_none(),
-		"nothing may be left behind; a stranded expiry never becomes durable and the timer is lost"
-	);
-}
-
-#[test]
 fn a_key_rewritten_while_its_flush_is_in_flight_is_counted_once() {
 	let buffer = OperatorResidentState::new();
 	let k = state_key("a");
@@ -959,34 +813,6 @@ fn a_key_removed_while_its_flush_is_in_flight_is_not_counted_at_all() {
 	buffer.record_state_remove(OP_A, k.clone());
 
 	assert!(buffer.census().is_empty(), "a key the newest batch tombstones is gone, not merely shadowed");
-	assert_eq!(buffer.total_bytes(), ByteSize::ZERO, "and it bills nothing");
-}
-
-#[test]
-fn a_join_expiry_rearmed_while_its_flush_is_in_flight_is_counted_once() {
-	let buffer = OperatorResidentState::new();
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::default());
-	buffer.take_for_flush().expect("the seeded batch must be takeable");
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::default());
-
-	let census = buffer.join_expiry_census();
-	assert_eq!(census.len(), 1, "one operator is one bucket");
-	assert_eq!(census[0].keys, 1, "one join expiry tuple is one join expiry, in however many batches it appears");
-	assert_eq!(
-		buffer.total_bytes(),
-		JOIN_EXPIRY_KEY_BYTES + JOIN_EXPIRY_VALUE_BYTES,
-		"and it bills one join expiry's worth of bytes, not two"
-	);
-}
-
-#[test]
-fn a_join_expiry_disarmed_while_its_flush_is_in_flight_is_not_counted() {
-	let buffer = OperatorResidentState::new();
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::default());
-	buffer.take_for_flush().expect("the seeded batch must be takeable");
-	buffer.record_join_expiry_remove(OP_A, GROUP_A, 0, RowNumber(1));
-
-	assert!(buffer.join_expiry_census().is_empty(), "a disarmed join expiry is gone, not merely shadowed");
 	assert_eq!(buffer.total_bytes(), ByteSize::ZERO, "and it bills nothing");
 }
 
@@ -1039,27 +865,9 @@ fn a_tombstone_recorded_first_charges_its_key() {
 }
 
 #[test]
-fn a_join_expiry_is_charged_its_fixed_width_once_per_slot() {
-	let buffer = OperatorResidentState::new();
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
-	assert_eq!(live_bytes(&buffer), JOIN_EXPIRY_ENTRY_BYTES, "one armed slot is one fixed-width charge");
-
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(900));
-	buffer.record_join_expiry_remove(OP_A, GROUP_A, 0, RowNumber(1));
-
-	assert_eq!(
-		live_bytes(&buffer),
-		JOIN_EXPIRY_ENTRY_BYTES,
-		"a rearm and a disarm both overwrite one slot; charging each of them again would flush on a \
-		 buffer that never grew"
-	);
-}
-
-#[test]
 fn a_flow_boundary_split_moves_exactly_the_bytes_the_slice_carries_away() {
 	let buffer = OperatorResidentState::with_budget(entry_bytes("k1", "aaa"));
 	write_in_flow(&buffer, FLOW_A, 1, &[insert(OP_A, "k1", "aaa")]);
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	write_in_flow(&buffer, FLOW_B, 2, &[insert(OP_B, "k2", "bbbbb")]);
 	let before = live_bytes(&buffer);
 
@@ -1081,7 +889,6 @@ fn a_flow_boundary_split_moves_exactly_the_bytes_the_slice_carries_away() {
 fn a_split_that_takes_everything_leaves_the_source_at_zero() {
 	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k1"), row("aaa"));
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	let before = live_bytes(&buffer);
 
 	let taken = buffer.take_for_flush().expect("the seeded buffer yields a slice");
@@ -1098,32 +905,14 @@ fn a_split_that_takes_everything_leaves_the_source_at_zero() {
 fn a_drop_marker_releases_the_bytes_of_everything_it_clears() {
 	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k1"), row("gone"));
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	buffer.record_state_set(OP_B, key("k2"), row("stays"));
-	buffer.record_join_expiry_set(OP_B, GROUP_B, 0, RowNumber(1), DateTime::from_millis(100));
 
 	buffer.record_drop(DropMarker::OperatorState(OP_A));
 
 	assert_eq!(
 		live_bytes(&buffer),
-		entry_bytes("k2", "stays").saturating_add(JOIN_EXPIRY_ENTRY_BYTES),
+		entry_bytes("k2", "stays"),
 		"only the surviving operator may still be charged; a dropped operator's bytes are gone from RAM"
-	);
-}
-
-#[test]
-fn a_join_expiry_group_drop_releases_only_that_group() {
-	let buffer = OperatorResidentState::new();
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(2), DateTime::from_millis(100));
-	buffer.record_join_expiry_set(OP_A, GROUP_B, 0, RowNumber(1), DateTime::from_millis(100));
-
-	buffer.record_drop(DropMarker::JoinExpiriesGroup(OP_A, GROUP_A));
-
-	assert_eq!(
-		live_bytes(&buffer),
-		JOIN_EXPIRY_ENTRY_BYTES,
-		"the two cleared join expiries must be refunded and the untouched group must stay charged"
 	);
 }
 
@@ -1149,181 +938,6 @@ fn a_selected_slice_stays_resident_until_the_flush_settles() {
 }
 
 #[test]
-fn a_join_expiry_armed_and_disarmed_before_any_flush_leaves_no_entry_at_all() {
-	let buffer = OperatorResidentState::new();
-
-	buffer.apply_batch(&[OperatorWrite::JoinExpiryInsert {
-		operator: OP_A,
-		group: GROUP_A,
-		side: 1,
-		row_num: RowNumber(7),
-		at: DateTime::from_millis(1_234),
-	}]);
-	assert_eq!(
-		live_bytes(&buffer),
-		JOIN_EXPIRY_ENTRY_BYTES,
-		"the armed slot must be charged before the disarm, or the reclaim below proves nothing"
-	);
-
-	buffer.apply_batch(&[OperatorWrite::JoinExpiryRemove {
-		operator: OP_A,
-		group: GROUP_A,
-		side: 1,
-		row_num: RowNumber(7),
-		pre: DurablePre::Absent,
-	}]);
-
-	assert_eq!(
-		buffer.lookup_join_expiry(OP_A, GROUP_A, 1, RowNumber(7)),
-		BufferedJoinExpiry::Absent,
-		"a never-durable arm/disarm pair must cancel to nothing; a Tombstone here masks a sqlite row \
-		 that was never written and stays resident forever"
-	);
-	assert_eq!(
-		live_bytes(&buffer),
-		ByteSize::ZERO,
-		"the collapsed pair must give its bytes back, otherwise the buffer still grows without bound"
-	);
-	assert!(buffer.take_for_flush().is_none(), "a cancelled pair must not produce a no-op DELETE slice");
-}
-
-#[test]
-fn a_join_expiry_disarmed_after_its_flush_still_leaves_a_tombstone() {
-	let buffer = OperatorResidentState::new();
-
-	buffer.apply_batch(&[OperatorWrite::JoinExpiryInsert {
-		operator: OP_A,
-		group: GROUP_A,
-		side: 1,
-		row_num: RowNumber(7),
-		at: DateTime::from_millis(1_234),
-	}]);
-	buffer.take_for_flush().expect("the armed join expiry is the only pending write, so it forms a slice");
-	buffer.complete_flush();
-
-	buffer.apply_batch(&[OperatorWrite::JoinExpiryRemove {
-		operator: OP_A,
-		group: GROUP_A,
-		side: 1,
-		row_num: RowNumber(7),
-		pre: DurablePre::Absent,
-	}]);
-
-	assert_eq!(
-		buffer.lookup_join_expiry(OP_A, GROUP_A, 1, RowNumber(7)),
-		BufferedJoinExpiry::Tombstone,
-		"the flush made the row durable, so the buffer must mask it regardless of what the producer \
-		 claimed about the pre-image it saw"
-	);
-}
-
-#[test]
-fn a_producer_claiming_a_durable_pre_image_cannot_stop_a_never_flushed_pair_from_collapsing() {
-	let buffer = OperatorResidentState::new();
-
-	buffer.apply_batch(&[OperatorWrite::JoinExpiryInsert {
-		operator: OP_A,
-		group: GROUP_A,
-		side: 0,
-		row_num: RowNumber(3),
-		at: DateTime::from_millis(1_000),
-	}]);
-
-	buffer.apply_batch(&[OperatorWrite::JoinExpiryRemove {
-		operator: OP_A,
-		group: GROUP_A,
-		side: 0,
-		row_num: RowNumber(3),
-		pre: DurablePre::Present(JOIN_EXPIRY_ENTRY_BYTES),
-	}]);
-
-	assert_eq!(
-		buffer.lookup_join_expiry(OP_A, GROUP_A, 0, RowNumber(3)),
-		BufferedJoinExpiry::Absent,
-		"the buffer must overrule the producer: it never flushed this slot, so there is no sqlite row \
-		 for a tombstone to mask"
-	);
-	assert_eq!(
-		live_bytes(&buffer),
-		ByteSize::ZERO,
-		"a claim the buffer can disprove must not be able to pin bytes here"
-	);
-}
-
-#[test]
-fn ten_thousand_arm_disarm_cycles_leave_nothing_behind() {
-	let buffer = OperatorResidentState::new();
-
-	for row_number in 0..10_000u64 {
-		buffer.apply_batch(&[OperatorWrite::JoinExpiryInsert {
-			operator: OP_A,
-			group: GROUP_A,
-			side: 0,
-			row_num: RowNumber(row_number),
-			at: DateTime::from_millis(1_000 + row_number),
-		}]);
-		buffer.apply_batch(&[OperatorWrite::JoinExpiryRemove {
-			operator: OP_A,
-			group: GROUP_A,
-			side: 0,
-			row_num: RowNumber(row_number),
-			pre: DurablePre::Present(JOIN_EXPIRY_ENTRY_BYTES),
-		}]);
-	}
-
-	assert!(
-		buffer.join_expiries_for_group(OP_A, GROUP_A).join_expiries.is_empty(),
-		"every armed slot was disarmed, so the group scan must walk nothing; anything left here is \
-		 read on every join_expiry_min the join performs"
-	);
-	assert_eq!(
-		live_bytes(&buffer),
-		ByteSize::ZERO,
-		"10k completed cycles must cost no resident bytes, otherwise churn alone fills the buffer"
-	);
-	assert!(buffer.take_for_flush().is_none(), "and none of it may reach sqlite as a no-op DELETE");
-}
-
-#[test]
-fn dropping_a_group_clears_the_durable_marks_that_would_block_a_later_collapse() {
-	let buffer = OperatorResidentState::new();
-
-	buffer.apply_batch(&[OperatorWrite::JoinExpiryInsert {
-		operator: OP_A,
-		group: GROUP_A,
-		side: 0,
-		row_num: RowNumber(5),
-		at: DateTime::from_millis(1_000),
-	}]);
-	buffer.take_for_flush().expect("the armed join expiry forms a slice");
-	buffer.complete_flush();
-
-	buffer.record_drop(DropMarker::JoinExpiriesGroup(OP_A, GROUP_A));
-
-	buffer.apply_batch(&[OperatorWrite::JoinExpiryInsert {
-		operator: OP_A,
-		group: GROUP_A,
-		side: 0,
-		row_num: RowNumber(5),
-		at: DateTime::from_millis(2_000),
-	}]);
-	buffer.apply_batch(&[OperatorWrite::JoinExpiryRemove {
-		operator: OP_A,
-		group: GROUP_A,
-		side: 0,
-		row_num: RowNumber(5),
-		pre: DurablePre::Present(JOIN_EXPIRY_ENTRY_BYTES),
-	}]);
-
-	assert_eq!(
-		buffer.lookup_join_expiry(OP_A, GROUP_A, 0, RowNumber(5)),
-		BufferedJoinExpiry::Dropped,
-		"the re-armed slot must collapse to nothing and fall through to the group drop; a Tombstone \
-		 here means a stale durable mark survived the drop"
-	);
-}
-
-#[test]
 fn a_full_mutation_sequence_leaves_only_the_untouched_operator_in_the_census() {
 	let buffer = OperatorResidentState::new();
 	let first = state_key("k1");
@@ -1338,24 +952,15 @@ fn a_full_mutation_sequence_leaves_only_the_untouched_operator_in_the_census() {
 
 	buffer.record_state_set(OP_A, first.clone(), row("v1-longer"));
 
-	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
-	buffer.record_join_expiry_set(OP_A, GROUP_B, 0, RowNumber(2), DateTime::from_millis(200));
-
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
 
 	buffer.record_state_set(OP_A, first.clone(), row("v1-live"));
 
 	buffer.record_state_remove(OP_A, second.clone());
 
-	buffer.record_join_expiry_remove(OP_A, GROUP_A, 0, RowNumber(1));
-
 	buffer.complete_flush();
 
 	buffer.record_state_set(OP_B, neighbour.clone(), row("v5"));
-	buffer.record_join_expiry_set(OP_A, GROUP_B, 0, RowNumber(2), DateTime::from_millis(300));
-	buffer.record_join_expiry_set(OP_B, GROUP_A, 0, RowNumber(3), DateTime::from_millis(400));
-
-	buffer.record_drop(DropMarker::JoinExpiriesGroup(OP_A, GROUP_B));
 
 	buffer.record_drop(DropMarker::OperatorState(OP_A));
 
@@ -1369,14 +974,6 @@ fn a_full_mutation_sequence_leaves_only_the_untouched_operator_in_the_census() {
 			value_bytes: ByteSize::from_bytes(row("v5").bytes().len() as u64),
 		}],
 		"only the untouched operator's key may survive the drop"
-	);
-	assert_eq!(
-		buffer.join_expiry_census(),
-		vec![StoredJoinRowExpiryCensus {
-			operator: OP_B,
-			keys: 1,
-		}],
-		"and only the untouched operator's join expiry"
 	);
 }
 

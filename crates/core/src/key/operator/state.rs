@@ -104,7 +104,7 @@ pub fn group_data_of_inner(inner: &[u8]) -> Option<GroupId> {
 pub struct KeyspaceId(pub u8);
 
 impl KeyspaceId {
-	pub const HIGHEST_DATA: u8 = 0x23;
+	pub const HIGHEST_DATA: u8 = 0x24;
 
 	pub const NODE_COUNTER: Self = Self(0xFF);
 
@@ -192,6 +192,8 @@ impl KeyspaceId {
 
 	pub const CUSTOM_NOT_CACHED: Self = Self(0x23);
 
+	pub const JOIN_EXPIRY_DUE: Self = Self(0x24);
+
 	pub fn name(&self) -> Cow<'static, str> {
 		match *self {
 			Self::NODE_COUNTER => "NODE_COUNTER",
@@ -228,6 +230,7 @@ impl KeyspaceId {
 			Self::RINGBUFFER_META => "RINGBUFFER_META",
 			Self::REAP_QUEUE => "REAP_QUEUE",
 			Self::JOIN_ROW_EXPIRY => "JOIN_ROW_EXPIRY",
+			Self::JOIN_EXPIRY_DUE => "JOIN_EXPIRY_DUE",
 			Self::GUEST_ACCUMULATOR => "GUEST_ACCUMULATOR",
 			Self::GUEST_BUFFER => "GUEST_BUFFER",
 			Self::GUEST_RUNNING => "GUEST_RUNNING",
@@ -264,6 +267,7 @@ impl KeyspaceId {
 			Self::GUEST_ACCUMULATOR => CacheTiers::Range,
 			Self::TUMBLING_EXPIRY => CacheTiers::Range,
 			Self::WINDOW_META => CacheTiers::Range,
+			Self::JOIN_EXPIRY_DUE => CacheTiers::Range,
 			_ => CacheTiers::Both,
 		}
 	}
@@ -295,12 +299,7 @@ impl KeyspaceMask {
 	}
 
 	pub const fn union(self, other: Self) -> Self {
-		Self([
-			self.0[0] | other.0[0],
-			self.0[1] | other.0[1],
-			self.0[2] | other.0[2],
-			self.0[3] | other.0[3],
-		])
+		Self([self.0[0] | other.0[0], self.0[1] | other.0[1], self.0[2] | other.0[2], self.0[3] | other.0[3]])
 	}
 
 	pub const fn contains(&self, keyspace: KeyspaceId) -> bool {
@@ -762,7 +761,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and `cache_tiers`, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, CacheTiers); 43] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, CacheTiers); 44] = [
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, CacheTiers::Both),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, CacheTiers::Both),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, CacheTiers::Range),
@@ -797,6 +796,7 @@ mod tests {
 		("RINGBUFFER_META", KeyspaceId::RINGBUFFER_META, Phase::Data, CacheTiers::Both),
 		("REAP_QUEUE", KeyspaceId::REAP_QUEUE, Phase::Data, CacheTiers::Both),
 		("JOIN_ROW_EXPIRY", KeyspaceId::JOIN_ROW_EXPIRY, Phase::Data, CacheTiers::Both),
+		("JOIN_EXPIRY_DUE", KeyspaceId::JOIN_EXPIRY_DUE, Phase::Data, CacheTiers::Range),
 		("GUEST_ACCUMULATOR", KeyspaceId::GUEST_ACCUMULATOR, Phase::Data, CacheTiers::Range),
 		("GUEST_BUFFER", KeyspaceId::GUEST_BUFFER, Phase::Data, CacheTiers::Both),
 		("GUEST_RUNNING", KeyspaceId::GUEST_RUNNING, Phase::Data, CacheTiers::Both),

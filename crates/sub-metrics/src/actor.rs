@@ -48,10 +48,7 @@ use reifydb_runtime::{
 };
 use reifydb_store_commit::VersionedGetResult;
 use reifydb_store_multi::MultiStore;
-use reifydb_store_operator::{
-	store::OperatorStore,
-	types::{JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES},
-};
+use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -516,8 +513,7 @@ fn level_count(metric: &'static str, count: u64) -> Measure {
 }
 
 fn flow_state_rows(store: &OperatorStore) -> Vec<MetricsRow> {
-	let mut rows: Vec<MetricsRow> = store
-		.census()
+	store.census()
 		.into_iter()
 		.map(|entry| MetricsRow {
 			dimensions: vec![
@@ -532,24 +528,7 @@ fn flow_state_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 				level_bytes("total_bytes", (entry.key_bytes + entry.value_bytes).as_bytes()),
 			],
 		})
-		.collect();
-	rows.extend(store.join_expiry_census().into_iter().map(|entry| MetricsRow {
-		dimensions: vec![
-			Value::Uint8(entry.operator.0),
-			Value::Utf8(KeyspaceId::JOIN_ROW_EXPIRY.name().to_string()),
-			Value::Utf8(phase_name(KeyspaceId::JOIN_ROW_EXPIRY).to_string()),
-		],
-		measures: vec![
-			level_count("keys", entry.keys),
-			level_bytes("key_bytes", (JOIN_EXPIRY_KEY_BYTES * entry.keys).as_bytes()),
-			level_bytes("value_bytes", (JOIN_EXPIRY_VALUE_BYTES * entry.keys).as_bytes()),
-			level_bytes(
-				"total_bytes",
-				((JOIN_EXPIRY_KEY_BYTES + JOIN_EXPIRY_VALUE_BYTES) * entry.keys).as_bytes(),
-			),
-		],
-	}));
-	rows
+		.collect()
 }
 
 fn phase_name(keyspace: KeyspaceId) -> &'static str {

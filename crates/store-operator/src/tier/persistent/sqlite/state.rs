@@ -9,11 +9,11 @@ use reifydb_codec::{
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::scan::record_page};
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
-use rusqlite::{Connection, Transaction, TransactionBehavior, params};
+use rusqlite::{Connection, Transaction, TransactionBehavior};
 use tracing::instrument;
 
 use crate::{
-	tier::persistent::sqlite::{SqliteOperatorStorage, route, sql::JOIN_EXPIRIES_DROP_OPERATOR_SQL},
+	tier::persistent::sqlite::{SqliteOperatorStorage, route},
 	types::OperatorBatch,
 };
 
@@ -117,9 +117,6 @@ impl SqliteOperatorStorage {
 		let transaction = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
 			.expect("operator state drop could not begin");
 		route::drop_operator(&transaction, operator);
-		transaction
-			.execute(JOIN_EXPIRIES_DROP_OPERATOR_SQL, params![operator.0 as i64])
-			.expect("join expiry drop failed");
 		transaction.commit().expect("operator state drop could not commit");
 	}
 }

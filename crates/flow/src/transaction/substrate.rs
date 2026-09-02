@@ -8,7 +8,6 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	interface::catalog::flow::FlowId,
-	key::operator::state::{KeyspaceId, OperatorStateKey},
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
@@ -19,7 +18,6 @@ use reifydb_value::byte_size::ByteSize;
 
 use crate::transaction::{
 	frontier::OutputFrontiers,
-	join_expiry::{decode_join_expiry, decode_join_expiry_suffix},
 	scope::{OperatorScope, operator_state_coordinates},
 };
 
@@ -98,60 +96,8 @@ pub fn operator_writes(pending: &Pending, deferred: &DeferredClassification) -> 
 		else {
 			continue;
 		};
-		let join_expiry = OperatorStateKey::decode_inner(inner.as_slice())
-			.filter(|(_, keyspace, _)| *keyspace == KeyspaceId::JOIN_ROW_EXPIRY)
-			.map(|(group, _, suffix)| {
-				(
-					group,
-					decode_join_expiry_suffix(suffix)
-						.expect("join expiry keys are written only through join_expiry_key"),
-				)
-			});
-		writes.push(match (join_expiry, write) {
-			(Some((group, (side, row_number))), PendingWrite::Set(row)) => {
-				let at = decode_join_expiry(row)
-					.expect("join expiry rows are written only through JoinRowExpiry");
-				match pending.pre_at(key).or_else(|| deferred.get(key).copied()) {
-					Some(Some(_)) => OperatorWrite::JoinExpiryReplace {
-						operator,
-						group,
-						side,
-						row_num: row_number,
-						at,
-					},
-					Some(None) => OperatorWrite::JoinExpiryInsert {
-						operator,
-						group,
-						side,
-						row_num: row_number,
-						at,
-					},
-					None => panic!(
-						"unclassified join expiry write on operator {}, group {}",
-						operator.0, group.0
-					),
-				}
-			}
-			(
-				Some((group, (side, row_number))),
-				PendingWrite::Remove {
-					..
-				},
-			) => OperatorWrite::JoinExpiryRemove {
-				operator,
-				group,
-				side,
-				row_num: row_number,
-				pre: match pending.pre_at(key).or_else(|| deferred.get(key).copied()) {
-					Some(Some(bytes)) => DurablePre::Present(bytes),
-					Some(None) => DurablePre::Absent,
-					None => panic!(
-						"unclassified join expiry remove on operator {}, group {}",
-						operator.0, group.0
-					),
-				},
-			},
-			(None, PendingWrite::Set(row)) => {
+		writes.push(match write {
+			PendingWrite::Set(row) => {
 				let post = EncodedPodRow::from(row.clone());
 				match pending.pre_at(key).or_else(|| deferred.get(key).copied()) {
 					Some(Some(pre_value_bytes)) => OperatorWrite::Replace {
@@ -168,12 +114,9 @@ pub fn operator_writes(pending: &Pending, deferred: &DeferredClassification) -> 
 					None => panic!("unclassified operator state write on operator {}", operator.0),
 				}
 			}
-			(
-				None,
-				PendingWrite::Remove {
-					..
-				},
-			) => OperatorWrite::Remove {
+			PendingWrite::Remove {
+				..
+			} => OperatorWrite::Remove {
 				operator,
 				key: inner,
 				pre: match pending.pre_at(key).or_else(|| deferred.get(key).copied()) {

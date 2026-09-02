@@ -34,7 +34,7 @@ use reifydb_runtime::{
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::{
 	byte_size::ByteSize,
-	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{duration::Duration, row_number::RowNumber},
 };
 
 use super::actor::*;
@@ -52,9 +52,6 @@ use crate::{
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
-const GROUP_A: GroupId = GroupId(10);
-const GROUP_B: GroupId = GroupId(11);
-const SIDE: u8 = 0;
 const FLOW: FlowId = FlowId(7);
 
 fn operators_in(batch: &FlushBatch) -> Vec<OperatorId> {
@@ -218,7 +215,6 @@ fn a_drop_flushes_before_the_writes_recorded_after_it() {
 		key: key(1),
 		post: row("neighbour"),
 	}]);
-	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
 	put(&store, OP_A, key(2), row("pre-drop-buffered"));
 
 	store.drop_operator_state(OP_A);
@@ -243,91 +239,8 @@ fn a_drop_flushes_before_the_writes_recorded_after_it() {
 		"a pre-drop buffered write must never be replayed into sqlite behind the drop"
 	);
 	assert!(
-		storage.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(1)).is_none(),
-		"dropping operator state takes that operator's join expiries with it"
-	);
-	assert!(
 		storage.get(OP_B, &key(1)).is_some(),
 		"the drop is scoped to one operator, otherwise one seal wipes the whole store"
-	);
-}
-
-#[test]
-fn a_join_expiry_drop_erases_only_the_group_it_names() {
-	let (store, storage, _guard) = store_fixture();
-	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
-	storage.join_expiry_set(OP_A, GROUP_B, SIDE, RowNumber(2), DateTime::from_millis(200));
-	storage.seed_durable(&[OperatorWrite::Insert {
-		operator: OP_A,
-		key: key(1),
-		post: row("durable"),
-	}]);
-
-	store.join_expiries_remove_group(OP_A, GROUP_A);
-	store.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(3), DateTime::from_millis(300));
-
-	assert!(store.flush_pending_blocking(), "the group marker must reach the flusher");
-
-	assert!(
-		storage.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(1)).is_none(),
-		"the named group's flushed join expiries must be erased"
-	);
-	assert_eq!(
-		storage.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(3)),
-		Some(DateTime::from_millis(300)),
-		"a join expiry armed after the group drop must survive it, otherwise the group is left with no \
-		 timer and never expires"
-	);
-	assert_eq!(
-		storage.join_expiry_get(OP_A, GROUP_B, SIDE, RowNumber(2)),
-		Some(DateTime::from_millis(200)),
-		"a sibling group keeps its join expiries; a group-wide DELETE that ignores the group disarms every \
-		 timer the operator owns"
-	);
-	assert!(storage.get(OP_A, &key(1)).is_some(), "a join expiry drop must never touch operator state");
-}
-
-#[test]
-fn join_expiries_flush_as_upserts_and_deletes_and_are_then_served_from_sqlite() {
-	let (store, storage, _guard) = store_fixture();
-	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
-	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(2), DateTime::from_millis(200));
-
-	store.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(900));
-	store.join_expiry_remove(OP_A, GROUP_A, SIDE, RowNumber(2));
-	store.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(3), DateTime::from_millis(300));
-
-	assert!(store.flush_pending_blocking(), "the join expiry batch must reach the flusher");
-
-	assert_eq!(
-		storage.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(1)),
-		Some(DateTime::from_millis(900)),
-		"a re-armed join expiry must upsert over the flushed expiry; inserting instead of upserting either \
-		 fails the primary key or leaves the timer firing on the stale deadline"
-	);
-	assert!(
-		storage.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(2)).is_none(),
-		"a removed join expiry must flush as a DELETE, otherwise the disarmed timer re-arms itself from \
-		 sqlite"
-	);
-	assert_eq!(
-		storage.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(3)),
-		Some(DateTime::from_millis(300)),
-		"a newly armed join expiry must be inserted"
-	);
-
-	assert_eq!(
-		store.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(1)),
-		Some(DateTime::from_millis(900)),
-		"with the buffer drained the point read is served from sqlite and must agree with what was \
-		 written"
-	);
-	let due = store.join_expiries_due(OP_A, GROUP_A, DateTime::from_millis(1_000), 8);
-	assert_eq!(
-		due.iter().map(|join_expiry| join_expiry.row_number).collect::<Vec<RowNumber>>(),
-		vec![RowNumber(3), RowNumber(1)],
-		"the due scan now reads sqlite alone, so it must see the re-armed expiry in its new position and \
-		 must not see the deleted join expiry"
 	);
 }
 
@@ -809,7 +722,6 @@ impl SeedDurable for SqliteOperatorStorage {
 					key,
 					..
 				} => (*operator, key, None),
-				_ => continue,
 			};
 			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
 				.expect("a seeded key must name a group and a keyspace");

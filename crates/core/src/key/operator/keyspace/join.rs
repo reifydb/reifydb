@@ -2,13 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::shape::fingerprint::RowShapeFingerprint;
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_macro::operator_state;
+use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::{
 	interface::store::CacheTiers,
 	key::{
 		operator::{
-			state::{GroupId, KeyspaceId},
+			state::{GroupId, GroupStateKey, KeyspaceId},
 			traits::Keyspace,
 		},
 		typed::{
@@ -18,7 +19,7 @@ use crate::{
 		},
 	},
 	metrics::heap::HeapSize,
-	state::join::ContentVersion,
+	state::{join::ContentVersion, typed::typed_key},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
@@ -72,6 +73,31 @@ pub struct JoinRowExpirySuffix {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+pub struct JoinExpiryDueKey {
+	pub at: Desc<DateTime>,
+	pub group: Desc<GroupId>,
+	pub side: Asc<u8>,
+	pub row: Asc<RowNumber>,
+}
+
+impl JoinExpiryDueKey {
+	pub fn at_threshold(at: DateTime) -> Self {
+		Self {
+			at: Desc(at),
+			group: Key::low(),
+			side: Key::low(),
+			row: Key::low(),
+		}
+	}
+}
+
+#[operator_state]
+#[derive(Clone)]
+pub struct JoinRowExpiryState {
+	pub at: DateTime,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
 pub struct JoinRowMappingKey {
 	pub tag: Asc<u8>,
 	pub left: Desc<u64>,
@@ -85,7 +111,6 @@ impl Keyspace for JoinLeft {
 	const ID: KeyspaceId = KeyspaceId::JOIN_LEFT;
 	const NAME: &'static str = "JOIN_LEFT";
 	const CACHE: CacheTiers = CacheTiers::Both;
-	const GROUP_SCOPED: bool = true;
 
 	type Key = JoinLeftKey;
 	type Suffix = Asc<RowNumber>;
@@ -109,7 +134,6 @@ impl Keyspace for JoinRight {
 	const ID: KeyspaceId = KeyspaceId::JOIN_RIGHT;
 	const NAME: &'static str = "JOIN_RIGHT";
 	const CACHE: CacheTiers = CacheTiers::Both;
-	const GROUP_SCOPED: bool = true;
 
 	type Key = JoinRightKey;
 	type Suffix = Asc<RowNumber>;
@@ -133,7 +157,6 @@ impl Keyspace for JoinPublished {
 	const ID: KeyspaceId = KeyspaceId::JOIN_PUBLISHED;
 	const NAME: &'static str = "JOIN_PUBLISHED";
 	const CACHE: CacheTiers = CacheTiers::Both;
-	const GROUP_SCOPED: bool = true;
 
 	type Key = JoinPublishedKey;
 	type Suffix = Asc<RowNumber>;
@@ -157,7 +180,6 @@ impl Keyspace for JoinPin {
 	const ID: KeyspaceId = KeyspaceId::JOIN_PIN;
 	const NAME: &'static str = "JOIN_PIN";
 	const CACHE: CacheTiers = CacheTiers::Range;
-	const GROUP_SCOPED: bool = true;
 
 	type Key = JoinPinKey;
 	type Suffix = JoinPinSuffix;
@@ -188,7 +210,6 @@ impl Keyspace for JoinSchema {
 	const ID: KeyspaceId = KeyspaceId::JOIN_SCHEMA;
 	const NAME: &'static str = "JOIN_SCHEMA";
 	const CACHE: CacheTiers = CacheTiers::Both;
-	const GROUP_SCOPED: bool = false;
 
 	type Key = JoinSchemaKey;
 	type Suffix = JoinSchemaKey;
@@ -209,7 +230,6 @@ impl Keyspace for JoinRowExpiry {
 	const ID: KeyspaceId = KeyspaceId::JOIN_ROW_EXPIRY;
 	const NAME: &'static str = "JOIN_ROW_EXPIRY";
 	const CACHE: CacheTiers = CacheTiers::Both;
-	const GROUP_SCOPED: bool = true;
 
 	type Key = JoinRowExpiryKey;
 	type Suffix = JoinRowExpirySuffix;
@@ -233,6 +253,38 @@ impl Keyspace for JoinRowExpiry {
 	}
 }
 
+pub fn join_expiry_due_key(at: DateTime, group: GroupId, side: u8, row: RowNumber) -> GroupStateKey {
+	typed_key::<JoinExpiryDue>(
+		GroupId::ROOT,
+		&JoinExpiryDueKey {
+			at: Desc(at),
+			group: Desc(group),
+			side: Asc(side),
+			row: Asc(row),
+		},
+	)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct JoinExpiryDue;
+
+impl Keyspace for JoinExpiryDue {
+	const ID: KeyspaceId = KeyspaceId::JOIN_EXPIRY_DUE;
+	const NAME: &'static str = "JOIN_EXPIRY_DUE";
+	const CACHE: CacheTiers = CacheTiers::Range;
+
+	type Key = JoinExpiryDueKey;
+	type Suffix = JoinExpiryDueKey;
+
+	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+		(GroupId::ROOT, *key)
+	}
+
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+		suffix
+	}
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct JoinRowMapping;
 
@@ -240,7 +292,6 @@ impl Keyspace for JoinRowMapping {
 	const ID: KeyspaceId = KeyspaceId::JOIN_ROW_MAPPING;
 	const NAME: &'static str = "JOIN_ROW_MAPPING";
 	const CACHE: CacheTiers = CacheTiers::Range;
-	const GROUP_SCOPED: bool = false;
 
 	type Key = JoinRowMappingKey;
 	type Suffix = JoinRowMappingKey;

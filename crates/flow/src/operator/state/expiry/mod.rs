@@ -90,6 +90,20 @@ pub(crate) fn expiry_drop(store: &mut dyn StateStore, key: &GroupStateKey) -> Re
 	store.state_remove(key)
 }
 
+#[cfg(reifydb_assertions)]
+pub(crate) fn expiry_all<K, E>(store: &mut dyn StateStore) -> Result<Vec<E>>
+where
+	K: Keyspace,
+	K::Suffix: ExpirySuffix,
+	E: OperatorState,
+{
+	let mut out = Vec::new();
+	for (_, payload) in store.state_page(expiry_range::<K>(), None)? {
+		out.push(decode::<E>(&payload)?);
+	}
+	Ok(out)
+}
+
 #[instrument(name = "flow::seal::expiry_due", level = "debug", skip_all)]
 pub(crate) fn expiry_due<K, E>(
 	store: &mut dyn StateStore,

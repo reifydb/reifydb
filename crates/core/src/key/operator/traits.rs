@@ -15,7 +15,6 @@ pub trait Keyspace: Copy + Debug + 'static {
 	const ID: KeyspaceId;
 	const NAME: &'static str;
 	const CACHE: CacheTiers;
-	const GROUP_SCOPED: bool;
 
 	type Key: KeyLayout;
 	type Suffix: KeyLayout;
@@ -23,4 +22,20 @@ pub trait Keyspace: Copy + Debug + 'static {
 	fn split(key: &Self::Key) -> (GroupId, Self::Suffix);
 
 	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key;
+}
+
+pub const fn group_scoped<K: Keyspace>() -> bool {
+	let key = <K::Key as KeyLayout>::COLUMNS;
+	let suffix = <K::Suffix as KeyLayout>::COLUMNS;
+	key.len() == suffix.len() + 1 && leads_on_group(key[0].name)
+}
+
+const fn leads_on_group(name: &str) -> bool {
+	let bytes = name.as_bytes();
+	bytes.len() == 5
+		&& bytes[0] == b'g'
+		&& bytes[1] == b'r'
+		&& bytes[2] == b'o'
+		&& bytes[3] == b'u'
+		&& bytes[4] == b'p'
 }

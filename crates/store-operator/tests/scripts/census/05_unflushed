@@ -27,27 +27,6 @@ total_bytes => 33
 operator 1 keyspace 0x1b keys=1 key_bytes=32 value_bytes=1
 count=1
 
-# An unflushed join expiry is charged its flat 33 + 8 immediately.
-
-join_expiry_set row=1 at=100
-bytes
-total_bytes
-join_expiry_census
----
-bytes 1 => 74
-total_bytes => 74
-operator 1 => 1
-count=1
-
-flush
-bytes
-join_expiry_census
----
-ok
-bytes 1 => 74
-operator 1 => 1
-count=1
-
 # An unflushed overwrite is charged twice on purpose: the old value still occupies sqlite and the new one
 # occupies RAM. The key count over-reports for exactly as long as both copies exist.
 
@@ -55,7 +34,7 @@ set a=111
 bytes
 census
 ---
-bytes 1 => 109
+bytes 1 => 68
 operator 1 keyspace 0x1b keys=2 key_bytes=64 value_bytes=4
 count=1
 
@@ -64,7 +43,7 @@ bytes
 census
 ---
 ok
-bytes 1 => 76
+bytes 1 => 35
 operator 1 keyspace 0x1b keys=1 key_bytes=32 value_bytes=3
 count=1
 
@@ -74,7 +53,7 @@ remove a
 bytes
 census
 ---
-bytes 1 => 76
+bytes 1 => 35
 operator 1 keyspace 0x1b keys=1 key_bytes=32 value_bytes=3
 count=1
 
@@ -83,5 +62,5 @@ bytes
 census
 ---
 ok
-bytes 1 => 41
+bytes 1 => 0
 count=0

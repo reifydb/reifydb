@@ -2,20 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::{
-	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, KeyspaceId},
-};
-use reifydb_value::{
-	byte_size::ByteSize,
-	value::{datetime::DateTime, row_number::RowNumber},
-};
-
-use crate::tier::resident::batch::JoinExpirySlot;
-
-pub const JOIN_EXPIRY_KEY_BYTES: ByteSize = ByteSize::from_bytes(33);
-
-pub const JOIN_EXPIRY_VALUE_BYTES: ByteSize = ByteSize::from_bytes(8);
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::KeyspaceId};
+use reifydb_value::byte_size::ByteSize;
 
 #[derive(Debug, Clone)]
 pub struct OperatorBatch {
@@ -49,34 +37,6 @@ pub struct BufferedStateRange {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BufferedJoinExpiry {
-	Expiry(u64),
-	Tombstone,
-	Dropped,
-	Absent,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BufferedJoinExpiryGroup {
-	pub join_expiries: Vec<(JoinExpirySlot, Option<u64>)>,
-	pub dropped: bool,
-	pub durable: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StoredJoinRowExpiry {
-	pub side: u8,
-	pub row_number: RowNumber,
-	pub at: DateTime,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StoredJoinRowExpiryCensus {
-	pub operator: OperatorId,
-	pub keys: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorStateCensus {
 	pub operator: OperatorId,
 	pub keyspace: KeyspaceId,
@@ -107,27 +67,6 @@ pub enum OperatorWrite {
 	Remove {
 		operator: OperatorId,
 		key: EncodedKey,
-		pre: DurablePre,
-	},
-	JoinExpiryInsert {
-		operator: OperatorId,
-		group: GroupId,
-		side: u8,
-		row_num: RowNumber,
-		at: DateTime,
-	},
-	JoinExpiryReplace {
-		operator: OperatorId,
-		group: GroupId,
-		side: u8,
-		row_num: RowNumber,
-		at: DateTime,
-	},
-	JoinExpiryRemove {
-		operator: OperatorId,
-		group: GroupId,
-		side: u8,
-		row_num: RowNumber,
 		pre: DurablePre,
 	},
 }

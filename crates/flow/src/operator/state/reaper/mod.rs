@@ -59,6 +59,7 @@ pub const JOIN: KeyspaceMask = UNIVERSAL.union(KeyspaceMask::of(&[
 	KeyspaceId::JOIN_PIN,
 	KeyspaceId::JOIN_SCHEMA,
 	KeyspaceId::JOIN_ROW_EXPIRY,
+	KeyspaceId::JOIN_EXPIRY_DUE,
 ]));
 
 pub const GUEST: KeyspaceMask = WINDOW.union(KeyspaceMask::of(&[
@@ -174,6 +175,7 @@ where
 	let Some(scan) = scan_group(store, group, mask, budget)? else {
 		return drain_group_scanning(store, group, mask, reaper, budget);
 	};
+	store.remove_root_siblings(&scan.data)?;
 	for key in &scan.data {
 		reaper.reap(store, key)?;
 	}
@@ -271,6 +273,7 @@ where
 	R: Reaper,
 {
 	let doomed = store.group_sweep_in(group, mask, true, Some(budget))?;
+	store.remove_root_siblings(&doomed)?;
 	for key in &doomed {
 		reaper.reap(store, key)?;
 	}

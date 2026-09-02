@@ -189,7 +189,6 @@ fn buffered_state(entry: &WriteEntry) -> BufferedState {
 fn is_state_drop(marker: &DropMarker, operator: OperatorId) -> bool {
 	match marker {
 		DropMarker::OperatorState(candidate) => *candidate == operator,
-		DropMarker::JoinExpiriesOperator(_) | DropMarker::JoinExpiriesGroup(_, _) => false,
 	}
 }
 

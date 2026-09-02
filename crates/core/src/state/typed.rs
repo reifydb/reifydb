@@ -11,7 +11,7 @@ use crate::{
 		operator::{
 			keyspace::columns_width,
 			state::{GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range},
-			traits::Keyspace,
+			traits::{Keyspace, group_scoped},
 		},
 		typed::{
 			Key,
@@ -110,7 +110,7 @@ fn key_value_from_bytes(ty: KeyColumnType, direction: Direction, bytes: &[u8]) -
 pub fn typed_key<K: Keyspace>(group: GroupId, suffix: &K::Suffix) -> GroupStateKey {
 	reifydb_assertions! {
 		assert!(
-			group == GroupId::ROOT || K::GROUP_SCOPED,
+			group == GroupId::ROOT || const { group_scoped::<K>() },
 			"{} is not group-scoped but was written at group {}: the persistent tier rebuilds the \
 			 key through the typed layout, so this row reads back stamped ROOT and collides with every \
 			 other group holding the same suffix",

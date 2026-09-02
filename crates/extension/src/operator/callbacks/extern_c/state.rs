@@ -740,7 +740,10 @@ mod join_row_expiry_guard_tests {
 			store::MultiVersionRow,
 		},
 		key::operator::{
-			keyspace::{join::JoinRowMappingKey, suffix_width_of},
+			keyspace::{
+				join::{JoinExpiryDueKey, JoinRowMappingKey},
+				suffix_width_of,
+			},
 			state::{
 				GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range, keyspace_inner_range_split,
 			},
@@ -752,7 +755,7 @@ mod join_row_expiry_guard_tests {
 			host::HostContext,
 			state::{iter::StateIterator, reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 		},
-		transaction::join_expiry::JoinDuePage,
+		transaction::join_expiry::{JoinDueEntry, JoinDuePage},
 	};
 	use reifydb_value::{
 		Result,
@@ -877,23 +880,37 @@ mod join_row_expiry_guard_tests {
 			Ok(())
 		}
 
-		fn join_expiry_at(
+		fn join_expiry_arm(
 			&mut self,
 			_group: GroupId,
 			_side: u8,
 			_row_number: RowNumber,
-		) -> Result<Option<DateTime>> {
+			_at: DateTime,
+		) -> Result<()> {
+			Ok(())
+		}
+
+		fn join_expiry_clear(&mut self, _group: GroupId, _side: u8, _row_number: RowNumber) -> Result<()> {
+			Ok(())
+		}
+
+		fn join_expiry_free(&mut self, _entry: &JoinDueEntry) -> Result<()> {
+			Ok(())
+		}
+
+		fn join_expiry_min(&mut self) -> Result<Option<DateTime>> {
 			Ok(None)
 		}
 
-		fn join_expiry_min(&mut self, _group: GroupId) -> Result<Option<DateTime>> {
-			Ok(None)
-		}
-
-		fn join_due_page(&mut self, _group: GroupId, _at: DateTime, _budget: usize) -> Result<JoinDuePage> {
+		fn join_due_page(
+			&mut self,
+			_at: DateTime,
+			_budget: usize,
+			_from: Option<&JoinExpiryDueKey>,
+		) -> Result<JoinDuePage> {
 			Ok(JoinDuePage {
 				due: Vec::new(),
-				next: None,
+				resume: None,
 				more: false,
 			})
 		}

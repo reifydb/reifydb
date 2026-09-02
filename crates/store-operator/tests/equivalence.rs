@@ -564,7 +564,11 @@ impl StateStore for StoreState {
 		}
 	}
 
-	fn get_or_create_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
+	fn get_or_create_row_numbers(
+		&mut self,
+		_group: GroupId,
+		_keys: &[EncodedKey],
+	) -> Result<Vec<(RowNumber, bool)>> {
 		panic!("the sweep path never mints a row number; a call here means the fixture drifted off it")
 	}
 
@@ -834,8 +838,7 @@ fn a_flush_does_not_change_which_keys_a_group_sweep_answers_with() {
 		buffered.len(),
 		SCOPED.0,
 		keyspace_of(renamed[0]).name(),
-		stored
-			.iter()
+		stored.iter()
 			.find(|key| keyspace_of(key) == keyspace_of(renamed[0]))
 			.map(|key| group_of(key).0)
 			.unwrap_or_default()
@@ -877,7 +880,12 @@ fn a_keyspace_scan_never_answers_with_a_row_another_group_wrote() {
 			owners.len(),
 			owners[0]
 		);
-		assert_eq!(page.len(), 4, "a cached={cached} scan of group {} must answer with its own four rows", SCOPED.0);
+		assert_eq!(
+			page.len(),
+			4,
+			"a cached={cached} scan of group {} must answer with its own four rows",
+			SCOPED.0
+		);
 	}
 }
 

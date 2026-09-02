@@ -7,10 +7,7 @@ use std::{
 };
 
 use postcard::to_extend;
-use reifydb_codec::{
-	key::{decode_u128, encode_u128, encoded::EncodedKey},
-	row::operator::state::OperatorState,
-};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::JoinType,
 	interface::{
@@ -20,8 +17,8 @@ use reifydb_core::{
 	},
 	key::{
 		operator::{
-			keyspace::join::JoinRowMappingKey,
-			state::{GroupId, GroupStateKey},
+			keyspace::join::{JoinExpiryDueKey, JoinRowMappingKey},
+			state::GroupId,
 		},
 		typed::direction::{Asc, Desc},
 	},
@@ -64,7 +61,7 @@ use crate::{
 		},
 	},
 	timer::Timer,
-	transaction::join_expiry::{JoinRowExpiry, join_expiry_key as txn_join_expiry_key},
+	transaction::join_expiry::JoinDueEntry,
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -247,22 +244,8 @@ impl JoinOperator {
 		}
 	}
 
-	fn join_expiry_key(group: GroupId, side: JoinSide, row_number: RowNumber) -> GroupStateKey {
-		txn_join_expiry_key(group, side.tag(), row_number)
-	}
-
-	fn timer_key(group: GroupId) -> EncodedKey {
-		EncodedKey::new(encode_u128(group.0))
-	}
-
-	fn timer_group(key: &EncodedKey) -> Result<GroupId> {
-		let bytes = <[u8; 16]>::try_from(key.as_slice()).map_err(|_| {
-			Error::from(FlowStateError::Decode {
-				state: "join seal timer key",
-				cause: format!("expected sixteen group bytes, found {}", key.as_slice().len()),
-			})
-		})?;
-		Ok(GroupId(decode_u128(bytes)))
+	fn timer_key() -> EncodedKey {
+		EncodedKey::new(Vec::new())
 	}
 
 	fn side_of(tag: u8) -> Result<JoinSide> {
@@ -288,15 +271,15 @@ impl JoinOperator {
 		Ok(distinct.into_iter().map(|hash| (hash, GroupId::of(&group_bytes(&hash)))).collect())
 	}
 
-	fn resync_timers(host: &mut dyn HostContext, order: &[GroupId]) -> Result<()> {
-		for group in order {
-			let key = Self::timer_key(*group);
-			match host.join_expiry_min(*group)? {
-				Some(earliest) => host.arm_timer(earliest, TimerKind::Maintenance, &key)?,
-				None => host.disarm_timer_by_key(TimerKind::Maintenance, &key)?,
-			}
+	fn resync_timer(host: &mut dyn HostContext, retry: Option<DateTime>) -> Result<()> {
+		let next = match (host.join_expiry_min()?, retry) {
+			(Some(earliest), Some(retry)) => Some(earliest.min(retry)),
+			(earliest, retry) => earliest.or(retry),
+		};
+		match next {
+			Some(at) => host.arm_timer(at, TimerKind::Maintenance, &Self::timer_key()),
+			None => host.disarm_timer_by_key(TimerKind::Maintenance, &Self::timer_key()),
 		}
-		Ok(())
 	}
 
 	fn move_join_expiries(
@@ -314,38 +297,24 @@ impl JoinOperator {
 		}
 		let rule = SealRule::of(retention);
 		let resolved = Self::resolve_groups(cleared, armed)?;
-		let mut order: Vec<GroupId> = Vec::new();
-		let mut touched: HashSet<GroupId> = HashSet::new();
 
 		for (hash, row_number) in cleared {
 			let Some(group) = resolved.get(hash).copied() else {
 				continue;
 			};
-			if touched.insert(group) {
-				order.push(group);
-			}
-			host.state_remove(&Self::join_expiry_key(group, side, *row_number))?;
+			host.join_expiry_clear(group, side.tag(), *row_number)?;
 		}
 
 		for (hash, row_number, at) in armed {
 			let Some(group) = resolved.get(hash).copied() else {
 				continue;
 			};
-			if touched.insert(group) {
-				order.push(group);
-			}
 			let sealed = rule.seal_instant(*at).at();
 			host.state_remove(&queue_key(group))?;
-			host.state_set(
-				&Self::join_expiry_key(group, side, *row_number),
-				JoinRowExpiry {
-					at: sealed,
-				}
-				.encode_state()?,
-			)?;
+			host.join_expiry_arm(group, side.tag(), *row_number, sealed)?;
 		}
 
-		Self::resync_timers(host, &order)
+		Self::resync_timer(host, None)
 	}
 
 	fn arm_batch(
@@ -416,10 +385,11 @@ impl JoinOperator {
 		&self,
 		host: &mut dyn HostContext,
 		state: &JoinState,
-		group: GroupId,
+		entry: &JoinDueEntry,
 		side: JoinSide,
-		row_number: RowNumber,
 	) -> Result<()> {
+		let group = entry.group;
+		let row_number = entry.row_number;
 		match side {
 			JoinSide::Left => {
 				if self.snapshot {
@@ -449,61 +419,75 @@ impl JoinOperator {
 				state.right.remove_row_in(host, group, row_number)?;
 			}
 		}
-		host.state_remove(&Self::join_expiry_key(group, side, row_number))
+		host.join_expiry_free(entry)
 	}
 
-	fn free_due_join_rows(&mut self, host: &mut dyn HostContext, fired: FiredAt, group: GroupId) -> Result<()> {
+	fn free_due_join_rows(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<()> {
 		let Some(span) = self.widest_retention() else {
 			return Ok(());
 		};
 		let retry = fired.at().saturating_add(span);
 
 		self.seal_fires.inc();
+		let mut stalled = false;
 		if (self.seal_fires.get() as u64).is_multiple_of(QUEUE_SWEEP_EVERY) {
 			let drained = drain(host, reaper::JOIN, &mut StoreReaper, SEAL_BATCH)?;
-			let pending = if drained.more {
-				queued(host, SEAL_BATCH)?.groups
+			stalled = if drained.more {
+				!queued(host, SEAL_BATCH)?.groups.is_empty()
 			} else {
-				drained.still_queued
+				!drained.still_queued.is_empty()
 			};
-			for stalled in pending {
-				host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(stalled))?;
-			}
 		}
 
 		let state = JoinState::new();
-		let mut next_arm: Option<DateTime>;
+		let mut emptied: Vec<GroupId> = Vec::new();
+		let mut seen: HashSet<GroupId> = HashSet::new();
+		let mut cursor: Option<JoinExpiryDueKey> = None;
 		loop {
-			let page = host.join_due_page(group, fired.at(), SEAL_BATCH)?;
-			let mut due: Vec<(JoinSide, RowNumber)> = Vec::with_capacity(page.due.len());
-			for (tag, row_number) in &page.due {
-				due.push((Self::side_of(*tag)?, *row_number));
-			}
-			for (side, row_number) in due.iter().filter(|(side, _)| *side == JoinSide::Left) {
-				self.free_expired_join_row(host, &state, group, *side, *row_number)?;
-			}
-			for (side, row_number) in due.iter().filter(|(side, _)| *side == JoinSide::Right) {
-				self.free_expired_join_row(host, &state, group, *side, *row_number)?;
-			}
-			next_arm = page.next;
-			if !page.more || page.due.is_empty() {
+			let page = host.join_due_page(fired.at(), SEAL_BATCH, cursor.as_ref())?;
+			if page.due.is_empty() {
 				break;
 			}
+			let mut order: Vec<GroupId> = Vec::new();
+			let mut by_group: HashMap<GroupId, Vec<(JoinSide, JoinDueEntry)>> = HashMap::new();
+			for entry in &page.due {
+				let side = Self::side_of(entry.side)?;
+				by_group.entry(entry.group)
+					.or_insert_with(|| {
+						order.push(entry.group);
+						Vec::new()
+					})
+					.push((side, *entry));
+			}
+			for group in &order {
+				let rows = &by_group[group];
+				for (side, entry) in rows.iter().filter(|(side, _)| *side == JoinSide::Left) {
+					self.free_expired_join_row(host, &state, entry, *side)?;
+				}
+				for (side, entry) in rows.iter().filter(|(side, _)| *side == JoinSide::Right) {
+					self.free_expired_join_row(host, &state, entry, *side)?;
+				}
+				if seen.insert(*group) {
+					emptied.push(*group);
+				}
+			}
+			if !page.more {
+				break;
+			}
+			cursor = page.resume;
 		}
 
-		if let Some(at) = next_arm {
-			host.arm_timer(at, TimerKind::Maintenance, &Self::timer_key(group))?;
-			return Ok(());
-		}
-		if !state.left.holds_rows(host, group)? && !state.right.holds_rows(host, group)? {
+		for group in emptied {
+			if state.left.holds_rows(host, group)? || state.right.holds_rows(host, group)? {
+				continue;
+			}
 			host.clear_join_expiries(group, SEAL_BATCH)?;
 			enqueue(host, group)?;
 			let drained = drain_group(host, group, reaper::JOIN, &mut StoreReaper, SEAL_BATCH)?;
-			if drained.still_queued {
-				host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(group))?;
-			}
+			stalled |= drained.still_queued;
 		}
-		Ok(())
+
+		Self::resync_timer(host, stalled.then_some(retry))
 	}
 
 	pub(crate) fn snapshot_ledger(&self) -> SnapshotLedger {
@@ -884,7 +868,7 @@ impl HostOperator for JoinOperator {
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
 		if timer.kind == TimerKind::Maintenance {
-			self.free_due_join_rows(host, FiredAt::of(&timer), Self::timer_group(&timer.key)?)?;
+			self.free_due_join_rows(host, FiredAt::of(&timer))?;
 		}
 		Ok(None)
 	}
@@ -1072,6 +1056,7 @@ mod seal_tests {
 		transaction::{
 			ChangeCoordinate, FlowTransaction,
 			deferred::DeferredTransaction,
+			join_expiry::{JoinRowExpiry, join_due_range, join_expiry_key},
 			mock::FlowTxn,
 			row_number::RowNumberExtension,
 			state::{StateExtension, StateRange},
@@ -1210,8 +1195,13 @@ mod seal_tests {
 		side: JoinSide,
 		row_number: u64,
 	) -> Option<DateTime> {
-		let key = JoinOperator::join_expiry_key(group, side, RowNumber(row_number));
+		let key = join_expiry_key(group, side.tag(), RowNumber(row_number));
 		txn.state_get(op.operator, &key).unwrap().map(|row| decode::<JoinRowExpiry>(&row).unwrap().at)
+	}
+
+	fn due_index_rows(op: &JoinOperator, txn: &mut DeferredTransaction) -> usize {
+		// The due index is root scoped, so nothing in a group's own range can prove it was cleaned up.
+		txn.state_range(op.operator, StateRange::forward(join_due_range(), "test")).unwrap().items.len()
 	}
 
 	fn armed_timers(op: &JoinOperator, txn: &mut DeferredTransaction) -> usize {
@@ -1264,21 +1254,20 @@ mod seal_tests {
 			.remove(0)
 	}
 
-	fn fire(op: &mut JoinOperator, txn: &mut DeferredTransaction, due: DateTime, group: GroupId) -> Option<Change> {
+	fn fire(op: &mut JoinOperator, txn: &mut DeferredTransaction, due: DateTime) -> Option<Change> {
 		// The engine lifts a due timer off the wheel before dispatch, so skipping the disarm reads as a leak.
 		let operator = op.operator;
 		let timer = Timer {
 			due,
 			kind: TimerKind::Maintenance,
-			key: JoinOperator::timer_key(group),
+			key: JoinOperator::timer_key(),
 		};
 		txn.disarm_timer(operator, &timer).unwrap();
 		op.on_timer(&mut TxnHostContext::new(txn, operator), timer).unwrap()
 	}
 
 	fn commit(engine: &TestEngine, txn: &mut DeferredTransaction) {
-		// Join expiries only reach the typed table through the batch, and the free path reads them differently
-		// there.
+		// State only reaches the store through the batch, so a durable read must go through a commit first.
 		apply_operator_state(&engine.inner().operator_state(), &txn.take_pending());
 	}
 
@@ -1299,7 +1288,7 @@ mod seal_tests {
 			Some(at_millis(15_001)),
 			"the due time is event time + retention + the strict gate step"
 		);
-		assert_eq!(armed_timers(&op, &mut txn), 1, "and exactly one timer addresses that key's group");
+		assert_eq!(armed_timers(&op, &mut txn), 1, "and exactly one maintenance timer covers the operator");
 	}
 
 	#[test]
@@ -1333,7 +1322,7 @@ mod seal_tests {
 		insert(&op, &mut txn, JoinSide::Left, &left);
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 
-		fire(&mut op, &mut txn, at_millis(15_000), group);
+		fire(&mut op, &mut txn, at_millis(15_000));
 
 		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 1, "the row must keep its state");
 		assert_eq!(
@@ -1378,7 +1367,7 @@ mod seal_tests {
 		insert(&op, &mut txn, JoinSide::Left, &late);
 		let group = group_of(&hash_of(&op, JoinSide::Left, &early, 0));
 
-		fire(&mut op, &mut txn, at_millis(15_001), group);
+		fire(&mut op, &mut txn, at_millis(15_001));
 
 		assert_eq!(
 			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 1),
@@ -1391,7 +1380,7 @@ mod seal_tests {
 			"its neighbour under the same key must keep its own join expiry"
 		);
 		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 1, "exactly one row was freed");
-		assert_eq!(armed_timers(&op, &mut txn), 1, "and the group re-arms on the next earliest join expiry");
+		assert_eq!(armed_timers(&op, &mut txn), 1, "and the operator re-arms on the next earliest join expiry");
 	}
 
 	#[test]
@@ -1445,7 +1434,7 @@ mod seal_tests {
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert!(unmatched_mapping(&op, &mut txn, 42).is_some(), "precondition: the row published downstream");
 
-		let emitted = fire(&mut op, &mut txn, at_millis(15_001), group);
+		let emitted = fire(&mut op, &mut txn, at_millis(15_001));
 
 		assert!(emitted.is_none(), "freeing an expired row must publish no diff at all");
 		assert_eq!(join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42), None, "the join expiry must go");
@@ -1467,7 +1456,7 @@ mod seal_tests {
 		let hash = hash_of(&op, JoinSide::Left, &left, 0);
 		let group = group_of(&hash);
 
-		fire(&mut op, &mut txn, at_millis(15_001), group);
+		fire(&mut op, &mut txn, at_millis(15_001));
 
 		assert_eq!(group_rows(&op, &mut txn, group), 0, "the group's range must be left empty");
 		assert_eq!(armed_timers(&op, &mut txn), 0, "and the timer that drove the expiry must not re-arm");
@@ -1485,7 +1474,7 @@ mod seal_tests {
 		let hash = hash_of(&op, JoinSide::Left, &left, 0);
 		let group = group_of(&hash);
 
-		fire(&mut op, &mut txn, at_millis(15_001), group);
+		fire(&mut op, &mut txn, at_millis(15_001));
 
 		assert_eq!(
 			side_rows(&op, &mut txn, group, JoinSide::Left),
@@ -1511,7 +1500,7 @@ mod seal_tests {
 		let hash = hash_of(&op, JoinSide::Left, &left, 0);
 		let group = group_of(&hash);
 
-		fire(&mut op, &mut txn, at_millis(15_001), group);
+		fire(&mut op, &mut txn, at_millis(15_001));
 
 		assert_eq!(
 			side_rows(&op, &mut txn, group, JoinSide::Left),
@@ -1526,7 +1515,7 @@ mod seal_tests {
 		assert_eq!(
 			armed_timers(&op, &mut txn),
 			1,
-			"and the group re-arms on that join expiry rather than dropping it"
+			"and the operator re-arms on that join expiry rather than dropping it"
 		);
 	}
 
@@ -1553,7 +1542,7 @@ mod seal_tests {
 			None,
 			"the right slot must arm nothing"
 		);
-		assert_eq!(armed_timers(&op, &mut txn), 1, "so only the left join expiry addresses the group");
+		assert_eq!(armed_timers(&op, &mut txn), 1, "so only the left join expiry arms the operator");
 	}
 
 	#[test]
@@ -1578,7 +1567,7 @@ mod seal_tests {
 			None,
 			"the pinned right row must not arm"
 		);
-		assert_eq!(armed_timers(&op, &mut txn), 1, "so only the left join expiry addresses the group");
+		assert_eq!(armed_timers(&op, &mut txn), 1, "so only the left join expiry arms the operator");
 	}
 
 	#[test]
@@ -1598,7 +1587,7 @@ mod seal_tests {
 		);
 		assert_eq!(ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PIN), 1, "precondition: it pinned");
 
-		fire(&mut op, &mut txn, at_millis(15_001), group);
+		fire(&mut op, &mut txn, at_millis(15_001));
 
 		assert_eq!(
 			ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PUBLISHED),
@@ -1631,7 +1620,7 @@ mod seal_tests {
 			"precondition: both published"
 		);
 
-		fire(&mut op, &mut txn, at_millis(15_001), group);
+		fire(&mut op, &mut txn, at_millis(15_001));
 
 		assert_eq!(
 			ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PUBLISHED),
@@ -1646,11 +1635,9 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_committed_join_expiry_leaves_no_row_behind_once_its_group_expires() {
-		// The reaper sweeps the key-value rows only, so a join expiry in the typed table outlives every group
-		// it frees.
+	fn a_committed_join_expiry_leaves_neither_of_its_two_rows_behind_once_its_group_expires() {
+		// A sweep visits the group's own partition, so the root due row must never outlive the group it names.
 		let engine = TestEngine::new();
-		let store = engine.inner().operator_state();
 		let mut op = join(16, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
@@ -1658,18 +1645,20 @@ mod seal_tests {
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		commit(&engine, &mut txn);
 		assert_eq!(
-			store.join_expiries_by_time(op.operator, group, 16).len(),
-			1,
-			"precondition: the join expiry is in the table, not merely in the batch"
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
+			Some(at_millis(15_001)),
+			"precondition: the group scoped join expiry is durable, not merely in the batch"
 		);
+		assert_eq!(due_index_rows(&op, &mut txn), 1, "precondition: so is the root due row indexing it");
 
-		fire(&mut op, &mut txn, at_millis(15_001), group);
+		fire(&mut op, &mut txn, at_millis(15_001));
 		commit(&engine, &mut txn);
 
 		assert_eq!(
-			store.join_expiries_by_time(op.operator, group, 16),
-			Vec::new(),
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
+			None,
 			"a group driven through free, enqueue and drain must leave no join expiry row"
 		);
+		assert_eq!(due_index_rows(&op, &mut txn), 0, "and no root due row pointing back into it");
 	}
 }

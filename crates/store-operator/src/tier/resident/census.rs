@@ -15,7 +15,7 @@ use reifydb_value::byte_size::ByteSize;
 
 use crate::{
 	tier::resident::{OperatorResidentState, slot::SlotInner},
-	types::{JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES, OperatorStateCensus, StoredJoinRowExpiryCensus},
+	types::OperatorStateCensus,
 };
 
 fn key_bytes(keyspace: KeyspaceId) -> u64 {
@@ -46,31 +46,6 @@ fn scan_state(inner: &SlotInner, mut visit: impl FnMut(KeyspaceId, &EncodedPodRo
 	});
 }
 
-fn scan_join_expiries(inner: &SlotInner) -> u64 {
-	let mut keys = 0u64;
-	for entry in inner.live.join_expiries.values() {
-		if entry.is_some() {
-			keys += 1;
-		}
-	}
-	let Some(pending) = inner.in_flight.as_deref() else {
-		return keys;
-	};
-	for (key, entry) in pending.join_expiries.iter() {
-		if inner.live.join_expiries.contains_key(key) {
-			continue;
-		}
-		if entry.is_some() {
-			keys += 1;
-		}
-	}
-	keys
-}
-
-fn join_expiry_bytes(join_expiries: u64) -> ByteSize {
-	(JOIN_EXPIRY_KEY_BYTES + JOIN_EXPIRY_VALUE_BYTES) * join_expiries
-}
-
 impl OperatorResidentState {
 	pub fn bytes(&self, operator: OperatorId) -> ByteSize {
 		let Some(slot) = self.shared().slot(operator) else {
@@ -82,7 +57,7 @@ impl OperatorResidentState {
 			total = total
 				.saturating_add(ByteSize::from_bytes(key_bytes(keyspace) + row.bytes().len() as u64));
 		});
-		total.saturating_add(join_expiry_bytes(scan_join_expiries(&inner)))
+		total
 	}
 
 	pub fn total_bytes(&self) -> ByteSize {
@@ -116,24 +91,6 @@ impl OperatorResidentState {
 					.saturating_add(ByteSize::from_bytes(row.bytes().len() as u64));
 			});
 			entries.extend(buckets.into_values());
-		}
-		entries
-	}
-
-	pub fn join_expiry_census(&self) -> Vec<StoredJoinRowExpiryCensus> {
-		let mut entries = Vec::new();
-		for operator in self.shared().operators() {
-			let Some(slot) = self.shared().slot(operator) else {
-				continue;
-			};
-			let keys = scan_join_expiries(&slot.inner.lock());
-			if keys == 0 {
-				continue;
-			}
-			entries.push(StoredJoinRowExpiryCensus {
-				operator,
-				keys,
-			});
 		}
 		entries
 	}

@@ -45,24 +45,16 @@ ok
 flows: [8]
 floor => 88
 
-# Join expiries belong to the slice too.
-
-batch_ckpt join_expiry_set=1/0/5/400 ckpt=8/99
-join_expiries_by_time
+batch_ckpt ckpt=8/99
 ckpt_get 8
 ---
-0/5 => 400
-count=1
 flow 8 => 99
 
 flush
-join_expiries_by_time
 ckpt_get 8
 ckpt_floor
 ---
 ok
-0/5 => 400
-count=1
 flow 8 => 99
 floor => 99
 

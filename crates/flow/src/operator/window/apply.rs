@@ -1329,11 +1329,10 @@ mod seal_arm_tests {
 
 	fn index_windows(operator: &mut WindowOperator, host: &mut dyn HostContext, starts: &[u64]) {
 		let config = operator.engine_config();
-		let mut engine = operator
-			.core
-			.tumbling_engine_slot()
-			.take()
-			.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config)));
+		let mut engine =
+			operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+				Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config))
+			});
 		for (n, start_ms) in starts.iter().enumerate() {
 			let start = at_millis(*start_ms);
 			engine.reindex_window(

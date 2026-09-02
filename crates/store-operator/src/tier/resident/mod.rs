@@ -6,7 +6,6 @@ pub mod flush;
 
 mod census;
 mod checkpoint;
-mod join_expiry;
 pub mod slot;
 mod state;
 
@@ -47,10 +46,10 @@ use crate::{
 		resident::{
 			batch::{DropMarker, FlushBatch},
 			flush::actor::FlushMessage,
-			slot::{OperatorLive, Slot, SlotInner, SlotJoinKey},
+			slot::{OperatorLive, Slot, SlotInner},
 		},
 	},
-	types::{DurablePre, OperatorWrite},
+	types::OperatorWrite,
 };
 
 pub const FLUSH_BUDGET_BYTES: ByteSize = if default::TESTING {
@@ -505,11 +504,7 @@ impl OperatorResidentState {
 			batch.checkpoints.insert(flow, entry);
 		}
 
-		if batch.state.is_empty()
-			&& batch.join_expiries.is_empty()
-			&& batch.checkpoints.is_empty()
-			&& global.drops.is_empty()
-		{
+		if batch.state.is_empty() && batch.checkpoints.is_empty() && global.drops.is_empty() {
 			return None;
 		}
 
@@ -582,7 +577,7 @@ impl OperatorResidentState {
 			global.flushing = false;
 		}
 		self.shared.idle.notify_all();
-		let entries = (batch.state.len() + batch.join_expiries.len()) as u64;
+		let entries = batch.state.len() as u64;
 		self.shared.budget.release(batch.bytes);
 		self.shared.release_entries(entries as usize);
 		self.shared.triggered.store(false, Ordering::Release);
@@ -642,36 +637,18 @@ fn write_operator(write: &OperatorWrite) -> OperatorId {
 		| OperatorWrite::Remove {
 			operator,
 			..
-		}
-		| OperatorWrite::JoinExpiryInsert {
-			operator,
-			..
-		}
-		| OperatorWrite::JoinExpiryReplace {
-			operator,
-			..
-		}
-		| OperatorWrite::JoinExpiryRemove {
-			operator,
-			..
 		} => *operator,
 	}
 }
 
 fn drop_operator(marker: &DropMarker) -> OperatorId {
 	match marker {
-		DropMarker::OperatorState(operator)
-		| DropMarker::JoinExpiriesOperator(operator)
-		| DropMarker::JoinExpiriesGroup(operator, _) => *operator,
+		DropMarker::OperatorState(operator) => *operator,
 	}
 }
 
 pub(crate) fn record_state(inner: &mut SlotInner, key: EncodedKey, post: Option<EncodedPodRow>) {
 	inner.live.record_state(key, post);
-}
-
-pub(crate) fn record_join_expiry(inner: &mut SlotInner, key: SlotJoinKey, expiry: Option<u64>, durable: bool) {
-	inner.live.record_join_expiry(key, expiry, durable);
 }
 
 fn apply_write(inner: &mut SlotInner, write: &OperatorWrite) {
@@ -690,42 +667,13 @@ fn apply_write(inner: &mut SlotInner, write: &OperatorWrite) {
 			key,
 			..
 		} => record_state(inner, key.clone(), None),
-		OperatorWrite::JoinExpiryInsert {
-			group,
-			side,
-			row_num,
-			at,
-			..
-		} => record_join_expiry(inner, (*group, *side, *row_num), Some(at.to_millis()), false),
-		OperatorWrite::JoinExpiryReplace {
-			group,
-			side,
-			row_num,
-			at,
-			..
-		} => record_join_expiry(inner, (*group, *side, *row_num), Some(at.to_millis()), true),
-		OperatorWrite::JoinExpiryRemove {
-			group,
-			side,
-			row_num,
-			pre,
-			..
-		} => record_join_expiry(inner, (*group, *side, *row_num), None, matches!(pre, DurablePre::Present(_))),
 	}
 }
 
 fn clear_drop(inner: &mut SlotInner, marker: DropMarker) {
-	let live = &mut inner.live;
 	match marker {
 		DropMarker::OperatorState(_) => {
-			live.clear_state();
-			live.retain_join_expiries(|_| false);
-		}
-		DropMarker::JoinExpiriesOperator(_) => {
-			live.retain_join_expiries(|_| false);
-		}
-		DropMarker::JoinExpiriesGroup(_, group) => {
-			live.retain_join_expiries(|(candidate, _, _)| *candidate != group);
+			inner.live.clear_state();
 		}
 	}
 }
@@ -734,16 +682,8 @@ fn take_all(inner: &mut SlotInner) -> OperatorLive {
 	let taken = OperatorLive {
 		operator: inner.live.operator,
 		state: mem::take(&mut inner.live.state),
-		join_expiries: mem::take(&mut inner.live.join_expiries),
-		durable_join_expiries: BTreeSet::new(),
 		bytes: inner.live.bytes,
 	};
-	for (key, entry) in taken.join_expiries.iter() {
-		match entry {
-			Some(_) => inner.live.durable_join_expiries.insert(*key),
-			None => inner.live.durable_join_expiries.remove(key),
-		};
-	}
 	inner.live.bytes = ByteSize::ZERO;
 	taken
 }
@@ -752,9 +692,6 @@ fn merge_into_batch(batch: &mut FlushBatch, operator: OperatorId, taken: &Operat
 	taken.state.for_each_entry(operator, |keyspace, group, suffix, entry| {
 		batch.state.record_bytes(operator, keyspace, group, suffix, entry.post.clone());
 	});
-	for ((group, side, row_number), entry) in taken.join_expiries.iter() {
-		batch.join_expiries.insert((operator, *group, *side, *row_number), *entry);
-	}
 	batch.bytes = batch.bytes.saturating_add(taken.bytes);
 }
 
@@ -769,7 +706,6 @@ fn invalidate_flushed(point: Option<&PointTiers>, range: Option<&RangeTiers>, ba
 					point.invalidate_operator(*operator);
 				}
 			}
-			DropMarker::JoinExpiriesOperator(_) | DropMarker::JoinExpiriesGroup(_, _) => {}
 		}
 	}
 	for operator in batch.state.operators() {

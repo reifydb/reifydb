@@ -117,7 +117,6 @@ impl Keyspace for SourceWatermark {
 	const ID: KeyspaceId = KeyspaceId::SOURCE_WATERMARK;
 	const NAME: &'static str = "SOURCE_WATERMARK";
 	const CACHE: CacheTiers = CacheTiers::Both;
-	const GROUP_SCOPED: bool = false;
 
 	type Key = SourceWatermarkKey;
 	type Suffix = SourceWatermarkKey;
@@ -138,7 +137,6 @@ impl Keyspace for SealLedger {
 	const ID: KeyspaceId = KeyspaceId::SEAL_LEDGER;
 	const NAME: &'static str = "SEAL_LEDGER";
 	const CACHE: CacheTiers = CacheTiers::Both;
-	const GROUP_SCOPED: bool = true;
 
 	type Key = SealLedgerKey;
 	type Suffix = ();
@@ -161,7 +159,6 @@ impl Keyspace for NodeCounter {
 	const ID: KeyspaceId = KeyspaceId::NODE_COUNTER;
 	const NAME: &'static str = "NODE_COUNTER";
 	const CACHE: CacheTiers = CacheTiers::Both;
-	const GROUP_SCOPED: bool = false;
 
 	type Key = NodeCounterKey;
 	type Suffix = NodeCounterKey;
@@ -182,7 +179,6 @@ impl Keyspace for GateVisibility {
 	const ID: KeyspaceId = KeyspaceId::GATE_VISIBILITY;
 	const NAME: &'static str = "GATE_VISIBILITY";
 	const CACHE: CacheTiers = CacheTiers::Both;
-	const GROUP_SCOPED: bool = false;
 
 	type Key = GateVisibilityKey;
 	type Suffix = GateVisibilityKey;
@@ -203,7 +199,6 @@ impl Keyspace for GroupRowMapping {
 	const ID: KeyspaceId = KeyspaceId::GROUP_ROW_MAPPING;
 	const NAME: &'static str = "GROUP_ROW_MAPPING";
 	const CACHE: CacheTiers = CacheTiers::Range;
-	const GROUP_SCOPED: bool = true;
 
 	type Key = GroupRowMappingKey;
 	type Suffix = ();
@@ -226,7 +221,6 @@ impl Keyspace for GuestRowMapping {
 	const ID: KeyspaceId = KeyspaceId::GUEST_ROW_MAPPING;
 	const NAME: &'static str = "GUEST_ROW_MAPPING";
 	const CACHE: CacheTiers = CacheTiers::Range;
-	const GROUP_SCOPED: bool = true;
 
 	type Key = GuestRowMappingKey;
 	type Suffix = GuestRowMappingSuffix;
@@ -255,7 +249,6 @@ impl Keyspace for CustomNotCached {
 	const ID: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
 	const NAME: &'static str = "CUSTOM_NOT_CACHED";
 	const CACHE: CacheTiers = CacheTiers::Neither;
-	const GROUP_SCOPED: bool = true;
 
 	type Key = CustomNotCachedKey;
 	type Suffix = CustomNotCachedSuffix;

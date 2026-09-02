@@ -6,13 +6,15 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_value::{
-	Result, reifydb_assertions,
+	Result,
 	byte_size::ByteSize,
+	reifydb_assertions,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::key::operator::state::{
-	GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, keyspace_inner_range, keyspace_inner_range_split,
+use crate::key::operator::{
+	keyspace::{RootSibling, root_sibling_of},
+	state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, keyspace_inner_range, keyspace_inner_range_split},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -116,6 +118,21 @@ pub trait StateStore {
 			swept.extend(page.into_iter().map(|(key, _)| key));
 		}
 		Ok(swept)
+	}
+
+	fn remove_root_siblings(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		for key in keys {
+			let Some(row) = self.state_get(key)? else {
+				continue;
+			};
+			let Some(sibling) = root_sibling_of(key, &row) else {
+				continue;
+			};
+			if let RootSibling::Derived(sibling) = sibling {
+				self.state_remove(&sibling)?;
+			}
+		}
+		Ok(())
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {

@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
+	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -14,7 +14,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		operator::{
-			keyspace::join::JoinRowMappingKey,
+			keyspace::join::{JoinExpiryDueKey, JoinRowMappingKey},
 			state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
 		},
 	},
@@ -24,6 +24,7 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
+	error::Error as ValueError,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -39,7 +40,10 @@ use crate::{
 	transaction::{
 		FlowTransaction,
 		dictionary::DictionaryExtension,
-		join_expiry::{JoinDuePage, JoinRowExpiryExtension, join_expiry_key},
+		join_expiry::{
+			JoinDueEntry, JoinDuePage, JoinRowExpiry, JoinRowExpiryExtension, join_expiry_range,
+			join_expiry_slot,
+		},
 		reclaim::ReclaimExtension,
 		row_number::RowNumberExtension,
 		state::{StateExtension, StateRange},
@@ -51,22 +55,40 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 
-	fn join_expiry_at(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>>;
+	fn join_expiry_arm(&mut self, group: GroupId, side: u8, row_number: RowNumber, at: DateTime) -> Result<()>;
 
-	fn join_expiry_min(&mut self, group: GroupId) -> Result<Option<DateTime>>;
+	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<()>;
 
-	fn join_due_page(&mut self, group: GroupId, at: DateTime, budget: usize) -> Result<JoinDuePage>;
+	fn join_expiry_free(&mut self, entry: &JoinDueEntry) -> Result<()>;
+
+	fn join_expiry_min(&mut self) -> Result<Option<DateTime>>;
+
+	fn join_due_page(
+		&mut self,
+		at: DateTime,
+		budget: usize,
+		from: Option<&JoinExpiryDueKey>,
+	) -> Result<JoinDuePage>;
 
 	fn clear_join_expiries(&mut self, group: GroupId, budget: usize) -> Result<()> {
 		loop {
-			let page = self.join_due_page(group, DateTime::MAX, budget)?;
-			if page.due.is_empty() {
+			let page = self.state_range_limited(join_expiry_range(group), Some(budget))?;
+			if page.is_empty() {
 				return Ok(());
 			}
-			for (side, row_number) in &page.due {
-				self.state_remove(&join_expiry_key(group, *side, *row_number))?;
+			for (key, row) in &page {
+				let Some(slot) = join_expiry_slot(key) else {
+					continue;
+				};
+				let at = JoinRowExpiry::decode_state(row).map_err(ValueError::from)?.at;
+				self.join_expiry_free(&JoinDueEntry {
+					at,
+					group,
+					side: slot.side.0,
+					row_number: slot.row.0,
+				})?;
 			}
-			if !page.more {
+			if page.len() < budget {
 				return Ok(());
 			}
 		}
@@ -290,16 +312,29 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.disarm_timer_by_key(self.operator, kind, key)
 	}
 
-	fn join_expiry_at(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>> {
-		self.txn.join_expiry_at(self.operator, group, side, row_number)
+	fn join_expiry_arm(&mut self, group: GroupId, side: u8, row_number: RowNumber, at: DateTime) -> Result<()> {
+		self.txn.join_expiry_arm(self.operator, group, side, row_number, at)
 	}
 
-	fn join_expiry_min(&mut self, group: GroupId) -> Result<Option<DateTime>> {
-		self.txn.join_expiry_min(self.operator, group)
+	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<()> {
+		self.txn.join_expiry_clear(self.operator, group, side, row_number)
 	}
 
-	fn join_due_page(&mut self, group: GroupId, at: DateTime, budget: usize) -> Result<JoinDuePage> {
-		self.txn.join_due_page(self.operator, group, at, budget)
+	fn join_expiry_free(&mut self, entry: &JoinDueEntry) -> Result<()> {
+		self.txn.join_expiry_free(self.operator, entry)
+	}
+
+	fn join_expiry_min(&mut self) -> Result<Option<DateTime>> {
+		self.txn.join_expiry_min(self.operator)
+	}
+
+	fn join_due_page(
+		&mut self,
+		at: DateTime,
+		budget: usize,
+		from: Option<&JoinExpiryDueKey>,
+	) -> Result<JoinDuePage> {
+		self.txn.join_due_page(self.operator, at, budget, from)
 	}
 
 	fn config_uint8(&self, key: ConfigKey) -> u64 {

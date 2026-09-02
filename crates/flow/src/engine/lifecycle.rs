@@ -89,15 +89,18 @@ impl FlowEngineInner {
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_codec::row::pod::EncodedPodRow;
+	use reifydb_codec::row::{operator::state::OperatorState, pod::EncodedPodRow};
 	use reifydb_core::{
 		common::TimeDomain,
 		interface::catalog::id::{SeriesId, ViewId},
-		key::operator::state::{GroupId, custom_not_cached_key},
+		key::operator::{
+			keyspace::join::join_expiry_due_key,
+			state::{GroupId, KeyspaceId, custom_not_cached_key},
+		},
 	};
 	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
 	use reifydb_runtime::context::RuntimeContext;
-	use reifydb_store_operator::types::OperatorWrite;
+	use reifydb_store_operator::{store::OperatorStore, types::OperatorWrite};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::{
 		byte_size::ByteSize,
@@ -110,8 +113,23 @@ mod tests {
 			metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider,
 			scan::series::SourceSeriesOperator,
 		},
-		transaction::substrate::FlowSubstrate,
+		transaction::{
+			join_expiry::{JoinRowExpiry, join_expiry_key},
+			substrate::FlowSubstrate,
+		},
 	};
+
+	fn occupied_keyspaces(store: &OperatorStore, operator: OperatorId) -> Vec<KeyspaceId> {
+		// Census order follows the inverted keyspace byte, so a stable comparison has to sort by the raw id.
+		let mut keyspaces: Vec<KeyspaceId> = store
+			.census()
+			.into_iter()
+			.filter(|entry| entry.operator == operator && entry.keys > 0)
+			.map(|entry| entry.keyspace)
+			.collect();
+		keyspaces.sort_by_key(|keyspace| keyspace.0);
+		keyspaces
+	}
 
 	#[test]
 	fn a_repeated_source_registration_leaves_one_entry() {
@@ -179,8 +197,8 @@ mod tests {
 	}
 
 	#[test]
-	fn removing_a_flow_drops_its_operators_join_row_expiries() {
-		// Join expiries live outside the key-value rows now, so a drop that spares them leaks a row per group.
+	fn removing_a_flow_drops_both_keyspaces_its_join_expiries_occupy() {
+		// The due index sits at root, outside every group partition, so only an operator drop can take it.
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
@@ -207,17 +225,36 @@ mod tests {
 		inner.insert_operator(FlowId(1), operator, Box::new(SourceSeriesOperator::new(operator)));
 
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
-		store.join_expiry_set(operator, GroupId(3), 0, RowNumber(1), DateTime::from_millis(5_000));
-		store.join_expiry_set(operator, GroupId(4), 0, RowNumber(1), DateTime::from_millis(6_000));
-		assert!(
-			store.bytes(operator) > ByteSize::ZERO,
-			"precondition: the operator's join expiries are resident"
+		let at = DateTime::from_millis(5_000);
+		store.apply_batch(&[
+			OperatorWrite::Insert {
+				operator,
+				key: join_expiry_key(GroupId(3), 0, RowNumber(1)).into_encoded(),
+				post: JoinRowExpiry {
+					at,
+				}
+				.encode_state()
+				.expect("a join expiry payload must encode"),
+			},
+			OperatorWrite::Insert {
+				operator,
+				key: join_expiry_due_key(at, GroupId(3), 0, RowNumber(1)).into_encoded(),
+				post: EncodedPodRow::new(&[]),
+			},
+		]);
+		assert_eq!(
+			occupied_keyspaces(&store, operator),
+			vec![KeyspaceId::JOIN_ROW_EXPIRY, KeyspaceId::JOIN_EXPIRY_DUE],
+			"precondition: an arm occupies a group scoped keyspace and a root scoped one"
 		);
 
 		inner.remove_flow(FlowId(1));
 
-		assert_eq!(store.join_expiries_by_time(operator, GroupId(3), 16), Vec::new());
-		assert_eq!(store.join_expiries_by_time(operator, GroupId(4), 16), Vec::new());
+		assert_eq!(
+			occupied_keyspaces(&store, operator),
+			Vec::new(),
+			"the retired operator must be left holding neither keyspace"
+		);
 		assert_eq!(
 			store.bytes(operator),
 			ByteSize::ZERO,
