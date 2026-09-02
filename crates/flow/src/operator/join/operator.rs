@@ -59,7 +59,7 @@ use crate::{
 		host::HostContext,
 		join::{Emitted, Identity},
 		state::{
-			reaper::{StoreReaper, drain, drain_group, enqueue, queue_key, queued},
+			reaper::{self, StoreReaper, drain, drain_group, enqueue, queue_key, queued},
 			seal::{ledger::FiredAt, rule::SealRule},
 		},
 	},
@@ -460,7 +460,7 @@ impl JoinOperator {
 
 		self.seal_fires.inc();
 		if (self.seal_fires.get() as u64).is_multiple_of(QUEUE_SWEEP_EVERY) {
-			let drained = drain(host, &mut StoreReaper, SEAL_BATCH)?;
+			let drained = drain(host, reaper::JOIN, &mut StoreReaper, SEAL_BATCH)?;
 			let pending = if drained.more {
 				queued(host, SEAL_BATCH)?.groups
 			} else {
@@ -498,7 +498,7 @@ impl JoinOperator {
 		if !state.left.holds_rows(host, group)? && !state.right.holds_rows(host, group)? {
 			host.clear_join_expiries(group, SEAL_BATCH)?;
 			enqueue(host, group)?;
-			let drained = drain_group(host, group, &mut StoreReaper, SEAL_BATCH)?;
+			let drained = drain_group(host, group, reaper::JOIN, &mut StoreReaper, SEAL_BATCH)?;
 			if drained.still_queued {
 				host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(group))?;
 			}

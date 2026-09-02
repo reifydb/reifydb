@@ -13,7 +13,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	operator::state::{
-		reaper::{drain, enqueue},
+		reaper::{self, drain, enqueue},
 		seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 	},
 	window::{
@@ -211,7 +211,7 @@ where
 			enqueue(store, window.group_id)?;
 		}
 		engine.expire_meta(store, horizon.to_order())?;
-		let drained = drain(store, engine, SEAL_REAP_BATCH)?;
+		let drained = drain(store, reaper::GUEST, engine, SEAL_REAP_BATCH)?;
 		if !drained.queue_is_empty() {
 			observe_batch(store, frontier, lateness)?;
 		}

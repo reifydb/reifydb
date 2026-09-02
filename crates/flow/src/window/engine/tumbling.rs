@@ -387,7 +387,10 @@ mod tests {
 	};
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::{key::operator::state::GroupId, metrics::heap::HeapSize};
+	use reifydb_core::{
+		key::operator::state::{GroupId, KeyspaceMask},
+		metrics::heap::HeapSize,
+	};
 	use reifydb_macro::operator_state;
 	use reifydb_value::{Result, factory::time::at_millis, value::datetime::DateTime};
 
@@ -644,7 +647,7 @@ mod tests {
 		);
 
 		enqueue(&mut store, expired[0].group_id).unwrap();
-		reap_group(&mut store, expired[0].group_id, &mut StoreReaper, 256).unwrap();
+		reap_group(&mut store, expired[0].group_id, KeyspaceMask::KNOWN, &mut StoreReaper, 256).unwrap();
 
 		assert_eq!(
 			store.tumbling_index_entry_count(),

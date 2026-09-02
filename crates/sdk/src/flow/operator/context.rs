@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask},
 	state::timer::TimerKind,
 };
 use reifydb_flow::operator::state::reclaim::ReclaimOutcome;
@@ -104,6 +104,7 @@ pub trait GuestState {
 	fn sweep_bytes_visit(
 		&self,
 		group: GroupId,
+		mask: KeyspaceMask,
 		data_only: bool,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
@@ -111,7 +112,7 @@ pub trait GuestState {
 		let mut seen = 0usize;
 		for id in (u8::MIN..=u8::MAX).rev() {
 			let keyspace = KeyspaceId(id);
-			if data_only && !keyspace.is_data() {
+			if !mask.contains(keyspace) || (data_only && !keyspace.is_data()) {
 				continue;
 			}
 			let remaining = match limit {

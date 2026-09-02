@@ -6,13 +6,13 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_value::{
-	Result,
+	Result, reifydb_assertions,
 	byte_size::ByteSize,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
 use crate::key::operator::state::{
-	GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range, keyspace_inner_range_split,
+	GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, keyspace_inner_range, keyspace_inner_range_split,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -74,10 +74,37 @@ pub trait StateStore {
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
 
 	fn group_sweep(&mut self, group: GroupId, data_only: bool, limit: Option<usize>) -> Result<Vec<GroupStateKey>> {
+		self.group_sweep_in(group, KeyspaceMask::KNOWN, data_only, limit)
+	}
+
+	fn group_sweep_in(
+		&mut self,
+		group: GroupId,
+		mask: KeyspaceMask,
+		data_only: bool,
+		limit: Option<usize>,
+	) -> Result<Vec<GroupStateKey>> {
+		reifydb_assertions! {
+			if mask != KeyspaceMask::KNOWN {
+				for key in self.group_sweep_in(group, KeyspaceMask::KNOWN, data_only, None)? {
+					let Some((_, keyspace, _)) =
+						crate::key::operator::state::OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
+					else {
+						continue;
+					};
+					assert!(
+						mask.contains(keyspace),
+						"group {} holds a row in {} which the sweep set omits; declaring the group done 						 would orphan it behind a group id nothing can resolve again",
+						group.0,
+						keyspace.name()
+					);
+				}
+			}
+		}
 		let mut swept = Vec::new();
 		for id in (u8::MIN..=u8::MAX).rev() {
 			let keyspace = KeyspaceId(id);
-			if !keyspace.is_known() || (data_only && !keyspace.is_data()) {
+			if !mask.contains(keyspace) || (data_only && !keyspace.is_data()) {
 				continue;
 			}
 			let remaining = match limit {

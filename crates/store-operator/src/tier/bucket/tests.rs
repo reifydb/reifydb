@@ -275,7 +275,7 @@ fn every_keyspace_in_the_catalogue_is_reachable_through_the_dispatch() {
 	}
 
 	assert_eq!(
-		dispatch(KeyspaceId(0x00), Name),
+		dispatch(KeyspaceId(0x2B), Name),
 		None,
 		"an id no keyspace claims must report itself rather than answering as a neighbour"
 	);

@@ -87,6 +87,15 @@ macro_rules! catalogue {
 			}),*
 		];
 
+		pub const REGISTERED: [u64; 4] = {
+			let mut bits = [0u64; 4];
+			$({
+				let id = <$keyspace as Keyspace>::ID.0;
+				bits[(id >> 6) as usize] |= 1u64 << (id & 63);
+			})*
+			bits
+		};
+
 		pub fn suffix_width_of(id: KeyspaceId) -> Option<usize> {
 			$(if id == <$keyspace as Keyspace>::ID {
 				return Some(columns_width(<<$keyspace as Keyspace>::Suffix as KeyLayout>::COLUMNS));

@@ -17,7 +17,7 @@ use crate::{
 	key::{
 		operator::{
 			keyspace::{
-				KeyspaceVisitor, dispatch,
+				KeyspaceVisitor, REGISTERED, dispatch,
 				root::{CustomNotCachedSuffix, NodeCounter, NodeCounterKey, NodeCounterKind},
 				suffix_width_of,
 			},
@@ -104,93 +104,93 @@ pub fn group_data_of_inner(inner: &[u8]) -> Option<GroupId> {
 pub struct KeyspaceId(pub u8);
 
 impl KeyspaceId {
-	pub const HIGHEST_DATA: u8 = 0x7F;
+	pub const HIGHEST_DATA: u8 = 0x23;
 
-	pub const NODE_COUNTER: Self = Self(0xFC);
+	pub const NODE_COUNTER: Self = Self(0xFF);
 
-	pub const SOURCE_WATERMARK: Self = Self(0xFA);
+	pub const SOURCE_WATERMARK: Self = Self(0xFE);
 
-	pub const TIMER_WHEEL: Self = Self(0xF9);
+	pub const TIMER_WHEEL: Self = Self(0xFD);
 
-	pub const TIMER_INDEX: Self = Self(0xF8);
+	pub const TIMER_INDEX: Self = Self(0xFC);
 
-	pub const JOIN_ROW_MAPPING: Self = Self(0xF7);
+	pub const JOIN_ROW_MAPPING: Self = Self(0xFB);
 
-	pub const GROUP_ROW_MAPPING: Self = Self(0xF6);
+	pub const GROUP_ROW_MAPPING: Self = Self(0xFA);
 
-	pub const GUEST_ROW_MAPPING: Self = Self(0xF5);
+	pub const GUEST_ROW_MAPPING: Self = Self(0xF9);
 
-	pub const ACCUMULATOR: Self = Self(0x10);
+	pub const ACCUMULATOR: Self = Self(0x00);
 
-	pub const BUFFER: Self = Self(0x11);
+	pub const BUFFER: Self = Self(0x01);
 
-	pub const RUNNING: Self = Self(0x12);
+	pub const RUNNING: Self = Self(0x02);
 
-	pub const EMIT: Self = Self(0x13);
+	pub const EMIT: Self = Self(0x03);
 
-	pub const ROLLING_EXPIRY: Self = Self(0x14);
+	pub const ROLLING_EXPIRY: Self = Self(0x04);
 
-	pub const COUNT: Self = Self(0x16);
+	pub const COUNT: Self = Self(0x05);
 
-	pub const ROW_INDEX: Self = Self(0x17);
+	pub const ROW_INDEX: Self = Self(0x06);
 
-	pub const SESSION: Self = Self(0x18);
+	pub const SESSION: Self = Self(0x07);
 
-	pub const ROLLING_META: Self = Self(0x19);
+	pub const ROLLING_META: Self = Self(0x08);
 
-	pub const ENGINE_META: Self = Self(0x1A);
+	pub const ENGINE_META: Self = Self(0x09);
 
-	pub const DISTINCT_ENTRY: Self = Self(0x1B);
+	pub const DISTINCT_ENTRY: Self = Self(0x0A);
 
-	pub const WINDOW_META: Self = Self(0x1C);
+	pub const WINDOW_META: Self = Self(0x0B);
 
-	pub const JOIN_LEFT: Self = Self(0x1D);
+	pub const JOIN_LEFT: Self = Self(0x0C);
 
-	pub const JOIN_RIGHT: Self = Self(0x1E);
+	pub const JOIN_RIGHT: Self = Self(0x0D);
 
-	pub const JOIN_SCHEMA: Self = Self(0x1F);
+	pub const JOIN_SCHEMA: Self = Self(0x0E);
 
-	pub const RINGBUFFER_FORWARD: Self = Self(0x20);
+	pub const RINGBUFFER_FORWARD: Self = Self(0x0F);
 
-	pub const RINGBUFFER_ENTRY: Self = Self(0x21);
+	pub const RINGBUFFER_ENTRY: Self = Self(0x10);
 
-	pub const GATE_VISIBILITY: Self = Self(0x22);
+	pub const GATE_VISIBILITY: Self = Self(0x11);
 
-	pub const DISTINCT_LAYOUT: Self = Self(0x23);
+	pub const DISTINCT_LAYOUT: Self = Self(0x12);
 
-	pub const RINGBUFFER_EXPIRY: Self = Self(0x24);
+	pub const RINGBUFFER_EXPIRY: Self = Self(0x13);
 
-	pub const RINGBUFFER_TTL_ARM: Self = Self(0x25);
+	pub const RINGBUFFER_TTL_ARM: Self = Self(0x14);
 
-	pub const SEAL_LEDGER: Self = Self(0x26);
+	pub const SEAL_LEDGER: Self = Self(0x15);
 
-	pub const JOIN_PUBLISHED: Self = Self(0x27);
+	pub const JOIN_PUBLISHED: Self = Self(0x16);
 
-	pub const JOIN_PIN: Self = Self(0x28);
+	pub const JOIN_PIN: Self = Self(0x17);
 
-	pub const RINGBUFFER_META: Self = Self(0x29);
+	pub const RINGBUFFER_META: Self = Self(0x18);
 
-	pub const REAP_QUEUE: Self = Self(0x2A);
+	pub const REAP_QUEUE: Self = Self(0x19);
 
-	pub const JOIN_ROW_EXPIRY: Self = Self(0x2B);
+	pub const JOIN_ROW_EXPIRY: Self = Self(0x1A);
 
-	pub const GUEST_ACCUMULATOR: Self = Self(0x2C);
+	pub const GUEST_ACCUMULATOR: Self = Self(0x1B);
 
-	pub const GUEST_BUFFER: Self = Self(0x2D);
+	pub const GUEST_BUFFER: Self = Self(0x1C);
 
-	pub const GUEST_RUNNING: Self = Self(0x2E);
+	pub const GUEST_RUNNING: Self = Self(0x1D);
 
-	pub const TUMBLING_EXPIRY: Self = Self(0x2F);
+	pub const TUMBLING_EXPIRY: Self = Self(0x1E);
 
-	pub const PARTITIONED_RINGBUFFER_ENTRY: Self = Self(0x30);
+	pub const PARTITIONED_RINGBUFFER_ENTRY: Self = Self(0x1F);
 
-	pub const PARTITIONED_RINGBUFFER_EXPIRY: Self = Self(0x31);
+	pub const PARTITIONED_RINGBUFFER_EXPIRY: Self = Self(0x20);
 
-	pub const PARTITIONED_RINGBUFFER_TTL_ARM: Self = Self(0x32);
+	pub const PARTITIONED_RINGBUFFER_TTL_ARM: Self = Self(0x21);
 
-	pub const PARTITIONED_RINGBUFFER_META: Self = Self(0x33);
+	pub const PARTITIONED_RINGBUFFER_META: Self = Self(0x22);
 
-	pub const CUSTOM_NOT_CACHED: Self = Self(0x40);
+	pub const CUSTOM_NOT_CACHED: Self = Self(0x23);
 
 	pub fn name(&self) -> Cow<'static, str> {
 		match *self {
@@ -272,15 +272,39 @@ impl KeyspaceId {
 		matches!(*self, Self::CUSTOM_NOT_CACHED)
 	}
 
-	pub fn is_known(&self) -> bool {
-		self.is_data()
-			|| matches!(
-				*self,
-				Self::NODE_COUNTER
-					| Self::SOURCE_WATERMARK | Self::TIMER_WHEEL
-					| Self::TIMER_INDEX | Self::JOIN_ROW_MAPPING
-					| Self::GROUP_ROW_MAPPING | Self::GUEST_ROW_MAPPING
-			)
+	pub const fn is_known(&self) -> bool {
+		REGISTERED[(self.0 >> 6) as usize] & (1u64 << (self.0 & 63)) != 0
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyspaceMask([u64; 4]);
+
+impl KeyspaceMask {
+	pub const KNOWN: Self = Self(REGISTERED);
+
+	pub const fn of(ids: &[KeyspaceId]) -> Self {
+		let mut bits = [0u64; 4];
+		let mut index = 0;
+		while index < ids.len() {
+			let id = ids[index].0;
+			bits[(id >> 6) as usize] |= 1u64 << (id & 63);
+			index += 1;
+		}
+		Self(bits)
+	}
+
+	pub const fn union(self, other: Self) -> Self {
+		Self([
+			self.0[0] | other.0[0],
+			self.0[1] | other.0[1],
+			self.0[2] | other.0[2],
+			self.0[3] | other.0[3],
+		])
+	}
+
+	pub const fn contains(&self, keyspace: KeyspaceId) -> bool {
+		self.0[(keyspace.0 >> 6) as usize] & (1u64 << (keyspace.0 & 63)) != 0
 	}
 }
 

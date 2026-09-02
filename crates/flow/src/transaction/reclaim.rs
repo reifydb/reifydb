@@ -71,7 +71,7 @@ pub trait ReclaimExtension: StateExtension {
 		let mut more = false;
 		for id in (u8::MIN..=u8::MAX).rev() {
 			let keyspace = KeyspaceId(id);
-			if !keyspace.is_identity() {
+			if !keyspace.is_identity() || !keyspace.is_known() {
 				continue;
 			}
 			if removed as usize >= limit {

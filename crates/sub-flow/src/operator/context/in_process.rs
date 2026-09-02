@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Diff},
 	key::operator::state::{
-		GroupId, GroupStateKey, KeyspaceId, is_guest_framed_inner, keyspace_inner_range,
+		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, is_guest_framed_inner, keyspace_inner_range,
 		keyspace_inner_range_in,
 	},
 	state::timer::TimerKind,
@@ -257,6 +257,7 @@ impl GuestState for InProcessState<'_> {
 	fn sweep_bytes_visit(
 		&self,
 		group: GroupId,
+		mask: KeyspaceMask,
 		data_only: bool,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
@@ -264,7 +265,7 @@ impl GuestState for InProcessState<'_> {
 		let mut seen = 0usize;
 		for id in (u8::MIN..=u8::MAX).rev() {
 			let keyspace = KeyspaceId(id);
-			if !keyspace.is_known() || (data_only && !keyspace.is_data()) {
+			if !mask.contains(keyspace) || (data_only && !keyspace.is_data()) {
 				continue;
 			}
 			let remaining = match limit {

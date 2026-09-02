@@ -11,7 +11,7 @@ census
 ---
 bytes 1 => 33
 total_bytes => 33
-operator 1 keyspace 0x2c keys=1 key_bytes=32 value_bytes=1
+operator 1 keyspace 0x1b keys=1 key_bytes=32 value_bytes=1
 count=1
 
 # Flushing moves the same key from buffer to sqlite, so the numbers must not move with it.
@@ -24,7 +24,7 @@ census
 ok
 bytes 1 => 33
 total_bytes => 33
-operator 1 keyspace 0x2c keys=1 key_bytes=32 value_bytes=1
+operator 1 keyspace 0x1b keys=1 key_bytes=32 value_bytes=1
 count=1
 
 # An unflushed join expiry is charged its flat 33 + 8 immediately.
@@ -56,7 +56,7 @@ bytes
 census
 ---
 bytes 1 => 109
-operator 1 keyspace 0x2c keys=2 key_bytes=64 value_bytes=4
+operator 1 keyspace 0x1b keys=2 key_bytes=64 value_bytes=4
 count=1
 
 flush
@@ -65,7 +65,7 @@ census
 ---
 ok
 bytes 1 => 76
-operator 1 keyspace 0x2c keys=1 key_bytes=32 value_bytes=3
+operator 1 keyspace 0x1b keys=1 key_bytes=32 value_bytes=3
 count=1
 
 # A removal frees nothing until it lands, because the durable copy is what is being measured.
@@ -75,7 +75,7 @@ bytes
 census
 ---
 bytes 1 => 76
-operator 1 keyspace 0x2c keys=1 key_bytes=32 value_bytes=3
+operator 1 keyspace 0x1b keys=1 key_bytes=32 value_bytes=3
 count=1
 
 flush
