@@ -15,6 +15,7 @@ pub trait Keyspace: Copy + Debug + 'static {
 	const ID: KeyspaceId;
 	const NAME: &'static str;
 	const CACHE: CacheTiers;
+	const GROUP_SCOPED: bool;
 
 	type Key: KeyLayout;
 	type Suffix: KeyLayout;

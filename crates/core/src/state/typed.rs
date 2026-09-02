@@ -4,7 +4,7 @@
 use std::ops::Bound;
 
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_value::Result;
+use reifydb_value::{Result, reifydb_assertions};
 
 use crate::{
 	key::{
@@ -108,6 +108,16 @@ fn key_value_from_bytes(ty: KeyColumnType, direction: Direction, bytes: &[u8]) -
 }
 
 pub fn typed_key<K: Keyspace>(group: GroupId, suffix: &K::Suffix) -> GroupStateKey {
+	reifydb_assertions! {
+		assert!(
+			group == GroupId::ROOT || K::GROUP_SCOPED,
+			"{} is not group-scoped but was written at group {}: the persistent tier rebuilds the \
+			 key through the typed layout, so this row reads back stamped ROOT and collides with every \
+			 other group holding the same suffix",
+			K::NAME,
+			group.0
+		);
+	}
 	OperatorStateKey::inner_encoded(group, K::ID, suffix.to_suffix_bytes())
 }
 
@@ -192,7 +202,7 @@ mod tests {
 	use crate::key::{
 		operator::{
 			keyspace::{
-				expiry::{Expiry, ExpiryKey, TumblingExpiry, TumblingExpiryKey},
+				expiry::{Expiry, ExpiryKey, TumblingExpiry, TumblingExpirySuffix},
 				join::{JoinLeft, JoinRight},
 			},
 			state::{GroupId, KeyspaceId, OperatorStateKey},
@@ -200,6 +210,32 @@ mod tests {
 		},
 		typed::direction::{Asc, Desc},
 	};
+
+	#[test]
+	#[cfg(reifydb_assertions)]
+	#[should_panic(expected = "is not group-scoped but was written at group")]
+	fn a_root_only_keyspace_written_at_a_real_group_is_refused() {
+		// a keyspace with no group column reads every row back stamped ROOT, so one group's sweep reaps
+		// another's rows and the rows it really holds are never named; nothing statically bounds which
+		// groups a writer passes, so the refusal has to happen at the write itself
+		typed_key::<Expiry>(
+			GroupId(1),
+			&ExpiryKey {
+				threshold: Desc(1),
+				owner: Desc(Hash128(2)),
+			},
+		);
+	}
+
+	#[test]
+	fn a_group_scoped_keyspace_still_accepts_a_real_group() {
+		// the guard must stay silent for keyspaces that do carry the column, or every group-scoped write
+		// panics the moment assertions are compiled in
+		let key = typed_key::<JoinLeft>(GroupId(1), &Asc(RowNumber(5)));
+		let (group, _, _) = OperatorStateKey::decode_inner(key.as_slice())
+			.expect("a group state key must decode as its own framing");
+		assert_eq!(group, GroupId(1), "a group-scoped keyspace must keep the group it was written at");
+	}
 
 	#[test]
 	fn a_multi_column_expiry_suffix_matches_the_bytes_the_index_is_written_with() {
@@ -242,14 +278,14 @@ mod tests {
 		// expire drops the rows it drained by rebuilding their keys from the scan, so a column that
 		// decoded to a different value would leave the entry in the index and replay it forever
 		for (threshold, window) in [(0u64, 0u64), (1, 2), (u64::MAX, u64::MAX), (7, u64::MAX)] {
-			let key = TumblingExpiryKey {
+			let key = TumblingExpirySuffix {
 				threshold: Desc(threshold),
 				owner: Desc(Hash128(0xdead_beef)),
 				window_start: Desc(window),
 			};
 			let bytes = key.to_suffix_bytes();
 			assert_eq!(bytes.len(), 8 + 16 + 8, "threshold {threshold} window {window}");
-			assert_eq!(TumblingExpiryKey::from_suffix_bytes(&bytes), Some(key));
+			assert_eq!(TumblingExpirySuffix::from_suffix_bytes(&bytes), Some(key));
 		}
 	}
 
@@ -279,7 +315,7 @@ mod tests {
 		);
 		let tumbling = typed_key::<TumblingExpiry>(
 			GroupId::ROOT,
-			&TumblingExpiryKey {
+			&TumblingExpirySuffix {
 				threshold: Desc(5),
 				owner: Desc(Hash128(1)),
 				window_start: Desc(0),

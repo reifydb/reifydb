@@ -27,6 +27,14 @@ pub struct ExpiryKey {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
 pub struct TumblingExpiryKey {
+	pub group: Desc<GroupId>,
+	pub threshold: Desc<u64>,
+	pub owner: Desc<Hash128>,
+	pub window_start: Desc<u64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+pub struct TumblingExpirySuffix {
 	pub threshold: Desc<u64>,
 	pub owner: Desc<Hash128>,
 	pub window_start: Desc<u64>,
@@ -44,6 +52,7 @@ impl Keyspace for Expiry {
 	const ID: KeyspaceId = KeyspaceId::ROLLING_EXPIRY;
 	const NAME: &'static str = "ROLLING_EXPIRY";
 	const CACHE: CacheTiers = CacheTiers::Range;
+	const GROUP_SCOPED: bool = false;
 
 	type Key = ExpiryKey;
 	type Suffix = ExpiryKey;
@@ -64,16 +73,29 @@ impl Keyspace for TumblingExpiry {
 	const ID: KeyspaceId = KeyspaceId::TUMBLING_EXPIRY;
 	const NAME: &'static str = "TUMBLING_EXPIRY";
 	const CACHE: CacheTiers = CacheTiers::Range;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = TumblingExpiryKey;
-	type Suffix = TumblingExpiryKey;
+	type Suffix = TumblingExpirySuffix;
 
 	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
-		(GroupId::ROOT, *key)
+		(
+			key.group.0,
+			TumblingExpirySuffix {
+				threshold: key.threshold,
+				owner: key.owner,
+				window_start: key.window_start,
+			},
+		)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
-		suffix
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+		TumblingExpiryKey {
+			group: Desc(group),
+			threshold: suffix.threshold,
+			owner: suffix.owner,
+			window_start: suffix.window_start,
+		}
 	}
 }
 
@@ -84,6 +106,7 @@ impl Keyspace for ReapQueue {
 	const ID: KeyspaceId = KeyspaceId::REAP_QUEUE;
 	const NAME: &'static str = "REAP_QUEUE";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = false;
 
 	type Key = ReapQueueKey;
 	type Suffix = ReapQueueKey;

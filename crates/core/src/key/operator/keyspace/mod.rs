@@ -10,7 +10,10 @@ pub mod timer;
 pub mod window;
 
 #[cfg(test)]
-use crate::key::{operator::state::GroupId, typed::Key};
+use crate::{
+	key::{operator::state::GroupId, typed::Key},
+	state::typed::SuffixBytes,
+};
 use crate::{
 	interface::store::CacheTiers,
 	key::{
@@ -114,6 +117,16 @@ macro_rules! catalogue {
 		fn every_keyspace_round_trips() {
 			$(round_trips::<$keyspace>();)*
 		}
+
+		#[cfg(test)]
+		fn every_keyspace_carries_its_group() {
+			$(carries_its_group::<$keyspace>();)*
+		}
+
+		#[cfg(test)]
+		fn every_keyspace_declares_its_shape() {
+			$(declares_its_shape::<$keyspace>();)*
+		}
 	};
 }
 
@@ -195,10 +208,75 @@ fn round_trips<K: Keyspace>() {
 }
 
 #[cfg(test)]
+fn declares_its_shape<K: Keyspace>() {
+	// GROUP_SCOPED is written by hand on all forty three impls and nothing stops it drifting from the key
+	// it describes; a keyspace is group-scoped exactly when its key is its suffix behind one leading group
+	// column, so the layout is the only witness that can contradict the declaration
+	let key_columns = <K::Key as KeyLayout>::COLUMNS;
+	let suffix_columns = <K::Suffix as KeyLayout>::COLUMNS;
+	let carries_group = key_columns.len() == suffix_columns.len() + 1 && key_columns[0].name == "group";
+	assert_eq!(
+		K::GROUP_SCOPED,
+		carries_group,
+		"{}: GROUP_SCOPED disagrees with the key layout it is meant to describe",
+		K::NAME
+	);
+}
+
+#[cfg(test)]
+fn carries_its_group<K: Keyspace>() {
+	// a keyspace whose typed layout drops the group answers every group's read with one shared row: the
+	// sqlite primary key loses the column, so writes from different groups overwrite each other and reads
+	// come back stamped GroupId::ROOT. The suffix round trip alone cannot see it, because a join that
+	// hardcodes ROOT still returns the suffix it was handed. A keyspace is group-scoped exactly when its
+	// key is its suffix behind a leading group column; one whose key adds nothing to its suffix carries
+	// the group as payload at most, is ROOT-only by construction, and must collapse every group to ROOT.
+	let group_scoped = K::GROUP_SCOPED;
+	let mut suffix = <K::Suffix as Key>::low();
+	for step in 0..4 {
+		for group in [GroupId::ROOT, GroupId(1), GroupId(9), GroupId(u128::MAX)] {
+			let (back, _) = K::split(&K::join(group, suffix.clone()));
+			if group_scoped {
+				assert_eq!(
+					back, group,
+					"{}: step {step}: a group must survive join then split",
+					K::NAME
+				);
+			} else {
+				assert_eq!(
+					back,
+					GroupId::ROOT,
+					"{}: step {step}: a keyspace with no group column must collapse every group to \
+					 ROOT, or its writers believe a group is kept that the key cannot hold",
+					K::NAME
+				);
+			}
+		}
+		if group_scoped {
+			let distinct = K::join(GroupId(1), suffix.clone());
+			let other = K::join(GroupId(9), suffix.clone());
+			assert_ne!(
+				distinct.to_suffix_bytes(),
+				other.to_suffix_bytes(),
+				"{}: step {step}: two groups holding the same suffix must not encode to one primary key",
+				K::NAME
+			);
+		}
+		match suffix.successor() {
+			Some(next) => suffix = next,
+			None => break,
+		}
+	}
+}
+
+#[cfg(test)]
 mod tests {
 	use std::collections::HashSet;
 
-	use super::{KEYSPACES, every_keyspace_round_trips};
+	use super::{
+		KEYSPACES, every_keyspace_carries_its_group, every_keyspace_declares_its_shape,
+		every_keyspace_round_trips,
+	};
 	use crate::{interface::store::CacheTiers, key::operator::state::KeyspaceId};
 
 	fn catalogue() -> Vec<(&'static str, KeyspaceId, CacheTiers)> {
@@ -232,6 +310,22 @@ mod tests {
 		// R15: the range tier stores only the suffix and rebuilds the key from its partition identity, so
 		// a lossy split silently drops a key column on every read back
 		every_keyspace_round_trips();
+	}
+
+	#[test]
+	fn a_group_survives_join_and_split_for_every_keyspace() {
+		// the group is the only thing separating one operator group's rows from another's; a keyspace that
+		// declares the column but hardcodes GroupId::ROOT in split collapses them all onto one primary key,
+		// so a sweep of group A reaps rows belonging to B and the rows A really holds are never named. The
+		// converse half holds ROOT-only keyspaces to ROOT, so a writer cannot pass a group the key drops
+		every_keyspace_carries_its_group();
+	}
+
+	#[test]
+	fn every_keyspace_declares_the_scope_its_key_layout_shows() {
+		// the declaration is what the write guard and the sweep both trust; if it says group-scoped while the
+		// key holds no group column, every group's row collapses onto one primary key and the guard stays quiet
+		every_keyspace_declares_its_shape();
 	}
 
 	#[test]

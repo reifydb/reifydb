@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	key::{
 		operator::{
-			keyspace::expiry::{Expiry, ExpiryKey, TumblingExpiry, TumblingExpiryKey},
+			keyspace::expiry::{Expiry, ExpiryKey, TumblingExpiry, TumblingExpirySuffix},
 			state::{GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range},
 			traits::Keyspace,
 		},
@@ -41,7 +41,7 @@ pub(crate) fn rolling_expiry_key(threshold: u64, owner: Hash128) -> GroupStateKe
 pub(crate) fn tumbling_expiry_key(threshold: u64, owner: Hash128, window_start: u64) -> GroupStateKey {
 	typed_key::<TumblingExpiry>(
 		GroupId::ROOT,
-		&TumblingExpiryKey {
+		&TumblingExpirySuffix {
 			threshold: Desc(threshold),
 			owner: Desc(owner),
 			window_start: Desc(window_start),
@@ -68,7 +68,7 @@ impl ExpirySuffix for ExpiryKey {
 	}
 }
 
-impl ExpirySuffix for TumblingExpiryKey {
+impl ExpirySuffix for TumblingExpirySuffix {
 	fn at_threshold(threshold: u64) -> Self {
 		Self {
 			threshold: Desc(threshold),

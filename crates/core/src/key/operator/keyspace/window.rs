@@ -68,6 +68,12 @@ pub struct RowIndexKey {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
 pub struct WindowMetaKey {
+	pub group: Desc<GroupId>,
+	pub window: Desc<Hash128>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+pub struct WindowMetaSuffix {
 	pub window: Desc<Hash128>,
 }
 
@@ -96,6 +102,7 @@ impl Keyspace for Accumulator {
 	const ID: KeyspaceId = KeyspaceId::ACCUMULATOR;
 	const NAME: &'static str = "ACCUMULATOR";
 	const CACHE: CacheTiers = CacheTiers::Range;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = AccumulatorKey;
 	type Suffix = ();
@@ -118,6 +125,7 @@ impl Keyspace for Buffer {
 	const ID: KeyspaceId = KeyspaceId::BUFFER;
 	const NAME: &'static str = "BUFFER";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = BufferKey;
 	type Suffix = ();
@@ -140,6 +148,7 @@ impl Keyspace for Running {
 	const ID: KeyspaceId = KeyspaceId::RUNNING;
 	const NAME: &'static str = "RUNNING";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = RunningKey;
 	type Suffix = ();
@@ -162,6 +171,7 @@ impl Keyspace for Count {
 	const ID: KeyspaceId = KeyspaceId::COUNT;
 	const NAME: &'static str = "COUNT";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = CountKey;
 	type Suffix = ();
@@ -184,6 +194,7 @@ impl Keyspace for Session {
 	const ID: KeyspaceId = KeyspaceId::SESSION;
 	const NAME: &'static str = "SESSION";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = SessionKey;
 	type Suffix = ();
@@ -206,6 +217,7 @@ impl Keyspace for RollingMeta {
 	const ID: KeyspaceId = KeyspaceId::ROLLING_META;
 	const NAME: &'static str = "ROLLING_META";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = RollingMetaKey;
 	type Suffix = ();
@@ -228,6 +240,7 @@ impl Keyspace for EngineMeta {
 	const ID: KeyspaceId = KeyspaceId::ENGINE_META;
 	const NAME: &'static str = "ENGINE_META";
 	const CACHE: CacheTiers = CacheTiers::Range;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = EngineMetaKey;
 	type Suffix = ();
@@ -250,6 +263,7 @@ impl Keyspace for Emit {
 	const ID: KeyspaceId = KeyspaceId::EMIT;
 	const NAME: &'static str = "EMIT";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = EmitKey;
 	type Suffix = Asc<RowNumber>;
@@ -273,6 +287,7 @@ impl Keyspace for RowIndex {
 	const ID: KeyspaceId = KeyspaceId::ROW_INDEX;
 	const NAME: &'static str = "ROW_INDEX";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = RowIndexKey;
 	type Suffix = Asc<RowNumber>;
@@ -296,16 +311,25 @@ impl Keyspace for WindowMeta {
 	const ID: KeyspaceId = KeyspaceId::WINDOW_META;
 	const NAME: &'static str = "WINDOW_META";
 	const CACHE: CacheTiers = CacheTiers::Range;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = WindowMetaKey;
-	type Suffix = WindowMetaKey;
+	type Suffix = WindowMetaSuffix;
 
 	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
-		(GroupId::ROOT, *key)
+		(
+			key.group.0,
+			WindowMetaSuffix {
+				window: key.window,
+			},
+		)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
-		suffix
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+		WindowMetaKey {
+			group: Desc(group),
+			window: suffix.window,
+		}
 	}
 }
 
@@ -316,6 +340,7 @@ impl Keyspace for GuestAccumulator {
 	const ID: KeyspaceId = KeyspaceId::GUEST_ACCUMULATOR;
 	const NAME: &'static str = "GUEST_ACCUMULATOR";
 	const CACHE: CacheTiers = CacheTiers::Range;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = GuestAccumulatorKey;
 	type Suffix = Asc<[u8; 16]>;
@@ -339,6 +364,7 @@ impl Keyspace for GuestBuffer {
 	const ID: KeyspaceId = KeyspaceId::GUEST_BUFFER;
 	const NAME: &'static str = "GUEST_BUFFER";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = GuestBufferKey;
 	type Suffix = Asc<[u8; 16]>;
@@ -362,6 +388,7 @@ impl Keyspace for GuestRunning {
 	const ID: KeyspaceId = KeyspaceId::GUEST_RUNNING;
 	const NAME: &'static str = "GUEST_RUNNING";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = GuestRunningKey;
 	type Suffix = Asc<[u8; 16]>;

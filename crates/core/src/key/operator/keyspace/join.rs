@@ -85,6 +85,7 @@ impl Keyspace for JoinLeft {
 	const ID: KeyspaceId = KeyspaceId::JOIN_LEFT;
 	const NAME: &'static str = "JOIN_LEFT";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = JoinLeftKey;
 	type Suffix = Asc<RowNumber>;
@@ -108,6 +109,7 @@ impl Keyspace for JoinRight {
 	const ID: KeyspaceId = KeyspaceId::JOIN_RIGHT;
 	const NAME: &'static str = "JOIN_RIGHT";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = JoinRightKey;
 	type Suffix = Asc<RowNumber>;
@@ -131,6 +133,7 @@ impl Keyspace for JoinPublished {
 	const ID: KeyspaceId = KeyspaceId::JOIN_PUBLISHED;
 	const NAME: &'static str = "JOIN_PUBLISHED";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = JoinPublishedKey;
 	type Suffix = Asc<RowNumber>;
@@ -154,6 +157,7 @@ impl Keyspace for JoinPin {
 	const ID: KeyspaceId = KeyspaceId::JOIN_PIN;
 	const NAME: &'static str = "JOIN_PIN";
 	const CACHE: CacheTiers = CacheTiers::Range;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = JoinPinKey;
 	type Suffix = JoinPinSuffix;
@@ -184,6 +188,7 @@ impl Keyspace for JoinSchema {
 	const ID: KeyspaceId = KeyspaceId::JOIN_SCHEMA;
 	const NAME: &'static str = "JOIN_SCHEMA";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = false;
 
 	type Key = JoinSchemaKey;
 	type Suffix = JoinSchemaKey;
@@ -204,6 +209,7 @@ impl Keyspace for JoinRowExpiry {
 	const ID: KeyspaceId = KeyspaceId::JOIN_ROW_EXPIRY;
 	const NAME: &'static str = "JOIN_ROW_EXPIRY";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = JoinRowExpiryKey;
 	type Suffix = JoinRowExpirySuffix;
@@ -234,6 +240,7 @@ impl Keyspace for JoinRowMapping {
 	const ID: KeyspaceId = KeyspaceId::JOIN_ROW_MAPPING;
 	const NAME: &'static str = "JOIN_ROW_MAPPING";
 	const CACHE: CacheTiers = CacheTiers::Range;
+	const GROUP_SCOPED: bool = false;
 
 	type Key = JoinRowMappingKey;
 	type Suffix = JoinRowMappingKey;

@@ -23,7 +23,9 @@ use crate::{
 pub struct SourceWatermarkKey {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
-pub struct SealLedgerKey {}
+pub struct SealLedgerKey {
+	pub group: Desc<GroupId>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
 pub struct NodeCounterKey {
@@ -73,6 +75,12 @@ pub struct GroupRowMappingKey {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
 pub struct GuestRowMappingKey {
+	pub group: Desc<GroupId>,
+	pub id: Asc<[u8; 16]>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+pub struct GuestRowMappingSuffix {
 	pub id: Asc<[u8; 16]>,
 }
 
@@ -109,6 +117,7 @@ impl Keyspace for SourceWatermark {
 	const ID: KeyspaceId = KeyspaceId::SOURCE_WATERMARK;
 	const NAME: &'static str = "SOURCE_WATERMARK";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = false;
 
 	type Key = SourceWatermarkKey;
 	type Suffix = SourceWatermarkKey;
@@ -129,16 +138,19 @@ impl Keyspace for SealLedger {
 	const ID: KeyspaceId = KeyspaceId::SEAL_LEDGER;
 	const NAME: &'static str = "SEAL_LEDGER";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = SealLedgerKey;
-	type Suffix = SealLedgerKey;
+	type Suffix = ();
 
 	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
-		(GroupId::ROOT, *key)
+		(key.group.0, ())
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
-		suffix
+	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::Key {
+		SealLedgerKey {
+			group: Desc(group),
+		}
 	}
 }
 
@@ -149,6 +161,7 @@ impl Keyspace for NodeCounter {
 	const ID: KeyspaceId = KeyspaceId::NODE_COUNTER;
 	const NAME: &'static str = "NODE_COUNTER";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = false;
 
 	type Key = NodeCounterKey;
 	type Suffix = NodeCounterKey;
@@ -169,6 +182,7 @@ impl Keyspace for GateVisibility {
 	const ID: KeyspaceId = KeyspaceId::GATE_VISIBILITY;
 	const NAME: &'static str = "GATE_VISIBILITY";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = false;
 
 	type Key = GateVisibilityKey;
 	type Suffix = GateVisibilityKey;
@@ -189,6 +203,7 @@ impl Keyspace for GroupRowMapping {
 	const ID: KeyspaceId = KeyspaceId::GROUP_ROW_MAPPING;
 	const NAME: &'static str = "GROUP_ROW_MAPPING";
 	const CACHE: CacheTiers = CacheTiers::Range;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = GroupRowMappingKey;
 	type Suffix = ();
@@ -211,16 +226,25 @@ impl Keyspace for GuestRowMapping {
 	const ID: KeyspaceId = KeyspaceId::GUEST_ROW_MAPPING;
 	const NAME: &'static str = "GUEST_ROW_MAPPING";
 	const CACHE: CacheTiers = CacheTiers::Range;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = GuestRowMappingKey;
-	type Suffix = GuestRowMappingKey;
+	type Suffix = GuestRowMappingSuffix;
 
 	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
-		(GroupId::ROOT, *key)
+		(
+			key.group.0,
+			GuestRowMappingSuffix {
+				id: key.id,
+			},
+		)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
-		suffix
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+		GuestRowMappingKey {
+			group: Desc(group),
+			id: suffix.id,
+		}
 	}
 }
 
@@ -231,6 +255,7 @@ impl Keyspace for CustomNotCached {
 	const ID: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
 	const NAME: &'static str = "CUSTOM_NOT_CACHED";
 	const CACHE: CacheTiers = CacheTiers::Neither;
+	const GROUP_SCOPED: bool = true;
 
 	type Key = CustomNotCachedKey;
 	type Suffix = CustomNotCachedSuffix;

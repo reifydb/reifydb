@@ -44,6 +44,7 @@ impl Keyspace for TimerWheel {
 	const ID: KeyspaceId = KeyspaceId::TIMER_WHEEL;
 	const NAME: &'static str = "TIMER_WHEEL";
 	const CACHE: CacheTiers = CacheTiers::Range;
+	const GROUP_SCOPED: bool = false;
 
 	type Key = TimerWheelKey;
 	type Suffix = TimerWheelKey;
@@ -64,6 +65,7 @@ impl Keyspace for TimerIndex {
 	const ID: KeyspaceId = KeyspaceId::TIMER_INDEX;
 	const NAME: &'static str = "TIMER_INDEX";
 	const CACHE: CacheTiers = CacheTiers::Both;
+	const GROUP_SCOPED: bool = false;
 
 	type Key = TimerIndexKey;
 	type Suffix = TimerIndexKey;
