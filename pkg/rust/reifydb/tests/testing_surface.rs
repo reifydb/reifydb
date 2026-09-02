@@ -1,59 +1,66 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::{
+	Arc,
+	atomic::{AtomicUsize, Ordering},
+};
+
 use reifydb::{
-	core::interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	core::{
+		common::CommitVersion,
+		interface::{
+			catalog::flow::OperatorId,
+			change::{Change, Diffs},
+			flow::OperatorCapability,
+		},
+	},
 	sdk::{
 		error::Result as SdkResult,
-		operator::{
+		flow::operator::{
 			GuestOperator, OperatorMetadata, column::operator::OperatorColumn, context::GuestContext,
 			view::ChangeView,
 		},
 	},
 	testing::flow::harness::Harness,
-	value::{config::Config, value::duration::Duration},
+	value::{config::Config, value::datetime::DateTime},
 };
 
 const NODE: OperatorId = OperatorId(1);
 
-struct Inert;
+struct Counting(Arc<AtomicUsize>);
 
-impl OperatorMetadata for Inert {
-	const NAME: &'static str = "inert";
-	const API: u32 = 1;
+impl OperatorMetadata for Counting {
+	const NAME: &'static str = "counting";
 	const VERSION: &'static str = "0.0.1";
-	const DESCRIPTION: &'static str = "Holds nothing; exists to prove the harness is reachable";
+	const DESCRIPTION: &'static str = "Records that it was reached; exists to prove the harness drives a guest";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl GuestOperator for Inert {
+impl GuestOperator for Counting {
 	fn create(_node: OperatorId, _config: &Config) -> SdkResult<Self> {
-		Ok(Inert)
+		Ok(Counting(Arc::new(AtomicUsize::new(0))))
 	}
 
 	fn apply(&mut self, _ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
+		self.0.fetch_add(1, Ordering::SeqCst);
 		Ok(())
 	}
 }
 
 #[test]
-fn a_guest_operator_reaches_the_sweep_through_the_published_testing_surface() {
-	// Drives the harness through `reifydb::testing::flow` only; reaching into `reifydb::sub_flow`
-	// works today and must not become the path. The grid is the assertion, not a reclaimed group:
-	// a guest holding no state has nothing to retire and would pass for the wrong reason.
-	let ttl = Duration::from_seconds(60).expect("60s is representable");
+fn a_guest_operator_is_driven_through_the_published_testing_surface() {
+	// The counter is the assertion, never the Ok: mounting can succeed while the guest is never invoked.
+	let calls = Arc::new(AtomicUsize::new(0));
+	let mut harness = Harness::guest(Counting(calls.clone()), NODE, OperatorCapability::STANDARD);
 
-	let harness = Harness::guest(Inert, NODE, OperatorCapability::STANDARD, Some(ttl)).with_activity_grid();
-	assert!(
-		harness.activity_grid().event_grid().is_some(),
-		"a declared ttl must grid the node, or the driver skips it and counts it perpetual"
-	);
+	let changed_at = DateTime::from_epoch_millis(0).expect("the epoch is representable");
+	let out = harness
+		.apply(Change::from_flow(NODE, CommitVersion(1), Diffs::new(), changed_at))
+		.expect("the published surface must carry a change to the guest");
 
-	let ungridded = Harness::guest(Inert, NODE, OperatorCapability::STANDARD, None).with_activity_grid();
-	assert!(
-		ungridded.activity_grid().event_grid().is_none(),
-		"and without one it must not, which is the whole difference between the two cohorts"
-	);
+	assert_eq!(calls.load(Ordering::SeqCst), 1, "the guest must be reached exactly once per applied change");
+	assert_eq!(out.row_count(), 0, "a guest that emits nothing must not have rows invented for it");
 }
