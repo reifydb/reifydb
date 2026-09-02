@@ -24,9 +24,9 @@ use reifydb_core::{
 	internal_error,
 	key::{
 		EncodableKey, EncodableKeyRange,
-		index_entry::IndexEntryKey,
-		partitioned_row::PartitionedRowKey,
-		row::{RowKey, RowKeyRange},
+		catalog::IndexEntryKey,
+		row::{PartitionedRowKey, RowKey, RowKeyRange},
+		typed::key::Key,
 	},
 	value::column::columns::Columns,
 };

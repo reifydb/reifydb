@@ -10,7 +10,7 @@ use reifydb_core::{
 		id::{ColumnId, PrimaryKeyId},
 		object::ObjectId,
 	},
-	key::primary_key::PrimaryKeyKey,
+	key::catalog::PrimaryKeyKey,
 	return_internal_error,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};

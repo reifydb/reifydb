@@ -13,9 +13,9 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
+		store::{EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet},
 	},
-	key::partitioned_row::PartitionedRowKey,
+	key::row::PartitionedRowKey,
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::{
@@ -135,7 +135,7 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	let persistent = store.persistent().expect("persistent tier configured");
 	assert!(
 		persistent
-			.get(EntryKind::PartitionedSource(storage), k_us1.as_ref(), CommitVersion(2))
+			.get(EntryKind::PartitionedSource(storage, EntryLayout::Row), k_us1.as_ref(), CommitVersion(2))
 			.unwrap()
 			.value()
 			.is_some(),

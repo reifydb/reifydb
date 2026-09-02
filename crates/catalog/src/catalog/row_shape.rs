@@ -10,7 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	error::diagnostic::internal::internal,
-	key::row_shape::{RowShapeFieldKey, RowShapeKey},
+	key::row::{RowShapeFieldKey, RowShapeKey},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::error::Error;

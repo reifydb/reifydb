@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::key::{policy::PolicyKey, policy_op::PolicyOpKey};
+use reifydb_core::key::identity::{PolicyKey, PolicyOpKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::CatalogCache;

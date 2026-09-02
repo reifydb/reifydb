@@ -14,7 +14,7 @@ use reifydb_core::{
 			ViewSortKey, ViewStorageKind,
 		},
 	},
-	key::{namespace_view::NamespaceViewKey, ringbuffer::RingBufferMetadataKey, view::ViewKey},
+	key::{catalog::ViewKey, namespace::NamespaceViewKey, ringbuffer::RingBufferMetadataKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
@@ -273,7 +273,7 @@ pub mod tests {
 	use reifydb_codec::row::catalog::EncodedCatalogRow;
 	use reifydb_core::{
 		interface::catalog::id::{NamespaceId, ViewId},
-		key::namespace_view::NamespaceViewKey,
+		key::namespace::NamespaceViewKey,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::multi::RangeScope;

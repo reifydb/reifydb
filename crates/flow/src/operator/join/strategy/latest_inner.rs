@@ -2,13 +2,13 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{interface::change::Diff, key::operator::state::GroupId, value::column::columns::Columns};
-use reifydb_value::{Result, util::hash::Hash128};
+use reifydb_value::{Result, util::hash::Hash128, value::row_number::RowNumber};
 use tracing::instrument;
 
 use super::{
 	JoinContext, UpdateKeys,
 	hash::{add_to_state_entry_batch, for_each_left_block, prepare_entry_update, update_row_in_entry},
-	latest::{overwrite_right_slot, read_right_slot, remove_right_slot},
+	latest::{overwrite_right_slot, read_right_slot, remove_right_rows},
 };
 use crate::operator::{
 	host::HostContext,
@@ -80,7 +80,7 @@ impl LatestInnerHashJoin {
 						.unwrap_or_default());
 				}
 				add_to_state_entry_batch(host, &mut ctx.state.left, key_hash, post, indices)?;
-				match read_right_slot(host, &ctx.state.right, key_hash)? {
+				match read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())? {
 					Some(slot) => Ok(vec![Diff::insert(
 						ctx.operator.join_left_with_slot(post, indices, &slot),
 					)]),
@@ -108,11 +108,11 @@ impl LatestInnerHashJoin {
 				right_store: &ctx.state.right,
 			};
 			retire_slot(host, &snapshot_ctx, key_hash)?;
-			overwrite_right_slot(host, &ctx.state.right, key_hash, post, indices)?;
+			overwrite_right_slot(host, &ctx.state.right, key_hash, post, indices, ctx.operator.pick())?;
 			return Ok(Vec::new());
 		}
-		let old = read_right_slot(host, &ctx.state.right, key_hash)?;
-		let new = overwrite_right_slot(host, &ctx.state.right, key_hash, post, indices)?;
+		let old = read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())?;
+		let new = overwrite_right_slot(host, &ctx.state.right, key_hash, post, indices, ctx.operator.pick())?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
 		for_each_left_block(host, &ctx.state.left, key_hash, |_host, left| {
@@ -169,30 +169,34 @@ impl LatestInnerHashJoin {
 					}
 					return Ok(withdrawn);
 				}
-				let result = match read_right_slot(host, &ctx.state.right, key_hash)? {
-					Some(slot) => {
-						vec![Diff::remove(
-							ctx.operator.join_left_with_slot(pre, indices, &slot),
-						)]
-					}
-					None => Vec::new(),
-				};
+				let result =
+					match read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())? {
+						Some(slot) => {
+							vec![Diff::remove(
+								ctx.operator.join_left_with_slot(pre, indices, &slot),
+							)]
+						}
+						None => Vec::new(),
+					};
 				let group = ctx.state.left.group_of(key_hash);
 				for &idx in indices {
 					ctx.state.left.remove_row_in(host, group, pre.row_numbers()[idx])?;
 				}
 				Ok(result)
 			}
-			JoinSide::Right => self.handle_right_remove(host, key_hash, ctx),
+			JoinSide::Right => self.handle_right_remove(host, pre, indices, key_hash, ctx),
 		}
 	}
 
 	fn handle_right_remove(
 		&self,
 		host: &mut dyn HostContext,
+		pre: &Columns,
+		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
+		let numbers: Vec<RowNumber> = indices.iter().map(|&idx| pre.row_numbers()[idx]).collect();
 		if ctx.operator.snapshot {
 			let ledger = ctx.operator.snapshot_ledger();
 			let snapshot_ctx = SnapshotJoinContext {
@@ -201,20 +205,34 @@ impl LatestInnerHashJoin {
 				right_store: &ctx.state.right,
 			};
 			retire_slot(host, &snapshot_ctx, key_hash)?;
-			remove_right_slot(host, &ctx.state.right, key_hash)?;
+			remove_right_rows(host, &ctx.state.right, key_hash, &numbers)?;
 			return Ok(Vec::new());
 		}
-		let old = read_right_slot(host, &ctx.state.right, key_hash)?;
-		remove_right_slot(host, &ctx.state.right, key_hash)?;
+		let old = read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())?;
+		remove_right_rows(host, &ctx.state.right, key_hash, &numbers)?;
+		let new = read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
-		if let Some(old_slot) = old {
-			for_each_left_block(host, &ctx.state.left, key_hash, |_host, left| {
-				let left_indices: Vec<usize> = (0..left.row_count()).collect();
-				result.push(Diff::remove(operator.join_left_with_slot(left, &left_indices, &old_slot)));
-				Ok(())
-			})?;
+		let Some(old_slot) = old else {
+			return Ok(result);
+		};
+		if let Some(new_slot) = &new
+			&& new_slot.row_numbers() == old_slot.row_numbers()
+		{
+			return Ok(result);
 		}
+		for_each_left_block(host, &ctx.state.left, key_hash, |_host, left| {
+			let left_indices: Vec<usize> = (0..left.row_count()).collect();
+			let pre_joined = operator.join_left_with_slot(left, &left_indices, &old_slot);
+			match &new {
+				Some(new_slot) => result.push(Diff::update(
+					pre_joined,
+					operator.join_left_with_slot(left, &left_indices, new_slot),
+				)),
+				None => result.push(Diff::remove(pre_joined)),
+			}
+			Ok(())
+		})?;
 		Ok(result)
 	}
 
@@ -290,7 +308,7 @@ impl LatestInnerHashJoin {
 						idx,
 					)?;
 				}
-				match read_right_slot(host, &ctx.state.right, keys.pre)? {
+				match read_right_slot(host, &ctx.state.right, keys.pre, ctx.operator.pick())? {
 					Some(slot) => {
 						let pre_joined = ctx.operator.join_left_with_slot(pre, indices, &slot);
 						let post_joined =

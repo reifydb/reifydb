@@ -11,7 +11,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			Key,
+			TypedKey,
 			direction::{Desc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues},
 		},
@@ -19,13 +19,13 @@ use crate::{
 	metrics::heap::HeapSize,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct ExpiryKey {
 	pub threshold: Desc<u64>,
 	pub owner: Desc<Hash128>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct TumblingExpiryKey {
 	pub group: Desc<GroupId>,
 	pub threshold: Desc<u64>,
@@ -33,14 +33,14 @@ pub struct TumblingExpiryKey {
 	pub window_start: Desc<u64>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct TumblingExpirySuffix {
 	pub threshold: Desc<u64>,
 	pub owner: Desc<Hash128>,
 	pub window_start: Desc<u64>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct ReapQueueKey {
 	pub group: Desc<GroupId>,
 }
@@ -53,14 +53,14 @@ impl Keyspace for Expiry {
 	const NAME: &'static str = "ROLLING_EXPIRY";
 	const CACHE: CacheTiers = CacheTiers::Range;
 
-	type Key = ExpiryKey;
+	type GroupedKey = ExpiryKey;
 	type Suffix = ExpiryKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -73,10 +73,10 @@ impl Keyspace for TumblingExpiry {
 	const NAME: &'static str = "TUMBLING_EXPIRY";
 	const CACHE: CacheTiers = CacheTiers::Range;
 
-	type Key = TumblingExpiryKey;
+	type GroupedKey = TumblingExpiryKey;
 	type Suffix = TumblingExpirySuffix;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(
 			key.group.0,
 			TumblingExpirySuffix {
@@ -87,7 +87,7 @@ impl Keyspace for TumblingExpiry {
 		)
 	}
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		TumblingExpiryKey {
 			group: Desc(group),
 			threshold: suffix.threshold,
@@ -105,14 +105,14 @@ impl Keyspace for ReapQueue {
 	const NAME: &'static str = "REAP_QUEUE";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = ReapQueueKey;
+	type GroupedKey = ReapQueueKey;
 	type Suffix = ReapQueueKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }

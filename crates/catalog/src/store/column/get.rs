@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{row::catalog::EncodedCatalogRow, tag::value_type_from_tag_byte};
-use reifydb_core::{internal, key::columns::ColumnsKey};
+use reifydb_core::{internal, key::column::ColumnsKey};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Error,

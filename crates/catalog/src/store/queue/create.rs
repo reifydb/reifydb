@@ -9,7 +9,7 @@ use reifydb_core::{
 		property::ColumnPropertyKind,
 		queue::{Queue, QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 	},
-	key::{namespace_queue::NamespaceQueueKey, queue::QueueKey},
+	key::{namespace::NamespaceQueueKey, queue::QueueKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{

@@ -2,45 +2,22 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::{
-	deserializer::KeyDeserializer,
 	encoded::{EncodedKey, EncodedKeyRange},
 	serializer::KeySerializer,
 };
+use reifydb_macro::Key;
 
-use super::{EncodableKey, KeyKind};
-use crate::{
-	interface::catalog::object::ObjectId,
-	key::catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
+use super::{
+	KeyKind,
+	catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
+	typed::key::Key,
 };
+use crate::interface::catalog::object::ObjectId;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Key)]
+#[key(kind = OutputFrontier)]
 pub struct OutputFrontierKey {
 	pub object: ObjectId,
-}
-
-impl EncodableKey for OutputFrontierKey {
-	const KIND: KeyKind = KeyKind::OutputFrontier;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
-			return None;
-		}
-
-		let object = de.read_object_id().ok()?;
-
-		Some(Self {
-			object,
-		})
-	}
 }
 
 impl OutputFrontierKey {
@@ -72,7 +49,7 @@ impl OutputFrontierKey {
 pub mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use super::{EncodableKey, OutputFrontierKey};
+	use super::{Key, OutputFrontierKey};
 	use crate::{
 		interface::catalog::{id::ViewId, object::ObjectId},
 		key::KeyKind,
@@ -126,6 +103,54 @@ pub mod tests {
 				object
 			);
 			assert_eq!(OutputFrontierKey::decode(&encoded).unwrap().object, object);
+		}
+	}
+
+	#[test]
+	fn test_order_preserving_within_same_object_kind() {
+		let key1 = OutputFrontierKey {
+			object: ObjectId::table(1),
+		};
+		let key2 = OutputFrontierKey {
+			object: ObjectId::table(2),
+		};
+
+		let encoded1 = key1.encode();
+		let encoded2 = key2.encode();
+
+		assert!(encoded2 < encoded1, "ordering not preserved");
+	}
+}
+
+#[cfg(test)]
+mod verify_byte_identical {
+	use reifydb_codec::key::serializer::KeySerializer;
+
+	use super::{Key, OutputFrontierKey};
+	use crate::{
+		interface::catalog::{id::ViewId, object::ObjectId},
+		key::catalog::KeySerializerCatalogExt,
+	};
+
+	fn legacy_encode(key: &OutputFrontierKey) -> Vec<u8> {
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(OutputFrontierKey::KIND as u8).extend_object_id(key.object);
+		serializer.to_encoded_key().as_slice().to_vec()
+	}
+
+	#[test]
+	fn matches_legacy_byte_layout() {
+		for object in [
+			ObjectId::table(1),
+			ObjectId::View(ViewId(2)),
+			ObjectId::series(3),
+			ObjectId::ringbuffer(4),
+			ObjectId::queue(5),
+		] {
+			let key = OutputFrontierKey {
+				object,
+			};
+			assert_eq!(legacy_encode(&key), key.encode().as_slice().to_vec(), "object={object:?}");
 		}
 	}
 }

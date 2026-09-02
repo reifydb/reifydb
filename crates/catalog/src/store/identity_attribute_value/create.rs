@@ -4,7 +4,7 @@
 use reifydb_codec::value::encode_value;
 use reifydb_core::{
 	interface::catalog::identity::{IdentityAttributeId, IdentityAttributeValue},
-	key::identity_attribute_value::IdentityAttributeValueKey,
+	key::identity::IdentityAttributeValueKey,
 	return_internal_error,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;

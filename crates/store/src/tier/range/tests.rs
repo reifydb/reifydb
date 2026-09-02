@@ -760,7 +760,7 @@ fn sweep_materialize<X: Sweep>(tier: &RangeTier<X>, group: u128) {
 }
 
 fn sweep_explain<X: Sweep>(tier: &RangeTier<X>, key: &EncodedKey, at: usize) -> String {
-	let partition = TestPartition::of(OP_A, key).expect("a domain key must map to a partition");
+	let partition = TestPartition::of(OP_A, key);
 	let shard = tier.shard(tier.shard_index(&partition)).lock();
 	let resident = shard.partitions.get(&partition);
 	format!(

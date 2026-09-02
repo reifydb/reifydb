@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::identity::RoleId, key::granted_role::GrantedRoleKey};
+use reifydb_core::{interface::catalog::identity::RoleId, key::identity::GrantedRoleKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::identity::IdentityId;
 

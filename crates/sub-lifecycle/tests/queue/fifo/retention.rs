@@ -20,10 +20,7 @@ use reifydb_core::{
 		},
 		store::SingleVersionRange,
 	},
-	key::{
-		queue_attempt::QueueAttemptKey, queue_deduplication::QueueDeduplicationKey,
-		queue_schedule::QueueItemStateKey,
-	},
+	key::queue::{QueueAttemptKey, QueueDeduplicationKey, QueueItemStateKey},
 	lifecycle::{
 		gate::{Gated, RetentionStartupGate},
 		metrics::RetentionMetrics,

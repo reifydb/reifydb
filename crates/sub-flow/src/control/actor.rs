@@ -733,7 +733,6 @@ mod pull_protocol {
 			change::{ChangeOrigin, Diff},
 		},
 		key::{
-			Key,
 			kind::KeyKind,
 			operator::state::{KeyspaceId, OperatorStateKey},
 		},
@@ -1444,7 +1443,7 @@ mod pull_protocol {
 							key,
 							pre,
 							..
-						} if matches!(Key::kind(&key), Some(KeyKind::Row)) => Some((key, pre)),
+						} if matches!(KeyKind::of(&key), Some(KeyKind::Row)) => Some((key, pre)),
 						_ => None,
 					})
 			})
@@ -1536,7 +1535,7 @@ mod pull_protocol {
 							key,
 							pre,
 							visible,
-						} if matches!(Key::kind(&key), Some(KeyKind::Row)) => Some((key, pre, visible)),
+						} if matches!(KeyKind::of(&key), Some(KeyKind::Row)) => Some((key, pre, visible)),
 						_ => None,
 					})
 					.collect();
@@ -1638,7 +1637,7 @@ mod pull_protocol {
 			.cdc_records()
 			.into_iter()
 			.flat_map(|cdc| cdc.changes)
-			.filter(|change| matches!(Key::kind(change.key()), Some(KeyKind::OperatorState)))
+			.filter(|change| matches!(KeyKind::of(change.key()), Some(KeyKind::OperatorState)))
 			.count();
 		assert_eq!(cdc_state_keys, 0, "no CDC record may carry an OperatorState key either");
 
@@ -1751,7 +1750,7 @@ mod pull_protocol {
 				.collect::<Result<Vec<_>>>()
 				.expect("scan for the ringbuffer metadata row")
 				.into_iter()
-				.filter(|row| Key::kind(&row.key) == Some(KeyKind::RingBufferMetadata))
+				.filter(|row| KeyKind::of(&row.key) == Some(KeyKind::RingBufferMetadata))
 				.collect();
 			assert_eq!(rows.len(), 1, "the test view owns exactly one unpartitioned metadata row");
 			decode_ringbuffer_metadata(EncodedPodRow::view(&rows[0].bytes))

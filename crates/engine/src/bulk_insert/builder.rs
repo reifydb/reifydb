@@ -27,8 +27,11 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		EncodableKey, index_entry::IndexEntryKey, partitioned_row::PartitionedRowKey,
-		partitioned_series_row::PartitionedSeriesRowKey, row::RowKey, series_row::SeriesRowKey,
+		EncodableKey,
+		catalog::IndexEntryKey,
+		row::{PartitionedRowKey, RowKey},
+		series::{PartitionedSeriesRowKey, SeriesRowKey},
+		typed::key::Key,
 	},
 };
 use reifydb_runtime::context::clock::Clock;

@@ -15,8 +15,9 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::{EntryKind, MultiVersionGet, classify_key},
+		store::{EntryKind, EntryLayout, MultiVersionGet, classify_key},
 	},
+	key::row::RowKey,
 	util::bloom::hash_item,
 };
 use reifydb_filter::{
@@ -36,12 +37,12 @@ use reifydb_store_multi::{
 		range::MultiRangeConfig,
 	},
 };
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
 
-const OTHER: EntryKind = EntryKind::Source(StorageId::Table(TableId(1)));
+const OTHER: EntryKind = EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row);
 
 fn key(n: u64) -> EncodedKey {
-	EncodedKey::new(n.to_be_bytes())
+	RowKey::encoded(StorageId::table(TableId(1)), RowNumber(n))
 }
 
 fn body(n: u64) -> CowVec<u8> {

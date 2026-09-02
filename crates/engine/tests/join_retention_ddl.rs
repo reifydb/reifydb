@@ -20,25 +20,19 @@ fn join_view(clause: &str) -> String {
 }
 
 #[test]
-fn a_right_retention_on_a_latest_join_is_rejected() {
-	// `latest` collapses the right side to one slot overwritten in place, so a right retention would never fire.
+fn a_right_retention_on_a_latest_join_is_accepted() {
+	// `latest` keeps every right row per key, so a right retention is the only thing bounding that growth.
 	let engine = engine_with_sources("event(at)");
 
-	let err = engine.admin_err(&join_view("retention: { right: 1h }, latest: true"));
-
-	assert!(err.contains("FLOW_048"), "expected FLOW_048, got: {err}");
-	assert!(err.contains("latest"), "the rejection must name the flag that caused it, got: {err}");
+	engine.admin(&join_view("retention: { right: 1h }, latest: true"));
 }
 
 #[test]
-fn a_right_retention_on_a_snapshot_join_is_rejected() {
-	// A pinned right row must outlive the left rows referencing it, so sealing it is inert by construction.
+fn a_right_retention_on_a_snapshot_join_is_accepted() {
+	// A sealed right row retires its bytes into the pin first, so the pairs it published survive without it.
 	let engine = engine_with_sources("event(at)");
 
-	let err = engine.admin_err(&join_view("retention: { right: 1h }, snapshot: true"));
-
-	assert!(err.contains("FLOW_048"), "expected FLOW_048, got: {err}");
-	assert!(err.contains("snapshot"), "the rejection must name the flag that caused it, got: {err}");
+	engine.admin(&join_view("retention: { right: 1h }, snapshot: true"));
 }
 
 #[test]

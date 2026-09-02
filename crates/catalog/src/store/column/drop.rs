@@ -4,7 +4,8 @@
 use reifydb_core::{
 	interface::catalog::{id::ColumnId, object::ObjectId},
 	key::{
-		column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey, property::ColumnPropertyKey,
+		catalog::ColumnPropertyKey,
+		column::{ColumnKey, ColumnSequenceKey, ColumnsKey},
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};

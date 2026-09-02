@@ -15,9 +15,9 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		EncodableKey,
-		queue_schedule::QueueItemStateKey,
+		queue::QueueItemStateKey,
 		row::{RowKey, RowKeyRange},
+		typed::key::Key,
 	},
 };
 use reifydb_transaction::{

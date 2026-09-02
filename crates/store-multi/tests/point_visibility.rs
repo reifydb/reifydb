@@ -18,7 +18,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
-	key::{EncodableKey, row::RowKey},
+	key::{row::RowKey, typed::key::Key},
 };
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::{
@@ -200,7 +200,7 @@ fn reaping_a_key_invalidates_the_cached_row_it_removed() {
 
 	let persistent = store.persistent().expect("persistent tier configured");
 	let removed = persistent.delete_keys(classify_key(&expired), std::slice::from_ref(&expired)).unwrap();
-	store.invalidate_read_key(&expired);
+	store.invalidate_read_key(classify_key(&expired), &expired);
 	assert_eq!(removed, 1, "only the named key may be deleted");
 
 	assert_eq!(get(&store, &expired, 5), None, "a deleted row must never be served again from the cache");

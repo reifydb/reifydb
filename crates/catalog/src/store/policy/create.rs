@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::policy::{Policy, PolicyOperation, PolicyToCreate},
-	key::{policy::PolicyKey, policy_op::PolicyOpKey},
+	key::identity::{PolicyKey, PolicyOpKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::fragment::Fragment;

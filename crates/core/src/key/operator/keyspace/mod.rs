@@ -14,7 +14,7 @@ use reifydb_codec::row::{operator::state::OperatorState, pod::EncodedPodRow};
 use reifydb_value::util::hash::Hash128;
 
 #[cfg(test)]
-use crate::key::{operator::traits::group_scoped, typed::Key};
+use crate::key::{operator::traits::group_scoped, typed::TypedKey};
 use crate::{
 	interface::store::CacheTiers,
 	key::{
@@ -88,7 +88,7 @@ macro_rules! catalogue {
 				name: <$keyspace as Keyspace>::NAME,
 				id: <$keyspace as Keyspace>::ID,
 				cache: <$keyspace as Keyspace>::CACHE,
-				columns: <<$keyspace as Keyspace>::Key as KeyLayout>::COLUMNS,
+				columns: <<$keyspace as Keyspace>::GroupedKey as KeyLayout>::COLUMNS,
 				suffix: <<$keyspace as Keyspace>::Suffix as KeyLayout>::COLUMNS,
 			}),*
 		];
@@ -272,7 +272,7 @@ fn round_trips<K: Keyspace>() {
 	// low() is every column at the start of its own order, so a join that hardcoded a column to its
 	// minimum would round trip against low() alone; stepping the suffix first is what makes the
 	// probe able to fail
-	let mut suffix = <K::Suffix as Key>::low();
+	let mut suffix = <K::Suffix as TypedKey>::low();
 	for step in 0..4 {
 		let key = K::join(GroupId::hashed(Hash128(9)), suffix.clone());
 		let (group, split) = K::split(&key);
@@ -307,7 +307,7 @@ fn carries_its_group<K: Keyspace>() {
 	// key is its suffix behind a leading group column; one whose key adds nothing to its suffix carries
 	// the group as payload at most, is ROOT-only by construction, and must collapse every group to ROOT.
 	let inside_one_group = group_scoped::<K>();
-	let mut suffix = <K::Suffix as Key>::low();
+	let mut suffix = <K::Suffix as TypedKey>::low();
 	for step in 0..4 {
 		for group in [
 			GroupId::ROOT,

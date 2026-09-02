@@ -18,9 +18,9 @@ use reifydb_core::{
 	event::metric::{MultiCommittedEvent, MultiDelete, MultiWrite},
 	interface::store::{
 		EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
-		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore, classify_key, classify_range,
+		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore, StorageKey, classify_key, classify_range,
+		storage_key,
 	},
-	key::typed::Key,
 };
 use reifydb_store_commit::{
 	MultiVersionScope, RangeBatch, RangeCursor, RangeStop, TierBatch, VersionedGetResult, store::CommitStore,
@@ -34,42 +34,69 @@ use tracing::instrument;
 use super::StandardMultiStore;
 use crate::{
 	Result,
-	tier::{TierStorage, persistent::MultiPersistentTier, range::ServedChunk},
+	tier::{
+		TierStorage,
+		persistent::MultiPersistentTier,
+		range::{ServedChunk, resume_after},
+	},
 };
 
 const TIER_SCAN_CHUNK_SIZE: usize = 32;
 
+#[derive(Clone, Copy)]
+struct ClassifiedKey<'a> {
+	key: &'a EncodedKey,
+	storage_key: Option<StorageKey>,
+}
+
 impl MultiVersionGet for StandardMultiStore {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
-		match classify_key(key) {
-			EntryKind::Source(_) => self.get_source(key, version),
-			_ => self.get_multi(key, version),
+		let (table, storage_key) = storage_key(key);
+		match table {
+			EntryKind::Source(_, _) => self.get_source(table, storage_key, key, version),
+			_ => self.get_multi(table, storage_key, key, version),
 		}
 	}
 }
 
 impl StandardMultiStore {
 	#[instrument(name = "store::multi::get::source", level = "trace", skip(self, key), fields(version = version.0))]
-	fn get_source(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
-		self.get_impl(key, version)
+	fn get_source(
+		&self,
+		table: EntryKind,
+		storage_key: Option<StorageKey>,
+		key: &EncodedKey,
+		version: CommitVersion,
+	) -> Result<Option<MultiVersionRow>> {
+		self.get_impl(table, storage_key, key, version)
 	}
 
 	#[instrument(name = "store::multi::get::multi", level = "trace", skip(self, key), fields(version = version.0))]
-	fn get_multi(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
-		self.get_impl(key, version)
+	fn get_multi(
+		&self,
+		table: EntryKind,
+		storage_key: Option<StorageKey>,
+		key: &EncodedKey,
+		version: CommitVersion,
+	) -> Result<Option<MultiVersionRow>> {
+		self.get_impl(table, storage_key, key, version)
 	}
 
 	#[inline]
-	fn get_impl(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
-		let table = classify_key(key);
-
+	fn get_impl(
+		&self,
+		table: EntryKind,
+		storage_key: Option<StorageKey>,
+		key: &EncodedKey,
+		version: CommitVersion,
+	) -> Result<Option<MultiVersionRow>> {
 		if let Some(found) = self.get_probe_commit(table, key, version)? {
 			return Ok(found);
 		}
-		if let Some(found) = self.get_probe_read(key, version) {
+		if let Some(found) = self.get_probe_read(table, storage_key, key, version) {
 			return Ok(found);
 		}
-		if let Some(found) = self.get_probe_persistent(table, key, version)? {
+		if let Some(found) = self.get_probe_persistent(table, storage_key, key, version)? {
 			return Ok(found);
 		}
 
@@ -100,9 +127,15 @@ impl StandardMultiStore {
 	}
 
 	#[inline]
-	fn get_probe_read(&self, key: &EncodedKey, version: CommitVersion) -> Option<Option<MultiVersionRow>> {
+	fn get_probe_read(
+		&self,
+		table: EntryKind,
+		storage_key: Option<StorageKey>,
+		key: &EncodedKey,
+		version: CommitVersion,
+	) -> Option<Option<MultiVersionRow>> {
 		let point = self.point.as_ref()?;
-		match point.get(key, version) {
+		match point.get(table, storage_key, key, version) {
 			VersionedGetResult::Value {
 				value,
 				version: v,
@@ -120,6 +153,7 @@ impl StandardMultiStore {
 	fn get_probe_persistent(
 		&self,
 		table: EntryKind,
+		storage_key: Option<StorageKey>,
 		key: &EncodedKey,
 		version: CommitVersion,
 	) -> Result<Option<Option<MultiVersionRow>>> {
@@ -136,7 +170,7 @@ impl StandardMultiStore {
 				version: v,
 			} => {
 				if let Some(point) = &self.point {
-					point.insert(key.clone(), v, Some(value.clone()));
+					point.insert(table, storage_key, key.clone(), v, Some(value.clone()));
 				}
 				Some(Some(MultiVersionRow {
 					key: key.clone(),
@@ -227,9 +261,13 @@ impl StandardMultiStore {
 		keys: &[EncodedKey],
 		version: CommitVersion,
 	) -> Result<HashMap<EncodedKey, MultiVersionRow>> {
-		let mut by_table: HashMap<EntryKind, Vec<&EncodedKey>> = HashMap::new();
+		let mut by_table: HashMap<EntryKind, Vec<ClassifiedKey<'_>>> = HashMap::new();
 		for key in keys {
-			by_table.entry(classify_key(key)).or_default().push(key);
+			let (table, storage_key) = storage_key(key);
+			by_table.entry(table).or_default().push(ClassifiedKey {
+				key,
+				storage_key,
+			});
 		}
 
 		let mut out: HashMap<EncodedKey, MultiVersionRow> = HashMap::new();
@@ -245,16 +283,20 @@ impl StandardMultiStore {
 		keys: &[EncodedKey],
 		version: CommitVersion,
 	) -> Result<HashMap<EncodedKey, VersionedGetResult>> {
-		let mut by_table: HashMap<EntryKind, Vec<&EncodedKey>> = HashMap::new();
+		let mut by_table: HashMap<EntryKind, Vec<ClassifiedKey<'_>>> = HashMap::new();
 		for key in keys {
-			by_table.entry(classify_key(key)).or_default().push(key);
+			let (table, storage_key) = storage_key(key);
+			by_table.entry(table).or_default().push(ClassifiedKey {
+				key,
+				storage_key,
+			});
 		}
 
 		let mut out: HashMap<EncodedKey, VersionedGetResult> = HashMap::new();
 		for (table, table_keys) in by_table {
 			let (commit_results, read_aligned, persistent_aligned) =
 				self.probe_tiers(table, &table_keys, version)?;
-			for (i, key) in table_keys.iter().enumerate() {
+			for (i, routed) in table_keys.iter().enumerate() {
 				let resolved = match &commit_results[i] {
 					VersionedGetResult::NotFound => match &read_aligned[i] {
 						VersionedGetResult::NotFound => &persistent_aligned[i],
@@ -262,7 +304,7 @@ impl StandardMultiStore {
 					},
 					found => found,
 				};
-				out.insert((*key).clone(), resolved.clone());
+				out.insert(routed.key.clone(), resolved.clone());
 			}
 		}
 
@@ -273,10 +315,10 @@ impl StandardMultiStore {
 	fn probe_tiers(
 		&self,
 		table: EntryKind,
-		table_keys: &[&EncodedKey],
+		table_keys: &[ClassifiedKey<'_>],
 		version: CommitVersion,
 	) -> Result<(Vec<VersionedGetResult>, Vec<VersionedGetResult>, Vec<VersionedGetResult>)> {
-		let key_slices: Vec<&[u8]> = table_keys.iter().map(|k| k.as_ref()).collect();
+		let key_slices: Vec<&[u8]> = table_keys.iter().map(|routed| routed.key.as_ref()).collect();
 
 		let commit_results = self.probe_commit_batch(table, &key_slices, version)?;
 		let (read_aligned, persistent_aligned) = self.resolve_misses_through_read_and_persistent(
@@ -294,7 +336,7 @@ impl StandardMultiStore {
 	fn get_many_for_table(
 		&self,
 		table: EntryKind,
-		table_keys: &[&EncodedKey],
+		table_keys: &[ClassifiedKey<'_>],
 		version: CommitVersion,
 		out: &mut HashMap<EncodedKey, MultiVersionRow>,
 	) -> Result<()> {
@@ -331,7 +373,7 @@ impl StandardMultiStore {
 	fn resolve_misses_through_read_and_persistent(
 		&self,
 		table: EntryKind,
-		table_keys: &[&EncodedKey],
+		table_keys: &[ClassifiedKey<'_>],
 		key_slices: &[&[u8]],
 		commit_results: &[VersionedGetResult],
 		version: CommitVersion,
@@ -346,7 +388,7 @@ impl StandardMultiStore {
 			let read_hit = self
 				.point
 				.as_ref()
-				.map(|c| c.get(table_keys[i], version))
+				.map(|c| c.get(table, table_keys[i].storage_key, table_keys[i].key, version))
 				.unwrap_or(VersionedGetResult::NotFound);
 			match read_hit {
 				VersionedGetResult::Value {
@@ -364,7 +406,7 @@ impl StandardMultiStore {
 				VersionedGetResult::NotFound => {
 					let maybe = match &self.persistent {
 						Some(persistent) => {
-							persistent.filter().may_contain((table, table_keys[i]))
+							persistent.filter().may_contain((table, table_keys[i].key))
 						}
 						None => false,
 					};
@@ -391,7 +433,13 @@ impl StandardMultiStore {
 					version: v,
 				} = &result && let Some(point) = &self.point
 				{
-					point.insert(table_keys[slot].clone(), *v, Some(value.clone()));
+					point.insert(
+						table,
+						table_keys[slot].storage_key,
+						table_keys[slot].key.clone(),
+						*v,
+						Some(value.clone()),
+					);
 				}
 				persistent_aligned[slot] = result;
 			}
@@ -403,13 +451,13 @@ impl StandardMultiStore {
 	#[inline]
 	fn collect_resolved_rows(
 		&self,
-		table_keys: &[&EncodedKey],
+		table_keys: &[ClassifiedKey<'_>],
 		commit_results: &[VersionedGetResult],
 		read_aligned: &[VersionedGetResult],
 		persistent_aligned: &[VersionedGetResult],
 		out: &mut HashMap<EncodedKey, MultiVersionRow>,
 	) {
-		for (i, key) in table_keys.iter().enumerate() {
+		for (i, routed) in table_keys.iter().enumerate() {
 			let resolved = match &commit_results[i] {
 				VersionedGetResult::Value {
 					value,
@@ -434,9 +482,9 @@ impl StandardMultiStore {
 
 			if let Some((value, v)) = resolved {
 				out.insert(
-					(*key).clone(),
+					routed.key.clone(),
 					MultiVersionRow {
-						key: (*key).clone(),
+						key: routed.key.clone(),
 						bytes: EncodedBytes(value),
 						version: v,
 					},
@@ -450,13 +498,13 @@ impl StandardMultiStore {
 		if self.point.is_none() && self.range.is_none() {
 			return;
 		}
-		for entries in batches.values() {
+		for (table, entries) in batches.iter() {
 			for (key, _) in entries {
 				if let Some(range) = &self.range {
-					range.invalidate(key);
+					range.invalidate(*table, key);
 				}
 				if let Some(point) = &self.point {
-					point.invalidate(key);
+					point.invalidate(*table, storage_key(key).1, key);
 				}
 			}
 		}
@@ -972,7 +1020,7 @@ impl StandardMultiStore {
 		}
 		let range_start = EncodedKey::new(scan.start);
 		let lo = match resumed_at {
-			Some(last) => match last.successor() {
+			Some(last) => match resume_after(scan.table, last) {
 				Some(next) => next.max(range_start),
 				None => return Ok(()),
 			},
@@ -1105,7 +1153,7 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 			return Ok(None);
 		}
 
-		let table = classify_key(key);
+		let (table, storage_key) = storage_key(key);
 		reifydb_assertions! {
 			assert!(
 				before_version.0 >= 1,
@@ -1120,10 +1168,10 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 		if let Some(found) = self.previous_probe_commit(table, key, prev_version)? {
 			return Ok(found);
 		}
-		if let Some(found) = self.previous_probe_read(key, prev_version) {
+		if let Some(found) = self.previous_probe_read(table, storage_key, key, prev_version) {
 			return Ok(found);
 		}
-		if let Some(found) = self.previous_probe_persistent(table, key, prev_version)? {
+		if let Some(found) = self.previous_probe_persistent(table, storage_key, key, prev_version)? {
 			return Ok(found);
 		}
 
@@ -1156,11 +1204,13 @@ impl StandardMultiStore {
 	#[inline]
 	fn previous_probe_read(
 		&self,
+		table: EntryKind,
+		storage_key: Option<StorageKey>,
 		key: &EncodedKey,
 		prev_version: CommitVersion,
 	) -> Option<Option<MultiVersionRow>> {
 		let point = self.point.as_ref()?;
-		match point.get(key, prev_version) {
+		match point.get(table, storage_key, key, prev_version) {
 			VersionedGetResult::Value {
 				value,
 				version,
@@ -1178,6 +1228,7 @@ impl StandardMultiStore {
 	fn previous_probe_persistent(
 		&self,
 		table: EntryKind,
+		storage_key: Option<StorageKey>,
 		key: &EncodedKey,
 		prev_version: CommitVersion,
 	) -> Result<Option<Option<MultiVersionRow>>> {
@@ -1194,7 +1245,7 @@ impl StandardMultiStore {
 				version,
 			} => {
 				if let Some(point) = &self.point {
-					point.insert(key.clone(), version, Some(value.clone()));
+					point.insert(table, storage_key, key.clone(), version, Some(value.clone()));
 				}
 				Some(Some(MultiVersionRow {
 					key: key.clone(),
@@ -1322,16 +1373,19 @@ mod cache_tests {
 		delta::Delta,
 		interface::{
 			catalog::{flow::OperatorId, id::TableId, storage::StorageId},
-			store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
+			store::{
+				EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet, classify_key, storage_key,
+			},
 		},
 		key::{
 			EncodableKey,
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-			row::RowKey,
+			row::{RowKey, StorageRowKey},
+			typed::key::Key,
 		},
 	};
 	use reifydb_store_commit::{MultiVersionScope, RangeStop, RawEntry, VersionedGetResult};
-	use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec};
+	use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
 
 	use super::MultiVersionRangeCursor;
 	use crate::{
@@ -1384,7 +1438,7 @@ mod cache_tests {
 				}
 			}
 			for evicted in &to_compact {
-				store.invalidate_read_key(&evicted.key);
+				store.invalidate_read_key(kind, &evicted.key);
 			}
 			commit.compact(HashMap::from([(
 				kind,
@@ -1409,10 +1463,9 @@ mod cache_tests {
 		flush(&store, CommitVersion(1));
 
 		let range = store.range.clone().expect("range tier configured");
-		let kind = EntryKind::Source(STORAGE);
-		let heavy = PartitionId::of(kind, &RowKey::encoded(STORAGE, 1)).expect("a row key names a bucket");
-		let light =
-			PartitionId::of(kind, &RowKey::encoded(STORAGE, 1u64 << 16)).expect("a row key names a bucket");
+		let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
+		let heavy = PartitionId::of(kind, &StorageRowKey::new(RowNumber(1)));
+		let light = PartitionId::of(kind, &StorageRowKey::new(RowNumber(1u64 << 16)));
 		assert_ne!(heavy, light, "the two row groups must land in different buckets");
 		assert_eq!(range.complete_partitions().iter().sum::<usize>(), 0, "nothing is claimed before the scan");
 
@@ -1458,7 +1511,10 @@ mod cache_tests {
 		.unwrap();
 
 		assert!(
-			matches!(point.get(&opkey, CommitVersion(10)), VersionedGetResult::NotFound),
+			matches!(
+				point.get(classify_key(&opkey), storage_key(&opkey).1, &opkey, CommitVersion(10)),
+				VersionedGetResult::NotFound
+			),
 			"an operator commit must not write through into the point tier"
 		);
 		assert_eq!(
@@ -1474,7 +1530,10 @@ mod cache_tests {
 		assert_eq!(row.version, CommitVersion(10));
 
 		assert!(
-			matches!(point.get(&opkey, CommitVersion(10)), VersionedGetResult::NotFound),
+			matches!(
+				point.get(classify_key(&opkey), storage_key(&opkey).1, &opkey, CommitVersion(10)),
+				VersionedGetResult::NotFound
+			),
 			"a store-level operator read must not back-populate the point tier"
 		);
 	}
@@ -1486,10 +1545,10 @@ mod cache_tests {
 
 		let neighbor = RowKey::encoded(STORAGE, 1);
 		let kind = classify_key(&neighbor);
-		let partition = PartitionId::of(kind, &neighbor).expect("a source row key must name a partition");
+		let partition = PartitionId::of(kind, &StorageRowKey::new(RowNumber(1)));
 		assert_eq!(
-			PartitionId::of(kind, &RowKey::encoded(STORAGE, 2)),
-			Some(partition),
+			PartitionId::of(kind, &StorageRowKey::new(RowNumber(2))),
+			partition,
 			"both source rows must share a partition for this test to exercise the retraction"
 		);
 		assert!(
@@ -1775,12 +1834,16 @@ mod probe_tests {
 			catalog::{id::TableId, storage::StorageId},
 			store::{MultiVersionCommit, MultiVersionGet, MultiVersionGetPrevious, classify_key},
 		},
-		key::row::RowKey,
+		key::row::{PartitionedRowKey, RowKey},
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown};
 	use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-	use reifydb_store_commit::{TierBatch, store::CommitStore};
-	use reifydb_value::{cow_vec, util::cowvec::CowVec};
+	use reifydb_store_commit::{MultiVersionScope, TierBatch, store::CommitStore};
+	use reifydb_value::{
+		cow_vec,
+		util::cowvec::CowVec,
+		value::{partition::Partition, row_number::RowNumber},
+	};
 
 	use crate::{
 		config::{CommitStoreConfig, MultiStoreConfig, PersistentConfig},
@@ -2000,5 +2063,33 @@ mod probe_tests {
 		let store = StandardMultiStore::testing_memory();
 		assert!(store.get(&RowKey::encoded(STORAGE, 1), CommitVersion(9)).unwrap().is_none());
 		assert!(store.persistent_probe_metrics().is_none());
+	}
+
+	#[test]
+	fn a_paginated_range_over_many_partitions_reaches_every_row() {
+		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+
+		let mut entries = Vec::new();
+		for p in 0u128..64 {
+			let partition = Partition(p.wrapping_mul(0x9E3779B97F4A7C15) ^ 0xA5A5_A5A5_A5A5_A5A5);
+			for r in 0u64..2 {
+				let key = PartitionedRowKey::encoded(STORAGE, partition, RowNumber(r + 1));
+				entries.push((key, value("v")));
+			}
+		}
+		seed_persistent(&store, entries);
+
+		let range = PartitionedRowKey::full_scan(STORAGE);
+		let collected: Vec<_> = store
+			.range(
+				range,
+				MultiVersionScope::AsOf {
+					read: CommitVersion(9),
+				},
+				4,
+			)
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap();
+		assert_eq!(collected.len(), 128, "a paginated scan across 64 partitions must reach every row");
 	}
 }

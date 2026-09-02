@@ -5,7 +5,7 @@ use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	interface::{catalog::dictionary::Dictionary, store::SingleVersionGet},
 	internal_error,
-	key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},
+	key::catalog::{DictionaryEntryIndexKey, DictionaryEntryKey},
 };
 use reifydb_transaction::{
 	interceptor::dictionary_row::DictionaryRowInterceptor,

@@ -26,6 +26,7 @@ use reifydb_core::{
 		EncodableKey,
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 		row::RowKey,
+		typed::key::Key,
 	},
 };
 use reifydb_store_commit::MultiVersionScope;

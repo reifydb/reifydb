@@ -12,7 +12,11 @@ use reifydb_core::event::metric::{MultiEviction, MultiPersist, MultiSweptEvent};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::lifecycle::progress::Progress;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_core::{common::CommitVersion, default, interface::store::EntryKind};
+use reifydb_core::{
+	common::CommitVersion,
+	default,
+	interface::store::{EntryKind, storage_key},
+};
 use reifydb_core::{event::EventBus, lifecycle::watermark::EvictionWatermark};
 use reifydb_runtime::{
 	context::clock::Clock,
@@ -155,7 +159,7 @@ impl FlushEngine {
 
 	fn is_persistent_object(&self, kind: EntryKind) -> bool {
 		match kind {
-			EntryKind::Source(storage) | EntryKind::PartitionedSource(storage) => {
+			EntryKind::Source(storage, _) | EntryKind::PartitionedSource(storage, _) => {
 				self.persistence.get().map(|provider| provider.is_persistent(storage)).unwrap_or(true)
 			}
 			EntryKind::Multi => true,
@@ -231,7 +235,7 @@ impl FlushEngine {
 
 		let mut dropped = 0usize;
 		for (kind, persistent_object, (to_persist, to_drop)) in plan {
-			self.refresh_read_tier(persistent_object, &to_persist, &to_drop, &accepted);
+			self.refresh_read_tier(kind, persistent_object, &to_persist, &to_drop, &accepted);
 			if persistent_object {
 				for (key, _, value) in &to_persist {
 					if accepted_keys.contains(key.as_slice()) {
@@ -296,6 +300,7 @@ impl FlushEngine {
 	#[inline]
 	fn refresh_read_tier(
 		&self,
+		table: EntryKind,
 		persistent_object: bool,
 		to_persist: &[(EncodedKey, CommitVersion, Option<CowVec<u8>>)],
 		to_drop: &[EvictedVersion],
@@ -309,27 +314,33 @@ impl FlushEngine {
 			for (key, version, value) in to_persist {
 				if accepted.contains(key.as_slice()) {
 					if let Some(range) = &self.range {
-						range.insert(key.clone(), *version, value.clone());
+						range.insert(table, key.clone(), *version, value.clone());
 					}
 					if let Some(point) = &self.point {
-						point.insert(key.clone(), *version, value.clone());
+						point.insert(
+							table,
+							storage_key(key).1,
+							key.clone(),
+							*version,
+							value.clone(),
+						);
 					}
 				} else {
 					if let Some(range) = &self.range {
-						range.invalidate(key);
+						range.invalidate(table, key);
 					}
 					if let Some(point) = &self.point {
-						point.invalidate(key);
+						point.invalidate(table, storage_key(key).1, key);
 					}
 				}
 			}
 		} else {
 			for evicted in to_drop {
 				if let Some(range) = &self.range {
-					range.invalidate(&evicted.key);
+					range.invalidate(table, &evicted.key);
 				}
 				if let Some(point) = &self.point {
-					point.invalidate(&evicted.key);
+					point.invalidate(table, storage_key(&evicted.key).1, &evicted.key);
 				}
 			}
 		}
@@ -358,20 +369,31 @@ impl FlushEngine {
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod tests {
+	use std::{
+		collections::hash_map::DefaultHasher,
+		hash::{Hash, Hasher},
+	};
+
 	use reifydb_core::{
 		event::EventListener,
-		interface::catalog::{id::TableId, storage::StorageId},
+		interface::{
+			catalog::{id::TableId, storage::StorageId},
+			store::EntryLayout,
+		},
+		key::row::RowKey,
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, shutdown::Shutdown};
 	use reifydb_sqlite::SqliteTempPathGuard;
 	use reifydb_store_commit::VersionedGetResult;
-	use reifydb_value::util::cowvec::CowVec;
+	use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
 
 	use super::*;
 	use crate::tier::point::MultiPointConfig;
 
 	fn ek(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes())
+		let mut hasher = DefaultHasher::new();
+		s.hash(&mut hasher);
+		RowKey::encoded(StorageId::table(TableId(1)), RowNumber(hasher.finish()))
 	}
 
 	fn val(s: &str) -> CowVec<u8> {
@@ -490,7 +512,7 @@ mod tests {
 	fn a_sweep_reports_every_version_it_evicted_from_the_commit_buffer() {
 		let (engine, _guard, collector) =
 			build_engine_watching_sweeps(Arc::new(AllPersistent), CommitVersion(2));
-		let kind = EntryKind::Source(StorageId::table(TableId(1)));
+		let kind = EntryKind::Source(StorageId::table(TableId(1)), EntryLayout::Row);
 		let key = ek("k");
 
 		write(&engine.commit, kind, &key, 1, "v1");
@@ -525,7 +547,7 @@ mod tests {
 	fn a_sweep_that_persists_nothing_still_reports_what_it_discarded() {
 		let (engine, _guard, collector) =
 			build_engine_watching_sweeps(Arc::new(NonePersistent), CommitVersion(2));
-		let kind = EntryKind::Source(StorageId::table(TableId(1)));
+		let kind = EntryKind::Source(StorageId::table(TableId(1)), EntryLayout::Row);
 		let key = ek("k");
 
 		write(&engine.commit, kind, &key, 1, "v1");
@@ -580,7 +602,7 @@ mod tests {
 	#[test]
 	fn a_pinned_cutoff_reports_the_entries_it_could_not_release() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
-		let kind = EntryKind::Source(StorageId::Table(TableId(1)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row);
 		for i in 0..8u64 {
 			write(&actor.commit, kind, &ek(&format!("k{i}")), 10 + i, "v");
 		}
@@ -603,7 +625,7 @@ mod tests {
 	#[test]
 	fn a_cutoff_that_can_release_reports_what_it_reclaimed() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(20)));
-		let kind = EntryKind::Source(StorageId::Table(TableId(1)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row);
 		for i in 0..8u64 {
 			write(&actor.commit, kind, &ek(&format!("k{i}")), 10 + i, "v");
 		}
@@ -617,7 +639,7 @@ mod tests {
 	#[test]
 	fn sweep_persists_then_evicts_persistent_object_below_watermark() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		let kind = EntryKind::Source(StorageId::Table(TableId(1)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row);
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
 		write(&actor.commit, kind, &key, 2, "v2");
@@ -650,7 +672,7 @@ mod tests {
 	#[test]
 	fn sweep_evicts_non_persistent_object_without_persisting() {
 		let (actor, _guard) = build_engine(Arc::new(NonePersistent), Some(CommitVersion(2)));
-		let kind = EntryKind::Source(StorageId::Table(TableId(7)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(7)), EntryLayout::Row);
 		let key = ek("ephemeral");
 		write(&actor.commit, kind, &key, 1, "v1");
 		write(&actor.commit, kind, &key, 2, "v2");
@@ -682,7 +704,7 @@ mod tests {
 	#[test]
 	fn sweep_keeps_everything_when_all_above_watermark() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
-		let kind = EntryKind::Source(StorageId::Table(TableId(3)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(3)), EntryLayout::Row);
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 5, "v5");
 
@@ -706,16 +728,16 @@ mod tests {
 	fn sweep_seeds_evicted_keys_into_the_read_tier() {
 		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
 		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
-		let kind = EntryKind::Source(StorageId::Table(TableId(11)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(11)), EntryLayout::Row);
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
 		write(&actor.commit, kind, &key, 2, "v2");
 
-		point.insert(key.clone(), CommitVersion(2), Some(val("stale")));
+		point.insert(kind, storage_key(&key).1, key.clone(), CommitVersion(2), Some(val("stale")));
 
 		actor.sweep(CommitVersion(2));
 
-		match point.get(&key, CommitVersion(2)) {
+		match point.get(kind, storage_key(&key).1, &key, CommitVersion(2)) {
 			VersionedGetResult::Value {
 				value,
 				..
@@ -732,19 +754,22 @@ mod tests {
 	fn sweep_seeds_a_delete_of_a_persisted_row_into_the_read_tier() {
 		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
 		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
-		let kind = EntryKind::Source(StorageId::Table(TableId(21)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(21)), EntryLayout::Row);
 		let key = ek("k");
 		actor.persistent
 			.set(CommitVersion(1), HashMap::from([(kind, vec![(key.clone(), Some(val("v1")))])]))
 			.unwrap();
-		point.insert(key.clone(), CommitVersion(1), Some(val("v1")));
+		point.insert(kind, storage_key(&key).1, key.clone(), CommitVersion(1), Some(val("v1")));
 		write(&actor.commit, kind, &key, 1, "v1");
 		actor.commit.set(CommitVersion(2), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();
 
 		actor.sweep(CommitVersion(2));
 
 		assert!(
-			matches!(point.get(&key, CommitVersion(2)), VersionedGetResult::Tombstone),
+			matches!(
+				point.get(kind, storage_key(&key).1, &key, CommitVersion(2)),
+				VersionedGetResult::Tombstone
+			),
 			"an evicted delete that matched a persisted row must be seeded into the point tier as a \
 			 definitive miss, never left holding the value it deleted"
 		);
@@ -754,7 +779,7 @@ mod tests {
 	fn sweep_invalidates_rejected_key_but_seeds_accepted() {
 		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
 		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
-		let kind = EntryKind::Source(StorageId::Table(TableId(22)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(22)), EntryLayout::Row);
 		let rejected = ek("rejected");
 		let accepted = ek("accepted");
 
@@ -762,7 +787,7 @@ mod tests {
 			.set(CommitVersion(3), HashMap::from([(kind, vec![(rejected.clone(), Some(val("high")))])]))
 			.unwrap();
 
-		point.insert(rejected.clone(), CommitVersion(2), Some(val("stale")));
+		point.insert(kind, storage_key(&rejected).1, rejected.clone(), CommitVersion(2), Some(val("stale")));
 
 		write(&actor.commit, kind, &rejected, 2, "low");
 		write(&actor.commit, kind, &accepted, 2, "b");
@@ -770,11 +795,14 @@ mod tests {
 		actor.sweep(CommitVersion(2));
 
 		assert!(
-			matches!(point.get(&rejected, CommitVersion(2)), VersionedGetResult::NotFound),
+			matches!(
+				point.get(kind, storage_key(&rejected).1, &rejected, CommitVersion(2)),
+				VersionedGetResult::NotFound
+			),
 			"a guard-rejected key must be invalidated in the point tier so reads fall through to the newer \
 			 persisted value, never serving the stale entry"
 		);
-		match point.get(&accepted, CommitVersion(2)) {
+		match point.get(kind, storage_key(&accepted).1, &accepted, CommitVersion(2)) {
 			VersionedGetResult::Value {
 				value,
 				..
@@ -787,15 +815,15 @@ mod tests {
 	fn sweep_seed_respects_read_tier_downgrade_guard() {
 		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
 		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
-		let kind = EntryKind::Source(StorageId::Table(TableId(23)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(23)), EntryLayout::Row);
 		let key = ek("k");
 
-		point.insert(key.clone(), CommitVersion(5), Some(val("newer")));
+		point.insert(kind, storage_key(&key).1, key.clone(), CommitVersion(5), Some(val("newer")));
 
 		write(&actor.commit, kind, &key, 2, "older");
 		actor.sweep(CommitVersion(2));
 
-		match point.get(&key, CommitVersion(5)) {
+		match point.get(kind, storage_key(&key).1, &key, CommitVersion(5)) {
 			VersionedGetResult::Value {
 				value,
 				..
@@ -813,16 +841,19 @@ mod tests {
 		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
 		let (actor, _guard) =
 			build_engine_with_point(Arc::new(NonePersistent), CommitVersion(2), point.clone());
-		let kind = EntryKind::Source(StorageId::Table(TableId(24)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(24)), EntryLayout::Row);
 		let key = ek("k");
 
-		point.insert(key.clone(), CommitVersion(2), Some(val("stale")));
+		point.insert(kind, storage_key(&key).1, key.clone(), CommitVersion(2), Some(val("stale")));
 		write(&actor.commit, kind, &key, 2, "v2");
 
 		actor.sweep(CommitVersion(2));
 
 		assert!(
-			matches!(point.get(&key, CommitVersion(2)), VersionedGetResult::NotFound),
+			matches!(
+				point.get(kind, storage_key(&key).1, &key, CommitVersion(2)),
+				VersionedGetResult::NotFound
+			),
 			"an ephemeral (persistent:false) object must be invalidated in the point tier, never seeded"
 		);
 		assert!(
@@ -838,7 +869,7 @@ mod tests {
 	fn sweep_seeds_accepted_keys_across_version_buckets() {
 		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
 		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(4), point.clone());
-		let kind = EntryKind::Source(StorageId::Table(TableId(25)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(25)), EntryLayout::Row);
 		let a = ek("a");
 		let b = ek("b");
 		write(&actor.commit, kind, &a, 1, "a1");
@@ -848,14 +879,14 @@ mod tests {
 
 		actor.sweep(CommitVersion(4));
 
-		match point.get(&a, CommitVersion(4)) {
+		match point.get(kind, storage_key(&a).1, &a, CommitVersion(4)) {
 			VersionedGetResult::Value {
 				value,
 				..
 			} => assert_eq!(value.as_ref(), val("a2").as_ref(), "a's latest-<=W (v2) must be seeded"),
 			other => panic!("key a must be seeded across version buckets, got {other:?}"),
 		}
-		match point.get(&b, CommitVersion(4)) {
+		match point.get(kind, storage_key(&b).1, &b, CommitVersion(4)) {
 			VersionedGetResult::Value {
 				value,
 				..
@@ -867,7 +898,7 @@ mod tests {
 	#[test]
 	fn sweep_removes_the_persisted_row_so_deleted_keys_stay_deleted_after_eviction() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		let kind = EntryKind::Source(StorageId::Table(TableId(12)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(12)), EntryLayout::Row);
 		let key = ek("k");
 		actor.persistent
 			.set(CommitVersion(1), HashMap::from([(kind, vec![(key.clone(), Some(val("v1")))])]))
@@ -896,7 +927,7 @@ mod tests {
 	#[test]
 	fn sweep_evicts_below_and_keeps_above_across_multiple_keys() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		let kind = EntryKind::Source(StorageId::Table(TableId(13)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(13)), EntryLayout::Row);
 		let cold = ek("cold");
 		let hot = ek("hot");
 		write(&actor.commit, kind, &cold, 1, "cold1");
@@ -935,7 +966,7 @@ mod tests {
 	#[test]
 	fn flush_all_persists_every_key_regardless_of_watermark() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
-		let kind = EntryKind::Source(StorageId::Table(TableId(101)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(101)), EntryLayout::Row);
 		let cold = ek("cold");
 		let hot = ek("hot");
 		write(&actor.commit, kind, &cold, 2, "cold2");
@@ -965,7 +996,7 @@ mod tests {
 	#[test]
 	fn sweep_aborts_and_keeps_buffer_when_persist_fails() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		let row_kind = EntryKind::Source(StorageId::Table(TableId(31)));
+		let row_kind = EntryKind::Source(StorageId::Table(TableId(31)), EntryLayout::Row);
 		let dict_kind = EntryKind::Multi;
 		let row_key = ek("row-referencing-id-7");
 		let dict_key = ek("dictionary-entry-7");
@@ -992,7 +1023,7 @@ mod tests {
 		let (persistent, _guard) = MultiPersistentTier::sqlite_in_memory();
 		persistent.shutdown();
 
-		let kind = EntryKind::Source(StorageId::Table(TableId(32)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(32)), EntryLayout::Row);
 		let batches = vec![(CommitVersion(1), HashMap::from([(kind, vec![(ek("k"), Some(val("v")))])]))];
 		assert!(
 			persistent.persist_sweep(batches).is_err(),
@@ -1003,7 +1034,7 @@ mod tests {
 	#[test]
 	fn sweep_persists_all_kinds_and_versions_together() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(3)));
-		let row_kind = EntryKind::Source(StorageId::Table(TableId(33)));
+		let row_kind = EntryKind::Source(StorageId::Table(TableId(33)), EntryLayout::Row);
 		let dict_kind = EntryKind::Multi;
 		let row_key = ek("row-referencing-id-9");
 		let dict_key = ek("dictionary-entry-9");
@@ -1045,7 +1076,7 @@ mod tests {
 	#[test]
 	fn flush_all_removes_the_persisted_row_for_a_delete_above_the_watermark() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
-		let kind = EntryKind::Source(StorageId::Table(TableId(102)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(102)), EntryLayout::Row);
 		let key = ek("k");
 		actor.persistent
 			.set(CommitVersion(5), HashMap::from([(kind, vec![(key.clone(), Some(val("v5")))])]))
@@ -1094,13 +1125,19 @@ mod tests {
 		let budget = budget_for(&(0..KEYS_PER_SLICE).map(|i| format!("v1-k{i}")).collect::<Vec<_>>(), "x");
 
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1_000_000)));
-		let kinds: Vec<EntryKind> =
-			(0..KINDS).map(|i| EntryKind::Source(StorageId::Table(TableId(i + 1)))).collect();
+		let kinds: Vec<EntryKind> = (0..KINDS)
+			.map(|i| EntryKind::Source(StorageId::Table(TableId(i + 1)), EntryLayout::Row))
+			.collect();
+
+		let chronological_key = |version: u64, key: u64| {
+			let sequence = version * KEYS_PER_ROUND + key;
+			RowKey::encoded(StorageId::table(TableId(1)), RowNumber(u64::MAX - sequence))
+		};
 
 		let round_writes = |version: u64| {
 			for kind in &kinds {
 				for key in 0..KEYS_PER_ROUND {
-					write(&actor.commit, *kind, &ek(&format!("v{version}-k{key}")), version, "x");
+					write(&actor.commit, *kind, &chronological_key(version, key), version, "x");
 				}
 			}
 		};
@@ -1141,9 +1178,10 @@ mod tests {
 		let budget = budget_for(&(0..KEYS_PER_SLICE).map(|i| format!("v1-k{i}")).collect::<Vec<_>>(), "x");
 
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1_000_000)));
-		let hot: Vec<EntryKind> =
-			(0..HOT_KINDS).map(|i| EntryKind::Source(StorageId::Table(TableId(i + 1)))).collect();
-		let cold = EntryKind::Source(StorageId::Table(TableId(HOT_KINDS + 1)));
+		let hot: Vec<EntryKind> = (0..HOT_KINDS)
+			.map(|i| EntryKind::Source(StorageId::Table(TableId(i + 1)), EntryLayout::Row))
+			.collect();
+		let cold = EntryKind::Source(StorageId::Table(TableId(HOT_KINDS + 1)), EntryLayout::Row);
 
 		for round in 1..=ROUNDS {
 			for kind in &hot {
@@ -1179,8 +1217,8 @@ mod tests {
 		let budget = budget_for(&(0..KEYS_PER_SLICE).map(|i| format!("deep-k{i}")).collect::<Vec<_>>(), "x");
 
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1_000_000)));
-		let deep = EntryKind::Source(StorageId::Table(TableId(1)));
-		let cold = EntryKind::Source(StorageId::Table(TableId(2)));
+		let deep = EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row);
+		let cold = EntryKind::Source(StorageId::Table(TableId(2)), EntryLayout::Row);
 
 		for key in 0..DEEP_KEYS {
 			write(&actor.commit, deep, &ek(&format!("deep-k{key}")), 1, "x");
@@ -1215,8 +1253,9 @@ mod tests {
 
 		for oldest in 0..KINDS {
 			let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1_000_000)));
-			let kinds: Vec<EntryKind> =
-				(0..KINDS).map(|i| EntryKind::Source(StorageId::Table(TableId(i + 1)))).collect();
+			let kinds: Vec<EntryKind> = (0..KINDS)
+				.map(|i| EntryKind::Source(StorageId::Table(TableId(i + 1)), EntryLayout::Row))
+				.collect();
 			for (index, kind) in kinds.iter().enumerate() {
 				let version = if index as u64 == oldest {
 					OLD_VERSION

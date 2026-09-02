@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::role::RoleKey;
+use reifydb_core::key::identity::RoleKey;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::CatalogCache;

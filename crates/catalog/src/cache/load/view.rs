@@ -7,7 +7,7 @@ use reifydb_core::{
 		catalog::{id::PrimaryKeyId, key::PrimaryKey, object::ObjectId, view::View},
 		store::MultiVersionRow,
 	},
-	key::view::ViewKey,
+	key::catalog::ViewKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

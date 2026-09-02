@@ -171,7 +171,9 @@ impl<D: RangeDomain> RangeTier<D> {
 	fn retract_partition(&self, victim: &D::Partition) {
 		let (start, end) = D::span(victim);
 		let mut coverage = self.coverage().write();
-		coverage.drop_overlapping(D::dimension(victim), &start, &end);
+		if let Some(start) = start.lowest() {
+			coverage.drop_overlapping(D::dimension(victim), &start, &end);
+		}
 		self.record_retraction();
 	}
 
@@ -298,6 +300,9 @@ impl<D: RangeDomain> RangeTier<D> {
 					continue;
 				};
 				let (start, end) = D::span(&id);
+				let Some(start) = start.lowest() else {
+					continue;
+				};
 				intervals[D::metric_bucket(&id)] += set.overlapping(&start, &end).len();
 			}
 		}
@@ -328,8 +333,11 @@ impl<D: RangeDomain> RangeTier<D> {
 					.filter(|id| {
 						let (start, span_end) = D::span(id);
 						let end = span_end.min(D::cache_tiers_run_end(id));
-						coverage.set(D::dimension(id))
-							.and_then(|set| set.covering(&start))
+						start.lowest()
+							.and_then(|start| {
+								coverage.set(D::dimension(id))
+									.and_then(|set| set.covering(&start))
+							})
 							.is_some_and(|claim| claim.end >= end)
 					})
 					.count()
@@ -567,11 +575,12 @@ mod tests {
 			}
 		}
 		let (start, end) = id.span();
+		let start = start.lowest().expect("a partition span starts at a key");
 		tier.coverage().write().extend(id.dimension, start, end);
 	}
 
 	fn resident(tier: &RangeTier<D>, key: &EncodedKey) -> Option<Entry<EncodedPodRow>> {
-		let id = TestPartition::of(OP_A, key).expect("a fixture key always names a partition");
+		let id = TestPartition::of(OP_A, key);
 		let index = tier.shard_index(&id);
 		let shard = tier.shard(index).lock();
 		shard.partitions.get(&id).and_then(|partition| partition.entries.get(key).cloned())

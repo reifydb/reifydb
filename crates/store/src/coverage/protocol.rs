@@ -11,13 +11,13 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::key::typed::{ExclusiveUpperEnd, MultiKey};
+use reifydb_core::key::typed::{Edge, MultiKey};
 
 use crate::coverage::{interval::CoverageSet, retraction::Retractions};
 
 type PartId = u8;
 
-type Hull = (EncodedKey, ExclusiveUpperEnd<MultiKey>);
+type Hull = (EncodedKey, Edge<MultiKey>);
 
 type Interlock = Box<dyn Fn(&ModelCache) + Send + Sync>;
 
@@ -33,7 +33,7 @@ fn part_of(key: &EncodedKey) -> PartId {
 }
 
 fn island(at: &EncodedKey) -> Hull {
-	(at.clone(), ExclusiveUpperEnd::just_past(at))
+	(at.clone(), Edge::just_past(at))
 }
 
 fn widen(slot: &mut Option<Hull>, span: Hull) {
@@ -139,7 +139,7 @@ impl ModelCache {
 
 	fn materialize(&self, lo: &EncodedKey, through: &EncodedKey, rows: &[(EncodedKey, u64)]) -> bool {
 		let token = self.retractions.token();
-		let span = (lo.clone(), ExclusiveUpperEnd::just_past(through));
+		let span = (lo.clone(), Edge::just_past(through));
 		if self.place(rows, &span).is_none() {
 			return false;
 		}
@@ -464,7 +464,7 @@ fn a_hull_end_is_never_the_top_of_the_key_space() {
 
 	for part in [1u8, 2] {
 		let (_, end) = cache.hull_of(part).expect("a fill records a hull");
-		assert_ne!(end, ExclusiveUpperEnd::Top, "partition {part} claimed to the top of the key space");
+		assert_ne!(end, Edge::Top, "partition {part} claimed to the top of the key space");
 	}
 }
 

@@ -8,7 +8,7 @@ use reifydb_core::{
 		series::SeriesKey,
 		view::{RingBufferView, SeriesView, TableView, View, ViewKind, ViewStorageKind},
 	},
-	key::{namespace_view::NamespaceViewKey, view::ViewKey},
+	key::{catalog::ViewKey, namespace::NamespaceViewKey},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::sumtype::SumTypeId;

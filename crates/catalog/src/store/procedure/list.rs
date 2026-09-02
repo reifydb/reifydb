@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::procedure::Procedure,
-	key::{Key, procedure::ProcedureKey},
+	key::{procedure::ProcedureKey, typed::key::Key},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -16,7 +16,7 @@ impl CatalogStore {
 			let stream = rx.range(ProcedureKey::full_scan(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
-				if let Some(Key::Procedure(k)) = Key::decode(&entry.key) {
+				if let Some(k) = ProcedureKey::decode(&entry.key) {
 					ids.push(k.procedure);
 				}
 			}

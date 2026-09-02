@@ -52,6 +52,19 @@ fn snapshot_latest_inner_join(db: &TestDb, tail: &str) {
 		}}"#));
 }
 
+fn snapshot_latest_inner_join_with_right_retention(db: &TestDb, tail: &str) {
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::lhs { id: int4, k: int4, lv: int4, ts: datetime } with { time: event(ts) }");
+	db.admin("CREATE TABLE app::rhs { id: int4, k: int4, rv: int4, ts: datetime } with { time: event(ts) }");
+	db.admin(&format!(r#"CREATE DEFERRED VIEW app::j {{ k: int4, lv: int4, rv: int4 }} AS {{
+			FROM app::lhs
+				| inner join {{ from app::rhs }} as r using (k, r.k)
+					with {{ retention: {{ left: 1h, right: 2s }}, snapshot: true, latest: true }}
+				| map {{ k: k, lv: lv, rv: r_rv }}
+				{tail}
+		}}"#));
+}
+
 fn insert_left(db: &TestDb) {
 	db.command(r#"INSERT app::lhs [{ id: 1, k: 1, lv: 5, ts: "2026-01-01T00:00:00.000Z" }]"#);
 }
@@ -62,6 +75,16 @@ fn insert_right_a(db: &TestDb) {
 
 fn insert_right_b(db: &TestDb) {
 	db.command(r#"INSERT app::rhs [{ id: 3, k: 1, rv: 8, ts: "2026-01-01T00:00:00.200Z" }]"#);
+}
+
+fn insert_right_b_later(db: &TestDb) {
+	db.command(r#"INSERT app::rhs [{ id: 3, k: 1, rv: 8, ts: "2026-01-01T00:00:04.000Z" }]"#);
+}
+
+fn advance_past_both_right_seals(db: &TestDb) {
+	db.admin("call storage::advance(app::lhs, cast('2026-01-01T00:00:10Z', datetime))");
+	db.admin("call storage::advance(app::rhs, cast('2026-01-01T00:00:10Z', datetime))");
+	db.await_all_flows(TIMEOUT);
 }
 
 fn advance_past_the_seal(db: &TestDb) {
@@ -122,25 +145,25 @@ fn the_left_side_is_never_stored() {
 }
 
 #[test]
-fn a_left_row_joins_only_the_newest_right_row_that_was_already_there() {
-	// Latest collapses the right side to one slot and snapshot freezes it, so exactly one pair may be published.
+fn a_left_row_joins_only_the_newest_right_row_and_keeps_it_through_the_seal() {
+	// A sealed right row retires its bytes into the pin, so the pair it published must outlive the row itself.
 	let db = setup();
-	snapshot_latest_inner_join(&db, "");
+	snapshot_latest_inner_join_with_right_retention(&db, "");
 	insert_right_a(&db);
-	insert_right_b(&db);
+	insert_right_b_later(&db);
 	db.await_all_flows(TIMEOUT);
 	insert_left(&db);
 	db.await_row_count("FROM app::j", 1, TIMEOUT);
 
 	assert!(
 		matches!(view_rv(&db).as_slice(), [Value::Int4(8)]),
-		"the left row must read the newest slot, not every right row, found {:?}",
+		"the left row must read the newest right row, not every one, found {:?}",
 		view_rv(&db)
 	);
 	assert_eq!(
-		await_state_keys(&db, RIGHT, 1, TIMEOUT),
-		1,
-		"the right side must hold one slot; surface now: {:?}",
+		await_state_keys(&db, RIGHT, 2, TIMEOUT),
+		2,
+		"both right rows must be kept, or a retracted winner has no runner-up; surface now: {:?}",
 		db.query(SURFACE)
 	);
 	assert_eq!(
@@ -149,6 +172,21 @@ fn a_left_row_joins_only_the_newest_right_row_that_was_already_there() {
 		"and the ledger must record the one pair, never one per right row"
 	);
 	assert_eq!(await_state_keys(&db, PIN, 1, TIMEOUT), 1, "pinning the single version it was published against");
+
+	advance_past_both_right_seals(&db);
+
+	assert_eq!(
+		await_state_keys(&db, RIGHT, 0, TIMEOUT),
+		0,
+		"the sealed rows must be freed, or a snapshot join grows without bound; surface now: {:?}",
+		db.query(SURFACE)
+	);
+	assert!(
+		matches!(view_rv(&db).as_slice(), [Value::Int4(8)]),
+		"while the pair keeps the bytes it published against, found {:?}",
+		view_rv(&db)
+	);
+	assert_eq!(await_state_keys(&db, PIN, 1, TIMEOUT), 1, "which is exactly what the pin must still hold");
 }
 
 #[test]

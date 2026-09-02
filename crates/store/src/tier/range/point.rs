@@ -45,7 +45,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		confined: Option<D::Partition>,
 		key: &D::Key,
 	) -> Option<Option<D::Row>> {
-		let partition = confined.or_else(|| D::partition(dimension, key))?;
+		let partition = confined.unwrap_or_else(|| D::partition(dimension, key));
 		if !D::caches_ranges(&partition) {
 			return None;
 		}
@@ -125,7 +125,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::{
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-			typed::ExclusiveUpperEnd,
+			typed::Edge,
 		},
 		util::sorted::SortedVecMap,
 	};
@@ -210,7 +210,7 @@ mod tests {
 	}
 
 	fn claim(tier: &RangeTier<D>, start: &EncodedKey, end: &EncodedKey) {
-		tier.coverage().write().extend(OP_A, start.clone(), ExclusiveUpperEnd::Key(end.clone()));
+		tier.coverage().write().extend(OP_A, start.clone(), Edge::Key(end.clone()));
 	}
 
 	fn point_hits(tier: &RangeTier<D>, id: &TestPartition) -> u64 {

@@ -7,7 +7,7 @@ use reifydb_core::{
 		id::{ColumnId, NamespaceId, RelationshipId, TableId},
 		relationship::{Relationship, RelationshipCardinality, RelationshipJunction},
 	},
-	key::relationship::RelationshipKey,
+	key::catalog::RelationshipKey,
 	return_internal_error,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};

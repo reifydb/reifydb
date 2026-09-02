@@ -25,7 +25,7 @@ use reifydb_core::{
 		catalog::{config::ConfigKey, id::TableId, storage::StorageId},
 		cdc::{Cdc, CdcChange, CdcConsumerId, ConsumerClass},
 	},
-	key::{EncodableKey, Key, Key::Row, cdc_consumer::CdcConsumerKey, row::RowKey},
+	key::{EncodableKey, cdc::CdcConsumerKey, row::RowKey, typed::key::Key},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -108,7 +108,7 @@ fn test_event_processing() {
 			..
 		} = &cdc.changes[0]
 		{
-			if let Some(Row(table_row)) = Key::decode(key) {
+			if let Some(table_row) = RowKey::decode(key) {
 				assert_eq!(table_row.storage, TableId(1));
 				assert_eq!(table_row.row, RowNumber((i + 1) as u64));
 			} else {
@@ -457,7 +457,7 @@ fn test_non_table_events_filtered() {
 	let table_change = transactions[0]
 		.changes
 		.iter()
-		.find(|c| matches!(Key::decode(c.key()), Some(Row(_))))
+		.find(|c| RowKey::decode(c.key()).is_some())
 		.expect("Should have at least one table change");
 
 	if let CdcChange::Insert {
@@ -465,7 +465,7 @@ fn test_non_table_events_filtered() {
 		..
 	} = table_change
 	{
-		if let Some(Row(table_row)) = Key::decode(key) {
+		if let Some(table_row) = RowKey::decode(key) {
 			assert_eq!(table_row.storage, TableId(1));
 			assert_eq!(table_row.row, RowNumber(1));
 		} else {

@@ -11,7 +11,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			Key,
+			TypedKey,
 			direction::{Asc, Desc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues},
 		},
@@ -19,15 +19,15 @@ use crate::{
 	metrics::heap::HeapSize,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct SourceWatermarkKey {}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct SealLedgerKey {
 	pub group: Desc<GroupId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct NodeCounterKey {
 	pub kind: Asc<u8>,
 }
@@ -63,34 +63,34 @@ impl NodeCounterKey {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct GateVisibilityKey {
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct GroupRowMappingKey {
 	pub group: Desc<GroupId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct GuestRowMappingKey {
 	pub group: Desc<GroupId>,
 	pub id: Asc<[u8; 16]>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct GuestRowMappingSuffix {
 	pub id: Asc<[u8; 16]>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct CustomNotCachedKey {
 	pub group: Desc<GroupId>,
 	pub id: Asc<[u8; 16]>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct CustomNotCachedSuffix {
 	pub id: Asc<[u8; 16]>,
 }
@@ -118,14 +118,14 @@ impl Keyspace for SourceWatermark {
 	const NAME: &'static str = "SOURCE_WATERMARK";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = SourceWatermarkKey;
+	type GroupedKey = SourceWatermarkKey;
 	type Suffix = SourceWatermarkKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -138,14 +138,14 @@ impl Keyspace for SealLedger {
 	const NAME: &'static str = "SEAL_LEDGER";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = SealLedgerKey;
+	type GroupedKey = SealLedgerKey;
 	type Suffix = ();
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, ())
 	}
 
-	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
 		SealLedgerKey {
 			group: Desc(group),
 		}
@@ -160,14 +160,14 @@ impl Keyspace for NodeCounter {
 	const NAME: &'static str = "NODE_COUNTER";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = NodeCounterKey;
+	type GroupedKey = NodeCounterKey;
 	type Suffix = NodeCounterKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -180,14 +180,14 @@ impl Keyspace for GateVisibility {
 	const NAME: &'static str = "GATE_VISIBILITY";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = GateVisibilityKey;
+	type GroupedKey = GateVisibilityKey;
 	type Suffix = GateVisibilityKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }
@@ -200,14 +200,14 @@ impl Keyspace for GroupRowMapping {
 	const NAME: &'static str = "GROUP_ROW_MAPPING";
 	const CACHE: CacheTiers = CacheTiers::Range;
 
-	type Key = GroupRowMappingKey;
+	type GroupedKey = GroupRowMappingKey;
 	type Suffix = ();
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, ())
 	}
 
-	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
 		GroupRowMappingKey {
 			group: Desc(group),
 		}
@@ -222,10 +222,10 @@ impl Keyspace for GuestRowMapping {
 	const NAME: &'static str = "GUEST_ROW_MAPPING";
 	const CACHE: CacheTiers = CacheTiers::Range;
 
-	type Key = GuestRowMappingKey;
+	type GroupedKey = GuestRowMappingKey;
 	type Suffix = GuestRowMappingSuffix;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(
 			key.group.0,
 			GuestRowMappingSuffix {
@@ -234,7 +234,7 @@ impl Keyspace for GuestRowMapping {
 		)
 	}
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		GuestRowMappingKey {
 			group: Desc(group),
 			id: suffix.id,
@@ -250,10 +250,10 @@ impl Keyspace for CustomNotCached {
 	const NAME: &'static str = "CUSTOM_NOT_CACHED";
 	const CACHE: CacheTiers = CacheTiers::Neither;
 
-	type Key = CustomNotCachedKey;
+	type GroupedKey = CustomNotCachedKey;
 	type Suffix = CustomNotCachedSuffix;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(
 			key.group.0,
 			CustomNotCachedSuffix {
@@ -262,7 +262,7 @@ impl Keyspace for CustomNotCached {
 		)
 	}
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		CustomNotCachedKey {
 			group: Desc(group),
 			id: suffix.id,

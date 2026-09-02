@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
-use reifydb_core::{interface::catalog::token::Token, key::token::TokenKey};
+use reifydb_core::{interface::catalog::token::Token, key::identity::TokenKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use subtle::ConstantTimeEq;
 

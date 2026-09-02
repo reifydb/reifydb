@@ -10,7 +10,7 @@ use std::{
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::key::{
 	operator::{state::KeyspaceId, traits::Keyspace},
-	typed::{ExclusiveUpperEnd, Key},
+	typed::{Edge, TypedKey},
 };
 use reifydb_store::tier::range::RangeDomain;
 
@@ -45,15 +45,19 @@ impl<K: Keyspace> RangeDomain for TypedDomain<K> {
 
 	const GAP_SCOPE: &'static str = "operator_range::gaps";
 
+	fn partition(dimension: Self::Dimension, _key: &Self::Key) -> Self::Partition {
+		dimension
+	}
+
 	fn dimension(partition: &Self::Partition) -> Self::Dimension {
 		*partition
 	}
 
-	fn span(_partition: &Self::Partition) -> (Self::Key, ExclusiveUpperEnd<Self::Key>) {
-		(K::Suffix::low(), ExclusiveUpperEnd::Top)
+	fn span(_partition: &Self::Partition) -> (Edge<Self::Key>, Edge<Self::Key>) {
+		(Edge::Key(K::Suffix::low()), Edge::Top)
 	}
 
-	fn head_band(_dimension: Self::Dimension) -> Option<(Self::Key, Self::Key)> {
+	fn head_band(_dimension: Self::Dimension) -> Option<(Edge<Self::Key>, Edge<Self::Key>)> {
 		None
 	}
 
@@ -61,8 +65,8 @@ impl<K: Keyspace> RangeDomain for TypedDomain<K> {
 		K::CACHE.caches_ranges()
 	}
 
-	fn cache_tiers_run_end(_partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
-		ExclusiveUpperEnd::Top
+	fn cache_tiers_run_end(_partition: &Self::Partition) -> Edge<Self::Key> {
+		Edge::Top
 	}
 
 	fn metric_bucket(_partition: &Self::Partition) -> usize {

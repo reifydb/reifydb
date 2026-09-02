@@ -23,7 +23,6 @@ use reifydb_core::{
 		typed::direction::Asc,
 	},
 	state::typed::{TypedStateStore, typed_key},
-	value::column::columns::Columns,
 };
 use reifydb_value::{
 	Result,
@@ -38,12 +37,9 @@ use crate::{
 	error::FlowStateError,
 	operator::{
 		host::HostContext,
-		join::strategy::hash::columns_from_block,
 		state::store::{state_get, state_set},
 	},
 };
-
-const SLOT: RowNumber = RowNumber::MAX;
 
 pub(crate) fn body_bytes(row: &EncodedPodRow) -> EncodedBytes {
 	EncodedBytes(CowVec::new(row.body().to_vec()))
@@ -57,20 +53,6 @@ impl Store {
 	pub(crate) fn new(side: JoinSide) -> Self {
 		Self {
 			side,
-		}
-	}
-
-	pub(crate) fn slot(
-		&self,
-		host: &mut dyn HostContext,
-		group: GroupId,
-	) -> Result<Option<(EncodedBytes, Columns)>> {
-		match self.get_row_in(host, group, SLOT)? {
-			Some(row) => {
-				let columns = columns_from_block(host, self, vec![(SLOT, row.clone())])?;
-				Ok(Some((row, columns)))
-			}
-			None => Ok(None),
 		}
 	}
 
@@ -221,7 +203,16 @@ impl Store {
 		after: Option<&RowNumber>,
 		limit: usize,
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
-		let group = self.group_of(hash);
+		self.rows_for_group(host, self.group_of(hash), after, limit)
+	}
+
+	pub(crate) fn rows_for_group(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		after: Option<&RowNumber>,
+		limit: usize,
+	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 		let after = after.copied().map(Asc);
 		let from = match &after {
 			Some(suffix) => Bound::Excluded(suffix),
@@ -397,9 +388,9 @@ mod tests {
 	}
 
 	#[test]
-	fn get_row_point_reads_exact_row_number_for_hash() {
-		// The latest-join probe reads its single right slot by exact (hash, RowNumber::MAX), so a
-		// point read must never fall back to a sibling row under the same hash.
+	fn get_row_point_reads_exact_row_number_for_hash_at_the_highest_row_number() {
+		// an exact point read must never fall back to a sibling row or another hash, or a join emits a pair
+		// that never matched
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(5);

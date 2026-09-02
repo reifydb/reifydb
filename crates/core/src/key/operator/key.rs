@@ -2,42 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::{
-	deserializer::KeyDeserializer,
 	encoded::{EncodedKey, EncodedKeyRange},
 	serializer::KeySerializer,
 };
+use reifydb_macro::Key;
 
-use super::super::{EncodableKey, KeyKind};
+use super::super::{KeyKind, typed::key::Key};
 use crate::interface::catalog::flow::{FlowId, OperatorId};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Key)]
+#[key(kind = Operator)]
 pub struct OperatorKey {
 	pub operator: OperatorId,
-}
-
-impl EncodableKey for OperatorKey {
-	const KIND: KeyKind = KeyKind::Operator;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.operator);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
-			return None;
-		}
-
-		let operator = de.read_u64().ok()?;
-
-		Some(Self {
-			operator: OperatorId(operator),
-		})
-	}
 }
 
 impl OperatorKey {
@@ -65,37 +41,11 @@ impl OperatorKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Key)]
+#[key(kind = OperatorByFlow)]
 pub struct OperatorByFlowKey {
 	pub flow: FlowId,
 	pub operator: OperatorId,
-}
-
-impl EncodableKey for OperatorByFlowKey {
-	const KIND: KeyKind = KeyKind::OperatorByFlow;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(17);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.flow).extend_u64(self.operator);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
-			return None;
-		}
-
-		let flow = de.read_u64().ok()?;
-		let operator = de.read_u64().ok()?;
-
-		Some(Self {
-			flow: FlowId(flow),
-			operator: OperatorId(operator),
-		})
-	}
 }
 
 impl OperatorByFlowKey {
@@ -126,7 +76,7 @@ impl OperatorByFlowKey {
 
 #[cfg(test)]
 pub mod tests {
-	use super::{EncodableKey, OperatorByFlowKey, OperatorKey};
+	use super::{Key, OperatorByFlowKey, OperatorKey};
 	use crate::interface::catalog::flow::{FlowId, OperatorId};
 
 	#[test]
@@ -141,6 +91,21 @@ pub mod tests {
 	}
 
 	#[test]
+	fn test_operator_key_order_preserving() {
+		let key1 = OperatorKey {
+			operator: OperatorId(1),
+		};
+		let key2 = OperatorKey {
+			operator: OperatorId(2),
+		};
+
+		let encoded1 = key1.encode();
+		let encoded2 = key2.encode();
+
+		assert!(encoded2 < encoded1, "ordering not preserved");
+	}
+
+	#[test]
 	fn test_operator_by_flow_key_encode_decode() {
 		let key = OperatorByFlowKey {
 			flow: FlowId(0x42),
@@ -151,5 +116,77 @@ pub mod tests {
 		assert_eq!(decoded.flow, FlowId(0x42));
 		assert_eq!(decoded.operator, OperatorId(0x1234));
 		assert_eq!(key, decoded);
+	}
+
+	#[test]
+	fn test_operator_by_flow_key_order_preserving() {
+		let key1 = OperatorByFlowKey {
+			flow: FlowId(1),
+			operator: OperatorId(100),
+		};
+		let key2 = OperatorByFlowKey {
+			flow: FlowId(1),
+			operator: OperatorId(200),
+		};
+		let key3 = OperatorByFlowKey {
+			flow: FlowId(2),
+			operator: OperatorId(1),
+		};
+
+		let encoded1 = key1.encode();
+		let encoded2 = key2.encode();
+		let encoded3 = key3.encode();
+
+		assert!(encoded2 < encoded1, "operator ordering not preserved within same flow");
+		assert!(encoded3 < encoded2, "flow ordering not preserved");
+	}
+}
+
+#[cfg(test)]
+mod verify_byte_identical {
+	use reifydb_codec::key::serializer::KeySerializer;
+
+	use super::{Key, OperatorByFlowKey, OperatorKey};
+	use crate::interface::catalog::flow::{FlowId, OperatorId};
+
+	fn legacy_encode_operator(key: &OperatorKey) -> Vec<u8> {
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(OperatorKey::KIND as u8).extend_u64(key.operator);
+		serializer.to_encoded_key().as_slice().to_vec()
+	}
+
+	fn legacy_encode_by_flow(key: &OperatorByFlowKey) -> Vec<u8> {
+		let mut serializer = KeySerializer::with_capacity(17);
+		serializer.extend_u8(OperatorByFlowKey::KIND as u8).extend_u64(key.flow).extend_u64(key.operator);
+		serializer.to_encoded_key().as_slice().to_vec()
+	}
+
+	#[test]
+	fn operator_key_matches_legacy_byte_layout() {
+		for operator in [0u64, 1, 42, 0x1234, u64::MAX] {
+			let key = OperatorKey {
+				operator: OperatorId(operator),
+			};
+			assert_eq!(
+				legacy_encode_operator(&key),
+				key.encode().as_slice().to_vec(),
+				"operator={operator:#x}"
+			);
+		}
+	}
+
+	#[test]
+	fn operator_by_flow_key_matches_legacy_byte_layout() {
+		for (flow, operator) in [(0u64, 0u64), (1, 2), (0x42, 0x1234), (u64::MAX, u64::MAX)] {
+			let key = OperatorByFlowKey {
+				flow: FlowId(flow),
+				operator: OperatorId(operator),
+			};
+			assert_eq!(
+				legacy_encode_by_flow(&key),
+				key.encode().as_slice().to_vec(),
+				"flow={flow:#x} operator={operator:#x}"
+			);
+		}
 	}
 }

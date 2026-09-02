@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
-use reifydb_core::key::{EncodableKey, binding::BindingKey};
+use reifydb_core::key::{catalog::BindingKey, typed::key::Key};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{Result, cache::CatalogCache, store::binding::find::decode_binding};

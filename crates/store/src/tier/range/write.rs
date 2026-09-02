@@ -4,7 +4,7 @@
 #[cfg(test)]
 use std::cell::RefCell;
 
-use reifydb_core::{key::typed::ExclusiveUpperEnd, util::sorted::SortedVecMap};
+use reifydb_core::{key::typed::Edge, util::sorted::SortedVecMap};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
@@ -184,7 +184,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		confined: Option<D::Partition>,
 		key: &D::Key,
 	) -> Option<D::Partition> {
-		confined.or_else(|| D::partition(dimension, key)).filter(D::caches_ranges)
+		Some(confined.unwrap_or_else(|| D::partition(dimension, key))).filter(D::caches_ranges)
 	}
 
 	fn participates(&self, index: usize, partition: &D::Partition) -> bool {
@@ -283,8 +283,10 @@ impl<D: RangeDomain> RangeTier<D> {
 	pub(super) fn withdraw(&self, dimension: D::Dimension, key: &D::Key) {
 		let mut coverage = self.coverage().write();
 		coverage.shrink_key(dimension, key);
-		if in_head_band::<D>(dimension, key) && coverage.head(dimension).is_some_and(|current| current > key) {
-			coverage.set_head(dimension, key.clone());
+		if in_head_band::<D>(dimension, key)
+			&& coverage.head(dimension).is_some_and(|current| current.covers(key))
+		{
+			coverage.set_head(dimension, Edge::Key(key.clone()));
 		}
 		self.record_retraction();
 	}
@@ -297,7 +299,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		if !self.retractions_unchanged(token) {
 			return;
 		}
-		coverage.extend(dimension, key.clone(), ExclusiveUpperEnd::just_past(key));
+		coverage.extend(dimension, key.clone(), Edge::just_past(key));
 		self.enforce_coverage_limits(&mut coverage, dimension);
 	}
 }
@@ -321,7 +323,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::{
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-			typed::{ExclusiveUpperEnd, MultiKey},
+			typed::{Edge, MultiKey},
 		},
 		util::sorted::SortedVecMap,
 	};
@@ -400,7 +402,7 @@ mod tests {
 	}
 
 	fn claim(tier: &RangeTier<D>, operator: OperatorId, start: &EncodedKey, end: &EncodedKey) {
-		tier.coverage().write().extend(operator, start.clone(), ExclusiveUpperEnd::Key(end.clone()));
+		tier.coverage().write().extend(operator, start.clone(), Edge::Key(end.clone()));
 	}
 
 	fn residency(tier: &RangeTier<D>, id: &TestPartition, at: &EncodedKey) -> Option<Entry<EncodedPodRow>> {
@@ -435,7 +437,7 @@ mod tests {
 	}
 
 	fn island(at: &EncodedKey) -> Interval<MultiKey> {
-		Interval::new(at.clone(), ExclusiveUpperEnd::just_past(at))
+		Interval::new(at.clone(), Edge::just_past(at))
 	}
 
 	#[test]

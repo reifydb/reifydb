@@ -7,7 +7,7 @@ use reifydb_core::{
 		id::{NamespaceId, SinkId},
 		sink::Sink,
 	},
-	key::{namespace_sink::NamespaceSinkKey, sink::SinkKey},
+	key::{catalog::SinkKey, namespace::NamespaceSinkKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::fragment::Fragment;
@@ -104,7 +104,7 @@ pub mod tests {
 	use reifydb_codec::row::catalog::EncodedCatalogRow;
 	use reifydb_core::{
 		interface::catalog::id::{NamespaceId, SinkId},
-		key::namespace_sink::NamespaceSinkKey,
+		key::namespace::NamespaceSinkKey,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::multi::RangeScope;

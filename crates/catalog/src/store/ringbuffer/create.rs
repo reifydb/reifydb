@@ -10,7 +10,7 @@ use reifydb_core::{
 		ringbuffer::{RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata},
 	},
 	key::{
-		namespace_ringbuffer::NamespaceRingBufferKey,
+		namespace::NamespaceRingBufferKey,
 		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
 	},
 };
@@ -226,7 +226,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_codec::row::catalog::EncodedCatalogRow;
-	use reifydb_core::key::namespace_ringbuffer::NamespaceRingBufferKey;
+	use reifydb_core::key::namespace::NamespaceRingBufferKey;
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 	use reifydb_value::{

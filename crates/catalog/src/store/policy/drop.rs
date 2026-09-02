@@ -3,7 +3,10 @@
 
 use reifydb_core::{
 	interface::catalog::policy::PolicyId,
-	key::{EncodableKey, policy::PolicyKey, policy_op::PolicyOpKey},
+	key::{
+		identity::{PolicyKey, PolicyOpKey},
+		typed::key::Key,
+	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 

@@ -72,20 +72,6 @@ impl MultiPersistentTier {
 			Self::Sqlite(s) => s.set_checkpoint_threshold(frames),
 		}
 	}
-
-	pub fn delete_below_version(
-		&self,
-		table: EntryKind,
-		cutoff_version: CommitVersion,
-		prefix: Option<&[u8]>,
-		cursor: Option<&[u8]>,
-		limit: usize,
-	) -> Result<(Vec<EncodedKey>, Option<EncodedKey>)> {
-		match self {
-			Self::Sqlite(s) => s.delete_below_version(table, cutoff_version, prefix, cursor, limit),
-		}
-	}
-
 	pub fn delete_keys(&self, table: EntryKind, keys: &[EncodedKey]) -> Result<u64> {
 		match self {
 			Self::Sqlite(s) => s.delete_keys(table, keys),
@@ -142,18 +128,6 @@ impl MultiPersistentTier {
 	pub fn set_checkpoint_threshold(&self, _frames: u32) {
 		match *self {}
 	}
-
-	pub fn delete_below_version(
-		&self,
-		_table: EntryKind,
-		_cutoff_version: CommitVersion,
-		_prefix: Option<&[u8]>,
-		_cursor: Option<&[u8]>,
-		_limit: usize,
-	) -> Result<(Vec<EncodedKey>, Option<EncodedKey>)> {
-		match *self {}
-	}
-
 	pub fn delete_keys(&self, _table: EntryKind, _keys: &[EncodedKey]) -> Result<u64> {
 		match *self {}
 	}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey};
+use reifydb_core::key::{catalog::SumTypeKey, namespace::NamespaceSumTypeKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::sumtype::SumTypeId;
 

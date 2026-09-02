@@ -8,7 +8,8 @@ use reifydb_core::{
 		procedure::{Procedure, ProcedureParam, RqlTrigger},
 	},
 	key::{
-		namespace_procedure::NamespaceProcedureKey, procedure::ProcedureKey, procedure_param::ProcedureParamKey,
+		namespace::NamespaceProcedureKey,
+		procedure::{ProcedureKey, ProcedureParamKey},
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};

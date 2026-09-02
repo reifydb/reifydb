@@ -6,15 +6,20 @@ use reifydb_codec::key::{
 	encoded::{EncodedKey, EncodedKeyRange},
 	serializer::KeySerializer,
 };
+use reifydb_macro::Key;
 use reifydb_value::value::Value;
 
 use super::{EncodableKey, KeyKind};
 use crate::{
 	interface::catalog::{id::RingBufferId, object::ObjectId, storage::StorageId},
-	key::catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
+	key::{
+		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
+		typed::key::Key,
+	},
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Key)]
+#[key(kind = RingBuffer)]
 pub struct RingBufferKey {
 	pub ringbuffer: RingBufferId,
 }
@@ -27,7 +32,7 @@ impl RingBufferKey {
 	}
 
 	pub fn encoded(ringbuffer: impl Into<RingBufferId>) -> EncodedKey {
-		Self::new(ringbuffer.into()).encode()
+		Key::encode(&Self::new(ringbuffer.into()))
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -36,39 +41,14 @@ impl RingBufferKey {
 
 	fn ringbuffer_start() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8);
+		serializer.extend_u8(<Self as Key>::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn ringbuffer_end() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8 - 1);
+		serializer.extend_u8(<Self as Key>::KIND as u8 - 1);
 		serializer.to_encoded_key()
-	}
-}
-
-impl EncodableKey for RingBufferKey {
-	const KIND: KeyKind = KeyKind::RingBuffer;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.ringbuffer);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
-			return None;
-		}
-
-		let ringbuffer = de.read_u64().ok()?;
-
-		Some(Self {
-			ringbuffer: RingBufferId(ringbuffer),
-		})
 	}
 }
 
@@ -206,5 +186,14 @@ mod tests {
 		let view = RingBufferMetadataKey::encoded(ViewId(42));
 		assert!(range.contains(&ringbuffer));
 		assert!(!range.contains(&view));
+	}
+
+	#[test]
+	fn test_ring_buffer_key_matches_legacy_byte_layout() {
+		for id in [RingBufferId(0), RingBufferId(1), RingBufferId(u64::MAX)] {
+			let mut legacy = KeySerializer::with_capacity(9);
+			legacy.extend_u8(KeyKind::RingBuffer as u8).extend_u64(id);
+			assert_eq!(legacy.to_encoded_key().as_slice(), RingBufferKey::encoded(id).as_slice());
+		}
 	}
 }

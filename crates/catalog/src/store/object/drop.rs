@@ -11,8 +11,9 @@ use reifydb_core::{
 		storage::StorageId,
 	},
 	key::{
-		column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey, primary_key::PrimaryKeyKey,
-		property::ColumnPropertyKey, row_sequence::RowSequenceKey,
+		catalog::{ColumnPropertyKey, PrimaryKeyKey},
+		column::{ColumnKey, ColumnSequenceKey, ColumnsKey},
+		row::RowSequenceKey,
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};

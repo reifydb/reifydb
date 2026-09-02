@@ -141,7 +141,7 @@ impl From<&OperatorDef> for JsonOperatorDef {
 				alias,
 				snapshot: _,
 				natural: _,
-				latest: _,
+				pick: _,
 			} => JsonOperatorDef::Join {
 				join_type: *join_type,
 				left: left.iter().map(|e| e.into()).collect(),

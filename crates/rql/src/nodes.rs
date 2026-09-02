@@ -30,7 +30,7 @@ use reifydb_core::{
 			ResolvedView,
 		},
 	},
-	row::{JoinRetention, Ttl},
+	row::{JoinPick, JoinRetention, Ttl},
 	sort::{SortDirection, SortKey},
 };
 use reifydb_value::{
@@ -724,7 +724,7 @@ pub struct JoinInnerNode {
 	pub alias: Option<Fragment>,
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
-	pub latest: bool,
+	pub pick: Option<JoinPick>,
 }
 
 #[derive(Debug, Clone)]
@@ -735,7 +735,7 @@ pub struct JoinLeftNode {
 	pub alias: Option<Fragment>,
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
-	pub latest: bool,
+	pub pick: Option<JoinPick>,
 }
 
 #[derive(Debug, Clone)]
@@ -746,7 +746,7 @@ pub struct JoinNaturalNode {
 	pub alias: Option<Fragment>,
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
-	pub latest: bool,
+	pub pick: Option<JoinPick>,
 }
 
 #[derive(Debug, Clone)]

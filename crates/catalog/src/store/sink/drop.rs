@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::id::SinkId,
-	key::{namespace_sink::NamespaceSinkKey, sink::SinkKey},
+	key::{catalog::SinkKey, namespace::NamespaceSinkKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 

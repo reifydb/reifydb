@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::id::SeriesId,
 	key::{
-		namespace_series::NamespaceSeriesKey,
+		namespace::NamespaceSeriesKey,
 		series::{SeriesKey, SeriesMetadataKey},
 	},
 };

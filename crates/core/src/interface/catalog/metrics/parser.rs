@@ -6,11 +6,11 @@ use reifydb_value::value::dictionary::DictionaryId;
 
 use crate::{
 	interface::catalog::{metrics::MetricsId, object::ObjectId},
-	key::{Key, catalog::KeyDeserializerCatalogExt, kind::KeyKind},
+	key::{catalog::KeyDeserializerCatalogExt, kind::KeyKind},
 };
 
 pub fn parse_id(key: &[u8]) -> MetricsId {
-	let Some(kind) = Key::kind(key) else {
+	let Some(kind) = KeyKind::of(key) else {
 		return MetricsId::System;
 	};
 	extract_metrics_id(key, kind)
@@ -58,7 +58,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		interface::catalog::{object::ObjectId, storage::StorageId},
-		key::{EncodableKey, dictionary::DictionaryEntryKey, row::RowKey},
+		key::{catalog::DictionaryEntryKey, row::RowKey, typed::key::Key},
 	};
 
 	#[test]

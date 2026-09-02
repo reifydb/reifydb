@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::tag::type_tag_byte;
-use reifydb_core::{interface::catalog::identity::IdentityAttribute, key::identity_attribute::IdentityAttributeKey};
+use reifydb_core::{interface::catalog::identity::IdentityAttribute, key::identity::IdentityAttributeKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 

@@ -18,11 +18,9 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		EncodableKey,
-		partitioned_row::PartitionedRowKey,
-		partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
-		row::{RowKey, RowKeyRange},
-		series_row::{SeriesRowKey, SeriesRowKeyRange},
+		row::{PartitionedRowKey, RowKey, RowKeyRange},
+		series::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange},
+		typed::key::Key,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };

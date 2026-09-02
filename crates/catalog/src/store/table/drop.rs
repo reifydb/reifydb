@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::{id::TableId, storage::StorageId},
-	key::{namespace_table::NamespaceTableKey, table::TableKey},
+	key::{catalog::TableKey, namespace::NamespaceTableKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 

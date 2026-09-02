@@ -7,7 +7,7 @@ use reifydb_core::{
 		id::{NamespaceId, SourceId},
 		source::Source,
 	},
-	key::{namespace_source::NamespaceSourceKey, source::SourceKey},
+	key::{catalog::SourceKey, namespace::NamespaceSourceKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::fragment::Fragment;
@@ -102,7 +102,7 @@ pub mod tests {
 	use reifydb_codec::row::catalog::EncodedCatalogRow;
 	use reifydb_core::{
 		interface::catalog::id::{NamespaceId, SourceId},
-		key::namespace_source::NamespaceSourceKey,
+		key::namespace::NamespaceSourceKey,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::multi::RangeScope;

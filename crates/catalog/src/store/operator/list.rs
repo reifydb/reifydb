@@ -5,8 +5,8 @@ use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::flow::{FlowId, Operator, OperatorId},
 	key::{
-		EncodableKey,
 		operator::key::{OperatorByFlowKey, OperatorKey},
+		typed::key::Key,
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};

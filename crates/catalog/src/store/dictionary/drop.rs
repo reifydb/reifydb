@@ -4,8 +4,8 @@
 use reifydb_core::{
 	interface::store::SingleVersionRange,
 	key::{
-		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
-		namespace_dictionary::NamespaceDictionaryKey,
+		catalog::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
+		namespace::NamespaceDictionaryKey,
 	},
 };
 use reifydb_transaction::{
@@ -61,7 +61,7 @@ fn remove_dictionary_entries(single: &SingleTransaction, dictionary: DictionaryI
 #[cfg(test)]
 pub mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
-	use reifydb_core::key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey};
+	use reifydb_core::key::catalog::{DictionaryEntryIndexKey, DictionaryEntryKey};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{

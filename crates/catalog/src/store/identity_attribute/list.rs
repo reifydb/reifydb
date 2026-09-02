@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::identity::IdentityAttribute, key::identity_attribute::IdentityAttributeKey};
+use reifydb_core::{interface::catalog::identity::IdentityAttribute, key::identity::IdentityAttributeKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{CatalogStore, Result, store::identity_attribute::convert_identity_attribute};

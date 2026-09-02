@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::id::BindingId,
-	key::{binding::BindingKey, namespace_binding::NamespaceBindingKey},
+	key::{catalog::BindingKey, namespace::NamespaceBindingKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 

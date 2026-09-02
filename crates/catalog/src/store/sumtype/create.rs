@@ -6,7 +6,7 @@ use reifydb_core::{
 		id::NamespaceId,
 		sumtype::{SumType, SumTypeKind},
 	},
-	key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey},
+	key::{catalog::SumTypeKey, namespace::NamespaceSumTypeKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::fragment::Fragment;
@@ -77,7 +77,7 @@ pub mod tests {
 	use reifydb_codec::row::catalog::EncodedCatalogRow;
 	use reifydb_core::{
 		interface::catalog::sumtype::{SumTypeKind, Variant},
-		key::namespace_sumtype::NamespaceSumTypeKey,
+		key::namespace::NamespaceSumTypeKey,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::multi::RangeScope;

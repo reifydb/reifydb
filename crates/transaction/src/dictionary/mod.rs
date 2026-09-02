@@ -18,7 +18,7 @@ use postcard::to_stdvec;
 use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::dictionary::Dictionary,
-	key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},
+	key::catalog::{DictionaryEntryIndexKey, DictionaryEntryKey},
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{

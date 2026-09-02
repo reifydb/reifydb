@@ -14,8 +14,8 @@ use reifydb_core::{
 		store::{SingleVersionGet, SingleVersionRange},
 	},
 	key::{
-		EncodableKey,
-		queue_schedule::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
+		queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
+		typed::key::Key,
 	},
 };
 use reifydb_test_harness::engine::TestEngine;

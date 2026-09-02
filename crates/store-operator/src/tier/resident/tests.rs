@@ -93,7 +93,7 @@ fn state_key(tail: &str) -> EncodedKey {
 }
 
 fn state_key_bytes() -> ByteSize {
-	ByteSize::from_bytes(columns_width(<<JoinLeft as Keyspace>::Key as KeyLayout>::COLUMNS) as u64)
+	ByteSize::from_bytes(columns_width(<<JoinLeft as Keyspace>::GroupedKey as KeyLayout>::COLUMNS) as u64)
 }
 
 fn row(body: &str) -> EncodedPodRow {

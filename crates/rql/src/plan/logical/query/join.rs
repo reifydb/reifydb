@@ -3,16 +3,20 @@
 
 use bumpalo::collections::Vec as BumpVec;
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::common::JoinType;
+use reifydb_core::{common::JoinType, row::JoinPick, sort::SortKey};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	Result,
 	ast::{
-		ast::{Ast, AstFrom, AstInfix, AstJoin, AstSubQuery, AstUsingClause, InfixOperator, JoinConnector},
-		identifier::UnresolvedObjectIdentifier,
+		ast::{
+			Ast, AstFrom, AstInfix, AstJoin, AstJoinPick, AstSubQuery, AstUsingClause, InfixOperator,
+			JoinConnector,
+		},
+		identifier::{MaybeQualifiedColumnObject, UnresolvedObjectIdentifier},
 	},
 	bump::{BumpBox, BumpFragment},
+	diagnostic::AstError,
 	expression::{AndExpression, EqExpression, Expression, OrExpression, join::JoinConditionCompiler},
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan,
@@ -69,6 +73,49 @@ fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -
 }
 
 impl<'bump> Compiler<'bump> {
+	fn compile_join_pick(
+		pick: Option<AstJoinPick<'bump>>,
+		alias: &BumpFragment<'bump>,
+	) -> Result<Option<JoinPick>> {
+		let Some(pick) = pick else {
+			return Ok(None);
+		};
+
+		if pick.columns.is_empty() {
+			return Ok(Some(JoinPick::by_time(pick.default_direction)));
+		}
+
+		let mut keys = Vec::with_capacity(pick.columns.len());
+		for (column, direction) in pick.columns.into_iter().zip(pick.directions) {
+			let owned = match &column.object {
+				MaybeQualifiedColumnObject::Unqualified => true,
+				MaybeQualifiedColumnObject::Alias(name) => name.text() == alias.text(),
+				MaybeQualifiedColumnObject::Qualified {
+					name,
+					..
+				} => name.text() == alias.text(),
+			};
+			if !owned {
+				return Err(AstError::UnexpectedToken {
+					expected: format!(
+						"a column of '{}': the pick chooses among right rows only",
+						alias.text()
+					),
+					fragment: column.name.to_owned(),
+				}
+				.into());
+			}
+			keys.push(SortKey {
+				column: column.name.to_owned(),
+				direction: direction.unwrap_or_else(|| pick.default_direction.clone()),
+			});
+		}
+
+		Ok(Some(JoinPick {
+			keys,
+		}))
+	}
+
 	pub(crate) fn compile_join(&self, ast: AstJoin<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		match ast {
 			AstJoin::InnerJoin {
@@ -77,7 +124,7 @@ impl<'bump> Compiler<'bump> {
 				alias,
 				retention,
 				snapshot,
-				latest,
+				pick,
 				rql,
 				..
 			} => {
@@ -87,6 +134,7 @@ impl<'bump> Compiler<'bump> {
 					Some(ast_retention) => Some(Self::compile_join_retention(ast_retention)?),
 					None => None,
 				};
+				let pick = Self::compile_join_pick(pick, &alias)?;
 
 				Ok(LogicalPlan::JoinInner(JoinInnerNode {
 					with,
@@ -94,7 +142,7 @@ impl<'bump> Compiler<'bump> {
 					alias: Some(alias),
 					retention,
 					snapshot,
-					latest,
+					pick,
 					rql: rql.to_string(),
 				}))
 			}
@@ -104,7 +152,7 @@ impl<'bump> Compiler<'bump> {
 				alias,
 				retention,
 				snapshot,
-				latest,
+				pick,
 				rql,
 				..
 			} => {
@@ -114,6 +162,7 @@ impl<'bump> Compiler<'bump> {
 					Some(ast_retention) => Some(Self::compile_join_retention(ast_retention)?),
 					None => None,
 				};
+				let pick = Self::compile_join_pick(pick, &alias)?;
 
 				Ok(LogicalPlan::JoinLeft(JoinLeftNode {
 					with,
@@ -121,7 +170,7 @@ impl<'bump> Compiler<'bump> {
 					alias: Some(alias),
 					retention,
 					snapshot,
-					latest,
+					pick,
 					rql: rql.to_string(),
 				}))
 			}
@@ -131,7 +180,7 @@ impl<'bump> Compiler<'bump> {
 				alias,
 				retention,
 				snapshot,
-				latest,
+				pick,
 				rql,
 				..
 			} => {
@@ -140,6 +189,7 @@ impl<'bump> Compiler<'bump> {
 					Some(ast_retention) => Some(Self::compile_join_retention(ast_retention)?),
 					None => None,
 				};
+				let pick = Self::compile_join_pick(pick, &alias)?;
 
 				Ok(LogicalPlan::JoinNatural(JoinNaturalNode {
 					with,
@@ -147,7 +197,7 @@ impl<'bump> Compiler<'bump> {
 					alias: Some(alias),
 					retention,
 					snapshot,
-					latest,
+					pick,
 					rql: rql.to_string(),
 				}))
 			}

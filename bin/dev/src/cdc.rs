@@ -15,7 +15,7 @@ use reifydb_core::{
 		catalog::object::ObjectId,
 		cdc::{Cdc, CdcChange},
 	},
-	key::{Key, kind::KeyKind},
+	key::kind::KeyKind,
 };
 use rusqlite::{Connection, OpenFlags};
 use serde::Serialize;
@@ -194,7 +194,7 @@ fn absorb_cdc_change(change: &CdcChange, stats: &mut Stats, rebuilt: &mut BTreeS
 	stats.cdc_kinds.entry(cdc_change_kind(change)).or_default().add(1, bytes);
 
 	if !matches!(
-		Key::kind(change.key().as_slice()),
+		KeyKind::of(change.key().as_slice()),
 		Some(KeyKind::Row | KeyKind::SeriesRow | KeyKind::PartitionedRow)
 	) {
 		return Ok(());
@@ -274,7 +274,7 @@ fn cdc_change_kind(change: &CdcChange) -> String {
 			..
 		} => "delete(hidden)",
 	};
-	match Key::kind(change.key().as_slice()) {
+	match KeyKind::of(change.key().as_slice()) {
 		Some(kind) => format!("{kind:?}/{op}"),
 		None => format!("(undecodable)/{op}"),
 	}

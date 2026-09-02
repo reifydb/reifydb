@@ -7,7 +7,7 @@ use reifydb_core::{
 		id::{NamespaceId, QueueId},
 		queue::{Queue, QueueRetention, QueueRetry},
 	},
-	key::{namespace_queue::NamespaceQueueKey, queue::QueueKey},
+	key::{namespace::NamespaceQueueKey, queue::QueueKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

@@ -16,16 +16,16 @@ pub trait Keyspace: Copy + Debug + 'static {
 	const NAME: &'static str;
 	const CACHE: CacheTiers;
 
-	type Key: KeyLayout;
+	type GroupedKey: KeyLayout;
 	type Suffix: KeyLayout;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix);
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix);
 
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::Key;
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey;
 }
 
 pub const fn group_scoped<K: Keyspace>() -> bool {
-	let key = <K::Key as KeyLayout>::COLUMNS;
+	let key = <K::GroupedKey as KeyLayout>::COLUMNS;
 	let suffix = <K::Suffix as KeyLayout>::COLUMNS;
 	key.len() == suffix.len() + 1 && leads_on_group(key[0].name)
 }

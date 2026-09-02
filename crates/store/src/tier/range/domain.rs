@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-		typed::{ExclusiveUpperEnd, MultiKey},
+		typed::{Edge, MultiKey},
 	},
 };
 
@@ -37,54 +37,44 @@ pub(super) struct TestPartition {
 impl TestPartition {
 	pub const PREFIX_LEN: usize = OperatorStateKey::KEYSPACE_INNER_OFFSET as usize + 1;
 
-	pub fn of(dimension: OperatorId, key: &EncodedKey) -> Option<Self> {
-		let bytes = key.as_slice();
+	pub fn of(dimension: OperatorId, key: &EncodedKey) -> Self {
 		let offset = OperatorStateKey::KEYSPACE_INNER_OFFSET as usize;
-		if bytes.len() <= offset {
-			return None;
-		}
-		let group = GroupId::from_bytes(decode_fixed(bytes[..offset].try_into().ok()?));
-		Some(Self {
+		let mut bytes = key.as_slice().to_vec();
+		bytes.resize(Self::PREFIX_LEN, 0);
+		let group = GroupId::from_bytes(decode_fixed(
+			bytes[..offset].try_into().expect("a padded key spans the group prefix"),
+		));
+		Self {
 			dimension,
 			group,
 			keyspace: KeyspaceId(encode_u8(bytes[offset])),
-		})
+		}
 	}
 
 	pub fn prefix(&self) -> EncodedKey {
 		EncodedKey::new(OperatorStateKey::inner_encoded(self.group, self.keyspace, [0u8; 0]).as_bytes())
 	}
 
-	pub fn span(&self) -> (MultiKey, ExclusiveUpperEnd<MultiKey>) {
+	pub fn span(&self) -> (Edge<MultiKey>, Edge<MultiKey>) {
 		let start = self.prefix();
 		let end = match prefix_successor(start.as_slice()) {
-			Some(successor) => ExclusiveUpperEnd::of(successor),
-			None => ExclusiveUpperEnd::Top,
+			Some(successor) => Edge::of(successor),
+			None => Edge::Top,
 		};
-		(start, end)
+		(Edge::Key(start), end)
 	}
 
-	pub fn group_end(&self) -> ExclusiveUpperEnd<MultiKey> {
+	pub fn group_end(&self) -> Edge<MultiKey> {
 		let prefix = self.prefix();
 		let group = &prefix.as_slice()[..OperatorStateKey::KEYSPACE_INNER_OFFSET as usize];
 		match prefix_successor(group) {
-			Some(successor) => ExclusiveUpperEnd::of(successor),
-			None => ExclusiveUpperEnd::Top,
+			Some(successor) => Edge::of(successor),
+			None => Edge::Top,
 		}
 	}
 
 	pub fn caches_ranges(&self) -> bool {
 		self.keyspace.cache_tiers().caches_ranges()
-	}
-
-	fn first_addressable(key: &EncodedKey) -> Option<EncodedKey> {
-		let bytes = key.as_slice();
-		if bytes.len() >= Self::PREFIX_LEN {
-			return None;
-		}
-		let mut padded = bytes.to_vec();
-		padded.resize(Self::PREFIX_LEN, 0);
-		Some(EncodedKey::new(padded))
 	}
 }
 
@@ -116,23 +106,19 @@ impl RangeDomain for TestDomain {
 
 	const GAP_SCOPE: &'static str = "operator_range::gaps";
 
-	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Option<Self::Partition> {
+	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Self::Partition {
 		TestPartition::of(dimension, key)
-	}
-
-	fn first_addressable(key: &Self::Key) -> Option<Self::Key> {
-		TestPartition::first_addressable(key)
 	}
 
 	fn dimension(partition: &Self::Partition) -> Self::Dimension {
 		partition.dimension
 	}
 
-	fn span(partition: &Self::Partition) -> (Self::Key, ExclusiveUpperEnd<Self::Key>) {
+	fn span(partition: &Self::Partition) -> (Edge<Self::Key>, Edge<Self::Key>) {
 		partition.span()
 	}
 
-	fn head_band(_dimension: Self::Dimension) -> Option<(Self::Key, Self::Key)> {
+	fn head_band(_dimension: Self::Dimension) -> Option<(Edge<Self::Key>, Edge<Self::Key>)> {
 		None
 	}
 
@@ -140,7 +126,7 @@ impl RangeDomain for TestDomain {
 		partition.caches_ranges()
 	}
 
-	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
+	fn cache_tiers_run_end(partition: &Self::Partition) -> Edge<Self::Key> {
 		let floor = CACHE_TIERS_RUN_FLOOR[partition.keyspace.0 as usize];
 		if floor == partition.keyspace.0 {
 			return partition.span().1;
@@ -153,7 +139,7 @@ impl RangeDomain for TestDomain {
 		.1
 	}
 
-	fn partition_walk_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
+	fn partition_walk_end(partition: &Self::Partition) -> Edge<Self::Key> {
 		partition.group_end()
 	}
 
@@ -186,23 +172,19 @@ impl RangeDomain for AdmittingDomain {
 
 	const GAP_SCOPE: &'static str = "admitting_range::gaps";
 
-	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Option<Self::Partition> {
+	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Self::Partition {
 		TestDomain::partition(dimension, key)
-	}
-
-	fn first_addressable(key: &Self::Key) -> Option<Self::Key> {
-		TestDomain::first_addressable(key)
 	}
 
 	fn dimension(partition: &Self::Partition) -> Self::Dimension {
 		TestDomain::dimension(partition)
 	}
 
-	fn span(partition: &Self::Partition) -> (Self::Key, ExclusiveUpperEnd<Self::Key>) {
+	fn span(partition: &Self::Partition) -> (Edge<Self::Key>, Edge<Self::Key>) {
 		TestDomain::span(partition)
 	}
 
-	fn head_band(dimension: Self::Dimension) -> Option<(Self::Key, Self::Key)> {
+	fn head_band(dimension: Self::Dimension) -> Option<(Edge<Self::Key>, Edge<Self::Key>)> {
 		TestDomain::head_band(dimension)
 	}
 
@@ -210,7 +192,7 @@ impl RangeDomain for AdmittingDomain {
 		TestDomain::caches_ranges(partition)
 	}
 
-	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
+	fn cache_tiers_run_end(partition: &Self::Partition) -> Edge<Self::Key> {
 		TestDomain::cache_tiers_run_end(partition)
 	}
 

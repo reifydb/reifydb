@@ -14,7 +14,7 @@ use reifydb_core::{
 	delta::Delta,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
+		store::{EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet},
 	},
 	key::row::RowKey,
 };
@@ -75,7 +75,7 @@ impl MsOracle {
 /// Object-scoped version-anchored TTL sweep: buffer drop first, then persistent delete and a read-cache
 /// clear on a hit. Scoping it to a single object is what lets the test assert isolation.
 fn ttl_sweep_storage(store: &StandardMultiStore, storage_id: StorageId, rows: &[u64], cutoff_version: CommitVersion) {
-	let kind = EntryKind::Source(storage_id);
+	let kind = EntryKind::Source(storage_id, EntryLayout::Row);
 	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(storage_id, r)).collect();
 	{
 		let buffer = store.commit();
@@ -92,18 +92,18 @@ fn ttl_sweep_storage(store: &StandardMultiStore, storage_id: StorageId, rows: &[
 		}
 	}
 	for key in &keys {
-		store.invalidate_read_key(key);
+		store.invalidate_read_key(kind, key);
 	}
 	if let Some(persistent) = store.persistent() {
-		let deleted = persistent.delete_below_version(kind, cutoff_version, None, None, usize::MAX).unwrap().0;
-		if !deleted.is_empty() {
+		let deleted = persistent.delete_keys(kind, &keys).unwrap();
+		if deleted > 0 {
 			store.clear_read();
 		}
 	}
 }
 
 fn physical_delete_storage(store: &StandardMultiStore, storage_id: StorageId, rows: &[u64]) {
-	let kind = EntryKind::Source(storage_id);
+	let kind = EntryKind::Source(storage_id, EntryLayout::Row);
 	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(storage_id, r)).collect();
 	if let Some(persistent) = store.persistent() {
 		persistent.delete_keys(kind, &keys).unwrap();
@@ -121,7 +121,7 @@ fn physical_delete_storage(store: &StandardMultiStore, storage_id: StorageId, ro
 		}
 	}
 	for key in &keys {
-		store.invalidate_read_key(key);
+		store.invalidate_read_key(kind, key);
 	}
 }
 

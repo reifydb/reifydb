@@ -6,7 +6,7 @@ use reifydb_core::{
 		id::ColumnId,
 		property::{ColumnProperty, ColumnPropertyKind},
 	},
-	key::property::ColumnPropertyKey,
+	key::catalog::ColumnPropertyKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 

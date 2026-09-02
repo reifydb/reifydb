@@ -6,7 +6,7 @@ use reifydb_core::{
 		id::{QueueId, RingBufferId, TableId},
 		storage::StorageId,
 	},
-	key::row_sequence::RowSequenceKey,
+	key::row::RowSequenceKey,
 };
 use reifydb_value::value::row_number::RowNumber;
 

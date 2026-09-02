@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::id::SourceId,
-	key::{namespace_source::NamespaceSourceKey, source::SourceKey},
+	key::{catalog::SourceKey, namespace::NamespaceSourceKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 

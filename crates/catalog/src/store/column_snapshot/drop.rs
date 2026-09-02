@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::{column_snapshot::ColumnSnapshotSource, id::ColumnSnapshotId},
-	key::column_snapshot::{ColumnSnapshotKey, SeriesColumnSnapshotKey, TableColumnSnapshotKey},
+	key::column::{ColumnSnapshotKey, SeriesColumnSnapshotKey, TableColumnSnapshotKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
@@ -41,7 +41,7 @@ pub mod tests {
 			column_snapshot::ColumnSnapshotSource,
 			id::{ColumnSnapshotId, NamespaceId, SeriesId, TableId},
 		},
-		key::column_snapshot::{SeriesColumnSnapshotKey, TableColumnSnapshotKey},
+		key::column::{SeriesColumnSnapshotKey, TableColumnSnapshotKey},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;

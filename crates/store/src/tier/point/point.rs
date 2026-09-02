@@ -201,11 +201,13 @@ impl<D: PointDomain> PointTier<D> {
 	pub fn clear(&self) {
 		for shard in self.all_shards() {
 			let mut shard = shard.lock();
+			let released: usize =
+				shard.entries.iter().map(|entry| entry_footprint::<D>(&entry.key, &entry.row)).sum();
 			shard.index.clear();
 			shard.entries.clear();
 			shard.filling.clear();
 			shard.next_tick = 0;
-			shard.budget.reset();
+			shard.budget.release(ByteSize::from_bytes(released as u64));
 		}
 	}
 }

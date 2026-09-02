@@ -4,7 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::flow::Flow,
-	key::{Key, flow::FlowKey},
+	key::{flow::FlowKey, typed::key::Key},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -18,9 +18,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let entry = entry?;
-			if let Some(key) = Key::decode(&entry.key)
-				&& let Key::Flow(flow_key) = key
-			{
+			if let Some(flow_key) = FlowKey::decode(&entry.key) {
 				let mut flow = decode_flow(EncodedCatalogRow::view(&entry.bytes));
 				flow.id = flow_key.flow;
 

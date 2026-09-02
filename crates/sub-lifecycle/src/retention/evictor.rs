@@ -20,8 +20,9 @@ use reifydb_core::{
 		store::classify_range,
 	},
 	key::{
-		EncodableKey, partitioned_row::PartitionedRowKey, partitioned_series_row::PartitionedSeriesRowKeyRange,
-		row::RowKey, series_row::SeriesRowKeyRange,
+		row::{PartitionedRowKey, RowKey},
+		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
+		typed::key::Key,
 	},
 	lifecycle::{
 		class::{Floor, FloorTerm, RetentionClass},
@@ -739,7 +740,7 @@ mod tests {
 			},
 			store::MultiVersionRow,
 		},
-		key::ringbuffer::RingBufferMetadataKey,
+		key::{EncodableKey, ringbuffer::RingBufferMetadataKey},
 	};
 	use reifydb_runtime::version_epoch::EpochSpan;
 	use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};

@@ -4,7 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{id::ColumnId, object::ObjectId},
-	key::{column::ColumnKey, columns::ColumnsKey},
+	key::column::{ColumnKey, ColumnsKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 

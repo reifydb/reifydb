@@ -7,7 +7,7 @@ use reifydb_core::{
 		flow::{Flow, FlowId},
 		id::NamespaceId,
 	},
-	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
+	key::{flow::FlowKey, namespace::NamespaceFlowKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

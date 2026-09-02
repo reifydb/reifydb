@@ -4,8 +4,8 @@
 use reifydb_core::{
 	interface::catalog::identity::IdentityAttributeId,
 	key::{
-		EncodableKey, identity_attribute::IdentityAttributeKey,
-		identity_attribute_value::IdentityAttributeValueKey,
+		identity::{IdentityAttributeKey, IdentityAttributeValueKey},
+		typed::key::Key,
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};

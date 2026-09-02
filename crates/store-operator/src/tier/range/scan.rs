@@ -10,7 +10,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::{
 			operator::{keyspace::join::JoinLeft, state::GroupId},
-			typed::{ExclusiveUpperEnd, Key, direction::Asc, range::KeyRange},
+			typed::{Edge, TypedKey, direction::Asc, range::KeyRange},
 		},
 	};
 	use reifydb_store::{
@@ -75,11 +75,11 @@ mod tests {
 	}
 
 	fn whole() -> Interval<Suffix> {
-		Interval::new(Suffix::low(), ExclusiveUpperEnd::Top)
+		Interval::new(Suffix::low(), Edge::Top)
 	}
 
 	fn spanning(from: Suffix, to: Suffix) -> Interval<Suffix> {
-		Interval::new(from, ExclusiveUpperEnd::Key(to))
+		Interval::new(from, Edge::Key(to))
 	}
 
 	fn plan(tiers: &RangeTiers) -> RangeScan<TypedDomain<JoinLeft>> {
@@ -135,7 +135,7 @@ mod tests {
 			scan.segments(),
 			[
 				Segment::Gap {
-					interval: Interval::new(Suffix::low(), ExclusiveUpperEnd::Key(at(3))),
+					interval: Interval::new(Suffix::low(), Edge::Key(at(3))),
 					exempt: false,
 				},
 				Segment::Resident(spanning(at(3), at(5))),
@@ -145,7 +145,7 @@ mod tests {
 				},
 				Segment::Resident(spanning(at(6), at(8))),
 				Segment::Gap {
-					interval: Interval::new(at(8), ExclusiveUpperEnd::Top),
+					interval: Interval::new(at(8), Edge::Top),
 					exempt: false,
 				},
 			],
@@ -222,7 +222,7 @@ mod tests {
 		let tiers = roomy();
 		let head = at(1);
 		let tail = at(9_000_000);
-		let span = Interval::new(head, ExclusiveUpperEnd::Top);
+		let span = Interval::new(head, Edge::Top);
 		let rows = [(head, row("head")), (tail, row("tail"))];
 
 		let scan = plan(&tiers);

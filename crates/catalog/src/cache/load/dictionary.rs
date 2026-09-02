@@ -7,7 +7,7 @@ use reifydb_core::{
 		catalog::{dictionary::Dictionary, id::NamespaceId},
 		store::MultiVersionRow,
 	},
-	key::dictionary::DictionaryKey,
+	key::catalog::DictionaryKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::dictionary::DictionaryId;

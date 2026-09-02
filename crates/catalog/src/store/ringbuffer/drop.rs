@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::id::RingBufferId,
-	key::{namespace_ringbuffer::NamespaceRingBufferKey, ringbuffer::RingBufferKey},
+	key::{namespace::NamespaceRingBufferKey, ringbuffer::RingBufferKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 

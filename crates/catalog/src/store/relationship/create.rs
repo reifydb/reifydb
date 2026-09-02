@@ -6,7 +6,7 @@ use reifydb_core::{
 		id::{ColumnId, NamespaceId, TableId},
 		relationship::{Relationship, RelationshipCardinality, RelationshipJunction},
 	},
-	key::relationship::RelationshipKey,
+	key::catalog::RelationshipKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::fragment::Fragment;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::token::Token, key::token::TokenKey};
+use reifydb_core::{interface::catalog::token::Token, key::identity::TokenKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 

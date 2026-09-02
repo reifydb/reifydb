@@ -4,7 +4,7 @@
 use reifydb_codec::tag::type_tag_byte;
 use reifydb_core::{
 	interface::catalog::{object::ObjectId, property::ColumnPropertyKind},
-	key::{column::ColumnKey, columns::ColumnsKey},
+	key::column::{ColumnKey, ColumnsKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{

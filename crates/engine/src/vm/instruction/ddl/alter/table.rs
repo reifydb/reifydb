@@ -5,7 +5,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::object::ObjectId,
 	internal_error,
-	key::{EncodableKey, partition::PartitionKey, partitioned_row::PartitionedRowKey},
+	key::{partition::PartitionKey, row::PartitionedRowKey, typed::key::Key},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::{AlterTableAction, AlterTableNode};

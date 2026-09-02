@@ -8,7 +8,7 @@ use reifydb_core::{
 		id::{NamespaceId, SinkId},
 		sink::Sink,
 	},
-	key::{namespace_sink::NamespaceSinkKey, sink::SinkKey},
+	key::{catalog::SinkKey, namespace::NamespaceSinkKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use serde_json::from_str;

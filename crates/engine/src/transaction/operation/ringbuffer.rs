@@ -19,7 +19,7 @@ use reifydb_core::{
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::{partitioned_row::PartitionedRowKey, row::RowKey},
+	key::row::{PartitionedRowKey, RowKey},
 	partition::{PartitionError, partition_col_indices},
 	row::row_shape_from_columns,
 	value::column::columns::Columns,

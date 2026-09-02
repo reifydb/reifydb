@@ -12,9 +12,8 @@ use reifydb_core::{
 	error::diagnostic,
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedTable, store::MultiVersionRow},
 	key::{
-		EncodableKey,
-		partitioned_row::PartitionedRowKey,
-		row::{RowKey, RowKeyRange},
+		row::{PartitionedRowKey, RowKey, RowKeyRange},
+		typed::key::Key,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };

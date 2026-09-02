@@ -9,6 +9,7 @@ use reifydb_core::{
 		catalog::flow::{FlowId, OperatorId},
 		identifier::{ColumnIdentifier, ColumnObject},
 	},
+	row::JoinPick,
 	value::column::columns::Columns,
 };
 use reifydb_rql::{
@@ -181,7 +182,7 @@ impl FlowEngineInner {
 		alias: Option<String>,
 		snapshot: bool,
 		natural: bool,
-		latest: bool,
+		pick: Option<JoinPick>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		if inputs.len() != 2 {
@@ -251,7 +252,7 @@ impl FlowEngineInner {
 				self.runtime_context.clone(),
 				snapshot,
 				natural,
-				latest,
+				pick,
 				left_retention,
 				right_retention,
 				Arc::clone(ctx),

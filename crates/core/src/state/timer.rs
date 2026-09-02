@@ -15,7 +15,7 @@ use reifydb_value::{
 use crate::key::operator::{
 	keyspace::{RootSibling, root_sibling_of},
 	state::{
-		GroupId, GroupStateKey, KeyspaceMask, OperatorStateKey, group_data_inner_range, group_inner_range,
+		GroupId, GroupStateKey, KeyspaceMask, group_data_inner_range, group_inner_range,
 		keyspace_inner_range_split,
 	},
 };
@@ -87,6 +87,7 @@ pub trait StateStore {
 		self.group_sweep_in(group, KeyspaceMask::KNOWN, data_only, limit)
 	}
 
+	#[cfg_attr(not(debug_assertions), allow(unused_variables))]
 	fn group_sweep_in(
 		&mut self,
 		group: GroupId,
@@ -101,7 +102,8 @@ pub trait StateStore {
 		let swept = self.state_page_inner(range, limit)?;
 		reifydb_assertions! {
 			for (key, _) in &swept {
-				let Some((_, keyspace, _)) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
+				let Some((_, keyspace, _)) =
+					crate::key::operator::state::OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
 				else {
 					continue;
 				};

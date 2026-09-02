@@ -18,7 +18,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		cdc::{Cdc, CdcConsumerId, CheckpointState},
 	},
-	key::{EncodableKey, cdc_consumer::CdcConsumerKey},
+	key::{EncodableKey, cdc::CdcConsumerKey},
 };
 use reifydb_runtime::{
 	actor::{

@@ -9,7 +9,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			Key,
+			TypedKey,
 			direction::{Desc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues},
 		},
@@ -17,12 +17,12 @@ use crate::{
 	metrics::heap::HeapSize,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct DistinctEntryKey {
 	pub group: Desc<GroupId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct DistinctLayoutKey {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,14 +33,14 @@ impl Keyspace for DistinctEntry {
 	const NAME: &'static str = "DISTINCT_ENTRY";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = DistinctEntryKey;
+	type GroupedKey = DistinctEntryKey;
 	type Suffix = ();
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(key.group.0, ())
 	}
 
-	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::Key {
+	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
 		DistinctEntryKey {
 			group: Desc(group),
 		}
@@ -55,14 +55,14 @@ impl Keyspace for DistinctLayout {
 	const NAME: &'static str = "DISTINCT_LAYOUT";
 	const CACHE: CacheTiers = CacheTiers::Both;
 
-	type Key = DistinctLayoutKey;
+	type GroupedKey = DistinctLayoutKey;
 	type Suffix = DistinctLayoutKey;
 
-	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		suffix
 	}
 }

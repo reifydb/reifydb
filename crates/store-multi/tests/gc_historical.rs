@@ -12,14 +12,14 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::EntryKind,
+		store::{EntryKind, EntryLayout},
 	},
 };
 use reifydb_store_commit::store::CommitStore;
 use reifydb_value::util::cowvec::CowVec;
 
 fn object() -> EntryKind {
-	EntryKind::Source(StorageId::Table(TableId(42)))
+	EntryKind::Source(StorageId::Table(TableId(42)), EntryLayout::Row)
 }
 
 fn key(s: &str) -> EncodedKey {
@@ -194,8 +194,8 @@ fn sweep_does_not_touch_current_even_below_cutoff() {
 fn list_all_entry_kinds_returns_known_objects() {
 	let storage = CommitStore::new();
 
-	let s1 = EntryKind::Source(StorageId::Table(TableId(100)));
-	let s2 = EntryKind::Source(StorageId::Table(TableId(200)));
+	let s1 = EntryKind::Source(StorageId::Table(TableId(100)), EntryLayout::Row);
+	let s2 = EntryKind::Source(StorageId::Table(TableId(200)), EntryLayout::Row);
 	storage.set(CommitVersion(1), HashMap::from([(s1, vec![(key("a"), Some(val("1")))])])).unwrap();
 	storage.set(CommitVersion(2), HashMap::from([(s2, vec![(key("b"), Some(val("2")))])])).unwrap();
 

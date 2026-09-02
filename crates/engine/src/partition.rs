@@ -10,7 +10,10 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::{id::TableId, object::ObjectId, table::Table},
-	key::{partition::PartitionKey, partitioned_row::PartitionedRowKey, row::RowKey},
+	key::{
+		partition::PartitionKey,
+		row::{PartitionedRowKey, RowKey},
+	},
 	partition::{PartitionError, partition_col_indices},
 };
 use reifydb_transaction::transaction::Transaction;

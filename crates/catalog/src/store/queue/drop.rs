@@ -5,9 +5,8 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::id::QueueId, store::SingleVersionRange},
 	key::{
-		namespace_queue::NamespaceQueueKey,
-		queue::QueueKey,
-		queue_schedule::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
+		namespace::NamespaceQueueKey,
+		queue::{QueueDueKey, QueueItemStateKey, QueueKey, QueuePartitionKey},
 	},
 };
 use reifydb_transaction::{

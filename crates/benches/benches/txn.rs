@@ -26,7 +26,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, classify_key},
 	},
-	key::{EncodableKey, row::RowKey},
+	key::{row::RowKey, typed::key::Key},
 	testing::ProfileConfig,
 };
 use reifydb_runtime::{

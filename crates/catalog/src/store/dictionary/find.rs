@@ -4,7 +4,7 @@
 use reifydb_codec::{row::catalog::EncodedCatalogRow, tag::value_type_from_tag_byte};
 use reifydb_core::{
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
-	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
+	key::{catalog::DictionaryKey, namespace::NamespaceDictionaryKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::dictionary::DictionaryId;

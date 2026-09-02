@@ -18,7 +18,12 @@ use reifydb_core::{
 		cdc::{Cdc, CdcChange},
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
-	key::Key,
+	key::{
+		kind::KeyKind,
+		row::{PartitionedRowKey, RowKey},
+		series::{PartitionedSeriesRowKey, SeriesRowKey},
+		typed::key::Key,
+	},
 	value::column::columns::Columns,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -51,23 +56,35 @@ struct Bucket {
 }
 
 pub fn row_target(key: &EncodedKey) -> Option<RowTarget> {
-	match Key::decode(key)? {
-		Key::Row(row_key) => Some(RowTarget {
-			object: ObjectId::from(row_key.storage),
-			row: row_key.row,
-		}),
-		Key::SeriesRow(series_key) => Some(RowTarget {
-			object: ObjectId::from(series_key.storage),
-			row: RowNumber(series_key.sequence),
-		}),
-		Key::PartitionedRow(partitioned) => Some(RowTarget {
-			object: ObjectId::from(partitioned.storage),
-			row: partitioned.row,
-		}),
-		Key::PartitionedSeriesRow(partitioned) => Some(RowTarget {
-			object: ObjectId::from(partitioned.storage),
-			row: RowNumber(partitioned.sequence),
-		}),
+	match KeyKind::of(key)? {
+		KeyKind::Row => {
+			let row_key = RowKey::decode(key)?;
+			Some(RowTarget {
+				object: ObjectId::from(row_key.storage),
+				row: row_key.row,
+			})
+		}
+		KeyKind::SeriesRow => {
+			let series_key = SeriesRowKey::decode(key)?;
+			Some(RowTarget {
+				object: ObjectId::from(series_key.storage),
+				row: RowNumber(series_key.sequence),
+			})
+		}
+		KeyKind::PartitionedRow => {
+			let partitioned = PartitionedRowKey::decode(key)?;
+			Some(RowTarget {
+				object: ObjectId::from(partitioned.storage),
+				row: partitioned.row,
+			})
+		}
+		KeyKind::PartitionedSeriesRow => {
+			let partitioned = PartitionedSeriesRowKey::decode(key)?;
+			Some(RowTarget {
+				object: ObjectId::from(partitioned.storage),
+				row: RowNumber(partitioned.sequence),
+			})
+		}
 		_ => None,
 	}
 }
@@ -236,8 +253,9 @@ mod tests {
 			storage::StorageId,
 		},
 		key::{
-			EncodableKey, partitioned_row::PartitionedRowKey,
-			partitioned_series_row::PartitionedSeriesRowKey, row::RowKey, series_row::SeriesRowKey,
+			row::{PartitionedRowKey, RowKey},
+			series::{PartitionedSeriesRowKey, SeriesRowKey},
+			typed::key::Key,
 		},
 	};
 	use reifydb_value::value::partition::Partition;

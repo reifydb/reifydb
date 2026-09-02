@@ -4,7 +4,7 @@
 use reifydb_codec::tag::type_tag_byte;
 use reifydb_core::{
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
-	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
+	key::{catalog::DictionaryKey, namespace::NamespaceDictionaryKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{

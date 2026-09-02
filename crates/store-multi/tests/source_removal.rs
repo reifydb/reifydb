@@ -18,7 +18,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
-	key::{partitioned_row::PartitionedRowKey, row::RowKey},
+	key::row::{PartitionedRowKey, RowKey},
 };
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};

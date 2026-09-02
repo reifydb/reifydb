@@ -9,7 +9,7 @@ use reifydb_core::{
 	delta::Delta,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::{EntryKind, MultiVersionCommit},
+		store::{EntryKind, EntryLayout, MultiVersionCommit},
 	},
 	key::row::RowKey,
 };
@@ -26,7 +26,7 @@ fn v(s: &str) -> CowVec<u8> {
 }
 
 fn object() -> EntryKind {
-	EntryKind::Source(StorageId::Table(TableId(2024)))
+	EntryKind::Source(StorageId::Table(TableId(2024)), EntryLayout::Row)
 }
 
 fn drain_forward(s: &CommitStore, kind: EntryKind, version: CommitVersion, batch_size: usize) -> Vec<Vec<u8>> {
@@ -118,7 +118,9 @@ fn store_with_two_stale_chunks(stale_from: u64, fresh_row: u64) -> (StandardMult
 	let stale: Vec<(EncodedKey, Option<CowVec<u8>>)> = (stale_from..(stale_from + 2 * SCAN_CHUNK))
 		.map(|row| (RowKey::encoded(STORAGE, row), Some(v("stale"))))
 		.collect();
-	persistent.set(CommitVersion(1), HashMap::from([(EntryKind::Source(STORAGE), stale)])).unwrap();
+	persistent
+		.set(CommitVersion(1), HashMap::from([(EntryKind::Source(STORAGE, EntryLayout::Row), stale)]))
+		.unwrap();
 
 	MultiVersionCommit::commit(
 		&store,

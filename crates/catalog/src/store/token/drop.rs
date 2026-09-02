@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
-use reifydb_core::{interface::catalog::token::TokenId, key::token::TokenKey};
+use reifydb_core::{interface::catalog::token::TokenId, key::identity::TokenKey};
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 

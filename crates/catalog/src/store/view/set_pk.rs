@@ -4,7 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::id::{PrimaryKeyId, ViewId},
-	key::view::ViewKey,
+	key::catalog::ViewKey,
 	return_internal_error,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;

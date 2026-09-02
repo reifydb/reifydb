@@ -6,7 +6,7 @@ use std::ops::Bound;
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::catalog::EncodedCatalogRow};
 use reifydb_core::{
 	interface::catalog::{column::Column, id::PrimaryKeyId, key::PrimaryKey},
-	key::{Key, primary_key::PrimaryKeyKey},
+	key::{catalog::PrimaryKeyKey, typed::key::Key},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -40,9 +40,7 @@ impl CatalogStore {
 		}
 
 		for entry in entries {
-			if let Some(key) = Key::decode(&entry.key)
-				&& let Key::PrimaryKey(pk_key) = key
-			{
+			if let Some(pk_key) = PrimaryKeyKey::decode(&entry.key) {
 				let object_id = primary_key::get_source(EncodedCatalogRow::view(&entry.bytes));
 
 				let column_ids_blob =
@@ -93,9 +91,7 @@ impl CatalogStore {
 		for entry in stream {
 			let entry = entry?;
 
-			if let Some(key) = Key::decode(&entry.key)
-				&& let Key::PrimaryKey(pk_key) = key
-			{
+			if let Some(pk_key) = PrimaryKeyKey::decode(&entry.key) {
 				let column_ids_blob =
 					primary_key::get_column_ids(EncodedCatalogRow::view(&entry.bytes));
 				let column_ids = deserialize_column_ids(&column_ids_blob);

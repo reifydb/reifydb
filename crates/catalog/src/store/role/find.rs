@@ -4,7 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::identity::{Role, RoleId},
-	key::role::RoleKey,
+	key::identity::RoleKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

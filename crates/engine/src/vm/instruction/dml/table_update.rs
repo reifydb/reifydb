@@ -30,7 +30,7 @@ use reifydb_core::{
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedTable},
 	},
 	internal_error,
-	key::{EncodableKey, index_entry::IndexEntryKey},
+	key::{EncodableKey, catalog::IndexEntryKey},
 	partition::PartitionError,
 	value::column::columns::Columns,
 };

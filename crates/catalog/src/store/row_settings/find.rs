@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
-use reifydb_core::{interface::catalog::storage::StorageId, key::row_settings::RowSettingsKey, row::RowSettings};
+use reifydb_core::{interface::catalog::storage::StorageId, key::row::RowSettingsKey, row::RowSettings};
 use reifydb_transaction::transaction::Transaction;
 
 use super::decode_row_settings;

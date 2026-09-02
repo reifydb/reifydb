@@ -5,14 +5,21 @@ use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	shape::{RowFamily, RowShape, RowShapeField},
 };
-use reifydb_value::value::{
-	constraint::{Constraint, TypeConstraint},
-	duration::Duration,
-	row_number::RowNumber,
+use reifydb_value::{
+	fragment::Fragment,
+	value::{
+		constraint::{Constraint, TypeConstraint},
+		datetime::TIME_COLUMN_NAME,
+		duration::Duration,
+		row_number::RowNumber,
+	},
 };
 use serde::{Deserialize, Serialize};
 
-use crate::interface::catalog::column::Column;
+use crate::{
+	interface::catalog::column::Column,
+	sort::{SortDirection, SortKey},
+};
 
 #[derive(Debug, Clone)]
 pub struct Row {
@@ -56,6 +63,30 @@ pub struct JoinRetention {
 	pub left: Option<OperatorRetention>,
 
 	pub right: Option<OperatorRetention>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JoinPick {
+	pub keys: Vec<SortKey>,
+}
+
+impl JoinPick {
+	pub fn by_time(direction: SortDirection) -> Self {
+		Self {
+			keys: vec![SortKey {
+				column: Fragment::internal(TIME_COLUMN_NAME),
+				direction,
+			}],
+		}
+	}
+
+	pub fn latest() -> Self {
+		Self::by_time(SortDirection::Desc)
+	}
+
+	pub fn earliest() -> Self {
+		Self::by_time(SortDirection::Asc)
+	}
 }
 
 pub fn row_shape_from_columns(family: RowFamily, value: &[Column]) -> RowShape {

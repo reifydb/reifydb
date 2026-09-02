@@ -12,7 +12,7 @@ use reifydb_core::{
 		},
 		store::MultiVersionRow,
 	},
-	key::table::TableKey,
+	key::catalog::TableKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

@@ -27,7 +27,10 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
 	},
 	internal_error,
-	key::{EncodableKey, partitioned_series_row::PartitionedSeriesRowKey, series_row::SeriesRowKey},
+	key::{
+		series::{PartitionedSeriesRowKey, SeriesRowKey},
+		typed::key::Key,
+	},
 	partition::PartitionError,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };

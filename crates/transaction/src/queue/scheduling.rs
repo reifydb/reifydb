@@ -13,7 +13,7 @@ use reifydb_core::{
 			decode_queue_partition_counters, encode_queue_item_state, encode_queue_partition_counters,
 		},
 	},
-	key::queue_schedule::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
+	key::queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
 };
 use reifydb_value::{
 	Result,

@@ -13,6 +13,7 @@ pub mod heap_size;
 pub mod key;
 pub mod operator_state;
 pub mod parse;
+pub mod typed_key;
 
 use proc_macro2::TokenStream;
 
@@ -26,6 +27,10 @@ pub fn expand_catalog_shape(input: TokenStream) -> TokenStream {
 
 pub fn derive_heap_size(input: TokenStream) -> TokenStream {
 	heap_size::derive_heap_size(input)
+}
+
+pub fn derive_typed_key(input: TokenStream) -> TokenStream {
+	typed_key::derive_typed_key(input)
 }
 
 pub fn derive_key(input: TokenStream) -> TokenStream {

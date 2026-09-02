@@ -498,7 +498,7 @@ mod integration {
 			flow::OperatorId,
 			id::{SeriesId, ViewId},
 		},
-		key::{Key, kind::KeyKind},
+		key::kind::KeyKind,
 	};
 	use reifydb_flow::{
 		engine::frontier::WatermarkHold,
@@ -971,7 +971,7 @@ mod integration {
 					let row_keys: Vec<_> = pending
 						.iter_sorted()
 						.filter(|(k, w)| {
-							matches!(Key::kind(k), Some(KeyKind::Row))
+							matches!(KeyKind::of(k), Some(KeyKind::Row))
 								&& matches!(w, PendingWrite::Set(_))
 						})
 						.map(|(k, _)| k.clone())
@@ -1102,9 +1102,9 @@ mod integration {
 						committer.commit_slice(&engine, slice).expect("commit slice");
 					let mut live_keys = Vec::new();
 					for (key, write) in pending.iter_sorted() {
-						committed_kinds.insert(Key::kind(key));
+						committed_kinds.insert(KeyKind::of(key));
 						if read_from(key) == ReadFrom::Query {
-							stale_reads.insert(Key::kind(key));
+							stale_reads.insert(KeyKind::of(key));
 						}
 						if matches!(write, PendingWrite::Set(_)) {
 							live_keys.push(key.clone());
@@ -1128,7 +1128,7 @@ mod integration {
 						assert!(
 							empty_overlay.get(key).unwrap().is_some(),
 							"restart window: {:?} must resolve with no overlay at all",
-							Key::kind(key)
+							KeyKind::of(key)
 						);
 					}
 
