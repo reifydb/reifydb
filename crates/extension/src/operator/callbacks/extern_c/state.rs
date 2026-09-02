@@ -877,6 +877,10 @@ mod join_row_expiry_guard_tests {
 			Ok(())
 		}
 
+		fn armed_timer_at(&mut self, _kind: TimerKind, _key: &EncodedKey) -> Result<Option<DateTime>> {
+			Ok(None)
+		}
+
 		fn join_expiry_at(
 			&mut self,
 			_group: GroupId,

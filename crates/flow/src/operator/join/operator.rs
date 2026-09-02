@@ -39,6 +39,7 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
 	error::Error,
+	reifydb_assertions,
 	util::hash::{Hash128, xxh3_128},
 	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber, value_type::ValueType},
 };
@@ -288,13 +289,37 @@ impl JoinOperator {
 		Ok(distinct.into_iter().map(|hash| (hash, GroupId::of(&group_bytes(&hash)))).collect())
 	}
 
-	fn resync_timers(host: &mut dyn HostContext, order: &[GroupId]) -> Result<()> {
+	fn resync_timers(
+		host: &mut dyn HostContext,
+		order: &[GroupId],
+		armed_min: &HashMap<GroupId, DateTime>,
+		cleared_groups: &HashSet<GroupId>,
+	) -> Result<()> {
 		for group in order {
-			match host.join_expiry_min(*group)? {
-				Some(earliest) => {
-					host.arm_timer(earliest, TimerKind::Maintenance, &Self::timer_key(*group))?
+			let key = Self::timer_key(*group);
+			if !cleared_groups.contains(group) {
+				if let Some(earliest) = armed_min.get(group).copied() {
+					let derived = match host.armed_timer_at(TimerKind::Maintenance, &key)? {
+						Some(previous) => previous.min(earliest),
+						None => earliest,
+					};
+					reifydb_assertions! {
+						assert_eq!(
+							host.join_expiry_min(*group)?,
+							Some(derived),
+							"the armed maintenance timer no longer equals the group's \
+							 earliest join expiry, so deriving the next arm from it \
+							 would leave an older expiry unreachable (group={})",
+							group.0
+						);
+					}
+					host.arm_timer(derived, TimerKind::Maintenance, &key)?;
+					continue;
 				}
-				None => host.disarm_timer_by_key(TimerKind::Maintenance, &Self::timer_key(*group))?,
+			}
+			match host.join_expiry_min(*group)? {
+				Some(earliest) => host.arm_timer(earliest, TimerKind::Maintenance, &key)?,
+				None => host.disarm_timer_by_key(TimerKind::Maintenance, &key)?,
 			}
 		}
 		Ok(())
@@ -317,6 +342,8 @@ impl JoinOperator {
 		let resolved = Self::resolve_groups(cleared, armed)?;
 		let mut order: Vec<GroupId> = Vec::new();
 		let mut touched: HashSet<GroupId> = HashSet::new();
+		let mut cleared_groups: HashSet<GroupId> = HashSet::new();
+		let mut armed_min: HashMap<GroupId, DateTime> = HashMap::new();
 
 		for (hash, row_number) in cleared {
 			let Some(group) = resolved.get(hash).copied() else {
@@ -325,6 +352,7 @@ impl JoinOperator {
 			if touched.insert(group) {
 				order.push(group);
 			}
+			cleared_groups.insert(group);
 			host.state_remove(&Self::join_expiry_key(group, side, *row_number))?;
 		}
 
@@ -335,17 +363,21 @@ impl JoinOperator {
 			if touched.insert(group) {
 				order.push(group);
 			}
+			let sealed = rule.seal_instant(*at).at();
+			armed_min.entry(group)
+				.and_modify(|current| *current = (*current).min(sealed))
+				.or_insert(sealed);
 			host.state_remove(&queue_key(group))?;
 			host.state_set(
 				&Self::join_expiry_key(group, side, *row_number),
 				JoinRowExpiry {
-					at: rule.seal_instant(*at).at(),
+					at: sealed,
 				}
 				.encode_state()?,
 			)?;
 		}
 
-		Self::resync_timers(host, &order)
+		Self::resync_timers(host, &order, &armed_min, &cleared_groups)
 	}
 
 	fn arm_batch(

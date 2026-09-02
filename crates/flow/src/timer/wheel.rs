@@ -42,8 +42,20 @@ const MAX_TIMERS_PER_SCAN: usize = 64;
 pub struct TimerWheel;
 
 impl TimerWheel {
+	pub fn armed(
+		operator: OperatorId,
+		txn: &mut impl FlowTransaction,
+		kind: TimerKind,
+		key: &EncodedKey,
+	) -> Result<Option<DateTime>> {
+		if !kind.is_maintenance() {
+			return Ok(None);
+		}
+		armed_at(operator, txn, &index_key(kind, key))
+	}
+
 	pub fn arm(operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
-		if !timer.kind.is_unique() {
+		if !timer.kind.is_maintenance() {
 			txn.state_set(
 				operator,
 				&timer_key(timer.due, timer.kind, &timer.key),
@@ -82,7 +94,7 @@ impl TimerWheel {
 	}
 
 	pub fn disarm(operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
-		if timer.kind.is_unique() {
+		if timer.kind.is_maintenance() {
 			let index = index_key(timer.kind, &timer.key);
 			if armed_at(operator, txn, &index)? == Some(timer.due) {
 				txn.state_remove(operator, &index)?;
@@ -100,8 +112,8 @@ impl TimerWheel {
 	) -> Result<()> {
 		reifydb_assertions! {
 			assert!(
-				kind.is_unique(),
-				"a non-unique kind holds no timer index, so a disarm addressed by key alone cannot name \
+				kind.is_maintenance(),
+				"a non-maintenance kind holds no timer index, so a disarm addressed by key alone cannot name \
 				 which of its instants to cancel and would leave every one of them armed \
 				 (operator={}, kind={})",
 				operator.0,
@@ -166,14 +178,14 @@ impl TimerWheel {
 			due.push(timer);
 		}
 
-		let unique_indices: Vec<GroupStateKey> = due
+		let maintenance_indices: Vec<GroupStateKey> = due
 			.iter()
-			.filter(|timer| timer.kind.is_unique())
+			.filter(|timer| timer.kind.is_maintenance())
 			.map(|timer| index_key(timer.kind, &timer.key))
 			.collect();
-		let mut armed: HashMap<EncodedKey, DateTime> = HashMap::with_capacity(unique_indices.len());
-		if !unique_indices.is_empty() {
-			for row in txn.state_get_many(operator, &unique_indices)?.items {
+		let mut armed: HashMap<EncodedKey, DateTime> = HashMap::with_capacity(maintenance_indices.len());
+		if !maintenance_indices.is_empty() {
+			for row in txn.state_get_many(operator, &maintenance_indices)?.items {
 				let payload = decode_payload::<DateTime>(&EncodedPodRow::from(row.bytes))?;
 				armed.insert(row.key, payload);
 			}
@@ -181,7 +193,7 @@ impl TimerWheel {
 
 		for timer in &due {
 			txn.state_remove(operator, &timer_key(timer.due, timer.kind, &timer.key))?;
-			if timer.kind.is_unique() {
+			if timer.kind.is_maintenance() {
 				let index = index_key(timer.kind, &timer.key);
 				if armed.get(&scoped_key(operator, &index)) == Some(&timer.due) {
 					txn.state_remove(operator, &index)?;

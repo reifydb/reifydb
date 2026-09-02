@@ -51,6 +51,8 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 
+	fn armed_timer_at(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<Option<DateTime>>;
+
 	fn join_expiry_at(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>>;
 
 	fn join_expiry_min(&mut self, group: GroupId) -> Result<Option<DateTime>>;
@@ -284,6 +286,10 @@ impl<T: FlowTransaction> IdentityReclaim for TxnHostContext<'_, T> {
 impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 	fn version(&self) -> CommitVersion {
 		self.txn.version()
+	}
+
+	fn armed_timer_at(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<Option<DateTime>> {
+		self.txn.armed_timer_at(self.operator, kind, key)
 	}
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()> {

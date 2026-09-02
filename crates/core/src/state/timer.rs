@@ -25,7 +25,7 @@ pub enum TimerKind {
 }
 
 impl TimerKind {
-	pub fn is_unique(&self) -> bool {
+	pub fn is_maintenance(&self) -> bool {
 		matches!(self, Self::Maintenance)
 	}
 
