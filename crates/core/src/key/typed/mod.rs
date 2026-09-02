@@ -20,44 +20,58 @@ pub trait TypedKey: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'stati
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ExclusiveUpperEnd<K> {
+pub enum Edge<K> {
+	Bottom,
 	Key(K),
 	Top,
 }
 
-impl<K> ExclusiveUpperEnd<K> {
+impl<K> Edge<K> {
+	pub fn is_bottom(&self) -> bool {
+		matches!(self, Edge::Bottom)
+	}
+
 	pub fn is_top(&self) -> bool {
-		matches!(self, ExclusiveUpperEnd::Top)
+		matches!(self, Edge::Top)
 	}
 
 	pub fn key(&self) -> Option<&K> {
 		match self {
-			ExclusiveUpperEnd::Key(key) => Some(key),
-			ExclusiveUpperEnd::Top => None,
+			Edge::Key(key) => Some(key),
+			Edge::Bottom | Edge::Top => None,
 		}
 	}
 }
 
-impl<K: TypedKey> ExclusiveUpperEnd<K> {
+impl<K: TypedKey> Edge<K> {
 	pub fn just_past(key: &K) -> Self {
 		match key.successor() {
-			Some(next) => ExclusiveUpperEnd::Key(next),
-			None => ExclusiveUpperEnd::Top,
+			Some(next) => Edge::Key(next),
+			None => Edge::Top,
+		}
+	}
+
+	pub fn lowest(&self) -> Option<K> {
+		match self {
+			Edge::Bottom => Some(K::low()),
+			Edge::Key(key) => Some(key.clone()),
+			Edge::Top => None,
 		}
 	}
 }
 
-impl ExclusiveUpperEnd<MultiKey> {
+impl Edge<MultiKey> {
 	pub fn of(key: impl AsRef<[u8]>) -> Self {
-		ExclusiveUpperEnd::Key(EncodedKey::new(key))
+		Edge::Key(EncodedKey::new(key))
 	}
 }
 
-impl<K: Ord> ExclusiveUpperEnd<K> {
+impl<K: Ord> Edge<K> {
 	pub fn cmp_key(&self, key: &K) -> Ordering {
 		match self {
-			ExclusiveUpperEnd::Key(edge) => edge.cmp(key),
-			ExclusiveUpperEnd::Top => Ordering::Greater,
+			Edge::Bottom => Ordering::Less,
+			Edge::Key(edge) => edge.cmp(key),
+			Edge::Top => Ordering::Greater,
 		}
 	}
 
@@ -66,46 +80,38 @@ impl<K: Ord> ExclusiveUpperEnd<K> {
 	}
 
 	pub fn min(self, other: Self) -> Self {
-		match (&self, &other) {
-			(ExclusiveUpperEnd::Top, _) => other,
-			(_, ExclusiveUpperEnd::Top) => self,
-			(ExclusiveUpperEnd::Key(left), ExclusiveUpperEnd::Key(right)) => {
-				if left <= right {
-					self
-				} else {
-					other
-				}
-			}
+		if self <= other {
+			self
+		} else {
+			other
 		}
 	}
 
 	pub fn max(self, other: Self) -> Self {
-		match (&self, &other) {
-			(ExclusiveUpperEnd::Top, _) | (_, ExclusiveUpperEnd::Top) => ExclusiveUpperEnd::Top,
-			(ExclusiveUpperEnd::Key(left), ExclusiveUpperEnd::Key(right)) => {
-				if left >= right {
-					self
-				} else {
-					other
-				}
-			}
+		if self >= other {
+			self
+		} else {
+			other
 		}
 	}
 }
 
-impl<K: Ord> PartialOrd for ExclusiveUpperEnd<K> {
+impl<K: Ord> PartialOrd for Edge<K> {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 		Some(self.cmp(other))
 	}
 }
 
-impl<K: Ord> Ord for ExclusiveUpperEnd<K> {
+impl<K: Ord> Ord for Edge<K> {
 	fn cmp(&self, other: &Self) -> Ordering {
 		match (self, other) {
-			(ExclusiveUpperEnd::Top, ExclusiveUpperEnd::Top) => Ordering::Equal,
-			(ExclusiveUpperEnd::Top, ExclusiveUpperEnd::Key(_)) => Ordering::Greater,
-			(ExclusiveUpperEnd::Key(_), ExclusiveUpperEnd::Top) => Ordering::Less,
-			(ExclusiveUpperEnd::Key(left), ExclusiveUpperEnd::Key(right)) => left.cmp(right),
+			(Edge::Bottom, Edge::Bottom) => Ordering::Equal,
+			(Edge::Bottom, _) => Ordering::Less,
+			(_, Edge::Bottom) => Ordering::Greater,
+			(Edge::Top, Edge::Top) => Ordering::Equal,
+			(Edge::Top, Edge::Key(_)) => Ordering::Greater,
+			(Edge::Key(_), Edge::Top) => Ordering::Less,
+			(Edge::Key(left), Edge::Key(right)) => left.cmp(right),
 		}
 	}
 }
@@ -137,7 +143,7 @@ impl TypedKey for EncodedKey {
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use super::{ExclusiveUpperEnd, MultiKey, TypedKey};
+	use super::{Edge, MultiKey, TypedKey};
 
 	#[test]
 	fn unit_key_has_no_successor() {
@@ -179,8 +185,8 @@ mod tests {
 
 	#[test]
 	fn exclusive_upper_end_carries_a_key_or_the_top() {
-		let end: ExclusiveUpperEnd<MultiKey> = ExclusiveUpperEnd::Key(EncodedKey::new([0x01]));
-		assert_ne!(end, ExclusiveUpperEnd::Top);
+		let end: Edge<MultiKey> = Edge::Key(EncodedKey::new([0x01]));
+		assert_ne!(end, Edge::Top);
 		assert_eq!(end.clone(), end);
 	}
 
@@ -188,8 +194,8 @@ mod tests {
 	fn just_past_promotes_a_key_with_no_successor_to_the_top() {
 		// successor became partial when keys stopped being byte strings; mapping None to anything but
 		// Top would drop the greatest key out of every range that was meant to include it
-		assert_eq!(ExclusiveUpperEnd::just_past(&()), ExclusiveUpperEnd::Top);
-		assert!(ExclusiveUpperEnd::just_past(&()).covers(&()));
+		assert_eq!(Edge::just_past(&()), Edge::Top);
+		assert!(Edge::just_past(&()).covers(&()));
 	}
 
 	#[test]
@@ -197,10 +203,10 @@ mod tests {
 		// this is the half open end of the single key range, so it must admit the key and refuse the
 		// very next one, otherwise shrink_key would clear a neighbour it never named
 		let key = EncodedKey::new([0x01, 0x02]);
-		let end = ExclusiveUpperEnd::just_past(&key);
+		let end = Edge::just_past(&key);
 		assert!(end.covers(&key));
 		assert!(!end.covers(&key.successor().unwrap()));
 		assert!(!end.covers(&EncodedKey::new([0x02])));
-		assert_eq!(end, ExclusiveUpperEnd::Key(EncodedKey::new([0x01, 0x02, 0x00])));
+		assert_eq!(end, Edge::Key(EncodedKey::new([0x01, 0x02, 0x00])));
 	}
 }

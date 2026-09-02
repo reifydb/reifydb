@@ -15,7 +15,7 @@ use std::{borrow::Cow, collections::HashMap, fmt::Debug, hash::Hash, mem::size_o
 
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
-	key::typed::{ExclusiveUpperEnd, MultiKey, TypedKey},
+	key::typed::{Edge, MultiKey, TypedKey},
 	util::{budget::MemoryBudget, sorted::SortedVecMap},
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
@@ -62,16 +62,16 @@ pub trait RangeDomain: Copy + Debug + 'static {
 
 	fn dimension(partition: &Self::Partition) -> Self::Dimension;
 
-	fn span(partition: &Self::Partition) -> (Self::Key, ExclusiveUpperEnd<Self::Key>);
+	fn span(partition: &Self::Partition) -> (Self::Key, Edge<Self::Key>);
 
 	fn head_band(dimension: Self::Dimension) -> Option<(Self::Key, Self::Key)>;
 
 	fn caches_ranges(partition: &Self::Partition) -> bool;
 
-	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key>;
+	fn cache_tiers_run_end(partition: &Self::Partition) -> Edge<Self::Key>;
 
-	fn partition_walk_end(_partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
-		ExclusiveUpperEnd::Top
+	fn partition_walk_end(_partition: &Self::Partition) -> Edge<Self::Key> {
+		Edge::Top
 	}
 
 	fn supersedes(_resident: &Self::Row, _incoming: &Self::Row) -> bool {
@@ -110,8 +110,9 @@ pub type RangeRows<D> = Vec<(<D as RangeDomain>::Key, <D as RangeDomain>::Row)>;
 
 pub fn scan_range(gap: &Interval<MultiKey>) -> EncodedKeyRange {
 	let end = match &gap.end {
-		ExclusiveUpperEnd::Key(key) => Bound::Excluded(key.clone()),
-		ExclusiveUpperEnd::Top => Bound::Unbounded,
+		Edge::Bottom => Bound::Excluded(gap.start.clone()),
+		Edge::Key(key) => Bound::Excluded(key.clone()),
+		Edge::Top => Bound::Unbounded,
 	};
 	EncodedKeyRange::new(Bound::Included(gap.start.clone()), end)
 }
@@ -121,7 +122,7 @@ pub fn proven_span<K: TypedKey>(gap: &Interval<K>, last_key: Option<&K>, exhaust
 		return Some(gap.clone());
 	}
 	let last = last_key?;
-	Some(Interval::new(gap.start.clone(), ExclusiveUpperEnd::just_past(last).min(gap.end.clone())))
+	Some(Interval::new(gap.start.clone(), Edge::just_past(last).min(gap.end.clone())))
 }
 
 struct Partition<K, R> {

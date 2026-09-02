@@ -4,7 +4,7 @@
 #[cfg(test)]
 use std::cell::RefCell;
 
-use reifydb_core::{key::typed::ExclusiveUpperEnd, util::sorted::SortedVecMap};
+use reifydb_core::{key::typed::Edge, util::sorted::SortedVecMap};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
@@ -297,7 +297,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		if !self.retractions_unchanged(token) {
 			return;
 		}
-		coverage.extend(dimension, key.clone(), ExclusiveUpperEnd::just_past(key));
+		coverage.extend(dimension, key.clone(), Edge::just_past(key));
 	}
 }
 
@@ -320,7 +320,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::{
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-			typed::{ExclusiveUpperEnd, MultiKey},
+			typed::{Edge, MultiKey},
 		},
 		util::sorted::SortedVecMap,
 	};
@@ -396,7 +396,7 @@ mod tests {
 	}
 
 	fn claim(tier: &RangeTier<D>, operator: OperatorId, start: &EncodedKey, end: &EncodedKey) {
-		tier.coverage().write().extend(operator, start.clone(), ExclusiveUpperEnd::Key(end.clone()));
+		tier.coverage().write().extend(operator, start.clone(), Edge::Key(end.clone()));
 	}
 
 	fn residency(tier: &RangeTier<D>, id: &TestPartition, at: &EncodedKey) -> Option<Entry<EncodedPodRow>> {
@@ -431,7 +431,7 @@ mod tests {
 	}
 
 	fn island(at: &EncodedKey) -> Interval<MultiKey> {
-		Interval::new(at.clone(), ExclusiveUpperEnd::just_past(at))
+		Interval::new(at.clone(), Edge::just_past(at))
 	}
 
 	#[test]

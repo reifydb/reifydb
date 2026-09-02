@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-		typed::{ExclusiveUpperEnd, MultiKey},
+		typed::{Edge, MultiKey},
 	},
 };
 
@@ -55,21 +55,21 @@ impl TestPartition {
 		EncodedKey::new(OperatorStateKey::inner_encoded(self.group, self.keyspace, [0u8; 0]).as_bytes())
 	}
 
-	pub fn span(&self) -> (MultiKey, ExclusiveUpperEnd<MultiKey>) {
+	pub fn span(&self) -> (MultiKey, Edge<MultiKey>) {
 		let start = self.prefix();
 		let end = match prefix_successor(start.as_slice()) {
-			Some(successor) => ExclusiveUpperEnd::of(successor),
-			None => ExclusiveUpperEnd::Top,
+			Some(successor) => Edge::of(successor),
+			None => Edge::Top,
 		};
 		(start, end)
 	}
 
-	pub fn group_end(&self) -> ExclusiveUpperEnd<MultiKey> {
+	pub fn group_end(&self) -> Edge<MultiKey> {
 		let prefix = self.prefix();
 		let group = &prefix.as_slice()[..OperatorStateKey::KEYSPACE_INNER_OFFSET as usize];
 		match prefix_successor(group) {
-			Some(successor) => ExclusiveUpperEnd::of(successor),
-			None => ExclusiveUpperEnd::Top,
+			Some(successor) => Edge::of(successor),
+			None => Edge::Top,
 		}
 	}
 
@@ -128,7 +128,7 @@ impl RangeDomain for TestDomain {
 		partition.dimension
 	}
 
-	fn span(partition: &Self::Partition) -> (Self::Key, ExclusiveUpperEnd<Self::Key>) {
+	fn span(partition: &Self::Partition) -> (Self::Key, Edge<Self::Key>) {
 		partition.span()
 	}
 
@@ -140,7 +140,7 @@ impl RangeDomain for TestDomain {
 		partition.caches_ranges()
 	}
 
-	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
+	fn cache_tiers_run_end(partition: &Self::Partition) -> Edge<Self::Key> {
 		let floor = CACHE_TIERS_RUN_FLOOR[partition.keyspace.0 as usize];
 		if floor == partition.keyspace.0 {
 			return partition.span().1;
@@ -153,7 +153,7 @@ impl RangeDomain for TestDomain {
 		.1
 	}
 
-	fn partition_walk_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
+	fn partition_walk_end(partition: &Self::Partition) -> Edge<Self::Key> {
 		partition.group_end()
 	}
 
@@ -198,7 +198,7 @@ impl RangeDomain for AdmittingDomain {
 		TestDomain::dimension(partition)
 	}
 
-	fn span(partition: &Self::Partition) -> (Self::Key, ExclusiveUpperEnd<Self::Key>) {
+	fn span(partition: &Self::Partition) -> (Self::Key, Edge<Self::Key>) {
 		TestDomain::span(partition)
 	}
 
@@ -210,7 +210,7 @@ impl RangeDomain for AdmittingDomain {
 		TestDomain::caches_ranges(partition)
 	}
 
-	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
+	fn cache_tiers_run_end(partition: &Self::Partition) -> Edge<Self::Key> {
 		TestDomain::cache_tiers_run_end(partition)
 	}
 

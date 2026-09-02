@@ -17,7 +17,7 @@ use reifydb_core::{
 	interface::{catalog::storage::StorageId, store::EntryKind},
 	key::{
 		row::RowKey,
-		typed::{ExclusiveUpperEnd, MultiKey, TypedKey, range::KeyRange},
+		typed::{Edge, MultiKey, TypedKey, range::KeyRange},
 	},
 };
 use reifydb_store::{
@@ -123,11 +123,11 @@ impl PartitionId {
 		EncodedKey::new(bytes)
 	}
 
-	pub fn span(&self) -> (MultiKey, ExclusiveUpperEnd<MultiKey>) {
+	pub fn span(&self) -> (MultiKey, Edge<MultiKey>) {
 		let start = self.prefix();
 		let end = match prefix_successor(start.as_slice()) {
-			Some(successor) => ExclusiveUpperEnd::of(successor),
-			None => ExclusiveUpperEnd::Top,
+			Some(successor) => Edge::of(successor),
+			None => Edge::Top,
 		};
 		(start, end)
 	}
@@ -187,7 +187,7 @@ impl RangeDomain for MultiDomain {
 		partition.kind
 	}
 
-	fn span(partition: &Self::Partition) -> (Self::Key, ExclusiveUpperEnd<Self::Key>) {
+	fn span(partition: &Self::Partition) -> (Self::Key, Edge<Self::Key>) {
 		partition.span()
 	}
 
@@ -199,8 +199,8 @@ impl RangeDomain for MultiDomain {
 		partition.kind.cache_tiers().caches_ranges()
 	}
 
-	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
-		ExclusiveUpperEnd::Key(RowKey::storage_end(partition.storage()))
+	fn cache_tiers_run_end(partition: &Self::Partition) -> Edge<Self::Key> {
+		Edge::Key(RowKey::storage_end(partition.storage()))
 	}
 
 	fn supersedes(resident: &Self::Row, incoming: &Self::Row) -> bool {
@@ -362,7 +362,7 @@ impl MultiRangeTier {
 				)
 			})
 			.collect();
-		let span = Interval::new(lo.clone(), ExclusiveUpperEnd::just_past(through));
+		let span = Interval::new(lo.clone(), Edge::just_past(through));
 		matches!(self.tier.materialize(&scan, &span, &rows), Materialize::Materialized)
 	}
 
@@ -392,7 +392,7 @@ impl MultiRangeTier {
 		let Some(lo) = lo.filter(|lo| *lo <= range_hi) else {
 			return ServedChunk::Gap;
 		};
-		let hi = ExclusiveUpperEnd::just_past(&range_hi);
+		let hi = Edge::just_past(&range_hi);
 		let range = EncodedKeyRange::new(Bound::Included(lo.clone()), Bound::Included(range_hi.clone()));
 
 		let Some(scan) = self.tier.plan_scan(table, &KeyRange::from(&range)) else {
@@ -447,11 +447,11 @@ impl MultiRangeTier {
 	}
 }
 
-fn band_ends_the_range(table: EntryKind, stop: &ExclusiveUpperEnd<MultiKey>, range_hi: &EncodedKey) -> bool {
+fn band_ends_the_range(table: EntryKind, stop: &Edge<MultiKey>, range_hi: &EncodedKey) -> bool {
 	let Some((_, band_end)) = row_band(table) else {
 		return false;
 	};
-	range_hi.as_slice() <= band_end.as_slice() && *stop >= ExclusiveUpperEnd::Key(band_end)
+	range_hi.as_slice() <= band_end.as_slice() && *stop >= Edge::Key(band_end)
 }
 
 fn served_chunk(out: Vec<RawEntry>, cursor: &mut RangeCursor, exhausted: bool) -> ServedChunk {
@@ -491,9 +491,9 @@ mod tests {
 	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};
 
 	use super::{
-		Bound, EncodedKey, EncodedKeyRange, EntryKind, ExclusiveUpperEnd, MultiDomain, MultiRangeConfig,
-		MultiRangeTier, MultiVersionScope, PartitionId, ROW_BUCKET_SHIFT, RangeCursor, RangeDomain, RawEntry,
-		Segment, ServedChunk,
+		Bound, Edge, EncodedKey, EncodedKeyRange, EntryKind, MultiDomain, MultiRangeConfig, MultiRangeTier,
+		MultiVersionScope, PartitionId, ROW_BUCKET_SHIFT, RangeCursor, RangeDomain, RawEntry, Segment,
+		ServedChunk,
 	};
 
 	const STORAGE: StorageId = StorageId::Table(TableId(1));
@@ -1216,7 +1216,7 @@ mod tests {
 				}
 				.span();
 				assert!(
-					!matches!(end, ExclusiveUpperEnd::Top),
+					!matches!(end, Edge::Top),
 					"partition {bucket} of {storage:?} spans to the top of the key space"
 				);
 			}

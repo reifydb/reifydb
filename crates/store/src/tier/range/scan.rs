@@ -4,7 +4,7 @@
 use std::ops::Bound::{Excluded, Included, Unbounded};
 
 use reifydb_core::{
-	key::typed::{ExclusiveUpperEnd, TypedKey, range::KeyRange},
+	key::typed::{Edge, TypedKey, range::KeyRange},
 	util::sorted::SortedVecMap,
 };
 use reifydb_value::byte_size::ByteSize;
@@ -75,9 +75,9 @@ impl<D: RangeDomain> RangeTier<D> {
 			Unbounded => return None,
 		};
 		let hi = match range.end.as_ref() {
-			Included(key) => ExclusiveUpperEnd::just_past(key),
-			Excluded(key) => ExclusiveUpperEnd::Key(key.clone()),
-			Unbounded => ExclusiveUpperEnd::Top,
+			Included(key) => Edge::just_past(key),
+			Excluded(key) => Edge::Key(key.clone()),
+			Unbounded => Edge::Top,
 		};
 
 		let (lo, head, planned, held, retractions, advanced) = {
@@ -283,8 +283,9 @@ impl<D: RangeDomain> RangeTier<D> {
 				if let Some(resident) = partitions.get_mut(&partition) {
 					resident.tick = tick;
 					let upper = match &segment.end {
-						ExclusiveUpperEnd::Key(key) => Excluded(key.clone()),
-						ExclusiveUpperEnd::Top => Unbounded,
+						Edge::Bottom => Excluded(start.clone()),
+						Edge::Key(key) => Excluded(key.clone()),
+						Edge::Top => Unbounded,
 					};
 					let span = (Included(start), upper);
 					for (key, entry) in resident.entries.range(span) {
@@ -331,7 +332,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		let mut materialized = false;
 		let mut claim: Option<Interval<D::Key>> = None;
 		let mut claimed: Vec<usize> = Vec::new();
-		let mut walk_end: Option<ExclusiveUpperEnd<D::Key>> = None;
+		let mut walk_end: Option<Edge<D::Key>> = None;
 		if !span.is_empty() {
 			loop {
 				if let Some(limit) = walk_end.as_ref()
@@ -391,8 +392,8 @@ impl<D: RangeDomain> RangeTier<D> {
 					break;
 				}
 				match end {
-					ExclusiveUpperEnd::Key(key) => start = key,
-					ExclusiveUpperEnd::Top => break,
+					Edge::Key(key) => start = key,
+					Edge::Bottom | Edge::Top => break,
 				}
 			}
 		}
@@ -659,7 +660,7 @@ fn partition_at<D: RangeDomain>(dimension: D::Dimension, key: &D::Key) -> Option
 }
 
 fn unaddressable_gap<D: RangeDomain>(gap: &Interval<D::Key>) -> bool {
-	D::first_addressable(&gap.start).is_some_and(|aligned| gap.end <= ExclusiveUpperEnd::Key(aligned))
+	D::first_addressable(&gap.start).is_some_and(|aligned| gap.end <= Edge::Key(aligned))
 }
 
 fn exempt_gap<D: RangeDomain>(dimension: D::Dimension, confined: Option<D::Partition>, gap: &Interval<D::Key>) -> bool {
@@ -699,7 +700,7 @@ fn coalesce_gaps<D: RangeDomain>(pieces: Vec<Piece<D>>) -> Vec<Piece<D>> {
 					Some(_),
 				)),
 				Some(_),
-			) if *prev_exempt == *exempt && prev.end == ExclusiveUpperEnd::Key(interval.start.clone()) => {
+			) if *prev_exempt == *exempt && prev.end == Edge::Key(interval.start.clone()) => {
 				prev.end = interval.end.clone();
 				true
 			}
@@ -727,7 +728,7 @@ fn split_at_partitions<D: RangeDomain>(
 	};
 
 	let mut start = whole.start.clone();
-	let mut walk_end: Option<ExclusiveUpperEnd<D::Key>> = None;
+	let mut walk_end: Option<Edge<D::Key>> = None;
 	loop {
 		if !whole.end.covers(&start) {
 			return;
@@ -746,7 +747,7 @@ fn split_at_partitions<D: RangeDomain>(
 		}
 		let Some(partition) = confined.or_else(|| D::partition(dimension, &start)) else {
 			let bound = match D::first_addressable(&start) {
-				Some(aligned) => ExclusiveUpperEnd::Key(aligned),
+				Some(aligned) => Edge::Key(aligned),
 				None => whole.end.clone(),
 			};
 			let end = bound.min(whole.end.clone());
@@ -762,11 +763,11 @@ fn split_at_partitions<D: RangeDomain>(
 			}
 			match end {
 				_ if end == whole.end => return,
-				ExclusiveUpperEnd::Key(key) => {
+				Edge::Key(key) => {
 					start = key;
 					continue;
 				}
-				ExclusiveUpperEnd::Top => return,
+				Edge::Bottom | Edge::Top => return,
 			}
 		};
 
@@ -796,8 +797,8 @@ fn split_at_partitions<D: RangeDomain>(
 			return;
 		}
 		match end {
-			ExclusiveUpperEnd::Key(key) => start = key,
-			ExclusiveUpperEnd::Top => return,
+			Edge::Key(key) => start = key,
+			Edge::Bottom | Edge::Top => return,
 		}
 	}
 }
@@ -820,7 +821,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::{
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
-			typed::{ExclusiveUpperEnd, MultiKey, range::KeyRange},
+			typed::{Edge, MultiKey, range::KeyRange},
 		},
 	};
 	use reifydb_value::byte_size::ByteSize;
@@ -894,7 +895,7 @@ mod tests {
 	}
 
 	fn spanning(from: &EncodedKey, to: &EncodedKey) -> Interval<MultiKey> {
-		Interval::new(from.clone(), ExclusiveUpperEnd::Key(to.clone()))
+		Interval::new(from.clone(), Edge::Key(to.clone()))
 	}
 
 	fn drain(tier: &RangeTier<D>, scan: &RangeScan<D>, segment: &Interval<MultiKey>, limit: usize) -> Vec<String> {
@@ -1075,7 +1076,7 @@ mod tests {
 					Segment::Gap {
 						interval: Interval::new(
 							whole(top).start,
-							ExclusiveUpperEnd::Key(whole(UNCACHED).start)
+							Edge::Key(whole(UNCACHED).start)
 						),
 						exempt: false,
 					},
@@ -1121,7 +1122,7 @@ mod tests {
 		// tier run at a time then walked every group the key space can express, so the planner never
 		// returned and grew a piece per turn until the process died. The walk must stop at the group it
 		// entered and hand back what is left as a single piece.
-		let ExclusiveUpperEnd::Key(boundary) = partition(KeyspaceId(u8::MAX)).group_end() else {
+		let Edge::Key(boundary) = partition(KeyspaceId(u8::MAX)).group_end() else {
 			panic!("a group below the top of the key space must have a boundary");
 		};
 
@@ -1130,7 +1131,7 @@ mod tests {
 			OP,
 			None,
 			&Segment::Gap {
-				interval: Interval::new(whole(KeyspaceId(u8::MAX)).start, ExclusiveUpperEnd::Top),
+				interval: Interval::new(whole(KeyspaceId(u8::MAX)).start, Edge::Top),
 				exempt: false,
 			},
 			&mut pieces,
@@ -1140,7 +1141,7 @@ mod tests {
 		assert_eq!(
 			tail,
 			&Segment::Gap {
-				interval: Interval::new(boundary, ExclusiveUpperEnd::Top),
+				interval: Interval::new(boundary, Edge::Top),
 				exempt: false,
 			},
 			"everything past the group must come back as one piece running to the top of the key space"
@@ -1164,18 +1165,14 @@ mod tests {
 		let range = keyspace_inner_range(GROUP, CACHED);
 		let at = |suffix: &[u8]| key(CACHED, suffix);
 
-		assert!(claim(
-			&tier,
-			&range,
-			&Interval::new(at(b"a"), ExclusiveUpperEnd::Top),
-			&[(at(b"a"), row("a1"))]
-		) == Materialize::Materialized);
+		assert!(claim(&tier, &range, &Interval::new(at(b"a"), Edge::Top), &[(at(b"a"), row("a1"))])
+			== Materialize::Materialized);
 
-		let ExclusiveUpperEnd::Key(boundary) = partition(CACHED).group_end() else {
+		let Edge::Key(boundary) = partition(CACHED).group_end() else {
 			panic!("a group below the top of the key space must have a boundary");
 		};
 		assert!(
-			intervals(&tier).iter().all(|held| held.end <= ExclusiveUpperEnd::Key(boundary.clone())),
+			intervals(&tier).iter().all(|held| held.end <= Edge::Key(boundary.clone())),
 			"no claim may reach past the group the span started in"
 		);
 	}

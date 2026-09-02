@@ -15,7 +15,7 @@ use reifydb_core::{
 			state::{GroupId, OperatorStateKey, keyspace_inner_range},
 			traits::Keyspace,
 		},
-		typed::{ExclusiveUpperEnd, TypedKey, range::KeyRange},
+		typed::{Edge, TypedKey, range::KeyRange},
 	},
 	state::typed::SuffixBytes,
 };
@@ -139,8 +139,9 @@ impl<'a, K: Keyspace> TierPager<'a, K> {
 			None => Bound::Included(self.encode(&interval.start)),
 		};
 		let end = match &interval.end {
-			ExclusiveUpperEnd::Key(key) => Bound::Excluded(self.encode(key)),
-			ExclusiveUpperEnd::Top => keyspace_inner_range(self.group, K::ID).end,
+			Edge::Bottom => Bound::Excluded(self.encode(&interval.start)),
+			Edge::Key(key) => Bound::Excluded(self.encode(key)),
+			Edge::Top => keyspace_inner_range(self.group, K::ID).end,
 		};
 		EncodedKeyRange::new(start, end)
 	}
@@ -246,7 +247,7 @@ impl<K: Keyspace> PageSource for TierPager<'_, K> {
 						..
 					}) = self.scan.segments().get(self.segment_index + consumed)
 					{
-						if span.end != ExclusiveUpperEnd::Key(next.start.clone()) {
+						if span.end != Edge::Key(next.start.clone()) {
 							break;
 						}
 						span.end = next.end.clone();

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::typed::{ExclusiveUpperEnd, TypedKey};
+use reifydb_core::key::typed::{Edge, TypedKey};
 
 use crate::{
 	coverage::index::CoverageIndex,
@@ -19,7 +19,7 @@ pub(super) fn advance_to_head<D: RangeDomain>(
 	coverage: &CoverageIndex<D::Dimension, D::Key>,
 	dimension: D::Dimension,
 	lo: D::Key,
-	hi: &ExclusiveUpperEnd<D::Key>,
+	hi: &Edge<D::Key>,
 ) -> D::Key {
 	let Some((start, _)) = D::head_band(dimension) else {
 		return lo;

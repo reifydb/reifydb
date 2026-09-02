@@ -9,16 +9,16 @@ use std::{
 	},
 };
 
-use reifydb_core::key::typed::{ExclusiveUpperEnd, TypedKey};
+use reifydb_core::key::typed::{Edge, TypedKey};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Interval<K> {
 	pub start: K,
-	pub end: ExclusiveUpperEnd<K>,
+	pub end: Edge<K>,
 }
 
 impl<K: TypedKey> Interval<K> {
-	pub fn new(start: K, end: ExclusiveUpperEnd<K>) -> Self {
+	pub fn new(start: K, end: Edge<K>) -> Self {
 		Self {
 			start,
 			end,
@@ -36,7 +36,7 @@ impl<K: TypedKey> Interval<K> {
 
 #[derive(Clone, Debug)]
 pub struct CoverageSet<K> {
-	intervals: BTreeMap<K, ExclusiveUpperEnd<K>>,
+	intervals: BTreeMap<K, Edge<K>>,
 }
 
 impl<K: TypedKey> Default for CoverageSet<K> {
@@ -52,7 +52,7 @@ impl<K: TypedKey> CoverageSet<K> {
 		Self::default()
 	}
 
-	pub fn extend(&mut self, start: K, end: ExclusiveUpperEnd<K>) {
+	pub fn extend(&mut self, start: K, end: Edge<K>) {
 		if !end.covers(&start) {
 			return;
 		}
@@ -84,10 +84,10 @@ impl<K: TypedKey> CoverageSet<K> {
 	}
 
 	pub fn shrink_key(&mut self, key: &K) {
-		self.shrink_range(key, &ExclusiveUpperEnd::just_past(key));
+		self.shrink_range(key, &Edge::just_past(key));
 	}
 
-	pub fn shrink_range(&mut self, start: &K, end: &ExclusiveUpperEnd<K>) {
+	pub fn shrink_range(&mut self, start: &K, end: &Edge<K>) {
 		if !end.covers(start) {
 			return;
 		}
@@ -110,7 +110,7 @@ impl<K: TypedKey> CoverageSet<K> {
 		for key in doomed {
 			let old_end = self.intervals.remove(&key).unwrap();
 			if &key < start {
-				self.intervals.insert(key, ExclusiveUpperEnd::Key(start.clone()));
+				self.intervals.insert(key, Edge::Key(start.clone()));
 			}
 			if *end < old_end {
 				let resume = end.key().unwrap().clone();
@@ -133,7 +133,7 @@ impl<K: TypedKey> CoverageSet<K> {
 		})
 	}
 
-	pub fn overlapping(&self, lo: &K, hi: &ExclusiveUpperEnd<K>) -> Vec<Interval<K>> {
+	pub fn overlapping(&self, lo: &K, hi: &Edge<K>) -> Vec<Interval<K>> {
 		let mut clipped = Vec::new();
 		if !hi.covers(lo) {
 			return clipped;
@@ -155,7 +155,7 @@ impl<K: TypedKey> CoverageSet<K> {
 		clipped
 	}
 
-	pub fn gaps(&self, lo: &K, hi: &ExclusiveUpperEnd<K>) -> Vec<Interval<K>> {
+	pub fn gaps(&self, lo: &K, hi: &Edge<K>) -> Vec<Interval<K>> {
 		let mut holes = Vec::new();
 		if !hi.covers(lo) {
 			return holes;
@@ -168,7 +168,7 @@ impl<K: TypedKey> CoverageSet<K> {
 				None => break,
 			};
 			if at < covered.start {
-				holes.push(Interval::new(at, ExclusiveUpperEnd::Key(covered.start.clone())));
+				holes.push(Interval::new(at, Edge::Key(covered.start.clone())));
 			}
 			cursor = covered.end.key().cloned();
 		}
@@ -202,7 +202,7 @@ impl<K: TypedKey> CoverageSet<K> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::key::typed::{ExclusiveUpperEnd, MultiKey, TypedKey};
+	use reifydb_core::key::typed::{Edge, MultiKey, TypedKey};
 
 	use super::{CoverageSet, Interval};
 
@@ -215,11 +215,11 @@ mod tests {
 	}
 
 	fn iv(start: &str, end: &str) -> Interval<MultiKey> {
-		Interval::new(k(start), ExclusiveUpperEnd::of(end))
+		Interval::new(k(start), Edge::of(end))
 	}
 
 	fn open(start: &str) -> Interval<MultiKey> {
-		Interval::new(k(start), ExclusiveUpperEnd::Top)
+		Interval::new(k(start), Edge::Top)
 	}
 
 	fn snapshot(set: &CoverageSet<MultiKey>) -> Vec<Interval<MultiKey>> {
@@ -258,8 +258,8 @@ mod tests {
 	fn extend_ignores_an_empty_span() {
 		// A zero-width claim must not land as an entry, or later merges inherit a corrupt start.
 		let mut set = CoverageSet::new();
-		set.extend(k("c"), ExclusiveUpperEnd::of("c"));
-		set.extend(k("f"), ExclusiveUpperEnd::of("c"));
+		set.extend(k("c"), Edge::of("c"));
+		set.extend(k("f"), Edge::of("c"));
 		assert_eq!(snapshot(&set), vec![]);
 	}
 
@@ -267,8 +267,8 @@ mod tests {
 	fn extend_merges_two_touching_intervals() {
 		// Touching pages must coalesce, otherwise a paged scan fragments into one gap per page.
 		let mut set = CoverageSet::new();
-		set.extend(k("a"), ExclusiveUpperEnd::of("c"));
-		set.extend(k("c"), ExclusiveUpperEnd::of("f"));
+		set.extend(k("a"), Edge::of("c"));
+		set.extend(k("c"), Edge::of("f"));
 		assert_eq!(snapshot(&set), vec![iv("a", "f")]);
 	}
 
@@ -276,22 +276,19 @@ mod tests {
 	fn extend_keeps_intervals_one_key_apart_separate() {
 		// TypedKey "b" itself is uncovered, so merging across it would overstate RAM.
 		let mut set = CoverageSet::new();
-		set.extend(k("a"), ExclusiveUpperEnd::of("b"));
-		set.extend(successor_of(&k("b")), ExclusiveUpperEnd::of("c"));
-		assert_eq!(
-			snapshot(&set),
-			vec![iv("a", "b"), Interval::new(successor_of(&k("b")), ExclusiveUpperEnd::of("c"))]
-		);
+		set.extend(k("a"), Edge::of("b"));
+		set.extend(successor_of(&k("b")), Edge::of("c"));
+		assert_eq!(snapshot(&set), vec![iv("a", "b"), Interval::new(successor_of(&k("b")), Edge::of("c"))]);
 	}
 
 	#[test]
 	fn extend_swallows_every_spanned_interval() {
 		// One claim over three islands must leave one interval, not one plus the three survivors.
 		let mut set = CoverageSet::new();
-		set.extend(k("b"), ExclusiveUpperEnd::of("c"));
-		set.extend(k("d"), ExclusiveUpperEnd::of("e"));
-		set.extend(k("f"), ExclusiveUpperEnd::of("g"));
-		set.extend(k("a"), ExclusiveUpperEnd::of("h"));
+		set.extend(k("b"), Edge::of("c"));
+		set.extend(k("d"), Edge::of("e"));
+		set.extend(k("f"), Edge::of("g"));
+		set.extend(k("a"), Edge::of("h"));
 		assert_eq!(snapshot(&set), vec![iv("a", "h")]);
 	}
 
@@ -299,8 +296,8 @@ mod tests {
 	fn extend_inside_an_existing_interval_changes_nothing() {
 		// Re-claiming a subset must never narrow the wider claim already held.
 		let mut set = CoverageSet::new();
-		set.extend(k("a"), ExclusiveUpperEnd::of("z"));
-		set.extend(k("c"), ExclusiveUpperEnd::of("f"));
+		set.extend(k("a"), Edge::of("z"));
+		set.extend(k("c"), Edge::of("f"));
 		assert_eq!(snapshot(&set), vec![iv("a", "z")]);
 	}
 
@@ -308,9 +305,9 @@ mod tests {
 	fn extend_to_top_swallows_everything_above() {
 		// An unbounded claim must win over every bounded end it absorbs.
 		let mut set = CoverageSet::new();
-		set.extend(k("b"), ExclusiveUpperEnd::of("c"));
-		set.extend(k("f"), ExclusiveUpperEnd::of("g"));
-		set.extend(k("a"), ExclusiveUpperEnd::Top);
+		set.extend(k("b"), Edge::of("c"));
+		set.extend(k("f"), Edge::of("g"));
+		set.extend(k("a"), Edge::Top);
 		assert_eq!(snapshot(&set), vec![open("a")]);
 	}
 
@@ -318,28 +315,25 @@ mod tests {
 	fn shrink_key_in_the_middle_splits_the_interval() {
 		// The tail must resume at the successor, or key "m" stays wrongly covered.
 		let mut set = CoverageSet::new();
-		set.extend(k("a"), ExclusiveUpperEnd::of("z"));
+		set.extend(k("a"), Edge::of("z"));
 		set.shrink_key(&k("m"));
-		assert_eq!(
-			snapshot(&set),
-			vec![iv("a", "m"), Interval::new(successor_of(&k("m")), ExclusiveUpperEnd::of("z"))]
-		);
+		assert_eq!(snapshot(&set), vec![iv("a", "m"), Interval::new(successor_of(&k("m")), Edge::of("z"))]);
 	}
 
 	#[test]
 	fn shrink_key_at_interval_start_leaves_the_tail() {
 		// No zero-width head may be stored when the removed key is the interval start.
 		let mut set = CoverageSet::new();
-		set.extend(k("a"), ExclusiveUpperEnd::of("z"));
+		set.extend(k("a"), Edge::of("z"));
 		set.shrink_key(&k("a"));
-		assert_eq!(snapshot(&set), vec![Interval::new(successor_of(&k("a")), ExclusiveUpperEnd::of("z"))]);
+		assert_eq!(snapshot(&set), vec![Interval::new(successor_of(&k("a")), Edge::of("z"))]);
 	}
 
 	#[test]
 	fn shrink_key_removes_a_single_key_interval_entirely() {
 		// An interval reduced to nothing must vanish, not linger as a zero-width entry.
 		let mut set = CoverageSet::new();
-		set.extend(k("b"), ExclusiveUpperEnd::Key(successor_of(&k("b"))));
+		set.extend(k("b"), Edge::Key(successor_of(&k("b"))));
 		set.shrink_key(&k("b"));
 		assert_eq!(snapshot(&set), vec![]);
 	}
@@ -348,8 +342,8 @@ mod tests {
 	fn shrink_range_splits_one_interval_into_two() {
 		// Dropping a middle span must leave the tail claimed, not discard it.
 		let mut set = CoverageSet::new();
-		set.extend(k("a"), ExclusiveUpperEnd::of("z"));
-		set.shrink_range(&k("d"), &ExclusiveUpperEnd::of("m"));
+		set.extend(k("a"), Edge::of("z"));
+		set.shrink_range(&k("d"), &Edge::of("m"));
 		assert_eq!(snapshot(&set), vec![iv("a", "d"), iv("m", "z")]);
 	}
 
@@ -357,10 +351,10 @@ mod tests {
 	fn shrink_range_removes_whole_intervals_and_clips_the_ends() {
 		// Every interval the span reaches must be dropped, not only the first one found.
 		let mut set = CoverageSet::new();
-		set.extend(k("a"), ExclusiveUpperEnd::of("c"));
-		set.extend(k("d"), ExclusiveUpperEnd::of("f"));
-		set.extend(k("g"), ExclusiveUpperEnd::of("z"));
-		set.shrink_range(&k("b"), &ExclusiveUpperEnd::of("h"));
+		set.extend(k("a"), Edge::of("c"));
+		set.extend(k("d"), Edge::of("f"));
+		set.extend(k("g"), Edge::of("z"));
+		set.shrink_range(&k("b"), &Edge::of("h"));
 		assert_eq!(snapshot(&set), vec![iv("a", "b"), iv("h", "z")]);
 	}
 
@@ -368,8 +362,8 @@ mod tests {
 	fn shrink_range_ignores_an_empty_span() {
 		// A zero-width drop must not split an interval in two at that point.
 		let mut set = CoverageSet::new();
-		set.extend(k("a"), ExclusiveUpperEnd::of("z"));
-		set.shrink_range(&k("c"), &ExclusiveUpperEnd::of("c"));
+		set.extend(k("a"), Edge::of("z"));
+		set.shrink_range(&k("c"), &Edge::of("c"));
 		assert_eq!(snapshot(&set), vec![iv("a", "z")]);
 	}
 
@@ -377,8 +371,8 @@ mod tests {
 	fn covering_returns_the_holding_interval() {
 		// Lookup must land on the greatest start at or below the key, not the first one stored.
 		let mut set = CoverageSet::new();
-		set.extend(k("a"), ExclusiveUpperEnd::of("c"));
-		set.extend(k("e"), ExclusiveUpperEnd::of("g"));
+		set.extend(k("a"), Edge::of("c"));
+		set.extend(k("e"), Edge::of("g"));
 		assert_eq!(set.covering(&k("f")), Some(iv("e", "g")));
 		assert_eq!(set.covering(&k("d")), None);
 	}
@@ -387,7 +381,7 @@ mod tests {
 	fn contains_is_false_at_the_exclusive_end() {
 		// Reporting the end key as covered would serve an absent row as authoritative.
 		let mut set = CoverageSet::new();
-		set.extend(k("a"), ExclusiveUpperEnd::of("c"));
+		set.extend(k("a"), Edge::of("c"));
 		assert!(set.contains(&k("a")));
 		assert!(set.contains(&k("b")));
 		assert!(!set.contains(&k("c")));
@@ -397,76 +391,73 @@ mod tests {
 	fn overlapping_clips_the_low_end() {
 		// A result starting before lo would claim coverage the caller never asked about.
 		let mut set = CoverageSet::new();
-		set.extend(k("a"), ExclusiveUpperEnd::of("z"));
-		assert_eq!(set.overlapping(&k("c"), &ExclusiveUpperEnd::of("f")), vec![iv("c", "f")]);
+		set.extend(k("a"), Edge::of("z"));
+		assert_eq!(set.overlapping(&k("c"), &Edge::of("f")), vec![iv("c", "f")]);
 	}
 
 	#[test]
 	fn overlapping_clips_the_high_end() {
 		// An unclipped end leaks a claim past hi into whatever the caller does with it.
 		let mut set = CoverageSet::new();
-		set.extend(k("b"), ExclusiveUpperEnd::of("z"));
-		assert_eq!(set.overlapping(&k("a"), &ExclusiveUpperEnd::of("f")), vec![iv("b", "f")]);
+		set.extend(k("b"), Edge::of("z"));
+		assert_eq!(set.overlapping(&k("a"), &Edge::of("f")), vec![iv("b", "f")]);
 	}
 
 	#[test]
 	fn overlapping_with_top_hi_returns_every_interval_above_lo() {
 		// An unbounded query must not stop at the first interval it finds.
 		let mut set = CoverageSet::new();
-		set.extend(k("b"), ExclusiveUpperEnd::of("c"));
-		set.extend(k("f"), ExclusiveUpperEnd::Top);
-		assert_eq!(set.overlapping(&k("a"), &ExclusiveUpperEnd::Top), vec![iv("b", "c"), open("f")]);
+		set.extend(k("b"), Edge::of("c"));
+		set.extend(k("f"), Edge::Top);
+		assert_eq!(set.overlapping(&k("a"), &Edge::Top), vec![iv("b", "c"), open("f")]);
 	}
 
 	#[test]
 	fn gaps_on_an_empty_set_is_the_whole_query_range() {
 		// With nothing covered the caller must be told to read the entire span from disk.
 		let set = CoverageSet::new();
-		assert_eq!(set.gaps(&k("a"), &ExclusiveUpperEnd::of("z")), vec![iv("a", "z")]);
+		assert_eq!(set.gaps(&k("a"), &Edge::of("z")), vec![iv("a", "z")]);
 	}
 
 	#[test]
 	fn gaps_returns_empty_when_lo_is_not_below_hi() {
 		// An inverted or zero-width query must yield no span, never a backwards one.
 		let set = CoverageSet::new();
-		assert_eq!(set.gaps(&k("m"), &ExclusiveUpperEnd::of("c")), vec![]);
-		assert_eq!(set.gaps(&k("c"), &ExclusiveUpperEnd::of("c")), vec![]);
+		assert_eq!(set.gaps(&k("m"), &Edge::of("c")), vec![]);
+		assert_eq!(set.gaps(&k("c"), &Edge::of("c")), vec![]);
 	}
 
 	#[test]
 	fn gaps_and_overlapping_partition_the_query_range() {
 		// Every point in [lo, hi) belongs to exactly one side; a hole means a row is never read.
 		let mut set = CoverageSet::new();
-		set.extend(k("b"), ExclusiveUpperEnd::of("d"));
-		set.extend(k("f"), ExclusiveUpperEnd::of("h"));
-		assert_eq!(set.overlapping(&k("a"), &ExclusiveUpperEnd::of("z")), vec![iv("b", "d"), iv("f", "h")]);
-		assert_eq!(
-			set.gaps(&k("a"), &ExclusiveUpperEnd::of("z")),
-			vec![iv("a", "b"), iv("d", "f"), iv("h", "z")]
-		);
+		set.extend(k("b"), Edge::of("d"));
+		set.extend(k("f"), Edge::of("h"));
+		assert_eq!(set.overlapping(&k("a"), &Edge::of("z")), vec![iv("b", "d"), iv("f", "h")]);
+		assert_eq!(set.gaps(&k("a"), &Edge::of("z")), vec![iv("a", "b"), iv("d", "f"), iv("h", "z")]);
 	}
 
 	#[test]
 	fn gaps_emits_no_zero_width_gap_when_coverage_starts_at_lo() {
 		// A zero-width gap costs a pointless persistent round trip and inflates the gap guard.
 		let mut set = CoverageSet::new();
-		set.extend(k("a"), ExclusiveUpperEnd::of("d"));
-		assert_eq!(set.gaps(&k("a"), &ExclusiveUpperEnd::of("z")), vec![iv("d", "z")]);
+		set.extend(k("a"), Edge::of("d"));
+		assert_eq!(set.gaps(&k("a"), &Edge::of("z")), vec![iv("d", "z")]);
 	}
 
 	#[test]
 	fn gaps_with_top_hi_keeps_the_open_tail() {
 		// The span above the last interval is unbounded and must still be reported.
 		let mut set = CoverageSet::new();
-		set.extend(k("b"), ExclusiveUpperEnd::of("d"));
-		assert_eq!(set.gaps(&k("a"), &ExclusiveUpperEnd::Top), vec![iv("a", "b"), open("d")]);
+		set.extend(k("b"), Edge::of("d"));
+		assert_eq!(set.gaps(&k("a"), &Edge::Top), vec![iv("a", "b"), open("d")]);
 	}
 
 	#[test]
 	fn gaps_with_top_hi_ends_when_coverage_reaches_top() {
 		// Coverage running to Top leaves no tail; emitting one would re-read covered rows forever.
 		let mut set = CoverageSet::new();
-		set.extend(k("b"), ExclusiveUpperEnd::Top);
-		assert_eq!(set.gaps(&k("a"), &ExclusiveUpperEnd::Top), vec![iv("a", "b")]);
+		set.extend(k("b"), Edge::Top);
+		assert_eq!(set.gaps(&k("a"), &Edge::Top), vec![iv("a", "b")]);
 	}
 }
