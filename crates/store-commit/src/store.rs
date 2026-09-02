@@ -678,7 +678,10 @@ impl MetricsCollector for CommitStore {
 pub mod tests {
 	use std::collections::BTreeMap;
 
-	use reifydb_core::interface::catalog::{id::TableId, storage::StorageId};
+	use reifydb_core::interface::{
+		catalog::{id::TableId, storage::StorageId},
+		store::EntryLayout,
+	};
 
 	use super::*;
 
@@ -742,7 +745,7 @@ pub mod tests {
 		storage.set(
 			version,
 			HashMap::from([(
-				EntryKind::Source(source1),
+				EntryKind::Source(source1, EntryLayout::Row),
 				vec![(key.clone(), Some(CowVec::new(b"table1".to_vec())))],
 			)]),
 		)
@@ -750,18 +753,24 @@ pub mod tests {
 		storage.set(
 			version,
 			HashMap::from([(
-				EntryKind::Source(source2),
+				EntryKind::Source(source2, EntryLayout::Row),
 				vec![(key.clone(), Some(CowVec::new(b"table2".to_vec())))],
 			)]),
 		)
 		.unwrap();
 
 		assert_eq!(
-			storage.get(EntryKind::Source(source1), &key, version).unwrap().value().as_deref(),
+			storage.get(EntryKind::Source(source1, EntryLayout::Row), &key, version)
+				.unwrap()
+				.value()
+				.as_deref(),
 			Some(b"table1".as_slice())
 		);
 		assert_eq!(
-			storage.get(EntryKind::Source(source2), &key, version).unwrap().value().as_deref(),
+			storage.get(EntryKind::Source(source2, EntryLayout::Row), &key, version)
+				.unwrap()
+				.value()
+				.as_deref(),
 			Some(b"table2".as_slice())
 		);
 	}
@@ -1820,7 +1829,7 @@ pub mod tests {
 		storage.set(
 			CommitVersion(7),
 			HashMap::from([(
-				EntryKind::Source(StorageId::Table(TableId(1))),
+				EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row),
 				vec![(key.clone(), Some(CowVec::new(b"early".to_vec())))],
 			)]),
 		)
@@ -1828,7 +1837,7 @@ pub mod tests {
 		storage.set(
 			CommitVersion(19),
 			HashMap::from([(
-				EntryKind::Source(StorageId::Table(TableId(2))),
+				EntryKind::Source(StorageId::Table(TableId(2)), EntryLayout::Row),
 				vec![(key.clone(), Some(CowVec::new(b"mid".to_vec())))],
 			)]),
 		)

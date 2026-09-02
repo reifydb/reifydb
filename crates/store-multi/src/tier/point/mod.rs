@@ -526,7 +526,7 @@ mod tests {
 				id::{SeriesId, TableId, ViewId},
 				storage::StorageId,
 			},
-			store::{EntryKind, storage_key},
+			store::{EntryKind, EntryLayout, storage_key},
 		},
 		key::{
 			row::{PartitionedRowKey, RowKey, RowSequenceKey},
@@ -544,7 +544,7 @@ mod tests {
 		MultiReadMetrics, PointDomain, RowBytes, VersionedGetResult,
 	};
 
-	const TABLE: EntryKind = EntryKind::Source(StorageId::Table(TableId(1)));
+	const TABLE: EntryKind = EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row);
 
 	fn tier() -> MultiPointTier {
 		MultiPointTier::new(MultiPointConfig {
@@ -861,9 +861,8 @@ mod tests {
 
 	#[test]
 	fn a_view_row_and_a_view_series_row_at_the_same_numbers_do_not_share_a_slot() {
-		// one view entry holds both layouts, so both reach this tier under the same EntryKind; without
-		// separate drawers a series write would answer a plain row read with a point from the series
-		const VIEW: EntryKind = EntryKind::Source(StorageId::View(ViewId(3)));
+		// a view owns rows of exactly one layout, so the entry the router picks must already separate the
+		// two; routing both to one entry would let a series write answer a plain row read
 		let tier = tier();
 		let row = RowKey::encoded(StorageId::View(ViewId(3)), RowNumber(5));
 		let series = SeriesRowKey {
@@ -873,12 +872,18 @@ mod tests {
 			sequence: 5,
 		}
 		.encode();
+		let (row_entry, row_ident) = storage_key(&row);
+		let (series_entry, series_ident) = storage_key(&series);
 
-		tier.insert(VIEW, storage_key(&row).1, row.clone(), CommitVersion(1), value("plain"));
-		tier.insert(VIEW, storage_key(&series).1, series.clone(), CommitVersion(1), value("point"));
+		assert_eq!(row_entry, EntryKind::Source(StorageId::View(ViewId(3)), EntryLayout::Row));
+		assert_eq!(series_entry, EntryKind::Source(StorageId::View(ViewId(3)), EntryLayout::Series));
+		assert_ne!(row_entry, series_entry, "one view entry must not hold two layouts");
 
-		assert_eq!(read(&tier, VIEW, &row), Some("plain".to_string()));
-		assert_eq!(read(&tier, VIEW, &series), Some("point".to_string()));
+		tier.insert(row_entry, row_ident, row.clone(), CommitVersion(1), value("plain"));
+		tier.insert(series_entry, series_ident, series.clone(), CommitVersion(1), value("point"));
+
+		assert_eq!(read(&tier, row_entry, &row), Some("plain".to_string()));
+		assert_eq!(read(&tier, series_entry, &series), Some("point".to_string()));
 	}
 
 	#[test]
@@ -895,7 +900,7 @@ mod tests {
 		.encode();
 		assert!(storage_key(&series).1.is_some(), "a series row must carry an identity");
 		narrow.insert(
-			EntryKind::Source(StorageId::series(3)),
+			storage_key(&series).0,
 			storage_key(&series).1,
 			series.clone(),
 			CommitVersion(1),
@@ -918,10 +923,12 @@ mod tests {
 	fn a_partitioned_series_row_lands_in_its_own_drawer() {
 		// the partitioned series shape carries a partition the plain series shape does not; sharing a
 		// drawer would let one partition's point answer for another
-		const PART: EntryKind = EntryKind::PartitionedSource(StorageId::Series(SeriesId(3)));
+		const PART: EntryKind =
+			EntryKind::PartitionedSource(StorageId::Series(SeriesId(3)), EntryLayout::Series);
 		let tier = tier();
 		let one = PartitionedSeriesRowKey::encoded(StorageId::series(3), Partition(1), None, 5, 5);
 		let two = PartitionedSeriesRowKey::encoded(StorageId::series(3), Partition(2), None, 5, 5);
+		assert_eq!(storage_key(&one).0, PART, "the router must place a partitioned series row here");
 
 		tier.insert(PART, storage_key(&one).1, one.clone(), CommitVersion(1), value("one"));
 		tier.insert(PART, storage_key(&two).1, two.clone(), CommitVersion(1), value("two"));
@@ -934,7 +941,7 @@ mod tests {
 	fn a_row_and_a_partitioned_row_at_the_same_number_do_not_share_a_slot() {
 		// the two shapes live in separate tiers; if a partitioned write landed on the row tier's slot it
 		// would answer a plain row read with a value from a different partition
-		const PART: EntryKind = EntryKind::PartitionedSource(StorageId::Table(TableId(1)));
+		const PART: EntryKind = EntryKind::PartitionedSource(StorageId::Table(TableId(1)), EntryLayout::Row);
 		let tier = tier();
 		let partitioned = PartitionedRowKey::encoded(StorageId::Table(TableId(1)), Partition(7), RowNumber(1));
 
@@ -1007,8 +1014,8 @@ mod tests {
 		// would silently share one slot and serve each other's values.
 		let tier = tier();
 		let shared_bytes = EncodedKey::new(b"same-bytes-different-tables".to_vec());
-		let table_a = EntryKind::Source(StorageId::Table(TableId(1)));
-		let table_b = EntryKind::Source(StorageId::Table(TableId(2)));
+		let table_a = EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row);
+		let table_b = EntryKind::Source(StorageId::Table(TableId(2)), EntryLayout::Row);
 
 		tier.insert(table_a, storage_key(&shared_bytes).1, shared_bytes.clone(), CommitVersion(5), value("a"));
 		tier.insert(table_b, storage_key(&shared_bytes).1, shared_bytes.clone(), CommitVersion(5), value("b"));

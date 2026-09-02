@@ -112,7 +112,7 @@ impl PartitionId {
 
 	fn storage(&self) -> StorageId {
 		match self.kind {
-			EntryKind::Source(storage) => storage,
+			EntryKind::Source(storage, _) => storage,
 			_ => panic!("a range partition outside a source entry kind names no row band"),
 		}
 	}
@@ -145,7 +145,7 @@ impl PartitionId {
 
 pub fn row_band(kind: EntryKind) -> Option<(EncodedKey, EncodedKey)> {
 	match kind {
-		EntryKind::Source(storage) => Some((RowKey::storage_start(storage), RowKey::storage_end(storage))),
+		EntryKind::Source(storage, _) => Some((RowKey::storage_start(storage), RowKey::storage_end(storage))),
 		_ => None,
 	}
 }
@@ -477,7 +477,10 @@ fn served_chunk(out: Vec<RawEntry>, cursor: &mut RangeCursor, exhausted: bool) -
 mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
-		interface::catalog::{id::TableId, storage::StorageId},
+		interface::{
+			catalog::{id::TableId, storage::StorageId},
+			store::EntryLayout,
+		},
 		key::{
 			row::RowKey,
 			series::SeriesRowKey,
@@ -535,7 +538,7 @@ mod tests {
 	}
 
 	fn source() -> EntryKind {
-		EntryKind::Source(STORAGE)
+		EntryKind::Source(STORAGE, EntryLayout::Row)
 	}
 
 	fn entry(n: u64, version: u64) -> RawEntry {
@@ -641,7 +644,7 @@ mod tests {
 		// The persistent read feeding a claim can predate a flushed row, so a write the cache declined is lost
 		// under it.
 		let tier = tier();
-		let kind = EntryKind::Source(STORAGE);
+		let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 		let flushed = RowKey::encoded(STORAGE, 5);
 		let lo = RowKey::encoded(STORAGE, 9);
 		let through = RowKey::encoded(STORAGE, 1);
@@ -698,7 +701,7 @@ mod tests {
 		// would fall under that partition's span, which would then answer for rows it never held.
 		let stray = EncodedKey::new(vec![0u8, 1, 2]);
 		assert_eq!(
-			MultiDomain::partition(EntryKind::Source(STORAGE), &stray),
+			MultiDomain::partition(EntryKind::Source(STORAGE, EntryLayout::Row), &stray),
 			None,
 			"a key shorter than the band prefix carries no bucket to attribute it by"
 		);
@@ -714,7 +717,7 @@ mod tests {
 		// A flush can deliver a version the cache has already moved past. Seating it would roll the cached
 		// row backwards and serve a value the store no longer holds.
 		let tier = tier();
-		let kind = EntryKind::Source(STORAGE);
+		let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 		let key = RowKey::encoded(STORAGE, 5);
 		let through = RowKey::encoded(STORAGE, 1);
 
@@ -1208,7 +1211,7 @@ mod tests {
 		for storage in [STORAGE, NEIGHBOUR, StorageId::Table(TableId(u64::MAX))] {
 			for bucket in [0u64, 1, u64::MAX >> ROW_BUCKET_SHIFT] {
 				let (_, end) = PartitionId {
-					kind: EntryKind::Source(storage),
+					kind: EntryKind::Source(storage, EntryLayout::Row),
 					bucket,
 				}
 				.span();

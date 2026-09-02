@@ -17,7 +17,7 @@ use reifydb_core::{
 	delta::Delta,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::{EntryKind, MultiVersionCommit},
+		store::{EntryKind, EntryLayout, MultiVersionCommit},
 	},
 	key::row::RowKey,
 	lifecycle::watermark::EvictionWatermark,
@@ -79,7 +79,7 @@ fn tier_with_rows(rows: u64) -> (MultiPersistentTier, impl Drop) {
 	let (tier, guard) = MultiPersistentTier::sqlite_in_memory();
 	let mut batch = HashMap::new();
 	batch.insert(
-		EntryKind::Source(STORAGE),
+		EntryKind::Source(STORAGE, EntryLayout::Row),
 		(1..=rows)
 			.map(|row| (RowKey::encoded(STORAGE, row), Some(CowVec::new(format!("v{row}").into_bytes()))))
 			.collect::<Vec<_>>(),
@@ -90,7 +90,7 @@ fn tier_with_rows(rows: u64) -> (MultiPersistentTier, impl Drop) {
 
 fn tier_chunk(tier: &MultiPersistentTier, cursor: &mut RangeCursor) -> reifydb_value::Result<usize> {
 	Ok(tier.range_next(
-		EntryKind::Source(STORAGE),
+		EntryKind::Source(STORAGE, EntryLayout::Row),
 		cursor,
 		Bound::Unbounded,
 		Bound::Unbounded,

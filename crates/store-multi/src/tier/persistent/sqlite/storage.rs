@@ -57,22 +57,20 @@ use crate::{
 				build_chunked_upsert_sql_row, build_create_current_sql,
 				build_create_current_sql_partitioned, build_create_current_sql_row,
 				build_current_exists_sql, build_current_keys_sql, build_current_keys_sql_partitioned,
-				build_current_keys_sql_row, build_delete_below_version_sql,
-				build_delete_below_version_sql_partitioned,
-				build_delete_below_version_sql_partitioned_exact, build_delete_below_version_sql_row,
-				build_delete_current_sql, build_delete_current_sql_partitioned,
-				build_delete_current_sql_row, build_delete_keys_sql, build_delete_keys_sql_partitioned,
-				build_delete_keys_sql_row, build_expired_keys_sql, build_expired_keys_sql_partitioned,
-				build_expired_keys_sql_row, build_get_current_sql, build_get_current_sql_partitioned,
-				build_get_current_sql_row, build_get_many_current_sql,
-				build_get_many_current_sql_partitioned, build_get_many_current_sql_row,
-				build_max_version_sql, build_range_current_sql, build_range_current_sql_partitioned,
-				build_range_current_sql_partitioned_exact, build_range_current_sql_row,
-				build_upsert_current_sql, build_upsert_current_sql_partitioned,
-				build_upsert_current_sql_row, prefix_upper_bound, version_from_bytes, version_to_bytes,
+				build_current_keys_sql_row, build_delete_current_sql,
+				build_delete_current_sql_partitioned, build_delete_current_sql_row,
+				build_delete_keys_sql, build_delete_keys_sql_partitioned, build_delete_keys_sql_row,
+				build_expired_keys_sql, build_expired_keys_sql_partitioned, build_expired_keys_sql_row,
+				build_get_current_sql, build_get_current_sql_partitioned, build_get_current_sql_row,
+				build_get_many_current_sql, build_get_many_current_sql_partitioned,
+				build_get_many_current_sql_row, build_max_version_sql, build_range_current_sql,
+				build_range_current_sql_partitioned, build_range_current_sql_partitioned_exact,
+				build_range_current_sql_row, build_upsert_current_sql,
+				build_upsert_current_sql_partitioned, build_upsert_current_sql_row, version_from_bytes,
+				version_to_bytes,
 			},
 			schema::{
-				PartitionedRangeBounds, RowRangeBounds, partition_half_to_sql, partitioned_ident_of,
+				PartitionedRangeBounds, partition_half_to_sql, partitioned_ident_of,
 				partitioned_key_for, partitioned_range_bounds, row_ident_of, row_key_for,
 				row_range_bounds, row_to_sql,
 			},
@@ -350,343 +348,6 @@ impl SqlitePersistentStorage {
 			Err(e) => Err(error!(internal(format!("Failed to count persistent current: {}", e)))),
 		}
 	}
-
-	pub fn delete_below_version(
-		&self,
-		table: EntryKind,
-		cutoff_version: CommitVersion,
-		prefix: Option<&[u8]>,
-		cursor: Option<&[u8]>,
-		limit: usize,
-	) -> Result<(Vec<EncodedKey>, Option<EncodedKey>)> {
-		if limit == 0 {
-			return Ok((Vec::new(), None));
-		}
-		let limit = limit.min(i64::MAX as usize);
-		let table_sql = self.table_sql(table);
-		let storage = source_storage(table);
-		let cutoff = version_to_bytes(cutoff_version);
-		let guard = self.lock_conn();
-		let Some(conn) = guard.as_ref() else {
-			return Ok((Vec::new(), None));
-		};
-
-		match table_sql.schema {
-			SqliteSchema::Blob => {
-				let sql = build_delete_below_version_sql(
-					&table_sql.table_name,
-					prefix.is_some(),
-					cursor.is_some(),
-					limit,
-				);
-				let upper = prefix.map(prefix_upper_bound);
-				let mut binds: Vec<&[u8]> = Vec::with_capacity(4);
-				binds.push(cutoff.as_slice());
-				if let Some(prefix) = prefix {
-					binds.push(prefix);
-					binds.push(upper
-						.as_deref()
-						.expect("upper bound is present when a prefix is present"));
-				}
-				if let Some(cursor) = cursor {
-					binds.push(cursor);
-				}
-				let mut stmt = match conn.prepare_cached(&sql) {
-					Ok(stmt) => stmt,
-					Err(e) if e.to_string().contains("no such table") => {
-						return Ok((Vec::new(), None));
-					}
-					Err(e) => {
-						return Err(error!(internal(format!(
-							"Failed to prepare delete expired for {}: {}",
-							table_sql.table_name, e
-						))));
-					}
-				};
-				let map_key = |row: &Row| row.get::<_, Vec<u8>>(0);
-				let rows = match stmt.query_map(params_from_iter(binds), map_key) {
-					Ok(rows) => rows,
-					Err(e) if e.to_string().contains("no such table") => {
-						return Ok((Vec::new(), None));
-					}
-					Err(e) => {
-						return Err(error!(internal(format!(
-							"Failed to delete expired persistent rows from {}: {}",
-							table_sql.table_name, e
-						))));
-					}
-				};
-				let mut deleted = Vec::new();
-				for row in rows {
-					match row {
-						Ok(key) => deleted.push(EncodedKey::new(key)),
-						Err(e) => {
-							return Err(error!(internal(format!(
-								"Failed to read deleted key from {}: {}",
-								table_sql.table_name, e
-							))));
-						}
-					}
-				}
-				let next_cursor = if deleted.len() == limit {
-					deleted.iter().max().cloned()
-				} else {
-					None
-				};
-				Ok((deleted, next_cursor))
-			}
-			SqliteSchema::Row => {
-				let bounds = match prefix {
-					Some(p) => {
-						let upper = prefix_upper_bound(p);
-						row_range_bounds(Bound::Included(p), Bound::Excluded(upper.as_slice()))
-					}
-					None => RowRangeBounds {
-						lower: Bound::Unbounded,
-						upper: Bound::Unbounded,
-					},
-				};
-				let cursor_row = cursor
-					.map(|c| {
-						row_ident_of(c).map(|ident| row_to_sql(ident.row().0)).ok_or_else(
-							|| {
-								error!(internal(
-								"a delete_below_version cursor does not decode as a \
-								 RowKey"
-								.to_string()
-							))
-							},
-						)
-					})
-					.transpose()?;
-				let sql = build_delete_below_version_sql_row(
-					&table_sql.table_name,
-					bound_shape_i64(&bounds.lower),
-					bound_shape_i64(&bounds.upper),
-					cursor_row.is_some(),
-					limit,
-				);
-				let mut params: Vec<Box<dyn ToSql>> = vec![Box::new(cutoff.to_vec())];
-				if let Some(v) = bound_value(bounds.lower) {
-					params.push(Box::new(v));
-				}
-				if let Some(v) = bound_value(bounds.upper) {
-					params.push(Box::new(v));
-				}
-				if let Some(v) = cursor_row {
-					params.push(Box::new(v));
-				}
-				let mut stmt = match conn.prepare_cached(&sql) {
-					Ok(stmt) => stmt,
-					Err(e) if e.to_string().contains("no such table") => {
-						return Ok((Vec::new(), None));
-					}
-					Err(e) => {
-						return Err(error!(internal(format!(
-							"Failed to prepare delete expired for {}: {}",
-							table_sql.table_name, e
-						))));
-					}
-				};
-				let flat: Vec<&dyn ToSql> = params.iter().map(|p| p.as_ref()).collect();
-				let rows = match stmt.query_map(params_from_iter(flat), |row| row.get::<_, i64>(0)) {
-					Ok(rows) => rows,
-					Err(e) if e.to_string().contains("no such table") => {
-						return Ok((Vec::new(), None));
-					}
-					Err(e) => {
-						return Err(error!(internal(format!(
-							"Failed to delete expired persistent rows from {}: {}",
-							table_sql.table_name, e
-						))));
-					}
-				};
-				let mut deleted_ints = Vec::new();
-				for row in rows {
-					match row {
-						Ok(v) => deleted_ints.push(v),
-						Err(e) => {
-							return Err(error!(internal(format!(
-								"Failed to read deleted key from {}: {}",
-								table_sql.table_name, e
-							))));
-						}
-					}
-				}
-				let storage = storage.expect("row schema entry kinds always carry a storage id");
-				let next_cursor_int = if deleted_ints.len() == limit {
-					deleted_ints.iter().max().copied()
-				} else {
-					None
-				};
-				let deleted: Vec<EncodedKey> =
-					deleted_ints.iter().map(|&r| row_key_for(storage, r)).collect();
-				let next_cursor = next_cursor_int.map(|r| row_key_for(storage, r));
-				Ok((deleted, next_cursor))
-			}
-			SqliteSchema::Partitioned => {
-				let bounds = match prefix {
-					Some(p) => {
-						let upper = prefix_upper_bound(p);
-						partitioned_range_bounds(
-							Bound::Included(p),
-							Bound::Excluded(upper.as_slice()),
-						)
-					}
-					None => PartitionedRangeBounds::Open {
-						lower: Bound::Unbounded,
-						upper: Bound::Unbounded,
-					},
-				};
-				let cursor_ident = cursor
-					.map(|c| {
-						partitioned_ident_of(c).ok_or_else(|| {
-							error!(internal(
-								"a delete_below_version cursor does not decode as a \
-								 PartitionedRowKey"
-									.to_string()
-							))
-						})
-					})
-					.transpose()?;
-				let storage =
-					storage.expect("partitioned schema entry kinds always carry a storage id");
-
-				let (sql, params): (String, Vec<Box<dyn ToSql>>) = match bounds {
-					PartitionedRangeBounds::ExactPartition {
-						partition_hi,
-						partition_lo,
-						lower_row,
-						upper_row,
-					} => {
-						let cursor_row = match cursor_ident {
-							Some(ident)
-								if partition_half_to_sql(ident.partition_hi())
-									== partition_hi && partition_half_to_sql(
-									ident.partition_lo(),
-								) == partition_lo =>
-							{
-								Some(row_to_sql(ident.row().0))
-							}
-							Some(_) => None,
-							None => None,
-						};
-						let sql = build_delete_below_version_sql_partitioned_exact(
-							&table_sql.table_name,
-							bound_shape_i64(&lower_row),
-							bound_shape_i64(&upper_row),
-							cursor_row.is_some(),
-							limit,
-						);
-						let mut params: Vec<Box<dyn ToSql>> = vec![
-							Box::new(cutoff.to_vec()),
-							Box::new(partition_hi),
-							Box::new(partition_lo),
-						];
-						if let Some(v) = bound_value(lower_row) {
-							params.push(Box::new(v));
-						}
-						if let Some(v) = bound_value(upper_row) {
-							params.push(Box::new(v));
-						}
-						if let Some(v) = cursor_row {
-							params.push(Box::new(v));
-						}
-						(sql, params)
-					}
-					PartitionedRangeBounds::Open {
-						lower,
-						upper,
-					} => {
-						let sql = build_delete_below_version_sql_partitioned(
-							&table_sql.table_name,
-							bound_shape_triple(&lower),
-							bound_shape_triple(&upper),
-							cursor_ident.is_some(),
-							limit,
-						);
-						let mut params: Vec<Box<dyn ToSql>> = vec![Box::new(cutoff.to_vec())];
-						if let Some((hi, lo, r)) = bound_value(lower) {
-							params.push(Box::new(hi));
-							params.push(Box::new(lo));
-							params.push(Box::new(r));
-						}
-						if let Some((hi, lo, r)) = bound_value(upper) {
-							params.push(Box::new(hi));
-							params.push(Box::new(lo));
-							params.push(Box::new(r));
-						}
-						if let Some(ident) = &cursor_ident {
-							params.push(Box::new(partition_half_to_sql(
-								ident.partition_hi(),
-							)));
-							params.push(Box::new(partition_half_to_sql(
-								ident.partition_lo(),
-							)));
-							params.push(Box::new(row_to_sql(ident.row().0)));
-						}
-						(sql, params)
-					}
-				};
-
-				let mut stmt = match conn.prepare_cached(&sql) {
-					Ok(stmt) => stmt,
-					Err(e) if e.to_string().contains("no such table") => {
-						return Ok((Vec::new(), None));
-					}
-					Err(e) => {
-						return Err(error!(internal(format!(
-							"Failed to prepare delete expired for {}: {}",
-							table_sql.table_name, e
-						))));
-					}
-				};
-				let flat: Vec<&dyn ToSql> = params.iter().map(|p| p.as_ref()).collect();
-				let rows = match stmt.query_map(params_from_iter(flat), |row| {
-					let hi: i64 = row.get(0)?;
-					let lo: i64 = row.get(1)?;
-					let r: i64 = row.get(2)?;
-					Ok((hi, lo, r))
-				}) {
-					Ok(rows) => rows,
-					Err(e) if e.to_string().contains("no such table") => {
-						return Ok((Vec::new(), None));
-					}
-					Err(e) => {
-						return Err(error!(internal(format!(
-							"Failed to delete expired persistent rows from {}: {}",
-							table_sql.table_name, e
-						))));
-					}
-				};
-				let mut deleted_triples = Vec::new();
-				for row in rows {
-					match row {
-						Ok(t) => deleted_triples.push(t),
-						Err(e) => {
-							return Err(error!(internal(format!(
-								"Failed to read deleted key from {}: {}",
-								table_sql.table_name, e
-							))));
-						}
-					}
-				}
-				let next_cursor_triple = if deleted_triples.len() == limit {
-					deleted_triples.iter().max().copied()
-				} else {
-					None
-				};
-				let deleted: Vec<EncodedKey> = deleted_triples
-					.iter()
-					.map(|&(hi, lo, r)| partitioned_key_for(storage, hi, lo, r))
-					.collect();
-				let next_cursor =
-					next_cursor_triple.map(|(hi, lo, r)| partitioned_key_for(storage, hi, lo, r));
-				Ok((deleted, next_cursor))
-			}
-		}
-	}
-
 	pub fn delete_keys(&self, table: EntryKind, keys: &[EncodedKey]) -> Result<u64> {
 		if keys.is_empty() {
 			return Ok(0);
@@ -1468,7 +1129,7 @@ fn highest_current_version(conn: &Connection) -> u64 {
 
 fn source_storage(table: EntryKind) -> Option<StorageId> {
 	match table {
-		EntryKind::Source(storage) | EntryKind::PartitionedSource(storage) => Some(storage),
+		EntryKind::Source(storage, _) | EntryKind::PartitionedSource(storage, _) => Some(storage),
 		EntryKind::Multi => None,
 	}
 }
@@ -1551,7 +1212,7 @@ fn read_returned_key(schema: SqliteSchema, row: &Row) -> SqliteResult<ReturnedKe
 
 fn expiry_stamp(table: EntryKind, value: Option<&CowVec<u8>>) -> Option<DateTime> {
 	match (table, value) {
-		(EntryKind::Source(_) | EntryKind::PartitionedSource(_), Some(row))
+		(EntryKind::Source(_, _) | EntryKind::PartitionedSource(_, _), Some(row))
 			if row.len() >= SHAPE_HEADER_SIZE =>
 		{
 			Some(read_updated_at(row))
@@ -1851,7 +1512,7 @@ impl SqlitePersistentStorage {
 impl TierStorage for SqlitePersistentStorage {
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
 		match table {
-			EntryKind::Source(_) => self.get_source(table, key, version),
+			EntryKind::Source(_, _) => self.get_source(table, key, version),
 			_ => self.get_multi(table, key, version),
 		}
 	}
@@ -1863,7 +1524,7 @@ impl TierStorage for SqlitePersistentStorage {
 		version: CommitVersion,
 	) -> Result<Vec<VersionedGetResult>> {
 		match table {
-			EntryKind::Source(_) => self.get_many_source(table, keys, version),
+			EntryKind::Source(_, _) => self.get_many_source(table, keys, version),
 			_ => self.get_many_multi(table, keys, version),
 		}
 	}
@@ -1965,9 +1626,9 @@ mod tests {
 	use std::collections::HashMap;
 
 	use reifydb_core::{
-		interface::catalog::{
-			id::{TableId, ViewId},
-			storage::StorageId,
+		interface::{
+			catalog::{id::TableId, storage::StorageId},
+			store::EntryLayout,
 		},
 		key::{
 			row::{PartitionedRowKey, RowKey, RowKeyRange},
@@ -1981,7 +1642,7 @@ mod tests {
 
 	// `table()` backs the narrow row schema, so every key built against it must decode as a RowKey.
 	fn table() -> EntryKind {
-		EntryKind::Source(StorageId::Table(TableId(1)))
+		EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row)
 	}
 
 	fn key(n: u64) -> EncodedKey {
@@ -2170,29 +1831,6 @@ mod tests {
 			second.misses.as_u64()
 		);
 	}
-
-	#[test]
-	fn delete_below_version_removes_rows_at_or_below_cutoff() {
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		// Each key written at a distinct commit version (separate set calls).
-		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"a")))])])).unwrap();
-		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(2), Some(row(b"b")))])])).unwrap();
-		s.set(CommitVersion(3), HashMap::from([(table(), vec![(key(3), Some(row(b"c")))])])).unwrap();
-		assert_eq!(s.count_current(table()).unwrap(), 3);
-
-		let (deleted, _) = s.delete_below_version(table(), CommitVersion(2), None, None, usize::MAX).unwrap();
-
-		assert_eq!(deleted.len(), 2, "rows whose version is <= cutoff(2) must be physically deleted");
-		assert_eq!(
-			s.count_current(table()).unwrap(),
-			1,
-			"deletion must reclaim sqlite rows, not tombstone them"
-		);
-		assert!(!visible(&s, &key(1)));
-		assert!(!visible(&s, &key(2)));
-		assert!(visible(&s, &key(3)), "a row written after the cutoff version must survive");
-	}
-
 	#[test]
 	fn create_table_leaves_the_version_column_unindexed() {
 		// No query plan selects a bare version index, so recreating it costs a b-tree write per row on every
@@ -2226,157 +1864,6 @@ mod tests {
 			"the dropped timestamp indices must not be recreated, got {indices:?}"
 		);
 	}
-
-	#[test]
-	fn delete_below_version_keeps_rows_written_after_the_cutoff() {
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(2), Some(row(b"stale")))])])).unwrap();
-		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), Some(row(b"fresh")))])])).unwrap();
-
-		let (deleted, _) = s.delete_below_version(table(), CommitVersion(3), None, None, usize::MAX).unwrap();
-
-		assert_eq!(deleted.len(), 1, "only the row whose last write is at or below the cutoff is evicted");
-		assert!(visible(&s, &key(1)), "a row written after the cutoff version must NOT be evicted");
-		assert!(!visible(&s, &key(2)));
-	}
-
-	#[test]
-	fn delete_below_version_boundary_is_inclusive() {
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), Some(row(b"v5")))])])).unwrap();
-
-		let (deleted, _) = s.delete_below_version(table(), CommitVersion(5), None, None, usize::MAX).unwrap();
-		assert_eq!(
-			deleted.len(),
-			1,
-			"a row whose version equals the cutoff is evicted (the bound is inclusive)"
-		);
-		assert!(!visible(&s, &key(1)));
-	}
-
-	#[test]
-	fn delete_below_version_on_missing_table_is_noop() {
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		let (deleted, _) = s
-			.delete_below_version(
-				EntryKind::Source(StorageId::Table(TableId(999))),
-				CommitVersion(100),
-				None,
-				None,
-				usize::MAX,
-			)
-			.unwrap();
-		assert_eq!(deleted.len(), 0);
-	}
-
-	#[test]
-	fn delete_below_version_with_prefix_only_touches_matching_keys() {
-		// A byte prefix is only meaningful against an opaque key, never a narrow row's integer column.
-		let blob_table = EntryKind::Source(StorageId::view(ViewId(1)));
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		let left = EncodedKey::new(vec![0x01, 0xAA]);
-		let right = EncodedKey::new(vec![0x02, 0xBB]);
-		s.set(
-			CommitVersion(1),
-			HashMap::from([(
-				blob_table,
-				vec![(left.clone(), Some(row(b"l"))), (right.clone(), Some(row(b"r")))],
-			)]),
-		)
-		.unwrap();
-
-		let (deleted, _) =
-			s.delete_below_version(blob_table, CommitVersion(2), Some(&[0x01]), None, usize::MAX).unwrap();
-
-		assert_eq!(deleted.len(), 1, "only the 0x01-prefixed (left) row should be deleted");
-		assert!(s.get(blob_table, left.as_slice(), CommitVersion(u64::MAX)).unwrap().value().is_none());
-		assert!(
-			s.get(blob_table, right.as_slice(), CommitVersion(u64::MAX)).unwrap().value().is_some(),
-			"the 0x02-prefixed (right) row must survive a left-only prefix sweep"
-		);
-	}
-
-	#[test]
-	fn delete_below_version_returns_exactly_the_deleted_keys() {
-		// GC invalidates the read cache per-key from this return value, so a wrong or empty key set
-		// silently leaves stale entries or over-clears the cache.
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"a")))])])).unwrap();
-		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(2), Some(row(b"b")))])])).unwrap();
-		s.set(CommitVersion(3), HashMap::from([(table(), vec![(key(3), Some(row(b"c")))])])).unwrap();
-
-		let mut got: Vec<Vec<u8>> = s
-			.delete_below_version(table(), CommitVersion(2), None, None, usize::MAX)
-			.unwrap()
-			.0
-			.iter()
-			.map(|k| k.to_vec())
-			.collect();
-		got.sort();
-		let mut want = vec![key(1).to_vec(), key(2).to_vec()];
-		want.sort();
-		assert_eq!(
-			got, want,
-			"delete_below_version must return every key it physically deleted, and only those"
-		);
-		assert!(visible(&s, &key(3)), "the row newer than the cutoff must neither be deleted nor returned");
-	}
-
-	#[test]
-	fn delete_below_version_caps_one_call_and_reports_a_resume_cursor() {
-		// One call deletes at most `limit` rows and hands back a cursor, so the sole write connection is
-		// never held for an unbounded delete.
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		for n in 1..=5u64 {
-			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), Some(row(b"x")))])])).unwrap();
-		}
-		assert_eq!(s.count_current(table()).unwrap(), 5);
-
-		let (deleted, cursor) = s.delete_below_version(table(), CommitVersion(5), None, None, 2).unwrap();
-
-		assert_eq!(deleted.len(), 2, "a limit of 2 must delete exactly two rows in one call");
-		assert_eq!(s.count_current(table()).unwrap(), 3, "only the two capped rows may be physically gone");
-		assert_eq!(
-			cursor,
-			Some(key(4)),
-			"hitting the cap must return the largest deleted key so the next slice resumes above it"
-		);
-		assert!(!visible(&s, &key(5)), "key order is descending by row, so the highest rows go first");
-		assert!(!visible(&s, &key(4)));
-		assert!(visible(&s, &key(3)), "the first uncapped key must still be present");
-	}
-
-	#[test]
-	fn delete_below_version_resumes_from_cursor_and_drains_without_gaps() {
-		// Threading the returned cursor must walk the eligible set exactly once in key order, never
-		// skipping a key between batches.
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		for n in 1..=5u64 {
-			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), Some(row(b"x")))])])).unwrap();
-		}
-
-		let mut cursor = None;
-		let mut all: Vec<Vec<u8>> = Vec::new();
-		let mut calls = 0;
-		loop {
-			let (deleted, next) =
-				s.delete_below_version(table(), CommitVersion(5), None, cursor.as_deref(), 2).unwrap();
-			calls += 1;
-			all.extend(deleted.iter().map(|k| k.to_vec()));
-			match next {
-				Some(k) => cursor = Some(k.to_vec()),
-				None => break,
-			}
-		}
-
-		let mut want = (1..=5u64).map(|n| key(n).to_vec()).collect::<Vec<_>>();
-		want.sort();
-		all.sort();
-		assert_eq!(all, want, "resuming from the cursor must delete every eligible key exactly once, no gaps");
-		assert_eq!(calls, 3, "5 rows at limit 2 must drain in ceil(5/2) = 3 calls (2 + 2 + 1)");
-		assert_eq!(s.count_current(table()).unwrap(), 0);
-	}
-
 	#[test]
 	fn a_key_written_again_after_a_removal_comes_back() {
 		// A removal must leave no row behind, or the parked one wins the CAS and strands the key absent.
@@ -2709,7 +2196,7 @@ mod tests {
 	}
 
 	fn partitioned_table() -> EntryKind {
-		EntryKind::PartitionedSource(StorageId::Table(TableId(2)))
+		EntryKind::PartitionedSource(StorageId::Table(TableId(2)), EntryLayout::Row)
 	}
 
 	fn partitioned_key(partition: u128, n: u64) -> EncodedKey {
@@ -2807,38 +2294,6 @@ mod tests {
 			.unwrap();
 		assert_eq!(batch.entries.len(), 2, "resuming past the first row must still reach the other two");
 	}
-
-	#[test]
-	fn partitioned_schema_delete_below_version_with_a_storage_prefix_bound_stays_inside_the_partition() {
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		let t = partitioned_table();
-		let inside = partitioned_key(1, 1);
-		let outside = partitioned_key(2, 1);
-		s.set(
-			CommitVersion(1),
-			HashMap::from([(
-				t,
-				vec![(inside.clone(), Some(row(b"a"))), (outside.clone(), Some(row(b"b")))],
-			)]),
-		)
-		.unwrap();
-
-		let scoped = PartitionedRowKey::partition_range(StorageId::Table(TableId(2)), Partition(1));
-		let prefix = match &scoped.start {
-			Bound::Included(k) => k.as_slice(),
-			other => panic!("expected an included partition prefix, got {other:?}"),
-		};
-
-		let (deleted, _) = s.delete_below_version(t, CommitVersion(2), Some(prefix), None, usize::MAX).unwrap();
-
-		assert_eq!(deleted.len(), 1, "only the row inside partition 1 may be deleted");
-		assert!(s.get(t, inside.as_slice(), CommitVersion(u64::MAX)).unwrap().value().is_none());
-		assert!(
-			s.get(t, outside.as_slice(), CommitVersion(u64::MAX)).unwrap().value().is_some(),
-			"a row in a different partition must survive a partition-scoped sweep"
-		);
-	}
-
 	#[test]
 	fn partitioned_schema_expired_keys_scan_finds_rows() {
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
@@ -2858,6 +2313,66 @@ mod tests {
 			partitioned_expired_at(&s, partitioned_table(), 150),
 			vec![1],
 			"the narrow partitioned schema must still surface expiry candidates through its own columns"
+		);
+	}
+
+	#[test]
+	fn partitioned_expired_keys_resume_breaks_a_shared_stamp_tie_in_encoded_key_order() {
+		// The row schema pins this tie-break; the partitioned schema did not, so reversing its cursor
+		// predicate and its ORDER BY together passed every test while walking candidates backwards.
+		// The evictor threads this cursor across ticks, so the index must hand back candidates in the
+		// same order the key space has, or a candidate it cannot remove strands the rows behind it.
+		// The two partitions straddle the sign bit, which is where the halves last disagreed.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		let low = 1u128;
+		let high = (1u128 << 127) | 3;
+		s.set(
+			CommitVersion(1),
+			HashMap::from([(
+				partitioned_table(),
+				vec![
+					(partitioned_key(low, 1), Some(stamped(100))),
+					(partitioned_key(low, 2), Some(stamped(100))),
+					(partitioned_key(high, 1), Some(stamped(100))),
+					(partitioned_key(low, 3), Some(stamped(200))),
+				],
+			)]),
+		)
+		.unwrap();
+
+		let mut tied: Vec<(u128, u64)> = vec![(low, 1), (low, 2), (high, 1)];
+		tied.sort_by(|a, b| partitioned_key(a.0, a.1).as_slice().cmp(partitioned_key(b.0, b.1).as_slice()));
+		let mut expected = tied.clone();
+		expected.push((low, 3));
+
+		let mut seen = Vec::new();
+		let mut cursor: Option<(DateTime, EncodedKey)> = None;
+		loop {
+			let batch = s
+				.expired_keys(
+					partitioned_table(),
+					at(1_000),
+					cursor.as_ref().map(|(a, k)| (*a, k.as_slice())),
+					1,
+				)
+				.unwrap();
+			let Some((k, a)) = batch.last().cloned() else {
+				break;
+			};
+			let decoded = PartitionedRowKey::decode(&k).unwrap();
+			seen.push((decoded.partition.0, decoded.row.0));
+			cursor = Some((a, k));
+		}
+
+		assert_eq!(
+			seen, expected,
+			"threading the cursor must walk every candidate once, oldest stamp first and ties broken \
+			 exactly as the encoded keys sort"
+		);
+		assert_eq!(
+			seen[0],
+			(high, 1),
+			"the larger partition encodes lower, so it must lead the tie, not trail it"
 		);
 	}
 
@@ -2910,6 +2425,84 @@ mod tests {
 			}
 		}
 		assert_eq!(total, 128, "a paginated full-table scan with a small batch size must reach every row");
+	}
+
+	#[test]
+	fn partitioned_schema_paginated_scan_yields_exactly_the_encoded_key_order_in_both_directions() {
+		// The count-only pagination tests pass under a reversal that flips the ORDER BY and the cursor
+		// predicate together, because every row is still reached, just backwards. Callers merge this
+		// stream with the in-memory tiers on encoded-key order, so the narrow partitioned columns must
+		// reproduce that order exactly, not merely reach every row. The partitions below straddle the
+		// sign bit in both halves, so a half that inverts alone or not at all reorders the sequence.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		let t = partitioned_table();
+		let partitions: [u128; 4] =
+			[1, (1u128 << 64) | 7, (1u128 << 127) | 3, (1u128 << 127) | (1u128 << 63) | 9];
+		let mut written = Vec::new();
+		let mut writes = Vec::new();
+		for p in partitions {
+			for r in 1u64..=3 {
+				let k = partitioned_key(p, r);
+				written.push((k.clone(), p, r));
+				writes.push((k, Some(row(b"a"))));
+			}
+		}
+		s.set(CommitVersion(1), HashMap::from([(t, writes)])).unwrap();
+
+		let mut forward_expected = written.clone();
+		forward_expected.sort_by(|a, b| a.0.as_slice().cmp(b.0.as_slice()));
+		let forward_expected: Vec<(u128, u64)> = forward_expected.iter().map(|(_, p, r)| (*p, *r)).collect();
+		let mut reverse_expected = forward_expected.clone();
+		reverse_expected.reverse();
+
+		let range = PartitionedRowKey::full_scan(StorageId::Table(TableId(2)));
+		let (start, end) = match (&range.start, &range.end) {
+			(Bound::Included(s), Bound::Included(e)) => (s.as_slice(), e.as_slice()),
+			other => panic!("expected two prefix-only included bounds, got {other:?}"),
+		};
+
+		let forward = paginate_partitioned(&s, t, start, end, false);
+		assert_eq!(
+			forward, forward_expected,
+			"a paginated forward scan must walk the encoded keys ascending, partition then row"
+		);
+
+		let reverse = paginate_partitioned(&s, t, start, end, true);
+		assert_eq!(
+			reverse, reverse_expected,
+			"a paginated reverse scan must walk the same encoded keys descending, the exact mirror"
+		);
+	}
+
+	fn paginate_partitioned(
+		s: &SqlitePersistentStorage,
+		t: EntryKind,
+		start: &[u8],
+		end: &[u8],
+		reverse: bool,
+	) -> Vec<(u128, u64)> {
+		// A batch of 2 against 12 rows forces the cursor to carry the direction across six pages, so a
+		// cursor predicate pointing the wrong way drops or repeats rows instead of paging cleanly.
+		let mut cursor = RangeCursor::default();
+		let mut out = Vec::new();
+		loop {
+			let scope = MultiVersionScope::AsOf {
+				read: CommitVersion(10),
+			};
+			let batch = if reverse {
+				s.range_rev_next(t, &mut cursor, Bound::Included(start), Bound::Included(end), scope, 2)
+			} else {
+				s.range_next(t, &mut cursor, Bound::Included(start), Bound::Included(end), scope, 2)
+			}
+			.unwrap();
+			for entry in &batch.entries {
+				let decoded = PartitionedRowKey::decode(&entry.key).unwrap();
+				out.push((decoded.partition.0, decoded.row.0));
+			}
+			if cursor.is_exhausted() {
+				return out;
+			}
+		}
 	}
 
 	#[test]

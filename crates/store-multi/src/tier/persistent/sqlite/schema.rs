@@ -217,7 +217,7 @@ pub(super) fn partitioned_range_bounds(start: Bound<&[u8]>, end: Bound<&[u8]>) -
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::store::EntryKind;
+	use reifydb_core::interface::store::{EntryKind, EntryLayout};
 	use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 
 	use super::*;
@@ -290,12 +290,26 @@ mod tests {
 	}
 
 	#[test]
-	fn only_the_row_shaped_storages_take_a_narrow_schema() {
-		// A view entry can hold either a row key or a series key under one entry kind, so it has no
-		// single narrow shape and must stay on the blob schema.
-		assert_eq!(sqlite_schema(EntryKind::Source(StorageId::table(1))), SqliteSchema::Row);
-		assert_eq!(sqlite_schema(EntryKind::Source(StorageId::view(1))), SqliteSchema::Blob);
-		assert_eq!(sqlite_schema(EntryKind::Source(StorageId::series(1))), SqliteSchema::Blob);
-		assert_eq!(sqlite_schema(EntryKind::PartitionedSource(StorageId::table(1))), SqliteSchema::Partitioned);
+	fn the_narrow_schema_follows_the_layout_not_the_storage_kind() {
+		// An entry now names one layout, so a view's rows are as narrow as a table's; only a series key,
+		// whose sequence has no column in the narrow schema, must stay on the blob schema.
+		assert_eq!(sqlite_schema(EntryKind::Source(StorageId::table(1), EntryLayout::Row)), SqliteSchema::Row);
+		assert_eq!(sqlite_schema(EntryKind::Source(StorageId::view(1), EntryLayout::Row)), SqliteSchema::Row);
+		assert_eq!(
+			sqlite_schema(EntryKind::Source(StorageId::series(1), EntryLayout::Series)),
+			SqliteSchema::Blob
+		);
+		assert_eq!(
+			sqlite_schema(EntryKind::Source(StorageId::view(1), EntryLayout::Series)),
+			SqliteSchema::Blob
+		);
+		assert_eq!(
+			sqlite_schema(EntryKind::PartitionedSource(StorageId::table(1), EntryLayout::Row)),
+			SqliteSchema::Partitioned
+		);
+		assert_eq!(
+			sqlite_schema(EntryKind::PartitionedSource(StorageId::view(1), EntryLayout::Row)),
+			SqliteSchema::Partitioned
+		);
 	}
 }

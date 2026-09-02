@@ -12,7 +12,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	interface::store::{EntryKind, MultiVersionCommit},
+	interface::store::{EntryKind, EntryLayout, MultiVersionCommit},
 	key::row::RowKey,
 };
 use reifydb_store_commit::HistoricalCursor;
@@ -44,7 +44,7 @@ pub struct Params {
 fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVersion) {
 	// Deterministic stand-in for version-anchored TTL eviction, in the same buffer-then-persistent,
 	// mutate-then-invalidate order the actor uses.
-	let kind = EntryKind::Source(STORAGE);
+	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(STORAGE, r)).collect();
 	{
 		let buffer = store.commit();
@@ -64,8 +64,8 @@ fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVer
 		store.invalidate_read_key(kind, key);
 	}
 	if let Some(persistent) = store.persistent() {
-		let deleted = persistent.delete_below_version(kind, cutoff_version, None, None, usize::MAX).unwrap().0;
-		if !deleted.is_empty() {
+		let deleted = persistent.delete_keys(kind, &keys).unwrap();
+		if deleted > 0 {
 			store.clear_read();
 		}
 	}
@@ -73,7 +73,7 @@ fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVer
 
 fn physical_delete(store: &StandardMultiStore, rows: &[u64]) {
 	// Delete-then-invalidate is the order that stops a stale complete page from resurrecting the row.
-	let kind = EntryKind::Source(STORAGE);
+	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(STORAGE, r)).collect();
 	if let Some(persistent) = store.persistent() {
 		persistent.delete_keys(kind, &keys).unwrap();
@@ -98,7 +98,7 @@ fn physical_delete(store: &StandardMultiStore, rows: &[u64]) {
 fn historical_gc(store: &StandardMultiStore, cutoff: CommitVersion) {
 	// Buffer-only: superseded versions below the cutoff go, the current version must survive untouched.
 	let buffer = store.commit();
-	let kind = EntryKind::Source(STORAGE);
+	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 	let mut cursor = HistoricalCursor::new();
 	loop {
 		let entries = buffer.scan_historical_below(kind, cutoff, &mut cursor, 64).unwrap();

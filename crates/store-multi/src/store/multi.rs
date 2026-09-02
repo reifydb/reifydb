@@ -50,7 +50,7 @@ impl MultiVersionGet for StandardMultiStore {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		let (table, storage_key) = storage_key(key);
 		match table {
-			EntryKind::Source(_) => self.get_source(table, storage_key, key, version),
+			EntryKind::Source(_, _) => self.get_source(table, storage_key, key, version),
 			_ => self.get_multi(table, storage_key, key, version),
 		}
 	}
@@ -1370,7 +1370,9 @@ mod cache_tests {
 		delta::Delta,
 		interface::{
 			catalog::{flow::OperatorId, id::TableId, storage::StorageId},
-			store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key, storage_key},
+			store::{
+				EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet, classify_key, storage_key,
+			},
 		},
 		key::{
 			EncodableKey,
@@ -1458,7 +1460,7 @@ mod cache_tests {
 		flush(&store, CommitVersion(1));
 
 		let range = store.range.clone().expect("range tier configured");
-		let kind = EntryKind::Source(STORAGE);
+		let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 		let heavy = PartitionId::of(kind, &RowKey::encoded(STORAGE, 1)).expect("a row key names a bucket");
 		let light =
 			PartitionId::of(kind, &RowKey::encoded(STORAGE, 1u64 << 16)).expect("a row key names a bucket");

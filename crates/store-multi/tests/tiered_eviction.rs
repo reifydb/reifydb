@@ -14,7 +14,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
+		store::{EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
 	key::row::RowKey,
 	lifecycle::watermark::EvictionWatermark,
@@ -153,7 +153,7 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 	// Reads must stay correct across the tier boundary the sweep introduces.
 	let (store, _guard) = store_with_persistent();
-	let kind = EntryKind::Source(STORAGE.into());
+	let kind = EntryKind::Source(STORAGE.into(), EntryLayout::Row);
 	let k = row_key(1);
 
 	commit(&store, &k, 1, "v1");
@@ -202,7 +202,7 @@ fn persistent_false_object_is_dropped_without_persisting() {
 	// A persistent:false object is RAM-only: skipping its eviction would leave RAM unbounded, and
 	// persisting it would write data that was never meant to be durable.
 	let (store, _guard) = store_with_persistent();
-	let kind = EntryKind::Source(STORAGE.into());
+	let kind = EntryKind::Source(STORAGE.into(), EntryLayout::Row);
 	let k = row_key(1);
 
 	commit(&store, &k, 1, "v1");
@@ -269,7 +269,7 @@ fn mvcc_view_after_eviction_matches_a_never_evicted_store() {
 fn versions_above_w_are_left_entirely_resident() {
 	// With W below every committed version, an over-eager sweep would surface here.
 	let (store, _guard) = store_with_persistent();
-	let kind = EntryKind::Source(STORAGE.into());
+	let kind = EntryKind::Source(STORAGE.into(), EntryLayout::Row);
 	let k = row_key(1);
 	commit(&store, &k, 5, "v5");
 
@@ -308,7 +308,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	// version-guarded upsert, so the sweep must persist the latest-<=W value (v2); anything writing the
 	// current v3 out-of-band makes a read at the W snapshot return NotFound.
 	let (store, _guard) = store_with_fast_flush();
-	let kind = EntryKind::Source(STORAGE.into());
+	let kind = EntryKind::Source(STORAGE.into(), EntryLayout::Row);
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
@@ -364,7 +364,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 	// Deleting the persistent row after eviction isolates the read tier as the only possible source, so a
 	// successful read proves the sweep seeded rather than invalidated.
 	let (store, _guard) = store_with_fast_flush();
-	let kind = EntryKind::Source(STORAGE.into());
+	let kind = EntryKind::Source(STORAGE.into(), EntryLayout::Row);
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
@@ -407,7 +407,7 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	// A seeded (older) read-tier entry must never shadow a newer version still resident in the commit tier;
 	// deleting the persistent row isolates the seed as the only source of v2.
 	let (store, _guard) = store_with_fast_flush();
-	let kind = EntryKind::Source(STORAGE.into());
+	let kind = EntryKind::Source(STORAGE.into(), EntryLayout::Row);
 	let k = row_key(1);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
@@ -456,7 +456,7 @@ fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it()
 	// Read-tier invalidation after a persistent TTL delete is load-bearing for correctness, not a
 	// cache-freshness nicety: without it a stale entry resurrects the deleted row.
 	let (store, _guard) = store_with_persistent();
-	let kind = EntryKind::Source(STORAGE.into());
+	let kind = EntryKind::Source(STORAGE.into(), EntryLayout::Row);
 	let k = row_key(1);
 
 	let persistent = store.persistent().unwrap();
@@ -473,8 +473,8 @@ fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it()
 		"the persistent row is readable before TTL deletion (and now cached)"
 	);
 
-	let deleted = persistent.delete_below_version(kind, CommitVersion(1), None, None, usize::MAX).unwrap().0;
-	assert_eq!(deleted.len(), 1, "the expired row must be physically deleted from the persistent tier");
+	let deleted = persistent.delete_keys(kind, std::slice::from_ref(&k)).unwrap();
+	assert_eq!(deleted, 1, "the expired row must be physically deleted from the persistent tier");
 
 	// The staleness itself is deliberately not asserted; only the post-invalidation read is pinned.
 	store.invalidate_read_key(kind, &k);

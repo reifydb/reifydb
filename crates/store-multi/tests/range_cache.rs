@@ -16,7 +16,7 @@ use reifydb_core::{
 	delta::Delta,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::{EntryKind, MultiVersionCommit},
+		store::{EntryKind, EntryLayout, MultiVersionCommit},
 	},
 	key::row::RowKey,
 };
@@ -307,8 +307,11 @@ fn physical_delete_then_range_omits_row_no_ghost() {
 	let _ = scan_fwd(&store, 1000, 64); // warm bucket 0 complete
 
 	let removed = RowKey::encoded(STORAGE, 5);
-	store.persistent().unwrap().delete_keys(EntryKind::Source(STORAGE.into()), &[removed.clone()]).unwrap();
-	store.invalidate_read_key(EntryKind::Source(STORAGE.into()), &removed);
+	store.persistent()
+		.unwrap()
+		.delete_keys(EntryKind::Source(STORAGE.into(), EntryLayout::Row), &[removed.clone()])
+		.unwrap();
+	store.invalidate_read_key(EntryKind::Source(STORAGE.into(), EntryLayout::Row), &removed);
 
 	let rows = scan_fwd(&store, 1000, 64);
 	assert_eq!(rows.len(), (BUCKET_ROWS - 1) as usize, "exactly one row removed");

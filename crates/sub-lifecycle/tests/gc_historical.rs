@@ -25,7 +25,7 @@ use reifydb_core::{
 			id::TableId,
 			storage::StorageId,
 		},
-		store::EntryKind,
+		store::{EntryKind, EntryLayout},
 	},
 	lifecycle::{progress::Progress, task::LifecycleTask},
 };
@@ -42,7 +42,7 @@ use reifydb_sub_lifecycle::{
 };
 use reifydb_value::{util::cowvec::CowVec, value::Value};
 
-const SHAPE: EntryKind = EntryKind::Source(StorageId::Table(TableId(1)));
+const SHAPE: EntryKind = EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row);
 
 /// Only `query_done_until` is scripted; the other reader terms sit wide open, so each test drives the
 /// BufferHistoricalGc cutoff through exactly one term.

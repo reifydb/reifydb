@@ -16,7 +16,7 @@ use reifydb_core::{
 	delta::Delta,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::{EntryKind, MultiVersionCommit},
+		store::{EntryKind, EntryLayout, MultiVersionCommit},
 	},
 	key::row::RowKey,
 	lifecycle::watermark::EvictionWatermark,
@@ -89,7 +89,7 @@ fn tier_with_rows(rows: u64, version: u64) -> (MultiPersistentTier, impl Drop) {
 	if rows > 0 {
 		let mut batch = HashMap::new();
 		batch.insert(
-			EntryKind::Source(STORAGE),
+			EntryKind::Source(STORAGE, EntryLayout::Row),
 			(1..=rows)
 				.map(|row| {
 					(
@@ -106,7 +106,7 @@ fn tier_with_rows(rows: u64, version: u64) -> (MultiPersistentTier, impl Drop) {
 
 fn tier_chunk(tier: &MultiPersistentTier, cursor: &mut RangeCursor, read: u64) -> usize {
 	tier.range_next(
-		EntryKind::Source(STORAGE),
+		EntryKind::Source(STORAGE, EntryLayout::Row),
 		cursor,
 		Bound::Unbounded,
 		Bound::Unbounded,
@@ -217,7 +217,7 @@ fn a_chunk_stopped_by_a_drained_reader_pool_is_not_a_scan_to_the_range_end() {
 	tier.shutdown();
 
 	let refused = tier.range_next(
-		EntryKind::Source(STORAGE),
+		EntryKind::Source(STORAGE, EntryLayout::Row),
 		&mut cursor,
 		Bound::Unbounded,
 		Bound::Unbounded,
