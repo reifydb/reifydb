@@ -443,11 +443,11 @@ const SCOPED: GroupId = GroupId(9);
 
 const NEIGHBOUR: GroupId = GroupId(11);
 
-/// Data keyspaces whose typed layout carries the group, so a stored row names the group it belongs to.
-const GROUP_LAYOUT_DATA: [KeyspaceId; 2] = [KeyspaceId::GUEST_ACCUMULATOR, KeyspaceId::EMIT];
+/// Group-scoped data keyspaces whose suffix is a single direction-wrapped column.
+const BARE_SUFFIX_DATA: [KeyspaceId; 2] = [KeyspaceId::GUEST_ACCUMULATOR, KeyspaceId::EMIT];
 
-/// Data keyspaces the reaper sweeps whose typed layout carries the group.
-const ROOT_LAYOUT_DATA: [KeyspaceId; 2] = [KeyspaceId::WINDOW_META, KeyspaceId::TUMBLING_EXPIRY];
+/// Group-scoped data keyspaces whose suffix is a struct of its own, decoded column by column.
+const NAMED_SUFFIX_DATA: [KeyspaceId; 2] = [KeyspaceId::WINDOW_META, KeyspaceId::TUMBLING_EXPIRY];
 
 /// Identity keyspaces that hold root-scoped rows in every live store.
 const ROOT_LAYOUT_IDENTITY: [KeyspaceId; 2] = [KeyspaceId::TIMER_WHEEL, KeyspaceId::NODE_COUNTER];
@@ -618,12 +618,12 @@ fn populate_reaper_shaped(state: &mut StoreState) {
 	// a live store always holds root-scoped identity rows next to the group's own rows, and the two must
 	// stay tellable apart or a sweep of one group answers with the other group's state
 	populate(state, GroupId::ROOT, &ROOT_LAYOUT_IDENTITY, 4);
-	populate(state, GroupId::ROOT, &ROOT_LAYOUT_DATA, 4);
-	populate(state, SCOPED, &GROUP_LAYOUT_DATA, 4);
-	populate(state, SCOPED, &ROOT_LAYOUT_DATA, 4);
+	populate(state, GroupId::ROOT, &NAMED_SUFFIX_DATA, 4);
+	populate(state, SCOPED, &BARE_SUFFIX_DATA, 4);
+	populate(state, SCOPED, &NAMED_SUFFIX_DATA, 4);
 	state.seed(SCOPED, KeyspaceId::GROUP_ROW_MAPPING, 0);
-	populate(state, NEIGHBOUR, &GROUP_LAYOUT_DATA, 4);
-	populate(state, NEIGHBOUR, &ROOT_LAYOUT_DATA, 4);
+	populate(state, NEIGHBOUR, &BARE_SUFFIX_DATA, 4);
+	populate(state, NEIGHBOUR, &NAMED_SUFFIX_DATA, 4);
 	state.flush();
 }
 
@@ -637,7 +637,7 @@ fn a_keyspace_scan_answers_only_with_keys_that_carry_the_group_it_asked_for() {
 	let (mut state, _guard) = state(false);
 	populate_reaper_shaped(&mut state);
 
-	for keyspace in ROOT_LAYOUT_DATA.iter().chain(&GROUP_LAYOUT_DATA) {
+	for keyspace in NAMED_SUFFIX_DATA.iter().chain(&BARE_SUFFIX_DATA) {
 		let page = state
 			.state_page_inner(keyspace_inner_range(SCOPED, *keyspace), None)
 			.expect("a keyspace scan must answer");
@@ -815,8 +815,8 @@ fn a_flush_does_not_change_which_keys_a_group_sweep_answers_with() {
 	// sweeps that straddle it must name the same keys; a key that changes shape across the flush is one the
 	// reaper can read from one sweep and fail to remove with the other
 	let (mut state, _guard) = state(false);
-	populate(&mut state, SCOPED, &ROOT_LAYOUT_DATA, 4);
-	populate(&mut state, SCOPED, &GROUP_LAYOUT_DATA, 4);
+	populate(&mut state, SCOPED, &NAMED_SUFFIX_DATA, 4);
+	populate(&mut state, SCOPED, &BARE_SUFFIX_DATA, 4);
 
 	let buffered = state.group_sweep_in(SCOPED, KeyspaceMask::KNOWN, true, None).expect("a sweep must answer");
 	state.flush();
@@ -888,7 +888,7 @@ fn a_group_sweep_never_answers_with_a_root_row_no_group_ever_wrote_under_it() {
 	// keyspace anywhere but root, so the only way one reaches this answer is the sweep crossing partitions
 	let (mut state, _guard) = state(false);
 	populate(&mut state, GroupId::ROOT, &ROOT_LAYOUT_IDENTITY, 4);
-	populate(&mut state, SCOPED, &GROUP_LAYOUT_DATA, 4);
+	populate(&mut state, SCOPED, &BARE_SUFFIX_DATA, 4);
 	state.flush();
 
 	let keys = state.group_sweep_in(SCOPED, KeyspaceMask::KNOWN, false, None).expect("a sweep must answer");
@@ -902,4 +902,27 @@ fn a_group_sweep_never_answers_with_a_root_row_no_group_ever_wrote_under_it() {
 			keyspace_of(key).name()
 		);
 	}
+}
+
+#[test]
+fn a_range_that_stops_at_a_real_group_never_answers_from_the_root_pile() {
+	// a keyspace with no group column keeps one pile of rows, at root, and root encodes above every real
+	// group; a range that stops at a real group therefore ends below that pile entirely, so a row from it
+	// in this answer is one the caller never addressed and the reaper would delete out from under root
+	let (mut state, _guard) = state(false);
+	populate(&mut state, GroupId::ROOT, &ROOT_LAYOUT_IDENTITY, 4);
+	state.flush();
+
+	let end = state_key(SCOPED, KeyspaceId::TIMER_WHEEL, u64::MAX);
+	let page = state
+		.state_page_inner(EncodedKeyRange::new(Bound::Unbounded, Bound::Included(end)), None)
+		.expect("a range scan must answer");
+
+	assert!(
+		page.is_empty(),
+		"a range ending at group {} answered with {} row(s) from root's pile, the first in {}",
+		SCOPED.0,
+		page.len(),
+		keyspace_of(&page[0].0).name()
+	);
 }

@@ -52,6 +52,20 @@ fn highest<K: Keyspace>() -> K::Suffix {
 	<K::Suffix as KeyLayout>::high()
 }
 
+fn within(range: &EncodedKeyRange, key: &EncodedKey) -> bool {
+	let after_start = match &range.start {
+		Bound::Unbounded => true,
+		Bound::Included(start) => key.as_slice() >= start.as_slice(),
+		Bound::Excluded(start) => key.as_slice() > start.as_slice(),
+	};
+	let before_end = match &range.end {
+		Bound::Unbounded => true,
+		Bound::Included(end) => key.as_slice() <= end.as_slice(),
+		Bound::Excluded(end) => key.as_slice() < end.as_slice(),
+	};
+	after_start && before_end
+}
+
 fn outside_root_only<K: Keyspace>(start: Option<GroupId>, end: Option<GroupId>) -> bool {
 	match (K::GROUP_SCOPED, start, end) {
 		(false, Some(start), Some(end)) => !start.is_root() && !end.is_root(),
@@ -98,6 +112,7 @@ struct Bounded<'a> {
 	start: Bound<Vec<u8>>,
 	end_group: Option<GroupId>,
 	end: Bound<Vec<u8>>,
+	full: &'a EncodedKeyRange,
 	limit: u64,
 	reverse: bool,
 }
@@ -134,7 +149,11 @@ impl KeyspaceVisitor for Bounded<'_> {
 			false => typed::range::<K>(self.conn, self.operator, &range, self.limit),
 			true => typed::last::<K>(self.conn, self.operator, &range, self.limit),
 		};
-		rows.into_iter().map(|(key, bytes)| (encode::<K>(&key), bytes)).collect()
+		let full = self.full;
+		rows.into_iter()
+			.map(|(key, bytes)| (encode::<K>(&key), bytes))
+			.filter(|(key, _)| K::GROUP_SCOPED || within(full, key))
+			.collect()
 	}
 }
 
@@ -226,6 +245,7 @@ pub(super) fn bounded(
 				start: keyspace_start,
 				end_group: keyspace_end_group,
 				end: keyspace_end,
+				full: range,
 				limit: match one_group {
 					true => remaining,
 					false => limit,
