@@ -523,16 +523,16 @@ pub(super) fn build_range_current_sql_row(
 	}
 	if has_last_key {
 		sql.push_str(if descending {
-			" AND key > ?"
-		} else {
 			" AND key < ?"
+		} else {
+			" AND key > ?"
 		});
 	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
-		sql.push_str(" ORDER BY key ASC LIMIT ?");
-	} else {
 		sql.push_str(" ORDER BY key DESC LIMIT ?");
+	} else {
+		sql.push_str(" ORDER BY key ASC LIMIT ?");
 	}
 	sql
 }
@@ -558,16 +558,16 @@ pub(super) fn build_range_current_sql_partitioned(
 	}
 	if has_last_key {
 		sql.push_str(if descending {
-			" AND (partition_hi, partition_lo, row) > (?, ?, ?)"
-		} else {
 			" AND (partition_hi, partition_lo, row) < (?, ?, ?)"
+		} else {
+			" AND (partition_hi, partition_lo, row) > (?, ?, ?)"
 		});
 	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
-		sql.push_str(" ORDER BY partition_hi ASC, partition_lo ASC, row ASC LIMIT ?");
-	} else {
 		sql.push_str(" ORDER BY partition_hi DESC, partition_lo DESC, row DESC LIMIT ?");
+	} else {
+		sql.push_str(" ORDER BY partition_hi ASC, partition_lo ASC, row ASC LIMIT ?");
 	}
 	sql
 }
@@ -596,16 +596,16 @@ pub(super) fn build_range_current_sql_partitioned_exact(
 	}
 	if has_last_key {
 		sql.push_str(if descending {
-			" AND row > ?"
-		} else {
 			" AND row < ?"
+		} else {
+			" AND row > ?"
 		});
 	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
-		sql.push_str(" ORDER BY row ASC LIMIT ?");
-	} else {
 		sql.push_str(" ORDER BY row DESC LIMIT ?");
+	} else {
+		sql.push_str(" ORDER BY row ASC LIMIT ?");
 	}
 	sql
 }

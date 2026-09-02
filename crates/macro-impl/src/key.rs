@@ -51,14 +51,16 @@ enum KeyColumn {
 	MigrationId,
 	MigrationEventId,
 	PrimaryKeyId,
+	ColumnSnapshotId,
 	IndexId,
 	OptionU8,
+	ReprU8,
 }
 
 impl KeyColumn {
 	fn width(self) -> usize {
 		match self {
-			KeyColumn::U8 => 1,
+			KeyColumn::U8 | KeyColumn::ReprU8 => 1,
 			KeyColumn::U16 => 2,
 			KeyColumn::U32 => 4,
 			KeyColumn::U64
@@ -88,6 +90,7 @@ impl KeyColumn {
 			| KeyColumn::RelationshipId
 			| KeyColumn::MigrationId
 			| KeyColumn::MigrationEventId
+			| KeyColumn::ColumnSnapshotId
 			| KeyColumn::PrimaryKeyId
 			| KeyColumn::IndexId => 8,
 			KeyColumn::ObjectId | KeyColumn::StorageId => 9,
@@ -103,6 +106,7 @@ impl KeyColumn {
 	fn encode_stmt(self, field: &str) -> String {
 		match self {
 			KeyColumn::U8 => format!("serializer.extend_u8(self.{field});"),
+			KeyColumn::ReprU8 => format!("serializer.extend_u8(self.{field} as u8);"),
 			KeyColumn::U16 => format!("serializer.extend_u16(self.{field});"),
 			KeyColumn::U32 => format!("serializer.extend_u32(self.{field});"),
 			KeyColumn::U64 => format!("serializer.extend_u64(self.{field});"),
@@ -132,6 +136,7 @@ impl KeyColumn {
 			| KeyColumn::RelationshipId
 			| KeyColumn::MigrationId
 			| KeyColumn::MigrationEventId
+			| KeyColumn::ColumnSnapshotId
 			| KeyColumn::PrimaryKeyId => format!("serializer.extend_u64(self.{field}.0);"),
 			KeyColumn::ProcedureId => format!("serializer.extend_u64(*self.{field});"),
 			KeyColumn::EpochSeconds => format!("serializer.extend_u64(self.{field}.seconds());"),
@@ -152,6 +157,7 @@ impl KeyColumn {
 	fn decode_expr(self, field_type: &str) -> String {
 		match self {
 			KeyColumn::U8 => "de.read_u8().ok()?".to_string(),
+			KeyColumn::ReprU8 => format!("{field_type}::try_from(de.read_u8().ok()?).ok()?"),
 			KeyColumn::U16 => "de.read_u16().ok()?".to_string(),
 			KeyColumn::U32 => "de.read_u32().ok()?".to_string(),
 			KeyColumn::U64 => "de.read_u64().ok()?".to_string(),
@@ -183,6 +189,7 @@ impl KeyColumn {
 			| KeyColumn::RelationshipId
 			| KeyColumn::MigrationId
 			| KeyColumn::MigrationEventId
+			| KeyColumn::ColumnSnapshotId
 			| KeyColumn::PrimaryKeyId => format!("{field_type}(de.read_u64().ok()?)"),
 			KeyColumn::ProcedureId => "ProcedureId::from_raw(de.read_u64().ok()?)".to_string(),
 			KeyColumn::EpochSeconds => "EpochSeconds::new(de.read_u64().ok()?)".to_string(),
@@ -295,10 +302,14 @@ fn parse_fields(body: &Group) -> Result<Vec<KeyField>, TokenStream> {
 	let mut fields = Vec::new();
 
 	while iter.peek().is_some() {
+		let mut repr_u8 = false;
 		while let Some(TokenTree::Punct(p)) = iter.peek() {
 			if p.as_char() == '#' {
 				iter.next();
-				if let Some(TokenTree::Group(_)) = iter.peek() {
+				if let Some(TokenTree::Group(g)) = iter.peek() {
+					if g.delimiter() == Delimiter::Bracket && is_repr_u8_attribute(g) {
+						repr_u8 = true;
+					}
 					iter.next();
 				}
 			} else {
@@ -350,13 +361,17 @@ fn parse_fields(body: &Group) -> Result<Vec<KeyField>, TokenStream> {
 		}
 
 		let ty = render(&ty_tokens);
-		let column = match column_type(&ty_tokens) {
-			Some(column) => column,
-			None => {
-				return Err(compile_error(&format!(
-					"field '{}' has type '{}', which has no flat key column type",
-					field_name, ty
-				)));
+		let column = if repr_u8 {
+			KeyColumn::ReprU8
+		} else {
+			match column_type(&ty_tokens) {
+				Some(column) => column,
+				None => {
+					return Err(compile_error(&format!(
+						"field '{}' has type '{}', which has no flat key column type",
+						field_name, ty
+					)));
+				}
 			}
 		};
 
@@ -368,6 +383,28 @@ fn parse_fields(body: &Group) -> Result<Vec<KeyField>, TokenStream> {
 	}
 
 	Ok(fields)
+}
+
+fn is_repr_u8_attribute(group: &Group) -> bool {
+	let tokens: Vec<TokenTree> = group.stream().into_iter().collect();
+	let mut iter = tokens.iter();
+
+	match iter.next() {
+		Some(TokenTree::Ident(i)) if *i == "key" => {}
+		_ => return false,
+	}
+
+	let inner = match iter.next() {
+		Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis => g.clone(),
+		_ => return false,
+	};
+
+	let inner_tokens: Vec<TokenTree> = inner.stream().into_iter().collect();
+	matches!(
+		inner_tokens.as_slice(),
+		[TokenTree::Ident(repr), TokenTree::Punct(eq), TokenTree::Ident(width)]
+			if *repr == "repr" && eq.as_char() == '=' && *width == "u8"
+	)
 }
 
 fn column_type(tokens: &[TokenTree]) -> Option<KeyColumn> {
@@ -430,6 +467,7 @@ fn column_type(tokens: &[TokenTree]) -> Option<KeyColumn> {
 		"MigrationId" => Some(KeyColumn::MigrationId),
 		"MigrationEventId" => Some(KeyColumn::MigrationEventId),
 		"PrimaryKeyId" => Some(KeyColumn::PrimaryKeyId),
+		"ColumnSnapshotId" => Some(KeyColumn::ColumnSnapshotId),
 		_ => None,
 	}
 }
@@ -539,6 +577,22 @@ mod tests {
 		let table = out.find("self . table").expect("table field encoded");
 		let row = out.find("self . row").expect("row field encoded");
 		assert!(table < row, "{out}");
+	}
+
+	#[test]
+	fn a_repr_u8_field_encodes_the_discriminant_and_decodes_through_try_from() {
+		// without the attribute a repr(u8) enum has no column type at all, and a decode that skipped
+		// try_from would hand back a discriminant the enum never declared
+		let out = expand("#[key(kind = SystemVersion)] struct K { #[key(repr = u8)] version: SystemVersion }");
+		assert!(!out.contains("compile_error"), "{out}");
+		assert!(out.contains("extend_u8 (self . version as u8)"), "{out}");
+		assert!(out.contains("SystemVersion :: try_from"), "{out}");
+	}
+
+	#[test]
+	fn a_repr_u8_field_still_rejects_a_type_the_attribute_was_not_put_on() {
+		let out = expand("#[key(kind = SystemVersion)] struct K { version: SystemVersion }");
+		assert!(out.contains("compile_error"), "{out}");
 	}
 
 	#[test]

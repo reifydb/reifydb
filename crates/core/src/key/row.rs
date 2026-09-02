@@ -15,13 +15,14 @@ use reifydb_macro::Key;
 use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 use serde::{Deserialize, Serialize};
 
-use super::{EncodableKey, EncodableKeyRange, KeyKind};
+use super::{EncodableKeyRange, KeyKind};
 use crate::{
 	interface::catalog::{object::ObjectId, storage::StorageId},
 	key::{
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
-		typed::key::Key,
+		typed::{TypedKey, direction::Desc, key::Key},
 	},
+	metrics::heap::HeapSize,
 };
 
 #[derive(Debug, Clone, PartialEq, Key)]
@@ -145,20 +146,44 @@ impl RowKey {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RowIdent(pub RowNumber);
+pub struct RowIdent(pub Desc<RowNumber>);
 
 impl From<RowKey> for RowIdent {
 	fn from(key: RowKey) -> Self {
-		RowIdent(key.row)
+		RowIdent::new(key.row)
 	}
 }
 
 impl RowIdent {
+	pub fn new(row: RowNumber) -> Self {
+		RowIdent(Desc(row))
+	}
+
+	pub fn row(self) -> RowNumber {
+		self.0.0
+	}
+
 	pub fn with_storage(self, storage: StorageId) -> RowKey {
 		RowKey {
 			storage,
-			row: self.0,
+			row: self.row(),
 		}
+	}
+}
+
+impl HeapSize for RowIdent {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
+
+impl TypedKey for RowIdent {
+	fn low() -> Self {
+		RowIdent(<Desc<RowNumber> as TypedKey>::low())
+	}
+
+	fn successor(&self) -> Option<Self> {
+		self.0.successor().map(RowIdent)
 	}
 }
 
@@ -167,7 +192,10 @@ pub mod row_key_tests {
 	use reifydb_value::value::row_number::RowNumber;
 
 	use super::{RowIdent, RowKey};
-	use crate::{interface::catalog::storage::StorageId, key::typed::key::Key};
+	use crate::{
+		interface::catalog::storage::StorageId,
+		key::typed::{TypedKey, key::Key},
+	};
 
 	#[test]
 	fn test_encode_decode() {
@@ -247,12 +275,42 @@ pub mod row_key_tests {
 	}
 
 	#[test]
-	fn test_row_ident_ordering_matches_row_number() {
-		let low = RowIdent(RowNumber(1));
-		let high = RowIdent(RowNumber(2));
+	fn test_row_ident_ordering_matches_the_encoded_key() {
+		let storage = StorageId::table(1);
+		let one = RowIdent::new(RowNumber(1));
+		let two = RowIdent::new(RowNumber(2));
 
-		// narrow identity must sort ascending by row number, same as the full key does today
-		assert!(low < high);
+		// the narrow identity stands in for the encoded key in the tiers, so it must sort the same way:
+		// descending by row number, not ascending
+		assert!(two < one);
+		assert_eq!(
+			two < one,
+			RowKey::encoded(storage, RowNumber(2)).as_slice()
+				< RowKey::encoded(storage, RowNumber(1)).as_slice()
+		);
+	}
+
+	#[test]
+	fn test_row_ident_low_is_the_greatest_row() {
+		// low() names the first key a scan meets. Under descending order that is the highest row,
+		// and a scan seeded from the lowest row would start past every key it meant to cover.
+		assert_eq!(<RowIdent as TypedKey>::low(), RowIdent::new(RowNumber(u64::MAX)));
+	}
+
+	#[test]
+	fn test_row_ident_successor_is_the_next_key_in_scan_order() {
+		// nothing may sort between a key and its successor, or an exclusive upper end drops a row
+		let ident = RowIdent::new(RowNumber(5));
+		let next = ident.successor().unwrap();
+		assert_eq!(next, RowIdent::new(RowNumber(4)));
+		assert!(next > ident);
+		assert!(RowIdent::new(RowNumber(3)) > next);
+	}
+
+	#[test]
+	fn test_row_ident_successor_runs_out_at_row_zero() {
+		// row zero is the last key in descending order, so it has no successor to hand back
+		assert_eq!(RowIdent::new(RowNumber(0)).successor(), None);
 	}
 }
 
@@ -319,45 +377,16 @@ pub mod row_sequence_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Key)]
+#[key(kind = RowSettings)]
 pub struct RowSettingsKey {
 	pub storage: StorageId,
 }
 
 impl RowSettingsKey {
 	pub fn encoded(storage: StorageId) -> EncodedKey {
-		Self {
+		Key::encode(&Self {
 			storage,
-		}
-		.encode()
-	}
-}
-
-impl EncodableKey for RowSettingsKey {
-	const KIND: KeyKind = KeyKind::RowSettings;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8);
-
-		serializer.extend_u8(self.storage.type_tag()).extend_u64(self.storage.as_u64());
-
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
-			return None;
-		}
-
-		let discriminator = de.read_u8().ok()?;
-		let id = de.read_u64().ok()?;
-
-		Some(Self {
-			storage: StorageId::from_type_tag(discriminator, id)?,
 		})
 	}
 }
@@ -371,13 +400,13 @@ impl RowSettingsKeyRange {
 
 	fn start() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(RowSettingsKey::KIND as u8);
+		serializer.extend_u8(<RowSettingsKey as Key>::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn end() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(RowSettingsKey::KIND as u8 - 1);
+		serializer.extend_u8(<RowSettingsKey as Key>::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -546,6 +575,12 @@ impl PartitionedRowKey {
 		Key::encode(&Self::new(storage, partition, row))
 	}
 
+	pub fn storage_start(storage: impl Into<StorageId>) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(<PartitionedRowKey as Key>::KIND as u8).extend_object_id(storage.into());
+		serializer.to_encoded_key()
+	}
+
 	pub fn storage_of(key: &EncodedKey) -> Option<StorageId> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
@@ -601,29 +636,43 @@ impl PartitionedRowKey {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PartitionedRowIdent {
-	pub partition_hi: u64,
-	pub partition_lo: u64,
-	pub row: RowNumber,
+	pub partition: Desc<Partition>,
+	pub row: Desc<RowNumber>,
 }
 
 impl PartitionedRowIdent {
 	pub fn new(partition: Partition, row: RowNumber) -> Self {
 		Self {
-			partition_hi: (partition.0 >> 64) as u64,
-			partition_lo: partition.0 as u64,
-			row,
+			partition: Desc(partition),
+			row: Desc(row),
 		}
 	}
 
 	pub fn partition(self) -> Partition {
-		Partition(((self.partition_hi as u128) << 64) | self.partition_lo as u128)
+		self.partition.0
+	}
+
+	pub fn row(self) -> RowNumber {
+		self.row.0
+	}
+
+	pub fn partition_hi(self) -> u64 {
+		(self.partition().0 >> 64) as u64
+	}
+
+	pub fn partition_lo(self) -> u64 {
+		self.partition().0 as u64
+	}
+
+	pub fn from_halves(partition_hi: u64, partition_lo: u64, row: RowNumber) -> Self {
+		Self::new(Partition(((partition_hi as u128) << 64) | partition_lo as u128), row)
 	}
 
 	pub fn with_storage(self, storage: StorageId) -> PartitionedRowKey {
 		PartitionedRowKey {
 			storage,
 			partition: self.partition(),
-			row: self.row,
+			row: self.row(),
 		}
 	}
 }
@@ -631,6 +680,34 @@ impl PartitionedRowIdent {
 impl From<PartitionedRowKey> for PartitionedRowIdent {
 	fn from(key: PartitionedRowKey) -> Self {
 		PartitionedRowIdent::new(key.partition, key.row)
+	}
+}
+
+impl HeapSize for PartitionedRowIdent {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
+
+impl TypedKey for PartitionedRowIdent {
+	fn low() -> Self {
+		Self {
+			partition: <Desc<Partition> as TypedKey>::low(),
+			row: <Desc<RowNumber> as TypedKey>::low(),
+		}
+	}
+
+	fn successor(&self) -> Option<Self> {
+		if let Some(row) = self.row.successor() {
+			return Some(Self {
+				partition: self.partition,
+				row,
+			});
+		}
+		Some(Self {
+			partition: self.partition.successor()?,
+			row: <Desc<RowNumber> as TypedKey>::low(),
+		})
 	}
 }
 
@@ -703,7 +780,10 @@ mod partitioned_row_key_tests {
 			object::ObjectId,
 			storage::StorageId,
 		},
-		key::{catalog::KeySerializerCatalogExt, typed::key::Key},
+		key::{
+			catalog::KeySerializerCatalogExt,
+			typed::{TypedKey, key::Key},
+		},
 	};
 
 	fn part(v: &str) -> Partition {
@@ -791,9 +871,13 @@ mod partitioned_row_key_tests {
 		let ident = PartitionedRowIdent::new(partition, RowNumber(1));
 
 		// the two native halves must reassemble into the exact original 128-bit value
-		assert_eq!(ident.partition_hi, 0x1122334455667788);
-		assert_eq!(ident.partition_lo, 0x99AABBCCDDEEFF00);
+		assert_eq!(ident.partition_hi(), 0x1122334455667788);
+		assert_eq!(ident.partition_lo(), 0x99AABBCCDDEEFF00);
 		assert_eq!(ident.partition(), partition);
+		assert_eq!(
+			PartitionedRowIdent::from_halves(ident.partition_hi(), ident.partition_lo(), RowNumber(1)),
+			ident
+		);
 	}
 
 	#[test]
@@ -803,8 +887,28 @@ mod partitioned_row_key_tests {
 		let same_partition_lower_row = PartitionedRowIdent::new(Partition(2), RowNumber(1));
 		let same_partition_higher_row = PartitionedRowIdent::new(Partition(2), RowNumber(2));
 
-		// partition must dominate row in ordering, matching PartitionedRowKey's field order
-		assert!(lower_partition < higher_partition);
-		assert!(same_partition_lower_row < same_partition_higher_row);
+		// partition must dominate row in ordering, matching PartitionedRowKey's field order, and both
+		// run descending so the identity sorts exactly as the encoded key does
+		assert!(higher_partition < lower_partition);
+		assert!(same_partition_higher_row < same_partition_lower_row);
+	}
+
+	#[test]
+	fn test_partitioned_row_ident_successor_carries_into_the_partition() {
+		// row zero ends a partition. Without the carry the scan stops at that boundary and never
+		// reaches the next partition, which is the whole point of an ordered walk across many.
+		let last_row = PartitionedRowIdent::new(Partition(5), RowNumber(0));
+		let next = last_row.successor().unwrap();
+
+		assert_eq!(next, PartitionedRowIdent::new(Partition(4), RowNumber(u64::MAX)));
+		assert!(next > last_row);
+	}
+
+	#[test]
+	fn test_partitioned_row_ident_low_is_the_greatest_partition_and_row() {
+		assert_eq!(
+			<PartitionedRowIdent as TypedKey>::low(),
+			PartitionedRowIdent::new(Partition(u128::MAX), RowNumber(u64::MAX))
+		);
 	}
 }

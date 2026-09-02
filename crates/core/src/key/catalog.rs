@@ -434,7 +434,8 @@ impl DictionaryKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Key)]
+#[key(kind = DictionaryEntry)]
 pub struct DictionaryEntryKey {
 	pub dictionary: DictionaryId,
 	pub hash: [u8; 16],
@@ -449,7 +450,7 @@ impl DictionaryEntryKey {
 	}
 
 	pub fn encoded(dictionary: impl Into<DictionaryId>, hash: [u8; 16]) -> EncodedKey {
-		EncodableKey::encode(&Self::new(dictionary.into(), hash))
+		Key::encode(&Self::new(dictionary.into(), hash))
 	}
 
 	pub fn full_scan(dictionary: DictionaryId) -> EncodedKeyRange {
@@ -458,43 +459,14 @@ impl DictionaryEntryKey {
 
 	fn entry_start(dictionary: DictionaryId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<Self as EncodableKey>::KIND as u8).extend_u64(dictionary);
+		serializer.extend_u8(<Self as Key>::KIND as u8).extend_u64(dictionary);
 		serializer.to_encoded_key()
 	}
 
 	fn entry_end(dictionary: DictionaryId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<Self as EncodableKey>::KIND as u8).extend_u64(*dictionary - 1);
+		serializer.extend_u8(<Self as Key>::KIND as u8).extend_u64(*dictionary - 1);
 		serializer.to_encoded_key()
-	}
-}
-
-impl EncodableKey for DictionaryEntryKey {
-	const KIND: KeyKind = KeyKind::DictionaryEntry;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(25);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.dictionary).extend_bytes(self.hash);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
-			return None;
-		}
-
-		let dictionary = de.read_u64().ok()?;
-		let hash_bytes = de.read_raw(16).ok()?;
-		let mut hash = [0u8; 16];
-		hash.copy_from_slice(hash_bytes);
-
-		Some(Self {
-			dictionary: DictionaryId(dictionary),
-			hash,
-		})
 	}
 }
 
@@ -639,10 +611,23 @@ pub mod dictionary_key_tests {
 				0x0f, 0x10,
 			],
 		};
-		let encoded = EncodableKey::encode(&key);
-		let decoded = <DictionaryEntryKey as EncodableKey>::decode(&encoded).unwrap();
+		let encoded = Key::encode(&key);
+		let decoded = <DictionaryEntryKey as Key>::decode(&encoded).unwrap();
 		assert_eq!(decoded.dictionary, key.dictionary);
 		assert_eq!(decoded.hash, key.hash);
+	}
+
+	#[test]
+	fn a_dictionary_entry_hash_made_of_0xff_bytes_still_round_trips() {
+		// the hand-rolled encoder escaped 0xff and appended a terminator while decode read 16 raw
+		// bytes, so any hash carrying an 0xff came back shifted and the key ran two bytes long
+		let key = DictionaryEntryKey {
+			dictionary: DictionaryId(42),
+			hash: [0xff; 16],
+		};
+		let encoded = Key::encode(&key);
+		assert_eq!(encoded.len(), 1 + 8 + 16);
+		assert_eq!(<DictionaryEntryKey as Key>::decode(&encoded).unwrap(), key);
 	}
 
 	#[test]

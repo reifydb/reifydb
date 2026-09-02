@@ -4,7 +4,6 @@
 use std::ops::Bound;
 
 use reifydb_codec::key::{
-	deserializer::KeyDeserializer,
 	encoded::{EncodedKey, EncodedKeyRange},
 	serializer::KeySerializer,
 };
@@ -12,7 +11,7 @@ use reifydb_macro::Key;
 use reifydb_runtime::version_epoch::EpochSeconds;
 use serde::{Deserialize, Serialize, de};
 
-use super::{EncodableKey, KeyKind};
+use super::KeyKind;
 use crate::{
 	interface::catalog::id::{MigrationEventId, MigrationId, SequenceId},
 	key::typed::key::Key,
@@ -67,8 +66,10 @@ pub mod system_sequence_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Key)]
+#[key(kind = SystemVersion)]
 pub struct SystemVersionKey {
+	#[key(repr = u8)]
 	pub version: SystemVersion,
 }
 
@@ -97,44 +98,15 @@ impl TryFrom<u8> for SystemVersion {
 
 impl SystemVersionKey {
 	pub fn encoded(version: SystemVersion) -> EncodedKey {
-		Self {
+		Key::encode(&Self {
 			version,
-		}
-		.encode()
-	}
-}
-
-impl EncodableKey for SystemVersionKey {
-	const KIND: KeyKind = KeyKind::SystemVersion;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(Self::KIND as u8).extend_u8(self.version as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self>
-	where
-		Self: Sized,
-	{
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
-			return None;
-		}
-
-		let version_enum = de.read_u8().ok()?.try_into().ok()?;
-
-		Some(Self {
-			version: version_enum,
 		})
 	}
 }
 
 #[cfg(test)]
 pub mod system_version_key_tests {
-	use super::{EncodableKey, SystemVersion, SystemVersionKey};
+	use super::{Key, SystemVersion, SystemVersionKey};
 
 	#[test]
 	fn test_encode_decode_storage_version() {

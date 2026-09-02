@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_codec::{
-	key::{encode_u8, encode_u64, encoded::EncodedKey, serializer::KeySerializer},
+	key::{encoded::EncodedKey, serializer::KeySerializer},
 	row::{
 		bytes::{EncodedBytes, RowBuilder, SHAPE_HEADER_SIZE, read_created_at},
 		shape::{RowFamily, RowShape},
@@ -24,7 +24,7 @@ use reifydb_core::{
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
-	key::{catalog::serialize_object_id, kind::KeyKind, row::PartitionedRowKey},
+	key::row::{PartitionedRowKey, RowKey},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
 	value::column::{buffer::ColumnBuffer, columns::Columns},
@@ -66,12 +66,8 @@ pub struct SinkTableViewOperator {
 impl SinkTableViewOperator {
 	pub fn new(operator: OperatorId, view: ResolvedView, partition_by: Vec<String>) -> Self {
 		let storage = view.def().storage_id();
-		let mut key_prefix: Vec<u8> = Vec::with_capacity(10);
-		key_prefix.push(encode_u8(KeyKind::Row as u8));
-		serialize_object_id(&ObjectId::from(storage), &mut key_prefix);
-		let mut partitioned_prefix: Vec<u8> = Vec::with_capacity(10);
-		partitioned_prefix.push(encode_u8(KeyKind::PartitionedRow as u8));
-		serialize_object_id(&ObjectId::from(storage), &mut partitioned_prefix);
+		let key_prefix: Vec<u8> = RowKey::storage_start(storage).as_slice().to_vec();
+		let partitioned_prefix: Vec<u8> = PartitionedRowKey::storage_start(storage).as_slice().to_vec();
 		let shape = row_shape_from_columns(RowFamily::Table, view.def().columns());
 		let sort = view.def().sort().to_vec();
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
@@ -96,10 +92,7 @@ impl SinkTableViewOperator {
 
 	#[inline]
 	fn row_key(&self, row: RowNumber) -> EncodedKey {
-		let mut buf = Vec::with_capacity(self.key_prefix.len() + 9);
-		buf.extend_from_slice(&self.key_prefix);
-		buf.extend_from_slice(&encode_u64(row.0));
-		EncodedKey::new(buf)
+		RowKey::encoded(self.storage, row)
 	}
 
 	#[inline]

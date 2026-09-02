@@ -74,7 +74,7 @@ use crate::{
 			schema::{
 				PartitionedRangeBounds, RowRangeBounds, partition_half_to_sql, partitioned_ident_of,
 				partitioned_key_for, partitioned_range_bounds, row_ident_of, row_key_for,
-				row_range_bounds,
+				row_range_bounds, row_to_sql,
 			},
 		},
 	},
@@ -448,13 +448,15 @@ impl SqlitePersistentStorage {
 				};
 				let cursor_row = cursor
 					.map(|c| {
-						row_ident_of(c).map(|ident| ident.0.0 as i64).ok_or_else(|| {
-							error!(internal(
+						row_ident_of(c).map(|ident| row_to_sql(ident.row().0)).ok_or_else(
+							|| {
+								error!(internal(
 								"a delete_below_version cursor does not decode as a \
 								 RowKey"
 								.to_string()
 							))
-						})
+							},
+						)
 					})
 					.transpose()?;
 				let sql = build_delete_below_version_sql_row(
@@ -559,12 +561,12 @@ impl SqlitePersistentStorage {
 					} => {
 						let cursor_row = match cursor_ident {
 							Some(ident)
-								if partition_half_to_sql(ident.partition_hi)
+								if partition_half_to_sql(ident.partition_hi())
 									== partition_hi && partition_half_to_sql(
-									ident.partition_lo,
+									ident.partition_lo(),
 								) == partition_lo =>
 							{
-								Some(ident.row.0 as i64)
+								Some(row_to_sql(ident.row().0))
 							}
 							Some(_) => None,
 							None => None,
@@ -616,12 +618,12 @@ impl SqlitePersistentStorage {
 						}
 						if let Some(ident) = &cursor_ident {
 							params.push(Box::new(partition_half_to_sql(
-								ident.partition_hi,
+								ident.partition_hi(),
 							)));
 							params.push(Box::new(partition_half_to_sql(
-								ident.partition_lo,
+								ident.partition_lo(),
 							)));
-							params.push(Box::new(ident.row.0 as i64));
+							params.push(Box::new(row_to_sql(ident.row().0)));
 						}
 						(sql, params)
 					}
@@ -1139,7 +1141,7 @@ impl SqlitePersistentStorage {
 					cursor.last_key()
 						.map(|k| {
 							row_ident_of(k.as_slice())
-								.map(|ident| ident.0.0 as i64)
+								.map(|ident| row_to_sql(ident.row().0))
 								.ok_or_else(|| {
 									error!(internal("a range cursor does not decode as a RowKey".to_string()))
 								})
@@ -1219,7 +1221,7 @@ impl SqlitePersistentStorage {
 							.last_key()
 							.map(|k| {
 								partitioned_ident_of(k.as_slice())
-									.map(|ident| ident.row.0 as i64)
+									.map(|ident| row_to_sql(ident.row().0))
 									.ok_or_else(|| {
 										error!(internal(
 											"a range cursor does not decode as a \
@@ -1305,9 +1307,9 @@ impl SqlitePersistentStorage {
 									partitioned_ident_of(k.as_slice())
 										.map(|ident| {
 											(
-											partition_half_to_sql(ident.partition_hi),
-											partition_half_to_sql(ident.partition_lo),
-											ident.row.0 as i64,
+											partition_half_to_sql(ident.partition_hi()),
+											partition_half_to_sql(ident.partition_lo()),
+											row_to_sql(ident.row().0),
 										)
 										})
 										.ok_or_else(|| {
@@ -1483,7 +1485,7 @@ fn push_key_params(schema: SqliteSchema, key: &[u8], boxed: &mut Vec<Box<dyn ToS
 						.to_string()
 				))
 			})?;
-			boxed.push(Box::new(ident.0.0 as i64));
+			boxed.push(Box::new(row_to_sql(ident.row().0)));
 		}
 		SqliteSchema::Partitioned => {
 			let ident = partitioned_ident_of(key).ok_or_else(|| {
@@ -1493,9 +1495,9 @@ fn push_key_params(schema: SqliteSchema, key: &[u8], boxed: &mut Vec<Box<dyn ToS
 						.to_string()
 				))
 			})?;
-			boxed.push(Box::new(partition_half_to_sql(ident.partition_hi)));
-			boxed.push(Box::new(partition_half_to_sql(ident.partition_lo)));
-			boxed.push(Box::new(ident.row.0 as i64));
+			boxed.push(Box::new(partition_half_to_sql(ident.partition_hi())));
+			boxed.push(Box::new(partition_half_to_sql(ident.partition_lo())));
+			boxed.push(Box::new(row_to_sql(ident.row().0)));
 		}
 	}
 	Ok(())
@@ -1528,12 +1530,12 @@ impl ReturnedKey {
 fn key_ints(schema: SqliteSchema, key: &[u8]) -> Option<Vec<i64>> {
 	match schema {
 		SqliteSchema::Blob => None,
-		SqliteSchema::Row => row_ident_of(key).map(|ident| vec![ident.0.0 as i64]),
+		SqliteSchema::Row => row_ident_of(key).map(|ident| vec![row_to_sql(ident.row().0)]),
 		SqliteSchema::Partitioned => partitioned_ident_of(key).map(|ident| {
 			vec![
-				partition_half_to_sql(ident.partition_hi),
-				partition_half_to_sql(ident.partition_lo),
-				ident.row.0 as i64,
+				partition_half_to_sql(ident.partition_hi()),
+				partition_half_to_sql(ident.partition_lo()),
+				row_to_sql(ident.row().0),
 			]
 		}),
 	}
@@ -1975,6 +1977,7 @@ mod tests {
 	use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 
 	use super::*;
+	use crate::tier::persistent::sqlite::schema::row_from_sql;
 
 	// `table()` backs the narrow row schema, so every key built against it must decode as a RowKey.
 	fn table() -> EntryKind {
@@ -2022,7 +2025,8 @@ mod tests {
 	}
 
 	fn stored_keys(s: &SqlitePersistentStorage) -> Vec<u64> {
-		// The narrow row schema stores the row number itself in `key`, never an encoded RowKey.
+		// The narrow row schema stores the row number descending in `key`, never an encoded RowKey,
+		// so reading the column raw would report the inverted integer rather than the row.
 		let table_name = s.table_sql(table()).table_name.clone();
 		let guard = s.inner.conn.lock();
 		let conn = guard.as_ref().expect("write connection is present");
@@ -2030,7 +2034,7 @@ mod tests {
 		let keys: Vec<u64> = stmt
 			.query_map([], |row| row.get::<_, i64>(0))
 			.unwrap()
-			.map(|key| key.unwrap() as u64)
+			.map(|key| row_from_sql(key.unwrap()))
 			.collect();
 		keys
 	}
@@ -2334,11 +2338,11 @@ mod tests {
 		assert_eq!(s.count_current(table()).unwrap(), 3, "only the two capped rows may be physically gone");
 		assert_eq!(
 			cursor,
-			Some(key(2)),
+			Some(key(4)),
 			"hitting the cap must return the largest deleted key so the next slice resumes above it"
 		);
-		assert!(!visible(&s, &key(1)));
-		assert!(!visible(&s, &key(2)));
+		assert!(!visible(&s, &key(5)), "key order is descending by row, so the highest rows go first");
+		assert!(!visible(&s, &key(4)));
 		assert!(visible(&s, &key(3)), "the first uncapped key must still be present");
 	}
 
@@ -2560,8 +2564,9 @@ mod tests {
 
 		assert_eq!(
 			seen,
-			vec![1, 2, 3],
-			"threading the cursor must walk every candidate exactly once, in order"
+			vec![2, 1, 3],
+			"threading the cursor must walk every candidate exactly once, in order: rows 1 and 2 share a \
+			 stamp, so the key breaks the tie descending, and only then does the later stamp follow"
 		);
 	}
 

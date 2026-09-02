@@ -5,8 +5,8 @@ use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::storage::StorageId,
 	key::{
-		EncodableKey,
 		row::{RowSettingsKey, RowSettingsKeyRange},
+		typed::key::Key,
 	},
 	row::RowSettings,
 };

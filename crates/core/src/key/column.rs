@@ -2,13 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::{
-	deserializer::KeyDeserializer,
 	encoded::{EncodedKey, EncodedKeyRange},
 	serializer::KeySerializer,
 };
 use reifydb_macro::Key;
 
-use super::{EncodableKey, KeyKind};
+use super::KeyKind;
 use crate::{
 	interface::catalog::{
 		id::{ColumnId, ColumnSnapshotId, SeriesId, TableId},
@@ -173,9 +172,8 @@ pub mod column_sequence_key_tests {
 	}
 }
 
-const VERSION: u8 = 1;
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Key)]
+#[key(kind = ColumnSnapshot)]
 pub struct ColumnSnapshotKey {
 	pub snapshot: ColumnSnapshotId,
 }
@@ -188,7 +186,7 @@ impl ColumnSnapshotKey {
 	}
 
 	pub fn encoded(snapshot: impl Into<ColumnSnapshotId>) -> EncodedKey {
-		Self::new(snapshot.into()).encode()
+		Key::encode(&Self::new(snapshot.into()))
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -196,50 +194,20 @@ impl ColumnSnapshotKey {
 	}
 
 	fn scan_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION);
-		serializer.extend_u8(Self::KIND as u8);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(<Self as Key>::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn scan_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8 - 1);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(<Self as Key>::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
 
-impl EncodableKey for ColumnSnapshotKey {
-	const KIND: KeyKind = KeyKind::ColumnSnapshot;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.snapshot);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
-			return None;
-		}
-
-		let snapshot = de.read_u64().ok()?;
-
-		Some(Self {
-			snapshot: ColumnSnapshotId(snapshot),
-		})
-	}
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Key)]
+#[key(kind = SeriesColumnSnapshot)]
 pub struct SeriesColumnSnapshotKey {
 	pub series: SeriesId,
 	pub snapshot: ColumnSnapshotId,
@@ -254,7 +222,7 @@ impl SeriesColumnSnapshotKey {
 	}
 
 	pub fn encoded(series: impl Into<SeriesId>, snapshot: impl Into<ColumnSnapshotId>) -> EncodedKey {
-		Self::new(series.into(), snapshot.into()).encode()
+		Key::encode(&Self::new(series.into(), snapshot.into()))
 	}
 
 	pub fn full_scan(series: SeriesId) -> EncodedKeyRange {
@@ -262,55 +230,20 @@ impl SeriesColumnSnapshotKey {
 	}
 
 	fn link_start(series: SeriesId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(series);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(<Self as Key>::KIND as u8).extend_u64(series);
 		serializer.to_encoded_key()
 	}
 
 	fn link_end(series: SeriesId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(*series - 1);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(<Self as Key>::KIND as u8).extend_u64(*series - 1);
 		serializer.to_encoded_key()
 	}
 }
 
-impl EncodableKey for SeriesColumnSnapshotKey {
-	const KIND: KeyKind = KeyKind::SeriesColumnSnapshot;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(18);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.series)
-			.extend_u64(self.snapshot);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
-			return None;
-		}
-
-		let series = de.read_u64().ok()?;
-		let snapshot = de.read_u64().ok()?;
-
-		Some(Self {
-			series: SeriesId(series),
-			snapshot: ColumnSnapshotId(snapshot),
-		})
-	}
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Key)]
+#[key(kind = TableColumnSnapshot)]
 pub struct TableColumnSnapshotKey {
 	pub table: TableId,
 	pub snapshot: ColumnSnapshotId,
@@ -325,7 +258,7 @@ impl TableColumnSnapshotKey {
 	}
 
 	pub fn encoded(table: impl Into<TableId>, snapshot: impl Into<ColumnSnapshotId>) -> EncodedKey {
-		Self::new(table.into(), snapshot.into()).encode()
+		Key::encode(&Self::new(table.into(), snapshot.into()))
 	}
 
 	pub fn full_scan(table: TableId) -> EncodedKeyRange {
@@ -333,51 +266,15 @@ impl TableColumnSnapshotKey {
 	}
 
 	fn link_start(table: TableId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(table);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(<Self as Key>::KIND as u8).extend_u64(table);
 		serializer.to_encoded_key()
 	}
 
 	fn link_end(table: TableId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(*table - 1);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(<Self as Key>::KIND as u8).extend_u64(*table - 1);
 		serializer.to_encoded_key()
-	}
-}
-
-impl EncodableKey for TableColumnSnapshotKey {
-	const KIND: KeyKind = KeyKind::TableColumnSnapshot;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(18);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.table)
-			.extend_u64(self.snapshot);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
-			return None;
-		}
-
-		let table = de.read_u64().ok()?;
-		let snapshot = de.read_u64().ok()?;
-
-		Some(Self {
-			table: TableId(table),
-			snapshot: ColumnSnapshotId(snapshot),
-		})
 	}
 }
 
@@ -386,6 +283,24 @@ pub mod column_snapshot_key_tests {
 	use std::ops::Bound;
 
 	use super::*;
+
+	#[test]
+	fn a_snapshot_key_reports_its_own_kind_from_its_first_byte() {
+		// the leading version byte made KeyKind::of read every snapshot key as a namespace key, so the
+		// metrics parser and the entry classifier both routed them to an owner they never belonged to
+		assert_eq!(
+			KeyKind::of(&ColumnSnapshotKey::encoded(ColumnSnapshotId(1))),
+			Some(KeyKind::ColumnSnapshot)
+		);
+		assert_eq!(
+			KeyKind::of(&SeriesColumnSnapshotKey::encoded(SeriesId(1), ColumnSnapshotId(2))),
+			Some(KeyKind::SeriesColumnSnapshot)
+		);
+		assert_eq!(
+			KeyKind::of(&TableColumnSnapshotKey::encoded(TableId(1), ColumnSnapshotId(2))),
+			Some(KeyKind::TableColumnSnapshot)
+		);
+	}
 
 	#[test]
 	fn test_column_snapshot_key_encode_decode() {

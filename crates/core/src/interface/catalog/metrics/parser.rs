@@ -58,7 +58,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		interface::catalog::{object::ObjectId, storage::StorageId},
-		key::{EncodableKey, catalog::DictionaryEntryKey, row::RowKey},
+		key::{catalog::DictionaryEntryKey, row::RowKey, typed::key::Key},
 	};
 
 	#[test]
