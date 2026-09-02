@@ -40,6 +40,7 @@ use reifydb_testing::keyspace::state_key;
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
+	util::hash::Hash128,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
@@ -120,7 +121,7 @@ fn store_with_range_budget(cached: bool, range_bytes: u64) -> (OperatorStore, Sq
 
 fn key(rng: &mut Rng) -> (OperatorId, EncodedKey) {
 	let operator = OperatorId(1 + rng.below(OPERATORS));
-	let group = GroupId((1 + rng.below(GROUPS)) as u128);
+	let group = GroupId::hashed(Hash128((1 + rng.below(GROUPS)) as u128));
 	let keyspace = KEYSPACES[rng.below(KEYSPACES.len() as u64) as usize];
 	let suffix = rng.below(SUFFIXES);
 	(operator, state_key(group, keyspace, suffix as u64))
@@ -161,7 +162,7 @@ fn assert_same_range(
 }
 
 fn random_range(rng: &mut Rng) -> EncodedKeyRange {
-	let group = GroupId((1 + rng.below(GROUPS)) as u128);
+	let group = GroupId::hashed(Hash128((1 + rng.below(GROUPS)) as u128));
 	let keyspace = KEYSPACES[rng.below(KEYSPACES.len() as u64) as usize];
 	match rng.below(3) {
 		0 => keyspace_inner_range(group, keyspace),
@@ -174,7 +175,7 @@ fn sweep(cached: &OperatorStore, oracle: &OperatorStore, step: u64) {
 	for operator in 1..=OPERATORS {
 		let operator = OperatorId(operator);
 		for group in 1..=GROUPS {
-			let group = GroupId(group as u128);
+			let group = GroupId::hashed(Hash128(group as u128));
 			for keyspace in KEYSPACES {
 				for batch in [3, 1024] {
 					let range = keyspace_inner_range(group, keyspace);
@@ -197,7 +198,7 @@ fn drain_cacheable(store: &OperatorStore) {
 				drain(
 					store,
 					OperatorId(operator),
-					&keyspace_inner_range(GroupId(group as u128), keyspace),
+					&keyspace_inner_range(GroupId::hashed(Hash128(group as u128)), keyspace),
 					64,
 				);
 			}
@@ -439,9 +440,13 @@ fn get_many_answers_exactly_as_repeated_get_across_randomized_workload() {
 
 const SWEPT: OperatorId = OperatorId(1);
 
-const SCOPED: GroupId = GroupId(9);
+fn scoped() -> GroupId {
+	GroupId::hashed(Hash128(9))
+}
 
-const NEIGHBOUR: GroupId = GroupId(11);
+fn neighbour() -> GroupId {
+	GroupId::hashed(Hash128(11))
+}
 
 /// Group-scoped data keyspaces whose suffix is a single direction-wrapped column.
 const BARE_SUFFIX_DATA: [KeyspaceId; 2] = [KeyspaceId::GUEST_ACCUMULATOR, KeyspaceId::EMIT];
@@ -471,7 +476,7 @@ impl StoreState {
 
 	fn seed(&mut self, group: GroupId, keyspace: KeyspaceId, seed: u64) {
 		let key = GroupStateKey::bound_unchecked(state_key(group, keyspace, seed));
-		self.state_set(&key, EncodedPodRow::new(format!("{}:{seed}", group.0).as_bytes()))
+		self.state_set(&key, EncodedPodRow::new(format!("{}:{seed}", group).as_bytes()))
 			.expect("a seeded write must reach the store");
 	}
 
@@ -638,11 +643,11 @@ fn populate_reaper_shaped(state: &mut StoreState) {
 	// stay tellable apart or a sweep of one group answers with the other group's state
 	populate(state, GroupId::ROOT, &ROOT_LAYOUT_IDENTITY, 4);
 	populate(state, GroupId::ROOT, &NAMED_SUFFIX_DATA, 4);
-	populate(state, SCOPED, &BARE_SUFFIX_DATA, 4);
-	populate(state, SCOPED, &NAMED_SUFFIX_DATA, 4);
-	state.seed(SCOPED, KeyspaceId::GROUP_ROW_MAPPING, 0);
-	populate(state, NEIGHBOUR, &BARE_SUFFIX_DATA, 4);
-	populate(state, NEIGHBOUR, &NAMED_SUFFIX_DATA, 4);
+	populate(state, scoped(), &BARE_SUFFIX_DATA, 4);
+	populate(state, scoped(), &NAMED_SUFFIX_DATA, 4);
+	state.seed(scoped(), KeyspaceId::GROUP_ROW_MAPPING, 0);
+	populate(state, neighbour(), &BARE_SUFFIX_DATA, 4);
+	populate(state, neighbour(), &NAMED_SUFFIX_DATA, 4);
 	state.flush();
 }
 
@@ -658,31 +663,31 @@ fn a_keyspace_scan_answers_only_with_keys_that_carry_the_group_it_asked_for() {
 
 	for keyspace in NAMED_SUFFIX_DATA.iter().chain(&BARE_SUFFIX_DATA) {
 		let page = state
-			.state_page_inner(keyspace_inner_range(SCOPED, *keyspace), None)
+			.state_page_inner(keyspace_inner_range(scoped(), *keyspace), None)
 			.expect("a keyspace scan must answer");
 		assert!(!page.is_empty(), "{} holds seeded rows for the scoped group", keyspace.name());
 		for (key, _) in &page {
 			assert_eq!(
 				group_of(key),
-				SCOPED,
+				scoped(),
 				"a scan of {} under group {} answered with a key under group {}",
 				keyspace.name(),
-				SCOPED.0,
-				group_of(key).0
+				scoped(),
+				group_of(key)
 			);
 		}
 	}
 
 	for keyspace in &ROOT_LAYOUT_IDENTITY {
 		let page = state
-			.state_page_inner(keyspace_inner_range(SCOPED, *keyspace), None)
+			.state_page_inner(keyspace_inner_range(scoped(), *keyspace), None)
 			.expect("a keyspace scan must answer");
 		assert!(
 			page.is_empty(),
 			"{} holds its one partition at root, so a scan of it under group {} must answer with \
 			 nothing, not {} row(s)",
 			keyspace.name(),
-			SCOPED.0,
+			scoped(),
 			page.len()
 		);
 	}
@@ -697,16 +702,16 @@ fn a_group_sweep_answers_only_with_keys_that_carry_the_group_it_asked_for() {
 
 	for data_only in [false, true] {
 		for limit in [None, Some(256)] {
-			let keys = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, data_only, limit);
+			let keys = sweep_keys(&mut state, scoped(), KeyspaceMask::KNOWN, data_only, limit);
 			assert!(!keys.is_empty(), "the scoped group holds seeded rows, so no sweep of it is empty");
 			for key in &keys {
 				assert_eq!(
 					group_of(key),
-					SCOPED,
+					scoped(),
 					"a sweep of group {} with data_only={data_only} limit={limit:?} answered with a \
 					 key under group {} in {}",
-					SCOPED.0,
-					group_of(key).0,
+					scoped(),
+					group_of(key),
 					keyspace_of(key).name()
 				);
 			}
@@ -721,8 +726,8 @@ fn a_data_only_sweep_is_a_subset_of_a_full_sweep() {
 	let (mut state, _guard) = state(false);
 	populate_reaper_shaped(&mut state);
 
-	let full = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, false, None);
-	let data = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, true, None);
+	let full = sweep_keys(&mut state, scoped(), KeyspaceMask::KNOWN, false, None);
+	let data = sweep_keys(&mut state, scoped(), KeyspaceMask::KNOWN, true, None);
 
 	assert!(!data.is_empty(), "the scoped group holds seeded data rows, so the narrow sweep is not empty");
 	let wide = bytes_of(&full);
@@ -731,7 +736,7 @@ fn a_data_only_sweep_is_a_subset_of_a_full_sweep() {
 			wide.contains(key.as_encoded().as_slice()),
 			"a data-only sweep of group {} returned a key in {} the full sweep of the same group never \
 			 returned",
-			SCOPED.0,
+			scoped(),
 			keyspace_of(key).name()
 		);
 	}
@@ -746,10 +751,10 @@ fn a_full_sweep_under_its_budget_holds_every_row_a_data_only_sweep_finds() {
 	let (mut state, _guard) = state(false);
 	populate_reaper_shaped(&mut state);
 
-	let scanned = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, false, Some(BUDGET + 1));
+	let scanned = sweep_keys(&mut state, scoped(), KeyspaceMask::KNOWN, false, Some(BUDGET + 1));
 	assert!(scanned.len() <= BUDGET, "the fixture must stay under the budget, or this proves nothing");
 
-	let data = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, true, None);
+	let data = sweep_keys(&mut state, scoped(), KeyspaceMask::KNOWN, true, None);
 	assert!(!data.is_empty(), "the scoped group holds seeded data rows, so the narrow sweep is not empty");
 
 	let complete = bytes_of(&scanned);
@@ -758,7 +763,7 @@ fn a_full_sweep_under_its_budget_holds_every_row_a_data_only_sweep_finds() {
 			complete.contains(key.as_encoded().as_slice()),
 			"a full sweep of group {} that stopped under its budget missed a data row in {}, so the \
 			 reaper reads it as complete and reaps only part of the group",
-			SCOPED.0,
+			scoped(),
 			keyspace_of(key).name()
 		);
 	}
@@ -772,7 +777,7 @@ fn reaping_every_data_key_a_full_sweep_returned_empties_the_data_only_sweep() {
 	let (mut state, _guard) = state(false);
 	populate_reaper_shaped(&mut state);
 
-	let scanned = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, false, Some(BUDGET + 1));
+	let scanned = sweep_keys(&mut state, scoped(), KeyspaceMask::KNOWN, false, Some(BUDGET + 1));
 	assert!(scanned.len() <= BUDGET, "the fixture must stay under the budget, or the reaper takes another path");
 	let reaped: Vec<GroupStateKey> = scanned.into_iter().filter(|key| keyspace_of(key).is_data()).collect();
 	assert!(!reaped.is_empty(), "a drain that reaps nothing would pass without exercising the recheck");
@@ -780,12 +785,12 @@ fn reaping_every_data_key_a_full_sweep_returned_empties_the_data_only_sweep() {
 		state.state_remove(key).expect("a reap must reach the store");
 	}
 
-	let leftover = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, true, None);
+	let leftover = sweep_keys(&mut state, scoped(), KeyspaceMask::KNOWN, true, None);
 	assert!(
 		leftover.is_empty(),
 		"group {} still holds {} data rows after every data key its own scan returned was reaped; \
 		 forgetting the group now orphans them behind an id nothing can resolve again",
-		SCOPED.0,
+		scoped(),
 		leftover.len()
 	);
 }
@@ -798,11 +803,11 @@ fn a_full_sweep_overruns_its_budget_only_when_the_group_holds_more_keys_than_the
 	for held in [BUDGET - 1, BUDGET, BUDGET + 1, BUDGET + 2] {
 		let (mut state, _guard) = state(false);
 		for seed in 0..held as u64 {
-			state.seed(SCOPED, KeyspaceId::GUEST_ACCUMULATOR, seed);
+			state.seed(scoped(), KeyspaceId::GUEST_ACCUMULATOR, seed);
 		}
 		state.flush();
 
-		let keys = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, false, Some(BUDGET + 1));
+		let keys = sweep_keys(&mut state, scoped(), KeyspaceMask::KNOWN, false, Some(BUDGET + 1));
 
 		assert_eq!(
 			keys.len(),
@@ -826,12 +831,12 @@ fn a_flush_does_not_change_which_keys_a_group_sweep_answers_with() {
 	// sweeps that straddle it must name the same keys; a key that changes shape across the flush is one the
 	// reaper can read from one sweep and fail to remove with the other
 	let (mut state, _guard) = state(false);
-	populate(&mut state, SCOPED, &NAMED_SUFFIX_DATA, 4);
-	populate(&mut state, SCOPED, &BARE_SUFFIX_DATA, 4);
+	populate(&mut state, scoped(), &NAMED_SUFFIX_DATA, 4);
+	populate(&mut state, scoped(), &BARE_SUFFIX_DATA, 4);
 
-	let buffered = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, true, None);
+	let buffered = sweep_keys(&mut state, scoped(), KeyspaceMask::KNOWN, true, None);
 	state.flush();
-	let stored = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, true, None);
+	let stored = sweep_keys(&mut state, scoped(), KeyspaceMask::KNOWN, true, None);
 
 	assert!(!buffered.is_empty(), "the group holds seeded data rows, so neither sweep is empty");
 	let after = bytes_of(&stored);
@@ -843,18 +848,18 @@ fn a_flush_does_not_change_which_keys_a_group_sweep_answers_with() {
 		 {} and the sweep now names it under group {}",
 		renamed.len(),
 		buffered.len(),
-		SCOPED.0,
+		scoped(),
 		keyspace_of(renamed[0]).name(),
 		stored.iter()
 			.find(|key| keyspace_of(key) == keyspace_of(renamed[0]))
-			.map(|key| group_of(key).0)
-			.unwrap_or_default()
+			.map(|key| group_of(key))
+			.unwrap_or(GroupId::ROOT)
 	);
 	assert_eq!(
 		buffered.len(),
 		stored.len(),
 		"a flush that changed no row changed how many keys a sweep of group {} names",
-		SCOPED.0
+		scoped()
 	);
 }
 
@@ -865,25 +870,25 @@ fn a_keyspace_scan_never_answers_with_a_row_another_group_wrote() {
 	for cached in [false, true] {
 		let (mut state, _guard) = state(cached);
 		for seed in 0..4u64 {
-			state.seed(SCOPED, KeyspaceId::WINDOW_META, seed);
-			state.seed(NEIGHBOUR, KeyspaceId::WINDOW_META, 100 + seed);
+			state.seed(scoped(), KeyspaceId::WINDOW_META, seed);
+			state.seed(neighbour(), KeyspaceId::WINDOW_META, 100 + seed);
 		}
 		state.flush();
 
 		let page = state
-			.state_page_inner(keyspace_inner_range(SCOPED, KeyspaceId::WINDOW_META), None)
+			.state_page_inner(keyspace_inner_range(scoped(), KeyspaceId::WINDOW_META), None)
 			.expect("a keyspace scan must answer");
 
 		let owners: Vec<String> = page
 			.iter()
 			.map(|(_, row)| String::from_utf8(row.body().to_vec()).expect("seeded bodies are utf8"))
-			.filter(|body| !body.starts_with(&format!("{}:", SCOPED.0)))
+			.filter(|body| !body.starts_with(&format!("{}:", scoped())))
 			.collect();
 		assert!(
 			owners.is_empty(),
 			"a cached={cached} scan of group {} answered with {} row(s) another group wrote, the first \
 			 being {}",
-			SCOPED.0,
+			scoped(),
 			owners.len(),
 			owners[0]
 		);
@@ -891,7 +896,7 @@ fn a_keyspace_scan_never_answers_with_a_row_another_group_wrote() {
 			page.len(),
 			4,
 			"a cached={cached} scan of group {} must answer with its own four rows",
-			SCOPED.0
+			scoped()
 		);
 	}
 }
@@ -903,17 +908,17 @@ fn a_group_sweep_never_answers_with_a_root_row_no_group_ever_wrote_under_it() {
 	// keyspace anywhere but root, so the only way one reaches this answer is the sweep crossing partitions
 	let (mut state, _guard) = state(false);
 	populate(&mut state, GroupId::ROOT, &ROOT_LAYOUT_IDENTITY, 4);
-	populate(&mut state, SCOPED, &BARE_SUFFIX_DATA, 4);
+	populate(&mut state, scoped(), &BARE_SUFFIX_DATA, 4);
 	state.flush();
 
-	let keys = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, false, None);
+	let keys = sweep_keys(&mut state, scoped(), KeyspaceMask::KNOWN, false, None);
 	for key in &keys {
 		assert_eq!(
 			group_of(key),
-			SCOPED,
+			scoped(),
 			"a sweep of group {} answered with a group-{} key in {}, a keyspace only root ever wrote",
-			SCOPED.0,
-			group_of(key).0,
+			scoped(),
+			group_of(key),
 			keyspace_of(key).name()
 		);
 	}
@@ -928,7 +933,7 @@ fn a_range_that_stops_at_a_real_group_never_answers_from_the_root_pile() {
 	populate(&mut state, GroupId::ROOT, &ROOT_LAYOUT_IDENTITY, 4);
 	state.flush();
 
-	let end = state_key(SCOPED, KeyspaceId::TIMER_WHEEL, u64::MAX);
+	let end = state_key(scoped(), KeyspaceId::TIMER_WHEEL, u64::MAX);
 	let page = state
 		.state_page_inner(EncodedKeyRange::new(Bound::Unbounded, Bound::Included(end)), None)
 		.expect("a range scan must answer");
@@ -936,7 +941,7 @@ fn a_range_that_stops_at_a_real_group_never_answers_from_the_root_pile() {
 	assert!(
 		page.is_empty(),
 		"a range ending at group {} answered with {} row(s) from root's pile, the first in {}",
-		SCOPED.0,
+		scoped(),
 		page.len(),
 		keyspace_of(&page[0].0).name()
 	);

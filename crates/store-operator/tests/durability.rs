@@ -27,15 +27,17 @@ use reifydb_store_operator::{
 	types::OperatorWrite,
 };
 use reifydb_testing::{keyspace::state_key, tempdir::temp_dir};
-use reifydb_value::byte_size::ByteSize;
+use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
 const OP: OperatorId = OperatorId(1);
 
 const OTHER: OperatorId = OperatorId(2);
 
-const GROUP: GroupId = GroupId(1);
-
 const FLOW: FlowId = FlowId(7);
+
+fn group() -> GroupId {
+	GroupId::hashed(Hash128(1))
+}
 
 fn store_at(path: &Path) -> OperatorStore {
 	// the hour-long interval means the only flush a test sees is the one it asked for
@@ -54,7 +56,7 @@ fn store_at(path: &Path) -> OperatorStore {
 }
 
 fn key(suffix: u8) -> EncodedKey {
-	state_key(GROUP, KeyspaceId::JOIN_LEFT, suffix as u64)
+	state_key(group(), KeyspaceId::JOIN_LEFT, suffix as u64)
 }
 
 fn row(body: &str) -> EncodedPodRow {

@@ -22,7 +22,11 @@ use reifydb_core::{
 	},
 	state::typed::SuffixBytes,
 };
-use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_value::{
+	byte_size::ByteSize,
+	util::{cowvec::CowVec, hash::Hash128},
+	value::row_number::RowNumber,
+};
 use rusqlite::Connection;
 
 use super::{AnyBucket, BucketMap, Budget, Resume, Scan, write::TypedBucket};
@@ -45,9 +49,10 @@ fn suffix(n: u64) -> Asc<RowNumber> {
 #[test]
 fn a_write_bucket_reads_back_what_it_recorded_without_being_proven() {
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("written")));
+	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("written")));
 
-	let entry = bucket.get(GroupId(7), &suffix(1)).expect("a recorded write must be readable at once");
+	let entry =
+		bucket.get(GroupId::hashed(Hash128(7)), &suffix(1)).expect("a recorded write must be readable at once");
 	assert_eq!(
 		String::from_utf8(entry.post.as_ref().expect("a set write keeps its row").body().to_vec())
 			.expect("utf8"),
@@ -59,11 +64,13 @@ fn a_write_bucket_reads_back_what_it_recorded_without_being_proven() {
 #[test]
 fn two_groups_in_one_write_bucket_never_read_each_other() {
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("seven")));
-	bucket.record(GroupId(9), suffix(1), Some(row("nine")));
+	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("seven")));
+	bucket.record(GroupId::hashed(Hash128(9)), suffix(1), Some(row("nine")));
 
 	for (group, expected) in [(7u128, "seven"), (9, "nine")] {
-		let entry = bucket.get(GroupId(group), &suffix(1)).expect("each group holds its own suffix");
+		let entry = bucket
+			.get(GroupId::hashed(Hash128(group)), &suffix(1))
+			.expect("each group holds its own suffix");
 		assert_eq!(
 			String::from_utf8(entry.post.as_ref().expect("a set write keeps its row").body().to_vec())
 				.expect("utf8"),
@@ -77,10 +84,10 @@ fn two_groups_in_one_write_bucket_never_read_each_other() {
 fn a_write_bucket_ranges_its_suffixes_in_the_order_the_key_type_declares() {
 	let mut bucket = bucket();
 	for n in [3u64, 1, 2] {
-		bucket.record(GroupId(7), suffix(n), Some(row(&format!("v{n}"))));
+		bucket.record(GroupId::hashed(Hash128(7)), suffix(n), Some(row(&format!("v{n}"))));
 	}
 
-	let order: Vec<u64> = bucket.range(GroupId(7), ..).map(|(key, _)| key.0.0).collect();
+	let order: Vec<u64> = bucket.range(GroupId::hashed(Hash128(7)), ..).map(|(key, _)| key.0.0).collect();
 	assert_eq!(
 		order,
 		vec![1, 2, 3],
@@ -91,19 +98,21 @@ fn a_write_bucket_ranges_its_suffixes_in_the_order_the_key_type_declares() {
 #[test]
 fn a_tombstone_is_recorded_rather_than_dropped() {
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("live")));
-	bucket.record(GroupId(7), suffix(1), None);
+	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("live")));
+	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), None);
 
-	let entry = bucket.get(GroupId(7), &suffix(1)).expect("a removal must stay visible until it is flushed");
+	let entry = bucket
+		.get(GroupId::hashed(Hash128(7)), &suffix(1))
+		.expect("a removal must stay visible until it is flushed");
 	assert!(entry.post.is_none(), "a removal is a tombstone, not an absence; dropping it would resurrect the row");
 }
 
 #[test]
 fn overwriting_a_suffix_does_not_count_it_twice() {
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("first")));
+	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("first")));
 	let after_first = bucket.footprint();
-	bucket.record(GroupId(7), suffix(1), Some(row("first")));
+	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("first")));
 
 	assert_eq!(bucket.len(), 1, "one suffix written twice is one row");
 	assert_eq!(
@@ -116,17 +125,17 @@ fn overwriting_a_suffix_does_not_count_it_twice() {
 #[test]
 fn reaping_a_group_releases_only_that_group() {
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("seven")));
-	bucket.record(GroupId(9), suffix(1), Some(row("nine")));
+	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("seven")));
+	bucket.record(GroupId::hashed(Hash128(9)), suffix(1), Some(row("nine")));
 
 	let mut budget = Budget {
 		rows: 16,
 	};
-	assert_eq!(bucket.reap_group(GroupId(7), &mut budget).expect("reap"), Resume::Done);
+	assert_eq!(bucket.reap_group(GroupId::hashed(Hash128(7)), &mut budget).expect("reap"), Resume::Done);
 
-	assert!(bucket.get(GroupId(7), &suffix(1)).is_none(), "the reaped group must be gone");
+	assert!(bucket.get(GroupId::hashed(Hash128(7)), &suffix(1)).is_none(), "the reaped group must be gone");
 	assert!(
-		bucket.get(GroupId(9), &suffix(1)).is_some(),
+		bucket.get(GroupId::hashed(Hash128(9)), &suffix(1)).is_some(),
 		"a reap is scoped to one group; taking a neighbour's rows with it loses committed state"
 	);
 }
@@ -135,14 +144,14 @@ fn reaping_a_group_releases_only_that_group() {
 fn a_reap_that_runs_out_of_budget_asks_to_be_resumed() {
 	let mut bucket = bucket();
 	for n in 0..4u64 {
-		bucket.record(GroupId(7), suffix(n), Some(row("v")));
+		bucket.record(GroupId::hashed(Hash128(7)), suffix(n), Some(row("v")));
 	}
 
 	let mut budget = Budget {
 		rows: 2,
 	};
 	assert_eq!(
-		bucket.reap_group(GroupId(7), &mut budget).expect("reap"),
+		bucket.reap_group(GroupId::hashed(Hash128(7)), &mut budget).expect("reap"),
 		Resume::More,
 		"a partially reaped group must report More or the caller drops the remainder on the floor"
 	);
@@ -154,10 +163,10 @@ fn a_reap_that_runs_out_of_budget_asks_to_be_resumed() {
 fn the_bucket_map_hands_back_the_same_bucket_for_one_operator_and_keyspace() {
 	let mut map = BucketMap::default();
 
-	map.bucket::<JoinLeft>(OP).record(GroupId(7), suffix(1), Some(row("first")));
+	map.bucket::<JoinLeft>(OP).record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("first")));
 	let entry = map
 		.bucket::<JoinLeft>(OP)
-		.get(GroupId(7), &suffix(1))
+		.get(GroupId::hashed(Hash128(7)), &suffix(1))
 		.expect("the second lookup must reach the first bucket");
 
 	assert_eq!(
@@ -172,10 +181,10 @@ fn two_operators_never_share_a_bucket() {
 	let mut map = BucketMap::default();
 	let other = OperatorId(2);
 
-	map.bucket::<JoinLeft>(OP).record(GroupId(7), suffix(1), Some(row("mine")));
+	map.bucket::<JoinLeft>(OP).record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("mine")));
 
 	assert!(
-		map.bucket::<JoinLeft>(other).get(GroupId(7), &suffix(1)).is_none(),
+		map.bucket::<JoinLeft>(other).get(GroupId::hashed(Hash128(7)), &suffix(1)).is_none(),
 		"the bucket is keyed on operator and keyspace, so one operator's state must never answer for another's"
 	);
 }
@@ -186,8 +195,8 @@ fn a_flush_writes_every_group_into_the_keyspaces_own_table() {
 	ensure_schema(&conn);
 
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("seven")));
-	bucket.record(GroupId(9), suffix(2), Some(row("nine")));
+	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("seven")));
+	bucket.record(GroupId::hashed(Hash128(9)), suffix(2), Some(row("nine")));
 	bucket.flush(&conn).expect("flush");
 
 	let rows = typed::scan::<JoinLeft>(&conn, OP);
@@ -206,10 +215,10 @@ fn a_flushed_tombstone_deletes_the_row_rather_than_storing_a_none() {
 	ensure_schema(&conn);
 
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("live")));
+	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("live")));
 	bucket.flush(&conn).expect("first flush");
 
-	bucket.record(GroupId(7), suffix(1), None);
+	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), None);
 	bucket.flush(&conn).expect("second flush");
 
 	assert!(
@@ -224,10 +233,11 @@ fn a_flushed_row_survives_the_round_trip_through_its_payload() {
 	ensure_schema(&conn);
 
 	let mut bucket = bucket();
-	bucket.record(GroupId(7), suffix(1), Some(row("payload")));
+	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("payload")));
 	bucket.flush(&conn).expect("flush");
 
-	let stored = typed::get::<JoinLeft>(&conn, OP, &JoinLeft::join(GroupId(7), suffix(1))).expect("the row");
+	let stored = typed::get::<JoinLeft>(&conn, OP, &JoinLeft::join(GroupId::hashed(Hash128(7)), suffix(1)))
+		.expect("the row");
 	let restored = EncodedPodRow::from(EncodedBytes(CowVec::new(stored)));
 	assert_eq!(
 		String::from_utf8(restored.body().to_vec()).expect("utf8"),
@@ -239,11 +249,17 @@ fn a_flushed_row_survives_the_round_trip_through_its_payload() {
 #[test]
 fn an_erased_write_reaches_the_same_bucket_a_typed_one_does() {
 	let mut map = BucketMap::default();
-	map.record_bytes(OP, JoinLeft::ID, GroupId(7), &suffix(1).to_suffix_bytes(), Some(row("erased")));
+	map.record_bytes(
+		OP,
+		JoinLeft::ID,
+		GroupId::hashed(Hash128(7)),
+		&suffix(1).to_suffix_bytes(),
+		Some(row("erased")),
+	);
 
 	let entry = map
 		.bucket::<JoinLeft>(OP)
-		.get(GroupId(7), &suffix(1))
+		.get(GroupId::hashed(Hash128(7)), &suffix(1))
 		.expect("a byte keyed write must land in the typed bucket");
 	assert_eq!(
 		String::from_utf8(entry.post.as_ref().expect("a set write keeps its row").body().to_vec())
@@ -285,10 +301,17 @@ fn every_keyspace_in_the_catalogue_is_reachable_through_the_dispatch() {
 fn an_erased_page_returns_its_suffixes_in_the_key_types_order() {
 	let mut map = BucketMap::default();
 	for n in [3u64, 1, 2] {
-		map.record_bytes(OP, JoinLeft::ID, GroupId(7), &suffix(n).to_suffix_bytes(), Some(row("v")));
+		map.record_bytes(
+			OP,
+			JoinLeft::ID,
+			GroupId::hashed(Hash128(7)),
+			&suffix(n).to_suffix_bytes(),
+			Some(row("v")),
+		);
 	}
 
-	let page = map.page_bytes(OP, JoinLeft::ID, GroupId(7), Bound::Unbounded, Bound::Unbounded, None);
+	let page =
+		map.page_bytes(OP, JoinLeft::ID, GroupId::hashed(Hash128(7)), Bound::Unbounded, Bound::Unbounded, None);
 	let order: Vec<Vec<u8>> = page.iter().map(|(suffix, _)| suffix.clone()).collect();
 	let mut sorted = order.clone();
 	sorted.sort();
@@ -303,16 +326,29 @@ fn an_erased_page_returns_its_suffixes_in_the_key_types_order() {
 fn an_erased_page_honours_its_limit() {
 	let mut map = BucketMap::default();
 	for n in 0..5u64 {
-		map.record_bytes(OP, JoinLeft::ID, GroupId(7), &suffix(n).to_suffix_bytes(), Some(row("v")));
+		map.record_bytes(
+			OP,
+			JoinLeft::ID,
+			GroupId::hashed(Hash128(7)),
+			&suffix(n).to_suffix_bytes(),
+			Some(row("v")),
+		);
 	}
 
-	let page = map.page_bytes(OP, JoinLeft::ID, GroupId(7), Bound::Unbounded, Bound::Unbounded, Some(2));
+	let page = map.page_bytes(
+		OP,
+		JoinLeft::ID,
+		GroupId::hashed(Hash128(7)),
+		Bound::Unbounded,
+		Bound::Unbounded,
+		Some(2),
+	);
 	assert_eq!(page.len(), 2, "an unbounded page would blow the caller's budget on a large group");
 }
 
 fn seeded_pair() -> BucketMap {
 	let mut map = BucketMap::default();
-	for group in [GroupId(7), GroupId(9)] {
+	for group in [GroupId::hashed(Hash128(7)), GroupId::hashed(Hash128(9))] {
 		for keyspace in [JoinLeft::ID, JoinRight::ID] {
 			for n in [2u64, 1] {
 				map.record_bytes(OP, keyspace, group, &suffix(n).to_suffix_bytes(), Some(row("v")));
@@ -324,7 +360,7 @@ fn seeded_pair() -> BucketMap {
 
 fn expected_order() -> Vec<EncodedKey> {
 	let mut keys = Vec::new();
-	for group in [GroupId(7), GroupId(9)] {
+	for group in [GroupId::hashed(Hash128(7)), GroupId::hashed(Hash128(9))] {
 		for keyspace in [JoinLeft::ID, JoinRight::ID] {
 			for n in [1u64, 2] {
 				keys.push(OperatorStateKey::inner_encoded(
@@ -516,13 +552,13 @@ fn a_whole_operator_scan_names_no_group_and_still_sweeps_every_one() {
 #[test]
 fn a_group_data_sweep_stops_at_its_own_group() {
 	let map = seeded_pair();
-	let range = group_data_inner_range(GroupId(9));
+	let range = group_data_inner_range(GroupId::hashed(Hash128(9)));
 
 	let strayed: Vec<GroupId> = map
 		.encoded_range(OP, &range.start, &range.end, Scan::Forward, usize::MAX)
 		.into_iter()
 		.map(|(key, _)| OperatorStateKey::decode_inner(key.as_slice()).expect("a stored key decodes").0)
-		.filter(|group| *group != GroupId(9))
+		.filter(|group| *group != GroupId::hashed(Hash128(9)))
 		.collect();
 
 	assert!(strayed.is_empty(), "a sweep of one group must never return another group's keys, got {strayed:?}");

@@ -14,7 +14,6 @@ use reifydb_value::{
 use super::operator::WindowOperator;
 use crate::{
 	operator::{
-		aggregation::engine::partition_group_key,
 		host::HostContext,
 		state::seal::{
 			coord::Coord,
@@ -118,7 +117,7 @@ impl WindowOperator {
 	}
 
 	pub(super) fn partition_group(&self, partition: Hash128) -> GroupId {
-		GroupId::of(&partition_group_key(partition))
+		GroupId::hashed(partition)
 	}
 
 	pub fn store_row_index(

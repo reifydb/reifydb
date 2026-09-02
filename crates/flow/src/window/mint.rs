@@ -59,13 +59,18 @@ impl<'a> Mint<'a> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::datetime::DateTime;
+	use reifydb_value::{util::hash::Hash128, value::datetime::DateTime};
 
 	use super::*;
 	use crate::operator::state::mock::MockStore;
 
-	const GROUP: GroupId = GroupId(42);
-	const OTHER: GroupId = GroupId(43);
+	fn group() -> GroupId {
+		GroupId::hashed(Hash128(42))
+	}
+
+	fn other() -> GroupId {
+		GroupId::hashed(Hash128(43))
+	}
 
 	fn meta() -> WindowMeta {
 		WindowMeta::new()
@@ -81,7 +86,7 @@ mod tests {
 		let mut store = MockStore::default();
 
 		let minted: Vec<u64> =
-			(0..4).map(|_| mint.ordinal(&mut store, GROUP).unwrap().value()).collect::<Vec<_>>();
+			(0..4).map(|_| mint.ordinal(&mut store, group()).unwrap().value()).collect::<Vec<_>>();
 
 		assert_eq!(minted, vec![0, 1, 2, 3]);
 	}
@@ -94,11 +99,11 @@ mod tests {
 		let mut mint = Mint::new(&mut meta);
 		let mut store = MockStore::default();
 
-		mint.ordinal(&mut store, GROUP).unwrap();
-		mint.ordinal(&mut store, GROUP).unwrap();
+		mint.ordinal(&mut store, group()).unwrap();
+		mint.ordinal(&mut store, group()).unwrap();
 
-		assert_eq!(mint.ordinal(&mut store, OTHER).unwrap().value(), 0);
-		assert_eq!(mint.ordinal(&mut store, GROUP).unwrap().value(), 2);
+		assert_eq!(mint.ordinal(&mut store, other()).unwrap().value(), 0);
+		assert_eq!(mint.ordinal(&mut store, group()).unwrap().value(), 2);
 	}
 
 	#[test]
@@ -118,11 +123,11 @@ mod tests {
 		let mut mint = Mint::new(&mut meta);
 		let mut store = MockStore::default();
 
-		mint.record_membership(&mut store, GROUP, RowNumber(7), 100).unwrap();
-		mint.record_membership(&mut store, GROUP, RowNumber(7), 200).unwrap();
-		mint.record_membership(&mut store, GROUP, RowNumber(7), 100).unwrap();
+		mint.record_membership(&mut store, group(), RowNumber(7), 100).unwrap();
+		mint.record_membership(&mut store, group(), RowNumber(7), 200).unwrap();
+		mint.record_membership(&mut store, group(), RowNumber(7), 100).unwrap();
 
-		assert_eq!(mint.membership(&mut store, GROUP, RowNumber(7)).unwrap(), vec![100, 200]);
+		assert_eq!(mint.membership(&mut store, group(), RowNumber(7)).unwrap(), vec![100, 200]);
 	}
 
 	#[test]
@@ -133,7 +138,7 @@ mod tests {
 		let mut mint = Mint::new(&mut meta);
 		let mut store = MockStore::default();
 
-		assert!(mint.membership(&mut store, GROUP, RowNumber(7)).unwrap().is_empty());
+		assert!(mint.membership(&mut store, group(), RowNumber(7)).unwrap().is_empty());
 	}
 
 	#[test]
@@ -144,8 +149,8 @@ mod tests {
 		let mut mint = Mint::new(&mut meta);
 		let mut store = MockStore::default();
 
-		mint.record_membership(&mut store, GROUP, RowNumber(7), 100).unwrap();
+		mint.record_membership(&mut store, group(), RowNumber(7), 100).unwrap();
 
-		assert!(mint.membership(&mut store, OTHER, RowNumber(7)).unwrap().is_empty());
+		assert!(mint.membership(&mut store, other(), RowNumber(7)).unwrap().is_empty());
 	}
 }

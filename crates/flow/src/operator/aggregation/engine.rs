@@ -3,7 +3,6 @@
 
 use std::collections::HashMap;
 
-use reifydb_codec::key::{encode_u64_asc, encode_u128_asc, encoded::EncodedKey};
 use reifydb_core::{
 	interface::change::{Change, Diff},
 	key::operator::state::GroupId,
@@ -42,27 +41,13 @@ pub(crate) type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKe
 
 pub(crate) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
 
-const WINDOW_GROUP: u8 = 0x00;
-const PARTITION_GROUP: u8 = 0x01;
-
-pub(crate) fn window_group_key(partition: Hash128, window_id: u64) -> EncodedKey {
-	let mut bytes = Vec::with_capacity(1 + 16 + 8);
-	bytes.push(WINDOW_GROUP);
-	bytes.extend_from_slice(&encode_u128_asc(partition.0));
-	bytes.extend_from_slice(&encode_u64_asc(window_id));
-	EncodedKey::new(bytes)
-}
-
-pub(crate) fn partition_group_key(partition: Hash128) -> EncodedKey {
-	let mut bytes = Vec::with_capacity(1 + 16);
-	bytes.push(PARTITION_GROUP);
-	bytes.extend_from_slice(&encode_u128_asc(partition.0));
-	EncodedKey::new(bytes)
-}
-
 #[instrument(name = "flow::operator::aggregation::window_groups", level = "trace", skip_all, fields(windows = windows.len()))]
 pub(crate) fn intern_window_groups(windows: &[(Hash128, u64)]) -> WindowGroups {
-	windows.iter().map(|&(p, w)| ((p, w), GroupId::of(&window_group_key(p, w)))).collect()
+	windows.iter().map(|&(p, w)| ((p, w), GroupId::window(p, w))).collect()
+}
+
+pub(crate) fn intern_partition_groups(partitions: &[(Hash128, u64)]) -> WindowGroups {
+	partitions.iter().map(|&(p, w)| ((p, w), GroupId::hashed(p))).collect()
 }
 
 pub(crate) fn group_of(groups: &WindowGroups, partition: Hash128, window_id: u64) -> GroupId {
@@ -228,27 +213,42 @@ pub(crate) fn finish_tumbling_engine(
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::key::operator::state::GroupId;
 	use reifydb_value::util::hash::Hash128;
-
-	use super::{partition_group_key, window_group_key};
 
 	const PARTITION: Hash128 = Hash128(0x0123_4567_89ab_cdef_0123_4567_89ab_cdef);
 
 	#[test]
-	fn a_partition_group_can_never_collide_with_a_window_group() {
-		// Both kinds share one dictionary, and without the leading discriminator only the
-		// (incidentally fixed) coordinate width separates them: a collision would alias a
-		// partition's session tracker onto a window's accumulators.
-		let partition = partition_group_key(PARTITION);
-		for window_id in [0u64, 1, u64::MAX] {
-			let window = window_group_key(PARTITION, window_id);
+	fn a_partition_group_can_never_collide_with_a_window_group_of_the_same_partition() {
+		// Only the leading window id field separates the two kinds; a collision would alias a partition's
+		// session tracker onto a window's accumulators.
+		let partition = GroupId::hashed(PARTITION);
+		assert_eq!(partition.window_id(), None);
+		for window_id in [0u64, 1, u64::MAX - 1] {
+			let window = GroupId::window(PARTITION, window_id);
 			assert_ne!(partition, window);
-			assert_ne!(
-				partition.as_bytes()[0],
-				window.as_bytes()[0],
-				"the discriminator, not the length, must be what separates the two kinds"
-			);
+			assert_eq!(window.window_id(), Some(window_id));
 		}
+	}
+
+	#[test]
+	fn no_window_group_can_ever_be_the_root_group() {
+		// Root owns the timer wheel, the expiry index and the reap queue, so a window landing on it would let
+		// the reaper delete the operator's own scheduling state.
+		for window_id in [0u64, 1, u64::MAX - 1] {
+			for partition in [Hash128(0), Hash128(1), Hash128(u128::MAX)] {
+				assert_ne!(GroupId::window(partition, window_id), GroupId::ROOT);
+			}
+		}
+	}
+
+	#[test]
+	fn a_window_id_orders_its_groups_ahead_of_every_later_window() {
+		// The reaper sweeps a window as one contiguous wire span, so all of window n must sort before any of
+		// window n+1 whatever the partition hash.
+		let earlier = GroupId::window(Hash128(u128::MAX), 7);
+		let later = GroupId::window(Hash128(0), 8);
+		assert!(earlier > later, "on the wire the raw order is inverted, so the older window sorts first");
 	}
 }
 

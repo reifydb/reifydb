@@ -185,8 +185,14 @@ fn field(name: String, ty_tokens: &[TokenTree]) -> Result<KeyField, TokenStream>
 }
 
 fn column_type(inner: &[TokenTree]) -> Option<&'static str> {
-	if let [TokenTree::Group(group)] = inner {
-		return (group.delimiter() == Delimiter::Bracket && is_byte_array_16(group)).then_some("Blob16");
+	if let [TokenTree::Group(group)] = inner
+		&& group.delimiter() == Delimiter::Bracket
+	{
+		return byte_array_width(group).and_then(|width| match width {
+			16 => Some("Blob16"),
+			24 => Some("Blob24"),
+			_ => None,
+		});
 	}
 
 	let unqualified = strip_path(inner);
@@ -202,18 +208,21 @@ fn column_type(inner: &[TokenTree]) -> Option<&'static str> {
 	match head.as_str() {
 		"u8" | "TimerKind" => Some("U8"),
 		"u64" | "RowNumber" | "DateTime" | "RowShapeFingerprint" | "ContentVersion" => Some("U64"),
-		"GroupId" | "Hash128" | "Partition" => Some("Blob16"),
+		"Hash128" | "Partition" => Some("Blob16"),
+		"GroupId" => Some("Blob24"),
 		_ => None,
 	}
 }
 
-fn is_byte_array_16(group: &Group) -> bool {
+fn byte_array_width(group: &Group) -> Option<usize> {
 	let tokens: Vec<TokenTree> = group.stream().into_iter().collect();
 	match tokens.as_slice() {
-		[TokenTree::Ident(element), TokenTree::Punct(semi), TokenTree::Literal(len)] => {
-			*element == "u8" && semi.as_char() == ';' && len.to_string() == "16"
+		[TokenTree::Ident(element), TokenTree::Punct(semi), TokenTree::Literal(len)]
+			if *element == "u8" && semi.as_char() == ';' =>
+		{
+			len.to_string().parse().ok()
 		}
-		_ => false,
+		_ => None,
 	}
 }
 
@@ -368,7 +377,7 @@ mod tests {
 		let desc = out.find("Direction :: Desc").expect("group must be descending");
 		let asc = out.find("Direction :: Asc").expect("row must be ascending");
 		assert!(desc < asc, "{out}");
-		assert!(out.contains("KeyColumnType :: Blob16"), "{out}");
+		assert!(out.contains("KeyColumnType :: Blob24"), "{out}");
 		assert!(out.contains("KeyColumnType :: U64"), "{out}");
 	}
 
@@ -421,6 +430,23 @@ mod tests {
 	}
 
 	#[test]
+	fn every_blob_width_the_catalogue_admits_has_a_byte_array_spelling() {
+		// a width reachable by name but not by [u8; N] would make the two spellings disagree on the same field
+		for (width, column) in [(16usize, "Blob16"), (24, "Blob24")] {
+			let out = expand(&format!("struct ProbeKey {{ blob: Asc<[u8; {width}]> }}"));
+			assert!(!out.contains("compile_error"), "{width}: {out}");
+			assert!(out.contains(&format!("KeyColumnType :: {column}")), "{width}: {out}");
+		}
+	}
+
+	#[test]
+	fn a_byte_array_of_an_unmapped_width_is_rejected() {
+		// without the closed list a novel width would fall through to a column that truncates every value
+		let out = expand("struct ProbeKey { blob: Asc<[u8; 20]> }");
+		assert!(out.contains("compile_error"), "{out}");
+	}
+
+	#[test]
 	fn every_catalogue_field_type_maps_to_its_declared_width() {
 		// the width here is what sqlite's column and the fixed width row both take; mapping a type one
 		// column too narrow silently truncates every value the keyspace ever writes
@@ -432,7 +458,7 @@ mod tests {
 			("DateTime", "U64"),
 			("RowShapeFingerprint", "U64"),
 			("ContentVersion", "U64"),
-			("GroupId", "Blob16"),
+			("GroupId", "Blob24"),
 			("Hash128", "Blob16"),
 			("Partition", "Blob16"),
 		] {

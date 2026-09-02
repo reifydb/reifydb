@@ -43,9 +43,8 @@ use tracing::instrument;
 
 use super::{
 	column::JoinedColumnsBuilder,
-	snapshot::{Numbering, PublishedRight, SnapshotLedger},
+	snapshot::{Numbering, SnapshotLedger},
 	state::{JoinSide, JoinState},
-	store::group_bytes,
 	strategy::{JoinContext, JoinStrategy, UpdateKeys},
 };
 use crate::{
@@ -268,7 +267,7 @@ impl JoinOperator {
 				distinct.push(*hash);
 			}
 		}
-		Ok(distinct.into_iter().map(|hash| (hash, GroupId::of(&group_bytes(&hash)))).collect())
+		Ok(distinct.into_iter().map(|hash| (hash, GroupId::hashed(hash))).collect())
 	}
 
 	fn resync_timer(host: &mut dyn HostContext, retry: Option<DateTime>) -> Result<()> {
@@ -381,44 +380,37 @@ impl JoinOperator {
 		self.move_join_expiries(host, side, &cleared, &armed)
 	}
 
-	fn free_expired_join_row(
+	fn free_expired_left_row(
 		&self,
 		host: &mut dyn HostContext,
 		state: &JoinState,
 		entry: &JoinDueEntry,
-		side: JoinSide,
 	) -> Result<()> {
 		let group = entry.group;
 		let row_number = entry.row_number;
-		match side {
-			JoinSide::Left => {
-				if self.snapshot {
-					let ledger = self.snapshot_ledger();
-					for entry in ledger.published(host, group, row_number)? {
-						match entry.right {
-							PublishedRight::Unmatched => {
-								ledger.release_unmatched(host, group, row_number)?
-							}
-							PublishedRight::Row(right_number) => {
-								ledger.release(host, group, row_number, right_number)?;
-							}
-						}
-					}
-				}
-				self.cleanup_left_row_joins(host, row_number.0)?;
-				state.left.remove_row_in(host, group, row_number)?;
-			}
-			JoinSide::Right => {
-				let composites: Vec<JoinRowMappingKey> = state
-					.left
-					.row_numbers_in(host, group)?
-					.into_iter()
-					.map(|left_number| Self::make_composite_key(left_number, row_number))
-					.collect();
-				host.remove_join_row_numbers(&composites)?;
-				state.right.remove_row_in(host, group, row_number)?;
-			}
+		if self.snapshot {
+			self.snapshot_ledger().release_all(host, group, row_number)?;
 		}
+		self.cleanup_left_row_joins(host, row_number.0)?;
+		state.left.remove_row_in(host, group, row_number)?;
+		host.join_expiry_free(entry)
+	}
+
+	fn free_expired_right_row(
+		&self,
+		host: &mut dyn HostContext,
+		state: &JoinState,
+		entry: &JoinDueEntry,
+		left_numbers: &[RowNumber],
+	) -> Result<()> {
+		let group = entry.group;
+		let row_number = entry.row_number;
+		let composites: Vec<JoinRowMappingKey> = left_numbers
+			.iter()
+			.map(|left_number| Self::make_composite_key(*left_number, row_number))
+			.collect();
+		host.remove_join_row_numbers(&composites)?;
+		state.right.remove_row_in(host, group, row_number)?;
 		host.join_expiry_free(entry)
 	}
 
@@ -461,11 +453,14 @@ impl JoinOperator {
 			}
 			for group in &order {
 				let rows = &by_group[group];
-				for (side, entry) in rows.iter().filter(|(side, _)| *side == JoinSide::Left) {
-					self.free_expired_join_row(host, &state, entry, *side)?;
+				for (_, entry) in rows.iter().filter(|(side, _)| *side == JoinSide::Left) {
+					self.free_expired_left_row(host, &state, entry)?;
 				}
-				for (side, entry) in rows.iter().filter(|(side, _)| *side == JoinSide::Right) {
-					self.free_expired_join_row(host, &state, entry, *side)?;
+				if rows.iter().any(|(side, _)| *side == JoinSide::Right) {
+					let left_numbers = state.left.row_numbers_in(host, *group)?;
+					for (_, entry) in rows.iter().filter(|(side, _)| *side == JoinSide::Right) {
+						self.free_expired_right_row(host, &state, entry, &left_numbers)?;
+					}
 				}
 				if seen.insert(*group) {
 					emptied.push(*group);
@@ -1032,35 +1027,48 @@ impl JoinOperator {
 
 #[cfg(test)]
 mod seal_tests {
-	use reifydb_codec::row::operator::state::decode;
+	use std::ops::Bound;
+
+	use reifydb_catalog::catalog::Catalog;
+	use reifydb_codec::{
+		key::encoded::EncodedKeyRange,
+		row::{bytes::EncodedBytes, operator::state::decode},
+	};
 	use reifydb_core::{
+		actors::pending::PendingLayers,
 		common::CommitVersion,
+		interface::store::MultiVersionRow,
 		key::{
 			EncodableKey,
 			operator::{
-				keyspace::join::{JoinLeft, JoinRight},
-				state::{KeyspaceId, OperatorStateKey, keyspace_inner_range},
+				keyspace::join::{JoinLeft, JoinRight, JoinRowExpiryState as JoinRowExpiry},
+				state::{KeyspaceId, OperatorStateKey, keyspace_inner_range, node_prefix},
 				traits::Keyspace,
 			},
 		},
 		value::column::buffer::ColumnBuffer,
 	};
 	use reifydb_rql::expression::parse_expression;
+	use reifydb_runtime::context::clock::Clock;
 	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_transaction::{
+		accumulator::ChangeAccumulator,
+		multi::{RangeScope, transaction::read::MultiReadTransaction},
+	};
 	use reifydb_value::{factory::time::at_millis, fragment::Fragment};
 
 	use super::*;
 	use crate::{
-		operator::host::TxnHostContext,
-		timer::extension::TimerExtension,
+		operator::{host::TxnHostContext, sink::DurableSink},
+		timer::{TimerDue, extension::TimerExtension},
 		transaction::{
 			ChangeCoordinate, FlowTransaction,
 			deferred::DeferredTransaction,
-			join_expiry::{JoinRowExpiry, join_due_range, join_expiry_key},
+			join_expiry::{join_due_range, join_expiry_key},
 			mock::FlowTxn,
 			row_number::RowNumberExtension,
 			state::{StateExtension, StateRange},
-			substrate::apply_operator_state,
+			substrate::{FlowSubstrate, apply_operator_state},
 		},
 	};
 
@@ -1185,7 +1193,7 @@ mod seal_tests {
 	}
 
 	fn group_of(hash: &Hash128) -> GroupId {
-		GroupId::of(&group_bytes(hash))
+		GroupId::hashed(*hash)
 	}
 
 	fn join_expiry_of(
@@ -1269,6 +1277,151 @@ mod seal_tests {
 	fn commit(engine: &TestEngine, txn: &mut DeferredTransaction) {
 		// State only reaches the store through the batch, so a durable read must go through a commit first.
 		apply_operator_state(&engine.inner().operator_state(), &txn.take_pending());
+	}
+
+	struct CountingTxn {
+		inner: DeferredTransaction,
+		scan_starts: Vec<EncodedKey>,
+	}
+
+	impl CountingTxn {
+		fn scans_from(&self, start: &EncodedKey) -> usize {
+			self.scan_starts.iter().filter(|recorded| recorded.as_slice() == start.as_slice()).count()
+		}
+	}
+
+	impl FlowTransaction for CountingTxn {
+		fn version(&self) -> CommitVersion {
+			self.inner.version()
+		}
+
+		fn clock(&self) -> &Clock {
+			self.inner.clock()
+		}
+
+		fn catalog(&self) -> &Catalog {
+			self.inner.catalog()
+		}
+
+		fn query(&self) -> MultiReadTransaction {
+			self.inner.query()
+		}
+
+		fn substrate(&self) -> &FlowSubstrate {
+			self.inner.substrate()
+		}
+
+		fn pending_layers(&self) -> &PendingLayers {
+			self.inner.pending_layers()
+		}
+
+		fn pending_layers_mut(&mut self) -> &mut PendingLayers {
+			self.inner.pending_layers_mut()
+		}
+
+		fn accumulator_mut(&mut self) -> &mut ChangeAccumulator {
+			self.inner.accumulator_mut()
+		}
+
+		fn armed_mut(&mut self) -> &mut Vec<TimerDue> {
+			self.inner.armed_mut()
+		}
+
+		fn change_coordinate(&self) -> Option<ChangeCoordinate> {
+			self.inner.change_coordinate()
+		}
+
+		fn set_change_coordinate(&mut self, coordinate: ChangeCoordinate) {
+			self.inner.set_change_coordinate(coordinate)
+		}
+
+		fn flow_watermark(&self) -> Option<DateTime> {
+			self.inner.flow_watermark()
+		}
+
+		fn set_flow_watermark(&mut self, watermark: DateTime) {
+			self.inner.set_flow_watermark(watermark)
+		}
+
+		fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change> {
+			self.inner.run_durable_sink(sink, change)
+		}
+
+		fn run_durable_sink_timer(
+			&mut self,
+			sink: &mut dyn DurableSink,
+			timer: Timer,
+		) -> Result<Option<Change>> {
+			self.inner.run_durable_sink_timer(sink, timer)
+		}
+
+		fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
+			self.inner.storage_get(key)
+		}
+
+		fn storage_contains(&mut self, key: &EncodedKey) -> Result<bool> {
+			self.inner.storage_contains(key)
+		}
+
+		fn storage_range(
+			&mut self,
+			range: EncodedKeyRange,
+			scope: RangeScope,
+			batch_size: usize,
+		) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+			// a repeated enumeration of one keyspace must show up here as a repeated start bound
+			match &range.start {
+				Bound::Included(start) | Bound::Excluded(start) => self.scan_starts.push(start.clone()),
+				Bound::Unbounded => {}
+			}
+			self.inner.storage_range(range, scope, batch_size)
+		}
+
+		fn fetch_state_external(
+			&mut self,
+			keys: Vec<EncodedKey>,
+			items: &mut Vec<MultiVersionRow>,
+		) -> Result<()> {
+			self.inner.fetch_state_external(keys, items)
+		}
+	}
+
+	fn left_scan_start(operator: OperatorId, group: GroupId) -> EncodedKey {
+		// unprefixed this start matches no range the operator actually issues, so the count would read zero
+		let range =
+			keyspace_inner_range(group, JoinLeft::ID).with_prefix(EncodedKey::new(node_prefix(operator)));
+		match range.start {
+			Bound::Included(key) | Bound::Excluded(key) => key,
+			Bound::Unbounded => panic!("a keyspace range must be bounded below"),
+		}
+	}
+
+	fn left_scans_freeing_expired_rights(operator: u64, rights: usize) -> usize {
+		// one key, six left rows that outlive the fire, and `rights` right rows all due at the same instant
+		let engine = TestEngine::new();
+		let mut op = join(operator, Some(seconds(3_600)), Some(seconds(10)));
+		let mut txn = txn_at(&engine, 100);
+		let left = rows(&[7; 6], &[1, 2, 3, 4, 5, 6], at_millis(5_000));
+		insert(&op, &mut txn, JoinSide::Left, &left);
+		let numbers: Vec<u64> = (0..rights as u64).map(|offset| 100 + offset).collect();
+		insert(&op, &mut txn, JoinSide::Right, &rows(&vec![7; rights], &numbers, at_millis(9_000)));
+		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
+		let start = left_scan_start(op.operator, group);
+
+		let mut counting = CountingTxn {
+			inner: txn,
+			scan_starts: Vec::new(),
+		};
+		let timer = Timer {
+			due: at_millis(19_001),
+			kind: TimerKind::Maintenance,
+			key: JoinOperator::timer_key(),
+		};
+		counting.disarm_timer(op.operator, &timer).unwrap();
+		let operator = op.operator;
+		op.on_timer(&mut TxnHostContext::new(&mut counting, operator), timer).unwrap();
+
+		counting.scans_from(&start)
 	}
 
 	#[test]
@@ -1660,5 +1813,18 @@ mod seal_tests {
 			"a group driven through free, enqueue and drain must leave no join expiry row"
 		);
 		assert_eq!(due_index_rows(&op, &mut txn), 0, "and no root due row pointing back into it");
+	}
+
+	#[test]
+	fn expiring_right_rows_enumerate_their_groups_left_side_once_not_once_each() {
+		// the left side never changes under the right sweep, so re-reading it per right row is a wasted scan
+		let one = left_scans_freeing_expired_rights(20, 1);
+		let four = left_scans_freeing_expired_rights(21, 4);
+
+		assert_eq!(
+			one, 2,
+			"exactly two left reads: the composite key enumeration and the holds_rows veto on the drain"
+		);
+		assert_eq!(four, one, "four expiring rights must not cost four enumerations of the same left side");
 	}
 }

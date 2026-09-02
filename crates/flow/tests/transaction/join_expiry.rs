@@ -7,14 +7,14 @@ use reifydb_core::{
 	actors::pending::PendingLayers,
 	interface::catalog::flow::OperatorId,
 	key::operator::{
-		keyspace::join::join_expiry_due_key,
+		keyspace::join::{JoinRowExpiryState as JoinRowExpiry, join_expiry_due_key},
 		state::{GroupId, KeyspaceId, OperatorStateKey},
 	},
 };
 use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
-	join_expiry::{JoinDueEntry, JoinRowExpiry, JoinRowExpiryExtension, join_expiry_key},
+	join_expiry::{JoinDueEntry, JoinRowExpiryExtension, join_expiry_key},
 	substrate::{FlowSubstrate, apply_operator_state, classify_pending, operator_writes},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -23,14 +23,19 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	factory::time::at_millis,
+	util::hash::Hash128,
 	value::{identity::IdentityId, row_number::RowNumber},
 };
 
 const NODE: OperatorId = OperatorId(1);
 
-const GROUP: GroupId = GroupId(7);
+fn group() -> GroupId {
+	GroupId::hashed(Hash128(7))
+}
 
-const OTHER: GroupId = GroupId(8);
+fn other() -> GroupId {
+	GroupId::hashed(Hash128(8))
+}
 
 const LEFT: u8 = 0;
 
@@ -59,11 +64,11 @@ fn arm_in(txn: &mut DeferredTransaction, group: GroupId, side: u8, row_number: u
 }
 
 fn arm(txn: &mut DeferredTransaction, side: u8, row_number: u64, millis: u64) {
-	arm_in(txn, GROUP, side, row_number, millis);
+	arm_in(txn, group(), side, row_number, millis);
 }
 
 fn clear(txn: &mut DeferredTransaction, side: u8, row_number: u64) {
-	txn.join_expiry_clear(NODE, GROUP, side, RowNumber(row_number)).unwrap();
+	txn.join_expiry_clear(NODE, group(), side, RowNumber(row_number)).unwrap();
 }
 
 fn entry(group: GroupId, side: u8, row_number: u64, millis: u64) -> JoinDueEntry {
@@ -128,7 +133,7 @@ fn an_armed_join_expiry_writes_both_its_group_row_and_its_root_due_row() {
 
 	let store = engine.inner().operator_state();
 	let stored = store
-		.get(NODE, &join_expiry_key(GROUP, LEFT, RowNumber(42)).into_encoded())
+		.get(NODE, &join_expiry_key(group(), LEFT, RowNumber(42)).into_encoded())
 		.expect("the group scoped join expiry must be durable");
 	assert_eq!(
 		JoinRowExpiry::decode_state(&stored).unwrap().at,
@@ -136,7 +141,7 @@ fn an_armed_join_expiry_writes_both_its_group_row_and_its_root_due_row() {
 		"the group scoped row carries the instant the point read answers with"
 	);
 	assert!(
-		store.get(NODE, &join_expiry_due_key(at_millis(5_000), GROUP, LEFT, RowNumber(42)).into_encoded())
+		store.get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(42)).into_encoded())
 			.is_some(),
 		"and the root due row must be keyed by that exact instant"
 	);
@@ -156,11 +161,11 @@ fn a_cleared_join_expiry_takes_its_root_due_row_with_it() {
 
 	let store = engine.inner().operator_state();
 	assert!(
-		store.get(NODE, &join_expiry_key(GROUP, LEFT, RowNumber(42)).into_encoded()).is_none(),
+		store.get(NODE, &join_expiry_key(group(), LEFT, RowNumber(42)).into_encoded()).is_none(),
 		"the group scoped row must go"
 	);
 	assert!(
-		store.get(NODE, &join_expiry_due_key(at_millis(5_000), GROUP, LEFT, RowNumber(42)).into_encoded())
+		store.get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(42)).into_encoded())
 			.is_none(),
 		"and so must the root due row that pointed at it"
 	);
@@ -181,7 +186,7 @@ fn a_join_expiry_removed_after_its_row_committed_is_invisible_to_the_minimum() {
 	assert!(
 		engine.inner()
 			.operator_state()
-			.get(NODE, &join_expiry_due_key(at_millis(5_000), GROUP, LEFT, RowNumber(1)).into_encoded())
+			.get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(1)).into_encoded())
 			.is_some(),
 		"precondition: the removed join expiry's due row is still durable"
 	);
@@ -191,7 +196,7 @@ fn a_join_expiry_removed_after_its_row_committed_is_invisible_to_the_minimum() {
 		"a pending remove must hide its own committed row from the minimum"
 	);
 	assert_eq!(
-		txn.join_expiry_at(NODE, GROUP, LEFT, RowNumber(1)).unwrap(),
+		txn.join_expiry_at(NODE, group(), LEFT, RowNumber(1)).unwrap(),
 		None,
 		"and the point read must agree with it"
 	);
@@ -210,7 +215,7 @@ fn an_expiry_moved_later_in_the_batch_wins_over_the_committed_earlier_one() {
 	assert!(
 		engine.inner()
 			.operator_state()
-			.get(NODE, &join_expiry_due_key(at_millis(5_000), GROUP, LEFT, RowNumber(1)).into_encoded())
+			.get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(1)).into_encoded())
 			.is_some(),
 		"precondition: the store still carries the earlier due row"
 	);
@@ -219,7 +224,7 @@ fn an_expiry_moved_later_in_the_batch_wins_over_the_committed_earlier_one() {
 		Some(at_millis(20_000)),
 		"the batch's own later expiry must win, not the committed earlier one"
 	);
-	assert_eq!(txn.join_expiry_at(NODE, GROUP, LEFT, RowNumber(1)).unwrap(), Some(at_millis(20_000)));
+	assert_eq!(txn.join_expiry_at(NODE, group(), LEFT, RowNumber(1)).unwrap(), Some(at_millis(20_000)));
 }
 
 #[test]
@@ -235,12 +240,12 @@ fn a_re_arm_removes_the_due_row_of_the_instant_it_left_behind() {
 
 	let store = engine.inner().operator_state();
 	assert!(
-		store.get(NODE, &join_expiry_due_key(at_millis(5_000), GROUP, LEFT, RowNumber(1)).into_encoded())
+		store.get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(1)).into_encoded())
 			.is_none(),
 		"the due row of the instant that was moved away from must not survive the move"
 	);
 	assert!(
-		store.get(NODE, &join_expiry_due_key(at_millis(20_000), GROUP, LEFT, RowNumber(1)).into_encoded())
+		store.get(NODE, &join_expiry_due_key(at_millis(20_000), group(), LEFT, RowNumber(1)).into_encoded())
 			.is_some(),
 		"only the new instant is due"
 	);
@@ -322,7 +327,7 @@ fn the_due_page_folds_a_batchs_own_due_join_expiry_in_with_the_committed_ones() 
 
 	assert_eq!(
 		page.due,
-		vec![entry(GROUP, LEFT, 2, 4_000), entry(GROUP, LEFT, 1, 3_000)],
+		vec![entry(group(), LEFT, 2, 4_000), entry(group(), LEFT, 1, 3_000)],
 		"the committed and the batch's own due join expiry both come back, newest due first"
 	);
 	assert!(!page.more);
@@ -346,7 +351,7 @@ fn the_due_page_never_returns_a_join_expiry_the_batch_already_removed() {
 
 	let page = txn.join_due_page(NODE, at_millis(5_000), 16, None).unwrap();
 
-	assert_eq!(page.due, vec![entry(GROUP, LEFT, 2, 4_000)]);
+	assert_eq!(page.due, vec![entry(group(), LEFT, 2, 4_000)]);
 	assert!(!page.more);
 }
 
@@ -361,7 +366,11 @@ fn the_due_page_stops_at_the_fire_and_never_reaches_past_it() {
 
 	let page = txn.join_due_page(NODE, at_millis(5_000), 16, None).unwrap();
 
-	assert_eq!(page.due, vec![entry(GROUP, LEFT, 1, 5_000)], "the boundary instant is due and the next one is not");
+	assert_eq!(
+		page.due,
+		vec![entry(group(), LEFT, 1, 5_000)],
+		"the boundary instant is due and the next one is not"
+	);
 	assert!(!page.more);
 }
 
@@ -376,19 +385,19 @@ fn a_due_page_narrower_than_the_operator_resumes_from_its_own_cursor() {
 	commit(&engine, &mut txn);
 
 	let first = txn.join_due_page(NODE, at_millis(10_000), 2, None).unwrap();
-	assert_eq!(first.due, vec![entry(GROUP, LEFT, 6, 6_000), entry(GROUP, LEFT, 5, 5_000)]);
+	assert_eq!(first.due, vec![entry(group(), LEFT, 6, 6_000), entry(group(), LEFT, 5, 5_000)]);
 	assert!(first.more, "four join expiries are still due and the page must say so");
 
 	let second = txn.join_due_page(NODE, at_millis(10_000), 2, first.resume.as_ref()).unwrap();
 	assert_eq!(
 		second.due,
-		vec![entry(GROUP, LEFT, 4, 4_000), entry(GROUP, LEFT, 3, 3_000)],
+		vec![entry(group(), LEFT, 4, 4_000), entry(group(), LEFT, 3, 3_000)],
 		"the cursor must resume past the join expiries the first page handed out, with nothing removed"
 	);
 	assert!(second.more);
 
 	let third = txn.join_due_page(NODE, at_millis(10_000), 2, second.resume.as_ref()).unwrap();
-	assert_eq!(third.due, vec![entry(GROUP, LEFT, 2, 2_000), entry(GROUP, LEFT, 1, 1_000)]);
+	assert_eq!(third.due, vec![entry(group(), LEFT, 2, 2_000), entry(group(), LEFT, 1, 1_000)]);
 	assert!(!third.more, "the last page must not claim another one follows it");
 }
 
@@ -409,13 +418,13 @@ fn the_due_read_is_answered_by_the_root_time_index_not_by_a_filtered_full_scan()
 
 	assert_eq!(
 		page.due,
-		vec![entry(GROUP, LEFT, 3, 3_000), entry(GROUP, LEFT, 2, 2_000)],
+		vec![entry(group(), LEFT, 3, 3_000), entry(group(), LEFT, 2, 2_000)],
 		"the budget must be spent on due rows, never on the fifty seven the index is there to skip"
 	);
 	assert!(page.more, "and the third due row must still be reachable");
 	assert_eq!(
 		txn.join_due_page(NODE, at_millis(5_000), 2, page.resume.as_ref()).unwrap().due,
-		vec![entry(GROUP, LEFT, 1, 1_000)]
+		vec![entry(group(), LEFT, 1, 1_000)]
 	);
 }
 
@@ -428,7 +437,7 @@ fn a_join_expiry_only_ever_written_in_this_batch_is_read_back_without_a_committe
 	arm(&mut txn, LEFT, 1, 5_000);
 
 	assert_eq!(txn.join_expiry_min(NODE).unwrap(), Some(at_millis(5_000)));
-	assert_eq!(txn.join_expiry_at(NODE, GROUP, LEFT, RowNumber(1)).unwrap(), Some(at_millis(5_000)));
+	assert_eq!(txn.join_expiry_at(NODE, group(), LEFT, RowNumber(1)).unwrap(), Some(at_millis(5_000)));
 }
 
 #[test]
@@ -436,8 +445,8 @@ fn a_due_page_hands_every_group_back_under_its_own_identity() {
 	// One read now spans every group, so an entry attributed to the wrong one frees a live row in that group.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
-	arm_in(&mut txn, GROUP, LEFT, 1, 9_000);
-	arm_in(&mut txn, OTHER, LEFT, 1, 1_000);
+	arm_in(&mut txn, group(), LEFT, 1, 9_000);
+	arm_in(&mut txn, other(), LEFT, 1, 1_000);
 	commit(&engine, &mut txn);
 
 	assert_eq!(
@@ -447,11 +456,11 @@ fn a_due_page_hands_every_group_back_under_its_own_identity() {
 	);
 	assert_eq!(
 		txn.join_due_page(NODE, at_millis(10_000), 16, None).unwrap().due,
-		vec![entry(GROUP, LEFT, 1, 9_000), entry(OTHER, LEFT, 1, 1_000)],
+		vec![entry(group(), LEFT, 1, 9_000), entry(other(), LEFT, 1, 1_000)],
 		"and each due entry names the group whose row it frees"
 	);
 	assert_eq!(
-		txn.join_expiry_at(NODE, GROUP, LEFT, RowNumber(1)).unwrap(),
+		txn.join_expiry_at(NODE, group(), LEFT, RowNumber(1)).unwrap(),
 		Some(at_millis(9_000)),
 		"the point read stays group scoped and must not answer with a neighbour's instant"
 	);
@@ -484,7 +493,7 @@ fn re_arming_a_join_expiry_the_store_already_holds_classifies_as_a_replace() {
 	let store = engine.inner().operator_state();
 	assert_eq!(
 		JoinRowExpiry::decode_state(
-			&store.get(NODE, &join_expiry_key(GROUP, LEFT, RowNumber(1)).into_encoded()).unwrap()
+			&store.get(NODE, &join_expiry_key(group(), LEFT, RowNumber(1)).into_encoded()).unwrap()
 		)
 		.unwrap()
 		.at,
@@ -492,7 +501,7 @@ fn re_arming_a_join_expiry_the_store_already_holds_classifies_as_a_replace() {
 	);
 	assert_eq!(
 		txn.join_due_page(NODE, at_millis(90_000), 16, None).unwrap().due,
-		vec![entry(GROUP, LEFT, 1, 20_000)],
+		vec![entry(group(), LEFT, 1, 20_000)],
 		"and the operator still owns exactly one join expiry"
 	);
 }
@@ -519,13 +528,14 @@ fn a_re_arm_raised_on_a_later_transaction_is_a_replace_too() {
 	);
 	assert_eq!(
 		second.join_due_page(NODE, at_millis(90_000), 16, None).unwrap().due,
-		vec![entry(GROUP, LEFT, 1, 20_000)]
+		vec![entry(group(), LEFT, 1, 20_000)]
 	);
 }
 
 #[test]
 fn the_two_sides_of_one_row_number_never_share_a_due_row() {
-	// Both keyspaces key on side before row, so a side byte that failed to separate them would let one side's clear free the other side's row while its retention still runs.
+	// Both keyspaces key on side before row, so a side byte that failed to separate them would let one side's clear
+	// free the other side's row while its retention still runs.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 3_000);
@@ -534,7 +544,7 @@ fn the_two_sides_of_one_row_number_never_share_a_due_row() {
 
 	assert_eq!(
 		txn.join_due_page(NODE, at_millis(5_000), 16, None).unwrap().due,
-		vec![entry(GROUP, RIGHT, 1, 4_000), entry(GROUP, LEFT, 1, 3_000)],
+		vec![entry(group(), RIGHT, 1, 4_000), entry(group(), LEFT, 1, 3_000)],
 		"one row number holds one expiry per side, not one between them"
 	);
 
@@ -542,14 +552,15 @@ fn the_two_sides_of_one_row_number_never_share_a_due_row() {
 
 	assert_eq!(
 		txn.join_due_page(NODE, at_millis(5_000), 16, None).unwrap().due,
-		vec![entry(GROUP, RIGHT, 1, 4_000)],
+		vec![entry(group(), RIGHT, 1, 4_000)],
 		"clearing one side must leave the other side's expiry standing"
 	);
 }
 
 #[test]
 fn an_expiry_past_the_high_bit_of_its_nanosecond_encoding_is_not_due_before_one_below_it() {
-	// Read as a signed integer the later instant goes negative and sorts earliest, which frees a row whose retention has not run out.
+	// Read as a signed integer the later instant goes negative and sorts earliest, which frees a row whose
+	// retention has not run out.
 	const BELOW_HIGH_BIT: u64 = 9_223_372_036_854;
 	const ABOVE_HIGH_BIT: u64 = 9_223_372_036_855;
 
@@ -561,13 +572,13 @@ fn an_expiry_past_the_high_bit_of_its_nanosecond_encoding_is_not_due_before_one_
 
 	assert_eq!(
 		txn.join_due_page(NODE, at_millis(BELOW_HIGH_BIT), 16, None).unwrap().due,
-		vec![entry(GROUP, LEFT, 1, BELOW_HIGH_BIT)],
+		vec![entry(group(), LEFT, 1, BELOW_HIGH_BIT)],
 		"the instant above the high bit is later than the fire and must stay out of the page"
 	);
 
 	assert_eq!(
 		txn.join_due_page(NODE, at_millis(ABOVE_HIGH_BIT), 16, None).unwrap().due,
-		vec![entry(GROUP, LEFT, 2, ABOVE_HIGH_BIT), entry(GROUP, LEFT, 1, BELOW_HIGH_BIT)],
+		vec![entry(group(), LEFT, 2, ABOVE_HIGH_BIT), entry(group(), LEFT, 1, BELOW_HIGH_BIT)],
 		"raising the fire past the high bit must order the two the way their instants run"
 	);
 }

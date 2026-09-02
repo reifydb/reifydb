@@ -24,7 +24,7 @@ use crate::{
 			accumulator::{RowAccumulator, WindowSlotKey},
 			engine::{
 				EngineBuckets, WindowGroups, finish_tumbling_engine, intern_window_groups,
-				route_into_buckets, slot_coord, window_group_key,
+				route_into_buckets, slot_coord,
 			},
 		},
 		host::HostContext,
@@ -927,7 +927,7 @@ fn drop_sealed_events(
 	let mut dropped = 0u64;
 	{
 		for (key, events) in buckets.iter() {
-			let group = GroupId::of(&window_group_key(key.0, key.1.start.to_order()));
+			let group = GroupId::window(key.0, key.1.start.to_order());
 			let prior_last = get::<_, EngineMeta>(host, &EngineMetaKey(group))?.map(|m| m.last_event_time);
 			let batch_last = window_max_ts.get(key).map(|ts| ts.to_order());
 			let last = prior_last.max(batch_last);
@@ -1215,7 +1215,7 @@ mod reap_tests {
 		{
 			let mut host = TxnHostContext::new(&mut txn, id);
 			for n in 0..groups {
-				enqueue(&mut host, GroupId(n + 1)).unwrap();
+				enqueue(&mut host, GroupId::hashed(Hash128(n + 1))).unwrap();
 			}
 			reap_sealed_groups(&mut operator, &mut host, fired()).unwrap();
 		}
@@ -1339,7 +1339,7 @@ mod seal_arm_tests {
 				host,
 				&Hash128::from(n as u128),
 				start,
-				GroupId(n as u128 + 1),
+				GroupId::window(Hash128::from(n as u128), start.to_order()),
 				&EncodedKey::new(Vec::new()),
 				None,
 				Some(start.to_order()),

@@ -94,7 +94,7 @@ mod tests {
 		common::TimeDomain,
 		interface::catalog::id::{SeriesId, ViewId},
 		key::operator::{
-			keyspace::join::join_expiry_due_key,
+			keyspace::join::{JoinRowExpiryState as JoinRowExpiry, join_expiry_due_key},
 			state::{GroupId, KeyspaceId, custom_not_cached_key},
 		},
 	};
@@ -104,6 +104,7 @@ mod tests {
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::{
 		byte_size::ByteSize,
+		util::hash::Hash128,
 		value::{datetime::DateTime, row_number::RowNumber},
 	};
 
@@ -113,10 +114,7 @@ mod tests {
 			metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider,
 			scan::series::SourceSeriesOperator,
 		},
-		transaction::{
-			join_expiry::{JoinRowExpiry, join_expiry_key},
-			substrate::FlowSubstrate,
-		},
+		transaction::{join_expiry::join_expiry_key, substrate::FlowSubstrate},
 	};
 
 	fn occupied_keyspaces(store: &OperatorStore, operator: OperatorId) -> Vec<KeyspaceId> {
@@ -229,7 +227,7 @@ mod tests {
 		store.apply_batch(&[
 			OperatorWrite::Insert {
 				operator,
-				key: join_expiry_key(GroupId(3), 0, RowNumber(1)).into_encoded(),
+				key: join_expiry_key(GroupId::hashed(Hash128(3)), 0, RowNumber(1)).into_encoded(),
 				post: JoinRowExpiry {
 					at,
 				}
@@ -238,7 +236,8 @@ mod tests {
 			},
 			OperatorWrite::Insert {
 				operator,
-				key: join_expiry_due_key(at, GroupId(3), 0, RowNumber(1)).into_encoded(),
+				key: join_expiry_due_key(at, GroupId::hashed(Hash128(3)), 0, RowNumber(1))
+					.into_encoded(),
 				post: EncodedPodRow::new(&[]),
 			},
 		]);

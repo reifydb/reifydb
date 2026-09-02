@@ -14,7 +14,10 @@ use reifydb_value::{
 
 use crate::key::operator::{
 	keyspace::{RootSibling, root_sibling_of},
-	state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, keyspace_inner_range, keyspace_inner_range_split},
+	state::{
+		GroupId, GroupStateKey, KeyspaceMask, OperatorStateKey, group_data_inner_range, group_inner_range,
+		keyspace_inner_range_split,
+	},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -91,36 +94,25 @@ pub trait StateStore {
 		data_only: bool,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		let range = match data_only {
+			true => group_data_inner_range(group),
+			false => group_inner_range(group),
+		};
+		let swept = self.state_page_inner(range, limit)?;
 		reifydb_assertions! {
-			if mask != KeyspaceMask::KNOWN {
-				for (key, _) in self.group_sweep_in(group, KeyspaceMask::KNOWN, data_only, None)? {
-					let Some((_, keyspace, _)) =
-						crate::key::operator::state::OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
-					else {
-						continue;
-					};
-					assert!(
-						mask.contains(keyspace),
-						"group {} holds a row in {} which the sweep set omits; declaring the group done 						 would orphan it behind a group id nothing can resolve again",
-						group.0,
-						keyspace.name()
-					);
-				}
+			for (key, _) in &swept {
+				let Some((_, keyspace, _)) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
+				else {
+					continue;
+				};
+				assert!(
+					mask.contains(keyspace),
+					"group {} holds a row in {} which the sweep set omits; declaring the group done \
+					 would orphan it behind a group id nothing can resolve again",
+					group,
+					keyspace.name()
+				);
 			}
-		}
-		let mut swept = Vec::new();
-		for id in (u8::MIN..=u8::MAX).rev() {
-			let keyspace = KeyspaceId(id);
-			if !mask.contains(keyspace) || (data_only && !keyspace.is_data()) {
-				continue;
-			}
-			let remaining = match limit {
-				Some(limit) if swept.len() >= limit => break,
-				Some(limit) => Some(limit - swept.len()),
-				None => None,
-			};
-			let page = self.state_page(keyspace_inner_range(group, keyspace), remaining)?;
-			swept.extend(page);
 		}
 		Ok(swept)
 	}

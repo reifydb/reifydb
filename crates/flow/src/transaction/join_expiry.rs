@@ -7,7 +7,6 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
-pub use reifydb_core::key::operator::keyspace::join::JoinRowExpiryState as JoinRowExpiry;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{borrow::Cow, ops::Bound};
+use std::{
+	borrow::Cow,
+	fmt::{Display, Formatter, Result as FmtResult},
+	ops::Bound,
+};
 
 use reifydb_codec::key::{
 	deserializer::KeyDeserializer,
@@ -9,7 +13,8 @@ use reifydb_codec::key::{
 	encoded::{EncodedKey, EncodedKeyRange},
 	serializer::KeySerializer,
 };
-use reifydb_value::util::hash::xxh3_128;
+use reifydb_value::util::hash::{Hash128, xxh3_128};
+use serde::{Deserialize, Serialize};
 
 use super::super::{EncodableKey, KeyKind};
 use crate::{
@@ -30,25 +35,111 @@ use crate::{
 };
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GroupId(pub u128);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct GroupId([u8; GroupId::WIDTH]);
 
 impl GroupId {
-	pub const ROOT: Self = Self(0);
+	pub const WIDTH: usize = 24;
 
-	pub const FIRST_NON_ROOT: Self = Self(1);
+	const HASH_OFFSET: usize = size_of::<u64>();
+
+	const NOT_A_WINDOW: u64 = u64::MAX;
+
+	pub const ROOT: Self = Self([0; Self::WIDTH]);
+
+	pub const FIRST_NON_ROOT: Self = {
+		let mut bytes = [0u8; Self::WIDTH];
+		bytes[Self::WIDTH - 1] = 1;
+		Self(bytes)
+	};
+
+	pub const MIN: Self = Self([u8::MIN; Self::WIDTH]);
+
+	pub const MAX: Self = Self([u8::MAX; Self::WIDTH]);
+
+	pub const fn from_bytes(bytes: [u8; Self::WIDTH]) -> Self {
+		Self(bytes)
+	}
+
+	pub const fn as_bytes(&self) -> &[u8; Self::WIDTH] {
+		&self.0
+	}
 
 	pub fn of(key: &EncodedKey) -> Self {
-		let hash = xxh3_128(key.as_slice()).0;
-		if hash == Self::ROOT.0 {
-			Self::FIRST_NON_ROOT
-		} else {
-			Self(hash)
+		Self::hashed(xxh3_128(key.as_slice()))
+	}
+
+	pub fn hashed(hash: Hash128) -> Self {
+		match hash.0 {
+			0 => Self::FIRST_NON_ROOT,
+			carried => Self::at(Self::NOT_A_WINDOW, carried),
 		}
+	}
+
+	pub fn window(partition: Hash128, window_id: u64) -> Self {
+		assert!(
+			window_id != Self::NOT_A_WINDOW,
+			"window id {window_id} is the sentinel that marks a group as having no window; a window \
+			 minted at it would collide with the join and distinct groups of the same operator"
+		);
+		Self::at(window_id, partition.0)
+	}
+
+	pub fn window_span(window_id: u64) -> (Self, Self) {
+		(Self::at(window_id, u128::MIN), Self::at(window_id, u128::MAX))
+	}
+
+	pub fn window_id(&self) -> Option<u64> {
+		let mut leading = [0u8; size_of::<u64>()];
+		leading.copy_from_slice(&self.0[..Self::HASH_OFFSET]);
+		match !u64::from_be_bytes(leading) {
+			Self::NOT_A_WINDOW => None,
+			window_id => Some(window_id),
+		}
+	}
+
+	fn at(window_id: u64, hash: u128) -> Self {
+		let mut bytes = [0u8; Self::WIDTH];
+		bytes[..Self::HASH_OFFSET].copy_from_slice(&(!window_id).to_be_bytes());
+		bytes[Self::HASH_OFFSET..].copy_from_slice(&hash.to_be_bytes());
+		Self(bytes)
 	}
 
 	pub fn is_root(&self) -> bool {
 		*self == Self::ROOT
+	}
+
+	pub fn successor(&self) -> Option<Self> {
+		let mut bytes = self.0;
+		for byte in bytes.iter_mut().rev() {
+			let (stepped, carried) = byte.overflowing_add(1);
+			*byte = stepped;
+			if !carried {
+				return Some(Self(bytes));
+			}
+		}
+		None
+	}
+
+	pub fn predecessor(&self) -> Option<Self> {
+		let mut bytes = self.0;
+		for byte in bytes.iter_mut().rev() {
+			let (stepped, borrowed) = byte.overflowing_sub(1);
+			*byte = stepped;
+			if !borrowed {
+				return Some(Self(bytes));
+			}
+		}
+		None
+	}
+}
+
+impl Display for GroupId {
+	fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+		for byte in self.0 {
+			write!(f, "{byte:02x}")?;
+		}
+		Ok(())
 	}
 }
 
@@ -84,15 +175,11 @@ impl GroupSet {
 	pub fn is_empty(&self) -> bool {
 		self.0.is_empty()
 	}
-
-	pub fn as_raw_parts(&self) -> (*const u128, usize) {
-		(self.0.as_ptr() as *const u128, self.0.len())
-	}
 }
 
 pub fn group_data_of_inner(inner: &[u8]) -> Option<GroupId> {
 	let mut de = KeyDeserializer::from_bytes(inner);
-	let group = GroupId(de.read_u128().ok()?);
+	let group = GroupId::from_bytes(de.read_fixed().ok()?);
 	let keyspace = KeyspaceId(de.read_u8().ok()?);
 	if !keyspace.is_data() {
 		return None;
@@ -351,23 +438,23 @@ impl OperatorStateKey {
 		suffix: impl AsRef<[u8]>,
 	) -> EncodedKey {
 		let suffix = suffix.as_ref();
-		let mut serializer = KeySerializer::with_capacity(28 + suffix.len());
+		let mut serializer = KeySerializer::with_capacity(NODE_GROUP_PREFIX_LEN + 1 + suffix.len());
 		serializer
 			.extend_u8(KeyKind::OperatorState as u8)
 			.extend_u64(operator.0)
-			.extend_u128(group.0)
+			.extend_fixed(*group.as_bytes())
 			.extend_u8(keyspace.0)
 			.extend_raw(suffix);
 		serializer.to_encoded_key()
 	}
 
 	pub fn inner(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(20 + self.suffix.len());
-		serializer.extend_u128(self.group.0).extend_u8(self.keyspace.0).extend_raw(&self.suffix);
+		let mut serializer = KeySerializer::with_capacity(KEYSPACE_INNER_PREFIX_LEN + self.suffix.len());
+		serializer.extend_fixed(*self.group.as_bytes()).extend_u8(self.keyspace.0).extend_raw(&self.suffix);
 		serializer.to_encoded_key()
 	}
 
-	pub const KEYSPACE_INNER_OFFSET: u32 = size_of::<u128>() as u32;
+	pub const KEYSPACE_INNER_OFFSET: u32 = GroupId::WIDTH as u32;
 
 	pub fn decode_keyspace(stored: u8) -> KeyspaceId {
 		KeyspaceId(KeyDeserializer::from_bytes(&[stored]).read_u8().expect("a single byte decodes as u8"))
@@ -375,17 +462,17 @@ impl OperatorStateKey {
 
 	pub fn inner_encoded(group: GroupId, keyspace: KeyspaceId, suffix: impl AsRef<[u8]>) -> GroupStateKey {
 		let suffix = suffix.as_ref();
-		let mut serializer = KeySerializer::with_capacity(20 + suffix.len());
-		serializer.extend_u128(group.0).extend_u8(keyspace.0).extend_raw(suffix);
+		let mut serializer = KeySerializer::with_capacity(KEYSPACE_INNER_PREFIX_LEN + suffix.len());
+		serializer.extend_fixed(*group.as_bytes()).extend_u8(keyspace.0).extend_raw(suffix);
 		GroupStateKey(serializer.to_encoded_key())
 	}
 
 	pub fn decode_inner(inner: &[u8]) -> Option<(GroupId, KeyspaceId, &[u8])> {
 		let mut de = KeyDeserializer::from_bytes(inner);
-		let group = de.read_u128().ok()?;
+		let group = de.read_fixed().ok()?;
 		let keyspace = de.read_u8().ok()?;
 		let suffix = de.read_raw(de.remaining()).ok()?;
-		Some((GroupId(group), KeyspaceId(keyspace), suffix))
+		Some((GroupId::from_bytes(group), KeyspaceId(keyspace), suffix))
 	}
 
 	pub fn node_range(operator: OperatorId) -> EncodedKeyRange {
@@ -408,11 +495,11 @@ impl EncodableKey for OperatorStateKey {
 	const KIND: KeyKind = KeyKind::OperatorState;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(28 + self.suffix.len());
+		let mut serializer = KeySerializer::with_capacity(NODE_GROUP_PREFIX_LEN + 1 + self.suffix.len());
 		serializer
 			.extend_u8(KeyKind::OperatorState as u8)
 			.extend_u64(self.operator.0)
-			.extend_u128(self.group.0)
+			.extend_fixed(*self.group.as_bytes())
 			.extend_u8(self.keyspace.0)
 			.extend_raw(&self.suffix);
 		serializer.to_encoded_key()
@@ -427,13 +514,13 @@ impl EncodableKey for OperatorStateKey {
 		}
 
 		let operator = de.read_u64().ok()?;
-		let group = de.read_u128().ok()?;
+		let group = de.read_fixed().ok()?;
 		let keyspace = de.read_u8().ok()?;
 		let suffix = de.read_raw(de.remaining()).ok()?.to_vec();
 
 		Some(Self {
 			operator: OperatorId(operator),
-			group: GroupId(group),
+			group: GroupId::from_bytes(group),
 			keyspace: KeyspaceId(keyspace),
 			suffix,
 		})
@@ -518,8 +605,8 @@ impl IntoGroupStateKey for GroupStateKey {
 }
 
 fn group_inner_prefix(group: GroupId) -> Vec<u8> {
-	let mut serializer = KeySerializer::with_capacity(20);
-	serializer.extend_u128(group.0);
+	let mut serializer = KeySerializer::with_capacity(GroupId::WIDTH);
+	serializer.extend_fixed(*group.as_bytes());
 	serializer.finish().as_ref().to_vec()
 }
 
@@ -637,7 +724,7 @@ pub fn group_inner_range_split(range: &EncodedKeyRange) -> Option<GroupId> {
 		Bound::Included(key) | Bound::Excluded(key) => key,
 		Bound::Unbounded => return None,
 	};
-	let group = GroupId(KeyDeserializer::from_bytes(key.as_slice()).read_u128().ok()?);
+	let group = GroupId::from_bytes(KeyDeserializer::from_bytes(key.as_slice()).read_fixed().ok()?);
 	for candidate in [group_inner_range(group), group_data_inner_range(group)] {
 		if range.start == candidate.start && range.end == candidate.end {
 			return Some(group);
@@ -685,6 +772,10 @@ pub fn group_identity_inner_range(group: GroupId) -> EncodedKeyRange {
 
 pub const NODE_PREFIX_LEN: usize = 9;
 
+pub const KEYSPACE_INNER_PREFIX_LEN: usize = GroupId::WIDTH + size_of::<u8>();
+
+pub const NODE_GROUP_PREFIX_LEN: usize = NODE_PREFIX_LEN + GroupId::WIDTH;
+
 pub fn extend_node_prefix(serializer: &mut KeySerializer, operator: OperatorId) {
 	serializer.extend_u8(KeyKind::OperatorState as u8).extend_u64(operator.0);
 }
@@ -696,8 +787,8 @@ pub fn node_prefix(operator: OperatorId) -> Vec<u8> {
 }
 
 fn group_prefix(operator: OperatorId, group: GroupId) -> Vec<u8> {
-	let mut serializer = KeySerializer::with_capacity(28);
-	serializer.extend_u8(KeyKind::OperatorState as u8).extend_u64(operator.0).extend_u128(group.0);
+	let mut serializer = KeySerializer::with_capacity(NODE_GROUP_PREFIX_LEN);
+	serializer.extend_u8(KeyKind::OperatorState as u8).extend_u64(operator.0).extend_fixed(*group.as_bytes());
 	serializer.finish().as_ref().to_vec()
 }
 
@@ -735,7 +826,9 @@ pub fn group_identity_range(operator: OperatorId, group: GroupId) -> EncodedKeyR
 
 #[cfg(test)]
 mod tests {
-	use std::{ops::Bound, slice};
+	use std::ops::Bound;
+
+	use reifydb_value::util::hash::Hash128;
 
 	use super::{
 		CacheTiers, EncodedKey, EncodedKeyRange, GroupId, GroupSet, GroupStateKey, KeySerializer, KeyspaceId,
@@ -847,7 +940,10 @@ mod tests {
 		bare.extend_u64(7u64);
 		let bare = bare.finish().as_ref().to_vec();
 
-		assert!(bare.len() < group_inner_prefix(GroupId(7)).len(), "a bare row number cannot span a group");
+		assert!(
+			bare.len() < group_inner_prefix(GroupId::hashed(Hash128(7))).len(),
+			"a bare row number cannot span a group"
+		);
 		assert!(OperatorStateKey::decode_inner(&bare).is_none());
 		assert!(!is_framed_inner(&bare));
 
@@ -858,7 +954,7 @@ mod tests {
 		);
 		assert!(is_framed_inner(framed.as_slice()));
 		assert!(
-			!contains(&group_identity_inner_range(GroupId(7)), framed.as_slice()),
+			!contains(&group_identity_inner_range(GroupId::hashed(Hash128(7))), framed.as_slice()),
 			"the framed form must sit outside every other group's range"
 		);
 	}
@@ -870,7 +966,7 @@ mod tests {
 		assert!(is_framed_inner(empty));
 
 		for group in GROUPS {
-			let range = group_inner_range(GroupId(group));
+			let range = group_inner_range(GroupId::hashed(Hash128(group)));
 			assert!(
 				!contains(&range, empty),
 				"the empty key must sit outside group {group}'s range, not merely be unattributed"
@@ -889,12 +985,18 @@ mod tests {
 		assert!(GroupStateKey::from_guest_framed(EncodedKey::new(Vec::new())).is_none());
 
 		assert!(is_guest_framed_inner(
-			custom_not_cached_key_in(GroupId(3), &[]).expect("an empty id fits the keyspace").as_slice()
+			custom_not_cached_key_in(GroupId::hashed(Hash128(3)), &[])
+				.expect("an empty id fits the keyspace")
+				.as_slice()
 		));
 		assert!(
 			!is_guest_framed_inner(
-				OperatorStateKey::inner_encoded(GroupId(3), KeyspaceId::CUSTOM_NOT_CACHED, [])
-					.as_slice()
+				OperatorStateKey::inner_encoded(
+					GroupId::hashed(Hash128(3)),
+					KeyspaceId::CUSTOM_NOT_CACHED,
+					[]
+				)
+				.as_slice()
 			),
 			"a suffix narrower than its keyspace declares must be refused at the wall, or it reaches the 			 typed bucket and panics there instead"
 		);
@@ -909,7 +1011,10 @@ mod tests {
 
 		for keyspace in DATA_KEYSPACES.iter().chain(IDENTITY_KEYSPACES.iter()) {
 			assert!(
-				is_framed_inner(OperatorStateKey::inner_encoded(GroupId(3), *keyspace, []).as_slice()),
+				is_framed_inner(
+					OperatorStateKey::inner_encoded(GroupId::hashed(Hash128(3)), *keyspace, [])
+						.as_slice()
+				),
 				"keyspace {keyspace:?} is one the substrate writes and must pass"
 			);
 		}
@@ -937,7 +1042,7 @@ mod tests {
 					for coord in [0u64, 1, 999, u64::MAX] {
 						keys.push(OperatorStateKey::new(
 							OperatorId(operator),
-							GroupId(group),
+							GroupId::hashed(Hash128(group)),
 							*keyspace,
 							coord.to_be_bytes().to_vec(),
 						));
@@ -959,17 +1064,18 @@ mod tests {
 		let population = population();
 		for operator in NODES {
 			for group in GROUPS {
-				let range = group_range(OperatorId(operator), GroupId(group));
+				let group_id = GroupId::hashed(Hash128(group));
+				let range = group_range(OperatorId(operator), group_id);
 				for key in &population {
 					let encoded = key.encode();
-					let expected = key.operator.0 == operator && key.group.0 == group;
+					let expected = key.operator.0 == operator && key.group == group_id;
 					assert_eq!(
 						contains(&range, encoded.as_slice()),
 						expected,
 						"operator {operator} group {group} range disagreed about a key of operator {} \
 						 group {}",
 						key.operator.0,
-						key.group.0
+						key.group
 					);
 				}
 			}
@@ -983,10 +1089,15 @@ mod tests {
 		let encodings: Vec<Vec<u8>> = GROUPS
 			.iter()
 			.map(|group| {
-				OperatorStateKey::new(OperatorId(1), GroupId(*group), KeyspaceId::ACCUMULATOR, vec![])
-					.encode()
-					.as_slice()
-					.to_vec()
+				OperatorStateKey::new(
+					OperatorId(1),
+					GroupId::hashed(Hash128(*group)),
+					KeyspaceId::ACCUMULATOR,
+					vec![],
+				)
+				.encode()
+				.as_slice()
+				.to_vec()
 			})
 			.collect();
 
@@ -1009,13 +1120,14 @@ mod tests {
 		// data and identity keyspaces must fall in exactly one reclamation phase, never both or neither
 		for operator in NODES {
 			for group in GROUPS {
-				let data = group_data_range(OperatorId(operator), GroupId(group));
-				let identity = group_identity_range(OperatorId(operator), GroupId(group));
+				let group = GroupId::hashed(Hash128(group));
+				let data = group_data_range(OperatorId(operator), group);
+				let identity = group_identity_range(OperatorId(operator), group);
 
 				for keyspace in DATA_KEYSPACES {
 					let key = OperatorStateKey::new(
 						OperatorId(operator),
-						GroupId(group),
+						group,
 						keyspace,
 						vec![7, 7],
 					)
@@ -1033,7 +1145,7 @@ mod tests {
 				for keyspace in IDENTITY_KEYSPACES {
 					let key = OperatorStateKey::new(
 						OperatorId(operator),
-						GroupId(group),
+						group,
 						keyspace,
 						vec![7, 7],
 					)
@@ -1122,9 +1234,10 @@ mod tests {
 				"{name} is declared but not framing, so the sweep panics on the first row it holds"
 			);
 
-			let key = OperatorStateKey::new(OperatorId(9), GroupId(4), keyspace, vec![7, 7]).encode();
-			let data = contains(&group_data_range(OperatorId(9), GroupId(4)), key.as_slice());
-			let identity = contains(&group_identity_range(OperatorId(9), GroupId(4)), key.as_slice());
+			let group = GroupId::hashed(Hash128(4));
+			let key = OperatorStateKey::new(OperatorId(9), group, keyspace, vec![7, 7]).encode();
+			let data = contains(&group_data_range(OperatorId(9), group), key.as_slice());
+			let identity = contains(&group_identity_range(OperatorId(9), group), key.as_slice());
 
 			assert!(data != identity, "{name} must fall in exactly one phase, not {data} and {identity}");
 			assert_eq!(
@@ -1152,7 +1265,7 @@ mod tests {
 			)
 			.encode();
 			for group in GROUPS {
-				let range = group_range(OperatorId(operator), GroupId(group));
+				let range = group_range(OperatorId(operator), GroupId::hashed(Hash128(group)));
 				assert!(
 					!contains(&range, counter.as_slice()),
 					"group {group} range must not contain the root group's counter"
@@ -1183,7 +1296,7 @@ mod tests {
 	fn a_keyspace_range_isolates_one_keyspace_of_one_group() {
 		// a keyspace range must isolate exactly one keyspace of one group, or scans mix incompatible payloads
 		let operator = OperatorId(17);
-		let group = GroupId(42);
+		let group = GroupId::hashed(Hash128(42));
 		let range = keyspace_range(operator, group, KeyspaceId::BUFFER);
 
 		let inside = OperatorStateKey::new(operator, group, KeyspaceId::BUFFER, vec![1]).encode();
@@ -1194,7 +1307,9 @@ mod tests {
 			assert!(!contains(&range, key.as_slice()), "keyspace {other:?} leaked into the buffer range");
 		}
 
-		let other_group = OperatorStateKey::new(operator, GroupId(43), KeyspaceId::BUFFER, vec![1]).encode();
+		let other_group =
+			OperatorStateKey::new(operator, GroupId::hashed(Hash128(43)), KeyspaceId::BUFFER, vec![1])
+				.encode();
 		assert!(!contains(&range, other_group.as_slice()), "another group's buffer leaked into the range");
 	}
 
@@ -1202,7 +1317,7 @@ mod tests {
 	fn encode_decode_round_trips_every_component() {
 		let key = OperatorStateKey::new(
 			OperatorId(0xDEAD_BEEF),
-			GroupId(123_456),
+			GroupId::hashed(Hash128(123_456)),
 			KeyspaceId::CUSTOM_NOT_CACHED,
 			vec![1, 2, 3, 4],
 		);
@@ -1212,7 +1327,13 @@ mod tests {
 	#[test]
 	fn keys_still_decode_as_operator_state_of_their_node() {
 		// every key of this kind must still decode to its own operator, or state is misrouted into the CDC log
-		let key = OperatorStateKey::new(OperatorId(9), GroupId(4), KeyspaceId::ACCUMULATOR, vec![1]).encode();
+		let key = OperatorStateKey::new(
+			OperatorId(9),
+			GroupId::hashed(Hash128(4)),
+			KeyspaceId::ACCUMULATOR,
+			vec![1],
+		)
+		.encode();
 
 		let decoded = OperatorStateKey::decode(&key).expect("must remain decodable as its key kind");
 		assert_eq!(decoded.operator, OperatorId(9));
@@ -1222,7 +1343,12 @@ mod tests {
 	fn an_inner_key_composed_with_its_node_prefix_reproduces_the_full_key() {
 		// inner key plus node prefix must reproduce the full key, or state written through the API is
 		// unreachable
-		let key = OperatorStateKey::new(OperatorId(17), GroupId(42), KeyspaceId::BUFFER, vec![9, 9]);
+		let key = OperatorStateKey::new(
+			OperatorId(17),
+			GroupId::hashed(Hash128(42)),
+			KeyspaceId::BUFFER,
+			vec![9, 9],
+		);
 
 		let mut composed = node_prefix(OperatorId(17));
 		composed.extend_from_slice(key.inner().as_slice());
@@ -1261,16 +1387,17 @@ mod tests {
 		let operator = OperatorId(17);
 		let prefix = EncodedKey::new(node_prefix(operator));
 		for group in GROUPS {
-			let data = group_data_inner_range(GroupId(group)).with_prefix(prefix.clone());
-			let identity = group_identity_inner_range(GroupId(group)).with_prefix(prefix.clone());
+			let group = GroupId::hashed(Hash128(group));
+			let data = group_data_inner_range(group).with_prefix(prefix.clone());
+			let identity = group_identity_inner_range(group).with_prefix(prefix.clone());
 
 			for keyspace in DATA_KEYSPACES {
-				let key = OperatorStateKey::new(operator, GroupId(group), keyspace, vec![7]).encode();
+				let key = OperatorStateKey::new(operator, group, keyspace, vec![7]).encode();
 				assert!(contains(&data, key.as_slice()));
 				assert!(!contains(&identity, key.as_slice()));
 			}
 			for keyspace in IDENTITY_KEYSPACES {
-				let key = OperatorStateKey::new(operator, GroupId(group), keyspace, vec![7]).encode();
+				let key = OperatorStateKey::new(operator, group, keyspace, vec![7]).encode();
 				assert!(contains(&identity, key.as_slice()));
 				assert!(!contains(&data, key.as_slice()));
 			}
@@ -1279,12 +1406,17 @@ mod tests {
 
 	#[test]
 	fn decode_inner_round_trips_the_tail() {
-		let key = OperatorStateKey::new(OperatorId(3), GroupId(77), KeyspaceId::EMIT, vec![4, 5, 6]);
+		let key = OperatorStateKey::new(
+			OperatorId(3),
+			GroupId::hashed(Hash128(77)),
+			KeyspaceId::EMIT,
+			vec![4, 5, 6],
+		);
 		let inner = key.inner();
 		let (group, keyspace, suffix) =
 			OperatorStateKey::decode_inner(inner.as_slice()).expect("inner must decode");
 
-		assert_eq!(group, GroupId(77));
+		assert_eq!(group, GroupId::hashed(Hash128(77)));
 		assert_eq!(keyspace, KeyspaceId::EMIT);
 		assert_eq!(suffix, [4, 5, 6]);
 	}
@@ -1317,9 +1449,9 @@ mod tests {
 	fn the_ram_predicate_and_the_disk_range_agree_on_every_key() {
 		// the RAM predicate and the disk range must agree on every key, or a phase-1 delete ghosts or strands a
 		// row
-		for group in GROUPS.map(GroupId) {
+		for group in GROUPS.map(|group| GroupId::hashed(Hash128(group))) {
 			let range = group_data_inner_range(group);
-			for other in GROUPS.map(GroupId) {
+			for other in GROUPS.map(|group| GroupId::hashed(Hash128(group))) {
 				for keyspace in DATA_KEYSPACES.iter().chain(IDENTITY_KEYSPACES.iter()) {
 					let key = OperatorStateKey::inner_encoded(other, *keyspace, vec![7, 7]);
 					let in_range = contains(&range, key.as_slice());
@@ -1338,7 +1470,7 @@ mod tests {
 	fn the_ram_predicate_refuses_identity_keyspaces() {
 		// the RAM predicate must never report an identity keyspace as reclaimable group data
 		for keyspace in IDENTITY_KEYSPACES {
-			let key = OperatorStateKey::inner_encoded(GroupId(9), keyspace, vec![1]);
+			let key = OperatorStateKey::inner_encoded(GroupId::hashed(Hash128(9)), keyspace, vec![1]);
 			assert_eq!(
 				group_data_of_inner(key.as_slice()),
 				None,
@@ -1381,12 +1513,15 @@ mod tests {
 	#[test]
 	fn a_group_set_is_sorted_deduped_and_never_admits_root() {
 		// a group set must stay sorted and deduped for binary_search, and must never admit the root group
-		let set = GroupSet::new([GroupId(9), GroupId(2), GroupId(9), GroupId::ROOT, GroupId(5)]);
+		let two = GroupId::hashed(Hash128(2));
+		let five = GroupId::hashed(Hash128(5));
+		let nine = GroupId::hashed(Hash128(9));
+		let set = GroupSet::new([nine, two, nine, GroupId::ROOT, five]);
 
-		assert_eq!(set.as_slice(), &[GroupId(2), GroupId(5), GroupId(9)]);
+		assert_eq!(set.as_slice(), &[two, five, nine]);
 		assert_eq!(set.len(), 3);
-		assert!(set.contains(GroupId(5)));
-		assert!(!set.contains(GroupId(3)));
+		assert!(set.contains(five));
+		assert!(!set.contains(GroupId::hashed(Hash128(3))));
 		assert!(!set.contains(GroupId::ROOT), "the root group must be filtered out, not merely unsorted");
 	}
 
@@ -1396,17 +1531,5 @@ mod tests {
 
 		assert!(set.is_empty());
 		assert!(!set.contains(GroupId::FIRST_NON_ROOT));
-	}
-
-	#[test]
-	fn a_group_set_hands_the_ffi_boundary_a_plain_u128_array() {
-		// GroupId must stay repr(transparent) over u128, or the FFI slice cast reads the wrong bytes
-		let set = GroupSet::new([GroupId(3), GroupId(1), GroupId(2)]);
-		let (ptr, len) = set.as_raw_parts();
-
-		assert_eq!(len, 3);
-		// SAFETY: the slice is alive for the whole assertion and GroupId is repr(transparent) over u128.
-		let raw = unsafe { slice::from_raw_parts(ptr, len) };
-		assert_eq!(raw, &[1u128, 2, 3]);
 	}
 }

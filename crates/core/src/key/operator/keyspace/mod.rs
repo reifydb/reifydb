@@ -10,6 +10,8 @@ pub mod timer;
 pub mod window;
 
 use reifydb_codec::row::{operator::state::OperatorState, pod::EncodedPodRow};
+#[cfg(test)]
+use reifydb_value::util::hash::Hash128;
 
 #[cfg(test)]
 use crate::key::{operator::traits::group_scoped, typed::Key};
@@ -272,7 +274,7 @@ fn round_trips<K: Keyspace>() {
 	// probe able to fail
 	let mut suffix = <K::Suffix as Key>::low();
 	for step in 0..4 {
-		let key = K::join(GroupId(9), suffix.clone());
+		let key = K::join(GroupId::hashed(Hash128(9)), suffix.clone());
 		let (group, split) = K::split(&key);
 		assert_eq!(split, suffix, "{}: step {step}: a suffix must survive join then split", K::NAME);
 		assert_eq!(
@@ -307,7 +309,12 @@ fn carries_its_group<K: Keyspace>() {
 	let inside_one_group = group_scoped::<K>();
 	let mut suffix = <K::Suffix as Key>::low();
 	for step in 0..4 {
-		for group in [GroupId::ROOT, GroupId(1), GroupId(9), GroupId(u128::MAX)] {
+		for group in [
+			GroupId::ROOT,
+			GroupId::hashed(Hash128(1)),
+			GroupId::hashed(Hash128(9)),
+			GroupId::hashed(Hash128(u128::MAX)),
+		] {
 			let (back, _) = K::split(&K::join(group, suffix.clone()));
 			if inside_one_group {
 				assert_eq!(
@@ -327,8 +334,8 @@ fn carries_its_group<K: Keyspace>() {
 			}
 		}
 		if inside_one_group {
-			let distinct = K::join(GroupId(1), suffix.clone());
-			let other = K::join(GroupId(9), suffix.clone());
+			let distinct = K::join(GroupId::hashed(Hash128(1)), suffix.clone());
+			let other = K::join(GroupId::hashed(Hash128(9)), suffix.clone());
 			assert_ne!(
 				distinct.to_suffix_bytes(),
 				other.to_suffix_bytes(),
@@ -348,7 +355,10 @@ mod tests {
 	use std::collections::HashSet;
 
 	use reifydb_codec::row::operator::state::OperatorState;
-	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+	use reifydb_value::{
+		util::hash::Hash128,
+		value::{datetime::DateTime, row_number::RowNumber},
+	};
 
 	use super::{
 		KEYSPACES, RootSibling, every_keyspace_carries_its_group, every_keyspace_round_trips,
@@ -386,7 +396,9 @@ mod tests {
 		.unwrap();
 		let mut derived = Vec::new();
 		for spec in KEYSPACES {
-			if let RootSibling::Derived(_) = root_sibling(GroupId(7), spec.id, &suffix, &row) {
+			if let RootSibling::Derived(_) =
+				root_sibling(GroupId::hashed(Hash128(7)), spec.id, &suffix, &row)
+			{
 				derived.push(spec.name);
 			}
 		}

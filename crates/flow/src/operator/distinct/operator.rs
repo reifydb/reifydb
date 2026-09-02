@@ -7,10 +7,7 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::operator::state::{OperatorState, decode},
-};
+use reifydb_codec::row::operator::state::{OperatorState, decode};
 use reifydb_core::{
 	interface::{
 		catalog::flow::OperatorId,
@@ -103,10 +100,6 @@ impl DistinctOperator {
 }
 
 impl DistinctPlan {
-	pub(super) fn group_bytes(hash: Hash128) -> EncodedKey {
-		EncodedKey::new(hash.0.to_be_bytes())
-	}
-
 	pub(super) fn entry_key(group: GroupId) -> GroupStateKey {
 		OperatorStateKey::inner_encoded(group, KeyspaceId::DISTINCT_ENTRY, vec![])
 	}
@@ -244,7 +237,7 @@ impl HostOperator for DistinctOperator {
 
 		let mut groups: HashMap<Hash128, GroupId> = HashMap::with_capacity(ordered.len());
 		for hash in ordered.iter() {
-			let group = GroupId::of(&DistinctPlan::group_bytes(*hash));
+			let group = GroupId::hashed(*hash);
 			groups.insert(*hash, group);
 			match plan.load_entry(host, group)? {
 				LoadedEntry::Present(entry) => {

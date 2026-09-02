@@ -29,6 +29,7 @@ use reifydb_core::{
 };
 use reifydb_value::{
 	byte_size::ByteSize,
+	util::hash::Hash128,
 	value::{duration::Duration, row_number::RowNumber},
 };
 
@@ -76,7 +77,7 @@ fn row_number_of(name: &str) -> RowNumber {
 }
 
 fn key_in(group: u128, name: &str) -> EncodedKey {
-	typed_key::<JoinLeft>(GroupId(group), &Asc(row_number_of(name))).into_encoded()
+	typed_key::<JoinLeft>(GroupId::hashed(Hash128(group)), &Asc(row_number_of(name))).into_encoded()
 }
 
 fn key(name: &str) -> EncodedKey {
@@ -84,7 +85,7 @@ fn key(name: &str) -> EncodedKey {
 }
 
 fn right_key_in(group: u128, name: &str) -> EncodedKey {
-	typed_key::<JoinRight>(GroupId(group), &Asc(row_number_of(name))).into_encoded()
+	typed_key::<JoinRight>(GroupId::hashed(Hash128(group)), &Asc(row_number_of(name))).into_encoded()
 }
 
 fn state_key(tail: &str) -> EncodedKey {

@@ -826,7 +826,7 @@ mod tests {
 			typed::{ExclusiveUpperEnd, MultiKey, range::KeyRange},
 		},
 	};
-	use reifydb_value::byte_size::ByteSize;
+	use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
 	use super::split_at_partitions;
 	use crate::{
@@ -842,9 +842,12 @@ mod tests {
 	};
 
 	const OP: OperatorId = OperatorId(1);
-	const GROUP: GroupId = GroupId(10);
 	const CACHED: KeyspaceId = KeyspaceId::ACCUMULATOR;
 	const UNCACHED: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
+
+	fn group() -> GroupId {
+		GroupId::hashed(Hash128(10))
+	}
 
 	fn tier(limit: u64, gap_guard: usize) -> RangeTier<D> {
 		RangeTier::<D>::new(RangeConfig {
@@ -862,7 +865,7 @@ mod tests {
 	}
 
 	fn key(keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKey {
-		OperatorStateKey::inner_encoded(GROUP, keyspace, suffix).into_encoded()
+		OperatorStateKey::inner_encoded(group(), keyspace, suffix).into_encoded()
 	}
 
 	fn row(body: &str) -> EncodedPodRow {
@@ -872,7 +875,7 @@ mod tests {
 	fn partition(keyspace: KeyspaceId) -> TestPartition {
 		TestPartition {
 			dimension: OP,
-			group: GROUP,
+			group: group(),
 			keyspace,
 		}
 	}
@@ -885,7 +888,7 @@ mod tests {
 	/// A range from the start of `top` to the end of `bottom`; keyspaces encode inverted, so `top`
 	/// must be the numerically larger of the two to give an ascending key range.
 	fn across(top: KeyspaceId, bottom: KeyspaceId) -> EncodedKeyRange {
-		EncodedKeyRange::new(Bound::Included(key(top, b"")), keyspace_inner_range(GROUP, bottom).end)
+		EncodedKeyRange::new(Bound::Included(key(top, b"")), keyspace_inner_range(group(), bottom).end)
 	}
 
 	fn claim(
@@ -929,7 +932,7 @@ mod tests {
 	fn two_overlapping_materializes_compose_instead_of_clobbering_each_other() {
 		// A re-read key must not overwrite the resident row, nor drop the keys only the second read saw.
 		let tier = roomy();
-		let range = keyspace_inner_range(GROUP, CACHED);
+		let range = keyspace_inner_range(group(), CACHED);
 		let at = |suffix: &[u8]| key(CACHED, suffix);
 
 		assert!(claim(
@@ -960,7 +963,7 @@ mod tests {
 	fn a_materialize_refused_for_the_budget_leaves_the_tier_exactly_as_it_found_it() {
 		// A refusal that keeps its rows lets a later read answer from a row no claim ever proved.
 		let tier = tier(512, 4);
-		let range = keyspace_inner_range(GROUP, CACHED);
+		let range = keyspace_inner_range(group(), CACHED);
 		let page: Vec<(EncodedKey, EncodedPodRow)> =
 			(0..64u8).map(|index| (key(CACHED, &[index]), row("a fairly long row body"))).collect();
 
@@ -983,7 +986,7 @@ mod tests {
 	fn a_materialize_that_races_a_retraction_leaves_the_tier_exactly_as_it_found_it() {
 		// Extending coverage after a retraction reinstates a claim over a row the writer removed.
 		let tier = roomy();
-		let range = keyspace_inner_range(GROUP, CACHED);
+		let range = keyspace_inner_range(group(), CACHED);
 		let at = key(CACHED, b"a");
 		let scan =
 			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
@@ -1154,7 +1157,7 @@ mod tests {
 		assert!(
 			pieces[..pieces.len() - 1]
 				.iter()
-				.all(|(_, at)| at.as_ref().is_some_and(|at| at.group == GROUP)),
+				.all(|(_, at)| at.as_ref().is_some_and(|at| at.group == group())),
 			"every attributed piece must belong to the group the walk entered, or the walk left it"
 		);
 	}
@@ -1166,7 +1169,7 @@ mod tests {
 		// than over claims: a claim wider than the rows proved would answer later reads from a cache that
 		// never held them.
 		let tier = roomy();
-		let range = keyspace_inner_range(GROUP, CACHED);
+		let range = keyspace_inner_range(group(), CACHED);
 		let at = |suffix: &[u8]| key(CACHED, suffix);
 
 		assert!(claim(
@@ -1255,7 +1258,7 @@ mod tests {
 			)
 			.expect("a tier with a byte budget must be constructed")
 		};
-		let range = keyspace_inner_range(GROUP, CACHED);
+		let range = keyspace_inner_range(group(), CACHED);
 		assert!(
 			claim(
 				&tier,

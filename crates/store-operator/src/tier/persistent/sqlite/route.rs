@@ -176,7 +176,7 @@ fn keyspace_start(
 	if id.0 < at.0 {
 		return Some((Some(group), Bound::Unbounded));
 	}
-	group.0.checked_sub(1).map(|next| (Some(GroupId(next)), Bound::Unbounded))
+	group.predecessor().map(|next| (Some(next), Bound::Unbounded))
 }
 
 fn keyspace_end(
@@ -197,7 +197,7 @@ fn keyspace_end(
 	if id.0 > at.0 {
 		return Some((Some(group), Bound::Unbounded));
 	}
-	group.0.checked_add(1).map(|previous| (Some(GroupId(previous)), Bound::Unbounded))
+	group.successor().map(|previous| (Some(previous), Bound::Unbounded))
 }
 
 fn every_keyspace() -> KeyspaceIds {

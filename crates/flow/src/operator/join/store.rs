@@ -3,14 +3,11 @@
 
 use std::ops::Bound;
 
-use reifydb_codec::{
-	key::{encode_u128_asc, encoded::EncodedKey},
-	row::{
-		bytes::EncodedBytes,
-		operator::state::{decode_body, encode},
-		pod::EncodedPodRow,
-		shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
-	},
+use reifydb_codec::row::{
+	bytes::EncodedBytes,
+	operator::state::{decode_body, encode},
+	pod::EncodedPodRow,
+	shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 };
 #[cfg(test)]
 use reifydb_core::interface::catalog::{
@@ -48,10 +45,6 @@ use crate::{
 
 const SLOT: RowNumber = RowNumber::MAX;
 
-pub(crate) fn group_bytes(hash: &Hash128) -> EncodedKey {
-	EncodedKey::new(encode_u128_asc(hash.0))
-}
-
 pub(crate) fn body_bytes(row: &EncodedPodRow) -> EncodedBytes {
 	EncodedBytes(CowVec::new(row.body().to_vec()))
 }
@@ -82,7 +75,7 @@ impl Store {
 	}
 
 	pub(crate) fn group_of(&self, hash: &Hash128) -> GroupId {
-		GroupId::of(&group_bytes(hash))
+		GroupId::hashed(*hash)
 	}
 
 	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> GroupStateKey {

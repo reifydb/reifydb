@@ -20,7 +20,10 @@ use reifydb_sdk::{
 	},
 };
 use reifydb_testing_sdk::harness::ExternCOperatorHarnessBuilder;
-use reifydb_value::{config::Config, util::cowvec::CowVec};
+use reifydb_value::{
+	config::Config,
+	util::{cowvec::CowVec, hash::Hash128},
+};
 
 struct SweepOp;
 
@@ -43,7 +46,9 @@ impl ExternCOperator for SweepOp {
 	}
 }
 
-const GROUP: GroupId = GroupId(11);
+fn group() -> GroupId {
+	GroupId::hashed(Hash128(11))
+}
 
 const SEEDED: [(KeyspaceId, u8); 5] = [
 	(KeyspaceId::JOIN_LEFT, 1),
@@ -54,7 +59,7 @@ const SEEDED: [(KeyspaceId, u8); 5] = [
 ];
 
 fn inner(keyspace: KeyspaceId, suffix: u8) -> EncodedKey {
-	OperatorStateKey::inner_encoded(GROUP, keyspace, [suffix]).into_encoded()
+	OperatorStateKey::inner_encoded(group(), keyspace, [suffix]).into_encoded()
 }
 
 fn seeded_state() -> HashMap<EncodedKey, EncodedBytes> {
@@ -85,7 +90,7 @@ fn a_guest_group_sweep_returns_what_a_single_scan_over_the_group_would() {
 	harness.restore_state(seeded_state());
 	let mut ctx = harness.create_operator_context();
 
-	let swept = GuestAsHost(&mut ctx).group_sweep(GROUP, false, None).expect("sweep");
+	let swept = GuestAsHost(&mut ctx).group_sweep(group(), false, None).expect("sweep");
 	let swept: Vec<EncodedKey> = swept.into_iter().map(|(key, _)| key.into_encoded()).collect();
 
 	assert_eq!(swept, expected_in_scan_order(|_| true));
@@ -99,7 +104,7 @@ fn a_data_only_guest_group_sweep_leaves_the_identity_keyspaces_alone() {
 	harness.restore_state(seeded_state());
 	let mut ctx = harness.create_operator_context();
 
-	let swept = GuestAsHost(&mut ctx).group_sweep(GROUP, true, None).expect("sweep");
+	let swept = GuestAsHost(&mut ctx).group_sweep(group(), true, None).expect("sweep");
 	let swept: Vec<EncodedKey> = swept.into_iter().map(|(key, _)| key.into_encoded()).collect();
 
 	assert_eq!(swept, expected_in_scan_order(|keyspace| keyspace.is_data()));
@@ -120,7 +125,7 @@ fn a_guest_group_sweep_spends_one_budget_across_every_keyspace() {
 
 	for budget in 0..=SEEDED.len() {
 		let mut store = GuestAsHost(&mut ctx);
-		let swept = store.group_sweep(GROUP, false, Some(budget)).expect("sweep");
+		let swept = store.group_sweep(group(), false, Some(budget)).expect("sweep");
 		assert_eq!(swept.len(), budget, "a sweep must return exactly the budget it was given");
 
 		let swept: Vec<EncodedKey> = swept.into_iter().map(|(key, _)| key.into_encoded()).collect();

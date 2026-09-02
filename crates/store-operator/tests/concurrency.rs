@@ -31,11 +31,13 @@ use reifydb_store_operator::{
 	types::{DurablePre, OperatorWrite},
 };
 use reifydb_testing::keyspace::state_key;
-use reifydb_value::byte_size::ByteSize;
+use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
 const OP: OperatorId = OperatorId(1);
 
-const GROUP: GroupId = GroupId(1);
+fn group() -> GroupId {
+	GroupId::hashed(Hash128(1))
+}
 
 const WRITERS: u64 = 8;
 
@@ -62,7 +64,7 @@ fn store() -> (OperatorStore, SqliteTempPathGuard) {
 }
 
 fn key(suffix: u64) -> EncodedKey {
-	state_key(GROUP, KeyspaceId::JOIN_LEFT, suffix)
+	state_key(group(), KeyspaceId::JOIN_LEFT, suffix)
 }
 
 fn row(body: &str) -> EncodedPodRow {

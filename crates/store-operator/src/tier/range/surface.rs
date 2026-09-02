@@ -26,7 +26,7 @@ use reifydb_store::{
 	},
 	tier::range::{Materialize, RangeScan, RangeTier},
 };
-use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
+use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
 
 use super::{
 	OperatorRangeConfig, OperatorRangeMetrics,
@@ -36,8 +36,14 @@ use super::{
 use crate::tier::typed::TypedPartition;
 
 const OP_A: OperatorId = OperatorId(1);
-const GROUP_A: GroupId = GroupId(10);
-const GROUP_B: GroupId = GroupId(11);
+
+fn group_a() -> GroupId {
+	GroupId::hashed(Hash128(10))
+}
+
+fn group_b() -> GroupId {
+	GroupId::hashed(Hash128(11))
+}
 
 fn tiers(limit: u64) -> RangeTiers {
 	RangeTiers::new(
@@ -161,17 +167,17 @@ fn a_covered_span_answers_a_range_and_an_uncovered_one_falls_through() {
 	let tiers = roomy();
 
 	assert!(
-		serve_ram::<JoinLeft>(&tiers, GROUP_A, &whole(), 64).is_none(),
+		serve_ram::<JoinLeft>(&tiers, group_a(), &whole(), 64).is_none(),
 		"nothing is covered yet, so the read must fall through"
 	);
 	assert_eq!(tiers.metrics().misses, 1);
 
 	let a = at(1);
 	let b = at(2);
-	materialize::<JoinLeft>(&tiers, GROUP_A, &[(a, row("v1")), (b, row("v2"))]);
+	materialize::<JoinLeft>(&tiers, group_a(), &[(a, row("v1")), (b, row("v2"))]);
 
-	let served =
-		serve_ram::<JoinLeft>(&tiers, GROUP_A, &whole(), 64).expect("a covered span must answer its own range");
+	let served = serve_ram::<JoinLeft>(&tiers, group_a(), &whole(), 64)
+		.expect("a covered span must answer its own range");
 	assert_eq!(
 		bodies(&served),
 		["v1", "v2"],
@@ -193,9 +199,9 @@ fn a_range_serves_only_the_slice_it_was_asked_for() {
 	let keys: Vec<Asc<RowNumber>> = (1..=4).map(at).collect();
 	let page: Vec<(Asc<RowNumber>, EncodedPodRow)> =
 		keys.iter().enumerate().map(|(index, k)| (*k, row(&format!("v{index}")))).collect();
-	materialize::<JoinLeft>(&tiers, GROUP_A, &page);
+	materialize::<JoinLeft>(&tiers, group_a(), &page);
 
-	let limited = serve_ram::<JoinLeft>(&tiers, GROUP_A, &whole(), 2).expect("the covered span must answer");
+	let limited = serve_ram::<JoinLeft>(&tiers, group_a(), &whole(), 2).expect("the covered span must answer");
 	assert_eq!(
 		bodies(&limited),
 		["v0", "v1"],
@@ -204,7 +210,7 @@ fn a_range_serves_only_the_slice_it_was_asked_for() {
 
 	let sub = serve_ram::<JoinLeft>(
 		&tiers,
-		GROUP_A,
+		group_a(),
 		&KeyRange::new(Bound::Included(keys[1]), Bound::Excluded(keys[3])),
 		64,
 	)
@@ -213,7 +219,7 @@ fn a_range_serves_only_the_slice_it_was_asked_for() {
 
 	let empty = serve_ram::<JoinLeft>(
 		&tiers,
-		GROUP_A,
+		group_a(),
 		&KeyRange::new(Bound::Excluded(keys[1]), Bound::Excluded(keys[1])),
 		64,
 	)
@@ -224,10 +230,10 @@ fn a_range_serves_only_the_slice_it_was_asked_for() {
 #[test]
 fn a_lookup_of_a_key_the_claim_holds_serves_the_row() {
 	let tiers = roomy();
-	let k = one_row_partition::<JoinLeft>(&tiers, GROUP_A);
+	let k = one_row_partition::<JoinLeft>(&tiers, group_a());
 
 	assert_eq!(
-		tier_of::<JoinLeft>(&tiers).lookup_in(part(GROUP_A), part(GROUP_A), &k),
+		tier_of::<JoinLeft>(&tiers).lookup_in(part(group_a()), part(group_a()), &k),
 		Some(Some(row("v"))),
 		"the claim must hand back the row it holds"
 	);
@@ -239,12 +245,12 @@ fn a_lookup_of_a_key_the_claim_holds_serves_the_row() {
 fn a_lookup_of_a_key_inside_a_claim_that_holds_no_row_is_a_definitive_absence() {
 	let tiers = roomy();
 	let tier = tier_of::<JoinLeft>(&tiers);
-	let held = one_row_partition::<JoinLeft>(&tiers, GROUP_A);
+	let held = one_row_partition::<JoinLeft>(&tiers, group_a());
 	let absent = at(999);
 	assert_ne!(held, absent);
 
 	assert_eq!(
-		tier.lookup_in(part(GROUP_A), part(GROUP_A), &absent),
+		tier.lookup_in(part(group_a()), part(group_a()), &absent),
 		Some(None),
 		"a claim that covers the key and holds no row proves the key does not exist, and reporting a \
          fall-through instead sends every point read of an absent key to the store forever"
@@ -253,7 +259,7 @@ fn a_lookup_of_a_key_inside_a_claim_that_holds_no_row_is_a_definitive_absence() 
 	assert_eq!(tiers.metrics().point_misses, 0);
 
 	assert_eq!(
-		tier.lookup_in(part(GROUP_B), part(GROUP_B), &at(1)),
+		tier.lookup_in(part(group_b()), part(group_b()), &at(1)),
 		None,
 		"the answer is only definitive inside a span some scan actually proved, never outside it"
 	);
@@ -267,7 +273,7 @@ fn a_lookup_with_nothing_covered_falls_through_and_charges_a_point_miss() {
 	let k = at(1);
 
 	assert_eq!(
-		tier.lookup_in(part(GROUP_A), part(GROUP_A), &k),
+		tier.lookup_in(part(group_a()), part(group_a()), &k),
 		None,
 		"an empty tier must never answer absent for a key the store may hold"
 	);
@@ -275,9 +281,9 @@ fn a_lookup_with_nothing_covered_falls_through_and_charges_a_point_miss() {
 	assert_eq!(tiers.metrics().point_hits, 0);
 	assert_eq!(tiers.metrics().misses, 0, "a point read must not be charged to the range counters");
 
-	materialize::<JoinLeft>(&tiers, GROUP_A, &[(k, row("v"))]);
+	materialize::<JoinLeft>(&tiers, group_a(), &[(k, row("v"))]);
 	assert!(
-		tier.lookup_in(part(GROUP_A), part(GROUP_A), &k).is_some(),
+		tier.lookup_in(part(group_a()), part(group_a()), &k).is_some(),
 		"the control: the same key answers once a scan covered it"
 	);
 	assert_eq!(tiers.metrics().point_misses, 1, "the materialize must not retroactively change the earlier miss");
@@ -289,22 +295,22 @@ fn an_overwrite_never_creates_a_claim() {
 	let tier = tier_of::<JoinLeft>(&tiers);
 	let k = at(1);
 
-	tier.overwrite_in(part(GROUP_A), part(GROUP_A), k, row("v"));
+	tier.overwrite_in(part(group_a()), part(group_a()), k, row("v"));
 
 	assert_eq!(tier.partitions(), 0, "a write against no claim must leave the tier empty");
 	assert_eq!(tier.entries(), 0);
 	assert_eq!(tier.intervals(), 0, "an overwrite must never widen coverage to keys no scan observed");
 	assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "a write that cached nothing must be charged nothing");
 	assert_eq!(
-		tier.lookup_in(part(GROUP_A), part(GROUP_A), &k),
+		tier.lookup_in(part(group_a()), part(group_a()), &k),
 		None,
 		"and the key must stay unknown rather than become a false claim"
 	);
 
-	materialize::<JoinLeft>(&tiers, GROUP_A, &[]);
-	tier.overwrite_in(part(GROUP_A), part(GROUP_A), k, row("v"));
+	materialize::<JoinLeft>(&tiers, group_a(), &[]);
+	tier.overwrite_in(part(group_a()), part(group_a()), k, row("v"));
 	assert_eq!(
-		tier.lookup_in(part(GROUP_A), part(GROUP_A), &k),
+		tier.lookup_in(part(group_a()), part(group_a()), &k),
 		Some(Some(row("v"))),
 		"the control: the same write must land once a scan claimed the span it falls in"
 	);
@@ -315,15 +321,15 @@ fn a_materialize_keeps_a_row_already_resident_rather_than_replacing_it() {
 	let tiers = roomy();
 	let tier = tier_of::<JoinLeft>(&tiers);
 	let k = at(1);
-	materialize::<JoinLeft>(&tiers, GROUP_A, &[(k, row("v1"))]);
+	materialize::<JoinLeft>(&tiers, group_a(), &[(k, row("v1"))]);
 
-	let scan = plan::<JoinLeft>(&tiers, GROUP_B, &whole()).expect("an uncovered group must be plannable");
-	tier.overwrite_in(part(GROUP_A), part(GROUP_A), k, row("v2"));
+	let scan = plan::<JoinLeft>(&tiers, group_b(), &whole()).expect("an uncovered group must be plannable");
+	tier.overwrite_in(part(group_a()), part(group_a()), k, row("v2"));
 	let gap = first_gap(&scan).expect("the uncovered group must plan as a gap");
 	tier.materialize(&scan, &gap, &[(at(1), row("other"))]);
 
 	assert_eq!(
-		tier.lookup_in(part(GROUP_A), part(GROUP_A), &k),
+		tier.lookup_in(part(group_a()), part(group_a()), &k),
 		Some(Some(row("v2"))),
 		"a resident row is at least as new as any persistent read, so a materialize must never undo a write \
          that landed while that read was in flight"
@@ -378,10 +384,10 @@ fn keyspace_row(tiers: &RangeTiers, keyspace: KeyspaceId) -> OperatorRangeKeyspa
 fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 	let tiers = roomy();
 
-	assert!(serve_ram::<JoinLeft>(&tiers, GROUP_A, &whole(), 64).is_none());
-	one_row_partition::<JoinLeft>(&tiers, GROUP_A);
-	assert!(serve_ram::<JoinLeft>(&tiers, GROUP_A, &whole(), 64).is_some());
-	assert!(serve_ram::<JoinRight>(&tiers, GROUP_A, &whole(), 64).is_none());
+	assert!(serve_ram::<JoinLeft>(&tiers, group_a(), &whole(), 64).is_none());
+	one_row_partition::<JoinLeft>(&tiers, group_a());
+	assert!(serve_ram::<JoinLeft>(&tiers, group_a(), &whole(), 64).is_some());
+	assert!(serve_ram::<JoinRight>(&tiers, group_a(), &whole(), 64).is_none());
 
 	assert_eq!(
 		tiers.keyspace_metrics().len(),
@@ -416,11 +422,14 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 #[test]
 fn point_counters_are_charged_to_the_keyspace_that_was_looked_up() {
 	let tiers = roomy();
-	let known = one_row_partition::<JoinLeft>(&tiers, GROUP_A);
+	let known = one_row_partition::<JoinLeft>(&tiers, group_a());
 
-	assert_eq!(tier_of::<JoinLeft>(&tiers).lookup_in(part(GROUP_A), part(GROUP_A), &known), Some(Some(row("v"))));
-	assert_eq!(tier_of::<JoinLeft>(&tiers).lookup_in(part(GROUP_A), part(GROUP_A), &at(999)), Some(None));
-	assert_eq!(tier_of::<JoinRight>(&tiers).lookup_in(part(GROUP_A), part(GROUP_A), &at(1)), None);
+	assert_eq!(
+		tier_of::<JoinLeft>(&tiers).lookup_in(part(group_a()), part(group_a()), &known),
+		Some(Some(row("v")))
+	);
+	assert_eq!(tier_of::<JoinLeft>(&tiers).lookup_in(part(group_a()), part(group_a()), &at(999)), Some(None));
+	assert_eq!(tier_of::<JoinRight>(&tiers).lookup_in(part(group_a()), part(group_a()), &at(1)), None);
 
 	assert_eq!(keyspace_row(&tiers, KeyspaceId::JOIN_LEFT).counters.point_hits, 2);
 	assert_eq!(keyspace_row(&tiers, KeyspaceId::JOIN_LEFT).counters.point_misses, 0);
@@ -437,12 +446,12 @@ fn a_tier_that_was_never_read_reports_no_keyspace_rows() {
 		"every keyspace owns a tier from construction, but an untouched tier must still report nothing"
 	);
 
-	let resident = one_row_partition::<JoinLeft>(&tiers, GROUP_A);
+	let resident = one_row_partition::<JoinLeft>(&tiers, group_a());
 	assert_eq!(tiers.keyspace_metrics().len(), 1, "resident state alone must be enough to report a keyspace");
 	assert_eq!(tiers.keyspace_metrics()[0].bucket, KeyspaceId::JOIN_LEFT);
 
 	let tier = tier_of::<JoinLeft>(&tiers);
-	assert!(tier.lookup_in(part(GROUP_A), part(GROUP_A), &resident).is_some());
+	assert!(tier.lookup_in(part(group_a()), part(group_a()), &resident).is_some());
 	tier.invalidate_dimensions_where(|dimension| dimension.operator == OP_A);
 	assert_eq!(
 		tiers.keyspace_metrics().len(),
@@ -488,15 +497,15 @@ fn keys<K: Keyspace<Suffix = Asc<RowNumber>>>(
 fn a_claim_and_a_serve_round_trip_for_the_operator_that_made_it() {
 	let tiers = roomy();
 	let tier = tier_of::<JoinLeft>(&tiers);
-	let k = one_row_partition::<JoinLeft>(&tiers, GROUP_A);
+	let k = one_row_partition::<JoinLeft>(&tiers, group_a());
 
-	assert_eq!(keys::<JoinLeft>(&tiers, OP_A, GROUP_A), Some(vec![k]));
-	assert_eq!(tier.lookup_in(part(GROUP_A), part(GROUP_A), &k), Some(Some(row("v"))));
+	assert_eq!(keys::<JoinLeft>(&tiers, OP_A, group_a()), Some(vec![k]));
+	assert_eq!(tier.lookup_in(part(group_a()), part(group_a()), &k), Some(Some(row("v"))));
 
-	assert_eq!(keys::<JoinLeft>(&tiers, OP_B, GROUP_A), None);
+	assert_eq!(keys::<JoinLeft>(&tiers, OP_B, group_a()), None);
 	let other = TypedPartition {
 		operator: OP_B,
-		group: GROUP_A,
+		group: group_a(),
 	};
 	assert_eq!(tier.lookup_in(other, other, &k), None);
 }
@@ -505,15 +514,15 @@ fn a_claim_and_a_serve_round_trip_for_the_operator_that_made_it() {
 fn invalidating_an_operator_withdraws_the_claim_it_made() {
 	let tiers = roomy();
 	let tier = tier_of::<JoinLeft>(&tiers);
-	let k = one_row_partition::<JoinLeft>(&tiers, GROUP_A);
-	assert_eq!(tier.lookup_in(part(GROUP_A), part(GROUP_A), &k), Some(Some(row("v"))));
+	let k = one_row_partition::<JoinLeft>(&tiers, group_a());
+	assert_eq!(tier.lookup_in(part(group_a()), part(group_a()), &k), Some(Some(row("v"))));
 
 	tiers.invalidate_operator(OP_A);
 
 	assert_eq!(tier.entries(), 0);
 	assert_eq!(tier.intervals(), 0);
-	assert_eq!(tier.lookup_in(part(GROUP_A), part(GROUP_A), &k), None);
-	assert_eq!(keys::<JoinLeft>(&tiers, OP_A, GROUP_A), None);
+	assert_eq!(tier.lookup_in(part(group_a()), part(group_a()), &k), None);
+	assert_eq!(keys::<JoinLeft>(&tiers, OP_A, group_a()), None);
 }
 
 #[test]
@@ -522,7 +531,7 @@ fn invalidating_one_operator_leaves_every_group_of_every_other_operator_claimed(
 	let tier = tier_of::<JoinLeft>(&tiers);
 	let k = at(1);
 
-	for (operator, group) in [(OP_A, GROUP_A), (OP_A, GROUP_B), (OP_B, GROUP_A)] {
+	for (operator, group) in [(OP_A, group_a()), (OP_A, group_b()), (OP_B, group_a())] {
 		let held = TypedPartition {
 			operator,
 			group,
@@ -535,11 +544,11 @@ fn invalidating_one_operator_leaves_every_group_of_every_other_operator_claimed(
 
 	tiers.invalidate_operator(OP_A);
 
-	assert_eq!(tier.lookup_in(part(GROUP_A), part(GROUP_A), &k), None, "the purged operator's first group");
-	assert_eq!(tier.lookup_in(part(GROUP_B), part(GROUP_B), &k), None, "and every other group it claimed");
+	assert_eq!(tier.lookup_in(part(group_a()), part(group_a()), &k), None, "the purged operator's first group");
+	assert_eq!(tier.lookup_in(part(group_b()), part(group_b()), &k), None, "and every other group it claimed");
 	let survivor = TypedPartition {
 		operator: OP_B,
-		group: GROUP_A,
+		group: group_a(),
 	};
 	assert_eq!(
 		tier.lookup_in(survivor, survivor, &k),

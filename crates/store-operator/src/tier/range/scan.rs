@@ -21,7 +21,7 @@ mod tests {
 		},
 		tier::range::{Materialize, RangeScan, RangeTier},
 	};
-	use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
+	use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
 
 	use crate::tier::{
 		range::{OperatorRangeConfig, tiers::RangeTiers, typed::TypedDomain},
@@ -32,7 +32,9 @@ mod tests {
 	type Tier = RangeTier<TypedDomain<JoinLeft>>;
 
 	const OP: OperatorId = OperatorId(1);
-	const GROUP: GroupId = GroupId(10);
+	fn group() -> GroupId {
+		GroupId::hashed(Hash128(10))
+	}
 
 	fn tiers(limit: u64, gap_guard: usize) -> RangeTiers {
 		RangeTiers::new(
@@ -60,7 +62,7 @@ mod tests {
 	fn part() -> TypedPartition {
 		TypedPartition {
 			operator: OP,
-			group: GROUP,
+			group: group(),
 		}
 	}
 

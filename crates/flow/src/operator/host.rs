@@ -14,7 +14,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		operator::{
-			keyspace::join::{JoinExpiryDueKey, JoinRowMappingKey},
+			keyspace::join::{JoinExpiryDueKey, JoinRowExpiryState as JoinRowExpiry, JoinRowMappingKey},
 			state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
 		},
 	},
@@ -40,10 +40,7 @@ use crate::{
 	transaction::{
 		FlowTransaction,
 		dictionary::DictionaryExtension,
-		join_expiry::{
-			JoinDueEntry, JoinDuePage, JoinRowExpiry, JoinRowExpiryExtension, join_expiry_range,
-			join_expiry_slot,
-		},
+		join_expiry::{JoinDueEntry, JoinDuePage, JoinRowExpiryExtension, join_expiry_range, join_expiry_slot},
 		reclaim::ReclaimExtension,
 		row_number::RowNumberExtension,
 		state::{StateExtension, StateRange},

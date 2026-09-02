@@ -271,6 +271,18 @@ pub fn decode_u128(bytes: [u8; 16]) -> u128 {
 	!u128::from_be_bytes(bytes)
 }
 
+pub fn encode_fixed<const N: usize>(value: [u8; N]) -> [u8; N] {
+	let mut encoded = value;
+	for byte in encoded.iter_mut() {
+		*byte = !*byte;
+	}
+	encoded
+}
+
+pub fn decode_fixed<const N: usize>(bytes: [u8; N]) -> [u8; N] {
+	encode_fixed(bytes)
+}
+
 pub fn encode_u128_varint<B: ByteSink>(value: u128, output: &mut B) {
 	if value < (1 << 56) {
 		encode_u64_varint(value as u64, output);

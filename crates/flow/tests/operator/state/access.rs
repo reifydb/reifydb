@@ -34,7 +34,7 @@ use reifydb_sdk::{
 };
 use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
-use reifydb_value::{config::Config, factory::time::at_millis, value::Value};
+use reifydb_value::{config::Config, factory::time::at_millis, util::hash::Hash128, value::Value};
 
 /// A bare `String` cannot be a state key: `IntoGroupStateKey` exists to force every key through the operator-state
 /// framing, so this wrapper frames the test's keys exactly as an operator would.
@@ -529,7 +529,7 @@ fn a_session_load_then_save_pays_one_read_for_the_row() {
 	let engine = TestEngine::new();
 	let store = engine.inner().operator_state();
 	let op = OperatorId(1);
-	let group = GroupId(7);
+	let group = GroupId::hashed(Hash128(7));
 	let mut meta = WindowMeta::new();
 	let lookups = || {
 		let metrics = store.point().expect("the test store configures a point tier").metrics();
@@ -567,7 +567,7 @@ fn a_classified_read_saves_a_lookup_on_a_keyspace_the_point_tier_never_caches() 
 	let engine = TestEngine::new();
 	let store = engine.inner().operator_state();
 	let op = OperatorId(1);
-	let key = EngineMetaKey(GroupId(7));
+	let key = EngineMetaKey(GroupId::hashed(Hash128(7)));
 	let lookups = || {
 		let metrics = store.point().expect("the test store configures a point tier").metrics();
 		metrics.hits + metrics.misses

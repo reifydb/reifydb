@@ -56,8 +56,8 @@ pub trait ReclaimExtension: StateExtension {
 				assert!(
 					carried == Some(group),
 					"reclaiming group {} was handed a key stamped group {:?}; removing it would delete state belonging to another partition",
-					group.0,
-					carried.map(|id| id.0)
+					group,
+					carried
 				);
 			}
 			if carried != Some(group) {

@@ -29,11 +29,22 @@ use crate::{
 			binding::context::ExternCContext,
 			wire::{
 				iterators::ExternCStateIterator,
-				state::{ExternCStateEntry, ExternCStateSlice},
+				state::{ExternCGroupId, ExternCStateEntry, ExternCStateSlice},
 			},
 		},
 	},
 };
+
+const _: () = assert!(
+	size_of::<ExternCGroupId>() == GroupId::WIDTH,
+	"the wire group id must stay exactly as wide as GroupId, or the pair array stride reads across elements"
+);
+
+fn wire_group(group: GroupId) -> ExternCGroupId {
+	ExternCGroupId {
+		bytes: *group.as_bytes(),
+	}
+}
 
 #[instrument(name = "flow::operator::state::extern_c:get", level = "trace", skip(ctx), fields(
 	operator_id = ctx.operator_id().0,
@@ -251,7 +262,7 @@ pub(crate) fn range(
 		let result = ((*ctx.ctx).callbacks.state.range)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			group.0,
+			wire_group(group),
 			keyspace.0,
 			start_ptr,
 			start_len,
@@ -387,7 +398,7 @@ pub(crate) fn get_or_create_row_numbers_for_pairs(
 	if pairs.is_empty() {
 		return Ok(Vec::new());
 	}
-	let group_ids: Vec<u128> = pairs.iter().map(|(group, _)| group.0).collect();
+	let group_ids: Vec<ExternCGroupId> = pairs.iter().map(|(group, _)| wire_group(*group)).collect();
 	let refs: Vec<ExternCKeyRef> = pairs
 		.iter()
 		.map(|(_, key)| {
@@ -457,7 +468,7 @@ pub(crate) fn reclaim_group_identity(ctx: &mut ExternCContext, group: GroupId, l
 		let result = ((*ctx.ctx).callbacks.state.reclaim_group_identity)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			group.0,
+			wire_group(group),
 			limit,
 			&mut removed,
 			&mut more,
@@ -502,7 +513,7 @@ pub(crate) fn reclaim_group_identity_keys(
 		let result = ((*ctx.ctx).callbacks.state.reclaim_group_identity_keys)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			group.0,
+			wire_group(group),
 			key_refs.as_ptr(),
 			key_refs.len(),
 			&mut removed,
@@ -584,7 +595,7 @@ pub(crate) fn get_or_create_row_numbers(
 		let result = ((*ctx.ctx).callbacks.state.get_or_create_row_numbers)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			group.0,
+			wire_group(group),
 			key_refs.as_ptr(),
 			key_refs.len(),
 			row_numbers.as_mut_ptr(),
@@ -609,7 +620,7 @@ pub(crate) fn remove_row_number(ctx: &mut ExternCContext, group: GroupId, key: &
 		let result = ((*ctx.ctx).callbacks.state.remove_row_number)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			group.0,
+			wire_group(group),
 			key_bytes.as_ptr(),
 			key_bytes.len(),
 		);

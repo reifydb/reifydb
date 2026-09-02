@@ -17,7 +17,7 @@ use reifydb_store_operator::{
 	types::{DurablePre, OperatorWrite},
 };
 use reifydb_testing::keyspace::state_key;
-use reifydb_value::byte_size::ByteSize;
+use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
 fn store() -> OperatorStore {
 	let pools = Pools::new(PoolConfig::default());
@@ -35,7 +35,7 @@ fn store() -> OperatorStore {
 }
 
 fn key() -> EncodedKey {
-	state_key(GroupId(1), KeyspaceId::JOIN_LEFT, 1)
+	state_key(GroupId::hashed(Hash128(1)), KeyspaceId::JOIN_LEFT, 1)
 }
 
 #[test]

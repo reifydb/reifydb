@@ -515,7 +515,10 @@ pub mod tests {
 		},
 		row,
 	};
-	use reifydb_value::value::{diff_type::DiffType, row_number::RowNumber};
+	use reifydb_value::{
+		util::hash::Hash128,
+		value::{diff_type::DiffType, row_number::RowNumber},
+	};
 
 	use super::{
 		super::helpers::{encode_key, probe_row_key},
@@ -1033,23 +1036,23 @@ pub mod tests {
 		// woken in that window can only answer Update because the mapping is still there. Wiping
 		// both at once would let an operator that answers Insert pass.
 		const NODE: OperatorId = OperatorId(1);
-		const GROUP: GroupId = GroupId(7);
-		let accumulator = group_state_key(NODE, GROUP, KeyspaceId::ACCUMULATOR).encode();
-		let mapping = group_state_key(NODE, GROUP, KeyspaceId::GUEST_ROW_MAPPING).encode();
+		let group = GroupId::hashed(Hash128(7));
+		let accumulator = group_state_key(NODE, group, KeyspaceId::ACCUMULATOR).encode();
+		let mapping = group_state_key(NODE, group, KeyspaceId::GUEST_ROW_MAPPING).encode();
 		let mut harness = ExternCOperatorHarnessBuilder::<TestOperator>::new()
 			.with_node_id(NODE)
-			.with_initial_state(group_state_key(NODE, GROUP, KeyspaceId::ACCUMULATOR), vec![1])
-			.with_initial_state(group_state_key(NODE, GROUP, KeyspaceId::GUEST_ROW_MAPPING), vec![2])
+			.with_initial_state(group_state_key(NODE, group, KeyspaceId::ACCUMULATOR), vec![1])
+			.with_initial_state(group_state_key(NODE, group, KeyspaceId::GUEST_ROW_MAPPING), vec![2])
 			.build()
 			.unwrap();
 
-		let reclaimed = harness.reclaim_group_data(&[GROUP]);
+		let reclaimed = harness.reclaim_group_data(&[group]);
 		assert_eq!(reclaimed.keys, Count::new(1), "the data phase takes the accumulator and only that");
 		let state = harness.snapshot_state();
 		assert!(!state.contains_key(&accumulator), "the accumulator is what the data phase is for");
 		assert!(state.contains_key(&mapping), "the mapping has to outlive it - identity trails data");
 
-		let reclaimed = harness.reclaim_group_identity(&[GROUP]);
+		let reclaimed = harness.reclaim_group_identity(&[group]);
 		assert_eq!(reclaimed.keys, Count::new(1), "the identity phase then takes the mapping");
 		assert!(!harness.snapshot_state().contains_key(&mapping));
 	}

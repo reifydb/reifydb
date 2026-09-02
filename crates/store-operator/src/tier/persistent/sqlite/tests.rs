@@ -11,7 +11,7 @@ use reifydb_core::{
 	state::typed::SuffixBytes,
 };
 use reifydb_sqlite::SqliteConfig;
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_value::{util::hash::Hash128, value::row_number::RowNumber};
 
 use crate::tier::{persistent::sqlite::SqliteOperatorStorage as OperatorStore, resident::batch::FlushBatch};
 
@@ -63,14 +63,14 @@ fn the_sqlite_store_opens_one_reader_per_configured_pool_slot() {
 fn a_pooled_reader_sees_a_write_the_moment_the_writer_commits() {
 	let (config, _guard) = SqliteConfig::test();
 	let store = OperatorStore::new(config);
-	let probe = join_left_key(GroupId(7), 1);
+	let probe = join_left_key(GroupId::hashed(Hash128(7)), 1);
 
-	store.flush_batch(&state_batch(&[(OperatorId(1), GroupId(7), 1, Some(row(4)))]));
+	store.flush_batch(&state_batch(&[(OperatorId(1), GroupId::hashed(Hash128(7)), 1, Some(row(4)))]));
 
 	assert!(store.contains(OperatorId(1), &probe));
 	assert!(store.get(OperatorId(1), &probe).is_some());
 
-	store.flush_batch(&state_batch(&[(OperatorId(1), GroupId(7), 1, None)]));
+	store.flush_batch(&state_batch(&[(OperatorId(1), GroupId::hashed(Hash128(7)), 1, None)]));
 
 	assert!(!store.contains(OperatorId(1), &probe), "a committed batch must be visible to the pool too");
 }

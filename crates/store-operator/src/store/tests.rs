@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_testing::keyspace::state_key;
-use reifydb_value::byte_size::ByteSize;
+use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
 use crate::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
@@ -63,11 +63,14 @@ fn flush_once_interlock() -> CheckpointInterlock {
 }
 
 const OP: OperatorId = OperatorId(1);
-const GROUP: GroupId = GroupId(7);
 const KEYSPACE: KeyspaceId = KeyspaceId::JOIN_LEFT;
 
+fn group() -> GroupId {
+	GroupId::hashed(Hash128(7))
+}
+
 fn key(suffix: u8) -> EncodedKey {
-	state_key(GROUP, KEYSPACE, suffix as u64)
+	state_key(group(), KEYSPACE, suffix as u64)
 }
 
 fn row(body: &str) -> EncodedPodRow {
@@ -79,7 +82,7 @@ fn body(row: &EncodedPodRow) -> String {
 }
 
 fn all() -> EncodedKeyRange {
-	keyspace_inner_range(GROUP, KEYSPACE)
+	keyspace_inner_range(group(), KEYSPACE)
 }
 
 fn insert(suffix: u8, value: &str) -> OperatorWrite {

@@ -331,7 +331,7 @@ impl BucketMap {
 			};
 			ids.extend(bucket.groups_in_range(&lower, &upper));
 		}
-		ids.sort_by(|left, right| right.0.cmp(&left.0));
+		ids.sort_by(|left, right| right.cmp(left));
 		ids.dedup();
 		ids
 	}

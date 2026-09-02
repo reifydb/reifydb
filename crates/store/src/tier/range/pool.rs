@@ -470,7 +470,7 @@ mod tests {
 		},
 		util::sorted::SortedVecMap,
 	};
-	use reifydb_value::{byte_size::ByteSize, count::Count};
+	use reifydb_value::{byte_size::ByteSize, count::Count, util::hash::Hash128};
 
 	use crate::{
 		coverage::{
@@ -488,7 +488,9 @@ mod tests {
 	const PARTITION_OVERHEAD: usize = partition_overhead::<D>();
 
 	const OP_A: OperatorId = OperatorId(1);
-	const GROUP_A: GroupId = GroupId(10);
+	fn group_a() -> GroupId {
+		GroupId::hashed(Hash128(10))
+	}
 
 	fn config(limit_bytes: u64, shards: usize) -> RangeConfig {
 		RangeConfig {
@@ -509,7 +511,7 @@ mod tests {
 	}
 
 	fn key(keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKey {
-		OperatorStateKey::inner_encoded(GROUP_A, keyspace, suffix).into_encoded()
+		OperatorStateKey::inner_encoded(group_a(), keyspace, suffix).into_encoded()
 	}
 
 	fn row(body: &str) -> EncodedPodRow {
@@ -519,7 +521,7 @@ mod tests {
 	fn part(keyspace: KeyspaceId) -> TestPartition {
 		TestPartition {
 			dimension: OP_A,
-			group: GROUP_A,
+			group: group_a(),
 			keyspace,
 		}
 	}

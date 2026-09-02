@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, KEYSPACE_INNER_PREFIX_LEN, KeyspaceId, OperatorStateKey},
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
@@ -21,20 +21,22 @@ use reifydb_store_operator::{
 	types::{BufferedState, DurablePre, OperatorWrite},
 };
 use reifydb_testing::{keyspace::suffix_width, testscript};
-use reifydb_value::byte_size::ByteSize;
+use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 use testscript::command::{ArgumentConsumer, Command};
 
 /// Every script names its keys by a short suffix; the runner wraps that suffix in the group/keyspace frame the
 /// store expects, so keys carry the keyspace byte the census triggers read while goldens stay readable.
-const KEY_PREFIX_LEN: usize = 17;
+const KEY_PREFIX_LEN: usize = KEYSPACE_INNER_PREFIX_LEN;
 
 const DEFAULT_OPERATOR: u64 = 1;
-
-const DEFAULT_GROUP: u128 = 1;
 
 const DEFAULT_KEYSPACE: u8 = KeyspaceId::GUEST_ACCUMULATOR.0;
 
 const DEFAULT_BATCH: u64 = 1024;
+
+fn default_group() -> GroupId {
+	GroupId::hashed(Hash128(1))
+}
 
 /// Shared testscript runner for every per-tier test binary. With `auto_flush` each mutating command is followed
 /// by `flush_pending_blocking()`; without it the explicit `flush` command is the only thing that moves the commit
@@ -372,7 +374,7 @@ fn encode_key(name: &[u8], keyspace: u8) -> EncodedKey {
 	);
 	let mut suffix = vec![0u8; width];
 	suffix[..name.len()].copy_from_slice(name);
-	OperatorStateKey::inner_encoded(GroupId(DEFAULT_GROUP), KeyspaceId(keyspace), suffix).as_encoded().clone()
+	OperatorStateKey::inner_encoded(default_group(), KeyspaceId(keyspace), suffix).as_encoded().clone()
 }
 
 fn key_name(key: &EncodedKey) -> Vec<u8> {

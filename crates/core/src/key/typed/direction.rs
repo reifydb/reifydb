@@ -176,24 +176,24 @@ impl KeyScalar for [u8; 16] {
 }
 
 impl KeyScalar for GroupId {
-	const MIN: Self = GroupId(u128::MIN);
-	const MAX: Self = GroupId(u128::MAX);
-	const COLUMN_TYPE: KeyColumnType = KeyColumnType::Blob16;
+	const MIN: Self = GroupId::MIN;
+	const MAX: Self = GroupId::MAX;
+	const COLUMN_TYPE: KeyColumnType = KeyColumnType::Blob24;
 
 	fn successor(&self) -> Option<Self> {
-		self.0.checked_add(1).map(GroupId)
+		GroupId::successor(self)
 	}
 
 	fn predecessor(&self) -> Option<Self> {
-		self.0.checked_sub(1).map(GroupId)
+		GroupId::predecessor(self)
 	}
 	fn to_key_value(&self) -> KeyValue {
-		KeyValue::Blob16(self.0.to_be_bytes())
+		KeyValue::Blob24(*self.as_bytes())
 	}
 
 	fn from_key_value(value: KeyValue) -> Option<Self> {
 		match value {
-			KeyValue::Blob16(v) => Some(GroupId(u128::from_be_bytes(v))),
+			KeyValue::Blob24(v) => Some(GroupId::from_bytes(v)),
 			_ => None,
 		}
 	}
@@ -627,9 +627,9 @@ mod tests {
 
 	#[test]
 	fn group_and_row_number_scalars_bound_their_domains() {
-		assert_eq!(<GroupId as KeyScalar>::MIN, GroupId(0));
-		assert_eq!(GroupId(u128::MAX).successor(), None);
-		assert_eq!(<Desc<GroupId> as Key>::low(), Desc(GroupId(u128::MAX)));
+		assert_eq!(<GroupId as KeyScalar>::MIN, GroupId::ROOT);
+		assert_eq!(GroupId::MAX.successor(), None);
+		assert_eq!(<Desc<GroupId> as Key>::low(), Desc(GroupId::MAX));
 		assert_eq!(<RowNumber as KeyScalar>::MAX, RowNumber(u64::MAX));
 		assert_eq!(RowNumber(0).predecessor(), None);
 		assert_eq!(<Desc<RowNumber> as Key>::low(), Desc(RowNumber(u64::MAX)));

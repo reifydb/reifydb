@@ -12,7 +12,7 @@ use smallvec::SmallVec;
 
 pub(crate) type KeyspaceIds = SmallVec<[KeyspaceId; 48]>;
 
-const GROUP_BYTES: usize = 16;
+const GROUP_BYTES: usize = GroupId::WIDTH;
 
 pub(crate) fn parts(key: &EncodedKey) -> (GroupId, KeyspaceId, &[u8]) {
 	OperatorStateKey::decode_inner(key.as_slice()).expect("an operator state key must name a group and a keyspace")

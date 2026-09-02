@@ -9,9 +9,9 @@ bytes
 total_bytes
 census
 ---
-bytes 1 => 33
-total_bytes => 33
-operator 1 keyspace 0x1b keys=1 key_bytes=32 value_bytes=1
+bytes 1 => 41
+total_bytes => 41
+operator 1 keyspace 0x1b keys=1 key_bytes=40 value_bytes=1
 count=1
 
 # Flushing moves the same key from buffer to sqlite, so the numbers must not move with it.
@@ -22,9 +22,9 @@ total_bytes
 census
 ---
 ok
-bytes 1 => 33
-total_bytes => 33
-operator 1 keyspace 0x1b keys=1 key_bytes=32 value_bytes=1
+bytes 1 => 41
+total_bytes => 41
+operator 1 keyspace 0x1b keys=1 key_bytes=40 value_bytes=1
 count=1
 
 # An unflushed overwrite is charged twice on purpose: the old value still occupies sqlite and the new one
@@ -34,8 +34,8 @@ set a=111
 bytes
 census
 ---
-bytes 1 => 68
-operator 1 keyspace 0x1b keys=2 key_bytes=64 value_bytes=4
+bytes 1 => 84
+operator 1 keyspace 0x1b keys=2 key_bytes=80 value_bytes=4
 count=1
 
 flush
@@ -43,8 +43,8 @@ bytes
 census
 ---
 ok
-bytes 1 => 35
-operator 1 keyspace 0x1b keys=1 key_bytes=32 value_bytes=3
+bytes 1 => 43
+operator 1 keyspace 0x1b keys=1 key_bytes=40 value_bytes=3
 count=1
 
 # A removal frees nothing until it lands, because the durable copy is what is being measured.
@@ -53,8 +53,8 @@ remove a
 bytes
 census
 ---
-bytes 1 => 35
-operator 1 keyspace 0x1b keys=1 key_bytes=32 value_bytes=3
+bytes 1 => 43
+operator 1 keyspace 0x1b keys=1 key_bytes=40 value_bytes=3
 count=1
 
 flush

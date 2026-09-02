@@ -34,7 +34,7 @@ use reifydb_store_operator::{
 	types::{DurablePre, OperatorBatch, OperatorWrite},
 };
 use reifydb_testing::keyspace::state_key;
-use reifydb_value::byte_size::ByteSize;
+use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
 const CACHED_BELOW_UNCACHED: KeyspaceId = KeyspaceId::PARTITIONED_RINGBUFFER_META;
 
@@ -44,7 +44,10 @@ const RANGE_ONLY_ABOVE: KeyspaceId = KeyspaceId::GUEST_RUNNING;
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
-const GROUP: GroupId = GroupId(7);
+
+fn group() -> GroupId {
+	GroupId::hashed(Hash128(7))
+}
 
 fn cached_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard) {
 	// The hour-long interval on a frozen clock means the only drain a test sees is the one it asked for.
@@ -72,7 +75,12 @@ fn cached_store_with(
 }
 
 fn key_in(keyspace: KeyspaceId, suffix: u8) -> EncodedKey {
-	state_key(GROUP, keyspace, suffix as u64)
+	state_key(group(), keyspace, suffix as u64)
+}
+
+fn root_key_in(keyspace: KeyspaceId, suffix: u8) -> EncodedKey {
+	// A keyspace with no group column holds every row at ROOT, so any other group names a key that cannot exist.
+	state_key(GroupId::ROOT, keyspace, suffix as u64)
 }
 
 fn row(body: &str) -> EncodedPodRow {
@@ -88,7 +96,7 @@ fn bodies(batch: &OperatorBatch) -> Vec<String> {
 }
 
 fn seeded_range() -> EncodedKeyRange {
-	keyspace_inner_range(GROUP, RANGE_ONLY)
+	keyspace_inner_range(group(), RANGE_ONLY)
 }
 
 fn seed_rows(storage: &SqliteOperatorStorage, count: u8) {
@@ -300,12 +308,12 @@ fn a_range_spanning_two_keyspaces_bypasses_the_tier_and_reads_every_row_out_of_s
 	}
 
 	assert_eq!(bodies(&store.range_batch(OP_A, seeded_range(), 64)), ["v1", "v2", "v3"]);
-	assert_eq!(bodies(&store.range_batch(OP_A, keyspace_inner_range(GROUP, RANGE_ONLY_ABOVE), 64)), ["c1", "c2"]);
+	assert_eq!(bodies(&store.range_batch(OP_A, keyspace_inner_range(group(), RANGE_ONLY_ABOVE), 64)), ["c1", "c2"]);
 	assert_eq!(range_partitions(&store), 2, "both keyspaces must be claimed or the span proves nothing");
 
 	let spanning = EncodedKeyRange::new(
-		keyspace_inner_range(GROUP, RANGE_ONLY_ABOVE).start,
-		keyspace_inner_range(GROUP, RANGE_ONLY).end,
+		keyspace_inner_range(group(), RANGE_ONLY_ABOVE).start,
+		keyspace_inner_range(group(), RANGE_ONLY).end,
 	);
 	let counters = range_tier(&store).metrics();
 	let before = ScanCounters::sample();
@@ -618,24 +626,25 @@ fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_reads_both_keyspaces_
 		"no keyspace may sit between the two, or the scan never orders them next to each other"
 	);
 
+	// The cached half carries no group column, so the whole span must sit at ROOT or its rows are dropped unread.
 	for suffix in 1..=3u8 {
 		storage.seed_durable(&[
 			OperatorWrite::Insert {
 				operator: OP_A,
-				key: key_in(uncached, suffix),
+				key: root_key_in(uncached, suffix),
 				post: row(&format!("pin{suffix}")),
 			},
 			OperatorWrite::Insert {
 				operator: OP_A,
-				key: key_in(cached, suffix),
+				key: root_key_in(cached, suffix),
 				post: row(&format!("pub{suffix}")),
 			},
 		]);
 	}
 
 	let span = EncodedKeyRange::new(
-		keyspace_inner_range(GROUP, uncached).start,
-		keyspace_inner_range(GROUP, cached).end,
+		keyspace_inner_range(GroupId::ROOT, uncached).start,
+		keyspace_inner_range(GroupId::ROOT, cached).end,
 	);
 
 	let first = store.range_batch(OP_A, span.clone(), 64);
@@ -661,7 +670,7 @@ fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_reads_both_keyspaces_
          and the cached one because the span never asked its tier"
 	);
 
-	let alone = keyspace_inner_range(GROUP, cached);
+	let alone = keyspace_inner_range(GroupId::ROOT, cached);
 	assert_eq!(bodies(&store.range_batch(OP_A, alone.clone(), 64)), ["pub1", "pub2", "pub3"]);
 	assert_eq!(range_partitions(&store), 1, "the control: scanned on its own, the cached keyspace claims");
 	let before = ScanCounters::sample();

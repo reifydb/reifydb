@@ -34,6 +34,7 @@ use reifydb_runtime::{
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::{
 	byte_size::ByteSize,
+	util::hash::Hash128,
 	value::{duration::Duration, row_number::RowNumber},
 };
 
@@ -93,7 +94,7 @@ fn buffer_fixture() -> (OperatorResidentState, SqliteOperatorStorage, ActorRef<F
 }
 
 fn key(suffix: u8) -> EncodedKey {
-	typed_key::<JoinLeft>(GroupId(7), &Asc(RowNumber(suffix as u64))).into_encoded()
+	typed_key::<JoinLeft>(GroupId::hashed(Hash128(7)), &Asc(RowNumber(suffix as u64))).into_encoded()
 }
 
 fn row(body: &str) -> EncodedPodRow {

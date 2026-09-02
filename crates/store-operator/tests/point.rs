@@ -31,13 +31,16 @@ use reifydb_store_operator::{
 	types::{DurablePre, OperatorBatch, OperatorWrite},
 };
 use reifydb_testing::keyspace::state_key;
-use reifydb_value::byte_size::ByteSize;
+use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
 const CACHED: KeyspaceId = KeyspaceId::JOIN_LEFT;
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
-const GROUP: GroupId = GroupId(7);
+
+fn group() -> GroupId {
+	GroupId::hashed(Hash128(7))
+}
 
 fn cached_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard) {
 	// The hour-long interval on a frozen clock means the only drain a test sees is the one it asked for.
@@ -72,11 +75,16 @@ fn cached_store_on(storage: SqliteOperatorStorage) -> OperatorStore {
 }
 
 fn key(suffix: u8) -> EncodedKey {
-	state_key(GROUP, CACHED, suffix as u64)
+	state_key(group(), CACHED, suffix as u64)
 }
 
 fn key_in(keyspace: KeyspaceId, suffix: u8) -> EncodedKey {
-	state_key(GROUP, keyspace, suffix as u64)
+	state_key(group(), keyspace, suffix as u64)
+}
+
+fn root_key_in(keyspace: KeyspaceId, suffix: u8) -> EncodedKey {
+	// A keyspace with no group column holds every row at ROOT, so any other group names a key that cannot exist.
+	state_key(GroupId::ROOT, keyspace, suffix as u64)
 }
 
 fn row(body: &str) -> EncodedPodRow {
@@ -92,7 +100,7 @@ fn bodies(batch: &OperatorBatch) -> Vec<String> {
 }
 
 fn accumulator_range() -> EncodedKeyRange {
-	keyspace_inner_range(GROUP, CACHED)
+	keyspace_inner_range(group(), CACHED)
 }
 
 fn seed_accumulator(storage: &SqliteOperatorStorage, count: u8) {
@@ -601,7 +609,7 @@ fn an_expiry_write_never_occupies_the_point_tier() {
 	// The expiry index is drained by range scans and never point read, so an entry the write-through admits can
 	// never win its budget back with a hit.
 	let (store, _storage, _guard) = cached_store();
-	let key = key_in(KeyspaceId::ROLLING_EXPIRY, 1);
+	let key = root_key_in(KeyspaceId::ROLLING_EXPIRY, 1);
 	put(&store, OP_A, key.clone(), row("armed"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
 
@@ -630,7 +638,7 @@ fn a_timer_wheel_write_never_occupies_the_point_tier() {
 	// The timer wheel is read only by the due-ordered scan that drains it, so admitting its rows buys no hit at
 	// all.
 	let (store, _storage, _guard) = cached_store();
-	let key = key_in(KeyspaceId::TIMER_WHEEL, 1);
+	let key = root_key_in(KeyspaceId::TIMER_WHEEL, 1);
 	put(&store, OP_A, key.clone(), row("armed"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
 
@@ -658,8 +666,8 @@ fn a_timer_wheel_write_never_occupies_the_point_tier() {
 fn a_point_read_of_an_expiry_key_remembers_neither_the_row_nor_the_absence() {
 	// A refused keyspace that still caches "nothing here" gives back exactly the budget the refusal freed.
 	let (store, storage, _guard) = cached_store();
-	let present = key_in(KeyspaceId::ROLLING_EXPIRY, 1);
-	let absent = key_in(KeyspaceId::ROLLING_EXPIRY, 2);
+	let present = root_key_in(KeyspaceId::ROLLING_EXPIRY, 1);
+	let absent = root_key_in(KeyspaceId::ROLLING_EXPIRY, 2);
 	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: present.clone(),

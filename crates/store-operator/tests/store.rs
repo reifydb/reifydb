@@ -25,7 +25,7 @@ use reifydb_store_operator::{
 	types::{DurablePre, OperatorBatch, OperatorWrite},
 };
 use reifydb_testing::keyspace::state_key;
-use reifydb_value::byte_size::ByteSize;
+use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
@@ -62,7 +62,7 @@ fn store_at(config: SqliteConfig) -> OperatorStore {
 }
 
 fn key(suffix: u8) -> EncodedKey {
-	state_key(GroupId(7), KeyspaceId::JOIN_LEFT, suffix as u64)
+	state_key(GroupId::hashed(Hash128(7)), KeyspaceId::JOIN_LEFT, suffix as u64)
 }
 
 fn row(body: &str) -> EncodedPodRow {

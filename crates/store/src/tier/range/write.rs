@@ -325,7 +325,7 @@ mod tests {
 		},
 		util::sorted::SortedVecMap,
 	};
-	use reifydb_value::byte_size::ByteSize;
+	use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
 	use super::arm_write_interlock;
 	use crate::{
@@ -344,10 +344,13 @@ mod tests {
 
 	const OP_A: OperatorId = OperatorId(1);
 	const OP_B: OperatorId = OperatorId(2);
-	const GROUP_A: GroupId = GroupId(10);
 	const CACHED: KeyspaceId = KeyspaceId::ACCUMULATOR;
 	const OTHER: KeyspaceId = KeyspaceId::BUFFER;
 	const UNCACHED: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
+
+	fn group_a() -> GroupId {
+		GroupId::hashed(Hash128(10))
+	}
 
 	fn tier() -> RangeTier<D> {
 		RangeTier::<D>::new(RangeConfig {
@@ -359,7 +362,7 @@ mod tests {
 	}
 
 	fn key(keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKey {
-		OperatorStateKey::inner_encoded(GROUP_A, keyspace, suffix).into_encoded()
+		OperatorStateKey::inner_encoded(group_a(), keyspace, suffix).into_encoded()
 	}
 
 	fn row(body: &str) -> EncodedPodRow {
@@ -369,7 +372,7 @@ mod tests {
 	fn partition(operator: OperatorId, keyspace: KeyspaceId) -> TestPartition {
 		TestPartition {
 			dimension: operator,
-			group: GROUP_A,
+			group: group_a(),
 			keyspace,
 		}
 	}

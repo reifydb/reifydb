@@ -80,7 +80,7 @@ pub enum RollingExpiry<G, Output> {
 pub struct RollingIndexEntry<G> {
 	group: G,
 	slot_key: Vec<u8>,
-	group_id: u128,
+	group_id: GroupId,
 }
 
 fn coord_min_key<S: Slot, A>(buffer: &RollingBuffer<S, A>) -> Option<u64> {
@@ -421,7 +421,7 @@ where
 							RollingIndexEntry {
 								group: group.clone(),
 								slot_key: group_slot.key.as_bytes().to_vec(),
-								group_id: group_slot.group_id.0,
+								group_id: group_slot.group_id,
 							},
 						)?;
 					}
@@ -666,7 +666,7 @@ where
 						RollingIndexEntry {
 							group: group.clone(),
 							slot_key: group_slot.key.as_bytes().to_vec(),
-							group_id: group_slot.group_id.0,
+							group_id: group_slot.group_id,
 						},
 					)?;
 				}
@@ -767,7 +767,7 @@ where
 		let mut pending: Vec<(G, Option<Accumulator::Output>)> = Vec::new();
 		for (index_key, entry) in due {
 			let slot_key = EncodedKey::new(&entry.slot_key);
-			let group_id = GroupId(entry.group_id);
+			let group_id = entry.group_id;
 			expiry_drop(store, &index_key)?;
 			let frontier = if self.lag.is_zero() {
 				Some(<S::Coord as Coord>::MAX)
@@ -911,7 +911,7 @@ where
 		let mut pending: Vec<(G, Option<Output>)> = Vec::new();
 		for (index_key, entry) in due {
 			let slot_key = EncodedKey::new(&entry.slot_key);
-			let group_id = GroupId(entry.group_id);
+			let group_id = entry.group_id;
 			expiry_drop(store, &index_key)?;
 			let mut buffer: RollingBuffer<S, Accumulator> =
 				get_classified(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?

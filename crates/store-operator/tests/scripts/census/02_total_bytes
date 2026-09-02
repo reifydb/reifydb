@@ -15,9 +15,9 @@ bytes
 bytes op=2
 ---
 ok
-total_bytes => 66
-bytes 1 => 33
-bytes 2 => 33
+total_bytes => 82
+bytes 1 => 41
+bytes 2 => 41
 
 # Dropping one operator's state leaves the neighbour's share standing.
 
@@ -28,6 +28,6 @@ bytes
 bytes op=2
 ---
 ok
-total_bytes => 33
+total_bytes => 41
 bytes 1 => 0
-bytes 2 => 33
+bytes 2 => 41

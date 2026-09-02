@@ -4,7 +4,9 @@
 use crate::{
 	common::extern_c::wire::{buffer::ExternCBuffer, key_ref::ExternCKeyRef},
 	flow::operator::extern_c::wire::{
-		context::ExternCContextRaw, iterators::ExternCStateIterator, state::ExternCStateEntry,
+		context::ExternCContextRaw,
+		iterators::ExternCStateIterator,
+		state::{ExternCGroupId, ExternCStateEntry},
 	},
 };
 
@@ -44,7 +46,7 @@ pub struct StateCallbacks {
 	pub range: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		group: u128,
+		group: ExternCGroupId,
 		keyspace: u8,
 		start: *const u8,
 		start_len: usize,
@@ -76,7 +78,7 @@ pub struct StateCallbacks {
 	pub get_or_create_row_numbers: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		group: u128,
+		group: ExternCGroupId,
 		keys: *const ExternCKeyRef,
 		keys_len: usize,
 		row_numbers_out: *mut u64,
@@ -86,7 +88,7 @@ pub struct StateCallbacks {
 	pub get_or_create_row_numbers_for_pairs: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		groups: *const u128,
+		groups: *const ExternCGroupId,
 		keys: *const ExternCKeyRef,
 		pairs_len: usize,
 		row_numbers_out: *mut u64,
@@ -96,7 +98,7 @@ pub struct StateCallbacks {
 	pub remove_row_number: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		group: u128,
+		group: ExternCGroupId,
 		key: *const u8,
 		key_len: usize,
 	) -> i32,
@@ -129,7 +131,7 @@ pub struct StateCallbacks {
 	pub reclaim_group_identity: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		group: u128,
+		group: ExternCGroupId,
 		limit: usize,
 		removed_out: *mut usize,
 		more_out: *mut u8,
@@ -138,7 +140,7 @@ pub struct StateCallbacks {
 	pub reclaim_group_identity_keys: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		group: u128,
+		group: ExternCGroupId,
 		keys: *const ExternCKeyRef,
 		keys_len: usize,
 		removed_out: *mut usize,

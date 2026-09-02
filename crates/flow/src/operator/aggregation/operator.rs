@@ -27,7 +27,7 @@ use reifydb_value::{
 use super::{
 	accumulator::WindowSlotKey,
 	core::Aggregation,
-	engine::{finish_tumbling_engine, intern_window_groups, route_into_buckets},
+	engine::{finish_tumbling_engine, intern_partition_groups, route_into_buckets},
 };
 use crate::{
 	context::FlowContext,
@@ -169,7 +169,7 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext
 	let engine_config = WindowEngineConfig::builder().build();
 
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
-	let groups = intern_window_groups(&windows);
+	let groups = intern_partition_groups(&windows);
 
 	let diffs = finish_tumbling_engine(
 		core,

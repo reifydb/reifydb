@@ -24,7 +24,7 @@ use reifydb_sdk::{
 	flow::operator::extern_c::wire::{
 		context::ExternCContextRaw,
 		iterators::ExternCStateIterator,
-		state::{ExternCStateEntry, ExternCStateSlice},
+		state::{ExternCGroupId, ExternCStateEntry, ExternCStateSlice},
 	},
 };
 use reifydb_value::value::datetime::DateTime;
@@ -294,6 +294,15 @@ fn guest_may_address(_operator: OperatorId, keyspace: KeyspaceId) -> bool {
 	keyspace.is_guest_owned()
 }
 
+const _: () = assert!(
+	size_of::<ExternCGroupId>() == GroupId::WIDTH,
+	"the wire group id must stay exactly as wide as GroupId, or the pair array stride reads across elements"
+);
+
+fn host_group(group: ExternCGroupId) -> GroupId {
+	GroupId::from_bytes(group.bytes)
+}
+
 /// # Safety
 /// `ptr` must be null, or valid for reads of `len` bytes.
 unsafe fn suffix_bound(ptr: *const u8, len: usize, bound_type: u8) -> Option<Bound<Vec<u8>>> {
@@ -324,7 +333,7 @@ fn bound_as_slice(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
 pub(super) extern "C" fn host_state_range(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u128,
+	group: ExternCGroupId,
 	keyspace: u8,
 	start_ptr: *const u8,
 	start_len: usize,
@@ -359,7 +368,7 @@ pub(super) extern "C" fn host_state_range(
 		};
 
 		let range = keyspace_inner_range_in(
-			GroupId(group),
+			host_group(group),
 			keyspace,
 			bound_as_slice(&start_bound),
 			bound_as_slice(&end_bound),
@@ -458,7 +467,7 @@ pub(super) extern "C" fn host_state_iterator_free(iterator: *mut ExternCStateIte
 pub(super) extern "C" fn host_get_or_create_row_numbers(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u128,
+	group: ExternCGroupId,
 	keys: *const ExternCKeyRef,
 	keys_len: usize,
 	row_numbers_out: *mut u64,
@@ -480,7 +489,7 @@ pub(super) extern "C" fn host_get_or_create_row_numbers(
 		let Some(encoded_keys) = encoded_keys(keys, keys_len) else {
 			return EXTERN_C_ERROR_NULL_PTR;
 		};
-		match host.get_or_create_row_numbers(GroupId(group), &encoded_keys) {
+		match host.get_or_create_row_numbers(host_group(group), &encoded_keys) {
 			Ok(results) => {
 				for (i, (row_number, is_new)) in results.iter().enumerate() {
 					*row_numbers_out.add(i) = row_number.0;
@@ -496,7 +505,7 @@ pub(super) extern "C" fn host_get_or_create_row_numbers(
 pub(super) extern "C" fn host_remove_row_number(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u128,
+	group: ExternCGroupId,
 	key_ptr: *const u8,
 	key_len: usize,
 ) -> i32 {
@@ -511,9 +520,9 @@ pub(super) extern "C" fn host_remove_row_number(
 		let host = get_host_mut(&mut *ctx);
 		let key = encoded_key(key_ptr, key_len);
 		let removed = if key.is_empty() {
-			host.remove_row_number_for_group(GroupId(group))
+			host.remove_row_number_for_group(host_group(group))
 		} else {
-			host.remove_row_number(GroupId(group), &key)
+			host.remove_row_number(host_group(group), &key)
 		};
 		match removed {
 			Ok(_) => EXTERN_C_OK,
@@ -560,7 +569,7 @@ pub(super) extern "C" fn host_arm_timer(
 pub(super) extern "C" fn host_reclaim_group_identity(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u128,
+	group: ExternCGroupId,
 	limit: usize,
 	removed_out: *mut usize,
 	more_out: *mut u8,
@@ -573,7 +582,7 @@ pub(super) extern "C" fn host_reclaim_group_identity(
 	// duration of the call, and the out pointers must be valid for writes.
 	unsafe {
 		let host = get_host_mut(&mut *ctx);
-		match host.reclaim_group_identity(GroupId(group), limit) {
+		match host.reclaim_group_identity(host_group(group), limit) {
 			Ok(outcome) => {
 				*removed_out = outcome.removed.as_u64() as usize;
 				*more_out = outcome.more as u8;
@@ -587,7 +596,7 @@ pub(super) extern "C" fn host_reclaim_group_identity(
 pub(super) extern "C" fn host_reclaim_group_identity_keys(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u128,
+	group: ExternCGroupId,
 	keys: *const ExternCKeyRef,
 	keys_len: usize,
 	removed_out: *mut usize,
@@ -608,7 +617,7 @@ pub(super) extern "C" fn host_reclaim_group_identity_keys(
 		let Some(keys) = identity_keys(keys, keys_len) else {
 			return EXTERN_C_ERROR_NULL_PTR;
 		};
-		match host.reclaim_group_identity_keys(GroupId(group), &keys) {
+		match host.reclaim_group_identity_keys(host_group(group), &keys) {
 			Ok(outcome) => {
 				*removed_out = outcome.removed.as_u64() as usize;
 				*more_out = outcome.more as u8;
@@ -687,7 +696,7 @@ pub(super) extern "C" fn host_disarm_timer(
 pub(super) extern "C" fn host_get_or_create_row_numbers_for_pairs(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	groups: *const u128,
+	groups: *const ExternCGroupId,
 	keys: *const ExternCKeyRef,
 	pairs_len: usize,
 	row_numbers_out: *mut u64,
@@ -702,15 +711,15 @@ pub(super) extern "C" fn host_get_or_create_row_numbers_for_pairs(
 
 	// SAFETY: `ctx` is null-checked above, and for a non-zero `pairs_len` so are `groups`, `keys`,
 	// `row_numbers_out` and `is_new_out`; the guest must pass back the ExternCContextRaw the host handed it
-	// for this call, `groups` valid and aligned for `pairs_len` u64 reads, `keys` satisfying encoded_keys for
-	// the same length, and both out arrays valid and aligned for `pairs_len` writes -
+	// for this call, `groups` valid and aligned for `pairs_len` ExternCGroupId reads, `keys` satisfying
+	// encoded_keys for the same length, and both out arrays valid and aligned for `pairs_len` writes -
 	// get_or_create_row_numbers_for_pairs returns exactly one result per pair.
 	unsafe {
 		let host = get_host_mut(&mut *ctx);
 		let Some(encoded) = encoded_keys(keys, pairs_len) else {
 			return EXTERN_C_ERROR_NULL_PTR;
 		};
-		let group_ids: Vec<GroupId> = (0..encoded.len()).map(|index| GroupId(*groups.add(index))).collect();
+		let group_ids: Vec<GroupId> = (0..encoded.len()).map(|index| host_group(*groups.add(index))).collect();
 		match host.get_or_create_row_numbers_for_groups(&group_ids) {
 			Ok(results) => {
 				for (index, (row_number, is_new)) in results.iter().enumerate() {
@@ -760,6 +769,7 @@ mod join_row_expiry_guard_tests {
 	use reifydb_value::{
 		Result,
 		count::Count,
+		util::hash::Hash128,
 		value::{
 			Value,
 			dictionary::{DictionaryEntryId, DictionaryId},
@@ -1018,7 +1028,7 @@ mod join_row_expiry_guard_tests {
 
 	fn framed(keyspace: KeyspaceId) -> Vec<u8> {
 		let width = suffix_width_of(keyspace).expect("a fixture keyspace must appear in the catalogue");
-		OperatorStateKey::inner_encoded(GroupId(7), keyspace, vec![0u8; width]).as_slice().to_vec()
+		OperatorStateKey::inner_encoded(group_id(), keyspace, vec![0u8; width]).as_slice().to_vec()
 	}
 
 	fn with_context(call: impl FnOnce(*mut ExternCContextRaw) -> i32) -> (i32, bool) {
@@ -1074,7 +1084,9 @@ mod join_row_expiry_guard_tests {
 		host_state_range(
 			1,
 			ctx,
-			GROUP.0,
+			ExternCGroupId {
+				bytes: *group_id().as_bytes(),
+			},
 			keyspace.0,
 			start_ptr,
 			start_len,
@@ -1087,7 +1099,9 @@ mod join_row_expiry_guard_tests {
 		)
 	}
 
-	const GROUP: GroupId = GroupId(7);
+	fn group_id() -> GroupId {
+		GroupId::hashed(Hash128(7))
+	}
 
 	fn padded(prefix: &[u8], fill: u8) -> Vec<u8> {
 		let width = suffix_width_of(KeyspaceId::CUSTOM_NOT_CACHED)
@@ -1130,13 +1144,13 @@ mod join_row_expiry_guard_tests {
 			with_recording_context(|ctx| guest_range(ctx, KeyspaceId::CUSTOM_NOT_CACHED, None, None));
 		let range = seen.expect("an allowed guest range must reach the host");
 
-		let whole = keyspace_inner_range(GROUP, KeyspaceId::CUSTOM_NOT_CACHED);
+		let whole = keyspace_inner_range(group_id(), KeyspaceId::CUSTOM_NOT_CACHED);
 		assert_eq!(range.start, whole.start, "an unbounded start is the keyspace's own first key");
 		assert_eq!(range.end, whole.end, "and an unbounded end is the keyspace's own last key");
 
 		let (group, keyspace, _, _) =
 			keyspace_inner_range_split(&range).expect("a guest range must confine to one keyspace");
-		assert_eq!(group, GROUP);
+		assert_eq!(group, group_id());
 		assert_eq!(keyspace, KeyspaceId::CUSTOM_NOT_CACHED);
 	}
 
@@ -1154,7 +1168,7 @@ mod join_row_expiry_guard_tests {
 		assert_eq!(status, EXTERN_C_OK);
 		let (group, keyspace, start, end) =
 			keyspace_inner_range_split(&range).expect("a guest range must confine to one keyspace");
-		assert_eq!(group, GROUP);
+		assert_eq!(group, group_id());
 		assert_eq!(keyspace, KeyspaceId::CUSTOM_NOT_CACHED);
 		assert_eq!(start, Bound::Included(padded(&[1u8; 4], 0x00)));
 		assert_eq!(end, Bound::Excluded(padded(&[9u8; 4], 0x00)));
