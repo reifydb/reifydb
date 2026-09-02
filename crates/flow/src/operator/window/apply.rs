@@ -1351,7 +1351,7 @@ mod seal_arm_tests {
 	}
 
 	fn take_one_due(txn: &mut DeferredTransaction, operator: OperatorId, watermark: u64) -> Timer {
-		let (mut timers, _) = TimerWheel::take_due(operator, txn, at_millis(watermark), 16).unwrap();
+		let mut timers = TimerWheel::take_due(operator, txn, at_millis(watermark), 16, None).unwrap().timers;
 		assert_eq!(timers.len(), 1, "exactly one timer may stand for the whole operator");
 		timers.remove(0)
 	}

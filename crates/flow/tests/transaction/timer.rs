@@ -5,7 +5,10 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{actors::pending::PendingLayers, interface::catalog::flow::OperatorId, state::timer::TimerKind};
 use reifydb_flow::{
-	timer::{Timer, TimerDue, wheel::TimerWheel},
+	timer::{
+		Timer, TimerDue,
+		wheel::{DueTimers, MAX_TIMERS_PER_SCAN, TimerWheel},
+	},
 	transaction::{
 		DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
@@ -65,11 +68,11 @@ fn a_timer_is_due_exactly_when_the_watermark_reaches_it() {
 	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "bucket")).unwrap();
 
 	assert!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(4_999), NO_LIMIT).unwrap().0.is_empty(),
+		TimerWheel::take_due(NODE, &mut txn, at_millis(4_999), NO_LIMIT, None).unwrap().timers.is_empty(),
 		"must not fire early"
 	);
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(5_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(5_000), NO_LIMIT, None).unwrap().timers,
 		vec![timer(5_000, TimerKind::Seal, "bucket")]
 	);
 }
@@ -89,7 +92,7 @@ fn rearming_a_unique_kind_moves_its_deadline_instead_of_minting_a_second_timer()
 	TimerWheel::arm(NODE, &mut txn, &timer(7_000, TimerKind::Maintenance, "m")).unwrap();
 
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap().timers,
 		vec![timer(7_000, TimerKind::Maintenance, "m")],
 		"re-arming must move the one deadline, not leave the superseded instants armed"
 	);
@@ -108,7 +111,7 @@ fn a_backlog_kind_still_holds_every_instant_it_was_armed_at() {
 	TimerWheel::arm(NODE, &mut txn, &timer(6_000, TimerKind::Seal, "m")).unwrap();
 
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap().timers,
 		vec![timer(5_000, TimerKind::Seal, "m"), timer(6_000, TimerKind::Seal, "m")],
 		"a backlog kind must keep every bucket it was armed for"
 	);
@@ -125,14 +128,14 @@ fn a_fired_unique_timer_can_be_armed_again_at_a_later_instant() {
 
 	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "m")).unwrap();
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(5_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(5_000), NO_LIMIT, None).unwrap().timers,
 		vec![timer(5_000, TimerKind::Maintenance, "m")]
 	);
 
 	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "m")).unwrap();
 
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap().timers,
 		vec![timer(5_000, TimerKind::Maintenance, "m")],
 		"re-arming the instant that just fired must arm a live timer, not be skipped as a duplicate"
 	);
@@ -153,7 +156,7 @@ fn due_timers_return_in_at_then_kind_then_id_order() {
 	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "a")).unwrap();
 
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap().timers,
 		vec![
 			timer(5_000, TimerKind::Seal, "z"),
 			timer(5_000, TimerKind::Seal, "a"),
@@ -176,7 +179,7 @@ fn arming_the_same_timer_twice_fires_once() {
 	clock.advance_millis(250);
 	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Grace, "group")).unwrap();
 
-	assert_eq!(TimerWheel::take_due(NODE, &mut txn, at_millis(5_000), NO_LIMIT).unwrap().0.len(), 1);
+	assert_eq!(TimerWheel::take_due(NODE, &mut txn, at_millis(5_000), NO_LIMIT, None).unwrap().timers.len(), 1);
 }
 
 #[test]
@@ -192,12 +195,12 @@ fn a_capped_take_drains_the_earliest_first_and_leaves_the_rest_armed() {
 	}
 
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), 2).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), 2, None).unwrap().timers,
 		vec![timer(5_000, TimerKind::Seal, "b"), timer(7_000, TimerKind::Seal, "b")],
 		"a capped take must drain in firing order, earliest first"
 	);
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap().timers,
 		vec![timer(9_000, TimerKind::Seal, "b")],
 		"what the cap left behind must still be armed for the next round"
 	);
@@ -216,7 +219,7 @@ fn a_disarmed_timer_does_not_fire_and_its_replacement_does() {
 	TimerWheel::arm(NODE, &mut txn, &timer(8_000, TimerKind::Seal, "session")).unwrap();
 
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(9_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(9_000), NO_LIMIT, None).unwrap().timers,
 		vec![timer(8_000, TimerKind::Seal, "session")],
 		"the superseded instant must not fire and the re-armed one must"
 	);
@@ -232,7 +235,7 @@ fn disarming_either_end_of_the_wheel_leaves_the_other_timer_firing() {
 	TimerWheel::arm(NODE, &mut txn, &timer(8_000, TimerKind::Seal, "b")).unwrap();
 	TimerWheel::disarm(NODE, &mut txn, &timer(8_000, TimerKind::Seal, "b")).unwrap();
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(9_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(9_000), NO_LIMIT, None).unwrap().timers,
 		vec![timer(5_000, TimerKind::Seal, "a")],
 		"disarming the later instant must leave the earlier one armed"
 	);
@@ -242,7 +245,7 @@ fn disarming_either_end_of_the_wheel_leaves_the_other_timer_firing() {
 	TimerWheel::arm(NODE, &mut txn, &timer(8_000, TimerKind::Seal, "b")).unwrap();
 	TimerWheel::disarm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "a")).unwrap();
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(9_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(9_000), NO_LIMIT, None).unwrap().timers,
 		vec![timer(8_000, TimerKind::Seal, "b")],
 		"disarming the earliest instant must leave the later one armed"
 	);
@@ -261,7 +264,7 @@ fn disarming_by_key_cancels_the_instant_the_index_names_and_spares_every_other_k
 	TimerWheel::disarm_by_key(NODE, &mut txn, TimerKind::Maintenance, &EncodedKey::new(b"emptied")).unwrap();
 
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap().timers,
 		vec![timer(6_000, TimerKind::Maintenance, "neighbour")],
 		"only the disarmed key's armed instant may go"
 	);
@@ -279,7 +282,7 @@ fn a_key_disarmed_by_key_can_be_armed_again_at_the_very_instant_it_held() {
 	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "refilled")).unwrap();
 
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap().timers,
 		vec![timer(5_000, TimerKind::Maintenance, "refilled")],
 		"a re-arm after a disarm by key must arm a live timer, not be swallowed as a duplicate"
 	);
@@ -295,7 +298,7 @@ fn disarming_an_unarmed_key_leaves_the_wheel_untouched() {
 	TimerWheel::disarm_by_key(NODE, &mut txn, TimerKind::Maintenance, &EncodedKey::new(b"never-armed")).unwrap();
 
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap().timers,
 		vec![timer(5_000, TimerKind::Maintenance, "armed")]
 	);
 }
@@ -311,7 +314,7 @@ fn a_restart_does_not_fire_a_timer_disarmed_by_key() {
 	commit_pending(&engine, &mut txn);
 
 	let mut cold_txn = deferred(&engine);
-	assert!(TimerWheel::take_due(NODE, &mut cold_txn, at_millis(9_000), NO_LIMIT).unwrap().0.is_empty());
+	assert!(TimerWheel::take_due(NODE, &mut cold_txn, at_millis(9_000), NO_LIMIT, None).unwrap().timers.is_empty());
 }
 
 #[test]
@@ -328,7 +331,7 @@ fn a_restart_does_not_fire_a_disarmed_timer() {
 
 	let mut cold_txn = deferred(&engine);
 	assert!(
-		TimerWheel::take_due(NODE, &mut cold_txn, at_millis(9_000), NO_LIMIT).unwrap().0.is_empty(),
+		TimerWheel::take_due(NODE, &mut cold_txn, at_millis(9_000), NO_LIMIT, None).unwrap().timers.is_empty(),
 		"a disarm that only lived in RAM lets the superseded timer survive the restart"
 	);
 }
@@ -343,10 +346,10 @@ fn take_due_removes_what_it_returns_and_keeps_the_rest() {
 	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "due")).unwrap();
 	TimerWheel::arm(NODE, &mut txn, &timer(9_000, TimerKind::Seal, "later")).unwrap();
 
-	assert_eq!(TimerWheel::take_due(NODE, &mut txn, at_millis(6_000), NO_LIMIT).unwrap().0.len(), 1);
-	assert!(TimerWheel::take_due(NODE, &mut txn, at_millis(6_000), NO_LIMIT).unwrap().0.is_empty());
+	assert_eq!(TimerWheel::take_due(NODE, &mut txn, at_millis(6_000), NO_LIMIT, None).unwrap().timers.len(), 1);
+	assert!(TimerWheel::take_due(NODE, &mut txn, at_millis(6_000), NO_LIMIT, None).unwrap().timers.is_empty());
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut txn, at_millis(9_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut txn, at_millis(9_000), NO_LIMIT, None).unwrap().timers,
 		vec![timer(9_000, TimerKind::Seal, "later")]
 	);
 }
@@ -363,7 +366,7 @@ fn a_restart_still_fires_persisted_timers() {
 
 	let mut cold_txn = deferred(&engine);
 	assert_eq!(
-		TimerWheel::take_due(NODE, &mut cold_txn, at_millis(5_000), NO_LIMIT).unwrap().0,
+		TimerWheel::take_due(NODE, &mut cold_txn, at_millis(5_000), NO_LIMIT, None).unwrap().timers,
 		vec![timer(5_000, TimerKind::Seal, "bucket")]
 	);
 }
@@ -385,7 +388,11 @@ fn a_take_reports_the_earliest_instant_it_left_behind_not_the_latest() {
 		TimerWheel::arm(NODE, &mut txn, &timer(at_ms, TimerKind::Seal, "b")).unwrap();
 	}
 
-	let (fired, next) = TimerWheel::take_due(NODE, &mut txn, at_millis(0), NO_LIMIT).unwrap();
+	let DueTimers {
+		timers: fired,
+		next,
+		..
+	} = TimerWheel::take_due(NODE, &mut txn, at_millis(0), NO_LIMIT, None).unwrap();
 
 	assert!(fired.is_empty(), "a watermark below every armed instant must fire nothing");
 	assert_eq!(next, Some(at_millis(5_000)));
@@ -398,10 +405,14 @@ fn a_take_reports_nothing_armed_once_the_wheel_is_drained() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	assert_eq!(TimerWheel::take_due(NODE, &mut txn, at_millis(5_000), NO_LIMIT).unwrap().1, None);
+	assert_eq!(TimerWheel::take_due(NODE, &mut txn, at_millis(5_000), NO_LIMIT, None).unwrap().next, None);
 
 	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "b")).unwrap();
-	let (fired, next) = TimerWheel::take_due(NODE, &mut txn, at_millis(5_000), NO_LIMIT).unwrap();
+	let DueTimers {
+		timers: fired,
+		next,
+		..
+	} = TimerWheel::take_due(NODE, &mut txn, at_millis(5_000), NO_LIMIT, None).unwrap();
 
 	assert_eq!(fired.len(), 1);
 	assert_eq!(next, None, "a wheel drained by the take itself must report nothing armed");
@@ -416,7 +427,11 @@ fn a_take_reports_an_instant_no_watermark_has_reached() {
 
 	TimerWheel::arm(NODE, &mut txn, &timer(10_000_000_000, TimerKind::Seal, "distant")).unwrap();
 
-	let (fired, next) = TimerWheel::take_due(NODE, &mut txn, at_millis(9_000), NO_LIMIT).unwrap();
+	let DueTimers {
+		timers: fired,
+		next,
+		..
+	} = TimerWheel::take_due(NODE, &mut txn, at_millis(9_000), NO_LIMIT, None).unwrap();
 
 	assert!(fired.is_empty());
 	assert_eq!(next, Some(at_millis(10_000_000_000)));
@@ -432,7 +447,11 @@ fn a_capped_take_reports_a_leftover_that_is_already_due() {
 		TimerWheel::arm(NODE, &mut txn, &timer(at_ms, TimerKind::Seal, "b")).unwrap();
 	}
 
-	let (fired, next) = TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), 2).unwrap();
+	let DueTimers {
+		timers: fired,
+		next,
+		..
+	} = TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), 2, None).unwrap();
 
 	assert_eq!(fired.len(), 2);
 	assert_eq!(next, Some(at_millis(9_000)));
@@ -441,7 +460,11 @@ fn a_capped_take_reports_a_leftover_that_is_already_due() {
 		"a capped take must report its leftover as still due"
 	);
 
-	let (rest, next) = TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap();
+	let DueTimers {
+		timers: rest,
+		next,
+		..
+	} = TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap();
 
 	assert_eq!(rest, vec![timer(9_000, TimerKind::Seal, "b")], "the next round must fire what the cap left behind");
 	assert_eq!(next, None);
@@ -485,12 +508,16 @@ fn an_uncapped_take_still_bounds_what_it_pulls_and_leaves_the_rest_armed() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	const ARMED: u64 = 200;
+	const ARMED: u64 = MAX_TIMERS_PER_SCAN as u64 + 8;
 	for step in 0..ARMED {
 		TimerWheel::arm(NODE, &mut txn, &timer(1_000 + step, TimerKind::Seal, "b")).unwrap();
 	}
 
-	let (first, next) = TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap();
+	let DueTimers {
+		timers: first,
+		next,
+		..
+	} = TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap();
 	assert!(
 		(first.len() as u64) < ARMED,
 		"an uncapped budget must not turn into an unbounded scan, took {} of {}",
@@ -505,7 +532,7 @@ fn an_uncapped_take_still_bounds_what_it_pulls_and_leaves_the_rest_armed() {
 
 	let mut drained: Vec<u64> = first.iter().map(|timer| timer.due.to_millis() as u64).collect();
 	loop {
-		let (batch, _) = TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap();
+		let batch = TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT, None).unwrap().timers;
 		if batch.is_empty() {
 			break;
 		}

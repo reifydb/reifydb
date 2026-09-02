@@ -16,7 +16,10 @@ use reifydb_core::{
 				TimerIndex as TimerIndexSpace, TimerIndexKey, TimerWheel as TimerWheelSpace,
 				TimerWheelKey, timer_id,
 			},
-			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+			state::{
+				GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range,
+				keyspace_inner_range_in,
+			},
 		},
 		typed::direction::Asc,
 	},
@@ -37,7 +40,13 @@ use crate::{
 	},
 };
 
-const MAX_TIMERS_PER_SCAN: usize = 64;
+pub const MAX_TIMERS_PER_SCAN: usize = 1_024;
+
+pub struct DueTimers {
+	pub timers: Vec<Timer>,
+	pub next: Option<DateTime>,
+	pub resume: Option<TimerWheelKey>,
+}
 
 pub struct TimerWheel;
 
@@ -137,12 +146,25 @@ impl TimerWheel {
 		txn: &mut impl FlowTransaction,
 		watermark: DateTime,
 		limit: usize,
-	) -> Result<(Vec<Timer>, Option<DateTime>)> {
+		from: Option<&TimerWheelKey>,
+	) -> Result<DueTimers> {
 		if limit == 0 {
-			return Ok((Vec::new(), None));
+			return Ok(DueTimers {
+				timers: Vec::new(),
+				next: None,
+				resume: None,
+			});
 		}
 		let take = limit.min(MAX_TIMERS_PER_SCAN);
-		let wheel = keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL);
+		let wheel = match from.map(|key| key.to_suffix_bytes()) {
+			Some(suffix) => keyspace_inner_range_in(
+				GroupId::ROOT,
+				KeyspaceId::TIMER_WHEEL,
+				Bound::Excluded(&suffix),
+				Bound::Unbounded,
+			),
+			None => keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL),
+		};
 		let batch = txn.state_range(
 			operator,
 			StateRange::forward(wheel, "timer::take_due").limit(take.saturating_add(1)),
@@ -189,7 +211,11 @@ impl TimerWheel {
 			}
 		}
 
-		Ok((due, next))
+		Ok(DueTimers {
+			resume: due.last().map(|timer| wheel_suffix(timer.due, timer.kind, &timer.key)),
+			timers: due,
+			next,
+		})
 	}
 }
 
