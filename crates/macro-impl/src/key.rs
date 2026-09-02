@@ -543,7 +543,9 @@ fn expand(name: &str, kind: &str, fields: &[KeyField]) -> TokenStream {
 	);
 	out.push_str("\t\tlet found: KeyKind = de.read_u8().ok()?.try_into().ok()?;\n");
 	out.push_str("\t\tif found != <Self as Key>::KIND {\n\t\t\treturn None;\n\t\t}\n");
-	out.push_str(&format!("\t\tSome(Self {{\n{decode_body}\t\t}})\n\t}}\n}}"));
+	out.push_str(&format!("\t\tlet decoded = Self {{\n{decode_body}\t\t}};\n"));
+	out.push_str("\t\tif !de.is_empty() {\n\t\t\treturn None;\n\t\t}\n");
+	out.push_str("\t\tSome(decoded)\n\t}\n}");
 
 	out.parse().expect("derived Key impl must be valid Rust")
 }

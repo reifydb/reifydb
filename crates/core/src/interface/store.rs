@@ -387,6 +387,8 @@ pub trait SingleVersionStore:
 mod tests {
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
+	use reifydb_codec::key::encoded::EncodedKey;
+
 	use super::{EntryKind, EntryLayout, StorageKey, classify_key, classify_range, storage_key};
 	use crate::{
 		interface::catalog::{
@@ -599,6 +601,20 @@ mod tests {
 		] {
 			assert_eq!(storage_key(&key).0, classify_key(&key));
 		}
+	}
+
+	#[test]
+	fn storage_key_sends_a_sorted_view_clustered_key_to_multi() {
+		// A sorted view sink writes kind ++ storage ++ sort values ++ row, which carries
+		// KeyKind::Row but is longer than the fixed row layout. It must land in Multi: the source
+		// bucket keys on StorageRowKey alone, so two clustered keys differing only in their sort
+		// prefix would alias onto one identity and a get could return another row's bytes.
+		let storage = StorageId::view(3);
+		let mut clustered = RowKey::encoded(storage, RowNumber(1)).as_slice().to_vec();
+		clustered.extend_from_slice(&[0xAA; 8]);
+		clustered.extend_from_slice(&99u64.to_be_bytes());
+
+		assert_eq!(storage_key(&EncodedKey::new(clustered)), (EntryKind::Multi, None));
 	}
 
 	#[test]

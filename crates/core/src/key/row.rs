@@ -770,10 +770,10 @@ impl EncodableKeyRange for PartitionedRowKeyRange {
 mod partitioned_row_key_tests {
 	use std::ops::RangeBounds;
 
-	use reifydb_codec::key::serializer::KeySerializer;
+	use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
-	use super::{PartitionedRowKey, StoragePartitionedRowKey};
+	use super::{PartitionedRowKey, RowKey, StoragePartitionedRowKey};
 	use crate::{
 		interface::catalog::{
 			id::{TableId, ViewId},
@@ -911,4 +911,31 @@ mod partitioned_row_key_tests {
 			StoragePartitionedRowKey::new(Partition(u128::MAX), RowNumber(u64::MAX))
 		);
 	}
+
+	#[test]
+	fn test_decode_rejects_trailing_bytes() {
+		// A key that is longer than the fixed layout must not decode as this type, even when its
+		// first byte is a matching kind: without the check the extra bytes are ignored and the
+		// field offsets read a different key's payload as a valid row.
+		let exact = RowKey::encoded(StorageId::table(7), RowNumber(42));
+		assert_eq!(exact.as_slice().len(), 18);
+		assert_eq!(RowKey::decode(&exact), Some(RowKey { storage: StorageId::table(7), row: RowNumber(42) }));
+
+		let mut longer = exact.as_slice().to_vec();
+		longer.push(0x00);
+		assert_eq!(RowKey::decode(&EncodedKey::new(longer)), None);
+	}
+
+	#[test]
+	fn test_decode_rejects_a_longer_key_that_shares_the_kind_byte() {
+		// The live shape: a sorted view writes kind ++ storage ++ sort values ++ row. It carries
+		// KeyKind::Row, so a length-blind decode claims it and reads sort payload as the row
+		// number, silently aliasing two distinct rows onto one storage row key.
+		let mut clustered = RowKey::encoded(StorageId::view(3), RowNumber(1)).as_slice().to_vec();
+		clustered.extend_from_slice(&[0xAA; 8]);
+		clustered.extend_from_slice(&99u64.to_be_bytes());
+
+		assert_eq!(RowKey::decode(&EncodedKey::new(clustered)), None);
+	}
+
 }
