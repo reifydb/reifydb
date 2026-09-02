@@ -13,6 +13,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
+	key::operator::state::GroupId,
 	metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::shutdown::Shutdown;
@@ -85,6 +86,12 @@ impl OperatorPersistentTier {
 	pub fn last_batch(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64) -> OperatorBatch {
 		match self {
 			Self::Sqlite(storage) => storage.last_batch(operator, range, batch_size),
+		}
+	}
+
+	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64) -> OperatorBatch {
+		match self {
+			Self::Sqlite(storage) => storage.group_page(operator, groups, batch_size),
 		}
 	}
 
@@ -172,6 +179,10 @@ impl OperatorPersistentTier {
 	}
 
 	pub fn last_batch(&self, _operator: OperatorId, _range: EncodedKeyRange, _batch_size: u64) -> OperatorBatch {
+		match *self {}
+	}
+
+	pub fn group_page(&self, _operator: OperatorId, _groups: &[GroupId], _batch_size: u64) -> OperatorBatch {
 		match *self {}
 	}
 

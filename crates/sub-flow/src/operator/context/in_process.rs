@@ -10,8 +10,8 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Diff},
 	key::operator::state::{
-		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey, group_data_inner_range,
-		group_inner_range, is_guest_framed_inner, keyspace_inner_range_in,
+		GroupId, GroupStateKey, KeyspaceId, group_data_inner_range, group_inner_range, is_guest_framed_inner,
+		keyspace_inner_range_in,
 	},
 	state::timer::TimerKind,
 };
@@ -24,14 +24,11 @@ use reifydb_sdk::{
 		state::{decode_payload, encode_payload},
 	},
 };
-use reifydb_value::{
-	reifydb_assertions,
-	value::{
-		Value,
-		datetime::DateTime,
-		dictionary::{DictionaryEntryId, DictionaryId},
-		row_number::RowNumber,
-	},
+use reifydb_value::value::{
+	Value,
+	datetime::DateTime,
+	dictionary::{DictionaryEntryId, DictionaryId},
+	row_number::RowNumber,
 };
 
 fn guest_addressable(key: &GroupStateKey) -> SdkResult<()> {
@@ -260,7 +257,6 @@ impl GuestState for InProcessState<'_> {
 	fn sweep_bytes_visit(
 		&self,
 		group: GroupId,
-		mask: KeyspaceMask,
 		data_only: bool,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
@@ -272,26 +268,8 @@ impl GuestState for InProcessState<'_> {
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the
 		// visitor cannot reach the context, so it cannot re-enter the host while this borrow is live.
-		unsafe {
-			(*self.host).state_range_limited_visit(range, limit, &mut |key, row| {
-				reifydb_assertions! {
-					if let Some((_, keyspace, _)) =
-						OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
-					{
-						assert!(
-							mask.contains(keyspace),
-							"group {} holds a row in {} which the sweep set omits; declaring \
-							 the group done would orphan it behind a group id nothing can \
-							 resolve again",
-							group,
-							keyspace.name()
-						);
-					}
-				}
-				Ok(visit(key, row)?)
-			})
-		}
-		.map_err(to_sdk_err)
+		unsafe { (*self.host).state_range_limited_visit(range, limit, &mut |key, row| Ok(visit(key, row)?)) }
+			.map_err(to_sdk_err)
 	}
 
 	fn last_bytes(

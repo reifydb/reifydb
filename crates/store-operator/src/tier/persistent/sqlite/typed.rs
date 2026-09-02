@@ -6,7 +6,7 @@ use std::ops::Bound;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
-		operator::{keyspace::KeyspaceSpec, traits::Keyspace},
+		operator::{keyspace::KeyspaceSpec, state::GroupId, traits::Keyspace},
 		typed::{
 			direction::Direction,
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue},
@@ -367,6 +367,57 @@ fn bound_key<K: Keyspace>(bound: Bound<&K::GroupedKey>) -> Option<&K::GroupedKey
 	}
 }
 
+fn slots(count: usize, from: usize) -> String {
+	(0..count).map(|at| format!("?{}", from + at)).collect::<Vec<_>>().join(", ")
+}
+
+fn group_column<K: Keyspace>() -> &'static KeyColumn {
+	K::columns().first().expect("a group scoped keyspace must lead its key layout with the group column")
+}
+
+fn group_clause<K: Keyspace>(groups: usize, from: usize) -> String {
+	format!(" AND \"{}\" IN ({})", group_column::<K>().name, slots(groups, from))
+}
+
+fn bind_groups<K: Keyspace>(groups: &[GroupId]) -> Vec<Value> {
+	let direction = group_column::<K>().direction;
+	groups.iter().map(|group| to_sql(KeyValue::Blob24(*group.as_bytes()), direction)).collect()
+}
+
+fn suffix_width<K: Keyspace>() -> usize {
+	K::columns().len().saturating_sub(1)
+}
+
+fn suffix_list<K: Keyspace>() -> String {
+	K::columns()[1..].iter().map(|column| format!("\"{}\"", column.name)).collect::<Vec<_>>().join(", ")
+}
+
+fn suffix_clause<K: Keyspace>(
+	bound: Bound<&K::GroupedKey>,
+	op_included: &str,
+	op_excluded: &str,
+	from: usize,
+) -> String {
+	let width = suffix_width::<K>();
+	if width == 0 {
+		return String::new();
+	}
+	match bound {
+		Bound::Unbounded => String::new(),
+		Bound::Included(_) => {
+			format!(" AND ({}) {} ({})", suffix_list::<K>(), op_included, slots(width, from))
+		}
+		Bound::Excluded(_) => {
+			format!(" AND ({}) {} ({})", suffix_list::<K>(), op_excluded, slots(width, from))
+		}
+	}
+}
+
+fn bind_suffix<K: Keyspace>(key: &K::GroupedKey) -> Vec<Value> {
+	let mut values = K::bind_key(key);
+	values.split_off(1)
+}
+
 fn bounded<K: Keyspace>(
 	conn: &Connection,
 	operator: OperatorId,
@@ -429,6 +480,58 @@ pub fn last<K: Keyspace>(
 	limit: u64,
 ) -> Vec<(K::GroupedKey, Vec<u8>)> {
 	bounded::<K>(conn, operator, range, limit, "DESC")
+}
+
+pub fn range_in<K: Keyspace>(
+	conn: &Connection,
+	operator: OperatorId,
+	groups: &[GroupId],
+	range: &KeyRange<K::GroupedKey>,
+	limit: u64,
+	order: &str,
+) -> Vec<(K::GroupedKey, Vec<u8>)> {
+	let width = K::columns().len();
+	let suffix = suffix_width::<K>();
+	let mut at = 2;
+	let groups_clause = group_clause::<K>(groups.len(), at);
+	at += groups.len();
+	let start = suffix_clause::<K>(range.start.as_ref(), ">=", ">", at);
+	if bound_key::<K>(range.start.as_ref()).is_some() {
+		at += suffix;
+	}
+	let end = suffix_clause::<K>(range.end.as_ref(), "<=", "<", at);
+	if bound_key::<K>(range.end.as_ref()).is_some() {
+		at += suffix;
+	}
+	let sql = format!(
+		"SELECT {}\"bytes\" FROM \"{}\" WHERE \"operator\" = ?1{}{}{}{} LIMIT ?{}",
+		K::key_columns(),
+		K::table(),
+		groups_clause,
+		start,
+		end,
+		K::ordering(order),
+		at
+	);
+	let mut params = vec![Value::Integer(operator.0 as i64)];
+	params.extend(bind_groups::<K>(groups));
+	if suffix > 0 {
+		for bound in [range.start.as_ref(), range.end.as_ref()] {
+			if let Some(key) = bound_key::<K>(bound) {
+				params.extend(bind_suffix::<K>(key));
+			}
+		}
+	}
+	params.push(Value::Integer(limit as i64));
+	let mut stmt = conn.prepare_cached(&sql).expect("operator state group range could not be prepared");
+	let mut rows = stmt.query(params_from_iter(params)).expect("operator state group range failed");
+	let mut out = Vec::new();
+	while let Some(row) = rows.next().expect("operator state group range row failed") {
+		let key = K::read_key(row, 0).expect("an operator state row does not decode as its own key layout");
+		let bytes: Vec<u8> = row.get(width).expect("operator state row has no payload");
+		out.push((key, bytes));
+	}
+	out
 }
 
 pub fn census<K: Keyspace>(conn: &Connection) -> Vec<(OperatorId, u64, u64)> {

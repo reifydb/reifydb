@@ -7,7 +7,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
-use reifydb_core::{interface::catalog::flow::OperatorId, metrics::scan::record_page};
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::GroupId, metrics::scan::record_page};
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use tracing::instrument;
@@ -84,6 +84,36 @@ impl SqliteOperatorStorage {
 	#[instrument(name = "store::operator::persistent::sqlite::last_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
 	pub fn last_batch(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64) -> OperatorBatch {
 		self.page(operator, range, batch_size, true)
+	}
+
+	#[instrument(name = "store::operator::persistent::sqlite::group_page", level = "trace", skip(self, groups), fields(operator = operator.0, group_count = groups.len(), batch_size = batch_size))]
+	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64) -> OperatorBatch {
+		if groups.is_empty() || !self.state_written() {
+			return OperatorBatch::empty();
+		}
+		let limit = batch_size.max(1);
+		let guard = self.read_conn();
+		let Some(conn) = guard.as_ref() else {
+			return OperatorBatch::empty();
+		};
+		let rows = route::bounded_in(
+			conn,
+			operator,
+			groups,
+			&EncodedKeyRange::all(),
+			limit.saturating_add(1),
+			false,
+		);
+		record_page(rows.len() as u64, 0);
+		let has_more = rows.len() as u64 > limit;
+		let mut items: Vec<(EncodedKey, EncodedPodRow)> =
+			rows.into_iter().map(|(key, bytes)| (key, decode_row(bytes))).collect();
+		items.truncate(limit as usize);
+		OperatorBatch {
+			items,
+			has_more,
+			resume: None,
+		}
 	}
 
 	fn page(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64, reverse: bool) -> OperatorBatch {

@@ -368,32 +368,6 @@ impl KeyspaceId {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct KeyspaceMask([u64; 4]);
-
-impl KeyspaceMask {
-	pub const KNOWN: Self = Self(REGISTERED);
-
-	pub const fn of(ids: &[KeyspaceId]) -> Self {
-		let mut bits = [0u64; 4];
-		let mut index = 0;
-		while index < ids.len() {
-			let id = ids[index].0;
-			bits[(id >> 6) as usize] |= 1u64 << (id & 63);
-			index += 1;
-		}
-		Self(bits)
-	}
-
-	pub const fn union(self, other: Self) -> Self {
-		Self([self.0[0] | other.0[0], self.0[1] | other.0[1], self.0[2] | other.0[2], self.0[3] | other.0[3]])
-	}
-
-	pub const fn contains(&self, keyspace: KeyspaceId) -> bool {
-		self.0[(keyspace.0 >> 6) as usize] & (1u64 << (keyspace.0 & 63)) != 0
-	}
-}
-
 pub fn is_framed_inner(inner: &[u8]) -> bool {
 	inner.is_empty() || OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_known())
 }

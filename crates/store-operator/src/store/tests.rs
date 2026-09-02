@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+	cmp::Reverse,
+	sync::atomic::{AtomicBool, Ordering},
+};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -10,7 +13,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::{GroupId, KeyspaceId, keyspace_inner_range},
+	key::operator::state::{GroupId, KeyspaceId, group_inner_range, keyspace_inner_range},
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::SqliteTempPathGuard;
@@ -106,6 +109,144 @@ fn remove(store: &StandardOperatorStore, suffix: u8) -> OperatorWrite {
 
 fn last(store: &StandardOperatorStore) -> Option<(u8, String)> {
 	store.state_last_iter(OP, all()).next().map(|(key, row)| (key.as_slice()[key.len() - 1], body(&row)))
+}
+
+const SWEEP_BUDGET: u64 = 1024;
+
+fn sweep_group(id: u128) -> GroupId {
+	GroupId::hashed(Hash128(id))
+}
+
+fn sweep_key(group: GroupId, keyspace: KeyspaceId, suffix: u64) -> EncodedKey {
+	state_key(group, keyspace, suffix)
+}
+
+fn sweep_insert(group: GroupId, keyspace: KeyspaceId, suffix: u64, value: &str) -> OperatorWrite {
+	OperatorWrite::Insert {
+		operator: OP,
+		key: sweep_key(group, keyspace, suffix),
+		post: row(value),
+	}
+}
+
+fn seed_groups(store: &StandardOperatorStore, groups: &[GroupId]) {
+	let mut writes = Vec::new();
+	for group in groups {
+		for keyspace in [KeyspaceId::JOIN_LEFT, KeyspaceId::JOIN_RIGHT] {
+			for suffix in [1u64, 2] {
+				writes.push(sweep_insert(*group, keyspace, suffix, "seeded"));
+			}
+		}
+	}
+	store.apply_batch(&writes);
+}
+
+fn encoded_order(groups: &[GroupId]) -> Vec<GroupId> {
+	let mut ordered = groups.to_vec();
+	ordered.sort_by_key(|group| Reverse(*group.as_bytes()));
+	ordered
+}
+
+fn per_group_pages(store: &StandardOperatorStore, groups: &[GroupId]) -> Vec<(EncodedKey, String)> {
+	let mut out = Vec::new();
+	for group in encoded_order(groups) {
+		out.extend(
+			store.range_batch(OP, group_inner_range(group), SWEEP_BUDGET)
+				.items
+				.into_iter()
+				.map(|(key, value)| (key, body(&value))),
+		);
+	}
+	out
+}
+
+fn group_page(store: &StandardOperatorStore, groups: &[GroupId]) -> Vec<(EncodedKey, String)> {
+	store.group_page(OP, groups, SWEEP_BUDGET)
+		.items
+		.into_iter()
+		.map(|(key, value)| (key, body(&value)))
+		.collect()
+}
+
+#[test]
+fn a_group_page_answers_with_exactly_the_union_of_the_per_group_range_batches() {
+	// one persistent call replaces one range read per group, so a dropped or reordered row here silently shrinks what a drain reclaims
+	let (store, _guard) = store_fixture();
+	let groups = [sweep_group(11), sweep_group(22), sweep_group(33)];
+	seed_groups(&store, &groups);
+	flush(&store);
+
+	let expected = per_group_pages(&store, &groups);
+
+	assert_eq!(group_page(&store, &groups), expected);
+	assert_eq!(expected.len(), 12, "three groups each hold two rows in two keyspaces");
+}
+
+#[test]
+fn a_group_page_answers_with_rows_that_never_reached_the_persistent_tier() {
+	// the resident tier is consulted per group, and skipping it hands the reaper a group it will call empty while unflushed rows still name it
+	let (store, _guard) = store_fixture();
+	let groups = [sweep_group(11), sweep_group(22)];
+	seed_groups(&store, &groups);
+
+	assert_eq!(group_page(&store, &groups), per_group_pages(&store, &groups));
+	assert_eq!(group_page(&store, &groups).len(), 8);
+}
+
+#[test]
+fn a_group_page_hides_a_buffered_tombstone_over_a_durable_row() {
+	// without the buffer shadowing the persistent read the reaper sweeps a row a caller already deleted
+	let (store, _guard) = store_fixture();
+	let groups = [sweep_group(11), sweep_group(22)];
+	seed_groups(&store, &groups);
+	flush(&store);
+
+	let doomed = sweep_key(groups[0], KeyspaceId::JOIN_LEFT, 1);
+	let pre = store
+		.get(OP, &doomed)
+		.map_or(DurablePre::Absent, |row| DurablePre::Present(ByteSize::from_bytes(row.bytes().len() as u64)));
+	store.apply_batch(&[OperatorWrite::Remove {
+		operator: OP,
+		key: doomed.clone(),
+		pre,
+	}]);
+
+	let swept = group_page(&store, &groups);
+
+	assert_eq!(swept, per_group_pages(&store, &groups));
+	assert!(!swept.iter().any(|(key, _)| key == &doomed));
+	assert_eq!(swept.len(), 7);
+}
+
+#[test]
+fn a_group_page_never_answers_with_a_group_outside_the_set() {
+	// the set is the only filter left once the per group ranges are gone, so a leak here reclaims a live group
+	let (store, _guard) = store_fixture();
+	let groups = [sweep_group(11), sweep_group(22), sweep_group(33)];
+	seed_groups(&store, &groups);
+	flush(&store);
+
+	let asked = [groups[0], groups[2]];
+	let swept = group_page(&store, &asked);
+
+	assert_eq!(swept, per_group_pages(&store, &asked));
+	assert_eq!(swept.len(), 8);
+}
+
+#[test]
+fn a_group_page_reports_more_work_when_the_budget_cuts_the_set_short() {
+	// a page that stops mid set must say so, otherwise the reaper declares a group drained while rows survive
+	let (store, _guard) = store_fixture();
+	let groups = [sweep_group(11), sweep_group(22)];
+	seed_groups(&store, &groups);
+	flush(&store);
+
+	let batch = store.group_page(OP, &groups, 3);
+
+	assert_eq!(batch.items.len(), 3);
+	assert!(batch.has_more);
+	let full = group_page(&store, &groups);
+	assert_eq!(batch.items.into_iter().map(|(key, value)| (key, body(&value))).collect::<Vec<_>>(), full[..3]);
 }
 
 #[test]

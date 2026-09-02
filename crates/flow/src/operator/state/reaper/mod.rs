@@ -8,7 +8,7 @@ use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::expiry::{ReapQueue, ReapQueueKey},
-			state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey},
+			state::{GroupId, GroupStateKey, OperatorStateKey},
 		},
 		typed::direction::Desc,
 	},
@@ -23,51 +23,6 @@ use crate::operator::state::reclaim::ReclaimOutcome;
 
 #[cfg(test)]
 mod tests;
-
-pub const UNIVERSAL: KeyspaceMask = KeyspaceMask::of(&[
-	KeyspaceId::TIMER_WHEEL,
-	KeyspaceId::TIMER_INDEX,
-	KeyspaceId::GROUP_ROW_MAPPING,
-	KeyspaceId::JOIN_ROW_MAPPING,
-	KeyspaceId::GUEST_ROW_MAPPING,
-	KeyspaceId::REAP_QUEUE,
-	KeyspaceId::NODE_COUNTER,
-	KeyspaceId::SOURCE_WATERMARK,
-	KeyspaceId::GATE_VISIBILITY,
-	KeyspaceId::SEAL_LEDGER,
-]);
-
-pub const WINDOW: KeyspaceMask = UNIVERSAL.union(KeyspaceMask::of(&[
-	KeyspaceId::ACCUMULATOR,
-	KeyspaceId::BUFFER,
-	KeyspaceId::RUNNING,
-	KeyspaceId::COUNT,
-	KeyspaceId::SESSION,
-	KeyspaceId::ROLLING_META,
-	KeyspaceId::ENGINE_META,
-	KeyspaceId::EMIT,
-	KeyspaceId::ROW_INDEX,
-	KeyspaceId::WINDOW_META,
-	KeyspaceId::ROLLING_EXPIRY,
-	KeyspaceId::TUMBLING_EXPIRY,
-]));
-
-pub const JOIN: KeyspaceMask = UNIVERSAL.union(KeyspaceMask::of(&[
-	KeyspaceId::JOIN_LEFT,
-	KeyspaceId::JOIN_RIGHT,
-	KeyspaceId::JOIN_PUBLISHED,
-	KeyspaceId::JOIN_PIN,
-	KeyspaceId::JOIN_SCHEMA,
-	KeyspaceId::JOIN_ROW_EXPIRY,
-	KeyspaceId::JOIN_EXPIRY_DUE,
-]));
-
-pub const GUEST: KeyspaceMask = WINDOW.union(KeyspaceMask::of(&[
-	KeyspaceId::GUEST_ACCUMULATOR,
-	KeyspaceId::GUEST_BUFFER,
-	KeyspaceId::GUEST_RUNNING,
-	KeyspaceId::CUSTOM_NOT_CACHED,
-]));
 
 pub trait Reaper {
 	fn reap(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()>;
@@ -137,15 +92,10 @@ struct GroupScan {
 	data: Vec<(GroupStateKey, EncodedPodRow)>,
 }
 
-fn scan_group(
-	store: &mut dyn StateStore,
-	group: GroupId,
-	mask: KeyspaceMask,
-	budget: usize,
-) -> Result<Option<GroupScan>> {
+fn scan_group(store: &mut dyn StateStore, group: GroupId, budget: usize) -> Result<Option<GroupScan>> {
 	let mut identity = Vec::new();
 	let mut data = Vec::new();
-	let swept = store.group_sweep_in(group, mask, false, Some(budget.saturating_add(1)))?;
+	let swept = store.group_sweep(group, false, Some(budget.saturating_add(1)))?;
 	if swept.len() > budget {
 		return Ok(None);
 	}
@@ -165,22 +115,21 @@ fn scan_group(
 pub fn drain_group<R>(
 	store: &mut dyn IdentityReclaim,
 	group: GroupId,
-	mask: KeyspaceMask,
 	reaper: &mut R,
 	budget: usize,
 ) -> Result<GroupDrain>
 where
 	R: Reaper,
 {
-	let Some(scan) = scan_group(store, group, mask, budget)? else {
-		return drain_group_scanning(store, group, mask, reaper, budget);
+	let Some(scan) = scan_group(store, group, budget)? else {
+		return drain_group_scanning(store, group, reaper, budget);
 	};
 	store.remove_root_siblings(&scan.data)?;
 	for (key, _) in &scan.data {
 		reaper.reap(store, key)?;
 	}
 	reifydb_assertions! {
-		let leftover = store.group_sweep_in(group, mask, true, None)?.len();
+		let leftover = store.group_sweep(group, true, None)?.len();
 		assert!(
 			leftover == 0,
 			"group {} still holds {leftover} data rows in its own partition; forgetting its dictionary \
@@ -200,14 +149,13 @@ where
 fn drain_group_scanning<R>(
 	store: &mut dyn IdentityReclaim,
 	group: GroupId,
-	mask: KeyspaceMask,
 	reaper: &mut R,
 	budget: usize,
 ) -> Result<GroupDrain>
 where
 	R: Reaper,
 {
-	let freed = reap_group(store, group, mask, reaper, budget)?;
+	let freed = reap_group(store, group, reaper, budget)?;
 	if freed >= budget {
 		return Ok(GroupDrain {
 			freed,
@@ -229,12 +177,7 @@ where
 	})
 }
 
-pub fn drain<R>(
-	store: &mut dyn IdentityReclaim,
-	mask: KeyspaceMask,
-	reaper: &mut R,
-	budget: usize,
-) -> Result<DrainOutcome>
+pub fn drain<R>(store: &mut dyn IdentityReclaim, reaper: &mut R, budget: usize) -> Result<DrainOutcome>
 where
 	R: Reaper,
 {
@@ -249,7 +192,7 @@ where
 			still_queued.extend(pending);
 			break;
 		}
-		let outcome = drain_group(store, group, mask, reaper, allowance)?;
+		let outcome = drain_group(store, group, reaper, allowance)?;
 		spent += outcome.freed;
 		if outcome.still_queued {
 			still_queued.push(group);
@@ -262,17 +205,11 @@ where
 	})
 }
 
-pub fn reap_group<R>(
-	store: &mut dyn StateStore,
-	group: GroupId,
-	mask: KeyspaceMask,
-	reaper: &mut R,
-	budget: usize,
-) -> Result<usize>
+pub fn reap_group<R>(store: &mut dyn StateStore, group: GroupId, reaper: &mut R, budget: usize) -> Result<usize>
 where
 	R: Reaper,
 {
-	let doomed = store.group_sweep_in(group, mask, true, Some(budget))?;
+	let doomed = store.group_sweep(group, true, Some(budget))?;
 	store.remove_root_siblings(&doomed)?;
 	for (key, _) in &doomed {
 		reaper.reap(store, key)?;

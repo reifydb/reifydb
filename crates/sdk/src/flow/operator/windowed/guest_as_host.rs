@@ -8,7 +8,7 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, keyspace_inner_range_split},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range_split},
 	state::timer::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_flow::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
@@ -105,15 +105,14 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(out)
 	}
 
-	fn group_sweep_in(
+	fn group_sweep(
 		&mut self,
 		group: GroupId,
-		mask: KeyspaceMask,
 		data_only: bool,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let mut swept = Vec::new();
-		self.0.state().sweep_bytes_visit(group, mask, data_only, limit, &mut |key, row| {
+		self.0.state().sweep_bytes_visit(group, data_only, limit, &mut |key, row| {
 			swept.push((key, row));
 			Ok(())
 		})?;

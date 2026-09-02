@@ -92,6 +92,53 @@ impl PageSource for PersistentPager<'_> {
 	}
 }
 
+pub(crate) struct GroupPager<'a> {
+	operator: OperatorId,
+	persistent: Option<&'a OperatorPersistentTier>,
+	groups: &'a [GroupId],
+	exhausted: bool,
+	ceiling: Option<EncodedKey>,
+}
+
+impl<'a> GroupPager<'a> {
+	pub(crate) fn new(
+		operator: OperatorId,
+		persistent: Option<&'a OperatorPersistentTier>,
+		groups: &'a [GroupId],
+	) -> Self {
+		Self {
+			operator,
+			persistent,
+			groups,
+			exhausted: persistent.is_none() || groups.is_empty(),
+			ceiling: None,
+		}
+	}
+
+	pub(crate) fn ceiling(&self) -> Option<&EncodedKey> {
+		self.ceiling.as_ref()
+	}
+}
+
+impl PageSource for GroupPager<'_> {
+	fn next_page(&mut self, limit: u64) -> Page {
+		let Some(persistent) = self.persistent.filter(|_| !self.exhausted) else {
+			self.exhausted = true;
+			return Vec::new();
+		};
+		let batch = persistent.group_page(self.operator, self.groups, limit);
+		self.exhausted = true;
+		if batch.has_more {
+			self.ceiling = batch.items.last().map(|(key, _)| key.clone());
+		}
+		batch.items
+	}
+
+	fn is_exhausted(&self) -> bool {
+		self.exhausted
+	}
+}
+
 pub(crate) struct TierPager<'a, K: Keyspace> {
 	operator: OperatorId,
 	group: GroupId,

@@ -8,16 +8,12 @@ use reifydb_codec::{
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
-	reifydb_assertions,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
 use crate::key::operator::{
 	keyspace::{RootSibling, root_sibling_of},
-	state::{
-		GroupId, GroupStateKey, KeyspaceMask, group_data_inner_range, group_inner_range,
-		keyspace_inner_range_split,
-	},
+	state::{GroupId, GroupStateKey, group_data_inner_range, group_inner_range, keyspace_inner_range_split},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -84,39 +80,11 @@ pub trait StateStore {
 		data_only: bool,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		self.group_sweep_in(group, KeyspaceMask::KNOWN, data_only, limit)
-	}
-
-	#[cfg_attr(not(debug_assertions), allow(unused_variables))]
-	fn group_sweep_in(
-		&mut self,
-		group: GroupId,
-		mask: KeyspaceMask,
-		data_only: bool,
-		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let range = match data_only {
 			true => group_data_inner_range(group),
 			false => group_inner_range(group),
 		};
-		let swept = self.state_page_inner(range, limit)?;
-		reifydb_assertions! {
-			for (key, _) in &swept {
-				let Some((_, keyspace, _)) =
-					crate::key::operator::state::OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
-				else {
-					continue;
-				};
-				assert!(
-					mask.contains(keyspace),
-					"group {} holds a row in {} which the sweep set omits; declaring the group done \
-					 would orphan it behind a group id nothing can resolve again",
-					group,
-					keyspace.name()
-				);
-			}
-		}
-		Ok(swept)
+		self.state_page_inner(range, limit)
 	}
 
 	fn remove_root_siblings(&mut self, swept: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {

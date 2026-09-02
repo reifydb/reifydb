@@ -29,7 +29,7 @@ use crate::{
 		},
 		host::HostContext,
 		state::{
-			reaper::{self, drain, enqueue},
+			reaper::{drain, enqueue},
 			seal::{coord::Coord, gate::rearm_seal, ledger::FiredAt, rule::SealRule, sweep::SealSweep},
 		},
 		state_access::get,
@@ -1046,7 +1046,7 @@ pub fn reap_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostCont
 		.tumbling_engine_slot()
 		.take()
 		.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config)));
-	let drained = drain(host, reaper::WINDOW, &mut *engine, budget)?;
+	let drained = drain(host, &mut *engine, budget)?;
 	*operator.core.tumbling_engine_slot() = Some(engine);
 	if !drained.queue_is_empty()
 		&& let Some(rule) = maintenance_rule(operator)

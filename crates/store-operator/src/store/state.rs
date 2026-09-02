@@ -3,7 +3,11 @@
 
 #[cfg(reifydb_assertions)]
 use std::collections::BTreeMap;
-use std::{cmp::Ordering, collections::HashMap, ops::Bound};
+use std::{
+	cmp::{Ordering, Reverse},
+	collections::HashMap,
+	ops::Bound,
+};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -12,7 +16,10 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::{keyspace::dispatch, state::keyspace_inner_range_split},
+	key::operator::{
+		keyspace::dispatch,
+		state::{GroupId, group_inner_range, keyspace_inner_range_split},
+	},
 };
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
 use tracing::instrument;
@@ -22,7 +29,7 @@ use crate::types::DurablePre;
 use crate::{
 	store::{
 		OperatorStore, StandardOperatorStore,
-		pager::{ExhaustedPager, PageSource, PersistentPager, PlanScan},
+		pager::{ExhaustedPager, GroupPager, PageSource, PersistentPager, PlanScan},
 	},
 	tier::resident::batch::DropMarker,
 	types::{BufferedState, OperatorBatch, OperatorWrite},
@@ -462,6 +469,78 @@ impl StandardOperatorStore {
 		}
 	}
 
+	#[instrument(name = "store::operator::group_page", level = "trace", skip(self, groups), fields(operator = operator.0, group_count = groups.len(), batch_size = batch_size))]
+	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64) -> OperatorBatch {
+		let limit = batch_size.max(1);
+		let target = (limit as usize).saturating_add(1);
+		let mut ordered: Vec<GroupId> = groups.to_vec();
+		ordered.sort_by_key(|group| Reverse(*group.as_bytes()));
+		ordered.dedup();
+
+		let mut buffer = GroupBuffer::new(self, operator, &ordered, target);
+		buffer.peek();
+		let persistent = self.persistent.as_ref().filter(|_| !buffer.dropped);
+		let mut source = GroupPager::new(operator, persistent, &ordered);
+
+		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
+		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
+		let mut page_index = 0usize;
+
+		while items.len() < target {
+			if page_index == page.len() && !source.is_exhausted() {
+				page = source.next_page(target as u64);
+				page_index = 0;
+				continue;
+			}
+			let buffered = buffer.peek().cloned();
+			match (buffered, page.get(page_index)) {
+				(None, None) => break,
+				(Some((key, entry)), None) => {
+					if source.ceiling().is_some_and(|ceiling| key.as_slice() > ceiling.as_slice()) {
+						break;
+					}
+					buffer.bump();
+					if let Some(row) = entry {
+						items.push((key, row));
+					}
+				}
+				(None, Some((key, row))) => {
+					page_index += 1;
+					items.push((key.clone(), row.clone()));
+				}
+				(Some((buffer_key, entry)), Some((page_key, page_row))) => {
+					match buffer_key.cmp(page_key) {
+						Ordering::Less => {
+							buffer.bump();
+							if let Some(row) = entry {
+								items.push((buffer_key, row));
+							}
+						}
+						Ordering::Greater => {
+							page_index += 1;
+							items.push((page_key.clone(), page_row.clone()));
+						}
+						Ordering::Equal => {
+							buffer.bump();
+							page_index += 1;
+							if let Some(row) = entry {
+								items.push((buffer_key, row));
+							}
+						}
+					}
+				}
+			}
+		}
+
+		let has_more = items.len() > limit as usize || source.ceiling().is_some();
+		items.truncate(limit as usize);
+		OperatorBatch {
+			items,
+			has_more,
+			resume: None,
+		}
+	}
+
 	fn page_source<'a>(
 		&'a self,
 		operator: OperatorId,
@@ -580,6 +659,12 @@ impl OperatorStore {
 		}
 	}
 
+	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64) -> OperatorBatch {
+		match self {
+			Self::Standard(store) => store.group_page(operator, groups, batch_size),
+		}
+	}
+
 	pub fn state_last_iter(&self, operator: OperatorId, range: EncodedKeyRange) -> StateLastIter<'_> {
 		match self {
 			Self::Standard(store) => store.state_last_iter(operator, range),
@@ -597,6 +682,87 @@ const STATE_LAST_PAGE: usize = 64;
 enum SizeProbe {
 	Known(Option<ByteSize>),
 	Persistent,
+}
+
+struct GroupBuffer<'a> {
+	store: &'a StandardOperatorStore,
+	operator: OperatorId,
+	groups: &'a [GroupId],
+	next: usize,
+	lower: Bound<EncodedKey>,
+	end: Bound<EncodedKey>,
+	items: Vec<(EncodedKey, Option<EncodedPodRow>)>,
+	at: usize,
+	drained: bool,
+	dropped: bool,
+	target: usize,
+}
+
+impl<'a> GroupBuffer<'a> {
+	fn new(store: &'a StandardOperatorStore, operator: OperatorId, groups: &'a [GroupId], target: usize) -> Self {
+		Self {
+			store,
+			operator,
+			groups,
+			next: 0,
+			lower: Bound::Unbounded,
+			end: Bound::Unbounded,
+			items: Vec::new(),
+			at: 0,
+			drained: true,
+			dropped: false,
+			target,
+		}
+	}
+
+	fn open(&mut self) -> bool {
+		let Some(group) = self.groups.get(self.next) else {
+			return false;
+		};
+		self.next += 1;
+		let range = group_inner_range(*group);
+		self.lower = range.start;
+		self.end = range.end;
+		self.items = Vec::new();
+		self.at = 0;
+		self.drained = false;
+		true
+	}
+
+	fn fill(&mut self) {
+		let page = self.store.resident.state_page(
+			self.operator,
+			self.lower.as_ref(),
+			self.end.as_ref(),
+			self.target,
+		);
+		self.dropped |= page.dropped;
+		self.drained = page.items.len() < self.target;
+		if let Some((key, _)) = page.items.last() {
+			self.lower = Bound::Excluded(key.clone());
+		}
+		self.items = page.items;
+		self.at = 0;
+	}
+
+	fn peek(&mut self) -> Option<&(EncodedKey, Option<EncodedPodRow>)> {
+		loop {
+			if self.at < self.items.len() {
+				return self.items.get(self.at);
+			}
+			if !self.drained {
+				self.fill();
+				continue;
+			}
+			if !self.open() {
+				return None;
+			}
+		}
+	}
+
+	fn bump(&mut self) {
+		self.at += 1;
+	}
 }
 
 fn row_size(row: &EncodedPodRow) -> ByteSize {
