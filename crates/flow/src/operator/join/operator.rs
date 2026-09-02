@@ -54,7 +54,7 @@ use crate::{
 	operator::{
 		HostOperator,
 		host::HostContext,
-		join::{Emitted, Identity},
+		join::{Emitted, Identity, expiry::JoinExpiryIndex},
 		state::{
 			reaper::{StoreReaper, drain, drain_group, enqueue, queue_key, queued},
 			seal::{ledger::FiredAt, rule::SealRule},
@@ -164,6 +164,7 @@ pub struct JoinOperator {
 	right_retention: Option<Duration>,
 	ctx: Arc<FlowContext>,
 	seal_fires: Counter,
+	expiry: JoinExpiryIndex,
 }
 
 impl JoinOperator {
@@ -224,6 +225,7 @@ impl JoinOperator {
 			right_retention: right_retention.filter(|span| !span.is_zero()),
 			ctx,
 			seal_fires: Counter::new("flow.operator.join.seal_fires_total", "Join seal timer fires"),
+			expiry: JoinExpiryIndex::default(),
 		}
 	}
 
@@ -231,6 +233,13 @@ impl JoinOperator {
 		match side {
 			JoinSide::Left => self.left_retention,
 			JoinSide::Right => self.right_retention,
+		}
+	}
+
+	fn compiled_exprs_of(&self, side: JoinSide) -> &[CompiledExpr] {
+		match side {
+			JoinSide::Left => &self.compiled_left_exprs,
+			JoinSide::Right => &self.compiled_right_exprs,
 		}
 	}
 
@@ -268,8 +277,8 @@ impl JoinOperator {
 		Ok(distinct.into_iter().map(|hash| (hash, GroupId::hashed(hash))).collect())
 	}
 
-	fn resync_timer(host: &mut dyn HostContext, retry: Option<DateTime>) -> Result<()> {
-		let next = match (host.join_expiry_min()?, retry) {
+	fn resync_timer(&mut self, host: &mut dyn HostContext, retry: Option<DateTime>) -> Result<()> {
+		let next = match (self.expiry.min(host)?, retry) {
 			(Some(earliest), Some(retry)) => Some(earliest.min(retry)),
 			(earliest, retry) => earliest.or(retry),
 		};
@@ -280,7 +289,7 @@ impl JoinOperator {
 	}
 
 	fn move_join_expiries(
-		&self,
+		&mut self,
 		host: &mut dyn HostContext,
 		side: JoinSide,
 		cleared: &[(Hash128, RowNumber)],
@@ -301,6 +310,9 @@ impl JoinOperator {
 			};
 			host.join_expiry_clear(group, side.tag(), *row_number)?;
 		}
+		if !cleared.is_empty() {
+			self.expiry.invalidate();
+		}
 
 		for (hash, row_number, at) in armed {
 			let Some(group) = resolved.get(hash).copied() else {
@@ -309,13 +321,14 @@ impl JoinOperator {
 			let sealed = rule.seal_instant(*at).at();
 			host.state_remove(&queue_key(group))?;
 			host.join_expiry_arm(group, side.tag(), *row_number, sealed)?;
+			self.expiry.armed(sealed);
 		}
 
-		Self::resync_timer(host, None)
+		self.resync_timer(host, None)
 	}
 
 	fn arm_batch(
-		&self,
+		&mut self,
 		host: &mut dyn HostContext,
 		side: JoinSide,
 		columns: &Columns,
@@ -336,7 +349,7 @@ impl JoinOperator {
 	}
 
 	fn clear_batch(
-		&self,
+		&mut self,
 		host: &mut dyn HostContext,
 		side: JoinSide,
 		columns: &Columns,
@@ -356,7 +369,7 @@ impl JoinOperator {
 	}
 
 	fn move_row_join_expiry(
-		&self,
+		&mut self,
 		host: &mut dyn HostContext,
 		side: JoinSide,
 		pre: &Columns,
@@ -488,7 +501,8 @@ impl JoinOperator {
 			stalled |= drained.still_queued;
 		}
 
-		Self::resync_timer(host, stalled.then_some(retry))
+		self.expiry.invalidate();
+		self.resync_timer(host, stalled.then_some(retry))
 	}
 
 	pub(crate) fn snapshot_ledger(&self) -> SnapshotLedger {
@@ -839,32 +853,20 @@ impl HostOperator for JoinOperator {
 					origin: None,
 				})
 			})?;
-			let compiled_exprs = match side {
-				JoinSide::Left => &self.compiled_left_exprs,
-				JoinSide::Right => &self.compiled_right_exprs,
-			};
 			match diff {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_join_insert(host, &post, compiled_exprs, side, &mut state, &mut result)?,
+				} => self.apply_join_insert(host, &post, side, &mut state, &mut result)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_join_remove(host, &pre, compiled_exprs, side, &mut state, &mut result)?,
+				} => self.apply_join_remove(host, &pre, side, &mut state, &mut result)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_join_update(
-					host,
-					&pre,
-					&post,
-					compiled_exprs,
-					side,
-					&mut state,
-					&mut result,
-				)?,
+				} => self.apply_join_update(host, &pre, &post, side, &mut state, &mut result)?,
 			}
 		}
 
@@ -888,15 +890,14 @@ impl JoinOperator {
 	#[allow(clippy::too_many_arguments)]
 	#[instrument(name = "flow::operator::join::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_join_insert(
-		&self,
+		&mut self,
 		host: &mut dyn HostContext,
 		post: &Columns,
-		compiled_exprs: &[CompiledExpr],
 		side: JoinSide,
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		let keys = self.compute_join_keys(post, compiled_exprs)?;
+		let keys = self.compute_join_keys(post, self.compiled_exprs_of(side))?;
 
 		let (order, groups, undefined) = group_by_key(&keys);
 
@@ -926,15 +927,14 @@ impl JoinOperator {
 	#[allow(clippy::too_many_arguments)]
 	#[instrument(name = "flow::operator::join::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn apply_join_remove(
-		&self,
+		&mut self,
 		host: &mut dyn HostContext,
 		pre: &Columns,
-		compiled_exprs: &[CompiledExpr],
 		side: JoinSide,
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		let keys = self.compute_join_keys(pre, compiled_exprs)?;
+		let keys = self.compute_join_keys(pre, self.compiled_exprs_of(side))?;
 
 		let (order, groups, undefined) = group_by_key(&keys);
 
@@ -964,17 +964,16 @@ impl JoinOperator {
 	#[allow(clippy::too_many_arguments)]
 	#[instrument(name = "flow::operator::join::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_join_update(
-		&self,
+		&mut self,
 		host: &mut dyn HostContext,
 		pre: &Columns,
 		post: &Columns,
-		compiled_exprs: &[CompiledExpr],
 		side: JoinSide,
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		let pre_keys = self.compute_join_keys(pre, compiled_exprs)?;
-		let post_keys = self.compute_join_keys(post, compiled_exprs)?;
+		let pre_keys = self.compute_join_keys(pre, self.compiled_exprs_of(side))?;
+		let post_keys = self.compute_join_keys(post, self.compiled_exprs_of(side))?;
 		let row_count = post.row_count();
 
 		for row_idx in 0..row_count {
@@ -1146,13 +1145,13 @@ mod seal_tests {
 		}
 	}
 
-	fn insert(op: &JoinOperator, txn: &mut DeferredTransaction, side: JoinSide, post: &Columns) -> Vec<Diff> {
+	fn insert(op: &mut JoinOperator, txn: &mut DeferredTransaction, side: JoinSide, post: &Columns) -> Vec<Diff> {
 		let mut state = JoinState::new();
 		let mut result = Vec::new();
+		let operator = op.operator;
 		op.apply_join_insert(
-			&mut TxnHostContext::new(txn, op.operator),
+			&mut TxnHostContext::new(txn, operator),
 			post,
-			exprs(op, side),
 			side,
 			&mut state,
 			&mut result,
@@ -1161,13 +1160,13 @@ mod seal_tests {
 		result
 	}
 
-	fn remove(op: &JoinOperator, txn: &mut DeferredTransaction, side: JoinSide, pre: &Columns) -> Vec<Diff> {
+	fn remove(op: &mut JoinOperator, txn: &mut DeferredTransaction, side: JoinSide, pre: &Columns) -> Vec<Diff> {
 		let mut state = JoinState::new();
 		let mut result = Vec::new();
+		let operator = op.operator;
 		op.apply_join_remove(
-			&mut TxnHostContext::new(txn, op.operator),
+			&mut TxnHostContext::new(txn, operator),
 			pre,
-			exprs(op, side),
 			side,
 			&mut state,
 			&mut result,
@@ -1177,7 +1176,7 @@ mod seal_tests {
 	}
 
 	fn update(
-		op: &JoinOperator,
+		op: &mut JoinOperator,
 		txn: &mut DeferredTransaction,
 		side: JoinSide,
 		pre: &Columns,
@@ -1185,11 +1184,11 @@ mod seal_tests {
 	) -> Vec<Diff> {
 		let mut state = JoinState::new();
 		let mut result = Vec::new();
+		let operator = op.operator;
 		op.apply_join_update(
-			&mut TxnHostContext::new(txn, op.operator),
+			&mut TxnHostContext::new(txn, operator),
 			pre,
 			post,
-			exprs(op, side),
 			side,
 			&mut state,
 			&mut result,
@@ -1412,9 +1411,9 @@ mod seal_tests {
 		let mut op = join(operator, Some(seconds(3_600)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7; 6], &[1, 2, 3, 4, 5, 6], at_millis(5_000));
-		insert(&op, &mut txn, JoinSide::Left, &left);
+		insert(&mut op, &mut txn, JoinSide::Left, &left);
 		let numbers: Vec<u64> = (0..rights as u64).map(|offset| 100 + offset).collect();
-		insert(&op, &mut txn, JoinSide::Right, &rows(&vec![7; rights], &numbers, at_millis(9_000)));
+		insert(&mut op, &mut txn, JoinSide::Right, &rows(&vec![7; rights], &numbers, at_millis(9_000)));
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		let start = left_scan_start(op.operator, group);
 
@@ -1439,11 +1438,11 @@ mod seal_tests {
 		// the join expiry must be the row's own event time, not wall-clock, or a backfilled row evicts on
 		// arrival
 		let engine = TestEngine::new();
-		let op = join(1, Some(seconds(10)), None);
+		let mut op = join(1, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
 
-		insert(&op, &mut txn, JoinSide::Left, &left);
+		insert(&mut op, &mut txn, JoinSide::Left, &left);
 
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
@@ -1458,13 +1457,13 @@ mod seal_tests {
 	fn an_update_moves_the_rows_timer_rather_than_adding_a_second() {
 		// Without cancelling the old arming the row is addressed twice and the stale one fires while it lives.
 		let engine = TestEngine::new();
-		let op = join(2, Some(seconds(10)), None);
+		let mut op = join(2, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let pre = rows(&[7], &[42], at_millis(5_000));
 		let post = rows(&[7], &[42], at_millis(20_000));
-		insert(&op, &mut txn, JoinSide::Left, &pre);
+		insert(&mut op, &mut txn, JoinSide::Left, &pre);
 
-		update(&op, &mut txn, JoinSide::Left, &pre, &post);
+		update(&mut op, &mut txn, JoinSide::Left, &pre, &post);
 
 		let group = group_of(&hash_of(&op, JoinSide::Left, &post, 0));
 		assert_eq!(armed_timers(&op, &mut txn), 1, "an update re-arms one timer, it does not add one");
@@ -1482,7 +1481,7 @@ mod seal_tests {
 		let mut op = join(3, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
-		insert(&op, &mut txn, JoinSide::Left, &left);
+		insert(&mut op, &mut txn, JoinSide::Left, &left);
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 
 		fire(&mut op, &mut txn, at_millis(15_000));
@@ -1501,13 +1500,13 @@ mod seal_tests {
 		// A source delete leaves no row to expire, so a join expiry left behind fires against state that is
 		// gone.
 		let engine = TestEngine::new();
-		let op = join(4, Some(seconds(10)), None);
+		let mut op = join(4, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
-		insert(&op, &mut txn, JoinSide::Left, &left);
+		insert(&mut op, &mut txn, JoinSide::Left, &left);
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 
-		remove(&op, &mut txn, JoinSide::Left, &left);
+		remove(&mut op, &mut txn, JoinSide::Left, &left);
 
 		assert_eq!(
 			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
@@ -1526,8 +1525,8 @@ mod seal_tests {
 		let mut txn = txn_at(&engine, 100);
 		let early = rows(&[7], &[1], at_millis(5_000));
 		let late = rows(&[7], &[2], at_millis(50_000));
-		insert(&op, &mut txn, JoinSide::Left, &early);
-		insert(&op, &mut txn, JoinSide::Left, &late);
+		insert(&mut op, &mut txn, JoinSide::Left, &early);
+		insert(&mut op, &mut txn, JoinSide::Left, &late);
 		let group = group_of(&hash_of(&op, JoinSide::Left, &early, 0));
 
 		fire(&mut op, &mut txn, at_millis(15_001));
@@ -1551,13 +1550,13 @@ mod seal_tests {
 		// A match is not a write to the left row; advancing its join expiry would keep a joined row alive
 		// forever.
 		let engine = TestEngine::new();
-		let op = join(6, Some(seconds(10)), None);
+		let mut op = join(6, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
-		insert(&op, &mut txn, JoinSide::Left, &left);
+		insert(&mut op, &mut txn, JoinSide::Left, &left);
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 
-		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
+		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
 
 		assert_eq!(
 			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
@@ -1571,11 +1570,11 @@ mod seal_tests {
 	fn a_join_without_a_retention_arms_nothing_at_all() {
 		// Arming without a retention leaves one timer and one join expiry per row that nothing ever collects.
 		let engine = TestEngine::new();
-		let op = join(7, None, None);
+		let mut op = join(7, None, None);
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
 
-		insert(&op, &mut txn, JoinSide::Left, &left);
+		insert(&mut op, &mut txn, JoinSide::Left, &left);
 
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
@@ -1593,7 +1592,7 @@ mod seal_tests {
 		let mut op = join(8, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
-		insert(&op, &mut txn, JoinSide::Left, &left);
+		insert(&mut op, &mut txn, JoinSide::Left, &left);
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert!(unmatched_mapping(&op, &mut txn, 42).is_some(), "precondition: the row published downstream");
 
@@ -1615,7 +1614,7 @@ mod seal_tests {
 		let mut op = join(9, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
-		insert(&op, &mut txn, JoinSide::Left, &left);
+		insert(&mut op, &mut txn, JoinSide::Left, &left);
 		let hash = hash_of(&op, JoinSide::Left, &left, 0);
 		let group = group_of(&hash);
 
@@ -1632,8 +1631,8 @@ mod seal_tests {
 		let mut op = join(10, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
-		insert(&op, &mut txn, JoinSide::Left, &left);
-		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
+		insert(&mut op, &mut txn, JoinSide::Left, &left);
+		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
 		let hash = hash_of(&op, JoinSide::Left, &left, 0);
 		let group = group_of(&hash);
 
@@ -1658,8 +1657,8 @@ mod seal_tests {
 		let mut op = join(11, Some(seconds(10)), Some(seconds(3_600)));
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
-		insert(&op, &mut txn, JoinSide::Left, &left);
-		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
+		insert(&mut op, &mut txn, JoinSide::Left, &left);
+		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
 		let hash = hash_of(&op, JoinSide::Left, &left, 0);
 		let group = group_of(&hash);
 
@@ -1687,12 +1686,12 @@ mod seal_tests {
 		// A latest join keeps every right row per key, so a right retention must arm or that growth is
 		// unbounded.
 		let engine = TestEngine::new();
-		let op = join_with(12, false, Some(JoinPick::latest()), Some(seconds(10)), Some(seconds(10)));
+		let mut op = join_with(12, false, Some(JoinPick::latest()), Some(seconds(10)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
-		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
+		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
 
-		insert(&op, &mut txn, JoinSide::Left, &left);
+		insert(&mut op, &mut txn, JoinSide::Left, &left);
 
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
@@ -1712,12 +1711,12 @@ mod seal_tests {
 	fn a_snapshot_join_expires_both_sides_on_their_own_retentions() {
 		// A sealed right row retires its bytes into the pin, so pinning it no longer means it may never expire.
 		let engine = TestEngine::new();
-		let op = join_with(13, true, None, Some(seconds(10)), Some(seconds(10)));
+		let mut op = join_with(13, true, None, Some(seconds(10)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
-		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
+		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
 
-		insert(&op, &mut txn, JoinSide::Left, &left);
+		insert(&mut op, &mut txn, JoinSide::Left, &left);
 
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
@@ -1740,8 +1739,8 @@ mod seal_tests {
 		let mut op = join_with(14, true, None, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
-		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
-		insert(&op, &mut txn, JoinSide::Left, &left);
+		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
+		insert(&mut op, &mut txn, JoinSide::Left, &left);
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
 			ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PUBLISHED),
@@ -1773,9 +1772,9 @@ mod seal_tests {
 		let mut txn = txn_at(&engine, 100);
 		let early = rows(&[7], &[1], at_millis(5_000));
 		let late = rows(&[7], &[2], at_millis(50_000));
-		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
-		insert(&op, &mut txn, JoinSide::Left, &early);
-		insert(&op, &mut txn, JoinSide::Left, &late);
+		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
+		insert(&mut op, &mut txn, JoinSide::Left, &early);
+		insert(&mut op, &mut txn, JoinSide::Left, &late);
 		let group = group_of(&hash_of(&op, JoinSide::Left, &early, 0));
 		assert_eq!(
 			ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PUBLISHED),
@@ -1804,7 +1803,7 @@ mod seal_tests {
 		let mut op = join(16, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
-		insert(&op, &mut txn, JoinSide::Left, &left);
+		insert(&mut op, &mut txn, JoinSide::Left, &left);
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		commit(&engine, &mut txn);
 		assert_eq!(
