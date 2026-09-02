@@ -111,10 +111,10 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		mask: KeyspaceMask,
 		data_only: bool,
 		limit: Option<usize>,
-	) -> Result<Vec<GroupStateKey>> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let mut swept = Vec::new();
-		self.0.state().sweep_bytes_visit(group, mask, data_only, limit, &mut |key, _| {
-			swept.push(key);
+		self.0.state().sweep_bytes_visit(group, mask, data_only, limit, &mut |key, row| {
+			swept.push((key, row));
 			Ok(())
 		})?;
 		Ok(swept)

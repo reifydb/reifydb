@@ -134,7 +134,7 @@ pub struct GroupDrain {
 
 struct GroupScan {
 	identity: Vec<GroupStateKey>,
-	data: Vec<GroupStateKey>,
+	data: Vec<(GroupStateKey, EncodedPodRow)>,
 }
 
 fn scan_group(
@@ -145,13 +145,13 @@ fn scan_group(
 ) -> Result<Option<GroupScan>> {
 	let mut identity = Vec::new();
 	let mut data = Vec::new();
-	let keys = store.group_sweep_in(group, mask, false, Some(budget.saturating_add(1)))?;
-	if keys.len() > budget {
+	let swept = store.group_sweep_in(group, mask, false, Some(budget.saturating_add(1)))?;
+	if swept.len() > budget {
 		return Ok(None);
 	}
-	for key in keys {
+	for (key, row) in swept {
 		match OperatorStateKey::decode_inner(key.as_encoded().as_bytes()) {
-			Some((_, keyspace, _)) if keyspace.is_data() => data.push(key),
+			Some((_, keyspace, _)) if keyspace.is_data() => data.push((key, row)),
 			Some(_) => identity.push(key),
 			None => {}
 		}
@@ -176,7 +176,7 @@ where
 		return drain_group_scanning(store, group, mask, reaper, budget);
 	};
 	store.remove_root_siblings(&scan.data)?;
-	for key in &scan.data {
+	for (key, _) in &scan.data {
 		reaper.reap(store, key)?;
 	}
 	reifydb_assertions! {
@@ -274,7 +274,7 @@ where
 {
 	let doomed = store.group_sweep_in(group, mask, true, Some(budget))?;
 	store.remove_root_siblings(&doomed)?;
-	for key in &doomed {
+	for (key, _) in &doomed {
 		reaper.reap(store, key)?;
 	}
 	Ok(doomed.len())

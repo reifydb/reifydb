@@ -11,7 +11,7 @@ use crate::{
 		operator::{
 			keyspace::columns_width,
 			state::{GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range},
-			traits::{Keyspace, group_scoped},
+			traits::Keyspace,
 		},
 		typed::{
 			Key,
@@ -21,6 +21,8 @@ use crate::{
 	},
 	state::timer::StateStore,
 };
+#[cfg(reifydb_assertions)]
+use crate::key::operator::traits::group_scoped;
 
 pub trait SuffixBytes: Key {
 	fn to_suffix_bytes(&self) -> Vec<u8>;

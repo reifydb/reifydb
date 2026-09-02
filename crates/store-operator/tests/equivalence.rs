@@ -606,6 +606,21 @@ fn keyspace_of(key: &GroupStateKey) -> KeyspaceId {
 		.1
 }
 
+fn sweep_keys(
+	state: &mut StoreState,
+	group: GroupId,
+	mask: KeyspaceMask,
+	data_only: bool,
+	limit: Option<usize>,
+) -> Vec<GroupStateKey> {
+	// the sweep carries every row's payload for the reaper; these tests assert only on which keys came out
+	state.group_sweep_in(group, mask, data_only, limit)
+		.expect("a sweep must answer")
+		.into_iter()
+		.map(|(key, _)| key)
+		.collect()
+}
+
 fn bytes_of(keys: &[GroupStateKey]) -> HashSet<Vec<u8>> {
 	keys.iter().map(|key| key.as_encoded().as_slice().to_vec()).collect()
 }
@@ -682,9 +697,7 @@ fn a_group_sweep_answers_only_with_keys_that_carry_the_group_it_asked_for() {
 
 	for data_only in [false, true] {
 		for limit in [None, Some(256)] {
-			let keys = state
-				.group_sweep_in(SCOPED, KeyspaceMask::KNOWN, data_only, limit)
-				.expect("a sweep must answer");
+			let keys = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, data_only, limit);
 			assert!(!keys.is_empty(), "the scoped group holds seeded rows, so no sweep of it is empty");
 			for key in &keys {
 				assert_eq!(
@@ -708,8 +721,8 @@ fn a_data_only_sweep_is_a_subset_of_a_full_sweep() {
 	let (mut state, _guard) = state(false);
 	populate_reaper_shaped(&mut state);
 
-	let full = state.group_sweep_in(SCOPED, KeyspaceMask::KNOWN, false, None).expect("a sweep must answer");
-	let data = state.group_sweep_in(SCOPED, KeyspaceMask::KNOWN, true, None).expect("a sweep must answer");
+	let full = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, false, None);
+	let data = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, true, None);
 
 	assert!(!data.is_empty(), "the scoped group holds seeded data rows, so the narrow sweep is not empty");
 	let wide = bytes_of(&full);
@@ -733,12 +746,10 @@ fn a_full_sweep_under_its_budget_holds_every_row_a_data_only_sweep_finds() {
 	let (mut state, _guard) = state(false);
 	populate_reaper_shaped(&mut state);
 
-	let scanned = state
-		.group_sweep_in(SCOPED, KeyspaceMask::KNOWN, false, Some(BUDGET + 1))
-		.expect("a sweep must answer");
+	let scanned = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, false, Some(BUDGET + 1));
 	assert!(scanned.len() <= BUDGET, "the fixture must stay under the budget, or this proves nothing");
 
-	let data = state.group_sweep_in(SCOPED, KeyspaceMask::KNOWN, true, None).expect("a sweep must answer");
+	let data = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, true, None);
 	assert!(!data.is_empty(), "the scoped group holds seeded data rows, so the narrow sweep is not empty");
 
 	let complete = bytes_of(&scanned);
@@ -761,9 +772,7 @@ fn reaping_every_data_key_a_full_sweep_returned_empties_the_data_only_sweep() {
 	let (mut state, _guard) = state(false);
 	populate_reaper_shaped(&mut state);
 
-	let scanned = state
-		.group_sweep_in(SCOPED, KeyspaceMask::KNOWN, false, Some(BUDGET + 1))
-		.expect("a sweep must answer");
+	let scanned = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, false, Some(BUDGET + 1));
 	assert!(scanned.len() <= BUDGET, "the fixture must stay under the budget, or the reaper takes another path");
 	let reaped: Vec<GroupStateKey> = scanned.into_iter().filter(|key| keyspace_of(key).is_data()).collect();
 	assert!(!reaped.is_empty(), "a drain that reaps nothing would pass without exercising the recheck");
@@ -771,7 +780,7 @@ fn reaping_every_data_key_a_full_sweep_returned_empties_the_data_only_sweep() {
 		state.state_remove(key).expect("a reap must reach the store");
 	}
 
-	let leftover = state.group_sweep_in(SCOPED, KeyspaceMask::KNOWN, true, None).expect("a sweep must answer");
+	let leftover = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, true, None);
 	assert!(
 		leftover.is_empty(),
 		"group {} still holds {} data rows after every data key its own scan returned was reaped; \
@@ -793,9 +802,7 @@ fn a_full_sweep_overruns_its_budget_only_when_the_group_holds_more_keys_than_the
 		}
 		state.flush();
 
-		let keys = state
-			.group_sweep_in(SCOPED, KeyspaceMask::KNOWN, false, Some(BUDGET + 1))
-			.expect("a sweep must answer");
+		let keys = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, false, Some(BUDGET + 1));
 
 		assert_eq!(
 			keys.len(),
@@ -822,9 +829,9 @@ fn a_flush_does_not_change_which_keys_a_group_sweep_answers_with() {
 	populate(&mut state, SCOPED, &NAMED_SUFFIX_DATA, 4);
 	populate(&mut state, SCOPED, &BARE_SUFFIX_DATA, 4);
 
-	let buffered = state.group_sweep_in(SCOPED, KeyspaceMask::KNOWN, true, None).expect("a sweep must answer");
+	let buffered = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, true, None);
 	state.flush();
-	let stored = state.group_sweep_in(SCOPED, KeyspaceMask::KNOWN, true, None).expect("a sweep must answer");
+	let stored = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, true, None);
 
 	assert!(!buffered.is_empty(), "the group holds seeded data rows, so neither sweep is empty");
 	let after = bytes_of(&stored);
@@ -899,7 +906,7 @@ fn a_group_sweep_never_answers_with_a_root_row_no_group_ever_wrote_under_it() {
 	populate(&mut state, SCOPED, &BARE_SUFFIX_DATA, 4);
 	state.flush();
 
-	let keys = state.group_sweep_in(SCOPED, KeyspaceMask::KNOWN, false, None).expect("a sweep must answer");
+	let keys = sweep_keys(&mut state, SCOPED, KeyspaceMask::KNOWN, false, None);
 	for key in &keys {
 		assert_eq!(
 			group_of(key),

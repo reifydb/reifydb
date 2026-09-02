@@ -193,7 +193,8 @@ mod tests {
 			host.state_get_many(&[written.clone()]).unwrap().into_iter().map(|(key, _)| key).collect();
 		assert_eq!(from_get_many, vec![written.clone()], "state_get_many must return the key that was written");
 
-		let from_range: Vec<GroupStateKey> = host.group_sweep(GroupId::ROOT, false, None).unwrap();
+		let from_range: Vec<GroupStateKey> =
+			host.group_sweep(GroupId::ROOT, false, None).unwrap().into_iter().map(|(key, _)| key).collect();
 		assert_eq!(from_range, vec![written.clone()], "a group sweep must return the key that was written");
 
 		let mut visited = Vec::new();

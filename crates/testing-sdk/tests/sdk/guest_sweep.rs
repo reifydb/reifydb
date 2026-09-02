@@ -86,7 +86,7 @@ fn a_guest_group_sweep_returns_what_a_single_scan_over_the_group_would() {
 	let mut ctx = harness.create_operator_context();
 
 	let swept = GuestAsHost(&mut ctx).group_sweep(GROUP, false, None).expect("sweep");
-	let swept: Vec<EncodedKey> = swept.into_iter().map(|key| key.into_encoded()).collect();
+	let swept: Vec<EncodedKey> = swept.into_iter().map(|(key, _)| key.into_encoded()).collect();
 
 	assert_eq!(swept, expected_in_scan_order(|_| true));
 }
@@ -100,7 +100,7 @@ fn a_data_only_guest_group_sweep_leaves_the_identity_keyspaces_alone() {
 	let mut ctx = harness.create_operator_context();
 
 	let swept = GuestAsHost(&mut ctx).group_sweep(GROUP, true, None).expect("sweep");
-	let swept: Vec<EncodedKey> = swept.into_iter().map(|key| key.into_encoded()).collect();
+	let swept: Vec<EncodedKey> = swept.into_iter().map(|(key, _)| key.into_encoded()).collect();
 
 	assert_eq!(swept, expected_in_scan_order(|keyspace| keyspace.is_data()));
 	assert!(
@@ -123,7 +123,7 @@ fn a_guest_group_sweep_spends_one_budget_across_every_keyspace() {
 		let swept = store.group_sweep(GROUP, false, Some(budget)).expect("sweep");
 		assert_eq!(swept.len(), budget, "a sweep must return exactly the budget it was given");
 
-		let swept: Vec<EncodedKey> = swept.into_iter().map(|key| key.into_encoded()).collect();
+		let swept: Vec<EncodedKey> = swept.into_iter().map(|(key, _)| key.into_encoded()).collect();
 		assert_eq!(swept, expected_in_scan_order(|_| true)[..budget], "and it must take them in order");
 	}
 }

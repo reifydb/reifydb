@@ -75,7 +75,12 @@ pub trait StateStore {
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
 
-	fn group_sweep(&mut self, group: GroupId, data_only: bool, limit: Option<usize>) -> Result<Vec<GroupStateKey>> {
+	fn group_sweep(
+		&mut self,
+		group: GroupId,
+		data_only: bool,
+		limit: Option<usize>,
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		self.group_sweep_in(group, KeyspaceMask::KNOWN, data_only, limit)
 	}
 
@@ -85,10 +90,10 @@ pub trait StateStore {
 		mask: KeyspaceMask,
 		data_only: bool,
 		limit: Option<usize>,
-	) -> Result<Vec<GroupStateKey>> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		reifydb_assertions! {
 			if mask != KeyspaceMask::KNOWN {
-				for key in self.group_sweep_in(group, KeyspaceMask::KNOWN, data_only, None)? {
+				for (key, _) in self.group_sweep_in(group, KeyspaceMask::KNOWN, data_only, None)? {
 					let Some((_, keyspace, _)) =
 						crate::key::operator::state::OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
 					else {
@@ -115,17 +120,14 @@ pub trait StateStore {
 				None => None,
 			};
 			let page = self.state_page(keyspace_inner_range(group, keyspace), remaining)?;
-			swept.extend(page.into_iter().map(|(key, _)| key));
+			swept.extend(page);
 		}
 		Ok(swept)
 	}
 
-	fn remove_root_siblings(&mut self, keys: &[GroupStateKey]) -> Result<()> {
-		for key in keys {
-			let Some(row) = self.state_get(key)? else {
-				continue;
-			};
-			let Some(sibling) = root_sibling_of(key, &row) else {
+	fn remove_root_siblings(&mut self, swept: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {
+		for (key, row) in swept {
+			let Some(sibling) = root_sibling_of(key, row) else {
 				continue;
 			};
 			if let RootSibling::Derived(sibling) = sibling {
