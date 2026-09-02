@@ -18,7 +18,7 @@ use reifydb_core::{
 			state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
 		},
 	},
-	state::timer::{StateStore, TimerKind, TimerStore},
+	state::timer::{GroupSweep, StateStore, TimerKind, TimerStore},
 };
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
@@ -248,6 +248,22 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 			}
 		}
 		Ok(out)
+	}
+
+	fn group_sweep_many(&mut self, groups: &[GroupId], limit: usize) -> Result<GroupSweep> {
+		let batch = self.txn.state_group_range(self.operator, groups, limit)?;
+		let mut rows = Vec::with_capacity(batch.items.len());
+		for r in batch.items {
+			if let Some(decoded) = OperatorStateKey::decode(&r.key)
+				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
+			{
+				rows.push((inner, EncodedPodRow::from(r.bytes)));
+			}
+		}
+		Ok(GroupSweep {
+			rows,
+			complete: !batch.has_more,
+		})
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {

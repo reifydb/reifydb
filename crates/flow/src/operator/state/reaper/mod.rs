@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
@@ -13,7 +13,7 @@ use reifydb_core::{
 		typed::direction::Desc,
 	},
 	state::{
-		timer::StateStore,
+		timer::{StateStore, sweep_order},
 		typed::{TypedStateStore, typed_key},
 	},
 };
@@ -87,9 +87,27 @@ pub struct GroupDrain {
 	pub still_queued: bool,
 }
 
+#[derive(Default)]
 struct GroupScan {
 	identity: Vec<GroupStateKey>,
 	data: Vec<(GroupStateKey, EncodedPodRow)>,
+}
+
+fn bucket(rows: Vec<(GroupStateKey, EncodedPodRow)>) -> (HashMap<GroupId, GroupScan>, Option<GroupId>) {
+	let mut buckets: HashMap<GroupId, GroupScan> = HashMap::new();
+	let mut last = None;
+	for (key, row) in rows {
+		let Some((group, keyspace, _)) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes()) else {
+			continue;
+		};
+		last = Some(group);
+		let bucket = buckets.entry(group).or_default();
+		match keyspace.is_data() {
+			true => bucket.data.push((key, row)),
+			false => bucket.identity.push(key),
+		}
+	}
+	(buckets, last)
 }
 
 fn scan_group(store: &mut dyn StateStore, group: GroupId, budget: usize) -> Result<Option<GroupScan>> {
@@ -124,6 +142,16 @@ where
 	let Some(scan) = scan_group(store, group, budget)? else {
 		return drain_group_scanning(store, group, reaper, budget);
 	};
+	Ok(GroupDrain {
+		freed: reap_scanned(store, group, scan, reaper)?,
+		still_queued: false,
+	})
+}
+
+fn reap_scanned<R>(store: &mut dyn IdentityReclaim, group: GroupId, scan: GroupScan, reaper: &mut R) -> Result<usize>
+where
+	R: Reaper,
+{
 	store.remove_root_siblings(&scan.data)?;
 	for (key, _) in &scan.data {
 		reaper.reap(store, key)?;
@@ -140,10 +168,7 @@ where
 	let freed = scan.data.len();
 	let outcome = store.reclaim_identity_keys(group, &scan.identity)?;
 	store.state_remove(&queue_key(group))?;
-	Ok(GroupDrain {
-		freed: freed + outcome.removed.as_u64() as usize,
-		still_queued: false,
-	})
+	Ok(freed + outcome.removed.as_u64() as usize)
 }
 
 fn drain_group_scanning<R>(
@@ -182,21 +207,33 @@ where
 	R: Reaper,
 {
 	let scan = queued(store, budget)?;
+	let ordered = sweep_order(&scan.groups);
+	let sweep = store.group_sweep_many(&ordered, budget)?;
+	let (mut buckets, last) = bucket(sweep.rows);
+	let cut = match sweep.complete {
+		true => None,
+		false => last,
+	};
+
 	let mut spent = 0usize;
 	let mut still_queued: Vec<GroupId> = Vec::new();
-	let mut pending = scan.groups.into_iter();
+	let mut pending = ordered.into_iter();
 	while let Some(group) = pending.next() {
-		let allowance = budget - spent;
-		if allowance == 0 {
-			still_queued.push(group);
+		if cut == Some(group) {
+			match spent {
+				0 => {
+					let outcome = drain_group_scanning(store, group, reaper, budget)?;
+					spent += outcome.freed;
+					if outcome.still_queued {
+						still_queued.push(group);
+					}
+				}
+				_ => still_queued.push(group),
+			}
 			still_queued.extend(pending);
 			break;
 		}
-		let outcome = drain_group(store, group, reaper, allowance)?;
-		spent += outcome.freed;
-		if outcome.still_queued {
-			still_queued.push(group);
-		}
+		spent += reap_scanned(store, group, buckets.remove(&group).unwrap_or_default(), reaper)?;
 	}
 	Ok(DrainOutcome {
 		freed: spent,

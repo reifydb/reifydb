@@ -14,9 +14,13 @@ use reifydb_core::{
 	interface::catalog::{flow::OperatorId, id::TableId, storage::StorageId},
 	key::{
 		EncodableKey,
-		operator::state::{GroupStateKey, OperatorStateKey, custom_not_cached_key},
+		operator::state::{
+			GroupId, GroupStateKey, OperatorStateKey, custom_not_cached_key, custom_not_cached_key_in,
+			group_inner_range,
+		},
 		row::RowKey,
 	},
+	state::timer::sweep_order,
 };
 use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,
@@ -30,6 +34,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	byte_size::ByteSize,
+	util::hash::Hash128,
 	value::{identity::IdentityId, row_number::RowNumber},
 };
 
@@ -811,4 +816,73 @@ fn a_state_range_whose_head_is_all_tombstones_still_reaches_the_row_behind_them(
 		1,
 		"the row behind the tombstone run must survive a scan that had to stop and resume to reach it"
 	);
+}
+
+fn grouped_key(group: GroupId, name: &str) -> GroupStateKey {
+	custom_not_cached_key_in(group, name.as_bytes()).expect("a fixture name must fit the keyspace's id width")
+}
+
+#[test]
+fn a_group_range_answers_exactly_what_the_per_group_ranges_answer() {
+	// This read replaces one state_range per group with one call for the whole set. If the two disagree
+	// on rows or on order the reaper spends its budget on a different set than it used to, and a group
+	// it believes it finished can still hold state.
+	let (parent, operators) = create_test_transaction();
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+		&parent,
+		operators,
+		CommitVersion(1),
+		Catalog::testing(),
+		Interceptors::new(),
+		Clock::Mock(MockClock::from_millis(1000)),
+	));
+	let operator = OperatorId(1);
+	let groups: Vec<GroupId> = (1..=3u128).map(|i| GroupId::hashed(Hash128(i))).collect();
+	for group in &groups {
+		for suffix in ["a", "b"] {
+			txn.state_set(operator, &grouped_key(*group, suffix), make_value(suffix)).unwrap();
+		}
+	}
+
+	let batched: Vec<EncodedKey> =
+		txn.state_group_range(operator, &groups, 64).unwrap().items.into_iter().map(|row| row.key).collect();
+
+	let mut expected: Vec<EncodedKey> = Vec::new();
+	for group in sweep_order(&groups) {
+		let range = group_inner_range(group);
+		let batch = txn.state_range(operator, StateRange::forward(range, "test")).unwrap();
+		expected.extend(batch.items.into_iter().map(|row| row.key));
+	}
+
+	assert_eq!(batched.len(), 6, "two rows in each of the three groups");
+	assert_eq!(batched, expected, "the batched read must match the per-group reads row for row and in order");
+}
+
+#[test]
+fn a_group_range_honours_a_pending_write_that_storage_has_never_seen() {
+	// The batched read merges pending over one storage page instead of per group. A pending remove that
+	// the merge drops would resurrect a reaped row, and a pending insert it misses would be orphaned.
+	let (parent, operators) = create_test_transaction();
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+		&parent,
+		operators,
+		CommitVersion(1),
+		Catalog::testing(),
+		Interceptors::new(),
+		Clock::Mock(MockClock::from_millis(1000)),
+	));
+	let operator = OperatorId(1);
+	let groups: Vec<GroupId> = (1..=2u128).map(|i| GroupId::hashed(Hash128(i))).collect();
+	let doomed = grouped_key(groups[0], "a");
+	let added = grouped_key(groups[1], "b");
+	txn.state_set(operator, &doomed, make_value("1")).unwrap();
+	txn.state_set(operator, &grouped_key(groups[1], "a"), make_value("2")).unwrap();
+	txn.state_remove(operator, &doomed).unwrap();
+	txn.state_set(operator, &added, make_value("3")).unwrap();
+
+	let keys: Vec<EncodedKey> =
+		txn.state_group_range(operator, &groups, 64).unwrap().items.into_iter().map(|row| row.key).collect();
+
+	assert!(!keys.contains(&full_key(operator, &doomed)), "a pending remove must not come back from storage");
+	assert!(keys.contains(&full_key(operator, &added)), "a pending insert must be visible to the batched read");
 }

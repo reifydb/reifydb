@@ -399,3 +399,66 @@ fn a_drainable_group_is_covered_by_a_single_scan_that_spans_both_phases() {
 		"one scan must see the data row and the identity row together; a data-only scan sees one"
 	);
 }
+
+fn third_group() -> GroupId {
+	GroupId::hashed(Hash128(9))
+}
+
+#[test]
+fn the_batched_sweep_visits_groups_in_the_same_order_the_queue_hands_them_over() {
+	let mut store = MockStore::default();
+	for group in [doomed_group(), bystander_group(), third_group()] {
+		seed(&mut store, &key(group, KeyspaceId::ACCUMULATOR, 1));
+		enqueue(&mut store, group).unwrap();
+	}
+
+	let queue = queued(&mut store, 256).unwrap().groups;
+
+	assert_eq!(queue, sweep_order(&queue), "the reap queue must already be in sweep order");
+}
+
+#[test]
+fn a_batch_that_drains_every_queued_group_empties_the_queue_in_one_tick() {
+	let mut store = MockStore::default();
+	for group in [doomed_group(), bystander_group(), third_group()] {
+		seed(&mut store, &key(group, KeyspaceId::ACCUMULATOR, 1));
+		enqueue(&mut store, group).unwrap();
+	}
+
+	let outcome = drain(&mut store, &mut StoreReaper, 256).unwrap();
+
+	assert_eq!(outcome.freed, 3, "one row from each of the three groups");
+	assert!(outcome.still_queued.is_empty(), "nothing may be deferred when the budget covers the whole batch");
+	assert!(queued(&mut store, 256).unwrap().groups.is_empty());
+}
+
+#[test]
+fn a_batch_cut_by_the_budget_leaves_the_cut_group_wholly_unreaped_and_still_queued() {
+	let mut store = MockStore::default();
+	let survivors: Vec<GroupStateKey> =
+		(0..3).map(|i| key(bystander_group(), KeyspaceId::ACCUMULATOR, i)).collect();
+	seed(&mut store, &key(third_group(), KeyspaceId::ACCUMULATOR, 1));
+	for k in &survivors {
+		seed(&mut store, k);
+	}
+	enqueue(&mut store, third_group()).unwrap();
+	enqueue(&mut store, bystander_group()).unwrap();
+
+	let outcome = drain(&mut store, &mut StoreReaper, 2).unwrap();
+
+	assert_eq!(outcome.freed, 1, "only the group that fits entirely inside the page is reaped");
+	assert_eq!(outcome.still_queued, vec![bystander_group()], "the cut group must stay queued");
+	assert!(survivors.iter().all(|k| present(&mut store, k)), "not one row of the cut group may be reaped");
+}
+
+#[test]
+fn a_queued_group_holding_no_rows_still_leaves_the_queue_in_a_batched_drain() {
+	let mut store = MockStore::default();
+	seed(&mut store, &key(third_group(), KeyspaceId::ACCUMULATOR, 1));
+	enqueue(&mut store, third_group()).unwrap();
+	enqueue(&mut store, doomed_group()).unwrap();
+
+	drain(&mut store, &mut StoreReaper, 256).unwrap();
+
+	assert!(queued(&mut store, 256).unwrap().groups.is_empty(), "the rowless group must be dequeued too");
+}

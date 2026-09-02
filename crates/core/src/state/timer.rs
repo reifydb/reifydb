@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::cmp::Reverse;
+
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
@@ -39,6 +41,29 @@ impl TimerKind {
 			_ => None,
 		}
 	}
+}
+
+pub struct GroupSweep {
+	pub rows: Vec<(GroupStateKey, EncodedPodRow)>,
+	pub complete: bool,
+}
+
+impl GroupSweep {
+	pub fn of(mut rows: Vec<(GroupStateKey, EncodedPodRow)>, limit: usize) -> Self {
+		let complete = rows.len() <= limit;
+		rows.truncate(limit);
+		Self {
+			rows,
+			complete,
+		}
+	}
+}
+
+pub fn sweep_order(groups: &[GroupId]) -> Vec<GroupId> {
+	let mut ordered = groups.to_vec();
+	ordered.sort_by_key(|group| Reverse(*group.as_bytes()));
+	ordered.dedup();
+	ordered
 }
 
 pub trait StateStore {
@@ -85,6 +110,18 @@ pub trait StateStore {
 			false => group_inner_range(group),
 		};
 		self.state_page_inner(range, limit)
+	}
+
+	fn group_sweep_many(&mut self, groups: &[GroupId], limit: usize) -> Result<GroupSweep> {
+		let mut rows = Vec::new();
+		for group in sweep_order(groups) {
+			if rows.len() > limit {
+				break;
+			}
+			let remaining = limit.saturating_add(1).saturating_sub(rows.len());
+			rows.extend(self.group_sweep(group, false, Some(remaining))?);
+		}
+		Ok(GroupSweep::of(rows, limit))
 	}
 
 	fn remove_root_siblings(&mut self, swept: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {

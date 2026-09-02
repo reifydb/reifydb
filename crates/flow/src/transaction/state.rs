@@ -18,16 +18,18 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	key::operator::state::{
-		GroupStateKey, OperatorStateKey, group_inner_range_split, keyspace_inner_range_split, node_prefix,
+		GroupId, GroupStateKey, OperatorStateKey, group_inner_range, group_inner_range_split,
+		keyspace_inner_range_split, node_prefix,
 	},
 	metrics::scan::ScanCounters,
+	state::timer::sweep_order,
 };
 use reifydb_store_operator::store::state::StateLastIter;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{Span, field, instrument};
 
-use crate::transaction::{FlowTransaction, scope::scoped_key};
+use crate::transaction::{FlowTransaction, read::flow_merge_pending_iterator, scope::scoped_key};
 
 const PENDING_LAST_PAGE: usize = 64;
 
@@ -181,6 +183,55 @@ pub trait StateExtension: FlowTransaction {
 		let span = Span::current();
 		span.record("rows_fetched", scanned.fetched);
 		span.record("rows_tombstoned", scanned.tombstones);
+		Ok(MultiVersionBatch {
+			items,
+			has_more,
+		})
+	}
+
+	#[instrument(name = "flow::state::group_range", level = "debug", skip(self, groups), fields(
+		operator_id = id.0,
+		groups = groups.len(),
+		rows_fetched = field::Empty
+	))]
+	fn state_group_range(&mut self, id: OperatorId, groups: &[GroupId], limit: usize) -> Result<MultiVersionBatch> {
+		let ordered = sweep_order(groups);
+		let before = ScanCounters::sample();
+		let prefix = EncodedKey::new(node_prefix(id));
+		let mut merged = BTreeMap::new();
+		for group in &ordered {
+			let range = group_inner_range(*group).with_prefix(prefix.clone());
+			self.pending_layers().collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
+		}
+		let pending: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
+		let version = self.version();
+		let batch = self.operator_store().group_page(id, &ordered, limit.saturating_add(1) as u64);
+		let truncated = batch.has_more;
+		let stored: Vec<Result<MultiVersionRow>> = batch
+			.items
+			.into_iter()
+			.map(|(inner, row)| {
+				let (group, keyspace, suffix) = OperatorStateKey::decode_inner(inner.as_slice())
+					.expect("inner keys must carry a structured encoding");
+				Ok(MultiVersionRow {
+					key: OperatorStateKey::encoded(id, group, keyspace, suffix),
+					bytes: row.into_bytes(),
+					version,
+				})
+			})
+			.collect();
+
+		let mut items = Vec::new();
+		let mut has_more = truncated;
+		for result in flow_merge_pending_iterator(pending, stored.into_iter(), version) {
+			if items.len() == limit {
+				has_more = true;
+				break;
+			}
+			items.push(result?);
+		}
+		let scanned = before.since();
+		Span::current().record("rows_fetched", scanned.fetched);
 		Ok(MultiVersionBatch {
 			items,
 			has_more,
