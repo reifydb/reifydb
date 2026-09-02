@@ -370,6 +370,10 @@ where
 		Ok(out)
 	}
 
+	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
+		self.expiry.earliest(store)
+	}
+
 	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, S>) -> Result<()> {
 		persist_batch_meta(store, meta_loaded)
 	}

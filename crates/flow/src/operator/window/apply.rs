@@ -30,7 +30,7 @@ use crate::{
 		host::HostContext,
 		state::{
 			reaper::{self, drain, enqueue},
-			seal::{coord::Coord, ledger::FiredAt, rule::SealRule, sweep::SealSweep},
+			seal::{coord::Coord, gate::rearm_seal, ledger::FiredAt, rule::SealRule, sweep::SealSweep},
 		},
 		state_access::get,
 	},
@@ -356,13 +356,14 @@ pub fn apply_tumbling_engine(
 		}
 	}
 
-	gate_and_arm_seals(
+	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
+	drop_sealed_events(
 		operator,
 		host,
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero)),
+		rule,
 		ExpiryAnchor::WindowStart,
 	)?;
 
@@ -376,6 +377,7 @@ pub fn apply_tumbling_engine(
 	} else {
 		ExpiryAnchor::WindowStart
 	};
+	let armed_before = armed_engine_seal(operator, host, rule)?;
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
 		host,
@@ -391,6 +393,7 @@ pub fn apply_tumbling_engine(
 		expiry_anchor,
 		count_based,
 	)?;
+	rearm_engine_seal(operator, host, rule, armed_before)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
@@ -622,13 +625,14 @@ pub fn apply_sliding_engine(
 		}
 	}
 
-	gate_and_arm_seals(
+	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
+	drop_sealed_events(
 		operator,
 		host,
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero)),
+		rule,
 		ExpiryAnchor::WindowStart,
 	)?;
 
@@ -642,6 +646,7 @@ pub fn apply_sliding_engine(
 	} else {
 		ExpiryAnchor::WindowStart
 	};
+	let armed_before = armed_engine_seal(operator, host, rule)?;
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
 		host,
@@ -657,6 +662,7 @@ pub fn apply_sliding_engine(
 		expiry_anchor,
 		true,
 	)?;
+	rearm_engine_seal(operator, host, rule, armed_before)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
@@ -876,20 +882,14 @@ pub fn apply_session_engine(
 		operator.save_session_tracker(host, *hash, tracker)?;
 	}
 
-	gate_and_arm_seals(
-		operator,
-		host,
-		&mut buckets,
-		&mut arrival,
-		&window_max_ts,
-		operator.session_rule(),
-		ExpiryAnchor::LastEvent,
-	)?;
+	let rule = operator.session_rule();
+	drop_sealed_events(operator, host, &mut buckets, &mut arrival, &window_max_ts, rule, ExpiryAnchor::LastEvent)?;
 
 	let groups = intern_batch(&arrival);
 
 	let engine_config = operator.engine_config();
 	let engine_immutable = operator.immutable();
+	let armed_before = armed_engine_seal(operator, host, rule)?;
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
 		host,
@@ -905,11 +905,12 @@ pub fn apply_session_engine(
 		ExpiryAnchor::LastEvent,
 		true,
 	)?;
+	rearm_engine_seal(operator, host, rule, armed_before)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
 #[instrument(name = "flow::operator::window::gate_seals", level = "trace", skip_all)]
-fn gate_and_arm_seals(
+fn drop_sealed_events(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	buckets: &mut EngineBuckets,
@@ -923,7 +924,6 @@ fn gate_and_arm_seals(
 	}
 	let gate = operator.seal_gate(host, rule)?;
 	let mut sealed: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
-	let mut rearm: Vec<(Hash128, u64, Option<u64>, u64)> = Vec::new();
 	let mut dropped = 0u64;
 	{
 		for (key, events) in buckets.iter() {
@@ -935,18 +935,11 @@ fn gate_and_arm_seals(
 			let Some(horizon) = anchor.of(window_start, last) else {
 				continue;
 			};
-			let prior_horizon = anchor.of(window_start, prior_last);
 			if !gate.admits(horizon) {
 				dropped += events.len() as u64;
 				sealed.push(*key);
-			} else {
-				rearm.push((key.0, window_start, prior_horizon, horizon));
 			}
 		}
-	}
-
-	for (hash, window_start, prior_horizon, horizon) in rearm {
-		gate.arm(host, &window_group_key(hash, window_start), prior_horizon, horizon)?;
 	}
 
 	if sealed.is_empty() {
@@ -959,6 +952,42 @@ fn gate_and_arm_seals(
 	arrival.retain(|key| !sealed.contains(key));
 	operator.note_sealed_drops(dropped);
 	Ok(())
+}
+
+fn engine_arms_seal(operator: &WindowOperator, rule: SealRule) -> bool {
+	!rule.is_inert() && !operator.is_count_based()
+}
+
+fn engine_earliest_expiry(operator: &mut WindowOperator, host: &mut dyn HostContext) -> Result<Option<u64>> {
+	let config = operator.engine_config();
+	let mut engine = operator
+		.core
+		.tumbling_engine_slot()
+		.take()
+		.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config)));
+	let earliest = engine.earliest_expiry(host)?;
+	*operator.core.tumbling_engine_slot() = Some(engine);
+	Ok(earliest)
+}
+
+fn armed_engine_seal(operator: &mut WindowOperator, host: &mut dyn HostContext, rule: SealRule) -> Result<Option<u64>> {
+	if !engine_arms_seal(operator, rule) {
+		return Ok(None);
+	}
+	engine_earliest_expiry(operator, host)
+}
+
+fn rearm_engine_seal(
+	operator: &mut WindowOperator,
+	host: &mut dyn HostContext,
+	rule: SealRule,
+	before: Option<u64>,
+) -> Result<()> {
+	if !engine_arms_seal(operator, rule) {
+		return Ok(());
+	}
+	let after = engine_earliest_expiry(operator, host)?;
+	rearm_seal(host, rule, &EncodedKey::new(Vec::new()), before, after)
 }
 
 #[tracing::instrument(name = "flow::window::seal", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
@@ -993,6 +1022,7 @@ fn seal_due_windows(
 		*operator.core.tumbling_engine_slot() = Some(engine);
 		res
 	};
+	rearm_engine_seal(operator, host, rule, None)?;
 	Span::current().record("expired", expired.len());
 	Ok(Vec::new())
 }
@@ -1208,5 +1238,188 @@ mod reap_tests {
 	fn a_reap_queue_that_empties_in_one_pass_arms_nothing_further() {
 		// re-arming unconditionally would spin the maintenance timer forever on an empty queue
 		assert_eq!(reap_with_queued(2), 0, "a queue the pass drained to empty must not schedule another pass");
+	}
+}
+
+#[cfg(test)]
+mod seal_arm_tests {
+	use std::sync::Arc;
+
+	use reifydb_core::{
+		common::{CommitVersion, WindowSize},
+		interface::catalog::flow::OperatorId,
+		key::{
+			EncodableKey,
+			operator::{
+				keyspace::timer::TimerWheelKey,
+				state::{KeyspaceId, OperatorStateKey, keyspace_inner_range},
+			},
+		},
+		state::typed::SuffixBytes,
+	};
+	use reifydb_routine_abi::registry::Routines;
+	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_value::{factory::time::at_millis, value::duration::Duration};
+
+	use super::*;
+	use crate::{
+		context::FlowContext,
+		operator::{
+			host::TxnHostContext,
+			window::operator::{WindowConfig, WindowOperator},
+		},
+		timer::{Timer, wheel::TimerWheel},
+		transaction::{
+			ChangeCoordinate, FlowTransaction,
+			deferred::DeferredTransaction,
+			mock::FlowTxn,
+			state::{StateExtension, StateRange},
+		},
+	};
+
+	const SIZE_MS: u64 = 10_000;
+
+	fn window() -> WindowOperator {
+		WindowOperator::new(WindowConfig {
+			parent_schema: None,
+			operator: OperatorId(1),
+			kind: WindowKind::Tumbling {
+				size: WindowSize::Duration(Duration::from_milliseconds(SIZE_MS as i64).unwrap()),
+			},
+			group_by: Vec::new(),
+			aggregations: Vec::new(),
+			runtime_context: RuntimeContext::testing(0, 1),
+			routines: Routines::empty(),
+			lateness: None,
+			immutable: None,
+			ctx: Arc::new(FlowContext::default()),
+		})
+	}
+
+	fn rule() -> SealRule {
+		SealRule::tumbling(Duration::from_milliseconds(SIZE_MS as i64).unwrap(), Duration::zero())
+	}
+
+	fn txn_at(engine: &TestEngine, coordinate: u64) -> DeferredTransaction {
+		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
+		txn.set_change_coordinate(ChangeCoordinate {
+			at: Some(DateTime::from_nanos(coordinate)),
+			version: CommitVersion(coordinate),
+		});
+		txn
+	}
+
+	fn seal_timers(txn: &mut DeferredTransaction, operator: OperatorId) -> Vec<DateTime> {
+		txn.state_range(
+			operator,
+			StateRange::forward(keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL), "test"),
+		)
+		.unwrap()
+		.items
+		.iter()
+		.filter_map(|item| {
+			let decoded = OperatorStateKey::decode(&item.key).expect("a wheel row must decode");
+			let suffix =
+				TimerWheelKey::from_suffix_bytes(&decoded.suffix).expect("a wheel row must decode");
+			(suffix.kind.0 == TimerKind::Seal).then_some(suffix.due.0)
+		})
+		.collect()
+	}
+
+	fn index_windows(operator: &mut WindowOperator, host: &mut dyn HostContext, starts: &[u64]) {
+		let config = operator.engine_config();
+		let mut engine = operator
+			.core
+			.tumbling_engine_slot()
+			.take()
+			.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config)));
+		for (n, start_ms) in starts.iter().enumerate() {
+			let start = at_millis(*start_ms);
+			engine.reindex_window(
+				host,
+				&Hash128::from(n as u128),
+				start,
+				GroupId(n as u128 + 1),
+				&EncodedKey::new(Vec::new()),
+				None,
+				Some(start.to_order()),
+			)
+			.unwrap();
+		}
+		*operator.core.tumbling_engine_slot() = Some(engine);
+	}
+
+	fn take_one_due(txn: &mut DeferredTransaction, operator: OperatorId, watermark: u64) -> Timer {
+		let (mut timers, _) = TimerWheel::take_due(operator, txn, at_millis(watermark), 16).unwrap();
+		assert_eq!(timers.len(), 1, "exactly one timer may stand for the whole operator");
+		timers.remove(0)
+	}
+
+	#[test]
+	fn a_batch_of_many_windows_leaves_exactly_one_seal_timer() {
+		// The sweep discards the timer key entirely, so any row past the earliest buys nothing.
+		let engine = TestEngine::new();
+		let mut operator = window();
+		let id = operator.core.operator;
+		let mut txn = txn_at(&engine, 100);
+		let starts: Vec<u64> = (0..64).map(|n| n * SIZE_MS).collect();
+		{
+			let mut host = TxnHostContext::new(&mut txn, id);
+			index_windows(&mut operator, &mut host, &starts);
+			rearm_engine_seal(&mut operator, &mut host, rule(), None).unwrap();
+		}
+
+		assert_eq!(
+			seal_timers(&mut txn, id),
+			vec![at_millis(SIZE_MS + 1)],
+			"64 indexed windows must leave one seal timer, armed at the earliest window's seal instant"
+		);
+	}
+
+	#[test]
+	fn a_sweep_rearms_for_the_windows_it_left_behind() {
+		// The wheel consumes the fired row, so without a re-arm every window left behind stays open.
+		let engine = TestEngine::new();
+		let mut operator = window();
+		let id = operator.core.operator;
+		let mut txn = txn_at(&engine, 100);
+		{
+			let mut host = TxnHostContext::new(&mut txn, id);
+			index_windows(&mut operator, &mut host, &[0, SIZE_MS, 2 * SIZE_MS]);
+			rearm_engine_seal(&mut operator, &mut host, rule(), None).unwrap();
+		}
+		let timer = take_one_due(&mut txn, id, SIZE_MS + 1);
+		{
+			let mut host = TxnHostContext::new(&mut txn, id);
+			seal_engine_windows(&mut operator, &mut host, FiredAt::of(&timer)).unwrap();
+		}
+
+		assert_eq!(
+			seal_timers(&mut txn, id),
+			vec![at_millis(2 * SIZE_MS + 1)],
+			"the sweep took the window at 0 and must leave the window at one span armed, not nothing"
+		);
+	}
+
+	#[test]
+	fn an_index_drained_to_empty_leaves_no_seal_timer_behind() {
+		// A timer on an empty index fires forever, advancing the seal ledger past windows nothing holds.
+		let engine = TestEngine::new();
+		let mut operator = window();
+		let id = operator.core.operator;
+		let mut txn = txn_at(&engine, 100);
+		{
+			let mut host = TxnHostContext::new(&mut txn, id);
+			index_windows(&mut operator, &mut host, &[0]);
+			rearm_engine_seal(&mut operator, &mut host, rule(), None).unwrap();
+		}
+		let timer = take_one_due(&mut txn, id, SIZE_MS + 1);
+		{
+			let mut host = TxnHostContext::new(&mut txn, id);
+			seal_engine_windows(&mut operator, &mut host, FiredAt::of(&timer)).unwrap();
+		}
+
+		assert!(seal_timers(&mut txn, id).is_empty(), "an empty expiry index must hold no seal timer");
 	}
 }
