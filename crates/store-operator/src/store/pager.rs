@@ -29,6 +29,7 @@ use reifydb_store::{
 };
 
 use crate::{
+	store::occupancy::occupies,
 	tier::{
 		persistent::OperatorPersistentTier,
 		range::{tiers::RangeTiers, typed::TypedDomain},
@@ -335,10 +336,11 @@ fn within(range: &EncodedKeyRange, key: &EncodedKey) -> bool {
 	after_start && before_end
 }
 
-pub(crate) fn keyspaces_of(group: GroupId, range: &EncodedKeyRange) -> Vec<KeyspaceId> {
+pub(crate) fn keyspaces_of(group: GroupId, range: &EncodedKeyRange, occupied: u64) -> Vec<KeyspaceId> {
 	let mut ids: Vec<KeyspaceId> = KEYSPACES
 		.iter()
 		.map(|spec| spec.id)
+		.filter(|id| occupies(occupied, *id))
 		.filter(|id| group.is_root() || dispatch(*id, GroupScoped).unwrap_or(false))
 		.filter(|id| match keyspace_inner_range(group, *id).start {
 			Bound::Included(start) | Bound::Excluded(start) => within(range, &start),

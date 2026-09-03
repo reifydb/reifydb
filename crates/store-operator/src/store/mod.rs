@@ -3,6 +3,7 @@
 
 mod census;
 mod checkpoint;
+mod occupancy;
 mod pager;
 pub mod state;
 #[cfg(test)]
@@ -35,6 +36,7 @@ use crate::{
 };
 use crate::{
 	config::OperatorStoreConfig,
+	store::occupancy::KeyspaceOccupancy,
 	tier::{
 		persistent::OperatorPersistentTier,
 		point::tiers::{OperatorPointKeyspaceMetrics, PointTiers},
@@ -62,6 +64,7 @@ pub struct StandardOperatorStore(Arc<StandardOperatorStoreInner>);
 
 pub struct StandardOperatorStoreInner {
 	pub(crate) resident: OperatorResidentState,
+	pub(crate) occupancy: KeyspaceOccupancy,
 	pub(crate) persistent: Option<OperatorPersistentTier>,
 	pub(crate) point: Option<PointTiers>,
 	pub(crate) range: Option<RangeTiers>,
@@ -121,6 +124,7 @@ impl StandardOperatorStore {
 
 		Self(Arc::new(StandardOperatorStoreInner {
 			resident,
+			occupancy: KeyspaceOccupancy::new(),
 			persistent,
 			point,
 			range,

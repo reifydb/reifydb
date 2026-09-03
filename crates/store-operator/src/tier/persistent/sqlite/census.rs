@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::KeyspaceId};
 use reifydb_value::byte_size::ByteSize;
 use tracing::instrument;
 
@@ -36,6 +36,15 @@ impl SqliteOperatorStorage {
 			.map(|entry| entry.key_bytes.as_bytes() + entry.value_bytes.as_bytes())
 			.sum();
 		ByteSize::from_bytes(state)
+	}
+
+	#[instrument(name = "store::operator::persistent::sqlite::occupied_keyspaces", level = "debug", skip(self), fields(operator = operator.0))]
+	pub fn occupied_keyspaces(&self, operator: OperatorId) -> Vec<KeyspaceId> {
+		let guard = self.read_conn();
+		let Some(conn) = guard.as_ref() else {
+			return Vec::new();
+		};
+		route::occupied_keyspaces(conn, operator)
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::census", level = "debug", skip(self))]

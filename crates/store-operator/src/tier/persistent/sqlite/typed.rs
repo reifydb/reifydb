@@ -534,6 +534,12 @@ pub fn range_in<K: Keyspace>(
 	out
 }
 
+pub fn any<K: Keyspace>(conn: &Connection, operator: OperatorId) -> bool {
+	let sql = format!("SELECT 1 FROM \"{}\" WHERE \"operator\" = ?1 LIMIT 1", K::table());
+	let mut stmt = conn.prepare_cached(&sql).expect("operator state existence could not be prepared");
+	stmt.exists([operator.0 as i64]).expect("operator state existence failed")
+}
+
 pub fn census<K: Keyspace>(conn: &Connection) -> Vec<(OperatorId, u64, u64)> {
 	let sql = format!(
 		"SELECT \"operator\", COUNT(*), COALESCE(SUM(LENGTH(\"bytes\")), 0) FROM \"{}\" GROUP BY \"operator\"",

@@ -18,7 +18,9 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator::{
 		keyspace::dispatch,
-		state::{GroupId, group_inner_range, group_inner_range_split, keyspace_inner_range_split},
+		state::{
+			GroupId, KeyspaceId, group_inner_range, group_inner_range_split, keyspace_inner_range_split,
+		},
 	},
 };
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
@@ -47,6 +49,7 @@ impl StandardOperatorStore {
 			self.verify_classification(writes);
 		}
 		let _flushing = self.resident.flush_guard();
+		self.occupancy.record(writes);
 		self.resident.apply_batch(writes);
 		self.invalidate_read_batch(writes);
 	}
@@ -62,6 +65,7 @@ impl StandardOperatorStore {
 			self.verify_classification(writes);
 		}
 		let _flushing = self.resident.flush_guard();
+		self.occupancy.record(writes);
 		self.resident.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes);
 		self.invalidate_read_batch(writes);
 	}
@@ -69,6 +73,7 @@ impl StandardOperatorStore {
 	#[instrument(name = "store::operator::drop_operator_state", level = "debug", skip(self), fields(operator = operator.0))]
 	pub fn drop_operator_state(&self, operator: OperatorId) {
 		self.resident.record_drop(DropMarker::OperatorState(operator));
+		self.occupancy.forget(operator);
 		if let Some(range) = self.range.as_ref() {
 			range.invalidate_operator(operator);
 		}
@@ -544,6 +549,13 @@ impl StandardOperatorStore {
 		}
 	}
 
+	fn occupied_keyspaces(&self, operator: OperatorId) -> Vec<KeyspaceId> {
+		match self.persistent.as_ref() {
+			Some(persistent) => persistent.occupied_keyspaces(operator),
+			None => Vec::new(),
+		}
+	}
+
 	fn page_source<'a>(
 		&'a self,
 		operator: OperatorId,
@@ -566,7 +578,7 @@ impl StandardOperatorStore {
 				operator,
 				group,
 				persistent,
-				keyspaces_of(group, range),
+				keyspaces_of(group, range, self.occupancy.mask(operator, || self.occupied_keyspaces(operator))),
 			));
 		};
 		dispatch(

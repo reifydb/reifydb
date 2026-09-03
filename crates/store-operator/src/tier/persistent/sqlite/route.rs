@@ -410,6 +410,36 @@ pub(super) fn drop_operator(txn: &Transaction, operator: OperatorId) {
 	}
 }
 
+struct Any<'a> {
+	conn: &'a Connection,
+	operator: OperatorId,
+}
+
+impl KeyspaceVisitor for Any<'_> {
+	type Output = bool;
+
+	fn visit<K: Keyspace>(self) -> Self::Output {
+		typed::any::<K>(self.conn, self.operator)
+	}
+}
+
+pub(super) fn occupied_keyspaces(conn: &Connection, operator: OperatorId) -> Vec<KeyspaceId> {
+	KEYSPACES
+		.iter()
+		.filter(|spec| {
+			dispatch(
+				spec.id,
+				Any {
+					conn,
+					operator,
+				},
+			)
+			.unwrap_or(true)
+		})
+		.map(|spec| spec.id)
+		.collect()
+}
+
 struct Census<'a> {
 	conn: &'a Connection,
 }
