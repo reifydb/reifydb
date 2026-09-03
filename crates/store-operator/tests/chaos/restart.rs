@@ -12,14 +12,12 @@ use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::GroupId,
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
 	types::{DurablePre, OperatorWrite},
 };
 use reifydb_testing::tempdir::temp_dir;
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::{
 	fixtures::{Config, KEYSPACES, key, row, spawner, store_at},
@@ -75,7 +73,7 @@ fn config(name: &'static str, store: OperatorStore) -> Config {
 
 fn mutate(rng: &mut StdRng, store: &OperatorStore, oracle: &mut Oracle, p: &Params, step: u32) {
 	let operator = rng.random_range(1..=p.operators);
-	match rng.random_range(0u32..12) {
+	match rng.random_range(0u32..9) {
 		0..=4 => {
 			let group = rng.random_range(1..=p.groups);
 			let keyspace = KEYSPACES[rng.random_range(0u32..p.keyspaces as u32) as usize];
@@ -116,55 +114,16 @@ fn mutate(rng: &mut StdRng, store: &OperatorStore, oracle: &mut Oracle, p: &Para
 				pre,
 			}]);
 		}
-		7..=8 => {
-			let group = rng.random_range(1..=p.groups);
-			let side = rng.random_range(0u32..p.sides as u32) as u8;
-			let row_number = rng.random_range(1..=p.join_expiry_rows);
-			let expiry = rng.random_range(1..=p.expiry_span);
-
-			oracle.join_expiry_set(operator, group, side, row_number, expiry);
-			store.join_expiry_set(
-				OperatorId(operator),
-				GroupId(group.into()),
-				side,
-				RowNumber(row_number),
-				DateTime::from_millis(expiry),
-			);
-		}
-		9 => {
-			let group = rng.random_range(1..=p.groups);
-			let side = rng.random_range(0u32..p.sides as u32) as u8;
-			let row_number = rng.random_range(1..=p.join_expiry_rows);
-			oracle.join_expiry_remove(operator, group, side, row_number);
-			store.join_expiry_remove(
-				OperatorId(operator),
-				GroupId(group.into()),
-				side,
-				RowNumber(row_number),
-			);
-		}
-		10 => {
+		7 => {
 			let flow = rng.random_range(1..=p.flows);
 			let version = rng.random_range(1..=500u64);
 
 			oracle.checkpoint_set(flow, version);
 			store.checkpoint_set(FlowId(flow), CommitVersion(version));
 		}
-		_ => match rng.random_range(0u32..3) {
-			0 => {
-				oracle.drop_operator_state(operator);
-				store.drop_operator_state(OperatorId(operator));
-			}
-			1 => {
-				oracle.join_expiries_drop_operator(operator);
-				store.join_expiries_drop_operator(OperatorId(operator));
-			}
-			_ => {
-				let group = rng.random_range(1..=p.groups);
-
-				oracle.join_expiries_remove_group(operator, group);
-				store.join_expiries_remove_group(OperatorId(operator), GroupId(group.into()));
-			}
-		},
+		_ => {
+			oracle.drop_operator_state(operator);
+			store.drop_operator_state(OperatorId(operator));
+		}
 	}
 }

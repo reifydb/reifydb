@@ -884,6 +884,14 @@ pub struct AstJoinRetention<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstJoinPick<'bump> {
+	pub token: Token<'bump>,
+	pub default_direction: SortDirection,
+	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
+	pub directions: Vec<Option<SortDirection>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstHydrationConfig {
 	pub enabled: bool,
 	pub max_rows: Option<u64>,
@@ -1521,7 +1529,7 @@ pub enum AstJoin<'bump> {
 		alias: BumpFragment<'bump>,
 		retention: Option<AstJoinRetention<'bump>>,
 		snapshot: bool,
-		latest: bool,
+		pick: Option<AstJoinPick<'bump>>,
 		rql: &'bump str,
 	},
 	LeftJoin {
@@ -1531,7 +1539,7 @@ pub enum AstJoin<'bump> {
 		alias: BumpFragment<'bump>,
 		retention: Option<AstJoinRetention<'bump>>,
 		snapshot: bool,
-		latest: bool,
+		pick: Option<AstJoinPick<'bump>>,
 		rql: &'bump str,
 	},
 	NaturalJoin {
@@ -1541,7 +1549,7 @@ pub enum AstJoin<'bump> {
 		alias: BumpFragment<'bump>,
 		retention: Option<AstJoinRetention<'bump>>,
 		snapshot: bool,
-		latest: bool,
+		pick: Option<AstJoinPick<'bump>>,
 		rql: &'bump str,
 	},
 }

@@ -6,10 +6,7 @@ use std::collections::HashSet;
 use reifydb_catalog::{CatalogStore, catalog::Catalog};
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
-	error::diagnostic::flow::{
-		flow_join_retention_requires_event_time, flow_join_right_retention_conflicts_with_flag,
-		flow_rolling_lag_requires_event_time,
-	},
+	error::diagnostic::flow::{flow_join_retention_requires_event_time, flow_rolling_lag_requires_event_time},
 	interface::catalog::{flow::FlowId, id::ViewId},
 	internal,
 };
@@ -129,8 +126,6 @@ pub fn check_join_retention_requirements(catalog: &Catalog, txn: &mut Transactio
 			continue;
 		};
 		let OperatorDef::Join {
-			snapshot,
-			latest,
 			..
 		} = &operator.ty
 		else {
@@ -142,19 +137,6 @@ pub fn check_join_retention_requirements(catalog: &Catalog, txn: &mut Transactio
 		};
 		if retention.left.is_none() && retention.right.is_none() {
 			continue;
-		}
-
-		if retention.right.is_some() {
-			if *snapshot {
-				return Err(Error(Box::new(flow_join_right_retention_conflicts_with_flag(
-					&flow_name, "snapshot",
-				))));
-			}
-			if *latest {
-				return Err(Error(Box::new(flow_join_right_retention_conflicts_with_flag(
-					&flow_name, "latest",
-				))));
-			}
 		}
 
 		declared = true;

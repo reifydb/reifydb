@@ -109,7 +109,7 @@ impl<K: Ord, V> SortedVecMap<K, V> {
 		}
 	}
 
-	pub fn range<R: RangeBounds<K>>(&self, bounds: R) -> impl Iterator<Item = (&K, &V)> {
+	pub fn range<R: RangeBounds<K>>(&self, bounds: R) -> impl DoubleEndedIterator<Item = (&K, &V)> {
 		let lo = match bounds.start_bound() {
 			Bound::Unbounded => 0,
 			Bound::Included(key) => self.slots.partition_point(|(resident, _)| resident < key),

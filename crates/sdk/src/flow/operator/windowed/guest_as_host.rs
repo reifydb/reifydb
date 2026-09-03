@@ -14,6 +14,7 @@ use reifydb_core::{
 use reifydb_flow::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
 use reifydb_value::{
 	Result,
+	util::hash::xxh3_128,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
@@ -27,6 +28,10 @@ fn confine(range: &EncodedKeyRange) -> (GroupId, KeyspaceId, Bound<Vec<u8>>, Bou
 		 keyspace ranges, so a range that does not split is one a caller invented and the guest \
 		 boundary cannot admit",
 	)
+}
+
+fn mapping_key(key: &EncodedKey) -> EncodedKey {
+	EncodedKey::builder().u128(xxh3_128(key.as_slice()).0).build()
 }
 
 impl<C: GuestContext> TimerStore for GuestAsHost<'_, C> {
@@ -100,13 +105,28 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(out)
 	}
 
+	fn group_sweep(
+		&mut self,
+		group: GroupId,
+		data_only: bool,
+		limit: Option<usize>,
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		let mut swept = Vec::new();
+		self.0.state().sweep_bytes_visit(group, data_only, limit, &mut |key, row| {
+			swept.push((key, row));
+			Ok(())
+		})?;
+		Ok(swept)
+	}
+
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 		let (group, keyspace, start, end) = confine(&range);
 		Ok(self.0.state().last_bytes(group, keyspace, GuestBound::of(&start), GuestBound::of(&end))?)
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		Ok(self.0.get_or_create_row_numbers(group, keys)?)
+		let keys: Vec<EncodedKey> = keys.iter().map(mapping_key).collect();
+		Ok(self.0.get_or_create_row_numbers(group, &keys)?)
 	}
 
 	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
@@ -116,7 +136,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 	}
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		Ok(self.0.remove_row_number(group, key)?)
+		Ok(self.0.remove_row_number(group, &mapping_key(key))?)
 	}
 
 	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {

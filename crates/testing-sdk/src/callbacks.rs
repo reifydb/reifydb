@@ -53,6 +53,10 @@ unsafe fn get_test_context(ctx: *mut ExternCContextRaw) -> &'static TestContext 
 	}
 }
 
+fn test_group(group: ExternCGroupId) -> GroupId {
+	GroupId::from_bytes(group.bytes)
+}
+
 fn test_state_envelope(
 	operator_id: u64,
 	group: GroupId,
@@ -375,7 +379,7 @@ fn test_bound_as_slice(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
 extern "C" fn test_state_range(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u128,
+	group: ExternCGroupId,
 	keyspace: u8,
 	start_ptr: *const u8,
 	start_len: usize,
@@ -401,7 +405,7 @@ extern "C" fn test_state_range(
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 		let range = keyspace_inner_range_in(
-			GroupId(group),
+			test_group(group),
 			KeyspaceId(keyspace),
 			test_bound_as_slice(&start_bound),
 			test_bound_as_slice(&end_bound),
@@ -454,7 +458,7 @@ use reifydb_sdk::{
 		callbacks::{OperatorCallbacks, dictionary::DictionaryCallbacks, state::StateCallbacks},
 		context::ExternCContextRaw,
 		iterators::ExternCStateIterator,
-		state::{ExternCStateEntry, ExternCStateSlice},
+		state::{ExternCGroupId, ExternCStateEntry, ExternCStateSlice},
 	},
 };
 use reifydb_value::value::datetime::DateTime;
@@ -559,7 +563,7 @@ fn test_in_identity_range(prefix: &[u8], range: &EncodedKeyRange, key: &EncodedK
 extern "C" fn test_reclaim_group_identity(
 	operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u128,
+	group: ExternCGroupId,
 	limit: usize,
 	removed_out: *mut usize,
 	more_out: *mut u8,
@@ -572,7 +576,7 @@ extern "C" fn test_reclaim_group_identity(
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let prefix = node_prefix(OperatorId(operator_id));
-		let range = group_identity_inner_range(GroupId(group));
+		let range = group_identity_inner_range(test_group(group));
 		let mut doomed: Vec<EncodedKey> = test_ctx
 			.state_keys()
 			.into_iter()
@@ -594,7 +598,7 @@ extern "C" fn test_reclaim_group_identity(
 extern "C" fn test_reclaim_group_identity_keys(
 	operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	_group: u128,
+	_group: ExternCGroupId,
 	keys: *const ExternCKeyRef,
 	keys_len: usize,
 	removed_out: *mut usize,
@@ -671,7 +675,7 @@ extern "C" fn test_flow_watermark(
 extern "C" fn test_get_or_create_row_numbers(
 	operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u128,
+	group: ExternCGroupId,
 	keys: *const ExternCKeyRef,
 	keys_len: usize,
 	row_numbers_out: *mut u64,
@@ -706,7 +710,7 @@ extern "C" fn test_get_or_create_row_numbers(
 			};
 			let map_key = test_state_envelope(
 				operator_id,
-				GroupId(group),
+				test_group(group),
 				KeyspaceId::GUEST_ROW_MAPPING,
 				key_bytes.to_vec(),
 			);
@@ -735,7 +739,7 @@ extern "C" fn test_get_or_create_row_numbers(
 extern "C" fn test_get_or_create_row_numbers_for_pairs(
 	operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	groups: *const u128,
+	groups: *const ExternCGroupId,
 	keys: *const ExternCKeyRef,
 	pairs_len: usize,
 	row_numbers_out: *mut u64,
@@ -771,7 +775,7 @@ extern "C" fn test_get_or_create_row_numbers_for_pairs(
 			};
 			let map_key = test_state_envelope(
 				operator_id,
-				GroupId(*groups.add(i)),
+				test_group(*groups.add(i)),
 				KeyspaceId::GUEST_ROW_MAPPING,
 				key_bytes.to_vec(),
 			);
@@ -800,7 +804,7 @@ extern "C" fn test_get_or_create_row_numbers_for_pairs(
 extern "C" fn test_remove_row_number(
 	operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u128,
+	group: ExternCGroupId,
 	key_ptr: *const u8,
 	key_len: usize,
 ) -> i32 {
@@ -818,7 +822,7 @@ extern "C" fn test_remove_row_number(
 		};
 		let map_key = test_state_envelope(
 			operator_id,
-			GroupId(group),
+			test_group(group),
 			KeyspaceId::GUEST_ROW_MAPPING,
 			key_bytes.to_vec(),
 		);

@@ -66,16 +66,13 @@ ok
 ok
 "c" => "3"
 
-# Join expiries and their state ride the same flush.
+# A write reaches the persistent tier only once its flush has run.
 
-join_expiry_set row=1 at=100
 set d=4
 persistent_get d
 flush
 persistent_get d
-join_expiry_get row=1
 ---
 "d" => None
 ok
 "d" => "4"
-join_expiry 0/1 => 100

@@ -2,23 +2,24 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::shape::fingerprint::RowShapeFingerprint;
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_macro::operator_state;
+use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::{
 	interface::store::CacheTiers,
 	key::{
 		operator::{
-			state::{GroupId, KeyspaceId},
+			state::{GroupId, GroupStateKey, KeyspaceId},
 			traits::Keyspace,
 		},
 		typed::{
 			TypedKey,
 			direction::{Asc, Desc, Direction, KeyField},
-			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue},
+			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues},
 		},
 	},
 	metrics::heap::HeapSize,
-	state::join::ContentVersion,
+	state::{join::ContentVersion, typed::typed_key},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
@@ -69,6 +70,31 @@ pub struct JoinPinSuffix {
 pub struct JoinRowExpirySuffix {
 	pub side: Asc<u8>,
 	pub row: Asc<RowNumber>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+pub struct JoinExpiryDueKey {
+	pub at: Desc<DateTime>,
+	pub group: Desc<GroupId>,
+	pub side: Asc<u8>,
+	pub row: Asc<RowNumber>,
+}
+
+impl JoinExpiryDueKey {
+	pub fn at_threshold(at: DateTime) -> Self {
+		Self {
+			at: Desc(at),
+			group: TypedKey::low(),
+			side: TypedKey::low(),
+			row: TypedKey::low(),
+		}
+	}
+}
+
+#[operator_state]
+#[derive(Clone)]
+pub struct JoinRowExpiryState {
+	pub at: DateTime,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
@@ -224,6 +250,38 @@ impl Keyspace for JoinRowExpiry {
 			side: suffix.side,
 			row: suffix.row,
 		}
+	}
+}
+
+pub fn join_expiry_due_key(at: DateTime, group: GroupId, side: u8, row: RowNumber) -> GroupStateKey {
+	typed_key::<JoinExpiryDue>(
+		GroupId::ROOT,
+		&JoinExpiryDueKey {
+			at: Desc(at),
+			group: Desc(group),
+			side: Asc(side),
+			row: Asc(row),
+		},
+	)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct JoinExpiryDue;
+
+impl Keyspace for JoinExpiryDue {
+	const ID: KeyspaceId = KeyspaceId::JOIN_EXPIRY_DUE;
+	const NAME: &'static str = "JOIN_EXPIRY_DUE";
+	const CACHE: CacheTiers = CacheTiers::Range;
+
+	type GroupedKey = JoinExpiryDueKey;
+	type Suffix = JoinExpiryDueKey;
+
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
+		(GroupId::ROOT, *key)
+	}
+
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
+		suffix
 	}
 }
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cmp::Ordering, collections::BTreeMap};
+use std::{cmp::Ordering, collections::BTreeMap, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -17,15 +17,21 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::operator::state::{GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range_split, node_prefix},
+	key::operator::state::{
+		GroupId, GroupStateKey, OperatorStateKey, group_inner_range, group_inner_range_split,
+		keyspace_inner_range_split, node_prefix,
+	},
 	metrics::scan::ScanCounters,
+	state::timer::sweep_order,
 };
-use reifydb_store_operator::{store::state::StateLastIter, types::JOIN_EXPIRY_VALUE_BYTES};
+use reifydb_store_operator::store::state::StateLastIter;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{Span, field, instrument};
 
-use crate::transaction::{FlowTransaction, join_expiry::decode_join_expiry_suffix, scope::scoped_key};
+use crate::transaction::{FlowTransaction, read::flow_merge_pending_iterator, scope::scoped_key};
+
+const PENDING_LAST_PAGE: usize = 64;
 
 pub(crate) fn encode_payload<T: OperatorState>(value: &T) -> Result<EncodedPodRow> {
 	Ok(value.encode_state()?)
@@ -117,7 +123,6 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedPodRow) -> Result<()> {
 		let scoped = scoped_key(id, key);
-		classify_state_write(self, id, key, &scoped)?;
 		self.set(&scoped, row.into_bytes())
 	}
 
@@ -127,7 +132,6 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_remove(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<()> {
 		let scoped = scoped_key(id, key);
-		classify_state_write(self, id, key, &scoped)?;
 		self.remove_silent(&scoped)
 	}
 
@@ -157,8 +161,9 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_range(&mut self, id: OperatorId, query: StateRange) -> Result<MultiVersionBatch> {
 		debug_assert!(
-			keyspace_inner_range_split(&query.range).is_some(),
-			"a state range must stay inside one group and one keyspace; {} passed a range spanning more than one",
+			keyspace_inner_range_split(&query.range).is_some()
+				|| group_inner_range_split(&query.range).is_some(),
+			"a state range must stay inside one group; {} passed a range spanning more than one",
 			query.site
 		);
 		let before = ScanCounters::sample();
@@ -184,6 +189,55 @@ pub trait StateExtension: FlowTransaction {
 		})
 	}
 
+	#[instrument(name = "flow::state::group_range", level = "debug", skip(self, groups), fields(
+		operator_id = id.0,
+		groups = groups.len(),
+		rows_fetched = field::Empty
+	))]
+	fn state_group_range(&mut self, id: OperatorId, groups: &[GroupId], limit: usize) -> Result<MultiVersionBatch> {
+		let ordered = sweep_order(groups);
+		let before = ScanCounters::sample();
+		let prefix = EncodedKey::new(node_prefix(id));
+		let mut merged = BTreeMap::new();
+		for group in &ordered {
+			let range = group_inner_range(*group).with_prefix(prefix.clone());
+			self.pending_layers().collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
+		}
+		let pending: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
+		let version = self.version();
+		let batch = self.operator_store().group_page(id, &ordered, limit.saturating_add(1) as u64);
+		let truncated = batch.has_more;
+		let stored: Vec<Result<MultiVersionRow>> = batch
+			.items
+			.into_iter()
+			.map(|(inner, row)| {
+				let (group, keyspace, suffix) = OperatorStateKey::decode_inner(inner.as_slice())
+					.expect("inner keys must carry a structured encoding");
+				Ok(MultiVersionRow {
+					key: OperatorStateKey::encoded(id, group, keyspace, suffix),
+					bytes: row.into_bytes(),
+					version,
+				})
+			})
+			.collect();
+
+		let mut items = Vec::new();
+		let mut has_more = truncated;
+		for result in flow_merge_pending_iterator(pending, stored.into_iter(), version) {
+			if items.len() == limit {
+				has_more = true;
+				break;
+			}
+			items.push(result?);
+		}
+		let scanned = before.since();
+		Span::current().record("rows_fetched", scanned.fetched);
+		Ok(MultiVersionBatch {
+			items,
+			has_more,
+		})
+	}
+
 	#[instrument(name = "flow::state::last", level = "debug", skip(self, range), fields(
 		operator_id = id.0,
 		found = field::Empty
@@ -191,18 +245,33 @@ pub trait StateExtension: FlowTransaction {
 	fn state_last(&mut self, id: OperatorId, range: EncodedKeyRange) -> Result<Option<MultiVersionRow>> {
 		let prefix = node_prefix(id);
 		let prefixed_range = range.with_prefix(EncodedKey::new(prefix.clone()));
-		let mut merged = BTreeMap::new();
-		self.pending_layers()
-			.collect_range((prefixed_range.start.as_ref(), prefixed_range.end.as_ref()), &mut merged);
-		let pending: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
 
 		let version = self.version();
 		let store = self.operator_store();
-		let mut index = 0usize;
 		let mut scan = store.state_last_iter(id, range);
 		let mut stored = next_stored(&mut scan, &prefix);
 
+		let mut pending: Vec<(EncodedKey, PendingWrite)> = Vec::new();
+		let mut pending_end = prefixed_range.end.clone();
+		let mut pending_done = false;
+		let mut index = 0usize;
+
 		let found = loop {
+			if index == pending.len() && !pending_done {
+				let mut merged = BTreeMap::new();
+				self.pending_layers().collect_range_back(
+					(prefixed_range.start.as_ref(), pending_end.as_ref()),
+					PENDING_LAST_PAGE,
+					&mut merged,
+				);
+				pending_done = merged.len() < PENDING_LAST_PAGE;
+				pending = merged.into_iter().rev().collect();
+				index = 0;
+				if let Some((key, _)) = pending.last() {
+					pending_end = Bound::Excluded(key.clone());
+				}
+				continue;
+			}
 			match (pending.get(index), stored.take()) {
 				(None, None) => break None,
 				(None, Some((_, key, bytes))) => {
@@ -285,41 +354,6 @@ fn next_stored(scan: &mut StateLastIter<'_>, prefix: &[u8]) -> Option<(EncodedKe
 		scoped.extend_from_slice(inner.as_slice());
 		(inner, EncodedKey::new(scoped), row.into_bytes())
 	})
-}
-
-#[inline]
-fn classify_state_write<T: FlowTransaction>(
-	txn: &mut T,
-	id: OperatorId,
-	key: &GroupStateKey,
-	scoped: &EncodedKey,
-) -> Result<()> {
-	if key.keyspace() == Some(KeyspaceId::JOIN_ROW_EXPIRY) {
-		return classify_durable_join_expiry(txn, id, key, scoped);
-	}
-	Ok(())
-}
-
-#[inline]
-fn classify_durable_join_expiry<T: FlowTransaction>(
-	txn: &mut T,
-	id: OperatorId,
-	key: &GroupStateKey,
-	scoped: &EncodedKey,
-) -> Result<()> {
-	if txn.is_classified(scoped) {
-		return Ok(());
-	}
-	let Some((group, side, row_number)) =
-		OperatorStateKey::decode_inner(key.as_slice()).and_then(|(group, _, suffix)| {
-			decode_join_expiry_suffix(&suffix).map(|(side, row)| (group, side, row))
-		})
-	else {
-		return Ok(());
-	};
-	let present = txn.operator_store().join_expiry_get(id, group, side, row_number).is_some();
-	txn.classify(scoped, present.then_some(JOIN_EXPIRY_VALUE_BYTES));
-	Ok(())
 }
 
 #[inline]

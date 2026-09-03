@@ -27,6 +27,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	count::Count,
+	util::hash::Hash128,
 	value::{datetime::DateTime, identity::IdentityId},
 };
 
@@ -147,8 +148,8 @@ fn reclaiming_one_groups_identity_leaves_its_neighbour_untouched() {
 	// the ids are deliberately adjacent because that is exactly where a bad upper bound bleeds across
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
-	let id = GroupId(0x5EED_0000_0000_0000_0000_0000_0000_0001);
-	let neighbour = GroupId(id.0 + 1);
+	let id = GroupId::hashed(Hash128(0x5EED_0000_0000_0000_0000_0000_0000_0001));
+	let neighbour = id.successor().expect("a mid-range id has a successor");
 	seed_identity(&mut txn, id);
 	seed_identity(&mut txn, neighbour);
 

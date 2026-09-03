@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	cmp::Ordering,
-	collections::{
-		BTreeMap,
-		Bound::{Excluded, Unbounded},
-	},
-};
+use std::{cmp::Ordering, mem};
 
-use reifydb_core::key::typed::{Edge, TypedKey};
+use reifydb_core::{
+	key::typed::{Edge, TypedKey},
+	metrics::heap::HeapSize,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Interval<K> {
@@ -36,13 +33,17 @@ impl<K: TypedKey> Interval<K> {
 
 #[derive(Clone, Debug)]
 pub struct CoverageSet<K> {
-	intervals: BTreeMap<K, Edge<K>>,
+	intervals: Vec<(K, Edge<K>)>,
+	last_used: u64,
+	bytes: u64,
 }
 
 impl<K: TypedKey> Default for CoverageSet<K> {
 	fn default() -> Self {
 		Self {
-			intervals: BTreeMap::new(),
+			intervals: Vec::new(),
+			last_used: 0,
+			bytes: 0,
 		}
 	}
 }
@@ -52,6 +53,40 @@ impl<K: TypedKey> CoverageSet<K> {
 		Self::default()
 	}
 
+	pub fn touch(&mut self, clock: u64) {
+		self.last_used = clock;
+	}
+
+	pub fn last_used(&self) -> u64 {
+		self.last_used
+	}
+
+	fn entry_bytes(start: &K, end: &Edge<K>) -> u64 {
+		let per_entry = mem::size_of::<K>() + mem::size_of::<Edge<K>>();
+		(per_entry + start.heap_size() + end.heap_size()) as u64
+	}
+
+	fn recount(&mut self) {
+		self.bytes = self.intervals.iter().map(|(start, end)| Self::entry_bytes(start, end)).sum();
+	}
+
+	fn upper_bound(&self, key: &K) -> usize {
+		self.intervals.partition_point(|(start, _)| start <= key)
+	}
+
+	fn span_touching(&self, start: &K, end: &Edge<K>) -> (usize, usize) {
+		let at = self.upper_bound(start);
+		let mut lo = at;
+		if at > 0 && self.intervals[at - 1].1.cmp_key(start) == Ordering::Greater {
+			lo = at - 1;
+		}
+		let mut hi = at;
+		while hi < self.intervals.len() && end.cmp_key(&self.intervals[hi].0) == Ordering::Greater {
+			hi += 1;
+		}
+		(lo, hi)
+	}
+
 	pub fn extend(&mut self, start: K, end: Edge<K>) {
 		if !end.covers(&start) {
 			return;
@@ -59,28 +94,39 @@ impl<K: TypedKey> CoverageSet<K> {
 
 		let mut merged_start = start.clone();
 		let mut merged_end = end;
-		let mut doomed = Vec::new();
+		let at = self.upper_bound(&start);
+		let mut lo = at;
 
-		if let Some((left_start, left_end)) = self.intervals.range::<K, _>(..=&start).next_back()
-			&& left_end.cmp_key(&start) != Ordering::Less
-		{
-			merged_start = left_start.clone();
-			merged_end = merged_end.max(left_end.clone());
-			doomed.push(left_start.clone());
+		if at > 0 {
+			let (left_start, left_end) = &self.intervals[at - 1];
+			if left_end.cmp_key(&start) != Ordering::Less {
+				merged_start = left_start.clone();
+				merged_end = merged_end.max(left_end.clone());
+				lo = at - 1;
+			}
 		}
 
-		for (next_start, next_end) in self.intervals.range::<K, _>((Excluded(&start), Unbounded)) {
+		let mut hi = at;
+		while hi < self.intervals.len() {
+			let (next_start, next_end) = &self.intervals[hi];
 			if merged_end.cmp_key(next_start) == Ordering::Less {
 				break;
 			}
 			merged_end = merged_end.max(next_end.clone());
-			doomed.push(next_start.clone());
+			hi += 1;
 		}
 
-		for key in doomed {
-			self.intervals.remove(&key);
+		self.intervals.splice(lo..hi, [(merged_start, merged_end)]);
+		self.recount();
+	}
+
+	pub fn drop_overlapping(&mut self, start: &K, end: &Edge<K>) {
+		if !end.covers(start) {
+			return;
 		}
-		self.intervals.insert(merged_start, merged_end);
+		let (lo, hi) = self.span_touching(start, end);
+		self.intervals.drain(lo..hi);
+		self.recount();
 	}
 
 	pub fn shrink_key(&mut self, key: &K) {
@@ -91,32 +137,20 @@ impl<K: TypedKey> CoverageSet<K> {
 		if !end.covers(start) {
 			return;
 		}
-
-		let mut doomed = Vec::new();
-
-		if let Some((left_start, left_end)) = self.intervals.range::<K, _>(..=start).next_back()
-			&& left_end.cmp_key(start) == Ordering::Greater
-		{
-			doomed.push(left_start.clone());
-		}
-
-		for (next_start, _) in self.intervals.range::<K, _>((Excluded(start), Unbounded)) {
-			if end.cmp_key(next_start) != Ordering::Greater {
-				break;
-			}
-			doomed.push(next_start.clone());
-		}
-
-		for key in doomed {
-			let old_end = self.intervals.remove(&key).unwrap();
+		let (lo, hi) = self.span_touching(start, end);
+		let removed: Vec<(K, Edge<K>)> = self.intervals.drain(lo..hi).collect();
+		let mut kept = Vec::new();
+		for (key, old_end) in removed {
 			if &key < start {
-				self.intervals.insert(key, Edge::Key(start.clone()));
+				kept.push((key, Edge::Key(start.clone())));
 			}
 			if *end < old_end {
-				let resume = end.key().unwrap().clone();
-				self.intervals.insert(resume, old_end);
+				let resume = end.key().expect("a bounded end must carry a key").clone();
+				kept.push((resume, old_end));
 			}
 		}
+		self.intervals.splice(lo..lo, kept);
+		self.recount();
 	}
 
 	pub fn contains(&self, key: &K) -> bool {
@@ -124,13 +158,16 @@ impl<K: TypedKey> CoverageSet<K> {
 	}
 
 	pub fn covering(&self, key: &K) -> Option<Interval<K>> {
-		self.intervals.range::<K, _>(..=key).next_back().and_then(|(start, end)| {
-			if end.covers(key) {
-				Some(Interval::new(start.clone(), end.clone()))
-			} else {
-				None
-			}
-		})
+		let at = self.upper_bound(key);
+		if at == 0 {
+			return None;
+		}
+		let (start, end) = &self.intervals[at - 1];
+		if end.covers(key) {
+			Some(Interval::new(start.clone(), end.clone()))
+		} else {
+			None
+		}
 	}
 
 	pub fn overlapping(&self, lo: &K, hi: &Edge<K>) -> Vec<Interval<K>> {
@@ -139,13 +176,15 @@ impl<K: TypedKey> CoverageSet<K> {
 			return clipped;
 		}
 
-		if let Some((_, end)) = self.intervals.range::<K, _>(..=lo).next_back()
-			&& end.cmp_key(lo) == Ordering::Greater
-		{
-			clipped.push(Interval::new(lo.clone(), end.clone().min(hi.clone())));
+		let at = self.upper_bound(lo);
+		if at > 0 {
+			let (_, end) = &self.intervals[at - 1];
+			if end.cmp_key(lo) == Ordering::Greater {
+				clipped.push(Interval::new(lo.clone(), end.clone().min(hi.clone())));
+			}
 		}
 
-		for (start, end) in self.intervals.range::<K, _>((Excluded(lo), Unbounded)) {
+		for (start, end) in &self.intervals[at..] {
 			if hi.cmp_key(start) != Ordering::Greater {
 				break;
 			}
@@ -186,6 +225,10 @@ impl<K: TypedKey> CoverageSet<K> {
 		self.intervals.iter().map(|(start, end)| Interval::new(start.clone(), end.clone()))
 	}
 
+	pub fn bytes(&self) -> u64 {
+		self.bytes
+	}
+
 	pub fn len(&self) -> usize {
 		self.intervals.len()
 	}
@@ -196,6 +239,7 @@ impl<K: TypedKey> CoverageSet<K> {
 
 	pub fn clear(&mut self) {
 		self.intervals.clear();
+		self.bytes = 0;
 	}
 }
 
@@ -336,6 +380,53 @@ mod tests {
 		set.extend(k("b"), Edge::Key(successor_of(&k("b"))));
 		set.shrink_key(&k("b"));
 		assert_eq!(snapshot(&set), vec![]);
+	}
+
+	#[test]
+	fn drop_overlapping_never_splits_an_interval() {
+		// Retraction must not fragment: punching a hole would leave two intervals where one stood,
+		// and the eviction path calls this once per evicted partition forever.
+		let mut set = CoverageSet::new();
+		set.extend(k("a"), Edge::of("z"));
+		set.drop_overlapping(&k("d"), &Edge::of("m"));
+		assert_eq!(snapshot(&set), vec![]);
+	}
+
+	#[test]
+	fn drop_overlapping_removes_every_interval_the_span_touches() {
+		// Every island under the span goes, not just the first one the walk meets; a survivor
+		// would claim coverage over keys whose partition was just evicted.
+		let mut set = CoverageSet::new();
+		set.extend(k("a"), Edge::of("c"));
+		set.extend(k("e"), Edge::of("g"));
+		set.extend(k("h"), Edge::of("j"));
+		set.extend(k("m"), Edge::of("p"));
+		set.drop_overlapping(&k("b"), &Edge::of("i"));
+		assert_eq!(snapshot(&set), vec![iv("m", "p")]);
+	}
+
+	#[test]
+	fn drop_overlapping_leaves_untouched_intervals_alone() {
+		// The interval starting left of the span must survive when it ends before the span opens,
+		// and the one starting at the exclusive end is not covered either; dropping either would
+		// discard coverage the evicted partition never held.
+		let mut set = CoverageSet::new();
+		set.extend(k("a"), Edge::of("c"));
+		set.extend(k("m"), Edge::of("p"));
+		set.drop_overlapping(&k("f"), &Edge::of("m"));
+		assert_eq!(snapshot(&set), vec![iv("a", "c"), iv("m", "p")]);
+	}
+
+	#[test]
+	fn repeated_evict_and_reclaim_cycles_do_not_grow_the_interval_count() {
+		// The leak shape: 3.07M intervals against 11k partitions. Cycling a middle span must
+		// return to a bounded count, never accumulate one interval per eviction.
+		let mut set = CoverageSet::new();
+		for _ in 0..64 {
+			set.extend(k("a"), Edge::of("z"));
+			set.drop_overlapping(&k("d"), &Edge::of("m"));
+		}
+		assert!(set.len() <= 1, "coverage grew to {} intervals across 64 evict/reclaim cycles", set.len());
 	}
 
 	#[test]

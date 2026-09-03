@@ -6,7 +6,7 @@ use std::ops::Bound;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
-		operator::{keyspace::KeyspaceSpec, traits::Keyspace},
+		operator::{keyspace::KeyspaceSpec, state::GroupId, traits::Keyspace},
 		typed::{
 			direction::Direction,
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue},
@@ -38,7 +38,7 @@ pub fn create_table(spec: &KeyspaceSpec) -> String {
 fn sql_type(ty: KeyColumnType) -> &'static str {
 	match ty {
 		KeyColumnType::U8 => "INTEGER",
-		KeyColumnType::U64 | KeyColumnType::Blob16 => "BLOB",
+		KeyColumnType::U64 | KeyColumnType::Blob16 | KeyColumnType::Blob24 => "BLOB",
 	}
 }
 
@@ -58,6 +58,7 @@ pub fn to_sql(value: KeyValue, direction: Direction) -> Value {
 		KeyValue::U8(v) => Value::Integer(i64::from(flip(direction, v))),
 		KeyValue::U64(v) => Value::Blob(flipped(direction, &v.to_be_bytes())),
 		KeyValue::Blob16(v) => Value::Blob(flipped(direction, &v)),
+		KeyValue::Blob24(v) => Value::Blob(flipped(direction, &v)),
 	}
 }
 
@@ -77,6 +78,10 @@ pub fn from_sql(row: &Row<'_>, at: usize, column: &KeyColumn) -> Option<KeyValue
 		KeyColumnType::Blob16 => {
 			let blob: Vec<u8> = row.get(at).ok()?;
 			<[u8; 16]>::try_from(flipped(column.direction, &blob).as_slice()).ok().map(KeyValue::Blob16)
+		}
+		KeyColumnType::Blob24 => {
+			let blob: Vec<u8> = row.get(at).ok()?;
+			<[u8; 24]>::try_from(flipped(column.direction, &blob).as_slice()).ok().map(KeyValue::Blob24)
 		}
 	}
 }
@@ -362,6 +367,57 @@ fn bound_key<K: Keyspace>(bound: Bound<&K::GroupedKey>) -> Option<&K::GroupedKey
 	}
 }
 
+fn slots(count: usize, from: usize) -> String {
+	(0..count).map(|at| format!("?{}", from + at)).collect::<Vec<_>>().join(", ")
+}
+
+fn group_column<K: Keyspace>() -> &'static KeyColumn {
+	K::columns().first().expect("a group scoped keyspace must lead its key layout with the group column")
+}
+
+fn group_clause<K: Keyspace>(groups: usize, from: usize) -> String {
+	format!(" AND \"{}\" IN ({})", group_column::<K>().name, slots(groups, from))
+}
+
+fn bind_groups<K: Keyspace>(groups: &[GroupId]) -> Vec<Value> {
+	let direction = group_column::<K>().direction;
+	groups.iter().map(|group| to_sql(KeyValue::Blob24(*group.as_bytes()), direction)).collect()
+}
+
+fn suffix_width<K: Keyspace>() -> usize {
+	K::columns().len().saturating_sub(1)
+}
+
+fn suffix_list<K: Keyspace>() -> String {
+	K::columns()[1..].iter().map(|column| format!("\"{}\"", column.name)).collect::<Vec<_>>().join(", ")
+}
+
+fn suffix_clause<K: Keyspace>(
+	bound: Bound<&K::GroupedKey>,
+	op_included: &str,
+	op_excluded: &str,
+	from: usize,
+) -> String {
+	let width = suffix_width::<K>();
+	if width == 0 {
+		return String::new();
+	}
+	match bound {
+		Bound::Unbounded => String::new(),
+		Bound::Included(_) => {
+			format!(" AND ({}) {} ({})", suffix_list::<K>(), op_included, slots(width, from))
+		}
+		Bound::Excluded(_) => {
+			format!(" AND ({}) {} ({})", suffix_list::<K>(), op_excluded, slots(width, from))
+		}
+	}
+}
+
+fn bind_suffix<K: Keyspace>(key: &K::GroupedKey) -> Vec<Value> {
+	let mut values = K::bind_key(key);
+	values.split_off(1)
+}
+
 fn bounded<K: Keyspace>(
 	conn: &Connection,
 	operator: OperatorId,
@@ -426,6 +482,58 @@ pub fn last<K: Keyspace>(
 	bounded::<K>(conn, operator, range, limit, "DESC")
 }
 
+pub fn range_in<K: Keyspace>(
+	conn: &Connection,
+	operator: OperatorId,
+	groups: &[GroupId],
+	range: &KeyRange<K::GroupedKey>,
+	limit: u64,
+	order: &str,
+) -> Vec<(K::GroupedKey, Vec<u8>)> {
+	let width = K::columns().len();
+	let suffix = suffix_width::<K>();
+	let mut at = 2;
+	let groups_clause = group_clause::<K>(groups.len(), at);
+	at += groups.len();
+	let start = suffix_clause::<K>(range.start.as_ref(), ">=", ">", at);
+	if bound_key::<K>(range.start.as_ref()).is_some() {
+		at += suffix;
+	}
+	let end = suffix_clause::<K>(range.end.as_ref(), "<=", "<", at);
+	if bound_key::<K>(range.end.as_ref()).is_some() {
+		at += suffix;
+	}
+	let sql = format!(
+		"SELECT {}\"bytes\" FROM \"{}\" WHERE \"operator\" = ?1{}{}{}{} LIMIT ?{}",
+		K::key_columns(),
+		K::table(),
+		groups_clause,
+		start,
+		end,
+		K::ordering(order),
+		at
+	);
+	let mut params = vec![Value::Integer(operator.0 as i64)];
+	params.extend(bind_groups::<K>(groups));
+	if suffix > 0 {
+		for bound in [range.start.as_ref(), range.end.as_ref()] {
+			if let Some(key) = bound_key::<K>(bound) {
+				params.extend(bind_suffix::<K>(key));
+			}
+		}
+	}
+	params.push(Value::Integer(limit as i64));
+	let mut stmt = conn.prepare_cached(&sql).expect("operator state group range could not be prepared");
+	let mut rows = stmt.query(params_from_iter(params)).expect("operator state group range failed");
+	let mut out = Vec::new();
+	while let Some(row) = rows.next().expect("operator state group range row failed") {
+		let key = K::read_key(row, 0).expect("an operator state row does not decode as its own key layout");
+		let bytes: Vec<u8> = row.get(width).expect("operator state row has no payload");
+		out.push((key, bytes));
+	}
+	out
+}
+
 pub fn census<K: Keyspace>(conn: &Connection) -> Vec<(OperatorId, u64, u64)> {
 	let sql = format!(
 		"SELECT \"operator\", COUNT(*), COALESCE(SUM(LENGTH(\"bytes\")), 0) FROM \"{}\" GROUP BY \"operator\"",
@@ -465,7 +573,7 @@ mod tests {
 			},
 		},
 	};
-	use reifydb_value::value::row_number::RowNumber;
+	use reifydb_value::{util::hash::Hash128, value::row_number::RowNumber};
 	use rusqlite::Connection;
 
 	use super::{SqlKey, census, create_table, drop_operator, get, last, range, remove, scan, set, table_of};
@@ -477,16 +585,20 @@ mod tests {
 		conn
 	}
 
-	fn left(group: u128, row: u64) -> JoinLeftKey {
+	fn group(id: u128) -> GroupId {
+		GroupId::hashed(Hash128(id))
+	}
+
+	fn left(group_id: u128, row: u64) -> JoinLeftKey {
 		JoinLeftKey {
-			group: Desc(GroupId(group)),
+			group: Desc(group(group_id)),
 			row: Asc(RowNumber(row)),
 		}
 	}
 
-	fn right(group: u128, row: u64) -> JoinRightKey {
+	fn right(group_id: u128, row: u64) -> JoinRightKey {
 		JoinRightKey {
-			group: Desc(GroupId(group)),
+			group: Desc(group(group_id)),
 			row: Asc(RowNumber(row)),
 		}
 	}
@@ -533,15 +645,19 @@ mod tests {
 		// this is the whole mechanism: memcmp on the stored bytes must be the key's Ord, so a Desc column
 		// stores ~bytes and a read that forgot to complement back would hand out a different group id
 		let conn = db();
-		set::<JoinLeft>(&conn, OperatorId(1), &left(0, 0), b"x");
+		let root = JoinLeftKey {
+			group: Desc(GroupId::ROOT),
+			row: Asc(RowNumber(0)),
+		};
+		set::<JoinLeft>(&conn, OperatorId(1), &root, b"x");
 		let (group, row): (Vec<u8>, Vec<u8>) = conn
 			.query_row(r#"SELECT "group", "row" FROM "operator_join_left""#, [], |r| {
 				Ok((r.get(0).unwrap(), r.get(1).unwrap()))
 			})
 			.unwrap();
-		assert_eq!(group, vec![0xFF; 16], "Desc<GroupId> of zero must store as all ones");
+		assert_eq!(group, vec![0xFF; GroupId::WIDTH], "Desc<GroupId> of the minimum must store as all ones");
 		assert_eq!(row, vec![0x00; 8], "Asc<RowNumber> of zero must store unchanged");
-		assert_eq!(scan::<JoinLeft>(&conn, OperatorId(1))[0].0, left(0, 0));
+		assert_eq!(scan::<JoinLeft>(&conn, OperatorId(1))[0].0, root);
 	}
 
 	#[test]
@@ -615,8 +731,12 @@ mod tests {
 		conn
 	}
 
-	fn served(rows: Vec<(JoinLeftKey, Vec<u8>)>) -> Vec<(u128, u64)> {
-		rows.into_iter().map(|(key, _)| (key.group.0.0, key.row.0.0)).collect()
+	fn served(rows: Vec<(JoinLeftKey, Vec<u8>)>) -> Vec<(GroupId, u64)> {
+		rows.into_iter().map(|(key, _)| (key.group.0, key.row.0.0)).collect()
+	}
+
+	fn expected<const N: usize>(pairs: [(u128, u64); N]) -> Vec<(GroupId, u64)> {
+		pairs.into_iter().map(|(id, row)| (group(id), row)).collect()
 	}
 
 	#[test]
@@ -630,7 +750,7 @@ mod tests {
 			&KeyRange::new(Bound::Unbounded, Bound::Unbounded),
 			100,
 		));
-		assert_eq!(all, vec![(2, 0), (2, 1), (2, 2), (2, 3), (1, 0), (1, 1), (1, 2), (1, 3)]);
+		assert_eq!(all, expected([(2, 0), (2, 1), (2, 2), (2, 3), (1, 0), (1, 1), (1, 2), (1, 3)]));
 	}
 
 	#[test]
@@ -644,14 +764,14 @@ mod tests {
 			&KeyRange::new(Bound::Included(left(2, 2)), Bound::Unbounded),
 			100,
 		));
-		assert_eq!(included, vec![(2, 2), (2, 3), (1, 0), (1, 1), (1, 2), (1, 3)]);
+		assert_eq!(included, expected([(2, 2), (2, 3), (1, 0), (1, 1), (1, 2), (1, 3)]));
 		let excluded = served(range::<JoinLeft>(
 			&conn,
 			OperatorId(1),
 			&KeyRange::new(Bound::Excluded(left(2, 2)), Bound::Unbounded),
 			100,
 		));
-		assert_eq!(excluded, vec![(2, 3), (1, 0), (1, 1), (1, 2), (1, 3)]);
+		assert_eq!(excluded, expected([(2, 3), (1, 0), (1, 1), (1, 2), (1, 3)]));
 	}
 
 	#[test]
@@ -663,14 +783,14 @@ mod tests {
 			&KeyRange::new(Bound::Unbounded, Bound::Included(left(2, 2))),
 			100,
 		));
-		assert_eq!(included, vec![(2, 0), (2, 1), (2, 2)]);
+		assert_eq!(included, expected([(2, 0), (2, 1), (2, 2)]));
 		let excluded = served(range::<JoinLeft>(
 			&conn,
 			OperatorId(1),
 			&KeyRange::new(Bound::Unbounded, Bound::Excluded(left(2, 2))),
 			100,
 		));
-		assert_eq!(excluded, vec![(2, 0), (2, 1)]);
+		assert_eq!(excluded, expected([(2, 0), (2, 1)]));
 	}
 
 	#[test]
@@ -684,7 +804,7 @@ mod tests {
 			&KeyRange::new(Bound::Included(left(2, 2)), Bound::Excluded(left(1, 1))),
 			100,
 		));
-		assert_eq!(inside, vec![(2, 2), (2, 3), (1, 0)]);
+		assert_eq!(inside, expected([(2, 2), (2, 3), (1, 0)]));
 	}
 
 	#[test]
@@ -698,14 +818,14 @@ mod tests {
 			&KeyRange::new(Bound::Unbounded, Bound::Unbounded),
 			3,
 		));
-		assert_eq!(paged, vec![(2, 0), (2, 1), (2, 2)]);
+		assert_eq!(paged, expected([(2, 0), (2, 1), (2, 2)]));
 		let other = served(range::<JoinLeft>(
 			&conn,
 			OperatorId(2),
 			&KeyRange::new(Bound::Unbounded, Bound::Unbounded),
 			100,
 		));
-		assert_eq!(other, vec![(1, 0)]);
+		assert_eq!(other, expected([(1, 0)]));
 	}
 
 	#[test]
@@ -719,14 +839,14 @@ mod tests {
 			&KeyRange::new(Bound::Unbounded, Bound::Unbounded),
 			3,
 		));
-		assert_eq!(tail, vec![(1, 3), (1, 2), (1, 1)]);
+		assert_eq!(tail, expected([(1, 3), (1, 2), (1, 1)]));
 		let bounded = served(last::<JoinLeft>(
 			&conn,
 			OperatorId(1),
 			&KeyRange::new(Bound::Unbounded, Bound::Excluded(left(1, 1))),
 			2,
 		));
-		assert_eq!(bounded, vec![(1, 0), (2, 3)]);
+		assert_eq!(bounded, expected([(1, 0), (2, 3)]));
 	}
 
 	#[test]
@@ -797,7 +917,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_group_id_binds_as_sixteen_bytes_so_its_order_is_its_unsigned_order() {
+	fn a_group_id_binds_as_twenty_four_bytes_so_its_order_is_its_unsigned_order() {
 		// R14: a u128 group split across a signed integer would order the top half before the bottom, and
 		// the split is invisible until a group id happens to cross it
 		let conn = db();
@@ -815,7 +935,7 @@ mod tests {
 		let width: i64 = conn
 			.query_row(r#"SELECT LENGTH("group") FROM "operator_join_left" LIMIT 1"#, [], |row| row.get(0))
 			.unwrap();
-		assert_eq!(width, 16);
+		assert_eq!(width, GroupId::WIDTH as i64);
 	}
 
 	#[test]

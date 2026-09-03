@@ -316,12 +316,14 @@ mod tests {
 	use reifydb_core::key::operator::state::{
 		GroupId, IntoGroupStateKey, OperatorStateKey, group_data_inner_range,
 	};
-	use reifydb_value::{factory::time::at_millis, value::row_number::RowNumber};
+	use reifydb_value::{factory::time::at_millis, util::hash::Hash128, value::row_number::RowNumber};
 
 	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowMeta};
 	use crate::{operator::state::mock::MockStore, window::kind::session::SessionTracker};
 
-	const GROUP: GroupId = GroupId(42);
+	fn group_id() -> GroupId {
+		GroupId::hashed(Hash128(42))
+	}
 
 	fn contains(range: &EncodedKeyRange, key: &[u8]) -> bool {
 		let above = match &range.start {
@@ -341,15 +343,15 @@ mod tests {
 	fn partition_scoped_meta_lands_inside_the_group_the_substrate_reclaims() {
 		// landing this in the root group would leave no group range able to reach it, stranding one row per
 		// partition forever, so it lives in the partition group's data range instead
-		let range = group_data_inner_range(GROUP);
+		let range = group_data_inner_range(group_id());
 		for key in [
-			(&CountKey(GROUP)).into_group_state_key(),
-			(&SessionKey(GROUP)).into_group_state_key(),
-			(&RowIndexKey(GROUP, RowNumber(7))).into_group_state_key(),
+			(&CountKey(group_id())).into_group_state_key(),
+			(&SessionKey(group_id())).into_group_state_key(),
+			(&RowIndexKey(group_id(), RowNumber(7))).into_group_state_key(),
 		] {
 			let (group, keyspace, _) =
 				OperatorStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
-			assert_eq!(group, GROUP, "partition-scoped meta escaped its group");
+			assert_eq!(group, group_id(), "partition-scoped meta escaped its group");
 			assert!(keyspace.is_data(), "{keyspace:?} must be a data keyspace to be reclaimed by phase 1");
 			assert!(contains(&range, key.as_bytes()), "{keyspace:?} landed outside the group data range");
 		}
@@ -362,7 +364,7 @@ mod tests {
 		let key = (&SealLedgerKey).into_group_state_key();
 		let (group, _, _) = OperatorStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
 		assert_eq!(group, GroupId::ROOT);
-		assert!(!contains(&group_data_inner_range(GROUP), key.as_bytes()));
+		assert!(!contains(&group_data_inner_range(group_id()), key.as_bytes()));
 	}
 
 	#[test]
@@ -370,8 +372,8 @@ mod tests {
 		// Both are a bare partition group with an empty suffix, so the keyspace byte is all that
 		// separates them. Reading one as the other deserializes happily - two u64 payloads - and
 		// corrupts session assignment with an event ordinal.
-		let count = (&CountKey(GROUP)).into_group_state_key();
-		let session = (&SessionKey(GROUP)).into_group_state_key();
+		let count = (&CountKey(group_id())).into_group_state_key();
+		let session = (&SessionKey(group_id())).into_group_state_key();
 		assert_ne!(count, session, "count and session must not share a key");
 
 		let (count_group, count_ks, count_suffix) = OperatorStateKey::decode_inner(count.as_bytes()).unwrap();
@@ -391,15 +393,16 @@ mod tests {
 		let mut store = MockStore::default();
 
 		assert_eq!(
-			meta.load_session(&mut store, GROUP).unwrap(),
+			meta.load_session(&mut store, group_id()).unwrap(),
 			SessionTracker::default(),
 			"a group with no persisted session must load as unopened"
 		);
 
-		meta.save_session(&mut store, GROUP, &SessionTracker::resumed(0, at_millis(0), at_millis(0))).unwrap();
+		meta.save_session(&mut store, group_id(), &SessionTracker::resumed(0, at_millis(0), at_millis(0)))
+			.unwrap();
 
 		assert_eq!(
-			meta.load_session(&mut store, GROUP).unwrap(),
+			meta.load_session(&mut store, group_id()).unwrap(),
 			SessionTracker::resumed(0, at_millis(0), at_millis(0))
 		);
 	}

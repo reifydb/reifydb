@@ -202,7 +202,7 @@ impl RangeTiers {
 
 	pub fn lookup(&self, operator: OperatorId, key: &EncodedKey) -> Option<Option<EncodedPodRow>> {
 		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
-		self.of(keyspace)?.lookup(operator, group, &suffix)
+		self.of(keyspace)?.lookup(operator, group, suffix)
 	}
 
 	pub fn overwrite(&self, operator: OperatorId, key: &EncodedKey, row: EncodedPodRow) {
@@ -210,7 +210,7 @@ impl RangeTiers {
 			return;
 		};
 		if let Some(tier) = self.of(keyspace) {
-			tier.overwrite(operator, group, &suffix, row);
+			tier.overwrite(operator, group, suffix, row);
 		}
 	}
 
@@ -219,7 +219,7 @@ impl RangeTiers {
 			return;
 		};
 		if let Some(tier) = self.of(keyspace) {
-			tier.insert(operator, group, &suffix, row);
+			tier.insert(operator, group, suffix, row);
 		}
 	}
 
@@ -228,7 +228,7 @@ impl RangeTiers {
 			return;
 		};
 		if let Some(tier) = self.of(keyspace) {
-			tier.mark_deleted(operator, group, &suffix);
+			tier.mark_deleted(operator, group, suffix);
 		}
 	}
 
@@ -237,7 +237,7 @@ impl RangeTiers {
 			return;
 		};
 		if let Some(tier) = self.of(keyspace) {
-			tier.retract(operator, group, &suffix);
+			tier.retract(operator, group, suffix);
 		}
 	}
 

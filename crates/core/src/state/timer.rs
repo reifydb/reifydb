@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::cmp::Reverse;
+
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
@@ -11,8 +13,9 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::key::operator::state::{
-	GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range, keyspace_inner_range_split,
+use crate::key::operator::{
+	keyspace::{RootSibling, root_sibling_of},
+	state::{GroupId, GroupStateKey, group_data_inner_range, group_inner_range, keyspace_inner_range_split},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -25,7 +28,7 @@ pub enum TimerKind {
 }
 
 impl TimerKind {
-	pub fn is_unique(&self) -> bool {
+	pub fn is_maintenance(&self) -> bool {
 		matches!(self, Self::Maintenance)
 	}
 
@@ -38,6 +41,29 @@ impl TimerKind {
 			_ => None,
 		}
 	}
+}
+
+pub struct GroupSweep {
+	pub rows: Vec<(GroupStateKey, EncodedPodRow)>,
+	pub complete: bool,
+}
+
+impl GroupSweep {
+	pub fn of(mut rows: Vec<(GroupStateKey, EncodedPodRow)>, limit: usize) -> Self {
+		let complete = rows.len() <= limit;
+		rows.truncate(limit);
+		Self {
+			rows,
+			complete,
+		}
+	}
+}
+
+pub fn sweep_order(groups: &[GroupId]) -> Vec<GroupId> {
+	let mut ordered = groups.to_vec();
+	ordered.sort_by_key(|group| Reverse(*group.as_bytes()));
+	ordered.dedup();
+	ordered
 }
 
 pub trait StateStore {
@@ -73,22 +99,41 @@ pub trait StateStore {
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
 
-	fn group_sweep(&mut self, group: GroupId, data_only: bool, limit: Option<usize>) -> Result<Vec<GroupStateKey>> {
-		let mut swept = Vec::new();
-		for id in (u8::MIN..=u8::MAX).rev() {
-			let keyspace = KeyspaceId(id);
-			if data_only && !keyspace.is_data() {
-				continue;
+	fn group_sweep(
+		&mut self,
+		group: GroupId,
+		data_only: bool,
+		limit: Option<usize>,
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		let range = match data_only {
+			true => group_data_inner_range(group),
+			false => group_inner_range(group),
+		};
+		self.state_page_inner(range, limit)
+	}
+
+	fn group_sweep_many(&mut self, groups: &[GroupId], limit: usize) -> Result<GroupSweep> {
+		let mut rows = Vec::new();
+		for group in sweep_order(groups) {
+			if rows.len() > limit {
+				break;
 			}
-			let remaining = match limit {
-				Some(limit) if swept.len() >= limit => break,
-				Some(limit) => Some(limit - swept.len()),
-				None => None,
-			};
-			let page = self.state_page(keyspace_inner_range(group, keyspace), remaining)?;
-			swept.extend(page.into_iter().map(|(key, _)| key));
+			let remaining = limit.saturating_add(1).saturating_sub(rows.len());
+			rows.extend(self.group_sweep(group, false, Some(remaining))?);
 		}
-		Ok(swept)
+		Ok(GroupSweep::of(rows, limit))
+	}
+
+	fn remove_root_siblings(&mut self, swept: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {
+		for (key, row) in swept {
+			let Some(sibling) = root_sibling_of(key, row) else {
+				continue;
+			};
+			if let RootSibling::Derived(sibling) = sibling {
+				self.state_remove(&sibling)?;
+			}
+		}
+		Ok(())
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {

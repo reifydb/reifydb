@@ -3,13 +3,11 @@
 
 use reifydb_value::{
 	Result,
+	error::{AstErrorKind, Error, TypeError},
 	value::{duration::Duration, temporal::parse::duration::parse_duration},
 };
 
-use crate::{
-	diagnostic::AstError,
-	token::token::{Literal, Token, TokenKind},
-};
+use crate::token::token::{Literal, Token, TokenKind};
 
 pub(crate) const FOREVER: &str = "forever";
 
@@ -21,11 +19,7 @@ pub(crate) enum DurationBound {
 
 pub(crate) fn compile_duration(token: &Token<'_>, bound: DurationBound, context: &str) -> Result<Duration> {
 	if token.kind != TokenKind::Literal(Literal::Duration) {
-		return Err(AstError::UnexpectedToken {
-			expected: format!("a bare duration literal such as `2h` for {}", context),
-			fragment: token.fragment.to_owned(),
-		}
-		.into());
+		return Err(invalid_option(token, &format!("a bare duration literal such as `2h` for {}", context)));
 	}
 
 	let duration = parse_duration(token.fragment.to_owned())?;
@@ -35,12 +29,18 @@ pub(crate) fn compile_duration(token: &Token<'_>, bound: DurationBound, context:
 			DurationBound::Positive => format!("a positive duration for {}", context),
 			DurationBound::AllowZero => format!("a non-negative duration for {}", context),
 		};
-		return Err(AstError::UnexpectedToken {
-			expected,
-			fragment: token.fragment.to_owned(),
-		}
-		.into());
+		return Err(invalid_option(token, &expected));
 	}
 
 	Ok(duration)
+}
+
+pub(crate) fn invalid_option(token: &Token<'_>, expected: &str) -> Error {
+	Error::from(TypeError::Ast {
+		kind: AstErrorKind::UnexpectedToken {
+			expected: expected.to_string(),
+		},
+		message: format!("expected {}, found `{}`", expected, token.fragment.text()),
+		fragment: token.fragment.to_owned(),
+	})
 }

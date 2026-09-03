@@ -3531,6 +3531,7 @@ dependencies = [
  "reifydb-testing-macro",
  "reifydb-value",
  "rusqlite",
+ "smallvec",
  "test_each_file",
  "tracing",
 ]

@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use smallvec::SmallVec;
+
 use crate::key::typed::{
 	TypedKey,
 	direction::{Asc, Desc, Direction, KeyScalar},
 };
 
+pub type KeyValues = SmallVec<[KeyValue; 4]>;
+
 pub trait KeyLayout: TypedKey {
 	const COLUMNS: &'static [KeyColumn];
 
-	fn key_values(&self) -> Vec<KeyValue>;
+	fn key_values(&self) -> KeyValues;
 
 	fn from_key_values(values: &[KeyValue]) -> Option<Self>
 	where
@@ -23,8 +27,8 @@ pub trait KeyLayout: TypedKey {
 impl KeyLayout for () {
 	const COLUMNS: &'static [KeyColumn] = &[];
 
-	fn key_values(&self) -> Vec<KeyValue> {
-		Vec::new()
+	fn key_values(&self) -> KeyValues {
+		KeyValues::new()
 	}
 
 	fn from_key_values(values: &[KeyValue]) -> Option<Self> {
@@ -41,8 +45,8 @@ impl<T: KeyScalar> KeyLayout for Asc<T> {
 		direction: Direction::Asc,
 	}];
 
-	fn key_values(&self) -> Vec<KeyValue> {
-		vec![self.0.to_key_value()]
+	fn key_values(&self) -> KeyValues {
+		KeyValues::from_slice(&[self.0.to_key_value()])
 	}
 
 	fn from_key_values(values: &[KeyValue]) -> Option<Self> {
@@ -64,8 +68,8 @@ impl<T: KeyScalar> KeyLayout for Desc<T> {
 		direction: Direction::Desc,
 	}];
 
-	fn key_values(&self) -> Vec<KeyValue> {
-		vec![self.0.to_key_value()]
+	fn key_values(&self) -> KeyValues {
+		KeyValues::from_slice(&[self.0.to_key_value()])
 	}
 
 	fn from_key_values(values: &[KeyValue]) -> Option<Self> {
@@ -92,6 +96,7 @@ pub enum KeyColumnType {
 	U8,
 	U64,
 	Blob16,
+	Blob24,
 }
 
 impl KeyColumnType {
@@ -100,6 +105,7 @@ impl KeyColumnType {
 			Self::U8 => 1,
 			Self::U64 => 8,
 			Self::Blob16 => 16,
+			Self::Blob24 => 24,
 		}
 	}
 }
@@ -109,6 +115,7 @@ pub enum KeyValue {
 	U8(u8),
 	U64(u64),
 	Blob16([u8; 16]),
+	Blob24([u8; 24]),
 }
 
 impl KeyValue {
@@ -117,15 +124,16 @@ impl KeyValue {
 			Self::U8(_) => KeyColumnType::U8,
 			Self::U64(_) => KeyColumnType::U64,
 			Self::Blob16(_) => KeyColumnType::Blob16,
+			Self::Blob24(_) => KeyColumnType::Blob24,
 		}
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::row_number::RowNumber;
+	use reifydb_value::{util::hash::Hash128, value::row_number::RowNumber};
 
-	use super::{KeyColumn, KeyColumnType, KeyLayout, KeyValue};
+	use super::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues};
 	use crate::{
 		key::{
 			operator::state::GroupId,
@@ -261,7 +269,7 @@ mod tests {
 			&[
 				KeyColumn {
 					name: "group",
-					ty: KeyColumnType::Blob16,
+					ty: KeyColumnType::Blob24,
 					direction: Direction::Desc,
 				},
 				KeyColumn {
@@ -274,18 +282,18 @@ mod tests {
 		assert_eq!(
 			JoinLeftKey::low(),
 			JoinLeftKey {
-				group: Desc(GroupId(u128::MAX)),
+				group: Desc(GroupId::MAX),
 				row: Asc(RowNumber(0)),
 			}
 		);
 		let key = JoinLeftKey {
-			group: Desc(GroupId(7)),
+			group: Desc(GroupId::hashed(Hash128(7))),
 			row: Asc(RowNumber(u64::MAX)),
 		};
 		assert_eq!(
 			key.successor(),
 			Some(JoinLeftKey {
-				group: Desc(GroupId(6)),
+				group: Desc(GroupId::hashed(Hash128(6))),
 				row: Asc(RowNumber(0)),
 			})
 		);
@@ -299,7 +307,7 @@ mod tests {
 		assert_eq!(ProbeKey::from_key_values(&values), Some(key));
 
 		let join = JoinLeftKey {
-			group: Desc(GroupId(u128::MAX - 3)),
+			group: Desc(GroupId::hashed(Hash128(u128::MAX - 3))),
 			row: Asc(RowNumber(42)),
 		};
 		assert_eq!(JoinLeftKey::from_key_values(&join.key_values()), Some(join));

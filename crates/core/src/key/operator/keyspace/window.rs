@@ -13,7 +13,7 @@ use crate::{
 		typed::{
 			TypedKey,
 			direction::{Asc, Desc, Direction, KeyField},
-			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue},
+			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues},
 		},
 	},
 	metrics::heap::HeapSize,
@@ -68,6 +68,12 @@ pub struct RowIndexKey {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct WindowMetaKey {
+	pub group: Desc<GroupId>,
+	pub window: Desc<Hash128>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+pub struct WindowMetaSuffix {
 	pub window: Desc<Hash128>,
 }
 
@@ -298,14 +304,22 @@ impl Keyspace for WindowMeta {
 	const CACHE: CacheTiers = CacheTiers::Range;
 
 	type GroupedKey = WindowMetaKey;
-	type Suffix = WindowMetaKey;
+	type Suffix = WindowMetaSuffix;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
-		(GroupId::ROOT, *key)
+		(
+			key.group.0,
+			WindowMetaSuffix {
+				window: key.window,
+			},
+		)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
-		suffix
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
+		WindowMetaKey {
+			group: Desc(group),
+			window: suffix.window,
+		}
 	}
 }
 

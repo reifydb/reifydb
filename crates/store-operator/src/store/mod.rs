@@ -3,7 +3,6 @@
 
 mod census;
 mod checkpoint;
-mod join_expiry;
 mod pager;
 pub mod state;
 #[cfg(test)]
@@ -14,7 +13,6 @@ use std::sync::OnceLock;
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::{common::CommitVersion, lifecycle::watermark::CheckpointFloor, metrics::collect::MetricsCollector};
-use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_runtime::{
 	actor::{
 		mailbox::ActorRef,
@@ -184,10 +182,6 @@ impl StandardOperatorStore {
 		self.persistent.as_ref().map(OperatorPersistentTier::page_cache_metrics)
 	}
 
-	pub fn persistent_join_expiry_filter_metrics(&self) -> Option<FilterMetrics> {
-		self.persistent.as_ref().map(|tier| tier.join_expiry_filter().metrics())
-	}
-
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		let mut collectors =
 			self.persistent.as_ref().map(OperatorPersistentTier::metrics_collectors).unwrap_or_default();
@@ -294,12 +288,6 @@ impl OperatorStore {
 	pub fn persistent_page_cache_metrics(&self) -> Option<PageCacheMetrics> {
 		match self {
 			Self::Standard(store) => store.persistent_page_cache_metrics(),
-		}
-	}
-
-	pub fn persistent_join_expiry_filter_metrics(&self) -> Option<FilterMetrics> {
-		match self {
-			Self::Standard(store) => store.persistent_join_expiry_filter_metrics(),
 		}
 	}
 

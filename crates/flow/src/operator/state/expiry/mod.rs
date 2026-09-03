@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	key::{
 		operator::{
-			keyspace::expiry::{Expiry, ExpiryKey, TumblingExpiry, TumblingExpiryKey},
+			keyspace::expiry::{Expiry, ExpiryKey, TumblingExpiry, TumblingExpirySuffix},
 			state::{GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range},
 			traits::Keyspace,
 		},
@@ -41,7 +41,7 @@ pub(crate) fn rolling_expiry_key(threshold: u64, owner: Hash128) -> GroupStateKe
 pub(crate) fn tumbling_expiry_key(threshold: u64, owner: Hash128, window_start: u64) -> GroupStateKey {
 	typed_key::<TumblingExpiry>(
 		GroupId::ROOT,
-		&TumblingExpiryKey {
+		&TumblingExpirySuffix {
 			threshold: Desc(threshold),
 			owner: Desc(owner),
 			window_start: Desc(window_start),
@@ -68,7 +68,7 @@ impl ExpirySuffix for ExpiryKey {
 	}
 }
 
-impl ExpirySuffix for TumblingExpiryKey {
+impl ExpirySuffix for TumblingExpirySuffix {
 	fn at_threshold(threshold: u64) -> Self {
 		Self {
 			threshold: Desc(threshold),
@@ -88,6 +88,20 @@ pub(crate) fn expiry_set<E: OperatorState>(store: &mut dyn StateStore, key: Grou
 
 pub(crate) fn expiry_drop(store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
 	store.state_remove(key)
+}
+
+#[cfg(reifydb_assertions)]
+pub(crate) fn expiry_all<K, E>(store: &mut dyn StateStore) -> Result<Vec<E>>
+where
+	K: Keyspace,
+	K::Suffix: ExpirySuffix,
+	E: OperatorState,
+{
+	let mut out = Vec::new();
+	for (_, payload) in store.state_page(expiry_range::<K>(), None)? {
+		out.push(decode::<E>(&payload)?);
+	}
+	Ok(out)
 }
 
 #[instrument(name = "flow::seal::expiry_due", level = "debug", skip_all)]
@@ -120,7 +134,7 @@ where
 		return Ok(None);
 	};
 	let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_bytes()).expect("an expiry key must decode");
-	Ok(K::Suffix::from_suffix_bytes(&suffix).map(|suffix| suffix.threshold()))
+	Ok(K::Suffix::from_suffix_bytes(suffix).map(|suffix| suffix.threshold()))
 }
 
 fn expiry_of<K>(key: &GroupStateKey) -> u64
@@ -129,7 +143,7 @@ where
 	K::Suffix: ExpirySuffix,
 {
 	let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_bytes()).expect("expiry key must decode");
-	K::Suffix::from_suffix_bytes(&suffix)
+	K::Suffix::from_suffix_bytes(suffix)
 		.expect("an expiry key must carry every column its keyspace declares")
 		.threshold()
 }

@@ -9,6 +9,7 @@ use reifydb_core::{
 		object::ObjectId,
 		series::SeriesKey,
 	},
+	row::JoinPick,
 	sort::SortKey,
 };
 use reifydb_value::value::duration::Duration;
@@ -56,7 +57,7 @@ pub enum OperatorDef {
 		#[serde(default)]
 		natural: bool,
 		#[serde(default)]
-		latest: bool,
+		pick: Option<JoinPick>,
 	},
 	Aggregate {
 		by: Vec<Expression>,
@@ -402,7 +403,7 @@ mod tests {
 			alias: None,
 			snapshot: false,
 			natural: false,
-			latest: false,
+			pick: None,
 		}
 	}
 

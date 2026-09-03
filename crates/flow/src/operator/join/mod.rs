@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod column;
+pub(crate) mod expiry;
 pub mod operator;
 pub(crate) mod snapshot;
 pub mod state;

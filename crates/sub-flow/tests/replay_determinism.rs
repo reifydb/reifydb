@@ -551,7 +551,7 @@ mod join {
 				engine.executor().runtime_context.clone(),
 				false,
 				false,
-				false,
+				None,
 				None,
 				None,
 				Arc::new(FlowContext::default()),

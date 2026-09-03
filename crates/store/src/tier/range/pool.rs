@@ -36,6 +36,8 @@ impl<D: RangeDomain> RangeTier<D> {
 				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
+				coverage_bytes: config.coverage_bytes.unwrap_or(shard_bytes).as_bytes(),
+				coverage_intervals: config.coverage_intervals,
 				#[cfg(test)]
 				interlock: None,
 				#[cfg(test)]
@@ -53,6 +55,8 @@ impl<D: RangeDomain> RangeTier<D> {
 				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
+				coverage_bytes: config.coverage_bytes.unwrap_or(shard_bytes).as_bytes(),
+				coverage_intervals: config.coverage_intervals,
 				interlock: Some(interlock),
 				serve_interlock: None,
 			}),
@@ -68,6 +72,8 @@ impl<D: RangeDomain> RangeTier<D> {
 				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
+				coverage_bytes: config.coverage_bytes.unwrap_or(shard_bytes).as_bytes(),
+				coverage_intervals: config.coverage_intervals,
 				interlock: None,
 				serve_interlock: Some(interlock),
 			}),
@@ -109,6 +115,16 @@ impl<D: RangeDomain> RangeTier<D> {
 
 	pub(super) fn retractions_unchanged(&self, token: u64) -> bool {
 		self.inner.retractions.unchanged(token)
+	}
+
+	pub(super) fn enforce_coverage_limits(
+		&self,
+		coverage: &mut CoverageIndex<D::Dimension, D::Key>,
+		dimension: D::Dimension,
+	) {
+		if coverage.enforce_limits(dimension, self.inner.coverage_intervals, self.inner.coverage_bytes) {
+			self.record_retraction();
+		}
 	}
 
 	pub(super) fn record_retraction(&self) {
@@ -156,7 +172,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		let (start, end) = D::span(victim);
 		let mut coverage = self.coverage().write();
 		if let Some(start) = start.lowest() {
-			coverage.shrink_range(D::dimension(victim), &start, &end);
+			coverage.drop_overlapping(D::dimension(victim), &start, &end);
 		}
 		self.record_retraction();
 	}
@@ -329,6 +345,10 @@ impl<D: RangeDomain> RangeTier<D> {
 			.collect()
 	}
 
+	pub fn coverage_bytes(&self) -> ByteSize {
+		ByteSize::from_bytes(self.coverage().read().bytes())
+	}
+
 	pub fn gap_histogram(&self) -> GapHistogram {
 		let mut merged = GapHistogram::new();
 		for shard in self.all_shards() {
@@ -354,6 +374,7 @@ impl<D: RangeDomain> MetricsCollector for RangeTier<D> {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
 		let counters = self.metrics();
 		out.push(MetricsSample::heap(D::SCOPE, "resident_bytes", self.resident_bytes()));
+		out.push(MetricsSample::heap(D::SCOPE, "coverage_bytes", self.coverage_bytes()));
 		out.push(MetricsSample::count(D::SCOPE, "resident_intervals", self.intervals() as u64));
 		out.push(MetricsSample::count(D::SCOPE, "resident_partitions", self.partitions() as u64));
 		out.push(MetricsSample::count(D::SCOPE, "resident_entries", self.entries() as u64));
@@ -365,6 +386,7 @@ impl<D: RangeDomain> MetricsCollector for RangeTier<D> {
 		out.push(MetricsSample::counter(D::SCOPE, "materializes_raced", counters.materializes_raced));
 		out.push(MetricsSample::counter(D::SCOPE, "evictions", counters.evictions));
 		out.push(MetricsSample::counter(D::SCOPE, "point_hits", counters.point_hits));
+		out.push(MetricsSample::counter(D::SCOPE, "point_absences", counters.point_absences));
 		out.push(MetricsSample::counter(D::SCOPE, "point_misses", counters.point_misses));
 		out.push(MetricsSample::bytes(D::SCOPE, "shard_limit_bytes", self.shard_limit_bytes()));
 		for (index, shard) in self.inner.shards.iter().enumerate() {
@@ -385,6 +407,11 @@ impl<D: RangeDomain> MetricsCollector for RangeTier<D> {
 			out.push(MetricsSample::counter(scope.clone(), "materializes", keyspace.counters.materializes));
 			out.push(MetricsSample::counter(scope.clone(), "evictions", keyspace.counters.evictions));
 			out.push(MetricsSample::counter(scope.clone(), "point_hits", keyspace.counters.point_hits));
+			out.push(MetricsSample::counter(
+				scope.clone(),
+				"point_absences",
+				keyspace.counters.point_absences,
+			));
 			out.push(MetricsSample::counter(scope, "point_misses", keyspace.counters.point_misses));
 		}
 		let gaps = self.gap_histogram();
@@ -408,6 +435,7 @@ fn accumulate(target: &mut RangeMetrics, source: &RangeMetrics) {
 	target.materializes_raced += source.materializes_raced;
 	target.evictions += source.evictions;
 	target.point_hits += source.point_hits;
+	target.point_absences += source.point_absences;
 	target.point_misses += source.point_misses;
 }
 
@@ -450,7 +478,7 @@ mod tests {
 		},
 		util::sorted::SortedVecMap,
 	};
-	use reifydb_value::{byte_size::ByteSize, count::Count};
+	use reifydb_value::{byte_size::ByteSize, count::Count, util::hash::Hash128};
 
 	use crate::{
 		coverage::{
@@ -459,7 +487,7 @@ mod tests {
 			plan::{DEFAULT_GAP_GUARD, ScanPlan},
 		},
 		tier::range::{
-			Partition, RangeConfig, RangeTier, Shard,
+			DEFAULT_COVERAGE_INTERVALS, Partition, RangeConfig, RangeTier, Shard,
 			domain::{TestDomain as D, TestPartition},
 			entry_footprint, partition_overhead,
 		},
@@ -468,13 +496,17 @@ mod tests {
 	const PARTITION_OVERHEAD: usize = partition_overhead::<D>();
 
 	const OP_A: OperatorId = OperatorId(1);
-	const GROUP_A: GroupId = GroupId(10);
+	fn group_a() -> GroupId {
+		GroupId::hashed(Hash128(10))
+	}
 
 	fn config(limit_bytes: u64, shards: usize) -> RangeConfig {
 		RangeConfig {
 			shard_bytes: Some(ByteSize::from_bytes(limit_bytes)),
 			shards,
 			gap_guard: DEFAULT_GAP_GUARD,
+			coverage_bytes: None,
+			coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 		}
 	}
 
@@ -487,7 +519,7 @@ mod tests {
 	}
 
 	fn key(keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKey {
-		OperatorStateKey::inner_encoded(GROUP_A, keyspace, suffix).into_encoded()
+		OperatorStateKey::inner_encoded(group_a(), keyspace, suffix).into_encoded()
 	}
 
 	fn row(body: &str) -> EncodedPodRow {
@@ -497,7 +529,7 @@ mod tests {
 	fn part(keyspace: KeyspaceId) -> TestPartition {
 		TestPartition {
 			dimension: OP_A,
-			group: GROUP_A,
+			group: group_a(),
 			keyspace,
 		}
 	}
@@ -695,8 +727,10 @@ mod tests {
 	}
 
 	#[test]
-	fn eviction_splits_a_claim_that_coalesced_across_two_partitions() {
-		// A coalesced claim must split on eviction, or it covers the evicted partition or loses the survivor.
+	fn eviction_drops_the_claim_that_coalesced_across_two_partitions() {
+		// A coalesced claim goes whole on eviction, never splits: splitting adds one interval per
+		// eviction and the index then grows without bound. The survivor keeps answering from ram
+		// and only forfeits its proven-absence claim until the next scan re-claims the span.
 		let cold = key(KeyspaceId::ACCUMULATOR, b"a");
 		let hot = key(KeyspaceId::BUFFER, b"b");
 		let cold_rows = vec![(cold.clone(), Entry::row(row("v")))];
@@ -709,11 +743,10 @@ mod tests {
 
 		tier.evict_to_capacity(0);
 
-		let (start, end) = part(KeyspaceId::BUFFER).span();
-		let start = start.lowest().expect("a partition span starts at a key");
-		assert_eq!(claims(&tier), vec![Interval::new(start, end)], "only the survivor stays claimed");
+		assert!(claims(&tier).is_empty(), "the coalesced claim must go whole");
+		assert!(tier.intervals() <= 1, "retraction must never raise the interval count");
 		assert_eq!(probe(&tier, &cold), None, "the evicted partition falls through");
-		assert_eq!(probe(&tier, &hot), Some(Some(row("v"))), "the survivor still answers");
+		assert_eq!(probe(&tier, &hot), Some(Some(row("v"))), "the survivor still answers from ram");
 	}
 
 	#[test]

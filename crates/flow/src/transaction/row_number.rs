@@ -21,7 +21,7 @@ use reifydb_core::{
 		operator::{
 			keyspace::{
 				join::{JoinRowMapping, JoinRowMappingKey},
-				root::{GroupRowMapping, GuestRowMapping, GuestRowMappingKey},
+				root::{GroupRowMapping, GuestRowMapping, GuestRowMappingSuffix},
 			},
 			state::{GroupId, GroupStateKey, OperatorStateKey, row_number_counter_key},
 		},
@@ -69,7 +69,7 @@ pub fn guest_mapping_key(group: GroupId, key: &EncodedKey) -> Result<GroupStateK
 	id[..bytes.len()].copy_from_slice(bytes);
 	Ok(typed_key::<GuestRowMapping>(
 		group,
-		&GuestRowMappingKey {
+		&GuestRowMappingSuffix {
 			id: Asc(id),
 		},
 	))

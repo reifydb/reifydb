@@ -317,10 +317,11 @@ impl GateOperator {
 mod tests {
 	use std::ops::Bound;
 
+	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::key::operator::state::{
-		GroupId, IntoGroupStateKey, KeyspaceId, OperatorStateKey, group_inner_range,
+		GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey, group_inner_range,
 	};
-	use reifydb_value::value::row_number::RowNumber;
+	use reifydb_value::{util::hash::Hash128, value::row_number::RowNumber};
 
 	use super::VisibilityKey;
 
@@ -337,26 +338,52 @@ mod tests {
 		assert_eq!(suffix, 42u64.to_be_bytes().to_vec());
 	}
 
+	fn falls_inside(key: &GroupStateKey, range: &EncodedKeyRange) -> bool {
+		let after_start = match &range.start {
+			Bound::Included(s) => key.as_bytes() >= s.as_bytes(),
+			Bound::Excluded(s) => key.as_bytes() > s.as_bytes(),
+			Bound::Unbounded => true,
+		};
+		let before_end = match &range.end {
+			Bound::Included(e) => key.as_bytes() <= e.as_bytes(),
+			Bound::Excluded(e) => key.as_bytes() < e.as_bytes(),
+			Bound::Unbounded => true,
+		};
+		after_start && before_end
+	}
+
 	#[test]
-	fn a_visibility_key_sits_outside_the_group_range_that_used_to_alias_it() {
-		// Group 14591's inner prefix is exactly [0x47, 0x00], which every b'G'-tagged marker
-		// below 2^56 shares. The tier boundaries either side are checked too, so a change to the
-		// group encoding cannot quietly re-create the overlap.
+	fn a_visibility_key_sits_outside_every_reclaimable_groups_range() {
+		// A marker caught inside any group's range dies when that group is reclaimed, so no hash may yield a
+		// range that swallows it.
 		let key = (&VisibilityKey(RowNumber(42))).into_group_state_key();
 
-		for group in [1u128, 127, 128, 14_336, 14_591, 16_383, 16_384] {
-			let range = group_inner_range(GroupId(group));
-			let start = match &range.start {
-				Bound::Included(s) => key.as_bytes() >= s.as_bytes(),
-				Bound::Excluded(s) => key.as_bytes() > s.as_bytes(),
-				Bound::Unbounded => true,
-			};
-			let end = match &range.end {
-				Bound::Included(e) => key.as_bytes() <= e.as_bytes(),
-				Bound::Excluded(e) => key.as_bytes() < e.as_bytes(),
-				Bound::Unbounded => true,
-			};
-			assert!(!(start && end), "a visibility marker must not fall inside the range of group {group}");
+		for exponent in 0..128u32 {
+			for hash in [1u128 << exponent, (1u128 << exponent).wrapping_sub(1), !(1u128 << exponent)] {
+				let group = GroupId::hashed(Hash128(hash));
+				assert!(
+					!falls_inside(&key, &group_inner_range(group)),
+					"a visibility marker must not fall inside the range of group {group}"
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn a_visibility_key_sits_outside_every_window_groups_range() {
+		// Window groups lead with a different field than hashed ones, so the marker must be unreachable from
+		// every window id too.
+		let key = (&VisibilityKey(RowNumber(42))).into_group_state_key();
+
+		for exponent in 0..64u32 {
+			let window_id = 1u64 << exponent;
+			for partition in [Hash128(0), Hash128(1), Hash128(u128::MAX)] {
+				let group = GroupId::window(partition, window_id);
+				assert!(
+					!falls_inside(&key, &group_inner_range(group)),
+					"a visibility marker must not fall inside the range of group {group}"
+				);
+			}
 		}
 	}
 }

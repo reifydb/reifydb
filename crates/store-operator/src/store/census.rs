@@ -10,7 +10,7 @@ use tracing::instrument;
 
 use crate::{
 	store::{OperatorStore, StandardOperatorStore},
-	types::{OperatorStateCensus, StoredJoinRowExpiryCensus},
+	types::OperatorStateCensus,
 };
 
 impl StandardOperatorStore {
@@ -47,22 +47,6 @@ impl StandardOperatorStore {
 		}
 		merged.into_values().collect()
 	}
-
-	#[instrument(name = "store::operator::join_expiry_census", level = "debug", skip(self))]
-	pub fn join_expiry_census(&self) -> Vec<StoredJoinRowExpiryCensus> {
-		let durable =
-			self.persistent.as_ref().map(|persistent| persistent.join_expiry_census()).unwrap_or_default();
-		let mut merged: BTreeMap<OperatorId, u64> = BTreeMap::new();
-		for entry in durable.into_iter().chain(self.resident.join_expiry_census()) {
-			*merged.entry(entry.operator).or_insert(0) += entry.keys;
-		}
-		merged.into_iter()
-			.map(|(operator, keys)| StoredJoinRowExpiryCensus {
-				operator,
-				keys,
-			})
-			.collect()
-	}
 }
 
 impl OperatorStore {
@@ -81,12 +65,6 @@ impl OperatorStore {
 	pub fn census(&self) -> Vec<OperatorStateCensus> {
 		match self {
 			Self::Standard(store) => store.census(),
-		}
-	}
-
-	pub fn join_expiry_census(&self) -> Vec<StoredJoinRowExpiryCensus> {
-		match self {
-			Self::Standard(store) => store.join_expiry_census(),
 		}
 	}
 }

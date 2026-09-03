@@ -19,6 +19,7 @@ use reifydb_core::{
 		series::{StoragePartitionedSeriesKey, StorageSeriesKey},
 		typed::MultiKey,
 	},
+	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
 use reifydb_store::tier::{
 	point::{PointConfig, PointDomain, PointMetrics, PointTier, pool::shard_budgets},
@@ -1050,5 +1051,15 @@ mod tests {
 			),
 			"invalidating table a must not evict table b's entry sharing the same bytes"
 		);
+	}
+}
+
+impl MetricsCollector for MultiPointTier {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		self.blob.collect(out);
+		self.row.collect(out);
+		self.partitioned.collect(out);
+		self.series.collect(out);
+		self.partitioned_series.collect(out);
 	}
 }

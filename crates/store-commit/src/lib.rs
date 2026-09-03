@@ -120,19 +120,8 @@ impl ScannedStop for RangeStop {
 	}
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct HistoricalCursor {
-	pub last_key: Option<EncodedKey>,
-	pub last_version: Option<CommitVersion>,
-	pub exhausted: bool,
-}
-
-impl HistoricalCursor {
-	pub fn new() -> Self {
-		Self::default()
-	}
-
-	pub fn is_exhausted(&self) -> bool {
-		self.exhausted
-	}
+#[derive(Debug, Default)]
+pub struct HistoricalSweep {
+	pub entries: Vec<(EncodedKey, CommitVersion)>,
+	pub remaining: u64,
 }

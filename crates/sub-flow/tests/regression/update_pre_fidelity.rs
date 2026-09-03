@@ -298,6 +298,7 @@ mod join {
 			catalog::flow::OperatorId,
 			change::{Change, ChangeOrigin, Diff},
 		},
+		row::JoinPick,
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
 	use reifydb_flow::{
@@ -418,7 +419,7 @@ mod join {
 			engine.executor().runtime_context.clone(),
 			snapshot,
 			false,
-			latest,
+			latest.then(|| JoinPick::latest()),
 			None,
 			None,
 			Arc::new(FlowContext::default()),

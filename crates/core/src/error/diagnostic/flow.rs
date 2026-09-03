@@ -220,6 +220,27 @@ pub fn flow_unsupported_aggregate_expression(output: &str) -> Diagnostic {
 	}
 }
 
+pub fn flow_window_span_unavailable(output: &str, kind: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_015".to_string(),
+		rql: None,
+		message: format!(
+			"aggregate output '{}' needs a window boundary, but a {} window has none",
+			output, kind
+		),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("window::start, window::end and window::duration are available on tumbling, sliding \
+			and session windows sized by a duration. A rolling window and a window sized by a row \
+			count have no boundary; window::last works on every window kind."
+			.to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn flow_supervisor_stopped() -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_020".to_string(),
@@ -444,25 +465,6 @@ pub fn flow_rolling_lag_requires_event_time(flow: &str) -> Diagnostic {
 			 object this flow reads, or remove the lag."
 				.to_string(),
 		),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn flow_join_right_retention_conflicts_with_flag(flow: &str, flag: &str) -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_048".to_string(),
-		rql: None,
-		message: format!("{flow} declares a right-side join retention alongside `{flag}: true`"),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some(format!(
-			"`{flag}` makes the right side of the join outlive the left rows that read it, so a right \
-			 retention could never take effect. Remove `right` from the retention and keep sealing the left \
-			 side, or drop `{flag}: true`."
-		)),
 		notes: vec![],
 		cause: None,
 		operator_chain: None,

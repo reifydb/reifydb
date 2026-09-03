@@ -14,9 +14,13 @@ use reifydb_core::{
 	interface::catalog::{flow::OperatorId, id::TableId, storage::StorageId},
 	key::{
 		EncodableKey,
-		operator::state::{GroupStateKey, OperatorStateKey, custom_not_cached_key},
+		operator::state::{
+			GroupId, GroupStateKey, OperatorStateKey, custom_not_cached_key, custom_not_cached_key_in,
+			group_inner_range,
+		},
 		row::RowKey,
 	},
+	state::timer::sweep_order,
 };
 use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,
@@ -30,6 +34,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	byte_size::ByteSize,
+	util::hash::Hash128,
 	value::{identity::IdentityId, row_number::RowNumber},
 };
 
@@ -53,6 +58,16 @@ fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey
 		},
 	};
 	store.apply_batch(&[write]);
+}
+
+fn seed_state_tombstone(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey) {
+	// A remove of a key the persistent tier never held leaves a masking entry in the resident map. Those pages
+	// come back full and carry no rows, which is what makes a scan believe it has reached the end.
+	engine.inner().operator_state().apply_batch(&[OperatorWrite::Remove {
+		operator,
+		key: EncodedKey::new(key.as_slice()),
+		pre: DurablePre::Absent,
+	}]);
 }
 
 fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
@@ -629,6 +644,42 @@ fn a_pending_remove_hides_the_stored_row_it_deleted_from_the_last_read() {
 }
 
 #[test]
+fn a_last_read_walks_past_more_pending_removes_than_one_page_holds() {
+	// The overlay now pulls pending writes in pages from the greatest key down instead of collecting the
+	// whole range. A page boundary the walk does not step past either repeats the same page forever or
+	// stops on a key it already suppressed, which reports a removed row as the range's last one.
+	let engine = TestEngine::new();
+	let operator = OperatorId(1);
+	let names: Vec<String> = (0..=65).map(|n| format!("k{n:03}")).collect();
+	for name in &names {
+		seed_state_row(&engine, operator, &make_key(name), make_value("row"));
+	}
+	let range = || {
+		EncodedKeyRange::new(
+			Bound::Included(make_key("k000").into_encoded()),
+			Bound::Included(make_key("k999").into_encoded()),
+		)
+	};
+
+	let mut txn = deferred_shared(&engine);
+	assert_eq!(
+		txn.state_last(operator, range()).unwrap().map(|r| r.key),
+		Some(full_key(operator, &make_key("k065"))),
+		"the greatest seeded row must answer before anything is removed"
+	);
+
+	for name in &names[1..] {
+		txn.state_remove(operator, &make_key(name)).unwrap();
+	}
+
+	assert_eq!(
+		txn.state_last(operator, range()).unwrap().map(|r| r.key),
+		Some(full_key(operator, &make_key("k000"))),
+		"65 pending removes outrun a 64 key page, so the walk must cross the boundary to reach the row below them"
+	);
+}
+
+#[test]
 fn a_deferred_state_write_still_classifies_against_the_durable_pre_image() {
 	// The write path no longer reads a pre-image; classify_pending resolves every unclassified key in one
 	// batch at drain. A key that is already durable must still emit Replace carrying its exact byte size,
@@ -739,4 +790,99 @@ fn clearing_state_claims_a_pre_image_only_for_the_keys_the_store_actually_holds(
 		DurablePre::Absent,
 		"a key that exists only as this transaction's own write must never be removed as Present"
 	);
+}
+
+#[test]
+fn a_state_range_whose_head_is_all_tombstones_still_reaches_the_row_behind_them() {
+	// The store caps how far one page walks and answers with no rows plus a resume point. A scan that reads an
+	// empty page as the end of the range silently drops every row sitting behind the graveyard, and a short
+	// answer is indistinguishable from a correct one at the caller.
+	let engine = TestEngine::new();
+	let operator = OperatorId(1);
+	for index in 0..64 {
+		seed_state_tombstone(&engine, operator, &make_key(&format!("a{index:03}")));
+	}
+	seed_state_row(&engine, operator, &make_key("zzzz"), make_value("behind"));
+
+	let mut txn = deferred_shared(&engine);
+	let range = EncodedKeyRange::new(
+		Bound::Included(make_key("a000").into_encoded()),
+		Bound::Included(make_key("zzzz").into_encoded()),
+	);
+	let batch = txn.state_range(operator, StateRange::forward(range, "test").limit(1)).unwrap();
+
+	assert_eq!(
+		batch.items.len(),
+		1,
+		"the row behind the tombstone run must survive a scan that had to stop and resume to reach it"
+	);
+}
+
+fn grouped_key(group: GroupId, name: &str) -> GroupStateKey {
+	custom_not_cached_key_in(group, name.as_bytes()).expect("a fixture name must fit the keyspace's id width")
+}
+
+#[test]
+fn a_group_range_answers_exactly_what_the_per_group_ranges_answer() {
+	// This read replaces one state_range per group with one call for the whole set. If the two disagree
+	// on rows or on order the reaper spends its budget on a different set than it used to, and a group
+	// it believes it finished can still hold state.
+	let (parent, operators) = create_test_transaction();
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+		&parent,
+		operators,
+		CommitVersion(1),
+		Catalog::testing(),
+		Interceptors::new(),
+		Clock::Mock(MockClock::from_millis(1000)),
+	));
+	let operator = OperatorId(1);
+	let groups: Vec<GroupId> = (1..=3u128).map(|i| GroupId::hashed(Hash128(i))).collect();
+	for group in &groups {
+		for suffix in ["a", "b"] {
+			txn.state_set(operator, &grouped_key(*group, suffix), make_value(suffix)).unwrap();
+		}
+	}
+
+	let batched: Vec<EncodedKey> =
+		txn.state_group_range(operator, &groups, 64).unwrap().items.into_iter().map(|row| row.key).collect();
+
+	let mut expected: Vec<EncodedKey> = Vec::new();
+	for group in sweep_order(&groups) {
+		let range = group_inner_range(group);
+		let batch = txn.state_range(operator, StateRange::forward(range, "test")).unwrap();
+		expected.extend(batch.items.into_iter().map(|row| row.key));
+	}
+
+	assert_eq!(batched.len(), 6, "two rows in each of the three groups");
+	assert_eq!(batched, expected, "the batched read must match the per-group reads row for row and in order");
+}
+
+#[test]
+fn a_group_range_honours_a_pending_write_that_storage_has_never_seen() {
+	// The batched read merges pending over one storage page instead of per group. A pending remove that
+	// the merge drops would resurrect a reaped row, and a pending insert it misses would be orphaned.
+	let (parent, operators) = create_test_transaction();
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+		&parent,
+		operators,
+		CommitVersion(1),
+		Catalog::testing(),
+		Interceptors::new(),
+		Clock::Mock(MockClock::from_millis(1000)),
+	));
+	let operator = OperatorId(1);
+	let groups: Vec<GroupId> = (1..=2u128).map(|i| GroupId::hashed(Hash128(i))).collect();
+	let doomed = grouped_key(groups[0], "a");
+	let added = grouped_key(groups[1], "b");
+	txn.state_set(operator, &doomed, make_value("1")).unwrap();
+	txn.state_set(operator, &grouped_key(groups[1], "a"), make_value("2")).unwrap();
+	txn.state_remove(operator, &doomed).unwrap();
+	txn.state_set(operator, &added, make_value("3")).unwrap();
+
+	let keys: Vec<EncodedKey> =
+		txn.state_group_range(operator, &groups, 64).unwrap().items.into_iter().map(|row| row.key).collect();
+
+	assert!(!keys.contains(&full_key(operator, &doomed)), "a pending remove must not come back from storage");
+	assert!(keys.contains(&full_key(operator, &added)), "a pending insert must be visible to the batched read");
 }

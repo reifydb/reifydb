@@ -4,11 +4,14 @@
 use std::ops::Bound;
 
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_value::Result;
+use reifydb_value::{Result, reifydb_assertions};
 
+#[cfg(reifydb_assertions)]
+use crate::key::operator::traits::group_scoped;
 use crate::{
 	key::{
 		operator::{
+			keyspace::columns_width,
 			state::{GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range},
 			traits::Keyspace,
 		},
@@ -32,9 +35,9 @@ pub trait SuffixBytes: TypedKey {
 impl<T: KeyLayout> SuffixBytes for T {
 	fn to_suffix_bytes(&self) -> Vec<u8> {
 		let values = self.key_values();
-		let mut out = Vec::new();
+		let mut out = Vec::with_capacity(columns_width(T::COLUMNS));
 		for (value, column) in values.iter().zip(T::COLUMNS) {
-			out.extend_from_slice(&key_value_bytes(*value, column.direction));
+			push_key_value(&mut out, *value, column.direction);
 		}
 		out
 	}
@@ -58,37 +61,76 @@ impl<T: KeyLayout> SuffixBytes for T {
 	}
 }
 
-fn key_value_bytes(value: KeyValue, direction: Direction) -> Vec<u8> {
-	let mut bytes = match value {
-		KeyValue::U8(v) => vec![v],
-		KeyValue::U64(v) => v.to_be_bytes().to_vec(),
-		KeyValue::Blob16(v) => v.to_vec(),
-	};
+fn push_key_value(out: &mut Vec<u8>, value: KeyValue, direction: Direction) {
+	let start = out.len();
+	match value {
+		KeyValue::U8(v) => out.push(v),
+		KeyValue::U64(v) => out.extend_from_slice(&v.to_be_bytes()),
+		KeyValue::Blob16(v) => out.extend_from_slice(&v),
+		KeyValue::Blob24(v) => out.extend_from_slice(&v),
+	}
 	if direction == Direction::Desc {
-		for byte in &mut bytes {
+		for byte in &mut out[start..] {
 			*byte = !*byte;
 		}
 	}
-	bytes
 }
 
 fn key_value_from_bytes(ty: KeyColumnType, direction: Direction, bytes: &[u8]) -> Option<KeyValue> {
-	let mut owned = bytes.to_vec();
-	if direction == Direction::Desc {
-		for byte in &mut owned {
-			*byte = !*byte;
+	let flipped = direction == Direction::Desc;
+	let at = |index: usize| {
+		if flipped {
+			!bytes[index]
+		} else {
+			bytes[index]
 		}
-	}
+	};
 	match ty {
-		KeyColumnType::U8 => (owned.len() == 1).then(|| KeyValue::U8(owned[0])),
+		KeyColumnType::U8 => (bytes.len() == 1).then(|| KeyValue::U8(at(0))),
 		KeyColumnType::U64 => {
-			<[u8; 8]>::try_from(owned.as_slice()).ok().map(|b| KeyValue::U64(u64::from_be_bytes(b)))
+			let mut out = [0u8; 8];
+			if bytes.len() != out.len() {
+				return None;
+			}
+			for (index, byte) in out.iter_mut().enumerate() {
+				*byte = at(index);
+			}
+			Some(KeyValue::U64(u64::from_be_bytes(out)))
 		}
-		KeyColumnType::Blob16 => <[u8; 16]>::try_from(owned.as_slice()).ok().map(KeyValue::Blob16),
+		KeyColumnType::Blob16 => {
+			let mut out = [0u8; 16];
+			if bytes.len() != out.len() {
+				return None;
+			}
+			for (index, byte) in out.iter_mut().enumerate() {
+				*byte = at(index);
+			}
+			Some(KeyValue::Blob16(out))
+		}
+		KeyColumnType::Blob24 => {
+			let mut out = [0u8; 24];
+			if bytes.len() != out.len() {
+				return None;
+			}
+			for (index, byte) in out.iter_mut().enumerate() {
+				*byte = at(index);
+			}
+			Some(KeyValue::Blob24(out))
+		}
 	}
 }
 
 pub fn typed_key<K: Keyspace>(group: GroupId, suffix: &K::Suffix) -> GroupStateKey {
+	reifydb_assertions! {
+		assert!(
+			group == GroupId::ROOT || const { group_scoped::<K>() },
+			"{} is not group-scoped but was written at group {}: the persistent tier rebuilds the \
+			 key through the typed layout, so this row reads back stamped ROOT and collides with every \
+			 other group holding the same suffix",
+			K::NAME,
+			group
+		);
+	}
 	OperatorStateKey::inner_encoded(group, K::ID, suffix.to_suffix_bytes())
 }
 
@@ -156,7 +198,7 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 		for (key, row) in self.state_page(range, limit)? {
 			let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_slice())
 				.expect("a group state key must decode as its own framing");
-			let suffix = <K::Suffix as SuffixBytes>::from_suffix_bytes(&suffix)
+			let suffix = <K::Suffix as SuffixBytes>::from_suffix_bytes(suffix)
 				.expect("a stored suffix must decode as the keyspace's own suffix type");
 			out.push((suffix, row));
 		}
@@ -173,7 +215,7 @@ mod tests {
 	use crate::key::{
 		operator::{
 			keyspace::{
-				expiry::{Expiry, ExpiryKey, TumblingExpiry, TumblingExpiryKey},
+				expiry::{Expiry, ExpiryKey, TumblingExpiry, TumblingExpirySuffix},
 				join::{JoinLeft, JoinRight},
 			},
 			state::{GroupId, KeyspaceId, OperatorStateKey},
@@ -181,6 +223,36 @@ mod tests {
 		},
 		typed::direction::{Asc, Desc},
 	};
+
+	#[test]
+	#[cfg(reifydb_assertions)]
+	#[should_panic(expected = "is not group-scoped but was written at group")]
+	fn a_root_only_keyspace_written_at_a_real_group_is_refused() {
+		// a keyspace with no group column reads every row back stamped ROOT, so one group's sweep reaps
+		// another's rows and the rows it really holds are never named; nothing statically bounds which
+		// groups a writer passes, so the refusal has to happen at the write itself
+		typed_key::<Expiry>(
+			GroupId::hashed(Hash128(1)),
+			&ExpiryKey {
+				threshold: Desc(1),
+				owner: Desc(Hash128(2)),
+			},
+		);
+	}
+
+	#[test]
+	fn a_group_scoped_keyspace_still_accepts_a_real_group() {
+		// the guard must stay silent for keyspaces that do carry the column, or every group-scoped write
+		// panics the moment assertions are compiled in
+		let key = typed_key::<JoinLeft>(GroupId::hashed(Hash128(1)), &Asc(RowNumber(5)));
+		let (group, _, _) = OperatorStateKey::decode_inner(key.as_slice())
+			.expect("a group state key must decode as its own framing");
+		assert_eq!(
+			group,
+			GroupId::hashed(Hash128(1)),
+			"a group-scoped keyspace must keep the group it was written at"
+		);
+	}
 
 	#[test]
 	fn a_multi_column_expiry_suffix_matches_the_bytes_the_index_is_written_with() {
@@ -223,14 +295,14 @@ mod tests {
 		// expire drops the rows it drained by rebuilding their keys from the scan, so a column that
 		// decoded to a different value would leave the entry in the index and replay it forever
 		for (threshold, window) in [(0u64, 0u64), (1, 2), (u64::MAX, u64::MAX), (7, u64::MAX)] {
-			let key = TumblingExpiryKey {
+			let key = TumblingExpirySuffix {
 				threshold: Desc(threshold),
 				owner: Desc(Hash128(0xdead_beef)),
 				window_start: Desc(window),
 			};
 			let bytes = key.to_suffix_bytes();
 			assert_eq!(bytes.len(), 8 + 16 + 8, "threshold {threshold} window {window}");
-			assert_eq!(TumblingExpiryKey::from_suffix_bytes(&bytes), Some(key));
+			assert_eq!(TumblingExpirySuffix::from_suffix_bytes(&bytes), Some(key));
 		}
 	}
 
@@ -260,7 +332,7 @@ mod tests {
 		);
 		let tumbling = typed_key::<TumblingExpiry>(
 			GroupId::ROOT,
-			&TumblingExpiryKey {
+			&TumblingExpirySuffix {
 				threshold: Desc(5),
 				owner: Desc(Hash128(1)),
 				window_start: Desc(0),
@@ -274,7 +346,7 @@ mod tests {
 		// every ported call site keeps reading rows an unported one wrote, so a single byte of
 		// difference here silently addresses a different row and both sides look healthy
 		for row in [0u64, 1, 255, 256, u64::MAX] {
-			let group = GroupId(0x0123_4567_89ab_cdef_0123_4567_89ab_cdef);
+			let group = GroupId::hashed(Hash128(0x0123_4567_89ab_cdef_0123_4567_89ab_cdef));
 			let typed = typed_key::<JoinLeft>(group, &Asc(RowNumber(row)));
 			let legacy = OperatorStateKey::inner_encoded(group, KeyspaceId::JOIN_LEFT, encode_u64_asc(row));
 			assert_eq!(typed.as_slice(), legacy.as_slice(), "row {row}");
@@ -285,7 +357,7 @@ mod tests {
 	fn the_keyspace_id_separates_two_keyspaces_that_share_a_suffix_type() {
 		// JOIN_LEFT and JOIN_RIGHT both key on Asc<RowNumber>; a key built without the keyspace byte
 		// would let one side of a join read the other side's rows as its own
-		let group = GroupId(7);
+		let group = GroupId::hashed(Hash128(7));
 		let suffix = Asc(RowNumber(42));
 		assert_ne!(
 			typed_key::<JoinLeft>(group, &suffix).as_slice(),
@@ -298,10 +370,18 @@ mod tests {
 		// the range scan for a group is a prefix scan on these bytes; a group that did not occupy the
 		// leading sixteen bytes alone would make that prefix match rows from every other group
 		let suffix = Asc(RowNumber(1));
-		let one = typed_key::<JoinLeft>(GroupId(1), &suffix);
-		let two = typed_key::<JoinLeft>(GroupId(2), &suffix);
-		assert_ne!(&one.as_slice()[..16], &two.as_slice()[..16], "the group must vary in the leading bytes");
-		assert_eq!(&one.as_slice()[16..], &two.as_slice()[16..], "nothing but the group may vary");
+		let one = typed_key::<JoinLeft>(GroupId::hashed(Hash128(1)), &suffix);
+		let two = typed_key::<JoinLeft>(GroupId::hashed(Hash128(2)), &suffix);
+		assert_ne!(
+			&one.as_slice()[..GroupId::WIDTH],
+			&two.as_slice()[..GroupId::WIDTH],
+			"the group must vary in the leading bytes"
+		);
+		assert_eq!(
+			&one.as_slice()[GroupId::WIDTH..],
+			&two.as_slice()[GroupId::WIDTH..],
+			"nothing but the group may vary"
+		);
 	}
 
 	#[test]
@@ -309,10 +389,15 @@ mod tests {
 		// GroupId is Desc in all forty three key structs, and the byte layout complements it to match;
 		// an ascending group here would order every prefix scan backwards against the typed Ord
 		let suffix = Asc(RowNumber(1));
-		let one = typed_key::<JoinLeft>(GroupId(1), &suffix);
-		let two = typed_key::<JoinLeft>(GroupId(2), &suffix);
+		let one = typed_key::<JoinLeft>(GroupId::hashed(Hash128(1)), &suffix);
+		let two = typed_key::<JoinLeft>(GroupId::hashed(Hash128(2)), &suffix);
 		assert!(one.as_slice() > two.as_slice(), "a larger group must sort earlier");
-		assert_eq!(&one.as_slice()[..16], &encode_u128_asc(u128::MAX - 1)[..]);
+		assert_eq!(
+			&one.as_slice()[..8],
+			&[0xffu8; 8],
+			"a group with no window complements the sentinel to all ones"
+		);
+		assert_eq!(&one.as_slice()[8..GroupId::WIDTH], &encode_u128_asc(u128::MAX - 1)[..]);
 	}
 
 	#[test]
@@ -363,9 +448,9 @@ mod tests {
 	fn a_keyspace_addresses_its_own_id_and_not_a_neighbouring_one() {
 		// the keyspace byte sits between the group and the suffix; an off by one there points the read
 		// at whatever keyspace happens to hold the next id
-		let key = typed_key::<JoinLeft>(GroupId(3), &Asc(RowNumber(5)));
+		let key = typed_key::<JoinLeft>(GroupId::hashed(Hash128(3)), &Asc(RowNumber(5)));
 		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice()).unwrap();
-		assert_eq!(group, GroupId(3));
+		assert_eq!(group, GroupId::hashed(Hash128(3)));
 		assert_eq!(keyspace, JoinLeft::ID);
 		assert_eq!(suffix, encode_u64_asc(5).to_vec());
 	}

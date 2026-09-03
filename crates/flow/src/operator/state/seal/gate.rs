@@ -27,27 +27,25 @@ impl SealGate {
 	pub fn admits(&self, horizon: u64) -> bool {
 		self.rule.seal_instant_from_order(horizon).at() > self.frontier
 	}
-
-	pub fn arm(
-		&self,
-		store: &mut dyn TimerStore,
-		key: &EncodedKey,
-		prior_horizon: Option<u64>,
-		horizon: u64,
-	) -> Result<()> {
-		let at = self.rule.seal_instant_from_order(horizon);
-		if let Some(prior_horizon) = prior_horizon {
-			let prior_at = self.rule.seal_instant_from_order(prior_horizon);
-			if prior_at != at {
-				store.disarm_timer(prior_at.at(), TimerKind::Seal, key)?;
-			}
-		}
-		store.arm_timer(at.at(), TimerKind::Seal, key)
-	}
 }
 
-pub fn disarm_seal(store: &mut dyn TimerStore, rule: SealRule, key: &EncodedKey, horizon: u64) -> Result<()> {
-	store.disarm_timer(rule.seal_instant_from_order(horizon).at(), TimerKind::Seal, key)
+pub fn rearm_seal(
+	store: &mut dyn TimerStore,
+	rule: SealRule,
+	key: &EncodedKey,
+	before: Option<u64>,
+	after: Option<u64>,
+) -> Result<()> {
+	if before == after {
+		return Ok(());
+	}
+	if let Some(before) = before {
+		store.disarm_timer(rule.seal_instant_from_order(before).at(), TimerKind::Seal, key)?;
+	}
+	if let Some(after) = after {
+		store.arm_timer(rule.seal_instant_from_order(after).at(), TimerKind::Seal, key)?;
+	}
+	Ok(())
 }
 
 pub struct EvictionGate {
@@ -123,14 +121,11 @@ mod tests {
 	}
 
 	#[test]
-	fn arming_a_moved_horizon_disarms_the_instant_it_replaces() {
-		// The wheel holds one entry per (instant, kind, key). Re-arming an advanced horizon without
-		// disarming the old instant leaves a stale timer that fires early and seals a window still
-		// taking rows.
+	fn a_moved_earliest_expiry_disarms_the_instant_it_replaces() {
+		// Without the disarm the wheel keeps a stale entry for every batch that moves the minimum.
 		let mut store = MockStore::recording_timers();
-		let gate = SealGate::new(rule(), None, None);
 
-		gate.arm(&mut store, &key(), Some(order(4_000)), order(5_000)).unwrap();
+		rearm_seal(&mut store, rule(), &key(), Some(order(4_000)), Some(order(5_000))).unwrap();
 
 		assert_eq!(
 			store.timers(),
@@ -142,26 +137,22 @@ mod tests {
 	}
 
 	#[test]
-	fn arming_an_unmoved_horizon_leaves_the_existing_timer_alone() {
-		// Disarming and re-arming the same instant is not a no-op on a wheel that dedups by entry -
-		// the disarm removes it and a failure between the two loses the seal. Comparing resolved
-		// instants rather than horizons is what makes it safe, since two horizons can share one.
+	fn an_unmoved_earliest_expiry_touches_no_timer_at_all() {
+		// A disarm/arm pair on one instant is never a no-op; a failure between the two loses the seal.
 		let mut store = MockStore::recording_timers();
-		let gate = SealGate::new(rule(), None, None);
 
-		gate.arm(&mut store, &key(), Some(order(5_000)), order(5_000)).unwrap();
+		rearm_seal(&mut store, rule(), &key(), Some(order(5_000)), Some(order(5_000))).unwrap();
+		rearm_seal(&mut store, rule(), &key(), None, None).unwrap();
 
-		assert_eq!(store.timers(), &[RecordedTimer::armed(at_millis(6_201), TimerKind::Seal, key())]);
+		assert!(store.timers().is_empty());
 	}
 
 	#[test]
-	fn a_window_seen_for_the_first_time_arms_without_a_disarm() {
-		// A brand-new window has no prior instant, and issuing a disarm for one would remove
-		// whatever unrelated entry happens to sit at that instant for the same key.
+	fn a_first_indexed_window_arms_without_a_disarm() {
+		// An operator holding nothing has no prior instant, and a disarm would remove an unrelated entry.
 		let mut store = MockStore::recording_timers();
-		let gate = SealGate::new(rule(), None, None);
 
-		gate.arm(&mut store, &key(), None, order(5_000)).unwrap();
+		rearm_seal(&mut store, rule(), &key(), None, Some(order(5_000))).unwrap();
 
 		assert_eq!(store.timers(), &[RecordedTimer::armed(at_millis(6_201), TimerKind::Seal, key())]);
 	}
@@ -212,15 +203,12 @@ mod tests {
 	}
 
 	#[test]
-	fn disarming_targets_the_seal_instant_the_horizon_resolves_to() {
-		// A session that closes early disarms by horizon, and the instant it computes must be
-		// byte-identical to the one arm() wrote or the entry is orphaned. A hand-rolled
-		// `horizon + span` at the call site would miss the +1 and leave the real timer armed.
+	fn an_index_that_empties_disarms_without_arming_anything_new() {
+		// A hand-rolled `horizon + span` would miss the seal step and orphan the entry arming wrote.
 		let mut store = MockStore::recording_timers();
-		let gate = SealGate::new(rule(), None, None);
 
-		gate.arm(&mut store, &key(), None, order(5_000)).unwrap();
-		disarm_seal(&mut store, rule(), &key(), order(5_000)).unwrap();
+		rearm_seal(&mut store, rule(), &key(), None, Some(order(5_000))).unwrap();
+		rearm_seal(&mut store, rule(), &key(), Some(order(5_000)), None).unwrap();
 
 		assert_eq!(
 			store.timers(),

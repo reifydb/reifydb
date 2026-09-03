@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod filter;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;
 
@@ -20,17 +19,14 @@ use reifydb_core::{
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_store::{filter::KeyFilter, metrics::PageCacheMetrics};
-use reifydb_value::{
-	byte_size::ByteSize,
-	value::{datetime::DateTime, row_number::RowNumber},
-};
+use reifydb_store::metrics::PageCacheMetrics;
+use reifydb_value::byte_size::ByteSize;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::persistent::sqlite::SqliteOperatorStorage;
 use crate::{
-	tier::{persistent::filter::JoinExpiryKeys, resident::batch::FlushBatch},
-	types::{OperatorBatch, OperatorStateCensus, StoredJoinRowExpiry, StoredJoinRowExpiryCensus},
+	tier::resident::batch::FlushBatch,
+	types::{OperatorBatch, OperatorStateCensus},
 };
 
 #[derive(Clone)]
@@ -75,18 +71,6 @@ impl OperatorPersistentTier {
 		}
 	}
 
-	pub fn join_expiry_filter(&self) -> &KeyFilter<JoinExpiryKeys> {
-		match self {
-			Self::Sqlite(storage) => storage.join_expiry_filter(),
-		}
-	}
-
-	pub fn join_expiries_out_of_band(&self) -> bool {
-		match self {
-			Self::Sqlite(storage) => storage.join_expiries_out_of_band(),
-		}
-	}
-
 	pub fn state_sizes(&self, operator: OperatorId, keys: &[EncodedKey]) -> HashMap<EncodedKey, ByteSize> {
 		match self {
 			Self::Sqlite(storage) => storage.state_sizes(operator, keys),
@@ -102,6 +86,12 @@ impl OperatorPersistentTier {
 	pub fn last_batch(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64) -> OperatorBatch {
 		match self {
 			Self::Sqlite(storage) => storage.last_batch(operator, range, batch_size),
+		}
+	}
+
+	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64) -> OperatorBatch {
+		match self {
+			Self::Sqlite(storage) => storage.group_page(operator, groups, batch_size),
 		}
 	}
 
@@ -138,47 +128,6 @@ impl OperatorPersistentTier {
 	pub fn census(&self) -> Vec<OperatorStateCensus> {
 		match self {
 			Self::Sqlite(storage) => storage.census(),
-		}
-	}
-
-	pub fn join_expiry_census(&self) -> Vec<StoredJoinRowExpiryCensus> {
-		match self {
-			Self::Sqlite(storage) => storage.join_expiry_census(),
-		}
-	}
-
-	pub fn join_expiry_get(
-		&self,
-		operator: OperatorId,
-		group: GroupId,
-		side: u8,
-		row_number: RowNumber,
-	) -> Option<DateTime> {
-		match self {
-			Self::Sqlite(storage) => storage.join_expiry_get(operator, group, side, row_number),
-		}
-	}
-
-	pub fn join_expiries_by_time(
-		&self,
-		operator: OperatorId,
-		group: GroupId,
-		limit: u64,
-	) -> Vec<StoredJoinRowExpiry> {
-		match self {
-			Self::Sqlite(storage) => storage.join_expiries_by_time(operator, group, limit),
-		}
-	}
-
-	pub fn join_expiries_due(
-		&self,
-		operator: OperatorId,
-		group: GroupId,
-		at: DateTime,
-		limit: u64,
-	) -> Vec<StoredJoinRowExpiry> {
-		match self {
-			Self::Sqlite(storage) => storage.join_expiries_due(operator, group, at, limit),
 		}
 	}
 
@@ -221,14 +170,6 @@ impl OperatorPersistentTier {
 		match *self {}
 	}
 
-	pub fn join_expiry_filter(&self) -> &KeyFilter<JoinExpiryKeys> {
-		match *self {}
-	}
-
-	pub fn join_expiries_out_of_band(&self) -> bool {
-		match *self {}
-	}
-
 	pub fn state_sizes(&self, _operator: OperatorId, _keys: &[EncodedKey]) -> HashMap<EncodedKey, ByteSize> {
 		match *self {}
 	}
@@ -238,6 +179,10 @@ impl OperatorPersistentTier {
 	}
 
 	pub fn last_batch(&self, _operator: OperatorId, _range: EncodedKeyRange, _batch_size: u64) -> OperatorBatch {
+		match *self {}
+	}
+
+	pub fn group_page(&self, _operator: OperatorId, _groups: &[GroupId], _batch_size: u64) -> OperatorBatch {
 		match *self {}
 	}
 
@@ -262,39 +207,6 @@ impl OperatorPersistentTier {
 	}
 
 	pub fn census(&self) -> Vec<OperatorStateCensus> {
-		match *self {}
-	}
-
-	pub fn join_expiry_census(&self) -> Vec<StoredJoinRowExpiryCensus> {
-		match *self {}
-	}
-
-	pub fn join_expiry_get(
-		&self,
-		_operator: OperatorId,
-		_group: GroupId,
-		_side: u8,
-		_row_number: RowNumber,
-	) -> Option<DateTime> {
-		match *self {}
-	}
-
-	pub fn join_expiries_by_time(
-		&self,
-		_operator: OperatorId,
-		_group: GroupId,
-		_limit: u64,
-	) -> Vec<StoredJoinRowExpiry> {
-		match *self {}
-	}
-
-	pub fn join_expiries_due(
-		&self,
-		_operator: OperatorId,
-		_group: GroupId,
-		_at: DateTime,
-		_limit: u64,
-	) -> Vec<StoredJoinRowExpiry> {
 		match *self {}
 	}
 

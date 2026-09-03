@@ -38,7 +38,7 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedObject},
 	},
-	row::{JoinRetention, Ttl},
+	row::{JoinPick, JoinRetention, Ttl},
 	sort::{SortDirection, SortKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
@@ -831,7 +831,7 @@ pub struct JoinInnerNode<'bump> {
 	pub alias: Option<BumpFragment<'bump>>,
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
-	pub latest: bool,
+	pub pick: Option<JoinPick>,
 	pub rql: String,
 }
 
@@ -842,7 +842,7 @@ pub struct JoinLeftNode<'bump> {
 	pub alias: Option<BumpFragment<'bump>>,
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
-	pub latest: bool,
+	pub pick: Option<JoinPick>,
 	pub rql: String,
 }
 
@@ -853,7 +853,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub alias: Option<BumpFragment<'bump>>,
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
-	pub latest: bool,
+	pub pick: Option<JoinPick>,
 	pub rql: String,
 }
 

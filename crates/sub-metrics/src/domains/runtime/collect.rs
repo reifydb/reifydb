@@ -9,6 +9,7 @@ use reifydb_engine::engine::StandardEngine;
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::memory::global_memory_used;
 use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
+use reifydb_store_operator::store::OperatorStore;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::domains::proc::{process_status, read::ProcessStatus};
@@ -29,6 +30,8 @@ pub fn collect_memory(c: &Collectors) -> Vec<MetricsSample> {
 	push_allocator_samples(&mut out, &jemalloc, &alloc);
 	push_subsystem_samples(c, &mut out);
 	push_operator_rollup(c, &mut out);
+	push_operator_resident(c, &mut out);
+	push_cdc_resident(c, &mut out);
 	push_sqlite_samples(&mut out);
 	let named_heap = out.iter().filter_map(|sample| sample.reading.heap_bytes()).sum::<u64>();
 	push_derived_samples(&mut out, named_heap, &proc_mem, &jemalloc, &alloc);
@@ -91,6 +94,52 @@ fn push_subsystem_samples(c: &Collectors, out: &mut Vec<MetricsSample>) {
 fn push_operator_rollup(c: &Collectors, out: &mut Vec<MetricsSample>) {
 	let heap: u64 = c.registry.collect_operators().iter().filter_map(|sample| sample.reading.heap_bytes()).sum();
 	out.push(MetricsSample::heap("flow_operators", "resident_bytes", ByteSize::from_bytes(heap)));
+}
+
+#[inline]
+fn push_operator_resident(c: &Collectors, out: &mut Vec<MetricsSample>) {
+	let Some(store) = c.engine.ioc().try_resolve::<OperatorStore>() else {
+		return;
+	};
+	let resident = store.resident_state();
+	let metrics = resident.metrics();
+	out.push(MetricsSample::heap("operator_resident", "backlog_bytes", metrics.backlog));
+	out.push(MetricsSample::bytes("operator_resident", "budget_bytes", resident.budget()));
+	out.push(MetricsSample::bytes("operator_resident", "released_bytes", metrics.released));
+	out.push(MetricsSample::count("operator_resident", "evicted", metrics.evicted));
+	out.push(MetricsSample::count("operator_resident", "budget_exhausted", metrics.budget_exhausted));
+	out.push(MetricsSample::count("operator_resident", "persisted", metrics.persisted));
+	out.push(MetricsSample::count("operator_resident", "reclaimed", metrics.reclaimed));
+}
+
+#[inline]
+fn push_cdc_resident(c: &Collectors, out: &mut Vec<MetricsSample>) {
+	let Some(store) = c.engine.ioc().try_resolve::<CdcStore>() else {
+		return;
+	};
+
+	let commit = store.commit_metrics();
+	out.push(MetricsSample::heap("cdc_commit", "resident_bytes", commit.resident_bytes));
+	out.push(MetricsSample::count("cdc_commit", "entries", commit.entries.as_u64()));
+	out.push(MetricsSample::count("cdc_commit", "blocks_cut", commit.blocks_cut));
+	out.push(MetricsSample::count("cdc_commit", "stalls", commit.stalls));
+
+	let shards = store.read_buffer_shard_metrics();
+	let used = shards.iter().map(|s| s.used.as_bytes()).sum::<u64>();
+	let limit = shards.iter().map(|s| s.limit.as_bytes()).sum::<u64>();
+	let blocks = shards.iter().map(|s| s.blocks as u64).sum::<u64>();
+	out.push(MetricsSample::heap("cdc_read", "resident_bytes", ByteSize::from_bytes(used)));
+	out.push(MetricsSample::bytes("cdc_read", "limit_bytes", ByteSize::from_bytes(limit)));
+	out.push(MetricsSample::count("cdc_read", "blocks", blocks));
+
+	let persistent = store.persistent_metrics();
+	if store.persistent_is_resident() {
+		out.push(MetricsSample::heap("cdc_persistent", "stored_bytes", persistent.stored_bytes));
+	} else {
+		out.push(MetricsSample::bytes("cdc_persistent", "stored_bytes", persistent.stored_bytes));
+	}
+	out.push(MetricsSample::count("cdc_persistent", "blocks", persistent.blocks));
+	out.push(MetricsSample::count("cdc_persistent", "drops", persistent.drops));
 }
 
 #[inline]

@@ -18,11 +18,11 @@ use crate::{
 			AstCreatePrimaryKey, AstCreateProcedure, AstCreateQueue, AstCreateRelationship,
 			AstCreateRemoteNamespace, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
 			AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest, AstCreateTransactionalView,
-			AstHydrationConfig, AstIndexColumn, AstJoinRetention, AstPersistent, AstPolicyTargetType,
-			AstPrimaryKey, AstProcedureParam, AstQueueDeduplicate, AstQueueDispatch, AstQueueFifo,
-			AstQueueRetention, AstQueueRetry, AstRelationshipCardinality, AstRelationshipJunction,
-			AstRowSettings, AstStatement, AstTimeDeclaration, AstTimestampPrecision, AstTtl, AstType,
-			AstVariant, AstViewStorageKind, AstViewWithClause,
+			AstHydrationConfig, AstIndexColumn, AstJoinPick, AstJoinRetention, AstPersistent,
+			AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstQueueDeduplicate, AstQueueDispatch,
+			AstQueueFifo, AstQueueRetention, AstQueueRetry, AstRelationshipCardinality,
+			AstRelationshipJunction, AstRowSettings, AstStatement, AstTimeDeclaration,
+			AstTimestampPrecision, AstTtl, AstType, AstVariant, AstViewStorageKind, AstViewWithClause,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -60,7 +60,7 @@ const QUEUE_DEDUPLICATE_KEYS: &str = "'by' or 'ttl'";
 const QUEUE_RETENTION_KEYS: &str = "'done'";
 const QUEUE_RETRY_KEYS: &str = "'attempts' or 'backoff'";
 const ROW_CONFIG_KEYS: &str = "'ttl', 'persistent', or 'on'";
-const JOIN_WITH_KEYS: &str = "'retention', 'snapshot', or 'latest'";
+const JOIN_WITH_KEYS: &str = "'retention', 'snapshot', 'latest', or 'earliest'";
 
 fn unexpected_queue_option(token: &Token<'_>, expected: &str) -> Error {
 	Error::from(TypeError::Ast {
@@ -3101,16 +3101,18 @@ impl<'bump> Parser<'bump> {
 		.into())
 	}
 
-	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstJoinRetention<'bump>>, bool, bool)> {
+	pub(crate) fn parse_with_clause_for_join(
+		&mut self,
+	) -> Result<(Option<AstJoinRetention<'bump>>, bool, Option<AstJoinPick<'bump>>)> {
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
-			return Ok((None, false, false));
+			return Ok((None, false, None));
 		}
 		self.advance()?;
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut retention: Option<AstJoinRetention<'bump>> = None;
-		let mut snapshot: bool = false;
-		let mut latest: bool = false;
+		let mut snapshot: Option<bool> = None;
+		let mut pick: Option<AstJoinPick<'bump>> = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -3126,46 +3128,26 @@ impl<'bump> Parser<'bump> {
 					retention = Some(self.parse_join_retention()?);
 				}
 				"snapshot" => {
-					let value = self.advance()?;
-					snapshot = match value.kind {
-						TokenKind::Literal(Literal::True) => true,
-						TokenKind::Literal(Literal::False) => false,
-						_ => {
-							let fragment = value.fragment.to_owned();
-							return Err(Error::from(TypeError::Ast {
-								kind: AstErrorKind::UnexpectedToken {
-									expected: "boolean literal 'true' or 'false'"
-										.to_string(),
-								},
-								message: format!(
-									"expected boolean literal for 'snapshot', got '{}'",
-									value.fragment.text()
-								),
-								fragment,
-							}));
-						}
-					};
+					snapshot = Some(self.parse_join_bool("snapshot")?);
 				}
-				"latest" => {
-					let value = self.advance()?;
-					latest = match value.kind {
-						TokenKind::Literal(Literal::True) => true,
-						TokenKind::Literal(Literal::False) => false,
-						_ => {
-							let fragment = value.fragment.to_owned();
-							return Err(Error::from(TypeError::Ast {
-								kind: AstErrorKind::UnexpectedToken {
-									expected: "boolean literal 'true' or 'false'"
-										.to_string(),
-								},
-								message: format!(
-									"expected boolean literal for 'latest', got '{}'",
-									value.fragment.text()
-								),
-								fragment,
-							}));
-						}
+				"latest" | "earliest" => {
+					let default_direction = match key.fragment.text() {
+						"latest" => SortDirection::Desc,
+						_ => SortDirection::Asc,
 					};
+					if pick.is_some() {
+						let fragment = key.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "one of 'latest' or 'earliest'".to_string(),
+							},
+							message:
+								"'latest' and 'earliest' cannot both be set on one join"
+									.to_string(),
+							fragment,
+						}));
+					}
+					pick = self.parse_join_pick(key, default_direction)?;
 				}
 				other => {
 					let fragment = key.fragment.to_owned();
@@ -3183,7 +3165,101 @@ impl<'bump> Parser<'bump> {
 		}
 
 		self.consume_operator(Operator::CloseCurly)?;
-		Ok((retention, snapshot, latest))
+
+		Ok((retention, snapshot.unwrap_or(false), pick))
+	}
+
+	fn parse_join_bool(&mut self, key: &str) -> Result<bool> {
+		let value = self.advance()?;
+		match value.kind {
+			TokenKind::Literal(Literal::True) => Ok(true),
+			TokenKind::Literal(Literal::False) => Ok(false),
+			_ => {
+				let fragment = value.fragment.to_owned();
+				Err(Error::from(TypeError::Ast {
+					kind: AstErrorKind::UnexpectedToken {
+						expected: "boolean literal 'true' or 'false'".to_string(),
+					},
+					message: format!(
+						"expected boolean literal for '{}', got '{}'",
+						key,
+						value.fragment.text()
+					),
+					fragment,
+				}))
+			}
+		}
+	}
+
+	fn parse_join_pick(
+		&mut self,
+		key: Token<'bump>,
+		default_direction: SortDirection,
+	) -> Result<Option<AstJoinPick<'bump>>> {
+		if !self.current()?.is_operator(Operator::OpenCurly) {
+			return Ok(match self.parse_join_bool(key.fragment.text())? {
+				true => Some(AstJoinPick {
+					token: key,
+					default_direction,
+					columns: Vec::new(),
+					directions: Vec::new(),
+				}),
+				false => None,
+			});
+		}
+
+		self.advance()?;
+		let mut columns = Vec::new();
+		let mut directions = Vec::new();
+
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			columns.push(self.parse_column_identifier()?);
+
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::Colon) {
+				self.advance()?;
+				let token = self.advance()?;
+				directions.push(Some(if token.is_keyword(Keyword::Asc) {
+					SortDirection::Asc
+				} else if token.is_keyword(Keyword::Desc) {
+					SortDirection::Desc
+				} else {
+					let fragment = token.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'asc' or 'desc'".to_string(),
+						},
+						message: format!(
+							"expected 'asc' or 'desc' after the column, got '{}'",
+							token.fragment.text()
+						),
+						fragment,
+					}));
+				}));
+			} else {
+				directions.push(None);
+			}
+
+			self.skip_new_line()?;
+			if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+				break;
+			}
+		}
+
+		self.skip_new_line()?;
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(Some(AstJoinPick {
+			token: key,
+			default_direction,
+			columns,
+			directions,
+		}))
 	}
 
 	fn parse_create_relationship(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {

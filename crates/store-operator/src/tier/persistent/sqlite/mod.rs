@@ -4,7 +4,6 @@
 mod census;
 mod checkpoint;
 mod flush;
-mod join_expiry;
 pub mod metrics;
 mod route;
 pub mod schema;
@@ -26,17 +25,11 @@ use reifydb_runtime::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_store::{
-	filter::KeyFilter,
-	sqlite::{OpenMessages, open, pool::ReadPool},
-};
+use reifydb_store::sqlite::{OpenMessages, open, pool::ReadPool};
 use rusqlite::Connection;
 use tracing::instrument;
 
-use crate::tier::persistent::{
-	filter::{ARMED_CAPACITY_JOIN_EXPIRIES, JoinExpiryKeys},
-	sqlite::{join_expiry::join_expiry_exists, schema::ensure_schema, state::state_exists},
-};
+use crate::tier::persistent::sqlite::{schema::ensure_schema, state::state_exists};
 
 #[derive(Clone)]
 pub struct SqliteOperatorStorage {
@@ -49,8 +42,6 @@ struct StoreInner {
 	cache_hits: AtomicU64,
 	cache_misses: AtomicU64,
 	state_written: AtomicBool,
-	join_expiries_out_of_band: AtomicBool,
-	join_expiry_filter: KeyFilter<JoinExpiryKeys>,
 }
 
 const OPEN_MESSAGES: OpenMessages = OpenMessages {
@@ -83,12 +74,6 @@ impl SqliteOperatorStorage {
 	fn with_connections(conn: Connection, readers: ReadPool) -> Self {
 		ensure_schema(&conn);
 		let state_written = state_exists(&conn);
-		let join_expiries_preexisting = join_expiry_exists(&conn);
-		let join_expiry_filter = if join_expiries_preexisting {
-			KeyFilter::<JoinExpiryKeys>::new()
-		} else {
-			KeyFilter::<JoinExpiryKeys>::armed(ARMED_CAPACITY_JOIN_EXPIRIES)
-		};
 		Self {
 			inner: Arc::new(StoreInner {
 				conn: Mutex::new(Some(conn)),
@@ -96,8 +81,6 @@ impl SqliteOperatorStorage {
 				cache_hits: AtomicU64::new(0),
 				cache_misses: AtomicU64::new(0),
 				state_written: AtomicBool::new(state_written),
-				join_expiries_out_of_band: AtomicBool::new(join_expiries_preexisting),
-				join_expiry_filter,
 			}),
 		}
 	}
@@ -115,18 +98,6 @@ impl SqliteOperatorStorage {
 
 	pub(super) fn mark_state_written(&self) {
 		self.inner.state_written.store(true, Ordering::Release);
-	}
-
-	pub fn join_expiry_filter(&self) -> &KeyFilter<JoinExpiryKeys> {
-		&self.inner.join_expiry_filter
-	}
-
-	pub fn join_expiries_out_of_band(&self) -> bool {
-		self.inner.join_expiries_out_of_band.load(Ordering::Relaxed)
-	}
-
-	pub(crate) fn mark_join_expiries_out_of_band(&self) {
-		self.inner.join_expiries_out_of_band.store(true, Ordering::Relaxed);
 	}
 
 	pub fn set_checkpoint_threshold(&self, frames: u32) {

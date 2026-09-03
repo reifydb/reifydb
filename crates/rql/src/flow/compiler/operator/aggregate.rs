@@ -34,7 +34,7 @@ impl From<AggregateNode> for AggregateCompiler {
 
 impl CompileOperator for AggregateCompiler {
 	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
-		validate_flow_aggregations(&compiler.routines, &self.map, AggregateContext::Grouped)?;
+		validate_flow_aggregations(&compiler.routines, &self.map, AggregateContext::Grouped, None)?;
 
 		let input_node = compiler.compile_plan(txn, *self.input)?;
 

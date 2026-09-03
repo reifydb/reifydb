@@ -31,8 +31,10 @@ use reifydb_value::{
 };
 
 use crate::{
-	context::FlowContext, error::FlowStateError, operator::aggregation::accumulator::RowAccumulator,
-	window::engine::tumbling::TumblingEngine,
+	context::FlowContext,
+	error::FlowStateError,
+	operator::aggregation::accumulator::RowAccumulator,
+	window::{engine::tumbling::TumblingEngine, span::WindowSpan},
 };
 
 #[derive(Clone, Debug)]
@@ -40,6 +42,7 @@ pub enum SlotInput {
 	Star,
 	Column(String),
 	Expr(usize),
+	EventTime,
 }
 
 #[inline]
@@ -124,6 +127,7 @@ impl Aggregation {
 							.expect("Failed to compile aggregation argument expression"));
 						SlotInput::Expr(idx)
 					}
+					SlotArg::EventTime => SlotInput::EventTime,
 				});
 			}
 			let outputs: Vec<CompiledExpr> = rewritten_outputs
@@ -218,6 +222,7 @@ impl Aggregation {
 		columns: &Columns,
 		slot_cols: &[ColumnWithName],
 		row_idx: usize,
+		event_time: DateTime,
 	) -> Vec<Option<Value>> {
 		self.slot_inputs
 			.iter()
@@ -225,6 +230,7 @@ impl Aggregation {
 				SlotInput::Star => None,
 				SlotInput::Column(name) => columns.column(name).map(|c| c.data().get_value(row_idx)),
 				SlotInput::Expr(idx) => Some(slot_cols[*idx].data().get_value(row_idx)),
+				SlotInput::EventTime => Some(Value::DateTime(event_time)),
 			})
 			.collect()
 	}
@@ -253,15 +259,39 @@ impl Aggregation {
 		Ok(out)
 	}
 
+	pub fn needs_event_time(&self) -> bool {
+		self.slot_inputs.iter().any(|input| matches!(input, SlotInput::EventTime))
+	}
+
+	fn span_slot_values(&self, slot_values: &[Value], span: WindowSpan<DateTime>) -> Option<Vec<Value>> {
+		let kinds = self.slot_kinds.as_ref()?;
+		if !kinds.iter().any(|kind| kind.requires_span()) {
+			return None;
+		}
+		let mut out = slot_values.to_vec();
+		for (value, kind) in out.iter_mut().zip(kinds.iter()) {
+			*value = match kind {
+				SlotKind::WindowStart => Value::DateTime(span.start),
+				SlotKind::WindowEnd => Value::DateTime(span.end),
+				SlotKind::WindowDuration => {
+					Value::Duration(span.end.saturating_duration_since(span.start))
+				}
+				_ => continue,
+			};
+		}
+		Some(out)
+	}
+
 	pub fn build_engine_row(
 		&self,
 		group_values: &[Value],
 		slot_values: &[Value],
 		row_number: RowNumber,
 		ts: DateTime,
-		time: DateTime,
+		span: Option<WindowSpan<DateTime>>,
 	) -> Result<Row> {
-		let aggregate_values = self.compute_outputs(slot_values)?;
+		let patched = span.and_then(|span| self.span_slot_values(slot_values, span));
+		let aggregate_values = self.compute_outputs(patched.as_deref().unwrap_or(slot_values))?;
 		let mut values = Vec::with_capacity(group_values.len() + aggregate_values.len());
 		let mut names = Vec::with_capacity(group_values.len() + aggregate_values.len());
 		let mut types = Vec::with_capacity(group_values.len() + aggregate_values.len());
@@ -279,7 +309,7 @@ impl Aggregation {
 		let mut encoded = layout.allocate_table();
 		layout.set_values(&mut encoded, &values);
 		encoded.set_timestamps(ts, ts);
-		encoded.set_time(time);
+		encoded.set_time(span.map(|span| span.start).unwrap_or(ts));
 		Ok(Row {
 			number: row_number,
 			encoded: encoded.freeze_bytes(),

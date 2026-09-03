@@ -22,6 +22,8 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
 
+#[cfg(reifydb_assertions)]
+use crate::operator::state::expiry::expiry_all;
 use crate::{
 	operator::{
 		state::{
@@ -73,7 +75,7 @@ pub struct ExpiredWindow<G, S> {
 pub struct TumblingIndexEntry<G, S> {
 	group: G,
 	window_start: S,
-	group_id: u128,
+	group_id: GroupId,
 	slot_key: Vec<u8>,
 }
 
@@ -142,7 +144,7 @@ where
 			let entry = TumblingIndexEntry {
 				group: group.clone(),
 				window_start,
-				group_id: id.0,
+				group_id: id,
 				slot_key: slot_key.as_bytes().to_vec(),
 			};
 			self.expiry.set(store, tumbling_expiry_key(new, group_hash(group)?, order), entry)?;
@@ -361,13 +363,27 @@ where
 			expiry_drop(store, &index_key)?;
 			out.push(ExpiredWindow {
 				group: entry.group,
-				group_id: GroupId(entry.group_id),
+				group_id: entry.group_id,
 				window_start: entry.window_start,
 			});
 		}
 		self.expiry.settle(store)?;
+		reifydb_assertions! {
+			for entry in expiry_all::<TumblingExpiry, TumblingIndexEntry<G, S>>(store)? {
+				assert!(
+					!out.iter().any(|window| window.group_id == entry.group_id),
+					"the expiry index still holds a row for a group that is about to be queued for \
+					 reaping; a window group must own exactly one index row, or reaping it orphans \
+					 the rows left behind under a group id nothing resolves again"
+				);
+			}
+		}
 		note_when_expiry_capped(out.len(), self.expire_batch);
 		Ok(out)
+	}
+
+	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
+		self.expiry.earliest(store)
 	}
 
 	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, S>) -> Result<()> {
@@ -389,7 +405,7 @@ mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{key::operator::state::GroupId, metrics::heap::HeapSize};
 	use reifydb_macro::operator_state;
-	use reifydb_value::{Result, factory::time::at_millis, value::datetime::DateTime};
+	use reifydb_value::{Result, factory::time::at_millis, util::hash::Hash128, value::datetime::DateTime};
 
 	use crate::{
 		operator::{
@@ -462,7 +478,7 @@ mod tests {
 			store,
 			group,
 			window_start,
-			GroupId::ROOT,
+			slot_key(group, window_start).0,
 			&row_key(group, window_start),
 			prior,
 			new,
@@ -501,10 +517,7 @@ mod tests {
 	fn group_slot(group: &u32, window_start: DateTime) -> (GroupId, EncodedKey) {
 		// The shape a sub-flow window driver installs: every window interns as its own
 		// (partition, slot) group sharing one empty row key, so the group alone separates them.
-		(
-			GroupId(u128::from(*group) * 1_000_000 + u128::from(window_start.to_order())),
-			EncodedKey::new(Vec::new()),
-		)
+		(GroupId::window(Hash128(u128::from(*group)), window_start.to_order()), EncodedKey::new(Vec::new()))
 	}
 
 	fn apply_group_scoped(

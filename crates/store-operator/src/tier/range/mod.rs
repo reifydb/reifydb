@@ -11,7 +11,7 @@ pub mod typed;
 use reifydb_core::default;
 use reifydb_store::{
 	coverage::plan::DEFAULT_GAP_GUARD,
-	tier::range::{RangeConfig, RangeMetrics},
+	tier::range::{DEFAULT_COVERAGE_INTERVALS, RangeConfig, RangeMetrics},
 };
 use reifydb_value::byte_size::ByteSize;
 
@@ -36,6 +36,8 @@ impl From<OperatorRangeConfig> for RangeConfig {
 			shard_bytes: config.tier_bytes,
 			shards: 1,
 			gap_guard: config.gap_guard,
+			coverage_bytes: None,
+			coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 		}
 	}
 }

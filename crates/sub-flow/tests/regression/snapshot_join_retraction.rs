@@ -16,6 +16,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
+	row::JoinPick,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_flow::{
@@ -105,7 +106,7 @@ fn join(engine: &TestEngine) -> JoinOperator {
 		engine.executor().runtime_context.clone(),
 		true,
 		false,
-		true,
+		Some(JoinPick::latest()),
 		None,
 		None,
 		Arc::new(FlowContext::default()),

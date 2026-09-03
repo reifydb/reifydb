@@ -681,6 +681,7 @@ mod tests {
 				materializes_raced: 2,
 				evictions: 63,
 				point_hits: 704,
+				point_absences: 118,
 				point_misses: 22,
 			},
 		}

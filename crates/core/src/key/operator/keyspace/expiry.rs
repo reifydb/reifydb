@@ -13,7 +13,7 @@ use crate::{
 		typed::{
 			TypedKey,
 			direction::{Desc, Direction, KeyField},
-			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue},
+			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues},
 		},
 	},
 	metrics::heap::HeapSize,
@@ -27,6 +27,14 @@ pub struct ExpiryKey {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct TumblingExpiryKey {
+	pub group: Desc<GroupId>,
+	pub threshold: Desc<u64>,
+	pub owner: Desc<Hash128>,
+	pub window_start: Desc<u64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+pub struct TumblingExpirySuffix {
 	pub threshold: Desc<u64>,
 	pub owner: Desc<Hash128>,
 	pub window_start: Desc<u64>,
@@ -66,14 +74,26 @@ impl Keyspace for TumblingExpiry {
 	const CACHE: CacheTiers = CacheTiers::Range;
 
 	type GroupedKey = TumblingExpiryKey;
-	type Suffix = TumblingExpiryKey;
+	type Suffix = TumblingExpirySuffix;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
-		(GroupId::ROOT, *key)
+		(
+			key.group.0,
+			TumblingExpirySuffix {
+				threshold: key.threshold,
+				owner: key.owner,
+				window_start: key.window_start,
+			},
+		)
 	}
 
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
-		suffix
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
+		TumblingExpiryKey {
+			group: Desc(group),
+			threshold: suffix.threshold,
+			owner: suffix.owner,
+			window_start: suffix.window_start,
+		}
 	}
 }
 

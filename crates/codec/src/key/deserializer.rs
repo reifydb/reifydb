@@ -26,8 +26,8 @@ use reifydb_value::{
 use uuid::Uuid;
 
 use super::{
-	CONTAINER_END, decode_bool, decode_f32, decode_f64, decode_i8, decode_i16, decode_i32, decode_i64, decode_i128,
-	decode_u8, decode_u16, decode_u32, decode_u64, decode_u128, decode_u128_varint,
+	CONTAINER_END, decode_bool, decode_f32, decode_f64, decode_fixed, decode_i8, decode_i16, decode_i32,
+	decode_i64, decode_i128, decode_u8, decode_u16, decode_u32, decode_u64, decode_u128, decode_u128_varint,
 };
 use crate::tag::{TypeTag, ValueKind};
 
@@ -139,6 +139,11 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_u128(&mut self) -> Result<u128> {
 		let bytes = self.read_exact(16)?;
 		Ok(decode_u128(bytes.try_into()?))
+	}
+
+	pub fn read_fixed<const N: usize>(&mut self) -> Result<[u8; N]> {
+		let bytes = self.read_exact(N)?;
+		Ok(decode_fixed(bytes.try_into()?))
 	}
 
 	pub fn read_u128_varint(&mut self) -> Result<u128> {

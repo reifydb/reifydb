@@ -13,12 +13,9 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
 };
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::GroupId};
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_store_operator::types::{DurablePre, OperatorWrite};
-use reifydb_value::{
-	byte_size::ByteSize,
-	value::{datetime::DateTime, row_number::RowNumber},
-};
+use reifydb_value::byte_size::ByteSize;
 
 use crate::{
 	fixtures::{Harness, key, row},
@@ -132,7 +129,7 @@ fn interleave(rng: &mut StdRng, harness: &Harness, oracle: &mut Oracle, p: &Para
 	}
 	let count = rng.random_range(1..=p.max_interleaved);
 	for index in 0..count {
-		match rng.random_range(0u32..4) {
+		match rng.random_range(0u32..3) {
 			0 => {
 				let suffix = p.frozen + rng.random_range(1..=p.mutable);
 				let key_bytes = key(GROUP, KEYSPACE, suffix);
@@ -161,7 +158,7 @@ fn interleave(rng: &mut StdRng, harness: &Harness, oracle: &mut Oracle, p: &Para
 					config.store.apply_batch(&[write.clone()]);
 				}
 			}
-			2 => {
+			_ => {
 				let suffix = rng.random_range(1..=p.frozen + p.mutable);
 				let key_bytes = key(GROUP, KEYSPACE, suffix);
 				let value = row(NOISE.0, suffix, index);
@@ -170,20 +167,6 @@ fn interleave(rng: &mut StdRng, harness: &Harness, oracle: &mut Oracle, p: &Para
 				let write = state_write(NOISE, key_bytes, value, pre);
 				for config in &harness.configs {
 					config.store.apply_batch(&[write.clone()]);
-				}
-			}
-			_ => {
-				let expiry = rng.random_range(1..=64u64);
-				let row_number = index as u64 + 1;
-				oracle.join_expiry_set(FROZEN.0, GROUP, 0, row_number, expiry);
-				for config in &harness.configs {
-					config.store.join_expiry_set(
-						FROZEN,
-						GroupId(GROUP.into()),
-						0,
-						RowNumber(row_number),
-						DateTime::from_millis(expiry),
-					);
 				}
 			}
 		}

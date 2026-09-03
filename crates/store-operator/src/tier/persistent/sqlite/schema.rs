@@ -8,19 +8,7 @@ use crate::tier::persistent::sqlite::typed::create_table;
 
 pub(crate) fn ensure_schema(conn: &Connection) {
 	conn.execute_batch(
-		r#"CREATE TABLE IF NOT EXISTS "operator_join_expiry" (
-			"operator" INTEGER NOT NULL,
-			"group" BLOB NOT NULL,
-			"side" INTEGER NOT NULL,
-			"row_number" INTEGER NOT NULL,
-			"at" INTEGER NOT NULL,
-			PRIMARY KEY ("operator", "group", "side", "row_number")
-		) WITHOUT ROWID;
-
-		CREATE INDEX IF NOT EXISTS "operator_join_expiry_due"
-			ON "operator_join_expiry" ("operator", "group", "at");
-
-		CREATE TABLE IF NOT EXISTS "flow_checkpoint" (
+		r#"CREATE TABLE IF NOT EXISTS "flow_checkpoint" (
 			"flow" INTEGER NOT NULL PRIMARY KEY,
 			"version" INTEGER NOT NULL
 		) WITHOUT ROWID;
@@ -29,7 +17,9 @@ pub(crate) fn ensure_schema(conn: &Connection) {
 		DROP TRIGGER IF EXISTS "operator_state_census_update";
 		DROP TRIGGER IF EXISTS "operator_state_census_delete";
 		DROP TABLE IF EXISTS "operator_state_census";
-		DROP TABLE IF EXISTS "operator_state";"#,
+		DROP TABLE IF EXISTS "operator_state";
+		DROP INDEX IF EXISTS "operator_join_expiry_due";
+		DROP TABLE IF EXISTS "operator_join_expiry";"#,
 	)
 	.expect("operator state schema could not be created");
 

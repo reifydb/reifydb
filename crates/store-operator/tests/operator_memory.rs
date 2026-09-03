@@ -12,7 +12,6 @@ use common::Runner;
 
 test_each_path! { in "crates/store-operator/tests/scripts/state" as operator_memory_state => test_memory }
 test_each_path! { in "crates/store-operator/tests/scripts/checkpoint" as operator_memory_checkpoint => test_memory }
-test_each_path! { in "crates/store-operator/tests/scripts/join_expiry" as operator_memory_join_expiry => test_memory }
 
 fn test_memory(path: &Path) {
 	// these scripts share one goldenfile with the sqlite tiers, so any divergence must fail here

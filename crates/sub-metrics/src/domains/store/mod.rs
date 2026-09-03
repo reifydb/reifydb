@@ -15,13 +15,17 @@ use reifydb_store_multi::{
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
-	tier::{point::tiers::OperatorPointKeyspaceMetrics, range::tiers::OperatorRangeKeyspaceMetrics},
+	tier::{
+		point::tiers::OperatorPointKeyspaceMetrics, range::tiers::OperatorRangeKeyspaceMetrics,
+		resident::OperatorResidentStateMetrics,
+	},
 };
 use reifydb_store_single::{
 	SingleStore,
 	store::SinglePersistentProbeMetrics,
 	tier::{commit::buffer::SingleCommitMetrics, persistent::SinglePageCacheMetrics},
 };
+use reifydb_value::byte_size::ByteSize;
 
 #[derive(Clone)]
 pub struct StoreReader {
@@ -83,6 +87,14 @@ impl StoreReader {
 
 	pub fn operator_range_by_keyspace(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
 		self.operator.range_keyspace_metrics()
+	}
+
+	pub fn operator_resident(&self) -> OperatorResidentStateMetrics {
+		self.operator.resident_state().metrics()
+	}
+
+	pub fn operator_resident_budget(&self) -> ByteSize {
+		self.operator.resident_state().budget()
 	}
 
 	pub fn operator_persistent(&self) -> Option<PageCacheMetrics> {

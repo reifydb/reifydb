@@ -17,7 +17,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	key::{
 		operator::{
-			keyspace::window::{Emit, WindowMeta, WindowMetaKey},
+			keyspace::window::{Emit, WindowMeta, WindowMetaSuffix},
 			state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey},
 		},
 		typed::direction::{Asc, Desc},
@@ -165,7 +165,7 @@ const META_SWEEP_PAGE: usize = 1024;
 #[derive(Default)]
 pub(crate) struct MetaSweep {
 	low_water: Option<u64>,
-	cursor: Option<WindowMetaKey>,
+	cursor: Option<WindowMetaSuffix>,
 	surviving: Option<u64>,
 }
 
@@ -190,7 +190,7 @@ impl MetaSweep {
 		let visited = page.len();
 		let mut stale: Vec<MetaKey> = Vec::new();
 		let mut surviving = self.surviving;
-		let mut furthest: Option<WindowMetaKey> = None;
+		let mut furthest: Option<WindowMetaSuffix> = None;
 		for (suffix, bytes) in page {
 			if let Some(hw) = decode::<M>(&bytes)?.high_water_order() {
 				if hw < threshold {
@@ -218,7 +218,7 @@ impl MetaSweep {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
-pub struct MetaKey(pub WindowMetaKey);
+pub struct MetaKey(pub WindowMetaSuffix);
 
 impl HeapSize for MetaKey {
 	fn heap_size(&self) -> usize {
@@ -397,7 +397,7 @@ pub(crate) fn group_hash<G: StateCodec>(group: &G) -> Result<Hash128> {
 }
 
 pub fn meta_key_for(group: Hash128) -> MetaKey {
-	MetaKey(WindowMetaKey {
+	MetaKey(WindowMetaSuffix {
 		window: Desc(group),
 	})
 }

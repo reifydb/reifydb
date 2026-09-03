@@ -39,33 +39,11 @@ get a op=2
 "a" => "second"
 "a" => "9"
 
-# Join expiries ride the same batch as state.
-
-batch join_expiry_set=1/0/7/500 join_expiry_set=1/0/8/300
-join_expiries_by_time
----
-0/8 => 300
-0/7 => 500
-count=2
-
-batch join_expiry_remove=1/0/8
-join_expiries_by_time
-join_expiry_get row=8
----
-0/7 => 500
-count=1
-join_expiry 0/8 => None
-
 flush
-join_expiries_by_time
-join_expiry_get row=7
 get a
 get a op=2
 ---
 ok
-0/7 => 500
-count=1
-join_expiry 0/7 => 500
 "a" => "second"
 "a" => "9"
 
@@ -73,8 +51,5 @@ join_expiry 0/7 => 500
 
 batch
 get a
-join_expiries_by_time
 ---
 "a" => "second"
-0/7 => 500
-count=1

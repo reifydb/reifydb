@@ -22,7 +22,6 @@ use common::Runner;
 
 test_each_path! { in "crates/store-operator/tests/scripts/state" as operator_sqlite_state => test_sqlite }
 test_each_path! { in "crates/store-operator/tests/scripts/checkpoint" as operator_sqlite_checkpoint => test_sqlite }
-test_each_path! { in "crates/store-operator/tests/scripts/join_expiry" as operator_sqlite_join_expiry => test_sqlite }
 test_each_path! { in "crates/store-operator/tests/scripts/tiers" as operator_sqlite_tiers => test_sqlite }
 test_each_path! { in "crates/store-operator/tests/scripts/census" as operator_sqlite_census => test_sqlite }
 

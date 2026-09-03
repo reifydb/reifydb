@@ -101,12 +101,17 @@ mod tests {
 
 	#[test]
 	fn group_id_and_fixed_byte_array_fields_round_trip() {
+		// a derive that still writes sixteen truncates the trailing bytes and collides two groups on one key
+		let mut group = [0u8; GroupId::WIDTH];
+		for (at, byte) in group.iter_mut().enumerate() {
+			*byte = 0x11 + at as u8;
+		}
 		let key = ProbeGroupKey {
-			group: GroupId(0x1122_3344_5566_7788_99aa_bbcc_ddee_ff00),
+			group: GroupId::from_bytes(group),
 			slot: [7u8; 16],
 		};
 		let encoded = key.encode();
-		assert_eq!(encoded.as_slice().len(), 1 + 16 + 16);
+		assert_eq!(encoded.as_slice().len(), 1 + GroupId::WIDTH + 16);
 		assert_eq!(ProbeGroupKey::decode(&encoded), Some(key));
 	}
 

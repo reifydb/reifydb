@@ -1,33 +1,27 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the Apache-2.0, see license.md file
 
-# Operator 1 owns state and a join expiry; operator 2 is the neighbour that must be left alone.
+# Operator 1 owns state; operator 2 is the neighbour that must be left alone.
 
 set a=1
 set b=2
 set c=9 op=2
-join_expiry_set row=1 at=100
 flush
 ---
 ok
 
-# The drop must hide every key the operator owns, its join expiries included, or a recreated operator reads the
-# dead operator's state.
+# The drop must hide every key the operator owns, or a recreated operator reads the dead operator's state.
 
 drop_state
 get a
 get b
 contains a
 range
-join_expiry_get row=1
-join_expiries_by_time
 ---
 "a" => None
 "b" => None
 "a" => false
 has_more=false
-join_expiry 0/1 => None
-count=0
 
 # The drop is scoped to one operator; anything wider blinds the whole store.
 
@@ -55,7 +49,6 @@ get a
 get b
 get d
 range
-join_expiries_by_time
 get c op=2
 ---
 ok
@@ -64,7 +57,6 @@ ok
 "d" => "4"
 "d" => "4"
 has_more=false
-count=0
 "c" => "9"
 
 # Dropping an operator that owns nothing is a no-op.

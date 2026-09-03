@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Change},
+	key::operator::keyspace::timer::TimerWheelKey,
 };
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::Result;
@@ -55,24 +56,39 @@ impl FlowEngineInner {
 		let mut fired_total = 0u32;
 		let mut rounds = 0u32;
 		let mut budget = MAX_TIMERS_PER_DISPATCH;
+		let mut cursors: HashMap<OperatorId, TimerWheelKey> = HashMap::new();
 		loop {
 			let watermark = SourceWatermarks::flow_watermark(sources, txn)?;
 			txn.set_flow_watermark(watermark);
 			let armed = txn.take_armed();
+			for entry in &armed {
+				if cursors.get(&entry.operator_id).is_some_and(|cursor| entry.due <= cursor.due.0) {
+					cursors.remove(&entry.operator_id);
+				}
+			}
 			let mut due: Vec<(OperatorId, Timer)> = Vec::new();
 			for candidate in stage.due_before(armed, watermark) {
 				if budget == 0 {
 					break;
 				}
 				let operator_id = candidate.operator_id;
-				let (timers, next) = TimerWheel::take_due(operator_id, txn, watermark, budget)?;
-				for timer in timers {
+				let taken = TimerWheel::take_due(
+					operator_id,
+					txn,
+					watermark,
+					budget,
+					cursors.get(&operator_id),
+				)?;
+				for timer in taken.timers {
 					budget -= 1;
 					due.push((operator_id, timer));
 				}
+				if let Some(resume) = taken.resume {
+					cursors.insert(operator_id, resume);
+				}
 				stage.refresh(
 					operator_id,
-					next.map(|due| TimerDue {
+					taken.next.map(|due| TimerDue {
 						operator_id,
 						due,
 					}),
@@ -176,7 +192,7 @@ mod tests {
 	};
 
 	use crate::{
-		engine::FlowEngineInner,
+		engine::{FlowEngineInner, timers::MAX_TIMERS_PER_DISPATCH},
 		operator::{
 			HostOperator, host::HostContext, metrics::OperatorSampleRegistry,
 			provider::EmptyOperatorProvider,
@@ -265,6 +281,61 @@ mod tests {
 				fails,
 			}),
 		);
+	}
+
+	fn burst_timer(index: usize, kind: TimerKind) -> Timer {
+		Timer {
+			due: at_millis(DUE_MS),
+			kind,
+			key: EncodedKey::new(format!("burst{index:08}").as_bytes()),
+		}
+	}
+
+	fn dispatch_burst(count: usize, kind: TimerKind) {
+		let engine = TestEngine::new();
+		let mut inner = engine_inner(&engine);
+		let flow = dag();
+		inner.register_flow_dag(flow.clone());
+
+		let mut seed = engine.flow_txn().deferred();
+		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(WATERMARK_MS)).unwrap();
+		for index in 0..count {
+			TimerWheel::arm(OPERATOR, &mut seed, &burst_timer(index, kind)).unwrap();
+		}
+		let seeded = seed.take_pending();
+		let store = engine.inner().operator_state();
+		apply_operator_state(&store, &seeded);
+
+		let armed: Vec<TimerDue> =
+			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();
+		inner.timers.rebuild(FLOW, armed);
+		probe(&mut inner, false);
+
+		let mut txn = engine.flow_txn().deferred();
+		let fired =
+			inner.dispatch_due_timers(&mut txn, &flow, CommitVersion(1), flow.topological_order()).unwrap();
+
+		assert_eq!(
+			fired as usize,
+			count.min(MAX_TIMERS_PER_DISPATCH),
+			"every armed timer under the dispatch budget must fire in one dispatch"
+		);
+	}
+
+	#[test]
+	fn a_burst_of_seal_timers_all_fire_in_one_dispatch() {
+		// a burst larger than one scan must still drain inside the dispatch budget, otherwise timers stay
+		for count in [64usize, 256, 1_024, 4_096, 8_192] {
+			dispatch_burst(count, TimerKind::Seal);
+		}
+	}
+
+	#[test]
+	fn a_burst_of_maintenance_timers_all_fire_in_one_dispatch() {
+		// a maintenance key carries a second index row that take_due must remove with it, or the next arm
+		for count in [64usize, 256, 1_024, 4_096, 8_192] {
+			dispatch_burst(count, TimerKind::Maintenance);
+		}
 	}
 
 	#[test]

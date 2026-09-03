@@ -4,7 +4,7 @@
 use std::{borrow::Cow, sync::LazyLock};
 
 use reifydb_codec::{
-	key::{decode_u128, encode_u8, encoded::EncodedKey},
+	key::{decode_fixed, encode_u8, encoded::EncodedKey},
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
@@ -41,8 +41,9 @@ impl TestPartition {
 		let offset = OperatorStateKey::KEYSPACE_INNER_OFFSET as usize;
 		let mut bytes = key.as_slice().to_vec();
 		bytes.resize(Self::PREFIX_LEN, 0);
-		let group =
-			GroupId(decode_u128(bytes[..offset].try_into().expect("a padded key spans the group prefix")));
+		let group = GroupId::from_bytes(decode_fixed(
+			bytes[..offset].try_into().expect("a padded key spans the group prefix"),
+		));
 		Self {
 			dimension,
 			group,

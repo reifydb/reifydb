@@ -95,11 +95,8 @@ impl KeyColumn {
 			| KeyColumn::IndexId => 8,
 			KeyColumn::ObjectId | KeyColumn::StorageId => 9,
 			KeyColumn::OptionU8 => 2,
-			KeyColumn::U128
-			| KeyColumn::GroupId
-			| KeyColumn::Blob16
-			| KeyColumn::Partition
-			| KeyColumn::IdentityId => 16,
+			KeyColumn::U128 | KeyColumn::Blob16 | KeyColumn::Partition | KeyColumn::IdentityId => 16,
+			KeyColumn::GroupId => 24,
 		}
 	}
 
@@ -112,7 +109,7 @@ impl KeyColumn {
 			KeyColumn::U64 => format!("serializer.extend_u64(self.{field});"),
 			KeyColumn::U128 => format!("serializer.extend_u128(self.{field});"),
 			KeyColumn::RowNumber => format!("serializer.extend_u64(self.{field}.0);"),
-			KeyColumn::GroupId => format!("serializer.extend_u128(self.{field}.0);"),
+			KeyColumn::GroupId => format!("serializer.extend_raw(self.{field}.as_bytes());"),
 			KeyColumn::Blob16 => format!("serializer.extend_raw(&self.{field});"),
 			KeyColumn::IdentityId => format!("serializer.extend_identity_id(&self.{field});"),
 			KeyColumn::TableId
@@ -163,7 +160,9 @@ impl KeyColumn {
 			KeyColumn::U64 => "de.read_u64().ok()?".to_string(),
 			KeyColumn::U128 => "de.read_u128().ok()?".to_string(),
 			KeyColumn::RowNumber => "RowNumber(de.read_u64().ok()?)".to_string(),
-			KeyColumn::GroupId => "GroupId(de.read_u128().ok()?)".to_string(),
+			KeyColumn::GroupId => "{ let bytes = de.read_raw(24).ok()?; let mut buf = [0u8; 24]; \
+				 buf.copy_from_slice(bytes); GroupId::from_bytes(buf) }"
+				.to_string(),
 			KeyColumn::Blob16 => "{ let bytes = de.read_raw(16).ok()?; let mut buf = [0u8; 16]; \
 				 buf.copy_from_slice(bytes); buf }"
 				.to_string(),

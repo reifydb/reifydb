@@ -38,6 +38,7 @@ use crate::{
 			strategy::{
 				UpdateKeys,
 				hash::{columns_from_block, stream_join_blocks_encoded},
+				latest::winning_right_row,
 			},
 		},
 		state::store::{state_get, state_remove, state_set},
@@ -47,7 +48,6 @@ use crate::{
 
 const TAG_JOINED: u8 = 0;
 const TAG_UNMATCHED: u8 = 1;
-const SLOT: RowNumber = RowNumber::MAX;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PublishedRight {
@@ -245,6 +245,28 @@ impl SnapshotLedger {
 		self.write_published_set(host, group, left, &set)
 	}
 
+	pub(crate) fn release_all(&self, host: &mut dyn HostContext, group: GroupId, left: RowNumber) -> Result<()> {
+		let mut set = self.published_set(host, group, left)?;
+		let held = set.entries.len();
+		let mut joined: Vec<(RowNumber, ContentVersion)> = Vec::new();
+		set.entries.retain(|entry| match right_of(entry) {
+			Some(PublishedRight::Row(right)) => {
+				joined.push((right, ContentVersion(entry.version)));
+				false
+			}
+			Some(PublishedRight::Unmatched) => false,
+			None => true,
+		});
+		if set.entries.len() == held {
+			return Ok(());
+		}
+		self.write_published_set(host, group, left, &set)?;
+		for (right, version) in joined {
+			self.unpin(host, group, right, version)?;
+		}
+		Ok(())
+	}
+
 	pub(crate) fn release(
 		&self,
 		host: &mut dyn HostContext,
@@ -389,7 +411,10 @@ mod tests {
 	};
 
 	const NODE: OperatorId = OperatorId(90);
-	const GROUP: GroupId = GroupId(3);
+
+	fn group() -> GroupId {
+		GroupId::hashed(Hash128(3))
+	}
 
 	fn ledger() -> SnapshotLedger {
 		SnapshotLedger::new(Numbering::Pair)
@@ -423,10 +448,10 @@ mod tests {
 		let ledger = ledger();
 		let published_against = encoded_bytes(b"v1");
 
-		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(7), &published_against).unwrap();
-		ledger.retire(&mut b(&mut txn), GROUP, rn(7), &published_against).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &published_against).unwrap();
+		ledger.retire(&mut b(&mut txn), group(), rn(7), &published_against).unwrap();
 
-		let released = ledger.release(&mut b(&mut txn), GROUP, rn(1), rn(7)).unwrap();
+		let released = ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap();
 		assert_eq!(released, Some(published_against), "the retired version must come back verbatim");
 	}
 
@@ -438,10 +463,10 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
 
-		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(7), &encoded_bytes(b"v1")).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &encoded_bytes(b"v1")).unwrap();
 
 		assert_eq!(
-			ledger.release(&mut b(&mut txn), GROUP, rn(1), rn(7)).unwrap(),
+			ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap(),
 			None,
 			"an un-retired version must send the caller to the right side rather than duplicate it"
 		);
@@ -457,13 +482,13 @@ mod tests {
 		let shared = encoded_bytes(b"shared");
 
 		for left in 1..=3u64 {
-			ledger.publish(&mut b(&mut txn), GROUP, rn(left), rn(7), &shared).unwrap();
+			ledger.publish(&mut b(&mut txn), group(), rn(left), rn(7), &shared).unwrap();
 		}
-		ledger.retire(&mut b(&mut txn), GROUP, rn(7), &shared).unwrap();
+		ledger.retire(&mut b(&mut txn), group(), rn(7), &shared).unwrap();
 
 		for left in 1..=3u64 {
 			assert_eq!(
-				ledger.release(&mut b(&mut txn), GROUP, rn(left), rn(7)).unwrap(),
+				ledger.release(&mut b(&mut txn), group(), rn(left), rn(7)).unwrap(),
 				Some(shared.clone()),
 				"left row {left} must still see the version it published against"
 			);
@@ -480,18 +505,18 @@ mod tests {
 		let content = encoded_bytes(b"v1");
 		let version = ContentVersion::of(&content);
 
-		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(7), &content).unwrap();
-		ledger.publish(&mut b(&mut txn), GROUP, rn(2), rn(7), &content).unwrap();
-		ledger.retire(&mut b(&mut txn), GROUP, rn(7), &content).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &content).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(2), rn(7), &content).unwrap();
+		ledger.retire(&mut b(&mut txn), group(), rn(7), &content).unwrap();
 
-		ledger.release(&mut b(&mut txn), GROUP, rn(1), rn(7)).unwrap();
-		let key = ledger.pin_key(GROUP, rn(7), version);
+		ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap();
+		let key = ledger.pin_key(group(), rn(7), version);
 		assert!(
 			state_get(&mut b(&mut txn), &key).unwrap().is_some(),
 			"a version another left row still references must stay"
 		);
 
-		ledger.release(&mut b(&mut txn), GROUP, rn(2), rn(7)).unwrap();
+		ledger.release(&mut b(&mut txn), group(), rn(2), rn(7)).unwrap();
 		assert!(
 			state_get(&mut b(&mut txn), &key).unwrap().is_none(),
 			"the last release must take the record with it"
@@ -509,13 +534,13 @@ mod tests {
 		let first = encoded_bytes(b"v1");
 		let second = encoded_bytes(b"v2");
 
-		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(7), &first).unwrap();
-		ledger.retire(&mut b(&mut txn), GROUP, rn(7), &first).unwrap();
-		ledger.publish(&mut b(&mut txn), GROUP, rn(2), rn(7), &second).unwrap();
-		ledger.retire(&mut b(&mut txn), GROUP, rn(7), &second).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &first).unwrap();
+		ledger.retire(&mut b(&mut txn), group(), rn(7), &first).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(2), rn(7), &second).unwrap();
+		ledger.retire(&mut b(&mut txn), group(), rn(7), &second).unwrap();
 
-		assert_eq!(ledger.release(&mut b(&mut txn), GROUP, rn(1), rn(7)).unwrap(), Some(first));
-		assert_eq!(ledger.release(&mut b(&mut txn), GROUP, rn(2), rn(7)).unwrap(), Some(second));
+		assert_eq!(ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap(), Some(first));
+		assert_eq!(ledger.release(&mut b(&mut txn), group(), rn(2), rn(7)).unwrap(), Some(second));
 	}
 
 	#[test]
@@ -527,17 +552,17 @@ mod tests {
 		let ledger = ledger();
 		let first = encoded_bytes(b"v1");
 		let second = encoded_bytes(b"v2");
-		let stale = ledger.pin_key(GROUP, rn(7), ContentVersion::of(&first));
+		let stale = ledger.pin_key(group(), rn(7), ContentVersion::of(&first));
 
-		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(7), &first).unwrap();
-		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(7), &second).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &first).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &second).unwrap();
 
 		assert!(
 			state_get(&mut b(&mut txn), &stale).unwrap().is_none(),
 			"the version the left row no longer holds must be released"
 		);
 		assert_eq!(
-			ledger.published(&mut b(&mut txn), GROUP, rn(1))
+			ledger.published(&mut b(&mut txn), group(), rn(1))
 				.unwrap()
 				.into_iter()
 				.map(|entry| (entry.right, entry.version))
@@ -555,12 +580,12 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
 
-		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(7), &encoded_bytes(b"a")).unwrap();
-		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(8), &encoded_bytes(b"b")).unwrap();
-		ledger.publish(&mut b(&mut txn), GROUP, rn(2), rn(9), &encoded_bytes(b"c")).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &encoded_bytes(b"a")).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(8), &encoded_bytes(b"b")).unwrap();
+		ledger.publish(&mut b(&mut txn), group(), rn(2), rn(9), &encoded_bytes(b"c")).unwrap();
 
 		let mut rights: Vec<PublishedRight> = ledger
-			.published(&mut b(&mut txn), GROUP, rn(1))
+			.published(&mut b(&mut txn), group(), rn(1))
 			.unwrap()
 			.into_iter()
 			.map(|entry| entry.right)
@@ -568,7 +593,7 @@ mod tests {
 		rights.sort_by_key(published_order);
 		assert_eq!(rights, vec![PublishedRight::Row(rn(7)), PublishedRight::Row(rn(8))]);
 		assert_eq!(
-			ledger.published(&mut b(&mut txn), GROUP, rn(2))
+			ledger.published(&mut b(&mut txn), group(), rn(2))
 				.unwrap()
 				.into_iter()
 				.map(|entry| entry.right)
@@ -585,8 +610,8 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
 
-		assert_eq!(ledger.release(&mut b(&mut txn), GROUP, rn(1), rn(7)).unwrap(), None);
-		assert!(ledger.published(&mut b(&mut txn), GROUP, rn(1)).unwrap().is_empty());
+		assert_eq!(ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap(), None);
+		assert!(ledger.published(&mut b(&mut txn), group(), rn(1)).unwrap().is_empty());
 	}
 
 	#[test]
@@ -598,9 +623,9 @@ mod tests {
 		let ledger = ledger();
 		let content = encoded_bytes(b"v1");
 
-		ledger.retire(&mut b(&mut txn), GROUP, rn(7), &content).unwrap();
+		ledger.retire(&mut b(&mut txn), group(), rn(7), &content).unwrap();
 
-		let key = ledger.pin_key(GROUP, rn(7), ContentVersion::of(&content));
+		let key = ledger.pin_key(group(), rn(7), ContentVersion::of(&content));
 		assert!(state_get(&mut b(&mut txn), &key).unwrap().is_none());
 	}
 }
@@ -754,7 +779,8 @@ pub(crate) fn publish_slot(
 	let group = ctx.right_store.group_of(key_hash);
 	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
 
-	let Some((content, slot)) = ctx.right_store.slot(host, group)? else {
+	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group, ctx.operator.pick())?
+	else {
 		if !outer {
 			return Ok(None);
 		}
@@ -765,7 +791,7 @@ pub(crate) fn publish_slot(
 	};
 
 	for left_number in &left_numbers {
-		ctx.ledger.publish(host, group, *left_number, SLOT, &content)?;
+		ctx.ledger.publish(host, group, *left_number, number, &content)?;
 	}
 	Ok(Some(ctx.operator.join_left_with_slot(left, left_indices, &slot)))
 }
@@ -806,7 +832,8 @@ pub(crate) fn retain_published_slot(
 	group: GroupId,
 	left: RowNumber,
 ) -> Result<Option<Columns>> {
-	let Some((content, slot)) = ctx.right_store.slot(host, group)? else {
+	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group, ctx.operator.pick())?
+	else {
 		return Ok(None);
 	};
 	let mut records = ctx.ledger.published(host, group, left)?;
@@ -814,7 +841,7 @@ pub(crate) fn retain_published_slot(
 		return Ok(None);
 	};
 	if !records.is_empty()
-		|| entry.right != PublishedRight::Row(SLOT)
+		|| entry.right != PublishedRight::Row(number)
 		|| entry.version != ContentVersion::of(&content)
 	{
 		return Ok(None);
@@ -823,7 +850,11 @@ pub(crate) fn retain_published_slot(
 }
 
 pub(crate) fn retire_slot(host: &mut dyn HostContext, ctx: &SnapshotJoinContext, key_hash: &Hash128) -> Result<()> {
-	retire_right(host, ctx, key_hash, SLOT)
+	let group = ctx.right_store.group_of(key_hash);
+	match winning_right_row(host, ctx.right_store, group, ctx.operator.pick())? {
+		Some((number, _, _)) => retire_right(host, ctx, key_hash, number),
+		None => Ok(()),
+	}
 }
 
 pub(crate) fn retire_right(

@@ -43,6 +43,15 @@ impl<K> Edge<K> {
 	}
 }
 
+impl<K: HeapSize> HeapSize for Edge<K> {
+	fn heap_size(&self) -> usize {
+		match self {
+			Edge::Key(key) => key.heap_size(),
+			Edge::Bottom | Edge::Top => 0,
+		}
+	}
+}
+
 impl<K: TypedKey> Edge<K> {
 	pub fn just_past(key: &K) -> Self {
 		match key.successor() {

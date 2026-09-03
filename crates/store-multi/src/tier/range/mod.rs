@@ -22,6 +22,7 @@ use reifydb_core::{
 		row::{RowKey, StorageRowKey},
 		typed::{Edge, TypedKey, key::Key, range::KeyRange},
 	},
+	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
 use reifydb_store::{
 	coverage::{
@@ -30,7 +31,8 @@ use reifydb_store::{
 		plan::{DEFAULT_GAP_GUARD, Segment},
 	},
 	tier::range::{
-		Materialize, RangeConfig, RangeDomain, RangeMetrics, RangeRows, RangeShardMetrics, RangeTier, RowBytes,
+		DEFAULT_COVERAGE_INTERVALS, Materialize, RangeConfig, RangeDomain, RangeMetrics, RangeRows,
+		RangeShardMetrics, RangeTier, RowBytes,
 	},
 };
 use reifydb_store_commit::{MultiVersionScope, RangeBatch, RangeCursor, RawEntry};
@@ -59,6 +61,8 @@ impl From<MultiRangeConfig> for RangeConfig {
 			shard_bytes: config.shard_bytes,
 			shards: config.shards,
 			gap_guard: config.gap_guard,
+			coverage_bytes: None,
+			coverage_intervals: DEFAULT_COVERAGE_INTERVALS,
 		}
 	}
 }
@@ -1310,5 +1314,11 @@ mod tests {
 				"a row of {other:?} names no key of {storage:?}, so reaching Top retracts nothing of it"
 			);
 		}
+	}
+}
+
+impl MetricsCollector for MultiRangeTier {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		self.tier.collect(out);
 	}
 }

@@ -46,6 +46,18 @@ fn latest_inner_join(db: &TestDb) {
 		}"#);
 }
 
+fn latest_inner_join_with_right_retention(db: &TestDb) {
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::lhs { id: int4, k: int4, lv: int4, ts: datetime } with { time: event(ts) }");
+	db.admin("CREATE TABLE app::rhs { id: int4, k: int4, rv: int4, ts: datetime } with { time: event(ts) }");
+	db.admin(r#"CREATE DEFERRED VIEW app::j { k: int4, lv: int4, rv: int4 } AS {
+			FROM app::lhs
+				| inner join { from app::rhs } as r using (k, r.k)
+					with { retention: { left: 1h, right: 2s }, latest: true }
+				| map { k: k, lv: lv, rv: r_rv }
+		}"#);
+}
+
 fn insert_left(db: &TestDb) {
 	db.command(r#"INSERT app::lhs [{ id: 1, k: 1, lv: 5, ts: "2026-01-01T00:00:00.000Z" }]"#);
 }
@@ -56,6 +68,16 @@ fn insert_right_a(db: &TestDb) {
 
 fn insert_right_b(db: &TestDb) {
 	db.command(r#"INSERT app::rhs [{ id: 3, k: 1, rv: 8, ts: "2026-01-01T00:00:00.200Z" }]"#);
+}
+
+fn insert_right_b_later(db: &TestDb) {
+	db.command(r#"INSERT app::rhs [{ id: 3, k: 1, rv: 8, ts: "2026-01-01T00:00:04.000Z" }]"#);
+}
+
+fn advance_between_the_right_seals(db: &TestDb) {
+	db.admin("call storage::advance(app::lhs, cast('2026-01-01T00:00:03Z', datetime))");
+	db.admin("call storage::advance(app::rhs, cast('2026-01-01T00:00:03Z', datetime))");
+	db.await_all_flows(TIMEOUT);
 }
 
 fn advance_past_the_seal(db: &TestDb) {
@@ -92,25 +114,35 @@ fn view_rv(db: &TestDb) -> Vec<Value> {
 }
 
 #[test]
-fn two_right_rows_under_one_key_collapse_into_a_single_slot() {
-	// A latest join keeps one right row per key, so a second arrival must replace rather than accumulate.
+fn two_right_rows_under_one_key_are_both_kept_until_the_loser_seals() {
+	// A latest join keeps every arrival, so only a right retention bounds it, and sealing the loser must spare
+	// the winner.
 	let db = setup();
-	latest_inner_join(&db);
+	latest_inner_join_with_right_retention(&db);
 	insert_left(&db);
 	insert_right_a(&db);
-	insert_right_b(&db);
+	insert_right_b_later(&db);
 	db.await_row_count("FROM app::j FILTER { rv == 8 }", 1, TIMEOUT);
+
+	assert_eq!(
+		await_state_keys(&db, RIGHT, 2, TIMEOUT),
+		2,
+		"both arrivals must be kept, or a retracted winner has no runner-up to promote; surface now: {:?}",
+		db.query(SURFACE)
+	);
+	assert_eq!(db.row_count("FROM app::j"), 1, "and one left row must publish exactly one joined row");
+
+	advance_between_the_right_seals(&db);
 
 	assert_eq!(
 		await_state_keys(&db, RIGHT, 1, TIMEOUT),
 		1,
-		"the right side must hold one slot, not one key per arrival; surface now: {:?}",
+		"the sealed loser must be freed, or the right side grows without bound; surface now: {:?}",
 		db.query(SURFACE)
 	);
-	assert_eq!(db.row_count("FROM app::j"), 1, "and one left row must publish exactly one joined row");
 	assert!(
 		matches!(view_rv(&db).as_slice(), [Value::Int4(8)]),
-		"the slot must carry the newest right row, found {:?}",
+		"while the unsealed winner keeps the row it published, found {:?}",
 		view_rv(&db)
 	);
 }

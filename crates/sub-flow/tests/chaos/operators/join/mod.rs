@@ -7,7 +7,7 @@ pub mod workload;
 use std::sync::Arc;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_core::common::JoinType;
+use reifydb_core::{common::JoinType, row::JoinPick};
 use reifydb_flow::{
 	context::FlowContext,
 	operator::join::operator::{JoinOperator, JoinSideConfig},
@@ -138,7 +138,7 @@ pub fn build(
 		engine.executor().runtime_context.clone(),
 		variant.snapshot,
 		false,
-		variant.latest,
+		variant.latest.then(|| JoinPick::latest()),
 		left_ttl,
 		right_ttl,
 		Arc::new(FlowContext::default()),

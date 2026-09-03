@@ -82,10 +82,14 @@ type PoolConfigSources = (
 	ByteSize,
 );
 
-fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, Value)]) -> Result<PoolConfigSources> {
+fn pool_config_from_sources(
+	factory: &StorageFactory,
+	overrides: &[(ConfigKey, Value)],
+	cdc_memory: bool,
+) -> Result<PoolConfigSources> {
 	let multi_commit_store = factory.open_multi_commit_store();
 	let multi_persistent = factory.open_multi_persistent();
-	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides)?;
+	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides, cdc_memory)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
 		persistent.set_checkpoint_threshold(resolved.multi_wal_autocheckpoint);
 	}
@@ -334,7 +338,7 @@ impl ServerBuilder {
 			cdc_read,
 			operator_wal_autocheckpoint,
 			operator_flush_budget,
-		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
+		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs, self.cdc_memory)?;
 
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		install_fatal(runtime_config.fatal);
