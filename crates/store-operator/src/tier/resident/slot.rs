@@ -57,13 +57,38 @@ impl OperatorLive {
 	}
 
 	pub fn record_state(&mut self, key: EncodedKey, post: Option<EncodedPodRow>) {
+		self.write_state(key, post, false);
+	}
+
+	pub fn insert_state(&mut self, key: EncodedKey, post: Option<EncodedPodRow>) {
+		self.write_state(key, post, true);
+	}
+
+	fn write_state(&mut self, key: EncodedKey, post: Option<EncodedPodRow>, fresh: bool) {
 		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
 			.expect("an operator state key must decode as its own framing");
 		let operator = self.operator;
 		let before = self.state.footprint();
-		self.state.record_bytes(operator, keyspace, group, suffix, post);
+		match fresh {
+			true => self.state.record_bytes_fresh(operator, keyspace, group, suffix, post),
+			false => self.state.record_bytes(operator, keyspace, group, suffix, post),
+		}
 		let after = self.state.footprint();
 		self.bytes = self.bytes.saturating_add(after).saturating_sub(before);
+	}
+
+	pub fn erase_state(&mut self, key: &EncodedKey) -> bool {
+		let Some((group, keyspace, suffix)) = OperatorStateKey::decode_inner(key.as_slice()) else {
+			return false;
+		};
+		let operator = self.operator;
+		let before = self.state.footprint();
+		if !self.state.erase_bytes(operator, keyspace, group, suffix) {
+			return false;
+		}
+		let after = self.state.footprint();
+		self.bytes = self.bytes.saturating_add(after).saturating_sub(before);
+		true
 	}
 
 	pub fn clear_state(&mut self) -> BucketMap {

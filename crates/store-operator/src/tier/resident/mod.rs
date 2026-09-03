@@ -324,7 +324,7 @@ impl OperatorResidentState {
 			let before = inner.live.bytes;
 			let before_entries = inner.live.entry_count();
 			for write in group {
-				apply_write(&mut inner, write);
+				self.apply_write(&mut inner, write);
 			}
 			let after = inner.live.bytes;
 			let after_entries = inner.live.entry_count();
@@ -622,6 +622,56 @@ impl OperatorResidentState {
 			let _ = waker.send(FlushMessage::Pressure);
 		}
 	}
+
+	fn apply_write(&self, inner: &mut SlotInner, write: &OperatorWrite) {
+		match write {
+			OperatorWrite::Insert {
+				key,
+				post,
+				..
+			} => inner.live.insert_state(key.clone(), Some(post.clone())),
+			OperatorWrite::Replace {
+				key,
+				post,
+				..
+			} => record_state(inner, key.clone(), Some(post.clone())),
+			OperatorWrite::Remove {
+				key,
+				..
+			} => {
+				if inner.live.erase_state(key) {
+					#[cfg(reifydb_assertions)]
+					self.assert_erasable(inner, key);
+					return;
+				}
+				record_state(inner, key.clone(), None)
+			}
+		}
+	}
+
+	#[cfg(reifydb_assertions)]
+	fn assert_erasable(&self, inner: &SlotInner, key: &EncodedKey) {
+		reifydb_assertions! {
+			let operator = inner.live.operator;
+			let staged = inner.in_flight.as_ref().is_some_and(|batch| batch.contains_key(key));
+			assert!(
+				!staged,
+				"store::operator::resident collapsed a remove on operator {} over a key that is staged for flush",
+				operator.0
+			);
+			let durable = self
+				.shared
+				.sinks
+				.get()
+				.and_then(|sinks| sinks.persistent.get(operator, key))
+				.is_some();
+			assert!(
+				!durable,
+				"store::operator::resident collapsed a remove on operator {} over a key that is already durable",
+				operator.0
+			);
+		}
+	}
 }
 
 fn write_operator(write: &OperatorWrite) -> OperatorId {
@@ -649,25 +699,6 @@ fn drop_operator(marker: &DropMarker) -> OperatorId {
 
 pub(crate) fn record_state(inner: &mut SlotInner, key: EncodedKey, post: Option<EncodedPodRow>) {
 	inner.live.record_state(key, post);
-}
-
-fn apply_write(inner: &mut SlotInner, write: &OperatorWrite) {
-	match write {
-		OperatorWrite::Insert {
-			key,
-			post,
-			..
-		} => record_state(inner, key.clone(), Some(post.clone())),
-		OperatorWrite::Replace {
-			key,
-			post,
-			..
-		} => record_state(inner, key.clone(), Some(post.clone())),
-		OperatorWrite::Remove {
-			key,
-			..
-		} => record_state(inner, key.clone(), None),
-	}
 }
 
 fn clear_drop(inner: &mut SlotInner, marker: DropMarker) {

@@ -111,12 +111,36 @@ impl BucketMap {
 		suffix: &[u8],
 		post: Option<EncodedPodRow>,
 	) {
+		self.write_bytes(operator, keyspace, group, suffix, post, false);
+	}
+
+	pub fn record_bytes_fresh(
+		&mut self,
+		operator: OperatorId,
+		keyspace: KeyspaceId,
+		group: GroupId,
+		suffix: &[u8],
+		post: Option<EncodedPodRow>,
+	) {
+		self.write_bytes(operator, keyspace, group, suffix, post, true);
+	}
+
+	fn write_bytes(
+		&mut self,
+		operator: OperatorId,
+		keyspace: KeyspaceId,
+		group: GroupId,
+		suffix: &[u8],
+		post: Option<EncodedPodRow>,
+		fresh: bool,
+	) {
 		struct Record<'a> {
 			map: &'a mut BucketMap,
 			operator: OperatorId,
 			group: GroupId,
 			suffix: &'a [u8],
 			post: Option<EncodedPodRow>,
+			fresh: bool,
 		}
 
 		impl KeyspaceVisitor for Record<'_> {
@@ -125,7 +149,11 @@ impl BucketMap {
 			fn visit<K: Keyspace>(self) -> Self::Output {
 				let suffix = <K::Suffix as SuffixBytes>::from_suffix_bytes(self.suffix)
 					.expect("a stored suffix must decode as its own keyspace's suffix type");
-				self.map.bucket::<K>(self.operator).record(self.group, suffix, self.post);
+				let bucket = self.map.bucket::<K>(self.operator);
+				match self.fresh {
+					true => bucket.record_fresh(self.group, suffix, self.post),
+					false => bucket.record(self.group, suffix, self.post),
+				}
 			}
 		}
 
@@ -137,9 +165,51 @@ impl BucketMap {
 				group,
 				suffix,
 				post,
+				fresh,
 			},
 		)
 		.expect("a write must name a keyspace the catalogue declares");
+	}
+
+	pub fn erase_bytes(
+		&mut self,
+		operator: OperatorId,
+		keyspace: KeyspaceId,
+		group: GroupId,
+		suffix: &[u8],
+	) -> bool {
+		if !self.buckets.contains_key(&(operator, keyspace)) {
+			return false;
+		}
+
+		struct Erase<'a> {
+			map: &'a mut BucketMap,
+			operator: OperatorId,
+			group: GroupId,
+			suffix: &'a [u8],
+		}
+
+		impl KeyspaceVisitor for Erase<'_> {
+			type Output = bool;
+
+			fn visit<K: Keyspace>(self) -> Self::Output {
+				let Some(suffix) = <K::Suffix as SuffixBytes>::from_suffix_bytes(self.suffix) else {
+					return false;
+				};
+				self.map.bucket::<K>(self.operator).erase(self.group, &suffix)
+			}
+		}
+
+		dispatch(
+			keyspace,
+			Erase {
+				map: self,
+				operator,
+				group,
+				suffix,
+			},
+		)
+		.unwrap_or(false)
 	}
 
 	pub fn get_bytes(

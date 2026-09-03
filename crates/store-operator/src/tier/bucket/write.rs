@@ -33,6 +33,7 @@ use crate::tier::persistent::sqlite::typed;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteEntry {
 	pub post: Option<EncodedPodRow>,
+	pub never_staged: bool,
 }
 
 impl WriteEntry {
@@ -87,6 +88,14 @@ impl<K: Keyspace> TypedBucket<K> {
 	}
 
 	pub fn record(&mut self, group: GroupId, suffix: K::Suffix, post: Option<EncodedPodRow>) {
+		self.write(group, suffix, post, false);
+	}
+
+	pub fn record_fresh(&mut self, group: GroupId, suffix: K::Suffix, post: Option<EncodedPodRow>) {
+		self.write(group, suffix, post, true);
+	}
+
+	fn write(&mut self, group: GroupId, suffix: K::Suffix, post: Option<EncodedPodRow>, fresh: bool) {
 		if let Entry::Vacant(entry) = self.partitions.entry(group) {
 			entry.insert(SortedVecMap::new());
 			self.bytes = self.bytes.saturating_add(Self::group_bytes());
@@ -104,6 +113,7 @@ impl<K: Keyspace> TypedBucket<K> {
 					suffix,
 					WriteEntry {
 						post,
+						never_staged: fresh,
 					},
 				);
 				self.bytes = self.bytes.saturating_add(Self::suffix_bytes());
@@ -112,6 +122,26 @@ impl<K: Keyspace> TypedBucket<K> {
 			}
 		};
 		self.bytes = self.bytes.saturating_sub(outgoing).saturating_add(incoming);
+	}
+
+	pub fn erase(&mut self, group: GroupId, suffix: &K::Suffix) -> bool {
+		let Some(partition) = self.partitions.get_mut(&group) else {
+			return false;
+		};
+		if !partition.get(suffix).is_some_and(|entry| entry.never_staged) {
+			return false;
+		}
+		let entry = partition.remove(suffix).expect("the entry was just observed");
+		self.entries -= 1;
+		self.bytes = self
+			.bytes
+			.saturating_sub(Self::suffix_bytes())
+			.saturating_sub(entry.row_bytes());
+		if partition.is_empty() {
+			self.partitions.remove(&group);
+			self.bytes = self.bytes.saturating_sub(Self::group_bytes());
+		}
+		true
 	}
 
 	pub fn get(&self, group: GroupId, suffix: &K::Suffix) -> Option<&WriteEntry> {
