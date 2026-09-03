@@ -37,6 +37,7 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
 	error::Error,
+	reifydb_assertions,
 	util::hash::{Hash128, xxh3_128},
 	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber, value_type::ValueType},
 };
@@ -278,7 +279,17 @@ impl JoinOperator {
 	}
 
 	fn resync_timer(&mut self, host: &mut dyn HostContext, retry: Option<DateTime>) -> Result<()> {
-		let next = match (self.expiry.min(host)?, retry) {
+		let earliest = self.expiry.min(host)?;
+		self.arm_maintenance(host, earliest, retry)
+	}
+
+	fn arm_maintenance(
+		&mut self,
+		host: &mut dyn HostContext,
+		earliest: Option<DateTime>,
+		retry: Option<DateTime>,
+	) -> Result<()> {
+		let next = match (earliest, retry) {
 			(Some(earliest), Some(retry)) => Some(earliest.min(retry)),
 			(earliest, retry) => earliest.or(retry),
 		};
@@ -308,10 +319,9 @@ impl JoinOperator {
 			let Some(group) = resolved.get(hash).copied() else {
 				continue;
 			};
-			host.join_expiry_clear(group, side.tag(), *row_number)?;
-		}
-		if !cleared.is_empty() {
-			self.expiry.invalidate();
+			if let Some(at) = host.join_expiry_clear(group, side.tag(), *row_number)? {
+				self.expiry.cleared(at);
+			}
 		}
 
 		for (hash, row_number, at) in armed {
@@ -451,10 +461,10 @@ impl JoinOperator {
 		let mut emptied: Vec<GroupId> = Vec::new();
 		let mut seen: HashSet<GroupId> = HashSet::new();
 		let mut cursor: Option<JoinExpiryDueKey> = None;
-		loop {
+		let earliest = loop {
 			let page = host.join_due_page(fired.at(), SEAL_BATCH, cursor.as_ref())?;
 			if page.due.is_empty() {
-				break;
+				break page.next;
 			}
 			let mut order: Vec<GroupId> = Vec::new();
 			let mut by_group: HashMap<GroupId, Vec<(JoinSide, JoinDueEntry)>> = HashMap::new();
@@ -483,10 +493,10 @@ impl JoinOperator {
 				}
 			}
 			if !page.more {
-				break;
+				break page.next;
 			}
 			cursor = page.resume;
-		}
+		};
 
 		for group in emptied {
 			if state.left.holds_rows(host, group)?
@@ -501,7 +511,16 @@ impl JoinOperator {
 			stalled |= drained.still_queued;
 		}
 
-		self.expiry.invalidate();
+		reifydb_assertions! {
+			let scanned = host.join_expiry_min()?;
+			assert!(
+				scanned == earliest,
+				"the drain read {earliest:?} as the first instant past {fired:?}, but the index now \
+				 holds {scanned:?}; arming the maintenance timer on a stale read leaves a row \
+				 unexpired until the next fire"
+			);
+		}
+		self.expiry.settle(earliest);
 		self.resync_timer(host, stalled.then_some(retry))
 	}
 

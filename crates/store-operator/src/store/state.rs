@@ -18,7 +18,7 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator::{
 		keyspace::dispatch,
-		state::{GroupId, group_inner_range, keyspace_inner_range_split},
+		state::{GroupId, group_inner_range, group_inner_range_split, keyspace_inner_range_split},
 	},
 };
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
@@ -29,7 +29,10 @@ use crate::types::DurablePre;
 use crate::{
 	store::{
 		OperatorStore, StandardOperatorStore,
-		pager::{ExhaustedPager, GroupPager, PageSource, PersistentPager, PlanScan},
+		pager::{
+			ExhaustedPager, GroupKeyspacePager, GroupPager, PageSource, PersistentPager, PlanScan,
+			keyspaces_of,
+		},
 	},
 	tier::resident::batch::DropMarker,
 	types::{BufferedState, OperatorBatch, OperatorWrite},
@@ -551,11 +554,20 @@ impl StandardOperatorStore {
 			return Box::new(ExhaustedPager);
 		}
 		let persistent = self.persistent.as_ref();
-		let Some((group, keyspace, start, end)) = keyspace_inner_range_split(range) else {
-			return Box::new(PersistentPager::new(operator, persistent, range));
-		};
 		let Some(tiers) = self.range.as_ref() else {
 			return Box::new(PersistentPager::new(operator, persistent, range));
+		};
+		let Some((group, keyspace, start, end)) = keyspace_inner_range_split(range) else {
+			let Some(group) = group_inner_range_split(range) else {
+				return Box::new(PersistentPager::new(operator, persistent, range));
+			};
+			return Box::new(GroupKeyspacePager::new(
+				tiers,
+				operator,
+				group,
+				persistent,
+				keyspaces_of(group, range),
+			));
 		};
 		dispatch(
 			keyspace,

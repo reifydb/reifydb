@@ -74,21 +74,10 @@ pub struct JoinRowExpirySuffix {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
 pub struct JoinExpiryDueKey {
-	pub at: Desc<DateTime>,
+	pub at: Asc<DateTime>,
 	pub group: Desc<GroupId>,
 	pub side: Asc<u8>,
 	pub row: Asc<RowNumber>,
-}
-
-impl JoinExpiryDueKey {
-	pub fn at_threshold(at: DateTime) -> Self {
-		Self {
-			at: Desc(at),
-			group: TypedKey::low(),
-			side: TypedKey::low(),
-			row: TypedKey::low(),
-		}
-	}
 }
 
 #[operator_state]
@@ -257,7 +246,7 @@ pub fn join_expiry_due_key(at: DateTime, group: GroupId, side: u8, row: RowNumbe
 	typed_key::<JoinExpiryDue>(
 		GroupId::ROOT,
 		&JoinExpiryDueKey {
-			at: Desc(at),
+			at: Asc(at),
 			group: Desc(group),
 			side: Asc(side),
 			row: Asc(row),

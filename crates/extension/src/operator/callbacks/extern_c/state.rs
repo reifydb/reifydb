@@ -900,8 +900,13 @@ mod join_row_expiry_guard_tests {
 			Ok(())
 		}
 
-		fn join_expiry_clear(&mut self, _group: GroupId, _side: u8, _row_number: RowNumber) -> Result<()> {
-			Ok(())
+		fn join_expiry_clear(
+			&mut self,
+			_group: GroupId,
+			_side: u8,
+			_row_number: RowNumber,
+		) -> Result<Option<DateTime>> {
+			Ok(None)
 		}
 
 		fn join_expiry_free(&mut self, _entry: &JoinDueEntry) -> Result<()> {
@@ -922,6 +927,7 @@ mod join_row_expiry_guard_tests {
 				due: Vec::new(),
 				resume: None,
 				more: false,
+				next: None,
 			})
 		}
 

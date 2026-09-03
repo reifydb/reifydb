@@ -54,7 +54,7 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn join_expiry_arm(&mut self, group: GroupId, side: u8, row_number: RowNumber, at: DateTime) -> Result<()>;
 
-	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<()>;
+	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>>;
 
 	fn join_expiry_free(&mut self, entry: &JoinDueEntry) -> Result<()>;
 
@@ -329,7 +329,7 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.join_expiry_arm(self.operator, group, side, row_number, at)
 	}
 
-	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<()> {
+	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>> {
 		self.txn.join_expiry_clear(self.operator, group, side, row_number)
 	}
 

@@ -17,7 +17,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::{
 		keyspace::KEYSPACES,
-		state::{GroupId, KeyspaceId, keyspace_inner_range},
+		state::{GroupId, KeyspaceId, group_data_inner_range, group_inner_range, keyspace_inner_range},
 	},
 	metrics::scan::ScanCounters,
 };
@@ -794,4 +794,57 @@ fn a_range_that_fits_inside_the_scan_budget_names_no_resume_point() {
 	assert_eq!(bodies(&batch), ["v1", "v2", "v3"]);
 	assert!(!batch.has_more, "the whole range fit in one page");
 	assert!(batch.resume.is_none(), "a scan that ran to the end of its range has nothing to resume from");
+}
+
+#[test]
+fn a_group_range_is_served_from_the_claims_its_keyspaces_hold() {
+	// A group sweep is one range across every keyspace of a group. Answered as one flat scan it ignores the
+	// per keyspace claims, so a group the tier already holds whole still pays sqlite on every sweep, and the
+	// reaper sweeps the same groups again and again.
+	let (store, storage, _guard) = cached_store();
+	seed_rows(&storage, 3);
+	for suffix in 1..=2u8 {
+		storage.seed_durable(&[OperatorWrite::Insert {
+			operator: OP_A,
+			key: key_in(RANGE_ONLY_ABOVE, suffix),
+			post: row(&format!("c{suffix}")),
+		}]);
+	}
+
+	let primed = store.range_batch(OP_A, group_inner_range(group()), 64);
+	assert_eq!(
+		bodies(&primed),
+		["c1", "c2", "v1", "v2", "v3"],
+		"a group range must answer for every keyspace the group holds, in key order"
+	);
+
+	let before = ScanCounters::sample();
+	let served = store.range_batch(OP_A, group_inner_range(group()), 64);
+	let scanned = before.since();
+
+	assert_eq!(bodies(&served), ["c1", "c2", "v1", "v2", "v3"], "the second sweep must answer with the same rows");
+	assert_eq!(scanned.fetched, 0, "a group whose every keyspace is claimed must not reach sqlite a second time");
+}
+
+#[test]
+fn a_data_only_group_range_answers_for_every_data_keyspace_of_the_group() {
+	// The reaper frees a group through the data only range; a keyspace filter that misses one leaves rows
+	// behind under a group id whose identity is about to be reclaimed.
+	let (store, storage, _guard) = cached_store();
+	seed_rows(&storage, 3);
+	for suffix in 1..=2u8 {
+		storage.seed_durable(&[OperatorWrite::Insert {
+			operator: OP_A,
+			key: key_in(RANGE_ONLY_ABOVE, suffix),
+			post: row(&format!("c{suffix}")),
+		}]);
+	}
+
+	let swept = store.range_batch(OP_A, group_data_inner_range(group()), 64);
+
+	assert_eq!(
+		bodies(&swept),
+		bodies(&store.range_batch(OP_A, group_inner_range(group()), 64)),
+		"both keyspaces hold data rows, so the data only sweep must answer with the whole group"
+	);
 }
