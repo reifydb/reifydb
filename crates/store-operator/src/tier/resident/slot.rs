@@ -50,6 +50,10 @@ impl OperatorLive {
 		self.state.dirty_len() > 0
 	}
 
+	pub fn dirty_bytes(&self) -> ByteSize {
+		self.state.dirty_footprint()
+	}
+
 	pub fn revert_flushing(&mut self) -> usize {
 		self.state.revert_flushing()
 	}
@@ -141,6 +145,10 @@ impl SlotInner {
 
 	pub fn dirty_entries(&self) -> usize {
 		self.live.dirty_count()
+	}
+
+	pub fn dirty_bytes(&self) -> ByteSize {
+		self.live.dirty_bytes()
 	}
 
 	pub fn lookup(&self, key: &EncodedKey) -> Option<WriteEntry> {

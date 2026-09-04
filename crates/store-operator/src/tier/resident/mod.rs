@@ -58,6 +58,8 @@ use crate::{
 
 const CLOCK_PASSES: usize = 2;
 
+const FLUSH_FLOOR_DIVISOR: u64 = 4;
+
 pub const FLUSH_BUDGET_BYTES: ByteSize = if default::TESTING {
 	default::store::OPERATOR_RESIDENT_BUDGET_TESTING
 } else {
@@ -87,6 +89,10 @@ pub const SLICE_BYTES: ByteSize = if default::TESTING {
 } else {
 	default::store::OPERATOR_FLUSH_SLICE
 };
+
+fn flush_floor(cap: ByteSize) -> ByteSize {
+	ByteSize::from_bytes(cap.as_bytes() / FLUSH_FLOOR_DIVISOR).min(cap.min(SLICE_BYTES))
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct OperatorResidentStateMetrics {
@@ -140,8 +146,11 @@ pub struct Shared {
 	budget: Arc<MemoryBudget>,
 	entries: AtomicU64,
 	dirty: AtomicU64,
+	dirty_bytes: AtomicU64,
 	entry_limit: u64,
 	slice: ByteSize,
+	flush_floor: ByteSize,
+	flush_entry_floor: u64,
 	waker: Mutex<Option<ActorRef<FlushMessage>>>,
 	evictor: Mutex<Option<ActorRef<EvictMessage>>>,
 	metrics: Mutex<OperatorResidentStateMetrics>,
@@ -165,8 +174,11 @@ impl Shared {
 			budget: Arc::new(MemoryBudget::new(cap)),
 			entries: AtomicU64::new(0),
 			dirty: AtomicU64::new(0),
+			dirty_bytes: AtomicU64::new(0),
 			entry_limit,
 			slice: cap.min(SLICE_BYTES),
+			flush_floor: flush_floor(cap),
+			flush_entry_floor: entry_limit / FLUSH_FLOOR_DIVISOR,
 			waker: Mutex::new(None),
 			evictor: Mutex::new(None),
 			metrics: Mutex::new(OperatorResidentStateMetrics::default()),
@@ -213,8 +225,40 @@ impl Shared {
 		}
 	}
 
+	fn charge_dirty_bytes(&self, amount: ByteSize) {
+		self.dirty_bytes.fetch_add(amount.as_bytes(), Ordering::Relaxed);
+	}
+
+	fn release_dirty_bytes(&self, amount: ByteSize) {
+		let amount = amount.as_bytes();
+		let mut current = self.dirty_bytes.load(Ordering::Relaxed);
+		loop {
+			let next = current.saturating_sub(amount);
+			match self.dirty_bytes.compare_exchange_weak(
+				current,
+				next,
+				Ordering::Relaxed,
+				Ordering::Relaxed,
+			) {
+				Ok(_) => return,
+				Err(observed) => current = observed,
+			}
+		}
+	}
+
 	fn has_dirty(&self) -> bool {
 		self.dirty.load(Ordering::Relaxed) > 0
+	}
+
+	fn dirty_footprint(&self) -> ByteSize {
+		ByteSize::from_bytes(self.dirty_bytes.load(Ordering::Relaxed))
+	}
+
+	fn worth_flushing(&self, over_budget: bool, over_entry_limit: bool) -> bool {
+		if over_budget && self.dirty_footprint() >= self.flush_floor {
+			return true;
+		}
+		over_entry_limit && self.dirty.load(Ordering::Relaxed) >= self.flush_entry_floor
 	}
 
 	pub(crate) fn slot(&self, operator: OperatorId) -> Option<Arc<Slot>> {
@@ -352,6 +396,18 @@ impl OperatorResidentState {
 	}
 
 	#[cfg(any(test, reifydb_assertions))]
+	pub(crate) fn dirty_bytes(&self) -> ByteSize {
+		let mut total = ByteSize::ZERO;
+		for operator in self.shared.operators() {
+			let Some(slot) = self.shared.slot(operator) else {
+				continue;
+			};
+			total = total.saturating_add(slot.inner.lock().dirty_bytes());
+		}
+		total
+	}
+
+	#[cfg(any(test, reifydb_assertions))]
 	pub(crate) fn resident_entries(&self) -> usize {
 		let mut total = 0usize;
 		for operator in self.shared.operators() {
@@ -405,18 +461,22 @@ impl OperatorResidentState {
 			let before = inner.live.bytes;
 			let before_entries = inner.live.entry_count();
 			let before_dirty = inner.live.dirty_count();
+			let before_dirty_bytes = inner.live.dirty_bytes();
 			for write in group {
 				self.apply_write(&mut inner, write);
 			}
 			let after = inner.live.bytes;
 			let after_entries = inner.live.entry_count();
 			let after_dirty = inner.live.dirty_count();
+			let after_dirty_bytes = inner.live.dirty_bytes();
 			self.shared.budget.charge(after.saturating_sub(before));
 			self.shared.budget.release(before.saturating_sub(after));
 			self.shared.charge_entries(after_entries.saturating_sub(before_entries));
 			self.shared.release_entries(before_entries.saturating_sub(after_entries));
 			self.shared.charge_dirty(after_dirty.saturating_sub(before_dirty));
 			self.shared.release_dirty(before_dirty.saturating_sub(after_dirty));
+			self.shared.charge_dirty_bytes(after_dirty_bytes.saturating_sub(before_dirty_bytes));
+			self.shared.release_dirty_bytes(before_dirty_bytes.saturating_sub(after_dirty_bytes));
 			if flow.is_some() {
 				inner.flow = flow;
 			}
@@ -441,16 +501,20 @@ impl OperatorResidentState {
 			let before = inner.live.bytes;
 			let before_entries = inner.live.entry_count();
 			let before_dirty = inner.live.dirty_count();
+			let before_dirty_bytes = inner.live.dirty_bytes();
 			let out = mutate(&mut inner);
 			let after = inner.live.bytes;
 			let after_entries = inner.live.entry_count();
 			let after_dirty = inner.live.dirty_count();
+			let after_dirty_bytes = inner.live.dirty_bytes();
 			self.shared.budget.charge(after.saturating_sub(before));
 			self.shared.budget.release(before.saturating_sub(after));
 			self.shared.charge_entries(after_entries.saturating_sub(before_entries));
 			self.shared.release_entries(before_entries.saturating_sub(after_entries));
 			self.shared.charge_dirty(after_dirty.saturating_sub(before_dirty));
 			self.shared.release_dirty(before_dirty.saturating_sub(after_dirty));
+			self.shared.charge_dirty_bytes(after_dirty_bytes.saturating_sub(before_dirty_bytes));
+			self.shared.release_dirty_bytes(before_dirty_bytes.saturating_sub(after_dirty_bytes));
 			self.mark_pending(&mut inner);
 			out
 		};
@@ -475,13 +539,16 @@ impl OperatorResidentState {
 		let before = inner.live.bytes;
 		let before_entries = inner.live.entry_count();
 		let before_dirty = inner.live.dirty_count();
+		let before_dirty_bytes = inner.live.dirty_bytes();
 		clear_drop(&mut inner, marker);
 		let after = inner.live.bytes;
 		let after_entries = inner.live.entry_count();
 		let after_dirty = inner.live.dirty_count();
+		let after_dirty_bytes = inner.live.dirty_bytes();
 		self.shared.budget.release(before.saturating_sub(after));
 		self.shared.release_entries(before_entries.saturating_sub(after_entries));
 		self.shared.release_dirty(before_dirty.saturating_sub(after_dirty));
+		self.shared.release_dirty_bytes(before_dirty_bytes.saturating_sub(after_dirty_bytes));
 		self.mark_pending(&mut inner);
 	}
 
@@ -631,6 +698,7 @@ impl OperatorResidentState {
 		let mut touched: Vec<OperatorId> = Vec::new();
 		let mut consumed = ByteSize::ZERO;
 		let mut staged = 0usize;
+		let mut staged_bytes = ByteSize::ZERO;
 		let mut exhausted = false;
 
 		for group in self.pending_groups() {
@@ -646,6 +714,7 @@ impl OperatorResidentState {
 				if !inner.live.has_dirty() {
 					continue;
 				}
+				let before_dirty_bytes = inner.live.dirty_bytes();
 				let carried =
 					inner.live.state.stage_dirty(operator, |keyspace, group, suffix, entry| {
 						batch.state.record_bytes(
@@ -663,11 +732,14 @@ impl OperatorResidentState {
 						}
 					});
 				consumed = consumed.saturating_add(carried);
+				staged_bytes = staged_bytes
+					.saturating_add(before_dirty_bytes.saturating_sub(inner.live.dirty_bytes()));
 				self.mark_pending(&mut inner);
 				touched.push(operator);
 			}
 		}
 		self.shared.release_dirty(staged);
+		self.shared.release_dirty_bytes(staged_bytes);
 		batch.bytes = consumed;
 
 		let blocked = self.flows_with_dirty();
@@ -717,14 +789,19 @@ impl OperatorResidentState {
 
 	fn clear_in_flight(&self, global: &mut GlobalInner) {
 		let mut rearmed = 0usize;
+		let mut rearmed_bytes = ByteSize::ZERO;
 		for operator in &global.in_flight_operators {
 			let Some(slot) = self.shared.slot(*operator) else {
 				continue;
 			};
 			let mut inner = slot.inner.lock();
+			let before_dirty_bytes = inner.live.dirty_bytes();
 			rearmed += inner.live.revert_flushing();
+			rearmed_bytes = rearmed_bytes
+				.saturating_add(inner.live.dirty_bytes().saturating_sub(before_dirty_bytes));
 		}
 		self.shared.charge_dirty(rearmed);
+		self.shared.charge_dirty_bytes(rearmed_bytes);
 		global.in_flight_operators.clear();
 		global.in_flight_checkpoints.clear();
 		global.in_flight_drops.clear();
@@ -784,6 +861,13 @@ impl OperatorResidentState {
 				"store::operator::resident dirty entry counter drifted: the counter carries {}, the resident set walks to {}",
 				counted, walked
 			);
+			let counted = self.shared.dirty_footprint();
+			let walked = self.dirty_bytes();
+			assert_eq!(
+				counted, walked,
+				"store::operator::resident dirty byte counter drifted: the counter carries {}, the resident set walks to {}",
+				counted, walked
+			);
 		}
 
 		self.shared.global.lock().flushing = false;
@@ -807,10 +891,16 @@ impl OperatorResidentState {
 	}
 
 	fn observe_write(&self) {
-		if !self.shared.budget.over_budget() && !self.shared.over_entry_limit() {
+		let over_budget = self.shared.budget.over_budget();
+		let over_entry_limit = self.shared.over_entry_limit();
+		if !over_budget && !over_entry_limit {
 			return;
 		}
 		if !self.shared.has_dirty() {
+			return;
+		}
+		if !self.shared.worth_flushing(over_budget, over_entry_limit) {
+			self.wake_evictor();
 			return;
 		}
 		if self.shared.triggered.swap(true, Ordering::AcqRel) {
