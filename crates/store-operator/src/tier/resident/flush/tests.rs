@@ -46,7 +46,7 @@ use crate::{
 		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
 		range::OperatorRangeConfig,
 		resident::{
-			FLUSH_BUDGET_BYTES, FLUSH_INTERVAL, OperatorResidentState, batch::FlushBatch,
+			FLUSH_BUDGET_BYTES, FLUSH_INTERVAL, OperatorResidentState, ResidentLimits, batch::FlushBatch,
 			evict::actor::ResidentEvictActor,
 		},
 	},
@@ -741,7 +741,10 @@ fn a_buffer_that_fills_with_tombstones_flushes_even_though_they_cost_almost_no_b
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorResidentState::with_limits(FLUSH_BUDGET_BYTES, limit);
+	let buffer = OperatorResidentState::with_limits(ResidentLimits {
+		entries: limit,
+		..ResidentLimits::default()
+	});
 	buffer.attach_sinks(tier(&storage), None);
 	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone(), FLUSH_INTERVAL);
 	buffer.attach_evictor(ResidentEvictActor::spawn(&spawner, buffer.clone()));
@@ -779,7 +782,10 @@ fn a_tombstone_count_resting_on_the_entry_limit_does_not_flush() {
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorResidentState::with_limits(FLUSH_BUDGET_BYTES, limit);
+	let buffer = OperatorResidentState::with_limits(ResidentLimits {
+		entries: limit,
+		..ResidentLimits::default()
+	});
 	buffer.attach_sinks(tier(&storage), None);
 	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone(), FLUSH_INTERVAL);
 	buffer.attach_flusher(actor_ref);

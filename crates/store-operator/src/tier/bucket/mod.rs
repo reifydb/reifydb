@@ -56,11 +56,7 @@ pub trait AnyBucket: Any + Send + Sync {
 
 	fn dirty_len(&self) -> usize;
 
-	fn recount_dirty(&self) -> usize;
-
 	fn dirty_footprint(&self) -> ByteSize;
-
-	fn recount_dirty_bytes(&self) -> ByteSize;
 
 	fn stage_dirty(&mut self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) -> ByteSize;
 
@@ -342,20 +338,10 @@ impl BucketMap {
 		self.buckets.values().map(|bucket| bucket.dirty_len()).sum()
 	}
 
-	pub fn recount_dirty(&self) -> usize {
-		self.buckets.values().map(|bucket| bucket.recount_dirty()).sum()
-	}
-
 	pub fn dirty_footprint(&self) -> ByteSize {
 		self.buckets
 			.values()
 			.fold(ByteSize::ZERO, |total, bucket| total.saturating_add(bucket.dirty_footprint()))
-	}
-
-	pub fn recount_dirty_bytes(&self) -> ByteSize {
-		self.buckets
-			.values()
-			.fold(ByteSize::ZERO, |total, bucket| total.saturating_add(bucket.recount_dirty_bytes()))
 	}
 
 	pub fn revert_flushing(&mut self) -> usize {

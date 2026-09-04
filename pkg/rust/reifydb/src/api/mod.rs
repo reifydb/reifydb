@@ -30,7 +30,7 @@ use reifydb_store_operator::{
 	tier::{
 		persistent::OperatorPersistentTier,
 		range::OperatorRangeConfig,
-		resident::{FLUSH_ENTRY_LIMIT, OperatorResidentState},
+		resident::{OperatorResidentState, ResidentLimits},
 	},
 };
 use reifydb_store_single::{
@@ -42,7 +42,7 @@ use reifydb_store_single::{
 	tier::commit::buffer::SingleCommitBufferTier,
 };
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
-use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
+use reifydb_value::value::duration::Duration;
 
 pub mod embedded;
 mod export;
@@ -82,7 +82,7 @@ impl StorageFactory {
 		cdc_wal_autocheckpoint: u32,
 		cdc_memory: bool,
 		operator_wal_autocheckpoint: u32,
-		operator_flush_budget: ByteSize,
+		operator_resident: ResidentLimits,
 		operator_flush_interval: Duration,
 		spawner: &ActorSpawner,
 	) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
@@ -101,7 +101,7 @@ impl StorageFactory {
 				cdc_wal_autocheckpoint,
 				cdc_memory,
 				operator_wal_autocheckpoint,
-				operator_flush_budget,
+				operator_resident,
 				operator_flush_interval,
 				config.clone(),
 				spawner,
@@ -212,7 +212,7 @@ fn create_sqlite_store_with(
 	cdc_wal_autocheckpoint: u32,
 	cdc_memory: bool,
 	operator_wal_autocheckpoint: u32,
-	operator_flush_budget: ByteSize,
+	operator_resident: ResidentLimits,
 	operator_flush_interval: Duration,
 	config: SqliteConfig,
 	spawner: &ActorSpawner,
@@ -257,7 +257,7 @@ fn create_sqlite_store_with(
 	let operator_store = OperatorStore::standard(OperatorStoreConfig {
 		range: operator_range,
 		resident: OperatorResidentStateConfig {
-			storage: OperatorResidentState::with_limits(operator_flush_budget, FLUSH_ENTRY_LIMIT),
+			storage: OperatorResidentState::with_limits(operator_resident),
 			flush_interval: operator_flush_interval,
 		},
 		..OperatorStoreConfig::sqlite(

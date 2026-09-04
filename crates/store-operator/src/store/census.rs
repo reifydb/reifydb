@@ -169,11 +169,11 @@ impl OperatorCensus {
 	}
 }
 
-fn slot<'a>(
-	buckets: &'a mut BTreeMap<(OperatorId, u8), Bucket>,
+fn slot(
+	buckets: &mut BTreeMap<(OperatorId, u8), Bucket>,
 	operator: OperatorId,
 	keyspace: KeyspaceId,
-) -> Option<&'a mut Bucket> {
+) -> Option<&mut Bucket> {
 	let key_width = key_width(keyspace)?;
 	Some(buckets.entry((operator, encode_u8(keyspace.0))).or_insert(Bucket {
 		keyspace,

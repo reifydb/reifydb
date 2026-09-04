@@ -15,7 +15,7 @@ use reifydb_store_cdc::{
 };
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig};
-use reifydb_store_operator::tier::range::OperatorRangeConfig;
+use reifydb_store_operator::tier::{range::OperatorRangeConfig, resident::ResidentLimits};
 use reifydb_value::{
 	byte_size::ByteSize,
 	value::{Value, duration::Duration},
@@ -31,7 +31,7 @@ pub(crate) struct StartupConfig {
 	pub multi_wal_autocheckpoint: u32,
 	pub cdc_wal_autocheckpoint: u32,
 	pub operator_wal_autocheckpoint: u32,
-	pub operator_flush_budget: ByteSize,
+	pub operator_resident: ResidentLimits,
 	pub operator_flush_interval: Duration,
 	pub cdc_commit: CdcCommitConfig,
 	pub cdc_read: Option<CdcReadConfig>,
@@ -52,6 +52,8 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::CdcWalAutocheckpoint,
 	ConfigKey::OperatorWalAutocheckpoint,
 	ConfigKey::OperatorResidentBudget,
+	ConfigKey::OperatorDirtyBudget,
+	ConfigKey::OperatorFlushSlice,
 	ConfigKey::OperatorFlushInterval,
 	ConfigKey::MultiFlushBudgetBytes,
 	ConfigKey::CdcCommitBufferBytes,
@@ -176,7 +178,12 @@ pub(crate) fn resolve_startup_configs(
 		multi_wal_autocheckpoint: uint8(ConfigKey::MultiWalAutocheckpoint) as u32,
 		cdc_wal_autocheckpoint: uint8(ConfigKey::CdcWalAutocheckpoint) as u32,
 		operator_wal_autocheckpoint: uint8(ConfigKey::OperatorWalAutocheckpoint) as u32,
-		operator_flush_budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorResidentBudget)),
+		operator_resident: ResidentLimits {
+			budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorResidentBudget)),
+			dirty_budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorDirtyBudget)),
+			slice: ByteSize::from_bytes(uint8(ConfigKey::OperatorFlushSlice)),
+			..ResidentLimits::default()
+		},
 		operator_flush_interval: duration(ConfigKey::OperatorFlushInterval),
 		cdc_commit,
 		cdc_read,

@@ -111,6 +111,7 @@ impl WriteEntry {
 struct Partition<K: Keyspace> {
 	live: SortedVecMap<K::Suffix, WriteEntry>,
 	deleted: SortedVecMap<K::Suffix, WriteEntry>,
+	dirty: usize,
 }
 
 impl<K: Keyspace> Partition<K> {
@@ -118,6 +119,7 @@ impl<K: Keyspace> Partition<K> {
 		Self {
 			live: SortedVecMap::new(),
 			deleted: SortedVecMap::new(),
+			dirty: 0,
 		}
 	}
 
@@ -168,6 +170,7 @@ pub struct TypedBucket<K: Keyspace> {
 	entries: usize,
 	dirty: usize,
 	dirty_bytes: ByteSize,
+	dirty_groups: usize,
 }
 
 impl<K: Keyspace> TypedBucket<K> {
@@ -179,6 +182,7 @@ impl<K: Keyspace> TypedBucket<K> {
 			entries: 0,
 			dirty: 0,
 			dirty_bytes: ByteSize::ZERO,
+			dirty_groups: 0,
 		}
 	}
 
@@ -210,32 +214,8 @@ impl<K: Keyspace> TypedBucket<K> {
 		self.dirty
 	}
 
-	pub fn recount_dirty(&self) -> usize {
-		self.partitions
-			.values()
-			.map(|partition| {
-				partition
-					.live
-					.values()
-					.chain(partition.deleted.values())
-					.filter(|entry| entry.staged.is_dirty())
-					.count()
-			})
-			.sum()
-	}
-
 	pub fn dirty_footprint(&self) -> ByteSize {
-		self.dirty_bytes
-	}
-
-	pub fn recount_dirty_bytes(&self) -> ByteSize {
-		self.partitions
-			.values()
-			.flat_map(|partition| partition.live.values().chain(partition.deleted.values()))
-			.filter(|entry| entry.staged.is_dirty())
-			.fold(ByteSize::ZERO, |total, entry| {
-				total.saturating_add(entry.row_bytes()).saturating_add(Self::suffix_bytes())
-			})
+		self.dirty_bytes.saturating_add(Self::group_bytes() * self.dirty_groups as u64)
 	}
 
 	pub fn stage_dirty(&mut self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) -> ByteSize {
@@ -259,6 +239,10 @@ impl<K: Keyspace> TypedBucket<K> {
 					charged_group = true;
 				}
 			}
+			if charged_group {
+				partition.dirty = 0;
+				self.dirty_groups -= 1;
+			}
 		}
 		staged
 	}
@@ -267,15 +251,21 @@ impl<K: Keyspace> TypedBucket<K> {
 		let mut reverted = 0usize;
 		let mut restored = ByteSize::ZERO;
 		for partition in self.partitions.values_mut() {
+			let mut restored_here = 0usize;
 			for (_, entry) in partition.live.iter_mut().chain(partition.deleted.iter_mut()) {
 				if matches!(entry.staged, Staged::Flushing) {
 					entry.staged = Staged::Dirty;
-					reverted += 1;
+					restored_here += 1;
 					restored = restored
 						.saturating_add(entry.row_bytes())
 						.saturating_add(Self::suffix_bytes());
 				}
 			}
+			if restored_here > 0 && partition.dirty == 0 {
+				self.dirty_groups += 1;
+			}
+			partition.dirty += restored_here;
+			reverted += restored_here;
 		}
 		self.dirty += reverted;
 		self.dirty_bytes = self.dirty_bytes.saturating_add(restored);
@@ -370,9 +360,8 @@ impl<K: Keyspace> TypedBucket<K> {
 				Some(moved) => {
 					match moved.staged.is_dirty() {
 						true => {
-							uncharge = moved
-								.row_bytes()
-								.saturating_add(Self::suffix_bytes());
+							uncharge =
+								moved.row_bytes().saturating_add(Self::suffix_bytes());
 						}
 						false => dirtied += 1,
 					}
@@ -397,6 +386,13 @@ impl<K: Keyspace> TypedBucket<K> {
 				}
 			},
 		};
+		if dirtied > 0 {
+			let partition = self.partitions.get_mut(&group).expect("the partition was just inserted");
+			partition.dirty += dirtied;
+			if partition.dirty == dirtied {
+				self.dirty_groups += 1;
+			}
+		}
 		self.dirty += dirtied;
 		self.dirty_bytes = self
 			.dirty_bytes
@@ -418,6 +414,10 @@ impl<K: Keyspace> TypedBucket<K> {
 		};
 		self.entries -= 1;
 		self.dirty -= 1;
+		partition.dirty -= 1;
+		if partition.dirty == 0 {
+			self.dirty_groups -= 1;
+		}
 		self.dirty_bytes =
 			self.dirty_bytes.saturating_sub(Self::suffix_bytes()).saturating_sub(entry.row_bytes());
 		self.bytes = self.bytes.saturating_sub(Self::suffix_bytes()).saturating_sub(entry.row_bytes());
@@ -476,6 +476,7 @@ impl<K: Keyspace> TypedBucket<K> {
 		self.entries = 0;
 		self.dirty = 0;
 		self.dirty_bytes = ByteSize::ZERO;
+		self.dirty_groups = 0;
 	}
 }
 
@@ -496,16 +497,8 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 		TypedBucket::dirty_len(self)
 	}
 
-	fn recount_dirty(&self) -> usize {
-		TypedBucket::recount_dirty(self)
-	}
-
 	fn dirty_footprint(&self) -> ByteSize {
 		TypedBucket::dirty_footprint(self)
-	}
-
-	fn recount_dirty_bytes(&self) -> ByteSize {
-		TypedBucket::recount_dirty_bytes(self)
 	}
 
 	fn stage_dirty(&mut self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) -> ByteSize {
@@ -561,6 +554,7 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 			return Ok(Resume::Done);
 		};
 		let mut released = ByteSize::ZERO;
+		let had_dirty = partition.dirty > 0;
 		while budget.rows > 0 {
 			let next = match (partition.live.first_key_value(), partition.deleted.first_key_value()) {
 				(None, None) => None,
@@ -578,12 +572,16 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 			self.entries -= 1;
 			if entry.staged.is_dirty() {
 				self.dirty -= 1;
+				partition.dirty -= 1;
 				self.dirty_bytes = self
 					.dirty_bytes
 					.saturating_sub(Self::suffix_bytes())
 					.saturating_sub(entry.row_bytes());
 			}
 			released = released.saturating_add(Self::suffix_bytes()).saturating_add(entry.row_bytes());
+		}
+		if had_dirty && partition.dirty == 0 {
+			self.dirty_groups -= 1;
 		}
 		let drained = partition.is_empty();
 		self.bytes = self.bytes.saturating_sub(released);
@@ -664,6 +662,7 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 			entries: replace(&mut other.entries, 0),
 			dirty: replace(&mut other.dirty, 0),
 			dirty_bytes: replace(&mut other.dirty_bytes, ByteSize::ZERO),
+			dirty_groups: replace(&mut other.dirty_groups, 0),
 		});
 	}
 

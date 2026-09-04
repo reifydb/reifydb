@@ -58,8 +58,6 @@ use crate::{
 
 const CLOCK_PASSES: usize = 2;
 
-const FLUSH_FLOOR_DIVISOR: u64 = 4;
-
 pub const FLUSH_BUDGET_BYTES: ByteSize = if default::TESTING {
 	default::store::OPERATOR_RESIDENT_BUDGET_TESTING
 } else {
@@ -70,6 +68,12 @@ pub const FLUSH_ENTRY_LIMIT: u64 = if default::TESTING {
 	default::store::OPERATOR_RESIDENT_ENTRIES_TESTING
 } else {
 	default::store::OPERATOR_RESIDENT_ENTRIES
+};
+
+pub const DIRTY_BUDGET_BYTES: ByteSize = if default::TESTING {
+	default::store::OPERATOR_DIRTY_BUDGET_TESTING
+} else {
+	default::store::OPERATOR_DIRTY_BUDGET
 };
 
 pub const FLUSH_INTERVAL: Duration = if default::TESTING {
@@ -90,8 +94,23 @@ pub const SLICE_BYTES: ByteSize = if default::TESTING {
 	default::store::OPERATOR_FLUSH_SLICE
 };
 
-fn flush_floor(cap: ByteSize) -> ByteSize {
-	ByteSize::from_bytes(cap.as_bytes() / FLUSH_FLOOR_DIVISOR).min(cap.min(SLICE_BYTES))
+#[derive(Debug, Clone, Copy)]
+pub struct ResidentLimits {
+	pub budget: ByteSize,
+	pub entries: u64,
+	pub dirty_budget: ByteSize,
+	pub slice: ByteSize,
+}
+
+impl Default for ResidentLimits {
+	fn default() -> Self {
+		Self {
+			budget: FLUSH_BUDGET_BYTES,
+			entries: FLUSH_ENTRY_LIMIT,
+			dirty_budget: DIRTY_BUDGET_BYTES,
+			slice: SLICE_BYTES,
+		}
+	}
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -149,8 +168,7 @@ pub struct Shared {
 	dirty_bytes: AtomicU64,
 	entry_limit: u64,
 	slice: ByteSize,
-	flush_floor: ByteSize,
-	flush_entry_floor: u64,
+	dirty_budget: ByteSize,
 	waker: Mutex<Option<ActorRef<FlushMessage>>>,
 	evictor: Mutex<Option<ActorRef<EvictMessage>>>,
 	metrics: Mutex<OperatorResidentStateMetrics>,
@@ -161,7 +179,7 @@ pub struct Shared {
 }
 
 impl Shared {
-	fn new(cap: ByteSize, entry_limit: u64) -> Self {
+	fn new(limits: ResidentLimits) -> Self {
 		Self {
 			slots: DashMap::new(),
 			global: Mutex::new(GlobalInner::default()),
@@ -171,14 +189,13 @@ impl Shared {
 			drain: Mutex::new(()),
 			accounting: Mutex::new(()),
 			sinks: OnceLock::new(),
-			budget: Arc::new(MemoryBudget::new(cap)),
+			budget: Arc::new(MemoryBudget::new(limits.budget)),
 			entries: AtomicU64::new(0),
 			dirty: AtomicU64::new(0),
 			dirty_bytes: AtomicU64::new(0),
-			entry_limit,
-			slice: cap.min(SLICE_BYTES),
-			flush_floor: flush_floor(cap),
-			flush_entry_floor: entry_limit / FLUSH_FLOOR_DIVISOR,
+			entry_limit: limits.entries,
+			slice: limits.slice.min(limits.budget),
+			dirty_budget: limits.dirty_budget,
 			waker: Mutex::new(None),
 			evictor: Mutex::new(None),
 			metrics: Mutex::new(OperatorResidentStateMetrics::default()),
@@ -246,19 +263,12 @@ impl Shared {
 		}
 	}
 
-	fn has_dirty(&self) -> bool {
-		self.dirty.load(Ordering::Relaxed) > 0
-	}
-
 	fn dirty_footprint(&self) -> ByteSize {
 		ByteSize::from_bytes(self.dirty_bytes.load(Ordering::Relaxed))
 	}
 
-	fn worth_flushing(&self, over_budget: bool, over_entry_limit: bool) -> bool {
-		if over_budget && self.dirty_footprint() >= self.flush_floor {
-			return true;
-		}
-		over_entry_limit && self.dirty.load(Ordering::Relaxed) >= self.flush_entry_floor
+	fn over_dirty_budget(&self) -> bool {
+		self.dirty_footprint() > self.dirty_budget || self.dirty.load(Ordering::Relaxed) > self.entry_limit
 	}
 
 	pub(crate) fn slot(&self, operator: OperatorId) -> Option<Arc<Slot>> {
@@ -299,7 +309,7 @@ impl fmt::Debug for OperatorResidentState {
 
 impl Default for OperatorResidentState {
 	fn default() -> Self {
-		Self::with_limits(FLUSH_BUDGET_BYTES, FLUSH_ENTRY_LIMIT)
+		Self::with_limits(ResidentLimits::default())
 	}
 }
 
@@ -309,16 +319,20 @@ impl OperatorResidentState {
 	}
 
 	pub fn with_budget(budget: ByteSize) -> Self {
-		Self::with_limits(budget, FLUSH_ENTRY_LIMIT)
+		Self::with_limits(ResidentLimits {
+			budget,
+			dirty_budget: budget,
+			..ResidentLimits::default()
+		})
 	}
 
 	pub fn note_tick(&self) {
 		self.shared.metrics.lock().tick_wakes += 1;
 	}
 
-	pub fn with_limits(budget: ByteSize, entries: u64) -> Self {
+	pub fn with_limits(limits: ResidentLimits) -> Self {
 		Self {
-			shared: Arc::new(Shared::new(budget, entries)),
+			shared: Arc::new(Shared::new(limits)),
 		}
 	}
 
@@ -891,23 +905,14 @@ impl OperatorResidentState {
 	}
 
 	fn observe_write(&self) {
-		let over_budget = self.shared.budget.over_budget();
-		let over_entry_limit = self.shared.over_entry_limit();
-		if !over_budget && !over_entry_limit {
-			return;
-		}
-		if !self.shared.has_dirty() {
-			return;
-		}
-		if !self.shared.worth_flushing(over_budget, over_entry_limit) {
-			self.wake_evictor();
+		self.wake_evictor();
+		if !self.shared.over_dirty_budget() {
 			return;
 		}
 		if self.shared.triggered.swap(true, Ordering::AcqRel) {
 			return;
 		}
 		self.shared.metrics.lock().wakes += 1;
-		self.wake_evictor();
 		let waker = self.shared.waker.lock().clone();
 		if let Some(waker) = waker {
 			let _ = waker.send(FlushMessage::Pressure);
