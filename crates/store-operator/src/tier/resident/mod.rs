@@ -27,8 +27,10 @@ use reifydb_core::{
 	common::CommitVersion,
 	default,
 	interface::catalog::flow::{FlowId, OperatorId},
-	util::budget::MemoryBudget,
+	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+	util::{bloom::hash_item, budget::MemoryBudget},
 };
+use reifydb_filter::adaptive::AdaptiveKeyFilter;
 use reifydb_runtime::{
 	actor::mailbox::ActorRef,
 	sync::{
@@ -62,6 +64,12 @@ pub const FLUSH_ENTRY_LIMIT: u64 = if default::TESTING {
 	default::store::OPERATOR_RESIDENT_ENTRIES_TESTING
 } else {
 	default::store::OPERATOR_RESIDENT_ENTRIES
+};
+
+pub const FILTER_KEYS: u64 = if default::TESTING {
+	default::store::OPERATOR_FILTER_KEYS_TESTING
+} else {
+	default::store::OPERATOR_FILTER_KEYS
 };
 
 pub const SLICE_BYTES: ByteSize = if default::TESTING {
@@ -125,6 +133,8 @@ pub struct Shared {
 	waker: Mutex<Option<ActorRef<FlushMessage>>>,
 	metrics: Mutex<OperatorResidentStateMetrics>,
 	triggered: AtomicBool,
+	filter: AdaptiveKeyFilter,
+	filter_armed: AtomicBool,
 }
 
 impl Shared {
@@ -144,6 +154,8 @@ impl Shared {
 			waker: Mutex::new(None),
 			metrics: Mutex::new(OperatorResidentStateMetrics::default()),
 			triggered: AtomicBool::new(false),
+			filter: AdaptiveKeyFilter::new(),
+			filter_armed: AtomicBool::new(false),
 		}
 	}
 
@@ -463,7 +475,24 @@ impl OperatorResidentState {
 		groups
 	}
 
+	fn arm_filter(&self) {
+		if self.shared.filter_armed.swap(true, Ordering::AcqRel) {
+			return;
+		}
+		let empty = self
+			.shared
+			.sinks
+			.get()
+			.is_none_or(|sinks| sinks.persistent.census().is_empty());
+		if !empty {
+			return;
+		}
+		let handle = self.shared.filter.begin_rebuild(FILTER_KEYS);
+		self.shared.filter.commit_rebuild(handle);
+	}
+
 	fn take_drain_slice(&self) -> Option<Arc<FlushBatch>> {
+		self.arm_filter();
 		let mut global = self.shared.global.lock();
 		self.release_in_flight(&mut global);
 
@@ -485,6 +514,7 @@ impl OperatorResidentState {
 					continue;
 				}
 				let taken = take_all(&mut inner);
+				self.record_staged(operator, &taken);
 				merge_into_batch(&mut batch, operator, &taken);
 				inner.in_flight = Some(Arc::new(taken));
 				inner.pending_seq = None;
@@ -644,9 +674,30 @@ impl OperatorResidentState {
 					self.assert_erasable(inner, key);
 					return;
 				}
+				if self.never_staged(inner.live.operator, key) {
+					#[cfg(reifydb_assertions)]
+					self.assert_erasable(inner, key);
+					return;
+				}
 				record_state(inner, key.clone(), None)
 			}
 		}
+	}
+
+	fn record_staged(&self, operator: OperatorId, taken: &OperatorLive) {
+		if !self.shared.filter.is_enabled() {
+			return;
+		}
+		taken.state.for_each_entry(operator, |keyspace, group, suffix, _| {
+			self.shared.filter.add(state_hash(operator, keyspace, group, suffix));
+		});
+	}
+
+	fn never_staged(&self, operator: OperatorId, key: &EncodedKey) -> bool {
+		let Some((group, keyspace, suffix)) = OperatorStateKey::decode_inner(key.as_slice()) else {
+			return false;
+		};
+		!self.shared.filter.may_contain(state_hash(operator, keyspace, group, suffix))
 	}
 
 	#[cfg(reifydb_assertions)]
@@ -672,6 +723,10 @@ impl OperatorResidentState {
 			);
 		}
 	}
+}
+
+fn state_hash(operator: OperatorId, keyspace: KeyspaceId, group: GroupId, suffix: &[u8]) -> u64 {
+	hash_item(&(operator.0, keyspace.0, group.as_bytes(), suffix))
 }
 
 fn write_operator(write: &OperatorWrite) -> OperatorId {

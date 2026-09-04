@@ -82,7 +82,14 @@ impl OperatorResidentState {
 				let live = inner.live.state.encoded_range(operator, &lower, &upper, scan, limit);
 				let flight = match inner.in_flight.as_ref() {
 					Some(pending) => {
-						pending.state.encoded_range(operator, &lower, &upper, scan, limit)
+						let mut page =
+							pending.state.encoded_range(operator, &lower, &upper, scan, limit);
+						for (key, entry) in page.iter_mut() {
+							if inner.live.is_deleted(key) {
+								entry.post = None;
+							}
+						}
+						page
 					}
 					None => Page::new(),
 				};

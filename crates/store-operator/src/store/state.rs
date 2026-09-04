@@ -346,6 +346,10 @@ impl StandardOperatorStore {
 		}
 	}
 
+	fn shadowed(&self, operator: OperatorId, key: &EncodedKey) -> bool {
+		matches!(self.resident.lookup_state(operator, key), BufferedState::Tombstone)
+	}
+
 	fn persistent_contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
 		let Some(persistent) = self.persistent.as_ref() else {
 			return false;
@@ -436,7 +440,9 @@ impl StandardOperatorStore {
 					page_index += 1;
 					consumed += 1;
 					walked = Some(key.clone());
-					items.push((key.clone(), row.clone()));
+					if !self.shadowed(operator, key) {
+						items.push((key.clone(), row.clone()));
+					}
 				}
 				(Some((buffer_key, entry)), Some((page_key, page_row))) => {
 					match buffer_key.cmp(page_key) {
@@ -452,7 +458,9 @@ impl StandardOperatorStore {
 							page_index += 1;
 							consumed += 1;
 							walked = Some(page_key.clone());
-							items.push((page_key.clone(), page_row.clone()));
+							if !self.shadowed(operator, page_key) {
+								items.push((page_key.clone(), page_row.clone()));
+							}
 						}
 						Ordering::Equal => {
 							buffer_index += 1;
@@ -514,7 +522,9 @@ impl StandardOperatorStore {
 				}
 				(None, Some((key, row))) => {
 					page_index += 1;
-					items.push((key.clone(), row.clone()));
+					if !self.shadowed(operator, key) {
+						items.push((key.clone(), row.clone()));
+					}
 				}
 				(Some((buffer_key, entry)), Some((page_key, page_row))) => {
 					match buffer_key.cmp(page_key) {
@@ -526,7 +536,9 @@ impl StandardOperatorStore {
 						}
 						Ordering::Greater => {
 							page_index += 1;
-							items.push((page_key.clone(), page_row.clone()));
+							if !self.shadowed(operator, page_key) {
+								items.push((page_key.clone(), page_row.clone()));
+							}
 						}
 						Ordering::Equal => {
 							buffer.bump();
@@ -856,7 +868,9 @@ impl Iterator for StateLastIter<'_> {
 				}
 				(None, Some((key, row))) => {
 					self.stored_index += 1;
-					return Some((key, row));
+					if !self.store.shadowed(self.operator, &key) {
+						return Some((key, row));
+					}
 				}
 				(Some((buffer_key, entry)), Some((stored_key, stored_row))) => {
 					match buffer_key.cmp(&stored_key) {
@@ -868,7 +882,9 @@ impl Iterator for StateLastIter<'_> {
 						}
 						Ordering::Less => {
 							self.stored_index += 1;
-							return Some((stored_key, stored_row));
+							if !self.store.shadowed(self.operator, &stored_key) {
+								return Some((stored_key, stored_row));
+							}
 						}
 						Ordering::Equal => {
 							self.buffer_index += 1;

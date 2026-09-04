@@ -4,6 +4,7 @@
 use std::{
 	any::Any,
 	collections::{BTreeMap, btree_map::Entry},
+	iter::Peekable,
 	mem::{replace, size_of, take},
 	ops::{Bound, RangeBounds},
 };
@@ -46,9 +47,62 @@ impl WriteEntry {
 	}
 }
 
+struct Partition<K: Keyspace> {
+	live: SortedVecMap<K::Suffix, WriteEntry>,
+	deleted: SortedVecMap<K::Suffix, WriteEntry>,
+}
+
+impl<K: Keyspace> Partition<K> {
+	fn new() -> Self {
+		Self {
+			live: SortedVecMap::new(),
+			deleted: SortedVecMap::new(),
+		}
+	}
+
+	fn is_empty(&self) -> bool {
+		self.live.is_empty() && self.deleted.is_empty()
+	}
+
+	fn get(&self, suffix: &K::Suffix) -> Option<&WriteEntry> {
+		match self.live.get(suffix) {
+			Some(entry) => Some(entry),
+			None => self.deleted.get(suffix),
+		}
+	}
+
+	fn merged(&self) -> Merged<impl Iterator<Item = (&K::Suffix, &WriteEntry)>> {
+		Merged {
+			live: self.live.iter().peekable(),
+			deleted: self.deleted.iter().peekable(),
+		}
+	}
+}
+
+struct Merged<I: Iterator> {
+	live: Peekable<I>,
+	deleted: Peekable<I>,
+}
+
+impl<'a, S: Ord + 'a, I: Iterator<Item = (&'a S, &'a WriteEntry)>> Iterator for Merged<I> {
+	type Item = (&'a S, &'a WriteEntry);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match (self.live.peek(), self.deleted.peek()) {
+			(None, None) => None,
+			(Some(_), None) => self.live.next(),
+			(None, Some(_)) => self.deleted.next(),
+			(Some((live, _)), Some((deleted, _))) => match live <= deleted {
+				true => self.live.next(),
+				false => self.deleted.next(),
+			},
+		}
+	}
+}
+
 pub struct TypedBucket<K: Keyspace> {
 	operator: OperatorId,
-	partitions: BTreeMap<GroupId, SortedVecMap<K::Suffix, WriteEntry>>,
+	partitions: BTreeMap<GroupId, Partition<K>>,
 	bytes: ByteSize,
 	entries: usize,
 }
@@ -97,29 +151,45 @@ impl<K: Keyspace> TypedBucket<K> {
 
 	fn write(&mut self, group: GroupId, suffix: K::Suffix, post: Option<EncodedPodRow>, fresh: bool) {
 		if let Entry::Vacant(entry) = self.partitions.entry(group) {
-			entry.insert(SortedVecMap::new());
+			entry.insert(Partition::new());
 			self.bytes = self.bytes.saturating_add(Self::group_bytes());
 		}
 		let partition = self.partitions.get_mut(&group).expect("the partition was just inserted");
 		let incoming = WriteEntry::bytes_of(&post);
-		let outgoing = match partition.get_mut(&suffix) {
+		let (target, other) = match post.is_some() {
+			true => (&mut partition.live, &mut partition.deleted),
+			false => (&mut partition.deleted, &mut partition.live),
+		};
+		let outgoing = match target.get_mut(&suffix) {
 			Some(entry) => {
 				let outgoing = entry.row_bytes();
 				entry.post = post;
 				outgoing
 			}
-			None => {
-				partition.insert(
-					suffix,
-					WriteEntry {
-						post,
-						never_staged: fresh,
-					},
-				);
-				self.bytes = self.bytes.saturating_add(Self::suffix_bytes());
-				self.entries += 1;
-				ByteSize::ZERO
-			}
+			None => match other.remove(&suffix) {
+				Some(moved) => {
+					target.insert(
+						suffix,
+						WriteEntry {
+							post,
+							never_staged: moved.never_staged,
+						},
+					);
+					moved.row_bytes()
+				}
+				None => {
+					target.insert(
+						suffix,
+						WriteEntry {
+							post,
+							never_staged: fresh,
+						},
+					);
+					self.bytes = self.bytes.saturating_add(Self::suffix_bytes());
+					self.entries += 1;
+					ByteSize::ZERO
+				}
+			},
 		};
 		self.bytes = self.bytes.saturating_sub(outgoing).saturating_add(incoming);
 	}
@@ -131,7 +201,10 @@ impl<K: Keyspace> TypedBucket<K> {
 		if !partition.get(suffix).is_some_and(|entry| entry.never_staged) {
 			return false;
 		}
-		let entry = partition.remove(suffix).expect("the entry was just observed");
+		let entry = match partition.live.remove(suffix) {
+			Some(entry) => entry,
+			None => partition.deleted.remove(suffix).expect("the entry was just observed"),
+		};
 		self.entries -= 1;
 		self.bytes = self
 			.bytes
@@ -153,22 +226,34 @@ impl<K: Keyspace> TypedBucket<K> {
 		group: GroupId,
 		bounds: R,
 	) -> impl DoubleEndedIterator<Item = (&K::Suffix, &WriteEntry)> {
-		self.partitions.get(&group).map(|partition| partition.range(bounds)).into_iter().flatten()
+		self.partitions.get(&group).map(|partition| partition.live.range(bounds)).into_iter().flatten()
 	}
 
 	pub fn last(&self, group: GroupId) -> Option<(&K::Suffix, &WriteEntry)> {
-		self.partitions.get(&group)?.last_key_value()
+		let partition = self.partitions.get(&group)?;
+		match (partition.live.last_key_value(), partition.deleted.last_key_value()) {
+			(None, None) => None,
+			(Some(live), None) => Some(live),
+			(None, Some(deleted)) => Some(deleted),
+			(Some(live), Some(deleted)) => match live.0 >= deleted.0 {
+				true => Some(live),
+				false => Some(deleted),
+			},
+		}
 	}
 
 	pub fn entries(&self) -> impl Iterator<Item = (GroupId, &K::Suffix, &WriteEntry)> {
 		self.partitions.iter().rev().flat_map(|(group, partition)| {
-			partition.iter().map(move |(suffix, entry)| (*group, suffix, entry))
+			partition.merged().map(move |(suffix, entry)| (*group, suffix, entry))
 		})
 	}
 
 	pub fn absorb(&mut self, other: Self) {
 		for (group, partition) in other.partitions {
-			for (suffix, entry) in partition {
+			for (suffix, entry) in partition.live {
+				self.record(group, suffix, entry.post);
+			}
+			for (suffix, entry) in partition.deleted {
 				self.record(group, suffix, entry.post);
 			}
 		}
@@ -212,12 +297,13 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	fn flush(&mut self, conn: &Connection) -> Result<()> {
 		for (group, partition) in take(&mut self.partitions) {
-			for (suffix, entry) in partition {
+			for (suffix, entry) in partition.live {
 				let key = K::join(group, suffix);
-				match entry.post {
-					Some(row) => typed::set::<K>(conn, self.operator, &key, row.as_slice()),
-					None => typed::remove::<K>(conn, self.operator, &key),
-				}
+				let row = entry.post.expect("a live entry carries a row");
+				typed::set::<K>(conn, self.operator, &key, row.as_slice());
+			}
+			for (suffix, _) in partition.deleted {
+				typed::remove::<K>(conn, self.operator, &K::join(group, suffix));
 			}
 		}
 		self.bytes = ByteSize::ZERO;
@@ -231,7 +317,16 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 		};
 		let mut released = ByteSize::ZERO;
 		while budget.rows > 0 {
-			let Some((_, entry)) = partition.pop_first() else {
+			let next = match (partition.live.first_key_value(), partition.deleted.first_key_value()) {
+				(None, None) => None,
+				(Some(_), None) => partition.live.pop_first(),
+				(None, Some(_)) => partition.deleted.pop_first(),
+				(Some((live, _)), Some((deleted, _))) => match live <= deleted {
+					true => partition.live.pop_first(),
+					false => partition.deleted.pop_first(),
+				},
+			};
+			let Some((_, entry)) = next else {
 				break;
 			};
 			budget.rows -= 1;

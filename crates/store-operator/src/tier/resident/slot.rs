@@ -52,6 +52,10 @@ impl OperatorLive {
 		self.lookup(key).is_some()
 	}
 
+	pub fn is_deleted(&self, key: &EncodedKey) -> bool {
+		self.lookup(key).is_some_and(|entry| entry.post.is_none())
+	}
+
 	pub fn entries(&self) -> Vec<(EncodedKey, WriteEntry)> {
 		self.state.encoded_entries(self.operator)
 	}
