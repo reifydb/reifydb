@@ -20,7 +20,7 @@ use reifydb_core::{
 	},
 	key::{
 		kind::KeyKind,
-		row::{SortedViewRowKey, PartitionedSortedViewRowKey, PartitionedRowKey, RowKey},
+		row::{PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey},
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 		typed::key::Key,
 	},

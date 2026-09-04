@@ -284,7 +284,7 @@ mod sorted_view_row_key_tests {
 	use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
-	use super::{SortedViewRowKey, PartitionedSortedViewRowKey, RowKey};
+	use super::{PartitionedSortedViewRowKey, RowKey, SortedViewRowKey};
 	use crate::{interface::catalog::storage::StorageId, key::typed::key::Key};
 
 	fn part(v: &str) -> Partition {

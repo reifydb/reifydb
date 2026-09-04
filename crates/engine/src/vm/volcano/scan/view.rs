@@ -18,7 +18,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		row::{SortedViewRowKey, PartitionedSortedViewRowKey, RowKey, RowKeyRange, StoragePartitionedRowKey},
+		row::{PartitionedSortedViewRowKey, RowKey, RowKeyRange, SortedViewRowKey, StoragePartitionedRowKey},
 		series::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange},
 		typed::key::Key,
 	},

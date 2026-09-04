@@ -31,7 +31,8 @@ use reifydb_core::{
 };
 use reifydb_store::coverage::cursor::Cursor;
 use reifydb_store_commit::{
-	MultiVersionScope, RangeBatch, RangeCursor, RangeStop, TierBatch, VersionedGetResult, store::CommitStore,
+	MultiVersionScope, RangeBatch, RangeCursor, RangeStop, RawEntry, TierBatch, VersionedGetResult,
+	store::CommitStore,
 };
 use reifydb_value::{
 	reifydb_assertions,
@@ -1529,8 +1530,6 @@ mod cache_tests {
 
 	#[test]
 	fn typed_row_scan_terminates_without_a_persistent_tier() {
-		// A store with no persistent tier never advances that cursor, so nothing marks it exhausted
-		// and the merge loop spins forever. Every in-memory deployment takes this path.
 		let store = StandardMultiStore::testing_memory();
 		for n in 1..=5u64 {
 			commit_row(&store, n, n);
@@ -1608,8 +1607,6 @@ mod cache_tests {
 		assert_eq!(encoded.len(), 60, "the encoded scan must see every committed row or it is not a baseline");
 		assert_eq!(typed, encoded, "the typed scan must be indistinguishable from the encoded one");
 
-		// Resuming past a consumed key is what every chunk after the first does, and both tiers must
-		// agree the bound is exclusive: if either leg re-includes it the row is served twice.
 		let resume = StorageRowKey::new(RowNumber(50));
 		let mut resumed_cursor = RowRangeCursor::default();
 		let mut resumed: Vec<u64> = Vec::new();
@@ -2335,6 +2332,7 @@ pub struct NarrowRangeCursor<L: NarrowLayout> {
 	pub commit: RangeCursor,
 	pub persistent: Cursor<RangeStop, L>,
 	pub exhausted: bool,
+	commit_buf: Vec<RawEntry>,
 }
 
 impl<L: NarrowLayout> Default for NarrowRangeCursor<L> {
@@ -2343,6 +2341,7 @@ impl<L: NarrowLayout> Default for NarrowRangeCursor<L> {
 			commit: RangeCursor::default(),
 			persistent: Cursor::default(),
 			exhausted: false,
+			commit_buf: Vec::new(),
 		}
 	}
 }
@@ -2386,12 +2385,12 @@ impl StandardMultiStore {
 		let batch_size = batch_size as usize;
 
 		let enc_start = match &start {
-			Bound::Included(k) | Bound::Excluded(k) => L::widen(storage, k).as_ref().to_vec(),
-			Bound::Unbounded => L::storage_start(storage).as_ref().to_vec(),
+			Bound::Included(k) | Bound::Excluded(k) => L::widen(storage, k),
+			Bound::Unbounded => L::storage_start(storage),
 		};
 		let enc_end = match &end {
-			Bound::Included(k) | Bound::Excluded(k) => L::widen(storage, k).as_ref().to_vec(),
-			Bound::Unbounded => L::storage_end(storage).as_ref().to_vec(),
+			Bound::Included(k) | Bound::Excluded(k) => L::widen(storage, k),
+			Bound::Unbounded => L::storage_end(storage),
 		};
 		let commit_start = match &start {
 			Bound::Excluded(_) => Bound::Excluded(enc_start.as_slice()),
@@ -2406,15 +2405,16 @@ impl StandardMultiStore {
 
 		while collected.len() < batch_size {
 			if !cursor.commit.is_exhausted() {
-				let batch = self.commit.range_next(
+				self.commit.range_next_into(
 					table,
 					&mut cursor.commit,
 					commit_start,
 					commit_end,
 					scope,
 					TIER_SCAN_CHUNK_SIZE,
+					&mut cursor.commit_buf,
 				)?;
-				for entry in batch.entries {
+				for entry in cursor.commit_buf.drain(..) {
 					let Some(key) = L::narrow(table, &entry.key) else {
 						continue;
 					};

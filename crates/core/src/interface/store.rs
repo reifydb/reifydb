@@ -15,8 +15,8 @@ use crate::{
 		EncodableKeyRange,
 		kind::KeyKind,
 		row::{
-			SortedViewRowKey, PartitionedSortedViewRowKey, PartitionedRowKey, PartitionedRowKeyRange, RowKey,
-			RowKeyRange, StoragePartitionedRowKey, StorageRowKey,
+			PartitionedRowKey, PartitionedRowKeyRange, PartitionedSortedViewRowKey, RowKey, RowKeyRange,
+			SortedViewRowKey, StoragePartitionedRowKey, StorageRowKey,
 		},
 		series::{
 			PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
@@ -89,9 +89,9 @@ impl EntryKind {
 	pub fn cache_tiers(&self) -> CacheTiers {
 		match self {
 			Self::Source(_, EntryLayout::Row | EntryLayout::Series) => CacheTiers::Both,
-			Self::Multi
-			| Self::Source(_, EntryLayout::SortedView)
-			| Self::PartitionedSource(_, _) => CacheTiers::Point,
+			Self::Multi | Self::Source(_, EntryLayout::SortedView) | Self::PartitionedSource(_, _) => {
+				CacheTiers::Point
+			}
 		}
 	}
 }
@@ -417,8 +417,8 @@ mod tests {
 		},
 		key::{
 			row::{
-				SortedViewRowKey, PartitionedSortedViewRowKey, PartitionedRowKey, RowKey, RowSequenceKey,
-				StoragePartitionedRowKey, StorageRowKey,
+				PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, RowSequenceKey,
+				SortedViewRowKey, StoragePartitionedRowKey, StorageRowKey,
 			},
 			series::{
 				PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
@@ -660,10 +660,7 @@ mod tests {
 		partitioned.extend_from_slice(&99u64.to_be_bytes());
 		let partitioned = EncodedKey::new(partitioned);
 		let partitioned_range = PartitionedSortedViewRowKey::scan_range(storage, None);
-		assert_eq!(
-			classify_key(&partitioned),
-			EntryKind::PartitionedSource(storage, EntryLayout::SortedView)
-		);
+		assert_eq!(classify_key(&partitioned), EntryKind::PartitionedSource(storage, EntryLayout::SortedView));
 		assert_eq!(classify_range(&partitioned_range).unwrap_or(EntryKind::Multi), classify_key(&partitioned));
 	}
 

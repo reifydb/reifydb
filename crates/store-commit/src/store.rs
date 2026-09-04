@@ -329,15 +329,36 @@ impl CommitStore {
 		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
+		let mut entries = Vec::with_capacity(batch_size + 1);
+		let has_more = self.range_next_into(table, cursor, start, end, scope, batch_size, &mut entries)?;
+		Ok(RangeBatch {
+			entries,
+			has_more,
+		})
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn range_next_into(
+		&self,
+		table: EntryKind,
+		cursor: &mut RangeCursor,
+		start: Bound<&[u8]>,
+		end: Bound<&[u8]>,
+		scope: MultiVersionScope,
+		batch_size: usize,
+		entries: &mut Vec<RawEntry>,
+	) -> Result<bool> {
+		entries.clear();
+
 		if cursor.is_exhausted() {
-			return Ok(RangeBatch::empty());
+			return Ok(false);
 		}
 
 		let entry = match self.inner.entries.data.get(&table) {
 			Some(e) => e,
 			None => {
 				cursor.finish();
-				return Ok(RangeBatch::empty());
+				return Ok(false);
 			}
 		};
 
@@ -358,7 +379,7 @@ impl CommitStore {
 			false,
 		);
 
-		let mut entries: Vec<RawEntry> = Vec::with_capacity(batch_size + 1);
+		entries.reserve(batch_size + 1);
 		while entries.len() <= batch_size {
 			let Some((key, group)) = merged.next_group() else {
 				break;
@@ -386,10 +407,7 @@ impl CommitStore {
 			cursor.finish();
 		}
 
-		Ok(RangeBatch {
-			entries,
-			has_more,
-		})
+		Ok(has_more)
 	}
 
 	#[instrument(name = "store::multi::memory::range_rev_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size, scope = ?scope))]
