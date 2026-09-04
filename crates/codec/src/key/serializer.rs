@@ -29,6 +29,10 @@ use crate::{
 	tag::{TypeTag, ValueKind},
 };
 
+pub(crate) const DECIMAL_END_POSITIVE: u8 = 0xff;
+pub(crate) const DECIMAL_END_NEGATIVE: u8 = 0x00;
+pub(crate) const DECIMAL_ZERO_EXPONENT: i32 = i32::MIN;
+
 fn keycode_type_descending(ty: &ValueType) -> bool {
 	matches!(
 		ty,
@@ -41,6 +45,11 @@ fn keycode_type_descending(ty: &ValueType) -> bool {
 			| ValueType::Uint8 | ValueType::Uint16
 			| ValueType::Date | ValueType::DateTime
 			| ValueType::Time | ValueType::Duration
+			| ValueType::Utf8 | ValueType::Blob
+			| ValueType::Uuid4 | ValueType::Uuid7
+			| ValueType::IdentityId
+			| ValueType::Int | ValueType::Uint
+			| ValueType::Decimal
 	)
 }
 
@@ -231,26 +240,58 @@ impl KeySerializer {
 	pub fn extend_int(&mut self, int: &Int) -> &mut Self {
 		let (sign, bytes) = int.to_bytes_be();
 
-		self.buffer.push(match sign {
-			Sign::Minus => 0,
-			_ => 1,
-		});
-		self.extend_u32(bytes.len() as u32);
-		self.buffer.extend_from_slice(&bytes);
+		if matches!(sign, Sign::Minus) {
+			self.buffer.push(encode_u8(0));
+			self.buffer.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+			self.buffer.extend_from_slice(&bytes);
+		} else {
+			self.buffer.push(encode_u8(1));
+			self.extend_u32(bytes.len() as u32);
+			for byte in &bytes {
+				self.buffer.push(encode_u8(*byte));
+			}
+		}
 		self
 	}
 
 	pub fn extend_uint(&mut self, uint: &Uint) -> &mut Self {
 		let (_sign, bytes) = uint.0.to_bytes_be();
 		self.extend_u32(bytes.len() as u32);
-		self.buffer.extend_from_slice(&bytes);
+		for byte in &bytes {
+			self.buffer.push(encode_u8(*byte));
+		}
 		self
 	}
 
 	pub fn extend_decimal(&mut self, decimal: &Decimal) -> &mut Self {
-		let s = decimal.to_string();
-		self.extend_str(&s);
-		self
+		let (mantissa, scale) = decimal.0.as_bigint_and_exponent();
+		let sign = mantissa.sign();
+		let digits = mantissa.magnitude().to_str_radix(10);
+
+		if matches!(sign, Sign::NoSign) {
+			self.buffer.push(encode_u8(1));
+			self.buffer.extend_from_slice(&encode_i32(DECIMAL_ZERO_EXPONENT));
+			self.buffer.push(DECIMAL_END_POSITIVE);
+			return self.extend_i64(scale);
+		}
+
+		let exponent =
+			(digits.len() as i64 - scale).clamp(DECIMAL_ZERO_EXPONENT as i64 + 1, i32::MAX as i64) as i32;
+
+		if matches!(sign, Sign::Minus) {
+			self.buffer.push(encode_u8(0));
+			self.buffer.extend_from_slice(&((exponent as u32) ^ 0x8000_0000).to_be_bytes());
+			self.buffer.extend_from_slice(digits.as_bytes());
+			self.buffer.push(DECIMAL_END_NEGATIVE);
+		} else {
+			self.buffer.push(encode_u8(1));
+			self.buffer.extend_from_slice(&encode_i32(exponent));
+			for byte in digits.as_bytes() {
+				self.buffer.push(encode_u8(*byte));
+			}
+			self.buffer.push(DECIMAL_END_POSITIVE);
+		}
+		self.extend_i64(scale)
 	}
 
 	pub fn extend_value(&mut self, value: &Value) -> &mut Self {

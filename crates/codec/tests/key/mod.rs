@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+mod byte_order;
 mod container_keys;
 mod deserializer;
 mod encoded;
@@ -96,7 +97,7 @@ fn test_key_serializer() {
 
 	let mut s = KeySerializer::new();
 	s.extend_bytes(b"foo");
-	assert_eq!(s.finish(), vec![0x66, 0x6f, 0x6f, 0xff, 0xff]);
+	assert_eq!(s.finish(), vec![!0x66, !0x6f, !0x6f, 0xff, 0xff]);
 
 	let mut s = KeySerializer::with_capacity(32);
 	s.extend_bool(true).extend_u32(1u32).extend_i16(-1i16).extend_bytes(b"test");

@@ -9,6 +9,8 @@
 // The original Apache License can be found at:
 // http: //www.apache.org/licenses/LICENSE-2.0
 
+use std::ops::Bound;
+
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_transaction::multi::{RangeScope, transaction::write::MultiWriteTransaction};
 
@@ -17,6 +19,14 @@ use crate::{
 	as_key, as_values, from_bytes, from_key,
 	multi::transaction::{FromKey, FromRow},
 };
+
+fn prefix_range(prefix: u8) -> EncodedKeyRange {
+	// string content encodes inverted, so the 'a' group lives at [!a, !a + 1) in key order.
+	EncodedKeyRange::new(
+		Bound::Included(EncodedKey::new([!prefix])),
+		Bound::Excluded(EncodedKey::new([!prefix + 1])),
+	)
+}
 
 #[test]
 fn test_write_skew() {
@@ -359,7 +369,7 @@ fn test_intersecting_data2() {
 
 	let mut txn1 = engine.begin_command().unwrap();
 	let val = txn1
-		.range(EncodedKeyRange::parse("a..b"), RangeScope::All, 1024)
+		.range(prefix_range(b'a'), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -371,7 +381,7 @@ fn test_intersecting_data2() {
 
 	let mut txn2 = engine.begin_command().unwrap();
 	let val = txn2
-		.range(EncodedKeyRange::parse("b..c"), RangeScope::All, 1024)
+		.range(prefix_range(b'b'), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -417,7 +427,7 @@ fn test_intersecting_data3() {
 
 	let mut txn1 = engine.begin_command().unwrap();
 	let val = txn1
-		.range(EncodedKeyRange::parse("a..b"), RangeScope::All, 1024)
+		.range(prefix_range(b'a'), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -428,7 +438,7 @@ fn test_intersecting_data3() {
 
 	let mut txn2 = engine.begin_command().unwrap();
 	let val = txn2
-		.range(EncodedKeyRange::parse("b..c"), RangeScope::All, 1024)
+		.range(prefix_range(b'b'), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
