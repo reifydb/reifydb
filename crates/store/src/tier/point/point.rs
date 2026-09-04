@@ -11,10 +11,6 @@ use crate::tier::point::{
 impl<D: PointDomain> PointTier<D> {
 	pub fn get(&self, dimension: D::Dimension, key: &D::Key) -> Option<Option<D::Row>> {
 		let bucket = D::metric_bucket(key)?;
-		if !D::caches_points(bucket) {
-			self.charge_excluded_miss(bucket);
-			return None;
-		}
 		let hash = bucket_hash(&dimension, key);
 		let mut shard = self.shard_at(dimension, key).lock();
 		let next = shard.next_tick;
@@ -36,10 +32,6 @@ impl<D: PointDomain> PointTier<D> {
 
 	pub fn contains(&self, dimension: D::Dimension, key: &D::Key) -> Option<bool> {
 		let bucket = D::metric_bucket(key)?;
-		if !D::caches_points(bucket) {
-			self.charge_excluded_miss(bucket);
-			return None;
-		}
 		let hash = bucket_hash(&dimension, key);
 		let mut shard = self.shard_at(dimension, key).lock();
 		let next = shard.next_tick;
@@ -63,9 +55,6 @@ impl<D: PointDomain> PointTier<D> {
 		let Some(bucket) = D::metric_bucket(key) else {
 			return false;
 		};
-		if !D::caches_points(bucket) {
-			return false;
-		}
 		let mut shard = self.shard_at(dimension, key).lock();
 		let id = PointKey {
 			dimension,
@@ -137,10 +126,7 @@ impl<D: PointDomain> PointTier<D> {
 	}
 
 	pub fn invalidate(&self, dimension: D::Dimension, key: &D::Key) {
-		let Some(bucket) = D::metric_bucket(key) else {
-			return;
-		};
-		if !D::caches_points(bucket) {
+		if D::metric_bucket(key).is_none() {
 			return;
 		}
 		let hash = bucket_hash(&dimension, key);
@@ -218,9 +204,6 @@ fn insert_entry<D: PointDomain>(
 	id: PointKey<D::Dimension, D::Key>,
 	row: Option<D::Row>,
 ) {
-	if !D::caches_points(bucket) {
-		return;
-	}
 	let next = shard.next_tick;
 	let hash = bucket_hash(&id.dimension, &id.key);
 	match find_position(shard, hash, id.dimension, &id.key) {

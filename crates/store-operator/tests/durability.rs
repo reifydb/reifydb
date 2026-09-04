@@ -21,9 +21,9 @@ use reifydb_runtime::{
 };
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_operator::{
-	config::{OperatorPersistentConfig, OperatorStoreConfig},
+	config::{OperatorPersistentConfig, OperatorResidentStateConfig, OperatorStoreConfig},
 	store::OperatorStore,
-	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
+	tier::{range::OperatorRangeConfig, resident::OperatorResidentState},
 	types::OperatorWrite,
 };
 use reifydb_testing::{keyspace::state_key, tempdir::temp_dir};
@@ -48,7 +48,24 @@ fn store_at(path: &Path) -> OperatorStore {
 	OperatorStore::standard(OperatorStoreConfig {
 		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(SqliteConfig::new(path))),
-		point: Some(OperatorPointConfig::testing()),
+		range: Some(OperatorRangeConfig::testing()),
+		spawner,
+		clock: Clock::Real,
+	})
+}
+
+fn sliced_store_at(path: &Path, budget: ByteSize) -> OperatorStore {
+	// a budget this small caps the flush slice at the same size, so a drain of eight rows needs several slices
+	let pools = Pools::new(PoolConfig::default());
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let spawner = actor_system.spawner();
+	std::mem::forget(actor_system);
+	OperatorStore::standard(OperatorStoreConfig {
+		resident: OperatorResidentStateConfig {
+			storage: OperatorResidentState::with_budget(budget),
+			..Default::default()
+		},
+		persistent: Some(OperatorPersistentConfig::sqlite(SqliteConfig::new(path))),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
 		clock: Clock::Real,
@@ -288,6 +305,32 @@ fn flushing_twice_writes_the_same_state_once_and_leaves_the_flusher_usable() {
 			Some("after-the-repeats"),
 			"a flusher wedged by the repeats would leave this write buffered forever with no error anywhere"
 		);
+		Ok(())
+	})
+	.unwrap();
+}
+
+#[test]
+fn a_drain_that_runs_many_slices_persists_every_slice_and_not_just_one() {
+	// Each slice carries its own rows, so a drain wired to settle once instead of once per slice leaves whichever
+	// slices it missed undurable while the resident state reports them clean.
+	temp_dir(|dir| {
+		let store = sliced_store_at(dir, ByteSize::from_bytes(64));
+		for suffix in 1..=8u8 {
+			put(&store, OP, key(suffix), row(&format!("v{suffix}")));
+		}
+
+		store.resident_state().flush_all();
+
+		let booted = sliced_store_at(dir, ByteSize::from_bytes(64));
+		for suffix in 1..=8u8 {
+			assert_eq!(
+				body(&booted, OP, suffix).as_deref(),
+				Some(format!("v{suffix}").as_str()),
+				"every slice of the drain must reach sqlite; a first-slice-only or last-slice-only \
+				 drain leaves the rest in memory only"
+			);
+		}
 		Ok(())
 	})
 	.unwrap();

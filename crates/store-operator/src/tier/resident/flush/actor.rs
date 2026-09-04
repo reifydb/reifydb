@@ -24,6 +24,7 @@ const FLUSH_PENDING_TIMEOUT: Duration = Duration::from_seconds_const(5);
 #[derive(Clone)]
 pub enum FlushMessage {
 	Pressure,
+	Tick,
 	Shutdown,
 	FlushPending {
 		waiter: Arc<WaiterHandle>,
@@ -32,18 +33,24 @@ pub enum FlushMessage {
 
 pub struct ResidentFlushActor {
 	buffer: OperatorResidentState,
+	interval: Duration,
 }
 
 impl ResidentFlushActor {
-	pub fn new(buffer: OperatorResidentState) -> Self {
+	pub fn new(buffer: OperatorResidentState, interval: Duration) -> Self {
 		Self {
 			buffer,
+			interval,
 		}
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn spawn(spawner: &ActorSpawner, buffer: OperatorResidentState) -> ActorRef<FlushMessage> {
-		let actor = Self::new(buffer);
+	pub fn spawn(
+		spawner: &ActorSpawner,
+		buffer: OperatorResidentState,
+		interval: Duration,
+	) -> ActorRef<FlushMessage> {
+		let actor = Self::new(buffer, interval);
 		spawner.spawn_coordination("operator-persistent-flush", actor).actor_ref().clone()
 	}
 
@@ -78,7 +85,7 @@ impl Actor for ResidentFlushActor {
 	type Message = FlushMessage;
 
 	fn init(&self, ctx: &Context<FlushMessage>) {
-		let _ = ctx;
+		ctx.schedule_repeat(self.interval, FlushMessage::Tick);
 		debug!("Operator persistent flush actor started");
 	}
 
@@ -96,6 +103,10 @@ impl Actor for ResidentFlushActor {
 		match msg {
 			FlushMessage::Pressure => {
 				self.relieve();
+			}
+			FlushMessage::Tick => {
+				self.buffer.note_tick();
+				self.drain();
 			}
 			FlushMessage::Shutdown => {
 				debug!("Operator persistent flush actor shutting down");

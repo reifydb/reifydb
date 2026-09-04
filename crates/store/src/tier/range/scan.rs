@@ -719,7 +719,7 @@ fn split_at_partitions<D: RangeDomain>(
 			if walk_end.is_none() {
 				walk_end = Some(D::partition_walk_end(&partition));
 			}
-			D::cache_tiers_run_end(&partition)
+			D::cache_run_end(&partition)
 		};
 		let end = bound.min(whole.end.clone());
 		let piece = Interval::new(start, end.clone());
@@ -955,7 +955,7 @@ mod tests {
 		let range = across(top, bottom);
 
 		for keyspace in [top, middle, bottom] {
-			assert!(keyspace.cache_tiers().caches_ranges());
+			assert!(keyspace.caches_ranges());
 			assert!(claim(
 				&tier,
 				&range,
@@ -996,7 +996,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_wide_gap_splits_once_per_cache_tiers_run_while_ram_still_splits_once_per_partition() {
+	fn a_wide_gap_splits_once_per_cache_run_while_ram_still_splits_once_per_partition() {
 		// A gap piece per keyspace byte made a group-wide scan build ~97 pieces that coalesce_gaps then
 		// merged back into ~3; the run is the unit that survives, so emitting bytes is pure waste. RAM must
 		// keep splitting per partition, because serve resolves one partition from the segment start and a

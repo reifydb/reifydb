@@ -28,7 +28,6 @@ use reifydb_store_operator::{
 	store::OperatorStore,
 	tier::{
 		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
-		point::{OperatorPointConfig, tiers::PointTiers},
 		range::{OperatorRangeConfig, tiers::RangeTiers},
 	},
 	types::{DurablePre, OperatorBatch, OperatorWrite},
@@ -51,14 +50,10 @@ fn group() -> GroupId {
 
 fn cached_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard) {
 	// The hour-long interval on a frozen clock means the only drain a test sees is the one it asked for.
-	cached_store_with(OperatorPointConfig::testing(), OperatorRangeConfig::testing())
+	cached_store_with(OperatorRangeConfig::testing())
 }
 
-fn cached_store_with(
-	point: OperatorPointConfig,
-	range: OperatorRangeConfig,
-) -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard) {
-	// The two budgets are sized separately so a test can starve one of them without starving the other.
+fn cached_store_with(range: OperatorRangeConfig) -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard) {
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock.clone());
 	let spawner = actor_system.spawner();
@@ -66,7 +61,6 @@ fn cached_store_with(
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))),
-		point: Some(point),
 		range: Some(range),
 		spawner,
 		clock,
@@ -109,16 +103,8 @@ fn seed_rows(storage: &SqliteOperatorStorage, count: u8) {
 	}
 }
 
-fn point_tier(store: &OperatorStore) -> &PointTiers {
-	store.point().expect("the fixture configures a point tier")
-}
-
 fn range_tier(store: &OperatorStore) -> &RangeTiers {
 	store.range().expect("the fixture configures a range tier")
-}
-
-fn point_entries(store: &OperatorStore) -> usize {
-	point_tier(store).entries()
 }
 
 fn range_partitions(store: &OperatorStore) -> usize {
@@ -233,61 +219,6 @@ fn a_new_key_and_a_rewrite_together_leave_the_claim_whole_and_current() {
 		 short answer that reads as a correct one"
 	);
 	assert_eq!(scanned.fetched, 0, "the answer must have come from the claim, not from a fallback scan");
-}
-
-#[test]
-fn a_range_materialize_that_does_not_fit_its_own_budget_evicts_no_point_entry() {
-	// A shared budget would let one range scan flush the point entries that serve their keyspaces.
-	let (store, storage, _guard) = cached_store_with(
-		OperatorPointConfig {
-			tier_bytes: Some(ByteSize::from_bytes(1024)),
-		},
-		OperatorRangeConfig {
-			tier_bytes: Some(ByteSize::from_bytes(256)),
-			..OperatorRangeConfig::testing()
-		},
-	);
-	seed_rows(&storage, 8);
-	storage.seed_durable(&[OperatorWrite::Insert {
-		operator: OP_A,
-		key: key_in(RANGE_ONLY_ABOVE, 1),
-		post: row("pinned"),
-	}]);
-
-	assert!(store.get(OP_A, &key_in(RANGE_ONLY_ABOVE, 1)).is_some(), "the point read warms an entry of its own");
-	let point_used = point_tier(&store).resident_bytes();
-	let point_held = point_entries(&store);
-	assert!(point_used.as_bytes() > 0, "the point budget must be carrying something or eviction is unobservable");
-
-	let served = store.range_batch(OP_A, seeded_range(), 64);
-
-	assert_eq!(
-		bodies(&served),
-		["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"],
-		"a refused materialize must leave the answer exactly as the persistent tier gave it"
-	);
-	let counters = range_tier(&store).metrics();
-	assert_eq!(counters.materializes_refused, 1, "the materialize must be refused, not silently admitted");
-	assert_eq!(counters.materializes, 0);
-	assert_eq!(range_partitions(&store), 0, "a refused materialize must leave no partition behind");
-	assert_eq!(range_intervals(&store), 0, "and it must leave no claim behind over rows it did not keep");
-	assert_eq!(
-		point_tier(&store).resident_bytes(),
-		point_used,
-		"a range materialize must never be charged to the point budget"
-	);
-	assert_eq!(point_entries(&store), point_held, "a refused range materialize must evict no point entry");
-	assert_eq!(
-		point_tier(&store).metrics().evictions,
-		0,
-		"a refused materialize must not start an eviction cascade in the other tier"
-	);
-	assert_eq!(
-		body(&store
-			.get(OP_A, &key_in(RANGE_ONLY_ABOVE, 1))
-			.expect("the point entry survives the refused materialize")),
-		"pinned"
-	);
 }
 
 #[test]
@@ -517,15 +448,10 @@ fn a_removal_of_a_key_the_claim_never_held_keeps_the_claim() {
 #[test]
 fn a_written_row_too_big_for_the_range_budget_takes_the_whole_claim_with_it() {
 	// A claim that cannot hold the key just written to it must be retracted, never left short.
-	let (store, storage, _guard) = cached_store_with(
-		OperatorPointConfig {
-			tier_bytes: Some(ByteSize::from_mib(1)),
-		},
-		OperatorRangeConfig {
-			tier_bytes: Some(ByteSize::from_bytes(4096)),
-			..OperatorRangeConfig::testing()
-		},
-	);
+	let (store, storage, _guard) = cached_store_with(OperatorRangeConfig {
+		tier_bytes: Some(ByteSize::from_bytes(4096)),
+		..OperatorRangeConfig::testing()
+	});
 	seed_rows(&storage, 3);
 
 	assert_eq!(bodies(&store.range_batch(OP_A, seeded_range(), 64)), ["v1", "v2", "v3"]);
@@ -614,11 +540,11 @@ fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_reads_both_keyspaces_
 	let uncached = KeyspaceId::CUSTOM_NOT_CACHED;
 	let cached = CACHED_BELOW_UNCACHED;
 	assert!(
-		!uncached.cache_tiers().caches_ranges(),
+		!uncached.caches_ranges(),
 		"the fixture needs a keyspace the range tier keeps out and the scan crosses first"
 	);
 	assert!(
-		cached.cache_tiers().caches_ranges(),
+		cached.caches_ranges(),
 		"the fixture needs a keyspace the range tier admits and the scan reaches second"
 	);
 	assert!(

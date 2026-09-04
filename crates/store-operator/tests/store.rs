@@ -19,7 +19,6 @@ use reifydb_store_operator::{
 	store::OperatorStore,
 	tier::{
 		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
-		point::OperatorPointConfig,
 		range::OperatorRangeConfig,
 	},
 	types::{DurablePre, OperatorBatch, OperatorWrite},
@@ -39,7 +38,6 @@ fn flushed_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))),
-		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
 		clock,
@@ -54,7 +52,6 @@ fn store_at(config: SqliteConfig) -> OperatorStore {
 	OperatorStore::standard(OperatorStoreConfig {
 		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(config)),
-		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
 		clock,

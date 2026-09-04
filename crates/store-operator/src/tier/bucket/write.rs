@@ -7,6 +7,7 @@ use std::{
 	iter::Peekable,
 	mem::{replace, size_of, take},
 	ops::{Bound, RangeBounds},
+	sync::atomic::{AtomicBool, Ordering},
 };
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
@@ -31,13 +32,73 @@ use crate::tier::bucket::{AnyBucket, Budget, GroupIds, Resume, Scan};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::persistent::sqlite::typed;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WriteEntry {
-	pub post: Option<EncodedPodRow>,
-	pub never_staged: bool,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Staged {
+	Never,
+	Flushing,
+	Dirty,
+	Clean,
 }
 
+impl Staged {
+	pub fn is_dirty(self) -> bool {
+		matches!(self, Self::Never | Self::Dirty)
+	}
+
+	pub fn is_collapsible(self) -> bool {
+		matches!(self, Self::Never)
+	}
+
+	fn dirtied(self) -> Self {
+		match self {
+			Self::Never => Self::Never,
+			Self::Flushing | Self::Dirty | Self::Clean => Self::Dirty,
+		}
+	}
+}
+
+#[derive(Debug)]
+pub struct WriteEntry {
+	pub post: Option<EncodedPodRow>,
+	pub staged: Staged,
+	referenced: AtomicBool,
+}
+
+impl Clone for WriteEntry {
+	fn clone(&self) -> Self {
+		Self {
+			post: self.post.clone(),
+			staged: self.staged,
+			referenced: AtomicBool::new(self.referenced.load(Ordering::Relaxed)),
+		}
+	}
+}
+
+impl PartialEq for WriteEntry {
+	fn eq(&self, other: &Self) -> bool {
+		self.post == other.post && self.staged == other.staged
+	}
+}
+
+impl Eq for WriteEntry {}
+
 impl WriteEntry {
+	fn new(post: Option<EncodedPodRow>, staged: Staged) -> Self {
+		Self {
+			post,
+			staged,
+			referenced: AtomicBool::new(true),
+		}
+	}
+
+	pub fn touch(&self) {
+		self.referenced.store(true, Ordering::Relaxed);
+	}
+
+	fn take_reference(&self) -> bool {
+		self.referenced.swap(false, Ordering::Relaxed)
+	}
+
 	fn row_bytes(&self) -> ByteSize {
 		Self::bytes_of(&self.post)
 	}
@@ -105,6 +166,7 @@ pub struct TypedBucket<K: Keyspace> {
 	partitions: BTreeMap<GroupId, Partition<K>>,
 	bytes: ByteSize,
 	entries: usize,
+	dirty: usize,
 }
 
 impl<K: Keyspace> TypedBucket<K> {
@@ -114,6 +176,7 @@ impl<K: Keyspace> TypedBucket<K> {
 			partitions: BTreeMap::new(),
 			bytes: ByteSize::ZERO,
 			entries: 0,
+			dirty: 0,
 		}
 	}
 
@@ -141,6 +204,108 @@ impl<K: Keyspace> TypedBucket<K> {
 		self.bytes
 	}
 
+	pub fn dirty_len(&self) -> usize {
+		self.dirty
+	}
+
+	pub fn recount_dirty(&self) -> usize {
+		self.partitions
+			.values()
+			.map(|partition| {
+				partition
+					.live
+					.values()
+					.chain(partition.deleted.values())
+					.filter(|entry| entry.staged.is_dirty())
+					.count()
+			})
+			.sum()
+	}
+
+	pub fn stage_dirty(&mut self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) -> ByteSize {
+		let mut staged = ByteSize::ZERO;
+		for (group, partition) in self.partitions.iter_mut() {
+			let mut charged_group = false;
+			for (suffix, entry) in partition.live.iter_mut().chain(partition.deleted.iter_mut()) {
+				if !entry.staged.is_dirty() {
+					continue;
+				}
+				visit(*group, &suffix.to_suffix_bytes(), entry);
+				entry.staged = Staged::Flushing;
+				self.dirty -= 1;
+				staged = staged.saturating_add(entry.row_bytes()).saturating_add(Self::suffix_bytes());
+				if !charged_group {
+					staged = staged.saturating_add(Self::group_bytes());
+					charged_group = true;
+				}
+			}
+		}
+		staged
+	}
+
+	pub fn revert_flushing(&mut self) -> usize {
+		let mut reverted = 0usize;
+		for partition in self.partitions.values_mut() {
+			for (_, entry) in partition.live.iter_mut().chain(partition.deleted.iter_mut()) {
+				if matches!(entry.staged, Staged::Flushing) {
+					entry.staged = Staged::Dirty;
+					reverted += 1;
+				}
+			}
+		}
+		self.dirty += reverted;
+		reverted
+	}
+
+	pub fn evict_clean(&mut self, bytes: &mut ByteSize, entries: &mut usize) -> (usize, ByteSize) {
+		let mut evicted = 0usize;
+		let mut freed = ByteSize::ZERO;
+		let suffix_cost = Self::suffix_bytes();
+		let group_cost = Self::group_bytes();
+		self.partitions.retain(|_, partition| {
+			{
+				let mut sweep = |_: &K::Suffix, entry: &mut WriteEntry| {
+					if !matches!(entry.staged, Staged::Clean) {
+						return true;
+					}
+					if bytes.as_bytes() == 0 && *entries == 0 {
+						return true;
+					}
+					if entry.take_reference() {
+						return true;
+					}
+					let cost = entry.row_bytes().saturating_add(suffix_cost);
+					freed = freed.saturating_add(cost);
+					*bytes = bytes.saturating_sub(cost);
+					*entries = entries.saturating_sub(1);
+					evicted += 1;
+					false
+				};
+				partition.live.retain(&mut sweep);
+				partition.deleted.retain(&mut sweep);
+			}
+			if partition.is_empty() {
+				freed = freed.saturating_add(group_cost);
+				*bytes = bytes.saturating_sub(group_cost);
+				return false;
+			}
+			true
+		});
+		self.entries -= evicted;
+		self.bytes = self.bytes.saturating_sub(freed);
+		(evicted, freed)
+	}
+
+	pub fn settle_flushing(&mut self) {
+		for partition in self.partitions.values_mut() {
+			for (_, entry) in partition.live.iter_mut().chain(partition.deleted.iter_mut()) {
+				if matches!(entry.staged, Staged::Flushing) {
+					entry.staged = Staged::Clean;
+				}
+			}
+		}
+	}
+
 	pub fn record(&mut self, group: GroupId, suffix: K::Suffix, post: Option<EncodedPodRow>) {
 		self.write(group, suffix, post, false);
 	}
@@ -160,37 +325,45 @@ impl<K: Keyspace> TypedBucket<K> {
 			true => (&mut partition.live, &mut partition.deleted),
 			false => (&mut partition.deleted, &mut partition.live),
 		};
+		let mut dirtied = 0usize;
 		let outgoing = match target.get_mut(&suffix) {
 			Some(entry) => {
 				let outgoing = entry.row_bytes();
+				if !entry.staged.is_dirty() {
+					dirtied += 1;
+				}
 				entry.post = post;
+				entry.staged = entry.staged.dirtied();
+				entry.touch();
 				outgoing
 			}
 			None => match other.remove(&suffix) {
 				Some(moved) => {
-					target.insert(
-						suffix,
-						WriteEntry {
-							post,
-							never_staged: moved.never_staged,
-						},
-					);
+					if !moved.staged.is_dirty() {
+						dirtied += 1;
+					}
+					target.insert(suffix, WriteEntry::new(post, moved.staged.dirtied()));
 					moved.row_bytes()
 				}
 				None => {
 					target.insert(
 						suffix,
-						WriteEntry {
+						WriteEntry::new(
 							post,
-							never_staged: fresh,
-						},
+							match fresh {
+								true => Staged::Never,
+								false => Staged::Dirty,
+							},
+						),
 					);
 					self.bytes = self.bytes.saturating_add(Self::suffix_bytes());
 					self.entries += 1;
+					dirtied += 1;
 					ByteSize::ZERO
 				}
 			},
 		};
+		self.dirty += dirtied;
 		self.bytes = self.bytes.saturating_sub(outgoing).saturating_add(incoming);
 	}
 
@@ -198,7 +371,7 @@ impl<K: Keyspace> TypedBucket<K> {
 		let Some(partition) = self.partitions.get_mut(&group) else {
 			return false;
 		};
-		if !partition.get(suffix).is_some_and(|entry| entry.never_staged) {
+		if !partition.get(suffix).is_some_and(|entry| entry.staged.is_collapsible()) {
 			return false;
 		}
 		let entry = match partition.live.remove(suffix) {
@@ -206,10 +379,8 @@ impl<K: Keyspace> TypedBucket<K> {
 			None => partition.deleted.remove(suffix).expect("the entry was just observed"),
 		};
 		self.entries -= 1;
-		self.bytes = self
-			.bytes
-			.saturating_sub(Self::suffix_bytes())
-			.saturating_sub(entry.row_bytes());
+		self.dirty -= 1;
+		self.bytes = self.bytes.saturating_sub(Self::suffix_bytes()).saturating_sub(entry.row_bytes());
 		if partition.is_empty() {
 			self.partitions.remove(&group);
 			self.bytes = self.bytes.saturating_sub(Self::group_bytes());
@@ -263,6 +434,7 @@ impl<K: Keyspace> TypedBucket<K> {
 		self.partitions.clear();
 		self.bytes = ByteSize::ZERO;
 		self.entries = 0;
+		self.dirty = 0;
 	}
 }
 
@@ -277,6 +449,30 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 
 	fn len(&self) -> usize {
 		TypedBucket::len(self)
+	}
+
+	fn dirty_len(&self) -> usize {
+		TypedBucket::dirty_len(self)
+	}
+
+	fn recount_dirty(&self) -> usize {
+		TypedBucket::recount_dirty(self)
+	}
+
+	fn stage_dirty(&mut self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) -> ByteSize {
+		TypedBucket::stage_dirty(self, visit)
+	}
+
+	fn revert_flushing(&mut self) -> usize {
+		TypedBucket::revert_flushing(self)
+	}
+
+	fn evict_clean(&mut self, bytes: &mut ByteSize, entries: &mut usize) -> (usize, ByteSize) {
+		TypedBucket::evict_clean(self, bytes, entries)
+	}
+
+	fn settle_flushing(&mut self) {
+		TypedBucket::settle_flushing(self)
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -331,6 +527,9 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 			};
 			budget.rows -= 1;
 			self.entries -= 1;
+			if entry.staged.is_dirty() {
+				self.dirty -= 1;
+			}
 			released = released.saturating_add(Self::suffix_bytes()).saturating_add(entry.row_bytes());
 		}
 		let drained = partition.is_empty();
@@ -375,6 +574,7 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 	) -> Vec<(EncodedKey, WriteEntry)> {
 		let bounds = (suffix_bound::<K>(start, 0x00), suffix_bound::<K>(end, 0xFF));
 		let encode = |suffix: &K::Suffix, entry: &WriteEntry| {
+			entry.touch();
 			(
 				OperatorStateKey::inner_encoded(group, K::ID, suffix.to_suffix_bytes()).into_encoded(),
 				entry.clone(),
@@ -409,6 +609,7 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 			partitions: take(&mut other.partitions),
 			bytes: replace(&mut other.bytes, ByteSize::ZERO),
 			entries: replace(&mut other.entries, 0),
+			dirty: replace(&mut other.dirty, 0),
 		});
 	}
 

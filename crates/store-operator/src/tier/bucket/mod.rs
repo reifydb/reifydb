@@ -54,6 +54,18 @@ pub trait AnyBucket: Any + Send + Sync {
 
 	fn len(&self) -> usize;
 
+	fn dirty_len(&self) -> usize;
+
+	fn recount_dirty(&self) -> usize;
+
+	fn stage_dirty(&mut self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) -> ByteSize;
+
+	fn revert_flushing(&mut self) -> usize;
+
+	fn evict_clean(&mut self, bytes: &mut ByteSize, entries: &mut usize) -> (usize, ByteSize);
+
+	fn settle_flushing(&mut self);
+
 	fn is_empty(&self) -> bool {
 		self.len() == 0
 	}
@@ -322,6 +334,59 @@ impl BucketMap {
 		}
 	}
 
+	pub fn dirty_len(&self) -> usize {
+		self.buckets.values().map(|bucket| bucket.dirty_len()).sum()
+	}
+
+	pub fn recount_dirty(&self) -> usize {
+		self.buckets.values().map(|bucket| bucket.recount_dirty()).sum()
+	}
+
+	pub fn revert_flushing(&mut self) -> usize {
+		self.buckets.values_mut().map(|bucket| bucket.revert_flushing()).sum()
+	}
+
+	pub fn settle_flushing(&mut self) {
+		for bucket in self.buckets.values_mut() {
+			bucket.settle_flushing();
+		}
+	}
+
+	pub fn evict_clean(&mut self, bytes: &mut ByteSize, entries: &mut usize) -> (usize, ByteSize) {
+		let mut evicted = 0usize;
+		let mut freed = ByteSize::ZERO;
+		for bucket in self.buckets.values_mut() {
+			if bytes.as_bytes() == 0 && *entries == 0 {
+				break;
+			}
+			let (count, released) = bucket.evict_clean(bytes, entries);
+			evicted += count;
+			freed = freed.saturating_add(released);
+		}
+		self.buckets.retain(|_, bucket| !bucket.is_empty());
+		(evicted, freed)
+	}
+
+	pub fn stage_dirty(
+		&mut self,
+		operator: OperatorId,
+		mut visit: impl FnMut(KeyspaceId, GroupId, &[u8], &WriteEntry),
+	) -> ByteSize {
+		let mut staged = ByteSize::ZERO;
+		let mut ids = self.keyspaces_of(operator);
+		ids.reverse();
+		for keyspace in ids {
+			let Some(bucket) = self.buckets.get_mut(&(operator, keyspace)) else {
+				continue;
+			};
+			staged =
+				staged.saturating_add(bucket.stage_dirty(&mut |group, suffix, entry| {
+					visit(keyspace, group, suffix, entry)
+				}));
+		}
+		staged
+	}
+
 	pub fn encoded_entries(&self, operator: OperatorId) -> Vec<(EncodedKey, WriteEntry)> {
 		let mut ids = self.keyspaces_of(operator);
 		ids.reverse();
@@ -377,7 +442,10 @@ impl BucketMap {
 					.downcast_ref::<TypedBucket<K>>()
 					.expect("a keyspace id must map to exactly one key type")
 					.get(self.group, &suffix)
-					.cloned()
+					.map(|entry| {
+						entry.touch();
+						entry.clone()
+					})
 			}
 		}
 

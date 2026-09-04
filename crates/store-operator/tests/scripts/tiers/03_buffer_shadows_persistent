@@ -22,6 +22,9 @@ range
 "a" => "buffered"
 has_more=false
 
+# The flush makes the row durable and leaves it resident as clean, so the buffer still answers for it and the
+# merge still collapses the two layers onto one key.
+
 flush
 commit_get a
 persistent_get a
@@ -29,7 +32,7 @@ get a
 range
 ---
 ok
-"a" => unknown
+"a" => "buffered"
 "a" => "buffered"
 "a" => "buffered"
 "a" => "buffered"

@@ -4,15 +4,27 @@
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
+use reifydb_value::value::duration::Duration;
 
 use crate::tier::{
-	persistent::OperatorPersistentTier, point::OperatorPointConfig, range::OperatorRangeConfig,
-	resident::OperatorResidentState,
+	persistent::OperatorPersistentTier,
+	range::OperatorRangeConfig,
+	resident::{FLUSH_INTERVAL, OperatorResidentState},
 };
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct OperatorResidentStateConfig {
 	pub storage: OperatorResidentState,
+	pub flush_interval: Duration,
+}
+
+impl Default for OperatorResidentStateConfig {
+	fn default() -> Self {
+		Self {
+			storage: OperatorResidentState::default(),
+			flush_interval: FLUSH_INTERVAL,
+		}
+	}
 }
 
 #[derive(Clone)]
@@ -43,7 +55,6 @@ impl OperatorPersistentConfig {
 pub struct OperatorStoreConfig {
 	pub resident: OperatorResidentStateConfig,
 	pub persistent: Option<OperatorPersistentConfig>,
-	pub point: Option<OperatorPointConfig>,
 	pub range: Option<OperatorRangeConfig>,
 	pub spawner: ActorSpawner,
 	pub clock: Clock,
@@ -54,7 +65,6 @@ impl OperatorStoreConfig {
 		Self {
 			resident: OperatorResidentStateConfig::default(),
 			persistent: None,
-			point: None,
 			range: None,
 			spawner,
 			clock,
@@ -66,7 +76,6 @@ impl OperatorStoreConfig {
 		Self {
 			resident: OperatorResidentStateConfig::default(),
 			persistent: Some(persistent),
-			point: None,
 			range: None,
 			spawner,
 			clock,

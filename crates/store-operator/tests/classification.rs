@@ -27,7 +27,6 @@ fn store() -> OperatorStore {
 	OperatorStore::standard(OperatorStoreConfig {
 		resident: Default::default(),
 		persistent: None,
-		point: None,
 		range: None,
 		spawner,
 		clock: Clock::Real,

@@ -4,7 +4,6 @@
 use reifydb_value::value::row_number::RowNumber;
 
 use crate::{
-	interface::store::CacheTiers,
 	key::{
 		operator::{
 			state::{GroupId, KeyspaceId},
@@ -116,7 +115,7 @@ pub struct SourceWatermark;
 impl Keyspace for SourceWatermark {
 	const ID: KeyspaceId = KeyspaceId::SOURCE_WATERMARK;
 	const NAME: &'static str = "SOURCE_WATERMARK";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = SourceWatermarkKey;
 	type Suffix = SourceWatermarkKey;
@@ -136,7 +135,7 @@ pub struct SealLedger;
 impl Keyspace for SealLedger {
 	const ID: KeyspaceId = KeyspaceId::SEAL_LEDGER;
 	const NAME: &'static str = "SEAL_LEDGER";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = SealLedgerKey;
 	type Suffix = ();
@@ -158,7 +157,7 @@ pub struct NodeCounter;
 impl Keyspace for NodeCounter {
 	const ID: KeyspaceId = KeyspaceId::NODE_COUNTER;
 	const NAME: &'static str = "NODE_COUNTER";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = NodeCounterKey;
 	type Suffix = NodeCounterKey;
@@ -178,7 +177,7 @@ pub struct GateVisibility;
 impl Keyspace for GateVisibility {
 	const ID: KeyspaceId = KeyspaceId::GATE_VISIBILITY;
 	const NAME: &'static str = "GATE_VISIBILITY";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = GateVisibilityKey;
 	type Suffix = GateVisibilityKey;
@@ -198,7 +197,7 @@ pub struct GroupRowMapping;
 impl Keyspace for GroupRowMapping {
 	const ID: KeyspaceId = KeyspaceId::GROUP_ROW_MAPPING;
 	const NAME: &'static str = "GROUP_ROW_MAPPING";
-	const CACHE: CacheTiers = CacheTiers::Range;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = GroupRowMappingKey;
 	type Suffix = ();
@@ -220,7 +219,7 @@ pub struct GuestRowMapping;
 impl Keyspace for GuestRowMapping {
 	const ID: KeyspaceId = KeyspaceId::GUEST_ROW_MAPPING;
 	const NAME: &'static str = "GUEST_ROW_MAPPING";
-	const CACHE: CacheTiers = CacheTiers::Range;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = GuestRowMappingKey;
 	type Suffix = GuestRowMappingSuffix;
@@ -248,7 +247,7 @@ pub struct CustomNotCached;
 impl Keyspace for CustomNotCached {
 	const ID: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
 	const NAME: &'static str = "CUSTOM_NOT_CACHED";
-	const CACHE: CacheTiers = CacheTiers::Neither;
+	const RANGE_CACHED: bool = false;
 
 	type GroupedKey = CustomNotCachedKey;
 	type Suffix = CustomNotCachedSuffix;

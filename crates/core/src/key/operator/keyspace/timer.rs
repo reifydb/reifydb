@@ -4,7 +4,6 @@
 use reifydb_value::{util::hash::xxh3_128, value::datetime::DateTime};
 
 use crate::{
-	interface::store::CacheTiers,
 	key::{
 		operator::{
 			state::{GroupId, KeyspaceId},
@@ -43,7 +42,7 @@ pub struct TimerWheel;
 impl Keyspace for TimerWheel {
 	const ID: KeyspaceId = KeyspaceId::TIMER_WHEEL;
 	const NAME: &'static str = "TIMER_WHEEL";
-	const CACHE: CacheTiers = CacheTiers::Range;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = TimerWheelKey;
 	type Suffix = TimerWheelKey;
@@ -63,7 +62,7 @@ pub struct TimerIndex;
 impl Keyspace for TimerIndex {
 	const ID: KeyspaceId = KeyspaceId::TIMER_INDEX;
 	const NAME: &'static str = "TIMER_INDEX";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = TimerIndexKey;
 	type Suffix = TimerIndexKey;

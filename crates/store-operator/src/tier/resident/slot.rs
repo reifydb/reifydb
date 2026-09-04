@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem, sync::Arc};
+use std::mem;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
-	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator::state::OperatorStateKey,
 };
@@ -41,6 +40,28 @@ impl OperatorLive {
 
 	pub fn entry_count(&self) -> usize {
 		self.state.len()
+	}
+
+	pub fn dirty_count(&self) -> usize {
+		self.state.dirty_len()
+	}
+
+	pub fn has_dirty(&self) -> bool {
+		self.state.dirty_len() > 0
+	}
+
+	pub fn revert_flushing(&mut self) -> usize {
+		self.state.revert_flushing()
+	}
+
+	pub fn settle_flushing(&mut self) {
+		self.state.settle_flushing();
+	}
+
+	pub fn evict_clean(&mut self, bytes: &mut ByteSize, entries: &mut usize) -> (usize, ByteSize) {
+		let (evicted, freed) = self.state.evict_clean(bytes, entries);
+		self.bytes = self.bytes.saturating_sub(freed);
+		(evicted, freed)
 	}
 
 	pub fn lookup(&self, key: &EncodedKey) -> Option<WriteEntry> {
@@ -105,26 +126,25 @@ impl OperatorLive {
 #[derive(Default)]
 pub struct SlotInner {
 	pub live: OperatorLive,
-	pub in_flight: Option<Arc<OperatorLive>>,
 	pub flow: Option<FlowId>,
 	pub pending_seq: Option<u64>,
-	pub durable_position: Option<CommitVersion>,
 }
 
 impl SlotInner {
 	pub fn resident_bytes(&self) -> ByteSize {
-		self.live.bytes.saturating_add(self.in_flight.as_ref().map_or(ByteSize::ZERO, |batch| batch.bytes))
+		self.live.bytes
 	}
 
 	pub fn resident_entries(&self) -> usize {
-		self.live.entry_count().saturating_add(self.in_flight.as_ref().map_or(0, |batch| batch.entry_count()))
+		self.live.entry_count()
+	}
+
+	pub fn dirty_entries(&self) -> usize {
+		self.live.dirty_count()
 	}
 
 	pub fn lookup(&self, key: &EncodedKey) -> Option<WriteEntry> {
-		match self.live.lookup(key) {
-			Some(entry) => Some(entry),
-			None => self.in_flight.as_ref()?.lookup(key),
-		}
+		self.live.lookup(key)
 	}
 }
 

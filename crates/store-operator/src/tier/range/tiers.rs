@@ -183,7 +183,7 @@ pub struct RangeTiers {
 impl RangeTiers {
 	pub fn new(config: RangeConfig) -> Option<Self> {
 		let mut tiers: HashMap<KeyspaceId, Box<dyn AnyRangeTier>> = HashMap::new();
-		for spec in KEYSPACES.iter().filter(|spec| spec.cache.caches_ranges()) {
+		for spec in KEYSPACES.iter().filter(|spec| spec.range_cached) {
 			let tier = dispatch(spec.id, Build(config)).expect("a catalogued keyspace must dispatch")?;
 			tiers.insert(spec.id, tier);
 		}

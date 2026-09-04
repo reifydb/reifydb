@@ -68,7 +68,6 @@ pub enum ConfigKey {
 	CdcReadBufferBytes,
 	MultiPointBufferShardBytes,
 	MultiRangeBufferShardBytes,
-	OperatorPointTierBytes,
 	OperatorRangeTierBytes,
 	MultiPointBufferShards,
 	MultiRangeBufferShards,
@@ -76,6 +75,7 @@ pub enum ConfigKey {
 	MultiFlushBudgetBytes,
 	MultiWalAutocheckpoint,
 	OperatorResidentBudget,
+	OperatorFlushInterval,
 	OperatorWalAutocheckpoint,
 	FlowTick,
 	FlowSampleInterval,
@@ -122,7 +122,6 @@ impl ConfigKey {
 			Self::CdcReadBufferBytes,
 			Self::MultiPointBufferShardBytes,
 			Self::MultiRangeBufferShardBytes,
-			Self::OperatorPointTierBytes,
 			Self::OperatorRangeTierBytes,
 			Self::MultiPointBufferShards,
 			Self::MultiRangeBufferShards,
@@ -130,6 +129,7 @@ impl ConfigKey {
 			Self::MultiFlushBudgetBytes,
 			Self::MultiWalAutocheckpoint,
 			Self::OperatorResidentBudget,
+			Self::OperatorFlushInterval,
 			Self::OperatorWalAutocheckpoint,
 			Self::FlowTick,
 			Self::FlowSampleInterval,
@@ -198,7 +198,6 @@ impl ConfigKey {
 			Self::MultiRangeBufferShardBytes => {
 				Value::Uint8(default::store::MULTI_RANGE_BUFFER_SHARD.as_bytes())
 			}
-			Self::OperatorPointTierBytes => Value::Uint8(default::store::OPERATOR_POINT_TIER.as_bytes()),
 			Self::OperatorRangeTierBytes => Value::Uint8(default::store::OPERATOR_RANGE_TIER.as_bytes()),
 			Self::MultiPointBufferShards => Value::Uint2(default::store::MULTI_POINT_BUFFER_SHARDS),
 			Self::MultiRangeBufferShards => Value::Uint2(default::store::MULTI_RANGE_BUFFER_SHARDS),
@@ -208,6 +207,7 @@ impl ConfigKey {
 			Self::OperatorResidentBudget => {
 				Value::Uint8(default::store::OPERATOR_RESIDENT_BUDGET.as_bytes())
 			}
+			Self::OperatorFlushInterval => Value::Duration(default::store::OPERATOR_FLUSH_INTERVAL),
 			Self::OperatorWalAutocheckpoint => {
 				Value::Uint8(default::store::OPERATOR_WAL_AUTOCHECKPOINT_PAGES)
 			}
@@ -268,9 +268,6 @@ impl ConfigKey {
 			Self::MultiRangeBufferShardBytes => {
 				Value::Uint8(default::store::MULTI_RANGE_BUFFER_SHARD_TESTING.as_bytes())
 			}
-			Self::OperatorPointTierBytes => {
-				Value::Uint8(default::store::OPERATOR_POINT_TIER_TESTING.as_bytes())
-			}
 			Self::OperatorRangeTierBytes => {
 				Value::Uint8(default::store::OPERATOR_RANGE_TIER_TESTING.as_bytes())
 			}
@@ -286,6 +283,7 @@ impl ConfigKey {
 			Self::OperatorResidentBudget => {
 				Value::Uint8(default::store::OPERATOR_RESIDENT_BUDGET_TESTING.as_bytes())
 			}
+			Self::OperatorFlushInterval => Value::Duration(default::store::OPERATOR_FLUSH_INTERVAL_TESTING),
 			Self::OperatorWalAutocheckpoint => {
 				Value::Uint8(default::store::OPERATOR_WAL_AUTOCHECKPOINT_PAGES_TESTING)
 			}
@@ -403,12 +401,6 @@ impl ConfigKey {
 				 every multi-version range scan goes to the persistent tier. Read once at boot; changing it \
 				 requires a restart."
 			}
-			Self::OperatorPointTierBytes => {
-				"Resident byte budget for one tier of the operator-state point cache. Every cached keyspace \
-				 carries its own tier, so total cache memory is this value times the number of cached \
-				 keyspaces. None disables the cache outright, so every point read that misses the commit \
-				 buffer goes to the persistent tier. Read once at boot; changing it requires a restart."
-			}
 			Self::OperatorRangeTierBytes => {
 				"Resident byte budget for one tier of the operator-state range cache. Every cached keyspace \
 				 carries its own tier, so total cache memory is this value times the number of cached \
@@ -451,6 +443,13 @@ impl ConfigKey {
 				 the SQLite tier in one slice. Bounds how long a single flush holds the lane, so a \
 				 large backlog drains across ticks instead of stalling every other retention class \
 				 behind it."
+			}
+			Self::OperatorFlushInterval => {
+				"How often the operator-state flush actor drains dirty resident state into the operator \
+				 store's SQLite tier. Operator state stays resident after a flush and is freed \
+				 separately by eviction, so memory pressure alone can leave state unflushed \
+				 indefinitely, which holds the durable checkpoint back and with it the CDC pinning \
+				 watermark. Read once at boot; changing it requires a restart."
 			}
 			Self::OperatorWalAutocheckpoint => {
 				"WAL frame threshold for the operator store's SQLite tier: sets the SQLite \
@@ -573,7 +572,6 @@ impl ConfigKey {
 			Self::CdcReadBufferBytes => true,
 			Self::MultiPointBufferShardBytes => true,
 			Self::MultiRangeBufferShardBytes => true,
-			Self::OperatorPointTierBytes => true,
 			Self::OperatorRangeTierBytes => true,
 			Self::MultiPointBufferShards => true,
 			Self::MultiRangeBufferShards => true,
@@ -581,6 +579,7 @@ impl ConfigKey {
 			Self::MultiFlushBudgetBytes => false,
 			Self::MultiWalAutocheckpoint => true,
 			Self::OperatorResidentBudget => true,
+			Self::OperatorFlushInterval => true,
 			Self::OperatorWalAutocheckpoint => true,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => false,
@@ -627,7 +626,6 @@ impl ConfigKey {
 			Self::CdcReadBufferBytes => &[ValueType::Uint8],
 			Self::MultiPointBufferShardBytes => &[ValueType::Uint8],
 			Self::MultiRangeBufferShardBytes => &[ValueType::Uint8],
-			Self::OperatorPointTierBytes => &[ValueType::Uint8],
 			Self::OperatorRangeTierBytes => &[ValueType::Uint8],
 			Self::MultiPointBufferShards => &[ValueType::Uint2],
 			Self::MultiRangeBufferShards => &[ValueType::Uint2],
@@ -635,6 +633,7 @@ impl ConfigKey {
 			Self::MultiFlushBudgetBytes => &[ValueType::Uint8],
 			Self::MultiWalAutocheckpoint => &[ValueType::Uint8],
 			Self::OperatorResidentBudget => &[ValueType::Uint8],
+			Self::OperatorFlushInterval => &[ValueType::Duration],
 			Self::OperatorWalAutocheckpoint => &[ValueType::Uint8],
 			Self::FlowTick => &[ValueType::Duration],
 			Self::FlowSampleInterval => &[ValueType::Duration],
@@ -681,7 +680,6 @@ impl ConfigKey {
 			Self::CdcReadBufferBytes => true,
 			Self::MultiPointBufferShardBytes => true,
 			Self::MultiRangeBufferShardBytes => true,
-			Self::OperatorPointTierBytes => true,
 			Self::OperatorRangeTierBytes => true,
 			Self::MultiPointBufferShards => false,
 			Self::MultiRangeBufferShards => false,
@@ -689,6 +687,7 @@ impl ConfigKey {
 			Self::MultiFlushBudgetBytes => false,
 			Self::MultiWalAutocheckpoint => false,
 			Self::OperatorResidentBudget => false,
+			Self::OperatorFlushInterval => false,
 			Self::OperatorWalAutocheckpoint => false,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => true,
@@ -788,13 +787,6 @@ impl ConfigKey {
 				),
 				_ => Ok(()),
 			},
-			Self::OperatorPointTierBytes => match value {
-				Value::Uint8(0) => Err(
-					"OPERATOR_POINT_TIER_BYTES must be greater than zero; use none to disable the point cache"
-						.to_string(),
-				),
-				_ => Ok(()),
-			},
 			Self::OperatorRangeTierBytes => match value {
 				Value::Uint8(0) => Err(
 					"OPERATOR_RANGE_TIER_BYTES must be greater than zero; use none to disable the range cache"
@@ -846,6 +838,11 @@ impl ConfigKey {
 				Value::Uint8(_) => {
 					Err("OPERATOR_RESIDENT_BUDGET must be greater than zero".to_string())
 				}
+				_ => Ok(()),
+			},
+			Self::OperatorFlushInterval => match value {
+				Value::Duration(d) if d.is_positive() => Ok(()),
+				Value::Duration(_) => Err("OPERATOR_FLUSH_INTERVAL must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::OperatorWalAutocheckpoint => match value {
@@ -1020,7 +1017,6 @@ impl fmt::Display for ConfigKey {
 			Self::CdcReadBufferBytes => write!(f, "CDC_READ_BUFFER_BYTES"),
 			Self::MultiPointBufferShardBytes => write!(f, "MULTI_POINT_BUFFER_SHARD_BYTES"),
 			Self::MultiRangeBufferShardBytes => write!(f, "MULTI_RANGE_BUFFER_SHARD_BYTES"),
-			Self::OperatorPointTierBytes => write!(f, "OPERATOR_POINT_TIER_BYTES"),
 			Self::OperatorRangeTierBytes => write!(f, "OPERATOR_RANGE_TIER_BYTES"),
 			Self::MultiPointBufferShards => write!(f, "MULTI_POINT_BUFFER_SHARDS"),
 			Self::MultiRangeBufferShards => write!(f, "MULTI_RANGE_BUFFER_SHARDS"),
@@ -1028,6 +1024,7 @@ impl fmt::Display for ConfigKey {
 			Self::MultiFlushBudgetBytes => write!(f, "MULTI_FLUSH_BUDGET_BYTES"),
 			Self::MultiWalAutocheckpoint => write!(f, "MULTI_WAL_AUTOCHECKPOINT"),
 			Self::OperatorResidentBudget => write!(f, "OPERATOR_RESIDENT_BUDGET"),
+			Self::OperatorFlushInterval => write!(f, "OPERATOR_FLUSH_INTERVAL"),
 			Self::OperatorWalAutocheckpoint => write!(f, "OPERATOR_WAL_AUTOCHECKPOINT"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::FlowSampleInterval => write!(f, "FLOW_SAMPLE_INTERVAL"),
@@ -1078,7 +1075,6 @@ impl FromStr for ConfigKey {
 			"CDC_READ_BUFFER_BYTES" => Ok(Self::CdcReadBufferBytes),
 			"MULTI_POINT_BUFFER_SHARD_BYTES" => Ok(Self::MultiPointBufferShardBytes),
 			"MULTI_RANGE_BUFFER_SHARD_BYTES" => Ok(Self::MultiRangeBufferShardBytes),
-			"OPERATOR_POINT_TIER_BYTES" => Ok(Self::OperatorPointTierBytes),
 			"OPERATOR_RANGE_TIER_BYTES" => Ok(Self::OperatorRangeTierBytes),
 			"MULTI_POINT_BUFFER_SHARDS" => Ok(Self::MultiPointBufferShards),
 			"MULTI_RANGE_BUFFER_SHARDS" => Ok(Self::MultiRangeBufferShards),
@@ -1086,6 +1082,7 @@ impl FromStr for ConfigKey {
 			"MULTI_FLUSH_BUDGET_BYTES" => Ok(Self::MultiFlushBudgetBytes),
 			"MULTI_WAL_AUTOCHECKPOINT" => Ok(Self::MultiWalAutocheckpoint),
 			"OPERATOR_RESIDENT_BUDGET" => Ok(Self::OperatorResidentBudget),
+			"OPERATOR_FLUSH_INTERVAL" => Ok(Self::OperatorFlushInterval),
 			"OPERATOR_WAL_AUTOCHECKPOINT" => Ok(Self::OperatorWalAutocheckpoint),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"FLOW_SAMPLE_INTERVAL" => Ok(Self::FlowSampleInterval),
@@ -1286,6 +1283,7 @@ mod tests {
 		assert!(all.contains(&ConfigKey::MultiFlushInterval));
 		assert!(all.contains(&ConfigKey::MultiWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::OperatorResidentBudget));
+		assert!(all.contains(&ConfigKey::OperatorFlushInterval));
 		assert!(all.contains(&ConfigKey::OperatorWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::CdcWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::CdcConsumeWaitTimeout));
@@ -1297,7 +1295,6 @@ mod tests {
 		assert!(all.contains(&ConfigKey::CdcCommitBufferBytes));
 		assert!(all.contains(&ConfigKey::CdcBlockCutBytes));
 		assert!(all.contains(&ConfigKey::CdcReadBufferBytes));
-		assert!(all.contains(&ConfigKey::OperatorPointTierBytes));
 		assert!(all.contains(&ConfigKey::OperatorRangeTierBytes));
 		assert!(all.contains(&ConfigKey::MultiPointBufferShards));
 		assert!(all.contains(&ConfigKey::MultiRangeBufferShards));

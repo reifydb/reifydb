@@ -25,7 +25,8 @@ range
 "a" => false
 has_more=false
 
-# The flush must execute the tombstone as a delete, otherwise the row resurrects the moment the buffer drains.
+# The flush must execute the tombstone as a delete, otherwise the row resurrects. The tombstone itself stays
+# resident as clean, so the buffer keeps reporting it until the evictor drops it.
 
 flush
 commit_get a
@@ -35,7 +36,7 @@ contains a
 range
 ---
 ok
-"a" => unknown
+"a" => tombstone
 "a" => None
 "a" => None
 "a" => false

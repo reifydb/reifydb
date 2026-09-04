@@ -15,8 +15,11 @@ use reifydb_store_cdc::{
 };
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig};
-use reifydb_store_operator::tier::{point::OperatorPointConfig, range::OperatorRangeConfig};
-use reifydb_value::{byte_size::ByteSize, value::Value};
+use reifydb_store_operator::tier::range::OperatorRangeConfig;
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{Value, duration::Duration},
+};
 
 use crate::Result;
 
@@ -24,12 +27,12 @@ pub(crate) struct StartupConfig {
 	pub pools: PoolConfig,
 	pub multi_point: Option<MultiPointConfig>,
 	pub multi_range: Option<MultiRangeConfig>,
-	pub operator_point: Option<OperatorPointConfig>,
 	pub operator_range: Option<OperatorRangeConfig>,
 	pub multi_wal_autocheckpoint: u32,
 	pub cdc_wal_autocheckpoint: u32,
 	pub operator_wal_autocheckpoint: u32,
 	pub operator_flush_budget: ByteSize,
+	pub operator_flush_interval: Duration,
 	pub cdc_commit: CdcCommitConfig,
 	pub cdc_read: Option<CdcReadConfig>,
 }
@@ -42,7 +45,6 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::ThreadsCompute,
 	ConfigKey::MultiPointBufferShardBytes,
 	ConfigKey::MultiRangeBufferShardBytes,
-	ConfigKey::OperatorPointTierBytes,
 	ConfigKey::OperatorRangeTierBytes,
 	ConfigKey::MultiPointBufferShards,
 	ConfigKey::MultiRangeBufferShards,
@@ -50,6 +52,7 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::CdcWalAutocheckpoint,
 	ConfigKey::OperatorWalAutocheckpoint,
 	ConfigKey::OperatorResidentBudget,
+	ConfigKey::OperatorFlushInterval,
 	ConfigKey::MultiFlushBudgetBytes,
 	ConfigKey::CdcCommitBufferBytes,
 	ConfigKey::CdcBlockCutBytes,
@@ -94,6 +97,13 @@ pub(crate) fn resolve_startup_configs(
 		}
 	};
 
+	let duration = |key: ConfigKey| -> Duration {
+		match resolve(key) {
+			Value::Duration(v) => v,
+			other => panic!("config key {key} expected Duration, got {other:?}"),
+		}
+	};
+
 	let uint8_opt = |key: ConfigKey| -> Option<u64> {
 		match resolve(key) {
 			Value::Uint8(v) => Some(v),
@@ -122,10 +132,6 @@ pub(crate) fn resolve_startup_configs(
 		shard_bytes: Some(ByteSize::from_bytes(shard_bytes)),
 		shards: shard_count(ConfigKey::MultiRangeBufferShards),
 		gap_guard: DEFAULT_GAP_GUARD,
-	});
-
-	let operator_point = uint8_opt(ConfigKey::OperatorPointTierBytes).map(|tier_bytes| OperatorPointConfig {
-		tier_bytes: Some(ByteSize::from_bytes(tier_bytes)),
 	});
 
 	let operator_range = uint8_opt(ConfigKey::OperatorRangeTierBytes).map(|tier_bytes| OperatorRangeConfig {
@@ -166,12 +172,12 @@ pub(crate) fn resolve_startup_configs(
 		pools,
 		multi_point,
 		multi_range,
-		operator_point,
 		operator_range,
 		multi_wal_autocheckpoint: uint8(ConfigKey::MultiWalAutocheckpoint) as u32,
 		cdc_wal_autocheckpoint: uint8(ConfigKey::CdcWalAutocheckpoint) as u32,
 		operator_wal_autocheckpoint: uint8(ConfigKey::OperatorWalAutocheckpoint) as u32,
 		operator_flush_budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorResidentBudget)),
+		operator_flush_interval: duration(ConfigKey::OperatorFlushInterval),
 		cdc_commit,
 		cdc_read,
 	})
@@ -179,6 +185,7 @@ pub(crate) fn resolve_startup_configs(
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::default;
 	use reifydb_store_commit::store::CommitStore;
 	use reifydb_value::value::value_type::ValueType;
 
@@ -232,5 +239,21 @@ mod tests {
 		let sized = [(ConfigKey::CdcReadBufferBytes, Value::Uint8(ByteSize::from_mib(64).as_bytes()))];
 		let resolved = resolve_startup_configs(&buffer, None, &sized, false).unwrap();
 		assert_eq!(resolved.cdc_read.unwrap().resident_bytes, Some(ByteSize::from_mib(64)));
+	}
+
+	#[test]
+	fn the_flush_interval_resolves_from_the_catalog() {
+		// The flush actor schedules this interval once at spawn, so a value that never leaves the
+		// catalog would leave every deployment on the compile-time constant and no override would have
+		// any effect. With memory pressure the only other trigger, that also decides how long the
+		// durable checkpoint may sit still while CDC and historical versions wait on it.
+		let buffer = CommitStore::new();
+
+		let resolved = resolve_startup_configs(&buffer, None, &[], false).unwrap();
+		assert_eq!(resolved.operator_flush_interval, default::store::OPERATOR_FLUSH_INTERVAL_TESTING);
+
+		let shortened = [(ConfigKey::OperatorFlushInterval, Value::duration_seconds(5))];
+		let resolved = resolve_startup_configs(&buffer, None, &shortened, false).unwrap();
+		assert_eq!(resolved.operator_flush_interval, Duration::from_seconds_const(5));
 	}
 }

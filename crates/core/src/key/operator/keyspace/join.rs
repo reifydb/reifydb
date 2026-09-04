@@ -6,7 +6,6 @@ use reifydb_macro::operator_state;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::{
-	interface::store::CacheTiers,
 	key::{
 		operator::{
 			state::{GroupId, GroupStateKey, KeyspaceId},
@@ -99,7 +98,7 @@ pub struct JoinLeft;
 impl Keyspace for JoinLeft {
 	const ID: KeyspaceId = KeyspaceId::JOIN_LEFT;
 	const NAME: &'static str = "JOIN_LEFT";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = JoinLeftKey;
 	type Suffix = Asc<RowNumber>;
@@ -122,7 +121,7 @@ pub struct JoinRight;
 impl Keyspace for JoinRight {
 	const ID: KeyspaceId = KeyspaceId::JOIN_RIGHT;
 	const NAME: &'static str = "JOIN_RIGHT";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = JoinRightKey;
 	type Suffix = Asc<RowNumber>;
@@ -145,7 +144,7 @@ pub struct JoinPublished;
 impl Keyspace for JoinPublished {
 	const ID: KeyspaceId = KeyspaceId::JOIN_PUBLISHED;
 	const NAME: &'static str = "JOIN_PUBLISHED";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = JoinPublishedKey;
 	type Suffix = Asc<RowNumber>;
@@ -168,7 +167,7 @@ pub struct JoinPin;
 impl Keyspace for JoinPin {
 	const ID: KeyspaceId = KeyspaceId::JOIN_PIN;
 	const NAME: &'static str = "JOIN_PIN";
-	const CACHE: CacheTiers = CacheTiers::Range;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = JoinPinKey;
 	type Suffix = JoinPinSuffix;
@@ -198,7 +197,7 @@ pub struct JoinSchema;
 impl Keyspace for JoinSchema {
 	const ID: KeyspaceId = KeyspaceId::JOIN_SCHEMA;
 	const NAME: &'static str = "JOIN_SCHEMA";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = JoinSchemaKey;
 	type Suffix = JoinSchemaKey;
@@ -218,7 +217,7 @@ pub struct JoinRowExpiry;
 impl Keyspace for JoinRowExpiry {
 	const ID: KeyspaceId = KeyspaceId::JOIN_ROW_EXPIRY;
 	const NAME: &'static str = "JOIN_ROW_EXPIRY";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = JoinRowExpiryKey;
 	type Suffix = JoinRowExpirySuffix;
@@ -260,7 +259,7 @@ pub struct JoinExpiryDue;
 impl Keyspace for JoinExpiryDue {
 	const ID: KeyspaceId = KeyspaceId::JOIN_EXPIRY_DUE;
 	const NAME: &'static str = "JOIN_EXPIRY_DUE";
-	const CACHE: CacheTiers = CacheTiers::Range;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = JoinExpiryDueKey;
 	type Suffix = JoinExpiryDueKey;
@@ -280,7 +279,7 @@ pub struct JoinRowMapping;
 impl Keyspace for JoinRowMapping {
 	const ID: KeyspaceId = KeyspaceId::JOIN_ROW_MAPPING;
 	const NAME: &'static str = "JOIN_ROW_MAPPING";
-	const CACHE: CacheTiers = CacheTiers::Range;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = JoinRowMappingKey;
 	type Suffix = JoinRowMappingKey;

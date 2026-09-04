@@ -30,16 +30,16 @@ use reifydb_store::metrics::PageCacheMetrics;
 use crate::{
 	config::OperatorPersistentConfig,
 	tier::{
-		persistent::sqlite::SqliteOperatorStorage, point::OperatorPointConfig, range::OperatorRangeConfig,
-		resident::flush::actor::ResidentFlushActor,
+		persistent::sqlite::SqliteOperatorStorage,
+		range::OperatorRangeConfig,
+		resident::{evict::actor::ResidentEvictActor, flush::actor::ResidentFlushActor},
 	},
 };
 use crate::{
 	config::OperatorStoreConfig,
-	store::occupancy::KeyspaceOccupancy,
+	store::{census::OperatorCensus, occupancy::KeyspaceOccupancy},
 	tier::{
 		persistent::OperatorPersistentTier,
-		point::tiers::{OperatorPointKeyspaceMetrics, PointTiers},
 		range::tiers::{OperatorRangeKeyspaceMetrics, RangeTiers},
 		resident::{
 			OperatorResidentState,
@@ -65,8 +65,8 @@ pub struct StandardOperatorStore(Arc<StandardOperatorStoreInner>);
 pub struct StandardOperatorStoreInner {
 	pub(crate) resident: OperatorResidentState,
 	pub(crate) occupancy: KeyspaceOccupancy,
+	pub(crate) census: OperatorCensus,
 	pub(crate) persistent: Option<OperatorPersistentTier>,
-	pub(crate) point: Option<PointTiers>,
 	pub(crate) range: Option<RangeTiers>,
 	pub(crate) flush: Option<ActorRef<FlushMessage>>,
 	#[allow(dead_code)]
@@ -85,13 +85,9 @@ impl Deref for StandardOperatorStore {
 
 impl StandardOperatorStore {
 	pub fn new(config: OperatorStoreConfig) -> Self {
+		let flush_interval = config.resident.flush_interval;
 		let resident = config.resident.storage;
 		let spawner = config.spawner;
-		let point = config
-			.persistent
-			.is_some()
-			.then(|| config.point.map(Into::into).and_then(PointTiers::new))
-			.flatten();
 		let range = config
 			.persistent
 			.is_some()
@@ -101,12 +97,15 @@ impl StandardOperatorStore {
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush) = {
 			if let Some(persistent) = config.persistent.as_ref() {
-				resident.attach_sinks(persistent.storage.clone(), point.clone(), range.clone());
+				resident.attach_sinks(persistent.storage.clone(), range.clone());
 			}
 			let flush = config
 				.persistent
 				.as_ref()
-				.map(|_| ResidentFlushActor::spawn(&spawner, resident.clone()));
+				.map(|_| ResidentFlushActor::spawn(&spawner, resident.clone(), flush_interval));
+			if config.persistent.is_some() {
+				resident.attach_evictor(ResidentEvictActor::spawn(&spawner, resident.clone()));
+			}
 			(config.persistent.map(|persistent| persistent.storage), flush)
 		};
 
@@ -116,7 +115,6 @@ impl StandardOperatorStore {
 			None => (None, None),
 		};
 
-		let point = persistent.as_ref().and(point);
 		let range = persistent.as_ref().and(range);
 		if let Some(flush) = flush.as_ref() {
 			resident.attach_flusher(flush.clone());
@@ -125,8 +123,8 @@ impl StandardOperatorStore {
 		Self(Arc::new(StandardOperatorStoreInner {
 			resident,
 			occupancy: KeyspaceOccupancy::new(),
+			census: OperatorCensus::seeded(persistent.as_ref()),
 			persistent,
-			point,
 			range,
 			flush,
 			spawner,
@@ -166,16 +164,8 @@ impl StandardOperatorStore {
 		}
 	}
 
-	pub fn point(&self) -> Option<&PointTiers> {
-		self.point.as_ref()
-	}
-
 	pub fn range(&self) -> Option<&RangeTiers> {
 		self.range.as_ref()
-	}
-
-	pub fn point_keyspace_metrics(&self) -> Vec<OperatorPointKeyspaceMetrics> {
-		self.point.as_ref().map(PointTiers::keyspace_metrics).unwrap_or_default()
 	}
 
 	pub fn range_keyspace_metrics(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
@@ -189,9 +179,6 @@ impl StandardOperatorStore {
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		let mut collectors =
 			self.persistent.as_ref().map(OperatorPersistentTier::metrics_collectors).unwrap_or_default();
-		if let Some(point) = &self.point {
-			collectors.push(Arc::new(point.clone()));
-		}
 		if let Some(range) = &self.range {
 			collectors.push(Arc::new(range.clone()));
 		}
@@ -229,7 +216,6 @@ impl OperatorStore {
 		let (persistent, guard) = OperatorPersistentConfig::sqlite_in_memory();
 		(
 			Self::standard(OperatorStoreConfig {
-				point: Some(OperatorPointConfig::testing()),
 				range: Some(OperatorRangeConfig::testing()),
 				..OperatorStoreConfig::sqlite(persistent, spawner, clock)
 			}),
@@ -240,7 +226,6 @@ impl OperatorStore {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(config: SqliteConfig, spawner: ActorSpawner, clock: Clock) -> Self {
 		Self::standard(OperatorStoreConfig {
-			point: Some(OperatorPointConfig::testing()),
 			range: Some(OperatorRangeConfig::testing()),
 			..OperatorStoreConfig::sqlite(OperatorPersistentConfig::sqlite(config), spawner, clock)
 		})
@@ -265,21 +250,9 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn point(&self) -> Option<&PointTiers> {
-		match self {
-			Self::Standard(store) => store.point(),
-		}
-	}
-
 	pub fn range(&self) -> Option<&RangeTiers> {
 		match self {
 			Self::Standard(store) => store.range(),
-		}
-	}
-
-	pub fn point_keyspace_metrics(&self) -> Vec<OperatorPointKeyspaceMetrics> {
-		match self {
-			Self::Standard(store) => store.point_keyspace_metrics(),
 		}
 	}
 

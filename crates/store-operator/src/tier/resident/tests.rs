@@ -134,10 +134,10 @@ fn resident_bytes(buffer: &OperatorResidentState) -> ByteSize {
 	buffer.resident_bytes()
 }
 
-fn live_bytes_of(buffer: &OperatorResidentState, operator: OperatorId) -> ByteSize {
-	buffer.shared().slot(operator).map_or(ByteSize::ZERO, |slot| {
-		let bytes = slot.inner.lock().live.bytes;
-		bytes
+fn dirty_entries_of(buffer: &OperatorResidentState, operator: OperatorId) -> usize {
+	buffer.shared().slot(operator).map_or(0, |slot| {
+		let dirty = slot.inner.lock().dirty_entries();
+		dirty
 	})
 }
 
@@ -146,9 +146,7 @@ fn flushing(buffer: &OperatorResidentState) -> bool {
 }
 
 fn any_in_flight(buffer: &OperatorResidentState) -> bool {
-	buffer.shared().operators().into_iter().any(|operator| {
-		buffer.shared().slot(operator).is_some_and(|slot| slot.inner.lock().in_flight.is_some())
-	})
+	buffer.flushing_entries() > 0
 }
 
 #[test]
@@ -202,7 +200,7 @@ fn checkpoints_distinguish_a_delete_from_a_never_written_flow() {
 }
 
 #[test]
-fn taken_entries_stay_readable_until_the_flush_completes() {
+fn taken_entries_stay_readable_across_the_flush() {
 	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k"), row("v"));
 	buffer.record_state_remove(OP_A, key("gone"));
@@ -233,17 +231,27 @@ fn taken_entries_stay_readable_until_the_flush_completes() {
 
 	buffer.complete_flush();
 
+	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k")) else {
+		panic!("a settled row must stay readable from memory")
+	};
 	assert_eq!(
-		buffer.lookup_state(OP_A, &key("k")),
-		BufferedState::Absent,
-		"once flushed the row lives in sqlite, so the buffer must stop answering for it"
+		row_body(&found),
+		"v",
+		"a settled row stays resident and keeps answering; dropping it on settle is the read \
+		 amplification this tier exists to remove"
 	);
 	assert_eq!(
 		buffer.lookup_state(OP_A, &key("gone")),
-		BufferedState::Absent,
-		"a flushed tombstone must stop shadowing sqlite, otherwise the key is hidden forever"
+		BufferedState::Tombstone,
+		"a settled tombstone matches the row sqlite no longer holds, so it may keep answering"
 	);
 	assert!(buffer.lookup_checkpoint(FlowId(3)).is_none());
+	assert_eq!(buffer.dirty_entries(), 0, "a settled entry matches sqlite and must not be rewritten");
+	assert_eq!(
+		buffer.flushing_entries(),
+		0,
+		"the settle must clear every staged mark, otherwise the next take re-arms the batch"
+	);
 }
 
 #[test]
@@ -268,7 +276,7 @@ fn a_live_write_shadows_the_same_key_in_the_in_flight_batch() {
 }
 
 #[test]
-fn a_state_page_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
+fn a_state_page_is_ordered_operator_scoped_and_serves_the_latest_write() {
 	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("a"), row("flushing-a"));
 	buffer.record_state_set(OP_A, key("b"), row("flushing-b"));
@@ -284,17 +292,19 @@ fn a_state_page_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
 	let keys: Vec<Vec<u8>> = all.iter().map(|(k, _)| k.to_vec()).collect();
 	assert_eq!(
 		keys,
-		vec![key("a").to_vec(), key("b").to_vec(), key("c").to_vec(), key("d").to_vec()],
-		"the merge cursor advances in key order, so an unordered range drops or duplicates keys"
+		vec![key("a").to_vec(), key("b").to_vec(), key("d").to_vec()],
+		"the range cursor advances in key order, so an unordered range drops or duplicates keys"
 	);
 
-	assert_eq!(body(&all[0].1), "flushing-a", "an in-flight-only key must still be reported");
-	assert_eq!(body(&all[1].1), "live-b", "the live write must overlay the in-flight value for that key");
-	assert!(
-		all[2].1.is_none(),
-		"tombstones must survive the range, otherwise the sqlite side of the merge emits a deleted row"
+	assert_eq!(body(&all[0].1), "flushing-a", "a staged key must still be reported after its flush is taken");
+	assert_eq!(body(&all[1].1), "live-b", "the later write must replace the staged value for that key");
+	assert_eq!(body(&all[2].1), "live-d");
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("c")),
+		BufferedState::Tombstone,
+		"a removed key leaves the range but must still report as a tombstone, because that lookup is what \
+		 masks the row sqlite still holds for it"
 	);
-	assert_eq!(body(&all[3].1), "live-d");
 
 	let other = buffer.state_page(OP_B, Bound::Unbounded, Bound::Unbounded, usize::MAX).items;
 	assert_eq!(other.len(), 1, "a range must stay inside its operator, otherwise operators read each other");
@@ -304,8 +314,8 @@ fn a_state_page_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
 	let window_keys: Vec<Vec<u8>> = window.iter().map(|(k, _)| k.to_vec()).collect();
 	assert_eq!(
 		window_keys,
-		vec![key("b").to_vec(), key("c").to_vec()],
-		"both layers must honour the bounds, otherwise the page over-reads past its end"
+		vec![key("b").to_vec()],
+		"the page must honour the bounds, otherwise it over-reads past its end"
 	);
 
 	let resumed = buffer.state_page(OP_A, Bound::Excluded(&key("a")), Bound::Included(&key("b")), usize::MAX).items;
@@ -446,7 +456,7 @@ fn take_for_flush_sets_flushing_and_complete_flush_clears_it() {
 	buffer.complete_flush();
 
 	assert!(!flushing(&buffer), "a completed flush must release waiting drops");
-	assert!(!any_in_flight(&buffer), "the flushed batch now lives in sqlite and must not be read twice");
+	assert!(!any_in_flight(&buffer), "the settled batch is durable, so nothing may still be staged for flush");
 }
 
 #[test]
@@ -559,8 +569,9 @@ fn a_combined_apply_lands_the_state_and_the_checkpoints_in_one_taken_batch() {
 		 version after its state is gone"
 	);
 
-	assert!(
-		buffer.take_for_flush().is_none(),
+	assert_eq!(
+		buffer.dirty_entries(),
+		0,
 		"nothing may be left behind for a second batch; a follow-up batch is exactly the split this \
 		 entry point exists to prevent"
 	);
@@ -683,10 +694,10 @@ fn a_buffer_far_past_the_budget_drains_whole_flows_and_loses_nothing() {
 		);
 		for ((operator, taken), _) in &batch.state {
 			assert_eq!(
-				live_bytes_of(&buffer, operator),
-				ByteSize::ZERO,
-				"the operator kept live state behind, so this slice split it; its flow checkpoint \
-				 would then promise state that never reached sqlite"
+				dirty_entries_of(&buffer, operator),
+				0,
+				"the operator kept unstaged state behind, so this slice split it; its flow \
+				 checkpoint would then promise state that never reached sqlite"
 			);
 			seen.push(taken.as_slice().to_vec());
 		}
@@ -874,20 +885,27 @@ fn a_flow_boundary_split_moves_exactly_the_bytes_the_slice_carries_away() {
 
 	let taken = buffer.take_for_flush().expect("the seeded buffer yields a slice");
 
-	assert!(taken.bytes > ByteSize::ZERO, "a slice that carries rows must carry a charge");
-	assert!(
-		live_bytes(&buffer) > ByteSize::ZERO,
-		"the budget must have stopped at the flow boundary and left something behind to split at all"
+	assert_eq!(
+		taken.bytes,
+		entry_bytes("k1", "aaa"),
+		"the slice carries exactly the first flow's bytes; the budget may only stop at a flow boundary"
 	);
 	assert_eq!(
-		taken.bytes.saturating_add(live_bytes(&buffer)),
+		live_bytes(&buffer),
 		before,
-		"every byte must land on exactly one side of the split"
+		"a staged entry stays resident, so the split moves the charge into the batch without releasing \
+		 it from memory"
+	);
+	assert_eq!(dirty_entries_of(&buffer, OP_A), 0, "the taken flow has nothing left needing a write");
+	assert_eq!(
+		dirty_entries_of(&buffer, OP_B),
+		1,
+		"the flow past the boundary stays dirty for the next slice; losing it drops committed state"
 	);
 }
 
 #[test]
-fn a_split_that_takes_everything_leaves_the_source_at_zero() {
+fn a_split_that_takes_everything_leaves_nothing_dirty() {
 	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k1"), row("aaa"));
 	let before = live_bytes(&buffer);
@@ -896,9 +914,14 @@ fn a_split_that_takes_everything_leaves_the_source_at_zero() {
 
 	assert_eq!(taken.bytes, before, "a slice that took everything carries the whole charge");
 	assert_eq!(
+		buffer.dirty_entries(),
+		0,
+		"a residue left unstaged never drains, so the buffer flushes on every commit forever"
+	);
+	assert_eq!(
 		live_bytes(&buffer),
-		ByteSize::ZERO,
-		"a residue left on an emptied batch never drains, so the buffer flushes on every commit forever"
+		before,
+		"taking everything stages the entries in place, so they stay resident for reads"
 	);
 }
 
@@ -918,7 +941,7 @@ fn a_drop_marker_releases_the_bytes_of_everything_it_clears() {
 }
 
 #[test]
-fn a_selected_slice_stays_resident_until_the_flush_settles() {
+fn a_selected_slice_stays_resident_across_the_settle() {
 	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k1"), row("value"));
 	let charged = live_bytes(&buffer);
@@ -926,7 +949,11 @@ fn a_selected_slice_stays_resident_until_the_flush_settles() {
 	let batch = buffer.take_for_flush().expect("the seeded buffer yields a slice");
 
 	assert_eq!(batch.bytes, charged, "the slice carries the charge it took");
-	assert_eq!(live_bytes(&buffer), ByteSize::ZERO, "the live batch has handed the entries over");
+	assert_eq!(
+		live_bytes(&buffer),
+		charged,
+		"staging marks the entries in place, so the live map keeps carrying them"
+	);
 	assert_eq!(
 		resident_bytes(&buffer),
 		charged,
@@ -935,7 +962,12 @@ fn a_selected_slice_stays_resident_until_the_flush_settles() {
 
 	buffer.complete_flush();
 
-	assert_eq!(resident_bytes(&buffer), ByteSize::ZERO, "the settle is where the memory is actually given back");
+	assert_eq!(
+		resident_bytes(&buffer),
+		charged,
+		"the settle makes the rows durable without evicting them; only the evictor gives memory back"
+	);
+	assert_eq!(buffer.dirty_entries(), 0, "a settled entry matches sqlite and must not be rewritten");
 }
 
 #[test]
@@ -1037,7 +1069,7 @@ fn a_last_page_is_the_exact_reverse_tail_of_a_forward_page() {
 	buffer.record_state_set(OP_A, seeded[0].clone(), row("live"));
 	buffer.record_state_remove(OP_A, seeded[5].clone());
 
-	let mut expected = seeded.clone();
+	let mut expected: Vec<_> = seeded.iter().filter(|key| *key != &seeded[5]).cloned().collect();
 	expected.sort();
 
 	let forward = buffer.state_page(OP_A, Bound::Unbounded, Bound::Unbounded, seeded.len()).items;
@@ -1047,7 +1079,7 @@ fn a_last_page_is_the_exact_reverse_tail_of_a_forward_page() {
 		"the forward page must serve every key once in encoded order before the reverse can mirror it"
 	);
 
-	for limit in 1..=seeded.len() {
+	for limit in 1..=forward.len() {
 		let back = buffer.state_last_page(OP_A, Bound::Unbounded, Bound::Unbounded, limit).items;
 		let mut tail = forward[forward.len() - limit..].to_vec();
 		tail.reverse();

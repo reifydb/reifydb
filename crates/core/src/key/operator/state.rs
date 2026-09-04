@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use super::super::{EncodableKey, KeyKind};
 use crate::{
-	interface::{catalog::flow::OperatorId, store::CacheTiers},
+	interface::catalog::flow::OperatorId,
 	key::{
 		operator::{
 			keyspace::{
@@ -340,23 +340,8 @@ impl KeyspaceId {
 		!self.is_data()
 	}
 
-	pub fn cache_tiers(&self) -> CacheTiers {
-		match *self {
-			Self::CUSTOM_NOT_CACHED => CacheTiers::Neither,
-			Self::ROLLING_EXPIRY => CacheTiers::Range,
-			Self::TIMER_WHEEL => CacheTiers::Range,
-			Self::ENGINE_META => CacheTiers::Range,
-			Self::JOIN_PIN => CacheTiers::Range,
-			Self::JOIN_ROW_MAPPING => CacheTiers::Range,
-			Self::GROUP_ROW_MAPPING => CacheTiers::Range,
-			Self::GUEST_ROW_MAPPING => CacheTiers::Range,
-			Self::ACCUMULATOR => CacheTiers::Range,
-			Self::GUEST_ACCUMULATOR => CacheTiers::Range,
-			Self::TUMBLING_EXPIRY => CacheTiers::Range,
-			Self::WINDOW_META => CacheTiers::Range,
-			Self::JOIN_EXPIRY_DUE => CacheTiers::Range,
-			_ => CacheTiers::Both,
-		}
+	pub fn caches_ranges(&self) -> bool {
+		*self != Self::CUSTOM_NOT_CACHED
 	}
 
 	pub fn is_guest_owned(&self) -> bool {
@@ -805,7 +790,7 @@ mod tests {
 	use reifydb_value::util::hash::Hash128;
 
 	use super::{
-		CacheTiers, EncodedKey, EncodedKeyRange, GroupId, GroupSet, GroupStateKey, KeySerializer, KeyspaceId,
+		EncodedKey, EncodedKeyRange, GroupId, GroupSet, GroupStateKey, KeySerializer, KeyspaceId,
 		OperatorStateKey, custom_not_cached_key_in, group_data_inner_range, group_data_of_inner,
 		group_data_range, group_identity_inner_range, group_identity_range, group_inner_prefix,
 		group_inner_range, group_range, is_framed_inner, is_guest_framed_inner, keyspace_range, node_prefix,
@@ -826,68 +811,53 @@ mod tests {
 	}
 
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
-	/// be cached in. Both are written down rather than read back from `is_data` and `cache_tiers`, or
+	/// be cached in. Both are written down rather than read back from `is_data` and `caches_ranges`, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, CacheTiers); 44] = [
-		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, CacheTiers::Both),
-		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, CacheTiers::Both),
-		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, CacheTiers::Range),
-		("TIMER_INDEX", KeyspaceId::TIMER_INDEX, Phase::Identity, CacheTiers::Both),
-		("JOIN_ROW_MAPPING", KeyspaceId::JOIN_ROW_MAPPING, Phase::Identity, CacheTiers::Range),
-		("GROUP_ROW_MAPPING", KeyspaceId::GROUP_ROW_MAPPING, Phase::Identity, CacheTiers::Range),
-		("GUEST_ROW_MAPPING", KeyspaceId::GUEST_ROW_MAPPING, Phase::Identity, CacheTiers::Range),
-		("ACCUMULATOR", KeyspaceId::ACCUMULATOR, Phase::Data, CacheTiers::Range),
-		("BUFFER", KeyspaceId::BUFFER, Phase::Data, CacheTiers::Both),
-		("RUNNING", KeyspaceId::RUNNING, Phase::Data, CacheTiers::Both),
-		("EMIT", KeyspaceId::EMIT, Phase::Data, CacheTiers::Both),
-		("ROLLING_EXPIRY", KeyspaceId::ROLLING_EXPIRY, Phase::Data, CacheTiers::Range),
-		("COUNT", KeyspaceId::COUNT, Phase::Data, CacheTiers::Both),
-		("ROW_INDEX", KeyspaceId::ROW_INDEX, Phase::Data, CacheTiers::Both),
-		("SESSION", KeyspaceId::SESSION, Phase::Data, CacheTiers::Both),
-		("ROLLING_META", KeyspaceId::ROLLING_META, Phase::Data, CacheTiers::Both),
-		("ENGINE_META", KeyspaceId::ENGINE_META, Phase::Data, CacheTiers::Range),
-		("DISTINCT_ENTRY", KeyspaceId::DISTINCT_ENTRY, Phase::Data, CacheTiers::Both),
-		("WINDOW_META", KeyspaceId::WINDOW_META, Phase::Data, CacheTiers::Range),
-		("JOIN_LEFT", KeyspaceId::JOIN_LEFT, Phase::Data, CacheTiers::Both),
-		("JOIN_RIGHT", KeyspaceId::JOIN_RIGHT, Phase::Data, CacheTiers::Both),
-		("JOIN_SCHEMA", KeyspaceId::JOIN_SCHEMA, Phase::Data, CacheTiers::Both),
-		("RINGBUFFER_FORWARD", KeyspaceId::RINGBUFFER_FORWARD, Phase::Data, CacheTiers::Both),
-		("RINGBUFFER_ENTRY", KeyspaceId::RINGBUFFER_ENTRY, Phase::Data, CacheTiers::Both),
-		("GATE_VISIBILITY", KeyspaceId::GATE_VISIBILITY, Phase::Data, CacheTiers::Both),
-		("DISTINCT_LAYOUT", KeyspaceId::DISTINCT_LAYOUT, Phase::Data, CacheTiers::Both),
-		("RINGBUFFER_EXPIRY", KeyspaceId::RINGBUFFER_EXPIRY, Phase::Data, CacheTiers::Both),
-		("RINGBUFFER_TTL_ARM", KeyspaceId::RINGBUFFER_TTL_ARM, Phase::Data, CacheTiers::Both),
-		("SEAL_LEDGER", KeyspaceId::SEAL_LEDGER, Phase::Data, CacheTiers::Both),
-		("JOIN_PUBLISHED", KeyspaceId::JOIN_PUBLISHED, Phase::Data, CacheTiers::Both),
-		("JOIN_PIN", KeyspaceId::JOIN_PIN, Phase::Data, CacheTiers::Range),
-		("RINGBUFFER_META", KeyspaceId::RINGBUFFER_META, Phase::Data, CacheTiers::Both),
-		("REAP_QUEUE", KeyspaceId::REAP_QUEUE, Phase::Data, CacheTiers::Both),
-		("JOIN_ROW_EXPIRY", KeyspaceId::JOIN_ROW_EXPIRY, Phase::Data, CacheTiers::Both),
-		("JOIN_EXPIRY_DUE", KeyspaceId::JOIN_EXPIRY_DUE, Phase::Data, CacheTiers::Range),
-		("GUEST_ACCUMULATOR", KeyspaceId::GUEST_ACCUMULATOR, Phase::Data, CacheTiers::Range),
-		("GUEST_BUFFER", KeyspaceId::GUEST_BUFFER, Phase::Data, CacheTiers::Both),
-		("GUEST_RUNNING", KeyspaceId::GUEST_RUNNING, Phase::Data, CacheTiers::Both),
-		("TUMBLING_EXPIRY", KeyspaceId::TUMBLING_EXPIRY, Phase::Data, CacheTiers::Range),
-		(
-			"PARTITIONED_RINGBUFFER_ENTRY",
-			KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY,
-			Phase::Data,
-			CacheTiers::Both,
-		),
-		(
-			"PARTITIONED_RINGBUFFER_EXPIRY",
-			KeyspaceId::PARTITIONED_RINGBUFFER_EXPIRY,
-			Phase::Data,
-			CacheTiers::Both,
-		),
-		(
-			"PARTITIONED_RINGBUFFER_TTL_ARM",
-			KeyspaceId::PARTITIONED_RINGBUFFER_TTL_ARM,
-			Phase::Data,
-			CacheTiers::Both,
-		),
-		("PARTITIONED_RINGBUFFER_META", KeyspaceId::PARTITIONED_RINGBUFFER_META, Phase::Data, CacheTiers::Both),
-		("CUSTOM_NOT_CACHED", KeyspaceId::CUSTOM_NOT_CACHED, Phase::Data, CacheTiers::Neither),
+	const CENSUS: [(&str, KeyspaceId, Phase, bool); 44] = [
+		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, true),
+		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, true),
+		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, true),
+		("TIMER_INDEX", KeyspaceId::TIMER_INDEX, Phase::Identity, true),
+		("JOIN_ROW_MAPPING", KeyspaceId::JOIN_ROW_MAPPING, Phase::Identity, true),
+		("GROUP_ROW_MAPPING", KeyspaceId::GROUP_ROW_MAPPING, Phase::Identity, true),
+		("GUEST_ROW_MAPPING", KeyspaceId::GUEST_ROW_MAPPING, Phase::Identity, true),
+		("ACCUMULATOR", KeyspaceId::ACCUMULATOR, Phase::Data, true),
+		("BUFFER", KeyspaceId::BUFFER, Phase::Data, true),
+		("RUNNING", KeyspaceId::RUNNING, Phase::Data, true),
+		("EMIT", KeyspaceId::EMIT, Phase::Data, true),
+		("ROLLING_EXPIRY", KeyspaceId::ROLLING_EXPIRY, Phase::Data, true),
+		("COUNT", KeyspaceId::COUNT, Phase::Data, true),
+		("ROW_INDEX", KeyspaceId::ROW_INDEX, Phase::Data, true),
+		("SESSION", KeyspaceId::SESSION, Phase::Data, true),
+		("ROLLING_META", KeyspaceId::ROLLING_META, Phase::Data, true),
+		("ENGINE_META", KeyspaceId::ENGINE_META, Phase::Data, true),
+		("DISTINCT_ENTRY", KeyspaceId::DISTINCT_ENTRY, Phase::Data, true),
+		("WINDOW_META", KeyspaceId::WINDOW_META, Phase::Data, true),
+		("JOIN_LEFT", KeyspaceId::JOIN_LEFT, Phase::Data, true),
+		("JOIN_RIGHT", KeyspaceId::JOIN_RIGHT, Phase::Data, true),
+		("JOIN_SCHEMA", KeyspaceId::JOIN_SCHEMA, Phase::Data, true),
+		("RINGBUFFER_FORWARD", KeyspaceId::RINGBUFFER_FORWARD, Phase::Data, true),
+		("RINGBUFFER_ENTRY", KeyspaceId::RINGBUFFER_ENTRY, Phase::Data, true),
+		("GATE_VISIBILITY", KeyspaceId::GATE_VISIBILITY, Phase::Data, true),
+		("DISTINCT_LAYOUT", KeyspaceId::DISTINCT_LAYOUT, Phase::Data, true),
+		("RINGBUFFER_EXPIRY", KeyspaceId::RINGBUFFER_EXPIRY, Phase::Data, true),
+		("RINGBUFFER_TTL_ARM", KeyspaceId::RINGBUFFER_TTL_ARM, Phase::Data, true),
+		("SEAL_LEDGER", KeyspaceId::SEAL_LEDGER, Phase::Data, true),
+		("JOIN_PUBLISHED", KeyspaceId::JOIN_PUBLISHED, Phase::Data, true),
+		("JOIN_PIN", KeyspaceId::JOIN_PIN, Phase::Data, true),
+		("RINGBUFFER_META", KeyspaceId::RINGBUFFER_META, Phase::Data, true),
+		("REAP_QUEUE", KeyspaceId::REAP_QUEUE, Phase::Data, true),
+		("JOIN_ROW_EXPIRY", KeyspaceId::JOIN_ROW_EXPIRY, Phase::Data, true),
+		("JOIN_EXPIRY_DUE", KeyspaceId::JOIN_EXPIRY_DUE, Phase::Data, true),
+		("GUEST_ACCUMULATOR", KeyspaceId::GUEST_ACCUMULATOR, Phase::Data, true),
+		("GUEST_BUFFER", KeyspaceId::GUEST_BUFFER, Phase::Data, true),
+		("GUEST_RUNNING", KeyspaceId::GUEST_RUNNING, Phase::Data, true),
+		("TUMBLING_EXPIRY", KeyspaceId::TUMBLING_EXPIRY, Phase::Data, true),
+		("PARTITIONED_RINGBUFFER_ENTRY", KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY, Phase::Data, true),
+		("PARTITIONED_RINGBUFFER_EXPIRY", KeyspaceId::PARTITIONED_RINGBUFFER_EXPIRY, Phase::Data, true),
+		("PARTITIONED_RINGBUFFER_TTL_ARM", KeyspaceId::PARTITIONED_RINGBUFFER_TTL_ARM, Phase::Data, true),
+		("PARTITIONED_RINGBUFFER_META", KeyspaceId::PARTITIONED_RINGBUFFER_META, Phase::Data, true),
+		("CUSTOM_NOT_CACHED", KeyspaceId::CUSTOM_NOT_CACHED, Phase::Data, false),
 	];
 
 	/// Counts `KeyspaceId` constants from the source text. There is no reflection over associated
@@ -1157,32 +1127,31 @@ mod tests {
 	}
 
 	#[test]
-	fn every_declared_keyspace_states_the_tiers_it_may_be_cached_in() {
-		// The census names the policy so a keyspace moving between tiers has to be moved here too. A
-		// wrong side is silent: the tier just declines every span and the keyspace reads sqlite forever,
-		// which reads as a cold cache rather than as a policy mistake.
+	fn every_declared_keyspace_states_whether_it_may_be_range_cached() {
+		// The census names the policy so a keyspace moving out of the range tier has to be moved here
+		// too. A wrong side is silent: the tier just declines every span and the keyspace reads sqlite
+		// forever, which reads as a cold cache rather than as a policy mistake.
 		for (name, keyspace, _, policy) in CENSUS {
 			assert_eq!(
-				keyspace.cache_tiers(),
+				keyspace.caches_ranges(),
 				policy,
 				"{name} ({:#04x}) is cached on a different side than the census records",
 				keyspace.0
 			);
 		}
 
-		let neither: Vec<&str> =
-			CENSUS.iter().filter(|(_, _, _, p)| *p == CacheTiers::Neither).map(|(n, ..)| *n).collect();
+		let uncached: Vec<&str> = CENSUS.iter().filter(|(_, _, _, p)| !*p).map(|(n, ..)| *n).collect();
 		assert_eq!(
-			neither,
+			uncached,
 			["CUSTOM_NOT_CACHED"],
-			"widening the set a tier refuses turns that tier into an off switch and only shows up as a \
+			"widening the set the tier refuses turns that tier into an off switch and only shows up as a \
 			 throughput loss in a replay, so every move in or out is a measured decision"
 		);
 
 		assert!(
-			KeyspaceId(0x43).cache_tiers() == CacheTiers::Both,
-			"an undeclared keyspace must default to cacheable, or a custom operator silently loses \
-			 both tiers"
+			KeyspaceId(0x43).caches_ranges(),
+			"an undeclared keyspace must default to cacheable, or a custom operator silently loses the \
+			 range tier"
 		);
 	}
 

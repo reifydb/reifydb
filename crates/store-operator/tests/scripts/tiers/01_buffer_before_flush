@@ -13,8 +13,8 @@ get a
 "a" => None
 "a" => "1"
 
-# The flush moves the row into sqlite and the buffer stops answering for it, so the layered read has to fall
-# through to a row that is already there.
+# The flush makes the row durable without dropping it. The entry stays resident as clean, so the buffer still
+# answers for it and the layered read is served from memory.
 
 flush
 commit_get a
@@ -22,7 +22,7 @@ persistent_get a
 get a
 ---
 ok
-"a" => unknown
+"a" => "1"
 "a" => "1"
 "a" => "1"
 
@@ -53,6 +53,6 @@ persistent_get a
 get a
 ---
 ok
-"a" => unknown
+"a" => "2"
 "a" => "2"
 "a" => "2"

@@ -16,7 +16,6 @@ use reifydb_value::util::hash::Hash128;
 #[cfg(test)]
 use crate::key::{operator::traits::group_scoped, typed::TypedKey};
 use crate::{
-	interface::store::CacheTiers,
 	key::{
 		operator::{
 			keyspace::{
@@ -54,7 +53,7 @@ use crate::{
 pub struct KeyspaceSpec {
 	pub name: &'static str,
 	pub id: KeyspaceId,
-	pub cache: CacheTiers,
+	pub range_cached: bool,
 	pub columns: &'static [KeyColumn],
 	pub suffix: &'static [KeyColumn],
 }
@@ -87,7 +86,7 @@ macro_rules! catalogue {
 			$(KeyspaceSpec {
 				name: <$keyspace as Keyspace>::NAME,
 				id: <$keyspace as Keyspace>::ID,
-				cache: <$keyspace as Keyspace>::CACHE,
+				range_cached: <$keyspace as Keyspace>::RANGE_CACHED,
 				columns: <<$keyspace as Keyspace>::GroupedKey as KeyLayout>::COLUMNS,
 				suffix: <<$keyspace as Keyspace>::Suffix as KeyLayout>::COLUMNS,
 			}),*
@@ -365,7 +364,6 @@ mod tests {
 		group_scoped_keyspaces, root_sibling,
 	};
 	use crate::{
-		interface::store::CacheTiers,
 		key::{
 			operator::{
 				keyspace::join::{JoinRowExpiryState, JoinRowExpirySuffix},
@@ -376,8 +374,8 @@ mod tests {
 		state::typed::SuffixBytes,
 	};
 
-	fn catalogue() -> Vec<(&'static str, KeyspaceId, CacheTiers)> {
-		KEYSPACES.iter().map(|spec| (spec.name, spec.id, spec.cache)).collect()
+	fn catalogue() -> Vec<(&'static str, KeyspaceId, bool)> {
+		KEYSPACES.iter().map(|spec| (spec.name, spec.id, spec.range_cached)).collect()
 	}
 
 	#[test]
@@ -412,12 +410,12 @@ mod tests {
 
 	#[test]
 	fn every_keyspace_names_and_tiers_itself_the_way_its_id_does() {
-		// the impl writes NAME and CACHE down by hand and KeyspaceId answers them separately, so this is
+		// the impl writes NAME and RANGE_CACHED down by hand and KeyspaceId answers them separately, so this is
 		// the only place the two lists are forced to agree; a keyspace that quietly changed tiers on one
 		// side would otherwise be cached by the store and uncached by the catalogue
-		for (name, id, cache) in catalogue() {
+		for (name, id, range_cached) in catalogue() {
 			assert_eq!(name, id.name(), "{name} and its id disagree on the name");
-			assert_eq!(cache, id.cache_tiers(), "{name} and its id disagree on the cache tiers");
+			assert_eq!(range_cached, id.caches_ranges(), "{name} and its id disagree on the range tier");
 		}
 	}
 

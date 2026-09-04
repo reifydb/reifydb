@@ -33,17 +33,6 @@ fn scan_state(inner: &SlotInner, mut visit: impl FnMut(KeyspaceId, &EncodedPodRo
 			visit(keyspace, row);
 		}
 	});
-	let Some(pending) = inner.in_flight.as_deref() else {
-		return;
-	};
-	pending.state.for_each_entry(operator, |keyspace, group, suffix, entry| {
-		if inner.live.state.get_bytes_ref(operator, keyspace, group, suffix).is_some() {
-			return;
-		}
-		if let Some(row) = &entry.post {
-			visit(keyspace, row);
-		}
-	});
 }
 
 impl OperatorResidentState {

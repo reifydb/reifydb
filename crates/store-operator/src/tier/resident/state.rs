@@ -14,10 +14,6 @@ use crate::{
 	types::{BufferedState, BufferedStateRange},
 };
 
-type Page = Vec<(EncodedKey, WriteEntry)>;
-
-type CombineFn = fn(&Page, &Page, usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)>;
-
 impl OperatorResidentState {
 	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
 		self.write_slot(operator, |inner| record_state(inner, key, Some(row)));
@@ -68,10 +64,6 @@ impl OperatorResidentState {
 		limit: usize,
 		scan: Scan,
 	) -> BufferedStateRange {
-		let combine: CombineFn = match scan {
-			Scan::Forward => merge,
-			Scan::Backward => merge_back,
-		};
 		let lower = owned(start);
 		let upper = owned(end);
 		let mut items = Vec::new();
@@ -79,21 +71,16 @@ impl OperatorResidentState {
 		if let Some(slot) = self.shared().slot(operator) {
 			let inner = slot.inner.lock();
 			if limit > 0 && !is_empty_range(&lower, &upper) {
-				let live = inner.live.state.encoded_range(operator, &lower, &upper, scan, limit);
-				let flight = match inner.in_flight.as_ref() {
-					Some(pending) => {
-						let mut page =
-							pending.state.encoded_range(operator, &lower, &upper, scan, limit);
-						for (key, entry) in page.iter_mut() {
-							if inner.live.is_deleted(key) {
-								entry.post = None;
-							}
-						}
-						page
-					}
-					None => Page::new(),
-				};
-				items = combine(&live, &flight, limit);
+				items = inner
+					.live
+					.state
+					.encoded_range(operator, &lower, &upper, scan, limit)
+					.into_iter()
+					.map(|(key, entry)| (key, entry.post))
+					.collect();
+				if scan == Scan::Backward {
+					items.reverse();
+				}
 			}
 		}
 
@@ -102,80 +89,6 @@ impl OperatorResidentState {
 			dropped: self.shared().dropped(|marker| is_state_drop(marker, operator)),
 		}
 	}
-}
-
-fn merge(live: &Page, flight: &Page, limit: usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)> {
-	let mut live = live.iter().peekable();
-	let mut flight = flight.iter().peekable();
-	let mut items = Vec::new();
-	while items.len() < limit {
-		let winner = match (live.peek(), flight.peek()) {
-			(None, None) => break,
-			(Some(_), None) => Side::Live,
-			(None, Some(_)) => Side::Flight,
-			(Some((live_key, _)), Some((flight_key, _))) => match live_key.cmp(flight_key) {
-				Ordering::Less => Side::Live,
-				Ordering::Greater => Side::Flight,
-				Ordering::Equal => Side::Both,
-			},
-		};
-		match winner {
-			Side::Live => {
-				let (key, entry) = live.next().expect("the peeked live entry is still pending");
-				items.push((key.clone(), entry.post.clone()));
-			}
-			Side::Flight => {
-				let (key, entry) = flight.next().expect("the peeked in-flight entry is still pending");
-				items.push((key.clone(), entry.post.clone()));
-			}
-			Side::Both => {
-				let (key, entry) = live.next().expect("the peeked live entry is still pending");
-				flight.next();
-				items.push((key.clone(), entry.post.clone()));
-			}
-		}
-	}
-	items
-}
-
-fn merge_back(live: &Page, flight: &Page, limit: usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)> {
-	let mut live = live.iter().rev().peekable();
-	let mut flight = flight.iter().rev().peekable();
-	let mut items = Vec::new();
-	while items.len() < limit {
-		let winner = match (live.peek(), flight.peek()) {
-			(None, None) => break,
-			(Some(_), None) => Side::Live,
-			(None, Some(_)) => Side::Flight,
-			(Some((live_key, _)), Some((flight_key, _))) => match live_key.cmp(flight_key) {
-				Ordering::Greater => Side::Live,
-				Ordering::Less => Side::Flight,
-				Ordering::Equal => Side::Both,
-			},
-		};
-		match winner {
-			Side::Live => {
-				let (key, entry) = live.next().expect("the peeked live entry is still pending");
-				items.push((key.clone(), entry.post.clone()));
-			}
-			Side::Flight => {
-				let (key, entry) = flight.next().expect("the peeked in-flight entry is still pending");
-				items.push((key.clone(), entry.post.clone()));
-			}
-			Side::Both => {
-				let (key, entry) = live.next().expect("the peeked live entry is still pending");
-				flight.next();
-				items.push((key.clone(), entry.post.clone()));
-			}
-		}
-	}
-	items
-}
-
-enum Side {
-	Live,
-	Flight,
-	Both,
 }
 
 fn owned(bound: Bound<&EncodedKey>) -> Bound<EncodedKey> {

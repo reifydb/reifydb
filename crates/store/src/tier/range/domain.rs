@@ -74,18 +74,15 @@ impl TestPartition {
 	}
 
 	pub fn caches_ranges(&self) -> bool {
-		self.keyspace.cache_tiers().caches_ranges()
+		self.keyspace.caches_ranges()
 	}
 }
 
-static CACHE_TIERS_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
+static CACHE_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 	let mut floor = [0u8; 256];
 	let mut lowest = 0u8;
 	for keyspace in 0..=u8::MAX {
-		if keyspace > 0
-			&& KeyspaceId(keyspace).cache_tiers().caches_ranges()
-				!= KeyspaceId(keyspace - 1).cache_tiers().caches_ranges()
-		{
+		if keyspace > 0 && KeyspaceId(keyspace).caches_ranges() != KeyspaceId(keyspace - 1).caches_ranges() {
 			lowest = keyspace;
 		}
 		floor[keyspace as usize] = lowest;
@@ -126,8 +123,8 @@ impl RangeDomain for TestDomain {
 		partition.caches_ranges()
 	}
 
-	fn cache_tiers_run_end(partition: &Self::Partition) -> Edge<Self::Key> {
-		let floor = CACHE_TIERS_RUN_FLOOR[partition.keyspace.0 as usize];
+	fn cache_run_end(partition: &Self::Partition) -> Edge<Self::Key> {
+		let floor = CACHE_RUN_FLOOR[partition.keyspace.0 as usize];
 		if floor == partition.keyspace.0 {
 			return partition.span().1;
 		}
@@ -192,8 +189,8 @@ impl RangeDomain for AdmittingDomain {
 		TestDomain::caches_ranges(partition)
 	}
 
-	fn cache_tiers_run_end(partition: &Self::Partition) -> Edge<Self::Key> {
-		TestDomain::cache_tiers_run_end(partition)
+	fn cache_run_end(partition: &Self::Partition) -> Edge<Self::Key> {
+		TestDomain::cache_run_end(partition)
 	}
 
 	fn admits_unproven_writes() -> bool {

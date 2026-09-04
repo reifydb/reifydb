@@ -62,10 +62,10 @@ impl<K: Keyspace> RangeDomain for TypedDomain<K> {
 	}
 
 	fn caches_ranges(_partition: &Self::Partition) -> bool {
-		K::CACHE.caches_ranges()
+		K::RANGE_CACHED
 	}
 
-	fn cache_tiers_run_end(_partition: &Self::Partition) -> Edge<Self::Key> {
+	fn cache_run_end(_partition: &Self::Partition) -> Edge<Self::Key> {
 		Edge::Top
 	}
 

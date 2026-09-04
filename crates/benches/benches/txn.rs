@@ -20,7 +20,6 @@ use reifydb_benches::{
 };
 use reifydb_codec::{key as keycode, key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::CommitVersion,
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
@@ -37,10 +36,7 @@ use reifydb_runtime::{
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
-use reifydb_value::{
-	util::cowvec::CowVec,
-	value::{Value, row_number::RowNumber},
-};
+use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
 
 set_global_allocator!();
 

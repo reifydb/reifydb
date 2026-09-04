@@ -16,13 +16,13 @@ use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	store::OperatorStore,
-	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
+	tier::range::OperatorRangeConfig,
 };
 use reifydb_testing::keyspace::state_key;
 use reifydb_value::util::hash::Hash128;
 
 /// Only data keyspaces, so every key the workload writes lands in a census bucket.
-pub const KEYSPACES: [u8; 4] = [0x13, 0x1D, 0x2C, 0x40];
+pub const KEYSPACES: [u8; 4] = [0x10, 0x11, 0x13, 0x1D];
 
 pub struct Config {
 	pub name: &'static str,
@@ -143,7 +143,6 @@ pub fn store_at(spawner: &ActorSpawner, path: &Path) -> OperatorStore {
 
 fn store_from(spawner: &ActorSpawner, config: SqliteConfig) -> OperatorStore {
 	OperatorStore::standard(OperatorStoreConfig {
-		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		..OperatorStoreConfig::sqlite(OperatorPersistentConfig::sqlite(config), spawner.clone(), Clock::Real)
 	})

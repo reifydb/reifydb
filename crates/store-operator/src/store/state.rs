@@ -18,9 +18,7 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator::{
 		keyspace::dispatch,
-		state::{
-			GroupId, KeyspaceId, group_inner_range, group_inner_range_split, keyspace_inner_range_split,
-		},
+		state::{GroupId, KeyspaceId, group_inner_range, group_inner_range_split, keyspace_inner_range_split},
 	},
 };
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
@@ -50,6 +48,7 @@ impl StandardOperatorStore {
 		}
 		let _flushing = self.resident.flush_guard();
 		self.occupancy.record(writes);
+		self.census.record(writes);
 		self.resident.apply_batch(writes);
 		self.invalidate_read_batch(writes);
 	}
@@ -66,6 +65,7 @@ impl StandardOperatorStore {
 		}
 		let _flushing = self.resident.flush_guard();
 		self.occupancy.record(writes);
+		self.census.record(writes);
 		self.resident.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes);
 		self.invalidate_read_batch(writes);
 	}
@@ -74,11 +74,9 @@ impl StandardOperatorStore {
 	pub fn drop_operator_state(&self, operator: OperatorId) {
 		self.resident.record_drop(DropMarker::OperatorState(operator));
 		self.occupancy.forget(operator);
+		self.census.forget(operator);
 		if let Some(range) = self.range.as_ref() {
 			range.invalidate_operator(operator);
-		}
-		if let Some(point) = self.point.as_ref() {
-			point.invalidate_operator(operator);
 		}
 	}
 
@@ -143,17 +141,11 @@ impl StandardOperatorStore {
 		if let Some(range) = self.range.as_ref() {
 			range.overwrite(operator, key, row.clone());
 		}
-		if let Some(point) = self.point.as_ref() {
-			point.invalidate(operator, key);
-		}
 	}
 
 	fn insert_range_read(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
 		if let Some(range) = self.range.as_ref() {
 			range.insert(operator, key, row.clone());
-		}
-		if let Some(point) = self.point.as_ref() {
-			point.invalidate(operator, key);
 		}
 	}
 
@@ -161,19 +153,10 @@ impl StandardOperatorStore {
 		if let Some(range) = self.range.as_ref() {
 			range.mark_deleted(operator, key);
 		}
-		if let Some(point) = self.point.as_ref() {
-			point.invalidate(operator, key);
-		}
-	}
-
-	fn repair_absence(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
-		if let Some(point) = self.point.as_ref() {
-			point.overwrite(operator, key, row.clone());
-		}
 	}
 
 	fn invalidate_read_batch(&self, writes: &[OperatorWrite]) {
-		if self.point.is_none() && self.range.is_none() {
+		if self.range.is_none() {
 			return;
 		}
 		for write in writes {
@@ -233,15 +216,8 @@ impl StandardOperatorStore {
 		if self.persistent.is_none() {
 			return SizeProbe::Known(None);
 		}
-		let cached = self.point.as_ref().and_then(|point| point.get(operator, key));
-		if let Some(Some(row)) = &cached {
-			return SizeProbe::Known(Some(row_size(row)));
-		}
 		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
 			return SizeProbe::Known(authoritative.as_ref().map(row_size));
-		}
-		if cached.is_some() {
-			return SizeProbe::Known(None);
 		}
 		SizeProbe::Persistent
 	}
@@ -275,19 +251,8 @@ impl StandardOperatorStore {
 
 		let mut fetch: Vec<(usize, &EncodedKey)> = Vec::new();
 		for (index, key) in buffered {
-			let cached = self.point.as_ref().and_then(|point| point.get(operator, key));
-			if let Some(Some(row)) = cached {
-				results[index] = Some(row);
-				continue;
-			}
 			if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
-				if let (Some(None), Some(row)) = (&cached, authoritative.as_ref()) {
-					self.repair_absence(operator, key, row);
-				}
 				results[index] = authoritative;
-				continue;
-			}
-			if cached.is_some() {
 				continue;
 			}
 			fetch.push((index, key));
@@ -296,45 +261,20 @@ impl StandardOperatorStore {
 			return results;
 		}
 
-		let filling: Vec<bool> = fetch
-			.iter()
-			.map(|(_, key)| self.point.as_ref().is_some_and(|point| point.begin_fill(operator, key)))
-			.collect();
 		let batch: Vec<EncodedKey> = fetch.iter().map(|(_, key)| (*key).clone()).collect();
 		let found = persistent.get_many(operator, &batch);
-		for ((index, key), filling) in fetch.into_iter().zip(filling) {
-			let row = found.get(key).cloned();
-			if filling && let Some(point) = self.point.as_ref() {
-				point.finish_fill(operator, key, row.clone());
-			}
-			results[index] = row;
+		for (index, key) in fetch {
+			results[index] = found.get(key).cloned();
 		}
 		results
 	}
 
 	fn persistent_get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
 		let persistent = self.persistent.as_ref()?;
-		let cached = self.point.as_ref().and_then(|point| point.get(operator, key));
-		if let Some(Some(row)) = cached {
-			return Some(row);
-		}
 		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
-			if let (Some(None), Some(row)) = (&cached, authoritative.as_ref()) {
-				self.repair_absence(operator, key, row);
-			}
 			return authoritative;
 		}
-		if cached.is_some() {
-			return None;
-		}
-		match self.point.as_ref() {
-			Some(point) if point.begin_fill(operator, key) => {
-				let row = persistent.get(operator, key);
-				point.finish_fill(operator, key, row.clone());
-				row
-			}
-			_ => persistent.get(operator, key),
-		}
+		persistent.get(operator, key)
 	}
 
 	#[instrument(name = "store::operator::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()), ret)]
@@ -354,27 +294,10 @@ impl StandardOperatorStore {
 		let Some(persistent) = self.persistent.as_ref() else {
 			return false;
 		};
-		let cached = self.point.as_ref().and_then(|point| point.contains(operator, key));
-		if cached == Some(true) {
-			return true;
-		}
 		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
-			if let (Some(false), Some(row)) = (&cached, authoritative.as_ref()) {
-				self.repair_absence(operator, key, row);
-			}
 			return authoritative.is_some();
 		}
-		if cached.is_some() {
-			return false;
-		}
-		match self.point.as_ref() {
-			Some(point) if point.begin_fill(operator, key) => {
-				let row = persistent.get(operator, key);
-				point.finish_fill(operator, key, row.clone());
-				row.is_some()
-			}
-			_ => persistent.contains(operator, key),
-		}
+		persistent.contains(operator, key)
 	}
 
 	#[instrument(name = "store::operator::range_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
@@ -590,7 +513,11 @@ impl StandardOperatorStore {
 				operator,
 				group,
 				persistent,
-				keyspaces_of(group, range, self.occupancy.mask(operator, || self.occupied_keyspaces(operator))),
+				keyspaces_of(
+					group,
+					range,
+					self.occupancy.mask(operator, || self.occupied_keyspaces(operator)),
+				),
 			));
 		};
 		dispatch(
