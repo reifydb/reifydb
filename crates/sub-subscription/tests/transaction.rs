@@ -73,12 +73,12 @@ fn row_reads_stay_pinned_to_requested_version() {
 
 	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
-	cmd.set(&key("warmup").into_encoded(), make_value("w").into_bytes()).unwrap();
+	cmd.set_encoded(&key("warmup").into_encoded(), make_value("w").into_bytes()).unwrap();
 	let low_version = cmd.commit_unchecked().unwrap();
 
 	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
-	cmd.set(&row_key, row_value).unwrap();
+	cmd.set_encoded(&row_key, row_value).unwrap();
 	let committed_at = cmd.commit_unchecked().unwrap();
 	assert!(low_version < committed_at);
 

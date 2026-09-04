@@ -22,14 +22,14 @@ impl CatalogStore {
 		}
 		drop(policy_stream);
 		for pk in policy_keys {
-			txn.remove(&pk)?;
+			txn.remove_encoded(&pk)?;
 		}
 
-		txn.remove(&ColumnSequenceKey::encoded(object, column_id))?;
+		txn.remove(&ColumnSequenceKey::new(object, column_id))?;
 
-		txn.remove(&ColumnsKey::encoded(column_id))?;
+		txn.remove(&ColumnsKey::new(column_id))?;
 
-		txn.remove(&ColumnKey::encoded(object, column_id))?;
+		txn.remove(&ColumnKey::new(object, column_id))?;
 
 		Ok(())
 	}

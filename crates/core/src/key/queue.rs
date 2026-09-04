@@ -150,12 +150,16 @@ pub struct QueueAttemptKey {
 }
 
 impl QueueAttemptKey {
-	pub fn encoded(queue: impl Into<QueueId>, row: impl Into<RowNumber>, attempt: u32) -> EncodedKey {
-		Key::encode(&Self {
+	pub fn new(queue: impl Into<QueueId>, row: impl Into<RowNumber>, attempt: u32) -> Self {
+		Self {
 			queue: queue.into(),
 			row: row.into(),
 			attempt,
-		})
+		}
+	}
+
+	pub fn encoded(queue: impl Into<QueueId>, row: impl Into<RowNumber>, attempt: u32) -> EncodedKey {
+		Key::encode(&Self::new(queue, row, attempt))
 	}
 
 	pub fn item_scan(queue: QueueId, row: RowNumber) -> EncodedKeyRange {
@@ -503,18 +507,22 @@ pub struct QueueDueKey {
 }
 
 impl QueueDueKey {
+	pub fn new(queue: impl Into<QueueId>, partition: u16, due: DateTime, row: impl Into<RowNumber>) -> Self {
+		Self {
+			queue: queue.into(),
+			partition,
+			due,
+			row: row.into(),
+		}
+	}
+
 	pub fn encoded(
 		queue: impl Into<QueueId>,
 		partition: u16,
 		due: DateTime,
 		row: impl Into<RowNumber>,
 	) -> EncodedKey {
-		Key::encode(&Self {
-			queue: queue.into(),
-			partition,
-			due,
-			row: row.into(),
-		})
+		Key::encode(&Self::new(queue, partition, due, row))
 	}
 
 	pub fn partition_scan(queue: QueueId, partition: u16) -> EncodedKeyRange {

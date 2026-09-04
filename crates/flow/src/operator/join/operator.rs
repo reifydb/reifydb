@@ -1149,14 +1149,8 @@ mod seal_tests {
 		let mut state = JoinState::new();
 		let mut result = Vec::new();
 		let operator = op.operator;
-		op.apply_join_insert(
-			&mut TxnHostContext::new(txn, operator),
-			post,
-			side,
-			&mut state,
-			&mut result,
-		)
-		.unwrap();
+		op.apply_join_insert(&mut TxnHostContext::new(txn, operator), post, side, &mut state, &mut result)
+			.unwrap();
 		result
 	}
 
@@ -1164,14 +1158,8 @@ mod seal_tests {
 		let mut state = JoinState::new();
 		let mut result = Vec::new();
 		let operator = op.operator;
-		op.apply_join_remove(
-			&mut TxnHostContext::new(txn, operator),
-			pre,
-			side,
-			&mut state,
-			&mut result,
-		)
-		.unwrap();
+		op.apply_join_remove(&mut TxnHostContext::new(txn, operator), pre, side, &mut state, &mut result)
+			.unwrap();
 		result
 	}
 
@@ -1185,15 +1173,8 @@ mod seal_tests {
 		let mut state = JoinState::new();
 		let mut result = Vec::new();
 		let operator = op.operator;
-		op.apply_join_update(
-			&mut TxnHostContext::new(txn, operator),
-			pre,
-			post,
-			side,
-			&mut state,
-			&mut result,
-		)
-		.unwrap();
+		op.apply_join_update(&mut TxnHostContext::new(txn, operator), pre, post, side, &mut state, &mut result)
+			.unwrap();
 		result
 	}
 

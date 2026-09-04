@@ -14,7 +14,7 @@ use crate::{CatalogStore, Result, store::sumtype::shape::sumtype_namespace};
 
 impl CatalogStore {
 	pub(crate) fn find_sumtype(rx: &mut Transaction<'_>, sumtype_id: SumTypeId) -> Result<Option<SumType>> {
-		let Some(multi) = rx.get(&SumTypeKey::encoded(sumtype_id))? else {
+		let Some(multi) = rx.get(&SumTypeKey::new(sumtype_id))? else {
 			return Ok(None);
 		};
 

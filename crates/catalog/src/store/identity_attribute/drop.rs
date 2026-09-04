@@ -31,11 +31,11 @@ impl CatalogStore {
 			}
 			drop(stream);
 			for key in keys_to_remove {
-				txn.remove(&IdentityAttributeValueKey::encoded(key.identity, key.attribute))?;
+				txn.remove(&IdentityAttributeValueKey::new(key.identity, key.attribute))?;
 			}
 		}
 
-		txn.remove(&IdentityAttributeKey::encoded(attribute))?;
+		txn.remove(&IdentityAttributeKey::new(attribute))?;
 		Ok(())
 	}
 }

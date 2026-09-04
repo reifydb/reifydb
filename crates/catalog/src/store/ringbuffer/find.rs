@@ -32,7 +32,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
 	) -> Result<Option<RingBuffer>> {
-		let Some(multi) = rx.get(&RingBufferKey::encoded(ringbuffer))? else {
+		let Some(multi) = rx.get(&RingBufferKey::new(ringbuffer))? else {
 			return Ok(None);
 		};
 
@@ -64,7 +64,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
 	) -> Result<Option<RingBufferMetadata>> {
-		let Some(multi) = rx.get(&RingBufferMetadataKey::encoded(ringbuffer))? else {
+		let Some(multi) = rx.get_encoded(&RingBufferMetadataKey::encoded(ringbuffer))? else {
 			return Ok(None);
 		};
 
@@ -77,7 +77,7 @@ impl CatalogStore {
 		partition_values: &[Value],
 	) -> Result<Option<RingBufferMetadata>> {
 		let key = RingBufferMetadataKey::encoded_partition(ringbuffer, partition_values.to_vec());
-		let Some(multi) = rx.get(&key)? else {
+		let Some(multi) = rx.get_encoded(&key)? else {
 			return Ok(None);
 		};
 

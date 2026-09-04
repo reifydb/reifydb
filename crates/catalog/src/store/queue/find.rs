@@ -21,7 +21,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_queue(rx: &mut Transaction<'_>, queue_id: QueueId) -> Result<Option<Queue>> {
-		let Some(multi) = rx.get(&QueueKey::encoded(queue_id))? else {
+		let Some(multi) = rx.get(&QueueKey::new(queue_id))? else {
 			return Ok(None);
 		};
 

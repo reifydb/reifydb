@@ -46,7 +46,7 @@ impl QueueOperations for CommandTransaction {
 		}
 
 		for row in rows {
-			self.set(&RowKey::encoded(queue.id, row.row_number), row.encoded.clone())?;
+			self.set_encoded(&RowKey::encoded(queue.id, row.row_number), row.encoded.clone())?;
 		}
 
 		self.track_row_change(&row_changes(queue, rows));
@@ -62,7 +62,7 @@ impl QueueOperations for AdminTransaction {
 		}
 
 		for row in rows {
-			self.set(&RowKey::encoded(queue.id, row.row_number), row.encoded.clone())?;
+			self.set_encoded(&RowKey::encoded(queue.id, row.row_number), row.encoded.clone())?;
 		}
 
 		self.track_row_change(&row_changes(queue, rows));

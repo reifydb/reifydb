@@ -21,11 +21,14 @@ pub struct OutputFrontierKey {
 }
 
 impl OutputFrontierKey {
-	pub fn encoded(object: impl Into<ObjectId>) -> EncodedKey {
+	pub fn new(object: impl Into<ObjectId>) -> Self {
 		Self {
 			object: object.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(object: impl Into<ObjectId>) -> EncodedKey {
+		Self::new(object).encode()
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {

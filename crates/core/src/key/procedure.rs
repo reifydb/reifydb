@@ -41,11 +41,14 @@ impl Key for ProcedureKey {
 }
 
 impl ProcedureKey {
-	pub fn encoded(procedure: impl Into<ProcedureId>) -> EncodedKey {
+	pub fn new(procedure: impl Into<ProcedureId>) -> Self {
 		Self {
 			procedure: procedure.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(procedure: impl Into<ProcedureId>) -> EncodedKey {
+		Self::new(procedure).encode()
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -115,12 +118,15 @@ impl Key for ProcedureParamKey {
 }
 
 impl ProcedureParamKey {
-	pub fn encoded(procedure: impl Into<ProcedureId>, param_index: u16) -> EncodedKey {
+	pub fn new(procedure: impl Into<ProcedureId>, param_index: u16) -> Self {
 		Self {
 			procedure: procedure.into(),
 			param_index,
 		}
-		.encode()
+	}
+
+	pub fn encoded(procedure: impl Into<ProcedureId>, param_index: u16) -> EncodedKey {
+		Self::new(procedure, param_index).encode()
 	}
 
 	pub fn full_scan(procedure: ProcedureId) -> EncodedKeyRange {

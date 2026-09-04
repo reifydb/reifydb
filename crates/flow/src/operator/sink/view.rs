@@ -24,7 +24,7 @@ use reifydb_core::{
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
-	key::row::{ClusteredRowKey, PartitionedClusteredRowKey, PartitionedRowKey, RowKey},
+	key::row::{SortedViewRowKey, PartitionedSortedViewRowKey, PartitionedRowKey, RowKey},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
 	value::column::{buffer::ColumnBuffer, columns::Columns},
@@ -66,8 +66,9 @@ pub struct SinkTableViewOperator {
 impl SinkTableViewOperator {
 	pub fn new(operator: OperatorId, view: ResolvedView, partition_by: Vec<String>) -> Self {
 		let storage = view.def().storage_id();
-		let key_prefix: Vec<u8> = ClusteredRowKey::storage_start(storage).as_slice().to_vec();
-		let partitioned_prefix: Vec<u8> = PartitionedClusteredRowKey::storage_start(storage).as_slice().to_vec();
+		let key_prefix: Vec<u8> = SortedViewRowKey::storage_start(storage).as_slice().to_vec();
+		let partitioned_prefix: Vec<u8> =
+			PartitionedSortedViewRowKey::storage_start(storage).as_slice().to_vec();
 		let shape = row_shape_from_columns(RowFamily::Table, view.def().columns());
 		let sort = view.def().sort().to_vec();
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
@@ -96,7 +97,7 @@ impl SinkTableViewOperator {
 	}
 
 	#[inline]
-	fn clustered_key(&self, cols: &Columns, row_idx: usize, row: RowNumber) -> EncodedKey {
+	fn sorted_view_key(&self, cols: &Columns, row_idx: usize, row: RowNumber) -> EncodedKey {
 		if self.sort.is_empty() {
 			return self.row_key(row);
 		}
@@ -186,7 +187,7 @@ impl SinkTableViewOperator {
 				)?;
 				self.partitioned_key(source, row_idx, partition, row_number)
 			} else {
-				self.clustered_key(source, row_idx, row_number)
+				self.sorted_view_key(source, row_idx, row_number)
 			};
 			remember_created_at(&mut self.created_at, row_number, read_created_at(&encoded));
 			keys.push(key);
@@ -252,8 +253,8 @@ impl SinkTableViewOperator {
 				)
 			} else {
 				(
-					self.clustered_key(source_pre, row_idx, pre_row_number),
-					self.clustered_key(source_post, row_idx, post_row_number),
+					self.sorted_view_key(source_pre, row_idx, pre_row_number),
+					self.sorted_view_key(source_post, row_idx, post_row_number),
 				)
 			};
 
@@ -329,7 +330,7 @@ impl SinkTableViewOperator {
 				let (partition, _values) = partition_of(&self.partition_indices, &coerced, row_idx);
 				self.partitioned_key(source, row_idx, partition, row_number)
 			} else {
-				self.clustered_key(source, row_idx, row_number)
+				self.sorted_view_key(source, row_idx, row_number)
 			};
 			keys.push(key);
 		}
@@ -484,10 +485,10 @@ mod tests {
 		let mut cmd = engine.begin_admin(IdentityId::system()).unwrap();
 		for (key, pw) in pending.iter_sorted() {
 			match pw {
-				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
+				PendingWrite::Set(v) => cmd.set_encoded(key, v.clone()).unwrap(),
 				PendingWrite::Remove {
 					..
-				} => cmd.remove(key).unwrap(),
+				} => cmd.remove_encoded(key).unwrap(),
 			};
 		}
 		cmd.commit().unwrap();
@@ -496,7 +497,9 @@ mod tests {
 	fn stored_view_bytes(engine: &TestEngine, sink: &SinkTableViewOperator, rn: u64) -> EncodedTableRow {
 		let key = sink.row_key(RowNumber(rn));
 		let query = engine.inner().multi().begin_query().unwrap();
-		EncodedTableRow::from(query.get(&key).unwrap().expect("the view row must exist").bytes().clone())
+		EncodedTableRow::from(
+			query.get_encoded(&key).unwrap().expect("the view row must exist").bytes().clone(),
+		)
 	}
 
 	#[test]

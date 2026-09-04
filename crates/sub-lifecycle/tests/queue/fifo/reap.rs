@@ -121,7 +121,8 @@ fn claimable(t: &TestEngine) -> usize {
 
 fn plant_attempt(t: &TestEngine, queue: QueueId, row: u64, attempt: u32, record: QueueAttemptRecord) {
 	let mut txn = t.inner().begin_command(IdentityId::system()).unwrap();
-	txn.set(&QueueAttemptKey::encoded(queue, RowNumber(row), attempt), encode_queue_attempt(&record)).unwrap();
+	txn.set_encoded(&QueueAttemptKey::encoded(queue, RowNumber(row), attempt), encode_queue_attempt(&record))
+		.unwrap();
 	txn.commit().unwrap();
 }
 

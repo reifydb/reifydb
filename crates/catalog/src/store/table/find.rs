@@ -21,7 +21,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_table(rx: &mut Transaction<'_>, table: TableId) -> Result<Option<Table>> {
-		let Some(multi) = rx.get(&TableKey::encoded(table))? else {
+		let Some(multi) = rx.get(&TableKey::new(table))? else {
 			return Ok(None);
 		};
 

@@ -44,14 +44,14 @@ pub(crate) fn drop_object_metadata(
 		}
 		drop(policy_stream);
 		for pk in policy_keys {
-			txn.remove(&pk)?;
+			txn.remove_encoded(&pk)?;
 		}
 
-		txn.remove(&ColumnSequenceKey::encoded(storage, *col_id))?;
+		txn.remove(&ColumnSequenceKey::new(storage, *col_id))?;
 
-		txn.remove(&ColumnsKey::encoded(*col_id))?;
+		txn.remove(&ColumnsKey::new(*col_id))?;
 
-		txn.remove(col_key)?;
+		txn.remove_encoded(col_key)?;
 	}
 
 	if let Some(pk_id) = pk_id {
@@ -62,10 +62,10 @@ pub(crate) fn drop_object_metadata(
 				columns: Vec::new(),
 			},
 		)?;
-		txn.remove(&PrimaryKeyKey::encoded(pk_id))?;
+		txn.remove(&PrimaryKeyKey::new(pk_id))?;
 	}
 
-	txn.remove(&RowSequenceKey::encoded(storage))?;
+	txn.remove(&RowSequenceKey::new(storage))?;
 
 	Ok(())
 }

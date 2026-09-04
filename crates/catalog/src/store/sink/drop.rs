@@ -14,9 +14,9 @@ impl CatalogStore {
 		let sink = CatalogStore::find_sink(&mut Transaction::Admin(&mut *txn), sink_id)?;
 
 		if let Some(sink) = sink {
-			txn.remove(&NamespaceSinkKey::encoded(sink.namespace, sink_id))?;
+			txn.remove(&NamespaceSinkKey::new(sink.namespace, sink_id))?;
 
-			txn.remove(&SinkKey::encoded(sink_id))?;
+			txn.remove(&SinkKey::new(sink_id))?;
 		}
 
 		Ok(())

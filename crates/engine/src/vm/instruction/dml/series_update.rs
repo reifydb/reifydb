@@ -118,7 +118,7 @@ pub(crate) fn update_series(
 			build_series_updates_to_apply(services, txn, &series, &columns, row_numbers, has_tag)?;
 
 		for (encoded_key, row, row_idx) in updates_to_apply {
-			let pre_values = match txn.get(&encoded_key)? {
+			let pre_values = match txn.get_encoded(&encoded_key)? {
 				Some(v) => v.bytes,
 				None => continue,
 			};
@@ -160,7 +160,7 @@ pub(crate) fn update_series(
 			if txn.get_committed(&encoded_key)?.is_some() {
 				txn.mark_preexisting(&encoded_key)?;
 			}
-			txn.set(&encoded_key, row.clone())?;
+			txn.set_encoded(&encoded_key, row.clone())?;
 			let posts = [row.clone()];
 			let pres = [pre_values.clone()];
 			SeriesRowInterceptor::post_update(txn, &series, &posts, &pres)?;

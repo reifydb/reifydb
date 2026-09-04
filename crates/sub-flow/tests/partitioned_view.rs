@@ -95,8 +95,8 @@ fn partitioned_view_with_terminal_sort() {
 
 	let control_us = collect_n(&db, "FROM test::sorted_plain FILTER region == \"us\"");
 	let partitioned_us = collect_n(&db, "FROM test::sorted_by_region FILTER region == \"us\"");
-	assert_eq!(partitioned_us, control_us, "partitioning must preserve the non-partitioned clustered sort order");
-	assert!(is_monotonic(&partitioned_us), "us rows must be in clustered sort order, got {:?}", partitioned_us);
+	assert_eq!(partitioned_us, control_us, "partitioning must preserve the non-partitioned sorted view order");
+	assert!(is_monotonic(&partitioned_us), "us rows must be in sorted view order, got {:?}", partitioned_us);
 	let mut present = partitioned_us.clone();
 	present.sort();
 	assert_eq!(present, vec![1, 2, 3], "every us row must survive the partitioned scan");

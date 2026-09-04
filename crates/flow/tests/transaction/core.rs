@@ -28,7 +28,7 @@ fn make_value(s: &str) -> EncodedBytes {
 }
 
 fn get_row(parent: &mut AdminTransaction, key: &EncodedKey) -> Option<EncodedBytes> {
-	parent.get(key).unwrap().map(|m| m.bytes.clone())
+	parent.get_encoded(key).unwrap().map(|m| m.bytes.clone())
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn test_get_from_committed() {
 
 	{
 		let mut cmd_txn = t.begin_admin(IdentityId::system()).unwrap();
-		cmd_txn.set(&key, value.clone()).unwrap();
+		cmd_txn.set_encoded(&key, value.clone()).unwrap();
 		cmd_txn.commit().unwrap();
 	}
 
@@ -86,7 +86,7 @@ fn test_get_pending_shadows_committed() {
 	let (mut parent, operators) = create_test_transaction();
 
 	let key = make_key("key1");
-	parent.set(&key, make_value("old")).unwrap();
+	parent.set_encoded(&key, make_value("old")).unwrap();
 	let version = parent.version();
 
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
@@ -110,7 +110,7 @@ fn test_get_removed_returns_none() {
 	let (mut parent, operators) = create_test_transaction();
 
 	let key = make_key("key1");
-	parent.set(&key, make_value("value1")).unwrap();
+	parent.set_encoded(&key, make_value("value1")).unwrap();
 	let version = parent.version();
 
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
@@ -170,7 +170,7 @@ fn test_contains_key_committed() {
 
 	{
 		let mut cmd_txn = t.begin_admin(IdentityId::system()).unwrap();
-		cmd_txn.set(&key, make_value("value1")).unwrap();
+		cmd_txn.set_encoded(&key, make_value("value1")).unwrap();
 		cmd_txn.commit().unwrap();
 	}
 
@@ -193,7 +193,7 @@ fn test_contains_key_removed_returns_false() {
 	let (mut parent, operators) = create_test_transaction();
 
 	let key = make_key("key1");
-	parent.set(&key, make_value("value1")).unwrap();
+	parent.set_encoded(&key, make_value("value1")).unwrap();
 	let version = parent.version();
 
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
@@ -540,7 +540,7 @@ fn test_removes_not_visible_to_parent() {
 
 	let key = make_key("key1");
 	let value = make_value("value1");
-	parent.set(&key, value.clone()).unwrap();
+	parent.set_encoded(&key, value.clone()).unwrap();
 	assert_eq!(get_row(&mut parent, &key), Some(value.clone()));
 
 	let parent_version = parent.version();

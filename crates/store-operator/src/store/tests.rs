@@ -150,27 +150,23 @@ fn encoded_order(groups: &[GroupId]) -> Vec<GroupId> {
 fn per_group_pages(store: &StandardOperatorStore, groups: &[GroupId]) -> Vec<(EncodedKey, String)> {
 	let mut out = Vec::new();
 	for group in encoded_order(groups) {
-		out.extend(
-			store.range_batch(OP, group_inner_range(group), SWEEP_BUDGET)
-				.items
-				.into_iter()
-				.map(|(key, value)| (key, body(&value))),
-		);
+		out.extend(store
+			.range_batch(OP, group_inner_range(group), SWEEP_BUDGET)
+			.items
+			.into_iter()
+			.map(|(key, value)| (key, body(&value))));
 	}
 	out
 }
 
 fn group_page(store: &StandardOperatorStore, groups: &[GroupId]) -> Vec<(EncodedKey, String)> {
-	store.group_page(OP, groups, SWEEP_BUDGET)
-		.items
-		.into_iter()
-		.map(|(key, value)| (key, body(&value)))
-		.collect()
+	store.group_page(OP, groups, SWEEP_BUDGET).items.into_iter().map(|(key, value)| (key, body(&value))).collect()
 }
 
 #[test]
 fn a_group_page_answers_with_exactly_the_union_of_the_per_group_range_batches() {
-	// one persistent call replaces one range read per group, so a dropped or reordered row here silently shrinks what a drain reclaims
+	// one persistent call replaces one range read per group, so a dropped or reordered row here silently shrinks
+	// what a drain reclaims
 	let (store, _guard) = store_fixture();
 	let groups = [sweep_group(11), sweep_group(22), sweep_group(33)];
 	seed_groups(&store, &groups);
@@ -184,7 +180,8 @@ fn a_group_page_answers_with_exactly_the_union_of_the_per_group_range_batches() 
 
 #[test]
 fn a_group_page_answers_with_rows_that_never_reached_the_persistent_tier() {
-	// the resident tier is consulted per group, and skipping it hands the reaper a group it will call empty while unflushed rows still name it
+	// the resident tier is consulted per group, and skipping it hands the reaper a group it will call empty while
+	// unflushed rows still name it
 	let (store, _guard) = store_fixture();
 	let groups = [sweep_group(11), sweep_group(22)];
 	seed_groups(&store, &groups);

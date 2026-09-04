@@ -20,7 +20,7 @@ use reifydb_core::{
 	},
 	key::{
 		kind::KeyKind,
-		row::{ClusteredRowKey, PartitionedClusteredRowKey, PartitionedRowKey, RowKey},
+		row::{SortedViewRowKey, PartitionedSortedViewRowKey, PartitionedRowKey, RowKey},
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 		typed::key::Key,
 	},
@@ -85,13 +85,13 @@ pub fn row_target(key: &EncodedKey) -> Option<RowTarget> {
 				row: RowNumber(partitioned.sequence),
 			})
 		}
-		KeyKind::ClusteredRow => Some(RowTarget {
-			object: ObjectId::from(ClusteredRowKey::storage_of(key)?),
-			row: ClusteredRowKey::row_of(key)?,
+		KeyKind::SortedViewRow => Some(RowTarget {
+			object: ObjectId::from(SortedViewRowKey::storage_of(key)?),
+			row: SortedViewRowKey::row_of(key)?,
 		}),
-		KeyKind::PartitionedClusteredRow => Some(RowTarget {
-			object: ObjectId::from(PartitionedClusteredRowKey::storage_of(key)?),
-			row: PartitionedClusteredRowKey::row_of(key)?,
+		KeyKind::PartitionedSortedViewRow => Some(RowTarget {
+			object: ObjectId::from(PartitionedSortedViewRowKey::storage_of(key)?),
+			row: PartitionedSortedViewRowKey::row_of(key)?,
 		}),
 		_ => None,
 	}

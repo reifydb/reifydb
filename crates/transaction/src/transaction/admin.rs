@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
-use reifydb_core::interface::catalog::storage::StorageId;
-use reifydb_core::key::row::StorageRowKey;
-use std::{mem::take, sync::Arc};
+use std::{mem::take, ops::Bound, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -17,9 +14,13 @@ use reifydb_core::{
 	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
-		catalog::object::ObjectId,
+		catalog::{object::ObjectId, storage::StorageId},
 		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
+	},
+	key::{
+		row::{StoragePartitionedRowKey, StorageRowKey},
+		typed::key::Key,
 	},
 };
 use reifydb_runtime::context::clock::Clock;
@@ -376,7 +377,13 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+	pub fn get_encoded(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+		self.check_active()?;
+		Ok(self.cmd.as_mut().unwrap().get_encoded(key)?.map(|v| v.into_multi_version_row()))
+	}
+
+	#[inline]
+	pub fn get<K: Key>(&mut self, key: &K) -> Result<Option<MultiVersionRow>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().get(key)?.map(|v| v.into_multi_version_row()))
 	}
@@ -388,9 +395,15 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
+	pub fn contains_encoded(&mut self, key: &EncodedKey) -> Result<bool> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().contains_key(key)
+		self.cmd.as_mut().unwrap().contains_encoded(key)
+	}
+
+	#[inline]
+	pub fn contains<K: Key>(&mut self, key: &K) -> Result<bool> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().contains(key)
 	}
 
 	#[inline]
@@ -413,7 +426,13 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	pub fn set(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
+	pub fn set_encoded(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().set_encoded(key, bytes.into())
+	}
+
+	#[inline]
+	pub fn set<K: Key>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set(key, bytes.into())
 	}
@@ -425,7 +444,13 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+	pub fn remove_encoded(&mut self, key: &EncodedKey) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().remove_encoded(key)
+	}
+
+	#[inline]
+	pub fn remove<K: Key>(&mut self, key: &K) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove(key)
 	}
@@ -461,6 +486,19 @@ impl AdminTransaction {
 	}
 
 	#[inline]
+	pub fn range_partitioned_row(
+		&mut self,
+		storage: StorageId,
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_>> {
+		self.check_active()?;
+		Ok(self.cmd.as_mut().unwrap().range_partitioned_row(storage, start, end, scope, batch_size))
+	}
+
+	#[inline]
 	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
@@ -481,7 +519,7 @@ impl WithEventBus for AdminTransaction {
 impl Write for AdminTransaction {
 	#[inline]
 	fn set(&mut self, key: &EncodedKey, bytes: EncodedBytes) -> Result<()> {
-		AdminTransaction::set(self, key, bytes)
+		AdminTransaction::set_encoded(self, key, bytes)
 	}
 	#[inline]
 	fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
@@ -489,7 +527,7 @@ impl Write for AdminTransaction {
 	}
 	#[inline]
 	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		AdminTransaction::remove(self, key)
+		AdminTransaction::remove_encoded(self, key)
 	}
 	#[inline]
 	fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()> {

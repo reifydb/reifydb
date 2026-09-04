@@ -18,16 +18,16 @@ impl CatalogStore {
 			return Ok(());
 		};
 
-		txn.remove(&VariantHandlerKey::encoded(
+		txn.remove(&VariantHandlerKey::new(
 			handler.namespace,
 			handler.variant.sumtype_id,
 			handler.variant.variant_tag,
 			id,
 		))?;
 
-		txn.remove(&NamespaceHandlerKey::encoded(handler.namespace, id))?;
+		txn.remove(&NamespaceHandlerKey::new(handler.namespace, id))?;
 
-		txn.remove(&HandlerKey::encoded(id))?;
+		txn.remove(&HandlerKey::new(id))?;
 
 		Ok(())
 	}

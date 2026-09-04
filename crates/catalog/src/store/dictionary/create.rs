@@ -73,7 +73,7 @@ impl CatalogStore {
 		dictionary::set_value_type(&mut row, type_tag_byte(&to_create.value_type));
 		dictionary::set_id_type(&mut row, type_tag_byte(&to_create.id_type));
 
-		txn.set(&DictionaryKey::encoded(dictionary), row.freeze())?;
+		txn.set(&DictionaryKey::new(dictionary), row.freeze())?;
 
 		Ok(())
 	}
@@ -88,7 +88,7 @@ impl CatalogStore {
 		dictionary_namespace::set_id(&mut row, u64::from(dictionary));
 		dictionary_namespace::set_name(&mut row, name);
 
-		txn.set(&NamespaceDictionaryKey::encoded(namespace, dictionary), row.freeze())?;
+		txn.set(&NamespaceDictionaryKey::new(namespace, dictionary), row.freeze())?;
 
 		Ok(())
 	}

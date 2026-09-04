@@ -62,7 +62,7 @@ pub fn resolve_partition(
 	let key = PartitionKey::encoded(object, partition);
 	let encoded = to_stdvec(values).expect("value postcard is total");
 	let candidate = Value::Blob(Blob::from(encoded));
-	match txn.get(&key)? {
+	match txn.get_encoded(&key)? {
 		Some(multi) => {
 			if REGISTRY_SHAPE.get_value(&multi.bytes, 0) != candidate {
 				return Err(PartitionError::PartitionHashCollision {
@@ -75,7 +75,7 @@ pub fn resolve_partition(
 		None => {
 			let mut row = REGISTRY_SHAPE.allocate_pod();
 			REGISTRY_SHAPE.set_value(&mut row, 0, &candidate);
-			txn.set(&key, row.freeze())?;
+			txn.set_encoded(&key, row.freeze())?;
 		}
 	}
 	Ok(())

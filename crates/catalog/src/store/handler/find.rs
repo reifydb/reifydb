@@ -18,7 +18,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_handler(rx: &mut Transaction<'_>, handler_id: HandlerId) -> Result<Option<Handler>> {
-		let Some(multi) = rx.get(&HandlerKey::encoded(handler_id))? else {
+		let Some(multi) = rx.get(&HandlerKey::new(handler_id))? else {
 			return Ok(None);
 		};
 

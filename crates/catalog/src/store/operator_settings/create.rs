@@ -17,7 +17,7 @@ pub fn create_operator_settings(
 	settings: &OperatorSettings,
 ) -> Result<()> {
 	let value = encode_operator_settings(settings);
-	txn.set(&OperatorSettingsKey::encoded(operator), value)?;
+	txn.set(&OperatorSettingsKey::new(operator), value)?;
 	txn.track_operator_settings_created(operator, settings.clone())?;
 	Ok(())
 }

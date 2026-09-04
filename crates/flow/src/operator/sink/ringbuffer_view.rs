@@ -1245,10 +1245,10 @@ mod tests {
 				continue;
 			}
 			match pw {
-				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
+				PendingWrite::Set(v) => cmd.set_encoded(key, v.clone()).unwrap(),
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Announced,
-				} => cmd.remove(key).unwrap(),
+				} => cmd.remove_encoded(key).unwrap(),
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Unobserved,
 				} => cmd.remove_unobserved(key).unwrap(),

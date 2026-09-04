@@ -17,7 +17,7 @@ impl CatalogStore {
 		view_id: ViewId,
 		primary_key_id: PrimaryKeyId,
 	) -> Result<()> {
-		let multi = match txn.get(&ViewKey::encoded(view_id))? {
+		let multi = match txn.get(&ViewKey::new(view_id))? {
 			Some(v) => v,
 			None => return_internal_error!(format!(
 				"View with ID {} not found when setting primary key. This indicates a critical catalog inconsistency.",
@@ -28,7 +28,7 @@ impl CatalogStore {
 		let mut updated_row = EncodedCatalogRow::try_from(multi.bytes.clone())?.thaw();
 		view::set_primary_key(&mut updated_row, primary_key_id.0);
 
-		txn.set(&ViewKey::encoded(view_id), updated_row.freeze())?;
+		txn.set(&ViewKey::new(view_id), updated_row.freeze())?;
 
 		Ok(())
 	}

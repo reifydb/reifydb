@@ -129,7 +129,7 @@ impl Executor {
 					value,
 				} => match handles.get_mut(&tx_id) {
 					Some(TxHandle::Write(tx)) => {
-						match tx.set(&encode_key(key), encode_bytes(value)) {
+						match tx.set_encoded(&encode_key(key), encode_bytes(value)) {
 							Ok(()) => OpResult::Ok,
 							Err(e) => {
 								handles.remove(&tx_id);
@@ -145,7 +145,7 @@ impl Executor {
 				Op::Get {
 					key,
 				} => match handles.get_mut(&tx_id) {
-					Some(TxHandle::Write(tx)) => match tx.get(&encode_key(key)) {
+					Some(TxHandle::Write(tx)) => match tx.get_encoded(&encode_key(key)) {
 						Ok(Some(tv)) => OpResult::Value(Some(tv.bytes().to_vec())),
 						Ok(None) => OpResult::Value(None),
 						Err(e) => {
@@ -153,7 +153,7 @@ impl Executor {
 							OpResult::Error(format!("{}", e))
 						}
 					},
-					Some(TxHandle::Read(rx)) => match rx.get(&encode_key(key)) {
+					Some(TxHandle::Read(rx)) => match rx.get_encoded(&encode_key(key)) {
 						Ok(Some(tv)) => OpResult::Value(Some(tv.bytes().to_vec())),
 						Ok(None) => OpResult::Value(None),
 						Err(e) => {
@@ -166,7 +166,7 @@ impl Executor {
 				Op::Remove {
 					key,
 				} => match handles.get_mut(&tx_id) {
-					Some(TxHandle::Write(tx)) => match tx.remove(&encode_key(key)) {
+					Some(TxHandle::Write(tx)) => match tx.remove_encoded(&encode_key(key)) {
 						Ok(()) => OpResult::Ok,
 						Err(e) => {
 							handles.remove(&tx_id);

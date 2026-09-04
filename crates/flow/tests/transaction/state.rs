@@ -575,12 +575,12 @@ fn deferred_reads_owned_rows_at_state_version() {
 
 	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
-	cmd.set(&make_key("warmup").into_encoded(), make_value("w").into_bytes()).unwrap();
+	cmd.set_encoded(&make_key("warmup").into_encoded(), make_value("w").into_bytes()).unwrap();
 	let low_version = cmd.commit_unchecked().unwrap();
 
 	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
-	cmd.set(&row_key, row_value.clone()).unwrap();
+	cmd.set_encoded(&row_key, row_value.clone()).unwrap();
 	let committed_at = cmd.commit_unchecked().unwrap();
 	assert!(low_version < committed_at);
 

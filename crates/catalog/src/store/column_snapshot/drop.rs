@@ -17,18 +17,18 @@ impl CatalogStore {
 					table_id,
 					..
 				} => {
-					txn.remove(&TableColumnSnapshotKey::encoded(table_id, id))?;
+					txn.remove(&TableColumnSnapshotKey::new(table_id, id))?;
 				}
 				ColumnSnapshotSource::SeriesBucket {
 					series_id,
 					..
 				} => {
-					txn.remove(&SeriesColumnSnapshotKey::encoded(series_id, id))?;
+					txn.remove(&SeriesColumnSnapshotKey::new(series_id, id))?;
 				}
 			}
 		}
 
-		txn.remove(&ColumnSnapshotKey::encoded(id))?;
+		txn.remove(&ColumnSnapshotKey::new(id))?;
 		Ok(())
 	}
 }
@@ -64,7 +64,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let link_pre = txn.get(&TableColumnSnapshotKey::encoded(TableId(101), created.id)).unwrap();
+		let link_pre = txn.get(&TableColumnSnapshotKey::new(TableId(101), created.id)).unwrap();
 		assert!(link_pre.is_some(), "table link row should exist before drop");
 
 		CatalogStore::drop_column_snapshot(&mut txn, created.id).unwrap();
@@ -72,7 +72,7 @@ pub mod tests {
 		let found = CatalogStore::find_column_snapshot(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_none(), "primary row should be removed");
 
-		let link_post = txn.get(&TableColumnSnapshotKey::encoded(TableId(101), created.id)).unwrap();
+		let link_post = txn.get(&TableColumnSnapshotKey::new(TableId(101), created.id)).unwrap();
 		assert!(link_post.is_none(), "table link row should be removed");
 	}
 
@@ -95,7 +95,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let link_pre = txn.get(&SeriesColumnSnapshotKey::encoded(SeriesId(202), created.id)).unwrap();
+		let link_pre = txn.get(&SeriesColumnSnapshotKey::new(SeriesId(202), created.id)).unwrap();
 		assert!(link_pre.is_some());
 
 		CatalogStore::drop_column_snapshot(&mut txn, created.id).unwrap();
@@ -103,7 +103,7 @@ pub mod tests {
 		let found = CatalogStore::find_column_snapshot(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_none());
 
-		let link_post = txn.get(&SeriesColumnSnapshotKey::encoded(SeriesId(202), created.id)).unwrap();
+		let link_post = txn.get(&SeriesColumnSnapshotKey::new(SeriesId(202), created.id)).unwrap();
 		assert!(link_post.is_none(), "series link row should be removed");
 	}
 

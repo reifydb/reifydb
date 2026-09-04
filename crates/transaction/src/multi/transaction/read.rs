@@ -6,8 +6,14 @@ use std::{collections::HashMap, ops::Bound};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{catalog::storage::StorageId, store::{MultiVersionBatch, MultiVersionRow}},
-	key::row::StorageRowKey,
+	interface::{
+		catalog::storage::StorageId,
+		store::{MultiVersionBatch, MultiVersionRow},
+	},
+	key::{
+		row::{StoragePartitionedRowKey, StorageRowKey},
+		typed::key::Key,
+	},
 };
 use reifydb_value::Result;
 use tracing::instrument;
@@ -56,9 +62,13 @@ impl MultiReadTransaction {
 		self.read_as_of_version_exclusive(CommitVersion(version.0 + 1))
 	}
 
-	pub fn get(&self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
+	pub fn get_encoded(&self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
 		let version = self.tm.version();
 		Ok(self.engine.get(key, version)?.map(Into::into))
+	}
+
+	pub fn get<K: Key>(&self, key: &K) -> Result<Option<TransactionValue>> {
+		self.get_encoded(&key.encode())
 	}
 
 	#[instrument(name = "transaction::get_many", level = "trace", skip(self, keys), fields(key_count = keys.len()))]
@@ -67,9 +77,13 @@ impl MultiReadTransaction {
 		self.engine.store.get_many(keys, version)
 	}
 
-	pub fn contains_key(&self, key: &EncodedKey) -> Result<bool> {
+	pub fn contains_encoded(&self, key: &EncodedKey) -> Result<bool> {
 		let version = self.tm.version();
 		self.engine.contains_key(key, version)
+	}
+
+	pub fn contains<K: Key>(&self, key: &K) -> Result<bool> {
+		self.contains_encoded(&key.encode())
 	}
 
 	pub fn scan(&self) -> Result<MultiVersionBatch> {
@@ -121,6 +135,18 @@ impl MultiReadTransaction {
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range_row(storage, start, end, multi_scope, batch_size))
+	}
+
+	pub fn range_partitioned_row(
+		&self,
+		storage: StorageId,
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.tm.version());
+		Box::new(self.engine.store.range_partitioned_row(storage, start, end, multi_scope, batch_size))
 	}
 
 	pub fn range_rev(

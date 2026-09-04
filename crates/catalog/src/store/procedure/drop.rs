@@ -19,7 +19,7 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn drop_procedure(txn: &mut AdminTransaction, procedure: ProcedureId) -> Result<()> {
 		if let Some(p) = Self::find_procedure(&mut Transaction::Admin(&mut *txn), procedure)? {
-			txn.remove(&NamespaceProcedureKey::encoded(p.namespace(), procedure))?;
+			txn.remove(&NamespaceProcedureKey::new(p.namespace(), procedure))?;
 		}
 
 		let mut param_keys: Vec<ProcedureParamKey> = Vec::new();
@@ -33,10 +33,10 @@ impl CatalogStore {
 			}
 		}
 		for key in param_keys {
-			txn.remove(&key.encode())?;
+			txn.remove(&key)?;
 		}
 
-		txn.remove(&ProcedureKey::encoded(procedure))?;
+		txn.remove(&ProcedureKey::new(procedure))?;
 
 		Ok(())
 	}

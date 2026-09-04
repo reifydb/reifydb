@@ -16,7 +16,7 @@ use crate::{
 impl CatalogStore {
 	#[allow(dead_code)]
 	pub(crate) fn find_role(rx: &mut Transaction<'_>, id: RoleId) -> Result<Option<Role>> {
-		rx.get(&RoleKey::encoded(id))?.map(convert_role).transpose()
+		rx.get(&RoleKey::new(id))?.map(convert_role).transpose()
 	}
 
 	pub(crate) fn find_role_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Role>> {

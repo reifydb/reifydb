@@ -260,7 +260,8 @@ fn test_a_terminal_item_with_no_attempt_record_is_left_alone() {
 	finish(&t);
 
 	let mut txn = t.inner().begin_command(TestEngine::identity()).unwrap();
-	txn.remove(&QueueAttemptKey::encoded(queue, reifydb_value::value::row_number::RowNumber(1), 1)).unwrap();
+	txn.remove_encoded(&QueueAttemptKey::encoded(queue, reifydb_value::value::row_number::RowNumber(1), 1))
+		.unwrap();
 	txn.commit().unwrap();
 
 	t.mock_clock().set_millis(3_600_001);
@@ -284,9 +285,13 @@ fn test_an_orphan_state_record_from_a_crashed_sweep_is_collected() {
 	finish(&t);
 
 	let mut txn = t.inner().begin_command(TestEngine::identity()).unwrap();
-	txn.remove(&reifydb_core::key::row::RowKey::encoded(queue, reifydb_value::value::row_number::RowNumber(1)))
+	txn.remove_encoded(&reifydb_core::key::row::RowKey::encoded(
+		queue,
+		reifydb_value::value::row_number::RowNumber(1),
+	))
+	.unwrap();
+	txn.remove_encoded(&QueueAttemptKey::encoded(queue, reifydb_value::value::row_number::RowNumber(1), 1))
 		.unwrap();
-	txn.remove(&QueueAttemptKey::encoded(queue, reifydb_value::value::row_number::RowNumber(1), 1)).unwrap();
 	txn.commit().unwrap();
 	assert_eq!(states(&t, queue).len(), 1, "the orphan is planted");
 

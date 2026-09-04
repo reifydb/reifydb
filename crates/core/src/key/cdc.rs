@@ -287,8 +287,8 @@ pub mod primary_key_tests {
 			KeyKind::QueueKeyActive => {}
 			KeyKind::VersionEpoch => {}
 			KeyKind::SeriesRow => {}
-			KeyKind::ClusteredRow => {}
-			KeyKind::PartitionedClusteredRow => {}
+			KeyKind::SortedViewRow => {}
+			KeyKind::PartitionedSortedViewRow => {}
 			KeyKind::Relationship => {} /* When adding a new variant, add it here.
 			                             * The compiler will error if you forget.
 			                             * Then add a test and update should_exclude_from_cdc() if
@@ -297,11 +297,11 @@ pub mod primary_key_tests {
 	}
 
 	#[test]
-	fn test_clustered_rows_reach_the_cdc_log() {
+	fn test_sorted_view_rows_reach_the_cdc_log() {
 		// A sorted view's rows carry their own kind, and a subscriber that never sees them reads a
 		// view that silently stops changing.
-		assert!(!should_exclude_from_cdc(KeyKind::ClusteredRow));
-		assert!(!should_exclude_from_cdc(KeyKind::PartitionedClusteredRow));
+		assert!(!should_exclude_from_cdc(KeyKind::SortedViewRow));
+		assert!(!should_exclude_from_cdc(KeyKind::PartitionedSortedViewRow));
 	}
 
 	#[test]

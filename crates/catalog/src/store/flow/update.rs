@@ -19,7 +19,7 @@ impl CatalogStore {
 		flow::set_name(&mut row, &new_name);
 		flow::set_status(&mut row, flow.status as u8);
 
-		txn.set(&FlowKey::encoded(flow_id), row.freeze())?;
+		txn.set(&FlowKey::new(flow_id), row.freeze())?;
 
 		Ok(())
 	}
@@ -37,7 +37,7 @@ impl CatalogStore {
 		flow::set_name(&mut row, &flow.name);
 		flow::set_status(&mut row, status as u8);
 
-		txn.set(&FlowKey::encoded(flow_id), row.freeze())?;
+		txn.set(&FlowKey::new(flow_id), row.freeze())?;
 
 		Ok(())
 	}

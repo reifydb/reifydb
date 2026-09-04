@@ -28,11 +28,11 @@ impl CatalogStore {
 			}
 			drop(stream);
 			for key in keys_to_remove {
-				txn.remove(&GrantedRoleKey::encoded(key.identity, key.role))?;
+				txn.remove(&GrantedRoleKey::new(key.identity, key.role))?;
 			}
 		}
 
-		txn.remove(&RoleKey::encoded(role))?;
+		txn.remove(&RoleKey::new(role))?;
 		Ok(())
 	}
 }

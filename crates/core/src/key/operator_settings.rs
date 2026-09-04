@@ -18,11 +18,14 @@ pub struct OperatorSettingsKey {
 }
 
 impl OperatorSettingsKey {
-	pub fn encoded(operator: impl Into<OperatorId>) -> EncodedKey {
+	pub fn new(operator: impl Into<OperatorId>) -> Self {
 		Self {
 			operator: operator.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(operator: impl Into<OperatorId>) -> EncodedKey {
+		Self::new(operator).encode()
 	}
 }
 

@@ -159,7 +159,7 @@ impl RingBufferOperations for CommandTransaction {
 	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(ringbuffer, partition, row_number);
 
-		let pre = self.get(&key)?.map(|v| v.bytes);
+		let pre = self.get_encoded(&key)?.map(|v| v.bytes);
 
 		if let Some(ref existing) = pre {
 			let ids = [row_number];
@@ -173,7 +173,7 @@ impl RingBufferOperations for CommandTransaction {
 		let [bytes] = rows_buf;
 		let bytes = bytes.freeze_bytes();
 
-		self.set(&key, bytes.clone())?;
+		self.set_encoded(&key, bytes.clone())?;
 
 		let ids = [row_number];
 		let rows = [bytes.clone()];
@@ -197,7 +197,7 @@ impl RingBufferOperations for CommandTransaction {
 	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(&ringbuffer, partition, id);
 
-		let pre = match self.get(&key)? {
+		let pre = match self.get_encoded(&key)? {
 			Some(v) => v.bytes,
 			None => return Ok(bytes),
 		};
@@ -222,7 +222,7 @@ impl RingBufferOperations for CommandTransaction {
 		if self.get_committed(&key)?.is_some() {
 			self.mark_preexisting(&key)?;
 		}
-		self.set(&key, bytes.clone())?;
+		self.set_encoded(&key, bytes.clone())?;
 
 		let posts = [bytes.clone()];
 		let pres = [pre.clone()];
@@ -241,7 +241,7 @@ impl RingBufferOperations for CommandTransaction {
 	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(ringbuffer, partition, id);
 
-		let displayed = match self.get(&key)? {
+		let displayed = match self.get_encoded(&key)? {
 			Some(v) => v.bytes,
 			None => return Ok(EncodedBytes(CowVec::new(vec![]))),
 		};
@@ -283,7 +283,7 @@ impl RingBufferOperations for AdminTransaction {
 	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(ringbuffer, partition, row_number);
 
-		let pre = self.get(&key)?.map(|v| v.bytes);
+		let pre = self.get_encoded(&key)?.map(|v| v.bytes);
 
 		if let Some(ref existing) = pre {
 			let ids = [row_number];
@@ -297,7 +297,7 @@ impl RingBufferOperations for AdminTransaction {
 		let [bytes] = rows_buf;
 		let bytes = bytes.freeze_bytes();
 
-		self.set(&key, bytes.clone())?;
+		self.set_encoded(&key, bytes.clone())?;
 
 		let ids = [row_number];
 		let rows = [bytes.clone()];
@@ -321,7 +321,7 @@ impl RingBufferOperations for AdminTransaction {
 	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(&ringbuffer, partition, id);
 
-		let pre = match self.get(&key)? {
+		let pre = match self.get_encoded(&key)? {
 			Some(v) => v.bytes,
 			None => return Ok(bytes),
 		};
@@ -346,7 +346,7 @@ impl RingBufferOperations for AdminTransaction {
 		if self.get_committed(&key)?.is_some() {
 			self.mark_preexisting(&key)?;
 		}
-		self.set(&key, bytes.clone())?;
+		self.set_encoded(&key, bytes.clone())?;
 
 		let posts = [bytes.clone()];
 		let pres = [pre.clone()];
@@ -365,7 +365,7 @@ impl RingBufferOperations for AdminTransaction {
 	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(ringbuffer, partition, id);
 
-		let displayed = match self.get(&key)? {
+		let displayed = match self.get_encoded(&key)? {
 			Some(v) => v.bytes,
 			None => return Ok(EncodedBytes(CowVec::new(vec![]))),
 		};

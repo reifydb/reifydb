@@ -22,8 +22,8 @@ fn extract_metrics_id(key: &[u8], kind: KeyKind) -> MetricsId {
 		| KeyKind::SeriesRow
 		| KeyKind::PartitionedRow
 		| KeyKind::PartitionedSeriesRow
-		| KeyKind::ClusteredRow
-		| KeyKind::PartitionedClusteredRow
+		| KeyKind::SortedViewRow
+		| KeyKind::PartitionedSortedViewRow
 		| KeyKind::RowSequence
 		| KeyKind::Column
 		| KeyKind::Columns

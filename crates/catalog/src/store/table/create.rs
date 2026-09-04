@@ -97,7 +97,7 @@ impl CatalogStore {
 		table::set_partition_by(&mut row, to_create.partition_by.join(","));
 		write_time_source(&table::SHAPE, &mut row, table::TIME_DOMAIN, table::TS, &to_create.time);
 
-		txn.set(&TableKey::encoded(table), row.freeze())?;
+		txn.set(&TableKey::new(table), row.freeze())?;
 
 		Ok(())
 	}
@@ -111,7 +111,7 @@ impl CatalogStore {
 		let mut row = table_namespace::allocate();
 		table_namespace::set_id(&mut row, u64::from(table));
 		table_namespace::set_name(&mut row, name);
-		txn.set(&NamespaceTableKey::encoded(namespace, table), row.freeze())?;
+		txn.set(&NamespaceTableKey::new(namespace, table), row.freeze())?;
 		Ok(())
 	}
 

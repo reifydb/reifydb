@@ -75,8 +75,8 @@ fn committed_drop_is_invisible_to_later_range_scan() {
 	let key_b = coord_key(node, 2);
 
 	let mut tx = MultiWriteTransaction::new(engine.clone()).unwrap();
-	tx.set(&key_a, EncodedBytes(CowVec::new(b"one".to_vec()))).unwrap();
-	tx.set(&key_b, EncodedBytes(CowVec::new(b"two".to_vec()))).unwrap();
+	tx.set_encoded(&key_a, EncodedBytes(CowVec::new(b"one".to_vec()))).unwrap();
+	tx.set_encoded(&key_b, EncodedBytes(CowVec::new(b"two".to_vec()))).unwrap();
 	tx.commit(vec![]).unwrap();
 
 	// Row keys are keycode-encoded, so a scan returns them by descending row number.

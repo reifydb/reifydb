@@ -28,13 +28,13 @@ fn test_write_skew() {
 	let engine = test_multi();
 
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&a999, as_values!(100u64)).unwrap();
-	txn.set(&a888, as_values!(100u64)).unwrap();
+	txn.set_encoded(&a999, as_values!(100u64)).unwrap();
+	txn.set_encoded(&a888, as_values!(100u64)).unwrap();
 	txn.commit(vec![]).unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
 	fn get_bal(txn: &mut MultiWriteTransaction, k: &EncodedKey) -> u64 {
-		let sv = txn.get(k).unwrap().unwrap();
+		let sv = txn.get_encoded(k).unwrap().unwrap();
 		let val = sv.bytes();
 		from_bytes!(u64, val)
 	}
@@ -44,7 +44,7 @@ fn test_write_skew() {
 	let mut sum = get_bal(&mut txn1, &a999);
 	sum += get_bal(&mut txn1, &a888);
 	assert_eq!(200, sum);
-	txn1.set(&a999, as_values!(0u64)).unwrap(); // deducts 100 from a999
+	txn1.set_encoded(&a999, as_values!(0u64)).unwrap(); // deducts 100 from a999
 
 	let mut sum = get_bal(&mut txn1, &a999);
 	assert_eq!(0, sum);
@@ -57,7 +57,7 @@ fn test_write_skew() {
 	let mut sum = get_bal(&mut txn2, &a999);
 	sum += get_bal(&mut txn2, &a888);
 	assert_eq!(200, sum);
-	txn2.set(&a888, as_values!(0u64)).unwrap(); // deducts 100 from a888
+	txn2.set_encoded(&a888, as_values!(0u64)).unwrap(); // deducts 100 from a888
 
 	let mut sum = get_bal(&mut txn2, &a999);
 	assert_eq!(100, sum);
@@ -79,9 +79,9 @@ fn test_black_white() {
 	let mut txn = engine.begin_command().unwrap();
 	for i in 1..=10 {
 		if i % 2 == 1 {
-			txn.set(&as_key!(i), as_values!("black".to_string())).unwrap();
+			txn.set_encoded(&as_key!(i), as_values!("black".to_string())).unwrap();
 		} else {
-			txn.set(&as_key!(i), as_values!("white".to_string())).unwrap();
+			txn.set_encoded(&as_key!(i), as_values!("white".to_string())).unwrap();
 		}
 	}
 	txn.commit(vec![]).unwrap();
@@ -102,7 +102,7 @@ fn test_black_white() {
 		.collect::<Vec<_>>();
 
 	for i in indices {
-		white.set(&i, as_values!("white".to_string())).unwrap();
+		white.set_encoded(&i, as_values!("white".to_string())).unwrap();
 	}
 
 	let mut black = engine.begin_command().unwrap();
@@ -121,7 +121,7 @@ fn test_black_white() {
 		.collect::<Vec<_>>();
 
 	for i in indices {
-		black.set(&i, as_values!("black".to_string())).unwrap();
+		black.set_encoded(&i, as_values!("black".to_string())).unwrap();
 	}
 
 	black.commit(vec![]).unwrap();
@@ -146,23 +146,23 @@ fn test_overdraft_protection() {
 	let key = as_key!("karen");
 
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&key, as_values!(1000)).unwrap();
+	txn.set_encoded(&key, as_values!(1000)).unwrap();
 	txn.commit(vec![]).unwrap();
 
 	let mut txn1 = engine.begin_command().unwrap();
-	let money = from_bytes!(i32, *txn1.get(&key).unwrap().unwrap().bytes());
-	txn1.set(&key, as_values!(money - 500)).unwrap();
+	let money = from_bytes!(i32, *txn1.get_encoded(&key).unwrap().unwrap().bytes());
+	txn1.set_encoded(&key, as_values!(money - 500)).unwrap();
 
 	let mut txn2 = engine.begin_command().unwrap();
-	let money = from_bytes!(i32, *txn2.get(&key).unwrap().unwrap().bytes());
-	txn2.set(&key, as_values!(money - 500)).unwrap();
+	let money = from_bytes!(i32, *txn2.get_encoded(&key).unwrap().unwrap().bytes());
+	txn2.set_encoded(&key, as_values!(money - 500)).unwrap();
 
 	txn1.commit(vec![]).unwrap();
 	let err = txn2.commit(vec![]).unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
 	let rx = engine.begin_query().unwrap();
-	let money = from_bytes!(i32, *rx.get(&key).unwrap().unwrap().bytes());
+	let money = from_bytes!(i32, *rx.get_encoded(&key).unwrap().unwrap().bytes());
 	assert_eq!(money, 500);
 }
 
@@ -174,11 +174,11 @@ fn test_primary_colors() {
 	let mut txn = engine.begin_command().unwrap();
 	for i in 1..=9000 {
 		if i % 3 == 1 {
-			txn.set(&as_key!(i), as_values!("red".to_string())).unwrap();
+			txn.set_encoded(&as_key!(i), as_values!("red".to_string())).unwrap();
 		} else if i % 3 == 2 {
-			txn.set(&as_key!(i), as_values!("yellow".to_string())).unwrap();
+			txn.set_encoded(&as_key!(i), as_values!("yellow".to_string())).unwrap();
 		} else {
-			txn.set(&as_key!(i), as_values!("blue".to_string())).unwrap();
+			txn.set_encoded(&as_key!(i), as_values!("blue".to_string())).unwrap();
 		}
 	}
 	txn.commit(vec![]).unwrap();
@@ -198,7 +198,7 @@ fn test_primary_colors() {
 		})
 		.collect();
 	for i in indices {
-		red.set(&i, as_values!("red".to_string())).unwrap();
+		red.set_encoded(&i, as_values!("red".to_string())).unwrap();
 	}
 
 	let mut yellow = engine.begin_command().unwrap();
@@ -216,7 +216,7 @@ fn test_primary_colors() {
 		})
 		.collect();
 	for i in indices {
-		yellow.set(&i, as_values!("yellow".to_string())).unwrap();
+		yellow.set_encoded(&i, as_values!("yellow".to_string())).unwrap();
 	}
 
 	let mut red_two = engine.begin_command().unwrap();
@@ -234,7 +234,7 @@ fn test_primary_colors() {
 		})
 		.collect();
 	for i in indices {
-		red_two.set(&i, as_values!("red".to_string())).unwrap();
+		red_two.set_encoded(&i, as_values!("red".to_string())).unwrap();
 	}
 
 	red.commit(vec![]).unwrap();
@@ -274,10 +274,10 @@ fn test_intersecting_data() {
 	let engine = test_multi();
 
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!("a1"), as_values!(10u64)).unwrap();
-	txn.set(&as_key!("a2"), as_values!(20u64)).unwrap();
-	txn.set(&as_key!("b1"), as_values!(100u64)).unwrap();
-	txn.set(&as_key!("b2"), as_values!(200u64)).unwrap();
+	txn.set_encoded(&as_key!("a1"), as_values!(10u64)).unwrap();
+	txn.set_encoded(&as_key!("a2"), as_values!(20u64)).unwrap();
+	txn.set_encoded(&as_key!("b1"), as_values!(100u64)).unwrap();
+	txn.set_encoded(&as_key!("b2"), as_values!(200u64)).unwrap();
 	txn.commit(vec![]).unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
@@ -298,7 +298,7 @@ fn test_intersecting_data() {
 		})
 		.sum::<u64>();
 
-	txn1.set(&as_key!("b3"), as_values!(30)).unwrap();
+	txn1.set_encoded(&as_key!("b3"), as_values!(30)).unwrap();
 	assert_eq!(30, val);
 
 	let mut txn2 = engine.begin_command().unwrap();
@@ -318,7 +318,7 @@ fn test_intersecting_data() {
 		})
 		.sum::<u64>();
 
-	txn2.set(&as_key!("a3"), as_values!(300u64)).unwrap();
+	txn2.set_encoded(&as_key!("a3"), as_values!(300u64)).unwrap();
 	assert_eq!(300, val);
 
 	txn2.commit(vec![]).unwrap();
@@ -351,9 +351,9 @@ fn test_intersecting_data2() {
 	let engine = test_multi();
 
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!("a1"), as_values!(10u64)).unwrap();
-	txn.set(&as_key!("b1"), as_values!(100u64)).unwrap();
-	txn.set(&as_key!("b2"), as_values!(200u64)).unwrap();
+	txn.set_encoded(&as_key!("a1"), as_values!(10u64)).unwrap();
+	txn.set_encoded(&as_key!("b1"), as_values!(100u64)).unwrap();
+	txn.set_encoded(&as_key!("b2"), as_values!(200u64)).unwrap();
 	txn.commit(vec![]).unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
@@ -366,7 +366,7 @@ fn test_intersecting_data2() {
 		.map(|tv| from_bytes!(u64, tv.bytes))
 		.sum::<u64>();
 
-	txn1.set(&as_key!("b3"), as_values!(10)).unwrap();
+	txn1.set_encoded(&as_key!("b3"), as_values!(10)).unwrap();
 	assert_eq!(10, val);
 
 	let mut txn2 = engine.begin_command().unwrap();
@@ -379,7 +379,7 @@ fn test_intersecting_data2() {
 		.sum::<u64>();
 
 	assert_eq!(300, val);
-	txn2.set(&as_key!("a3"), as_values!(300u64)).unwrap();
+	txn2.set_encoded(&as_key!("a3"), as_values!(300u64)).unwrap();
 	txn2.commit(vec![]).unwrap();
 
 	let err = txn1.commit(vec![]).unwrap_err();
@@ -410,8 +410,8 @@ fn test_intersecting_data3() {
 	let engine = test_multi();
 
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!("b1"), as_values!(100u64)).unwrap();
-	txn.set(&as_key!("b2"), as_values!(200u64)).unwrap();
+	txn.set_encoded(&as_key!("b1"), as_values!(100u64)).unwrap();
+	txn.set_encoded(&as_key!("b2"), as_values!(200u64)).unwrap();
 	txn.commit(vec![]).unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
@@ -423,7 +423,7 @@ fn test_intersecting_data3() {
 		.into_iter()
 		.map(|tv| from_bytes!(u64, tv.bytes))
 		.sum::<u64>();
-	txn1.set(&as_key!("b3"), as_values!(0u64)).unwrap();
+	txn1.set_encoded(&as_key!("b3"), as_values!(0u64)).unwrap();
 	assert_eq!(0, val);
 
 	let mut txn2 = engine.begin_command().unwrap();
@@ -435,7 +435,7 @@ fn test_intersecting_data3() {
 		.map(|tv| from_bytes!(u64, tv.bytes))
 		.sum::<u64>();
 
-	txn2.set(&as_key!("a3"), as_values!(300u64)).unwrap();
+	txn2.set_encoded(&as_key!("a3"), as_values!(300u64)).unwrap();
 	assert_eq!(300, val);
 	txn2.commit(vec![]).unwrap();
 	let err = txn1.commit(vec![]).unwrap_err();

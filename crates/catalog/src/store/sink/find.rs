@@ -20,7 +20,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_sink(rx: &mut Transaction<'_>, id: SinkId) -> Result<Option<Sink>> {
-		let Some(multi) = rx.get(&SinkKey::encoded(id))? else {
+		let Some(multi) = rx.get(&SinkKey::new(id))? else {
 			return Ok(None);
 		};
 

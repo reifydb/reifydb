@@ -64,7 +64,7 @@ pub(super) fn evict_oldest_for_partition(
 	let mut evict_pos = metadata.head;
 	loop {
 		let key = RowKey::encoded(ringbuffer.id, RowNumber(evict_pos));
-		if txn.get(&key)?.is_some() {
+		if txn.get_encoded(&key)?.is_some() {
 			txn.remove_from_ringbuffer(ringbuffer, None, RowNumber(evict_pos))?;
 			break;
 		}
@@ -76,7 +76,7 @@ pub(super) fn evict_oldest_for_partition(
 	metadata.head = evict_pos + 1;
 	while metadata.head < metadata.tail {
 		let key = RowKey::encoded(ringbuffer.id, RowNumber(metadata.head));
-		if txn.get(&key)?.is_some() {
+		if txn.get_encoded(&key)?.is_some() {
 			break;
 		}
 		metadata.head += 1;

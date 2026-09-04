@@ -27,11 +27,15 @@ pub struct ColumnKey {
 }
 
 impl ColumnKey {
-	pub fn encoded(object: impl Into<ObjectId>, column: impl Into<ColumnId>) -> EncodedKey {
-		Key::encode(&Self {
+	pub fn new(object: impl Into<ObjectId>, column: impl Into<ColumnId>) -> Self {
+		Self {
 			object: object.into(),
 			column: column.into(),
-		})
+		}
+	}
+
+	pub fn encoded(object: impl Into<ObjectId>, column: impl Into<ColumnId>) -> EncodedKey {
+		Key::encode(&Self::new(object, column))
 	}
 
 	pub fn full_scan(object: impl Into<ObjectId>) -> EncodedKeyRange {
@@ -111,11 +115,15 @@ pub struct ColumnSequenceKey {
 }
 
 impl ColumnSequenceKey {
-	pub fn encoded(object: impl Into<ObjectId>, column: impl Into<ColumnId>) -> EncodedKey {
-		Key::encode(&Self {
+	pub fn new(object: impl Into<ObjectId>, column: impl Into<ColumnId>) -> Self {
+		Self {
 			object: object.into(),
 			column: column.into(),
-		})
+		}
+	}
+
+	pub fn encoded(object: impl Into<ObjectId>, column: impl Into<ColumnId>) -> EncodedKey {
+		Key::encode(&Self::new(object, column))
 	}
 }
 
@@ -351,10 +359,14 @@ pub struct ColumnsKey {
 }
 
 impl ColumnsKey {
-	pub fn encoded(column: impl Into<ColumnId>) -> EncodedKey {
-		Key::encode(&Self {
+	pub fn new(column: impl Into<ColumnId>) -> Self {
+		Self {
 			column: column.into(),
-		})
+		}
+	}
+
+	pub fn encoded(column: impl Into<ColumnId>) -> EncodedKey {
+		Key::encode(&Self::new(column))
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {

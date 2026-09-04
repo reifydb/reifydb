@@ -235,7 +235,7 @@ fn drive_series_delete_input(
 				.encode()
 			};
 
-			let Some(pre_entry) = txn.get(&encoded_key)? else {
+			let Some(pre_entry) = txn.get_encoded(&encoded_key)? else {
 				continue;
 			};
 			let encoded_bytes = pre_entry.bytes;

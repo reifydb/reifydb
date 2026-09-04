@@ -185,7 +185,7 @@ fn run_table_delete_with_input(
 	for (idx, row_number) in row_numbers_to_delete.into_iter().enumerate() {
 		let partition = partitions_to_delete.get(idx).copied();
 		let row_key = row_key_from_partition(target.table.id, partition, row_number);
-		let bytes = match txn.get(&row_key)? {
+		let bytes = match txn.get_encoded(&row_key)? {
 			Some(v) => v.bytes,
 			None => continue,
 		};
@@ -298,7 +298,7 @@ fn remove_table_pk_index_for(
 		internal_error!("Row shape with fingerprint {:?} not found for table {}", fingerprint, table.name)
 	})?;
 	let index_key = primary_key::encode_primary_key(pk_def, values, table, &shape)?;
-	txn.remove(&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key).encode())?;
+	txn.remove_encoded(&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key).encode())?;
 	Ok(())
 }
 

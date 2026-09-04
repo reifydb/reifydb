@@ -126,7 +126,7 @@ pub(crate) fn execute_alter_table(
 				txn.remove_from_table(&table, &ids, &partitions)?;
 			}
 			if remove_registry {
-				txn.remove(&PartitionKey::encoded(object, partition))?;
+				txn.remove_encoded(&PartitionKey::encoded(object, partition))?;
 				("DROP PARTITION", Value::Uint8(dropped))
 			} else {
 				("TRUNCATE PARTITION", Value::Uint8(dropped))

@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
-use reifydb_core::key::row::StorageRowKey;
-use std::sync::Arc;
+use std::{ops::Bound, sync::Arc};
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
@@ -42,6 +40,10 @@ use reifydb_core::{
 			view::View,
 		},
 		store::{MultiVersionBatch, MultiVersionRow},
+	},
+	key::{
+		row::{StoragePartitionedRowKey, StorageRowKey},
+		typed::key::Key,
 	},
 	row::{OperatorSettings, RowSettings},
 };
@@ -121,13 +123,23 @@ impl QueryTransaction {
 	}
 
 	#[inline]
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+	pub fn get_encoded(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+		Ok(self.multi.get_encoded(key)?.map(|v| v.into_multi_version_row()))
+	}
+
+	#[inline]
+	pub fn get<K: Key>(&mut self, key: &K) -> Result<Option<MultiVersionRow>> {
 		Ok(self.multi.get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
 	#[inline]
-	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		self.multi.contains_key(key)
+	pub fn contains_encoded(&mut self, key: &EncodedKey) -> Result<bool> {
+		self.multi.contains_encoded(key)
+	}
+
+	#[inline]
+	pub fn contains<K: Key>(&mut self, key: &K) -> Result<bool> {
+		self.multi.contains(key)
 	}
 
 	#[inline]
@@ -165,6 +177,18 @@ impl QueryTransaction {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_> {
 		self.multi.range_row(storage, start, end, scope, batch_size)
+	}
+
+	#[inline]
+	pub fn range_partitioned_row(
+		&self,
+		storage: StorageId,
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_> {
+		self.multi.range_partitioned_row(storage, start, end, scope, batch_size)
 	}
 
 	#[inline]

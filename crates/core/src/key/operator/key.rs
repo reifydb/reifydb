@@ -17,11 +17,14 @@ pub struct OperatorKey {
 }
 
 impl OperatorKey {
-	pub fn encoded(operator: impl Into<OperatorId>) -> EncodedKey {
+	pub fn new(operator: impl Into<OperatorId>) -> Self {
 		Self {
 			operator: operator.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(operator: impl Into<OperatorId>) -> EncodedKey {
+		Self::new(operator).encode()
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -49,12 +52,15 @@ pub struct OperatorByFlowKey {
 }
 
 impl OperatorByFlowKey {
-	pub fn encoded(flow: impl Into<FlowId>, operator: impl Into<OperatorId>) -> EncodedKey {
+	pub fn new(flow: impl Into<FlowId>, operator: impl Into<OperatorId>) -> Self {
 		Self {
 			flow: flow.into(),
 			operator: operator.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(flow: impl Into<FlowId>, operator: impl Into<OperatorId>) -> EncodedKey {
+		Self::new(flow, operator).encode()
 	}
 
 	pub fn full_scan(flow: FlowId) -> EncodedKeyRange {

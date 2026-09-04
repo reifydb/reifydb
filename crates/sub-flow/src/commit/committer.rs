@@ -285,24 +285,24 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 			continue;
 		}
 		match pw {
-			PendingWrite::Set(value) => transaction.set(key, value.clone())?,
+			PendingWrite::Set(value) => transaction.set_encoded(key, value.clone())?,
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Announced,
 			} => {
 				if matches!(KeyKind::of(key), Some(KeyKind::Row | KeyKind::SeriesRow)) {
-					match transaction.get(key)? {
+					match transaction.get_encoded(key)? {
 						Some(existing) => transaction.remove_with_pre(key, existing.bytes)?,
-						None => transaction.remove(key)?,
+						None => transaction.remove_encoded(key)?,
 					}
 				} else {
-					transaction.remove(key)?;
+					transaction.remove_encoded(key)?;
 				}
 			}
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Unobserved,
 			} => {
 				if matches!(KeyKind::of(key), Some(KeyKind::Row | KeyKind::SeriesRow)) {
-					match transaction.get(key)? {
+					match transaction.get_encoded(key)? {
 						Some(existing) => {
 							transaction.remove_unobserved_with_pre(key, existing.bytes)?
 						}

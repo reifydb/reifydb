@@ -98,8 +98,8 @@ pub enum KeyKind {
 	QueueDue = 0x57,
 	QueueAttempt = 0x58,
 	QueueKeyActive = 0x59,
-	ClusteredRow = 0x5A,
-	PartitionedClusteredRow = 0x5B,
+	SortedViewRow = 0x5A,
+	PartitionedSortedViewRow = 0x5B,
 }
 
 impl KeyKind {
@@ -212,8 +212,8 @@ impl TryFrom<u8> for KeyKind {
 			0x57 => Ok(Self::QueueDue),
 			0x58 => Ok(Self::QueueAttempt),
 			0x59 => Ok(Self::QueueKeyActive),
-			0x5A => Ok(Self::ClusteredRow),
-			0x5B => Ok(Self::PartitionedClusteredRow),
+			0x5A => Ok(Self::SortedViewRow),
+			0x5B => Ok(Self::PartitionedSortedViewRow),
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

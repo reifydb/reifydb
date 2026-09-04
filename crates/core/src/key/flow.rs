@@ -17,11 +17,14 @@ pub struct FlowKey {
 }
 
 impl FlowKey {
-	pub fn encoded(flow: impl Into<FlowId>) -> EncodedKey {
+	pub fn new(flow: impl Into<FlowId>) -> Self {
 		Self {
 			flow: flow.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(flow: impl Into<FlowId>) -> EncodedKey {
+		Self::new(flow).encode()
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -104,11 +107,14 @@ pub struct FlowEdgeKey {
 }
 
 impl FlowEdgeKey {
-	pub fn encoded(edge: impl Into<FlowEdgeId>) -> EncodedKey {
+	pub fn new(edge: impl Into<FlowEdgeId>) -> Self {
 		Self {
 			edge: edge.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(edge: impl Into<FlowEdgeId>) -> EncodedKey {
+		Self::new(edge).encode()
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -136,12 +142,15 @@ pub struct FlowEdgeByFlowKey {
 }
 
 impl FlowEdgeByFlowKey {
-	pub fn encoded(flow: impl Into<FlowId>, edge: impl Into<FlowEdgeId>) -> EncodedKey {
+	pub fn new(flow: impl Into<FlowId>, edge: impl Into<FlowEdgeId>) -> Self {
 		Self {
 			flow: flow.into(),
 			edge: edge.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(flow: impl Into<FlowId>, edge: impl Into<FlowEdgeId>) -> EncodedKey {
+		Self::new(flow, edge).encode()
 	}
 
 	pub fn full_scan(flow: FlowId) -> EncodedKeyRange {

@@ -326,11 +326,14 @@ fn write_insert_table_pk_index(
 ) -> Result<()> {
 	let index_key = primary_key::encode_primary_key(pk.pk_def, row, target.table, shape)?;
 	let index_entry_key = IndexEntryKey::new(target.table.id, IndexId::primary(pk.pk_def.id), index_key.clone());
-	if txn.contains_key(&index_entry_key.encode())? {
+	if txn.contains_encoded(&index_entry_key.encode())? {
 		let key_columns = pk.pk_def.columns.iter().map(|c| c.name.clone()).collect();
 		return_error!(primary_key_violation(target.fragment.clone(), target.table.name.clone(), key_columns,));
 	}
-	txn.set(&index_entry_key.encode(), EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes())?;
+	txn.set_encoded(
+		&index_entry_key.encode(),
+		EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes(),
+	)?;
 	Ok(())
 }
 

@@ -23,12 +23,12 @@ impl CatalogStore {
 		}
 
 		if let Some(dictionary_def) = Self::find_dictionary(&mut Transaction::Admin(&mut *txn), dictionary)? {
-			txn.remove(&NamespaceDictionaryKey::encoded(dictionary_def.namespace, dictionary))?;
+			txn.remove(&NamespaceDictionaryKey::new(dictionary_def.namespace, dictionary))?;
 		}
 
 		remove_dictionary_entries(&txn.single, dictionary)?;
 
-		txn.remove(&DictionaryKey::encoded(dictionary))?;
+		txn.remove(&DictionaryKey::new(dictionary))?;
 
 		if let Some(registry) = txn.dictionary_allocators() {
 			registry.evict(dictionary);

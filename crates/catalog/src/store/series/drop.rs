@@ -15,7 +15,7 @@ use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
 impl CatalogStore {
 	pub(crate) fn drop_series(txn: &mut AdminTransaction, series: SeriesId) -> Result<()> {
 		let pk_id = if let Some(series_def) = Self::find_series(&mut Transaction::Admin(&mut *txn), series)? {
-			txn.remove(&NamespaceSeriesKey::encoded(series_def.namespace, series))?;
+			txn.remove(&NamespaceSeriesKey::new(series_def.namespace, series))?;
 			series_def.primary_key.as_ref().map(|pk| pk.id)
 		} else {
 			None
@@ -23,9 +23,9 @@ impl CatalogStore {
 
 		drop_object_metadata(txn, series.into(), pk_id)?;
 
-		txn.remove(&SeriesMetadataKey::encoded(series))?;
+		txn.remove(&SeriesMetadataKey::new(series))?;
 
-		txn.remove(&SeriesKey::encoded(series))?;
+		txn.remove(&SeriesKey::new(series))?;
 
 		Ok(())
 	}

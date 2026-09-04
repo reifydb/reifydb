@@ -2,19 +2,21 @@
 // Copyright (c) 2026 ReifyDB
 
 use core::mem;
-use std::{cmp::Ordering, collections::HashSet, iter, ops::{Bound, RangeBounds}, sync::Arc, vec};
+use std::{
+	cmp::Ordering,
+	collections::HashSet,
+	iter,
+	ops::{Bound, RangeBounds},
+	sync::Arc,
+	vec,
+};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::bytes::EncodedBytes,
 };
 #[cfg(reifydb_assertions)]
-use reifydb_core::key::{
-	EncodableKey,
-	operator::state::OperatorStateKey,
-	row::{RowKey, StorageRowKey},
-	typed::key::Key,
-};
+use reifydb_core::key::{EncodableKey, operator::state::OperatorStateKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::{Delta, RemoveAnnounce},
@@ -23,6 +25,10 @@ use reifydb_core::{
 		catalog::storage::StorageId,
 		change::Change,
 		store::{MultiVersionBatch, MultiVersionContains, MultiVersionGet, MultiVersionRow},
+	},
+	key::{
+		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey, StorageRowKey},
+		typed::key::Key,
 	},
 };
 use reifydb_value::{
@@ -231,7 +237,7 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		key_hex = %hex_display(key.as_ref())
 	))]
-	pub fn set(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
+	pub fn set_encoded(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -242,6 +248,10 @@ impl MultiWriteTransaction {
 			},
 			version: self.base_version(),
 		})
+	}
+
+	pub fn set<K: Key>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
+		self.set_encoded(&key.encode(), bytes)
 	}
 
 	#[instrument(name = "transaction::command::remove_with_pre", level = "trace", skip(self, pre), fields(
@@ -263,11 +273,11 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		key_len = key.len()
 	))]
-	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+	pub fn remove_encoded(&mut self, key: &EncodedKey) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		let announce = match self.get(key)? {
+		let announce = match self.get_encoded(key)? {
 			Some(found) => RemoveAnnounce::Announced {
 				pre: found.bytes().clone(),
 			},
@@ -282,6 +292,10 @@ impl MultiWriteTransaction {
 		})
 	}
 
+	pub fn remove<K: Key>(&mut self, key: &K) -> Result<()> {
+		self.remove_encoded(&key.encode())
+	}
+
 	#[instrument(name = "transaction::command::remove_unobserved", level = "trace", skip(self), fields(
 		txn_id = %self.id,
 		key_len = key.len()
@@ -290,7 +304,7 @@ impl MultiWriteTransaction {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		let announce = match self.get(key)? {
+		let announce = match self.get_encoded(key)? {
 			Some(found) => RemoveAnnounce::Unobserved {
 				pre: found.bytes().clone(),
 			},
@@ -351,7 +365,7 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		key_hex = %hex_display(key.as_ref())
 	))]
-	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
+	pub fn contains_encoded(&mut self, key: &EncodedKey) -> Result<bool> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -371,11 +385,15 @@ impl MultiWriteTransaction {
 		}
 	}
 
+	pub fn contains<K: Key>(&mut self, key: &K) -> Result<bool> {
+		self.contains_encoded(&key.encode())
+	}
+
 	#[instrument(name = "transaction::command::get", level = "trace", skip(self), fields(
 		txn_id = %self.id,
 		key_hex = %hex_display(key.as_ref())
 	))]
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
+	pub fn get_encoded(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -396,6 +414,10 @@ impl MultiWriteTransaction {
 		}
 		self.conflicts.mark_read(key);
 		Ok(MultiVersionGet::get(&self.engine.store, key, version)?.map(Into::into))
+	}
+
+	pub fn get<K: Key>(&mut self, key: &K) -> Result<Option<TransactionValue>> {
+		self.get_encoded(&key.encode())
 	}
 
 	#[instrument(name = "transaction::command::get_committed", level = "trace", skip(self), fields(
@@ -703,12 +725,41 @@ impl MultiWriteTransaction {
 			.range((encoded.start_bound(), encoded.end_bound()))
 			.filter_map(|(k, v)| {
 				let decoded = RowKey::decode(k)?;
-				(decoded.storage == storage)
-					.then(|| (StorageRowKey::new(decoded.row), v.clone()))
+				(decoded.storage == storage).then(|| (StorageRowKey::new(decoded.row), v.clone()))
 			})
 			.collect();
 
 		let storage_iter = self.engine.store.range_row(storage, start, end, multi_scope, batch_size);
+
+		Box::new(MergePendingIterator::new(pending, storage_iter, false))
+	}
+
+	pub fn range_partitioned_row(
+		&mut self,
+		storage: StorageId,
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.version());
+		let encoded = partitioned_row_bounds_to_encoded(storage, &start, &end);
+		let (mut marker, pw) = self.marker_with_pending_writes();
+
+		marker.mark_range(encoded.clone());
+
+		let pending: Vec<(StoragePartitionedRowKey, DeltaEntry)> = pw
+			.range((encoded.start_bound(), encoded.end_bound()))
+			.filter_map(|(k, v)| {
+				let decoded = PartitionedRowKey::decode(k)?;
+				(decoded.storage == storage).then(|| {
+					(StoragePartitionedRowKey::new(decoded.partition, decoded.row), v.clone())
+				})
+			})
+			.collect();
+
+		let storage_iter =
+			self.engine.store.range_partitioned_row(storage, start, end, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, false))
 	}
@@ -805,7 +856,7 @@ mod tests {
 		// a commit version whose own post-commit hooks have not run.
 		let engine = MultiTransaction::testing();
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&test_key("race-key"), test_bytes("race-value")).unwrap();
+		txn.set_encoded(&test_key("race-key"), test_bytes("race-value")).unwrap();
 
 		// Allocate commit_version exactly as commit() would, without finalizing it yet.
 		let deltas = txn.build_deltas();
@@ -941,6 +992,24 @@ fn row_bounds_to_encoded(
 		Bound::Included(k) => Bound::Included(RowKey::encoded(storage, k.row())),
 		Bound::Excluded(k) => Bound::Excluded(RowKey::encoded(storage, k.row())),
 		Bound::Unbounded => Bound::Included(RowKey::storage_end(storage)),
+	};
+	EncodedKeyRange::new(lower, upper)
+}
+
+fn partitioned_row_bounds_to_encoded(
+	storage: StorageId,
+	start: &Bound<StoragePartitionedRowKey>,
+	end: &Bound<StoragePartitionedRowKey>,
+) -> EncodedKeyRange {
+	let lower = match start {
+		Bound::Included(k) => Bound::Included(PartitionedRowKey::encoded(storage, k.partition(), k.row())),
+		Bound::Excluded(k) => Bound::Excluded(PartitionedRowKey::encoded(storage, k.partition(), k.row())),
+		Bound::Unbounded => Bound::Included(PartitionedRowKey::storage_start(storage)),
+	};
+	let upper = match end {
+		Bound::Included(k) => Bound::Included(PartitionedRowKey::encoded(storage, k.partition(), k.row())),
+		Bound::Excluded(k) => Bound::Excluded(PartitionedRowKey::encoded(storage, k.partition(), k.row())),
+		Bound::Unbounded => Bound::Included(PartitionedRowKey::storage_end(storage)),
 	};
 	EncodedKeyRange::new(lower, upper)
 }

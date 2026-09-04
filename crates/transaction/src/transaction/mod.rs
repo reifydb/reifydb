@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
-use reifydb_core::interface::catalog::storage::StorageId;
-use reifydb_core::key::row::StorageRowKey;
-use std::sync::Arc;
+use std::{ops::Bound, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -16,9 +13,13 @@ use reifydb_core::{
 	delta::{Delta, RemoveVisibility},
 	execution::ExecutionResult,
 	interface::{
-		catalog::{object::ObjectId, policy::SessionOp},
+		catalog::{object::ObjectId, policy::SessionOp, storage::StorageId},
 		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
+	},
+	key::{
+		row::{StoragePartitionedRowKey, StorageRowKey},
+		typed::key::Key,
 	},
 	testing::{CapturedEvent, CapturedInvocation},
 	value::column::columns::Columns,
@@ -120,10 +121,10 @@ pub(super) fn apply_pre_commit_writes(
 ) -> Result<()> {
 	for (key, write) in pending_writes {
 		match write {
-			PendingWrite::Set(v) => multi.set(key, v.clone())?,
+			PendingWrite::Set(v) => multi.set_encoded(key, v.clone())?,
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Announced,
-			} => multi.remove(key)?,
+			} => multi.remove_encoded(key)?,
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Unobserved,
 			} => multi.remove_unobserved(key)?,
@@ -256,10 +257,10 @@ impl<'a> TestTransaction<'a> {
 
 		for (key, write) in &ctx.pending_writes {
 			match write {
-				PendingWrite::Set(v) => self.inner.cmd.as_mut().unwrap().set(key, v.clone())?,
+				PendingWrite::Set(v) => self.inner.cmd.as_mut().unwrap().set_encoded(key, v.clone())?,
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Announced,
-				} => self.inner.cmd.as_mut().unwrap().remove(key)?,
+				} => self.inner.cmd.as_mut().unwrap().remove_encoded(key)?,
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Unobserved,
 				} => self.inner.cmd.as_mut().unwrap().remove_unobserved(key)?,
@@ -326,7 +327,16 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+	pub fn get_encoded(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+		match self {
+			Self::Command(txn) => txn.get_encoded(key),
+			Self::Admin(txn) => txn.get_encoded(key),
+			Self::Query(txn) => txn.get_encoded(key),
+			Self::Test(t) => t.inner.get_encoded(key),
+		}
+	}
+
+	pub fn get<K: Key>(&mut self, key: &K) -> Result<Option<MultiVersionRow>> {
 		match self {
 			Self::Command(txn) => txn.get(key),
 			Self::Admin(txn) => txn.get(key),
@@ -339,17 +349,26 @@ impl<'a> Transaction<'a> {
 		match self {
 			Self::Command(txn) => txn.get_committed(key),
 			Self::Admin(txn) => txn.get_committed(key),
-			Self::Query(txn) => txn.get(key),
+			Self::Query(txn) => txn.get_encoded(key),
 			Self::Test(t) => t.inner.get_committed(key),
 		}
 	}
 
-	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
+	pub fn contains_encoded(&mut self, key: &EncodedKey) -> Result<bool> {
 		match self {
-			Self::Command(txn) => txn.contains_key(key),
-			Self::Admin(txn) => txn.contains_key(key),
-			Self::Query(txn) => txn.contains_key(key),
-			Self::Test(t) => t.inner.contains_key(key),
+			Self::Command(txn) => txn.contains_encoded(key),
+			Self::Admin(txn) => txn.contains_encoded(key),
+			Self::Query(txn) => txn.contains_encoded(key),
+			Self::Test(t) => t.inner.contains_encoded(key),
+		}
+	}
+
+	pub fn contains<K: Key>(&mut self, key: &K) -> Result<bool> {
+		match self {
+			Self::Command(txn) => txn.contains(key),
+			Self::Admin(txn) => txn.contains(key),
+			Self::Query(txn) => txn.contains(key),
+			Self::Test(t) => t.inner.contains(key),
 		}
 	}
 
@@ -407,6 +426,25 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.range_row(storage, start, end, scope, batch_size),
 			Transaction::Query(txn) => Ok(txn.range_row(storage, start, end, scope, batch_size)),
 			Transaction::Test(t) => t.inner.range_row(storage, start, end, scope, batch_size),
+		}
+	}
+
+	#[inline]
+	pub fn range_partitioned_row(
+		&mut self,
+		storage: StorageId,
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_>> {
+		match self {
+			Transaction::Command(txn) => txn.range_partitioned_row(storage, start, end, scope, batch_size),
+			Transaction::Admin(txn) => txn.range_partitioned_row(storage, start, end, scope, batch_size),
+			Transaction::Query(txn) => {
+				Ok(txn.range_partitioned_row(storage, start, end, scope, batch_size))
+			}
+			Transaction::Test(t) => t.inner.range_partitioned_row(storage, start, end, scope, batch_size),
 		}
 	}
 
@@ -581,16 +619,24 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn set(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
+	pub fn set_encoded(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
 		Write::set(self.write_ops(), key, bytes.into())
+	}
+
+	pub fn set<K: Key>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
+		Write::set(self.write_ops(), &key.encode(), bytes.into())
 	}
 
 	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
 		Write::remove_with_pre(self.write_ops(), key, pre)
 	}
 
-	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+	pub fn remove_encoded(&mut self, key: &EncodedKey) -> Result<()> {
 		Write::remove(self.write_ops(), key)
+	}
+
+	pub fn remove<K: Key>(&mut self, key: &K) -> Result<()> {
+		Write::remove(self.write_ops(), &key.encode())
 	}
 
 	pub fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()> {

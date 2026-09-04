@@ -120,7 +120,7 @@ fn spawn_stall_writer(multi: &MultiTransaction, stall_keys: u64, running: &Arc<A
 		while running.load(Ordering::Relaxed) {
 			let mut txn = multi.begin_command().expect("begin_command must succeed");
 			for index in 0..stall_keys {
-				txn.set(
+				txn.set_encoded(
 					&encoded_key(
 						TableLayout::TablePerThread,
 						STALL_THREAD_ID,
@@ -184,7 +184,7 @@ fn run_once(threads: usize, layout: TableLayout, iterations: u64, readers: usize
 				begin_histogram
 					.record(begin_start.elapsed().as_nanos() as u64)
 					.expect("latency within bounds");
-				txn.set(&encoded_key(layout, thread_id, index), encoded_bytes(index))
+				txn.set_encoded(&encoded_key(layout, thread_id, index), encoded_bytes(index))
 					.expect("set must succeed");
 				let commit_start = Instant::now();
 				txn.commit(vec![]).expect("disjoint keys must not conflict");

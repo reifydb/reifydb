@@ -27,11 +27,14 @@ pub struct NamespaceKey {
 }
 
 impl NamespaceKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(namespace: impl Into<NamespaceId>) -> EncodedKey {
+		Self::new(namespace).encode()
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -78,12 +81,15 @@ pub struct NamespaceBindingKey {
 }
 
 impl NamespaceBindingKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>, binding: impl Into<BindingId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>, binding: impl Into<BindingId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 			binding: binding.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(namespace: impl Into<NamespaceId>, binding: impl Into<BindingId>) -> EncodedKey {
+		Self::new(namespace, binding).encode()
 	}
 
 	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
@@ -195,12 +201,15 @@ pub struct NamespaceFlowKey {
 }
 
 impl NamespaceFlowKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>, flow: impl Into<FlowId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>, flow: impl Into<FlowId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 			flow: flow.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(namespace: impl Into<NamespaceId>, flow: impl Into<FlowId>) -> EncodedKey {
+		Self::new(namespace, flow).encode()
 	}
 
 	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
@@ -359,12 +368,15 @@ pub struct NamespaceProcedureKey {
 }
 
 impl NamespaceProcedureKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>, procedure: impl Into<ProcedureId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>, procedure: impl Into<ProcedureId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 			procedure: procedure.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(namespace: impl Into<NamespaceId>, procedure: impl Into<ProcedureId>) -> EncodedKey {
+		Self::new(namespace, procedure).encode()
 	}
 
 	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
@@ -658,12 +670,15 @@ pub struct NamespaceSinkKey {
 }
 
 impl NamespaceSinkKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>, sink: impl Into<SinkId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>, sink: impl Into<SinkId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 			sink: sink.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(namespace: impl Into<NamespaceId>, sink: impl Into<SinkId>) -> EncodedKey {
+		Self::new(namespace, sink).encode()
 	}
 
 	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
@@ -736,12 +751,15 @@ pub struct NamespaceSourceKey {
 }
 
 impl NamespaceSourceKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>, source: impl Into<SourceId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>, source: impl Into<SourceId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 			source: source.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(namespace: impl Into<NamespaceId>, source: impl Into<SourceId>) -> EncodedKey {
+		Self::new(namespace, source).encode()
 	}
 
 	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
@@ -882,12 +900,15 @@ pub struct NamespaceTableKey {
 }
 
 impl NamespaceTableKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>, table: impl Into<TableId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>, table: impl Into<TableId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 			table: table.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(namespace: impl Into<NamespaceId>, table: impl Into<TableId>) -> EncodedKey {
+		Self::new(namespace, table).encode()
 	}
 
 	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
@@ -967,12 +988,15 @@ pub struct NamespaceViewKey {
 }
 
 impl NamespaceViewKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>, view: impl Into<ViewId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>, view: impl Into<ViewId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 			view: view.into(),
 		}
-		.encode()
+	}
+
+	pub fn encoded(namespace: impl Into<NamespaceId>, view: impl Into<ViewId>) -> EncodedKey {
+		Self::new(namespace, view).encode()
 	}
 
 	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {

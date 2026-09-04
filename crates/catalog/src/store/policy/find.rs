@@ -15,7 +15,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_policy(rx: &mut Transaction<'_>, id: PolicyId) -> Result<Option<Policy>> {
-		rx.get(&PolicyKey::encoded(id))?.map(convert_policy).transpose()
+		rx.get(&PolicyKey::new(id))?.map(convert_policy).transpose()
 	}
 
 	pub(crate) fn find_policy_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Policy>> {

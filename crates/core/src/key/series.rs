@@ -274,6 +274,22 @@ impl StorageSeriesKey {
 		self.sequence.0
 	}
 
+	pub fn to_sql_columns(self) -> SeriesKeyColumns {
+		SeriesKeyColumns {
+			variant_tag: series_variant_tag_to_sql(self.variant_tag()),
+			key: series_key_to_sql(self.key()),
+			sequence: series_sequence_to_sql(self.sequence()),
+		}
+	}
+
+	pub fn from_sql_columns(columns: SeriesKeyColumns) -> Self {
+		Self::new(
+			series_variant_tag_from_sql(columns.variant_tag),
+			series_key_from_sql(columns.key),
+			series_sequence_from_sql(columns.sequence),
+		)
+	}
+
 	pub fn with_storage(self, storage: StorageId) -> SeriesRowKey {
 		SeriesRowKey {
 			storage,
@@ -338,6 +354,70 @@ fn next_variant_tag(tag: Desc<Option<u8>>) -> Option<Desc<Option<u8>>> {
 		Some(value) => Some(Desc(Some(value - 1))),
 		None => None,
 	}
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SeriesKeyColumns {
+	pub variant_tag: i64,
+	pub key: i64,
+	pub sequence: i64,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PartitionedSeriesKeyColumns {
+	pub partition_hi: i64,
+	pub partition_lo: i64,
+	pub variant_tag: i64,
+	pub key: i64,
+	pub sequence: i64,
+}
+
+const SERIES_VARIANT_TAG_NONE_SQL: i64 = (((!0u8) as i64) << 8) | ((!0u8) as i64);
+
+pub fn series_variant_tag_to_sql(variant_tag: Option<u8>) -> i64 {
+	match variant_tag {
+		Some(tag) => (((!1u8) as i64) << 8) | ((!tag) as i64),
+		None => SERIES_VARIANT_TAG_NONE_SQL,
+	}
+}
+
+pub fn series_variant_tag_from_sql(value: i64) -> Option<u8> {
+	if value == SERIES_VARIANT_TAG_NONE_SQL {
+		return None;
+	}
+	Some(!(value as u8))
+}
+
+pub fn series_key_to_sql(key: u64) -> i64 {
+	desc_u64_to_sql(key)
+}
+
+pub fn series_key_from_sql(value: i64) -> u64 {
+	desc_u64_from_sql(value)
+}
+
+pub fn series_sequence_to_sql(sequence: u64) -> i64 {
+	desc_u64_to_sql(sequence)
+}
+
+pub fn series_sequence_from_sql(value: i64) -> u64 {
+	desc_u64_from_sql(value)
+}
+
+pub fn series_partition_half_to_sql(half: u64) -> i64 {
+	desc_u64_to_sql(half)
+}
+
+pub fn series_partition_half_from_sql(value: i64) -> u64 {
+	desc_u64_from_sql(value)
+}
+
+fn desc_u64_to_sql(value: u64) -> i64 {
+	((!value) ^ (1u64 << 63)) as i64
+}
+
+fn desc_u64_from_sql(value: i64) -> u64 {
+	!((value as u64) ^ (1u64 << 63))
 }
 
 #[cfg(test)]
@@ -771,6 +851,44 @@ impl StoragePartitionedSeriesKey {
 
 	pub fn sequence(self) -> u64 {
 		self.sequence.0
+	}
+
+	pub fn partition_hi(self) -> u64 {
+		(self.partition().0 >> 64) as u64
+	}
+
+	pub fn partition_lo(self) -> u64 {
+		self.partition().0 as u64
+	}
+
+	pub fn from_halves(
+		partition_hi: u64,
+		partition_lo: u64,
+		variant_tag: Option<u8>,
+		key: u64,
+		sequence: u64,
+	) -> Self {
+		Self::new(Partition(((partition_hi as u128) << 64) | partition_lo as u128), variant_tag, key, sequence)
+	}
+
+	pub fn to_sql_columns(self) -> PartitionedSeriesKeyColumns {
+		PartitionedSeriesKeyColumns {
+			partition_hi: series_partition_half_to_sql(self.partition_hi()),
+			partition_lo: series_partition_half_to_sql(self.partition_lo()),
+			variant_tag: series_variant_tag_to_sql(self.variant_tag()),
+			key: series_key_to_sql(self.key()),
+			sequence: series_sequence_to_sql(self.sequence()),
+		}
+	}
+
+	pub fn from_sql_columns(columns: PartitionedSeriesKeyColumns) -> Self {
+		Self::from_halves(
+			series_partition_half_from_sql(columns.partition_hi),
+			series_partition_half_from_sql(columns.partition_lo),
+			series_variant_tag_from_sql(columns.variant_tag),
+			series_key_from_sql(columns.key),
+			series_sequence_from_sql(columns.sequence),
+		)
 	}
 
 	pub fn with_storage(self, storage: StorageId) -> PartitionedSeriesRowKey {

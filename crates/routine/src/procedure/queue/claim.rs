@@ -228,7 +228,7 @@ fn readable_candidates(
 ) -> Result<Vec<RowNumber>, RoutineError> {
 	let mut readable = Vec::with_capacity(candidates.len());
 	for row in candidates {
-		if ctx.tx.get(&RowKey::encoded(queue.id, *row))?.is_some() {
+		if ctx.tx.get_encoded(&RowKey::encoded(queue.id, *row))?.is_some() {
 			readable.push(*row);
 		} else {
 			debug!(
@@ -397,7 +397,7 @@ fn push_payload(
 	row: RowNumber,
 	payloads: &mut [ColumnBuffer],
 ) -> Result<(), RoutineError> {
-	let stored = ctx.tx.get(&RowKey::encoded(queue.id, row))?;
+	let stored = ctx.tx.get_encoded(&RowKey::encoded(queue.id, row))?;
 
 	let Some(stored) = stored else {
 		for buffer in payloads.iter_mut() {

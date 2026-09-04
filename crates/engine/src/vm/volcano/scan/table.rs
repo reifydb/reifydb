@@ -1,23 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
-use reifydb_core::interface::catalog::storage::StorageId;
-use reifydb_core::key::row::StorageRowKey;
-use std::sync::Arc;
+use std::{ops::Bound, sync::Arc};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, shape::RowShape, table::EncodedTableRow},
-};
+use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape, table::EncodedTableRow};
 use reifydb_core::{
 	common::CommitVersion,
 	error::diagnostic,
-	interface::{catalog::dictionary::Dictionary, resolved::ResolvedTable, store::MultiVersionRow},
-	key::{
-		row::{PartitionedRowKey, RowKey},
-		typed::key::Key,
+	interface::{
+		catalog::{dictionary::Dictionary, storage::StorageId},
+		resolved::ResolvedTable,
+		store::MultiVersionRow,
 	},
+	key::row::{StoragePartitionedRowKey, StorageRowKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -45,8 +40,7 @@ pub struct TableScanNode {
 	dictionaries: Vec<Option<Dictionary>>,
 
 	shape: Option<RowShape>,
-	last_key: Option<EncodedKey>,
-	last_row: Option<StorageRowKey>,
+	resume: Resume,
 	exhausted: bool,
 
 	partition: Option<Partition>,
@@ -88,6 +82,12 @@ impl TableScanNode {
 			columns: table.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
 
+		let resume = if table.def().partition_by.is_empty() {
+			Resume::Row(None)
+		} else {
+			Resume::Partitioned(None)
+		};
+
 		Ok(Self {
 			table,
 			context: Some(context),
@@ -95,8 +95,7 @@ impl TableScanNode {
 			storage_types,
 			dictionaries,
 			shape: None,
-			last_key: None,
-			last_row: None,
+			resume,
 			exhausted: false,
 			partition,
 			min_commit_version: None,
@@ -124,66 +123,21 @@ impl TableScanNode {
 		Ok(shape)
 	}
 
-	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::range_open")]
-	fn open_range<'rx, 'tx>(
-		rx: &'rx mut Transaction<'tx>,
-		range: EncodedKeyRange,
-		scope: RangeScope,
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::drain_partitioned")]
+	fn drain_batch_partitioned(
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>>,
 		batch_size: u64,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'rx>> {
-		rx.range(range, scope, batch_size as usize)
-	}
-
-	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::drain")]
-	fn drain_batch(
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
-		batch_size: u64,
-		partitioned: bool,
-	) -> Result<ScannedBatch> {
+	) -> Result<(ScannedBatch, Option<StoragePartitionedRowKey>)> {
 		let mut batch = ScannedBatch::default();
-
-		for _ in 0..batch_size {
-			match stream.next() {
-				Some(Ok(multi)) => {
-					let decoded = if partitioned {
-						PartitionedRowKey::decode(&multi.key)
-							.map(|k| (k.row, Some(k.partition)))
-					} else {
-						RowKey::decode(&multi.key).map(|k| (k.row, None))
-					};
-					if let Some((rn, partition)) = decoded {
-						batch.rows.push(multi.bytes);
-						batch.row_numbers.push(rn);
-						if let Some(p) = partition {
-							batch.partitions.push(p);
-						}
-						batch.last_key = Some(multi.key);
-					}
-				}
-				Some(Err(e)) => return Err(e),
-				None => {
-					batch.exhausted = true;
-					break;
-				}
-			}
-		}
-
-		Ok(batch)
-	}
-
-	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::drain_row")]
-	fn drain_batch_row(
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>>,
-		batch_size: u64,
-	) -> Result<ScannedRowBatch> {
-		let mut batch = ScannedRowBatch::default();
+		let mut last = None;
 
 		for _ in 0..batch_size {
 			match stream.next() {
 				Some(Ok(multi)) => {
 					batch.rows.push(multi.bytes);
 					batch.row_numbers.push(multi.key.row());
-					batch.last_row = Some(multi.key);
+					batch.partitions.push(multi.key.partition());
+					last = Some(multi.key);
 				}
 				Some(Err(e)) => return Err(e),
 				None => {
@@ -193,7 +147,33 @@ impl TableScanNode {
 			}
 		}
 
-		Ok(batch)
+		Ok((batch, last))
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::drain_row")]
+	fn drain_batch_row(
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>>,
+		batch_size: u64,
+	) -> Result<(ScannedBatch, Option<StorageRowKey>)> {
+		let mut batch = ScannedBatch::default();
+		let mut last = None;
+
+		for _ in 0..batch_size {
+			match stream.next() {
+				Some(Ok(multi)) => {
+					batch.rows.push(multi.bytes);
+					batch.row_numbers.push(multi.key.row());
+					last = Some(multi.key);
+				}
+				Some(Err(e)) => return Err(e),
+				None => {
+					batch.exhausted = true;
+					break;
+				}
+			}
+		}
+
+		Ok((batch, last))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::column_alloc")]
@@ -235,12 +215,10 @@ impl TableScanNode {
 	}
 }
 
-#[derive(Default)]
-struct ScannedRowBatch {
-	rows: Vec<EncodedBytes>,
-	row_numbers: Vec<RowNumber>,
-	last_row: Option<StorageRowKey>,
-	exhausted: bool,
+#[derive(Clone, Copy)]
+enum Resume {
+	Row(Option<StorageRowKey>),
+	Partitioned(Option<StoragePartitionedRowKey>),
 }
 
 #[derive(Default)]
@@ -248,9 +226,25 @@ struct ScannedBatch {
 	rows: Vec<EncodedBytes>,
 	row_numbers: Vec<RowNumber>,
 	partitions: Vec<Partition>,
-	last_key: Option<EncodedKey>,
-	last_row: Option<StorageRowKey>,
 	exhausted: bool,
+}
+
+fn partitioned_bounds(
+	partition: Option<Partition>,
+	last: Option<StoragePartitionedRowKey>,
+) -> (Bound<StoragePartitionedRowKey>, Bound<StoragePartitionedRowKey>) {
+	let start = match (last, partition) {
+		(Some(key), _) => Bound::Excluded(key),
+		(None, Some(partition)) => {
+			Bound::Included(StoragePartitionedRowKey::new(partition, RowNumber(u64::MAX)))
+		}
+		(None, None) => Bound::Unbounded,
+	};
+	let end = match partition {
+		Some(partition) => Bound::Included(StoragePartitionedRowKey::new(partition, RowNumber(u64::MIN))),
+		None => Bound::Unbounded,
+	};
+	(start, end)
 }
 
 impl QueryNode for TableScanNode {
@@ -272,51 +266,50 @@ impl QueryNode for TableScanNode {
 
 		let batch_size = stored_ctx.batch_size;
 
-		let partitioned = !self.table.def().partition_by.is_empty();
-
 		let scope = match self.min_commit_version {
 			Some(v) => RangeScope::After(v),
 			None => RangeScope::All,
 		};
 
-		let scanned = if partitioned {
-			let range = match self.partition {
-				Some(partition) => PartitionedRowKey::partition_scan_range(
-					self.table.def().id,
-					partition,
-					self.last_key.as_ref(),
-				),
-				None => PartitionedRowKey::scan_range(self.table.def().id, self.last_key.as_ref()),
-			};
-			let mut stream = Self::open_range(rx, range, scope, batch_size)?;
-			Self::drain_batch(&mut stream, batch_size, true)?
-		} else {
-			let storage: StorageId = self.table.def().id.into();
-			let start = match &self.last_row {
-				Some(key) => Bound::Excluded(*key),
-				None => Bound::Unbounded,
-			};
-			let mut stream = rx.range_row(storage, start, Bound::Unbounded, scope, batch_size as usize)?;
-			let rows = Self::drain_batch_row(&mut stream, batch_size)?;
-			ScannedBatch {
-				rows: rows.rows,
-				row_numbers: rows.row_numbers,
-				partitions: Vec::new(),
-				last_key: None,
-				last_row: rows.last_row,
-				exhausted: rows.exhausted,
+		let storage: StorageId = self.table.def().id.into();
+
+		let (scanned, next_resume, resumed) = match self.resume {
+			Resume::Partitioned(last) => {
+				let (start, end) = partitioned_bounds(self.partition, last);
+				let (scanned, new_last) = {
+					let mut stream = rx.range_partitioned_row(
+						storage,
+						start,
+						end,
+						scope,
+						batch_size as usize,
+					)?;
+					Self::drain_batch_partitioned(&mut stream, batch_size)?
+				};
+				(scanned, Resume::Partitioned(new_last), last.is_some())
+			}
+			Resume::Row(last) => {
+				let start = match last {
+					Some(key) => Bound::Excluded(key),
+					None => Bound::Unbounded,
+				};
+				let (scanned, new_last) = {
+					let mut stream = rx.range_row(
+						storage,
+						start,
+						Bound::Unbounded,
+						scope,
+						batch_size as usize,
+					)?;
+					Self::drain_batch_row(&mut stream, batch_size)?
+				};
+				(scanned, Resume::Row(new_last), last.is_some())
 			}
 		};
 
 		if scanned.exhausted {
 			self.exhausted = true;
 		}
-
-		let resumed = if partitioned {
-			self.last_key.is_some()
-		} else {
-			self.last_row.is_some()
-		};
 
 		if scanned.rows.is_empty() {
 			self.exhausted = true;
@@ -326,16 +319,12 @@ impl QueryNode for TableScanNode {
 			return Ok(None);
 		}
 
-		if partitioned {
-			self.last_key = scanned.last_key;
-		} else {
-			self.last_row = scanned.last_row;
-		}
+		self.resume = next_resume;
 
 		let mut columns = Columns::with_system(self.storage_columns(), SystemColumns::default());
 		self.append_batch(rx, &mut columns, scanned.rows, scanned.row_numbers)?;
 
-		if partitioned {
+		if !scanned.partitions.is_empty() {
 			columns.system.set_partitions(scanned.partitions);
 		}
 

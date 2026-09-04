@@ -221,7 +221,7 @@ impl RingBufferScan {
 			let mut out = Vec::new();
 			for rn_value in pm.metadata.head..pm.metadata.tail {
 				let rn = RowNumber(rn_value);
-				if let Some(multi) = txn.get(&RowKey::encoded(rb_id, rn))? {
+				if let Some(multi) = txn.get_encoded(&RowKey::encoded(rb_id, rn))? {
 					out.push((rn, multi.bytes));
 				}
 			}

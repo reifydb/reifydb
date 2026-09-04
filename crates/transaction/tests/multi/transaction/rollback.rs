@@ -16,20 +16,20 @@ use crate::{as_key, as_values};
 fn test_rollback_same_tx() {
 	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!(1), as_values!(1)).unwrap();
+	txn.set_encoded(&as_key!(1), as_values!(1)).unwrap();
 	txn.rollback().unwrap();
-	assert!(txn.get(&as_key!(1)).unwrap().is_none());
+	assert!(txn.get_encoded(&as_key!(1)).unwrap().is_none());
 }
 
 #[test]
 fn test_rollback_different_tx() {
 	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!(1), as_values!(1)).unwrap();
+	txn.set_encoded(&as_key!(1), as_values!(1)).unwrap();
 	txn.rollback().unwrap();
 
 	let rx = engine.begin_query().unwrap();
-	assert!(rx.get(&as_key!(1)).unwrap().is_none());
+	assert!(rx.get_encoded(&as_key!(1)).unwrap().is_none());
 }
 
 #[test]
@@ -38,20 +38,23 @@ fn test_savepoint_restore_drops_post_savepoint_writes() {
 	let mut txn = engine.begin_command().unwrap();
 
 	// Key 1 is written before the savepoint and must survive the restore.
-	txn.set(&as_key!(1), as_values!(1)).unwrap();
+	txn.set_encoded(&as_key!(1), as_values!(1)).unwrap();
 	let sp = txn.savepoint();
 
 	// Key 2 is written after it, so the restore must drop it from the commit.
-	txn.set(&as_key!(2), as_values!(2)).unwrap();
+	txn.set_encoded(&as_key!(2), as_values!(2)).unwrap();
 	txn.restore_savepoint(sp);
 
 	let v = txn.commit(vec![]).unwrap();
 	assert!(v.0 > 0, "commit should produce a non-zero version");
 
 	let rx = engine.begin_query().unwrap();
-	assert!(rx.get(&as_key!(1)).unwrap().is_some(), "key 1 was written before the savepoint and must be committed");
 	assert!(
-		rx.get(&as_key!(2)).unwrap().is_none(),
+		rx.get_encoded(&as_key!(1)).unwrap().is_some(),
+		"key 1 was written before the savepoint and must be committed"
+	);
+	assert!(
+		rx.get_encoded(&as_key!(2)).unwrap().is_none(),
 		"key 2 was written after the savepoint and rolled back via restore_savepoint; \
 		 it must not be in storage. If this asserts, WriteSavepoint did not snapshot \
 		 delta_log and the commit replayed the post-savepoint write."

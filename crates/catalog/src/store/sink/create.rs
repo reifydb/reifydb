@@ -79,7 +79,7 @@ impl CatalogStore {
 		sink::set_status(&mut row, FlowStatus::Active.to_u8());
 
 		let key = SinkKey::encoded(sink);
-		txn.set(&key, row.freeze())?;
+		txn.set_encoded(&key, row.freeze())?;
 
 		Ok(())
 	}
@@ -94,7 +94,7 @@ impl CatalogStore {
 		sink_namespace::set_id(&mut row, u64::from(sink));
 		sink_namespace::set_name(&mut row, name);
 		let key = NamespaceSinkKey::encoded(namespace, sink);
-		txn.set(&key, row.freeze())?;
+		txn.set_encoded(&key, row.freeze())?;
 		Ok(())
 	}
 }

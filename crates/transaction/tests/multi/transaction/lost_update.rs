@@ -16,7 +16,7 @@ use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
 const COUNTER: u64 = 1;
 
 fn read_counter(txn: &mut MultiWriteTransaction, key: &EncodedKey) -> u64 {
-	let sv = txn.get(key).unwrap().unwrap();
+	let sv = txn.get_encoded(key).unwrap().unwrap();
 	let row = sv.bytes();
 	from_bytes!(u64, row)
 }
@@ -28,8 +28,8 @@ fn test_self_cancelling_writer_still_takes_a_commit_version() {
 	let engine = test_multi();
 
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&key, as_values!(1u64)).unwrap();
-	txn.remove(&key).unwrap();
+	txn.set_encoded(&key, as_values!(1u64)).unwrap();
+	txn.remove_encoded(&key).unwrap();
 
 	let version = txn.commit(vec![]).unwrap();
 	assert_ne!(
@@ -50,9 +50,9 @@ fn test_self_cancelling_writer_is_still_validated_against_a_concurrent_writer() 
 	let mut winner = engine.begin_command().unwrap();
 	let mut canceller = engine.begin_command().unwrap();
 
-	winner.set(&key, as_values!(1u64)).unwrap();
-	canceller.set(&key, as_values!(2u64)).unwrap();
-	canceller.remove(&key).unwrap();
+	winner.set_encoded(&key, as_values!(1u64)).unwrap();
+	canceller.set_encoded(&key, as_values!(2u64)).unwrap();
+	canceller.remove_encoded(&key).unwrap();
 
 	winner.commit(vec![]).unwrap();
 
@@ -70,7 +70,7 @@ fn test_lost_update_rejected_when_commits_are_serialized() {
 	let engine = test_multi();
 
 	let mut seed = engine.begin_command().unwrap();
-	seed.set(&key, as_values!(0u64)).unwrap();
+	seed.set_encoded(&key, as_values!(0u64)).unwrap();
 	seed.commit(vec![]).unwrap();
 
 	let mut txn1 = engine.begin_command().unwrap();
@@ -81,8 +81,8 @@ fn test_lost_update_rejected_when_commits_are_serialized() {
 	assert_eq!(read1, 0);
 	assert_eq!(read2, 0);
 
-	txn1.set(&key, as_values!(read1 + 1)).unwrap();
-	txn2.set(&key, as_values!(read2 + 1)).unwrap();
+	txn1.set_encoded(&key, as_values!(read1 + 1)).unwrap();
+	txn2.set_encoded(&key, as_values!(read2 + 1)).unwrap();
 
 	txn1.commit(vec![]).unwrap();
 
@@ -115,7 +115,7 @@ fn test_lost_update_rejected_when_commits_race() {
 		let engine = Arc::new(test_multi());
 
 		let mut seed = engine.begin_command().unwrap();
-		seed.set(&key, as_values!(0u64)).unwrap();
+		seed.set_encoded(&key, as_values!(0u64)).unwrap();
 		seed.commit(vec![]).unwrap();
 
 		let barrier = Arc::new(Barrier::new(THREADS));
@@ -134,7 +134,7 @@ fn test_lost_update_rejected_when_commits_race() {
 
 					barrier.wait();
 
-					txn.set(&key, as_values!(current + 1)).unwrap();
+					txn.set_encoded(&key, as_values!(current + 1)).unwrap();
 					if txn.commit(vec![]).is_ok() {
 						committed.fetch_add(1, Ordering::SeqCst);
 					}

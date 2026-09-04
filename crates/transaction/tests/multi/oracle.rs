@@ -28,7 +28,7 @@ fn test_oracle_initial_version_and_first_commit() {
 	let v0 = engine.version().unwrap();
 
 	let mut tx = engine.begin_command().unwrap();
-	tx.set(&make_key("k"), make_bytes("v")).unwrap();
+	tx.set_encoded(&make_key("k"), make_bytes("v")).unwrap();
 	let committed = tx.commit(vec![]).unwrap();
 
 	assert!(committed.0 > v0.0);
@@ -42,9 +42,9 @@ fn test_conflict_detection_between_transactions() {
 	let mut t1 = engine.begin_command().unwrap();
 	let mut t2 = engine.begin_command().unwrap();
 
-	t1.set(&key, make_bytes("v1")).unwrap();
-	t2.get(&key).unwrap();
-	t2.set(&key, make_bytes("v2")).unwrap();
+	t1.set_encoded(&key, make_bytes("v1")).unwrap();
+	t2.get_encoded(&key).unwrap();
+	t2.set_encoded(&key, make_bytes("v2")).unwrap();
 
 	t1.commit(vec![]).unwrap();
 
@@ -59,8 +59,8 @@ fn test_no_conflict_different_keys() {
 	let mut t1 = engine.begin_command().unwrap();
 	let mut t2 = engine.begin_command().unwrap();
 
-	t1.set(&make_key("k1"), make_bytes("v1")).unwrap();
-	t2.set(&make_key("k2"), make_bytes("v2")).unwrap();
+	t1.set_encoded(&make_key("k1"), make_bytes("v1")).unwrap();
+	t2.set_encoded(&make_key("k2"), make_bytes("v2")).unwrap();
 
 	t1.commit(vec![]).unwrap();
 	t2.commit(vec![]).unwrap();
@@ -72,12 +72,12 @@ fn test_version_filtering_in_conflict_detection() {
 	let key = make_key("shared");
 
 	let mut t1 = engine.begin_command().unwrap();
-	t1.set(&key, make_bytes("v1")).unwrap();
+	t1.set_encoded(&key, make_bytes("v1")).unwrap();
 	t1.commit(vec![]).unwrap();
 
 	let mut t2 = engine.begin_command().unwrap();
-	t2.get(&key).unwrap();
-	t2.set(&key, make_bytes("v2")).unwrap();
+	t2.get_encoded(&key).unwrap();
+	t2.set_encoded(&key, make_bytes("v2")).unwrap();
 	t2.commit(vec![]).unwrap();
 }
 
@@ -87,13 +87,13 @@ fn test_sequential_transactions_no_conflict() {
 	let key = make_key("shared");
 
 	let mut t1 = engine.begin_command().unwrap();
-	t1.get(&key).unwrap();
-	t1.set(&key, make_bytes("v1")).unwrap();
+	t1.get_encoded(&key).unwrap();
+	t1.set_encoded(&key, make_bytes("v1")).unwrap();
 	t1.commit(vec![]).unwrap();
 
 	let mut t2 = engine.begin_command().unwrap();
-	t2.get(&key).unwrap();
-	t2.set(&key, make_bytes("v2")).unwrap();
+	t2.get_encoded(&key).unwrap();
+	t2.set_encoded(&key, make_bytes("v2")).unwrap();
 	t2.commit(vec![]).unwrap();
 }
 
@@ -108,14 +108,14 @@ fn test_multi_key_chain_detects_dependency_conflict() {
 	let mut t2 = engine.begin_command().unwrap();
 	let mut t3 = engine.begin_command().unwrap();
 
-	t1.get(&key_a).unwrap();
-	t1.set(&key_b, make_bytes("vb")).unwrap();
+	t1.get_encoded(&key_a).unwrap();
+	t1.set_encoded(&key_b, make_bytes("vb")).unwrap();
 
-	t2.get(&key_b).unwrap();
-	t2.set(&key_c, make_bytes("vc")).unwrap();
+	t2.get_encoded(&key_b).unwrap();
+	t2.set_encoded(&key_c, make_bytes("vc")).unwrap();
 
-	t3.get(&key_c).unwrap();
-	t3.set(&key_a, make_bytes("va")).unwrap();
+	t3.get_encoded(&key_c).unwrap();
+	t3.set_encoded(&key_a, make_bytes("va")).unwrap();
 
 	t1.commit(vec![]).unwrap();
 

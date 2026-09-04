@@ -25,7 +25,7 @@ use super::test_multi;
 use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
 
 fn read_u64(txn: &mut MultiWriteTransaction, key: &EncodedKey) -> Option<u64> {
-	txn.get(key).unwrap().map(|sv| {
+	txn.get_encoded(key).unwrap().map(|sv| {
 		let row = sv.bytes();
 		from_bytes!(u64, row)
 	})
@@ -57,7 +57,7 @@ fn test_conflict_point_get_admits_exactly_one_writer() {
 					barrier.wait();
 
 					if absent {
-						txn.set(&key, as_values!(1u64)).unwrap();
+						txn.set_encoded(&key, as_values!(1u64)).unwrap();
 						if txn.commit(vec![]).is_ok() {
 							committed.fetch_add(1, Ordering::SeqCst);
 						}
@@ -109,7 +109,7 @@ fn test_conflict_range_scan_admits_exactly_one_writer() {
 					barrier.wait();
 
 					if !found {
-						txn.set(&key, as_values!(1u64)).unwrap();
+						txn.set_encoded(&key, as_values!(1u64)).unwrap();
 						if txn.commit(vec![]).is_ok() {
 							committed.fetch_add(1, Ordering::SeqCst);
 						}
@@ -144,7 +144,7 @@ fn test_read_after_write_is_visible_to_a_later_transaction() {
 				let key: EncodedKey = as_key!(i);
 
 				let mut writer = engine.begin_command().unwrap();
-				writer.set(&key, as_values!(i)).unwrap();
+				writer.set_encoded(&key, as_values!(i)).unwrap();
 				writer.commit(vec![]).unwrap();
 
 				let mut reader = engine.begin_command().unwrap();
@@ -175,7 +175,7 @@ fn test_concurrent_writers_never_expose_a_partial_commit() {
 
 	let mut seed = engine.begin_command().unwrap();
 	for i in 0..ACCOUNTS {
-		seed.set(&as_key!(i), as_values!(OPENING)).unwrap();
+		seed.set_encoded(&as_key!(i), as_values!(OPENING)).unwrap();
 	}
 	seed.commit(vec![]).unwrap();
 
@@ -216,10 +216,10 @@ fn test_concurrent_writers_never_expose_a_partial_commit() {
 				loop {
 					let mut txn = engine.begin_command().unwrap();
 					for i in 0..ACCOUNTS / 2 {
-						txn.set(&as_key!(i), as_values!(OPENING - delta)).unwrap();
+						txn.set_encoded(&as_key!(i), as_values!(OPENING - delta)).unwrap();
 					}
 					for i in ACCOUNTS / 2..ACCOUNTS {
-						txn.set(&as_key!(i), as_values!(OPENING + delta)).unwrap();
+						txn.set_encoded(&as_key!(i), as_values!(OPENING + delta)).unwrap();
 					}
 					if txn.commit(vec![]).is_ok() {
 						return;

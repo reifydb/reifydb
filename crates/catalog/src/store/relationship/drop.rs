@@ -8,7 +8,7 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_relationship(txn: &mut AdminTransaction, id: RelationshipId) -> Result<()> {
-		txn.remove(&RelationshipKey::encoded(id))?;
+		txn.remove(&RelationshipKey::new(id))?;
 		Ok(())
 	}
 }

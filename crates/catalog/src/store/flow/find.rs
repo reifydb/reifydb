@@ -18,7 +18,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_flow(rx: &mut Transaction<'_>, id: FlowId) -> Result<Option<Flow>> {
-		let Some(multi) = rx.get(&FlowKey::encoded(id))? else {
+		let Some(multi) = rx.get(&FlowKey::new(id))? else {
 			return Ok(None);
 		};
 

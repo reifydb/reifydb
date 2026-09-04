@@ -21,7 +21,7 @@ impl CatalogStore {
 			policy::set_target_object(&mut row, def.target_object.as_deref().unwrap_or(""));
 			policy::set_enabled(&mut row, enabled);
 
-			txn.set(&PolicyKey::encoded(policy_id), row.freeze())?;
+			txn.set(&PolicyKey::new(policy_id), row.freeze())?;
 		}
 
 		Ok(())

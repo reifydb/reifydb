@@ -111,7 +111,7 @@ impl EpochLogTask {
 		let drained = expired.len();
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		for key in expired {
-			txn.remove(&key)?;
+			txn.remove_encoded(&key)?;
 		}
 		txn.commit_unchecked()?;
 

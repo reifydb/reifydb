@@ -421,7 +421,7 @@ fn write_primary_key_index(
 	let index_key = primary_key::encode_primary_key(pk_def, row, table, shape)?;
 	let index_entry_key = IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key);
 
-	if txn.contains_key(&index_entry_key.encode())? {
+	if txn.contains_encoded(&index_entry_key.encode())? {
 		let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
 		return Err(CoreError::PrimaryKeyViolation {
 			fragment: Fragment::None,
@@ -431,7 +431,10 @@ fn write_primary_key_index(
 		.into());
 	}
 
-	txn.set(&index_entry_key.encode(), EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes())?;
+	txn.set_encoded(
+		&index_entry_key.encode(),
+		EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes(),
+	)?;
 	Ok(())
 }
 
@@ -614,7 +617,7 @@ fn evict_oldest_for_partition(
 	let mut evict_pos = metadata.head;
 	loop {
 		let key = RowKey::encoded(ringbuffer.id, RowNumber(evict_pos));
-		if txn.get(&key)?.is_some() {
+		if txn.get_encoded(&key)?.is_some() {
 			txn.remove_from_ringbuffer(ringbuffer, None, RowNumber(evict_pos))?;
 			break;
 		}
@@ -626,7 +629,7 @@ fn evict_oldest_for_partition(
 	metadata.head = evict_pos + 1;
 	while metadata.head < metadata.tail {
 		let key = RowKey::encoded(ringbuffer.id, RowNumber(metadata.head));
-		if txn.get(&key)?.is_some() {
+		if txn.get_encoded(&key)?.is_some() {
 			break;
 		}
 		metadata.head += 1;
@@ -815,7 +818,7 @@ fn insert_series_rows<V: ValidationMode>(
 		SeriesRowInterceptor::pre_insert(txn, series, &mut rows_buf)?;
 		let [row] = rows_buf;
 		let row = row.freeze_bytes();
-		txn.set(&encoded_key, row.clone())?;
+		txn.set_encoded(&encoded_key, row.clone())?;
 		let rows = [row.clone()];
 		SeriesRowInterceptor::post_insert(txn, series, &rows)?;
 

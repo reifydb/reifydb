@@ -1272,10 +1272,14 @@ impl Key for ViewKey {
 }
 
 impl ViewKey {
-	pub fn encoded(view: impl Into<ViewId>) -> EncodedKey {
-		Key::encode(&Self {
+	pub fn new(view: impl Into<ViewId>) -> Self {
+		Self {
 			view: view.into(),
-		})
+		}
+	}
+
+	pub fn encoded(view: impl Into<ViewId>) -> EncodedKey {
+		Key::encode(&Self::new(view))
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -1321,10 +1325,14 @@ pub struct TableKey {
 }
 
 impl TableKey {
-	pub fn encoded(table: impl Into<TableId>) -> EncodedKey {
-		Key::encode(&Self {
+	pub fn new(table: impl Into<TableId>) -> Self {
+		Self {
 			table: table.into(),
-		})
+		}
+	}
+
+	pub fn encoded(table: impl Into<TableId>) -> EncodedKey {
+		Key::encode(&Self::new(table))
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -1409,10 +1417,14 @@ impl Key for SourceKey {
 }
 
 impl SourceKey {
-	pub fn encoded(source: impl Into<SourceId>) -> EncodedKey {
-		Key::encode(&Self {
+	pub fn new(source: impl Into<SourceId>) -> Self {
+		Self {
 			source: source.into(),
-		})
+		}
+	}
+
+	pub fn encoded(source: impl Into<SourceId>) -> EncodedKey {
+		Key::encode(&Self::new(source))
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -1480,10 +1492,14 @@ impl Key for SinkKey {
 }
 
 impl SinkKey {
-	pub fn encoded(sink: impl Into<SinkId>) -> EncodedKey {
-		Key::encode(&Self {
+	pub fn new(sink: impl Into<SinkId>) -> Self {
+		Self {
 			sink: sink.into(),
-		})
+		}
+	}
+
+	pub fn encoded(sink: impl Into<SinkId>) -> EncodedKey {
+		Key::encode(&Self::new(sink))
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -1527,10 +1543,14 @@ pub struct RelationshipKey {
 }
 
 impl RelationshipKey {
-	pub fn encoded(relationship: impl Into<RelationshipId>) -> EncodedKey {
-		Key::encode(&Self {
+	pub fn new(relationship: impl Into<RelationshipId>) -> Self {
+		Self {
 			relationship: relationship.into(),
-		})
+		}
+	}
+
+	pub fn encoded(relationship: impl Into<RelationshipId>) -> EncodedKey {
+		Key::encode(&Self::new(relationship))
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -1574,11 +1594,15 @@ pub struct ColumnPropertyKey {
 }
 
 impl ColumnPropertyKey {
-	pub fn encoded(column: impl Into<ColumnId>, property: impl Into<ColumnPropertyId>) -> EncodedKey {
-		Key::encode(&Self {
+	pub fn new(column: impl Into<ColumnId>, property: impl Into<ColumnPropertyId>) -> Self {
+		Self {
 			column: column.into(),
 			property: property.into(),
-		})
+		}
+	}
+
+	pub fn encoded(column: impl Into<ColumnId>, property: impl Into<ColumnPropertyId>) -> EncodedKey {
+		Key::encode(&Self::new(column, property))
 	}
 
 	pub fn full_scan(column: ColumnId) -> EncodedKeyRange {
@@ -1976,10 +2000,14 @@ impl Key for BindingKey {
 }
 
 impl BindingKey {
-	pub fn encoded(binding: impl Into<BindingId>) -> EncodedKey {
-		Key::encode(&Self {
+	pub fn new(binding: impl Into<BindingId>) -> Self {
+		Self {
 			binding: binding.into(),
-		})
+		}
+	}
+
+	pub fn encoded(binding: impl Into<BindingId>) -> EncodedKey {
+		Key::encode(&Self::new(binding))
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -2022,10 +2050,14 @@ pub struct PrimaryKeyKey {
 }
 
 impl PrimaryKeyKey {
-	pub fn encoded(primary_key: impl Into<PrimaryKeyId>) -> EncodedKey {
-		Key::encode(&Self {
+	pub fn new(primary_key: impl Into<PrimaryKeyId>) -> Self {
+		Self {
 			primary_key: primary_key.into(),
-		})
+		}
+	}
+
+	pub fn encoded(primary_key: impl Into<PrimaryKeyId>) -> EncodedKey {
+		Key::encode(&Self::new(primary_key))
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {

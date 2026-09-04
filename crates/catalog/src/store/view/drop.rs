@@ -15,7 +15,7 @@ use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
 impl CatalogStore {
 	pub(crate) fn drop_view(txn: &mut AdminTransaction, view: ViewId) -> Result<()> {
 		let pk_id = if let Some(view_def) = Self::find_view(&mut Transaction::Admin(&mut *txn), view)? {
-			txn.remove(&NamespaceViewKey::encoded(view_def.namespace(), view))?;
+			txn.remove(&NamespaceViewKey::new(view_def.namespace(), view))?;
 			Self::drop_view_family_metadata(txn, view, view_def.storage_kind())?;
 			view_def.primary_key().map(|pk| pk.id)
 		} else {
@@ -24,9 +24,9 @@ impl CatalogStore {
 
 		drop_object_metadata(txn, view.into(), pk_id)?;
 
-		txn.remove(&RowSettingsKey::encoded(StorageId::View(view)))?;
+		txn.remove(&RowSettingsKey::new(StorageId::View(view)))?;
 
-		txn.remove(&ViewKey::encoded(view))?;
+		txn.remove(&ViewKey::new(view))?;
 
 		Ok(())
 	}
@@ -43,7 +43,7 @@ impl CatalogStore {
 				}
 				drop(stream);
 				for key in keys {
-					txn.remove(&key)?;
+					txn.remove_encoded(&key)?;
 				}
 				Ok(())
 			}

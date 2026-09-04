@@ -160,7 +160,7 @@ fn store_procedure_row(
 	};
 	procedure::set_return_type(&mut row, &return_type_json);
 
-	txn.set(&ProcedureKey::encoded(id), row.freeze())?;
+	txn.set(&ProcedureKey::new(id), row.freeze())?;
 	Ok(())
 }
 
@@ -173,7 +173,7 @@ fn link_procedure_to_namespace(
 	let mut row = namespace_procedure::allocate();
 	namespace_procedure::set_id(&mut row, u64::from(procedure));
 	namespace_procedure::set_name(&mut row, name);
-	txn.set(&NamespaceProcedureKey::encoded(namespace, procedure), row.freeze())?;
+	txn.set(&NamespaceProcedureKey::new(namespace, procedure), row.freeze())?;
 	Ok(())
 }
 
@@ -185,7 +185,7 @@ fn insert_params(txn: &mut AdminTransaction, procedure: ProcedureId, params: &[P
 		procedure_param::set_name(&mut row, &param.name);
 		let json = to_string(&param.param_type).expect("TypeConstraint serializes");
 		procedure_param::set_type_constraint(&mut row, &json);
-		txn.set(&ProcedureParamKey::encoded(procedure, index as u16), row.freeze())?;
+		txn.set(&ProcedureParamKey::new(procedure, index as u16), row.freeze())?;
 	}
 	Ok(())
 }

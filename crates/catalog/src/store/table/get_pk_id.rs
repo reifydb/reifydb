@@ -12,7 +12,7 @@ use crate::{CatalogStore, Result, store::table::shape::table};
 
 impl CatalogStore {
 	pub(crate) fn get_table_pk_id(rx: &mut Transaction<'_>, table_id: TableId) -> Result<Option<PrimaryKeyId>> {
-		let multi = match rx.get(&TableKey::encoded(table_id))? {
+		let multi = match rx.get(&TableKey::new(table_id))? {
 			Some(v) => v,
 			None => return Ok(None),
 		};

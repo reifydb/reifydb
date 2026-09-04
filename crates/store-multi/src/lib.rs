@@ -33,7 +33,7 @@ use reifydb_core::{
 			MultiVersionRow, MultiVersionStore,
 		},
 	},
-	key::row::StorageRowKey,
+	key::row::{StoragePartitionedRowKey, StorageRowKey},
 	metrics::collect::MetricsCollector,
 };
 use reifydb_filter::adaptive::FilterMetrics;
@@ -225,6 +225,8 @@ impl MultiVersionGetPrevious for MultiStore {
 pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>;
 pub type MultiVersionRowRangeIterator<'a> =
 	Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + 'a>;
+pub type MultiVersionPartitionedRowRangeIterator<'a> =
+	Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + 'a>;
 
 impl MultiStore {
 	pub fn range(
@@ -247,7 +249,24 @@ impl MultiStore {
 		batch_size: usize,
 	) -> MultiVersionRowRangeIterator<'_> {
 		match self {
-			MultiStore::Standard(store) => Box::new(store.range_row(storage, start, end, scope, batch_size)),
+			MultiStore::Standard(store) => {
+				Box::new(store.range_row(storage, start, end, scope, batch_size))
+			}
+		}
+	}
+
+	pub fn range_partitioned_row(
+		&self,
+		storage: StorageId,
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+		scope: MultiVersionScope,
+		batch_size: usize,
+	) -> MultiVersionPartitionedRowRangeIterator<'_> {
+		match self {
+			MultiStore::Standard(store) => {
+				Box::new(store.range_partitioned_row(storage, start, end, scope, batch_size))
+			}
 		}
 	}
 

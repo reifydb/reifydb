@@ -19,12 +19,15 @@ use reifydb_core::{
 	interface::{
 		catalog::storage::StorageId,
 		store::{
-			EntryKind, EntryLayout, MultiVersionBatch, MultiVersionCommit, MultiVersionContains,
-			MultiVersionGet, MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore, StorageKey,
-			classify_key, classify_range, storage_key,
+			EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
+			MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore, StorageKey, classify_key,
+			classify_range, storage_key,
 		},
 	},
-	key::row::{RowKey, StorageRowKey},
+	key::{
+		row::{StoragePartitionedRowKey, StorageRowKey},
+		series::{StoragePartitionedSeriesKey, StorageSeriesKey},
+	},
 };
 use reifydb_store::coverage::cursor::Cursor;
 use reifydb_store_commit::{
@@ -41,8 +44,8 @@ use crate::{
 	Result,
 	tier::{
 		TierStorage,
-		persistent::MultiPersistentTier,
-		range::{ServedChunk, narrow, resume_after, widen},
+		persistent::{MultiPersistentTier, NarrowRangeRequest, PersistentRangeLayout},
+		range::{NarrowLayout, ServedChunk, resume_after},
 	},
 };
 
@@ -1025,7 +1028,7 @@ impl StandardMultiStore {
 		}
 		let range_start = EncodedKey::new(scan.start);
 		let lo = match resumed_at {
-			Some(last) => match resume_after(scan.table, last) {
+			Some(last) => match resume_after::<StorageRowKey>(scan.table, last) {
 				Some(next) => next.max(range_start),
 				None => return Ok(()),
 			},
@@ -1306,19 +1309,27 @@ impl Iterator for MultiVersionRangeIter {
 	}
 }
 
-pub struct MultiVersionRowRangeIter {
+pub struct NarrowRangeIter<L: PersistentRangeLayout> {
 	store: StandardMultiStore,
-	cursor: RowRangeCursor,
+	cursor: NarrowRangeCursor<L>,
 	storage: StorageId,
-	start: Bound<StorageRowKey>,
-	end: Bound<StorageRowKey>,
+	start: Bound<L>,
+	end: Bound<L>,
 	scope: MultiVersionScope,
 	batch_size: usize,
-	current_batch: vec::IntoIter<MultiVersionRow<StorageRowKey>>,
+	current_batch: vec::IntoIter<MultiVersionRow<L>>,
 }
 
-impl Iterator for MultiVersionRowRangeIter {
-	type Item = Result<MultiVersionRow<StorageRowKey>>;
+pub type MultiVersionRowRangeIter = NarrowRangeIter<StorageRowKey>;
+
+pub type MultiVersionPartitionedRowRangeIter = NarrowRangeIter<StoragePartitionedRowKey>;
+
+pub type MultiVersionSeriesRangeIter = NarrowRangeIter<StorageSeriesKey>;
+
+pub type MultiVersionPartitionedSeriesRangeIter = NarrowRangeIter<StoragePartitionedSeriesKey>;
+
+impl<L: PersistentRangeLayout> Iterator for NarrowRangeIter<L> {
+	type Item = Result<MultiVersionRow<L>>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if let Some(item) = self.current_batch.next() {
@@ -1329,11 +1340,11 @@ impl Iterator for MultiVersionRowRangeIter {
 			return None;
 		}
 
-		match self.store.range_next_row(
+		match self.store.range_next_narrow(
 			&mut self.cursor,
 			self.storage,
-			self.start.clone(),
-			self.end.clone(),
+			self.start,
+			self.end,
 			self.scope,
 			self.batch_size as u64,
 		) {
@@ -1361,9 +1372,53 @@ impl StandardMultiStore {
 		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> MultiVersionRowRangeIter {
-		MultiVersionRowRangeIter {
+		self.range_narrow::<StorageRowKey>(storage, start, end, scope, batch_size)
+	}
+
+	pub fn range_partitioned_row(
+		&self,
+		storage: StorageId,
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+		scope: MultiVersionScope,
+		batch_size: usize,
+	) -> MultiVersionPartitionedRowRangeIter {
+		self.range_narrow::<StoragePartitionedRowKey>(storage, start, end, scope, batch_size)
+	}
+
+	pub fn range_series(
+		&self,
+		storage: StorageId,
+		start: Bound<StorageSeriesKey>,
+		end: Bound<StorageSeriesKey>,
+		scope: MultiVersionScope,
+		batch_size: usize,
+	) -> MultiVersionSeriesRangeIter {
+		self.range_narrow::<StorageSeriesKey>(storage, start, end, scope, batch_size)
+	}
+
+	pub fn range_partitioned_series(
+		&self,
+		storage: StorageId,
+		start: Bound<StoragePartitionedSeriesKey>,
+		end: Bound<StoragePartitionedSeriesKey>,
+		scope: MultiVersionScope,
+		batch_size: usize,
+	) -> MultiVersionPartitionedSeriesRangeIter {
+		self.range_narrow::<StoragePartitionedSeriesKey>(storage, start, end, scope, batch_size)
+	}
+
+	pub fn range_narrow<L: PersistentRangeLayout>(
+		&self,
+		storage: StorageId,
+		start: Bound<L>,
+		end: Bound<L>,
+		scope: MultiVersionScope,
+		batch_size: usize,
+	) -> NarrowRangeIter<L> {
+		NarrowRangeIter {
 			store: self.clone(),
-			cursor: RowRangeCursor::default(),
+			cursor: NarrowRangeCursor::default(),
 			storage,
 			start,
 			end,
@@ -1560,7 +1615,14 @@ mod cache_tests {
 		let mut resumed: Vec<u64> = Vec::new();
 		loop {
 			let batch = store
-				.range_next_row(&mut resumed_cursor, STORAGE, Bound::Excluded(resume), Bound::Unbounded, scope, 16)
+				.range_next_row(
+					&mut resumed_cursor,
+					STORAGE,
+					Bound::Excluded(resume),
+					Bound::Unbounded,
+					scope,
+					16,
+				)
 				.unwrap();
 			for item in &batch.items {
 				resumed.push(item.key.row().0);
@@ -2269,12 +2331,23 @@ mod probe_tests {
 	}
 }
 
-#[derive(Default)]
-pub struct RowRangeCursor {
+pub struct NarrowRangeCursor<L: NarrowLayout> {
 	pub commit: RangeCursor,
-	pub persistent: Cursor<RangeStop, StorageRowKey>,
+	pub persistent: Cursor<RangeStop, L>,
 	pub exhausted: bool,
 }
+
+impl<L: NarrowLayout> Default for NarrowRangeCursor<L> {
+	fn default() -> Self {
+		Self {
+			commit: RangeCursor::default(),
+			persistent: Cursor::default(),
+			exhausted: false,
+		}
+	}
+}
+
+pub type RowRangeCursor = NarrowRangeCursor<StorageRowKey>;
 
 impl StandardMultiStore {
 	pub fn range_next_row(
@@ -2286,6 +2359,18 @@ impl StandardMultiStore {
 		scope: MultiVersionScope,
 		batch_size: u64,
 	) -> Result<MultiVersionBatch<StorageRowKey>> {
+		self.range_next_narrow::<StorageRowKey>(cursor, storage, start, end, scope, batch_size)
+	}
+
+	pub fn range_next_narrow<L: PersistentRangeLayout>(
+		&self,
+		cursor: &mut NarrowRangeCursor<L>,
+		storage: StorageId,
+		start: Bound<L>,
+		end: Bound<L>,
+		scope: MultiVersionScope,
+		batch_size: u64,
+	) -> Result<MultiVersionBatch<L>> {
 		if cursor.exhausted {
 			return Ok(MultiVersionBatch {
 				items: Vec::new(),
@@ -2297,16 +2382,16 @@ impl StandardMultiStore {
 			cursor.persistent.finish();
 		}
 
-		let table = EntryKind::Source(storage, EntryLayout::Row);
+		let table = L::kind(storage);
 		let batch_size = batch_size as usize;
 
 		let enc_start = match &start {
-			Bound::Included(k) | Bound::Excluded(k) => widen(storage, k).as_ref().to_vec(),
-			Bound::Unbounded => RowKey::storage_start(storage).as_ref().to_vec(),
+			Bound::Included(k) | Bound::Excluded(k) => L::widen(storage, k).as_ref().to_vec(),
+			Bound::Unbounded => L::storage_start(storage).as_ref().to_vec(),
 		};
 		let enc_end = match &end {
-			Bound::Included(k) | Bound::Excluded(k) => widen(storage, k).as_ref().to_vec(),
-			Bound::Unbounded => RowKey::storage_end(storage).as_ref().to_vec(),
+			Bound::Included(k) | Bound::Excluded(k) => L::widen(storage, k).as_ref().to_vec(),
+			Bound::Unbounded => L::storage_end(storage).as_ref().to_vec(),
 		};
 		let commit_start = match &start {
 			Bound::Excluded(_) => Bound::Excluded(enc_start.as_slice()),
@@ -2317,7 +2402,7 @@ impl StandardMultiStore {
 			_ => Bound::Included(enc_end.as_slice()),
 		};
 
-		let mut collected: BTreeMap<StorageRowKey, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
+		let mut collected: BTreeMap<L, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
 		while collected.len() < batch_size {
 			if !cursor.commit.is_exhausted() {
@@ -2330,27 +2415,30 @@ impl StandardMultiStore {
 					TIER_SCAN_CHUNK_SIZE,
 				)?;
 				for entry in batch.entries {
-					let Some(key) = narrow(table, &entry.key) else {
+					let Some(key) = L::narrow(table, &entry.key) else {
 						continue;
 					};
 					merge_row(&mut collected, key, entry.version, entry.value);
 				}
 			}
 
-			if let Some(persistent) = &self.persistent {
-				if !cursor.persistent.is_exhausted() {
-					let batch = persistent.range_next_row(
+			if let Some(persistent) = &self.persistent
+				&& !cursor.persistent.is_exhausted()
+			{
+				let batch = L::range_next(
+					persistent,
+					&mut cursor.persistent,
+					NarrowRangeRequest {
 						table,
-						&mut cursor.persistent,
-						bound_ref(&start),
-						bound_ref(&end),
+						start: bound_ref(&start),
+						end: bound_ref(&end),
 						scope,
-						TIER_SCAN_CHUNK_SIZE,
-						false,
-					)?;
-					for entry in batch.entries {
-						merge_row(&mut collected, entry.key, entry.version, entry.value);
-					}
+						batch_size: TIER_SCAN_CHUNK_SIZE,
+						descending: false,
+					},
+				)?;
+				for entry in batch.entries {
+					merge_row(&mut collected, entry.key, entry.version, entry.value);
 				}
 			}
 
@@ -2360,19 +2448,19 @@ impl StandardMultiStore {
 			}
 		}
 
-		if let Some(h) = forward_horizon_row(table, cursor) {
+		if let Some(h) = forward_horizon_narrow(table, cursor) {
 			collected.retain(|k, _| *k <= h);
 			if let Some(last) = cursor.commit.last_key()
-				&& narrow(table, last).is_some_and(|n| n > h)
+				&& L::narrow(table, last).is_some_and(|n| n > h)
 			{
-				cursor.commit.resume(widen(storage, &h));
+				cursor.commit.resume(L::widen(storage, &h));
 			}
 			if cursor.persistent.last_key().is_some_and(|last| *last > h) {
 				cursor.persistent.resume(h);
 			}
 		}
 
-		let items: Vec<MultiVersionRow<StorageRowKey>> = collected
+		let items: Vec<MultiVersionRow<L>> = collected
 			.into_iter()
 			.filter_map(|(key, (v, value))| {
 				value.map(|val| MultiVersionRow {
@@ -2390,13 +2478,13 @@ impl StandardMultiStore {
 	}
 }
 
-fn forward_horizon_row(table: EntryKind, cursor: &RowRangeCursor) -> Option<StorageRowKey> {
-	let mut horizon: Option<StorageRowKey> = None;
+fn forward_horizon_narrow<L: NarrowLayout>(table: EntryKind, cursor: &NarrowRangeCursor<L>) -> Option<L> {
+	let mut horizon: Option<L> = None;
 	if !cursor.commit.is_exhausted() {
-		horizon = Some(narrow(table, cursor.commit.last_key()?)?);
+		horizon = Some(L::narrow(table, cursor.commit.last_key()?)?);
 	}
 	if !cursor.persistent.is_exhausted() {
-		let last = cursor.persistent.last_key()?.clone();
+		let last = *cursor.persistent.last_key()?;
 		horizon = Some(match horizon {
 			None => last,
 			Some(prev) => {
@@ -2411,7 +2499,7 @@ fn forward_horizon_row(table: EntryKind, cursor: &RowRangeCursor) -> Option<Stor
 	horizon
 }
 
-fn bound_ref(bound: &Bound<StorageRowKey>) -> Bound<&StorageRowKey> {
+fn bound_ref<K>(bound: &Bound<K>) -> Bound<&K> {
 	match bound {
 		Bound::Included(k) => Bound::Included(k),
 		Bound::Excluded(k) => Bound::Excluded(k),
@@ -2419,9 +2507,9 @@ fn bound_ref(bound: &Bound<StorageRowKey>) -> Bound<&StorageRowKey> {
 	}
 }
 
-fn merge_row(
-	collected: &mut BTreeMap<StorageRowKey, (CommitVersion, Option<CowVec<u8>>)>,
-	key: StorageRowKey,
+fn merge_row<K: Ord>(
+	collected: &mut BTreeMap<K, (CommitVersion, Option<CowVec<u8>>)>,
+	key: K,
 	version: CommitVersion,
 	value: Option<CowVec<u8>>,
 ) {

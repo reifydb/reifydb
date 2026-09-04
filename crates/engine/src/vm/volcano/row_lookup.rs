@@ -112,7 +112,7 @@ impl QueryNode for RowPointLookupNode {
 		let object_id = get_object_id(&self.source)?;
 		let encoded_key = RowKey::encoded(object_id, RowNumber(self.row_number));
 
-		if let Some(multi_values) = rx.get(&encoded_key)? {
+		if let Some(multi_values) = rx.get_encoded(&encoded_key)? {
 			let mut columns = columns_from_object(&self.source);
 			self.append_batch(rx, &mut columns, multi_values.bytes)?;
 
@@ -182,7 +182,7 @@ impl RowListLookupNode {
 		for &row_num in &self.row_numbers[start..end] {
 			let encoded_key = RowKey::encoded(object_id, RowNumber(row_num));
 
-			if let Some(multi_values) = rx.get(&encoded_key)? {
+			if let Some(multi_values) = rx.get_encoded(&encoded_key)? {
 				batch.push(multi_values.bytes);
 				found_row_numbers.push(RowNumber(row_num));
 			}
@@ -306,7 +306,7 @@ impl RowRangeScanNode {
 		for row_num in start..=end {
 			let encoded_key = RowKey::encoded(object_id, RowNumber(row_num));
 
-			if let Some(multi_values) = rx.get(&encoded_key)? {
+			if let Some(multi_values) = rx.get_encoded(&encoded_key)? {
 				batch.push(multi_values.bytes);
 				found_row_numbers.push(RowNumber(row_num));
 			}

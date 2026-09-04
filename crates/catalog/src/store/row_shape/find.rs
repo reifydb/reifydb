@@ -37,7 +37,7 @@ pub(crate) fn find_row_shape_by_fingerprint(
 	fingerprint: RowShapeFingerprint,
 ) -> Result<Option<RowShape>> {
 	let header_key = RowShapeKey::encoded(fingerprint);
-	let header_entry = match txn.get(&header_key)? {
+	let header_entry = match txn.get_encoded(&header_key)? {
 		Some(entry) => entry,
 		None => {
 			Span::current().record("found", false);
@@ -52,7 +52,7 @@ pub(crate) fn find_row_shape_by_fingerprint(
 	let mut fields = Vec::with_capacity(field_count);
 	for i in 0..field_count {
 		let field_key = RowShapeFieldKey::encoded(fingerprint, i as u16);
-		let field_entry = txn.get(&field_key)?.ok_or_else(|| {
+		let field_entry = txn.get_encoded(&field_key)?.ok_or_else(|| {
 			Error(Box::new(internal(format!(
 				"RowShape field {} missing for fingerprint {:?}",
 				i, fingerprint
@@ -122,7 +122,7 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 
 		for i in 0..field_count {
 			let field_key = RowShapeFieldKey::encoded(fingerprint, i as u16);
-			let field_entry = rx.get(&field_key)?.ok_or_else(|| {
+			let field_entry = rx.get_encoded(&field_key)?.ok_or_else(|| {
 				Error(Box::new(internal(format!(
 					"RowShape field {} missing for fingerprint {:?}",
 					i, fingerprint

@@ -276,7 +276,7 @@ fn collect_partition_row_numbers(
 		let mut out = Vec::new();
 		for row_num_value in metadata.head..metadata.tail {
 			let row_num = RowNumber(row_num_value);
-			if txn.get(&RowKey::encoded(ringbuffer.id, row_num))?.is_some() {
+			if txn.get_encoded(&RowKey::encoded(ringbuffer.id, row_num))?.is_some() {
 				out.push(row_num);
 			}
 		}

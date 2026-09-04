@@ -179,7 +179,8 @@ fn test_checkpoint_persistence() {
 	}
 	.encode();
 
-	let checkpoint = txn.get(&consumer_key).expect("Failed to get checkpoint").expect("Checkpoint should exist");
+	let checkpoint =
+		txn.get_encoded(&consumer_key).expect("Failed to get checkpoint").expect("Checkpoint should exist");
 
 	let mut buffer = [0u8; 8];
 	buffer.copy_from_slice(&checkpoint.bytes[0..8]);
@@ -393,11 +394,15 @@ fn test_multiple_consumers() {
 	}
 	.encode();
 
-	let checkpoint1 =
-		txn.get(&consumer1_key).expect("Failed to get checkpoint 1").expect("Checkpoint 1 should exist");
+	let checkpoint1 = txn
+		.get_encoded(&consumer1_key)
+		.expect("Failed to get checkpoint 1")
+		.expect("Checkpoint 1 should exist");
 
-	let checkpoint2 =
-		txn.get(&consumer2_key).expect("Failed to get checkpoint 2").expect("Checkpoint 2 should exist");
+	let checkpoint2 = txn
+		.get_encoded(&consumer2_key)
+		.expect("Failed to get checkpoint 2")
+		.expect("Checkpoint 2 should exist");
 
 	let mut buffer = [0u8; 8];
 	buffer.copy_from_slice(&checkpoint1.bytes[0..8]);
@@ -427,10 +432,11 @@ fn test_non_table_events_filtered() {
 	let mut txn = t.begin_command(IdentityId::system()).expect("Failed to begin transaction");
 
 	let table_key = RowKey::encoded(StorageId::table(1), RowNumber(1));
-	txn.set(&table_key, EncodedBytes(CowVec::new(b"table_value".to_vec()))).expect("Failed to set table encoded");
+	txn.set_encoded(&table_key, EncodedBytes(CowVec::new(b"table_value".to_vec())))
+		.expect("Failed to set table encoded");
 
 	let non_table_key = EncodedKey::new(b"non_table_key");
-	txn.set(&non_table_key, EncodedBytes(CowVec::new(b"non_table_value".to_vec())))
+	txn.set_encoded(&non_table_key, EncodedBytes(CowVec::new(b"non_table_value".to_vec())))
 		.expect("Failed to set non-table encoded");
 
 	txn.commit().expect("Failed to commit transaction");
@@ -944,7 +950,7 @@ fn insert_test_events(engine: &StandardEngine, count: usize) {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		let key = RowKey::encoded(StorageId::table(1), RowNumber((i + 1) as u64));
 		let value = format!("value_{}", i);
-		txn.set(&key, EncodedBytes(CowVec::new(value.into_bytes()))).unwrap();
+		txn.set_encoded(&key, EncodedBytes(CowVec::new(value.into_bytes()))).unwrap();
 		txn.commit().unwrap();
 	}
 }

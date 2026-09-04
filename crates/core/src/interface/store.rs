@@ -15,8 +15,8 @@ use crate::{
 		EncodableKeyRange,
 		kind::KeyKind,
 		row::{
-			PartitionedRowKey, PartitionedRowKeyRange, RowKey, RowKeyRange, StoragePartitionedRowKey,
-			StorageRowKey,
+			SortedViewRowKey, PartitionedSortedViewRowKey, PartitionedRowKey, PartitionedRowKeyRange, RowKey,
+			RowKeyRange, StoragePartitionedRowKey, StorageRowKey,
 		},
 		series::{
 			PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
@@ -36,6 +36,7 @@ pub enum Tier {
 pub enum EntryLayout {
 	Row,
 	Series,
+	SortedView,
 }
 
 impl EntryLayout {
@@ -43,6 +44,7 @@ impl EntryLayout {
 		match self {
 			Self::Row => 1,
 			Self::Series => 2,
+			Self::SortedView => 3,
 		}
 	}
 
@@ -50,6 +52,7 @@ impl EntryLayout {
 		match tag {
 			1 => Some(Self::Row),
 			2 => Some(Self::Series),
+			3 => Some(Self::SortedView),
 			_ => None,
 		}
 	}
@@ -85,8 +88,10 @@ impl CacheTiers {
 impl EntryKind {
 	pub fn cache_tiers(&self) -> CacheTiers {
 		match self {
-			Self::Source(_, _) => CacheTiers::Both,
-			Self::Multi | Self::PartitionedSource(_, _) => CacheTiers::Point,
+			Self::Source(_, EntryLayout::Row | EntryLayout::Series) => CacheTiers::Both,
+			Self::Multi
+			| Self::Source(_, EntryLayout::SortedView)
+			| Self::PartitionedSource(_, _) => CacheTiers::Point,
 		}
 	}
 }
@@ -204,6 +209,14 @@ pub fn storage_key(key: &EncodedKey) -> (EntryKind, Option<StorageKey>) {
 			),
 			None => (EntryKind::Multi, None),
 		},
+		Some(KeyKind::SortedViewRow) => match SortedViewRowKey::storage_of(key) {
+			Some(storage) => (EntryKind::Source(storage, EntryLayout::SortedView), None),
+			None => (EntryKind::Multi, None),
+		},
+		Some(KeyKind::PartitionedSortedViewRow) => match PartitionedSortedViewRowKey::storage_of(key) {
+			Some(storage) => (EntryKind::PartitionedSource(storage, EntryLayout::SortedView), None),
+			None => (EntryKind::Multi, None),
+		},
 		_ => (EntryKind::Multi, None),
 	}
 }
@@ -231,6 +244,14 @@ pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 	if let (Some(start), Some(_end)) = PartitionedSeriesRowKeyRange::decode(range) {
 		return partitioned_series_storage_key(start, <StoragePartitionedSeriesKey as TypedKey>::low())
 			.map(|_| EntryKind::PartitionedSource(start, EntryLayout::Series));
+	}
+
+	if let Some(storage) = SortedViewRowKey::range_storage_of(range) {
+		return Some(EntryKind::Source(storage, EntryLayout::SortedView));
+	}
+
+	if let Some(storage) = PartitionedSortedViewRowKey::range_storage_of(range) {
+		return Some(EntryKind::PartitionedSource(storage, EntryLayout::SortedView));
 	}
 
 	None
@@ -396,7 +417,7 @@ mod tests {
 		},
 		key::{
 			row::{
-				ClusteredRowKey, PartitionedClusteredRowKey, PartitionedRowKey, RowKey, RowSequenceKey,
+				SortedViewRowKey, PartitionedSortedViewRowKey, PartitionedRowKey, RowKey, RowSequenceKey,
 				StoragePartitionedRowKey, StorageRowKey,
 			},
 			series::{
@@ -606,58 +627,57 @@ mod tests {
 	}
 
 	#[test]
-	fn storage_key_sends_a_sorted_view_clustered_key_to_multi() {
-		// A sorted view sink writes kind ++ storage ++ sort values ++ row, which carries
-		// KeyKind::Row but is longer than the fixed row layout. It must land in Multi: the source
-		// bucket keys on StorageRowKey alone, so two clustered keys differing only in their sort
-		// prefix would alias onto one identity and a get could return another row's bytes.
+	fn an_over_long_row_kind_key_never_passes_as_a_row() {
+		// A key carrying KeyKind::Row but running past the fixed row layout must land in Multi: the
+		// source bucket keys on StorageRowKey alone, so two such keys differing only in their trailing
+		// bytes would alias onto one identity and a get could return another row's bytes.
 		let storage = StorageId::view(3);
-		let mut clustered = RowKey::encoded(storage, RowNumber(1)).as_slice().to_vec();
-		clustered.extend_from_slice(&[0xAA; 8]);
-		clustered.extend_from_slice(&99u64.to_be_bytes());
+		let mut over_long = RowKey::encoded(storage, RowNumber(1)).as_slice().to_vec();
+		over_long.extend_from_slice(&[0xAA; 8]);
+		over_long.extend_from_slice(&99u64.to_be_bytes());
 
-		assert_eq!(storage_key(&EncodedKey::new(clustered)), (EntryKind::Multi, None));
+		assert_eq!(storage_key(&EncodedKey::new(over_long)), (EntryKind::Multi, None));
 	}
 
 	#[test]
-	fn a_clustered_key_and_a_clustered_scan_range_classify_the_same_way() {
+	fn a_sorted_view_key_and_a_sorted_view_scan_range_classify_the_same_way() {
 		// The sink classifies the key it writes; the scan classifies a range over the same keyspace.
 		// When the two disagree the rows are written to one bucket and read from another, and the
 		// view comes back empty with no error raised anywhere along the way.
 		let storage = StorageId::view(3);
 
-		let mut clustered = ClusteredRowKey::storage_start(storage).as_slice().to_vec();
-		clustered.extend_from_slice(&[0xAA; 8]);
-		clustered.extend_from_slice(&99u64.to_be_bytes());
-		let clustered = EncodedKey::new(clustered);
-		let range = ClusteredRowKey::scan_range(storage, None);
-		assert_eq!(classify_key(&clustered), EntryKind::Multi);
-		assert_eq!(classify_range(&range).unwrap_or(EntryKind::Multi), classify_key(&clustered));
+		let mut sorted_view = SortedViewRowKey::storage_start(storage).as_slice().to_vec();
+		sorted_view.extend_from_slice(&[0xAA; 8]);
+		sorted_view.extend_from_slice(&99u64.to_be_bytes());
+		let sorted_view = EncodedKey::new(sorted_view);
+		let range = SortedViewRowKey::scan_range(storage, None);
+		assert_eq!(classify_key(&sorted_view), EntryKind::Source(storage, EntryLayout::SortedView));
+		assert_eq!(classify_range(&range).unwrap_or(EntryKind::Multi), classify_key(&sorted_view));
 
-		let mut partitioned = PartitionedClusteredRowKey::storage_start(storage).as_slice().to_vec();
+		let mut partitioned = PartitionedSortedViewRowKey::storage_start(storage).as_slice().to_vec();
 		partitioned.extend_from_slice(&[0xBB; 16]);
 		partitioned.extend_from_slice(&[0xAA; 8]);
 		partitioned.extend_from_slice(&99u64.to_be_bytes());
 		let partitioned = EncodedKey::new(partitioned);
-		let partitioned_range = PartitionedClusteredRowKey::scan_range(storage, None);
-		assert_eq!(classify_key(&partitioned), EntryKind::Multi);
+		let partitioned_range = PartitionedSortedViewRowKey::scan_range(storage, None);
 		assert_eq!(
-			classify_range(&partitioned_range).unwrap_or(EntryKind::Multi),
-			classify_key(&partitioned)
+			classify_key(&partitioned),
+			EntryKind::PartitionedSource(storage, EntryLayout::SortedView)
 		);
+		assert_eq!(classify_range(&partitioned_range).unwrap_or(EntryKind::Multi), classify_key(&partitioned));
 	}
 
 	#[test]
-	fn a_clustered_scan_range_never_reaches_the_narrowed_row_bucket() {
+	fn a_sorted_view_scan_range_never_reaches_the_narrowed_row_bucket() {
 		// The narrowed bucket keys on StorageRowKey alone, which cannot carry the sort prefix that
-		// orders these rows, so routing a clustered range there loses the view's order outright.
+		// orders these rows, so routing a sorted view range there loses the view's order outright.
 		let storage = StorageId::view(3);
 		assert_ne!(
-			classify_range(&ClusteredRowKey::scan_range(storage, None)),
+			classify_range(&SortedViewRowKey::scan_range(storage, None)),
 			Some(EntryKind::Source(storage, EntryLayout::Row))
 		);
 		assert_ne!(
-			classify_range(&PartitionedClusteredRowKey::scan_range(storage, None)),
+			classify_range(&PartitionedSortedViewRowKey::scan_range(storage, None)),
 			Some(EntryKind::PartitionedSource(storage, EntryLayout::Row))
 		);
 	}

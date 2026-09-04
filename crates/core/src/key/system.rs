@@ -154,10 +154,14 @@ pub struct VersionEpochKey {
 }
 
 impl VersionEpochKey {
-	pub fn encoded(bucket: EpochSeconds) -> EncodedKey {
-		Key::encode(&Self {
+	pub fn new(bucket: EpochSeconds) -> Self {
+		Self {
 			bucket,
-		})
+		}
+	}
+
+	pub fn encoded(bucket: EpochSeconds) -> EncodedKey {
+		Key::encode(&Self::new(bucket))
 	}
 
 	pub fn floor_scan(target: EpochSeconds) -> EncodedKeyRange {

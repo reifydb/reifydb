@@ -24,7 +24,7 @@ impl CatalogStore {
 		Self::drop_namespace_flows(txn, namespace)?;
 		Self::drop_namespace_dictionaries(txn, namespace)?;
 		Self::drop_namespace_sumtypes(txn, namespace)?;
-		txn.remove(&NamespaceKey::encoded(namespace))?;
+		txn.remove(&NamespaceKey::new(namespace))?;
 		Ok(())
 	}
 

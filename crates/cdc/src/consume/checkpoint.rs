@@ -53,7 +53,7 @@ impl CdcCheckpoint {
 
 	pub fn fetch_row<K: ToConsumerKey>(txn: &mut Transaction<'_>, consumer: &K) -> Result<Option<CheckpointRow>> {
 		let key = consumer.to_consumer_key();
-		Ok(txn.get(&key)?.and_then(|multi| CheckpointRow::decode(&multi.bytes)))
+		Ok(txn.get_encoded(&key)?.and_then(|multi| CheckpointRow::decode(&multi.bytes)))
 	}
 
 	pub fn persist<K: ToConsumerKey>(
@@ -68,12 +68,12 @@ impl CdcCheckpoint {
 			class,
 			state: CheckpointState::Valid,
 		};
-		txn.set(&key, row.encode())
+		txn.set_encoded(&key, row.encode())
 	}
 
 	pub fn invalidate<K: ToConsumerKey>(txn: &mut CommandTransaction, consumer: &K) -> Result<()> {
 		let key = consumer.to_consumer_key();
-		let Some(multi) = txn.get(&key)? else {
+		let Some(multi) = txn.get_encoded(&key)? else {
 			return Ok(());
 		};
 		let Some(mut bytes) = CheckpointRow::decode(&multi.bytes) else {
@@ -85,11 +85,11 @@ impl CdcCheckpoint {
 			"a Pinning consumer checkpoint can never be invalidated: retention must never overtake it"
 		);
 		bytes.state = CheckpointState::Invalidated;
-		txn.set(&key, bytes.encode())
+		txn.set_encoded(&key, bytes.encode())
 	}
 
 	pub fn delete<K: ToConsumerKey>(txn: &mut CommandTransaction, consumer: &K) -> Result<()> {
 		let key = consumer.to_consumer_key();
-		txn.remove(&key)
+		txn.remove_encoded(&key)
 	}
 }

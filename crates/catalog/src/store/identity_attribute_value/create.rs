@@ -28,7 +28,7 @@ impl CatalogStore {
 		identity_attribute_value::set_attribute(&mut row, attribute);
 		identity_attribute_value::set_value(&mut row, &Blob::new(encoded));
 
-		txn.set(&IdentityAttributeValueKey::encoded(identity, attribute), row.freeze())?;
+		txn.set(&IdentityAttributeValueKey::new(identity, attribute), row.freeze())?;
 
 		Ok(IdentityAttributeValue {
 			identity,

@@ -40,9 +40,8 @@ fn is_relevant_cdc_change(change: &CdcChange) -> bool {
 				kind,
 				KeyKind::Row
 					| KeyKind::SeriesRow | KeyKind::PartitionedRow
-					| KeyKind::PartitionedSeriesRow
-					| KeyKind::ClusteredRow
-					| KeyKind::PartitionedClusteredRow | KeyKind::Flow
+					| KeyKind::PartitionedSeriesRow | KeyKind::SortedViewRow
+					| KeyKind::PartitionedSortedViewRow | KeyKind::Flow
 					| KeyKind::Operator | KeyKind::OperatorByFlow
 					| KeyKind::FlowEdge | KeyKind::FlowEdgeByFlow
 					| KeyKind::NamespaceFlow

@@ -14,7 +14,7 @@ fn wide_rows_trip_too_large_via_modify() {
 	let big_value = "x".repeat(2 * 1024 * 1024);
 	let mut result = Ok(());
 	for i in 0..700u64 {
-		result = txn.set(&as_key!(i), as_values!(big_value.clone()));
+		result = txn.set_encoded(&as_key!(i), as_values!(big_value.clone()));
 		if result.is_err() {
 			break;
 		}

@@ -56,7 +56,7 @@ impl CatalogStore {
 		policy::set_target_object(&mut row, to_create.target_object.as_deref().unwrap_or(""));
 		policy::set_enabled(&mut row, true);
 
-		txn.set(&PolicyKey::encoded(policy_id), row.freeze())?;
+		txn.set(&PolicyKey::new(policy_id), row.freeze())?;
 
 		let mut ops = Vec::new();
 		for (i, op) in to_create.operations.iter().enumerate() {
@@ -65,7 +65,7 @@ impl CatalogStore {
 			policy_op::set_operation(&mut op_row, &op.operation);
 			policy_op::set_body_source(&mut op_row, &op.body_source);
 
-			txn.set(&PolicyOpKey::encoded(policy_id, i as u64), op_row.freeze())?;
+			txn.set(&PolicyOpKey::new(policy_id, i as u64), op_row.freeze())?;
 
 			ops.push(PolicyOperation {
 				policy_id,

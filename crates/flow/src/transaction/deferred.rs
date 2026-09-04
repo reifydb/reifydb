@@ -157,7 +157,7 @@ pub(crate) fn deferred_storage_get(
 		ReadFrom::Query => query,
 		ReadFrom::OperatorState => unreachable!(),
 	};
-	Ok(query.expect(NO_READ_TRANSACTION).get(key)?.map(|multi| multi.bytes().clone()))
+	Ok(query.expect(NO_READ_TRANSACTION).get_encoded(key)?.map(|multi| multi.bytes().clone()))
 }
 
 pub(crate) fn deferred_storage_contains(
@@ -178,7 +178,7 @@ pub(crate) fn deferred_storage_contains(
 		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
 		ReadFrom::Query => query,
 	};
-	query.expect(NO_READ_TRANSACTION).contains_key(key)
+	query.expect(NO_READ_TRANSACTION).contains_encoded(key)
 }
 
 pub(crate) fn deferred_storage_range<'a>(

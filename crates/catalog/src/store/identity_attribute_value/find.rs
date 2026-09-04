@@ -16,7 +16,7 @@ impl CatalogStore {
 		identity: IdentityId,
 		attribute: IdentityAttributeId,
 	) -> Result<Option<IdentityAttributeValue>> {
-		rx.get(&IdentityAttributeValueKey::encoded(identity, attribute))?
+		rx.get(&IdentityAttributeValueKey::new(identity, attribute))?
 			.map(convert_identity_attribute_value)
 			.transpose()
 	}

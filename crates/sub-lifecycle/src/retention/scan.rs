@@ -47,7 +47,7 @@ pub fn scan_expired_indexed(
 
 	let mut expired = Vec::with_capacity(candidates.len());
 	for (key, _) in &candidates {
-		let Some(row) = txn.get(key)? else {
+		let Some(row) = txn.get_encoded(key)? else {
 			continue;
 		};
 		if family.updated_at(&row.bytes) <= cutoff.instant() {

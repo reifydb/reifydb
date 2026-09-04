@@ -130,7 +130,7 @@ pub(crate) fn update_ringbuffer(
 				None => RowKey::encoded(ringbuffer.id, row_number),
 				Some(p) => PartitionedRowKey::encoded(ringbuffer.id, p, row_number),
 			};
-			let old_row = txn.get(&old_row_key)?.expect("bytes must exist for update").bytes;
+			let old_row = txn.get_encoded(&old_row_key)?.expect("bytes must exist for update").bytes;
 			let pre_row = old_row.clone();
 			let old_row = EncodedRingBufferRow::view(&old_row);
 			let old_created_at = old_row.created_at();

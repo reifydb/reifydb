@@ -135,7 +135,7 @@ fn ephemeral_storage_get(
 ) -> Result<Option<EncodedBytes>> {
 	match read_from(key) {
 		ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.get(key).cloned()),
-		ReadFrom::Query | ReadFrom::OwnedRow => match query.get(key)? {
+		ReadFrom::Query | ReadFrom::OwnedRow => match query.get_encoded(key)? {
 			Some(multi) => Ok(Some(multi.bytes().clone())),
 			None => Ok(None),
 		},
@@ -149,7 +149,7 @@ fn ephemeral_storage_contains(
 ) -> Result<bool> {
 	match read_from(key) {
 		ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.contains_key(key)),
-		ReadFrom::Query | ReadFrom::OwnedRow => query.contains_key(key),
+		ReadFrom::Query | ReadFrom::OwnedRow => query.contains_encoded(key),
 	}
 }
 

@@ -13,7 +13,7 @@ fn a_live_transaction_keeps_the_query_watermark_from_passing_its_snapshot() {
 
 	for i in 0..5u64 {
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&as_key!(i), as_values!(i)).unwrap();
+		txn.set_encoded(&as_key!(i), as_values!(i)).unwrap();
 		txn.commit(vec![]).unwrap();
 	}
 
@@ -43,7 +43,7 @@ fn transactions_sharing_a_snapshot_each_hold_the_pin_independently() {
 
 	for i in 0..5u64 {
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&as_key!(i), as_values!(i)).unwrap();
+		txn.set_encoded(&as_key!(i), as_values!(i)).unwrap();
 		txn.commit(vec![]).unwrap();
 	}
 

@@ -239,7 +239,7 @@ fn insert_series_row(
 	SeriesRowInterceptor::pre_insert(txn, series, &mut rows_buf)?;
 	let [row] = rows_buf;
 	let row = row.freeze_bytes();
-	txn.set(&encoded_key, row.clone())?;
+	txn.set_encoded(&encoded_key, row.clone())?;
 	let rows = [row.clone()];
 	SeriesRowInterceptor::post_insert(txn, series, &rows)?;
 
