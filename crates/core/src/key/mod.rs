@@ -9,6 +9,8 @@ pub mod catalog;
 pub mod cdc;
 pub mod column;
 pub mod config;
+#[cfg(test)]
+mod cross_kind_order;
 pub mod flow;
 pub mod identity;
 pub mod kind;

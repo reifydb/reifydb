@@ -3,16 +3,16 @@
 
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 
-use crate::generate::compile_error;
+use crate::{generate::compile_error, key_conformance::expand_tests};
 
-struct KeyField {
-	name: String,
-	column: KeyColumn,
-	ty: String,
+pub struct KeyField {
+	pub name: String,
+	pub column: KeyColumn,
+	pub ty: String,
 }
 
 #[derive(Clone, Copy)]
-enum KeyColumn {
+pub enum KeyColumn {
 	U8,
 	U16,
 	U32,
@@ -542,7 +542,8 @@ fn expand(name: &str, kind: &str, fields: &[KeyField]) -> TokenStream {
 	out.push_str("\t\tif found != <Self as Key>::KIND {\n\t\t\treturn None;\n\t\t}\n");
 	out.push_str(&format!("\t\tlet decoded = Self {{\n{decode_body}\t\t}};\n"));
 	out.push_str("\t\tif !de.is_empty() {\n\t\t\treturn None;\n\t\t}\n");
-	out.push_str("\t\tSome(decoded)\n\t}\n}");
+	out.push_str("\t\tSome(decoded)\n\t}\n}\n\n");
+	out.push_str(&expand_tests(name, fields));
 
 	out.parse().expect("derived Key impl must be valid Rust")
 }
