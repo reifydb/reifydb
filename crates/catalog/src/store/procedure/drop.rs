@@ -24,7 +24,8 @@ impl CatalogStore {
 
 		let mut param_keys: Vec<ProcedureParamKey> = Vec::new();
 		{
-			let stream = txn.range(ProcedureParamKey::full_scan(procedure), RangeScope::All, 1024)?;
+			let stream =
+				txn.range(ProcedureParamKey::full_scan(procedure).encode(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
 				if let AnyKey::ProcedureParam(k) = entry.key {

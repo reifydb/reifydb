@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_macro::Key;
 
 use super::super::{KeyKind, typed::key::Key};
@@ -57,20 +54,8 @@ impl OperatorByFlowKey {
 		Self::new(flow, operator).encode()
 	}
 
-	pub fn full_scan(flow: FlowId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start(flow)), Some(Self::end(flow)))
-	}
-
-	fn start(flow: FlowId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(flow);
-		serializer.to_encoded_key()
-	}
-
-	fn end(flow: FlowId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(FlowId(flow.0 - 1));
-		serializer.to_encoded_key()
+	pub fn full_scan(flow: FlowId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, flow.0 as u128)])
 	}
 }
 

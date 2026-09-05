@@ -31,7 +31,7 @@ impl CatalogStore {
 		policy: PolicyId,
 	) -> Result<Vec<PolicyOperation>> {
 		let mut result = Vec::new();
-		let range = PolicyOpKey::policy_scan(policy);
+		let range = PolicyOpKey::policy_scan(policy).encode();
 		let stream = rx.range(range, RangeScope::All, 1024)?;
 
 		for entry in stream {

@@ -13,7 +13,7 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn drop_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
 		{
-			let range = GrantedRoleKey::identity_scan(identity);
+			let range = GrantedRoleKey::identity_scan(identity).encode();
 			let mut stream = txn.range(range, RangeScope::All, 1024)?;
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {
@@ -29,7 +29,7 @@ impl CatalogStore {
 		}
 
 		{
-			let range = IdentityAttributeValueKey::identity_scan(identity);
+			let range = IdentityAttributeValueKey::identity_scan(identity).encode();
 			let mut stream = txn.range(range, RangeScope::All, 1024)?;
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {

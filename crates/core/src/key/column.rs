@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_macro::Key;
 
 use super::KeyKind;
@@ -15,7 +12,7 @@ use crate::{
 	},
 	key::{
 		any::{Field, KeyFields, Width},
-		bound::AnyKeyBoundRange,
+		bound::{AnyKeyBoundRange, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		typed::key::Key,
 	},
@@ -40,21 +37,8 @@ impl ColumnKey {
 		Key::encode(&Self::new(object, column))
 	}
 
-	pub fn full_scan(object: impl Into<ObjectId>) -> EncodedKeyRange {
-		let object = object.into();
-		EncodedKeyRange::start_end(Some(Self::start(object)), Some(Self::end(object)))
-	}
-
-	fn start(object: ObjectId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(<ColumnKey as Key>::KIND as u8).extend_object_id(object);
-		serializer.to_encoded_key()
-	}
-
-	fn end(object: ObjectId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(<ColumnKey as Key>::KIND as u8).extend_object_id(object.prev());
-		serializer.to_encoded_key()
+	pub fn full_scan(object: impl Into<ObjectId>) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, object_fields(object.into()))
 	}
 }
 
@@ -223,20 +207,8 @@ impl SeriesColumnSnapshotKey {
 		Key::encode(&Self::new(series.into(), snapshot.into()))
 	}
 
-	pub fn full_scan(series: SeriesId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(series)), Some(Self::link_end(series)))
-	}
-
-	fn link_start(series: SeriesId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<Self as Key>::KIND as u8).extend_u64(series);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(series: SeriesId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<Self as Key>::KIND as u8).extend_u64(*series - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(series: SeriesId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, series.0 as u128)])
 	}
 }
 
@@ -259,20 +231,8 @@ impl TableColumnSnapshotKey {
 		Key::encode(&Self::new(table.into(), snapshot.into()))
 	}
 
-	pub fn full_scan(table: TableId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(table)), Some(Self::link_end(table)))
-	}
-
-	fn link_start(table: TableId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<Self as Key>::KIND as u8).extend_u64(table);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(table: TableId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<Self as Key>::KIND as u8).extend_u64(*table - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(table: TableId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, table.0 as u128)])
 	}
 }
 

@@ -26,7 +26,8 @@ impl CatalogStore {
 		identity: IdentityId,
 	) -> Result<Vec<IdentityAttributeValue>> {
 		let mut result = Vec::new();
-		let stream = rx.range(IdentityAttributeValueKey::identity_scan(identity), RangeScope::All, 1024)?;
+		let stream =
+			rx.range(IdentityAttributeValueKey::identity_scan(identity).encode(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

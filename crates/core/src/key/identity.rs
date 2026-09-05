@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
+use std::borrow::Cow;
+
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_macro::Key;
 use reifydb_value::value::identity::IdentityId;
 
@@ -47,6 +46,7 @@ impl IdentityKey {
 
 #[cfg(test)]
 mod byte_identical_identity_key {
+	use reifydb_codec::key::serializer::KeySerializer;
 	use reifydb_value::value::uuid::Uuid7;
 	use uuid::Uuid;
 
@@ -92,6 +92,8 @@ impl IdentityAttributeKey {
 
 #[cfg(test)]
 mod byte_identical_identity_attribute_key {
+	use reifydb_codec::key::serializer::KeySerializer;
+
 	use super::*;
 
 	fn legacy_encode(key: &IdentityAttributeKey) -> EncodedKey {
@@ -132,15 +134,17 @@ impl IdentityAttributeValueKey {
 		AnyKeyBoundRange::kind(Self::KIND)
 	}
 
-	pub fn identity_scan(identity: IdentityId) -> EncodedKeyRange {
-		let mut prefix = KeySerializer::with_capacity(17);
-		prefix.extend_u8(Self::KIND as u8).extend_identity_id(&identity);
-		EncodedKeyRange::prefix(prefix.to_encoded_key().as_slice())
+	pub fn identity_scan(identity: IdentityId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(
+			Self::KIND,
+			[Field::BytesDesc(ByteEncoding::Escaped, Cow::Owned(identity.as_bytes().to_vec()))],
+		)
 	}
 }
 
 #[cfg(test)]
 mod byte_identical_identity_attribute_value_key {
+	use reifydb_codec::key::serializer::KeySerializer;
 	use reifydb_value::value::uuid::Uuid7;
 	use uuid::Uuid;
 
@@ -184,7 +188,7 @@ mod identity_attribute_value_key_tests {
 	fn identity_scan_holds_every_attribute_of_that_identity() {
 		// Small ids complement to a suffix starting 0xFF, so a prefix+0xFF end bound excludes them all.
 		let alice = identity(1);
-		let range = IdentityAttributeValueKey::identity_scan(alice);
+		let range = IdentityAttributeValueKey::identity_scan(alice).encode();
 
 		for attribute in [0u64, 1, 2, u64::MAX] {
 			let key = IdentityAttributeValueKey::encoded(alice, attribute);
@@ -195,7 +199,7 @@ mod identity_attribute_value_key_tests {
 	#[test]
 	fn identity_scan_excludes_a_neighbouring_identity() {
 		// The scan must not widen into the next identity when the bound is carry-incremented.
-		let range = IdentityAttributeValueKey::identity_scan(identity(1));
+		let range = IdentityAttributeValueKey::identity_scan(identity(1)).encode();
 		let other = IdentityAttributeValueKey::encoded(identity(2), 1);
 
 		assert!(!range.contains(&other), "a different identity must stay outside the scan");
@@ -226,6 +230,8 @@ impl AuthenticationKey {
 
 #[cfg(test)]
 mod byte_identical_authentication_key {
+	use reifydb_codec::key::serializer::KeySerializer;
+
 	use super::*;
 
 	fn legacy_encode(key: &AuthenticationKey) -> EncodedKey {
@@ -267,6 +273,8 @@ impl TokenKey {
 
 #[cfg(test)]
 mod byte_identical_token_key {
+	use reifydb_codec::key::serializer::KeySerializer;
+
 	use super::*;
 
 	fn legacy_encode(key: &TokenKey) -> EncodedKey {
@@ -308,6 +316,8 @@ impl RoleKey {
 
 #[cfg(test)]
 mod byte_identical_role_key {
+	use reifydb_codec::key::serializer::KeySerializer;
+
 	use super::*;
 
 	fn legacy_encode(key: &RoleKey) -> EncodedKey {
@@ -348,15 +358,17 @@ impl GrantedRoleKey {
 		AnyKeyBoundRange::kind(Self::KIND)
 	}
 
-	pub fn identity_scan(identity: IdentityId) -> EncodedKeyRange {
-		let mut prefix = KeySerializer::with_capacity(17);
-		prefix.extend_u8(Self::KIND as u8).extend_identity_id(&identity);
-		EncodedKeyRange::prefix(prefix.to_encoded_key().as_slice())
+	pub fn identity_scan(identity: IdentityId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(
+			Self::KIND,
+			[Field::BytesDesc(ByteEncoding::Escaped, Cow::Owned(identity.as_bytes().to_vec()))],
+		)
 	}
 }
 
 #[cfg(test)]
 mod byte_identical_granted_role_key {
+	use reifydb_codec::key::serializer::KeySerializer;
 	use reifydb_value::value::uuid::Uuid7;
 	use uuid::Uuid;
 
@@ -397,7 +409,7 @@ mod granted_role_key_tests {
 	fn identity_scan_holds_every_role_of_that_identity() {
 		// Small ids complement to a suffix starting 0xFF, so a prefix+0xFF end bound excludes them all.
 		let alice = identity(1);
-		let range = GrantedRoleKey::identity_scan(alice);
+		let range = GrantedRoleKey::identity_scan(alice).encode();
 
 		for role in [0u64, 1, 2, u64::MAX] {
 			let key = GrantedRoleKey::encoded(alice, role);
@@ -408,7 +420,7 @@ mod granted_role_key_tests {
 	#[test]
 	fn identity_scan_excludes_a_neighbouring_identity() {
 		// The scan must not widen into the next identity when the bound is carry-incremented.
-		let range = GrantedRoleKey::identity_scan(identity(1));
+		let range = GrantedRoleKey::identity_scan(identity(1)).encode();
 
 		assert!(!range.contains(&GrantedRoleKey::encoded(identity(2), 1)));
 	}
@@ -438,6 +450,8 @@ impl PolicyKey {
 
 #[cfg(test)]
 mod byte_identical_policy_key {
+	use reifydb_codec::key::serializer::KeySerializer;
+
 	use super::*;
 
 	fn legacy_encode(key: &PolicyKey) -> EncodedKey {
@@ -478,15 +492,15 @@ impl PolicyOpKey {
 		AnyKeyBoundRange::kind(Self::KIND)
 	}
 
-	pub fn policy_scan(policy: PolicyId) -> EncodedKeyRange {
-		let mut prefix = KeySerializer::with_capacity(9);
-		prefix.extend_u8(Self::KIND as u8).extend_u64(policy);
-		EncodedKeyRange::prefix(prefix.to_encoded_key().as_slice())
+	pub fn policy_scan(policy: PolicyId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, policy as u128)])
 	}
 }
 
 #[cfg(test)]
 mod byte_identical_policy_op_key {
+	use reifydb_codec::key::serializer::KeySerializer;
+
 	use super::*;
 
 	fn legacy_encode(key: &PolicyOpKey) -> EncodedKey {
@@ -515,7 +529,7 @@ mod policy_op_key_tests {
 	#[test]
 	fn policy_scan_holds_every_op_index_of_that_policy() {
 		// A fixed 0xFF-padded end bound only covers suffixes of exactly its own width.
-		let range = PolicyOpKey::policy_scan(7);
+		let range = PolicyOpKey::policy_scan(7).encode();
 
 		for op_index in [0u64, 1, 2, u64::MAX] {
 			let key = PolicyOpKey::encoded(7, op_index);
@@ -526,7 +540,7 @@ mod policy_op_key_tests {
 	#[test]
 	fn policy_scan_excludes_a_neighbouring_policy() {
 		// The scan must not widen into the next policy when the bound is carry-incremented.
-		let range = PolicyOpKey::policy_scan(7);
+		let range = PolicyOpKey::policy_scan(7).encode();
 
 		assert!(!range.contains(&PolicyOpKey::encoded(6, 1)));
 		assert!(!range.contains(&PolicyOpKey::encoded(8, 1)));

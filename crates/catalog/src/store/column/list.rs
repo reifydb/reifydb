@@ -30,7 +30,7 @@ impl CatalogStore {
 
 		let mut ids = Vec::new();
 		{
-			let stream = rx.range(ColumnKey::full_scan(object), RangeScope::All, 1024)?;
+			let stream = rx.range(ColumnKey::full_scan(object).encode(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
 				let bytes = EncodedCatalogRow::try_from(multi.bytes)?;

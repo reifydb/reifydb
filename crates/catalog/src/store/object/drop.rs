@@ -27,7 +27,7 @@ pub(crate) fn drop_object_metadata(
 	storage: StorageId,
 	pk_id: Option<PrimaryKeyId>,
 ) -> Result<()> {
-	let range = ColumnKey::full_scan(storage);
+	let range = ColumnKey::full_scan(storage).encode();
 	let mut stream = txn.range(range, RangeScope::All, 1024)?;
 	let mut col_entries = Vec::new();
 	for entry in stream.by_ref() {

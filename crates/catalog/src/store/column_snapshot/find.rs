@@ -76,7 +76,7 @@ pub(crate) fn collect_series_snapshot_ids(
 	series_id: SeriesId,
 ) -> Result<Vec<ColumnSnapshotId>> {
 	let mut ids = Vec::new();
-	let mut stream = rx.range(SeriesColumnSnapshotKey::full_scan(series_id), RangeScope::All, 1024)?;
+	let mut stream = rx.range(SeriesColumnSnapshotKey::full_scan(series_id).encode(), RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
 		let multi = entry?;
 		ids.push(ColumnSnapshotId(decode_snapshot_link(EncodedPodRow::view(&multi.bytes))?));
@@ -87,7 +87,7 @@ pub(crate) fn collect_series_snapshot_ids(
 
 pub(crate) fn collect_table_snapshot_ids(rx: &mut Transaction<'_>, table_id: TableId) -> Result<Vec<ColumnSnapshotId>> {
 	let mut ids = Vec::new();
-	let mut stream = rx.range(TableColumnSnapshotKey::full_scan(table_id), RangeScope::All, 1024)?;
+	let mut stream = rx.range(TableColumnSnapshotKey::full_scan(table_id).encode(), RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
 		let multi = entry?;
 		ids.push(ColumnSnapshotId(decode_snapshot_link(EncodedPodRow::view(&multi.bytes))?));

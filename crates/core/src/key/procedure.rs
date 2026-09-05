@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{
-	deserializer::KeyDeserializer,
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
+use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
 use smallvec::{SmallVec, smallvec};
 
 use super::KeyKind;
@@ -125,20 +121,8 @@ impl ProcedureParamKey {
 		Self::new(procedure, param_index).encode()
 	}
 
-	pub fn full_scan(procedure: ProcedureId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::params_start(procedure)), Some(Self::params_end(procedure)))
-	}
-
-	fn params_start(procedure: ProcedureId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(procedure);
-		serializer.to_encoded_key()
-	}
-
-	fn params_end(procedure: ProcedureId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*procedure - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(procedure: ProcedureId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, *procedure as u128)])
 	}
 }
 

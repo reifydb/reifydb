@@ -20,7 +20,7 @@ impl CatalogStore {
 	pub fn list_operators_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<Operator>> {
 		let mut node_ids = Vec::new();
 		{
-			let stream = rx.range(OperatorByFlowKey::full_scan(flow_id), RangeScope::All, 1024)?;
+			let stream = rx.range(OperatorByFlowKey::full_scan(flow_id).encode(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
 				node_ids.push(OperatorId(operator_by_flow::get_id(EncodedCatalogRow::view(
