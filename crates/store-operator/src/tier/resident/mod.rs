@@ -40,6 +40,7 @@ use reifydb_runtime::{
 	},
 };
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions, value::duration::Duration};
+use tracing::instrument;
 
 use crate::{
 	tier::{
@@ -464,6 +465,7 @@ impl OperatorResidentState {
 		self.observe_write();
 	}
 
+	#[instrument(name = "store::operator::resident::record_writes", level = "trace", skip(self, writes), fields(write_count = writes.len()))]
 	fn record_writes(&self, writes: &[OperatorWrite], flow: Option<FlowId>) {
 		let mut grouped: BTreeMap<OperatorId, Vec<&OperatorWrite>> = BTreeMap::new();
 		for write in writes {
@@ -592,6 +594,7 @@ impl OperatorResidentState {
 		(bytes, entries as usize)
 	}
 
+	#[instrument(name = "store::operator::resident::sweep", level = "trace", skip(self, bytes, entries))]
 	fn sweep(&self, bytes: &mut ByteSize, entries: &mut usize) -> (usize, ByteSize) {
 		let operators = self.shared.operators();
 		if operators.is_empty() {
@@ -646,6 +649,7 @@ impl OperatorResidentState {
 		}
 	}
 
+	#[instrument(name = "store::operator::resident::rebuild_in_flight", level = "trace", skip(self, global))]
 	fn rebuild_in_flight(&self, global: &GlobalInner) -> FlushBatch {
 		let mut batch = FlushBatch::default();
 		for operator in &global.in_flight_operators {
@@ -665,6 +669,7 @@ impl OperatorResidentState {
 		batch
 	}
 
+	#[instrument(name = "store::operator::resident::pending_groups", level = "trace", skip(self))]
 	fn pending_groups(&self) -> Vec<PendingGroup> {
 		let mut by_flow: BTreeMap<Option<FlowId>, PendingGroup> = BTreeMap::new();
 		for operator in self.shared.operators() {

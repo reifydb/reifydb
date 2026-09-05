@@ -5,11 +5,13 @@ use std::{cmp::Ordering, ops::Bound};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_runtime::sync::mutex::MutexGuard;
+use tracing::instrument;
 
 use crate::{
 	tier::{
 		bucket::{Scan, write::WriteEntry},
-		resident::{OperatorResidentState, batch::DropMarker, record_state},
+		resident::{OperatorResidentState, batch::DropMarker, record_state, slot::{Slot, SlotInner}},
 	},
 	types::{BufferedState, BufferedStateRange},
 };
@@ -56,6 +58,10 @@ impl OperatorResidentState {
 		self.page(operator, start, end, limit, Scan::Backward)
 	}
 
+	#[instrument(name = "store::operator::resident::state_page", level = "trace", skip(self, start, end), fields(
+		operator = operator.0,
+		limit = limit
+	))]
 	fn page(
 		&self,
 		operator: OperatorId,
@@ -69,7 +75,7 @@ impl OperatorResidentState {
 		let mut items = Vec::new();
 
 		if let Some(slot) = self.shared().slot(operator) {
-			let inner = slot.inner.lock();
+			let inner = lock_slot(&slot, operator);
 			if limit > 0 && !is_empty_range(&lower, &upper) {
 				items = inner
 					.live
@@ -89,6 +95,11 @@ impl OperatorResidentState {
 			dropped: self.shared().dropped(|marker| is_state_drop(marker, operator)),
 		}
 	}
+}
+
+#[instrument(name = "store::operator::resident::slot_lock", level = "trace", skip(slot), fields(operator = operator.0))]
+fn lock_slot(slot: &Slot, operator: OperatorId) -> MutexGuard<'_, SlotInner> {
+	slot.inner.lock()
 }
 
 fn owned(bound: Bound<&EncodedKey>) -> Bound<EncodedKey> {
