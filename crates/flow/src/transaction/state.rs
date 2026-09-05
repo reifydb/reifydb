@@ -66,20 +66,16 @@ impl StateRange {
 pub trait StateExtension: FlowTransaction {
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
 		operator_id = id.0,
-		key_len = key.as_slice().len(),
-		found = field::Empty
+		key_len = key.as_slice().len()
 	))]
 	fn state_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 		let scoped = scoped_key(id, key);
-		let result = self.get(&scoped)?.map(EncodedPodRow::from);
-		Span::current().record("found", result.is_some());
-		Ok(result)
+		Ok(self.get(&scoped)?.map(EncodedPodRow::from))
 	}
 
 	#[instrument(name = "flow::state::get_many", level = "debug", skip(self, keys), fields(
 		operator_id = id.0,
-		key_count = keys.len(),
-		found_count = field::Empty
+		key_count = keys.len()
 	))]
 	fn state_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch> {
 		let version = self.version();
@@ -101,7 +97,6 @@ pub trait StateExtension: FlowTransaction {
 
 		self.fetch_state_external(to_batch, &mut items)?;
 
-		Span::current().record("found_count", items.len());
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -136,8 +131,7 @@ pub trait StateExtension: FlowTransaction {
 	}
 
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
-		operator_id = id.0,
-		result_count = field::Empty
+		operator_id = id.0
 	))]
 	fn state_scan_all(&mut self, id: OperatorId) -> Result<MultiVersionBatch> {
 		let range = OperatorStateKey::node_range(id);
@@ -146,7 +140,6 @@ pub trait StateExtension: FlowTransaction {
 		for result in iter {
 			items.push(result?);
 		}
-		Span::current().record("result_count", items.len());
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -191,12 +184,10 @@ pub trait StateExtension: FlowTransaction {
 
 	#[instrument(name = "flow::state::group_range", level = "debug", skip(self, groups), fields(
 		operator_id = id.0,
-		groups = groups.len(),
-		rows_fetched = field::Empty
+		groups = groups.len()
 	))]
 	fn state_group_range(&mut self, id: OperatorId, groups: &[GroupId], limit: usize) -> Result<MultiVersionBatch> {
 		let ordered = sweep_order(groups);
-		let before = ScanCounters::sample();
 		let prefix = EncodedKey::new(node_prefix(id));
 		let mut merged = BTreeMap::new();
 		for group in &ordered {
@@ -230,8 +221,6 @@ pub trait StateExtension: FlowTransaction {
 			}
 			items.push(result?);
 		}
-		let scanned = before.since();
-		Span::current().record("rows_fetched", scanned.fetched);
 		Ok(MultiVersionBatch {
 			items,
 			has_more,
@@ -239,8 +228,7 @@ pub trait StateExtension: FlowTransaction {
 	}
 
 	#[instrument(name = "flow::state::last", level = "debug", skip(self, range), fields(
-		operator_id = id.0,
-		found = field::Empty
+		operator_id = id.0
 	))]
 	fn state_last(&mut self, id: OperatorId, range: EncodedKeyRange) -> Result<Option<MultiVersionRow>> {
 		let prefix = node_prefix(id);
@@ -326,21 +314,16 @@ pub trait StateExtension: FlowTransaction {
 				}
 			}
 		};
-		Span::current().record("found", found.is_some());
 		Ok(found)
 	}
 
 	#[instrument(name = "flow::state::clear", level = "trace", skip(self), fields(
-		operator_id = id.0,
-		keys_removed = field::Empty
+		operator_id = id.0
 	))]
 	fn state_clear(&mut self, id: OperatorId) -> Result<()> {
 		let keys_to_remove = scan_keys_for_clear(self, id)?;
 
-		let count = keys_to_remove.len();
 		remove_keys(self, keys_to_remove)?;
-
-		Span::current().record("keys_removed", count);
 		Ok(())
 	}
 }
