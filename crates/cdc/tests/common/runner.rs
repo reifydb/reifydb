@@ -8,7 +8,15 @@ use std::{collections::Bound, error::Error as StdError, fmt::Write as _, thread:
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::cdc::{Cdc, CdcChange},
+	interface::{
+		catalog::{
+			id::{IndexId, TableId},
+			object::ObjectId,
+		},
+		cdc::{Cdc, CdcChange},
+	},
+	key::{EncodableKey, catalog::IndexEntryKey},
+	value::index::encoded::EncodedIndexKey,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::MockClock;
@@ -125,7 +133,7 @@ impl TsRunner for Runner {
 				let row = encoded_bytes(&kv.value);
 				args.reject_rest()?;
 				let txn = self.ensure_txn()?;
-				txn.set_encoded(&key, row)?;
+				txn.set(&key, row)?;
 			}
 			// delete VERSION KEY
 			"delete" => {
@@ -137,9 +145,9 @@ impl TsRunner for Runner {
 				let key = encoded_key(&key_arg.value);
 				args.reject_rest()?;
 				let txn = self.ensure_txn()?;
-				match txn.get_encoded(&key)? {
+				match txn.get(&key)? {
 					Some(prev) => txn.remove_with_pre(&key, prev.bytes)?,
-					None => txn.remove_encoded(&key)?,
+					None => txn.remove(&key)?,
 				}
 			}
 			"commit" => {
@@ -180,7 +188,7 @@ impl TsRunner for Runner {
 					for i in 0..count {
 						let key = encoded_key(&format!("bulk_{}", i));
 						let row = encoded_bytes(&format!("{}", i));
-						txn.set_encoded(&key, row)?;
+						txn.set(&key, row)?;
 					}
 				}
 				let txn = self.active_txn.take().ok_or("no active transaction")?;
@@ -295,8 +303,13 @@ fn parse_two_versions(cmd: &Command) -> Result<(CommitVersion, CommitVersion), B
 	Ok((CommitVersion(from), CommitVersion(to)))
 }
 
-fn encoded_key(s: &str) -> EncodedKey {
-	EncodedKey::new(s.as_bytes())
+fn encoded_key(s: &str) -> IndexEntryKey {
+	// extend_raw appends the tail verbatim, so encoded order matches the script's raw byte order.
+	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(s.as_bytes()))
+}
+
+fn script_raw(key: &EncodedKey) -> EncodedKey {
+	EncodedKey::new(IndexEntryKey::decode(key).expect("script key must decode").key.as_ref())
 }
 
 fn encoded_bytes(s: &str) -> EncodedBytes {
@@ -315,7 +328,7 @@ pub fn format_change(seq: usize, sc: &CdcChange) -> String {
 		} => format!(
 			"Change {{ seq: {}, change: Insert {{ key: {:?}, post: {:?} }} }}",
 			seq,
-			render_bytes(key.as_slice()),
+			render_bytes(script_raw(key).as_slice()),
 			render_bytes(&post.0),
 		),
 		CdcChange::Update {
@@ -325,7 +338,7 @@ pub fn format_change(seq: usize, sc: &CdcChange) -> String {
 		} => format!(
 			"Change {{ seq: {}, change: Update {{ key: {:?}, pre: {:?}, post: {:?} }} }}",
 			seq,
-			render_bytes(key.as_slice()),
+			render_bytes(script_raw(key).as_slice()),
 			render_bytes(&pre.0),
 			render_bytes(&post.0),
 		),
@@ -337,13 +350,13 @@ pub fn format_change(seq: usize, sc: &CdcChange) -> String {
 			Some(pre) => format!(
 				"Change {{ seq: {}, change: Delete {{ key: {:?}, pre: {:?} }} }}",
 				seq,
-				render_bytes(key.as_slice()),
+				render_bytes(script_raw(key).as_slice()),
 				render_bytes(&pre.0),
 			),
 			None => format!(
 				"Change {{ seq: {}, change: Delete {{ key: {:?} }} }}",
 				seq,
-				render_bytes(key.as_slice()),
+				render_bytes(script_raw(key).as_slice()),
 			),
 		},
 	}
@@ -365,7 +378,7 @@ pub fn format_cdc(cdc: &Cdc, script_version: u64) -> String {
 				s,
 				"{{ seq: {}, change: Insert {{ key: {:?}, post: {:?} }} }}",
 				i + 1,
-				render_bytes(key.as_slice()),
+				render_bytes(script_raw(key).as_slice()),
 				render_bytes(&post.0),
 			)
 			.unwrap(),
@@ -377,7 +390,7 @@ pub fn format_cdc(cdc: &Cdc, script_version: u64) -> String {
 				s,
 				"{{ seq: {}, change: Update {{ key: {:?}, pre: {:?}, post: {:?} }} }}",
 				i + 1,
-				render_bytes(key.as_slice()),
+				render_bytes(script_raw(key).as_slice()),
 				render_bytes(&pre.0),
 				render_bytes(&post.0),
 			)
@@ -391,7 +404,7 @@ pub fn format_cdc(cdc: &Cdc, script_version: u64) -> String {
 					s,
 					"{{ seq: {}, change: Delete {{ key: {:?}, pre: {:?} }} }}",
 					i + 1,
-					render_bytes(key.as_slice()),
+					render_bytes(script_raw(key).as_slice()),
 					render_bytes(&pre.0),
 				)
 				.unwrap(),
@@ -399,7 +412,7 @@ pub fn format_cdc(cdc: &Cdc, script_version: u64) -> String {
 					s,
 					"{{ seq: {}, change: Delete {{ key: {:?} }} }}",
 					i + 1,
-					render_bytes(key.as_slice())
+					render_bytes(script_raw(key).as_slice())
 				)
 				.unwrap(),
 			},

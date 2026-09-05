@@ -1,85 +1,44 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{
-	key::{
-		deserializer::KeyDeserializer,
-		encoded::{EncodedKey, EncodedKeyBuilder},
-	},
-	reader::Reader,
-};
+use reifydb_codec::{key::encoded::EncodedKey, reader::Reader};
 use reifydb_core::{
 	interface::{
 		catalog::metrics::{MetricsId, storage::MultiStorageMetrics},
 		store::Tier,
 	},
 	key::{
-		catalog::{EncodedKeyBuilderCatalogExt, KeyDeserializerCatalogExt},
-		kind::KeyKind,
+		metric::{MetricCdcKey, MetricStorageKey},
+		typed::key::Key,
 	},
 };
 use reifydb_value::{byte_size::ByteSize, count::Count};
 
 use crate::metrics::storage::cdc::CdcMetrics;
 
-const KEY_VERSION: u8 = 0x01;
-
-const SUBKEY_BY_OBJECT: u8 = 0x02;
-const SUBKEY_CDC: u8 = 0x03;
-
-const ID_OBJECT: u8 = 0x00;
-const ID_SYSTEM: u8 = 0x01;
-
 pub fn encode_storage_stats_key(tier: Tier, id: MetricsId) -> EncodedKey {
-	let builder = EncodedKeyBuilder::new()
-		.u8(KEY_VERSION)
-		.u8(KeyKind::Metric as u8)
-		.u8(SUBKEY_BY_OBJECT)
-		.u8(tier_to_byte(tier));
-	extend_object_id(builder, id).build()
+	MetricStorageKey::encoded(tier, id)
 }
 
 pub fn storage_stats_key_prefix() -> EncodedKey {
-	EncodedKeyBuilder::new().u8(KEY_VERSION).u8(KeyKind::Metric as u8).u8(SUBKEY_BY_OBJECT).build()
+	MetricStorageKey::prefix()
 }
 
 pub fn encode_cdc_stats_key(id: MetricsId) -> EncodedKey {
-	let builder = EncodedKeyBuilder::new().u8(KEY_VERSION).u8(KeyKind::Metric as u8).u8(SUBKEY_CDC);
-	extend_object_id(builder, id).build()
+	MetricCdcKey::encoded(id)
 }
 
 pub fn cdc_stats_key_prefix() -> EncodedKey {
-	EncodedKeyBuilder::new().u8(KEY_VERSION).u8(KeyKind::Metric as u8).u8(SUBKEY_CDC).build()
+	MetricCdcKey::prefix()
 }
 
 pub fn decode_storage_stats_key(key: &[u8]) -> Option<(Tier, MetricsId)> {
-	let mut de = KeyDeserializer::from_bytes(key);
-	if de.read_u8().ok()? != KEY_VERSION {
-		return None;
-	}
-	if de.read_u8().ok()? != KeyKind::Metric as u8 {
-		return None;
-	}
-	if de.read_u8().ok()? != SUBKEY_BY_OBJECT {
-		return None;
-	}
-	let tier = byte_to_tier(de.read_u8().ok()?)?;
-	let id = decode_object_id(&mut de)?;
-	Some((tier, id))
+	let key = MetricStorageKey::decode(&EncodedKey::new(key))?;
+	Some((key.tier, key.id))
 }
 
 pub fn decode_cdc_stats_key(key: &[u8]) -> Option<MetricsId> {
-	let mut de = KeyDeserializer::from_bytes(key);
-	if de.read_u8().ok()? != KEY_VERSION {
-		return None;
-	}
-	if de.read_u8().ok()? != KeyKind::Metric as u8 {
-		return None;
-	}
-	if de.read_u8().ok()? != SUBKEY_CDC {
-		return None;
-	}
-	decode_object_id(&mut de)
+	MetricCdcKey::decode(&EncodedKey::new(key)).map(|key| key.id)
 }
 
 pub const STORAGE_STATS_SIZE: usize = 48;
@@ -124,36 +83,6 @@ pub fn decode_cdc_stats(bytes: &[u8]) -> Option<CdcMetrics> {
 		value_bytes: ByteSize::from_bytes(r.u64().ok()?),
 		entry_count: Count::new(r.u64().ok()?),
 	})
-}
-
-fn tier_to_byte(tier: Tier) -> u8 {
-	match tier {
-		Tier::Buffer => 0x00,
-		Tier::Persistent => 0x01,
-	}
-}
-
-fn byte_to_tier(b: u8) -> Option<Tier> {
-	match b {
-		0x00 => Some(Tier::Buffer),
-		0x01 => Some(Tier::Persistent),
-		_ => None,
-	}
-}
-
-fn extend_object_id(builder: EncodedKeyBuilder, id: MetricsId) -> EncodedKeyBuilder {
-	match id {
-		MetricsId::Object(object_id) => builder.u8(ID_OBJECT).object_id(object_id),
-		MetricsId::System => builder.u8(ID_SYSTEM),
-	}
-}
-
-fn decode_object_id(de: &mut KeyDeserializer) -> Option<MetricsId> {
-	match de.read_u8().ok()? {
-		ID_OBJECT => Some(MetricsId::Object(de.read_object_id().ok()?)),
-		ID_SYSTEM => Some(MetricsId::System),
-		_ => None,
-	}
 }
 
 #[cfg(test)]

@@ -23,6 +23,7 @@ use reifydb_core::{
 		store::SingleVersionRange,
 	},
 	key::{
+		any::AnyKey,
 		queue::{QueueAttemptKey, QueueDeduplicationKey, QueueItemStateKey},
 		row::RowKey,
 		typed::key::Key,
@@ -32,6 +33,7 @@ use reifydb_core::{
 		progress::Progress,
 		task::LifecycleTask,
 	},
+	return_internal_error,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::Clock;
@@ -125,7 +127,7 @@ impl QueueRetentionTask {
 			}));
 		}
 
-		if query_txn.get_encoded(&RowKey::encoded(queue, row))?.is_some() {
+		if query_txn.get(&RowKey::new(queue, row))?.is_some() {
 			warn!(
 				queue = queue.0,
 				item = row.0,
@@ -152,15 +154,21 @@ impl QueueRetentionTask {
 		for item in &purge {
 			let stream = txn.range(QueueAttemptKey::item_scan(queue, item.row), RangeScope::All, 1024)?;
 			for entry in stream {
-				attempt_keys.push(entry?.key.clone());
+				let entry = entry?;
+				let AnyKey::QueueAttempt(key) = entry.key else {
+					return_internal_error!(
+						"queue attempt scan yielded a key that is not a QueueAttemptKey"
+					)
+				};
+				attempt_keys.push(key);
 			}
 		}
 
 		for key in &attempt_keys {
-			txn.remove_encoded(key)?;
+			txn.remove(key)?;
 		}
 		for item in &purge {
-			txn.remove_encoded(&RowKey::encoded(queue, item.row))?;
+			txn.remove(&RowKey::new(queue, item.row))?;
 		}
 		txn.commit()?;
 
@@ -188,7 +196,7 @@ impl QueueRetentionTask {
 
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		for key in &expired.keys {
-			txn.remove_encoded(key)?;
+			txn.remove(key)?;
 		}
 		txn.commit()?;
 
@@ -211,13 +219,18 @@ impl QueueRetentionTask {
 				break;
 			}
 			out.scanned += 1;
-			out.last = Some(entry.key.clone());
+			out.last = Some(entry.key.encode());
 
 			if let Some((_, expires_at)) =
 				decode_queue_deduplication(EncodedQueueDeduplicationRow::view(&entry.bytes))
 				&& expires_at <= now
 			{
-				out.keys.push(entry.key.clone());
+				let AnyKey::QueueDeduplication(key) = entry.key else {
+					return_internal_error!(
+						"queue deduplication scan yielded a key that is not a QueueDeduplicationKey"
+					)
+				};
+				out.keys.push(key);
 			}
 		}
 
@@ -236,7 +249,7 @@ impl QueueRetentionTask {
 
 #[derive(Default)]
 struct ExpiredDeduplication {
-	keys: Vec<EncodedKey>,
+	keys: Vec<QueueDeduplicationKey>,
 	last: Option<EncodedKey>,
 	scanned: usize,
 }

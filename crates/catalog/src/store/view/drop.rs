@@ -3,7 +3,11 @@
 
 use reifydb_core::{
 	interface::catalog::{id::ViewId, storage::StorageId, view::ViewStorageKind},
-	key::{catalog::ViewKey, namespace::NamespaceViewKey, ringbuffer::RingBufferMetadataKey, row::RowSettingsKey},
+	key::{
+		any::AnyKey, catalog::ViewKey, namespace::NamespaceViewKey, ringbuffer::RingBufferMetadataKey,
+		row::RowSettingsKey,
+	},
+	return_internal_error,
 };
 use reifydb_transaction::{
 	multi::RangeScope,
@@ -39,11 +43,16 @@ impl CatalogStore {
 				let mut stream = txn.range(range, RangeScope::All, 1024)?;
 				let mut keys = Vec::new();
 				for entry in stream.by_ref() {
-					keys.push(entry?.key.clone());
+					let AnyKey::RingBufferMetadata(key) = entry?.key else {
+						return_internal_error!(
+							"ring buffer metadata scan yielded a key that is not a RingBufferMetadataKey"
+						);
+					};
+					keys.push(key);
 				}
 				drop(stream);
 				for key in keys {
-					txn.remove_encoded(&key)?;
+					txn.remove(&key)?;
 				}
 				Ok(())
 			}

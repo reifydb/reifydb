@@ -13,7 +13,7 @@ pub mod find;
 pub mod list;
 pub mod shape;
 
-pub(crate) fn convert_granted_role(multi: MultiVersionRow) -> Result<GrantedRole> {
+pub(crate) fn convert_granted_role<K>(multi: MultiVersionRow<K>) -> Result<GrantedRole> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let identity = granted_role::get_identity(&bytes);
 	let role_id = granted_role::get_role_id(&bytes);

@@ -17,7 +17,7 @@ use crate::{
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Partition)]
 pub struct PartitionKey {
 	pub object: ObjectId,

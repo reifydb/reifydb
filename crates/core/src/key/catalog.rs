@@ -400,7 +400,7 @@ mod moved_catalog_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Dictionary)]
 pub struct DictionaryKey {
 	pub dictionary: DictionaryId,
@@ -434,7 +434,7 @@ impl DictionaryKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = DictionaryEntry)]
 pub struct DictionaryEntryKey {
 	pub dictionary: DictionaryId,
@@ -470,7 +470,7 @@ impl DictionaryEntryKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct DictionaryEntryIndexKey {
 	pub dictionary: DictionaryId,
 	pub id: u128,
@@ -673,7 +673,7 @@ pub mod dictionary_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Index)]
 pub struct IndexKey {
 	pub object: ObjectId,
@@ -736,6 +736,13 @@ impl EncodableKeyRange for ObjectIndexKeyRange {
 }
 
 impl IndexKey {
+	pub fn new(object: impl Into<ObjectId>, index: impl Into<IndexId>) -> Self {
+		Self {
+			object: object.into(),
+			index: index.into(),
+		}
+	}
+
 	pub fn encoded(object: impl Into<ObjectId>, index: impl Into<IndexId>) -> EncodedKey {
 		Key::encode(&Self {
 			object: object.into(),
@@ -815,7 +822,7 @@ pub mod index_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct IndexEntryKey {
 	pub object: ObjectId,
 	pub index: IndexId,
@@ -919,17 +926,12 @@ impl EncodableKey for IndexEntryKey {
 		let index = de.read_index_id().ok()?;
 
 		let remaining = de.remaining();
-		if remaining > 0 {
-			let remaining_bytes = de.read_raw(remaining).ok()?;
-			let index_key = EncodedIndexKey::new(remaining_bytes);
-			Some(Self {
-				object,
-				index,
-				key: index_key,
-			})
-		} else {
-			None
-		}
+		let remaining_bytes = de.read_raw(remaining).ok()?;
+		Some(Self {
+			object,
+			index,
+			key: EncodedIndexKey::new(remaining_bytes),
+		})
 	}
 }
 
@@ -1166,7 +1168,7 @@ pub mod index_entry_key_tests_2 {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct SumTypeKey {
 	pub sumtype: SumTypeId,
 }
@@ -1241,7 +1243,7 @@ mod sum_type_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct ViewKey {
 	pub view: ViewId,
 }
@@ -1318,7 +1320,7 @@ pub mod view_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Table)]
 pub struct TableKey {
 	pub table: TableId,
@@ -1386,7 +1388,7 @@ pub mod table_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct SourceKey {
 	pub source: SourceId,
 }
@@ -1461,7 +1463,7 @@ pub mod source_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct SinkKey {
 	pub sink: SinkId,
 }
@@ -1536,7 +1538,7 @@ pub mod sink_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Relationship)]
 pub struct RelationshipKey {
 	pub relationship: RelationshipId,
@@ -1586,7 +1588,7 @@ mod relationship_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = ColumnProperty)]
 pub struct ColumnPropertyKey {
 	pub column: ColumnId,
@@ -1674,7 +1676,7 @@ pub mod column_property_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Handler)]
 pub struct HandlerKey {
 	pub handler: HandlerId,
@@ -1766,7 +1768,7 @@ mod verify_byte_identical_handler_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = VariantHandler)]
 pub struct VariantHandlerKey {
 	pub namespace: NamespaceId,
@@ -1969,7 +1971,7 @@ mod verify_byte_identical_variant_handler_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct BindingKey {
 	pub binding: BindingId,
 }
@@ -2043,7 +2045,7 @@ pub mod binding_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = PrimaryKey)]
 pub struct PrimaryKeyKey {
 	pub primary_key: PrimaryKeyId,

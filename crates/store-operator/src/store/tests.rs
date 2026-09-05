@@ -165,8 +165,6 @@ fn group_page(store: &StandardOperatorStore, groups: &[GroupId]) -> Vec<(Encoded
 
 #[test]
 fn a_group_page_answers_with_exactly_the_union_of_the_per_group_range_batches() {
-	// one persistent call replaces one range read per group, so a dropped or reordered row here silently shrinks
-	// what a drain reclaims
 	let (store, _guard) = store_fixture();
 	let groups = [sweep_group(11), sweep_group(22), sweep_group(33)];
 	seed_groups(&store, &groups);
@@ -180,8 +178,6 @@ fn a_group_page_answers_with_exactly_the_union_of_the_per_group_range_batches() 
 
 #[test]
 fn a_group_page_answers_with_rows_that_never_reached_the_persistent_tier() {
-	// the resident tier is consulted per group, and skipping it hands the reaper a group it will call empty while
-	// unflushed rows still name it
 	let (store, _guard) = store_fixture();
 	let groups = [sweep_group(11), sweep_group(22)];
 	seed_groups(&store, &groups);
@@ -192,7 +188,6 @@ fn a_group_page_answers_with_rows_that_never_reached_the_persistent_tier() {
 
 #[test]
 fn a_group_page_hides_a_buffered_tombstone_over_a_durable_row() {
-	// without the buffer shadowing the persistent read the reaper sweeps a row a caller already deleted
 	let (store, _guard) = store_fixture();
 	let groups = [sweep_group(11), sweep_group(22)];
 	seed_groups(&store, &groups);
@@ -217,7 +212,6 @@ fn a_group_page_hides_a_buffered_tombstone_over_a_durable_row() {
 
 #[test]
 fn a_group_page_never_answers_with_a_group_outside_the_set() {
-	// the set is the only filter left once the per group ranges are gone, so a leak here reclaims a live group
 	let (store, _guard) = store_fixture();
 	let groups = [sweep_group(11), sweep_group(22), sweep_group(33)];
 	seed_groups(&store, &groups);
@@ -232,7 +226,6 @@ fn a_group_page_never_answers_with_a_group_outside_the_set() {
 
 #[test]
 fn a_group_page_reports_more_work_when_the_budget_cuts_the_set_short() {
-	// a page that stops mid set must say so, otherwise the reaper declares a group drained while rows survive
 	let (store, _guard) = store_fixture();
 	let groups = [sweep_group(11), sweep_group(22)];
 	seed_groups(&store, &groups);

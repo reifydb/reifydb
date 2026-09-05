@@ -9,10 +9,7 @@ use std::sync::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::ConsumerClass,
-	key::{
-		EncodableKey,
-		cdc::{CdcConsumerKey, CdcConsumerKeyRange},
-	},
+	key::{any::AnyKey, cdc::CdcConsumerKeyRange},
 	lifecycle::watermark::CheckpointFloor,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -68,7 +65,7 @@ pub fn compute_pinning_watermark(
 	let mut min_version: Option<CommitVersion> = None;
 	for multi in txn.range(CdcConsumerKeyRange::full_scan(), RangeScope::All, 1024)? {
 		let multi = multi?;
-		if CdcConsumerKey::decode(&multi.key).is_none() {
+		if !matches!(&multi.key, AnyKey::CdcConsumer(_)) {
 			continue;
 		}
 		let Some(bytes) = CheckpointRow::decode(&multi.bytes) else {

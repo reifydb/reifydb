@@ -218,10 +218,7 @@ impl CatalogStore {
 			} => {
 				if partition_by.is_empty() {
 					let row = encode_ringbuffer_metadata(&RingBufferMetadata::new());
-					txn.set_encoded(
-						&RingBufferMetadataKey::encoded(StorageId::View(view)),
-						row.into_bytes(),
-					)?;
+					txn.set(&RingBufferMetadataKey::new(StorageId::View(view)), row.into_bytes())?;
 				}
 				Ok(())
 			}

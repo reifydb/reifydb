@@ -14,18 +14,18 @@ use reifydb_core::common::CommitVersion;
 use reifydb_transaction::multi::RangeScope;
 
 use super::test_multi;
-use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
+use crate::{as_encoded, as_key, as_values, from_bytes, multi::transaction::FromRow};
 
 #[test]
 fn test_range() {
 	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
-	txn.set_encoded(&as_key!(1), as_values!(1)).unwrap();
-	txn.set_encoded(&as_key!(2), as_values!(2)).unwrap();
-	txn.set_encoded(&as_key!(3), as_values!(3)).unwrap();
+	txn.set(&as_key!(1), as_values!(1)).unwrap();
+	txn.set(&as_key!(2), as_values!(2)).unwrap();
+	txn.set(&as_key!(3), as_values!(3)).unwrap();
 	txn.commit(vec![]).unwrap();
 
-	let four_to_one = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(1)));
+	let four_to_one = EncodedKeyRange::start_end(Some(as_encoded!(4)), Some(as_encoded!(1)));
 
 	let txn = engine.begin_query().unwrap();
 	let items: Vec<_> =
@@ -48,11 +48,11 @@ fn test_range() {
 fn test_range2() {
 	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
-	txn.set_encoded(&as_key!(1), as_values!(1)).unwrap();
-	txn.set_encoded(&as_key!(2), as_values!(2)).unwrap();
-	txn.set_encoded(&as_key!(3), as_values!(3)).unwrap();
+	txn.set(&as_key!(1), as_values!(1)).unwrap();
+	txn.set(&as_key!(2), as_values!(2)).unwrap();
+	txn.set(&as_key!(3), as_values!(3)).unwrap();
 
-	let four_to_one = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(1)));
+	let four_to_one = EncodedKeyRange::start_end(Some(as_encoded!(4)), Some(as_encoded!(1)));
 
 	let items: Vec<_> =
 		txn.range(four_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -73,11 +73,11 @@ fn test_range2() {
 	txn.commit(vec![]).unwrap();
 
 	let mut txn = engine.begin_command().unwrap();
-	txn.set_encoded(&as_key!(4), as_values!(4)).unwrap();
-	txn.set_encoded(&as_key!(5), as_values!(5)).unwrap();
-	txn.set_encoded(&as_key!(6), as_values!(6)).unwrap();
+	txn.set(&as_key!(4), as_values!(4)).unwrap();
+	txn.set(&as_key!(5), as_values!(5)).unwrap();
+	txn.set(&as_key!(6), as_values!(6)).unwrap();
 
-	let seven_to_one = EncodedKeyRange::start_end(Some(as_key!(7)), Some(as_key!(1)));
+	let seven_to_one = EncodedKeyRange::start_end(Some(as_encoded!(7)), Some(as_encoded!(1)));
 
 	let items: Vec<_> =
 		txn.range(seven_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -100,11 +100,11 @@ fn test_range2() {
 fn test_range3() {
 	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
-	txn.set_encoded(&as_key!(4), as_values!(4)).unwrap();
-	txn.set_encoded(&as_key!(5), as_values!(5)).unwrap();
-	txn.set_encoded(&as_key!(6), as_values!(6)).unwrap();
+	txn.set(&as_key!(4), as_values!(4)).unwrap();
+	txn.set(&as_key!(5), as_values!(5)).unwrap();
+	txn.set(&as_key!(6), as_values!(6)).unwrap();
 
-	let seven_to_four = EncodedKeyRange::start_end(Some(as_key!(7)), Some(as_key!(4)));
+	let seven_to_four = EncodedKeyRange::start_end(Some(as_encoded!(7)), Some(as_encoded!(4)));
 
 	let items: Vec<_> =
 		txn.range(seven_to_four.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -124,12 +124,12 @@ fn test_range3() {
 
 	txn.commit(vec![]).unwrap();
 
-	let five_to_one = EncodedKeyRange::start_end(Some(as_key!(5)), Some(as_key!(1)));
+	let five_to_one = EncodedKeyRange::start_end(Some(as_encoded!(5)), Some(as_encoded!(1)));
 
 	let mut txn = engine.begin_command().unwrap();
-	txn.set_encoded(&as_key!(1), as_values!(1)).unwrap();
-	txn.set_encoded(&as_key!(2), as_values!(2)).unwrap();
-	txn.set_encoded(&as_key!(3), as_values!(3)).unwrap();
+	txn.set(&as_key!(1), as_values!(1)).unwrap();
+	txn.set(&as_key!(2), as_values!(2)).unwrap();
+	txn.set(&as_key!(3), as_values!(3)).unwrap();
 
 	let items: Vec<_> =
 		txn.range(five_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -157,10 +157,10 @@ fn test_range_edge() {
 	{
 		let mut txn = engine.begin_command().unwrap();
 
-		txn.set_encoded(&as_key!(0), as_values!(0u64)).unwrap();
-		txn.set_encoded(&as_key!(u64::MAX), as_values!(u64::MAX)).unwrap();
+		txn.set(&as_key!(0), as_values!(0u64)).unwrap();
+		txn.set(&as_key!(u64::MAX), as_values!(u64::MAX)).unwrap();
 
-		txn.set_encoded(&as_key!(3), as_values!(31u64)).unwrap();
+		txn.set(&as_key!(3), as_values!(31u64)).unwrap();
 		txn.commit(vec![]).unwrap();
 		assert_eq!(2, engine.version().unwrap());
 	}
@@ -168,8 +168,8 @@ fn test_range_edge() {
 	// a2, c2
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.set_encoded(&as_key!(1), as_values!(12u64)).unwrap();
-		txn.set_encoded(&as_key!(3), as_values!(32u64)).unwrap();
+		txn.set(&as_key!(1), as_values!(12u64)).unwrap();
+		txn.set(&as_key!(3), as_values!(32u64)).unwrap();
 		txn.commit(vec![]).unwrap();
 		assert_eq!(3, engine.version().unwrap());
 	}
@@ -177,8 +177,8 @@ fn test_range_edge() {
 	// b3
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.set_encoded(&as_key!(1), as_values!(13u64)).unwrap();
-		txn.set_encoded(&as_key!(2), as_values!(23u64)).unwrap();
+		txn.set(&as_key!(1), as_values!(13u64)).unwrap();
+		txn.set(&as_key!(2), as_values!(23u64)).unwrap();
 		txn.commit(vec![]).unwrap();
 		assert_eq!(4, engine.version().unwrap());
 	}
@@ -186,30 +186,34 @@ fn test_range_edge() {
 	// b4 (remove)
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.remove_encoded(&as_key!(2)).unwrap();
+		txn.remove(&as_key!(2)).unwrap();
 		txn.commit(vec![]).unwrap();
 		assert_eq!(5, engine.version().unwrap());
 	}
 
-	let check_iter = |items: Vec<reifydb_core::interface::store::MultiVersionRow>, expected: &[u64]| {
-		let mut i = 0;
-		for r in items {
-			assert_eq!(expected[i], from_bytes!(u64, &r.bytes));
-			i += 1;
-		}
-		assert_eq!(expected.len(), i);
-	};
+	let check_iter =
+		|items: Vec<reifydb_core::interface::store::MultiVersionRow<reifydb_core::key::any::AnyKey>>,
+		 expected: &[u64]| {
+			let mut i = 0;
+			for r in items {
+				assert_eq!(expected[i], from_bytes!(u64, &r.bytes));
+				i += 1;
+			}
+			assert_eq!(expected.len(), i);
+		};
 
-	let check_rev_iter = |items: Vec<reifydb_core::interface::store::MultiVersionRow>, expected: &[u64]| {
-		let mut i = 0;
-		for r in items {
-			assert_eq!(expected[i], from_bytes!(u64, &r.bytes));
-			i += 1;
-		}
-		assert_eq!(expected.len(), i);
-	};
+	let check_rev_iter =
+		|items: Vec<reifydb_core::interface::store::MultiVersionRow<reifydb_core::key::any::AnyKey>>,
+		 expected: &[u64]| {
+			let mut i = 0;
+			for r in items {
+				assert_eq!(expected[i], from_bytes!(u64, &r.bytes));
+				i += 1;
+			}
+			assert_eq!(expected.len(), i);
+		};
 
-	let ten_to_one = EncodedKeyRange::start_end(Some(as_key!(10)), Some(as_key!(1)));
+	let ten_to_one = EncodedKeyRange::start_end(Some(as_encoded!(10)), Some(as_encoded!(1)));
 
 	let mut txn = engine.begin_command().unwrap();
 	let items: Vec<_> =
@@ -285,7 +289,7 @@ fn test_range_stream_returns_newest_version() {
 
 	for i in 1..=NUM_VERSIONS {
 		let mut txn = engine.begin_command().unwrap();
-		txn.set_encoded(&as_key!(1), as_values!(i)).unwrap();
+		txn.set(&as_key!(1), as_values!(i)).unwrap();
 		txn.commit(vec![]).unwrap();
 	}
 
@@ -311,7 +315,7 @@ fn test_range_stream_multiple_keys_many_versions() {
 		let mut txn = engine.begin_command().unwrap();
 		for key in 1..=NUM_KEYS {
 			// Value encodes both key and version for verification
-			txn.set_encoded(&as_key!(key), as_values!(key * 1000 + version)).unwrap();
+			txn.set(&as_key!(key), as_values!(key * 1000 + version)).unwrap();
 		}
 		txn.commit(vec![]).unwrap();
 	}

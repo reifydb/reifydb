@@ -10,7 +10,7 @@ use reifydb_macro::Key;
 use super::super::{KeyKind, typed::key::Key};
 use crate::interface::catalog::flow::{FlowId, OperatorId};
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Operator)]
 pub struct OperatorKey {
 	pub operator: OperatorId,
@@ -44,7 +44,7 @@ impl OperatorKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = OperatorByFlow)]
 pub struct OperatorByFlowKey {
 	pub flow: FlowId,

@@ -13,7 +13,6 @@ use cleanup::cleanup_old_windows;
 use commit_queue::CommitQueue;
 #[cfg(not(reifydb_single_threaded))]
 use commit_queue::spawn_sequencer;
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -21,6 +20,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		store::MultiVersionCommit,
 	},
+	key::any::AnyKey,
 	util::bloom::hash_item,
 };
 use reifydb_runtime::{
@@ -86,7 +86,7 @@ impl ModifiedKeyIndex {
 	}
 
 	#[inline]
-	fn insert(&mut self, key: &EncodedKey) {
+	fn insert(&mut self, key: &AnyKey) {
 		self.hashes.insert(hash_item(key));
 	}
 
@@ -96,7 +96,7 @@ impl ModifiedKeyIndex {
 	}
 
 	#[cfg(test)]
-	pub(crate) fn contains(&self, key: &EncodedKey) -> bool {
+	pub(crate) fn contains(&self, key: &AnyKey) -> bool {
 		self.hashes.contains(&hash_item(key))
 	}
 
@@ -549,8 +549,32 @@ mod tests {
 		}
 	}
 
-	fn create_test_key(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes())
+	use std::ops::Bound;
+
+	use reifydb_core::{
+		interface::catalog::{
+			id::{IndexId, TableId},
+			object::ObjectId,
+		},
+		key::catalog::IndexEntryKey,
+		value::index::encoded::EncodedIndexKey,
+	};
+
+	// IndexEntry appends its tail verbatim, so encoded order still matches the raw string order.
+	fn create_test_key(s: &str) -> AnyKey {
+		IndexEntryKey::new(
+			ObjectId::Table(TableId(1)),
+			IndexId::primary(1u64),
+			EncodedIndexKey::new(s.as_bytes()),
+		)
+		.into()
+	}
+
+	fn create_test_range(start: &str, end: &str) -> EncodedKeyRange {
+		EncodedKeyRange::new(
+			Bound::Included(create_test_key(start).encode()),
+			Bound::Excluded(create_test_key(end).encode()),
+		)
 	}
 
 	const PINNED_WINDOW_SIZE: u64 = 500;
@@ -673,7 +697,7 @@ mod tests {
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		let mut conflicts2 = ConflictManager::new();
-		let range = EncodedKeyRange::parse("a..z");
+		let range = create_test_range("a", "z");
 		conflicts2.mark_range(range);
 		conflicts2.mark_write(&create_test_key("other_key"));
 
@@ -712,7 +736,7 @@ mod tests {
 
 		// Read version 510 sits inside T1's window but before T1's commit, so the conflict is real.
 		let mut conflicts2 = ConflictManager::new();
-		conflicts2.mark_range(EncodedKeyRange::parse("a..z"));
+		conflicts2.mark_range(create_test_range("a", "z"));
 		let r2 = oracle.new_commit(CommitVersion(510), conflicts2, no_deltas()).unwrap();
 
 		assert!(
@@ -772,7 +796,7 @@ mod tests {
 		// Reading at 100 makes window @ 0 skippable, so only the unmatched window @ 500 holds the conflict.
 		let mut conflicts_3 = ConflictManager::new();
 		conflicts_3.mark_write(&key_beta);
-		conflicts_3.mark_range(EncodedKeyRange::parse("a..z"));
+		conflicts_3.mark_range(create_test_range("a", "z"));
 		let r_3 = oracle.new_commit(CommitVersion(100), conflicts_3, no_deltas()).unwrap();
 
 		assert!(

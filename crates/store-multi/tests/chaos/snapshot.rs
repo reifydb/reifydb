@@ -41,10 +41,10 @@ fn commit_rows(
 			.iter()
 			.map(|(row, value)| match value {
 				Some(bytes) => Delta::Set {
-					key: RowKey::encoded(STORAGE, *row),
+					key: RowKey::new(STORAGE, *row).into(),
 					bytes: EncodedBytes(CowVec::new(bytes.clone())),
 				},
-				None => Delta::remove_silent(RowKey::encoded(STORAGE, *row)),
+				None => Delta::remove_silent(RowKey::new(STORAGE, *row).into()),
 			})
 			.collect();
 		MultiVersionCommit::commit(store, CowVec::new(store_deltas), CommitVersion(version)).unwrap();
@@ -103,7 +103,7 @@ fn drain_with_interleave(
 		match iter.next() {
 			Some(item) => {
 				let r = item.unwrap();
-				drained.push((r.key.to_vec(), r.bytes.to_vec(), r.version.0));
+				drained.push((r.key.encode().to_vec(), r.bytes.to_vec(), r.version.0));
 			}
 			None => break,
 		}
@@ -205,7 +205,7 @@ pub fn drive(seed: u64, p: Params) {
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap()
 			.into_iter()
-			.map(|r| (r.key.to_vec(), r.bytes.to_vec(), r.version.0))
+			.map(|r| (r.key.encode().to_vec(), r.bytes.to_vec(), r.version.0))
 			.collect();
 		assert_eq!(
 			got, expected_fwd,

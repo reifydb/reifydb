@@ -11,7 +11,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
 	key::{
-		EncodableKey,
+		any::AnyKey,
 		operator::{
 			keyspace::suffix_width_of,
 			state::{GroupId, KeyspaceId, OperatorStateKey},
@@ -81,7 +81,7 @@ fn count(txn: &mut DeferredTransaction, group: GroupId) -> usize {
 		.unwrap()
 		.items
 		.iter()
-		.filter(|item| OperatorStateKey::decode(&item.key).is_some_and(|key| key.group == group))
+		.filter(|item| matches!(&item.key, AnyKey::OperatorState(key) if key.group == group))
 		.count()
 }
 

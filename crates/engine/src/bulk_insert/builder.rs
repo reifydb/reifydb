@@ -27,11 +27,10 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		EncodableKey,
+		any::AnyKey,
 		catalog::IndexEntryKey,
 		row::{PartitionedRowKey, RowKey},
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
-		typed::key::Key,
 	},
 };
 use reifydb_runtime::context::clock::Clock;
@@ -421,7 +420,7 @@ fn write_primary_key_index(
 	let index_key = primary_key::encode_primary_key(pk_def, row, table, shape)?;
 	let index_entry_key = IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key);
 
-	if txn.contains_encoded(&index_entry_key.encode())? {
+	if txn.contains(&index_entry_key)? {
 		let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
 		return Err(CoreError::PrimaryKeyViolation {
 			fragment: Fragment::None,
@@ -431,10 +430,7 @@ fn write_primary_key_index(
 		.into());
 	}
 
-	txn.set_encoded(
-		&index_entry_key.encode(),
-		EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes(),
-	)?;
+	txn.set(&index_entry_key, EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes())?;
 	Ok(())
 }
 
@@ -606,9 +602,9 @@ fn evict_oldest_for_partition(
 		let range = PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, None);
 		let oldest = txn.range_rev(range, RangeScope::All, 1)?.next().transpose()?;
 		if let Some(entry) = oldest
-			&& let Some(rn) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.row)
+			&& let AnyKey::PartitionedRow(pk) = &entry.key
 		{
-			txn.remove_from_ringbuffer(ringbuffer, Some(partition), rn)?;
+			txn.remove_from_ringbuffer(ringbuffer, Some(partition), pk.row)?;
 		}
 		metadata.count -= 1;
 		return Ok(());
@@ -616,8 +612,8 @@ fn evict_oldest_for_partition(
 
 	let mut evict_pos = metadata.head;
 	loop {
-		let key = RowKey::encoded(ringbuffer.id, RowNumber(evict_pos));
-		if txn.get_encoded(&key)?.is_some() {
+		let key = RowKey::new(ringbuffer.id, RowNumber(evict_pos));
+		if txn.get(&key)?.is_some() {
 			txn.remove_from_ringbuffer(ringbuffer, None, RowNumber(evict_pos))?;
 			break;
 		}
@@ -628,8 +624,8 @@ fn evict_oldest_for_partition(
 	}
 	metadata.head = evict_pos + 1;
 	while metadata.head < metadata.tail {
-		let key = RowKey::encoded(ringbuffer.id, RowNumber(metadata.head));
-		if txn.get_encoded(&key)?.is_some() {
+		let key = RowKey::new(ringbuffer.id, RowNumber(metadata.head));
+		if txn.get(&key)?.is_some() {
 			break;
 		}
 		metadata.head += 1;
@@ -790,14 +786,14 @@ fn insert_series_rows<V: ValidationMode>(
 
 		metadata.sequence_counter += 1;
 		let sequence = metadata.sequence_counter;
-		let encoded_key = if partition_col_indices.is_empty() {
+		let key: AnyKey = if partition_col_indices.is_empty() {
 			SeriesRowKey {
 				storage,
 				variant_tag: None,
 				key: key_value,
 				sequence,
 			}
-			.encode()
+			.into()
 		} else {
 			let partition_values: Vec<Value> =
 				partition_col_indices.iter().map(|&idx| values[idx].clone()).collect();
@@ -809,7 +805,7 @@ fn insert_series_rows<V: ValidationMode>(
 				&partition_values,
 				&mut verified,
 			)?;
-			PartitionedSeriesRowKey::encoded(storage, partition, None, key_value, sequence)
+			PartitionedSeriesRowKey::new(storage, partition, None, key_value, sequence).into()
 		};
 
 		let row = encode_series_row(series, shape, key_value, &values, key_col_idx, clock)?;
@@ -818,7 +814,7 @@ fn insert_series_rows<V: ValidationMode>(
 		SeriesRowInterceptor::pre_insert(txn, series, &mut rows_buf)?;
 		let [row] = rows_buf;
 		let row = row.freeze_bytes();
-		txn.set_encoded(&encoded_key, row.clone())?;
+		txn.set(&key, row.clone())?;
 		let rows = [row.clone()];
 		SeriesRowInterceptor::post_insert(txn, series, &rows)?;
 

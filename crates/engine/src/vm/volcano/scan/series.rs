@@ -11,8 +11,8 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::storage::StorageId, resolved::ResolvedSeries, store::MultiVersionRow},
 	key::{
-		series::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange},
-		typed::key::Key,
+		any::AnyKey,
+		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
@@ -95,13 +95,13 @@ impl SeriesScanNode {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: u64,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'rx>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + 'rx>> {
 		rx.range(range, scope, batch_size as usize)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::series::drain")]
 	fn drain_batch(
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>>,
 		batch_size: u64,
 		partitioned: bool,
 		has_tag: bool,
@@ -115,10 +115,17 @@ impl SeriesScanNode {
 			let entry = entry?;
 
 			let decoded: Option<(u64, u64, Option<u8>, Option<Partition>)> = if partitioned {
-				PartitionedSeriesRowKey::decode(&entry.key)
-					.map(|pk| (pk.key, pk.sequence, pk.variant_tag, Some(pk.partition)))
+				match &entry.key {
+					AnyKey::PartitionedSeriesRow(pk) => {
+						Some((pk.key, pk.sequence, pk.variant_tag, Some(pk.partition)))
+					}
+					_ => None,
+				}
 			} else {
-				SeriesRowKey::decode(&entry.key).map(|k| (k.key, k.sequence, k.variant_tag, None))
+				match &entry.key {
+					AnyKey::SeriesRow(k) => Some((k.key, k.sequence, k.variant_tag, None)),
+					_ => None,
+				}
 			};
 
 			if let Some((key_val, sequence, variant_tag, partition)) = decoded {
@@ -143,7 +150,7 @@ impl SeriesScanNode {
 				}
 				batch.data_rows.push(values);
 
-				batch.last_key = Some(entry.key);
+				batch.last_key = Some(entry.key.encode());
 				count += 1;
 				if count >= batch_size as usize {
 					break;

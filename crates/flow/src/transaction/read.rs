@@ -12,7 +12,7 @@ use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, store::MultiVersionRow},
-	key::{kind::KeyKind, operator::state::OperatorStateKey},
+	key::{any::AnyKey, kind::KeyKind, operator::state::OperatorStateKey},
 };
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_value::Result;
@@ -85,9 +85,6 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 			KeyKind::NamespaceDictionary => ReadFrom::Query,
 			KeyKind::Metric => ReadFrom::Query,
 			KeyKind::FlowVersion => ReadFrom::Query,
-			KeyKind::Subscription => ReadFrom::Query,
-			KeyKind::SubscriptionRow => ReadFrom::Query,
-			KeyKind::SubscriptionColumn => ReadFrom::Query,
 			KeyKind::RowShape => ReadFrom::Query,
 			KeyKind::RowShapeField => ReadFrom::Query,
 			KeyKind::SumType => ReadFrom::Query,
@@ -113,7 +110,6 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 			KeyKind::NamespaceSource => ReadFrom::Query,
 			KeyKind::Sink => ReadFrom::Query,
 			KeyKind::NamespaceSink => ReadFrom::Query,
-			KeyKind::SourceCheckpoint => ReadFrom::Query,
 			KeyKind::RowSettings => ReadFrom::Query,
 			KeyKind::OperatorSettings => ReadFrom::Query,
 			KeyKind::Procedure => ReadFrom::Query,
@@ -129,6 +125,8 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 		},
 	}
 }
+
+const UNDECODABLE_PENDING_KEY: &str = "a pending flow write must carry a decodable key";
 
 pub(crate) struct OperatorStateRangeIter {
 	store: OperatorStore,
@@ -163,7 +161,7 @@ impl OperatorStateRangeIter {
 }
 
 impl Iterator for OperatorStateRangeIter {
-	type Item = Result<MultiVersionRow>;
+	type Item = Result<MultiVersionRow<AnyKey>>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -174,7 +172,7 @@ impl Iterator for OperatorStateRangeIter {
 						let (group, keyspace, suffix) =
 							OperatorStateKey::decode_inner(inner_key.as_slice())
 								.expect("inner keys must carry a structured encoding");
-						OperatorStateKey::encoded(self.operator, group, keyspace, suffix)
+						OperatorStateKey::new(self.operator, group, keyspace, suffix).into()
 					},
 					bytes,
 					version: self.version,
@@ -211,18 +209,18 @@ impl Iterator for OperatorStateRangeIter {
 
 pub(crate) struct FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = Result<MultiVersionRow>>,
+	I: Iterator<Item = Result<MultiVersionRow<AnyKey>>>,
 {
 	storage_iter: Peekable<I>,
-	pending_iter: Peekable<IntoIter<(EncodedKey, PendingWrite)>>,
+	pending_iter: Peekable<IntoIter<(AnyKey, PendingWrite)>>,
 	version: CommitVersion,
 }
 
 impl<I> Iterator for FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = Result<MultiVersionRow>>,
+	I: Iterator<Item = Result<MultiVersionRow<AnyKey>>>,
 {
-	type Item = Result<MultiVersionRow>;
+	type Item = Result<MultiVersionRow<AnyKey>>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -287,8 +285,12 @@ pub(crate) fn flow_merge_pending_iterator<I>(
 	version: CommitVersion,
 ) -> FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = Result<MultiVersionRow>>,
+	I: Iterator<Item = Result<MultiVersionRow<AnyKey>>>,
 {
+	let pending: Vec<(AnyKey, PendingWrite)> = pending
+		.into_iter()
+		.map(|(key, write)| (AnyKey::decode(&key).expect(UNDECODABLE_PENDING_KEY), write))
+		.collect();
 	FlowMergePendingIterator {
 		storage_iter: storage_iter.peekable(),
 		pending_iter: pending.into_iter().peekable(),

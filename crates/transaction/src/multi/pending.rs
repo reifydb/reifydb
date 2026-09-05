@@ -4,7 +4,7 @@
 use std::{collections::BTreeMap, mem::size_of, ops::RangeBounds, vec::IntoIter as VecIntoIter};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use reifydb_core::metrics::heap::HeapSize;
+use reifydb_core::{key::any::AnyKey, metrics::heap::HeapSize};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::multi::types::DeltaEntry;
@@ -113,7 +113,7 @@ impl PendingWrites {
 		self.index.iter().filter_map(|(key, slot)| self.entry_at(*slot).map(|entry| (key, entry)))
 	}
 
-	pub fn into_iter_insertion_order(self) -> impl Iterator<Item = (EncodedKey, DeltaEntry)> {
+	pub fn into_iter_insertion_order(self) -> impl Iterator<Item = (AnyKey, DeltaEntry)> {
 		self.entries.into_iter().flatten().map(|entry| (entry.key().clone(), entry))
 	}
 
@@ -137,8 +137,8 @@ impl PendingWrites {
 }
 
 impl IntoIterator for PendingWrites {
-	type Item = (EncodedKey, DeltaEntry);
-	type IntoIter = VecIntoIter<(EncodedKey, DeltaEntry)>;
+	type Item = (AnyKey, DeltaEntry);
+	type IntoIter = VecIntoIter<(AnyKey, DeltaEntry)>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.into_iter_insertion_order().collect::<Vec<_>>().into_iter()
@@ -148,13 +148,19 @@ impl IntoIterator for PendingWrites {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::{common::CommitVersion, delta::Delta};
+	use reifydb_core::{
+		common::CommitVersion, delta::Delta, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey,
+	};
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 
+	fn create_test_any(s: &str) -> AnyKey {
+		QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>()).into()
+	}
+
 	fn create_test_key(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes())
+		create_test_any(s).encode()
 	}
 
 	fn create_test_bytes(s: &str) -> EncodedBytes {
@@ -164,7 +170,7 @@ pub mod tests {
 	fn create_test_pending(version: CommitVersion, key: &str, values_data: &str) -> DeltaEntry {
 		DeltaEntry {
 			delta: Delta::Set {
-				key: create_test_key(key),
+				key: create_test_any(key),
 				bytes: create_test_bytes(values_data),
 			},
 			version,
@@ -293,10 +299,17 @@ pub mod tests {
 		assert_eq!(pw.total_estimated_size(), ByteSize::ZERO);
 	}
 
+	fn test_key_name(key: &AnyKey) -> Vec<u8> {
+		match key {
+			AnyKey::QueueDeduplication(key) => key.tail.as_slice().iter().map(|b| !b).collect(),
+			other => panic!("unexpected test key {other:?}"),
+		}
+	}
+
 	fn insertion_keys(pw: &PendingWrites) -> Vec<String> {
 		pw.clone()
 			.into_iter_insertion_order()
-			.map(|(key, _)| String::from_utf8(key.to_vec()).expect("test keys are utf8"))
+			.map(|(key, _)| String::from_utf8(test_key_name(&key)).expect("test keys are utf8"))
 			.collect()
 	}
 

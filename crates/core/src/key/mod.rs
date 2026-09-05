@@ -4,6 +4,7 @@
 use kind::KeyKind;
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 
+pub mod any;
 pub mod catalog;
 pub mod cdc;
 pub mod column;
@@ -11,6 +12,7 @@ pub mod config;
 pub mod flow;
 pub mod identity;
 pub mod kind;
+pub mod metric;
 pub mod namespace;
 pub mod operator;
 pub mod operator_settings;
@@ -21,6 +23,7 @@ pub mod queue;
 pub mod ringbuffer;
 pub mod row;
 pub mod series;
+pub mod sort_run;
 pub mod system;
 pub mod typed;
 

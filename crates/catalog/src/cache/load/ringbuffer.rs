@@ -50,7 +50,7 @@ pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache)
 	Ok(())
 }
 
-fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Result<RingBuffer> {
+fn convert_ringbuffer<K>(multi: MultiVersionRow<K>, primary_key: Option<PrimaryKey>) -> Result<RingBuffer> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = RingBufferId(ringbuffer::get_id(&bytes));
 	let namespace = NamespaceId(ringbuffer::get_namespace(&bytes));
@@ -76,7 +76,7 @@ fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -
 	})
 }
 
-fn get_ringbuffer_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
+fn get_ringbuffer_primary_key_id<K>(multi: &MultiVersionRow<K>) -> Option<PrimaryKeyId> {
 	let pk_id_raw = ringbuffer::get_primary_key(EncodedCatalogRow::view(&multi.bytes));
 	if pk_id_raw == 0 {
 		None

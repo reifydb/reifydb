@@ -19,7 +19,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, EntryLayout, MultiVersionCommit},
 	},
-	key::row::RowKey,
+	key::{any::AnyKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::shutdown::Shutdown;
@@ -54,7 +54,7 @@ fn commit_set(store: &StandardMultiStore, row: u64, version: u64) {
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
-			key: RowKey::encoded(STORAGE, row),
+			key: AnyKey::from(RowKey::new(STORAGE, row)),
 			bytes: EncodedBytes(CowVec::new(format!("v{row}").into_bytes())),
 		}],
 		CommitVersion(version),
@@ -81,7 +81,12 @@ fn tier_with_rows(rows: u64) -> (MultiPersistentTier, impl Drop) {
 	batch.insert(
 		EntryKind::Source(STORAGE, EntryLayout::Row),
 		(1..=rows)
-			.map(|row| (RowKey::encoded(STORAGE, row), Some(CowVec::new(format!("v{row}").into_bytes()))))
+			.map(|row| {
+				(
+					AnyKey::from(RowKey::new(STORAGE, row)).encode(),
+					Some(CowVec::new(format!("v{row}").into_bytes())),
+				)
+			})
 			.collect::<Vec<_>>(),
 	);
 	tier.set(CommitVersion(WRITTEN_AT), batch).unwrap();
@@ -103,11 +108,11 @@ fn tier_chunk(tier: &MultiPersistentTier, cursor: &mut RangeCursor) -> reifydb_v
 
 /// The row number and value a returned row carries, so a dropped or stale row shows as a gap in the
 /// sequence rather than a byte diff nobody can read.
-fn row_and_value(row: &reifydb_core::interface::store::MultiVersionRow) -> (u64, String) {
-	let key = row.key.as_slice();
-	let mut encoded = [0u8; 8];
-	encoded.copy_from_slice(&key[key.len() - 8..]);
-	(!u64::from_be_bytes(encoded), String::from_utf8(row.bytes.to_vec()).unwrap())
+fn row_and_value(row: &reifydb_core::interface::store::MultiVersionRow<AnyKey>) -> (u64, String) {
+	let AnyKey::Row(key) = &row.key else {
+		panic!("the scan must yield row keys")
+	};
+	(key.row.0, String::from_utf8(row.bytes.to_vec()).unwrap())
 }
 
 /// A refusal must be debuggable from its message alone, so it names the condition and not just the failure.

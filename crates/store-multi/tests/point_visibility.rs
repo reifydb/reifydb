@@ -15,10 +15,13 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
-		catalog::{id::TableId, storage::StorageId},
+		catalog::{
+			id::{QueueId, TableId},
+			storage::StorageId,
+		},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
-	key::{row::RowKey, typed::key::Key},
+	key::{any::AnyKey, queue::QueueDeduplicationKey, row::RowKey},
 };
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::{
@@ -27,11 +30,11 @@ use reifydb_store_multi::{
 };
 use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
 
-fn key(s: &str) -> EncodedKey {
-	EncodedKey::new(s.as_bytes())
+fn key(s: &str) -> AnyKey {
+	QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>()).into()
 }
 
-fn commit(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str) {
+fn commit(store: &StandardMultiStore, k: &AnyKey, version: u64, value: &str) {
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
@@ -43,17 +46,18 @@ fn commit(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str)
 	.unwrap();
 }
 
-fn persistent_only_set(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str) {
+fn persistent_only_set(store: &StandardMultiStore, k: &AnyKey, version: u64, value: &str) {
 	// Writing only to the persistent tier leaves the key cold, so the next point read has to fall through.
 	let persistent = store.persistent().expect("persistent tier configured");
-	let table = classify_key(k);
+	let encoded = k.encode();
+	let table = classify_key(&encoded);
 	let mut batches: HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>> = HashMap::new();
-	batches.entry(table).or_default().push((k.clone(), Some(CowVec::new(value.as_bytes().to_vec()))));
+	batches.entry(table).or_default().push((encoded, Some(CowVec::new(value.as_bytes().to_vec()))));
 	use reifydb_store_multi::tier::TierStorage;
 	persistent.set(CommitVersion(version), batches).unwrap();
 }
 
-fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u8>> {
+fn get(store: &StandardMultiStore, k: &AnyKey, version: u64) -> Option<Vec<u8>> {
 	store.get(k, CommitVersion(version)).unwrap().map(|r| r.bytes.to_vec())
 }
 
@@ -129,7 +133,7 @@ fn scan(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)> {
 	.collect::<Result<Vec<_>, _>>()
 	.unwrap()
 	.into_iter()
-	.map(|r| (r.key.to_vec(), r.bytes.to_vec()))
+	.map(|r| (r.key.encode().to_vec(), r.bytes.to_vec()))
 	.collect()
 }
 
@@ -139,36 +143,37 @@ fn range_scan_does_not_consult_the_point_tier() {
 	// scan; otherwise capacity eviction of a point-cached entry would silently change scan results.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k = key("only_in_cache");
+	let encoded = k.encode();
 
 	persistent_only_set(&store, &k, 5, "v5");
 	assert_eq!(get(&store, &k, 5).as_deref(), Some(b"v5".as_slice()), "point read populates the cache");
 
 	let scanned = scan(&store, 5);
 	assert!(
-		scanned.iter().any(|(kk, vv)| kk == k.as_ref() && vv == b"v5"),
+		scanned.iter().any(|(kk, vv)| kk == encoded.as_ref() && vv == b"v5"),
 		"a persistent-backed key must appear in a range scan"
 	);
 
 	// Deleting from persistent leaves the value only in the cache, isolating what a scan can reach.
 	let persistent = store.persistent().unwrap();
-	let table = classify_key(&k);
-	persistent.delete_keys(table, std::slice::from_ref(&k)).unwrap();
+	let table = classify_key(&encoded);
+	persistent.delete_keys(table, std::slice::from_ref(&encoded)).unwrap();
 	assert_eq!(get(&store, &k, 5).as_deref(), Some(b"v5".as_slice()), "cache still answers point reads");
 
 	let scanned_after = scan(&store, 5);
 	assert!(
-		!scanned_after.iter().any(|(kk, _)| kk == k.as_ref()),
+		!scanned_after.iter().any(|(kk, _)| kk == encoded.as_ref()),
 		"a value present only in the point tier must never appear in a range scan"
 	);
 }
 
-fn row_key(n: u64) -> EncodedKey {
+fn row_key(n: u64) -> AnyKey {
 	// classify_key must resolve to the same source the expiry delete is issued against.
 	RowKey {
 		storage: StorageId::Table(TableId(1)),
 		row: RowNumber(n),
 	}
-	.encode()
+	.into()
 }
 
 fn stamped(nanos: u64) -> Vec<u8> {
@@ -178,10 +183,11 @@ fn stamped(nanos: u64) -> Vec<u8> {
 	bytes
 }
 
-fn persistent_only_set_bytes(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: Vec<u8>) {
+fn persistent_only_set_bytes(store: &StandardMultiStore, k: &AnyKey, version: u64, value: Vec<u8>) {
 	let persistent = store.persistent().expect("persistent tier configured");
+	let encoded = k.encode();
 	let mut batches: HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>> = HashMap::new();
-	batches.entry(classify_key(k)).or_default().push((k.clone(), Some(CowVec::new(value))));
+	batches.entry(classify_key(&encoded)).or_default().push((encoded, Some(CowVec::new(value))));
 	use reifydb_store_multi::tier::TierStorage;
 	persistent.set(CommitVersion(version), batches).unwrap();
 }
@@ -191,6 +197,7 @@ fn reaping_a_key_invalidates_the_cached_row_it_removed() {
 	// A physical delete bypasses the commit path, so without invalidation the cache resurrects the row.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let expired = row_key(1);
+	let expired_encoded = expired.encode();
 	let fresh = row_key(2);
 
 	persistent_only_set_bytes(&store, &expired, 5, stamped(100));
@@ -199,8 +206,9 @@ fn reaping_a_key_invalidates_the_cached_row_it_removed() {
 	assert!(get(&store, &fresh, 5).is_some(), "the point read must populate the cache from persistent");
 
 	let persistent = store.persistent().expect("persistent tier configured");
-	let removed = persistent.delete_keys(classify_key(&expired), std::slice::from_ref(&expired)).unwrap();
-	store.invalidate_read_key(classify_key(&expired), &expired);
+	let removed =
+		persistent.delete_keys(classify_key(&expired_encoded), std::slice::from_ref(&expired_encoded)).unwrap();
+	store.invalidate_read_key(classify_key(&expired_encoded), &expired_encoded);
 	assert_eq!(removed, 1, "only the named key may be deleted");
 
 	assert_eq!(get(&store, &expired, 5), None, "a deleted row must never be served again from the cache");

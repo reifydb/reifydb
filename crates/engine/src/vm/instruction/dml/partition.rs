@@ -6,8 +6,8 @@ use std::{collections::HashMap, sync::Arc};
 use reifydb_core::{
 	interface::catalog::ringbuffer::{RingBuffer, RingBufferMetadata},
 	key::{
+		any::AnyKey,
 		row::{PartitionedRowKey, RowKey},
-		typed::key::Key,
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -53,9 +53,9 @@ pub(super) fn evict_oldest_for_partition(
 		let range = PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, None);
 		let oldest = txn.range_rev(range, RangeScope::All, 1)?.next().transpose()?;
 		if let Some(entry) = oldest
-			&& let Some(rn) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.row)
+			&& let AnyKey::PartitionedRow(pk) = &entry.key
 		{
-			txn.remove_from_ringbuffer(ringbuffer, Some(partition), rn)?;
+			txn.remove_from_ringbuffer(ringbuffer, Some(partition), pk.row)?;
 		}
 		metadata.count -= 1;
 		return Ok(());
@@ -63,8 +63,8 @@ pub(super) fn evict_oldest_for_partition(
 
 	let mut evict_pos = metadata.head;
 	loop {
-		let key = RowKey::encoded(ringbuffer.id, RowNumber(evict_pos));
-		if txn.get_encoded(&key)?.is_some() {
+		let key = RowKey::new(ringbuffer.id, RowNumber(evict_pos));
+		if txn.get(&key)?.is_some() {
 			txn.remove_from_ringbuffer(ringbuffer, None, RowNumber(evict_pos))?;
 			break;
 		}
@@ -75,8 +75,8 @@ pub(super) fn evict_oldest_for_partition(
 	}
 	metadata.head = evict_pos + 1;
 	while metadata.head < metadata.tail {
-		let key = RowKey::encoded(ringbuffer.id, RowNumber(metadata.head));
-		if txn.get_encoded(&key)?.is_some() {
+		let key = RowKey::new(ringbuffer.id, RowNumber(metadata.head));
+		if txn.get(&key)?.is_some() {
 			break;
 		}
 		metadata.head += 1;

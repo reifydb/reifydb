@@ -18,14 +18,15 @@ use std::sync::{
 	atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::key::encoded::EncodedKeyRange;
+use reifydb_core::key::any::AnyKey;
 use reifydb_transaction::multi::{RangeScope, transaction::write::MultiWriteTransaction};
 
 use super::test_multi;
 use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
 
-fn read_u64(txn: &mut MultiWriteTransaction, key: &EncodedKey) -> Option<u64> {
-	txn.get_encoded(key).unwrap().map(|sv| {
+fn read_u64(txn: &mut MultiWriteTransaction, key: &AnyKey) -> Option<u64> {
+	txn.get(key).unwrap().map(|sv| {
 		let row = sv.bytes();
 		from_bytes!(u64, row)
 	})
@@ -36,7 +37,7 @@ fn test_conflict_point_get_admits_exactly_one_writer() {
 	const LOOPS: usize = 10;
 	const THREADS: usize = 16;
 
-	let key: EncodedKey = as_key!("foo".to_string());
+	let key = as_key!("foo".to_string());
 
 	for loop_index in 0..LOOPS {
 		let engine = Arc::new(test_multi());
@@ -57,7 +58,7 @@ fn test_conflict_point_get_admits_exactly_one_writer() {
 					barrier.wait();
 
 					if absent {
-						txn.set_encoded(&key, as_values!(1u64)).unwrap();
+						txn.set(&key, as_values!(1u64)).unwrap();
 						if txn.commit(vec![]).is_ok() {
 							committed.fetch_add(1, Ordering::SeqCst);
 						}
@@ -85,7 +86,7 @@ fn test_conflict_range_scan_admits_exactly_one_writer() {
 	const LOOPS: usize = 10;
 	const THREADS: usize = 16;
 
-	let key: EncodedKey = as_key!("foo".to_string());
+	let key = as_key!("foo".to_string());
 
 	for loop_index in 0..LOOPS {
 		let engine = Arc::new(test_multi());
@@ -109,7 +110,7 @@ fn test_conflict_range_scan_admits_exactly_one_writer() {
 					barrier.wait();
 
 					if !found {
-						txn.set_encoded(&key, as_values!(1u64)).unwrap();
+						txn.set(&key, as_values!(1u64)).unwrap();
 						if txn.commit(vec![]).is_ok() {
 							committed.fetch_add(1, Ordering::SeqCst);
 						}
@@ -141,10 +142,10 @@ fn test_read_after_write_is_visible_to_a_later_transaction() {
 		.map(|i| {
 			let engine = Arc::clone(&engine);
 			std::thread::spawn(move || {
-				let key: EncodedKey = as_key!(i);
+				let key = as_key!(i);
 
 				let mut writer = engine.begin_command().unwrap();
-				writer.set_encoded(&key, as_values!(i)).unwrap();
+				writer.set(&key, as_values!(i)).unwrap();
 				writer.commit(vec![]).unwrap();
 
 				let mut reader = engine.begin_command().unwrap();
@@ -175,7 +176,7 @@ fn test_concurrent_writers_never_expose_a_partial_commit() {
 
 	let mut seed = engine.begin_command().unwrap();
 	for i in 0..ACCOUNTS {
-		seed.set_encoded(&as_key!(i), as_values!(OPENING)).unwrap();
+		seed.set(&as_key!(i), as_values!(OPENING)).unwrap();
 	}
 	seed.commit(vec![]).unwrap();
 
@@ -216,10 +217,10 @@ fn test_concurrent_writers_never_expose_a_partial_commit() {
 				loop {
 					let mut txn = engine.begin_command().unwrap();
 					for i in 0..ACCOUNTS / 2 {
-						txn.set_encoded(&as_key!(i), as_values!(OPENING - delta)).unwrap();
+						txn.set(&as_key!(i), as_values!(OPENING - delta)).unwrap();
 					}
 					for i in ACCOUNTS / 2..ACCOUNTS {
-						txn.set_encoded(&as_key!(i), as_values!(OPENING + delta)).unwrap();
+						txn.set(&as_key!(i), as_values!(OPENING + delta)).unwrap();
 					}
 					if txn.commit(vec![]).is_ok() {
 						return;

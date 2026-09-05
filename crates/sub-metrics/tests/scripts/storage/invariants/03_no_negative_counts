@@ -23,7 +23,7 @@ ok
 stats_historical
 ---
 historical_count: 2
-historical_key_bytes: 22
+historical_key_bytes: 60
 historical_value_bytes: 2
 
 # Remove the key. This does not erase anything: the live v3 row migrates into historical and
@@ -36,15 +36,15 @@ ok
 stats
 ---
 current_count: 1
-current_key_bytes: 11
+current_key_bytes: 30
 current_value_bytes: 0
 historical_count: 3
-historical_key_bytes: 33
+historical_key_bytes: 90
 historical_value_bytes: 3
 cdc_count: 0
 cdc_key_bytes: 0
 cdc_value_bytes: 0
-total_bytes: 47
+total_bytes: 123
 
 # Removing an already-removed key is just another write on top of a tombstone: the v4 tombstone
 # migrates into historical and the v5 tombstone becomes current. Current therefore stays at one
@@ -57,15 +57,15 @@ ok
 stats
 ---
 current_count: 1
-current_key_bytes: 11
+current_key_bytes: 30
 current_value_bytes: 0
 historical_count: 4
-historical_key_bytes: 44
+historical_key_bytes: 120
 historical_value_bytes: 3
 cdc_count: 0
 cdc_key_bytes: 0
 cdc_value_bytes: 0
-total_bytes: 58
+total_bytes: 153
 
 # A silent removal is invisible to CDC by construction, which is why every cdc_* counter
 # above stayed at zero across both removals.

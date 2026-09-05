@@ -25,7 +25,7 @@ use reifydb_core::{
 	delta::Delta,
 	interface::store::{
 		SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
-		SingleVersionRangeRev, SingleVersionRemove, SingleVersionRow, SingleVersionSet, SingleVersionStore,
+		SingleVersionRangeRev, SingleVersionRow, SingleVersionStore,
 	},
 };
 use reifydb_runtime::shutdown::Shutdown;
@@ -142,10 +142,6 @@ impl SingleVersionContains for SingleStore {
 		}
 	}
 }
-
-impl SingleVersionSet for SingleStore {}
-
-impl SingleVersionRemove for SingleStore {}
 
 impl SingleVersionCommit for SingleStore {
 	#[inline]

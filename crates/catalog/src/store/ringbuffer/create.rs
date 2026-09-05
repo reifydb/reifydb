@@ -167,7 +167,7 @@ impl CatalogStore {
 
 	fn initialize_ringbuffer_metadata(txn: &mut AdminTransaction, ringbuffer_id: RingBufferId) -> Result<()> {
 		let row = encode_ringbuffer_metadata(&RingBufferMetadata::new());
-		txn.set_encoded(&RingBufferMetadataKey::encoded(ringbuffer_id), row.into_bytes())?;
+		txn.set(&RingBufferMetadataKey::new(ringbuffer_id), row.into_bytes())?;
 		Ok(())
 	}
 

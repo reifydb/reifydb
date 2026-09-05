@@ -383,7 +383,7 @@ pub fn is_identity_framed_inner(inner: &[u8]) -> bool {
 		.is_some_and(|(_, keyspace, _)| keyspace.is_identity() && keyspace.is_known())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OperatorStateKey {
 	pub operator: OperatorId,
 	pub group: GroupId,

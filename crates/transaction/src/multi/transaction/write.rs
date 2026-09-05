@@ -4,7 +4,7 @@
 use core::mem;
 use std::{
 	cmp::Ordering,
-	collections::HashSet,
+	collections::BTreeSet,
 	iter,
 	ops::{Bound, RangeBounds},
 	sync::Arc,
@@ -16,7 +16,6 @@ use reifydb_codec::{
 	row::bytes::EncodedBytes,
 };
 #[cfg(reifydb_assertions)]
-use reifydb_core::key::{EncodableKey, operator::state::OperatorStateKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::{Delta, RemoveAnnounce},
@@ -27,6 +26,7 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionContains, MultiVersionGet, MultiVersionRow},
 	},
 	key::{
+		any::AnyKey,
 		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey, StorageRowKey},
 		typed::key::Key,
 	},
@@ -62,7 +62,7 @@ pub struct WriteSavepoint {
 	pub(crate) duplicates: Vec<DeltaEntry>,
 	pub(crate) delta_log_len: usize,
 	pub(crate) conflicts: ConflictManager,
-	pub(crate) preexisting_keys: HashSet<EncodedKey>,
+	pub(crate) preexisting_keys: BTreeSet<AnyKey>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -87,7 +87,7 @@ pub struct MultiWriteTransaction {
 
 	pub(crate) delta_log: Vec<DeltaEntry>,
 
-	pub(crate) preexisting_keys: HashSet<EncodedKey>,
+	pub(crate) preexisting_keys: BTreeSet<AnyKey>,
 
 	pub(crate) lifecycle: Lifecycle,
 
@@ -115,7 +115,7 @@ impl MultiWriteTransaction {
 			pending_writes: PendingWrites::new(),
 			duplicates: Vec::new(),
 			delta_log: Vec::new(),
-			preexisting_keys: HashSet::new(),
+			preexisting_keys: BTreeSet::new(),
 			lifecycle: Lifecycle::Active,
 			self_lease: None,
 			pending_query_pin: None,
@@ -173,11 +173,11 @@ impl MultiWriteTransaction {
 		&self.conflicts
 	}
 
-	pub fn mark_preexisting(&mut self, key: &EncodedKey) {
-		self.preexisting_keys.insert(key.clone());
+	pub fn mark_preexisting<K: Into<AnyKey> + Clone>(&mut self, key: &K) {
+		self.preexisting_keys.insert(key.clone().into());
 	}
 
-	pub fn preexisting_keys(&self) -> &HashSet<EncodedKey> {
+	pub fn preexisting_keys(&self) -> &BTreeSet<AnyKey> {
 		&self.preexisting_keys
 	}
 }
@@ -215,11 +215,11 @@ impl MultiWriteTransaction {
 		(Marker::new(&mut self.conflicts), &self.pending_writes)
 	}
 
-	pub fn mark_read(&mut self, k: &EncodedKey) {
+	pub fn mark_read(&mut self, k: &AnyKey) {
 		self.conflicts.mark_read(k);
 	}
 
-	pub fn mark_write(&mut self, k: &EncodedKey) {
+	pub fn mark_write(&mut self, k: &AnyKey) {
 		self.conflicts.mark_write(k);
 	}
 
@@ -235,117 +235,161 @@ impl MultiWriteTransaction {
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::set", level = "trace", skip(self, bytes), fields(
 		txn_id = %self.id,
-		key_hex = %hex_display(key.as_ref())
+		key = ?key
 	))]
-	pub fn set_encoded(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
+	fn set_any(&mut self, key: AnyKey, bytes: EncodedBytes) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		self.modify(DeltaEntry {
-			delta: Delta::Set {
-				key: key.clone(),
-				bytes: bytes.into(),
+		let encoded = key.encode();
+		self.modify(
+			encoded,
+			DeltaEntry {
+				delta: Delta::Set {
+					key,
+					bytes,
+				},
+				version: self.base_version(),
 			},
-			version: self.base_version(),
-		})
+		)
 	}
 
-	pub fn set<K: Key>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
-		self.set_encoded(&key.encode(), bytes)
+	pub fn set<K: Into<AnyKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
+		self.set_any(key.clone().into(), bytes.into())
 	}
 
 	#[instrument(name = "transaction::command::remove_with_pre", level = "trace", skip(self, pre), fields(
 		txn_id = %self.id,
-		key_hex = %hex_display(key.as_ref()),
+		key = ?key,
 		value_len = pre.len()
 	))]
-	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
+	fn remove_with_pre_any(&mut self, key: AnyKey, pre: EncodedBytes) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		self.modify(DeltaEntry {
-			delta: Delta::remove_announced(key.clone(), pre),
-			version: self.base_version(),
-		})
+		let encoded = key.encode();
+		self.modify(
+			encoded,
+			DeltaEntry {
+				delta: Delta::remove_announced(key, pre),
+				version: self.base_version(),
+			},
+		)
+	}
+
+	pub fn remove_with_pre<K: Into<AnyKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
+		self.remove_with_pre_any(key.clone().into(), pre)
 	}
 
 	#[instrument(name = "transaction::command::remove", level = "trace", skip(self), fields(
 		txn_id = %self.id,
-		key_len = key.len()
+		key = ?key
 	))]
-	pub fn remove_encoded(&mut self, key: &EncodedKey) -> Result<()> {
+	fn remove_any(&mut self, key: AnyKey) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		let announce = match self.get_encoded(key)? {
+		let encoded = key.encode();
+		let announce = match self.get(&key)? {
 			Some(found) => RemoveAnnounce::Announced {
 				pre: found.bytes().clone(),
 			},
 			None => RemoveAnnounce::Silent,
 		};
-		self.modify(DeltaEntry {
-			delta: Delta::Remove {
-				key: key.clone(),
-				announce,
+		self.modify(
+			encoded,
+			DeltaEntry {
+				delta: Delta::Remove {
+					key,
+					announce,
+				},
+				version: self.base_version(),
 			},
-			version: self.base_version(),
-		})
+		)
 	}
 
-	pub fn remove<K: Key>(&mut self, key: &K) -> Result<()> {
-		self.remove_encoded(&key.encode())
+	pub fn remove<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<()> {
+		self.remove_any(key.clone().into())
 	}
 
 	#[instrument(name = "transaction::command::remove_unobserved", level = "trace", skip(self), fields(
 		txn_id = %self.id,
-		key_len = key.len()
+		key = ?key
 	))]
-	pub fn remove_unobserved(&mut self, key: &EncodedKey) -> Result<()> {
+	fn remove_unobserved_any(&mut self, key: AnyKey) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		let announce = match self.get_encoded(key)? {
+		let encoded = key.encode();
+		let announce = match self.get(&key)? {
 			Some(found) => RemoveAnnounce::Unobserved {
 				pre: found.bytes().clone(),
 			},
 			None => RemoveAnnounce::Silent,
 		};
-		self.modify(DeltaEntry {
-			delta: Delta::Remove {
-				key: key.clone(),
-				announce,
+		self.modify(
+			encoded,
+			DeltaEntry {
+				delta: Delta::Remove {
+					key,
+					announce,
+				},
+				version: self.base_version(),
 			},
-			version: self.base_version(),
-		})
+		)
+	}
+
+	pub fn remove_unobserved<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<()> {
+		self.remove_unobserved_any(key.clone().into())
 	}
 
 	#[instrument(name = "transaction::command::remove_unobserved_with_pre", level = "trace", skip(self, pre), fields(
 		txn_id = %self.id,
-		key_hex = %hex_display(key.as_ref()),
+		key = ?key,
 		value_len = pre.len()
 	))]
-	pub fn remove_unobserved_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
+	fn remove_unobserved_with_pre_any(&mut self, key: AnyKey, pre: EncodedBytes) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		self.modify(DeltaEntry {
-			delta: Delta::remove_unobserved(key.clone(), pre),
-			version: self.base_version(),
-		})
+		let encoded = key.encode();
+		self.modify(
+			encoded,
+			DeltaEntry {
+				delta: Delta::remove_unobserved(key, pre),
+				version: self.base_version(),
+			},
+		)
+	}
+
+	pub fn remove_unobserved_with_pre<K: Into<AnyKey> + Clone>(
+		&mut self,
+		key: &K,
+		pre: EncodedBytes,
+	) -> Result<()> {
+		self.remove_unobserved_with_pre_any(key.clone().into(), pre)
 	}
 
 	#[instrument(name = "transaction::command::remove_silent", level = "trace", skip(self), fields(
 		txn_id = %self.id,
-		key_len = key.len()
+		key = ?key
 	))]
-	pub fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
+	fn remove_silent_any(&mut self, key: AnyKey) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		self.modify(DeltaEntry {
-			delta: Delta::remove_silent(key.clone()),
-			version: self.base_version(),
-		})
+		let encoded = key.encode();
+		self.modify(
+			encoded,
+			DeltaEntry {
+				delta: Delta::remove_silent(key),
+				version: self.base_version(),
+			},
+		)
+	}
+
+	pub fn remove_silent<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<()> {
+		self.remove_silent_any(key.clone().into())
 	}
 
 	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self), fields(txn_id = %self.id))]
@@ -361,17 +405,17 @@ impl MultiWriteTransaction {
 		Ok(())
 	}
 
-	#[instrument(name = "transaction::command::contains_key", level = "trace", skip(self), fields(
-		txn_id = %self.id,
-		key_hex = %hex_display(key.as_ref())
+	#[instrument(name = "transaction::command::contains_key", level = "trace", skip(self, key), fields(
+		txn_id = %self.id
 	))]
-	pub fn contains_encoded(&mut self, key: &EncodedKey) -> Result<bool> {
+	pub fn contains<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<bool> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 
+		let key = key.clone().into();
 		let version = self.version();
-		match self.pending_writes.get(key) {
+		match self.pending_writes.get(&key.encode()) {
 			Some(pending) => {
 				if pending.was_removed() {
 					return Ok(false);
@@ -379,31 +423,27 @@ impl MultiWriteTransaction {
 				Ok(true)
 			}
 			None => {
-				self.conflicts.mark_read(key);
-				MultiVersionContains::contains(&self.engine.store, key, version)
+				self.conflicts.mark_read(&key);
+				MultiVersionContains::contains(&self.engine.store, &key, version)
 			}
 		}
 	}
 
-	pub fn contains<K: Key>(&mut self, key: &K) -> Result<bool> {
-		self.contains_encoded(&key.encode())
-	}
-
-	#[instrument(name = "transaction::command::get", level = "trace", skip(self), fields(
-		txn_id = %self.id,
-		key_hex = %hex_display(key.as_ref())
+	#[instrument(name = "transaction::command::get", level = "trace", skip(self, key), fields(
+		txn_id = %self.id
 	))]
-	pub fn get_encoded(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
+	pub fn get<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<Option<TransactionValue>> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 
+		let key = key.clone().into();
 		let version = self.version();
-		if let Some(v) = self.pending_writes.get(key) {
+		if let Some(v) = self.pending_writes.get(&key.encode()) {
 			if let Some(bytes) = v.bytes() {
 				return Ok(Some(DeltaEntry {
 					delta: Delta::Set {
-						key: key.clone(),
+						key: v.key().clone(),
 						bytes: bytes.clone(),
 					},
 					version: v.version,
@@ -412,41 +452,37 @@ impl MultiWriteTransaction {
 			}
 			return Ok(None);
 		}
-		self.conflicts.mark_read(key);
-		Ok(MultiVersionGet::get(&self.engine.store, key, version)?.map(Into::into))
+		self.conflicts.mark_read(&key);
+		Ok(MultiVersionGet::get(&self.engine.store, &key, version)?.map(Into::into))
 	}
 
-	pub fn get<K: Key>(&mut self, key: &K) -> Result<Option<TransactionValue>> {
-		self.get_encoded(&key.encode())
-	}
-
-	#[instrument(name = "transaction::command::get_committed", level = "trace", skip(self), fields(
-		txn_id = %self.id,
-		key_hex = %hex_display(key.as_ref())
+	#[instrument(name = "transaction::command::get_committed", level = "trace", skip(self, key), fields(
+		txn_id = %self.id
 	))]
-	pub fn get_committed(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
+	pub fn get_committed<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<Option<TransactionValue>> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
+		let key = key.clone().into();
 		let version = self.version();
-		self.conflicts.mark_read(key);
-		Ok(MultiVersionGet::get(&self.engine.store, key, version)?.map(Into::into))
+		self.conflicts.mark_read(&key);
+		Ok(MultiVersionGet::get(&self.engine.store, &key, version)?.map(Into::into))
 	}
 }
 
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::modify", level = "trace", skip(self, pending), fields(
 		txn_id = %self.id,
-		key_hex = %hex_display(pending.key().as_ref()),
+		key_hex = %hex_display(encoded.as_ref()),
 		is_remove = pending.was_removed()
 	))]
-	fn modify(&mut self, pending: DeltaEntry) -> Result<()> {
+	fn modify(&mut self, encoded: EncodedKey, pending: DeltaEntry) -> Result<()> {
 		reifydb_assertions! {
 			assert!(
-				OperatorStateKey::decode(pending.key()).is_none(),
+				!matches!(pending.key(), AnyKey::OperatorState(_)),
 				"operator state must reach the operator store through the committer split, never the \
 				 multi store: {}",
-				hex_display(pending.key().as_ref())
+				hex_display(encoded.as_ref())
 			);
 		}
 
@@ -461,14 +497,13 @@ impl MultiWriteTransaction {
 
 		self.conflicts.mark_write(pending.key());
 
-		let key = pending.key();
 		let version = pending.version;
 
 		let superseded = self
 			.pending_writes
-			.get_entry(key)
+			.get_entry(&encoded)
 			.filter(|(_, old_value)| old_value.version != version)
-			.map(|(old_key, _)| old_key.clone());
+			.map(|(_, old_value)| old_value.key().clone());
 
 		if let Some(old_key) = superseded {
 			self.duplicates.push(DeltaEntry {
@@ -493,7 +528,7 @@ impl MultiWriteTransaction {
 		}
 
 		self.delta_log.push(pending.clone());
-		self.pending_writes.insert(key.clone(), pending);
+		self.pending_writes.insert(encoded, pending);
 
 		Ok(())
 	}
@@ -666,7 +701,7 @@ impl MultiWriteTransaction {
 }
 
 impl MultiWriteTransaction {
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
 		let items: Vec<_> = self
 			.range(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>>>()?;
@@ -676,7 +711,7 @@ impl MultiWriteTransaction {
 		})
 	}
 
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
 		let items: Vec<_> = self
 			.range_rev(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>>>()?;
@@ -691,7 +726,7 @@ impl MultiWriteTransaction {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
 		let (mut marker, pw) = self.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -699,8 +734,8 @@ impl MultiWriteTransaction {
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(EncodedKey, DeltaEntry)> =
-			pw.range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect();
+		let pending: Vec<(AnyKey, DeltaEntry)> =
+			pw.range((start, end)).map(|(_, v)| (v.delta.key().clone(), v.clone())).collect();
 
 		let storage_iter = self.engine.store.range(range, multi_scope, batch_size);
 
@@ -769,7 +804,7 @@ impl MultiWriteTransaction {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
 		let (mut marker, pw) = self.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -777,8 +812,8 @@ impl MultiWriteTransaction {
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(EncodedKey, DeltaEntry)> =
-			pw.range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect();
+		let pending: Vec<(AnyKey, DeltaEntry)> =
+			pw.range((start, end)).map(|(_, v)| (v.delta.key().clone(), v.clone())).collect();
 
 		let storage_iter = self.engine.store.range_persistence(range, multi_scope, batch_size);
 
@@ -790,7 +825,7 @@ impl MultiWriteTransaction {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
 		let (mut marker, pw) = self.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -798,8 +833,8 @@ impl MultiWriteTransaction {
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(EncodedKey, DeltaEntry)> =
-			pw.range((start, end)).rev().map(|(k, v)| (k.clone(), v.clone())).collect();
+		let pending: Vec<(AnyKey, DeltaEntry)> =
+			pw.range((start, end)).rev().map(|(_, v)| (v.delta.key().clone(), v.clone())).collect();
 
 		let storage_iter = self.engine.store.range_rev(range, multi_scope, batch_size);
 
@@ -811,7 +846,7 @@ impl MultiWriteTransaction {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
 		let (mut marker, pw) = self.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -819,8 +854,8 @@ impl MultiWriteTransaction {
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(EncodedKey, DeltaEntry)> =
-			pw.range((start, end)).rev().map(|(k, v)| (k.clone(), v.clone())).collect();
+		let pending: Vec<(AnyKey, DeltaEntry)> =
+			pw.range((start, end)).rev().map(|(_, v)| (v.delta.key().clone(), v.clone())).collect();
 
 		let storage_iter = self.engine.store.range_rev_persistence(range, multi_scope, batch_size);
 
@@ -831,16 +866,14 @@ impl MultiWriteTransaction {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::serializer::KeySerializer;
-	use reifydb_core::common::CommitVersion;
+	use reifydb_core::{common::CommitVersion, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
 	use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 
 	use super::*;
 	use crate::multi::transaction::MultiTransaction;
 
-	fn test_key(s: &str) -> EncodedKey {
-		let mut ser = KeySerializer::new();
-		ser.extend_str(s);
-		ser.finish()
+	fn test_key(s: &str) -> QueueDeduplicationKey {
+		QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>())
 	}
 
 	fn test_bytes(s: &str) -> EncodedBytes {
@@ -856,7 +889,7 @@ mod tests {
 		// a commit version whose own post-commit hooks have not run.
 		let engine = MultiTransaction::testing();
 		let mut txn = engine.begin_command().unwrap();
-		txn.set_encoded(&test_key("race-key"), test_bytes("race-value")).unwrap();
+		txn.set(&test_key("race-key"), test_bytes("race-value")).unwrap();
 
 		// Allocate commit_version exactly as commit() would, without finalizing it yet.
 		let deltas = txn.build_deltas();

@@ -10,7 +10,6 @@ use std::{
 	},
 };
 
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::cdc::CdcPollMessage,
 	common::CommitVersion,
@@ -18,7 +17,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		cdc::{Cdc, CdcConsumerId, CheckpointState},
 	},
-	key::{EncodableKey, cdc::CdcConsumerKey},
+	key::cdc::CdcConsumerKey,
 };
 use reifydb_runtime::{
 	actor::{
@@ -58,7 +57,7 @@ pub struct PollActor<H: CdcHost, C: CdcConsume> {
 	host: H,
 	consumer: Box<C>,
 	store: CdcStore,
-	consumer_key: EncodedKey,
+	consumer_key: CdcConsumerKey,
 	consumer_watermark: Option<CdcConsumerWatermark>,
 	wake_armed: Arc<AtomicBool>,
 }
@@ -74,8 +73,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 	) -> Self {
 		let consumer_key = CdcConsumerKey {
 			consumer: config.consumer_id.clone(),
-		}
-		.encode();
+		};
 
 		Self {
 			config,

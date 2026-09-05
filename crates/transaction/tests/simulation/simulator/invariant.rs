@@ -3,10 +3,10 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use reifydb_codec::key::{deserializer::KeyDeserializer, serializer::KeySerializer};
+use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
 
 use super::{
-	executor::{ExecutionTrace, OpResult},
+	executor::{ExecutionTrace, OpResult, decode_key},
 	schedule::{Op, TxId},
 };
 
@@ -394,9 +394,7 @@ impl Invariant for SnapshotConsistency {
 
 						let mut actual: BTreeMap<String, String> = BTreeMap::new();
 						for (k_bytes, v_bytes) in pairs {
-							let key = KeyDeserializer::from_bytes(k_bytes)
-								.read_str()
-								.unwrap_or_else(|_| format!("<raw:{}>", k_bytes.len()));
+							let key = decode_key(&EncodedKey::new(k_bytes.clone()));
 							let value = KeyDeserializer::from_bytes(v_bytes)
 								.read_str()
 								.unwrap_or_else(|_| format!("<raw:{}>", v_bytes.len()));

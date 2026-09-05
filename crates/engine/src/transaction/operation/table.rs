@@ -118,7 +118,7 @@ impl TableOperations for CommandTransaction {
 		let frozen: Vec<EncodedBytes> = rows.iter().map(|row| row.clone().freeze_bytes()).collect();
 
 		for (row, &row_number) in frozen.iter().zip(ids.iter()) {
-			self.set_encoded(&table_row_key(table, shape, row, row_number), row.clone())?;
+			self.set(&table_row_key(table, shape, row, row_number), row.clone())?;
 		}
 
 		TableRowInterceptor::post_insert(self, table, ids, &frozen)?;
@@ -174,14 +174,14 @@ impl TableOperations for CommandTransaction {
 		let mut pres: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
 		for (idx, &row_number) in ids.iter().enumerate() {
 			let key = row_key_from_partition(table.id, partitions.get(idx).copied(), row_number);
-			let pre = match self.get_encoded(&key)? {
+			let pre = match self.get(&key)? {
 				Some(v) => v.bytes,
 				None => continue,
 			};
 			if self.get_committed(&key)?.is_some() {
 				self.mark_preexisting(&key)?;
 			}
-			self.set_encoded(&key, rows[idx].clone().freeze())?;
+			self.set(&key, rows[idx].clone().freeze())?;
 			matched_indices.push(idx);
 			pres.push(pre);
 		}
@@ -218,7 +218,7 @@ impl TableOperations for CommandTransaction {
 		for (idx, &row_number) in ids.iter().enumerate() {
 			let partition = partitions.get(idx).copied();
 			let key = row_key_from_partition(table.id, partition, row_number);
-			let displayed = match self.get_encoded(&key)? {
+			let displayed = match self.get(&key)? {
 				Some(v) => v.bytes,
 				None => continue,
 			};
@@ -271,7 +271,7 @@ impl TableOperations for AdminTransaction {
 		let frozen: Vec<EncodedBytes> = rows.iter().map(|row| row.clone().freeze_bytes()).collect();
 
 		for (row, &row_number) in frozen.iter().zip(ids.iter()) {
-			self.set_encoded(&table_row_key(table, shape, row, row_number), row.clone())?;
+			self.set(&table_row_key(table, shape, row, row_number), row.clone())?;
 		}
 
 		TableRowInterceptor::post_insert(self, table, ids, &frozen)?;
@@ -327,14 +327,14 @@ impl TableOperations for AdminTransaction {
 		let mut pres: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
 		for (idx, &row_number) in ids.iter().enumerate() {
 			let key = row_key_from_partition(table.id, partitions.get(idx).copied(), row_number);
-			let pre = match self.get_encoded(&key)? {
+			let pre = match self.get(&key)? {
 				Some(v) => v.bytes,
 				None => continue,
 			};
 			if self.get_committed(&key)?.is_some() {
 				self.mark_preexisting(&key)?;
 			}
-			self.set_encoded(&key, rows[idx].clone().freeze())?;
+			self.set(&key, rows[idx].clone().freeze())?;
 			matched_indices.push(idx);
 			pres.push(pre);
 		}
@@ -371,7 +371,7 @@ impl TableOperations for AdminTransaction {
 		for (idx, &row_number) in ids.iter().enumerate() {
 			let partition = partitions.get(idx).copied();
 			let key = row_key_from_partition(table.id, partition, row_number);
-			let displayed = match self.get_encoded(&key)? {
+			let displayed = match self.get(&key)? {
 				Some(v) => v.bytes,
 				None => continue,
 			};

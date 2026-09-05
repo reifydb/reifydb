@@ -203,7 +203,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 							MultiVersionCommit::commit(
 								&store,
 								CowVec::new(vec![Delta::Set {
-									key: RowKey::encoded(STORAGE, row),
+									key: RowKey::new(STORAGE, row).into(),
 									bytes: EncodedBytes(CowVec::new(value.clone())),
 								}]),
 								CommitVersion(v),

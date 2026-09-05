@@ -1,11 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use std::ops::Bound;
+
+use reifydb_codec::key::encoded::EncodedKeyRange;
+use reifydb_core::{
+	interface::catalog::{
+		id::{IndexId, TableId},
+		object::ObjectId,
+	},
+	key::{any::AnyKey, catalog::IndexEntryKey},
+	value::index::encoded::EncodedIndexKey,
+};
 use reifydb_transaction::multi::conflict::ConflictManager;
 
-fn make_key(s: &str) -> EncodedKey {
-	EncodedKey::new(s.as_bytes())
+// IndexEntry appends its tail verbatim, so encoded order still matches the raw string order.
+fn make_key(s: &str) -> AnyKey {
+	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(s.as_bytes()))
+		.into()
+}
+
+fn make_range(start: &str, end: &str) -> EncodedKeyRange {
+	EncodedKeyRange::new(Bound::Included(make_key(start).encode()), Bound::Excluded(make_key(end).encode()))
 }
 
 #[test]
@@ -53,7 +69,7 @@ fn test_range_conflict() {
 	let mut cm1 = ConflictManager::new();
 	let mut cm2 = ConflictManager::new();
 
-	cm1.mark_range(EncodedKeyRange::parse("a..z"));
+	cm1.mark_range(make_range("a", "z"));
 	cm2.mark_write(&make_key("m"));
 
 	assert!(cm1.has_conflict(&cm2));
@@ -107,7 +123,7 @@ fn test_sweep_line_many_ranges_many_keys() {
 	for i in 0..20 {
 		let start = format!("r_{:02}_a", i);
 		let end = format!("r_{:02}_z", i);
-		cm1.mark_range(EncodedKeyRange::parse(&format!("{}..{}", start, end)));
+		cm1.mark_range(make_range(&start, &end));
 	}
 
 	for i in 0..100 {
@@ -126,7 +142,7 @@ fn test_sweep_line_no_conflict() {
 	for i in 0..10 {
 		let start = format!("r_{:02}_a", i);
 		let end = format!("r_{:02}_z", i);
-		cm1.mark_range(EncodedKeyRange::parse(&format!("{}..{}", start, end)));
+		cm1.mark_range(make_range(&start, &end));
 	}
 
 	for i in 0..100 {
@@ -146,7 +162,7 @@ fn test_disabled_marks_are_noop() {
 	let k = make_key("k");
 	cm.mark_read(&k);
 	cm.mark_write(&k);
-	cm.mark_range(EncodedKeyRange::parse("a..z"));
+	cm.mark_range(make_range("a", "z"));
 	cm.mark_iter();
 
 	assert!(cm.get_read_keys().is_empty());

@@ -11,7 +11,15 @@ use reifydb_codec::{
 	},
 	row::bytes::EncodedBytes,
 };
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::{
+		id::{IndexId, TableId},
+		object::ObjectId,
+	},
+	key::{EncodableKey, catalog::IndexEntryKey},
+	value::index::encoded::EncodedIndexKey,
+};
 use reifydb_transaction::multi::{
 	RangeScope,
 	transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction},
@@ -64,10 +72,9 @@ pub struct Executor {
 	engine: MultiTransaction,
 }
 
-fn encode_key(key: &str) -> EncodedKey {
-	let mut ser = KeySerializer::new();
-	ser.extend_str(key);
-	ser.finish()
+fn encode_key(key: &str) -> IndexEntryKey {
+	// extend_raw appends the tail verbatim, so encoded order matches the raw key order.
+	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(key.as_bytes()))
 }
 
 fn encode_bytes(value: &str) -> EncodedBytes {
@@ -76,8 +83,11 @@ fn encode_bytes(value: &str) -> EncodedBytes {
 	EncodedBytes(CowVec::new(ser.finish().as_slice().to_vec()))
 }
 
-fn decode_key(bytes: &[u8]) -> String {
-	KeyDeserializer::from_bytes(bytes).read_str().unwrap_or_else(|_| format!("<raw:{}>", hex::encode(bytes)))
+pub fn decode_key(key: &EncodedKey) -> String {
+	match IndexEntryKey::decode(key) {
+		Some(key) => String::from_utf8_lossy(key.key.as_ref()).into_owned(),
+		None => format!("<raw:{}>", hex::encode(key.as_ref())),
+	}
 }
 
 fn decode_values(bytes: &[u8]) -> String {
@@ -109,144 +119,145 @@ impl Executor {
 			} = step;
 			let tx_id = *tx_id;
 
-			let result = match op {
-				Op::BeginCommand => match self.engine.begin_command() {
-					Ok(tx) => {
-						handles.insert(tx_id, TxHandle::Write(tx));
-						OpResult::Ok
-					}
-					Err(e) => OpResult::Error(format!("{}", e)),
-				},
-				Op::BeginQuery => match self.engine.begin_query() {
-					Ok(rx) => {
-						handles.insert(tx_id, TxHandle::Read(rx));
-						OpResult::Ok
-					}
-					Err(e) => OpResult::Error(format!("{}", e)),
-				},
-				Op::Set {
-					key,
-					value,
-				} => match handles.get_mut(&tx_id) {
-					Some(TxHandle::Write(tx)) => {
-						match tx.set_encoded(&encode_key(key), encode_bytes(value)) {
+			let result =
+				match op {
+					Op::BeginCommand => match self.engine.begin_command() {
+						Ok(tx) => {
+							handles.insert(tx_id, TxHandle::Write(tx));
+							OpResult::Ok
+						}
+						Err(e) => OpResult::Error(format!("{}", e)),
+					},
+					Op::BeginQuery => match self.engine.begin_query() {
+						Ok(rx) => {
+							handles.insert(tx_id, TxHandle::Read(rx));
+							OpResult::Ok
+						}
+						Err(e) => OpResult::Error(format!("{}", e)),
+					},
+					Op::Set {
+						key,
+						value,
+					} => match handles.get_mut(&tx_id) {
+						Some(TxHandle::Write(tx)) => {
+							match tx.set(&encode_key(key), encode_bytes(value)) {
+								Ok(()) => OpResult::Ok,
+								Err(e) => {
+									handles.remove(&tx_id);
+									OpResult::Error(format!("{}", e))
+								}
+							}
+						}
+						Some(TxHandle::Read(_)) => {
+							OpResult::Error("cannot set on read transaction".into())
+						}
+						None => OpResult::Error("transaction not found".into()),
+					},
+					Op::Get {
+						key,
+					} => match handles.get_mut(&tx_id) {
+						Some(TxHandle::Write(tx)) => match tx.get(&encode_key(key)) {
+							Ok(Some(tv)) => OpResult::Value(Some(tv.bytes().to_vec())),
+							Ok(None) => OpResult::Value(None),
+							Err(e) => {
+								handles.remove(&tx_id);
+								OpResult::Error(format!("{}", e))
+							}
+						},
+						Some(TxHandle::Read(rx)) => match rx.get(&encode_key(key)) {
+							Ok(Some(tv)) => OpResult::Value(Some(tv.bytes().to_vec())),
+							Ok(None) => OpResult::Value(None),
+							Err(e) => {
+								handles.remove(&tx_id);
+								OpResult::Error(format!("{}", e))
+							}
+						},
+						None => OpResult::Error("transaction not found".into()),
+					},
+					Op::Remove {
+						key,
+					} => match handles.get_mut(&tx_id) {
+						Some(TxHandle::Write(tx)) => match tx.remove(&encode_key(key)) {
 							Ok(()) => OpResult::Ok,
 							Err(e) => {
 								handles.remove(&tx_id);
 								OpResult::Error(format!("{}", e))
 							}
+						},
+						Some(TxHandle::Read(_)) => {
+							OpResult::Error("cannot remove on read transaction".into())
 						}
-					}
-					Some(TxHandle::Read(_)) => {
-						OpResult::Error("cannot set on read transaction".into())
-					}
-					None => OpResult::Error("transaction not found".into()),
-				},
-				Op::Get {
-					key,
-				} => match handles.get_mut(&tx_id) {
-					Some(TxHandle::Write(tx)) => match tx.get_encoded(&encode_key(key)) {
-						Ok(Some(tv)) => OpResult::Value(Some(tv.bytes().to_vec())),
-						Ok(None) => OpResult::Value(None),
-						Err(e) => {
-							handles.remove(&tx_id);
-							OpResult::Error(format!("{}", e))
-						}
+						None => OpResult::Error("transaction not found".into()),
 					},
-					Some(TxHandle::Read(rx)) => match rx.get_encoded(&encode_key(key)) {
-						Ok(Some(tv)) => OpResult::Value(Some(tv.bytes().to_vec())),
-						Ok(None) => OpResult::Value(None),
-						Err(e) => {
-							handles.remove(&tx_id);
-							OpResult::Error(format!("{}", e))
-						}
-					},
-					None => OpResult::Error("transaction not found".into()),
-				},
-				Op::Remove {
-					key,
-				} => match handles.get_mut(&tx_id) {
-					Some(TxHandle::Write(tx)) => match tx.remove_encoded(&encode_key(key)) {
-						Ok(()) => OpResult::Ok,
-						Err(e) => {
-							handles.remove(&tx_id);
-							OpResult::Error(format!("{}", e))
-						}
-					},
-					Some(TxHandle::Read(_)) => {
-						OpResult::Error("cannot remove on read transaction".into())
-					}
-					None => OpResult::Error("transaction not found".into()),
-				},
-				Op::Scan => match handles.get_mut(&tx_id) {
-					Some(TxHandle::Write(tx)) => {
-						match tx.range(EncodedKeyRange::all(), RangeScope::All, 1024)
-							.collect::<Result<Vec<_>, _>>()
-						{
-							Ok(items) => {
-								let pairs = items
-									.iter()
-									.map(|mv| {
-										(
-											mv.key.as_ref().to_vec(),
+					Op::Scan => match handles.get_mut(&tx_id) {
+						Some(TxHandle::Write(tx)) => {
+							match tx.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+								.collect::<Result<Vec<_>, _>>()
+							{
+								Ok(items) => {
+									let pairs =
+										items.iter()
+											.map(|mv| {
+												(
+											mv.key.encode().as_ref().to_vec(),
 											mv.bytes.to_vec(),
 										)
-									})
-									.collect();
-								OpResult::ScanResult(pairs)
-							}
-							Err(e) => {
-								handles.remove(&tx_id);
-								OpResult::Error(format!("{}", e))
+											})
+											.collect();
+									OpResult::ScanResult(pairs)
+								}
+								Err(e) => {
+									handles.remove(&tx_id);
+									OpResult::Error(format!("{}", e))
+								}
 							}
 						}
-					}
-					Some(TxHandle::Read(rx)) => {
-						match rx.range(EncodedKeyRange::all(), RangeScope::All, 1024)
-							.collect::<Result<Vec<_>, _>>()
-						{
-							Ok(items) => {
-								let pairs = items
-									.iter()
-									.map(|mv| {
-										(
-											mv.key.as_ref().to_vec(),
+						Some(TxHandle::Read(rx)) => {
+							match rx.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+								.collect::<Result<Vec<_>, _>>()
+							{
+								Ok(items) => {
+									let pairs =
+										items.iter()
+											.map(|mv| {
+												(
+											mv.key.encode().as_ref().to_vec(),
 											mv.bytes.to_vec(),
 										)
-									})
-									.collect();
-								OpResult::ScanResult(pairs)
-							}
-							Err(e) => {
-								handles.remove(&tx_id);
-								OpResult::Error(format!("{}", e))
+											})
+											.collect();
+									OpResult::ScanResult(pairs)
+								}
+								Err(e) => {
+									handles.remove(&tx_id);
+									OpResult::Error(format!("{}", e))
+								}
 							}
 						}
-					}
-					None => OpResult::Error("transaction not found".into()),
-				},
-				Op::Commit => match handles.remove(&tx_id) {
-					Some(TxHandle::Write(mut tx)) => match tx.commit(vec![]) {
-						Ok(version) => {
-							committed.insert(tx_id, version);
-							OpResult::Committed
+						None => OpResult::Error("transaction not found".into()),
+					},
+					Op::Commit => match handles.remove(&tx_id) {
+						Some(TxHandle::Write(mut tx)) => match tx.commit(vec![]) {
+							Ok(version) => {
+								committed.insert(tx_id, version);
+								OpResult::Committed
+							}
+							Err(e) => OpResult::Error(format!("{}", e)),
+						},
+						Some(TxHandle::Read(_)) => {
+							OpResult::Error("cannot commit read transaction".into())
 						}
-						Err(e) => OpResult::Error(format!("{}", e)),
+						None => OpResult::Error("transaction not found".into()),
 					},
-					Some(TxHandle::Read(_)) => {
-						OpResult::Error("cannot commit read transaction".into())
-					}
-					None => OpResult::Error("transaction not found".into()),
-				},
-				Op::Rollback => match handles.remove(&tx_id) {
-					Some(TxHandle::Write(mut tx)) => match tx.rollback() {
-						Ok(()) => OpResult::Ok,
-						Err(e) => OpResult::Error(format!("{}", e)),
+					Op::Rollback => match handles.remove(&tx_id) {
+						Some(TxHandle::Write(mut tx)) => match tx.rollback() {
+							Ok(()) => OpResult::Ok,
+							Err(e) => OpResult::Error(format!("{}", e)),
+						},
+						Some(TxHandle::Read(_)) => OpResult::Ok,
+						None => OpResult::Error("transaction not found".into()),
 					},
-					Some(TxHandle::Read(_)) => OpResult::Ok,
-					None => OpResult::Error("transaction not found".into()),
-				},
-			};
+				};
 
 			results.push(StepResult {
 				step_index,
@@ -276,7 +287,7 @@ impl Executor {
 
 		let mut state = BTreeMap::new();
 		for mv in items {
-			let key = decode_key(mv.key.as_ref());
+			let key = decode_key(&mv.key.encode());
 			let value = decode_values(mv.bytes.as_ref());
 			state.insert(key, value);
 		}

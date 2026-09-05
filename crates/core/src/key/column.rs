@@ -19,7 +19,7 @@ use crate::{
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Column)]
 pub struct ColumnKey {
 	pub object: ObjectId,
@@ -107,7 +107,7 @@ pub mod column_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Key)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Key, Hash)]
 #[key(kind = ColumnSequence)]
 pub struct ColumnSequenceKey {
 	pub object: ObjectId,
@@ -180,7 +180,7 @@ pub mod column_sequence_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = ColumnSnapshot)]
 pub struct ColumnSnapshotKey {
 	pub snapshot: ColumnSnapshotId,
@@ -214,7 +214,7 @@ impl ColumnSnapshotKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = SeriesColumnSnapshot)]
 pub struct SeriesColumnSnapshotKey {
 	pub series: SeriesId,
@@ -250,7 +250,7 @@ impl SeriesColumnSnapshotKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = TableColumnSnapshot)]
 pub struct TableColumnSnapshotKey {
 	pub table: TableId,
@@ -352,7 +352,7 @@ pub mod column_snapshot_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Columns)]
 pub struct ColumnsKey {
 	pub column: ColumnId,

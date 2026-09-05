@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use super::{KeyKind, typed::key::Key};
 use crate::interface::catalog::flow::OperatorId;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Key)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Key, Hash)]
 #[key(kind = OperatorSettings)]
 pub struct OperatorSettingsKey {
 	pub operator: OperatorId,

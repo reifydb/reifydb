@@ -7,15 +7,16 @@ use reifydb::{
 			catalog::{id::QueueId, queue::decode_queue_partition_counters},
 			store::{SingleVersionGet, SingleVersionRange},
 		},
-		key::queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
+		key::{
+			any::AnyKey,
+			queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
+			typed::key::Key,
+		},
 	},
 	testing::db::{TempDbPath, TestDb},
 	transaction::transaction::Transaction,
 };
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_value::value::identity::IdentityId;
 
 fn queue_id(db: &TestDb, name: &str) -> QueueId {
@@ -27,13 +28,13 @@ fn queue_id(db: &TestDb, name: &str) -> QueueId {
 	catalog.find_queue_by_name(&mut txn, namespace.id(), name).unwrap().unwrap().id
 }
 
-fn keys(db: &TestDb, range: EncodedKeyRange) -> Vec<EncodedKey> {
+fn keys(db: &TestDb, range: EncodedKeyRange) -> Vec<AnyKey> {
 	let store = db.engine().single().read_store();
 	SingleVersionRange::range_batch(&store, range, 1024)
 		.unwrap()
 		.items
 		.iter()
-		.map(|item| item.key.clone())
+		.map(|item| AnyKey::decode(&item.key).unwrap())
 		.collect()
 }
 
@@ -50,7 +51,8 @@ fn wipe_scheduling(db: &TestDb, queue: QueueId) {
 	let due_keys = keys(db, QueueDueKey::partition_scan(queue, 0));
 
 	let single = db.engine().single();
-	let lock_key = QueuePartitionKey::encoded(queue, 0);
+	let lock = QueuePartitionKey::new(queue, 0);
+	let lock_key = lock.encode();
 	let mut tx = single
 		.begin_command_ranged(
 			[&lock_key],
@@ -60,7 +62,7 @@ fn wipe_scheduling(db: &TestDb, queue: QueueId) {
 	for key in state_keys.iter().chain(due_keys.iter()) {
 		tx.remove(key).unwrap();
 	}
-	tx.remove(&lock_key).unwrap();
+	tx.remove(&lock).unwrap();
 	tx.commit().unwrap();
 }
 

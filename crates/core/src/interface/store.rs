@@ -13,6 +13,7 @@ use crate::{
 	interface::catalog::storage::StorageId,
 	key::{
 		EncodableKeyRange,
+		any::AnyKey,
 		kind::KeyKind,
 		row::{
 			PartitionedRowKey, PartitionedRowKeyRange, PartitionedSortedViewRowKey, RowKey, RowKeyRange,
@@ -221,6 +222,46 @@ pub fn storage_key(key: &EncodedKey) -> (EntryKind, Option<StorageKey>) {
 	}
 }
 
+pub fn storage_key_of(key: &AnyKey) -> (EntryKind, Option<StorageKey>) {
+	match key {
+		AnyKey::Row(row_key) => source_entry(
+			row_key.storage,
+			EntryLayout::Row,
+			row_storage_key(row_key.storage, StorageRowKey::new(row_key.row)),
+		),
+		AnyKey::SeriesRow(series_key) => source_entry(
+			series_key.storage,
+			EntryLayout::Series,
+			series_storage_key(series_key.storage, StorageSeriesKey::from(series_key.clone())),
+		),
+		AnyKey::PartitionedRow(partitioned_key) => partitioned_source_entry(
+			partitioned_key.storage,
+			EntryLayout::Row,
+			partitioned_row_storage_key(
+				partitioned_key.storage,
+				StoragePartitionedRowKey::new(partitioned_key.partition, partitioned_key.row),
+			),
+		),
+		AnyKey::PartitionedSeriesRow(partitioned_key) => partitioned_source_entry(
+			partitioned_key.storage,
+			EntryLayout::Series,
+			partitioned_series_storage_key(
+				partitioned_key.storage,
+				StoragePartitionedSeriesKey::from(partitioned_key.clone()),
+			),
+		),
+		AnyKey::SortedViewRow(sorted) => (EntryKind::Source(sorted.storage, EntryLayout::SortedView), None),
+		AnyKey::PartitionedSortedViewRow(sorted) => {
+			(EntryKind::PartitionedSource(sorted.storage, EntryLayout::SortedView), None)
+		}
+		_ => (EntryKind::Multi, None),
+	}
+}
+
+pub fn classify_key_of(key: &AnyKey) -> EntryKind {
+	storage_key_of(key).0
+}
+
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
 	storage_key(key).0
 }
@@ -295,19 +336,19 @@ pub trait MultiVersionCommit: Send + Sync {
 }
 
 pub trait MultiVersionGet: Send + Sync {
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>>;
+	fn get(&self, key: &AnyKey, version: CommitVersion) -> Result<Option<MultiVersionRow<AnyKey>>>;
 }
 
 pub trait MultiVersionContains: Send + Sync {
-	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool>;
+	fn contains(&self, key: &AnyKey, version: CommitVersion) -> Result<bool>;
 }
 
 pub trait MultiVersionGetPrevious: Send + Sync {
 	fn get_previous_version(
 		&self,
-		key: &EncodedKey,
+		key: &AnyKey,
 		before_version: CommitVersion,
-	) -> Result<Option<MultiVersionRow>>;
+	) -> Result<Option<MultiVersionRow<AnyKey>>>;
 }
 
 pub trait MultiVersionStore:
@@ -347,24 +388,6 @@ pub trait SingleVersionContains: Send + Sync {
 	fn contains(&self, key: &EncodedKey) -> Result<bool>;
 }
 
-pub trait SingleVersionSet: SingleVersionCommit {
-	fn set(&mut self, key: &EncodedKey, bytes: EncodedBytes) -> Result<()> {
-		Self::commit(
-			self,
-			CowVec::new(vec![Delta::Set {
-				key: key.clone(),
-				bytes: bytes.clone(),
-			}]),
-		)
-	}
-}
-
-pub trait SingleVersionRemove: SingleVersionCommit {
-	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		Self::commit(self, CowVec::new(vec![Delta::remove_silent(key.clone())]))
-	}
-}
-
 pub trait SingleVersionRange: Send + Sync {
 	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch>;
 
@@ -396,8 +419,6 @@ pub trait SingleVersionStore:
 	+ SingleVersionCommit
 	+ SingleVersionGet
 	+ SingleVersionContains
-	+ SingleVersionSet
-	+ SingleVersionRemove
 	+ SingleVersionRange
 	+ SingleVersionRangeRev
 	+ 'static

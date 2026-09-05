@@ -112,8 +112,7 @@ where
 /// single-threaded test otherwise cannot.
 fn plant_stale_due_entry(t: &TestEngine, queue: QueueId, partition: u16, row: RowNumber, due: DateTime) {
 	with_partition(t, queue, partition, |tx| {
-		tx.set(&QueueDueKey::encoded(queue, partition, due, row), EncodedPodRow::new(&[]).into_bytes())
-			.unwrap();
+		tx.set(&QueueDueKey::new(queue, partition, due, row), EncodedPodRow::new(&[]).into_bytes()).unwrap();
 	});
 }
 

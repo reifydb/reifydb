@@ -3,13 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{
-		bytes::{EncodedBytes, RowBuilder},
-		series::EncodedSeriesRow,
-		shape::RowShape,
-	},
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, RowBuilder},
+	series::EncodedSeriesRow,
+	shape::RowShape,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -28,8 +25,8 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
+		any::AnyKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
-		typed::key::Key,
 	},
 	partition::PartitionError,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -117,8 +114,8 @@ pub(crate) fn update_series(
 		let updates_to_apply =
 			build_series_updates_to_apply(services, txn, &series, &columns, row_numbers, has_tag)?;
 
-		for (encoded_key, row, row_idx) in updates_to_apply {
-			let pre_values = match txn.get_encoded(&encoded_key)? {
+		for (key, row, row_idx) in updates_to_apply {
+			let pre_values = match txn.get(&key)? {
 				Some(v) => v.bytes,
 				None => continue,
 			};
@@ -157,10 +154,10 @@ pub(crate) fn update_series(
 					.into());
 				}
 			}
-			if txn.get_committed(&encoded_key)?.is_some() {
-				txn.mark_preexisting(&encoded_key)?;
+			if txn.get_committed(&key)?.is_some() {
+				txn.mark_preexisting(&key)?;
 			}
-			txn.set_encoded(&encoded_key, row.clone())?;
+			txn.set(&key, row.clone())?;
 			let posts = [row.clone()];
 			let pres = [pre_values.clone()];
 			SeriesRowInterceptor::post_update(txn, &series, &posts, &pres)?;
@@ -252,7 +249,7 @@ fn build_series_updates_to_apply(
 	columns: &Columns,
 	row_numbers: &[RowNumber],
 	has_tag: bool,
-) -> Result<Vec<(EncodedKey, EncodedBytes, usize)>> {
+) -> Result<Vec<(AnyKey, EncodedBytes, usize)>> {
 	let row_count = columns.row_count();
 	let partitioned = !series.partition_by.is_empty();
 	if partitioned && columns.partitions().len() != row_count {
@@ -262,13 +259,13 @@ fn build_series_updates_to_apply(
 		}
 		.into());
 	}
-	let mut updates_to_apply: Vec<(EncodedKey, EncodedBytes, usize)> = Vec::with_capacity(row_count);
+	let mut updates_to_apply: Vec<(AnyKey, EncodedBytes, usize)> = Vec::with_capacity(row_count);
 	for (row_idx, row_number) in row_numbers.iter().enumerate().take(row_count) {
 		let sequence = u64::from(*row_number);
 		let key_value = extract_series_update_key_value(columns, series, row_idx);
 		let variant_tag = extract_series_update_variant_tag(columns, has_tag, row_idx);
 
-		let encoded_key = if partitioned {
+		let key: AnyKey = if partitioned {
 			let old_partition = columns.partitions()[row_idx];
 			let new_partition = series_partition_of_columns(series, columns, row_idx)?;
 			if new_partition != old_partition {
@@ -277,13 +274,14 @@ fn build_series_updates_to_apply(
 				}
 				.into());
 			}
-			PartitionedSeriesRowKey::encoded(
+			PartitionedSeriesRowKey::new(
 				StorageId::series(series.id),
 				old_partition,
 				variant_tag,
 				key_value,
 				sequence,
 			)
+			.into()
 		} else {
 			SeriesRowKey {
 				storage: StorageId::series(series.id),
@@ -291,12 +289,12 @@ fn build_series_updates_to_apply(
 				key: key_value,
 				sequence,
 			}
-			.encode()
+			.into()
 		};
 
 		let shape = get_or_create_series_shape(&services.catalog, series, txn)?;
 		let row = build_series_update_bytes(services, txn, series, columns, &shape, row_idx)?;
-		updates_to_apply.push((encoded_key, row, row_idx));
+		updates_to_apply.push((key, row, row_idx));
 	}
 	Ok(updates_to_apply)
 }

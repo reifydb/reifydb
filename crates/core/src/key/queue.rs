@@ -12,7 +12,7 @@ use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use super::{EncodableKey, KeyKind};
 use crate::{interface::catalog::id::QueueId, key::typed::key::Key};
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Queue)]
 pub struct QueueKey {
 	pub queue: QueueId,
@@ -141,7 +141,7 @@ mod byte_identical_check_queue_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = QueueAttempt)]
 pub struct QueueAttemptKey {
 	pub queue: QueueId,
@@ -268,7 +268,7 @@ mod queue_item_state_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct QueueDeduplicationKey {
 	pub queue: QueueId,
 	pub tail: EncodedKey,
@@ -443,7 +443,7 @@ fn family_scan(kind: KeyKind) -> EncodedKeyRange {
 	EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = QueuePartition)]
 pub struct QueuePartitionKey {
 	pub queue: QueueId,
@@ -451,6 +451,13 @@ pub struct QueuePartitionKey {
 }
 
 impl QueuePartitionKey {
+	pub fn new(queue: impl Into<QueueId>, partition: u16) -> Self {
+		Self {
+			queue: queue.into(),
+			partition,
+		}
+	}
+
 	pub fn encoded(queue: impl Into<QueueId>, partition: u16) -> EncodedKey {
 		Key::encode(&Self {
 			queue: queue.into(),
@@ -467,7 +474,7 @@ impl QueuePartitionKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = QueueItemState)]
 pub struct QueueItemStateKey {
 	pub queue: QueueId,
@@ -476,6 +483,14 @@ pub struct QueueItemStateKey {
 }
 
 impl QueueItemStateKey {
+	pub fn new(queue: impl Into<QueueId>, partition: u16, row: impl Into<RowNumber>) -> Self {
+		Self {
+			queue: queue.into(),
+			partition,
+			row: row.into(),
+		}
+	}
+
 	pub fn encoded(queue: impl Into<QueueId>, partition: u16, row: impl Into<RowNumber>) -> EncodedKey {
 		Key::encode(&Self {
 			queue: queue.into(),
@@ -497,7 +512,7 @@ impl QueueItemStateKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = QueueDue)]
 pub struct QueueDueKey {
 	pub queue: QueueId,
@@ -538,7 +553,7 @@ impl QueueDueKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = QueueKeyActive)]
 pub struct QueueKeyActiveKey {
 	pub queue: QueueId,
@@ -548,6 +563,15 @@ pub struct QueueKeyActiveKey {
 }
 
 impl QueueKeyActiveKey {
+	pub fn new(queue: impl Into<QueueId>, partition: u16, key_hash: u64, row: impl Into<RowNumber>) -> Self {
+		Self {
+			queue: queue.into(),
+			partition,
+			key_hash,
+			row: row.into(),
+		}
+	}
+
 	pub fn encoded(
 		queue: impl Into<QueueId>,
 		partition: u16,

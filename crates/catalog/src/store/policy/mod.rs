@@ -17,7 +17,7 @@ pub mod find;
 pub mod list;
 pub mod shape;
 
-pub(crate) fn convert_policy(multi: MultiVersionRow) -> Result<Policy> {
+pub(crate) fn convert_policy<K>(multi: MultiVersionRow<K>) -> Result<Policy> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = policy::get_id(&bytes);
 	let name_str = policy::get_name(&bytes).to_string();
@@ -66,7 +66,7 @@ pub(crate) fn convert_policy(multi: MultiVersionRow) -> Result<Policy> {
 	})
 }
 
-pub(crate) fn convert_policy_op(multi: MultiVersionRow) -> Result<PolicyOperation> {
+pub(crate) fn convert_policy_op<K>(multi: MultiVersionRow<K>) -> Result<PolicyOperation> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let policy_id = policy_op::get_policy_id(&bytes);
 	let operation = policy_op::get_operation(&bytes).to_string();

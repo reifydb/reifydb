@@ -4,13 +4,13 @@
 use std::ops::Bound;
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKeyRange,
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
-		EncodableKey,
+		any::AnyKey,
 		operator::{
 			keyspace::join::{
 				JoinExpiryDue, JoinExpiryDueKey, JoinRowExpiry as JoinRowExpirySpace,
@@ -201,7 +201,9 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 
 impl<T: FlowTransaction> JoinRowExpiryExtension for T {}
 
-fn decode_due_suffix(key: &EncodedKey) -> Option<JoinExpiryDueKey> {
-	let decoded = OperatorStateKey::decode(key)?;
+fn decode_due_suffix(key: &AnyKey) -> Option<JoinExpiryDueKey> {
+	let AnyKey::OperatorState(decoded) = key else {
+		return None;
+	};
 	JoinExpiryDueKey::from_suffix_bytes(&decoded.suffix)
 }

@@ -9,6 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::store::{EntryKind, MultiVersionRow},
+	key::any::AnyKey,
 	state::horizon::Cutoff,
 };
 use reifydb_store_multi::tier::persistent::MultiPersistentTier;
@@ -16,7 +17,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::command::CommandTransa
 use reifydb_value::{Result, value::datetime::DateTime};
 
 pub struct ExpiredScan {
-	pub expired: Vec<MultiVersionRow>,
+	pub expired: Vec<MultiVersionRow<AnyKey>>,
 	pub min_survivor_row: Option<u64>,
 	pub next_cursor: Option<EncodedKey>,
 }
@@ -24,7 +25,7 @@ pub struct ExpiredScan {
 pub type ExpiryCursor = (DateTime, EncodedKey);
 
 pub struct ExpiredIndexScan {
-	pub expired: Vec<EncodedKey>,
+	pub expired: Vec<AnyKey>,
 	pub next_cursor: Option<ExpiryCursor>,
 }
 
@@ -47,11 +48,12 @@ pub fn scan_expired_indexed(
 
 	let mut expired = Vec::with_capacity(candidates.len());
 	for (key, _) in &candidates {
-		let Some(row) = txn.get_encoded(key)? else {
+		let key = AnyKey::decode(key).expect("an expired index key must decode");
+		let Some(row) = txn.get(&key)? else {
 			continue;
 		};
 		if family.updated_at(&row.bytes) <= cutoff.instant() {
-			expired.push(key.clone());
+			expired.push(key);
 		}
 	}
 
@@ -64,11 +66,11 @@ pub fn scan_expired_indexed(
 pub fn min_survivor_row(
 	txn: &mut CommandTransaction,
 	keyspace: EncodedKeyRange,
-	deleted: &[EncodedKey],
-	row_number_of: &dyn Fn(&EncodedKey) -> Option<u64>,
+	deleted: &[AnyKey],
+	row_number_of: &dyn Fn(&AnyKey) -> Option<u64>,
 ) -> Result<Option<u64>> {
-	let skip: BTreeSet<&[u8]> = deleted.iter().map(|key| key.as_slice()).collect();
-	let mut seen: Option<EncodedKey> = None;
+	let skip: BTreeSet<&AnyKey> = deleted.iter().collect();
+	let mut seen: Option<AnyKey> = None;
 
 	let mut stream = txn.range_rev_persistence(keyspace, RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
@@ -77,7 +79,7 @@ pub fn min_survivor_row(
 			continue;
 		}
 		seen = Some(entry.key.clone());
-		if skip.contains(entry.key.as_slice()) {
+		if skip.contains(&entry.key) {
 			continue;
 		}
 		if let Some(row_number) = row_number_of(&entry.key) {
@@ -108,9 +110,9 @@ pub fn scan_expired(
 	family: RowFamily,
 	cutoff: Cutoff,
 	limit: usize,
-	row_number_of: &dyn Fn(&EncodedKey) -> Option<u64>,
+	row_number_of: &dyn Fn(&AnyKey) -> Option<u64>,
 ) -> Result<ExpiredScan> {
-	let mut expired: Vec<MultiVersionRow> = Vec::new();
+	let mut expired: Vec<MultiVersionRow<AnyKey>> = Vec::new();
 	let mut min_survivor_row: Option<u64> = None;
 	let mut next_cursor: Option<EncodedKey> = None;
 
@@ -123,7 +125,7 @@ pub fn scan_expired(
 	}
 
 	let mut examined = 0usize;
-	let mut current: Option<MultiVersionRow> = None;
+	let mut current: Option<MultiVersionRow<AnyKey>> = None;
 
 	let mut stream = txn.range_rev_persistence(range, RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
@@ -136,7 +138,7 @@ pub fn scan_expired(
 				continue;
 			}
 			let finished = current.take().unwrap();
-			let finished_key = finished.key.clone();
+			let finished_key = finished.key.encode();
 			classify(finished, family, cutoff, row_number_of, &mut expired, &mut min_survivor_row);
 			examined += 1;
 			if examined >= limit {
@@ -163,11 +165,11 @@ pub fn scan_expired(
 }
 
 fn classify(
-	row: MultiVersionRow,
+	row: MultiVersionRow<AnyKey>,
 	family: RowFamily,
 	cutoff: Cutoff,
-	row_number_of: &dyn Fn(&EncodedKey) -> Option<u64>,
-	expired: &mut Vec<MultiVersionRow>,
+	row_number_of: &dyn Fn(&AnyKey) -> Option<u64>,
+	expired: &mut Vec<MultiVersionRow<AnyKey>>,
 	min_survivor_row: &mut Option<u64>,
 ) {
 	if family.updated_at(&row.bytes) <= cutoff.instant() {

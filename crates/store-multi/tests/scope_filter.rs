@@ -10,7 +10,11 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	interface::store::{EntryKind, MultiVersionCommit},
+	interface::{
+		catalog::id::QueueId,
+		store::{EntryKind, MultiVersionCommit},
+	},
+	key::{any::AnyKey, queue::QueueDeduplicationKey},
 };
 use reifydb_store_commit::{MultiVersionScope, RangeCursor};
 use reifydb_store_multi::{
@@ -20,11 +24,8 @@ use reifydb_store_multi::{
 };
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
-fn key(label: &[u8]) -> EncodedKey {
-	let mut bytes = Vec::with_capacity(1 + label.len());
-	bytes.push(0x00);
-	bytes.extend_from_slice(label);
-	EncodedKey::new(bytes)
+fn key(label: &[u8]) -> AnyKey {
+	QueueDeduplicationKey::new(QueueId(1), label.iter().map(|b| !b).collect::<Vec<u8>>()).into()
 }
 
 fn encoded_bytes(label: &[u8]) -> EncodedBytes {
@@ -34,7 +35,7 @@ fn encoded_bytes(label: &[u8]) -> EncodedBytes {
 	EncodedBytes(CowVec::new(bytes))
 }
 
-fn write(store: &MultiStore, k: &EncodedKey, payload: &[u8], version: CommitVersion) {
+fn write(store: &MultiStore, k: &AnyKey, payload: &[u8], version: CommitVersion) {
 	let bytes = encoded_bytes(payload);
 	MultiVersionCommit::commit(
 		store,

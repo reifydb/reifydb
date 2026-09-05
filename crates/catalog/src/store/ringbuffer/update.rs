@@ -20,7 +20,7 @@ impl CatalogStore {
 		metadata: RingBufferMetadata,
 	) -> Result<()> {
 		let row = encode_ringbuffer_metadata(&metadata);
-		txn.set_encoded(&RingBufferMetadataKey::encoded(ringbuffer_id), row.into_bytes())?;
+		txn.set(&RingBufferMetadataKey::new(ringbuffer_id), row.into_bytes())?;
 		Ok(())
 	}
 
@@ -30,7 +30,7 @@ impl CatalogStore {
 		metadata: RingBufferMetadata,
 	) -> Result<()> {
 		let row = encode_ringbuffer_metadata(&metadata);
-		txn.set_encoded(&RingBufferMetadataKey::encoded(ringbuffer_id), row.into_bytes())?;
+		txn.set(&RingBufferMetadataKey::new(ringbuffer_id), row.into_bytes())?;
 		Ok(())
 	}
 
@@ -40,7 +40,7 @@ impl CatalogStore {
 		metadata: RingBufferMetadata,
 	) -> Result<()> {
 		let row = encode_ringbuffer_metadata(&metadata);
-		txn.set_encoded(&RingBufferMetadataKey::encoded(ringbuffer_id), row.into_bytes())?;
+		txn.set(&RingBufferMetadataKey::new(ringbuffer_id), row.into_bytes())?;
 		Ok(())
 	}
 
@@ -63,12 +63,9 @@ impl CatalogStore {
 		partition_key: &[Value],
 	) -> Result<()> {
 		if ringbuffer.partition_by.is_empty() {
-			txn.remove_encoded(&RingBufferMetadataKey::encoded(ringbuffer.id))
+			txn.remove(&RingBufferMetadataKey::new(ringbuffer.id))
 		} else {
-			txn.remove_encoded(&RingBufferMetadataKey::encoded_partition(
-				ringbuffer.id,
-				partition_key.to_vec(),
-			))
+			txn.remove(&RingBufferMetadataKey::partition(ringbuffer.id, partition_key.to_vec()))
 		}
 	}
 
@@ -79,8 +76,8 @@ impl CatalogStore {
 		metadata: &RingBufferMetadata,
 	) -> Result<()> {
 		let row = encode_ringbuffer_metadata(metadata);
-		let key = RingBufferMetadataKey::encoded_partition(ringbuffer, partition_values.to_vec());
-		txn.set_encoded(&key, row.into_bytes())?;
+		let key = RingBufferMetadataKey::partition(ringbuffer, partition_values.to_vec());
+		txn.set(&key, row.into_bytes())?;
 		Ok(())
 	}
 }

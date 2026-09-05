@@ -12,7 +12,7 @@ pub mod drop;
 pub mod find;
 pub mod shape;
 
-pub(crate) fn convert_token(multi: MultiVersionRow) -> Result<Token> {
+pub(crate) fn convert_token<K>(multi: MultiVersionRow<K>) -> Result<Token> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = token::get_id(&bytes);
 	let token_value = token::get_token(&bytes).to_string();

@@ -11,36 +11,41 @@ use super::{EncodableKey, KeyKind};
 use crate::interface::{catalog::flow::FlowId, cdc::CdcConsumerId};
 
 pub trait ToConsumerKey {
-	fn to_consumer_key(&self) -> EncodedKey;
+	fn to_consumer_key(&self) -> CdcConsumerKey;
 }
 
-impl ToConsumerKey for EncodedKey {
-	fn to_consumer_key(&self) -> EncodedKey {
+impl ToConsumerKey for CdcConsumerKey {
+	fn to_consumer_key(&self) -> CdcConsumerKey {
 		self.clone()
 	}
 }
 
 impl ToConsumerKey for CdcConsumerId {
-	fn to_consumer_key(&self) -> EncodedKey {
+	fn to_consumer_key(&self) -> CdcConsumerKey {
 		CdcConsumerKey {
 			consumer: self.clone(),
 		}
-		.encode()
 	}
 }
 
 impl ToConsumerKey for FlowId {
-	fn to_consumer_key(&self) -> EncodedKey {
-		CdcConsumerKey::encoded(CdcConsumerId::new(format!("flow:{}", self.0)))
+	fn to_consumer_key(&self) -> CdcConsumerKey {
+		CdcConsumerKey::new(CdcConsumerId::new(format!("flow:{}", self.0)))
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CdcConsumerKey {
 	pub consumer: CdcConsumerId,
 }
 
 impl CdcConsumerKey {
+	pub fn new(consumer: impl Into<CdcConsumerId>) -> Self {
+		Self {
+			consumer: consumer.into(),
+		}
+	}
+
 	pub fn encoded(consumer: impl Into<CdcConsumerId>) -> EncodedKey {
 		Self {
 			consumer: consumer.into(),
@@ -144,7 +149,7 @@ pub mod cdc_consumer_key_tests {
 	#[test]
 	fn test_flow_id_to_consumer_key() {
 		let flow_id = FlowId(42);
-		let encoded = flow_id.to_consumer_key();
+		let encoded = flow_id.to_consumer_key().encode();
 
 		let decoded = CdcConsumerKey::decode(&encoded).expect("Failed to decode key");
 		assert_eq!(decoded.consumer, CdcConsumerId::new("flow:42"));
@@ -152,9 +157,9 @@ pub mod cdc_consumer_key_tests {
 
 	#[test]
 	fn test_flow_id_keys_within_range() {
-		let flow1 = FlowId(1).to_consumer_key();
-		let flow2 = FlowId(100).to_consumer_key();
-		let flow3 = FlowId(999).to_consumer_key();
+		let flow1 = FlowId(1).to_consumer_key().encode();
+		let flow2 = FlowId(100).to_consumer_key().encode();
+		let flow3 = FlowId(999).to_consumer_key().encode();
 
 		let range = CdcConsumerKeyRange::full_scan();
 
@@ -176,10 +181,7 @@ pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 			| KeyKind::TransactionVersion
 			| KeyKind::FlowVersion
 			| KeyKind::RingBufferMetadata
-			| KeyKind::Index | KeyKind::Subscription
-			| KeyKind::SubscriptionColumn
-			| KeyKind::SubscriptionRow
-			| KeyKind::ConfigStorage
+			| KeyKind::Index | KeyKind::ConfigStorage
 			| KeyKind::Token | KeyKind::VersionEpoch
 			| KeyKind::QueuePartition
 			| KeyKind::QueueItemState
@@ -234,9 +236,6 @@ pub mod primary_key_tests {
 			KeyKind::NamespaceDictionary => {}
 			KeyKind::Metric => {}
 			KeyKind::FlowVersion => {}
-			KeyKind::Subscription => {}
-			KeyKind::SubscriptionRow => {}
-			KeyKind::SubscriptionColumn => {}
 			KeyKind::RowShape => {}
 			KeyKind::SumType => {}
 			KeyKind::NamespaceSumType => {}
@@ -261,7 +260,6 @@ pub mod primary_key_tests {
 			KeyKind::NamespaceSource => {}
 			KeyKind::Sink => {}
 			KeyKind::NamespaceSink => {}
-			KeyKind::SourceCheckpoint => {}
 			KeyKind::RowSettings => {}
 			KeyKind::Procedure => {}
 			KeyKind::NamespaceProcedure => {}
@@ -352,21 +350,6 @@ pub mod primary_key_tests {
 	#[test]
 	fn test_exclude_index() {
 		assert!(should_exclude_from_cdc(KeyKind::Index));
-	}
-
-	#[test]
-	fn test_exclude_subscription() {
-		assert!(should_exclude_from_cdc(KeyKind::Subscription));
-	}
-
-	#[test]
-	fn test_exclude_subscription_column() {
-		assert!(should_exclude_from_cdc(KeyKind::SubscriptionColumn));
-	}
-
-	#[test]
-	fn test_exclude_subscription_row() {
-		assert!(should_exclude_from_cdc(KeyKind::SubscriptionRow));
 	}
 
 	#[test]

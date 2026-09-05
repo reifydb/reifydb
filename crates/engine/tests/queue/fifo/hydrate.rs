@@ -3,10 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::{
 		catalog::queue::{
@@ -16,6 +13,7 @@ use reifydb_core::{
 		store::{SingleVersionGet, SingleVersionRange, SingleVersionRow},
 	},
 	key::{
+		any::AnyKey,
 		queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
 		typed::key::Key,
 	},
@@ -81,8 +79,8 @@ fn total_depth(t: &TestEngine, queue: &Queue) -> u64 {
 	(0..queue.partitions()).map(|partition| counters(t, queue, partition).depth).sum()
 }
 
-fn keys_in(t: &TestEngine, range: EncodedKeyRange) -> Vec<EncodedKey> {
-	scan(t, range).iter().map(|item| item.key.clone()).collect()
+fn keys_in(t: &TestEngine, range: EncodedKeyRange) -> Vec<AnyKey> {
+	scan(t, range).iter().map(|item| AnyKey::decode(&item.key).unwrap()).collect()
 }
 
 fn with_partition<F>(t: &TestEngine, queue: &Queue, partition: u16, f: F)
@@ -118,7 +116,7 @@ fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
 			for key in state_keys.iter().chain(due_keys.iter()).chain(chain_keys.iter()) {
 				tx.remove(key).unwrap();
 			}
-			tx.remove(&QueuePartitionKey::encoded(queue.id, partition)).unwrap();
+			tx.remove(&QueuePartitionKey::new(queue.id, partition)).unwrap();
 		});
 	}
 }
@@ -130,9 +128,9 @@ fn forget_item(t: &TestEngine, queue: &Queue, row: RowNumber) {
 	counters.depth -= 1;
 
 	with_partition(t, queue, partition, |tx| {
-		tx.remove(&QueueItemStateKey::encoded(queue.id, partition, row)).unwrap();
-		tx.remove(&due.encode()).unwrap();
-		tx.set(&QueuePartitionKey::encoded(queue.id, partition), encode_queue_partition_counters(&counters))
+		tx.remove(&QueueItemStateKey::new(queue.id, partition, row)).unwrap();
+		tx.remove(&due).unwrap();
+		tx.set(&QueuePartitionKey::new(queue.id, partition), encode_queue_partition_counters(&counters))
 			.unwrap();
 	});
 }
@@ -239,9 +237,9 @@ fn test_hydration_does_not_re_admit_an_item_that_reached_a_terminal_status() {
 	with_partition(&t, &queue, 0, |tx| {
 		let mut state = QueueItemState::ready(None);
 		state.status = QueueItemStatus::Done;
-		tx.set(&QueueItemStateKey::encoded(queue.id, 0, done), encode_queue_item_state(&state)).unwrap();
-		tx.remove(&due.encode()).unwrap();
-		tx.set(&QueuePartitionKey::encoded(queue.id, 0), encode_queue_partition_counters(&counters)).unwrap();
+		tx.set(&QueueItemStateKey::new(queue.id, 0, done), encode_queue_item_state(&state)).unwrap();
+		tx.remove(&due).unwrap();
+		tx.set(&QueuePartitionKey::new(queue.id, 0), encode_queue_partition_counters(&counters)).unwrap();
 	});
 
 	assert_eq!(hydrate_queues(t.inner()).unwrap(), 0, "a terminal item must not be re-admitted");

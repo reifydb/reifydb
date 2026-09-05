@@ -8,7 +8,15 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::bytes::EncodedBytes,
 };
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::{
+		id::{IndexId, TableId},
+		object::ObjectId,
+	},
+	key::{EncodableKey, any::AnyKey, catalog::IndexEntryKey},
+	value::index::encoded::EncodedIndexKey,
+};
 use reifydb_flow::transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
@@ -20,7 +28,12 @@ use reifydb_value::{Result, util::cowvec::CowVec, value::identity::IdentityId};
 use crate::common::create_test_transaction;
 
 fn make_key(s: &str) -> EncodedKey {
-	EncodedKey::new(s.as_bytes())
+	make_typed_key(s).encode()
+}
+
+fn make_typed_key(s: &str) -> IndexEntryKey {
+	// extend_raw appends the tail verbatim, so make_key("test_") really prefixes make_key("test_a").
+	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(s.as_bytes()))
 }
 
 fn make_value(s: &str) -> EncodedBytes {
@@ -28,7 +41,7 @@ fn make_value(s: &str) -> EncodedBytes {
 }
 
 fn get_row(parent: &mut AdminTransaction, key: &EncodedKey) -> Option<EncodedBytes> {
-	parent.get_encoded(key).unwrap().map(|m| m.bytes.clone())
+	parent.get(&AnyKey::decode(key).expect("the test key must decode")).unwrap().map(|m| m.bytes.clone())
 }
 
 #[test]
@@ -61,7 +74,7 @@ fn test_get_from_committed() {
 
 	{
 		let mut cmd_txn = t.begin_admin(IdentityId::system()).unwrap();
-		cmd_txn.set_encoded(&key, value.clone()).unwrap();
+		cmd_txn.set(&make_typed_key("key1"), value.clone()).unwrap();
 		cmd_txn.commit().unwrap();
 	}
 
@@ -86,7 +99,7 @@ fn test_get_pending_shadows_committed() {
 	let (mut parent, operators) = create_test_transaction();
 
 	let key = make_key("key1");
-	parent.set_encoded(&key, make_value("old")).unwrap();
+	parent.set(&make_typed_key("key1"), make_value("old")).unwrap();
 	let version = parent.version();
 
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
@@ -110,7 +123,7 @@ fn test_get_removed_returns_none() {
 	let (mut parent, operators) = create_test_transaction();
 
 	let key = make_key("key1");
-	parent.set_encoded(&key, make_value("value1")).unwrap();
+	parent.set(&make_typed_key("key1"), make_value("value1")).unwrap();
 	let version = parent.version();
 
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
@@ -170,7 +183,7 @@ fn test_contains_key_committed() {
 
 	{
 		let mut cmd_txn = t.begin_admin(IdentityId::system()).unwrap();
-		cmd_txn.set_encoded(&key, make_value("value1")).unwrap();
+		cmd_txn.set(&make_typed_key("key1"), make_value("value1")).unwrap();
 		cmd_txn.commit().unwrap();
 	}
 
@@ -193,7 +206,7 @@ fn test_contains_key_removed_returns_false() {
 	let (mut parent, operators) = create_test_transaction();
 
 	let key = make_key("key1");
-	parent.set_encoded(&key, make_value("value1")).unwrap();
+	parent.set(&make_typed_key("key1"), make_value("value1")).unwrap();
 	let version = parent.version();
 
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
@@ -260,9 +273,9 @@ fn test_scan_only_pending() {
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
 
 	assert_eq!(items.len(), 3);
-	assert_eq!(items[0].key, make_key("a"));
-	assert_eq!(items[1].key, make_key("b"));
-	assert_eq!(items[2].key, make_key("c"));
+	assert_eq!(items[0].key, make_typed_key("a").into());
+	assert_eq!(items[1].key, make_typed_key("b").into());
+	assert_eq!(items[2].key, make_typed_key("c").into());
 }
 
 #[test]
@@ -285,8 +298,8 @@ fn test_scan_filters_removes() {
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
 
 	assert_eq!(items.len(), 2);
-	assert_eq!(items[0].key, make_key("a"));
-	assert_eq!(items[1].key, make_key("c"));
+	assert_eq!(items[0].key, make_typed_key("a").into());
+	assert_eq!(items[1].key, make_typed_key("c").into());
 }
 
 #[test]
@@ -327,8 +340,8 @@ fn test_range_only_pending() {
 	let items: Vec<_> = txn.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
 
 	assert_eq!(items.len(), 2);
-	assert_eq!(items[0].key, make_key("b"));
-	assert_eq!(items[1].key, make_key("c"));
+	assert_eq!(items[0].key, make_typed_key("b").into());
+	assert_eq!(items[1].key, make_typed_key("c").into());
 }
 
 #[test]
@@ -369,8 +382,8 @@ fn test_prefix_only_pending() {
 	let items: Vec<_> = iter.items.into_iter().collect();
 
 	assert_eq!(items.len(), 2);
-	assert_eq!(items[0].key, make_key("test_a"));
-	assert_eq!(items[1].key, make_key("test_b"));
+	assert_eq!(items[0].key, make_typed_key("test_a").into());
+	assert_eq!(items[1].key, make_typed_key("test_b").into());
 }
 
 #[test]
@@ -540,7 +553,7 @@ fn test_removes_not_visible_to_parent() {
 
 	let key = make_key("key1");
 	let value = make_value("value1");
-	parent.set_encoded(&key, value.clone()).unwrap();
+	parent.set(&make_typed_key("key1"), value.clone()).unwrap();
 	assert_eq!(get_row(&mut parent, &key), Some(value.clone()));
 
 	let parent_version = parent.version();

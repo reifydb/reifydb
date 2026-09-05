@@ -19,7 +19,7 @@ use crate::{
 	key::typed::key::Key,
 };
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Identity)]
 pub struct IdentityKey {
 	pub identity: IdentityId,
@@ -68,7 +68,7 @@ mod byte_identical_identity_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = IdentityAttribute)]
 pub struct IdentityAttributeKey {
 	pub attribute: IdentityAttributeId,
@@ -113,7 +113,7 @@ mod byte_identical_identity_attribute_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = IdentityAttributeValue)]
 pub struct IdentityAttributeValueKey {
 	pub identity: IdentityId,
@@ -210,7 +210,7 @@ mod identity_attribute_value_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Authentication)]
 pub struct AuthenticationKey {
 	pub authentication: AuthenticationId,
@@ -255,7 +255,7 @@ mod byte_identical_authentication_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Token)]
 pub struct TokenKey {
 	pub token: TokenId,
@@ -300,7 +300,7 @@ mod byte_identical_token_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Role)]
 pub struct RoleKey {
 	pub role: RoleId,
@@ -345,7 +345,7 @@ mod byte_identical_role_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = GrantedRole)]
 pub struct GrantedRoleKey {
 	pub identity: IdentityId,
@@ -438,7 +438,7 @@ mod granted_role_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Policy)]
 pub struct PolicyKey {
 	pub policy: PolicyId,
@@ -483,7 +483,7 @@ mod byte_identical_policy_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = PolicyOp)]
 pub struct PolicyOpKey {
 	pub policy: PolicyId,

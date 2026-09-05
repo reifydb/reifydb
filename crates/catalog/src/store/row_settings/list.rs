@@ -4,10 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::storage::StorageId,
-	key::{
-		row::{RowSettingsKey, RowSettingsKeyRange},
-		typed::key::Key,
-	},
+	key::{any::AnyKey, row::RowSettingsKeyRange},
 	row::RowSettings,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -30,7 +27,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let entry = entry?;
-			if let Some(key) = RowSettingsKey::decode(&entry.key)
+			if let AnyKey::RowSettings(key) = &entry.key
 				&& let Some(settings) = decode_row_settings(EncodedCatalogRow::view(&entry.bytes))
 			{
 				result.push(RowSettingsEntry {

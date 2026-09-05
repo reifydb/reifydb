@@ -6,7 +6,10 @@ use std::sync::LazyLock;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::queue::{QueueItemStatus, decode_queue_item_state, encode_queue_item_state},
-	key::queue::{QueueItemStateKey, QueuePartitionKey},
+	key::{
+		queue::{QueueItemStateKey, QueuePartitionKey},
+		typed::key::Key,
+	},
 	value::column::columns::Columns,
 };
 use reifydb_routine_abi::{
@@ -82,13 +85,13 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueExtend {
 			.into()
 		};
 
-		let lock_key = QueuePartitionKey::encoded(token.queue, token.partition);
+		let lock_key = QueuePartitionKey::new(token.queue, token.partition);
 		let mut tx = single.begin_command_ranged(
-			[&lock_key],
+			[&lock_key.encode()],
 			vec![QueueItemStateKey::partition_scan(token.queue, token.partition)],
 		)?;
 
-		let state_key = QueueItemStateKey::encoded(token.queue, token.partition, token.row);
+		let state_key = QueueItemStateKey::new(token.queue, token.partition, token.row);
 		let Some(stored) = tx.get(&state_key)? else {
 			return Err(stale("the item has no scheduling state"));
 		};

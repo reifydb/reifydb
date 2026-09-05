@@ -22,11 +22,11 @@ use crate::{MigrationStatement, Result};
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
 
 pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> Result<()> {
-	let key = Key::encode(&SystemVersionKey {
+	let key = SystemVersionKey {
 		version: SystemVersion::Storage,
-	});
+	};
 
-	let mut tx = single.begin_command([&key])?;
+	let mut tx = single.begin_command([&Key::encode(&key)])?;
 
 	match tx.get(&key)? {
 		None => {

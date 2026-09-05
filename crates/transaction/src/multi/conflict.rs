@@ -8,7 +8,7 @@ use core::{
 use std::collections::HashSet;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
-use reifydb_value::util::hex;
+use reifydb_core::key::any::AnyKey;
 use tracing::instrument;
 
 const MAX_RANGES_BEFORE_ESCALATION: usize = 64;
@@ -24,11 +24,11 @@ pub enum ConflictMode {
 pub struct ConflictManager {
 	mode: ConflictMode,
 
-	read_keys: HashSet<EncodedKey>,
+	read_keys: HashSet<AnyKey>,
 
 	read_ranges: Vec<(Bound<EncodedKey>, Bound<EncodedKey>)>,
 	read_all: bool,
-	write_keys: HashSet<EncodedKey>,
+	write_keys: HashSet<AnyKey>,
 }
 
 impl ConflictManager {
@@ -47,16 +47,16 @@ impl ConflictManager {
 		self.mode = ConflictMode::Disabled;
 	}
 
-	#[instrument(name = "transaction::conflict::mark_read", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
-	pub fn mark_read(&mut self, key: &EncodedKey) {
+	#[instrument(name = "transaction::conflict::mark_read", level = "trace", skip(self, key))]
+	pub fn mark_read(&mut self, key: &AnyKey) {
 		if self.mode == ConflictMode::Disabled {
 			return;
 		}
 		self.read_keys.insert(key.clone());
 	}
 
-	#[instrument(name = "transaction::conflict::mark_write", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
-	pub fn mark_write(&mut self, key: &EncodedKey) {
+	#[instrument(name = "transaction::conflict::mark_write", level = "trace", skip(self, key))]
+	pub fn mark_write(&mut self, key: &AnyKey) {
 		if self.mode == ConflictMode::Disabled {
 			return;
 		}
@@ -246,21 +246,22 @@ impl ConflictManager {
 	}
 
 	#[inline]
-	fn has_any_range_conflict(&self, write_keys: &HashSet<EncodedKey>) -> bool {
+	fn has_any_range_conflict(&self, write_keys: &HashSet<AnyKey>) -> bool {
 		if write_keys.is_empty() || self.read_ranges.is_empty() {
 			return false;
 		}
 
-		let use_sweep_line = write_keys.len() >= 32 && self.read_ranges.len() >= 2;
+		let encoded: Vec<EncodedKey> = write_keys.iter().map(AnyKey::encode).collect();
+		let use_sweep_line = encoded.len() >= 32 && self.read_ranges.len() >= 2;
 
 		if use_sweep_line {
-			let mut sorted_keys: Vec<_> = write_keys.iter().collect();
+			let mut sorted_keys: Vec<_> = encoded.iter().collect();
 			sorted_keys.sort();
 			self.sweep_line_check(&sorted_keys)
 		} else {
 			self.read_ranges
 				.iter()
-				.any(|(start, end)| write_keys.iter().any(|key| Self::key_in_range(key, start, end)))
+				.any(|(start, end)| encoded.iter().any(|key| Self::key_in_range(key, start, end)))
 		}
 	}
 
@@ -314,11 +315,11 @@ impl ConflictManager {
 		self.mode = ConflictMode::Tracking;
 	}
 
-	pub fn get_read_keys(&self) -> &HashSet<EncodedKey> {
+	pub fn get_read_keys(&self) -> &HashSet<AnyKey> {
 		&self.read_keys
 	}
 
-	pub fn get_write_keys(&self) -> &HashSet<EncodedKey> {
+	pub fn get_write_keys(&self) -> &HashSet<AnyKey> {
 		&self.write_keys
 	}
 
@@ -346,18 +347,42 @@ impl ConflictManager {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::{
+		interface::catalog::{
+			id::{IndexId, TableId},
+			object::ObjectId,
+		},
+		key::catalog::IndexEntryKey,
+		value::index::encoded::EncodedIndexKey,
+	};
+
 	use super::*;
 
-	fn create_key(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes())
+	// IndexEntry appends its tail verbatim, so encoded order still matches the raw string order.
+	fn create_key(s: &str) -> AnyKey {
+		IndexEntryKey::new(
+			ObjectId::Table(TableId(1)),
+			IndexId::primary(1u64),
+			EncodedIndexKey::new(s.as_bytes()),
+		)
+		.into()
+	}
+
+	fn create_range(start: &str, end: Bound<&str>) -> EncodedKeyRange {
+		let end = match end {
+			Bound::Included(e) => Bound::Included(create_key(e).encode()),
+			Bound::Excluded(e) => Bound::Excluded(create_key(e).encode()),
+			Bound::Unbounded => Bound::Unbounded,
+		};
+		EncodedKeyRange::new(Bound::Included(create_key(start).encode()), end)
 	}
 
 	#[test]
 	fn test_range_merging_overlapping() {
 		let mut cm = ConflictManager::new();
 
-		cm.mark_range(EncodedKeyRange::parse("a..c"));
-		cm.mark_range(EncodedKeyRange::parse("b..d"));
+		cm.mark_range(create_range("a", Bound::Excluded("c")));
+		cm.mark_range(create_range("b", Bound::Excluded("d")));
 
 		assert_eq!(cm.read_ranges.len(), 1);
 
@@ -374,8 +399,8 @@ mod tests {
 	fn test_range_merging_adjacent() {
 		let mut cm = ConflictManager::new();
 
-		cm.mark_range(EncodedKeyRange::parse("a..=b"));
-		cm.mark_range(EncodedKeyRange::parse("b..=c"));
+		cm.mark_range(create_range("a", Bound::Included("b")));
+		cm.mark_range(create_range("b", Bound::Included("c")));
 
 		assert_eq!(cm.read_ranges.len(), 1);
 	}
@@ -384,8 +409,8 @@ mod tests {
 	fn test_range_merging_non_overlapping() {
 		let mut cm = ConflictManager::new();
 
-		cm.mark_range(EncodedKeyRange::parse("a..b"));
-		cm.mark_range(EncodedKeyRange::parse("c..d"));
+		cm.mark_range(create_range("a", Bound::Excluded("b")));
+		cm.mark_range(create_range("c", Bound::Excluded("d")));
 
 		assert_eq!(cm.read_ranges.len(), 2);
 	}
@@ -394,9 +419,9 @@ mod tests {
 	fn test_range_merging_multiple() {
 		let mut cm = ConflictManager::new();
 
-		cm.mark_range(EncodedKeyRange::parse("a..c"));
-		cm.mark_range(EncodedKeyRange::parse("e..g"));
-		cm.mark_range(EncodedKeyRange::parse("b..f")); // bridges the two disjoint ranges
+		cm.mark_range(create_range("a", Bound::Excluded("c")));
+		cm.mark_range(create_range("e", Bound::Excluded("g")));
+		cm.mark_range(create_range("b", Bound::Excluded("f"))); // bridges the two disjoint ranges
 
 		assert_eq!(cm.read_ranges.len(), 1);
 	}
@@ -408,7 +433,7 @@ mod tests {
 		for i in 0..=MAX_RANGES_BEFORE_ESCALATION {
 			let start = format!("{:04}", i * 2);
 			let end = format!("{:04}", i * 2 + 1);
-			let range = EncodedKeyRange::parse(&format!("{}..{}", start, end));
+			let range = create_range(&start, Bound::Excluded(&end));
 			cm.mark_range(range);
 		}
 
@@ -423,7 +448,7 @@ mod tests {
 		cm.mark_iter(); // a full scan escalates straight to read_all
 		assert!(cm.read_all);
 
-		cm.mark_range(EncodedKeyRange::parse("a..z"));
+		cm.mark_range(create_range("a", Bound::Excluded("z")));
 		assert!(cm.read_ranges.is_empty());
 	}
 
@@ -432,14 +457,14 @@ mod tests {
 		let mut cm = ConflictManager::new();
 
 		// Merging relies on start-bound order, so insertion order must not survive.
-		cm.mark_range(EncodedKeyRange::parse("m..n"));
-		cm.mark_range(EncodedKeyRange::parse("a..b"));
-		cm.mark_range(EncodedKeyRange::parse("z..zz"));
+		cm.mark_range(create_range("m", Bound::Excluded("n")));
+		cm.mark_range(create_range("a", Bound::Excluded("b")));
+		cm.mark_range(create_range("z", Bound::Excluded("zz")));
 
 		assert_eq!(cm.read_ranges.len(), 3);
 
 		if let (Bound::Included(start), _) = &cm.read_ranges[0] {
-			assert_eq!(start.as_ref(), b"a");
+			assert_eq!(start, &create_key("a").encode());
 		} else {
 			panic!("Expected Included bound");
 		}

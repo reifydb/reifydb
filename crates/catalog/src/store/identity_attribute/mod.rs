@@ -13,7 +13,7 @@ pub mod find;
 pub mod list;
 pub mod shape;
 
-pub(crate) fn convert_identity_attribute(multi: MultiVersionRow) -> Result<IdentityAttribute> {
+pub(crate) fn convert_identity_attribute<K>(multi: MultiVersionRow<K>) -> Result<IdentityAttribute> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = identity_attribute::get_id(&bytes);
 	let name = identity_attribute::get_name(&bytes).to_string();

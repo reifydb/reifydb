@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::{error::CoreError, return_internal_error};
+use reifydb_core::{error::CoreError, key::any::AnyKey, return_internal_error};
 use reifydb_transaction::{
 	single::write::SingleWriteTransaction,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
@@ -89,21 +89,22 @@ macro_rules! impl_generator {
 			pub(crate) struct $generator {}
 
 			impl $generator {
-				pub(crate) fn next(
+				pub(crate) fn next<K: Into<AnyKey> + Clone>(
 					txn: &mut impl SequenceTransaction,
-					key: &EncodedKey,
+					key: &K,
 					default: Option<$prim>,
 				) -> Result<$prim> {
 					Self::next_batched(txn, key, default, 1)
 				}
 
-				pub(crate) fn next_batched(
+				pub(crate) fn next_batched<K: Into<AnyKey> + Clone>(
 					txn: &mut impl SequenceTransaction,
-					key: &EncodedKey,
+					key: &K,
 					default: Option<$prim>,
 					incr: $prim,
 				) -> Result<$prim> {
-					let mut tx = txn.begin_single_command([key])?;
+					let encoded = key.clone().into().encode();
+					let mut tx = txn.begin_single_command([&encoded])?;
 					let result = match tx.get(key)? {
 						Some(row) => {
 							let current_value = decode(EncodedPodRow::view(&row.bytes))?;
@@ -144,12 +145,13 @@ macro_rules! impl_generator {
 					Ok(result)
 				}
 
-				pub(crate) fn set(
+				pub(crate) fn set<K: Into<AnyKey> + Clone>(
 					txn: &mut impl SequenceTransaction,
-					key: &EncodedKey,
+					key: &K,
 					value: $prim,
 				) -> Result<()> {
-					let mut tx = txn.begin_single_command([key])?;
+					let encoded = key.clone().into().encode();
+					let mut tx = txn.begin_single_command([&encoded])?;
 					tx.set(key, encode(value).into_bytes())?;
 					tx.commit()?;
 					Ok(())
@@ -158,12 +160,23 @@ macro_rules! impl_generator {
 
 			#[cfg(test)]
 			mod tests {
-				use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-				use reifydb_core::error::CoreError;
+				use reifydb_codec::row::pod::EncodedPodRow;
+				use reifydb_core::{
+					error::CoreError,
+					interface::catalog::id::QueueId,
+					key::{EncodableKey, queue::QueueDeduplicationKey},
+				};
 				use reifydb_test_harness::engine::create_test_admin_transaction;
 				use reifydb_value::{error::IntoDiagnostic, value::value_type::ValueType};
 
 				use super::{WIDTH, decode, encode, $generator};
+
+				fn seq_key(name: &str) -> QueueDeduplicationKey {
+					QueueDeduplicationKey::new(
+						QueueId(1),
+						name.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>(),
+					)
+				}
 
 				#[test]
 				fn a_counter_round_trips_at_exactly_the_type_width() {
@@ -192,14 +205,14 @@ macro_rules! impl_generator {
 					let count = ($start as u128).saturating_add(iterations as u128) as $prim;
 					for expected in $start..count {
 						let got =
-							$generator::next(&mut txn, &EncodedKey::new("sequence"), None)
-								.unwrap();
+							$generator::next(&mut txn, &seq_key("sequence"), None).unwrap();
 						assert_eq!(got, expected);
 					}
 
-					let key = EncodedKey::new("sequence");
-					let mut tx = txn.begin_single_query([&key]).unwrap();
-					let single = tx.get(&key).unwrap().unwrap();
+					let key = seq_key("sequence");
+					let encoded = key.encode();
+					let mut tx = txn.begin_single_query([&encoded]).unwrap();
+					let single = tx.get(&encoded).unwrap().unwrap();
 					let final_val = ($start as u128)
 						.saturating_add((iterations.saturating_sub(1)) as u128)
 						as $prim;
@@ -210,12 +223,13 @@ macro_rules! impl_generator {
 				fn test_exhaustion() {
 					let mut txn = create_test_admin_transaction();
 
-					let key = EncodedKey::new("sequence");
-					txn.with_single_command([&key], |tx| tx.set(&key, encode($max).into_bytes()))
-						.unwrap();
+					let key = seq_key("sequence");
+					txn.with_single_command([&key.encode()], |tx| {
+						tx.set(&key, encode($max).into_bytes())
+					})
+					.unwrap();
 
-					let err = $generator::next(&mut txn, &EncodedKey::new("sequence"), None)
-						.unwrap_err();
+					let err = $generator::next(&mut txn, &seq_key("sequence"), None).unwrap_err();
 					assert_eq!(
 						err.diagnostic(),
 						CoreError::SequenceExhausted {
@@ -232,7 +246,7 @@ macro_rules! impl_generator {
 					let default_val = ($start as u32).saturating_add(99).min($max as u32) as $prim;
 					let got = $generator::next(
 						&mut txn,
-						&EncodedKey::new("sequence_with_default"),
+						&seq_key("sequence_with_default"),
 						Some(default_val),
 					)
 					.unwrap();
@@ -242,7 +256,7 @@ macro_rules! impl_generator {
 						($start as u32).saturating_add(998).min($max as u32) as $prim;
 					let got = $generator::next(
 						&mut txn,
-						&EncodedKey::new("sequence_with_default"),
+						&seq_key("sequence_with_default"),
 						Some(next_default),
 					)
 					.unwrap();
@@ -281,7 +295,7 @@ macro_rules! impl_generator {
 							.saturating_sub(1) as $prim;
 						let got = $generator::next_batched(
 							&mut txn,
-							&EncodedKey::new("sequence_by_5000"),
+							&seq_key("sequence_by_5000"),
 							None,
 							batch_size_1,
 						)
@@ -289,9 +303,10 @@ macro_rules! impl_generator {
 						assert_eq!(got, expected, "Call {} should return {}", i + 1, expected);
 					}
 
-					let key = EncodedKey::new("sequence_by_5000");
-					let mut tx = txn.begin_single_query([&key]).unwrap();
-					let single = tx.get(&key).unwrap().unwrap();
+					let key = seq_key("sequence_by_5000");
+					let encoded = key.encode();
+					let mut tx = txn.begin_single_query([&encoded]).unwrap();
+					let single = tx.get(&encoded).unwrap().unwrap();
 					let final_val = ($start as u128)
 						.saturating_add((batch_size_1 as u128) * (iterations_1 as u128))
 						.saturating_sub(1) as $prim;
@@ -303,7 +318,7 @@ macro_rules! impl_generator {
 							.saturating_sub(1) as $prim;
 						let got = $generator::next_batched(
 							&mut txn,
-							&EncodedKey::new("sequence_by_10000"),
+							&seq_key("sequence_by_10000"),
 							None,
 							batch_size_2,
 						)
@@ -322,15 +337,15 @@ macro_rules! impl_generator {
 					let initial_val =
 						(($max as u128).saturating_sub((batch_size_val * 2) as u128)) as $prim;
 
-					let key = EncodedKey::new("sequence");
-					txn.with_single_command([&key], |tx| {
+					let key = seq_key("sequence");
+					txn.with_single_command([&key.encode()], |tx| {
 						tx.set(&key, encode(initial_val).into_bytes())
 					})
 					.unwrap();
 
 					let result = $generator::next_batched(
 						&mut txn,
-						&EncodedKey::new("sequence"),
+						&seq_key("sequence"),
 						None,
 						batch_size,
 					)
@@ -341,7 +356,7 @@ macro_rules! impl_generator {
 					loop {
 						match $generator::next_batched(
 							&mut txn,
-							&EncodedKey::new("sequence"),
+							&seq_key("sequence"),
 							None,
 							batch_size,
 						) {
@@ -356,7 +371,7 @@ macro_rules! impl_generator {
 
 					let err = $generator::next_batched(
 						&mut txn,
-						&EncodedKey::new("sequence"),
+						&seq_key("sequence"),
 						None,
 						batch_size,
 					)
@@ -380,7 +395,7 @@ macro_rules! impl_generator {
 					let batch_size = (5000u32.min((type_range / 4) as u32)) as $prim;
 					let got = $generator::next_batched(
 						&mut txn,
-						&EncodedKey::new("sequence_with_default"),
+						&seq_key("sequence_with_default"),
 						Some(default_val),
 						batch_size,
 					)
@@ -391,7 +406,7 @@ macro_rules! impl_generator {
 						($start as u128).saturating_add(998.min(type_range / 3)) as $prim;
 					let got = $generator::next_batched(
 						&mut txn,
-						&EncodedKey::new("sequence_with_default"),
+						&seq_key("sequence_with_default"),
 						Some(next_default),
 						batch_size,
 					)

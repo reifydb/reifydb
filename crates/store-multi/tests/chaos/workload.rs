@@ -123,7 +123,7 @@ fn collect_range(
 	} else {
 		store.range(range, scope.store(), batch).collect::<Result<Vec<_>, _>>().unwrap()
 	};
-	rows.into_iter().map(|r| (r.key.to_vec(), r.bytes.to_vec(), r.version.0)).collect()
+	rows.into_iter().map(|r| (r.key.encode().to_vec(), r.bytes.to_vec(), r.version.0)).collect()
 }
 
 pub fn check_range(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, scope: Scope, batch: usize, step: u32) {
@@ -295,10 +295,10 @@ pub fn drive(seed: u64, p: Params) {
 					.iter()
 					.map(|(row, value)| match value {
 						Some(bytes) => Delta::Set {
-							key: RowKey::encoded(STORAGE, *row),
+							key: RowKey::new(STORAGE, *row).into(),
 							bytes: EncodedBytes(CowVec::new(bytes.clone())),
 						},
-						None => Delta::remove_silent(RowKey::encoded(STORAGE, *row)),
+						None => Delta::remove_silent(RowKey::new(STORAGE, *row).into()),
 					})
 					.collect();
 				MultiVersionCommit::commit(store, CowVec::new(store_deltas), CommitVersion(version))

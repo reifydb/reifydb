@@ -16,7 +16,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
-	key::row::RowKey,
+	key::{any::AnyKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::{
@@ -65,11 +65,11 @@ fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 	(store, guard)
 }
 
-fn row_key(row: u64) -> EncodedKey {
-	RowKey::encoded(STORAGE, row)
+fn row_key(row: u64) -> AnyKey {
+	RowKey::new(STORAGE, row).into()
 }
 
-fn commit(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str) {
+fn commit(store: &StandardMultiStore, k: &AnyKey, version: u64, value: &str) {
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
@@ -81,7 +81,7 @@ fn commit(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str)
 	.unwrap();
 }
 
-fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u8>> {
+fn get(store: &StandardMultiStore, k: &AnyKey, version: u64) -> Option<Vec<u8>> {
 	store.get(k, CommitVersion(version)).unwrap().map(|r| r.bytes.to_vec())
 }
 
@@ -96,7 +96,7 @@ fn scan_keys(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)
 	.collect::<Result<Vec<_>, _>>()
 	.unwrap()
 	.into_iter()
-	.map(|r| (r.key.to_vec(), r.bytes.to_vec()))
+	.map(|r| (r.key.encode().to_vec(), r.bytes.to_vec()))
 	.collect()
 }
 
@@ -143,7 +143,8 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 
 		if persistent_object {
 			for (key, version, _) in &to_persist {
-				store.get(key, *version).unwrap();
+				store.get(&AnyKey::decode(key).expect("an evictable key must decode"), *version)
+					.unwrap();
 			}
 		}
 	}
@@ -162,7 +163,7 @@ fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 
 	let commit_tier = store.commit();
 	let current_before = commit_tier.estimated_current_count(kind).unwrap();
-	let versions_before = commit_tier.get_all_versions(kind, k.as_ref()).unwrap().len();
+	let versions_before = commit_tier.get_all_versions(kind, k.encode().as_ref()).unwrap().len();
 	assert_eq!(current_before, 1, "v3 is the current version");
 	assert_eq!(versions_before, 3, "v1 and v2 are historical behind the current v3");
 
@@ -170,23 +171,29 @@ fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 
 	let persistent = store.persistent().unwrap();
 	assert!(
-		matches!(persistent.get(kind, k.as_ref(), CommitVersion(2)).unwrap(), VersionedGetResult::Value { .. }),
+		matches!(
+			persistent.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
+			VersionedGetResult::Value { .. }
+		),
 		"v2 must be persisted"
 	);
 
 	assert_eq!(commit_tier.estimated_current_count(kind).unwrap(), 1, "v3 still current");
 	assert_eq!(
-		commit_tier.get_all_versions(kind, k.as_ref()).unwrap().len(),
+		commit_tier.get_all_versions(kind, k.encode().as_ref()).unwrap().len(),
 		1,
 		"v1/v2 dropped from the commit tier's history, leaving only the current v3"
 	);
 	assert!(
-		matches!(commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(), VersionedGetResult::NotFound),
+		matches!(
+			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
+			VersionedGetResult::NotFound
+		),
 		"the commit tier must not answer for an evicted version"
 	);
 
 	assert_eq!(
-		commit_tier.get(kind, k.as_ref(), CommitVersion(3)).unwrap().value().as_deref(),
+		commit_tier.get(kind, k.encode().as_ref(), CommitVersion(3)).unwrap().value().as_deref(),
 		Some(b"v3".as_slice()),
 		"v3 (> W) stays in the commit tier"
 	);
@@ -194,7 +201,10 @@ fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 	assert_eq!(get(&store, &k, 3).as_deref(), Some(b"v3".as_slice()));
 	assert_eq!(get(&store, &k, 2).as_deref(), Some(b"v2".as_slice()), "served from persistent after eviction");
 	let scanned = scan_keys(&store, 3);
-	assert!(scanned.iter().any(|(kk, vv)| kk == k.as_ref() && vv == b"v3"), "scan must still see the live row");
+	assert!(
+		scanned.iter().any(|(kk, vv)| kk == k.encode().as_ref() && vv == b"v3"),
+		"scan must still see the live row"
+	);
 }
 
 #[test]
@@ -212,13 +222,19 @@ fn persistent_false_object_is_dropped_without_persisting() {
 
 	let commit_tier = store.commit();
 	assert!(
-		matches!(commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(), VersionedGetResult::NotFound),
+		matches!(
+			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
+			VersionedGetResult::NotFound
+		),
 		"a persistent:false object must still be evicted from the commit tier below W"
 	);
 
 	let persistent = store.persistent().unwrap();
 	assert!(
-		matches!(persistent.get(kind, k.as_ref(), CommitVersion(2)).unwrap(), VersionedGetResult::NotFound),
+		matches!(
+			persistent.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
+			VersionedGetResult::NotFound
+		),
 		"a persistent:false object must NOT be written to the persistent tier"
 	);
 
@@ -277,13 +293,16 @@ fn versions_above_w_are_left_entirely_resident() {
 
 	let commit_tier = store.commit();
 	assert_eq!(
-		commit_tier.get(kind, k.as_ref(), CommitVersion(5)).unwrap().value().as_deref(),
+		commit_tier.get(kind, k.encode().as_ref(), CommitVersion(5)).unwrap().value().as_deref(),
 		Some(b"v5".as_slice()),
 		"v5 (> W) must stay resident"
 	);
 	let persistent = store.persistent().unwrap();
 	assert!(
-		matches!(persistent.get(kind, k.as_ref(), CommitVersion(5)).unwrap(), VersionedGetResult::NotFound),
+		matches!(
+			persistent.get(kind, k.encode().as_ref(), CommitVersion(5)).unwrap(),
+			VersionedGetResult::NotFound
+		),
 		"nothing below W => nothing persisted"
 	);
 }
@@ -322,9 +341,9 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	let commit_tier = store.commit();
 	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
-		let versions = commit_tier.get_all_versions(kind, k.as_ref()).unwrap().len();
+		let versions = commit_tier.get_all_versions(kind, k.encode().as_ref()).unwrap().len();
 		let evicted_gone = matches!(
-			commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(),
+			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
 			VersionedGetResult::NotFound
 		);
 		if versions == 1 && evicted_gone {
@@ -339,7 +358,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	}
 
 	assert_eq!(
-		commit_tier.get(kind, k.as_ref(), CommitVersion(3)).unwrap().value().as_deref(),
+		commit_tier.get(kind, k.encode().as_ref(), CommitVersion(3)).unwrap().value().as_deref(),
 		Some(b"v3".as_slice()),
 		"v3 (> W) stays resident in the commit tier after the sweep"
 	);
@@ -347,7 +366,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 
 	let persistent = store.persistent().unwrap();
 	assert_eq!(
-		persistent.get(kind, k.as_ref(), CommitVersion(2)).unwrap().value().as_deref(),
+		persistent.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap().value().as_deref(),
 		Some(b"v2".as_slice()),
 		"the latest-<=W value (v2) is durable in the persistent tier"
 	);
@@ -378,7 +397,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
 		let evicted = matches!(
-			commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(),
+			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
 			VersionedGetResult::NotFound
 		);
 		if evicted {
@@ -391,7 +410,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 	}
 
 	let persistent = store.persistent().unwrap();
-	let deleted = persistent.delete_keys(kind, std::slice::from_ref(&k)).unwrap();
+	let deleted = persistent.delete_keys(kind, std::slice::from_ref(&k.encode())).unwrap();
 	assert_eq!(deleted, 1, "the evicted key must have been durable in the persistent tier before the delete");
 
 	assert_eq!(
@@ -422,7 +441,7 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
 		let evicted = matches!(
-			commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(),
+			commit_tier.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
 			VersionedGetResult::NotFound
 		);
 		if evicted {
@@ -435,7 +454,7 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	}
 
 	let persistent = store.persistent().unwrap();
-	persistent.delete_keys(kind, std::slice::from_ref(&k)).unwrap();
+	persistent.delete_keys(kind, std::slice::from_ref(&k.encode())).unwrap();
 
 	assert_eq!(get(&store, &k, 5).as_deref(), Some(b"v5".as_slice()), "a reader at v5 must see the resident v5");
 	assert_eq!(
@@ -460,9 +479,10 @@ fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it()
 	let k = row_key(1);
 
 	let persistent = store.persistent().unwrap();
-	let table = classify_key(&k);
+	let encoded = k.encode();
+	let table = classify_key(&encoded);
 	persistent
-		.set(CommitVersion(1), HashMap::from([(table, vec![(k.clone(), Some(versioned_row(b"old")))])]))
+		.set(CommitVersion(1), HashMap::from([(table, vec![(encoded.clone(), Some(versioned_row(b"old")))])]))
 		.unwrap();
 
 	// This read warms the read tier with the soon-to-be-stale value.
@@ -473,11 +493,11 @@ fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it()
 		"the persistent row is readable before TTL deletion (and now cached)"
 	);
 
-	let deleted = persistent.delete_keys(kind, std::slice::from_ref(&k)).unwrap();
+	let deleted = persistent.delete_keys(kind, std::slice::from_ref(&encoded)).unwrap();
 	assert_eq!(deleted, 1, "the expired row must be physically deleted from the persistent tier");
 
 	// The staleness itself is deliberately not asserted; only the post-invalidation read is pinned.
-	store.invalidate_read_key(kind, &k);
+	store.invalidate_read_key(kind, &encoded);
 
 	assert_eq!(
 		get(&store, &k, 1),

@@ -9,6 +9,7 @@ use reifydb_core::{
 	delta::RemoveVisibility,
 	interface::catalog::flow::OperatorId,
 	key::{
+		any::AnyKey,
 		kind::KeyKind,
 		operator::{
 			keyspace::KEYSPACES,
@@ -124,17 +125,18 @@ impl FlowTxn for TestEngine {
 			if matches!(KeyKind::of(key), Some(KeyKind::OperatorState)) {
 				continue;
 			}
+			let key = AnyKey::decode(key).expect("a pending write must carry a key a typed key decodes");
 			match pw {
-				PendingWrite::Set(v) => cmd.set_encoded(key, v.clone()).unwrap(),
+				PendingWrite::Set(v) => cmd.set(&key, v.clone()).unwrap(),
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Announced,
-				} => cmd.remove_encoded(key).unwrap(),
+				} => cmd.remove(&key).unwrap(),
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Unobserved,
-				} => cmd.remove_unobserved(key).unwrap(),
+				} => cmd.remove_unobserved(&key).unwrap(),
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Silent,
-				} => cmd.remove_silent(key).unwrap(),
+				} => cmd.remove_silent(&key).unwrap(),
 			};
 		}
 		cmd.commit_unchecked().unwrap();

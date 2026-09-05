@@ -42,8 +42,8 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	key::{
+		any::AnyKey,
 		row::{StoragePartitionedRowKey, StorageRowKey},
-		typed::key::Key,
 	},
 	row::{OperatorSettings, RowSettings},
 };
@@ -123,32 +123,22 @@ impl QueryTransaction {
 	}
 
 	#[inline]
-	pub fn get_encoded(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
-		Ok(self.multi.get_encoded(key)?.map(|v| v.into_multi_version_row()))
-	}
-
-	#[inline]
-	pub fn get<K: Key>(&mut self, key: &K) -> Result<Option<MultiVersionRow>> {
+	pub fn get<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<AnyKey>>> {
 		Ok(self.multi.get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
 	#[inline]
-	pub fn contains_encoded(&mut self, key: &EncodedKey) -> Result<bool> {
-		self.multi.contains_encoded(key)
-	}
-
-	#[inline]
-	pub fn contains<K: Key>(&mut self, key: &K) -> Result<bool> {
+	pub fn contains<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<bool> {
 		self.multi.contains(key)
 	}
 
 	#[inline]
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
 		self.multi.prefix(prefix)
 	}
 
 	#[inline]
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
 		self.multi.prefix_rev(prefix)
 	}
 
@@ -164,7 +154,7 @@ impl QueryTransaction {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
 		self.multi.range(range, scope, batch_size)
 	}
 
@@ -197,7 +187,7 @@ impl QueryTransaction {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
 		self.multi.range_rev(range, scope, batch_size)
 	}
 

@@ -20,7 +20,7 @@ use crate::{
 	key::typed::key::Key,
 };
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Namespace)]
 pub struct NamespaceKey {
 	pub namespace: NamespaceId,
@@ -73,7 +73,7 @@ pub mod namespace_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = NamespaceBinding)]
 pub struct NamespaceBindingKey {
 	pub namespace: NamespaceId,
@@ -131,7 +131,7 @@ pub mod namespace_binding_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = NamespaceDictionary)]
 pub struct NamespaceDictionaryKey {
 	pub namespace: NamespaceId,
@@ -193,7 +193,7 @@ pub mod namespace_dictionary_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = NamespaceFlow)]
 pub struct NamespaceFlowKey {
 	pub namespace: NamespaceId,
@@ -274,7 +274,7 @@ pub mod namespace_flow_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = NamespaceHandler)]
 pub struct NamespaceHandlerKey {
 	pub namespace: NamespaceId,
@@ -360,7 +360,7 @@ pub mod namespace_handler_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = NamespaceProcedure)]
 pub struct NamespaceProcedureKey {
 	pub namespace: NamespaceId,
@@ -440,7 +440,7 @@ pub mod namespace_procedure_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = NamespaceQueue)]
 pub struct NamespaceQueueKey {
 	pub namespace: NamespaceId,
@@ -524,7 +524,7 @@ mod namespace_queue_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = NamespaceRingBuffer)]
 pub struct NamespaceRingBufferKey {
 	pub namespace: NamespaceId,
@@ -593,7 +593,7 @@ pub mod namespace_ring_buffer_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = NamespaceSeries)]
 pub struct NamespaceSeriesKey {
 	pub namespace: NamespaceId,
@@ -662,7 +662,7 @@ pub mod namespace_series_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = NamespaceSink)]
 pub struct NamespaceSinkKey {
 	pub namespace: NamespaceId,
@@ -743,7 +743,7 @@ pub mod namespace_sink_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = NamespaceSource)]
 pub struct NamespaceSourceKey {
 	pub namespace: NamespaceId,
@@ -824,7 +824,7 @@ pub mod namespace_source_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = NamespaceSumType)]
 pub struct NamespaceSumTypeKey {
 	pub namespace: NamespaceId,
@@ -892,7 +892,7 @@ pub mod namespace_sum_type_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = NamespaceTable)]
 pub struct NamespaceTableKey {
 	pub namespace: NamespaceId,
@@ -980,7 +980,7 @@ pub mod namespace_table_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = NamespaceView)]
 pub struct NamespaceViewKey {
 	pub namespace: NamespaceId,

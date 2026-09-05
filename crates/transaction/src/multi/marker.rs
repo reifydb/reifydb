@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::key::encoded::EncodedKeyRange;
+use reifydb_core::key::any::AnyKey;
 
 use crate::multi::conflict::ConflictManager;
 
@@ -16,7 +17,7 @@ impl<'a> Marker<'a> {
 		}
 	}
 
-	pub fn mark(&mut self, k: &EncodedKey) {
+	pub fn mark(&mut self, k: &AnyKey) {
 		self.marker.mark_read(k);
 	}
 

@@ -10,7 +10,7 @@ use reifydb_codec::key::{
 use super::KeyKind;
 use crate::{interface::catalog::id::ProcedureId, key::typed::key::Key};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct ProcedureKey {
 	pub procedure: ProcedureId,
 }
@@ -84,7 +84,7 @@ pub mod procedure_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct ProcedureParamKey {
 	pub procedure: ProcedureId,
 	pub param_index: u16,

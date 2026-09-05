@@ -3,14 +3,11 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{
-		bytes::EncodedBytes,
-		pod::EncodedPodRow,
-		shape::RowShape,
-		table::{EncodedTableRow, EncodedTableRowBuilder},
-	},
+use reifydb_codec::row::{
+	bytes::EncodedBytes,
+	pod::EncodedPodRow,
+	shape::RowShape,
+	table::{EncodedTableRow, EncodedTableRowBuilder},
 };
 use reifydb_core::{
 	error::diagnostic::{
@@ -30,7 +27,7 @@ use reifydb_core::{
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedTable},
 	},
 	internal_error,
-	key::{EncodableKey, catalog::IndexEntryKey},
+	key::{any::AnyKey, catalog::IndexEntryKey},
 	partition::PartitionError,
 	value::column::columns::Columns,
 };
@@ -223,7 +220,7 @@ fn run_table_update(
 				rotate_table_pk_index(txn, target.table, shape, &pk_def, &row_key, &row, row_number)?;
 			}
 
-			let old_row = txn.get_encoded(&row_key)?.expect("bytes must exist for update").bytes;
+			let old_row = txn.get(&row_key)?.expect("bytes must exist for update").bytes;
 			if has_returning {
 				pre_by_row.insert(row_number, old_row.clone());
 			}
@@ -325,19 +322,19 @@ fn rotate_table_pk_index(
 	table: &Table,
 	shape: &RowShape,
 	pk_def: &PrimaryKey,
-	row_key: &EncodedKey,
+	row_key: &AnyKey,
 	new_row: &[u8],
 	row_number: RowNumber,
 ) -> Result<()> {
-	if let Some(pre_row_data) = txn.get_encoded(row_key)? {
+	if let Some(pre_row_data) = txn.get(row_key)? {
 		let pre_row = pre_row_data.bytes;
 		let pre_key = primary_key::encode_primary_key(pk_def, &pre_row, table, shape)?;
-		txn.remove_encoded(&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), pre_key).encode())?;
+		txn.remove(&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), pre_key))?;
 	}
 
 	let post_key = primary_key::encode_primary_key(pk_def, new_row, table, shape)?;
-	txn.set_encoded(
-		&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), post_key).encode(),
+	txn.set(
+		&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), post_key),
 		EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes(),
 	)?;
 	Ok(())

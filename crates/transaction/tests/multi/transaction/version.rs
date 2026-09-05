@@ -24,7 +24,7 @@ fn test_versions() {
 
 	for i in 1..10 {
 		let mut txn = engine.begin_command().unwrap();
-		txn.set_encoded(&k0, as_values!(i)).unwrap();
+		txn.set(&k0, as_values!(i)).unwrap();
 		txn.commit(vec![]).unwrap();
 		assert_eq!(i + 1, engine.version().unwrap());
 	}
@@ -35,7 +35,7 @@ fn test_versions() {
 
 		let v = idx;
 		{
-			let tv = txn.get_encoded(&k0).unwrap().unwrap();
+			let tv = txn.get(&k0).unwrap().unwrap();
 			assert_eq!(v, from_bytes!(i32, tv.bytes()));
 		}
 
@@ -67,7 +67,7 @@ fn test_versions() {
 	}
 
 	let mut txn = engine.begin_command().unwrap();
-	let sv = txn.get_encoded(&k0).unwrap().unwrap();
+	let sv = txn.get(&k0).unwrap().unwrap();
 	let val = from_bytes!(i32, sv.bytes());
 	assert_eq!(9, val)
 }
@@ -80,32 +80,32 @@ fn test_as_of_version_bounds() {
 	let k0 = as_key!(0);
 
 	let mut txn = engine.begin_command().unwrap();
-	txn.set_encoded(&k0, as_values!(1)).unwrap();
+	txn.set(&k0, as_values!(1)).unwrap();
 	txn.commit(vec![]).unwrap();
 	let committed_at = engine.version().unwrap();
 	assert_eq!(CommitVersion(2), committed_at);
 
 	let mut rx = engine.begin_query().unwrap();
 	rx.read_as_of_version_inclusive(committed_at);
-	assert_eq!(1, from_bytes!(i32, rx.get_encoded(&k0).unwrap().unwrap().bytes()));
+	assert_eq!(1, from_bytes!(i32, rx.get(&k0).unwrap().unwrap().bytes()));
 
 	let mut rx = engine.begin_query().unwrap();
 	rx.read_as_of_version_inclusive(CommitVersion(committed_at.0 - 1));
-	assert!(rx.get_encoded(&k0).unwrap().is_none());
+	assert!(rx.get(&k0).unwrap().is_none());
 
 	let mut rx = engine.begin_query().unwrap();
 	rx.read_as_of_version_exclusive(committed_at);
-	assert!(rx.get_encoded(&k0).unwrap().is_none());
+	assert!(rx.get(&k0).unwrap().is_none());
 
 	let mut rx = engine.begin_query().unwrap();
 	rx.read_as_of_version_exclusive(CommitVersion(committed_at.0 + 1));
-	assert_eq!(1, from_bytes!(i32, rx.get_encoded(&k0).unwrap().unwrap().bytes()));
+	assert_eq!(1, from_bytes!(i32, rx.get(&k0).unwrap().unwrap().bytes()));
 
 	let mut wx = engine.begin_command().unwrap();
 	wx.read_as_of_version_inclusive(committed_at).unwrap();
-	assert_eq!(1, from_bytes!(i32, wx.get_encoded(&k0).unwrap().unwrap().bytes()));
+	assert_eq!(1, from_bytes!(i32, wx.get(&k0).unwrap().unwrap().bytes()));
 
 	let mut wx = engine.begin_command().unwrap();
 	wx.read_as_of_version_exclusive(committed_at);
-	assert!(wx.get_encoded(&k0).unwrap().is_none());
+	assert!(wx.get(&k0).unwrap().is_none());
 }

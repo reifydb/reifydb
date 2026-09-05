@@ -17,7 +17,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
-		EncodableKey,
+		any::AnyKey,
 		operator::{
 			keyspace::{
 				join::{JoinRowMapping, JoinRowMappingKey},
@@ -87,8 +87,9 @@ fn present_keys(
 	let batch = txn.state_get_many(operator, map_keys)?;
 	let mut present = HashSet::with_capacity(batch.items.len());
 	for item in batch.items {
-		let decoded =
-			OperatorStateKey::decode(&item.key).expect("state_get_many must return OperatorState keys");
+		let AnyKey::OperatorState(decoded) = &item.key else {
+			panic!("state_get_many must return OperatorState keys");
+		};
 		present.insert(decoded.inner());
 	}
 	Ok(present)
@@ -115,8 +116,9 @@ fn resolve_or_mint(
 	let batch = txn.state_get_many(operator, &map_keys)?;
 	let mut found: HashMap<EncodedKey, EncodedBytes> = HashMap::with_capacity(batch.items.len());
 	for item in batch.items {
-		let decoded =
-			OperatorStateKey::decode(&item.key).expect("state_get_many must return OperatorState keys");
+		let AnyKey::OperatorState(decoded) = &item.key else {
+			panic!("state_get_many must return OperatorState keys");
+		};
 		found.insert(decoded.inner(), item.bytes);
 	}
 
@@ -196,8 +198,9 @@ pub trait RowNumberExtension: FlowTransaction {
 		let batch = self.state_get_many(operator, &map_keys)?;
 		let mut found: HashMap<EncodedKey, EncodedBytes> = HashMap::with_capacity(batch.items.len());
 		for item in batch.items {
-			let decoded = OperatorStateKey::decode(&item.key)
-				.expect("state_get_many must return OperatorState keys");
+			let AnyKey::OperatorState(decoded) = &item.key else {
+				panic!("state_get_many must return OperatorState keys");
+			};
 			found.insert(decoded.inner(), item.bytes);
 		}
 
@@ -236,8 +239,9 @@ pub trait RowNumberExtension: FlowTransaction {
 		let batch = self.state_get_many(operator, &map_keys)?;
 		let mut found: HashMap<EncodedKey, EncodedBytes> = HashMap::with_capacity(batch.items.len());
 		for item in batch.items {
-			let decoded = OperatorStateKey::decode(&item.key)
-				.expect("state_get_many must return OperatorState keys");
+			let AnyKey::OperatorState(decoded) = &item.key else {
+				panic!("state_get_many must return OperatorState keys");
+			};
 			found.insert(decoded.inner(), item.bytes);
 		}
 
@@ -308,12 +312,13 @@ pub trait RowNumberExtension: FlowTransaction {
 			)?;
 			let more = batch.has_more;
 			for item in batch.items {
-				let decoded = OperatorStateKey::decode(&item.key)
-					.expect("state_range must return OperatorState keys");
+				let AnyKey::OperatorState(decoded) = &item.key else {
+					panic!("state_range must return OperatorState keys");
+				};
 				let inner = OperatorStateKey::inner_encoded(
 					decoded.group,
 					decoded.keyspace,
-					decoded.suffix,
+					&decoded.suffix,
 				);
 				lower = Bound::Excluded(inner.as_encoded().clone());
 				self.state_remove(operator, &inner)?;

@@ -21,7 +21,7 @@ use crate::{
 	metrics::heap::HeapSize,
 };
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Series)]
 pub struct SeriesKey {
 	pub series: SeriesId,
@@ -55,7 +55,7 @@ impl SeriesKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = SeriesMetadata)]
 pub struct SeriesMetadataKey {
 	pub storage: StorageId,
@@ -120,7 +120,7 @@ mod series_metadata_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = SeriesRow)]
 pub struct SeriesRowKey {
 	pub storage: StorageId,
@@ -622,7 +622,7 @@ mod row_key_range_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = PartitionedSeriesRow)]
 pub struct PartitionedSeriesRowKey {
 	pub storage: StorageId,

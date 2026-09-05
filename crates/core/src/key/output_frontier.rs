@@ -14,7 +14,7 @@ use super::{
 };
 use crate::interface::catalog::object::ObjectId;
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = OutputFrontier)]
 pub struct OutputFrontierKey {
 	pub object: ObjectId,

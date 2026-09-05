@@ -17,13 +17,19 @@ use crate::{
 	key::typed::key::Key,
 };
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = SystemSequence)]
 pub struct SystemSequenceKey {
 	pub sequence: SequenceId,
 }
 
 impl SystemSequenceKey {
+	pub fn new(sequence: impl Into<SequenceId>) -> Self {
+		Self {
+			sequence: sequence.into(),
+		}
+	}
+
 	pub fn encoded(sequence: impl Into<SequenceId>) -> EncodedKey {
 		Key::encode(&Self {
 			sequence: sequence.into(),
@@ -66,7 +72,7 @@ pub mod system_sequence_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = SystemVersion)]
 pub struct SystemVersionKey {
 	#[key(repr = u8)]
@@ -74,7 +80,7 @@ pub struct SystemVersionKey {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "u8", into = "u8")]
 pub enum SystemVersion {
 	Storage = 0x01,
@@ -97,6 +103,12 @@ impl TryFrom<u8> for SystemVersion {
 }
 
 impl SystemVersionKey {
+	pub fn new(version: SystemVersion) -> Self {
+		Self {
+			version,
+		}
+	}
+
 	pub fn encoded(version: SystemVersion) -> EncodedKey {
 		Key::encode(&Self {
 			version,
@@ -122,7 +134,7 @@ pub mod system_version_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = TransactionVersion)]
 pub struct TransactionVersionKey {}
 
@@ -147,7 +159,7 @@ pub mod transaction_version_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Key)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Key, Hash)]
 #[key(kind = VersionEpoch)]
 pub struct VersionEpochKey {
 	pub bucket: EpochSeconds,
@@ -221,7 +233,7 @@ mod version_epoch_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Migration)]
 pub struct MigrationKey {
 	pub migration: MigrationId,
@@ -271,7 +283,7 @@ mod migration_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = MigrationEvent)]
 pub struct MigrationEventKey {
 	pub event: MigrationEventId,

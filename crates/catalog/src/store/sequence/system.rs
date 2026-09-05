@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use once_cell::sync::Lazy;
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::{
 		authentication::AuthenticationId,
@@ -30,46 +28,88 @@ use crate::{
 	},
 };
 
-static NAMESPACE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(NAMESPACE));
+const NAMESPACE_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: NAMESPACE,
+};
 
-static SOURCE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(SOURCE));
+const SOURCE_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: SOURCE,
+};
 
-static COLUMN_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(COLUMN));
+const COLUMN_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: COLUMN,
+};
 
-static COLUMN_PROPERTY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(COLUMN_PROPERTY));
+const COLUMN_PROPERTY_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: COLUMN_PROPERTY,
+};
 
-pub(crate) static FLOW_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(FLOW));
+pub(crate) const FLOW_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: FLOW,
+};
 
-pub(crate) static FLOW_NODE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(OPERATOR));
+pub(crate) const FLOW_NODE_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: OPERATOR,
+};
 
-pub(crate) static FLOW_EDGE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(FLOW_EDGE));
+pub(crate) const FLOW_EDGE_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: FLOW_EDGE,
+};
 
-static PRIMARY_KEY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(PRIMARY_KEY));
+const PRIMARY_KEY_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: PRIMARY_KEY,
+};
 
-static PROCEDURE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(PROCEDURE));
+const PROCEDURE_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: PROCEDURE,
+};
 
-static HANDLER_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(HANDLER));
+const HANDLER_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: HANDLER,
+};
 
-static ROLE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(ROLE));
+const ROLE_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: ROLE,
+};
 
-static IDENTITY_ATTRIBUTE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(IDENTITY_ATTRIBUTE));
+const IDENTITY_ATTRIBUTE_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: IDENTITY_ATTRIBUTE,
+};
 
-static POLICY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(POLICY));
+const POLICY_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: POLICY,
+};
 
-static MIGRATION_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(MIGRATION));
+const MIGRATION_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: MIGRATION,
+};
 
-static MIGRATION_EVENT_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(MIGRATION_EVENT));
+const MIGRATION_EVENT_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: MIGRATION_EVENT,
+};
 
-static AUTHENTICATION_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(AUTHENTICATION));
+const AUTHENTICATION_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: AUTHENTICATION,
+};
 
-static TEST_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(TEST));
+const TEST_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: TEST,
+};
 
-static TOKEN_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(TOKEN));
+const TOKEN_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: TOKEN,
+};
 
-static BINDING_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(BINDING));
+const BINDING_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: BINDING,
+};
 
-static COLUMN_SNAPSHOT_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(COLUMN_SNAPSHOT));
-static RELATIONSHIP_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(RELATIONSHIP));
+const COLUMN_SNAPSHOT_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: COLUMN_SNAPSHOT,
+};
+const RELATIONSHIP_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: RELATIONSHIP,
+};
 
 pub(crate) struct SystemSequence {}
 

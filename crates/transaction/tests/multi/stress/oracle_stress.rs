@@ -20,7 +20,7 @@ fn test_oracle_committed_txns_cleanup() {
 		let key = as_key!(format!("key_{}", i));
 		let value = as_values!(format!("value_{}", i));
 
-		tx.set_encoded(&key, value).unwrap();
+		tx.set(&key, value).unwrap();
 
 		tx.commit(vec![]).unwrap();
 
@@ -32,7 +32,7 @@ fn test_oracle_committed_txns_cleanup() {
 	let mut final_tx = engine.begin_command().unwrap();
 	let final_key = as_key!("final");
 	let final_value = as_values!("test".to_string());
-	final_tx.set_encoded(&final_key, final_value).unwrap();
+	final_tx.set(&final_key, final_value).unwrap();
 	final_tx.commit(vec![]).unwrap();
 }
 
@@ -55,7 +55,7 @@ fn test_oracle_high_concurrency() {
 				let key = as_key!(format!("t{}_{}", thread_id, i));
 				let value = as_values!(format!("v{}_{}", thread_id, i));
 
-				tx.set_encoded(&key, value).unwrap();
+				tx.set(&key, value).unwrap();
 
 				match tx.commit(vec![]) {
 					Ok(_) => {}
@@ -73,7 +73,7 @@ fn test_oracle_high_concurrency() {
 	let mut final_tx = engine.begin_command().unwrap();
 	let final_key = as_key!("concurrent_test");
 	let final_value = as_values!("passed".to_string());
-	final_tx.set_encoded(&final_key, final_value).unwrap();
+	final_tx.set(&final_key, final_value).unwrap();
 	final_tx.commit(vec![]).unwrap();
 }
 
@@ -86,7 +86,7 @@ fn test_oracle_version_boundaries() {
 		let mut tx = engine.begin_command().unwrap();
 		let key = as_key!(format!("boundary_{}", i));
 		let value = as_values!("test".to_string());
-		tx.set_encoded(&key, value).unwrap();
+		tx.set(&key, value).unwrap();
 		tx.commit(vec![]).unwrap();
 	}
 }

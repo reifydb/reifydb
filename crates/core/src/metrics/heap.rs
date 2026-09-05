@@ -33,7 +33,11 @@ use reifydb_value::{
 	},
 };
 
-use crate::state::{join::ContentVersion, timer::TimerKind};
+use crate::{
+	key::any::AnyKey,
+	state::{join::ContentVersion, timer::TimerKind},
+	value::index::encoded::EncodedIndexKey,
+};
 
 pub trait HeapSize {
 	fn heap_size(&self) -> usize;
@@ -162,6 +166,34 @@ impl HeapSize for EncodedKey {
 				..
 			} => 0,
 			EncodedKey::Shared(bytes) => bytes.len() + 2 * mem::size_of::<usize>(),
+		}
+	}
+}
+
+impl HeapSize for AnyKey {
+	fn heap_size(&self) -> usize {
+		match self {
+			AnyKey::SortedViewRow(key) => key.run.len(),
+			AnyKey::PartitionedSortedViewRow(key) => key.run.len(),
+			AnyKey::RingBufferMetadata(key) => {
+				key.partition_values.capacity() * mem::size_of::<Value>()
+					+ key.partition_values.iter().map(HeapSize::heap_size).sum::<usize>()
+			}
+			AnyKey::QueueDeduplication(key) => key.tail.heap_size(),
+			AnyKey::IndexEntry(key) => key.key.heap_size(),
+			AnyKey::OperatorState(key) => key.suffix.capacity(),
+			_ => 0,
+		}
+	}
+}
+
+impl HeapSize for EncodedIndexKey {
+	fn heap_size(&self) -> usize {
+		match self {
+			EncodedIndexKey::Inline {
+				..
+			} => 0,
+			EncodedIndexKey::Heap(bytes) => bytes.capacity(),
 		}
 	}
 }

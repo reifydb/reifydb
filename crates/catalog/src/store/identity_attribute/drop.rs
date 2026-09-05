@@ -4,8 +4,8 @@
 use reifydb_core::{
 	interface::catalog::identity::IdentityAttributeId,
 	key::{
+		any::AnyKey,
 		identity::{IdentityAttributeKey, IdentityAttributeValueKey},
-		typed::key::Key,
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
@@ -23,7 +23,7 @@ impl CatalogStore {
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;
-				if let Some(key) = IdentityAttributeValueKey::decode(&entry.key)
+				if let AnyKey::IdentityAttributeValue(key) = entry.key
 					&& key.attribute == attribute
 				{
 					keys_to_remove.push(key);

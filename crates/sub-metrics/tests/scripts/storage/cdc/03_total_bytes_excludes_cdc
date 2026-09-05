@@ -22,20 +22,20 @@ ok
 stats_totals
 ---
 total_count: 2
-current_bytes: 16
-historical_bytes: 16
-total_bytes: 32
+current_bytes: 35
+historical_bytes: 35
+total_bytes: 70
 
 # Full stats should be consistent
 stats
 ---
 current_count: 1
-current_key_bytes: 11
+current_key_bytes: 30
 current_value_bytes: 5
 historical_count: 1
-historical_key_bytes: 11
+historical_key_bytes: 30
 historical_value_bytes: 5
 cdc_count: 0
 cdc_key_bytes: 0
 cdc_value_bytes: 0
-total_bytes: 32
+total_bytes: 70

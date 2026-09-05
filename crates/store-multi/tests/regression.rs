@@ -125,7 +125,7 @@ fn store_with_two_stale_chunks(stale_from: u64, fresh_row: u64) -> (StandardMult
 	MultiVersionCommit::commit(
 		&store,
 		cow_vec![Delta::Set {
-			key: RowKey::encoded(STORAGE, fresh_row),
+			key: RowKey::new(STORAGE, fresh_row).into(),
 			bytes: EncodedBytes(v("fresh")),
 		}],
 		CommitVersion(55),

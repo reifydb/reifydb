@@ -155,10 +155,10 @@ pub fn drive(seed: u64, p: Params) {
 					.iter()
 					.map(|(row, value)| match value {
 						Some(bytes) => Delta::Set {
-							key: RowKey::encoded(STORAGE, *row),
+							key: RowKey::new(STORAGE, *row).into(),
 							bytes: EncodedBytes(CowVec::new(bytes.clone())),
 						},
-						None => Delta::remove_silent(RowKey::encoded(STORAGE, *row)),
+						None => Delta::remove_silent(RowKey::new(STORAGE, *row).into()),
 					})
 					.collect();
 				MultiVersionCommit::commit(store, CowVec::new(store_deltas), CommitVersion(version))

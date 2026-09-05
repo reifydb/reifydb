@@ -10,10 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedQueue, store::MultiVersionRow},
 	internal_error,
-	key::{
-		row::{RowKey, RowKeyRange},
-		typed::key::Key,
-	},
+	key::{any::AnyKey, row::RowKeyRange},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -100,13 +97,13 @@ impl QueueScan {
 		rx: &'rx mut Transaction<'tx>,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'rx>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + 'rx>> {
 		rx.range_rev(range, RangeScope::All, batch_size as usize)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::drain")]
 	fn drain_batch(
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>>,
 		batch_size: u64,
 	) -> Result<DrainedBatch> {
 		let mut batch: Vec<EncodedBytes> = Vec::new();
@@ -117,10 +114,10 @@ impl QueueScan {
 		for _ in 0..batch_size {
 			match stream.next() {
 				Some(Ok(multi)) => {
-					if let Some(key) = RowKey::decode(&multi.key) {
+					if let AnyKey::Row(key) = &multi.key {
 						batch.push(multi.bytes);
 						row_numbers.push(key.row);
-						new_last_key = Some(multi.key);
+						new_last_key = Some(multi.key.encode());
 					}
 				}
 				Some(Err(e)) => return Err(e),

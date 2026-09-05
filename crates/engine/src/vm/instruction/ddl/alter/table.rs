@@ -5,7 +5,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::object::ObjectId,
 	internal_error,
-	key::{partition::PartitionKey, row::PartitionedRowKey, typed::key::Key},
+	key::{any::AnyKey, partition::PartitionKey, row::PartitionedRowKey},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::{AlterTableAction, AlterTableNode};
@@ -110,10 +110,10 @@ pub(crate) fn execute_alter_table(
 				}
 				let n = batch.len();
 				for entry in batch {
-					if let Some(rn) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.row) {
-						ids.push(rn);
+					if let AnyKey::PartitionedRow(pk) = &entry.key {
+						ids.push(pk.row);
 					}
-					last_key = Some(entry.key);
+					last_key = Some(entry.key.encode());
 				}
 				if n < 1024 {
 					break;
@@ -126,7 +126,7 @@ pub(crate) fn execute_alter_table(
 				txn.remove_from_table(&table, &ids, &partitions)?;
 			}
 			if remove_registry {
-				txn.remove_encoded(&PartitionKey::encoded(object, partition))?;
+				txn.remove(&PartitionKey::new(object, partition))?;
 				("DROP PARTITION", Value::Uint8(dropped))
 			} else {
 				("TRUNCATE PARTITION", Value::Uint8(dropped))

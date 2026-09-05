@@ -20,6 +20,7 @@ use reifydb_core::{
 	actors::pending::{PendingLayers, PendingWrite},
 	common::CommitVersion,
 	interface::{change::Change, store::MultiVersionRow},
+	key::any::AnyKey,
 };
 use reifydb_flow::{
 	error::FlowGraphError,
@@ -115,17 +116,21 @@ fn state_items(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	range: &EncodedKeyRange,
 	version: CommitVersion,
-) -> Vec<Result<MultiVersionRow>> {
+) -> Vec<Result<MultiVersionRow<AnyKey>>> {
 	state.iter()
 		.filter(|(key, _)| range.contains(key))
 		.map(|(key, bytes)| {
 			Ok(MultiVersionRow {
-				key: key.clone(),
+				key: decoded(key),
 				bytes: bytes.clone(),
 				version,
 			})
 		})
 		.collect()
+}
+
+fn decoded(key: &EncodedKey) -> AnyKey {
+	AnyKey::decode(key).expect("a key routed to the multi store must decode")
 }
 
 fn ephemeral_storage_get(
@@ -135,7 +140,7 @@ fn ephemeral_storage_get(
 ) -> Result<Option<EncodedBytes>> {
 	match read_from(key) {
 		ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.get(key).cloned()),
-		ReadFrom::Query | ReadFrom::OwnedRow => match query.get_encoded(key)? {
+		ReadFrom::Query | ReadFrom::OwnedRow => match query.get(&decoded(key))? {
 			Some(multi) => Ok(Some(multi.bytes().clone())),
 			None => Ok(None),
 		},
@@ -149,7 +154,7 @@ fn ephemeral_storage_contains(
 ) -> Result<bool> {
 	match read_from(key) {
 		ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.contains_key(key)),
-		ReadFrom::Query | ReadFrom::OwnedRow => query.contains_encoded(key),
+		ReadFrom::Query | ReadFrom::OwnedRow => query.contains(&decoded(key)),
 	}
 }
 
@@ -160,7 +165,7 @@ fn ephemeral_storage_range<'a>(
 	range: EncodedKeyRange,
 	scope: RangeScope,
 	batch_size: usize,
-) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a> {
+) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + 'a> {
 	if is_state_range(&range) {
 		let mut items = state_items(state, &range, version);
 		items.sort_by(|a, b| match (a, b) {
@@ -176,13 +181,13 @@ fn ephemeral_fetch_state_external(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	version: CommitVersion,
 	keys: Vec<EncodedKey>,
-	items: &mut Vec<MultiVersionRow>,
+	items: &mut Vec<MultiVersionRow<AnyKey>>,
 ) {
 	for key in keys {
 		if let Some(bytes) = state.get(&key) {
 			items.push(MultiVersionRow {
 				bytes: bytes.clone(),
-				key,
+				key: decoded(&key),
 				version,
 			});
 		}
@@ -267,11 +272,15 @@ impl FlowTransaction for EphemeralTransaction {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
 		ephemeral_storage_range(&self.state, &self.query, self.version, range, scope, batch_size)
 	}
 
-	fn fetch_state_external(&mut self, keys: Vec<EncodedKey>, items: &mut Vec<MultiVersionRow>) -> Result<()> {
+	fn fetch_state_external(
+		&mut self,
+		keys: Vec<EncodedKey>,
+		items: &mut Vec<MultiVersionRow<AnyKey>>,
+	) -> Result<()> {
 		ephemeral_fetch_state_external(&self.state, self.version, keys, items);
 		Ok(())
 	}

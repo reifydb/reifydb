@@ -15,10 +15,13 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
-		catalog::{id::TableId, storage::StorageId},
+		catalog::{
+			id::{QueueId, TableId},
+			storage::StorageId,
+		},
 		store::{EntryKind, EntryLayout, MultiVersionCommit},
 	},
-	key::row::RowKey,
+	key::{any::AnyKey, queue::QueueDeduplicationKey, row::RowKey},
 };
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
@@ -42,7 +45,7 @@ fn commit(store: &StandardMultiStore, n: u64, version: u64, value: &str) {
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
-			key: RowKey::encoded(STORAGE, n),
+			key: RowKey::new(STORAGE, n).into(),
 			bytes: EncodedBytes(CowVec::new(value.as_bytes().to_vec())),
 		}],
 		CommitVersion(version),
@@ -100,7 +103,7 @@ fn scan_scope(
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
-		.map(|r| (r.key.to_vec(), r.bytes.to_vec(), r.version))
+		.map(|r| (r.key.encode().to_vec(), r.bytes.to_vec(), r.version))
 		.collect()
 }
 
@@ -285,7 +288,7 @@ fn reverse_and_small_batch_match_forward() {
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
-		.map(|r| r.key.to_vec())
+		.map(|r| r.key.encode().to_vec())
 		.collect();
 	reverse.reverse();
 	assert_eq!(forward, reverse, "reverse scan must equal the forward scan reversed");
@@ -329,7 +332,8 @@ fn non_source_range_reads_through_with_warm_cache() {
 	for n in 1..=BUCKET_ROWS {
 		commit(&store, n, 1, &format!("v{n}"));
 	}
-	let multi_keys: Vec<EncodedKey> = (0u8..5).map(|i| EncodedKey::new(vec![0x00, i])).collect();
+	let multi_keys: Vec<AnyKey> =
+		(0u8..5).map(|i| QueueDeduplicationKey::new(QueueId(1), vec![0xff, !i]).into()).collect();
 	for (i, key) in multi_keys.iter().enumerate() {
 		MultiVersionCommit::commit(
 			&store,
@@ -355,11 +359,11 @@ fn non_source_range_reads_through_with_warm_cache() {
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
-		.map(|r| r.key.to_vec())
+		.map(|r| r.key.encode().to_vec())
 		.collect();
 	got.sort();
 
-	let mut expected: Vec<Vec<u8>> = multi_keys.iter().map(|k| k.to_vec()).collect();
+	let mut expected: Vec<Vec<u8>> = multi_keys.iter().map(|k| k.encode().to_vec()).collect();
 	expected.sort();
 	assert_eq!(
 		got, expected,
@@ -387,11 +391,11 @@ fn cache_cleared_mid_scan_reads_through_without_corruption() {
 	);
 	let mut all: Vec<Vec<u8>> = Vec::new();
 	for r in it.by_ref().take(40) {
-		all.push(r.unwrap().key.to_vec());
+		all.push(r.unwrap().key.encode().to_vec());
 	}
 	store.clear_read(); // drop the warm pages mid-scan
 	for r in it {
-		all.push(r.unwrap().key.to_vec());
+		all.push(r.unwrap().key.encode().to_vec());
 	}
 
 	let mut expected: Vec<Vec<u8>> = (1..=BUCKET_ROWS).map(|n| RowKey::encoded(STORAGE, n).to_vec()).collect();
@@ -455,7 +459,7 @@ fn multi_batch_cold_merge_keeps_sparse_commit_reverse() {
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
-		.map(|r| (r.key.to_vec(), r.bytes.to_vec(), r.version))
+		.map(|r| (r.key.encode().to_vec(), r.bytes.to_vec(), r.version))
 		.collect();
 	let by_key: HashMap<Vec<u8>, (Vec<u8>, CommitVersion)> =
 		rows.iter().map(|(k, v, ver)| (k.clone(), (v.clone(), *ver))).collect();

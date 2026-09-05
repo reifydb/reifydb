@@ -23,8 +23,8 @@ use reifydb_core::{
 		store::{SingleVersionGet, SingleVersionRange},
 	},
 	key::{
+		any::AnyKey,
 		queue::{QueueAttemptKey, QueueItemStateKey, QueuePartitionKey},
-		typed::key::Key,
 	},
 	lifecycle::{metrics::RetentionMetrics, progress::Progress, task::LifecycleTask},
 };
@@ -93,7 +93,10 @@ fn attempts(t: &TestEngine, queue: QueueId) -> Vec<(QueueAttemptKey, QueueAttemp
 	while let Some(item) = stream.next() {
 		let item = item.unwrap();
 		out.push((
-			QueueAttemptKey::decode(&item.key).unwrap(),
+			match item.key {
+				AnyKey::QueueAttempt(key) => key,
+				other => panic!("queue attempt scan yielded {other:?}"),
+			},
 			decode_queue_attempt(EncodedQueueAttemptRow::view(&item.bytes)).unwrap(),
 		));
 	}
@@ -121,8 +124,7 @@ fn claimable(t: &TestEngine) -> usize {
 
 fn plant_attempt(t: &TestEngine, queue: QueueId, row: u64, attempt: u32, record: QueueAttemptRecord) {
 	let mut txn = t.inner().begin_command(IdentityId::system()).unwrap();
-	txn.set_encoded(&QueueAttemptKey::encoded(queue, RowNumber(row), attempt), encode_queue_attempt(&record))
-		.unwrap();
+	txn.set(&QueueAttemptKey::new(queue, RowNumber(row), attempt), encode_queue_attempt(&record)).unwrap();
 	txn.commit().unwrap();
 }
 

@@ -1750,7 +1750,7 @@ mod pull_protocol {
 				.collect::<Result<Vec<_>>>()
 				.expect("scan for the ringbuffer metadata row")
 				.into_iter()
-				.filter(|row| KeyKind::of(&row.key) == Some(KeyKind::RingBufferMetadata))
+				.filter(|row| row.key.kind() == KeyKind::RingBufferMetadata)
 				.collect();
 			assert_eq!(rows.len(), 1, "the test view owns exactly one unpartitioned metadata row");
 			decode_ringbuffer_metadata(EncodedPodRow::view(&rows[0].bytes))

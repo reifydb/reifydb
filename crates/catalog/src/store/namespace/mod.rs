@@ -18,7 +18,7 @@ pub mod list;
 pub mod shape;
 pub mod update;
 
-pub(crate) fn convert_namespace(multi: MultiVersionRow) -> Result<Namespace> {
+pub(crate) fn convert_namespace<K>(multi: MultiVersionRow<K>) -> Result<Namespace> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = NamespaceId(namespace::get_id(&bytes));
 	let name = namespace::get_name(&bytes).to_string();

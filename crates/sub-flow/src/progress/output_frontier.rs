@@ -42,7 +42,7 @@ pub fn persist(single: &SingleTransaction, entries: &FrontierEntries) -> Result<
 	let anchor = OutputFrontierKey::encoded(entries[0].output);
 	let mut txn = single.begin_command_ranged([&anchor], vec![OutputFrontierKey::full_scan()])?;
 	for entry in entries {
-		txn.set(&OutputFrontierKey::encoded(entry.output), encode(entry).into_bytes())?;
+		txn.set(&OutputFrontierKey::new(entry.output), encode(entry).into_bytes())?;
 	}
 	txn.commit()?;
 	Ok(())

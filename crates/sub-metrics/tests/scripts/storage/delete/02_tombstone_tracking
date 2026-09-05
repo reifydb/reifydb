@@ -14,7 +14,7 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 14
+current_key_bytes: 33
 current_value_bytes: 10
 
 # Delete the key
@@ -26,7 +26,7 @@ ok
 stats_historical
 ---
 historical_count: 1
-historical_key_bytes: 14
+historical_key_bytes: 33
 historical_value_bytes: 10
 
 # Totals should reflect the tombstone has 0 value bytes: current_bytes is exactly the
@@ -34,6 +34,6 @@ historical_value_bytes: 10
 stats_totals
 ---
 total_count: 2
-current_bytes: 14
-historical_bytes: 24
-total_bytes: 38
+current_bytes: 33
+historical_bytes: 43
+total_bytes: 76

@@ -11,8 +11,8 @@ use reifydb_codec::{
 use reifydb_core::{
 	error::diagnostic::internal::internal,
 	key::{
+		any::AnyKey,
 		row::{RowShapeFieldKey, RowShapeKey},
-		typed::key::Key,
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -36,8 +36,8 @@ pub(crate) fn find_row_shape_by_fingerprint(
 	txn: &mut Transaction<'_>,
 	fingerprint: RowShapeFingerprint,
 ) -> Result<Option<RowShape>> {
-	let header_key = RowShapeKey::encoded(fingerprint);
-	let header_entry = match txn.get_encoded(&header_key)? {
+	let header_key = RowShapeKey::new(fingerprint);
+	let header_entry = match txn.get(&header_key)? {
 		Some(entry) => entry,
 		None => {
 			Span::current().record("found", false);
@@ -51,8 +51,8 @@ pub(crate) fn find_row_shape_by_fingerprint(
 
 	let mut fields = Vec::with_capacity(field_count);
 	for i in 0..field_count {
-		let field_key = RowShapeFieldKey::encoded(fingerprint, i as u16);
-		let field_entry = txn.get_encoded(&field_key)?.ok_or_else(|| {
+		let field_key = RowShapeFieldKey::new(fingerprint, i as u16);
+		let field_entry = txn.get(&field_key)?.ok_or_else(|| {
 			Error(Box::new(internal(format!(
 				"RowShape field {} missing for fingerprint {:?}",
 				i, fingerprint
@@ -106,8 +106,9 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 		for entry in stream {
 			let entry = entry?;
 
-			let shape_key = RowShapeKey::decode(&entry.key)
-				.ok_or_else(|| Error(Box::new(internal("Failed to decode shape key"))))?;
+			let AnyKey::RowShape(shape_key) = &entry.key else {
+				return Err(Error(Box::new(internal("Failed to decode shape key"))));
+			};
 
 			let (family, field_count) = shape_header::decode(EncodedPodRow::view(&entry.bytes))?;
 
@@ -121,8 +122,8 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 		let mut fields = Vec::with_capacity(field_count);
 
 		for i in 0..field_count {
-			let field_key = RowShapeFieldKey::encoded(fingerprint, i as u16);
-			let field_entry = rx.get_encoded(&field_key)?.ok_or_else(|| {
+			let field_key = RowShapeFieldKey::new(fingerprint, i as u16);
+			let field_entry = rx.get(&field_key)?.ok_or_else(|| {
 				Error(Box::new(internal(format!(
 					"RowShape field {} missing for fingerprint {:?}",
 					i, fingerprint

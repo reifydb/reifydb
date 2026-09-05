@@ -18,9 +18,9 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		row::{PartitionedSortedViewRowKey, RowKey, RowKeyRange, SortedViewRowKey, StoragePartitionedRowKey},
-		series::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange},
-		typed::key::Key,
+		any::AnyKey,
+		row::{PartitionedSortedViewRowKey, RowKeyRange, SortedViewRowKey, StoragePartitionedRowKey},
+		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
@@ -160,14 +160,14 @@ impl ViewScanNode {
 		rx: &'rx mut Transaction<'tx>,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'rx>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + 'rx>> {
 		rx.range(range, RangeScope::All, batch_size as usize)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::view::drain")]
 	fn drain_batch(
 		&self,
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>>,
 		batch_size: u64,
 	) -> Result<DrainedBatch> {
 		let mut batch = Vec::new();
@@ -180,34 +180,44 @@ impl ViewScanNode {
 				Some(Ok(multi)) => {
 					let row = if self.series {
 						if self.partitioned {
-							match PartitionedSeriesRowKey::decode(&multi.key) {
-								Some(key) => RowNumber(key.sequence),
-								None => continue,
+							match &multi.key {
+								AnyKey::PartitionedSeriesRow(key) => {
+									RowNumber(key.sequence)
+								}
+								_ => continue,
 							}
 						} else {
-							match SeriesRowKey::decode(&multi.key) {
-								Some(key) => RowNumber(key.sequence),
-								None => continue,
+							match &multi.key {
+								AnyKey::SeriesRow(key) => RowNumber(key.sequence),
+								_ => continue,
 							}
 						}
 					} else if self.sorted {
 						let row = if self.partitioned {
-							PartitionedSortedViewRowKey::row_of(&multi.key)
+							match &multi.key {
+								AnyKey::PartitionedSortedViewRow(key) => {
+									Some(key.row.0)
+								}
+								_ => None,
+							}
 						} else {
-							SortedViewRowKey::row_of(&multi.key)
+							match &multi.key {
+								AnyKey::SortedViewRow(key) => Some(key.row.0),
+								_ => None,
+							}
 						};
 						match row {
 							Some(row) => row,
 							None => continue,
 						}
-					} else if let Some(key) = RowKey::decode(&multi.key) {
+					} else if let AnyKey::Row(key) = &multi.key {
 						key.row
 					} else {
 						continue;
 					};
 					batch.push(multi.bytes);
 					row_numbers.push(row);
-					new_last_key = Some(multi.key);
+					new_last_key = Some(multi.key.encode());
 				}
 				Some(Err(e)) => return Err(e),
 				None => {

@@ -11,14 +11,20 @@ use reifydb_codec::{
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
-	interface::catalog::{flow::OperatorId, id::TableId, storage::StorageId},
+	interface::catalog::{
+		flow::OperatorId,
+		id::{QueueId, TableId},
+		storage::StorageId,
+	},
 	key::{
-		EncodableKey,
+		any::AnyKey,
 		operator::state::{
 			GroupId, GroupStateKey, OperatorStateKey, custom_not_cached_key, custom_not_cached_key_in,
 			group_inner_range,
 		},
+		queue::QueueDeduplicationKey,
 		row::RowKey,
+		typed::key::Key,
 	},
 	state::timer::sweep_order,
 };
@@ -99,10 +105,10 @@ fn make_value(s: &str) -> EncodedPodRow {
 	EncodedPodRow::new(s.as_bytes())
 }
 
-fn full_key(operator: OperatorId, key: &GroupStateKey) -> EncodedKey {
+fn full_key(operator: OperatorId, key: &GroupStateKey) -> AnyKey {
 	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
 		.expect("scoped state keys must carry a structured inner encoding");
-	OperatorStateKey::encoded(operator, group, keyspace, suffix)
+	OperatorStateKey::new(operator, group, keyspace, suffix).into()
 }
 
 fn stamped_row(payload: &[u8]) -> EncodedPodRow {
@@ -159,7 +165,10 @@ fn test_state_get_many() {
 		.items
 		.iter()
 		.map(|item| {
-			(OperatorStateKey::decode(&item.key).unwrap().inner().as_slice().to_vec(), item.bytes.clone())
+			let AnyKey::OperatorState(key) = &item.key else {
+				panic!("state_get_many must return OperatorState keys");
+			};
+			(key.inner().as_slice().to_vec(), item.bytes.clone())
 		})
 		.collect();
 	decoded.sort_by(|a, b| a.0.cmp(&b.0));
@@ -523,8 +532,8 @@ fn deferred_read_sees_base_pending_overlay() {
 	let overlaid_key = make_key("overlaid");
 	let overlaid_value = make_value("overlaid_value");
 	let mut base_pending = Pending::new();
-	base_pending.insert(full_key(operator_id, &overlaid_key), overlaid_value.clone().into_bytes());
-	base_pending.remove(full_key(operator_id, &committed_key));
+	base_pending.insert(full_key(operator_id, &overlaid_key).encode(), overlaid_value.clone().into_bytes());
+	base_pending.remove(full_key(operator_id, &committed_key).encode());
 
 	let mut txn = DeferredTransaction::new(DeferredParams {
 		version: low_version,
@@ -570,17 +579,22 @@ fn deferred_reads_owned_rows_at_state_version() {
 	// A restart puts a flow's own rows above the version its next slice pins, so owned-row keys must route through
 	// state_query.
 	let engine = TestEngine::new();
-	let row_key = RowKey::encoded(StorageId::table(TableId(7)), RowNumber(1));
+	let row_key = RowKey::new(StorageId::table(TableId(7)), RowNumber(1));
+	let row_key_encoded = row_key.encode();
 	let row_value = make_value("own_row").into_bytes();
 
 	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
-	cmd.set_encoded(&make_key("warmup").into_encoded(), make_value("w").into_bytes()).unwrap();
+	cmd.set(
+		&QueueDeduplicationKey::new(QueueId(1), b"warmup".iter().map(|b| !b).collect::<Vec<u8>>()),
+		make_value("w").into_bytes(),
+	)
+	.unwrap();
 	let low_version = cmd.commit_unchecked().unwrap();
 
 	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
-	cmd.set_encoded(&row_key, row_value.clone()).unwrap();
+	cmd.set(&row_key, row_value.clone()).unwrap();
 	let committed_at = cmd.commit_unchecked().unwrap();
 	assert!(low_version < committed_at);
 
@@ -595,11 +609,11 @@ fn deferred_reads_owned_rows_at_state_version() {
 		substrate: FlowSubstrate::new(engine.inner().dictionary_allocators()),
 	});
 	assert_eq!(
-		txn.get(&row_key).unwrap(),
+		txn.get(&row_key_encoded).unwrap(),
 		Some(row_value.clone()),
 		"a deferred txn pinned below the flow's own commit must read its rows at the state version"
 	);
-	assert!(txn.contains_key(&row_key).unwrap());
+	assert!(txn.contains_key(&row_key_encoded).unwrap());
 }
 
 #[test]
@@ -844,10 +858,10 @@ fn a_group_range_answers_exactly_what_the_per_group_ranges_answer() {
 		}
 	}
 
-	let batched: Vec<EncodedKey> =
+	let batched: Vec<AnyKey> =
 		txn.state_group_range(operator, &groups, 64).unwrap().items.into_iter().map(|row| row.key).collect();
 
-	let mut expected: Vec<EncodedKey> = Vec::new();
+	let mut expected: Vec<AnyKey> = Vec::new();
 	for group in sweep_order(&groups) {
 		let range = group_inner_range(group);
 		let batch = txn.state_range(operator, StateRange::forward(range, "test")).unwrap();
@@ -880,7 +894,7 @@ fn a_group_range_honours_a_pending_write_that_storage_has_never_seen() {
 	txn.state_remove(operator, &doomed).unwrap();
 	txn.state_set(operator, &added, make_value("3")).unwrap();
 
-	let keys: Vec<EncodedKey> =
+	let keys: Vec<AnyKey> =
 		txn.state_group_range(operator, &groups, 64).unwrap().items.into_iter().map(|row| row.key).collect();
 
 	assert!(!keys.contains(&full_key(operator, &doomed)), "a pending remove must not come back from storage");

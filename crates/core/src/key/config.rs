@@ -12,7 +12,7 @@ use reifydb_codec::key::{
 use super::{EncodableKey, KeyKind};
 use crate::interface::catalog::config::ConfigKey;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct ConfigStorageKey {
 	pub key: ConfigKey,
 }

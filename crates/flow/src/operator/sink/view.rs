@@ -24,7 +24,10 @@ use reifydb_core::{
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
-	key::row::{PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey},
+	key::{
+		row::{PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey},
+		sort_run::SortRun,
+	},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
 	value::column::{buffer::ColumnBuffer, columns::Columns},
@@ -54,8 +57,6 @@ pub struct SinkTableViewOperator {
 	view: ResolvedView,
 	storage: StorageId,
 
-	key_prefix: Vec<u8>,
-	partitioned_prefix: Vec<u8>,
 	shape: RowShape,
 	sort: Vec<ViewSortKey>,
 	partition_indices: Vec<usize>,
@@ -66,9 +67,6 @@ pub struct SinkTableViewOperator {
 impl SinkTableViewOperator {
 	pub fn new(operator: OperatorId, view: ResolvedView, partition_by: Vec<String>) -> Self {
 		let storage = view.def().storage_id();
-		let key_prefix: Vec<u8> = SortedViewRowKey::storage_start(storage).as_slice().to_vec();
-		let partitioned_prefix: Vec<u8> =
-			PartitionedSortedViewRowKey::storage_start(storage).as_slice().to_vec();
 		let shape = row_shape_from_columns(RowFamily::Table, view.def().columns());
 		let sort = view.def().sort().to_vec();
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
@@ -76,8 +74,6 @@ impl SinkTableViewOperator {
 			operator,
 			view,
 			storage,
-			key_prefix,
-			partitioned_prefix,
 			shape,
 			sort,
 			partition_indices,
@@ -97,18 +93,21 @@ impl SinkTableViewOperator {
 	}
 
 	#[inline]
-	fn sorted_view_key(&self, cols: &Columns, row_idx: usize, row: RowNumber) -> EncodedKey {
-		if self.sort.is_empty() {
-			return self.row_key(row);
-		}
+	fn sort_run(&self, cols: &Columns, row_idx: usize) -> SortRun {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_raw(&self.key_prefix);
 		for key in &self.sort {
 			let value = cols.data_at(key.column.0 as usize).get_value(row_idx);
 			serializer.extend_value_with_direction(&value, key.direction.clone().into());
 		}
-		serializer.extend_raw(&row.0.to_be_bytes());
-		serializer.to_encoded_key()
+		SortRun::from_encoded(serializer.to_encoded_key())
+	}
+
+	#[inline]
+	fn sorted_view_key(&self, cols: &Columns, row_idx: usize, row: RowNumber) -> EncodedKey {
+		if self.sort.is_empty() {
+			return self.row_key(row);
+		}
+		SortedViewRowKey::encoded(self.storage, self.sort_run(cols, row_idx), row)
 	}
 
 	#[inline]
@@ -116,15 +115,7 @@ impl SinkTableViewOperator {
 		if self.sort.is_empty() {
 			return PartitionedRowKey::encoded(self.storage, partition, row);
 		}
-		let mut serializer = KeySerializer::new();
-		serializer.extend_raw(&self.partitioned_prefix);
-		serializer.extend_u128(partition.0);
-		for key in &self.sort {
-			let value = cols.data_at(key.column.0 as usize).get_value(row_idx);
-			serializer.extend_value_with_direction(&value, key.direction.clone().into());
-		}
-		serializer.extend_raw(&row.0.to_be_bytes());
-		serializer.to_encoded_key()
+		PartitionedSortedViewRowKey::encoded(self.storage, partition, self.sort_run(cols, row_idx), row)
 	}
 }
 
@@ -421,7 +412,7 @@ mod tests {
 			resolved::ResolvedNamespace,
 			store::SingleVersionGet,
 		},
-		key::catalog::DictionaryEntryIndexKey,
+		key::{any::AnyKey, catalog::DictionaryEntryIndexKey},
 		value::column::ColumnWithName,
 	};
 	use reifydb_test_harness::engine::TestEngine;
@@ -484,22 +475,21 @@ mod tests {
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_admin(IdentityId::system()).unwrap();
 		for (key, pw) in pending.iter_sorted() {
+			let key = AnyKey::decode(key).unwrap();
 			match pw {
-				PendingWrite::Set(v) => cmd.set_encoded(key, v.clone()).unwrap(),
+				PendingWrite::Set(v) => cmd.set(&key, v.clone()).unwrap(),
 				PendingWrite::Remove {
 					..
-				} => cmd.remove_encoded(key).unwrap(),
+				} => cmd.remove(&key).unwrap(),
 			};
 		}
 		cmd.commit().unwrap();
 	}
 
 	fn stored_view_bytes(engine: &TestEngine, sink: &SinkTableViewOperator, rn: u64) -> EncodedTableRow {
-		let key = sink.row_key(RowNumber(rn));
+		let key = RowKey::new(sink.storage, RowNumber(rn));
 		let query = engine.inner().multi().begin_query().unwrap();
-		EncodedTableRow::from(
-			query.get_encoded(&key).unwrap().expect("the view row must exist").bytes().clone(),
-		)
+		EncodedTableRow::from(query.get(&key).unwrap().expect("the view row must exist").bytes().clone())
 	}
 
 	#[test]

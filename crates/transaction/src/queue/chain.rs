@@ -72,7 +72,7 @@ pub fn chain_add(
 	key_hash: u64,
 	row: RowNumber,
 ) -> Result<()> {
-	tx.set(&QueueKeyActiveKey::encoded(queue, partition, key_hash, row), EncodedBytes(CowVec::new(vec![])))?;
+	tx.set(&QueueKeyActiveKey::new(queue, partition, key_hash, row), EncodedBytes(CowVec::new(vec![])))?;
 	overlay.removed.remove(&(key_hash, row));
 	overlay.added.insert((key_hash, row));
 
@@ -87,7 +87,7 @@ pub fn chain_remove(
 	key_hash: u64,
 	row: RowNumber,
 ) -> Result<()> {
-	tx.remove(&QueueKeyActiveKey::encoded(queue, partition, key_hash, row))?;
+	tx.remove(&QueueKeyActiveKey::new(queue, partition, key_hash, row))?;
 	overlay.added.remove(&(key_hash, row));
 	overlay.removed.insert((key_hash, row));
 

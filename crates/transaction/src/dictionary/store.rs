@@ -34,9 +34,9 @@ pub trait DictionaryStore: Send + Sync {
 }
 
 pub struct DictEntryWrite {
-	pub entry_key: EncodedKey,
+	pub entry_key: DictionaryEntryKey,
 	pub entry_value: EncodedPodRow,
-	pub index_key: EncodedKey,
+	pub index_key: DictionaryEntryIndexKey,
 	pub index_value: EncodedPodRow,
 }
 

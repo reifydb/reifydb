@@ -18,7 +18,7 @@ use crate::{
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = RingBuffer)]
 pub struct RingBufferKey {
 	pub ringbuffer: RingBufferId,
@@ -52,7 +52,7 @@ impl RingBufferKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct RingBufferMetadataKey {
 	pub storage: StorageId,
 	pub partition_values: Vec<Value>,
@@ -70,12 +70,15 @@ impl RingBufferMetadataKey {
 		Self::new(storage).encode()
 	}
 
-	pub fn encoded_partition(storage: impl Into<StorageId>, partition_values: Vec<Value>) -> EncodedKey {
+	pub fn partition(storage: impl Into<StorageId>, partition_values: Vec<Value>) -> Self {
 		Self {
 			storage: storage.into(),
 			partition_values,
 		}
-		.encode()
+	}
+
+	pub fn encoded_partition(storage: impl Into<StorageId>, partition_values: Vec<Value>) -> EncodedKey {
+		Self::partition(storage, partition_values).encode()
 	}
 
 	pub fn full_scan_for_storage(storage: impl Into<StorageId>) -> EncodedKeyRange {

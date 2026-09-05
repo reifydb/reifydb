@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::Bound;
+use std::{cmp::Ordering, collections::Bound};
 
 use reifydb_codec::{
 	key::{
@@ -20,12 +20,17 @@ use crate::{
 	interface::catalog::{object::ObjectId, storage::StorageId},
 	key::{
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
-		typed::{TypedKey, direction::Desc, key::Key},
+		sort_run::SortRun,
+		typed::{
+			TypedKey,
+			direction::{Asc, Desc},
+			key::Key,
+		},
 	},
 	metrics::heap::HeapSize,
 };
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Row)]
 pub struct RowKey {
 	pub storage: StorageId,
@@ -118,6 +123,13 @@ impl EncodableKeyRange for RowKeyRange {
 }
 
 impl RowKey {
+	pub fn new(storage: impl Into<StorageId>, row: impl Into<RowNumber>) -> Self {
+		Self {
+			storage: storage.into(),
+			row: row.into(),
+		}
+	}
+
 	pub fn encoded(storage: impl Into<StorageId>, row: impl Into<RowNumber>) -> EncodedKey {
 		Key::encode(&Self {
 			storage: storage.into(),
@@ -145,20 +157,81 @@ impl RowKey {
 	}
 }
 
-pub struct SortedViewRowKey;
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SortedViewRowKey {
+	pub storage: StorageId,
+	pub run: SortRun,
+	pub row: Asc<RowNumber>,
+}
+
+impl Key for SortedViewRowKey {
+	const KIND: KeyKind = KeyKind::SortedViewRow;
+
+	fn encode(&self) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(20 + self.run.len());
+		serializer.extend_u8(<Self as Key>::KIND as u8).extend_object_id(self.storage);
+		extend_sort_run(&mut serializer, &self.run);
+		serializer.extend_raw(&self.row.0.0.to_be_bytes());
+		serializer.to_encoded_key()
+	}
+
+	fn decode(key: &EncodedKey) -> Option<Self> {
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
+		if kind != <Self as Key>::KIND {
+			return None;
+		}
+		let storage = StorageId::from_object(de.read_object_id().ok()?)?;
+		let run = read_sort_run(&mut de)?;
+		let row = read_row_tail(&mut de)?;
+		if !de.is_empty() {
+			return None;
+		}
+		Some(Self {
+			storage,
+			run,
+			row,
+		})
+	}
+}
+
+impl Ord for SortedViewRowKey {
+	fn cmp(&self, other: &Self) -> Ordering {
+		storage_order(self.storage)
+			.cmp(&storage_order(other.storage))
+			.then_with(|| self.run.cmp(&other.run))
+			.then_with(|| self.row.cmp(&other.row))
+	}
+}
+
+impl PartialOrd for SortedViewRowKey {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
+	}
+}
 
 impl SortedViewRowKey {
-	pub const KIND: KeyKind = KeyKind::SortedViewRow;
+	pub fn new(storage: impl Into<StorageId>, run: SortRun, row: RowNumber) -> Self {
+		Self {
+			storage: storage.into(),
+			run,
+			row: Asc(row),
+		}
+	}
+
+	pub fn encoded(storage: impl Into<StorageId>, run: SortRun, row: RowNumber) -> EncodedKey {
+		Key::encode(&Self::new(storage, run, row))
+	}
 
 	pub fn storage_start(storage: impl Into<StorageId>) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(storage.into());
+		serializer.extend_u8(<Self as Key>::KIND as u8).extend_object_id(storage.into());
 		serializer.to_encoded_key()
 	}
 
 	fn storage_end(storage: impl Into<StorageId>) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(ObjectId::from(storage.into()).prev());
+		serializer.extend_u8(<Self as Key>::KIND as u8).extend_object_id(ObjectId::from(storage.into()).prev());
 		serializer.to_encoded_key()
 	}
 
@@ -174,7 +247,7 @@ impl SortedViewRowKey {
 	pub fn storage_of(key: &EncodedKey) -> Option<StorageId> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
+		if kind != <Self as Key>::KIND {
 			return None;
 		}
 		StorageId::from_object(de.read_object_id().ok()?)
@@ -182,7 +255,7 @@ impl SortedViewRowKey {
 
 	pub fn row_of(key: &EncodedKey) -> Option<RowNumber> {
 		let bytes = key.as_slice();
-		if KeyKind::of(bytes)? != Self::KIND {
+		if KeyKind::of(bytes)? != <Self as Key>::KIND {
 			return None;
 		}
 		let tail = bytes.len().checked_sub(8)?;
@@ -190,10 +263,50 @@ impl SortedViewRowKey {
 	}
 
 	pub fn range_storage_of(range: &EncodedKeyRange) -> Option<StorageId> {
-		let start = bound_storage_of(&range.start, Self::KIND)?;
-		bound_storage_of(&range.end, Self::KIND)?;
+		let start = bound_storage_of(&range.start, <Self as Key>::KIND)?;
+		bound_storage_of(&range.end, <Self as Key>::KIND)?;
 		Some(start)
 	}
+}
+
+const SORT_RUN_MARKER: u8 = 0x00;
+const SORT_RUN_ZERO: u8 = 0xff;
+const SORT_RUN_END: u8 = 0x00;
+
+fn extend_sort_run(serializer: &mut KeySerializer, run: &SortRun) {
+	for &byte in run.as_slice() {
+		if byte == SORT_RUN_MARKER {
+			serializer.extend_raw(&[SORT_RUN_MARKER, SORT_RUN_ZERO]);
+		} else {
+			serializer.extend_raw(&[byte]);
+		}
+	}
+	serializer.extend_raw(&[SORT_RUN_MARKER, SORT_RUN_END]);
+}
+
+fn read_sort_run(de: &mut KeyDeserializer) -> Option<SortRun> {
+	let mut run: Vec<u8> = Vec::new();
+	loop {
+		let byte = de.read_raw(1).ok()?[0];
+		if byte != SORT_RUN_MARKER {
+			run.push(byte);
+			continue;
+		}
+		match de.read_raw(1).ok()?[0] {
+			SORT_RUN_END => return Some(SortRun::new(run)),
+			SORT_RUN_ZERO => run.push(0x00),
+			_ => return None,
+		}
+	}
+}
+
+fn read_row_tail(de: &mut KeyDeserializer) -> Option<Asc<RowNumber>> {
+	let bytes: [u8; 8] = de.read_raw(8).ok()?.try_into().ok()?;
+	Some(Asc(RowNumber(u64::from_be_bytes(bytes))))
+}
+
+fn storage_order(storage: StorageId) -> (u8, Desc<u64>) {
+	(ObjectId::from(storage).type_tag(), Desc(storage.as_u64()))
 }
 
 fn bound_storage_of(bound: &Bound<EncodedKey>, kind: KeyKind) -> Option<StorageId> {
@@ -208,20 +321,94 @@ fn bound_storage_of(bound: &Bound<EncodedKey>, kind: KeyKind) -> Option<StorageI
 	StorageId::from_object(de.read_object_id().ok()?)
 }
 
-pub struct PartitionedSortedViewRowKey;
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PartitionedSortedViewRowKey {
+	pub storage: StorageId,
+	pub partition: Partition,
+	pub run: SortRun,
+	pub row: Asc<RowNumber>,
+}
+
+impl Key for PartitionedSortedViewRowKey {
+	const KIND: KeyKind = KeyKind::PartitionedSortedViewRow;
+
+	fn encode(&self) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(36 + self.run.len());
+		serializer
+			.extend_u8(<Self as Key>::KIND as u8)
+			.extend_object_id(self.storage)
+			.extend_u128(self.partition.0);
+		extend_sort_run(&mut serializer, &self.run);
+		serializer.extend_raw(&self.row.0.0.to_be_bytes());
+		serializer.to_encoded_key()
+	}
+
+	fn decode(key: &EncodedKey) -> Option<Self> {
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
+		if kind != <Self as Key>::KIND {
+			return None;
+		}
+		let storage = StorageId::from_object(de.read_object_id().ok()?)?;
+		let partition = Partition(de.read_u128().ok()?);
+		let run = read_sort_run(&mut de)?;
+		let row = read_row_tail(&mut de)?;
+		if !de.is_empty() {
+			return None;
+		}
+		Some(Self {
+			storage,
+			partition,
+			run,
+			row,
+		})
+	}
+}
+
+impl Ord for PartitionedSortedViewRowKey {
+	fn cmp(&self, other: &Self) -> Ordering {
+		storage_order(self.storage)
+			.cmp(&storage_order(other.storage))
+			.then_with(|| Desc(self.partition).cmp(&Desc(other.partition)))
+			.then_with(|| self.run.cmp(&other.run))
+			.then_with(|| self.row.cmp(&other.row))
+	}
+}
+
+impl PartialOrd for PartitionedSortedViewRowKey {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
+	}
+}
 
 impl PartitionedSortedViewRowKey {
-	pub const KIND: KeyKind = KeyKind::PartitionedSortedViewRow;
+	pub fn new(storage: impl Into<StorageId>, partition: Partition, run: SortRun, row: RowNumber) -> Self {
+		Self {
+			storage: storage.into(),
+			partition,
+			run,
+			row: Asc(row),
+		}
+	}
+
+	pub fn encoded(
+		storage: impl Into<StorageId>,
+		partition: Partition,
+		run: SortRun,
+		row: RowNumber,
+	) -> EncodedKey {
+		Key::encode(&Self::new(storage, partition, run, row))
+	}
 
 	pub fn storage_start(storage: impl Into<StorageId>) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(storage.into());
+		serializer.extend_u8(<Self as Key>::KIND as u8).extend_object_id(storage.into());
 		serializer.to_encoded_key()
 	}
 
 	fn storage_end(storage: impl Into<StorageId>) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(ObjectId::from(storage.into()).prev());
+		serializer.extend_u8(<Self as Key>::KIND as u8).extend_object_id(ObjectId::from(storage.into()).prev());
 		serializer.to_encoded_key()
 	}
 
@@ -236,7 +423,7 @@ impl PartitionedSortedViewRowKey {
 
 	pub fn partition_range(storage: impl Into<StorageId>, partition: Partition) -> EncodedKeyRange {
 		let mut prefix = KeySerializer::with_capacity(26);
-		prefix.extend_u8(Self::KIND as u8).extend_object_id(storage.into()).extend_u128(partition.0);
+		prefix.extend_u8(<Self as Key>::KIND as u8).extend_object_id(storage.into()).extend_u128(partition.0);
 		EncodedKeyRange::prefix(prefix.to_encoded_key().as_slice())
 	}
 
@@ -255,7 +442,7 @@ impl PartitionedSortedViewRowKey {
 	pub fn storage_of(key: &EncodedKey) -> Option<StorageId> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
+		if kind != <Self as Key>::KIND {
 			return None;
 		}
 		StorageId::from_object(de.read_object_id().ok()?)
@@ -263,7 +450,7 @@ impl PartitionedSortedViewRowKey {
 
 	pub fn row_of(key: &EncodedKey) -> Option<RowNumber> {
 		let bytes = key.as_slice();
-		if KeyKind::of(bytes)? != Self::KIND {
+		if KeyKind::of(bytes)? != <Self as Key>::KIND {
 			return None;
 		}
 		let tail = bytes.len().checked_sub(8)?;
@@ -271,8 +458,8 @@ impl PartitionedSortedViewRowKey {
 	}
 
 	pub fn range_storage_of(range: &EncodedKeyRange) -> Option<StorageId> {
-		let start = bound_storage_of(&range.start, Self::KIND)?;
-		bound_storage_of(&range.end, Self::KIND)?;
+		let start = bound_storage_of(&range.start, <Self as Key>::KIND)?;
+		bound_storage_of(&range.end, <Self as Key>::KIND)?;
 		Some(start)
 	}
 }
@@ -281,31 +468,22 @@ impl PartitionedSortedViewRowKey {
 mod sorted_view_row_key_tests {
 	use std::ops::RangeBounds;
 
-	use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
+	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
 	use super::{PartitionedSortedViewRowKey, RowKey, SortedViewRowKey};
-	use crate::{interface::catalog::storage::StorageId, key::typed::key::Key};
+	use crate::{interface::catalog::storage::StorageId, key::sort_run::SortRun};
 
 	fn part(v: &str) -> Partition {
 		Partition::of(&[Value::Utf8(v.to_string())])
 	}
 
 	fn sorted_view(storage: StorageId, sort: &[u8], row: RowNumber) -> EncodedKey {
-		let mut serializer = KeySerializer::new();
-		serializer.extend_raw(SortedViewRowKey::storage_start(storage).as_slice());
-		serializer.extend_raw(sort);
-		serializer.extend_raw(&row.0.to_be_bytes());
-		serializer.to_encoded_key()
+		SortedViewRowKey::encoded(storage, SortRun::new(sort), row)
 	}
 
 	fn partitioned(storage: StorageId, partition: Partition, sort: &[u8], row: RowNumber) -> EncodedKey {
-		let mut serializer = KeySerializer::new();
-		serializer.extend_raw(PartitionedSortedViewRowKey::storage_start(storage).as_slice());
-		serializer.extend_u128(partition.0);
-		serializer.extend_raw(sort);
-		serializer.extend_raw(&row.0.to_be_bytes());
-		serializer.to_encoded_key()
+		PartitionedSortedViewRowKey::encoded(storage, partition, SortRun::new(sort), row)
 	}
 
 	#[test]
@@ -551,7 +729,7 @@ pub mod row_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = RowSequence)]
 pub struct RowSequenceKey {
 	pub storage: StorageId,
@@ -618,7 +796,7 @@ pub mod row_sequence_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Key)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Key, Hash)]
 #[key(kind = RowSettings)]
 pub struct RowSettingsKey {
 	pub storage: StorageId,
@@ -707,13 +885,19 @@ pub mod row_settings_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = RowShape)]
 pub struct RowShapeKey {
 	pub fingerprint: RowShapeFingerprint,
 }
 
 impl RowShapeKey {
+	pub fn new(fingerprint: RowShapeFingerprint) -> Self {
+		Self {
+			fingerprint,
+		}
+	}
+
 	pub fn encoded(fingerprint: RowShapeFingerprint) -> EncodedKey {
 		Key::encode(&Self {
 			fingerprint,
@@ -737,7 +921,7 @@ impl RowShapeKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = RowShapeField)]
 pub struct RowShapeFieldKey {
 	pub shape_fingerprint: RowShapeFingerprint,
@@ -803,7 +987,7 @@ mod row_shape_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = PartitionedRow)]
 pub struct PartitionedRowKey {
 	pub storage: StorageId,
@@ -1199,5 +1383,125 @@ mod partitioned_row_key_tests {
 		sorted_view.extend_from_slice(&99u64.to_be_bytes());
 
 		assert_eq!(RowKey::decode(&EncodedKey::new(sorted_view)), None);
+	}
+}
+
+#[cfg(test)]
+mod sorted_view_run_tests {
+	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_value::value::{partition::Partition, row_number::RowNumber};
+
+	use super::{PartitionedSortedViewRowKey, SortRun, SortedViewRowKey};
+	use crate::{interface::catalog::storage::StorageId, key::typed::key::Key};
+
+	fn run(bytes: &[u8]) -> SortRun {
+		SortRun::new(bytes)
+	}
+
+	#[test]
+	fn test_a_run_round_trips_through_the_terminator() {
+		// The run is spliced raw today and cannot be decoded; without the terminator the row tail and
+		// the run cannot be told apart and decode has to guess where one ends.
+		let key = SortedViewRowKey::new(StorageId::view(3), run(&[0x10, 0x00, 0xff, 0x00]), RowNumber(42));
+		let decoded = SortedViewRowKey::decode(&key.encode()).unwrap();
+		assert_eq!(decoded, key);
+		assert_eq!(decoded.run.as_slice(), &[0x10, 0x00, 0xff, 0x00]);
+	}
+
+	#[test]
+	fn test_an_empty_run_round_trips() {
+		let key = SortedViewRowKey::new(StorageId::view(3), run(&[]), RowNumber(1));
+		assert_eq!(SortedViewRowKey::decode(&key.encode()), Some(key));
+	}
+
+	#[test]
+	fn test_a_partitioned_run_round_trips() {
+		let key = PartitionedSortedViewRowKey::new(
+			StorageId::view(3),
+			Partition(0x1122334455667788_99AABBCCDDEEFF00),
+			run(&[0x00, 0x00, 0x01]),
+			RowNumber(7),
+		);
+		assert_eq!(PartitionedSortedViewRowKey::decode(&key.encode()), Some(key));
+	}
+
+	#[test]
+	fn test_decode_refuses_the_other_kind_and_trailing_bytes() {
+		// Both kinds end in a raw eight byte row, so a length blind decode would read one as the other.
+		let partitioned = PartitionedSortedViewRowKey::encoded(
+			StorageId::view(3),
+			Partition(1),
+			run(&[0x10]),
+			RowNumber(1),
+		);
+		assert_eq!(SortedViewRowKey::decode(&partitioned), None);
+
+		let mut longer = SortedViewRowKey::encoded(StorageId::view(3), run(&[0x10]), RowNumber(1)).to_vec();
+		longer.push(0x00);
+		assert_eq!(SortedViewRowKey::decode(&EncodedKey::new(longer)), None);
+	}
+
+	#[test]
+	fn test_ord_matches_the_encoded_byte_order() {
+		// A view is read by a plain forward scan, so the struct order and the byte order must agree
+		// everywhere or the scan returns rows in an order the planner never asked for.
+		let mut keys = vec![
+			SortedViewRowKey::new(StorageId::table(3), run(&[0x10]), RowNumber(1)),
+			SortedViewRowKey::new(StorageId::view(3), run(&[0x10]), RowNumber(1)),
+			SortedViewRowKey::new(StorageId::view(4), run(&[0x10]), RowNumber(1)),
+			SortedViewRowKey::new(StorageId::view(3), run(&[0x10]), RowNumber(2)),
+			SortedViewRowKey::new(StorageId::view(3), run(&[0x10, 0x00]), RowNumber(0)),
+			SortedViewRowKey::new(StorageId::view(3), run(&[0x10, 0x01]), RowNumber(0)),
+			SortedViewRowKey::new(StorageId::view(3), run(&[0x00]), RowNumber(0)),
+			SortedViewRowKey::new(StorageId::view(3), run(&[]), RowNumber(u64::MAX)),
+		];
+		keys.sort();
+
+		let encoded: Vec<EncodedKey> = keys.iter().map(|key| key.encode()).collect();
+		let mut sorted_bytes = encoded.clone();
+		sorted_bytes.sort();
+		assert_eq!(encoded, sorted_bytes);
+	}
+
+	#[test]
+	fn test_partitioned_ord_matches_the_encoded_byte_order() {
+		let mut keys = vec![
+			PartitionedSortedViewRowKey::new(StorageId::view(3), Partition(1), run(&[0x10]), RowNumber(1)),
+			PartitionedSortedViewRowKey::new(StorageId::view(3), Partition(2), run(&[0x10]), RowNumber(1)),
+			PartitionedSortedViewRowKey::new(StorageId::view(3), Partition(2), run(&[0x00]), RowNumber(1)),
+			PartitionedSortedViewRowKey::new(StorageId::view(3), Partition(2), run(&[0x10]), RowNumber(0)),
+			PartitionedSortedViewRowKey::new(StorageId::view(4), Partition(2), run(&[0x10]), RowNumber(0)),
+		];
+		keys.sort();
+
+		let encoded: Vec<EncodedKey> = keys.iter().map(|key| key.encode()).collect();
+		let mut sorted_bytes = encoded.clone();
+		sorted_bytes.sort();
+		assert_eq!(encoded, sorted_bytes);
+	}
+
+	#[test]
+	fn test_a_shorter_run_sorts_before_the_run_that_extends_it() {
+		// Without a terminator the row tail of the shorter key lands against the extra run bytes of the
+		// longer one, so a high row number could drag a row past the whole group that follows it.
+		let short = SortedViewRowKey::new(StorageId::view(3), run(&[0x10]), RowNumber(u64::MAX));
+		let long = SortedViewRowKey::new(StorageId::view(3), run(&[0x10, 0x00]), RowNumber(0));
+
+		assert!(short < long);
+		assert!(short.encode() < long.encode());
+	}
+
+	#[test]
+	fn test_the_helpers_still_read_the_new_layout() {
+		let storage = StorageId::view(3);
+		let key = SortedViewRowKey::encoded(storage, run(&[0x00, 0xAA]), RowNumber(9));
+		assert_eq!(SortedViewRowKey::storage_of(&key), Some(storage));
+		assert_eq!(SortedViewRowKey::row_of(&key), Some(RowNumber(9)));
+
+		let partitioned =
+			PartitionedSortedViewRowKey::encoded(storage, Partition(5), run(&[0x00, 0xAA]), RowNumber(9));
+		assert_eq!(PartitionedSortedViewRowKey::storage_of(&partitioned), Some(storage));
+		assert_eq!(PartitionedSortedViewRowKey::row_of(&partitioned), Some(RowNumber(9)));
+		assert_eq!(SortedViewRowKey::row_of(&partitioned), None);
 	}
 }

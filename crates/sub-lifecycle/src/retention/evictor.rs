@@ -20,9 +20,9 @@ use reifydb_core::{
 		store::classify_range,
 	},
 	key::{
+		any::AnyKey,
 		row::{PartitionedRowKey, RowKey},
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
-		typed::key::Key,
 	},
 	lifecycle::{
 		class::{Floor, FloorTerm, RetentionClass},
@@ -367,7 +367,7 @@ impl Evictor {
 		family: RowFamily,
 		cutoff: Cutoff,
 		batch_size: usize,
-	) -> Result<(Vec<EncodedKey>, bool)> {
+	) -> Result<(Vec<AnyKey>, bool)> {
 		if let (Some(persistent), Some(kind)) = (self.store.persistent(), classify_range(keyspace)) {
 			let scan = scan::scan_expired_indexed(
 				txn,
@@ -495,10 +495,10 @@ impl Evictor {
 		}
 
 		let partitioned = !ringbuffer.partition_by.is_empty();
-		let mut groups: HashMap<Partition, Vec<EncodedKey>> = HashMap::new();
+		let mut groups: HashMap<Partition, Vec<AnyKey>> = HashMap::new();
 		for key in &expired {
 			let partition = if partitioned {
-				let Some(decoded) = PartitionedRowKey::decode(key) else {
+				let AnyKey::PartitionedRow(decoded) = key else {
 					continue;
 				};
 				decoded.partition
@@ -664,11 +664,11 @@ fn advance_cursor(state: &mut EvictorState, cursor_key: CursorKey, next: Option<
 	}
 }
 
-fn decode_ringbuffer_row_number(key: &EncodedKey, partitioned: bool) -> Option<u64> {
-	if partitioned {
-		PartitionedRowKey::decode(key).map(|k| k.row.0)
-	} else {
-		RowKey::decode(key).map(|k| k.row.0)
+fn decode_ringbuffer_row_number(key: &AnyKey, partitioned: bool) -> Option<u64> {
+	match (partitioned, key) {
+		(true, AnyKey::PartitionedRow(key)) => Some(key.row.0),
+		(false, AnyKey::Row(key)) => Some(key.row.0),
+		_ => None,
 	}
 }
 
@@ -740,7 +740,7 @@ mod tests {
 			},
 			store::MultiVersionRow,
 		},
-		key::{EncodableKey, ringbuffer::RingBufferMetadataKey},
+		key::ringbuffer::RingBufferMetadataKey,
 	};
 	use reifydb_runtime::version_epoch::EpochSpan;
 	use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
@@ -841,7 +841,7 @@ mod tests {
 
 	fn put_row(engine: &StandardEngine, storage: StorageId, row_number: RowNumber, bytes: EncodedBytes) {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
-		txn.set_encoded(&RowKey::encoded(storage, row_number), bytes).unwrap();
+		txn.set(&RowKey::new(storage, row_number), bytes).unwrap();
 		txn.commit().unwrap();
 	}
 
@@ -850,8 +850,8 @@ mod tests {
 		let mut metadata = RingBufferMetadata::new();
 		metadata.count = 1;
 		metadata.tail = 2;
-		txn.set_encoded(
-			&RingBufferMetadataKey::encoded_partition(storage, values),
+		txn.set(
+			&RingBufferMetadataKey::partition(storage, values),
 			encode_ringbuffer_metadata(&metadata).into_bytes(),
 		)
 		.unwrap();
@@ -863,20 +863,27 @@ mod tests {
 		let values: Vec<Vec<Value>> = txn
 			.range(RingBufferMetadataKey::full_scan_for_storage(storage), RangeScope::All, 1024)
 			.unwrap()
-			.map(|row| RingBufferMetadataKey::decode(&row.unwrap().key).unwrap().partition_values)
+			.map(|row| match row.unwrap().key {
+				AnyKey::RingBufferMetadata(key) => key.partition_values,
+				other => panic!("metadata scan yielded {other:?}"),
+			})
 			.collect();
 		txn.rollback().unwrap();
 		values
 	}
 
-	fn storage_rows(engine: &StandardEngine, storage: StorageId, partitioned: bool) -> Vec<MultiVersionRow> {
+	fn storage_rows(
+		engine: &StandardEngine,
+		storage: StorageId,
+		partitioned: bool,
+	) -> Vec<MultiVersionRow<AnyKey>> {
 		let keyspace = if partitioned {
 			PartitionedRowKey::full_scan(storage)
 		} else {
 			RowKey::full_scan(storage)
 		};
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
-		let rows: Vec<MultiVersionRow> =
+		let rows: Vec<MultiVersionRow<AnyKey>> =
 			txn.range(keyspace, RangeScope::All, 1024).unwrap().map(|row| row.unwrap()).collect();
 		txn.rollback().unwrap();
 		rows
@@ -890,11 +897,7 @@ mod tests {
 		bytes: EncodedBytes,
 	) {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
-		txn.set_encoded(
-			&PartitionedRowKey::encoded(storage, Partition::of(partition_values), row_number),
-			bytes,
-		)
-		.unwrap();
+		txn.set(&PartitionedRowKey::new(storage, Partition::of(partition_values), row_number), bytes).unwrap();
 		txn.commit().unwrap();
 	}
 

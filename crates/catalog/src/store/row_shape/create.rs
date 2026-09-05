@@ -26,8 +26,8 @@ pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> R
 			shape.field_count()
 		);
 	}
-	txn.set_encoded(
-		&RowShapeKey::encoded(fingerprint),
+	txn.set(
+		&RowShapeKey::new(fingerprint),
 		shape_header::encode(shape.family(), shape.field_count() as u16).into_bytes(),
 	)?;
 

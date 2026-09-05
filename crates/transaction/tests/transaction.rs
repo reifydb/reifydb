@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path::Path, sync::Arc};
+use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, ops::Bound, path::Path, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -18,12 +18,20 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
-	interface::store::MultiVersionRow,
+	interface::{
+		catalog::{
+			id::{IndexId, TableId},
+			object::ObjectId,
+		},
+		store::MultiVersionRow,
+	},
+	key::{EncodableKey, any::AnyKey, catalog::IndexEntryKey},
 	testing::ProfileConfig,
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
 	},
+	value::index::encoded::EncodedIndexKey,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -164,14 +172,14 @@ impl<'a> Runner for MvccRunner {
 				let t = self.get_transaction(&command.prefix)?;
 				let mut args = command.consume_args();
 				for arg in args.rest_pos() {
-					let key = EncodedKey::new(decode_binary(&arg.value));
+					let key = script_key(decode_binary(&arg.value));
 
 					match t {
 						TransactionHandle::Read(_) => {
 							unreachable!("can not call remove on rx")
 						}
 						TransactionHandle::Write(tx) => {
-							tx.remove_encoded(&key).unwrap();
+							tx.remove(&key).unwrap();
 						}
 					}
 				}
@@ -183,7 +191,7 @@ impl<'a> Runner for MvccRunner {
 				let t = self.get_transaction(&command.prefix)?;
 				let mut args = command.consume_args();
 				for kv in args.rest_key() {
-					let key = EncodedKey::new(decode_binary(kv.key.as_ref().unwrap()));
+					let key = script_key(decode_binary(kv.key.as_ref().unwrap()));
 					let row = EncodedBytes(CowVec::new(decode_binary(&kv.value)));
 					match t {
 						TransactionHandle::Read(_) => {
@@ -216,13 +224,14 @@ impl<'a> Runner for MvccRunner {
 				let mut args = command.consume_args();
 				for arg in args.rest_pos() {
 					let key = EncodedKey::new(decode_binary(&arg.value));
+					let stored = script_key(key.as_slice().to_vec());
 
 					let value = match &mut t {
 						TransactionHandle::Read(rx) => rx
-							.get_encoded(&key)
+							.get(&stored)
 							.map(|r| r.and_then(|tv| Some(tv.bytes().to_vec()))),
 						TransactionHandle::Write(tx) => tx
-							.get_encoded(&key)
+							.get(&stored)
 							.map(|r| r.and_then(|tv| Some(tv.bytes().to_vec()))),
 					}
 					.unwrap();
@@ -242,12 +251,12 @@ impl<'a> Runner for MvccRunner {
 				let mut tx = MultiWriteTransaction::new(self.engine.clone()).unwrap();
 
 				for kv in args.rest_key() {
-					let key = EncodedKey::new(decode_binary(kv.key.as_ref().unwrap()));
+					let key = script_key(decode_binary(kv.key.as_ref().unwrap()));
 					let row = EncodedBytes(CowVec::new(decode_binary(&kv.value)));
 					if row.is_empty() {
-						tx.remove_encoded(&key).unwrap();
+						tx.remove(&key).unwrap();
 					} else {
-						tx.set_encoded(&key, row).unwrap();
+						tx.set(&key, row).unwrap();
 					}
 				}
 				args.reject_rest()?;
@@ -286,7 +295,7 @@ impl<'a> Runner for MvccRunner {
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for multi in items {
-							kvs.push((multi.key.clone(), multi.bytes.to_vec()));
+							kvs.push((script_raw(&multi.key), multi.bytes.to_vec()));
 						}
 					}
 					TransactionHandle::Write(tx) => {
@@ -295,7 +304,7 @@ impl<'a> Runner for MvccRunner {
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for item in items {
-							kvs.push((item.key.clone(), item.bytes.to_vec()));
+							kvs.push((script_raw(&item.key), item.bytes.to_vec()));
 						}
 					}
 				}
@@ -314,9 +323,9 @@ impl<'a> Runner for MvccRunner {
 
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let range = EncodedKeyRange::parse(
+				let range = script_range(EncodedKeyRange::parse(
 					args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."),
-				);
+				));
 				args.reject_rest()?;
 
 				match &mut t {
@@ -362,9 +371,8 @@ impl<'a> Runner for MvccRunner {
 
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let prefix = EncodedKey::new(decode_binary(
-					&args.next_pos().ok_or("prefixnot given")?.value,
-				));
+				let prefix =
+					script_prefix(&decode_binary(&args.next_pos().ok_or("prefixnot given")?.value));
 				args.reject_rest()?;
 
 				match &mut t {
@@ -395,14 +403,14 @@ impl<'a> Runner for MvccRunner {
 				let t = self.get_transaction(&command.prefix)?;
 				let mut args = command.consume_args();
 				for kv in args.rest_key() {
-					let key = EncodedKey::new(decode_binary(kv.key.as_ref().unwrap()));
+					let key = script_key(decode_binary(kv.key.as_ref().unwrap()));
 					let row = EncodedBytes(CowVec::new(decode_binary(&kv.value)));
 					match t {
 						TransactionHandle::Read(_) => {
 							unreachable!("can not call set on rx")
 						}
 						TransactionHandle::Write(tx) => {
-							tx.set_encoded(&key, row).unwrap();
+							tx.set(&key, row).unwrap();
 						}
 					}
 				}
@@ -468,12 +476,40 @@ impl<'a> Runner for MvccRunner {
 	}
 }
 
+fn script_key(raw: Vec<u8>) -> IndexEntryKey {
+	// extend_raw appends the tail verbatim, so encoded order matches the script's raw byte order.
+	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(raw))
+}
+
+fn script_raw(key: &AnyKey) -> EncodedKey {
+	let AnyKey::IndexEntry(entry) = key else {
+		panic!("script key must be an index entry")
+	};
+	EncodedKey::new(entry.key.as_ref())
+}
+
+fn script_prefix(raw: &[u8]) -> EncodedKey {
+	script_key(raw.to_vec()).encode()
+}
+
+fn script_bound(bound: Bound<EncodedKey>) -> Bound<EncodedKey> {
+	match bound {
+		Bound::Included(key) => Bound::Included(script_key(key.as_slice().to_vec()).encode()),
+		Bound::Excluded(key) => Bound::Excluded(script_key(key.as_slice().to_vec()).encode()),
+		Bound::Unbounded => Bound::Unbounded,
+	}
+}
+
+fn script_range(range: EncodedKeyRange) -> EncodedKeyRange {
+	EncodedKeyRange::new(script_bound(range.start), script_bound(range.end))
+}
+
 fn print_rx<I>(output: &mut String, mut iter: I)
 where
-	I: Iterator<Item = MultiVersionRow>,
+	I: Iterator<Item = MultiVersionRow<AnyKey>>,
 {
 	while let Some(sv) = iter.next() {
-		let fmtkv = Raw::key_value(&sv.key, sv.bytes.as_slice());
+		let fmtkv = Raw::key_value(&script_raw(&sv.key), sv.bytes.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

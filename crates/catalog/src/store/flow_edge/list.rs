@@ -5,8 +5,8 @@ use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::flow::{FlowEdge, FlowEdgeId, FlowId, OperatorId},
 	key::{
+		any::AnyKey,
 		flow::{FlowEdgeByFlowKey, FlowEdgeKey},
-		typed::key::Key,
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -48,7 +48,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let entry = entry?;
-			if let Some(flow_edge_key) = FlowEdgeKey::decode(&entry.key) {
+			if let AnyKey::FlowEdge(flow_edge_key) = &entry.key {
 				let edge_id = flow_edge_key.edge;
 				let flow_id = FlowId(flow_edge::get_flow(EncodedCatalogRow::view(&entry.bytes)));
 				let source = OperatorId(flow_edge::get_source(EncodedCatalogRow::view(&entry.bytes)));

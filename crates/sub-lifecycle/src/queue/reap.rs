@@ -127,12 +127,12 @@ impl QueueLeaseReapTask {
 
 	fn write_lost_attempt(&self, queue: QueueId, row: RowNumber, attempt: u32, now: DateTime) -> Result<()> {
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
-		let key = QueueAttemptKey::encoded(queue, row, attempt);
-		if txn.get_encoded(&key)?.is_some() {
+		let key = QueueAttemptKey::new(queue, row, attempt);
+		if txn.get(&key)?.is_some() {
 			return Ok(());
 		}
 
-		txn.set_encoded(
+		txn.set(
 			&key,
 			encode_queue_attempt(&QueueAttemptRecord {
 				worker: String::new(),

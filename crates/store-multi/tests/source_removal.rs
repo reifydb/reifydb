@@ -18,7 +18,10 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
-	key::row::{PartitionedRowKey, RowKey},
+	key::{
+		any::AnyKey,
+		row::{PartitionedRowKey, RowKey},
+	},
 };
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
@@ -28,27 +31,29 @@ use reifydb_value::{
 	value::{Value, partition::Partition, row_number::RowNumber},
 };
 
-fn table_row_key(table: u64, row: u64) -> EncodedKey {
-	RowKey::encoded(StorageId::Table(TableId(table)), RowNumber(row))
+fn table_row_key(table: u64, row: u64) -> AnyKey {
+	RowKey::new(StorageId::Table(TableId(table)), RowNumber(row)).into()
 }
 
-fn partitioned_row_key(table: u64, partition: Partition, row: u64) -> EncodedKey {
-	PartitionedRowKey::encoded(StorageId::Table(TableId(table)), partition, RowNumber(row))
+fn partitioned_row_key(table: u64, partition: Partition, row: u64) -> AnyKey {
+	PartitionedRowKey::new(StorageId::Table(TableId(table)), partition, RowNumber(row)).into()
 }
 
-fn persistent_only_set(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str) {
+fn persistent_only_set(store: &StandardMultiStore, k: &AnyKey, version: u64, value: &str) {
 	// Seeding persistence directly leaves a row that exists only on disk, so a later in-buffer tombstone
 	// has something to interact with.
 	let persistent = store.persistent().expect("persistent tier configured");
-	let table = classify_key(k);
+	let encoded = k.encode();
+	let table = classify_key(&encoded);
 	let mut batches: HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>> = HashMap::new();
-	batches.entry(table).or_default().push((k.clone(), Some(CowVec::new(value.as_bytes().to_vec()))));
+	batches.entry(table).or_default().push((encoded, Some(CowVec::new(value.as_bytes().to_vec()))));
 	persistent.set(CommitVersion(version), batches).unwrap();
 }
 
-fn persistent_row(store: &StandardMultiStore, k: &EncodedKey) -> Option<(u64, Vec<u8>)> {
+fn persistent_row(store: &StandardMultiStore, k: &AnyKey) -> Option<(u64, Vec<u8>)> {
 	let persistent = store.persistent().expect("persistent tier configured");
-	match persistent.get(classify_key(k), k.as_ref(), CommitVersion(u64::MAX)).unwrap() {
+	let encoded = k.encode();
+	match persistent.get(classify_key(&encoded), encoded.as_ref(), CommitVersion(u64::MAX)).unwrap() {
 		reifydb_store_commit::VersionedGetResult::Value {
 			value,
 			version,
@@ -57,11 +62,11 @@ fn persistent_row(store: &StandardMultiStore, k: &EncodedKey) -> Option<(u64, Ve
 	}
 }
 
-fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u8>> {
+fn get(store: &StandardMultiStore, k: &AnyKey, version: u64) -> Option<Vec<u8>> {
 	store.get(k, CommitVersion(version)).unwrap().map(|r| r.bytes.to_vec())
 }
 
-fn range_keys(store: &StandardMultiStore, range: EncodedKeyRange, read: u64) -> Vec<EncodedKey> {
+fn range_keys(store: &StandardMultiStore, range: EncodedKeyRange, read: u64) -> Vec<AnyKey> {
 	store.range(
 		range,
 		MultiVersionScope::AsOf {

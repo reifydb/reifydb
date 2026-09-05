@@ -12,10 +12,10 @@ use reifydb_core::{
 		flow::OperatorId,
 	},
 	key::{
-		EncodableKey,
+		any::AnyKey,
 		operator::{
 			keyspace::join::{JoinExpiryDueKey, JoinRowExpiryState as JoinRowExpiry, JoinRowMappingKey},
-			state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
+			state::{GroupId, GroupStateKey, node_prefix},
 		},
 	},
 	state::timer::{GroupSweep, StateStore, TimerKind, TimerStore},
@@ -203,7 +203,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	) -> Result<()> {
 		let batch = self.txn.state_get_many(self.operator, keys)?;
 		for r in batch.items {
-			let Some(decoded) = OperatorStateKey::decode(&r.key) else {
+			let AnyKey::OperatorState(decoded) = &r.key else {
 				continue;
 			};
 			let Some(inner) = GroupStateKey::from_framed(decoded.inner()) else {
@@ -241,7 +241,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		)?;
 		let mut out = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
-			if let Some(decoded) = OperatorStateKey::decode(&r.key)
+			if let AnyKey::OperatorState(decoded) = &r.key
 				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 			{
 				out.push((inner, EncodedPodRow::from(r.bytes)));
@@ -254,7 +254,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		let batch = self.txn.state_group_range(self.operator, groups, limit)?;
 		let mut rows = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
-			if let Some(decoded) = OperatorStateKey::decode(&r.key)
+			if let AnyKey::OperatorState(decoded) = &r.key
 				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 			{
 				rows.push((inner, EncodedPodRow::from(r.bytes)));
@@ -270,7 +270,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		let Some(r) = self.txn.state_last(self.operator, range)? else {
 			return Ok(None);
 		};
-		if let Some(decoded) = OperatorStateKey::decode(&r.key)
+		if let AnyKey::OperatorState(decoded) = &r.key
 			&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 		{
 			return Ok(Some((inner, EncodedPodRow::from(r.bytes))));
@@ -469,6 +469,9 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 	}
 }
 
-fn unscope(key: &EncodedKey) -> Option<GroupStateKey> {
-	GroupStateKey::from_framed(OperatorStateKey::decode(key)?.inner())
+fn unscope(key: &AnyKey) -> Option<GroupStateKey> {
+	let AnyKey::OperatorState(key) = key else {
+		return None;
+	};
+	GroupStateKey::from_framed(key.inner())
 }

@@ -42,10 +42,7 @@ impl CatalogStore {
 			}
 
 			txn.remove(&FlowVersionKey::new(flow_id))?;
-			txn.remove_encoded(&CdcConsumerKey::encoded(CdcConsumerId::new(format!(
-				"flow:{}",
-				flow_id.0
-			))))?;
+			txn.remove(&CdcConsumerKey::new(CdcConsumerId::new(format!("flow:{}", flow_id.0))))?;
 
 			txn.remove(&NamespaceFlowKey::new(flow.namespace, flow_id))?;
 

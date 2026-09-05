@@ -4,9 +4,11 @@
 use reifydb_core::{
 	interface::catalog::{id::ColumnId, object::ObjectId},
 	key::{
+		any::AnyKey,
 		catalog::ColumnPropertyKey,
 		column::{ColumnKey, ColumnSequenceKey, ColumnsKey},
 	},
+	return_internal_error,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 
@@ -18,11 +20,16 @@ impl CatalogStore {
 		let mut policy_stream = txn.range(policy_range, RangeScope::All, 1024)?;
 		let mut policy_keys = Vec::new();
 		for entry in policy_stream.by_ref() {
-			policy_keys.push(entry?.key.clone());
+			let AnyKey::ColumnProperty(key) = entry?.key else {
+				return_internal_error!(
+					"column property scan yielded a key that is not a ColumnPropertyKey"
+				);
+			};
+			policy_keys.push(key);
 		}
 		drop(policy_stream);
 		for pk in policy_keys {
-			txn.remove_encoded(&pk)?;
+			txn.remove(&pk)?;
 		}
 
 		txn.remove(&ColumnSequenceKey::new(object, column_id))?;

@@ -3,10 +3,8 @@
 
 use std::{sync::Arc, thread::spawn, time::Instant};
 
-use reifydb_codec::{
-	key::{encoded::EncodedKey, serializer::KeySerializer},
-	row::bytes::EncodedBytes,
-};
+use reifydb_codec::{key::serializer::KeySerializer, row::bytes::EncodedBytes};
+use reifydb_core::{interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_value::util::cowvec::CowVec;
 
@@ -31,7 +29,7 @@ impl KeyBytes for String {
 }
 
 macro_rules! as_key {
-	($key:expr) => {{ EncodedKey::new($key.key_bytes()) }};
+	($key:expr) => {{ QueueDeduplicationKey::new(QueueId(1), $key.key_bytes().iter().map(|b| !b).collect::<Vec<u8>>()) }};
 }
 
 macro_rules! as_values {
@@ -56,7 +54,7 @@ pub fn oracle_performance_benchmark() {
 			let key = as_key!(format!("key_{}", i));
 			let value = as_values!(format!("value_{}", i));
 
-			tx.set_encoded(&key, value).unwrap();
+			tx.set(&key, value).unwrap();
 			tx.commit(vec![]).unwrap();
 		}
 
@@ -96,7 +94,7 @@ pub fn concurrent_oracle_benchmark() {
 					let key = as_key!(base_key + i);
 					let value = as_values!(i);
 
-					tx.set_encoded(&key, value).unwrap();
+					tx.set(&key, value).unwrap();
 					tx.commit(vec![]).unwrap();
 				}
 			});
@@ -125,7 +123,7 @@ pub fn conflict_detection_benchmark() {
 		let mut tx = engine.begin_command().unwrap();
 		let key = as_key!(format!("shared_key_{}", i % 100));
 		let value = as_values!(i);
-		tx.set_encoded(&key, value).unwrap();
+		tx.set(&key, value).unwrap();
 		tx.commit(vec![]).unwrap();
 	}
 
@@ -141,7 +139,7 @@ pub fn conflict_detection_benchmark() {
 		let key = as_key!(format!("shared_key_{}", i % 100));
 		let value = as_values!(i + 1000);
 
-		tx.set_encoded(&key, value).unwrap();
+		tx.set(&key, value).unwrap();
 
 		match tx.commit(vec![]) {
 			Ok(_) => {}

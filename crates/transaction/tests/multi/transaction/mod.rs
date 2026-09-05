@@ -17,6 +17,14 @@ use reifydb_codec::{
 	key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer},
 	row::bytes::EncodedBytes,
 };
+use reifydb_core::{
+	interface::catalog::{
+		id::{IndexId, TableId},
+		object::ObjectId,
+	},
+	key::{EncodableKey, any::AnyKey, catalog::IndexEntryKey},
+	value::index::encoded::EncodedIndexKey,
+};
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_value::util::cowvec::CowVec;
 
@@ -25,7 +33,24 @@ pub fn test_multi() -> MultiTransaction {
 }
 
 pub trait IntoKey {
-	fn into_key(self) -> EncodedKey;
+	fn into_key(self) -> AnyKey;
+}
+
+// extend_raw appends the tail verbatim, so encoded order matches the raw key order.
+fn synthetic_key(raw: EncodedKey) -> AnyKey {
+	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(raw.as_slice()))
+		.into()
+}
+
+fn synthetic_prefix(raw: &[u8]) -> EncodedKey {
+	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(raw)).encode()
+}
+
+fn synthetic_tail(key: &AnyKey) -> Option<Vec<u8>> {
+	match key {
+		AnyKey::IndexEntry(entry) => Some(entry.key.as_ref().to_vec()),
+		_ => None,
+	}
 }
 
 pub trait IntoValues {
@@ -37,12 +62,17 @@ pub trait FromRow: Sized {
 }
 
 pub trait FromKey: Sized {
-	fn from_key(key: &EncodedKey) -> Option<Self>;
+	fn from_key(key: &AnyKey) -> Option<Self>;
 }
 
 #[macro_export]
 macro_rules! as_key {
 	($key:expr) => {{ <_ as crate::multi::transaction::IntoKey>::into_key($key) }};
+}
+
+#[macro_export]
+macro_rules! as_encoded {
+	($key:expr) => {{ reifydb_core::key::any::AnyKey::encode(&$crate::as_key!($key)) }};
 }
 
 #[macro_export]
@@ -67,10 +97,10 @@ macro_rules! from_key {
 macro_rules! impl_kv_for {
 	($t:ty, $extend:ident, $read:ident) => {
 		impl IntoKey for $t {
-			fn into_key(self) -> EncodedKey {
+			fn into_key(self) -> AnyKey {
 				let mut ser = KeySerializer::new();
 				ser.$extend(self);
-				ser.finish()
+				synthetic_key(ser.finish())
 			}
 		}
 		impl IntoValues for $t {
@@ -81,8 +111,8 @@ macro_rules! impl_kv_for {
 			}
 		}
 		impl FromKey for $t {
-			fn from_key(key: &EncodedKey) -> Option<Self> {
-				KeyDeserializer::from_bytes(key.as_slice()).$read().ok()
+			fn from_key(key: &AnyKey) -> Option<Self> {
+				KeyDeserializer::from_bytes(&synthetic_tail(key)?).$read().ok()
 			}
 		}
 		impl FromRow for $t {
@@ -94,10 +124,10 @@ macro_rules! impl_kv_for {
 }
 
 impl IntoKey for &str {
-	fn into_key(self) -> EncodedKey {
+	fn into_key(self) -> AnyKey {
 		let mut ser = KeySerializer::new();
 		ser.extend_str(self);
-		ser.finish()
+		synthetic_key(ser.finish())
 	}
 }
 

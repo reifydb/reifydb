@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{error::Error as StdError, fmt::Write};
+use std::{error::Error as StdError, fmt::Write, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -17,14 +17,22 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	delta::Delta,
-	interface::store::{
-		SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
-		SingleVersionRangeRev, SingleVersionRow,
+	interface::{
+		catalog::{
+			id::{IndexId, TableId},
+			object::ObjectId,
+		},
+		store::{
+			SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
+			SingleVersionRangeRev, SingleVersionRow,
+		},
 	},
+	key::{EncodableKey, catalog::IndexEntryKey},
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
 	},
+	value::index::encoded::EncodedIndexKey,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -126,7 +134,8 @@ impl testscript::runner::Runner for Runner {
 				let key =
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
-				let value: Option<SingleVersionRow> = self.store.get(&key)?.into();
+				let value: Option<SingleVersionRow> =
+					self.store.get(&script_key(&key).encode())?.into();
 				let value = value.map(|sv| sv.bytes.to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
@@ -135,7 +144,7 @@ impl testscript::runner::Runner for Runner {
 				let key =
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
-				let contains = self.store.contains(&key)?;
+				let contains = self.store.contains(&script_key(&key).encode())?;
 				writeln!(output, "{} => {}", Raw::key(&key), contains)?;
 			}
 
@@ -157,9 +166,9 @@ impl testscript::runner::Runner for Runner {
 			"range" => {
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let range = EncodedKeyRange::parse(
+				let range = script_range(EncodedKeyRange::parse(
 					args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."),
-				);
+				));
 				args.reject_rest()?;
 
 				if !reverse {
@@ -174,7 +183,7 @@ impl testscript::runner::Runner for Runner {
 			"prefix" => {
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let prefix = EncodedKey::new(decode_binary(
+				let prefix = script_prefix(&decode_binary(
 					&args.next_pos().ok_or("prefix not given")?.value,
 				));
 				args.reject_rest()?;
@@ -199,7 +208,7 @@ impl testscript::runner::Runner for Runner {
 					&mut self.store,
 					cow_vec![
 						(Delta::Set {
-							key,
+							key: script_key(&key).into(),
 							bytes
 						})
 					],
@@ -213,7 +222,10 @@ impl testscript::runner::Runner for Runner {
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 
-				SingleVersionCommit::commit(&mut self.store, cow_vec![Delta::remove_silent(key)])?;
+				SingleVersionCommit::commit(
+					&mut self.store,
+					cow_vec![Delta::remove_silent(script_key(&key).into())],
+				)?;
 				self.maybe_flush();
 			}
 
@@ -229,7 +241,7 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				let buffer = self.store.commit().ok_or("buffer tier not configured")?;
-				let value = buffer.get_with_tombstone(key.as_ref())?;
+				let value = buffer.get_with_tombstone(script_key(&key).encode().as_ref())?;
 				let value = match value {
 					Some(Some(v)) => Some(v.to_vec()),
 					Some(None) => None,
@@ -245,7 +257,7 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
-				let value = persistent.get(key.as_ref())?.map(|v| v.to_vec());
+				let value = persistent.get(script_key(&key).encode().as_ref())?.map(|v| v.to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
 
@@ -257,7 +269,8 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
-				let entries: Vec<(EncodedKey, Option<CowVec<u8>>)> = vec![(key, Some(value_bytes))];
+				let entries: Vec<(EncodedKey, Option<CowVec<u8>>)> =
+					vec![(script_key(&key).encode(), Some(value_bytes))];
 				persistent.set(entries)?;
 			}
 
@@ -269,9 +282,34 @@ impl testscript::runner::Runner for Runner {
 	}
 }
 
+fn script_key(raw: &EncodedKey) -> IndexEntryKey {
+	// extend_raw appends the tail verbatim, so encoded order matches the script's raw byte order.
+	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(raw.as_slice()))
+}
+
+fn script_raw(key: &EncodedKey) -> EncodedKey {
+	EncodedKey::new(IndexEntryKey::decode(key).expect("script key must decode").key.as_ref())
+}
+
+fn script_prefix(raw: &[u8]) -> EncodedKey {
+	script_key(&EncodedKey::new(raw)).encode()
+}
+
+fn script_bound(bound: Bound<EncodedKey>) -> Bound<EncodedKey> {
+	match bound {
+		Bound::Included(key) => Bound::Included(script_key(&key).encode()),
+		Bound::Excluded(key) => Bound::Excluded(script_key(&key).encode()),
+		Bound::Unbounded => Bound::Unbounded,
+	}
+}
+
+fn script_range(range: EncodedKeyRange) -> EncodedKeyRange {
+	EncodedKeyRange::new(script_bound(range.start), script_bound(range.end))
+}
+
 fn print<I: Iterator<Item = SingleVersionRow>>(output: &mut String, iter: I) {
 	for item in iter {
-		let fmtkv = Raw::key_value(&item.key, item.bytes.as_slice());
+		let fmtkv = Raw::key_value(&script_raw(&item.key), item.bytes.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

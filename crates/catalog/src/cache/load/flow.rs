@@ -25,6 +25,6 @@ pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 	Ok(())
 }
 
-fn convert_flow(multi: MultiVersionRow) -> Flow {
+fn convert_flow<K>(multi: MultiVersionRow<K>) -> Flow {
 	decode_flow(EncodedCatalogRow::view(&multi.bytes))
 }

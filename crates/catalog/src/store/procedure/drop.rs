@@ -4,9 +4,9 @@
 use reifydb_core::{
 	interface::catalog::id::ProcedureId,
 	key::{
+		any::AnyKey,
 		namespace::NamespaceProcedureKey,
 		procedure::{ProcedureKey, ProcedureParamKey},
-		typed::key::Key,
 	},
 };
 use reifydb_transaction::{
@@ -27,7 +27,7 @@ impl CatalogStore {
 			let stream = txn.range(ProcedureParamKey::full_scan(procedure), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
-				if let Some(k) = ProcedureParamKey::decode(&entry.key) {
+				if let AnyKey::ProcedureParam(k) = entry.key {
 					param_keys.push(k);
 				}
 			}

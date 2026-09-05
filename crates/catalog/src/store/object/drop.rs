@@ -11,10 +11,12 @@ use reifydb_core::{
 		storage::StorageId,
 	},
 	key::{
+		any::AnyKey,
 		catalog::{ColumnPropertyKey, PrimaryKeyKey},
 		column::{ColumnKey, ColumnSequenceKey, ColumnsKey},
 		row::RowSequenceKey,
 	},
+	return_internal_error,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 
@@ -31,7 +33,10 @@ pub(crate) fn drop_object_metadata(
 	for entry in stream.by_ref() {
 		let entry = entry?;
 		let col_id = object_column::get_id(EncodedCatalogRow::view(&entry.bytes));
-		col_entries.push((entry.key.clone(), ColumnId(col_id)));
+		let AnyKey::Column(col_key) = entry.key else {
+			return_internal_error!("column scan yielded a key that is not a ColumnKey");
+		};
+		col_entries.push((col_key, ColumnId(col_id)));
 	}
 	drop(stream);
 
@@ -40,18 +45,23 @@ pub(crate) fn drop_object_metadata(
 		let mut policy_stream = txn.range(policy_range, RangeScope::All, 1024)?;
 		let mut policy_keys = Vec::new();
 		for entry in policy_stream.by_ref() {
-			policy_keys.push(entry?.key.clone());
+			let AnyKey::ColumnProperty(key) = entry?.key else {
+				return_internal_error!(
+					"column property scan yielded a key that is not a ColumnPropertyKey"
+				);
+			};
+			policy_keys.push(key);
 		}
 		drop(policy_stream);
 		for pk in policy_keys {
-			txn.remove_encoded(&pk)?;
+			txn.remove(&pk)?;
 		}
 
 		txn.remove(&ColumnSequenceKey::new(storage, *col_id))?;
 
 		txn.remove(&ColumnsKey::new(*col_id))?;
 
-		txn.remove_encoded(col_key)?;
+		txn.remove(col_key)?;
 	}
 
 	if let Some(pk_id) = pk_id {

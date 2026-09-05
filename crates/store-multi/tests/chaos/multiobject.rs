@@ -152,7 +152,7 @@ fn collect_range_ms(
 	} else {
 		store.range(RowKey::full_scan(storage(s)), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
 	};
-	rows.into_iter().map(|r| (r.key.to_vec(), r.bytes.to_vec(), r.version.0)).collect()
+	rows.into_iter().map(|r| (r.key.encode().to_vec(), r.bytes.to_vec(), r.version.0)).collect()
 }
 
 fn check_range_ms(

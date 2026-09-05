@@ -19,7 +19,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::MultiVersionCommit,
 	},
-	key::row::RowKey,
+	key::{any::AnyKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_store_commit::MultiVersionScope;
@@ -47,7 +47,7 @@ fn commit_set(store: &StandardMultiStore, row: u64, version: u64, value: &str) {
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
-			key: RowKey::encoded(STORAGE, row),
+			key: AnyKey::from(RowKey::new(STORAGE, row)),
 			bytes: EncodedBytes(CowVec::new(value.as_bytes().to_vec())),
 		}],
 		CommitVersion(version),
@@ -58,7 +58,7 @@ fn commit_set(store: &StandardMultiStore, row: u64, version: u64, value: &str) {
 fn commit_remove(store: &StandardMultiStore, row: u64, version: u64) {
 	MultiVersionCommit::commit(
 		store,
-		cow_vec![Delta::remove_silent(RowKey::encoded(STORAGE, row))],
+		cow_vec![Delta::remove_silent(AnyKey::from(RowKey::new(STORAGE, row)))],
 		CommitVersion(version),
 	)
 	.unwrap();
@@ -80,7 +80,7 @@ fn scan(store: &StandardMultiStore, read: u64) -> BTreeMap<Vec<u8>, (Vec<u8>, Co
 		64,
 	)
 	.map(|r| r.unwrap())
-	.map(|r| (r.key.to_vec(), (r.bytes.to_vec(), r.version)))
+	.map(|r| (r.key.encode().to_vec(), (r.bytes.to_vec(), r.version)))
 	.collect()
 }
 
@@ -98,7 +98,7 @@ fn scan_between(store: &StandardMultiStore, after: u64, read: u64) -> BTreeMap<V
 		64,
 	)
 	.map(|r| r.unwrap())
-	.map(|r| (r.key.to_vec(), (r.bytes.to_vec(), r.version)))
+	.map(|r| (r.key.encode().to_vec(), (r.bytes.to_vec(), r.version)))
 	.collect()
 }
 
@@ -111,7 +111,7 @@ fn range_served(store: &StandardMultiStore) -> u64 {
 }
 
 fn key(row: u64) -> Vec<u8> {
-	RowKey::encoded(STORAGE, row).to_vec()
+	AnyKey::from(RowKey::new(STORAGE, row)).encode().to_vec()
 }
 
 /// Seeds only even rows so an odd row number is a brand-new key that lands in the middle of the encoded

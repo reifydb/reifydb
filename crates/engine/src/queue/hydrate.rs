@@ -14,11 +14,7 @@ use reifydb_core::{
 		store::SingleVersionGet,
 	},
 	internal_error,
-	key::{
-		queue::QueueItemStateKey,
-		row::{RowKey, RowKeyRange},
-		typed::key::Key,
-	},
+	key::{any::AnyKey, queue::QueueItemStateKey, row::RowKeyRange},
 };
 use reifydb_transaction::{
 	multi::RangeScope,
@@ -81,10 +77,10 @@ fn hydrate_queue(
 				match stream.next() {
 					Some(Ok(item)) => {
 						fetched += 1;
-						if let Some(key) = RowKey::decode(&item.key) {
+						if let AnyKey::Row(key) = &item.key {
 							batch.push((key.row, EncodedQueueRow::from(item.bytes)));
 						}
-						last_key = Some(item.key);
+						last_key = Some(item.key.encode());
 					}
 					Some(Err(err)) => return Err(err),
 					None => break,

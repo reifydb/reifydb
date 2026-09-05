@@ -20,9 +20,9 @@ ok
 stats_totals
 ---
 total_count: 3
-current_bytes: 36
+current_bytes: 93
 historical_bytes: 0
-total_bytes: 36
+total_bytes: 93
 
 # Update each once
 set a=11
@@ -41,9 +41,9 @@ ok
 stats_totals
 ---
 total_count: 6
-current_bytes: 39
-historical_bytes: 36
-total_bytes: 75
+current_bytes: 96
+historical_bytes: 93
+total_bytes: 189
 
 # Delete one (pre-image moves to historical, tombstone becomes current)
 remove a
@@ -56,6 +56,6 @@ ok
 stats_totals
 ---
 total_count: 7
-current_bytes: 37
-historical_bytes: 49
-total_bytes: 86
+current_bytes: 94
+historical_bytes: 125
+total_bytes: 219

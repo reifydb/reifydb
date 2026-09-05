@@ -11,7 +11,7 @@ use reifydb_core::{
 		},
 		store::MultiVersionRow,
 	},
-	key::{catalog::SourceKey, typed::key::Key},
+	key::{any::AnyKey, catalog::SourceKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use serde_json::from_str;
@@ -26,7 +26,7 @@ pub(crate) fn load_sources(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> 
 	for entry in stream {
 		let multi = entry?;
 
-		if SourceKey::decode(&multi.key).is_none() {
+		if !matches!(&multi.key, AnyKey::Source(_)) {
 			continue;
 		}
 		let version = multi.version;
@@ -37,7 +37,7 @@ pub(crate) fn load_sources(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> 
 	Ok(())
 }
 
-fn convert_source(multi: MultiVersionRow) -> Result<Source> {
+fn convert_source<K>(multi: MultiVersionRow<K>) -> Result<Source> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = SourceId(source::get_id(&bytes));
 	let namespace = NamespaceId(source::get_namespace(&bytes));

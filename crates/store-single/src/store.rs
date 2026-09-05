@@ -36,7 +36,7 @@ use tracing::instrument;
 
 use crate::{
 	Result, SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
-	SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
+	SingleVersionRangeRev, SingleVersionStore,
 	config::{CommitBufferConfig, SingleStoreConfig},
 	flush::actor::FlushMessage,
 	tier::{
@@ -289,11 +289,11 @@ impl StandardSingleStore {
 				Delta::Set {
 					key,
 					bytes,
-				} => (key.clone(), Some(CowVec::new(bytes.as_ref().to_vec()))),
+				} => (key.encode(), Some(CowVec::new(bytes.as_ref().to_vec()))),
 				Delta::Remove {
 					key,
 					..
-				} => (key.clone(), None),
+				} => (key.encode(), None),
 			})
 			.collect()
 	}
@@ -315,9 +315,6 @@ impl StandardSingleStore {
 		Ok(())
 	}
 }
-
-impl SingleVersionSet for StandardSingleStore {}
-impl SingleVersionRemove for StandardSingleStore {}
 
 impl SingleVersionRange for StandardSingleStore {
 	#[instrument(name = "store::single::range_batch", level = "trace", skip(self), fields(batch_size = batch_size))]
@@ -533,12 +530,15 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Bound<Vec<u8>>, Bound<Vec<u8>>
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod tests {
-	use reifydb_core::interface::store::SingleVersionCommit;
+	use reifydb_core::{
+		interface::{catalog::id::QueueId, store::SingleVersionCommit},
+		key::{any::AnyKey, queue::QueueDeduplicationKey},
+	};
 
 	use super::*;
 
-	fn key(name: &str) -> EncodedKey {
-		EncodedKey::new(name.as_bytes())
+	fn key(name: &str) -> AnyKey {
+		QueueDeduplicationKey::new(QueueId(1), name.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>()).into()
 	}
 
 	#[test]
@@ -554,14 +554,14 @@ mod tests {
 			}]),
 		)
 		.unwrap();
-		assert!(store.dirty.lock().contains_key(&k), "the write is pending a flush");
+		assert!(store.dirty.lock().contains_key(&k.encode()), "the write is pending a flush");
 
 		store.persistent().expect("persistent tier configured").shutdown();
 
 		store.flush_pending_blocking();
 
 		assert!(
-			store.dirty.lock().contains_key(&k),
+			store.dirty.lock().contains_key(&k.encode()),
 			"the flush could not persist the batch, yet it dropped it anyway. take_dirty() removes the \
 			 entries before the write is attempted and flush_to_persistent consumes them by value, so a \
 			 failed set discards them permanently - nothing is restored and nothing is retried. Memory \
@@ -607,10 +607,10 @@ mod tests {
 		(m.persistent_probes.as_u64(), m.persistent_absent.as_u64())
 	}
 
-	fn seed_persistent(store: &StandardSingleStore, k: &EncodedKey, value: &str) {
+	fn seed_persistent(store: &StandardSingleStore, k: &AnyKey, value: &str) {
 		store.persistent()
 			.expect("persistent tier configured")
-			.set(vec![(k.clone(), Some(CowVec::new(value.as_bytes().to_vec())))])
+			.set(vec![(k.encode(), Some(CowVec::new(value.as_bytes().to_vec())))])
 			.unwrap();
 	}
 
@@ -632,10 +632,10 @@ mod tests {
 			.unwrap();
 
 		let before = probes(&store);
-		assert!(SingleVersionGet::get(&store, &present).unwrap().is_some());
-		assert!(SingleVersionContains::contains(&store, &present).unwrap());
-		assert!(SingleVersionGet::get(&store, &removed).unwrap().is_none());
-		assert!(!SingleVersionContains::contains(&store, &removed).unwrap());
+		assert!(SingleVersionGet::get(&store, &present.encode()).unwrap().is_some());
+		assert!(SingleVersionContains::contains(&store, &present.encode()).unwrap());
+		assert!(SingleVersionGet::get(&store, &removed.encode()).unwrap().is_none());
+		assert!(!SingleVersionContains::contains(&store, &removed.encode()).unwrap());
 
 		assert_eq!(
 			probes(&store),
@@ -652,7 +652,7 @@ mod tests {
 		seed_persistent(&store, &k, "9");
 
 		let before = probes(&store);
-		assert!(SingleVersionGet::get(&store, &k).unwrap().is_some());
+		assert!(SingleVersionGet::get(&store, &k.encode()).unwrap().is_some());
 		assert_eq!(
 			probes(&store),
 			(before.0 + 1, before.1),
@@ -660,7 +660,7 @@ mod tests {
 		);
 
 		let before = probes(&store);
-		assert!(SingleVersionContains::contains(&store, &k).unwrap());
+		assert!(SingleVersionContains::contains(&store, &k.encode()).unwrap());
 		assert_eq!(
 			probes(&store),
 			(before.0 + 1, before.1),
@@ -675,7 +675,7 @@ mod tests {
 		let k = key("never-written");
 
 		let before = probes(&store);
-		assert!(SingleVersionGet::get(&store, &k).unwrap().is_none());
+		assert!(SingleVersionGet::get(&store, &k.encode()).unwrap().is_none());
 		assert_eq!(
 			probes(&store),
 			(before.0 + 1, before.1 + 1),
@@ -683,7 +683,7 @@ mod tests {
 		);
 
 		let before = probes(&store);
-		assert!(!SingleVersionContains::contains(&store, &k).unwrap());
+		assert!(!SingleVersionContains::contains(&store, &k.encode()).unwrap());
 		assert_eq!(
 			probes(&store),
 			(before.0 + 1, before.1 + 1),
@@ -694,7 +694,7 @@ mod tests {
 	#[test]
 	fn a_store_without_a_persistent_tier_reports_no_probe_metrics() {
 		let store = StandardSingleStore::testing_memory();
-		assert!(SingleVersionGet::get(&store, &key("anything")).unwrap().is_none());
+		assert!(SingleVersionGet::get(&store, &key("anything").encode()).unwrap().is_none());
 		assert!(store.persistent_probe_metrics().is_none());
 	}
 }

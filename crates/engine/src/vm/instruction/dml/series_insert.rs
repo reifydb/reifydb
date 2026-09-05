@@ -26,8 +26,8 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
+		any::AnyKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
-		typed::key::Key,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
@@ -190,14 +190,14 @@ fn insert_series_row(
 
 	metadata.sequence_counter += 1;
 	let sequence = metadata.sequence_counter;
-	let encoded_key = if series.partition_by.is_empty() {
+	let key: AnyKey = if series.partition_by.is_empty() {
 		SeriesRowKey {
 			storage: StorageId::series(series.id),
 			variant_tag,
 			key: key_value,
 			sequence,
 		}
-		.encode()
+		.into()
 	} else {
 		let mut part_values = Vec::with_capacity(series.partition_by.len());
 		for name in &series.partition_by {
@@ -208,13 +208,8 @@ fn insert_series_row(
 		}
 		let partition = Partition::of(&part_values);
 		resolve_partition(txn, ObjectId::Series(series.id), partition, &part_values, verified)?;
-		PartitionedSeriesRowKey::encoded(
-			StorageId::series(series.id),
-			partition,
-			variant_tag,
-			key_value,
-			sequence,
-		)
+		PartitionedSeriesRowKey::new(StorageId::series(series.id), partition, variant_tag, key_value, sequence)
+			.into()
 	};
 
 	let data_columns: Vec<_> = series.data_columns().collect();
@@ -239,7 +234,7 @@ fn insert_series_row(
 	SeriesRowInterceptor::pre_insert(txn, series, &mut rows_buf)?;
 	let [row] = rows_buf;
 	let row = row.freeze_bytes();
-	txn.set_encoded(&encoded_key, row.clone())?;
+	txn.set(&key, row.clone())?;
 	let rows = [row.clone()];
 	SeriesRowInterceptor::post_insert(txn, series, &rows)?;
 

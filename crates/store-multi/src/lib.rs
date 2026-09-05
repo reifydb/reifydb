@@ -33,7 +33,10 @@ use reifydb_core::{
 			MultiVersionRow, MultiVersionStore,
 		},
 	},
-	key::row::{StoragePartitionedRowKey, StorageRowKey},
+	key::{
+		any::AnyKey,
+		row::{StoragePartitionedRowKey, StorageRowKey},
+	},
 	metrics::collect::MetricsCollector,
 };
 use reifydb_filter::adaptive::FilterMetrics;
@@ -184,7 +187,7 @@ impl Shutdown for MultiStore {
 
 impl MultiVersionGet for MultiStore {
 	#[inline]
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
+	fn get(&self, key: &AnyKey, version: CommitVersion) -> Result<Option<MultiVersionRow<AnyKey>>> {
 		match self {
 			MultiStore::Standard(store) => MultiVersionGet::get(store, key, version),
 		}
@@ -193,7 +196,7 @@ impl MultiVersionGet for MultiStore {
 
 impl MultiVersionContains for MultiStore {
 	#[inline]
-	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
+	fn contains(&self, key: &AnyKey, version: CommitVersion) -> Result<bool> {
 		match self {
 			MultiStore::Standard(store) => MultiVersionContains::contains(store, key, version),
 		}
@@ -213,16 +216,16 @@ impl MultiVersionGetPrevious for MultiStore {
 	#[inline]
 	fn get_previous_version(
 		&self,
-		key: &EncodedKey,
+		key: &AnyKey,
 		before_version: CommitVersion,
-	) -> Result<Option<MultiVersionRow>> {
+	) -> Result<Option<MultiVersionRow<AnyKey>>> {
 		match self {
 			MultiStore::Standard(store) => store.get_previous_version(key, before_version),
 		}
 	}
 }
 
-pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>;
+pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + 'a>;
 pub type MultiVersionRowRangeIterator<'a> =
 	Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + 'a>;
 pub type MultiVersionPartitionedRowRangeIterator<'a> =

@@ -10,7 +10,7 @@ use reifydb_macro::Key;
 use super::{KeyKind, typed::key::Key};
 use crate::interface::catalog::flow::{FlowEdgeId, FlowId};
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Flow)]
 pub struct FlowKey {
 	pub flow: FlowId,
@@ -100,7 +100,7 @@ mod verify_byte_identical_flow_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = FlowEdge)]
 pub struct FlowEdgeKey {
 	pub edge: FlowEdgeId,
@@ -134,7 +134,7 @@ impl FlowEdgeKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = FlowEdgeByFlow)]
 pub struct FlowEdgeByFlowKey {
 	pub flow: FlowId,
@@ -283,7 +283,7 @@ mod verify_byte_identical_flow_edge_by_flow_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
+#[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = FlowVersion)]
 pub struct FlowVersionKey {
 	pub flow: FlowId,

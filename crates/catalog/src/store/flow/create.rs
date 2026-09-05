@@ -87,8 +87,8 @@ impl CatalogStore {
 		flow::set_name(&mut row, to_create.name.text());
 		flow::set_status(&mut row, to_create.status.to_u8());
 
-		let key = FlowKey::encoded(flow);
-		txn.set_encoded(&key, row.freeze())?;
+		let key = FlowKey::new(flow);
+		txn.set(&key, row.freeze())?;
 
 		Ok(())
 	}
@@ -102,8 +102,8 @@ impl CatalogStore {
 		let mut row = flow_namespace::allocate();
 		flow_namespace::set_id(&mut row, u64::from(flow));
 		flow_namespace::set_name(&mut row, name);
-		let key = NamespaceFlowKey::encoded(namespace, flow);
-		txn.set_encoded(&key, row.freeze())?;
+		let key = NamespaceFlowKey::new(namespace, flow);
+		txn.set(&key, row.freeze())?;
 		Ok(())
 	}
 }

@@ -69,8 +69,8 @@ impl CatalogStore {
 		handler_namespace::set_id(&mut var_row, u64::from(handler_id));
 		handler_namespace::set_name(&mut var_row, to_create.name.text());
 
-		txn.set_encoded(
-			&VariantHandlerKey::encoded(
+		txn.set(
+			&VariantHandlerKey::new(
 				namespace_id,
 				to_create.variant.sumtype_id,
 				to_create.variant.variant_tag,

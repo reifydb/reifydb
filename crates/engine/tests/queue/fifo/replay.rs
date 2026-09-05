@@ -14,6 +14,7 @@ use reifydb_core::{
 		store::{SingleVersionGet, SingleVersionRange},
 	},
 	key::{
+		any::AnyKey,
 		queue::{QueueAttemptKey, QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 		typed::key::Key,
 	},
@@ -85,7 +86,10 @@ fn attempts(t: &TestEngine, queue: QueueId) -> Vec<(QueueAttemptKey, QueueAttemp
 	while let Some(item) = stream.next() {
 		let item = item.unwrap();
 		out.push((
-			QueueAttemptKey::decode(&item.key).unwrap(),
+			match item.key {
+				AnyKey::QueueAttempt(key) => key,
+				other => panic!("queue attempt scan yielded {other:?}"),
+			},
 			decode_queue_attempt(EncodedQueueAttemptRow::view(&item.bytes)).unwrap(),
 		));
 	}
