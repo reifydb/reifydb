@@ -20,6 +20,7 @@ use reifydb_core::{
 		keyspace::dispatch,
 		state::{GroupId, KeyspaceId, group_inner_range, group_inner_range_split, keyspace_inner_range_split},
 	},
+	metrics::scan::record_page,
 };
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
 use tracing::instrument;
@@ -318,6 +319,7 @@ impl StandardOperatorStore {
 		let mut page_index = 0usize;
 		let scan_budget = target.saturating_mul(SCAN_BUDGET_FACTOR);
 		let mut consumed = 0usize;
+		let mut skipped = 0u64;
 		let mut walked: Option<EncodedKey> = None;
 		let mut resume: Option<EncodedKey> = None;
 
@@ -357,6 +359,8 @@ impl StandardOperatorStore {
 					walked = Some(key.clone());
 					if let Some(row) = entry {
 						items.push((key.clone(), row.clone()));
+					} else {
+						skipped += 1;
 					}
 				}
 				(None, Some((key, row))) => {
@@ -365,6 +369,8 @@ impl StandardOperatorStore {
 					walked = Some(key.clone());
 					if !self.shadowed(operator, key) {
 						items.push((key.clone(), row.clone()));
+					} else {
+						skipped += 1;
 					}
 				}
 				(Some((buffer_key, entry)), Some((page_key, page_row))) => {
@@ -375,6 +381,8 @@ impl StandardOperatorStore {
 							walked = Some(buffer_key.clone());
 							if let Some(row) = entry {
 								items.push((buffer_key.clone(), row.clone()));
+							} else {
+								skipped += 1;
 							}
 						}
 						Ordering::Greater => {
@@ -383,6 +391,8 @@ impl StandardOperatorStore {
 							walked = Some(page_key.clone());
 							if !self.shadowed(operator, page_key) {
 								items.push((page_key.clone(), page_row.clone()));
+							} else {
+								skipped += 1;
 							}
 						}
 						Ordering::Equal => {
@@ -392,6 +402,8 @@ impl StandardOperatorStore {
 							walked = Some(buffer_key.clone());
 							if let Some(row) = entry {
 								items.push((buffer_key.clone(), row.clone()));
+							} else {
+								skipped += 1;
 							}
 						}
 					}
@@ -399,6 +411,7 @@ impl StandardOperatorStore {
 			}
 		}
 
+		record_page(0, skipped);
 		let has_more = items.len() > limit as usize || resume.is_some();
 		items.truncate(limit as usize);
 		OperatorBatch {
