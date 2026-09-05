@@ -162,6 +162,8 @@ pub fn expand_tests(name: &str, fields: &[KeyField]) -> String {
 	out.push_str(&round_trip_test(name));
 	out.push('\n');
 	out.push_str(&order_test(name));
+	out.push('\n');
+	out.push_str(&byte_replay_test(name));
 
 	out.push_str("}\n");
 	out
@@ -249,6 +251,23 @@ fn round_trip_test(name: &str) -> String {
 		"\t\t\tassert_eq!(\n\t\t\t\t__decoded.as_ref(),\n\t\t\t\tSome(__key),\n\t\t\t\t\"{name} did not \
 		 survive a round trip: {{:?}} encoded to {{:?}}\",\n\t\t\t\t__key,\n\t\t\t\t\
 		 __encoded.as_slice()\n\t\t\t);\n"
+	));
+	out.push_str("\t\t}\n\t}\n");
+	out
+}
+
+fn byte_replay_test(name: &str) -> String {
+	let mut out = String::new();
+	out.push_str(
+		"\t// a projection that sorts right can still write the wrong bytes: fixed and escaped byte\n\t		 // encodings sort alike, and every integer width compares the same way. Only replaying the\n\t		 // bytes catches an encoding tag that does not match the column's serializer call.\n",
+	);
+	out.push_str("\t#[test]\n\tfn every_boundary_instance_replays_its_encoded_bytes_through_fields() {\n");
+	out.push_str("\t\tfor __key in __samples().iter() {\n");
+	out.push_str(&format!("\t\t\tlet mut __replayed = vec![!(<{name} as Key>::KIND as u8)];\n"));
+	out.push_str("\t\t\tfor __field in __key.fields().iter() {\n");
+	out.push_str("\t\t\t\t__field.encode(&mut __replayed);\n\t\t\t}\n");
+	out.push_str(&format!(
+		"\t\t\tassert_eq!(\n\t\t\t\t__replayed.as_slice(),\n\t\t\t\t<{name} as 		 Key>::encode(__key).as_slice(),\n\t\t\t\t\"{name}: fields() does not replay the bytes its 		 encoder wrote for {{:?}}\",\n\t\t\t\t__key\n\t\t\t);\n"
 	));
 	out.push_str("\t\t}\n\t}\n");
 	out

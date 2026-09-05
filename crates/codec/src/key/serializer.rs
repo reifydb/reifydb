@@ -20,8 +20,8 @@ use reifydb_value::value::{
 };
 
 use super::{
-	CONTAINER_END, encode_bool, encode_bytes, encode_f32, encode_f64, encode_fixed, encode_i8, encode_i16,
-	encode_i32, encode_i64, encode_i128, encode_u8, encode_u16, encode_u32, encode_u64, encode_u128,
+	ByteSink, CONTAINER_END, encode_bool, encode_bytes, encode_f32, encode_f64, encode_fixed, encode_i8,
+	encode_i16, encode_i32, encode_i64, encode_i128, encode_u8, encode_u16, encode_u32, encode_u64, encode_u128,
 	encode_u128_varint,
 };
 use crate::{
@@ -469,5 +469,15 @@ impl KeySerializer {
 impl Default for KeySerializer {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+impl ByteSink for KeySerializer {
+	fn push(&mut self, byte: u8) {
+		self.buffer.push(byte);
+	}
+
+	fn extend_from_slice(&mut self, slice: &[u8]) {
+		self.buffer.extend_from_slice(slice);
 	}
 }

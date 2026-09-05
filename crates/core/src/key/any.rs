@@ -3,7 +3,7 @@
 
 use std::{borrow::Cow, cmp::Ordering};
 
-use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
+use reifydb_codec::key::{encode_bytes, encode_u128_varint, encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_value::value::Value;
 use smallvec::SmallVec;
 
@@ -53,7 +53,7 @@ use crate::{
 		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
 		row::{
 			PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, RowSequenceKey, RowSettingsKey,
-			RowShapeFieldKey, RowShapeKey, SortedViewRowKey,
+			RowShapeFieldKey, RowShapeKey, SortedViewRowKey, encode_sort_run,
 		},
 		series::{PartitionedSeriesRowKey, SeriesKey, SeriesMetadataKey, SeriesRowKey},
 		system::{
@@ -1038,21 +1038,76 @@ impl PartialOrd for MetricKey {
 
 impl Eq for AnyKey {}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Width {
+	U8,
+	U16,
+	U32,
+	U64,
+	U128,
+	Varint,
+}
+
+impl Width {
+	fn byte_len(self) -> usize {
+		match self {
+			Self::U8 => 1,
+			Self::U16 => 2,
+			Self::U32 => 4,
+			Self::U64 => 8,
+			Self::U128 => 16,
+			Self::Varint => 0,
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ByteEncoding {
+	Fixed,
+	Escaped,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RawEncoding {
+	Verbatim,
+	SortRun,
+}
+
 #[derive(Debug, Clone)]
 pub enum Field<'a> {
-	UAsc(u128),
-	UDesc(u128),
-	BytesDesc(Cow<'a, [u8]>),
-	RawAsc(Cow<'a, [u8]>),
+	UAsc(Width, u128),
+	UDesc(Width, u128),
+	BytesDesc(ByteEncoding, Cow<'a, [u8]>),
+	RawAsc(RawEncoding, Cow<'a, [u8]>),
 }
 
 impl Field<'_> {
 	fn variant_rank(&self) -> u8 {
 		match self {
-			Self::UAsc(_) => 0,
-			Self::UDesc(_) => 1,
-			Self::BytesDesc(_) => 2,
-			Self::RawAsc(_) => 3,
+			Self::UAsc(..) => 0,
+			Self::UDesc(..) => 1,
+			Self::BytesDesc(..) => 2,
+			Self::RawAsc(..) => 3,
+		}
+	}
+
+	pub fn encode(&self, out: &mut Vec<u8>) {
+		match self {
+			Self::UAsc(width, value) => {
+				debug_assert!(
+					!matches!(width, Width::Varint),
+					"there is no ascending varint primitive in the key codec"
+				);
+				out.extend_from_slice(&value.to_be_bytes()[16 - width.byte_len()..]);
+			}
+			Self::UDesc(Width::Varint, value) => encode_u128_varint(*value, out),
+			Self::UDesc(width, value) => {
+				out.extend_from_slice(&(!*value).to_be_bytes()[16 - width.byte_len()..]);
+			}
+			Self::BytesDesc(ByteEncoding::Fixed, bytes) => out.extend(bytes.iter().map(|byte| !byte)),
+			Self::BytesDesc(ByteEncoding::Escaped, bytes) => encode_bytes(bytes, out),
+			Self::RawAsc(RawEncoding::Verbatim, bytes) => out.extend_from_slice(bytes),
+			Self::RawAsc(RawEncoding::SortRun, bytes) => encode_sort_run(bytes, out),
 		}
 	}
 }
@@ -1060,10 +1115,10 @@ impl Field<'_> {
 impl Ord for Field<'_> {
 	fn cmp(&self, other: &Self) -> Ordering {
 		match (self, other) {
-			(Self::UAsc(left), Self::UAsc(right)) => left.cmp(right),
-			(Self::UDesc(left), Self::UDesc(right)) => right.cmp(left),
-			(Self::BytesDesc(left), Self::BytesDesc(right)) => right.as_ref().cmp(left.as_ref()),
-			(Self::RawAsc(left), Self::RawAsc(right)) => left.as_ref().cmp(right.as_ref()),
+			(Self::UAsc(_, left), Self::UAsc(_, right)) => left.cmp(right),
+			(Self::UDesc(_, left), Self::UDesc(_, right)) => right.cmp(left),
+			(Self::BytesDesc(_, left), Self::BytesDesc(_, right)) => right.as_ref().cmp(left.as_ref()),
+			(Self::RawAsc(_, left), Self::RawAsc(_, right)) => left.as_ref().cmp(right.as_ref()),
 			(left, right) => left.variant_rank().cmp(&right.variant_rank()),
 		}
 	}
@@ -1206,8 +1261,6 @@ impl PartialOrd for AnyKey {
 mod tests {
 	use std::cmp::Ordering;
 
-	use super::KeyFields;
-
 	use reifydb_codec::{key::encoded::EncodedKey, row::shape::fingerprint::RowShapeFingerprint};
 	use reifydb_runtime::version_epoch::EpochSeconds;
 	use reifydb_value::value::{
@@ -1215,7 +1268,7 @@ mod tests {
 		row_number::RowNumber, sumtype::SumTypeId,
 	};
 
-	use super::{AnyKey, MetricCdcKey, MetricKey, MetricStorageKey};
+	use super::{AnyKey, KeyFields, MetricCdcKey, MetricKey, MetricStorageKey};
 	use crate::{
 		interface::{
 			catalog::{
@@ -1634,6 +1687,27 @@ mod tests {
 					right_bytes.as_slice()
 				);
 			}
+		}
+	}
+
+	fn encode_via_fields(key: &AnyKey) -> EncodedKey {
+		let mut out = vec![!(key.kind() as u8)];
+		for field in key.fields().iter() {
+			field.encode(&mut out);
+		}
+		EncodedKey::new(out)
+	}
+
+	#[test]
+	fn every_projection_replays_the_exact_bytes_its_encoder_wrote() {
+		// fields() carries the ordering; the encoding tag on each Field carries the codec
+		// primitive it came from. Ordering tests cannot see a wrong tag, because Fixed and
+		// Escaped sort alike and every integer width compares the same way, so only replaying
+		// the bytes catches one.
+		let probes = all_probes();
+		assert!(probes.len() >= 80, "the byte replay is only worth running over every key type");
+		for (key, encoded) in probes {
+			assert_eq!(encode_via_fields(&key), encoded, "{key:?}");
 		}
 	}
 

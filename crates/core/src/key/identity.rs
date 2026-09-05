@@ -9,7 +9,6 @@ use reifydb_macro::Key;
 use reifydb_value::value::identity::IdentityId;
 
 use super::KeyKind;
-use crate::key::any::{Field, KeyFields};
 use crate::{
 	interface::catalog::{
 		authentication::AuthenticationId,
@@ -17,7 +16,10 @@ use crate::{
 		policy::PolicyId,
 		token::TokenId,
 	},
-	key::typed::key::Key,
+	key::{
+		any::{ByteEncoding, Field, KeyFields, Width},
+		typed::key::Key,
+	},
 };
 
 #[derive(Debug, Clone, PartialEq, Key, Hash)]

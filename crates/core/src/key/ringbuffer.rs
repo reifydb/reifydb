@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::borrow::Cow;
+
 use reifydb_codec::key::{
 	deserializer::KeyDeserializer,
 	encoded::{EncodedKey, EncodedKeyRange},
@@ -9,13 +11,12 @@ use reifydb_codec::key::{
 use reifydb_macro::Key;
 use reifydb_value::value::Value;
 use smallvec::{SmallVec, smallvec};
-use std::borrow::Cow;
 
 use super::{EncodableKey, KeyKind};
-use crate::key::any::{Field, KeyFields, encode_values};
 use crate::{
 	interface::catalog::{id::RingBufferId, object::ObjectId, storage::StorageId},
 	key::{
+		any::{Field, KeyFields, RawEncoding, Width, encode_values},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		typed::key::Key,
 	},
@@ -207,9 +208,12 @@ mod tests {
 impl KeyFields for RingBufferMetadataKey {
 	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
 		smallvec![
-			Field::UAsc(ObjectId::from(self.storage).type_tag() as u128),
-			Field::UDesc(ObjectId::from(self.storage).as_u64() as u128),
-			Field::RawAsc(Cow::Owned(encode_values(&self.partition_values).as_slice().to_vec())),
+			Field::UAsc(Width::U8, ObjectId::from(self.storage).type_tag() as u128),
+			Field::UDesc(Width::U64, ObjectId::from(self.storage).as_u64() as u128),
+			Field::RawAsc(
+				RawEncoding::Verbatim,
+				Cow::Owned(encode_values(&self.partition_values).as_slice().to_vec())
+			),
 		]
 	}
 }

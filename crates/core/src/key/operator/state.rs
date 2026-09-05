@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::key::any::{Field, KeyFields};
-use smallvec::{SmallVec, smallvec};
 use std::{
 	borrow::Cow,
 	fmt::{Display, Formatter, Result as FmtResult},
@@ -17,11 +15,13 @@ use reifydb_codec::key::{
 };
 use reifydb_value::util::hash::{Hash128, xxh3_128};
 use serde::{Deserialize, Serialize};
+use smallvec::{SmallVec, smallvec};
 
 use super::super::{EncodableKey, KeyKind};
 use crate::{
 	interface::{catalog::flow::OperatorId, store::CacheTiers},
 	key::{
+		any::{ByteEncoding, Field, KeyFields, RawEncoding, Width},
 		operator::{
 			keyspace::{
 				KeyspaceVisitor, REGISTERED, dispatch,
@@ -1513,10 +1513,10 @@ mod tests {
 impl KeyFields for OperatorStateKey {
 	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
 		smallvec![
-			Field::UDesc(self.operator.0 as u128),
-			Field::BytesDesc(Cow::Borrowed(self.group.as_bytes())),
-			Field::UDesc(self.keyspace.0 as u128),
-			Field::RawAsc(Cow::Borrowed(&self.suffix)),
+			Field::UDesc(Width::U64, self.operator.0 as u128),
+			Field::BytesDesc(ByteEncoding::Fixed, Cow::Borrowed(self.group.as_bytes())),
+			Field::UDesc(Width::U8, self.keyspace.0 as u128),
+			Field::RawAsc(RawEncoding::Verbatim, Cow::Borrowed(&self.suffix)),
 		]
 	}
 }

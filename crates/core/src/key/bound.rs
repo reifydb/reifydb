@@ -3,6 +3,7 @@
 
 use std::cmp::Ordering;
 
+use reifydb_codec::key::encoded::EncodedKey;
 use smallvec::SmallVec;
 
 use crate::key::{
@@ -31,6 +32,17 @@ impl AnyKeyBound {
 			Self::KindEnd(kind) => (*kind as u8).wrapping_sub(1),
 			Self::Key(key) => key.kind() as u8,
 		}
+	}
+
+	pub fn encode(&self) -> EncodedKey {
+		if let Self::Key(key) = self {
+			return key.encode();
+		}
+		let mut out = vec![!self.kind_byte()];
+		for field in self.bound_fields().iter() {
+			field.encode(&mut out);
+		}
+		EncodedKey::new(out)
 	}
 
 	fn bound_fields(&self) -> SmallVec<[Field<'_>; 6]> {
@@ -79,8 +91,8 @@ mod tests {
 	use crate::{
 		interface::catalog::{id::TableId, object::ObjectId, storage::StorageId},
 		key::{
-			any::{AnyKey, Field},
-			catalog::TableKey,
+			any::{AnyKey, Field, Width},
+			catalog::{DictionaryKey, TableKey},
 			kind::KeyKind,
 			row::RowKey,
 			typed::key::Key,
@@ -113,8 +125,8 @@ mod tests {
 		AnyKeyBound::prefix(
 			KeyKind::Row,
 			[
-				OwnedField::UAsc(ObjectId::from(storage).type_tag() as u128),
-				Field::UDesc(ObjectId::from(storage).as_u64() as u128),
+				OwnedField::UAsc(Width::U8, ObjectId::from(storage).type_tag() as u128),
+				Field::UDesc(Width::U64, ObjectId::from(storage).as_u64() as u128),
 			],
 		)
 	}
@@ -123,7 +135,10 @@ mod tests {
 		let previous = ObjectId::from(storage).prev();
 		AnyKeyBound::prefix(
 			KeyKind::Row,
-			[OwnedField::UAsc(previous.type_tag() as u128), Field::UDesc(previous.as_u64() as u128)],
+			[
+				OwnedField::UAsc(Width::U8, previous.type_tag() as u128),
+				Field::UDesc(Width::U64, previous.as_u64() as u128),
+			],
 		)
 	}
 
@@ -168,6 +183,28 @@ mod tests {
 			assert!(!by_bytes.is_empty(), "storage {storage:?} selected nothing by bytes");
 			assert_eq!(by_bytes, by_typed, "storage {storage:?}");
 		}
+	}
+
+	#[test]
+	fn a_field_prefix_bound_encodes_to_the_bytes_its_byte_producer_writes() {
+		// the bound has to be substitutable for the encoded range it replaces, and ordering
+		// alone cannot show that: two bounds can bracket the same typed keys while writing
+		// different bytes, which would silently change what the sqlite blob range selects.
+		for storage in [1u64, 2, u64::MAX] {
+			let storage = StorageId::table(storage);
+			assert_eq!(storage_start(storage).encode(), RowKey::storage_start(storage), "{storage:?}");
+			assert_eq!(storage_end(storage).encode(), RowKey::storage_end(storage), "{storage:?}");
+		}
+	}
+
+	#[test]
+	fn a_kind_span_bound_encodes_to_the_bytes_its_byte_producer_writes() {
+		let range = DictionaryKey::full_scan();
+		let (Bound::Included(start), Bound::Included(end)) = (range.start, range.end) else {
+			panic!("full_scan is expected to produce an inclusive byte span");
+		};
+		assert_eq!(AnyKeyBound::Kind(KeyKind::Dictionary).encode(), start);
+		assert_eq!(AnyKeyBound::KindEnd(KeyKind::Dictionary).encode(), end);
 	}
 
 	#[test]

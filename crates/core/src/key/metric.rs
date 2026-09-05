@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::key::any::{Field, KeyFields};
 use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
 use smallvec::{SmallVec, smallvec};
 
@@ -9,6 +8,7 @@ use super::KeyKind;
 use crate::{
 	interface::{catalog::metrics::MetricsId, store::Tier},
 	key::{
+		any::{Field, KeyFields, Width},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		typed::key::Key,
 	},
@@ -242,18 +242,20 @@ mod tests {
 fn extend_metrics_id_fields<'a>(out: &mut SmallVec<[Field<'a>; 6]>, id: MetricsId) {
 	match id {
 		MetricsId::Object(object) => {
-			out.push(Field::UDesc(ID_OBJECT as u128));
-			out.push(Field::UAsc(object.type_tag() as u128));
-			out.push(Field::UDesc(object.as_u64() as u128));
+			out.push(Field::UDesc(Width::U8, ID_OBJECT as u128));
+			out.push(Field::UAsc(Width::U8, object.type_tag() as u128));
+			out.push(Field::UDesc(Width::U64, object.as_u64() as u128));
 		}
-		MetricsId::System => out.push(Field::UDesc(ID_SYSTEM as u128)),
+		MetricsId::System => out.push(Field::UDesc(Width::U8, ID_SYSTEM as u128)),
 	}
 }
 
 impl KeyFields for MetricStorageKey {
 	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		let mut out: SmallVec<[Field<'_>; 6]> =
-			smallvec![Field::UDesc(SUBKEY_STORAGE as u128), Field::UDesc(tier_to_byte(self.tier) as u128),];
+		let mut out: SmallVec<[Field<'_>; 6]> = smallvec![
+			Field::UDesc(Width::U8, SUBKEY_STORAGE as u128),
+			Field::UDesc(Width::U8, tier_to_byte(self.tier) as u128),
+		];
 		extend_metrics_id_fields(&mut out, self.id);
 		out
 	}
@@ -261,7 +263,7 @@ impl KeyFields for MetricStorageKey {
 
 impl KeyFields for MetricCdcKey {
 	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		let mut out: SmallVec<[Field<'_>; 6]> = smallvec![Field::UDesc(SUBKEY_CDC as u128)];
+		let mut out: SmallVec<[Field<'_>; 6]> = smallvec![Field::UDesc(Width::U8, SUBKEY_CDC as u128)];
 		extend_metrics_id_fields(&mut out, self.id);
 		out
 	}

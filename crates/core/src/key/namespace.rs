@@ -9,7 +9,6 @@ use reifydb_macro::Key;
 use reifydb_value::value::{dictionary::DictionaryId, sumtype::SumTypeId};
 
 use super::KeyKind;
-use crate::key::any::{Field, KeyFields};
 use crate::{
 	interface::catalog::{
 		flow::FlowId,
@@ -18,7 +17,10 @@ use crate::{
 			SourceId, TableId, ViewId,
 		},
 	},
-	key::typed::key::Key,
+	key::{
+		any::{Field, KeyFields, Width},
+		typed::key::Key,
+	},
 };
 
 #[derive(Debug, Clone, PartialEq, Key, Hash)]

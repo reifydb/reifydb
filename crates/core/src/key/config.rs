@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::key::any::{Field, KeyFields};
-use smallvec::{SmallVec, smallvec};
-use std::borrow::Cow;
-use std::str::FromStr;
+use std::{borrow::Cow, str::FromStr};
 
 use reifydb_codec::key::{
 	deserializer::KeyDeserializer,
 	encoded::{EncodedKey, EncodedKeyRange},
 	serializer::KeySerializer,
 };
+use smallvec::{SmallVec, smallvec};
 
 use super::{EncodableKey, KeyKind};
-use crate::interface::catalog::config::ConfigKey;
+use crate::{
+	interface::catalog::config::ConfigKey,
+	key::any::{ByteEncoding, Field, KeyFields},
+};
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct ConfigStorageKey {
@@ -68,6 +69,6 @@ impl EncodableKey for ConfigStorageKey {
 
 impl KeyFields for ConfigStorageKey {
 	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![Field::BytesDesc(Cow::Owned(self.key.to_string().into_bytes()))]
+		smallvec![Field::BytesDesc(ByteEncoding::Escaped, Cow::Owned(self.key.to_string().into_bytes()))]
 	}
 }

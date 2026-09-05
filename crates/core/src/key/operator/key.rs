@@ -8,8 +8,10 @@ use reifydb_codec::key::{
 use reifydb_macro::Key;
 
 use super::super::{KeyKind, typed::key::Key};
-use crate::interface::catalog::flow::{FlowId, OperatorId};
-use crate::key::any::{Field, KeyFields};
+use crate::{
+	interface::catalog::flow::{FlowId, OperatorId},
+	key::any::{Field, KeyFields, Width},
+};
 
 #[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Operator)]

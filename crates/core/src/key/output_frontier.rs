@@ -12,8 +12,10 @@ use super::{
 	catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 	typed::key::Key,
 };
-use crate::interface::catalog::object::ObjectId;
-use crate::key::any::{Field, KeyFields};
+use crate::{
+	interface::catalog::object::ObjectId,
+	key::any::{Field, KeyFields, Width},
+};
 
 #[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = OutputFrontier)]

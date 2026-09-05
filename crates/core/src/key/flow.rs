@@ -8,8 +8,10 @@ use reifydb_codec::key::{
 use reifydb_macro::Key;
 
 use super::{KeyKind, typed::key::Key};
-use crate::interface::catalog::flow::{FlowEdgeId, FlowId};
-use crate::key::any::{Field, KeyFields};
+use crate::{
+	interface::catalog::flow::{FlowEdgeId, FlowId},
+	key::any::{Field, KeyFields, Width},
+};
 
 #[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Flow)]

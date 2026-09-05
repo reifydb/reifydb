@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::borrow::Cow;
+
 use reifydb_codec::key::{
 	deserializer::KeyDeserializer,
 	encoded::{EncodedKey, EncodedKeyRange},
@@ -9,11 +11,15 @@ use reifydb_codec::key::{
 use reifydb_macro::Key;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use smallvec::{SmallVec, smallvec};
-use std::borrow::Cow;
 
 use super::{EncodableKey, KeyKind};
-use crate::key::any::{Field, KeyFields};
-use crate::{interface::catalog::id::QueueId, key::typed::key::Key};
+use crate::{
+	interface::catalog::id::QueueId,
+	key::{
+		any::{ByteEncoding, Field, KeyFields, Width},
+		typed::key::Key,
+	},
+};
 
 #[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = Queue)]
@@ -839,6 +845,9 @@ mod queue_partition_key_tests {
 
 impl KeyFields for QueueDeduplicationKey {
 	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![Field::UDesc(self.queue.0 as u128), Field::BytesDesc(Cow::Borrowed(self.tail.as_slice())),]
+		smallvec![
+			Field::UDesc(Width::U64, self.queue.0 as u128),
+			Field::BytesDesc(ByteEncoding::Escaped, Cow::Borrowed(self.tail.as_slice())),
+		]
 	}
 }

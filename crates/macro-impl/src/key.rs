@@ -101,31 +101,38 @@ impl KeyColumn {
 	}
 
 	fn field_exprs(self, field: &str) -> Vec<String> {
-		let u = |expr: String| vec![format!("Field::UDesc({expr} as u128)")];
+		let u = |width: &str, expr: String| vec![format!("Field::UDesc(Width::{width}, {expr} as u128)")];
 		match self {
-			KeyColumn::U8 | KeyColumn::U16 | KeyColumn::U32 | KeyColumn::U64 | KeyColumn::U128 => {
-				u(format!("self.{field}"))
+			KeyColumn::U8 => u("U8", format!("self.{field}")),
+			KeyColumn::U16 => u("U16", format!("self.{field}")),
+			KeyColumn::U32 => u("U32", format!("self.{field}")),
+			KeyColumn::U64 => u("U64", format!("self.{field}")),
+			KeyColumn::U128 => u("U128", format!("self.{field}")),
+			KeyColumn::ReprU8 => u("U8", format!("self.{field} as u8")),
+			KeyColumn::RowNumber => u("U64", format!("self.{field}.0")),
+			KeyColumn::Partition => u("U128", format!("self.{field}.0")),
+			KeyColumn::ProcedureId => u("U64", format!("*self.{field}")),
+			KeyColumn::EpochSeconds => u("U64", format!("self.{field}.seconds()")),
+			KeyColumn::DateTime => u("U64", format!("self.{field}.to_nanos()")),
+			KeyColumn::RowShapeFingerprint | KeyColumn::IndexId => {
+				u("U64", format!("self.{field}.as_u64()"))
 			}
-			KeyColumn::ReprU8 => u(format!("self.{field} as u8")),
-			KeyColumn::RowNumber => u(format!("self.{field}.0")),
-			KeyColumn::Partition => u(format!("self.{field}.0")),
-			KeyColumn::ProcedureId => u(format!("*self.{field}")),
-			KeyColumn::EpochSeconds => u(format!("self.{field}.seconds()")),
-			KeyColumn::DateTime => u(format!("self.{field}.to_nanos()")),
-			KeyColumn::RowShapeFingerprint | KeyColumn::IndexId => u(format!("self.{field}.as_u64()")),
-			KeyColumn::GroupId | KeyColumn::IdentityId => {
-				vec![format!("Field::BytesDesc(::std::borrow::Cow::Borrowed(self.{field}.as_bytes()))")]
-			}
-			KeyColumn::Blob16 => {
-				vec![format!("Field::RawAsc(::std::borrow::Cow::Borrowed(&self.{field}))")]
-			}
+			KeyColumn::GroupId => vec![format!(
+				"Field::BytesDesc(ByteEncoding::Fixed, ::std::borrow::Cow::Borrowed(self.{field}.as_bytes()))"
+			)],
+			KeyColumn::IdentityId => vec![format!(
+				"Field::BytesDesc(ByteEncoding::Escaped, ::std::borrow::Cow::Borrowed(self.{field}.as_bytes()))"
+			)],
+			KeyColumn::Blob16 => vec![format!(
+				"Field::RawAsc(RawEncoding::Verbatim, ::std::borrow::Cow::Borrowed(&self.{field}))"
+			)],
 			KeyColumn::ObjectId | KeyColumn::StorageId => vec![
-				format!("Field::UAsc(self.{field}.type_tag() as u128)"),
-				format!("Field::UDesc(self.{field}.as_u64() as u128)"),
+				format!("Field::UAsc(Width::U8, self.{field}.type_tag() as u128)"),
+				format!("Field::UDesc(Width::U64, self.{field}.as_u64() as u128)"),
 			],
 			KeyColumn::OptionU8 => vec![
-				format!("Field::UDesc(self.{field}.is_some() as u128)"),
-				format!("Field::UDesc(self.{field}.unwrap_or(0u8) as u128)"),
+				format!("Field::UDesc(Width::U8, self.{field}.is_some() as u128)"),
+				format!("Field::UDesc(Width::U8, self.{field}.unwrap_or(0u8) as u128)"),
 			],
 			KeyColumn::TableId
 			| KeyColumn::ColumnId
@@ -149,7 +156,7 @@ impl KeyColumn {
 			| KeyColumn::MigrationId
 			| KeyColumn::MigrationEventId
 			| KeyColumn::ColumnSnapshotId
-			| KeyColumn::PrimaryKeyId => u(format!("self.{field}.0")),
+			| KeyColumn::PrimaryKeyId => u("U64", format!("self.{field}.0")),
 		}
 	}
 

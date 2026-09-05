@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::key::any::{Field, KeyFields};
+use std::borrow::Cow;
+
 use reifydb_codec::key::{
 	deserializer::KeyDeserializer,
 	encoded::{EncodedKey, EncodedKeyRange},
 	serializer::KeySerializer,
 };
 use smallvec::{SmallVec, smallvec};
-use std::borrow::Cow;
 
 use super::{EncodableKey, KeyKind};
-use crate::interface::{catalog::flow::FlowId, cdc::CdcConsumerId};
+use crate::{
+	interface::{catalog::flow::FlowId, cdc::CdcConsumerId},
+	key::any::{ByteEncoding, Field, KeyFields},
+};
 
 pub trait ToConsumerKey {
 	fn to_consumer_key(&self) -> CdcConsumerKey;
@@ -652,6 +655,6 @@ pub mod primary_key_tests {
 
 impl KeyFields for CdcConsumerKey {
 	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![Field::BytesDesc(Cow::Borrowed(self.consumer.as_ref().as_bytes()))]
+		smallvec![Field::BytesDesc(ByteEncoding::Escaped, Cow::Borrowed(self.consumer.as_ref().as_bytes()))]
 	}
 }

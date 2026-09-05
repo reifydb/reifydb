@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::key::any::{Field, KeyFields};
 use reifydb_codec::key::{
 	deserializer::KeyDeserializer,
 	encoded::{EncodedKey, EncodedKeyRange},
@@ -10,7 +9,13 @@ use reifydb_codec::key::{
 use smallvec::{SmallVec, smallvec};
 
 use super::KeyKind;
-use crate::{interface::catalog::id::ProcedureId, key::typed::key::Key};
+use crate::{
+	interface::catalog::id::ProcedureId,
+	key::{
+		any::{Field, KeyFields, Width},
+		typed::key::Key,
+	},
+};
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct ProcedureKey {
@@ -168,12 +173,15 @@ pub mod procedure_param_key_tests {
 
 impl KeyFields for ProcedureKey {
 	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![Field::UDesc(*self.procedure as u128)]
+		smallvec![Field::UDesc(Width::U64, *self.procedure as u128)]
 	}
 }
 
 impl KeyFields for ProcedureParamKey {
 	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![Field::UDesc(*self.procedure as u128), Field::UDesc(self.param_index as u128)]
+		smallvec![
+			Field::UDesc(Width::U64, *self.procedure as u128),
+			Field::UDesc(Width::U16, self.param_index as u128)
+		]
 	}
 }

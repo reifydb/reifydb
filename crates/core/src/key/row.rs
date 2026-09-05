@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use smallvec::{SmallVec, smallvec};
-use std::borrow::Cow;
-use std::{cmp::Ordering, collections::Bound};
+use std::{borrow::Cow, cmp::Ordering, collections::Bound};
 
 use reifydb_codec::{
 	key::{
+		ByteSink,
 		deserializer::KeyDeserializer,
 		encoded::{EncodedKey, EncodedKeyRange},
 		serializer::KeySerializer,
@@ -16,12 +15,13 @@ use reifydb_codec::{
 use reifydb_macro::Key;
 use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 use serde::{Deserialize, Serialize};
+use smallvec::{SmallVec, smallvec};
 
 use super::{EncodableKeyRange, KeyKind};
-use crate::key::any::{Field, KeyFields};
 use crate::{
 	interface::catalog::{object::ObjectId, storage::StorageId},
 	key::{
+		any::{Field, KeyFields, RawEncoding, Width},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		sort_run::SortRun,
 		typed::{
@@ -276,15 +276,19 @@ const SORT_RUN_MARKER: u8 = 0x00;
 const SORT_RUN_ZERO: u8 = 0xff;
 const SORT_RUN_END: u8 = 0x00;
 
-fn extend_sort_run(serializer: &mut KeySerializer, run: &SortRun) {
-	for &byte in run.as_slice() {
+pub(crate) fn encode_sort_run<B: ByteSink>(run: &[u8], out: &mut B) {
+	for &byte in run {
 		if byte == SORT_RUN_MARKER {
-			serializer.extend_raw(&[SORT_RUN_MARKER, SORT_RUN_ZERO]);
+			out.extend_from_slice(&[SORT_RUN_MARKER, SORT_RUN_ZERO]);
 		} else {
-			serializer.extend_raw(&[byte]);
+			out.push(byte);
 		}
 	}
-	serializer.extend_raw(&[SORT_RUN_MARKER, SORT_RUN_END]);
+	out.extend_from_slice(&[SORT_RUN_MARKER, SORT_RUN_END]);
+}
+
+fn extend_sort_run(serializer: &mut KeySerializer, run: &SortRun) {
+	encode_sort_run(run.as_slice(), serializer);
 }
 
 fn read_sort_run(de: &mut KeyDeserializer) -> Option<SortRun> {
@@ -1512,10 +1516,10 @@ mod sorted_view_run_tests {
 impl KeyFields for SortedViewRowKey {
 	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
 		smallvec![
-			Field::UAsc(ObjectId::from(self.storage).type_tag() as u128),
-			Field::UDesc(ObjectId::from(self.storage).as_u64() as u128),
-			Field::RawAsc(Cow::Borrowed(self.run.as_slice())),
-			Field::UAsc(self.row.0.0 as u128),
+			Field::UAsc(Width::U8, ObjectId::from(self.storage).type_tag() as u128),
+			Field::UDesc(Width::U64, ObjectId::from(self.storage).as_u64() as u128),
+			Field::RawAsc(RawEncoding::SortRun, Cow::Borrowed(self.run.as_slice())),
+			Field::UAsc(Width::U64, self.row.0.0 as u128),
 		]
 	}
 }
@@ -1523,11 +1527,11 @@ impl KeyFields for SortedViewRowKey {
 impl KeyFields for PartitionedSortedViewRowKey {
 	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
 		smallvec![
-			Field::UAsc(ObjectId::from(self.storage).type_tag() as u128),
-			Field::UDesc(ObjectId::from(self.storage).as_u64() as u128),
-			Field::UDesc(self.partition.0),
-			Field::RawAsc(Cow::Borrowed(self.run.as_slice())),
-			Field::UAsc(self.row.0.0 as u128),
+			Field::UAsc(Width::U8, ObjectId::from(self.storage).type_tag() as u128),
+			Field::UDesc(Width::U64, ObjectId::from(self.storage).as_u64() as u128),
+			Field::UDesc(Width::U128, self.partition.0),
+			Field::RawAsc(RawEncoding::SortRun, Cow::Borrowed(self.run.as_slice())),
+			Field::UAsc(Width::U64, self.row.0.0 as u128),
 		]
 	}
 }
