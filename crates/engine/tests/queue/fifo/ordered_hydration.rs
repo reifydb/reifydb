@@ -51,7 +51,7 @@ fn scan(t: &TestEngine, range: EncodedKeyRange) -> Vec<SingleVersionRow> {
 }
 
 fn states(t: &TestEngine, queue: &Queue) -> BTreeMap<RowNumber, QueueItemState> {
-	scan(t, QueueItemStateKey::queue_scan(queue.id))
+	scan(t, QueueItemStateKey::queue_scan(queue.id).encode())
 		.iter()
 		.map(|item| {
 			let key = QueueItemStateKey::decode(&item.key).unwrap();
@@ -65,7 +65,7 @@ fn statuses(t: &TestEngine, queue: &Queue) -> BTreeMap<u64, QueueItemStatus> {
 }
 
 fn due_rows(t: &TestEngine, queue: &Queue) -> Vec<u64> {
-	let mut rows: Vec<u64> = scan(t, QueueDueKey::queue_scan(queue.id))
+	let mut rows: Vec<u64> = scan(t, QueueDueKey::queue_scan(queue.id).encode())
 		.iter()
 		.map(|item| QueueDueKey::decode(&item.key).unwrap().row.0)
 		.collect();
@@ -74,7 +74,7 @@ fn due_rows(t: &TestEngine, queue: &Queue) -> Vec<u64> {
 }
 
 fn chain_rows(t: &TestEngine, queue: &Queue) -> Vec<u64> {
-	let mut rows: Vec<u64> = scan(t, QueueKeyActiveKey::queue_scan(queue.id))
+	let mut rows: Vec<u64> = scan(t, QueueKeyActiveKey::queue_scan(queue.id).encode())
 		.iter()
 		.map(|item| QueueKeyActiveKey::decode(&item.key).unwrap().row.0)
 		.collect();
@@ -104,9 +104,9 @@ where
 		.begin_command_ranged(
 			[&lock_key],
 			vec![
-				QueueItemStateKey::partition_scan(queue.id, partition),
-				QueueDueKey::partition_scan(queue.id, partition),
-				QueueKeyActiveKey::partition_scan(queue.id, partition),
+				QueueItemStateKey::partition_scan(queue.id, partition).encode(),
+				QueueDueKey::partition_scan(queue.id, partition).encode(),
+				QueueKeyActiveKey::partition_scan(queue.id, partition).encode(),
 			],
 		)
 		.unwrap();
@@ -116,10 +116,10 @@ where
 
 fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
 	for partition in 0..queue.partitions() {
-		let keys: Vec<AnyKey> = keys_in(t, QueueItemStateKey::partition_scan(queue.id, partition))
+		let keys: Vec<AnyKey> = keys_in(t, QueueItemStateKey::partition_scan(queue.id, partition).encode())
 			.into_iter()
-			.chain(keys_in(t, QueueDueKey::partition_scan(queue.id, partition)))
-			.chain(keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, partition)))
+			.chain(keys_in(t, QueueDueKey::partition_scan(queue.id, partition).encode()))
+			.chain(keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, partition).encode()))
 			.collect();
 		if keys.is_empty() {
 			continue;
@@ -135,13 +135,13 @@ fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
 }
 
 fn forget_items(t: &TestEngine, queue: &Queue, rows: &[u64], blocked_delta: u64) {
-	let doomed: Vec<AnyKey> = keys_in(t, QueueItemStateKey::partition_scan(queue.id, 0))
+	let doomed: Vec<AnyKey> = keys_in(t, QueueItemStateKey::partition_scan(queue.id, 0).encode())
 		.into_iter()
 		.filter(|key| matches!(key, AnyKey::QueueItemState(key) if rows.contains(&key.row.0)))
-		.chain(keys_in(t, QueueDueKey::partition_scan(queue.id, 0))
+		.chain(keys_in(t, QueueDueKey::partition_scan(queue.id, 0).encode())
 			.into_iter()
 			.filter(|key| matches!(key, AnyKey::QueueDue(key) if rows.contains(&key.row.0))))
-		.chain(keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, 0))
+		.chain(keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, 0).encode())
 			.into_iter()
 			.filter(|key| matches!(key, AnyKey::QueueKeyActive(key) if rows.contains(&key.row.0))))
 		.collect();

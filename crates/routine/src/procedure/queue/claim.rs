@@ -253,7 +253,7 @@ fn due_candidates(
 	let store = single.read_store();
 	let batch = SingleVersionRangeRev::range_rev_batch(
 		&store,
-		QueueDueKey::partition_scan(queue.id, partition),
+		QueueDueKey::partition_scan(queue.id, partition).encode(),
 		need as u64,
 	)?;
 
@@ -277,8 +277,8 @@ fn lease_candidates(
 	let mut tx = single.begin_command_ranged(
 		[&lock_key.encode()],
 		vec![
-			QueueItemStateKey::partition_scan(queue.id, partition),
-			QueueDueKey::partition_scan(queue.id, partition),
+			QueueItemStateKey::partition_scan(queue.id, partition).encode(),
+			QueueDueKey::partition_scan(queue.id, partition).encode(),
 		],
 	)?;
 

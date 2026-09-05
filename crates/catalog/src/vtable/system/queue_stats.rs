@@ -38,7 +38,7 @@ pub(crate) fn partition_stats(txn: &mut Transaction<'_>, queue: &Queue) -> Resul
 
 		let batch = SingleVersionRangeRev::range_rev_batch(
 			&store,
-			QueueDueKey::partition_scan(queue.id, partition),
+			QueueDueKey::partition_scan(queue.id, partition).encode(),
 			1,
 		)?;
 		let oldest_due_at =

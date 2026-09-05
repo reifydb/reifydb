@@ -37,9 +37,9 @@ fn remove_queue_scheduling_state(single: &SingleTransaction, queue: QueueId, par
 	let lock_keys: Vec<EncodedKey> =
 		(0..partitions).map(|partition| QueuePartitionKey::encoded(queue, partition)).collect();
 	let ranges = vec![
-		QueueItemStateKey::queue_scan(queue),
-		QueueDueKey::queue_scan(queue),
-		QueuePartitionKey::queue_scan(queue),
+		QueueItemStateKey::queue_scan(queue).encode(),
+		QueueDueKey::queue_scan(queue).encode(),
+		QueuePartitionKey::queue_scan(queue).encode(),
 	];
 
 	for range in &ranges {

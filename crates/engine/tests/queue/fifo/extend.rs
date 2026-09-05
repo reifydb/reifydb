@@ -35,7 +35,7 @@ fn queue_id(t: &TestEngine, name: &str) -> QueueId {
 
 fn state_of(t: &TestEngine, queue: QueueId) -> QueueItemState {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue), 1024)
+	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()

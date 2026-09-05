@@ -88,7 +88,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueExtend {
 		let lock_key = QueuePartitionKey::new(token.queue, token.partition);
 		let mut tx = single.begin_command_ranged(
 			[&lock_key.encode()],
-			vec![QueueItemStateKey::partition_scan(token.queue, token.partition)],
+			vec![QueueItemStateKey::partition_scan(token.queue, token.partition).encode()],
 		)?;
 
 		let state_key = QueueItemStateKey::new(token.queue, token.partition, token.row);

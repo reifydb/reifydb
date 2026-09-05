@@ -16,7 +16,8 @@ impl CatalogStore {
 	pub(crate) fn list_sumtypes(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<SumType>> {
 		let mut ids = Vec::new();
 		{
-			let stream = rx.range(NamespaceSumTypeKey::full_scan(namespace), RangeScope::All, 1024)?;
+			let stream =
+				rx.range(NamespaceSumTypeKey::full_scan(namespace).encode(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
 				let bytes = EncodedCatalogRow::view(&multi.bytes);

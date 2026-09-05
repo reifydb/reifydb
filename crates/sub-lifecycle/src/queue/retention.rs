@@ -93,7 +93,7 @@ impl QueueRetentionTask {
 		after: Option<&EncodedKey>,
 		limit: usize,
 	) -> Result<Vec<(EncodedKey, RowNumber, QueueItemStatus, u32)>> {
-		let mut range = QueueItemStateKey::partition_scan(queue, partition);
+		let mut range = QueueItemStateKey::partition_scan(queue, partition).encode();
 		if let Some(after) = after {
 			range.start = Bound::Excluded(after.clone());
 		}
@@ -152,7 +152,8 @@ impl QueueRetentionTask {
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		let mut attempt_keys = Vec::new();
 		for item in &purge {
-			let stream = txn.range(QueueAttemptKey::item_scan(queue, item.row), RangeScope::All, 1024)?;
+			let stream =
+				txn.range(QueueAttemptKey::item_scan(queue, item.row).encode(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
 				let AnyKey::QueueAttempt(key) = entry.key else {
@@ -176,7 +177,7 @@ impl QueueRetentionTask {
 	}
 
 	fn sweep_deduplication(&mut self, queue: QueueId, now: DateTime, limit: usize) -> Result<(u64, bool)> {
-		let mut range = QueueDeduplicationKey::full_scan(queue);
+		let mut range = QueueDeduplicationKey::full_scan(queue).encode();
 		if let Some(after) = self.dedup_cursor.get(&queue) {
 			range.start = Bound::Excluded(after.clone());
 		}

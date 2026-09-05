@@ -96,7 +96,7 @@ impl QueueLeaseReapTask {
 		after: Option<&EncodedKey>,
 		limit: usize,
 	) -> Result<Vec<Candidate>> {
-		let mut range = QueueItemStateKey::partition_scan(queue, partition);
+		let mut range = QueueItemStateKey::partition_scan(queue, partition).encode();
 		if let Some(after) = after {
 			range.start = Bound::Excluded(after.clone());
 		}

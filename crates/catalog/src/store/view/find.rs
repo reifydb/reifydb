@@ -38,7 +38,7 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> Result<Option<View>> {
 		let name = name.as_ref();
-		let mut stream = rx.range(NamespaceViewKey::full_scan(namespace), RangeScope::All, 1024)?;
+		let mut stream = rx.range(NamespaceViewKey::full_scan(namespace).encode(), RangeScope::All, 1024)?;
 
 		let mut found_view = None;
 		for entry in stream.by_ref() {

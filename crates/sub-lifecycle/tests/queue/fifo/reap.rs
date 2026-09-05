@@ -64,7 +64,7 @@ fn queue_id(t: &TestEngine, name: &str) -> QueueId {
 
 fn states(t: &TestEngine, queue: QueueId) -> Vec<QueueItemState> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue), 1024)
+	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -87,7 +87,7 @@ fn counters(t: &TestEngine, queue: QueueId) -> QueuePartitionCounters {
 fn attempts(t: &TestEngine, queue: QueueId) -> Vec<(QueueAttemptKey, QueueAttemptRecord)> {
 	let mut query_txn = t.inner().begin_query(TestEngine::identity()).unwrap();
 	let mut txn = Transaction::Query(&mut query_txn);
-	let mut stream = txn.range(QueueAttemptKey::queue_scan(queue), RangeScope::All, 1024).unwrap();
+	let mut stream = txn.range(QueueAttemptKey::queue_scan(queue).encode(), RangeScope::All, 1024).unwrap();
 
 	let mut out = Vec::new();
 	while let Some(item) = stream.next() {

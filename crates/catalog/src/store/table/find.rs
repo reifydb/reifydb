@@ -52,7 +52,7 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> Result<Option<Table>> {
 		let name = name.as_ref();
-		let mut stream = rx.range(NamespaceTableKey::full_scan(namespace), RangeScope::All, 1024)?;
+		let mut stream = rx.range(NamespaceTableKey::full_scan(namespace).encode(), RangeScope::All, 1024)?;
 
 		let mut found_table = None;
 		for entry in stream.by_ref() {

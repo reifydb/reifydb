@@ -354,7 +354,7 @@ pub mod tests {
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
 		let links: Vec<_> = txn
-			.range(NamespaceRingBufferKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
+			.range(NamespaceRingBufferKey::full_scan(test_namespace.id()).encode(), RangeScope::All, 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>>>()
 			.unwrap();

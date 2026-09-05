@@ -39,7 +39,8 @@ impl CatalogStore {
 		name: &str,
 	) -> Result<Option<Procedure>> {
 		let mut found_id = None;
-		let mut stream = rx.range(NamespaceProcedureKey::full_scan(namespace), RangeScope::All, 1024)?;
+		let mut stream =
+			rx.range(NamespaceProcedureKey::full_scan(namespace).encode(), RangeScope::All, 1024)?;
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let bytes = EncodedCatalogRow::view(&multi.bytes);

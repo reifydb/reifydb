@@ -47,8 +47,8 @@ fn depth(db: &TestDb, queue: QueueId, partition: u16) -> u64 {
 }
 
 fn wipe_scheduling(db: &TestDb, queue: QueueId) {
-	let state_keys = keys(db, QueueItemStateKey::partition_scan(queue, 0));
-	let due_keys = keys(db, QueueDueKey::partition_scan(queue, 0));
+	let state_keys = keys(db, QueueItemStateKey::partition_scan(queue, 0).encode());
+	let due_keys = keys(db, QueueDueKey::partition_scan(queue, 0).encode());
 
 	let single = db.engine().single();
 	let lock = QueuePartitionKey::new(queue, 0);
@@ -56,7 +56,10 @@ fn wipe_scheduling(db: &TestDb, queue: QueueId) {
 	let mut tx = single
 		.begin_command_ranged(
 			[&lock_key],
-			vec![QueueItemStateKey::partition_scan(queue, 0), QueueDueKey::partition_scan(queue, 0)],
+			vec![
+				QueueItemStateKey::partition_scan(queue, 0).encode(),
+				QueueDueKey::partition_scan(queue, 0).encode(),
+			],
 		)
 		.unwrap();
 	for key in state_keys.iter().chain(due_keys.iter()) {
@@ -80,10 +83,10 @@ fn scheduling_state_is_rebuilt_after_a_sqlite_reopen() {
 		db.command("insert p::jobs [{ id: 1 }, { id: 2 }];");
 
 		let queue = queue_id(&db, "jobs");
-		assert_eq!(keys(&db, QueueItemStateKey::partition_scan(queue, 0)).len(), 2);
+		assert_eq!(keys(&db, QueueItemStateKey::partition_scan(queue, 0).encode()).len(), 2);
 
 		wipe_scheduling(&db, queue);
-		assert!(keys(&db, QueueItemStateKey::partition_scan(queue, 0)).is_empty());
+		assert!(keys(&db, QueueItemStateKey::partition_scan(queue, 0).encode()).is_empty());
 
 		db.stop();
 	}
@@ -91,8 +94,12 @@ fn scheduling_state_is_rebuilt_after_a_sqlite_reopen() {
 	let mut db = TestDb::sqlite_at(&path);
 	let queue = queue_id(&db, "jobs");
 
-	assert_eq!(keys(&db, QueueItemStateKey::partition_scan(queue, 0)).len(), 2, "boot must re-admit both items");
-	assert_eq!(keys(&db, QueueDueKey::partition_scan(queue, 0)).len(), 2);
+	assert_eq!(
+		keys(&db, QueueItemStateKey::partition_scan(queue, 0).encode()).len(),
+		2,
+		"boot must re-admit both items"
+	);
+	assert_eq!(keys(&db, QueueDueKey::partition_scan(queue, 0).encode()).len(), 2);
 	assert_eq!(depth(&db, queue, 0), 2);
 
 	db.stop();
@@ -115,8 +122,12 @@ fn a_reopen_over_intact_state_changes_nothing() {
 	let mut db = TestDb::sqlite_at(&path);
 	let queue = queue_id(&db, "jobs");
 
-	assert_eq!(keys(&db, QueueItemStateKey::partition_scan(queue, 0)).len(), 2, "one state record per item");
-	assert_eq!(keys(&db, QueueDueKey::partition_scan(queue, 0)).len(), 2, "one due entry per item");
+	assert_eq!(
+		keys(&db, QueueItemStateKey::partition_scan(queue, 0).encode()).len(),
+		2,
+		"one state record per item"
+	);
+	assert_eq!(keys(&db, QueueDueKey::partition_scan(queue, 0).encode()).len(), 2, "one due entry per item");
 	assert_eq!(depth(&db, queue, 0), 2, "depth must not be inflated by the boot pass");
 
 	db.stop();

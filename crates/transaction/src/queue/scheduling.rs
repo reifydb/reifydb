@@ -40,9 +40,9 @@ struct TransitionEffect {
 
 fn partition_ranges(queue: QueueId, partition: u16) -> Vec<EncodedKeyRange> {
 	vec![
-		QueueItemStateKey::partition_scan(queue, partition),
-		QueueDueKey::partition_scan(queue, partition),
-		QueueKeyActiveKey::partition_scan(queue, partition),
+		QueueItemStateKey::partition_scan(queue, partition).encode(),
+		QueueDueKey::partition_scan(queue, partition).encode(),
+		QueueKeyActiveKey::partition_scan(queue, partition).encode(),
 	]
 }
 

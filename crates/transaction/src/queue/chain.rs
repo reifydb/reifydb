@@ -42,7 +42,7 @@ pub fn chain_peek(
 	let budget = 2 + ChainOverlay::of_key(&overlay.removed, key_hash).count() as u64;
 	let batch = SingleVersionRangeRev::range_rev_batch(
 		&store,
-		QueueKeyActiveKey::key_scan(queue, partition, key_hash),
+		QueueKeyActiveKey::key_scan(queue, partition, key_hash).encode(),
 		budget,
 	)?;
 

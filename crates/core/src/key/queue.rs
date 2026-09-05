@@ -3,11 +3,7 @@
 
 use std::borrow::Cow;
 
-use reifydb_codec::key::{
-	deserializer::KeyDeserializer,
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
+use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_macro::Key;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use smallvec::{SmallVec, smallvec};
@@ -160,16 +156,15 @@ impl QueueAttemptKey {
 		Key::encode(&Self::new(queue, row, attempt))
 	}
 
-	pub fn item_scan(queue: QueueId, row: RowNumber) -> EncodedKeyRange {
-		let mut serializer = KeySerializer::with_capacity(17);
-		serializer.extend_u8(<QueueAttemptKey as Key>::KIND as u8).extend_u64(queue).extend_u64(row.0);
-		EncodedKeyRange::prefix(serializer.to_encoded_key().as_slice())
+	pub fn item_scan(queue: QueueId, row: RowNumber) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(
+			Self::KIND,
+			[Field::UDesc(Width::U64, queue.0 as u128), Field::UDesc(Width::U64, row.0 as u128)],
+		)
 	}
 
-	pub fn queue_scan(queue: QueueId) -> EncodedKeyRange {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<QueueAttemptKey as Key>::KIND as u8).extend_u64(queue);
-		EncodedKeyRange::prefix(serializer.to_encoded_key().as_slice())
+	pub fn queue_scan(queue: QueueId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, queue.0 as u128)])
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -180,6 +175,8 @@ impl QueueAttemptKey {
 #[cfg(test)]
 mod queue_item_state_key_tests {
 	use std::ops::Bound;
+
+	use reifydb_codec::key::encoded::EncodedKeyRange;
 
 	use super::*;
 
@@ -230,7 +227,7 @@ mod queue_item_state_key_tests {
 		// Retention and repeat-detection both enumerate one item's attempts. If the scan
 		// leaked into the adjacent row, acking item 5 would observe item 6's history and
 		// report a repeat for work that was never done.
-		let range = QueueAttemptKey::item_scan(QueueId(3), RowNumber(5));
+		let range = QueueAttemptKey::item_scan(QueueId(3), RowNumber(5)).encode();
 
 		assert!(contains(&range, &QueueAttemptKey::encoded(QueueId(3), RowNumber(5), 0)));
 		assert!(contains(&range, &QueueAttemptKey::encoded(QueueId(3), RowNumber(5), u32::MAX)));
@@ -244,7 +241,7 @@ mod queue_item_state_key_tests {
 		// DROP QUEUE teardown and step-5 retention both sweep by queue; a range that missed
 		// row 0 or spilled into the next queue would either leak audit rows forever or delete
 		// another queue's history.
-		let range = QueueAttemptKey::queue_scan(QueueId(3));
+		let range = QueueAttemptKey::queue_scan(QueueId(3)).encode();
 
 		assert!(contains(&range, &QueueAttemptKey::encoded(QueueId(3), RowNumber(0), 0)));
 		assert!(contains(&range, &QueueAttemptKey::encoded(QueueId(3), RowNumber(u64::MAX), 9)));
@@ -280,20 +277,8 @@ impl QueueDeduplicationKey {
 		Self::new(queue, tail).encode()
 	}
 
-	pub fn full_scan(queue: QueueId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::scan_start(queue)), Some(Self::scan_end(queue)))
-	}
-
-	fn scan_start(queue: QueueId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(queue);
-		serializer.to_encoded_key()
-	}
-
-	fn scan_end(queue: QueueId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*queue - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(queue: QueueId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, queue.0 as u128)])
 	}
 }
 
@@ -370,12 +355,12 @@ mod queue_deduplication_key_tests {
 	fn test_full_scan_contains_only_the_target_queue() {
 		// Keys are stored bitwise-inverted, so a bound derived with the wrong sign makes the retention
 		// sweep either miss its own records or delete a neighbouring queue's.
-		let range = QueueDeduplicationKey::full_scan(QueueId(3));
+		let range = QueueDeduplicationKey::full_scan(QueueId(3)).encode();
 		let Bound::Included(start) = &range.start else {
 			panic!("expected an included start bound")
 		};
-		let Bound::Included(end) = &range.end else {
-			panic!("expected an included end bound")
+		let Bound::Excluded(end) = &range.end else {
+			panic!("expected an excluded end bound")
 		};
 
 		assert!(start.as_slice() < end.as_slice(), "the range must be non-empty under byte order");
@@ -383,7 +368,7 @@ mod queue_deduplication_key_tests {
 		for key in [vec![], b"a".to_vec(), vec![0xff; 64]] {
 			let inside = QueueDeduplicationKey::encoded(QueueId(3), key.clone());
 			assert!(
-				inside.as_slice() >= start.as_slice() && inside.as_slice() <= end.as_slice(),
+				inside.as_slice() >= start.as_slice() && inside.as_slice() < end.as_slice(),
 				"key {key:?} in queue 3 must fall inside the scan range"
 			);
 		}
@@ -391,7 +376,7 @@ mod queue_deduplication_key_tests {
 		for queue in [QueueId(2), QueueId(4)] {
 			let neighbour = QueueDeduplicationKey::encoded(queue, b"a".to_vec());
 			assert!(
-				neighbour.as_slice() < start.as_slice() || neighbour.as_slice() > end.as_slice(),
+				neighbour.as_slice() < start.as_slice() || neighbour.as_slice() >= end.as_slice(),
 				"queue {queue:?} must fall outside queue 3's scan range"
 			);
 		}
@@ -409,32 +394,6 @@ mod queue_deduplication_key_tests {
 		let truncated = encoded.as_slice()[..5].to_vec();
 		assert_eq!(QueueDeduplicationKey::decode(&EncodedKey::new(truncated)), None);
 	}
-}
-
-fn queue_prefix(kind: KeyKind, queue: QueueId) -> EncodedKey {
-	let mut serializer = KeySerializer::with_capacity(9);
-	serializer.extend_u8(kind as u8).extend_u64(queue);
-	serializer.to_encoded_key()
-}
-
-fn partition_prefix(kind: KeyKind, queue: QueueId, partition: u16) -> EncodedKey {
-	let mut serializer = KeySerializer::with_capacity(11);
-	serializer.extend_u8(kind as u8).extend_u64(queue).extend_u16(partition);
-	serializer.to_encoded_key()
-}
-
-fn key_prefix(kind: KeyKind, queue: QueueId, partition: u16, key_hash: u64) -> EncodedKey {
-	let mut serializer = KeySerializer::with_capacity(20);
-	serializer.extend_u8(kind as u8).extend_u64(queue).extend_u16(partition).extend_u64(key_hash);
-	serializer.to_encoded_key()
-}
-
-fn family_scan(kind: KeyKind) -> EncodedKeyRange {
-	let mut start = KeySerializer::with_capacity(1);
-	start.extend_u8(kind as u8);
-	let mut end = KeySerializer::with_capacity(1);
-	end.extend_u8(kind as u8 - 1);
-	EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
 }
 
 #[derive(Debug, Clone, PartialEq, Key, Hash)]
@@ -459,12 +418,12 @@ impl QueuePartitionKey {
 		})
 	}
 
-	pub fn queue_scan(queue: QueueId) -> EncodedKeyRange {
-		EncodedKeyRange::prefix(queue_prefix(<QueuePartitionKey as Key>::KIND, queue).as_slice())
+	pub fn queue_scan(queue: QueueId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, queue.0 as u128)])
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		family_scan(<QueuePartitionKey as Key>::KIND)
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -493,16 +452,19 @@ impl QueueItemStateKey {
 		})
 	}
 
-	pub fn partition_scan(queue: QueueId, partition: u16) -> EncodedKeyRange {
-		EncodedKeyRange::prefix(partition_prefix(<QueueItemStateKey as Key>::KIND, queue, partition).as_slice())
+	pub fn partition_scan(queue: QueueId, partition: u16) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(
+			Self::KIND,
+			[Field::UDesc(Width::U64, queue.0 as u128), Field::UDesc(Width::U16, partition as u128)],
+		)
 	}
 
-	pub fn queue_scan(queue: QueueId) -> EncodedKeyRange {
-		EncodedKeyRange::prefix(queue_prefix(<QueueItemStateKey as Key>::KIND, queue).as_slice())
+	pub fn queue_scan(queue: QueueId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, queue.0 as u128)])
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		family_scan(<QueueItemStateKey as Key>::KIND)
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -534,16 +496,19 @@ impl QueueDueKey {
 		Key::encode(&Self::new(queue, partition, due, row))
 	}
 
-	pub fn partition_scan(queue: QueueId, partition: u16) -> EncodedKeyRange {
-		EncodedKeyRange::prefix(partition_prefix(<QueueDueKey as Key>::KIND, queue, partition).as_slice())
+	pub fn partition_scan(queue: QueueId, partition: u16) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(
+			Self::KIND,
+			[Field::UDesc(Width::U64, queue.0 as u128), Field::UDesc(Width::U16, partition as u128)],
+		)
 	}
 
-	pub fn queue_scan(queue: QueueId) -> EncodedKeyRange {
-		EncodedKeyRange::prefix(queue_prefix(<QueueDueKey as Key>::KIND, queue).as_slice())
+	pub fn queue_scan(queue: QueueId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, queue.0 as u128)])
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		family_scan(<QueueDueKey as Key>::KIND)
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -580,28 +545,38 @@ impl QueueKeyActiveKey {
 		})
 	}
 
-	pub fn key_scan(queue: QueueId, partition: u16, key_hash: u64) -> EncodedKeyRange {
-		EncodedKeyRange::prefix(
-			key_prefix(<QueueKeyActiveKey as Key>::KIND, queue, partition, key_hash).as_slice(),
+	pub fn key_scan(queue: QueueId, partition: u16, key_hash: u64) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(
+			Self::KIND,
+			[
+				Field::UDesc(Width::U64, queue.0 as u128),
+				Field::UDesc(Width::U16, partition as u128),
+				Field::UDesc(Width::U64, key_hash as u128),
+			],
 		)
 	}
 
-	pub fn partition_scan(queue: QueueId, partition: u16) -> EncodedKeyRange {
-		EncodedKeyRange::prefix(partition_prefix(<QueueKeyActiveKey as Key>::KIND, queue, partition).as_slice())
+	pub fn partition_scan(queue: QueueId, partition: u16) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(
+			Self::KIND,
+			[Field::UDesc(Width::U64, queue.0 as u128), Field::UDesc(Width::U16, partition as u128)],
+		)
 	}
 
-	pub fn queue_scan(queue: QueueId) -> EncodedKeyRange {
-		EncodedKeyRange::prefix(queue_prefix(<QueueKeyActiveKey as Key>::KIND, queue).as_slice())
+	pub fn queue_scan(queue: QueueId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, queue.0 as u128)])
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		family_scan(<QueueKeyActiveKey as Key>::KIND)
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
 #[cfg(test)]
 mod queue_partition_key_tests {
 	use std::ops::Bound;
+
+	use reifydb_codec::key::encoded::EncodedKeyRange;
 
 	use super::*;
 
@@ -664,7 +639,7 @@ mod queue_partition_key_tests {
 		// whole queue; this pins the prefix-derived range instead. A scan that leaked into a
 		// neighbouring partition would let a claim take work it does not hold the lock for.
 		for partition in [0u16, 1, 1023] {
-			let range = QueueItemStateKey::partition_scan(QueueId(4), partition);
+			let range = QueueItemStateKey::partition_scan(QueueId(4), partition).encode();
 
 			assert!(contains(&range, &QueueItemStateKey::encoded(QueueId(4), partition, RowNumber(0))));
 			assert!(contains(
@@ -692,7 +667,7 @@ mod queue_partition_key_tests {
 	fn test_queue_scan_covers_every_partition_of_one_queue_only() {
 		// DROP QUEUE wipes the scheduling keyspace through this range: missing a partition
 		// leaks records that hydration would later re-admit into a queue that no longer exists.
-		let range = QueueDueKey::queue_scan(QueueId(4));
+		let range = QueueDueKey::queue_scan(QueueId(4)).encode();
 
 		for partition in [0u16, 1, 1023] {
 			let inside = QueueDueKey::encoded(QueueId(4), partition, DateTime::from_nanos(7), RowNumber(1));
@@ -752,7 +727,7 @@ mod queue_partition_key_tests {
 
 	#[test]
 	fn test_key_scan_excludes_neighbouring_keys_and_partitions() {
-		let range = QueueKeyActiveKey::key_scan(QueueId(4), 2, 77);
+		let range = QueueKeyActiveKey::key_scan(QueueId(4), 2, 77).encode();
 
 		assert!(contains(&range, &QueueKeyActiveKey::encoded(QueueId(4), 2, 77, RowNumber(0))));
 		assert!(contains(&range, &QueueKeyActiveKey::encoded(QueueId(4), 2, 77, RowNumber(u64::MAX))));
@@ -771,7 +746,7 @@ mod queue_partition_key_tests {
 
 	#[test]
 	fn test_partition_scan_covers_every_key_of_one_partition_only() {
-		let range = QueueKeyActiveKey::partition_scan(QueueId(4), 2);
+		let range = QueueKeyActiveKey::partition_scan(QueueId(4), 2).encode();
 
 		for key_hash in [0u64, 77, u64::MAX] {
 			let inside = QueueKeyActiveKey::encoded(QueueId(4), 2, key_hash, RowNumber(1));

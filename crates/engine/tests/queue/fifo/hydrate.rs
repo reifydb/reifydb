@@ -48,7 +48,7 @@ fn scan(t: &TestEngine, range: EncodedKeyRange) -> Vec<SingleVersionRow> {
 }
 
 fn states(t: &TestEngine, queue: &Queue) -> BTreeMap<RowNumber, (u16, QueueItemState)> {
-	scan(t, QueueItemStateKey::queue_scan(queue.id))
+	scan(t, QueueItemStateKey::queue_scan(queue.id).encode())
 		.iter()
 		.map(|item| {
 			let key = QueueItemStateKey::decode(&item.key).unwrap();
@@ -58,7 +58,7 @@ fn states(t: &TestEngine, queue: &Queue) -> BTreeMap<RowNumber, (u16, QueueItemS
 }
 
 fn dues(t: &TestEngine, queue: &Queue) -> BTreeMap<RowNumber, QueueDueKey> {
-	scan(t, QueueDueKey::queue_scan(queue.id))
+	scan(t, QueueDueKey::queue_scan(queue.id).encode())
 		.iter()
 		.map(|item| {
 			let key = QueueDueKey::decode(&item.key).unwrap();
@@ -93,9 +93,9 @@ where
 		.begin_command_ranged(
 			[&lock_key],
 			vec![
-				QueueItemStateKey::partition_scan(queue.id, partition),
-				QueueDueKey::partition_scan(queue.id, partition),
-				QueueKeyActiveKey::partition_scan(queue.id, partition),
+				QueueItemStateKey::partition_scan(queue.id, partition).encode(),
+				QueueDueKey::partition_scan(queue.id, partition).encode(),
+				QueueKeyActiveKey::partition_scan(queue.id, partition).encode(),
 			],
 		)
 		.unwrap();
@@ -105,9 +105,9 @@ where
 
 fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
 	for partition in 0..queue.partitions() {
-		let state_keys = keys_in(t, QueueItemStateKey::partition_scan(queue.id, partition));
-		let due_keys = keys_in(t, QueueDueKey::partition_scan(queue.id, partition));
-		let chain_keys = keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, partition));
+		let state_keys = keys_in(t, QueueItemStateKey::partition_scan(queue.id, partition).encode());
+		let due_keys = keys_in(t, QueueDueKey::partition_scan(queue.id, partition).encode());
+		let chain_keys = keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, partition).encode());
 		if state_keys.is_empty() && due_keys.is_empty() {
 			continue;
 		}
