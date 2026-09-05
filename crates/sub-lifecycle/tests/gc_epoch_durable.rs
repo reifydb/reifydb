@@ -45,7 +45,7 @@ fn commit_a_version(engine: &StandardEngine, consumer: &str, at: u64) {
 fn durable_samples(engine: &StandardEngine) -> Vec<(u64, u64, u64)> {
 	let txn = engine.begin_query(IdentityId::system()).expect("system query transaction");
 	let mut samples: Vec<(u64, u64, u64)> = txn
-		.range(VersionEpochKey::floor_scan(EpochSeconds::new(u64::MAX)), RangeScope::All, 256)
+		.range(VersionEpochKey::floor_scan(EpochSeconds::new(u64::MAX)).encode(), RangeScope::All, 256)
 		.filter_map(|entry| {
 			let entry = entry.ok()?;
 			let AnyKey::VersionEpoch(key) = &entry.key else {

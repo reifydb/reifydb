@@ -3,7 +3,7 @@
 
 use std::ops::Bound;
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_macro::Key;
 use reifydb_runtime::version_epoch::EpochSeconds;
 use serde::{Deserialize, Serialize, de};
@@ -13,7 +13,7 @@ use crate::{
 	interface::catalog::id::{MigrationEventId, MigrationId, SequenceId},
 	key::{
 		any::{Field, KeyFields, Width},
-		bound::AnyKeyBoundRange,
+		bound::{AnyKeyBound, AnyKeyBoundRange},
 		typed::key::Key,
 	},
 };
@@ -165,18 +165,22 @@ impl VersionEpochKey {
 		Key::encode(&Self::new(bucket))
 	}
 
-	pub fn floor_scan(target: EpochSeconds) -> EncodedKeyRange {
-		EncodedKeyRange::new(
-			Bound::Included(Self::encoded(target)),
-			Bound::Included(Self::encoded(EpochSeconds::new(0))),
-		)
+	fn bucket_bound(bucket: EpochSeconds) -> AnyKeyBound {
+		AnyKeyBound::prefix(Self::KIND, [Field::UDesc(Width::U64, bucket.seconds() as u128)])
 	}
 
-	pub fn older_than(cutoff: EpochSeconds) -> EncodedKeyRange {
-		EncodedKeyRange::new(
-			Bound::Excluded(Self::encoded(cutoff)),
-			Bound::Included(Self::encoded(EpochSeconds::new(0))),
-		)
+	pub fn floor_scan(target: EpochSeconds) -> AnyKeyBoundRange {
+		AnyKeyBoundRange {
+			start: Bound::Included(Self::bucket_bound(target)),
+			end: Bound::Included(Self::bucket_bound(EpochSeconds::new(0))),
+		}
+	}
+
+	pub fn older_than(cutoff: EpochSeconds) -> AnyKeyBoundRange {
+		AnyKeyBoundRange {
+			start: Bound::Excluded(Self::bucket_bound(cutoff)),
+			end: Bound::Included(Self::bucket_bound(EpochSeconds::new(0))),
+		}
 	}
 }
 
@@ -213,7 +217,7 @@ mod version_epoch_key_tests {
 	#[test]
 	fn test_floor_scan_lower_bound_is_target_bucket() {
 		let target = sec(150);
-		let range = VersionEpochKey::floor_scan(target);
+		let range = VersionEpochKey::floor_scan(target).encode();
 		assert_eq!(range.start, Bound::Included(VersionEpochKey::encoded(target)));
 		assert_eq!(range.end, Bound::Included(VersionEpochKey::encoded(sec(0))));
 		// A bucket exactly at the target is included; a bucket newer than the target is excluded.

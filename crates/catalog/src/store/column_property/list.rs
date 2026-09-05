@@ -18,7 +18,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		column: ColumnId,
 	) -> Result<Vec<ColumnProperty>> {
-		let stream = rx.range(ColumnPropertyKey::full_scan(column), RangeScope::All, 1024)?;
+		let stream = rx.range(ColumnPropertyKey::full_scan(column).encode(), RangeScope::All, 1024)?;
 		let mut result = Vec::new();
 
 		for entry in stream {

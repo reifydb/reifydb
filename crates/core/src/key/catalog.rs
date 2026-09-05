@@ -28,7 +28,7 @@ use crate::{
 	},
 	key::{
 		any::{Field, KeyFields, RawEncoding, Width, index_tag},
-		bound::AnyKeyBoundRange,
+		bound::{AnyKeyBoundRange, object_fields},
 	},
 	return_internal_error,
 	value::index::{encoded::EncodedIndexKey, range::EncodedIndexKeyRange},
@@ -446,20 +446,8 @@ impl DictionaryEntryKey {
 		Key::encode(&Self::new(dictionary.into(), hash))
 	}
 
-	pub fn full_scan(dictionary: DictionaryId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::entry_start(dictionary)), Some(Self::entry_end(dictionary)))
-	}
-
-	fn entry_start(dictionary: DictionaryId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<Self as Key>::KIND as u8).extend_u64(dictionary);
-		serializer.to_encoded_key()
-	}
-
-	fn entry_end(dictionary: DictionaryId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<Self as Key>::KIND as u8).extend_u64(*dictionary - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(dictionary: DictionaryId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, dictionary.0 as u128)])
 	}
 }
 
@@ -481,20 +469,8 @@ impl DictionaryEntryIndexKey {
 		EncodableKey::encode(&Self::new(dictionary.into(), id))
 	}
 
-	pub fn full_scan(dictionary: DictionaryId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::index_start(dictionary)), Some(Self::index_end(dictionary)))
-	}
-
-	fn index_start(dictionary: DictionaryId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<Self as EncodableKey>::KIND as u8).extend_u64(dictionary);
-		serializer.to_encoded_key()
-	}
-
-	fn index_end(dictionary: DictionaryId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<Self as EncodableKey>::KIND as u8).extend_u64(*dictionary - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(dictionary: DictionaryId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, dictionary.0 as u128)])
 	}
 }
 
@@ -644,14 +620,14 @@ pub mod dictionary_key_tests {
 
 	#[test]
 	fn test_dictionary_entry_key_full_scan() {
-		let range = DictionaryEntryKey::full_scan(DictionaryId(42));
+		let range = DictionaryEntryKey::full_scan(DictionaryId(42)).encode();
 		assert!(matches!(range.start, Bound::Included(_) | Bound::Excluded(_)));
 		assert!(matches!(range.end, Bound::Included(_) | Bound::Excluded(_)));
 	}
 
 	#[test]
 	fn test_dictionary_entry_index_key_full_scan() {
-		let range = DictionaryEntryIndexKey::full_scan(DictionaryId(42));
+		let range = DictionaryEntryIndexKey::full_scan(DictionaryId(42)).encode();
 		assert!(matches!(range.start, Bound::Included(_) | Bound::Excluded(_)));
 		assert!(matches!(range.end, Bound::Included(_) | Bound::Excluded(_)));
 	}
@@ -743,23 +719,8 @@ impl IndexKey {
 		})
 	}
 
-	pub fn full_scan(object: impl Into<ObjectId>) -> EncodedKeyRange {
-		let object = object.into();
-		EncodedKeyRange::start_end(Some(Self::object_start(object)), Some(Self::object_end(object)))
-	}
-
-	pub fn object_start(object: impl Into<ObjectId>) -> EncodedKey {
-		let object = object.into();
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(<IndexKey as Key>::KIND as u8).extend_object_id(object);
-		serializer.to_encoded_key()
-	}
-
-	pub fn object_end(object: impl Into<ObjectId>) -> EncodedKey {
-		let object = object.into();
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(<IndexKey as Key>::KIND as u8).extend_object_id(object.prev());
-		serializer.to_encoded_key()
+	pub fn full_scan(object: impl Into<ObjectId>) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, object_fields(object.into()))
 	}
 }
 
@@ -929,38 +890,30 @@ impl EncodableKey for IndexEntryKey {
 }
 
 impl IndexEntryKey {
-	pub fn index_range(object: impl Into<ObjectId>, index: IndexId) -> EncodedKeyRange {
-		let range = IndexEntryKeyRange {
-			object: object.into(),
-			index,
-		};
-		EncodedKeyRange::new(Bound::Included(range.start().unwrap()), Bound::Excluded(range.end().unwrap()))
+	pub fn index_range(object: impl Into<ObjectId>, index: IndexId) -> AnyKeyBoundRange {
+		let object = object.into();
+		AnyKeyBoundRange::prefix(
+			<IndexEntryKeyRange as EncodableKeyRange>::KIND,
+			object_fields(object)
+				.into_iter()
+				.chain([Field::UAsc(Width::U8, 1), Field::UDesc(Width::U64, index.as_u64() as u128)]),
+		)
 	}
 
-	pub fn object_range(object: impl Into<ObjectId>) -> EncodedKeyRange {
-		let object = object.into();
-		let mut start_serializer = KeySerializer::with_capacity(10);
-		start_serializer.extend_u8(KeyKind::IndexEntry as u8).extend_object_id(object);
-
-		let next_object = object.next();
-		let mut end_serializer = KeySerializer::with_capacity(10);
-		end_serializer.extend_u8(KeyKind::IndexEntry as u8).extend_object_id(next_object);
-
-		EncodedKeyRange {
-			start: Bound::Included(start_serializer.to_encoded_key()),
-			end: Bound::Excluded(end_serializer.to_encoded_key()),
-		}
+	pub fn object_range(object: impl Into<ObjectId>) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(KeyKind::IndexEntry, object_fields(object.into()))
 	}
 
-	pub fn key_prefix_range(object: impl Into<ObjectId>, index: IndexId, key_prefix: &[u8]) -> EncodedKeyRange {
+	pub fn key_prefix_range(object: impl Into<ObjectId>, index: IndexId, key_prefix: &[u8]) -> AnyKeyBoundRange {
 		let object = object.into();
-		let mut serializer = KeySerializer::with_capacity(20 + key_prefix.len());
-		serializer
-			.extend_u8(KeyKind::IndexEntry as u8)
-			.extend_object_id(object)
-			.extend_index_id(index)
-			.extend_raw(key_prefix);
-		EncodedKeyRange::prefix(serializer.to_encoded_key().as_slice())
+		AnyKeyBoundRange::prefix(
+			KeyKind::IndexEntry,
+			object_fields(object).into_iter().chain([
+				Field::UAsc(Width::U8, 1),
+				Field::UDesc(Width::U64, index.as_u64() as u128),
+				Field::RawAsc(RawEncoding::Verbatim, Cow::Owned(key_prefix.to_vec())),
+			]),
+		)
 	}
 
 	pub fn key_range(
@@ -1079,7 +1032,7 @@ pub mod index_entry_key_tests_2 {
 
 	#[test]
 	fn test_index_range() {
-		let range = IndexEntryKey::index_range(ObjectId::table(10), IndexId::primary(5));
+		let range = IndexEntryKey::index_range(ObjectId::table(10), IndexId::primary(5)).encode();
 
 		let layout = IndexShape::new(&[ValueType::Uint8], &[SortDirection::Asc]).unwrap();
 
@@ -1127,7 +1080,7 @@ pub mod index_entry_key_tests_2 {
 		layout.set_row_number(&mut key, 1, 0u64);
 
 		let prefix = &key.as_slice()[..layout.fields[1].offset];
-		let range = IndexEntryKey::key_prefix_range(ObjectId::table(1), IndexId::primary(1), prefix);
+		let range = IndexEntryKey::key_prefix_range(ObjectId::table(1), IndexId::primary(1), prefix).encode();
 
 		layout.set_row_number(&mut key, 1, 999u64);
 		let entry = IndexEntryKey {
@@ -1528,20 +1481,8 @@ impl ColumnPropertyKey {
 		Key::encode(&Self::new(column, property))
 	}
 
-	pub fn full_scan(column: ColumnId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(column)), Some(Self::link_end(column)))
-	}
-
-	fn link_start(column: ColumnId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<ColumnPropertyKey as Key>::KIND as u8).extend_u64(column);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(column: ColumnId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<ColumnPropertyKey as Key>::KIND as u8).extend_u64(*column - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(column: ColumnId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, column.0 as u128)])
 	}
 }
 
@@ -1705,31 +1646,15 @@ impl VariantHandlerKey {
 		Key::encode(&Self::new(namespace.into(), sumtype.into(), variant_tag, handler.into()))
 	}
 
-	pub fn variant_scan(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(
-			Some(Self::variant_start(namespace, sumtype, variant_tag)),
-			Some(Self::variant_end(namespace, sumtype, variant_tag)),
+	pub fn variant_scan(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(
+			Self::KIND,
+			[
+				Field::UDesc(Width::U64, namespace.0 as u128),
+				Field::UDesc(Width::U64, sumtype.0 as u128),
+				Field::UDesc(Width::U8, variant_tag as u128),
+			],
 		)
-	}
-
-	fn variant_start(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(18);
-		serializer
-			.extend_u8(<VariantHandlerKey as Key>::KIND as u8)
-			.extend_u64(namespace)
-			.extend_u64(sumtype)
-			.extend_u8(variant_tag);
-		serializer.to_encoded_key()
-	}
-
-	fn variant_end(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(18);
-		serializer
-			.extend_u8(<VariantHandlerKey as Key>::KIND as u8)
-			.extend_u64(namespace)
-			.extend_u64(sumtype)
-			.extend_u8(variant_tag.wrapping_sub(1));
-		serializer.to_encoded_key()
 	}
 }
 
@@ -1807,7 +1732,7 @@ pub mod variant_handler_key_tests {
 		let st = SumTypeId(10);
 		let tag = 5u8;
 
-		let range = VariantHandlerKey::variant_scan(ns, st, tag);
+		let range = VariantHandlerKey::variant_scan(ns, st, tag).encode();
 		let start = match &range.start {
 			Bound::Included(k) | Bound::Excluded(k) => k,
 			Bound::Unbounded => panic!("expected bounded start"),

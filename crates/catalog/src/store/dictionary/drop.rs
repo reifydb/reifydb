@@ -42,7 +42,10 @@ impl CatalogStore {
 
 fn remove_dictionary_entries(single: &SingleTransaction, dictionary: DictionaryId) -> Result<()> {
 	let lock_key = DictionaryKey::encoded(dictionary);
-	let full_scans = [DictionaryEntryKey::full_scan(dictionary), DictionaryEntryIndexKey::full_scan(dictionary)];
+	let full_scans = [
+		DictionaryEntryKey::full_scan(dictionary).encode(),
+		DictionaryEntryIndexKey::full_scan(dictionary).encode(),
+	];
 	for full_scan in &full_scans {
 		loop {
 			let store = single.read_store();

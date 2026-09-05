@@ -125,7 +125,7 @@ impl QueryNode for DictionaryScanNode {
 		let batch_size = stored_ctx.batch_size;
 		let dict_def = self.dictionary.def();
 
-		let full_scan = DictionaryEntryIndexKey::full_scan(dict_def.id);
+		let full_scan = DictionaryEntryIndexKey::full_scan(dict_def.id).encode();
 		let range = match &self.last_key {
 			None => full_scan,
 			Some(last) => EncodedKeyRange::new(Bound::Excluded(last.clone()), full_scan.end),

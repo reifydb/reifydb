@@ -41,7 +41,7 @@ pub struct DictEntryWrite {
 }
 
 pub fn durable_max_index_id(store: &SingleStore, dictionary: DictionaryId) -> Result<Option<u128>> {
-	let range = DictionaryEntryIndexKey::full_scan(dictionary);
+	let range = DictionaryEntryIndexKey::full_scan(dictionary).encode();
 	match store.persistent() {
 		Some(tier) => {
 			let mut cursor = RangeCursor::new();
@@ -99,7 +99,11 @@ impl DictionaryStore for SingleDictionaryStore {
 
 	fn max_index_id(&self, dictionary: DictionaryId) -> Result<Option<u128>> {
 		let store = self.single.read_store();
-		let batch = SingleVersionRange::range_batch(&store, DictionaryEntryIndexKey::full_scan(dictionary), 1)?;
+		let batch = SingleVersionRange::range_batch(
+			&store,
+			DictionaryEntryIndexKey::full_scan(dictionary).encode(),
+			1,
+		)?;
 		match batch.items.first() {
 			Some(row) => Ok(DictionaryEntryIndexKey::decode(&row.key).map(|key| key.id)),
 			None => Ok(None),
@@ -110,8 +114,10 @@ impl DictionaryStore for SingleDictionaryStore {
 		debug_assert!(!writes.is_empty(), "commit_entries must not be called with no writes");
 
 		let lock_key = DictionaryKey::encoded(dictionary);
-		let ranges =
-			vec![DictionaryEntryKey::full_scan(dictionary), DictionaryEntryIndexKey::full_scan(dictionary)];
+		let ranges = vec![
+			DictionaryEntryKey::full_scan(dictionary).encode(),
+			DictionaryEntryIndexKey::full_scan(dictionary).encode(),
+		];
 		let mut txn = self.single.begin_command_ranged([&lock_key], ranges)?;
 		for write in writes {
 			txn.set(&write.index_key, write.index_value.clone())?;

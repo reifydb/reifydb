@@ -41,7 +41,7 @@ pub(crate) fn drop_object_metadata(
 	drop(stream);
 
 	for (col_key, col_id) in &col_entries {
-		let policy_range = ColumnPropertyKey::full_scan(*col_id);
+		let policy_range = ColumnPropertyKey::full_scan(*col_id).encode();
 		let mut policy_stream = txn.range(policy_range, RangeScope::All, 1024)?;
 		let mut policy_keys = Vec::new();
 		for entry in policy_stream.by_ref() {
