@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use crate::key::any::{Field, KeyFields};
+use smallvec::{SmallVec, smallvec};
 use std::{
 	borrow::Cow,
 	fmt::{Display, Formatter, Result as FmtResult},
@@ -1505,5 +1507,16 @@ mod tests {
 
 		assert!(set.is_empty());
 		assert!(!set.contains(GroupId::FIRST_NON_ROOT));
+	}
+}
+
+impl KeyFields for OperatorStateKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![
+			Field::UDesc(self.operator.0 as u128),
+			Field::BytesDesc(Cow::Borrowed(self.group.as_bytes())),
+			Field::UDesc(self.keyspace.0 as u128),
+			Field::RawAsc(Cow::Borrowed(&self.suffix)),
+		]
 	}
 }

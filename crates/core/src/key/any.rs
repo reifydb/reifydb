@@ -990,7 +990,7 @@ fn storage_cmp(left: &StorageId, right: &StorageId) -> Ordering {
 	object_cmp(&ObjectId::from(*left), &ObjectId::from(*right))
 }
 
-fn index_tag(index: &IndexId) -> u8 {
+pub(crate) fn index_tag(index: &IndexId) -> u8 {
 	match index {
 		IndexId::Primary(_) => 0x01,
 	}
@@ -1025,7 +1025,7 @@ fn metrics_id_cmp(left: &MetricsId, right: &MetricsId) -> Ordering {
 	}
 }
 
-fn encode_values(values: &[Value]) -> EncodedKey {
+pub(crate) fn encode_values(values: &[Value]) -> EncodedKey {
 	let mut serializer = KeySerializer::new();
 	for value in values {
 		serializer.extend_value(value);
@@ -1057,16 +1057,16 @@ impl Eq for AnyKey {}
 
 #[derive(Debug, Clone)]
 pub enum Field<'a> {
-	U8Asc(u8),
+	UAsc(u128),
 	UDesc(u128),
 	BytesDesc(Cow<'a, [u8]>),
-	RawAsc(&'a [u8]),
+	RawAsc(Cow<'a, [u8]>),
 }
 
 impl Field<'_> {
 	fn variant_rank(&self) -> u8 {
 		match self {
-			Self::U8Asc(_) => 0,
+			Self::UAsc(_) => 0,
 			Self::UDesc(_) => 1,
 			Self::BytesDesc(_) => 2,
 			Self::RawAsc(_) => 3,
@@ -1077,10 +1077,10 @@ impl Field<'_> {
 impl Ord for Field<'_> {
 	fn cmp(&self, other: &Self) -> Ordering {
 		match (self, other) {
-			(Self::U8Asc(left), Self::U8Asc(right)) => left.cmp(right),
+			(Self::UAsc(left), Self::UAsc(right)) => left.cmp(right),
 			(Self::UDesc(left), Self::UDesc(right)) => right.cmp(left),
 			(Self::BytesDesc(left), Self::BytesDesc(right)) => right.as_ref().cmp(left.as_ref()),
-			(Self::RawAsc(left), Self::RawAsc(right)) => left.cmp(right),
+			(Self::RawAsc(left), Self::RawAsc(right)) => left.as_ref().cmp(right.as_ref()),
 			(left, right) => left.variant_rank().cmp(&right.variant_rank()),
 		}
 	}
@@ -1101,7 +1101,110 @@ impl PartialEq for Field<'_> {
 impl Eq for Field<'_> {}
 
 pub trait KeyFields {
-	fn fields(&self) -> SmallVec<[Field<'_>; 4]>;
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]>;
+}
+
+impl KeyFields for MetricKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		match self {
+			Self::Cdc(key) => key.fields(),
+			Self::Storage(key) => key.fields(),
+		}
+	}
+}
+
+impl KeyFields for AnyKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		match self {
+			Self::Namespace(key) => key.fields(),
+			Self::Table(key) => key.fields(),
+			Self::Row(key) => key.fields(),
+			Self::NamespaceTable(key) => key.fields(),
+			Self::SystemSequence(key) => key.fields(),
+			Self::Columns(key) => key.fields(),
+			Self::Column(key) => key.fields(),
+			Self::RowSequence(key) => key.fields(),
+			Self::ColumnProperty(key) => key.fields(),
+			Self::SystemVersion(key) => key.fields(),
+			Self::TransactionVersion(key) => key.fields(),
+			Self::Index(key) => key.fields(),
+			Self::IndexEntry(key) => key.fields(),
+			Self::ColumnSequence(key) => key.fields(),
+			Self::CdcConsumer(key) => key.fields(),
+			Self::View(key) => key.fields(),
+			Self::NamespaceView(key) => key.fields(),
+			Self::PrimaryKey(key) => key.fields(),
+			Self::OperatorState(key) => key.fields(),
+			Self::RingBuffer(key) => key.fields(),
+			Self::NamespaceRingBuffer(key) => key.fields(),
+			Self::RingBufferMetadata(key) => key.fields(),
+			Self::Flow(key) => key.fields(),
+			Self::NamespaceFlow(key) => key.fields(),
+			Self::Operator(key) => key.fields(),
+			Self::OperatorByFlow(key) => key.fields(),
+			Self::FlowEdge(key) => key.fields(),
+			Self::FlowEdgeByFlow(key) => key.fields(),
+			Self::OutputFrontier(key) => key.fields(),
+			Self::Dictionary(key) => key.fields(),
+			Self::DictionaryEntry(key) => key.fields(),
+			Self::DictionaryEntryIndex(key) => key.fields(),
+			Self::NamespaceDictionary(key) => key.fields(),
+			Self::Metric(key) => key.fields(),
+			Self::FlowVersion(key) => key.fields(),
+			Self::RowShape(key) => key.fields(),
+			Self::RowShapeField(key) => key.fields(),
+			Self::SumType(key) => key.fields(),
+			Self::NamespaceSumType(key) => key.fields(),
+			Self::Handler(key) => key.fields(),
+			Self::NamespaceHandler(key) => key.fields(),
+			Self::VariantHandler(key) => key.fields(),
+			Self::Series(key) => key.fields(),
+			Self::NamespaceSeries(key) => key.fields(),
+			Self::SeriesMetadata(key) => key.fields(),
+			Self::Identity(key) => key.fields(),
+			Self::Role(key) => key.fields(),
+			Self::GrantedRole(key) => key.fields(),
+			Self::Policy(key) => key.fields(),
+			Self::PolicyOp(key) => key.fields(),
+			Self::Migration(key) => key.fields(),
+			Self::MigrationEvent(key) => key.fields(),
+			Self::Authentication(key) => key.fields(),
+			Self::ConfigStorage(key) => key.fields(),
+			Self::Token(key) => key.fields(),
+			Self::Source(key) => key.fields(),
+			Self::NamespaceSource(key) => key.fields(),
+			Self::Sink(key) => key.fields(),
+			Self::NamespaceSink(key) => key.fields(),
+			Self::RowSettings(key) => key.fields(),
+			Self::Procedure(key) => key.fields(),
+			Self::NamespaceProcedure(key) => key.fields(),
+			Self::ProcedureParam(key) => key.fields(),
+			Self::Binding(key) => key.fields(),
+			Self::NamespaceBinding(key) => key.fields(),
+			Self::OperatorSettings(key) => key.fields(),
+			Self::ColumnSnapshot(key) => key.fields(),
+			Self::SeriesColumnSnapshot(key) => key.fields(),
+			Self::TableColumnSnapshot(key) => key.fields(),
+			Self::VersionEpoch(key) => key.fields(),
+			Self::IdentityAttribute(key) => key.fields(),
+			Self::IdentityAttributeValue(key) => key.fields(),
+			Self::PartitionedRow(key) => key.fields(),
+			Self::Partition(key) => key.fields(),
+			Self::Queue(key) => key.fields(),
+			Self::NamespaceQueue(key) => key.fields(),
+			Self::QueueDeduplication(key) => key.fields(),
+			Self::Relationship(key) => key.fields(),
+			Self::SeriesRow(key) => key.fields(),
+			Self::PartitionedSeriesRow(key) => key.fields(),
+			Self::QueuePartition(key) => key.fields(),
+			Self::QueueItemState(key) => key.fields(),
+			Self::QueueDue(key) => key.fields(),
+			Self::QueueAttempt(key) => key.fields(),
+			Self::QueueKeyActive(key) => key.fields(),
+			Self::SortedViewRow(key) => key.fields(),
+			Self::PartitionedSortedViewRow(key) => key.fields(),
+		}
+	}
 }
 
 impl Ord for AnyKey {
@@ -1311,6 +1414,8 @@ impl PartialOrd for AnyKey {
 #[cfg(test)]
 mod tests {
 	use std::cmp::Ordering;
+
+	use super::KeyFields;
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::shape::fingerprint::RowShapeFingerprint};
 	use reifydb_runtime::version_epoch::EpochSeconds;
@@ -1722,6 +1827,294 @@ mod tests {
 			}
 		}
 	}
+	fn assert_projection_matches_bytes(samples: Vec<(AnyKey, EncodedKey)>, label: &str) {
+		assert!(samples.len() >= 2, "{label} needs at least two samples to exercise a direction");
+		for (left, left_bytes) in &samples {
+			for (right, right_bytes) in &samples {
+				let projected = (right.kind() as u8)
+					.cmp(&(left.kind() as u8))
+					.then_with(|| left.fields().cmp(&right.fields()));
+				assert_eq!(
+					projected,
+					left_bytes.cmp(right_bytes),
+					"{label}: kind and fields() disagree with encoded byte order\n  a = \
+					 {left:?}\n  b = {right:?}\n  a bytes = {:?}\n  b bytes = {:?}",
+					left_bytes.as_slice(),
+					right_bytes.as_slice()
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn every_hand_written_key_projects_to_the_order_its_encoder_produces() {
+		// the derive emits a conformance test per key type; these seventeen write encode() by hand
+		// and would otherwise have no sample varying each field, so a wrong direction would pass.
+		assert_projection_matches_bytes(
+			vec![
+				probe(BindingKey {
+					binding: BindingId(1),
+				}),
+				probe(BindingKey {
+					binding: BindingId(2),
+				}),
+			],
+			"BindingKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe(ProcedureKey {
+					procedure: ProcedureId::persistent(1),
+				}),
+				probe(ProcedureKey {
+					procedure: ProcedureId::persistent(2),
+				}),
+			],
+			"ProcedureKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe(ProcedureParamKey {
+					procedure: ProcedureId::persistent(1),
+					param_index: 1,
+				}),
+				probe(ProcedureParamKey {
+					procedure: ProcedureId::persistent(1),
+					param_index: 2,
+				}),
+				probe(ProcedureParamKey {
+					procedure: ProcedureId::persistent(2),
+					param_index: 1,
+				}),
+			],
+			"ProcedureParamKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe(SinkKey {
+					sink: SinkId(1),
+				}),
+				probe(SinkKey {
+					sink: SinkId(2),
+				}),
+			],
+			"SinkKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe(SourceKey {
+					source: SourceId(1),
+				}),
+				probe(SourceKey {
+					source: SourceId(2),
+				}),
+			],
+			"SourceKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe(ViewKey {
+					view: ViewId(1),
+				}),
+				probe(ViewKey {
+					view: ViewId(2),
+				}),
+			],
+			"ViewKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe(SumTypeKey {
+					sumtype: SumTypeId(1),
+				}),
+				probe(SumTypeKey {
+					sumtype: SumTypeId(2),
+				}),
+			],
+			"SumTypeKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe_encodable(DictionaryEntryIndexKey {
+					dictionary: DictionaryId(1),
+					id: 1,
+				}),
+				probe_encodable(DictionaryEntryIndexKey {
+					dictionary: DictionaryId(1),
+					id: u128::from(u64::MAX) + 1,
+				}),
+				probe_encodable(DictionaryEntryIndexKey {
+					dictionary: DictionaryId(2),
+					id: 1,
+				}),
+			],
+			"DictionaryEntryIndexKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe_encodable(IndexEntryKey::new(
+					ObjectId::table(1),
+					IndexId::primary(PrimaryKeyId(1)),
+					EncodedIndexKey::new([0x01u8]),
+				)),
+				probe_encodable(IndexEntryKey::new(
+					ObjectId::table(1),
+					IndexId::primary(PrimaryKeyId(1)),
+					EncodedIndexKey::new([0x02u8]),
+				)),
+				probe_encodable(IndexEntryKey::new(
+					ObjectId::table(1),
+					IndexId::primary(PrimaryKeyId(2)),
+					EncodedIndexKey::new([0x01u8]),
+				)),
+				probe_encodable(IndexEntryKey::new(
+					ObjectId::view(1),
+					IndexId::primary(PrimaryKeyId(1)),
+					EncodedIndexKey::new([0x01u8]),
+				)),
+			],
+			"IndexEntryKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe_encodable(CdcConsumerKey::new(CdcConsumerId::new("a"))),
+				probe_encodable(CdcConsumerKey::new(CdcConsumerId::new("b"))),
+				probe_encodable(CdcConsumerKey::new(CdcConsumerId::new("ab"))),
+			],
+			"CdcConsumerKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe_encodable(ConfigStorageKey::new(ConfigKey::QueryRowBatchSize)),
+				probe_encodable(ConfigStorageKey::new(ConfigKey::OracleWindowSize)),
+			],
+			"ConfigStorageKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe_encodable(QueueDeduplicationKey::new(QueueId(1), [0x01u8])),
+				probe_encodable(QueueDeduplicationKey::new(QueueId(1), [0x02u8])),
+				probe_encodable(QueueDeduplicationKey::new(QueueId(1), [0x01u8, 0x00])),
+				probe_encodable(QueueDeduplicationKey::new(QueueId(2), [0x01u8])),
+			],
+			"QueueDeduplicationKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe_encodable(OperatorStateKey::new(
+					OperatorId(1),
+					GroupId::ROOT,
+					KeyspaceId(1),
+					[0x01u8],
+				)),
+				probe_encodable(OperatorStateKey::new(
+					OperatorId(1),
+					GroupId::ROOT,
+					KeyspaceId(1),
+					[0x02u8],
+				)),
+				probe_encodable(OperatorStateKey::new(
+					OperatorId(1),
+					GroupId::ROOT,
+					KeyspaceId(2),
+					[0x01u8],
+				)),
+				probe_encodable(OperatorStateKey::new(
+					OperatorId(1),
+					GroupId::from_bytes([0x01u8; 24]),
+					KeyspaceId(1),
+					[0x01u8],
+				)),
+				probe_encodable(OperatorStateKey::new(
+					OperatorId(2),
+					GroupId::ROOT,
+					KeyspaceId(1),
+					[0x01u8],
+				)),
+			],
+			"OperatorStateKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe_encodable(RingBufferMetadataKey {
+					storage: StorageId::ringbuffer(1),
+					partition_values: vec![Value::Uint8(1)],
+				}),
+				probe_encodable(RingBufferMetadataKey {
+					storage: StorageId::ringbuffer(1),
+					partition_values: vec![Value::Uint8(2)],
+				}),
+				probe_encodable(RingBufferMetadataKey {
+					storage: StorageId::ringbuffer(2),
+					partition_values: vec![Value::Uint8(1)],
+				}),
+			],
+			"RingBufferMetadataKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe(SortedViewRowKey::new(StorageId::view(1), SortRun::new([0x10u8]), RowNumber(1))),
+				probe(SortedViewRowKey::new(StorageId::view(1), SortRun::new([0x10u8]), RowNumber(2))),
+				probe(SortedViewRowKey::new(StorageId::view(1), SortRun::new([0x20u8]), RowNumber(1))),
+				probe(SortedViewRowKey::new(
+					StorageId::view(1),
+					SortRun::new([0x10u8, 0x00]),
+					RowNumber(1),
+				)),
+				probe(SortedViewRowKey::new(StorageId::view(2), SortRun::new([0x10u8]), RowNumber(1))),
+			],
+			"SortedViewRowKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe(PartitionedSortedViewRowKey::new(
+					StorageId::view(1),
+					Partition(1),
+					SortRun::new([0x10u8]),
+					RowNumber(1),
+				)),
+				probe(PartitionedSortedViewRowKey::new(
+					StorageId::view(1),
+					Partition(1),
+					SortRun::new([0x10u8]),
+					RowNumber(2),
+				)),
+				probe(PartitionedSortedViewRowKey::new(
+					StorageId::view(1),
+					Partition(1),
+					SortRun::new([0x20u8]),
+					RowNumber(1),
+				)),
+				probe(PartitionedSortedViewRowKey::new(
+					StorageId::view(1),
+					Partition(2),
+					SortRun::new([0x10u8]),
+					RowNumber(1),
+				)),
+				probe(PartitionedSortedViewRowKey::new(
+					StorageId::view(2),
+					Partition(1),
+					SortRun::new([0x10u8]),
+					RowNumber(1),
+				)),
+			],
+			"PartitionedSortedViewRowKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe(MetricStorageKey::new(Tier::Buffer, MetricsId::System)),
+				probe(MetricStorageKey::new(Tier::Persistent, MetricsId::System)),
+				probe(MetricStorageKey::new(Tier::Buffer, MetricsId::Object(ObjectId::table(1)))),
+				probe(MetricStorageKey::new(Tier::Buffer, MetricsId::Object(ObjectId::table(2)))),
+				probe(MetricStorageKey::new(Tier::Buffer, MetricsId::Object(ObjectId::view(1)))),
+				probe(MetricCdcKey::new(MetricsId::System)),
+				probe(MetricCdcKey::new(MetricsId::Object(ObjectId::table(1)))),
+				probe(MetricCdcKey::new(MetricsId::Object(ObjectId::table(2)))),
+			],
+			"MetricKey",
+		);
+	}
+
 	fn all_probes() -> Vec<(AnyKey, EncodedKey)> {
 		vec![
 			probe(NamespaceKey {

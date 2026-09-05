@@ -116,9 +116,11 @@ impl KeyColumn {
 			KeyColumn::GroupId | KeyColumn::IdentityId => {
 				vec![format!("Field::BytesDesc(::std::borrow::Cow::Borrowed(self.{field}.as_bytes()))")]
 			}
-			KeyColumn::Blob16 => vec![format!("Field::RawAsc(&self.{field})")],
+			KeyColumn::Blob16 => {
+				vec![format!("Field::RawAsc(::std::borrow::Cow::Borrowed(&self.{field}))")]
+			}
 			KeyColumn::ObjectId | KeyColumn::StorageId => vec![
-				format!("Field::U8Asc(self.{field}.type_tag())"),
+				format!("Field::UAsc(self.{field}.type_tag() as u128)"),
 				format!("Field::UDesc(self.{field}.as_u64() as u128)"),
 			],
 			KeyColumn::OptionU8 => vec![
@@ -596,7 +598,7 @@ fn expand(name: &str, kind: &str, fields: &[KeyField]) -> TokenStream {
 	out.push_str("\t\tSome(decoded)\n\t}\n}\n\n");
 
 	out.push_str(&format!("#[automatically_derived]\nimpl KeyFields for {name} {{\n"));
-	out.push_str("\tfn fields(&self) -> ::smallvec::SmallVec<[Field<'_>; 4]> {\n");
+	out.push_str("\tfn fields(&self) -> ::smallvec::SmallVec<[Field<'_>; 6]> {\n");
 	out.push_str("\t\t::smallvec::smallvec![\n");
 	for field in fields {
 		for expr in field.column.field_exprs(&field.name) {

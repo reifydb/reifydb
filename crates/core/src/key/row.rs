@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use smallvec::{SmallVec, smallvec};
+use std::borrow::Cow;
 use std::{cmp::Ordering, collections::Bound};
 
 use reifydb_codec::{
@@ -1504,5 +1506,28 @@ mod sorted_view_run_tests {
 		assert_eq!(PartitionedSortedViewRowKey::storage_of(&partitioned), Some(storage));
 		assert_eq!(PartitionedSortedViewRowKey::row_of(&partitioned), Some(RowNumber(9)));
 		assert_eq!(SortedViewRowKey::row_of(&partitioned), None);
+	}
+}
+
+impl KeyFields for SortedViewRowKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![
+			Field::UAsc(ObjectId::from(self.storage).type_tag() as u128),
+			Field::UDesc(ObjectId::from(self.storage).as_u64() as u128),
+			Field::RawAsc(Cow::Borrowed(self.run.as_slice())),
+			Field::UAsc(self.row.0.0 as u128),
+		]
+	}
+}
+
+impl KeyFields for PartitionedSortedViewRowKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![
+			Field::UAsc(ObjectId::from(self.storage).type_tag() as u128),
+			Field::UDesc(ObjectId::from(self.storage).as_u64() as u128),
+			Field::UDesc(self.partition.0),
+			Field::RawAsc(Cow::Borrowed(self.run.as_slice())),
+			Field::UAsc(self.row.0.0 as u128),
+		]
 	}
 }

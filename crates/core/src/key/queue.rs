@@ -8,6 +8,8 @@ use reifydb_codec::key::{
 };
 use reifydb_macro::Key;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use smallvec::{SmallVec, smallvec};
+use std::borrow::Cow;
 
 use super::{EncodableKey, KeyKind};
 use crate::key::any::{Field, KeyFields};
@@ -832,5 +834,11 @@ mod queue_partition_key_tests {
 			legacy.to_encoded_key().as_slice(),
 			QueueKeyActiveKey::encoded(queue, partition, key_hash, row).as_slice()
 		);
+	}
+}
+
+impl KeyFields for QueueDeduplicationKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![Field::UDesc(self.queue.0 as u128), Field::BytesDesc(Cow::Borrowed(self.tail.as_slice())),]
 	}
 }

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use crate::key::any::{Field, KeyFields};
+use smallvec::{SmallVec, smallvec};
+use std::borrow::Cow;
 use std::str::FromStr;
 
 use reifydb_codec::key::{
@@ -60,5 +63,11 @@ impl EncodableKey for ConfigStorageKey {
 		Some(Self {
 			key,
 		})
+	}
+}
+
+impl KeyFields for ConfigStorageKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![Field::BytesDesc(Cow::Owned(self.key.to_string().into_bytes()))]
 	}
 }

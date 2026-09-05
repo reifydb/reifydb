@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use smallvec::{SmallVec, smallvec};
+use std::borrow::Cow;
 use std::collections::Bound;
 
 use reifydb_codec::key::{
@@ -17,7 +19,7 @@ use reifydb_value::{
 };
 
 use super::{EncodableKey, EncodableKeyRange, KeyKind, typed::key::Key};
-use crate::key::any::{Field, KeyFields};
+use crate::key::any::{Field, KeyFields, index_tag};
 use crate::{
 	interface::catalog::{
 		id::{
@@ -2093,5 +2095,53 @@ mod primary_key_key_tests {
 		let encoded = key.encode();
 		let decoded = PrimaryKeyKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.primary_key, PrimaryKeyId(0xABCD));
+	}
+}
+
+impl KeyFields for DictionaryEntryIndexKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![Field::UDesc(self.dictionary.0 as u128), Field::UDesc(self.id)]
+	}
+}
+
+impl KeyFields for IndexEntryKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![
+			Field::UAsc(self.object.type_tag() as u128),
+			Field::UDesc(self.object.as_u64() as u128),
+			Field::UAsc(index_tag(&self.index) as u128),
+			Field::UDesc(self.index.as_u64() as u128),
+			Field::RawAsc(Cow::Borrowed(self.key.as_slice())),
+		]
+	}
+}
+
+impl KeyFields for BindingKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![Field::UDesc(self.binding.0 as u128)]
+	}
+}
+
+impl KeyFields for SinkKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![Field::UDesc(self.sink.0 as u128)]
+	}
+}
+
+impl KeyFields for SourceKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![Field::UDesc(self.source.0 as u128)]
+	}
+}
+
+impl KeyFields for ViewKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![Field::UDesc(self.view.0 as u128)]
+	}
+}
+
+impl KeyFields for SumTypeKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![Field::UDesc(self.sumtype.0 as u128)]
 	}
 }
