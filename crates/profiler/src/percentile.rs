@@ -83,15 +83,12 @@ impl PercentileHistogram {
 		let read = |p: f64| digest_for_read.estimate_quantile(p).round().max(0.0).min(u32::MAX as f64) as u32;
 		Percentiles {
 			p50: read(0.50),
-			p60: read(0.60),
-			p70: read(0.70),
 			p75: read(0.75),
-			p80: read(0.80),
-			p85: read(0.85),
 			p90: read(0.90),
 			p95: read(0.95),
 			p98: read(0.98),
 			p99: read(0.99),
+			p100: read(1.00),
 		}
 	}
 
@@ -99,15 +96,12 @@ impl PercentileHistogram {
 		let raw = self.percentiles();
 		ProfilerPercentiles {
 			p50: Duration::from_micros_infallible(raw.p50 as u64),
-			p60: Duration::from_micros_infallible(raw.p60 as u64),
-			p70: Duration::from_micros_infallible(raw.p70 as u64),
 			p75: Duration::from_micros_infallible(raw.p75 as u64),
-			p80: Duration::from_micros_infallible(raw.p80 as u64),
-			p85: Duration::from_micros_infallible(raw.p85 as u64),
 			p90: Duration::from_micros_infallible(raw.p90 as u64),
 			p95: Duration::from_micros_infallible(raw.p95 as u64),
 			p98: Duration::from_micros_infallible(raw.p98 as u64),
 			p99: Duration::from_micros_infallible(raw.p99 as u64),
+			p100: Duration::from_micros_infallible(raw.p100 as u64),
 		}
 	}
 
@@ -123,29 +117,23 @@ impl PercentileHistogram {
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub struct Percentiles {
 	pub p50: u32,
-	pub p60: u32,
-	pub p70: u32,
 	pub p75: u32,
-	pub p80: u32,
-	pub p85: u32,
 	pub p90: u32,
 	pub p95: u32,
 	pub p98: u32,
 	pub p99: u32,
+	pub p100: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub struct ProfilerPercentiles {
 	pub p50: Duration,
-	pub p60: Duration,
-	pub p70: Duration,
 	pub p75: Duration,
-	pub p80: Duration,
-	pub p85: Duration,
 	pub p90: Duration,
 	pub p95: Duration,
 	pub p98: Duration,
 	pub p99: Duration,
+	pub p100: Duration,
 }
 
 #[cfg(test)]
@@ -213,15 +201,12 @@ mod tests {
 			}
 		}
 		let p = h.percentiles();
-		assert!(p.p50 <= p.p60);
-		assert!(p.p60 <= p.p70);
-		assert!(p.p70 <= p.p75);
-		assert!(p.p75 <= p.p80);
-		assert!(p.p80 <= p.p85);
-		assert!(p.p85 <= p.p90);
+		assert!(p.p50 <= p.p75);
+		assert!(p.p75 <= p.p90);
 		assert!(p.p90 <= p.p95);
 		assert!(p.p95 <= p.p98);
 		assert!(p.p98 <= p.p99);
+		assert!(p.p99 <= p.p100);
 	}
 
 	#[test]

@@ -97,14 +97,12 @@ impl Metrics {
 			failed_requests: failed,
 			duration_secs,
 			throughput,
-			latency_min_us: histogram.min(),
-			latency_max_us: histogram.max(),
 			latency_avg_us: histogram.mean(),
 			latency_p50_us: histogram.value_at_quantile(0.50),
 			latency_p90_us: histogram.value_at_quantile(0.90),
 			latency_p95_us: histogram.value_at_quantile(0.95),
 			latency_p99_us: histogram.value_at_quantile(0.99),
-			latency_p999_us: histogram.value_at_quantile(0.999),
+			latency_p100_us: histogram.max(),
 			top_errors: self.top_errors(5),
 		}
 	}
@@ -131,14 +129,12 @@ pub struct MetricsSummary {
 	pub failed_requests: u64,
 	pub duration_secs: f64,
 	pub throughput: f64,
-	pub latency_min_us: u64,
-	pub latency_max_us: u64,
 	pub latency_avg_us: f64,
 	pub latency_p50_us: u64,
 	pub latency_p90_us: u64,
 	pub latency_p95_us: u64,
 	pub latency_p99_us: u64,
-	pub latency_p999_us: u64,
+	pub latency_p100_us: u64,
 	pub top_errors: Vec<(String, u64)>,
 }
 

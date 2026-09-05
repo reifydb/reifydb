@@ -98,14 +98,6 @@ impl AggregateRecord {
 		Duration::from_micros_infallible(self.total_us)
 	}
 
-	pub fn min(&self) -> Duration {
-		Duration::from_micros_infallible(self.histogram.percentile(0.0) as u64)
-	}
-
-	pub fn max(&self) -> Duration {
-		Duration::from_micros_infallible(self.histogram.percentile(1.0) as u64)
-	}
-
 	pub fn percentiles(&self) -> ProfilerPercentiles {
 		self.histogram.percentiles_duration()
 	}

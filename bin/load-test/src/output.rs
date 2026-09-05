@@ -62,14 +62,12 @@ pub fn print_summary(summary: &MetricsSummary, description: &str) {
 	println!("Throughput: {} requests/second", format_number(summary.throughput as u64));
 	println!();
 	println!("Latency summary:");
-	println!("  min:       {}", format_latency(summary.latency_min_us));
 	println!("  avg:       {}", format_latency_f64(summary.latency_avg_us));
-	println!("  max:       {}", format_latency(summary.latency_max_us));
 	println!("  p50:       {}", format_latency(summary.latency_p50_us));
 	println!("  p90:       {}", format_latency(summary.latency_p90_us));
 	println!("  p95:       {}", format_latency(summary.latency_p95_us));
 	println!("  p99:       {}", format_latency(summary.latency_p99_us));
-	println!("  p99.9:     {}", format_latency(summary.latency_p999_us));
+	println!("  p100:      {}", format_latency(summary.latency_p100_us));
 	println!();
 	println!(
 		"Successful: {} / {} ({:.2}% success rate)",
