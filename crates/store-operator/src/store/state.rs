@@ -287,10 +287,6 @@ impl StandardOperatorStore {
 		}
 	}
 
-	fn shadowed(&self, operator: OperatorId, key: &EncodedKey) -> bool {
-		matches!(self.resident.lookup_state(operator, key), BufferedState::Tombstone)
-	}
-
 	fn persistent_contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
 		let Some(persistent) = self.persistent.as_ref() else {
 			return false;
@@ -316,6 +312,7 @@ impl StandardOperatorStore {
 		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 		let mut buffer_index = 0usize;
 		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
+		let mut page_shadow: Vec<bool> = Vec::new();
 		let mut page_index = 0usize;
 		let scan_budget = target.saturating_mul(SCAN_BUDGET_FACTOR);
 		let mut consumed = 0usize;
@@ -347,6 +344,7 @@ impl StandardOperatorStore {
 			}
 			if page_index == page.len() && !source.is_exhausted() {
 				page = source.next_page(limit);
+				page_shadow = self.resident.tombstoned(operator, page.iter().map(|(key, _)| key));
 				page_index = 0;
 				continue;
 			}
@@ -356,7 +354,9 @@ impl StandardOperatorStore {
 				(Some((key, entry)), None) => {
 					buffer_index += 1;
 					consumed += 1;
-					walked = Some(key.clone());
+					if consumed >= scan_budget {
+						walked = Some(key.clone());
+					}
 					if let Some(row) = entry {
 						items.push((key.clone(), row.clone()));
 					} else {
@@ -364,10 +364,13 @@ impl StandardOperatorStore {
 					}
 				}
 				(None, Some((key, row))) => {
+					let dead = page_shadow.get(page_index).copied().unwrap_or(false);
 					page_index += 1;
 					consumed += 1;
-					walked = Some(key.clone());
-					if !self.shadowed(operator, key) {
+					if consumed >= scan_budget {
+						walked = Some(key.clone());
+					}
+					if !dead {
 						items.push((key.clone(), row.clone()));
 					} else {
 						skipped += 1;
@@ -378,7 +381,9 @@ impl StandardOperatorStore {
 						Ordering::Less => {
 							buffer_index += 1;
 							consumed += 1;
-							walked = Some(buffer_key.clone());
+							if consumed >= scan_budget {
+								walked = Some(buffer_key.clone());
+							}
 							if let Some(row) = entry {
 								items.push((buffer_key.clone(), row.clone()));
 							} else {
@@ -386,10 +391,14 @@ impl StandardOperatorStore {
 							}
 						}
 						Ordering::Greater => {
+							let dead =
+								page_shadow.get(page_index).copied().unwrap_or(false);
 							page_index += 1;
 							consumed += 1;
-							walked = Some(page_key.clone());
-							if !self.shadowed(operator, page_key) {
+							if consumed >= scan_budget {
+								walked = Some(page_key.clone());
+							}
+							if !dead {
 								items.push((page_key.clone(), page_row.clone()));
 							} else {
 								skipped += 1;
@@ -399,7 +408,9 @@ impl StandardOperatorStore {
 							buffer_index += 1;
 							page_index += 1;
 							consumed += 2;
-							walked = Some(buffer_key.clone());
+							if consumed >= scan_budget {
+								walked = Some(buffer_key.clone());
+							}
 							if let Some(row) = entry {
 								items.push((buffer_key.clone(), row.clone()));
 							} else {
@@ -436,11 +447,14 @@ impl StandardOperatorStore {
 
 		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
+		let mut page_shadow: Vec<bool> = Vec::new();
 		let mut page_index = 0usize;
+		let mut skipped = 0u64;
 
 		while items.len() < target {
 			if page_index == page.len() && !source.is_exhausted() {
 				page = source.next_page(target as u64);
+				page_shadow = self.resident.tombstoned(operator, page.iter().map(|(key, _)| key));
 				page_index = 0;
 				continue;
 			}
@@ -457,9 +471,12 @@ impl StandardOperatorStore {
 					}
 				}
 				(None, Some((key, row))) => {
+					let dead = page_shadow.get(page_index).copied().unwrap_or(false);
 					page_index += 1;
-					if !self.shadowed(operator, key) {
+					if !dead {
 						items.push((key.clone(), row.clone()));
+					} else {
+						skipped += 1;
 					}
 				}
 				(Some((buffer_key, entry)), Some((page_key, page_row))) => {
@@ -471,9 +488,13 @@ impl StandardOperatorStore {
 							}
 						}
 						Ordering::Greater => {
+							let dead =
+								page_shadow.get(page_index).copied().unwrap_or(false);
 							page_index += 1;
-							if !self.shadowed(operator, page_key) {
+							if !dead {
 								items.push((page_key.clone(), page_row.clone()));
+							} else {
+								skipped += 1;
 							}
 						}
 						Ordering::Equal => {
@@ -488,6 +509,7 @@ impl StandardOperatorStore {
 			}
 		}
 
+		record_page(0, skipped);
 		let has_more = items.len() > limit as usize || source.ceiling().is_some();
 		items.truncate(limit as usize);
 		OperatorBatch {
@@ -572,6 +594,7 @@ impl StandardOperatorStore {
 			buffer_end,
 			buffer_done,
 			stored: Vec::new(),
+			stored_shadow: Vec::new(),
 			stored_index: 0,
 			stored_end: range.end,
 			stored_done,
@@ -754,6 +777,7 @@ pub struct StateLastIter<'a> {
 	buffer_end: Bound<EncodedKey>,
 	buffer_done: bool,
 	stored: Vec<(EncodedKey, EncodedPodRow)>,
+	stored_shadow: Vec<bool>,
 	stored_index: usize,
 	stored_end: Bound<EncodedKey>,
 	stored_done: bool,
@@ -790,6 +814,10 @@ impl Iterator for StateLastIter<'_> {
 				);
 				self.stored_done = !batch.has_more;
 				self.stored = batch.items;
+				self.stored_shadow = self
+					.store
+					.resident
+					.tombstoned(self.operator, self.stored.iter().map(|(key, _)| key));
 				self.stored_index = 0;
 				if let Some((key, _)) = self.stored.last() {
 					self.stored_end = Bound::Excluded(key.clone());
@@ -807,8 +835,9 @@ impl Iterator for StateLastIter<'_> {
 					}
 				}
 				(None, Some((key, row))) => {
+					let dead = self.stored_shadow.get(self.stored_index).copied().unwrap_or(false);
 					self.stored_index += 1;
-					if !self.store.shadowed(self.operator, &key) {
+					if !dead {
 						return Some((key, row));
 					}
 				}
@@ -821,8 +850,13 @@ impl Iterator for StateLastIter<'_> {
 							}
 						}
 						Ordering::Less => {
+							let dead = self
+								.stored_shadow
+								.get(self.stored_index)
+								.copied()
+								.unwrap_or(false);
 							self.stored_index += 1;
-							if !self.store.shadowed(self.operator, &stored_key) {
+							if !dead {
 								return Some((stored_key, stored_row));
 							}
 						}

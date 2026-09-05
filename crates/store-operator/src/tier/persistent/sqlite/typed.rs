@@ -336,8 +336,7 @@ pub fn get_batch<K: Keyspace>(
 			params.push(Value::Integer(operator.0 as i64));
 			params.extend(K::bind_key(key));
 		}
-		let mut stmt =
-			conn.prepare_cached(&sql).expect("operator state batch get could not be prepared");
+		let mut stmt = conn.prepare_cached(&sql).expect("operator state batch get could not be prepared");
 		let mut rows = stmt.query(params_from_iter(params)).expect("operator state batch get failed");
 		while let Some(row) = rows.next().expect("operator state batch get row failed") {
 			let key = K::read_key(row, 0)

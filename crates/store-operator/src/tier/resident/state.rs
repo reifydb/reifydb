@@ -11,7 +11,12 @@ use tracing::instrument;
 use crate::{
 	tier::{
 		bucket::{Scan, write::WriteEntry},
-		resident::{OperatorResidentState, batch::DropMarker, record_state, slot::{Slot, SlotInner}},
+		resident::{
+			OperatorResidentState,
+			batch::DropMarker,
+			record_state,
+			slot::{Slot, SlotInner},
+		},
 	},
 	types::{BufferedState, BufferedStateRange},
 };
@@ -36,6 +41,18 @@ impl OperatorResidentState {
 			return BufferedState::Dropped;
 		}
 		BufferedState::Absent
+	}
+
+	pub fn tombstoned<'a>(
+		&self,
+		operator: OperatorId,
+		keys: impl ExactSizeIterator<Item = &'a EncodedKey>,
+	) -> Vec<bool> {
+		let Some(slot) = self.shared().slot(operator) else {
+			return vec![false; keys.len()];
+		};
+		let inner = lock_slot(&slot, operator);
+		keys.map(|key| inner.live.is_deleted(key)).collect()
 	}
 
 	pub fn state_page(
