@@ -9,7 +9,7 @@ use smallvec::SmallVec;
 
 use crate::{
 	interface::{
-		catalog::{id::IndexId, metrics::MetricsId, object::ObjectId, storage::StorageId},
+		catalog::{id::IndexId, metrics::MetricsId, object::ObjectId},
 		store::Tier,
 	},
 	key::{
@@ -986,26 +986,9 @@ fn object_cmp(left: &ObjectId, right: &ObjectId) -> Ordering {
 	left.type_tag().cmp(&right.type_tag()).then_with(|| right.as_u64().cmp(&left.as_u64()))
 }
 
-fn storage_cmp(left: &StorageId, right: &StorageId) -> Ordering {
-	object_cmp(&ObjectId::from(*left), &ObjectId::from(*right))
-}
-
 pub(crate) fn index_tag(index: &IndexId) -> u8 {
 	match index {
 		IndexId::Primary(_) => 0x01,
-	}
-}
-
-fn tagged_index_cmp(left: &IndexId, right: &IndexId) -> Ordering {
-	index_tag(left).cmp(&index_tag(right)).then_with(|| right.as_u64().cmp(&left.as_u64()))
-}
-
-fn option_u8_cmp(left: &Option<u8>, right: &Option<u8>) -> Ordering {
-	match (left, right) {
-		(Some(left), Some(right)) => right.cmp(left),
-		(Some(_), None) => Ordering::Less,
-		(None, Some(_)) => Ordering::Greater,
-		(None, None) => Ordering::Equal,
 	}
 }
 
@@ -1209,199 +1192,7 @@ impl KeyFields for AnyKey {
 
 impl Ord for AnyKey {
 	fn cmp(&self, other: &Self) -> Ordering {
-		match (self, other) {
-			(Self::Namespace(a), Self::Namespace(b)) => desc(&a.namespace, &b.namespace),
-			(Self::Table(a), Self::Table(b)) => desc(&a.table, &b.table),
-			(Self::Row(a), Self::Row(b)) => {
-				storage_cmp(&a.storage, &b.storage).then_with(|| desc(&a.row, &b.row))
-			}
-			(Self::NamespaceTable(a), Self::NamespaceTable(b)) => {
-				desc(&a.namespace, &b.namespace).then_with(|| desc(&a.table, &b.table))
-			}
-			(Self::SystemSequence(a), Self::SystemSequence(b)) => desc(&a.sequence, &b.sequence),
-			(Self::Columns(a), Self::Columns(b)) => desc(&a.column, &b.column),
-			(Self::Column(a), Self::Column(b)) => {
-				object_cmp(&a.object, &b.object).then_with(|| desc(&a.column, &b.column))
-			}
-			(Self::RowSequence(a), Self::RowSequence(b)) => storage_cmp(&a.storage, &b.storage),
-			(Self::ColumnProperty(a), Self::ColumnProperty(b)) => {
-				desc(&a.column, &b.column).then_with(|| desc(&a.property, &b.property))
-			}
-			(Self::SystemVersion(a), Self::SystemVersion(b)) => {
-				desc(&(a.version as u8), &(b.version as u8))
-			}
-			(Self::TransactionVersion(_), Self::TransactionVersion(_)) => Ordering::Equal,
-			(Self::Index(a), Self::Index(b)) => object_cmp(&a.object, &b.object)
-				.then_with(|| desc(&a.index.as_u64(), &b.index.as_u64())),
-			(Self::IndexEntry(a), Self::IndexEntry(b)) => object_cmp(&a.object, &b.object)
-				.then_with(|| tagged_index_cmp(&a.index, &b.index))
-				.then_with(|| a.key.cmp(&b.key)),
-			(Self::ColumnSequence(a), Self::ColumnSequence(b)) => {
-				object_cmp(&a.object, &b.object).then_with(|| desc(&a.column, &b.column))
-			}
-			(Self::CdcConsumer(a), Self::CdcConsumer(b)) => desc(&a.consumer, &b.consumer),
-			(Self::View(a), Self::View(b)) => desc(&a.view, &b.view),
-			(Self::NamespaceView(a), Self::NamespaceView(b)) => {
-				desc(&a.namespace, &b.namespace).then_with(|| desc(&a.view, &b.view))
-			}
-			(Self::PrimaryKey(a), Self::PrimaryKey(b)) => desc(&a.primary_key, &b.primary_key),
-			(Self::OperatorState(a), Self::OperatorState(b)) => desc(&a.operator, &b.operator)
-				.then_with(|| desc(a.group.as_bytes(), b.group.as_bytes()))
-				.then_with(|| desc(&a.keyspace, &b.keyspace))
-				.then_with(|| a.suffix.cmp(&b.suffix)),
-			(Self::RingBuffer(a), Self::RingBuffer(b)) => desc(&a.ringbuffer, &b.ringbuffer),
-			(Self::NamespaceRingBuffer(a), Self::NamespaceRingBuffer(b)) => {
-				desc(&a.namespace, &b.namespace).then_with(|| desc(&a.ringbuffer, &b.ringbuffer))
-			}
-			(Self::RingBufferMetadata(a), Self::RingBufferMetadata(b)) => {
-				storage_cmp(&a.storage, &b.storage).then_with(|| {
-					encode_values(&a.partition_values).cmp(&encode_values(&b.partition_values))
-				})
-			}
-			(Self::Flow(a), Self::Flow(b)) => desc(&a.flow, &b.flow),
-			(Self::NamespaceFlow(a), Self::NamespaceFlow(b)) => {
-				desc(&a.namespace, &b.namespace).then_with(|| desc(&a.flow, &b.flow))
-			}
-			(Self::Operator(a), Self::Operator(b)) => desc(&a.operator, &b.operator),
-			(Self::OperatorByFlow(a), Self::OperatorByFlow(b)) => {
-				desc(&a.flow, &b.flow).then_with(|| desc(&a.operator, &b.operator))
-			}
-			(Self::FlowEdge(a), Self::FlowEdge(b)) => desc(&a.edge, &b.edge),
-			(Self::FlowEdgeByFlow(a), Self::FlowEdgeByFlow(b)) => {
-				desc(&a.flow, &b.flow).then_with(|| desc(&a.edge, &b.edge))
-			}
-			(Self::OutputFrontier(a), Self::OutputFrontier(b)) => object_cmp(&a.object, &b.object),
-			(Self::Dictionary(a), Self::Dictionary(b)) => desc(&a.dictionary, &b.dictionary),
-			(Self::DictionaryEntry(a), Self::DictionaryEntry(b)) => {
-				desc(&a.dictionary, &b.dictionary).then_with(|| a.hash.cmp(&b.hash))
-			}
-			(Self::DictionaryEntryIndex(a), Self::DictionaryEntryIndex(b)) => {
-				desc(&a.dictionary, &b.dictionary).then_with(|| desc(&a.id, &b.id))
-			}
-			(Self::NamespaceDictionary(a), Self::NamespaceDictionary(b)) => {
-				desc(&a.namespace, &b.namespace).then_with(|| desc(&a.dictionary, &b.dictionary))
-			}
-			(Self::Metric(a), Self::Metric(b)) => a.cmp(b),
-			(Self::FlowVersion(a), Self::FlowVersion(b)) => desc(&a.flow, &b.flow),
-			(Self::RowShape(a), Self::RowShape(b)) => desc(&a.fingerprint, &b.fingerprint),
-			(Self::RowShapeField(a), Self::RowShapeField(b)) => {
-				desc(&a.shape_fingerprint, &b.shape_fingerprint)
-					.then_with(|| desc(&a.field_index, &b.field_index))
-			}
-			(Self::SumType(a), Self::SumType(b)) => desc(&a.sumtype, &b.sumtype),
-			(Self::NamespaceSumType(a), Self::NamespaceSumType(b)) => {
-				desc(&a.namespace, &b.namespace).then_with(|| desc(&a.sumtype, &b.sumtype))
-			}
-			(Self::Handler(a), Self::Handler(b)) => desc(&a.handler, &b.handler),
-			(Self::NamespaceHandler(a), Self::NamespaceHandler(b)) => {
-				desc(&a.namespace, &b.namespace).then_with(|| desc(&a.handler, &b.handler))
-			}
-			(Self::VariantHandler(a), Self::VariantHandler(b)) => desc(&a.namespace, &b.namespace)
-				.then_with(|| desc(&a.sumtype, &b.sumtype))
-				.then_with(|| desc(&a.variant_tag, &b.variant_tag))
-				.then_with(|| desc(&a.handler, &b.handler)),
-			(Self::Series(a), Self::Series(b)) => desc(&a.series, &b.series),
-			(Self::NamespaceSeries(a), Self::NamespaceSeries(b)) => {
-				desc(&a.namespace, &b.namespace).then_with(|| desc(&a.series, &b.series))
-			}
-			(Self::SeriesMetadata(a), Self::SeriesMetadata(b)) => storage_cmp(&a.storage, &b.storage),
-			(Self::Identity(a), Self::Identity(b)) => desc(&a.identity, &b.identity),
-			(Self::Role(a), Self::Role(b)) => desc(&a.role, &b.role),
-			(Self::GrantedRole(a), Self::GrantedRole(b)) => {
-				desc(&a.identity, &b.identity).then_with(|| desc(&a.role, &b.role))
-			}
-			(Self::Policy(a), Self::Policy(b)) => desc(&a.policy, &b.policy),
-			(Self::PolicyOp(a), Self::PolicyOp(b)) => {
-				desc(&a.policy, &b.policy).then_with(|| desc(&a.op_index, &b.op_index))
-			}
-			(Self::Migration(a), Self::Migration(b)) => desc(&a.migration, &b.migration),
-			(Self::MigrationEvent(a), Self::MigrationEvent(b)) => desc(&a.event, &b.event),
-			(Self::Authentication(a), Self::Authentication(b)) => {
-				desc(&a.authentication, &b.authentication)
-			}
-			(Self::ConfigStorage(a), Self::ConfigStorage(b)) => {
-				desc(&a.key.to_string(), &b.key.to_string())
-			}
-			(Self::Token(a), Self::Token(b)) => desc(&a.token, &b.token),
-			(Self::Source(a), Self::Source(b)) => desc(&a.source, &b.source),
-			(Self::NamespaceSource(a), Self::NamespaceSource(b)) => {
-				desc(&a.namespace, &b.namespace).then_with(|| desc(&a.source, &b.source))
-			}
-			(Self::Sink(a), Self::Sink(b)) => desc(&a.sink, &b.sink),
-			(Self::NamespaceSink(a), Self::NamespaceSink(b)) => {
-				desc(&a.namespace, &b.namespace).then_with(|| desc(&a.sink, &b.sink))
-			}
-			(Self::RowSettings(a), Self::RowSettings(b)) => storage_cmp(&a.storage, &b.storage),
-			(Self::Procedure(a), Self::Procedure(b)) => desc(&a.procedure, &b.procedure),
-			(Self::NamespaceProcedure(a), Self::NamespaceProcedure(b)) => {
-				desc(&a.namespace, &b.namespace).then_with(|| desc(&a.procedure, &b.procedure))
-			}
-			(Self::ProcedureParam(a), Self::ProcedureParam(b)) => {
-				desc(&a.procedure, &b.procedure).then_with(|| desc(&a.param_index, &b.param_index))
-			}
-			(Self::Binding(a), Self::Binding(b)) => desc(&a.binding, &b.binding),
-			(Self::NamespaceBinding(a), Self::NamespaceBinding(b)) => {
-				desc(&a.namespace, &b.namespace).then_with(|| desc(&a.binding, &b.binding))
-			}
-			(Self::OperatorSettings(a), Self::OperatorSettings(b)) => desc(&a.operator, &b.operator),
-			(Self::ColumnSnapshot(a), Self::ColumnSnapshot(b)) => desc(&a.snapshot, &b.snapshot),
-			(Self::SeriesColumnSnapshot(a), Self::SeriesColumnSnapshot(b)) => {
-				desc(&a.series, &b.series).then_with(|| desc(&a.snapshot, &b.snapshot))
-			}
-			(Self::TableColumnSnapshot(a), Self::TableColumnSnapshot(b)) => {
-				desc(&a.table, &b.table).then_with(|| desc(&a.snapshot, &b.snapshot))
-			}
-			(Self::VersionEpoch(a), Self::VersionEpoch(b)) => desc(&a.bucket, &b.bucket),
-			(Self::IdentityAttribute(a), Self::IdentityAttribute(b)) => desc(&a.attribute, &b.attribute),
-			(Self::IdentityAttributeValue(a), Self::IdentityAttributeValue(b)) => {
-				desc(&a.identity, &b.identity).then_with(|| desc(&a.attribute, &b.attribute))
-			}
-			(Self::PartitionedRow(a), Self::PartitionedRow(b)) => storage_cmp(&a.storage, &b.storage)
-				.then_with(|| desc(&a.partition, &b.partition))
-				.then_with(|| desc(&a.row, &b.row)),
-			(Self::Partition(a), Self::Partition(b)) => {
-				object_cmp(&a.object, &b.object).then_with(|| desc(&a.partition, &b.partition))
-			}
-			(Self::Queue(a), Self::Queue(b)) => desc(&a.queue, &b.queue),
-			(Self::NamespaceQueue(a), Self::NamespaceQueue(b)) => {
-				desc(&a.namespace, &b.namespace).then_with(|| desc(&a.queue, &b.queue))
-			}
-			(Self::QueueDeduplication(a), Self::QueueDeduplication(b)) => {
-				desc(&a.queue, &b.queue).then_with(|| desc(&a.tail, &b.tail))
-			}
-			(Self::Relationship(a), Self::Relationship(b)) => desc(&a.relationship, &b.relationship),
-			(Self::SeriesRow(a), Self::SeriesRow(b)) => storage_cmp(&a.storage, &b.storage)
-				.then_with(|| option_u8_cmp(&a.variant_tag, &b.variant_tag))
-				.then_with(|| desc(&a.key, &b.key))
-				.then_with(|| desc(&a.sequence, &b.sequence)),
-			(Self::PartitionedSeriesRow(a), Self::PartitionedSeriesRow(b)) => {
-				storage_cmp(&a.storage, &b.storage)
-					.then_with(|| desc(&a.partition, &b.partition))
-					.then_with(|| option_u8_cmp(&a.variant_tag, &b.variant_tag))
-					.then_with(|| desc(&a.key, &b.key))
-					.then_with(|| desc(&a.sequence, &b.sequence))
-			}
-			(Self::QueuePartition(a), Self::QueuePartition(b)) => {
-				desc(&a.queue, &b.queue).then_with(|| desc(&a.partition, &b.partition))
-			}
-			(Self::QueueItemState(a), Self::QueueItemState(b)) => desc(&a.queue, &b.queue)
-				.then_with(|| desc(&a.partition, &b.partition))
-				.then_with(|| desc(&a.row, &b.row)),
-			(Self::QueueDue(a), Self::QueueDue(b)) => desc(&a.queue, &b.queue)
-				.then_with(|| desc(&a.partition, &b.partition))
-				.then_with(|| desc(&a.due, &b.due))
-				.then_with(|| desc(&a.row, &b.row)),
-			(Self::QueueAttempt(a), Self::QueueAttempt(b)) => desc(&a.queue, &b.queue)
-				.then_with(|| desc(&a.row, &b.row))
-				.then_with(|| desc(&a.attempt, &b.attempt)),
-			(Self::QueueKeyActive(a), Self::QueueKeyActive(b)) => desc(&a.queue, &b.queue)
-				.then_with(|| desc(&a.partition, &b.partition))
-				.then_with(|| desc(&a.key_hash, &b.key_hash))
-				.then_with(|| desc(&a.row, &b.row)),
-			(Self::SortedViewRow(a), Self::SortedViewRow(b)) => a.cmp(b),
-			(Self::PartitionedSortedViewRow(a), Self::PartitionedSortedViewRow(b)) => a.cmp(b),
-			(a, b) => desc(&(a.kind() as u8), &(b.kind() as u8)),
-		}
+		desc(&(self.kind() as u8), &(other.kind() as u8)).then_with(|| self.fields().cmp(&other.fields()))
 	}
 }
 
