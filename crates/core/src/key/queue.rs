@@ -17,6 +17,7 @@ use crate::{
 	interface::catalog::id::QueueId,
 	key::{
 		any::{ByteEncoding, Field, KeyFields, Width},
+		bound::AnyKeyBoundRange,
 		typed::key::Key,
 	},
 };
@@ -38,20 +39,8 @@ impl QueueKey {
 		Key::encode(&Self::new(queue.into()))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::queue_start()), Some(Self::queue_end()))
-	}
-
-	fn queue_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<QueueKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn queue_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<QueueKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -82,7 +71,7 @@ mod queue_key_tests {
 	fn test_full_scan_brackets_every_queue_key() {
 		// Keys are stored bitwise-inverted, so byte order runs opposite to the logical value; that is
 		// why the range ends at KIND - 1. Reversing the bound makes list_queues return nothing.
-		let range = QueueKey::full_scan();
+		let range = QueueKey::full_scan().encode();
 
 		let Bound::Included(start) = &range.start else {
 			panic!("expected an included start bound")
@@ -108,7 +97,7 @@ mod queue_key_tests {
 	fn test_full_scan_excludes_the_neighbouring_kind() {
 		// A neighbouring key family inside the range would let a full scan decode foreign rows as
 		// queue definitions.
-		let range = QueueKey::full_scan();
+		let range = QueueKey::full_scan().encode();
 		let Bound::Included(start) = &range.start else {
 			panic!("expected an included start bound")
 		};
@@ -183,12 +172,8 @@ impl QueueAttemptKey {
 		EncodedKeyRange::prefix(serializer.to_encoded_key().as_slice())
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(<QueueAttemptKey as Key>::KIND as u8);
-		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(<QueueAttemptKey as Key>::KIND as u8 - 1);
-		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 

@@ -16,7 +16,7 @@ use crate::{Result, store::flow_edge::shape::flow_edge};
 
 pub(crate) fn load_flow_edges(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = FlowEdgeKey::full_scan();
-	let stream = rx.range(range, RangeScope::All, 1024)?;
+	let stream = rx.range(range.encode(), RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

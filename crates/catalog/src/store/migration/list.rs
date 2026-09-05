@@ -15,7 +15,7 @@ impl CatalogStore {
 	pub(crate) fn list_migrations(txn: &mut Transaction<'_>) -> Result<Vec<Migration>> {
 		let range = MigrationKey::full_scan();
 		let mut results = Vec::new();
-		for entry in txn.range(range, RangeScope::All, 1024)? {
+		for entry in txn.range(range.encode(), RangeScope::All, 1024)? {
 			let entry = entry?;
 			results.push(migration_from_row(EncodedCatalogRow::view(&entry.bytes)));
 		}
@@ -25,7 +25,7 @@ impl CatalogStore {
 	pub(crate) fn list_migration_events(txn: &mut Transaction<'_>) -> Result<Vec<MigrationEvent>> {
 		let range = MigrationEventKey::full_scan();
 		let mut results = Vec::new();
-		for entry in txn.range(range, RangeScope::All, 1024)? {
+		for entry in txn.range(range.encode(), RangeScope::All, 1024)? {
 			let entry = entry?;
 			results.push(migration_event_from_row(EncodedCatalogRow::view(&entry.bytes)));
 		}

@@ -9,7 +9,7 @@ use crate::{Result, store::identity_attribute::convert_identity_attribute};
 
 pub(crate) fn load_identity_attributes(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = IdentityAttributeKey::full_scan();
-	let stream = rx.range(range, RangeScope::All, 1024)?;
+	let stream = rx.range(range.encode(), RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

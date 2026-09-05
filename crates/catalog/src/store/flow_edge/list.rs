@@ -44,7 +44,7 @@ impl CatalogStore {
 	pub(crate) fn list_flow_edges_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowEdge>> {
 		let mut result = Vec::new();
 
-		let stream = rx.range(FlowEdgeKey::full_scan(), RangeScope::All, 1024)?;
+		let stream = rx.range(FlowEdgeKey::full_scan().encode(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let entry = entry?;

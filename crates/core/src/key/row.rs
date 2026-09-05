@@ -22,6 +22,7 @@ use crate::{
 	interface::catalog::{object::ObjectId, storage::StorageId},
 	key::{
 		any::{Field, KeyFields, RawEncoding, Width},
+		bound::AnyKeyBoundRange,
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		sort_run::SortRun,
 		typed::{
@@ -753,20 +754,8 @@ impl RowSequenceKey {
 		Key::encode(&Self::new(storage.into()))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::sequence_start()), Some(Self::sequence_end()))
-	}
-
-	fn sequence_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<RowSequenceKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn sequence_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<RowSequenceKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -819,25 +808,9 @@ impl RowSettingsKey {
 	pub fn encoded(storage: StorageId) -> EncodedKey {
 		Key::encode(&Self::new(storage))
 	}
-}
 
-pub struct RowSettingsKeyRange;
-
-impl RowSettingsKeyRange {
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
-	}
-
-	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<RowSettingsKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<RowSettingsKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -911,20 +884,8 @@ impl RowShapeKey {
 		})
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::scan_start()), Some(Self::scan_end()))
-	}
-
-	fn scan_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<RowShapeKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn scan_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<RowShapeKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 

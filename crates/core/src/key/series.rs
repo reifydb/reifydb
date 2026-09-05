@@ -16,6 +16,7 @@ use crate::{
 	interface::catalog::{id::SeriesId, object::ObjectId, storage::StorageId},
 	key::{
 		any::{Field, KeyFields, Width},
+		bound::AnyKeyBoundRange,
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		typed::{TypedKey, direction::Desc, key::Key},
 	},
@@ -39,20 +40,8 @@ impl SeriesKey {
 		Key::encode(&Self::new(series.into()))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::series_start()), Some(Self::series_end()))
-	}
-
-	fn series_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<Self as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn series_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<Self as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 

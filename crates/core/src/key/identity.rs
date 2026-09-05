@@ -18,6 +18,7 @@ use crate::{
 	},
 	key::{
 		any::{ByteEncoding, Field, KeyFields, Width},
+		bound::AnyKeyBoundRange,
 		typed::key::Key,
 	},
 };
@@ -39,12 +40,8 @@ impl IdentityKey {
 		Self::new(identity).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(Self::KIND as u8);
-		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(Self::KIND as u8 - 1);
-		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -88,12 +85,8 @@ impl IdentityAttributeKey {
 		Self::new(attribute).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(Self::KIND as u8);
-		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(Self::KIND as u8 - 1);
-		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -135,12 +128,8 @@ impl IdentityAttributeValueKey {
 		Self::new(identity, attribute).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(Self::KIND as u8);
-		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(Self::KIND as u8 - 1);
-		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 
 	pub fn identity_scan(identity: IdentityId) -> EncodedKeyRange {
@@ -230,12 +219,8 @@ impl AuthenticationKey {
 		Self::new(authentication).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(Self::KIND as u8);
-		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(Self::KIND as u8 - 1);
-		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -275,12 +260,8 @@ impl TokenKey {
 		Self::new(token).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(Self::KIND as u8);
-		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(Self::KIND as u8 - 1);
-		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -320,12 +301,8 @@ impl RoleKey {
 		Self::new(role).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(Self::KIND as u8);
-		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(Self::KIND as u8 - 1);
-		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -367,12 +344,8 @@ impl GrantedRoleKey {
 		Self::new(identity, role).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(Self::KIND as u8);
-		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(Self::KIND as u8 - 1);
-		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 
 	pub fn identity_scan(identity: IdentityId) -> EncodedKeyRange {
@@ -458,12 +431,8 @@ impl PolicyKey {
 		Self::new(policy).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(Self::KIND as u8);
-		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(Self::KIND as u8 - 1);
-		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -505,12 +474,8 @@ impl PolicyOpKey {
 		Self::new(policy, op_index).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(Self::KIND as u8);
-		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(Self::KIND as u8 - 1);
-		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 
 	pub fn policy_scan(policy: PolicyId) -> EncodedKeyRange {

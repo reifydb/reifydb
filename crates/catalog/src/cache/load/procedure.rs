@@ -10,7 +10,7 @@ use crate::{CatalogStore, Result};
 pub(crate) fn load_procedures(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let mut entries = Vec::new();
 	{
-		let stream = rx.range(ProcedureKey::full_scan(), RangeScope::All, 1024)?;
+		let stream = rx.range(ProcedureKey::full_scan().encode(), RangeScope::All, 1024)?;
 		for entry in stream {
 			let entry = entry?;
 			let version = entry.version;

@@ -25,7 +25,7 @@ impl CatalogStore {
 
 		let mut ringbuffer_data: Vec<RingBufferRow> = Vec::new();
 		{
-			let stream = rx.range(RingBufferKey::full_scan(), RangeScope::All, 1024)?;
+			let stream = rx.range(RingBufferKey::full_scan().encode(), RangeScope::All, 1024)?;
 
 			for entry in stream {
 				let entry = entry?;

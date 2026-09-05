@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
-use reifydb_core::key::{any::AnyKey, operator_settings::OperatorSettingsKeyRange};
+use reifydb_core::key::{any::AnyKey, operator_settings::OperatorSettingsKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use tracing::warn;
 
@@ -10,7 +10,7 @@ use super::CatalogCache;
 use crate::{Result, store::operator_settings::decode_operator_settings};
 
 pub(crate) fn load_operator_settings(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
-	let range = OperatorSettingsKeyRange::full_scan();
+	let range = OperatorSettingsKey::full_scan();
 	let stream = rx.range(range.encode(), RangeScope::All, 1024)?;
 
 	for entry in stream {

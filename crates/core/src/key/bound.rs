@@ -297,13 +297,16 @@ mod tests {
 	}
 
 	#[test]
-	fn a_kind_span_bound_encodes_to_the_bytes_its_byte_producer_writes() {
-		let range = DictionaryKey::full_scan();
-		let (Bound::Included(start), Bound::Included(end)) = (range.start, range.end) else {
-			panic!("full_scan is expected to produce an inclusive byte span");
-		};
-		assert_eq!(AnyKeyBound::Kind(KeyKind::Dictionary).encode(), start);
-		assert_eq!(AnyKeyBound::KindEnd(KeyKind::Dictionary).encode(), end);
+	fn a_kind_span_bound_encodes_the_kind_byte_and_its_predecessor() {
+		// built through the codec rather than through DictionaryKey::full_scan, which now
+		// returns this very bound and would make the assertion compare a value with itself.
+		let mut start = KeySerializer::with_capacity(1);
+		start.extend_u8(<DictionaryKey as Key>::KIND as u8);
+		let mut end = KeySerializer::with_capacity(1);
+		end.extend_u8(<DictionaryKey as Key>::KIND as u8 - 1);
+
+		assert_eq!(AnyKeyBound::Kind(KeyKind::Dictionary).encode(), start.to_encoded_key());
+		assert_eq!(AnyKeyBound::KindEnd(KeyKind::Dictionary).encode(), end.to_encoded_key());
 	}
 
 	fn storage_fields(storage: StorageId) -> Vec<OwnedField> {
@@ -452,11 +455,15 @@ mod tests {
 	}
 
 	#[test]
-	fn a_kind_range_encodes_to_the_span_its_full_scan_produces() {
+	fn a_kind_range_brackets_the_whole_kind_inclusively() {
+		let mut start = KeySerializer::with_capacity(1);
+		start.extend_u8(<DictionaryKey as Key>::KIND as u8);
+		let mut end = KeySerializer::with_capacity(1);
+		end.extend_u8(<DictionaryKey as Key>::KIND as u8 - 1);
+
 		let encoded = AnyKeyBoundRange::kind(KeyKind::Dictionary).encode();
-		let expected = DictionaryKey::full_scan();
-		assert_eq!(encoded.start, expected.start);
-		assert_eq!(encoded.end, expected.end);
+		assert_eq!(encoded.start, Bound::Included(start.to_encoded_key()));
+		assert_eq!(encoded.end, Bound::Included(end.to_encoded_key()));
 	}
 
 	#[test]

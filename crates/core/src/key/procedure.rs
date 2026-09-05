@@ -13,6 +13,7 @@ use crate::{
 	interface::catalog::id::ProcedureId,
 	key::{
 		any::{Field, KeyFields, Width},
+		bound::AnyKeyBoundRange,
 		typed::key::Key,
 	},
 };
@@ -58,20 +59,8 @@ impl ProcedureKey {
 		Self::new(procedure).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::procedure_start()), Some(Self::procedure_end()))
-	}
-
-	fn procedure_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn procedure_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 

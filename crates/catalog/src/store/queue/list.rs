@@ -16,7 +16,7 @@ impl CatalogStore {
 	pub(crate) fn list_queues(rx: &mut Transaction<'_>) -> Result<Vec<Queue>> {
 		let mut queue_ids: Vec<QueueId> = Vec::new();
 		{
-			let stream = rx.range(QueueKey::full_scan(), RangeScope::All, 1024)?;
+			let stream = rx.range(QueueKey::full_scan().encode(), RangeScope::All, 1024)?;
 
 			for entry in stream {
 				let entry = entry?;

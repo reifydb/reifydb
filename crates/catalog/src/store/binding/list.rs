@@ -14,7 +14,7 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn list_bindings_all(rx: &mut Transaction<'_>) -> Result<Vec<Binding>> {
 		let mut out = Vec::new();
-		let stream = rx.range(BindingKey::full_scan(), RangeScope::All, 1024)?;
+		let stream = rx.range(BindingKey::full_scan().encode(), RangeScope::All, 1024)?;
 		for entry in stream {
 			let entry = entry?;
 			if matches!(&entry.key, AnyKey::Binding(_)) {

@@ -80,14 +80,12 @@ use crate::{
 
 const DECLARED_KINDS: usize = 87;
 
-// Five kinds own no key struct, yet a stored byte still decodes to them and must be placed.
 fn bare(kind: KeyKind) -> EncodedKey {
 	let mut serializer = KeySerializer::with_capacity(1);
 	serializer.extend_u8(kind as u8);
 	serializer.to_encoded_key()
 }
 
-// Exhaustive on purpose: a new KeyKind breaks the build instead of escaping the assertions.
 fn representative(kind: KeyKind) -> EncodedKey {
 	match kind {
 		KeyKind::Namespace => NamespaceKey {
@@ -493,7 +491,6 @@ fn all_kinds() -> Vec<KeyKind> {
 
 #[test]
 fn every_declared_kind_is_reachable_from_a_byte() {
-	// A variant missing from try_from never reaches all_kinds(), silently dropping out of cover.
 	let kinds = all_kinds();
 	assert_eq!(
 		kinds.len(),
@@ -506,7 +503,6 @@ fn every_declared_kind_is_reachable_from_a_byte() {
 
 #[test]
 fn each_representative_opens_with_its_own_inverted_kind_byte() {
-	// A raw or wrong discriminant here parks the whole family in a neighbour's order slot.
 	for kind in all_kinds() {
 		let encoded = representative(kind);
 		assert_eq!(
@@ -519,8 +515,6 @@ fn each_representative_opens_with_its_own_inverted_kind_byte() {
 
 #[test]
 fn encoded_keys_sort_descending_by_kind_discriminant() {
-	// pending.rs merges uncommitted writes with storage in key order across mixed kinds.
-	// The kind byte is inverted, so a backwards order returns wrong rows and raises no error.
 	let kinds = all_kinds();
 
 	let mut encoded: Vec<(KeyKind, Vec<u8>)> =
@@ -541,7 +535,6 @@ fn encoded_keys_sort_descending_by_kind_discriminant() {
 
 #[test]
 fn a_higher_kind_discriminant_sorts_strictly_before_a_lower_one() {
-	// Same rule pairwise, so a failure names the two families instead of diffing 91 elements.
 	let kinds = all_kinds();
 
 	for pair in kinds.windows(2) {
@@ -560,7 +553,6 @@ fn a_higher_kind_discriminant_sorts_strictly_before_a_lower_one() {
 
 #[test]
 fn row_sorts_before_table_because_the_kind_byte_is_inverted() {
-	// The case most often got backwards: Row is 0x03, Table 0x02, yet Row's bytes are smaller.
 	let row = representative(KeyKind::Row);
 	let table = representative(KeyKind::Table);
 

@@ -26,7 +26,10 @@ use crate::{
 		},
 		object::ObjectId,
 	},
-	key::any::{Field, KeyFields, RawEncoding, Width, index_tag},
+	key::{
+		any::{Field, KeyFields, RawEncoding, Width, index_tag},
+		bound::AnyKeyBoundRange,
+	},
 	return_internal_error,
 	value::index::{encoded::EncodedIndexKey, range::EncodedIndexKeyRange},
 };
@@ -419,20 +422,8 @@ impl DictionaryKey {
 		Key::encode(&Self::new(dictionary.into()))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::dictionary_start()), Some(Self::dictionary_end()))
-	}
-
-	fn dictionary_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<DictionaryKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn dictionary_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<DictionaryKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -1186,20 +1177,8 @@ impl SumTypeKey {
 		Key::encode(&Self::new(sumtype.into()))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
-	}
-
-	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<SumTypeKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<SumTypeKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -1286,20 +1265,8 @@ impl ViewKey {
 		Key::encode(&Self::new(view))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::view_start()), Some(Self::view_end()))
-	}
-
-	fn view_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<ViewKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn view_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<ViewKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -1339,20 +1306,8 @@ impl TableKey {
 		Key::encode(&Self::new(table))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::table_start()), Some(Self::table_end()))
-	}
-
-	fn table_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<TableKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn table_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<TableKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -1431,20 +1386,8 @@ impl SourceKey {
 		Key::encode(&Self::new(source))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::source_start()), Some(Self::source_end()))
-	}
-
-	fn source_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<SourceKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn source_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<SourceKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -1506,20 +1449,8 @@ impl SinkKey {
 		Key::encode(&Self::new(sink))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::sink_start()), Some(Self::sink_end()))
-	}
-
-	fn sink_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<SinkKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn sink_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<SinkKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -1557,20 +1488,8 @@ impl RelationshipKey {
 		Key::encode(&Self::new(relationship))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::relationship_start()), Some(Self::relationship_end()))
-	}
-
-	fn relationship_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<RelationshipKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn relationship_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<RelationshipKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -1695,20 +1614,8 @@ impl HandlerKey {
 		Key::encode(&Self::new(handler.into()))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
-	}
-
-	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<HandlerKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<HandlerKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -2014,20 +1921,8 @@ impl BindingKey {
 		Key::encode(&Self::new(binding))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
-	}
-
-	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<BindingKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<BindingKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -2064,20 +1959,8 @@ impl PrimaryKeyKey {
 		Key::encode(&Self::new(primary_key))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::primary_key_start()), Some(Self::primary_key_end()))
-	}
-
-	fn primary_key_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<PrimaryKeyKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn primary_key_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<PrimaryKeyKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 

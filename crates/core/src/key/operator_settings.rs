@@ -30,13 +30,9 @@ impl OperatorSettingsKey {
 	pub fn encoded(operator: impl Into<OperatorId>) -> EncodedKey {
 		Self::new(operator).encode()
 	}
-}
 
-pub struct OperatorSettingsKeyRange;
-
-impl OperatorSettingsKeyRange {
 	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(OperatorSettingsKey::KIND)
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 

@@ -15,7 +15,7 @@ impl CatalogStore {
 
 		let mut view_ids = Vec::new();
 		{
-			let stream = rx.range(ViewKey::full_scan(), RangeScope::All, 1024)?;
+			let stream = rx.range(ViewKey::full_scan().encode(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
 				if let AnyKey::View(view_key) = &entry.key {

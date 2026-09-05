@@ -3,10 +3,7 @@
 
 use std::ops::Bound;
 
-use reifydb_codec::key::{
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_macro::Key;
 use reifydb_runtime::version_epoch::EpochSeconds;
 use serde::{Deserialize, Serialize, de};
@@ -16,6 +13,7 @@ use crate::{
 	interface::catalog::id::{MigrationEventId, MigrationId, SequenceId},
 	key::{
 		any::{Field, KeyFields, Width},
+		bound::AnyKeyBoundRange,
 		typed::key::Key,
 	},
 };
@@ -39,20 +37,8 @@ impl SystemSequenceKey {
 		})
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::sequence_start()), Some(Self::sequence_end()))
-	}
-
-	fn sequence_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<SystemSequenceKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn sequence_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<SystemSequenceKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -253,20 +239,8 @@ impl MigrationKey {
 		Key::encode(&Self::new(migration.into()))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
-	}
-
-	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<MigrationKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<MigrationKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -303,20 +277,8 @@ impl MigrationEventKey {
 		Key::encode(&Self::new(event.into()))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
-	}
-
-	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<MigrationEventKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<MigrationEventKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 

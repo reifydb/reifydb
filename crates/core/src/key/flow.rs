@@ -10,7 +10,10 @@ use reifydb_macro::Key;
 use super::{KeyKind, typed::key::Key};
 use crate::{
 	interface::catalog::flow::{FlowEdgeId, FlowId},
-	key::any::{Field, KeyFields, Width},
+	key::{
+		any::{Field, KeyFields, Width},
+		bound::AnyKeyBoundRange,
+	},
 };
 
 #[derive(Debug, Clone, PartialEq, Key, Hash)]
@@ -30,20 +33,8 @@ impl FlowKey {
 		Self::new(flow).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::flow_start()), Some(Self::flow_end()))
-	}
-
-	fn flow_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn flow_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -120,20 +111,8 @@ impl FlowEdgeKey {
 		Self::new(edge).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
-	}
-
-	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8((Self::KIND as u8) - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 

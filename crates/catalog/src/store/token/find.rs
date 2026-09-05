@@ -13,7 +13,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_token_by_value(rx: &mut Transaction<'_>, value: &str) -> Result<Option<Token>> {
-		let stream = rx.range(TokenKey::full_scan(), RangeScope::All, 1024)?;
+		let stream = rx.range(TokenKey::full_scan().encode(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

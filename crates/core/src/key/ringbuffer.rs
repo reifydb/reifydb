@@ -17,6 +17,7 @@ use crate::{
 	interface::catalog::{id::RingBufferId, object::ObjectId, storage::StorageId},
 	key::{
 		any::{Field, KeyFields, RawEncoding, Width, encode_values},
+		bound::AnyKeyBoundRange,
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		typed::key::Key,
 	},
@@ -39,20 +40,8 @@ impl RingBufferKey {
 		Key::encode(&Self::new(ringbuffer.into()))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::ringbuffer_start()), Some(Self::ringbuffer_end()))
-	}
-
-	fn ringbuffer_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<Self as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn ringbuffer_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<Self as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 

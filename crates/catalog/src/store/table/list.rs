@@ -19,7 +19,7 @@ impl CatalogStore {
 
 		let mut table_ids = Vec::new();
 		{
-			let stream = rx.range(TableKey::full_scan(), RangeScope::All, 1024)?;
+			let stream = rx.range(TableKey::full_scan().encode(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
 				if let AnyKey::Table(table_key) = &entry.key {

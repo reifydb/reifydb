@@ -19,6 +19,7 @@ use crate::{
 	},
 	key::{
 		any::{Field, KeyFields, Width},
+		bound::AnyKeyBoundRange,
 		typed::key::Key,
 	},
 };
@@ -40,20 +41,8 @@ impl NamespaceKey {
 		Self::new(namespace).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::namespace_start()), Some(Self::namespace_end()))
-	}
-
-	fn namespace_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn namespace_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 

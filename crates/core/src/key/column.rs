@@ -15,6 +15,7 @@ use crate::{
 	},
 	key::{
 		any::{Field, KeyFields, Width},
+		bound::AnyKeyBoundRange,
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		typed::key::Key,
 	},
@@ -198,20 +199,8 @@ impl ColumnSnapshotKey {
 		Key::encode(&Self::new(snapshot.into()))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::scan_start()), Some(Self::scan_end()))
-	}
-
-	fn scan_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<Self as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn scan_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<Self as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 
@@ -370,20 +359,8 @@ impl ColumnsKey {
 		Key::encode(&Self::new(column))
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::column_start()), Some(Self::column_end()))
-	}
-
-	fn column_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<ColumnsKey as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn column_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<ColumnsKey as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 

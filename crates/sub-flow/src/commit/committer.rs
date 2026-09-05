@@ -347,7 +347,7 @@ mod commit_integration {
 			EncodableKey,
 			any::AnyKey,
 			catalog::IndexEntryKey,
-			cdc::CdcConsumerKeyRange,
+			cdc::CdcConsumerKey,
 			operator::state::{GroupStateKey, OperatorStateKey, custom_not_cached_key},
 		},
 		value::index::encoded::EncodedIndexKey,
@@ -486,7 +486,7 @@ mod commit_integration {
 		let mut query = engine.begin_query(IdentityId::system()).expect("begin query");
 		let mut consumers: Vec<String> = Vec::new();
 		for multi in Transaction::Query(&mut query)
-			.range(CdcConsumerKeyRange::full_scan().encode(), RangeScope::All, 1024)
+			.range(CdcConsumerKey::full_scan().encode(), RangeScope::All, 1024)
 			.expect("scan consumer checkpoints")
 		{
 			let multi = multi.expect("consumer checkpoint row");

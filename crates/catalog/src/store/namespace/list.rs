@@ -16,7 +16,7 @@ impl CatalogStore {
 
 		let namespace_range = NamespaceKey::full_scan();
 
-		let stream = rx.range(namespace_range, RangeScope::All, 1024)?;
+		let stream = rx.range(namespace_range.encode(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let entry = entry?;

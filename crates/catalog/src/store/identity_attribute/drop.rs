@@ -19,7 +19,7 @@ impl CatalogStore {
 	) -> Result<()> {
 		{
 			let range = IdentityAttributeValueKey::full_scan();
-			let mut stream = txn.range(range, RangeScope::All, 1024)?;
+			let mut stream = txn.range(range.encode(), RangeScope::All, 1024)?;
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;

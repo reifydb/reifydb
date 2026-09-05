@@ -17,7 +17,7 @@ impl CatalogStore {
 	pub(crate) fn drop_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
 		let mut to_remove = Vec::new();
 		{
-			let stream = txn.range(TokenKey::full_scan(), RangeScope::All, 1024)?;
+			let stream = txn.range(TokenKey::full_scan().encode(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
 				let token_identity = token::get_identity(EncodedCatalogRow::view(&multi.bytes));
@@ -38,7 +38,7 @@ impl CatalogStore {
 	pub(crate) fn drop_expired_tokens(txn: &mut AdminTransaction, now: DateTime) -> Result<()> {
 		let mut to_remove = Vec::new();
 		{
-			let stream = txn.range(TokenKey::full_scan(), RangeScope::All, 1024)?;
+			let stream = txn.range(TokenKey::full_scan().encode(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
 				if let Some(expires_at) =

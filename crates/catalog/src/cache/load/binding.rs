@@ -8,7 +8,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use crate::{Result, cache::CatalogCache, store::binding::find::decode_binding};
 
 pub(crate) fn load_bindings(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
-	let stream = rx.range(BindingKey::full_scan(), RangeScope::All, 1024)?;
+	let stream = rx.range(BindingKey::full_scan().encode(), RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

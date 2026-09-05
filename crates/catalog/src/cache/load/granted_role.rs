@@ -9,7 +9,7 @@ use crate::{Result, store::granted_role::convert_granted_role};
 
 pub(crate) fn load_granted_roles(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = GrantedRoleKey::full_scan();
-	let stream = rx.range(range, RangeScope::All, 1024)?;
+	let stream = rx.range(range.encode(), RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

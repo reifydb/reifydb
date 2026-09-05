@@ -57,6 +57,10 @@ impl CdcConsumerKey {
 		}
 		.encode()
 	}
+
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
+	}
 }
 
 impl EncodableKey for CdcConsumerKey {
@@ -87,20 +91,11 @@ impl EncodableKey for CdcConsumerKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CdcConsumerKeyRange;
-
-impl CdcConsumerKeyRange {
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(CdcConsumerKey::KIND)
-	}
-}
-
 #[cfg(test)]
 pub mod cdc_consumer_key_tests {
 	use std::ops::RangeBounds;
 
-	use super::{CdcConsumerKey, CdcConsumerKeyRange, EncodableKey, ToConsumerKey};
+	use super::{CdcConsumerKey, EncodableKey, ToConsumerKey};
 	use crate::interface::{catalog::flow::FlowId, cdc::CdcConsumerId};
 
 	#[test]
@@ -132,7 +127,7 @@ pub mod cdc_consumer_key_tests {
 		}
 		.encode();
 
-		let range = CdcConsumerKeyRange::full_scan().encode();
+		let range = CdcConsumerKey::full_scan().encode();
 
 		assert!(range.contains(&key1), "consumer-a key should be in range");
 		assert!(range.contains(&key2), "consumer-b key should be in range");
@@ -154,7 +149,7 @@ pub mod cdc_consumer_key_tests {
 		let flow2 = FlowId(100).to_consumer_key().encode();
 		let flow3 = FlowId(999).to_consumer_key().encode();
 
-		let range = CdcConsumerKeyRange::full_scan().encode();
+		let range = CdcConsumerKey::full_scan().encode();
 
 		assert!(range.contains(&flow1), "flow:1 key should be in range");
 		assert!(range.contains(&flow2), "flow:100 key should be in range");
