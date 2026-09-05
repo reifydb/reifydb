@@ -28,10 +28,8 @@ impl SqliteOperatorStorage {
 		let Some(conn) = guard.as_ref() else {
 			return sizes;
 		};
-		for key in keys {
-			if let Some(bytes) = route::get(conn, operator, key) {
-				sizes.insert(key.clone(), ByteSize::from_bytes(bytes.len() as u64));
-			}
+		for (key, bytes) in route::get_many(conn, operator, keys) {
+			sizes.insert(key, ByteSize::from_bytes(bytes.len() as u64));
 		}
 		sizes
 	}
@@ -46,10 +44,8 @@ impl SqliteOperatorStorage {
 		let Some(conn) = guard.as_ref() else {
 			return found;
 		};
-		for key in keys {
-			if let Some(bytes) = route::get(conn, operator, key) {
-				found.insert(key.clone(), decode_row(bytes));
-			}
+		for (key, bytes) in route::get_many(conn, operator, keys) {
+			found.insert(key, decode_row(bytes));
 		}
 		found
 	}

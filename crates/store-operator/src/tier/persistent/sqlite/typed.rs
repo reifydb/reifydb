@@ -307,7 +307,46 @@ pub fn get<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::Groupe
 	let sql = format!("SELECT \"bytes\" FROM \"{}\" WHERE \"operator\" = ?1{}", K::table(), K::key_predicate(2));
 	let mut params = vec![Value::Integer(operator.0 as i64)];
 	params.extend(K::bind_key(key));
-	conn.query_row(&sql, params_from_iter(params), |row| row.get::<_, Vec<u8>>(0)).ok()
+	let mut stmt = conn.prepare_cached(&sql).expect("operator state get could not be prepared");
+	stmt.query_row(params_from_iter(params), |row| row.get::<_, Vec<u8>>(0)).ok()
+}
+
+pub const READ_CHUNK: usize = 100;
+
+fn get_batch_sql<K: Keyspace>(rows: usize) -> String {
+	format!(
+		"SELECT {}\"bytes\" FROM \"{}\" WHERE (\"operator\"{}) IN (VALUES {})",
+		K::key_columns(),
+		K::table(),
+		K::conflict_target(),
+		values_placeholders(rows, K::columns().len() + 1)
+	)
+}
+
+pub fn get_batch<K: Keyspace>(
+	conn: &Connection,
+	operator: OperatorId,
+	keys: &[K::GroupedKey],
+) -> Vec<(K::GroupedKey, Vec<u8>)> {
+	let mut out = Vec::with_capacity(keys.len());
+	for chunk in keys.chunks(READ_CHUNK) {
+		let sql = get_batch_sql::<K>(chunk.len());
+		let mut params = Vec::with_capacity(chunk.len() * (K::columns().len() + 1));
+		for key in chunk {
+			params.push(Value::Integer(operator.0 as i64));
+			params.extend(K::bind_key(key));
+		}
+		let mut stmt =
+			conn.prepare_cached(&sql).expect("operator state batch get could not be prepared");
+		let mut rows = stmt.query(params_from_iter(params)).expect("operator state batch get failed");
+		while let Some(row) = rows.next().expect("operator state batch get row failed") {
+			let key = K::read_key(row, 0)
+				.expect("an operator state row does not decode as its own key layout");
+			let bytes: Vec<u8> = row.get(K::columns().len()).expect("operator state row has no payload");
+			out.push((key, bytes));
+		}
+	}
+	out
 }
 
 pub fn remove<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::GroupedKey) {
