@@ -5,6 +5,7 @@ use kind::KeyKind;
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 
 pub mod any;
+pub mod bound;
 pub mod catalog;
 pub mod cdc;
 pub mod column;
