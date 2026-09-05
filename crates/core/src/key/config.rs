@@ -3,17 +3,16 @@
 
 use std::{borrow::Cow, str::FromStr};
 
-use reifydb_codec::key::{
-	deserializer::KeyDeserializer,
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
+use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
 use smallvec::{SmallVec, smallvec};
 
 use super::{EncodableKey, KeyKind};
 use crate::{
 	interface::catalog::config::ConfigKey,
-	key::any::{ByteEncoding, Field, KeyFields},
+	key::{
+		any::{ByteEncoding, Field, KeyFields},
+		bound::AnyKeyBoundRange,
+	},
 };
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -32,12 +31,8 @@ impl ConfigStorageKey {
 		Self::new(key).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(Self::KIND as u8);
-		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(Self::KIND as u8 - 1);
-		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 

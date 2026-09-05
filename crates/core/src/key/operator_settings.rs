@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_macro::Key;
 use serde::{Deserialize, Serialize};
 
 use super::{KeyKind, typed::key::Key};
 use crate::{
 	interface::catalog::flow::OperatorId,
-	key::any::{Field, KeyFields, Width},
+	key::{
+		any::{Field, KeyFields, Width},
+		bound::AnyKeyBoundRange,
+	},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Key, Hash)]
@@ -35,20 +35,8 @@ impl OperatorSettingsKey {
 pub struct OperatorSettingsKeyRange;
 
 impl OperatorSettingsKeyRange {
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
-	}
-
-	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(OperatorSettingsKey::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(OperatorSettingsKey::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(OperatorSettingsKey::KIND)
 	}
 }
 

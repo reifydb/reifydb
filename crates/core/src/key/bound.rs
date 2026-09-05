@@ -6,12 +6,19 @@ use std::{cmp::Ordering, ops::Bound};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use smallvec::SmallVec;
 
-use crate::key::{
-	any::{AnyKey, Field, KeyFields},
-	kind::KeyKind,
+use crate::{
+	interface::catalog::object::ObjectId,
+	key::{
+		any::{AnyKey, Field, KeyFields, Width},
+		kind::KeyKind,
+	},
 };
 
 pub type OwnedField = Field<'static>;
+
+pub fn object_fields(object: ObjectId) -> [OwnedField; 2] {
+	[Field::UAsc(Width::U8, object.type_tag() as u128), Field::UDesc(Width::U64, object.as_u64() as u128)]
+}
 
 #[derive(Debug, Clone)]
 pub enum AnyKeyBound {
@@ -173,15 +180,18 @@ impl From<AnyKey> for AnyKeyBound {
 mod tests {
 	use std::ops::Bound;
 
-	use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+	use reifydb_codec::key::{
+		encoded::{EncodedKey, EncodedKeyRange},
+		serializer::KeySerializer,
+	};
 	use reifydb_value::value::row_number::RowNumber;
 
-	use super::{AnyKeyBound, AnyKeyBoundRange, OwnedField};
+	use super::{AnyKeyBound, AnyKeyBoundRange, OwnedField, object_fields};
 	use crate::{
 		interface::catalog::{id::TableId, object::ObjectId, storage::StorageId},
 		key::{
 			any::{AnyKey, Field, Width},
-			catalog::{DictionaryKey, TableKey},
+			catalog::{DictionaryKey, KeySerializerCatalogExt, TableKey},
 			kind::KeyKind,
 			row::RowKey,
 			typed::key::Key,
@@ -297,10 +307,23 @@ mod tests {
 	}
 
 	fn storage_fields(storage: StorageId) -> Vec<OwnedField> {
-		vec![
-			OwnedField::UAsc(Width::U8, ObjectId::from(storage).type_tag() as u128),
-			OwnedField::UDesc(Width::U64, ObjectId::from(storage).as_u64() as u128),
-		]
+		object_fields(ObjectId::from(storage)).to_vec()
+	}
+
+	#[test]
+	fn the_object_id_field_pair_encodes_to_what_extend_object_id_writes() {
+		// twenty-one producers project an ObjectId through this helper rather than through the
+		// derive, so it is the one field pair with no generated conformance test behind it.
+		for storage in [0u64, 1, 255, u64::MAX] {
+			let object = ObjectId::from(StorageId::table(storage));
+			let mut replayed = Vec::new();
+			for field in object_fields(object) {
+				field.encode(&mut replayed);
+			}
+			let mut expected = KeySerializer::with_capacity(9);
+			expected.extend_object_id(object);
+			assert_eq!(replayed.as_slice(), expected.to_encoded_key().as_slice(), "{object:?}");
+		}
 	}
 
 	#[test]

@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_macro::Key;
 
 use super::{
@@ -14,7 +11,10 @@ use super::{
 };
 use crate::{
 	interface::catalog::object::ObjectId,
-	key::any::{Field, KeyFields, Width},
+	key::{
+		any::{Field, KeyFields, Width},
+		bound::AnyKeyBoundRange,
+	},
 };
 
 #[derive(Debug, Clone, PartialEq, Key, Hash)]
@@ -34,20 +34,8 @@ impl OutputFrontierKey {
 		Self::new(object).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::frontier_start()), Some(Self::frontier_end()))
-	}
-
-	fn frontier_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn frontier_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(Self::KIND)
 	}
 }
 

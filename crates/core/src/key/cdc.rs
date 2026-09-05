@@ -3,17 +3,16 @@
 
 use std::borrow::Cow;
 
-use reifydb_codec::key::{
-	deserializer::KeyDeserializer,
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
+use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
 use smallvec::{SmallVec, smallvec};
 
 use super::{EncodableKey, KeyKind};
 use crate::{
 	interface::{catalog::flow::FlowId, cdc::CdcConsumerId},
-	key::any::{ByteEncoding, Field, KeyFields},
+	key::{
+		any::{ByteEncoding, Field, KeyFields},
+		bound::AnyKeyBoundRange,
+	},
 };
 
 pub trait ToConsumerKey {
@@ -92,20 +91,8 @@ impl EncodableKey for CdcConsumerKey {
 pub struct CdcConsumerKeyRange;
 
 impl CdcConsumerKeyRange {
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
-	}
-
-	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(CdcConsumerKey::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8((CdcConsumerKey::KIND as u8).wrapping_sub(1));
-		serializer.to_encoded_key()
+	pub fn full_scan() -> AnyKeyBoundRange {
+		AnyKeyBoundRange::kind(CdcConsumerKey::KIND)
 	}
 }
 
@@ -145,7 +132,7 @@ pub mod cdc_consumer_key_tests {
 		}
 		.encode();
 
-		let range = CdcConsumerKeyRange::full_scan();
+		let range = CdcConsumerKeyRange::full_scan().encode();
 
 		assert!(range.contains(&key1), "consumer-a key should be in range");
 		assert!(range.contains(&key2), "consumer-b key should be in range");
@@ -167,7 +154,7 @@ pub mod cdc_consumer_key_tests {
 		let flow2 = FlowId(100).to_consumer_key().encode();
 		let flow3 = FlowId(999).to_consumer_key().encode();
 
-		let range = CdcConsumerKeyRange::full_scan();
+		let range = CdcConsumerKeyRange::full_scan().encode();
 
 		assert!(range.contains(&flow1), "flow:1 key should be in range");
 		assert!(range.contains(&flow2), "flow:100 key should be in range");

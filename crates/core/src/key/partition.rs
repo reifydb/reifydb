@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_macro::Key;
 use reifydb_value::value::partition::Partition;
 
@@ -13,6 +10,7 @@ use crate::{
 	interface::catalog::object::ObjectId,
 	key::{
 		any::{Field, KeyFields, Width},
+		bound::{AnyKeyBound, AnyKeyBoundRange, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		typed::key::Key,
 	},
@@ -37,13 +35,12 @@ impl PartitionKey {
 		Self::new(object, partition).encode()
 	}
 
-	pub fn full_scan(object: impl Into<ObjectId>) -> EncodedKeyRange {
+	pub fn full_scan(object: impl Into<ObjectId>) -> AnyKeyBoundRange {
 		let object = object.into();
-		let mut start = KeySerializer::with_capacity(10);
-		start.extend_u8(Self::KIND as u8).extend_object_id(object);
-		let mut end = KeySerializer::with_capacity(10);
-		end.extend_u8(Self::KIND as u8).extend_object_id(object.prev());
-		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
+		AnyKeyBoundRange::start_end(
+			AnyKeyBound::prefix(Self::KIND, object_fields(object)),
+			AnyKeyBound::prefix(Self::KIND, object_fields(object.prev())),
+		)
 	}
 }
 
@@ -72,7 +69,7 @@ mod tests {
 	#[test]
 	fn test_partitions_of_object_share_prefix() {
 		let object = ObjectId::Table(TableId(3));
-		let range = PartitionKey::full_scan(object);
+		let range = PartitionKey::full_scan(object).encode();
 		let k = PartitionKey::encoded(object, Partition::of(&[Value::Utf8("us".to_string())]));
 		assert!(range.contains(&k));
 		let other = PartitionKey::encoded(

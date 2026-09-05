@@ -147,7 +147,7 @@ pub fn read_configs(
 	let batch = scan_tiers_latest(
 		buffer,
 		persistent,
-		range,
+		range.encode(),
 		MultiVersionScope::AsOf {
 			read: CommitVersion(u64::MAX),
 		},
