@@ -281,6 +281,11 @@ fn order_test(name: &str) -> String {
 		 = {{:?}}\\n  b = {{:?}}\\n  a bytes = {{:?}}\\n  b bytes = \
 		 {{:?}}\",\n\t\t\t\t\t__a,\n\t\t\t\t\t__b,\n\t\t\t\t\t__ea.as_slice(),\n\t\t\t\t\t\
 		 __eb.as_slice()\n\t\t\t\t);\n"));
+	out.push_str(&format!("\t\t\t\tassert_eq!(\n\t\t\t\t\t__a.fields().cmp(&__b.fields()),\n\t\t\t\t\t\
+		 __actual,\n\t\t\t\t\t\"{name}: fields() order disagrees with encoded byte order\\n  a = \
+		 {{:?}}\\n  b = {{:?}}\\n  a bytes = {{:?}}\\n  b bytes = \
+		 {{:?}}\",\n\t\t\t\t\t__a,\n\t\t\t\t\t__b,\n\t\t\t\t\t__ea.as_slice(),\n\t\t\t\t\t\
+		 __eb.as_slice()\n\t\t\t\t);\n"));
 	out.push_str("\t\t\t}\n\t\t}\n\t}\n");
 	out
 }

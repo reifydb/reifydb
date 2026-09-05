@@ -100,6 +100,57 @@ impl KeyColumn {
 		}
 	}
 
+	fn field_exprs(self, field: &str) -> Vec<String> {
+		let u = |expr: String| vec![format!("Field::UDesc({expr} as u128)")];
+		match self {
+			KeyColumn::U8 | KeyColumn::U16 | KeyColumn::U32 | KeyColumn::U64 | KeyColumn::U128 => {
+				u(format!("self.{field}"))
+			}
+			KeyColumn::ReprU8 => u(format!("self.{field} as u8")),
+			KeyColumn::RowNumber => u(format!("self.{field}.0")),
+			KeyColumn::Partition => u(format!("self.{field}.0")),
+			KeyColumn::ProcedureId => u(format!("*self.{field}")),
+			KeyColumn::EpochSeconds => u(format!("self.{field}.seconds()")),
+			KeyColumn::DateTime => u(format!("self.{field}.to_nanos()")),
+			KeyColumn::RowShapeFingerprint | KeyColumn::IndexId => u(format!("self.{field}.as_u64()")),
+			KeyColumn::GroupId | KeyColumn::IdentityId => {
+				vec![format!("Field::BytesDesc(::std::borrow::Cow::Borrowed(self.{field}.as_bytes()))")]
+			}
+			KeyColumn::Blob16 => vec![format!("Field::RawAsc(&self.{field})")],
+			KeyColumn::ObjectId | KeyColumn::StorageId => vec![
+				format!("Field::U8Asc(self.{field}.type_tag())"),
+				format!("Field::UDesc(self.{field}.as_u64() as u128)"),
+			],
+			KeyColumn::OptionU8 => vec![
+				format!("Field::UDesc(self.{field}.is_some() as u128)"),
+				format!("Field::UDesc(self.{field}.unwrap_or(0u8) as u128)"),
+			],
+			KeyColumn::TableId
+			| KeyColumn::ColumnId
+			| KeyColumn::FlowId
+			| KeyColumn::FlowEdgeId
+			| KeyColumn::OperatorId
+			| KeyColumn::HandlerId
+			| KeyColumn::NamespaceId
+			| KeyColumn::SumTypeId
+			| KeyColumn::SequenceId
+			| KeyColumn::ViewId
+			| KeyColumn::SeriesId
+			| KeyColumn::SinkId
+			| KeyColumn::SourceId
+			| KeyColumn::QueueId
+			| KeyColumn::RingBufferId
+			| KeyColumn::BindingId
+			| KeyColumn::DictionaryId
+			| KeyColumn::ColumnPropertyId
+			| KeyColumn::RelationshipId
+			| KeyColumn::MigrationId
+			| KeyColumn::MigrationEventId
+			| KeyColumn::ColumnSnapshotId
+			| KeyColumn::PrimaryKeyId => u(format!("self.{field}.0")),
+		}
+	}
+
 	fn encode_stmt(self, field: &str) -> String {
 		match self {
 			KeyColumn::U8 => format!("serializer.extend_u8(self.{field});"),
@@ -543,6 +594,16 @@ fn expand(name: &str, kind: &str, fields: &[KeyField]) -> TokenStream {
 	out.push_str(&format!("\t\tlet decoded = Self {{\n{decode_body}\t\t}};\n"));
 	out.push_str("\t\tif !de.is_empty() {\n\t\t\treturn None;\n\t\t}\n");
 	out.push_str("\t\tSome(decoded)\n\t}\n}\n\n");
+
+	out.push_str(&format!("#[automatically_derived]\nimpl KeyFields for {name} {{\n"));
+	out.push_str("\tfn fields(&self) -> ::smallvec::SmallVec<[Field<'_>; 4]> {\n");
+	out.push_str("\t\t::smallvec::smallvec![\n");
+	for field in fields {
+		for expr in field.column.field_exprs(&field.name) {
+			out.push_str(&format!("\t\t\t{expr},\n"));
+		}
+	}
+	out.push_str("\t\t]\n\t}\n}\n\n");
 	out.push_str(&expand_tests(name, fields));
 
 	out.parse().expect("derived Key impl must be valid Rust")

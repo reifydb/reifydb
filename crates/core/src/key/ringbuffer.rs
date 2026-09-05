@@ -10,6 +10,7 @@ use reifydb_macro::Key;
 use reifydb_value::value::Value;
 
 use super::{EncodableKey, KeyKind};
+use crate::key::any::{Field, KeyFields};
 use crate::{
 	interface::catalog::{id::RingBufferId, object::ObjectId, storage::StorageId},
 	key::{

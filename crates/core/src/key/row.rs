@@ -16,6 +16,7 @@ use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 use serde::{Deserialize, Serialize};
 
 use super::{EncodableKeyRange, KeyKind};
+use crate::key::any::{Field, KeyFields};
 use crate::{
 	interface::catalog::{object::ObjectId, storage::StorageId},
 	key::{

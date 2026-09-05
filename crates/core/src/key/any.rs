@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::cmp::Ordering;
+use std::{borrow::Cow, cmp::Ordering};
 
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_value::value::Value;
+use smallvec::SmallVec;
 
 use crate::{
 	interface::{
@@ -1053,6 +1054,55 @@ impl PartialOrd for MetricKey {
 }
 
 impl Eq for AnyKey {}
+
+#[derive(Debug, Clone)]
+pub enum Field<'a> {
+	U8Asc(u8),
+	UDesc(u128),
+	BytesDesc(Cow<'a, [u8]>),
+	RawAsc(&'a [u8]),
+}
+
+impl Field<'_> {
+	fn variant_rank(&self) -> u8 {
+		match self {
+			Self::U8Asc(_) => 0,
+			Self::UDesc(_) => 1,
+			Self::BytesDesc(_) => 2,
+			Self::RawAsc(_) => 3,
+		}
+	}
+}
+
+impl Ord for Field<'_> {
+	fn cmp(&self, other: &Self) -> Ordering {
+		match (self, other) {
+			(Self::U8Asc(left), Self::U8Asc(right)) => left.cmp(right),
+			(Self::UDesc(left), Self::UDesc(right)) => right.cmp(left),
+			(Self::BytesDesc(left), Self::BytesDesc(right)) => right.as_ref().cmp(left.as_ref()),
+			(Self::RawAsc(left), Self::RawAsc(right)) => left.cmp(right),
+			(left, right) => left.variant_rank().cmp(&right.variant_rank()),
+		}
+	}
+}
+
+impl PartialOrd for Field<'_> {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
+impl PartialEq for Field<'_> {
+	fn eq(&self, other: &Self) -> bool {
+		self.cmp(other) == Ordering::Equal
+	}
+}
+
+impl Eq for Field<'_> {}
+
+pub trait KeyFields {
+	fn fields(&self) -> SmallVec<[Field<'_>; 4]>;
+}
 
 impl Ord for AnyKey {
 	fn cmp(&self, other: &Self) -> Ordering {

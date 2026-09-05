@@ -12,6 +12,7 @@ use reifydb_runtime::version_epoch::EpochSeconds;
 use serde::{Deserialize, Serialize, de};
 
 use super::KeyKind;
+use crate::key::any::{Field, KeyFields};
 use crate::{
 	interface::catalog::id::{MigrationEventId, MigrationId, SequenceId},
 	key::typed::key::Key,

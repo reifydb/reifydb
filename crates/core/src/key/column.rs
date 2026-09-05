@@ -8,6 +8,7 @@ use reifydb_codec::key::{
 use reifydb_macro::Key;
 
 use super::KeyKind;
+use crate::key::any::{Field, KeyFields};
 use crate::{
 	interface::catalog::{
 		id::{ColumnId, ColumnSnapshotId, SeriesId, TableId},

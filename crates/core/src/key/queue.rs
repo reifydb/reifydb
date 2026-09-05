@@ -10,6 +10,7 @@ use reifydb_macro::Key;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use super::{EncodableKey, KeyKind};
+use crate::key::any::{Field, KeyFields};
 use crate::{interface::catalog::id::QueueId, key::typed::key::Key};
 
 #[derive(Debug, Clone, PartialEq, Key, Hash)]

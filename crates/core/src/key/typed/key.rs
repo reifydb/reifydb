@@ -22,6 +22,7 @@ mod tests {
 	use reifydb_value::value::row_number::RowNumber;
 
 	use super::Key;
+	use crate::key::any::{Field, KeyFields};
 	use crate::key::{kind::KeyKind, operator::state::GroupId};
 
 	#[derive(Debug, Clone, PartialEq, Key)]

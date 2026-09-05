@@ -17,6 +17,7 @@ use reifydb_value::{
 };
 
 use super::{EncodableKey, EncodableKeyRange, KeyKind, typed::key::Key};
+use crate::key::any::{Field, KeyFields};
 use crate::{
 	interface::catalog::{
 		id::{

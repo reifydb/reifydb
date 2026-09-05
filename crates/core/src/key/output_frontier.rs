@@ -13,6 +13,7 @@ use super::{
 	typed::key::Key,
 };
 use crate::interface::catalog::object::ObjectId;
+use crate::key::any::{Field, KeyFields};
 
 #[derive(Debug, Clone, PartialEq, Key, Hash)]
 #[key(kind = OutputFrontier)]

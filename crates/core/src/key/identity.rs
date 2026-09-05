@@ -9,6 +9,7 @@ use reifydb_macro::Key;
 use reifydb_value::value::identity::IdentityId;
 
 use super::KeyKind;
+use crate::key::any::{Field, KeyFields};
 use crate::{
 	interface::catalog::{
 		authentication::AuthenticationId,

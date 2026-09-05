@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{KeyKind, typed::key::Key};
 use crate::interface::catalog::flow::OperatorId;
+use crate::key::any::{Field, KeyFields};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Key, Hash)]
 #[key(kind = OperatorSettings)]
