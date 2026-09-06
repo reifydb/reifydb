@@ -143,7 +143,7 @@ pub trait StateExtension: FlowTransaction {
 		result_count = field::Empty
 	))]
 	fn state_scan_all(&mut self, id: OperatorId) -> Result<MultiVersionBatch<AnyKey>> {
-		let range = OperatorStateKey::node_range(id);
+		let range = OperatorStateKey::node_range(id).encode();
 		let iter = self.range(range, RangeScope::All, 1024);
 		let mut items = Vec::new();
 		for result in iter {
@@ -373,7 +373,7 @@ fn next_stored(scan: &mut StateLastIter<'_>, prefix: &[u8]) -> Option<(EncodedKe
 #[inline]
 #[instrument(name = "flow::state::clear::scan", level = "trace", skip(txn), fields(operator_id = id.0))]
 fn scan_keys_for_clear<T: FlowTransaction>(txn: &mut T, id: OperatorId) -> Result<Vec<(EncodedKey, Option<ByteSize>)>> {
-	let range = OperatorStateKey::node_range(id);
+	let range = OperatorStateKey::node_range(id).encode();
 	let iter = txn.range(range, RangeScope::All, 1024);
 	let mut keys = Vec::new();
 	for result in iter {

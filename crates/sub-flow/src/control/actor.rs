@@ -1621,7 +1621,7 @@ mod pull_protocol {
 		let query = h.engine.multi().begin_query().expect("query");
 		for operator in h.flow.get_operator_ids() {
 			let leaked = query
-				.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
+				.range(OperatorStateKey::node_range(operator).encode(), RangeScope::All, 1024)
 				.collect::<Result<Vec<_>>>()
 				.expect("scan the operator's state range");
 			assert!(

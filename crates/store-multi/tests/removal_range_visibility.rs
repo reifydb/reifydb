@@ -56,7 +56,7 @@ fn coord_key(node: u64, suffix: &[u8]) -> AnyKey {
 }
 
 fn node_range(node: u64) -> reifydb_codec::key::encoded::EncodedKeyRange {
-	OperatorStateKey::node_range(OperatorId(node))
+	OperatorStateKey::node_range(OperatorId(node)).encode()
 }
 
 fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {

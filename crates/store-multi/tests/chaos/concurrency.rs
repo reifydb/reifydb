@@ -42,7 +42,7 @@ fn conc_op_key(row: u64) -> reifydb_codec::key::encoded::EncodedKey {
 }
 
 fn scan_op_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bool) -> Vec<(u64, Vec<u8>)> {
-	let range = OperatorStateKey::node_range(OP_NODE);
+	let range = OperatorStateKey::node_range(OP_NODE).encode();
 	let scope = MultiVersionScope::AsOf {
 		read: CommitVersion(read),
 	};
