@@ -18,7 +18,7 @@ use reifydb_core::{
 			},
 			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 		},
-		typed::direction::Asc,
+		typed::{TypedKey, direction::Asc},
 	},
 	state::typed::{SuffixBytes, typed_key},
 };
@@ -42,6 +42,13 @@ pub struct JoinDueEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DueStart {
+	Bottom,
+	Floor(DateTime),
+	After(JoinExpiryDueKey),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JoinDuePage {
 	pub due: Vec<JoinDueEntry>,
 	pub resume: Option<JoinExpiryDueKey>,
@@ -61,6 +68,18 @@ pub fn join_expiry_key(group: GroupId, side: u8, row_number: RowNumber) -> Group
 
 pub fn join_expiry_range(group: GroupId) -> EncodedKeyRange {
 	keyspace_inner_range(group, KeyspaceId::JOIN_ROW_EXPIRY)
+}
+
+pub fn join_due_floor_key(at: DateTime) -> GroupStateKey {
+	typed_key::<JoinExpiryDue>(
+		GroupId::ROOT,
+		&JoinExpiryDueKey {
+			at: Asc(at),
+			group: TypedKey::low(),
+			side: TypedKey::low(),
+			row: TypedKey::low(),
+		},
+	)
 }
 
 pub fn join_due_range() -> EncodedKeyRange {
@@ -153,7 +172,7 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 		id: OperatorId,
 		at: DateTime,
 		budget: usize,
-		from: Option<&JoinExpiryDueKey>,
+		start: &DueStart,
 	) -> Result<JoinDuePage> {
 		if budget == 0 {
 			return Ok(JoinDuePage {
@@ -164,12 +183,18 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 			});
 		}
 		let mut range = join_due_range();
-		if let Some(cursor) = from {
-			range.start = Bound::Excluded(typed_key::<JoinExpiryDue>(GroupId::ROOT, cursor).into_encoded());
-		}
-		let site = match from {
-			Some(_) => "join::due_page:resume",
-			None => "join::due_page:restart",
+		let site = match start {
+			DueStart::After(cursor) => {
+				range.start = Bound::Excluded(
+					typed_key::<JoinExpiryDue>(GroupId::ROOT, cursor).into_encoded(),
+				);
+				"join::due_page:resume"
+			}
+			DueStart::Floor(floor) => {
+				range.start = Bound::Included(join_due_floor_key(*floor).into_encoded());
+				"join::due_page:floor"
+			}
+			DueStart::Bottom => "join::due_page:restart",
 		};
 		let batch = self.state_range(id, StateRange::forward(range, site).limit(budget.saturating_add(1)))?;
 

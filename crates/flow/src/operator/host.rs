@@ -14,7 +14,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		operator::{
-			keyspace::join::{JoinExpiryDueKey, JoinRowExpiryState as JoinRowExpiry, JoinRowMappingKey},
+			keyspace::join::{JoinRowExpiryState as JoinRowExpiry, JoinRowMappingKey},
 			state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
 		},
 	},
@@ -40,7 +40,10 @@ use crate::{
 	transaction::{
 		FlowTransaction,
 		dictionary::DictionaryExtension,
-		join_expiry::{JoinDueEntry, JoinDuePage, JoinRowExpiryExtension, join_expiry_range, join_expiry_slot},
+		join_expiry::{
+			DueStart, JoinDueEntry, JoinDuePage, JoinRowExpiryExtension, join_expiry_range,
+			join_expiry_slot,
+		},
 		reclaim::ReclaimExtension,
 		row_number::RowNumberExtension,
 		state::{StateExtension, StateRange},
@@ -60,12 +63,7 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn join_expiry_min(&mut self) -> Result<Option<DateTime>>;
 
-	fn join_due_page(
-		&mut self,
-		at: DateTime,
-		budget: usize,
-		from: Option<&JoinExpiryDueKey>,
-	) -> Result<JoinDuePage>;
+	fn join_due_page(&mut self, at: DateTime, budget: usize, start: &DueStart) -> Result<JoinDuePage>;
 
 	fn clear_join_expiries(&mut self, group: GroupId, budget: usize) -> Result<()> {
 		loop {
@@ -341,13 +339,8 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.join_expiry_min(self.operator)
 	}
 
-	fn join_due_page(
-		&mut self,
-		at: DateTime,
-		budget: usize,
-		from: Option<&JoinExpiryDueKey>,
-	) -> Result<JoinDuePage> {
-		self.txn.join_due_page(self.operator, at, budget, from)
+	fn join_due_page(&mut self, at: DateTime, budget: usize, start: &DueStart) -> Result<JoinDuePage> {
+		self.txn.join_due_page(self.operator, at, budget, start)
 	}
 
 	fn config_uint8(&self, key: ConfigKey) -> u64 {

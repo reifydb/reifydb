@@ -16,10 +16,7 @@ use reifydb_core::{
 		flow::OperatorCapability,
 	},
 	key::{
-		operator::{
-			keyspace::join::{JoinExpiryDueKey, JoinRowMappingKey},
-			state::GroupId,
-		},
+		operator::{keyspace::join::JoinRowMappingKey, state::GroupId},
 		typed::direction::{Asc, Desc},
 	},
 	metrics::{heap::OperatorSample, instruments::counter::Counter},
@@ -62,7 +59,7 @@ use crate::{
 		},
 	},
 	timer::Timer,
-	transaction::join_expiry::{JoinDueEntry, join_expiry_range},
+	transaction::join_expiry::{DueStart, JoinDueEntry, join_expiry_range},
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -460,9 +457,12 @@ impl JoinOperator {
 		let state = JoinState::new();
 		let mut emptied: Vec<GroupId> = Vec::new();
 		let mut seen: HashSet<GroupId> = HashSet::new();
-		let mut cursor: Option<JoinExpiryDueKey> = None;
+		let mut start = match self.expiry.min(host)? {
+			Some(floor) => DueStart::Floor(floor),
+			None => DueStart::Bottom,
+		};
 		let earliest = loop {
-			let page = host.join_due_page(fired.at(), SEAL_BATCH, cursor.as_ref())?;
+			let page = host.join_due_page(fired.at(), SEAL_BATCH, &start)?;
 			if page.due.is_empty() {
 				break page.next;
 			}
@@ -495,7 +495,10 @@ impl JoinOperator {
 			if !page.more {
 				break page.next;
 			}
-			cursor = page.resume;
+			start = match page.resume {
+				Some(cursor) => DueStart::After(cursor),
+				None => break page.next,
+			};
 		};
 
 		for group in emptied {
@@ -1451,6 +1454,45 @@ mod seal_tests {
 			"the due time is event time + retention + the strict gate step"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 1, "and exactly one maintenance timer covers the operator");
+	}
+
+	#[test]
+	fn a_row_armed_below_a_settled_floor_still_expires() {
+		// a pass settles the floor at the earliest live expiry and the next pass starts its due scan there,
+		// so a backfilled row arming beneath that floor is reachable only because arming lowers it
+		let engine = TestEngine::new();
+		let mut op = join(1, Some(seconds(10)), None);
+		let mut txn = txn_at(&engine, 100);
+		let early = rows(&[7], &[1], at_millis(5_000));
+		insert(&mut op, &mut txn, JoinSide::Left, &early);
+		let group = group_of(&hash_of(&op, JoinSide::Left, &early, 0));
+
+		fire(&mut op, &mut txn, at_millis(9_000));
+		assert_eq!(
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 1),
+			Some(at_millis(15_001)),
+			"the pass must settle its floor on this expiry, which outlives the fire"
+		);
+
+		insert(&mut op, &mut txn, JoinSide::Left, &rows(&[7], &[2], at_millis(1_000)));
+		assert_eq!(
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 2),
+			Some(at_millis(11_001)),
+			"the backfilled row must arm below the settled floor or this test proves nothing"
+		);
+
+		fire(&mut op, &mut txn, at_millis(12_000));
+
+		assert_eq!(
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 2),
+			None,
+			"a due scan that starts at a floor above the backfilled row leaves it unexpired forever"
+		);
+		assert_eq!(
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 1),
+			Some(at_millis(15_001)),
+			"and the row past the fire must keep its arming"
+		);
 	}
 
 	#[test]
