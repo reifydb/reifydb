@@ -1091,6 +1091,15 @@ impl Field<'_> {
 		}
 	}
 
+	pub fn is_truncation_of(&self, other: &Self) -> bool {
+		match (self, other) {
+			(Self::RawAsc(RawEncoding::Verbatim, left), Self::RawAsc(RawEncoding::Verbatim, right)) => {
+				left.len() < right.len() && right.starts_with(left)
+			}
+			_ => false,
+		}
+	}
+
 	pub fn encode(&self, out: &mut Vec<u8>) {
 		match self {
 			Self::UAsc(width, value) => {

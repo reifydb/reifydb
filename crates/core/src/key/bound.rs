@@ -81,11 +81,25 @@ impl AnyKeyBound {
 	fn compare_fields(&self, other: &Self) -> Ordering {
 		let left = self.bound_fields();
 		let right = other.bound_fields();
-		for (left, right) in left.iter().zip(right.iter()) {
-			let ordering = left.cmp(right);
-			if ordering != Ordering::Equal {
-				return ordering;
+		for (index, (left_field, right_field)) in left.iter().zip(right.iter()).enumerate() {
+			let ordering = left_field.cmp(right_field);
+			if ordering == Ordering::Equal {
+				continue;
 			}
+
+			if index + 1 == left.len()
+				&& self.sorts_after_its_extensions()
+				&& left_field.is_truncation_of(right_field)
+			{
+				return Ordering::Greater;
+			}
+			if index + 1 == right.len()
+				&& other.sorts_after_its_extensions()
+				&& right_field.is_truncation_of(left_field)
+			{
+				return Ordering::Less;
+			}
+			return ordering;
 		}
 		match (
 			left.len().cmp(&right.len()),
@@ -503,5 +517,195 @@ mod tests {
 			let inside = bound >= start && bound <= end;
 			assert_eq!(inside, key.kind() == KeyKind::Row, "{key:?}");
 		}
+	}
+}
+
+#[cfg(test)]
+mod bound_order_matches_encoded_order {
+	use std::borrow::Cow;
+
+	use reifydb_codec::key::serializer::KeySerializer;
+	use smallvec::smallvec;
+
+	use super::*;
+	use crate::{
+		interface::catalog::{
+			id::{IndexId, TableId},
+			object::ObjectId,
+		},
+		key::{
+			any::{ByteEncoding, RawEncoding},
+			catalog::IndexEntryKey,
+		},
+		value::index::encoded::EncodedIndexKey,
+	};
+
+	fn table() -> ObjectId {
+		ObjectId::Table(TableId(1))
+	}
+
+	fn index() -> IndexId {
+		IndexId::primary(1u64)
+	}
+
+	// Index tails hold whatever the caller encoded, so a string tail arrives inverted and a
+	// prefix of the plaintext is a prefix of the encoded tail only after the same inversion.
+	fn entry(tail: &str) -> AnyKeyBound {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_str(tail);
+		AnyKeyBound::Key(
+			IndexEntryKey::new(table(), index(), EncodedIndexKey::new(serializer.finish().as_slice()))
+				.into(),
+		)
+	}
+
+	fn tail_prefix(byte: u8) -> SmallVec<[OwnedField; 6]> {
+		object_fields(table())
+			.into_iter()
+			.chain([
+				Field::UAsc(Width::U8, 1),
+				Field::UDesc(Width::U64, index().as_u64() as u128),
+				Field::RawAsc(RawEncoding::Verbatim, Cow::Owned(vec![!byte])),
+			])
+			.collect()
+	}
+
+	fn probes() -> Vec<AnyKeyBound> {
+		vec![
+			AnyKeyBound::Kind(KeyKind::IndexEntry),
+			AnyKeyBound::Prefix(KeyKind::IndexEntry, tail_prefix(b'a')),
+			AnyKeyBound::PrefixEnd(KeyKind::IndexEntry, tail_prefix(b'a')),
+			AnyKeyBound::Prefix(KeyKind::IndexEntry, tail_prefix(b'b')),
+			AnyKeyBound::PrefixEnd(KeyKind::IndexEntry, tail_prefix(b'b')),
+			entry("a"),
+			entry("a1"),
+			entry("a3"),
+			entry("aa"),
+			entry("az"),
+			entry("b"),
+			entry("b1"),
+			entry("b2"),
+			entry("c1"),
+			AnyKeyBound::Prefix(
+				KeyKind::IndexEntry,
+				object_fields(table()).into_iter().collect::<SmallVec<[OwnedField; 6]>>(),
+			),
+			AnyKeyBound::PrefixEnd(
+				KeyKind::IndexEntry,
+				object_fields(table()).into_iter().collect::<SmallVec<[OwnedField; 6]>>(),
+			),
+			AnyKeyBound::Prefix(
+				KeyKind::IndexEntry,
+				smallvec![Field::BytesDesc(ByteEncoding::Fixed, Cow::Owned(vec![7, 7]))],
+			),
+		]
+	}
+
+	#[test]
+	fn a_bound_orders_against_a_key_the_way_their_bytes_do() {
+		// Keys are what a bound is ultimately compared against: the pending-writes index is keyed
+		// by `Key` bounds and ranged by the others, and the storage engine merges the same span
+		// on bytes. A disagreement here is a range that silently includes or drops a row.
+		//
+		// Two non-key bounds may legitimately encode to the same byte position and still order
+		// strictly against each other (`PrefixEnd` of one group is `Prefix` of the next), which
+		// only makes range merging more conservative, so those pairs are not compared here.
+		let probes = probes();
+		for left in &probes {
+			for right in &probes {
+				if !matches!(left, AnyKeyBound::Key(_)) && !matches!(right, AnyKeyBound::Key(_)) {
+					continue;
+				}
+				let left_bytes = left.encode();
+				let right_bytes = right.encode();
+				assert_eq!(
+					left.cmp(right),
+					left_bytes.as_slice().cmp(right_bytes.as_slice()),
+					"bound order disagrees with encoded order\n  a = {left:?}\n  b = \
+					 {right:?}\n  a bytes = {:02x?}\n  b bytes = {:02x?}",
+					left_bytes.as_slice(),
+					right_bytes.as_slice()
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn every_bound_pair_spans_the_same_keys_typed_as_it_does_encoded() {
+		// Ordering between two non-key bounds may differ from their bytes without harm, but the
+		// set of keys a range admits may not: that set is the range's meaning.
+		let probes = probes();
+		let keys: Vec<&AnyKeyBound> =
+			probes.iter().filter(|bound| matches!(bound, AnyKeyBound::Key(_))).collect();
+
+		for start in &probes {
+			for end in &probes {
+				let typed_start = Bound::Included(start.clone());
+				let typed_end = Bound::Excluded(end.clone());
+				let raw_start = Bound::Included(start.encode());
+				let raw_end = Bound::Excluded(end.encode());
+
+				for probe in &keys {
+					let bytes = probe.encode();
+					assert_eq!(
+						contains(&typed_start, &typed_end, probe),
+						contains_bytes(&raw_start, &raw_end, &bytes),
+						"typed and encoded spans disagree\n  start = {start:?}\n  end \
+						 = {end:?}\n  key = {probe:?}"
+					);
+				}
+			}
+		}
+	}
+
+	#[test]
+	fn a_prefix_range_contains_exactly_the_keys_its_encoded_form_contains() {
+		// The regression that motivated the truncation rule: `PrefixEnd` over a tail that is a
+		// strict byte prefix of a key's tail used to sort below that key, so a prefix range
+		// excluded every key it was built to cover.
+		let range = IndexEntryKey::key_prefix_range(table(), index(), &[!b'a']);
+		let encoded = range.encode();
+
+		for tail in ["a", "a1", "a3", "aa", "az", "b", "b1", "c1"] {
+			let bound = entry(tail);
+			let AnyKeyBound::Key(key) = &bound else {
+				unreachable!("entry builds a Key bound");
+			};
+			let bytes = key.encode();
+
+			let typed = contains(&range.start, &range.end, &bound);
+			let raw = contains_bytes(&encoded.start, &encoded.end, &bytes);
+
+			assert_eq!(typed, raw, "typed and encoded containment disagree for tail {tail}");
+			assert_eq!(typed, tail.starts_with('a'), "wrong containment verdict for tail {tail}");
+		}
+	}
+
+	fn contains(start: &Bound<AnyKeyBound>, end: &Bound<AnyKeyBound>, probe: &AnyKeyBound) -> bool {
+		let lower = match start {
+			Bound::Included(bound) => probe >= bound,
+			Bound::Excluded(bound) => probe > bound,
+			Bound::Unbounded => true,
+		};
+		let upper = match end {
+			Bound::Included(bound) => probe <= bound,
+			Bound::Excluded(bound) => probe < bound,
+			Bound::Unbounded => true,
+		};
+		lower && upper
+	}
+
+	fn contains_bytes(start: &Bound<EncodedKey>, end: &Bound<EncodedKey>, probe: &EncodedKey) -> bool {
+		let lower = match start {
+			Bound::Included(key) => probe >= key,
+			Bound::Excluded(key) => probe > key,
+			Bound::Unbounded => true,
+		};
+		let upper = match end {
+			Bound::Included(key) => probe <= key,
+			Bound::Excluded(key) => probe < key,
+			Bound::Unbounded => true,
+		};
+		lower && upper
 	}
 }
