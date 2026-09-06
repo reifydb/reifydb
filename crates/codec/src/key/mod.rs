@@ -14,6 +14,8 @@ use reifydb_value::value::datetime::DateTime;
 pub mod buf;
 pub mod deserializer;
 pub mod encoded;
+#[cfg(test)]
+mod ordering;
 pub mod serializer;
 pub mod sort;
 pub(crate) mod varint;
