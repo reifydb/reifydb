@@ -234,8 +234,7 @@ impl RingBufferScan {
 		loop {
 			let batch: Vec<_> = txn
 				.range(
-					PartitionedRowKey::partition_scan_range(rb_id, hash, last_key.as_ref())
-						.encode(),
+					PartitionedRowKey::partition_scan_range(rb_id, hash, last_key.as_ref()),
 					RangeScope::All,
 					1024,
 				)?

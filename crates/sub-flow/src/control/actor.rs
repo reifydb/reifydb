@@ -733,6 +733,7 @@ mod pull_protocol {
 			change::{ChangeOrigin, Diff},
 		},
 		key::{
+			bound::AnyKeyBoundRange,
 			kind::KeyKind,
 			operator::state::{KeyspaceId, OperatorStateKey},
 		},
@@ -1621,7 +1622,7 @@ mod pull_protocol {
 		let query = h.engine.multi().begin_query().expect("query");
 		for operator in h.flow.get_operator_ids() {
 			let leaked = query
-				.range(OperatorStateKey::node_range(operator).encode(), RangeScope::All, 1024)
+				.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
 				.collect::<Result<Vec<_>>>()
 				.expect("scan the operator's state range");
 			assert!(
@@ -1746,7 +1747,7 @@ mod pull_protocol {
 		let stored = {
 			let query = h.engine.multi().begin_query().expect("query");
 			let rows: Vec<_> = query
-				.range(EncodedKeyRange::all(), RangeScope::All, 100_000)
+				.range(AnyKeyBoundRange::all(), RangeScope::All, 100_000)
 				.collect::<Result<Vec<_>>>()
 				.expect("scan for the ringbuffer metadata row")
 				.into_iter()

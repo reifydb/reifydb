@@ -79,7 +79,7 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> Result<Option<Series>> {
 		let name = name.as_ref();
-		let mut stream = rx.range(NamespaceSeriesKey::full_scan(namespace).encode(), RangeScope::All, 1024)?;
+		let mut stream = rx.range(NamespaceSeriesKey::full_scan(namespace), RangeScope::All, 1024)?;
 
 		let mut found_series = None;
 		for entry in stream.by_ref() {

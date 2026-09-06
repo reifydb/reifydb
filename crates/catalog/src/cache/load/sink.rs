@@ -21,7 +21,7 @@ use crate::{Result, store::sink::shape::sink};
 
 pub(crate) fn load_sinks(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = SinkKey::full_scan();
-	let stream = rx.range(range.encode(), RangeScope::All, 1024)?;
+	let stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

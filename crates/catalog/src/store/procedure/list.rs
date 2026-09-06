@@ -13,7 +13,7 @@ impl CatalogStore {
 	pub(crate) fn list_procedures_all(rx: &mut Transaction<'_>) -> Result<Vec<Procedure>> {
 		let mut ids = Vec::new();
 		{
-			let stream = rx.range(ProcedureKey::full_scan().encode(), RangeScope::All, 1024)?;
+			let stream = rx.range(ProcedureKey::full_scan(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
 				if let AnyKey::Procedure(k) = &entry.key {

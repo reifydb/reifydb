@@ -3,10 +3,7 @@
 
 use std::{mem::take, ops::Bound, sync::Arc};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::EncodedBytes,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
@@ -19,6 +16,7 @@ use reifydb_core::{
 	},
 	key::{
 		any::AnyKey,
+		bound::AnyKeyBoundRange,
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 };
@@ -486,7 +484,7 @@ impl CommandTransaction {
 	#[inline]
 	pub fn range(
 		&mut self,
-		range: EncodedKeyRange,
+		range: AnyKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_>> {
@@ -522,7 +520,7 @@ impl CommandTransaction {
 	#[inline]
 	pub fn range_persistence(
 		&mut self,
-		range: EncodedKeyRange,
+		range: AnyKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_>> {
@@ -533,7 +531,7 @@ impl CommandTransaction {
 	#[inline]
 	pub fn range_rev(
 		&mut self,
-		range: EncodedKeyRange,
+		range: AnyKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_>> {
@@ -544,7 +542,7 @@ impl CommandTransaction {
 	#[inline]
 	pub fn range_rev_persistence(
 		&mut self,
-		range: EncodedKeyRange,
+		range: AnyKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_>> {

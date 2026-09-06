@@ -174,7 +174,7 @@ fn ephemeral_storage_range<'a>(
 		});
 		return Box::new(items.into_iter());
 	}
-	Box::new(query.range(range, scope, batch_size))
+	Box::new(query.range_encoded(range, scope, batch_size))
 }
 
 fn ephemeral_fetch_state_external(

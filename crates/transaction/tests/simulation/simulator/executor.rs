@@ -4,11 +4,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use reifydb_codec::{
-	key::{
-		deserializer::KeyDeserializer,
-		encoded::{EncodedKey, EncodedKeyRange},
-		serializer::KeySerializer,
-	},
+	key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer},
 	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
@@ -17,7 +13,7 @@ use reifydb_core::{
 		id::{IndexId, TableId},
 		object::ObjectId,
 	},
-	key::{EncodableKey, catalog::IndexEntryKey},
+	key::{EncodableKey, bound::AnyKeyBoundRange, catalog::IndexEntryKey},
 	value::index::encoded::EncodedIndexKey,
 };
 use reifydb_transaction::multi::{
@@ -191,7 +187,7 @@ impl Executor {
 					},
 					Op::Scan => match handles.get_mut(&tx_id) {
 						Some(TxHandle::Write(tx)) => {
-							match tx.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+							match tx.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
 								.collect::<Result<Vec<_>, _>>()
 							{
 								Ok(items) => {
@@ -213,7 +209,7 @@ impl Executor {
 							}
 						}
 						Some(TxHandle::Read(rx)) => {
-							match rx.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+							match rx.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
 								.collect::<Result<Vec<_>, _>>()
 							{
 								Ok(items) => {
@@ -282,8 +278,10 @@ impl Executor {
 
 	fn read_final_state(&self) -> BTreeMap<String, String> {
 		let rx = self.engine.begin_query().unwrap();
-		let items: Vec<_> =
-			rx.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+		let items: Vec<_> = rx
+			.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap();
 
 		let mut state = BTreeMap::new();
 		for mv in items {

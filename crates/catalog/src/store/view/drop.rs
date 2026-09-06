@@ -39,8 +39,7 @@ impl CatalogStore {
 		match kind {
 			ViewStorageKind::Table => Ok(()),
 			ViewStorageKind::RingBuffer => {
-				let range =
-					RingBufferMetadataKey::full_scan_for_storage(StorageId::View(view)).encode();
+				let range = RingBufferMetadataKey::full_scan_for_storage(StorageId::View(view));
 				let mut stream = txn.range(range, RangeScope::All, 1024)?;
 				let mut keys = Vec::new();
 				for entry in stream.by_ref() {

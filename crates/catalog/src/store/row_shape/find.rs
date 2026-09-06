@@ -101,7 +101,7 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 
 	{
 		let range = RowShapeKey::full_scan();
-		let stream = rx.range(range.encode(), RangeScope::All, 1024)?;
+		let stream = rx.range(range, RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let entry = entry?;

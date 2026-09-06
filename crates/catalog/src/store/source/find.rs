@@ -54,7 +54,7 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> Result<Option<Source>> {
 		let name = name.as_ref();
-		let mut stream = rx.range(NamespaceSourceKey::full_scan(namespace).encode(), RangeScope::All, 1024)?;
+		let mut stream = rx.range(NamespaceSourceKey::full_scan(namespace), RangeScope::All, 1024)?;
 
 		let mut found_source = None;
 		for entry in stream.by_ref() {

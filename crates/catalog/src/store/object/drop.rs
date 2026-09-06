@@ -27,7 +27,7 @@ pub(crate) fn drop_object_metadata(
 	storage: StorageId,
 	pk_id: Option<PrimaryKeyId>,
 ) -> Result<()> {
-	let range = ColumnKey::full_scan(storage).encode();
+	let range = ColumnKey::full_scan(storage);
 	let mut stream = txn.range(range, RangeScope::All, 1024)?;
 	let mut col_entries = Vec::new();
 	for entry in stream.by_ref() {
@@ -41,7 +41,7 @@ pub(crate) fn drop_object_metadata(
 	drop(stream);
 
 	for (col_key, col_id) in &col_entries {
-		let policy_range = ColumnPropertyKey::full_scan(*col_id).encode();
+		let policy_range = ColumnPropertyKey::full_scan(*col_id);
 		let mut policy_stream = txn.range(policy_range, RangeScope::All, 1024)?;
 		let mut policy_keys = Vec::new();
 		for entry in policy_stream.by_ref() {

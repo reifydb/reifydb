@@ -18,8 +18,7 @@ use std::sync::{
 	atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
-use reifydb_codec::key::encoded::EncodedKeyRange;
-use reifydb_core::key::any::AnyKey;
+use reifydb_core::key::{any::AnyKey, bound::AnyKeyBoundRange};
 use reifydb_transaction::multi::{RangeScope, transaction::write::MultiWriteTransaction};
 
 use super::test_multi;
@@ -103,7 +102,7 @@ fn test_conflict_range_scan_admits_exactly_one_writer() {
 				std::thread::spawn(move || {
 					let mut txn = engine.begin_command().unwrap();
 					let found = txn
-						.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+						.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
 						.next()
 						.is_some();
 

@@ -15,7 +15,7 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn drop_policy(txn: &mut AdminTransaction, policy: PolicyId) -> Result<()> {
 		{
-			let range = PolicyOpKey::policy_scan(policy).encode();
+			let range = PolicyOpKey::policy_scan(policy);
 			let mut stream = txn.range(range, RangeScope::All, 1024)?;
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {

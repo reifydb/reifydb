@@ -39,8 +39,7 @@ impl CatalogStore {
 		name: &str,
 	) -> Result<Option<Procedure>> {
 		let mut found_id = None;
-		let mut stream =
-			rx.range(NamespaceProcedureKey::full_scan(namespace).encode(), RangeScope::All, 1024)?;
+		let mut stream = rx.range(NamespaceProcedureKey::full_scan(namespace), RangeScope::All, 1024)?;
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let bytes = EncodedCatalogRow::view(&multi.bytes);
@@ -61,7 +60,7 @@ impl CatalogStore {
 
 pub(crate) fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -> Result<Vec<ProcedureParam>> {
 	let mut entries: Vec<(u16, ProcedureParam)> = Vec::new();
-	let mut stream = rx.range(ProcedureParamKey::full_scan(procedure_id).encode(), RangeScope::All, 1024)?;
+	let mut stream = rx.range(ProcedureParamKey::full_scan(procedure_id), RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
 		let multi = entry?;
 		let bytes = EncodedCatalogRow::view(&multi.bytes);

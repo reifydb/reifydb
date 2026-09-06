@@ -30,7 +30,7 @@ impl CatalogStore {
 
 	#[inline]
 	fn drop_namespace_tables(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
-		let range = NamespaceTableKey::full_scan(namespace).encode();
+		let range = NamespaceTableKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut table_ids = Vec::new();
 		for entry in stream.by_ref() {
@@ -48,7 +48,7 @@ impl CatalogStore {
 
 	#[inline]
 	fn drop_namespace_views(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
-		let range = NamespaceViewKey::full_scan(namespace).encode();
+		let range = NamespaceViewKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut view_ids = Vec::new();
 		for entry in stream.by_ref() {
@@ -66,7 +66,7 @@ impl CatalogStore {
 
 	#[inline]
 	fn drop_namespace_ringbuffers(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
-		let range = NamespaceRingBufferKey::full_scan(namespace).encode();
+		let range = NamespaceRingBufferKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut rb_ids = Vec::new();
 		for entry in stream.by_ref() {
@@ -84,7 +84,7 @@ impl CatalogStore {
 
 	#[inline]
 	fn drop_namespace_queues(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
-		let range = NamespaceQueueKey::full_scan(namespace).encode();
+		let range = NamespaceQueueKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut queue_ids = Vec::new();
 		for entry in stream.by_ref() {
@@ -102,7 +102,7 @@ impl CatalogStore {
 
 	#[inline]
 	fn drop_namespace_flows(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
-		let range = NamespaceFlowKey::full_scan(namespace).encode();
+		let range = NamespaceFlowKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut flow_ids = Vec::new();
 		for entry in stream.by_ref() {
@@ -120,7 +120,7 @@ impl CatalogStore {
 
 	#[inline]
 	fn drop_namespace_dictionaries(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
-		let range = NamespaceDictionaryKey::full_scan(namespace).encode();
+		let range = NamespaceDictionaryKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut dict_ids = Vec::new();
 		for entry in stream.by_ref() {
@@ -138,7 +138,7 @@ impl CatalogStore {
 
 	#[inline]
 	fn drop_namespace_sumtypes(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
-		let range = NamespaceSumTypeKey::full_scan(namespace).encode();
+		let range = NamespaceSumTypeKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut st_ids = Vec::new();
 		for entry in stream.by_ref() {

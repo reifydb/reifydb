@@ -16,7 +16,7 @@ impl CatalogStore {
 		object: impl Into<ObjectId>,
 		column_name: &str,
 	) -> Result<Option<Column>> {
-		let mut stream = rx.range(ColumnKey::full_scan(object).encode(), RangeScope::All, 1024)?;
+		let mut stream = rx.range(ColumnKey::full_scan(object), RangeScope::All, 1024)?;
 
 		let mut found_id = None;
 		for entry in stream.by_ref() {

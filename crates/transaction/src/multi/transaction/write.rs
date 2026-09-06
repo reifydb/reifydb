@@ -27,8 +27,8 @@ use reifydb_core::{
 	},
 	key::{
 		any::AnyKey,
+		bound::{AnyKeyBound, AnyKeyBoundRange},
 		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey, StorageRowKey},
-		typed::key::Key,
 	},
 };
 use reifydb_value::{
@@ -415,7 +415,7 @@ impl MultiWriteTransaction {
 
 		let key = key.clone().into();
 		let version = self.version();
-		match self.pending_writes.get(&key.encode()) {
+		match self.pending_writes.get(&key) {
 			Some(pending) => {
 				if pending.was_removed() {
 					return Ok(false);
@@ -439,7 +439,7 @@ impl MultiWriteTransaction {
 
 		let key = key.clone().into();
 		let version = self.version();
-		if let Some(v) = self.pending_writes.get(&key.encode()) {
+		if let Some(v) = self.pending_writes.get(&key) {
 			if let Some(bytes) = v.bytes() {
 				return Ok(Some(DeltaEntry {
 					delta: Delta::Set {
@@ -501,7 +501,7 @@ impl MultiWriteTransaction {
 
 		let superseded = self
 			.pending_writes
-			.get_entry(&encoded)
+			.get_entry(pending.key())
 			.filter(|(_, old_value)| old_value.version != version)
 			.map(|(_, old_value)| old_value.key().clone());
 
@@ -528,7 +528,7 @@ impl MultiWriteTransaction {
 		}
 
 		self.delta_log.push(pending.clone());
-		self.pending_writes.insert(encoded, pending);
+		self.pending_writes.insert(pending);
 
 		Ok(())
 	}
@@ -703,7 +703,7 @@ impl MultiWriteTransaction {
 impl MultiWriteTransaction {
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
 		let items: Vec<_> = self
-			.range(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
+			.range_encoded(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
@@ -713,7 +713,7 @@ impl MultiWriteTransaction {
 
 	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
 		let items: Vec<_> = self
-			.range_rev(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
+			.range_encoded_rev(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
@@ -721,7 +721,7 @@ impl MultiWriteTransaction {
 		})
 	}
 
-	pub fn range(
+	fn range_encoded(
 		&mut self,
 		range: EncodedKeyRange,
 		scope: RangeScope,
@@ -729,15 +729,61 @@ impl MultiWriteTransaction {
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
 		let (mut marker, pw) = self.marker_with_pending_writes();
-		let start = range.start_bound();
-		let end = range.end_bound();
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(AnyKey, DeltaEntry)> =
-			pw.range((start, end)).map(|(_, v)| (v.delta.key().clone(), v.clone())).collect();
+		let pending: Vec<(AnyKey, DeltaEntry)> = pw
+			.iter()
+			.filter(|(k, _)| range.contains(&k.encode()))
+			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
+			.collect();
 
 		let storage_iter = self.engine.store.range(range, multi_scope, batch_size);
+
+		Box::new(MergePendingIterator::new(pending, storage_iter, false))
+	}
+
+	fn range_encoded_rev(
+		&mut self,
+		range: EncodedKeyRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.version());
+		let (mut marker, pw) = self.marker_with_pending_writes();
+
+		marker.mark_range(range.clone());
+
+		let mut pending: Vec<(AnyKey, DeltaEntry)> = pw
+			.iter()
+			.filter(|(k, _)| range.contains(&k.encode()))
+			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
+			.collect();
+		pending.reverse();
+
+		let storage_iter = self.engine.store.range_rev(range, multi_scope, batch_size);
+
+		Box::new(MergePendingIterator::new(pending, storage_iter, true))
+	}
+
+	pub fn range(
+		&mut self,
+		range: AnyKeyBoundRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.version());
+		let encoded = range.encode();
+		let (mut marker, pw) = self.marker_with_pending_writes();
+
+		marker.mark_range(encoded.clone());
+
+		let pending: Vec<(AnyKey, DeltaEntry)> = pw
+			.range((range.start.as_ref(), range.end.as_ref()))
+			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
+			.collect();
+
+		let storage_iter = self.engine.store.range(encoded, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, false))
 	}
@@ -757,10 +803,13 @@ impl MultiWriteTransaction {
 		marker.mark_range(encoded.clone());
 
 		let pending: Vec<(StorageRowKey, DeltaEntry)> = pw
-			.range((encoded.start_bound(), encoded.end_bound()))
+			.iter()
 			.filter_map(|(k, v)| {
-				let decoded = RowKey::decode(k)?;
-				(decoded.storage == storage).then(|| (StorageRowKey::new(decoded.row), v.clone()))
+				let AnyKeyBound::Key(AnyKey::Row(decoded)) = k else {
+					return None;
+				};
+				(decoded.storage == storage && encoded.contains(&k.encode()))
+					.then(|| (StorageRowKey::new(decoded.row), v.clone()))
 			})
 			.collect();
 
@@ -784,10 +833,12 @@ impl MultiWriteTransaction {
 		marker.mark_range(encoded.clone());
 
 		let pending: Vec<(StoragePartitionedRowKey, DeltaEntry)> = pw
-			.range((encoded.start_bound(), encoded.end_bound()))
+			.iter()
 			.filter_map(|(k, v)| {
-				let decoded = PartitionedRowKey::decode(k)?;
-				(decoded.storage == storage).then(|| {
+				let AnyKeyBound::Key(AnyKey::PartitionedRow(decoded)) = k else {
+					return None;
+				};
+				(decoded.storage == storage && encoded.contains(&k.encode())).then(|| {
 					(StoragePartitionedRowKey::new(decoded.partition, decoded.row), v.clone())
 				})
 			})
@@ -801,63 +852,68 @@ impl MultiWriteTransaction {
 
 	pub fn range_persistence(
 		&mut self,
-		range: EncodedKeyRange,
+		range: AnyKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
+		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
-		let start = range.start_bound();
-		let end = range.end_bound();
 
-		marker.mark_range(range.clone());
+		marker.mark_range(encoded.clone());
 
-		let pending: Vec<(AnyKey, DeltaEntry)> =
-			pw.range((start, end)).map(|(_, v)| (v.delta.key().clone(), v.clone())).collect();
+		let pending: Vec<(AnyKey, DeltaEntry)> = pw
+			.range((range.start.as_ref(), range.end.as_ref()))
+			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
+			.collect();
 
-		let storage_iter = self.engine.store.range_persistence(range, multi_scope, batch_size);
+		let storage_iter = self.engine.store.range_persistence(encoded, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, false))
 	}
 
 	pub fn range_rev(
 		&mut self,
-		range: EncodedKeyRange,
+		range: AnyKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
+		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
-		let start = range.start_bound();
-		let end = range.end_bound();
 
-		marker.mark_range(range.clone());
+		marker.mark_range(encoded.clone());
 
-		let pending: Vec<(AnyKey, DeltaEntry)> =
-			pw.range((start, end)).rev().map(|(_, v)| (v.delta.key().clone(), v.clone())).collect();
+		let pending: Vec<(AnyKey, DeltaEntry)> = pw
+			.range((range.start.as_ref(), range.end.as_ref()))
+			.rev()
+			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
+			.collect();
 
-		let storage_iter = self.engine.store.range_rev(range, multi_scope, batch_size);
+		let storage_iter = self.engine.store.range_rev(encoded, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, true))
 	}
 
 	pub fn range_rev_persistence(
 		&mut self,
-		range: EncodedKeyRange,
+		range: AnyKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
+		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
-		let start = range.start_bound();
-		let end = range.end_bound();
 
-		marker.mark_range(range.clone());
+		marker.mark_range(encoded.clone());
 
-		let pending: Vec<(AnyKey, DeltaEntry)> =
-			pw.range((start, end)).rev().map(|(_, v)| (v.delta.key().clone(), v.clone())).collect();
+		let pending: Vec<(AnyKey, DeltaEntry)> = pw
+			.range((range.start.as_ref(), range.end.as_ref()))
+			.rev()
+			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
+			.collect();
 
-		let storage_iter = self.engine.store.range_rev_persistence(range, multi_scope, batch_size);
+		let storage_iter = self.engine.store.range_rev_persistence(encoded, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, true))
 	}

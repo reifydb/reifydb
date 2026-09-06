@@ -14,7 +14,7 @@ impl CatalogStore {
 		identity: IdentityId,
 	) -> Result<Vec<GrantedRole>> {
 		let mut result = Vec::new();
-		let range = GrantedRoleKey::identity_scan(identity).encode();
+		let range = GrantedRoleKey::identity_scan(identity);
 		let stream = rx.range(range, RangeScope::All, 1024)?;
 
 		for entry in stream {

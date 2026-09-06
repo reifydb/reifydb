@@ -85,7 +85,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
 	) -> Result<Vec<PartitionedMetadata>> {
-		let range = RingBufferMetadataKey::full_scan_for_storage(ringbuffer.id).encode();
+		let range = RingBufferMetadataKey::full_scan_for_storage(ringbuffer.id);
 		let stream = rx.range(range, RangeScope::All, 4096)?;
 		let mut results = Vec::new();
 
@@ -139,8 +139,7 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> Result<Option<RingBuffer>> {
 		let name = name.as_ref();
-		let mut stream =
-			rx.range(NamespaceRingBufferKey::full_scan(namespace).encode(), RangeScope::All, 1024)?;
+		let mut stream = rx.range(NamespaceRingBufferKey::full_scan(namespace), RangeScope::All, 1024)?;
 
 		let mut found_ringbuffer = None;
 		for entry in stream.by_ref() {

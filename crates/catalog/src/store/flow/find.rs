@@ -31,7 +31,7 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> Result<Option<Flow>> {
 		let name = name.as_ref();
-		let mut stream = rx.range(NamespaceFlowKey::full_scan(namespace).encode(), RangeScope::All, 1024)?;
+		let mut stream = rx.range(NamespaceFlowKey::full_scan(namespace), RangeScope::All, 1024)?;
 
 		let mut found_flow = None;
 		for entry in stream.by_ref() {

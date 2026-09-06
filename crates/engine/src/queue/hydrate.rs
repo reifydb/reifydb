@@ -67,7 +67,7 @@ fn hydrate_queue(
 		let mut fetched = 0usize;
 
 		{
-			let range = RowKeyRange::scan_range_rev(queue.id.into(), last_key.as_ref()).encode();
+			let range = RowKeyRange::scan_range_rev(queue.id.into(), last_key.as_ref());
 			let mut stream = txn.range_rev(range, RangeScope::All, HYDRATE_BATCH)?;
 
 			for _ in 0..HYDRATE_BATCH {

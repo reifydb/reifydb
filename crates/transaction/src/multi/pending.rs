@@ -4,7 +4,10 @@
 use std::{collections::BTreeMap, mem::size_of, ops::RangeBounds, vec::IntoIter as VecIntoIter};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use reifydb_core::{key::any::AnyKey, metrics::heap::HeapSize};
+use reifydb_core::{
+	key::{any::AnyKey, bound::AnyKeyBound},
+	metrics::heap::HeapSize,
+};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::multi::types::DeltaEntry;
@@ -17,7 +20,7 @@ const ENTRY_OVERHEAD: usize = SLOT_COPIES_PER_ENTRY * (size_of::<EncodedKey>() +
 pub struct PendingWrites {
 	entries: Vec<Option<DeltaEntry>>,
 
-	index: BTreeMap<EncodedKey, u32>,
+	index: BTreeMap<AnyKeyBound, u32>,
 
 	estimated_size: ByteSize,
 }
@@ -63,22 +66,23 @@ impl PendingWrites {
 	}
 
 	#[inline]
-	pub fn get(&self, key: &EncodedKey) -> Option<&DeltaEntry> {
-		self.index.get(key).and_then(|slot| self.entry_at(*slot))
+	pub fn get(&self, key: &AnyKey) -> Option<&DeltaEntry> {
+		self.index.get(&AnyKeyBound::Key(key.clone())).and_then(|slot| self.entry_at(*slot))
 	}
 
 	#[inline]
-	pub fn get_entry(&self, key: &EncodedKey) -> Option<(&EncodedKey, &DeltaEntry)> {
-		let (key, slot) = self.index.get_key_value(key)?;
+	pub fn get_entry(&self, key: &AnyKey) -> Option<(&AnyKeyBound, &DeltaEntry)> {
+		let (key, slot) = self.index.get_key_value(&AnyKeyBound::Key(key.clone()))?;
 		self.entry_at(*slot).map(|entry| (key, entry))
 	}
 
 	#[inline]
-	pub fn contains_key(&self, key: &EncodedKey) -> bool {
-		self.index.contains_key(key)
+	pub fn contains_key(&self, key: &AnyKey) -> bool {
+		self.index.contains_key(&AnyKeyBound::Key(key.clone()))
 	}
 
-	pub fn insert(&mut self, key: EncodedKey, value: DeltaEntry) {
+	pub fn insert(&mut self, value: DeltaEntry) {
+		let key = AnyKeyBound::Key(value.key().clone());
 		let size_estimate = self.estimate_size(&value);
 
 		if let Some(&slot) = self.index.get(&key) {
@@ -101,15 +105,15 @@ impl PendingWrites {
 		self.estimated_size = self.estimated_size.saturating_add(size_estimate);
 	}
 
-	pub fn remove_entry(&mut self, key: &EncodedKey) -> Option<(EncodedKey, DeltaEntry)> {
-		let (removed_key, slot) = self.index.remove_entry(key)?;
+	pub fn remove_entry(&mut self, key: &AnyKey) -> Option<(AnyKeyBound, DeltaEntry)> {
+		let (removed_key, slot) = self.index.remove_entry(&AnyKeyBound::Key(key.clone()))?;
 		let removed_value = self.entries.get_mut(slot as usize).and_then(Option::take)?;
 		let size_estimate = self.estimate_size(&removed_value);
 		self.estimated_size = self.estimated_size.saturating_sub(size_estimate);
 		Some((removed_key, removed_value))
 	}
 
-	pub fn iter(&self) -> impl DoubleEndedIterator<Item = (&EncodedKey, &DeltaEntry)> + '_ {
+	pub fn iter(&self) -> impl DoubleEndedIterator<Item = (&AnyKeyBound, &DeltaEntry)> + '_ {
 		self.index.iter().filter_map(|(key, slot)| self.entry_at(*slot).map(|entry| (key, entry)))
 	}
 
@@ -128,9 +132,9 @@ impl PendingWrites {
 		self.estimated_size
 	}
 
-	pub fn range<R>(&self, range: R) -> impl DoubleEndedIterator<Item = (&EncodedKey, &DeltaEntry)> + '_
+	pub fn range<R>(&self, range: R) -> impl DoubleEndedIterator<Item = (&AnyKeyBound, &DeltaEntry)> + '_
 	where
-		R: RangeBounds<EncodedKey>,
+		R: RangeBounds<AnyKeyBound>,
 	{
 		self.index.range(range).filter_map(|(key, slot)| self.entry_at(*slot).map(|entry| (key, entry)))
 	}
@@ -147,7 +151,6 @@ impl IntoIterator for PendingWrites {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		common::CommitVersion, delta::Delta, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey,
 	};
@@ -159,8 +162,12 @@ pub mod tests {
 		QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>()).into()
 	}
 
-	fn create_test_key(s: &str) -> EncodedKey {
-		create_test_any(s).encode()
+	fn create_test_key(s: &str) -> AnyKey {
+		create_test_any(s)
+	}
+
+	fn create_test_bound(s: &str) -> AnyKeyBound {
+		AnyKeyBound::Key(create_test_any(s))
 	}
 
 	fn create_test_bytes(s: &str) -> EncodedBytes {
@@ -187,7 +194,7 @@ pub mod tests {
 		let key1 = create_test_key("key1");
 		let pending1 = create_test_pending(CommitVersion(1), "key1", "value1");
 
-		pw.insert(key1.clone(), pending1.clone());
+		pw.insert(pending1.clone());
 
 		assert!(!pw.is_empty());
 		assert_eq!(pw.len(), 1);
@@ -203,10 +210,10 @@ pub mod tests {
 		let pending1 = create_test_pending(CommitVersion(1), "key", "value1");
 		let pending2 = create_test_pending(CommitVersion(2), "key", "value2");
 
-		pw.insert(key.clone(), pending1);
+		pw.insert(pending1);
 		assert_eq!(pw.len(), 1);
 
-		pw.insert(key.clone(), pending2.clone());
+		pw.insert(pending2.clone());
 		assert_eq!(pw.len(), 1); // Still 1, just updated
 		assert_eq!(pw.get(&key).unwrap(), &pending2);
 	}
@@ -216,14 +223,13 @@ pub mod tests {
 		let mut pw = PendingWrites::new();
 
 		for i in 0..10 {
-			let key = create_test_key(&format!("key{:02}", i));
 			let pending =
 				create_test_pending(CommitVersion(i), &format!("key{:02}", i), &format!("value{}", i));
-			pw.insert(key, pending);
+			pw.insert(pending);
 		}
 
-		let start = create_test_key("key03");
-		let end = create_test_key("key07");
+		let start = create_test_bound("key03");
+		let end = create_test_bound("key07");
 
 		let range_results: Vec<_> = pw.range(start..end).collect();
 		assert_eq!(range_results.len(), 4); // key03, key04, key05, key06
@@ -234,10 +240,9 @@ pub mod tests {
 		let mut pw = PendingWrites::new();
 
 		for i in 0..5 {
-			let key = create_test_key(&format!("key{}", i));
 			let pending =
 				create_test_pending(CommitVersion(i), &format!("key{}", i), &format!("value{}", i));
-			pw.insert(key, pending);
+			pw.insert(pending);
 		}
 
 		let iter = pw.iter();
@@ -250,8 +255,8 @@ pub mod tests {
 		expected_keys.sort();
 		assert_eq!(keys, expected_keys);
 
-		let start = create_test_key("key1");
-		let end = create_test_key("key4");
+		let start = create_test_bound("key1");
+		let end = create_test_bound("key4");
 		let range_items: Vec<_> = pw.range(start..end).collect();
 		assert_eq!(range_items.len(), 3); // key1, key2, key3
 	}
@@ -261,10 +266,9 @@ pub mod tests {
 		let mut pw = PendingWrites::new();
 
 		for i in 0..1000 {
-			let key = create_test_key(&format!("key{:06}", i));
 			let pending =
 				create_test_pending(CommitVersion(i), &format!("key{:06}", i), &format!("value{}", i));
-			pw.insert(key, pending);
+			pw.insert(pending);
 		}
 
 		assert_eq!(pw.len(), 1000);
@@ -284,10 +288,9 @@ pub mod tests {
 		let mut pw = PendingWrites::new();
 
 		for i in 0..10 {
-			let key = create_test_key(&format!("key{}", i));
 			let pending =
 				create_test_pending(CommitVersion(i), &format!("key{}", i), &format!("value{}", i));
-			pw.insert(key, pending);
+			pw.insert(pending);
 		}
 
 		assert_eq!(pw.len(), 10);
@@ -319,7 +322,7 @@ pub mod tests {
 		// into the vacated slot reorders the deltas the commit publishes.
 		let mut pw = PendingWrites::new();
 		for name in ["a", "b", "c", "d"] {
-			pw.insert(create_test_key(name), create_test_pending(CommitVersion(1), name, "v"));
+			pw.insert(create_test_pending(CommitVersion(1), name, "v"));
 		}
 
 		pw.remove_entry(&create_test_key("b"));
@@ -337,10 +340,10 @@ pub mod tests {
 		// here would disagree with the deltas that path commits for the same transaction.
 		let mut pw = PendingWrites::new();
 		for name in ["a", "b", "c"] {
-			pw.insert(create_test_key(name), create_test_pending(CommitVersion(1), name, "v1"));
+			pw.insert(create_test_pending(CommitVersion(1), name, "v1"));
 		}
 
-		pw.insert(create_test_key("a"), create_test_pending(CommitVersion(2), "a", "v2"));
+		pw.insert(create_test_pending(CommitVersion(2), "a", "v2"));
 
 		assert_eq!(insertion_keys(&pw), vec!["a", "b", "c"], "a must hold its first position after a re-write");
 		assert_eq!(pw.len(), 3, "a re-write must not add an entry");
@@ -355,11 +358,11 @@ pub mod tests {
 	fn removing_then_reinserting_appends_at_the_end() {
 		let mut pw = PendingWrites::new();
 		for name in ["a", "b"] {
-			pw.insert(create_test_key(name), create_test_pending(CommitVersion(1), name, "v"));
+			pw.insert(create_test_pending(CommitVersion(1), name, "v"));
 		}
 
 		pw.remove_entry(&create_test_key("a"));
-		pw.insert(create_test_key("a"), create_test_pending(CommitVersion(1), "a", "v"));
+		pw.insert(create_test_pending(CommitVersion(1), "a", "v"));
 
 		assert_eq!(
 			insertion_keys(&pw),
@@ -371,7 +374,7 @@ pub mod tests {
 	#[test]
 	fn removing_the_only_entry_empties_the_order() {
 		let mut pw = PendingWrites::new();
-		pw.insert(create_test_key("a"), create_test_pending(CommitVersion(1), "a", "v"));
+		pw.insert(create_test_pending(CommitVersion(1), "a", "v"));
 
 		pw.remove_entry(&create_test_key("a"));
 
@@ -383,7 +386,7 @@ pub mod tests {
 	#[test]
 	fn removing_a_missing_key_changes_nothing() {
 		let mut pw = PendingWrites::new();
-		pw.insert(create_test_key("a"), create_test_pending(CommitVersion(1), "a", "v"));
+		pw.insert(create_test_pending(CommitVersion(1), "a", "v"));
 		let before = pw.total_estimated_size();
 
 		assert!(pw.remove_entry(&create_test_key("zzz")).is_none());

@@ -16,7 +16,7 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_column(txn: &mut AdminTransaction, object: ObjectId, column_id: ColumnId) -> Result<()> {
-		let policy_range = ColumnPropertyKey::full_scan(column_id).encode();
+		let policy_range = ColumnPropertyKey::full_scan(column_id);
 		let mut policy_stream = txn.range(policy_range, RangeScope::All, 1024)?;
 		let mut policy_keys = Vec::new();
 		for entry in policy_stream.by_ref() {

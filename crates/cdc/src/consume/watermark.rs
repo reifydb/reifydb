@@ -63,7 +63,7 @@ pub fn compute_pinning_watermark(
 	floor: Option<&dyn CheckpointFloor>,
 ) -> Result<Option<CommitVersion>> {
 	let mut min_version: Option<CommitVersion> = None;
-	for multi in txn.range(CdcConsumerKey::full_scan().encode(), RangeScope::All, 1024)? {
+	for multi in txn.range(CdcConsumerKey::full_scan(), RangeScope::All, 1024)? {
 		let multi = multi?;
 		if !matches!(&multi.key, AnyKey::CdcConsumer(_)) {
 			continue;

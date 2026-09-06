@@ -3,13 +3,10 @@
 
 use std::{collections::BTreeSet, ops::Bound};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::shape::RowFamily,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowFamily};
 use reifydb_core::{
 	interface::store::{EntryKind, MultiVersionRow},
-	key::any::AnyKey,
+	key::{any::AnyKey, bound::AnyKeyBoundRange},
 	state::horizon::Cutoff,
 };
 use reifydb_store_multi::tier::persistent::MultiPersistentTier;
@@ -19,7 +16,7 @@ use reifydb_value::{Result, value::datetime::DateTime};
 pub struct ExpiredScan {
 	pub expired: Vec<MultiVersionRow<AnyKey>>,
 	pub min_survivor_row: Option<u64>,
-	pub next_cursor: Option<EncodedKey>,
+	pub next_cursor: Option<AnyKey>,
 }
 
 pub type ExpiryCursor = (DateTime, EncodedKey);
@@ -65,7 +62,7 @@ pub fn scan_expired_indexed(
 
 pub fn min_survivor_row(
 	txn: &mut CommandTransaction,
-	keyspace: EncodedKeyRange,
+	keyspace: AnyKeyBoundRange,
 	deleted: &[AnyKey],
 	row_number_of: &dyn Fn(&AnyKey) -> Option<u64>,
 ) -> Result<Option<u64>> {
@@ -90,23 +87,20 @@ pub fn min_survivor_row(
 	Ok(None)
 }
 
-pub fn keyspace_start(range: &EncodedKeyRange) -> EncodedKey {
+pub fn keyspace_start(range: &AnyKeyBoundRange) -> EncodedKey {
 	match &range.start {
-		Bound::Included(key) | Bound::Excluded(key) => key.clone(),
+		Bound::Included(bound) | Bound::Excluded(bound) => bound.encode(),
 		Bound::Unbounded => EncodedKey::new(Vec::new()),
 	}
 }
 
-pub fn resume_range(base: &EncodedKeyRange, cursor: Option<&EncodedKey>) -> EncodedKeyRange {
-	match cursor {
-		Some(key) => EncodedKeyRange::new(base.start.clone(), Bound::Excluded(key.clone())),
-		None => base.clone(),
-	}
+pub fn resume_range(base: &AnyKeyBoundRange, cursor: Option<&AnyKey>) -> AnyKeyBoundRange {
+	base.clone().resume_before(cursor)
 }
 
 pub fn scan_expired(
 	txn: &mut CommandTransaction,
-	range: EncodedKeyRange,
+	range: AnyKeyBoundRange,
 	family: RowFamily,
 	cutoff: Cutoff,
 	limit: usize,
@@ -114,7 +108,7 @@ pub fn scan_expired(
 ) -> Result<ExpiredScan> {
 	let mut expired: Vec<MultiVersionRow<AnyKey>> = Vec::new();
 	let mut min_survivor_row: Option<u64> = None;
-	let mut next_cursor: Option<EncodedKey> = None;
+	let mut next_cursor: Option<AnyKey> = None;
 
 	if limit == 0 {
 		return Ok(ExpiredScan {
@@ -138,7 +132,7 @@ pub fn scan_expired(
 				continue;
 			}
 			let finished = current.take().unwrap();
-			let finished_key = finished.key.encode();
+			let finished_key = finished.key.clone();
 			classify(finished, family, cutoff, row_number_of, &mut expired, &mut min_survivor_row);
 			examined += 1;
 			if examined >= limit {

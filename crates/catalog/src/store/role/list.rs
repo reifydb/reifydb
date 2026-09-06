@@ -9,7 +9,7 @@ use crate::{CatalogStore, Result, store::role::convert_role};
 impl CatalogStore {
 	pub(crate) fn list_all_roles(rx: &mut Transaction<'_>) -> Result<Vec<Role>> {
 		let mut result = Vec::new();
-		let stream = rx.range(RoleKey::full_scan().encode(), RangeScope::All, 1024)?;
+		let stream = rx.range(RoleKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

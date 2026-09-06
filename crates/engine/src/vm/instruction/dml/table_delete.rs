@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::Bound::Included, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_codec::{
-	key::encoded::EncodedKeyRange,
-	row::bytes::{EncodedBytes, read_fingerprint},
-};
+use reifydb_codec::row::bytes::{EncodedBytes, read_fingerprint};
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -23,7 +20,6 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		EncodableKeyRange,
 		any::AnyKey,
 		catalog::IndexEntryKey,
 		row::{PartitionedRowKey, RowKeyRange},
@@ -249,12 +245,9 @@ fn run_table_delete_all(
 ) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
 	let partitioned = !table.partition_by.is_empty();
 	let range = if partitioned {
-		PartitionedRowKey::full_scan(table.id).encode()
+		PartitionedRowKey::full_scan(table.id)
 	} else {
-		let range = RowKeyRange {
-			storage: table.id.into(),
-		};
-		EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap()))
+		RowKeyRange::storage_scan(table.id.into())
 	};
 	let pk_def = primary_key::get_primary_key(&services.catalog, txn, table)?;
 	let rows: Vec<_> = txn.range(range, RangeScope::All, 32)?.collect::<Result<Vec<_>>>()?;

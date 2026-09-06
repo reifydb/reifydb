@@ -9,8 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_codec::key::encoded::EncodedKeyRange;
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{common::CommitVersion, key::bound::AnyKeyBoundRange};
 use reifydb_transaction::multi::RangeScope;
 
 use super::test_multi;
@@ -41,7 +40,7 @@ fn test_versions() {
 
 		// A range at this read version must collapse to one row, not every historical version.
 		let items: Vec<_> = txn
-			.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+			.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();
 		let mut count = 0;
@@ -54,7 +53,7 @@ fn test_versions() {
 		assert_eq!(1, count); // should only loop once.
 
 		let items: Vec<_> = txn
-			.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024)
+			.range_rev(AnyKeyBoundRange::all(), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();
 		let mut count = 0;

@@ -87,7 +87,7 @@ fn counters(t: &TestEngine, queue: QueueId) -> QueuePartitionCounters {
 fn attempts(t: &TestEngine, queue: QueueId) -> Vec<(QueueAttemptKey, QueueAttemptRecord)> {
 	let mut query_txn = t.inner().begin_query(TestEngine::identity()).unwrap();
 	let mut txn = Transaction::Query(&mut query_txn);
-	let mut stream = txn.range(QueueAttemptKey::queue_scan(queue).encode(), RangeScope::All, 1024).unwrap();
+	let mut stream = txn.range(QueueAttemptKey::queue_scan(queue), RangeScope::All, 1024).unwrap();
 
 	let mut out = Vec::new();
 	while let Some(item) = stream.next() {

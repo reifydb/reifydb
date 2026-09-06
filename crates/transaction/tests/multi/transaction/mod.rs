@@ -22,7 +22,7 @@ use reifydb_core::{
 		id::{IndexId, TableId},
 		object::ObjectId,
 	},
-	key::{EncodableKey, any::AnyKey, catalog::IndexEntryKey},
+	key::{any::AnyKey, catalog::IndexEntryKey},
 	value::index::encoded::EncodedIndexKey,
 };
 use reifydb_transaction::multi::transaction::MultiTransaction;
@@ -40,10 +40,6 @@ pub trait IntoKey {
 fn synthetic_key(raw: EncodedKey) -> AnyKey {
 	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(raw.as_slice()))
 		.into()
-}
-
-fn synthetic_prefix(raw: &[u8]) -> EncodedKey {
-	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(raw)).encode()
 }
 
 fn synthetic_tail(key: &AnyKey) -> Option<Vec<u8>> {
@@ -73,6 +69,11 @@ macro_rules! as_key {
 #[macro_export]
 macro_rules! as_encoded {
 	($key:expr) => {{ reifydb_core::key::any::AnyKey::encode(&$crate::as_key!($key)) }};
+}
+
+#[macro_export]
+macro_rules! as_bound {
+	($key:expr) => {{ reifydb_core::key::bound::AnyKeyBound::Key($crate::as_key!($key)) }};
 }
 
 #[macro_export]

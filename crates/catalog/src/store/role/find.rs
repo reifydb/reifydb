@@ -20,7 +20,7 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_role_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Role>> {
-		let stream = rx.range(RoleKey::full_scan().encode(), RangeScope::All, 1024)?;
+		let stream = rx.range(RoleKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

@@ -14,7 +14,7 @@ use crate::{
 impl CatalogStore {
 	pub(crate) fn list_all_authentications(rx: &mut Transaction<'_>) -> Result<Vec<Authentication>> {
 		let mut result = Vec::new();
-		let stream = rx.range(AuthenticationKey::full_scan().encode(), RangeScope::All, 1024)?;
+		let stream = rx.range(AuthenticationKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;
@@ -30,7 +30,7 @@ impl CatalogStore {
 		identity: IdentityId,
 	) -> Result<Vec<Authentication>> {
 		let mut result = Vec::new();
-		let stream = rx.range(AuthenticationKey::full_scan().encode(), RangeScope::All, 1024)?;
+		let stream = rx.range(AuthenticationKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

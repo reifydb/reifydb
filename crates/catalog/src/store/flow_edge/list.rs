@@ -20,7 +20,7 @@ impl CatalogStore {
 	pub fn list_flow_edges_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowEdge>> {
 		let mut edge_ids = Vec::new();
 		{
-			let stream = rx.range(FlowEdgeByFlowKey::full_scan(flow_id).encode(), RangeScope::All, 1024)?;
+			let stream = rx.range(FlowEdgeByFlowKey::full_scan(flow_id), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
 				edge_ids.push(FlowEdgeId(flow_edge_by_flow::get_id(EncodedCatalogRow::view(
@@ -44,7 +44,7 @@ impl CatalogStore {
 	pub(crate) fn list_flow_edges_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowEdge>> {
 		let mut result = Vec::new();
 
-		let stream = rx.range(FlowEdgeKey::full_scan().encode(), RangeScope::All, 1024)?;
+		let stream = rx.range(FlowEdgeKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let entry = entry?;

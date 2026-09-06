@@ -19,7 +19,7 @@ pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 
 	let mut entries = Vec::new();
 	{
-		let stream = rx.range(range.encode(), RangeScope::All, 1024)?;
+		let stream = rx.range(range, RangeScope::All, 1024)?;
 		for entry in stream {
 			entries.push(entry?);
 		}

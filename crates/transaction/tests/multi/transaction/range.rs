@@ -9,12 +9,11 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_codec::key::encoded::EncodedKeyRange;
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{common::CommitVersion, key::bound::AnyKeyBoundRange};
 use reifydb_transaction::multi::RangeScope;
 
 use super::test_multi;
-use crate::{as_encoded, as_key, as_values, from_bytes, multi::transaction::FromRow};
+use crate::{as_bound, as_key, as_values, from_bytes, multi::transaction::FromRow};
 
 #[test]
 fn test_range() {
@@ -25,7 +24,7 @@ fn test_range() {
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
 	txn.commit(vec![]).unwrap();
 
-	let four_to_one = EncodedKeyRange::start_end(Some(as_encoded!(4)), Some(as_encoded!(1)));
+	let four_to_one = AnyKeyBoundRange::start_end(as_bound!(4), as_bound!(1));
 
 	let txn = engine.begin_query().unwrap();
 	let items: Vec<_> =
@@ -52,7 +51,7 @@ fn test_range2() {
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
 
-	let four_to_one = EncodedKeyRange::start_end(Some(as_encoded!(4)), Some(as_encoded!(1)));
+	let four_to_one = AnyKeyBoundRange::start_end(as_bound!(4), as_bound!(1));
 
 	let items: Vec<_> =
 		txn.range(four_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -77,7 +76,7 @@ fn test_range2() {
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
 	txn.set(&as_key!(6), as_values!(6)).unwrap();
 
-	let seven_to_one = EncodedKeyRange::start_end(Some(as_encoded!(7)), Some(as_encoded!(1)));
+	let seven_to_one = AnyKeyBoundRange::start_end(as_bound!(7), as_bound!(1));
 
 	let items: Vec<_> =
 		txn.range(seven_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -104,7 +103,7 @@ fn test_range3() {
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
 	txn.set(&as_key!(6), as_values!(6)).unwrap();
 
-	let seven_to_four = EncodedKeyRange::start_end(Some(as_encoded!(7)), Some(as_encoded!(4)));
+	let seven_to_four = AnyKeyBoundRange::start_end(as_bound!(7), as_bound!(4));
 
 	let items: Vec<_> =
 		txn.range(seven_to_four.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -124,7 +123,7 @@ fn test_range3() {
 
 	txn.commit(vec![]).unwrap();
 
-	let five_to_one = EncodedKeyRange::start_end(Some(as_encoded!(5)), Some(as_encoded!(1)));
+	let five_to_one = AnyKeyBoundRange::start_end(as_bound!(5), as_bound!(1));
 
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
@@ -213,7 +212,7 @@ fn test_range_edge() {
 			assert_eq!(expected.len(), i);
 		};
 
-	let ten_to_one = EncodedKeyRange::start_end(Some(as_encoded!(10)), Some(as_encoded!(1)));
+	let ten_to_one = AnyKeyBoundRange::start_end(as_bound!(10), as_bound!(1));
 
 	let mut txn = engine.begin_command().unwrap();
 	let items: Vec<_> =
@@ -295,7 +294,7 @@ fn test_range_stream_returns_newest_version() {
 
 	let txn = engine.begin_query().unwrap();
 	let items: Vec<_> =
-		txn.range(EncodedKeyRange::all(), RangeScope::All, 5).collect::<Result<Vec<_>, _>>().unwrap();
+		txn.range(AnyKeyBoundRange::all(), RangeScope::All, 5).collect::<Result<Vec<_>, _>>().unwrap();
 
 	assert_eq!(items.len(), 1);
 	let item = &items[0];
@@ -323,7 +322,7 @@ fn test_range_stream_multiple_keys_many_versions() {
 	// Query with streaming
 	let txn = engine.begin_query().unwrap();
 	let items: Vec<_> =
-		txn.range(EncodedKeyRange::all(), RangeScope::All, 200).collect::<Result<Vec<_>, _>>().unwrap();
+		txn.range(AnyKeyBoundRange::all(), RangeScope::All, 200).collect::<Result<Vec<_>, _>>().unwrap();
 
 	// Should have all 5 keys, each with newest version
 	// Keys are returned in descending order (5, 4, 3, 2, 1)

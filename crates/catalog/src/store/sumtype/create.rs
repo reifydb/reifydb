@@ -208,7 +208,7 @@ pub mod tests {
 		CatalogStore::create_sumtype(&mut txn, to_create2).unwrap();
 
 		let links: Vec<_> = txn
-			.range(NamespaceSumTypeKey::full_scan(test_namespace.id()).encode(), RangeScope::All, 1024)
+			.range(NamespaceSumTypeKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>>>()
 			.unwrap();

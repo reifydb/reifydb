@@ -14,7 +14,7 @@ use crate::{
 
 pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = PolicyKey::full_scan();
-	let mut stream = rx.range(range.encode(), RangeScope::All, 1024)?;
+	let mut stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream.by_ref() {
 		let multi = entry?;
@@ -25,7 +25,7 @@ pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 	drop(stream);
 
 	let op_range = PolicyOpKey::full_scan();
-	let op_stream = rx.range(op_range.encode(), RangeScope::All, 1024)?;
+	let op_stream = rx.range(op_range, RangeScope::All, 1024)?;
 
 	let mut operations: HashMap<_, Vec<_>> = HashMap::new();
 	for entry in op_stream {

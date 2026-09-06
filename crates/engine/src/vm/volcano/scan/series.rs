@@ -3,15 +3,13 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::{
-	key::encoded::EncodedKeyRange,
-	row::{series::EncodedSeriesRow, shape::RowShape},
-};
+use reifydb_codec::row::{series::EncodedSeriesRow, shape::RowShape};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::storage::StorageId, resolved::ResolvedSeries, store::MultiVersionRow},
 	key::{
 		any::AnyKey,
+		bound::AnyKeyBoundRange,
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
@@ -92,7 +90,7 @@ impl SeriesScanNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::series::range_open")]
 	fn open_range<'rx, 'tx>(
 		rx: &'rx mut Transaction<'tx>,
-		range: EncodedKeyRange,
+		range: AnyKeyBoundRange,
 		scope: RangeScope,
 		batch_size: u64,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + 'rx>> {
@@ -299,10 +297,8 @@ impl QueryNode for SeriesScanNode {
 					self.key_range_start,
 					self.key_range_end,
 					self.last_key.as_ref(),
-				)
-				.encode(),
-				None => PartitionedSeriesRowKeyRange::full_scan_range(storage, self.last_key.as_ref())
-					.encode(),
+				),
+				None => PartitionedSeriesRowKeyRange::full_scan_range(storage, self.last_key.as_ref()),
 			}
 		} else {
 			SeriesRowKeyRange::scan_range(
@@ -312,7 +308,6 @@ impl QueryNode for SeriesScanNode {
 				self.key_range_end,
 				self.last_key.as_ref(),
 			)
-			.encode()
 		};
 
 		let read_shape = get_or_create_series_shape(&stored_ctx.services.catalog, self.series.def(), rx)?;

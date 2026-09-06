@@ -3,10 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::shape::RowFamily,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowFamily};
 use reifydb_core::{
 	event::row::RowsExpiredEvent,
 	interface::{
@@ -21,6 +18,7 @@ use reifydb_core::{
 	},
 	key::{
 		any::AnyKey,
+		bound::AnyKeyBoundRange,
 		row::{PartitionedRowKey, RowKey},
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
@@ -60,7 +58,7 @@ const EVICT_CONSECUTIVE_FAILURE_LIMIT: u32 = 5;
 #[derive(Default)]
 pub struct EvictorState {
 	running: bool,
-	cursors: HashMap<CursorKey, EncodedKey>,
+	cursors: HashMap<CursorKey, AnyKey>,
 	expiry_cursors: HashMap<CursorKey, ExpiryCursor>,
 	resume: Option<StorageId>,
 	failures: HashMap<StorageId, u32>,
@@ -317,10 +315,10 @@ impl Evictor {
 	) -> Result<()> {
 		let keyspaces = match family {
 			RowFamily::Series => [
-				SeriesRowKeyRange::full_scan(storage, None).encode(),
-				PartitionedSeriesRowKeyRange::full_scan(storage).encode(),
+				SeriesRowKeyRange::full_scan(storage, None),
+				PartitionedSeriesRowKeyRange::full_scan(storage),
 			],
-			_ => [RowKey::full_scan(storage).encode(), PartitionedRowKey::full_scan(storage).encode()],
+			_ => [RowKey::full_scan(storage), PartitionedRowKey::full_scan(storage)],
 		};
 
 		for keyspace in keyspaces {
@@ -363,12 +361,12 @@ impl Evictor {
 		state: &mut EvictorState,
 		txn: &mut CommandTransaction,
 		cursor_key: &CursorKey,
-		keyspace: &EncodedKeyRange,
+		keyspace: &AnyKeyBoundRange,
 		family: RowFamily,
 		cutoff: Cutoff,
 		batch_size: usize,
 	) -> Result<(Vec<AnyKey>, bool)> {
-		if let (Some(persistent), Some(kind)) = (self.store.persistent(), classify_range(keyspace)) {
+		if let (Some(persistent), Some(kind)) = (self.store.persistent(), classify_range(&keyspace.encode())) {
 			let scan = scan::scan_expired_indexed(
 				txn,
 				persistent,
@@ -403,7 +401,7 @@ impl Evictor {
 		family: RowFamily,
 		cutoff: Cutoff,
 		batch_size: usize,
-		keyspace: &EncodedKeyRange,
+		keyspace: &AnyKeyBoundRange,
 	) -> Result<(u64, bool)> {
 		let cursor_key = (storage, scan::keyspace_start(keyspace));
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
@@ -441,7 +439,7 @@ impl Evictor {
 		stats: &mut TickStats,
 	) -> Result<()> {
 		let storage = StorageId::RingBuffer(id);
-		for keyspace in [RowKey::full_scan(storage).encode(), PartitionedRowKey::full_scan(storage).encode()] {
+		for keyspace in [RowKey::full_scan(storage), PartitionedRowKey::full_scan(storage)] {
 			loop {
 				if *budget == 0 {
 					return Ok(());
@@ -467,7 +465,7 @@ impl Evictor {
 		id: RingBufferId,
 		cutoff: Cutoff,
 		batch_size: usize,
-		keyspace: &EncodedKeyRange,
+		keyspace: &AnyKeyBoundRange,
 	) -> Result<(u64, bool)> {
 		let storage = StorageId::RingBuffer(id);
 		let cursor_key = (storage, scan::keyspace_start(keyspace));
@@ -538,9 +536,9 @@ impl Evictor {
 			};
 
 			let partition_keyspace = if partitioned {
-				PartitionedRowKey::partition_range(storage, partition).encode()
+				PartitionedRowKey::partition_range(storage, partition)
 			} else {
-				RowKey::full_scan(storage).encode()
+				RowKey::full_scan(storage)
 			};
 			let survivor = scan::min_survivor_row(&mut txn, partition_keyspace, &keys, &|key| {
 				decode_ringbuffer_row_number(key, partitioned)
@@ -620,9 +618,9 @@ impl Evictor {
 
 		let partitioned = !series.partition_by.is_empty();
 		let keyspace = if partitioned {
-			PartitionedSeriesRowKeyRange::full_scan(storage).encode()
+			PartitionedSeriesRowKeyRange::full_scan(storage)
 		} else {
-			SeriesRowKeyRange::full_scan(storage, None).encode()
+			SeriesRowKeyRange::full_scan(storage, None)
 		};
 		let cursor_key = (storage, scan::keyspace_start(&keyspace));
 
@@ -651,7 +649,7 @@ impl Evictor {
 	}
 }
 
-fn advance_cursor(state: &mut EvictorState, cursor_key: CursorKey, next: Option<EncodedKey>) -> bool {
+fn advance_cursor(state: &mut EvictorState, cursor_key: CursorKey, next: Option<AnyKey>) -> bool {
 	match next {
 		Some(cursor) => {
 			state.cursors.insert(cursor_key, cursor);
@@ -861,7 +859,7 @@ mod tests {
 	fn partition_metadata_values(engine: &StandardEngine, storage: StorageId) -> Vec<Vec<Value>> {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		let values: Vec<Vec<Value>> = txn
-			.range(RingBufferMetadataKey::full_scan_for_storage(storage).encode(), RangeScope::All, 1024)
+			.range(RingBufferMetadataKey::full_scan_for_storage(storage), RangeScope::All, 1024)
 			.unwrap()
 			.map(|row| match row.unwrap().key {
 				AnyKey::RingBufferMetadata(key) => key.partition_values,
@@ -878,9 +876,9 @@ mod tests {
 		partitioned: bool,
 	) -> Vec<MultiVersionRow<AnyKey>> {
 		let keyspace = if partitioned {
-			PartitionedRowKey::full_scan(storage).encode()
+			PartitionedRowKey::full_scan(storage)
 		} else {
-			RowKey::full_scan(storage).encode()
+			RowKey::full_scan(storage)
 		};
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		let rows: Vec<MultiVersionRow<AnyKey>> =

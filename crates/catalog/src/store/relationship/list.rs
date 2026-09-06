@@ -18,7 +18,7 @@ impl CatalogStore {
 	pub(crate) fn list_relationships(rx: &mut Transaction<'_>) -> Result<Vec<Relationship>> {
 		let mut entries = Vec::new();
 		{
-			let stream = rx.range(RelationshipKey::full_scan().encode(), RangeScope::All, 1024)?;
+			let stream = rx.range(RelationshipKey::full_scan(), RangeScope::All, 1024)?;
 			for entry in stream {
 				entries.push(entry?);
 			}

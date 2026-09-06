@@ -9,7 +9,7 @@ use crate::{CatalogStore, Result, store::identity_attribute::convert_identity_at
 impl CatalogStore {
 	pub(crate) fn list_all_identity_attributes(rx: &mut Transaction<'_>) -> Result<Vec<IdentityAttribute>> {
 		let mut result = Vec::new();
-		let stream = rx.range(IdentityAttributeKey::full_scan().encode(), RangeScope::All, 1024)?;
+		let stream = rx.range(IdentityAttributeKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

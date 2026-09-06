@@ -3,12 +3,9 @@
 
 use std::{ops::Bound, sync::Arc};
 
-use reifydb_codec::{
-	key::encoded::EncodedKeyRange,
-	row::{
-		bytes::{EncodedBytes, read_fingerprint},
-		shape::RowShape,
-	},
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, read_fingerprint},
+	shape::RowShape,
 };
 use reifydb_core::{
 	interface::{
@@ -19,6 +16,7 @@ use reifydb_core::{
 	internal_error,
 	key::{
 		any::AnyKey,
+		bound::AnyKeyBoundRange,
 		row::{PartitionedSortedViewRowKey, RowKeyRange, SortedViewRowKey, StoragePartitionedRowKey},
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
@@ -158,7 +156,7 @@ impl ViewScanNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::view::range_open")]
 	fn open_range<'rx, 'tx>(
 		rx: &'rx mut Transaction<'tx>,
-		range: EncodedKeyRange,
+		range: AnyKeyBoundRange,
 		batch_size: u64,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + 'rx>> {
 		rx.range(range, RangeScope::All, batch_size as usize)
@@ -329,15 +327,12 @@ impl QueryNode for ViewScanNode {
 							partition,
 							last.as_ref(),
 						)
-						.encode()
 					}
 					(true, true, None) => {
 						PartitionedSeriesRowKeyRange::full_scan_range(storage, last.as_ref())
-							.encode()
 					}
 					(true, false, _) => {
 						SeriesRowKeyRange::scan_range(storage, None, None, None, last.as_ref())
-							.encode()
 					}
 					(false, true, Some(partition)) if self.sorted => {
 						PartitionedSortedViewRowKey::partition_scan_range(
@@ -345,15 +340,14 @@ impl QueryNode for ViewScanNode {
 							partition,
 							last.as_ref(),
 						)
-						.encode()
 					}
 					(false, true, None) if self.sorted => {
-						PartitionedSortedViewRowKey::scan_range(storage, last.as_ref()).encode()
+						PartitionedSortedViewRowKey::scan_range(storage, last.as_ref())
 					}
 					(false, false, _) if self.sorted => {
-						SortedViewRowKey::scan_range(storage, last.as_ref()).encode()
+						SortedViewRowKey::scan_range(storage, last.as_ref())
 					}
-					(false, false, _) => RowKeyRange::scan_range(storage, last.as_ref()).encode(),
+					(false, false, _) => RowKeyRange::scan_range(storage, last.as_ref()),
 					(false, true, _) => unreachable!(
 						"unsorted partitioned view rows resume through Resume::Partitioned"
 					),

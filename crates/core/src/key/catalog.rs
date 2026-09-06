@@ -28,7 +28,7 @@ use crate::{
 	},
 	key::{
 		any::{Field, KeyFields, RawEncoding, Width, index_tag},
-		bound::{AnyKeyBoundRange, object_fields},
+		bound::{AnyKeyBound, AnyKeyBoundRange, object_fields},
 	},
 	return_internal_error,
 	value::index::{encoded::EncodedIndexKey, range::EncodedIndexKeyRange},
@@ -920,49 +920,36 @@ impl IndexEntryKey {
 		object: impl Into<ObjectId>,
 		index: IndexId,
 		index_range: EncodedIndexKeyRange,
-	) -> EncodedKeyRange {
+	) -> AnyKeyBoundRange {
 		let object = object.into();
-
-		let mut prefix_serializer = KeySerializer::with_capacity(19);
-		prefix_serializer.extend_u8(KeyKind::IndexEntry as u8).extend_object_id(object).extend_index_id(index);
-		let prefix = prefix_serializer.to_encoded_key().to_vec();
-
-		let start = match index_range.start {
-			Bound::Included(key) => {
-				let mut bytes = prefix.clone();
-				bytes.extend_from_slice(key.as_slice());
-				Bound::Included(EncodedKey::new(bytes))
-			}
-			Bound::Excluded(key) => {
-				let mut bytes = prefix.clone();
-				bytes.extend_from_slice(key.as_slice());
-				Bound::Excluded(EncodedKey::new(bytes))
-			}
-			Bound::Unbounded => Bound::Included(EncodedKey::new(prefix.clone())),
+		let head = || {
+			object_fields(object)
+				.into_iter()
+				.chain([Field::UAsc(Width::U8, 1), Field::UDesc(Width::U64, index.as_u64() as u128)])
+		};
+		let at = |key: &EncodedIndexKey| {
+			AnyKeyBound::prefix(
+				KeyKind::IndexEntry,
+				head().chain([Field::RawAsc(
+					RawEncoding::Verbatim,
+					Cow::Owned(key.as_slice().to_vec()),
+				)]),
+			)
 		};
 
-		let end = match index_range.end {
-			Bound::Included(key) => {
-				let mut bytes = prefix.clone();
-				bytes.extend_from_slice(key.as_slice());
-				Bound::Included(EncodedKey::new(bytes))
-			}
-			Bound::Excluded(key) => {
-				let mut bytes = prefix.clone();
-				bytes.extend_from_slice(key.as_slice());
-				Bound::Excluded(EncodedKey::new(bytes))
-			}
-			Bound::Unbounded => {
-				let mut serializer = KeySerializer::with_capacity(19);
-				serializer
-					.extend_u8(KeyKind::IndexEntry as u8)
-					.extend_object_id(object)
-					.extend_index_id(index.prev());
-				Bound::Excluded(serializer.to_encoded_key())
-			}
+		let start = match &index_range.start {
+			Bound::Included(key) => Bound::Included(at(key)),
+			Bound::Excluded(key) => Bound::Excluded(at(key)),
+			Bound::Unbounded => Bound::Included(AnyKeyBound::prefix(KeyKind::IndexEntry, head())),
 		};
 
-		EncodedKeyRange {
+		let end = match &index_range.end {
+			Bound::Included(key) => Bound::Included(at(key)),
+			Bound::Excluded(key) => Bound::Excluded(at(key)),
+			Bound::Unbounded => Bound::Excluded(AnyKeyBound::prefix_end(KeyKind::IndexEntry, head())),
+		};
+
+		AnyKeyBoundRange {
 			start,
 			end,
 		}

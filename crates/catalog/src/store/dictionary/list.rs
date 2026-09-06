@@ -18,8 +18,7 @@ impl CatalogStore {
 	pub(crate) fn list_dictionaries(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<Dictionary>> {
 		let mut dictionary_ids = Vec::new();
 		{
-			let stream =
-				rx.range(NamespaceDictionaryKey::full_scan(namespace).encode(), RangeScope::All, 1024)?;
+			let stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
 				let bytes = EncodedCatalogRow::view(&multi.bytes);
@@ -40,7 +39,7 @@ impl CatalogStore {
 	pub(crate) fn list_all_dictionaries(rx: &mut Transaction<'_>) -> Result<Vec<Dictionary>> {
 		let mut dictionaries = Vec::new();
 
-		let stream = rx.range(DictionaryKey::full_scan().encode(), RangeScope::All, 1024)?;
+		let stream = rx.range(DictionaryKey::full_scan(), RangeScope::All, 1024)?;
 		for entry in stream {
 			let multi = entry?;
 			let bytes = EncodedCatalogRow::view(&multi.bytes);

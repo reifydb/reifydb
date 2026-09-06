@@ -24,7 +24,7 @@ use crate::{
 
 pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = RingBufferKey::full_scan();
-	let mut stream = rx.range(range.encode(), RangeScope::All, 1024)?;
+	let mut stream = rx.range(range, RangeScope::All, 1024)?;
 
 	let mut ringbuffers = Vec::new();
 	for entry in stream.by_ref() {

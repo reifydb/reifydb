@@ -3,7 +3,7 @@
 
 use std::{ops::Bound, sync::Arc};
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	execution::ExecutionResult,
@@ -43,6 +43,7 @@ use reifydb_core::{
 	},
 	key::{
 		any::AnyKey,
+		bound::AnyKeyBoundRange,
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 	row::{OperatorSettings, RowSettings},
@@ -151,7 +152,7 @@ impl QueryTransaction {
 	#[inline]
 	pub fn range(
 		&self,
-		range: EncodedKeyRange,
+		range: AnyKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
@@ -184,7 +185,7 @@ impl QueryTransaction {
 	#[inline]
 	pub fn range_rev(
 		&self,
-		range: EncodedKeyRange,
+		range: AnyKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {

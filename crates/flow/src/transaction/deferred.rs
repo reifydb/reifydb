@@ -207,7 +207,7 @@ pub(crate) fn deferred_storage_range<'a>(
 		));
 	}
 	let query = deferred_range_target(query, state_query, &range);
-	Box::new(query.range(range, scope, batch_size))
+	Box::new(query.range_encoded(range, scope, batch_size))
 }
 
 fn deferred_range_target<'a>(

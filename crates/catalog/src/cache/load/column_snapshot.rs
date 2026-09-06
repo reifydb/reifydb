@@ -10,7 +10,7 @@ use crate::{Result, store::column_snapshot::find::decode_column_snapshot};
 
 pub(crate) fn load_column_snapshots(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = ColumnSnapshotKey::full_scan();
-	let stream = rx.range(range.encode(), RangeScope::All, 1024)?;
+	let stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

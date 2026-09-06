@@ -4,7 +4,7 @@
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{
 		pod::EncodedPodRow, queue_attempt::EncodedQueueAttemptRow,
 		queue_deduplication::EncodedQueueDeduplicationRow,
@@ -24,6 +24,7 @@ use reifydb_core::{
 	},
 	key::{
 		any::AnyKey,
+		bound::AnyKeyBoundRange,
 		queue::{QueueAttemptKey, QueueDeduplicationKey, QueueItemStateKey},
 		row::RowKey,
 		typed::key::Key,
@@ -63,7 +64,7 @@ pub struct QueueRetentionTask {
 	clock: Clock,
 	config: Arc<dyn GetConfig>,
 	item_cursor: Option<ItemCursor>,
-	dedup_cursor: HashMap<QueueId, EncodedKey>,
+	dedup_cursor: HashMap<QueueId, AnyKey>,
 }
 
 impl QueueRetentionTask {
@@ -152,8 +153,7 @@ impl QueueRetentionTask {
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		let mut attempt_keys = Vec::new();
 		for item in &purge {
-			let stream =
-				txn.range(QueueAttemptKey::item_scan(queue, item.row).encode(), RangeScope::All, 1024)?;
+			let stream = txn.range(QueueAttemptKey::item_scan(queue, item.row), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
 				let AnyKey::QueueAttempt(key) = entry.key else {
@@ -177,10 +177,7 @@ impl QueueRetentionTask {
 	}
 
 	fn sweep_deduplication(&mut self, queue: QueueId, now: DateTime, limit: usize) -> Result<(u64, bool)> {
-		let mut range = QueueDeduplicationKey::full_scan(queue).encode();
-		if let Some(after) = self.dedup_cursor.get(&queue) {
-			range.start = Bound::Excluded(after.clone());
-		}
+		let range = QueueDeduplicationKey::full_scan(queue).resume_after(self.dedup_cursor.get(&queue));
 
 		let expired = self.expired_deduplication_keys(range, now, limit)?;
 		let drained = expired.scanned < limit;
@@ -206,7 +203,7 @@ impl QueueRetentionTask {
 
 	fn expired_deduplication_keys(
 		&self,
-		range: EncodedKeyRange,
+		range: AnyKeyBoundRange,
 		now: DateTime,
 		limit: usize,
 	) -> Result<ExpiredDeduplication> {
@@ -220,7 +217,7 @@ impl QueueRetentionTask {
 				break;
 			}
 			out.scanned += 1;
-			out.last = Some(entry.key.encode());
+			out.last = Some(entry.key.clone());
 
 			if let Some((_, expires_at)) =
 				decode_queue_deduplication(EncodedQueueDeduplicationRow::view(&entry.bytes))
@@ -251,7 +248,7 @@ impl QueueRetentionTask {
 #[derive(Default)]
 struct ExpiredDeduplication {
 	keys: Vec<QueueDeduplicationKey>,
-	last: Option<EncodedKey>,
+	last: Option<AnyKey>,
 	scanned: usize,
 }
 

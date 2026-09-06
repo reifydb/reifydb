@@ -99,8 +99,7 @@ pub(crate) fn execute_alter_table(
 							table.id,
 							partition,
 							last_key.as_ref(),
-						)
-						.encode(),
+						),
 						RangeScope::All,
 						1024,
 					)?

@@ -15,7 +15,7 @@ impl CatalogStore {
 
 		let mut series_data: Vec<SeriesId> = Vec::new();
 		{
-			let stream = rx.range(SeriesKey::full_scan().encode(), RangeScope::All, 1024)?;
+			let stream = rx.range(SeriesKey::full_scan(), RangeScope::All, 1024)?;
 
 			for entry in stream {
 				let entry = entry?;

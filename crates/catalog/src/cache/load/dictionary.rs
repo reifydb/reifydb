@@ -17,7 +17,7 @@ use crate::{Result, store::dictionary::shape::dictionary};
 
 pub(crate) fn load_dictionaries(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = DictionaryKey::full_scan();
-	let stream = rx.range(range.encode(), RangeScope::All, 1024)?;
+	let stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

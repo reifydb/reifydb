@@ -332,7 +332,7 @@ pub mod tests {
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
 
 		let links: Vec<_> = txn
-			.range(NamespaceViewKey::full_scan(namespace.id()).encode(), RangeScope::All, 1024)
+			.range(NamespaceViewKey::full_scan(namespace.id()), RangeScope::All, 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();

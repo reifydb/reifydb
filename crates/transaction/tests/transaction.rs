@@ -25,7 +25,12 @@ use reifydb_core::{
 		},
 		store::MultiVersionRow,
 	},
-	key::{EncodableKey, any::AnyKey, catalog::IndexEntryKey},
+	key::{
+		EncodableKey,
+		any::AnyKey,
+		bound::{AnyKeyBound, AnyKeyBoundRange},
+		catalog::IndexEntryKey,
+	},
 	testing::ProfileConfig,
 	util::encoding::{
 		binary::decode_binary,
@@ -291,7 +296,7 @@ impl<'a> Runner for MvccRunner {
 				match &mut t {
 					TransactionHandle::Read(rx) => {
 						let items: Vec<_> = rx
-							.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+							.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for multi in items {
@@ -300,7 +305,7 @@ impl<'a> Runner for MvccRunner {
 					}
 					TransactionHandle::Write(tx) => {
 						let items: Vec<_> = tx
-							.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+							.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for item in items {
@@ -492,16 +497,19 @@ fn script_prefix(raw: &[u8]) -> EncodedKey {
 	script_key(raw.to_vec()).encode()
 }
 
-fn script_bound(bound: Bound<EncodedKey>) -> Bound<EncodedKey> {
+fn script_bound(bound: Bound<EncodedKey>) -> Bound<AnyKeyBound> {
 	match bound {
-		Bound::Included(key) => Bound::Included(script_key(key.as_slice().to_vec()).encode()),
-		Bound::Excluded(key) => Bound::Excluded(script_key(key.as_slice().to_vec()).encode()),
+		Bound::Included(key) => Bound::Included(AnyKeyBound::Key(script_key(key.as_slice().to_vec()).into())),
+		Bound::Excluded(key) => Bound::Excluded(AnyKeyBound::Key(script_key(key.as_slice().to_vec()).into())),
 		Bound::Unbounded => Bound::Unbounded,
 	}
 }
 
-fn script_range(range: EncodedKeyRange) -> EncodedKeyRange {
-	EncodedKeyRange::new(script_bound(range.start), script_bound(range.end))
+fn script_range(range: EncodedKeyRange) -> AnyKeyBoundRange {
+	AnyKeyBoundRange {
+		start: script_bound(range.start),
+		end: script_bound(range.end),
+	}
 }
 
 fn print_rx<I>(output: &mut String, mut iter: I)

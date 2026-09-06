@@ -16,7 +16,7 @@ use crate::{Result, store::operator::shape::operator};
 
 pub(crate) fn load_operators(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = OperatorKey::full_scan();
-	let stream = rx.range(range.encode(), RangeScope::All, 1024)?;
+	let stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

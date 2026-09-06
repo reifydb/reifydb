@@ -9,19 +9,24 @@
 // The original Apache License can be found at:
 // http: //www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_codec::key::encoded::EncodedKeyRange;
-use reifydb_core::key::any::AnyKey;
+use reifydb_core::{
+	interface::catalog::{
+		id::{IndexId, TableId},
+		object::ObjectId,
+	},
+	key::{any::AnyKey, bound::AnyKeyBoundRange, catalog::IndexEntryKey},
+};
 use reifydb_transaction::multi::{RangeScope, transaction::write::MultiWriteTransaction};
 
-use super::{synthetic_prefix, test_multi};
+use super::test_multi;
 use crate::{
 	as_key, as_values, from_bytes, from_key,
 	multi::transaction::{FromKey, FromRow},
 };
 
-fn prefix_range(prefix: u8) -> EncodedKeyRange {
+fn prefix_range(prefix: u8) -> AnyKeyBoundRange {
 	// string content encodes inverted, so the 'a' group shares the tail prefix !a.
-	EncodedKeyRange::prefix(synthetic_prefix(&[!prefix]).as_slice())
+	IndexEntryKey::key_prefix_range(ObjectId::Table(TableId(1)), IndexId::primary(1u64), &[!prefix])
 }
 
 #[test]
@@ -94,7 +99,7 @@ fn test_black_white() {
 
 	let mut white = engine.begin_command().unwrap();
 	let indices = white
-		.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+		.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -113,7 +118,7 @@ fn test_black_white() {
 
 	let mut black = engine.begin_command().unwrap();
 	let indices = black
-		.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+		.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -136,7 +141,7 @@ fn test_black_white() {
 
 	let rx = engine.begin_query().unwrap();
 	let result: Vec<_> =
-		rx.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+		rx.range(AnyKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	assert_eq!(result.len(), 10);
 
 	result.iter().for_each(|sv| {
@@ -191,7 +196,7 @@ fn test_primary_colors() {
 
 	let mut red = engine.begin_command().unwrap();
 	let indices: Vec<_> = red
-		.range(EncodedKeyRange::all(), RangeScope::All, 15000)
+		.range(AnyKeyBoundRange::all(), RangeScope::All, 15000)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -209,7 +214,7 @@ fn test_primary_colors() {
 
 	let mut yellow = engine.begin_command().unwrap();
 	let indices: Vec<_> = yellow
-		.range(EncodedKeyRange::all(), RangeScope::All, 15000)
+		.range(AnyKeyBoundRange::all(), RangeScope::All, 15000)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -227,7 +232,7 @@ fn test_primary_colors() {
 
 	let mut red_two = engine.begin_command().unwrap();
 	let indices: Vec<_> = red_two
-		.range(EncodedKeyRange::all(), RangeScope::All, 15000)
+		.range(AnyKeyBoundRange::all(), RangeScope::All, 15000)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -252,7 +257,7 @@ fn test_primary_colors() {
 
 	let rx = engine.begin_query().unwrap();
 	let result: Vec<_> =
-		rx.range(EncodedKeyRange::all(), RangeScope::All, 15000).collect::<Result<Vec<_>, _>>().unwrap();
+		rx.range(AnyKeyBoundRange::all(), RangeScope::All, 15000).collect::<Result<Vec<_>, _>>().unwrap();
 	assert_eq!(result.len(), 9000);
 
 	let mut red_count = 0;
@@ -289,7 +294,7 @@ fn test_intersecting_data() {
 
 	let mut txn1 = engine.begin_command().unwrap();
 	let val = txn1
-		.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+		.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -309,7 +314,7 @@ fn test_intersecting_data() {
 
 	let mut txn2 = engine.begin_command().unwrap();
 	let val = txn2
-		.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+		.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -333,7 +338,7 @@ fn test_intersecting_data() {
 
 	let mut txn3 = engine.begin_command().unwrap();
 	let val = txn3
-		.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+		.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -393,7 +398,7 @@ fn test_intersecting_data2() {
 
 	let mut txn3 = engine.begin_command().unwrap();
 	let val = txn3
-		.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+		.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -449,7 +454,7 @@ fn test_intersecting_data3() {
 
 	let mut txn3 = engine.begin_command().unwrap();
 	let val = txn3
-		.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+		.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()

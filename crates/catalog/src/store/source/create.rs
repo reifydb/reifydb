@@ -182,7 +182,7 @@ pub mod tests {
 		CatalogStore::create_source(&mut txn, to_create).unwrap();
 
 		let links: Vec<_> = txn
-			.range(NamespaceSourceKey::full_scan(test_namespace.id()).encode(), RangeScope::All, 1024)
+			.range(NamespaceSourceKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();

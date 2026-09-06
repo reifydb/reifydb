@@ -164,7 +164,7 @@ pub mod tests {
 		CatalogStore::create_handler(&mut txn, to_create).unwrap(); // HandlerId(16386)
 
 		let links: Vec<_> = txn
-			.range(NamespaceHandlerKey::full_scan(namespace.id()).encode(), RangeScope::All, 1024)
+			.range(NamespaceHandlerKey::full_scan(namespace.id()), RangeScope::All, 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();

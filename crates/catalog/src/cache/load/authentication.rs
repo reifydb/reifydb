@@ -9,7 +9,7 @@ use crate::{Result, store::authentication::convert_authentication};
 
 pub(crate) fn load_authentications(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = AuthenticationKey::full_scan();
-	let stream = rx.range(range.encode(), RangeScope::All, 1024)?;
+	let stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

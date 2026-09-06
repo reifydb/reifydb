@@ -3,10 +3,7 @@
 
 use std::{ops::Bound, sync::Arc};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::EncodedBytes,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
@@ -19,6 +16,7 @@ use reifydb_core::{
 	},
 	key::{
 		any::AnyKey,
+		bound::AnyKeyBoundRange,
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 	testing::{CapturedEvent, CapturedInvocation},
@@ -108,8 +106,8 @@ pub(super) fn collect_transaction_writes(pending: &PendingWrites) -> Vec<(Encode
 			Delta::Set {
 				bytes,
 				..
-			} => (key.clone(), Some(bytes.clone())),
-			_ => (key.clone(), None),
+			} => (key.encode(), Some(bytes.clone())),
+			_ => (key.encode(), None),
 		})
 		.collect()
 }
@@ -234,8 +232,8 @@ impl<'a> TestTransaction<'a> {
 				Delta::Set {
 					bytes,
 					..
-				} => (key.clone(), Some(bytes.clone())),
-				_ => (key.clone(), None),
+				} => (key.encode(), Some(bytes.clone())),
+				_ => (key.encode(), None),
 			})
 			.collect();
 
@@ -383,7 +381,7 @@ impl<'a> Transaction<'a> {
 
 	pub fn range(
 		&mut self,
-		range: EncodedKeyRange,
+		range: AnyKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_>> {
@@ -432,7 +430,7 @@ impl<'a> Transaction<'a> {
 
 	pub fn range_rev(
 		&mut self,
-		range: EncodedKeyRange,
+		range: AnyKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_>> {
