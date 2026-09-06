@@ -350,7 +350,7 @@ impl StandardOperatorStore {
 				continue;
 			}
 			if page_index == page.len() && !source.is_exhausted() {
-				page = source.next_page(limit);
+				page = source.next_page(target as u64);
 				page_shadow = self.resident.tombstoned(operator, page.iter().map(|(key, _)| key));
 				page_index = 0;
 				continue;
