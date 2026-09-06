@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::{borrow::Cow, ops::Bound};
+
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
@@ -15,7 +17,7 @@ use reifydb_core::{
 		EncodableKey,
 		operator::{
 			keyspace::join::{JoinRowExpiryState as JoinRowExpiry, JoinRowMappingKey},
-			state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
+			state::{GroupId, GroupStateKey, OperatorStateKey, group_inner_range_split, node_prefix},
 		},
 	},
 	state::timer::{GroupSweep, StateStore, TimerKind, TimerStore},
@@ -382,7 +384,8 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
-		let mut query = StateRange::forward(range, "operator::host_range");
+		let site = range_site(&range);
+		let mut query = StateRange::forward(range, site);
 		query.limit = limit;
 		let batch = self.txn.state_range(self.operator, query)?;
 		for r in batch.items {
@@ -464,4 +467,18 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 
 fn unscope(key: &EncodedKey) -> Option<GroupStateKey> {
 	GroupStateKey::from_framed(OperatorStateKey::decode(key)?.inner())
+}
+
+fn range_site(range: &EncodedKeyRange) -> &'static str {
+	if group_inner_range_split(range).is_some() {
+		return "operator::host_sweep";
+	}
+	let key = match &range.start {
+		Bound::Included(key) | Bound::Excluded(key) => key,
+		Bound::Unbounded => return "operator::host_range",
+	};
+	match OperatorStateKey::decode_inner(key.as_slice()).map(|(_, keyspace, _)| keyspace.name()) {
+		Some(Cow::Borrowed(name)) => name,
+		_ => "operator::host_range",
+	}
 }
