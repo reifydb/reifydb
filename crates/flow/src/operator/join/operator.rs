@@ -280,6 +280,9 @@ impl JoinOperator {
 		self.arm_maintenance(host, earliest, retry)
 	}
 
+	#[instrument(name = "flow::join::maintenance", level = "debug", skip_all, fields(
+		outcome = if earliest.is_none() && retry.is_none() { "disarmed" } else { "armed" }
+	))]
 	fn arm_maintenance(
 		&mut self,
 		host: &mut dyn HostContext,

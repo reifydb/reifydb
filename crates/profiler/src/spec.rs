@@ -65,6 +65,13 @@ static SPECS: &[SpanSpec] = &[
 		render: Some(render_state_range),
 	},
 	SpanSpec {
+		name: "flow::join::maintenance",
+		duration_override: None,
+		dims: &[DimSource::Text("outcome")],
+		extras: &[],
+		render: None,
+	},
+	SpanSpec {
 		name: "store::operator::range_batch",
 		duration_override: None,
 		dims: &[DimSource::Number {
