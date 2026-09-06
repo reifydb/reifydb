@@ -163,6 +163,7 @@ impl StandardOperatorStore {
 		}
 	}
 
+	#[instrument(name = "store::operator::invalidate_read_batch", level = "debug", skip_all, fields(write_count = writes.len()))]
 	fn invalidate_read_batch(&self, writes: &[OperatorWrite]) {
 		if self.range.is_none() {
 			return;

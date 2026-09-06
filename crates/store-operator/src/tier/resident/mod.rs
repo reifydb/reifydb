@@ -636,6 +636,7 @@ impl OperatorResidentState {
 		(evicted, freed)
 	}
 
+	#[instrument(name = "store::operator::resident::flush_acquire", level = "debug", skip_all)]
 	pub fn flush_guard(&self) -> MutexGuard<'_, ()> {
 		self.shared.drain.lock()
 	}
