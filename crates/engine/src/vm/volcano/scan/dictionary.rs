@@ -64,17 +64,21 @@ impl DictionaryScanNode {
 		let batch = SingleVersionRange::range_batch(&store, range.encode(), batch_size)?;
 
 		for entry in batch.items {
-			if let Some(key) = DictionaryEntryIndexKey::decode(&entry.key) {
-				let entry_id = DictionaryEntryId::from_u128(key.id, dict_def.id_type.clone())?;
-				new_last_key = Some(AnyKey::from(key));
+			let Some(key) = DictionaryEntryIndexKey::decode(&entry.key) else {
+				panic!(
+					"dictionary {} holds an entry index key that does not decode: {:?}",
+					dict_def.id, entry.key
+				);
+			};
 
-				let value: Value = from_bytes(&entry.bytes).map_err(|e| {
-					internal_error!("Failed to deserialize dictionary value: {}", e)
-				})?;
+			let entry_id = DictionaryEntryId::from_u128(key.id, dict_def.id_type.clone())?;
+			new_last_key = Some(AnyKey::from(key));
 
-				ids.push(entry_id);
-				values.push(value);
-			}
+			let value: Value = from_bytes(&entry.bytes)
+				.map_err(|e| internal_error!("Failed to deserialize dictionary value: {}", e))?;
+
+			ids.push(entry_id);
+			values.push(value);
 		}
 
 		Ok((ids, values, new_last_key))

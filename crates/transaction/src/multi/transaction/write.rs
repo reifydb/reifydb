@@ -21,13 +21,14 @@ use reifydb_core::{
 	delta::{Delta, RemoveAnnounce},
 	event::transaction::PostCommitEvent,
 	interface::{
-		catalog::storage::StorageId,
+		catalog::{object::ObjectId, storage::StorageId},
 		change::Change,
 		store::{MultiVersionBatch, MultiVersionContains, MultiVersionGet, MultiVersionRow},
 	},
 	key::{
 		any::AnyKey,
-		bound::{AnyKeyBound, AnyKeyBoundRange},
+		bound::{AnyKeyBound, AnyKeyBoundRange, object_fields},
+		kind::KeyKind,
 		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey, StorageRowKey},
 	},
 };
@@ -797,10 +798,10 @@ impl MultiWriteTransaction {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
-		let encoded = row_bounds_to_encoded(storage, &start, &end);
+		let range = row_bounds_to_typed(storage, &start, &end);
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
-		marker.mark_range_encoded(encoded.clone());
+		marker.mark_range(range.clone());
 
 		let pending: Vec<(StorageRowKey, DeltaEntry)> = pw
 			.iter()
@@ -808,7 +809,7 @@ impl MultiWriteTransaction {
 				let AnyKeyBound::Key(AnyKey::Row(decoded)) = k else {
 					return None;
 				};
-				(decoded.storage == storage && encoded.contains(&k.encode()))
+				(decoded.storage == storage && range.contains(k))
 					.then(|| (StorageRowKey::new(decoded.row), v.clone()))
 			})
 			.collect();
@@ -827,10 +828,10 @@ impl MultiWriteTransaction {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
-		let encoded = partitioned_row_bounds_to_encoded(storage, &start, &end);
+		let range = partitioned_row_bounds_to_typed(storage, &start, &end);
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
-		marker.mark_range_encoded(encoded.clone());
+		marker.mark_range(range.clone());
 
 		let pending: Vec<(StoragePartitionedRowKey, DeltaEntry)> = pw
 			.iter()
@@ -838,7 +839,7 @@ impl MultiWriteTransaction {
 				let AnyKeyBound::Key(AnyKey::PartitionedRow(decoded)) = k else {
 					return None;
 				};
-				(decoded.storage == storage && encoded.contains(&k.encode())).then(|| {
+				(decoded.storage == storage && range.contains(k)).then(|| {
 					(StoragePartitionedRowKey::new(decoded.partition, decoded.row), v.clone())
 				})
 			})
@@ -923,7 +924,10 @@ impl MultiWriteTransaction {
 mod tests {
 	use reifydb_codec::key::serializer::KeySerializer;
 	use reifydb_core::{common::CommitVersion, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
-	use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
+	use reifydb_value::{
+		util::cowvec::CowVec,
+		value::{duration::Duration, partition::Partition, row_number::RowNumber},
+	};
 
 	use super::*;
 	use crate::multi::transaction::MultiTransaction;
@@ -974,6 +978,92 @@ mod tests {
 			commit_version,
 			"commit of our own freshly-allocated version must succeed even under a racing query watermark"
 		);
+	}
+
+	fn storage() -> StorageId {
+		StorageId::table(7)
+	}
+
+	fn row_range_bytes(start: Bound<StorageRowKey>, end: Bound<StorageRowKey>) -> EncodedKeyRange {
+		row_bounds_to_typed(storage(), &start, &end).encode()
+	}
+
+	fn partitioned_range_bytes(
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+	) -> EncodedKeyRange {
+		partitioned_row_bounds_to_typed(storage(), &start, &end).encode()
+	}
+
+	#[test]
+	fn an_unbounded_row_range_still_spans_exactly_the_storages_own_bytes() {
+		// The conflict manager now tracks these ranges typed, so the typed spelling of an
+		// open end has to land on the same byte as the storage_end producer it replaced.
+		// Anything wider silently reports conflicts that are not there; anything narrower
+		// silently misses real ones, and neither shows up as a failure anywhere else.
+		let range = row_range_bytes(Bound::Unbounded, Bound::Unbounded);
+		assert_eq!(range.start, Bound::Included(RowKey::storage_start(storage())));
+		assert_eq!(range.end, Bound::Included(RowKey::storage_end(storage())));
+
+		let range = partitioned_range_bytes(Bound::Unbounded, Bound::Unbounded);
+		assert_eq!(range.start, Bound::Included(PartitionedRowKey::storage_start(storage())));
+		assert_eq!(range.end, Bound::Included(PartitionedRowKey::storage_end(storage())));
+	}
+
+	#[test]
+	fn a_bounded_row_range_encodes_the_keys_it_names() {
+		let low = StorageRowKey::new(RowNumber(1));
+		let high = StorageRowKey::new(RowNumber(9));
+		let range = row_range_bytes(Bound::Included(low), Bound::Excluded(high));
+		assert_eq!(range.start, Bound::Included(RowKey::encoded(storage(), RowNumber(1))));
+		assert_eq!(range.end, Bound::Excluded(RowKey::encoded(storage(), RowNumber(9))));
+
+		let low = StoragePartitionedRowKey::new(Partition(3), RowNumber(1));
+		let high = StoragePartitionedRowKey::new(Partition(3), RowNumber(9));
+		let range = partitioned_range_bytes(Bound::Excluded(low), Bound::Included(high));
+		assert_eq!(
+			range.start,
+			Bound::Excluded(PartitionedRowKey::encoded(storage(), Partition(3), RowNumber(1)))
+		);
+		assert_eq!(
+			range.end,
+			Bound::Included(PartitionedRowKey::encoded(storage(), Partition(3), RowNumber(9)))
+		);
+	}
+
+	#[test]
+	fn a_row_range_contains_the_same_keys_typed_as_its_bytes_do() {
+		// The pending-writes filter reads containment off the typed bounds while the storage
+		// iterator reads it off the bytes; a disagreement hides a transaction's own writes.
+		// Row numbers encode descending, so a non-empty span runs from the higher number to
+		// the lower one. Spelling it 3..9 would make every case empty and let the end bound
+		// answer alone, which hides whatever the start bound does.
+		let rows: Vec<RowNumber> = (0u64..12).map(RowNumber).collect();
+		let low = StorageRowKey::new(RowNumber(9));
+		let high = StorageRowKey::new(RowNumber(3));
+		let cases = [
+			(Bound::Unbounded, Bound::Unbounded),
+			(Bound::Included(low), Bound::Unbounded),
+			(Bound::Excluded(low), Bound::Unbounded),
+			(Bound::Excluded(low), Bound::Excluded(high)),
+			(Bound::Included(low), Bound::Included(high)),
+			(Bound::Unbounded, Bound::Excluded(high)),
+			(Bound::Unbounded, Bound::Included(high)),
+		];
+
+		for (start, end) in cases {
+			let typed = row_bounds_to_typed(storage(), &start, &end);
+			let bytes = typed.encode();
+			for row in &rows {
+				let key = RowKey::new(storage(), *row);
+				let encoded = RowKey::encoded(storage(), *row);
+				assert_eq!(
+					typed.contains(&AnyKeyBound::Key(AnyKey::Row(key))),
+					bytes.contains(&encoded),
+					"row {row:?} in {start:?}..{end:?}"
+				);
+			}
+		}
 	}
 }
 
@@ -1067,38 +1157,56 @@ where
 	}
 }
 
-fn row_bounds_to_encoded(
+fn row_bounds_to_typed(
 	storage: StorageId,
 	start: &Bound<StorageRowKey>,
 	end: &Bound<StorageRowKey>,
-) -> EncodedKeyRange {
+) -> AnyKeyBoundRange {
+	let bound = |k: &StorageRowKey| AnyKeyBound::Key(AnyKey::Row(RowKey::new(storage, k.row())));
 	let lower = match start {
-		Bound::Included(k) => Bound::Included(RowKey::encoded(storage, k.row())),
-		Bound::Excluded(k) => Bound::Excluded(RowKey::encoded(storage, k.row())),
-		Bound::Unbounded => Bound::Included(RowKey::storage_start(storage)),
+		Bound::Included(k) => Bound::Included(bound(k)),
+		Bound::Excluded(k) => Bound::Excluded(bound(k)),
+		Bound::Unbounded => Bound::Included(storage_span_start(KeyKind::Row, storage)),
 	};
 	let upper = match end {
-		Bound::Included(k) => Bound::Included(RowKey::encoded(storage, k.row())),
-		Bound::Excluded(k) => Bound::Excluded(RowKey::encoded(storage, k.row())),
-		Bound::Unbounded => Bound::Included(RowKey::storage_end(storage)),
+		Bound::Included(k) => Bound::Included(bound(k)),
+		Bound::Excluded(k) => Bound::Excluded(bound(k)),
+		Bound::Unbounded => Bound::Included(storage_span_end(KeyKind::Row, storage)),
 	};
-	EncodedKeyRange::new(lower, upper)
+	AnyKeyBoundRange {
+		start: lower,
+		end: upper,
+	}
 }
 
-fn partitioned_row_bounds_to_encoded(
+fn partitioned_row_bounds_to_typed(
 	storage: StorageId,
 	start: &Bound<StoragePartitionedRowKey>,
 	end: &Bound<StoragePartitionedRowKey>,
-) -> EncodedKeyRange {
+) -> AnyKeyBoundRange {
+	let bound = |k: &StoragePartitionedRowKey| {
+		AnyKeyBound::Key(AnyKey::PartitionedRow(PartitionedRowKey::new(storage, k.partition(), k.row())))
+	};
 	let lower = match start {
-		Bound::Included(k) => Bound::Included(PartitionedRowKey::encoded(storage, k.partition(), k.row())),
-		Bound::Excluded(k) => Bound::Excluded(PartitionedRowKey::encoded(storage, k.partition(), k.row())),
-		Bound::Unbounded => Bound::Included(PartitionedRowKey::storage_start(storage)),
+		Bound::Included(k) => Bound::Included(bound(k)),
+		Bound::Excluded(k) => Bound::Excluded(bound(k)),
+		Bound::Unbounded => Bound::Included(storage_span_start(KeyKind::PartitionedRow, storage)),
 	};
 	let upper = match end {
-		Bound::Included(k) => Bound::Included(PartitionedRowKey::encoded(storage, k.partition(), k.row())),
-		Bound::Excluded(k) => Bound::Excluded(PartitionedRowKey::encoded(storage, k.partition(), k.row())),
-		Bound::Unbounded => Bound::Included(PartitionedRowKey::storage_end(storage)),
+		Bound::Included(k) => Bound::Included(bound(k)),
+		Bound::Excluded(k) => Bound::Excluded(bound(k)),
+		Bound::Unbounded => Bound::Included(storage_span_end(KeyKind::PartitionedRow, storage)),
 	};
-	EncodedKeyRange::new(lower, upper)
+	AnyKeyBoundRange {
+		start: lower,
+		end: upper,
+	}
+}
+
+fn storage_span_start(kind: KeyKind, storage: StorageId) -> AnyKeyBound {
+	AnyKeyBound::prefix(kind, object_fields(ObjectId::from(storage)))
+}
+
+fn storage_span_end(kind: KeyKind, storage: StorageId) -> AnyKeyBound {
+	AnyKeyBound::prefix(kind, object_fields(ObjectId::from(storage).prev()))
 }

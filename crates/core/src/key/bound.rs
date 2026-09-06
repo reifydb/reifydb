@@ -192,6 +192,20 @@ impl AnyKeyBoundRange {
 		}
 	}
 
+	pub fn contains(&self, bound: &AnyKeyBound) -> bool {
+		let after_start = match &self.start {
+			Bound::Unbounded => true,
+			Bound::Included(start) => bound >= start,
+			Bound::Excluded(start) => bound > start,
+		};
+		let before_end = match &self.end {
+			Bound::Unbounded => true,
+			Bound::Included(end) => bound <= end,
+			Bound::Excluded(end) => bound < end,
+		};
+		after_start && before_end
+	}
+
 	pub fn encode(&self) -> EncodedKeyRange {
 		EncodedKeyRange::new(encode_bound(&self.start), encode_bound(&self.end))
 	}
