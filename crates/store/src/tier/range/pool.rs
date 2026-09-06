@@ -197,8 +197,10 @@ impl<D: RangeDomain> RangeTier<D> {
 				entries,
 				pinned,
 				bytes,
+				covered,
 				..
 			} = partition;
+			*covered = false;
 			let mut freed = 0usize;
 			entries.retain(|key, entry| {
 				if !entry.evictable() {
@@ -655,6 +657,35 @@ mod tests {
 		assert_eq!(tier.entries(), 1, "only the evictable row may be dropped");
 		assert_eq!(probe(&tier, &live), None, "the dropped row falls through");
 		assert_eq!(tier.partitions(), 1, "a partition holding a pinned entry is never removed");
+	}
+
+	#[test]
+	fn a_partition_that_survives_eviction_must_re_prove_coverage_before_it_caches_again() {
+		// A survivor keeps its pinned removal but not its claim. Leaving it admitting write through
+		// lets unproven rows pin the shard at its cap, and coverage only ever comes from a
+		// materialize, so a tier that refuses one there can never rebuild the claim its reads need.
+		let live = key(KeyspaceId::ACCUMULATOR, b"a");
+		let gone = key(KeyspaceId::ACCUMULATOR, b"b");
+		let late = key(KeyspaceId::ACCUMULATOR, b"c");
+		let rows = vec![(live.clone(), Entry::row(row("v"))), (gone.clone(), Entry::deleted())];
+		let tier = tier(cost(&rows) as u64 - 1, 1);
+		seed(&tier, part(KeyspaceId::ACCUMULATOR), rows);
+
+		tier.evict_to_capacity(0);
+
+		assert_eq!(resident(&tier, &gone), Some(Entry::Deleted), "the fixture must leave the partition standing");
+		assert_eq!(tier.intervals(), 0, "and must leave it holding no claim");
+		let settled = tier.metrics().evictions;
+
+		tier.overwrite(OP_A, late.clone(), row("late"));
+
+		assert_eq!(
+			tier.metrics().evictions,
+			settled,
+			"an admitted write the shard has no room for is evicted again at once: the treadmill that \
+			 pins the tier at its cap"
+		);
+		assert_eq!(resident(&tier, &late), None, "and the unproven row must not be resident");
 	}
 
 	#[test]
