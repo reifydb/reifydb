@@ -9,11 +9,24 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::{common::CommitVersion, key::bound::AnyKeyBoundRange};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::{
+		id::{IndexId, TableId},
+		object::ObjectId,
+	},
+	key::{any::AnyKey, bound::AnyKeyBoundRange, catalog::IndexEntryKey},
+};
 use reifydb_transaction::multi::RangeScope;
 
 use super::test_multi;
 use crate::{as_bound, as_key, as_values, from_bytes, multi::transaction::FromRow};
+
+// String tails encode inverted, so every key in the 'a' group shares the tail prefix !a, and the
+// group sorts in reverse of the plaintext.
+fn prefix_range(prefix: u8) -> AnyKeyBoundRange {
+	IndexEntryKey::key_prefix_range(ObjectId::Table(TableId(1)), IndexId::primary(1u64), &[!prefix])
+}
 
 #[test]
 fn test_range() {
@@ -334,4 +347,88 @@ fn test_range_stream_multiple_keys_many_versions() {
 		assert_eq!(item.key, as_key!(expected_key));
 		assert_eq!(from_bytes!(u64, &item.bytes), expected_value);
 	}
+}
+
+#[test]
+fn a_prefix_range_sees_writes_the_transaction_has_not_committed_yet() {
+	// A scan merges two sources: committed rows from storage, ordered by bytes, and the
+	// transaction's own pending writes, ordered by AnyKeyBound. A prefix bound that orders
+	// differently from its encoded form makes a transaction stop seeing its own writes while
+	// committed rows keep arriving, which reads as data loss rather than as an error.
+	let engine = test_multi();
+	let mut txn = engine.begin_command().unwrap();
+	txn.set(&as_key!("a1"), as_values!(1u64)).unwrap();
+	txn.set(&as_key!("a2"), as_values!(2u64)).unwrap();
+	txn.set(&as_key!("b1"), as_values!(3u64)).unwrap();
+
+	let keys: Vec<AnyKey> = txn
+		.range(prefix_range(b'a'), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap()
+		.into_iter()
+		.map(|row| row.key)
+		.collect();
+
+	assert_eq!(keys, vec![as_key!("a2"), as_key!("a1")]);
+}
+
+#[test]
+fn a_prefix_range_merges_uncommitted_writes_with_committed_rows() {
+	let engine = test_multi();
+	let mut txn = engine.begin_command().unwrap();
+	txn.set(&as_key!("a1"), as_values!(1u64)).unwrap();
+	txn.set(&as_key!("a3"), as_values!(3u64)).unwrap();
+	txn.commit(vec![]).unwrap();
+
+	let mut txn = engine.begin_command().unwrap();
+	txn.set(&as_key!("a2"), as_values!(2u64)).unwrap();
+
+	let rows: Vec<_> = txn.range(prefix_range(b'a'), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+
+	let keys: Vec<AnyKey> = rows.iter().map(|row| row.key.clone()).collect();
+	assert_eq!(keys, vec![as_key!("a3"), as_key!("a2"), as_key!("a1")]);
+
+	let values: Vec<u64> = rows.iter().map(|row| from_bytes!(u64, row.bytes)).collect();
+	assert_eq!(values, vec![3, 2, 1]);
+}
+
+#[test]
+fn a_prefix_range_hides_a_row_the_transaction_has_removed() {
+	let engine = test_multi();
+	let mut txn = engine.begin_command().unwrap();
+	txn.set(&as_key!("a1"), as_values!(1u64)).unwrap();
+	txn.set(&as_key!("a2"), as_values!(2u64)).unwrap();
+	txn.commit(vec![]).unwrap();
+
+	let mut txn = engine.begin_command().unwrap();
+	txn.remove(&as_key!("a1")).unwrap();
+
+	let keys: Vec<AnyKey> = txn
+		.range(prefix_range(b'a'), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap()
+		.into_iter()
+		.map(|row| row.key)
+		.collect();
+
+	assert_eq!(keys, vec![as_key!("a2")]);
+}
+
+#[test]
+fn a_reverse_prefix_range_sees_uncommitted_writes_too() {
+	let engine = test_multi();
+	let mut txn = engine.begin_command().unwrap();
+	txn.set(&as_key!("a1"), as_values!(1u64)).unwrap();
+	txn.set(&as_key!("a2"), as_values!(2u64)).unwrap();
+	txn.set(&as_key!("b1"), as_values!(3u64)).unwrap();
+
+	let keys: Vec<AnyKey> = txn
+		.range_rev(prefix_range(b'a'), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap()
+		.into_iter()
+		.map(|row| row.key)
+		.collect();
+
+	assert_eq!(keys, vec![as_key!("a1"), as_key!("a2")]);
 }
