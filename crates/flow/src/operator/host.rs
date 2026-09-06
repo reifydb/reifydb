@@ -5,7 +5,7 @@ use std::{borrow::Cow, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{operator::state::OperatorState, pod::EncodedPodRow},
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -16,7 +16,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		operator::{
-			keyspace::join::{JoinRowExpiryState as JoinRowExpiry, JoinRowMappingKey},
+			keyspace::join::JoinRowMappingKey,
 			state::{GroupId, GroupStateKey, OperatorStateKey, group_inner_range_split, node_prefix},
 		},
 	},
@@ -26,7 +26,6 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
-	error::Error as ValueError,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -42,10 +41,7 @@ use crate::{
 	transaction::{
 		FlowTransaction,
 		dictionary::DictionaryExtension,
-		join_expiry::{
-			DueStart, JoinDueEntry, JoinDuePage, JoinRowExpiryExtension, join_expiry_range,
-			join_expiry_slot,
-		},
+		join_expiry::{DueStart, JoinDueEntry, JoinDuePage, JoinRowExpiryExtension},
 		reclaim::ReclaimExtension,
 		row_number::RowNumberExtension,
 		state::{StateExtension, StateRange},
@@ -66,30 +62,6 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 	fn join_expiry_min(&mut self) -> Result<Option<DateTime>>;
 
 	fn join_due_page(&mut self, at: DateTime, budget: usize, start: &DueStart) -> Result<JoinDuePage>;
-
-	fn clear_join_expiries(&mut self, group: GroupId, budget: usize) -> Result<()> {
-		loop {
-			let page = self.state_range_limited(join_expiry_range(group), Some(budget))?;
-			if page.is_empty() {
-				return Ok(());
-			}
-			for (key, row) in &page {
-				let Some(slot) = join_expiry_slot(key) else {
-					continue;
-				};
-				let at = JoinRowExpiry::decode_state(row).map_err(ValueError::from)?.at;
-				self.join_expiry_free(&JoinDueEntry {
-					at,
-					group,
-					side: slot.side.0,
-					row_number: slot.row.0,
-				})?;
-			}
-			if page.len() < budget {
-				return Ok(());
-			}
-		}
-	}
 
 	fn config_uint8(&self, key: ConfigKey) -> u64;
 

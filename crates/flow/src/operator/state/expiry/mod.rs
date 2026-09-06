@@ -11,7 +11,9 @@ use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::expiry::{Expiry, ExpiryKey, TumblingExpiry, TumblingExpirySuffix},
-			state::{GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range, keyspace_inner_range_in},
+			state::{
+				GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range, keyspace_inner_range_in,
+			},
 			traits::Keyspace,
 		},
 		typed::{TypedKey, direction::Desc},
@@ -117,9 +119,7 @@ where
 	E: OperatorState,
 {
 	let from = K::Suffix::at_threshold(threshold).to_suffix_bytes();
-	let until = floor
-		.filter(|floor| *floor > 0)
-		.map(|floor| K::Suffix::at_threshold(floor - 1).to_suffix_bytes());
+	let until = floor.filter(|floor| *floor > 0).map(|floor| K::Suffix::at_threshold(floor - 1).to_suffix_bytes());
 	let range = keyspace_inner_range_in(
 		GroupId::ROOT,
 		K::ID,
@@ -143,12 +143,7 @@ where
 	K::Suffix: ExpirySuffix,
 {
 	let above = K::Suffix::at_threshold(threshold).to_suffix_bytes();
-	let range = keyspace_inner_range_in(
-		GroupId::ROOT,
-		K::ID,
-		Bound::Unbounded,
-		Bound::Excluded(above.as_slice()),
-	);
+	let range = keyspace_inner_range_in(GroupId::ROOT, K::ID, Bound::Unbounded, Bound::Excluded(above.as_slice()));
 	let Some((key, _)) = store.state_last(range)? else {
 		return Ok(None);
 	};

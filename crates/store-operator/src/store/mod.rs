@@ -85,6 +85,7 @@ impl Deref for StandardOperatorStore {
 
 impl StandardOperatorStore {
 	pub fn new(config: OperatorStoreConfig) -> Self {
+		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let flush_interval = config.resident.flush_interval;
 		let resident = config.resident.storage;
 		let spawner = config.spawner;

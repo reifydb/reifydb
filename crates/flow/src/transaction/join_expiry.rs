@@ -86,12 +86,6 @@ pub fn join_due_range() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::ROOT, KeyspaceId::JOIN_EXPIRY_DUE)
 }
 
-pub fn join_expiry_slot(key: &GroupStateKey) -> Option<JoinRowExpirySuffix> {
-	let (_, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())?;
-	(keyspace == KeyspaceId::JOIN_ROW_EXPIRY).then_some(())?;
-	JoinRowExpirySuffix::from_suffix_bytes(suffix)
-}
-
 pub trait JoinRowExpiryExtension: FlowTransaction {
 	fn join_expiry_at(
 		&mut self,

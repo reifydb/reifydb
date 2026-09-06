@@ -138,6 +138,26 @@ pub(crate) fn read_right_slot(
 }
 
 #[instrument(name = "flow::operator::join::latest::store_right_rows", level = "trace", skip_all, fields(rows = indices.len()))]
+pub(crate) fn write_right_rows(
+	host: &mut dyn HostContext,
+	right: &Store,
+	key_hash: &Hash128,
+	columns: &Columns,
+	indices: &[usize],
+) -> Result<()> {
+	if indices.is_empty() {
+		return Ok(());
+	}
+	let shape = build_shape(columns);
+	right.set_row_shape(host, &shape)?;
+	let group = right.group_of(key_hash);
+	for &idx in indices {
+		let row = encode_row(&shape, columns, idx, host.written_at());
+		right.write_row(host, group, columns.row_numbers()[idx], &row)?;
+	}
+	Ok(())
+}
+
 pub(crate) fn overwrite_right_slot(
 	host: &mut dyn HostContext,
 	right: &Store,
@@ -149,13 +169,7 @@ pub(crate) fn overwrite_right_slot(
 	if indices.is_empty() {
 		return Ok(None);
 	}
-	let shape = build_shape(columns);
-	right.set_row_shape(host, &shape)?;
-	let group = right.group_of(key_hash);
-	for &idx in indices {
-		let row = encode_row(&shape, columns, idx, host.written_at());
-		right.write_row(host, group, columns.row_numbers()[idx], &row)?;
-	}
+	write_right_rows(host, right, key_hash, columns, indices)?;
 	read_right_slot(host, right, key_hash, pick)
 }
 

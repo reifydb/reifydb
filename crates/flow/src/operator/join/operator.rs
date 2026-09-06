@@ -505,13 +505,20 @@ impl JoinOperator {
 		};
 
 		for group in emptied {
-			if state.left.holds_rows(host, group)?
+			if !host.state_range_limited(join_expiry_range(group), Some(1))?.is_empty()
+				|| state.left.holds_rows(host, group)?
 				|| state.right.holds_rows(host, group)?
-				|| !host.state_range_limited(join_expiry_range(group), Some(1))?.is_empty()
 			{
 				continue;
 			}
-			host.clear_join_expiries(group, SEAL_BATCH)?;
+			reifydb_assertions! {
+				let stranded = host.state_range_limited(join_expiry_range(group), Some(1))?.len();
+				assert!(
+					stranded == 0,
+					"group {group} reached the reaper still holding a row expiry entry; reaping it \
+					 strands that entry's due-index sibling behind a group id nothing resolves again"
+				);
+			}
 			enqueue(host, group)?;
 			let drained = drain_group(host, group, &mut StoreReaper, SEAL_BATCH)?;
 			stalled |= drained.still_queued;
@@ -1876,8 +1883,9 @@ mod seal_tests {
 		let four = left_scans_freeing_expired_rights(21, 4);
 
 		assert_eq!(
-			one, 2,
-			"exactly two left reads: the composite key enumeration and the holds_rows veto on the drain"
+			one, 1,
+			"exactly one left read: the composite key enumeration; the row expiry probe vetoes the drain \
+			 before the left side is read again"
 		);
 		assert_eq!(four, one, "four expiring rights must not cost four enumerations of the same left side");
 	}

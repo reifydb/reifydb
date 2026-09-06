@@ -94,10 +94,12 @@ impl KeyspaceVisitor for Get<'_> {
 	}
 }
 
+type GetManyItem<'a> = (&'a EncodedKey, GroupId, &'a [u8]);
+
 struct GetMany<'a> {
 	conn: &'a Connection,
 	operator: OperatorId,
-	items: Vec<(&'a EncodedKey, GroupId, &'a [u8])>,
+	items: Vec<GetManyItem<'a>>,
 }
 
 impl KeyspaceVisitor for GetMany<'_> {
@@ -122,7 +124,7 @@ impl KeyspaceVisitor for GetMany<'_> {
 }
 
 pub(super) fn get_many(conn: &Connection, operator: OperatorId, keys: &[EncodedKey]) -> Vec<(EncodedKey, Vec<u8>)> {
-	let mut grouped: BTreeMap<KeyspaceId, Vec<(&EncodedKey, GroupId, &[u8])>> = BTreeMap::new();
+	let mut grouped: BTreeMap<KeyspaceId, Vec<GetManyItem>> = BTreeMap::new();
 	for key in keys {
 		let (group, keyspace, suffix) = parts(key);
 		grouped.entry(keyspace).or_default().push((key, group, suffix));
