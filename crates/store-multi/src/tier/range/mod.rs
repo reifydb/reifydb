@@ -160,15 +160,6 @@ impl NarrowLayout for StoragePartitionedRowKey {
 	}
 }
 
-fn full_scan_edge(bound: Bound<EncodedKey>) -> EncodedKey {
-	match bound {
-		Included(key) | Bound::Excluded(key) => key,
-		Bound::Unbounded => {
-			unreachable!("a series full scan always names both of its storage bounds")
-		}
-	}
-}
-
 impl NarrowLayout for StorageSeriesKey {
 	type Wide = SeriesRowKey;
 
@@ -194,11 +185,11 @@ impl NarrowLayout for StorageSeriesKey {
 	}
 
 	fn storage_start(storage: StorageId) -> EncodedKey {
-		full_scan_edge(SeriesRowKeyRange::full_scan(storage, None).start)
+		SeriesRowKeyRange::storage_start(storage)
 	}
 
 	fn storage_end(storage: StorageId) -> EncodedKey {
-		full_scan_edge(SeriesRowKeyRange::full_scan(storage, None).end)
+		SeriesRowKeyRange::storage_end(storage)
 	}
 }
 
@@ -227,11 +218,11 @@ impl NarrowLayout for StoragePartitionedSeriesKey {
 	}
 
 	fn storage_start(storage: StorageId) -> EncodedKey {
-		full_scan_edge(PartitionedSeriesRowKeyRange::full_scan(storage).start)
+		PartitionedSeriesRowKeyRange::storage_start(storage)
 	}
 
 	fn storage_end(storage: StorageId) -> EncodedKey {
-		full_scan_edge(PartitionedSeriesRowKeyRange::full_scan(storage).end)
+		PartitionedSeriesRowKeyRange::storage_end(storage)
 	}
 }
 

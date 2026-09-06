@@ -21,8 +21,8 @@ use super::{EncodableKeyRange, KeyKind};
 use crate::{
 	interface::catalog::{object::ObjectId, storage::StorageId},
 	key::{
-		any::{Field, KeyFields, RawEncoding, Width},
-		bound::AnyKeyBoundRange,
+		any::{AnyKey, Field, KeyFields, RawEncoding, Width},
+		bound::{AnyKeyBoundRange, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		sort_run::SortRun,
 		typed::{
@@ -62,34 +62,16 @@ impl RowKeyRange {
 		})
 	}
 
-	pub fn scan_range(storage: StorageId, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
-		let range = RowKeyRange {
-			storage,
-		};
-
-		if let Some(last_key) = last_key {
-			EncodedKeyRange::new(Bound::Excluded(last_key.clone()), Bound::Included(range.end().unwrap()))
-		} else {
-			EncodedKeyRange::new(
-				Bound::Included(range.start().unwrap()),
-				Bound::Included(range.end().unwrap()),
-			)
-		}
+	pub fn storage_scan(storage: StorageId) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, object_fields(ObjectId::from(storage)))
 	}
 
-	pub fn scan_range_rev(storage: StorageId, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
-		let range = RowKeyRange {
-			storage,
-		};
+	pub fn scan_range(storage: StorageId, last: Option<&AnyKey>) -> AnyKeyBoundRange {
+		Self::storage_scan(storage).resume_after(last)
+	}
 
-		if let Some(last_key) = last_key {
-			EncodedKeyRange::new(Bound::Included(range.start().unwrap()), Bound::Excluded(last_key.clone()))
-		} else {
-			EncodedKeyRange::new(
-				Bound::Included(range.start().unwrap()),
-				Bound::Included(range.end().unwrap()),
-			)
-		}
+	pub fn scan_range_rev(storage: StorageId, last: Option<&AnyKey>) -> AnyKeyBoundRange {
+		Self::storage_scan(storage).resume_before(last)
 	}
 }
 
@@ -141,9 +123,8 @@ impl RowKey {
 		})
 	}
 
-	pub fn full_scan(storage: impl Into<StorageId>) -> EncodedKeyRange {
-		let storage = storage.into();
-		EncodedKeyRange::start_end(Some(Self::storage_start(storage)), Some(Self::storage_end(storage)))
+	pub fn full_scan(storage: impl Into<StorageId>) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(<Self as Key>::KIND, object_fields(ObjectId::from(storage.into())))
 	}
 
 	pub fn storage_start(storage: impl Into<StorageId>) -> EncodedKey {
@@ -233,19 +214,12 @@ impl SortedViewRowKey {
 		serializer.to_encoded_key()
 	}
 
-	fn storage_end(storage: impl Into<StorageId>) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(<Self as Key>::KIND as u8).extend_object_id(ObjectId::from(storage.into()).prev());
-		serializer.to_encoded_key()
+	pub fn storage_scan(storage: impl Into<StorageId>) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(<Self as Key>::KIND, object_fields(ObjectId::from(storage.into())))
 	}
 
-	pub fn scan_range(storage: impl Into<StorageId>, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
-		let storage = storage.into();
-		let start = match last_key {
-			Some(last) => Bound::Excluded(last.clone()),
-			None => Bound::Included(Self::storage_start(storage)),
-		};
-		EncodedKeyRange::new(start, Bound::Included(Self::storage_end(storage)))
+	pub fn scan_range(storage: impl Into<StorageId>, last: Option<&AnyKey>) -> AnyKeyBoundRange {
+		Self::storage_scan(storage).resume_after(last)
 	}
 
 	pub fn storage_of(key: &EncodedKey) -> Option<StorageId> {
@@ -414,37 +388,30 @@ impl PartitionedSortedViewRowKey {
 		serializer.to_encoded_key()
 	}
 
-	fn storage_end(storage: impl Into<StorageId>) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(<Self as Key>::KIND as u8).extend_object_id(ObjectId::from(storage.into()).prev());
-		serializer.to_encoded_key()
+	pub fn storage_scan(storage: impl Into<StorageId>) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(<Self as Key>::KIND, object_fields(ObjectId::from(storage.into())))
 	}
 
-	pub fn scan_range(storage: impl Into<StorageId>, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
-		let storage = storage.into();
-		let start = match last_key {
-			Some(last) => Bound::Excluded(last.clone()),
-			None => Bound::Included(Self::storage_start(storage)),
-		};
-		EncodedKeyRange::new(start, Bound::Included(Self::storage_end(storage)))
+	pub fn scan_range(storage: impl Into<StorageId>, last: Option<&AnyKey>) -> AnyKeyBoundRange {
+		Self::storage_scan(storage).resume_after(last)
 	}
 
-	pub fn partition_range(storage: impl Into<StorageId>, partition: Partition) -> EncodedKeyRange {
-		let mut prefix = KeySerializer::with_capacity(26);
-		prefix.extend_u8(<Self as Key>::KIND as u8).extend_object_id(storage.into()).extend_u128(partition.0);
-		EncodedKeyRange::prefix(prefix.to_encoded_key().as_slice())
+	pub fn partition_range(storage: impl Into<StorageId>, partition: Partition) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(
+			<Self as Key>::KIND,
+			object_fields(ObjectId::from(storage.into()))
+				.into_iter()
+				.chain([Field::UDesc(Width::U128, partition.0)])
+				.collect::<Vec<_>>(),
+		)
 	}
 
 	pub fn partition_scan_range(
 		storage: impl Into<StorageId>,
 		partition: Partition,
-		last_key: Option<&EncodedKey>,
-	) -> EncodedKeyRange {
-		let base = Self::partition_range(storage, partition);
-		match last_key {
-			Some(last) => EncodedKeyRange::new(Bound::Excluded(last.clone()), base.end),
-			None => base,
-		}
+		last: Option<&AnyKey>,
+	) -> AnyKeyBoundRange {
+		Self::partition_range(storage, partition).resume_after(last)
 	}
 
 	pub fn storage_of(key: &EncodedKey) -> Option<StorageId> {
@@ -479,7 +446,7 @@ mod sorted_view_row_key_tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
-	use super::{PartitionedSortedViewRowKey, RowKey, SortedViewRowKey};
+	use super::{AnyKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey};
 	use crate::{interface::catalog::storage::StorageId, key::sort_run::SortRun};
 
 	fn part(v: &str) -> Partition {
@@ -488,6 +455,10 @@ mod sorted_view_row_key_tests {
 
 	fn sorted_view(storage: StorageId, sort: &[u8], row: RowNumber) -> EncodedKey {
 		SortedViewRowKey::encoded(storage, SortRun::new(sort), row)
+	}
+
+	fn sorted_view_cursor(storage: StorageId, sort: &[u8], row: RowNumber) -> AnyKey {
+		AnyKey::from(SortedViewRowKey::new(storage, SortRun::new(sort), row))
 	}
 
 	fn partitioned(storage: StorageId, partition: Partition, sort: &[u8], row: RowNumber) -> EncodedKey {
@@ -519,7 +490,7 @@ mod sorted_view_row_key_tests {
 	#[test]
 	fn test_scan_range_covers_its_storage_and_nothing_else() {
 		let storage = StorageId::view(3);
-		let range = SortedViewRowKey::scan_range(storage, None);
+		let range = SortedViewRowKey::scan_range(storage, None).encode();
 
 		assert!(range.contains(&sorted_view(storage, &[0x00; 8], RowNumber(1))));
 		assert!(range.contains(&sorted_view(storage, &[0xFF; 8], RowNumber(u64::MAX))));
@@ -530,10 +501,10 @@ mod sorted_view_row_key_tests {
 	fn test_scan_range_resumes_strictly_after_the_last_key() {
 		// Resuming inclusively re-serves the last row of the previous chunk, duplicating it in the view.
 		let storage = StorageId::view(3);
-		let last = sorted_view(storage, &[0x40; 8], RowNumber(5));
-		let range = SortedViewRowKey::scan_range(storage, Some(&last));
+		let last = sorted_view_cursor(storage, &[0x40; 8], RowNumber(5));
+		let range = SortedViewRowKey::scan_range(storage, Some(&last)).encode();
 
-		assert!(!range.contains(&last));
+		assert!(!range.contains(&last.encode()));
 		assert!(range.contains(&sorted_view(storage, &[0x41; 8], RowNumber(1))));
 	}
 
@@ -551,7 +522,7 @@ mod sorted_view_row_key_tests {
 	#[test]
 	fn test_partition_range_contains_only_its_partition() {
 		let storage = StorageId::view(3);
-		let range = PartitionedSortedViewRowKey::partition_range(storage, part("us"));
+		let range = PartitionedSortedViewRowKey::partition_range(storage, part("us")).encode();
 
 		assert!(range.contains(&partitioned(storage, part("us"), &[0x10; 8], RowNumber(1))));
 		assert!(!range.contains(&partitioned(storage, part("eu"), &[0x10; 8], RowNumber(1))));
@@ -908,23 +879,8 @@ impl RowShapeFieldKey {
 		Key::encode(&Self::new(shape_fingerprint, field_index))
 	}
 
-	pub fn scan_for_shape(fingerprint: RowShapeFingerprint) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::shape_start(fingerprint)), Some(Self::shape_end(fingerprint)))
-	}
-
-	fn shape_start(fingerprint: RowShapeFingerprint) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<RowShapeFieldKey as Key>::KIND as u8).extend_u64(fingerprint.as_u64());
-		serializer.to_encoded_key()
-	}
-
-	fn shape_end(fingerprint: RowShapeFingerprint) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(<RowShapeFieldKey as Key>::KIND as u8)
-			.extend_u64(fingerprint.as_u64())
-			.extend_u8(0xFF);
-		serializer.to_encoded_key()
+	pub fn scan_for_shape(fingerprint: RowShapeFingerprint) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(<Self as Key>::KIND, [Field::UDesc(Width::U64, fingerprint.as_u64() as u128)])
 	}
 }
 
@@ -999,47 +955,30 @@ impl PartitionedRowKey {
 		StorageId::from_object(de.read_object_id().ok()?)
 	}
 
-	pub fn full_scan(storage: impl Into<StorageId>) -> EncodedKeyRange {
-		let storage = ObjectId::from(storage.into());
-		let mut start = KeySerializer::with_capacity(10);
-		start.extend_u8(<Self as Key>::KIND as u8).extend_object_id(storage);
-		let mut end = KeySerializer::with_capacity(10);
-		end.extend_u8(<Self as Key>::KIND as u8).extend_object_id(storage.prev());
-		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
+	pub fn full_scan(storage: impl Into<StorageId>) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(<Self as Key>::KIND, object_fields(ObjectId::from(storage.into())))
 	}
 
-	pub fn scan_range(storage: impl Into<StorageId>, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
-		let storage = ObjectId::from(storage.into());
-		let start = match last_key {
-			Some(last) => Bound::Excluded(last.clone()),
-			None => {
-				let mut start = KeySerializer::with_capacity(10);
-				start.extend_u8(<Self as Key>::KIND as u8).extend_object_id(storage);
-				Bound::Included(start.to_encoded_key())
-			}
-		};
-		let mut end = KeySerializer::with_capacity(10);
-		end.extend_u8(<Self as Key>::KIND as u8).extend_object_id(storage.prev());
-		EncodedKeyRange::new(start, Bound::Included(end.to_encoded_key()))
+	pub fn scan_range(storage: impl Into<StorageId>, last: Option<&AnyKey>) -> AnyKeyBoundRange {
+		Self::full_scan(storage).resume_after(last)
 	}
 
-	pub fn partition_range(storage: impl Into<StorageId>, partition: Partition) -> EncodedKeyRange {
-		let storage = storage.into();
-		let mut prefix = KeySerializer::with_capacity(26);
-		prefix.extend_u8(<Self as Key>::KIND as u8).extend_object_id(storage).extend_u128(partition.0);
-		EncodedKeyRange::prefix(prefix.to_encoded_key().as_slice())
+	pub fn partition_range(storage: impl Into<StorageId>, partition: Partition) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(
+			<Self as Key>::KIND,
+			object_fields(ObjectId::from(storage.into()))
+				.into_iter()
+				.chain([Field::UDesc(Width::U128, partition.0)])
+				.collect::<Vec<_>>(),
+		)
 	}
 
 	pub fn partition_scan_range(
 		storage: impl Into<StorageId>,
 		partition: Partition,
-		last_key: Option<&EncodedKey>,
-	) -> EncodedKeyRange {
-		let base = Self::partition_range(storage, partition);
-		match last_key {
-			Some(last) => EncodedKeyRange::new(Bound::Excluded(last.clone()), base.end),
-			None => base,
-		}
+		last: Option<&AnyKey>,
+	) -> AnyKeyBoundRange {
+		Self::partition_range(storage, partition).resume_after(last)
 	}
 }
 
@@ -1253,7 +1192,7 @@ mod partitioned_row_key_tests {
 	#[test]
 	fn test_partition_range_contains_only_its_partition() {
 		let storage = StorageId::Table(TableId(1));
-		let range = PartitionedRowKey::partition_range(storage, part("us"));
+		let range = PartitionedRowKey::partition_range(storage, part("us")).encode();
 		let us = PartitionedRowKey::encoded(storage, part("us"), RowNumber(500));
 		let eu = PartitionedRowKey::encoded(storage, part("eu"), RowNumber(1));
 		assert!(range.contains(&us), "us row must be inside the us partition range");

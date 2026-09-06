@@ -85,7 +85,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
 	) -> Result<Vec<PartitionedMetadata>> {
-		let range = RingBufferMetadataKey::full_scan_for_storage(ringbuffer.id);
+		let range = RingBufferMetadataKey::full_scan_for_storage(ringbuffer.id).encode();
 		let stream = rx.range(range, RangeScope::All, 4096)?;
 		let mut results = Vec::new();
 

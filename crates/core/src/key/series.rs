@@ -6,7 +6,6 @@ use std::collections::Bound;
 use reifydb_codec::key::{
 	deserializer::KeyDeserializer,
 	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
 };
 use reifydb_macro::Key;
 use reifydb_value::value::partition::Partition;
@@ -15,8 +14,8 @@ use super::KeyKind;
 use crate::{
 	interface::catalog::{id::SeriesId, object::ObjectId, storage::StorageId},
 	key::{
-		any::{Field, KeyFields, Width},
-		bound::AnyKeyBoundRange,
+		any::{AnyKey, Field, KeyFields, Width},
+		bound::{AnyKeyBound, AnyKeyBoundRange, OwnedField, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		typed::{TypedKey, direction::Desc, key::Key},
 	},
@@ -128,14 +127,22 @@ pub struct SeriesRowKeyRange {
 }
 
 impl SeriesRowKeyRange {
-	pub fn full_scan(storage: StorageId, variant_tag: Option<u8>) -> EncodedKeyRange {
-		let range = SeriesRowKeyRange {
+	pub fn storage_start(storage: StorageId) -> EncodedKey {
+		AnyKeyBound::prefix(SeriesRowKey::KIND, object_fields(ObjectId::from(storage))).encode()
+	}
+
+	pub fn storage_end(storage: StorageId) -> EncodedKey {
+		AnyKeyBound::prefix(SeriesRowKey::KIND, object_fields(ObjectId::from(storage).prev())).encode()
+	}
+
+	pub fn full_scan(storage: StorageId, variant_tag: Option<u8>) -> AnyKeyBoundRange {
+		SeriesRowKeyRange {
 			storage,
 			variant_tag,
 			key_start: None,
 			key_end: None,
-		};
-		EncodedKeyRange::new(Bound::Included(range.start_key()), Bound::Included(range.end_key()))
+		}
+		.bounds()
 	}
 
 	pub fn scan_range(
@@ -143,27 +150,20 @@ impl SeriesRowKeyRange {
 		variant_tag: Option<u8>,
 		key_start: Option<u64>,
 		key_end: Option<u64>,
-		last_key: Option<&EncodedKey>,
-	) -> EncodedKeyRange {
+		last: Option<&AnyKey>,
+	) -> AnyKeyBoundRange {
 		if matches!(key_end, Some(0)) {
-			let empty = EncodedKey::new(Vec::<u8>::new());
-			return EncodedKeyRange::new(Bound::Excluded(empty.clone()), Bound::Excluded(empty));
+			return AnyKeyBoundRange::empty(SeriesRowKey::KIND);
 		}
 
-		let range = SeriesRowKeyRange {
+		SeriesRowKeyRange {
 			storage,
 			variant_tag,
 			key_start,
 			key_end,
-		};
-
-		let start = if let Some(last_key) = last_key {
-			Bound::Excluded(last_key.clone())
-		} else {
-			Bound::Included(range.start_key())
-		};
-
-		EncodedKeyRange::new(start, Bound::Included(range.end_key()))
+		}
+		.bounds()
+		.resume_after(last)
 	}
 
 	pub fn decode_storage(key: &EncodedKey) -> Option<StorageId> {
@@ -191,47 +191,45 @@ impl SeriesRowKeyRange {
 		(start, end)
 	}
 
-	fn start_key(&self) -> EncodedKey {
-		let object = ObjectId::from(self.storage);
-		let mut serializer = KeySerializer::with_capacity(27);
-		serializer.extend_u8(SeriesRowKey::KIND as u8).extend_object_id(object);
+	fn head_fields(&self, tagged: bool) -> Vec<OwnedField> {
+		let mut fields = object_fields(ObjectId::from(self.storage)).to_vec();
 		match self.variant_tag {
 			Some(tag) => {
-				serializer.extend_u8(1u8).extend_u8(tag);
+				fields.push(Field::UDesc(Width::U8, 1));
+				fields.push(Field::UDesc(Width::U8, tag as u128));
 			}
-			None if self.key_start.is_some() || self.key_end.is_some() => {
-				serializer.extend_u8(0u8).extend_u8(0u8);
+			None if tagged || self.key_start.is_some() || self.key_end.is_some() => {
+				fields.push(Field::UDesc(Width::U8, 0));
+				fields.push(Field::UDesc(Width::U8, 0));
 			}
 			None => {}
 		}
-
-		if let Some(key_val) = self.key_end {
-			serializer.extend_u64(key_val - 1);
-		}
-		serializer.to_encoded_key()
+		fields
 	}
 
-	fn end_key(&self) -> EncodedKey {
-		if let Some(key_val) = self.key_start {
-			let object = ObjectId::from(self.storage);
-			let mut serializer = KeySerializer::with_capacity(27);
-			serializer.extend_u8(SeriesRowKey::KIND as u8).extend_object_id(object);
-			match self.variant_tag {
-				Some(tag) => {
-					serializer.extend_u8(1u8).extend_u8(tag);
-				}
-				None => {
-					serializer.extend_u8(0u8).extend_u8(0u8);
-				}
-			}
+	fn bounds(&self) -> AnyKeyBoundRange {
+		let mut start = self.head_fields(false);
+		if let Some(key_val) = self.key_end {
+			start.push(Field::UDesc(Width::U64, (key_val - 1) as u128));
+		}
+		let start = Bound::Included(AnyKeyBound::prefix(SeriesRowKey::KIND, start));
 
-			serializer.extend_u64(key_val).extend_u64(0u64);
-			serializer.to_encoded_key()
-		} else {
-			let object = ObjectId::from(self.storage);
-			let mut serializer = KeySerializer::with_capacity(10);
-			serializer.extend_u8(SeriesRowKey::KIND as u8).extend_object_id(object.prev());
-			serializer.to_encoded_key()
+		let end = match self.key_start {
+			Some(key_val) => {
+				let mut end = self.head_fields(true);
+				end.push(Field::UDesc(Width::U64, key_val as u128));
+				end.push(Field::UDesc(Width::U64, 0));
+				Bound::Included(AnyKeyBound::prefix(SeriesRowKey::KIND, end))
+			}
+			None => Bound::Excluded(AnyKeyBound::prefix_end(
+				SeriesRowKey::KIND,
+				object_fields(ObjectId::from(self.storage)),
+			)),
+		};
+
+		AnyKeyBoundRange {
+			start,
+			end,
 		}
 	}
 }
@@ -470,7 +468,7 @@ mod row_key_range_tests {
 	#[test]
 	fn test_full_scan_range_still_names_its_storage() {
 		// classify_range routes a series scan to its own physical entry; an undecodable range falls to Multi.
-		let range = SeriesRowKeyRange::full_scan(StorageId::Series(SeriesId(42)), None);
+		let range = SeriesRowKeyRange::full_scan(StorageId::Series(SeriesId(42)), None).encode();
 		let (start, end) = SeriesRowKeyRange::decode(&range);
 		assert_eq!(start, Some(StorageId::Series(SeriesId(42))));
 		assert_eq!(
@@ -484,7 +482,7 @@ mod row_key_range_tests {
 	fn test_untagged_full_scan_covers_tagged_rows() {
 		// A flag byte in the range bounds would pin the scan to flag=0 and silently drop every tagged row.
 		let storage = StorageId::Series(SeriesId(9));
-		let range = SeriesRowKeyRange::full_scan(storage, None);
+		let range = SeriesRowKeyRange::full_scan(storage, None).encode();
 		let untagged = SeriesRowKey {
 			storage,
 			variant_tag: None,
@@ -508,7 +506,7 @@ mod row_key_range_tests {
 	fn test_scan_range_brackets_the_rows_it_selects() {
 		// The range must contain a key inside the window and exclude one outside, or eviction skips live rows.
 		let storage = StorageId::Series(SeriesId(1));
-		let range = SeriesRowKeyRange::scan_range(storage, None, Some(100), Some(200), None);
+		let range = SeriesRowKeyRange::scan_range(storage, None, Some(100), Some(200), None).encode();
 		let inside = SeriesRowKey {
 			storage,
 			variant_tag: None,
@@ -539,7 +537,7 @@ mod row_key_range_tests {
 	#[test]
 	fn test_row_key_range_never_claims_a_series_range() {
 		// A shared kind byte made a series scan classify as a plain row scan of the same object id.
-		let range = SeriesRowKeyRange::full_scan(StorageId::Series(SeriesId(42)), None);
+		let range = SeriesRowKeyRange::full_scan(StorageId::Series(SeriesId(42)), None).encode();
 		assert_eq!(RowKeyRange::decode(&range), (None, None));
 	}
 
@@ -590,7 +588,8 @@ mod row_key_range_tests {
 		// A range bounded on one side only must still pin its tag class: the untagged flag encodes 0xFF and
 		// the tagged flag 0xFE, so omitting the flag from the start bound lets every tagged row of the series
 		// sort into the window regardless of its key.
-		let range = SeriesRowKeyRange::scan_range(StorageId::Series(SeriesId(7)), None, Some(100), None, None);
+		let range = SeriesRowKeyRange::scan_range(StorageId::Series(SeriesId(7)), None, Some(100), None, None)
+			.encode();
 
 		let untagged = SeriesRowKey {
 			storage: StorageId::Series(SeriesId(7)),
@@ -669,37 +668,37 @@ pub struct PartitionedSeriesRowKeyRange {
 }
 
 impl PartitionedSeriesRowKeyRange {
-	pub fn full_scan(storage: impl Into<StorageId>) -> EncodedKeyRange {
-		let object = ObjectId::from(storage.into());
-		let mut start = KeySerializer::with_capacity(10);
-		start.extend_u8(PartitionedSeriesRowKey::KIND as u8).extend_object_id(object);
-		let mut end = KeySerializer::with_capacity(10);
-		end.extend_u8(PartitionedSeriesRowKey::KIND as u8).extend_object_id(object.prev());
-		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
+	pub fn storage_start(storage: impl Into<StorageId>) -> EncodedKey {
+		AnyKeyBound::prefix(PartitionedSeriesRowKey::KIND, object_fields(ObjectId::from(storage.into())))
+			.encode()
 	}
 
-	pub fn full_scan_range(storage: impl Into<StorageId>, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
-		let base = Self::full_scan(storage);
-		match last_key {
-			Some(last) => EncodedKeyRange::new(Bound::Excluded(last.clone()), base.end),
-			None => base,
-		}
+	pub fn storage_end(storage: impl Into<StorageId>) -> EncodedKey {
+		AnyKeyBound::prefix(PartitionedSeriesRowKey::KIND, object_fields(ObjectId::from(storage.into()).prev()))
+			.encode()
 	}
 
-	pub fn partition_range(storage: impl Into<StorageId>, partition: Partition) -> EncodedKeyRange {
-		EncodedKeyRange::prefix(Self::partition_prefix(storage.into(), partition).as_slice())
+	pub fn full_scan(storage: impl Into<StorageId>) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(PartitionedSeriesRowKey::KIND, object_fields(ObjectId::from(storage.into())))
+	}
+
+	pub fn full_scan_range(storage: impl Into<StorageId>, last: Option<&AnyKey>) -> AnyKeyBoundRange {
+		Self::full_scan(storage).resume_after(last)
+	}
+
+	pub fn partition_range(storage: impl Into<StorageId>, partition: Partition) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(
+			PartitionedSeriesRowKey::KIND,
+			Self::partition_fields(storage.into(), partition),
+		)
 	}
 
 	pub fn partition_scan_range(
 		storage: impl Into<StorageId>,
 		partition: Partition,
-		last_key: Option<&EncodedKey>,
-	) -> EncodedKeyRange {
-		let base = Self::partition_range(storage, partition);
-		match last_key {
-			Some(last) => EncodedKeyRange::new(Bound::Excluded(last.clone()), base.end),
-			None => base,
-		}
+		last: Option<&AnyKey>,
+	) -> AnyKeyBoundRange {
+		Self::partition_range(storage, partition).resume_after(last)
 	}
 
 	pub fn scan_range(
@@ -708,28 +707,21 @@ impl PartitionedSeriesRowKeyRange {
 		variant_tag: Option<u8>,
 		key_start: Option<u64>,
 		key_end: Option<u64>,
-		last_key: Option<&EncodedKey>,
-	) -> EncodedKeyRange {
+		last: Option<&AnyKey>,
+	) -> AnyKeyBoundRange {
 		if matches!(key_end, Some(0)) {
-			let empty = EncodedKey::new(Vec::<u8>::new());
-			return EncodedKeyRange::new(Bound::Excluded(empty.clone()), Bound::Excluded(empty));
+			return AnyKeyBoundRange::empty(PartitionedSeriesRowKey::KIND);
 		}
 
-		let range = PartitionedSeriesRowKeyRange {
+		PartitionedSeriesRowKeyRange {
 			storage: storage.into(),
 			partition,
 			variant_tag,
 			key_start,
 			key_end,
-		};
-
-		let start = if let Some(last_key) = last_key {
-			Bound::Excluded(last_key.clone())
-		} else {
-			Bound::Included(range.start_key())
-		};
-
-		EncodedKeyRange::new(start, range.end_bound())
+		}
+		.bounds()
+		.resume_after(last)
 	}
 
 	pub fn decode_storage(key: &EncodedKey) -> Option<StorageId> {
@@ -750,61 +742,51 @@ impl PartitionedSeriesRowKeyRange {
 		(start, end)
 	}
 
-	fn partition_prefix(storage: StorageId, partition: Partition) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(26);
-		serializer
-			.extend_u8(PartitionedSeriesRowKey::KIND as u8)
-			.extend_object_id(ObjectId::from(storage))
-			.extend_u128(partition.0);
-		serializer.to_encoded_key()
+	fn partition_fields(storage: StorageId, partition: Partition) -> Vec<OwnedField> {
+		let mut fields = object_fields(ObjectId::from(storage)).to_vec();
+		fields.push(Field::UDesc(Width::U128, partition.0));
+		fields
 	}
 
-	fn start_key(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(43);
-		serializer
-			.extend_u8(PartitionedSeriesRowKey::KIND as u8)
-			.extend_object_id(ObjectId::from(self.storage))
-			.extend_u128(self.partition.0);
+	fn head_fields(&self, tagged: bool) -> Vec<OwnedField> {
+		let mut fields = Self::partition_fields(self.storage, self.partition);
 		match self.variant_tag {
 			Some(tag) => {
-				serializer.extend_u8(1u8).extend_u8(tag);
+				fields.push(Field::UDesc(Width::U8, 1));
+				fields.push(Field::UDesc(Width::U8, tag as u128));
 			}
-			None if self.key_start.is_some() || self.key_end.is_some() => {
-				serializer.extend_u8(0u8).extend_u8(0u8);
+			None if tagged || self.key_start.is_some() || self.key_end.is_some() => {
+				fields.push(Field::UDesc(Width::U8, 0));
+				fields.push(Field::UDesc(Width::U8, 0));
 			}
 			None => {}
 		}
-
-		if let Some(key_val) = self.key_end {
-			serializer.extend_u64(key_val - 1);
-		}
-		serializer.to_encoded_key()
+		fields
 	}
 
-	fn end_bound(&self) -> Bound<EncodedKey> {
-		match self.key_start {
-			Some(key_val) => {
-				let mut serializer = KeySerializer::with_capacity(43);
-				serializer
-					.extend_u8(PartitionedSeriesRowKey::KIND as u8)
-					.extend_object_id(ObjectId::from(self.storage))
-					.extend_u128(self.partition.0);
-				match self.variant_tag {
-					Some(tag) => {
-						serializer.extend_u8(1u8).extend_u8(tag);
-					}
-					None => {
-						serializer.extend_u8(0u8).extend_u8(0u8);
-					}
-				}
+	fn bounds(&self) -> AnyKeyBoundRange {
+		let mut start = self.head_fields(false);
+		if let Some(key_val) = self.key_end {
+			start.push(Field::UDesc(Width::U64, (key_val - 1) as u128));
+		}
+		let start = Bound::Included(AnyKeyBound::prefix(PartitionedSeriesRowKey::KIND, start));
 
-				serializer.extend_u64(key_val).extend_u64(0u64);
-				Bound::Included(serializer.to_encoded_key())
+		let end = match self.key_start {
+			Some(key_val) => {
+				let mut end = self.head_fields(true);
+				end.push(Field::UDesc(Width::U64, key_val as u128));
+				end.push(Field::UDesc(Width::U64, 0));
+				Bound::Included(AnyKeyBound::prefix(PartitionedSeriesRowKey::KIND, end))
 			}
-			None => {
-				EncodedKeyRange::prefix(Self::partition_prefix(self.storage, self.partition).as_slice())
-					.end
-			}
+			None => Bound::Excluded(AnyKeyBound::prefix_end(
+				PartitionedSeriesRowKey::KIND,
+				Self::partition_fields(self.storage, self.partition),
+			)),
+		};
+
+		AnyKeyBoundRange {
+			start,
+			end,
 		}
 	}
 }
@@ -1024,7 +1006,7 @@ mod partitioned_row_key_tests {
 	fn test_untagged_full_scan_covers_tagged_rows() {
 		// A flag byte in the range bounds would pin the scan to flag=0 and silently drop every tagged row.
 		let storage = StorageId::Series(SeriesId(9));
-		let range = PartitionedSeriesRowKeyRange::full_scan(storage);
+		let range = PartitionedSeriesRowKeyRange::full_scan(storage).encode();
 		let untagged = PartitionedSeriesRowKey::encoded(storage, part("us"), None, 500, 0);
 		let tagged = PartitionedSeriesRowKey::encoded(storage, part("us"), Some(4), 500, 0);
 
@@ -1038,7 +1020,8 @@ mod partitioned_row_key_tests {
 		let storage = StorageId::Series(SeriesId(1));
 		let partition = part("us");
 		let range =
-			PartitionedSeriesRowKeyRange::scan_range(storage, partition, None, Some(100), Some(200), None);
+			PartitionedSeriesRowKeyRange::scan_range(storage, partition, None, Some(100), Some(200), None)
+				.encode();
 		let inside = PartitionedSeriesRowKey::encoded(storage, partition, None, 150, 1);
 		let below = PartitionedSeriesRowKey::encoded(storage, partition, None, 99, 1);
 		let above = PartitionedSeriesRowKey::encoded(storage, partition, None, 201, 1);
@@ -1053,7 +1036,8 @@ mod partitioned_row_key_tests {
 		// Bounding only the key span would let a neighbouring partition's rows be evicted with this one.
 		let storage = StorageId::Series(SeriesId(1));
 		let range =
-			PartitionedSeriesRowKeyRange::scan_range(storage, part("us"), None, Some(100), Some(200), None);
+			PartitionedSeriesRowKeyRange::scan_range(storage, part("us"), None, Some(100), Some(200), None)
+				.encode();
 		let other = PartitionedSeriesRowKey::encoded(storage, part("eu"), None, 150, 1);
 
 		assert!(!range.contains(&other), "an in-bounds key of another partition must stay outside");
@@ -1063,7 +1047,7 @@ mod partitioned_row_key_tests {
 	fn test_partition_range_covers_every_key_of_its_partition() {
 		// The prefix range is the eviction unit for a partition, so it must not depend on the tag.
 		let storage = StorageId::Series(SeriesId(1));
-		let range = PartitionedSeriesRowKeyRange::partition_range(storage, part("us"));
+		let range = PartitionedSeriesRowKeyRange::partition_range(storage, part("us")).encode();
 		let untagged = PartitionedSeriesRowKey::encoded(storage, part("us"), None, 1, 0);
 		let tagged = PartitionedSeriesRowKey::encoded(storage, part("us"), Some(9), u64::MAX, u64::MAX);
 		let other = PartitionedSeriesRowKey::encoded(storage, part("eu"), None, 1, 0);
@@ -1078,10 +1062,10 @@ mod partitioned_row_key_tests {
 		// An object-wide read pages through every partition at once, so the cursor must only cut the
 		// rows already returned and never fence the scan into the cursor's own partition.
 		let storage = StorageId::Series(SeriesId(1));
-		let cursor = PartitionedSeriesRowKey::encoded(storage, part("us"), None, 200, 0);
-		let range = PartitionedSeriesRowKeyRange::full_scan_range(storage, Some(&cursor));
+		let cursor = AnyKey::from(PartitionedSeriesRowKey::new(storage, part("us"), None, 200, 0));
+		let range = PartitionedSeriesRowKeyRange::full_scan_range(storage, Some(&cursor)).encode();
 
-		assert!(!range.contains(&cursor));
+		assert!(!range.contains(&cursor.encode()));
 		assert!(range.contains(&PartitionedSeriesRowKey::encoded(storage, part("us"), None, 100, 0)));
 		assert!(
 			range.contains(&PartitionedSeriesRowKey::encoded(storage, part("eu"), None, 100, 0))
@@ -1095,7 +1079,7 @@ mod partitioned_row_key_tests {
 		// The unpaged form is the object-wide read the planner falls back to when no partition was
 		// pruned; missing a partition there silently halves the answer.
 		let storage = StorageId::Series(SeriesId(1));
-		let range = PartitionedSeriesRowKeyRange::full_scan_range(storage, None);
+		let range = PartitionedSeriesRowKeyRange::full_scan_range(storage, None).encode();
 
 		assert!(range.contains(&PartitionedSeriesRowKey::encoded(storage, part("us"), None, 1, 0)));
 		assert!(range.contains(&PartitionedSeriesRowKey::encoded(storage, part("eu"), Some(3), 9, 9)));
@@ -1113,11 +1097,12 @@ mod partitioned_row_key_tests {
 		// A resumed page must exclude the cursor itself, otherwise the last row of a page repeats forever.
 		let storage = StorageId::Series(SeriesId(1));
 		let partition = part("us");
-		let cursor = PartitionedSeriesRowKey::encoded(storage, partition, None, 200, 0);
-		let range = PartitionedSeriesRowKeyRange::partition_scan_range(storage, partition, Some(&cursor));
+		let cursor = AnyKey::from(PartitionedSeriesRowKey::new(storage, partition, None, 200, 0));
+		let range =
+			PartitionedSeriesRowKeyRange::partition_scan_range(storage, partition, Some(&cursor)).encode();
 		let next = PartitionedSeriesRowKey::encoded(storage, partition, None, 100, 0);
 
-		assert!(!range.contains(&cursor));
+		assert!(!range.contains(&cursor.encode()));
 		assert!(range.contains(&next));
 	}
 
@@ -1144,7 +1129,8 @@ mod partitioned_row_key_tests {
 			Some(100),
 			None,
 			None,
-		);
+		)
+		.encode();
 
 		let untagged = PartitionedSeriesRowKey {
 			storage: StorageId::Series(SeriesId(7)),

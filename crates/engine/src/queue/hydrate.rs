@@ -4,10 +4,7 @@
 use std::collections::BTreeMap;
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{queue::EncodedQueueRow, shape::RowShape},
-};
+use reifydb_codec::row::{queue::EncodedQueueRow, shape::RowShape};
 use reifydb_core::{
 	interface::{
 		catalog::{id::QueueId, queue::Queue},
@@ -62,7 +59,7 @@ fn hydrate_queue(
 	let ordered_by = ordered_by_index(queue)?;
 
 	let mut pending: BTreeMap<u16, Vec<QueueAdmission>> = BTreeMap::new();
-	let mut last_key: Option<EncodedKey> = None;
+	let mut last_key: Option<AnyKey> = None;
 	let mut admitted = 0u64;
 
 	loop {
@@ -70,7 +67,7 @@ fn hydrate_queue(
 		let mut fetched = 0usize;
 
 		{
-			let range = RowKeyRange::scan_range_rev(queue.id.into(), last_key.as_ref());
+			let range = RowKeyRange::scan_range_rev(queue.id.into(), last_key.as_ref()).encode();
 			let mut stream = txn.range_rev(range, RangeScope::All, HYDRATE_BATCH)?;
 
 			for _ in 0..HYDRATE_BATCH {
@@ -80,7 +77,7 @@ fn hydrate_queue(
 						if let AnyKey::Row(key) = &item.key {
 							batch.push((key.row, EncodedQueueRow::from(item.bytes)));
 						}
-						last_key = Some(item.key.encode());
+						last_key = Some(item.key.clone());
 					}
 					Some(Err(err)) => return Err(err),
 					None => break,

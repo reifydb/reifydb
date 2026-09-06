@@ -4,7 +4,7 @@
 use std::{ops::Bound, sync::Arc};
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKeyRange,
 	row::{
 		bytes::{EncodedBytes, read_fingerprint},
 		shape::RowShape,
@@ -38,12 +38,12 @@ use crate::{
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
-type DrainedBatch = (Vec<EncodedBytes>, Vec<RowNumber>, Option<EncodedKey>, bool);
+type DrainedBatch = (Vec<EncodedBytes>, Vec<RowNumber>, Option<AnyKey>, bool);
 
 type DrainedPartitionedBatch = (Vec<EncodedBytes>, Vec<RowNumber>, Option<StoragePartitionedRowKey>, bool);
 
 enum Resume {
-	Key(Option<EncodedKey>),
+	Key(Option<AnyKey>),
 	Partitioned(Option<StoragePartitionedRowKey>),
 }
 
@@ -217,7 +217,7 @@ impl ViewScanNode {
 					};
 					batch.push(multi.bytes);
 					row_numbers.push(row);
-					new_last_key = Some(multi.key.encode());
+					new_last_key = Some(multi.key);
 				}
 				Some(Err(e)) => return Err(e),
 				None => {
@@ -329,12 +329,15 @@ impl QueryNode for ViewScanNode {
 							partition,
 							last.as_ref(),
 						)
+						.encode()
 					}
 					(true, true, None) => {
 						PartitionedSeriesRowKeyRange::full_scan_range(storage, last.as_ref())
+							.encode()
 					}
 					(true, false, _) => {
 						SeriesRowKeyRange::scan_range(storage, None, None, None, last.as_ref())
+							.encode()
 					}
 					(false, true, Some(partition)) if self.sorted => {
 						PartitionedSortedViewRowKey::partition_scan_range(
@@ -342,14 +345,15 @@ impl QueryNode for ViewScanNode {
 							partition,
 							last.as_ref(),
 						)
+						.encode()
 					}
 					(false, true, None) if self.sorted => {
-						PartitionedSortedViewRowKey::scan_range(storage, last.as_ref())
+						PartitionedSortedViewRowKey::scan_range(storage, last.as_ref()).encode()
 					}
 					(false, false, _) if self.sorted => {
-						SortedViewRowKey::scan_range(storage, last.as_ref())
+						SortedViewRowKey::scan_range(storage, last.as_ref()).encode()
 					}
-					(false, false, _) => RowKeyRange::scan_range(storage, last.as_ref()),
+					(false, false, _) => RowKeyRange::scan_range(storage, last.as_ref()).encode(),
 					(false, true, _) => unreachable!(
 						"unsorted partitioned view rows resume through Resume::Partitioned"
 					),

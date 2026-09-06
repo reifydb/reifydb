@@ -148,9 +148,13 @@ fn collect_range_ms(
 		read: CommitVersion(read),
 	};
 	let rows = if reverse {
-		store.range_rev(RowKey::full_scan(storage(s)), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range_rev(RowKey::full_scan(storage(s)).encode(), scope, batch)
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap()
 	} else {
-		store.range(RowKey::full_scan(storage(s)), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range(RowKey::full_scan(storage(s)).encode(), scope, batch)
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap()
 	};
 	rows.into_iter().map(|r| (r.key.encode().to_vec(), r.bytes.to_vec(), r.version.0)).collect()
 }

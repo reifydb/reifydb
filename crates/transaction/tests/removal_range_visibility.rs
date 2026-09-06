@@ -60,7 +60,7 @@ fn coord_key(storage: u64, row: u64) -> RowKey {
 
 fn range_keys(engine: &MultiTransaction, storage: u64) -> Vec<AnyKey> {
 	let query = MultiReadTransaction::new(engine.clone(), None).unwrap();
-	query.range(RowKey::full_scan(StorageId::Table(TableId(storage))), RangeScope::All, 1024)
+	query.range(RowKey::full_scan(StorageId::Table(TableId(storage))).encode(), RangeScope::All, 1024)
 		.map(|r| r.unwrap().key)
 		.collect()
 }

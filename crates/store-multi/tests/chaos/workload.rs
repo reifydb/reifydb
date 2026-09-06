@@ -127,7 +127,7 @@ fn collect_range(
 }
 
 pub fn check_range(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, scope: Scope, batch: usize, step: u32) {
-	check_range_inner(configs, oracle, scope, batch, step, RowKey::full_scan(STORAGE), None);
+	check_range_inner(configs, oracle, scope, batch, step, RowKey::full_scan(STORAGE).encode(), None);
 }
 
 /// A random sub-range: the store's `EncodedKeyRange` and the oracle's matching `RangeFilter`, both in

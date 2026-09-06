@@ -144,6 +144,33 @@ impl AnyKeyBoundRange {
 		Self::start_end(AnyKeyBound::Kind(kind), AnyKeyBound::KindEnd(kind))
 	}
 
+	pub fn resume_after(self, last: Option<&AnyKey>) -> Self {
+		match last {
+			Some(last) => Self {
+				start: Bound::Excluded(AnyKeyBound::Key(last.clone())),
+				end: self.end,
+			},
+			None => self,
+		}
+	}
+
+	pub fn resume_before(self, last: Option<&AnyKey>) -> Self {
+		match last {
+			Some(last) => Self {
+				start: self.start,
+				end: Bound::Excluded(AnyKeyBound::Key(last.clone())),
+			},
+			None => self,
+		}
+	}
+
+	pub fn empty(kind: KeyKind) -> Self {
+		Self {
+			start: Bound::Excluded(AnyKeyBound::Kind(kind)),
+			end: Bound::Excluded(AnyKeyBound::Kind(kind)),
+		}
+	}
+
 	pub fn all() -> Self {
 		Self {
 			start: Bound::Unbounded,

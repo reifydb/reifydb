@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKeyRange,
 	row::{series::EncodedSeriesRow, shape::RowShape},
 };
 use reifydb_core::{
@@ -44,7 +44,7 @@ pub struct SeriesScanNode {
 	partition: Option<Partition>,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
-	last_key: Option<EncodedKey>,
+	last_key: Option<AnyKey>,
 	exhausted: bool,
 
 	min_commit_version: Option<CommitVersion>,
@@ -150,7 +150,7 @@ impl SeriesScanNode {
 				}
 				batch.data_rows.push(values);
 
-				batch.last_key = Some(entry.key.encode());
+				batch.last_key = Some(entry.key.clone());
 				count += 1;
 				if count >= batch_size as usize {
 					break;
@@ -264,7 +264,7 @@ struct SeriesBatch {
 	time_values: Vec<DateTime>,
 	updated_at_values: Vec<DateTime>,
 	data_rows: Vec<Vec<Value>>,
-	last_key: Option<EncodedKey>,
+	last_key: Option<AnyKey>,
 }
 
 impl QueryNode for SeriesScanNode {
@@ -299,8 +299,10 @@ impl QueryNode for SeriesScanNode {
 					self.key_range_start,
 					self.key_range_end,
 					self.last_key.as_ref(),
-				),
-				None => PartitionedSeriesRowKeyRange::full_scan_range(storage, self.last_key.as_ref()),
+				)
+				.encode(),
+				None => PartitionedSeriesRowKeyRange::full_scan_range(storage, self.last_key.as_ref())
+					.encode(),
 			}
 		} else {
 			SeriesRowKeyRange::scan_range(
@@ -310,6 +312,7 @@ impl QueryNode for SeriesScanNode {
 				self.key_range_end,
 				self.last_key.as_ref(),
 			)
+			.encode()
 		};
 
 		let read_shape = get_or_create_series_shape(&stored_ctx.services.catalog, self.series.def(), rx)?;

@@ -2362,6 +2362,7 @@ mod tests {
 			store::EntryLayout,
 		},
 		key::{
+			any::AnyKey,
 			row::{PartitionedRowKey, RowKey, RowKeyRange},
 			series::{
 				PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
@@ -2381,6 +2382,10 @@ mod tests {
 
 	fn key(n: u64) -> EncodedKey {
 		RowKey::encoded(StorageId::Table(TableId(1)), RowNumber(n))
+	}
+
+	fn row_cursor(n: u64) -> AnyKey {
+		AnyKey::from(RowKey::new(StorageId::Table(TableId(1)), RowNumber(n)))
 	}
 
 	fn row(payload: &[u8]) -> CowVec<u8> {
@@ -2914,7 +2919,7 @@ mod tests {
 			"a key that was never written must not be answered out of another row"
 		);
 
-		let scanned = scan_forward(&s, t, &SeriesRowKeyRange::full_scan(series_storage(), None));
+		let scanned = scan_forward(&s, t, &SeriesRowKeyRange::full_scan(series_storage(), None).encode());
 		assert_eq!(
 			scanned,
 			vec![series_key(Some(3), 20, 0), series_key(Some(3), 10, 1), series_key(None, 10, 0)],
@@ -2950,7 +2955,7 @@ mod tests {
 			"a removal must delete exactly one narrow row, not every row sharing a key column"
 		);
 		assert_eq!(
-			scan_forward(&s, t, &SeriesRowKeyRange::full_scan(series_storage(), None)),
+			scan_forward(&s, t, &SeriesRowKeyRange::full_scan(series_storage(), None).encode()),
 			vec![series_key(Some(3), 20, 0)],
 			"the row the removal did not name must survive it"
 		);
@@ -3109,13 +3114,13 @@ mod tests {
 
 		assert_eq!(resolved_schema(&s, t), SqliteSchema::PartitionedSeries);
 
-		let all = scan_forward(&s, t, &PartitionedSeriesRowKeyRange::full_scan(series_storage()));
+		let all = scan_forward(&s, t, &PartitionedSeriesRowKeyRange::full_scan(series_storage()).encode());
 		assert_eq!(all.len(), 3, "a full scan must reach every partition");
 
 		let one = scan_forward(
 			&s,
 			t,
-			&PartitionedSeriesRowKeyRange::partition_range(series_storage(), Partition(1)),
+			&PartitionedSeriesRowKeyRange::partition_range(series_storage(), Partition(1)).encode(),
 		);
 		assert_eq!(
 			one,
@@ -3167,7 +3172,7 @@ mod tests {
 
 		assert_eq!(
 			typed_keys,
-			scan_forward(&s, t, &SeriesRowKeyRange::full_scan(series_storage(), None)),
+			scan_forward(&s, t, &SeriesRowKeyRange::full_scan(series_storage(), None).encode()),
 			"the typed narrow scan and the translated byte scan must agree row for row"
 		);
 		assert_eq!(typed_keys.len(), written.len());
@@ -3206,7 +3211,7 @@ mod tests {
 
 		assert_eq!(
 			typed_keys,
-			scan_forward(&s, t, &PartitionedSeriesRowKeyRange::full_scan(series_storage())),
+			scan_forward(&s, t, &PartitionedSeriesRowKeyRange::full_scan(series_storage()).encode()),
 			"the typed partitioned scan and the translated byte scan must agree row for row"
 		);
 		assert_eq!(typed_keys.len(), written.len());
@@ -3252,7 +3257,7 @@ mod tests {
 			"a blob series row must still be readable, not silently answered as absent"
 		);
 		assert_eq!(
-			scan_forward(&s, t, &SeriesRowKeyRange::full_scan(series_storage(), None)),
+			scan_forward(&s, t, &SeriesRowKeyRange::full_scan(series_storage(), None).encode()),
 			vec![series_key(Some(3), 20, 0), series_key(None, 10, 0)],
 			"a blob series scan must keep returning its rows"
 		);
@@ -3309,10 +3314,10 @@ mod tests {
 		}
 		s.set(CommitVersion(1), HashMap::from([(t, writes)])).unwrap();
 
-		let range = RowKey::full_scan(StorageId::Table(TableId(1)));
+		let range = RowKey::full_scan(StorageId::Table(TableId(1))).encode();
 		let (start, end) = match (&range.start, &range.end) {
-			(Bound::Included(s), Bound::Included(e)) => (s.as_slice(), e.as_slice()),
-			_ => panic!("expected included bounds"),
+			(Bound::Included(s), Bound::Excluded(e)) => (s.as_slice(), e.as_slice()),
+			_ => panic!("expected an included prefix start and an excluded prefix end"),
 		};
 
 		let mut cursor = RangeCursor::default();
@@ -3321,7 +3326,7 @@ mod tests {
 				t,
 				&mut cursor,
 				Bound::Included(start),
-				Bound::Included(end),
+				Bound::Excluded(end),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(10),
 				},
@@ -3341,7 +3346,7 @@ mod tests {
 				t,
 				&mut cursor2,
 				Bound::Included(start),
-				Bound::Included(end),
+				Bound::Excluded(end),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(10),
 				},
@@ -3366,11 +3371,11 @@ mod tests {
 		}
 		s.set(CommitVersion(1), HashMap::from([(t, writes)])).unwrap();
 
-		let range = RowKeyRange::scan_range(StorageId::Table(TableId(1)), Some(&key(4)));
+		let range = RowKeyRange::scan_range(StorageId::Table(TableId(1)), Some(&row_cursor(4))).encode();
 		let (start, end) = match (&range.start, &range.end) {
-			(Bound::Excluded(s), Bound::Included(e)) => (s.as_slice(), e.as_slice()),
+			(Bound::Excluded(s), Bound::Excluded(e)) => (s.as_slice(), e.as_slice()),
 			other => panic!(
-				"expected an excluded cursor start and an included prefix-only end, got {other:?}"
+				"expected an excluded cursor start and an excluded prefix-only end, got {other:?}"
 			),
 		};
 
@@ -3380,7 +3385,7 @@ mod tests {
 				t,
 				&mut cursor,
 				Bound::Excluded(start),
-				Bound::Included(end),
+				Bound::Excluded(end),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(10),
 				},
@@ -3419,6 +3424,10 @@ mod tests {
 		PartitionedRowKey::encoded(StorageId::Table(TableId(2)), Partition(partition), RowNumber(n))
 	}
 
+	fn partitioned_cursor(partition: u128, n: u64) -> AnyKey {
+		AnyKey::from(PartitionedRowKey::new(StorageId::Table(TableId(2)), Partition(partition), RowNumber(n)))
+	}
+
 	#[test]
 	fn partitioned_schema_get_after_insert_is_exact() {
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
@@ -3447,10 +3456,10 @@ mod tests {
 		)
 		.unwrap();
 
-		let range = PartitionedRowKey::full_scan(StorageId::Table(TableId(2)));
+		let range = PartitionedRowKey::full_scan(StorageId::Table(TableId(2))).encode();
 		let (start, end) = match (&range.start, &range.end) {
-			(Bound::Included(s), Bound::Included(e)) => (s.as_slice(), e.as_slice()),
-			other => panic!("expected two prefix-only included bounds, got {other:?}"),
+			(Bound::Included(s), Bound::Excluded(e)) => (s.as_slice(), e.as_slice()),
+			other => panic!("expected an included prefix start and an excluded prefix end, got {other:?}"),
 		};
 
 		let mut cursor = RangeCursor::default();
@@ -3459,7 +3468,7 @@ mod tests {
 				t,
 				&mut cursor,
 				Bound::Included(start),
-				Bound::Included(end),
+				Bound::Excluded(end),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(10),
 				},
@@ -3487,11 +3496,13 @@ mod tests {
 		.unwrap();
 
 		// Forward order visits the largest partition/row tuple first, so a real cursor is that tuple.
-		let range = PartitionedRowKey::scan_range(StorageId::Table(TableId(2)), Some(&partitioned_key(2, 1)));
+		let range =
+			PartitionedRowKey::scan_range(StorageId::Table(TableId(2)), Some(&partitioned_cursor(2, 1)))
+				.encode();
 		let (start, end) = match (&range.start, &range.end) {
-			(Bound::Excluded(s), Bound::Included(e)) => (s.as_slice(), e.as_slice()),
+			(Bound::Excluded(s), Bound::Excluded(e)) => (s.as_slice(), e.as_slice()),
 			other => panic!(
-				"expected an excluded cursor start and an included prefix-only end, got {other:?}"
+				"expected an excluded cursor start and an excluded prefix-only end, got {other:?}"
 			),
 		};
 
@@ -3501,7 +3512,7 @@ mod tests {
 				t,
 				&mut cursor,
 				Bound::Excluded(start),
-				Bound::Included(end),
+				Bound::Excluded(end),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(10),
 				},
@@ -3614,10 +3625,10 @@ mod tests {
 		}
 		s.set(CommitVersion(1), HashMap::from([(t, writes)])).unwrap();
 
-		let range = PartitionedRowKey::full_scan(StorageId::Table(TableId(2)));
+		let range = PartitionedRowKey::full_scan(StorageId::Table(TableId(2))).encode();
 		let (start, end) = match (&range.start, &range.end) {
-			(Bound::Included(s), Bound::Included(e)) => (s.as_slice(), e.as_slice()),
-			other => panic!("expected two prefix-only included bounds, got {other:?}"),
+			(Bound::Included(s), Bound::Excluded(e)) => (s.as_slice(), e.as_slice()),
+			other => panic!("expected an included prefix start and an excluded prefix end, got {other:?}"),
 		};
 
 		let mut cursor = RangeCursor::default();
@@ -3628,7 +3639,7 @@ mod tests {
 					t,
 					&mut cursor,
 					Bound::Included(start),
-					Bound::Included(end),
+					Bound::Excluded(end),
 					MultiVersionScope::AsOf {
 						read: CommitVersion(10),
 					},
@@ -3671,10 +3682,10 @@ mod tests {
 		let mut reverse_expected = forward_expected.clone();
 		reverse_expected.reverse();
 
-		let range = PartitionedRowKey::full_scan(StorageId::Table(TableId(2)));
+		let range = PartitionedRowKey::full_scan(StorageId::Table(TableId(2))).encode();
 		let (start, end) = match (&range.start, &range.end) {
-			(Bound::Included(s), Bound::Included(e)) => (s.as_slice(), e.as_slice()),
-			other => panic!("expected two prefix-only included bounds, got {other:?}"),
+			(Bound::Included(s), Bound::Excluded(e)) => (s.as_slice(), e.as_slice()),
+			other => panic!("expected an included prefix start and an excluded prefix end, got {other:?}"),
 		};
 
 		let forward = paginate_partitioned(&s, t, start, end, false);
@@ -3706,9 +3717,9 @@ mod tests {
 				read: CommitVersion(10),
 			};
 			let batch = if reverse {
-				s.range_rev_next(t, &mut cursor, Bound::Included(start), Bound::Included(end), scope, 2)
+				s.range_rev_next(t, &mut cursor, Bound::Included(start), Bound::Excluded(end), scope, 2)
 			} else {
-				s.range_next(t, &mut cursor, Bound::Included(start), Bound::Included(end), scope, 2)
+				s.range_next(t, &mut cursor, Bound::Included(start), Bound::Excluded(end), scope, 2)
 			}
 			.unwrap();
 			for entry in &batch.entries {

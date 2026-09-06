@@ -3,11 +3,7 @@
 
 use std::borrow::Cow;
 
-use reifydb_codec::key::{
-	deserializer::KeyDeserializer,
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
+use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_macro::Key;
 use reifydb_value::value::Value;
 use smallvec::{SmallVec, smallvec};
@@ -17,7 +13,7 @@ use crate::{
 	interface::catalog::{id::RingBufferId, object::ObjectId, storage::StorageId},
 	key::{
 		any::{Field, KeyFields, RawEncoding, Width, encode_values},
-		bound::AnyKeyBoundRange,
+		bound::{AnyKeyBoundRange, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		typed::key::Key,
 	},
@@ -74,18 +70,8 @@ impl RingBufferMetadataKey {
 		Self::partition(storage, partition_values).encode()
 	}
 
-	pub fn full_scan_for_storage(storage: impl Into<StorageId>) -> EncodedKeyRange {
-		let storage = ObjectId::from(storage.into());
-
-		let mut start = KeySerializer::with_capacity(10);
-		start.extend_u8(Self::KIND as u8).extend_object_id(storage);
-		let start_key = start.to_encoded_key();
-
-		let mut end = KeySerializer::with_capacity(10);
-		end.extend_u8(Self::KIND as u8).extend_object_id(storage.prev());
-		let end_key = end.to_encoded_key();
-
-		EncodedKeyRange::start_end(Some(start_key), Some(end_key))
+	pub fn full_scan_for_storage(storage: impl Into<StorageId>) -> AnyKeyBoundRange {
+		AnyKeyBoundRange::prefix(Self::KIND, object_fields(ObjectId::from(storage.into())))
 	}
 }
 
@@ -177,7 +163,7 @@ mod tests {
 	#[test]
 	fn test_full_scan_for_storage_excludes_a_view_with_the_same_id() {
 		// Ring buffer 42 and view 42 share a numeric id, so only the tag byte separates their scans.
-		let range = RingBufferMetadataKey::full_scan_for_storage(RingBufferId(42));
+		let range = RingBufferMetadataKey::full_scan_for_storage(RingBufferId(42)).encode();
 		let ringbuffer = RingBufferMetadataKey::encoded(RingBufferId(42));
 		let view = RingBufferMetadataKey::encoded(ViewId(42));
 		assert!(range.contains(&ringbuffer));

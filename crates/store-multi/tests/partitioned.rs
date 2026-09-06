@@ -113,12 +113,14 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 		read: CommitVersion(2),
 	};
 
-	let all: Vec<_> =
-		store.range(PartitionedRowKey::full_scan(storage), scope, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let all: Vec<_> = store
+		.range(PartitionedRowKey::full_scan(storage).encode(), scope, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	assert_eq!(all.len(), 3, "full-object range must return flushed + buffered partitioned rows across tiers");
 
 	let us_rows: Vec<_> = store
-		.range(PartitionedRowKey::partition_range(storage, us), scope, 1024)
+		.range(PartitionedRowKey::partition_range(storage, us).encode(), scope, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap();
 	assert_eq!(us_rows.len(), 2, "us partition range must return only us rows across tiers");

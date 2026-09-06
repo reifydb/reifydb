@@ -249,7 +249,7 @@ fn run_table_delete_all(
 ) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
 	let partitioned = !table.partition_by.is_empty();
 	let range = if partitioned {
-		PartitionedRowKey::full_scan(table.id)
+		PartitionedRowKey::full_scan(table.id).encode()
 	} else {
 		let range = RowKeyRange {
 			storage: table.id.into(),

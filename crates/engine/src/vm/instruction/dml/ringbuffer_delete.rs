@@ -288,7 +288,8 @@ fn collect_partition_row_numbers(
 	loop {
 		let batch: Vec<_> = txn
 			.range(
-				PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, last_key.as_ref()),
+				PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, last_key.as_ref())
+					.encode(),
 				RangeScope::All,
 				1024,
 			)?
@@ -301,7 +302,7 @@ fn collect_partition_row_numbers(
 			if let AnyKey::PartitionedRow(pk) = &entry.key {
 				out.push(pk.row);
 			}
-			last_key = Some(entry.key.encode());
+			last_key = Some(entry.key.clone());
 		}
 		if n < 1024 {
 			break;

@@ -104,7 +104,7 @@ fn check_structural(rows: &[(u64, Vec<u8>)], writers: u64, ctx: &str) {
 }
 
 fn scan_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bool) -> Vec<(u64, Vec<u8>)> {
-	let range = RowKey::full_scan(STORAGE);
+	let range = RowKey::full_scan(STORAGE).encode();
 	let scope = MultiVersionScope::AsOf {
 		read: CommitVersion(read),
 	};

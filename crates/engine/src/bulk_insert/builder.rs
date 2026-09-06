@@ -599,7 +599,7 @@ fn evict_oldest_for_partition(
 	metadata: &mut RingBufferMetadata,
 ) -> Result<()> {
 	if let Some(partition) = partition {
-		let range = PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, None);
+		let range = PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, None).encode();
 		let oldest = txn.range_rev(range, RangeScope::All, 1)?.next().transpose()?;
 		if let Some(entry) = oldest
 			&& let AnyKey::PartitionedRow(pk) = &entry.key

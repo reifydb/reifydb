@@ -92,7 +92,7 @@ fn source_removal_hides_the_key_at_or_above_its_version_only() {
 	MultiVersionCommit::commit(&store, cow_vec![Delta::remove_silent(k1.clone())], CommitVersion(8)).unwrap();
 
 	assert_eq!(get(&store, &k1, 9), None, "a reader above the tombstone must not see the removed row");
-	let keys = range_keys(&store, RowKey::full_scan(storage), 9);
+	let keys = range_keys(&store, RowKey::full_scan(storage).encode(), 9);
 	assert!(!keys.contains(&k1), "the range scan above the tombstone must not surface the persisted row");
 	assert!(keys.contains(&k2), "the untouched sibling row must stay visible in the range");
 
@@ -101,7 +101,7 @@ fn source_removal_hides_the_key_at_or_above_its_version_only() {
 		Some(b"v5-a".as_slice()),
 		"a reader pinned below the tombstone must still see the row it was able to see when it started"
 	);
-	let keys = range_keys(&store, RowKey::full_scan(storage), 5);
+	let keys = range_keys(&store, RowKey::full_scan(storage).encode(), 5);
 	assert!(keys.contains(&k1), "the range scan below the tombstone must still surface the row");
 }
 
@@ -164,15 +164,15 @@ fn partitioned_source_removal_hides_only_the_removed_partition_row() {
 
 	assert_eq!(get(&store, &k_us, 9), None);
 	assert!(
-		range_keys(&store, PartitionedRowKey::partition_range(storage, us), 9).is_empty(),
+		range_keys(&store, PartitionedRowKey::partition_range(storage, us).encode(), 9).is_empty(),
 		"the removed partition row must not surface above the tombstone"
 	);
 	assert!(
-		range_keys(&store, PartitionedRowKey::partition_range(storage, eu), 9).contains(&k_eu),
+		range_keys(&store, PartitionedRowKey::partition_range(storage, eu).encode(), 9).contains(&k_eu),
 		"the sibling partition must be unaffected"
 	);
 	assert!(
-		range_keys(&store, PartitionedRowKey::partition_range(storage, us), 5).contains(&k_us),
+		range_keys(&store, PartitionedRowKey::partition_range(storage, us).encode(), 5).contains(&k_us),
 		"and below the tombstone the removed partition row is still there"
 	);
 }
@@ -209,8 +209,8 @@ fn memory_only_source_removal_keeps_every_version_below_the_tombstone() {
 	assert_eq!(get(&store, &k, 10), None, "above the tombstone the key is gone");
 	assert_eq!(get(&store, &k, 2).as_deref(), Some(b"v2".as_slice()), "v2 remains readable at its own version");
 	assert_eq!(get(&store, &k, 1).as_deref(), Some(b"v1".as_slice()), "v1 remains readable at its own version");
-	assert!(range_keys(&store, RowKey::full_scan(storage), 10).is_empty());
-	assert!(range_keys(&store, RowKey::full_scan(storage), 2).contains(&k));
+	assert!(range_keys(&store, RowKey::full_scan(storage).encode(), 10).is_empty());
+	assert!(range_keys(&store, RowKey::full_scan(storage).encode(), 2).contains(&k));
 }
 
 #[test]

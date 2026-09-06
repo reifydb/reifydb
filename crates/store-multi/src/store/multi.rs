@@ -1574,7 +1574,12 @@ mod cache_tests {
 		let mut encoded: Vec<(u64, Vec<u8>, u64)> = Vec::new();
 		loop {
 			let batch = store
-				.range_next(&mut encoded_cursor, RowKeyRange::scan_range(STORAGE, None), scope, 16)
+				.range_next(
+					&mut encoded_cursor,
+					RowKeyRange::scan_range(STORAGE, None).encode(),
+					scope,
+					16,
+				)
 				.unwrap();
 			for item in &batch.items {
 				let AnyKey::Row(key) = &item.key else {
@@ -1709,7 +1714,7 @@ mod cache_tests {
 
 		let scanned = store
 			.range(
-				RowKey::full_scan(STORAGE),
+				RowKey::full_scan(STORAGE).encode(),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(10),
 				},
@@ -1824,7 +1829,7 @@ mod cache_tests {
 			let batch = store
 				.range_next(
 					cursor,
-					RowKey::full_scan(STORAGE),
+					RowKey::full_scan(STORAGE).encode(),
 					MultiVersionScope::AsOf {
 						read: CommitVersion(read),
 					},
@@ -1844,7 +1849,7 @@ mod cache_tests {
 			let batch = store
 				.range_rev_next(
 					cursor,
-					RowKey::full_scan(STORAGE),
+					RowKey::full_scan(STORAGE).encode(),
 					MultiVersionScope::AsOf {
 						read: CommitVersion(read),
 					},
@@ -1913,7 +1918,7 @@ mod cache_tests {
 		let first = store
 			.range_next(
 				&mut cursor,
-				RowKey::full_scan(STORAGE),
+				RowKey::full_scan(STORAGE).encode(),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(2),
 				},
@@ -1954,7 +1959,7 @@ mod cache_tests {
 		let first = store
 			.range_rev_next(
 				&mut cursor,
-				RowKey::full_scan(STORAGE),
+				RowKey::full_scan(STORAGE).encode(),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(2),
 				},
@@ -1997,7 +2002,7 @@ mod cache_tests {
 		let first = store
 			.range_next(
 				&mut cursor,
-				RowKey::full_scan(STORAGE),
+				RowKey::full_scan(STORAGE).encode(),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(1),
 				},
@@ -2036,7 +2041,7 @@ mod cache_tests {
 		let first = store
 			.range_rev_next(
 				&mut cursor,
-				RowKey::full_scan(STORAGE),
+				RowKey::full_scan(STORAGE).encode(),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(1),
 				},
@@ -2326,7 +2331,7 @@ mod probe_tests {
 		}
 		seed_persistent(&store, entries);
 
-		let range = PartitionedRowKey::full_scan(STORAGE);
+		let range = PartitionedRowKey::full_scan(STORAGE).encode();
 		let collected: Vec<_> = store
 			.range(
 				range,

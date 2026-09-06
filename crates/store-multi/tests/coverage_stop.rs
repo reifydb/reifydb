@@ -74,7 +74,7 @@ fn chunk(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor, read:
 	let batch = store
 		.range_next(
 			cursor,
-			RowKey::full_scan(STORAGE),
+			RowKey::full_scan(STORAGE).encode(),
 			MultiVersionScope::AsOf {
 				read: CommitVersion(read),
 			},
@@ -145,7 +145,7 @@ fn a_scan_stopped_by_a_drained_reader_pool_materializes_no_claim() {
 		assert!(calls <= 64, "the scan neither ended nor failed after {calls} chunks over a drained pool");
 		let outcome = store.range_next(
 			&mut cursor,
-			RowKey::full_scan(STORAGE),
+			RowKey::full_scan(STORAGE).encode(),
 			MultiVersionScope::AsOf {
 				read: CommitVersion(30),
 			},

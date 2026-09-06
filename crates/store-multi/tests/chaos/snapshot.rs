@@ -93,9 +93,9 @@ fn drain_with_interleave(
 		read: CommitVersion(pinned),
 	};
 	let mut iter: Box<dyn Iterator<Item = _>> = if reverse {
-		Box::new(configs[drain_idx].1.range_rev(RowKey::full_scan(STORAGE), scope, batch))
+		Box::new(configs[drain_idx].1.range_rev(RowKey::full_scan(STORAGE).encode(), scope, batch))
 	} else {
-		Box::new(configs[drain_idx].1.range(RowKey::full_scan(STORAGE), scope, batch))
+		Box::new(configs[drain_idx].1.range(RowKey::full_scan(STORAGE).encode(), scope, batch))
 	};
 
 	let mut drained: Vec<(Vec<u8>, Vec<u8>, u64)> = Vec::new();
@@ -196,7 +196,7 @@ pub fn drive(seed: u64, p: Params) {
 	for (name, store) in &configs {
 		let got: Vec<(Vec<u8>, Vec<u8>, u64)> = store
 			.range(
-				RowKey::full_scan(STORAGE),
+				RowKey::full_scan(STORAGE).encode(),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(current),
 				},

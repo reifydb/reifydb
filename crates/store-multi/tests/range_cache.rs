@@ -99,7 +99,7 @@ fn scan_scope(
 	scope: MultiVersionScope,
 	batch: usize,
 ) -> Vec<(Vec<u8>, Vec<u8>, CommitVersion)> {
-	store.range(RowKey::full_scan(STORAGE), scope, batch)
+	store.range(RowKey::full_scan(STORAGE).encode(), scope, batch)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -279,7 +279,7 @@ fn reverse_and_small_batch_match_forward() {
 
 	let mut reverse: Vec<Vec<u8>> = store
 		.range_rev(
-			RowKey::full_scan(STORAGE),
+			RowKey::full_scan(STORAGE).encode(),
 			MultiVersionScope::AsOf {
 				read: CommitVersion(1000),
 			},
@@ -383,7 +383,7 @@ fn cache_cleared_mid_scan_reads_through_without_corruption() {
 	let _ = scan_fwd(&store, 1000, 64); // warm
 
 	let mut it = store.range(
-		RowKey::full_scan(STORAGE),
+		RowKey::full_scan(STORAGE).encode(),
 		MultiVersionScope::AsOf {
 			read: CommitVersion(1000),
 		},
@@ -450,7 +450,7 @@ fn multi_batch_cold_merge_keeps_sparse_commit_reverse() {
 
 	let rows: Vec<(Vec<u8>, Vec<u8>, CommitVersion)> = store
 		.range_rev(
-			RowKey::full_scan(STORAGE),
+			RowKey::full_scan(STORAGE).encode(),
 			MultiVersionScope::AsOf {
 				read: CommitVersion(1000),
 			},

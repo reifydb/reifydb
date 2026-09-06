@@ -437,6 +437,7 @@ mod tests {
 			storage::StorageId,
 		},
 		key::{
+			any::AnyKey,
 			row::{
 				PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, RowSequenceKey,
 				SortedViewRowKey, StoragePartitionedRowKey, StorageRowKey,
@@ -671,7 +672,7 @@ mod tests {
 		sorted_view.extend_from_slice(&[0xAA; 8]);
 		sorted_view.extend_from_slice(&99u64.to_be_bytes());
 		let sorted_view = EncodedKey::new(sorted_view);
-		let range = SortedViewRowKey::scan_range(storage, None);
+		let range = SortedViewRowKey::scan_range(storage, None).encode();
 		assert_eq!(classify_key(&sorted_view), EntryKind::Source(storage, EntryLayout::SortedView));
 		assert_eq!(classify_range(&range).unwrap_or(EntryKind::Multi), classify_key(&sorted_view));
 
@@ -680,7 +681,7 @@ mod tests {
 		partitioned.extend_from_slice(&[0xAA; 8]);
 		partitioned.extend_from_slice(&99u64.to_be_bytes());
 		let partitioned = EncodedKey::new(partitioned);
-		let partitioned_range = PartitionedSortedViewRowKey::scan_range(storage, None);
+		let partitioned_range = PartitionedSortedViewRowKey::scan_range(storage, None).encode();
 		assert_eq!(classify_key(&partitioned), EntryKind::PartitionedSource(storage, EntryLayout::SortedView));
 		assert_eq!(classify_range(&partitioned_range).unwrap_or(EntryKind::Multi), classify_key(&partitioned));
 	}
@@ -691,11 +692,11 @@ mod tests {
 		// orders these rows, so routing a sorted view range there loses the view's order outright.
 		let storage = StorageId::view(3);
 		assert_ne!(
-			classify_range(&SortedViewRowKey::scan_range(storage, None)),
+			classify_range(&SortedViewRowKey::scan_range(storage, None).encode()),
 			Some(EntryKind::Source(storage, EntryLayout::Row))
 		);
 		assert_ne!(
-			classify_range(&PartitionedSortedViewRowKey::scan_range(storage, None)),
+			classify_range(&PartitionedSortedViewRowKey::scan_range(storage, None).encode()),
 			Some(EntryKind::PartitionedSource(storage, EntryLayout::Row))
 		);
 	}
@@ -740,21 +741,23 @@ mod tests {
 		// Every range form must carry the owning variant, or a view's sweep hits the table of the same id.
 		for storage in [StorageId::Table(TableId(9)), StorageId::view(9)] {
 			let p = part("us");
-			let last = PartitionedRowKey::encoded(storage, p, RowNumber(5));
+			let last = AnyKey::from(PartitionedRowKey::new(storage, p, RowNumber(5)));
 			assert_eq!(
-				classify_range(&PartitionedRowKey::partition_range(storage, p)),
+				classify_range(&PartitionedRowKey::partition_range(storage, p).encode()),
 				Some(EntryKind::PartitionedSource(storage, EntryLayout::Row))
 			);
 			assert_eq!(
-				classify_range(&PartitionedRowKey::partition_scan_range(storage, p, Some(&last))),
+				classify_range(
+					&PartitionedRowKey::partition_scan_range(storage, p, Some(&last)).encode()
+				),
 				Some(EntryKind::PartitionedSource(storage, EntryLayout::Row))
 			);
 			assert_eq!(
-				classify_range(&PartitionedRowKey::scan_range(storage, None)),
+				classify_range(&PartitionedRowKey::scan_range(storage, None).encode()),
 				Some(EntryKind::PartitionedSource(storage, EntryLayout::Row))
 			);
 			assert_eq!(
-				classify_range(&PartitionedRowKey::full_scan(storage)),
+				classify_range(&PartitionedRowKey::full_scan(storage).encode()),
 				Some(EntryKind::PartitionedSource(storage, EntryLayout::Row))
 			);
 		}
@@ -764,7 +767,7 @@ mod tests {
 	fn classify_range_row_range_is_still_source() {
 		let storage = StorageId::Table(TableId(9));
 		assert_eq!(
-			classify_range(&RowKey::full_scan(storage)),
+			classify_range(&RowKey::full_scan(storage).encode()),
 			Some(EntryKind::Source(storage, EntryLayout::Row))
 		);
 	}
@@ -786,7 +789,7 @@ mod tests {
 			.encode();
 			assert_eq!(classify_key(&key), EntryKind::Source(storage, EntryLayout::Series));
 			assert_eq!(
-				classify_range(&SeriesRowKeyRange::full_scan(storage, None)),
+				classify_range(&SeriesRowKeyRange::full_scan(storage, None).encode()),
 				Some(EntryKind::Source(storage, EntryLayout::Series))
 			);
 
@@ -802,7 +805,7 @@ mod tests {
 				EntryKind::PartitionedSource(storage, EntryLayout::Series)
 			);
 			assert_eq!(
-				classify_range(&PartitionedSeriesRowKeyRange::full_scan(storage)),
+				classify_range(&PartitionedSeriesRowKeyRange::full_scan(storage).encode()),
 				Some(EntryKind::PartitionedSource(storage, EntryLayout::Series))
 			);
 		}

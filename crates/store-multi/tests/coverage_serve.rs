@@ -143,7 +143,7 @@ fn batches(store: &StandardMultiStore, storage: StorageId, read: u64) -> Vec<(Ve
 		let batch = store
 			.range_next(
 				&mut cursor,
-				RowKey::full_scan(storage),
+				RowKey::full_scan(storage).encode(),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(read),
 				},

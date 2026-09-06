@@ -317,10 +317,10 @@ impl Evictor {
 	) -> Result<()> {
 		let keyspaces = match family {
 			RowFamily::Series => [
-				SeriesRowKeyRange::full_scan(storage, None),
-				PartitionedSeriesRowKeyRange::full_scan(storage),
+				SeriesRowKeyRange::full_scan(storage, None).encode(),
+				PartitionedSeriesRowKeyRange::full_scan(storage).encode(),
 			],
-			_ => [RowKey::full_scan(storage), PartitionedRowKey::full_scan(storage)],
+			_ => [RowKey::full_scan(storage).encode(), PartitionedRowKey::full_scan(storage).encode()],
 		};
 
 		for keyspace in keyspaces {
@@ -441,7 +441,7 @@ impl Evictor {
 		stats: &mut TickStats,
 	) -> Result<()> {
 		let storage = StorageId::RingBuffer(id);
-		for keyspace in [RowKey::full_scan(storage), PartitionedRowKey::full_scan(storage)] {
+		for keyspace in [RowKey::full_scan(storage).encode(), PartitionedRowKey::full_scan(storage).encode()] {
 			loop {
 				if *budget == 0 {
 					return Ok(());
@@ -538,9 +538,9 @@ impl Evictor {
 			};
 
 			let partition_keyspace = if partitioned {
-				PartitionedRowKey::partition_range(storage, partition)
+				PartitionedRowKey::partition_range(storage, partition).encode()
 			} else {
-				RowKey::full_scan(storage)
+				RowKey::full_scan(storage).encode()
 			};
 			let survivor = scan::min_survivor_row(&mut txn, partition_keyspace, &keys, &|key| {
 				decode_ringbuffer_row_number(key, partitioned)
@@ -620,9 +620,9 @@ impl Evictor {
 
 		let partitioned = !series.partition_by.is_empty();
 		let keyspace = if partitioned {
-			PartitionedSeriesRowKeyRange::full_scan(storage)
+			PartitionedSeriesRowKeyRange::full_scan(storage).encode()
 		} else {
-			SeriesRowKeyRange::full_scan(storage, None)
+			SeriesRowKeyRange::full_scan(storage, None).encode()
 		};
 		let cursor_key = (storage, scan::keyspace_start(&keyspace));
 
@@ -861,7 +861,7 @@ mod tests {
 	fn partition_metadata_values(engine: &StandardEngine, storage: StorageId) -> Vec<Vec<Value>> {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		let values: Vec<Vec<Value>> = txn
-			.range(RingBufferMetadataKey::full_scan_for_storage(storage), RangeScope::All, 1024)
+			.range(RingBufferMetadataKey::full_scan_for_storage(storage).encode(), RangeScope::All, 1024)
 			.unwrap()
 			.map(|row| match row.unwrap().key {
 				AnyKey::RingBufferMetadata(key) => key.partition_values,
@@ -878,9 +878,9 @@ mod tests {
 		partitioned: bool,
 	) -> Vec<MultiVersionRow<AnyKey>> {
 		let keyspace = if partitioned {
-			PartitionedRowKey::full_scan(storage)
+			PartitionedRowKey::full_scan(storage).encode()
 		} else {
-			RowKey::full_scan(storage)
+			RowKey::full_scan(storage).encode()
 		};
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		let rows: Vec<MultiVersionRow<AnyKey>> =

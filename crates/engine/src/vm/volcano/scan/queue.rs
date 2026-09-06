@@ -169,7 +169,7 @@ impl QueueScan {
 	}
 
 	fn enqueue_order_range(&self) -> EncodedKeyRange {
-		let full = RowKeyRange::scan_range(self.queue.def().id.into(), None);
+		let full = RowKeyRange::scan_range(self.queue.def().id.into(), None).encode();
 		match &self.last_key {
 			Some(last_key) => EncodedKeyRange::new(full.start.clone(), Bound::Excluded(last_key.clone())),
 			None => full,

@@ -87,7 +87,7 @@ fn get(store: &StandardMultiStore, k: &AnyKey, version: u64) -> Option<Vec<u8>> 
 
 fn scan_keys(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)> {
 	store.range(
-		RowKey::full_scan(STORAGE),
+		RowKey::full_scan(STORAGE).encode(),
 		MultiVersionScope::AsOf {
 			read: CommitVersion(version),
 		},

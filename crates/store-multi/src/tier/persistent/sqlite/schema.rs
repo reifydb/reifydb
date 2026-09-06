@@ -383,7 +383,10 @@ mod series_bound_tests {
 	use std::ops::RangeBounds;
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
-	use reifydb_core::key::series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange};
+	use reifydb_core::key::{
+		any::AnyKey,
+		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
+	};
 	use reifydb_value::value::{Value, partition::Partition};
 
 	use super::*;
@@ -560,7 +563,7 @@ mod series_bound_tests {
 		// Shape one: the start of a full scan carries the kind byte and the object id and nothing else, so
 		// it must translate to a bound below every row rather than to the zero tuple read as a real key.
 		let universe = series_universe();
-		let range = SeriesRowKeyRange::full_scan(storage(), None);
+		let range = SeriesRowKeyRange::full_scan(storage(), None).encode();
 		let header = series_storage_header(SqliteSchema::Series, storage()).unwrap();
 		assert_eq!(
 			range.start,
@@ -577,7 +580,7 @@ mod series_bound_tests {
 		// anything but the lowest byte would drop the first rows of the tag the caller asked for.
 		let universe = series_universe();
 		for tag in [0u8, 1, 7, 255] {
-			let range = SeriesRowKeyRange::scan_range(storage(), Some(tag), None, None, None);
+			let range = SeriesRowKeyRange::scan_range(storage(), Some(tag), None, None, None).encode();
 			let selected = assert_agrees(
 				SqliteSchema::Series,
 				&universe,
@@ -607,7 +610,8 @@ mod series_bound_tests {
 		// ascending would select the complement window.
 		let universe = series_universe();
 		for key_end in [1u64, 5, 100, u64::MAX] {
-			let range = SeriesRowKeyRange::scan_range(storage(), Some(7), None, Some(key_end), None);
+			let range =
+				SeriesRowKeyRange::scan_range(storage(), Some(7), None, Some(key_end), None).encode();
 			let selected = assert_agrees(
 				SqliteSchema::Series,
 				&universe,
@@ -624,7 +628,8 @@ mod series_bound_tests {
 		// the descending order. Translating it exclusively would drop the caller's own boundary row.
 		let universe = series_universe();
 		for (key_start, key_end) in [(Some(1u64), None), (Some(5), Some(100)), (Some(0), Some(u64::MAX))] {
-			let range = SeriesRowKeyRange::scan_range(storage(), Some(7), key_start, key_end, None);
+			let range =
+				SeriesRowKeyRange::scan_range(storage(), Some(7), key_start, key_end, None).encode();
 			let selected = assert_agrees(
 				SqliteSchema::Series,
 				&universe,
@@ -640,7 +645,7 @@ mod series_bound_tests {
 		// With no tag but a key bound the encoder still writes the absent tag flag, so the bound is not a
 		// storage wide one. Treating it as storage wide would mix every tagged row into an untagged scan.
 		let universe = series_universe();
-		let range = SeriesRowKeyRange::scan_range(storage(), None, Some(1), Some(100), None);
+		let range = SeriesRowKeyRange::scan_range(storage(), None, Some(1), Some(100), None).encode();
 		let selected = assert_agrees(SqliteSchema::Series, &universe, &range, "series untagged bounded scan");
 		assert!(selected > 0);
 		for i in selected_by_columns(SqliteSchema::Series, &universe, &range) {
@@ -657,18 +662,19 @@ mod series_bound_tests {
 		// A resumed scan hands back an exclusive full key. Translating it inclusively would replay the last
 		// row of the previous page on every page boundary.
 		let universe = series_universe();
-		let cursor = SeriesRowKey {
+		let cursor = AnyKey::from(SeriesRowKey {
 			storage: storage(),
 			variant_tag: Some(7),
 			key: 5,
 			sequence: 1,
-		}
-		.encode();
-		let range = SeriesRowKeyRange::scan_range(storage(), Some(7), None, None, Some(&cursor));
+		});
+		let range = SeriesRowKeyRange::scan_range(storage(), Some(7), None, None, Some(&cursor)).encode();
 		let selected = assert_agrees(SqliteSchema::Series, &universe, &range, "series resumed scan");
 		assert!(selected > 0);
-		let position =
-			universe.iter().position(|key| *key == cursor).expect("the cursor row is in the universe");
+		let position = universe
+			.iter()
+			.position(|key| *key == cursor.encode())
+			.expect("the cursor row is in the universe");
 		assert!(
 			!selected_by_columns(SqliteSchema::Series, &universe, &range).contains(&position),
 			"the cursor row itself must not be replayed"
@@ -680,7 +686,7 @@ mod series_bound_tests {
 		// The empty sentinel is a pair of excluded empty keys, which start below every row of every table.
 		// Reading it as an open lower bound would turn an empty scan into a full one.
 		let universe = series_universe();
-		let range = SeriesRowKeyRange::scan_range(storage(), None, None, Some(0), None);
+		let range = SeriesRowKeyRange::scan_range(storage(), None, None, Some(0), None).encode();
 		assert_eq!(selected_by_bytes(&universe, &range), Vec::<usize>::new());
 		assert_eq!(selected_by_columns(SqliteSchema::Series, &universe, &range), Vec::<usize>::new());
 	}
@@ -691,7 +697,7 @@ mod series_bound_tests {
 		// must translate to an open upper bound, never to a tuple parsed out of the neighbouring id.
 		let widths = series_suffix_widths(SqliteSchema::Series).unwrap();
 		let header = series_storage_header(SqliteSchema::Series, storage()).unwrap();
-		let end = SeriesRowKeyRange::full_scan(storage(), None).end;
+		let end = SeriesRowKeyRange::full_scan(storage(), None).encode().end;
 		let bounds =
 			series_range_bounds(header.as_slice(), widths, Bound::Unbounded, byte_bound(&end)).unwrap();
 		match bounds {
@@ -830,7 +836,7 @@ mod series_bound_tests {
 		// lower bound would turn a scan that names nothing into a full table scan.
 		let widths = series_suffix_widths(SqliteSchema::Series).unwrap();
 		let header = series_storage_header(SqliteSchema::Series, storage()).unwrap();
-		let past_the_end = SeriesRowKeyRange::full_scan(storage(), None).end;
+		let past_the_end = SeriesRowKeyRange::full_scan(storage(), None).encode().end;
 		let bounds =
 			series_range_bounds(header.as_slice(), widths, byte_bound(&past_the_end), Bound::Unbounded)
 				.unwrap();
@@ -843,7 +849,7 @@ mod series_bound_tests {
 	#[test]
 	fn a_partitioned_full_scan_reaches_every_partition() {
 		let universe = partitioned_universe();
-		let range = PartitionedSeriesRowKeyRange::full_scan(storage());
+		let range = PartitionedSeriesRowKeyRange::full_scan(storage()).encode();
 		let selected =
 			assert_agrees(SqliteSchema::PartitionedSeries, &universe, &range, "partitioned full scan");
 		assert_eq!(selected, universe.len());
@@ -856,7 +862,7 @@ mod series_bound_tests {
 		// next one.
 		let universe = partitioned_universe();
 		for partition in [Partition(0), part("us"), part("eu"), Partition(u128::MAX)] {
-			let range = PartitionedSeriesRowKeyRange::partition_range(storage(), partition);
+			let range = PartitionedSeriesRowKeyRange::partition_range(storage(), partition).encode();
 			let selected = assert_agrees(
 				SqliteSchema::PartitionedSeries,
 				&universe,
@@ -879,14 +885,13 @@ mod series_bound_tests {
 		// The partitioned encoder emits the same three partial starts as the unpartitioned one, each with
 		// sixteen partition bytes in front, plus a resumed start and a full key end.
 		let universe = partitioned_universe();
-		let cursor = PartitionedSeriesRowKey {
+		let cursor = AnyKey::from(PartitionedSeriesRowKey {
 			storage: storage(),
 			partition: part("us"),
 			variant_tag: Some(7),
 			key: 5,
 			sequence: 0,
-		}
-		.encode();
+		});
 		let cases: Vec<(&str, EncodedKeyRange)> = vec![
 			(
 				"partition and tag",
@@ -897,7 +902,8 @@ mod series_bound_tests {
 					None,
 					None,
 					None,
-				),
+				)
+				.encode(),
 			),
 			(
 				"partition, tag and key end",
@@ -908,7 +914,8 @@ mod series_bound_tests {
 					None,
 					Some(5),
 					None,
-				),
+				)
+				.encode(),
 			),
 			(
 				"partition, tag and both key bounds",
@@ -919,7 +926,8 @@ mod series_bound_tests {
 					Some(0),
 					Some(u64::MAX),
 					None,
-				),
+				)
+				.encode(),
 			),
 			(
 				"partition untagged with key bounds",
@@ -930,7 +938,8 @@ mod series_bound_tests {
 					Some(0),
 					Some(u64::MAX),
 					None,
-				),
+				)
+				.encode(),
 			),
 			(
 				"resumed partition scan",
@@ -938,9 +947,13 @@ mod series_bound_tests {
 					storage(),
 					part("us"),
 					Some(&cursor),
-				),
+				)
+				.encode(),
 			),
-			("resumed full scan", PartitionedSeriesRowKeyRange::full_scan_range(storage(), Some(&cursor))),
+			(
+				"resumed full scan",
+				PartitionedSeriesRowKeyRange::full_scan_range(storage(), Some(&cursor)).encode(),
+			),
 		];
 		for (label, range) in cases {
 			assert_agrees(SqliteSchema::PartitionedSeries, &universe, &range, label);

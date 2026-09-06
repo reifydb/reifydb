@@ -73,7 +73,7 @@ fn flush(store: &StandardMultiStore, cutoff: u64) {
 
 fn scan(store: &StandardMultiStore, read: u64) -> BTreeMap<Vec<u8>, (Vec<u8>, CommitVersion)> {
 	store.range(
-		RowKey::full_scan(STORAGE),
+		RowKey::full_scan(STORAGE).encode(),
 		MultiVersionScope::AsOf {
 			read: CommitVersion(read),
 		},
@@ -90,7 +90,7 @@ fn complete_pages(store: &StandardMultiStore) -> usize {
 
 fn scan_between(store: &StandardMultiStore, after: u64, read: u64) -> BTreeMap<Vec<u8>, (Vec<u8>, CommitVersion)> {
 	store.range(
-		RowKey::full_scan(STORAGE),
+		RowKey::full_scan(STORAGE).encode(),
 		MultiVersionScope::Between {
 			after: CommitVersion(after),
 			read: CommitVersion(read),

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::object::ObjectId,
 	internal_error,
@@ -92,7 +91,7 @@ pub(crate) fn execute_alter_table(
 			let object = ObjectId::Table(table.id);
 
 			let mut ids: Vec<RowNumber> = Vec::new();
-			let mut last_key: Option<EncodedKey> = None;
+			let mut last_key: Option<AnyKey> = None;
 			loop {
 				let batch: Vec<_> = txn
 					.range(
@@ -100,7 +99,8 @@ pub(crate) fn execute_alter_table(
 							table.id,
 							partition,
 							last_key.as_ref(),
-						),
+						)
+						.encode(),
 						RangeScope::All,
 						1024,
 					)?
@@ -113,7 +113,7 @@ pub(crate) fn execute_alter_table(
 					if let AnyKey::PartitionedRow(pk) = &entry.key {
 						ids.push(pk.row);
 					}
-					last_key = Some(entry.key.encode());
+					last_key = Some(entry.key.clone());
 				}
 				if n < 1024 {
 					break;
