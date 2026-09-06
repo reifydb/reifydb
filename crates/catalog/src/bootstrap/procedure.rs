@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	path::PathBuf,
-	sync::atomic::{AtomicU64, Ordering},
-};
+use std::{collections::HashMap, path::PathBuf};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -22,9 +19,7 @@ use reifydb_transaction::{
 use reifydb_value::value::{constraint::TypeConstraint, identity::IdentityId, value_type::ValueType};
 
 use super::ensure_namespace;
-use crate::{Result, cache::CatalogCache, catalog::Catalog};
-
-static EPHEMERAL_ID: AtomicU64 = AtomicU64::new(ProcedureId::SYSTEM_RESERVED_START);
+use crate::{Result, cache::CatalogCache, catalog::Catalog, error::CatalogError};
 
 #[derive(Debug, Clone)]
 pub enum EphemeralProcedureDescriptor {
@@ -54,12 +49,48 @@ pub enum EphemeralProcedureDescriptor {
 	},
 }
 
+impl EphemeralProcedureDescriptor {
+	pub fn namespace(&self) -> NamespaceId {
+		match self {
+			Self::InProcess {
+				namespace,
+				..
+			}
+			| Self::ExternC {
+				namespace,
+				..
+			}
+			| Self::ExternWasm {
+				namespace,
+				..
+			} => *namespace,
+		}
+	}
+
+	pub fn name(&self) -> &str {
+		match self {
+			Self::InProcess {
+				name,
+				..
+			}
+			| Self::ExternC {
+				name,
+				..
+			}
+			| Self::ExternWasm {
+				name,
+				..
+			} => name,
+		}
+	}
+}
+
 pub fn load_ephemeral_procedures(
 	catalog: &CatalogCache,
 	descriptors: Vec<EphemeralProcedureDescriptor>,
 	version: CommitVersion,
 ) -> Result<()> {
-	EPHEMERAL_ID.store(ProcedureId::SYSTEM_RESERVED_START, Ordering::SeqCst);
+	let mut seen: HashMap<ProcedureId, String> = HashMap::new();
 
 	let mut to_clear = Vec::new();
 	for entry in catalog.procedures.iter() {
@@ -74,7 +105,17 @@ pub fn load_ephemeral_procedures(
 	}
 
 	for desc in descriptors {
-		let id = ProcedureId::ephemeral(EPHEMERAL_ID.fetch_add(1, Ordering::SeqCst));
+		let id = ProcedureId::ephemeral_of(desc.namespace(), desc.name());
+		let qualified = format!("{}::{}", desc.namespace(), desc.name());
+		if let Some(first) = seen.insert(id, qualified.clone()) {
+			return Err(CatalogError::EphemeralProcedureIdCollision {
+				first,
+				second: qualified,
+				id: id.into(),
+			}
+			.into());
+		}
+
 		let proc = match desc {
 			EphemeralProcedureDescriptor::InProcess {
 				namespace,
@@ -266,4 +307,123 @@ pub fn bootstrap_system_procedures(
 	load_ephemeral_procedures(catalog, descriptors, commit_version)?;
 
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn descriptor(namespace: NamespaceId, name: &str) -> EphemeralProcedureDescriptor {
+		EphemeralProcedureDescriptor::InProcess {
+			namespace,
+			name: name.to_string(),
+			params: vec![],
+			return_type: None,
+			handler_name: format!("test::{}", name),
+		}
+	}
+
+	#[test]
+	fn ephemeral_id_is_stable_when_a_descriptor_is_inserted_ahead() {
+		let catalog = CatalogCache::new();
+		let ns = NamespaceId(9001);
+
+		load_ephemeral_procedures(&catalog, vec![descriptor(ns, "refund")], CommitVersion(1)).unwrap();
+		let before = catalog.find_procedure_by_name(ns, "refund").unwrap().id();
+
+		load_ephemeral_procedures(
+			&catalog,
+			vec![descriptor(ns, "audit"), descriptor(ns, "refund")],
+			CommitVersion(2),
+		)
+		.unwrap();
+		let after = catalog.find_procedure_by_name(ns, "refund").unwrap().id();
+
+		assert_eq!(
+			before, after,
+			"a persisted binding stores this id; if it moves, the binding dispatches to whichever procedure inherited the slot"
+		);
+	}
+
+	#[test]
+	fn ephemeral_ids_are_stable_across_a_reordered_load() {
+		let catalog = CatalogCache::new();
+		let ns = NamespaceId(9002);
+		let names = ["refund", "audit", "settle"];
+
+		load_ephemeral_procedures(
+			&catalog,
+			names.iter().map(|n| descriptor(ns, n)).collect(),
+			CommitVersion(1),
+		)
+		.unwrap();
+		let before: Vec<_> =
+			names.iter().map(|n| catalog.find_procedure_by_name(ns, n).unwrap().id()).collect();
+
+		load_ephemeral_procedures(
+			&catalog,
+			names.iter().rev().map(|n| descriptor(ns, n)).collect(),
+			CommitVersion(2),
+		)
+		.unwrap();
+		let after: Vec<_> = names.iter().map(|n| catalog.find_procedure_by_name(ns, n).unwrap().id()).collect();
+
+		assert_eq!(before, after, "registration order must not decide an id that outlives the process");
+	}
+
+	#[test]
+	fn a_descriptor_dropped_from_the_load_stops_resolving() {
+		let catalog = CatalogCache::new();
+		let ns = NamespaceId(9003);
+
+		load_ephemeral_procedures(
+			&catalog,
+			vec![descriptor(ns, "refund"), descriptor(ns, "audit")],
+			CommitVersion(1),
+		)
+		.unwrap();
+		let refund = catalog.find_procedure_by_name(ns, "refund").unwrap().id();
+
+		load_ephemeral_procedures(&catalog, vec![descriptor(ns, "audit")], CommitVersion(2)).unwrap();
+
+		assert!(
+			catalog.find_procedure(refund).is_none(),
+			"a binding whose procedure is gone must fail to resolve, never land on the survivor"
+		);
+		assert_ne!(
+			catalog.find_procedure_by_name(ns, "audit").unwrap().id(),
+			refund,
+			"the surviving procedure must not inherit the removed id"
+		);
+	}
+
+	#[test]
+	fn reloading_the_same_descriptors_is_idempotent() {
+		let catalog = CatalogCache::new();
+		let ns = NamespaceId(9004);
+		let load = || vec![descriptor(ns, "refund"), descriptor(ns, "audit")];
+
+		load_ephemeral_procedures(&catalog, load(), CommitVersion(1)).unwrap();
+		let first = catalog.find_procedure_by_name(ns, "refund").unwrap();
+
+		load_ephemeral_procedures(&catalog, load(), CommitVersion(2)).unwrap();
+		let second = catalog.find_procedure_by_name(ns, "refund").unwrap();
+
+		assert_eq!(first, second, "an unchanged registration set must not churn the cache on reload");
+	}
+
+	#[test]
+	fn registering_one_name_twice_fails_loudly() {
+		let catalog = CatalogCache::new();
+		let ns = NamespaceId(9005);
+
+		let err = load_ephemeral_procedures(
+			&catalog,
+			vec![descriptor(ns, "refund"), descriptor(ns, "refund")],
+			CommitVersion(1),
+		)
+		.expect_err("a duplicate registration must fail rather than leave an ambiguous name lookup");
+
+		assert!(err.to_string().contains("refund"), "the failure must name the colliding procedure: {}", err);
+	}
 }

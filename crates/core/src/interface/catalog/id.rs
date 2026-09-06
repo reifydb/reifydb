@@ -7,6 +7,7 @@ use std::{
 	ops::Deref,
 };
 
+use reifydb_value::util::hash::xxh3_64;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 #[repr(transparent)]
@@ -993,12 +994,11 @@ impl ProcedureId {
 		Self(id)
 	}
 
-	pub const fn ephemeral(id: u64) -> Self {
-		assert!(
-			id >= Self::SYSTEM_RESERVED_START,
-			"ephemeral ProcedureId must be at or above SYSTEM_RESERVED_START"
-		);
-		Self(id)
+	pub fn ephemeral_of(namespace: NamespaceId, name: &str) -> Self {
+		let mut buf = Vec::with_capacity(8 + name.len());
+		buf.extend_from_slice(&namespace.0.to_le_bytes());
+		buf.extend_from_slice(name.as_bytes());
+		Self(xxh3_64(&buf).0 | Self::SYSTEM_RESERVED_START)
 	}
 
 	pub const fn from_raw(id: u64) -> Self {
@@ -2199,5 +2199,56 @@ mod reserved_id_tests {
 		assert_eq!(arrays[6].len(), 10, "lifecycle snapshot series must declare 10 column ids");
 		assert_eq!(arrays[7].len(), 14, "storage snapshot series must declare 14 column ids");
 		assert_eq!(arrays[8].len(), 8, "cdc snapshot series must declare 8 column ids");
+	}
+}
+
+#[cfg(test)]
+mod ephemeral_procedure_id_tests {
+	use super::{NamespaceId, ProcedureId};
+
+	#[test]
+	fn same_namespace_and_name_yield_the_same_id() {
+		let a = ProcedureId::ephemeral_of(NamespaceId(7), "refund");
+		let b = ProcedureId::ephemeral_of(NamespaceId(7), "refund");
+		assert_eq!(a, b, "a binding stored against this id must resolve after a restart");
+	}
+
+	#[test]
+	fn every_derived_id_lands_in_the_reserved_range() {
+		for name in ["", "a", "refund", "\u{1f600}", &"x".repeat(4096)] {
+			for ns in [0u64, 1, u64::MAX] {
+				let id = ProcedureId::ephemeral_of(NamespaceId(ns), name);
+				assert!(
+					id.is_ephemeral(),
+					"derived id for `{}` in namespace {} escaped the reserved range",
+					name,
+					ns
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn the_same_name_in_two_namespaces_yields_two_ids() {
+		let a = ProcedureId::ephemeral_of(NamespaceId(7), "refund");
+		let b = ProcedureId::ephemeral_of(NamespaceId(8), "refund");
+		assert_ne!(a, b);
+	}
+
+	#[test]
+	fn two_names_in_one_namespace_yield_two_ids() {
+		let a = ProcedureId::ephemeral_of(NamespaceId(7), "refund");
+		let b = ProcedureId::ephemeral_of(NamespaceId(7), "audit");
+		assert_ne!(a, b);
+	}
+
+	#[test]
+	fn the_namespace_and_name_boundary_is_unambiguous() {
+		let a = ProcedureId::ephemeral_of(NamespaceId(0), "\u{1}refund");
+		let b = ProcedureId::ephemeral_of(
+			NamespaceId(u64::from_le_bytes(*b"\x00\x00\x00\x00\x00\x00\x00\x01")),
+			"refund",
+		);
+		assert_ne!(a, b);
 	}
 }

@@ -171,6 +171,13 @@ pub enum CatalogError {
 		column: String,
 	},
 
+	#[error("ephemeral procedure id collision: `{first}` and `{second}` both hash to {id}")]
+	EphemeralProcedureIdCollision {
+		first: String,
+		second: String,
+		id: u64,
+	},
+
 	#[error("{kind} `{namespace}` already has pending changes in this transaction")]
 	AlreadyPendingInTransaction {
 		kind: CatalogObjectKind,
@@ -848,6 +855,26 @@ impl IntoDiagnostic for CatalogError {
 				fragment: Fragment::None,
 				label: Some("duplicate column policy".to_string()),
 				help: Some("remove the existing policy first".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::EphemeralProcedureIdCollision {
+				first,
+				second,
+				id,
+			} => Diagnostic {
+				code: "CA_098".to_string(),
+				rql: None,
+				message: format!(
+					"ephemeral procedure id collision: `{}` and `{}` both hash to {}",
+					first, second, id
+				),
+				fragment: Fragment::None,
+				label: Some("duplicate ephemeral procedure id".to_string()),
+				help: Some("rename one of the procedures".to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,
