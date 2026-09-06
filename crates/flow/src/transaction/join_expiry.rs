@@ -167,10 +167,11 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 		if let Some(cursor) = from {
 			range.start = Bound::Excluded(typed_key::<JoinExpiryDue>(GroupId::ROOT, cursor).into_encoded());
 		}
-		let batch = self.state_range(
-			id,
-			StateRange::forward(range, "join::due_page").limit(budget.saturating_add(1)),
-		)?;
+		let site = match from {
+			Some(_) => "join::due_page:resume",
+			None => "join::due_page:restart",
+		};
+		let batch = self.state_range(id, StateRange::forward(range, site).limit(budget.saturating_add(1)))?;
 
 		let mut due = Vec::with_capacity(batch.items.len().min(budget));
 		let mut more = false;
