@@ -505,7 +505,6 @@ mod tests {
 		thread::sleep,
 	};
 
-	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::testing::ProfileConfig;
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::MockClock};
 	use reifydb_store_multi::MultiStore;
@@ -556,7 +555,10 @@ mod tests {
 			id::{IndexId, TableId},
 			object::ObjectId,
 		},
-		key::catalog::IndexEntryKey,
+		key::{
+			bound::{AnyKeyBound, AnyKeyBoundRange},
+			catalog::IndexEntryKey,
+		},
 		value::index::encoded::EncodedIndexKey,
 	};
 
@@ -570,11 +572,11 @@ mod tests {
 		.into()
 	}
 
-	fn create_test_range(start: &str, end: &str) -> EncodedKeyRange {
-		EncodedKeyRange::new(
-			Bound::Included(create_test_key(start).encode()),
-			Bound::Excluded(create_test_key(end).encode()),
-		)
+	fn create_test_range(start: &str, end: &str) -> AnyKeyBoundRange {
+		AnyKeyBoundRange {
+			start: Bound::Included(AnyKeyBound::Key(create_test_key(start))),
+			end: Bound::Excluded(AnyKeyBound::Key(create_test_key(end))),
+		}
 	}
 
 	const PINNED_WINDOW_SIZE: u64 = 500;

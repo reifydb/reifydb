@@ -3,13 +3,16 @@
 
 use std::ops::Bound;
 
-use reifydb_codec::key::encoded::EncodedKeyRange;
 use reifydb_core::{
 	interface::catalog::{
 		id::{IndexId, TableId},
 		object::ObjectId,
 	},
-	key::{any::AnyKey, catalog::IndexEntryKey},
+	key::{
+		any::AnyKey,
+		bound::{AnyKeyBound, AnyKeyBoundRange},
+		catalog::IndexEntryKey,
+	},
 	value::index::encoded::EncodedIndexKey,
 };
 use reifydb_transaction::multi::conflict::ConflictManager;
@@ -20,8 +23,11 @@ fn make_key(s: &str) -> AnyKey {
 		.into()
 }
 
-fn make_range(start: &str, end: &str) -> EncodedKeyRange {
-	EncodedKeyRange::new(Bound::Included(make_key(start).encode()), Bound::Excluded(make_key(end).encode()))
+fn make_range(start: &str, end: &str) -> AnyKeyBoundRange {
+	AnyKeyBoundRange {
+		start: Bound::Included(AnyKeyBound::Key(make_key(start))),
+		end: Bound::Excluded(AnyKeyBound::Key(make_key(end))),
+	}
 }
 
 #[test]

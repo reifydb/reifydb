@@ -730,7 +730,7 @@ impl MultiWriteTransaction {
 		let multi_scope = scope.into_multi(self.version());
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
-		marker.mark_range(range.clone());
+		marker.mark_range_encoded(range.clone());
 
 		let pending: Vec<(AnyKey, DeltaEntry)> = pw
 			.iter()
@@ -752,7 +752,7 @@ impl MultiWriteTransaction {
 		let multi_scope = scope.into_multi(self.version());
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
-		marker.mark_range(range.clone());
+		marker.mark_range_encoded(range.clone());
 
 		let mut pending: Vec<(AnyKey, DeltaEntry)> = pw
 			.iter()
@@ -776,7 +776,7 @@ impl MultiWriteTransaction {
 		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
-		marker.mark_range(encoded.clone());
+		marker.mark_range(range.clone());
 
 		let pending: Vec<(AnyKey, DeltaEntry)> = pw
 			.range((range.start.as_ref(), range.end.as_ref()))
@@ -800,7 +800,7 @@ impl MultiWriteTransaction {
 		let encoded = row_bounds_to_encoded(storage, &start, &end);
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
-		marker.mark_range(encoded.clone());
+		marker.mark_range_encoded(encoded.clone());
 
 		let pending: Vec<(StorageRowKey, DeltaEntry)> = pw
 			.iter()
@@ -830,7 +830,7 @@ impl MultiWriteTransaction {
 		let encoded = partitioned_row_bounds_to_encoded(storage, &start, &end);
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
-		marker.mark_range(encoded.clone());
+		marker.mark_range_encoded(encoded.clone());
 
 		let pending: Vec<(StoragePartitionedRowKey, DeltaEntry)> = pw
 			.iter()
@@ -860,7 +860,7 @@ impl MultiWriteTransaction {
 		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
-		marker.mark_range(encoded.clone());
+		marker.mark_range(range.clone());
 
 		let pending: Vec<(AnyKey, DeltaEntry)> = pw
 			.range((range.start.as_ref(), range.end.as_ref()))
@@ -882,7 +882,7 @@ impl MultiWriteTransaction {
 		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
-		marker.mark_range(encoded.clone());
+		marker.mark_range(range.clone());
 
 		let pending: Vec<(AnyKey, DeltaEntry)> = pw
 			.range((range.start.as_ref(), range.end.as_ref()))
@@ -905,7 +905,7 @@ impl MultiWriteTransaction {
 		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
-		marker.mark_range(encoded.clone());
+		marker.mark_range(range.clone());
 
 		let pending: Vec<(AnyKey, DeltaEntry)> = pw
 			.range((range.start.as_ref(), range.end.as_ref()))

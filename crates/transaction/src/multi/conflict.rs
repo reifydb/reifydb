@@ -8,10 +8,214 @@ use core::{
 use std::collections::HashSet;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
-use reifydb_core::key::any::AnyKey;
+use reifydb_core::key::{
+	any::AnyKey,
+	bound::{AnyKeyBound, AnyKeyBoundRange},
+};
 use tracing::instrument;
 
 const MAX_RANGES_BEFORE_ESCALATION: usize = 64;
+
+fn compare_start_bounds<T: Ord>(a: &Bound<T>, b: &Bound<T>) -> Ordering {
+	match (a, b) {
+		(Bound::Unbounded, Bound::Unbounded) => Ordering::Equal,
+		(Bound::Unbounded, _) => Ordering::Less,
+		(_, Bound::Unbounded) => Ordering::Greater,
+		(Bound::Included(ak), Bound::Included(bk)) => ak.cmp(bk),
+		(Bound::Excluded(ak), Bound::Excluded(bk)) => ak.cmp(bk),
+
+		(Bound::Included(ak), Bound::Excluded(bk)) => match ak.cmp(bk) {
+			Ordering::Equal => Ordering::Less,
+			other => other,
+		},
+		(Bound::Excluded(ak), Bound::Included(bk)) => match ak.cmp(bk) {
+			Ordering::Equal => Ordering::Greater,
+			other => other,
+		},
+	}
+}
+
+fn compare_end_bounds<T: Ord>(a: &Bound<T>, b: &Bound<T>) -> Ordering {
+	match (a, b) {
+		(Bound::Unbounded, Bound::Unbounded) => Ordering::Equal,
+		(Bound::Unbounded, _) => Ordering::Greater,
+		(_, Bound::Unbounded) => Ordering::Less,
+		(Bound::Included(ak), Bound::Included(bk)) => ak.cmp(bk),
+		(Bound::Excluded(ak), Bound::Excluded(bk)) => ak.cmp(bk),
+
+		(Bound::Included(ak), Bound::Excluded(bk)) => match ak.cmp(bk) {
+			Ordering::Equal => Ordering::Greater,
+			other => other,
+		},
+		(Bound::Excluded(ak), Bound::Included(bk)) => match ak.cmp(bk) {
+			Ordering::Equal => Ordering::Less,
+			other => other,
+		},
+	}
+}
+
+fn end_reaches_start<T: Ord>(end: &Bound<T>, start: &Bound<T>) -> bool {
+	match (end, start) {
+		(Bound::Unbounded, _) | (_, Bound::Unbounded) => true,
+		(Bound::Included(e), Bound::Included(s)) => e >= s,
+		(Bound::Included(e), Bound::Excluded(s)) => e >= s,
+		(Bound::Excluded(e), Bound::Included(s)) => e > s,
+		(Bound::Excluded(e), Bound::Excluded(s)) => e >= s,
+	}
+}
+
+fn ranges_overlap_or_adjacent<T: Ord>(start1: &Bound<T>, end1: &Bound<T>, start2: &Bound<T>, end2: &Bound<T>) -> bool {
+	end_reaches_start(end1, start2) && end_reaches_start(end2, start1)
+}
+
+#[inline]
+fn key_in_range<T: Ord>(key: &T, start: &Bound<T>, end: &Bound<T>) -> bool {
+	let start_ok = match start {
+		Bound::Included(s) => key >= s,
+		Bound::Excluded(s) => key > s,
+		Bound::Unbounded => true,
+	};
+
+	let end_ok = match end {
+		Bound::Included(e) => key <= e,
+		Bound::Excluded(e) => key < e,
+		Bound::Unbounded => true,
+	};
+
+	start_ok && end_ok
+}
+
+#[derive(Debug, Clone)]
+struct RangeSet<T> {
+	ranges: Vec<(Bound<T>, Bound<T>)>,
+}
+
+impl<T> Default for RangeSet<T> {
+	fn default() -> Self {
+		Self {
+			ranges: Vec::new(),
+		}
+	}
+}
+
+impl<T: Ord + Clone> RangeSet<T> {
+	fn len(&self) -> usize {
+		self.ranges.len()
+	}
+
+	fn is_empty(&self) -> bool {
+		self.ranges.is_empty()
+	}
+
+	fn clear(&mut self) {
+		self.ranges.clear();
+	}
+
+	fn insert_and_merge(&mut self, start: Bound<T>, end: Bound<T>) {
+		if self.ranges.is_empty() {
+			self.ranges.push((start, end));
+			return;
+		}
+
+		let insert_pos = self
+			.ranges
+			.binary_search_by(|(existing_start, _)| compare_start_bounds(existing_start, &start))
+			.unwrap_or_else(|pos| pos);
+
+		let check_start = insert_pos.saturating_sub(1);
+
+		let mut merge_start = None;
+		let mut merge_end = insert_pos;
+		let mut merged_start = start.clone();
+		let mut merged_end = end.clone();
+
+		for i in check_start..self.ranges.len() {
+			let (existing_start, existing_end) = &self.ranges[i];
+
+			if ranges_overlap_or_adjacent(&merged_start, &merged_end, existing_start, existing_end) {
+				if merge_start.is_none() {
+					merge_start = Some(i);
+				}
+				merge_end = i + 1;
+
+				if compare_start_bounds(existing_start, &merged_start) == Ordering::Less {
+					merged_start = existing_start.clone();
+				}
+				if compare_end_bounds(existing_end, &merged_end) == Ordering::Greater {
+					merged_end = existing_end.clone();
+				}
+			} else if compare_start_bounds(existing_start, &merged_end) == Ordering::Greater {
+				break;
+			}
+		}
+
+		match merge_start {
+			Some(start_idx) => {
+				self.ranges.drain(start_idx..merge_end);
+				self.ranges.insert(start_idx, (merged_start, merged_end));
+			}
+			None => {
+				self.ranges.insert(insert_pos, (start, end));
+			}
+		}
+	}
+
+	fn any_contains(&self, keys: &[&T]) -> bool {
+		if keys.is_empty() || self.ranges.is_empty() {
+			return false;
+		}
+
+		let use_sweep_line = keys.len() >= 32 && self.ranges.len() >= 2;
+
+		if use_sweep_line {
+			let mut sorted: Vec<&T> = keys.to_vec();
+			sorted.sort();
+			self.sweep_line_check(&sorted)
+		} else {
+			self.ranges.iter().any(|(start, end)| keys.iter().any(|key| key_in_range(*key, start, end)))
+		}
+	}
+
+	fn sweep_line_check(&self, sorted_keys: &[&T]) -> bool {
+		if sorted_keys.is_empty() {
+			return false;
+		}
+
+		let mut key_idx = 0;
+
+		for (start, end) in &self.ranges {
+			let search_start = match start {
+				Bound::Included(s) => {
+					sorted_keys[key_idx..].binary_search(&s).unwrap_or_else(|pos| pos)
+				}
+				Bound::Excluded(s) => match sorted_keys[key_idx..].binary_search(&s) {
+					Ok(pos) => pos + 1,
+					Err(pos) => pos,
+				},
+				Bound::Unbounded => 0,
+			};
+
+			key_idx += search_start;
+
+			if key_idx >= sorted_keys.len() {
+				return false;
+			}
+
+			let candidate = sorted_keys[key_idx];
+			let in_range = match end {
+				Bound::Included(e) => candidate <= e,
+				Bound::Excluded(e) => candidate < e,
+				Bound::Unbounded => true,
+			};
+
+			if in_range {
+				return true;
+			}
+		}
+
+		false
+	}
+}
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum ConflictMode {
@@ -26,7 +230,8 @@ pub struct ConflictManager {
 
 	read_keys: HashSet<AnyKey>,
 
-	read_ranges: Vec<(Bound<EncodedKey>, Bound<EncodedKey>)>,
+	read_ranges: RangeSet<AnyKeyBound>,
+	read_ranges_encoded: RangeSet<EncodedKey>,
 	read_all: bool,
 	write_keys: HashSet<AnyKey>,
 }
@@ -70,150 +275,54 @@ impl ConflictManager {
 		self.write_keys.reserve(additional);
 	}
 
-	#[instrument(name = "transaction::conflict::mark_range", level = "trace", skip(self), fields(range_start = ?range.start_bound(), range_end = ?range.end_bound()))]
-	pub fn mark_range(&mut self, range: EncodedKeyRange) {
-		if self.mode == ConflictMode::Disabled {
+	#[instrument(name = "transaction::conflict::mark_range", level = "trace", skip(self, range))]
+	pub fn mark_range(&mut self, range: AnyKeyBoundRange) {
+		if !self.accepts_range() {
 			return;
 		}
 
-		if self.read_all {
+		if matches!(range.start, Bound::Unbounded) && matches!(range.end, Bound::Unbounded) {
+			self.escalate_to_read_all();
 			return;
 		}
 
-		let start = match range.start_bound() {
-			Bound::Included(k) => Bound::Included(k.clone()),
-			Bound::Excluded(k) => Bound::Excluded(k.clone()),
-			Bound::Unbounded => Bound::Unbounded,
-		};
+		self.read_ranges.insert_and_merge(range.start, range.end);
+		self.escalate_if_saturated();
+	}
 
-		let end = match range.end_bound() {
-			Bound::Included(k) => Bound::Included(k.clone()),
-			Bound::Excluded(k) => Bound::Excluded(k.clone()),
-			Bound::Unbounded => Bound::Unbounded,
-		};
-
-		if start == Bound::Unbounded && end == Bound::Unbounded {
-			self.read_all = true;
-			self.read_ranges.clear();
+	#[instrument(name = "transaction::conflict::mark_range_encoded", level = "trace", skip(self), fields(range_start = ?range.start_bound(), range_end = ?range.end_bound()))]
+	pub fn mark_range_encoded(&mut self, range: EncodedKeyRange) {
+		if !self.accepts_range() {
 			return;
 		}
 
-		self.insert_and_merge(start, end);
-
-		if self.read_ranges.len() > MAX_RANGES_BEFORE_ESCALATION {
-			self.read_all = true;
-			self.read_ranges.clear();
-		}
-	}
-
-	fn insert_and_merge(&mut self, start: Bound<EncodedKey>, end: Bound<EncodedKey>) {
-		if self.read_ranges.is_empty() {
-			self.read_ranges.push((start, end));
+		if matches!(range.start, Bound::Unbounded) && matches!(range.end, Bound::Unbounded) {
+			self.escalate_to_read_all();
 			return;
 		}
 
-		let insert_pos = self
-			.read_ranges
-			.binary_search_by(|(existing_start, _)| Self::compare_start_bounds(existing_start, &start))
-			.unwrap_or_else(|pos| pos);
-
-		let check_start = insert_pos.saturating_sub(1);
-
-		let mut merge_start = None;
-		let mut merge_end = insert_pos;
-		let mut merged_start = start.clone();
-		let mut merged_end = end.clone();
-
-		for i in check_start..self.read_ranges.len() {
-			let (existing_start, existing_end) = &self.read_ranges[i];
-
-			if Self::ranges_overlap_or_adjacent(&merged_start, &merged_end, existing_start, existing_end) {
-				if merge_start.is_none() {
-					merge_start = Some(i);
-				}
-				merge_end = i + 1;
-
-				if Self::compare_start_bounds(existing_start, &merged_start) == Ordering::Less {
-					merged_start = existing_start.clone();
-				}
-				if Self::compare_end_bounds(existing_end, &merged_end) == Ordering::Greater {
-					merged_end = existing_end.clone();
-				}
-			} else if Self::compare_start_bounds(existing_start, &merged_end) == Ordering::Greater {
-				break;
-			}
-		}
-
-		match merge_start {
-			Some(start_idx) => {
-				self.read_ranges.drain(start_idx..merge_end);
-				self.read_ranges.insert(start_idx, (merged_start, merged_end));
-			}
-			None => {
-				self.read_ranges.insert(insert_pos, (start, end));
-			}
-		}
+		self.read_ranges_encoded.insert_and_merge(range.start, range.end);
+		self.escalate_if_saturated();
 	}
 
-	fn compare_start_bounds(a: &Bound<EncodedKey>, b: &Bound<EncodedKey>) -> Ordering {
-		match (a, b) {
-			(Bound::Unbounded, Bound::Unbounded) => Ordering::Equal,
-			(Bound::Unbounded, _) => Ordering::Less,
-			(_, Bound::Unbounded) => Ordering::Greater,
-			(Bound::Included(ak), Bound::Included(bk)) => ak.cmp(bk),
-			(Bound::Excluded(ak), Bound::Excluded(bk)) => ak.cmp(bk),
-
-			(Bound::Included(ak), Bound::Excluded(bk)) => match ak.cmp(bk) {
-				Ordering::Equal => Ordering::Less,
-				other => other,
-			},
-			(Bound::Excluded(ak), Bound::Included(bk)) => match ak.cmp(bk) {
-				Ordering::Equal => Ordering::Greater,
-				other => other,
-			},
-		}
+	fn accepts_range(&self) -> bool {
+		self.mode != ConflictMode::Disabled && !self.read_all
 	}
 
-	fn compare_end_bounds(a: &Bound<EncodedKey>, b: &Bound<EncodedKey>) -> Ordering {
-		match (a, b) {
-			(Bound::Unbounded, Bound::Unbounded) => Ordering::Equal,
-			(Bound::Unbounded, _) => Ordering::Greater,
-			(_, Bound::Unbounded) => Ordering::Less,
-			(Bound::Included(ak), Bound::Included(bk)) => ak.cmp(bk),
-			(Bound::Excluded(ak), Bound::Excluded(bk)) => ak.cmp(bk),
-
-			(Bound::Included(ak), Bound::Excluded(bk)) => match ak.cmp(bk) {
-				Ordering::Equal => Ordering::Greater,
-				other => other,
-			},
-			(Bound::Excluded(ak), Bound::Included(bk)) => match ak.cmp(bk) {
-				Ordering::Equal => Ordering::Less,
-				other => other,
-			},
-		}
+	fn escalate_to_read_all(&mut self) {
+		self.read_all = true;
+		self.read_ranges.clear();
+		self.read_ranges_encoded.clear();
 	}
 
-	fn ranges_overlap_or_adjacent(
-		start1: &Bound<EncodedKey>,
-		end1: &Bound<EncodedKey>,
-		start2: &Bound<EncodedKey>,
-		end2: &Bound<EncodedKey>,
-	) -> bool {
-		Self::end_reaches_start(end1, start2) && Self::end_reaches_start(end2, start1)
-	}
-
-	fn end_reaches_start(end: &Bound<EncodedKey>, start: &Bound<EncodedKey>) -> bool {
-		match (end, start) {
-			(Bound::Unbounded, _) | (_, Bound::Unbounded) => true,
-			(Bound::Included(e), Bound::Included(s)) => e >= s,
-			(Bound::Included(e), Bound::Excluded(s)) => e >= s,
-			(Bound::Excluded(e), Bound::Included(s)) => e > s,
-			(Bound::Excluded(e), Bound::Excluded(s)) => e >= s,
+	fn escalate_if_saturated(&mut self) {
+		if self.read_ranges.len() + self.read_ranges_encoded.len() > MAX_RANGES_BEFORE_ESCALATION {
+			self.escalate_to_read_all();
 		}
 	}
 
 	pub fn mark_iter(&mut self) {
-		self.mark_range(EncodedKeyRange::all());
+		self.mark_range(AnyKeyBoundRange::all());
 	}
 
 	#[instrument(name = "transaction::conflict::has_conflict", level = "trace", skip(self, other), fields(
@@ -226,7 +335,7 @@ impl ConflictManager {
 			return true;
 		}
 
-		if self.read_keys.is_empty() && self.read_ranges.is_empty() && !self.read_all {
+		if self.read_keys.is_empty() && !self.has_range_operations() {
 			return false;
 		}
 
@@ -238,7 +347,7 @@ impl ConflictManager {
 			return true;
 		}
 
-		if !self.read_ranges.is_empty() && self.has_any_range_conflict(&other.write_keys) {
+		if self.has_any_range_conflict(&other.write_keys) {
 			return true;
 		}
 
@@ -247,57 +356,22 @@ impl ConflictManager {
 
 	#[inline]
 	fn has_any_range_conflict(&self, write_keys: &HashSet<AnyKey>) -> bool {
-		if write_keys.is_empty() || self.read_ranges.is_empty() {
+		if write_keys.is_empty() {
 			return false;
 		}
 
-		let encoded: Vec<EncodedKey> = write_keys.iter().map(AnyKey::encode).collect();
-		let use_sweep_line = encoded.len() >= 32 && self.read_ranges.len() >= 2;
-
-		if use_sweep_line {
-			let mut sorted_keys: Vec<_> = encoded.iter().collect();
-			sorted_keys.sort();
-			self.sweep_line_check(&sorted_keys)
-		} else {
-			self.read_ranges
-				.iter()
-				.any(|(start, end)| encoded.iter().any(|key| Self::key_in_range(key, start, end)))
-		}
-	}
-
-	fn sweep_line_check(&self, sorted_keys: &[&EncodedKey]) -> bool {
-		if sorted_keys.is_empty() {
-			return false;
-		}
-
-		let mut key_idx = 0;
-
-		for (start, end) in &self.read_ranges {
-			let search_start = match start {
-				Bound::Included(s) => {
-					sorted_keys[key_idx..].binary_search(&s).unwrap_or_else(|pos| pos)
-				}
-				Bound::Excluded(s) => match sorted_keys[key_idx..].binary_search(&s) {
-					Ok(pos) => pos + 1,
-					Err(pos) => pos,
-				},
-				Bound::Unbounded => 0,
-			};
-
-			key_idx += search_start;
-
-			if key_idx >= sorted_keys.len() {
-				return false;
+		if !self.read_ranges.is_empty() {
+			let bounds: Vec<AnyKeyBound> = write_keys.iter().cloned().map(AnyKeyBound::Key).collect();
+			let borrowed: Vec<&AnyKeyBound> = bounds.iter().collect();
+			if self.read_ranges.any_contains(&borrowed) {
+				return true;
 			}
+		}
 
-			let candidate = sorted_keys[key_idx];
-			let in_range = match end {
-				Bound::Included(e) => candidate <= e,
-				Bound::Excluded(e) => candidate < e,
-				Bound::Unbounded => true,
-			};
-
-			if in_range {
+		if !self.read_ranges_encoded.is_empty() {
+			let encoded: Vec<EncodedKey> = write_keys.iter().map(AnyKey::encode).collect();
+			let borrowed: Vec<&EncodedKey> = encoded.iter().collect();
+			if self.read_ranges_encoded.any_contains(&borrowed) {
 				return true;
 			}
 		}
@@ -309,6 +383,7 @@ impl ConflictManager {
 	pub fn rollback(&mut self) {
 		self.read_keys.clear();
 		self.read_ranges.clear();
+		self.read_ranges_encoded.clear();
 		self.read_all = false;
 		self.write_keys.clear();
 
@@ -324,24 +399,7 @@ impl ConflictManager {
 	}
 
 	pub fn has_range_operations(&self) -> bool {
-		!self.read_ranges.is_empty() || self.read_all
-	}
-
-	#[inline]
-	fn key_in_range(key: &EncodedKey, start: &Bound<EncodedKey>, end: &Bound<EncodedKey>) -> bool {
-		let start_ok = match start {
-			Bound::Included(s) => key >= s,
-			Bound::Excluded(s) => key > s,
-			Bound::Unbounded => true,
-		};
-
-		let end_ok = match end {
-			Bound::Included(e) => key <= e,
-			Bound::Excluded(e) => key < e,
-			Bound::Unbounded => true,
-		};
-
-		start_ok && end_ok
+		!self.read_ranges.is_empty() || !self.read_ranges_encoded.is_empty() || self.read_all
 	}
 }
 
@@ -368,7 +426,23 @@ mod tests {
 		.into()
 	}
 
-	fn create_range(start: &str, end: Bound<&str>) -> EncodedKeyRange {
+	fn create_bound(s: &str) -> AnyKeyBound {
+		AnyKeyBound::Key(create_key(s))
+	}
+
+	fn create_range(start: &str, end: Bound<&str>) -> AnyKeyBoundRange {
+		let end = match end {
+			Bound::Included(e) => Bound::Included(create_bound(e)),
+			Bound::Excluded(e) => Bound::Excluded(create_bound(e)),
+			Bound::Unbounded => Bound::Unbounded,
+		};
+		AnyKeyBoundRange {
+			start: Bound::Included(create_bound(start)),
+			end,
+		}
+	}
+
+	fn create_encoded_range(start: &str, end: Bound<&str>) -> EncodedKeyRange {
 		let end = match end {
 			Bound::Included(e) => Bound::Included(create_key(e).encode()),
 			Bound::Excluded(e) => Bound::Excluded(create_key(e).encode()),
@@ -463,10 +537,119 @@ mod tests {
 
 		assert_eq!(cm.read_ranges.len(), 3);
 
-		if let (Bound::Included(start), _) = &cm.read_ranges[0] {
-			assert_eq!(start, &create_key("a").encode());
+		if let (Bound::Included(start), _) = &cm.read_ranges.ranges[0] {
+			assert_eq!(start, &create_bound("a"));
 		} else {
 			panic!("Expected Included bound");
 		}
+	}
+
+	#[test]
+	fn a_typed_range_and_its_encoded_twin_detect_the_same_conflicts() {
+		// The typed set orders by kind and field projection, the encoded set by raw bytes. The
+		// whole design rests on those two agreeing, so a range expressed either way must reach
+		// the same verdict for every key.
+		for probe in ["a", "b", "c", "d", "m", "z"] {
+			let mut typed = ConflictManager::new();
+			typed.mark_range(create_range("b", Bound::Excluded("d")));
+
+			let mut encoded = ConflictManager::new();
+			encoded.mark_range_encoded(create_encoded_range("b", Bound::Excluded("d")));
+
+			let mut writer = ConflictManager::new();
+			writer.mark_write(&create_key(probe));
+
+			assert_eq!(
+				typed.has_conflict(&writer),
+				encoded.has_conflict(&writer),
+				"typed and encoded tracking disagree on {probe}"
+			);
+		}
+	}
+
+	#[test]
+	fn encoded_ranges_are_tracked_and_conflict_independently_of_typed_ranges() {
+		let mut cm = ConflictManager::new();
+		cm.mark_range_encoded(create_encoded_range("a", Bound::Excluded("c")));
+
+		assert!(cm.read_ranges.is_empty(), "an encoded range must not land in the typed set");
+		assert_eq!(cm.read_ranges_encoded.len(), 1);
+		assert!(cm.has_range_operations());
+
+		let mut inside = ConflictManager::new();
+		inside.mark_write(&create_key("b"));
+		assert!(cm.has_conflict(&inside));
+
+		let mut outside = ConflictManager::new();
+		outside.mark_write(&create_key("z"));
+		assert!(!cm.has_conflict(&outside));
+	}
+
+	#[test]
+	fn typed_and_encoded_ranges_escalate_on_their_combined_count() {
+		// Both sets feed one budget, so a transaction cannot dodge escalation by splitting its
+		// reads across the two representations.
+		let mut cm = ConflictManager::new();
+
+		for i in 0..=MAX_RANGES_BEFORE_ESCALATION {
+			let start = format!("{:04}", i * 2);
+			let end = format!("{:04}", i * 2 + 1);
+			if i % 2 == 0 {
+				cm.mark_range(create_range(&start, Bound::Excluded(&end)));
+			} else {
+				cm.mark_range_encoded(create_encoded_range(&start, Bound::Excluded(&end)));
+			}
+		}
+
+		assert!(cm.read_all);
+		assert!(cm.read_ranges.is_empty());
+		assert!(cm.read_ranges_encoded.is_empty());
+	}
+
+	#[test]
+	fn an_unbounded_encoded_range_escalates_to_read_all() {
+		let mut cm = ConflictManager::new();
+		cm.mark_range(create_range("a", Bound::Excluded("c")));
+		cm.mark_range_encoded(EncodedKeyRange::all());
+
+		assert!(cm.read_all);
+		assert!(cm.read_ranges.is_empty());
+		assert!(cm.read_ranges_encoded.is_empty());
+	}
+
+	#[test]
+	fn rollback_clears_both_range_sets() {
+		let mut cm = ConflictManager::new();
+		cm.mark_range(create_range("a", Bound::Excluded("c")));
+		cm.mark_range_encoded(create_encoded_range("m", Bound::Excluded("n")));
+		assert!(cm.has_range_operations());
+
+		cm.rollback();
+
+		assert!(!cm.has_range_operations());
+		assert!(cm.read_ranges.is_empty());
+		assert!(cm.read_ranges_encoded.is_empty());
+	}
+
+	#[test]
+	fn the_sweep_line_path_agrees_with_the_linear_path() {
+		// has_any_range_conflict switches strategy at 32 write keys and 2 ranges. Both branches
+		// must answer identically or a conflict becomes a function of batch size.
+		let mut cm = ConflictManager::new();
+		cm.mark_range(create_range("0100", Bound::Excluded("0200")));
+		cm.mark_range(create_range("0300", Bound::Excluded("0400")));
+
+		let mut hits = ConflictManager::new();
+		for i in 0..40 {
+			hits.mark_write(&create_key(&format!("{:04}", 9000 + i)));
+		}
+		hits.mark_write(&create_key("0150"));
+		assert!(cm.has_conflict(&hits), "sweep line must find the one key inside a range");
+
+		let mut misses = ConflictManager::new();
+		for i in 0..40 {
+			misses.mark_write(&create_key(&format!("{:04}", 9000 + i)));
+		}
+		assert!(!cm.has_conflict(&misses), "sweep line must not invent a conflict");
 	}
 }
