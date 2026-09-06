@@ -13,13 +13,15 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
 };
+#[cfg(reifydb_assertions)]
+use reifydb_core::key::operator::{keyspace::group_scoped_id, state::OperatorStateKey};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator::{
-		keyspace::{dispatch, group_scoped_id},
+		keyspace::dispatch,
 		state::{
-			GroupId, KeyspaceId, OperatorStateKey, group_inner_range, group_inner_range_split,
+			GroupId, KeyspaceId, group_inner_range, group_inner_range_split,
 			keyspace_inner_range_split,
 		},
 	},
