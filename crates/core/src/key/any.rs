@@ -1268,7 +1268,7 @@ impl PartialOrd for AnyKey {
 
 #[cfg(test)]
 mod tests {
-	use std::cmp::Ordering;
+	use std::{borrow::Cow, cmp::Ordering};
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::shape::fingerprint::RowShapeFingerprint};
 	use reifydb_runtime::version_epoch::EpochSeconds;
@@ -1276,8 +1276,9 @@ mod tests {
 		Value, datetime::DateTime, dictionary::DictionaryId, identity::IdentityId, partition::Partition,
 		row_number::RowNumber, sumtype::SumTypeId,
 	};
+	use smallvec::SmallVec;
 
-	use super::{AnyKey, KeyFields, MetricCdcKey, MetricKey, MetricStorageKey};
+	use super::{AnyKey, Field, KeyFields, MetricCdcKey, MetricKey, MetricStorageKey, RawEncoding};
 	use crate::{
 		interface::{
 			catalog::{
@@ -1298,6 +1299,7 @@ mod tests {
 		},
 		key::{
 			EncodableKey,
+			bound::{AnyKeyBound, OwnedField},
 			catalog::{
 				BindingKey, ColumnPropertyKey, DictionaryEntryIndexKey, DictionaryEntryKey,
 				DictionaryKey, HandlerKey, IndexEntryKey, IndexKey, PrimaryKeyKey, RelationshipKey,
@@ -2307,6 +2309,115 @@ mod tests {
 				RowNumber(133),
 			)),
 		]
+	}
+
+	fn owned_field(field: &Field<'_>) -> OwnedField {
+		match field {
+			Field::UAsc(width, value) => Field::UAsc(*width, *value),
+			Field::UDesc(width, value) => Field::UDesc(*width, *value),
+			Field::BytesDesc(encoding, bytes) => {
+				Field::BytesDesc(*encoding, Cow::Owned(bytes.as_ref().to_vec()))
+			}
+			Field::RawAsc(encoding, bytes) => Field::RawAsc(*encoding, Cow::Owned(bytes.as_ref().to_vec())),
+		}
+	}
+
+	/// Every bound shape a producer can build for `key`: the bare kind and its successor, and each
+	/// head of the key's own field list as both a `Prefix` and a `PrefixEnd`.
+	///
+	/// The last shape drops a byte from a trailing verbatim field, which is what
+	/// `IndexEntryKey::key_prefix_range` does: a head whose final field is a truncation rather
+	/// than a whole value. Terminated and fixed-width encodings are not truncated here because no
+	/// producer truncates them, and a partial value under those encodings is not a byte prefix of
+	/// the whole one.
+	fn bounds_derived_from(key: &AnyKey) -> Vec<AnyKeyBound> {
+		let mut out = vec![AnyKeyBound::Kind(key.kind()), AnyKeyBound::KindEnd(key.kind())];
+		let fields = key.fields();
+
+		for len in 0..=fields.len() {
+			let head: SmallVec<[OwnedField; 6]> = fields[..len].iter().map(owned_field).collect();
+			out.push(AnyKeyBound::Prefix(key.kind(), head.clone()));
+			if len > 0 {
+				// `PrefixEnd` with no fields is not a shape a producer can reach: every
+				// `AnyKeyBoundRange::prefix` call passes fields, and the end of a whole
+				// kind span is spelled `KindEnd`, which is generated above. The two
+				// encode alike but order differently, since only `KindEnd` carries the
+				// decrement in its kind byte rather than in the encoded increment.
+				out.push(AnyKeyBound::PrefixEnd(key.kind(), head));
+			}
+		}
+
+		if let Some(Field::RawAsc(RawEncoding::Verbatim, bytes)) = fields.last() {
+			if bytes.len() > 1 {
+				let mut head: SmallVec<[OwnedField; 6]> =
+					fields[..fields.len() - 1].iter().map(owned_field).collect();
+				head.push(Field::RawAsc(
+					RawEncoding::Verbatim,
+					Cow::Owned(bytes[..bytes.len() - 1].to_vec()),
+				));
+				out.push(AnyKeyBound::Prefix(key.kind(), head.clone()));
+				out.push(AnyKeyBound::PrefixEnd(key.kind(), head));
+			}
+		}
+
+		out
+	}
+
+	#[test]
+	fn every_bound_shape_orders_against_every_key_the_way_their_bytes_do() {
+		// A bound exists only to delimit a scan, and the scan is merged on bytes. Where a bound
+		// and a key disagree, a range silently admits or drops that row: the typed side of the
+		// scan says one thing and the storage engine another, with no error either way.
+		//
+		// The shapes here are derived from the keys themselves rather than listed per producer,
+		// so a new key type is covered the moment it joins the probe set, and every field
+		// position is exercised rather than only the ones a producer happens to slice at today.
+		let probes = all_probes();
+		let bounds: Vec<AnyKeyBound> = probes.iter().flat_map(|(key, _)| bounds_derived_from(key)).collect();
+
+		for bound in &bounds {
+			let bound_bytes = bound.encode();
+			if bound_bytes.as_slice().is_empty() {
+				// `PrefixEnd` collapses to nothing when every byte it would increment is
+				// already 0xff. That is the encoding of an unbounded edge, which no
+				// producer emits and `AnyKeyBoundRange::empty` relies on.
+				continue;
+			}
+			for (key, key_bytes) in &probes {
+				let probe = AnyKeyBound::Key(key.clone());
+				assert_eq!(
+					bound.cmp(&probe),
+					bound_bytes.as_slice().cmp(key_bytes.as_slice()),
+					"bound order disagrees with encoded order\n  bound = {bound:?}\n  key \
+					 = {key:?}\n  bound bytes = {:02x?}\n  key bytes = {:02x?}",
+					bound_bytes.as_slice(),
+					key_bytes.as_slice()
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn kind_end_is_the_spelling_that_agrees_with_bytes_for_a_whole_kind_span() {
+		// `KindEnd(k)` and `PrefixEnd(k, [])` encode to the same byte, the start of the next kind
+		// down, but only `KindEnd` also orders there. Producers must use `KindEnd`, which
+		// `AnyKeyBoundRange::kind` does; this pins that the correct spelling stays correct.
+		for (key, key_bytes) in all_probes() {
+			let end = AnyKeyBound::KindEnd(key.kind());
+			let end_bytes = end.encode();
+			let probe = AnyKeyBound::Key(key.clone());
+
+			assert_eq!(
+				end.cmp(&probe),
+				end_bytes.as_slice().cmp(key_bytes.as_slice()),
+				"KindEnd disagrees with its bytes for {key:?}"
+			);
+			assert_eq!(
+				end_bytes.as_slice(),
+				AnyKeyBound::PrefixEnd(key.kind(), SmallVec::new()).encode().as_slice(),
+				"KindEnd and an empty PrefixEnd must still encode alike for {key:?}"
+			);
+		}
 	}
 
 	#[test]
