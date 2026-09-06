@@ -324,6 +324,7 @@ impl StandardOperatorStore {
 		let scan_budget = target.saturating_mul(SCAN_BUDGET_FACTOR);
 		let mut consumed = 0usize;
 		let mut skipped = 0u64;
+		let mut spent = 0usize;
 		let mut walked: Option<EncodedKey> = None;
 		let mut resume: Option<EncodedKey> = None;
 
@@ -350,9 +351,10 @@ impl StandardOperatorStore {
 				continue;
 			}
 			if page_index == page.len() && !source.is_exhausted() {
-				page = source.next_page(target as u64);
+				page = source.next_page(target.saturating_add(spent).min(scan_budget) as u64);
 				page_shadow = self.resident.tombstoned(operator, page.iter().map(|(key, _)| key));
 				page_index = 0;
+				spent = 0;
 				continue;
 			}
 
@@ -380,6 +382,7 @@ impl StandardOperatorStore {
 					if !dead {
 						items.push((key.clone(), row.clone()));
 					} else {
+						spent += 1;
 						skipped += 1;
 					}
 				}
@@ -408,12 +411,14 @@ impl StandardOperatorStore {
 							if !dead {
 								items.push((page_key.clone(), page_row.clone()));
 							} else {
+								spent += 1;
 								skipped += 1;
 							}
 						}
 						Ordering::Equal => {
 							buffer_index += 1;
 							page_index += 1;
+							spent += 1;
 							consumed += 2;
 							if consumed >= scan_budget {
 								walked = Some(buffer_key.clone());
