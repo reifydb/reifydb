@@ -17,8 +17,11 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator::{
-		keyspace::dispatch,
-		state::{GroupId, KeyspaceId, group_inner_range, group_inner_range_split, keyspace_inner_range_split},
+		keyspace::{dispatch, group_scoped_id},
+		state::{
+			GroupId, KeyspaceId, OperatorStateKey, group_inner_range, group_inner_range_split,
+			keyspace_inner_range_split,
+		},
 	},
 	metrics::scan::record_page,
 };
@@ -46,6 +49,7 @@ impl StandardOperatorStore {
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
 		reifydb_assertions! {
 			self.verify_classification(writes);
+			verify_group_scope(writes);
 		}
 		let _flushing = self.resident.flush_guard();
 		self.occupancy.record(writes);
@@ -63,6 +67,7 @@ impl StandardOperatorStore {
 	) {
 		reifydb_assertions! {
 			self.verify_classification(writes);
+			verify_group_scope(writes);
 		}
 		let _flushing = self.resident.flush_guard();
 		self.occupancy.record(writes);
@@ -674,6 +679,39 @@ impl OperatorStore {
 #[cfg(reifydb_assertions)]
 fn value_bytes(row: &EncodedPodRow) -> ByteSize {
 	ByteSize::from_bytes(row.bytes().len() as u64)
+}
+
+#[cfg(reifydb_assertions)]
+fn verify_group_scope(writes: &[OperatorWrite]) {
+	for write in writes {
+		let key = match write {
+			OperatorWrite::Insert {
+				key,
+				..
+			}
+			| OperatorWrite::Replace {
+				key,
+				..
+			}
+			| OperatorWrite::Remove {
+				key,
+				..
+			} => key,
+		};
+		let Some((group, keyspace, _)) = OperatorStateKey::decode_inner(key.as_slice()) else {
+			continue;
+		};
+		if group == GroupId::ROOT {
+			continue;
+		}
+		assert!(
+			group_scoped_id(keyspace).unwrap_or(true),
+			"{} is not group-scoped but was written at group {group}: the persistent tier rebuilds the \
+			 key through the typed layout, so this row reads back stamped ROOT and collides with every \
+			 other group holding the same suffix",
+			keyspace.name()
+		);
+	}
 }
 
 const STATE_LAST_PAGE: usize = 64;

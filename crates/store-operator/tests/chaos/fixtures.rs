@@ -6,7 +6,10 @@
 use std::{cell::Cell, path::Path};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::key::operator::state::{GroupId, KeyspaceId, OperatorStateKey};
+use reifydb_core::key::operator::{
+	keyspace::group_scoped_id,
+	state::{GroupId, KeyspaceId},
+};
 use reifydb_runtime::{
 	actor::system::{ActorSpawner, ActorSystem},
 	context::clock::Clock,
@@ -22,7 +25,7 @@ use reifydb_testing::keyspace::state_key;
 use reifydb_value::util::hash::Hash128;
 
 /// Only data keyspaces, so every key the workload writes lands in a census bucket.
-pub const KEYSPACES: [u8; 4] = [0x10, 0x11, 0x13, 0x1D];
+pub const KEYSPACES: [u8; 4] = [0x10, 0x11, 0x0C, 0x1D];
 
 pub struct Config {
 	pub name: &'static str,
@@ -148,8 +151,15 @@ fn store_from(spawner: &ActorSpawner, config: SqliteConfig) -> OperatorStore {
 	})
 }
 
+/// A group drawn for a keyspace with no group column names a key that cannot exist, so only the
+/// keyspaces carrying the column keep the draw.
 pub fn key(group: u64, keyspace: u8, suffix: u64) -> EncodedKey {
-	state_key(GroupId::hashed(Hash128(group.into())), KeyspaceId(keyspace), suffix)
+	let keyspace = KeyspaceId(keyspace);
+	let group = match group_scoped_id(keyspace).expect("a fixture keyspace is in the catalogue") {
+		true => GroupId::hashed(Hash128(group.into())),
+		false => GroupId::ROOT,
+	};
+	state_key(group, keyspace, suffix)
 }
 
 pub fn row(operator: u64, suffix: u64, step: u32) -> EncodedPodRow {

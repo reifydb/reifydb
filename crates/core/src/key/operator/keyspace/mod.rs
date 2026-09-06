@@ -14,7 +14,7 @@ use reifydb_codec::row::{operator::state::OperatorState, pod::EncodedPodRow};
 use reifydb_value::util::hash::Hash128;
 
 #[cfg(test)]
-use crate::key::{operator::traits::group_scoped, typed::TypedKey};
+use crate::key::typed::TypedKey;
 use crate::{
 	key::{
 		operator::{
@@ -42,7 +42,7 @@ use crate::{
 				},
 			},
 			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
-			traits::Keyspace,
+			traits::{Keyspace, group_scoped},
 		},
 		typed::layout::{KeyColumn, KeyLayout},
 	},
@@ -72,6 +72,22 @@ impl KeyspaceSpec {
 	pub const fn suffix_width(&self) -> usize {
 		columns_width(self.suffix)
 	}
+}
+
+struct GroupScoped;
+
+impl KeyspaceVisitor for GroupScoped {
+	type Output = bool;
+
+	fn visit<K: Keyspace>(self) -> Self::Output {
+		const { group_scoped::<K>() }
+	}
+}
+
+/// The runtime form of `group_scoped`, for callers that hold an id rather than the type. `None` names
+/// a keyspace the catalogue does not carry.
+pub fn group_scoped_id(id: KeyspaceId) -> Option<bool> {
+	dispatch(id, GroupScoped)
 }
 
 pub trait KeyspaceVisitor {

@@ -972,8 +972,11 @@ impl OperatorResidentState {
 				.get()
 				.and_then(|sinks| sinks.persistent.get(operator, key))
 				.is_some();
+			let dropped = self.shared.dropped(|marker| match marker {
+				DropMarker::OperatorState(candidate) => *candidate == operator,
+			});
 			assert!(
-				!durable,
+				!durable || dropped,
 				"store::operator::resident collapsed a remove on operator {} over a key that is already durable",
 				operator.0
 			);

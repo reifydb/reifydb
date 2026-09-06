@@ -132,3 +132,49 @@ chaos_test!(operator_store_random_chaos, |seed| {
 	// A failure here must pin the RESOLVED parameters, never the master seed, which stops meaning the same.
 	workload::drive_random(seed);
 });
+
+/// Seeds that caught a remove being collapsed over a key sqlite already holds, pinned with the
+/// parameters they were drawn against rather than the sweep's, which move.
+#[test]
+fn a_remove_over_a_reflushed_key_is_not_collapsed() {
+	drive(
+		7508898423376373026,
+		Params {
+			operators: 3,
+			groups: 3,
+			keyspaces: 4,
+			suffixes: 96,
+			flows: 4,
+			min_steps: 120,
+			max_steps: 260,
+			write_pct: 34,
+			checkpoint_pct: 8,
+			flush_pct: 10,
+			drop_pct: 3,
+			max_writes: 6,
+			max_batch: 16,
+		},
+	);
+}
+
+#[test]
+fn a_remove_over_a_reflushed_key_is_not_collapsed_under_frequent_drops() {
+	drive(
+		16575068438859747068,
+		Params {
+			operators: 5,
+			groups: 4,
+			keyspaces: 4,
+			suffixes: 48,
+			flows: 6,
+			min_steps: 120,
+			max_steps: 240,
+			write_pct: 32,
+			checkpoint_pct: 6,
+			flush_pct: 12,
+			drop_pct: 12,
+			max_writes: 5,
+			max_batch: 12,
+		},
+	);
+}
