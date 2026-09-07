@@ -767,11 +767,7 @@ impl OperatorResidentState {
 							entry.post.clone(),
 						);
 						staged += 1;
-						if self.shared.filter.is_enabled() {
-							self.shared
-								.filter
-								.add(state_hash(operator, keyspace, group, suffix));
-						}
+						self.shared.filter.add(state_hash(operator, keyspace, group, suffix));
 					});
 				consumed = consumed.saturating_add(carried);
 				staged_bytes = staged_bytes

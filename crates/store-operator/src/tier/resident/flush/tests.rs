@@ -46,8 +46,8 @@ use crate::{
 		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
 		range::OperatorRangeConfig,
 		resident::{
-			FLUSH_BUDGET_BYTES, FLUSH_INTERVAL, OperatorResidentState, ResidentLimits, batch::FlushBatch,
-			evict::actor::ResidentEvictActor,
+			FILTER_KEYS, FLUSH_BUDGET_BYTES, FLUSH_INTERVAL, OperatorResidentState, ResidentLimits,
+			batch::FlushBatch, evict::actor::ResidentEvictActor,
 		},
 	},
 	types::{BufferedState, DurablePre, OperatorWrite},
@@ -882,5 +882,48 @@ fn a_tombstone_count_resting_on_the_entry_limit_does_not_flush() {
 		limit as usize,
 		"the entry limit is the window, exactly as the byte budget is; a trigger that fires on it stops the \
 		 buffer batching at all"
+	);
+}
+
+fn rebuilding_fixture() -> (OperatorResidentState, SqliteOperatorStorage, SqliteTempPathGuard) {
+	// state already in sqlite is what a store boots over after a restart, and it is what stops the buffer
+	// arming a filter of its own, so a rebuild scan is the only thing that can arm one here
+	let (storage, guard) = SqliteOperatorStorage::in_memory();
+	let buffer = OperatorResidentState::new();
+	buffer.attach_sinks(tier(&storage), None);
+	storage.seed_durable(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("already-durable"),
+	}]);
+	(buffer, storage, guard)
+}
+
+#[test]
+fn a_key_flushed_while_the_filter_is_rebuilding_is_in_the_filter_that_rebuild_commits() {
+	// The rebuild scan can only see what sqlite held when it read the census and passed a key's position. A
+	// key flushed behind the cursor, or into a keyspace the census reported empty, is invisible to it, so the
+	// flush that wrote it is the only thing that can put it in the filter being built. Miss it and the commit
+	// installs a filter that denies a durable row for as long as that filter lives.
+	let (buffer, _storage, _guard) = rebuilding_fixture();
+	let filter = buffer.filter();
+
+	let handle = filter.begin_rebuild(FILTER_KEYS);
+	assert!(
+		!filter.is_enabled(),
+		"a rebuild over populated state runs with no armed filter behind it, which is the whole window \
+		 this test is about; if the filter is already armed here the write below is covered for the wrong \
+		 reason"
+	);
+
+	buffer.record_state_set(OP_A, key(2), row("written-during-the-rebuild"));
+	buffer.flush_all();
+
+	filter.commit_rebuild(handle);
+
+	assert!(
+		!buffer.never_persisted(OP_A, &key(2)),
+		"the key was flushed to sqlite while the rebuild was in flight and the committed filter denies it; \
+		 every read of that row now stops at the filter and reports absent while the row sits in sqlite"
 	);
 }
