@@ -109,7 +109,7 @@ pub struct DeferredTransaction {
 
 	pub source_watermark_cache: HashMap<OperatorId, u64>,
 
-	pub row_shape_cache: HashMap<EncodedKey, RowShape>,
+	pub row_shape_cache: HashMap<OperatorId, HashMap<EncodedKey, RowShape>>,
 
 	pub substrate: FlowSubstrate,
 }
@@ -327,8 +327,8 @@ impl FlowTransaction for DeferredTransaction {
 		&mut self.source_watermark_cache
 	}
 
-	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape> {
-		&mut self.row_shape_cache
+	fn row_shape_cache(&mut self, operator: OperatorId) -> &mut HashMap<EncodedKey, RowShape> {
+		self.row_shape_cache.entry(operator).or_default()
 	}
 
 	fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change> {

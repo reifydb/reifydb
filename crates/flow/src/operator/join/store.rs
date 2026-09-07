@@ -567,6 +567,33 @@ mod tests {
 	}
 
 	#[test]
+	fn one_operator_writing_a_shape_does_not_stand_in_for_another_operators_write() {
+		// The shape row is written under the operator its host is bound to, but the cache in front of that
+		// write is keyed by the state key alone, which carries the side and the fingerprint and no operator.
+		// Two joins in one flow share the transaction holding that cache, so the second to write an identical
+		// shape is told it is already stored and writes nothing. Its own state stays empty, and the next
+		// transaction to read it starts with a cache that no longer has the entry and finds nothing to decode.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let first = OperatorId(60);
+		let second = OperatorId(61);
+		let store = Store::new(JoinSide::Left);
+
+		let shape = RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("f0", ValueType::Int4)]);
+		store.set_row_shape(&mut b(&mut txn, first), &shape).unwrap();
+		store.set_row_shape(&mut b(&mut txn, second), &shape).unwrap();
+
+		let key = store.schema_key(shape.fingerprint());
+		assert!(
+			state_get(&mut b(&mut txn, second), &key).unwrap().is_some(),
+			"the second operator was told its shape was already stored because the first operator had \
+			 written an identical one, so nothing was written under it; the shape survives only as long \
+			 as the transaction that cached it, and the next run decodes rows against a shape that is \
+			 not there"
+		);
+	}
+
+	#[test]
 	fn rows_for_key_pages_with_resume_cursor() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();

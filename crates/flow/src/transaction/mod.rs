@@ -124,7 +124,7 @@ pub trait FlowTransaction: Sized + Send + 'static {
 
 	fn source_watermark_cache(&mut self) -> &mut HashMap<OperatorId, u64>;
 
-	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape>;
+	fn row_shape_cache(&mut self, operator: OperatorId) -> &mut HashMap<EncodedKey, RowShape>;
 
 	fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change>;
 

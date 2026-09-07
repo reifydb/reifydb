@@ -1369,8 +1369,8 @@ mod seal_tests {
 			self.inner.source_watermark_cache()
 		}
 
-		fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape> {
-			self.inner.row_shape_cache()
+		fn row_shape_cache(&mut self, operator: OperatorId) -> &mut HashMap<EncodedKey, RowShape> {
+			self.inner.row_shape_cache(operator)
 		}
 
 		fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change> {

@@ -296,7 +296,7 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 	}
 
 	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape> {
-		self.txn.row_shape_cache()
+		self.txn.row_shape_cache(self.operator)
 	}
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()> {
