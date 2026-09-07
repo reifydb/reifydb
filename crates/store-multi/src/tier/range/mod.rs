@@ -294,15 +294,6 @@ fn bucket_start(bucket: u64) -> StorageRowKey {
 	StorageRowKey::new(RowNumber(!(bucket << ROW_BUCKET_SHIFT)))
 }
 
-pub fn row_band(kind: EntryKind) -> Option<(EncodedKey, EncodedKey)> {
-	match kind {
-		EntryKind::Source(storage, EntryLayout::Row) => {
-			Some((RowKey::storage_start(storage), RowKey::storage_end(storage)))
-		}
-		_ => None,
-	}
-}
-
 #[derive(Clone, Debug)]
 pub struct MultiRow {
 	pub version: CommitVersion,

@@ -96,20 +96,6 @@ impl<D: PointDomain> PointTier<D> {
 		true
 	}
 
-	pub fn abort_fill(&self, dimension: D::Dimension, key: &D::Key) {
-		if D::metric_bucket(key).is_none() {
-			return;
-		}
-		let mut shard = self.shard_at(dimension, key).lock();
-		if shard.filling.is_empty() {
-			return;
-		}
-		shard.filling.remove(&PointKey {
-			dimension,
-			key: key.clone(),
-		});
-	}
-
 	pub fn overwrite(&self, dimension: D::Dimension, key: D::Key, row: D::Row) {
 		let Some(bucket) = D::metric_bucket(&key) else {
 			return;

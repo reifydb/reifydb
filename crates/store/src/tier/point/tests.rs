@@ -347,8 +347,6 @@ fn an_undisturbed_fill_populates_the_tier() {
 	assert_eq!(tier.metrics().fills_started, 1);
 	assert_eq!(tier.metrics().fills_dirty_aborted, 0);
 	assert!(tier.begin_fill(OP_A, &k), "finishing a fill must release the slot, or the key can never refill");
-	tier.abort_fill(OP_A, &k);
-	assert!(tier.begin_fill(OP_A, &k), "aborting must release the slot too");
 }
 
 #[test]

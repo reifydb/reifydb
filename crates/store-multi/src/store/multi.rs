@@ -28,7 +28,6 @@ use reifydb_core::{
 	key::{
 		any::AnyKey,
 		row::{StoragePartitionedRowKey, StorageRowKey},
-		series::{StoragePartitionedSeriesKey, StorageSeriesKey},
 	},
 };
 use reifydb_store::coverage::cursor::Cursor;
@@ -1327,10 +1326,6 @@ pub type MultiVersionRowRangeIter = NarrowRangeIter<StorageRowKey>;
 
 pub type MultiVersionPartitionedRowRangeIter = NarrowRangeIter<StoragePartitionedRowKey>;
 
-pub type MultiVersionSeriesRangeIter = NarrowRangeIter<StorageSeriesKey>;
-
-pub type MultiVersionPartitionedSeriesRangeIter = NarrowRangeIter<StoragePartitionedSeriesKey>;
-
 impl<L: PersistentRangeLayout> Iterator for NarrowRangeIter<L> {
 	type Item = Result<MultiVersionRow<L>>;
 
@@ -1387,28 +1382,6 @@ impl StandardMultiStore {
 		batch_size: usize,
 	) -> MultiVersionPartitionedRowRangeIter {
 		self.range_narrow::<StoragePartitionedRowKey>(storage, start, end, scope, batch_size)
-	}
-
-	pub fn range_series(
-		&self,
-		storage: StorageId,
-		start: Bound<StorageSeriesKey>,
-		end: Bound<StorageSeriesKey>,
-		scope: MultiVersionScope,
-		batch_size: usize,
-	) -> MultiVersionSeriesRangeIter {
-		self.range_narrow::<StorageSeriesKey>(storage, start, end, scope, batch_size)
-	}
-
-	pub fn range_partitioned_series(
-		&self,
-		storage: StorageId,
-		start: Bound<StoragePartitionedSeriesKey>,
-		end: Bound<StoragePartitionedSeriesKey>,
-		scope: MultiVersionScope,
-		batch_size: usize,
-	) -> MultiVersionPartitionedSeriesRangeIter {
-		self.range_narrow::<StoragePartitionedSeriesKey>(storage, start, end, scope, batch_size)
 	}
 
 	pub fn range_narrow<L: PersistentRangeLayout>(

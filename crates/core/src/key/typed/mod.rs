@@ -33,23 +33,6 @@ pub enum Edge<K> {
 	Top,
 }
 
-impl<K> Edge<K> {
-	pub fn is_bottom(&self) -> bool {
-		matches!(self, Edge::Bottom)
-	}
-
-	pub fn is_top(&self) -> bool {
-		matches!(self, Edge::Top)
-	}
-
-	pub fn key(&self) -> Option<&K> {
-		match self {
-			Edge::Key(key) => Some(key),
-			Edge::AfterKey(_) | Edge::Bottom | Edge::Top => None,
-		}
-	}
-}
-
 impl<K: HeapSize> HeapSize for Edge<K> {
 	fn heap_size(&self) -> usize {
 		match self {
@@ -135,14 +118,6 @@ impl<K: Ord> Edge<K> {
 
 	pub fn min(self, other: Self) -> Self {
 		if self <= other {
-			self
-		} else {
-			other
-		}
-	}
-
-	pub fn max(self, other: Self) -> Self {
-		if self >= other {
 			self
 		} else {
 			other

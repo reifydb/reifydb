@@ -15,9 +15,9 @@ use reifydb_core::{
 	default,
 	interface::store::{EntryKind, StorageKey},
 	key::{
+		any::AnyKey,
 		row::{StoragePartitionedRowKey, StorageRowKey},
 		series::{StoragePartitionedSeriesKey, StorageSeriesKey},
-		typed::MultiKey,
 	},
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
@@ -96,7 +96,7 @@ pub struct MultiPointDomain;
 
 impl PointDomain for MultiPointDomain {
 	type Dimension = EntryKind;
-	type Key = MultiKey;
+	type Key = AnyKey;
 	type MetricBucket = ();
 	type Row = MultiPointRow;
 
@@ -104,7 +104,7 @@ impl PointDomain for MultiPointDomain {
 
 	const SCOPE: &'static str = "multi_point";
 
-	fn metric_bucket(_key: &EncodedKey) -> Option<usize> {
+	fn metric_bucket(_key: &Self::Key) -> Option<usize> {
 		Some(0)
 	}
 
@@ -335,7 +335,12 @@ impl MultiPointTier {
 				self.partitioned_series.shard_index(table, &row),
 				self.partitioned_series.get(table, &row),
 			),
-			None => (self.blob.shard_index(table, key), self.blob.get(table, key)),
+			None => {
+				let blob = AnyKey::decode(key).expect(
+					"every key reaching the point tier came from encode and must decode back",
+				);
+				(self.blob.shard_index(table, &blob), self.blob.get(table, &blob))
+			}
 		};
 		self.resolve(shard, found, version)
 	}
@@ -399,7 +404,12 @@ impl MultiPointTier {
 			Some(StorageKey::PartitionedSeries(row) | StorageKey::PartitionedSeriesView(row)) => {
 				self.partitioned_series.overwrite(table, row, entry)
 			}
-			None => self.blob.overwrite(table, key, entry),
+			None => {
+				let blob = AnyKey::decode(&key).expect(
+					"every key reaching the point tier came from encode and must decode back",
+				);
+				self.blob.overwrite(table, blob, entry)
+			}
 		}
 	}
 
@@ -423,7 +433,12 @@ impl MultiPointTier {
 			Some(StorageKey::PartitionedSeries(row) | StorageKey::PartitionedSeriesView(row)) => {
 				self.partitioned_series.invalidate(table, &row)
 			}
-			None => self.blob.invalidate(table, key),
+			None => {
+				let blob = AnyKey::decode(key).expect(
+					"every key reaching the point tier came from encode and must decode back",
+				);
+				self.blob.invalidate(table, &blob)
+			}
 		}
 	}
 
@@ -994,7 +1009,7 @@ mod tests {
 		// The cache used to key on raw bytes alone; two tables whose row keys ever produced identical bytes
 		// would silently share one slot and serve each other's values.
 		let tier = tier();
-		let shared_bytes = EncodedKey::new(b"same-bytes-different-tables".to_vec());
+		let shared_bytes = RowSequenceKey::encoded(StorageId::Table(TableId(1)));
 		let table_a = EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row);
 		let table_b = EntryKind::Source(StorageId::Table(TableId(2)), EntryLayout::Row);
 
