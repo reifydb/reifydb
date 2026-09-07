@@ -16,7 +16,7 @@ use reifydb_core::{
 		cdc::{Cdc, CdcChange},
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::{row::RowKey, typed::key::Key},
+	key::{EncodableKey, row::RowKey},
 	value::column::columns::Columns,
 };
 use reifydb_store_cdc::storage::CdcStorage;

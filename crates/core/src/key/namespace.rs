@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::Key;
+use reifydb_macro::EncodableKey;
 use reifydb_value::value::{dictionary::DictionaryId, sumtype::SumTypeId};
 
 use super::KeyKind;
@@ -15,13 +15,13 @@ use crate::{
 		},
 	},
 	key::{
+		EncodableKey,
 		any::{Field, KeyFields, Width},
 		bound::AnyKeyBoundRange,
-		typed::key::Key,
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Namespace)]
 pub struct NamespaceKey {
 	pub namespace: NamespaceId,
@@ -46,7 +46,7 @@ impl NamespaceKey {
 #[cfg(test)]
 pub mod namespace_key_tests {
 	use super::NamespaceKey;
-	use crate::{interface::catalog::id::NamespaceId, key::typed::key::Key};
+	use crate::{interface::catalog::id::NamespaceId, key::EncodableKey};
 
 	#[test]
 	fn test_encode_decode() {
@@ -62,7 +62,7 @@ pub mod namespace_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = NamespaceBinding)]
 pub struct NamespaceBindingKey {
 	pub namespace: NamespaceId,
@@ -91,7 +91,7 @@ pub mod namespace_binding_key_tests {
 	use super::NamespaceBindingKey;
 	use crate::{
 		interface::catalog::id::{BindingId, NamespaceId},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]
@@ -108,7 +108,7 @@ pub mod namespace_binding_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = NamespaceDictionary)]
 pub struct NamespaceDictionaryKey {
 	pub namespace: NamespaceId,
@@ -158,7 +158,7 @@ pub mod namespace_dictionary_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = NamespaceFlow)]
 pub struct NamespaceFlowKey {
 	pub namespace: NamespaceId,
@@ -187,7 +187,7 @@ pub mod namespace_flow_key_tests {
 	use super::NamespaceFlowKey;
 	use crate::{
 		interface::catalog::{flow::FlowId, id::NamespaceId},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]
@@ -227,7 +227,7 @@ pub mod namespace_flow_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = NamespaceHandler)]
 pub struct NamespaceHandlerKey {
 	pub namespace: NamespaceId,
@@ -256,7 +256,7 @@ pub mod namespace_handler_key_tests {
 	use super::NamespaceHandlerKey;
 	use crate::{
 		interface::catalog::id::{HandlerId, NamespaceId},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]
@@ -301,7 +301,7 @@ pub mod namespace_handler_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = NamespaceProcedure)]
 pub struct NamespaceProcedureKey {
 	pub namespace: NamespaceId,
@@ -330,7 +330,7 @@ pub mod namespace_procedure_key_tests {
 	use super::NamespaceProcedureKey;
 	use crate::{
 		interface::catalog::id::{NamespaceId, ProcedureId},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]
@@ -369,7 +369,7 @@ pub mod namespace_procedure_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = NamespaceQueue)]
 pub struct NamespaceQueueKey {
 	pub namespace: NamespaceId,
@@ -441,7 +441,7 @@ mod namespace_queue_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = NamespaceRingBuffer)]
 pub struct NamespaceRingBufferKey {
 	pub namespace: NamespaceId,
@@ -470,7 +470,7 @@ pub mod namespace_ring_buffer_key_tests {
 	use super::NamespaceRingBufferKey;
 	use crate::{
 		interface::catalog::id::{NamespaceId, RingBufferId},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]
@@ -498,7 +498,7 @@ pub mod namespace_ring_buffer_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = NamespaceSeries)]
 pub struct NamespaceSeriesKey {
 	pub namespace: NamespaceId,
@@ -527,7 +527,7 @@ pub mod namespace_series_key_tests {
 	use super::NamespaceSeriesKey;
 	use crate::{
 		interface::catalog::id::{NamespaceId, SeriesId},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]
@@ -555,7 +555,7 @@ pub mod namespace_series_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = NamespaceSink)]
 pub struct NamespaceSinkKey {
 	pub namespace: NamespaceId,
@@ -584,7 +584,7 @@ pub mod namespace_sink_key_tests {
 	use super::NamespaceSinkKey;
 	use crate::{
 		interface::catalog::id::{NamespaceId, SinkId},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]
@@ -624,7 +624,7 @@ pub mod namespace_sink_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = NamespaceSource)]
 pub struct NamespaceSourceKey {
 	pub namespace: NamespaceId,
@@ -653,7 +653,7 @@ pub mod namespace_source_key_tests {
 	use super::NamespaceSourceKey;
 	use crate::{
 		interface::catalog::id::{NamespaceId, SourceId},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]
@@ -693,7 +693,7 @@ pub mod namespace_source_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = NamespaceSumType)]
 pub struct NamespaceSumTypeKey {
 	pub namespace: NamespaceId,
@@ -722,7 +722,7 @@ pub mod namespace_sum_type_key_tests {
 	use reifydb_value::value::sumtype::SumTypeId;
 
 	use super::NamespaceSumTypeKey;
-	use crate::{interface::catalog::id::NamespaceId, key::typed::key::Key};
+	use crate::{interface::catalog::id::NamespaceId, key::EncodableKey};
 
 	#[test]
 	fn test_encode_decode() {
@@ -749,7 +749,7 @@ pub mod namespace_sum_type_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = NamespaceTable)]
 pub struct NamespaceTableKey {
 	pub namespace: NamespaceId,
@@ -778,7 +778,7 @@ pub mod namespace_table_key_tests {
 	use super::NamespaceTableKey;
 	use crate::{
 		interface::catalog::id::{NamespaceId, TableId},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]
@@ -825,7 +825,7 @@ pub mod namespace_table_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = NamespaceView)]
 pub struct NamespaceViewKey {
 	pub namespace: NamespaceId,
@@ -854,7 +854,7 @@ pub mod namespace_view_key_tests {
 	use super::NamespaceViewKey;
 	use crate::{
 		interface::catalog::id::{NamespaceId, ViewId},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]

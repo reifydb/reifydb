@@ -4,7 +4,7 @@
 use std::borrow::Cow;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::Key;
+use reifydb_macro::EncodableKey;
 use reifydb_value::value::identity::IdentityId;
 
 use super::KeyKind;
@@ -16,13 +16,13 @@ use crate::{
 		token::TokenId,
 	},
 	key::{
+		EncodableKey,
 		any::{ByteEncoding, Field, KeyFields, Width},
 		bound::AnyKeyBoundRange,
-		typed::key::Key,
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Identity)]
 pub struct IdentityKey {
 	pub identity: IdentityId,
@@ -63,12 +63,12 @@ mod byte_identical_identity_key {
 		for byte in [0u8, 1, 2] {
 			let identity = IdentityId::from(Uuid7::from(Uuid::from_bytes([byte; 16])));
 			let key = IdentityKey::new(identity);
-			assert_eq!(legacy_encode(&key).as_slice(), Key::encode(&key).as_slice());
+			assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = IdentityAttribute)]
 pub struct IdentityAttributeKey {
 	pub attribute: IdentityAttributeId,
@@ -106,12 +106,12 @@ mod byte_identical_identity_attribute_key {
 	fn matches_the_flat_key_encoding() {
 		for attribute in [0u64, 1, 42, u64::MAX] {
 			let key = IdentityAttributeKey::new(attribute);
-			assert_eq!(legacy_encode(&key).as_slice(), Key::encode(&key).as_slice());
+			assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = IdentityAttributeValue)]
 pub struct IdentityAttributeValueKey {
 	pub identity: IdentityId,
@@ -165,7 +165,7 @@ mod byte_identical_identity_attribute_value_key {
 			let identity = IdentityId::from(Uuid7::from(Uuid::from_bytes([byte; 16])));
 			for attribute in [0u64, 1, u64::MAX] {
 				let key = IdentityAttributeValueKey::new(identity, attribute);
-				assert_eq!(legacy_encode(&key).as_slice(), Key::encode(&key).as_slice());
+				assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
 			}
 		}
 	}
@@ -206,7 +206,7 @@ mod identity_attribute_value_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Authentication)]
 pub struct AuthenticationKey {
 	pub authentication: AuthenticationId,
@@ -244,12 +244,12 @@ mod byte_identical_authentication_key {
 	fn matches_the_flat_key_encoding() {
 		for authentication in [0u64, 1, 42, u64::MAX] {
 			let key = AuthenticationKey::new(authentication);
-			assert_eq!(legacy_encode(&key).as_slice(), Key::encode(&key).as_slice());
+			assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Token)]
 pub struct TokenKey {
 	pub token: TokenId,
@@ -287,12 +287,12 @@ mod byte_identical_token_key {
 	fn matches_the_flat_key_encoding() {
 		for token in [0u64, 1, 42, u64::MAX] {
 			let key = TokenKey::new(token);
-			assert_eq!(legacy_encode(&key).as_slice(), Key::encode(&key).as_slice());
+			assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Role)]
 pub struct RoleKey {
 	pub role: RoleId,
@@ -330,12 +330,12 @@ mod byte_identical_role_key {
 	fn matches_the_flat_key_encoding() {
 		for role in [0u64, 1, 42, u64::MAX] {
 			let key = RoleKey::new(role);
-			assert_eq!(legacy_encode(&key).as_slice(), Key::encode(&key).as_slice());
+			assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = GrantedRole)]
 pub struct GrantedRoleKey {
 	pub identity: IdentityId,
@@ -386,7 +386,7 @@ mod byte_identical_granted_role_key {
 			let identity = IdentityId::from(Uuid7::from(Uuid::from_bytes([byte; 16])));
 			for role in [0u64, 1, u64::MAX] {
 				let key = GrantedRoleKey::new(identity, role);
-				assert_eq!(legacy_encode(&key).as_slice(), Key::encode(&key).as_slice());
+				assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
 			}
 		}
 	}
@@ -426,7 +426,7 @@ mod granted_role_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Policy)]
 pub struct PolicyKey {
 	pub policy: PolicyId,
@@ -464,12 +464,12 @@ mod byte_identical_policy_key {
 	fn matches_the_flat_key_encoding() {
 		for policy in [0u64, 1, 42, u64::MAX] {
 			let key = PolicyKey::new(policy);
-			assert_eq!(legacy_encode(&key).as_slice(), Key::encode(&key).as_slice());
+			assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = PolicyOp)]
 pub struct PolicyOpKey {
 	pub policy: PolicyId,
@@ -514,7 +514,7 @@ mod byte_identical_policy_op_key {
 		for policy in [0u64, 1, u64::MAX] {
 			for op_index in [0u64, 1, u64::MAX] {
 				let key = PolicyOpKey::new(policy, op_index);
-				assert_eq!(legacy_encode(&key).as_slice(), Key::encode(&key).as_slice());
+				assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
 			}
 		}
 	}

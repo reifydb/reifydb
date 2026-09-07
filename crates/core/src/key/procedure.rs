@@ -8,9 +8,9 @@ use super::KeyKind;
 use crate::{
 	interface::catalog::id::ProcedureId,
 	key::{
+		EncodableKey,
 		any::{Field, KeyFields, Width},
 		bound::AnyKeyBoundRange,
-		typed::key::Key,
 	},
 };
 
@@ -19,7 +19,7 @@ pub struct ProcedureKey {
 	pub procedure: ProcedureId,
 }
 
-impl Key for ProcedureKey {
+impl EncodableKey for ProcedureKey {
 	const KIND: KeyKind = KeyKind::Procedure;
 
 	fn encode(&self) -> EncodedKey {
@@ -62,7 +62,7 @@ impl ProcedureKey {
 
 #[cfg(test)]
 pub mod procedure_key_tests {
-	use super::{Key, ProcedureKey};
+	use super::{EncodableKey, ProcedureKey};
 	use crate::interface::catalog::id::ProcedureId;
 
 	#[test]
@@ -82,7 +82,7 @@ pub struct ProcedureParamKey {
 	pub param_index: u16,
 }
 
-impl Key for ProcedureParamKey {
+impl EncodableKey for ProcedureParamKey {
 	const KIND: KeyKind = KeyKind::ProcedureParam;
 
 	fn encode(&self) -> EncodedKey {
@@ -128,7 +128,7 @@ impl ProcedureParamKey {
 
 #[cfg(test)]
 pub mod procedure_param_key_tests {
-	use super::{Key, ProcedureParamKey};
+	use super::{EncodableKey, ProcedureParamKey};
 	use crate::interface::catalog::id::ProcedureId;
 
 	#[test]

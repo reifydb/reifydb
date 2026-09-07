@@ -19,12 +19,13 @@ use reifydb_core::{
 		store::{EntryKind, EntryLayout},
 	},
 	key::{
+		EncodableKey,
 		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey, StorageRowKey},
 		series::{
 			PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
 			StoragePartitionedSeriesKey, StorageSeriesKey,
 		},
-		typed::{BoundedKey, DenseKey, Edge, key::Key, range::KeyRange},
+		typed::{BoundedKey, DenseKey, Edge, range::KeyRange},
 	},
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
@@ -79,7 +80,7 @@ const BUCKETS: u64 = 1 << (u64::BITS - ROW_BUCKET_SHIFT);
 pub struct MultiDomain;
 
 pub trait NarrowLayout: DenseKey + Copy {
-	type Wide: Key;
+	type Wide: EncodableKey;
 
 	fn kind(storage: StorageId) -> EntryKind;
 
@@ -668,9 +669,10 @@ mod tests {
 			store::EntryLayout,
 		},
 		key::{
+			EncodableKey,
 			row::{RowKey, StorageRowKey},
 			series::SeriesRowKey,
-			typed::{key::Key, range::KeyRange},
+			typed::range::KeyRange,
 		},
 	};
 	use reifydb_store::coverage::plan::DEFAULT_GAP_GUARD;

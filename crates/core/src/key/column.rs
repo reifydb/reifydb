@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::Key;
+use reifydb_macro::EncodableKey;
 
 use super::KeyKind;
 use crate::{
@@ -11,14 +11,14 @@ use crate::{
 		object::ObjectId,
 	},
 	key::{
+		EncodableKey,
 		any::{Field, KeyFields, Width},
 		bound::{AnyKeyBoundRange, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
-		typed::key::Key,
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Column)]
 pub struct ColumnKey {
 	pub object: ObjectId,
@@ -34,7 +34,7 @@ impl ColumnKey {
 	}
 
 	pub fn encoded(object: impl Into<ObjectId>, column: impl Into<ColumnId>) -> EncodedKey {
-		Key::encode(&Self::new(object, column))
+		EncodableKey::encode(&Self::new(object, column))
 	}
 
 	pub fn full_scan(object: impl Into<ObjectId>) -> AnyKeyBoundRange {
@@ -46,7 +46,7 @@ impl ColumnKey {
 pub mod column_key_tests {
 	use crate::{
 		interface::catalog::{id::ColumnId, object::ObjectId},
-		key::{column::ColumnKey, typed::key::Key},
+		key::{EncodableKey, column::ColumnKey},
 	};
 
 	#[test]
@@ -93,7 +93,7 @@ pub mod column_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Key, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EncodableKey, Hash)]
 #[key(kind = ColumnSequence)]
 pub struct ColumnSequenceKey {
 	pub object: ObjectId,
@@ -109,7 +109,7 @@ impl ColumnSequenceKey {
 	}
 
 	pub fn encoded(object: impl Into<ObjectId>, column: impl Into<ColumnId>) -> EncodedKey {
-		Key::encode(&Self::new(object, column))
+		EncodableKey::encode(&Self::new(object, column))
 	}
 }
 
@@ -120,7 +120,7 @@ pub mod column_sequence_key_tests {
 	use super::ColumnSequenceKey;
 	use crate::{
 		interface::catalog::{id::ColumnId, object::ObjectId},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]
@@ -166,7 +166,7 @@ pub mod column_sequence_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = ColumnSnapshot)]
 pub struct ColumnSnapshotKey {
 	pub snapshot: ColumnSnapshotId,
@@ -180,7 +180,7 @@ impl ColumnSnapshotKey {
 	}
 
 	pub fn encoded(snapshot: impl Into<ColumnSnapshotId>) -> EncodedKey {
-		Key::encode(&Self::new(snapshot.into()))
+		EncodableKey::encode(&Self::new(snapshot.into()))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -188,7 +188,7 @@ impl ColumnSnapshotKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = SeriesColumnSnapshot)]
 pub struct SeriesColumnSnapshotKey {
 	pub series: SeriesId,
@@ -204,7 +204,7 @@ impl SeriesColumnSnapshotKey {
 	}
 
 	pub fn encoded(series: impl Into<SeriesId>, snapshot: impl Into<ColumnSnapshotId>) -> EncodedKey {
-		Key::encode(&Self::new(series.into(), snapshot.into()))
+		EncodableKey::encode(&Self::new(series.into(), snapshot.into()))
 	}
 
 	pub fn full_scan(series: SeriesId) -> AnyKeyBoundRange {
@@ -212,7 +212,7 @@ impl SeriesColumnSnapshotKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = TableColumnSnapshot)]
 pub struct TableColumnSnapshotKey {
 	pub table: TableId,
@@ -228,7 +228,7 @@ impl TableColumnSnapshotKey {
 	}
 
 	pub fn encoded(table: impl Into<TableId>, snapshot: impl Into<ColumnSnapshotId>) -> EncodedKey {
-		Key::encode(&Self::new(table.into(), snapshot.into()))
+		EncodableKey::encode(&Self::new(table.into(), snapshot.into()))
 	}
 
 	pub fn full_scan(table: TableId) -> AnyKeyBoundRange {
@@ -302,7 +302,7 @@ pub mod column_snapshot_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Columns)]
 pub struct ColumnsKey {
 	pub column: ColumnId,
@@ -316,7 +316,7 @@ impl ColumnsKey {
 	}
 
 	pub fn encoded(column: impl Into<ColumnId>) -> EncodedKey {
-		Key::encode(&Self::new(column))
+		EncodableKey::encode(&Self::new(column))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -327,7 +327,7 @@ impl ColumnsKey {
 #[cfg(test)]
 pub mod columns_key_tests {
 	use super::ColumnsKey;
-	use crate::{interface::catalog::id::ColumnId, key::typed::key::Key};
+	use crate::{interface::catalog::id::ColumnId, key::EncodableKey};
 
 	#[test]
 	fn test_encode_decode() {

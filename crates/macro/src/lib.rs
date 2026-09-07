@@ -27,12 +27,12 @@ pub fn derive_heap_size(input: TokenStream) -> TokenStream {
 	derive_heap_size_impl(input.into()).into()
 }
 
-#[proc_macro_derive(TypedKey)]
+#[proc_macro_derive(KeyLayout)]
 pub fn derive_typed_key(input: TokenStream) -> TokenStream {
 	derive_typed_key_impl(input.into()).into()
 }
 
-#[proc_macro_derive(Key, attributes(key))]
+#[proc_macro_derive(EncodableKey, attributes(key))]
 pub fn derive_key(input: TokenStream) -> TokenStream {
 	derive_key_impl(input.into()).into()
 }

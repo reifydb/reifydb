@@ -4,7 +4,7 @@
 use std::{collections::HashMap, hash::Hash, mem};
 
 use reifydb_core::{
-	key::typed::{DenseKey, Edge, TypedKey},
+	key::typed::{DenseKey, Edge, Key},
 	metrics::heap::HeapSize,
 };
 
@@ -34,7 +34,7 @@ impl<D: Hash + Eq + Copy, K: DenseKey> CoverageIndex<D, K> {
 	}
 }
 
-impl<D: Hash + Eq + Copy, K: TypedKey> CoverageIndex<D, K> {
+impl<D: Hash + Eq + Copy, K: Key> CoverageIndex<D, K> {
 	pub fn shrink_range(&mut self, dimension: D, start: &Edge<K>, end: &Edge<K>) {
 		self.shrink(dimension, |set| set.shrink_range(start, end));
 	}

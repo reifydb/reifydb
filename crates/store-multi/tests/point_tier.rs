@@ -14,7 +14,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, MultiVersionGet, classify_key},
 	},
-	key::{any::AnyKey, row::RowKey, typed::key::Key},
+	key::{EncodableKey, any::AnyKey, row::RowKey},
 };
 use reifydb_store_multi::{
 	store::StandardMultiStore,

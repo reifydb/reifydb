@@ -285,7 +285,7 @@ pub fn derive_key(input: TokenStream) -> TokenStream {
 
 	let kind = match kind {
 		Some(kind) => kind,
-		None => return compile_error("Key requires #[key(kind = Variant)] naming its KeyKind"),
+		None => return compile_error("EncodableKey requires #[key(kind = Variant)] naming its KeyKind"),
 	};
 
 	if let Some(TokenTree::Ident(i)) = iter.peek()
@@ -301,7 +301,7 @@ pub fn derive_key(input: TokenStream) -> TokenStream {
 
 	match iter.next() {
 		Some(TokenTree::Ident(i)) if *i == "struct" => {}
-		_ => return compile_error("Key can only be derived for structs"),
+		_ => return compile_error("EncodableKey can only be derived for structs"),
 	}
 
 	let name = match iter.next() {
@@ -312,10 +312,12 @@ pub fn derive_key(input: TokenStream) -> TokenStream {
 	let body = match iter.next() {
 		Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace => g.clone(),
 		Some(TokenTree::Punct(p)) if p.as_char() == '<' => {
-			return compile_error("Key cannot be derived for a generic struct");
+			return compile_error("EncodableKey cannot be derived for a generic struct");
 		}
 		Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis => {
-			return compile_error("Key requires named fields, so a tuple struct has no field order");
+			return compile_error(
+				"EncodableKey requires named fields, so a tuple struct has no field order",
+			);
 		}
 		_ => return compile_error("expected struct body"),
 	};
@@ -585,13 +587,13 @@ fn expand(name: &str, kind: &str, fields: &[KeyField]) -> TokenStream {
 	}
 
 	let mut out = String::new();
-	out.push_str(&format!("#[automatically_derived]\nimpl Key for {name} {{\n"));
+	out.push_str(&format!("#[automatically_derived]\nimpl EncodableKey for {name} {{\n"));
 	out.push_str(&format!("\tconst KIND: KeyKind = KeyKind::{kind};\n\n"));
 	out.push_str("\tfn encode(&self) -> EncodedKey {\n");
 	out.push_str(&format!(
 		"\t\tlet mut serializer = ::reifydb_codec::key::serializer::KeySerializer::with_capacity({capacity});\n"
 	));
-	out.push_str("\t\tserializer.extend_u8(<Self as Key>::KIND as u8);\n");
+	out.push_str("\t\tserializer.extend_u8(<Self as EncodableKey>::KIND as u8);\n");
 	out.push_str(&encode_body);
 	out.push_str("\t\tserializer.to_encoded_key()\n\t}\n\n");
 	out.push_str("\tfn decode(key: &EncodedKey) -> Option<Self> {\n");
@@ -599,7 +601,7 @@ fn expand(name: &str, kind: &str, fields: &[KeyField]) -> TokenStream {
 		"\t\tlet mut de = ::reifydb_codec::key::deserializer::KeyDeserializer::from_bytes(key.as_slice());\n",
 	);
 	out.push_str("\t\tlet found: KeyKind = de.read_u8().ok()?.try_into().ok()?;\n");
-	out.push_str("\t\tif found != <Self as Key>::KIND {\n\t\t\treturn None;\n\t\t}\n");
+	out.push_str("\t\tif found != <Self as EncodableKey>::KIND {\n\t\t\treturn None;\n\t\t}\n");
 	out.push_str(&format!("\t\tlet decoded = Self {{\n{decode_body}\t\t}};\n"));
 	out.push_str("\t\tif !de.is_empty() {\n\t\t\treturn None;\n\t\t}\n");
 	out.push_str("\t\tSome(decoded)\n\t}\n}\n\n");
@@ -615,7 +617,7 @@ fn expand(name: &str, kind: &str, fields: &[KeyField]) -> TokenStream {
 	out.push_str("\t\t]\n\t}\n}\n\n");
 	out.push_str(&expand_tests(name, fields));
 
-	out.parse().expect("derived Key impl must be valid Rust")
+	out.parse().expect("derived EncodableKey impl must be valid Rust")
 }
 
 #[cfg(test)]
@@ -637,7 +639,7 @@ mod tests {
 	fn a_well_formed_struct_expands_without_an_error() {
 		let out = expand("#[key(kind = Row)] struct RowKey { table: u64, row: RowNumber }");
 		assert!(!out.contains("compile_error"), "{out}");
-		assert!(out.contains("impl Key for RowKey"), "{out}");
+		assert!(out.contains("impl EncodableKey for RowKey"), "{out}");
 		assert!(out.contains("KeyKind :: Row"), "{out}");
 	}
 

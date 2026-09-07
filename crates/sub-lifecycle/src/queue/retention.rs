@@ -23,11 +23,11 @@ use reifydb_core::{
 		store::SingleVersionRange,
 	},
 	key::{
+		EncodableKey,
 		any::AnyKey,
 		bound::AnyKeyBoundRange,
 		queue::{QueueAttemptKey, QueueDeduplicationKey, QueueItemStateKey},
 		row::RowKey,
-		typed::key::Key,
 	},
 	lifecycle::{
 		class::{Floor, FloorTerm, RetentionClass},

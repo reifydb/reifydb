@@ -245,11 +245,11 @@ mod tests {
 	use crate::{
 		interface::catalog::{id::TableId, object::ObjectId, storage::StorageId},
 		key::{
+			EncodableKey,
 			any::{AnyKey, Field, Width},
 			catalog::{DictionaryKey, KeySerializerCatalogExt, TableKey},
 			kind::KeyKind,
 			row::RowKey,
-			typed::key::Key,
 		},
 	};
 
@@ -261,7 +261,7 @@ mod tests {
 					storage: StorageId::table(storage),
 					row: RowNumber(row),
 				};
-				let encoded = Key::encode(&key);
+				let encoded = EncodableKey::encode(&key);
 				out.push((AnyKey::from(key), encoded));
 			}
 		}
@@ -269,7 +269,7 @@ mod tests {
 			let key = TableKey {
 				table: TableId(table),
 			};
-			let encoded = Key::encode(&key);
+			let encoded = EncodableKey::encode(&key);
 			out.push((AnyKey::from(key), encoded));
 		}
 		out
@@ -356,9 +356,9 @@ mod tests {
 		// built through the codec rather than through DictionaryKey::full_scan, which now
 		// returns this very bound and would make the assertion compare a value with itself.
 		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(<DictionaryKey as Key>::KIND as u8);
+		start.extend_u8(<DictionaryKey as EncodableKey>::KIND as u8);
 		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(<DictionaryKey as Key>::KIND as u8 - 1);
+		end.extend_u8(<DictionaryKey as EncodableKey>::KIND as u8 - 1);
 
 		assert_eq!(AnyKeyBound::Kind(KeyKind::Dictionary).encode(), start.to_encoded_key());
 		assert_eq!(AnyKeyBound::KindEnd(KeyKind::Dictionary).encode(), end.to_encoded_key());
@@ -512,9 +512,9 @@ mod tests {
 	#[test]
 	fn a_kind_range_brackets_the_whole_kind_inclusively() {
 		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(<DictionaryKey as Key>::KIND as u8);
+		start.extend_u8(<DictionaryKey as EncodableKey>::KIND as u8);
 		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(<DictionaryKey as Key>::KIND as u8 - 1);
+		end.extend_u8(<DictionaryKey as EncodableKey>::KIND as u8 - 1);
 
 		let encoded = AnyKeyBoundRange::kind(KeyKind::Dictionary).encode();
 		assert_eq!(encoded.start, Bound::Included(start.to_encoded_key()));

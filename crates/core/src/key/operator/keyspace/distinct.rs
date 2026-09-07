@@ -8,7 +8,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			BoundedKey, DenseKey, TypedKey,
+			BoundedKey, DenseKey, KeyLayout,
 			direction::{Desc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues},
 		},
@@ -16,12 +16,12 @@ use crate::{
 	metrics::heap::HeapSize,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct DistinctEntryKey {
 	pub group: Desc<GroupId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct DistinctLayoutKey {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -8,8 +8,8 @@ use reifydb_core::{
 		store::Tier,
 	},
 	key::{
+		EncodableKey,
 		metric::{MetricCdcKey, MetricStorageKey},
-		typed::key::Key,
 	},
 };
 use reifydb_value::{byte_size::ByteSize, count::Count};

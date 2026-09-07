@@ -25,7 +25,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, classify_key},
 	},
-	key::{row::RowKey, typed::key::Key},
+	key::{EncodableKey, row::RowKey},
 	testing::ProfileConfig,
 };
 use reifydb_runtime::{
@@ -245,7 +245,7 @@ fn verify_key_classification() {
 	assert_ne!(
 		shared,
 		EntryKind::Multi,
-		"benchmark keys must decode as Key::Row, otherwise every thread contends on EntryKind::Multi"
+		"benchmark keys must decode as EncodableKey::Row, otherwise every thread contends on EntryKind::Multi"
 	);
 
 	let a = classify_key(&encoded_key(TableLayout::TablePerThread, 0, 0).encode());

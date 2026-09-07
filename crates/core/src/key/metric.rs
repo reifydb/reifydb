@@ -8,9 +8,9 @@ use super::KeyKind;
 use crate::{
 	interface::{catalog::metrics::MetricsId, store::Tier},
 	key::{
+		EncodableKey,
 		any::{Field, KeyFields, Width},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
-		typed::key::Key,
 	},
 };
 
@@ -46,7 +46,7 @@ impl MetricStorageKey {
 	}
 }
 
-impl Key for MetricStorageKey {
+impl EncodableKey for MetricStorageKey {
 	const KIND: KeyKind = KeyKind::Metric;
 
 	fn encode(&self) -> EncodedKey {
@@ -91,7 +91,7 @@ impl MetricCdcKey {
 	}
 }
 
-impl Key for MetricCdcKey {
+impl EncodableKey for MetricCdcKey {
 	const KIND: KeyKind = KeyKind::Metric;
 
 	fn encode(&self) -> EncodedKey {

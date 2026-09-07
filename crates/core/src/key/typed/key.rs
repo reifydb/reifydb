@@ -1,48 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::EncodedKey;
-
-use crate::key::kind::KeyKind;
-
-pub trait Key: Sized {
-	const KIND: KeyKind;
-
-	fn encode(&self) -> EncodedKey;
-
-	fn decode(key: &EncodedKey) -> Option<Self>;
-}
-
 #[cfg(test)]
 mod tests {
 	use std::iter::once;
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_macro::Key;
+	use reifydb_macro::EncodableKey;
 	use reifydb_value::value::row_number::RowNumber;
 
-	use super::Key;
 	use crate::key::{
+		EncodableKey,
 		any::{ByteEncoding, Field, KeyFields, RawEncoding, Width},
 		kind::KeyKind,
 		operator::state::GroupId,
 	};
 
-	#[derive(Debug, Clone, PartialEq, Key)]
+	#[derive(Debug, Clone, PartialEq, EncodableKey)]
 	#[key(kind = Row)]
 	struct ProbeRowKey {
 		table: u64,
 		row: RowNumber,
 	}
 
-	#[derive(Debug, Clone, PartialEq, Key)]
+	#[derive(Debug, Clone, PartialEq, EncodableKey)]
 	#[key(kind = Index)]
 	struct ProbeGroupKey {
 		group: GroupId,
 		slot: [u8; 16],
 	}
 
-	#[derive(Debug, Clone, PartialEq, Key)]
+	#[derive(Debug, Clone, PartialEq, EncodableKey)]
 	#[key(kind = Table)]
 	struct ProbeNarrowKey {
 		tag: u8,

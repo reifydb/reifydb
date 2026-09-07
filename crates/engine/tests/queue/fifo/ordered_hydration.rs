@@ -13,9 +13,9 @@ use reifydb_core::{
 		store::{SingleVersionGet, SingleVersionRange, SingleVersionRow},
 	},
 	key::{
+		EncodableKey,
 		any::AnyKey,
 		queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
-		typed::key::Key,
 	},
 };
 use reifydb_engine::queue::hydrate::hydrate_queues;

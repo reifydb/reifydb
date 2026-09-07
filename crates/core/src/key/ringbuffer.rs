@@ -4,7 +4,7 @@
 use std::borrow::Cow;
 
 use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
-use reifydb_macro::Key;
+use reifydb_macro::EncodableKey;
 use reifydb_value::value::Value;
 use smallvec::{SmallVec, smallvec};
 
@@ -15,11 +15,10 @@ use crate::{
 		any::{Field, KeyFields, RawEncoding, Width, encode_values},
 		bound::{AnyKeyBoundRange, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
-		typed::key::Key,
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = RingBuffer)]
 pub struct RingBufferKey {
 	pub ringbuffer: RingBufferId,
@@ -33,7 +32,7 @@ impl RingBufferKey {
 	}
 
 	pub fn encoded(ringbuffer: impl Into<RingBufferId>) -> EncodedKey {
-		Key::encode(&Self::new(ringbuffer.into()))
+		EncodableKey::encode(&Self::new(ringbuffer.into()))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {

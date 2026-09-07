@@ -8,9 +8,9 @@ use reifydb::{
 			store::{SingleVersionGet, SingleVersionRange},
 		},
 		key::{
+			EncodableKey,
 			any::AnyKey,
 			queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
-			typed::key::Key,
 		},
 	},
 	testing::db::{TempDbPath, TestDb},

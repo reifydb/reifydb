@@ -10,14 +10,14 @@ use reifydb_codec::key::{
 	encoded::{EncodedKey, EncodedKeyBuilder, EncodedKeyRange},
 	serializer::KeySerializer,
 };
-use reifydb_macro::Key;
+use reifydb_macro::EncodableKey;
 use reifydb_value::{
 	Result,
 	value::{dictionary::DictionaryId, sumtype::SumTypeId},
 };
 use smallvec::{SmallVec, smallvec};
 
-use super::{EncodableKey, EncodableKeyRange, KeyKind, typed::key::Key};
+use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
 	interface::catalog::{
 		id::{
@@ -405,7 +405,7 @@ mod moved_catalog_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Dictionary)]
 pub struct DictionaryKey {
 	pub dictionary: DictionaryId,
@@ -419,7 +419,7 @@ impl DictionaryKey {
 	}
 
 	pub fn encoded(dictionary: impl Into<DictionaryId>) -> EncodedKey {
-		Key::encode(&Self::new(dictionary.into()))
+		EncodableKey::encode(&Self::new(dictionary.into()))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -427,7 +427,7 @@ impl DictionaryKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = DictionaryEntry)]
 pub struct DictionaryEntryKey {
 	pub dictionary: DictionaryId,
@@ -443,7 +443,7 @@ impl DictionaryEntryKey {
 	}
 
 	pub fn encoded(dictionary: impl Into<DictionaryId>, hash: [u8; 16]) -> EncodedKey {
-		Key::encode(&Self::new(dictionary.into(), hash))
+		EncodableKey::encode(&Self::new(dictionary.into(), hash))
 	}
 
 	pub fn full_scan(dictionary: DictionaryId) -> AnyKeyBoundRange {
@@ -566,8 +566,8 @@ pub mod dictionary_key_tests {
 		let key = DictionaryKey {
 			dictionary: DictionaryId(0x1234),
 		};
-		let encoded = Key::encode(&key);
-		let decoded = <DictionaryKey as Key>::decode(&encoded).unwrap();
+		let encoded = EncodableKey::encode(&key);
+		let decoded = <DictionaryKey as EncodableKey>::decode(&encoded).unwrap();
 		assert_eq!(decoded.dictionary, key.dictionary);
 	}
 
@@ -580,8 +580,8 @@ pub mod dictionary_key_tests {
 				0x0f, 0x10,
 			],
 		};
-		let encoded = Key::encode(&key);
-		let decoded = <DictionaryEntryKey as Key>::decode(&encoded).unwrap();
+		let encoded = EncodableKey::encode(&key);
+		let decoded = <DictionaryEntryKey as EncodableKey>::decode(&encoded).unwrap();
 		assert_eq!(decoded.dictionary, key.dictionary);
 		assert_eq!(decoded.hash, key.hash);
 	}
@@ -594,9 +594,9 @@ pub mod dictionary_key_tests {
 			dictionary: DictionaryId(42),
 			hash: [0xff; 16],
 		};
-		let encoded = Key::encode(&key);
+		let encoded = EncodableKey::encode(&key);
 		assert_eq!(encoded.len(), 1 + 8 + 16);
-		assert_eq!(<DictionaryEntryKey as Key>::decode(&encoded).unwrap(), key);
+		assert_eq!(<DictionaryEntryKey as EncodableKey>::decode(&encoded).unwrap(), key);
 	}
 
 	#[test]
@@ -642,7 +642,7 @@ pub mod dictionary_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Index)]
 pub struct IndexKey {
 	pub object: ObjectId,
@@ -713,7 +713,7 @@ impl IndexKey {
 	}
 
 	pub fn encoded(object: impl Into<ObjectId>, index: impl Into<IndexId>) -> EncodedKey {
-		Key::encode(&Self {
+		EncodableKey::encode(&Self {
 			object: object.into(),
 			index: index.into(),
 		})
@@ -729,7 +729,7 @@ pub mod index_key_tests {
 	use super::IndexKey;
 	use crate::{
 		interface::catalog::{id::IndexId, object::ObjectId},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]
@@ -1114,7 +1114,7 @@ impl SumTypeKey {
 	}
 
 	pub fn encoded(sumtype: impl Into<SumTypeId>) -> EncodedKey {
-		Key::encode(&Self::new(sumtype.into()))
+		EncodableKey::encode(&Self::new(sumtype.into()))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -1122,12 +1122,12 @@ impl SumTypeKey {
 	}
 }
 
-impl Key for SumTypeKey {
+impl EncodableKey for SumTypeKey {
 	const KIND: KeyKind = KeyKind::SumType;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<SumTypeKey as Key>::KIND as u8).extend_u64(self.sumtype);
+		serializer.extend_u8(<SumTypeKey as EncodableKey>::KIND as u8).extend_u64(self.sumtype);
 		serializer.to_encoded_key()
 	}
 
@@ -1135,7 +1135,7 @@ impl Key for SumTypeKey {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <SumTypeKey as Key>::KIND {
+		if kind != <SumTypeKey as EncodableKey>::KIND {
 			return None;
 		}
 
@@ -1151,7 +1151,7 @@ impl Key for SumTypeKey {
 mod sum_type_key_tests {
 	use reifydb_value::value::sumtype::SumTypeId;
 
-	use super::{Key, SumTypeKey};
+	use super::{EncodableKey, SumTypeKey};
 
 	#[test]
 	fn test_encode_decode() {
@@ -1169,12 +1169,12 @@ pub struct ViewKey {
 	pub view: ViewId,
 }
 
-impl Key for ViewKey {
+impl EncodableKey for ViewKey {
 	const KIND: KeyKind = KeyKind::View;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<ViewKey as Key>::KIND as u8).extend_u64(self.view);
+		serializer.extend_u8(<ViewKey as EncodableKey>::KIND as u8).extend_u64(self.view);
 		serializer.to_encoded_key()
 	}
 
@@ -1182,7 +1182,7 @@ impl Key for ViewKey {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <ViewKey as Key>::KIND {
+		if kind != <ViewKey as EncodableKey>::KIND {
 			return None;
 		}
 
@@ -1202,7 +1202,7 @@ impl ViewKey {
 	}
 
 	pub fn encoded(view: impl Into<ViewId>) -> EncodedKey {
-		Key::encode(&Self::new(view))
+		EncodableKey::encode(&Self::new(view))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -1212,7 +1212,7 @@ impl ViewKey {
 
 #[cfg(test)]
 pub mod view_key_tests {
-	use super::{Key, ViewKey};
+	use super::{EncodableKey, ViewKey};
 	use crate::interface::catalog::id::ViewId;
 
 	#[test]
@@ -1229,7 +1229,7 @@ pub mod view_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Table)]
 pub struct TableKey {
 	pub table: TableId,
@@ -1243,7 +1243,7 @@ impl TableKey {
 	}
 
 	pub fn encoded(table: impl Into<TableId>) -> EncodedKey {
-		Key::encode(&Self::new(table))
+		EncodableKey::encode(&Self::new(table))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -1254,7 +1254,7 @@ impl TableKey {
 #[cfg(test)]
 pub mod table_key_tests {
 	use super::TableKey;
-	use crate::{interface::catalog::id::TableId, key::typed::key::Key};
+	use crate::{interface::catalog::id::TableId, key::EncodableKey};
 
 	#[test]
 	fn test_encode_decode() {
@@ -1290,12 +1290,12 @@ pub struct SourceKey {
 	pub source: SourceId,
 }
 
-impl Key for SourceKey {
+impl EncodableKey for SourceKey {
 	const KIND: KeyKind = KeyKind::Source;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<SourceKey as Key>::KIND as u8).extend_u64(self.source);
+		serializer.extend_u8(<SourceKey as EncodableKey>::KIND as u8).extend_u64(self.source);
 		serializer.to_encoded_key()
 	}
 
@@ -1303,7 +1303,7 @@ impl Key for SourceKey {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <SourceKey as Key>::KIND {
+		if kind != <SourceKey as EncodableKey>::KIND {
 			return None;
 		}
 
@@ -1323,7 +1323,7 @@ impl SourceKey {
 	}
 
 	pub fn encoded(source: impl Into<SourceId>) -> EncodedKey {
-		Key::encode(&Self::new(source))
+		EncodableKey::encode(&Self::new(source))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -1333,7 +1333,7 @@ impl SourceKey {
 
 #[cfg(test)]
 pub mod source_key_tests {
-	use super::{Key, SourceKey};
+	use super::{EncodableKey, SourceKey};
 	use crate::interface::catalog::id::SourceId;
 
 	#[test]
@@ -1353,12 +1353,12 @@ pub struct SinkKey {
 	pub sink: SinkId,
 }
 
-impl Key for SinkKey {
+impl EncodableKey for SinkKey {
 	const KIND: KeyKind = KeyKind::Sink;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<SinkKey as Key>::KIND as u8).extend_u64(self.sink);
+		serializer.extend_u8(<SinkKey as EncodableKey>::KIND as u8).extend_u64(self.sink);
 		serializer.to_encoded_key()
 	}
 
@@ -1366,7 +1366,7 @@ impl Key for SinkKey {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <SinkKey as Key>::KIND {
+		if kind != <SinkKey as EncodableKey>::KIND {
 			return None;
 		}
 
@@ -1386,7 +1386,7 @@ impl SinkKey {
 	}
 
 	pub fn encoded(sink: impl Into<SinkId>) -> EncodedKey {
-		Key::encode(&Self::new(sink))
+		EncodableKey::encode(&Self::new(sink))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -1396,7 +1396,7 @@ impl SinkKey {
 
 #[cfg(test)]
 pub mod sink_key_tests {
-	use super::{Key, SinkKey};
+	use super::{EncodableKey, SinkKey};
 	use crate::interface::catalog::id::SinkId;
 
 	#[test]
@@ -1411,7 +1411,7 @@ pub mod sink_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Relationship)]
 pub struct RelationshipKey {
 	pub relationship: RelationshipId,
@@ -1425,7 +1425,7 @@ impl RelationshipKey {
 	}
 
 	pub fn encoded(relationship: impl Into<RelationshipId>) -> EncodedKey {
-		Key::encode(&Self::new(relationship))
+		EncodableKey::encode(&Self::new(relationship))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -1435,7 +1435,7 @@ impl RelationshipKey {
 
 #[cfg(test)]
 mod relationship_key_tests {
-	use super::{Key, RelationshipKey};
+	use super::{EncodableKey, RelationshipKey};
 	use crate::interface::catalog::id::RelationshipId;
 
 	#[test]
@@ -1449,7 +1449,7 @@ mod relationship_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = ColumnProperty)]
 pub struct ColumnPropertyKey {
 	pub column: ColumnId,
@@ -1465,7 +1465,7 @@ impl ColumnPropertyKey {
 	}
 
 	pub fn encoded(column: impl Into<ColumnId>, property: impl Into<ColumnPropertyId>) -> EncodedKey {
-		Key::encode(&Self::new(column, property))
+		EncodableKey::encode(&Self::new(column, property))
 	}
 
 	pub fn full_scan(column: ColumnId) -> AnyKeyBoundRange {
@@ -1478,7 +1478,7 @@ pub mod column_property_key_tests {
 	use super::ColumnPropertyKey;
 	use crate::{
 		interface::catalog::id::{ColumnId, ColumnPropertyId},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]
@@ -1525,7 +1525,7 @@ pub mod column_property_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Handler)]
 pub struct HandlerKey {
 	pub handler: HandlerId,
@@ -1539,7 +1539,7 @@ impl HandlerKey {
 	}
 
 	pub fn encoded(handler: impl Into<HandlerId>) -> EncodedKey {
-		Key::encode(&Self::new(handler.into()))
+		EncodableKey::encode(&Self::new(handler.into()))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -1549,7 +1549,7 @@ impl HandlerKey {
 
 #[cfg(test)]
 pub mod handler_key_tests {
-	use super::{HandlerKey, Key};
+	use super::{EncodableKey, HandlerKey};
 	use crate::interface::catalog::id::HandlerId;
 
 	#[test]
@@ -1585,7 +1585,7 @@ pub mod handler_key_tests {
 mod verify_byte_identical_handler_key {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::{HandlerKey, Key};
+	use super::{EncodableKey, HandlerKey};
 	use crate::interface::catalog::id::HandlerId;
 
 	fn legacy_encode(key: &HandlerKey) -> Vec<u8> {
@@ -1605,7 +1605,7 @@ mod verify_byte_identical_handler_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = VariantHandler)]
 pub struct VariantHandlerKey {
 	pub namespace: NamespaceId,
@@ -1630,7 +1630,7 @@ impl VariantHandlerKey {
 		variant_tag: u8,
 		handler: impl Into<HandlerId>,
 	) -> EncodedKey {
-		Key::encode(&Self::new(namespace.into(), sumtype.into(), variant_tag, handler.into()))
+		EncodableKey::encode(&Self::new(namespace.into(), sumtype.into(), variant_tag, handler.into()))
 	}
 
 	pub fn variant_scan(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> AnyKeyBoundRange {
@@ -1651,7 +1651,7 @@ pub mod variant_handler_key_tests {
 
 	use reifydb_value::value::sumtype::SumTypeId;
 
-	use super::{Key, VariantHandlerKey};
+	use super::{EncodableKey, VariantHandlerKey};
 	use crate::interface::catalog::id::{HandlerId, NamespaceId};
 
 	#[test]
@@ -1755,7 +1755,7 @@ mod verify_byte_identical_variant_handler_key {
 	use reifydb_codec::key::serializer::KeySerializer;
 	use reifydb_value::value::sumtype::SumTypeId;
 
-	use super::{Key, VariantHandlerKey};
+	use super::{EncodableKey, VariantHandlerKey};
 	use crate::interface::catalog::id::{HandlerId, NamespaceId};
 
 	fn legacy_encode(key: &VariantHandlerKey) -> Vec<u8> {
@@ -1797,12 +1797,12 @@ pub struct BindingKey {
 	pub binding: BindingId,
 }
 
-impl Key for BindingKey {
+impl EncodableKey for BindingKey {
 	const KIND: KeyKind = KeyKind::Binding;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<BindingKey as Key>::KIND as u8).extend_u64(self.binding);
+		serializer.extend_u8(<BindingKey as EncodableKey>::KIND as u8).extend_u64(self.binding);
 		serializer.to_encoded_key()
 	}
 
@@ -1810,7 +1810,7 @@ impl Key for BindingKey {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <BindingKey as Key>::KIND {
+		if kind != <BindingKey as EncodableKey>::KIND {
 			return None;
 		}
 
@@ -1830,7 +1830,7 @@ impl BindingKey {
 	}
 
 	pub fn encoded(binding: impl Into<BindingId>) -> EncodedKey {
-		Key::encode(&Self::new(binding))
+		EncodableKey::encode(&Self::new(binding))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -1840,7 +1840,7 @@ impl BindingKey {
 
 #[cfg(test)]
 pub mod binding_key_tests {
-	use super::{BindingKey, Key};
+	use super::{BindingKey, EncodableKey};
 	use crate::interface::catalog::id::BindingId;
 
 	#[test]
@@ -1854,7 +1854,7 @@ pub mod binding_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = PrimaryKey)]
 pub struct PrimaryKeyKey {
 	pub primary_key: PrimaryKeyId,
@@ -1868,7 +1868,7 @@ impl PrimaryKeyKey {
 	}
 
 	pub fn encoded(primary_key: impl Into<PrimaryKeyId>) -> EncodedKey {
-		Key::encode(&Self::new(primary_key))
+		EncodableKey::encode(&Self::new(primary_key))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -1878,7 +1878,7 @@ impl PrimaryKeyKey {
 
 #[cfg(test)]
 mod primary_key_key_tests {
-	use super::{Key, PrimaryKeyKey};
+	use super::{EncodableKey, PrimaryKeyKey};
 	use crate::interface::catalog::id::PrimaryKeyId;
 
 	#[test]

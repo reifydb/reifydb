@@ -4,7 +4,7 @@
 use std::{cmp::Ordering, fmt::Debug, hash::Hash, ops::Bound};
 
 use reifydb_codec::key::encoded::EncodedKey;
-pub use reifydb_macro::{Key, TypedKey};
+pub use reifydb_macro::{EncodableKey, KeyLayout};
 
 use crate::metrics::heap::HeapSize;
 
@@ -13,15 +13,15 @@ pub mod key;
 pub mod layout;
 pub mod range;
 
-pub trait TypedKey: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {}
+pub trait Key: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {}
 
-impl<T> TypedKey for T where T: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {}
+impl<T> Key for T where T: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {}
 
-pub trait BoundedKey: TypedKey {
+pub trait BoundedKey: Key {
 	fn low() -> Self;
 }
 
-pub trait DenseKey: TypedKey {
+pub trait DenseKey: Key {
 	fn successor(&self) -> Option<Self>;
 }
 

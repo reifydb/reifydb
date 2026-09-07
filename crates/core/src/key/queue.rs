@@ -4,7 +4,7 @@
 use std::borrow::Cow;
 
 use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
-use reifydb_macro::Key;
+use reifydb_macro::EncodableKey;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use smallvec::{SmallVec, smallvec};
 
@@ -14,11 +14,10 @@ use crate::{
 	key::{
 		any::{ByteEncoding, Field, KeyFields, Width},
 		bound::AnyKeyBoundRange,
-		typed::key::Key,
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Queue)]
 pub struct QueueKey {
 	pub queue: QueueId,
@@ -32,7 +31,7 @@ impl QueueKey {
 	}
 
 	pub fn encoded(queue: impl Into<QueueId>) -> EncodedKey {
-		Key::encode(&Self::new(queue.into()))
+		EncodableKey::encode(&Self::new(queue.into()))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -50,7 +49,7 @@ mod queue_key_tests {
 	fn test_encode_decode_roundtrip() {
 		// A queue def row is addressed by this key alone, so a broken codec orphans every definition.
 		let encoded = QueueKey::encoded(QueueId(42));
-		let decoded = <QueueKey as Key>::decode(&encoded).unwrap();
+		let decoded = <QueueKey as EncodableKey>::decode(&encoded).unwrap();
 		assert_eq!(decoded.queue, QueueId(42));
 	}
 
@@ -60,7 +59,7 @@ mod queue_key_tests {
 		// reinterpreted as a queue id.
 		let mut serializer = KeySerializer::with_capacity(9);
 		serializer.extend_u8(KeyKind::NamespaceQueue as u8).extend_u64(7u64);
-		assert!(<QueueKey as Key>::decode(&serializer.to_encoded_key()).is_none());
+		assert!(<QueueKey as EncodableKey>::decode(&serializer.to_encoded_key()).is_none());
 	}
 
 	#[test]
@@ -130,12 +129,12 @@ mod byte_identical_check_queue_key {
 			let key = QueueKey {
 				queue: id,
 			};
-			assert_eq!(legacy_encode(&key).as_slice(), Key::encode(&key).as_slice());
+			assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = QueueAttempt)]
 pub struct QueueAttemptKey {
 	pub queue: QueueId,
@@ -153,7 +152,7 @@ impl QueueAttemptKey {
 	}
 
 	pub fn encoded(queue: impl Into<QueueId>, row: impl Into<RowNumber>, attempt: u32) -> EncodedKey {
-		Key::encode(&Self::new(queue, row, attempt))
+		EncodableKey::encode(&Self::new(queue, row, attempt))
 	}
 
 	pub fn item_scan(queue: QueueId, row: RowNumber) -> AnyKeyBoundRange {
@@ -205,7 +204,7 @@ mod queue_item_state_key_tests {
 			attempt: u32::MAX,
 		};
 
-		assert_eq!(<QueueAttemptKey as Key>::decode(&Key::encode(&key)), Some(key));
+		assert_eq!(<QueueAttemptKey as EncodableKey>::decode(&EncodableKey::encode(&key)), Some(key));
 	}
 
 	#[test]
@@ -219,7 +218,7 @@ mod queue_item_state_key_tests {
 			attempt: 0,
 		};
 
-		assert_eq!(<QueueAttemptKey as Key>::decode(&Key::encode(&key)), Some(key));
+		assert_eq!(<QueueAttemptKey as EncodableKey>::decode(&EncodableKey::encode(&key)), Some(key));
 	}
 
 	#[test]
@@ -255,7 +254,7 @@ mod queue_item_state_key_tests {
 		// as an attempt record would attribute another object's bytes to a queue item.
 		let foreign = QueueItemStateKey::encoded(QueueId(1), 0, RowNumber(1));
 
-		assert_eq!(<QueueAttemptKey as Key>::decode(&foreign), None);
+		assert_eq!(<QueueAttemptKey as EncodableKey>::decode(&foreign), None);
 	}
 }
 
@@ -396,7 +395,7 @@ mod queue_deduplication_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = QueuePartition)]
 pub struct QueuePartitionKey {
 	pub queue: QueueId,
@@ -412,7 +411,7 @@ impl QueuePartitionKey {
 	}
 
 	pub fn encoded(queue: impl Into<QueueId>, partition: u16) -> EncodedKey {
-		Key::encode(&Self {
+		EncodableKey::encode(&Self {
 			queue: queue.into(),
 			partition,
 		})
@@ -427,7 +426,7 @@ impl QueuePartitionKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = QueueItemState)]
 pub struct QueueItemStateKey {
 	pub queue: QueueId,
@@ -445,7 +444,7 @@ impl QueueItemStateKey {
 	}
 
 	pub fn encoded(queue: impl Into<QueueId>, partition: u16, row: impl Into<RowNumber>) -> EncodedKey {
-		Key::encode(&Self {
+		EncodableKey::encode(&Self {
 			queue: queue.into(),
 			partition,
 			row: row.into(),
@@ -468,7 +467,7 @@ impl QueueItemStateKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = QueueDue)]
 pub struct QueueDueKey {
 	pub queue: QueueId,
@@ -493,7 +492,7 @@ impl QueueDueKey {
 		due: DateTime,
 		row: impl Into<RowNumber>,
 	) -> EncodedKey {
-		Key::encode(&Self::new(queue, partition, due, row))
+		EncodableKey::encode(&Self::new(queue, partition, due, row))
 	}
 
 	pub fn partition_scan(queue: QueueId, partition: u16) -> AnyKeyBoundRange {
@@ -512,7 +511,7 @@ impl QueueDueKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = QueueKeyActive)]
 pub struct QueueKeyActiveKey {
 	pub queue: QueueId,
@@ -537,7 +536,7 @@ impl QueueKeyActiveKey {
 		key_hash: u64,
 		row: impl Into<RowNumber>,
 	) -> EncodedKey {
-		Key::encode(&Self {
+		EncodableKey::encode(&Self {
 			queue: queue.into(),
 			partition,
 			key_hash,
@@ -601,7 +600,7 @@ mod queue_partition_key_tests {
 		// counter, so depth accounting and the lock would silently merge.
 		for partition in [0u16, 1, 1023] {
 			let encoded = QueuePartitionKey::encoded(QueueId(7), partition);
-			let decoded = <QueuePartitionKey as Key>::decode(&encoded).unwrap();
+			let decoded = <QueuePartitionKey as EncodableKey>::decode(&encoded).unwrap();
 			assert_eq!(decoded.queue, QueueId(7));
 			assert_eq!(decoded.partition, partition);
 		}
@@ -612,7 +611,7 @@ mod queue_partition_key_tests {
 		// The state record is the compare-and-set target for every transition; a key that
 		// decodes to the wrong row would transition somebody else's item.
 		let encoded = QueueItemStateKey::encoded(QueueId(3), 5, RowNumber(42));
-		let decoded = <QueueItemStateKey as Key>::decode(&encoded).unwrap();
+		let decoded = <QueueItemStateKey as EncodableKey>::decode(&encoded).unwrap();
 		assert_eq!(decoded.queue, QueueId(3));
 		assert_eq!(decoded.partition, 5);
 		assert_eq!(decoded.row, RowNumber(42));
@@ -626,7 +625,7 @@ mod queue_partition_key_tests {
 		for nanos in [0u64, 1, 4_102_444_800_000_000_000, u64::MAX] {
 			let due = DateTime::from_nanos(nanos);
 			let encoded = QueueDueKey::encoded(QueueId(1), 2, due, RowNumber(9));
-			let decoded = <QueueDueKey as Key>::decode(&encoded).unwrap();
+			let decoded = <QueueDueKey as EncodableKey>::decode(&encoded).unwrap();
 			assert_eq!(decoded.due.to_nanos(), nanos);
 			assert_eq!(decoded.row, RowNumber(9));
 			assert_eq!(decoded.partition, 2);
@@ -697,10 +696,10 @@ mod queue_partition_key_tests {
 		// decode cleanly and address the wrong record entirely.
 		let encoded = QueueItemStateKey::encoded(QueueId(1), 0, RowNumber(1));
 
-		assert_eq!(<QueuePartitionKey as Key>::decode(&encoded), None);
-		assert_eq!(<QueueDueKey as Key>::decode(&encoded), None);
+		assert_eq!(<QueuePartitionKey as EncodableKey>::decode(&encoded), None);
+		assert_eq!(<QueueDueKey as EncodableKey>::decode(&encoded), None);
 		assert_eq!(
-			<QueueKeyActiveKey as Key>::decode(&EncodedKey::new(encoded.as_slice()[..3].to_vec())),
+			<QueueKeyActiveKey as EncodableKey>::decode(&EncodedKey::new(encoded.as_slice()[..3].to_vec())),
 			None
 		);
 	}
@@ -708,7 +707,7 @@ mod queue_partition_key_tests {
 	#[test]
 	fn test_key_active_key_roundtrips() {
 		let encoded = QueueKeyActiveKey::encoded(QueueId(3), 5, 0xDEAD_BEEF_CAFE_F00D, RowNumber(42));
-		let decoded = <QueueKeyActiveKey as Key>::decode(&encoded).unwrap();
+		let decoded = <QueueKeyActiveKey as EncodableKey>::decode(&encoded).unwrap();
 		assert_eq!(decoded.queue, QueueId(3));
 		assert_eq!(decoded.partition, 5);
 		assert_eq!(decoded.key_hash, 0xDEAD_BEEF_CAFE_F00D);

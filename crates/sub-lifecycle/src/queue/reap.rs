@@ -21,8 +21,8 @@ use reifydb_core::{
 		store::SingleVersionRange,
 	},
 	key::{
+		EncodableKey,
 		queue::{QueueAttemptKey, QueueItemStateKey},
-		typed::key::Key,
 	},
 	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
 };

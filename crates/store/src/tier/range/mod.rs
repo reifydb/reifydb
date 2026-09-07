@@ -18,7 +18,7 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
-	key::typed::{BoundedKey, Edge, MultiKey, TypedKey},
+	key::typed::{BoundedKey, Edge, Key, MultiKey},
 	util::{budget::MemoryBudget, sorted::SortedVecMap},
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
@@ -191,7 +191,7 @@ const fn partition_overhead<D: RangeDomain>() -> usize {
 	size_of::<D::Partition>() + size_of::<Partition<D::Key, D::Row>>()
 }
 
-fn entry_footprint<K: TypedKey, R: RowBytes>(key: &K, entry: &Entry<R>) -> usize {
+fn entry_footprint<K: Key, R: RowBytes>(key: &K, entry: &Entry<R>) -> usize {
 	entry_overhead::<K, R>() + key.heap_size() + entry.value().map_or(0, RowBytes::row_bytes)
 }
 

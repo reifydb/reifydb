@@ -72,7 +72,6 @@ pub mod tests {
 	use reifydb_core::key::{
 		EncodableKey,
 		catalog::{DictionaryEntryIndexKey, DictionaryEntryKey},
-		typed::key::Key,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -144,7 +143,7 @@ pub mod tests {
 		entry_value.extend_from_slice(&dummy_value);
 		let entry = DictionaryEntryKey::new(dict_def.id, dummy_hash);
 		let index = DictionaryEntryIndexKey::new(dict_def.id, next_id);
-		let entry_key = Key::encode(&entry);
+		let entry_key = EncodableKey::encode(&entry);
 		let index_key = EncodableKey::encode(&index);
 		txn.single
 			.with_command([&entry_key, &index_key], |tx| {

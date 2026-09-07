@@ -2,12 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::Key;
+use reifydb_macro::EncodableKey;
 
 use super::{
-	KeyKind,
+	EncodableKey, KeyKind,
 	catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
-	typed::key::Key,
 };
 use crate::{
 	interface::catalog::object::ObjectId,
@@ -17,7 +16,7 @@ use crate::{
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = OutputFrontier)]
 pub struct OutputFrontierKey {
 	pub object: ObjectId,
@@ -43,7 +42,7 @@ impl OutputFrontierKey {
 pub mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use super::{Key, OutputFrontierKey};
+	use super::{EncodableKey, OutputFrontierKey};
 	use crate::{
 		interface::catalog::{id::ViewId, object::ObjectId},
 		key::KeyKind,
@@ -120,7 +119,7 @@ pub mod tests {
 mod verify_byte_identical {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::{Key, OutputFrontierKey};
+	use super::{EncodableKey, OutputFrontierKey};
 	use crate::{
 		interface::catalog::{id::ViewId, object::ObjectId},
 		key::catalog::KeySerializerCatalogExt,

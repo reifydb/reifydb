@@ -18,8 +18,8 @@ use reifydb_core::{
 		resolved::ResolvedView,
 	},
 	key::{
+		EncodableKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
-		typed::key::Key,
 	},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,

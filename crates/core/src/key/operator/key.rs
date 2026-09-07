@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::Key;
+use reifydb_macro::EncodableKey;
 
-use super::super::{KeyKind, typed::key::Key};
+use super::super::{EncodableKey, KeyKind};
 use crate::{
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::{
@@ -13,7 +13,7 @@ use crate::{
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Operator)]
 pub struct OperatorKey {
 	pub operator: OperatorId,
@@ -35,7 +35,7 @@ impl OperatorKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = OperatorByFlow)]
 pub struct OperatorByFlowKey {
 	pub flow: FlowId,
@@ -61,7 +61,7 @@ impl OperatorByFlowKey {
 
 #[cfg(test)]
 pub mod tests {
-	use super::{Key, OperatorByFlowKey, OperatorKey};
+	use super::{EncodableKey, OperatorByFlowKey, OperatorKey};
 	use crate::interface::catalog::flow::{FlowId, OperatorId};
 
 	#[test]
@@ -131,7 +131,7 @@ pub mod tests {
 mod verify_byte_identical {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::{Key, OperatorByFlowKey, OperatorKey};
+	use super::{EncodableKey, OperatorByFlowKey, OperatorKey};
 	use crate::interface::catalog::flow::{FlowId, OperatorId};
 
 	fn legacy_encode_operator(key: &OperatorKey) -> Vec<u8> {

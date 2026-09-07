@@ -2362,12 +2362,12 @@ mod tests {
 			store::EntryLayout,
 		},
 		key::{
+			EncodableKey,
 			any::AnyKey,
 			row::{PartitionedRowKey, RowKey, RowKeyRange},
 			series::{
 				PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
 			},
-			typed::key::Key,
 		},
 	};
 	use reifydb_value::value::{partition::Partition, row_number::RowNumber};

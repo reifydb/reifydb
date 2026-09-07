@@ -4,7 +4,7 @@
 use std::mem;
 
 use reifydb_core::{
-	key::typed::{DenseKey, Edge, TypedKey},
+	key::typed::{DenseKey, Edge, Key},
 	metrics::heap::HeapSize,
 };
 
@@ -14,7 +14,7 @@ pub struct Interval<K> {
 	pub end: Edge<K>,
 }
 
-impl<K: TypedKey> Interval<K> {
+impl<K: Key> Interval<K> {
 	pub fn new(start: Edge<K>, end: Edge<K>) -> Self {
 		Self {
 			start,
@@ -37,7 +37,7 @@ impl<K: DenseKey> CoverageSet<K> {
 	}
 }
 
-impl<K: TypedKey> CoverageSet<K> {
+impl<K: Key> CoverageSet<K> {
 	pub fn shrink_range(&mut self, start: &Edge<K>, end: &Edge<K>) {
 		if start >= end {
 			return;
@@ -65,7 +65,7 @@ pub struct CoverageSet<K> {
 	bytes: u64,
 }
 
-impl<K: TypedKey> Default for CoverageSet<K> {
+impl<K: Key> Default for CoverageSet<K> {
 	fn default() -> Self {
 		Self {
 			intervals: Vec::new(),
@@ -75,7 +75,7 @@ impl<K: TypedKey> Default for CoverageSet<K> {
 	}
 }
 
-impl<K: TypedKey> CoverageSet<K> {
+impl<K: Key> CoverageSet<K> {
 	pub fn new() -> Self {
 		Self::default()
 	}
@@ -340,7 +340,7 @@ mod tests {
 
 	#[test]
 	fn extend_keeps_intervals_one_key_apart_separate() {
-		// TypedKey "b" itself is uncovered, so merging across it would overstate RAM.
+		// Key "b" itself is uncovered, so merging across it would overstate RAM.
 		let mut set = CoverageSet::new();
 		set.extend(e("a"), Edge::of("b"));
 		set.extend(Edge::Key(successor_of(&k("b"))), Edge::of("c"));

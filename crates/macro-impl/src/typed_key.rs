@@ -40,7 +40,7 @@ pub fn derive_typed_key(input: TokenStream) -> TokenStream {
 
 	match iter.next() {
 		Some(TokenTree::Ident(i)) if *i == "struct" => {}
-		_ => return compile_error("TypedKey can only be derived for structs"),
+		_ => return compile_error("KeyLayout can only be derived for structs"),
 	}
 
 	let name = match iter.next() {
@@ -51,11 +51,11 @@ pub fn derive_typed_key(input: TokenStream) -> TokenStream {
 	let body = match iter.next() {
 		Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace => g.clone(),
 		Some(TokenTree::Punct(p)) if p.as_char() == '<' => {
-			return compile_error("TypedKey cannot be derived for a generic struct");
+			return compile_error("KeyLayout cannot be derived for a generic struct");
 		}
 		Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis => {
 			return compile_error(
-				"TypedKey requires named fields, so a tuple struct cannot carry a direction",
+				"KeyLayout requires named fields, so a tuple struct cannot carry a direction",
 			);
 		}
 		_ => return compile_error("expected struct body"),
@@ -335,7 +335,7 @@ fn expand(name: &str, fields: &[KeyField]) -> TokenStream {
 	out.push_str(&format!("{successor}\n\t}}\n}}"));
 	out.push_str(&sealed);
 
-	out.parse().expect("derived TypedKey impl must be valid Rust")
+	out.parse().expect("derived KeyLayout impl must be valid Rust")
 }
 
 #[cfg(test)]

@@ -13,9 +13,9 @@ use reifydb_core::{
 		store::SingleVersionRangeRev,
 	},
 	key::{
+		EncodableKey,
 		queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 		row::RowKey,
-		typed::key::Key,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };

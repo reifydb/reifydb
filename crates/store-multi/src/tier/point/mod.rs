@@ -525,9 +525,9 @@ mod tests {
 			store::{EntryKind, EntryLayout, storage_key},
 		},
 		key::{
+			EncodableKey,
 			row::{PartitionedRowKey, RowKey, RowSequenceKey},
 			series::{PartitionedSeriesRowKey, SeriesRowKey},
-			typed::key::Key,
 		},
 	};
 	use reifydb_value::{

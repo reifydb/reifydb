@@ -2,21 +2,21 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::Key;
+use reifydb_macro::EncodableKey;
 use reifydb_value::value::partition::Partition;
 
 use super::KeyKind;
 use crate::{
 	interface::catalog::object::ObjectId,
 	key::{
+		EncodableKey,
 		any::{Field, KeyFields, Width},
 		bound::{AnyKeyBound, AnyKeyBoundRange, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
-		typed::key::Key,
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Partition)]
 pub struct PartitionKey {
 	pub object: ObjectId,
@@ -53,7 +53,7 @@ mod tests {
 	use super::PartitionKey;
 	use crate::{
 		interface::catalog::{id::TableId, object::ObjectId},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]

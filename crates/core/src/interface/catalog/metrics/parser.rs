@@ -60,7 +60,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		interface::catalog::{object::ObjectId, storage::StorageId},
-		key::{catalog::DictionaryEntryKey, row::RowKey, typed::key::Key},
+		key::{EncodableKey, catalog::DictionaryEntryKey, row::RowKey},
 	};
 
 	#[test]

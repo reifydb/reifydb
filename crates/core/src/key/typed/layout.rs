@@ -138,20 +138,20 @@ mod tests {
 		key::{
 			operator::state::GroupId,
 			typed::{
-				BoundedKey, DenseKey, TypedKey,
+				BoundedKey, DenseKey, KeyLayout,
 				direction::{Asc, Desc, Direction, KeyField},
 			},
 		},
 		metrics::heap::HeapSize,
 	};
 
-	#[derive(Clone, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+	#[derive(Clone, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 	struct ProbeKey {
 		threshold: Desc<u64>,
 		side: Asc<u8>,
 	}
 
-	#[derive(Clone, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+	#[derive(Clone, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 	struct JoinLeftKey {
 		group: Desc<GroupId>,
 		row: Asc<RowNumber>,

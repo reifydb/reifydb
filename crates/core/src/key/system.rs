@@ -4,7 +4,7 @@
 use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::Key;
+use reifydb_macro::EncodableKey;
 use reifydb_runtime::version_epoch::EpochSeconds;
 use serde::{Deserialize, Serialize, de};
 
@@ -12,13 +12,13 @@ use super::KeyKind;
 use crate::{
 	interface::catalog::id::{MigrationEventId, MigrationId, SequenceId},
 	key::{
+		EncodableKey,
 		any::{Field, KeyFields, Width},
 		bound::{AnyKeyBound, AnyKeyBoundRange},
-		typed::key::Key,
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = SystemSequence)]
 pub struct SystemSequenceKey {
 	pub sequence: SequenceId,
@@ -32,7 +32,7 @@ impl SystemSequenceKey {
 	}
 
 	pub fn encoded(sequence: impl Into<SequenceId>) -> EncodedKey {
-		Key::encode(&Self {
+		EncodableKey::encode(&Self {
 			sequence: sequence.into(),
 		})
 	}
@@ -44,7 +44,7 @@ impl SystemSequenceKey {
 
 #[cfg(test)]
 pub mod system_sequence_key_tests {
-	use super::{Key, SystemSequenceKey};
+	use super::{EncodableKey, SystemSequenceKey};
 	use crate::interface::catalog::id::SequenceId;
 
 	#[test]
@@ -61,7 +61,7 @@ pub mod system_sequence_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = SystemVersion)]
 pub struct SystemVersionKey {
 	#[key(repr = u8)]
@@ -99,7 +99,7 @@ impl SystemVersionKey {
 	}
 
 	pub fn encoded(version: SystemVersion) -> EncodedKey {
-		Key::encode(&Self {
+		EncodableKey::encode(&Self {
 			version,
 		})
 	}
@@ -107,7 +107,7 @@ impl SystemVersionKey {
 
 #[cfg(test)]
 pub mod system_version_key_tests {
-	use super::{Key, SystemVersion, SystemVersionKey};
+	use super::{EncodableKey, SystemVersion, SystemVersionKey};
 
 	#[test]
 	fn test_encode_decode_storage_version() {
@@ -123,19 +123,19 @@ pub mod system_version_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = TransactionVersion)]
 pub struct TransactionVersionKey {}
 
 impl TransactionVersionKey {
 	pub fn encoded() -> EncodedKey {
-		Key::encode(&Self {})
+		EncodableKey::encode(&Self {})
 	}
 }
 
 #[cfg(test)]
 pub mod transaction_version_key_tests {
-	use super::{Key, TransactionVersionKey};
+	use super::{EncodableKey, TransactionVersionKey};
 
 	#[test]
 	fn test_encode_decode() {
@@ -148,7 +148,7 @@ pub mod transaction_version_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Key, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EncodableKey, Hash)]
 #[key(kind = VersionEpoch)]
 pub struct VersionEpochKey {
 	pub bucket: EpochSeconds,
@@ -162,7 +162,7 @@ impl VersionEpochKey {
 	}
 
 	pub fn encoded(bucket: EpochSeconds) -> EncodedKey {
-		Key::encode(&Self::new(bucket))
+		EncodableKey::encode(&Self::new(bucket))
 	}
 
 	fn bucket_bound(bucket: EpochSeconds) -> AnyKeyBound {
@@ -188,7 +188,7 @@ impl VersionEpochKey {
 mod version_epoch_key_tests {
 	use std::ops::Bound;
 
-	use super::{EpochSeconds, Key, VersionEpochKey};
+	use super::{EncodableKey, EpochSeconds, VersionEpochKey};
 
 	fn sec(seconds: u64) -> EpochSeconds {
 		EpochSeconds::new(seconds)
@@ -226,7 +226,7 @@ mod version_epoch_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Migration)]
 pub struct MigrationKey {
 	pub migration: MigrationId,
@@ -240,7 +240,7 @@ impl MigrationKey {
 	}
 
 	pub fn encoded(migration: impl Into<MigrationId>) -> EncodedKey {
-		Key::encode(&Self::new(migration.into()))
+		EncodableKey::encode(&Self::new(migration.into()))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -250,7 +250,7 @@ impl MigrationKey {
 
 #[cfg(test)]
 mod migration_key_tests {
-	use super::{Key, MigrationKey};
+	use super::{EncodableKey, MigrationKey};
 	use crate::interface::catalog::id::MigrationId;
 
 	#[test]
@@ -264,7 +264,7 @@ mod migration_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = MigrationEvent)]
 pub struct MigrationEventKey {
 	pub event: MigrationEventId,
@@ -278,7 +278,7 @@ impl MigrationEventKey {
 	}
 
 	pub fn encoded(event: impl Into<MigrationEventId>) -> EncodedKey {
-		Key::encode(&Self::new(event.into()))
+		EncodableKey::encode(&Self::new(event.into()))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -288,7 +288,7 @@ impl MigrationEventKey {
 
 #[cfg(test)]
 mod migration_event_key_tests {
-	use super::{Key, MigrationEventKey};
+	use super::{EncodableKey, MigrationEventKey};
 	use crate::interface::catalog::id::MigrationEventId;
 
 	#[test]

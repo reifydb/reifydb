@@ -19,10 +19,10 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 	key::{
+		EncodableKey,
 		kind::KeyKind,
 		row::{PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey},
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
-		typed::key::Key,
 	},
 	value::column::columns::Columns,
 };
@@ -261,9 +261,9 @@ mod tests {
 			storage::StorageId,
 		},
 		key::{
+			EncodableKey,
 			row::{PartitionedRowKey, RowKey},
 			series::{PartitionedSeriesRowKey, SeriesRowKey},
-			typed::key::Key,
 		},
 	};
 	use reifydb_value::value::partition::Partition;

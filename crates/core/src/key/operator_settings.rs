@@ -2,10 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::Key;
+use reifydb_macro::EncodableKey;
 use serde::{Deserialize, Serialize};
 
-use super::{KeyKind, typed::key::Key};
+use super::{EncodableKey, KeyKind};
 use crate::{
 	interface::catalog::flow::OperatorId,
 	key::{
@@ -14,7 +14,7 @@ use crate::{
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, EncodableKey, Hash)]
 #[key(kind = OperatorSettings)]
 pub struct OperatorSettingsKey {
 	pub operator: OperatorId,
@@ -81,7 +81,7 @@ pub mod tests {
 mod verify_byte_identical {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::{Key, OperatorSettingsKey};
+	use super::{EncodableKey, OperatorSettingsKey};
 	use crate::interface::catalog::flow::OperatorId;
 
 	fn legacy_encode(key: &OperatorSettingsKey) -> Vec<u8> {

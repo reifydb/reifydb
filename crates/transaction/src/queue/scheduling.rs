@@ -11,8 +11,8 @@ use reifydb_core::{
 		},
 	},
 	key::{
+		EncodableKey,
 		queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
-		typed::key::Key,
 	},
 };
 use reifydb_value::{

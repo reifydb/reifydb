@@ -7,6 +7,7 @@ use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::storage::StorageId,
 	key::{
+		EncodableKey,
 		catalog::KeyDeserializerCatalogExt,
 		kind::KeyKind,
 		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey, StorageRowKey},
@@ -14,7 +15,6 @@ use reifydb_core::{
 			PartitionedSeriesKeyColumns, PartitionedSeriesRowKey, SeriesKeyColumns, SeriesRowKey,
 			StoragePartitionedSeriesKey, StorageSeriesKey,
 		},
-		typed::key::Key,
 	},
 };
 use reifydb_value::value::{partition::Partition, row_number::RowNumber};
@@ -45,7 +45,7 @@ pub(super) fn partitioned_key_for(storage: StorageId, partition_hi: i64, partiti
 fn partition_only_of(key: &[u8]) -> Option<Partition> {
 	let mut de = KeyDeserializer::from_bytes(key);
 	let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-	if kind != <PartitionedRowKey as Key>::KIND {
+	if kind != <PartitionedRowKey as EncodableKey>::KIND {
 		return None;
 	}
 	de.read_object_id().ok()?;

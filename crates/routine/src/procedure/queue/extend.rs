@@ -7,8 +7,8 @@ use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::queue::{QueueItemStatus, decode_queue_item_state, encode_queue_item_state},
 	key::{
+		EncodableKey,
 		queue::{QueueItemStateKey, QueuePartitionKey},
-		typed::key::Key,
 	},
 	value::column::columns::Columns,
 };

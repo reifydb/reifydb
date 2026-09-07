@@ -12,7 +12,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			BoundedKey, DenseKey, TypedKey,
+			BoundedKey, DenseKey, KeyLayout,
 			direction::{Asc, Desc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues},
 		},
@@ -21,57 +21,57 @@ use crate::{
 	state::{join::ContentVersion, typed::typed_key},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct JoinLeftKey {
 	pub group: Desc<GroupId>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct JoinRightKey {
 	pub group: Desc<GroupId>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct JoinPublishedKey {
 	pub group: Desc<GroupId>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct JoinPinKey {
 	pub group: Desc<GroupId>,
 	pub row: Asc<RowNumber>,
 	pub version: Asc<ContentVersion>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct JoinSchemaKey {
 	pub side: Asc<u8>,
 	pub fingerprint: Asc<RowShapeFingerprint>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct JoinRowExpiryKey {
 	pub group: Desc<GroupId>,
 	pub side: Asc<u8>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct JoinPinSuffix {
 	pub row: Asc<RowNumber>,
 	pub version: Asc<ContentVersion>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct JoinRowExpirySuffix {
 	pub side: Asc<u8>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct JoinExpiryDueKey {
 	pub at: Asc<DateTime>,
 	pub group: Desc<GroupId>,
@@ -85,7 +85,7 @@ pub struct JoinRowExpiryState {
 	pub at: DateTime,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct JoinRowMappingKey {
 	pub tag: Asc<u8>,
 	pub left: Desc<u64>,

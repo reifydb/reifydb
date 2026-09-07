@@ -72,7 +72,6 @@ pub mod tests {
 			row::{RowKey, RowSequenceKey},
 			series::SeriesRowKey,
 			system::{SystemSequenceKey, TransactionVersionKey},
-			typed::key::Key,
 		},
 	};
 

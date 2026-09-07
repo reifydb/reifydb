@@ -73,7 +73,6 @@ use crate::{
 			MigrationEventKey, MigrationKey, SystemSequenceKey, SystemVersion, SystemVersionKey,
 			TransactionVersionKey, VersionEpochKey,
 		},
-		typed::key::Key,
 	},
 	value::index::encoded::EncodedIndexKey,
 };

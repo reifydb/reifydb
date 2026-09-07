@@ -13,10 +13,10 @@ use reifydb_core::{
 		storage::StorageId,
 	},
 	key::{
+		EncodableKey,
 		operator::state::{GroupStateKey, OperatorStateKey},
 		queue::QueueDeduplicationKey,
 		row::RowKey,
-		typed::key::Key,
 	},
 };
 use reifydb_flow::transaction::{ChangeCoordinate, FlowTransaction, state::StateExtension, substrate::FlowSubstrate};

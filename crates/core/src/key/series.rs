@@ -7,22 +7,23 @@ use reifydb_codec::key::{
 	deserializer::KeyDeserializer,
 	encoded::{EncodedKey, EncodedKeyRange},
 };
-use reifydb_macro::Key;
+use reifydb_macro::EncodableKey;
 use reifydb_value::value::partition::Partition;
 
 use super::KeyKind;
 use crate::{
 	interface::catalog::{id::SeriesId, object::ObjectId, storage::StorageId},
 	key::{
+		EncodableKey,
 		any::{AnyKey, Field, KeyFields, Width},
 		bound::{AnyKeyBound, AnyKeyBoundRange, OwnedField, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
-		typed::{BoundedKey, DenseKey, direction::Desc, key::Key},
+		typed::{BoundedKey, DenseKey, direction::Desc},
 	},
 	metrics::heap::HeapSize,
 };
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = Series)]
 pub struct SeriesKey {
 	pub series: SeriesId,
@@ -36,7 +37,7 @@ impl SeriesKey {
 	}
 
 	pub fn encoded(series: impl Into<SeriesId>) -> EncodedKey {
-		Key::encode(&Self::new(series.into()))
+		EncodableKey::encode(&Self::new(series.into()))
 	}
 
 	pub fn full_scan() -> AnyKeyBoundRange {
@@ -44,7 +45,7 @@ impl SeriesKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = SeriesMetadata)]
 pub struct SeriesMetadataKey {
 	pub storage: StorageId,
@@ -58,7 +59,7 @@ impl SeriesMetadataKey {
 	}
 
 	pub fn encoded(storage: impl Into<StorageId>) -> EncodedKey {
-		Key::encode(&Self::new(storage))
+		EncodableKey::encode(&Self::new(storage))
 	}
 }
 
@@ -72,7 +73,7 @@ mod series_metadata_key_tests {
 			id::{SeriesId, ViewId},
 			storage::StorageId,
 		},
-		key::typed::key::Key,
+		key::EncodableKey,
 	};
 
 	#[test]
@@ -109,7 +110,7 @@ mod series_metadata_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = SeriesRow)]
 pub struct SeriesRowKey {
 	pub storage: StorageId,
@@ -613,7 +614,7 @@ mod row_key_range_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key, Hash)]
+#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
 #[key(kind = PartitionedSeriesRow)]
 pub struct PartitionedSeriesRowKey {
 	pub storage: StorageId,
@@ -1118,7 +1119,7 @@ mod partitioned_row_key_tests {
 		let row = PartitionedRowKey::encoded(StorageId::Table(TableId(1)), part("us"), RowNumber(9));
 
 		assert_ne!(series.as_slice()[0], row.as_slice()[0]);
-		assert!(<PartitionedRowKey as Key>::decode(&series).is_none());
+		assert!(<PartitionedRowKey as EncodableKey>::decode(&series).is_none());
 		assert!(PartitionedSeriesRowKey::decode(&row).is_none());
 	}
 
@@ -1165,7 +1166,10 @@ mod storage_series_key_tests {
 	use super::{PartitionedSeriesRowKey, SeriesRowKey, StorageId, StoragePartitionedSeriesKey, StorageSeriesKey};
 	use crate::{
 		interface::catalog::id::SeriesId,
-		key::typed::{BoundedKey, DenseKey, key::Key},
+		key::{
+			EncodableKey,
+			typed::{BoundedKey, DenseKey},
+		},
 	};
 
 	const STORAGE: StorageId = StorageId::Series(SeriesId(7));
@@ -1186,11 +1190,12 @@ mod storage_series_key_tests {
 			series(Some(9), 6, 1),
 		];
 		let mut encoded: Vec<_> =
-			keys.iter().map(|it| Key::encode(&it.with_storage(STORAGE)).to_vec()).collect();
+			keys.iter().map(|it| EncodableKey::encode(&it.with_storage(STORAGE)).to_vec()).collect();
 		keys.sort();
 		encoded.sort();
 
-		let reordered: Vec<_> = keys.iter().map(|it| Key::encode(&it.with_storage(STORAGE)).to_vec()).collect();
+		let reordered: Vec<_> =
+			keys.iter().map(|it| EncodableKey::encode(&it.with_storage(STORAGE)).to_vec()).collect();
 		assert_eq!(reordered, encoded);
 	}
 
@@ -1240,11 +1245,12 @@ mod storage_series_key_tests {
 			StoragePartitionedSeriesKey::new(Partition(2), Some(3), 5, 2),
 		];
 		let mut encoded: Vec<_> =
-			keys.iter().map(|it| Key::encode(&it.with_storage(STORAGE)).to_vec()).collect();
+			keys.iter().map(|it| EncodableKey::encode(&it.with_storage(STORAGE)).to_vec()).collect();
 		keys.sort();
 		encoded.sort();
 
-		let reordered: Vec<_> = keys.iter().map(|it| Key::encode(&it.with_storage(STORAGE)).to_vec()).collect();
+		let reordered: Vec<_> =
+			keys.iter().map(|it| EncodableKey::encode(&it.with_storage(STORAGE)).to_vec()).collect();
 		assert_eq!(reordered, encoded);
 	}
 

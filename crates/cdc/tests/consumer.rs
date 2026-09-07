@@ -29,7 +29,7 @@ use reifydb_core::{
 		},
 		cdc::{Cdc, CdcChange, CdcConsumerId, ConsumerClass},
 	},
-	key::{cdc::CdcConsumerKey, queue::QueueDeduplicationKey, row::RowKey, typed::key::Key},
+	key::{EncodableKey, cdc::CdcConsumerKey, queue::QueueDeduplicationKey, row::RowKey},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{

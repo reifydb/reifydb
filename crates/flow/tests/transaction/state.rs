@@ -17,6 +17,7 @@ use reifydb_core::{
 		storage::StorageId,
 	},
 	key::{
+		EncodableKey,
 		any::AnyKey,
 		operator::state::{
 			GroupId, GroupStateKey, OperatorStateKey, custom_not_cached_key, custom_not_cached_key_in,
@@ -24,7 +25,6 @@ use reifydb_core::{
 		},
 		queue::QueueDeduplicationKey,
 		row::RowKey,
-		typed::key::Key,
 	},
 	state::timer::sweep_order,
 };
