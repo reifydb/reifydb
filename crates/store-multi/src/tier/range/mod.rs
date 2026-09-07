@@ -328,6 +328,10 @@ impl RangeDomain for MultiDomain {
 
 	const GAP_SCOPE: &'static str = "multi_range::gaps";
 
+	fn just_past(key: &Self::Key) -> Edge<Self::Key> {
+		Edge::just_past(key)
+	}
+
 	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Self::Partition {
 		PartitionId::of(dimension, key)
 	}

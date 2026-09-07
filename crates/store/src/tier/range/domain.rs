@@ -103,6 +103,10 @@ impl RangeDomain for TestDomain {
 
 	const GAP_SCOPE: &'static str = "operator_range::gaps";
 
+	fn just_past(key: &Self::Key) -> Edge<Self::Key> {
+		Edge::just_past(key)
+	}
+
 	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Self::Partition {
 		TestPartition::of(dimension, key)
 	}
@@ -168,6 +172,10 @@ impl RangeDomain for AdmittingDomain {
 	const SCOPE: &'static str = "admitting_range";
 
 	const GAP_SCOPE: &'static str = "admitting_range::gaps";
+
+	fn just_past(key: &Self::Key) -> Edge<Self::Key> {
+		Edge::just_past(key)
+	}
 
 	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Self::Partition {
 		TestDomain::partition(dimension, key)

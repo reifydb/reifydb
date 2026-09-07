@@ -25,7 +25,7 @@ use reifydb_store::{
 		interval::Interval,
 		plan::Segment,
 	},
-	tier::range::{Materialize, RangeScan, RangeTier, proven_span},
+	tier::range::{Materialize, RangeDomain, RangeScan, RangeTier, proven_span},
 };
 
 use crate::{
@@ -231,12 +231,12 @@ impl<K: Keyspace> PageSource for TierPager<'_, K> {
 					let start = self.claim_start.clone().unwrap_or_else(|| interval.start.clone());
 					let span = Interval::new(start, interval.end.clone());
 					let last = typed.last().map(|(key, _)| key);
-					if let Some(proven) = proven_span(&span, last, complete) {
+					if let Some(proven) = proven_span::<TypedDomain<K>>(&span, last, complete) {
 						match self.tier.materialize(&self.scan, &proven, &typed) {
 							Materialize::Materialized | Materialize::NothingCacheable => {
-								self.claim_start = typed
-									.last()
-									.map(|(key, _)| Edge::just_past(key));
+								self.claim_start = typed.last().map(|(key, _)| {
+									TypedDomain::<K>::just_past(key)
+								});
 							}
 							Materialize::Refused => self.materializing = false,
 						}

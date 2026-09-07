@@ -45,6 +45,10 @@ impl<K: Keyspace> RangeDomain for TypedDomain<K> {
 
 	const GAP_SCOPE: &'static str = "operator_range::gaps";
 
+	fn just_past(key: &Self::Key) -> Edge<Self::Key> {
+		Edge::just_past(key)
+	}
+
 	fn partition(dimension: Self::Dimension, _key: &Self::Key) -> Self::Partition {
 		dimension
 	}

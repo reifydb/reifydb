@@ -18,7 +18,7 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
-	key::typed::{DenseKey, Edge, MultiKey, TypedKey},
+	key::typed::{Edge, MultiKey, TypedKey},
 	util::{budget::MemoryBudget, sorted::SortedVecMap},
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
@@ -47,7 +47,7 @@ impl RowBytes for EncodedPodRow {
 pub trait RangeDomain: Copy + Debug + 'static {
 	type Dimension: Copy + Eq + Hash + Send + Sync + 'static;
 	type Partition: Copy + Eq + Hash + Send + Sync + 'static;
-	type Key: DenseKey;
+	type Key: TypedKey;
 	type MetricBucket: Copy + Eq + Debug + Send + Sync + 'static;
 	type Row: RowBytes + Clone + Send + Sync + 'static;
 
@@ -56,6 +56,8 @@ pub trait RangeDomain: Copy + Debug + 'static {
 	const SCOPE: &'static str;
 
 	const GAP_SCOPE: &'static str;
+
+	fn just_past(key: &Self::Key) -> Edge<Self::Key>;
 
 	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Self::Partition;
 
@@ -127,12 +129,16 @@ pub fn scan_range(gap: &Interval<MultiKey>) -> EncodedKeyRange {
 	EncodedKeyRange::new(start, end)
 }
 
-pub fn proven_span<K: DenseKey>(gap: &Interval<K>, last_key: Option<&K>, exhausted: bool) -> Option<Interval<K>> {
+pub fn proven_span<D: RangeDomain>(
+	gap: &Interval<D::Key>,
+	last_key: Option<&D::Key>,
+	exhausted: bool,
+) -> Option<Interval<D::Key>> {
 	if exhausted {
 		return Some(gap.clone());
 	}
 	let last = last_key?;
-	Some(Interval::new(gap.start.clone(), Edge::just_past(last).min(gap.end.clone())))
+	Some(Interval::new(gap.start.clone(), D::just_past(last).min(gap.end.clone())))
 }
 
 struct Partition<K, R> {

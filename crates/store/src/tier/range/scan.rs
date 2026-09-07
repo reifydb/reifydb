@@ -71,11 +71,11 @@ impl<D: RangeDomain> RangeTier<D> {
 	) -> Option<RangeScan<D>> {
 		let lo = match range.start.as_ref() {
 			Included(key) => Edge::Key(key.clone()),
-			Excluded(key) => Edge::just_past(key),
+			Excluded(key) => D::just_past(key),
 			Unbounded => return None,
 		};
 		let hi = match range.end.as_ref() {
-			Included(key) => Edge::just_past(key),
+			Included(key) => D::just_past(key),
 			Excluded(key) => Edge::Key(key.clone()),
 			Unbounded => Edge::Top,
 		};
@@ -244,7 +244,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		limit: usize,
 	) -> ServedChunk<RangeRows<D>> {
 		let start = match cursor.last_key() {
-			Some(last) if segment.start.admits(last) => Edge::just_past(last),
+			Some(last) if segment.start.admits(last) => D::just_past(last),
 			_ => segment.start.clone(),
 		};
 		let (Some(lower), true) = (start.lower_bound(), start < segment.end) else {
