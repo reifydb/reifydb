@@ -31,7 +31,7 @@ use reifydb_core::{
 	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 	util::{bloom::hash_item, budget::MemoryBudget},
 };
-use reifydb_filter::adaptive::AdaptiveKeyFilter;
+use reifydb_filter::adaptive::{AdaptiveKeyFilter, FilterMetrics};
 use reifydb_runtime::{
 	actor::mailbox::ActorRef,
 	sync::{
@@ -178,7 +178,7 @@ pub struct Shared {
 	evictor: Mutex<Option<ActorRef<EvictMessage>>>,
 	metrics: Mutex<OperatorResidentStateMetrics>,
 	triggered: AtomicBool,
-	filter: AdaptiveKeyFilter,
+	filter: Arc<AdaptiveKeyFilter>,
 	filter_armed: AtomicBool,
 	sweep_cursor: AtomicU64,
 	#[cfg(test)]
@@ -208,7 +208,7 @@ impl Shared {
 			evictor: Mutex::new(None),
 			metrics: Mutex::new(OperatorResidentStateMetrics::default()),
 			triggered: AtomicBool::new(false),
-			filter: AdaptiveKeyFilter::new(),
+			filter: Arc::new(AdaptiveKeyFilter::new()),
 			filter_armed: AtomicBool::new(false),
 			sweep_cursor: AtomicU64::new(0),
 			#[cfg(test)]
@@ -983,6 +983,14 @@ impl OperatorResidentState {
 				record_state(inner, key.clone(), None)
 			}
 		}
+	}
+
+	pub(crate) fn filter(&self) -> Arc<AdaptiveKeyFilter> {
+		self.shared.filter.clone()
+	}
+
+	pub fn filter_metrics(&self) -> FilterMetrics {
+		self.shared.filter.metrics()
 	}
 
 	pub(crate) fn never_persisted(&self, operator: OperatorId, key: &EncodedKey) -> bool {

@@ -7,7 +7,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::GroupId, metrics::scan::record_page};
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::{GroupId, KeyspaceId}, metrics::scan::record_page};
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use tracing::instrument;
@@ -132,6 +132,23 @@ impl SqliteOperatorStorage {
 			has_more,
 			resume: None,
 		}
+	}
+
+	pub fn state_keys_after(
+		&self,
+		operator: OperatorId,
+		keyspace: KeyspaceId,
+		after: Option<&EncodedKey>,
+		limit: u64,
+	) -> Vec<EncodedKey> {
+		if !self.state_written() {
+			return Vec::new();
+		}
+		let guard = self.read_conn();
+		let Some(conn) = guard.as_ref() else {
+			return Vec::new();
+		};
+		route::keys_after(conn, operator, keyspace, after, limit)
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::drop_operator_state", level = "debug", skip(self), fields(operator = operator.0))]

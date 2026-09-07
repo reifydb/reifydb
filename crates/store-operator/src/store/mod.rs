@@ -26,15 +26,22 @@ use reifydb_runtime::{
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
+use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_store::metrics::PageCacheMetrics;
+
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_filter::{
+	actor::{FilterActor, FilterMessage},
+	config::FilterConfig,
+};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{
 	config::OperatorPersistentConfig,
 	tier::{
-		persistent::sqlite::SqliteOperatorStorage,
+		persistent::{filter::OperatorStateKeySource, sqlite::SqliteOperatorStorage},
 		range::{OperatorRangeConfig, evict::actor::RangeEvictActor},
-		resident::{evict::actor::ResidentEvictActor, flush::actor::ResidentFlushActor},
+		resident::{FILTER_KEYS, evict::actor::ResidentEvictActor, flush::actor::ResidentFlushActor},
 	},
 };
 use crate::{
@@ -129,6 +136,20 @@ impl StandardOperatorStore {
 		if let Some(flush) = flush.as_ref() {
 			resident.attach_flusher(flush.clone());
 		}
+		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+		if let Some(persistent) = persistent.as_ref() {
+			if !persistent.census().is_empty() {
+				let actor = FilterActor::spawn(&spawner);
+				let _ = actor.send(FilterMessage::Register {
+					filter: resident.filter(),
+					source: Box::new(OperatorStateKeySource::new(persistent.clone())),
+					config: FilterConfig {
+						min_size_keys: FILTER_KEYS,
+						..FilterConfig::default()
+					},
+				});
+			}
+		}
 
 		Self(Arc::new(StandardOperatorStoreInner {
 			resident,
@@ -180,6 +201,10 @@ impl StandardOperatorStore {
 
 	pub fn range_keyspace_metrics(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
 		self.range.as_ref().map(RangeTiers::keyspace_metrics).unwrap_or_default()
+	}
+
+	pub fn filter_metrics(&self) -> FilterMetrics {
+		self.resident.filter_metrics()
 	}
 
 	pub fn persistent_page_cache_metrics(&self) -> Option<PageCacheMetrics> {

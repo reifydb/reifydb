@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+pub mod filter;
 pub mod sqlite;
 
 use std::{collections::HashMap, sync::Arc};
@@ -137,6 +138,18 @@ impl OperatorPersistentTier {
 		}
 	}
 
+	pub fn state_keys_after(
+		&self,
+		operator: OperatorId,
+		keyspace: KeyspaceId,
+		after: Option<&EncodedKey>,
+		limit: u64,
+	) -> Vec<EncodedKey> {
+		match self {
+			Self::Sqlite(storage) => storage.state_keys_after(operator, keyspace, after, limit),
+		}
+	}
+
 	pub fn flush_batch(&self, batch: &FlushBatch) {
 		match self {
 			Self::Sqlite(storage) => storage.flush_batch(batch),
@@ -217,6 +230,16 @@ impl OperatorPersistentTier {
 	}
 
 	pub fn census(&self) -> Vec<OperatorStateCensus> {
+		match *self {}
+	}
+
+	pub fn state_keys_after(
+		&self,
+		_operator: OperatorId,
+		_keyspace: KeyspaceId,
+		_after: Option<&EncodedKey>,
+		_limit: u64,
+	) -> Vec<EncodedKey> {
 		match *self {}
 	}
 

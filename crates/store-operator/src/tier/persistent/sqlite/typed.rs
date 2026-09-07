@@ -502,6 +502,45 @@ fn bounded<K: Keyspace>(
 	out
 }
 
+pub fn keys_after<K: Keyspace>(
+	conn: &Connection,
+	operator: OperatorId,
+	after: Option<&K::GroupedKey>,
+	limit: u64,
+) -> Vec<K::GroupedKey> {
+	let mut at = 2;
+	let start = bound_clause::<K>(after.map_or(Bound::Unbounded, Bound::Excluded), ">=", ">", at);
+	if after.is_some() && !K::columns().is_empty() {
+		at += K::columns().len();
+	}
+	let columns = match K::columns().is_empty() {
+		true => "1".to_string(),
+		false => K::column_list(),
+	};
+	let sql = format!(
+		"SELECT {} FROM \"{}\" WHERE \"operator\" = ?1{}{} LIMIT ?{}",
+		columns,
+		K::table(),
+		start,
+		K::ordering("ASC"),
+		at
+	);
+	let mut params = vec![Value::Integer(operator.0 as i64)];
+	if let Some(key) = after {
+		if !K::columns().is_empty() {
+			params.extend(K::bind_key(key));
+		}
+	}
+	params.push(Value::Integer(limit as i64));
+	let mut stmt = conn.prepare_cached(&sql).expect("operator state key scan could not be prepared");
+	let mut rows = stmt.query(params_from_iter(params)).expect("operator state key scan failed");
+	let mut out = Vec::new();
+	while let Some(row) = rows.next().expect("operator state key scan row failed") {
+		out.push(K::read_key(row, 0).expect("an operator state row does not decode as its own key layout"));
+	}
+	out
+}
+
 pub fn range<K: Keyspace>(
 	conn: &Connection,
 	operator: OperatorId,

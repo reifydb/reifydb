@@ -24,6 +24,7 @@ use reifydb_core::{
 	},
 	metrics::scan::record_page,
 };
+use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
 use tracing::instrument;
 
@@ -659,6 +660,12 @@ impl OperatorStore {
 	pub fn state_sizes(&self, probes: &[(OperatorId, EncodedKey)]) -> Vec<Option<ByteSize>> {
 		match self {
 			Self::Standard(store) => store.state_sizes(probes),
+		}
+	}
+
+	pub fn filter_metrics(&self) -> FilterMetrics {
+		match self {
+			Self::Standard(store) => store.filter_metrics(),
 		}
 	}
 

@@ -494,6 +494,47 @@ pub(super) fn occupied_keyspaces(conn: &Connection, operator: OperatorId) -> Vec
 		.collect()
 }
 
+struct KeysAfter<'a> {
+	conn: &'a Connection,
+	operator: OperatorId,
+	after: Option<&'a EncodedKey>,
+	limit: u64,
+}
+
+impl KeyspaceVisitor for KeysAfter<'_> {
+	type Output = Vec<EncodedKey>;
+
+	fn visit<K: Keyspace>(self) -> Self::Output {
+		let cursor = self.after.map(|key| {
+			let (group, _, suffix) = parts(key);
+			typed_key::<K>(group, suffix, lowest::<K>())
+		});
+		typed::keys_after::<K>(self.conn, self.operator, cursor.as_ref(), self.limit)
+			.iter()
+			.map(encode::<K>)
+			.collect()
+	}
+}
+
+pub(super) fn keys_after(
+	conn: &Connection,
+	operator: OperatorId,
+	keyspace: KeyspaceId,
+	after: Option<&EncodedKey>,
+	limit: u64,
+) -> Vec<EncodedKey> {
+	dispatch(
+		keyspace,
+		KeysAfter {
+			conn,
+			operator,
+			after,
+			limit,
+		},
+	)
+	.expect("an operator state keyspace must appear in the catalogue")
+}
+
 struct Census<'a> {
 	conn: &'a Connection,
 }

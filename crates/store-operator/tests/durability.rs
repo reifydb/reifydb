@@ -6,7 +6,11 @@
 //! ever becomes durable is what the test explicitly flushed, and a second store opened over the same file is
 //! what a boot after a crash would see.
 
-use std::path::Path;
+use std::{
+	path::Path,
+	thread,
+	time::{Duration, Instant},
+};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
@@ -331,6 +335,55 @@ fn a_drain_that_runs_many_slices_persists_every_slice_and_not_just_one() {
 				 drain leaves the rest in memory only"
 			);
 		}
+		Ok(())
+	})
+	.unwrap();
+}
+
+#[test]
+fn a_restart_over_populated_state_rebuilds_the_filter_without_hiding_a_durable_row() {
+	// The read path skips sqlite whenever the filter says a key was never persisted, so a rebuild that misses
+	// even one durable key turns that row into a silent None. Restarting over enough keys to need several scan
+	// slices, across two keyspaces, is what makes a paging bug in the rebuild visible here rather than in a flow.
+	temp_dir(|dir| {
+		const KEYS: u64 = 5000;
+
+		let store = store_at(dir);
+		for seed in 0..KEYS {
+			put(&store, OP, state_key(group(), KeyspaceId::JOIN_LEFT, seed), row("left"));
+			put(&store, OP, state_key(group(), KeyspaceId::JOIN_RIGHT, seed), row("right"));
+		}
+		assert!(store.flush_pending_blocking(), "the test needs every key durable before the restart");
+		drop(store);
+
+		let booted = store_at(dir);
+		let deadline = Instant::now() + Duration::from_secs(30);
+		while Instant::now() < deadline && !booted.filter_metrics().enabled {
+			thread::sleep(Duration::from_millis(10));
+		}
+		assert!(
+			booted.filter_metrics().enabled,
+			"a store booted over populated sqlite state must rebuild its filter; while it stays unarmed \
+			 every absent key costs a sqlite round trip, which is the whole cost this filter removes"
+		);
+
+		for seed in 0..KEYS {
+			assert!(
+				booted.get(OP, &state_key(group(), KeyspaceId::JOIN_LEFT, seed)).is_some(),
+				"the rebuilt filter rejected durable JOIN_LEFT key {seed}; a false negative here is \
+				 silent data loss, not a slow read"
+			);
+			assert!(
+				booted.get(OP, &state_key(group(), KeyspaceId::JOIN_RIGHT, seed)).is_some(),
+				"the rebuilt filter rejected durable JOIN_RIGHT key {seed}; the scan must page every \
+				 keyspace table, not just the first"
+			);
+		}
+
+		assert!(
+			booted.get(OP, &state_key(group(), KeyspaceId::JOIN_LEFT, KEYS + 1)).is_none(),
+			"a key nothing ever wrote must still read as absent once the filter is armed"
+		);
 		Ok(())
 	})
 	.unwrap();
