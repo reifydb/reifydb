@@ -492,8 +492,8 @@ mod tests {
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
 		key::{
-			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-			typed::MultiKey,
+			operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+			typed::{MultiKey, range::KeyRange},
 		},
 		metrics::{
 			collect::MetricsCollector,
@@ -743,6 +743,38 @@ mod tests {
 		);
 		assert_eq!(probe(&tier, &cold), None, "the evicted partition falls through");
 		assert_eq!(probe(&tier, &hot), Some(Some(row("v"))), "the most recently seeded partition survives");
+	}
+
+	#[test]
+	fn a_scan_that_misses_a_partition_must_not_arm_write_through_on_it() {
+		// covered gates unproven write through, and only a proven span may arm it. A miss proves
+		// nothing, so arming it there readmits write through into a span the tier cannot answer, and
+		// every such write drives an eviction that retracts the claim a read fill just paid for.
+		let live = key(KeyspaceId::ACCUMULATOR, b"a");
+		let gone = key(KeyspaceId::ACCUMULATOR, b"b");
+		let late = key(KeyspaceId::ACCUMULATOR, b"c");
+		let rows = vec![(live.clone(), Entry::row(row("v"))), (gone.clone(), Entry::deleted())];
+		let tier = tier(cost(&rows) as u64 - 1, 1);
+		seed(&tier, part(KeyspaceId::ACCUMULATOR), rows);
+
+		tier.evict_to_capacity(0);
+		assert_eq!(resident(&tier, &gone), Some(Entry::Deleted), "the fixture must leave the partition standing");
+		assert_eq!(tier.intervals(), 0, "and must leave it holding no claim");
+
+		let range = keyspace_inner_range(group_a(), KeyspaceId::ACCUMULATOR);
+		let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("the keyspace range must be plannable");
+		assert!(scan.gaps() > 0, "the fixture must plan a miss, or the arming is not under test");
+		let settled = tier.metrics().evictions;
+
+		tier.overwrite(OP_A, late.clone(), row("late"));
+
+		assert_eq!(
+			tier.metrics().evictions,
+			settled,
+			"a miss must not admit the write: an admitted one is evicted again at once, and that \
+			 eviction retracts the claim the next read fill pays for"
+		);
+		assert_eq!(resident(&tier, &late), None, "and the unproven row must not be resident");
 	}
 
 	#[test]

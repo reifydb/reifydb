@@ -198,7 +198,11 @@ impl<D: RangeDomain> RangeTier<D> {
 				}
 				if D::caches_ranges(&partition) {
 					match shard.partitions.get_mut(&partition) {
-						Some(resident) => resident.covered = true,
+						Some(resident) => {
+							if matches!(tally, Tally::Hit) {
+								resident.covered = true;
+							}
+						}
 						None => {
 							if matches!(tally, Tally::Hit) {
 								barren.get_or_insert_with(|| {
