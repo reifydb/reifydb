@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cmp::Ordering, fmt::Debug, hash::Hash};
+use std::{cmp::Ordering, fmt::Debug, hash::Hash, ops::Bound};
 
 use reifydb_codec::key::encoded::EncodedKey;
 pub use reifydb_macro::{Key, TypedKey};
@@ -65,6 +65,32 @@ impl<K: DenseKey> Edge<K> {
 }
 
 impl<K: TypedKey> Edge<K> {
+	pub fn lower_bound(&self) -> Option<Bound<K>> {
+		match self {
+			Edge::Bottom => Some(Bound::Unbounded),
+			Edge::Key(key) => Some(Bound::Included(key.clone())),
+			Edge::AfterKey(key) => Some(Bound::Excluded(key.clone())),
+			Edge::Top => None,
+		}
+	}
+
+	pub fn upper_bound(&self) -> Option<Bound<K>> {
+		match self {
+			Edge::Bottom => None,
+			Edge::Key(key) => Some(Bound::Excluded(key.clone())),
+			Edge::AfterKey(key) => Some(Bound::Included(key.clone())),
+			Edge::Top => Some(Bound::Unbounded),
+		}
+	}
+
+	pub fn anchor(&self) -> Option<K> {
+		match self {
+			Edge::Bottom => Some(K::low()),
+			Edge::Key(key) | Edge::AfterKey(key) => Some(key.clone()),
+			Edge::Top => None,
+		}
+	}
+
 	pub fn lowest(&self) -> Option<K> {
 		match self {
 			Edge::Bottom => Some(K::low()),
@@ -95,6 +121,10 @@ impl<K: Ord> Edge<K> {
 
 	pub fn covers(&self, key: &K) -> bool {
 		self.cmp_key(key) == Ordering::Greater
+	}
+
+	pub fn admits(&self, key: &K) -> bool {
+		self.cmp_key(key) != Ordering::Greater
 	}
 
 	pub fn min(self, other: Self) -> Self {

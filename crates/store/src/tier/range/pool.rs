@@ -195,9 +195,7 @@ impl<D: RangeDomain> RangeTier<D> {
 	fn retract_partition(&self, victim: &D::Partition) {
 		let (start, end) = D::span(victim);
 		let mut coverage = self.coverage().write();
-		if let Some(start) = start.lowest() {
-			coverage.drop_overlapping(D::dimension(victim), &start, &end);
-		}
+		coverage.drop_overlapping(D::dimension(victim), &start, &end);
 		self.record_retraction();
 	}
 
@@ -346,9 +344,6 @@ impl<D: RangeDomain> RangeTier<D> {
 					continue;
 				};
 				let (start, end) = D::span(&id);
-				let Some(start) = start.lowest() else {
-					continue;
-				};
 				intervals[D::metric_bucket(&id)] += set.overlapping(&start, &end).len();
 			}
 		}
@@ -622,7 +617,6 @@ mod tests {
 			}
 		}
 		let (start, end) = id.span();
-		let start = start.lowest().expect("a partition span starts at a key");
 		tier.coverage().write().extend(id.dimension, start, end);
 	}
 

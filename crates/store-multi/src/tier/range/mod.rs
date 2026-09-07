@@ -524,7 +524,7 @@ impl MultiRangeTier {
 		let Some(scan) = self.tier.plan_scan(table, &KeyRange::new(Included(start), bound(&through))) else {
 			return false;
 		};
-		let span = Interval::new(start, proven);
+		let span = Interval::new(Edge::Key(start), proven);
 		matches!(self.tier.materialize(&scan, &span, &rows), Materialize::Materialized)
 	}
 
@@ -572,7 +572,10 @@ impl MultiRangeTier {
 		let Some(Segment::Resident(segment)) = scan.segments().first() else {
 			return self.chunk_proven_empty(table, &lo, &range_hi, cursor);
 		};
-		let partition = PartitionId::of(table, &segment.start);
+		let Some(at) = segment.start.anchor() else {
+			return ServedChunk::Gap;
+		};
+		let partition = PartitionId::of(table, &at);
 		let counters = &self.serves[self.tier.shard_index(&partition)];
 		if scan.advanced() {
 			counters.head_advances.fetch_add(1, Ordering::Relaxed);

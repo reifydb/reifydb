@@ -301,7 +301,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		if !self.retractions_unchanged(token) {
 			return;
 		}
-		coverage.extend(dimension, key.clone(), Edge::just_past(key));
+		coverage.extend(dimension, Edge::Key(key.clone()), Edge::just_past(key));
 		self.enforce_coverage_limits(&mut coverage, dimension);
 	}
 }
@@ -404,7 +404,7 @@ mod tests {
 	}
 
 	fn claim(tier: &RangeTier<D>, operator: OperatorId, start: &EncodedKey, end: &EncodedKey) {
-		tier.coverage().write().extend(operator, start.clone(), Edge::Key(end.clone()));
+		tier.coverage().write().extend(operator, Edge::Key(start.clone()), Edge::Key(end.clone()));
 	}
 
 	fn residency(tier: &RangeTier<D>, id: &TestPartition, at: &EncodedKey) -> Option<Entry<EncodedPodRow>> {
@@ -439,7 +439,7 @@ mod tests {
 	}
 
 	fn island(at: &EncodedKey) -> Interval<MultiKey> {
-		Interval::new(at.clone(), Edge::just_past(at))
+		Interval::new(Edge::Key(at.clone()), Edge::just_past(at))
 	}
 
 	#[test]

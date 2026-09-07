@@ -13,7 +13,10 @@ mod write;
 
 use std::{borrow::Cow, collections::HashMap, fmt::Debug, hash::Hash, mem::size_of, ops::Bound, sync::Arc};
 
-use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::pod::EncodedPodRow,
+};
 use reifydb_core::{
 	key::typed::{DenseKey, Edge, MultiKey, TypedKey},
 	util::{budget::MemoryBudget, sorted::SortedVecMap},
@@ -117,13 +120,11 @@ impl RangeConfig {
 pub type RangeRows<D> = Vec<(<D as RangeDomain>::Key, <D as RangeDomain>::Row)>;
 
 pub fn scan_range(gap: &Interval<MultiKey>) -> EncodedKeyRange {
-	let end = match &gap.end {
-		Edge::Bottom => Bound::Excluded(gap.start.clone()),
-		Edge::Key(key) => Bound::Excluded(key.clone()),
-		Edge::AfterKey(key) => Bound::Included(key.clone()),
-		Edge::Top => Bound::Unbounded,
+	let empty = EncodedKey::new([]);
+	let (Some(start), Some(end)) = (gap.start.lower_bound(), gap.end.upper_bound()) else {
+		return EncodedKeyRange::new(Bound::Included(empty.clone()), Bound::Excluded(empty));
 	};
-	EncodedKeyRange::new(Bound::Included(gap.start.clone()), end)
+	EncodedKeyRange::new(start, end)
 }
 
 pub fn proven_span<K: DenseKey>(gap: &Interval<K>, last_key: Option<&K>, exhausted: bool) -> Option<Interval<K>> {

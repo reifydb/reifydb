@@ -4,7 +4,7 @@
 use std::ops::Bound::{Excluded, Included, Unbounded};
 
 use reifydb_core::{
-	key::typed::{DenseKey, Edge, range::KeyRange},
+	key::typed::{Edge, range::KeyRange},
 	util::sorted::SortedVecMap,
 };
 use reifydb_value::byte_size::ByteSize;
@@ -70,8 +70,8 @@ impl<D: RangeDomain> RangeTier<D> {
 		range: &KeyRange<D::Key>,
 	) -> Option<RangeScan<D>> {
 		let lo = match range.start.as_ref() {
-			Included(key) => key.clone(),
-			Excluded(key) => key.successor()?,
+			Included(key) => Edge::Key(key.clone()),
+			Excluded(key) => Edge::just_past(key),
 			Unbounded => return None,
 		};
 		let hi = match range.end.as_ref() {
@@ -87,7 +87,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			let advanced = lo != anchor;
 			let head = match confined {
 				Some(partition) => partition,
-				None => D::partition(dimension, &lo),
+				None => D::partition(dimension, &lo.anchor()?),
 			};
 			let (_, head_end) = D::span(&head);
 			if hi <= head_end && !D::caches_ranges(&head) {
@@ -98,7 +98,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			let planned = plan(claims, lo.clone(), hi.clone(), self.gap_guard(), |gap| {
 				exempt_gap::<D>(dimension, confined, gap)
 			});
-			let held = claims.contains(&lo);
+			let held = claims.contains_edge(&lo);
 			(lo, head, planned, held, self.retractions(), advanced)
 		};
 
@@ -244,15 +244,19 @@ impl<D: RangeDomain> RangeTier<D> {
 		limit: usize,
 	) -> ServedChunk<RangeRows<D>> {
 		let start = match cursor.last_key() {
-			Some(last) if *last >= segment.start => last.successor(),
-			_ => Some(segment.start.clone()),
+			Some(last) if segment.start.admits(last) => Edge::just_past(last),
+			_ => segment.start.clone(),
 		};
-		let Some(start) = start.filter(|start| segment.end.covers(start)) else {
+		let (Some(lower), true) = (start.lower_bound(), start < segment.end) else {
 			cursor.finish();
 			return ServedChunk::Served(Vec::new());
 		};
 
-		let partition = scan.confined.unwrap_or_else(|| D::partition(scan.dimension, &segment.start));
+		let Some(at) = segment.start.anchor() else {
+			cursor.finish();
+			return ServedChunk::Served(Vec::new());
+		};
+		let partition = scan.confined.unwrap_or_else(|| D::partition(scan.dimension, &at));
 		if !D::caches_ranges(&partition) {
 			return ServedChunk::Gap;
 		}
@@ -262,7 +266,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			let Some(claims) = coverage.set(scan.dimension) else {
 				return ServedChunk::Gap;
 			};
-			match claims.covering(&start) {
+			match claims.covering_edge(&start) {
 				Some(claim) if claim.end >= segment.end => self.retractions(),
 				_ => return ServedChunk::Gap,
 			}
@@ -284,13 +288,11 @@ impl<D: RangeDomain> RangeTier<D> {
 				} = &mut *shard;
 				if let Some(resident) = partitions.get_mut(&partition) {
 					resident.tick = tick;
-					let upper = match &segment.end {
-						Edge::Bottom => Excluded(start.clone()),
-						Edge::Key(key) => Excluded(key.clone()),
-						Edge::AfterKey(key) => Included(key.clone()),
-						Edge::Top => Unbounded,
+					let Some(upper) = segment.end.upper_bound() else {
+						cursor.finish();
+						return ServedChunk::Served(Vec::new());
 					};
-					let span = (Included(start), upper);
+					let span = (lower, upper);
 					for (key, entry) in resident.entries.range(span) {
 						let Some(row) = entry.value() else {
 							continue;
@@ -338,11 +340,14 @@ impl<D: RangeDomain> RangeTier<D> {
 		if !span.is_empty() {
 			loop {
 				if let Some(limit) = walk_end.as_ref()
-					&& !limit.covers(&start)
+					&& *limit <= start
 				{
 					break;
 				}
-				let partition = scan.confined.unwrap_or_else(|| D::partition(scan.dimension, &start));
+				let Some(at) = start.anchor() else {
+					break;
+				};
+				let partition = scan.confined.unwrap_or_else(|| D::partition(scan.dimension, &at));
 				if walk_end.is_none() {
 					walk_end = Some(D::partition_walk_end(&partition));
 				}
@@ -377,10 +382,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				if end == span.end {
 					break;
 				}
-				match end {
-					Edge::Key(key) => start = key,
-					Edge::AfterKey(_) | Edge::Bottom | Edge::Top => break,
-				}
+				start = end;
 			}
 		}
 		if !self.flush_claims(scan, &mut claim, &mut claimed) {
@@ -459,7 +461,10 @@ impl<D: RangeDomain> RangeTier<D> {
 		span: &Interval<D::Key>,
 		rows: &[(D::Key, D::Row)],
 	) -> bool {
-		let partition = scan.confined.unwrap_or_else(|| D::partition(scan.dimension, &span.start));
+		let Some(at) = span.start.anchor() else {
+			return false;
+		};
+		let partition = scan.confined.unwrap_or_else(|| D::partition(scan.dimension, &at));
 		if !D::caches_ranges(&partition) {
 			return false;
 		}
@@ -645,7 +650,10 @@ enum Tally {
 }
 
 fn exempt_gap<D: RangeDomain>(dimension: D::Dimension, confined: Option<D::Partition>, gap: &Interval<D::Key>) -> bool {
-	let partition = confined.unwrap_or_else(|| D::partition(dimension, &gap.start));
+	let Some(at) = gap.start.anchor() else {
+		return false;
+	};
+	let partition = confined.unwrap_or_else(|| D::partition(dimension, &at));
 	if D::caches_ranges(&partition) {
 		return false;
 	}
@@ -676,7 +684,7 @@ fn coalesce_gaps<D: RangeDomain>(pieces: Vec<Piece<D>>) -> Vec<Piece<D>> {
 					Some(_),
 				)),
 				Some(_),
-			) if *prev_exempt == *exempt && prev.end == Edge::Key(interval.start.clone()) => {
+			) if *prev_exempt == *exempt && prev.end == interval.start => {
 				prev.end = interval.end.clone();
 				true
 			}
@@ -706,11 +714,11 @@ fn split_at_partitions<D: RangeDomain>(
 	let mut start = whole.start.clone();
 	let mut walk_end: Option<Edge<D::Key>> = None;
 	loop {
-		if !whole.end.covers(&start) {
+		if whole.end <= start {
 			return;
 		}
 		if let Some(limit) = walk_end.as_ref()
-			&& !limit.covers(&start)
+			&& *limit <= start
 		{
 			out.push((
 				Segment::Gap {
@@ -721,7 +729,10 @@ fn split_at_partitions<D: RangeDomain>(
 			));
 			return;
 		}
-		let partition = confined.unwrap_or_else(|| D::partition(dimension, &start));
+		let Some(at) = start.anchor() else {
+			return;
+		};
+		let partition = confined.unwrap_or_else(|| D::partition(dimension, &at));
 
 		let bound = if ram {
 			D::span(&partition).1
@@ -748,10 +759,7 @@ fn split_at_partitions<D: RangeDomain>(
 		if end == whole.end {
 			return;
 		}
-		match end {
-			Edge::Key(key) => start = key,
-			Edge::AfterKey(_) | Edge::Bottom | Edge::Top => return,
-		}
+		start = end;
 	}
 }
 
@@ -832,7 +840,7 @@ mod tests {
 
 	fn whole(keyspace: KeyspaceId) -> Interval<MultiKey> {
 		let (start, end) = partition(keyspace).span();
-		Interval::new(start.lowest().expect("a partition span starts at a key"), end)
+		Interval::new(start, end)
 	}
 
 	/// A range from the start of `top` to the end of `bottom`; keyspaces encode inverted, so `top`
@@ -852,7 +860,7 @@ mod tests {
 	}
 
 	fn spanning(from: &EncodedKey, to: &EncodedKey) -> Interval<MultiKey> {
-		Interval::new(from.clone(), Edge::Key(to.clone()))
+		Interval::new(Edge::Key(from.clone()), Edge::Key(to.clone()))
 	}
 
 	fn drain(tier: &RangeTier<D>, scan: &RangeScan<D>, segment: &Interval<MultiKey>, limit: usize) -> Vec<String> {
@@ -1031,10 +1039,7 @@ mod tests {
 			[
 				(
 					Segment::Gap {
-						interval: Interval::new(
-							whole(top).start,
-							Edge::Key(whole(UNCACHED).start)
-						),
+						interval: Interval::new(whole(top).start, whole(UNCACHED).start),
 						exempt: false,
 					},
 					Some(partition(top))
@@ -1098,7 +1103,7 @@ mod tests {
 		assert_eq!(
 			tail,
 			&Segment::Gap {
-				interval: Interval::new(boundary, Edge::Top),
+				interval: Interval::new(Edge::Key(boundary), Edge::Top),
 				exempt: false,
 			},
 			"everything past the group must come back as one piece running to the top of the key space"
@@ -1122,7 +1127,7 @@ mod tests {
 		let range = keyspace_inner_range(group(), CACHED);
 		let at = |suffix: &[u8]| key(CACHED, suffix);
 
-		assert!(claim(&tier, &range, &Interval::new(at(b"a"), Edge::Top), &[(at(b"a"), row("a1"))])
+		assert!(claim(&tier, &range, &Interval::new(Edge::Key(at(b"a")), Edge::Top), &[(at(b"a"), row("a1"))])
 			== Materialize::Materialized);
 
 		let Edge::Key(boundary) = partition(CACHED).group_end() else {
