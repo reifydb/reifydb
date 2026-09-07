@@ -71,16 +71,9 @@ fn a_tick_runs_exactly_one_slice_of_exactly_its_own_class_and_never_a_neighbour(
 	// Each class owns an actor, so a tick delivered to one must not drive another. Sharing a lane is what let a
 	// slow class delay every other one, and running a neighbour would double-drive its cursor.
 	let journal = journal();
-	let mut first = TestHarness::new(LifecycleActor::new(Box::new(ScriptedTask::new(
-		"first",
-		1,
-		journal.clone(),
-	))));
-	let mut second = TestHarness::new(LifecycleActor::new(Box::new(ScriptedTask::new(
-		"second",
-		1,
-		journal.clone(),
-	))));
+	let mut first = TestHarness::new(LifecycleActor::new(Box::new(ScriptedTask::new("first", 1, journal.clone()))));
+	let mut second =
+		TestHarness::new(LifecycleActor::new(Box::new(ScriptedTask::new("second", 1, journal.clone()))));
 
 	second.send(LifecycleMessage::Tick);
 	let directives = second.process_all();
@@ -99,11 +92,8 @@ fn a_tick_yields_the_lane_after_one_slice_even_when_the_class_still_has_work() {
 	// The budget contract. If this actor ever drains inline on Yielded, a class with a large backlog occupies
 	// the lane for the whole drain and every other class - including persistent flush - waits behind it.
 	let journal = journal();
-	let mut harness = TestHarness::new(LifecycleActor::new(Box::new(ScriptedTask::new(
-		"backlogged",
-		5,
-		journal.clone(),
-	))));
+	let mut harness =
+		TestHarness::new(LifecycleActor::new(Box::new(ScriptedTask::new("backlogged", 5, journal.clone()))));
 
 	harness.send(LifecycleMessage::Tick);
 	let directives = harness.process_all();
@@ -120,11 +110,8 @@ fn a_tick_yields_the_lane_after_one_slice_even_when_the_class_still_has_work() {
 #[test]
 fn run_to_exhaustion_drains_the_backlog_and_notifies_the_waiter() {
 	let journal = journal();
-	let mut harness = TestHarness::new(LifecycleActor::new(Box::new(ScriptedTask::new(
-		"backlogged",
-		4,
-		journal.clone(),
-	))));
+	let mut harness =
+		TestHarness::new(LifecycleActor::new(Box::new(ScriptedTask::new("backlogged", 4, journal.clone()))));
 	let waiter = Arc::new(WaiterHandle::new());
 
 	harness.send(LifecycleMessage::RunToExhaustion {

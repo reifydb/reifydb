@@ -16,6 +16,12 @@ use std::{ops::Deref, sync::Arc};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::default;
 use reifydb_core::{common::CommitVersion, lifecycle::watermark::CheckpointFloor, metrics::collect::MetricsCollector};
+use reifydb_filter::adaptive::FilterMetrics;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_filter::{
+	actor::{FilterActor, FilterMessage},
+	config::FilterConfig,
+};
 use reifydb_runtime::{
 	actor::{
 		mailbox::ActorRef,
@@ -26,14 +32,7 @@ use reifydb_runtime::{
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_store::metrics::PageCacheMetrics;
-
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_filter::{
-	actor::{FilterActor, FilterMessage},
-	config::FilterConfig,
-};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{

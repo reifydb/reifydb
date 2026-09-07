@@ -7,7 +7,11 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::{GroupId, KeyspaceId}, metrics::scan::record_page};
+use reifydb_core::{
+	interface::catalog::flow::OperatorId,
+	key::operator::state::{GroupId, KeyspaceId},
+	metrics::scan::record_page,
+};
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use tracing::instrument;
