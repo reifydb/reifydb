@@ -25,7 +25,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
 	partition::PartitionError,
@@ -249,7 +249,7 @@ fn build_series_updates_to_apply(
 	columns: &Columns,
 	row_numbers: &[RowNumber],
 	has_tag: bool,
-) -> Result<Vec<(AnyKey, EncodedBytes, usize)>> {
+) -> Result<Vec<(TaggedKey, EncodedBytes, usize)>> {
 	let row_count = columns.row_count();
 	let partitioned = !series.partition_by.is_empty();
 	if partitioned && columns.partitions().len() != row_count {
@@ -259,13 +259,13 @@ fn build_series_updates_to_apply(
 		}
 		.into());
 	}
-	let mut updates_to_apply: Vec<(AnyKey, EncodedBytes, usize)> = Vec::with_capacity(row_count);
+	let mut updates_to_apply: Vec<(TaggedKey, EncodedBytes, usize)> = Vec::with_capacity(row_count);
 	for (row_idx, row_number) in row_numbers.iter().enumerate().take(row_count) {
 		let sequence = u64::from(*row_number);
 		let key_value = extract_series_update_key_value(columns, series, row_idx);
 		let variant_tag = extract_series_update_variant_tag(columns, has_tag, row_idx);
 
-		let key: AnyKey = if partitioned {
+		let key: TaggedKey = if partitioned {
 			let old_partition = columns.partitions()[row_idx];
 			let new_partition = series_partition_of_columns(series, columns, row_idx)?;
 			if new_partition != old_partition {

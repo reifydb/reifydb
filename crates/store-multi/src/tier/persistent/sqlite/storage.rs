@@ -2362,8 +2362,7 @@ mod tests {
 			store::EntryLayout,
 		},
 		key::{
-			EncodableKey,
-			any::AnyKey,
+			any::TaggedKey,
 			row::{PartitionedRowKey, RowKey, RowKeyRange},
 			series::{
 				PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
@@ -2384,8 +2383,8 @@ mod tests {
 		RowKey::encoded(StorageId::Table(TableId(1)), RowNumber(n))
 	}
 
-	fn row_cursor(n: u64) -> AnyKey {
-		AnyKey::from(RowKey::new(StorageId::Table(TableId(1)), RowNumber(n)))
+	fn row_cursor(n: u64) -> TaggedKey {
+		TaggedKey::from(RowKey::new(StorageId::Table(TableId(1)), RowNumber(n)))
 	}
 
 	fn row(payload: &[u8]) -> CowVec<u8> {
@@ -3424,8 +3423,12 @@ mod tests {
 		PartitionedRowKey::encoded(StorageId::Table(TableId(2)), Partition(partition), RowNumber(n))
 	}
 
-	fn partitioned_cursor(partition: u128, n: u64) -> AnyKey {
-		AnyKey::from(PartitionedRowKey::new(StorageId::Table(TableId(2)), Partition(partition), RowNumber(n)))
+	fn partitioned_cursor(partition: u128, n: u64) -> TaggedKey {
+		TaggedKey::from(PartitionedRowKey::new(
+			StorageId::Table(TableId(2)),
+			Partition(partition),
+			RowNumber(n),
+		))
 	}
 
 	#[test]

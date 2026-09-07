@@ -3,17 +3,17 @@
 
 use reifydb_codec::row::bytes::EncodedBytes;
 
-use crate::key::any::AnyKey;
+use crate::key::any::TaggedKey;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Delta {
 	Set {
-		key: AnyKey,
+		key: TaggedKey,
 		bytes: EncodedBytes,
 	},
 
 	Remove {
-		key: AnyKey,
+		key: TaggedKey,
 		announce: RemoveAnnounce,
 	},
 }
@@ -63,14 +63,14 @@ impl RemoveAnnounce {
 }
 
 impl Delta {
-	pub fn remove_silent(key: AnyKey) -> Self {
+	pub fn remove_silent(key: TaggedKey) -> Self {
 		Self::Remove {
 			key,
 			announce: RemoveAnnounce::Silent,
 		}
 	}
 
-	pub fn remove_announced(key: AnyKey, pre: EncodedBytes) -> Self {
+	pub fn remove_announced(key: TaggedKey, pre: EncodedBytes) -> Self {
 		Self::Remove {
 			key,
 			announce: RemoveAnnounce::Announced {
@@ -79,7 +79,7 @@ impl Delta {
 		}
 	}
 
-	pub fn remove_unobserved(key: AnyKey, pre: EncodedBytes) -> Self {
+	pub fn remove_unobserved(key: TaggedKey, pre: EncodedBytes) -> Self {
 		Self::Remove {
 			key,
 			announce: RemoveAnnounce::Unobserved {
@@ -88,7 +88,7 @@ impl Delta {
 		}
 	}
 
-	pub fn key(&self) -> &AnyKey {
+	pub fn key(&self) -> &TaggedKey {
 		match self {
 			Self::Set {
 				key,

@@ -7,11 +7,7 @@ use std::{
 };
 
 use reifydb_codec::row::shape::{RowFamily, RowShape};
-use reifydb_core::{
-	event::EventBus,
-	interface::catalog::id::QueueId,
-	key::{EncodableKey, queue::QueueDeduplicationKey},
-};
+use reifydb_core::{event::EventBus, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::single::SingleTransaction;

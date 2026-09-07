@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKeyRange;
-use reifydb_core::key::{any::AnyKey, bound::AnyKeyBoundRange};
+use reifydb_core::key::{any::TaggedKey, bound::TaggedKeyBoundRange};
 
 use crate::multi::conflict::ConflictManager;
 
@@ -17,11 +17,11 @@ impl<'a> Marker<'a> {
 		}
 	}
 
-	pub fn mark(&mut self, k: &AnyKey) {
+	pub fn mark(&mut self, k: &TaggedKey) {
 		self.marker.mark_read(k);
 	}
 
-	pub fn mark_range(&mut self, range: AnyKeyBoundRange) {
+	pub fn mark_range(&mut self, range: TaggedKeyBoundRange) {
 		self.marker.mark_range(range);
 	}
 

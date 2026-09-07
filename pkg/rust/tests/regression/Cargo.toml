@@ -8,7 +8,7 @@ repository.workspace = true
 publish = false
 
 [dev-dependencies]
-reifydb = { workspace = true, features = ["sub_flow", "testing"] }
+reifydb = { workspace = true, features = ["sub_flow", "sub_server_grpc", "sub_server_http", "sub_server_ws", "testing"] }
 reifydb-client = { path = "../../reifydb-client", features = ["grpc", "http", "ws"] }
 reifydb-testing = { path = "../../../../crates/testing" }
 reifydb-value = { workspace = true }

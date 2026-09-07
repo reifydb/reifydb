@@ -22,7 +22,7 @@ use reifydb_core::{
 		id::{IndexId, TableId},
 		object::ObjectId,
 	},
-	key::{any::AnyKey, catalog::IndexEntryKey},
+	key::{any::TaggedKey, catalog::IndexEntryKey},
 	value::index::encoded::EncodedIndexKey,
 };
 use reifydb_transaction::multi::transaction::MultiTransaction;
@@ -33,18 +33,18 @@ pub fn test_multi() -> MultiTransaction {
 }
 
 pub trait IntoKey {
-	fn into_key(self) -> AnyKey;
+	fn into_key(self) -> TaggedKey;
 }
 
 // extend_raw appends the tail verbatim, so encoded order matches the raw key order.
-fn synthetic_key(raw: EncodedKey) -> AnyKey {
+fn synthetic_key(raw: EncodedKey) -> TaggedKey {
 	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(raw.as_slice()))
 		.into()
 }
 
-fn synthetic_tail(key: &AnyKey) -> Option<Vec<u8>> {
+fn synthetic_tail(key: &TaggedKey) -> Option<Vec<u8>> {
 	match key {
-		AnyKey::IndexEntry(entry) => Some(entry.key.as_ref().to_vec()),
+		TaggedKey::IndexEntry(entry) => Some(entry.key.as_ref().to_vec()),
 		_ => None,
 	}
 }
@@ -58,7 +58,7 @@ pub trait FromRow: Sized {
 }
 
 pub trait FromKey: Sized {
-	fn from_key(key: &AnyKey) -> Option<Self>;
+	fn from_key(key: &TaggedKey) -> Option<Self>;
 }
 
 #[macro_export]
@@ -68,12 +68,12 @@ macro_rules! as_key {
 
 #[macro_export]
 macro_rules! as_encoded {
-	($key:expr) => {{ reifydb_core::key::any::AnyKey::encode(&$crate::as_key!($key)) }};
+	($key:expr) => {{ reifydb_core::key::any::TaggedKey::encode(&$crate::as_key!($key)) }};
 }
 
 #[macro_export]
 macro_rules! as_bound {
-	($key:expr) => {{ reifydb_core::key::bound::AnyKeyBound::Key($crate::as_key!($key)) }};
+	($key:expr) => {{ reifydb_core::key::bound::TaggedKeyBound::Key($crate::as_key!($key)) }};
 }
 
 #[macro_export]
@@ -98,7 +98,7 @@ macro_rules! from_key {
 macro_rules! impl_kv_for {
 	($t:ty, $extend:ident, $read:ident) => {
 		impl IntoKey for $t {
-			fn into_key(self) -> AnyKey {
+			fn into_key(self) -> TaggedKey {
 				let mut ser = KeySerializer::new();
 				ser.$extend(self);
 				synthetic_key(ser.finish())
@@ -112,7 +112,7 @@ macro_rules! impl_kv_for {
 			}
 		}
 		impl FromKey for $t {
-			fn from_key(key: &AnyKey) -> Option<Self> {
+			fn from_key(key: &TaggedKey) -> Option<Self> {
 				KeyDeserializer::from_bytes(&synthetic_tail(key)?).$read().ok()
 			}
 		}
@@ -125,7 +125,7 @@ macro_rules! impl_kv_for {
 }
 
 impl IntoKey for &str {
-	fn into_key(self) -> AnyKey {
+	fn into_key(self) -> TaggedKey {
 		let mut ser = KeySerializer::new();
 		ser.extend_str(self);
 		synthetic_key(ser.finish())

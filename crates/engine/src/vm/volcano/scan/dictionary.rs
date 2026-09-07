@@ -7,7 +7,7 @@ use postcard::from_bytes;
 use reifydb_core::{
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedDictionary, store::SingleVersionRange},
 	internal_error,
-	key::{EncodableKey, any::AnyKey, bound::AnyKeyBoundRange, catalog::DictionaryEntryIndexKey},
+	key::{any::TaggedKey, bound::TaggedKeyBoundRange, catalog::DictionaryEntryIndexKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -27,7 +27,7 @@ pub struct DictionaryScanNode {
 	dictionary: ResolvedDictionary,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
-	last_key: Option<AnyKey>,
+	last_key: Option<TaggedKey>,
 	exhausted: bool,
 }
 
@@ -49,10 +49,10 @@ impl DictionaryScanNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::dictionary::drain")]
 	fn drain_batch<'a>(
 		rx: &mut Transaction<'a>,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		batch_size: u64,
 		dict_def: &Dictionary,
-	) -> Result<(Vec<DictionaryEntryId>, Vec<Value>, Option<AnyKey>)> {
+	) -> Result<(Vec<DictionaryEntryId>, Vec<Value>, Option<TaggedKey>)> {
 		let mut ids: Vec<DictionaryEntryId> = Vec::new();
 		let mut values: Vec<Value> = Vec::new();
 		let mut new_last_key = None;
@@ -72,7 +72,7 @@ impl DictionaryScanNode {
 			};
 
 			let entry_id = DictionaryEntryId::from_u128(key.id, dict_def.id_type.clone())?;
-			new_last_key = Some(AnyKey::from(key));
+			new_last_key = Some(TaggedKey::from(key));
 
 			let value: Value = from_bytes(&entry.bytes)
 				.map_err(|e| internal_error!("Failed to deserialize dictionary value: {}", e))?;

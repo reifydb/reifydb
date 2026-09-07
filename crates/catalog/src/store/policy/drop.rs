@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::policy::PolicyId,
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		identity::{PolicyKey, PolicyOpKey},
 	},
 };
@@ -20,7 +20,7 @@ impl CatalogStore {
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;
-				if let AnyKey::PolicyOp(key) = entry.key {
+				if let TaggedKey::PolicyOp(key) = entry.key {
 					keys_to_remove.push(key);
 				}
 			}

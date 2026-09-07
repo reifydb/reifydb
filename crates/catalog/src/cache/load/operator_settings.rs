@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
-use reifydb_core::key::{any::AnyKey, operator_settings::OperatorSettingsKey};
+use reifydb_core::key::{any::TaggedKey, operator_settings::OperatorSettingsKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use tracing::warn;
 
@@ -17,7 +17,7 @@ pub(crate) fn load_operator_settings(rx: &mut Transaction<'_>, catalog: &Catalog
 		let multi = entry?;
 		let version = multi.version;
 
-		let AnyKey::OperatorSettings(key) = &multi.key else {
+		let TaggedKey::OperatorSettings(key) = &multi.key else {
 			warn!("Failed to decode OperatorSettingsKey from catalog entry, skipping");
 			continue;
 		};

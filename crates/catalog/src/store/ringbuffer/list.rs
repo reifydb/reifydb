@@ -8,7 +8,7 @@ use reifydb_core::{
 		id::{NamespaceId, RingBufferId},
 		ringbuffer::RingBuffer,
 	},
-	key::{any::AnyKey, ringbuffer::RingBufferKey},
+	key::{any::TaggedKey, ringbuffer::RingBufferKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -29,7 +29,7 @@ impl CatalogStore {
 
 			for entry in stream {
 				let entry = entry?;
-				if let AnyKey::RingBuffer(ringbuffer_key) = &entry.key {
+				if let TaggedKey::RingBuffer(ringbuffer_key) = &entry.key {
 					let ringbuffer_id = ringbuffer_key.ringbuffer;
 
 					let namespace_id = NamespaceId(ringbuffer::get_namespace(

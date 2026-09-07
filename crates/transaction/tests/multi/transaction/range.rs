@@ -15,7 +15,7 @@ use reifydb_core::{
 		id::{IndexId, TableId},
 		object::ObjectId,
 	},
-	key::{any::AnyKey, bound::AnyKeyBoundRange, catalog::IndexEntryKey},
+	key::{any::TaggedKey, bound::TaggedKeyBoundRange, catalog::IndexEntryKey},
 };
 use reifydb_transaction::multi::RangeScope;
 
@@ -24,7 +24,7 @@ use crate::{as_bound, as_key, as_values, from_bytes, multi::transaction::FromRow
 
 // String tails encode inverted, so every key in the 'a' group shares the tail prefix !a, and the
 // group sorts in reverse of the plaintext.
-fn prefix_range(prefix: u8) -> AnyKeyBoundRange {
+fn prefix_range(prefix: u8) -> TaggedKeyBoundRange {
 	IndexEntryKey::key_prefix_range(ObjectId::Table(TableId(1)), IndexId::primary(1u64), &[!prefix])
 }
 
@@ -37,7 +37,7 @@ fn test_range() {
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
 	txn.commit(vec![]).unwrap();
 
-	let four_to_one = AnyKeyBoundRange::start_end(as_bound!(4), as_bound!(1));
+	let four_to_one = TaggedKeyBoundRange::start_end(as_bound!(4), as_bound!(1));
 
 	let txn = engine.begin_query().unwrap();
 	let items: Vec<_> =
@@ -64,7 +64,7 @@ fn test_range2() {
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
 
-	let four_to_one = AnyKeyBoundRange::start_end(as_bound!(4), as_bound!(1));
+	let four_to_one = TaggedKeyBoundRange::start_end(as_bound!(4), as_bound!(1));
 
 	let items: Vec<_> =
 		txn.range(four_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -89,7 +89,7 @@ fn test_range2() {
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
 	txn.set(&as_key!(6), as_values!(6)).unwrap();
 
-	let seven_to_one = AnyKeyBoundRange::start_end(as_bound!(7), as_bound!(1));
+	let seven_to_one = TaggedKeyBoundRange::start_end(as_bound!(7), as_bound!(1));
 
 	let items: Vec<_> =
 		txn.range(seven_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -116,7 +116,7 @@ fn test_range3() {
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
 	txn.set(&as_key!(6), as_values!(6)).unwrap();
 
-	let seven_to_four = AnyKeyBoundRange::start_end(as_bound!(7), as_bound!(4));
+	let seven_to_four = TaggedKeyBoundRange::start_end(as_bound!(7), as_bound!(4));
 
 	let items: Vec<_> =
 		txn.range(seven_to_four.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -136,7 +136,7 @@ fn test_range3() {
 
 	txn.commit(vec![]).unwrap();
 
-	let five_to_one = AnyKeyBoundRange::start_end(as_bound!(5), as_bound!(1));
+	let five_to_one = TaggedKeyBoundRange::start_end(as_bound!(5), as_bound!(1));
 
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
@@ -204,7 +204,7 @@ fn test_range_edge() {
 	}
 
 	let check_iter =
-		|items: Vec<reifydb_core::interface::store::MultiVersionRow<reifydb_core::key::any::AnyKey>>,
+		|items: Vec<reifydb_core::interface::store::MultiVersionRow<reifydb_core::key::any::TaggedKey>>,
 		 expected: &[u64]| {
 			let mut i = 0;
 			for r in items {
@@ -215,7 +215,7 @@ fn test_range_edge() {
 		};
 
 	let check_rev_iter =
-		|items: Vec<reifydb_core::interface::store::MultiVersionRow<reifydb_core::key::any::AnyKey>>,
+		|items: Vec<reifydb_core::interface::store::MultiVersionRow<reifydb_core::key::any::TaggedKey>>,
 		 expected: &[u64]| {
 			let mut i = 0;
 			for r in items {
@@ -225,7 +225,7 @@ fn test_range_edge() {
 			assert_eq!(expected.len(), i);
 		};
 
-	let ten_to_one = AnyKeyBoundRange::start_end(as_bound!(10), as_bound!(1));
+	let ten_to_one = TaggedKeyBoundRange::start_end(as_bound!(10), as_bound!(1));
 
 	let mut txn = engine.begin_command().unwrap();
 	let items: Vec<_> =
@@ -307,7 +307,7 @@ fn test_range_stream_returns_newest_version() {
 
 	let txn = engine.begin_query().unwrap();
 	let items: Vec<_> =
-		txn.range(AnyKeyBoundRange::all(), RangeScope::All, 5).collect::<Result<Vec<_>, _>>().unwrap();
+		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 5).collect::<Result<Vec<_>, _>>().unwrap();
 
 	assert_eq!(items.len(), 1);
 	let item = &items[0];
@@ -335,7 +335,7 @@ fn test_range_stream_multiple_keys_many_versions() {
 	// Query with streaming
 	let txn = engine.begin_query().unwrap();
 	let items: Vec<_> =
-		txn.range(AnyKeyBoundRange::all(), RangeScope::All, 200).collect::<Result<Vec<_>, _>>().unwrap();
+		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 200).collect::<Result<Vec<_>, _>>().unwrap();
 
 	// Should have all 5 keys, each with newest version
 	// Keys are returned in descending order (5, 4, 3, 2, 1)
@@ -352,7 +352,7 @@ fn test_range_stream_multiple_keys_many_versions() {
 #[test]
 fn a_prefix_range_sees_writes_the_transaction_has_not_committed_yet() {
 	// A scan merges two sources: committed rows from storage, ordered by bytes, and the
-	// transaction's own pending writes, ordered by AnyKeyBound. A prefix bound that orders
+	// transaction's own pending writes, ordered by TaggedKeyBound. A prefix bound that orders
 	// differently from its encoded form makes a transaction stop seeing its own writes while
 	// committed rows keep arriving, which reads as data loss rather than as an error.
 	let engine = test_multi();
@@ -361,7 +361,7 @@ fn a_prefix_range_sees_writes_the_transaction_has_not_committed_yet() {
 	txn.set(&as_key!("a2"), as_values!(2u64)).unwrap();
 	txn.set(&as_key!("b1"), as_values!(3u64)).unwrap();
 
-	let keys: Vec<AnyKey> = txn
+	let keys: Vec<TaggedKey> = txn
 		.range(prefix_range(b'a'), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
@@ -385,7 +385,7 @@ fn a_prefix_range_merges_uncommitted_writes_with_committed_rows() {
 
 	let rows: Vec<_> = txn.range(prefix_range(b'a'), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 
-	let keys: Vec<AnyKey> = rows.iter().map(|row| row.key.clone()).collect();
+	let keys: Vec<TaggedKey> = rows.iter().map(|row| row.key.clone()).collect();
 	assert_eq!(keys, vec![as_key!("a3"), as_key!("a2"), as_key!("a1")]);
 
 	let values: Vec<u64> = rows.iter().map(|row| from_bytes!(u64, row.bytes)).collect();
@@ -403,7 +403,7 @@ fn a_prefix_range_hides_a_row_the_transaction_has_removed() {
 	let mut txn = engine.begin_command().unwrap();
 	txn.remove(&as_key!("a1")).unwrap();
 
-	let keys: Vec<AnyKey> = txn
+	let keys: Vec<TaggedKey> = txn
 		.range(prefix_range(b'a'), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
@@ -422,7 +422,7 @@ fn a_reverse_prefix_range_sees_uncommitted_writes_too() {
 	txn.set(&as_key!("a2"), as_values!(2u64)).unwrap();
 	txn.set(&as_key!("b1"), as_values!(3u64)).unwrap();
 
-	let keys: Vec<AnyKey> = txn
+	let keys: Vec<TaggedKey> = txn
 		.range_rev(prefix_range(b'a'), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()

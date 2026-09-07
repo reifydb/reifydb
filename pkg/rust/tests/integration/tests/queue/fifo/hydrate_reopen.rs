@@ -8,8 +8,7 @@ use reifydb::{
 			store::{SingleVersionGet, SingleVersionRange},
 		},
 		key::{
-			EncodableKey,
-			any::AnyKey,
+			any::TaggedKey,
 			queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 		},
 	},
@@ -28,13 +27,13 @@ fn queue_id(db: &TestDb, name: &str) -> QueueId {
 	catalog.find_queue_by_name(&mut txn, namespace.id(), name).unwrap().unwrap().id
 }
 
-fn keys(db: &TestDb, range: EncodedKeyRange) -> Vec<AnyKey> {
+fn keys(db: &TestDb, range: EncodedKeyRange) -> Vec<TaggedKey> {
 	let store = db.engine().single().read_store();
 	SingleVersionRange::range_batch(&store, range, 1024)
 		.unwrap()
 		.items
 		.iter()
-		.map(|item| AnyKey::decode(&item.key).unwrap())
+		.map(|item| TaggedKey::decode(&item.key).unwrap())
 		.collect()
 }
 

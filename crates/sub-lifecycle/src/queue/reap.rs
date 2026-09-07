@@ -20,10 +20,7 @@ use reifydb_core::{
 		},
 		store::SingleVersionRange,
 	},
-	key::{
-		EncodableKey,
-		queue::{QueueAttemptKey, QueueItemStateKey},
-	},
+	key::queue::{QueueAttemptKey, QueueItemStateKey},
 	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
 };
 use reifydb_engine::engine::StandardEngine;

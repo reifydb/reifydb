@@ -20,7 +20,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		store::MultiVersionCommit,
 	},
-	key::any::AnyKey,
+	key::any::TaggedKey,
 	util::bloom::hash_item,
 };
 use reifydb_runtime::{
@@ -86,7 +86,7 @@ impl ModifiedKeyIndex {
 	}
 
 	#[inline]
-	fn insert(&mut self, key: &AnyKey) {
+	fn insert(&mut self, key: &TaggedKey) {
 		self.hashes.insert(hash_item(key));
 	}
 
@@ -96,7 +96,7 @@ impl ModifiedKeyIndex {
 	}
 
 	#[cfg(test)]
-	pub(crate) fn contains(&self, key: &AnyKey) -> bool {
+	pub(crate) fn contains(&self, key: &TaggedKey) -> bool {
 		self.hashes.contains(&hash_item(key))
 	}
 
@@ -556,14 +556,14 @@ mod tests {
 			object::ObjectId,
 		},
 		key::{
-			bound::{AnyKeyBound, AnyKeyBoundRange},
+			bound::{TaggedKeyBound, TaggedKeyBoundRange},
 			catalog::IndexEntryKey,
 		},
 		value::index::encoded::EncodedIndexKey,
 	};
 
 	// IndexEntry appends its tail verbatim, so encoded order still matches the raw string order.
-	fn create_test_key(s: &str) -> AnyKey {
+	fn create_test_key(s: &str) -> TaggedKey {
 		IndexEntryKey::new(
 			ObjectId::Table(TableId(1)),
 			IndexId::primary(1u64),
@@ -572,10 +572,10 @@ mod tests {
 		.into()
 	}
 
-	fn create_test_range(start: &str, end: &str) -> AnyKeyBoundRange {
-		AnyKeyBoundRange {
-			start: Bound::Included(AnyKeyBound::Key(create_test_key(start))),
-			end: Bound::Excluded(AnyKeyBound::Key(create_test_key(end))),
+	fn create_test_range(start: &str, end: &str) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange {
+			start: Bound::Included(TaggedKeyBound::Key(create_test_key(start))),
+			end: Bound::Excluded(TaggedKeyBound::Key(create_test_key(end))),
 		}
 	}
 

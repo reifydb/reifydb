@@ -2,22 +2,22 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::EncodableKey;
+use reifydb_macro::KeyCodec;
 
 use super::{
-	EncodableKey, KeyKind,
+	KeyTag,
 	catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 };
 use crate::{
 	interface::catalog::object::ObjectId,
 	key::{
 		any::{Field, KeyFields, Width},
-		bound::AnyKeyBoundRange,
+		bound::TaggedKeyBoundRange,
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = OutputFrontier)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = OutputFrontier)]
 pub struct OutputFrontierKey {
 	pub object: ObjectId,
 }
@@ -33,8 +33,8 @@ impl OutputFrontierKey {
 		Self::new(object).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
@@ -42,10 +42,10 @@ impl OutputFrontierKey {
 pub mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use super::{EncodableKey, OutputFrontierKey};
+	use super::OutputFrontierKey;
 	use crate::{
 		interface::catalog::{id::ViewId, object::ObjectId},
-		key::KeyKind,
+		key::KeyTag,
 	};
 
 	#[test]
@@ -65,14 +65,14 @@ pub mod tests {
 		// extend_u8 inverts, so a raw 0x1D here would sort into a neighbouring keyspace.
 		let encoded = OutputFrontierKey::encoded(ObjectId::View(ViewId(1)));
 
-		assert_eq!(encoded.as_slice()[0], !(KeyKind::OutputFrontier as u8));
+		assert_eq!(encoded.as_slice()[0], !(KeyTag::OutputFrontier as u8));
 	}
 
 	#[test]
 	fn a_key_of_another_kind_never_decodes_as_a_frontier() {
 		// 0x1D previously held FlowNodeInternalState, so a stale row must be rejected, never misread.
 		let mut foreign = OutputFrontierKey::encoded(ObjectId::View(ViewId(1))).as_slice().to_vec();
-		foreign[0] = !(KeyKind::FlowEdgeByFlow as u8);
+		foreign[0] = !(KeyTag::FlowEdgeByFlow as u8);
 
 		assert!(OutputFrontierKey::decode(&EncodedKey::new(foreign)).is_none());
 	}
@@ -91,7 +91,7 @@ pub mod tests {
 
 			assert_eq!(
 				encoded.as_slice()[0],
-				!(KeyKind::OutputFrontier as u8),
+				!(KeyTag::OutputFrontier as u8),
 				"{:?} encoded under a foreign tag",
 				object
 			);
@@ -119,7 +119,7 @@ pub mod tests {
 mod verify_byte_identical {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::{EncodableKey, OutputFrontierKey};
+	use super::OutputFrontierKey;
 	use crate::{
 		interface::catalog::{id::ViewId, object::ObjectId},
 		key::catalog::KeySerializerCatalogExt,
@@ -127,7 +127,7 @@ mod verify_byte_identical {
 
 	fn legacy_encode(key: &OutputFrontierKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(OutputFrontierKey::KIND as u8).extend_object_id(key.object);
+		serializer.extend_u8(OutputFrontierKey::TAG as u8).extend_object_id(key.object);
 		serializer.to_encoded_key().as_slice().to_vec()
 	}
 

@@ -19,7 +19,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::MultiVersionCommit,
 	},
-	key::{any::AnyKey, row::RowKey},
+	key::{any::TaggedKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_store_commit::MultiVersionScope;
@@ -47,7 +47,7 @@ fn commit_set(store: &StandardMultiStore, row: u64, version: u64, value: &str) {
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
-			key: AnyKey::from(RowKey::new(STORAGE, row)),
+			key: TaggedKey::from(RowKey::new(STORAGE, row)),
 			bytes: EncodedBytes(CowVec::new(value.as_bytes().to_vec())),
 		}],
 		CommitVersion(version),
@@ -58,7 +58,7 @@ fn commit_set(store: &StandardMultiStore, row: u64, version: u64, value: &str) {
 fn commit_remove(store: &StandardMultiStore, row: u64, version: u64) {
 	MultiVersionCommit::commit(
 		store,
-		cow_vec![Delta::remove_silent(AnyKey::from(RowKey::new(STORAGE, row)))],
+		cow_vec![Delta::remove_silent(TaggedKey::from(RowKey::new(STORAGE, row)))],
 		CommitVersion(version),
 	)
 	.unwrap();
@@ -111,7 +111,7 @@ fn range_served(store: &StandardMultiStore) -> u64 {
 }
 
 fn key(row: u64) -> Vec<u8> {
-	AnyKey::from(RowKey::new(STORAGE, row)).encode().to_vec()
+	TaggedKey::from(RowKey::new(STORAGE, row)).encode().to_vec()
 }
 
 /// Seeds only even rows so an odd row number is a brand-new key that lands in the middle of the encoded

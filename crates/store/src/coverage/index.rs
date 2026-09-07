@@ -173,7 +173,7 @@ impl<D: Hash + Eq + Copy, K: Key> CoverageIndex<D, K> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::key::typed::{Edge, MultiKey};
+	use reifydb_core::key::typed::{Edge, OpaqueKey};
 
 	use super::CoverageIndex;
 	use crate::coverage::interval::Interval;
@@ -182,15 +182,15 @@ mod tests {
 		EncodedKey::new(bytes)
 	}
 
-	fn e(bytes: &str) -> Edge<MultiKey> {
+	fn e(bytes: &str) -> Edge<OpaqueKey> {
 		Edge::of(bytes)
 	}
 
-	fn index() -> CoverageIndex<u8, MultiKey> {
+	fn index() -> CoverageIndex<u8, OpaqueKey> {
 		CoverageIndex::new()
 	}
 
-	fn intervals(index: &CoverageIndex<u8, MultiKey>, dimension: u8) -> Vec<Interval<MultiKey>> {
+	fn intervals(index: &CoverageIndex<u8, OpaqueKey>, dimension: u8) -> Vec<Interval<OpaqueKey>> {
 		index.set(dimension).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
@@ -330,7 +330,7 @@ mod tests {
 		index.extend(1, e("c"), Edge::of("f"));
 		index.extend(2, e("m"), Edge::of("p"));
 
-		let mut seen: Vec<(u8, Vec<Interval<MultiKey>>)> =
+		let mut seen: Vec<(u8, Vec<Interval<OpaqueKey>>)> =
 			index.iter().map(|(dimension, set)| (dimension, set.iter().collect())).collect();
 		seen.sort_by_key(|(dimension, _)| *dimension);
 

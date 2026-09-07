@@ -13,7 +13,6 @@ use crate::{
 		store::Tier,
 	},
 	key::{
-		EncodableKey,
 		catalog::{
 			BindingKey, ColumnPropertyKey, DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey,
 			HandlerKey, IndexEntryKey, IndexKey, PrimaryKeyKey, RelationshipKey, SinkKey, SourceKey,
@@ -30,7 +29,6 @@ use crate::{
 			AuthenticationKey, GrantedRoleKey, IdentityAttributeKey, IdentityAttributeValueKey,
 			IdentityKey, PolicyKey, PolicyOpKey, RoleKey, TokenKey,
 		},
-		kind::KeyKind,
 		metric::{MetricCdcKey, MetricStorageKey},
 		namespace::{
 			NamespaceBindingKey, NamespaceDictionaryKey, NamespaceFlowKey, NamespaceHandlerKey,
@@ -60,6 +58,7 @@ use crate::{
 			MigrationEventKey, MigrationKey, SystemSequenceKey, SystemVersionKey, TransactionVersionKey,
 			VersionEpochKey,
 		},
+		tag::KeyTag,
 	},
 };
 
@@ -70,7 +69,7 @@ pub enum MetricKey {
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub enum AnyKey {
+pub enum TaggedKey {
 	Namespace(NamespaceKey),
 	Table(TableKey),
 	Row(RowKey),
@@ -160,823 +159,837 @@ pub enum AnyKey {
 	PartitionedSortedViewRow(PartitionedSortedViewRowKey),
 }
 
-impl AnyKey {
-	pub fn kind(&self) -> KeyKind {
+impl TaggedKey {
+	pub fn kind(&self) -> KeyTag {
 		match self {
-			Self::Namespace(_) => KeyKind::Namespace,
-			Self::Table(_) => KeyKind::Table,
-			Self::Row(_) => KeyKind::Row,
-			Self::NamespaceTable(_) => KeyKind::NamespaceTable,
-			Self::SystemSequence(_) => KeyKind::SystemSequence,
-			Self::Columns(_) => KeyKind::Columns,
-			Self::Column(_) => KeyKind::Column,
-			Self::RowSequence(_) => KeyKind::RowSequence,
-			Self::ColumnProperty(_) => KeyKind::ColumnProperty,
-			Self::SystemVersion(_) => KeyKind::SystemVersion,
-			Self::TransactionVersion(_) => KeyKind::TransactionVersion,
-			Self::Index(_) => KeyKind::Index,
-			Self::IndexEntry(_) => KeyKind::IndexEntry,
-			Self::ColumnSequence(_) => KeyKind::ColumnSequence,
-			Self::CdcConsumer(_) => KeyKind::CdcConsumer,
-			Self::View(_) => KeyKind::View,
-			Self::NamespaceView(_) => KeyKind::NamespaceView,
-			Self::PrimaryKey(_) => KeyKind::PrimaryKey,
-			Self::OperatorState(_) => KeyKind::OperatorState,
-			Self::RingBuffer(_) => KeyKind::RingBuffer,
-			Self::NamespaceRingBuffer(_) => KeyKind::NamespaceRingBuffer,
-			Self::RingBufferMetadata(_) => KeyKind::RingBufferMetadata,
-			Self::Flow(_) => KeyKind::Flow,
-			Self::NamespaceFlow(_) => KeyKind::NamespaceFlow,
-			Self::Operator(_) => KeyKind::Operator,
-			Self::OperatorByFlow(_) => KeyKind::OperatorByFlow,
-			Self::FlowEdge(_) => KeyKind::FlowEdge,
-			Self::FlowEdgeByFlow(_) => KeyKind::FlowEdgeByFlow,
-			Self::OutputFrontier(_) => KeyKind::OutputFrontier,
-			Self::Dictionary(_) => KeyKind::Dictionary,
-			Self::DictionaryEntry(_) => KeyKind::DictionaryEntry,
-			Self::DictionaryEntryIndex(_) => KeyKind::DictionaryEntryIndex,
-			Self::NamespaceDictionary(_) => KeyKind::NamespaceDictionary,
-			Self::Metric(_) => KeyKind::Metric,
-			Self::FlowVersion(_) => KeyKind::FlowVersion,
-			Self::RowShape(_) => KeyKind::RowShape,
-			Self::RowShapeField(_) => KeyKind::RowShapeField,
-			Self::SumType(_) => KeyKind::SumType,
-			Self::NamespaceSumType(_) => KeyKind::NamespaceSumType,
-			Self::Handler(_) => KeyKind::Handler,
-			Self::NamespaceHandler(_) => KeyKind::NamespaceHandler,
-			Self::VariantHandler(_) => KeyKind::VariantHandler,
-			Self::Series(_) => KeyKind::Series,
-			Self::NamespaceSeries(_) => KeyKind::NamespaceSeries,
-			Self::SeriesMetadata(_) => KeyKind::SeriesMetadata,
-			Self::Identity(_) => KeyKind::Identity,
-			Self::Role(_) => KeyKind::Role,
-			Self::GrantedRole(_) => KeyKind::GrantedRole,
-			Self::Policy(_) => KeyKind::Policy,
-			Self::PolicyOp(_) => KeyKind::PolicyOp,
-			Self::Migration(_) => KeyKind::Migration,
-			Self::MigrationEvent(_) => KeyKind::MigrationEvent,
-			Self::Authentication(_) => KeyKind::Authentication,
-			Self::ConfigStorage(_) => KeyKind::ConfigStorage,
-			Self::Token(_) => KeyKind::Token,
-			Self::Source(_) => KeyKind::Source,
-			Self::NamespaceSource(_) => KeyKind::NamespaceSource,
-			Self::Sink(_) => KeyKind::Sink,
-			Self::NamespaceSink(_) => KeyKind::NamespaceSink,
-			Self::RowSettings(_) => KeyKind::RowSettings,
-			Self::Procedure(_) => KeyKind::Procedure,
-			Self::NamespaceProcedure(_) => KeyKind::NamespaceProcedure,
-			Self::ProcedureParam(_) => KeyKind::ProcedureParam,
-			Self::Binding(_) => KeyKind::Binding,
-			Self::NamespaceBinding(_) => KeyKind::NamespaceBinding,
-			Self::OperatorSettings(_) => KeyKind::OperatorSettings,
-			Self::ColumnSnapshot(_) => KeyKind::ColumnSnapshot,
-			Self::SeriesColumnSnapshot(_) => KeyKind::SeriesColumnSnapshot,
-			Self::TableColumnSnapshot(_) => KeyKind::TableColumnSnapshot,
-			Self::VersionEpoch(_) => KeyKind::VersionEpoch,
-			Self::IdentityAttribute(_) => KeyKind::IdentityAttribute,
-			Self::IdentityAttributeValue(_) => KeyKind::IdentityAttributeValue,
-			Self::PartitionedRow(_) => KeyKind::PartitionedRow,
-			Self::Partition(_) => KeyKind::Partition,
-			Self::Queue(_) => KeyKind::Queue,
-			Self::NamespaceQueue(_) => KeyKind::NamespaceQueue,
-			Self::QueueDeduplication(_) => KeyKind::QueueDeduplication,
-			Self::Relationship(_) => KeyKind::Relationship,
-			Self::SeriesRow(_) => KeyKind::SeriesRow,
-			Self::PartitionedSeriesRow(_) => KeyKind::PartitionedSeriesRow,
-			Self::QueuePartition(_) => KeyKind::QueuePartition,
-			Self::QueueItemState(_) => KeyKind::QueueItemState,
-			Self::QueueDue(_) => KeyKind::QueueDue,
-			Self::QueueAttempt(_) => KeyKind::QueueAttempt,
-			Self::QueueKeyActive(_) => KeyKind::QueueKeyActive,
-			Self::SortedViewRow(_) => KeyKind::SortedViewRow,
-			Self::PartitionedSortedViewRow(_) => KeyKind::PartitionedSortedViewRow,
+			Self::Namespace(_) => KeyTag::Namespace,
+			Self::Table(_) => KeyTag::Table,
+			Self::Row(_) => KeyTag::Row,
+			Self::NamespaceTable(_) => KeyTag::NamespaceTable,
+			Self::SystemSequence(_) => KeyTag::SystemSequence,
+			Self::Columns(_) => KeyTag::Columns,
+			Self::Column(_) => KeyTag::Column,
+			Self::RowSequence(_) => KeyTag::RowSequence,
+			Self::ColumnProperty(_) => KeyTag::ColumnProperty,
+			Self::SystemVersion(_) => KeyTag::SystemVersion,
+			Self::TransactionVersion(_) => KeyTag::TransactionVersion,
+			Self::Index(_) => KeyTag::Index,
+			Self::IndexEntry(_) => KeyTag::IndexEntry,
+			Self::ColumnSequence(_) => KeyTag::ColumnSequence,
+			Self::CdcConsumer(_) => KeyTag::CdcConsumer,
+			Self::View(_) => KeyTag::View,
+			Self::NamespaceView(_) => KeyTag::NamespaceView,
+			Self::PrimaryKey(_) => KeyTag::PrimaryKey,
+			Self::OperatorState(_) => KeyTag::OperatorState,
+			Self::RingBuffer(_) => KeyTag::RingBuffer,
+			Self::NamespaceRingBuffer(_) => KeyTag::NamespaceRingBuffer,
+			Self::RingBufferMetadata(_) => KeyTag::RingBufferMetadata,
+			Self::Flow(_) => KeyTag::Flow,
+			Self::NamespaceFlow(_) => KeyTag::NamespaceFlow,
+			Self::Operator(_) => KeyTag::Operator,
+			Self::OperatorByFlow(_) => KeyTag::OperatorByFlow,
+			Self::FlowEdge(_) => KeyTag::FlowEdge,
+			Self::FlowEdgeByFlow(_) => KeyTag::FlowEdgeByFlow,
+			Self::OutputFrontier(_) => KeyTag::OutputFrontier,
+			Self::Dictionary(_) => KeyTag::Dictionary,
+			Self::DictionaryEntry(_) => KeyTag::DictionaryEntry,
+			Self::DictionaryEntryIndex(_) => KeyTag::DictionaryEntryIndex,
+			Self::NamespaceDictionary(_) => KeyTag::NamespaceDictionary,
+			Self::Metric(_) => KeyTag::Metric,
+			Self::FlowVersion(_) => KeyTag::FlowVersion,
+			Self::RowShape(_) => KeyTag::RowShape,
+			Self::RowShapeField(_) => KeyTag::RowShapeField,
+			Self::SumType(_) => KeyTag::SumType,
+			Self::NamespaceSumType(_) => KeyTag::NamespaceSumType,
+			Self::Handler(_) => KeyTag::Handler,
+			Self::NamespaceHandler(_) => KeyTag::NamespaceHandler,
+			Self::VariantHandler(_) => KeyTag::VariantHandler,
+			Self::Series(_) => KeyTag::Series,
+			Self::NamespaceSeries(_) => KeyTag::NamespaceSeries,
+			Self::SeriesMetadata(_) => KeyTag::SeriesMetadata,
+			Self::Identity(_) => KeyTag::Identity,
+			Self::Role(_) => KeyTag::Role,
+			Self::GrantedRole(_) => KeyTag::GrantedRole,
+			Self::Policy(_) => KeyTag::Policy,
+			Self::PolicyOp(_) => KeyTag::PolicyOp,
+			Self::Migration(_) => KeyTag::Migration,
+			Self::MigrationEvent(_) => KeyTag::MigrationEvent,
+			Self::Authentication(_) => KeyTag::Authentication,
+			Self::ConfigStorage(_) => KeyTag::ConfigStorage,
+			Self::Token(_) => KeyTag::Token,
+			Self::Source(_) => KeyTag::Source,
+			Self::NamespaceSource(_) => KeyTag::NamespaceSource,
+			Self::Sink(_) => KeyTag::Sink,
+			Self::NamespaceSink(_) => KeyTag::NamespaceSink,
+			Self::RowSettings(_) => KeyTag::RowSettings,
+			Self::Procedure(_) => KeyTag::Procedure,
+			Self::NamespaceProcedure(_) => KeyTag::NamespaceProcedure,
+			Self::ProcedureParam(_) => KeyTag::ProcedureParam,
+			Self::Binding(_) => KeyTag::Binding,
+			Self::NamespaceBinding(_) => KeyTag::NamespaceBinding,
+			Self::OperatorSettings(_) => KeyTag::OperatorSettings,
+			Self::ColumnSnapshot(_) => KeyTag::ColumnSnapshot,
+			Self::SeriesColumnSnapshot(_) => KeyTag::SeriesColumnSnapshot,
+			Self::TableColumnSnapshot(_) => KeyTag::TableColumnSnapshot,
+			Self::VersionEpoch(_) => KeyTag::VersionEpoch,
+			Self::IdentityAttribute(_) => KeyTag::IdentityAttribute,
+			Self::IdentityAttributeValue(_) => KeyTag::IdentityAttributeValue,
+			Self::PartitionedRow(_) => KeyTag::PartitionedRow,
+			Self::Partition(_) => KeyTag::Partition,
+			Self::Queue(_) => KeyTag::Queue,
+			Self::NamespaceQueue(_) => KeyTag::NamespaceQueue,
+			Self::QueueDeduplication(_) => KeyTag::QueueDeduplication,
+			Self::Relationship(_) => KeyTag::Relationship,
+			Self::SeriesRow(_) => KeyTag::SeriesRow,
+			Self::PartitionedSeriesRow(_) => KeyTag::PartitionedSeriesRow,
+			Self::QueuePartition(_) => KeyTag::QueuePartition,
+			Self::QueueItemState(_) => KeyTag::QueueItemState,
+			Self::QueueDue(_) => KeyTag::QueueDue,
+			Self::QueueAttempt(_) => KeyTag::QueueAttempt,
+			Self::QueueKeyActive(_) => KeyTag::QueueKeyActive,
+			Self::SortedViewRow(_) => KeyTag::SortedViewRow,
+			Self::PartitionedSortedViewRow(_) => KeyTag::PartitionedSortedViewRow,
 		}
 	}
 
 	pub fn encode(&self) -> EncodedKey {
 		match self {
-			Self::Namespace(key) => EncodableKey::encode(key),
-			Self::Table(key) => EncodableKey::encode(key),
-			Self::Row(key) => EncodableKey::encode(key),
-			Self::NamespaceTable(key) => EncodableKey::encode(key),
-			Self::SystemSequence(key) => EncodableKey::encode(key),
-			Self::Columns(key) => EncodableKey::encode(key),
-			Self::Column(key) => EncodableKey::encode(key),
-			Self::RowSequence(key) => EncodableKey::encode(key),
-			Self::ColumnProperty(key) => EncodableKey::encode(key),
-			Self::SystemVersion(key) => EncodableKey::encode(key),
-			Self::TransactionVersion(key) => EncodableKey::encode(key),
-			Self::Index(key) => EncodableKey::encode(key),
-			Self::IndexEntry(key) => EncodableKey::encode(key),
-			Self::ColumnSequence(key) => EncodableKey::encode(key),
-			Self::CdcConsumer(key) => EncodableKey::encode(key),
-			Self::View(key) => EncodableKey::encode(key),
-			Self::NamespaceView(key) => EncodableKey::encode(key),
-			Self::PrimaryKey(key) => EncodableKey::encode(key),
-			Self::OperatorState(key) => EncodableKey::encode(key),
-			Self::RingBuffer(key) => EncodableKey::encode(key),
-			Self::NamespaceRingBuffer(key) => EncodableKey::encode(key),
-			Self::RingBufferMetadata(key) => EncodableKey::encode(key),
-			Self::Flow(key) => EncodableKey::encode(key),
-			Self::NamespaceFlow(key) => EncodableKey::encode(key),
-			Self::Operator(key) => EncodableKey::encode(key),
-			Self::OperatorByFlow(key) => EncodableKey::encode(key),
-			Self::FlowEdge(key) => EncodableKey::encode(key),
-			Self::FlowEdgeByFlow(key) => EncodableKey::encode(key),
-			Self::OutputFrontier(key) => EncodableKey::encode(key),
-			Self::Dictionary(key) => EncodableKey::encode(key),
-			Self::DictionaryEntry(key) => EncodableKey::encode(key),
-			Self::DictionaryEntryIndex(key) => EncodableKey::encode(key),
-			Self::NamespaceDictionary(key) => EncodableKey::encode(key),
-			Self::Metric(MetricKey::Cdc(key)) => EncodableKey::encode(key),
-			Self::Metric(MetricKey::Storage(key)) => EncodableKey::encode(key),
-			Self::FlowVersion(key) => EncodableKey::encode(key),
-			Self::RowShape(key) => EncodableKey::encode(key),
-			Self::RowShapeField(key) => EncodableKey::encode(key),
-			Self::SumType(key) => EncodableKey::encode(key),
-			Self::NamespaceSumType(key) => EncodableKey::encode(key),
-			Self::Handler(key) => EncodableKey::encode(key),
-			Self::NamespaceHandler(key) => EncodableKey::encode(key),
-			Self::VariantHandler(key) => EncodableKey::encode(key),
-			Self::Series(key) => EncodableKey::encode(key),
-			Self::NamespaceSeries(key) => EncodableKey::encode(key),
-			Self::SeriesMetadata(key) => EncodableKey::encode(key),
-			Self::Identity(key) => EncodableKey::encode(key),
-			Self::Role(key) => EncodableKey::encode(key),
-			Self::GrantedRole(key) => EncodableKey::encode(key),
-			Self::Policy(key) => EncodableKey::encode(key),
-			Self::PolicyOp(key) => EncodableKey::encode(key),
-			Self::Migration(key) => EncodableKey::encode(key),
-			Self::MigrationEvent(key) => EncodableKey::encode(key),
-			Self::Authentication(key) => EncodableKey::encode(key),
-			Self::ConfigStorage(key) => EncodableKey::encode(key),
-			Self::Token(key) => EncodableKey::encode(key),
-			Self::Source(key) => EncodableKey::encode(key),
-			Self::NamespaceSource(key) => EncodableKey::encode(key),
-			Self::Sink(key) => EncodableKey::encode(key),
-			Self::NamespaceSink(key) => EncodableKey::encode(key),
-			Self::RowSettings(key) => EncodableKey::encode(key),
-			Self::Procedure(key) => EncodableKey::encode(key),
-			Self::NamespaceProcedure(key) => EncodableKey::encode(key),
-			Self::ProcedureParam(key) => EncodableKey::encode(key),
-			Self::Binding(key) => EncodableKey::encode(key),
-			Self::NamespaceBinding(key) => EncodableKey::encode(key),
-			Self::OperatorSettings(key) => EncodableKey::encode(key),
-			Self::ColumnSnapshot(key) => EncodableKey::encode(key),
-			Self::SeriesColumnSnapshot(key) => EncodableKey::encode(key),
-			Self::TableColumnSnapshot(key) => EncodableKey::encode(key),
-			Self::VersionEpoch(key) => EncodableKey::encode(key),
-			Self::IdentityAttribute(key) => EncodableKey::encode(key),
-			Self::IdentityAttributeValue(key) => EncodableKey::encode(key),
-			Self::PartitionedRow(key) => EncodableKey::encode(key),
-			Self::Partition(key) => EncodableKey::encode(key),
-			Self::Queue(key) => EncodableKey::encode(key),
-			Self::NamespaceQueue(key) => EncodableKey::encode(key),
-			Self::QueueDeduplication(key) => EncodableKey::encode(key),
-			Self::Relationship(key) => EncodableKey::encode(key),
-			Self::SeriesRow(key) => EncodableKey::encode(key),
-			Self::PartitionedSeriesRow(key) => EncodableKey::encode(key),
-			Self::QueuePartition(key) => EncodableKey::encode(key),
-			Self::QueueItemState(key) => EncodableKey::encode(key),
-			Self::QueueDue(key) => EncodableKey::encode(key),
-			Self::QueueAttempt(key) => EncodableKey::encode(key),
-			Self::QueueKeyActive(key) => EncodableKey::encode(key),
-			Self::SortedViewRow(key) => EncodableKey::encode(key),
-			Self::PartitionedSortedViewRow(key) => EncodableKey::encode(key),
+			Self::Namespace(key) => key.encode(),
+			Self::Table(key) => key.encode(),
+			Self::Row(key) => key.encode(),
+			Self::NamespaceTable(key) => key.encode(),
+			Self::SystemSequence(key) => key.encode(),
+			Self::Columns(key) => key.encode(),
+			Self::Column(key) => key.encode(),
+			Self::RowSequence(key) => key.encode(),
+			Self::ColumnProperty(key) => key.encode(),
+			Self::SystemVersion(key) => key.encode(),
+			Self::TransactionVersion(key) => key.encode(),
+			Self::Index(key) => key.encode(),
+			Self::IndexEntry(key) => key.encode(),
+			Self::ColumnSequence(key) => key.encode(),
+			Self::CdcConsumer(key) => key.encode(),
+			Self::View(key) => key.encode(),
+			Self::NamespaceView(key) => key.encode(),
+			Self::PrimaryKey(key) => key.encode(),
+			Self::OperatorState(key) => key.encode(),
+			Self::RingBuffer(key) => key.encode(),
+			Self::NamespaceRingBuffer(key) => key.encode(),
+			Self::RingBufferMetadata(key) => key.encode(),
+			Self::Flow(key) => key.encode(),
+			Self::NamespaceFlow(key) => key.encode(),
+			Self::Operator(key) => key.encode(),
+			Self::OperatorByFlow(key) => key.encode(),
+			Self::FlowEdge(key) => key.encode(),
+			Self::FlowEdgeByFlow(key) => key.encode(),
+			Self::OutputFrontier(key) => key.encode(),
+			Self::Dictionary(key) => key.encode(),
+			Self::DictionaryEntry(key) => key.encode(),
+			Self::DictionaryEntryIndex(key) => key.encode(),
+			Self::NamespaceDictionary(key) => key.encode(),
+			Self::Metric(MetricKey::Cdc(key)) => key.encode(),
+			Self::Metric(MetricKey::Storage(key)) => key.encode(),
+			Self::FlowVersion(key) => key.encode(),
+			Self::RowShape(key) => key.encode(),
+			Self::RowShapeField(key) => key.encode(),
+			Self::SumType(key) => key.encode(),
+			Self::NamespaceSumType(key) => key.encode(),
+			Self::Handler(key) => key.encode(),
+			Self::NamespaceHandler(key) => key.encode(),
+			Self::VariantHandler(key) => key.encode(),
+			Self::Series(key) => key.encode(),
+			Self::NamespaceSeries(key) => key.encode(),
+			Self::SeriesMetadata(key) => key.encode(),
+			Self::Identity(key) => key.encode(),
+			Self::Role(key) => key.encode(),
+			Self::GrantedRole(key) => key.encode(),
+			Self::Policy(key) => key.encode(),
+			Self::PolicyOp(key) => key.encode(),
+			Self::Migration(key) => key.encode(),
+			Self::MigrationEvent(key) => key.encode(),
+			Self::Authentication(key) => key.encode(),
+			Self::ConfigStorage(key) => key.encode(),
+			Self::Token(key) => key.encode(),
+			Self::Source(key) => key.encode(),
+			Self::NamespaceSource(key) => key.encode(),
+			Self::Sink(key) => key.encode(),
+			Self::NamespaceSink(key) => key.encode(),
+			Self::RowSettings(key) => key.encode(),
+			Self::Procedure(key) => key.encode(),
+			Self::NamespaceProcedure(key) => key.encode(),
+			Self::ProcedureParam(key) => key.encode(),
+			Self::Binding(key) => key.encode(),
+			Self::NamespaceBinding(key) => key.encode(),
+			Self::OperatorSettings(key) => key.encode(),
+			Self::ColumnSnapshot(key) => key.encode(),
+			Self::SeriesColumnSnapshot(key) => key.encode(),
+			Self::TableColumnSnapshot(key) => key.encode(),
+			Self::VersionEpoch(key) => key.encode(),
+			Self::IdentityAttribute(key) => key.encode(),
+			Self::IdentityAttributeValue(key) => key.encode(),
+			Self::PartitionedRow(key) => key.encode(),
+			Self::Partition(key) => key.encode(),
+			Self::Queue(key) => key.encode(),
+			Self::NamespaceQueue(key) => key.encode(),
+			Self::QueueDeduplication(key) => key.encode(),
+			Self::Relationship(key) => key.encode(),
+			Self::SeriesRow(key) => key.encode(),
+			Self::PartitionedSeriesRow(key) => key.encode(),
+			Self::QueuePartition(key) => key.encode(),
+			Self::QueueItemState(key) => key.encode(),
+			Self::QueueDue(key) => key.encode(),
+			Self::QueueAttempt(key) => key.encode(),
+			Self::QueueKeyActive(key) => key.encode(),
+			Self::SortedViewRow(key) => key.encode(),
+			Self::PartitionedSortedViewRow(key) => key.encode(),
 		}
 	}
 
 	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		match KeyKind::of(key)? {
-			KeyKind::Namespace => EncodableKey::decode(key).map(Self::Namespace),
-			KeyKind::Table => EncodableKey::decode(key).map(Self::Table),
-			KeyKind::Row => EncodableKey::decode(key).map(Self::Row),
-			KeyKind::NamespaceTable => EncodableKey::decode(key).map(Self::NamespaceTable),
-			KeyKind::SystemSequence => EncodableKey::decode(key).map(Self::SystemSequence),
-			KeyKind::Columns => EncodableKey::decode(key).map(Self::Columns),
-			KeyKind::Column => EncodableKey::decode(key).map(Self::Column),
-			KeyKind::RowSequence => EncodableKey::decode(key).map(Self::RowSequence),
-			KeyKind::ColumnProperty => EncodableKey::decode(key).map(Self::ColumnProperty),
-			KeyKind::SystemVersion => EncodableKey::decode(key).map(Self::SystemVersion),
-			KeyKind::TransactionVersion => EncodableKey::decode(key).map(Self::TransactionVersion),
-			KeyKind::Index => EncodableKey::decode(key).map(Self::Index),
-			KeyKind::IndexEntry => EncodableKey::decode(key).map(Self::IndexEntry),
-			KeyKind::ColumnSequence => EncodableKey::decode(key).map(Self::ColumnSequence),
-			KeyKind::CdcConsumer => EncodableKey::decode(key).map(Self::CdcConsumer),
-			KeyKind::View => EncodableKey::decode(key).map(Self::View),
-			KeyKind::NamespaceView => EncodableKey::decode(key).map(Self::NamespaceView),
-			KeyKind::PrimaryKey => EncodableKey::decode(key).map(Self::PrimaryKey),
-			KeyKind::OperatorState => EncodableKey::decode(key).map(Self::OperatorState),
-			KeyKind::RingBuffer => EncodableKey::decode(key).map(Self::RingBuffer),
-			KeyKind::NamespaceRingBuffer => EncodableKey::decode(key).map(Self::NamespaceRingBuffer),
-			KeyKind::RingBufferMetadata => EncodableKey::decode(key).map(Self::RingBufferMetadata),
-			KeyKind::Flow => EncodableKey::decode(key).map(Self::Flow),
-			KeyKind::NamespaceFlow => EncodableKey::decode(key).map(Self::NamespaceFlow),
-			KeyKind::Operator => EncodableKey::decode(key).map(Self::Operator),
-			KeyKind::OperatorByFlow => EncodableKey::decode(key).map(Self::OperatorByFlow),
-			KeyKind::FlowEdge => EncodableKey::decode(key).map(Self::FlowEdge),
-			KeyKind::FlowEdgeByFlow => EncodableKey::decode(key).map(Self::FlowEdgeByFlow),
-			KeyKind::OutputFrontier => EncodableKey::decode(key).map(Self::OutputFrontier),
-			KeyKind::Dictionary => EncodableKey::decode(key).map(Self::Dictionary),
-			KeyKind::DictionaryEntry => EncodableKey::decode(key).map(Self::DictionaryEntry),
-			KeyKind::DictionaryEntryIndex => EncodableKey::decode(key).map(Self::DictionaryEntryIndex),
-			KeyKind::NamespaceDictionary => EncodableKey::decode(key).map(Self::NamespaceDictionary),
-			KeyKind::Metric => decode_metric(key),
-			KeyKind::FlowVersion => EncodableKey::decode(key).map(Self::FlowVersion),
-			KeyKind::RowShape => EncodableKey::decode(key).map(Self::RowShape),
-			KeyKind::RowShapeField => EncodableKey::decode(key).map(Self::RowShapeField),
-			KeyKind::SumType => EncodableKey::decode(key).map(Self::SumType),
-			KeyKind::NamespaceSumType => EncodableKey::decode(key).map(Self::NamespaceSumType),
-			KeyKind::Handler => EncodableKey::decode(key).map(Self::Handler),
-			KeyKind::NamespaceHandler => EncodableKey::decode(key).map(Self::NamespaceHandler),
-			KeyKind::VariantHandler => EncodableKey::decode(key).map(Self::VariantHandler),
-			KeyKind::Series => EncodableKey::decode(key).map(Self::Series),
-			KeyKind::NamespaceSeries => EncodableKey::decode(key).map(Self::NamespaceSeries),
-			KeyKind::SeriesMetadata => EncodableKey::decode(key).map(Self::SeriesMetadata),
-			KeyKind::Identity => EncodableKey::decode(key).map(Self::Identity),
-			KeyKind::Role => EncodableKey::decode(key).map(Self::Role),
-			KeyKind::GrantedRole => EncodableKey::decode(key).map(Self::GrantedRole),
-			KeyKind::Policy => EncodableKey::decode(key).map(Self::Policy),
-			KeyKind::PolicyOp => EncodableKey::decode(key).map(Self::PolicyOp),
-			KeyKind::Migration => EncodableKey::decode(key).map(Self::Migration),
-			KeyKind::MigrationEvent => EncodableKey::decode(key).map(Self::MigrationEvent),
-			KeyKind::Authentication => EncodableKey::decode(key).map(Self::Authentication),
-			KeyKind::ConfigStorage => EncodableKey::decode(key).map(Self::ConfigStorage),
-			KeyKind::Token => EncodableKey::decode(key).map(Self::Token),
-			KeyKind::Source => EncodableKey::decode(key).map(Self::Source),
-			KeyKind::NamespaceSource => EncodableKey::decode(key).map(Self::NamespaceSource),
-			KeyKind::Sink => EncodableKey::decode(key).map(Self::Sink),
-			KeyKind::NamespaceSink => EncodableKey::decode(key).map(Self::NamespaceSink),
-			KeyKind::RowSettings => EncodableKey::decode(key).map(Self::RowSettings),
-			KeyKind::Procedure => EncodableKey::decode(key).map(Self::Procedure),
-			KeyKind::NamespaceProcedure => EncodableKey::decode(key).map(Self::NamespaceProcedure),
-			KeyKind::ProcedureParam => EncodableKey::decode(key).map(Self::ProcedureParam),
-			KeyKind::Binding => EncodableKey::decode(key).map(Self::Binding),
-			KeyKind::NamespaceBinding => EncodableKey::decode(key).map(Self::NamespaceBinding),
-			KeyKind::OperatorSettings => EncodableKey::decode(key).map(Self::OperatorSettings),
-			KeyKind::ColumnSnapshot => EncodableKey::decode(key).map(Self::ColumnSnapshot),
-			KeyKind::SeriesColumnSnapshot => EncodableKey::decode(key).map(Self::SeriesColumnSnapshot),
-			KeyKind::TableColumnSnapshot => EncodableKey::decode(key).map(Self::TableColumnSnapshot),
-			KeyKind::VersionEpoch => EncodableKey::decode(key).map(Self::VersionEpoch),
-			KeyKind::IdentityAttribute => EncodableKey::decode(key).map(Self::IdentityAttribute),
-			KeyKind::IdentityAttributeValue => EncodableKey::decode(key).map(Self::IdentityAttributeValue),
-			KeyKind::PartitionedRow => EncodableKey::decode(key).map(Self::PartitionedRow),
-			KeyKind::Partition => EncodableKey::decode(key).map(Self::Partition),
-			KeyKind::Queue => EncodableKey::decode(key).map(Self::Queue),
-			KeyKind::NamespaceQueue => EncodableKey::decode(key).map(Self::NamespaceQueue),
-			KeyKind::QueueDeduplication => EncodableKey::decode(key).map(Self::QueueDeduplication),
-			KeyKind::Relationship => EncodableKey::decode(key).map(Self::Relationship),
-			KeyKind::SeriesRow => EncodableKey::decode(key).map(Self::SeriesRow),
-			KeyKind::PartitionedSeriesRow => EncodableKey::decode(key).map(Self::PartitionedSeriesRow),
-			KeyKind::QueuePartition => EncodableKey::decode(key).map(Self::QueuePartition),
-			KeyKind::QueueItemState => EncodableKey::decode(key).map(Self::QueueItemState),
-			KeyKind::QueueDue => EncodableKey::decode(key).map(Self::QueueDue),
-			KeyKind::QueueAttempt => EncodableKey::decode(key).map(Self::QueueAttempt),
-			KeyKind::QueueKeyActive => EncodableKey::decode(key).map(Self::QueueKeyActive),
-			KeyKind::SortedViewRow => EncodableKey::decode(key).map(Self::SortedViewRow),
-			KeyKind::PartitionedSortedViewRow => {
-				EncodableKey::decode(key).map(Self::PartitionedSortedViewRow)
+		match KeyTag::of(key)? {
+			KeyTag::Namespace => NamespaceKey::decode(key).map(Self::Namespace),
+			KeyTag::Table => TableKey::decode(key).map(Self::Table),
+			KeyTag::Row => RowKey::decode(key).map(Self::Row),
+			KeyTag::NamespaceTable => NamespaceTableKey::decode(key).map(Self::NamespaceTable),
+			KeyTag::SystemSequence => SystemSequenceKey::decode(key).map(Self::SystemSequence),
+			KeyTag::Columns => ColumnsKey::decode(key).map(Self::Columns),
+			KeyTag::Column => ColumnKey::decode(key).map(Self::Column),
+			KeyTag::RowSequence => RowSequenceKey::decode(key).map(Self::RowSequence),
+			KeyTag::ColumnProperty => ColumnPropertyKey::decode(key).map(Self::ColumnProperty),
+			KeyTag::SystemVersion => SystemVersionKey::decode(key).map(Self::SystemVersion),
+			KeyTag::TransactionVersion => TransactionVersionKey::decode(key).map(Self::TransactionVersion),
+			KeyTag::Index => IndexKey::decode(key).map(Self::Index),
+			KeyTag::IndexEntry => IndexEntryKey::decode(key).map(Self::IndexEntry),
+			KeyTag::ColumnSequence => ColumnSequenceKey::decode(key).map(Self::ColumnSequence),
+			KeyTag::CdcConsumer => CdcConsumerKey::decode(key).map(Self::CdcConsumer),
+			KeyTag::View => ViewKey::decode(key).map(Self::View),
+			KeyTag::NamespaceView => NamespaceViewKey::decode(key).map(Self::NamespaceView),
+			KeyTag::PrimaryKey => PrimaryKeyKey::decode(key).map(Self::PrimaryKey),
+			KeyTag::OperatorState => OperatorStateKey::decode(key).map(Self::OperatorState),
+			KeyTag::RingBuffer => RingBufferKey::decode(key).map(Self::RingBuffer),
+			KeyTag::NamespaceRingBuffer => {
+				NamespaceRingBufferKey::decode(key).map(Self::NamespaceRingBuffer)
+			}
+			KeyTag::RingBufferMetadata => RingBufferMetadataKey::decode(key).map(Self::RingBufferMetadata),
+			KeyTag::Flow => FlowKey::decode(key).map(Self::Flow),
+			KeyTag::NamespaceFlow => NamespaceFlowKey::decode(key).map(Self::NamespaceFlow),
+			KeyTag::Operator => OperatorKey::decode(key).map(Self::Operator),
+			KeyTag::OperatorByFlow => OperatorByFlowKey::decode(key).map(Self::OperatorByFlow),
+			KeyTag::FlowEdge => FlowEdgeKey::decode(key).map(Self::FlowEdge),
+			KeyTag::FlowEdgeByFlow => FlowEdgeByFlowKey::decode(key).map(Self::FlowEdgeByFlow),
+			KeyTag::OutputFrontier => OutputFrontierKey::decode(key).map(Self::OutputFrontier),
+			KeyTag::Dictionary => DictionaryKey::decode(key).map(Self::Dictionary),
+			KeyTag::DictionaryEntry => DictionaryEntryKey::decode(key).map(Self::DictionaryEntry),
+			KeyTag::DictionaryEntryIndex => {
+				DictionaryEntryIndexKey::decode(key).map(Self::DictionaryEntryIndex)
+			}
+			KeyTag::NamespaceDictionary => {
+				NamespaceDictionaryKey::decode(key).map(Self::NamespaceDictionary)
+			}
+			KeyTag::Metric => decode_metric(key),
+			KeyTag::FlowVersion => FlowVersionKey::decode(key).map(Self::FlowVersion),
+			KeyTag::RowShape => RowShapeKey::decode(key).map(Self::RowShape),
+			KeyTag::RowShapeField => RowShapeFieldKey::decode(key).map(Self::RowShapeField),
+			KeyTag::SumType => SumTypeKey::decode(key).map(Self::SumType),
+			KeyTag::NamespaceSumType => NamespaceSumTypeKey::decode(key).map(Self::NamespaceSumType),
+			KeyTag::Handler => HandlerKey::decode(key).map(Self::Handler),
+			KeyTag::NamespaceHandler => NamespaceHandlerKey::decode(key).map(Self::NamespaceHandler),
+			KeyTag::VariantHandler => VariantHandlerKey::decode(key).map(Self::VariantHandler),
+			KeyTag::Series => SeriesKey::decode(key).map(Self::Series),
+			KeyTag::NamespaceSeries => NamespaceSeriesKey::decode(key).map(Self::NamespaceSeries),
+			KeyTag::SeriesMetadata => SeriesMetadataKey::decode(key).map(Self::SeriesMetadata),
+			KeyTag::Identity => IdentityKey::decode(key).map(Self::Identity),
+			KeyTag::Role => RoleKey::decode(key).map(Self::Role),
+			KeyTag::GrantedRole => GrantedRoleKey::decode(key).map(Self::GrantedRole),
+			KeyTag::Policy => PolicyKey::decode(key).map(Self::Policy),
+			KeyTag::PolicyOp => PolicyOpKey::decode(key).map(Self::PolicyOp),
+			KeyTag::Migration => MigrationKey::decode(key).map(Self::Migration),
+			KeyTag::MigrationEvent => MigrationEventKey::decode(key).map(Self::MigrationEvent),
+			KeyTag::Authentication => AuthenticationKey::decode(key).map(Self::Authentication),
+			KeyTag::ConfigStorage => ConfigStorageKey::decode(key).map(Self::ConfigStorage),
+			KeyTag::Token => TokenKey::decode(key).map(Self::Token),
+			KeyTag::Source => SourceKey::decode(key).map(Self::Source),
+			KeyTag::NamespaceSource => NamespaceSourceKey::decode(key).map(Self::NamespaceSource),
+			KeyTag::Sink => SinkKey::decode(key).map(Self::Sink),
+			KeyTag::NamespaceSink => NamespaceSinkKey::decode(key).map(Self::NamespaceSink),
+			KeyTag::RowSettings => RowSettingsKey::decode(key).map(Self::RowSettings),
+			KeyTag::Procedure => ProcedureKey::decode(key).map(Self::Procedure),
+			KeyTag::NamespaceProcedure => NamespaceProcedureKey::decode(key).map(Self::NamespaceProcedure),
+			KeyTag::ProcedureParam => ProcedureParamKey::decode(key).map(Self::ProcedureParam),
+			KeyTag::Binding => BindingKey::decode(key).map(Self::Binding),
+			KeyTag::NamespaceBinding => NamespaceBindingKey::decode(key).map(Self::NamespaceBinding),
+			KeyTag::OperatorSettings => OperatorSettingsKey::decode(key).map(Self::OperatorSettings),
+			KeyTag::ColumnSnapshot => ColumnSnapshotKey::decode(key).map(Self::ColumnSnapshot),
+			KeyTag::SeriesColumnSnapshot => {
+				SeriesColumnSnapshotKey::decode(key).map(Self::SeriesColumnSnapshot)
+			}
+			KeyTag::TableColumnSnapshot => {
+				TableColumnSnapshotKey::decode(key).map(Self::TableColumnSnapshot)
+			}
+			KeyTag::VersionEpoch => VersionEpochKey::decode(key).map(Self::VersionEpoch),
+			KeyTag::IdentityAttribute => IdentityAttributeKey::decode(key).map(Self::IdentityAttribute),
+			KeyTag::IdentityAttributeValue => {
+				IdentityAttributeValueKey::decode(key).map(Self::IdentityAttributeValue)
+			}
+			KeyTag::PartitionedRow => PartitionedRowKey::decode(key).map(Self::PartitionedRow),
+			KeyTag::Partition => PartitionKey::decode(key).map(Self::Partition),
+			KeyTag::Queue => QueueKey::decode(key).map(Self::Queue),
+			KeyTag::NamespaceQueue => NamespaceQueueKey::decode(key).map(Self::NamespaceQueue),
+			KeyTag::QueueDeduplication => QueueDeduplicationKey::decode(key).map(Self::QueueDeduplication),
+			KeyTag::Relationship => RelationshipKey::decode(key).map(Self::Relationship),
+			KeyTag::SeriesRow => SeriesRowKey::decode(key).map(Self::SeriesRow),
+			KeyTag::PartitionedSeriesRow => {
+				PartitionedSeriesRowKey::decode(key).map(Self::PartitionedSeriesRow)
+			}
+			KeyTag::QueuePartition => QueuePartitionKey::decode(key).map(Self::QueuePartition),
+			KeyTag::QueueItemState => QueueItemStateKey::decode(key).map(Self::QueueItemState),
+			KeyTag::QueueDue => QueueDueKey::decode(key).map(Self::QueueDue),
+			KeyTag::QueueAttempt => QueueAttemptKey::decode(key).map(Self::QueueAttempt),
+			KeyTag::QueueKeyActive => QueueKeyActiveKey::decode(key).map(Self::QueueKeyActive),
+			KeyTag::SortedViewRow => SortedViewRowKey::decode(key).map(Self::SortedViewRow),
+			KeyTag::PartitionedSortedViewRow => {
+				PartitionedSortedViewRowKey::decode(key).map(Self::PartitionedSortedViewRow)
 			}
 		}
 	}
 }
 
-fn decode_metric(key: &EncodedKey) -> Option<AnyKey> {
-	EncodableKey::decode(key)
+fn decode_metric(key: &EncodedKey) -> Option<TaggedKey> {
+	MetricStorageKey::decode(key)
 		.map(MetricKey::Storage)
-		.or_else(|| EncodableKey::decode(key).map(MetricKey::Cdc))
-		.map(AnyKey::Metric)
+		.or_else(|| MetricCdcKey::decode(key).map(MetricKey::Cdc))
+		.map(TaggedKey::Metric)
 }
 
-impl From<NamespaceKey> for AnyKey {
+impl From<NamespaceKey> for TaggedKey {
 	fn from(key: NamespaceKey) -> Self {
 		Self::Namespace(key)
 	}
 }
 
-impl From<TableKey> for AnyKey {
+impl From<TableKey> for TaggedKey {
 	fn from(key: TableKey) -> Self {
 		Self::Table(key)
 	}
 }
 
-impl From<RowKey> for AnyKey {
+impl From<RowKey> for TaggedKey {
 	fn from(key: RowKey) -> Self {
 		Self::Row(key)
 	}
 }
 
-impl From<NamespaceTableKey> for AnyKey {
+impl From<NamespaceTableKey> for TaggedKey {
 	fn from(key: NamespaceTableKey) -> Self {
 		Self::NamespaceTable(key)
 	}
 }
 
-impl From<SystemSequenceKey> for AnyKey {
+impl From<SystemSequenceKey> for TaggedKey {
 	fn from(key: SystemSequenceKey) -> Self {
 		Self::SystemSequence(key)
 	}
 }
 
-impl From<ColumnsKey> for AnyKey {
+impl From<ColumnsKey> for TaggedKey {
 	fn from(key: ColumnsKey) -> Self {
 		Self::Columns(key)
 	}
 }
 
-impl From<ColumnKey> for AnyKey {
+impl From<ColumnKey> for TaggedKey {
 	fn from(key: ColumnKey) -> Self {
 		Self::Column(key)
 	}
 }
 
-impl From<RowSequenceKey> for AnyKey {
+impl From<RowSequenceKey> for TaggedKey {
 	fn from(key: RowSequenceKey) -> Self {
 		Self::RowSequence(key)
 	}
 }
 
-impl From<ColumnPropertyKey> for AnyKey {
+impl From<ColumnPropertyKey> for TaggedKey {
 	fn from(key: ColumnPropertyKey) -> Self {
 		Self::ColumnProperty(key)
 	}
 }
 
-impl From<SystemVersionKey> for AnyKey {
+impl From<SystemVersionKey> for TaggedKey {
 	fn from(key: SystemVersionKey) -> Self {
 		Self::SystemVersion(key)
 	}
 }
 
-impl From<TransactionVersionKey> for AnyKey {
+impl From<TransactionVersionKey> for TaggedKey {
 	fn from(key: TransactionVersionKey) -> Self {
 		Self::TransactionVersion(key)
 	}
 }
 
-impl From<IndexKey> for AnyKey {
+impl From<IndexKey> for TaggedKey {
 	fn from(key: IndexKey) -> Self {
 		Self::Index(key)
 	}
 }
 
-impl From<IndexEntryKey> for AnyKey {
+impl From<IndexEntryKey> for TaggedKey {
 	fn from(key: IndexEntryKey) -> Self {
 		Self::IndexEntry(key)
 	}
 }
 
-impl From<ColumnSequenceKey> for AnyKey {
+impl From<ColumnSequenceKey> for TaggedKey {
 	fn from(key: ColumnSequenceKey) -> Self {
 		Self::ColumnSequence(key)
 	}
 }
 
-impl From<CdcConsumerKey> for AnyKey {
+impl From<CdcConsumerKey> for TaggedKey {
 	fn from(key: CdcConsumerKey) -> Self {
 		Self::CdcConsumer(key)
 	}
 }
 
-impl From<ViewKey> for AnyKey {
+impl From<ViewKey> for TaggedKey {
 	fn from(key: ViewKey) -> Self {
 		Self::View(key)
 	}
 }
 
-impl From<NamespaceViewKey> for AnyKey {
+impl From<NamespaceViewKey> for TaggedKey {
 	fn from(key: NamespaceViewKey) -> Self {
 		Self::NamespaceView(key)
 	}
 }
 
-impl From<PrimaryKeyKey> for AnyKey {
+impl From<PrimaryKeyKey> for TaggedKey {
 	fn from(key: PrimaryKeyKey) -> Self {
 		Self::PrimaryKey(key)
 	}
 }
 
-impl From<OperatorStateKey> for AnyKey {
+impl From<OperatorStateKey> for TaggedKey {
 	fn from(key: OperatorStateKey) -> Self {
 		Self::OperatorState(key)
 	}
 }
 
-impl From<RingBufferKey> for AnyKey {
+impl From<RingBufferKey> for TaggedKey {
 	fn from(key: RingBufferKey) -> Self {
 		Self::RingBuffer(key)
 	}
 }
 
-impl From<NamespaceRingBufferKey> for AnyKey {
+impl From<NamespaceRingBufferKey> for TaggedKey {
 	fn from(key: NamespaceRingBufferKey) -> Self {
 		Self::NamespaceRingBuffer(key)
 	}
 }
 
-impl From<RingBufferMetadataKey> for AnyKey {
+impl From<RingBufferMetadataKey> for TaggedKey {
 	fn from(key: RingBufferMetadataKey) -> Self {
 		Self::RingBufferMetadata(key)
 	}
 }
 
-impl From<FlowKey> for AnyKey {
+impl From<FlowKey> for TaggedKey {
 	fn from(key: FlowKey) -> Self {
 		Self::Flow(key)
 	}
 }
 
-impl From<NamespaceFlowKey> for AnyKey {
+impl From<NamespaceFlowKey> for TaggedKey {
 	fn from(key: NamespaceFlowKey) -> Self {
 		Self::NamespaceFlow(key)
 	}
 }
 
-impl From<OperatorKey> for AnyKey {
+impl From<OperatorKey> for TaggedKey {
 	fn from(key: OperatorKey) -> Self {
 		Self::Operator(key)
 	}
 }
 
-impl From<OperatorByFlowKey> for AnyKey {
+impl From<OperatorByFlowKey> for TaggedKey {
 	fn from(key: OperatorByFlowKey) -> Self {
 		Self::OperatorByFlow(key)
 	}
 }
 
-impl From<FlowEdgeKey> for AnyKey {
+impl From<FlowEdgeKey> for TaggedKey {
 	fn from(key: FlowEdgeKey) -> Self {
 		Self::FlowEdge(key)
 	}
 }
 
-impl From<FlowEdgeByFlowKey> for AnyKey {
+impl From<FlowEdgeByFlowKey> for TaggedKey {
 	fn from(key: FlowEdgeByFlowKey) -> Self {
 		Self::FlowEdgeByFlow(key)
 	}
 }
 
-impl From<OutputFrontierKey> for AnyKey {
+impl From<OutputFrontierKey> for TaggedKey {
 	fn from(key: OutputFrontierKey) -> Self {
 		Self::OutputFrontier(key)
 	}
 }
 
-impl From<DictionaryKey> for AnyKey {
+impl From<DictionaryKey> for TaggedKey {
 	fn from(key: DictionaryKey) -> Self {
 		Self::Dictionary(key)
 	}
 }
 
-impl From<DictionaryEntryKey> for AnyKey {
+impl From<DictionaryEntryKey> for TaggedKey {
 	fn from(key: DictionaryEntryKey) -> Self {
 		Self::DictionaryEntry(key)
 	}
 }
 
-impl From<DictionaryEntryIndexKey> for AnyKey {
+impl From<DictionaryEntryIndexKey> for TaggedKey {
 	fn from(key: DictionaryEntryIndexKey) -> Self {
 		Self::DictionaryEntryIndex(key)
 	}
 }
 
-impl From<NamespaceDictionaryKey> for AnyKey {
+impl From<NamespaceDictionaryKey> for TaggedKey {
 	fn from(key: NamespaceDictionaryKey) -> Self {
 		Self::NamespaceDictionary(key)
 	}
 }
 
-impl From<FlowVersionKey> for AnyKey {
+impl From<FlowVersionKey> for TaggedKey {
 	fn from(key: FlowVersionKey) -> Self {
 		Self::FlowVersion(key)
 	}
 }
 
-impl From<RowShapeKey> for AnyKey {
+impl From<RowShapeKey> for TaggedKey {
 	fn from(key: RowShapeKey) -> Self {
 		Self::RowShape(key)
 	}
 }
 
-impl From<RowShapeFieldKey> for AnyKey {
+impl From<RowShapeFieldKey> for TaggedKey {
 	fn from(key: RowShapeFieldKey) -> Self {
 		Self::RowShapeField(key)
 	}
 }
 
-impl From<SumTypeKey> for AnyKey {
+impl From<SumTypeKey> for TaggedKey {
 	fn from(key: SumTypeKey) -> Self {
 		Self::SumType(key)
 	}
 }
 
-impl From<NamespaceSumTypeKey> for AnyKey {
+impl From<NamespaceSumTypeKey> for TaggedKey {
 	fn from(key: NamespaceSumTypeKey) -> Self {
 		Self::NamespaceSumType(key)
 	}
 }
 
-impl From<HandlerKey> for AnyKey {
+impl From<HandlerKey> for TaggedKey {
 	fn from(key: HandlerKey) -> Self {
 		Self::Handler(key)
 	}
 }
 
-impl From<NamespaceHandlerKey> for AnyKey {
+impl From<NamespaceHandlerKey> for TaggedKey {
 	fn from(key: NamespaceHandlerKey) -> Self {
 		Self::NamespaceHandler(key)
 	}
 }
 
-impl From<VariantHandlerKey> for AnyKey {
+impl From<VariantHandlerKey> for TaggedKey {
 	fn from(key: VariantHandlerKey) -> Self {
 		Self::VariantHandler(key)
 	}
 }
 
-impl From<SeriesKey> for AnyKey {
+impl From<SeriesKey> for TaggedKey {
 	fn from(key: SeriesKey) -> Self {
 		Self::Series(key)
 	}
 }
 
-impl From<NamespaceSeriesKey> for AnyKey {
+impl From<NamespaceSeriesKey> for TaggedKey {
 	fn from(key: NamespaceSeriesKey) -> Self {
 		Self::NamespaceSeries(key)
 	}
 }
 
-impl From<SeriesMetadataKey> for AnyKey {
+impl From<SeriesMetadataKey> for TaggedKey {
 	fn from(key: SeriesMetadataKey) -> Self {
 		Self::SeriesMetadata(key)
 	}
 }
 
-impl From<IdentityKey> for AnyKey {
+impl From<IdentityKey> for TaggedKey {
 	fn from(key: IdentityKey) -> Self {
 		Self::Identity(key)
 	}
 }
 
-impl From<RoleKey> for AnyKey {
+impl From<RoleKey> for TaggedKey {
 	fn from(key: RoleKey) -> Self {
 		Self::Role(key)
 	}
 }
 
-impl From<GrantedRoleKey> for AnyKey {
+impl From<GrantedRoleKey> for TaggedKey {
 	fn from(key: GrantedRoleKey) -> Self {
 		Self::GrantedRole(key)
 	}
 }
 
-impl From<PolicyKey> for AnyKey {
+impl From<PolicyKey> for TaggedKey {
 	fn from(key: PolicyKey) -> Self {
 		Self::Policy(key)
 	}
 }
 
-impl From<PolicyOpKey> for AnyKey {
+impl From<PolicyOpKey> for TaggedKey {
 	fn from(key: PolicyOpKey) -> Self {
 		Self::PolicyOp(key)
 	}
 }
 
-impl From<MigrationKey> for AnyKey {
+impl From<MigrationKey> for TaggedKey {
 	fn from(key: MigrationKey) -> Self {
 		Self::Migration(key)
 	}
 }
 
-impl From<MigrationEventKey> for AnyKey {
+impl From<MigrationEventKey> for TaggedKey {
 	fn from(key: MigrationEventKey) -> Self {
 		Self::MigrationEvent(key)
 	}
 }
 
-impl From<AuthenticationKey> for AnyKey {
+impl From<AuthenticationKey> for TaggedKey {
 	fn from(key: AuthenticationKey) -> Self {
 		Self::Authentication(key)
 	}
 }
 
-impl From<ConfigStorageKey> for AnyKey {
+impl From<ConfigStorageKey> for TaggedKey {
 	fn from(key: ConfigStorageKey) -> Self {
 		Self::ConfigStorage(key)
 	}
 }
 
-impl From<TokenKey> for AnyKey {
+impl From<TokenKey> for TaggedKey {
 	fn from(key: TokenKey) -> Self {
 		Self::Token(key)
 	}
 }
 
-impl From<SourceKey> for AnyKey {
+impl From<SourceKey> for TaggedKey {
 	fn from(key: SourceKey) -> Self {
 		Self::Source(key)
 	}
 }
 
-impl From<NamespaceSourceKey> for AnyKey {
+impl From<NamespaceSourceKey> for TaggedKey {
 	fn from(key: NamespaceSourceKey) -> Self {
 		Self::NamespaceSource(key)
 	}
 }
 
-impl From<SinkKey> for AnyKey {
+impl From<SinkKey> for TaggedKey {
 	fn from(key: SinkKey) -> Self {
 		Self::Sink(key)
 	}
 }
 
-impl From<NamespaceSinkKey> for AnyKey {
+impl From<NamespaceSinkKey> for TaggedKey {
 	fn from(key: NamespaceSinkKey) -> Self {
 		Self::NamespaceSink(key)
 	}
 }
 
-impl From<RowSettingsKey> for AnyKey {
+impl From<RowSettingsKey> for TaggedKey {
 	fn from(key: RowSettingsKey) -> Self {
 		Self::RowSettings(key)
 	}
 }
 
-impl From<ProcedureKey> for AnyKey {
+impl From<ProcedureKey> for TaggedKey {
 	fn from(key: ProcedureKey) -> Self {
 		Self::Procedure(key)
 	}
 }
 
-impl From<NamespaceProcedureKey> for AnyKey {
+impl From<NamespaceProcedureKey> for TaggedKey {
 	fn from(key: NamespaceProcedureKey) -> Self {
 		Self::NamespaceProcedure(key)
 	}
 }
 
-impl From<ProcedureParamKey> for AnyKey {
+impl From<ProcedureParamKey> for TaggedKey {
 	fn from(key: ProcedureParamKey) -> Self {
 		Self::ProcedureParam(key)
 	}
 }
 
-impl From<BindingKey> for AnyKey {
+impl From<BindingKey> for TaggedKey {
 	fn from(key: BindingKey) -> Self {
 		Self::Binding(key)
 	}
 }
 
-impl From<NamespaceBindingKey> for AnyKey {
+impl From<NamespaceBindingKey> for TaggedKey {
 	fn from(key: NamespaceBindingKey) -> Self {
 		Self::NamespaceBinding(key)
 	}
 }
 
-impl From<OperatorSettingsKey> for AnyKey {
+impl From<OperatorSettingsKey> for TaggedKey {
 	fn from(key: OperatorSettingsKey) -> Self {
 		Self::OperatorSettings(key)
 	}
 }
 
-impl From<ColumnSnapshotKey> for AnyKey {
+impl From<ColumnSnapshotKey> for TaggedKey {
 	fn from(key: ColumnSnapshotKey) -> Self {
 		Self::ColumnSnapshot(key)
 	}
 }
 
-impl From<SeriesColumnSnapshotKey> for AnyKey {
+impl From<SeriesColumnSnapshotKey> for TaggedKey {
 	fn from(key: SeriesColumnSnapshotKey) -> Self {
 		Self::SeriesColumnSnapshot(key)
 	}
 }
 
-impl From<TableColumnSnapshotKey> for AnyKey {
+impl From<TableColumnSnapshotKey> for TaggedKey {
 	fn from(key: TableColumnSnapshotKey) -> Self {
 		Self::TableColumnSnapshot(key)
 	}
 }
 
-impl From<VersionEpochKey> for AnyKey {
+impl From<VersionEpochKey> for TaggedKey {
 	fn from(key: VersionEpochKey) -> Self {
 		Self::VersionEpoch(key)
 	}
 }
 
-impl From<IdentityAttributeKey> for AnyKey {
+impl From<IdentityAttributeKey> for TaggedKey {
 	fn from(key: IdentityAttributeKey) -> Self {
 		Self::IdentityAttribute(key)
 	}
 }
 
-impl From<IdentityAttributeValueKey> for AnyKey {
+impl From<IdentityAttributeValueKey> for TaggedKey {
 	fn from(key: IdentityAttributeValueKey) -> Self {
 		Self::IdentityAttributeValue(key)
 	}
 }
 
-impl From<PartitionedRowKey> for AnyKey {
+impl From<PartitionedRowKey> for TaggedKey {
 	fn from(key: PartitionedRowKey) -> Self {
 		Self::PartitionedRow(key)
 	}
 }
 
-impl From<PartitionKey> for AnyKey {
+impl From<PartitionKey> for TaggedKey {
 	fn from(key: PartitionKey) -> Self {
 		Self::Partition(key)
 	}
 }
 
-impl From<QueueKey> for AnyKey {
+impl From<QueueKey> for TaggedKey {
 	fn from(key: QueueKey) -> Self {
 		Self::Queue(key)
 	}
 }
 
-impl From<NamespaceQueueKey> for AnyKey {
+impl From<NamespaceQueueKey> for TaggedKey {
 	fn from(key: NamespaceQueueKey) -> Self {
 		Self::NamespaceQueue(key)
 	}
 }
 
-impl From<QueueDeduplicationKey> for AnyKey {
+impl From<QueueDeduplicationKey> for TaggedKey {
 	fn from(key: QueueDeduplicationKey) -> Self {
 		Self::QueueDeduplication(key)
 	}
 }
 
-impl From<RelationshipKey> for AnyKey {
+impl From<RelationshipKey> for TaggedKey {
 	fn from(key: RelationshipKey) -> Self {
 		Self::Relationship(key)
 	}
 }
 
-impl From<SeriesRowKey> for AnyKey {
+impl From<SeriesRowKey> for TaggedKey {
 	fn from(key: SeriesRowKey) -> Self {
 		Self::SeriesRow(key)
 	}
 }
 
-impl From<PartitionedSeriesRowKey> for AnyKey {
+impl From<PartitionedSeriesRowKey> for TaggedKey {
 	fn from(key: PartitionedSeriesRowKey) -> Self {
 		Self::PartitionedSeriesRow(key)
 	}
 }
 
-impl From<QueuePartitionKey> for AnyKey {
+impl From<QueuePartitionKey> for TaggedKey {
 	fn from(key: QueuePartitionKey) -> Self {
 		Self::QueuePartition(key)
 	}
 }
 
-impl From<QueueItemStateKey> for AnyKey {
+impl From<QueueItemStateKey> for TaggedKey {
 	fn from(key: QueueItemStateKey) -> Self {
 		Self::QueueItemState(key)
 	}
 }
 
-impl From<QueueDueKey> for AnyKey {
+impl From<QueueDueKey> for TaggedKey {
 	fn from(key: QueueDueKey) -> Self {
 		Self::QueueDue(key)
 	}
 }
 
-impl From<QueueAttemptKey> for AnyKey {
+impl From<QueueAttemptKey> for TaggedKey {
 	fn from(key: QueueAttemptKey) -> Self {
 		Self::QueueAttempt(key)
 	}
 }
 
-impl From<QueueKeyActiveKey> for AnyKey {
+impl From<QueueKeyActiveKey> for TaggedKey {
 	fn from(key: QueueKeyActiveKey) -> Self {
 		Self::QueueKeyActive(key)
 	}
 }
 
-impl From<SortedViewRowKey> for AnyKey {
+impl From<SortedViewRowKey> for TaggedKey {
 	fn from(key: SortedViewRowKey) -> Self {
 		Self::SortedViewRow(key)
 	}
 }
 
-impl From<PartitionedSortedViewRowKey> for AnyKey {
+impl From<PartitionedSortedViewRowKey> for TaggedKey {
 	fn from(key: PartitionedSortedViewRowKey) -> Self {
 		Self::PartitionedSortedViewRow(key)
 	}
 }
 
-impl From<MetricKey> for AnyKey {
+impl From<MetricKey> for TaggedKey {
 	fn from(key: MetricKey) -> Self {
 		Self::Metric(key)
 	}
 }
 
-impl From<MetricStorageKey> for AnyKey {
+impl From<MetricStorageKey> for TaggedKey {
 	fn from(key: MetricStorageKey) -> Self {
 		Self::Metric(MetricKey::Storage(key))
 	}
 }
 
-impl From<MetricCdcKey> for AnyKey {
+impl From<MetricCdcKey> for TaggedKey {
 	fn from(key: MetricCdcKey) -> Self {
 		Self::Metric(MetricKey::Cdc(key))
 	}
@@ -1040,7 +1053,7 @@ impl PartialOrd for MetricKey {
 	}
 }
 
-impl Eq for AnyKey {}
+impl Eq for TaggedKey {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Width {
@@ -1164,7 +1177,7 @@ impl KeyFields for MetricKey {
 	}
 }
 
-impl KeyFields for AnyKey {
+impl KeyFields for TaggedKey {
 	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
 		match self {
 			Self::Namespace(key) => key.fields(),
@@ -1258,13 +1271,13 @@ impl KeyFields for AnyKey {
 	}
 }
 
-impl Ord for AnyKey {
+impl Ord for TaggedKey {
 	fn cmp(&self, other: &Self) -> Ordering {
 		desc(&(self.kind() as u8), &(other.kind() as u8)).then_with(|| self.fields().cmp(&other.fields()))
 	}
 }
 
-impl PartialOrd for AnyKey {
+impl PartialOrd for TaggedKey {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 		Some(self.cmp(other))
 	}
@@ -1282,7 +1295,7 @@ mod tests {
 	};
 	use smallvec::SmallVec;
 
-	use super::{AnyKey, Field, KeyFields, MetricCdcKey, MetricKey, MetricStorageKey, RawEncoding};
+	use super::{Field, KeyFields, MetricCdcKey, MetricKey, MetricStorageKey, RawEncoding, TaggedKey};
 	use crate::{
 		interface::{
 			catalog::{
@@ -1302,8 +1315,7 @@ mod tests {
 			store::Tier,
 		},
 		key::{
-			EncodableKey,
-			bound::{AnyKeyBound, OwnedField},
+			bound::{OwnedField, TaggedKeyBound},
 			catalog::{
 				BindingKey, ColumnPropertyKey, DictionaryEntryIndexKey, DictionaryEntryKey,
 				DictionaryKey, HandlerKey, IndexEntryKey, IndexKey, PrimaryKeyKey, RelationshipKey,
@@ -1320,7 +1332,6 @@ mod tests {
 				AuthenticationKey, GrantedRoleKey, IdentityAttributeKey, IdentityAttributeValueKey,
 				IdentityKey, PolicyKey, PolicyOpKey, RoleKey, TokenKey,
 			},
-			kind::KeyKind,
 			namespace::{
 				NamespaceBindingKey, NamespaceDictionaryKey, NamespaceFlowKey, NamespaceHandlerKey,
 				NamespaceKey, NamespaceProcedureKey, NamespaceQueueKey, NamespaceRingBufferKey,
@@ -1350,29 +1361,30 @@ mod tests {
 				MigrationEventKey, MigrationKey, SystemSequenceKey, SystemVersion, SystemVersionKey,
 				TransactionVersionKey, VersionEpochKey,
 			},
+			tag::KeyTag,
 		},
 		value::index::encoded::EncodedIndexKey,
 	};
 
-	fn probe<K>(key: K) -> (AnyKey, EncodedKey)
+	fn probe<K>(key: K) -> (TaggedKey, EncodedKey)
 	where
-		K: EncodableKey + Clone,
-		AnyKey: From<K>,
+		TaggedKey: From<K>,
 	{
-		let encoded = EncodableKey::encode(&key);
-		(AnyKey::from(key), encoded)
+		let key = TaggedKey::from(key);
+		let encoded = key.encode();
+		(key, encoded)
 	}
 
-	fn probe_encodable<K>(key: K) -> (AnyKey, EncodedKey)
+	fn probe_encodable<K>(key: K) -> (TaggedKey, EncodedKey)
 	where
-		K: EncodableKey + Clone,
-		AnyKey: From<K>,
+		TaggedKey: From<K>,
 	{
-		let encoded = EncodableKey::encode(&key);
-		(AnyKey::from(key), encoded)
+		let key = TaggedKey::from(key);
+		let encoded = key.encode();
+		(key, encoded)
 	}
 
-	fn assert_ascending(probes: &[(AnyKey, EncodedKey)]) {
+	fn assert_ascending(probes: &[(TaggedKey, EncodedKey)]) {
 		for pair in probes.windows(2) {
 			let (left, left_bytes) = &pair[0];
 			let (right, right_bytes) = &pair[1];
@@ -1433,8 +1445,8 @@ mod tests {
 		expected.sort();
 		assert_eq!(encoded, expected);
 
-		assert_eq!(probes.first().unwrap().0.kind(), KeyKind::PartitionedSortedViewRow);
-		assert_eq!(probes.last().unwrap().0.kind(), KeyKind::Namespace);
+		assert_eq!(probes.first().unwrap().0.kind(), KeyTag::PartitionedSortedViewRow);
+		assert_eq!(probes.last().unwrap().0.kind(), KeyTag::Namespace);
 	}
 
 	#[test]
@@ -1564,7 +1576,7 @@ mod tests {
 		]);
 	}
 
-	fn probes() -> Vec<(AnyKey, EncodedKey)> {
+	fn probes() -> Vec<(TaggedKey, EncodedKey)> {
 		vec![
 			probe(NamespaceKey {
 				namespace: NamespaceId(1),
@@ -1685,7 +1697,7 @@ mod tests {
 			}
 		}
 	}
-	fn assert_projection_matches_bytes(samples: Vec<(AnyKey, EncodedKey)>, label: &str) {
+	fn assert_projection_matches_bytes(samples: Vec<(TaggedKey, EncodedKey)>, label: &str) {
 		assert!(samples.len() >= 2, "{label} needs at least two samples to exercise a direction");
 		for (left, left_bytes) in &samples {
 			for (right, right_bytes) in &samples {
@@ -1704,7 +1716,7 @@ mod tests {
 		}
 	}
 
-	fn encode_via_fields(key: &AnyKey) -> EncodedKey {
+	fn encode_via_fields(key: &TaggedKey) -> EncodedKey {
 		let mut out = vec![!(key.kind() as u8)];
 		for field in key.fields().iter() {
 			field.encode(&mut out);
@@ -1994,7 +2006,7 @@ mod tests {
 		);
 	}
 
-	fn all_probes() -> Vec<(AnyKey, EncodedKey)> {
+	fn all_probes() -> Vec<(TaggedKey, EncodedKey)> {
 		vec![
 			probe(NamespaceKey {
 				namespace: NamespaceId(1),
@@ -2333,20 +2345,20 @@ mod tests {
 	/// than a whole value. Terminated and fixed-width encodings are not truncated here because no
 	/// producer truncates them, and a partial value under those encodings is not a byte prefix of
 	/// the whole one.
-	fn bounds_derived_from(key: &AnyKey) -> Vec<AnyKeyBound> {
-		let mut out = vec![AnyKeyBound::Kind(key.kind()), AnyKeyBound::KindEnd(key.kind())];
+	fn bounds_derived_from(key: &TaggedKey) -> Vec<TaggedKeyBound> {
+		let mut out = vec![TaggedKeyBound::Kind(key.kind()), TaggedKeyBound::KindEnd(key.kind())];
 		let fields = key.fields();
 
 		for len in 0..=fields.len() {
 			let head: SmallVec<[OwnedField; 6]> = fields[..len].iter().map(owned_field).collect();
-			out.push(AnyKeyBound::Prefix(key.kind(), head.clone()));
+			out.push(TaggedKeyBound::Prefix(key.kind(), head.clone()));
 			if len > 0 {
 				// `PrefixEnd` with no fields is not a shape a producer can reach: every
-				// `AnyKeyBoundRange::prefix` call passes fields, and the end of a whole
+				// `TaggedKeyBoundRange::prefix` call passes fields, and the end of a whole
 				// kind span is spelled `KindEnd`, which is generated above. The two
 				// encode alike but order differently, since only `KindEnd` carries the
 				// decrement in its kind byte rather than in the encoded increment.
-				out.push(AnyKeyBound::PrefixEnd(key.kind(), head));
+				out.push(TaggedKeyBound::PrefixEnd(key.kind(), head));
 			}
 		}
 
@@ -2358,8 +2370,8 @@ mod tests {
 					RawEncoding::Verbatim,
 					Cow::Owned(bytes[..bytes.len() - 1].to_vec()),
 				));
-				out.push(AnyKeyBound::Prefix(key.kind(), head.clone()));
-				out.push(AnyKeyBound::PrefixEnd(key.kind(), head));
+				out.push(TaggedKeyBound::Prefix(key.kind(), head.clone()));
+				out.push(TaggedKeyBound::PrefixEnd(key.kind(), head));
 			}
 		}
 
@@ -2376,18 +2388,18 @@ mod tests {
 		// so a new key type is covered the moment it joins the probe set, and every field
 		// position is exercised rather than only the ones a producer happens to slice at today.
 		let probes = all_probes();
-		let bounds: Vec<AnyKeyBound> = probes.iter().flat_map(|(key, _)| bounds_derived_from(key)).collect();
+		let bounds: Vec<TaggedKeyBound> = probes.iter().flat_map(|(key, _)| bounds_derived_from(key)).collect();
 
 		for bound in &bounds {
 			let bound_bytes = bound.encode();
 			if bound_bytes.as_slice().is_empty() {
 				// `PrefixEnd` collapses to nothing when every byte it would increment is
 				// already 0xff. That is the encoding of an unbounded edge, which no
-				// producer emits and `AnyKeyBoundRange::empty` relies on.
+				// producer emits and `TaggedKeyBoundRange::empty` relies on.
 				continue;
 			}
 			for (key, key_bytes) in &probes {
-				let probe = AnyKeyBound::Key(key.clone());
+				let probe = TaggedKeyBound::Key(key.clone());
 				assert_eq!(
 					bound.cmp(&probe),
 					bound_bytes.as_slice().cmp(key_bytes.as_slice()),
@@ -2404,11 +2416,11 @@ mod tests {
 	fn kind_end_is_the_spelling_that_agrees_with_bytes_for_a_whole_kind_span() {
 		// `KindEnd(k)` and `PrefixEnd(k, [])` encode to the same byte, the start of the next kind
 		// down, but only `KindEnd` also orders there. Producers must use `KindEnd`, which
-		// `AnyKeyBoundRange::kind` does; this pins that the correct spelling stays correct.
+		// `TaggedKeyBoundRange::kind` does; this pins that the correct spelling stays correct.
 		for (key, key_bytes) in all_probes() {
-			let end = AnyKeyBound::KindEnd(key.kind());
+			let end = TaggedKeyBound::KindEnd(key.kind());
 			let end_bytes = end.encode();
-			let probe = AnyKeyBound::Key(key.clone());
+			let probe = TaggedKeyBound::Key(key.clone());
 
 			assert_eq!(
 				end.cmp(&probe),
@@ -2417,7 +2429,7 @@ mod tests {
 			);
 			assert_eq!(
 				end_bytes.as_slice(),
-				AnyKeyBound::PrefixEnd(key.kind(), SmallVec::new()).encode().as_slice(),
+				TaggedKeyBound::PrefixEnd(key.kind(), SmallVec::new()).encode().as_slice(),
 				"KindEnd and an empty PrefixEnd must still encode alike for {key:?}"
 			);
 		}
@@ -2427,7 +2439,7 @@ mod tests {
 	fn test_every_variant_round_trips_through_the_shared_decoder() {
 		// A key that comes back as the wrong variant rewrites the wrong row once Delta carries it.
 		for (key, bytes) in all_probes() {
-			assert_eq!(AnyKey::decode(&bytes), Some(key.clone()), "{key:?}");
+			assert_eq!(TaggedKey::decode(&bytes), Some(key.clone()), "{key:?}");
 		}
 	}
 
@@ -2453,32 +2465,30 @@ mod tests {
 		// Both families share kind 0x22; the wrong pick loses the tier and reads another counter.
 		let storage = MetricStorageKey::new(Tier::Persistent, MetricsId::System);
 		let cdc = MetricCdcKey::new(MetricsId::System);
-		assert_eq!(
-			AnyKey::decode(&EncodableKey::encode(&storage)),
-			Some(AnyKey::Metric(MetricKey::Storage(storage)))
-		);
-		assert_eq!(AnyKey::decode(&EncodableKey::encode(&cdc)), Some(AnyKey::Metric(MetricKey::Cdc(cdc))));
+		assert_eq!(TaggedKey::decode(&storage.encode()), Some(TaggedKey::Metric(MetricKey::Storage(storage))));
+		assert_eq!(TaggedKey::decode(&cdc.encode()), Some(TaggedKey::Metric(MetricKey::Cdc(cdc))));
 	}
 
 	#[test]
 	fn test_decode_rejects_bytes_that_name_no_live_kind() {
 		// 0x24-0x26 and 0x3F were removed; a hole must not resurrect as a neighbouring key.
-		assert_eq!(AnyKey::decode(&EncodedKey::new(Vec::<u8>::new())), None);
+		assert_eq!(TaggedKey::decode(&EncodedKey::new(Vec::<u8>::new())), None);
 		for hole in [0x24u8, 0x25, 0x26, 0x3F] {
-			assert_eq!(AnyKey::decode(&EncodedKey::new(vec![!hole, 0x00, 0x01])), None);
+			assert_eq!(TaggedKey::decode(&EncodedKey::new(vec![!hole, 0x00, 0x01])), None);
 		}
 	}
 
 	#[test]
 	fn test_decode_rejects_a_truncated_payload() {
 		// A short read must fail rather than hand back a key built from whatever bytes arrived.
-		let bytes = EncodableKey::encode(&RowKey {
+		let bytes = RowKey {
 			storage: StorageId::table(1),
 			row: RowNumber(1),
-		});
+		}
+		.encode();
 		let mut truncated = bytes.as_slice().to_vec();
 		truncated.truncate(truncated.len() - 1);
-		assert_eq!(AnyKey::decode(&EncodedKey::new(truncated)), None);
+		assert_eq!(TaggedKey::decode(&EncodedKey::new(truncated)), None);
 	}
 
 	#[test]
@@ -2489,16 +2499,16 @@ mod tests {
 			IndexId::primary(PrimaryKeyId(1)),
 			EncodedIndexKey::new([0u8; 0]),
 		);
-		let bytes = EncodableKey::encode(&key);
-		assert_eq!(AnyKey::from(key.clone()).encode(), bytes);
-		assert_eq!(AnyKey::decode(&bytes), Some(AnyKey::from(key)));
+		let bytes = key.encode();
+		assert_eq!(TaggedKey::from(key.clone()).encode(), bytes);
+		assert_eq!(TaggedKey::decode(&bytes), Some(TaggedKey::from(key)));
 	}
 
 	#[test]
 	fn test_any_key_fits_two_machine_words_beyond_an_encoded_key() {
 		// Delta holds one key per pending write, so this number sets the per-transaction budget.
 		assert_eq!(size_of::<EncodedKey>(), 48);
-		assert_eq!(size_of::<AnyKey>(), 96);
-		assert_eq!(size_of::<PartitionedSortedViewRowKey>(), size_of::<AnyKey>());
+		assert_eq!(size_of::<TaggedKey>(), 96);
+		assert_eq!(size_of::<PartitionedSortedViewRowKey>(), size_of::<TaggedKey>());
 	}
 }

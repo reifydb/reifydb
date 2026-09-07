@@ -32,7 +32,7 @@ pub fn derive_typed_key(input: TokenStream) -> TokenStream {
 	derive_typed_key_impl(input.into()).into()
 }
 
-#[proc_macro_derive(EncodableKey, attributes(key))]
+#[proc_macro_derive(KeyCodec, attributes(key))]
 pub fn derive_key(input: TokenStream) -> TokenStream {
 	derive_key_impl(input.into()).into()
 }

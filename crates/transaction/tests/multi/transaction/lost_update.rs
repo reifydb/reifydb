@@ -6,7 +6,7 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_core::{common::CommitVersion, key::any::AnyKey};
+use reifydb_core::{common::CommitVersion, key::any::TaggedKey};
 use reifydb_transaction::multi::transaction::write::MultiWriteTransaction;
 
 use super::test_multi;
@@ -14,7 +14,7 @@ use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
 
 const COUNTER: u64 = 1;
 
-fn read_counter(txn: &mut MultiWriteTransaction, key: &AnyKey) -> u64 {
+fn read_counter(txn: &mut MultiWriteTransaction, key: &TaggedKey) -> u64 {
 	let sv = txn.get(key).unwrap().unwrap();
 	let row = sv.bytes();
 	from_bytes!(u64, row)

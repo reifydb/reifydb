@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{id::ColumnId, object::ObjectId},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		catalog::ColumnPropertyKey,
 		column::{ColumnKey, ColumnSequenceKey, ColumnsKey},
 	},
@@ -20,7 +20,7 @@ impl CatalogStore {
 		let mut policy_stream = txn.range(policy_range, RangeScope::All, 1024)?;
 		let mut policy_keys = Vec::new();
 		for entry in policy_stream.by_ref() {
-			let AnyKey::ColumnProperty(key) = entry?.key else {
+			let TaggedKey::ColumnProperty(key) = entry?.key else {
 				return_internal_error!(
 					"column property scan yielded a key that is not a ColumnPropertyKey"
 				);

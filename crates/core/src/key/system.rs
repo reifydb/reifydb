@@ -4,22 +4,21 @@
 use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::EncodableKey;
+use reifydb_macro::KeyCodec;
 use reifydb_runtime::version_epoch::EpochSeconds;
 use serde::{Deserialize, Serialize, de};
 
-use super::KeyKind;
+use super::KeyTag;
 use crate::{
 	interface::catalog::id::{MigrationEventId, MigrationId, SequenceId},
 	key::{
-		EncodableKey,
 		any::{Field, KeyFields, Width},
-		bound::{AnyKeyBound, AnyKeyBoundRange},
+		bound::{TaggedKeyBound, TaggedKeyBoundRange},
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = SystemSequence)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = SystemSequence)]
 pub struct SystemSequenceKey {
 	pub sequence: SequenceId,
 }
@@ -32,19 +31,20 @@ impl SystemSequenceKey {
 	}
 
 	pub fn encoded(sequence: impl Into<SequenceId>) -> EncodedKey {
-		EncodableKey::encode(&Self {
+		Self {
 			sequence: sequence.into(),
-		})
+		}
+		.encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 pub mod system_sequence_key_tests {
-	use super::{EncodableKey, SystemSequenceKey};
+	use super::SystemSequenceKey;
 	use crate::interface::catalog::id::SequenceId;
 
 	#[test]
@@ -61,8 +61,8 @@ pub mod system_sequence_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = SystemVersion)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = SystemVersion)]
 pub struct SystemVersionKey {
 	#[key(repr = u8)]
 	pub version: SystemVersion,
@@ -99,15 +99,16 @@ impl SystemVersionKey {
 	}
 
 	pub fn encoded(version: SystemVersion) -> EncodedKey {
-		EncodableKey::encode(&Self {
+		Self {
 			version,
-		})
+		}
+		.encode()
 	}
 }
 
 #[cfg(test)]
 pub mod system_version_key_tests {
-	use super::{EncodableKey, SystemVersion, SystemVersionKey};
+	use super::{SystemVersion, SystemVersionKey};
 
 	#[test]
 	fn test_encode_decode_storage_version() {
@@ -123,19 +124,19 @@ pub mod system_version_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = TransactionVersion)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = TransactionVersion)]
 pub struct TransactionVersionKey {}
 
 impl TransactionVersionKey {
 	pub fn encoded() -> EncodedKey {
-		EncodableKey::encode(&Self {})
+		Self {}.encode()
 	}
 }
 
 #[cfg(test)]
 pub mod transaction_version_key_tests {
-	use super::{EncodableKey, TransactionVersionKey};
+	use super::TransactionVersionKey;
 
 	#[test]
 	fn test_encode_decode() {
@@ -148,8 +149,8 @@ pub mod transaction_version_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EncodableKey, Hash)]
-#[key(kind = VersionEpoch)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, KeyCodec, Hash)]
+#[key(tag = VersionEpoch)]
 pub struct VersionEpochKey {
 	pub bucket: EpochSeconds,
 }
@@ -162,22 +163,22 @@ impl VersionEpochKey {
 	}
 
 	pub fn encoded(bucket: EpochSeconds) -> EncodedKey {
-		EncodableKey::encode(&Self::new(bucket))
+		Self::new(bucket).encode()
 	}
 
-	fn bucket_bound(bucket: EpochSeconds) -> AnyKeyBound {
-		AnyKeyBound::prefix(Self::KIND, [Field::UDesc(Width::U64, bucket.seconds() as u128)])
+	fn bucket_bound(bucket: EpochSeconds) -> TaggedKeyBound {
+		TaggedKeyBound::prefix(Self::TAG, [Field::UDesc(Width::U64, bucket.seconds() as u128)])
 	}
 
-	pub fn floor_scan(target: EpochSeconds) -> AnyKeyBoundRange {
-		AnyKeyBoundRange {
+	pub fn floor_scan(target: EpochSeconds) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange {
 			start: Bound::Included(Self::bucket_bound(target)),
 			end: Bound::Included(Self::bucket_bound(EpochSeconds::new(0))),
 		}
 	}
 
-	pub fn older_than(cutoff: EpochSeconds) -> AnyKeyBoundRange {
-		AnyKeyBoundRange {
+	pub fn older_than(cutoff: EpochSeconds) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange {
 			start: Bound::Excluded(Self::bucket_bound(cutoff)),
 			end: Bound::Included(Self::bucket_bound(EpochSeconds::new(0))),
 		}
@@ -188,7 +189,7 @@ impl VersionEpochKey {
 mod version_epoch_key_tests {
 	use std::ops::Bound;
 
-	use super::{EncodableKey, EpochSeconds, VersionEpochKey};
+	use super::{EpochSeconds, VersionEpochKey};
 
 	fn sec(seconds: u64) -> EpochSeconds {
 		EpochSeconds::new(seconds)
@@ -226,8 +227,8 @@ mod version_epoch_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Migration)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Migration)]
 pub struct MigrationKey {
 	pub migration: MigrationId,
 }
@@ -240,17 +241,17 @@ impl MigrationKey {
 	}
 
 	pub fn encoded(migration: impl Into<MigrationId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(migration.into()))
+		Self::new(migration.into()).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 mod migration_key_tests {
-	use super::{EncodableKey, MigrationKey};
+	use super::MigrationKey;
 	use crate::interface::catalog::id::MigrationId;
 
 	#[test]
@@ -264,8 +265,8 @@ mod migration_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = MigrationEvent)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = MigrationEvent)]
 pub struct MigrationEventKey {
 	pub event: MigrationEventId,
 }
@@ -278,17 +279,17 @@ impl MigrationEventKey {
 	}
 
 	pub fn encoded(event: impl Into<MigrationEventId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(event.into()))
+		Self::new(event.into()).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 mod migration_event_key_tests {
-	use super::{EncodableKey, MigrationEventKey};
+	use super::MigrationEventKey;
 	use crate::interface::catalog::id::MigrationEventId;
 
 	#[test]

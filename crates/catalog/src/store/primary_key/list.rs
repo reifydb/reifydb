@@ -4,7 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{column::Column, key::PrimaryKey},
-	key::{any::AnyKey, catalog::PrimaryKeyKey},
+	key::{any::TaggedKey, catalog::PrimaryKeyKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -33,7 +33,7 @@ impl CatalogStore {
 		}
 
 		for entry in entries {
-			if let AnyKey::PrimaryKey(pk_key) = &entry.key {
+			if let TaggedKey::PrimaryKey(pk_key) = &entry.key {
 				let object_id = primary_key::get_source(EncodedCatalogRow::view(&entry.bytes));
 
 				let column_ids_blob =
@@ -79,7 +79,7 @@ impl CatalogStore {
 		for entry in stream {
 			let entry = entry?;
 
-			if let AnyKey::PrimaryKey(pk_key) = &entry.key {
+			if let TaggedKey::PrimaryKey(pk_key) = &entry.key {
 				let column_ids_blob =
 					primary_key::get_column_ids(EncodedCatalogRow::view(&entry.bytes));
 				let column_ids = deserialize_column_ids(&column_ids_blob);

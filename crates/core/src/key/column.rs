@@ -2,24 +2,23 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::EncodableKey;
+use reifydb_macro::KeyCodec;
 
-use super::KeyKind;
+use super::KeyTag;
 use crate::{
 	interface::catalog::{
 		id::{ColumnId, ColumnSnapshotId, SeriesId, TableId},
 		object::ObjectId,
 	},
 	key::{
-		EncodableKey,
 		any::{Field, KeyFields, Width},
-		bound::{AnyKeyBoundRange, object_fields},
+		bound::{TaggedKeyBoundRange, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Column)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Column)]
 pub struct ColumnKey {
 	pub object: ObjectId,
 	pub column: ColumnId,
@@ -34,11 +33,11 @@ impl ColumnKey {
 	}
 
 	pub fn encoded(object: impl Into<ObjectId>, column: impl Into<ColumnId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(object, column))
+		Self::new(object, column).encode()
 	}
 
-	pub fn full_scan(object: impl Into<ObjectId>) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, object_fields(object.into()))
+	pub fn full_scan(object: impl Into<ObjectId>) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(object.into()))
 	}
 }
 
@@ -46,7 +45,7 @@ impl ColumnKey {
 pub mod column_key_tests {
 	use crate::{
 		interface::catalog::{id::ColumnId, object::ObjectId},
-		key::{EncodableKey, column::ColumnKey},
+		key::column::ColumnKey,
 	};
 
 	#[test]
@@ -93,8 +92,8 @@ pub mod column_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EncodableKey, Hash)]
-#[key(kind = ColumnSequence)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, KeyCodec, Hash)]
+#[key(tag = ColumnSequence)]
 pub struct ColumnSequenceKey {
 	pub object: ObjectId,
 	pub column: ColumnId,
@@ -109,7 +108,7 @@ impl ColumnSequenceKey {
 	}
 
 	pub fn encoded(object: impl Into<ObjectId>, column: impl Into<ColumnId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(object, column))
+		Self::new(object, column).encode()
 	}
 }
 
@@ -118,10 +117,7 @@ pub mod column_sequence_key_tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
 	use super::ColumnSequenceKey;
-	use crate::{
-		interface::catalog::{id::ColumnId, object::ObjectId},
-		key::EncodableKey,
-	};
+	use crate::interface::catalog::{id::ColumnId, object::ObjectId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -166,8 +162,8 @@ pub mod column_sequence_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = ColumnSnapshot)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = ColumnSnapshot)]
 pub struct ColumnSnapshotKey {
 	pub snapshot: ColumnSnapshotId,
 }
@@ -180,16 +176,16 @@ impl ColumnSnapshotKey {
 	}
 
 	pub fn encoded(snapshot: impl Into<ColumnSnapshotId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(snapshot.into()))
+		Self::new(snapshot.into()).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = SeriesColumnSnapshot)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = SeriesColumnSnapshot)]
 pub struct SeriesColumnSnapshotKey {
 	pub series: SeriesId,
 	pub snapshot: ColumnSnapshotId,
@@ -204,16 +200,16 @@ impl SeriesColumnSnapshotKey {
 	}
 
 	pub fn encoded(series: impl Into<SeriesId>, snapshot: impl Into<ColumnSnapshotId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(series.into(), snapshot.into()))
+		Self::new(series.into(), snapshot.into()).encode()
 	}
 
-	pub fn full_scan(series: SeriesId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, series.0 as u128)])
+	pub fn full_scan(series: SeriesId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, series.0 as u128)])
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = TableColumnSnapshot)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = TableColumnSnapshot)]
 pub struct TableColumnSnapshotKey {
 	pub table: TableId,
 	pub snapshot: ColumnSnapshotId,
@@ -228,11 +224,11 @@ impl TableColumnSnapshotKey {
 	}
 
 	pub fn encoded(table: impl Into<TableId>, snapshot: impl Into<ColumnSnapshotId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(table.into(), snapshot.into()))
+		Self::new(table.into(), snapshot.into()).encode()
 	}
 
-	pub fn full_scan(table: TableId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, table.0 as u128)])
+	pub fn full_scan(table: TableId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, table.0 as u128)])
 	}
 }
 
@@ -244,19 +240,16 @@ pub mod column_snapshot_key_tests {
 
 	#[test]
 	fn a_snapshot_key_reports_its_own_kind_from_its_first_byte() {
-		// the leading version byte made KeyKind::of read every snapshot key as a namespace key, so the
+		// the leading version byte made KeyTag::of read every snapshot key as a namespace key, so the
 		// metrics parser and the entry classifier both routed them to an owner they never belonged to
+		assert_eq!(KeyTag::of(&ColumnSnapshotKey::encoded(ColumnSnapshotId(1))), Some(KeyTag::ColumnSnapshot));
 		assert_eq!(
-			KeyKind::of(&ColumnSnapshotKey::encoded(ColumnSnapshotId(1))),
-			Some(KeyKind::ColumnSnapshot)
+			KeyTag::of(&SeriesColumnSnapshotKey::encoded(SeriesId(1), ColumnSnapshotId(2))),
+			Some(KeyTag::SeriesColumnSnapshot)
 		);
 		assert_eq!(
-			KeyKind::of(&SeriesColumnSnapshotKey::encoded(SeriesId(1), ColumnSnapshotId(2))),
-			Some(KeyKind::SeriesColumnSnapshot)
-		);
-		assert_eq!(
-			KeyKind::of(&TableColumnSnapshotKey::encoded(TableId(1), ColumnSnapshotId(2))),
-			Some(KeyKind::TableColumnSnapshot)
+			KeyTag::of(&TableColumnSnapshotKey::encoded(TableId(1), ColumnSnapshotId(2))),
+			Some(KeyTag::TableColumnSnapshot)
 		);
 	}
 
@@ -302,8 +295,8 @@ pub mod column_snapshot_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Columns)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Columns)]
 pub struct ColumnsKey {
 	pub column: ColumnId,
 }
@@ -316,18 +309,18 @@ impl ColumnsKey {
 	}
 
 	pub fn encoded(column: impl Into<ColumnId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(column))
+		Self::new(column).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 pub mod columns_key_tests {
 	use super::ColumnsKey;
-	use crate::{interface::catalog::id::ColumnId, key::EncodableKey};
+	use crate::interface::catalog::id::ColumnId;
 
 	#[test]
 	fn test_encode_decode() {

@@ -781,7 +781,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::{
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
-			typed::{Edge, MultiKey, range::KeyRange},
+			typed::{Edge, OpaqueKey, range::KeyRange},
 		},
 	};
 	use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
@@ -838,7 +838,7 @@ mod tests {
 		}
 	}
 
-	fn whole(keyspace: KeyspaceId) -> Interval<MultiKey> {
+	fn whole(keyspace: KeyspaceId) -> Interval<OpaqueKey> {
 		let (start, end) = partition(keyspace).span();
 		Interval::new(start, end)
 	}
@@ -852,18 +852,18 @@ mod tests {
 	fn claim(
 		tier: &RangeTier<D>,
 		range: &EncodedKeyRange,
-		span: &Interval<MultiKey>,
+		span: &Interval<OpaqueKey>,
 		rows: &[(EncodedKey, EncodedPodRow)],
 	) -> Materialize {
 		let scan = tier.plan_scan(OP, &KeyRange::from(range)).expect("the fixture range must be plannable");
 		tier.materialize(&scan, span, rows)
 	}
 
-	fn spanning(from: &EncodedKey, to: &EncodedKey) -> Interval<MultiKey> {
+	fn spanning(from: &EncodedKey, to: &EncodedKey) -> Interval<OpaqueKey> {
 		Interval::new(Edge::Key(from.clone()), Edge::Key(to.clone()))
 	}
 
-	fn drain(tier: &RangeTier<D>, scan: &RangeScan<D>, segment: &Interval<MultiKey>, limit: usize) -> Vec<String> {
+	fn drain(tier: &RangeTier<D>, scan: &RangeScan<D>, segment: &Interval<OpaqueKey>, limit: usize) -> Vec<String> {
 		let mut cursor = RangeCursor::new();
 		let mut out = Vec::new();
 		while !cursor.is_exhausted() {
@@ -882,7 +882,7 @@ mod tests {
 		out
 	}
 
-	fn intervals(tier: &RangeTier<D>) -> Vec<Interval<MultiKey>> {
+	fn intervals(tier: &RangeTier<D>) -> Vec<Interval<OpaqueKey>> {
 		tier.coverage().read().set(OP).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 

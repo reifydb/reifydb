@@ -19,7 +19,6 @@ use reifydb_core::{
 		store::{EntryKind, EntryLayout},
 	},
 	key::{
-		EncodableKey,
 		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey, StorageRowKey},
 		series::{
 			PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
@@ -80,7 +79,7 @@ const BUCKETS: u64 = 1 << (u64::BITS - ROW_BUCKET_SHIFT);
 pub struct MultiDomain;
 
 pub trait NarrowLayout: DenseKey + Copy {
-	type Wide: EncodableKey;
+	type Wide;
 
 	fn kind(storage: StorageId) -> EntryKind;
 
@@ -669,7 +668,6 @@ mod tests {
 			store::EntryLayout,
 		},
 		key::{
-			EncodableKey,
 			row::{RowKey, StorageRowKey},
 			series::SeriesRowKey,
 			typed::range::KeyRange,

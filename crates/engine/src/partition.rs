@@ -8,7 +8,7 @@ use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::{
 	interface::catalog::{id::TableId, object::ObjectId, table::Table},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		partition::PartitionKey,
 		row::{PartitionedRowKey, RowKey},
 	},
@@ -31,7 +31,7 @@ pub fn table_partition_of_row(table: &Table, shape: &RowShape, row: &[u8]) -> Pa
 	Partition::of(&partition_values(shape, row, &indices))
 }
 
-pub fn table_row_key(table: &Table, shape: &RowShape, row: &[u8], row_number: RowNumber) -> AnyKey {
+pub fn table_row_key(table: &Table, shape: &RowShape, row: &[u8], row_number: RowNumber) -> TaggedKey {
 	if table.partition_by.is_empty() {
 		RowKey::new(table.id, row_number).into()
 	} else {
@@ -40,7 +40,7 @@ pub fn table_row_key(table: &Table, shape: &RowShape, row: &[u8], row_number: Ro
 	}
 }
 
-pub fn row_key_from_partition(table_id: TableId, partition: Option<Partition>, row_number: RowNumber) -> AnyKey {
+pub fn row_key_from_partition(table_id: TableId, partition: Option<Partition>, row_number: RowNumber) -> TaggedKey {
 	match partition {
 		None => RowKey::new(table_id, row_number).into(),
 		Some(partition) => PartitionedRowKey::new(table_id, partition, row_number).into(),

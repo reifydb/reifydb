@@ -13,7 +13,7 @@ use reifydb_core::{
 		cdc::{CdcConsumerId, ConsumerClass},
 		change::Change,
 	},
-	key::{any::AnyKey, kind::KeyKind},
+	key::{any::TaggedKey, tag::KeyTag},
 	return_internal_error,
 };
 #[cfg(test)]
@@ -282,10 +282,10 @@ impl Committer {
 #[instrument(name = "flow::committer::apply_pending", level = "debug", skip_all)]
 fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
 	for (encoded, pw) in combined.iter_ordered() {
-		if matches!(KeyKind::of(encoded), Some(KeyKind::OperatorState)) {
+		if matches!(KeyTag::of(encoded), Some(KeyTag::OperatorState)) {
 			continue;
 		}
-		let Some(key) = AnyKey::decode(encoded) else {
+		let Some(key) = TaggedKey::decode(encoded) else {
 			return_internal_error!(
 				"flow pending write carries a key no typed key decodes: {}",
 				hex_display(encoded.as_ref())
@@ -296,7 +296,7 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Announced,
 			} => {
-				if matches!(key, AnyKey::Row(_) | AnyKey::SeriesRow(_)) {
+				if matches!(key, TaggedKey::Row(_) | TaggedKey::SeriesRow(_)) {
 					match transaction.get(&key)? {
 						Some(existing) => transaction.remove_with_pre(&key, existing.bytes)?,
 						None => transaction.remove(&key)?,
@@ -308,7 +308,7 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Unobserved,
 			} => {
-				if matches!(key, AnyKey::Row(_) | AnyKey::SeriesRow(_)) {
+				if matches!(key, TaggedKey::Row(_) | TaggedKey::SeriesRow(_)) {
 					match transaction.get(&key)? {
 						Some(existing) => {
 							transaction.remove_unobserved_with_pre(&key, existing.bytes)?
@@ -344,8 +344,7 @@ mod commit_integration {
 		},
 		internal_error,
 		key::{
-			EncodableKey,
-			any::AnyKey,
+			any::TaggedKey,
 			catalog::IndexEntryKey,
 			cdc::CdcConsumerKey,
 			operator::state::{GroupStateKey, OperatorStateKey, custom_not_cached_key},
@@ -490,7 +489,7 @@ mod commit_integration {
 			.expect("scan consumer checkpoints")
 		{
 			let multi = multi.expect("consumer checkpoint row");
-			if let AnyKey::CdcConsumer(key) = &multi.key {
+			if let TaggedKey::CdcConsumer(key) = &multi.key {
 				consumers.push(key.consumer.as_ref().to_string());
 			}
 		}

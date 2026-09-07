@@ -11,7 +11,7 @@ use reifydb_core::{
 		storage::StorageId,
 	},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		catalog::{ColumnPropertyKey, PrimaryKeyKey},
 		column::{ColumnKey, ColumnSequenceKey, ColumnsKey},
 		row::RowSequenceKey,
@@ -33,7 +33,7 @@ pub(crate) fn drop_object_metadata(
 	for entry in stream.by_ref() {
 		let entry = entry?;
 		let col_id = object_column::get_id(EncodedCatalogRow::view(&entry.bytes));
-		let AnyKey::Column(col_key) = entry.key else {
+		let TaggedKey::Column(col_key) = entry.key else {
 			return_internal_error!("column scan yielded a key that is not a ColumnKey");
 		};
 		col_entries.push((col_key, ColumnId(col_id)));
@@ -45,7 +45,7 @@ pub(crate) fn drop_object_metadata(
 		let mut policy_stream = txn.range(policy_range, RangeScope::All, 1024)?;
 		let mut policy_keys = Vec::new();
 		for entry in policy_stream.by_ref() {
-			let AnyKey::ColumnProperty(key) = entry?.key else {
+			let TaggedKey::ColumnProperty(key) = entry?.key else {
 				return_internal_error!(
 					"column property scan yielded a key that is not a ColumnPropertyKey"
 				);

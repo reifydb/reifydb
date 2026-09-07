@@ -14,7 +14,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, MultiVersionGet, classify_key},
 	},
-	key::{EncodableKey, any::AnyKey, row::RowKey},
+	key::{any::TaggedKey, row::RowKey},
 };
 use reifydb_store_multi::{
 	store::StandardMultiStore,
@@ -39,7 +39,7 @@ fn persistent_only_set(store: &StandardMultiStore, k: &EncodedKey, version: u64,
 }
 
 fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u8>> {
-	store.get(&AnyKey::decode(k).expect("the test key must decode"), CommitVersion(version))
+	store.get(&TaggedKey::decode(k).expect("the test key must decode"), CommitVersion(version))
 		.unwrap()
 		.map(|r| r.bytes.to_vec())
 }

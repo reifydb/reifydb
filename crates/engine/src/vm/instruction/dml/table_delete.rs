@@ -20,7 +20,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		catalog::IndexEntryKey,
 		row::{PartitionedRowKey, RowKeyRange},
 	},
@@ -259,13 +259,13 @@ fn run_table_delete_all(
 			remove_table_pk_index_for(services, txn, table, pk_def, &multi.bytes)?;
 		}
 		if partitioned {
-			let AnyKey::PartitionedRow(key) = multi.key else {
+			let TaggedKey::PartitionedRow(key) = multi.key else {
 				panic!("valid PartitionedRowKey encoding");
 			};
 			filtered_ids.push(key.row);
 			filtered_partitions.push(key.partition);
 		} else {
-			let AnyKey::Row(row_key) = multi.key else {
+			let TaggedKey::Row(row_key) = multi.key else {
 				panic!("valid RowKey encoding");
 			};
 			filtered_ids.push(row_key.row);

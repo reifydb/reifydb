@@ -8,8 +8,8 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::storage::StorageId, resolved::ResolvedSeries, store::MultiVersionRow},
 	key::{
-		any::AnyKey,
-		bound::AnyKeyBoundRange,
+		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
@@ -42,7 +42,7 @@ pub struct SeriesScanNode {
 	partition: Option<Partition>,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
-	last_key: Option<AnyKey>,
+	last_key: Option<TaggedKey>,
 	exhausted: bool,
 
 	min_commit_version: Option<CommitVersion>,
@@ -90,16 +90,16 @@ impl SeriesScanNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::series::range_open")]
 	fn open_range<'rx, 'tx>(
 		rx: &'rx mut Transaction<'tx>,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: u64,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + 'rx>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'rx>> {
 		rx.range(range, scope, batch_size as usize)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::series::drain")]
 	fn drain_batch(
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>>,
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
 		batch_size: u64,
 		partitioned: bool,
 		has_tag: bool,
@@ -114,14 +114,14 @@ impl SeriesScanNode {
 
 			let decoded: Option<(u64, u64, Option<u8>, Option<Partition>)> = if partitioned {
 				match &entry.key {
-					AnyKey::PartitionedSeriesRow(pk) => {
+					TaggedKey::PartitionedSeriesRow(pk) => {
 						Some((pk.key, pk.sequence, pk.variant_tag, Some(pk.partition)))
 					}
 					_ => None,
 				}
 			} else {
 				match &entry.key {
-					AnyKey::SeriesRow(k) => Some((k.key, k.sequence, k.variant_tag, None)),
+					TaggedKey::SeriesRow(k) => Some((k.key, k.sequence, k.variant_tag, None)),
 					_ => None,
 				}
 			};
@@ -262,7 +262,7 @@ struct SeriesBatch {
 	time_values: Vec<DateTime>,
 	updated_at_values: Vec<DateTime>,
 	data_rows: Vec<Vec<Value>>,
-	last_key: Option<AnyKey>,
+	last_key: Option<TaggedKey>,
 }
 
 impl QueryNode for SeriesScanNode {

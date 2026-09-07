@@ -19,7 +19,7 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
 	value::column::columns::Columns,
@@ -298,7 +298,7 @@ fn collect_partition_row_numbers(
 		}
 		let n = batch.len();
 		for entry in batch {
-			if let AnyKey::PartitionedRow(pk) = &entry.key {
+			if let TaggedKey::PartitionedRow(pk) = &entry.key {
 				out.push(pk.row);
 			}
 			last_key = Some(entry.key.clone());

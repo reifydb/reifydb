@@ -17,12 +17,12 @@ use reifydb_value::util::hash::{Hash128, xxh3_128};
 use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 
-use super::super::{EncodableKey, KeyKind};
+use super::super::KeyTag;
 use crate::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		any::{ByteEncoding, Field, KeyFields, RawEncoding, Width},
-		bound::{AnyKeyBound, AnyKeyBoundRange},
+		bound::{TaggedKeyBound, TaggedKeyBoundRange},
 		operator::{
 			keyspace::{
 				KeyspaceVisitor, REGISTERED, dispatch,
@@ -402,7 +402,7 @@ impl OperatorStateKey {
 		let suffix = suffix.as_ref();
 		let mut serializer = KeySerializer::with_capacity(NODE_GROUP_PREFIX_LEN + 1 + suffix.len());
 		serializer
-			.extend_u8(KeyKind::OperatorState as u8)
+			.extend_u8(KeyTag::OperatorState as u8)
 			.extend_u64(operator.0)
 			.extend_fixed(*group.as_bytes())
 			.extend_u8(keyspace.0)
@@ -437,14 +437,14 @@ impl OperatorStateKey {
 		Some((GroupId::from_bytes(group), KeyspaceId(keyspace), suffix))
 	}
 
-	pub fn node_range(operator: OperatorId) -> AnyKeyBoundRange {
+	pub fn node_range(operator: OperatorId) -> TaggedKeyBoundRange {
 		node_range(operator)
 	}
 
 	pub fn decode_operator(key: &EncodedKey) -> Option<(OperatorId, EncodedKey)> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != KeyKind::OperatorState {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != KeyTag::OperatorState {
 			return None;
 		}
 		let operator = de.read_u64().ok()?;
@@ -453,13 +453,13 @@ impl OperatorStateKey {
 	}
 }
 
-impl EncodableKey for OperatorStateKey {
-	const KIND: KeyKind = KeyKind::OperatorState;
+impl OperatorStateKey {
+	pub const TAG: KeyTag = KeyTag::OperatorState;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(NODE_GROUP_PREFIX_LEN + 1 + self.suffix.len());
 		serializer
-			.extend_u8(KeyKind::OperatorState as u8)
+			.extend_u8(KeyTag::OperatorState as u8)
 			.extend_u64(self.operator.0)
 			.extend_fixed(*self.group.as_bytes())
 			.extend_u8(self.keyspace.0)
@@ -467,11 +467,11 @@ impl EncodableKey for OperatorStateKey {
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != KeyKind::OperatorState {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != KeyTag::OperatorState {
 			return None;
 		}
 
@@ -739,7 +739,7 @@ pub const KEYSPACE_INNER_PREFIX_LEN: usize = GroupId::WIDTH + size_of::<u8>();
 pub const NODE_GROUP_PREFIX_LEN: usize = NODE_PREFIX_LEN + GroupId::WIDTH;
 
 pub fn extend_node_prefix(serializer: &mut KeySerializer, operator: OperatorId) {
-	serializer.extend_u8(KeyKind::OperatorState as u8).extend_u64(operator.0);
+	serializer.extend_u8(KeyTag::OperatorState as u8).extend_u64(operator.0);
 }
 
 pub fn node_prefix(operator: OperatorId) -> Vec<u8> {
@@ -748,13 +748,13 @@ pub fn node_prefix(operator: OperatorId) -> Vec<u8> {
 	serializer.finish().as_ref().to_vec()
 }
 
-pub fn node_range(operator: OperatorId) -> AnyKeyBoundRange {
-	AnyKeyBoundRange::prefix(KeyKind::OperatorState, [Field::UDesc(Width::U64, operator.0 as u128)])
+pub fn node_range(operator: OperatorId) -> TaggedKeyBoundRange {
+	TaggedKeyBoundRange::prefix(KeyTag::OperatorState, [Field::UDesc(Width::U64, operator.0 as u128)])
 }
 
-pub fn group_range(operator: OperatorId, group: GroupId) -> AnyKeyBoundRange {
-	AnyKeyBoundRange::prefix(
-		KeyKind::OperatorState,
+pub fn group_range(operator: OperatorId, group: GroupId) -> TaggedKeyBoundRange {
+	TaggedKeyBoundRange::prefix(
+		KeyTag::OperatorState,
 		[
 			Field::UDesc(Width::U64, operator.0 as u128),
 			Field::BytesDesc(ByteEncoding::Fixed, Cow::Owned(group.as_bytes().to_vec())),
@@ -762,9 +762,9 @@ pub fn group_range(operator: OperatorId, group: GroupId) -> AnyKeyBoundRange {
 	)
 }
 
-pub fn keyspace_range(operator: OperatorId, group: GroupId, keyspace: KeyspaceId) -> AnyKeyBoundRange {
-	AnyKeyBoundRange::prefix(
-		KeyKind::OperatorState,
+pub fn keyspace_range(operator: OperatorId, group: GroupId, keyspace: KeyspaceId) -> TaggedKeyBoundRange {
+	TaggedKeyBoundRange::prefix(
+		KeyTag::OperatorState,
 		[
 			Field::UDesc(Width::U64, operator.0 as u128),
 			Field::BytesDesc(ByteEncoding::Fixed, Cow::Owned(group.as_bytes().to_vec())),
@@ -773,18 +773,18 @@ pub fn keyspace_range(operator: OperatorId, group: GroupId, keyspace: KeyspaceId
 	)
 }
 
-pub fn group_data_range(operator: OperatorId, group: GroupId) -> AnyKeyBoundRange {
-	AnyKeyBoundRange {
-		start: Bound::Included(AnyKeyBound::prefix(
-			KeyKind::OperatorState,
+pub fn group_data_range(operator: OperatorId, group: GroupId) -> TaggedKeyBoundRange {
+	TaggedKeyBoundRange {
+		start: Bound::Included(TaggedKeyBound::prefix(
+			KeyTag::OperatorState,
 			[
 				Field::UDesc(Width::U64, operator.0 as u128),
 				Field::BytesDesc(ByteEncoding::Fixed, Cow::Owned(group.as_bytes().to_vec())),
 				Field::UDesc(Width::U8, KeyspaceId::HIGHEST_DATA as u128),
 			],
 		)),
-		end: Bound::Excluded(AnyKeyBound::prefix_end(
-			KeyKind::OperatorState,
+		end: Bound::Excluded(TaggedKeyBound::prefix_end(
+			KeyTag::OperatorState,
 			[
 				Field::UDesc(Width::U64, operator.0 as u128),
 				Field::BytesDesc(ByteEncoding::Fixed, Cow::Owned(group.as_bytes().to_vec())),
@@ -793,17 +793,17 @@ pub fn group_data_range(operator: OperatorId, group: GroupId) -> AnyKeyBoundRang
 	}
 }
 
-pub fn group_identity_range(operator: OperatorId, group: GroupId) -> AnyKeyBoundRange {
-	AnyKeyBoundRange {
-		start: Bound::Included(AnyKeyBound::prefix(
-			KeyKind::OperatorState,
+pub fn group_identity_range(operator: OperatorId, group: GroupId) -> TaggedKeyBoundRange {
+	TaggedKeyBoundRange {
+		start: Bound::Included(TaggedKeyBound::prefix(
+			KeyTag::OperatorState,
 			[
 				Field::UDesc(Width::U64, operator.0 as u128),
 				Field::BytesDesc(ByteEncoding::Fixed, Cow::Owned(group.as_bytes().to_vec())),
 			],
 		)),
-		end: Bound::Excluded(AnyKeyBound::prefix(
-			KeyKind::OperatorState,
+		end: Bound::Excluded(TaggedKeyBound::prefix(
+			KeyTag::OperatorState,
 			[
 				Field::UDesc(Width::U64, operator.0 as u128),
 				Field::BytesDesc(ByteEncoding::Fixed, Cow::Owned(group.as_bytes().to_vec())),
@@ -826,7 +826,7 @@ mod tests {
 		group_inner_range, group_range, is_framed_inner, is_guest_framed_inner, keyspace_range, node_prefix,
 		node_range,
 	};
-	use crate::{interface::catalog::flow::OperatorId, key::EncodableKey};
+	use crate::interface::catalog::flow::OperatorId;
 
 	const NODES: [u64; 4] = [1, 17, 300, 70_000];
 	const GROUPS: [u128; 8] = [1, 2, 127, 128, 1000, 100_000, 1 << 30, u128::MAX];

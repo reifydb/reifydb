@@ -2,19 +2,19 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::EncodableKey;
+use reifydb_macro::KeyCodec;
 
-use super::super::{EncodableKey, KeyKind};
+use super::super::KeyTag;
 use crate::{
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::{
 		any::{Field, KeyFields, Width},
-		bound::AnyKeyBoundRange,
+		bound::TaggedKeyBoundRange,
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Operator)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Operator)]
 pub struct OperatorKey {
 	pub operator: OperatorId,
 }
@@ -30,13 +30,13 @@ impl OperatorKey {
 		Self::new(operator).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = OperatorByFlow)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = OperatorByFlow)]
 pub struct OperatorByFlowKey {
 	pub flow: FlowId,
 	pub operator: OperatorId,
@@ -54,14 +54,14 @@ impl OperatorByFlowKey {
 		Self::new(flow, operator).encode()
 	}
 
-	pub fn full_scan(flow: FlowId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, flow.0 as u128)])
+	pub fn full_scan(flow: FlowId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, flow.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
-	use super::{EncodableKey, OperatorByFlowKey, OperatorKey};
+	use super::{OperatorByFlowKey, OperatorKey};
 	use crate::interface::catalog::flow::{FlowId, OperatorId};
 
 	#[test]
@@ -131,18 +131,18 @@ pub mod tests {
 mod verify_byte_identical {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::{EncodableKey, OperatorByFlowKey, OperatorKey};
+	use super::{OperatorByFlowKey, OperatorKey};
 	use crate::interface::catalog::flow::{FlowId, OperatorId};
 
 	fn legacy_encode_operator(key: &OperatorKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(OperatorKey::KIND as u8).extend_u64(key.operator);
+		serializer.extend_u8(OperatorKey::TAG as u8).extend_u64(key.operator);
 		serializer.to_encoded_key().as_slice().to_vec()
 	}
 
 	fn legacy_encode_by_flow(key: &OperatorByFlowKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(17);
-		serializer.extend_u8(OperatorByFlowKey::KIND as u8).extend_u64(key.flow).extend_u64(key.operator);
+		serializer.extend_u8(OperatorByFlowKey::TAG as u8).extend_u64(key.flow).extend_u64(key.operator);
 		serializer.to_encoded_key().as_slice().to_vec()
 	}
 

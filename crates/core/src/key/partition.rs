@@ -2,22 +2,21 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::EncodableKey;
+use reifydb_macro::KeyCodec;
 use reifydb_value::value::partition::Partition;
 
-use super::KeyKind;
+use super::KeyTag;
 use crate::{
 	interface::catalog::object::ObjectId,
 	key::{
-		EncodableKey,
 		any::{Field, KeyFields, Width},
-		bound::{AnyKeyBound, AnyKeyBoundRange, object_fields},
+		bound::{TaggedKeyBound, TaggedKeyBoundRange, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Partition)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Partition)]
 pub struct PartitionKey {
 	pub object: ObjectId,
 	pub partition: Partition,
@@ -35,11 +34,11 @@ impl PartitionKey {
 		Self::new(object, partition).encode()
 	}
 
-	pub fn full_scan(object: impl Into<ObjectId>) -> AnyKeyBoundRange {
+	pub fn full_scan(object: impl Into<ObjectId>) -> TaggedKeyBoundRange {
 		let object = object.into();
-		AnyKeyBoundRange::start_end(
-			AnyKeyBound::prefix(Self::KIND, object_fields(object)),
-			AnyKeyBound::prefix(Self::KIND, object_fields(object.prev())),
+		TaggedKeyBoundRange::start_end(
+			TaggedKeyBound::prefix(Self::TAG, object_fields(object)),
+			TaggedKeyBound::prefix(Self::TAG, object_fields(object.prev())),
 		)
 	}
 }
@@ -51,10 +50,7 @@ mod tests {
 	use reifydb_value::value::{Value, partition::Partition};
 
 	use super::PartitionKey;
-	use crate::{
-		interface::catalog::{id::TableId, object::ObjectId},
-		key::EncodableKey,
-	};
+	use crate::interface::catalog::{id::TableId, object::ObjectId};
 
 	#[test]
 	fn test_roundtrip() {

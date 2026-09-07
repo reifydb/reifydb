@@ -25,7 +25,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
 	partition::{PartitionError, partition_col_indices},
@@ -130,8 +130,8 @@ pub(crate) fn update_ringbuffer(
 				Some(columns.partitions()[row_idx])
 			};
 			let old_row_key = match partition {
-				None => AnyKey::from(RowKey::new(ringbuffer.id, row_number)),
-				Some(p) => AnyKey::from(PartitionedRowKey::new(ringbuffer.id, p, row_number)),
+				None => TaggedKey::from(RowKey::new(ringbuffer.id, row_number)),
+				Some(p) => TaggedKey::from(PartitionedRowKey::new(ringbuffer.id, p, row_number)),
 			};
 			let old_row = txn.get(&old_row_key)?.expect("bytes must exist for update").bytes;
 			let pre_row = old_row.clone();

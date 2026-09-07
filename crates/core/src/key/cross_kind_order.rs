@@ -27,7 +27,6 @@ use crate::{
 		cdc::CdcConsumerId,
 	},
 	key::{
-		EncodableKey,
 		catalog::{
 			BindingKey, ColumnPropertyKey, DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey,
 			HandlerKey, IndexEntryKey, IndexKey, PrimaryKeyKey, RelationshipKey, SinkKey, SourceKey,
@@ -44,7 +43,6 @@ use crate::{
 			AuthenticationKey, GrantedRoleKey, IdentityAttributeKey, IdentityAttributeValueKey,
 			IdentityKey, PolicyKey, PolicyOpKey, RoleKey, TokenKey,
 		},
-		kind::KeyKind,
 		namespace::{
 			NamespaceBindingKey, NamespaceDictionaryKey, NamespaceFlowKey, NamespaceHandlerKey,
 			NamespaceKey, NamespaceProcedureKey, NamespaceQueueKey, NamespaceRingBufferKey,
@@ -73,372 +71,373 @@ use crate::{
 			MigrationEventKey, MigrationKey, SystemSequenceKey, SystemVersion, SystemVersionKey,
 			TransactionVersionKey, VersionEpochKey,
 		},
+		tag::KeyTag,
 	},
 	value::index::encoded::EncodedIndexKey,
 };
 
 const DECLARED_KINDS: usize = 87;
 
-fn bare(kind: KeyKind) -> EncodedKey {
+fn bare(kind: KeyTag) -> EncodedKey {
 	let mut serializer = KeySerializer::with_capacity(1);
 	serializer.extend_u8(kind as u8);
 	serializer.to_encoded_key()
 }
 
-fn representative(kind: KeyKind) -> EncodedKey {
+fn representative(kind: KeyTag) -> EncodedKey {
 	match kind {
-		KeyKind::Namespace => NamespaceKey {
+		KeyTag::Namespace => NamespaceKey {
 			namespace: NamespaceId(1),
 		}
 		.encode(),
-		KeyKind::Table => TableKey {
+		KeyTag::Table => TableKey {
 			table: TableId(1),
 		}
 		.encode(),
-		KeyKind::Row => RowKey {
+		KeyTag::Row => RowKey {
 			storage: StorageId::table(TableId(1)),
 			row: RowNumber(1),
 		}
 		.encode(),
-		KeyKind::NamespaceTable => NamespaceTableKey {
+		KeyTag::NamespaceTable => NamespaceTableKey {
 			namespace: NamespaceId(1),
 			table: TableId(1),
 		}
 		.encode(),
-		KeyKind::SystemSequence => SystemSequenceKey {
+		KeyTag::SystemSequence => SystemSequenceKey {
 			sequence: SequenceId(1),
 		}
 		.encode(),
-		KeyKind::Columns => ColumnsKey {
+		KeyTag::Columns => ColumnsKey {
 			column: ColumnId(1),
 		}
 		.encode(),
-		KeyKind::Column => ColumnKey {
+		KeyTag::Column => ColumnKey {
 			object: ObjectId::table(TableId(1)),
 			column: ColumnId(1),
 		}
 		.encode(),
-		KeyKind::RowSequence => RowSequenceKey {
+		KeyTag::RowSequence => RowSequenceKey {
 			storage: StorageId::table(TableId(1)),
 		}
 		.encode(),
-		KeyKind::ColumnProperty => ColumnPropertyKey {
+		KeyTag::ColumnProperty => ColumnPropertyKey {
 			column: ColumnId(1),
 			property: ColumnPropertyId(1),
 		}
 		.encode(),
-		KeyKind::SystemVersion => SystemVersionKey {
+		KeyTag::SystemVersion => SystemVersionKey {
 			version: SystemVersion::Storage,
 		}
 		.encode(),
-		KeyKind::TransactionVersion => TransactionVersionKey {}.encode(),
-		KeyKind::Index => IndexKey {
+		KeyTag::TransactionVersion => TransactionVersionKey {}.encode(),
+		KeyTag::Index => IndexKey {
 			object: ObjectId::table(TableId(1)),
 			index: IndexId::primary(PrimaryKeyId(1)),
 		}
 		.encode(),
-		KeyKind::IndexEntry => IndexEntryKey {
+		KeyTag::IndexEntry => IndexEntryKey {
 			object: ObjectId::table(TableId(1)),
 			index: IndexId::primary(PrimaryKeyId(1)),
 			key: EncodedIndexKey::new([0x01]),
 		}
 		.encode(),
-		KeyKind::ColumnSequence => ColumnSequenceKey {
+		KeyTag::ColumnSequence => ColumnSequenceKey {
 			object: ObjectId::table(TableId(1)),
 			column: ColumnId(1),
 		}
 		.encode(),
-		KeyKind::CdcConsumer => CdcConsumerKey {
+		KeyTag::CdcConsumer => CdcConsumerKey {
 			consumer: CdcConsumerId::new("probe"),
 		}
 		.encode(),
-		KeyKind::View => ViewKey {
+		KeyTag::View => ViewKey {
 			view: ViewId(1),
 		}
 		.encode(),
-		KeyKind::NamespaceView => NamespaceViewKey {
+		KeyTag::NamespaceView => NamespaceViewKey {
 			namespace: NamespaceId(1),
 			view: ViewId(1),
 		}
 		.encode(),
-		KeyKind::PrimaryKey => PrimaryKeyKey {
+		KeyTag::PrimaryKey => PrimaryKeyKey {
 			primary_key: PrimaryKeyId(1),
 		}
 		.encode(),
-		KeyKind::OperatorState => OperatorStateKey {
+		KeyTag::OperatorState => OperatorStateKey {
 			operator: OperatorId(1),
 			group: GroupId::ROOT,
 			keyspace: KeyspaceId::CUSTOM_NOT_CACHED,
 			suffix: vec![1],
 		}
 		.encode(),
-		KeyKind::RingBuffer => RingBufferKey {
+		KeyTag::RingBuffer => RingBufferKey {
 			ringbuffer: RingBufferId(1),
 		}
 		.encode(),
-		KeyKind::NamespaceRingBuffer => NamespaceRingBufferKey {
+		KeyTag::NamespaceRingBuffer => NamespaceRingBufferKey {
 			namespace: NamespaceId(1),
 			ringbuffer: RingBufferId(1),
 		}
 		.encode(),
-		KeyKind::RingBufferMetadata => RingBufferMetadataKey {
+		KeyTag::RingBufferMetadata => RingBufferMetadataKey {
 			storage: StorageId::ringbuffer(RingBufferId(1)),
 			partition_values: vec![],
 		}
 		.encode(),
-		KeyKind::Flow => FlowKey {
+		KeyTag::Flow => FlowKey {
 			flow: FlowId(1),
 		}
 		.encode(),
-		KeyKind::NamespaceFlow => NamespaceFlowKey {
+		KeyTag::NamespaceFlow => NamespaceFlowKey {
 			namespace: NamespaceId(1),
 			flow: FlowId(1),
 		}
 		.encode(),
-		KeyKind::Operator => OperatorKey {
+		KeyTag::Operator => OperatorKey {
 			operator: OperatorId(1),
 		}
 		.encode(),
-		KeyKind::OperatorByFlow => OperatorByFlowKey {
+		KeyTag::OperatorByFlow => OperatorByFlowKey {
 			flow: FlowId(1),
 			operator: OperatorId(1),
 		}
 		.encode(),
-		KeyKind::FlowEdge => FlowEdgeKey {
+		KeyTag::FlowEdge => FlowEdgeKey {
 			edge: FlowEdgeId(1),
 		}
 		.encode(),
-		KeyKind::FlowEdgeByFlow => FlowEdgeByFlowKey {
+		KeyTag::FlowEdgeByFlow => FlowEdgeByFlowKey {
 			flow: FlowId(1),
 			edge: FlowEdgeId(1),
 		}
 		.encode(),
-		KeyKind::OutputFrontier => OutputFrontierKey {
+		KeyTag::OutputFrontier => OutputFrontierKey {
 			object: ObjectId::table(TableId(1)),
 		}
 		.encode(),
-		KeyKind::Dictionary => DictionaryKey {
+		KeyTag::Dictionary => DictionaryKey {
 			dictionary: DictionaryId(1),
 		}
 		.encode(),
-		KeyKind::DictionaryEntry => DictionaryEntryKey {
+		KeyTag::DictionaryEntry => DictionaryEntryKey {
 			dictionary: DictionaryId(1),
 			hash: [0u8; 16],
 		}
 		.encode(),
-		KeyKind::DictionaryEntryIndex => DictionaryEntryIndexKey {
+		KeyTag::DictionaryEntryIndex => DictionaryEntryIndexKey {
 			dictionary: DictionaryId(1),
 			id: 1,
 		}
 		.encode(),
-		KeyKind::NamespaceDictionary => NamespaceDictionaryKey {
+		KeyTag::NamespaceDictionary => NamespaceDictionaryKey {
 			namespace: NamespaceId(1),
 			dictionary: DictionaryId(1),
 		}
 		.encode(),
-		KeyKind::Metric => bare(kind),
-		KeyKind::FlowVersion => FlowVersionKey {
+		KeyTag::Metric => bare(kind),
+		KeyTag::FlowVersion => FlowVersionKey {
 			flow: FlowId(1),
 		}
 		.encode(),
-		KeyKind::RowShape => RowShapeKey {
+		KeyTag::RowShape => RowShapeKey {
 			fingerprint: RowShapeFingerprint::new(1),
 		}
 		.encode(),
-		KeyKind::RowShapeField => RowShapeFieldKey {
+		KeyTag::RowShapeField => RowShapeFieldKey {
 			shape_fingerprint: RowShapeFingerprint::new(1),
 			field_index: 0,
 		}
 		.encode(),
-		KeyKind::SumType => SumTypeKey {
+		KeyTag::SumType => SumTypeKey {
 			sumtype: SumTypeId(1),
 		}
 		.encode(),
-		KeyKind::NamespaceSumType => NamespaceSumTypeKey {
+		KeyTag::NamespaceSumType => NamespaceSumTypeKey {
 			namespace: NamespaceId(1),
 			sumtype: SumTypeId(1),
 		}
 		.encode(),
-		KeyKind::Handler => HandlerKey {
+		KeyTag::Handler => HandlerKey {
 			handler: HandlerId(1),
 		}
 		.encode(),
-		KeyKind::NamespaceHandler => NamespaceHandlerKey {
+		KeyTag::NamespaceHandler => NamespaceHandlerKey {
 			namespace: NamespaceId(1),
 			handler: HandlerId(1),
 		}
 		.encode(),
-		KeyKind::VariantHandler => VariantHandlerKey {
+		KeyTag::VariantHandler => VariantHandlerKey {
 			namespace: NamespaceId(1),
 			sumtype: SumTypeId(1),
 			variant_tag: 0,
 			handler: HandlerId(1),
 		}
 		.encode(),
-		KeyKind::Series => SeriesKey {
+		KeyTag::Series => SeriesKey {
 			series: SeriesId(1),
 		}
 		.encode(),
-		KeyKind::NamespaceSeries => NamespaceSeriesKey {
+		KeyTag::NamespaceSeries => NamespaceSeriesKey {
 			namespace: NamespaceId(1),
 			series: SeriesId(1),
 		}
 		.encode(),
-		KeyKind::SeriesMetadata => SeriesMetadataKey {
+		KeyTag::SeriesMetadata => SeriesMetadataKey {
 			storage: StorageId::series(SeriesId(1)),
 		}
 		.encode(),
-		KeyKind::Identity => IdentityKey {
+		KeyTag::Identity => IdentityKey {
 			identity: IdentityId::root(),
 		}
 		.encode(),
-		KeyKind::Role => RoleKey {
+		KeyTag::Role => RoleKey {
 			role: 1,
 		}
 		.encode(),
-		KeyKind::GrantedRole => GrantedRoleKey {
+		KeyTag::GrantedRole => GrantedRoleKey {
 			identity: IdentityId::root(),
 			role: 1,
 		}
 		.encode(),
-		KeyKind::Policy => PolicyKey {
+		KeyTag::Policy => PolicyKey {
 			policy: 1,
 		}
 		.encode(),
-		KeyKind::PolicyOp => PolicyOpKey {
+		KeyTag::PolicyOp => PolicyOpKey {
 			policy: 1,
 			op_index: 0,
 		}
 		.encode(),
-		KeyKind::Migration => MigrationKey {
+		KeyTag::Migration => MigrationKey {
 			migration: MigrationId(1),
 		}
 		.encode(),
-		KeyKind::MigrationEvent => MigrationEventKey {
+		KeyTag::MigrationEvent => MigrationEventKey {
 			event: MigrationEventId(1),
 		}
 		.encode(),
-		KeyKind::Authentication => AuthenticationKey {
+		KeyTag::Authentication => AuthenticationKey {
 			authentication: 1,
 		}
 		.encode(),
-		KeyKind::ConfigStorage => ConfigStorageKey {
+		KeyTag::ConfigStorage => ConfigStorageKey {
 			key: ConfigKey::OracleWindowSize,
 		}
 		.encode(),
-		KeyKind::Token => TokenKey {
+		KeyTag::Token => TokenKey {
 			token: 1,
 		}
 		.encode(),
-		KeyKind::Source => SourceKey {
+		KeyTag::Source => SourceKey {
 			source: SourceId(1),
 		}
 		.encode(),
-		KeyKind::NamespaceSource => NamespaceSourceKey {
+		KeyTag::NamespaceSource => NamespaceSourceKey {
 			namespace: NamespaceId(1),
 			source: SourceId(1),
 		}
 		.encode(),
-		KeyKind::Sink => SinkKey {
+		KeyTag::Sink => SinkKey {
 			sink: SinkId(1),
 		}
 		.encode(),
-		KeyKind::NamespaceSink => NamespaceSinkKey {
+		KeyTag::NamespaceSink => NamespaceSinkKey {
 			namespace: NamespaceId(1),
 			sink: SinkId(1),
 		}
 		.encode(),
-		KeyKind::RowSettings => RowSettingsKey {
+		KeyTag::RowSettings => RowSettingsKey {
 			storage: StorageId::table(TableId(1)),
 		}
 		.encode(),
-		KeyKind::Procedure => ProcedureKey {
+		KeyTag::Procedure => ProcedureKey {
 			procedure: ProcedureId::from_raw(1),
 		}
 		.encode(),
-		KeyKind::NamespaceProcedure => NamespaceProcedureKey {
+		KeyTag::NamespaceProcedure => NamespaceProcedureKey {
 			namespace: NamespaceId(1),
 			procedure: ProcedureId::from_raw(1),
 		}
 		.encode(),
-		KeyKind::ProcedureParam => ProcedureParamKey {
+		KeyTag::ProcedureParam => ProcedureParamKey {
 			procedure: ProcedureId::from_raw(1),
 			param_index: 0,
 		}
 		.encode(),
-		KeyKind::Binding => BindingKey {
+		KeyTag::Binding => BindingKey {
 			binding: BindingId(1),
 		}
 		.encode(),
-		KeyKind::NamespaceBinding => NamespaceBindingKey {
+		KeyTag::NamespaceBinding => NamespaceBindingKey {
 			namespace: NamespaceId(1),
 			binding: BindingId(1),
 		}
 		.encode(),
-		KeyKind::OperatorSettings => OperatorSettingsKey {
+		KeyTag::OperatorSettings => OperatorSettingsKey {
 			operator: OperatorId(1),
 		}
 		.encode(),
-		KeyKind::ColumnSnapshot => ColumnSnapshotKey {
+		KeyTag::ColumnSnapshot => ColumnSnapshotKey {
 			snapshot: ColumnSnapshotId(1),
 		}
 		.encode(),
-		KeyKind::SeriesColumnSnapshot => SeriesColumnSnapshotKey {
+		KeyTag::SeriesColumnSnapshot => SeriesColumnSnapshotKey {
 			series: SeriesId(1),
 			snapshot: ColumnSnapshotId(1),
 		}
 		.encode(),
-		KeyKind::TableColumnSnapshot => TableColumnSnapshotKey {
+		KeyTag::TableColumnSnapshot => TableColumnSnapshotKey {
 			table: TableId(1),
 			snapshot: ColumnSnapshotId(1),
 		}
 		.encode(),
-		KeyKind::VersionEpoch => VersionEpochKey {
+		KeyTag::VersionEpoch => VersionEpochKey {
 			bucket: EpochSeconds::new(1),
 		}
 		.encode(),
-		KeyKind::IdentityAttribute => IdentityAttributeKey {
+		KeyTag::IdentityAttribute => IdentityAttributeKey {
 			attribute: 1,
 		}
 		.encode(),
-		KeyKind::IdentityAttributeValue => IdentityAttributeValueKey {
+		KeyTag::IdentityAttributeValue => IdentityAttributeValueKey {
 			identity: IdentityId::root(),
 			attribute: 1,
 		}
 		.encode(),
-		KeyKind::PartitionedRow => PartitionedRowKey {
+		KeyTag::PartitionedRow => PartitionedRowKey {
 			storage: StorageId::table(TableId(1)),
 			partition: Partition(1),
 			row: RowNumber(1),
 		}
 		.encode(),
-		KeyKind::Partition => PartitionKey {
+		KeyTag::Partition => PartitionKey {
 			object: ObjectId::table(TableId(1)),
 			partition: Partition(1),
 		}
 		.encode(),
-		KeyKind::Queue => QueueKey {
+		KeyTag::Queue => QueueKey {
 			queue: QueueId(1),
 		}
 		.encode(),
-		KeyKind::NamespaceQueue => NamespaceQueueKey {
+		KeyTag::NamespaceQueue => NamespaceQueueKey {
 			namespace: NamespaceId(1),
 			queue: QueueId(1),
 		}
 		.encode(),
-		KeyKind::QueueDeduplication => QueueDeduplicationKey::new(QueueId(1), b"probe").encode(),
-		KeyKind::Relationship => RelationshipKey {
+		KeyTag::QueueDeduplication => QueueDeduplicationKey::new(QueueId(1), b"probe").encode(),
+		KeyTag::Relationship => RelationshipKey {
 			relationship: RelationshipId(1),
 		}
 		.encode(),
-		KeyKind::SeriesRow => SeriesRowKey {
+		KeyTag::SeriesRow => SeriesRowKey {
 			storage: StorageId::series(SeriesId(1)),
 			variant_tag: None,
 			key: 1,
 			sequence: 1,
 		}
 		.encode(),
-		KeyKind::PartitionedSeriesRow => PartitionedSeriesRowKey {
+		KeyTag::PartitionedSeriesRow => PartitionedSeriesRowKey {
 			storage: StorageId::series(SeriesId(1)),
 			partition: Partition(1),
 			variant_tag: None,
@@ -446,46 +445,46 @@ fn representative(kind: KeyKind) -> EncodedKey {
 			sequence: 1,
 		}
 		.encode(),
-		KeyKind::QueuePartition => QueuePartitionKey {
+		KeyTag::QueuePartition => QueuePartitionKey {
 			queue: QueueId(1),
 			partition: 0,
 		}
 		.encode(),
-		KeyKind::QueueItemState => QueueItemStateKey {
+		KeyTag::QueueItemState => QueueItemStateKey {
 			queue: QueueId(1),
 			partition: 0,
 			row: RowNumber(1),
 		}
 		.encode(),
-		KeyKind::QueueDue => QueueDueKey {
+		KeyTag::QueueDue => QueueDueKey {
 			queue: QueueId(1),
 			partition: 0,
 			due: DateTime::from_bits(1),
 			row: RowNumber(1),
 		}
 		.encode(),
-		KeyKind::QueueAttempt => QueueAttemptKey {
+		KeyTag::QueueAttempt => QueueAttemptKey {
 			queue: QueueId(1),
 			row: RowNumber(1),
 			attempt: 0,
 		}
 		.encode(),
-		KeyKind::QueueKeyActive => QueueKeyActiveKey {
+		KeyTag::QueueKeyActive => QueueKeyActiveKey {
 			queue: QueueId(1),
 			partition: 0,
 			key_hash: 1,
 			row: RowNumber(1),
 		}
 		.encode(),
-		KeyKind::SortedViewRow => SortedViewRowKey::storage_start(StorageId::view(ViewId(1))),
-		KeyKind::PartitionedSortedViewRow => {
+		KeyTag::SortedViewRow => SortedViewRowKey::storage_start(StorageId::view(ViewId(1))),
+		KeyTag::PartitionedSortedViewRow => {
 			PartitionedSortedViewRowKey::storage_start(StorageId::view(ViewId(1)))
 		}
 	}
 }
 
-fn all_kinds() -> Vec<KeyKind> {
-	(0x00u8..=0xFF).filter_map(|byte| KeyKind::try_from(byte).ok()).collect()
+fn all_kinds() -> Vec<KeyTag> {
+	(0x00u8..=0xFF).filter_map(|byte| KeyTag::try_from(byte).ok()).collect()
 }
 
 #[test]
@@ -494,7 +493,7 @@ fn every_declared_kind_is_reachable_from_a_byte() {
 	assert_eq!(
 		kinds.len(),
 		DECLARED_KINDS,
-		"KeyKind::try_from accepts {} discriminants but {DECLARED_KINDS} are declared; add the new \
+		"KeyTag::try_from accepts {} discriminants but {DECLARED_KINDS} are declared; add the new \
 		 variant to try_from and bump DECLARED_KINDS",
 		kinds.len()
 	);
@@ -516,7 +515,7 @@ fn each_representative_opens_with_its_own_inverted_kind_byte() {
 fn encoded_keys_sort_descending_by_kind_discriminant() {
 	let kinds = all_kinds();
 
-	let mut encoded: Vec<(KeyKind, Vec<u8>)> =
+	let mut encoded: Vec<(KeyTag, Vec<u8>)> =
 		kinds.iter().map(|kind| (*kind, representative(*kind).as_slice().to_vec())).collect();
 	encoded.sort_by(|left, right| left.1.cmp(&right.1));
 
@@ -528,7 +527,7 @@ fn encoded_keys_sort_descending_by_kind_discriminant() {
 
 	assert_eq!(
 		sorted, expected,
-		"encoded keys must sort descending by KeyKind discriminant, highest discriminant first"
+		"encoded keys must sort descending by KeyTag discriminant, highest discriminant first"
 	);
 }
 
@@ -552,9 +551,9 @@ fn a_higher_kind_discriminant_sorts_strictly_before_a_lower_one() {
 
 #[test]
 fn row_sorts_before_table_because_the_kind_byte_is_inverted() {
-	let row = representative(KeyKind::Row);
-	let table = representative(KeyKind::Table);
+	let row = representative(KeyTag::Row);
+	let table = representative(KeyTag::Table);
 
-	assert!(KeyKind::Row as u8 > KeyKind::Table as u8);
+	assert!(KeyTag::Row as u8 > KeyTag::Table as u8);
 	assert!(row.as_slice() < table.as_slice(), "Row must sort before Table despite its larger discriminant");
 }

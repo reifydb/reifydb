@@ -14,7 +14,7 @@ use reifydb_core::{
 		id::{IndexId, TableId},
 		object::ObjectId,
 	},
-	key::{EncodableKey, any::AnyKey, catalog::IndexEntryKey},
+	key::{any::TaggedKey, catalog::IndexEntryKey},
 	value::index::encoded::EncodedIndexKey,
 };
 use reifydb_flow::transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction};
@@ -41,7 +41,7 @@ fn make_value(s: &str) -> EncodedBytes {
 }
 
 fn get_row(parent: &mut AdminTransaction, key: &EncodedKey) -> Option<EncodedBytes> {
-	parent.get(&AnyKey::decode(key).expect("the test key must decode")).unwrap().map(|m| m.bytes.clone())
+	parent.get(&TaggedKey::decode(key).expect("the test key must decode")).unwrap().map(|m| m.bytes.clone())
 }
 
 #[test]

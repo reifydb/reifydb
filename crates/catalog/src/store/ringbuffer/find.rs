@@ -8,7 +8,7 @@ use reifydb_core::{
 		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata, decode_ringbuffer_metadata},
 	},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		namespace::NamespaceRingBufferKey,
 		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
 	},
@@ -92,7 +92,7 @@ impl CatalogStore {
 		for entry in stream {
 			let multi = entry?;
 			let metadata = decode_ringbuffer_metadata(EncodedPodRow::view(&multi.bytes))?;
-			let AnyKey::RingBufferMetadata(key) = multi.key else {
+			let TaggedKey::RingBufferMetadata(key) = multi.key else {
 				continue;
 			};
 			results.push(PartitionedMetadata {

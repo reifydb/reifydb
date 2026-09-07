@@ -42,8 +42,8 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	key::{
-		any::AnyKey,
-		bound::AnyKeyBoundRange,
+		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 	row::{OperatorSettings, RowSettings},
@@ -124,22 +124,22 @@ impl QueryTransaction {
 	}
 
 	#[inline]
-	pub fn get<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<AnyKey>>> {
+	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		Ok(self.multi.get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
 	#[inline]
-	pub fn contains<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<bool> {
+	pub fn contains<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
 		self.multi.contains(key)
 	}
 
 	#[inline]
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		self.multi.prefix(prefix)
 	}
 
 	#[inline]
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		self.multi.prefix_rev(prefix)
 	}
 
@@ -152,10 +152,10 @@ impl QueryTransaction {
 	#[inline]
 	pub fn range(
 		&self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		self.multi.range(range, scope, batch_size)
 	}
 
@@ -185,10 +185,10 @@ impl QueryTransaction {
 	#[inline]
 	pub fn range_rev(
 		&self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		self.multi.range_rev(range, scope, batch_size)
 	}
 

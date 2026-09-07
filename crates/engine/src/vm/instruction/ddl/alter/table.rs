@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::object::ObjectId,
 	internal_error,
-	key::{any::AnyKey, partition::PartitionKey, row::PartitionedRowKey},
+	key::{any::TaggedKey, partition::PartitionKey, row::PartitionedRowKey},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::{AlterTableAction, AlterTableNode};
@@ -91,7 +91,7 @@ pub(crate) fn execute_alter_table(
 			let object = ObjectId::Table(table.id);
 
 			let mut ids: Vec<RowNumber> = Vec::new();
-			let mut last_key: Option<AnyKey> = None;
+			let mut last_key: Option<TaggedKey> = None;
 			loop {
 				let batch: Vec<_> = txn
 					.range(
@@ -109,7 +109,7 @@ pub(crate) fn execute_alter_table(
 				}
 				let n = batch.len();
 				for entry in batch {
-					if let AnyKey::PartitionedRow(pk) = &entry.key {
+					if let TaggedKey::PartitionedRow(pk) = &entry.key {
 						ids.push(pk.row);
 					}
 					last_key = Some(entry.key.clone());

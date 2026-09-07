@@ -4,11 +4,10 @@
 use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
 use smallvec::{SmallVec, smallvec};
 
-use super::KeyKind;
+use super::KeyTag;
 use crate::{
 	interface::{catalog::metrics::MetricsId, store::Tier},
 	key::{
-		EncodableKey,
 		any::{Field, KeyFields, Width},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 	},
@@ -46,19 +45,19 @@ impl MetricStorageKey {
 	}
 }
 
-impl EncodableKey for MetricStorageKey {
-	const KIND: KeyKind = KeyKind::Metric;
+impl MetricStorageKey {
+	pub const TAG: KeyTag = KeyTag::Metric;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(13);
-		serializer.extend_u8(Self::KIND as u8).extend_u8(SUBKEY_STORAGE).extend_u8(tier_to_byte(self.tier));
+		serializer.extend_u8(Self::TAG as u8).extend_u8(SUBKEY_STORAGE).extend_u8(tier_to_byte(self.tier));
 		extend_metrics_id(&mut serializer, self.id);
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		read_subkey(&mut de, Self::KIND, SUBKEY_STORAGE)?;
+		read_subkey(&mut de, Self::TAG, SUBKEY_STORAGE)?;
 
 		let tier = byte_to_tier(de.read_u8().ok()?)?;
 		let id = read_metrics_id(&mut de)?;
@@ -91,19 +90,19 @@ impl MetricCdcKey {
 	}
 }
 
-impl EncodableKey for MetricCdcKey {
-	const KIND: KeyKind = KeyKind::Metric;
+impl MetricCdcKey {
+	pub const TAG: KeyTag = KeyTag::Metric;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(12);
-		serializer.extend_u8(Self::KIND as u8).extend_u8(SUBKEY_CDC);
+		serializer.extend_u8(Self::TAG as u8).extend_u8(SUBKEY_CDC);
 		extend_metrics_id(&mut serializer, self.id);
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		read_subkey(&mut de, Self::KIND, SUBKEY_CDC)?;
+		read_subkey(&mut de, Self::TAG, SUBKEY_CDC)?;
 
 		let id = read_metrics_id(&mut de)?;
 
@@ -115,12 +114,12 @@ impl EncodableKey for MetricCdcKey {
 
 fn subkey_prefix(subkey: u8) -> EncodedKey {
 	let mut serializer = KeySerializer::with_capacity(2);
-	serializer.extend_u8(KeyKind::Metric as u8).extend_u8(subkey);
+	serializer.extend_u8(KeyTag::Metric as u8).extend_u8(subkey);
 	serializer.to_encoded_key()
 }
 
-fn read_subkey(de: &mut KeyDeserializer, kind: KeyKind, subkey: u8) -> Option<()> {
-	let decoded: KeyKind = de.read_u8().ok()?.try_into().ok()?;
+fn read_subkey(de: &mut KeyDeserializer, kind: KeyTag, subkey: u8) -> Option<()> {
+	let decoded: KeyTag = de.read_u8().ok()?.try_into().ok()?;
 	if decoded != kind {
 		return None;
 	}
@@ -173,18 +172,18 @@ mod tests {
 
 	#[test]
 	fn test_storage_key_is_classified_as_metric() {
-		// A leading version byte made KeyKind::of read 0x01 and answer Namespace for every metric key.
+		// A leading version byte made KeyTag::of read 0x01 and answer Namespace for every metric key.
 		let key = MetricStorageKey::encoded(Tier::Buffer, MetricsId::System);
-		assert_eq!(KeyKind::of(&key), Some(KeyKind::Metric));
-		assert_eq!(decode_u8(key.as_slice()[0]), KeyKind::Metric as u8);
+		assert_eq!(KeyTag::of(&key), Some(KeyTag::Metric));
+		assert_eq!(decode_u8(key.as_slice()[0]), KeyTag::Metric as u8);
 	}
 
 	#[test]
 	fn test_cdc_key_is_classified_as_metric() {
 		// Same misclassification: metric CDC keys sorted inside the namespace block.
 		let key = MetricCdcKey::encoded(MetricsId::System);
-		assert_eq!(KeyKind::of(&key), Some(KeyKind::Metric));
-		assert_eq!(decode_u8(key.as_slice()[0]), KeyKind::Metric as u8);
+		assert_eq!(KeyTag::of(&key), Some(KeyTag::Metric));
+		assert_eq!(decode_u8(key.as_slice()[0]), KeyTag::Metric as u8);
 	}
 
 	#[test]

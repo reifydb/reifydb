@@ -14,7 +14,7 @@ use reifydb_core::{
 		flow::OperatorId,
 	},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		operator::{
 			keyspace::join::JoinRowMappingKey,
 			state::{GroupId, GroupStateKey, OperatorStateKey, group_inner_range_split, node_prefix},
@@ -175,7 +175,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	) -> Result<()> {
 		let batch = self.txn.state_get_many(self.operator, keys)?;
 		for r in batch.items {
-			let AnyKey::OperatorState(decoded) = &r.key else {
+			let TaggedKey::OperatorState(decoded) = &r.key else {
 				continue;
 			};
 			let Some(inner) = GroupStateKey::from_framed(decoded.inner()) else {
@@ -213,7 +213,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		)?;
 		let mut out = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
-			if let AnyKey::OperatorState(decoded) = &r.key
+			if let TaggedKey::OperatorState(decoded) = &r.key
 				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 			{
 				out.push((inner, EncodedPodRow::from(r.bytes)));
@@ -226,7 +226,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		let batch = self.txn.state_group_range(self.operator, groups, limit)?;
 		let mut rows = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
-			if let AnyKey::OperatorState(decoded) = &r.key
+			if let TaggedKey::OperatorState(decoded) = &r.key
 				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 			{
 				rows.push((inner, EncodedPodRow::from(r.bytes)));
@@ -242,7 +242,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		let Some(r) = self.txn.state_last(self.operator, range)? else {
 			return Ok(None);
 		};
-		if let AnyKey::OperatorState(decoded) = &r.key
+		if let TaggedKey::OperatorState(decoded) = &r.key
 			&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 		{
 			return Ok(Some((inner, EncodedPodRow::from(r.bytes))));
@@ -437,8 +437,8 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 	}
 }
 
-fn unscope(key: &AnyKey) -> Option<GroupStateKey> {
-	let AnyKey::OperatorState(key) = key else {
+fn unscope(key: &TaggedKey) -> Option<GroupStateKey> {
+	let TaggedKey::OperatorState(key) = key else {
 		return None;
 	};
 	GroupStateKey::from_framed(key.inner())

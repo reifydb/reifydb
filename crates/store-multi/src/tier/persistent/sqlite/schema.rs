@@ -7,14 +7,13 @@ use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::storage::StorageId,
 	key::{
-		EncodableKey,
 		catalog::KeyDeserializerCatalogExt,
-		kind::KeyKind,
 		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey, StorageRowKey},
 		series::{
 			PartitionedSeriesKeyColumns, PartitionedSeriesRowKey, SeriesKeyColumns, SeriesRowKey,
 			StoragePartitionedSeriesKey, StorageSeriesKey,
 		},
+		tag::KeyTag,
 	},
 };
 use reifydb_value::value::{partition::Partition, row_number::RowNumber};
@@ -44,8 +43,8 @@ pub(super) fn partitioned_key_for(storage: StorageId, partition_hi: i64, partiti
 
 fn partition_only_of(key: &[u8]) -> Option<Partition> {
 	let mut de = KeyDeserializer::from_bytes(key);
-	let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-	if kind != <PartitionedRowKey as EncodableKey>::KIND {
+	let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+	if kind != PartitionedRowKey::TAG {
 		return None;
 	}
 	de.read_object_id().ok()?;
@@ -384,7 +383,7 @@ mod series_bound_tests {
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::key::{
-		any::AnyKey,
+		any::TaggedKey,
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	};
 	use reifydb_value::value::{Value, partition::Partition};
@@ -662,7 +661,7 @@ mod series_bound_tests {
 		// A resumed scan hands back an exclusive full key. Translating it inclusively would replay the last
 		// row of the previous page on every page boundary.
 		let universe = series_universe();
-		let cursor = AnyKey::from(SeriesRowKey {
+		let cursor = TaggedKey::from(SeriesRowKey {
 			storage: storage(),
 			variant_tag: Some(7),
 			key: 5,
@@ -885,7 +884,7 @@ mod series_bound_tests {
 		// The partitioned encoder emits the same three partial starts as the unpartitioned one, each with
 		// sixteen partition bytes in front, plus a resumed start and a full key end.
 		let universe = partitioned_universe();
-		let cursor = AnyKey::from(PartitionedSeriesRowKey {
+		let cursor = TaggedKey::from(PartitionedSeriesRowKey {
 			storage: storage(),
 			partition: part("us"),
 			variant_tag: Some(7),

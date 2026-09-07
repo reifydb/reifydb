@@ -4,21 +4,21 @@
 use std::borrow::Cow;
 
 use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
-use reifydb_macro::EncodableKey;
+use reifydb_macro::KeyCodec;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use smallvec::{SmallVec, smallvec};
 
-use super::{EncodableKey, KeyKind};
+use super::KeyTag;
 use crate::{
 	interface::catalog::id::QueueId,
 	key::{
 		any::{ByteEncoding, Field, KeyFields, Width},
-		bound::AnyKeyBoundRange,
+		bound::TaggedKeyBoundRange,
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Queue)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Queue)]
 pub struct QueueKey {
 	pub queue: QueueId,
 }
@@ -31,11 +31,11 @@ impl QueueKey {
 	}
 
 	pub fn encoded(queue: impl Into<QueueId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(queue.into()))
+		Self::new(queue.into()).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
@@ -49,7 +49,7 @@ mod queue_key_tests {
 	fn test_encode_decode_roundtrip() {
 		// A queue def row is addressed by this key alone, so a broken codec orphans every definition.
 		let encoded = QueueKey::encoded(QueueId(42));
-		let decoded = <QueueKey as EncodableKey>::decode(&encoded).unwrap();
+		let decoded = QueueKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.queue, QueueId(42));
 	}
 
@@ -58,14 +58,14 @@ mod queue_key_tests {
 		// The kind byte guards the family: a foreign key must fail rather than have its payload
 		// reinterpreted as a queue id.
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(KeyKind::NamespaceQueue as u8).extend_u64(7u64);
-		assert!(<QueueKey as EncodableKey>::decode(&serializer.to_encoded_key()).is_none());
+		serializer.extend_u8(KeyTag::NamespaceQueue as u8).extend_u64(7u64);
+		assert!(QueueKey::decode(&serializer.to_encoded_key()).is_none());
 	}
 
 	#[test]
 	fn test_full_scan_brackets_every_queue_key() {
 		// Keys are stored bitwise-inverted, so byte order runs opposite to the logical value; that is
-		// why the range ends at KIND - 1. Reversing the bound makes list_queues return nothing.
+		// why the range ends at TAG - 1. Reversing the bound makes list_queues return nothing.
 		let range = QueueKey::full_scan().encode();
 
 		let Bound::Included(start) = &range.start else {
@@ -75,8 +75,8 @@ mod queue_key_tests {
 			panic!("expected an included end bound")
 		};
 
-		assert_eq!(start.as_slice(), &[!(KeyKind::Queue as u8)]);
-		assert_eq!(end.as_slice(), &[!(KeyKind::Queue as u8 - 1)]);
+		assert_eq!(start.as_slice(), &[!(KeyTag::Queue as u8)]);
+		assert_eq!(end.as_slice(), &[!(KeyTag::Queue as u8 - 1)]);
 		assert!(start.as_slice() < end.as_slice(), "the range must be non-empty under byte order");
 
 		for id in [QueueId(1), QueueId(u64::MAX)] {
@@ -101,7 +101,7 @@ mod queue_key_tests {
 		};
 
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(KeyKind::NamespaceQueue as u8).extend_u64(1u64);
+		serializer.extend_u8(KeyTag::NamespaceQueue as u8).extend_u64(1u64);
 		let foreign = serializer.to_encoded_key();
 
 		assert!(
@@ -119,7 +119,7 @@ mod byte_identical_check_queue_key {
 
 	fn legacy_encode(key: &QueueKey) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(KeyKind::Queue as u8).extend_u64(key.queue);
+		serializer.extend_u8(KeyTag::Queue as u8).extend_u64(key.queue);
 		serializer.to_encoded_key()
 	}
 
@@ -129,13 +129,13 @@ mod byte_identical_check_queue_key {
 			let key = QueueKey {
 				queue: id,
 			};
-			assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
+			assert_eq!(legacy_encode(&key).as_slice(), key.encode().as_slice());
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = QueueAttempt)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = QueueAttempt)]
 pub struct QueueAttemptKey {
 	pub queue: QueueId,
 	pub row: RowNumber,
@@ -152,22 +152,22 @@ impl QueueAttemptKey {
 	}
 
 	pub fn encoded(queue: impl Into<QueueId>, row: impl Into<RowNumber>, attempt: u32) -> EncodedKey {
-		EncodableKey::encode(&Self::new(queue, row, attempt))
+		Self::new(queue, row, attempt).encode()
 	}
 
-	pub fn item_scan(queue: QueueId, row: RowNumber) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(
-			Self::KIND,
+	pub fn item_scan(queue: QueueId, row: RowNumber) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(
+			Self::TAG,
 			[Field::UDesc(Width::U64, queue.0 as u128), Field::UDesc(Width::U64, row.0 as u128)],
 		)
 	}
 
-	pub fn queue_scan(queue: QueueId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, queue.0 as u128)])
+	pub fn queue_scan(queue: QueueId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, queue.0 as u128)])
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
@@ -204,7 +204,7 @@ mod queue_item_state_key_tests {
 			attempt: u32::MAX,
 		};
 
-		assert_eq!(<QueueAttemptKey as EncodableKey>::decode(&EncodableKey::encode(&key)), Some(key));
+		assert_eq!(QueueAttemptKey::decode(&key.encode()), Some(key));
 	}
 
 	#[test]
@@ -218,7 +218,7 @@ mod queue_item_state_key_tests {
 			attempt: 0,
 		};
 
-		assert_eq!(<QueueAttemptKey as EncodableKey>::decode(&EncodableKey::encode(&key)), Some(key));
+		assert_eq!(QueueAttemptKey::decode(&key.encode()), Some(key));
 	}
 
 	#[test]
@@ -254,7 +254,7 @@ mod queue_item_state_key_tests {
 		// as an attempt record would attribute another object's bytes to a queue item.
 		let foreign = QueueItemStateKey::encoded(QueueId(1), 0, RowNumber(1));
 
-		assert_eq!(<QueueAttemptKey as EncodableKey>::decode(&foreign), None);
+		assert_eq!(QueueAttemptKey::decode(&foreign), None);
 	}
 }
 
@@ -276,25 +276,25 @@ impl QueueDeduplicationKey {
 		Self::new(queue, tail).encode()
 	}
 
-	pub fn full_scan(queue: QueueId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, queue.0 as u128)])
+	pub fn full_scan(queue: QueueId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, queue.0 as u128)])
 	}
 }
 
-impl EncodableKey for QueueDeduplicationKey {
-	const KIND: KeyKind = KeyKind::QueueDeduplication;
+impl QueueDeduplicationKey {
+	pub const TAG: KeyTag = KeyTag::QueueDeduplication;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9 + self.tail.len() + 1);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.queue).extend_bytes(&self.tail);
+		serializer.extend_u8(Self::TAG as u8).extend_u64(self.queue).extend_bytes(&self.tail);
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 
@@ -387,7 +387,7 @@ mod queue_deduplication_key_tests {
 		let encoded = QueueDeduplicationKey::encoded(QueueId(3), b"invoice-42".to_vec());
 
 		let mut wrong_kind = encoded.as_slice().to_vec();
-		wrong_kind[0] = KeyKind::Queue as u8;
+		wrong_kind[0] = KeyTag::Queue as u8;
 		assert_eq!(QueueDeduplicationKey::decode(&EncodedKey::new(wrong_kind)), None);
 
 		let truncated = encoded.as_slice()[..5].to_vec();
@@ -395,8 +395,8 @@ mod queue_deduplication_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = QueuePartition)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = QueuePartition)]
 pub struct QueuePartitionKey {
 	pub queue: QueueId,
 	pub partition: u16,
@@ -411,23 +411,24 @@ impl QueuePartitionKey {
 	}
 
 	pub fn encoded(queue: impl Into<QueueId>, partition: u16) -> EncodedKey {
-		EncodableKey::encode(&Self {
+		Self {
 			queue: queue.into(),
 			partition,
-		})
+		}
+		.encode()
 	}
 
-	pub fn queue_scan(queue: QueueId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, queue.0 as u128)])
+	pub fn queue_scan(queue: QueueId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, queue.0 as u128)])
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = QueueItemState)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = QueueItemState)]
 pub struct QueueItemStateKey {
 	pub queue: QueueId,
 	pub partition: u16,
@@ -444,31 +445,32 @@ impl QueueItemStateKey {
 	}
 
 	pub fn encoded(queue: impl Into<QueueId>, partition: u16, row: impl Into<RowNumber>) -> EncodedKey {
-		EncodableKey::encode(&Self {
+		Self {
 			queue: queue.into(),
 			partition,
 			row: row.into(),
-		})
+		}
+		.encode()
 	}
 
-	pub fn partition_scan(queue: QueueId, partition: u16) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(
-			Self::KIND,
+	pub fn partition_scan(queue: QueueId, partition: u16) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(
+			Self::TAG,
 			[Field::UDesc(Width::U64, queue.0 as u128), Field::UDesc(Width::U16, partition as u128)],
 		)
 	}
 
-	pub fn queue_scan(queue: QueueId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, queue.0 as u128)])
+	pub fn queue_scan(queue: QueueId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, queue.0 as u128)])
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = QueueDue)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = QueueDue)]
 pub struct QueueDueKey {
 	pub queue: QueueId,
 	pub partition: u16,
@@ -492,27 +494,27 @@ impl QueueDueKey {
 		due: DateTime,
 		row: impl Into<RowNumber>,
 	) -> EncodedKey {
-		EncodableKey::encode(&Self::new(queue, partition, due, row))
+		Self::new(queue, partition, due, row).encode()
 	}
 
-	pub fn partition_scan(queue: QueueId, partition: u16) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(
-			Self::KIND,
+	pub fn partition_scan(queue: QueueId, partition: u16) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(
+			Self::TAG,
 			[Field::UDesc(Width::U64, queue.0 as u128), Field::UDesc(Width::U16, partition as u128)],
 		)
 	}
 
-	pub fn queue_scan(queue: QueueId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, queue.0 as u128)])
+	pub fn queue_scan(queue: QueueId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, queue.0 as u128)])
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = QueueKeyActive)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = QueueKeyActive)]
 pub struct QueueKeyActiveKey {
 	pub queue: QueueId,
 	pub partition: u16,
@@ -536,17 +538,18 @@ impl QueueKeyActiveKey {
 		key_hash: u64,
 		row: impl Into<RowNumber>,
 	) -> EncodedKey {
-		EncodableKey::encode(&Self {
+		Self {
 			queue: queue.into(),
 			partition,
 			key_hash,
 			row: row.into(),
-		})
+		}
+		.encode()
 	}
 
-	pub fn key_scan(queue: QueueId, partition: u16, key_hash: u64) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(
-			Self::KIND,
+	pub fn key_scan(queue: QueueId, partition: u16, key_hash: u64) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(
+			Self::TAG,
 			[
 				Field::UDesc(Width::U64, queue.0 as u128),
 				Field::UDesc(Width::U16, partition as u128),
@@ -555,19 +558,19 @@ impl QueueKeyActiveKey {
 		)
 	}
 
-	pub fn partition_scan(queue: QueueId, partition: u16) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(
-			Self::KIND,
+	pub fn partition_scan(queue: QueueId, partition: u16) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(
+			Self::TAG,
 			[Field::UDesc(Width::U64, queue.0 as u128), Field::UDesc(Width::U16, partition as u128)],
 		)
 	}
 
-	pub fn queue_scan(queue: QueueId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, queue.0 as u128)])
+	pub fn queue_scan(queue: QueueId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, queue.0 as u128)])
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
@@ -600,7 +603,7 @@ mod queue_partition_key_tests {
 		// counter, so depth accounting and the lock would silently merge.
 		for partition in [0u16, 1, 1023] {
 			let encoded = QueuePartitionKey::encoded(QueueId(7), partition);
-			let decoded = <QueuePartitionKey as EncodableKey>::decode(&encoded).unwrap();
+			let decoded = QueuePartitionKey::decode(&encoded).unwrap();
 			assert_eq!(decoded.queue, QueueId(7));
 			assert_eq!(decoded.partition, partition);
 		}
@@ -611,7 +614,7 @@ mod queue_partition_key_tests {
 		// The state record is the compare-and-set target for every transition; a key that
 		// decodes to the wrong row would transition somebody else's item.
 		let encoded = QueueItemStateKey::encoded(QueueId(3), 5, RowNumber(42));
-		let decoded = <QueueItemStateKey as EncodableKey>::decode(&encoded).unwrap();
+		let decoded = QueueItemStateKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.queue, QueueId(3));
 		assert_eq!(decoded.partition, 5);
 		assert_eq!(decoded.row, RowNumber(42));
@@ -625,7 +628,7 @@ mod queue_partition_key_tests {
 		for nanos in [0u64, 1, 4_102_444_800_000_000_000, u64::MAX] {
 			let due = DateTime::from_nanos(nanos);
 			let encoded = QueueDueKey::encoded(QueueId(1), 2, due, RowNumber(9));
-			let decoded = <QueueDueKey as EncodableKey>::decode(&encoded).unwrap();
+			let decoded = QueueDueKey::decode(&encoded).unwrap();
 			assert_eq!(decoded.due.to_nanos(), nanos);
 			assert_eq!(decoded.row, RowNumber(9));
 			assert_eq!(decoded.partition, 2);
@@ -696,18 +699,15 @@ mod queue_partition_key_tests {
 		// decode cleanly and address the wrong record entirely.
 		let encoded = QueueItemStateKey::encoded(QueueId(1), 0, RowNumber(1));
 
-		assert_eq!(<QueuePartitionKey as EncodableKey>::decode(&encoded), None);
-		assert_eq!(<QueueDueKey as EncodableKey>::decode(&encoded), None);
-		assert_eq!(
-			<QueueKeyActiveKey as EncodableKey>::decode(&EncodedKey::new(encoded.as_slice()[..3].to_vec())),
-			None
-		);
+		assert_eq!(QueuePartitionKey::decode(&encoded), None);
+		assert_eq!(QueueDueKey::decode(&encoded), None);
+		assert_eq!(QueueKeyActiveKey::decode(&EncodedKey::new(encoded.as_slice()[..3].to_vec())), None);
 	}
 
 	#[test]
 	fn test_key_active_key_roundtrips() {
 		let encoded = QueueKeyActiveKey::encoded(QueueId(3), 5, 0xDEAD_BEEF_CAFE_F00D, RowNumber(42));
-		let decoded = <QueueKeyActiveKey as EncodableKey>::decode(&encoded).unwrap();
+		let decoded = QueueKeyActiveKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.queue, QueueId(3));
 		assert_eq!(decoded.partition, 5);
 		assert_eq!(decoded.key_hash, 0xDEAD_BEEF_CAFE_F00D);
@@ -763,11 +763,11 @@ mod queue_partition_key_tests {
 		let row = RowNumber(42);
 
 		let mut legacy = KeySerializer::with_capacity(11);
-		legacy.extend_u8(KeyKind::QueuePartition as u8).extend_u64(queue).extend_u16(partition);
+		legacy.extend_u8(KeyTag::QueuePartition as u8).extend_u64(queue).extend_u16(partition);
 		assert_eq!(legacy.to_encoded_key().as_slice(), QueuePartitionKey::encoded(queue, partition).as_slice());
 
 		let mut legacy = KeySerializer::with_capacity(19);
-		legacy.extend_u8(KeyKind::QueueItemState as u8)
+		legacy.extend_u8(KeyTag::QueueItemState as u8)
 			.extend_u64(queue)
 			.extend_u16(partition)
 			.extend_u64(row.0);
@@ -778,7 +778,7 @@ mod queue_partition_key_tests {
 
 		let due = DateTime::from_nanos(1_000);
 		let mut legacy = KeySerializer::with_capacity(27);
-		legacy.extend_u8(KeyKind::QueueDue as u8)
+		legacy.extend_u8(KeyTag::QueueDue as u8)
 			.extend_u64(queue)
 			.extend_u16(partition)
 			.extend_datetime(&due)
@@ -790,7 +790,7 @@ mod queue_partition_key_tests {
 
 		let key_hash = 0xDEAD_BEEFu64;
 		let mut legacy = KeySerializer::with_capacity(28);
-		legacy.extend_u8(KeyKind::QueueKeyActive as u8)
+		legacy.extend_u8(KeyTag::QueueKeyActive as u8)
 			.extend_u64(queue)
 			.extend_u16(partition)
 			.extend_u64(key_hash)

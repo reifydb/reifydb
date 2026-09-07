@@ -9,7 +9,7 @@ use reifydb_core::{
 		catalog::object::ObjectId,
 		change::{Change, Diff},
 	},
-	key::any::AnyKey,
+	key::any::TaggedKey,
 };
 use reifydb_value::Result;
 
@@ -22,7 +22,7 @@ use crate::{
 pub struct PreCommitContext {
 	pub flow_changes: Vec<Change>,
 
-	pub pending_writes: Vec<(AnyKey, PendingWrite)>,
+	pub pending_writes: Vec<(TaggedKey, PendingWrite)>,
 
 	pub transaction_writes: Vec<(EncodedKey, Option<EncodedBytes>)>,
 

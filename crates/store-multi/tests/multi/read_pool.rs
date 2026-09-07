@@ -11,7 +11,7 @@ use reifydb_core::{
 		catalog::id::QueueId,
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
-	key::{any::AnyKey, queue::QueueDeduplicationKey},
+	key::{any::TaggedKey, queue::QueueDeduplicationKey},
 };
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::util::cowvec::CowVec;
@@ -25,7 +25,8 @@ fn concurrent_reads_during_writes_no_deadlock() {
 	// The "memory" config is a real /dev/shm WAL file, so reader threads against the pool while the
 	// writer connection commits exercise the same multi-connection WAL path an on-disk config uses.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-	let key: AnyKey = QueueDeduplicationKey::new(QueueId(1), b"k".iter().map(|b| !b).collect::<Vec<u8>>()).into();
+	let key: TaggedKey =
+		QueueDeduplicationKey::new(QueueId(1), b"k".iter().map(|b| !b).collect::<Vec<u8>>()).into();
 
 	MultiVersionCommit::commit(
 		&store,

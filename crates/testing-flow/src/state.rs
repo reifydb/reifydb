@@ -7,10 +7,7 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
-use reifydb_core::key::{
-	EncodableKey,
-	operator::state::{KeyspaceId, OperatorStateKey},
-};
+use reifydb_core::key::operator::state::{KeyspaceId, OperatorStateKey};
 
 pub const ROW_STAMPED: &[KeyspaceId] = &[KeyspaceId::DISTINCT_ENTRY, KeyspaceId::DISTINCT_LAYOUT];
 

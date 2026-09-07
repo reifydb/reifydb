@@ -28,7 +28,6 @@ use reifydb_core::{
 		resolved::ResolvedView,
 	},
 	key::{
-		EncodableKey,
 		operator::{
 			keyspace::ringbuffer::{
 				PartitionedRingbufferEntry, PartitionedRingbufferEntryKey, PartitionedRingbufferExpiry,
@@ -1157,7 +1156,7 @@ mod tests {
 			},
 			resolved::ResolvedNamespace,
 		},
-		key::{any::AnyKey, kind::KeyKind},
+		key::{any::TaggedKey, tag::KeyTag},
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::value::{constraint::TypeConstraint, datetime::DateTime, identity::IdentityId};
@@ -1241,10 +1240,10 @@ mod tests {
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		for (key, pw) in pending.iter_sorted() {
-			if matches!(KeyKind::of(key), Some(KeyKind::OperatorState)) {
+			if matches!(KeyTag::of(key), Some(KeyTag::OperatorState)) {
 				continue;
 			}
-			let key = AnyKey::decode(key).unwrap();
+			let key = TaggedKey::decode(key).unwrap();
 			match pw {
 				PendingWrite::Set(v) => cmd.set(&key, v.clone()).unwrap(),
 				PendingWrite::Remove {

@@ -17,7 +17,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		operator::{
 			keyspace::{
 				join::{JoinRowMapping, JoinRowMappingKey},
@@ -87,7 +87,7 @@ fn present_keys(
 	let batch = txn.state_get_many(operator, map_keys)?;
 	let mut present = HashSet::with_capacity(batch.items.len());
 	for item in batch.items {
-		let AnyKey::OperatorState(decoded) = &item.key else {
+		let TaggedKey::OperatorState(decoded) = &item.key else {
 			panic!("state_get_many must return OperatorState keys");
 		};
 		present.insert(decoded.inner());
@@ -116,7 +116,7 @@ fn resolve_or_mint(
 	let batch = txn.state_get_many(operator, &map_keys)?;
 	let mut found: HashMap<EncodedKey, EncodedBytes> = HashMap::with_capacity(batch.items.len());
 	for item in batch.items {
-		let AnyKey::OperatorState(decoded) = &item.key else {
+		let TaggedKey::OperatorState(decoded) = &item.key else {
 			panic!("state_get_many must return OperatorState keys");
 		};
 		found.insert(decoded.inner(), item.bytes);
@@ -198,7 +198,7 @@ pub trait RowNumberExtension: FlowTransaction {
 		let batch = self.state_get_many(operator, &map_keys)?;
 		let mut found: HashMap<EncodedKey, EncodedBytes> = HashMap::with_capacity(batch.items.len());
 		for item in batch.items {
-			let AnyKey::OperatorState(decoded) = &item.key else {
+			let TaggedKey::OperatorState(decoded) = &item.key else {
 				panic!("state_get_many must return OperatorState keys");
 			};
 			found.insert(decoded.inner(), item.bytes);
@@ -239,7 +239,7 @@ pub trait RowNumberExtension: FlowTransaction {
 		let batch = self.state_get_many(operator, &map_keys)?;
 		let mut found: HashMap<EncodedKey, EncodedBytes> = HashMap::with_capacity(batch.items.len());
 		for item in batch.items {
-			let AnyKey::OperatorState(decoded) = &item.key else {
+			let TaggedKey::OperatorState(decoded) = &item.key else {
 				panic!("state_get_many must return OperatorState keys");
 			};
 			found.insert(decoded.inner(), item.bytes);
@@ -312,7 +312,7 @@ pub trait RowNumberExtension: FlowTransaction {
 			)?;
 			let more = batch.has_more;
 			for item in batch.items {
-				let AnyKey::OperatorState(decoded) = &item.key else {
+				let TaggedKey::OperatorState(decoded) = &item.key else {
 					panic!("state_range must return OperatorState keys");
 				};
 				let inner = OperatorStateKey::inner_encoded(

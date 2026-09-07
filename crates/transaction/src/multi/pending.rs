@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, mem::size_of, ops::RangeBounds, vec::IntoIter a
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	key::{any::AnyKey, bound::AnyKeyBound},
+	key::{any::TaggedKey, bound::TaggedKeyBound},
 	metrics::heap::HeapSize,
 };
 use reifydb_value::byte_size::ByteSize;
@@ -20,7 +20,7 @@ const ENTRY_OVERHEAD: usize = SLOT_COPIES_PER_ENTRY * (size_of::<EncodedKey>() +
 pub struct PendingWrites {
 	entries: Vec<Option<DeltaEntry>>,
 
-	index: BTreeMap<AnyKeyBound, u32>,
+	index: BTreeMap<TaggedKeyBound, u32>,
 
 	estimated_size: ByteSize,
 }
@@ -66,23 +66,23 @@ impl PendingWrites {
 	}
 
 	#[inline]
-	pub fn get(&self, key: &AnyKey) -> Option<&DeltaEntry> {
-		self.index.get(&AnyKeyBound::Key(key.clone())).and_then(|slot| self.entry_at(*slot))
+	pub fn get(&self, key: &TaggedKey) -> Option<&DeltaEntry> {
+		self.index.get(&TaggedKeyBound::Key(key.clone())).and_then(|slot| self.entry_at(*slot))
 	}
 
 	#[inline]
-	pub fn get_entry(&self, key: &AnyKey) -> Option<(&AnyKeyBound, &DeltaEntry)> {
-		let (key, slot) = self.index.get_key_value(&AnyKeyBound::Key(key.clone()))?;
+	pub fn get_entry(&self, key: &TaggedKey) -> Option<(&TaggedKeyBound, &DeltaEntry)> {
+		let (key, slot) = self.index.get_key_value(&TaggedKeyBound::Key(key.clone()))?;
 		self.entry_at(*slot).map(|entry| (key, entry))
 	}
 
 	#[inline]
-	pub fn contains_key(&self, key: &AnyKey) -> bool {
-		self.index.contains_key(&AnyKeyBound::Key(key.clone()))
+	pub fn contains_key(&self, key: &TaggedKey) -> bool {
+		self.index.contains_key(&TaggedKeyBound::Key(key.clone()))
 	}
 
 	pub fn insert(&mut self, value: DeltaEntry) {
-		let key = AnyKeyBound::Key(value.key().clone());
+		let key = TaggedKeyBound::Key(value.key().clone());
 		let size_estimate = self.estimate_size(&value);
 
 		if let Some(&slot) = self.index.get(&key) {
@@ -105,19 +105,19 @@ impl PendingWrites {
 		self.estimated_size = self.estimated_size.saturating_add(size_estimate);
 	}
 
-	pub fn remove_entry(&mut self, key: &AnyKey) -> Option<(AnyKeyBound, DeltaEntry)> {
-		let (removed_key, slot) = self.index.remove_entry(&AnyKeyBound::Key(key.clone()))?;
+	pub fn remove_entry(&mut self, key: &TaggedKey) -> Option<(TaggedKeyBound, DeltaEntry)> {
+		let (removed_key, slot) = self.index.remove_entry(&TaggedKeyBound::Key(key.clone()))?;
 		let removed_value = self.entries.get_mut(slot as usize).and_then(Option::take)?;
 		let size_estimate = self.estimate_size(&removed_value);
 		self.estimated_size = self.estimated_size.saturating_sub(size_estimate);
 		Some((removed_key, removed_value))
 	}
 
-	pub fn iter(&self) -> impl DoubleEndedIterator<Item = (&AnyKeyBound, &DeltaEntry)> + '_ {
+	pub fn iter(&self) -> impl DoubleEndedIterator<Item = (&TaggedKeyBound, &DeltaEntry)> + '_ {
 		self.index.iter().filter_map(|(key, slot)| self.entry_at(*slot).map(|entry| (key, entry)))
 	}
 
-	pub fn into_iter_insertion_order(self) -> impl Iterator<Item = (AnyKey, DeltaEntry)> {
+	pub fn into_iter_insertion_order(self) -> impl Iterator<Item = (TaggedKey, DeltaEntry)> {
 		self.entries.into_iter().flatten().map(|entry| (entry.key().clone(), entry))
 	}
 
@@ -132,17 +132,17 @@ impl PendingWrites {
 		self.estimated_size
 	}
 
-	pub fn range<R>(&self, range: R) -> impl DoubleEndedIterator<Item = (&AnyKeyBound, &DeltaEntry)> + '_
+	pub fn range<R>(&self, range: R) -> impl DoubleEndedIterator<Item = (&TaggedKeyBound, &DeltaEntry)> + '_
 	where
-		R: RangeBounds<AnyKeyBound>,
+		R: RangeBounds<TaggedKeyBound>,
 	{
 		self.index.range(range).filter_map(|(key, slot)| self.entry_at(*slot).map(|entry| (key, entry)))
 	}
 }
 
 impl IntoIterator for PendingWrites {
-	type Item = (AnyKey, DeltaEntry);
-	type IntoIter = VecIntoIter<(AnyKey, DeltaEntry)>;
+	type Item = (TaggedKey, DeltaEntry);
+	type IntoIter = VecIntoIter<(TaggedKey, DeltaEntry)>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.into_iter_insertion_order().collect::<Vec<_>>().into_iter()
@@ -158,16 +158,16 @@ pub mod tests {
 
 	use super::*;
 
-	fn create_test_any(s: &str) -> AnyKey {
+	fn create_test_any(s: &str) -> TaggedKey {
 		QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>()).into()
 	}
 
-	fn create_test_key(s: &str) -> AnyKey {
+	fn create_test_key(s: &str) -> TaggedKey {
 		create_test_any(s)
 	}
 
-	fn create_test_bound(s: &str) -> AnyKeyBound {
-		AnyKeyBound::Key(create_test_any(s))
+	fn create_test_bound(s: &str) -> TaggedKeyBound {
+		TaggedKeyBound::Key(create_test_any(s))
 	}
 
 	fn create_test_bytes(s: &str) -> EncodedBytes {
@@ -302,9 +302,9 @@ pub mod tests {
 		assert_eq!(pw.total_estimated_size(), ByteSize::ZERO);
 	}
 
-	fn test_key_name(key: &AnyKey) -> Vec<u8> {
+	fn test_key_name(key: &TaggedKey) -> Vec<u8> {
 		match key {
-			AnyKey::QueueDeduplication(key) => key.tail.as_slice().iter().map(|b| !b).collect(),
+			TaggedKey::QueueDeduplication(key) => key.tail.as_slice().iter().map(|b| !b).collect(),
 			other => panic!("unexpected test key {other:?}"),
 		}
 	}

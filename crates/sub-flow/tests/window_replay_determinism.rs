@@ -15,10 +15,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::catalog::flow::OperatorId,
-	key::{
-		EncodableKey,
-		operator::state::{KeyspaceId, OperatorStateKey},
-	},
+	key::operator::state::{KeyspaceId, OperatorStateKey},
 	state::timer::TimerKind,
 	value::column::columns::Columns,
 };

@@ -12,9 +12,8 @@ use crate::{
 	delta::Delta,
 	interface::catalog::storage::StorageId,
 	key::{
-		EncodableKey, EncodableKeyRange,
-		any::AnyKey,
-		kind::KeyKind,
+		KeyRangeCodec,
+		any::TaggedKey,
 		row::{
 			PartitionedRowKey, PartitionedRowKeyRange, PartitionedSortedViewRowKey, RowKey, RowKeyRange,
 			SortedViewRowKey, StoragePartitionedRowKey, StorageRowKey,
@@ -23,6 +22,7 @@ use crate::{
 			PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
 			StoragePartitionedSeriesKey, StorageSeriesKey,
 		},
+		tag::KeyTag,
 		typed::BoundedKey,
 	},
 };
@@ -148,8 +148,8 @@ fn partitioned_source_entry(
 }
 
 pub fn storage_key(key: &EncodedKey) -> (EntryKind, Option<StorageKey>) {
-	match KeyKind::of(key) {
-		Some(KeyKind::Row) => match RowKey::decode(key) {
+	match KeyTag::of(key) {
+		Some(KeyTag::Row) => match RowKey::decode(key) {
 			Some(row_key) => source_entry(
 				row_key.storage,
 				EntryLayout::Row,
@@ -157,7 +157,7 @@ pub fn storage_key(key: &EncodedKey) -> (EntryKind, Option<StorageKey>) {
 			),
 			None => (EntryKind::Multi, None),
 		},
-		Some(KeyKind::SeriesRow) => match SeriesRowKey::decode(key) {
+		Some(KeyTag::SeriesRow) => match SeriesRowKey::decode(key) {
 			Some(series_key) => source_entry(
 				series_key.storage,
 				EntryLayout::Series,
@@ -165,7 +165,7 @@ pub fn storage_key(key: &EncodedKey) -> (EntryKind, Option<StorageKey>) {
 			),
 			None => (EntryKind::Multi, None),
 		},
-		Some(KeyKind::PartitionedRow) => match PartitionedRowKey::decode(key) {
+		Some(KeyTag::PartitionedRow) => match PartitionedRowKey::decode(key) {
 			Some(partitioned_key) => partitioned_source_entry(
 				partitioned_key.storage,
 				EntryLayout::Row,
@@ -176,7 +176,7 @@ pub fn storage_key(key: &EncodedKey) -> (EntryKind, Option<StorageKey>) {
 			),
 			None => (EntryKind::Multi, None),
 		},
-		Some(KeyKind::PartitionedSeriesRow) => match PartitionedSeriesRowKey::decode(key) {
+		Some(KeyTag::PartitionedSeriesRow) => match PartitionedSeriesRowKey::decode(key) {
 			Some(partitioned_key) => partitioned_source_entry(
 				partitioned_key.storage,
 				EntryLayout::Series,
@@ -187,11 +187,11 @@ pub fn storage_key(key: &EncodedKey) -> (EntryKind, Option<StorageKey>) {
 			),
 			None => (EntryKind::Multi, None),
 		},
-		Some(KeyKind::SortedViewRow) => match SortedViewRowKey::storage_of(key) {
+		Some(KeyTag::SortedViewRow) => match SortedViewRowKey::storage_of(key) {
 			Some(storage) => (EntryKind::Source(storage, EntryLayout::SortedView), None),
 			None => (EntryKind::Multi, None),
 		},
-		Some(KeyKind::PartitionedSortedViewRow) => match PartitionedSortedViewRowKey::storage_of(key) {
+		Some(KeyTag::PartitionedSortedViewRow) => match PartitionedSortedViewRowKey::storage_of(key) {
 			Some(storage) => (EntryKind::PartitionedSource(storage, EntryLayout::SortedView), None),
 			None => (EntryKind::Multi, None),
 		},
@@ -199,19 +199,19 @@ pub fn storage_key(key: &EncodedKey) -> (EntryKind, Option<StorageKey>) {
 	}
 }
 
-pub fn storage_key_of(key: &AnyKey) -> (EntryKind, Option<StorageKey>) {
+pub fn storage_key_of(key: &TaggedKey) -> (EntryKind, Option<StorageKey>) {
 	match key {
-		AnyKey::Row(row_key) => source_entry(
+		TaggedKey::Row(row_key) => source_entry(
 			row_key.storage,
 			EntryLayout::Row,
 			row_storage_key(row_key.storage, StorageRowKey::new(row_key.row)),
 		),
-		AnyKey::SeriesRow(series_key) => source_entry(
+		TaggedKey::SeriesRow(series_key) => source_entry(
 			series_key.storage,
 			EntryLayout::Series,
 			series_storage_key(series_key.storage, StorageSeriesKey::from(series_key.clone())),
 		),
-		AnyKey::PartitionedRow(partitioned_key) => partitioned_source_entry(
+		TaggedKey::PartitionedRow(partitioned_key) => partitioned_source_entry(
 			partitioned_key.storage,
 			EntryLayout::Row,
 			partitioned_row_storage_key(
@@ -219,7 +219,7 @@ pub fn storage_key_of(key: &AnyKey) -> (EntryKind, Option<StorageKey>) {
 				StoragePartitionedRowKey::new(partitioned_key.partition, partitioned_key.row),
 			),
 		),
-		AnyKey::PartitionedSeriesRow(partitioned_key) => partitioned_source_entry(
+		TaggedKey::PartitionedSeriesRow(partitioned_key) => partitioned_source_entry(
 			partitioned_key.storage,
 			EntryLayout::Series,
 			partitioned_series_storage_key(
@@ -227,15 +227,15 @@ pub fn storage_key_of(key: &AnyKey) -> (EntryKind, Option<StorageKey>) {
 				StoragePartitionedSeriesKey::from(partitioned_key.clone()),
 			),
 		),
-		AnyKey::SortedViewRow(sorted) => (EntryKind::Source(sorted.storage, EntryLayout::SortedView), None),
-		AnyKey::PartitionedSortedViewRow(sorted) => {
+		TaggedKey::SortedViewRow(sorted) => (EntryKind::Source(sorted.storage, EntryLayout::SortedView), None),
+		TaggedKey::PartitionedSortedViewRow(sorted) => {
 			(EntryKind::PartitionedSource(sorted.storage, EntryLayout::SortedView), None)
 		}
 		_ => (EntryKind::Multi, None),
 	}
 }
 
-pub fn classify_key_of(key: &AnyKey) -> EntryKind {
+pub fn classify_key_of(key: &TaggedKey) -> EntryKind {
 	storage_key_of(key).0
 }
 
@@ -313,19 +313,19 @@ pub trait MultiVersionCommit: Send + Sync {
 }
 
 pub trait MultiVersionGet: Send + Sync {
-	fn get(&self, key: &AnyKey, version: CommitVersion) -> Result<Option<MultiVersionRow<AnyKey>>>;
+	fn get(&self, key: &TaggedKey, version: CommitVersion) -> Result<Option<MultiVersionRow<TaggedKey>>>;
 }
 
 pub trait MultiVersionContains: Send + Sync {
-	fn contains(&self, key: &AnyKey, version: CommitVersion) -> Result<bool>;
+	fn contains(&self, key: &TaggedKey, version: CommitVersion) -> Result<bool>;
 }
 
 pub trait MultiVersionGetPrevious: Send + Sync {
 	fn get_previous_version(
 		&self,
-		key: &AnyKey,
+		key: &TaggedKey,
 		before_version: CommitVersion,
-	) -> Result<Option<MultiVersionRow<AnyKey>>>;
+	) -> Result<Option<MultiVersionRow<TaggedKey>>>;
 }
 
 pub trait MultiVersionStore:
@@ -414,8 +414,7 @@ mod tests {
 			storage::StorageId,
 		},
 		key::{
-			EncodableKey,
-			any::AnyKey,
+			any::TaggedKey,
 			row::{
 				PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, RowSequenceKey,
 				SortedViewRowKey, StoragePartitionedRowKey, StorageRowKey,
@@ -627,7 +626,7 @@ mod tests {
 
 	#[test]
 	fn an_over_long_row_kind_key_never_passes_as_a_row() {
-		// A key carrying KeyKind::Row but running past the fixed row layout must land in Multi: the
+		// A key carrying KeyTag::Row but running past the fixed row layout must land in Multi: the
 		// source bucket keys on StorageRowKey alone, so two such keys differing only in their trailing
 		// bytes would alias onto one identity and a get could return another row's bytes.
 		let storage = StorageId::view(3);
@@ -718,7 +717,7 @@ mod tests {
 		// Every range form must carry the owning variant, or a view's sweep hits the table of the same id.
 		for storage in [StorageId::Table(TableId(9)), StorageId::view(9)] {
 			let p = part("us");
-			let last = AnyKey::from(PartitionedRowKey::new(storage, p, RowNumber(5)));
+			let last = TaggedKey::from(PartitionedRowKey::new(storage, p, RowNumber(5)));
 			assert_eq!(
 				classify_range(&PartitionedRowKey::partition_range(storage, p).encode()),
 				Some(EntryKind::PartitionedSource(storage, EntryLayout::Row))

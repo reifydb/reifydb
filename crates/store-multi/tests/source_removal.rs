@@ -19,7 +19,7 @@ use reifydb_core::{
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
 };
@@ -31,15 +31,15 @@ use reifydb_value::{
 	value::{Value, partition::Partition, row_number::RowNumber},
 };
 
-fn table_row_key(table: u64, row: u64) -> AnyKey {
+fn table_row_key(table: u64, row: u64) -> TaggedKey {
 	RowKey::new(StorageId::Table(TableId(table)), RowNumber(row)).into()
 }
 
-fn partitioned_row_key(table: u64, partition: Partition, row: u64) -> AnyKey {
+fn partitioned_row_key(table: u64, partition: Partition, row: u64) -> TaggedKey {
 	PartitionedRowKey::new(StorageId::Table(TableId(table)), partition, RowNumber(row)).into()
 }
 
-fn persistent_only_set(store: &StandardMultiStore, k: &AnyKey, version: u64, value: &str) {
+fn persistent_only_set(store: &StandardMultiStore, k: &TaggedKey, version: u64, value: &str) {
 	// Seeding persistence directly leaves a row that exists only on disk, so a later in-buffer tombstone
 	// has something to interact with.
 	let persistent = store.persistent().expect("persistent tier configured");
@@ -50,7 +50,7 @@ fn persistent_only_set(store: &StandardMultiStore, k: &AnyKey, version: u64, val
 	persistent.set(CommitVersion(version), batches).unwrap();
 }
 
-fn persistent_row(store: &StandardMultiStore, k: &AnyKey) -> Option<(u64, Vec<u8>)> {
+fn persistent_row(store: &StandardMultiStore, k: &TaggedKey) -> Option<(u64, Vec<u8>)> {
 	let persistent = store.persistent().expect("persistent tier configured");
 	let encoded = k.encode();
 	match persistent.get(classify_key(&encoded), encoded.as_ref(), CommitVersion(u64::MAX)).unwrap() {
@@ -62,11 +62,11 @@ fn persistent_row(store: &StandardMultiStore, k: &AnyKey) -> Option<(u64, Vec<u8
 	}
 }
 
-fn get(store: &StandardMultiStore, k: &AnyKey, version: u64) -> Option<Vec<u8>> {
+fn get(store: &StandardMultiStore, k: &TaggedKey, version: u64) -> Option<Vec<u8>> {
 	store.get(k, CommitVersion(version)).unwrap().map(|r| r.bytes.to_vec())
 }
 
-fn range_keys(store: &StandardMultiStore, range: EncodedKeyRange, read: u64) -> Vec<AnyKey> {
+fn range_keys(store: &StandardMultiStore, range: EncodedKeyRange, read: u64) -> Vec<TaggedKey> {
 	store.range(
 		range,
 		MultiVersionScope::AsOf {

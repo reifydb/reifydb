@@ -14,7 +14,7 @@ use reifydb_core::{
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 	},
 };
@@ -51,7 +51,7 @@ fn memory_store() -> StandardMultiStore {
 	.unwrap()
 }
 
-fn coord_key(node: u64, suffix: &[u8]) -> AnyKey {
+fn coord_key(node: u64, suffix: &[u8]) -> TaggedKey {
 	OperatorStateKey::new(OperatorId(node), GroupId::ROOT, KeyspaceId::BUFFER, suffix).into()
 }
 
@@ -63,7 +63,7 @@ fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {
 	EncodedBytes(CowVec::new(bytes.to_vec()))
 }
 
-fn range_keys(store: &StandardMultiStore, node: u64, version: u64) -> Vec<AnyKey> {
+fn range_keys(store: &StandardMultiStore, node: u64, version: u64) -> Vec<TaggedKey> {
 	store.range(
 		node_range(node),
 		MultiVersionScope::AsOf {

@@ -26,7 +26,7 @@ use reifydb_core::{
 		},
 	},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 };
@@ -60,7 +60,7 @@ struct ClassifiedKey<'a> {
 }
 
 impl MultiVersionGet for StandardMultiStore {
-	fn get(&self, key: &AnyKey, version: CommitVersion) -> Result<Option<MultiVersionRow<AnyKey>>> {
+	fn get(&self, key: &TaggedKey, version: CommitVersion) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		let (table, storage_key) = storage_key_of(key);
 		let encoded = key.encode();
 		let row = match table {
@@ -205,7 +205,7 @@ impl StandardMultiStore {
 
 impl MultiVersionContains for StandardMultiStore {
 	#[instrument(name = "store::multi::contains", level = "trace", skip(self, key), fields(version = version.0), ret)]
-	fn contains(&self, key: &AnyKey, version: CommitVersion) -> Result<bool> {
+	fn contains(&self, key: &TaggedKey, version: CommitVersion) -> Result<bool> {
 		Ok(MultiVersionGet::get(self, key, version)?.is_some())
 	}
 }
@@ -643,13 +643,13 @@ fn merge_tier_batch(
 #[inline]
 fn decode_range_rows(
 	collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
-) -> Result<Vec<MultiVersionRow<AnyKey>>> {
+) -> Result<Vec<MultiVersionRow<TaggedKey>>> {
 	let mut items = Vec::with_capacity(collected.len());
 	for (key, (version, value)) in collected {
 		let Some(bytes) = value else {
 			continue;
 		};
-		let key = AnyKey::decode(&key).ok_or_else(|| {
+		let key = TaggedKey::decode(&key).ok_or_else(|| {
 			error!(internal(format!("a stored key names no live kind: {}", display(key.as_ref()))))
 		})?;
 		items.push(MultiVersionRow {
@@ -665,7 +665,7 @@ fn decode_range_rows(
 pub fn collected_to_batch(
 	collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 	has_more: bool,
-) -> Result<MultiVersionBatch<AnyKey>> {
+) -> Result<MultiVersionBatch<TaggedKey>> {
 	Ok(MultiVersionBatch {
 		items: decode_range_rows(collected)?,
 		has_more,
@@ -700,7 +700,7 @@ pub fn scan_tiers_latest(
 	range: EncodedKeyRange,
 	scope: MultiVersionScope,
 	max_keys: usize,
-) -> Result<MultiVersionBatch<AnyKey>> {
+) -> Result<MultiVersionBatch<TaggedKey>> {
 	let table = classify_key_range(&range);
 	let (start, end) = make_range_bounds(&range);
 	let scan = TierScanQuery {
@@ -742,7 +742,7 @@ impl StandardMultiStore {
 		range: EncodedKeyRange,
 		scope: MultiVersionScope,
 		batch_size: u64,
-	) -> Result<MultiVersionBatch<AnyKey>> {
+	) -> Result<MultiVersionBatch<TaggedKey>> {
 		if cursor.exhausted {
 			return Ok(MultiVersionBatch {
 				items: Vec::new(),
@@ -865,7 +865,7 @@ impl StandardMultiStore {
 		range: EncodedKeyRange,
 		scope: MultiVersionScope,
 		batch_size: u64,
-	) -> Result<MultiVersionBatch<AnyKey>> {
+	) -> Result<MultiVersionBatch<TaggedKey>> {
 		if cursor.exhausted {
 			return Ok(MultiVersionBatch {
 				items: Vec::new(),
@@ -1153,9 +1153,9 @@ fn rewind_over_advanced_reverse(cursor: &mut MultiVersionRangeCursor, horizon: &
 impl MultiVersionGetPrevious for StandardMultiStore {
 	fn get_previous_version(
 		&self,
-		key: &AnyKey,
+		key: &TaggedKey,
 		before_version: CommitVersion,
-	) -> Result<Option<MultiVersionRow<AnyKey>>> {
+	) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		if before_version.0 == 0 {
 			return Ok(None);
 		}
@@ -1280,11 +1280,11 @@ pub struct MultiVersionRangeIter {
 	range: EncodedKeyRange,
 	scope: MultiVersionScope,
 	batch_size: usize,
-	current_batch: vec::IntoIter<MultiVersionRow<AnyKey>>,
+	current_batch: vec::IntoIter<MultiVersionRow<TaggedKey>>,
 }
 
 impl Iterator for MultiVersionRangeIter {
-	type Item = Result<MultiVersionRow<AnyKey>>;
+	type Item = Result<MultiVersionRow<TaggedKey>>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if let Some(item) = self.current_batch.next() {
@@ -1411,11 +1411,11 @@ pub struct MultiVersionRangeRevIter {
 	range: EncodedKeyRange,
 	scope: MultiVersionScope,
 	batch_size: usize,
-	current_batch: vec::IntoIter<MultiVersionRow<AnyKey>>,
+	current_batch: vec::IntoIter<MultiVersionRow<TaggedKey>>,
 }
 
 impl Iterator for MultiVersionRangeRevIter {
-	type Item = Result<MultiVersionRow<AnyKey>>;
+	type Item = Result<MultiVersionRow<TaggedKey>>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if let Some(item) = self.current_batch.next() {
@@ -1482,8 +1482,7 @@ mod cache_tests {
 			},
 		},
 		key::{
-			EncodableKey,
-			any::AnyKey,
+			any::TaggedKey,
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 			row::{RowKey, RowKeyRange, StorageRowKey},
 		},
@@ -1555,7 +1554,7 @@ mod cache_tests {
 				)
 				.unwrap();
 			for item in &batch.items {
-				let AnyKey::Row(key) = &item.key else {
+				let TaggedKey::Row(key) = &item.key else {
 					panic!("the scan must yield row keys")
 				};
 				encoded.push((key.row.0, item.bytes.0.to_vec(), item.version.0));
@@ -1619,7 +1618,7 @@ mod cache_tests {
 		MultiVersionCommit::commit(
 			store,
 			cow_vec![Delta::Set {
-				key: AnyKey::from(RowKey::new(STORAGE, n)),
+				key: TaggedKey::from(RowKey::new(STORAGE, n)),
 				bytes: EncodedBytes(CowVec::new(format!("v{n}").into_bytes())),
 			}],
 			CommitVersion(version),
@@ -1715,11 +1714,11 @@ mod cache_tests {
 			KeyspaceId::CUSTOM_NOT_CACHED,
 			vec![1, 2, 3],
 		);
-		let encoded = EncodableKey::encode(&opkey);
+		let encoded = opkey.encode();
 		MultiVersionCommit::commit(
 			&store,
 			cow_vec![Delta::Set {
-				key: AnyKey::from(opkey.clone()),
+				key: TaggedKey::from(opkey.clone()),
 				bytes: EncodedBytes(CowVec::new(b"state-v10".to_vec())),
 			}],
 			CommitVersion(10),
@@ -1739,7 +1738,7 @@ mod cache_tests {
 			"no operator row may become resident on commit"
 		);
 
-		let row = MultiVersionGet::get(&store, &AnyKey::from(opkey.clone()), CommitVersion(10))
+		let row = MultiVersionGet::get(&store, &TaggedKey::from(opkey.clone()), CommitVersion(10))
 			.unwrap()
 			.expect("the committed operator state must still be readable through the store");
 		assert_eq!(row.bytes.as_slice(), b"state-v10");
@@ -1836,11 +1835,11 @@ mod cache_tests {
 		}
 	}
 
-	fn rows_of(keys: Vec<AnyKey>) -> Vec<u64> {
+	fn rows_of(keys: Vec<TaggedKey>) -> Vec<u64> {
 		let mut rows: Vec<u64> = keys
 			.iter()
 			.map(|key| match key {
-				AnyKey::Row(row) => row.row.0,
+				TaggedKey::Row(row) => row.row.0,
 				other => panic!("a row key, got {other:?}"),
 			})
 			.collect();
@@ -2057,7 +2056,7 @@ mod probe_tests {
 			store::{MultiVersionCommit, MultiVersionGet, MultiVersionGetPrevious, classify_key},
 		},
 		key::{
-			any::AnyKey,
+			any::TaggedKey,
 			row::{PartitionedRowKey, RowKey},
 		},
 	};
@@ -2143,7 +2142,7 @@ mod probe_tests {
 	fn a_read_the_commit_buffer_answers_never_counts_a_persistent_probe() {
 		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 
-		let present = AnyKey::from(RowKey::new(STORAGE, 1));
+		let present = TaggedKey::from(RowKey::new(STORAGE, 1));
 		MultiVersionCommit::commit(
 			&store,
 			cow_vec![Delta::Set {
@@ -2153,7 +2152,7 @@ mod probe_tests {
 			CommitVersion(2),
 		)
 		.unwrap();
-		let removed = AnyKey::from(RowKey::new(STORAGE, 2));
+		let removed = TaggedKey::from(RowKey::new(STORAGE, 2));
 		MultiVersionCommit::commit(&store, cow_vec![Delta::remove_silent(removed.clone())], CommitVersion(3))
 			.unwrap();
 
@@ -2174,7 +2173,7 @@ mod probe_tests {
 	fn a_persistent_read_that_finds_a_row_counts_a_probe_but_no_absence() {
 		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 
-		let k = AnyKey::from(RowKey::new(STORAGE, 1));
+		let k = TaggedKey::from(RowKey::new(STORAGE, 1));
 		seed_persistent(&store, vec![(k.encode(), value("resident"))]);
 
 		let before = probes(&store);
@@ -2191,7 +2190,7 @@ mod probe_tests {
 	fn a_persistent_read_that_finds_nothing_counts_a_probe_and_an_absence() {
 		let (store, _guard) = store_over_populated_persistent();
 
-		let k = AnyKey::from(RowKey::new(STORAGE, 77));
+		let k = TaggedKey::from(RowKey::new(STORAGE, 77));
 
 		let before = probes(&store);
 		assert!(store.get(&k, CommitVersion(9)).unwrap().is_none());
@@ -2207,7 +2206,7 @@ mod probe_tests {
 	fn a_deleted_key_counts_a_probe_and_an_absence() {
 		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 
-		let k = AnyKey::from(RowKey::new(STORAGE, 5));
+		let k = TaggedKey::from(RowKey::new(STORAGE, 5));
 		seed_persistent(&store, vec![(k.encode(), value("doomed"))]);
 		seed_persistent(&store, vec![(k.encode(), None)]);
 
@@ -2225,11 +2224,11 @@ mod probe_tests {
 	fn a_batched_read_counts_one_probe_per_key_that_reached_the_persistent_tier() {
 		let (store, _guard) = store_over_populated_persistent();
 
-		let resident = AnyKey::from(RowKey::new(STORAGE, 1));
-		let deleted = AnyKey::from(RowKey::new(STORAGE, 2));
-		let missing_a = AnyKey::from(RowKey::new(STORAGE, 3));
-		let missing_b = AnyKey::from(RowKey::new(STORAGE, 4));
-		let buffered = AnyKey::from(RowKey::new(STORAGE, 5));
+		let resident = TaggedKey::from(RowKey::new(STORAGE, 1));
+		let deleted = TaggedKey::from(RowKey::new(STORAGE, 2));
+		let missing_a = TaggedKey::from(RowKey::new(STORAGE, 3));
+		let missing_b = TaggedKey::from(RowKey::new(STORAGE, 4));
+		let buffered = TaggedKey::from(RowKey::new(STORAGE, 5));
 		seed_persistent(
 			&store,
 			vec![(resident.encode(), value("resident")), (deleted.encode(), value("doomed"))],
@@ -2272,7 +2271,7 @@ mod probe_tests {
 	fn a_previous_version_read_that_reaches_persistent_is_counted() {
 		let (store, _guard) = store_over_populated_persistent();
 
-		let k = AnyKey::from(RowKey::new(STORAGE, 42));
+		let k = TaggedKey::from(RowKey::new(STORAGE, 42));
 
 		let before = probes(&store);
 		assert!(store.get_previous_version(&k, CommitVersion(9)).unwrap().is_none());
@@ -2286,7 +2285,7 @@ mod probe_tests {
 	#[test]
 	fn a_store_without_a_persistent_tier_reports_no_probe_metrics() {
 		let store = StandardMultiStore::testing_memory();
-		assert!(store.get(&AnyKey::from(RowKey::new(STORAGE, 1)), CommitVersion(9)).unwrap().is_none());
+		assert!(store.get(&TaggedKey::from(RowKey::new(STORAGE, 1)), CommitVersion(9)).unwrap().is_none());
 		assert!(store.persistent_probe_metrics().is_none());
 	}
 
@@ -2298,7 +2297,7 @@ mod probe_tests {
 		for p in 0u128..64 {
 			let partition = Partition(p.wrapping_mul(0x9E3779B97F4A7C15) ^ 0xA5A5_A5A5_A5A5_A5A5);
 			for r in 0u64..2 {
-				let key = AnyKey::from(PartitionedRowKey::new(STORAGE, partition, RowNumber(r + 1)));
+				let key = TaggedKey::from(PartitionedRowKey::new(STORAGE, partition, RowNumber(r + 1)));
 				entries.push((key.encode(), value("v")));
 			}
 		}

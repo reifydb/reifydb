@@ -4,10 +4,10 @@
 use std::borrow::Cow;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::EncodableKey;
+use reifydb_macro::KeyCodec;
 use reifydb_value::value::identity::IdentityId;
 
-use super::KeyKind;
+use super::KeyTag;
 use crate::{
 	interface::catalog::{
 		authentication::AuthenticationId,
@@ -16,14 +16,13 @@ use crate::{
 		token::TokenId,
 	},
 	key::{
-		EncodableKey,
 		any::{ByteEncoding, Field, KeyFields, Width},
-		bound::AnyKeyBoundRange,
+		bound::TaggedKeyBoundRange,
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Identity)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Identity)]
 pub struct IdentityKey {
 	pub identity: IdentityId,
 }
@@ -39,8 +38,8 @@ impl IdentityKey {
 		Self::new(identity).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
@@ -54,7 +53,7 @@ mod byte_identical_identity_key {
 
 	fn legacy_encode(key: &IdentityKey) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(17);
-		serializer.extend_u8(KeyKind::Identity as u8).extend_identity_id(&key.identity);
+		serializer.extend_u8(KeyTag::Identity as u8).extend_identity_id(&key.identity);
 		serializer.to_encoded_key()
 	}
 
@@ -63,13 +62,13 @@ mod byte_identical_identity_key {
 		for byte in [0u8, 1, 2] {
 			let identity = IdentityId::from(Uuid7::from(Uuid::from_bytes([byte; 16])));
 			let key = IdentityKey::new(identity);
-			assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
+			assert_eq!(legacy_encode(&key).as_slice(), key.encode().as_slice());
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = IdentityAttribute)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = IdentityAttribute)]
 pub struct IdentityAttributeKey {
 	pub attribute: IdentityAttributeId,
 }
@@ -85,8 +84,8 @@ impl IdentityAttributeKey {
 		Self::new(attribute).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
@@ -98,7 +97,7 @@ mod byte_identical_identity_attribute_key {
 
 	fn legacy_encode(key: &IdentityAttributeKey) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(KeyKind::IdentityAttribute as u8).extend_u64(key.attribute);
+		serializer.extend_u8(KeyTag::IdentityAttribute as u8).extend_u64(key.attribute);
 		serializer.to_encoded_key()
 	}
 
@@ -106,13 +105,13 @@ mod byte_identical_identity_attribute_key {
 	fn matches_the_flat_key_encoding() {
 		for attribute in [0u64, 1, 42, u64::MAX] {
 			let key = IdentityAttributeKey::new(attribute);
-			assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
+			assert_eq!(legacy_encode(&key).as_slice(), key.encode().as_slice());
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = IdentityAttributeValue)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = IdentityAttributeValue)]
 pub struct IdentityAttributeValueKey {
 	pub identity: IdentityId,
 	pub attribute: IdentityAttributeId,
@@ -130,13 +129,13 @@ impl IdentityAttributeValueKey {
 		Self::new(identity, attribute).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 
-	pub fn identity_scan(identity: IdentityId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(
-			Self::KIND,
+	pub fn identity_scan(identity: IdentityId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(
+			Self::TAG,
 			[Field::BytesDesc(ByteEncoding::Escaped, Cow::Owned(identity.as_bytes().to_vec()))],
 		)
 	}
@@ -153,7 +152,7 @@ mod byte_identical_identity_attribute_value_key {
 	fn legacy_encode(key: &IdentityAttributeValueKey) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(25);
 		serializer
-			.extend_u8(KeyKind::IdentityAttributeValue as u8)
+			.extend_u8(KeyTag::IdentityAttributeValue as u8)
 			.extend_identity_id(&key.identity)
 			.extend_u64(key.attribute);
 		serializer.to_encoded_key()
@@ -165,7 +164,7 @@ mod byte_identical_identity_attribute_value_key {
 			let identity = IdentityId::from(Uuid7::from(Uuid::from_bytes([byte; 16])));
 			for attribute in [0u64, 1, u64::MAX] {
 				let key = IdentityAttributeValueKey::new(identity, attribute);
-				assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
+				assert_eq!(legacy_encode(&key).as_slice(), key.encode().as_slice());
 			}
 		}
 	}
@@ -206,8 +205,8 @@ mod identity_attribute_value_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Authentication)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Authentication)]
 pub struct AuthenticationKey {
 	pub authentication: AuthenticationId,
 }
@@ -223,8 +222,8 @@ impl AuthenticationKey {
 		Self::new(authentication).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
@@ -236,7 +235,7 @@ mod byte_identical_authentication_key {
 
 	fn legacy_encode(key: &AuthenticationKey) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(KeyKind::Authentication as u8).extend_u64(key.authentication);
+		serializer.extend_u8(KeyTag::Authentication as u8).extend_u64(key.authentication);
 		serializer.to_encoded_key()
 	}
 
@@ -244,13 +243,13 @@ mod byte_identical_authentication_key {
 	fn matches_the_flat_key_encoding() {
 		for authentication in [0u64, 1, 42, u64::MAX] {
 			let key = AuthenticationKey::new(authentication);
-			assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
+			assert_eq!(legacy_encode(&key).as_slice(), key.encode().as_slice());
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Token)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Token)]
 pub struct TokenKey {
 	pub token: TokenId,
 }
@@ -266,8 +265,8 @@ impl TokenKey {
 		Self::new(token).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
@@ -279,7 +278,7 @@ mod byte_identical_token_key {
 
 	fn legacy_encode(key: &TokenKey) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(KeyKind::Token as u8).extend_u64(key.token);
+		serializer.extend_u8(KeyTag::Token as u8).extend_u64(key.token);
 		serializer.to_encoded_key()
 	}
 
@@ -287,13 +286,13 @@ mod byte_identical_token_key {
 	fn matches_the_flat_key_encoding() {
 		for token in [0u64, 1, 42, u64::MAX] {
 			let key = TokenKey::new(token);
-			assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
+			assert_eq!(legacy_encode(&key).as_slice(), key.encode().as_slice());
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Role)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Role)]
 pub struct RoleKey {
 	pub role: RoleId,
 }
@@ -309,8 +308,8 @@ impl RoleKey {
 		Self::new(role).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
@@ -322,7 +321,7 @@ mod byte_identical_role_key {
 
 	fn legacy_encode(key: &RoleKey) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(KeyKind::Role as u8).extend_u64(key.role);
+		serializer.extend_u8(KeyTag::Role as u8).extend_u64(key.role);
 		serializer.to_encoded_key()
 	}
 
@@ -330,13 +329,13 @@ mod byte_identical_role_key {
 	fn matches_the_flat_key_encoding() {
 		for role in [0u64, 1, 42, u64::MAX] {
 			let key = RoleKey::new(role);
-			assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
+			assert_eq!(legacy_encode(&key).as_slice(), key.encode().as_slice());
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = GrantedRole)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = GrantedRole)]
 pub struct GrantedRoleKey {
 	pub identity: IdentityId,
 	pub role: RoleId,
@@ -354,13 +353,13 @@ impl GrantedRoleKey {
 		Self::new(identity, role).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 
-	pub fn identity_scan(identity: IdentityId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(
-			Self::KIND,
+	pub fn identity_scan(identity: IdentityId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(
+			Self::TAG,
 			[Field::BytesDesc(ByteEncoding::Escaped, Cow::Owned(identity.as_bytes().to_vec()))],
 		)
 	}
@@ -376,7 +375,7 @@ mod byte_identical_granted_role_key {
 
 	fn legacy_encode(key: &GrantedRoleKey) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(25);
-		serializer.extend_u8(KeyKind::GrantedRole as u8).extend_identity_id(&key.identity).extend_u64(key.role);
+		serializer.extend_u8(KeyTag::GrantedRole as u8).extend_identity_id(&key.identity).extend_u64(key.role);
 		serializer.to_encoded_key()
 	}
 
@@ -386,7 +385,7 @@ mod byte_identical_granted_role_key {
 			let identity = IdentityId::from(Uuid7::from(Uuid::from_bytes([byte; 16])));
 			for role in [0u64, 1, u64::MAX] {
 				let key = GrantedRoleKey::new(identity, role);
-				assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
+				assert_eq!(legacy_encode(&key).as_slice(), key.encode().as_slice());
 			}
 		}
 	}
@@ -426,8 +425,8 @@ mod granted_role_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Policy)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Policy)]
 pub struct PolicyKey {
 	pub policy: PolicyId,
 }
@@ -443,8 +442,8 @@ impl PolicyKey {
 		Self::new(policy).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
@@ -456,7 +455,7 @@ mod byte_identical_policy_key {
 
 	fn legacy_encode(key: &PolicyKey) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(KeyKind::Policy as u8).extend_u64(key.policy);
+		serializer.extend_u8(KeyTag::Policy as u8).extend_u64(key.policy);
 		serializer.to_encoded_key()
 	}
 
@@ -464,13 +463,13 @@ mod byte_identical_policy_key {
 	fn matches_the_flat_key_encoding() {
 		for policy in [0u64, 1, 42, u64::MAX] {
 			let key = PolicyKey::new(policy);
-			assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
+			assert_eq!(legacy_encode(&key).as_slice(), key.encode().as_slice());
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = PolicyOp)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = PolicyOp)]
 pub struct PolicyOpKey {
 	pub policy: PolicyId,
 	pub op_index: u64,
@@ -488,12 +487,12 @@ impl PolicyOpKey {
 		Self::new(policy, op_index).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 
-	pub fn policy_scan(policy: PolicyId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, policy as u128)])
+	pub fn policy_scan(policy: PolicyId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, policy as u128)])
 	}
 }
 
@@ -505,7 +504,7 @@ mod byte_identical_policy_op_key {
 
 	fn legacy_encode(key: &PolicyOpKey) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(17);
-		serializer.extend_u8(KeyKind::PolicyOp as u8).extend_u64(key.policy).extend_u64(key.op_index);
+		serializer.extend_u8(KeyTag::PolicyOp as u8).extend_u64(key.policy).extend_u64(key.op_index);
 		serializer.to_encoded_key()
 	}
 
@@ -514,7 +513,7 @@ mod byte_identical_policy_op_key {
 		for policy in [0u64, 1, u64::MAX] {
 			for op_index in [0u64, 1, u64::MAX] {
 				let key = PolicyOpKey::new(policy, op_index);
-				assert_eq!(legacy_encode(&key).as_slice(), EncodableKey::encode(&key).as_slice());
+				assert_eq!(legacy_encode(&key).as_slice(), key.encode().as_slice());
 			}
 		}
 	}

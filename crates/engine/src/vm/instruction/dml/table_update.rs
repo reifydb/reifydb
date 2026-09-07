@@ -27,7 +27,7 @@ use reifydb_core::{
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedTable},
 	},
 	internal_error,
-	key::{any::AnyKey, catalog::IndexEntryKey},
+	key::{any::TaggedKey, catalog::IndexEntryKey},
 	partition::PartitionError,
 	value::column::columns::Columns,
 };
@@ -322,7 +322,7 @@ fn rotate_table_pk_index(
 	table: &Table,
 	shape: &RowShape,
 	pk_def: &PrimaryKey,
-	row_key: &AnyKey,
+	row_key: &TaggedKey,
 	new_row: &[u8],
 	row_number: RowNumber,
 ) -> Result<()> {

@@ -532,12 +532,12 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Bound<Vec<u8>>, Bound<Vec<u8>>
 mod tests {
 	use reifydb_core::{
 		interface::{catalog::id::QueueId, store::SingleVersionCommit},
-		key::{any::AnyKey, queue::QueueDeduplicationKey},
+		key::{any::TaggedKey, queue::QueueDeduplicationKey},
 	};
 
 	use super::*;
 
-	fn key(name: &str) -> AnyKey {
+	fn key(name: &str) -> TaggedKey {
 		QueueDeduplicationKey::new(QueueId(1), name.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>()).into()
 	}
 
@@ -607,7 +607,7 @@ mod tests {
 		(m.persistent_probes.as_u64(), m.persistent_absent.as_u64())
 	}
 
-	fn seed_persistent(store: &StandardSingleStore, k: &AnyKey, value: &str) {
+	fn seed_persistent(store: &StandardSingleStore, k: &TaggedKey, value: &str) {
 		store.persistent()
 			.expect("persistent tier configured")
 			.set(vec![(k.encode(), Some(CowVec::new(value.as_bytes().to_vec())))])

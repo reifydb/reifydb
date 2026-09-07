@@ -4,7 +4,7 @@
 use std::{cmp, cmp::Reverse};
 
 use reifydb_codec::row::bytes::EncodedBytes;
-use reifydb_core::{common::CommitVersion, delta::Delta, interface::store::MultiVersionRow, key::any::AnyKey};
+use reifydb_core::{common::CommitVersion, delta::Delta, interface::store::MultiVersionRow, key::any::TaggedKey};
 use reifydb_value::util::cowvec::CowVec;
 
 pub enum TransactionValue {
@@ -12,8 +12,8 @@ pub enum TransactionValue {
 	Committed(Committed),
 }
 
-impl From<MultiVersionRow<AnyKey>> for TransactionValue {
-	fn from(value: MultiVersionRow<AnyKey>) -> Self {
+impl From<MultiVersionRow<TaggedKey>> for TransactionValue {
+	fn from(value: MultiVersionRow<TaggedKey>) -> Self {
 		Self::Committed(Committed {
 			key: value.key,
 			bytes: value.bytes,
@@ -61,7 +61,7 @@ impl TransactionValue {
 		matches!(self, Self::Committed(_))
 	}
 
-	pub fn into_multi_version_row(self) -> MultiVersionRow<AnyKey> {
+	pub fn into_multi_version_row(self) -> MultiVersionRow<TaggedKey> {
 		match self {
 			Self::Pending(item) => match item.delta {
 				Delta::Set {
@@ -104,13 +104,13 @@ impl From<Committed> for TransactionValue {
 
 #[derive(Clone, Debug)]
 pub struct Committed {
-	pub(crate) key: AnyKey,
+	pub(crate) key: TaggedKey,
 	pub(crate) bytes: EncodedBytes,
 	pub(crate) version: CommitVersion,
 }
 
-impl From<MultiVersionRow<AnyKey>> for Committed {
-	fn from(value: MultiVersionRow<AnyKey>) -> Self {
+impl From<MultiVersionRow<TaggedKey>> for Committed {
+	fn from(value: MultiVersionRow<TaggedKey>) -> Self {
 		Self {
 			key: value.key,
 			bytes: value.bytes,
@@ -120,7 +120,7 @@ impl From<MultiVersionRow<AnyKey>> for Committed {
 }
 
 impl Committed {
-	pub fn key(&self) -> &AnyKey {
+	pub fn key(&self) -> &TaggedKey {
 		&self.key
 	}
 
@@ -173,7 +173,7 @@ impl DeltaEntry {
 		(self.version, self.delta)
 	}
 
-	pub fn key(&self) -> &AnyKey {
+	pub fn key(&self) -> &TaggedKey {
 		self.delta.key()
 	}
 

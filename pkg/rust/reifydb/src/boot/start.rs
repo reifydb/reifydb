@@ -4,10 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_core::key::{
-	EncodableKey,
-	system::{SystemVersion, SystemVersionKey},
-};
+use reifydb_core::key::system::{SystemVersion, SystemVersionKey};
 use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
 use reifydb_store_multi::MultiStore;
 use reifydb_transaction::single::SingleTransaction;
@@ -26,7 +23,7 @@ pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> Result<()> {
 		version: SystemVersion::Storage,
 	};
 
-	let mut tx = single.begin_command([&EncodableKey::encode(&key)])?;
+	let mut tx = single.begin_command([&key.encode()])?;
 
 	match tx.get(&key)? {
 		None => {

@@ -11,7 +11,7 @@ use reifydb_core::{
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::any::AnyKey,
+	key::any::TaggedKey,
 	value::column::columns::Columns,
 };
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
@@ -32,7 +32,7 @@ pub(crate) fn emit_series_remove_change(txn: &mut Transaction<'_>, series: &Seri
 pub fn remove_series_row(
 	txn: &mut Transaction<'_>,
 	series: &Series,
-	key: &AnyKey,
+	key: &TaggedKey,
 	pre_for_cdc: EncodedBytes,
 	was_committed: bool,
 	pre: Option<Columns>,

@@ -16,7 +16,7 @@ use reifydb_core::{
 		cdc::{Cdc, CdcChange},
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::{EncodableKey, row::RowKey},
+	key::row::RowKey,
 	value::column::columns::Columns,
 };
 use reifydb_store_cdc::storage::CdcStorage;
@@ -396,7 +396,7 @@ fn rebuild_round_trips_partitioned_series() {
 
 #[test]
 fn rebuild_round_trips_unpartitioned_series() {
-	// SeriesRowKey now owns KeyKind::SeriesRow; decoding it as a RowKey would read the timestamp as a row number.
+	// SeriesRowKey now owns KeyTag::SeriesRow; decoding it as a RowKey would read the timestamp as a row number.
 	let (t, tracked) = tracked_engine();
 	t.admin("create namespace test");
 	t.admin("create series test::metrics { ts: datetime, value: int2 } with { key: ts }");

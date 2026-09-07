@@ -498,7 +498,7 @@ mod integration {
 			flow::OperatorId,
 			id::{SeriesId, ViewId},
 		},
-		key::kind::KeyKind,
+		key::tag::KeyTag,
 	};
 	use reifydb_flow::{
 		engine::frontier::WatermarkHold,
@@ -971,7 +971,7 @@ mod integration {
 					let row_keys: Vec<_> = pending
 						.iter_sorted()
 						.filter(|(k, w)| {
-							matches!(KeyKind::of(k), Some(KeyKind::Row))
+							matches!(KeyTag::of(k), Some(KeyTag::Row))
 								&& matches!(w, PendingWrite::Set(_))
 						})
 						.map(|(k, _)| k.clone())
@@ -1075,8 +1075,8 @@ mod integration {
 		let mut cursor = CommitVersion(0);
 		let mut durable = CommitVersion(0);
 		let mut overlay = FlowWriteOverlay::new();
-		let mut committed_kinds: HashSet<Option<KeyKind>> = HashSet::new();
-		let mut stale_reads: HashSet<Option<KeyKind>> = HashSet::new();
+		let mut committed_kinds: HashSet<Option<KeyTag>> = HashSet::new();
+		let mut stale_reads: HashSet<Option<KeyTag>> = HashSet::new();
 
 		for _ in 0..400 {
 			match pull_step(
@@ -1102,9 +1102,9 @@ mod integration {
 						committer.commit_slice(&engine, slice).expect("commit slice");
 					let mut live_keys = Vec::new();
 					for (key, write) in pending.iter_sorted() {
-						committed_kinds.insert(KeyKind::of(key));
+						committed_kinds.insert(KeyTag::of(key));
 						if read_from(key) == ReadFrom::Query {
-							stale_reads.insert(KeyKind::of(key));
+							stale_reads.insert(KeyTag::of(key));
 						}
 						if matches!(write, PendingWrite::Set(_)) {
 							live_keys.push(key.clone());
@@ -1128,7 +1128,7 @@ mod integration {
 						assert!(
 							empty_overlay.get(key).unwrap().is_some(),
 							"restart window: {:?} must resolve with no overlay at all",
-							KeyKind::of(key)
+							KeyTag::of(key)
 						);
 					}
 
@@ -1154,11 +1154,11 @@ mod integration {
 		// Without both classes present the routing assertion below would pass vacuously; an
 		// aggregate is used because it writes operator state as well as view rows.
 		assert!(
-			committed_kinds.contains(&Some(KeyKind::OperatorState)),
+			committed_kinds.contains(&Some(KeyTag::OperatorState)),
 			"expected the aggregate to commit operator state, saw only {committed_kinds:?}"
 		);
 		assert!(
-			committed_kinds.contains(&Some(KeyKind::Row)),
+			committed_kinds.contains(&Some(KeyTag::Row)),
 			"expected the aggregate to commit view rows, saw only {committed_kinds:?}"
 		);
 

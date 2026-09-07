@@ -6,7 +6,7 @@ use reifydb_core::{
 		id::{NamespaceId, QueueId},
 		queue::Queue,
 	},
-	key::{any::AnyKey, queue::QueueKey},
+	key::{any::TaggedKey, queue::QueueKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -20,7 +20,7 @@ impl CatalogStore {
 
 			for entry in stream {
 				let entry = entry?;
-				if let AnyKey::Queue(queue_key) = &entry.key {
+				if let TaggedKey::Queue(queue_key) = &entry.key {
 					queue_ids.push(queue_key.queue);
 				}
 			}

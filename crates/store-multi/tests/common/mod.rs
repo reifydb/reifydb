@@ -29,7 +29,7 @@ use reifydb_core::{
 			classify_key,
 		},
 	},
-	key::{EncodableKey, any::AnyKey, catalog::IndexEntryKey},
+	key::{any::TaggedKey, catalog::IndexEntryKey},
 	lifecycle::watermark::EvictionWatermark,
 	util::encoding::{
 		binary::decode_binary,
@@ -128,8 +128,8 @@ impl testscript::runner::Runner for Runner {
 
 				let value = self
 					.store
-					.get(&AnyKey::from(script_key(&key)), version)?
-					.map(|sv: MultiVersionRow<AnyKey>| sv.bytes.to_vec());
+					.get(&TaggedKey::from(script_key(&key)), version)?
+					.map(|sv: MultiVersionRow<TaggedKey>| sv.bytes.to_vec());
 
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
@@ -157,7 +157,7 @@ impl testscript::runner::Runner for Runner {
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
-				let contains = self.store.contains(&AnyKey::from(script_key(&key)), version)?;
+				let contains = self.store.contains(&TaggedKey::from(script_key(&key)), version)?;
 				writeln!(output, "{} => {}", Raw::key(&key), contains)?;
 			}
 
@@ -494,8 +494,8 @@ fn script_key(raw: &EncodedKey) -> IndexEntryKey {
 	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(raw.as_slice()))
 }
 
-fn script_raw(key: &AnyKey) -> EncodedKey {
-	let AnyKey::IndexEntry(entry) = key else {
+fn script_raw(key: &TaggedKey) -> EncodedKey {
+	let TaggedKey::IndexEntry(entry) = key else {
 		panic!("script key must be an index entry")
 	};
 	EncodedKey::new(entry.key.as_ref())
@@ -517,7 +517,7 @@ fn script_range(range: EncodedKeyRange) -> EncodedKeyRange {
 	EncodedKeyRange::new(script_bound(range.start), script_bound(range.end))
 }
 
-fn print<I: Iterator<Item = MultiVersionRow<AnyKey>>>(output: &mut String, iter: I) {
+fn print<I: Iterator<Item = MultiVersionRow<TaggedKey>>>(output: &mut String, iter: I) {
 	for item in iter {
 		let fmtkv = Raw::key_value(&script_raw(&item.key), item.bytes.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();

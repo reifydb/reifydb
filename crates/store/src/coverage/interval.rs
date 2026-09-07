@@ -264,7 +264,7 @@ impl<K: Key> CoverageSet<K> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::key::typed::{DenseKey, Edge, MultiKey};
+	use reifydb_core::key::typed::{DenseKey, Edge, OpaqueKey};
 
 	use super::{CoverageSet, Interval};
 
@@ -272,7 +272,7 @@ mod tests {
 		EncodedKey::new(bytes)
 	}
 
-	fn e(bytes: &str) -> Edge<MultiKey> {
+	fn e(bytes: &str) -> Edge<OpaqueKey> {
 		Edge::of(bytes)
 	}
 
@@ -280,15 +280,15 @@ mod tests {
 		key.successor().expect("a byte string has no greatest element, so it always has a successor")
 	}
 
-	fn iv(start: &str, end: &str) -> Interval<MultiKey> {
+	fn iv(start: &str, end: &str) -> Interval<OpaqueKey> {
 		Interval::new(Edge::of(start), Edge::of(end))
 	}
 
-	fn open(start: &str) -> Interval<MultiKey> {
+	fn open(start: &str) -> Interval<OpaqueKey> {
 		Interval::new(Edge::of(start), Edge::Top)
 	}
 
-	fn snapshot(set: &CoverageSet<MultiKey>) -> Vec<Interval<MultiKey>> {
+	fn snapshot(set: &CoverageSet<OpaqueKey>) -> Vec<Interval<OpaqueKey>> {
 		set.iter().collect()
 	}
 

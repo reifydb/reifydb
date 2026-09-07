@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::id::NamespaceId,
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		namespace::{
 			NamespaceDictionaryKey, NamespaceFlowKey, NamespaceKey, NamespaceQueueKey,
 			NamespaceRingBufferKey, NamespaceSumTypeKey, NamespaceTableKey, NamespaceViewKey,
@@ -35,7 +35,7 @@ impl CatalogStore {
 		let mut table_ids = Vec::new();
 		for entry in stream.by_ref() {
 			let entry = entry?;
-			if let AnyKey::NamespaceTable(key) = &entry.key {
+			if let TaggedKey::NamespaceTable(key) = &entry.key {
 				table_ids.push(key.table);
 			}
 		}
@@ -53,7 +53,7 @@ impl CatalogStore {
 		let mut view_ids = Vec::new();
 		for entry in stream.by_ref() {
 			let entry = entry?;
-			if let AnyKey::NamespaceView(key) = &entry.key {
+			if let TaggedKey::NamespaceView(key) = &entry.key {
 				view_ids.push(key.view);
 			}
 		}
@@ -71,7 +71,7 @@ impl CatalogStore {
 		let mut rb_ids = Vec::new();
 		for entry in stream.by_ref() {
 			let entry = entry?;
-			if let AnyKey::NamespaceRingBuffer(key) = &entry.key {
+			if let TaggedKey::NamespaceRingBuffer(key) = &entry.key {
 				rb_ids.push(key.ringbuffer);
 			}
 		}
@@ -89,7 +89,7 @@ impl CatalogStore {
 		let mut queue_ids = Vec::new();
 		for entry in stream.by_ref() {
 			let entry = entry?;
-			if let AnyKey::NamespaceQueue(key) = &entry.key {
+			if let TaggedKey::NamespaceQueue(key) = &entry.key {
 				queue_ids.push(key.queue);
 			}
 		}
@@ -107,7 +107,7 @@ impl CatalogStore {
 		let mut flow_ids = Vec::new();
 		for entry in stream.by_ref() {
 			let entry = entry?;
-			if let AnyKey::NamespaceFlow(key) = &entry.key {
+			if let TaggedKey::NamespaceFlow(key) = &entry.key {
 				flow_ids.push(key.flow);
 			}
 		}
@@ -125,7 +125,7 @@ impl CatalogStore {
 		let mut dict_ids = Vec::new();
 		for entry in stream.by_ref() {
 			let entry = entry?;
-			if let AnyKey::NamespaceDictionary(key) = &entry.key {
+			if let TaggedKey::NamespaceDictionary(key) = &entry.key {
 				dict_ids.push(key.dictionary);
 			}
 		}
@@ -143,7 +143,7 @@ impl CatalogStore {
 		let mut st_ids = Vec::new();
 		for entry in stream.by_ref() {
 			let entry = entry?;
-			if let AnyKey::NamespaceSumType(key) = &entry.key {
+			if let TaggedKey::NamespaceSumType(key) = &entry.key {
 				st_ids.push(key.sumtype);
 			}
 		}

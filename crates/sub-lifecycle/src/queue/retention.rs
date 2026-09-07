@@ -23,9 +23,8 @@ use reifydb_core::{
 		store::SingleVersionRange,
 	},
 	key::{
-		EncodableKey,
-		any::AnyKey,
-		bound::AnyKeyBoundRange,
+		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
 		queue::{QueueAttemptKey, QueueDeduplicationKey, QueueItemStateKey},
 		row::RowKey,
 	},
@@ -64,7 +63,7 @@ pub struct QueueRetentionTask {
 	clock: Clock,
 	config: Arc<dyn GetConfig>,
 	item_cursor: Option<ItemCursor>,
-	dedup_cursor: HashMap<QueueId, AnyKey>,
+	dedup_cursor: HashMap<QueueId, TaggedKey>,
 }
 
 impl QueueRetentionTask {
@@ -156,7 +155,7 @@ impl QueueRetentionTask {
 			let stream = txn.range(QueueAttemptKey::item_scan(queue, item.row), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
-				let AnyKey::QueueAttempt(key) = entry.key else {
+				let TaggedKey::QueueAttempt(key) = entry.key else {
 					return_internal_error!(
 						"queue attempt scan yielded a key that is not a QueueAttemptKey"
 					)
@@ -203,7 +202,7 @@ impl QueueRetentionTask {
 
 	fn expired_deduplication_keys(
 		&self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		now: DateTime,
 		limit: usize,
 	) -> Result<ExpiredDeduplication> {
@@ -223,7 +222,7 @@ impl QueueRetentionTask {
 				decode_queue_deduplication(EncodedQueueDeduplicationRow::view(&entry.bytes))
 				&& expires_at <= now
 			{
-				let AnyKey::QueueDeduplication(key) = entry.key else {
+				let TaggedKey::QueueDeduplication(key) = entry.key else {
 					return_internal_error!(
 						"queue deduplication scan yielded a key that is not a QueueDeduplicationKey"
 					)
@@ -248,7 +247,7 @@ impl QueueRetentionTask {
 #[derive(Default)]
 struct ExpiredDeduplication {
 	keys: Vec<QueueDeduplicationKey>,
-	last: Option<AnyKey>,
+	last: Option<TaggedKey>,
 	scanned: usize,
 }
 

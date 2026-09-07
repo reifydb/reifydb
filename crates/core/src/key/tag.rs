@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize, de};
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "u8", into = "u8")]
-pub enum KeyKind {
+pub enum KeyTag {
 	Namespace = 0x01,
 	Table = 0x02,
 	Row = 0x03,
@@ -98,7 +98,7 @@ pub enum KeyKind {
 	PartitionedSortedViewRow = 0x5B,
 }
 
-impl KeyKind {
+impl KeyTag {
 	pub fn of(key: impl AsRef<[u8]>) -> Option<Self> {
 		let key = key.as_ref();
 		if key.is_empty() {
@@ -109,12 +109,12 @@ impl KeyKind {
 	}
 }
 
-impl From<KeyKind> for u8 {
-	fn from(kind: KeyKind) -> Self {
+impl From<KeyTag> for u8 {
+	fn from(kind: KeyTag) -> Self {
 		kind as u8
 	}
 }
-impl TryFrom<u8> for KeyKind {
+impl TryFrom<u8> for KeyTag {
 	type Error = Error;
 
 	fn try_from(value: u8) -> Result<Self, Self::Error> {
@@ -206,7 +206,7 @@ impl TryFrom<u8> for KeyKind {
 			0x59 => Ok(Self::QueueKeyActive),
 			0x5A => Ok(Self::SortedViewRow),
 			0x5B => Ok(Self::PartitionedSortedViewRow),
-			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
+			_ => Err(de::Error::custom(format!("Invalid KeyTag value: {value:#04x}"))),
 		}
 	}
 }

@@ -7,10 +7,7 @@ use reifydb_core::{
 		catalog::queue::{Queue, QueuePartitionCounters, decode_queue_partition_counters},
 		store::{SingleVersionGet, SingleVersionRangeRev},
 	},
-	key::{
-		EncodableKey,
-		queue::{QueueDueKey, QueuePartitionKey},
-	},
+	key::queue::{QueueDueKey, QueuePartitionKey},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::datetime::DateTime;

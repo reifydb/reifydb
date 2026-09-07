@@ -23,7 +23,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 	key::{
-		EncodableKey,
+		any::TaggedKey,
 		operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	},
 	row::Row,
@@ -271,9 +271,9 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 
 	pub fn assert_state<K>(&self, key: K, expected: Value)
 	where
-		K: EncodableKey,
+		TaggedKey: From<K>,
 	{
-		let encoded_key = key.encode();
+		let encoded_key = TaggedKey::from(key).encode();
 		let store = self.state();
 		let shape = RowShape::testing(RowFamily::Pod, &[expected.get_type()]);
 
@@ -396,9 +396,9 @@ impl<T: ExternCOperator> ExternCOperatorHarnessBuilder<T> {
 
 	pub fn with_initial_state<K>(mut self, key: K, value: Vec<u8>) -> Self
 	where
-		K: EncodableKey,
+		TaggedKey: From<K>,
 	{
-		self.initial_state.insert(key.encode(), EncodedBytes(CowVec::new(value)));
+		self.initial_state.insert(TaggedKey::from(key).encode(), EncodedBytes(CowVec::new(value)));
 		self
 	}
 

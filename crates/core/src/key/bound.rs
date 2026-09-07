@@ -9,8 +9,8 @@ use smallvec::SmallVec;
 use crate::{
 	interface::catalog::object::ObjectId,
 	key::{
-		any::{AnyKey, Field, KeyFields, Width},
-		kind::KeyKind,
+		any::{Field, KeyFields, TaggedKey, Width},
+		tag::KeyTag,
 	},
 };
 
@@ -21,20 +21,20 @@ pub fn object_fields(object: ObjectId) -> [OwnedField; 2] {
 }
 
 #[derive(Debug, Clone)]
-pub enum AnyKeyBound {
-	Kind(KeyKind),
-	KindEnd(KeyKind),
-	Prefix(KeyKind, SmallVec<[OwnedField; 6]>),
-	PrefixEnd(KeyKind, SmallVec<[OwnedField; 6]>),
-	Key(AnyKey),
+pub enum TaggedKeyBound {
+	Kind(KeyTag),
+	KindEnd(KeyTag),
+	Prefix(KeyTag, SmallVec<[OwnedField; 6]>),
+	PrefixEnd(KeyTag, SmallVec<[OwnedField; 6]>),
+	Key(TaggedKey),
 }
 
-impl AnyKeyBound {
-	pub fn prefix(kind: KeyKind, fields: impl IntoIterator<Item = OwnedField>) -> Self {
+impl TaggedKeyBound {
+	pub fn prefix(kind: KeyTag, fields: impl IntoIterator<Item = OwnedField>) -> Self {
 		Self::Prefix(kind, fields.into_iter().collect())
 	}
 
-	pub fn prefix_end(kind: KeyKind, fields: impl IntoIterator<Item = OwnedField>) -> Self {
+	pub fn prefix_end(kind: KeyTag, fields: impl IntoIterator<Item = OwnedField>) -> Self {
 		Self::PrefixEnd(kind, fields.into_iter().collect())
 	}
 
@@ -113,75 +113,75 @@ impl AnyKeyBound {
 	}
 }
 
-impl Ord for AnyKeyBound {
+impl Ord for TaggedKeyBound {
 	fn cmp(&self, other: &Self) -> Ordering {
 		other.kind_byte().cmp(&self.kind_byte()).then_with(|| self.compare_fields(other))
 	}
 }
 
-impl PartialOrd for AnyKeyBound {
+impl PartialOrd for TaggedKeyBound {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 		Some(self.cmp(other))
 	}
 }
 
-impl PartialEq for AnyKeyBound {
+impl PartialEq for TaggedKeyBound {
 	fn eq(&self, other: &Self) -> bool {
 		self.cmp(other) == Ordering::Equal
 	}
 }
 
-impl Eq for AnyKeyBound {}
+impl Eq for TaggedKeyBound {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AnyKeyBoundRange {
-	pub start: Bound<AnyKeyBound>,
-	pub end: Bound<AnyKeyBound>,
+pub struct TaggedKeyBoundRange {
+	pub start: Bound<TaggedKeyBound>,
+	pub end: Bound<TaggedKeyBound>,
 }
 
-impl AnyKeyBoundRange {
-	pub fn start_end(start: AnyKeyBound, end: AnyKeyBound) -> Self {
+impl TaggedKeyBoundRange {
+	pub fn start_end(start: TaggedKeyBound, end: TaggedKeyBound) -> Self {
 		Self {
 			start: Bound::Included(start),
 			end: Bound::Included(end),
 		}
 	}
 
-	pub fn prefix(kind: KeyKind, fields: impl IntoIterator<Item = OwnedField> + Clone) -> Self {
+	pub fn prefix(kind: KeyTag, fields: impl IntoIterator<Item = OwnedField> + Clone) -> Self {
 		Self {
-			start: Bound::Included(AnyKeyBound::prefix(kind, fields.clone())),
-			end: Bound::Excluded(AnyKeyBound::prefix_end(kind, fields)),
+			start: Bound::Included(TaggedKeyBound::prefix(kind, fields.clone())),
+			end: Bound::Excluded(TaggedKeyBound::prefix_end(kind, fields)),
 		}
 	}
 
-	pub fn kind(kind: KeyKind) -> Self {
-		Self::start_end(AnyKeyBound::Kind(kind), AnyKeyBound::KindEnd(kind))
+	pub fn kind(kind: KeyTag) -> Self {
+		Self::start_end(TaggedKeyBound::Kind(kind), TaggedKeyBound::KindEnd(kind))
 	}
 
-	pub fn resume_after(self, last: Option<&AnyKey>) -> Self {
+	pub fn resume_after(self, last: Option<&TaggedKey>) -> Self {
 		match last {
 			Some(last) => Self {
-				start: Bound::Excluded(AnyKeyBound::Key(last.clone())),
+				start: Bound::Excluded(TaggedKeyBound::Key(last.clone())),
 				end: self.end,
 			},
 			None => self,
 		}
 	}
 
-	pub fn resume_before(self, last: Option<&AnyKey>) -> Self {
+	pub fn resume_before(self, last: Option<&TaggedKey>) -> Self {
 		match last {
 			Some(last) => Self {
 				start: self.start,
-				end: Bound::Excluded(AnyKeyBound::Key(last.clone())),
+				end: Bound::Excluded(TaggedKeyBound::Key(last.clone())),
 			},
 			None => self,
 		}
 	}
 
-	pub fn empty(kind: KeyKind) -> Self {
+	pub fn empty(kind: KeyTag) -> Self {
 		Self {
-			start: Bound::Excluded(AnyKeyBound::Kind(kind)),
-			end: Bound::Excluded(AnyKeyBound::Kind(kind)),
+			start: Bound::Excluded(TaggedKeyBound::Kind(kind)),
+			end: Bound::Excluded(TaggedKeyBound::Kind(kind)),
 		}
 	}
 
@@ -192,7 +192,7 @@ impl AnyKeyBoundRange {
 		}
 	}
 
-	pub fn contains(&self, bound: &AnyKeyBound) -> bool {
+	pub fn contains(&self, bound: &TaggedKeyBound) -> bool {
 		let after_start = match &self.start {
 			Bound::Unbounded => true,
 			Bound::Included(start) => bound >= start,
@@ -211,7 +211,7 @@ impl AnyKeyBoundRange {
 	}
 }
 
-fn encode_bound(bound: &Bound<AnyKeyBound>) -> Bound<EncodedKey> {
+fn encode_bound(bound: &Bound<TaggedKeyBound>) -> Bound<EncodedKey> {
 	match bound {
 		Bound::Unbounded => Bound::Unbounded,
 		Bound::Included(key) => Bound::Included(key.encode()),
@@ -225,8 +225,8 @@ fn encode_bound(bound: &Bound<AnyKeyBound>) -> Bound<EncodedKey> {
 	}
 }
 
-impl From<AnyKey> for AnyKeyBound {
-	fn from(key: AnyKey) -> Self {
+impl From<TaggedKey> for TaggedKeyBound {
+	fn from(key: TaggedKey) -> Self {
 		Self::Key(key)
 	}
 }
@@ -241,19 +241,18 @@ mod tests {
 	};
 	use reifydb_value::value::row_number::RowNumber;
 
-	use super::{AnyKeyBound, AnyKeyBoundRange, OwnedField, object_fields};
+	use super::{OwnedField, TaggedKeyBound, TaggedKeyBoundRange, object_fields};
 	use crate::{
 		interface::catalog::{id::TableId, object::ObjectId, storage::StorageId},
 		key::{
-			EncodableKey,
-			any::{AnyKey, Field, Width},
+			any::{Field, TaggedKey, Width},
 			catalog::{DictionaryKey, KeySerializerCatalogExt, TableKey},
-			kind::KeyKind,
 			row::RowKey,
+			tag::KeyTag,
 		},
 	};
 
-	fn rows() -> Vec<(AnyKey, EncodedKey)> {
+	fn rows() -> Vec<(TaggedKey, EncodedKey)> {
 		let mut out = Vec::new();
 		for storage in [1u64, 2, 3] {
 			for row in [1u64, 2, u64::MAX] {
@@ -261,23 +260,23 @@ mod tests {
 					storage: StorageId::table(storage),
 					row: RowNumber(row),
 				};
-				let encoded = EncodableKey::encode(&key);
-				out.push((AnyKey::from(key), encoded));
+				let encoded = key.encode();
+				out.push((TaggedKey::from(key), encoded));
 			}
 		}
 		for table in [1u64, 2] {
 			let key = TableKey {
 				table: TableId(table),
 			};
-			let encoded = EncodableKey::encode(&key);
-			out.push((AnyKey::from(key), encoded));
+			let encoded = key.encode();
+			out.push((TaggedKey::from(key), encoded));
 		}
 		out
 	}
 
-	fn storage_start(storage: StorageId) -> AnyKeyBound {
-		AnyKeyBound::prefix(
-			KeyKind::Row,
+	fn storage_start(storage: StorageId) -> TaggedKeyBound {
+		TaggedKeyBound::prefix(
+			KeyTag::Row,
 			[
 				OwnedField::UAsc(Width::U8, ObjectId::from(storage).type_tag() as u128),
 				Field::UDesc(Width::U64, ObjectId::from(storage).as_u64() as u128),
@@ -285,10 +284,10 @@ mod tests {
 		)
 	}
 
-	fn storage_end(storage: StorageId) -> AnyKeyBound {
+	fn storage_end(storage: StorageId) -> TaggedKeyBound {
 		let previous = ObjectId::from(storage).prev();
-		AnyKeyBound::prefix(
-			KeyKind::Row,
+		TaggedKeyBound::prefix(
+			KeyTag::Row,
 			[
 				OwnedField::UAsc(Width::U8, previous.type_tag() as u128),
 				Field::UDesc(Width::U64, previous.as_u64() as u128),
@@ -302,7 +301,7 @@ mod tests {
 		for (left, left_bytes) in &probes {
 			for (right, right_bytes) in &probes {
 				assert_eq!(
-					AnyKeyBound::Key(left.clone()).cmp(&AnyKeyBound::Key(right.clone())),
+					TaggedKeyBound::Key(left.clone()).cmp(&TaggedKeyBound::Key(right.clone())),
 					left_bytes.cmp(right_bytes),
 					"{left:?} vs {right:?}"
 				);
@@ -320,15 +319,15 @@ mod tests {
 			let typed_end = storage_end(storage);
 
 			let probes = rows();
-			let by_bytes: Vec<&AnyKey> = probes
+			let by_bytes: Vec<&TaggedKey> = probes
 				.iter()
 				.filter(|(_, bytes)| *bytes >= byte_start && *bytes <= byte_end)
 				.map(|(key, _)| key)
 				.collect();
-			let by_typed: Vec<&AnyKey> = probes
+			let by_typed: Vec<&TaggedKey> = probes
 				.iter()
 				.filter(|(key, _)| {
-					let bound = AnyKeyBound::Key((*key).clone());
+					let bound = TaggedKeyBound::Key((*key).clone());
 					bound >= typed_start && bound <= typed_end
 				})
 				.map(|(key, _)| key)
@@ -356,12 +355,12 @@ mod tests {
 		// built through the codec rather than through DictionaryKey::full_scan, which now
 		// returns this very bound and would make the assertion compare a value with itself.
 		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(<DictionaryKey as EncodableKey>::KIND as u8);
+		start.extend_u8(DictionaryKey::TAG as u8);
 		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(<DictionaryKey as EncodableKey>::KIND as u8 - 1);
+		end.extend_u8(DictionaryKey::TAG as u8 - 1);
 
-		assert_eq!(AnyKeyBound::Kind(KeyKind::Dictionary).encode(), start.to_encoded_key());
-		assert_eq!(AnyKeyBound::KindEnd(KeyKind::Dictionary).encode(), end.to_encoded_key());
+		assert_eq!(TaggedKeyBound::Kind(KeyTag::Dictionary).encode(), start.to_encoded_key());
+		assert_eq!(TaggedKeyBound::KindEnd(KeyTag::Dictionary).encode(), end.to_encoded_key());
 	}
 
 	fn storage_fields(storage: StorageId) -> Vec<OwnedField> {
@@ -391,7 +390,7 @@ mod tests {
 		// the last keys of the prefix or reaches into the next one.
 		for storage in [1u64, 2, 255, u64::MAX] {
 			let storage = StorageId::table(storage);
-			let typed = AnyKeyBoundRange::prefix(KeyKind::Row, storage_fields(storage));
+			let typed = TaggedKeyBoundRange::prefix(KeyTag::Row, storage_fields(storage));
 			let bytes = EncodedKeyRange::prefix(RowKey::storage_start(storage).as_slice());
 			let encoded = typed.encode();
 			assert_eq!(encoded.start, bytes.start, "{storage:?} start");
@@ -403,7 +402,7 @@ mod tests {
 	fn a_prefix_range_selects_the_same_keys_typed_as_it_does_encoded() {
 		for storage in [1u64, 2, 3] {
 			let storage = StorageId::table(storage);
-			let typed = AnyKeyBoundRange::prefix(KeyKind::Row, storage_fields(storage));
+			let typed = TaggedKeyBoundRange::prefix(KeyTag::Row, storage_fields(storage));
 			let bytes = EncodedKeyRange::prefix(RowKey::storage_start(storage).as_slice());
 			let (Bound::Included(typed_start), Bound::Excluded(typed_end)) =
 				(typed.start.clone(), typed.end.clone())
@@ -412,15 +411,15 @@ mod tests {
 			};
 
 			let probes = rows();
-			let by_bytes: Vec<&AnyKey> = probes
+			let by_bytes: Vec<&TaggedKey> = probes
 				.iter()
 				.filter(|(_, encoded)| contains(&bytes, encoded))
 				.map(|(key, _)| key)
 				.collect();
-			let by_typed: Vec<&AnyKey> = probes
+			let by_typed: Vec<&TaggedKey> = probes
 				.iter()
 				.filter(|(key, _)| {
-					let bound = AnyKeyBound::Key((*key).clone());
+					let bound = TaggedKeyBound::Key((*key).clone());
 					bound >= typed_start && bound < typed_end
 				})
 				.map(|(key, _)| key)
@@ -445,19 +444,19 @@ mod tests {
 		after_start && before_end
 	}
 
-	fn mixed_bounds() -> Vec<AnyKeyBound> {
+	fn mixed_bounds() -> Vec<TaggedKeyBound> {
 		let mut out = vec![
-			AnyKeyBound::Kind(KeyKind::Row),
-			AnyKeyBound::KindEnd(KeyKind::Row),
-			AnyKeyBound::Kind(KeyKind::Table),
-			AnyKeyBound::KindEnd(KeyKind::Table),
+			TaggedKeyBound::Kind(KeyTag::Row),
+			TaggedKeyBound::KindEnd(KeyTag::Row),
+			TaggedKeyBound::Kind(KeyTag::Table),
+			TaggedKeyBound::KindEnd(KeyTag::Table),
 		];
 		for storage in [1u64, 2, 3] {
 			let storage = StorageId::table(storage);
-			out.push(AnyKeyBound::prefix(KeyKind::Row, storage_fields(storage)));
-			out.push(AnyKeyBound::prefix_end(KeyKind::Row, storage_fields(storage)));
+			out.push(TaggedKeyBound::prefix(KeyTag::Row, storage_fields(storage)));
+			out.push(TaggedKeyBound::prefix_end(KeyTag::Row, storage_fields(storage)));
 		}
-		out.extend(rows().into_iter().map(|(key, _)| AnyKeyBound::Key(key)));
+		out.extend(rows().into_iter().map(|(key, _)| TaggedKeyBound::Key(key)));
 		out
 	}
 
@@ -494,11 +493,11 @@ mod tests {
 	fn a_prefix_end_sorts_above_every_key_that_extends_its_prefix() {
 		for storage in [1u64, 2, 3] {
 			let storage = StorageId::table(storage);
-			let end = AnyKeyBound::prefix_end(KeyKind::Row, storage_fields(storage));
-			let start = AnyKeyBound::prefix(KeyKind::Row, storage_fields(storage));
+			let end = TaggedKeyBound::prefix_end(KeyTag::Row, storage_fields(storage));
+			let start = TaggedKeyBound::prefix(KeyTag::Row, storage_fields(storage));
 			let mut extensions = 0;
 			for (key, _) in rows() {
-				let bound = AnyKeyBound::Key(key.clone());
+				let bound = TaggedKeyBound::Key(key.clone());
 				if bound >= start && bound < end {
 					extensions += 1;
 					assert!(end > bound, "{end:?} must sort above {bound:?}");
@@ -512,24 +511,24 @@ mod tests {
 	#[test]
 	fn a_kind_range_brackets_the_whole_kind_inclusively() {
 		let mut start = KeySerializer::with_capacity(1);
-		start.extend_u8(<DictionaryKey as EncodableKey>::KIND as u8);
+		start.extend_u8(DictionaryKey::TAG as u8);
 		let mut end = KeySerializer::with_capacity(1);
-		end.extend_u8(<DictionaryKey as EncodableKey>::KIND as u8 - 1);
+		end.extend_u8(DictionaryKey::TAG as u8 - 1);
 
-		let encoded = AnyKeyBoundRange::kind(KeyKind::Dictionary).encode();
+		let encoded = TaggedKeyBoundRange::kind(KeyTag::Dictionary).encode();
 		assert_eq!(encoded.start, Bound::Included(start.to_encoded_key()));
 		assert_eq!(encoded.end, Bound::Included(end.to_encoded_key()));
 	}
 
 	#[test]
 	fn a_kind_span_brackets_every_key_of_that_kind_and_nothing_else() {
-		let start = AnyKeyBound::Kind(KeyKind::Row);
-		let end = AnyKeyBound::KindEnd(KeyKind::Row);
+		let start = TaggedKeyBound::Kind(KeyTag::Row);
+		let end = TaggedKeyBound::KindEnd(KeyTag::Row);
 		assert!(start < end, "the kind span must not be empty");
 		for (key, _) in rows() {
-			let bound = AnyKeyBound::Key(key.clone());
+			let bound = TaggedKeyBound::Key(key.clone());
 			let inside = bound >= start && bound <= end;
-			assert_eq!(inside, key.kind() == KeyKind::Row, "{key:?}");
+			assert_eq!(inside, key.kind() == KeyTag::Row, "{key:?}");
 		}
 	}
 }
@@ -564,10 +563,10 @@ mod bound_order_matches_encoded_order {
 
 	// Index tails hold whatever the caller encoded, so a string tail arrives inverted and a
 	// prefix of the plaintext is a prefix of the encoded tail only after the same inversion.
-	fn entry(tail: &str) -> AnyKeyBound {
+	fn entry(tail: &str) -> TaggedKeyBound {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_str(tail);
-		AnyKeyBound::Key(
+		TaggedKeyBound::Key(
 			IndexEntryKey::new(table(), index(), EncodedIndexKey::new(serializer.finish().as_slice()))
 				.into(),
 		)
@@ -584,13 +583,13 @@ mod bound_order_matches_encoded_order {
 			.collect()
 	}
 
-	fn probes() -> Vec<AnyKeyBound> {
+	fn probes() -> Vec<TaggedKeyBound> {
 		vec![
-			AnyKeyBound::Kind(KeyKind::IndexEntry),
-			AnyKeyBound::Prefix(KeyKind::IndexEntry, tail_prefix(b'a')),
-			AnyKeyBound::PrefixEnd(KeyKind::IndexEntry, tail_prefix(b'a')),
-			AnyKeyBound::Prefix(KeyKind::IndexEntry, tail_prefix(b'b')),
-			AnyKeyBound::PrefixEnd(KeyKind::IndexEntry, tail_prefix(b'b')),
+			TaggedKeyBound::Kind(KeyTag::IndexEntry),
+			TaggedKeyBound::Prefix(KeyTag::IndexEntry, tail_prefix(b'a')),
+			TaggedKeyBound::PrefixEnd(KeyTag::IndexEntry, tail_prefix(b'a')),
+			TaggedKeyBound::Prefix(KeyTag::IndexEntry, tail_prefix(b'b')),
+			TaggedKeyBound::PrefixEnd(KeyTag::IndexEntry, tail_prefix(b'b')),
 			entry("a"),
 			entry("a1"),
 			entry("a3"),
@@ -600,16 +599,16 @@ mod bound_order_matches_encoded_order {
 			entry("b1"),
 			entry("b2"),
 			entry("c1"),
-			AnyKeyBound::Prefix(
-				KeyKind::IndexEntry,
+			TaggedKeyBound::Prefix(
+				KeyTag::IndexEntry,
 				object_fields(table()).into_iter().collect::<SmallVec<[OwnedField; 6]>>(),
 			),
-			AnyKeyBound::PrefixEnd(
-				KeyKind::IndexEntry,
+			TaggedKeyBound::PrefixEnd(
+				KeyTag::IndexEntry,
 				object_fields(table()).into_iter().collect::<SmallVec<[OwnedField; 6]>>(),
 			),
-			AnyKeyBound::Prefix(
-				KeyKind::IndexEntry,
+			TaggedKeyBound::Prefix(
+				KeyTag::IndexEntry,
 				smallvec![Field::BytesDesc(ByteEncoding::Fixed, Cow::Owned(vec![7, 7]))],
 			),
 		]
@@ -627,7 +626,7 @@ mod bound_order_matches_encoded_order {
 		let probes = probes();
 		for left in &probes {
 			for right in &probes {
-				if !matches!(left, AnyKeyBound::Key(_)) && !matches!(right, AnyKeyBound::Key(_)) {
+				if !matches!(left, TaggedKeyBound::Key(_)) && !matches!(right, TaggedKeyBound::Key(_)) {
 					continue;
 				}
 				let left_bytes = left.encode();
@@ -649,8 +648,8 @@ mod bound_order_matches_encoded_order {
 		// Ordering between two non-key bounds may differ from their bytes without harm, but the
 		// set of keys a range admits may not: that set is the range's meaning.
 		let probes = probes();
-		let keys: Vec<&AnyKeyBound> =
-			probes.iter().filter(|bound| matches!(bound, AnyKeyBound::Key(_))).collect();
+		let keys: Vec<&TaggedKeyBound> =
+			probes.iter().filter(|bound| matches!(bound, TaggedKeyBound::Key(_))).collect();
 
 		for start in &probes {
 			for end in &probes {
@@ -682,7 +681,7 @@ mod bound_order_matches_encoded_order {
 
 		for tail in ["a", "a1", "a3", "aa", "az", "b", "b1", "c1"] {
 			let bound = entry(tail);
-			let AnyKeyBound::Key(key) = &bound else {
+			let TaggedKeyBound::Key(key) = &bound else {
 				unreachable!("entry builds a Key bound");
 			};
 			let bytes = key.encode();
@@ -695,7 +694,7 @@ mod bound_order_matches_encoded_order {
 		}
 	}
 
-	fn contains(start: &Bound<AnyKeyBound>, end: &Bound<AnyKeyBound>, probe: &AnyKeyBound) -> bool {
+	fn contains(start: &Bound<TaggedKeyBound>, end: &Bound<TaggedKeyBound>, probe: &TaggedKeyBound) -> bool {
 		let lower = match start {
 			Bound::Included(bound) => probe >= bound,
 			Bound::Excluded(bound) => probe > bound,

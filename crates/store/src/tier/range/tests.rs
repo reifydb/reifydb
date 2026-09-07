@@ -17,7 +17,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
-		typed::{MultiKey, range::KeyRange},
+		typed::{OpaqueKey, range::KeyRange},
 	},
 	metrics::heap::HeapSize,
 };
@@ -764,7 +764,7 @@ fn sweep_page(group: u128) -> Vec<(EncodedKey, EncodedPodRow)> {
 	(0..SWEEP_KEYS).map(|n| (sweep_key(group, n), row("m"))).collect()
 }
 
-trait Sweep: RangeDomain<Dimension = OperatorId, Partition = TestPartition, Key = MultiKey, Row = EncodedPodRow> {}
+trait Sweep: RangeDomain<Dimension = OperatorId, Partition = TestPartition, Key = OpaqueKey, Row = EncodedPodRow> {}
 
 impl Sweep for D {}
 

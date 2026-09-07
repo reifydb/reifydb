@@ -512,7 +512,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::{
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
-			typed::{MultiKey, range::KeyRange},
+			typed::{OpaqueKey, range::KeyRange},
 		},
 		metrics::{
 			collect::MetricsCollector,
@@ -640,11 +640,11 @@ mod tests {
 		}
 	}
 
-	fn claims(tier: &RangeTier<D>) -> Vec<Interval<MultiKey>> {
+	fn claims(tier: &RangeTier<D>) -> Vec<Interval<OpaqueKey>> {
 		tier.coverage().read().set(OP_A).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
-	fn scan_plan(gaps: usize, degraded: bool) -> ScanPlan<MultiKey> {
+	fn scan_plan(gaps: usize, degraded: bool) -> ScanPlan<OpaqueKey> {
 		ScanPlan {
 			segments: Vec::new(),
 			gaps,

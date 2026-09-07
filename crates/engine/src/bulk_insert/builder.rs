@@ -27,7 +27,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		catalog::IndexEntryKey,
 		row::{PartitionedRowKey, RowKey},
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
@@ -602,7 +602,7 @@ fn evict_oldest_for_partition(
 		let range = PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, None);
 		let oldest = txn.range_rev(range, RangeScope::All, 1)?.next().transpose()?;
 		if let Some(entry) = oldest
-			&& let AnyKey::PartitionedRow(pk) = &entry.key
+			&& let TaggedKey::PartitionedRow(pk) = &entry.key
 		{
 			txn.remove_from_ringbuffer(ringbuffer, Some(partition), pk.row)?;
 		}
@@ -786,7 +786,7 @@ fn insert_series_rows<V: ValidationMode>(
 
 		metadata.sequence_counter += 1;
 		let sequence = metadata.sequence_counter;
-		let key: AnyKey = if partition_col_indices.is_empty() {
+		let key: TaggedKey = if partition_col_indices.is_empty() {
 			SeriesRowKey {
 				storage,
 				variant_tag: None,

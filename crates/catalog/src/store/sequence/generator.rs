@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::{error::CoreError, key::any::AnyKey, return_internal_error};
+use reifydb_core::{error::CoreError, key::any::TaggedKey, return_internal_error};
 use reifydb_transaction::{
 	single::write::SingleWriteTransaction,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
@@ -89,7 +89,7 @@ macro_rules! impl_generator {
 			pub(crate) struct $generator {}
 
 			impl $generator {
-				pub(crate) fn next<K: Into<AnyKey> + Clone>(
+				pub(crate) fn next<K: Into<TaggedKey> + Clone>(
 					txn: &mut impl SequenceTransaction,
 					key: &K,
 					default: Option<$prim>,
@@ -97,7 +97,7 @@ macro_rules! impl_generator {
 					Self::next_batched(txn, key, default, 1)
 				}
 
-				pub(crate) fn next_batched<K: Into<AnyKey> + Clone>(
+				pub(crate) fn next_batched<K: Into<TaggedKey> + Clone>(
 					txn: &mut impl SequenceTransaction,
 					key: &K,
 					default: Option<$prim>,
@@ -145,7 +145,7 @@ macro_rules! impl_generator {
 					Ok(result)
 				}
 
-				pub(crate) fn set<K: Into<AnyKey> + Clone>(
+				pub(crate) fn set<K: Into<TaggedKey> + Clone>(
 					txn: &mut impl SequenceTransaction,
 					key: &K,
 					value: $prim,
@@ -162,9 +162,8 @@ macro_rules! impl_generator {
 			mod tests {
 				use reifydb_codec::row::pod::EncodedPodRow;
 				use reifydb_core::{
-					error::CoreError,
-					interface::catalog::id::QueueId,
-					key::{EncodableKey, queue::QueueDeduplicationKey},
+					error::CoreError, interface::catalog::id::QueueId,
+					key::queue::QueueDeduplicationKey,
 				};
 				use reifydb_test_harness::engine::create_test_admin_transaction;
 				use reifydb_value::{error::IntoDiagnostic, value::value_type::ValueType};

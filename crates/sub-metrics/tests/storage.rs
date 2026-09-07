@@ -35,7 +35,7 @@ use reifydb_core::{
 		},
 		store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, Tier},
 	},
-	key::{EncodableKey, any::AnyKey, catalog::IndexEntryKey},
+	key::{any::TaggedKey, catalog::IndexEntryKey},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::index::encoded::EncodedIndexKey,
 };
@@ -189,8 +189,8 @@ impl TestRunner for Runner {
 
 				let value = self
 					.multi_store
-					.get(&AnyKey::from(script_key(&key)), version)?
-					.map(|sv: MultiVersionRow<AnyKey>| sv.bytes.to_vec());
+					.get(&TaggedKey::from(script_key(&key)), version)?
+					.map(|sv: MultiVersionRow<TaggedKey>| sv.bytes.to_vec());
 
 				writeln!(output, "{}", format::raw::Raw::key_maybe_value(&key, value))?;
 			}
@@ -201,7 +201,8 @@ impl TestRunner for Runner {
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
-				let contains = self.multi_store.contains(&AnyKey::from(script_key(&key)), version)?;
+				let contains =
+					self.multi_store.contains(&TaggedKey::from(script_key(&key)), version)?;
 				writeln!(output, "{} => {}", format::raw::Raw::key(&key), contains)?;
 			}
 
@@ -278,7 +279,7 @@ impl TestRunner for Runner {
 				let prev_version = CommitVersion(version.0.saturating_sub(1));
 				let current_values = self
 					.multi_store
-					.get(&AnyKey::from(script_key(&key)), prev_version)?
+					.get(&TaggedKey::from(script_key(&key)), prev_version)?
 					.map(|mv| mv.bytes)
 					.unwrap_or_else(|| EncodedBytes(cow_vec![]));
 
@@ -520,14 +521,14 @@ fn script_key(raw: &EncodedKey) -> IndexEntryKey {
 	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(raw.as_slice()))
 }
 
-fn script_raw(key: &AnyKey) -> EncodedKey {
-	let AnyKey::IndexEntry(entry) = key else {
+fn script_raw(key: &TaggedKey) -> EncodedKey {
+	let TaggedKey::IndexEntry(entry) = key else {
 		panic!("script key must be an index entry")
 	};
 	EncodedKey::new(entry.key.as_ref())
 }
 
-fn print<I: Iterator<Item = MultiVersionRow<AnyKey>>>(output: &mut String, iter: I) {
+fn print<I: Iterator<Item = MultiVersionRow<TaggedKey>>>(output: &mut String, iter: I) {
 	for item in iter {
 		let fmtkv = format::raw::Raw::key_value(&script_raw(&item.key), item.bytes.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();

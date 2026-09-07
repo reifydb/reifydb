@@ -15,7 +15,7 @@ use reifydb_core::{
 	default,
 	interface::store::{EntryKind, StorageKey},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		row::{StoragePartitionedRowKey, StorageRowKey},
 		series::{StoragePartitionedSeriesKey, StorageSeriesKey},
 	},
@@ -96,7 +96,7 @@ pub struct MultiPointDomain;
 
 impl PointDomain for MultiPointDomain {
 	type Dimension = EntryKind;
-	type Key = AnyKey;
+	type Key = TaggedKey;
 	type MetricBucket = ();
 	type Row = MultiPointRow;
 
@@ -336,7 +336,7 @@ impl MultiPointTier {
 				self.partitioned_series.get(table, &row),
 			),
 			None => {
-				let blob = AnyKey::decode(key).expect(
+				let blob = TaggedKey::decode(key).expect(
 					"every key reaching the point tier came from encode and must decode back",
 				);
 				(self.blob.shard_index(table, &blob), self.blob.get(table, &blob))
@@ -405,7 +405,7 @@ impl MultiPointTier {
 				self.partitioned_series.overwrite(table, row, entry)
 			}
 			None => {
-				let blob = AnyKey::decode(&key).expect(
+				let blob = TaggedKey::decode(&key).expect(
 					"every key reaching the point tier came from encode and must decode back",
 				);
 				self.blob.overwrite(table, blob, entry)
@@ -434,7 +434,7 @@ impl MultiPointTier {
 				self.partitioned_series.invalidate(table, &row)
 			}
 			None => {
-				let blob = AnyKey::decode(key).expect(
+				let blob = TaggedKey::decode(key).expect(
 					"every key reaching the point tier came from encode and must decode back",
 				);
 				self.blob.invalidate(table, &blob)
@@ -525,7 +525,6 @@ mod tests {
 			store::{EntryKind, EntryLayout, storage_key},
 		},
 		key::{
-			EncodableKey,
 			row::{PartitionedRowKey, RowKey, RowSequenceKey},
 			series::{PartitionedSeriesRowKey, SeriesRowKey},
 		},

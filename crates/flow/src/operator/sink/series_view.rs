@@ -17,10 +17,7 @@ use reifydb_core::{
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
-	key::{
-		EncodableKey,
-		series::{PartitionedSeriesRowKey, SeriesRowKey},
-	},
+	key::series::{PartitionedSeriesRowKey, SeriesRowKey},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
 	value::column::columns::Columns,

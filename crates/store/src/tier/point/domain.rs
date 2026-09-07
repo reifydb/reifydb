@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::state::{KeyspaceId, OperatorStateKey},
-		typed::MultiKey,
+		typed::OpaqueKey,
 	},
 };
 
@@ -31,7 +31,7 @@ pub(super) fn keyspace_of(key: &EncodedKey) -> Option<KeyspaceId> {
 
 impl PointDomain for TestDomain {
 	type Dimension = OperatorId;
-	type Key = MultiKey;
+	type Key = OpaqueKey;
 	type MetricBucket = KeyspaceId;
 	type Row = EncodedPodRow;
 
@@ -57,7 +57,7 @@ pub(super) struct ChainingDomain;
 
 impl PointDomain for ChainingDomain {
 	type Dimension = OperatorId;
-	type Key = MultiKey;
+	type Key = OpaqueKey;
 	type MetricBucket = KeyspaceId;
 	type Row = EncodedPodRow;
 

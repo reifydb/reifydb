@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::{id::SeriesId, series::Series},
-	key::{any::AnyKey, series::SeriesKey},
+	key::{any::TaggedKey, series::SeriesKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -19,7 +19,7 @@ impl CatalogStore {
 
 			for entry in stream {
 				let entry = entry?;
-				if let AnyKey::Series(series_key) = &entry.key {
+				if let TaggedKey::Series(series_key) = &entry.key {
 					series_data.push(series_key.series);
 				}
 			}

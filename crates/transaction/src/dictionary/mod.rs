@@ -402,7 +402,7 @@ mod tests {
 	use std::{collections::BTreeMap, thread};
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::{interface::catalog::id::NamespaceId, key::EncodableKey};
+	use reifydb_core::interface::catalog::id::NamespaceId;
 
 	use super::*;
 

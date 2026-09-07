@@ -16,7 +16,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::any::AnyKey,
+	key::any::TaggedKey,
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
@@ -133,12 +133,12 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_>;
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>;
 
 	fn fetch_state_external(
 		&mut self,
 		keys: Vec<EncodedKey>,
-		items: &mut Vec<MultiVersionRow<AnyKey>>,
+		items: &mut Vec<MultiVersionRow<TaggedKey>>,
 	) -> Result<()>;
 
 	fn pending(&self) -> &Pending {
@@ -190,7 +190,7 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let mut merged = BTreeMap::new();
 		self.pending_layers().collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 		let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
@@ -199,7 +199,7 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, version))
 	}
 
-	fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		let range = EncodedKeyRange::prefix(prefix);
 		let items = self.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {

@@ -15,10 +15,7 @@ use reifydb_core::{
 		},
 		store::{SingleVersionGet, SingleVersionRange},
 	},
-	key::{
-		EncodableKey,
-		queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
-	},
+	key::queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::view::View,
-	key::{any::AnyKey, catalog::ViewKey},
+	key::{any::TaggedKey, catalog::ViewKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -18,7 +18,7 @@ impl CatalogStore {
 			let stream = rx.range(ViewKey::full_scan(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
-				if let AnyKey::View(view_key) = &entry.key {
+				if let TaggedKey::View(view_key) = &entry.key {
 					view_ids.push(view_key.view);
 				}
 			}

@@ -4,7 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{id::NamespaceId, table::Table},
-	key::{any::AnyKey, catalog::TableKey},
+	key::{any::TaggedKey, catalog::TableKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -22,7 +22,7 @@ impl CatalogStore {
 			let stream = rx.range(TableKey::full_scan(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
-				if let AnyKey::Table(table_key) = &entry.key {
+				if let TaggedKey::Table(table_key) = &entry.key {
 					let table_id = table_key.table;
 					let namespace_id = NamespaceId(table::get_namespace(EncodedCatalogRow::view(
 						&entry.bytes,

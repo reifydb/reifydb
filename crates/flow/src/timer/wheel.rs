@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		operator::{
 			keyspace::timer::{
 				TimerIndex as TimerIndexSpace, TimerIndexKey, TimerWheel as TimerWheelSpace,
@@ -172,7 +172,7 @@ impl TimerWheel {
 		let mut due = Vec::new();
 		let mut next = None;
 		for item in &batch.items {
-			let AnyKey::OperatorState(decoded) = &item.key else {
+			let TaggedKey::OperatorState(decoded) = &item.key else {
 				panic!("state_range must return OperatorState keys");
 			};
 			let suffix = TimerWheelKey::from_suffix_bytes(&decoded.suffix)

@@ -18,7 +18,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, EntryLayout, MultiVersionCommit},
 	},
-	key::{any::AnyKey, row::RowKey},
+	key::{any::TaggedKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::shutdown::Shutdown;
@@ -51,7 +51,7 @@ fn commit_set(store: &StandardMultiStore, row: u64, version: u64) {
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
-			key: AnyKey::from(RowKey::new(STORAGE, row)),
+			key: TaggedKey::from(RowKey::new(STORAGE, row)),
 			bytes: EncodedBytes(CowVec::new(format!("v{row}").into_bytes())),
 		}],
 		CommitVersion(version),

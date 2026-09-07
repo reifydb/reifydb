@@ -15,7 +15,7 @@ use reifydb_core::{
 		},
 		cdc::{Cdc, CdcChange},
 	},
-	key::{EncodableKey, catalog::IndexEntryKey},
+	key::catalog::IndexEntryKey,
 	value::index::encoded::EncodedIndexKey,
 };
 use reifydb_engine::engine::StandardEngine;

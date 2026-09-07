@@ -13,7 +13,6 @@ use reifydb_core::{
 		storage::StorageId,
 	},
 	key::{
-		EncodableKey,
 		operator::state::{GroupStateKey, OperatorStateKey},
 		queue::QueueDeduplicationKey,
 		row::RowKey,

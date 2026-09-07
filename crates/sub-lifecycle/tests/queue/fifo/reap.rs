@@ -23,7 +23,7 @@ use reifydb_core::{
 		store::{SingleVersionGet, SingleVersionRange},
 	},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		queue::{QueueAttemptKey, QueueItemStateKey, QueuePartitionKey},
 	},
 	lifecycle::{metrics::RetentionMetrics, progress::Progress, task::LifecycleTask},
@@ -94,7 +94,7 @@ fn attempts(t: &TestEngine, queue: QueueId) -> Vec<(QueueAttemptKey, QueueAttemp
 		let item = item.unwrap();
 		out.push((
 			match item.key {
-				AnyKey::QueueAttempt(key) => key,
+				TaggedKey::QueueAttempt(key) => key,
 				other => panic!("queue attempt scan yielded {other:?}"),
 			},
 			decode_queue_attempt(EncodedQueueAttemptRow::view(&item.bytes)).unwrap(),

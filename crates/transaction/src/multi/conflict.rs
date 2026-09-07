@@ -9,8 +9,8 @@ use std::collections::HashSet;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::key::{
-	any::AnyKey,
-	bound::{AnyKeyBound, AnyKeyBoundRange},
+	any::TaggedKey,
+	bound::{TaggedKeyBound, TaggedKeyBoundRange},
 };
 use tracing::instrument;
 
@@ -228,12 +228,12 @@ pub enum ConflictMode {
 pub struct ConflictManager {
 	mode: ConflictMode,
 
-	read_keys: HashSet<AnyKey>,
+	read_keys: HashSet<TaggedKey>,
 
-	read_ranges: RangeSet<AnyKeyBound>,
+	read_ranges: RangeSet<TaggedKeyBound>,
 	read_ranges_encoded: RangeSet<EncodedKey>,
 	read_all: bool,
-	write_keys: HashSet<AnyKey>,
+	write_keys: HashSet<TaggedKey>,
 }
 
 impl ConflictManager {
@@ -253,7 +253,7 @@ impl ConflictManager {
 	}
 
 	#[instrument(name = "transaction::conflict::mark_read", level = "trace", skip(self, key))]
-	pub fn mark_read(&mut self, key: &AnyKey) {
+	pub fn mark_read(&mut self, key: &TaggedKey) {
 		if self.mode == ConflictMode::Disabled {
 			return;
 		}
@@ -261,7 +261,7 @@ impl ConflictManager {
 	}
 
 	#[instrument(name = "transaction::conflict::mark_write", level = "trace", skip(self, key))]
-	pub fn mark_write(&mut self, key: &AnyKey) {
+	pub fn mark_write(&mut self, key: &TaggedKey) {
 		if self.mode == ConflictMode::Disabled {
 			return;
 		}
@@ -276,7 +276,7 @@ impl ConflictManager {
 	}
 
 	#[instrument(name = "transaction::conflict::mark_range", level = "trace", skip(self, range))]
-	pub fn mark_range(&mut self, range: AnyKeyBoundRange) {
+	pub fn mark_range(&mut self, range: TaggedKeyBoundRange) {
 		if !self.accepts_range() {
 			return;
 		}
@@ -322,7 +322,7 @@ impl ConflictManager {
 	}
 
 	pub fn mark_iter(&mut self) {
-		self.mark_range(AnyKeyBoundRange::all());
+		self.mark_range(TaggedKeyBoundRange::all());
 	}
 
 	#[instrument(name = "transaction::conflict::has_conflict", level = "trace", skip(self, other), fields(
@@ -355,21 +355,21 @@ impl ConflictManager {
 	}
 
 	#[inline]
-	fn has_any_range_conflict(&self, write_keys: &HashSet<AnyKey>) -> bool {
+	fn has_any_range_conflict(&self, write_keys: &HashSet<TaggedKey>) -> bool {
 		if write_keys.is_empty() {
 			return false;
 		}
 
 		if !self.read_ranges.is_empty() {
-			let bounds: Vec<AnyKeyBound> = write_keys.iter().cloned().map(AnyKeyBound::Key).collect();
-			let borrowed: Vec<&AnyKeyBound> = bounds.iter().collect();
+			let bounds: Vec<TaggedKeyBound> = write_keys.iter().cloned().map(TaggedKeyBound::Key).collect();
+			let borrowed: Vec<&TaggedKeyBound> = bounds.iter().collect();
 			if self.read_ranges.any_contains(&borrowed) {
 				return true;
 			}
 		}
 
 		if !self.read_ranges_encoded.is_empty() {
-			let encoded: Vec<EncodedKey> = write_keys.iter().map(AnyKey::encode).collect();
+			let encoded: Vec<EncodedKey> = write_keys.iter().map(TaggedKey::encode).collect();
 			let borrowed: Vec<&EncodedKey> = encoded.iter().collect();
 			if self.read_ranges_encoded.any_contains(&borrowed) {
 				return true;
@@ -390,11 +390,11 @@ impl ConflictManager {
 		self.mode = ConflictMode::Tracking;
 	}
 
-	pub fn get_read_keys(&self) -> &HashSet<AnyKey> {
+	pub fn get_read_keys(&self) -> &HashSet<TaggedKey> {
 		&self.read_keys
 	}
 
-	pub fn get_write_keys(&self) -> &HashSet<AnyKey> {
+	pub fn get_write_keys(&self) -> &HashSet<TaggedKey> {
 		&self.write_keys
 	}
 
@@ -417,7 +417,7 @@ mod tests {
 	use super::*;
 
 	// IndexEntry appends its tail verbatim, so encoded order still matches the raw string order.
-	fn create_key(s: &str) -> AnyKey {
+	fn create_key(s: &str) -> TaggedKey {
 		IndexEntryKey::new(
 			ObjectId::Table(TableId(1)),
 			IndexId::primary(1u64),
@@ -426,17 +426,17 @@ mod tests {
 		.into()
 	}
 
-	fn create_bound(s: &str) -> AnyKeyBound {
-		AnyKeyBound::Key(create_key(s))
+	fn create_bound(s: &str) -> TaggedKeyBound {
+		TaggedKeyBound::Key(create_key(s))
 	}
 
-	fn create_range(start: &str, end: Bound<&str>) -> AnyKeyBoundRange {
+	fn create_range(start: &str, end: Bound<&str>) -> TaggedKeyBoundRange {
 		let end = match end {
 			Bound::Included(e) => Bound::Included(create_bound(e)),
 			Bound::Excluded(e) => Bound::Excluded(create_bound(e)),
 			Bound::Unbounded => Bound::Unbounded,
 		};
-		AnyKeyBoundRange {
+		TaggedKeyBoundRange {
 			start: Bound::Included(create_bound(start)),
 			end,
 		}

@@ -25,7 +25,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::MultiVersionCommit,
 	},
-	key::{any::AnyKey, row::RowKey},
+	key::{any::TaggedKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_store_commit::MultiVersionScope;
@@ -110,7 +110,7 @@ fn commit_set(store: &StandardMultiStore, storage: StorageId, row: u64, version:
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
-			key: AnyKey::from(RowKey::new(storage, row)),
+			key: TaggedKey::from(RowKey::new(storage, row)),
 			bytes: EncodedBytes(CowVec::new(value.as_bytes().to_vec())),
 		}],
 		CommitVersion(version),
@@ -121,7 +121,7 @@ fn commit_set(store: &StandardMultiStore, storage: StorageId, row: u64, version:
 fn commit_remove(store: &StandardMultiStore, storage: StorageId, row: u64, version: u64) {
 	MultiVersionCommit::commit(
 		store,
-		cow_vec![Delta::remove_silent(AnyKey::from(RowKey::new(storage, row)))],
+		cow_vec![Delta::remove_silent(TaggedKey::from(RowKey::new(storage, row)))],
 		CommitVersion(version),
 	)
 	.unwrap();

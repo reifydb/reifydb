@@ -12,7 +12,7 @@ pub mod watermark;
 
 use reifydb_core::{
 	interface::cdc::{Cdc, CdcChange},
-	key::kind::KeyKind,
+	key::tag::KeyTag,
 };
 
 pub fn is_relevant_cdc(cdc: &Cdc) -> bool {
@@ -34,17 +34,17 @@ fn is_relevant_cdc_change(change: &CdcChange) -> bool {
 			..
 		} => key,
 	};
-	KeyKind::of(key)
+	KeyTag::of(key)
 		.map(|kind| {
 			matches!(
 				kind,
-				KeyKind::Row
-					| KeyKind::SeriesRow | KeyKind::PartitionedRow
-					| KeyKind::PartitionedSeriesRow | KeyKind::SortedViewRow
-					| KeyKind::PartitionedSortedViewRow | KeyKind::Flow
-					| KeyKind::Operator | KeyKind::OperatorByFlow
-					| KeyKind::FlowEdge | KeyKind::FlowEdgeByFlow
-					| KeyKind::NamespaceFlow
+				KeyTag::Row
+					| KeyTag::SeriesRow | KeyTag::PartitionedRow
+					| KeyTag::PartitionedSeriesRow | KeyTag::SortedViewRow
+					| KeyTag::PartitionedSortedViewRow | KeyTag::Flow
+					| KeyTag::Operator | KeyTag::OperatorByFlow
+					| KeyTag::FlowEdge | KeyTag::FlowEdgeByFlow
+					| KeyTag::NamespaceFlow
 			)
 		})
 		.unwrap_or(false)

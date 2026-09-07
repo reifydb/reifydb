@@ -34,7 +34,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	key::any::AnyKey,
+	key::any::TaggedKey,
 	state::{join::ContentVersion, timer::TimerKind},
 	value::index::encoded::EncodedIndexKey,
 };
@@ -170,18 +170,18 @@ impl HeapSize for EncodedKey {
 	}
 }
 
-impl HeapSize for AnyKey {
+impl HeapSize for TaggedKey {
 	fn heap_size(&self) -> usize {
 		match self {
-			AnyKey::SortedViewRow(key) => key.run.len(),
-			AnyKey::PartitionedSortedViewRow(key) => key.run.len(),
-			AnyKey::RingBufferMetadata(key) => {
+			TaggedKey::SortedViewRow(key) => key.run.len(),
+			TaggedKey::PartitionedSortedViewRow(key) => key.run.len(),
+			TaggedKey::RingBufferMetadata(key) => {
 				key.partition_values.capacity() * mem::size_of::<Value>()
 					+ key.partition_values.iter().map(HeapSize::heap_size).sum::<usize>()
 			}
-			AnyKey::QueueDeduplication(key) => key.tail.heap_size(),
-			AnyKey::IndexEntry(key) => key.key.heap_size(),
-			AnyKey::OperatorState(key) => key.suffix.capacity(),
+			TaggedKey::QueueDeduplication(key) => key.tail.heap_size(),
+			TaggedKey::IndexEntry(key) => key.key.heap_size(),
+			TaggedKey::OperatorState(key) => key.suffix.capacity(),
 			_ => 0,
 		}
 	}

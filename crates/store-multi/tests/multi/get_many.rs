@@ -10,7 +10,7 @@ use reifydb_core::{
 		store::MultiVersionCommit,
 	},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 		queue::QueueDeduplicationKey,
 	},
@@ -18,11 +18,11 @@ use reifydb_core::{
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::util::cowvec::CowVec;
 
-fn fns(node: u64, payload: &[u8]) -> AnyKey {
+fn fns(node: u64, payload: &[u8]) -> TaggedKey {
 	OperatorStateKey::new(OperatorId(node), GroupId::ROOT, KeyspaceId::CUSTOM_NOT_CACHED, payload.to_vec()).into()
 }
 
-fn multi(payload: &[u8]) -> AnyKey {
+fn multi(payload: &[u8]) -> TaggedKey {
 	QueueDeduplicationKey::new(QueueId(1), payload.iter().map(|b| !b).collect::<Vec<u8>>()).into()
 }
 

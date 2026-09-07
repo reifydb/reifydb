@@ -11,13 +11,13 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::key::typed::{Edge, MultiKey};
+use reifydb_core::key::typed::{Edge, OpaqueKey};
 
 use crate::coverage::{interval::CoverageSet, retraction::Retractions};
 
 type PartId = u8;
 
-type Hull = (Edge<MultiKey>, Edge<MultiKey>);
+type Hull = (Edge<OpaqueKey>, Edge<OpaqueKey>);
 
 type Interlock = Box<dyn Fn(&ModelCache) + Send + Sync>;
 
@@ -58,7 +58,7 @@ struct Partition {
 
 struct ModelCache {
 	partitions: Mutex<HashMap<PartId, Partition>>,
-	coverage: RwLock<CoverageSet<MultiKey>>,
+	coverage: RwLock<CoverageSet<OpaqueKey>>,
 	retractions: Retractions,
 	sequence: AtomicU64,
 	tick: AtomicU64,

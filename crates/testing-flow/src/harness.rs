@@ -14,7 +14,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	key::{any::AnyKey, kind::KeyKind},
+	key::{any::TaggedKey, tag::KeyTag},
 	state::timer::TimerKind,
 };
 use reifydb_flow::{
@@ -113,7 +113,7 @@ impl<O> Harness<O> {
 		);
 		let mut rest = Pending::new();
 		for (key, write) in pending.iter_sorted() {
-			if matches!(KeyKind::of(key), Some(KeyKind::OperatorState)) {
+			if matches!(KeyTag::of(key), Some(KeyTag::OperatorState)) {
 				continue;
 			}
 			match write {
@@ -189,10 +189,10 @@ impl<O: HostOperator> Harness<O> {
 		let mut footprint = StateFootprint::default();
 		for item in &batch.items {
 			match &item.key {
-				AnyKey::OperatorState(state) if state.keyspace.is_identity() => {
+				TaggedKey::OperatorState(state) if state.keyspace.is_identity() => {
 					footprint.identity_rows += 1
 				}
-				AnyKey::OperatorState(state) if state.group.is_root() => {
+				TaggedKey::OperatorState(state) if state.group.is_root() => {
 					footprint.node_scoped_data_rows += 1
 				}
 				_ => footprint.data_rows += 1,

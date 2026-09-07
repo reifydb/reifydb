@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
@@ -244,7 +244,7 @@ impl RingBufferScan {
 			}
 			let n = batch.len();
 			for entry in batch {
-				if let AnyKey::PartitionedRow(pk) = &entry.key {
+				if let TaggedKey::PartitionedRow(pk) = &entry.key {
 					out.push((pk.row, entry.bytes));
 				}
 				last_key = Some(entry.key.clone());

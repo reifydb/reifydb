@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::{any::AnyKey, procedure::ProcedureKey};
+use reifydb_core::key::{any::TaggedKey, procedure::ProcedureKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::CatalogCache;
@@ -14,7 +14,7 @@ pub(crate) fn load_procedures(rx: &mut Transaction<'_>, catalog: &CatalogCache) 
 		for entry in stream {
 			let entry = entry?;
 			let version = entry.version;
-			if let AnyKey::Procedure(k) = &entry.key {
+			if let TaggedKey::Procedure(k) = &entry.key {
 				entries.push((k.procedure, version));
 			}
 		}

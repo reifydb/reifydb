@@ -26,7 +26,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -190,7 +190,7 @@ fn insert_series_row(
 
 	metadata.sequence_counter += 1;
 	let sequence = metadata.sequence_counter;
-	let key: AnyKey = if series.partition_by.is_empty() {
+	let key: TaggedKey = if series.partition_by.is_empty() {
 		SeriesRowKey {
 			storage: StorageId::series(series.id),
 			variant_tag,

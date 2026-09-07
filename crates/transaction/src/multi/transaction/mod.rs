@@ -18,7 +18,7 @@ use reifydb_core::{
 		catalog::config::GetConfig,
 		store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet},
 	},
-	key::any::AnyKey,
+	key::any::TaggedKey,
 	testing::ProfileConfig,
 };
 use reifydb_runtime::{
@@ -390,12 +390,12 @@ pub enum TransactionType {
 
 impl MultiTransaction {
 	#[instrument(name = "transaction::get", level = "trace", skip(self, key), fields(version = version.0))]
-	pub fn get(&self, key: &AnyKey, version: CommitVersion) -> Result<Option<Committed>> {
+	pub fn get(&self, key: &TaggedKey, version: CommitVersion) -> Result<Option<Committed>> {
 		Ok(MultiVersionGet::get(&self.store, key, version)?.map(|sv| sv.into()))
 	}
 
 	#[instrument(name = "transaction::contains_key", level = "trace", skip(self, key), fields(version = version.0))]
-	pub fn contains_key(&self, key: &AnyKey, version: CommitVersion) -> Result<bool> {
+	pub fn contains_key(&self, key: &TaggedKey, version: CommitVersion) -> Result<bool> {
 		MultiVersionContains::contains(&self.store, key, version)
 	}
 

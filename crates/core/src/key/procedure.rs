@@ -4,13 +4,12 @@
 use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
 use smallvec::{SmallVec, smallvec};
 
-use super::KeyKind;
+use super::KeyTag;
 use crate::{
 	interface::catalog::id::ProcedureId,
 	key::{
-		EncodableKey,
 		any::{Field, KeyFields, Width},
-		bound::AnyKeyBoundRange,
+		bound::TaggedKeyBoundRange,
 	},
 };
 
@@ -19,20 +18,20 @@ pub struct ProcedureKey {
 	pub procedure: ProcedureId,
 }
 
-impl EncodableKey for ProcedureKey {
-	const KIND: KeyKind = KeyKind::Procedure;
+impl ProcedureKey {
+	pub const TAG: KeyTag = KeyTag::Procedure;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.procedure);
+		serializer.extend_u8(Self::TAG as u8).extend_u64(self.procedure);
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 
@@ -55,14 +54,14 @@ impl ProcedureKey {
 		Self::new(procedure).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 pub mod procedure_key_tests {
-	use super::{EncodableKey, ProcedureKey};
+	use super::ProcedureKey;
 	use crate::interface::catalog::id::ProcedureId;
 
 	#[test]
@@ -82,20 +81,20 @@ pub struct ProcedureParamKey {
 	pub param_index: u16,
 }
 
-impl EncodableKey for ProcedureParamKey {
-	const KIND: KeyKind = KeyKind::ProcedureParam;
+impl ProcedureParamKey {
+	pub const TAG: KeyTag = KeyTag::ProcedureParam;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.procedure).extend_u16(self.param_index);
+		serializer.extend_u8(Self::TAG as u8).extend_u64(self.procedure).extend_u16(self.param_index);
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 
@@ -121,14 +120,14 @@ impl ProcedureParamKey {
 		Self::new(procedure, param_index).encode()
 	}
 
-	pub fn full_scan(procedure: ProcedureId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, *procedure as u128)])
+	pub fn full_scan(procedure: ProcedureId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, *procedure as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod procedure_param_key_tests {
-	use super::{EncodableKey, ProcedureParamKey};
+	use super::ProcedureParamKey;
 	use crate::interface::catalog::id::ProcedureId;
 
 	#[test]

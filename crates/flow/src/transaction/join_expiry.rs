@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		operator::{
 			keyspace::join::{
 				JoinExpiryDue, JoinExpiryDueKey, JoinRowExpiry as JoinRowExpirySpace,
@@ -228,8 +228,8 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 
 impl<T: FlowTransaction> JoinRowExpiryExtension for T {}
 
-fn decode_due_suffix(key: &AnyKey) -> Option<JoinExpiryDueKey> {
-	let AnyKey::OperatorState(decoded) = key else {
+fn decode_due_suffix(key: &TaggedKey) -> Option<JoinExpiryDueKey> {
+	let TaggedKey::OperatorState(decoded) = key else {
 		return None;
 	};
 	JoinExpiryDueKey::from_suffix_bytes(&decoded.suffix)

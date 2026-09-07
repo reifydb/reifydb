@@ -19,7 +19,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, EntryLayout, MultiVersionCommit},
 	},
-	key::{any::AnyKey, row::RowKey},
+	key::{any::TaggedKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::shutdown::Shutdown;
@@ -54,7 +54,7 @@ fn commit_set(store: &StandardMultiStore, row: u64, version: u64) {
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
-			key: AnyKey::from(RowKey::new(STORAGE, row)),
+			key: TaggedKey::from(RowKey::new(STORAGE, row)),
 			bytes: EncodedBytes(CowVec::new(format!("v{row}").into_bytes())),
 		}],
 		CommitVersion(version),
@@ -83,7 +83,7 @@ fn tier_with_rows(rows: u64) -> (MultiPersistentTier, impl Drop) {
 		(1..=rows)
 			.map(|row| {
 				(
-					AnyKey::from(RowKey::new(STORAGE, row)).encode(),
+					TaggedKey::from(RowKey::new(STORAGE, row)).encode(),
 					Some(CowVec::new(format!("v{row}").into_bytes())),
 				)
 			})
@@ -108,8 +108,8 @@ fn tier_chunk(tier: &MultiPersistentTier, cursor: &mut RangeCursor) -> reifydb_v
 
 /// The row number and value a returned row carries, so a dropped or stale row shows as a gap in the
 /// sequence rather than a byte diff nobody can read.
-fn row_and_value(row: &reifydb_core::interface::store::MultiVersionRow<AnyKey>) -> (u64, String) {
-	let AnyKey::Row(key) = &row.key else {
+fn row_and_value(row: &reifydb_core::interface::store::MultiVersionRow<TaggedKey>) -> (u64, String) {
+	let TaggedKey::Row(key) = &row.key else {
 		panic!("the scan must yield row keys")
 	};
 	(key.row.0, String::from_utf8(row.bytes.to_vec()).unwrap())

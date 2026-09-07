@@ -17,8 +17,8 @@ use reifydb_core::{
 		store::classify_range,
 	},
 	key::{
-		any::AnyKey,
-		bound::AnyKeyBoundRange,
+		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
 		row::{PartitionedRowKey, RowKey},
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
@@ -58,7 +58,7 @@ const EVICT_CONSECUTIVE_FAILURE_LIMIT: u32 = 5;
 #[derive(Default)]
 pub struct EvictorState {
 	running: bool,
-	cursors: HashMap<CursorKey, AnyKey>,
+	cursors: HashMap<CursorKey, TaggedKey>,
 	expiry_cursors: HashMap<CursorKey, ExpiryCursor>,
 	resume: Option<StorageId>,
 	failures: HashMap<StorageId, u32>,
@@ -361,11 +361,11 @@ impl Evictor {
 		state: &mut EvictorState,
 		txn: &mut CommandTransaction,
 		cursor_key: &CursorKey,
-		keyspace: &AnyKeyBoundRange,
+		keyspace: &TaggedKeyBoundRange,
 		family: RowFamily,
 		cutoff: Cutoff,
 		batch_size: usize,
-	) -> Result<(Vec<AnyKey>, bool)> {
+	) -> Result<(Vec<TaggedKey>, bool)> {
 		if let (Some(persistent), Some(kind)) = (self.store.persistent(), classify_range(&keyspace.encode())) {
 			let scan = scan::scan_expired_indexed(
 				txn,
@@ -401,7 +401,7 @@ impl Evictor {
 		family: RowFamily,
 		cutoff: Cutoff,
 		batch_size: usize,
-		keyspace: &AnyKeyBoundRange,
+		keyspace: &TaggedKeyBoundRange,
 	) -> Result<(u64, bool)> {
 		let cursor_key = (storage, scan::keyspace_start(keyspace));
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
@@ -465,7 +465,7 @@ impl Evictor {
 		id: RingBufferId,
 		cutoff: Cutoff,
 		batch_size: usize,
-		keyspace: &AnyKeyBoundRange,
+		keyspace: &TaggedKeyBoundRange,
 	) -> Result<(u64, bool)> {
 		let storage = StorageId::RingBuffer(id);
 		let cursor_key = (storage, scan::keyspace_start(keyspace));
@@ -493,10 +493,10 @@ impl Evictor {
 		}
 
 		let partitioned = !ringbuffer.partition_by.is_empty();
-		let mut groups: HashMap<Partition, Vec<AnyKey>> = HashMap::new();
+		let mut groups: HashMap<Partition, Vec<TaggedKey>> = HashMap::new();
 		for key in &expired {
 			let partition = if partitioned {
-				let AnyKey::PartitionedRow(decoded) = key else {
+				let TaggedKey::PartitionedRow(decoded) = key else {
 					continue;
 				};
 				decoded.partition
@@ -649,7 +649,7 @@ impl Evictor {
 	}
 }
 
-fn advance_cursor(state: &mut EvictorState, cursor_key: CursorKey, next: Option<AnyKey>) -> bool {
+fn advance_cursor(state: &mut EvictorState, cursor_key: CursorKey, next: Option<TaggedKey>) -> bool {
 	match next {
 		Some(cursor) => {
 			state.cursors.insert(cursor_key, cursor);
@@ -662,10 +662,10 @@ fn advance_cursor(state: &mut EvictorState, cursor_key: CursorKey, next: Option<
 	}
 }
 
-fn decode_ringbuffer_row_number(key: &AnyKey, partitioned: bool) -> Option<u64> {
+fn decode_ringbuffer_row_number(key: &TaggedKey, partitioned: bool) -> Option<u64> {
 	match (partitioned, key) {
-		(true, AnyKey::PartitionedRow(key)) => Some(key.row.0),
-		(false, AnyKey::Row(key)) => Some(key.row.0),
+		(true, TaggedKey::PartitionedRow(key)) => Some(key.row.0),
+		(false, TaggedKey::Row(key)) => Some(key.row.0),
 		_ => None,
 	}
 }
@@ -862,7 +862,7 @@ mod tests {
 			.range(RingBufferMetadataKey::full_scan_for_storage(storage), RangeScope::All, 1024)
 			.unwrap()
 			.map(|row| match row.unwrap().key {
-				AnyKey::RingBufferMetadata(key) => key.partition_values,
+				TaggedKey::RingBufferMetadata(key) => key.partition_values,
 				other => panic!("metadata scan yielded {other:?}"),
 			})
 			.collect();
@@ -874,14 +874,14 @@ mod tests {
 		engine: &StandardEngine,
 		storage: StorageId,
 		partitioned: bool,
-	) -> Vec<MultiVersionRow<AnyKey>> {
+	) -> Vec<MultiVersionRow<TaggedKey>> {
 		let keyspace = if partitioned {
 			PartitionedRowKey::full_scan(storage)
 		} else {
 			RowKey::full_scan(storage)
 		};
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
-		let rows: Vec<MultiVersionRow<AnyKey>> =
+		let rows: Vec<MultiVersionRow<TaggedKey>> =
 			txn.range(keyspace, RangeScope::All, 1024).unwrap().map(|row| row.unwrap()).collect();
 		txn.rollback().unwrap();
 		rows

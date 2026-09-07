@@ -20,7 +20,7 @@ use reifydb_core::{
 	actors::pending::{PendingLayers, PendingWrite},
 	common::CommitVersion,
 	interface::{change::Change, store::MultiVersionRow},
-	key::any::AnyKey,
+	key::any::TaggedKey,
 };
 use reifydb_flow::{
 	error::FlowGraphError,
@@ -116,7 +116,7 @@ fn state_items(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	range: &EncodedKeyRange,
 	version: CommitVersion,
-) -> Vec<Result<MultiVersionRow<AnyKey>>> {
+) -> Vec<Result<MultiVersionRow<TaggedKey>>> {
 	state.iter()
 		.filter(|(key, _)| range.contains(key))
 		.map(|(key, bytes)| {
@@ -129,8 +129,8 @@ fn state_items(
 		.collect()
 }
 
-fn decoded(key: &EncodedKey) -> AnyKey {
-	AnyKey::decode(key).expect("a key routed to the multi store must decode")
+fn decoded(key: &EncodedKey) -> TaggedKey {
+	TaggedKey::decode(key).expect("a key routed to the multi store must decode")
 }
 
 fn ephemeral_storage_get(
@@ -165,7 +165,7 @@ fn ephemeral_storage_range<'a>(
 	range: EncodedKeyRange,
 	scope: RangeScope,
 	batch_size: usize,
-) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + 'a> {
+) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'a> {
 	if is_state_range(&range) {
 		let mut items = state_items(state, &range, version);
 		items.sort_by(|a, b| match (a, b) {
@@ -181,7 +181,7 @@ fn ephemeral_fetch_state_external(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	version: CommitVersion,
 	keys: Vec<EncodedKey>,
-	items: &mut Vec<MultiVersionRow<AnyKey>>,
+	items: &mut Vec<MultiVersionRow<TaggedKey>>,
 ) {
 	for key in keys {
 		if let Some(bytes) = state.get(&key) {
@@ -272,14 +272,14 @@ impl FlowTransaction for EphemeralTransaction {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		ephemeral_storage_range(&self.state, &self.query, self.version, range, scope, batch_size)
 	}
 
 	fn fetch_state_external(
 		&mut self,
 		keys: Vec<EncodedKey>,
-		items: &mut Vec<MultiVersionRow<AnyKey>>,
+		items: &mut Vec<MultiVersionRow<TaggedKey>>,
 	) -> Result<()> {
 		ephemeral_fetch_state_external(&self.state, self.version, keys, items);
 		Ok(())

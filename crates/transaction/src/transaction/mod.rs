@@ -15,8 +15,8 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	key::{
-		any::AnyKey,
-		bound::AnyKeyBoundRange,
+		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 	testing::{CapturedEvent, CapturedInvocation},
@@ -115,7 +115,7 @@ pub(super) fn collect_transaction_writes(pending: &PendingWrites) -> Vec<(Encode
 #[inline]
 pub(super) fn apply_pre_commit_writes(
 	multi: &mut MultiWriteTransaction,
-	pending_writes: &[(AnyKey, PendingWrite)],
+	pending_writes: &[(TaggedKey, PendingWrite)],
 ) -> Result<()> {
 	for (key, write) in pending_writes {
 		match write {
@@ -325,7 +325,7 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn get<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<AnyKey>>> {
+	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		match self {
 			Self::Command(txn) => txn.get(key),
 			Self::Admin(txn) => txn.get(key),
@@ -334,7 +334,10 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn get_committed<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<AnyKey>>> {
+	pub fn get_committed<K: Into<TaggedKey> + Clone>(
+		&mut self,
+		key: &K,
+	) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		match self {
 			Self::Command(txn) => txn.get_committed(key),
 			Self::Admin(txn) => txn.get_committed(key),
@@ -343,7 +346,7 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn contains<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<bool> {
+	pub fn contains<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
 		match self {
 			Self::Command(txn) => txn.contains(key),
 			Self::Admin(txn) => txn.contains(key),
@@ -352,7 +355,7 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		match self {
 			Self::Command(txn) => txn.prefix(prefix),
 			Self::Admin(txn) => txn.prefix(prefix),
@@ -361,7 +364,7 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		match self {
 			Self::Command(txn) => txn.prefix_rev(prefix),
 			Self::Admin(txn) => txn.prefix_rev(prefix),
@@ -381,10 +384,10 @@ impl<'a> Transaction<'a> {
 
 	pub fn range(
 		&mut self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		match self {
 			Transaction::Command(txn) => txn.range(range, scope, batch_size),
 			Transaction::Admin(txn) => txn.range(range, scope, batch_size),
@@ -430,10 +433,10 @@ impl<'a> Transaction<'a> {
 
 	pub fn range_rev(
 		&mut self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		match self {
 			Transaction::Command(txn) => txn.range_rev(range, scope, batch_size),
 			Transaction::Admin(txn) => txn.range_rev(range, scope, batch_size),
@@ -599,19 +602,19 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn set<K: Into<AnyKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
+	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
 		Write::set(self.write_ops(), &key.clone().into(), bytes.into())
 	}
 
-	pub fn remove_with_pre<K: Into<AnyKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
+	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
 		Write::remove_with_pre(self.write_ops(), &key.clone().into(), pre)
 	}
 
-	pub fn remove<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<()> {
+	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		Write::remove(self.write_ops(), &key.clone().into())
 	}
 
-	pub fn mark_preexisting<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<()> {
+	pub fn mark_preexisting<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		Write::mark_preexisting(self.write_ops(), &key.clone().into())
 	}
 

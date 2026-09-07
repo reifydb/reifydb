@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::key::{
-	any::AnyKey,
+	any::TaggedKey,
 	identity::{GrantedRoleKey, IdentityAttributeValueKey, IdentityKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
@@ -18,7 +18,7 @@ impl CatalogStore {
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;
-				if let AnyKey::GrantedRole(key) = entry.key {
+				if let TaggedKey::GrantedRole(key) = entry.key {
 					keys_to_remove.push(key);
 				}
 			}
@@ -34,7 +34,7 @@ impl CatalogStore {
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;
-				if let AnyKey::IdentityAttributeValue(key) = entry.key {
+				if let TaggedKey::IdentityAttributeValue(key) = entry.key {
 					keys_to_remove.push(key);
 				}
 			}

@@ -11,8 +11,8 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	key::{
-		any::AnyKey,
-		bound::AnyKeyBoundRange,
+		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 };
@@ -63,7 +63,7 @@ impl MultiReadTransaction {
 		self.read_as_of_version_exclusive(CommitVersion(version.0 + 1))
 	}
 
-	pub fn get<K: Into<AnyKey> + Clone>(&self, key: &K) -> Result<Option<TransactionValue>> {
+	pub fn get<K: Into<TaggedKey> + Clone>(&self, key: &K) -> Result<Option<TransactionValue>> {
 		let version = self.tm.version();
 		Ok(self.engine.get(&key.clone().into(), version)?.map(Into::into))
 	}
@@ -74,12 +74,12 @@ impl MultiReadTransaction {
 		self.engine.store.get_many(keys, version)
 	}
 
-	pub fn contains<K: Into<AnyKey> + Clone>(&self, key: &K) -> Result<bool> {
+	pub fn contains<K: Into<TaggedKey> + Clone>(&self, key: &K) -> Result<bool> {
 		let version = self.tm.version();
 		self.engine.contains_key(&key.clone().into(), version)
 	}
 
-	pub fn scan(&self) -> Result<MultiVersionBatch<AnyKey>> {
+	pub fn scan(&self) -> Result<MultiVersionBatch<TaggedKey>> {
 		let items: Vec<_> = self
 			.range_encoded(EncodedKeyRange::all(), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>>>()?;
@@ -89,7 +89,7 @@ impl MultiReadTransaction {
 		})
 	}
 
-	pub fn prefix(&self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
+	pub fn prefix(&self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		let items: Vec<_> = self
 			.range_encoded(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>>>()?;
@@ -99,7 +99,7 @@ impl MultiReadTransaction {
 		})
 	}
 
-	pub fn prefix_rev(&self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
+	pub fn prefix_rev(&self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		let items: Vec<_> = self
 			.range_rev_encoded(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>>>()?;
@@ -114,7 +114,7 @@ impl MultiReadTransaction {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range(range, multi_scope, batch_size))
 	}
@@ -124,17 +124,17 @@ impl MultiReadTransaction {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range_rev(range, multi_scope, batch_size))
 	}
 
 	pub fn range(
 		&self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range(range.encode(), multi_scope, batch_size))
 	}
@@ -165,10 +165,10 @@ impl MultiReadTransaction {
 
 	pub fn range_rev(
 		&self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range_rev(range.encode(), multi_scope, batch_size))
 	}

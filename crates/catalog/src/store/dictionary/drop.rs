@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::store::SingleVersionRange,
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		catalog::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
 		namespace::NamespaceDictionaryKey,
 	},
@@ -55,7 +55,7 @@ fn remove_dictionary_entries(single: &SingleTransaction, dictionary: DictionaryI
 			}
 			let mut tx = single.begin_command_ranged([&lock_key], full_scans.to_vec())?;
 			for item in &batch.items {
-				let Some(key) = AnyKey::decode(&item.key) else {
+				let Some(key) = TaggedKey::decode(&item.key) else {
 					return_internal_error!("scan yielded a key no typed key decodes");
 				};
 				tx.remove(&key)?;
@@ -69,10 +69,7 @@ fn remove_dictionary_entries(single: &SingleTransaction, dictionary: DictionaryI
 #[cfg(test)]
 pub mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
-	use reifydb_core::key::{
-		EncodableKey,
-		catalog::{DictionaryEntryIndexKey, DictionaryEntryKey},
-	};
+	use reifydb_core::key::catalog::{DictionaryEntryIndexKey, DictionaryEntryKey};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
@@ -143,8 +140,8 @@ pub mod tests {
 		entry_value.extend_from_slice(&dummy_value);
 		let entry = DictionaryEntryKey::new(dict_def.id, dummy_hash);
 		let index = DictionaryEntryIndexKey::new(dict_def.id, next_id);
-		let entry_key = EncodableKey::encode(&entry);
-		let index_key = EncodableKey::encode(&index);
+		let entry_key = entry.encode();
+		let index_key = index.encode();
 		txn.single
 			.with_command([&entry_key, &index_key], |tx| {
 				tx.set(&entry, EncodedBytes(CowVec::new(entry_value.clone())))?;

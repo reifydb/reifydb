@@ -26,10 +26,10 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionContains, MultiVersionGet, MultiVersionRow},
 	},
 	key::{
-		any::AnyKey,
-		bound::{AnyKeyBound, AnyKeyBoundRange, object_fields},
-		kind::KeyKind,
+		any::TaggedKey,
+		bound::{TaggedKeyBound, TaggedKeyBoundRange, object_fields},
 		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey, StorageRowKey},
+		tag::KeyTag,
 	},
 };
 use reifydb_value::{
@@ -63,7 +63,7 @@ pub struct WriteSavepoint {
 	pub(crate) duplicates: Vec<DeltaEntry>,
 	pub(crate) delta_log_len: usize,
 	pub(crate) conflicts: ConflictManager,
-	pub(crate) preexisting_keys: BTreeSet<AnyKey>,
+	pub(crate) preexisting_keys: BTreeSet<TaggedKey>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -88,7 +88,7 @@ pub struct MultiWriteTransaction {
 
 	pub(crate) delta_log: Vec<DeltaEntry>,
 
-	pub(crate) preexisting_keys: BTreeSet<AnyKey>,
+	pub(crate) preexisting_keys: BTreeSet<TaggedKey>,
 
 	pub(crate) lifecycle: Lifecycle,
 
@@ -174,11 +174,11 @@ impl MultiWriteTransaction {
 		&self.conflicts
 	}
 
-	pub fn mark_preexisting<K: Into<AnyKey> + Clone>(&mut self, key: &K) {
+	pub fn mark_preexisting<K: Into<TaggedKey> + Clone>(&mut self, key: &K) {
 		self.preexisting_keys.insert(key.clone().into());
 	}
 
-	pub fn preexisting_keys(&self) -> &BTreeSet<AnyKey> {
+	pub fn preexisting_keys(&self) -> &BTreeSet<TaggedKey> {
 		&self.preexisting_keys
 	}
 }
@@ -216,11 +216,11 @@ impl MultiWriteTransaction {
 		(Marker::new(&mut self.conflicts), &self.pending_writes)
 	}
 
-	pub fn mark_read(&mut self, k: &AnyKey) {
+	pub fn mark_read(&mut self, k: &TaggedKey) {
 		self.conflicts.mark_read(k);
 	}
 
-	pub fn mark_write(&mut self, k: &AnyKey) {
+	pub fn mark_write(&mut self, k: &TaggedKey) {
 		self.conflicts.mark_write(k);
 	}
 
@@ -238,7 +238,7 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		key = ?key
 	))]
-	fn set_any(&mut self, key: AnyKey, bytes: EncodedBytes) -> Result<()> {
+	fn set_any(&mut self, key: TaggedKey, bytes: EncodedBytes) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -255,7 +255,7 @@ impl MultiWriteTransaction {
 		)
 	}
 
-	pub fn set<K: Into<AnyKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
+	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
 		self.set_any(key.clone().into(), bytes.into())
 	}
 
@@ -264,7 +264,7 @@ impl MultiWriteTransaction {
 		key = ?key,
 		value_len = pre.len()
 	))]
-	fn remove_with_pre_any(&mut self, key: AnyKey, pre: EncodedBytes) -> Result<()> {
+	fn remove_with_pre_any(&mut self, key: TaggedKey, pre: EncodedBytes) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -278,7 +278,7 @@ impl MultiWriteTransaction {
 		)
 	}
 
-	pub fn remove_with_pre<K: Into<AnyKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
+	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
 		self.remove_with_pre_any(key.clone().into(), pre)
 	}
 
@@ -286,7 +286,7 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		key = ?key
 	))]
-	fn remove_any(&mut self, key: AnyKey) -> Result<()> {
+	fn remove_any(&mut self, key: TaggedKey) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -309,7 +309,7 @@ impl MultiWriteTransaction {
 		)
 	}
 
-	pub fn remove<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<()> {
+	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		self.remove_any(key.clone().into())
 	}
 
@@ -317,7 +317,7 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		key = ?key
 	))]
-	fn remove_unobserved_any(&mut self, key: AnyKey) -> Result<()> {
+	fn remove_unobserved_any(&mut self, key: TaggedKey) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -340,7 +340,7 @@ impl MultiWriteTransaction {
 		)
 	}
 
-	pub fn remove_unobserved<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<()> {
+	pub fn remove_unobserved<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		self.remove_unobserved_any(key.clone().into())
 	}
 
@@ -349,7 +349,7 @@ impl MultiWriteTransaction {
 		key = ?key,
 		value_len = pre.len()
 	))]
-	fn remove_unobserved_with_pre_any(&mut self, key: AnyKey, pre: EncodedBytes) -> Result<()> {
+	fn remove_unobserved_with_pre_any(&mut self, key: TaggedKey, pre: EncodedBytes) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -363,7 +363,7 @@ impl MultiWriteTransaction {
 		)
 	}
 
-	pub fn remove_unobserved_with_pre<K: Into<AnyKey> + Clone>(
+	pub fn remove_unobserved_with_pre<K: Into<TaggedKey> + Clone>(
 		&mut self,
 		key: &K,
 		pre: EncodedBytes,
@@ -375,7 +375,7 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		key = ?key
 	))]
-	fn remove_silent_any(&mut self, key: AnyKey) -> Result<()> {
+	fn remove_silent_any(&mut self, key: TaggedKey) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -389,7 +389,7 @@ impl MultiWriteTransaction {
 		)
 	}
 
-	pub fn remove_silent<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<()> {
+	pub fn remove_silent<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		self.remove_silent_any(key.clone().into())
 	}
 
@@ -409,7 +409,7 @@ impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::contains_key", level = "trace", skip(self, key), fields(
 		txn_id = %self.id
 	))]
-	pub fn contains<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<bool> {
+	pub fn contains<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -433,7 +433,7 @@ impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::get", level = "trace", skip(self, key), fields(
 		txn_id = %self.id
 	))]
-	pub fn get<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<Option<TransactionValue>> {
+	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<TransactionValue>> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -460,7 +460,7 @@ impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::get_committed", level = "trace", skip(self, key), fields(
 		txn_id = %self.id
 	))]
-	pub fn get_committed<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<Option<TransactionValue>> {
+	pub fn get_committed<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<TransactionValue>> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -480,7 +480,7 @@ impl MultiWriteTransaction {
 	fn modify(&mut self, encoded: EncodedKey, pending: DeltaEntry) -> Result<()> {
 		reifydb_assertions! {
 			assert!(
-				!matches!(pending.key(), AnyKey::OperatorState(_)),
+				!matches!(pending.key(), TaggedKey::OperatorState(_)),
 				"operator state must reach the operator store through the committer split, never the \
 				 multi store: {}",
 				hex_display(encoded.as_ref())
@@ -702,7 +702,7 @@ impl MultiWriteTransaction {
 }
 
 impl MultiWriteTransaction {
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		let items: Vec<_> = self
 			.range_encoded(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>>>()?;
@@ -712,7 +712,7 @@ impl MultiWriteTransaction {
 		})
 	}
 
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		let items: Vec<_> = self
 			.range_encoded_rev(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>>>()?;
@@ -727,13 +727,13 @@ impl MultiWriteTransaction {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
 		marker.mark_range_encoded(range.clone());
 
-		let pending: Vec<(AnyKey, DeltaEntry)> = pw
+		let pending: Vec<(TaggedKey, DeltaEntry)> = pw
 			.iter()
 			.filter(|(k, _)| range.contains(&k.encode()))
 			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
@@ -749,13 +749,13 @@ impl MultiWriteTransaction {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
 		marker.mark_range_encoded(range.clone());
 
-		let mut pending: Vec<(AnyKey, DeltaEntry)> = pw
+		let mut pending: Vec<(TaggedKey, DeltaEntry)> = pw
 			.iter()
 			.filter(|(k, _)| range.contains(&k.encode()))
 			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
@@ -769,17 +769,17 @@ impl MultiWriteTransaction {
 
 	pub fn range(
 		&mut self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
 		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(AnyKey, DeltaEntry)> = pw
+		let pending: Vec<(TaggedKey, DeltaEntry)> = pw
 			.range((range.start.as_ref(), range.end.as_ref()))
 			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
 			.collect();
@@ -806,7 +806,7 @@ impl MultiWriteTransaction {
 		let pending: Vec<(StorageRowKey, DeltaEntry)> = pw
 			.iter()
 			.filter_map(|(k, v)| {
-				let AnyKeyBound::Key(AnyKey::Row(decoded)) = k else {
+				let TaggedKeyBound::Key(TaggedKey::Row(decoded)) = k else {
 					return None;
 				};
 				(decoded.storage == storage && range.contains(k))
@@ -836,7 +836,7 @@ impl MultiWriteTransaction {
 		let pending: Vec<(StoragePartitionedRowKey, DeltaEntry)> = pw
 			.iter()
 			.filter_map(|(k, v)| {
-				let AnyKeyBound::Key(AnyKey::PartitionedRow(decoded)) = k else {
+				let TaggedKeyBound::Key(TaggedKey::PartitionedRow(decoded)) = k else {
 					return None;
 				};
 				(decoded.storage == storage && range.contains(k)).then(|| {
@@ -853,17 +853,17 @@ impl MultiWriteTransaction {
 
 	pub fn range_persistence(
 		&mut self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
 		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(AnyKey, DeltaEntry)> = pw
+		let pending: Vec<(TaggedKey, DeltaEntry)> = pw
 			.range((range.start.as_ref(), range.end.as_ref()))
 			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
 			.collect();
@@ -875,17 +875,17 @@ impl MultiWriteTransaction {
 
 	pub fn range_rev(
 		&mut self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
 		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(AnyKey, DeltaEntry)> = pw
+		let pending: Vec<(TaggedKey, DeltaEntry)> = pw
 			.range((range.start.as_ref(), range.end.as_ref()))
 			.rev()
 			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
@@ -898,17 +898,17 @@ impl MultiWriteTransaction {
 
 	pub fn range_rev_persistence(
 		&mut self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
 		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(AnyKey, DeltaEntry)> = pw
+		let pending: Vec<(TaggedKey, DeltaEntry)> = pw
 			.range((range.start.as_ref(), range.end.as_ref()))
 			.rev()
 			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
@@ -1058,7 +1058,7 @@ mod tests {
 				let key = RowKey::new(storage(), *row);
 				let encoded = RowKey::encoded(storage(), *row);
 				assert_eq!(
-					typed.contains(&AnyKeyBound::Key(AnyKey::Row(key))),
+					typed.contains(&TaggedKeyBound::Key(TaggedKey::Row(key))),
 					bytes.contains(&encoded),
 					"row {row:?} in {start:?}..{end:?}"
 				);
@@ -1161,19 +1161,19 @@ fn row_bounds_to_typed(
 	storage: StorageId,
 	start: &Bound<StorageRowKey>,
 	end: &Bound<StorageRowKey>,
-) -> AnyKeyBoundRange {
-	let bound = |k: &StorageRowKey| AnyKeyBound::Key(AnyKey::Row(RowKey::new(storage, k.row())));
+) -> TaggedKeyBoundRange {
+	let bound = |k: &StorageRowKey| TaggedKeyBound::Key(TaggedKey::Row(RowKey::new(storage, k.row())));
 	let lower = match start {
 		Bound::Included(k) => Bound::Included(bound(k)),
 		Bound::Excluded(k) => Bound::Excluded(bound(k)),
-		Bound::Unbounded => Bound::Included(storage_span_start(KeyKind::Row, storage)),
+		Bound::Unbounded => Bound::Included(storage_span_start(KeyTag::Row, storage)),
 	};
 	let upper = match end {
 		Bound::Included(k) => Bound::Included(bound(k)),
 		Bound::Excluded(k) => Bound::Excluded(bound(k)),
-		Bound::Unbounded => Bound::Included(storage_span_end(KeyKind::Row, storage)),
+		Bound::Unbounded => Bound::Included(storage_span_end(KeyTag::Row, storage)),
 	};
-	AnyKeyBoundRange {
+	TaggedKeyBoundRange {
 		start: lower,
 		end: upper,
 	}
@@ -1183,30 +1183,30 @@ fn partitioned_row_bounds_to_typed(
 	storage: StorageId,
 	start: &Bound<StoragePartitionedRowKey>,
 	end: &Bound<StoragePartitionedRowKey>,
-) -> AnyKeyBoundRange {
+) -> TaggedKeyBoundRange {
 	let bound = |k: &StoragePartitionedRowKey| {
-		AnyKeyBound::Key(AnyKey::PartitionedRow(PartitionedRowKey::new(storage, k.partition(), k.row())))
+		TaggedKeyBound::Key(TaggedKey::PartitionedRow(PartitionedRowKey::new(storage, k.partition(), k.row())))
 	};
 	let lower = match start {
 		Bound::Included(k) => Bound::Included(bound(k)),
 		Bound::Excluded(k) => Bound::Excluded(bound(k)),
-		Bound::Unbounded => Bound::Included(storage_span_start(KeyKind::PartitionedRow, storage)),
+		Bound::Unbounded => Bound::Included(storage_span_start(KeyTag::PartitionedRow, storage)),
 	};
 	let upper = match end {
 		Bound::Included(k) => Bound::Included(bound(k)),
 		Bound::Excluded(k) => Bound::Excluded(bound(k)),
-		Bound::Unbounded => Bound::Included(storage_span_end(KeyKind::PartitionedRow, storage)),
+		Bound::Unbounded => Bound::Included(storage_span_end(KeyTag::PartitionedRow, storage)),
 	};
-	AnyKeyBoundRange {
+	TaggedKeyBoundRange {
 		start: lower,
 		end: upper,
 	}
 }
 
-fn storage_span_start(kind: KeyKind, storage: StorageId) -> AnyKeyBound {
-	AnyKeyBound::prefix(kind, object_fields(ObjectId::from(storage)))
+fn storage_span_start(kind: KeyTag, storage: StorageId) -> TaggedKeyBound {
+	TaggedKeyBound::prefix(kind, object_fields(ObjectId::from(storage)))
 }
 
-fn storage_span_end(kind: KeyKind, storage: StorageId) -> AnyKeyBound {
-	AnyKeyBound::prefix(kind, object_fields(ObjectId::from(storage).prev()))
+fn storage_span_end(kind: KeyTag, storage: StorageId) -> TaggedKeyBound {
+	TaggedKeyBound::prefix(kind, object_fields(ObjectId::from(storage).prev()))
 }

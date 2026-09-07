@@ -10,14 +10,14 @@ use reifydb_codec::key::{
 	encoded::{EncodedKey, EncodedKeyBuilder, EncodedKeyRange},
 	serializer::KeySerializer,
 };
-use reifydb_macro::EncodableKey;
+use reifydb_macro::KeyCodec;
 use reifydb_value::{
 	Result,
 	value::{dictionary::DictionaryId, sumtype::SumTypeId},
 };
 use smallvec::{SmallVec, smallvec};
 
-use super::{EncodableKey, EncodableKeyRange, KeyKind};
+use super::{KeyRangeCodec, KeyTag};
 use crate::{
 	interface::catalog::{
 		id::{
@@ -28,7 +28,7 @@ use crate::{
 	},
 	key::{
 		any::{Field, KeyFields, RawEncoding, Width, index_tag},
-		bound::{AnyKeyBound, AnyKeyBoundRange, object_fields},
+		bound::{TaggedKeyBound, TaggedKeyBoundRange, object_fields},
 	},
 	return_internal_error,
 	value::index::{encoded::EncodedIndexKey, range::EncodedIndexKeyRange},
@@ -405,8 +405,8 @@ mod moved_catalog_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Dictionary)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Dictionary)]
 pub struct DictionaryKey {
 	pub dictionary: DictionaryId,
 }
@@ -419,16 +419,16 @@ impl DictionaryKey {
 	}
 
 	pub fn encoded(dictionary: impl Into<DictionaryId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(dictionary.into()))
+		Self::new(dictionary.into()).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = DictionaryEntry)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = DictionaryEntry)]
 pub struct DictionaryEntryKey {
 	pub dictionary: DictionaryId,
 	pub hash: [u8; 16],
@@ -443,11 +443,11 @@ impl DictionaryEntryKey {
 	}
 
 	pub fn encoded(dictionary: impl Into<DictionaryId>, hash: [u8; 16]) -> EncodedKey {
-		EncodableKey::encode(&Self::new(dictionary.into(), hash))
+		Self::new(dictionary.into(), hash).encode()
 	}
 
-	pub fn full_scan(dictionary: DictionaryId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, dictionary.0 as u128)])
+	pub fn full_scan(dictionary: DictionaryId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, dictionary.0 as u128)])
 	}
 }
 
@@ -466,28 +466,28 @@ impl DictionaryEntryIndexKey {
 	}
 
 	pub fn encoded(dictionary: impl Into<DictionaryId>, id: u128) -> EncodedKey {
-		EncodableKey::encode(&Self::new(dictionary.into(), id))
+		Self::new(dictionary.into(), id).encode()
 	}
 
-	pub fn full_scan(dictionary: DictionaryId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, dictionary.0 as u128)])
+	pub fn full_scan(dictionary: DictionaryId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, dictionary.0 as u128)])
 	}
 }
 
-impl EncodableKey for DictionaryEntryIndexKey {
-	const KIND: KeyKind = KeyKind::DictionaryEntryIndex;
+impl DictionaryEntryIndexKey {
+	pub const TAG: KeyTag = KeyTag::DictionaryEntryIndex;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(25);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.dictionary).extend_u128_varint(self.id);
+		serializer.extend_u8(Self::TAG as u8).extend_u64(self.dictionary).extend_u128_varint(self.id);
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 
@@ -526,12 +526,12 @@ impl DictionaryEntryIndexKeyRange {
 	}
 }
 
-impl EncodableKeyRange for DictionaryEntryIndexKeyRange {
-	const KIND: KeyKind = KeyKind::DictionaryEntryIndex;
+impl KeyRangeCodec for DictionaryEntryIndexKeyRange {
+	const TAG: KeyTag = KeyTag::DictionaryEntryIndex;
 
 	fn start(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(25);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.dictionary);
+		serializer.extend_u8(Self::TAG as u8).extend_u64(self.dictionary);
 		if let Some(id) = self.start_id {
 			serializer.extend_u128_varint(id);
 		}
@@ -541,11 +541,11 @@ impl EncodableKeyRange for DictionaryEntryIndexKeyRange {
 	fn end(&self) -> Option<EncodedKey> {
 		if let Some(id) = self.end_id {
 			let mut serializer = KeySerializer::with_capacity(25);
-			serializer.extend_u8(Self::KIND as u8).extend_u64(self.dictionary).extend_u128_varint(id - 1);
+			serializer.extend_u8(Self::TAG as u8).extend_u64(self.dictionary).extend_u128_varint(id - 1);
 			Some(serializer.to_encoded_key())
 		} else {
 			let mut serializer = KeySerializer::with_capacity(9);
-			serializer.extend_u8(Self::KIND as u8).extend_u64(*self.dictionary - 1);
+			serializer.extend_u8(Self::TAG as u8).extend_u64(*self.dictionary - 1);
 			Some(serializer.to_encoded_key())
 		}
 	}
@@ -566,8 +566,8 @@ pub mod dictionary_key_tests {
 		let key = DictionaryKey {
 			dictionary: DictionaryId(0x1234),
 		};
-		let encoded = EncodableKey::encode(&key);
-		let decoded = <DictionaryKey as EncodableKey>::decode(&encoded).unwrap();
+		let encoded = key.encode();
+		let decoded = DictionaryKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.dictionary, key.dictionary);
 	}
 
@@ -580,8 +580,8 @@ pub mod dictionary_key_tests {
 				0x0f, 0x10,
 			],
 		};
-		let encoded = EncodableKey::encode(&key);
-		let decoded = <DictionaryEntryKey as EncodableKey>::decode(&encoded).unwrap();
+		let encoded = key.encode();
+		let decoded = DictionaryEntryKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.dictionary, key.dictionary);
 		assert_eq!(decoded.hash, key.hash);
 	}
@@ -594,9 +594,9 @@ pub mod dictionary_key_tests {
 			dictionary: DictionaryId(42),
 			hash: [0xff; 16],
 		};
-		let encoded = EncodableKey::encode(&key);
+		let encoded = key.encode();
 		assert_eq!(encoded.len(), 1 + 8 + 16);
-		assert_eq!(<DictionaryEntryKey as EncodableKey>::decode(&encoded).unwrap(), key);
+		assert_eq!(DictionaryEntryKey::decode(&encoded).unwrap(), key);
 	}
 
 	#[test]
@@ -605,8 +605,8 @@ pub mod dictionary_key_tests {
 			dictionary: DictionaryId(99),
 			id: 12345,
 		};
-		let encoded = EncodableKey::encode(&key);
-		let decoded = <DictionaryEntryIndexKey as EncodableKey>::decode(&encoded).unwrap();
+		let encoded = key.encode();
+		let decoded = DictionaryEntryIndexKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.dictionary, key.dictionary);
 		assert_eq!(decoded.id, key.id);
 	}
@@ -642,8 +642,8 @@ pub mod dictionary_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Index)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Index)]
 pub struct IndexKey {
 	pub object: ObjectId,
 	pub index: IndexId,
@@ -658,8 +658,8 @@ impl ObjectIndexKeyRange {
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 
@@ -671,18 +671,18 @@ impl ObjectIndexKeyRange {
 	}
 }
 
-impl EncodableKeyRange for ObjectIndexKeyRange {
-	const KIND: KeyKind = KeyKind::Index;
+impl KeyRangeCodec for ObjectIndexKeyRange {
+	const TAG: KeyTag = KeyTag::Index;
 
 	fn start(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object);
+		serializer.extend_u8(Self::TAG as u8).extend_object_id(self.object);
 		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object.prev());
+		serializer.extend_u8(Self::TAG as u8).extend_object_id(self.object.prev());
 		Some(serializer.to_encoded_key())
 	}
 
@@ -713,24 +713,22 @@ impl IndexKey {
 	}
 
 	pub fn encoded(object: impl Into<ObjectId>, index: impl Into<IndexId>) -> EncodedKey {
-		EncodableKey::encode(&Self {
+		Self {
 			object: object.into(),
 			index: index.into(),
-		})
+		}
+		.encode()
 	}
 
-	pub fn full_scan(object: impl Into<ObjectId>) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, object_fields(object.into()))
+	pub fn full_scan(object: impl Into<ObjectId>) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(object.into()))
 	}
 }
 
 #[cfg(test)]
 pub mod index_key_tests {
 	use super::IndexKey;
-	use crate::{
-		interface::catalog::{id::IndexId, object::ObjectId},
-		key::EncodableKey,
-	};
+	use crate::interface::catalog::{id::IndexId, object::ObjectId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -807,8 +805,8 @@ impl IndexEntryKeyRange {
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 
@@ -822,18 +820,18 @@ impl IndexEntryKeyRange {
 	}
 }
 
-impl EncodableKeyRange for IndexEntryKeyRange {
-	const KIND: KeyKind = KeyKind::IndexEntry;
+impl KeyRangeCodec for IndexEntryKeyRange {
+	const TAG: KeyTag = KeyTag::IndexEntry;
 
 	fn start(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(19);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object).extend_index_id(self.index);
+		serializer.extend_u8(Self::TAG as u8).extend_object_id(self.object).extend_index_id(self.index);
 		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(19);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.object).extend_index_id(self.index.prev());
+		serializer.extend_u8(Self::TAG as u8).extend_object_id(self.object).extend_index_id(self.index.prev());
 		Some(serializer.to_encoded_key())
 	}
 
@@ -855,24 +853,24 @@ impl EncodableKeyRange for IndexEntryKeyRange {
 	}
 }
 
-impl EncodableKey for IndexEntryKey {
-	const KIND: KeyKind = KeyKind::IndexEntry;
+impl IndexEntryKey {
+	pub const TAG: KeyTag = KeyTag::IndexEntry;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(20 + self.key.len());
 		serializer
-			.extend_u8(Self::KIND as u8)
+			.extend_u8(Self::TAG as u8)
 			.extend_object_id(self.object)
 			.extend_index_id(self.index)
 			.extend_raw(self.key.as_slice());
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 
@@ -890,24 +888,24 @@ impl EncodableKey for IndexEntryKey {
 }
 
 impl IndexEntryKey {
-	pub fn index_range(object: impl Into<ObjectId>, index: IndexId) -> AnyKeyBoundRange {
+	pub fn index_range(object: impl Into<ObjectId>, index: IndexId) -> TaggedKeyBoundRange {
 		let object = object.into();
-		AnyKeyBoundRange::prefix(
-			<IndexEntryKeyRange as EncodableKeyRange>::KIND,
+		TaggedKeyBoundRange::prefix(
+			<IndexEntryKeyRange as KeyRangeCodec>::TAG,
 			object_fields(object)
 				.into_iter()
 				.chain([Field::UAsc(Width::U8, 1), Field::UDesc(Width::U64, index.as_u64() as u128)]),
 		)
 	}
 
-	pub fn object_range(object: impl Into<ObjectId>) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(KeyKind::IndexEntry, object_fields(object.into()))
+	pub fn object_range(object: impl Into<ObjectId>) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(KeyTag::IndexEntry, object_fields(object.into()))
 	}
 
-	pub fn key_prefix_range(object: impl Into<ObjectId>, index: IndexId, key_prefix: &[u8]) -> AnyKeyBoundRange {
+	pub fn key_prefix_range(object: impl Into<ObjectId>, index: IndexId, key_prefix: &[u8]) -> TaggedKeyBoundRange {
 		let object = object.into();
-		AnyKeyBoundRange::prefix(
-			KeyKind::IndexEntry,
+		TaggedKeyBoundRange::prefix(
+			KeyTag::IndexEntry,
 			object_fields(object).into_iter().chain([
 				Field::UAsc(Width::U8, 1),
 				Field::UDesc(Width::U64, index.as_u64() as u128),
@@ -920,7 +918,7 @@ impl IndexEntryKey {
 		object: impl Into<ObjectId>,
 		index: IndexId,
 		index_range: EncodedIndexKeyRange,
-	) -> AnyKeyBoundRange {
+	) -> TaggedKeyBoundRange {
 		let object = object.into();
 		let head = || {
 			object_fields(object)
@@ -928,8 +926,8 @@ impl IndexEntryKey {
 				.chain([Field::UAsc(Width::U8, 1), Field::UDesc(Width::U64, index.as_u64() as u128)])
 		};
 		let at = |key: &EncodedIndexKey| {
-			AnyKeyBound::prefix(
-				KeyKind::IndexEntry,
+			TaggedKeyBound::prefix(
+				KeyTag::IndexEntry,
 				head().chain([Field::RawAsc(
 					RawEncoding::Verbatim,
 					Cow::Owned(key.as_slice().to_vec()),
@@ -940,16 +938,16 @@ impl IndexEntryKey {
 		let start = match &index_range.start {
 			Bound::Included(key) => Bound::Included(at(key)),
 			Bound::Excluded(key) => Bound::Excluded(at(key)),
-			Bound::Unbounded => Bound::Included(AnyKeyBound::prefix(KeyKind::IndexEntry, head())),
+			Bound::Unbounded => Bound::Included(TaggedKeyBound::prefix(KeyTag::IndexEntry, head())),
 		};
 
 		let end = match &index_range.end {
 			Bound::Included(key) => Bound::Included(at(key)),
 			Bound::Excluded(key) => Bound::Excluded(at(key)),
-			Bound::Unbounded => Bound::Excluded(AnyKeyBound::prefix_end(KeyKind::IndexEntry, head())),
+			Bound::Unbounded => Bound::Excluded(TaggedKeyBound::prefix_end(KeyTag::IndexEntry, head())),
 		};
 
-		AnyKeyBoundRange {
+		TaggedKeyBoundRange {
 			start,
 			end,
 		}
@@ -1114,28 +1112,28 @@ impl SumTypeKey {
 	}
 
 	pub fn encoded(sumtype: impl Into<SumTypeId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(sumtype.into()))
+		Self::new(sumtype.into()).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
-impl EncodableKey for SumTypeKey {
-	const KIND: KeyKind = KeyKind::SumType;
+impl SumTypeKey {
+	pub const TAG: KeyTag = KeyTag::SumType;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<SumTypeKey as EncodableKey>::KIND as u8).extend_u64(self.sumtype);
+		serializer.extend_u8(SumTypeKey::TAG as u8).extend_u64(self.sumtype);
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <SumTypeKey as EncodableKey>::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != SumTypeKey::TAG {
 			return None;
 		}
 
@@ -1151,7 +1149,7 @@ impl EncodableKey for SumTypeKey {
 mod sum_type_key_tests {
 	use reifydb_value::value::sumtype::SumTypeId;
 
-	use super::{EncodableKey, SumTypeKey};
+	use super::SumTypeKey;
 
 	#[test]
 	fn test_encode_decode() {
@@ -1169,20 +1167,20 @@ pub struct ViewKey {
 	pub view: ViewId,
 }
 
-impl EncodableKey for ViewKey {
-	const KIND: KeyKind = KeyKind::View;
+impl ViewKey {
+	pub const TAG: KeyTag = KeyTag::View;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<ViewKey as EncodableKey>::KIND as u8).extend_u64(self.view);
+		serializer.extend_u8(ViewKey::TAG as u8).extend_u64(self.view);
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <ViewKey as EncodableKey>::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != ViewKey::TAG {
 			return None;
 		}
 
@@ -1202,17 +1200,17 @@ impl ViewKey {
 	}
 
 	pub fn encoded(view: impl Into<ViewId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(view))
+		Self::new(view).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 pub mod view_key_tests {
-	use super::{EncodableKey, ViewKey};
+	use super::ViewKey;
 	use crate::interface::catalog::id::ViewId;
 
 	#[test]
@@ -1229,8 +1227,8 @@ pub mod view_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Table)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Table)]
 pub struct TableKey {
 	pub table: TableId,
 }
@@ -1243,18 +1241,18 @@ impl TableKey {
 	}
 
 	pub fn encoded(table: impl Into<TableId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(table))
+		Self::new(table).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 pub mod table_key_tests {
 	use super::TableKey;
-	use crate::{interface::catalog::id::TableId, key::EncodableKey};
+	use crate::interface::catalog::id::TableId;
 
 	#[test]
 	fn test_encode_decode() {
@@ -1290,20 +1288,20 @@ pub struct SourceKey {
 	pub source: SourceId,
 }
 
-impl EncodableKey for SourceKey {
-	const KIND: KeyKind = KeyKind::Source;
+impl SourceKey {
+	pub const TAG: KeyTag = KeyTag::Source;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<SourceKey as EncodableKey>::KIND as u8).extend_u64(self.source);
+		serializer.extend_u8(SourceKey::TAG as u8).extend_u64(self.source);
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <SourceKey as EncodableKey>::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != SourceKey::TAG {
 			return None;
 		}
 
@@ -1323,17 +1321,17 @@ impl SourceKey {
 	}
 
 	pub fn encoded(source: impl Into<SourceId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(source))
+		Self::new(source).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 pub mod source_key_tests {
-	use super::{EncodableKey, SourceKey};
+	use super::SourceKey;
 	use crate::interface::catalog::id::SourceId;
 
 	#[test]
@@ -1353,20 +1351,20 @@ pub struct SinkKey {
 	pub sink: SinkId,
 }
 
-impl EncodableKey for SinkKey {
-	const KIND: KeyKind = KeyKind::Sink;
+impl SinkKey {
+	pub const TAG: KeyTag = KeyTag::Sink;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<SinkKey as EncodableKey>::KIND as u8).extend_u64(self.sink);
+		serializer.extend_u8(SinkKey::TAG as u8).extend_u64(self.sink);
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <SinkKey as EncodableKey>::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != SinkKey::TAG {
 			return None;
 		}
 
@@ -1386,17 +1384,17 @@ impl SinkKey {
 	}
 
 	pub fn encoded(sink: impl Into<SinkId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(sink))
+		Self::new(sink).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 pub mod sink_key_tests {
-	use super::{EncodableKey, SinkKey};
+	use super::SinkKey;
 	use crate::interface::catalog::id::SinkId;
 
 	#[test]
@@ -1411,8 +1409,8 @@ pub mod sink_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Relationship)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Relationship)]
 pub struct RelationshipKey {
 	pub relationship: RelationshipId,
 }
@@ -1425,17 +1423,17 @@ impl RelationshipKey {
 	}
 
 	pub fn encoded(relationship: impl Into<RelationshipId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(relationship))
+		Self::new(relationship).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 mod relationship_key_tests {
-	use super::{EncodableKey, RelationshipKey};
+	use super::RelationshipKey;
 	use crate::interface::catalog::id::RelationshipId;
 
 	#[test]
@@ -1449,8 +1447,8 @@ mod relationship_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = ColumnProperty)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = ColumnProperty)]
 pub struct ColumnPropertyKey {
 	pub column: ColumnId,
 	pub property: ColumnPropertyId,
@@ -1465,21 +1463,18 @@ impl ColumnPropertyKey {
 	}
 
 	pub fn encoded(column: impl Into<ColumnId>, property: impl Into<ColumnPropertyId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(column, property))
+		Self::new(column, property).encode()
 	}
 
-	pub fn full_scan(column: ColumnId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, column.0 as u128)])
+	pub fn full_scan(column: ColumnId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, column.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod column_property_key_tests {
 	use super::ColumnPropertyKey;
-	use crate::{
-		interface::catalog::id::{ColumnId, ColumnPropertyId},
-		key::EncodableKey,
-	};
+	use crate::interface::catalog::id::{ColumnId, ColumnPropertyId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -1525,8 +1520,8 @@ pub mod column_property_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Handler)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Handler)]
 pub struct HandlerKey {
 	pub handler: HandlerId,
 }
@@ -1539,17 +1534,17 @@ impl HandlerKey {
 	}
 
 	pub fn encoded(handler: impl Into<HandlerId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(handler.into()))
+		Self::new(handler.into()).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 pub mod handler_key_tests {
-	use super::{EncodableKey, HandlerKey};
+	use super::HandlerKey;
 	use crate::interface::catalog::id::HandlerId;
 
 	#[test]
@@ -1585,12 +1580,12 @@ pub mod handler_key_tests {
 mod verify_byte_identical_handler_key {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::{EncodableKey, HandlerKey};
+	use super::HandlerKey;
 	use crate::interface::catalog::id::HandlerId;
 
 	fn legacy_encode(key: &HandlerKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(HandlerKey::KIND as u8).extend_u64(key.handler);
+		serializer.extend_u8(HandlerKey::TAG as u8).extend_u64(key.handler);
 		serializer.to_encoded_key().as_slice().to_vec()
 	}
 
@@ -1605,8 +1600,8 @@ mod verify_byte_identical_handler_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = VariantHandler)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = VariantHandler)]
 pub struct VariantHandlerKey {
 	pub namespace: NamespaceId,
 	pub sumtype: SumTypeId,
@@ -1630,12 +1625,12 @@ impl VariantHandlerKey {
 		variant_tag: u8,
 		handler: impl Into<HandlerId>,
 	) -> EncodedKey {
-		EncodableKey::encode(&Self::new(namespace.into(), sumtype.into(), variant_tag, handler.into()))
+		Self::new(namespace.into(), sumtype.into(), variant_tag, handler.into()).encode()
 	}
 
-	pub fn variant_scan(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(
-			Self::KIND,
+	pub fn variant_scan(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(
+			Self::TAG,
 			[
 				Field::UDesc(Width::U64, namespace.0 as u128),
 				Field::UDesc(Width::U64, sumtype.0 as u128),
@@ -1651,7 +1646,7 @@ pub mod variant_handler_key_tests {
 
 	use reifydb_value::value::sumtype::SumTypeId;
 
-	use super::{EncodableKey, VariantHandlerKey};
+	use super::VariantHandlerKey;
 	use crate::interface::catalog::id::{HandlerId, NamespaceId};
 
 	#[test]
@@ -1755,13 +1750,13 @@ mod verify_byte_identical_variant_handler_key {
 	use reifydb_codec::key::serializer::KeySerializer;
 	use reifydb_value::value::sumtype::SumTypeId;
 
-	use super::{EncodableKey, VariantHandlerKey};
+	use super::VariantHandlerKey;
 	use crate::interface::catalog::id::{HandlerId, NamespaceId};
 
 	fn legacy_encode(key: &VariantHandlerKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(26);
 		serializer
-			.extend_u8(VariantHandlerKey::KIND as u8)
+			.extend_u8(VariantHandlerKey::TAG as u8)
 			.extend_u64(key.namespace)
 			.extend_u64(key.sumtype)
 			.extend_u8(key.variant_tag)
@@ -1797,20 +1792,20 @@ pub struct BindingKey {
 	pub binding: BindingId,
 }
 
-impl EncodableKey for BindingKey {
-	const KIND: KeyKind = KeyKind::Binding;
+impl BindingKey {
+	pub const TAG: KeyTag = KeyTag::Binding;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(<BindingKey as EncodableKey>::KIND as u8).extend_u64(self.binding);
+		serializer.extend_u8(BindingKey::TAG as u8).extend_u64(self.binding);
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <BindingKey as EncodableKey>::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != BindingKey::TAG {
 			return None;
 		}
 
@@ -1830,17 +1825,17 @@ impl BindingKey {
 	}
 
 	pub fn encoded(binding: impl Into<BindingId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(binding))
+		Self::new(binding).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 pub mod binding_key_tests {
-	use super::{BindingKey, EncodableKey};
+	use super::BindingKey;
 	use crate::interface::catalog::id::BindingId;
 
 	#[test]
@@ -1854,8 +1849,8 @@ pub mod binding_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = PrimaryKey)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = PrimaryKey)]
 pub struct PrimaryKeyKey {
 	pub primary_key: PrimaryKeyId,
 }
@@ -1868,17 +1863,17 @@ impl PrimaryKeyKey {
 	}
 
 	pub fn encoded(primary_key: impl Into<PrimaryKeyId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(primary_key))
+		Self::new(primary_key).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 mod primary_key_key_tests {
-	use super::{EncodableKey, PrimaryKeyKey};
+	use super::PrimaryKeyKey;
 	use crate::interface::catalog::id::PrimaryKeyId;
 
 	#[test]

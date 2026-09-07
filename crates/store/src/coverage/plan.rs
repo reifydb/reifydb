@@ -181,16 +181,16 @@ impl GapHistogram {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::key::typed::{Edge, MultiKey};
+	use reifydb_core::key::typed::{Edge, OpaqueKey};
 
 	use super::{DEFAULT_GAP_GUARD, GapHistogram, ScanPlan, Segment, plan};
 	use crate::coverage::interval::{CoverageSet, Interval};
 
-	fn edge(bytes: &[u8]) -> Edge<MultiKey> {
+	fn edge(bytes: &[u8]) -> Edge<OpaqueKey> {
 		Edge::of(bytes)
 	}
 
-	fn interval_of(segment: &Segment<MultiKey>) -> &Interval<MultiKey> {
+	fn interval_of(segment: &Segment<OpaqueKey>) -> &Interval<OpaqueKey> {
 		match segment {
 			Segment::Resident(interval) => interval,
 			Segment::Gap {
@@ -200,11 +200,11 @@ mod tests {
 		}
 	}
 
-	fn is_gap(segment: &Segment<MultiKey>) -> bool {
+	fn is_gap(segment: &Segment<OpaqueKey>) -> bool {
 		matches!(segment, Segment::Gap { .. })
 	}
 
-	fn counted(gaps: usize, exempt_gaps: usize, degraded: bool) -> ScanPlan<MultiKey> {
+	fn counted(gaps: usize, exempt_gaps: usize, degraded: bool) -> ScanPlan<OpaqueKey> {
 		ScanPlan {
 			segments: Vec::new(),
 			gaps,
@@ -213,7 +213,7 @@ mod tests {
 		}
 	}
 
-	fn punched() -> CoverageSet<MultiKey> {
+	fn punched() -> CoverageSet<OpaqueKey> {
 		let mut coverage = CoverageSet::new();
 		coverage.extend(edge(b"b"), Edge::of(b"c"));
 		coverage.extend(edge(b"d"), Edge::of(b"e"));

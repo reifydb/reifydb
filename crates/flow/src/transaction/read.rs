@@ -12,7 +12,7 @@ use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, store::MultiVersionRow},
-	key::{any::AnyKey, kind::KeyKind, operator::state::OperatorStateKey},
+	key::{any::TaggedKey, operator::state::OperatorStateKey, tag::KeyTag},
 };
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_value::Result;
@@ -30,98 +30,98 @@ pub enum ReadFrom {
 }
 
 pub fn read_from(key: &EncodedKey) -> ReadFrom {
-	match KeyKind::of(key) {
+	match KeyTag::of(key) {
 		None => ReadFrom::Query,
 		Some(kind) => match kind {
-			KeyKind::OperatorState => ReadFrom::OperatorState,
-			KeyKind::RingBufferMetadata => ReadFrom::StateQuery,
-			KeyKind::SeriesMetadata => ReadFrom::StateQuery,
+			KeyTag::OperatorState => ReadFrom::OperatorState,
+			KeyTag::RingBufferMetadata => ReadFrom::StateQuery,
+			KeyTag::SeriesMetadata => ReadFrom::StateQuery,
 
-			KeyKind::Row => ReadFrom::OwnedRow,
-			KeyKind::SeriesRow => ReadFrom::OwnedRow,
-			KeyKind::PartitionedRow => ReadFrom::OwnedRow,
-			KeyKind::PartitionedSeriesRow => ReadFrom::OwnedRow,
-			KeyKind::SortedViewRow => ReadFrom::OwnedRow,
-			KeyKind::PartitionedSortedViewRow => ReadFrom::OwnedRow,
-			KeyKind::Partition => ReadFrom::OwnedRow,
+			KeyTag::Row => ReadFrom::OwnedRow,
+			KeyTag::SeriesRow => ReadFrom::OwnedRow,
+			KeyTag::PartitionedRow => ReadFrom::OwnedRow,
+			KeyTag::PartitionedSeriesRow => ReadFrom::OwnedRow,
+			KeyTag::SortedViewRow => ReadFrom::OwnedRow,
+			KeyTag::PartitionedSortedViewRow => ReadFrom::OwnedRow,
+			KeyTag::Partition => ReadFrom::OwnedRow,
 
-			KeyKind::Namespace => ReadFrom::Query,
-			KeyKind::Table => ReadFrom::Query,
-			KeyKind::NamespaceTable => ReadFrom::Query,
-			KeyKind::SystemSequence => ReadFrom::Query,
-			KeyKind::Columns => ReadFrom::Query,
-			KeyKind::Column => ReadFrom::Query,
-			KeyKind::RowSequence => ReadFrom::Query,
-			KeyKind::ColumnProperty => ReadFrom::Query,
-			KeyKind::SystemVersion => ReadFrom::Query,
-			KeyKind::TransactionVersion => ReadFrom::Query,
-			KeyKind::Index => ReadFrom::Query,
-			KeyKind::IndexEntry => ReadFrom::Query,
-			KeyKind::ColumnSequence => ReadFrom::Query,
-			KeyKind::CdcConsumer => ReadFrom::Query,
-			KeyKind::OutputFrontier => ReadFrom::Query,
-			KeyKind::View => ReadFrom::Query,
-			KeyKind::NamespaceView => ReadFrom::Query,
-			KeyKind::PrimaryKey => ReadFrom::Query,
-			KeyKind::RingBuffer => ReadFrom::Query,
-			KeyKind::NamespaceRingBuffer => ReadFrom::Query,
-			KeyKind::Queue => ReadFrom::Query,
-			KeyKind::NamespaceQueue => ReadFrom::Query,
-			KeyKind::QueueDeduplication => ReadFrom::Query,
-			KeyKind::QueuePartition => ReadFrom::Query,
-			KeyKind::QueueItemState => ReadFrom::Query,
-			KeyKind::QueueDue => ReadFrom::Query,
-			KeyKind::QueueAttempt => ReadFrom::Query,
-			KeyKind::QueueKeyActive => ReadFrom::Query,
-			KeyKind::Flow => ReadFrom::Query,
-			KeyKind::NamespaceFlow => ReadFrom::Query,
-			KeyKind::Operator => ReadFrom::Query,
-			KeyKind::OperatorByFlow => ReadFrom::Query,
-			KeyKind::FlowEdge => ReadFrom::Query,
-			KeyKind::FlowEdgeByFlow => ReadFrom::Query,
-			KeyKind::Dictionary => ReadFrom::Query,
-			KeyKind::DictionaryEntry => ReadFrom::Query,
-			KeyKind::DictionaryEntryIndex => ReadFrom::Query,
-			KeyKind::NamespaceDictionary => ReadFrom::Query,
-			KeyKind::Metric => ReadFrom::Query,
-			KeyKind::FlowVersion => ReadFrom::Query,
-			KeyKind::RowShape => ReadFrom::Query,
-			KeyKind::RowShapeField => ReadFrom::Query,
-			KeyKind::SumType => ReadFrom::Query,
-			KeyKind::NamespaceSumType => ReadFrom::Query,
-			KeyKind::Handler => ReadFrom::Query,
-			KeyKind::NamespaceHandler => ReadFrom::Query,
-			KeyKind::VariantHandler => ReadFrom::Query,
-			KeyKind::Series => ReadFrom::Query,
-			KeyKind::NamespaceSeries => ReadFrom::Query,
-			KeyKind::Identity => ReadFrom::Query,
-			KeyKind::IdentityAttribute => ReadFrom::Query,
-			KeyKind::IdentityAttributeValue => ReadFrom::Query,
-			KeyKind::Role => ReadFrom::Query,
-			KeyKind::GrantedRole => ReadFrom::Query,
-			KeyKind::Policy => ReadFrom::Query,
-			KeyKind::PolicyOp => ReadFrom::Query,
-			KeyKind::Migration => ReadFrom::Query,
-			KeyKind::MigrationEvent => ReadFrom::Query,
-			KeyKind::Authentication => ReadFrom::Query,
-			KeyKind::ConfigStorage => ReadFrom::Query,
-			KeyKind::Token => ReadFrom::Query,
-			KeyKind::Source => ReadFrom::Query,
-			KeyKind::NamespaceSource => ReadFrom::Query,
-			KeyKind::Sink => ReadFrom::Query,
-			KeyKind::NamespaceSink => ReadFrom::Query,
-			KeyKind::RowSettings => ReadFrom::Query,
-			KeyKind::OperatorSettings => ReadFrom::Query,
-			KeyKind::Procedure => ReadFrom::Query,
-			KeyKind::NamespaceProcedure => ReadFrom::Query,
-			KeyKind::ProcedureParam => ReadFrom::Query,
-			KeyKind::Binding => ReadFrom::Query,
-			KeyKind::NamespaceBinding => ReadFrom::Query,
-			KeyKind::ColumnSnapshot => ReadFrom::Query,
-			KeyKind::SeriesColumnSnapshot => ReadFrom::Query,
-			KeyKind::TableColumnSnapshot => ReadFrom::Query,
-			KeyKind::VersionEpoch => ReadFrom::Query,
-			KeyKind::Relationship => ReadFrom::Query,
+			KeyTag::Namespace => ReadFrom::Query,
+			KeyTag::Table => ReadFrom::Query,
+			KeyTag::NamespaceTable => ReadFrom::Query,
+			KeyTag::SystemSequence => ReadFrom::Query,
+			KeyTag::Columns => ReadFrom::Query,
+			KeyTag::Column => ReadFrom::Query,
+			KeyTag::RowSequence => ReadFrom::Query,
+			KeyTag::ColumnProperty => ReadFrom::Query,
+			KeyTag::SystemVersion => ReadFrom::Query,
+			KeyTag::TransactionVersion => ReadFrom::Query,
+			KeyTag::Index => ReadFrom::Query,
+			KeyTag::IndexEntry => ReadFrom::Query,
+			KeyTag::ColumnSequence => ReadFrom::Query,
+			KeyTag::CdcConsumer => ReadFrom::Query,
+			KeyTag::OutputFrontier => ReadFrom::Query,
+			KeyTag::View => ReadFrom::Query,
+			KeyTag::NamespaceView => ReadFrom::Query,
+			KeyTag::PrimaryKey => ReadFrom::Query,
+			KeyTag::RingBuffer => ReadFrom::Query,
+			KeyTag::NamespaceRingBuffer => ReadFrom::Query,
+			KeyTag::Queue => ReadFrom::Query,
+			KeyTag::NamespaceQueue => ReadFrom::Query,
+			KeyTag::QueueDeduplication => ReadFrom::Query,
+			KeyTag::QueuePartition => ReadFrom::Query,
+			KeyTag::QueueItemState => ReadFrom::Query,
+			KeyTag::QueueDue => ReadFrom::Query,
+			KeyTag::QueueAttempt => ReadFrom::Query,
+			KeyTag::QueueKeyActive => ReadFrom::Query,
+			KeyTag::Flow => ReadFrom::Query,
+			KeyTag::NamespaceFlow => ReadFrom::Query,
+			KeyTag::Operator => ReadFrom::Query,
+			KeyTag::OperatorByFlow => ReadFrom::Query,
+			KeyTag::FlowEdge => ReadFrom::Query,
+			KeyTag::FlowEdgeByFlow => ReadFrom::Query,
+			KeyTag::Dictionary => ReadFrom::Query,
+			KeyTag::DictionaryEntry => ReadFrom::Query,
+			KeyTag::DictionaryEntryIndex => ReadFrom::Query,
+			KeyTag::NamespaceDictionary => ReadFrom::Query,
+			KeyTag::Metric => ReadFrom::Query,
+			KeyTag::FlowVersion => ReadFrom::Query,
+			KeyTag::RowShape => ReadFrom::Query,
+			KeyTag::RowShapeField => ReadFrom::Query,
+			KeyTag::SumType => ReadFrom::Query,
+			KeyTag::NamespaceSumType => ReadFrom::Query,
+			KeyTag::Handler => ReadFrom::Query,
+			KeyTag::NamespaceHandler => ReadFrom::Query,
+			KeyTag::VariantHandler => ReadFrom::Query,
+			KeyTag::Series => ReadFrom::Query,
+			KeyTag::NamespaceSeries => ReadFrom::Query,
+			KeyTag::Identity => ReadFrom::Query,
+			KeyTag::IdentityAttribute => ReadFrom::Query,
+			KeyTag::IdentityAttributeValue => ReadFrom::Query,
+			KeyTag::Role => ReadFrom::Query,
+			KeyTag::GrantedRole => ReadFrom::Query,
+			KeyTag::Policy => ReadFrom::Query,
+			KeyTag::PolicyOp => ReadFrom::Query,
+			KeyTag::Migration => ReadFrom::Query,
+			KeyTag::MigrationEvent => ReadFrom::Query,
+			KeyTag::Authentication => ReadFrom::Query,
+			KeyTag::ConfigStorage => ReadFrom::Query,
+			KeyTag::Token => ReadFrom::Query,
+			KeyTag::Source => ReadFrom::Query,
+			KeyTag::NamespaceSource => ReadFrom::Query,
+			KeyTag::Sink => ReadFrom::Query,
+			KeyTag::NamespaceSink => ReadFrom::Query,
+			KeyTag::RowSettings => ReadFrom::Query,
+			KeyTag::OperatorSettings => ReadFrom::Query,
+			KeyTag::Procedure => ReadFrom::Query,
+			KeyTag::NamespaceProcedure => ReadFrom::Query,
+			KeyTag::ProcedureParam => ReadFrom::Query,
+			KeyTag::Binding => ReadFrom::Query,
+			KeyTag::NamespaceBinding => ReadFrom::Query,
+			KeyTag::ColumnSnapshot => ReadFrom::Query,
+			KeyTag::SeriesColumnSnapshot => ReadFrom::Query,
+			KeyTag::TableColumnSnapshot => ReadFrom::Query,
+			KeyTag::VersionEpoch => ReadFrom::Query,
+			KeyTag::Relationship => ReadFrom::Query,
 		},
 	}
 }
@@ -161,7 +161,7 @@ impl OperatorStateRangeIter {
 }
 
 impl Iterator for OperatorStateRangeIter {
-	type Item = Result<MultiVersionRow<AnyKey>>;
+	type Item = Result<MultiVersionRow<TaggedKey>>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -209,18 +209,18 @@ impl Iterator for OperatorStateRangeIter {
 
 pub(crate) struct FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = Result<MultiVersionRow<AnyKey>>>,
+	I: Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
 {
 	storage_iter: Peekable<I>,
-	pending_iter: Peekable<IntoIter<(AnyKey, PendingWrite)>>,
+	pending_iter: Peekable<IntoIter<(TaggedKey, PendingWrite)>>,
 	version: CommitVersion,
 }
 
 impl<I> Iterator for FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = Result<MultiVersionRow<AnyKey>>>,
+	I: Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
 {
-	type Item = Result<MultiVersionRow<AnyKey>>;
+	type Item = Result<MultiVersionRow<TaggedKey>>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -285,11 +285,11 @@ pub(crate) fn flow_merge_pending_iterator<I>(
 	version: CommitVersion,
 ) -> FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = Result<MultiVersionRow<AnyKey>>>,
+	I: Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
 {
-	let pending: Vec<(AnyKey, PendingWrite)> = pending
+	let pending: Vec<(TaggedKey, PendingWrite)> = pending
 		.into_iter()
-		.map(|(key, write)| (AnyKey::decode(&key).expect(UNDECODABLE_PENDING_KEY), write))
+		.map(|(key, write)| (TaggedKey::decode(&key).expect(UNDECODABLE_PENDING_KEY), write))
 		.collect();
 	FlowMergePendingIterator {
 		storage_iter: storage_iter.peekable(),

@@ -14,7 +14,7 @@ use reifydb_core::{
 		id::{IndexId, TableId},
 		object::ObjectId,
 	},
-	key::{any::AnyKey, bound::AnyKeyBoundRange, catalog::IndexEntryKey},
+	key::{any::TaggedKey, bound::TaggedKeyBoundRange, catalog::IndexEntryKey},
 };
 use reifydb_transaction::multi::{RangeScope, transaction::write::MultiWriteTransaction};
 
@@ -24,7 +24,7 @@ use crate::{
 	multi::transaction::{FromKey, FromRow},
 };
 
-fn prefix_range(prefix: u8) -> AnyKeyBoundRange {
+fn prefix_range(prefix: u8) -> TaggedKeyBoundRange {
 	// string content encodes inverted, so the 'a' group shares the tail prefix !a.
 	IndexEntryKey::key_prefix_range(ObjectId::Table(TableId(1)), IndexId::primary(1u64), &[!prefix])
 }
@@ -44,7 +44,7 @@ fn test_write_skew() {
 	txn.commit(vec![]).unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
-	fn get_bal(txn: &mut MultiWriteTransaction, k: &AnyKey) -> u64 {
+	fn get_bal(txn: &mut MultiWriteTransaction, k: &TaggedKey) -> u64 {
 		let sv = txn.get(k).unwrap().unwrap();
 		let val = sv.bytes();
 		from_bytes!(u64, val)
@@ -99,7 +99,7 @@ fn test_black_white() {
 
 	let mut white = engine.begin_command().unwrap();
 	let indices = white
-		.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
+		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -118,7 +118,7 @@ fn test_black_white() {
 
 	let mut black = engine.begin_command().unwrap();
 	let indices = black
-		.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
+		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -141,7 +141,7 @@ fn test_black_white() {
 
 	let rx = engine.begin_query().unwrap();
 	let result: Vec<_> =
-		rx.range(AnyKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+		rx.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	assert_eq!(result.len(), 10);
 
 	result.iter().for_each(|sv| {
@@ -196,7 +196,7 @@ fn test_primary_colors() {
 
 	let mut red = engine.begin_command().unwrap();
 	let indices: Vec<_> = red
-		.range(AnyKeyBoundRange::all(), RangeScope::All, 15000)
+		.range(TaggedKeyBoundRange::all(), RangeScope::All, 15000)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -214,7 +214,7 @@ fn test_primary_colors() {
 
 	let mut yellow = engine.begin_command().unwrap();
 	let indices: Vec<_> = yellow
-		.range(AnyKeyBoundRange::all(), RangeScope::All, 15000)
+		.range(TaggedKeyBoundRange::all(), RangeScope::All, 15000)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -232,7 +232,7 @@ fn test_primary_colors() {
 
 	let mut red_two = engine.begin_command().unwrap();
 	let indices: Vec<_> = red_two
-		.range(AnyKeyBoundRange::all(), RangeScope::All, 15000)
+		.range(TaggedKeyBoundRange::all(), RangeScope::All, 15000)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -257,7 +257,7 @@ fn test_primary_colors() {
 
 	let rx = engine.begin_query().unwrap();
 	let result: Vec<_> =
-		rx.range(AnyKeyBoundRange::all(), RangeScope::All, 15000).collect::<Result<Vec<_>, _>>().unwrap();
+		rx.range(TaggedKeyBoundRange::all(), RangeScope::All, 15000).collect::<Result<Vec<_>, _>>().unwrap();
 	assert_eq!(result.len(), 9000);
 
 	let mut red_count = 0;
@@ -294,7 +294,7 @@ fn test_intersecting_data() {
 
 	let mut txn1 = engine.begin_command().unwrap();
 	let val = txn1
-		.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
+		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -314,7 +314,7 @@ fn test_intersecting_data() {
 
 	let mut txn2 = engine.begin_command().unwrap();
 	let val = txn2
-		.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
+		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -338,7 +338,7 @@ fn test_intersecting_data() {
 
 	let mut txn3 = engine.begin_command().unwrap();
 	let val = txn3
-		.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
+		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -398,7 +398,7 @@ fn test_intersecting_data2() {
 
 	let mut txn3 = engine.begin_command().unwrap();
 	let val = txn3
-		.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
+		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -454,7 +454,7 @@ fn test_intersecting_data3() {
 
 	let mut txn3 = engine.begin_command().unwrap();
 	let val = txn3
-		.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
+		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()

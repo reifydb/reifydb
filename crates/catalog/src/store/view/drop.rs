@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{id::ViewId, storage::StorageId, view::ViewStorageKind},
 	key::{
-		any::AnyKey, catalog::ViewKey, namespace::NamespaceViewKey, ringbuffer::RingBufferMetadataKey,
+		any::TaggedKey, catalog::ViewKey, namespace::NamespaceViewKey, ringbuffer::RingBufferMetadataKey,
 		row::RowSettingsKey,
 	},
 	return_internal_error,
@@ -43,7 +43,7 @@ impl CatalogStore {
 				let mut stream = txn.range(range, RangeScope::All, 1024)?;
 				let mut keys = Vec::new();
 				for entry in stream.by_ref() {
-					let AnyKey::RingBufferMetadata(key) = entry?.key else {
+					let TaggedKey::RingBufferMetadata(key) = entry?.key else {
 						return_internal_error!(
 							"ring buffer metadata scan yielded a key that is not a RingBufferMetadataKey"
 						);

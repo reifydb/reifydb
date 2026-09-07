@@ -4,7 +4,7 @@
 use std::{cmp::Ordering, fmt::Debug, hash::Hash, ops::Bound};
 
 use reifydb_codec::key::encoded::EncodedKey;
-pub use reifydb_macro::{EncodableKey, KeyLayout};
+pub use reifydb_macro::{KeyCodec, KeyLayout};
 
 use crate::metrics::heap::HeapSize;
 
@@ -89,7 +89,7 @@ impl<K: BoundedKey> Edge<K> {
 	}
 }
 
-impl Edge<MultiKey> {
+impl Edge<OpaqueKey> {
 	pub fn of(key: impl AsRef<[u8]>) -> Self {
 		Edge::Key(EncodedKey::new(key))
 	}
@@ -148,7 +148,7 @@ impl<K: Ord> Ord for Edge<K> {
 	}
 }
 
-pub type MultiKey = EncodedKey;
+pub type OpaqueKey = EncodedKey;
 
 impl BoundedKey for () {
 	fn low() -> Self {}
@@ -179,7 +179,7 @@ impl DenseKey for EncodedKey {
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use super::{BoundedKey, DenseKey, Edge, MultiKey};
+	use super::{BoundedKey, DenseKey, Edge, OpaqueKey};
 
 	#[test]
 	fn unit_key_has_no_successor() {
@@ -190,7 +190,7 @@ mod tests {
 
 	#[test]
 	fn encoded_key_low_is_empty() {
-		assert_eq!(<MultiKey as BoundedKey>::low().as_slice(), &[] as &[u8]);
+		assert_eq!(<OpaqueKey as BoundedKey>::low().as_slice(), &[] as &[u8]);
 	}
 
 	#[test]
@@ -221,7 +221,7 @@ mod tests {
 
 	#[test]
 	fn exclusive_upper_end_carries_a_key_or_the_top() {
-		let end: Edge<MultiKey> = Edge::Key(EncodedKey::new([0x01]));
+		let end: Edge<OpaqueKey> = Edge::Key(EncodedKey::new([0x01]));
 		assert_ne!(end, Edge::Top);
 		assert_eq!(end.clone(), end);
 	}

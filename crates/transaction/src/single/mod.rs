@@ -155,10 +155,7 @@ pub mod tests {
 		thread,
 	};
 
-	use reifydb_core::{
-		interface::catalog::id::QueueId,
-		key::{EncodableKey, queue::QueueDeduplicationKey},
-	};
+	use reifydb_core::{interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
 	use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 
 	use super::*;

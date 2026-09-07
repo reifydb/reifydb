@@ -14,7 +14,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		cdc::{CdcConsumerId, ConsumerClass},
 	},
-	key::{any::AnyKey, system::VersionEpochKey},
+	key::{any::TaggedKey, system::VersionEpochKey},
 	lifecycle::{gate::RetentionStartupGate, progress::Progress, task::LifecycleTask},
 };
 use reifydb_engine::engine::StandardEngine;
@@ -48,7 +48,7 @@ fn durable_samples(engine: &StandardEngine) -> Vec<(u64, u64, u64)> {
 		.range(VersionEpochKey::floor_scan(EpochSeconds::new(u64::MAX)), RangeScope::All, 256)
 		.filter_map(|entry| {
 			let entry = entry.ok()?;
-			let AnyKey::VersionEpoch(key) = &entry.key else {
+			let TaggedKey::VersionEpoch(key) = &entry.key else {
 				return None;
 			};
 			let bytes = entry.bytes.as_slice();

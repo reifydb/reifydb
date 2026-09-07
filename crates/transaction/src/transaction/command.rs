@@ -15,8 +15,8 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	key::{
-		any::AnyKey,
-		bound::AnyKeyBoundRange,
+		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 };
@@ -384,31 +384,34 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn get<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<AnyKey>>> {
+	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
 	#[inline]
-	pub fn get_committed<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<AnyKey>>> {
+	pub fn get_committed<K: Into<TaggedKey> + Clone>(
+		&mut self,
+		key: &K,
+	) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().get_committed(key)?.map(|v| v.into_multi_version_row()))
 	}
 
 	#[inline]
-	pub fn contains<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<bool> {
+	pub fn contains<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().contains(key)
 	}
 
 	#[inline]
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().prefix(prefix)
 	}
 
 	#[inline]
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<AnyKey>> {
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().prefix_rev(prefix)
 	}
@@ -421,7 +424,7 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn set<K: Into<AnyKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
+	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set(key, bytes.into())
 	}
@@ -441,25 +444,25 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn remove_with_pre<K: Into<AnyKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
+	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_with_pre(key, pre)
 	}
 
 	#[inline]
-	pub fn remove<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<()> {
+	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove(key)
 	}
 
 	#[inline]
-	pub fn remove_unobserved<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<()> {
+	pub fn remove_unobserved<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_unobserved(key)
 	}
 
 	#[inline]
-	pub fn remove_unobserved_with_pre<K: Into<AnyKey> + Clone>(
+	pub fn remove_unobserved_with_pre<K: Into<TaggedKey> + Clone>(
 		&mut self,
 		key: &K,
 		pre: EncodedBytes,
@@ -469,13 +472,13 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn remove_silent<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<()> {
+	pub fn remove_silent<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_silent(key)
 	}
 
 	#[inline]
-	pub fn mark_preexisting<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<()> {
+	pub fn mark_preexisting<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().mark_preexisting(key);
 		Ok(())
@@ -484,10 +487,10 @@ impl CommandTransaction {
 	#[inline]
 	pub fn range(
 		&mut self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range(range, scope, batch_size))
 	}
@@ -520,10 +523,10 @@ impl CommandTransaction {
 	#[inline]
 	pub fn range_persistence(
 		&mut self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_persistence(range, scope, batch_size))
 	}
@@ -531,10 +534,10 @@ impl CommandTransaction {
 	#[inline]
 	pub fn range_rev(
 		&mut self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_rev(range, scope, batch_size))
 	}
@@ -542,10 +545,10 @@ impl CommandTransaction {
 	#[inline]
 	pub fn range_rev_persistence(
 		&mut self,
-		range: AnyKeyBoundRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<AnyKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_rev_persistence(range, scope, batch_size))
 	}
@@ -559,19 +562,19 @@ impl WithEventBus for CommandTransaction {
 
 impl Write for CommandTransaction {
 	#[inline]
-	fn set(&mut self, key: &AnyKey, bytes: EncodedBytes) -> Result<()> {
+	fn set(&mut self, key: &TaggedKey, bytes: EncodedBytes) -> Result<()> {
 		CommandTransaction::set(self, key, bytes)
 	}
 	#[inline]
-	fn remove_with_pre(&mut self, key: &AnyKey, pre: EncodedBytes) -> Result<()> {
+	fn remove_with_pre(&mut self, key: &TaggedKey, pre: EncodedBytes) -> Result<()> {
 		CommandTransaction::remove_with_pre(self, key, pre)
 	}
 	#[inline]
-	fn remove(&mut self, key: &AnyKey) -> Result<()> {
+	fn remove(&mut self, key: &TaggedKey) -> Result<()> {
 		CommandTransaction::remove(self, key)
 	}
 	#[inline]
-	fn mark_preexisting(&mut self, key: &AnyKey) -> Result<()> {
+	fn mark_preexisting(&mut self, key: &TaggedKey) -> Result<()> {
 		CommandTransaction::mark_preexisting(self, key)
 	}
 	#[inline]

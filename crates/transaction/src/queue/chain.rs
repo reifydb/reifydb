@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	interface::{catalog::id::QueueId, store::SingleVersionRangeRev},
-	key::{EncodableKey, queue::QueueKeyActiveKey},
+	key::queue::QueueKeyActiveKey,
 };
 use reifydb_value::{Result, util::cowvec::CowVec, value::row_number::RowNumber};
 

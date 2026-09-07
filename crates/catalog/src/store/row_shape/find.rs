@@ -11,7 +11,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	error::diagnostic::internal::internal,
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		row::{RowShapeFieldKey, RowShapeKey},
 	},
 };
@@ -106,7 +106,7 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 		for entry in stream {
 			let entry = entry?;
 
-			let AnyKey::RowShape(shape_key) = &entry.key else {
+			let TaggedKey::RowShape(shape_key) = &entry.key else {
 				return Err(Error(Box::new(internal("Failed to decode shape key"))));
 			};
 

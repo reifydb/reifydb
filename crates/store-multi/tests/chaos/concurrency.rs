@@ -23,7 +23,6 @@ use reifydb_core::{
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
 	key::{
-		EncodableKey,
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 		row::RowKey,
 	},

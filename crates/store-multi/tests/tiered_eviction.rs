@@ -16,7 +16,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
-	key::{any::AnyKey, row::RowKey},
+	key::{any::TaggedKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::{
@@ -65,11 +65,11 @@ fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 	(store, guard)
 }
 
-fn row_key(row: u64) -> AnyKey {
+fn row_key(row: u64) -> TaggedKey {
 	RowKey::new(STORAGE, row).into()
 }
 
-fn commit(store: &StandardMultiStore, k: &AnyKey, version: u64, value: &str) {
+fn commit(store: &StandardMultiStore, k: &TaggedKey, version: u64, value: &str) {
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
@@ -81,7 +81,7 @@ fn commit(store: &StandardMultiStore, k: &AnyKey, version: u64, value: &str) {
 	.unwrap();
 }
 
-fn get(store: &StandardMultiStore, k: &AnyKey, version: u64) -> Option<Vec<u8>> {
+fn get(store: &StandardMultiStore, k: &TaggedKey, version: u64) -> Option<Vec<u8>> {
 	store.get(k, CommitVersion(version)).unwrap().map(|r| r.bytes.to_vec())
 }
 
@@ -143,7 +143,7 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 
 		if persistent_object {
 			for (key, version, _) in &to_persist {
-				store.get(&AnyKey::decode(key).expect("an evictable key must decode"), *version)
+				store.get(&TaggedKey::decode(key).expect("an evictable key must decode"), *version)
 					.unwrap();
 			}
 		}

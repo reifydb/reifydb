@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::identity::RoleId,
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		identity::{GrantedRoleKey, RoleKey},
 	},
 };
@@ -20,7 +20,7 @@ impl CatalogStore {
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;
-				if let AnyKey::GrantedRole(key) = entry.key
+				if let TaggedKey::GrantedRole(key) = entry.key
 					&& key.role == role
 				{
 					keys_to_remove.push(key);

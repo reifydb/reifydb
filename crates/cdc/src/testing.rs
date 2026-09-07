@@ -9,7 +9,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
 	interface::catalog::id::QueueId,
-	key::{any::AnyKey, queue::QueueDeduplicationKey},
+	key::{any::TaggedKey, queue::QueueDeduplicationKey},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -129,7 +129,7 @@ impl CdcHost for TestCdcHost {
 	}
 }
 
-pub fn make_key(s: &str) -> AnyKey {
+pub fn make_key(s: &str) -> TaggedKey {
 	QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>()).into()
 }
 

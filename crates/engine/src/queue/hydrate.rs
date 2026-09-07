@@ -11,7 +11,7 @@ use reifydb_core::{
 		store::SingleVersionGet,
 	},
 	internal_error,
-	key::{any::AnyKey, queue::QueueItemStateKey, row::RowKeyRange},
+	key::{any::TaggedKey, queue::QueueItemStateKey, row::RowKeyRange},
 };
 use reifydb_transaction::{
 	multi::RangeScope,
@@ -59,7 +59,7 @@ fn hydrate_queue(
 	let ordered_by = ordered_by_index(queue)?;
 
 	let mut pending: BTreeMap<u16, Vec<QueueAdmission>> = BTreeMap::new();
-	let mut last_key: Option<AnyKey> = None;
+	let mut last_key: Option<TaggedKey> = None;
 	let mut admitted = 0u64;
 
 	loop {
@@ -74,7 +74,7 @@ fn hydrate_queue(
 				match stream.next() {
 					Some(Ok(item)) => {
 						fetched += 1;
-						if let AnyKey::Row(key) = &item.key {
+						if let TaggedKey::Row(key) = &item.key {
 							batch.push((key.row, EncodedQueueRow::from(item.bytes)));
 						}
 						last_key = Some(item.key.clone());

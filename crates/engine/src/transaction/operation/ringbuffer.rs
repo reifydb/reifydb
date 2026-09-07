@@ -17,7 +17,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
 	partition::{PartitionError, partition_col_indices},
@@ -36,7 +36,7 @@ use smallvec::smallvec;
 
 use crate::{Result, partition::partition_values};
 
-fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_number: RowNumber) -> AnyKey {
+fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_number: RowNumber) -> TaggedKey {
 	match partition {
 		None => RowKey::new(ringbuffer.id, row_number).into(),
 		Some(partition) => PartitionedRowKey::new(ringbuffer.id, partition, row_number).into(),

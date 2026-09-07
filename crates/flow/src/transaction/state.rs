@@ -18,7 +18,7 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		operator::state::{
 			GroupId, GroupStateKey, OperatorStateKey, group_inner_range, group_inner_range_split,
 			keyspace_inner_range_split, node_prefix,
@@ -80,9 +80,9 @@ pub trait StateExtension: FlowTransaction {
 		operator_id = id.0,
 		key_count = keys.len()
 	))]
-	fn state_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch<AnyKey>> {
+	fn state_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch<TaggedKey>> {
 		let version = self.version();
-		let mut items: Vec<MultiVersionRow<AnyKey>> = Vec::with_capacity(keys.len());
+		let mut items: Vec<MultiVersionRow<TaggedKey>> = Vec::with_capacity(keys.len());
 		let mut to_batch: Vec<EncodedKey> = Vec::new();
 
 		for key in keys {
@@ -90,7 +90,7 @@ pub trait StateExtension: FlowTransaction {
 			match self.lookup_overlays(&encoded_key) {
 				Some(None) => continue,
 				Some(Some(bytes)) => items.push(MultiVersionRow {
-					key: AnyKey::decode(&encoded_key).expect(UNDECODABLE_STATE_KEY),
+					key: TaggedKey::decode(&encoded_key).expect(UNDECODABLE_STATE_KEY),
 					bytes,
 					version,
 				}),
@@ -136,7 +136,7 @@ pub trait StateExtension: FlowTransaction {
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
 		operator_id = id.0
 	))]
-	fn state_scan_all(&mut self, id: OperatorId) -> Result<MultiVersionBatch<AnyKey>> {
+	fn state_scan_all(&mut self, id: OperatorId) -> Result<MultiVersionBatch<TaggedKey>> {
 		let range = OperatorStateKey::node_range(id).encode();
 		let iter = self.range(range, RangeScope::All, 1024);
 		let mut items = Vec::new();
@@ -155,7 +155,7 @@ pub trait StateExtension: FlowTransaction {
 		rows_fetched = field::Empty,
 		rows_tombstoned = field::Empty
 	))]
-	fn state_range(&mut self, id: OperatorId, query: StateRange) -> Result<MultiVersionBatch<AnyKey>> {
+	fn state_range(&mut self, id: OperatorId, query: StateRange) -> Result<MultiVersionBatch<TaggedKey>> {
 		debug_assert!(
 			keyspace_inner_range_split(&query.range).is_some()
 				|| group_inner_range_split(&query.range).is_some(),
@@ -194,7 +194,7 @@ pub trait StateExtension: FlowTransaction {
 		id: OperatorId,
 		groups: &[GroupId],
 		limit: usize,
-	) -> Result<MultiVersionBatch<AnyKey>> {
+	) -> Result<MultiVersionBatch<TaggedKey>> {
 		let ordered = sweep_order(groups);
 		let prefix = EncodedKey::new(node_prefix(id));
 		let mut merged = BTreeMap::new();
@@ -206,7 +206,7 @@ pub trait StateExtension: FlowTransaction {
 		let version = self.version();
 		let batch = self.operator_store().group_page(id, &ordered, limit.saturating_add(1) as u64);
 		let truncated = batch.has_more;
-		let stored: Vec<Result<MultiVersionRow<AnyKey>>> = batch
+		let stored: Vec<Result<MultiVersionRow<TaggedKey>>> = batch
 			.items
 			.into_iter()
 			.map(|(inner, row)| {
@@ -238,7 +238,7 @@ pub trait StateExtension: FlowTransaction {
 	#[instrument(name = "flow::state::last", level = "debug", skip(self, range), fields(
 		operator_id = id.0
 	))]
-	fn state_last(&mut self, id: OperatorId, range: EncodedKeyRange) -> Result<Option<MultiVersionRow<AnyKey>>> {
+	fn state_last(&mut self, id: OperatorId, range: EncodedKeyRange) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		let prefix = node_prefix(id);
 		let prefixed_range = range.with_prefix(EncodedKey::new(prefix.clone()));
 
@@ -323,7 +323,7 @@ pub trait StateExtension: FlowTransaction {
 			}
 		};
 		Ok(found.map(|row| MultiVersionRow {
-			key: AnyKey::decode(&row.key).expect(UNDECODABLE_STATE_KEY),
+			key: TaggedKey::decode(&row.key).expect(UNDECODABLE_STATE_KEY),
 			bytes: row.bytes,
 			version: row.version,
 		}))

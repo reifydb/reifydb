@@ -17,8 +17,7 @@ use reifydb_core::{
 		storage::StorageId,
 	},
 	key::{
-		EncodableKey,
-		any::AnyKey,
+		any::TaggedKey,
 		operator::state::{
 			GroupId, GroupStateKey, OperatorStateKey, custom_not_cached_key, custom_not_cached_key_in,
 			group_inner_range,
@@ -105,7 +104,7 @@ fn make_value(s: &str) -> EncodedPodRow {
 	EncodedPodRow::new(s.as_bytes())
 }
 
-fn full_key(operator: OperatorId, key: &GroupStateKey) -> AnyKey {
+fn full_key(operator: OperatorId, key: &GroupStateKey) -> TaggedKey {
 	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
 		.expect("scoped state keys must carry a structured inner encoding");
 	OperatorStateKey::new(operator, group, keyspace, suffix).into()
@@ -165,7 +164,7 @@ fn test_state_get_many() {
 		.items
 		.iter()
 		.map(|item| {
-			let AnyKey::OperatorState(key) = &item.key else {
+			let TaggedKey::OperatorState(key) = &item.key else {
 				panic!("state_get_many must return OperatorState keys");
 			};
 			(key.inner().as_slice().to_vec(), item.bytes.clone())
@@ -858,10 +857,10 @@ fn a_group_range_answers_exactly_what_the_per_group_ranges_answer() {
 		}
 	}
 
-	let batched: Vec<AnyKey> =
+	let batched: Vec<TaggedKey> =
 		txn.state_group_range(operator, &groups, 64).unwrap().items.into_iter().map(|row| row.key).collect();
 
-	let mut expected: Vec<AnyKey> = Vec::new();
+	let mut expected: Vec<TaggedKey> = Vec::new();
 	for group in sweep_order(&groups) {
 		let range = group_inner_range(group);
 		let batch = txn.state_range(operator, StateRange::forward(range, "test")).unwrap();
@@ -894,7 +893,7 @@ fn a_group_range_honours_a_pending_write_that_storage_has_never_seen() {
 	txn.state_remove(operator, &doomed).unwrap();
 	txn.state_set(operator, &added, make_value("3")).unwrap();
 
-	let keys: Vec<AnyKey> =
+	let keys: Vec<TaggedKey> =
 		txn.state_group_range(operator, &groups, 64).unwrap().items.into_iter().map(|row| row.key).collect();
 
 	assert!(!keys.contains(&full_key(operator, &doomed)), "a pending remove must not come back from storage");

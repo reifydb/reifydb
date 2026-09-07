@@ -26,9 +26,8 @@ use reifydb_core::{
 		store::MultiVersionRow,
 	},
 	key::{
-		EncodableKey,
-		any::AnyKey,
-		bound::{AnyKeyBound, AnyKeyBoundRange},
+		any::TaggedKey,
+		bound::{TaggedKeyBound, TaggedKeyBoundRange},
 		catalog::IndexEntryKey,
 	},
 	testing::ProfileConfig,
@@ -296,7 +295,7 @@ impl<'a> Runner for MvccRunner {
 				match &mut t {
 					TransactionHandle::Read(rx) => {
 						let items: Vec<_> = rx
-							.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
+							.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for multi in items {
@@ -305,7 +304,7 @@ impl<'a> Runner for MvccRunner {
 					}
 					TransactionHandle::Write(tx) => {
 						let items: Vec<_> = tx
-							.range(AnyKeyBoundRange::all(), RangeScope::All, 1024)
+							.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for item in items {
@@ -486,8 +485,8 @@ fn script_key(raw: Vec<u8>) -> IndexEntryKey {
 	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(raw))
 }
 
-fn script_raw(key: &AnyKey) -> EncodedKey {
-	let AnyKey::IndexEntry(entry) = key else {
+fn script_raw(key: &TaggedKey) -> EncodedKey {
+	let TaggedKey::IndexEntry(entry) = key else {
 		panic!("script key must be an index entry")
 	};
 	EncodedKey::new(entry.key.as_ref())
@@ -497,16 +496,20 @@ fn script_prefix(raw: &[u8]) -> EncodedKey {
 	script_key(raw.to_vec()).encode()
 }
 
-fn script_bound(bound: Bound<EncodedKey>) -> Bound<AnyKeyBound> {
+fn script_bound(bound: Bound<EncodedKey>) -> Bound<TaggedKeyBound> {
 	match bound {
-		Bound::Included(key) => Bound::Included(AnyKeyBound::Key(script_key(key.as_slice().to_vec()).into())),
-		Bound::Excluded(key) => Bound::Excluded(AnyKeyBound::Key(script_key(key.as_slice().to_vec()).into())),
+		Bound::Included(key) => {
+			Bound::Included(TaggedKeyBound::Key(script_key(key.as_slice().to_vec()).into()))
+		}
+		Bound::Excluded(key) => {
+			Bound::Excluded(TaggedKeyBound::Key(script_key(key.as_slice().to_vec()).into()))
+		}
 		Bound::Unbounded => Bound::Unbounded,
 	}
 }
 
-fn script_range(range: EncodedKeyRange) -> AnyKeyBoundRange {
-	AnyKeyBoundRange {
+fn script_range(range: EncodedKeyRange) -> TaggedKeyBoundRange {
+	TaggedKeyBoundRange {
 		start: script_bound(range.start),
 		end: script_bound(range.end),
 	}
@@ -514,7 +517,7 @@ fn script_range(range: EncodedKeyRange) -> AnyKeyBoundRange {
 
 fn print_rx<I>(output: &mut String, mut iter: I)
 where
-	I: Iterator<Item = MultiVersionRow<AnyKey>>,
+	I: Iterator<Item = MultiVersionRow<TaggedKey>>,
 {
 	while let Some(sv) = iter.next() {
 		let fmtkv = Raw::key_value(&script_raw(&sv.key), sv.bytes.as_slice());

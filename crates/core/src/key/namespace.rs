@@ -2,10 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_macro::EncodableKey;
+use reifydb_macro::KeyCodec;
 use reifydb_value::value::{dictionary::DictionaryId, sumtype::SumTypeId};
 
-use super::KeyKind;
+use super::KeyTag;
 use crate::{
 	interface::catalog::{
 		flow::FlowId,
@@ -15,14 +15,13 @@ use crate::{
 		},
 	},
 	key::{
-		EncodableKey,
 		any::{Field, KeyFields, Width},
-		bound::AnyKeyBoundRange,
+		bound::TaggedKeyBoundRange,
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Namespace)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Namespace)]
 pub struct NamespaceKey {
 	pub namespace: NamespaceId,
 }
@@ -38,15 +37,15 @@ impl NamespaceKey {
 		Self::new(namespace).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_key_tests {
 	use super::NamespaceKey;
-	use crate::{interface::catalog::id::NamespaceId, key::EncodableKey};
+	use crate::interface::catalog::id::NamespaceId;
 
 	#[test]
 	fn test_encode_decode() {
@@ -62,8 +61,8 @@ pub mod namespace_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = NamespaceBinding)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceBinding)]
 pub struct NamespaceBindingKey {
 	pub namespace: NamespaceId,
 	pub binding: BindingId,
@@ -81,18 +80,15 @@ impl NamespaceBindingKey {
 		Self::new(namespace, binding).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, namespace.0 as u128)])
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_binding_key_tests {
 	use super::NamespaceBindingKey;
-	use crate::{
-		interface::catalog::id::{BindingId, NamespaceId},
-		key::EncodableKey,
-	};
+	use crate::interface::catalog::id::{BindingId, NamespaceId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -108,8 +104,8 @@ pub mod namespace_binding_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = NamespaceDictionary)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceDictionary)]
 pub struct NamespaceDictionaryKey {
 	pub namespace: NamespaceId,
 	pub dictionary: DictionaryId,
@@ -127,8 +123,8 @@ impl NamespaceDictionaryKey {
 		Self::new(namespace.into(), dictionary.into()).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, namespace.0 as u128)])
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
@@ -158,8 +154,8 @@ pub mod namespace_dictionary_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = NamespaceFlow)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceFlow)]
 pub struct NamespaceFlowKey {
 	pub namespace: NamespaceId,
 	pub flow: FlowId,
@@ -177,18 +173,15 @@ impl NamespaceFlowKey {
 		Self::new(namespace, flow).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, namespace.0 as u128)])
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_flow_key_tests {
 	use super::NamespaceFlowKey;
-	use crate::{
-		interface::catalog::{flow::FlowId, id::NamespaceId},
-		key::EncodableKey,
-	};
+	use crate::interface::catalog::{flow::FlowId, id::NamespaceId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -227,8 +220,8 @@ pub mod namespace_flow_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = NamespaceHandler)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceHandler)]
 pub struct NamespaceHandlerKey {
 	pub namespace: NamespaceId,
 	pub handler: HandlerId,
@@ -246,18 +239,15 @@ impl NamespaceHandlerKey {
 		Self::new(namespace.into(), handler.into()).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, namespace.0 as u128)])
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_handler_key_tests {
 	use super::NamespaceHandlerKey;
-	use crate::{
-		interface::catalog::id::{HandlerId, NamespaceId},
-		key::EncodableKey,
-	};
+	use crate::interface::catalog::id::{HandlerId, NamespaceId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -301,8 +291,8 @@ pub mod namespace_handler_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = NamespaceProcedure)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceProcedure)]
 pub struct NamespaceProcedureKey {
 	pub namespace: NamespaceId,
 	pub procedure: ProcedureId,
@@ -320,18 +310,15 @@ impl NamespaceProcedureKey {
 		Self::new(namespace, procedure).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, namespace.0 as u128)])
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_procedure_key_tests {
 	use super::NamespaceProcedureKey;
-	use crate::{
-		interface::catalog::id::{NamespaceId, ProcedureId},
-		key::EncodableKey,
-	};
+	use crate::interface::catalog::id::{NamespaceId, ProcedureId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -369,8 +356,8 @@ pub mod namespace_procedure_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = NamespaceQueue)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceQueue)]
 pub struct NamespaceQueueKey {
 	pub namespace: NamespaceId,
 	pub queue: QueueId,
@@ -388,8 +375,8 @@ impl NamespaceQueueKey {
 		Self::new(namespace.into(), queue.into()).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, namespace.0 as u128)])
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
@@ -441,8 +428,8 @@ mod namespace_queue_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = NamespaceRingBuffer)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceRingBuffer)]
 pub struct NamespaceRingBufferKey {
 	pub namespace: NamespaceId,
 	pub ringbuffer: RingBufferId,
@@ -460,18 +447,15 @@ impl NamespaceRingBufferKey {
 		Self::new(namespace.into(), ringbuffer.into()).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, namespace.0 as u128)])
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_ring_buffer_key_tests {
 	use super::NamespaceRingBufferKey;
-	use crate::{
-		interface::catalog::id::{NamespaceId, RingBufferId},
-		key::EncodableKey,
-	};
+	use crate::interface::catalog::id::{NamespaceId, RingBufferId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -498,8 +482,8 @@ pub mod namespace_ring_buffer_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = NamespaceSeries)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceSeries)]
 pub struct NamespaceSeriesKey {
 	pub namespace: NamespaceId,
 	pub series: SeriesId,
@@ -517,18 +501,15 @@ impl NamespaceSeriesKey {
 		Self::new(namespace.into(), series.into()).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, namespace.0 as u128)])
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_series_key_tests {
 	use super::NamespaceSeriesKey;
-	use crate::{
-		interface::catalog::id::{NamespaceId, SeriesId},
-		key::EncodableKey,
-	};
+	use crate::interface::catalog::id::{NamespaceId, SeriesId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -555,8 +536,8 @@ pub mod namespace_series_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = NamespaceSink)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceSink)]
 pub struct NamespaceSinkKey {
 	pub namespace: NamespaceId,
 	pub sink: SinkId,
@@ -574,18 +555,15 @@ impl NamespaceSinkKey {
 		Self::new(namespace, sink).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, namespace.0 as u128)])
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_sink_key_tests {
 	use super::NamespaceSinkKey;
-	use crate::{
-		interface::catalog::id::{NamespaceId, SinkId},
-		key::EncodableKey,
-	};
+	use crate::interface::catalog::id::{NamespaceId, SinkId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -624,8 +602,8 @@ pub mod namespace_sink_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = NamespaceSource)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceSource)]
 pub struct NamespaceSourceKey {
 	pub namespace: NamespaceId,
 	pub source: SourceId,
@@ -643,18 +621,15 @@ impl NamespaceSourceKey {
 		Self::new(namespace, source).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, namespace.0 as u128)])
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_source_key_tests {
 	use super::NamespaceSourceKey;
-	use crate::{
-		interface::catalog::id::{NamespaceId, SourceId},
-		key::EncodableKey,
-	};
+	use crate::interface::catalog::id::{NamespaceId, SourceId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -693,8 +668,8 @@ pub mod namespace_source_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = NamespaceSumType)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceSumType)]
 pub struct NamespaceSumTypeKey {
 	pub namespace: NamespaceId,
 	pub sumtype: SumTypeId,
@@ -712,8 +687,8 @@ impl NamespaceSumTypeKey {
 		Self::new(namespace.into(), sumtype.into()).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, namespace.0 as u128)])
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
@@ -722,7 +697,7 @@ pub mod namespace_sum_type_key_tests {
 	use reifydb_value::value::sumtype::SumTypeId;
 
 	use super::NamespaceSumTypeKey;
-	use crate::{interface::catalog::id::NamespaceId, key::EncodableKey};
+	use crate::interface::catalog::id::NamespaceId;
 
 	#[test]
 	fn test_encode_decode() {
@@ -749,8 +724,8 @@ pub mod namespace_sum_type_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = NamespaceTable)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceTable)]
 pub struct NamespaceTableKey {
 	pub namespace: NamespaceId,
 	pub table: TableId,
@@ -768,18 +743,15 @@ impl NamespaceTableKey {
 		Self::new(namespace, table).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, namespace.0 as u128)])
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_table_key_tests {
 	use super::NamespaceTableKey;
-	use crate::{
-		interface::catalog::id::{NamespaceId, TableId},
-		key::EncodableKey,
-	};
+	use crate::interface::catalog::id::{NamespaceId, TableId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -825,8 +797,8 @@ pub mod namespace_table_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = NamespaceView)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceView)]
 pub struct NamespaceViewKey {
 	pub namespace: NamespaceId,
 	pub view: ViewId,
@@ -844,18 +816,15 @@ impl NamespaceViewKey {
 		Self::new(namespace, view).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, [Field::UDesc(Width::U64, namespace.0 as u128)])
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_view_key_tests {
 	use super::NamespaceViewKey;
-	use crate::{
-		interface::catalog::id::{NamespaceId, ViewId},
-		key::EncodableKey,
-	};
+	use crate::interface::catalog::id::{NamespaceId, ViewId};
 
 	#[test]
 	fn test_encode_decode() {

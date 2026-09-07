@@ -10,7 +10,7 @@ use reifydb_core::{
 		change::{Change, Diff, Diffs},
 	},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		operator::state::{GroupId, GroupStateKey, KeyspaceId},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -82,7 +82,7 @@ fn persisted_rows(op: &DistinctOperator, txn: &mut DeferredTransaction) -> BTree
 	let mut out = BTreeMap::new();
 	let batch = txn.state_scan_all(op.plan.operator).unwrap();
 	for item in batch.items {
-		let AnyKey::OperatorState(decoded) = &item.key else {
+		let TaggedKey::OperatorState(decoded) = &item.key else {
 			panic!("internal state key");
 		};
 		if decoded.keyspace == KeyspaceId::DISTINCT_ENTRY {
@@ -105,7 +105,7 @@ fn entry_groups(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Vec<Gro
 	let mut out = Vec::new();
 	let batch = txn.state_scan_all(op.plan.operator).unwrap();
 	for item in batch.items {
-		let AnyKey::OperatorState(decoded) = &item.key else {
+		let TaggedKey::OperatorState(decoded) = &item.key else {
 			panic!("internal state key");
 		};
 		if decoded.keyspace == KeyspaceId::DISTINCT_ENTRY {
@@ -119,7 +119,7 @@ fn erase_group_data(op: &DistinctOperator, txn: &mut DeferredTransaction, group:
 	let batch = txn.state_scan_all(op.plan.operator).unwrap();
 	let mut erased = 0;
 	for item in batch.items {
-		let AnyKey::OperatorState(decoded) = &item.key else {
+		let TaggedKey::OperatorState(decoded) = &item.key else {
 			panic!("internal state key");
 		};
 		if decoded.group == group && decoded.keyspace.is_data() {

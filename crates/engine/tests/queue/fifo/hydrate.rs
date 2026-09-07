@@ -13,8 +13,7 @@ use reifydb_core::{
 		store::{SingleVersionGet, SingleVersionRange, SingleVersionRow},
 	},
 	key::{
-		EncodableKey,
-		any::AnyKey,
+		any::TaggedKey,
 		queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
 	},
 };
@@ -79,8 +78,8 @@ fn total_depth(t: &TestEngine, queue: &Queue) -> u64 {
 	(0..queue.partitions()).map(|partition| counters(t, queue, partition).depth).sum()
 }
 
-fn keys_in(t: &TestEngine, range: EncodedKeyRange) -> Vec<AnyKey> {
-	scan(t, range).iter().map(|item| AnyKey::decode(&item.key).unwrap()).collect()
+fn keys_in(t: &TestEngine, range: EncodedKeyRange) -> Vec<TaggedKey> {
+	scan(t, range).iter().map(|item| TaggedKey::decode(&item.key).unwrap()).collect()
 }
 
 fn with_partition<F>(t: &TestEngine, queue: &Queue, partition: u16, f: F)

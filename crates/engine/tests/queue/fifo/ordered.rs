@@ -13,10 +13,7 @@ use reifydb_core::{
 		},
 		store::{SingleVersionGet, SingleVersionRange},
 	},
-	key::{
-		EncodableKey,
-		queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
-	},
+	key::queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{

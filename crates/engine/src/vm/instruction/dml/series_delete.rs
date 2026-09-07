@@ -18,7 +18,7 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
 	},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -217,7 +217,7 @@ fn drive_series_delete_input(
 			let sequence = u64::from(row_number);
 			let key_value = extract_series_delete_key_value(&columns, series, row_idx);
 			let variant_tag = extract_series_delete_variant_tag(&columns, has_tag, row_idx);
-			let key: AnyKey = if partitioned {
+			let key: TaggedKey = if partitioned {
 				PartitionedSeriesRowKey::new(
 					StorageId::series(series.id),
 					columns.partitions()[row_idx],

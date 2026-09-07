@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::state::{GroupId, KEYSPACE_INNER_PREFIX_LEN, KeyspaceId, OperatorStateKey},
-		typed::MultiKey,
+		typed::OpaqueKey,
 	},
 	metrics::heap::HeapSize,
 };
@@ -420,7 +420,7 @@ fn finish_fill_publishes_under_the_lock_that_cleared_the_marker() {
 	let probed = Arc::new(AtomicBool::new(false));
 	let flag = acquired.clone();
 	let seen = probed.clone();
-	let hook: FillInterlock<D> = Box::new(move |tier: &PointTier<D>, id: &PointKey<OperatorId, MultiKey>| {
+	let hook: FillInterlock<D> = Box::new(move |tier: &PointTier<D>, id: &PointKey<OperatorId, OpaqueKey>| {
 		seen.store(true, Ordering::Relaxed);
 		flag.store(tier.shard_for(id).try_lock().is_some(), Ordering::Relaxed);
 	});

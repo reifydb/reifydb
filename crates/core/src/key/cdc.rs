@@ -6,12 +6,12 @@ use std::borrow::Cow;
 use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
 use smallvec::{SmallVec, smallvec};
 
-use super::{EncodableKey, KeyKind};
+use super::KeyTag;
 use crate::{
 	interface::{catalog::flow::FlowId, cdc::CdcConsumerId},
 	key::{
 		any::{ByteEncoding, Field, KeyFields},
-		bound::AnyKeyBoundRange,
+		bound::TaggedKeyBoundRange,
 	},
 };
 
@@ -58,28 +58,28 @@ impl CdcConsumerKey {
 		.encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
-impl EncodableKey for CdcConsumerKey {
-	const KIND: KeyKind = KeyKind::CdcConsumer;
+impl CdcConsumerKey {
+	pub const TAG: KeyTag = KeyTag::CdcConsumer;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(Self::KIND as u8).extend_str(&self.consumer);
+		serializer.extend_u8(Self::TAG as u8).extend_str(&self.consumer);
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self>
+	pub fn decode(key: &EncodedKey) -> Option<Self>
 	where
 		Self: Sized,
 	{
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 
@@ -95,7 +95,7 @@ impl EncodableKey for CdcConsumerKey {
 pub mod cdc_consumer_key_tests {
 	use std::ops::RangeBounds;
 
-	use super::{CdcConsumerKey, EncodableKey, ToConsumerKey};
+	use super::{CdcConsumerKey, ToConsumerKey};
 	use crate::interface::{catalog::flow::FlowId, cdc::CdcConsumerId};
 
 	#[test]
@@ -157,23 +157,21 @@ pub mod cdc_consumer_key_tests {
 	}
 }
 
-pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
+pub fn should_exclude_from_cdc(kind: KeyTag) -> bool {
 	matches!(
 		kind,
-		KeyKind::OperatorState
-			| KeyKind::CdcConsumer
-			| KeyKind::Metric | KeyKind::SystemSequence
-			| KeyKind::RowSequence
-			| KeyKind::ColumnSequence
-			| KeyKind::SystemVersion
-			| KeyKind::TransactionVersion
-			| KeyKind::FlowVersion
-			| KeyKind::RingBufferMetadata
-			| KeyKind::Index | KeyKind::ConfigStorage
-			| KeyKind::Token | KeyKind::VersionEpoch
-			| KeyKind::QueuePartition
-			| KeyKind::QueueItemState
-			| KeyKind::QueueDue | KeyKind::QueueKeyActive
+		KeyTag::OperatorState
+			| KeyTag::CdcConsumer | KeyTag::Metric
+			| KeyTag::SystemSequence
+			| KeyTag::RowSequence | KeyTag::ColumnSequence
+			| KeyTag::SystemVersion
+			| KeyTag::TransactionVersion
+			| KeyTag::FlowVersion | KeyTag::RingBufferMetadata
+			| KeyTag::Index | KeyTag::ConfigStorage
+			| KeyTag::Token | KeyTag::VersionEpoch
+			| KeyTag::QueuePartition
+			| KeyTag::QueueItemState
+			| KeyTag::QueueDue | KeyTag::QueueKeyActive
 	)
 }
 
@@ -183,102 +181,102 @@ pub mod primary_key_tests {
 
 	#[test]
 	fn test_all_key_kinds_have_explicit_cdc_decision() {
-		// The exhaustive match forces every new KeyKind to make a CDC-exclusion decision instead of
+		// The exhaustive match forces every new KeyTag to make a CDC-exclusion decision instead of
 		// silently defaulting into the log.
 
-		let test_variant = KeyKind::Row;
+		let test_variant = KeyTag::Row;
 
 		match test_variant {
-			KeyKind::Namespace => {}
-			KeyKind::Table => {}
-			KeyKind::Row => {}
-			KeyKind::NamespaceTable => {}
-			KeyKind::SystemSequence => {}
-			KeyKind::Columns => {}
-			KeyKind::Column => {}
-			KeyKind::RowSequence => {}
-			KeyKind::ColumnProperty => {}
-			KeyKind::SystemVersion => {}
-			KeyKind::TransactionVersion => {}
-			KeyKind::Index => {}
-			KeyKind::IndexEntry => {}
-			KeyKind::ColumnSequence => {}
-			KeyKind::CdcConsumer => {}
-			KeyKind::View => {}
-			KeyKind::NamespaceView => {}
-			KeyKind::PrimaryKey => {}
-			KeyKind::OperatorState => {}
-			KeyKind::RingBuffer => {}
-			KeyKind::NamespaceRingBuffer => {}
-			KeyKind::RingBufferMetadata => {}
-			KeyKind::Flow => {}
-			KeyKind::NamespaceFlow => {}
-			KeyKind::Operator => {}
-			KeyKind::OperatorByFlow => {}
-			KeyKind::FlowEdge => {}
-			KeyKind::FlowEdgeByFlow => {}
-			KeyKind::OutputFrontier => {}
-			KeyKind::Dictionary => {}
-			KeyKind::DictionaryEntry => {}
-			KeyKind::DictionaryEntryIndex => {}
-			KeyKind::NamespaceDictionary => {}
-			KeyKind::Metric => {}
-			KeyKind::FlowVersion => {}
-			KeyKind::RowShape => {}
-			KeyKind::SumType => {}
-			KeyKind::NamespaceSumType => {}
-			KeyKind::RowShapeField => {}
-			KeyKind::Handler => {}
-			KeyKind::NamespaceHandler => {}
-			KeyKind::VariantHandler => {}
-			KeyKind::Series => {}
-			KeyKind::NamespaceSeries => {}
-			KeyKind::SeriesMetadata => {}
-			KeyKind::Identity => {}
-			KeyKind::Role => {}
-			KeyKind::GrantedRole => {}
-			KeyKind::Policy => {}
-			KeyKind::PolicyOp => {}
-			KeyKind::Migration => {}
-			KeyKind::Authentication => {}
-			KeyKind::MigrationEvent => {}
-			KeyKind::ConfigStorage => {}
-			KeyKind::Token => {}
-			KeyKind::Source => {}
-			KeyKind::NamespaceSource => {}
-			KeyKind::Sink => {}
-			KeyKind::NamespaceSink => {}
-			KeyKind::RowSettings => {}
-			KeyKind::Procedure => {}
-			KeyKind::NamespaceProcedure => {}
-			KeyKind::ProcedureParam => {}
-			KeyKind::Binding => {}
-			KeyKind::OperatorSettings => {}
-			KeyKind::NamespaceBinding => {}
-			KeyKind::ColumnSnapshot => {}
-			KeyKind::SeriesColumnSnapshot => {}
-			KeyKind::TableColumnSnapshot => {}
-			KeyKind::IdentityAttribute => {}
-			KeyKind::IdentityAttributeValue => {}
-			KeyKind::PartitionedRow => {}
-			KeyKind::PartitionedSeriesRow => {}
-			KeyKind::Partition => {}
-			KeyKind::Queue => {}
-			KeyKind::NamespaceQueue => {}
-			KeyKind::QueueDeduplication => {}
-			KeyKind::QueuePartition => {}
-			KeyKind::QueueItemState => {}
-			KeyKind::QueueDue => {}
-			KeyKind::QueueAttempt => {}
-			KeyKind::QueueKeyActive => {}
-			KeyKind::VersionEpoch => {}
-			KeyKind::SeriesRow => {}
-			KeyKind::SortedViewRow => {}
-			KeyKind::PartitionedSortedViewRow => {}
-			KeyKind::Relationship => {} /* When adding a new variant, add it here.
-			                             * The compiler will error if you forget.
-			                             * Then add a test and update should_exclude_from_cdc() if
-			                             * needed. */
+			KeyTag::Namespace => {}
+			KeyTag::Table => {}
+			KeyTag::Row => {}
+			KeyTag::NamespaceTable => {}
+			KeyTag::SystemSequence => {}
+			KeyTag::Columns => {}
+			KeyTag::Column => {}
+			KeyTag::RowSequence => {}
+			KeyTag::ColumnProperty => {}
+			KeyTag::SystemVersion => {}
+			KeyTag::TransactionVersion => {}
+			KeyTag::Index => {}
+			KeyTag::IndexEntry => {}
+			KeyTag::ColumnSequence => {}
+			KeyTag::CdcConsumer => {}
+			KeyTag::View => {}
+			KeyTag::NamespaceView => {}
+			KeyTag::PrimaryKey => {}
+			KeyTag::OperatorState => {}
+			KeyTag::RingBuffer => {}
+			KeyTag::NamespaceRingBuffer => {}
+			KeyTag::RingBufferMetadata => {}
+			KeyTag::Flow => {}
+			KeyTag::NamespaceFlow => {}
+			KeyTag::Operator => {}
+			KeyTag::OperatorByFlow => {}
+			KeyTag::FlowEdge => {}
+			KeyTag::FlowEdgeByFlow => {}
+			KeyTag::OutputFrontier => {}
+			KeyTag::Dictionary => {}
+			KeyTag::DictionaryEntry => {}
+			KeyTag::DictionaryEntryIndex => {}
+			KeyTag::NamespaceDictionary => {}
+			KeyTag::Metric => {}
+			KeyTag::FlowVersion => {}
+			KeyTag::RowShape => {}
+			KeyTag::SumType => {}
+			KeyTag::NamespaceSumType => {}
+			KeyTag::RowShapeField => {}
+			KeyTag::Handler => {}
+			KeyTag::NamespaceHandler => {}
+			KeyTag::VariantHandler => {}
+			KeyTag::Series => {}
+			KeyTag::NamespaceSeries => {}
+			KeyTag::SeriesMetadata => {}
+			KeyTag::Identity => {}
+			KeyTag::Role => {}
+			KeyTag::GrantedRole => {}
+			KeyTag::Policy => {}
+			KeyTag::PolicyOp => {}
+			KeyTag::Migration => {}
+			KeyTag::Authentication => {}
+			KeyTag::MigrationEvent => {}
+			KeyTag::ConfigStorage => {}
+			KeyTag::Token => {}
+			KeyTag::Source => {}
+			KeyTag::NamespaceSource => {}
+			KeyTag::Sink => {}
+			KeyTag::NamespaceSink => {}
+			KeyTag::RowSettings => {}
+			KeyTag::Procedure => {}
+			KeyTag::NamespaceProcedure => {}
+			KeyTag::ProcedureParam => {}
+			KeyTag::Binding => {}
+			KeyTag::OperatorSettings => {}
+			KeyTag::NamespaceBinding => {}
+			KeyTag::ColumnSnapshot => {}
+			KeyTag::SeriesColumnSnapshot => {}
+			KeyTag::TableColumnSnapshot => {}
+			KeyTag::IdentityAttribute => {}
+			KeyTag::IdentityAttributeValue => {}
+			KeyTag::PartitionedRow => {}
+			KeyTag::PartitionedSeriesRow => {}
+			KeyTag::Partition => {}
+			KeyTag::Queue => {}
+			KeyTag::NamespaceQueue => {}
+			KeyTag::QueueDeduplication => {}
+			KeyTag::QueuePartition => {}
+			KeyTag::QueueItemState => {}
+			KeyTag::QueueDue => {}
+			KeyTag::QueueAttempt => {}
+			KeyTag::QueueKeyActive => {}
+			KeyTag::VersionEpoch => {}
+			KeyTag::SeriesRow => {}
+			KeyTag::SortedViewRow => {}
+			KeyTag::PartitionedSortedViewRow => {}
+			KeyTag::Relationship => {} /* When adding a new variant, add it here.
+			                            * The compiler will error if you forget.
+			                            * Then add a test and update should_exclude_from_cdc() if
+			                            * needed. */
 		}
 	}
 
@@ -286,174 +284,174 @@ pub mod primary_key_tests {
 	fn test_sorted_view_rows_reach_the_cdc_log() {
 		// A sorted view's rows carry their own kind, and a subscriber that never sees them reads a
 		// view that silently stops changing.
-		assert!(!should_exclude_from_cdc(KeyKind::SortedViewRow));
-		assert!(!should_exclude_from_cdc(KeyKind::PartitionedSortedViewRow));
+		assert!(!should_exclude_from_cdc(KeyTag::SortedViewRow));
+		assert!(!should_exclude_from_cdc(KeyTag::PartitionedSortedViewRow));
 	}
 
 	#[test]
 	fn test_exclude_operator_state() {
-		assert!(should_exclude_from_cdc(KeyKind::OperatorState));
+		assert!(should_exclude_from_cdc(KeyTag::OperatorState));
 	}
 
 	#[test]
 	fn test_exclude_cdc_consumer() {
-		assert!(should_exclude_from_cdc(KeyKind::CdcConsumer));
+		assert!(should_exclude_from_cdc(KeyTag::CdcConsumer));
 	}
 
 	#[test]
 	fn test_exclude_storage_tracker() {
-		assert!(should_exclude_from_cdc(KeyKind::Metric));
+		assert!(should_exclude_from_cdc(KeyTag::Metric));
 	}
 
 	#[test]
 	fn test_exclude_system_sequence() {
-		assert!(should_exclude_from_cdc(KeyKind::SystemSequence));
+		assert!(should_exclude_from_cdc(KeyTag::SystemSequence));
 	}
 
 	#[test]
 	fn test_exclude_row_sequence() {
-		assert!(should_exclude_from_cdc(KeyKind::RowSequence));
+		assert!(should_exclude_from_cdc(KeyTag::RowSequence));
 	}
 
 	#[test]
 	fn test_exclude_column_sequence() {
-		assert!(should_exclude_from_cdc(KeyKind::ColumnSequence));
+		assert!(should_exclude_from_cdc(KeyTag::ColumnSequence));
 	}
 
 	#[test]
 	fn test_exclude_system_version() {
-		assert!(should_exclude_from_cdc(KeyKind::SystemVersion));
+		assert!(should_exclude_from_cdc(KeyTag::SystemVersion));
 	}
 
 	#[test]
 	fn test_exclude_transaction_version() {
-		assert!(should_exclude_from_cdc(KeyKind::TransactionVersion));
+		assert!(should_exclude_from_cdc(KeyTag::TransactionVersion));
 	}
 
 	#[test]
 	fn test_exclude_ring_buffer_metadata() {
-		assert!(should_exclude_from_cdc(KeyKind::RingBufferMetadata));
+		assert!(should_exclude_from_cdc(KeyTag::RingBufferMetadata));
 	}
 
 	#[test]
 	fn test_exclude_index() {
-		assert!(should_exclude_from_cdc(KeyKind::Index));
+		assert!(should_exclude_from_cdc(KeyTag::Index));
 	}
 
 	#[test]
 	fn test_include_namespace() {
-		assert!(!should_exclude_from_cdc(KeyKind::Namespace));
+		assert!(!should_exclude_from_cdc(KeyTag::Namespace));
 	}
 
 	#[test]
 	fn test_include_table() {
-		assert!(!should_exclude_from_cdc(KeyKind::Table));
+		assert!(!should_exclude_from_cdc(KeyTag::Table));
 	}
 
 	#[test]
 	fn test_include_row() {
-		assert!(!should_exclude_from_cdc(KeyKind::Row));
+		assert!(!should_exclude_from_cdc(KeyTag::Row));
 	}
 
 	#[test]
 	fn test_include_series_row() {
-		// Series rows rode into the log under KeyKind::Row, so their own kind must keep them there.
-		assert!(!should_exclude_from_cdc(KeyKind::SeriesRow));
+		// Series rows rode into the log under KeyTag::Row, so their own kind must keep them there.
+		assert!(!should_exclude_from_cdc(KeyTag::SeriesRow));
 	}
 
 	#[test]
 	fn test_include_partitioned_row() {
-		assert!(!should_exclude_from_cdc(KeyKind::PartitionedRow));
+		assert!(!should_exclude_from_cdc(KeyTag::PartitionedRow));
 	}
 
 	#[test]
 	fn test_include_partition() {
-		assert!(!should_exclude_from_cdc(KeyKind::Partition));
+		assert!(!should_exclude_from_cdc(KeyTag::Partition));
 	}
 
 	#[test]
 	fn test_include_namespace_table() {
-		assert!(!should_exclude_from_cdc(KeyKind::NamespaceTable));
+		assert!(!should_exclude_from_cdc(KeyTag::NamespaceTable));
 	}
 
 	#[test]
 	fn test_include_columns() {
-		assert!(!should_exclude_from_cdc(KeyKind::Columns));
+		assert!(!should_exclude_from_cdc(KeyTag::Columns));
 	}
 
 	#[test]
 	fn test_include_column() {
-		assert!(!should_exclude_from_cdc(KeyKind::Column));
+		assert!(!should_exclude_from_cdc(KeyTag::Column));
 	}
 
 	#[test]
 	fn test_include_column_property() {
-		assert!(!should_exclude_from_cdc(KeyKind::ColumnProperty));
+		assert!(!should_exclude_from_cdc(KeyTag::ColumnProperty));
 	}
 
 	#[test]
 	fn test_include_index_entry() {
-		assert!(!should_exclude_from_cdc(KeyKind::IndexEntry));
+		assert!(!should_exclude_from_cdc(KeyTag::IndexEntry));
 	}
 
 	#[test]
 	fn test_include_view() {
-		assert!(!should_exclude_from_cdc(KeyKind::View));
+		assert!(!should_exclude_from_cdc(KeyTag::View));
 	}
 
 	#[test]
 	fn test_include_namespace_view() {
-		assert!(!should_exclude_from_cdc(KeyKind::NamespaceView));
+		assert!(!should_exclude_from_cdc(KeyTag::NamespaceView));
 	}
 
 	#[test]
 	fn test_include_primary_key() {
-		assert!(!should_exclude_from_cdc(KeyKind::PrimaryKey));
+		assert!(!should_exclude_from_cdc(KeyTag::PrimaryKey));
 	}
 
 	#[test]
 	fn test_include_ring_buffer() {
-		assert!(!should_exclude_from_cdc(KeyKind::RingBuffer));
+		assert!(!should_exclude_from_cdc(KeyTag::RingBuffer));
 	}
 
 	#[test]
 	fn test_include_namespace_ring_buffer() {
-		assert!(!should_exclude_from_cdc(KeyKind::NamespaceRingBuffer));
+		assert!(!should_exclude_from_cdc(KeyTag::NamespaceRingBuffer));
 	}
 
 	#[test]
 	fn test_include_queue() {
-		assert!(!should_exclude_from_cdc(KeyKind::Queue));
+		assert!(!should_exclude_from_cdc(KeyTag::Queue));
 	}
 
 	#[test]
 	fn test_include_namespace_queue() {
-		assert!(!should_exclude_from_cdc(KeyKind::NamespaceQueue));
+		assert!(!should_exclude_from_cdc(KeyTag::NamespaceQueue));
 	}
 
 	#[test]
 	fn test_include_queue_deduplication() {
-		assert!(!should_exclude_from_cdc(KeyKind::QueueDeduplication));
+		assert!(!should_exclude_from_cdc(KeyTag::QueueDeduplication));
 	}
 
 	#[test]
 	fn test_exclude_queue_partition() {
-		assert!(should_exclude_from_cdc(KeyKind::QueuePartition));
+		assert!(should_exclude_from_cdc(KeyTag::QueuePartition));
 	}
 
 	#[test]
 	fn test_exclude_queue_item_state() {
-		assert!(should_exclude_from_cdc(KeyKind::QueueItemState));
+		assert!(should_exclude_from_cdc(KeyTag::QueueItemState));
 	}
 
 	#[test]
 	fn test_exclude_queue_due() {
-		assert!(should_exclude_from_cdc(KeyKind::QueueDue));
+		assert!(should_exclude_from_cdc(KeyTag::QueueDue));
 	}
 
 	#[test]
 	fn test_exclude_queue_key_active() {
-		assert!(should_exclude_from_cdc(KeyKind::QueueKeyActive));
+		assert!(should_exclude_from_cdc(KeyTag::QueueKeyActive));
 	}
 
 	#[test]
@@ -461,177 +459,177 @@ pub mod primary_key_tests {
 		// Attempt records are the durable audit trail of what a worker reported, not internal
 		// scheduling churn. Excluding them would make every ack invisible to subscribers and
 		// to any downstream view built on effect outcomes.
-		assert!(!should_exclude_from_cdc(KeyKind::QueueAttempt));
+		assert!(!should_exclude_from_cdc(KeyTag::QueueAttempt));
 	}
 
 	#[test]
 	fn test_include_operator_settings() {
-		assert!(!should_exclude_from_cdc(KeyKind::OperatorSettings));
+		assert!(!should_exclude_from_cdc(KeyTag::OperatorSettings));
 	}
 
 	#[test]
 	fn test_include_flow() {
-		assert!(!should_exclude_from_cdc(KeyKind::Flow));
+		assert!(!should_exclude_from_cdc(KeyTag::Flow));
 	}
 
 	#[test]
 	fn test_include_namespace_flow() {
-		assert!(!should_exclude_from_cdc(KeyKind::NamespaceFlow));
+		assert!(!should_exclude_from_cdc(KeyTag::NamespaceFlow));
 	}
 
 	#[test]
 	fn test_include_operator() {
-		assert!(!should_exclude_from_cdc(KeyKind::Operator));
+		assert!(!should_exclude_from_cdc(KeyTag::Operator));
 	}
 
 	#[test]
 	fn test_include_operator_by_flow() {
-		assert!(!should_exclude_from_cdc(KeyKind::OperatorByFlow));
+		assert!(!should_exclude_from_cdc(KeyTag::OperatorByFlow));
 	}
 
 	#[test]
 	fn test_include_flow_edge() {
-		assert!(!should_exclude_from_cdc(KeyKind::FlowEdge));
+		assert!(!should_exclude_from_cdc(KeyTag::FlowEdge));
 	}
 
 	#[test]
 	fn test_include_flow_edge_by_flow() {
-		assert!(!should_exclude_from_cdc(KeyKind::FlowEdgeByFlow));
+		assert!(!should_exclude_from_cdc(KeyTag::FlowEdgeByFlow));
 	}
 
 	#[test]
 	fn test_include_dictionary() {
-		assert!(!should_exclude_from_cdc(KeyKind::Dictionary));
+		assert!(!should_exclude_from_cdc(KeyTag::Dictionary));
 	}
 
 	#[test]
 	fn test_include_dictionary_entry() {
-		assert!(!should_exclude_from_cdc(KeyKind::DictionaryEntry));
+		assert!(!should_exclude_from_cdc(KeyTag::DictionaryEntry));
 	}
 
 	#[test]
 	fn test_include_dictionary_entry_index() {
-		assert!(!should_exclude_from_cdc(KeyKind::DictionaryEntryIndex));
+		assert!(!should_exclude_from_cdc(KeyTag::DictionaryEntryIndex));
 	}
 
 	#[test]
 	fn test_include_namespace_dictionary() {
-		assert!(!should_exclude_from_cdc(KeyKind::NamespaceDictionary));
+		assert!(!should_exclude_from_cdc(KeyTag::NamespaceDictionary));
 	}
 
 	#[test]
 	fn test_include_handler() {
-		assert!(!should_exclude_from_cdc(KeyKind::Handler));
+		assert!(!should_exclude_from_cdc(KeyTag::Handler));
 	}
 
 	#[test]
 	fn test_include_namespace_handler() {
-		assert!(!should_exclude_from_cdc(KeyKind::NamespaceHandler));
+		assert!(!should_exclude_from_cdc(KeyTag::NamespaceHandler));
 	}
 
 	#[test]
 	fn test_include_variant_handler() {
-		assert!(!should_exclude_from_cdc(KeyKind::VariantHandler));
+		assert!(!should_exclude_from_cdc(KeyTag::VariantHandler));
 	}
 
 	#[test]
 	fn test_include_shape() {
-		assert!(!should_exclude_from_cdc(KeyKind::RowShape));
+		assert!(!should_exclude_from_cdc(KeyTag::RowShape));
 	}
 
 	#[test]
 	fn test_include_sum_type() {
-		assert!(!should_exclude_from_cdc(KeyKind::SumType));
+		assert!(!should_exclude_from_cdc(KeyTag::SumType));
 	}
 
 	#[test]
 	fn test_include_namespace_sum_type() {
-		assert!(!should_exclude_from_cdc(KeyKind::NamespaceSumType));
+		assert!(!should_exclude_from_cdc(KeyTag::NamespaceSumType));
 	}
 
 	#[test]
 	fn test_include_shape_field() {
-		assert!(!should_exclude_from_cdc(KeyKind::RowShapeField));
+		assert!(!should_exclude_from_cdc(KeyTag::RowShapeField));
 	}
 
 	#[test]
 	fn test_include_series() {
-		assert!(!should_exclude_from_cdc(KeyKind::Series));
+		assert!(!should_exclude_from_cdc(KeyTag::Series));
 	}
 
 	#[test]
 	fn test_include_namespace_series() {
-		assert!(!should_exclude_from_cdc(KeyKind::NamespaceSeries));
+		assert!(!should_exclude_from_cdc(KeyTag::NamespaceSeries));
 	}
 
 	#[test]
 	fn test_include_series_metadata() {
-		assert!(!should_exclude_from_cdc(KeyKind::SeriesMetadata));
+		assert!(!should_exclude_from_cdc(KeyTag::SeriesMetadata));
 	}
 
 	#[test]
 	fn test_include_identity() {
-		assert!(!should_exclude_from_cdc(KeyKind::Identity));
+		assert!(!should_exclude_from_cdc(KeyTag::Identity));
 	}
 
 	#[test]
 	fn test_include_role() {
-		assert!(!should_exclude_from_cdc(KeyKind::Role));
+		assert!(!should_exclude_from_cdc(KeyTag::Role));
 	}
 
 	#[test]
 	fn test_include_granted_role() {
-		assert!(!should_exclude_from_cdc(KeyKind::GrantedRole));
+		assert!(!should_exclude_from_cdc(KeyTag::GrantedRole));
 	}
 
 	#[test]
 	fn test_include_identity_attribute() {
-		assert!(!should_exclude_from_cdc(KeyKind::IdentityAttribute));
+		assert!(!should_exclude_from_cdc(KeyTag::IdentityAttribute));
 	}
 
 	#[test]
 	fn test_include_identity_attribute_value() {
-		assert!(!should_exclude_from_cdc(KeyKind::IdentityAttributeValue));
+		assert!(!should_exclude_from_cdc(KeyTag::IdentityAttributeValue));
 	}
 
 	#[test]
 	fn test_include_authentication() {
-		assert!(!should_exclude_from_cdc(KeyKind::Authentication));
+		assert!(!should_exclude_from_cdc(KeyTag::Authentication));
 	}
 
 	#[test]
 	fn test_include_policy() {
-		assert!(!should_exclude_from_cdc(KeyKind::Policy));
+		assert!(!should_exclude_from_cdc(KeyTag::Policy));
 	}
 
 	#[test]
 	fn test_include_policy_op() {
-		assert!(!should_exclude_from_cdc(KeyKind::PolicyOp));
+		assert!(!should_exclude_from_cdc(KeyTag::PolicyOp));
 	}
 
 	#[test]
 	fn test_include_migration() {
-		assert!(!should_exclude_from_cdc(KeyKind::Migration));
+		assert!(!should_exclude_from_cdc(KeyTag::Migration));
 	}
 
 	#[test]
 	fn test_include_migration_event() {
-		assert!(!should_exclude_from_cdc(KeyKind::MigrationEvent));
+		assert!(!should_exclude_from_cdc(KeyTag::MigrationEvent));
 	}
 
 	#[test]
 	fn test_exclude_flow_version() {
-		assert!(should_exclude_from_cdc(KeyKind::FlowVersion));
+		assert!(should_exclude_from_cdc(KeyTag::FlowVersion));
 	}
 
 	#[test]
 	fn test_exclude_config() {
-		assert!(should_exclude_from_cdc(KeyKind::ConfigStorage));
+		assert!(should_exclude_from_cdc(KeyTag::ConfigStorage));
 	}
 
 	#[test]
 	fn test_exclude_version_epoch() {
-		assert!(should_exclude_from_cdc(KeyKind::VersionEpoch));
+		assert!(should_exclude_from_cdc(KeyTag::VersionEpoch));
 	}
 }
 

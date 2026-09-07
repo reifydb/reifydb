@@ -245,8 +245,8 @@ fn round_trip_test(name: &str) -> String {
 	out.push_str("\t// a key that cannot be read back has silently lost a column somewhere in its bytes.\n");
 	out.push_str("\t#[test]\n\tfn every_boundary_instance_decodes_back_to_itself() {\n");
 	out.push_str("\t\tfor __key in __samples().iter() {\n");
-	out.push_str(&format!("\t\t\tlet __encoded = <{name} as EncodableKey>::encode(__key);\n"));
-	out.push_str(&format!("\t\t\tlet __decoded = <{name} as EncodableKey>::decode(&__encoded);\n"));
+	out.push_str(&format!("\t\t\tlet __encoded = {name}::encode(__key);\n"));
+	out.push_str(&format!("\t\t\tlet __decoded = {name}::decode(&__encoded);\n"));
 	out.push_str(&format!(
 		"\t\t\tassert_eq!(\n\t\t\t\t__decoded.as_ref(),\n\t\t\t\tSome(__key),\n\t\t\t\t\"{name} did not \
 		 survive a round trip: {{:?}} encoded to {{:?}}\",\n\t\t\t\t__key,\n\t\t\t\t\
@@ -263,11 +263,11 @@ fn byte_replay_test(name: &str) -> String {
 	);
 	out.push_str("\t#[test]\n\tfn every_boundary_instance_replays_its_encoded_bytes_through_fields() {\n");
 	out.push_str("\t\tfor __key in __samples().iter() {\n");
-	out.push_str(&format!("\t\t\tlet mut __replayed = vec![!(<{name} as EncodableKey>::KIND as u8)];\n"));
+	out.push_str(&format!("\t\t\tlet mut __replayed = vec![!({name}::TAG as u8)];\n"));
 	out.push_str("\t\t\tfor __field in __key.fields().iter() {\n");
 	out.push_str("\t\t\t\t__field.encode(&mut __replayed);\n\t\t\t}\n");
 	out.push_str(&format!(
-		"\t\t\tassert_eq!(\n\t\t\t\t__replayed.as_slice(),\n\t\t\t\t<{name} as 		 EncodableKey>::encode(__key).as_slice(),\n\t\t\t\t\"{name}: fields() does not replay the bytes its 		 encoder wrote for {{:?}}\",\n\t\t\t\t__key\n\t\t\t);\n"
+		"\t\t\tassert_eq!(\n\t\t\t\t__replayed.as_slice(),\n\t\t\t\t{name}::encode(__key).as_slice(),\n\t\t\t\t\"{name}: fields() does not replay the bytes its 		 encoder wrote for {{:?}}\",\n\t\t\t\t__key\n\t\t\t);\n"
 	));
 	out.push_str("\t\t}\n\t}\n");
 	out
@@ -281,8 +281,8 @@ fn order_test(name: &str) -> String {
 	out.push_str(&format!("\t\tassert!(!__samples.is_empty(), \"{name} produced no instances to compare\");\n"));
 	out.push_str("\t\tfor __a in __samples.iter() {\n\t\t\tfor __b in __samples.iter() {\n");
 	out.push_str("\t\t\t\tlet (__expected, __column) = __expected_order(__a, __b);\n");
-	out.push_str(&format!("\t\t\t\tlet __ea = <{name} as EncodableKey>::encode(__a);\n"));
-	out.push_str(&format!("\t\t\t\tlet __eb = <{name} as EncodableKey>::encode(__b);\n"));
+	out.push_str(&format!("\t\t\t\tlet __ea = {name}::encode(__a);\n"));
+	out.push_str(&format!("\t\t\t\tlet __eb = {name}::encode(__b);\n"));
 	out.push_str("\t\t\t\tlet __actual = __ea.as_slice().cmp(__eb.as_slice());\n");
 	out.push_str(
 		"\t\t\t\tassert_eq!(\n\t\t\t\t\t__expected,\n\t\t\t\t\t__expected_order(__b, \

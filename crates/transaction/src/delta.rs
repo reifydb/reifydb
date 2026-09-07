@@ -9,7 +9,7 @@ use std::collections::{
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	delta::{Delta, RemoveAnnounce},
-	key::any::AnyKey,
+	key::any::TaggedKey,
 };
 
 #[derive(Debug, Clone)]
@@ -25,8 +25,8 @@ enum OptimizedDeltaState {
 	Cancelled,
 }
 
-pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys: &BTreeSet<AnyKey>) -> Vec<Delta> {
-	let mut key_states: BTreeMap<AnyKey, (OptimizedDeltaState, usize)> = BTreeMap::new();
+pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys: &BTreeSet<TaggedKey>) -> Vec<Delta> {
+	let mut key_states: BTreeMap<TaggedKey, (OptimizedDeltaState, usize)> = BTreeMap::new();
 
 	for (idx, delta) in deltas.into_iter().enumerate() {
 		match delta {
@@ -154,7 +154,7 @@ pub mod tests {
 
 	use super::*;
 
-	fn make_key(s: &str) -> AnyKey {
+	fn make_key(s: &str) -> TaggedKey {
 		QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>()).into()
 	}
 

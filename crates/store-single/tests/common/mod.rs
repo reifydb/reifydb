@@ -27,7 +27,7 @@ use reifydb_core::{
 			SingleVersionRangeRev, SingleVersionRow,
 		},
 	},
-	key::{EncodableKey, catalog::IndexEntryKey},
+	key::catalog::IndexEntryKey,
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},

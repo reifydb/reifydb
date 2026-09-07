@@ -267,7 +267,7 @@ pub fn derive_key(input: TokenStream) -> TokenStream {
 	let tokens: Vec<TokenTree> = input.into_iter().collect();
 	let mut iter = tokens.iter().peekable();
 
-	let mut kind: Option<String> = None;
+	let mut tag: Option<String> = None;
 	while let Some(TokenTree::Punct(p)) = iter.peek() {
 		if p.as_char() != '#' {
 			break;
@@ -276,16 +276,16 @@ pub fn derive_key(input: TokenStream) -> TokenStream {
 		match iter.next() {
 			Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Bracket => {
 				if let Some(found) = parse_key_attribute(g) {
-					kind = Some(found);
+					tag = Some(found);
 				}
 			}
 			_ => return compile_error("expected an attribute after '#'"),
 		}
 	}
 
-	let kind = match kind {
-		Some(kind) => kind,
-		None => return compile_error("EncodableKey requires #[key(kind = Variant)] naming its KeyKind"),
+	let tag = match tag {
+		Some(tag) => tag,
+		None => return compile_error("KeyCodec requires #[key(tag = Variant)] naming its KeyTag"),
 	};
 
 	if let Some(TokenTree::Ident(i)) = iter.peek()
@@ -301,7 +301,7 @@ pub fn derive_key(input: TokenStream) -> TokenStream {
 
 	match iter.next() {
 		Some(TokenTree::Ident(i)) if *i == "struct" => {}
-		_ => return compile_error("EncodableKey can only be derived for structs"),
+		_ => return compile_error("KeyCodec can only be derived for structs"),
 	}
 
 	let name = match iter.next() {
@@ -312,12 +312,10 @@ pub fn derive_key(input: TokenStream) -> TokenStream {
 	let body = match iter.next() {
 		Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace => g.clone(),
 		Some(TokenTree::Punct(p)) if p.as_char() == '<' => {
-			return compile_error("EncodableKey cannot be derived for a generic struct");
+			return compile_error("KeyCodec cannot be derived for a generic struct");
 		}
 		Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis => {
-			return compile_error(
-				"EncodableKey requires named fields, so a tuple struct has no field order",
-			);
+			return compile_error("KeyCodec requires named fields, so a tuple struct has no field order");
 		}
 		_ => return compile_error("expected struct body"),
 	};
@@ -327,7 +325,7 @@ pub fn derive_key(input: TokenStream) -> TokenStream {
 		Err(err) => return err,
 	};
 
-	expand(&name, &kind, &fields)
+	expand(&name, &tag, &fields)
 }
 
 fn parse_key_attribute(group: &Group) -> Option<String> {
@@ -346,8 +344,8 @@ fn parse_key_attribute(group: &Group) -> Option<String> {
 
 	let inner_tokens: Vec<TokenTree> = inner.stream().into_iter().collect();
 	match inner_tokens.as_slice() {
-		[TokenTree::Ident(kind_ident), TokenTree::Punct(eq), TokenTree::Ident(variant)]
-			if *kind_ident == "kind" && eq.as_char() == '=' =>
+		[TokenTree::Ident(tag_ident), TokenTree::Punct(eq), TokenTree::Ident(variant)]
+			if *tag_ident == "tag" && eq.as_char() == '=' =>
 		{
 			Some(variant.to_string())
 		}
@@ -571,7 +569,7 @@ fn render(tokens: &[TokenTree]) -> String {
 	tokens.iter().map(|token| token.to_string()).collect()
 }
 
-fn expand(name: &str, kind: &str, fields: &[KeyField]) -> TokenStream {
+fn expand(name: &str, tag: &str, fields: &[KeyField]) -> TokenStream {
 	let capacity: usize = 1 + fields.iter().map(|f| f.column.width()).sum::<usize>();
 
 	let mut encode_body = String::new();
@@ -587,21 +585,21 @@ fn expand(name: &str, kind: &str, fields: &[KeyField]) -> TokenStream {
 	}
 
 	let mut out = String::new();
-	out.push_str(&format!("#[automatically_derived]\nimpl EncodableKey for {name} {{\n"));
-	out.push_str(&format!("\tconst KIND: KeyKind = KeyKind::{kind};\n\n"));
-	out.push_str("\tfn encode(&self) -> EncodedKey {\n");
+	out.push_str(&format!("impl {name} {{\n"));
+	out.push_str(&format!("\tpub const TAG: KeyTag = KeyTag::{tag};\n\n"));
+	out.push_str("\tpub fn encode(&self) -> EncodedKey {\n");
 	out.push_str(&format!(
 		"\t\tlet mut serializer = ::reifydb_codec::key::serializer::KeySerializer::with_capacity({capacity});\n"
 	));
-	out.push_str("\t\tserializer.extend_u8(<Self as EncodableKey>::KIND as u8);\n");
+	out.push_str("\t\tserializer.extend_u8(Self::TAG as u8);\n");
 	out.push_str(&encode_body);
 	out.push_str("\t\tserializer.to_encoded_key()\n\t}\n\n");
-	out.push_str("\tfn decode(key: &EncodedKey) -> Option<Self> {\n");
+	out.push_str("\tpub fn decode(key: &EncodedKey) -> Option<Self> {\n");
 	out.push_str(
 		"\t\tlet mut de = ::reifydb_codec::key::deserializer::KeyDeserializer::from_bytes(key.as_slice());\n",
 	);
-	out.push_str("\t\tlet found: KeyKind = de.read_u8().ok()?.try_into().ok()?;\n");
-	out.push_str("\t\tif found != <Self as EncodableKey>::KIND {\n\t\t\treturn None;\n\t\t}\n");
+	out.push_str("\t\tlet found: KeyTag = de.read_u8().ok()?.try_into().ok()?;\n");
+	out.push_str("\t\tif found != Self::TAG {\n\t\t\treturn None;\n\t\t}\n");
 	out.push_str(&format!("\t\tlet decoded = Self {{\n{decode_body}\t\t}};\n"));
 	out.push_str("\t\tif !de.is_empty() {\n\t\t\treturn None;\n\t\t}\n");
 	out.push_str("\t\tSome(decoded)\n\t}\n}\n\n");
@@ -617,7 +615,7 @@ fn expand(name: &str, kind: &str, fields: &[KeyField]) -> TokenStream {
 	out.push_str("\t\t]\n\t}\n}\n\n");
 	out.push_str(&expand_tests(name, fields));
 
-	out.parse().expect("derived EncodableKey impl must be valid Rust")
+	out.parse().expect("derived key impl must be valid Rust")
 }
 
 #[cfg(test)]
@@ -637,15 +635,15 @@ mod tests {
 
 	#[test]
 	fn a_well_formed_struct_expands_without_an_error() {
-		let out = expand("#[key(kind = Row)] struct RowKey { table: u64, row: RowNumber }");
+		let out = expand("#[key(tag = Row)] struct RowKey { table: u64, row: RowNumber }");
 		assert!(!out.contains("compile_error"), "{out}");
-		assert!(out.contains("impl EncodableKey for RowKey"), "{out}");
-		assert!(out.contains("KeyKind :: Row"), "{out}");
+		assert!(out.contains("impl RowKey { pub const TAG"), "{out}");
+		assert!(out.contains("KeyTag :: Row"), "{out}");
 	}
 
 	#[test]
 	fn fields_are_encoded_in_declaration_order() {
-		let out = expand("#[key(kind = Row)] struct RowKey { table: u64, row: RowNumber }");
+		let out = expand("#[key(tag = Row)] struct RowKey { table: u64, row: RowNumber }");
 		let table = out.find("self . table").expect("table field encoded");
 		let row = out.find("self . row").expect("row field encoded");
 		assert!(table < row, "{out}");
@@ -655,7 +653,7 @@ mod tests {
 	fn a_repr_u8_field_encodes_the_discriminant_and_decodes_through_try_from() {
 		// without the attribute a repr(u8) enum has no column type at all, and a decode that skipped
 		// try_from would hand back a discriminant the enum never declared
-		let out = expand("#[key(kind = SystemVersion)] struct K { #[key(repr = u8)] version: SystemVersion }");
+		let out = expand("#[key(tag = SystemVersion)] struct K { #[key(repr = u8)] version: SystemVersion }");
 		assert!(!out.contains("compile_error"), "{out}");
 		assert!(out.contains("extend_u8 (self . version as u8)"), "{out}");
 		assert!(out.contains("SystemVersion :: try_from"), "{out}");
@@ -663,13 +661,13 @@ mod tests {
 
 	#[test]
 	fn a_repr_u8_field_still_rejects_a_type_the_attribute_was_not_put_on() {
-		let out = expand("#[key(kind = SystemVersion)] struct K { version: SystemVersion }");
+		let out = expand("#[key(tag = SystemVersion)] struct K { version: SystemVersion }");
 		assert!(out.contains("compile_error"), "{out}");
 	}
 
 	#[test]
 	fn an_unrecognised_field_type_is_rejected() {
-		let out = expand("#[key(kind = Row)] struct RowKey { at: String }");
+		let out = expand("#[key(tag = Row)] struct RowKey { at: String }");
 		assert!(out.contains("compile_error"), "{out}");
 		assert!(out.contains("at"), "{out}");
 		assert!(out.contains("String"), "{out}");
@@ -677,32 +675,32 @@ mod tests {
 
 	#[test]
 	fn a_tuple_struct_is_rejected() {
-		let out = expand("#[key(kind = Row)] struct RowKey(u64);");
+		let out = expand("#[key(tag = Row)] struct RowKey(u64);");
 		assert!(out.contains("compile_error"), "{out}");
 	}
 
 	#[test]
 	fn a_generic_struct_is_rejected() {
-		let out = expand("#[key(kind = Row)] struct RowKey<T> { row: T }");
+		let out = expand("#[key(tag = Row)] struct RowKey<T> { row: T }");
 		assert!(out.contains("compile_error"), "{out}");
 	}
 
 	#[test]
 	fn a_byte_array_field_maps_to_blob16() {
-		let out = expand("#[key(kind = Row)] struct RowKey { blob: [u8; 16] }");
+		let out = expand("#[key(tag = Row)] struct RowKey { blob: [u8; 16] }");
 		assert!(!out.contains("compile_error"), "{out}");
 		assert!(out.contains("extend_raw"));
 	}
 
 	#[test]
 	fn a_byte_array_of_the_wrong_width_is_rejected() {
-		let out = expand("#[key(kind = Row)] struct RowKey { blob: [u8; 32] }");
+		let out = expand("#[key(tag = Row)] struct RowKey { blob: [u8; 32] }");
 		assert!(out.contains("compile_error"), "{out}");
 	}
 
 	#[test]
 	fn table_id_and_column_id_encode_via_their_wrapped_u64() {
-		let out = expand("#[key(kind = Table)] struct TableKey { table: TableId, column: ColumnId }");
+		let out = expand("#[key(tag = Table)] struct TableKey { table: TableId, column: ColumnId }");
 		assert!(!out.contains("compile_error"), "{out}");
 		assert!(out.contains("self . table . 0"), "{out}");
 		assert!(out.contains("TableId (de . read_u64 () . ok () ?)"), "{out}");
@@ -711,7 +709,7 @@ mod tests {
 
 	#[test]
 	fn an_option_u8_field_encodes_as_a_fixed_two_byte_presence_and_value_pair() {
-		let out = expand("#[key(kind = Row)] struct RowKey { tag: Option<u8> }");
+		let out = expand("#[key(tag = Row)] struct RowKey { tag: Option<u8> }");
 		assert!(!out.contains("compile_error"), "{out}");
 		assert!(out.contains("with_capacity (3)"), "{out}: width must stay fixed at 2 bytes for None and Some");
 		assert!(out.contains("Some (v) => { serializer . extend_u8 (1u8) . extend_u8 (v) ; }"), "{out}");
@@ -722,7 +720,7 @@ mod tests {
 
 	#[test]
 	fn object_id_and_storage_id_encode_via_the_catalog_ext() {
-		let out = expand("#[key(kind = Row)] struct RowKey { storage: StorageId, object: ObjectId }");
+		let out = expand("#[key(tag = Row)] struct RowKey { storage: StorageId, object: ObjectId }");
 		assert!(!out.contains("compile_error"), "{out}");
 		assert!(out.contains("extend_object_id (self . storage)"), "{out}");
 		assert!(out.contains("extend_object_id (self . object)"), "{out}");

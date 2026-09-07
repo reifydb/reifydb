@@ -21,7 +21,7 @@ use reifydb_core::{
 		},
 		store::{EntryKind, EntryLayout, MultiVersionCommit},
 	},
-	key::{any::AnyKey, queue::QueueDeduplicationKey, row::RowKey},
+	key::{any::TaggedKey, queue::QueueDeduplicationKey, row::RowKey},
 };
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
@@ -332,7 +332,7 @@ fn non_source_range_reads_through_with_warm_cache() {
 	for n in 1..=BUCKET_ROWS {
 		commit(&store, n, 1, &format!("v{n}"));
 	}
-	let multi_keys: Vec<AnyKey> =
+	let multi_keys: Vec<TaggedKey> =
 		(0u8..5).map(|i| QueueDeduplicationKey::new(QueueId(1), vec![0xff, !i]).into()).collect();
 	for (i, key) in multi_keys.iter().enumerate() {
 		MultiVersionCommit::commit(

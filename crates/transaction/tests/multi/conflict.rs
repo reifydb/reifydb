@@ -9,8 +9,8 @@ use reifydb_core::{
 		object::ObjectId,
 	},
 	key::{
-		any::AnyKey,
-		bound::{AnyKeyBound, AnyKeyBoundRange},
+		any::TaggedKey,
+		bound::{TaggedKeyBound, TaggedKeyBoundRange},
 		catalog::IndexEntryKey,
 	},
 	value::index::encoded::EncodedIndexKey,
@@ -18,15 +18,15 @@ use reifydb_core::{
 use reifydb_transaction::multi::conflict::ConflictManager;
 
 // IndexEntry appends its tail verbatim, so encoded order still matches the raw string order.
-fn make_key(s: &str) -> AnyKey {
+fn make_key(s: &str) -> TaggedKey {
 	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(s.as_bytes()))
 		.into()
 }
 
-fn make_range(start: &str, end: &str) -> AnyKeyBoundRange {
-	AnyKeyBoundRange {
-		start: Bound::Included(AnyKeyBound::Key(make_key(start))),
-		end: Bound::Excluded(AnyKeyBound::Key(make_key(end))),
+fn make_range(start: &str, end: &str) -> TaggedKeyBoundRange {
+	TaggedKeyBoundRange {
+		start: Bound::Included(TaggedKeyBound::Key(make_key(start))),
+		end: Bound::Excluded(TaggedKeyBound::Key(make_key(end))),
 	}
 }
 

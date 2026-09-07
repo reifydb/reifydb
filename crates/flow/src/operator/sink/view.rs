@@ -412,7 +412,7 @@ mod tests {
 			resolved::ResolvedNamespace,
 			store::SingleVersionGet,
 		},
-		key::{any::AnyKey, catalog::DictionaryEntryIndexKey},
+		key::{any::TaggedKey, catalog::DictionaryEntryIndexKey},
 		value::column::ColumnWithName,
 	};
 	use reifydb_test_harness::engine::TestEngine;
@@ -475,7 +475,7 @@ mod tests {
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_admin(IdentityId::system()).unwrap();
 		for (key, pw) in pending.iter_sorted() {
-			let key = AnyKey::decode(key).unwrap();
+			let key = TaggedKey::decode(key).unwrap();
 			match pw {
 				PendingWrite::Set(v) => cmd.set(&key, v.clone()).unwrap(),
 				PendingWrite::Remove {

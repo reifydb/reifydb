@@ -21,7 +21,7 @@ use reifydb_core::{
 		},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
-	key::{any::AnyKey, queue::QueueDeduplicationKey, row::RowKey},
+	key::{any::TaggedKey, queue::QueueDeduplicationKey, row::RowKey},
 };
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::{
@@ -30,11 +30,11 @@ use reifydb_store_multi::{
 };
 use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
 
-fn key(s: &str) -> AnyKey {
+fn key(s: &str) -> TaggedKey {
 	QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>()).into()
 }
 
-fn commit(store: &StandardMultiStore, k: &AnyKey, version: u64, value: &str) {
+fn commit(store: &StandardMultiStore, k: &TaggedKey, version: u64, value: &str) {
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
@@ -46,7 +46,7 @@ fn commit(store: &StandardMultiStore, k: &AnyKey, version: u64, value: &str) {
 	.unwrap();
 }
 
-fn persistent_only_set(store: &StandardMultiStore, k: &AnyKey, version: u64, value: &str) {
+fn persistent_only_set(store: &StandardMultiStore, k: &TaggedKey, version: u64, value: &str) {
 	// Writing only to the persistent tier leaves the key cold, so the next point read has to fall through.
 	let persistent = store.persistent().expect("persistent tier configured");
 	let encoded = k.encode();
@@ -57,7 +57,7 @@ fn persistent_only_set(store: &StandardMultiStore, k: &AnyKey, version: u64, val
 	persistent.set(CommitVersion(version), batches).unwrap();
 }
 
-fn get(store: &StandardMultiStore, k: &AnyKey, version: u64) -> Option<Vec<u8>> {
+fn get(store: &StandardMultiStore, k: &TaggedKey, version: u64) -> Option<Vec<u8>> {
 	store.get(k, CommitVersion(version)).unwrap().map(|r| r.bytes.to_vec())
 }
 
@@ -167,7 +167,7 @@ fn range_scan_does_not_consult_the_point_tier() {
 	);
 }
 
-fn row_key(n: u64) -> AnyKey {
+fn row_key(n: u64) -> TaggedKey {
 	// classify_key must resolve to the same source the expiry delete is issued against.
 	RowKey {
 		storage: StorageId::Table(TableId(1)),
@@ -183,7 +183,7 @@ fn stamped(nanos: u64) -> Vec<u8> {
 	bytes
 }
 
-fn persistent_only_set_bytes(store: &StandardMultiStore, k: &AnyKey, version: u64, value: Vec<u8>) {
+fn persistent_only_set_bytes(store: &StandardMultiStore, k: &TaggedKey, version: u64, value: Vec<u8>) {
 	let persistent = store.persistent().expect("persistent tier configured");
 	let encoded = k.encode();
 	let mut batches: HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>> = HashMap::new();

@@ -5,7 +5,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::id::QueueId, store::SingleVersionRange},
 	key::{
-		any::AnyKey,
+		any::TaggedKey,
 		namespace::NamespaceQueueKey,
 		queue::{QueueDueKey, QueueItemStateKey, QueueKey, QueuePartitionKey},
 	},
@@ -52,7 +52,7 @@ fn remove_queue_scheduling_state(single: &SingleTransaction, queue: QueueId, par
 
 			let mut tx = single.begin_command_ranged(lock_keys.iter(), ranges.clone())?;
 			for item in &batch.items {
-				let Some(key) = AnyKey::decode(&item.key) else {
+				let Some(key) = TaggedKey::decode(&item.key) else {
 					return_internal_error!("scan yielded a key no typed key decodes");
 				};
 				tx.remove(&key)?;

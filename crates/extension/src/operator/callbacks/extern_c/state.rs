@@ -749,7 +749,7 @@ mod join_row_expiry_guard_tests {
 			store::MultiVersionRow,
 		},
 		key::{
-			any::AnyKey,
+			any::TaggedKey,
 			operator::{
 				keyspace::{join::JoinRowMappingKey, suffix_width_of},
 				state::{
@@ -950,7 +950,7 @@ mod join_row_expiry_guard_tests {
 		}
 
 		fn state_range_iter(&mut self, _range: EncodedKeyRange) -> StateIterator<'_> {
-			StateIterator::new(Box::new(empty::<Result<MultiVersionRow<AnyKey>>>()))
+			StateIterator::new(Box::new(empty::<Result<MultiVersionRow<TaggedKey>>>()))
 		}
 
 		fn state_clear(&mut self) -> Result<()> {

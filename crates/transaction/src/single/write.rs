@@ -6,7 +6,7 @@ use std::{mem::take, ops::RangeBounds};
 use indexmap::IndexMap;
 use reifydb_core::{
 	interface::store::{SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRow},
-	key::any::AnyKey,
+	key::any::TaggedKey,
 };
 use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockWriteGuard};
 use reifydb_value::{
@@ -67,7 +67,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		}
 	}
 
-	pub fn get<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<Option<SingleVersionRow>> {
+	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<SingleVersionRow>> {
 		let encoded = key.clone().into().encode();
 		self.check_key_allowed(&encoded)?;
 
@@ -90,7 +90,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		SingleVersionGet::get(&store, &encoded)
 	}
 
-	pub fn contains_key<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<bool> {
+	pub fn contains_key<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
 		let key = &key.clone().into().encode();
 		self.check_key_allowed(key)?;
 
@@ -109,8 +109,8 @@ impl<'a> SingleWriteTransaction<'a> {
 		SingleVersionContains::contains(&store, key)
 	}
 
-	pub fn set<K: Into<AnyKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
-		let key: AnyKey = key.clone().into();
+	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
+		let key: TaggedKey = key.clone().into();
 		let encoded = key.encode();
 		self.check_key_allowed(&encoded)?;
 
@@ -122,8 +122,8 @@ impl<'a> SingleWriteTransaction<'a> {
 		Ok(())
 	}
 
-	pub fn remove_with_pre<K: Into<AnyKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
-		let key: AnyKey = key.clone().into();
+	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
+		let key: TaggedKey = key.clone().into();
 		let encoded = key.encode();
 		self.check_key_allowed(&encoded)?;
 
@@ -131,8 +131,8 @@ impl<'a> SingleWriteTransaction<'a> {
 		Ok(())
 	}
 
-	pub fn remove<K: Into<AnyKey> + Clone>(&mut self, key: &K) -> Result<()> {
-		let key: AnyKey = key.clone().into();
+	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
+		let key: TaggedKey = key.clone().into();
 		let encoded = key.encode();
 		self.check_key_allowed(&encoded)?;
 

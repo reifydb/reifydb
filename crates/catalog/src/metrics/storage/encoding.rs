@@ -7,10 +7,7 @@ use reifydb_core::{
 		catalog::metrics::{MetricsId, storage::MultiStorageMetrics},
 		store::Tier,
 	},
-	key::{
-		EncodableKey,
-		metric::{MetricCdcKey, MetricStorageKey},
-	},
+	key::metric::{MetricCdcKey, MetricStorageKey},
 };
 use reifydb_value::{byte_size::ByteSize, count::Count};
 

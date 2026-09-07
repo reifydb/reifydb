@@ -18,7 +18,7 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
-	key::typed::{BoundedKey, Edge, Key, MultiKey},
+	key::typed::{BoundedKey, Edge, Key, OpaqueKey},
 	util::{budget::MemoryBudget, sorted::SortedVecMap},
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
@@ -121,7 +121,7 @@ impl RangeConfig {
 
 pub type RangeRows<D> = Vec<(<D as RangeDomain>::Key, <D as RangeDomain>::Row)>;
 
-pub fn scan_range(gap: &Interval<MultiKey>) -> EncodedKeyRange {
+pub fn scan_range(gap: &Interval<OpaqueKey>) -> EncodedKeyRange {
 	let empty = EncodedKey::new([]);
 	let (Some(start), Some(end)) = (gap.start.lower_bound(), gap.end.upper_bound()) else {
 		return EncodedKeyRange::new(Bound::Included(empty.clone()), Bound::Excluded(empty));
@@ -185,7 +185,7 @@ const fn entry_overhead<K, R>() -> usize {
 }
 
 #[cfg(test)]
-const ENTRY_OVERHEAD: usize = entry_overhead::<MultiKey, EncodedPodRow>();
+const ENTRY_OVERHEAD: usize = entry_overhead::<OpaqueKey, EncodedPodRow>();
 
 const fn partition_overhead<D: RangeDomain>() -> usize {
 	size_of::<D::Partition>() + size_of::<Partition<D::Key, D::Row>>()

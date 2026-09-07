@@ -12,10 +12,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::store::{SingleVersionGet, SingleVersionRange},
-	key::{
-		EncodableKey,
-		catalog::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
-	},
+	key::catalog::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
 };
 use reifydb_store_single::{
 	SingleStore,

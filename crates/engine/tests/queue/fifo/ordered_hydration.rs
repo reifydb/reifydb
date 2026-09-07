@@ -13,8 +13,7 @@ use reifydb_core::{
 		store::{SingleVersionGet, SingleVersionRange, SingleVersionRow},
 	},
 	key::{
-		EncodableKey,
-		any::AnyKey,
+		any::TaggedKey,
 		queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
 	},
 };
@@ -90,8 +89,8 @@ fn counters(t: &TestEngine, queue: &Queue, partition: u16) -> QueuePartitionCoun
 		.unwrap_or_default()
 }
 
-fn keys_in(t: &TestEngine, range: EncodedKeyRange) -> Vec<AnyKey> {
-	scan(t, range).into_iter().map(|item| AnyKey::decode(&item.key).unwrap()).collect()
+fn keys_in(t: &TestEngine, range: EncodedKeyRange) -> Vec<TaggedKey> {
+	scan(t, range).into_iter().map(|item| TaggedKey::decode(&item.key).unwrap()).collect()
 }
 
 fn with_partition<F>(t: &TestEngine, queue: &Queue, partition: u16, f: F)
@@ -116,7 +115,7 @@ where
 
 fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
 	for partition in 0..queue.partitions() {
-		let keys: Vec<AnyKey> = keys_in(t, QueueItemStateKey::partition_scan(queue.id, partition).encode())
+		let keys: Vec<TaggedKey> = keys_in(t, QueueItemStateKey::partition_scan(queue.id, partition).encode())
 			.into_iter()
 			.chain(keys_in(t, QueueDueKey::partition_scan(queue.id, partition).encode()))
 			.chain(keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, partition).encode()))
@@ -135,15 +134,15 @@ fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
 }
 
 fn forget_items(t: &TestEngine, queue: &Queue, rows: &[u64], blocked_delta: u64) {
-	let doomed: Vec<AnyKey> = keys_in(t, QueueItemStateKey::partition_scan(queue.id, 0).encode())
+	let doomed: Vec<TaggedKey> = keys_in(t, QueueItemStateKey::partition_scan(queue.id, 0).encode())
 		.into_iter()
-		.filter(|key| matches!(key, AnyKey::QueueItemState(key) if rows.contains(&key.row.0)))
+		.filter(|key| matches!(key, TaggedKey::QueueItemState(key) if rows.contains(&key.row.0)))
 		.chain(keys_in(t, QueueDueKey::partition_scan(queue.id, 0).encode())
 			.into_iter()
-			.filter(|key| matches!(key, AnyKey::QueueDue(key) if rows.contains(&key.row.0))))
+			.filter(|key| matches!(key, TaggedKey::QueueDue(key) if rows.contains(&key.row.0))))
 		.chain(keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, 0).encode())
 			.into_iter()
-			.filter(|key| matches!(key, AnyKey::QueueKeyActive(key) if rows.contains(&key.row.0))))
+			.filter(|key| matches!(key, TaggedKey::QueueKeyActive(key) if rows.contains(&key.row.0))))
 		.collect();
 
 	let mut counters = counters(t, queue, 0);

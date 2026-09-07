@@ -1249,7 +1249,7 @@ mod seal_arm_tests {
 		common::{CommitVersion, WindowSize},
 		interface::catalog::flow::OperatorId,
 		key::{
-			any::AnyKey,
+			any::TaggedKey,
 			operator::{
 				keyspace::timer::TimerWheelKey,
 				state::{KeyspaceId, keyspace_inner_range},
@@ -1319,7 +1319,7 @@ mod seal_arm_tests {
 		.items
 		.iter()
 		.filter_map(|item| {
-			let AnyKey::OperatorState(decoded) = &item.key else {
+			let TaggedKey::OperatorState(decoded) = &item.key else {
 				panic!("a wheel row must decode");
 			};
 			let suffix =

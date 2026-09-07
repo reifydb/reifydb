@@ -17,7 +17,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, EntryLayout, MultiVersionGet, classify_key},
 	},
-	key::{any::AnyKey, row::RowKey},
+	key::{any::TaggedKey, row::RowKey},
 	util::bloom::hash_item,
 };
 use reifydb_filter::{
@@ -45,7 +45,7 @@ fn key(n: u64) -> EncodedKey {
 	RowKey::encoded(StorageId::table(TableId(1)), RowNumber(n))
 }
 
-fn any_key(n: u64) -> AnyKey {
+fn any_key(n: u64) -> TaggedKey {
 	RowKey::new(StorageId::table(TableId(1)), RowNumber(n)).into()
 }
 

@@ -12,18 +12,17 @@ use reifydb_codec::{
 	},
 	row::shape::fingerprint::RowShapeFingerprint,
 };
-use reifydb_macro::EncodableKey;
+use reifydb_macro::KeyCodec;
 use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 
-use super::{EncodableKeyRange, KeyKind};
+use super::{KeyRangeCodec, KeyTag};
 use crate::{
 	interface::catalog::{object::ObjectId, storage::StorageId},
 	key::{
-		EncodableKey,
-		any::{AnyKey, Field, KeyFields, RawEncoding, Width},
-		bound::{AnyKeyBoundRange, object_fields},
+		any::{Field, KeyFields, RawEncoding, TaggedKey, Width},
+		bound::{TaggedKeyBoundRange, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		sort_run::SortRun,
 		typed::{
@@ -34,8 +33,8 @@ use crate::{
 	metrics::heap::HeapSize,
 };
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = Row)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Row)]
 pub struct RowKey {
 	pub storage: StorageId,
 	pub row: RowNumber,
@@ -50,8 +49,8 @@ impl RowKeyRange {
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 
@@ -62,31 +61,31 @@ impl RowKeyRange {
 		})
 	}
 
-	pub fn storage_scan(storage: StorageId) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(Self::KIND, object_fields(ObjectId::from(storage)))
+	pub fn storage_scan(storage: StorageId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(ObjectId::from(storage)))
 	}
 
-	pub fn scan_range(storage: StorageId, last: Option<&AnyKey>) -> AnyKeyBoundRange {
+	pub fn scan_range(storage: StorageId, last: Option<&TaggedKey>) -> TaggedKeyBoundRange {
 		Self::storage_scan(storage).resume_after(last)
 	}
 
-	pub fn scan_range_rev(storage: StorageId, last: Option<&AnyKey>) -> AnyKeyBoundRange {
+	pub fn scan_range_rev(storage: StorageId, last: Option<&TaggedKey>) -> TaggedKeyBoundRange {
 		Self::storage_scan(storage).resume_before(last)
 	}
 }
 
-impl EncodableKeyRange for RowKeyRange {
-	const KIND: KeyKind = KeyKind::Row;
+impl KeyRangeCodec for RowKeyRange {
+	const TAG: KeyTag = KeyTag::Row;
 
 	fn start(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.storage);
+		serializer.extend_u8(Self::TAG as u8).extend_object_id(self.storage);
 		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(ObjectId::from(self.storage).prev());
+		serializer.extend_u8(Self::TAG as u8).extend_object_id(ObjectId::from(self.storage).prev());
 		Some(serializer.to_encoded_key())
 	}
 
@@ -117,27 +116,26 @@ impl RowKey {
 	}
 
 	pub fn encoded(storage: impl Into<StorageId>, row: impl Into<RowNumber>) -> EncodedKey {
-		EncodableKey::encode(&Self {
+		Self {
 			storage: storage.into(),
 			row: row.into(),
-		})
+		}
+		.encode()
 	}
 
-	pub fn full_scan(storage: impl Into<StorageId>) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(<Self as EncodableKey>::KIND, object_fields(ObjectId::from(storage.into())))
+	pub fn full_scan(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(ObjectId::from(storage.into())))
 	}
 
 	pub fn storage_start(storage: impl Into<StorageId>) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(<RowKey as EncodableKey>::KIND as u8).extend_object_id(storage.into());
+		serializer.extend_u8(RowKey::TAG as u8).extend_object_id(storage.into());
 		serializer.to_encoded_key()
 	}
 
 	pub fn storage_end(storage: impl Into<StorageId>) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(<RowKey as EncodableKey>::KIND as u8)
-			.extend_object_id(ObjectId::from(storage.into()).prev());
+		serializer.extend_u8(RowKey::TAG as u8).extend_object_id(ObjectId::from(storage.into()).prev());
 		serializer.to_encoded_key()
 	}
 }
@@ -149,21 +147,21 @@ pub struct SortedViewRowKey {
 	pub row: Asc<RowNumber>,
 }
 
-impl EncodableKey for SortedViewRowKey {
-	const KIND: KeyKind = KeyKind::SortedViewRow;
+impl SortedViewRowKey {
+	pub const TAG: KeyTag = KeyTag::SortedViewRow;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(20 + self.run.len());
-		serializer.extend_u8(<Self as EncodableKey>::KIND as u8).extend_object_id(self.storage);
+		serializer.extend_u8(Self::TAG as u8).extend_object_id(self.storage);
 		extend_sort_run(&mut serializer, &self.run);
 		serializer.extend_raw(&self.row.0.0.to_be_bytes());
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <Self as EncodableKey>::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 		let storage = StorageId::from_object(de.read_object_id().ok()?)?;
@@ -205,27 +203,27 @@ impl SortedViewRowKey {
 	}
 
 	pub fn encoded(storage: impl Into<StorageId>, run: SortRun, row: RowNumber) -> EncodedKey {
-		EncodableKey::encode(&Self::new(storage, run, row))
+		Self::new(storage, run, row).encode()
 	}
 
 	pub fn storage_start(storage: impl Into<StorageId>) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(<Self as EncodableKey>::KIND as u8).extend_object_id(storage.into());
+		serializer.extend_u8(Self::TAG as u8).extend_object_id(storage.into());
 		serializer.to_encoded_key()
 	}
 
-	pub fn storage_scan(storage: impl Into<StorageId>) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(<Self as EncodableKey>::KIND, object_fields(ObjectId::from(storage.into())))
+	pub fn storage_scan(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(ObjectId::from(storage.into())))
 	}
 
-	pub fn scan_range(storage: impl Into<StorageId>, last: Option<&AnyKey>) -> AnyKeyBoundRange {
+	pub fn scan_range(storage: impl Into<StorageId>, last: Option<&TaggedKey>) -> TaggedKeyBoundRange {
 		Self::storage_scan(storage).resume_after(last)
 	}
 
 	pub fn storage_of(key: &EncodedKey) -> Option<StorageId> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <Self as EncodableKey>::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 		StorageId::from_object(de.read_object_id().ok()?)
@@ -233,7 +231,7 @@ impl SortedViewRowKey {
 
 	pub fn row_of(key: &EncodedKey) -> Option<RowNumber> {
 		let bytes = key.as_slice();
-		if KeyKind::of(bytes)? != <Self as EncodableKey>::KIND {
+		if KeyTag::of(bytes)? != Self::TAG {
 			return None;
 		}
 		let tail = bytes.len().checked_sub(8)?;
@@ -241,8 +239,8 @@ impl SortedViewRowKey {
 	}
 
 	pub fn range_storage_of(range: &EncodedKeyRange) -> Option<StorageId> {
-		let start = bound_storage_of(&range.start, <Self as EncodableKey>::KIND)?;
-		bound_storage_of(&range.end, <Self as EncodableKey>::KIND)?;
+		let start = bound_storage_of(&range.start, Self::TAG)?;
+		bound_storage_of(&range.end, Self::TAG)?;
 		Some(start)
 	}
 }
@@ -291,13 +289,13 @@ fn storage_order(storage: StorageId) -> (u8, Desc<u64>) {
 	(ObjectId::from(storage).type_tag(), Desc(storage.as_u64()))
 }
 
-fn bound_storage_of(bound: &Bound<EncodedKey>, kind: KeyKind) -> Option<StorageId> {
+fn bound_storage_of(bound: &Bound<EncodedKey>, kind: KeyTag) -> Option<StorageId> {
 	let key = match bound {
 		Bound::Included(key) | Bound::Excluded(key) => key,
 		Bound::Unbounded => return None,
 	};
 	let mut de = KeyDeserializer::from_bytes(key.as_slice());
-	if KeyKind::try_from(de.read_u8().ok()?).ok()? != kind {
+	if KeyTag::try_from(de.read_u8().ok()?).ok()? != kind {
 		return None;
 	}
 	StorageId::from_object(de.read_object_id().ok()?)
@@ -311,24 +309,21 @@ pub struct PartitionedSortedViewRowKey {
 	pub row: Asc<RowNumber>,
 }
 
-impl EncodableKey for PartitionedSortedViewRowKey {
-	const KIND: KeyKind = KeyKind::PartitionedSortedViewRow;
+impl PartitionedSortedViewRowKey {
+	pub const TAG: KeyTag = KeyTag::PartitionedSortedViewRow;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(36 + self.run.len());
-		serializer
-			.extend_u8(<Self as EncodableKey>::KIND as u8)
-			.extend_object_id(self.storage)
-			.extend_u128(self.partition.0);
+		serializer.extend_u8(Self::TAG as u8).extend_object_id(self.storage).extend_u128(self.partition.0);
 		extend_sort_run(&mut serializer, &self.run);
 		serializer.extend_raw(&self.row.0.0.to_be_bytes());
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <Self as EncodableKey>::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 		let storage = StorageId::from_object(de.read_object_id().ok()?)?;
@@ -379,26 +374,26 @@ impl PartitionedSortedViewRowKey {
 		run: SortRun,
 		row: RowNumber,
 	) -> EncodedKey {
-		EncodableKey::encode(&Self::new(storage, partition, run, row))
+		Self::new(storage, partition, run, row).encode()
 	}
 
 	pub fn storage_start(storage: impl Into<StorageId>) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(<Self as EncodableKey>::KIND as u8).extend_object_id(storage.into());
+		serializer.extend_u8(Self::TAG as u8).extend_object_id(storage.into());
 		serializer.to_encoded_key()
 	}
 
-	pub fn storage_scan(storage: impl Into<StorageId>) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(<Self as EncodableKey>::KIND, object_fields(ObjectId::from(storage.into())))
+	pub fn storage_scan(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(ObjectId::from(storage.into())))
 	}
 
-	pub fn scan_range(storage: impl Into<StorageId>, last: Option<&AnyKey>) -> AnyKeyBoundRange {
+	pub fn scan_range(storage: impl Into<StorageId>, last: Option<&TaggedKey>) -> TaggedKeyBoundRange {
 		Self::storage_scan(storage).resume_after(last)
 	}
 
-	pub fn partition_range(storage: impl Into<StorageId>, partition: Partition) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(
-			<Self as EncodableKey>::KIND,
+	pub fn partition_range(storage: impl Into<StorageId>, partition: Partition) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(
+			Self::TAG,
 			object_fields(ObjectId::from(storage.into()))
 				.into_iter()
 				.chain([Field::UDesc(Width::U128, partition.0)])
@@ -409,15 +404,15 @@ impl PartitionedSortedViewRowKey {
 	pub fn partition_scan_range(
 		storage: impl Into<StorageId>,
 		partition: Partition,
-		last: Option<&AnyKey>,
-	) -> AnyKeyBoundRange {
+		last: Option<&TaggedKey>,
+	) -> TaggedKeyBoundRange {
 		Self::partition_range(storage, partition).resume_after(last)
 	}
 
 	pub fn storage_of(key: &EncodedKey) -> Option<StorageId> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <Self as EncodableKey>::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 		StorageId::from_object(de.read_object_id().ok()?)
@@ -425,7 +420,7 @@ impl PartitionedSortedViewRowKey {
 
 	pub fn row_of(key: &EncodedKey) -> Option<RowNumber> {
 		let bytes = key.as_slice();
-		if KeyKind::of(bytes)? != <Self as EncodableKey>::KIND {
+		if KeyTag::of(bytes)? != Self::TAG {
 			return None;
 		}
 		let tail = bytes.len().checked_sub(8)?;
@@ -433,8 +428,8 @@ impl PartitionedSortedViewRowKey {
 	}
 
 	pub fn range_storage_of(range: &EncodedKeyRange) -> Option<StorageId> {
-		let start = bound_storage_of(&range.start, <Self as EncodableKey>::KIND)?;
-		bound_storage_of(&range.end, <Self as EncodableKey>::KIND)?;
+		let start = bound_storage_of(&range.start, Self::TAG)?;
+		bound_storage_of(&range.end, Self::TAG)?;
 		Some(start)
 	}
 }
@@ -446,7 +441,7 @@ mod sorted_view_row_key_tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
-	use super::{AnyKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey};
+	use super::{PartitionedSortedViewRowKey, RowKey, SortedViewRowKey, TaggedKey};
 	use crate::{interface::catalog::storage::StorageId, key::sort_run::SortRun};
 
 	fn part(v: &str) -> Partition {
@@ -457,8 +452,8 @@ mod sorted_view_row_key_tests {
 		SortedViewRowKey::encoded(storage, SortRun::new(sort), row)
 	}
 
-	fn sorted_view_cursor(storage: StorageId, sort: &[u8], row: RowNumber) -> AnyKey {
-		AnyKey::from(SortedViewRowKey::new(storage, SortRun::new(sort), row))
+	fn sorted_view_cursor(storage: StorageId, sort: &[u8], row: RowNumber) -> TaggedKey {
+		TaggedKey::from(SortedViewRowKey::new(storage, SortRun::new(sort), row))
 	}
 
 	fn partitioned(storage: StorageId, partition: Partition, sort: &[u8], row: RowNumber) -> EncodedKey {
@@ -590,10 +585,7 @@ pub mod row_key_tests {
 	use super::{RowKey, StorageRowKey};
 	use crate::{
 		interface::catalog::storage::StorageId,
-		key::{
-			EncodableKey,
-			typed::{BoundedKey, DenseKey},
-		},
+		key::typed::{BoundedKey, DenseKey},
 	};
 
 	#[test]
@@ -713,8 +705,8 @@ pub mod row_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = RowSequence)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = RowSequence)]
 pub struct RowSequenceKey {
 	pub storage: StorageId,
 }
@@ -727,17 +719,17 @@ impl RowSequenceKey {
 	}
 
 	pub fn encoded(storage: impl Into<StorageId>) -> EncodedKey {
-		EncodableKey::encode(&Self::new(storage.into()))
+		Self::new(storage.into()).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 pub mod row_sequence_key_tests {
-	use super::{EncodableKey, RowSequenceKey};
+	use super::RowSequenceKey;
 	use crate::interface::catalog::storage::StorageId;
 
 	#[test]
@@ -768,8 +760,8 @@ pub mod row_sequence_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, EncodableKey, Hash)]
-#[key(kind = RowSettings)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, KeyCodec, Hash)]
+#[key(tag = RowSettings)]
 pub struct RowSettingsKey {
 	pub storage: StorageId,
 }
@@ -782,11 +774,11 @@ impl RowSettingsKey {
 	}
 
 	pub fn encoded(storage: StorageId) -> EncodedKey {
-		EncodableKey::encode(&Self::new(storage))
+		Self::new(storage).encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
@@ -841,8 +833,8 @@ pub mod row_settings_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = RowShape)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = RowShape)]
 pub struct RowShapeKey {
 	pub fingerprint: RowShapeFingerprint,
 }
@@ -855,18 +847,19 @@ impl RowShapeKey {
 	}
 
 	pub fn encoded(fingerprint: RowShapeFingerprint) -> EncodedKey {
-		EncodableKey::encode(&Self {
+		Self {
 			fingerprint,
-		})
+		}
+		.encode()
 	}
 
-	pub fn full_scan() -> AnyKeyBoundRange {
-		AnyKeyBoundRange::kind(Self::KIND)
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = RowShapeField)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = RowShapeField)]
 pub struct RowShapeFieldKey {
 	pub shape_fingerprint: RowShapeFingerprint,
 	pub field_index: u16,
@@ -881,14 +874,11 @@ impl RowShapeFieldKey {
 	}
 
 	pub fn encoded(shape_fingerprint: RowShapeFingerprint, field_index: u16) -> EncodedKey {
-		EncodableKey::encode(&Self::new(shape_fingerprint, field_index))
+		Self::new(shape_fingerprint, field_index).encode()
 	}
 
-	pub fn scan_for_shape(fingerprint: RowShapeFingerprint) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(
-			<Self as EncodableKey>::KIND,
-			[Field::UDesc(Width::U64, fingerprint.as_u64() as u128)],
-		)
+	pub fn scan_for_shape(fingerprint: RowShapeFingerprint) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, fingerprint.as_u64() as u128)])
 	}
 }
 
@@ -901,8 +891,8 @@ mod row_shape_key_tests {
 		let key = RowShapeKey {
 			fingerprint: RowShapeFingerprint::new(0xDEADBEEFCAFEBABE),
 		};
-		let encoded = EncodableKey::encode(&key);
-		let decoded = <RowShapeKey as EncodableKey>::decode(&encoded).unwrap();
+		let encoded = key.encode();
+		let decoded = RowShapeKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.fingerprint, RowShapeFingerprint::new(0xDEADBEEFCAFEBABE));
 	}
 
@@ -912,15 +902,15 @@ mod row_shape_key_tests {
 			shape_fingerprint: RowShapeFingerprint::new(0x1234567890ABCDEF),
 			field_index: 42,
 		};
-		let encoded = EncodableKey::encode(&key);
-		let decoded = <RowShapeFieldKey as EncodableKey>::decode(&encoded).unwrap();
+		let encoded = key.encode();
+		let decoded = RowShapeFieldKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.shape_fingerprint, RowShapeFingerprint::new(0x1234567890ABCDEF));
 		assert_eq!(decoded.field_index, 42);
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, EncodableKey, Hash)]
-#[key(kind = PartitionedRow)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = PartitionedRow)]
 pub struct PartitionedRowKey {
 	pub storage: StorageId,
 	pub partition: Partition,
@@ -937,43 +927,43 @@ impl PartitionedRowKey {
 	}
 
 	pub fn encoded(storage: impl Into<StorageId>, partition: Partition, row: RowNumber) -> EncodedKey {
-		EncodableKey::encode(&Self::new(storage, partition, row))
+		Self::new(storage, partition, row).encode()
 	}
 
 	pub fn storage_start(storage: impl Into<StorageId>) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(<PartitionedRowKey as EncodableKey>::KIND as u8).extend_object_id(storage.into());
+		serializer.extend_u8(PartitionedRowKey::TAG as u8).extend_object_id(storage.into());
 		serializer.to_encoded_key()
 	}
 
 	pub fn storage_end(storage: impl Into<StorageId>) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
 		serializer
-			.extend_u8(<PartitionedRowKey as EncodableKey>::KIND as u8)
+			.extend_u8(PartitionedRowKey::TAG as u8)
 			.extend_object_id(ObjectId::from(storage.into()).prev());
 		serializer.to_encoded_key()
 	}
 
 	pub fn storage_of(key: &EncodedKey) -> Option<StorageId> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != <Self as EncodableKey>::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 		StorageId::from_object(de.read_object_id().ok()?)
 	}
 
-	pub fn full_scan(storage: impl Into<StorageId>) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(<Self as EncodableKey>::KIND, object_fields(ObjectId::from(storage.into())))
+	pub fn full_scan(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(ObjectId::from(storage.into())))
 	}
 
-	pub fn scan_range(storage: impl Into<StorageId>, last: Option<&AnyKey>) -> AnyKeyBoundRange {
+	pub fn scan_range(storage: impl Into<StorageId>, last: Option<&TaggedKey>) -> TaggedKeyBoundRange {
 		Self::full_scan(storage).resume_after(last)
 	}
 
-	pub fn partition_range(storage: impl Into<StorageId>, partition: Partition) -> AnyKeyBoundRange {
-		AnyKeyBoundRange::prefix(
-			<Self as EncodableKey>::KIND,
+	pub fn partition_range(storage: impl Into<StorageId>, partition: Partition) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(
+			Self::TAG,
 			object_fields(ObjectId::from(storage.into()))
 				.into_iter()
 				.chain([Field::UDesc(Width::U128, partition.0)])
@@ -984,8 +974,8 @@ impl PartitionedRowKey {
 	pub fn partition_scan_range(
 		storage: impl Into<StorageId>,
 		partition: Partition,
-		last: Option<&AnyKey>,
-	) -> AnyKeyBoundRange {
+		last: Option<&TaggedKey>,
+	) -> TaggedKeyBoundRange {
 		Self::partition_range(storage, partition).resume_after(last)
 	}
 }
@@ -1078,8 +1068,8 @@ impl PartitionedRowKeyRange {
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 
@@ -1091,18 +1081,18 @@ impl PartitionedRowKeyRange {
 	}
 }
 
-impl EncodableKeyRange for PartitionedRowKeyRange {
-	const KIND: KeyKind = KeyKind::PartitionedRow;
+impl KeyRangeCodec for PartitionedRowKeyRange {
+	const TAG: KeyTag = KeyTag::PartitionedRow;
 
 	fn start(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.storage);
+		serializer.extend_u8(Self::TAG as u8).extend_object_id(self.storage);
 		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(ObjectId::from(self.storage).prev());
+		serializer.extend_u8(Self::TAG as u8).extend_object_id(ObjectId::from(self.storage).prev());
 		Some(serializer.to_encoded_key())
 	}
 
@@ -1139,7 +1129,6 @@ mod partitioned_row_key_tests {
 			storage::StorageId,
 		},
 		key::{
-			EncodableKey,
 			catalog::KeySerializerCatalogExt,
 			typed::{BoundedKey, DenseKey},
 		},
@@ -1182,7 +1171,7 @@ mod partitioned_row_key_tests {
 	fn test_storage_of_rejects_a_rowless_object() {
 		// A vtable owns no rows, so its tag must not narrow into a table of the same numeric id.
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(PartitionedRowKey::KIND as u8).extend_object_id(ObjectId::vtable(42));
+		serializer.extend_u8(PartitionedRowKey::TAG as u8).extend_object_id(ObjectId::vtable(42));
 		assert_eq!(PartitionedRowKey::storage_of(&serializer.to_encoded_key()), None);
 	}
 
@@ -1294,7 +1283,7 @@ mod partitioned_row_key_tests {
 	#[test]
 	fn test_decode_rejects_a_longer_key_that_shares_the_kind_byte() {
 		// The live shape: a sorted view writes kind ++ storage ++ sort values ++ row. It carries
-		// KeyKind::Row, so a length-blind decode claims it and reads sort payload as the row
+		// KeyTag::Row, so a length-blind decode claims it and reads sort payload as the row
 		// number, silently aliasing two distinct rows onto one storage row key.
 		let mut sorted_view = RowKey::encoded(StorageId::view(3), RowNumber(1)).as_slice().to_vec();
 		sorted_view.extend_from_slice(&[0xAA; 8]);
@@ -1310,7 +1299,7 @@ mod sorted_view_run_tests {
 	use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 
 	use super::{PartitionedSortedViewRowKey, SortRun, SortedViewRowKey};
-	use crate::{interface::catalog::storage::StorageId, key::EncodableKey};
+	use crate::interface::catalog::storage::StorageId;
 
 	fn run(bytes: &[u8]) -> SortRun {
 		SortRun::new(bytes)

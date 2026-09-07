@@ -6,7 +6,7 @@ use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::config::{ConfigKey, GetConfig},
-	key::{any::AnyKey, system::VersionEpochKey},
+	key::{any::TaggedKey, system::VersionEpochKey},
 	return_internal_error,
 };
 use reifydb_engine::engine::StandardEngine;
@@ -68,7 +68,7 @@ impl EpochLog {
 		let txn = self.engine.begin_query(IdentityId::system())?;
 		for entry in txn.range(VersionEpochKey::floor_scan(now), RangeScope::All, RANGE_BATCH) {
 			let entry = entry?;
-			let AnyKey::VersionEpoch(key) = &entry.key else {
+			let TaggedKey::VersionEpoch(key) = &entry.key else {
 				continue;
 			};
 			if key.bucket.plus(bucket) <= oldest {
@@ -98,7 +98,7 @@ impl EpochLog {
 			if sample.at >= oldest {
 				continue;
 			}
-			let AnyKey::VersionEpoch(key) = entry.key else {
+			let TaggedKey::VersionEpoch(key) = entry.key else {
 				return_internal_error!("epoch log scan yielded a key that is not a VersionEpochKey")
 			};
 			expired.push(key);
