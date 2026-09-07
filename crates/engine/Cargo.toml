@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Query execution and processing engine for ReifyDB"
+autotests = false
 
 [lib]
 doctest = false
@@ -52,3 +53,7 @@ reifydb-test-harness = { workspace = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 reifydb-client = { workspace = true, features = ["grpc"] }
 tokio = { workspace = true }
+
+[[test]]
+name = "suite"
+path = "tests/suite.rs"

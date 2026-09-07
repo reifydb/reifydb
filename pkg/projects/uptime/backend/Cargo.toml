@@ -18,7 +18,7 @@ name = "reifydb-uptime"
 path = "src/main.rs"
 
 [dependencies]
-reifydb = { workspace = true }
+reifydb = { workspace = true, features = ["server", "sub_flow"] }
 reifydb-client = { workspace = true, features = ["ws"] }
 
 axum = { workspace = true }

@@ -465,6 +465,7 @@ version = "0.9.0"
 dependencies = [
  "clap",
  "reifydb",
+ "reifydb-build",
  "reifydb-client",
  "rustyline",
  "terminal_size",
@@ -891,6 +892,7 @@ dependencies = [
  "clap",
  "postcard",
  "reifydb",
+ "reifydb-build",
  "reifydb-cdc",
  "reifydb-codec",
  "reifydb-core",
@@ -1948,6 +1950,7 @@ dependencies = [
  "num_cpus",
  "rand 0.10.1",
  "reifydb",
+ "reifydb-build",
  "reifydb-client",
  "reifydb-testing-scenario",
  "reifydb-value",
@@ -2475,6 +2478,7 @@ name = "playground"
 version = "0.9.0"
 dependencies = [
  "reifydb",
+ "reifydb-build",
 ]
 
 [[package]]
@@ -2925,6 +2929,7 @@ dependencies = [
  "rand 0.10.1",
  "reifydb",
  "reifydb-allocator",
+ "reifydb-build",
  "reifydb-client",
  "reifydb-codec",
  "reifydb-core",
@@ -4580,6 +4585,7 @@ name = "server"
 version = "0.9.0"
 dependencies = [
  "reifydb",
+ "reifydb-build",
 ]
 
 [[package]]
@@ -4864,6 +4870,7 @@ name = "testcontainer"
 version = "0.9.0"
 dependencies = [
  "reifydb",
+ "reifydb-build",
  "tracing",
 ]
 

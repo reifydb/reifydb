@@ -7,6 +7,7 @@ use reifydb_store_operator::store::OperatorStore;
 use reifydb_testing::testscript::runner::run_path;
 use test_each_file::test_each_path;
 
+#[path = "common/mod.rs"]
 mod common;
 use common::Runner;
 

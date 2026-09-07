@@ -10,6 +10,10 @@ description = "WebAssembly runtime for sandboxed execution in ReifyDB (backed by
 [lib]
 doctest = false
 
+[features]
+default = []
+runtime = ["dep:wasmtime", "dep:wasmtime-wasi"]
+
 [build-dependencies]
 reifydb-build = { workspace = true }
 
@@ -17,8 +21,8 @@ reifydb-build = { workspace = true }
 reifydb-value = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-wasmtime = { workspace = true }
-wasmtime-wasi = { workspace = true }
+wasmtime = { workspace = true, optional = true }
+wasmtime-wasi = { workspace = true, optional = true }
 
 [dev-dependencies]
 wat = { workspace = true }

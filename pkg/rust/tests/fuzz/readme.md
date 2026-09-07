@@ -19,12 +19,12 @@
 
 | Target               | What it tests                                              |
 |----------------------|------------------------------------------------------------|
-| `abi_buffer`         | `ExternCBuffer::from_slice` roundtrip and invariants       |
-| `keycode_deserialize`| `keycode::deserialize` on raw bytes for all scalar types   |
-| `keycode_roundtrip`  | serialize-then-deserialize identity for all scalar types   |
+| `abi-buffer`         | `ExternCBuffer::from_slice` roundtrip and invariants       |
+| `keycode-deserialize`| `keycode::deserialize` on raw bytes for all scalar types   |
+| `keycode-roundtrip`  | serialize-then-deserialize identity for all scalar types   |
 | `rql_gen`            | (support module) Arbitrary RQL statement generator         |
-| `rql_parse`          | `reifydb_rql::ast::parse_str` on generated RQL            |
-| `rql_tokenize`       | `reifydb_rql::token::tokenize` on generated RQL           |
+| `rql-parse`          | `reifydb_rql::ast::parse_str` on generated RQL            |
+| `rql-tokenize`       | `reifydb_rql::token::tokenize` on generated RQL           |
 | `sql_tokenize`       | `reifydb_sql::token::tokenize` on arbitrary strings        |
 | `sql_transpile`      | `reifydb_sql::transpile` on arbitrary strings              |
 

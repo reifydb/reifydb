@@ -104,7 +104,7 @@ impl From<Value> for f64 {
 	}
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
 mod wasmtime_conv {
 	use wasmtime::Val;
 

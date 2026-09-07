@@ -4,10 +4,11 @@
 use std::{env, fs, io, io::Write, path, path::Path};
 
 use fs::create_dir_all;
-use reifydb_build::emit_target_cfg;
+use reifydb_build::{emit_export_dynamic_bins, emit_target_cfg};
 
 fn main() {
 	emit_target_cfg();
+	emit_export_dynamic_bins();
 
 	println!("cargo:rerun-if-changed=../web/src");
 	println!("cargo:rerun-if-changed=../web/package.json");

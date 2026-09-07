@@ -41,10 +41,9 @@ use reifydb_engine::remote::RemoteRegistry;
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_extension::procedure::extern_c::loader::register_procedures_from_dir;
-use reifydb_extension::{
-	procedure::extern_wasm::loader::register_extern_wasm_procedures_from_dir,
-	transform::registry::{Transforms, TransformsConfigurator},
-};
+#[cfg(feature = "wasm")]
+use reifydb_extension::procedure::extern_wasm::loader::register_extern_wasm_procedures_from_dir;
+use reifydb_extension::transform::registry::{Transforms, TransformsConfigurator};
 use reifydb_routine::{
 	function::default_in_process_functions, monoid::default_in_process_monoids,
 	procedure::default_in_process_procedures,
@@ -422,6 +421,7 @@ impl DatabaseBuilder {
 				routines_builder = register_procedures_from_dir(dir, routines_builder)?;
 			}
 
+			#[cfg(feature = "wasm")]
 			if let Some(dir) = &self.wasm_procedure_dir {
 				routines_builder = register_extern_wasm_procedures_from_dir(dir, routines_builder)?;
 			}

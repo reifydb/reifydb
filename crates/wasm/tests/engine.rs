@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#![cfg(feature = "runtime")]
+
 use reifydb_wasm::{Engine, SpawnBinary, module::value::Value, source};
 
 fn add_module() -> Vec<u8> {
