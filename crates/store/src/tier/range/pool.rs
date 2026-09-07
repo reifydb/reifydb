@@ -153,39 +153,51 @@ impl<D: RangeDomain> RangeTier<D> {
 
 	fn evict_down_to(&self, shard: usize, ceiling: Ceiling) {
 		loop {
-			let Some((victim, progress)) = self.pick_victim(shard, ceiling) else {
-				break;
-			};
-			self.retract_partition(&victim);
-			#[cfg(test)]
-			if let Some(interlock) = self.inner.interlock.as_ref() {
-				interlock(self, victim);
+			let victims = self.pick_victims(shard, ceiling);
+			if victims.is_empty() {
+				return;
 			}
-			if !self.drop_unpinned(shard, &victim, progress) {
-				break;
+			for (victim, progress) in victims {
+				self.retract_partition(&victim);
+				#[cfg(test)]
+				if let Some(interlock) = self.inner.interlock.as_ref() {
+					interlock(self, victim);
+				}
+				if !self.drop_unpinned(shard, &victim, progress) {
+					return;
+				}
 			}
 		}
 	}
 
-	fn pick_victim(&self, index: usize, ceiling: Ceiling) -> Option<(D::Partition, Progress)> {
+	fn pick_victims(&self, index: usize, ceiling: Ceiling) -> Vec<(D::Partition, Progress)> {
 		let shard = self.shard(index).lock();
 		let cap = match ceiling {
 			Ceiling::Limit => shard.budget.limit().as_bytes(),
 			Ceiling::Reserve => shard.reserve,
 		};
-		if shard.budget.used().as_bytes() <= cap {
-			return None;
+		let used = shard.budget.used().as_bytes();
+		if used <= cap {
+			return Vec::new();
 		}
-		let mut victim: Option<(u64, D::Partition, Progress)> = None;
-		for (id, partition) in shard.partitions.iter() {
-			if !partition.pinned.has_victim(Self::releases_removals()) {
-				continue;
+		let releasing = Self::releases_removals();
+		let mut candidates: Vec<(u64, D::Partition, Progress, u64)> = shard
+			.partitions
+			.iter()
+			.filter(|(_, partition)| partition.pinned.has_victim(releasing))
+			.map(|(id, partition)| (partition.tick, *id, partition.progress(), partition.bytes as u64))
+			.collect();
+		candidates.sort_unstable_by_key(|(tick, _, _, _)| *tick);
+		let mut owed = used - cap;
+		let mut victims = Vec::with_capacity(candidates.len());
+		for (_, id, progress, bytes) in candidates {
+			victims.push((id, progress));
+			if bytes >= owed {
+				break;
 			}
-			if victim.map(|(tick, _, _)| partition.tick < tick).unwrap_or(true) {
-				victim = Some((partition.tick, *id, partition.progress()));
-			}
+			owed -= bytes;
 		}
-		victim.map(|(_, id, progress)| (id, progress))
+		victims
 	}
 
 	pub(super) fn releases_removals() -> bool {
