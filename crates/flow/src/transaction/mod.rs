@@ -1,18 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, mem::take};
+use std::{
+	collections::{BTreeMap, HashMap},
+	mem::take,
+};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::EncodedBytes,
+	row::{bytes::EncodedBytes, shape::RowShape},
 };
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
 	interface::{
-		catalog::object::ObjectId,
+		catalog::{flow::OperatorId, object::ObjectId},
 		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
@@ -118,6 +121,10 @@ pub trait FlowTransaction: Sized + Send + 'static {
 	fn flow_watermark(&self) -> Option<DateTime>;
 
 	fn set_flow_watermark(&mut self, watermark: DateTime);
+
+	fn source_watermark_memo(&mut self) -> &mut HashMap<OperatorId, u64>;
+
+	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape>;
 
 	fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change>;
 

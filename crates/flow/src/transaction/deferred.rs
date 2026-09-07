@@ -9,7 +9,7 @@ use std::{
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, pod::EncodedPodRow},
+	row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape},
 };
 use reifydb_core::{
 	actors::pending::PendingLayers,
@@ -107,6 +107,10 @@ pub struct DeferredTransaction {
 
 	pub flow_watermark: Option<DateTime>,
 
+	pub source_watermark_memo: HashMap<OperatorId, u64>,
+
+	pub row_shape_cache: HashMap<EncodedKey, RowShape>,
+
 	pub substrate: FlowSubstrate,
 }
 
@@ -130,6 +134,8 @@ impl DeferredTransaction {
 			clock: params.clock,
 			change_coordinate: None,
 			flow_watermark: None,
+			source_watermark_memo: HashMap::new(),
+			row_shape_cache: HashMap::new(),
 			substrate: params.substrate,
 		}
 	}
@@ -315,6 +321,14 @@ impl FlowTransaction for DeferredTransaction {
 
 	fn set_flow_watermark(&mut self, watermark: DateTime) {
 		self.flow_watermark = Some(watermark);
+	}
+
+	fn source_watermark_memo(&mut self) -> &mut HashMap<OperatorId, u64> {
+		&mut self.source_watermark_memo
+	}
+
+	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape> {
+		&mut self.row_shape_cache
 	}
 
 	fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change> {

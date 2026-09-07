@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{borrow::Cow, ops::Bound};
+use std::{borrow::Cow, collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
+	row::{pod::EncodedPodRow, shape::RowShape},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -66,6 +66,8 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 	fn config_uint8(&self, key: ConfigKey) -> u64;
 
 	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
+
+	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape>;
 
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
 
@@ -291,6 +293,10 @@ impl<T: FlowTransaction> IdentityReclaim for TxnHostContext<'_, T> {
 impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 	fn version(&self) -> CommitVersion {
 		self.txn.version()
+	}
+
+	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape> {
+		self.txn.row_shape_cache()
 	}
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()> {

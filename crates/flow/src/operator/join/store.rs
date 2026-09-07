@@ -245,6 +245,9 @@ impl Store {
 		fingerprint: RowShapeFingerprint,
 	) -> Result<Option<RowShape>> {
 		let key = self.schema_key(fingerprint);
+		if let Some(cached) = host.row_shape_cache().get(key.as_encoded()).cloned() {
+			return Ok(Some(cached));
+		}
 		match state_get(host, &key)? {
 			Some(row) => {
 				if row.is_empty() {
@@ -257,7 +260,9 @@ impl Store {
 							cause: e.to_string(),
 						})
 					})?;
-				Ok(Some(RowShape::new(RowFamily::Pod, fields)))
+				let shape = RowShape::new(RowFamily::Pod, fields);
+				host.row_shape_cache().insert(key.as_encoded().clone(), shape.clone());
+				Ok(Some(shape))
 			}
 			None => Ok(None),
 		}
@@ -265,7 +270,11 @@ impl Store {
 
 	pub(crate) fn set_row_shape(&self, host: &mut dyn HostContext, shape: &RowShape) -> Result<()> {
 		let key = self.schema_key(shape.fingerprint());
+		if host.row_shape_cache().contains_key(key.as_encoded()) {
+			return Ok(());
+		}
 		if state_get(host, &key)?.is_some() {
+			host.row_shape_cache().insert(key.as_encoded().clone(), shape.clone());
 			return Ok(());
 		}
 		let row = encode(&shape.fields().to_vec()).map_err(|e| {
@@ -274,7 +283,9 @@ impl Store {
 				cause: e.to_string(),
 			})
 		})?;
-		state_set(host, &key, row)
+		state_set(host, &key, row)?;
+		host.row_shape_cache().insert(key.as_encoded().clone(), shape.clone());
+		Ok(())
 	}
 }
 

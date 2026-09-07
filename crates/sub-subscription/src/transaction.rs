@@ -14,12 +14,12 @@ use std::{
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::EncodedBytes,
+	row::{bytes::EncodedBytes, shape::RowShape},
 };
 use reifydb_core::{
 	actors::pending::{PendingLayers, PendingWrite},
 	common::CommitVersion,
-	interface::{change::Change, store::MultiVersionRow},
+	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
 };
 use reifydb_flow::{
 	error::FlowGraphError,
@@ -50,6 +50,8 @@ pub struct EphemeralTransaction {
 	pub flow_watermark: Option<DateTime>,
 	pub substrate: FlowSubstrate,
 	pub state: HashMap<EncodedKey, EncodedBytes>,
+	pub source_watermark_memo: HashMap<OperatorId, u64>,
+	pub row_shape_cache: HashMap<EncodedKey, RowShape>,
 }
 
 impl EphemeralTransaction {
@@ -76,6 +78,8 @@ impl EphemeralTransaction {
 			flow_watermark: None,
 			substrate,
 			state,
+			source_watermark_memo: HashMap::new(),
+			row_shape_cache: HashMap::new(),
 		}
 	}
 
@@ -240,6 +244,14 @@ impl FlowTransaction for EphemeralTransaction {
 
 	fn set_flow_watermark(&mut self, watermark: DateTime) {
 		self.flow_watermark = Some(watermark);
+	}
+
+	fn source_watermark_memo(&mut self) -> &mut HashMap<OperatorId, u64> {
+		&mut self.source_watermark_memo
+	}
+
+	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape> {
+		&mut self.row_shape_cache
 	}
 
 	fn run_durable_sink(&mut self, _sink: &mut dyn DurableSink, _change: Change) -> Result<Change> {

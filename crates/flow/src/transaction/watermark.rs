@@ -39,7 +39,9 @@ impl SourceWatermarks {
 				 every open window at once"
 			);
 		}
-		txn.state_set(source, &source_watermark_key(), encode_payload(&coordinate)?)
+		txn.state_set(source, &source_watermark_key(), encode_payload(&coordinate)?)?;
+		txn.source_watermark_memo().insert(source, coordinate);
+		Ok(())
 	}
 
 	pub fn source_watermark(source: OperatorId, txn: &mut impl FlowTransaction) -> Result<DateTime> {
@@ -84,8 +86,13 @@ impl SourceWatermarks {
 }
 
 fn raw(source: OperatorId, txn: &mut impl FlowTransaction) -> Result<u64> {
-	match txn.state_get(source, &source_watermark_key())? {
-		Some(row) => decode_payload::<u64>(&row),
-		None => Ok(0),
+	if let Some(memoized) = txn.source_watermark_memo().get(&source).copied() {
+		return Ok(memoized);
 	}
+	let value = match txn.state_get(source, &source_watermark_key())? {
+		Some(row) => decode_payload::<u64>(&row)?,
+		None => 0,
+	};
+	txn.source_watermark_memo().insert(source, value);
+	Ok(value)
 }

@@ -737,11 +737,12 @@ pub(super) extern "C" fn host_get_or_create_row_numbers_for_pairs(
 mod join_row_expiry_guard_tests {
 	use std::{
 		cell::{Cell, RefCell},
+		collections::HashMap,
 		iter::empty,
 		rc::Rc,
 	};
 
-	use reifydb_codec::key::encoded::EncodedKeyRange;
+	use reifydb_codec::{key::encoded::EncodedKeyRange, row::shape::RowShape};
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::{
@@ -785,6 +786,7 @@ mod join_row_expiry_guard_tests {
 	struct RecordingHost {
 		reached: Rc<Cell<bool>>,
 		range: Rc<RefCell<Option<EncodedKeyRange>>>,
+		row_shape_cache: HashMap<EncodedKey, RowShape>,
 	}
 
 	impl TimerStore for RecordingHost {
@@ -879,6 +881,10 @@ mod join_row_expiry_guard_tests {
 	}
 
 	impl HostContext for RecordingHost {
+		fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape> {
+			&mut self.row_shape_cache
+		}
+
 		fn version(&self) -> CommitVersion {
 			CommitVersion(0)
 		}
@@ -1042,6 +1048,7 @@ mod join_row_expiry_guard_tests {
 		let mut recording = RecordingHost {
 			reached: Rc::clone(&reached),
 			range: Rc::clone(&range),
+			row_shape_cache: HashMap::new(),
 		};
 		let mut host = ExternCHostContext::new(&mut recording);
 		let mut ctx = new_extern_c_context(&mut host, OperatorId(1), create_host_callbacks());

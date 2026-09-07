@@ -1073,7 +1073,7 @@ mod seal_tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{
 		key::encoded::EncodedKeyRange,
-		row::{bytes::EncodedBytes, operator::state::decode},
+		row::{bytes::EncodedBytes, operator::state::decode, shape::RowShape},
 	};
 	use reifydb_core::{
 		actors::pending::PendingLayers,
@@ -1363,6 +1363,14 @@ mod seal_tests {
 
 		fn set_flow_watermark(&mut self, watermark: DateTime) {
 			self.inner.set_flow_watermark(watermark)
+		}
+
+		fn source_watermark_memo(&mut self) -> &mut HashMap<OperatorId, u64> {
+			self.inner.source_watermark_memo()
+		}
+
+		fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape> {
+			self.inner.row_shape_cache()
 		}
 
 		fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change> {
