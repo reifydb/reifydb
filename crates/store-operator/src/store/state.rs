@@ -225,6 +225,9 @@ impl StandardOperatorStore {
 		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
 			return SizeProbe::Known(authoritative.as_ref().map(row_size));
 		}
+		if self.resident.never_persisted(operator, key) {
+			return SizeProbe::Known(None);
+		}
 		SizeProbe::Persistent
 	}
 
@@ -261,6 +264,9 @@ impl StandardOperatorStore {
 				results[index] = authoritative;
 				continue;
 			}
+			if self.resident.never_persisted(operator, key) {
+				continue;
+			}
 			fetch.push((index, key));
 		}
 		if fetch.is_empty() {
@@ -280,6 +286,9 @@ impl StandardOperatorStore {
 		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
 			return authoritative;
 		}
+		if self.resident.never_persisted(operator, key) {
+			return None;
+		}
 		persistent.get(operator, key)
 	}
 
@@ -298,6 +307,9 @@ impl StandardOperatorStore {
 		};
 		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
 			return authoritative.is_some();
+		}
+		if self.resident.never_persisted(operator, key) {
+			return false;
 		}
 		persistent.contains(operator, key)
 	}

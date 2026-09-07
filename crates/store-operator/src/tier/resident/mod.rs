@@ -975,7 +975,7 @@ impl OperatorResidentState {
 					self.assert_erasable(inner, key);
 					return;
 				}
-				if self.never_staged(inner.live.operator, key) {
+				if self.never_persisted(inner.live.operator, key) {
 					#[cfg(reifydb_assertions)]
 					self.assert_erasable(inner, key);
 					return;
@@ -985,7 +985,7 @@ impl OperatorResidentState {
 		}
 	}
 
-	fn never_staged(&self, operator: OperatorId, key: &EncodedKey) -> bool {
+	pub(crate) fn never_persisted(&self, operator: OperatorId, key: &EncodedKey) -> bool {
 		let Some((group, keyspace, suffix)) = OperatorStateKey::decode_inner(key.as_slice()) else {
 			return false;
 		};
@@ -1014,7 +1014,7 @@ impl OperatorResidentState {
 	}
 }
 
-fn state_hash(operator: OperatorId, keyspace: KeyspaceId, group: GroupId, suffix: &[u8]) -> u64 {
+pub(crate) fn state_hash(operator: OperatorId, keyspace: KeyspaceId, group: GroupId, suffix: &[u8]) -> u64 {
 	hash_item(&(operator.0, keyspace.0, group.as_bytes(), suffix))
 }
 
