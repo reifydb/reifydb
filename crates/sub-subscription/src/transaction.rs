@@ -50,7 +50,7 @@ pub struct EphemeralTransaction {
 	pub flow_watermark: Option<DateTime>,
 	pub substrate: FlowSubstrate,
 	pub state: HashMap<EncodedKey, EncodedBytes>,
-	pub source_watermark_memo: HashMap<OperatorId, u64>,
+	pub source_watermark_cache: HashMap<OperatorId, u64>,
 	pub row_shape_cache: HashMap<EncodedKey, RowShape>,
 }
 
@@ -78,7 +78,7 @@ impl EphemeralTransaction {
 			flow_watermark: None,
 			substrate,
 			state,
-			source_watermark_memo: HashMap::new(),
+			source_watermark_cache: HashMap::new(),
 			row_shape_cache: HashMap::new(),
 		}
 	}
@@ -246,8 +246,8 @@ impl FlowTransaction for EphemeralTransaction {
 		self.flow_watermark = Some(watermark);
 	}
 
-	fn source_watermark_memo(&mut self) -> &mut HashMap<OperatorId, u64> {
-		&mut self.source_watermark_memo
+	fn source_watermark_cache(&mut self) -> &mut HashMap<OperatorId, u64> {
+		&mut self.source_watermark_cache
 	}
 
 	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape> {

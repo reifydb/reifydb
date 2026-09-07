@@ -1365,8 +1365,8 @@ mod seal_tests {
 			self.inner.set_flow_watermark(watermark)
 		}
 
-		fn source_watermark_memo(&mut self) -> &mut HashMap<OperatorId, u64> {
-			self.inner.source_watermark_memo()
+		fn source_watermark_cache(&mut self) -> &mut HashMap<OperatorId, u64> {
+			self.inner.source_watermark_cache()
 		}
 
 		fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape> {

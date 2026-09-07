@@ -40,7 +40,7 @@ impl SourceWatermarks {
 			);
 		}
 		txn.state_set(source, &source_watermark_key(), encode_payload(&coordinate)?)?;
-		txn.source_watermark_memo().insert(source, coordinate);
+		txn.source_watermark_cache().insert(source, coordinate);
 		Ok(())
 	}
 
@@ -86,13 +86,13 @@ impl SourceWatermarks {
 }
 
 fn raw(source: OperatorId, txn: &mut impl FlowTransaction) -> Result<u64> {
-	if let Some(memoized) = txn.source_watermark_memo().get(&source).copied() {
-		return Ok(memoized);
+	if let Some(cached) = txn.source_watermark_cache().get(&source).copied() {
+		return Ok(cached);
 	}
 	let value = match txn.state_get(source, &source_watermark_key())? {
 		Some(row) => decode_payload::<u64>(&row)?,
 		None => 0,
 	};
-	txn.source_watermark_memo().insert(source, value);
+	txn.source_watermark_cache().insert(source, value);
 	Ok(value)
 }

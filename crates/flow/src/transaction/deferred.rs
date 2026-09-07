@@ -107,7 +107,7 @@ pub struct DeferredTransaction {
 
 	pub flow_watermark: Option<DateTime>,
 
-	pub source_watermark_memo: HashMap<OperatorId, u64>,
+	pub source_watermark_cache: HashMap<OperatorId, u64>,
 
 	pub row_shape_cache: HashMap<EncodedKey, RowShape>,
 
@@ -134,7 +134,7 @@ impl DeferredTransaction {
 			clock: params.clock,
 			change_coordinate: None,
 			flow_watermark: None,
-			source_watermark_memo: HashMap::new(),
+			source_watermark_cache: HashMap::new(),
 			row_shape_cache: HashMap::new(),
 			substrate: params.substrate,
 		}
@@ -323,8 +323,8 @@ impl FlowTransaction for DeferredTransaction {
 		self.flow_watermark = Some(watermark);
 	}
 
-	fn source_watermark_memo(&mut self) -> &mut HashMap<OperatorId, u64> {
-		&mut self.source_watermark_memo
+	fn source_watermark_cache(&mut self) -> &mut HashMap<OperatorId, u64> {
+		&mut self.source_watermark_cache
 	}
 
 	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape> {
