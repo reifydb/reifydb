@@ -10,7 +10,7 @@ use std::{
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::key::{
 	operator::{state::KeyspaceId, traits::Keyspace},
-	typed::{Edge, TypedKey},
+	typed::{BoundedKey, Edge},
 };
 use reifydb_store::tier::range::RangeDomain;
 

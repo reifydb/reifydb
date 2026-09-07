@@ -10,7 +10,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::{
 			operator::{keyspace::join::JoinLeft, state::GroupId},
-			typed::{Edge, TypedKey, direction::Asc, range::KeyRange},
+			typed::{BoundedKey, Edge, direction::Asc, range::KeyRange},
 		},
 	};
 	use reifydb_store::{

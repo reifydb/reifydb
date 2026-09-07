@@ -18,7 +18,7 @@ use reifydb_core::{
 			},
 			state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range},
 		},
-		typed::{TypedKey, direction::Asc},
+		typed::{BoundedKey, direction::Asc},
 	},
 	state::typed::{SuffixBytes, typed_key},
 };
@@ -75,9 +75,9 @@ pub fn join_due_floor_key(at: DateTime) -> GroupStateKey {
 		GroupId::ROOT,
 		&JoinExpiryDueKey {
 			at: Asc(at),
-			group: TypedKey::low(),
-			side: TypedKey::low(),
-			row: TypedKey::low(),
+			group: BoundedKey::low(),
+			side: BoundedKey::low(),
+			row: BoundedKey::low(),
 		},
 	)
 }

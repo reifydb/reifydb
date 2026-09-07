@@ -15,7 +15,7 @@ use reifydb_core::{
 			state::{GroupId, KeyspaceId},
 			traits::Keyspace,
 		},
-		typed::{TypedKey, direction::Asc, range::KeyRange},
+		typed::{BoundedKey, direction::Asc, range::KeyRange},
 	},
 };
 use reifydb_store::{

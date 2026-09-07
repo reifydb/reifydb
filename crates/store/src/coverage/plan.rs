@@ -181,15 +181,10 @@ impl GapHistogram {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::key::typed::{Edge, MultiKey};
 
 	use super::{DEFAULT_GAP_GUARD, GapHistogram, ScanPlan, Segment, plan};
 	use crate::coverage::interval::{CoverageSet, Interval};
-
-	fn key(bytes: &[u8]) -> EncodedKey {
-		EncodedKey::new(bytes)
-	}
 
 	fn edge(bytes: &[u8]) -> Edge<MultiKey> {
 		Edge::of(bytes)

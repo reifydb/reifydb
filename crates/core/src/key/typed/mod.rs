@@ -13,7 +13,11 @@ pub mod key;
 pub mod layout;
 pub mod range;
 
-pub trait TypedKey: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {
+pub trait TypedKey: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {}
+
+impl<T> TypedKey for T where T: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {}
+
+pub trait BoundedKey: TypedKey {
 	fn low() -> Self;
 }
 
@@ -64,7 +68,7 @@ impl<K: DenseKey> Edge<K> {
 	}
 }
 
-impl<K: TypedKey> Edge<K> {
+impl<K: Clone> Edge<K> {
 	pub fn lower_bound(&self) -> Option<Bound<K>> {
 		match self {
 			Edge::Bottom => Some(Bound::Unbounded),
@@ -82,7 +86,9 @@ impl<K: TypedKey> Edge<K> {
 			Edge::Top => Some(Bound::Unbounded),
 		}
 	}
+}
 
+impl<K: BoundedKey> Edge<K> {
 	pub fn anchor(&self) -> Option<K> {
 		match self {
 			Edge::Bottom => Some(K::low()),
@@ -169,7 +175,7 @@ impl<K: Ord> Ord for Edge<K> {
 
 pub type MultiKey = EncodedKey;
 
-impl TypedKey for () {
+impl BoundedKey for () {
 	fn low() -> Self {}
 }
 
@@ -179,7 +185,7 @@ impl DenseKey for () {
 	}
 }
 
-impl TypedKey for EncodedKey {
+impl BoundedKey for EncodedKey {
 	fn low() -> Self {
 		EncodedKey::new([])
 	}
@@ -198,18 +204,18 @@ impl DenseKey for EncodedKey {
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use super::{DenseKey, Edge, MultiKey, TypedKey};
+	use super::{BoundedKey, DenseKey, Edge, MultiKey};
 
 	#[test]
 	fn unit_key_has_no_successor() {
 		// a group only keyspace subtracts its whole key, so the empty key must report the top of its space
-		assert_eq!(<() as TypedKey>::low(), ());
+		assert_eq!(<() as BoundedKey>::low(), ());
 		assert_eq!(<() as DenseKey>::successor(&()), None);
 	}
 
 	#[test]
 	fn encoded_key_low_is_empty() {
-		assert_eq!(<MultiKey as TypedKey>::low().as_slice(), &[] as &[u8]);
+		assert_eq!(<MultiKey as BoundedKey>::low().as_slice(), &[] as &[u8]);
 	}
 
 	#[test]

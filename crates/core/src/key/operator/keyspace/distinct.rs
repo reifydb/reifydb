@@ -8,7 +8,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			DenseKey, TypedKey,
+			BoundedKey, DenseKey, TypedKey,
 			direction::{Desc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues},
 		},

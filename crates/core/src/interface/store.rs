@@ -23,7 +23,7 @@ use crate::{
 			PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
 			StoragePartitionedSeriesKey, StorageSeriesKey,
 		},
-		typed::{TypedKey, key::Key},
+		typed::{BoundedKey, key::Key},
 	},
 };
 
@@ -245,22 +245,22 @@ pub fn classify_key(key: &EncodedKey) -> EntryKind {
 
 pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 	if let (Some(start), Some(_end)) = RowKeyRange::decode(range) {
-		return row_storage_key(start.storage, <StorageRowKey as TypedKey>::low())
+		return row_storage_key(start.storage, <StorageRowKey as BoundedKey>::low())
 			.map(|_| EntryKind::Source(start.storage, EntryLayout::Row));
 	}
 
 	if let (Some(start), Some(_end)) = SeriesRowKeyRange::decode(range) {
-		return series_storage_key(start, <StorageSeriesKey as TypedKey>::low())
+		return series_storage_key(start, <StorageSeriesKey as BoundedKey>::low())
 			.map(|_| EntryKind::Source(start, EntryLayout::Series));
 	}
 
 	if let (Some(start), Some(_end)) = PartitionedRowKeyRange::decode(range) {
-		return partitioned_row_storage_key(start.storage, <StoragePartitionedRowKey as TypedKey>::low())
+		return partitioned_row_storage_key(start.storage, <StoragePartitionedRowKey as BoundedKey>::low())
 			.map(|_| EntryKind::PartitionedSource(start.storage, EntryLayout::Row));
 	}
 
 	if let (Some(start), Some(_end)) = PartitionedSeriesRowKeyRange::decode(range) {
-		return partitioned_series_storage_key(start, <StoragePartitionedSeriesKey as TypedKey>::low())
+		return partitioned_series_storage_key(start, <StoragePartitionedSeriesKey as BoundedKey>::low())
 			.map(|_| EntryKind::PartitionedSource(start, EntryLayout::Series));
 	}
 

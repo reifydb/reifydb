@@ -287,7 +287,7 @@ fn expand(name: &str, fields: &[KeyField]) -> TokenStream {
 
 	let mut low = String::new();
 	for field in fields {
-		low.push_str(&format!("\n\t\t\t{}: TypedKey::low(),", field.name));
+		low.push_str(&format!("\n\t\t\t{}: BoundedKey::low(),", field.name));
 	}
 
 	let mut high = String::new();
@@ -305,7 +305,7 @@ fn expand(name: &str, fields: &[KeyField]) -> TokenStream {
 			} else if other == at {
 				carried.name.clone()
 			} else {
-				String::from("TypedKey::low()")
+				String::from("BoundedKey::low()")
 			};
 			successor.push_str(&format!("\n\t\t\t\t{}: {},", carried.name, value));
 		}
@@ -328,7 +328,7 @@ fn expand(name: &str, fields: &[KeyField]) -> TokenStream {
 	out.push_str(&format!("\t\tif values.len() != {} {{\n\t\t\treturn None;\n\t\t}}\n", fields.len()));
 	out.push_str(&format!("\t\tSome(Self {{{reads}\n\t\t}})\n\t}}\n\n"));
 	out.push_str(&format!("\tfn high() -> Self {{\n\t\tSelf {{{high}\n\t\t}}\n\t}}\n}}\n\n"));
-	out.push_str(&format!("#[automatically_derived]\nimpl TypedKey for {name} {{\n"));
+	out.push_str(&format!("#[automatically_derived]\nimpl BoundedKey for {name} {{\n"));
 	out.push_str(&format!("\tfn low() -> Self {{\n\t\tSelf {{{low}\n\t\t}}\n\t}}\n}}\n\n"));
 	out.push_str(&format!("#[automatically_derived]\nimpl DenseKey for {name} {{\n"));
 	out.push_str("\tfn successor(&self) -> Option<Self> {\n");
@@ -508,7 +508,7 @@ mod tests {
 		// otherwise a scan bound skips whole runs of the trailing column
 		let out = expand("struct JoinLeftKey { group: Desc<GroupId>, row: Asc<RowNumber> }");
 		assert!(!out.contains("compile_error"), "{out}");
-		assert!(out.contains("impl TypedKey for JoinLeftKey"), "{out}");
+		assert!(out.contains("impl BoundedKey for JoinLeftKey"), "{out}");
 		let row_first = out.find("DenseKey :: successor (& self . row)").expect("row is tried first");
 		let group_second = out.find("DenseKey :: successor (& self . group)").expect("group carries");
 		assert!(row_first < group_second, "{out}");

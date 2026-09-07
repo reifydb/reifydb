@@ -26,7 +26,7 @@ use crate::{
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		sort_run::SortRun,
 		typed::{
-			DenseKey, TypedKey,
+			BoundedKey, DenseKey,
 			direction::{Asc, Desc},
 			key::Key,
 		},
@@ -571,9 +571,9 @@ impl HeapSize for StorageRowKey {
 	}
 }
 
-impl TypedKey for StorageRowKey {
+impl BoundedKey for StorageRowKey {
 	fn low() -> Self {
-		StorageRowKey(<Desc<RowNumber> as TypedKey>::low())
+		StorageRowKey(<Desc<RowNumber> as BoundedKey>::low())
 	}
 }
 
@@ -590,7 +590,7 @@ pub mod row_key_tests {
 	use super::{RowKey, StorageRowKey};
 	use crate::{
 		interface::catalog::storage::StorageId,
-		key::typed::{DenseKey, TypedKey, key::Key},
+		key::typed::{BoundedKey, DenseKey, key::Key},
 	};
 
 	#[test]
@@ -690,7 +690,7 @@ pub mod row_key_tests {
 	fn test_row_ident_low_is_the_greatest_row() {
 		// low() names the first key a scan meets. Under descending order that is the highest row,
 		// and a scan seeded from the lowest row would start past every key it meant to cover.
-		assert_eq!(<StorageRowKey as TypedKey>::low(), StorageRowKey::new(RowNumber(u64::MAX)));
+		assert_eq!(<StorageRowKey as BoundedKey>::low(), StorageRowKey::new(RowNumber(u64::MAX)));
 	}
 
 	#[test]
@@ -1039,11 +1039,11 @@ impl HeapSize for StoragePartitionedRowKey {
 	}
 }
 
-impl TypedKey for StoragePartitionedRowKey {
+impl BoundedKey for StoragePartitionedRowKey {
 	fn low() -> Self {
 		Self {
-			partition: <Desc<Partition> as TypedKey>::low(),
-			row: <Desc<RowNumber> as TypedKey>::low(),
+			partition: <Desc<Partition> as BoundedKey>::low(),
+			row: <Desc<RowNumber> as BoundedKey>::low(),
 		}
 	}
 }
@@ -1058,7 +1058,7 @@ impl DenseKey for StoragePartitionedRowKey {
 		}
 		Some(Self {
 			partition: self.partition.successor()?,
-			row: <Desc<RowNumber> as TypedKey>::low(),
+			row: <Desc<RowNumber> as BoundedKey>::low(),
 		})
 	}
 }
@@ -1134,7 +1134,7 @@ mod partitioned_row_key_tests {
 		},
 		key::{
 			catalog::KeySerializerCatalogExt,
-			typed::{DenseKey, TypedKey, key::Key},
+			typed::{BoundedKey, DenseKey, key::Key},
 		},
 	};
 
@@ -1259,7 +1259,7 @@ mod partitioned_row_key_tests {
 	#[test]
 	fn test_partitioned_row_ident_low_is_the_greatest_partition_and_row() {
 		assert_eq!(
-			<StoragePartitionedRowKey as TypedKey>::low(),
+			<StoragePartitionedRowKey as BoundedKey>::low(),
 			StoragePartitionedRowKey::new(Partition(u128::MAX), RowNumber(u64::MAX))
 		);
 	}

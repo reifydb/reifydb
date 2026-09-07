@@ -17,7 +17,7 @@ use crate::{
 		any::{AnyKey, Field, KeyFields, Width},
 		bound::{AnyKeyBound, AnyKeyBoundRange, OwnedField, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
-		typed::{DenseKey, TypedKey, direction::Desc, key::Key},
+		typed::{BoundedKey, DenseKey, direction::Desc, key::Key},
 	},
 	metrics::heap::HeapSize,
 };
@@ -300,12 +300,12 @@ impl HeapSize for StorageSeriesKey {
 	}
 }
 
-impl TypedKey for StorageSeriesKey {
+impl BoundedKey for StorageSeriesKey {
 	fn low() -> Self {
 		Self {
 			variant_tag: lowest_variant_tag(),
-			key: <Desc<u64> as TypedKey>::low(),
-			sequence: <Desc<u64> as TypedKey>::low(),
+			key: <Desc<u64> as BoundedKey>::low(),
+			sequence: <Desc<u64> as BoundedKey>::low(),
 		}
 	}
 }
@@ -323,13 +323,13 @@ impl DenseKey for StorageSeriesKey {
 			return Some(Self {
 				variant_tag: self.variant_tag,
 				key,
-				sequence: <Desc<u64> as TypedKey>::low(),
+				sequence: <Desc<u64> as BoundedKey>::low(),
 			});
 		}
 		Some(Self {
 			variant_tag: next_variant_tag(self.variant_tag)?,
-			key: <Desc<u64> as TypedKey>::low(),
-			sequence: <Desc<u64> as TypedKey>::low(),
+			key: <Desc<u64> as BoundedKey>::low(),
+			sequence: <Desc<u64> as BoundedKey>::low(),
 		})
 	}
 }
@@ -888,13 +888,13 @@ impl HeapSize for StoragePartitionedSeriesKey {
 	}
 }
 
-impl TypedKey for StoragePartitionedSeriesKey {
+impl BoundedKey for StoragePartitionedSeriesKey {
 	fn low() -> Self {
 		Self {
-			partition: <Desc<Partition> as TypedKey>::low(),
+			partition: <Desc<Partition> as BoundedKey>::low(),
 			variant_tag: lowest_variant_tag(),
-			key: <Desc<u64> as TypedKey>::low(),
-			sequence: <Desc<u64> as TypedKey>::low(),
+			key: <Desc<u64> as BoundedKey>::low(),
+			sequence: <Desc<u64> as BoundedKey>::low(),
 		}
 	}
 }
@@ -910,7 +910,7 @@ impl DenseKey for StoragePartitionedSeriesKey {
 		if let Some(key) = self.key.successor() {
 			return Some(Self {
 				key,
-				sequence: <Desc<u64> as TypedKey>::low(),
+				sequence: <Desc<u64> as BoundedKey>::low(),
 				..*self
 			});
 		}
@@ -918,15 +918,15 @@ impl DenseKey for StoragePartitionedSeriesKey {
 			return Some(Self {
 				partition: self.partition,
 				variant_tag,
-				key: <Desc<u64> as TypedKey>::low(),
-				sequence: <Desc<u64> as TypedKey>::low(),
+				key: <Desc<u64> as BoundedKey>::low(),
+				sequence: <Desc<u64> as BoundedKey>::low(),
 			});
 		}
 		Some(Self {
 			partition: self.partition.successor()?,
 			variant_tag: lowest_variant_tag(),
-			key: <Desc<u64> as TypedKey>::low(),
-			sequence: <Desc<u64> as TypedKey>::low(),
+			key: <Desc<u64> as BoundedKey>::low(),
+			sequence: <Desc<u64> as BoundedKey>::low(),
 		})
 	}
 }
@@ -1165,7 +1165,7 @@ mod storage_series_key_tests {
 	use super::{PartitionedSeriesRowKey, SeriesRowKey, StorageId, StoragePartitionedSeriesKey, StorageSeriesKey};
 	use crate::{
 		interface::catalog::id::SeriesId,
-		key::typed::{DenseKey, TypedKey, key::Key},
+		key::typed::{BoundedKey, DenseKey, key::Key},
 	};
 
 	const STORAGE: StorageId = StorageId::Series(SeriesId(7));
@@ -1204,7 +1204,7 @@ mod storage_series_key_tests {
 
 	#[test]
 	fn low_is_the_first_key_the_encoder_can_produce() {
-		let low = <StorageSeriesKey as TypedKey>::low();
+		let low = <StorageSeriesKey as BoundedKey>::low();
 		assert_eq!(low, series(Some(u8::MAX), u64::MAX, u64::MAX));
 		for other in [series(None, 0, 0), series(Some(0), 0, 0), series(Some(200), 7, 3)] {
 			assert!(low < other, "low must not sort above a real key");

@@ -16,7 +16,7 @@ use reifydb_core::{
 			},
 			traits::Keyspace,
 		},
-		typed::{TypedKey, direction::Desc},
+		typed::{BoundedKey, direction::Desc},
 	},
 	state::{
 		timer::StateStore,
@@ -61,7 +61,7 @@ impl ExpirySuffix for ExpiryKey {
 	fn at_threshold(threshold: u64) -> Self {
 		Self {
 			threshold: Desc(threshold),
-			owner: TypedKey::low(),
+			owner: BoundedKey::low(),
 		}
 	}
 
@@ -74,8 +74,8 @@ impl ExpirySuffix for TumblingExpirySuffix {
 	fn at_threshold(threshold: u64) -> Self {
 		Self {
 			threshold: Desc(threshold),
-			owner: TypedKey::low(),
-			window_start: TypedKey::low(),
+			owner: BoundedKey::low(),
+			window_start: BoundedKey::low(),
 		}
 	}
 

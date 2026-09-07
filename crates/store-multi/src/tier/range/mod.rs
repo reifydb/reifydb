@@ -24,7 +24,7 @@ use reifydb_core::{
 			PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
 			StoragePartitionedSeriesKey, StorageSeriesKey,
 		},
-		typed::{DenseKey, Edge, TypedKey, key::Key, range::KeyRange},
+		typed::{BoundedKey, DenseKey, Edge, key::Key, range::KeyRange},
 	},
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
