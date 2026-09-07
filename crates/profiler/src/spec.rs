@@ -94,6 +94,13 @@ static SPECS: &[SpanSpec] = &[
 		extras: &["rows_fetched", "rows_tombstoned"],
 		render: Some(render_state_range),
 	},
+	SpanSpec {
+		name: "lifecycle::actor::tick",
+		duration_override: None,
+		dims: &[DimSource::Text("class")],
+		extras: &[],
+		render: None,
+	},
 ];
 
 pub fn spec_for(name: &str) -> Option<&'static SpanSpec> {
