@@ -4,10 +4,7 @@
 use std::{
 	collections::{HashMap, hash_map::DefaultHasher},
 	hash::{Hash, Hasher},
-	sync::{
-		Arc,
-		atomic::{AtomicU64, Ordering},
-	},
+	sync::Arc,
 };
 
 use hashbrown::HashTable;
@@ -40,7 +37,6 @@ impl<D: PointDomain> PointTier<D> {
 		Some(Self {
 			inner: Arc::new(PoolInner {
 				shards: build_shards::<D>(config, budgets),
-				excluded_misses: build_excluded_misses::<D>(),
 				#[cfg(test)]
 				interlock: None,
 			}),
@@ -53,7 +49,6 @@ impl<D: PointDomain> PointTier<D> {
 		Some(Self {
 			inner: Arc::new(PoolInner {
 				shards: build_shards::<D>(config, &budgets),
-				excluded_misses: build_excluded_misses::<D>(),
 				interlock: Some(interlock),
 			}),
 		})
@@ -79,18 +74,6 @@ impl<D: PointDomain> PointTier<D> {
 		self.inner.shards.iter()
 	}
 
-	pub(super) fn charge_excluded_miss(&self, bucket: usize) {
-		self.inner.excluded_misses[bucket].fetch_add(1, Ordering::Relaxed);
-	}
-
-	fn excluded_misses(&self, bucket: usize) -> u64 {
-		self.inner.excluded_misses[bucket].load(Ordering::Relaxed)
-	}
-
-	fn excluded_misses_total(&self) -> u64 {
-		self.inner.excluded_misses.iter().map(|counter| counter.load(Ordering::Relaxed)).sum()
-	}
-
 	pub fn resident_bytes(&self) -> ByteSize {
 		let total = self.all_shards().map(|shard| shard.lock().budget.used().as_bytes()).sum();
 		ByteSize::from_bytes(total)
@@ -105,8 +88,7 @@ impl<D: PointDomain> PointTier<D> {
 	}
 
 	pub fn misses(&self) -> u64 {
-		let sharded: u64 = self.all_shards().map(|shard| shard.lock().metrics.misses).sum();
-		sharded + self.excluded_misses_total()
+		self.all_shards().map(|shard| shard.lock().metrics.misses).sum()
 	}
 
 	pub fn evictions(&self) -> u64 {
@@ -119,7 +101,6 @@ impl<D: PointDomain> PointTier<D> {
 			let shard = shard.lock();
 			accumulate(&mut total, &shard.metrics);
 		}
-		total.misses += self.excluded_misses_total();
 		total
 	}
 
@@ -154,10 +135,6 @@ impl<D: PointDomain> PointTier<D> {
 				accumulate(&mut counters[bucket], source);
 			}
 		}
-		for (bucket, counter) in counters.iter_mut().enumerate() {
-			counter.misses += self.excluded_misses(bucket);
-		}
-
 		let empty = PointMetrics::default();
 		(0..D::METRIC_BUCKETS)
 			.filter(|bucket| entries[*bucket] > 0 || counters[*bucket] != empty)
@@ -259,10 +236,6 @@ fn accumulate(target: &mut PointMetrics, source: &PointMetrics) {
 
 fn entry_bucket<D: PointDomain>(entry: &Entry<D>) -> usize {
 	D::metric_bucket(&entry.key.key).expect("a resident entry carries a bucket, or it was admitted past the guard")
-}
-
-fn build_excluded_misses<D: PointDomain>() -> Box<[AtomicU64]> {
-	(0..D::METRIC_BUCKETS).map(|_| AtomicU64::new(0)).collect::<Vec<_>>().into_boxed_slice()
 }
 
 pub fn shard_budgets(config: PointConfig) -> Option<Vec<Arc<MemoryBudget>>> {

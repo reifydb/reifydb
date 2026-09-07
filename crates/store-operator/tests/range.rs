@@ -17,7 +17,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::{
 		keyspace::KEYSPACES,
-		state::{GroupId, KeyspaceId, keyspace_inner_range},
+		state::{GroupId, KeyspaceId, group_data_inner_range, group_inner_range, keyspace_inner_range},
 	},
 	metrics::scan::ScanCounters,
 };
@@ -28,7 +28,6 @@ use reifydb_store_operator::{
 	store::OperatorStore,
 	tier::{
 		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
-		point::{OperatorPointConfig, tiers::PointTiers},
 		range::{OperatorRangeConfig, tiers::RangeTiers},
 	},
 	types::{DurablePre, OperatorBatch, OperatorWrite},
@@ -51,14 +50,10 @@ fn group() -> GroupId {
 
 fn cached_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard) {
 	// The hour-long interval on a frozen clock means the only drain a test sees is the one it asked for.
-	cached_store_with(OperatorPointConfig::testing(), OperatorRangeConfig::testing())
+	cached_store_with(OperatorRangeConfig::testing())
 }
 
-fn cached_store_with(
-	point: OperatorPointConfig,
-	range: OperatorRangeConfig,
-) -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard) {
-	// The two budgets are sized separately so a test can starve one of them without starving the other.
+fn cached_store_with(range: OperatorRangeConfig) -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard) {
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock.clone());
 	let spawner = actor_system.spawner();
@@ -66,7 +61,6 @@ fn cached_store_with(
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))),
-		point: Some(point),
 		range: Some(range),
 		spawner,
 		clock,
@@ -109,16 +103,8 @@ fn seed_rows(storage: &SqliteOperatorStorage, count: u8) {
 	}
 }
 
-fn point_tier(store: &OperatorStore) -> &PointTiers {
-	store.point().expect("the fixture configures a point tier")
-}
-
 fn range_tier(store: &OperatorStore) -> &RangeTiers {
 	store.range().expect("the fixture configures a range tier")
-}
-
-fn point_entries(store: &OperatorStore) -> usize {
-	point_tier(store).entries()
 }
 
 fn range_partitions(store: &OperatorStore) -> usize {
@@ -233,61 +219,6 @@ fn a_new_key_and_a_rewrite_together_leave_the_claim_whole_and_current() {
 		 short answer that reads as a correct one"
 	);
 	assert_eq!(scanned.fetched, 0, "the answer must have come from the claim, not from a fallback scan");
-}
-
-#[test]
-fn a_range_materialize_that_does_not_fit_its_own_budget_evicts_no_point_entry() {
-	// A shared budget would let one range scan flush the point entries that serve their keyspaces.
-	let (store, storage, _guard) = cached_store_with(
-		OperatorPointConfig {
-			tier_bytes: Some(ByteSize::from_bytes(1024)),
-		},
-		OperatorRangeConfig {
-			tier_bytes: Some(ByteSize::from_bytes(256)),
-			..OperatorRangeConfig::testing()
-		},
-	);
-	seed_rows(&storage, 8);
-	storage.seed_durable(&[OperatorWrite::Insert {
-		operator: OP_A,
-		key: key_in(RANGE_ONLY_ABOVE, 1),
-		post: row("pinned"),
-	}]);
-
-	assert!(store.get(OP_A, &key_in(RANGE_ONLY_ABOVE, 1)).is_some(), "the point read warms an entry of its own");
-	let point_used = point_tier(&store).resident_bytes();
-	let point_held = point_entries(&store);
-	assert!(point_used.as_bytes() > 0, "the point budget must be carrying something or eviction is unobservable");
-
-	let served = store.range_batch(OP_A, seeded_range(), 64);
-
-	assert_eq!(
-		bodies(&served),
-		["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"],
-		"a refused materialize must leave the answer exactly as the persistent tier gave it"
-	);
-	let counters = range_tier(&store).metrics();
-	assert_eq!(counters.materializes_refused, 1, "the materialize must be refused, not silently admitted");
-	assert_eq!(counters.materializes, 0);
-	assert_eq!(range_partitions(&store), 0, "a refused materialize must leave no partition behind");
-	assert_eq!(range_intervals(&store), 0, "and it must leave no claim behind over rows it did not keep");
-	assert_eq!(
-		point_tier(&store).resident_bytes(),
-		point_used,
-		"a range materialize must never be charged to the point budget"
-	);
-	assert_eq!(point_entries(&store), point_held, "a refused range materialize must evict no point entry");
-	assert_eq!(
-		point_tier(&store).metrics().evictions,
-		0,
-		"a refused materialize must not start an eviction cascade in the other tier"
-	);
-	assert_eq!(
-		body(&store
-			.get(OP_A, &key_in(RANGE_ONLY_ABOVE, 1))
-			.expect("the point entry survives the refused materialize")),
-		"pinned"
-	);
 }
 
 #[test]
@@ -517,15 +448,10 @@ fn a_removal_of_a_key_the_claim_never_held_keeps_the_claim() {
 #[test]
 fn a_written_row_too_big_for_the_range_budget_takes_the_whole_claim_with_it() {
 	// A claim that cannot hold the key just written to it must be retracted, never left short.
-	let (store, storage, _guard) = cached_store_with(
-		OperatorPointConfig {
-			tier_bytes: Some(ByteSize::from_mib(1)),
-		},
-		OperatorRangeConfig {
-			tier_bytes: Some(ByteSize::from_bytes(4096)),
-			..OperatorRangeConfig::testing()
-		},
-	);
+	let (store, storage, _guard) = cached_store_with(OperatorRangeConfig {
+		tier_bytes: Some(ByteSize::from_bytes(4096)),
+		..OperatorRangeConfig::testing()
+	});
 	seed_rows(&storage, 3);
 
 	assert_eq!(bodies(&store.range_batch(OP_A, seeded_range(), 64)), ["v1", "v2", "v3"]);
@@ -614,11 +540,11 @@ fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_reads_both_keyspaces_
 	let uncached = KeyspaceId::CUSTOM_NOT_CACHED;
 	let cached = CACHED_BELOW_UNCACHED;
 	assert!(
-		!uncached.cache_tiers().caches_ranges(),
+		!uncached.caches_ranges(),
 		"the fixture needs a keyspace the range tier keeps out and the scan crosses first"
 	);
 	assert!(
-		cached.cache_tiers().caches_ranges(),
+		cached.caches_ranges(),
 		"the fixture needs a keyspace the range tier admits and the scan reaches second"
 	);
 	assert!(
@@ -719,9 +645,21 @@ impl SeedDurable for SqliteOperatorStorage {
 	}
 }
 
-fn bury_under_tombstones(store: &OperatorStore, count: u8) {
-	// a remove on a key sqlite never held still lands a masking entry in the resident map, which is exactly
-	// the shape that makes a resident page come back full while carrying no rows
+fn remove(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) {
+	let pre = match store.get(operator, key) {
+		Some(row) => DurablePre::Present(ByteSize::from_bytes(row.bytes().len() as u64)),
+		None => DurablePre::Absent,
+	};
+	store.apply_batch(&[OperatorWrite::Remove {
+		operator,
+		key: key.clone(),
+		pre,
+	}]);
+}
+
+fn bury_under_deletions(store: &OperatorStore, count: u8) {
+	// a remove on a key sqlite never held still records deletion state, so the range must cross a long run of
+	// it to reach the one row that survives
 	for suffix in 1..=count {
 		store.apply_batch(&[OperatorWrite::Remove {
 			operator: OP_A,
@@ -733,20 +671,104 @@ fn bury_under_tombstones(store: &OperatorStore, count: u8) {
 }
 
 #[test]
-fn a_range_dominated_by_tombstones_stops_on_a_scan_budget_and_reports_where_it_stopped() {
-	// a page of tombstones comes back full but yields no rows, so a refill loop that only stops on a short
-	// page walks the entire graveyard within one call; the budget must cap that and name a resume point
+fn a_range_dominated_by_deletions_answers_in_one_call_because_deletion_state_is_never_walked() {
+	// deletion state is kept beside the rows of a partition, not among them, so a graveyard costs an ordinary
+	// scan nothing: the page reaches the surviving row directly instead of spending its budget stepping over
+	// entries that can never answer
 	let (store, _storage, _guard) = cached_store();
-	bury_under_tombstones(&store, 200);
+	bury_under_deletions(&store, 200);
 
 	let batch = store.range_batch(OP_A, seeded_range(), 1);
 
-	assert!(batch.items.is_empty(), "every entry inside the budget was a tombstone, so the page carries no rows");
-	assert!(batch.has_more, "a scan that stopped on its budget is not finished");
-	let resume = batch.resume.expect("a batch that stopped short of its target must name where to continue");
+	assert_eq!(bodies(&batch), ["live"], "a scan that walks deletion state cannot reach the row behind it");
+	assert!(!batch.has_more, "the one live row inside the range is the whole answer");
+	assert!(batch.resume.is_none(), "a scan that never spent its budget has nothing to resume from");
+}
+
+#[test]
+fn a_deleted_durable_row_stays_gone_from_a_forward_range() {
+	// with deletion state out of the page there is no masking entry for the merge to meet, so the row sqlite
+	// still holds is suppressed only if the scan asks the resident tier about it
+	let (store, storage, _guard) = cached_store();
+	seed_rows(&storage, 3);
+	remove(&store, OP_A, &key_in(RANGE_ONLY, 2));
+
+	let batch = store.range_batch(OP_A, seeded_range(), 64);
+
+	assert_eq!(bodies(&batch), ["v1", "v3"], "a row the operator removed must not be served from sqlite");
+}
+
+#[test]
+fn a_deleted_durable_row_stays_gone_from_a_backward_scan() {
+	let (store, storage, _guard) = cached_store();
+	seed_rows(&storage, 3);
+	remove(&store, OP_A, &key_in(RANGE_ONLY, 2));
+
+	let seen: Vec<String> = store.state_last_iter(OP_A, seeded_range()).map(|(_, row)| body(&row)).collect();
+
+	assert_eq!(seen, ["v3", "v1"], "the backward scan must honour the same deletions the forward scan does");
+}
+
+#[test]
+fn a_deleted_durable_row_stays_gone_from_a_group_page() {
+	let (store, storage, _guard) = cached_store();
+	seed_rows(&storage, 3);
+	remove(&store, OP_A, &key_in(RANGE_ONLY, 2));
+
+	let batch = store.group_page(OP_A, &[group()], 64);
+
+	assert_eq!(bodies(&batch), ["v1", "v3"], "a group page must honour the same deletions a range does");
+}
+
+#[test]
+fn a_remove_of_a_key_this_store_flushed_is_not_collapsed_away() {
+	// a removal may be dropped instead of recorded only when no lower tier can hold the key; a key that went
+	// out in a flush slice is durable, so collapsing its removal serves the row again on the next read
+	let (store, storage, _guard) = cached_store();
+	let key = key_in(RANGE_ONLY, 1);
+	put(&store, OP_A, key.clone(), row("staged"));
+	assert!(store.flush_pending_blocking(), "the row must reach sqlite before its removal is put to the test");
+	assert!(storage.get(OP_A, &key).is_some(), "the fixture must leave a durable row behind to resurrect");
+
+	remove(&store, OP_A, &key);
+
+	assert!(store.get(OP_A, &key).is_none(), "the removed row must not read back as a point get");
 	assert!(
-		resume < key_in(RANGE_ONLY, 250),
-		"the resume point must sit inside the tombstone run; naming a point past the live row would skip it"
+		bodies(&store.range_batch(OP_A, seeded_range(), 64)).is_empty(),
+		"nor may it come back through a range"
+	);
+}
+
+#[test]
+fn a_key_removed_and_written_again_reads_back_as_the_later_write() {
+	let (store, storage, _guard) = cached_store();
+	seed_rows(&storage, 3);
+	let key = key_in(RANGE_ONLY, 2);
+	remove(&store, OP_A, &key);
+	put(&store, OP_A, key, row("again"));
+
+	assert_eq!(
+		bodies(&store.range_batch(OP_A, seeded_range(), 64)),
+		["v1", "again", "v3"],
+		"a key moved out of the deleted keys and back must answer as a row again"
+	);
+}
+
+#[test]
+fn a_durable_row_removed_written_and_removed_again_does_not_resurrect() {
+	// moving a key between the rows and the deleted keys must carry its staging history across; a key that
+	// forgets it was ever durable becomes eligible to have its removal collapsed and comes back from sqlite
+	let (store, storage, _guard) = cached_store();
+	seed_rows(&storage, 3);
+	let key = key_in(RANGE_ONLY, 2);
+	remove(&store, OP_A, &key);
+	put(&store, OP_A, key.clone(), row("again"));
+	remove(&store, OP_A, &key);
+
+	assert_eq!(
+		bodies(&store.range_batch(OP_A, seeded_range(), 64)),
+		["v1", "v3"],
+		"the durable row must stay masked through the whole cycle"
 	);
 }
 
@@ -755,7 +777,7 @@ fn a_scan_that_stops_on_its_budget_still_returns_every_row_when_it_resumes() {
 	// an empty page that ends the scan drops rows sitting past a long tombstone run, and a short answer is
 	// indistinguishable from a correct one at the caller
 	let (store, _storage, _guard) = cached_store();
-	bury_under_tombstones(&store, 200);
+	bury_under_deletions(&store, 200);
 
 	let mut range = seeded_range();
 	let mut seen: Vec<String> = Vec::new();
@@ -794,4 +816,57 @@ fn a_range_that_fits_inside_the_scan_budget_names_no_resume_point() {
 	assert_eq!(bodies(&batch), ["v1", "v2", "v3"]);
 	assert!(!batch.has_more, "the whole range fit in one page");
 	assert!(batch.resume.is_none(), "a scan that ran to the end of its range has nothing to resume from");
+}
+
+#[test]
+fn a_group_range_is_served_from_the_claims_its_keyspaces_hold() {
+	// A group sweep is one range across every keyspace of a group. Answered as one flat scan it ignores the
+	// per keyspace claims, so a group the tier already holds whole still pays sqlite on every sweep, and the
+	// reaper sweeps the same groups again and again.
+	let (store, storage, _guard) = cached_store();
+	seed_rows(&storage, 3);
+	for suffix in 1..=2u8 {
+		storage.seed_durable(&[OperatorWrite::Insert {
+			operator: OP_A,
+			key: key_in(RANGE_ONLY_ABOVE, suffix),
+			post: row(&format!("c{suffix}")),
+		}]);
+	}
+
+	let primed = store.range_batch(OP_A, group_inner_range(group()), 64);
+	assert_eq!(
+		bodies(&primed),
+		["c1", "c2", "v1", "v2", "v3"],
+		"a group range must answer for every keyspace the group holds, in key order"
+	);
+
+	let before = ScanCounters::sample();
+	let served = store.range_batch(OP_A, group_inner_range(group()), 64);
+	let scanned = before.since();
+
+	assert_eq!(bodies(&served), ["c1", "c2", "v1", "v2", "v3"], "the second sweep must answer with the same rows");
+	assert_eq!(scanned.fetched, 0, "a group whose every keyspace is claimed must not reach sqlite a second time");
+}
+
+#[test]
+fn a_data_only_group_range_answers_for_every_data_keyspace_of_the_group() {
+	// The reaper frees a group through the data only range; a keyspace filter that misses one leaves rows
+	// behind under a group id whose identity is about to be reclaimed.
+	let (store, storage, _guard) = cached_store();
+	seed_rows(&storage, 3);
+	for suffix in 1..=2u8 {
+		storage.seed_durable(&[OperatorWrite::Insert {
+			operator: OP_A,
+			key: key_in(RANGE_ONLY_ABOVE, suffix),
+			post: row(&format!("c{suffix}")),
+		}]);
+	}
+
+	let swept = store.range_batch(OP_A, group_data_inner_range(group()), 64);
+
+	assert_eq!(
+		bodies(&swept),
+		bodies(&store.range_batch(OP_A, group_inner_range(group()), 64)),
+		"both keyspaces hold data rows, so the data only sweep must answer with the whole group"
+	);
 }

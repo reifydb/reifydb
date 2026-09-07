@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::{borrow::Cow, ops::Bound};
+
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{operator::state::OperatorState, pod::EncodedPodRow},
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -14,8 +16,8 @@ use reifydb_core::{
 	key::{
 		any::AnyKey,
 		operator::{
-			keyspace::join::{JoinExpiryDueKey, JoinRowExpiryState as JoinRowExpiry, JoinRowMappingKey},
-			state::{GroupId, GroupStateKey, node_prefix},
+			keyspace::join::JoinRowMappingKey,
+			state::{GroupId, GroupStateKey, OperatorStateKey, group_inner_range_split, node_prefix},
 		},
 	},
 	state::timer::{GroupSweep, StateStore, TimerKind, TimerStore},
@@ -24,7 +26,6 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
-	error::Error as ValueError,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -40,7 +41,7 @@ use crate::{
 	transaction::{
 		FlowTransaction,
 		dictionary::DictionaryExtension,
-		join_expiry::{JoinDueEntry, JoinDuePage, JoinRowExpiryExtension, join_expiry_range, join_expiry_slot},
+		join_expiry::{DueStart, JoinDueEntry, JoinDuePage, JoinRowExpiryExtension},
 		reclaim::ReclaimExtension,
 		row_number::RowNumberExtension,
 		state::{StateExtension, StateRange},
@@ -54,42 +55,13 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn join_expiry_arm(&mut self, group: GroupId, side: u8, row_number: RowNumber, at: DateTime) -> Result<()>;
 
-	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<()>;
+	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>>;
 
 	fn join_expiry_free(&mut self, entry: &JoinDueEntry) -> Result<()>;
 
 	fn join_expiry_min(&mut self) -> Result<Option<DateTime>>;
 
-	fn join_due_page(
-		&mut self,
-		at: DateTime,
-		budget: usize,
-		from: Option<&JoinExpiryDueKey>,
-	) -> Result<JoinDuePage>;
-
-	fn clear_join_expiries(&mut self, group: GroupId, budget: usize) -> Result<()> {
-		loop {
-			let page = self.state_range_limited(join_expiry_range(group), Some(budget))?;
-			if page.is_empty() {
-				return Ok(());
-			}
-			for (key, row) in &page {
-				let Some(slot) = join_expiry_slot(key) else {
-					continue;
-				};
-				let at = JoinRowExpiry::decode_state(row).map_err(ValueError::from)?.at;
-				self.join_expiry_free(&JoinDueEntry {
-					at,
-					group,
-					side: slot.side.0,
-					row_number: slot.row.0,
-				})?;
-			}
-			if page.len() < budget {
-				return Ok(());
-			}
-		}
-	}
+	fn join_due_page(&mut self, at: DateTime, budget: usize, start: &DueStart) -> Result<JoinDuePage>;
 
 	fn config_uint8(&self, key: ConfigKey) -> u64;
 
@@ -329,7 +301,7 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.join_expiry_arm(self.operator, group, side, row_number, at)
 	}
 
-	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<()> {
+	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>> {
 		self.txn.join_expiry_clear(self.operator, group, side, row_number)
 	}
 
@@ -341,13 +313,8 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.join_expiry_min(self.operator)
 	}
 
-	fn join_due_page(
-		&mut self,
-		at: DateTime,
-		budget: usize,
-		from: Option<&JoinExpiryDueKey>,
-	) -> Result<JoinDuePage> {
-		self.txn.join_due_page(self.operator, at, budget, from)
+	fn join_due_page(&mut self, at: DateTime, budget: usize, start: &DueStart) -> Result<JoinDuePage> {
+		self.txn.join_due_page(self.operator, at, budget, start)
 	}
 
 	fn config_uint8(&self, key: ConfigKey) -> u64 {
@@ -389,7 +356,8 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
-		let mut query = StateRange::forward(range, "operator::host_range");
+		let site = range_site(&range);
+		let mut query = StateRange::forward(range, site);
 		query.limit = limit;
 		let batch = self.txn.state_range(self.operator, query)?;
 		for r in batch.items {
@@ -474,4 +442,18 @@ fn unscope(key: &AnyKey) -> Option<GroupStateKey> {
 		return None;
 	};
 	GroupStateKey::from_framed(key.inner())
+}
+
+fn range_site(range: &EncodedKeyRange) -> &'static str {
+	if group_inner_range_split(range).is_some() {
+		return "operator::host_sweep";
+	}
+	let key = match &range.start {
+		Bound::Included(key) | Bound::Excluded(key) => key,
+		Bound::Unbounded => return "operator::host_range",
+	};
+	match OperatorStateKey::decode_inner(key.as_slice()).map(|(_, keyspace, _)| keyspace.name()) {
+		Some(Cow::Borrowed(name)) => name,
+		_ => "operator::host_range",
+	}
 }

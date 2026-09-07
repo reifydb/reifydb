@@ -947,7 +947,7 @@ impl StandardMultiStore {
 		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
 	) -> Option<Result<()>> {
-		let (Some(range), true) = (&self.range, scan.table.cache_tiers().caches_ranges()) else {
+		let (Some(range), true) = (&self.range, scan.table.caches_ranges()) else {
 			return None;
 		};
 		match range.serve_persistent_chunk(
@@ -1014,7 +1014,7 @@ impl StandardMultiStore {
 		cursor: &RangeCursor,
 		batch: &RangeBatch,
 	) -> Result<()> {
-		let (Some(range), true) = (&self.range, scan.table.cache_tiers().caches_ranges()) else {
+		let (Some(range), true) = (&self.range, scan.table.caches_ranges()) else {
 			return Ok(());
 		};
 		let MultiVersionScope::AsOf {

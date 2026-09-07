@@ -28,8 +28,9 @@ use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorResidentStateConfig, OperatorStoreConfig},
 	store::OperatorStore,
 	tier::{
-		persistent::OperatorPersistentTier, point::OperatorPointConfig, range::OperatorRangeConfig,
-		resident::OperatorResidentState,
+		persistent::OperatorPersistentTier,
+		range::OperatorRangeConfig,
+		resident::{OperatorResidentState, ResidentLimits},
 	},
 };
 use reifydb_store_single::{
@@ -41,7 +42,7 @@ use reifydb_store_single::{
 	tier::commit::buffer::SingleCommitBufferTier,
 };
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
-use reifydb_value::byte_size::ByteSize;
+use reifydb_value::value::duration::Duration;
 
 pub mod embedded;
 mod export;
@@ -75,14 +76,14 @@ impl StorageFactory {
 		multi_persistent: Option<MultiPersistentTier>,
 		multi_point: Option<MultiPointConfig>,
 		multi_range: Option<MultiRangeConfig>,
-		operator_point: Option<OperatorPointConfig>,
 		operator_range: Option<OperatorRangeConfig>,
 		cdc_commit: CdcCommitConfig,
 		cdc_read: Option<CdcReadConfig>,
 		cdc_wal_autocheckpoint: u32,
 		cdc_memory: bool,
 		operator_wal_autocheckpoint: u32,
-		operator_flush_budget: ByteSize,
+		operator_resident: ResidentLimits,
+		operator_flush_interval: Duration,
 		spawner: &ActorSpawner,
 	) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
 		match self {
@@ -94,14 +95,14 @@ impl StorageFactory {
 				multi_persistent.expect("sqlite storage must supply an opened persistent tier"),
 				multi_point,
 				multi_range,
-				operator_point,
 				operator_range,
 				cdc_commit,
 				cdc_read,
 				cdc_wal_autocheckpoint,
 				cdc_memory,
 				operator_wal_autocheckpoint,
-				operator_flush_budget,
+				operator_resident,
+				operator_flush_interval,
 				config.clone(),
 				spawner,
 			),
@@ -205,14 +206,14 @@ fn create_sqlite_store_with(
 	multi_persistent: MultiPersistentTier,
 	multi_point: Option<MultiPointConfig>,
 	multi_range: Option<MultiRangeConfig>,
-	operator_point: Option<OperatorPointConfig>,
 	operator_range: Option<OperatorRangeConfig>,
 	cdc_commit: CdcCommitConfig,
 	cdc_read: Option<CdcReadConfig>,
 	cdc_wal_autocheckpoint: u32,
 	cdc_memory: bool,
 	operator_wal_autocheckpoint: u32,
-	operator_flush_budget: ByteSize,
+	operator_resident: ResidentLimits,
+	operator_flush_interval: Duration,
 	config: SqliteConfig,
 	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
@@ -254,10 +255,10 @@ fn create_sqlite_store_with(
 	});
 	operator_persistent.set_checkpoint_threshold(operator_wal_autocheckpoint);
 	let operator_store = OperatorStore::standard(OperatorStoreConfig {
-		point: operator_point,
 		range: operator_range,
 		resident: OperatorResidentStateConfig {
-			storage: OperatorResidentState::with_budget(operator_flush_budget),
+			storage: OperatorResidentState::with_limits(operator_resident),
+			flush_interval: operator_flush_interval,
 		},
 		..OperatorStoreConfig::sqlite(
 			OperatorPersistentConfig::opened(operator_persistent),

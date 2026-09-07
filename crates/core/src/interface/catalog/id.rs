@@ -65,14 +65,13 @@ impl ColumnId {
 	pub const PROFILER_SPANS_SNAPSHOTS_DIM_2: ColumnId = ColumnId(1052);
 	pub const PROFILER_SPANS_SNAPSHOTS_CALLS: ColumnId = ColumnId(1053);
 	pub const PROFILER_SPANS_SNAPSHOTS_TOTAL: ColumnId = ColumnId(1054);
-	pub const PROFILER_SPANS_SNAPSHOTS_MIN: ColumnId = ColumnId(1055);
 	pub const PROFILER_SPANS_SNAPSHOTS_P50: ColumnId = ColumnId(1056);
 	pub const PROFILER_SPANS_SNAPSHOTS_P75: ColumnId = ColumnId(1057);
 	pub const PROFILER_SPANS_SNAPSHOTS_P90: ColumnId = ColumnId(1058);
 	pub const PROFILER_SPANS_SNAPSHOTS_P95: ColumnId = ColumnId(1059);
 	pub const PROFILER_SPANS_SNAPSHOTS_P98: ColumnId = ColumnId(1060);
 	pub const PROFILER_SPANS_SNAPSHOTS_P99: ColumnId = ColumnId(1061);
-	pub const PROFILER_SPANS_SNAPSHOTS_MAX: ColumnId = ColumnId(1062);
+	pub const PROFILER_SPANS_SNAPSHOTS_P100: ColumnId = ColumnId(1062);
 	pub const PROFILER_SPANS_SNAPSHOTS_INPUT_ROWS: ColumnId = ColumnId(1063);
 	pub const PROFILER_SPANS_SNAPSHOTS_OUTPUT_ROWS: ColumnId = ColumnId(1064);
 	pub const PROFILER_SPANS_SNAPSHOTS_LOCK_WAIT: ColumnId = ColumnId(1065);
@@ -162,7 +161,7 @@ impl ColumnId {
 		Self::INSTRUMENTS_SNAPSHOTS_KIND,
 	];
 
-	pub const PROFILER_SPANS_SNAPSHOTS_COLUMNS: [ColumnId; 18] = [
+	pub const PROFILER_SPANS_SNAPSHOTS_COLUMNS: [ColumnId; 17] = [
 		Self::PROFILER_SPANS_SNAPSHOTS_TS,
 		Self::PROFILER_SPANS_SNAPSHOTS_CATEGORY,
 		Self::PROFILER_SPANS_SNAPSHOTS_SPAN_NAME,
@@ -170,14 +169,13 @@ impl ColumnId {
 		Self::PROFILER_SPANS_SNAPSHOTS_DIM_2,
 		Self::PROFILER_SPANS_SNAPSHOTS_CALLS,
 		Self::PROFILER_SPANS_SNAPSHOTS_TOTAL,
-		Self::PROFILER_SPANS_SNAPSHOTS_MIN,
 		Self::PROFILER_SPANS_SNAPSHOTS_P50,
 		Self::PROFILER_SPANS_SNAPSHOTS_P75,
 		Self::PROFILER_SPANS_SNAPSHOTS_P90,
 		Self::PROFILER_SPANS_SNAPSHOTS_P95,
 		Self::PROFILER_SPANS_SNAPSHOTS_P98,
 		Self::PROFILER_SPANS_SNAPSHOTS_P99,
-		Self::PROFILER_SPANS_SNAPSHOTS_MAX,
+		Self::PROFILER_SPANS_SNAPSHOTS_P100,
 		Self::PROFILER_SPANS_SNAPSHOTS_INPUT_ROWS,
 		Self::PROFILER_SPANS_SNAPSHOTS_OUTPUT_ROWS,
 		Self::PROFILER_SPANS_SNAPSHOTS_LOCK_WAIT,
@@ -1924,7 +1922,7 @@ impl<'de> Deserialize<'de> for SinkId {
 
 pub(crate) const RESERVED_USER_ID_START: u64 = 16385;
 
-const RESERVED_NAMESPACE_IDS: [u64; 52] = [
+const RESERVED_NAMESPACE_IDS: [u64; 50] = [
 	NamespaceId::ROOT.0,
 	NamespaceId::SYSTEM.0,
 	NamespaceId::DEFAULT.0,
@@ -1961,8 +1959,6 @@ const RESERVED_NAMESPACE_IDS: [u64; 52] = [
 	NamespaceId::SYSTEM_METRICS_STORE_SINGLE_COMMIT.0,
 	NamespaceId::SYSTEM_METRICS_STORE_SINGLE_PERSISTENT.0,
 	NamespaceId::SYSTEM_METRICS_STORE_OPERATOR.0,
-	NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_POINT.0,
-	NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_POINT_KEYSPACE.0,
 	NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_RANGE.0,
 	NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_RANGE_KEYSPACE.0,
 	NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_PERSISTENT.0,
@@ -2187,7 +2183,7 @@ mod reserved_id_tests {
 			}
 		}
 
-		assert_eq!(count, 4 * 6 + 18 + 7 + 10 + 14 + 8, "expected exactly 81 reserved system column ids");
+		assert_eq!(count, 4 * 6 + 17 + 7 + 10 + 14 + 8, "expected exactly 80 reserved system column ids");
 	}
 
 	#[test]
@@ -2198,7 +2194,7 @@ mod reserved_id_tests {
 		for array in &arrays[..4] {
 			assert_eq!(array.len(), 6, "long-format snapshot series must declare 6 column ids");
 		}
-		assert_eq!(arrays[4].len(), 18, "spans snapshot series must declare 18 column ids");
+		assert_eq!(arrays[4].len(), 17, "spans snapshot series must declare 17 column ids");
 		assert_eq!(arrays[5].len(), 7, "epoch snapshot series must declare 7 column ids");
 		assert_eq!(arrays[6].len(), 10, "lifecycle snapshot series must declare 10 column ids");
 		assert_eq!(arrays[7].len(), 14, "storage snapshot series must declare 14 column ids");

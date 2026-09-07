@@ -19,6 +19,8 @@ pub struct Histogram {
 	window_buckets: Vec<AtomicU64>,
 	sum: AtomicU64,
 	count: AtomicU64,
+	max: AtomicU64,
+	window_max: AtomicU64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -46,7 +48,7 @@ pub struct Percentiles {
 	pub p97: f64,
 	pub p98: f64,
 	pub p99: f64,
-	pub max: f64,
+	pub p100: f64,
 }
 
 impl Histogram {
@@ -62,6 +64,8 @@ impl Histogram {
 			window_buckets,
 			sum: AtomicU64::new(0),
 			count: AtomicU64::new(0),
+			max: AtomicU64::new(0),
+			window_max: AtomicU64::new(0),
 		}
 	}
 
@@ -95,6 +99,9 @@ impl Histogram {
 		}
 
 		self.count.fetch_add(1, Ordering::Relaxed);
+
+		raise(&self.max, value);
+		raise(&self.window_max, value);
 	}
 
 	#[must_use]
@@ -110,14 +117,16 @@ impl Histogram {
 	#[must_use]
 	pub fn percentiles(&self) -> Percentiles {
 		let bucket_counts: Vec<u64> = self.buckets.iter().map(|b| b.load(Ordering::Relaxed)).collect();
-		compute_percentiles(&bucket_counts, self.count(), self.boundaries)
+		let max = f64::from_bits(self.max.load(Ordering::Relaxed));
+		compute_percentiles(&bucket_counts, self.count(), self.boundaries, max)
 	}
 
 	pub fn take_window_percentiles(&self) -> Percentiles {
 		let bucket_counts: Vec<u64> =
 			self.window_buckets.iter().map(|b| b.swap(0, Ordering::Relaxed)).collect();
 		let count = bucket_counts.iter().sum();
-		compute_percentiles(&bucket_counts, count, self.boundaries)
+		let max = f64::from_bits(self.window_max.swap(0, Ordering::Relaxed));
+		compute_percentiles(&bucket_counts, count, self.boundaries, max)
 	}
 }
 
@@ -138,7 +147,20 @@ impl Histogram {
 		out.push(MetricsSample::distribution(self.name, "p50", self.kind.reading(percentiles.p50)));
 		out.push(MetricsSample::distribution(self.name, "p95", self.kind.reading(percentiles.p95)));
 		out.push(MetricsSample::distribution(self.name, "p99", self.kind.reading(percentiles.p99)));
-		out.push(MetricsSample::distribution(self.name, "max", self.kind.reading(percentiles.max)));
+		out.push(MetricsSample::distribution(self.name, "p100", self.kind.reading(percentiles.p100)));
+	}
+}
+
+fn raise(slot: &AtomicU64, value: f64) {
+	let mut current = slot.load(Ordering::Relaxed);
+	loop {
+		if f64::from_bits(current) >= value {
+			return;
+		}
+		match slot.compare_exchange_weak(current, value.to_bits(), Ordering::Relaxed, Ordering::Relaxed) {
+			Ok(_) => return,
+			Err(actual) => current = actual,
+		}
 	}
 }
 
@@ -147,7 +169,7 @@ const QUANTILES: &[f64] = &[
 	0.95, 0.96, 0.97, 0.98, 0.99,
 ];
 
-fn compute_percentiles(buckets: &[u64], count: u64, boundaries: &[f64]) -> Percentiles {
+fn compute_percentiles(buckets: &[u64], count: u64, boundaries: &[f64], max: f64) -> Percentiles {
 	if count == 0 {
 		return Percentiles::default();
 	}
@@ -156,17 +178,9 @@ fn compute_percentiles(buckets: &[u64], count: u64, boundaries: &[f64]) -> Perce
 
 	let mut result = [0.0f64; 23];
 	let mut found = [false; 23];
-	let mut max = 0.0f64;
 	let mut cumulative = 0u64;
 
 	for (i, &bucket_count) in buckets.iter().enumerate() {
-		if bucket_count > 0 {
-			max = if i < boundaries.len() {
-				boundaries[i]
-			} else {
-				f64::INFINITY
-			};
-		}
 		cumulative += bucket_count;
 
 		let bound = if i < boundaries.len() {
@@ -206,7 +220,7 @@ fn compute_percentiles(buckets: &[u64], count: u64, boundaries: &[f64]) -> Perce
 		p97: result[20],
 		p98: result[21],
 		p99: result[22],
-		max,
+		p100: max,
 	}
 }
 
@@ -224,7 +238,7 @@ mod tests {
 		assert_eq!(h.sum(), 0.0);
 		let p = h.percentiles();
 		assert_eq!(p.p50, 0.0);
-		assert_eq!(p.max, 0.0);
+		assert_eq!(p.p100, 0.0);
 	}
 
 	#[test]
@@ -233,11 +247,11 @@ mod tests {
 		h.observe(15.0);
 		assert_eq!(h.count(), 1);
 		assert_eq!(h.sum(), 15.0);
-		// All percentiles resolve to the 20.0 bucket upper bound
+		// Quantiles resolve to the 20.0 bucket upper bound; p100 is the observed value itself.
 		let p = h.percentiles();
 		assert_eq!(p.p5, 20.0);
 		assert_eq!(p.p99, 20.0);
-		assert_eq!(p.max, 20.0);
+		assert_eq!(p.p100, 15.0);
 	}
 
 	#[test]
@@ -253,7 +267,7 @@ mod tests {
 		let h = Histogram::new("t", "h", ReadingKind::Ratio, SIMPLE_BOUNDS);
 		h.observe(200.0);
 		assert_eq!(h.buckets.last().unwrap().load(Ordering::Relaxed), 1); // overflow bucket
-		assert_eq!(h.percentiles().max, f64::INFINITY);
+		assert_eq!(h.percentiles().p100, 200.0, "p100 must report the observed value, not the overflow bound");
 	}
 
 	#[test]
@@ -293,7 +307,7 @@ mod tests {
 		let p = h.percentiles();
 		assert_eq!(p.p50, 50.0);
 		assert_eq!(p.p99, 99.0);
-		assert_eq!(p.max, 100.0);
+		assert_eq!(p.p100, 99.5);
 		assert_eq!(p.p5, 5.0);
 		assert_eq!(p.p95, 95.0);
 	}
@@ -308,7 +322,7 @@ mod tests {
 		assert_eq!(p.p5, 20.0);
 		assert_eq!(p.p50, 20.0);
 		assert_eq!(p.p99, 20.0);
-		assert_eq!(p.max, 20.0);
+		assert_eq!(p.p100, 15.0);
 	}
 
 	#[test]
@@ -338,7 +352,7 @@ mod tests {
 		h.read(&mut out);
 		assert_eq!(out.len(), 6);
 		let metrics: Vec<&str> = out.iter().map(|s| s.metric).collect();
-		assert_eq!(metrics, vec!["count", "sum", "p50", "p95", "p99", "max"]);
+		assert_eq!(metrics, vec!["count", "sum", "p50", "p95", "p99", "p100"]);
 		assert!(out.iter().all(|s| s.scope == "profiler.query.duration_us"));
 		assert_eq!(out[0].reading.as_f64(), 1.0, "count must be the observation count");
 		assert!(

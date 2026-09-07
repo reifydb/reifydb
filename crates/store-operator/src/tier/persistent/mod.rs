@@ -13,7 +13,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::GroupId,
+	key::operator::state::{GroupId, KeyspaceId},
 	metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::shutdown::Shutdown;
@@ -125,6 +125,12 @@ impl OperatorPersistentTier {
 		}
 	}
 
+	pub fn occupied_keyspaces(&self, operator: OperatorId) -> Vec<KeyspaceId> {
+		match self {
+			Self::Sqlite(storage) => storage.occupied_keyspaces(operator),
+		}
+	}
+
 	pub fn census(&self) -> Vec<OperatorStateCensus> {
 		match self {
 			Self::Sqlite(storage) => storage.census(),
@@ -204,6 +210,10 @@ impl OperatorPersistentTier {
 
 	pub fn total_bytes(&self) -> ByteSize {
 		match *self {}
+	}
+
+	pub fn occupied_keyspaces(&self, _operator: OperatorId) -> Vec<KeyspaceId> {
+		Vec::new()
 	}
 
 	pub fn census(&self) -> Vec<OperatorStateCensus> {

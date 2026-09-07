@@ -33,7 +33,7 @@ use reifydb_store::coverage::plan::DEFAULT_GAP_GUARD;
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	store::OperatorStore,
-	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
+	tier::range::OperatorRangeConfig,
 	types::{DurablePre, OperatorWrite},
 };
 use reifydb_testing::keyspace::state_key;
@@ -106,9 +106,6 @@ fn store_with_range_budget(cached: bool, range_bytes: u64) -> (OperatorStore, Sq
 		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(config)),
 		// small tier budgets force evictions so the sampled-LRU and abort paths run, not just fills
-		point: cached.then(|| OperatorPointConfig {
-			tier_bytes: Some(ByteSize::from_bytes(128 * 1024)),
-		}),
 		range: cached.then(|| OperatorRangeConfig {
 			tier_bytes: Some(ByteSize::from_bytes(range_bytes)),
 			gap_guard: DEFAULT_GAP_GUARD,

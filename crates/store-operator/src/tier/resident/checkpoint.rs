@@ -3,10 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_core::{
-	common::CommitVersion,
-	interface::catalog::flow::{FlowId, OperatorId},
-};
+use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
 
 use crate::tier::resident::OperatorResidentState;
 
@@ -45,10 +42,5 @@ impl OperatorResidentState {
 			floor = Some(floor.map_or(*version, |current| current.min(*version)));
 		}
 		floor
-	}
-
-	pub fn durable_position(&self, operator: OperatorId) -> Option<CommitVersion> {
-		let slot = self.shared().slot(operator)?;
-		slot.inner.lock().durable_position
 	}
 }

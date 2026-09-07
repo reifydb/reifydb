@@ -27,7 +27,7 @@ use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	store::OperatorStore,
-	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
+	tier::range::OperatorRangeConfig,
 	types::{DurablePre, OperatorWrite},
 };
 use reifydb_testing::keyspace::state_key;
@@ -55,7 +55,6 @@ fn store() -> (OperatorStore, SqliteTempPathGuard) {
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(config)),
-		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
 		clock: Clock::Real,

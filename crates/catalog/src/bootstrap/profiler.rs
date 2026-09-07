@@ -6,7 +6,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
 		id::{ColumnId, NamespaceId, SeriesId},
-		series::{SeriesKey, TimestampPrecision},
+		series::{Series, SeriesKey, TimestampPrecision},
 	},
 };
 use reifydb_runtime::context::clock::Clock;
@@ -66,14 +66,26 @@ pub fn bootstrap_profiler(
 		NamespaceId::SYSTEM_METRICS_PROFILER,
 	)?;
 
-	if catalog_api.find_series_by_name(&mut Transaction::Admin(&mut admin), spans_ns, "snapshots")?.is_none() {
+	let columns = spans_snapshot_columns();
+	let existing = catalog_api.find_series_by_name(&mut Transaction::Admin(&mut admin), spans_ns, "snapshots")?;
+	let create = match existing {
+		Some(series) if matches_columns(&series, &columns) => false,
+		Some(series) => {
+			catalog_api.drop_series(&mut admin, series)?;
+			info!("Dropped system::metrics::profiler::spans::snapshots series with drifted columns");
+			true
+		}
+		None => true,
+	};
+
+	if create {
 		catalog_api.create_series_with_id(
 			&mut admin,
 			SeriesId::PROFILER_SPANS_SNAPSHOTS,
 			SeriesToCreate {
 				name: Fragment::internal("snapshots"),
 				namespace: spans_ns,
-				columns: spans_snapshot_columns(),
+				columns,
 				tag: None,
 				key: SeriesKey::DateTime {
 					column: "ts".to_string(),
@@ -91,6 +103,14 @@ pub fn bootstrap_profiler(
 	Ok(())
 }
 
+fn matches_columns(series: &Series, columns: &[SeriesColumnToCreate]) -> bool {
+	series.columns.len() == columns.len()
+		&& series.columns.iter().zip(columns).all(|(existing, expected)| {
+			existing.name == expected.name.text()
+				&& existing.constraint.get_type() == expected.constraint.get_type()
+		})
+}
+
 fn spans_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
 		series_col("ts", ValueType::DateTime),
@@ -100,14 +120,13 @@ fn spans_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 		series_col("dim_2", ValueType::Utf8),
 		series_col("calls", ValueType::Uint8),
 		series_col("total", ValueType::Duration),
-		series_col("min", ValueType::Duration),
 		series_col("p50", ValueType::Duration),
 		series_col("p75", ValueType::Duration),
 		series_col("p90", ValueType::Duration),
 		series_col("p95", ValueType::Duration),
 		series_col("p98", ValueType::Duration),
 		series_col("p99", ValueType::Duration),
-		series_col("max", ValueType::Duration),
+		series_col("p100", ValueType::Duration),
 		series_col("input_rows", ValueType::Uint8),
 		series_col("output_rows", ValueType::Uint8),
 		series_col("lock_wait", ValueType::Duration),

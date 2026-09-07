@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{cmp::Reverse, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -11,9 +11,9 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::{
-			keyspace::KeyspaceVisitor,
-			state::{GroupId, OperatorStateKey, keyspace_inner_range},
-			traits::Keyspace,
+			keyspace::{KEYSPACES, KeyspaceVisitor, dispatch},
+			state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+			traits::{Keyspace, group_scoped},
 		},
 		typed::{Edge, TypedKey, range::KeyRange},
 	},
@@ -29,6 +29,7 @@ use reifydb_store::{
 };
 
 use crate::{
+	store::occupancy::occupies,
 	tier::{
 		persistent::OperatorPersistentTier,
 		range::{tiers::RangeTiers, typed::TypedDomain},
@@ -308,6 +309,125 @@ impl<K: Keyspace> PageSource for TierPager<'_, K> {
 
 	fn is_exhausted(&self) -> bool {
 		self.exhausted
+	}
+}
+
+struct GroupScoped;
+
+impl KeyspaceVisitor for GroupScoped {
+	type Output = bool;
+
+	fn visit<K: Keyspace>(self) -> Self::Output {
+		const { group_scoped::<K>() }
+	}
+}
+
+fn within(range: &EncodedKeyRange, key: &EncodedKey) -> bool {
+	let after_start = match &range.start {
+		Bound::Unbounded => true,
+		Bound::Included(start) => key.as_slice() >= start.as_slice(),
+		Bound::Excluded(start) => key.as_slice() > start.as_slice(),
+	};
+	let before_end = match &range.end {
+		Bound::Unbounded => true,
+		Bound::Included(end) => key.as_slice() <= end.as_slice(),
+		Bound::Excluded(end) => key.as_slice() < end.as_slice(),
+	};
+	after_start && before_end
+}
+
+pub(crate) fn keyspaces_of(group: GroupId, range: &EncodedKeyRange, occupied: u64) -> Vec<KeyspaceId> {
+	let mut ids: Vec<KeyspaceId> = KEYSPACES
+		.iter()
+		.map(|spec| spec.id)
+		.filter(|id| occupies(occupied, *id))
+		.filter(|id| group.is_root() || dispatch(*id, GroupScoped).unwrap_or(false))
+		.filter(|id| match keyspace_inner_range(group, *id).start {
+			Bound::Included(start) | Bound::Excluded(start) => within(range, &start),
+			Bound::Unbounded => false,
+		})
+		.collect();
+	ids.sort_by_key(|id| Reverse(id.0));
+	ids
+}
+
+pub(crate) struct GroupKeyspacePager<'a> {
+	tiers: &'a RangeTiers,
+	operator: OperatorId,
+	group: GroupId,
+	persistent: Option<&'a OperatorPersistentTier>,
+	keyspaces: Vec<KeyspaceId>,
+	at: usize,
+	current: Option<Box<dyn PageSource + 'a>>,
+}
+
+impl<'a> GroupKeyspacePager<'a> {
+	pub(crate) fn new(
+		tiers: &'a RangeTiers,
+		operator: OperatorId,
+		group: GroupId,
+		persistent: Option<&'a OperatorPersistentTier>,
+		keyspaces: Vec<KeyspaceId>,
+	) -> Self {
+		Self {
+			tiers,
+			operator,
+			group,
+			persistent,
+			keyspaces,
+			at: 0,
+			current: None,
+		}
+	}
+
+	fn source_of(&self, keyspace: KeyspaceId) -> Box<dyn PageSource + 'a> {
+		dispatch(
+			keyspace,
+			PlanScan {
+				tiers: self.tiers,
+				operator: self.operator,
+				group: self.group,
+				persistent: self.persistent,
+				start: Bound::Included(Vec::new()),
+				end: Bound::Unbounded,
+			},
+		)
+		.flatten()
+		.unwrap_or_else(|| {
+			Box::new(PersistentPager::new(
+				self.operator,
+				self.persistent,
+				&keyspace_inner_range(self.group, keyspace),
+			))
+		})
+	}
+}
+
+impl PageSource for GroupKeyspacePager<'_> {
+	fn next_page(&mut self, limit: u64) -> Page {
+		loop {
+			let Some(source) = self.current.as_mut() else {
+				let Some(keyspace) = self.keyspaces.get(self.at).copied() else {
+					return Vec::new();
+				};
+				self.at += 1;
+				self.current = Some(self.source_of(keyspace));
+				continue;
+			};
+			if source.is_exhausted() {
+				self.current = None;
+				continue;
+			}
+			let page = source.next_page(limit);
+			if page.is_empty() {
+				continue;
+			}
+			return page;
+		}
+	}
+
+	fn is_exhausted(&self) -> bool {
+		self.at == self.keyspaces.len() && self.current.as_ref().is_none_or(|source| source.is_exhausted())
 	}
 }
 

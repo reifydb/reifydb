@@ -4,7 +4,6 @@
 use reifydb_value::util::hash::Hash128;
 
 use crate::{
-	interface::store::CacheTiers,
 	key::{
 		operator::{
 			state::{GroupId, KeyspaceId},
@@ -51,7 +50,7 @@ pub struct Expiry;
 impl Keyspace for Expiry {
 	const ID: KeyspaceId = KeyspaceId::ROLLING_EXPIRY;
 	const NAME: &'static str = "ROLLING_EXPIRY";
-	const CACHE: CacheTiers = CacheTiers::Range;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = ExpiryKey;
 	type Suffix = ExpiryKey;
@@ -71,7 +70,7 @@ pub struct TumblingExpiry;
 impl Keyspace for TumblingExpiry {
 	const ID: KeyspaceId = KeyspaceId::TUMBLING_EXPIRY;
 	const NAME: &'static str = "TUMBLING_EXPIRY";
-	const CACHE: CacheTiers = CacheTiers::Range;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = TumblingExpiryKey;
 	type Suffix = TumblingExpirySuffix;
@@ -103,7 +102,7 @@ pub struct ReapQueue;
 impl Keyspace for ReapQueue {
 	const ID: KeyspaceId = KeyspaceId::REAP_QUEUE;
 	const NAME: &'static str = "REAP_QUEUE";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = ReapQueueKey;
 	type Suffix = ReapQueueKey;

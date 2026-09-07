@@ -134,6 +134,27 @@ pub trait GuestState {
 		Ok(())
 	}
 
+	fn sweep_many_bytes(
+		&self,
+		groups: &[GroupId],
+		limit: usize,
+	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
+		let mut rows = Vec::new();
+		for group in groups {
+			if rows.len() > limit {
+				break;
+			}
+			let remaining = limit.saturating_add(1).saturating_sub(rows.len());
+			self.sweep_bytes_visit(*group, false, Some(remaining), &mut |key, payload| {
+				rows.push((key, payload));
+				Ok(())
+			})?;
+		}
+		let complete = rows.len() <= limit;
+		rows.truncate(limit);
+		Ok((rows, complete))
+	}
+
 	fn last_bytes(
 		&self,
 		group: GroupId,

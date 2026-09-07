@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use crate::{
-	interface::store::CacheTiers,
 	key::{
 		operator::{
 			state::{GroupId, KeyspaceId},
@@ -31,7 +30,7 @@ pub struct DistinctEntry;
 impl Keyspace for DistinctEntry {
 	const ID: KeyspaceId = KeyspaceId::DISTINCT_ENTRY;
 	const NAME: &'static str = "DISTINCT_ENTRY";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = DistinctEntryKey;
 	type Suffix = ();
@@ -53,7 +52,7 @@ pub struct DistinctLayout;
 impl Keyspace for DistinctLayout {
 	const ID: KeyspaceId = KeyspaceId::DISTINCT_LAYOUT;
 	const NAME: &'static str = "DISTINCT_LAYOUT";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = DistinctLayoutKey;
 	type Suffix = DistinctLayoutKey;

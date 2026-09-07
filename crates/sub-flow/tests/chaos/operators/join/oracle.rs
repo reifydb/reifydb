@@ -254,13 +254,18 @@ impl Model<JoinRow> for HashOracle {
 	}
 }
 
-/// The two latest strategies: the right side is one slot per key holding whichever right row was
-/// written last. Unlike the hash oracle this is not a function of the live sets - a right removal
-/// clears the slot even when a different, still-live row occupies it - so the slot is history.
+/// Resolved on every read rather than kept as a slot, so a retraction falls back to the next-best live
+/// row and an arrival late to the input but early on the clock loses.
+fn winner(right: &BTreeMap<u64, JoinRow>, key: i32) -> Option<&JoinRow> {
+	right.values().filter(|row| row.key == Some(key)).max_by_key(|row| (row.coord_ms, row.number.0))
+}
+
+/// The two latest strategies. Like the hash oracle this is a function of the live sets: nothing about
+/// the order the right rows arrived in survives, only the event position each one carries.
 pub struct LatestOracle {
 	left_outer: bool,
 	left: BTreeMap<u64, JoinRow>,
-	slot: BTreeMap<i32, JoinRow>,
+	right: BTreeMap<u64, JoinRow>,
 }
 
 impl LatestOracle {
@@ -268,7 +273,7 @@ impl LatestOracle {
 		Self {
 			left_outer,
 			left: BTreeMap::new(),
-			slot: BTreeMap::new(),
+			right: BTreeMap::new(),
 		}
 	}
 
@@ -276,7 +281,7 @@ impl LatestOracle {
 		let mut view = empty_view();
 		for left in self.left.values() {
 			let key = OutputKey::new(vec![Value::Int8(left.number.0 as i64)]);
-			match left.key.and_then(|key| self.slot.get(&key)) {
+			match left.key.and_then(|key| winner(&self.right, key)) {
 				Some(right) => view.insert(key, joined(left, right)),
 				None if self.left_outer => view.insert(key, unmatched(left)),
 				None => {}
@@ -296,12 +301,10 @@ impl Model<JoinRow> for LatestOracle {
 			Side::Left => {
 				self.left.insert(row.number.0, row.clone());
 			}
-			// A right row with an undefined key never reaches a slot, so it is a complete no-op
-			// on this side - not an occupant of some undefined-keyed slot.
+			// Stored whatever its key: a row updated onto an undefined one has to leave the key
+			// it held, which dropping the write here would hide.
 			Side::Right => {
-				if let Some(key) = row.key {
-					self.slot.insert(key, row.clone());
-				}
+				self.right.insert(row.number.0, row.clone());
 			}
 		}
 		true
@@ -313,9 +316,7 @@ impl Model<JoinRow> for LatestOracle {
 				self.left.remove(&row.number.0);
 			}
 			Side::Right => {
-				if let Some(key) = row.key {
-					self.slot.remove(&key);
-				}
+				self.right.remove(&row.number.0);
 			}
 		}
 	}
@@ -342,7 +343,6 @@ pub struct SnapshotOracle {
 	left_outer: bool,
 	latest: bool,
 	right: BTreeMap<u64, JoinRow>,
-	slot: BTreeMap<i32, JoinRow>,
 	published: BTreeMap<OutputKey, MaterializedRow>,
 }
 
@@ -352,7 +352,6 @@ impl SnapshotOracle {
 			left_outer,
 			latest,
 			right: BTreeMap::new(),
-			slot: BTreeMap::new(),
 			published: BTreeMap::new(),
 		}
 	}
@@ -383,7 +382,7 @@ impl SnapshotOracle {
 			return Vec::new();
 		};
 		match self.latest {
-			true => self.slot.get(&key).into_iter().collect(),
+			true => winner(&self.right, key).into_iter().collect(),
 			false => self.right.values().filter(|right| right.key == Some(key)).collect(),
 		}
 	}
@@ -414,15 +413,9 @@ impl Model<JoinRow> for SnapshotOracle {
 		match row.side {
 			// A right arrival moves the state the NEXT left touch will read, and nothing else. Not
 			// republishing here is the whole of what `snapshot` means.
-			Side::Right => match (self.latest, row.key) {
-				(true, Some(key)) => {
-					self.slot.insert(key, row.clone());
-				}
-				(false, _) => {
-					self.right.insert(row.number.0, row.clone());
-				}
-				(true, None) => {}
-			},
+			Side::Right => {
+				self.right.insert(row.number.0, row.clone());
+			}
 			Side::Left => self.republish(row),
 		}
 		true
@@ -430,15 +423,9 @@ impl Model<JoinRow> for SnapshotOracle {
 
 	fn retract(&mut self, row: &JoinRow) {
 		match row.side {
-			Side::Right => match (self.latest, row.key) {
-				(true, Some(key)) => {
-					self.slot.remove(&key);
-				}
-				(false, _) => {
-					self.right.remove(&row.number.0);
-				}
-				(true, None) => {}
-			},
+			Side::Right => {
+				self.right.remove(&row.number.0);
+			}
 			// A left row takes exactly what it published with it; recomputing the withdrawal from
 			// the current right side is what strands rows in the view.
 			Side::Left => self.withdraw(row),

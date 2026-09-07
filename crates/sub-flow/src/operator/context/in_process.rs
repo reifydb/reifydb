@@ -272,6 +272,17 @@ impl GuestState for InProcessState<'_> {
 			.map_err(to_sdk_err)
 	}
 
+	fn sweep_many_bytes(
+		&self,
+		groups: &[GroupId],
+		limit: usize,
+	) -> SdkResult<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
+		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
+		let sweep = unsafe { (*self.host).group_sweep_many(groups, limit) }.map_err(to_sdk_err)?;
+		Ok((sweep.rows, sweep.complete))
+	}
+
 	fn last_bytes(
 		&self,
 		group: GroupId,

@@ -96,17 +96,23 @@ pub mod store {
 	pub const MULTI_WAL_AUTOCHECKPOINT_PAGES: u64 = 50_000;
 	pub const MULTI_WAL_AUTOCHECKPOINT_PAGES_TESTING: u64 = 64;
 
-	pub const OPERATOR_POINT_TIER: ByteSize = ByteSize::from_mib(1);
-	pub const OPERATOR_POINT_TIER_TESTING: ByteSize = ByteSize::from_kib(32);
-
 	pub const OPERATOR_RANGE_TIER: ByteSize = ByteSize::from_mib(1);
 	pub const OPERATOR_RANGE_TIER_TESTING: ByteSize = ByteSize::from_kib(32);
 
-	pub const OPERATOR_RESIDENT_BUDGET: ByteSize = ByteSize::from_mib(100);
+	pub const OPERATOR_RESIDENT_BUDGET: ByteSize = ByteSize::from_mib(128);
 	pub const OPERATOR_RESIDENT_BUDGET_TESTING: ByteSize = ByteSize::from_kib(64);
 
 	pub const OPERATOR_RESIDENT_ENTRIES: u64 = 1_000_000;
 	pub const OPERATOR_RESIDENT_ENTRIES_TESTING: u64 = 640;
+
+	pub const OPERATOR_DIRTY_BUDGET: ByteSize = ByteSize::from_mib(128);
+	pub const OPERATOR_DIRTY_BUDGET_TESTING: ByteSize = ByteSize::from_kib(64);
+
+	pub const OPERATOR_FLUSH_INTERVAL: Duration = Duration::from_seconds_const(300);
+	pub const OPERATOR_FLUSH_INTERVAL_TESTING: Duration = Duration::from_seconds_const(60);
+
+	pub const OPERATOR_FILTER_KEYS: u64 = 16_000_000;
+	pub const OPERATOR_FILTER_KEYS_TESTING: u64 = 4_096;
 
 	pub const OPERATOR_FLUSH_SLICE: ByteSize = ByteSize::from_mib(4);
 	pub const OPERATOR_FLUSH_SLICE_TESTING: ByteSize = ByteSize::from_kib(16);

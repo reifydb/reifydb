@@ -28,14 +28,13 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Columns 
 	let mut dim_2 = ColumnBuffer::utf8_with_capacity(capacity);
 	let mut calls = ColumnBuffer::uint8_with_capacity(capacity);
 	let mut total = ColumnBuffer::duration_with_capacity(capacity);
-	let mut min = ColumnBuffer::duration_with_capacity(capacity);
 	let mut p50 = ColumnBuffer::duration_with_capacity(capacity);
 	let mut p75 = ColumnBuffer::duration_with_capacity(capacity);
 	let mut p90 = ColumnBuffer::duration_with_capacity(capacity);
 	let mut p95 = ColumnBuffer::duration_with_capacity(capacity);
 	let mut p98 = ColumnBuffer::duration_with_capacity(capacity);
 	let mut p99 = ColumnBuffer::duration_with_capacity(capacity);
-	let mut max = ColumnBuffer::duration_with_capacity(capacity);
+	let mut p100 = ColumnBuffer::duration_with_capacity(capacity);
 	let mut input_rows = ColumnBuffer::uint8_with_capacity(capacity);
 	let mut output_rows = ColumnBuffer::uint8_with_capacity(capacity);
 	let mut lock_wait = ColumnBuffer::duration_with_capacity(capacity);
@@ -48,7 +47,6 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Columns 
 		dim_2.push(record.dimensions.get(1).map(|s| s.as_str()).unwrap_or(""));
 		calls.push(record.calls);
 		total.push(record.total());
-		min.push(record.min());
 		let percentiles = record.percentiles();
 		p50.push(percentiles.p50);
 		p75.push(percentiles.p75);
@@ -56,7 +54,7 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Columns 
 		p95.push(percentiles.p95);
 		p98.push(percentiles.p98);
 		p99.push(percentiles.p99);
-		max.push(record.max());
+		p100.push(percentiles.p100);
 		let extras = record.extras();
 		input_rows.push(extras[0]);
 		output_rows.push(extras[1]);
@@ -73,14 +71,13 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Columns 
 		ColumnWithName::new(Fragment::internal("dim_2"), dim_2),
 		ColumnWithName::new(Fragment::internal("calls"), calls),
 		ColumnWithName::new(Fragment::internal("total"), total),
-		ColumnWithName::new(Fragment::internal("min"), min),
 		ColumnWithName::new(Fragment::internal("p50"), p50),
 		ColumnWithName::new(Fragment::internal("p75"), p75),
 		ColumnWithName::new(Fragment::internal("p90"), p90),
 		ColumnWithName::new(Fragment::internal("p95"), p95),
 		ColumnWithName::new(Fragment::internal("p98"), p98),
 		ColumnWithName::new(Fragment::internal("p99"), p99),
-		ColumnWithName::new(Fragment::internal("max"), max),
+		ColumnWithName::new(Fragment::internal("p100"), p100),
 		ColumnWithName::new(Fragment::internal("input_rows"), input_rows),
 		ColumnWithName::new(Fragment::internal("output_rows"), output_rows),
 		ColumnWithName::new(Fragment::internal("lock_wait"), lock_wait),

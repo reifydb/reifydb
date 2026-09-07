@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
 use crate::tier::point::{
-	ENTRY_OVERHEAD, FillInterlock, PointBucketMetrics, PointConfig, PointKey, PointMetrics, PointTier,
+	ENTRY_OVERHEAD, FillInterlock, PointBucketMetrics, PointConfig, PointKey, PointTier,
 	domain::{ChainingDomain as C, TestDomain as D, keyspace_of},
 };
 
@@ -690,94 +690,6 @@ fn an_overwrite_dirties_an_in_flight_fill_so_the_stale_row_cannot_publish() {
 	assert_eq!(tier.metrics().fills_dirty_aborted, 1);
 }
 
-const EXCLUDED: [KeyspaceId; 5] = [
-	KeyspaceId::CUSTOM_NOT_CACHED,
-	KeyspaceId::JOIN_PIN,
-	KeyspaceId::ENGINE_META,
-	KeyspaceId::ROLLING_EXPIRY,
-	KeyspaceId::TIMER_WHEEL,
-];
-
-#[test]
-fn no_admission_path_lets_an_excluded_keyspace_into_the_tier() {
-	let tier = roomy();
-
-	for keyspace in EXCLUDED {
-		let present = key(group_a(), keyspace, b"a");
-		let absent = key(group_a(), keyspace, b"b");
-
-		assert!(!tier.begin_fill(OP_A, &present), "{} must be refused before the fill starts", keyspace.name());
-		assert!(
-			!tier.finish_fill(OP_A, present.clone(), Some(row("v"))),
-			"a fill that was never admitted must not publish {} through the back of the handshake",
-			keyspace.name()
-		);
-		assert!(
-			!tier.finish_fill(OP_A, absent.clone(), None),
-			"an absence costs the same entry overhead as a row, so {} must be refused on that path too",
-			keyspace.name()
-		);
-		tier.overwrite(OP_A, present.clone(), row("v"));
-
-		assert_eq!(
-			tier.get(OP_A, &present),
-			None,
-			"{} must stay unknown so the read falls through to the store",
-			keyspace.name()
-		);
-		assert_eq!(tier.get(OP_A, &absent), None, "{} must remember no absence either", keyspace.name());
-	}
-
-	assert_eq!(tier.entries(), 0, "an excluded keyspace must leave no entry behind");
-	assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "an excluded keyspace must not be charged a byte");
-	assert_eq!(tier.metrics().fills_started, 0, "a refused keyspace must not even be counted as filled");
-
-	let cached = key(group_a(), CACHED, b"a");
-	tier.overwrite(OP_A, cached.clone(), row("v"));
-	assert!(
-		tier.get(OP_A, &cached).is_some(),
-		"the control: a gate that refused every keyspace would pass the assertions above while turning the \
-		 whole tier into an off switch"
-	);
-}
-
-#[test]
-fn a_point_read_of_an_excluded_keyspace_still_charges_its_miss() {
-	let tier = roomy();
-
-	for keyspace in EXCLUDED {
-		let k = key(group_a(), keyspace, b"a");
-		assert_eq!(tier.get(OP_A, &k), None);
-		assert_eq!(tier.contains(OP_A, &k), None);
-	}
-
-	for keyspace in EXCLUDED {
-		let reported = keyspace_row(&tier, keyspace);
-		assert_eq!(
-			reported.counters.misses,
-			2,
-			"{} must charge a miss for the get and a miss for the contains",
-			keyspace.name()
-		);
-		assert_eq!(
-			reported.counters.hits,
-			0,
-			"{} holds no entry, so a hit here would mean the exclusion stopped holding",
-			keyspace.name()
-		);
-		assert_eq!(reported.entries, 0, "{} must own no entry", keyspace.name());
-	}
-
-	assert_eq!(
-		tier.misses(),
-		2 * EXCLUDED.len() as u64,
-		"the tier aggregate must count these reads too, or a refused keyspace read is missing from the only \
-		 counter a replay actually watches"
-	);
-	assert_eq!(tier.hits(), 0);
-	assert_eq!(tier.entries(), 0, "reading an excluded keyspace must not be a back door into admitting it");
-}
-
 #[test]
 fn one_keyspaces_entries_spread_across_shards() {
 	let tier = sharded(ByteSize::from_mib(1).as_bytes(), 16);
@@ -850,33 +762,6 @@ fn the_index_stays_consistent_with_the_slab() {
 	tier.invalidate_operator(OP_A);
 	assert!(tier.index_is_consistent(), "the index rebuilt after an operator drop must address the survivors");
 	assert_eq!(tier.entries(), 1, "only the other operator's entry may remain");
-}
-
-#[test]
-fn an_excluded_keyspace_read_acquires_no_shard() {
-	let tier = sharded(ByteSize::from_mib(1).as_bytes(), 4);
-	let k = key(group_a(), KeyspaceId::TIMER_WHEEL, b"a");
-
-	for _ in 0..32 {
-		assert_eq!(tier.get(OP_A, &k), None);
-	}
-
-	for shard in tier.shard_metrics() {
-		assert_eq!(
-			shard.counters,
-			PointMetrics::default(),
-			"shard {} recorded a counter for a read that must never have reached it",
-			shard.shard
-		);
-		assert_eq!(shard.used, ByteSize::ZERO, "shard {} charged bytes for a refused keyspace", shard.shard);
-		assert_eq!(shard.entries, 0);
-	}
-	assert_eq!(
-		keyspace_row(&tier, KeyspaceId::TIMER_WHEEL).counters.misses,
-		32,
-		"the miss must still be charged to the keyspace, or the read is invisible"
-	);
-	assert_eq!(tier.misses(), 32, "and the tier aggregate must fold the lock free counter in");
 }
 
 #[test]

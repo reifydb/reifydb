@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{
+	collections::{BTreeMap, HashMap},
+	ops::Bound,
+};
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
@@ -89,6 +92,57 @@ impl KeyspaceVisitor for Get<'_> {
 		}
 		typed::get::<K>(self.conn, self.operator, &typed_key::<K>(self.group, self.suffix, lowest::<K>()))
 	}
+}
+
+type GetManyItem<'a> = (&'a EncodedKey, GroupId, &'a [u8]);
+
+struct GetMany<'a> {
+	conn: &'a Connection,
+	operator: OperatorId,
+	items: Vec<GetManyItem<'a>>,
+}
+
+impl KeyspaceVisitor for GetMany<'_> {
+	type Output = Vec<(EncodedKey, Vec<u8>)>;
+
+	fn visit<K: Keyspace>(self) -> Self::Output {
+		let mut probes = Vec::with_capacity(self.items.len());
+		let mut origin: HashMap<EncodedKey, EncodedKey> = HashMap::with_capacity(self.items.len());
+		for (key, group, suffix) in self.items {
+			if !const { group_scoped::<K>() } && !group.is_root() {
+				continue;
+			}
+			let typed = typed_key::<K>(group, suffix, lowest::<K>());
+			origin.insert(encode::<K>(&typed), key.clone());
+			probes.push(typed);
+		}
+		typed::get_batch::<K>(self.conn, self.operator, &probes)
+			.into_iter()
+			.filter_map(|(typed, bytes)| origin.get(&encode::<K>(&typed)).map(|key| (key.clone(), bytes)))
+			.collect()
+	}
+}
+
+pub(super) fn get_many(conn: &Connection, operator: OperatorId, keys: &[EncodedKey]) -> Vec<(EncodedKey, Vec<u8>)> {
+	let mut grouped: BTreeMap<KeyspaceId, Vec<GetManyItem>> = BTreeMap::new();
+	for key in keys {
+		let (group, keyspace, suffix) = parts(key);
+		grouped.entry(keyspace).or_default().push((key, group, suffix));
+	}
+	let mut out = Vec::with_capacity(keys.len());
+	for (keyspace, items) in grouped {
+		let found = dispatch(
+			keyspace,
+			GetMany {
+				conn,
+				operator,
+				items,
+			},
+		)
+		.expect("an operator state key must name a keyspace in the catalogue");
+		out.extend(found);
+	}
+	out
 }
 
 pub(super) fn get(conn: &Connection, operator: OperatorId, key: &EncodedKey) -> Option<Vec<u8>> {
@@ -408,6 +462,36 @@ pub(super) fn drop_operator(txn: &Transaction, operator: OperatorId) {
 		)
 		.expect("every catalogue entry must dispatch to its own keyspace");
 	}
+}
+
+struct Any<'a> {
+	conn: &'a Connection,
+	operator: OperatorId,
+}
+
+impl KeyspaceVisitor for Any<'_> {
+	type Output = bool;
+
+	fn visit<K: Keyspace>(self) -> Self::Output {
+		typed::any::<K>(self.conn, self.operator)
+	}
+}
+
+pub(super) fn occupied_keyspaces(conn: &Connection, operator: OperatorId) -> Vec<KeyspaceId> {
+	KEYSPACES
+		.iter()
+		.filter(|spec| {
+			dispatch(
+				spec.id,
+				Any {
+					conn,
+					operator,
+				},
+			)
+			.unwrap_or(true)
+		})
+		.map(|spec| spec.id)
+		.collect()
 }
 
 struct Census<'a> {

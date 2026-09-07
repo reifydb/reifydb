@@ -8,7 +8,7 @@ use tracing::instrument;
 use super::{
 	JoinContext, UpdateKeys,
 	hash::{add_to_state_entry_batch, for_each_left_block, prepare_entry_update, update_row_in_entry},
-	latest::{overwrite_right_slot, read_right_slot, remove_right_rows},
+	latest::{overwrite_right_slot, read_right_slot, remove_right_rows, write_right_rows},
 };
 use crate::operator::{
 	host::HostContext,
@@ -108,7 +108,7 @@ impl LatestInnerHashJoin {
 				right_store: &ctx.state.right,
 			};
 			retire_slot(host, &snapshot_ctx, key_hash)?;
-			overwrite_right_slot(host, &ctx.state.right, key_hash, post, indices, ctx.operator.pick())?;
+			write_right_rows(host, &ctx.state.right, key_hash, post, indices)?;
 			return Ok(Vec::new());
 		}
 		let old = read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())?;

@@ -27,7 +27,7 @@ use reifydb_runtime::{
 use reifydb_store_cdc::{config::CdcCommitConfig, tier::read::CdcReadConfig};
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig};
-use reifydb_store_operator::tier::{point::OperatorPointConfig, range::OperatorRangeConfig};
+use reifydb_store_operator::tier::{range::OperatorRangeConfig, resident::ResidentLimits};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
@@ -61,7 +61,7 @@ use reifydb_sub_server_ws::factory::{WsConfigurator, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
-use reifydb_value::{byte_size::ByteSize, value::Value};
+use reifydb_value::value::{Value, duration::Duration};
 #[cfg(feature = "sub_metric_profiler")]
 use tracing_subscriber::filter::LevelFilter;
 
@@ -73,13 +73,13 @@ type PoolConfigSources = (
 	PoolConfig,
 	Option<MultiPointConfig>,
 	Option<MultiRangeConfig>,
-	Option<OperatorPointConfig>,
 	Option<OperatorRangeConfig>,
 	u32,
 	CdcCommitConfig,
 	Option<CdcReadConfig>,
 	u32,
-	ByteSize,
+	ResidentLimits,
+	Duration,
 );
 
 fn pool_config_from_sources(
@@ -99,13 +99,13 @@ fn pool_config_from_sources(
 		resolved.pools,
 		resolved.multi_point,
 		resolved.multi_range,
-		resolved.operator_point,
 		resolved.operator_range,
 		resolved.cdc_wal_autocheckpoint,
 		resolved.cdc_commit,
 		resolved.cdc_read,
 		resolved.operator_wal_autocheckpoint,
-		resolved.operator_flush_budget,
+		resolved.operator_resident,
+		resolved.operator_flush_interval,
 	))
 }
 
@@ -331,13 +331,13 @@ impl ServerBuilder {
 			pool_config,
 			multi_point_buffer,
 			multi_range_buffer,
-			operator_point_buffer,
 			operator_range_buffer,
 			cdc_wal_autocheckpoint,
 			cdc_commit,
 			cdc_read,
 			operator_wal_autocheckpoint,
-			operator_flush_budget,
+			operator_resident,
+			operator_flush_interval,
 		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs, self.cdc_memory)?;
 
 		let runtime_config = self.runtime_config.unwrap_or_default();
@@ -354,14 +354,14 @@ impl ServerBuilder {
 				multi_persistent,
 				multi_point_buffer,
 				multi_range_buffer,
-				operator_point_buffer,
 				operator_range_buffer,
 				cdc_commit,
 				cdc_read,
 				cdc_wal_autocheckpoint,
 				self.cdc_memory,
 				operator_wal_autocheckpoint,
-				operator_flush_budget,
+				operator_resident,
+				operator_flush_interval,
 				&spawner,
 			);
 		let catalog_cache = CatalogCache::new();

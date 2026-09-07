@@ -15,7 +15,7 @@ use std::{
 	fmt::Debug,
 	hash::{Hash, Hasher},
 	mem::size_of,
-	sync::{Arc, atomic::AtomicU64},
+	sync::Arc,
 };
 
 use hashbrown::HashTable;
@@ -36,8 +36,6 @@ pub trait PointDomain: Copy + Debug + 'static {
 	const SCOPE: &'static str;
 
 	fn metric_bucket(key: &Self::Key) -> Option<usize>;
-
-	fn caches_points(bucket: usize) -> bool;
 
 	fn supersede(resident: &mut Self::Row, incoming: Self::Row) -> bool {
 		*resident = incoming;
@@ -173,7 +171,6 @@ pub(crate) type FillInterlock<D> =
 
 struct PoolInner<D: PointDomain> {
 	shards: Box<[Mutex<Shard<D>>]>,
-	excluded_misses: Box<[AtomicU64]>,
 	#[cfg(test)]
 	interlock: Option<FillInterlock<D>>,
 }

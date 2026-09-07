@@ -68,32 +68,9 @@ pub enum EntryKind {
 	PartitionedSource(StorageId, EntryLayout),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CacheTiers {
-	Neither,
-	Point,
-	Range,
-	Both,
-}
-
-impl CacheTiers {
-	pub fn caches_points(&self) -> bool {
-		matches!(self, Self::Point | Self::Both)
-	}
-
-	pub fn caches_ranges(&self) -> bool {
-		matches!(self, Self::Range | Self::Both)
-	}
-}
-
 impl EntryKind {
-	pub fn cache_tiers(&self) -> CacheTiers {
-		match self {
-			Self::Source(_, EntryLayout::Row | EntryLayout::Series) => CacheTiers::Both,
-			Self::Multi | Self::Source(_, EntryLayout::SortedView) | Self::PartitionedSource(_, _) => {
-				CacheTiers::Point
-			}
-		}
+	pub fn caches_ranges(&self) -> bool {
+		matches!(self, Self::Source(_, EntryLayout::Row | EntryLayout::Series))
 	}
 }
 

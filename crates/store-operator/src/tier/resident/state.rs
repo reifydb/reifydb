@@ -5,18 +5,21 @@ use std::{cmp::Ordering, ops::Bound};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_runtime::sync::mutex::MutexGuard;
+use tracing::instrument;
 
 use crate::{
 	tier::{
 		bucket::{Scan, write::WriteEntry},
-		resident::{OperatorResidentState, batch::DropMarker, record_state},
+		resident::{
+			OperatorResidentState,
+			batch::DropMarker,
+			record_state,
+			slot::{Slot, SlotInner},
+		},
 	},
 	types::{BufferedState, BufferedStateRange},
 };
-
-type Page = Vec<(EncodedKey, WriteEntry)>;
-
-type CombineFn = fn(&Page, &Page, usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)>;
 
 impl OperatorResidentState {
 	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
@@ -40,6 +43,18 @@ impl OperatorResidentState {
 		BufferedState::Absent
 	}
 
+	pub fn tombstoned<'a>(
+		&self,
+		operator: OperatorId,
+		keys: impl ExactSizeIterator<Item = &'a EncodedKey>,
+	) -> Vec<bool> {
+		let Some(slot) = self.shared().slot(operator) else {
+			return vec![false; keys.len()];
+		};
+		let inner = lock_slot(&slot, operator);
+		keys.map(|key| inner.live.is_deleted(key)).collect()
+	}
+
 	pub fn state_page(
 		&self,
 		operator: OperatorId,
@@ -60,6 +75,10 @@ impl OperatorResidentState {
 		self.page(operator, start, end, limit, Scan::Backward)
 	}
 
+	#[instrument(name = "store::operator::resident::state_page", level = "trace", skip(self, start, end), fields(
+		operator = operator.0,
+		limit = limit
+	))]
 	fn page(
 		&self,
 		operator: OperatorId,
@@ -68,25 +87,23 @@ impl OperatorResidentState {
 		limit: usize,
 		scan: Scan,
 	) -> BufferedStateRange {
-		let combine: CombineFn = match scan {
-			Scan::Forward => merge,
-			Scan::Backward => merge_back,
-		};
 		let lower = owned(start);
 		let upper = owned(end);
 		let mut items = Vec::new();
 
 		if let Some(slot) = self.shared().slot(operator) {
-			let inner = slot.inner.lock();
+			let inner = lock_slot(&slot, operator);
 			if limit > 0 && !is_empty_range(&lower, &upper) {
-				let live = inner.live.state.encoded_range(operator, &lower, &upper, scan, limit);
-				let flight = match inner.in_flight.as_ref() {
-					Some(pending) => {
-						pending.state.encoded_range(operator, &lower, &upper, scan, limit)
-					}
-					None => Page::new(),
-				};
-				items = combine(&live, &flight, limit);
+				items = inner
+					.live
+					.state
+					.encoded_range(operator, &lower, &upper, scan, limit)
+					.into_iter()
+					.map(|(key, entry)| (key, entry.post))
+					.collect();
+				if scan == Scan::Backward {
+					items.reverse();
+				}
 			}
 		}
 
@@ -97,78 +114,9 @@ impl OperatorResidentState {
 	}
 }
 
-fn merge(live: &Page, flight: &Page, limit: usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)> {
-	let mut live = live.iter().peekable();
-	let mut flight = flight.iter().peekable();
-	let mut items = Vec::new();
-	while items.len() < limit {
-		let winner = match (live.peek(), flight.peek()) {
-			(None, None) => break,
-			(Some(_), None) => Side::Live,
-			(None, Some(_)) => Side::Flight,
-			(Some((live_key, _)), Some((flight_key, _))) => match live_key.cmp(flight_key) {
-				Ordering::Less => Side::Live,
-				Ordering::Greater => Side::Flight,
-				Ordering::Equal => Side::Both,
-			},
-		};
-		match winner {
-			Side::Live => {
-				let (key, entry) = live.next().expect("the peeked live entry is still pending");
-				items.push((key.clone(), entry.post.clone()));
-			}
-			Side::Flight => {
-				let (key, entry) = flight.next().expect("the peeked in-flight entry is still pending");
-				items.push((key.clone(), entry.post.clone()));
-			}
-			Side::Both => {
-				let (key, entry) = live.next().expect("the peeked live entry is still pending");
-				flight.next();
-				items.push((key.clone(), entry.post.clone()));
-			}
-		}
-	}
-	items
-}
-
-fn merge_back(live: &Page, flight: &Page, limit: usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)> {
-	let mut live = live.iter().rev().peekable();
-	let mut flight = flight.iter().rev().peekable();
-	let mut items = Vec::new();
-	while items.len() < limit {
-		let winner = match (live.peek(), flight.peek()) {
-			(None, None) => break,
-			(Some(_), None) => Side::Live,
-			(None, Some(_)) => Side::Flight,
-			(Some((live_key, _)), Some((flight_key, _))) => match live_key.cmp(flight_key) {
-				Ordering::Greater => Side::Live,
-				Ordering::Less => Side::Flight,
-				Ordering::Equal => Side::Both,
-			},
-		};
-		match winner {
-			Side::Live => {
-				let (key, entry) = live.next().expect("the peeked live entry is still pending");
-				items.push((key.clone(), entry.post.clone()));
-			}
-			Side::Flight => {
-				let (key, entry) = flight.next().expect("the peeked in-flight entry is still pending");
-				items.push((key.clone(), entry.post.clone()));
-			}
-			Side::Both => {
-				let (key, entry) = live.next().expect("the peeked live entry is still pending");
-				flight.next();
-				items.push((key.clone(), entry.post.clone()));
-			}
-		}
-	}
-	items
-}
-
-enum Side {
-	Live,
-	Flight,
-	Both,
+#[instrument(name = "store::operator::resident::slot_lock", level = "trace", skip(slot), fields(operator = operator.0))]
+fn lock_slot(slot: &Slot, operator: OperatorId) -> MutexGuard<'_, SlotInner> {
+	slot.inner.lock()
 }
 
 fn owned(bound: Bound<&EncodedKey>) -> Bound<EncodedKey> {

@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range_split},
-	state::timer::{StateStore, TimerKind, TimerStore},
+	state::timer::{GroupSweep, StateStore, TimerKind, TimerStore, sweep_order},
 };
 use reifydb_flow::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
 use reifydb_value::{
@@ -117,6 +117,14 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 			Ok(())
 		})?;
 		Ok(swept)
+	}
+
+	fn group_sweep_many(&mut self, groups: &[GroupId], limit: usize) -> Result<GroupSweep> {
+		let (rows, complete) = self.0.state().sweep_many_bytes(&sweep_order(groups), limit)?;
+		Ok(GroupSweep {
+			rows,
+			complete,
+		})
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {

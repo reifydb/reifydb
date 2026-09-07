@@ -23,7 +23,6 @@ pub enum MetricsDomain {
 	StoreMultiPersistent,
 	StoreSingleCommit,
 	StoreSinglePersistent,
-	StoreOperatorPointKeyspace,
 	StoreOperatorRangeKeyspace,
 	StoreOperatorPersistent,
 	StoreCdcCommit,
@@ -282,7 +281,7 @@ mod tests {
 }
 
 impl MetricsDomain {
-	pub const ALL: [MetricsDomain; 29] = [
+	pub const ALL: [MetricsDomain; 28] = [
 		MetricsDomain::RuntimeMemory,
 		MetricsDomain::RuntimeWatermarks,
 		MetricsDomain::RuntimeOperators,
@@ -299,7 +298,6 @@ impl MetricsDomain {
 		MetricsDomain::StoreMultiPersistent,
 		MetricsDomain::StoreSingleCommit,
 		MetricsDomain::StoreSinglePersistent,
-		MetricsDomain::StoreOperatorPointKeyspace,
 		MetricsDomain::StoreOperatorRangeKeyspace,
 		MetricsDomain::StoreOperatorPersistent,
 		MetricsDomain::StoreCdcCommit,
@@ -335,7 +333,6 @@ impl MetricsDomain {
 			| MetricsDomain::StoreMultiPersistent
 			| MetricsDomain::StoreSingleCommit
 			| MetricsDomain::StoreSinglePersistent
-			| MetricsDomain::StoreOperatorPointKeyspace
 			| MetricsDomain::StoreOperatorRangeKeyspace
 			| MetricsDomain::StoreOperatorPersistent
 			| MetricsDomain::StoreCdcCommit
@@ -373,7 +370,6 @@ impl MetricsDomain {
 			| MetricsDomain::StoreMultiPersistent
 			| MetricsDomain::StoreSingleCommit
 			| MetricsDomain::StoreSinglePersistent
-			| MetricsDomain::StoreOperatorPointKeyspace
 			| MetricsDomain::StoreOperatorRangeKeyspace
 			| MetricsDomain::StoreOperatorPersistent
 			| MetricsDomain::StoreCdcCommit
@@ -625,25 +621,6 @@ impl MetricsDomain {
 				],
 				has_total: true,
 			},
-			MetricsDomain::StoreOperatorPointKeyspace => DomainSpec {
-				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_POINT_KEYSPACE,
-				shape: DomainShape::Wide,
-				dimensions: vec![dim("keyspace", ValueType::Utf8)],
-				measures: vec![
-					level("used", ValueType::Uint8),
-					level("limit", ValueType::Uint8),
-					level("entries", ValueType::Uint8),
-					counter("hits", ValueType::Uint8),
-					counter("misses", ValueType::Uint8),
-					counter("insertions", ValueType::Uint8),
-					counter("evictions", ValueType::Uint8),
-					counter("fills_started", ValueType::Uint8),
-					counter("fills_dirty_aborted", ValueType::Uint8),
-					counter("fills_duplicate", ValueType::Uint8),
-				],
-				has_total: true,
-			},
 			MetricsDomain::StoreOperatorRangeKeyspace => DomainSpec {
 				domain: self,
 				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_RANGE_KEYSPACE,
@@ -828,14 +805,13 @@ impl MetricsDomain {
 				measures: vec![
 					counter("calls", ValueType::Uint8),
 					counter("total", ValueType::Duration),
-					distribution("min", ValueType::Duration),
 					distribution("p50", ValueType::Duration),
 					distribution("p75", ValueType::Duration),
 					distribution("p90", ValueType::Duration),
 					distribution("p95", ValueType::Duration),
 					distribution("p98", ValueType::Duration),
 					distribution("p99", ValueType::Duration),
-					distribution("max", ValueType::Duration),
+					distribution("p100", ValueType::Duration),
 					counter("input_rows", ValueType::Uint8),
 					counter("output_rows", ValueType::Uint8),
 					counter("lock_wait", ValueType::Duration),

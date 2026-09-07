@@ -4,7 +4,6 @@
 use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 
 use crate::{
-	interface::store::CacheTiers,
 	key::{
 		operator::{
 			state::{GroupId, KeyspaceId},
@@ -70,7 +69,7 @@ pub struct RingbufferForward;
 impl Keyspace for RingbufferForward {
 	const ID: KeyspaceId = KeyspaceId::RINGBUFFER_FORWARD;
 	const NAME: &'static str = "RINGBUFFER_FORWARD";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = RingbufferForwardKey;
 	type Suffix = RingbufferForwardKey;
@@ -90,7 +89,7 @@ pub struct RingbufferEntry;
 impl Keyspace for RingbufferEntry {
 	const ID: KeyspaceId = KeyspaceId::RINGBUFFER_ENTRY;
 	const NAME: &'static str = "RINGBUFFER_ENTRY";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = RingbufferEntryKey;
 	type Suffix = RingbufferEntryKey;
@@ -110,7 +109,7 @@ pub struct RingbufferExpiry;
 impl Keyspace for RingbufferExpiry {
 	const ID: KeyspaceId = KeyspaceId::RINGBUFFER_EXPIRY;
 	const NAME: &'static str = "RINGBUFFER_EXPIRY";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = RingbufferExpiryKey;
 	type Suffix = RingbufferExpiryKey;
@@ -130,7 +129,7 @@ pub struct RingbufferTtlArm;
 impl Keyspace for RingbufferTtlArm {
 	const ID: KeyspaceId = KeyspaceId::RINGBUFFER_TTL_ARM;
 	const NAME: &'static str = "RINGBUFFER_TTL_ARM";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = RingbufferTtlArmKey;
 	type Suffix = RingbufferTtlArmKey;
@@ -150,7 +149,7 @@ pub struct RingbufferMeta;
 impl Keyspace for RingbufferMeta {
 	const ID: KeyspaceId = KeyspaceId::RINGBUFFER_META;
 	const NAME: &'static str = "RINGBUFFER_META";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = RingbufferMetaKey;
 	type Suffix = RingbufferMetaKey;
@@ -170,7 +169,7 @@ pub struct PartitionedRingbufferEntry;
 impl Keyspace for PartitionedRingbufferEntry {
 	const ID: KeyspaceId = KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY;
 	const NAME: &'static str = "PARTITIONED_RINGBUFFER_ENTRY";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = PartitionedRingbufferEntryKey;
 	type Suffix = PartitionedRingbufferEntryKey;
@@ -190,7 +189,7 @@ pub struct PartitionedRingbufferExpiry;
 impl Keyspace for PartitionedRingbufferExpiry {
 	const ID: KeyspaceId = KeyspaceId::PARTITIONED_RINGBUFFER_EXPIRY;
 	const NAME: &'static str = "PARTITIONED_RINGBUFFER_EXPIRY";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = PartitionedRingbufferExpiryKey;
 	type Suffix = PartitionedRingbufferExpiryKey;
@@ -210,7 +209,7 @@ pub struct PartitionedRingbufferTtlArm;
 impl Keyspace for PartitionedRingbufferTtlArm {
 	const ID: KeyspaceId = KeyspaceId::PARTITIONED_RINGBUFFER_TTL_ARM;
 	const NAME: &'static str = "PARTITIONED_RINGBUFFER_TTL_ARM";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = PartitionedRingbufferTtlArmKey;
 	type Suffix = PartitionedRingbufferTtlArmKey;
@@ -230,7 +229,7 @@ pub struct PartitionedRingbufferMeta;
 impl Keyspace for PartitionedRingbufferMeta {
 	const ID: KeyspaceId = KeyspaceId::PARTITIONED_RINGBUFFER_META;
 	const NAME: &'static str = "PARTITIONED_RINGBUFFER_META";
-	const CACHE: CacheTiers = CacheTiers::Both;
+	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = PartitionedRingbufferMetaKey;
 	type Suffix = PartitionedRingbufferMetaKey;

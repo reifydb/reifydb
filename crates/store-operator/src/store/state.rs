@@ -17,9 +17,13 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator::{
-		keyspace::dispatch,
-		state::{GroupId, group_inner_range, keyspace_inner_range_split},
+		keyspace::{dispatch, group_scoped_id},
+		state::{
+			GroupId, KeyspaceId, OperatorStateKey, group_inner_range, group_inner_range_split,
+			keyspace_inner_range_split,
+		},
 	},
+	metrics::scan::record_page,
 };
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
 use tracing::instrument;
@@ -29,7 +33,10 @@ use crate::types::DurablePre;
 use crate::{
 	store::{
 		OperatorStore, StandardOperatorStore,
-		pager::{ExhaustedPager, GroupPager, PageSource, PersistentPager, PlanScan},
+		pager::{
+			ExhaustedPager, GroupKeyspacePager, GroupPager, PageSource, PersistentPager, PlanScan,
+			keyspaces_of,
+		},
 	},
 	tier::resident::batch::DropMarker,
 	types::{BufferedState, OperatorBatch, OperatorWrite},
@@ -42,8 +49,11 @@ impl StandardOperatorStore {
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
 		reifydb_assertions! {
 			self.verify_classification(writes);
+			verify_group_scope(writes);
 		}
 		let _flushing = self.resident.flush_guard();
+		self.occupancy.record(writes);
+		self.census.record(writes);
 		self.resident.apply_batch(writes);
 		self.invalidate_read_batch(writes);
 	}
@@ -57,8 +67,11 @@ impl StandardOperatorStore {
 	) {
 		reifydb_assertions! {
 			self.verify_classification(writes);
+			verify_group_scope(writes);
 		}
 		let _flushing = self.resident.flush_guard();
+		self.occupancy.record(writes);
+		self.census.record(writes);
 		self.resident.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes);
 		self.invalidate_read_batch(writes);
 	}
@@ -66,11 +79,10 @@ impl StandardOperatorStore {
 	#[instrument(name = "store::operator::drop_operator_state", level = "debug", skip(self), fields(operator = operator.0))]
 	pub fn drop_operator_state(&self, operator: OperatorId) {
 		self.resident.record_drop(DropMarker::OperatorState(operator));
+		self.occupancy.forget(operator);
+		self.census.forget(operator);
 		if let Some(range) = self.range.as_ref() {
 			range.invalidate_operator(operator);
-		}
-		if let Some(point) = self.point.as_ref() {
-			point.invalidate_operator(operator);
 		}
 	}
 
@@ -135,17 +147,11 @@ impl StandardOperatorStore {
 		if let Some(range) = self.range.as_ref() {
 			range.overwrite(operator, key, row.clone());
 		}
-		if let Some(point) = self.point.as_ref() {
-			point.invalidate(operator, key);
-		}
 	}
 
 	fn insert_range_read(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
 		if let Some(range) = self.range.as_ref() {
 			range.insert(operator, key, row.clone());
-		}
-		if let Some(point) = self.point.as_ref() {
-			point.invalidate(operator, key);
 		}
 	}
 
@@ -153,19 +159,10 @@ impl StandardOperatorStore {
 		if let Some(range) = self.range.as_ref() {
 			range.mark_deleted(operator, key);
 		}
-		if let Some(point) = self.point.as_ref() {
-			point.invalidate(operator, key);
-		}
-	}
-
-	fn repair_absence(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
-		if let Some(point) = self.point.as_ref() {
-			point.overwrite(operator, key, row.clone());
-		}
 	}
 
 	fn invalidate_read_batch(&self, writes: &[OperatorWrite]) {
-		if self.point.is_none() && self.range.is_none() {
+		if self.range.is_none() {
 			return;
 		}
 		for write in writes {
@@ -225,15 +222,8 @@ impl StandardOperatorStore {
 		if self.persistent.is_none() {
 			return SizeProbe::Known(None);
 		}
-		let cached = self.point.as_ref().and_then(|point| point.get(operator, key));
-		if let Some(Some(row)) = &cached {
-			return SizeProbe::Known(Some(row_size(row)));
-		}
 		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
 			return SizeProbe::Known(authoritative.as_ref().map(row_size));
-		}
-		if cached.is_some() {
-			return SizeProbe::Known(None);
 		}
 		SizeProbe::Persistent
 	}
@@ -267,19 +257,8 @@ impl StandardOperatorStore {
 
 		let mut fetch: Vec<(usize, &EncodedKey)> = Vec::new();
 		for (index, key) in buffered {
-			let cached = self.point.as_ref().and_then(|point| point.get(operator, key));
-			if let Some(Some(row)) = cached {
-				results[index] = Some(row);
-				continue;
-			}
 			if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
-				if let (Some(None), Some(row)) = (&cached, authoritative.as_ref()) {
-					self.repair_absence(operator, key, row);
-				}
 				results[index] = authoritative;
-				continue;
-			}
-			if cached.is_some() {
 				continue;
 			}
 			fetch.push((index, key));
@@ -288,45 +267,20 @@ impl StandardOperatorStore {
 			return results;
 		}
 
-		let filling: Vec<bool> = fetch
-			.iter()
-			.map(|(_, key)| self.point.as_ref().is_some_and(|point| point.begin_fill(operator, key)))
-			.collect();
 		let batch: Vec<EncodedKey> = fetch.iter().map(|(_, key)| (*key).clone()).collect();
 		let found = persistent.get_many(operator, &batch);
-		for ((index, key), filling) in fetch.into_iter().zip(filling) {
-			let row = found.get(key).cloned();
-			if filling && let Some(point) = self.point.as_ref() {
-				point.finish_fill(operator, key, row.clone());
-			}
-			results[index] = row;
+		for (index, key) in fetch {
+			results[index] = found.get(key).cloned();
 		}
 		results
 	}
 
 	fn persistent_get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
 		let persistent = self.persistent.as_ref()?;
-		let cached = self.point.as_ref().and_then(|point| point.get(operator, key));
-		if let Some(Some(row)) = cached {
-			return Some(row);
-		}
 		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
-			if let (Some(None), Some(row)) = (&cached, authoritative.as_ref()) {
-				self.repair_absence(operator, key, row);
-			}
 			return authoritative;
 		}
-		if cached.is_some() {
-			return None;
-		}
-		match self.point.as_ref() {
-			Some(point) if point.begin_fill(operator, key) => {
-				let row = persistent.get(operator, key);
-				point.finish_fill(operator, key, row.clone());
-				row
-			}
-			_ => persistent.get(operator, key),
-		}
+		persistent.get(operator, key)
 	}
 
 	#[instrument(name = "store::operator::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()), ret)]
@@ -342,27 +296,10 @@ impl StandardOperatorStore {
 		let Some(persistent) = self.persistent.as_ref() else {
 			return false;
 		};
-		let cached = self.point.as_ref().and_then(|point| point.contains(operator, key));
-		if cached == Some(true) {
-			return true;
-		}
 		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
-			if let (Some(false), Some(row)) = (&cached, authoritative.as_ref()) {
-				self.repair_absence(operator, key, row);
-			}
 			return authoritative.is_some();
 		}
-		if cached.is_some() {
-			return false;
-		}
-		match self.point.as_ref() {
-			Some(point) if point.begin_fill(operator, key) => {
-				let row = persistent.get(operator, key);
-				point.finish_fill(operator, key, row.clone());
-				row.is_some()
-			}
-			_ => persistent.contains(operator, key),
-		}
+		persistent.contains(operator, key)
 	}
 
 	#[instrument(name = "store::operator::range_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
@@ -380,9 +317,11 @@ impl StandardOperatorStore {
 		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 		let mut buffer_index = 0usize;
 		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
+		let mut page_shadow: Vec<bool> = Vec::new();
 		let mut page_index = 0usize;
 		let scan_budget = target.saturating_mul(SCAN_BUDGET_FACTOR);
 		let mut consumed = 0usize;
+		let mut skipped = 0u64;
 		let mut walked: Option<EncodedKey> = None;
 		let mut resume: Option<EncodedKey> = None;
 
@@ -410,6 +349,7 @@ impl StandardOperatorStore {
 			}
 			if page_index == page.len() && !source.is_exhausted() {
 				page = source.next_page(limit);
+				page_shadow = self.resident.tombstoned(operator, page.iter().map(|(key, _)| key));
 				page_index = 0;
 				continue;
 			}
@@ -419,40 +359,67 @@ impl StandardOperatorStore {
 				(Some((key, entry)), None) => {
 					buffer_index += 1;
 					consumed += 1;
-					walked = Some(key.clone());
+					if consumed >= scan_budget {
+						walked = Some(key.clone());
+					}
 					if let Some(row) = entry {
 						items.push((key.clone(), row.clone()));
+					} else {
+						skipped += 1;
 					}
 				}
 				(None, Some((key, row))) => {
+					let dead = page_shadow.get(page_index).copied().unwrap_or(false);
 					page_index += 1;
 					consumed += 1;
-					walked = Some(key.clone());
-					items.push((key.clone(), row.clone()));
+					if consumed >= scan_budget {
+						walked = Some(key.clone());
+					}
+					if !dead {
+						items.push((key.clone(), row.clone()));
+					} else {
+						skipped += 1;
+					}
 				}
 				(Some((buffer_key, entry)), Some((page_key, page_row))) => {
 					match buffer_key.cmp(page_key) {
 						Ordering::Less => {
 							buffer_index += 1;
 							consumed += 1;
-							walked = Some(buffer_key.clone());
+							if consumed >= scan_budget {
+								walked = Some(buffer_key.clone());
+							}
 							if let Some(row) = entry {
 								items.push((buffer_key.clone(), row.clone()));
+							} else {
+								skipped += 1;
 							}
 						}
 						Ordering::Greater => {
+							let dead =
+								page_shadow.get(page_index).copied().unwrap_or(false);
 							page_index += 1;
 							consumed += 1;
-							walked = Some(page_key.clone());
-							items.push((page_key.clone(), page_row.clone()));
+							if consumed >= scan_budget {
+								walked = Some(page_key.clone());
+							}
+							if !dead {
+								items.push((page_key.clone(), page_row.clone()));
+							} else {
+								skipped += 1;
+							}
 						}
 						Ordering::Equal => {
 							buffer_index += 1;
 							page_index += 1;
 							consumed += 2;
-							walked = Some(buffer_key.clone());
+							if consumed >= scan_budget {
+								walked = Some(buffer_key.clone());
+							}
 							if let Some(row) = entry {
 								items.push((buffer_key.clone(), row.clone()));
+							} else {
+								skipped += 1;
 							}
 						}
 					}
@@ -460,6 +427,7 @@ impl StandardOperatorStore {
 			}
 		}
 
+		record_page(0, skipped);
 		let has_more = items.len() > limit as usize || resume.is_some();
 		items.truncate(limit as usize);
 		OperatorBatch {
@@ -484,11 +452,14 @@ impl StandardOperatorStore {
 
 		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
+		let mut page_shadow: Vec<bool> = Vec::new();
 		let mut page_index = 0usize;
+		let mut skipped = 0u64;
 
 		while items.len() < target {
 			if page_index == page.len() && !source.is_exhausted() {
 				page = source.next_page(target as u64);
+				page_shadow = self.resident.tombstoned(operator, page.iter().map(|(key, _)| key));
 				page_index = 0;
 				continue;
 			}
@@ -505,8 +476,13 @@ impl StandardOperatorStore {
 					}
 				}
 				(None, Some((key, row))) => {
+					let dead = page_shadow.get(page_index).copied().unwrap_or(false);
 					page_index += 1;
-					items.push((key.clone(), row.clone()));
+					if !dead {
+						items.push((key.clone(), row.clone()));
+					} else {
+						skipped += 1;
+					}
 				}
 				(Some((buffer_key, entry)), Some((page_key, page_row))) => {
 					match buffer_key.cmp(page_key) {
@@ -517,8 +493,14 @@ impl StandardOperatorStore {
 							}
 						}
 						Ordering::Greater => {
+							let dead =
+								page_shadow.get(page_index).copied().unwrap_or(false);
 							page_index += 1;
-							items.push((page_key.clone(), page_row.clone()));
+							if !dead {
+								items.push((page_key.clone(), page_row.clone()));
+							} else {
+								skipped += 1;
+							}
 						}
 						Ordering::Equal => {
 							buffer.bump();
@@ -532,12 +514,20 @@ impl StandardOperatorStore {
 			}
 		}
 
+		record_page(0, skipped);
 		let has_more = items.len() > limit as usize || source.ceiling().is_some();
 		items.truncate(limit as usize);
 		OperatorBatch {
 			items,
 			has_more,
 			resume: None,
+		}
+	}
+
+	fn occupied_keyspaces(&self, operator: OperatorId) -> Vec<KeyspaceId> {
+		match self.persistent.as_ref() {
+			Some(persistent) => persistent.occupied_keyspaces(operator),
+			None => Vec::new(),
 		}
 	}
 
@@ -551,11 +541,24 @@ impl StandardOperatorStore {
 			return Box::new(ExhaustedPager);
 		}
 		let persistent = self.persistent.as_ref();
-		let Some((group, keyspace, start, end)) = keyspace_inner_range_split(range) else {
-			return Box::new(PersistentPager::new(operator, persistent, range));
-		};
 		let Some(tiers) = self.range.as_ref() else {
 			return Box::new(PersistentPager::new(operator, persistent, range));
+		};
+		let Some((group, keyspace, start, end)) = keyspace_inner_range_split(range) else {
+			let Some(group) = group_inner_range_split(range) else {
+				return Box::new(PersistentPager::new(operator, persistent, range));
+			};
+			return Box::new(GroupKeyspacePager::new(
+				tiers,
+				operator,
+				group,
+				persistent,
+				keyspaces_of(
+					group,
+					range,
+					self.occupancy.mask(operator, || self.occupied_keyspaces(operator)),
+				),
+			));
 		};
 		dispatch(
 			keyspace,
@@ -596,6 +599,7 @@ impl StandardOperatorStore {
 			buffer_end,
 			buffer_done,
 			stored: Vec::new(),
+			stored_shadow: Vec::new(),
 			stored_index: 0,
 			stored_end: range.end,
 			stored_done,
@@ -675,6 +679,39 @@ impl OperatorStore {
 #[cfg(reifydb_assertions)]
 fn value_bytes(row: &EncodedPodRow) -> ByteSize {
 	ByteSize::from_bytes(row.bytes().len() as u64)
+}
+
+#[cfg(reifydb_assertions)]
+fn verify_group_scope(writes: &[OperatorWrite]) {
+	for write in writes {
+		let key = match write {
+			OperatorWrite::Insert {
+				key,
+				..
+			}
+			| OperatorWrite::Replace {
+				key,
+				..
+			}
+			| OperatorWrite::Remove {
+				key,
+				..
+			} => key,
+		};
+		let Some((group, keyspace, _)) = OperatorStateKey::decode_inner(key.as_slice()) else {
+			continue;
+		};
+		if group == GroupId::ROOT {
+			continue;
+		}
+		assert!(
+			group_scoped_id(keyspace).unwrap_or(true),
+			"{} is not group-scoped but was written at group {group}: the persistent tier rebuilds the \
+			 key through the typed layout, so this row reads back stamped ROOT and collides with every \
+			 other group holding the same suffix",
+			keyspace.name()
+		);
+	}
 }
 
 const STATE_LAST_PAGE: usize = 64;
@@ -778,6 +815,7 @@ pub struct StateLastIter<'a> {
 	buffer_end: Bound<EncodedKey>,
 	buffer_done: bool,
 	stored: Vec<(EncodedKey, EncodedPodRow)>,
+	stored_shadow: Vec<bool>,
 	stored_index: usize,
 	stored_end: Bound<EncodedKey>,
 	stored_done: bool,
@@ -814,6 +852,10 @@ impl Iterator for StateLastIter<'_> {
 				);
 				self.stored_done = !batch.has_more;
 				self.stored = batch.items;
+				self.stored_shadow = self
+					.store
+					.resident
+					.tombstoned(self.operator, self.stored.iter().map(|(key, _)| key));
 				self.stored_index = 0;
 				if let Some((key, _)) = self.stored.last() {
 					self.stored_end = Bound::Excluded(key.clone());
@@ -831,8 +873,11 @@ impl Iterator for StateLastIter<'_> {
 					}
 				}
 				(None, Some((key, row))) => {
+					let dead = self.stored_shadow.get(self.stored_index).copied().unwrap_or(false);
 					self.stored_index += 1;
-					return Some((key, row));
+					if !dead {
+						return Some((key, row));
+					}
 				}
 				(Some((buffer_key, entry)), Some((stored_key, stored_row))) => {
 					match buffer_key.cmp(&stored_key) {
@@ -843,8 +888,15 @@ impl Iterator for StateLastIter<'_> {
 							}
 						}
 						Ordering::Less => {
+							let dead = self
+								.stored_shadow
+								.get(self.stored_index)
+								.copied()
+								.unwrap_or(false);
 							self.stored_index += 1;
-							return Some((stored_key, stored_row));
+							if !dead {
+								return Some((stored_key, stored_row));
+							}
 						}
 						Ordering::Equal => {
 							self.buffer_index += 1;

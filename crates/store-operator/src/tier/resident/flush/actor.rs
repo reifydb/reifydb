@@ -10,6 +10,7 @@ use reifydb_runtime::{
 		context::Context,
 		mailbox::ActorRef,
 		system::ActorConfig,
+		timers::TimerHandle,
 		traits::{Actor, Directive},
 	},
 	sync::waiter::WaiterHandle,
@@ -24,6 +25,7 @@ const FLUSH_PENDING_TIMEOUT: Duration = Duration::from_seconds_const(5);
 #[derive(Clone)]
 pub enum FlushMessage {
 	Pressure,
+	Tick,
 	Shutdown,
 	FlushPending {
 		waiter: Arc<WaiterHandle>,
@@ -32,18 +34,24 @@ pub enum FlushMessage {
 
 pub struct ResidentFlushActor {
 	buffer: OperatorResidentState,
+	interval: Duration,
 }
 
 impl ResidentFlushActor {
-	pub fn new(buffer: OperatorResidentState) -> Self {
+	pub fn new(buffer: OperatorResidentState, interval: Duration) -> Self {
 		Self {
 			buffer,
+			interval,
 		}
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn spawn(spawner: &ActorSpawner, buffer: OperatorResidentState) -> ActorRef<FlushMessage> {
-		let actor = Self::new(buffer);
+	pub fn spawn(
+		spawner: &ActorSpawner,
+		buffer: OperatorResidentState,
+		interval: Duration,
+	) -> ActorRef<FlushMessage> {
+		let actor = Self::new(buffer, interval);
 		spawner.spawn_coordination("operator-persistent-flush", actor).actor_ref().clone()
 	}
 
@@ -51,8 +59,15 @@ impl ResidentFlushActor {
 		flush_now(&self.buffer);
 	}
 
-	fn relieve(&self) {
-		flush_now(&self.buffer);
+	fn arm(&self, ctx: &Context<FlushMessage>) -> TimerHandle {
+		ctx.schedule_once(self.interval, || FlushMessage::Tick)
+	}
+
+	fn rearm(&self, state: &mut Option<TimerHandle>, ctx: &Context<FlushMessage>) {
+		if let Some(pending) = state.take() {
+			pending.cancel();
+		}
+		*state = Some(self.arm(ctx));
 	}
 }
 
@@ -74,15 +89,15 @@ pub fn flush_pending(actor_ref: &ActorRef<FlushMessage>) -> bool {
 }
 
 impl Actor for ResidentFlushActor {
-	type State = ();
+	type State = Option<TimerHandle>;
 	type Message = FlushMessage;
 
-	fn init(&self, ctx: &Context<FlushMessage>) {
-		let _ = ctx;
+	fn init(&self, ctx: &Context<FlushMessage>) -> Option<TimerHandle> {
 		debug!("Operator persistent flush actor started");
+		Some(self.arm(ctx))
 	}
 
-	fn handle(&self, _state: &mut (), msg: FlushMessage, ctx: &Context<FlushMessage>) -> Directive {
+	fn handle(&self, state: &mut Option<TimerHandle>, msg: FlushMessage, ctx: &Context<FlushMessage>) -> Directive {
 		if ctx.is_cancelled() {
 			self.drain();
 			if let FlushMessage::FlushPending {
@@ -95,7 +110,13 @@ impl Actor for ResidentFlushActor {
 		}
 		match msg {
 			FlushMessage::Pressure => {
-				self.relieve();
+				self.drain();
+				self.rearm(state, ctx);
+			}
+			FlushMessage::Tick => {
+				self.buffer.note_tick();
+				self.drain();
+				self.rearm(state, ctx);
 			}
 			FlushMessage::Shutdown => {
 				debug!("Operator persistent flush actor shutting down");
@@ -107,6 +128,7 @@ impl Actor for ResidentFlushActor {
 			} => {
 				self.drain();
 				waiter.notify();
+				self.rearm(state, ctx);
 			}
 		}
 		Directive::Continue

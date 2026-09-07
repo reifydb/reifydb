@@ -43,10 +43,6 @@ impl PointDomain for TestDomain {
 		keyspace_of(key).map(|keyspace| keyspace.0 as usize)
 	}
 
-	fn caches_points(bucket: usize) -> bool {
-		KeyspaceId(bucket as u8).cache_tiers().caches_points()
-	}
-
 	fn metric_bucket_at(index: usize) -> Self::MetricBucket {
 		KeyspaceId(index as u8)
 	}
@@ -71,10 +67,6 @@ impl PointDomain for ChainingDomain {
 
 	fn metric_bucket(key: &EncodedKey) -> Option<usize> {
 		keyspace_of(key).map(|keyspace| keyspace.0 as usize)
-	}
-
-	fn caches_points(bucket: usize) -> bool {
-		KeyspaceId(bucket as u8).cache_tiers().caches_points()
 	}
 
 	fn supersede(resident: &mut Self::Row, incoming: Self::Row) -> bool {

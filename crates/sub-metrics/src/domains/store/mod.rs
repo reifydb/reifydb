@@ -15,10 +15,7 @@ use reifydb_store_multi::{
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
-	tier::{
-		point::tiers::OperatorPointKeyspaceMetrics, range::tiers::OperatorRangeKeyspaceMetrics,
-		resident::OperatorResidentStateMetrics,
-	},
+	tier::{range::tiers::OperatorRangeKeyspaceMetrics, resident::OperatorResidentStateMetrics},
 };
 use reifydb_store_single::{
 	SingleStore,
@@ -79,10 +76,6 @@ impl StoreReader {
 
 	pub fn single_persistent_probe(&self) -> Option<SinglePersistentProbeMetrics> {
 		self.single.persistent_probe_metrics()
-	}
-
-	pub fn operator_point_by_keyspace(&self) -> Vec<OperatorPointKeyspaceMetrics> {
-		self.operator.point_keyspace_metrics()
 	}
 
 	pub fn operator_range_by_keyspace(&self) -> Vec<OperatorRangeKeyspaceMetrics> {

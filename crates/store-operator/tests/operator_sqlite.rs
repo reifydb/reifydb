@@ -12,7 +12,7 @@ use reifydb_sqlite::SqliteConfig;
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	store::OperatorStore,
-	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
+	tier::range::OperatorRangeConfig,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
 use test_each_file::test_each_path;
@@ -38,7 +38,6 @@ fn test_sqlite(path: &Path) {
 			let store = OperatorStore::standard(OperatorStoreConfig {
 				resident: Default::default(),
 				persistent: Some(OperatorPersistentConfig::sqlite(sqlite_config)),
-				point: Some(OperatorPointConfig::testing()),
 				range: Some(OperatorRangeConfig::testing()),
 				spawner,
 				clock: Clock::Real,

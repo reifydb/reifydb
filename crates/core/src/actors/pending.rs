@@ -249,11 +249,14 @@ impl PendingLayers {
 	}
 
 	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedBytes> {
-		self.newest_containing(key).and_then(|layer| layer.get(key))
+		match self.write_at(key) {
+			Some(PendingWrite::Set(value)) => Some(value),
+			_ => None,
+		}
 	}
 
 	pub fn is_removed(&self, key: &EncodedKey) -> bool {
-		self.newest_containing(key).is_some_and(|layer| layer.is_removed(key))
+		matches!(self.write_at(key), Some(PendingWrite::Remove { .. }))
 	}
 
 	pub fn contains_key(&self, key: &EncodedKey) -> bool {

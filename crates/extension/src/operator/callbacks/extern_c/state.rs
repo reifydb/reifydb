@@ -751,10 +751,7 @@ mod join_row_expiry_guard_tests {
 		key::{
 			any::AnyKey,
 			operator::{
-				keyspace::{
-					join::{JoinExpiryDueKey, JoinRowMappingKey},
-					suffix_width_of,
-				},
+				keyspace::{join::JoinRowMappingKey, suffix_width_of},
 				state::{
 					GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range,
 					keyspace_inner_range_split,
@@ -768,7 +765,7 @@ mod join_row_expiry_guard_tests {
 			host::HostContext,
 			state::{iter::StateIterator, reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 		},
-		transaction::join_expiry::{JoinDueEntry, JoinDuePage},
+		transaction::join_expiry::{DueStart, JoinDueEntry, JoinDuePage},
 	};
 	use reifydb_value::{
 		Result,
@@ -904,8 +901,13 @@ mod join_row_expiry_guard_tests {
 			Ok(())
 		}
 
-		fn join_expiry_clear(&mut self, _group: GroupId, _side: u8, _row_number: RowNumber) -> Result<()> {
-			Ok(())
+		fn join_expiry_clear(
+			&mut self,
+			_group: GroupId,
+			_side: u8,
+			_row_number: RowNumber,
+		) -> Result<Option<DateTime>> {
+			Ok(None)
 		}
 
 		fn join_expiry_free(&mut self, _entry: &JoinDueEntry) -> Result<()> {
@@ -916,16 +918,12 @@ mod join_row_expiry_guard_tests {
 			Ok(None)
 		}
 
-		fn join_due_page(
-			&mut self,
-			_at: DateTime,
-			_budget: usize,
-			_from: Option<&JoinExpiryDueKey>,
-		) -> Result<JoinDuePage> {
+		fn join_due_page(&mut self, _at: DateTime, _budget: usize, _start: &DueStart) -> Result<JoinDuePage> {
 			Ok(JoinDuePage {
 				due: Vec::new(),
 				resume: None,
 				more: false,
+				next: None,
 			})
 		}
 

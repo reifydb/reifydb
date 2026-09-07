@@ -11,17 +11,19 @@ use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::expiry::{Expiry, ExpiryKey, TumblingExpiry, TumblingExpirySuffix},
-			state::{GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range},
+			state::{
+				GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range, keyspace_inner_range_in,
+			},
 			traits::Keyspace,
 		},
 		typed::{TypedKey, direction::Desc},
 	},
 	state::{
 		timer::StateStore,
-		typed::{SuffixBytes, TypedStateStore, typed_key},
+		typed::{SuffixBytes, typed_key},
 	},
 };
-use reifydb_value::{Result, util::hash::Hash128};
+use reifydb_value::{Result, reifydb_assertions, util::hash::Hash128};
 use tracing::instrument;
 
 pub(crate) fn expiry_range<K: Keyspace>() -> EncodedKeyRange {
@@ -108,6 +110,7 @@ where
 pub(crate) fn expiry_due<K, E>(
 	store: &mut dyn StateStore,
 	threshold: u64,
+	floor: Option<u64>,
 	limit: usize,
 ) -> Result<Vec<(GroupStateKey, E)>>
 where
@@ -115,13 +118,37 @@ where
 	K::Suffix: ExpirySuffix,
 	E: OperatorState,
 {
-	let from = K::Suffix::at_threshold(threshold);
-	let page = store.state_scan_in::<K>(GroupId::ROOT, Bound::Included(&from), Some(limit))?;
-	let mut out = Vec::with_capacity(page.len());
-	for (suffix, payload) in page {
-		out.push((typed_key::<K>(GroupId::ROOT, &suffix), decode::<E>(&payload)?));
+	let from = K::Suffix::at_threshold(threshold).to_suffix_bytes();
+	let until = floor.filter(|floor| *floor > 0).map(|floor| K::Suffix::at_threshold(floor - 1).to_suffix_bytes());
+	let range = keyspace_inner_range_in(
+		GroupId::ROOT,
+		K::ID,
+		Bound::Included(from.as_slice()),
+		match &until {
+			Some(until) => Bound::Excluded(until.as_slice()),
+			None => Bound::Unbounded,
+		},
+	);
+	let mut out = Vec::with_capacity(limit.min(64));
+	for (key, payload) in store.state_page(range, Some(limit))? {
+		out.push((key, decode::<E>(&payload)?));
 	}
 	Ok(out)
+}
+
+#[instrument(name = "flow::seal::expiry_next", level = "debug", skip_all)]
+pub(crate) fn expiry_next_above<K>(store: &mut dyn StateStore, threshold: u64) -> Result<Option<u64>>
+where
+	K: Keyspace,
+	K::Suffix: ExpirySuffix,
+{
+	let above = K::Suffix::at_threshold(threshold).to_suffix_bytes();
+	let range = keyspace_inner_range_in(GroupId::ROOT, K::ID, Bound::Unbounded, Bound::Excluded(above.as_slice()));
+	let Some((key, _)) = store.state_last(range)? else {
+		return Ok(None);
+	};
+	let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_bytes()).expect("an expiry key must decode");
+	Ok(K::Suffix::from_suffix_bytes(suffix).map(|suffix| suffix.threshold()))
 }
 
 #[instrument(name = "flow::seal::expiry_earliest", level = "debug", skip_all)]
@@ -150,6 +177,7 @@ where
 
 struct PendingScan {
 	capped: bool,
+	threshold: u64,
 }
 
 pub(crate) struct ExpiryIndex<K: Keyspace>
@@ -203,9 +231,10 @@ where
 			return Ok(Vec::new());
 		}
 		self.inserted = None;
-		let due = expiry_due::<K, E>(store, threshold, limit)?;
+		let due = expiry_due::<K, E>(store, threshold, self.earliest, limit)?;
 		self.pending = Some(PendingScan {
 			capped: due.len() >= limit,
+			threshold,
 		});
 		Ok(due)
 	}
@@ -217,8 +246,19 @@ where
 		if scan.capped {
 			return Ok(());
 		}
-		let grounded = expiry_earliest::<K>(store)?.unwrap_or(u64::MAX);
-		self.earliest = Some(self.inserted.map_or(grounded, |seen| grounded.min(seen)));
+		let above = expiry_next_above::<K>(store, scan.threshold)?.unwrap_or(u64::MAX);
+		let earliest = self.inserted.map_or(above, |seen| above.min(seen));
+		reifydb_assertions! {
+			let grounded = expiry_earliest::<K>(store)?.unwrap_or(u64::MAX);
+			assert!(
+				earliest <= grounded,
+				"the pass drained through {} and settled the expiry floor at {earliest}, but the \
+				 keyspace still holds a live row at {grounded}; a floor above the earliest live \
+				 threshold cuts that row out of every later due scan",
+				scan.threshold
+			);
+		}
+		self.earliest = Some(earliest);
 		Ok(())
 	}
 
@@ -264,7 +304,7 @@ mod tests {
 			.unwrap();
 		}
 
-		let due = expiry_due::<Expiry, Entry>(&mut store, 20, 16).unwrap();
+		let due = expiry_due::<Expiry, Entry>(&mut store, 20, None, 16).unwrap();
 		let rows: Vec<u64> = due.iter().map(|(_, e)| e.row).collect();
 		assert_eq!(rows, vec![2, 1], "expiry 30 is not yet due; 20 (newest due) precedes 10");
 	}
@@ -282,7 +322,7 @@ mod tests {
 		)
 		.unwrap();
 
-		let due = expiry_due::<Expiry, Entry>(&mut store, 100, 16).unwrap();
+		let due = expiry_due::<Expiry, Entry>(&mut store, 100, None, 16).unwrap();
 		assert_eq!(due.len(), 1, "the persisted entry must be visible to a reader that never wrote");
 		assert_eq!(
 			due[0].1,
@@ -314,7 +354,7 @@ mod tests {
 		.unwrap();
 		expiry_drop(&mut store, &key(10, 1)).unwrap();
 
-		let due = expiry_due::<Expiry, Entry>(&mut store, 100, 16).unwrap();
+		let due = expiry_due::<Expiry, Entry>(&mut store, 100, None, 16).unwrap();
 		assert_eq!(due.len(), 1);
 		assert_eq!(due[0].1.row, 2, "only the surviving entry may remain");
 	}
@@ -333,7 +373,7 @@ mod tests {
 			)
 			.unwrap();
 		}
-		let due = expiry_due::<Expiry, Entry>(&mut store, 100, 2).unwrap();
+		let due = expiry_due::<Expiry, Entry>(&mut store, 100, None, 2).unwrap();
 		assert_eq!(due.len(), 2, "one call serves at most `limit` entries");
 	}
 
@@ -450,6 +490,113 @@ mod tests {
 		let due = index.due::<Entry>(&mut store, 60, 16).unwrap();
 		assert_eq!(due.len(), 1, "the raise must not climb past an entry armed during the scan");
 		assert_eq!(due[0].1.row, 1);
+	}
+
+	#[test]
+	fn a_scan_bounded_by_the_settled_floor_still_reaches_an_entry_at_the_floor() {
+		// settle puts the floor one past the threshold it drained and the next scan ends there, so an
+		// entry armed exactly at the floor is the boundary the range's high edge has to include.
+		let mut store = MockStore::default();
+		let mut index = ExpiryIndex::<Expiry>::default();
+
+		expiry_set(
+			&mut store,
+			key(20, 1),
+			Entry {
+				row: 1,
+			},
+		)
+		.unwrap();
+		for (drained, _) in index.due::<Entry>(&mut store, 20, 16).unwrap() {
+			expiry_drop(&mut store, &drained).unwrap();
+		}
+		index.settle(&mut store).unwrap();
+
+		index.set(
+			&mut store,
+			key(21, 2),
+			Entry {
+				row: 2,
+			},
+		)
+		.unwrap();
+
+		let due = index.due::<Entry>(&mut store, 100, 16).unwrap();
+		assert_eq!(due.len(), 1, "the entry armed at the floor must stay inside the bounded scan");
+		assert_eq!(due[0].1.row, 2);
+	}
+
+	#[test]
+	fn a_drained_pass_settles_the_floor_on_the_next_live_entry_not_one_past_its_threshold() {
+		// The floor comes from a reverse scan bounded to stop where the drained rows begin, so it lands
+		// on the next live entry. Settling one past the threshold instead would be sound but loose, and
+		// every tick between the two would pay for a scan. The planted entry is invisible to the index,
+		// so finding it would prove the scan ran.
+		let mut store = MockStore::default();
+		let mut index = ExpiryIndex::<Expiry>::default();
+
+		for (expiry, row) in [(20u64, 1u64), (50, 2)] {
+			expiry_set(
+				&mut store,
+				key(expiry, expiry as u32),
+				Entry {
+					row,
+				},
+			)
+			.unwrap();
+		}
+
+		for (drained, _) in index.due::<Entry>(&mut store, 20, 16).unwrap() {
+			expiry_drop(&mut store, &drained).unwrap();
+		}
+		index.settle(&mut store).unwrap();
+
+		expiry_set(
+			&mut store,
+			key(30, 3),
+			Entry {
+				row: 3,
+			},
+		)
+		.unwrap();
+
+		assert!(
+			index.due::<Entry>(&mut store, 40, 16).unwrap().is_empty(),
+			"the floor must sit on the entry at 50, so a threshold of 40 skips the store entirely"
+		);
+	}
+
+	#[test]
+	fn a_drained_pass_leaves_an_entry_above_its_threshold_reachable() {
+		// The floor is derived from the drain instead of scanned for, so it is only sound when the
+		// caller dropped every row the scan returned. What it never returned must stay reachable.
+		let mut store = MockStore::default();
+		let mut index = ExpiryIndex::<Expiry>::default();
+
+		for (expiry, row) in [(10u64, 1u64), (20, 2), (30, 3)] {
+			expiry_set(
+				&mut store,
+				key(expiry, expiry as u32),
+				Entry {
+					row,
+				},
+			)
+			.unwrap();
+		}
+
+		for (drained, _) in index.due::<Entry>(&mut store, 20, 16).unwrap() {
+			expiry_drop(&mut store, &drained).unwrap();
+		}
+		index.settle(&mut store).unwrap();
+
+		assert!(
+			index.due::<Entry>(&mut store, 20, 16).unwrap().is_empty(),
+			"the floor sits one past the drained threshold, so 20 must not scan again"
+		);
+
+		let due = index.due::<Entry>(&mut store, 30, 16).unwrap();
+		assert_eq!(due.len(), 1, "the entry at 30 was never drained and sits above the floor");
+		assert_eq!(due[0].1.row, 3);
 	}
 
 	#[test]

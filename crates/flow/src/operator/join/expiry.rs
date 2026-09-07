@@ -17,8 +17,10 @@ impl JoinExpiryIndex {
 		}
 	}
 
-	pub(crate) fn invalidate(&mut self) {
-		self.earliest = None;
+	pub(crate) fn cleared(&mut self, at: DateTime) {
+		if self.earliest == Some(Some(at)) {
+			self.earliest = None;
+		}
 	}
 
 	pub(crate) fn min(&mut self, host: &mut dyn HostContext) -> Result<Option<DateTime>> {
@@ -28,5 +30,9 @@ impl JoinExpiryIndex {
 		let earliest = host.join_expiry_min()?;
 		self.earliest = Some(earliest);
 		Ok(earliest)
+	}
+
+	pub(crate) fn settle(&mut self, earliest: Option<DateTime>) {
+		self.earliest = Some(earliest);
 	}
 }

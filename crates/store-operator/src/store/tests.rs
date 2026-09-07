@@ -25,7 +25,6 @@ use crate::{
 	store::{CheckpointInterlock, StandardOperatorStore},
 	tier::{
 		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
-		point::OperatorPointConfig,
 		range::OperatorRangeConfig,
 		resident::flush::actor::flush_now,
 	},
@@ -43,7 +42,6 @@ fn store_fixture() -> (StandardOperatorStore, SqliteTempPathGuard) {
 	let store = StandardOperatorStore::new(OperatorStoreConfig {
 		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage))),
-		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
 		clock,

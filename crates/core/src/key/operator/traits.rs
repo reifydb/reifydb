@@ -3,18 +3,15 @@
 
 use std::fmt::Debug;
 
-use crate::{
-	interface::store::CacheTiers,
-	key::{
-		operator::state::{GroupId, KeyspaceId},
-		typed::layout::KeyLayout,
-	},
+use crate::key::{
+	operator::state::{GroupId, KeyspaceId},
+	typed::layout::KeyLayout,
 };
 
 pub trait Keyspace: Copy + Debug + 'static {
 	const ID: KeyspaceId;
 	const NAME: &'static str;
-	const CACHE: CacheTiers;
+	const RANGE_CACHED: bool;
 
 	type GroupedKey: KeyLayout;
 	type Suffix: KeyLayout;

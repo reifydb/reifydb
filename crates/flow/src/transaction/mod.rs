@@ -158,21 +158,29 @@ pub trait FlowTransaction: Sized + Send + 'static {
 	}
 
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		if self.pending_layers().is_removed(key) {
-			return Ok(None);
-		}
-		if let Some(value) = self.pending_layers().get(key) {
-			return Ok(Some(value.clone()));
+		let pending = match self.pending_layers().write_at(key) {
+			Some(PendingWrite::Remove {
+				..
+			}) => Some(None),
+			Some(PendingWrite::Set(value)) => Some(Some(value.clone())),
+			None => None,
+		};
+		if let Some(result) = pending {
+			return Ok(result);
 		}
 		self.storage_get(key)
 	}
 
 	fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		if self.pending_layers().is_removed(key) {
-			return Ok(false);
-		}
-		if self.pending_layers().get(key).is_some() {
-			return Ok(true);
+		let pending = match self.pending_layers().write_at(key) {
+			Some(PendingWrite::Remove {
+				..
+			}) => Some(false),
+			Some(PendingWrite::Set(_)) => Some(true),
+			None => None,
+		};
+		if let Some(result) = pending {
+			return Ok(result);
 		}
 		self.storage_contains(key)
 	}

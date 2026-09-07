@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::testing::db::TestDb;
-use reifydb_core::{interface::catalog::id::NamespaceId, metrics::sample::MetricKind};
+use reifydb_core::metrics::sample::MetricKind;
 use reifydb_sub_metrics::framework::spec::{DomainShape, MetricsDomain, PushKind, Surface};
 use reifydb_value::value::value_type::ValueType;
 
@@ -32,18 +32,6 @@ fn operator_range_keyspace_is_dimensioned_by_keyspace_name_not_by_shard() {
 	assert_eq!(spec.dimensions[0].data_type, ValueType::Utf8);
 	assert!(!spec.dimensions[0].optional, "every row must know its keyspace");
 	assert!(spec.dimensions.iter().all(|d| d.name != "shard"), "a keyspace must never carry a shard dimension");
-}
-
-#[test]
-fn range_and_point_are_two_separate_namespaces() {
-	// Two caches with two budgets: sharing a namespace collides on the vtable name and re-merges the
-	// tiers into one row set, which is exactly the reading the split exists to take apart.
-	let point = MetricsDomain::StoreOperatorPointKeyspace.spec().namespace;
-	let range = MetricsDomain::StoreOperatorRangeKeyspace.spec().namespace;
-
-	assert_eq!(point, NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_POINT_KEYSPACE);
-	assert_eq!(range, NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_RANGE_KEYSPACE);
-	assert_ne!(point, range, "each operator cache surface must own its own namespace");
 }
 
 #[test]

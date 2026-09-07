@@ -8,7 +8,10 @@
 use std::{collections::BTreeMap, ops::Bound};
 
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_core::key::operator::state::OperatorStateKey;
+use reifydb_core::key::operator::{
+	keyspace::{KEYSPACES, columns_width},
+	state::OperatorStateKey,
+};
 use reifydb_value::byte_size::ByteSize;
 
 type StateKey = (u64, Vec<u8>);
@@ -108,7 +111,7 @@ impl Oracle {
 				value_bytes: 0,
 			});
 			bucket.keys += 1;
-			bucket.key_bytes += (key.len() - 1) as u64;
+			bucket.key_bytes += billed_key_bytes(key);
 			bucket.value_bytes += row.bytes().len() as u64;
 		}
 		buckets.into_values().collect()
@@ -118,13 +121,23 @@ impl Oracle {
 		self.state
 			.iter()
 			.filter(|((candidate, _), _)| *candidate == operator)
-			.map(|((_, key), row)| (key.len() - 1 + row.bytes().len()) as u64)
+			.map(|((_, key), row)| billed_key_bytes(key) + row.bytes().len() as u64)
 			.sum()
 	}
 
 	pub fn total_bytes(&self) -> u64 {
-		self.state.iter().map(|((_, key), row)| (key.len() - 1 + row.bytes().len()) as u64).sum()
+		self.state.iter().map(|((_, key), row)| billed_key_bytes(key) + row.bytes().len() as u64).sum()
 	}
+}
+
+/// The store bills the columns its keyspace declares, not the encoded key, so a keyspace with no group
+/// column is charged for its suffix alone.
+fn billed_key_bytes(key: &[u8]) -> u64 {
+	let stored =
+		*key.get(OperatorStateKey::KEYSPACE_INNER_OFFSET as usize).expect("state keys carry a keyspace byte");
+	let keyspace = OperatorStateKey::decode_keyspace(stored);
+	let spec = KEYSPACES.iter().find(|spec| spec.id == keyspace).expect("a fixture keyspace is in the catalogue");
+	columns_width(spec.columns) as u64
 }
 
 fn in_bounds(key: &[u8], start: &Bound<Vec<u8>>, end: &Bound<Vec<u8>>) -> bool {

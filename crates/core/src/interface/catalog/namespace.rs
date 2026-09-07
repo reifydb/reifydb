@@ -42,7 +42,6 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_STORE_SINGLE_COMMIT: NamespaceId = NamespaceId(31);
 	pub const SYSTEM_METRICS_STORE_SINGLE_PERSISTENT: NamespaceId = NamespaceId(32);
 	pub const SYSTEM_METRICS_STORE_OPERATOR: NamespaceId = NamespaceId(33);
-	pub const SYSTEM_METRICS_STORE_OPERATOR_POINT: NamespaceId = NamespaceId(36);
 	pub const SYSTEM_METRICS_STORE_OPERATOR_PERSISTENT: NamespaceId = NamespaceId(37);
 	pub const SYSTEM_METRICS_INSTRUMENTS: NamespaceId = NamespaceId(38);
 	pub const SYSTEM_METRICS_EPOCH: NamespaceId = NamespaceId(39);
@@ -51,7 +50,6 @@ impl NamespaceId {
 	pub const STORAGE: NamespaceId = NamespaceId(42);
 	pub const SYSTEM_METRICS_FLOW: NamespaceId = NamespaceId(43);
 	pub const SYSTEM_METRICS_FLOW_STATE: NamespaceId = NamespaceId(44);
-	pub const SYSTEM_METRICS_STORE_OPERATOR_POINT_KEYSPACE: NamespaceId = NamespaceId(45);
 	pub const SYSTEM_METRICS_STORE_OPERATOR_RANGE: NamespaceId = NamespaceId(46);
 	pub const SYSTEM_METRICS_STORE_OPERATOR_RANGE_KEYSPACE: NamespaceId = NamespaceId(47);
 	pub const SYSTEM_METRICS_STORE_MULTI_RANGE: NamespaceId = NamespaceId(52);

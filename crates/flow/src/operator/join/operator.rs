@@ -16,10 +16,7 @@ use reifydb_core::{
 		flow::OperatorCapability,
 	},
 	key::{
-		operator::{
-			keyspace::join::{JoinExpiryDueKey, JoinRowMappingKey},
-			state::GroupId,
-		},
+		operator::{keyspace::join::JoinRowMappingKey, state::GroupId},
 		typed::direction::{Asc, Desc},
 	},
 	metrics::{heap::OperatorSample, instruments::counter::Counter},
@@ -37,6 +34,7 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
 	error::Error,
+	reifydb_assertions,
 	util::hash::{Hash128, xxh3_128},
 	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber, value_type::ValueType},
 };
@@ -61,7 +59,7 @@ use crate::{
 		},
 	},
 	timer::Timer,
-	transaction::join_expiry::{JoinDueEntry, join_expiry_range},
+	transaction::join_expiry::{DueStart, JoinDueEntry, join_expiry_range},
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -278,7 +276,20 @@ impl JoinOperator {
 	}
 
 	fn resync_timer(&mut self, host: &mut dyn HostContext, retry: Option<DateTime>) -> Result<()> {
-		let next = match (self.expiry.min(host)?, retry) {
+		let earliest = self.expiry.min(host)?;
+		self.arm_maintenance(host, earliest, retry)
+	}
+
+	#[instrument(name = "flow::join::maintenance", level = "debug", skip_all, fields(
+		outcome = if earliest.is_none() && retry.is_none() { "disarmed" } else { "armed" }
+	))]
+	fn arm_maintenance(
+		&mut self,
+		host: &mut dyn HostContext,
+		earliest: Option<DateTime>,
+		retry: Option<DateTime>,
+	) -> Result<()> {
+		let next = match (earliest, retry) {
 			(Some(earliest), Some(retry)) => Some(earliest.min(retry)),
 			(earliest, retry) => earliest.or(retry),
 		};
@@ -308,10 +319,9 @@ impl JoinOperator {
 			let Some(group) = resolved.get(hash).copied() else {
 				continue;
 			};
-			host.join_expiry_clear(group, side.tag(), *row_number)?;
-		}
-		if !cleared.is_empty() {
-			self.expiry.invalidate();
+			if let Some(at) = host.join_expiry_clear(group, side.tag(), *row_number)? {
+				self.expiry.cleared(at);
+			}
 		}
 
 		for (hash, row_number, at) in armed {
@@ -450,11 +460,14 @@ impl JoinOperator {
 		let state = JoinState::new();
 		let mut emptied: Vec<GroupId> = Vec::new();
 		let mut seen: HashSet<GroupId> = HashSet::new();
-		let mut cursor: Option<JoinExpiryDueKey> = None;
-		loop {
-			let page = host.join_due_page(fired.at(), SEAL_BATCH, cursor.as_ref())?;
+		let mut start = match self.expiry.min(host)? {
+			Some(floor) => DueStart::Floor(floor),
+			None => DueStart::Bottom,
+		};
+		let earliest = loop {
+			let page = host.join_due_page(fired.at(), SEAL_BATCH, &start)?;
 			if page.due.is_empty() {
-				break;
+				break page.next;
 			}
 			let mut order: Vec<GroupId> = Vec::new();
 			let mut by_group: HashMap<GroupId, Vec<(JoinSide, JoinDueEntry)>> = HashMap::new();
@@ -483,25 +496,44 @@ impl JoinOperator {
 				}
 			}
 			if !page.more {
-				break;
+				break page.next;
 			}
-			cursor = page.resume;
-		}
+			start = match page.resume {
+				Some(cursor) => DueStart::After(cursor),
+				None => break page.next,
+			};
+		};
 
 		for group in emptied {
-			if state.left.holds_rows(host, group)?
+			if !host.state_range_limited(join_expiry_range(group), Some(1))?.is_empty()
+				|| state.left.holds_rows(host, group)?
 				|| state.right.holds_rows(host, group)?
-				|| !host.state_range_limited(join_expiry_range(group), Some(1))?.is_empty()
 			{
 				continue;
 			}
-			host.clear_join_expiries(group, SEAL_BATCH)?;
+			reifydb_assertions! {
+				let stranded = host.state_range_limited(join_expiry_range(group), Some(1))?.len();
+				assert!(
+					stranded == 0,
+					"group {group} reached the reaper still holding a row expiry entry; reaping it \
+					 strands that entry's due-index sibling behind a group id nothing resolves again"
+				);
+			}
 			enqueue(host, group)?;
 			let drained = drain_group(host, group, &mut StoreReaper, SEAL_BATCH)?;
 			stalled |= drained.still_queued;
 		}
 
-		self.expiry.invalidate();
+		reifydb_assertions! {
+			let scanned = host.join_expiry_min()?;
+			assert!(
+				scanned == earliest,
+				"the drain read {earliest:?} as the first instant past {fired:?}, but the index now \
+				 holds {scanned:?}; arming the maintenance timer on a stale read leaves a row \
+				 unexpired until the next fire"
+			);
+		}
+		self.expiry.settle(earliest);
 		self.resync_timer(host, stalled.then_some(retry))
 	}
 
@@ -1435,6 +1467,45 @@ mod seal_tests {
 	}
 
 	#[test]
+	fn a_row_armed_below_a_settled_floor_still_expires() {
+		// a pass settles the floor at the earliest live expiry and the next pass starts its due scan there,
+		// so a backfilled row arming beneath that floor is reachable only because arming lowers it
+		let engine = TestEngine::new();
+		let mut op = join(1, Some(seconds(10)), None);
+		let mut txn = txn_at(&engine, 100);
+		let early = rows(&[7], &[1], at_millis(5_000));
+		insert(&mut op, &mut txn, JoinSide::Left, &early);
+		let group = group_of(&hash_of(&op, JoinSide::Left, &early, 0));
+
+		fire(&mut op, &mut txn, at_millis(9_000));
+		assert_eq!(
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 1),
+			Some(at_millis(15_001)),
+			"the pass must settle its floor on this expiry, which outlives the fire"
+		);
+
+		insert(&mut op, &mut txn, JoinSide::Left, &rows(&[7], &[2], at_millis(1_000)));
+		assert_eq!(
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 2),
+			Some(at_millis(11_001)),
+			"the backfilled row must arm below the settled floor or this test proves nothing"
+		);
+
+		fire(&mut op, &mut txn, at_millis(12_000));
+
+		assert_eq!(
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 2),
+			None,
+			"a due scan that starts at a floor above the backfilled row leaves it unexpired forever"
+		);
+		assert_eq!(
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 1),
+			Some(at_millis(15_001)),
+			"and the row past the fire must keep its arming"
+		);
+	}
+
+	#[test]
 	fn an_update_moves_the_rows_timer_rather_than_adding_a_second() {
 		// Without cancelling the old arming the row is addressed twice and the stale one fires while it lives.
 		let engine = TestEngine::new();
@@ -1812,8 +1883,9 @@ mod seal_tests {
 		let four = left_scans_freeing_expired_rights(21, 4);
 
 		assert_eq!(
-			one, 2,
-			"exactly two left reads: the composite key enumeration and the holds_rows veto on the drain"
+			one, 1,
+			"exactly one left read: the composite key enumeration; the row expiry probe vetoes the drain \
+			 before the left side is read again"
 		);
 		assert_eq!(four, one, "four expiring rights must not cost four enumerations of the same left side");
 	}

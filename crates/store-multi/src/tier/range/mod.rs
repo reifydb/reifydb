@@ -345,10 +345,10 @@ impl RangeDomain for MultiDomain {
 	}
 
 	fn caches_ranges(partition: &Self::Partition) -> bool {
-		StorageRowKey::owns(partition.kind).is_some() && partition.kind.cache_tiers().caches_ranges()
+		StorageRowKey::owns(partition.kind).is_some() && partition.kind.caches_ranges()
 	}
 
-	fn cache_tiers_run_end(_partition: &Self::Partition) -> Edge<Self::Key> {
+	fn cache_run_end(_partition: &Self::Partition) -> Edge<Self::Key> {
 		Edge::Top
 	}
 
@@ -491,7 +491,7 @@ impl MultiRangeTier {
 		through: &EncodedKey,
 		entries: &[RawEntry],
 	) -> bool {
-		if !table.cache_tiers().caches_ranges() {
+		if !table.caches_ranges() {
 			return false;
 		}
 		let (Some(lo), Some(through)) =
@@ -539,7 +539,7 @@ impl MultiRangeTier {
 		batch_size: usize,
 		descending: bool,
 	) -> ServedChunk {
-		if descending || !table.cache_tiers().caches_ranges() {
+		if descending || !table.caches_ranges() {
 			return ServedChunk::Gap;
 		}
 		let (Some(range_lo), Some(range_hi)) = (narrow_bound(table, start), narrow_bound(table, end)) else {

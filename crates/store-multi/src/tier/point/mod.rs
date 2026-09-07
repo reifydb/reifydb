@@ -108,10 +108,6 @@ impl PointDomain for MultiPointDomain {
 		Some(0)
 	}
 
-	fn caches_points(_slot: usize) -> bool {
-		true
-	}
-
 	fn supersede(resident: &mut Self::Row, incoming: Self::Row) -> bool {
 		supersede_versioned(resident, incoming)
 	}
@@ -154,10 +150,6 @@ impl PointDomain for RowPointDomain {
 		Some(0)
 	}
 
-	fn caches_points(_slot: usize) -> bool {
-		true
-	}
-
 	fn supersede(resident: &mut Self::Row, incoming: Self::Row) -> bool {
 		supersede_versioned(resident, incoming)
 	}
@@ -184,10 +176,6 @@ impl PointDomain for PartitionedRowPointDomain {
 
 	fn metric_bucket(_key: &StoragePartitionedRowKey) -> Option<usize> {
 		Some(0)
-	}
-
-	fn caches_points(_slot: usize) -> bool {
-		true
 	}
 
 	fn supersede(resident: &mut Self::Row, incoming: Self::Row) -> bool {
@@ -218,10 +206,6 @@ impl PointDomain for SeriesPointDomain {
 		Some(0)
 	}
 
-	fn caches_points(_slot: usize) -> bool {
-		true
-	}
-
 	fn supersede(resident: &mut Self::Row, incoming: Self::Row) -> bool {
 		supersede_versioned(resident, incoming)
 	}
@@ -248,10 +232,6 @@ impl PointDomain for PartitionedSeriesPointDomain {
 
 	fn metric_bucket(_key: &StoragePartitionedSeriesKey) -> Option<usize> {
 		Some(0)
-	}
-
-	fn caches_points(_slot: usize) -> bool {
-		true
 	}
 
 	fn supersede(resident: &mut Self::Row, incoming: Self::Row) -> bool {

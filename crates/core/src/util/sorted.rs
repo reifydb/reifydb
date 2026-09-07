@@ -57,6 +57,10 @@ impl<K, V> SortedVecMap<K, V> {
 		self.slots.iter().map(|(key, value)| (key, value))
 	}
 
+	pub fn iter_mut(&mut self) -> impl DoubleEndedIterator<Item = (&K, &mut V)> {
+		self.slots.iter_mut().map(|(key, value)| (&*key, value))
+	}
+
 	pub fn keys(&self) -> impl DoubleEndedIterator<Item = &K> {
 		self.slots.iter().map(|(key, _)| key)
 	}

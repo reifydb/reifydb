@@ -11,6 +11,8 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::{HeapSize, OperatorSample},
 };
+#[cfg(reifydb_assertions)]
+use reifydb_flow::operator::state::reaper::queued;
 use reifydb_flow::{
 	operator::state::{
 		reaper::{drain, enqueue},
@@ -27,6 +29,7 @@ use reifydb_flow::{
 };
 use reifydb_value::{
 	config::Config,
+	reifydb_assertions,
 	value::{diff_type::DiffType, duration::Duration, row_number::RowNumber},
 };
 use tracing::debug;
@@ -122,6 +125,7 @@ where
 {
 	aggregator: A,
 	engine: TumblingEngine<A::GroupKey, Anchor<A>, A::Accumulator>,
+	reap_queue_empty: bool,
 }
 
 impl<A> TumblingDriver<A>
@@ -199,6 +203,7 @@ where
 {
 	fn expire_through<C: GuestContext>(
 		engine: &mut TumblingEngine<A::GroupKey, Anchor<A>, A::Accumulator>,
+		reap_queue_empty: &mut bool,
 		store: &mut GuestAsHost<'_, C>,
 		frontier: Anchor<A>,
 		lateness: Lateness<A>,
@@ -209,10 +214,24 @@ where
 		}
 		for window in engine.expire(store, horizon.to_order().saturating_sub(1))? {
 			enqueue(store, window.group_id)?;
+			*reap_queue_empty = false;
 		}
 		engine.expire_meta(store, horizon.to_order())?;
+		if *reap_queue_empty {
+			reifydb_assertions! {
+				let pending = queued(store, 1)?;
+				assert!(
+					pending.groups.is_empty(),
+					"the reap queue still holds {:?} while the driver believes it drained the \
+					 queue; skipping the drain here leaves that group's state behind for good",
+					pending.groups
+				);
+			}
+			return Ok(());
+		}
 		let drained = drain(store, engine, SEAL_REAP_BATCH)?;
-		if !drained.queue_is_empty() {
+		*reap_queue_empty = drained.queue_is_empty();
+		if !*reap_queue_empty {
 			observe_batch(store, frontier, lateness)?;
 		}
 		Ok(())
@@ -285,6 +304,7 @@ where
 		Ok(Self {
 			aggregator,
 			engine: TumblingEngine::new(engine_config),
+			reap_queue_empty: false,
 		})
 	}
 
@@ -294,13 +314,14 @@ where
 		};
 		let Self {
 			engine,
+			reap_queue_empty,
 			..
 		} = &mut *self;
 		let mut store = GuestAsHost(ctx);
 		let Some(frontier) = timer_frontier::<Anchor<A>>(&mut store, timer)? else {
 			return Ok(());
 		};
-		Self::expire_through(engine, &mut store, frontier, lateness)
+		Self::expire_through(engine, reap_queue_empty, &mut store, frontier, lateness)
 	}
 
 	fn lateness(&self) -> Option<Duration> {
@@ -317,6 +338,7 @@ where
 		if let Some(lateness) = lateness {
 			let Self {
 				engine,
+				reap_queue_empty,
 				..
 			} = &mut *self;
 			let mut store = GuestAsHost(ctx);
@@ -338,7 +360,7 @@ where
 			if dropped > 0 {
 				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
-			Self::expire_through(engine, &mut store, watermark, lateness)?;
+			Self::expire_through(engine, reap_queue_empty, &mut store, watermark, lateness)?;
 			if buckets.is_empty() {
 				return Ok(());
 			}
