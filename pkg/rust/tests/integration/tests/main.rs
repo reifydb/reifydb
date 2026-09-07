@@ -7,6 +7,7 @@
 mod auth;
 mod catalog;
 mod dictionary_durability;
+mod dictionary_optional;
 mod export;
 mod flow;
 mod identity_kind;
