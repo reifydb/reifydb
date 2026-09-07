@@ -10,8 +10,8 @@ use reifydb_core::{
 	key::operator::state::{KeyspaceId, OperatorStateKey},
 };
 use reifydb_runtime::sync::mutex::Mutex;
-use tracing::instrument;
 use reifydb_value::reifydb_assertions;
+use tracing::instrument;
 
 use crate::types::OperatorWrite;
 

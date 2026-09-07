@@ -20,10 +20,7 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator::{
 		keyspace::dispatch,
-		state::{
-			GroupId, KeyspaceId, group_inner_range, group_inner_range_split,
-			keyspace_inner_range_split,
-		},
+		state::{GroupId, KeyspaceId, group_inner_range, group_inner_range_split, keyspace_inner_range_split},
 	},
 	metrics::scan::record_page,
 };

@@ -423,7 +423,11 @@ fn a_write_proceeds_while_a_flush_is_persisting() {
 	let BufferedState::Row(readable) = buffer.lookup_state(OP_A, &key(2)) else {
 		panic!("the write taken during the flush must be readable")
 	};
-	assert_eq!(body(&readable), "second", "the write taken during the flush must survive the flush that ran beside it");
+	assert_eq!(
+		body(&readable),
+		"second",
+		"the write taken during the flush must survive the flush that ran beside it"
+	);
 }
 
 #[test]

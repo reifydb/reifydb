@@ -69,6 +69,10 @@ impl<K: Keyspace> RangeDomain for TypedDomain<K> {
 		Edge::Top
 	}
 
+	fn pins_removals() -> bool {
+		false
+	}
+
 	fn metric_bucket(_partition: &Self::Partition) -> usize {
 		0
 	}

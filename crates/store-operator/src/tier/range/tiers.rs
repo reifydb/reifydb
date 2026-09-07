@@ -14,9 +14,9 @@ use reifydb_core::{
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	state::typed::SuffixBytes,
 };
-use reifydb_store::tier::range::{RangeConfig, RangeMetrics, RangeTier};
-use tracing::instrument;
+use reifydb_store::tier::range::{RangeComposition, RangeConfig, RangeMetrics, RangeTier};
 use reifydb_value::byte_size::ByteSize;
+use tracing::instrument;
 
 use crate::tier::{range::typed::TypedDomain, typed::TypedPartition};
 
@@ -47,6 +47,8 @@ pub trait AnyRangeTier: Send + Sync {
 	fn invalidate_operator(&self, operator: OperatorId);
 
 	fn relieve(&self);
+
+	fn composition(&self) -> RangeComposition;
 
 	fn keyspace_metrics(&self) -> Option<OperatorRangeKeyspaceMetrics>;
 
@@ -129,6 +131,10 @@ impl<K: Keyspace> AnyRangeTier for RangeTier<TypedDomain<K>> {
 
 	fn relieve(&self) {
 		RangeTier::relieve(self);
+	}
+
+	fn composition(&self) -> RangeComposition {
+		RangeTier::composition(self)
 	}
 
 	fn keyspace_metrics(&self) -> Option<OperatorRangeKeyspaceMetrics> {

@@ -17,10 +17,10 @@ use reifydb_value::byte_size::ByteSize;
 #[cfg(test)]
 use crate::tier::range::{MaterializeInterlock, ServeInterlock};
 use crate::{
-	coverage::{index::CoverageIndex, plan::GapHistogram, retraction::Retractions},
+	coverage::{entry::Entry, index::CoverageIndex, plan::GapHistogram, retraction::Retractions},
 	tier::range::{
-		Partition, PoolInner, Progress, RESERVE_DIVISOR, RangeBucketMetrics, RangeConfig, RangeDomain,
-		RangeMetrics, RangeShardMetrics, RangeTier, Shard, account, entry_footprint,
+		Partition, PoolInner, Progress, RESERVE_DIVISOR, RangeBucketMetrics, RangeComposition, RangeConfig,
+		RangeDomain, RangeMetrics, RangeShardMetrics, RangeTier, Shard, account, entry_footprint,
 	},
 };
 
@@ -178,7 +178,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 		let mut victim: Option<(u64, D::Partition, Progress)> = None;
 		for (id, partition) in shard.partitions.iter() {
-			if !partition.pinned.has_victim() {
+			if !partition.pinned.has_victim(Self::releases_removals()) {
 				continue;
 			}
 			if victim.map(|(tick, _, _)| partition.tick < tick).unwrap_or(true) {
@@ -186,6 +186,10 @@ impl<D: RangeDomain> RangeTier<D> {
 			}
 		}
 		victim.map(|(_, id, progress)| (id, progress))
+	}
+
+	pub(super) fn releases_removals() -> bool {
+		!D::pins_removals()
 	}
 
 	fn retract_partition(&self, victim: &D::Partition) {
@@ -213,6 +217,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			if partition.progress() != progress {
 				return false;
 			}
+			let releasing = Self::releases_removals();
 			let Partition {
 				entries,
 				pinned,
@@ -223,7 +228,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			*covered = false;
 			let mut freed = 0usize;
 			entries.retain(|key, entry| {
-				if !entry.evictable() {
+				if !entry.evictable(releasing) {
 					return true;
 				}
 				freed += entry_footprint(key, entry);
@@ -245,6 +250,25 @@ impl<D: RangeDomain> RangeTier<D> {
 	pub fn resident_bytes(&self) -> ByteSize {
 		let total = self.all_shards().iter().map(|shard| shard.lock().budget.used().as_bytes()).sum();
 		ByteSize::from_bytes(total)
+	}
+
+	pub fn composition(&self) -> RangeComposition {
+		let mut composition = RangeComposition::default();
+		for shard in self.all_shards() {
+			for partition in shard.lock().partitions.values() {
+				for entry in partition.entries.values() {
+					match entry {
+						Entry::Row(_) => composition.rows += 1,
+						Entry::Deleted => composition.deleted += 1,
+						Entry::Absent => composition.absent += 1,
+					}
+				}
+				composition.removals += partition.pinned.removals();
+				composition.total += partition.pinned.total();
+				composition.victim |= partition.pinned.has_victim(Self::releases_removals());
+			}
+		}
+		composition
 	}
 
 	pub fn intervals(&self) -> usize {
@@ -694,7 +718,11 @@ mod tests {
 
 		tier.evict_to_capacity(0);
 
-		assert_eq!(resident(&tier, &gone), Some(Entry::Deleted), "the fixture must leave the partition standing");
+		assert_eq!(
+			resident(&tier, &gone),
+			Some(Entry::Deleted),
+			"the fixture must leave the partition standing"
+		);
 		assert_eq!(tier.intervals(), 0, "and must leave it holding no claim");
 		let settled = tier.metrics().evictions;
 
@@ -724,17 +752,33 @@ mod tests {
 
 		seed(&tier, part(KeyspaceId::ACCUMULATOR), cold_rows);
 		seed(&tier, part(KeyspaceId::BUFFER), hot_rows.clone());
-		assert_eq!(tier.resident_bytes(), ByteSize::from_bytes(total), "the fixture must sit exactly at the limit");
+		assert_eq!(
+			tier.resident_bytes(),
+			ByteSize::from_bytes(total),
+			"the fixture must sit exactly at the limit"
+		);
 
 		tier.evict_to_capacity(0);
 
-		assert_eq!(tier.metrics().evictions, 0, "a tier at its limit is not over it, so the write path frees nothing");
-		assert_eq!(tier.resident_bytes(), ByteSize::from_bytes(total), "and leaves no room for a read fill to charge");
+		assert_eq!(
+			tier.metrics().evictions,
+			0,
+			"a tier at its limit is not over it, so the write path frees nothing"
+		);
+		assert_eq!(
+			tier.resident_bytes(),
+			ByteSize::from_bytes(total),
+			"and leaves no room for a read fill to charge"
+		);
 
 		tier.relieve();
 
 		let reserve = total - total / RESERVE_DIVISOR;
-		assert_eq!(tier.metrics().evictions, 1, "the reserve pass must evict the coldest partition, and only it");
+		assert_eq!(
+			tier.metrics().evictions,
+			1,
+			"the reserve pass must evict the coldest partition, and only it"
+		);
 		assert!(
 			tier.resident_bytes().as_bytes() <= reserve,
 			"the pass must clear the reserve: {} bytes held against a {} byte mark",
@@ -758,7 +802,11 @@ mod tests {
 		seed(&tier, part(KeyspaceId::ACCUMULATOR), rows);
 
 		tier.evict_to_capacity(0);
-		assert_eq!(resident(&tier, &gone), Some(Entry::Deleted), "the fixture must leave the partition standing");
+		assert_eq!(
+			resident(&tier, &gone),
+			Some(Entry::Deleted),
+			"the fixture must leave the partition standing"
+		);
 		assert_eq!(tier.intervals(), 0, "and must leave it holding no claim");
 
 		let range = keyspace_inner_range(group_a(), KeyspaceId::ACCUMULATOR);

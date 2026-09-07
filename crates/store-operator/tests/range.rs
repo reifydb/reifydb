@@ -480,6 +480,47 @@ fn a_written_row_too_big_for_the_range_budget_takes_the_whole_claim_with_it() {
 }
 
 #[test]
+fn a_removal_the_flush_has_not_carried_survives_the_range_tier_dropping_its_tombstone() {
+	// The range tier pins a removal only while nothing beneath it records one. The resident tier keeps an
+	// unflushed removal until settle_flushing marks it clean, and every read consults the resident tier
+	// first, so the range tier may drop its tombstone under pressure. Pinning it instead fills the tier
+	// with entries no eviction can take and refuses every materialize until the next flush lands.
+	let (store, storage, _guard) = cached_store_with(OperatorRangeConfig {
+		tier_bytes: Some(ByteSize::from_bytes(4096)),
+		..OperatorRangeConfig::testing()
+	});
+	seed_rows(&storage, 3);
+
+	assert_eq!(bodies(&store.range_batch(OP_A, seeded_range(), 64)), ["v1", "v2", "v3"]);
+
+	store.apply_batch(&[OperatorWrite::Remove {
+		operator: OP_A,
+		key: key_in(RANGE_ONLY, 2),
+		pre: DurablePre::Present(ByteSize::from_bytes(row("v2").bytes().len() as u64)),
+	}]);
+
+	let huge = "x".repeat(8192);
+	put(&store, OP_A, key_in(RANGE_ONLY, 4), row(&huge));
+
+	assert_eq!(
+		range_partitions(&store),
+		0,
+		"the eviction must be able to take the unflushed removal with the rest, or the tier keeps a \
+		 partition it can never free"
+	);
+	assert_eq!(
+		store.get(OP_A, &key_in(RANGE_ONLY, 2)),
+		None,
+		"the resident tier still holds the unflushed removal and must answer the point read"
+	);
+	assert_eq!(
+		bodies(&store.range_batch(OP_A, seeded_range(), 64)),
+		["v1", "v3", huge.as_str()],
+		"and it must shadow the row sqlite still holds out of the scan"
+	);
+}
+
+#[test]
 fn dropping_one_operators_state_forgets_every_claim_and_row_it_cached() {
 	// A drop that clears only the point entries lets the range tier resurrect every row it erased.
 	let (store, storage, _guard) = cached_store();
