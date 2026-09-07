@@ -4,7 +4,7 @@
 use std::{collections::HashMap, hash::Hash, mem};
 
 use reifydb_core::{
-	key::typed::{Edge, TypedKey},
+	key::typed::{DenseKey, Edge, TypedKey},
 	metrics::heap::HeapSize,
 };
 
@@ -25,6 +25,16 @@ impl<D, K> Default for CoverageIndex<D, K> {
 			clock: 0,
 			sets_bytes: 0,
 		}
+	}
+}
+
+impl<D: Hash + Eq + Copy, K: DenseKey> CoverageIndex<D, K> {
+	pub fn shrink_key(&mut self, dimension: D, key: &K) {
+		self.shrink(dimension, |set| set.shrink_key(key));
+	}
+
+	pub fn shrink_range(&mut self, dimension: D, start: &K, end: &Edge<K>) {
+		self.shrink(dimension, |set| set.shrink_range(start, end));
 	}
 }
 
@@ -89,14 +99,6 @@ impl<D: Hash + Eq + Copy, K: TypedKey> CoverageIndex<D, K> {
 			}
 		}
 		retracted
-	}
-
-	pub fn shrink_key(&mut self, dimension: D, key: &K) {
-		self.shrink(dimension, |set| set.shrink_key(key));
-	}
-
-	pub fn shrink_range(&mut self, dimension: D, start: &K, end: &Edge<K>) {
-		self.shrink(dimension, |set| set.shrink_range(start, end));
 	}
 
 	pub fn drop_overlapping(&mut self, dimension: D, start: &K, end: &Edge<K>) {

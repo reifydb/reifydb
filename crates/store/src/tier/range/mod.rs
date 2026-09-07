@@ -15,7 +15,7 @@ use std::{borrow::Cow, collections::HashMap, fmt::Debug, hash::Hash, mem::size_o
 
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
-	key::typed::{Edge, MultiKey, TypedKey},
+	key::typed::{DenseKey, Edge, MultiKey, TypedKey},
 	util::{budget::MemoryBudget, sorted::SortedVecMap},
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
@@ -44,7 +44,7 @@ impl RowBytes for EncodedPodRow {
 pub trait RangeDomain: Copy + Debug + 'static {
 	type Dimension: Copy + Eq + Hash + Send + Sync + 'static;
 	type Partition: Copy + Eq + Hash + Send + Sync + 'static;
-	type Key: TypedKey;
+	type Key: DenseKey;
 	type MetricBucket: Copy + Eq + Debug + Send + Sync + 'static;
 	type Row: RowBytes + Clone + Send + Sync + 'static;
 
@@ -120,12 +120,13 @@ pub fn scan_range(gap: &Interval<MultiKey>) -> EncodedKeyRange {
 	let end = match &gap.end {
 		Edge::Bottom => Bound::Excluded(gap.start.clone()),
 		Edge::Key(key) => Bound::Excluded(key.clone()),
+		Edge::AfterKey(key) => Bound::Included(key.clone()),
 		Edge::Top => Bound::Unbounded,
 	};
 	EncodedKeyRange::new(Bound::Included(gap.start.clone()), end)
 }
 
-pub fn proven_span<K: TypedKey>(gap: &Interval<K>, last_key: Option<&K>, exhausted: bool) -> Option<Interval<K>> {
+pub fn proven_span<K: DenseKey>(gap: &Interval<K>, last_key: Option<&K>, exhausted: bool) -> Option<Interval<K>> {
 	if exhausted {
 		return Some(gap.clone());
 	}

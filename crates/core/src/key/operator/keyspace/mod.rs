@@ -14,7 +14,7 @@ use reifydb_codec::row::{operator::state::OperatorState, pod::EncodedPodRow};
 use reifydb_value::util::hash::Hash128;
 
 #[cfg(test)]
-use crate::key::typed::TypedKey;
+use crate::key::typed::{DenseKey, TypedKey};
 use crate::{
 	key::{
 		operator::{

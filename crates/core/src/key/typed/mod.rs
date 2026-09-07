@@ -15,7 +15,9 @@ pub mod range;
 
 pub trait TypedKey: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {
 	fn low() -> Self;
+}
 
+pub trait DenseKey: TypedKey {
 	fn successor(&self) -> Option<Self>;
 }
 
@@ -23,6 +25,7 @@ pub trait TypedKey: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'stati
 pub enum Edge<K> {
 	Bottom,
 	Key(K),
+	AfterKey(K),
 	Top,
 }
 
@@ -38,7 +41,7 @@ impl<K> Edge<K> {
 	pub fn key(&self) -> Option<&K> {
 		match self {
 			Edge::Key(key) => Some(key),
-			Edge::Bottom | Edge::Top => None,
+			Edge::AfterKey(_) | Edge::Bottom | Edge::Top => None,
 		}
 	}
 }
@@ -46,25 +49,27 @@ impl<K> Edge<K> {
 impl<K: HeapSize> HeapSize for Edge<K> {
 	fn heap_size(&self) -> usize {
 		match self {
-			Edge::Key(key) => key.heap_size(),
+			Edge::Key(key) | Edge::AfterKey(key) => key.heap_size(),
 			Edge::Bottom | Edge::Top => 0,
 		}
 	}
 }
 
-impl<K: TypedKey> Edge<K> {
+impl<K: DenseKey> Edge<K> {
 	pub fn just_past(key: &K) -> Self {
 		match key.successor() {
 			Some(next) => Edge::Key(next),
-			None => Edge::Top,
+			None => Edge::AfterKey(key.clone()),
 		}
 	}
+}
 
+impl<K: TypedKey> Edge<K> {
 	pub fn lowest(&self) -> Option<K> {
 		match self {
 			Edge::Bottom => Some(K::low()),
 			Edge::Key(key) => Some(key.clone()),
-			Edge::Top => None,
+			Edge::AfterKey(_) | Edge::Top => None,
 		}
 	}
 }
@@ -80,6 +85,10 @@ impl<K: Ord> Edge<K> {
 		match self {
 			Edge::Bottom => Ordering::Less,
 			Edge::Key(edge) => edge.cmp(key),
+			Edge::AfterKey(edge) => match edge.cmp(key) {
+				Ordering::Less => Ordering::Less,
+				Ordering::Equal | Ordering::Greater => Ordering::Greater,
+			},
 			Edge::Top => Ordering::Greater,
 		}
 	}
@@ -118,9 +127,12 @@ impl<K: Ord> Ord for Edge<K> {
 			(Edge::Bottom, _) => Ordering::Less,
 			(_, Edge::Bottom) => Ordering::Greater,
 			(Edge::Top, Edge::Top) => Ordering::Equal,
-			(Edge::Top, Edge::Key(_)) => Ordering::Greater,
-			(Edge::Key(_), Edge::Top) => Ordering::Less,
+			(Edge::Top, _) => Ordering::Greater,
+			(_, Edge::Top) => Ordering::Less,
 			(Edge::Key(left), Edge::Key(right)) => left.cmp(right),
+			(Edge::AfterKey(left), Edge::AfterKey(right)) => left.cmp(right),
+			(Edge::Key(left), Edge::AfterKey(right)) => left.cmp(right).then(Ordering::Less),
+			(Edge::AfterKey(left), Edge::Key(right)) => left.cmp(right).then(Ordering::Greater),
 		}
 	}
 }
@@ -129,7 +141,9 @@ pub type MultiKey = EncodedKey;
 
 impl TypedKey for () {
 	fn low() -> Self {}
+}
 
+impl DenseKey for () {
 	fn successor(&self) -> Option<Self> {
 		None
 	}
@@ -139,7 +153,9 @@ impl TypedKey for EncodedKey {
 	fn low() -> Self {
 		EncodedKey::new([])
 	}
+}
 
+impl DenseKey for EncodedKey {
 	fn successor(&self) -> Option<Self> {
 		let mut bytes = Vec::with_capacity(self.as_slice().len() + 1);
 		bytes.extend_from_slice(self.as_slice());
@@ -152,13 +168,13 @@ impl TypedKey for EncodedKey {
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use super::{Edge, MultiKey, TypedKey};
+	use super::{DenseKey, Edge, MultiKey, TypedKey};
 
 	#[test]
 	fn unit_key_has_no_successor() {
 		// a group only keyspace subtracts its whole key, so the empty key must report the top of its space
 		assert_eq!(<() as TypedKey>::low(), ());
-		assert_eq!(<() as TypedKey>::successor(&()), None);
+		assert_eq!(<() as DenseKey>::successor(&()), None);
 	}
 
 	#[test]
@@ -200,10 +216,10 @@ mod tests {
 	}
 
 	#[test]
-	fn just_past_promotes_a_key_with_no_successor_to_the_top() {
-		// successor became partial when keys stopped being byte strings; mapping None to anything but
-		// Top would drop the greatest key out of every range that was meant to include it
-		assert_eq!(Edge::just_past(&()), Edge::Top);
+	fn just_past_names_a_key_that_needs_no_successor() {
+		// the unit key has no successor to name, and answering Top would swallow every key above it, so
+		// the edge has to carry the exclusivity itself to end a range on the greatest key
+		assert_eq!(Edge::just_past(&()), Edge::AfterKey(()));
 		assert!(Edge::just_past(&()).covers(&()));
 	}
 

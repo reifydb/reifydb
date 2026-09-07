@@ -26,7 +26,7 @@ use crate::{
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 		sort_run::SortRun,
 		typed::{
-			TypedKey,
+			DenseKey, TypedKey,
 			direction::{Asc, Desc},
 			key::Key,
 		},
@@ -575,7 +575,9 @@ impl TypedKey for StorageRowKey {
 	fn low() -> Self {
 		StorageRowKey(<Desc<RowNumber> as TypedKey>::low())
 	}
+}
 
+impl DenseKey for StorageRowKey {
 	fn successor(&self) -> Option<Self> {
 		self.0.successor().map(StorageRowKey)
 	}
@@ -588,7 +590,7 @@ pub mod row_key_tests {
 	use super::{RowKey, StorageRowKey};
 	use crate::{
 		interface::catalog::storage::StorageId,
-		key::typed::{TypedKey, key::Key},
+		key::typed::{DenseKey, TypedKey, key::Key},
 	};
 
 	#[test]
@@ -1044,7 +1046,9 @@ impl TypedKey for StoragePartitionedRowKey {
 			row: <Desc<RowNumber> as TypedKey>::low(),
 		}
 	}
+}
 
+impl DenseKey for StoragePartitionedRowKey {
 	fn successor(&self) -> Option<Self> {
 		if let Some(row) = self.row.successor() {
 			return Some(Self {
@@ -1130,7 +1134,7 @@ mod partitioned_row_key_tests {
 		},
 		key::{
 			catalog::KeySerializerCatalogExt,
-			typed::{TypedKey, key::Key},
+			typed::{DenseKey, TypedKey, key::Key},
 		},
 	};
 

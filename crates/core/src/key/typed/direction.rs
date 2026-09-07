@@ -13,7 +13,7 @@ use crate::{
 	key::{
 		operator::state::GroupId,
 		typed::{
-			TypedKey,
+			DenseKey, TypedKey,
 			layout::{KeyColumnType, KeyValue},
 		},
 	},
@@ -371,7 +371,9 @@ impl<T: KeyScalar> TypedKey for Asc<T> {
 	fn low() -> Self {
 		Asc(T::MIN)
 	}
+}
 
+impl<T: KeyScalar> DenseKey for Asc<T> {
 	fn successor(&self) -> Option<Self> {
 		self.0.successor().map(Asc)
 	}
@@ -381,7 +383,9 @@ impl<T: KeyScalar> TypedKey for Desc<T> {
 	fn low() -> Self {
 		Desc(T::MAX)
 	}
+}
 
+impl<T: KeyScalar> DenseKey for Desc<T> {
 	fn successor(&self) -> Option<Self> {
 		self.0.predecessor().map(Desc)
 	}
@@ -439,7 +443,10 @@ mod tests {
 
 	use super::{Asc, Desc, Direction, KeyField, KeyScalar};
 	use crate::{
-		key::{operator::state::GroupId, typed::TypedKey},
+		key::{
+			operator::state::GroupId,
+			typed::{DenseKey, TypedKey},
+		},
 		metrics::heap::HeapSize,
 		state::{join::ContentVersion, timer::TimerKind},
 	};

@@ -24,7 +24,7 @@ use reifydb_core::{
 			PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
 			StoragePartitionedSeriesKey, StorageSeriesKey,
 		},
-		typed::{Edge, TypedKey, key::Key, range::KeyRange},
+		typed::{DenseKey, Edge, TypedKey, key::Key, range::KeyRange},
 	},
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
@@ -78,7 +78,7 @@ const BUCKETS: u64 = 1 << (u64::BITS - ROW_BUCKET_SHIFT);
 #[derive(Clone, Copy, Debug)]
 pub struct MultiDomain;
 
-pub trait NarrowLayout: TypedKey + Copy {
+pub trait NarrowLayout: DenseKey + Copy {
 	type Wide: Key;
 
 	fn kind(storage: StorageId) -> EntryKind;
@@ -626,7 +626,7 @@ fn just_past(end: &Edge<StorageRowKey>) -> Edge<StorageRowKey> {
 fn bound(end: &Edge<StorageRowKey>) -> Bound<StorageRowKey> {
 	match end {
 		Edge::Bottom => Bound::Excluded(StorageRowKey::low()),
-		Edge::Key(key) => Included(*key),
+		Edge::Key(key) | Edge::AfterKey(key) => Included(*key),
 		Edge::Top => Bound::Unbounded,
 	}
 }
@@ -638,7 +638,7 @@ fn anchor(table: EntryKind, lo: &Edge<StorageRowKey>, rows: &RangeRows<MultiDoma
 			MultiDomain::span(&PartitionId::of(table, first)).0.lowest()
 		}
 		Edge::Key(key) => Some(*key),
-		Edge::Top => None,
+		Edge::AfterKey(_) | Edge::Top => None,
 	}
 }
 

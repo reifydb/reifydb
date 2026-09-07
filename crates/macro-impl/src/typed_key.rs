@@ -297,7 +297,7 @@ fn expand(name: &str, fields: &[KeyField]) -> TokenStream {
 
 	let mut successor = String::new();
 	for (at, field) in fields.iter().enumerate().rev() {
-		successor.push_str(&format!("\t\tif let Some({0}) = TypedKey::successor(&self.{0}) {{\n", field.name));
+		successor.push_str(&format!("\t\tif let Some({0}) = DenseKey::successor(&self.{0}) {{\n", field.name));
 		successor.push_str("\t\t\treturn Some(Self {");
 		for (other, carried) in fields.iter().enumerate() {
 			let value = if other < at {
@@ -329,7 +329,8 @@ fn expand(name: &str, fields: &[KeyField]) -> TokenStream {
 	out.push_str(&format!("\t\tSome(Self {{{reads}\n\t\t}})\n\t}}\n\n"));
 	out.push_str(&format!("\tfn high() -> Self {{\n\t\tSelf {{{high}\n\t\t}}\n\t}}\n}}\n\n"));
 	out.push_str(&format!("#[automatically_derived]\nimpl TypedKey for {name} {{\n"));
-	out.push_str(&format!("\tfn low() -> Self {{\n\t\tSelf {{{low}\n\t\t}}\n\t}}\n\n"));
+	out.push_str(&format!("\tfn low() -> Self {{\n\t\tSelf {{{low}\n\t\t}}\n\t}}\n}}\n\n"));
+	out.push_str(&format!("#[automatically_derived]\nimpl DenseKey for {name} {{\n"));
 	out.push_str("\tfn successor(&self) -> Option<Self> {\n");
 	out.push_str(&format!("{successor}\n\t}}\n}}"));
 	out.push_str(&sealed);
@@ -508,8 +509,8 @@ mod tests {
 		let out = expand("struct JoinLeftKey { group: Desc<GroupId>, row: Asc<RowNumber> }");
 		assert!(!out.contains("compile_error"), "{out}");
 		assert!(out.contains("impl TypedKey for JoinLeftKey"), "{out}");
-		let row_first = out.find("TypedKey :: successor (& self . row)").expect("row is tried first");
-		let group_second = out.find("TypedKey :: successor (& self . group)").expect("group carries");
+		let row_first = out.find("DenseKey :: successor (& self . row)").expect("row is tried first");
+		let group_second = out.find("DenseKey :: successor (& self . group)").expect("group carries");
 		assert!(row_first < group_second, "{out}");
 	}
 

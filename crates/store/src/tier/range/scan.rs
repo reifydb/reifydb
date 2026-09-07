@@ -4,7 +4,7 @@
 use std::ops::Bound::{Excluded, Included, Unbounded};
 
 use reifydb_core::{
-	key::typed::{Edge, TypedKey, range::KeyRange},
+	key::typed::{DenseKey, Edge, range::KeyRange},
 	util::sorted::SortedVecMap,
 };
 use reifydb_value::byte_size::ByteSize;
@@ -287,6 +287,7 @@ impl<D: RangeDomain> RangeTier<D> {
 					let upper = match &segment.end {
 						Edge::Bottom => Excluded(start.clone()),
 						Edge::Key(key) => Excluded(key.clone()),
+						Edge::AfterKey(key) => Included(key.clone()),
 						Edge::Top => Unbounded,
 					};
 					let span = (Included(start), upper);
@@ -378,7 +379,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				}
 				match end {
 					Edge::Key(key) => start = key,
-					Edge::Bottom | Edge::Top => break,
+					Edge::AfterKey(_) | Edge::Bottom | Edge::Top => break,
 				}
 			}
 		}
@@ -749,7 +750,7 @@ fn split_at_partitions<D: RangeDomain>(
 		}
 		match end {
 			Edge::Key(key) => start = key,
-			Edge::Bottom | Edge::Top => return,
+			Edge::AfterKey(_) | Edge::Bottom | Edge::Top => return,
 		}
 	}
 }

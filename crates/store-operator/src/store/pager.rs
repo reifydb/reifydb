@@ -15,7 +15,7 @@ use reifydb_core::{
 			state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 			traits::{Keyspace, group_scoped},
 		},
-		typed::{Edge, TypedKey, range::KeyRange},
+		typed::{DenseKey, Edge, TypedKey, range::KeyRange},
 	},
 	state::typed::SuffixBytes,
 };
@@ -189,6 +189,7 @@ impl<'a, K: Keyspace> TierPager<'a, K> {
 		let end = match &interval.end {
 			Edge::Bottom => Bound::Excluded(self.encode(&interval.start)),
 			Edge::Key(key) => Bound::Excluded(self.encode(key)),
+			Edge::AfterKey(key) => Bound::Included(self.encode(key)),
 			Edge::Top => keyspace_inner_range(self.group, K::ID).end,
 		};
 		EncodedKeyRange::new(start, end)

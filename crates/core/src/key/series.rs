@@ -17,7 +17,7 @@ use crate::{
 		any::{AnyKey, Field, KeyFields, Width},
 		bound::{AnyKeyBound, AnyKeyBoundRange, OwnedField, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
-		typed::{TypedKey, direction::Desc, key::Key},
+		typed::{DenseKey, TypedKey, direction::Desc, key::Key},
 	},
 	metrics::heap::HeapSize,
 };
@@ -308,7 +308,9 @@ impl TypedKey for StorageSeriesKey {
 			sequence: <Desc<u64> as TypedKey>::low(),
 		}
 	}
+}
 
+impl DenseKey for StorageSeriesKey {
 	fn successor(&self) -> Option<Self> {
 		if let Some(sequence) = self.sequence.successor() {
 			return Some(Self {
@@ -895,7 +897,9 @@ impl TypedKey for StoragePartitionedSeriesKey {
 			sequence: <Desc<u64> as TypedKey>::low(),
 		}
 	}
+}
 
+impl DenseKey for StoragePartitionedSeriesKey {
 	fn successor(&self) -> Option<Self> {
 		if let Some(sequence) = self.sequence.successor() {
 			return Some(Self {
@@ -1161,7 +1165,7 @@ mod storage_series_key_tests {
 	use super::{PartitionedSeriesRowKey, SeriesRowKey, StorageId, StoragePartitionedSeriesKey, StorageSeriesKey};
 	use crate::{
 		interface::catalog::id::SeriesId,
-		key::typed::{TypedKey, key::Key},
+		key::typed::{DenseKey, TypedKey, key::Key},
 	};
 
 	const STORAGE: StorageId = StorageId::Series(SeriesId(7));

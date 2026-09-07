@@ -4,7 +4,7 @@
 use std::{cmp::Ordering, mem};
 
 use reifydb_core::{
-	key::typed::{Edge, TypedKey},
+	key::typed::{DenseKey, Edge, TypedKey},
 	metrics::heap::HeapSize,
 };
 
@@ -28,6 +28,41 @@ impl<K: TypedKey> Interval<K> {
 
 	pub fn is_empty(&self) -> bool {
 		!self.end.covers(&self.start)
+	}
+}
+
+impl<K: DenseKey> CoverageSet<K> {
+	pub fn shrink_key(&mut self, key: &K) {
+		self.shrink_range(key, &Edge::just_past(key));
+	}
+
+	pub fn shrink_range(&mut self, start: &K, end: &Edge<K>) {
+		if !end.covers(start) {
+			return;
+		}
+		let (lo, hi) = self.span_touching(start, end);
+		let removed: Vec<(K, Edge<K>)> = self.intervals.drain(lo..hi).collect();
+		let mut kept = Vec::new();
+		for (key, old_end) in removed {
+			if &key < start {
+				kept.push((key, Edge::Key(start.clone())));
+			}
+			if let Some(resume) = resume_at(end)
+				&& old_end.covers(&resume)
+			{
+				kept.push((resume, old_end));
+			}
+		}
+		self.intervals.splice(lo..lo, kept);
+		self.recount();
+	}
+}
+
+fn resume_at<K: DenseKey>(end: &Edge<K>) -> Option<K> {
+	match end {
+		Edge::Key(key) => Some(key.clone()),
+		Edge::AfterKey(key) => key.successor(),
+		Edge::Bottom | Edge::Top => None,
 	}
 }
 
@@ -129,30 +164,6 @@ impl<K: TypedKey> CoverageSet<K> {
 		self.recount();
 	}
 
-	pub fn shrink_key(&mut self, key: &K) {
-		self.shrink_range(key, &Edge::just_past(key));
-	}
-
-	pub fn shrink_range(&mut self, start: &K, end: &Edge<K>) {
-		if !end.covers(start) {
-			return;
-		}
-		let (lo, hi) = self.span_touching(start, end);
-		let removed: Vec<(K, Edge<K>)> = self.intervals.drain(lo..hi).collect();
-		let mut kept = Vec::new();
-		for (key, old_end) in removed {
-			if &key < start {
-				kept.push((key, Edge::Key(start.clone())));
-			}
-			if *end < old_end {
-				let resume = end.key().expect("a bounded end must carry a key").clone();
-				kept.push((resume, old_end));
-			}
-		}
-		self.intervals.splice(lo..lo, kept);
-		self.recount();
-	}
-
 	pub fn contains(&self, key: &K) -> bool {
 		self.covering(key).is_some()
 	}
@@ -246,7 +257,7 @@ impl<K: TypedKey> CoverageSet<K> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::key::typed::{Edge, MultiKey, TypedKey};
+	use reifydb_core::key::typed::{DenseKey, Edge, MultiKey};
 
 	use super::{CoverageSet, Interval};
 

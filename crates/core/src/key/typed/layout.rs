@@ -4,13 +4,13 @@
 use smallvec::SmallVec;
 
 use crate::key::typed::{
-	TypedKey,
+	DenseKey,
 	direction::{Asc, Desc, Direction, KeyScalar},
 };
 
 pub type KeyValues = SmallVec<[KeyValue; 4]>;
 
-pub trait KeyLayout: TypedKey {
+pub trait KeyLayout: DenseKey {
 	const COLUMNS: &'static [KeyColumn];
 
 	fn key_values(&self) -> KeyValues;
@@ -138,7 +138,7 @@ mod tests {
 		key::{
 			operator::state::GroupId,
 			typed::{
-				TypedKey,
+				DenseKey, TypedKey,
 				direction::{Asc, Desc, Direction, KeyField},
 			},
 		},
