@@ -43,3 +43,21 @@ pub fn emit_target_cfg() {
 	println!("cargo:rerun-if-env-changed=REIFYDB_DST");
 	println!("cargo:rerun-if-env-changed=REIFYDB_ASSERTIONS");
 }
+
+fn export_dynamic_supported() -> bool {
+	env::var("TARGET").as_deref() == Ok("x86_64-unknown-linux-gnu")
+}
+
+pub fn emit_export_dynamic_bins() {
+	if export_dynamic_supported() {
+		println!("cargo::rustc-link-arg-bins=-Wl,--export-dynamic");
+	}
+	println!("cargo:rerun-if-changed=build.rs");
+}
+
+pub fn emit_export_dynamic_benches() {
+	if export_dynamic_supported() {
+		println!("cargo::rustc-link-arg-benches=-Wl,--export-dynamic");
+	}
+	println!("cargo:rerun-if-changed=build.rs");
+}

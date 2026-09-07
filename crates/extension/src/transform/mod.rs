@@ -4,6 +4,7 @@
 pub mod context;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub mod extern_c;
+#[cfg(feature = "wasm")]
 pub mod extern_wasm;
 pub mod registry;
 

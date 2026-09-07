@@ -179,7 +179,7 @@ edition = "2024"
 
 [profile.dev]
 opt-level = 0
-debug = true
+debug = "line-tables-only"
 split-debuginfo = "unpacked"
 debug-assertions = true
 overflow-checks = true
@@ -190,7 +190,7 @@ panic = "unwind"
 
 [profile.test]
 opt-level = 0
-debug = true
+debug = "line-tables-only"
 split-debuginfo = "unpacked"
 lto = false
 codegen-units = 256
@@ -210,11 +210,7 @@ codegen-units = 1
 strip = "symbols"
 
 [workspace.dependencies]
-reifydb = { version = "0.9.0", path = "pkg/rust/reifydb", features = [
-    "sub_flow", "sub_tracing", "sub_server", "sub_server_admin",
-    "sub_server_grpc", "sub_server_http", "sub_server_ws",
-    "sub_server_otel",
-] }
+reifydb = { version = "0.9.0", path = "pkg/rust/reifydb" }
 reifydb-derive = { version = "0.9.0", path = "pkg/rust/reifydb-derive" }
 reifydb-build = { version = "0.9.0", path = "crates/build" }
 reifydb-allocator = { version = "0.9.0", path = "crates/allocator" }

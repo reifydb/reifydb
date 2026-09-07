@@ -19,26 +19,26 @@ reifydb-codec = { path = "../../../../crates/codec" }
 reifydb-value = { path = "../../../../crates/value" }
 
 [[bin]]
-name = "keycode_deserialize"
+name = "keycode-deserialize"
 path = "fuzz_targets/keycode_deserialize.rs"
 doc = false
 
 [[bin]]
-name = "keycode_roundtrip"
+name = "keycode-roundtrip"
 path = "fuzz_targets/keycode_roundtrip.rs"
 doc = false
 
 [[bin]]
-name = "abi_buffer"
+name = "abi-buffer"
 path = "fuzz_targets/abi_buffer.rs"
 doc = false
 
 [[bin]]
-name = "rql_parse"
+name = "rql-parse"
 path = "fuzz_targets/rql_parse.rs"
 doc = false
 
 [[bin]]
-name = "rql_tokenize"
+name = "rql-tokenize"
 path = "fuzz_targets/rql_tokenize.rs"
 doc = false

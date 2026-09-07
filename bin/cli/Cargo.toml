@@ -22,3 +22,6 @@ rustyline = "18.0"
 terminal_size = "0.4"
 tokio = { workspace = true }
 
+
+[build-dependencies]
+reifydb-build = { workspace = true }

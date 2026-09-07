@@ -12,5 +12,8 @@ name = "testcontainer"
 path = "src/main.rs"
 
 [dependencies]
-reifydb = { workspace = true, features = ["alloc-jemalloc"] }
+reifydb = { workspace = true, features = ["alloc-jemalloc", "server", "sub_flow"] }
 tracing = { workspace = true }
+
+[build-dependencies]
+reifydb-build = { workspace = true }

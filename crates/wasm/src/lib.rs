@@ -12,9 +12,9 @@ pub mod module;
 use std::fmt;
 
 use module::Trap;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
 pub use wasmtime;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
 pub use wasmtime_wasi;
 
 pub mod source {
@@ -80,7 +80,7 @@ pub trait SpawnBinary<SOURCE> {
 	fn spawn(&mut self, source: SOURCE) -> Result<(), EnvironmentError>;
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
 mod host {
 	use reifydb_value::reifydb_assertions;
 	use wasmtime::{Config, Engine as WtEngine, Instance, Linker, Module, ResourceLimiter, Result, Store, Val};
@@ -227,7 +227,7 @@ mod host {
 	}
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(not(all(feature = "runtime", not(target_arch = "wasm32"))))]
 mod stub {
 	use crate::{EnvironmentError, SpawnBinary, Trap, config::WasmConfig, module::value::Value, source};
 
@@ -264,7 +264,7 @@ mod stub {
 	}
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
 pub use host::Engine;
-#[cfg(target_arch = "wasm32")]
+#[cfg(not(all(feature = "runtime", not(target_arch = "wasm32"))))]
 pub use stub::Engine;

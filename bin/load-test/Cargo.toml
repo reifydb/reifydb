@@ -26,3 +26,6 @@ hdrhistogram = { workspace = true }
 num_cpus = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true }
+
+[build-dependencies]
+reifydb-build = { workspace = true }

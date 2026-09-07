@@ -12,4 +12,7 @@ name = "reifydb-server"
 path = "src/main.rs"
 
 [dependencies]
-reifydb = { workspace = true, features = ["alloc-jemalloc"] }
+reifydb = { workspace = true, features = ["alloc-jemalloc", "server", "sub_flow"] }
+
+[build-dependencies]
+reifydb-build = { workspace = true }

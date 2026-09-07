@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Flow subsystem for stream processing and data flows"
+autotests = false
 
 [lib]
 doctest = false
@@ -65,3 +66,19 @@ reifydb-testing-flow = { workspace = true }
 reifydb-testing-macro = { workspace = true }
 rand = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+[[test]]
+name = "suite"
+path = "tests/suite.rs"
+
+[[test]]
+name = "chaos"
+path = "tests/chaos.rs"
+
+[[test]]
+name = "chaos_regression"
+path = "tests/chaos_regression.rs"
+
+[[test]]
+name = "operator"
+path = "tests/operator.rs"

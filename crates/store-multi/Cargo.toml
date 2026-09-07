@@ -6,6 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Multi-version storage for OLTP operations with MVCC support"
+autotests = false
 
 [lib]
 doctest = false
@@ -40,3 +41,11 @@ reifydb-testing = { workspace = true }
 reifydb-testing-chaos = { workspace = true }
 reifydb-testing-macro = { workspace = true }
 rand = { workspace = true }
+
+[[test]]
+name = "suite"
+path = "tests/suite.rs"
+
+[[test]]
+name = "chaos"
+path = "tests/chaos.rs"

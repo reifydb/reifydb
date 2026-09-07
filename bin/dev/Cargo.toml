@@ -24,3 +24,6 @@ serde = { workspace = true }
 
 [dev-dependencies]
 reifydb-value = { workspace = true }
+
+[build-dependencies]
+reifydb-build = { workspace = true }
