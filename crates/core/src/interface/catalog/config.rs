@@ -91,6 +91,7 @@ pub enum ConfigKey {
 	ThreadsFlow,
 	ThreadsTask,
 	ThreadsCompute,
+	ThreadsMaintenance,
 	SubscriptionWorkerThreads,
 	MetricsFlushInterval,
 	MetricsSampleInterval,
@@ -147,6 +148,7 @@ impl ConfigKey {
 			Self::ThreadsFlow,
 			Self::ThreadsTask,
 			Self::ThreadsCompute,
+			Self::ThreadsMaintenance,
 			Self::SubscriptionWorkerThreads,
 			Self::MetricsFlushInterval,
 			Self::MetricsSampleInterval,
@@ -229,6 +231,7 @@ impl ConfigKey {
 			Self::ThreadsFlow => Value::Uint2(default::threads::FLOW),
 			Self::ThreadsTask => Value::Uint2(default::threads::TASK),
 			Self::ThreadsCompute => Value::Uint2(default::threads::COMPUTE),
+			Self::ThreadsMaintenance => Value::Uint2(default::threads::MAINTENANCE),
 			Self::SubscriptionWorkerThreads => Value::Uint2(default::threads::SUBSCRIPTION_WORKER),
 			Self::MetricsFlushInterval => Value::Duration(default::metrics::FLUSH_INTERVAL),
 			Self::MetricsSampleInterval => Value::Duration(default::metrics::SAMPLE_INTERVAL),
@@ -313,6 +316,7 @@ impl ConfigKey {
 			Self::ThreadsFlow => Value::Uint2(default::threads::FLOW_TESTING),
 			Self::ThreadsTask => Value::Uint2(default::threads::TASK_TESTING),
 			Self::ThreadsCompute => Value::Uint2(default::threads::COMPUTE_TESTING),
+			Self::ThreadsMaintenance => Value::Uint2(default::threads::MAINTENANCE_TESTING),
 			Self::SubscriptionWorkerThreads => Value::Uint2(default::threads::SUBSCRIPTION_WORKER_TESTING),
 			Self::MetricsFlushInterval => Value::Duration(default::metrics::FLUSH_INTERVAL_TESTING),
 			Self::MetricsSampleInterval => Value::Duration(default::metrics::SAMPLE_INTERVAL_TESTING),
@@ -542,6 +546,11 @@ impl ConfigKey {
 				"Number of worker threads for the compute pool (data-parallel work via install(), \
 				 never actors). Must be >= 1. Changes require restart."
 			}
+			Self::ThreadsMaintenance => {
+				"Number of worker threads for the maintenance actor pool (lifecycle tasks, operator range \
+				 eviction, filter rebuilds). A long slice on one actor holds a thread, so a count of 1 lets \
+				 the slowest task delay every other one. Must be >= 1. Changes require restart."
+			}
 			Self::SubscriptionWorkerThreads => {
 				"Number of subscription worker actors that fan out CDC changes to ephemeral \
 				 subscriptions in parallel. 0 means auto (size to the system thread pool). Higher values \
@@ -621,6 +630,7 @@ impl ConfigKey {
 			Self::ThreadsFlow => true,
 			Self::ThreadsTask => true,
 			Self::ThreadsCompute => true,
+			Self::ThreadsMaintenance => true,
 			Self::SubscriptionWorkerThreads => true,
 			Self::MetricsFlushInterval => false,
 			Self::MetricsSampleInterval => true,
@@ -677,6 +687,7 @@ impl ConfigKey {
 			Self::ThreadsFlow => &[ValueType::Uint2],
 			Self::ThreadsTask => &[ValueType::Uint2],
 			Self::ThreadsCompute => &[ValueType::Uint2],
+			Self::ThreadsMaintenance => &[ValueType::Uint2],
 			Self::SubscriptionWorkerThreads => &[ValueType::Uint2],
 			Self::MetricsFlushInterval => &[ValueType::Duration],
 			Self::MetricsSampleInterval => &[ValueType::Duration],
@@ -733,6 +744,7 @@ impl ConfigKey {
 			Self::ThreadsFlow => false,
 			Self::ThreadsTask => false,
 			Self::ThreadsCompute => false,
+			Self::ThreadsMaintenance => false,
 			Self::SubscriptionWorkerThreads => false,
 			Self::MetricsFlushInterval => false,
 			Self::MetricsSampleInterval => false,
@@ -972,6 +984,10 @@ impl ConfigKey {
 				Value::Uint2(0) => Err("THREADS_COMPUTE must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
+			Self::ThreadsMaintenance => match value {
+				Value::Uint2(0) => Err("THREADS_MAINTENANCE must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
 			Self::SubscriptionWorkerThreads => Ok(()),
 			Self::MetricsFlushInterval => match value {
 				Value::Duration(d) => {
@@ -1082,6 +1098,7 @@ impl fmt::Display for ConfigKey {
 			Self::ThreadsFlow => write!(f, "THREADS_FLOW"),
 			Self::ThreadsTask => write!(f, "THREADS_TASK"),
 			Self::ThreadsCompute => write!(f, "THREADS_COMPUTE"),
+			Self::ThreadsMaintenance => write!(f, "THREADS_MAINTENANCE"),
 			Self::SubscriptionWorkerThreads => write!(f, "SUBSCRIPTION_WORKER_THREADS"),
 			Self::MetricsFlushInterval => write!(f, "METRICS_FLUSH_INTERVAL"),
 			Self::MetricsSampleInterval => write!(f, "METRICS_SAMPLE_INTERVAL"),
@@ -1142,6 +1159,7 @@ impl FromStr for ConfigKey {
 			"THREADS_FLOW" => Ok(Self::ThreadsFlow),
 			"THREADS_TASK" => Ok(Self::ThreadsTask),
 			"THREADS_COMPUTE" => Ok(Self::ThreadsCompute),
+			"THREADS_MAINTENANCE" => Ok(Self::ThreadsMaintenance),
 			"SUBSCRIPTION_WORKER_THREADS" => Ok(Self::SubscriptionWorkerThreads),
 			"METRICS_FLUSH_INTERVAL" => Ok(Self::MetricsFlushInterval),
 			"METRICS_SAMPLE_INTERVAL" => Ok(Self::MetricsSampleInterval),
@@ -1321,7 +1339,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 51);
+		assert_eq!(all.len(), 52);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));
@@ -1357,6 +1375,7 @@ mod tests {
 		assert!(all.contains(&ConfigKey::ThreadsFlow));
 		assert!(all.contains(&ConfigKey::ThreadsTask));
 		assert!(all.contains(&ConfigKey::ThreadsCompute));
+		assert!(all.contains(&ConfigKey::ThreadsMaintenance));
 		assert!(all.contains(&ConfigKey::MetricsFlushInterval));
 		assert!(all.contains(&ConfigKey::SubscriptionWorkerThreads));
 		assert!(all.contains(&ConfigKey::FlowSampleInterval));
@@ -1488,11 +1507,13 @@ mod tests {
 		assert_eq!("THREADS_FLOW".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsFlow);
 		assert_eq!("THREADS_TASK".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsTask);
 		assert_eq!("THREADS_COMPUTE".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsCompute);
+		assert_eq!("THREADS_MAINTENANCE".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsMaintenance);
 		assert_eq!(format!("{}", ConfigKey::ThreadsAsync), "THREADS_ASYNC");
 		assert_eq!(format!("{}", ConfigKey::ThreadsCoordination), "THREADS_COORDINATION");
 		assert_eq!(format!("{}", ConfigKey::ThreadsFlow), "THREADS_FLOW");
 		assert_eq!(format!("{}", ConfigKey::ThreadsTask), "THREADS_TASK");
 		assert_eq!(format!("{}", ConfigKey::ThreadsCompute), "THREADS_COMPUTE");
+		assert_eq!(format!("{}", ConfigKey::ThreadsMaintenance), "THREADS_MAINTENANCE");
 	}
 
 	#[test]
@@ -1502,6 +1523,7 @@ mod tests {
 		assert_eq!(ConfigKey::ThreadsFlow.production_value(), Value::Uint2(2));
 		assert_eq!(ConfigKey::ThreadsTask.production_value(), Value::Uint2(2));
 		assert_eq!(ConfigKey::ThreadsCompute.production_value(), Value::Uint2(2));
+		assert_eq!(ConfigKey::ThreadsMaintenance.production_value(), Value::Uint2(1));
 	}
 
 	#[test]
@@ -1512,6 +1534,7 @@ mod tests {
 			ConfigKey::ThreadsFlow,
 			ConfigKey::ThreadsTask,
 			ConfigKey::ThreadsCompute,
+			ConfigKey::ThreadsMaintenance,
 		] {
 			match key.accept(Value::Uint2(0)).unwrap_err() {
 				AcceptError::InvalidValue(reason) => {
@@ -1532,6 +1555,7 @@ mod tests {
 		assert_eq!(ConfigKey::ThreadsFlow.accept(Value::Uint2(16)).unwrap(), Value::Uint2(16));
 		assert_eq!(ConfigKey::ThreadsTask.accept(Value::Uint2(4)).unwrap(), Value::Uint2(4));
 		assert_eq!(ConfigKey::ThreadsCompute.accept(Value::Uint2(2)).unwrap(), Value::Uint2(2));
+		assert_eq!(ConfigKey::ThreadsMaintenance.accept(Value::Uint2(4)).unwrap(), Value::Uint2(4));
 	}
 
 	#[test]
@@ -1547,6 +1571,7 @@ mod tests {
 		assert!(ConfigKey::ThreadsFlow.requires_restart());
 		assert!(ConfigKey::ThreadsTask.requires_restart());
 		assert!(ConfigKey::ThreadsCompute.requires_restart());
+		assert!(ConfigKey::ThreadsMaintenance.requires_restart());
 	}
 
 	#[test]

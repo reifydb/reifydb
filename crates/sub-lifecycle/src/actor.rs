@@ -31,15 +31,13 @@ fn drain(task: &mut Box<dyn LifecycleTask>) {
 
 #[derive(Clone)]
 pub enum LifecycleMessage {
-	Tick(usize),
+	Tick,
 
 	RunToExhaustion {
-		index: usize,
 		waiter: Arc<WaiterHandle>,
 	},
 
 	SetInterval {
-		index: usize,
 		interval: Duration,
 	},
 
@@ -47,26 +45,26 @@ pub enum LifecycleMessage {
 }
 
 pub struct LifecycleActor {
-	tasks: Mutex<Option<Vec<Box<dyn LifecycleTask>>>>,
+	task: Mutex<Option<Box<dyn LifecycleTask>>>,
 	catchup: Duration,
 }
 
 pub struct LifecycleActorState {
-	tasks: Vec<Box<dyn LifecycleTask>>,
-	timers: Vec<Option<TimerHandle>>,
+	task: Box<dyn LifecycleTask>,
+	timer: Option<TimerHandle>,
 }
 
 impl LifecycleActor {
-	pub fn new(tasks: Vec<Box<dyn LifecycleTask>>) -> Self {
+	pub fn new(task: Box<dyn LifecycleTask>) -> Self {
 		Self {
-			tasks: Mutex::new(Some(tasks)),
+			task: Mutex::new(Some(task)),
 			catchup: CATCHUP_DELAY,
 		}
 	}
 
-	pub fn spawn(spawner: &ActorSpawner, tasks: Vec<Box<dyn LifecycleTask>>) -> ActorRef<LifecycleMessage> {
-		let actor = Self::new(tasks);
-		spawner.spawn_maintenance("lifecycle", actor).actor_ref().clone()
+	pub fn spawn(spawner: &ActorSpawner, name: &str, task: Box<dyn LifecycleTask>) -> ActorRef<LifecycleMessage> {
+		let actor = Self::new(task);
+		spawner.spawn_maintenance(name, actor).actor_ref().clone()
 	}
 }
 
@@ -75,16 +73,12 @@ impl Actor for LifecycleActor {
 	type Message = LifecycleMessage;
 
 	fn init(&self, ctx: &Context<LifecycleMessage>) -> LifecycleActorState {
-		let tasks = self.tasks.lock().take().unwrap_or_default();
-		let mut timers = Vec::with_capacity(tasks.len());
-		for (index, task) in tasks.iter().enumerate() {
-			debug!(task = task.name(), "lifecycle task registered");
-			let timer = ctx.schedule_tick(task.interval(), move |_nanos| LifecycleMessage::Tick(index));
-			timers.push(Some(timer));
-		}
+		let task = self.task.lock().take().expect("a lifecycle actor initializes exactly once");
+		debug!(task = task.name(), "lifecycle task registered");
+		let timer = ctx.schedule_tick(task.interval(), move |_nanos| LifecycleMessage::Tick);
 		LifecycleActorState {
-			tasks,
-			timers,
+			task,
+			timer: Some(timer),
 		}
 	}
 
@@ -98,33 +92,24 @@ impl Actor for LifecycleActor {
 			return Directive::Stop;
 		}
 		match msg {
-			LifecycleMessage::Tick(index) => {
-				if let Some(task) = state.tasks.get_mut(index)
-					&& run_slice(task) == Progress::Yielded
-				{
-					ctx.schedule_once(self.catchup, move || LifecycleMessage::Tick(index));
+			LifecycleMessage::Tick => {
+				if run_slice(&mut state.task) == Progress::Yielded {
+					ctx.schedule_once(self.catchup, || LifecycleMessage::Tick);
 				}
 			}
 			LifecycleMessage::RunToExhaustion {
-				index,
 				waiter,
 			} => {
-				if let Some(task) = state.tasks.get_mut(index) {
-					drain(task);
-				}
+				drain(&mut state.task);
 				waiter.notify();
 			}
 			LifecycleMessage::SetInterval {
-				index,
 				interval,
 			} => {
-				if let Some(slot) = state.timers.get_mut(index) {
-					if let Some(handle) = slot.take() {
-						handle.cancel();
-					}
-					*slot = Some(ctx
-						.schedule_tick(interval, move |_nanos| LifecycleMessage::Tick(index)));
+				if let Some(handle) = state.timer.take() {
+					handle.cancel();
 				}
+				state.timer = Some(ctx.schedule_tick(interval, move |_nanos| LifecycleMessage::Tick));
 			}
 			LifecycleMessage::Shutdown => {
 				return Directive::Stop;

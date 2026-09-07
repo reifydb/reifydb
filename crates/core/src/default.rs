@@ -161,6 +161,9 @@ pub mod threads {
 	pub const COMPUTE: u16 = 2;
 	pub const COMPUTE_TESTING: u16 = 1;
 
+	pub const MAINTENANCE: u16 = 1;
+	pub const MAINTENANCE_TESTING: u16 = 1;
+
 	pub const SUBSCRIPTION_WORKER: u16 = 0;
 	pub const SUBSCRIPTION_WORKER_TESTING: u16 = 0;
 }

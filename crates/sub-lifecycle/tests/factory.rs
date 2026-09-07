@@ -391,10 +391,12 @@ fn every_class_reports_a_slice_once_the_lane_has_run_each_task() {
 
 	for index in 0..lifecycle.task_names().len() {
 		let waiter = Arc::new(WaiterHandle::new());
-		let sent = lifecycle.actor_ref().send(LifecycleMessage::RunToExhaustion {
-			index,
-			waiter: waiter.clone(),
-		});
+		let sent = lifecycle
+			.actor_ref(index)
+			.expect("every registered task must have an actor")
+			.send(LifecycleMessage::RunToExhaustion {
+				waiter: waiter.clone(),
+			});
 		assert!(sent.is_ok(), "the lifecycle lane must accept a drain request for task {index}");
 		assert!(
 			waiter.wait_timeout(Duration::from_seconds(10).unwrap()),

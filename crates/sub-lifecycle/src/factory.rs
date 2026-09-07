@@ -167,14 +167,20 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 		}
 
 		let tasks = registry.take();
-		let task_names = tasks.iter().map(|task| task.name()).collect();
+		let task_names: Vec<&'static str> = tasks.iter().map(|task| task.name()).collect();
 		for task in &tasks {
 			for class in task.classes() {
 				coverage.cover(*class, task.name());
 			}
 		}
-		let actor_ref = LifecycleActor::spawn(&spawner, tasks);
+		let actor_refs = tasks
+			.into_iter()
+			.map(|task| {
+				let name = format!("lifecycle-{}", task.name());
+				LifecycleActor::spawn(&spawner, &name, task)
+			})
+			.collect();
 
-		Ok(Box::new(LifecycleSubsystem::new(actor_ref, task_names, coverage, plane)))
+		Ok(Box::new(LifecycleSubsystem::new(actor_refs, task_names, coverage, plane)))
 	}
 }

@@ -43,6 +43,7 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::ThreadsFlow,
 	ConfigKey::ThreadsTask,
 	ConfigKey::ThreadsCompute,
+	ConfigKey::ThreadsMaintenance,
 	ConfigKey::MultiPointBufferShardBytes,
 	ConfigKey::MultiRangeBufferShardBytes,
 	ConfigKey::OperatorRangeTierBytes,
@@ -119,7 +120,7 @@ pub(crate) fn resolve_startup_configs(
 	let pools = PoolConfig {
 		coordination_threads: threads(ConfigKey::ThreadsCoordination),
 		flow_threads: threads(ConfigKey::ThreadsFlow),
-		maintenance_threads: 1,
+		maintenance_threads: threads(ConfigKey::ThreadsMaintenance),
 		task_threads: threads(ConfigKey::ThreadsTask),
 		compute_threads: threads(ConfigKey::ThreadsCompute),
 		async_threads: threads(ConfigKey::ThreadsAsync),

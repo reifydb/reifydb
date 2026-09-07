@@ -21,7 +21,7 @@ use tracing::{debug, error, info};
 use crate::{actor::LifecycleMessage, plane::RetentionPlane};
 
 pub struct LifecycleSubsystem {
-	actor_ref: ActorRef<LifecycleMessage>,
+	actor_refs: Vec<ActorRef<LifecycleMessage>>,
 	task_names: Vec<&'static str>,
 	covered: HashSet<RetentionClass>,
 	plane: RetentionPlane,
@@ -51,7 +51,7 @@ fn report_retention_classes(task_names: &[&'static str], coverage: &RetentionCov
 
 impl LifecycleSubsystem {
 	pub fn new(
-		actor_ref: ActorRef<LifecycleMessage>,
+		actor_refs: Vec<ActorRef<LifecycleMessage>>,
 		task_names: Vec<&'static str>,
 		coverage: RetentionCoverage,
 		plane: RetentionPlane,
@@ -59,7 +59,7 @@ impl LifecycleSubsystem {
 		report_retention_classes(&task_names, &coverage);
 		let covered = RetentionClass::all().iter().filter(|c| coverage.is_covered(**c)).copied().collect();
 		Self {
-			actor_ref,
+			actor_refs,
 			task_names,
 			covered,
 			plane,
@@ -79,8 +79,8 @@ impl LifecycleSubsystem {
 		&self.plane
 	}
 
-	pub fn actor_ref(&self) -> &ActorRef<LifecycleMessage> {
-		&self.actor_ref
+	pub fn actor_ref(&self, index: usize) -> Option<&ActorRef<LifecycleMessage>> {
+		self.actor_refs.get(index)
 	}
 }
 
@@ -100,7 +100,9 @@ impl Shutdown for LifecycleSubsystem {
 		if !self.running.swap(false, Ordering::SeqCst) {
 			return;
 		}
-		let _ = self.actor_ref.send(LifecycleMessage::Shutdown);
+		for actor_ref in &self.actor_refs {
+			let _ = actor_ref.send(LifecycleMessage::Shutdown);
+		}
 		debug!("Lifecycle subsystem shutdown signalled");
 	}
 }
