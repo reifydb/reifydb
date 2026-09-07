@@ -388,3 +388,34 @@ fn a_restart_over_populated_state_rebuilds_the_filter_without_hiding_a_durable_r
 	})
 	.unwrap();
 }
+
+#[test]
+fn a_group_page_after_a_restart_sees_a_keyspace_this_store_has_not_written() {
+	// the occupancy mask decides which keyspaces a group page asks sqlite about, and a write seeds it with only
+	// the keyspace it touched. A store that boots over durable state and writes elsewhere first must still seed
+	// the mask from what sqlite holds, or the page silently skips a keyspace and a durable row reads as absent
+	temp_dir(|dir| {
+		{
+			let store = store_at(dir);
+			put(&store, OP, key(1), row("durable"));
+			assert!(store.flush_pending_blocking(), "the row must reach sqlite before the restart");
+		}
+
+		let store = store_at(dir);
+		put(&store, OP, state_key(group(), KeyspaceId::JOIN_RIGHT, 9), row("fresh"));
+
+		let batch = store.group_page(OP, &[group()], 64);
+		let bodies: Vec<String> = batch
+			.items
+			.iter()
+			.map(|(_, row)| String::from_utf8(row.body().to_vec()).expect("test bodies are utf8"))
+			.collect();
+
+		assert!(
+			bodies.iter().any(|body| body == "durable"),
+			"a group page must return the durable JOIN_LEFT row even though this store only wrote JOIN_RIGHT, got {bodies:?}"
+		);
+		Ok(())
+	})
+	.unwrap();
+}

@@ -90,9 +90,9 @@ impl OperatorPersistentTier {
 		}
 	}
 
-	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64) -> OperatorBatch {
+	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64, mask: u64) -> OperatorBatch {
 		match self {
-			Self::Sqlite(storage) => storage.group_page(operator, groups, batch_size),
+			Self::Sqlite(storage) => storage.group_page(operator, groups, batch_size, mask),
 		}
 	}
 
@@ -201,7 +201,7 @@ impl OperatorPersistentTier {
 		match *self {}
 	}
 
-	pub fn group_page(&self, _operator: OperatorId, _groups: &[GroupId], _batch_size: u64) -> OperatorBatch {
+	pub fn group_page(&self, _operator: OperatorId, _groups: &[GroupId], _batch_size: u64, _mask: u64) -> OperatorBatch {
 		match *self {}
 	}
 

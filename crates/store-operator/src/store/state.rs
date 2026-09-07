@@ -466,7 +466,8 @@ impl StandardOperatorStore {
 		let mut buffer = GroupBuffer::new(self, operator, &ordered, target);
 		buffer.peek();
 		let persistent = self.persistent.as_ref().filter(|_| !buffer.dropped);
-		let mut source = GroupPager::new(operator, persistent, &ordered);
+		let mask = self.occupancy.mask(operator, || self.occupied_keyspaces(operator));
+		let mut source = GroupPager::new(operator, persistent, &ordered, mask);
 
 		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();

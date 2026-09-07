@@ -23,6 +23,7 @@ use reifydb_value::byte_size::ByteSize;
 use rusqlite::{Connection, Transaction};
 
 use crate::{
+	store::occupancy::occupies,
 	tier::{
 		bound::{KeyspaceIds, parts, span, split_bound},
 		persistent::sqlite::typed,
@@ -388,6 +389,7 @@ pub(super) fn bounded_in(
 	range: &EncodedKeyRange,
 	limit: u64,
 	reverse: bool,
+	mask: u64,
 ) -> Vec<(EncodedKey, Vec<u8>)> {
 	if groups.is_empty() {
 		return Vec::new();
@@ -396,6 +398,7 @@ pub(super) fn bounded_in(
 	let (end, _, end_at) = split_bound(range.end.as_ref());
 	let end_open = matches!(end, Bound::Excluded(ref suffix) if suffix.is_empty());
 	let mut ids = span(start_at, end_at, end_open);
+	ids.retain(|id| occupies(mask, *id));
 	if reverse {
 		ids.reverse();
 	}
@@ -672,7 +675,7 @@ mod tests {
 	}
 
 	fn sweep(conn: &Connection, groups: &[GroupId]) -> Vec<EncodedKey> {
-		keys(bounded_in(conn, OPERATOR, groups, &EncodedKeyRange::all(), LIMIT, false))
+		keys(bounded_in(conn, OPERATOR, groups, &EncodedKeyRange::all(), LIMIT, false, u64::MAX))
 	}
 
 	#[test]

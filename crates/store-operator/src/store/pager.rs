@@ -97,6 +97,7 @@ pub(crate) struct GroupPager<'a> {
 	operator: OperatorId,
 	persistent: Option<&'a OperatorPersistentTier>,
 	groups: &'a [GroupId],
+	mask: u64,
 	exhausted: bool,
 	ceiling: Option<EncodedKey>,
 }
@@ -106,11 +107,13 @@ impl<'a> GroupPager<'a> {
 		operator: OperatorId,
 		persistent: Option<&'a OperatorPersistentTier>,
 		groups: &'a [GroupId],
+		mask: u64,
 	) -> Self {
 		Self {
 			operator,
 			persistent,
 			groups,
+			mask,
 			exhausted: persistent.is_none() || groups.is_empty(),
 			ceiling: None,
 		}
@@ -127,7 +130,7 @@ impl PageSource for GroupPager<'_> {
 			self.exhausted = true;
 			return Vec::new();
 		};
-		let batch = persistent.group_page(self.operator, self.groups, limit);
+		let batch = persistent.group_page(self.operator, self.groups, limit, self.mask);
 		self.exhausted = true;
 		if batch.has_more {
 			self.ceiling = batch.items.last().map(|(key, _)| key.clone());

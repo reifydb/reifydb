@@ -17,9 +17,15 @@ use crate::types::OperatorWrite;
 
 const LOWEST_META: u8 = KeyspaceId::GUEST_ROW_MAPPING.0;
 
+#[derive(Debug, Default, Clone, Copy)]
+struct Occupancy {
+	mask: u64,
+	seeded: bool,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct KeyspaceOccupancy {
-	masks: Mutex<HashMap<OperatorId, u64>>,
+	masks: Mutex<HashMap<OperatorId, Occupancy>>,
 }
 
 impl KeyspaceOccupancy {
@@ -63,19 +69,22 @@ impl KeyspaceOccupancy {
 			let Some(bit) = bit(keyspace) else {
 				continue;
 			};
-			*masks.entry(operator).or_default() |= bit;
+			masks.entry(operator).or_default().mask |= bit;
 		}
 	}
 
 	pub(crate) fn mask(&self, operator: OperatorId, seed: impl FnOnce() -> Vec<KeyspaceId>) -> u64 {
-		if let Some(mask) = self.masks.lock().get(&operator) {
-			return *mask;
+		if let Some(entry) = self.masks.lock().get(&operator) {
+			if entry.seeded {
+				return entry.mask;
+			}
 		}
 		let seeded = seed().into_iter().filter_map(bit).fold(0, |mask, bit| mask | bit);
 		let mut masks = self.masks.lock();
-		let mask = masks.entry(operator).or_default();
-		*mask |= seeded;
-		*mask
+		let entry = masks.entry(operator).or_default();
+		entry.mask |= seeded;
+		entry.seeded = true;
+		entry.mask
 	}
 
 	pub(crate) fn forget(&self, operator: OperatorId) {

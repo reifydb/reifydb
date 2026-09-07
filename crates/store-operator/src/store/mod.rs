@@ -3,7 +3,7 @@
 
 mod census;
 mod checkpoint;
-mod occupancy;
+pub(crate) mod occupancy;
 mod pager;
 pub mod state;
 #[cfg(test)]

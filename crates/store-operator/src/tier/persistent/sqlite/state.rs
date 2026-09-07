@@ -87,7 +87,7 @@ impl SqliteOperatorStorage {
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::group_page", level = "trace", skip(self, groups), fields(operator = operator.0, group_count = groups.len(), batch_size = batch_size))]
-	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64) -> OperatorBatch {
+	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64, mask: u64) -> OperatorBatch {
 		if groups.is_empty() || !self.state_written() {
 			return OperatorBatch::empty();
 		}
@@ -103,6 +103,7 @@ impl SqliteOperatorStorage {
 			&EncodedKeyRange::all(),
 			limit.saturating_add(1),
 			false,
+			mask,
 		);
 		record_page(rows.len() as u64, 0);
 		let has_more = rows.len() as u64 > limit;
