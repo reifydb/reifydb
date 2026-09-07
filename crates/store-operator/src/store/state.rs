@@ -13,15 +13,14 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
 };
+#[cfg(reifydb_assertions)]
+use reifydb_core::key::operator::{keyspace::group_scoped_id, state::OperatorStateKey};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator::{
-		keyspace::{dispatch, group_scoped_id},
-		state::{
-			GroupId, KeyspaceId, OperatorStateKey, group_inner_range, group_inner_range_split,
-			keyspace_inner_range_split,
-		},
+		keyspace::dispatch,
+		state::{GroupId, KeyspaceId, group_inner_range, group_inner_range_split, keyspace_inner_range_split},
 	},
 	metrics::scan::record_page,
 };
@@ -161,6 +160,7 @@ impl StandardOperatorStore {
 		}
 	}
 
+	#[instrument(name = "store::operator::invalidate_read_batch", level = "debug", skip_all, fields(write_count = writes.len()))]
 	fn invalidate_read_batch(&self, writes: &[OperatorWrite]) {
 		if self.range.is_none() {
 			return;
@@ -322,6 +322,7 @@ impl StandardOperatorStore {
 		let scan_budget = target.saturating_mul(SCAN_BUDGET_FACTOR);
 		let mut consumed = 0usize;
 		let mut skipped = 0u64;
+		let mut spent = 0usize;
 		let mut walked: Option<EncodedKey> = None;
 		let mut resume: Option<EncodedKey> = None;
 
@@ -348,9 +349,10 @@ impl StandardOperatorStore {
 				continue;
 			}
 			if page_index == page.len() && !source.is_exhausted() {
-				page = source.next_page(limit);
+				page = source.next_page(target.saturating_add(spent).min(scan_budget) as u64);
 				page_shadow = self.resident.tombstoned(operator, page.iter().map(|(key, _)| key));
 				page_index = 0;
+				spent = 0;
 				continue;
 			}
 
@@ -378,6 +380,7 @@ impl StandardOperatorStore {
 					if !dead {
 						items.push((key.clone(), row.clone()));
 					} else {
+						spent += 1;
 						skipped += 1;
 					}
 				}
@@ -406,12 +409,14 @@ impl StandardOperatorStore {
 							if !dead {
 								items.push((page_key.clone(), page_row.clone()));
 							} else {
+								spent += 1;
 								skipped += 1;
 							}
 						}
 						Ordering::Equal => {
 							buffer_index += 1;
 							page_index += 1;
+							spent += 1;
 							consumed += 2;
 							if consumed >= scan_budget {
 								walked = Some(buffer_key.clone());

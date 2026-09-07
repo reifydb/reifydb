@@ -17,12 +17,18 @@ use reifydb_value::byte_size::ByteSize;
 #[cfg(test)]
 use crate::tier::range::{MaterializeInterlock, ServeInterlock};
 use crate::{
-	coverage::{index::CoverageIndex, plan::GapHistogram, retraction::Retractions},
+	coverage::{entry::Entry, index::CoverageIndex, plan::GapHistogram, retraction::Retractions},
 	tier::range::{
-		Partition, PoolInner, Progress, RangeBucketMetrics, RangeConfig, RangeDomain, RangeMetrics,
-		RangeShardMetrics, RangeTier, Shard, account, entry_footprint,
+		Partition, PoolInner, Progress, RESERVE_DIVISOR, RangeBucketMetrics, RangeComposition, RangeConfig,
+		RangeDomain, RangeMetrics, RangeShardMetrics, RangeTier, Shard, account, entry_footprint,
 	},
 };
+
+#[derive(Clone, Copy)]
+enum Ceiling {
+	Limit,
+	Reserve,
+}
 
 const GAP_SLOTS: [&str; 8] =
 	["count_0", "count_1", "count_2", "count_3", "count_4", "count_5_8", "count_9_16", "count_17_plus"];
@@ -136,8 +142,18 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	pub(super) fn evict_to_capacity(&self, shard: usize) {
+		self.evict_down_to(shard, Ceiling::Limit)
+	}
+
+	pub fn relieve(&self) {
+		for index in 0..self.inner.shards.len() {
+			self.evict_down_to(index, Ceiling::Reserve);
+		}
+	}
+
+	fn evict_down_to(&self, shard: usize, ceiling: Ceiling) {
 		loop {
-			let Some((victim, progress)) = self.pick_victim(shard) else {
+			let Some((victim, progress)) = self.pick_victim(shard, ceiling) else {
 				break;
 			};
 			self.retract_partition(&victim);
@@ -151,14 +167,18 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 	}
 
-	fn pick_victim(&self, index: usize) -> Option<(D::Partition, Progress)> {
+	fn pick_victim(&self, index: usize, ceiling: Ceiling) -> Option<(D::Partition, Progress)> {
 		let shard = self.shard(index).lock();
-		if !shard.budget.over_budget() {
+		let cap = match ceiling {
+			Ceiling::Limit => shard.budget.limit().as_bytes(),
+			Ceiling::Reserve => shard.reserve,
+		};
+		if shard.budget.used().as_bytes() <= cap {
 			return None;
 		}
 		let mut victim: Option<(u64, D::Partition, Progress)> = None;
 		for (id, partition) in shard.partitions.iter() {
-			if !partition.pinned.has_victim() {
+			if !partition.pinned.has_victim(Self::releases_removals()) {
 				continue;
 			}
 			if victim.map(|(tick, _, _)| partition.tick < tick).unwrap_or(true) {
@@ -166,6 +186,10 @@ impl<D: RangeDomain> RangeTier<D> {
 			}
 		}
 		victim.map(|(_, id, progress)| (id, progress))
+	}
+
+	pub(super) fn releases_removals() -> bool {
+		!D::pins_removals()
 	}
 
 	fn retract_partition(&self, victim: &D::Partition) {
@@ -193,15 +217,18 @@ impl<D: RangeDomain> RangeTier<D> {
 			if partition.progress() != progress {
 				return false;
 			}
+			let releasing = Self::releases_removals();
 			let Partition {
 				entries,
 				pinned,
 				bytes,
+				covered,
 				..
 			} = partition;
+			*covered = false;
 			let mut freed = 0usize;
 			entries.retain(|key, entry| {
-				if !entry.evictable() {
+				if !entry.evictable(releasing) {
 					return true;
 				}
 				freed += entry_footprint(key, entry);
@@ -223,6 +250,25 @@ impl<D: RangeDomain> RangeTier<D> {
 	pub fn resident_bytes(&self) -> ByteSize {
 		let total = self.all_shards().iter().map(|shard| shard.lock().budget.used().as_bytes()).sum();
 		ByteSize::from_bytes(total)
+	}
+
+	pub fn composition(&self) -> RangeComposition {
+		let mut composition = RangeComposition::default();
+		for shard in self.all_shards() {
+			for partition in shard.lock().partitions.values() {
+				for entry in partition.entries.values() {
+					match entry {
+						Entry::Row(_) => composition.rows += 1,
+						Entry::Deleted => composition.deleted += 1,
+						Entry::Absent => composition.absent += 1,
+					}
+				}
+				composition.removals += partition.pinned.removals();
+				composition.total += partition.pinned.total();
+				composition.victim |= partition.pinned.has_victim(Self::releases_removals());
+			}
+		}
+		composition
 	}
 
 	pub fn intervals(&self) -> usize {
@@ -447,6 +493,7 @@ fn build_shards<D: RangeDomain>(config: RangeConfig, shard_bytes: ByteSize) -> B
 			Mutex::new(Shard {
 				partitions: HashMap::new(),
 				budget: MemoryBudget::new(byte_cap),
+				reserve: byte_cap.as_bytes() - byte_cap.as_bytes() / RESERVE_DIVISOR,
 				next_tick: 0,
 				writes: 0,
 				gaps: GapHistogram::new(),
@@ -469,8 +516,8 @@ mod tests {
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
 		key::{
-			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-			typed::MultiKey,
+			operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+			typed::{MultiKey, range::KeyRange},
 		},
 		metrics::{
 			collect::MetricsCollector,
@@ -487,7 +534,7 @@ mod tests {
 			plan::{DEFAULT_GAP_GUARD, ScanPlan},
 		},
 		tier::range::{
-			DEFAULT_COVERAGE_INTERVALS, Partition, RangeConfig, RangeTier, Shard,
+			DEFAULT_COVERAGE_INTERVALS, Partition, RESERVE_DIVISOR, RangeConfig, RangeTier, Shard,
 			domain::{TestDomain as D, TestPartition},
 			entry_footprint, partition_overhead,
 		},
@@ -655,6 +702,127 @@ mod tests {
 		assert_eq!(tier.entries(), 1, "only the evictable row may be dropped");
 		assert_eq!(probe(&tier, &live), None, "the dropped row falls through");
 		assert_eq!(tier.partitions(), 1, "a partition holding a pinned entry is never removed");
+	}
+
+	#[test]
+	fn a_partition_that_survives_eviction_must_re_prove_coverage_before_it_caches_again() {
+		// A survivor keeps its pinned removal but not its claim. Leaving it admitting write through
+		// lets unproven rows pin the shard at its cap, and coverage only ever comes from a
+		// materialize, so a tier that refuses one there can never rebuild the claim its reads need.
+		let live = key(KeyspaceId::ACCUMULATOR, b"a");
+		let gone = key(KeyspaceId::ACCUMULATOR, b"b");
+		let late = key(KeyspaceId::ACCUMULATOR, b"c");
+		let rows = vec![(live.clone(), Entry::row(row("v"))), (gone.clone(), Entry::deleted())];
+		let tier = tier(cost(&rows) as u64 - 1, 1);
+		seed(&tier, part(KeyspaceId::ACCUMULATOR), rows);
+
+		tier.evict_to_capacity(0);
+
+		assert_eq!(
+			resident(&tier, &gone),
+			Some(Entry::Deleted),
+			"the fixture must leave the partition standing"
+		);
+		assert_eq!(tier.intervals(), 0, "and must leave it holding no claim");
+		let settled = tier.metrics().evictions;
+
+		tier.overwrite(OP_A, late.clone(), row("late"));
+
+		assert_eq!(
+			tier.metrics().evictions,
+			settled,
+			"an admitted write the shard has no room for is evicted again at once: the treadmill that \
+			 pins the tier at its cap"
+		);
+		assert_eq!(resident(&tier, &late), None, "and the unproven row must not be resident");
+	}
+
+	#[test]
+	fn a_tier_at_its_limit_frees_nothing_for_itself_until_the_reserve_pass_runs() {
+		// Write through charges without a cap, a read fill charges with one, and eviction only runs
+		// while used exceeds the limit. A tier sitting exactly at its limit is therefore stable: no
+		// write path pass frees a byte, and every materialize is refused for want of headroom, so
+		// coverage is never re-proven. The reserve pass is the only thing that breaks that cycle.
+		let cold = key(KeyspaceId::ACCUMULATOR, b"a");
+		let hot = key(KeyspaceId::BUFFER, b"b");
+		let cold_rows = vec![(cold.clone(), Entry::row(row("v")))];
+		let hot_rows = vec![(hot.clone(), Entry::row(row("v")))];
+		let total = (cost(&cold_rows) + cost(&hot_rows)) as u64;
+		let tier = tier(total, 1);
+
+		seed(&tier, part(KeyspaceId::ACCUMULATOR), cold_rows);
+		seed(&tier, part(KeyspaceId::BUFFER), hot_rows.clone());
+		assert_eq!(
+			tier.resident_bytes(),
+			ByteSize::from_bytes(total),
+			"the fixture must sit exactly at the limit"
+		);
+
+		tier.evict_to_capacity(0);
+
+		assert_eq!(
+			tier.metrics().evictions,
+			0,
+			"a tier at its limit is not over it, so the write path frees nothing"
+		);
+		assert_eq!(
+			tier.resident_bytes(),
+			ByteSize::from_bytes(total),
+			"and leaves no room for a read fill to charge"
+		);
+
+		tier.relieve();
+
+		let reserve = total - total / RESERVE_DIVISOR;
+		assert_eq!(
+			tier.metrics().evictions,
+			1,
+			"the reserve pass must evict the coldest partition, and only it"
+		);
+		assert!(
+			tier.resident_bytes().as_bytes() <= reserve,
+			"the pass must clear the reserve: {} bytes held against a {} byte mark",
+			tier.resident_bytes().as_bytes(),
+			reserve
+		);
+		assert_eq!(probe(&tier, &cold), None, "the evicted partition falls through");
+		assert_eq!(probe(&tier, &hot), Some(Some(row("v"))), "the most recently seeded partition survives");
+	}
+
+	#[test]
+	fn a_scan_that_misses_a_partition_must_not_arm_write_through_on_it() {
+		// covered gates unproven write through, and only a proven span may arm it. A miss proves
+		// nothing, so arming it there readmits write through into a span the tier cannot answer, and
+		// every such write drives an eviction that retracts the claim a read fill just paid for.
+		let live = key(KeyspaceId::ACCUMULATOR, b"a");
+		let gone = key(KeyspaceId::ACCUMULATOR, b"b");
+		let late = key(KeyspaceId::ACCUMULATOR, b"c");
+		let rows = vec![(live.clone(), Entry::row(row("v"))), (gone.clone(), Entry::deleted())];
+		let tier = tier(cost(&rows) as u64 - 1, 1);
+		seed(&tier, part(KeyspaceId::ACCUMULATOR), rows);
+
+		tier.evict_to_capacity(0);
+		assert_eq!(
+			resident(&tier, &gone),
+			Some(Entry::Deleted),
+			"the fixture must leave the partition standing"
+		);
+		assert_eq!(tier.intervals(), 0, "and must leave it holding no claim");
+
+		let range = keyspace_inner_range(group_a(), KeyspaceId::ACCUMULATOR);
+		let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("the keyspace range must be plannable");
+		assert!(scan.gaps() > 0, "the fixture must plan a miss, or the arming is not under test");
+		let settled = tier.metrics().evictions;
+
+		tier.overwrite(OP_A, late.clone(), row("late"));
+
+		assert_eq!(
+			tier.metrics().evictions,
+			settled,
+			"a miss must not admit the write: an admitted one is evicted again at once, and that \
+			 eviction retracts the claim the next read fill pays for"
+		);
+		assert_eq!(resident(&tier, &late), None, "and the unproven row must not be resident");
 	}
 
 	#[test]

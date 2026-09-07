@@ -101,6 +101,8 @@ impl CatalogStore {
 			});
 		}
 
+		results.sort_by(|left, right| left.partition_values.cmp(&right.partition_values));
+
 		Ok(results)
 	}
 

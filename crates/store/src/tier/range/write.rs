@@ -118,6 +118,8 @@ impl<D: RangeDomain> RangeTier<D> {
 		let index = self.shard_index(&partition);
 		if self.place(index, &partition, key.clone(), Entry::absent()) {
 			self.evict_to_capacity(index);
+		} else {
+			self.discard(index, &partition, key);
 		}
 	}
 
@@ -338,7 +340,7 @@ mod tests {
 		tier::range::{
 			Partition, RangeConfig, RangeTier,
 			domain::{TestDomain as D, TestPartition},
-			partition_overhead,
+			entry_footprint, partition_overhead,
 		},
 	};
 
@@ -549,8 +551,8 @@ mod tests {
 			Some(Entry::Deleted),
 			"a removal the flush has not seen must never be stored as a proven absence"
 		);
-		assert_eq!(pinned(&tier, &id).pinned(), 1);
-		assert!(!pinned(&tier, &id).has_victim(), "eviction must not be offered an unflushed removal");
+		assert_eq!(pinned(&tier, &id).removals(), 1);
+		assert!(!pinned(&tier, &id).has_victim(false), "eviction must not be offered an unflushed removal");
 		assert!(bytes(&tier, &id) > PARTITION_OVERHEAD, "the removal must stay charged to the budget");
 		assert_eq!(tier.lookup(OP_A, &at), Some(None), "a removal answers a read outright");
 		assert!(covers(&tier, OP_A, &at), "the claim around a removal stays standing");
@@ -610,8 +612,8 @@ mod tests {
 			Some(Entry::Absent),
 			"an erased key lets a stale in-flight row back in under a fresh claim"
 		);
-		assert_eq!(pinned(&tier, &id).pinned(), 0, "a flushed removal must be reclaimable");
-		assert!(pinned(&tier, &id).has_victim());
+		assert_eq!(pinned(&tier, &id).removals(), 0, "a flushed removal must be reclaimable");
+		assert!(pinned(&tier, &id).has_victim(false));
 		assert_eq!(pinned(&tier, &id).total(), 1, "the key is still one entry, not zero");
 		assert_eq!(tier.lookup(OP_A, &at), Some(None));
 	}
@@ -667,12 +669,12 @@ mod tests {
 		claim(&tier, OP_A, &key(CACHED, b"a"), &key(CACHED, b"z"));
 		tier.overwrite(OP_A, at.clone(), row("v"));
 		tier.mark_deleted(OP_A, &at);
-		assert_eq!(pinned(&tier, &id).pinned(), 1);
+		assert_eq!(pinned(&tier, &id).removals(), 1);
 
 		tier.overwrite(OP_A, at.clone(), row("w"));
 
 		assert_eq!(residency(&tier, &id, &at), Some(Entry::Row(row("w"))));
-		assert_eq!((pinned(&tier, &id).pinned(), pinned(&tier, &id).total()), (0, 1));
+		assert_eq!((pinned(&tier, &id).removals(), pinned(&tier, &id).total()), (0, 1));
 		assert_eq!(tier.lookup(OP_A, &at), Some(Some(row("w"))));
 	}
 
@@ -695,7 +697,7 @@ mod tests {
 		tier.overwrite(OP_A, elsewhere.clone(), row("v"));
 		tier.overwrite(OP_B, at.clone(), row("v"));
 		tier.mark_deleted(OP_A, &elsewhere);
-		assert_eq!(pinned(&tier, &second).pinned(), 1);
+		assert_eq!(pinned(&tier, &second).removals(), 1);
 		let charged = tier.shard_for(&live).lock().budget.used();
 		let before = tier.retractions();
 
@@ -729,6 +731,46 @@ mod tests {
 				written_at: 0,
 				covered: false,
 			},
+		);
+	}
+
+	fn seat_unclaimed_holding(
+		tier: &RangeTier<D>,
+		id: TestPartition,
+		at: &EncodedKey,
+		entry: Entry<EncodedPodRow>,
+	) {
+		// The entry must predate the lost claim, or the refused write under test never meets it.
+		seat_unclaimed(tier, id);
+		let mut shard = tier.shard_for(&id).lock();
+		shard.budget.charge(ByteSize::from_bytes(PARTITION_OVERHEAD as u64));
+		let charged = entry_footprint(at, &entry);
+		shard.budget.charge(ByteSize::from_bytes(charged as u64));
+		let target = shard.partitions.get_mut(&id).expect("the partition was just seated");
+		target.pinned.insert(&entry);
+		target.bytes += charged;
+		target.entries.insert(at.clone(), entry);
+	}
+
+	#[test]
+	fn a_retract_the_tier_cannot_prove_forgets_the_removal_instead_of_keeping_it() {
+		// Deleted is never evictable and only a retract clears one. Refusing that retract for want of
+		// a claim makes the tombstone immortal, so the tier fills with entries eviction can never
+		// reclaim and can never free the bytes a materialize needs to prove the span again.
+		let tier = tier();
+		let id = partition(OP_A, CACHED);
+		let at = key(CACHED, b"m");
+		seat_unclaimed_holding(&tier, id, &at, Entry::deleted());
+		assert!(!pinned(&tier, &id).has_victim(false), "the fixture must start with nothing evictable");
+
+		tier.retract(OP_A, &at);
+
+		assert_eq!(residency(&tier, &id, &at), None, "an unprovable removal must be forgotten, not kept");
+		assert_eq!(pinned(&tier, &id).total(), 0, "and must leave the partition holding no entry");
+		assert_eq!(
+			tier.resident_bytes(),
+			ByteSize::from_bytes(PARTITION_OVERHEAD as u64),
+			"the bytes the tombstone held must go back to the budget"
 		);
 	}
 

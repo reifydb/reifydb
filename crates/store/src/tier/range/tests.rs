@@ -659,6 +659,40 @@ fn a_concurrent_materialize_never_refuses_another_materialize() {
 }
 
 #[test]
+fn a_claim_over_a_proven_empty_span_is_charged_to_its_keyspace_row() {
+	let tier = roomy();
+
+	let range = keyspace_inner_range(group_a(), KeyspaceId::ACCUMULATOR);
+	let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
+	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
+
+	assert!(tier.materialize(&scan, &gap, &[]) == Materialize::Materialized);
+	assert_eq!(tier.partitions(), 0, "a span proven empty must be claimed without installing a partition");
+
+	assert_eq!(tier.metrics().materializes, 1);
+	assert_eq!(keyspace_row(&tier, KeyspaceId::ACCUMULATOR).counters.materializes, 1);
+}
+
+#[test]
+fn a_claim_withdrawn_before_it_publishes_is_taken_back_off_its_keyspace_row() {
+	let tier = roomy();
+
+	let range = keyspace_inner_range(group_a(), KeyspaceId::ACCUMULATOR);
+	let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
+	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
+
+	tier.invalidate(OP_A, &key(group_a(), KeyspaceId::ACCUMULATOR, b"a"));
+
+	assert!(tier.materialize(&scan, &gap, &[]) == Materialize::Refused);
+
+	assert_eq!(tier.metrics().materializes, 0);
+	assert_eq!(tier.metrics().materializes_raced, 1);
+	let row = keyspace_row(&tier, KeyspaceId::ACCUMULATOR);
+	assert_eq!(row.counters.materializes, 0);
+	assert_eq!(row.counters.materializes_raced, 1);
+}
+
+#[test]
 fn a_materialize_places_its_rows_before_it_publishes_the_claim() {
 	let fired = Arc::new(AtomicBool::new(false));
 	let readable = Arc::new(AtomicBool::new(false));

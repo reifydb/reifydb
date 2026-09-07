@@ -89,6 +89,41 @@ impl MultiPersistentTier {
 	}
 }
 
+#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
+impl MultiPersistentTier {
+	pub(crate) fn range_next_row(
+		&self,
+		_cursor: &mut Cursor<RangeStop, StorageRowKey>,
+		_request: NarrowRangeRequest<'_, StorageRowKey>,
+	) -> Result<RangeBatch<StorageRowKey>> {
+		match *self {}
+	}
+
+	pub(crate) fn range_next_partitioned_row(
+		&self,
+		_cursor: &mut Cursor<RangeStop, StoragePartitionedRowKey>,
+		_request: NarrowRangeRequest<'_, StoragePartitionedRowKey>,
+	) -> Result<RangeBatch<StoragePartitionedRowKey>> {
+		match *self {}
+	}
+
+	pub(crate) fn range_next_series(
+		&self,
+		_cursor: &mut Cursor<RangeStop, StorageSeriesKey>,
+		_request: NarrowRangeRequest<'_, StorageSeriesKey>,
+	) -> Result<RangeBatch<StorageSeriesKey>> {
+		match *self {}
+	}
+
+	pub(crate) fn range_next_partitioned_series(
+		&self,
+		_cursor: &mut Cursor<RangeStop, StoragePartitionedSeriesKey>,
+		_request: NarrowRangeRequest<'_, StoragePartitionedSeriesKey>,
+	) -> Result<RangeBatch<StoragePartitionedSeriesKey>> {
+		match *self {}
+	}
+}
+
 pub trait PersistentRangeLayout: NarrowLayout {
 	fn range_next(
 		persistent: &MultiPersistentTier,

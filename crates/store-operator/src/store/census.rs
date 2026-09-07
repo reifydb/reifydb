@@ -63,6 +63,7 @@ impl OperatorCensus {
 		census
 	}
 
+	#[instrument(name = "store::operator::census::record", level = "debug", skip_all, fields(write_count = writes.len()))]
 	pub(crate) fn record(&self, writes: &[OperatorWrite]) {
 		let mut buckets = self.buckets.lock();
 		for write in writes {

@@ -23,7 +23,7 @@ use crate::{
 };
 
 enum PartitionAction {
-	Claim(usize),
+	Claim(usize, usize),
 	Materialize,
 }
 
@@ -198,7 +198,11 @@ impl<D: RangeDomain> RangeTier<D> {
 				}
 				if D::caches_ranges(&partition) {
 					match shard.partitions.get_mut(&partition) {
-						Some(resident) => resident.covered = true,
+						Some(resident) => {
+							if matches!(tally, Tally::Hit) {
+								resident.covered = true;
+							}
+						}
 						None => {
 							if matches!(tally, Tally::Hit) {
 								barren.get_or_insert_with(|| {
@@ -328,7 +332,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		let mut start = span.start.clone();
 		let mut materialized = false;
 		let mut claim: Option<Interval<D::Key>> = None;
-		let mut claimed: Vec<usize> = Vec::new();
+		let mut claimed: Vec<(usize, usize)> = Vec::new();
 		let mut walk_end: Option<Edge<D::Key>> = None;
 		if !span.is_empty() {
 			loop {
@@ -350,12 +354,12 @@ impl<D: RangeDomain> RangeTier<D> {
 					}
 				} else {
 					match self.classify(&piece, partition, rows) {
-						PartitionAction::Claim(index) => {
+						PartitionAction::Claim(index, bucket) => {
 							match &mut claim {
 								Some(run) => run.end = piece.end.clone(),
 								None => claim = Some(piece.clone()),
 							}
-							claimed.push(index);
+							claimed.push((index, bucket));
 							materialized = true;
 						}
 						PartitionAction::Materialize => {
@@ -398,19 +402,21 @@ impl<D: RangeDomain> RangeTier<D> {
 			return PartitionAction::Materialize;
 		}
 		let index = self.shard_index(&partition);
+		let bucket = D::metric_bucket(&partition);
 		let mut shard = self.shard(index).lock();
 		if shard.partitions.contains_key(&partition) {
 			return PartitionAction::Materialize;
 		}
 		shard.metrics.materializes += 1;
-		PartitionAction::Claim(index)
+		shard.bucket_metrics[bucket].materializes += 1;
+		PartitionAction::Claim(index, bucket)
 	}
 
 	fn flush_claims(
 		&self,
 		scan: &RangeScan<D>,
 		claim: &mut Option<Interval<D::Key>>,
-		claimed: &mut Vec<usize>,
+		claimed: &mut Vec<(usize, usize)>,
 	) -> bool {
 		let Some(span) = claim.take() else {
 			return true;
@@ -428,15 +434,18 @@ impl<D: RangeDomain> RangeTier<D> {
 		true
 	}
 
-	fn undo_claims(&self, claimed: &mut Vec<usize>) {
+	fn undo_claims(&self, claimed: &mut Vec<(usize, usize)>) {
 		claimed.sort_unstable();
 		let mut cursor = 0;
 		while cursor < claimed.len() {
-			let index = claimed[cursor];
+			let index = claimed[cursor].0;
 			let mut shard = self.shard(index).lock();
-			while cursor < claimed.len() && claimed[cursor] == index {
+			while cursor < claimed.len() && claimed[cursor].0 == index {
+				let bucket = claimed[cursor].1;
 				shard.metrics.materializes -= 1;
 				shard.metrics.materializes_raced += 1;
+				shard.bucket_metrics[bucket].materializes -= 1;
+				shard.bucket_metrics[bucket].materializes_raced += 1;
 				cursor += 1;
 			}
 		}

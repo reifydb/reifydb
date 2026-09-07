@@ -34,17 +34,21 @@ impl<V> Entry<V> {
 		}
 	}
 
-	pub fn evictable(&self) -> bool {
+	pub fn evictable(&self, removals: bool) -> bool {
 		match self {
 			Entry::Row(_) | Entry::Absent => true,
-			Entry::Deleted => false,
+			Entry::Deleted => removals,
 		}
+	}
+
+	fn removal(&self) -> bool {
+		matches!(self, Entry::Deleted)
 	}
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PinnedCount {
-	pinned: usize,
+	removals: usize,
 	total: usize,
 }
 
@@ -55,36 +59,39 @@ impl PinnedCount {
 
 	pub fn insert<V>(&mut self, entry: &Entry<V>) {
 		self.total += 1;
-		if !entry.evictable() {
-			self.pinned += 1;
+		if entry.removal() {
+			self.removals += 1;
 		}
 	}
 
 	pub fn remove<V>(&mut self, entry: &Entry<V>) {
 		self.total -= 1;
-		if !entry.evictable() {
-			self.pinned -= 1;
+		if entry.removal() {
+			self.removals -= 1;
 		}
 	}
 
 	pub fn replace<V>(&mut self, before: &Entry<V>, after: &Entry<V>) {
-		match (before.evictable(), after.evictable()) {
-			(true, false) => self.pinned += 1,
-			(false, true) => self.pinned -= 1,
+		match (before.removal(), after.removal()) {
+			(false, true) => self.removals += 1,
+			(true, false) => self.removals -= 1,
 			_ => {}
 		}
 	}
 
-	pub fn pinned(&self) -> usize {
-		self.pinned
+	pub fn removals(&self) -> usize {
+		self.removals
 	}
 
 	pub fn total(&self) -> usize {
 		self.total
 	}
 
-	pub fn has_victim(&self) -> bool {
-		self.total > self.pinned
+	pub fn has_victim(&self, removals: bool) -> bool {
+		if removals {
+			return self.total > 0;
+		}
+		self.total > self.removals
 	}
 }
 
@@ -105,16 +112,22 @@ mod tests {
 	}
 
 	#[test]
-	fn deleted_is_never_evictable() {
+	fn deleted_is_not_evictable_where_nothing_beneath_records_the_removal() {
 		// Dropping a removal the persistent tier has not seen resurrects the row it still holds.
-		assert!(!deleted().evictable());
+		assert!(!deleted().evictable(false));
+	}
+
+	#[test]
+	fn deleted_is_evictable_where_the_layer_beneath_records_the_removal() {
+		// There the drop reads as unknown and the layer below answers, so pinning only wastes the budget.
+		assert!(deleted().evictable(true));
 	}
 
 	#[test]
 	fn a_row_and_a_proven_absence_are_evictable() {
 		// Neither contradicts the persistent tier, so eviction only shrinks coverage.
-		assert!(row(7).evictable());
-		assert!(absent().evictable());
+		assert!(row(7).evictable(false));
+		assert!(absent().evictable(false));
 	}
 
 	#[test]
@@ -138,7 +151,7 @@ mod tests {
 		// A budget that cannot see the floor would keep asking for victims that do not exist.
 		let mut count = PinnedCount::new();
 		count.insert(&deleted());
-		assert_eq!(count.pinned(), 1);
+		assert_eq!(count.removals(), 1);
 		assert_eq!(count.total(), 1);
 	}
 
@@ -148,7 +161,7 @@ mod tests {
 		let mut count = PinnedCount::new();
 		count.insert(&row(7));
 		count.insert(&absent());
-		assert_eq!(count.pinned(), 0);
+		assert_eq!(count.removals(), 0);
 		assert_eq!(count.total(), 2);
 	}
 
@@ -157,13 +170,13 @@ mod tests {
 		// A transition is one entry before and after; charging total again double counts it.
 		let mut count = PinnedCount::new();
 		count.insert(&row(7));
-		assert_eq!((count.pinned(), count.total()), (0, 1));
+		assert_eq!((count.removals(), count.total()), (0, 1));
 
 		count.replace(&row(7), &deleted());
-		assert_eq!((count.pinned(), count.total()), (1, 1));
+		assert_eq!((count.removals(), count.total()), (1, 1));
 
 		count.replace(&deleted(), &absent());
-		assert_eq!((count.pinned(), count.total()), (0, 1));
+		assert_eq!((count.removals(), count.total()), (0, 1));
 	}
 
 	#[test]
@@ -172,7 +185,7 @@ mod tests {
 		let mut count = PinnedCount::new();
 		count.insert(&row(7));
 		count.replace(&row(7), &row(9));
-		assert_eq!((count.pinned(), count.total()), (0, 1));
+		assert_eq!((count.removals(), count.total()), (0, 1));
 	}
 
 	#[test]
@@ -182,10 +195,10 @@ mod tests {
 		count.insert(&row(7));
 		count.insert(&absent());
 		count.insert(&deleted());
-		assert_eq!((count.pinned(), count.total()), (1, 3));
+		assert_eq!((count.removals(), count.total()), (1, 3));
 
 		count.replace(&deleted(), &absent());
-		assert_eq!((count.pinned(), count.total()), (0, 3));
+		assert_eq!((count.removals(), count.total()), (0, 3));
 
 		count.remove(&row(7));
 		count.remove(&absent());
@@ -199,7 +212,7 @@ mod tests {
 		let mut count = PinnedCount::new();
 		count.insert(&deleted());
 		count.remove(&deleted());
-		assert_eq!((count.pinned(), count.total()), (0, 0));
+		assert_eq!((count.removals(), count.total()), (0, 0));
 	}
 
 	#[test]
@@ -208,7 +221,16 @@ mod tests {
 		let mut count = PinnedCount::new();
 		count.insert(&deleted());
 		count.insert(&deleted());
-		assert!(!count.has_victim());
+		assert!(!count.has_victim(false));
+	}
+
+	#[test]
+	fn has_victim_offers_every_entry_where_removals_are_released() {
+		// An all-removal partition must still yield a victim, or the tier fills with entries it cannot free.
+		let mut count = PinnedCount::new();
+		count.insert(&deleted());
+		count.insert(&deleted());
+		assert!(count.has_victim(true));
 	}
 
 	#[test]
@@ -218,13 +240,13 @@ mod tests {
 		count.insert(&deleted());
 		count.insert(&deleted());
 		count.insert(&row(7));
-		assert!(count.has_victim());
+		assert!(count.has_victim(false));
 	}
 
 	#[test]
 	fn has_victim_is_false_when_there_are_no_entries() {
 		// An empty shard has nothing to offer and must not report a victim.
-		assert!(!PinnedCount::new().has_victim());
+		assert!(!PinnedCount::new().has_victim(false));
 	}
 
 	#[test]
@@ -232,9 +254,9 @@ mod tests {
 		// Flush lag, not tombstone density, is what bounds the pinned population.
 		let mut count = PinnedCount::new();
 		count.insert(&deleted());
-		assert!(!count.has_victim());
+		assert!(!count.has_victim(false));
 
 		count.replace(&deleted(), &absent());
-		assert!(count.has_victim());
+		assert!(count.has_victim(false));
 	}
 }

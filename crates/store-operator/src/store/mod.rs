@@ -13,6 +13,8 @@ mod tests;
 use std::sync::OnceLock;
 use std::{ops::Deref, sync::Arc};
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_core::default;
 use reifydb_core::{common::CommitVersion, lifecycle::watermark::CheckpointFloor, metrics::collect::MetricsCollector};
 use reifydb_runtime::{
 	actor::{
@@ -31,7 +33,7 @@ use crate::{
 	config::OperatorPersistentConfig,
 	tier::{
 		persistent::sqlite::SqliteOperatorStorage,
-		range::OperatorRangeConfig,
+		range::{OperatorRangeConfig, evict::actor::RangeEvictActor},
 		resident::{evict::actor::ResidentEvictActor, flush::actor::ResidentFlushActor},
 	},
 };
@@ -106,6 +108,13 @@ impl StandardOperatorStore {
 				.map(|_| ResidentFlushActor::spawn(&spawner, resident.clone(), flush_interval));
 			if config.persistent.is_some() {
 				resident.attach_evictor(ResidentEvictActor::spawn(&spawner, resident.clone()));
+			}
+			if let Some(range) = range.as_ref() {
+				RangeEvictActor::spawn(
+					&spawner,
+					range.clone(),
+					default::store::OPERATOR_RANGE_RELIEF_INTERVAL,
+				);
 			}
 			(config.persistent.map(|persistent| persistent.storage), flush)
 		};

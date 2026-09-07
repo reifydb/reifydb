@@ -11,6 +11,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::reifydb_assertions;
+use tracing::instrument;
 
 use crate::types::OperatorWrite;
 
@@ -35,6 +36,7 @@ impl KeyspaceOccupancy {
 		Self::default()
 	}
 
+	#[instrument(name = "store::operator::occupancy::record", level = "debug", skip_all, fields(write_count = writes.len()))]
 	pub(crate) fn record(&self, writes: &[OperatorWrite]) {
 		let mut masks = self.masks.lock();
 		for write in writes {

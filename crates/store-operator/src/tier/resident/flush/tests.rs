@@ -304,8 +304,27 @@ fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 	buffer.attach_sinks(tier(&storage), None);
 	buffer.record_state_set(OP_A, key(1), row("first"));
 
-	let held = buffer.flush_guard();
-	let batch = buffer.take_for_flush().expect("the running flusher takes the seeded batch");
+	let inside = Arc::new(AtomicBool::new(false));
+	let release = Arc::new(AtomicBool::new(false));
+	{
+		let inside = Arc::clone(&inside);
+		let release = Arc::clone(&release);
+		buffer.set_persist_interlock(Box::new(move || {
+			inside.store(true, Ordering::Release);
+			while !release.load(Ordering::Acquire) {
+				thread::yield_now();
+			}
+		}));
+	}
+
+	let running = {
+		let buffer = buffer.clone();
+		thread::spawn(move || flush_now(&buffer))
+	};
+	while !inside.load(Ordering::Acquire) {
+		thread::yield_now();
+	}
+
 	buffer.record_state_set(OP_A, key(2), row("second"));
 
 	let ran = Arc::new(AtomicBool::new(false));
@@ -321,18 +340,17 @@ fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 	thread::sleep(Duration::from_milliseconds_const(50).to_std());
 	assert!(
 		!ran.load(Ordering::Acquire),
-		"the second flush must wait; taking a batch beside a running flush replaces the in-flight \
-		 layer, and the first batch's rows are then invisible to every reader while also not durable"
+		"the second flush must wait while the first is still persisting; taking a batch beside a \
+		 running flush replaces the in-flight layer, and the first batch's rows are then invisible \
+		 to every reader while also not durable"
 	);
 	let BufferedState::Row(readable) = buffer.lookup_state(OP_A, &key(1)) else {
 		panic!("the running flusher's rows stay readable until it says they are durable")
 	};
 	assert_eq!(body(&readable), "first", "the running flusher's rows stay readable until it says they are durable");
 
-	storage.flush_batch(&batch);
-	buffer.complete_flush();
-	drop(held);
-
+	release.store(true, Ordering::Release);
+	running.join().expect("the running flush must finish");
 	second.join().expect("the waiting flush must finish");
 
 	assert_eq!(
@@ -345,6 +363,70 @@ fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 		Some("second".to_string()),
 		"the waiting flush wrote what arrived while it waited; returning early instead would report \
 		 a durable store to a shutdown that then closes the connection under the running flusher"
+	);
+}
+
+#[test]
+fn a_write_proceeds_while_a_flush_is_persisting() {
+	let (storage, _guard) = SqliteOperatorStorage::in_memory();
+	let buffer = OperatorResidentState::new();
+	buffer.attach_sinks(tier(&storage), None);
+	buffer.record_state_set(OP_A, key(1), row("first"));
+
+	let inside = Arc::new(AtomicBool::new(false));
+	let release = Arc::new(AtomicBool::new(false));
+	{
+		let inside = Arc::clone(&inside);
+		let release = Arc::clone(&release);
+		buffer.set_persist_interlock(Box::new(move || {
+			inside.store(true, Ordering::Release);
+			while !release.load(Ordering::Acquire) {
+				thread::yield_now();
+			}
+		}));
+	}
+
+	let running = {
+		let buffer = buffer.clone();
+		thread::spawn(move || flush_now(&buffer))
+	};
+	while !inside.load(Ordering::Acquire) {
+		thread::yield_now();
+	}
+
+	let wrote = Arc::new(AtomicBool::new(false));
+	let writer = {
+		let buffer = buffer.clone();
+		let wrote = Arc::clone(&wrote);
+		thread::spawn(move || {
+			let _applying = buffer.flush_guard();
+			buffer.record_state_set(OP_A, key(2), row("second"));
+			wrote.store(true, Ordering::Release);
+		})
+	};
+
+	let deadline = Instant::now() + Duration::from_milliseconds_const(2_000).to_std();
+	while !wrote.load(Ordering::Acquire) && Instant::now() < deadline {
+		thread::yield_now();
+	}
+	assert!(
+		wrote.load(Ordering::Acquire),
+		"an apply takes the staging guard the way StandardOperatorStore::apply_batch does, and it must \
+		 not wait for the sqlite commit; holding that guard across persist puts every operator-state \
+		 write behind the whole drain instead of behind one commit"
+	);
+
+	release.store(true, Ordering::Release);
+	running.join().expect("the running flush must finish");
+	writer.join().expect("the writer must finish");
+
+	let BufferedState::Row(readable) = buffer.lookup_state(OP_A, &key(2)) else {
+		panic!("the write taken during the flush must be readable")
+	};
+	assert_eq!(
+		body(&readable),
+		"second",
+		"the write taken during the flush must survive the flush that ran beside it"
 	);
 }
 

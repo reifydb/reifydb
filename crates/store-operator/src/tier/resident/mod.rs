@@ -154,6 +154,9 @@ struct OperatorSinks {
 	range: Option<RangeTiers>,
 }
 
+#[cfg(test)]
+pub(crate) type PersistInterlock = Box<dyn Fn() + Send + Sync>;
+
 pub struct Shared {
 	slots: DashMap<OperatorId, Arc<Slot>>,
 	global: Mutex<GlobalInner>,
@@ -161,6 +164,7 @@ pub struct Shared {
 	write_seq: AtomicU64,
 	idle: Condvar,
 	drain: Mutex<()>,
+	flusher: Mutex<()>,
 	accounting: Mutex<()>,
 	sinks: OnceLock<OperatorSinks>,
 	budget: Arc<MemoryBudget>,
@@ -177,6 +181,8 @@ pub struct Shared {
 	filter: AdaptiveKeyFilter,
 	filter_armed: AtomicBool,
 	sweep_cursor: AtomicU64,
+	#[cfg(test)]
+	persist_interlock: Mutex<Option<PersistInterlock>>,
 }
 
 impl Shared {
@@ -188,6 +194,7 @@ impl Shared {
 			write_seq: AtomicU64::new(0),
 			idle: Condvar::new(),
 			drain: Mutex::new(()),
+			flusher: Mutex::new(()),
 			accounting: Mutex::new(()),
 			sinks: OnceLock::new(),
 			budget: Arc::new(MemoryBudget::new(limits.budget)),
@@ -204,6 +211,8 @@ impl Shared {
 			filter: AdaptiveKeyFilter::new(),
 			filter_armed: AtomicBool::new(false),
 			sweep_cursor: AtomicU64::new(0),
+			#[cfg(test)]
+			persist_interlock: Mutex::new(None),
 		}
 	}
 
@@ -335,6 +344,11 @@ impl OperatorResidentState {
 		Self {
 			shared: Arc::new(Shared::new(limits)),
 		}
+	}
+
+	#[cfg(test)]
+	pub(crate) fn set_persist_interlock(&self, interlock: PersistInterlock) {
+		*self.shared.persist_interlock.lock() = Some(interlock);
 	}
 
 	pub(crate) fn shared(&self) -> &Shared {
@@ -622,6 +636,7 @@ impl OperatorResidentState {
 		(evicted, freed)
 	}
 
+	#[instrument(name = "store::operator::resident::flush_acquire", level = "debug", skip_all)]
 	pub fn flush_guard(&self) -> MutexGuard<'_, ()> {
 		self.shared.drain.lock()
 	}
@@ -642,9 +657,17 @@ impl OperatorResidentState {
 	}
 
 	pub fn flush_all(&self) {
-		let _guard = self.flush_guard();
-		while let Some(batch) = self.take_drain_slice() {
+		let _flusher = self.shared.flusher.lock();
+		loop {
+			let batch = {
+				let _staging = self.flush_guard();
+				match self.take_drain_slice() {
+					Some(batch) => batch,
+					None => return,
+				}
+			};
 			self.persist(&batch);
+			let _staging = self.flush_guard();
 			self.settle(batch);
 		}
 	}
@@ -827,6 +850,13 @@ impl OperatorResidentState {
 	}
 
 	fn persist(&self, batch: &Arc<FlushBatch>) {
+		#[cfg(test)]
+		{
+			let interlock = self.shared.persist_interlock.lock().take();
+			if let Some(interlock) = interlock {
+				interlock();
+			}
+		}
 		let sinks = self
 			.shared
 			.sinks

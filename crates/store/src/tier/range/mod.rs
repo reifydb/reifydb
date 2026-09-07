@@ -78,6 +78,10 @@ pub trait RangeDomain: Copy + Debug + 'static {
 		false
 	}
 
+	fn pins_removals() -> bool {
+		true
+	}
+
 	fn metric_bucket(partition: &Self::Partition) -> usize;
 
 	fn metric_bucket_at(index: usize) -> Self::MetricBucket;
@@ -86,6 +90,8 @@ pub trait RangeDomain: Copy + Debug + 'static {
 }
 
 pub const DEFAULT_COVERAGE_INTERVALS: usize = 256;
+
+pub const RESERVE_DIVISOR: u64 = 8;
 
 #[derive(Clone, Copy, Debug)]
 pub struct RangeConfig {
@@ -158,6 +164,7 @@ impl<K, R> Partition<K, R> {
 struct Shard<D: RangeDomain> {
 	partitions: HashMap<D::Partition, Partition<D::Key, D::Row>>,
 	budget: MemoryBudget,
+	reserve: u64,
 	next_tick: u64,
 	writes: u64,
 	gaps: GapHistogram,
@@ -221,6 +228,22 @@ pub struct RangeMetrics {
 	pub point_hits: u64,
 	pub point_absences: u64,
 	pub point_misses: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RangeComposition {
+	pub rows: usize,
+	pub deleted: usize,
+	pub absent: usize,
+	pub removals: usize,
+	pub total: usize,
+	pub victim: bool,
+}
+
+impl RangeComposition {
+	pub fn entries(&self) -> usize {
+		self.rows + self.deleted + self.absent
+	}
 }
 
 #[derive(Clone, Copy, Debug)]
