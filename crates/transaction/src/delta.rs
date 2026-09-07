@@ -24,6 +24,18 @@ enum OptimizedDeltaState {
 }
 
 pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys: &HashSet<EncodedKey>) -> Vec<Delta> {
+	let deltas: Vec<Delta> = deltas.into_iter().collect();
+	let collided = {
+		let mut seen: HashSet<&EncodedKey> = HashSet::with_capacity(deltas.len());
+		!deltas.iter().all(|delta| seen.insert(delta.key()))
+	};
+	if !collided {
+		return deltas;
+	}
+	optimize_collided(deltas, preexisting_keys)
+}
+
+fn optimize_collided(deltas: Vec<Delta>, preexisting_keys: &HashSet<EncodedKey>) -> Vec<Delta> {
 	let mut key_states: IndexMap<EncodedKey, (OptimizedDeltaState, usize)> = IndexMap::new();
 
 	for (idx, delta) in deltas.into_iter().enumerate() {
@@ -157,6 +169,59 @@ pub mod tests {
 
 	fn make_bytes(s: &str) -> EncodedBytes {
 		EncodedBytes(CowVec::new(s.as_bytes().to_vec()))
+	}
+
+	#[test]
+	fn the_distinct_key_fast_path_agrees_with_the_collision_path() {
+		// the fast path returns the input untouched whenever no key repeats, so it must produce exactly what
+		// the IndexMap pass produces for the same input; a divergence here silently rewrites a commit
+		let distinct = vec![
+			Delta::Set {
+				key: make_key("key_a"),
+				bytes: make_bytes("a"),
+			},
+			Delta::Set {
+				key: make_key("key_b"),
+				bytes: make_bytes("b"),
+			},
+			Delta::remove_announced(make_key("key_c"), make_bytes("c")),
+		];
+
+		let fast = optimize_deltas(distinct.clone(), &HashSet::new());
+		let collided = optimize_collided(distinct.clone(), &HashSet::new());
+
+		assert_eq!(fast.len(), distinct.len(), "a run of distinct keys must keep every delta");
+		assert_eq!(
+			fast.iter().map(|delta| delta.key().clone()).collect::<Vec<_>>(),
+			collided.iter().map(|delta| delta.key().clone()).collect::<Vec<_>>(),
+			"both paths must emit the same keys in the same order"
+		);
+	}
+
+	#[test]
+	fn a_repeated_key_still_reaches_the_collision_path() {
+		// the fast path must not swallow a duplicate: two sets of one key collapse to the later value
+		let repeated = vec![
+			Delta::Set {
+				key: make_key("key_a"),
+				bytes: make_bytes("first"),
+			},
+			Delta::Set {
+				key: make_key("key_a"),
+				bytes: make_bytes("second"),
+			},
+		];
+
+		let optimized = optimize_deltas(repeated, &HashSet::new());
+
+		assert_eq!(optimized.len(), 1, "a repeated key must collapse to a single delta");
+		match &optimized[0] {
+			Delta::Set {
+				bytes,
+				..
+			} => assert_eq!(bytes.0.as_ref(), b"second", "the later write must win"),
+			other => panic!("expected a set, got {other:?}"),
+		}
 	}
 
 	#[test]

@@ -9,6 +9,8 @@ mod concurrency;
 mod durability;
 #[path = "equivalence.rs"]
 mod equivalence;
+#[path = "filter.rs"]
+mod filter;
 #[path = "operator_memory.rs"]
 mod operator_memory;
 #[path = "operator_sqlite.rs"]
