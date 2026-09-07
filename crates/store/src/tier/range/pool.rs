@@ -19,10 +19,16 @@ use crate::tier::range::{MaterializeInterlock, ServeInterlock};
 use crate::{
 	coverage::{index::CoverageIndex, plan::GapHistogram, retraction::Retractions},
 	tier::range::{
-		Partition, PoolInner, Progress, RangeBucketMetrics, RangeConfig, RangeDomain, RangeMetrics,
-		RangeShardMetrics, RangeTier, Shard, account, entry_footprint,
+		Partition, PoolInner, Progress, RESERVE_DIVISOR, RangeBucketMetrics, RangeConfig, RangeDomain,
+		RangeMetrics, RangeShardMetrics, RangeTier, Shard, account, entry_footprint,
 	},
 };
+
+#[derive(Clone, Copy)]
+enum Ceiling {
+	Limit,
+	Reserve,
+}
 
 const GAP_SLOTS: [&str; 8] =
 	["count_0", "count_1", "count_2", "count_3", "count_4", "count_5_8", "count_9_16", "count_17_plus"];
@@ -136,8 +142,18 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	pub(super) fn evict_to_capacity(&self, shard: usize) {
+		self.evict_down_to(shard, Ceiling::Limit)
+	}
+
+	pub fn relieve(&self) {
+		for index in 0..self.inner.shards.len() {
+			self.evict_down_to(index, Ceiling::Reserve);
+		}
+	}
+
+	fn evict_down_to(&self, shard: usize, ceiling: Ceiling) {
 		loop {
-			let Some((victim, progress)) = self.pick_victim(shard) else {
+			let Some((victim, progress)) = self.pick_victim(shard, ceiling) else {
 				break;
 			};
 			self.retract_partition(&victim);
@@ -151,9 +167,13 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 	}
 
-	fn pick_victim(&self, index: usize) -> Option<(D::Partition, Progress)> {
+	fn pick_victim(&self, index: usize, ceiling: Ceiling) -> Option<(D::Partition, Progress)> {
 		let shard = self.shard(index).lock();
-		if !shard.budget.over_budget() {
+		let cap = match ceiling {
+			Ceiling::Limit => shard.budget.limit().as_bytes(),
+			Ceiling::Reserve => shard.reserve,
+		};
+		if shard.budget.used().as_bytes() <= cap {
 			return None;
 		}
 		let mut victim: Option<(u64, D::Partition, Progress)> = None;
@@ -449,6 +469,7 @@ fn build_shards<D: RangeDomain>(config: RangeConfig, shard_bytes: ByteSize) -> B
 			Mutex::new(Shard {
 				partitions: HashMap::new(),
 				budget: MemoryBudget::new(byte_cap),
+				reserve: byte_cap.as_bytes() - byte_cap.as_bytes() / RESERVE_DIVISOR,
 				next_tick: 0,
 				writes: 0,
 				gaps: GapHistogram::new(),
@@ -489,7 +510,7 @@ mod tests {
 			plan::{DEFAULT_GAP_GUARD, ScanPlan},
 		},
 		tier::range::{
-			DEFAULT_COVERAGE_INTERVALS, Partition, RangeConfig, RangeTier, Shard,
+			DEFAULT_COVERAGE_INTERVALS, Partition, RESERVE_DIVISOR, RangeConfig, RangeTier, Shard,
 			domain::{TestDomain as D, TestPartition},
 			entry_footprint, partition_overhead,
 		},
@@ -686,6 +707,42 @@ mod tests {
 			 pins the tier at its cap"
 		);
 		assert_eq!(resident(&tier, &late), None, "and the unproven row must not be resident");
+	}
+
+	#[test]
+	fn a_tier_at_its_limit_frees_nothing_for_itself_until_the_reserve_pass_runs() {
+		// Write through charges without a cap, a read fill charges with one, and eviction only runs
+		// while used exceeds the limit. A tier sitting exactly at its limit is therefore stable: no
+		// write path pass frees a byte, and every materialize is refused for want of headroom, so
+		// coverage is never re-proven. The reserve pass is the only thing that breaks that cycle.
+		let cold = key(KeyspaceId::ACCUMULATOR, b"a");
+		let hot = key(KeyspaceId::BUFFER, b"b");
+		let cold_rows = vec![(cold.clone(), Entry::row(row("v")))];
+		let hot_rows = vec![(hot.clone(), Entry::row(row("v")))];
+		let total = (cost(&cold_rows) + cost(&hot_rows)) as u64;
+		let tier = tier(total, 1);
+
+		seed(&tier, part(KeyspaceId::ACCUMULATOR), cold_rows);
+		seed(&tier, part(KeyspaceId::BUFFER), hot_rows.clone());
+		assert_eq!(tier.resident_bytes(), ByteSize::from_bytes(total), "the fixture must sit exactly at the limit");
+
+		tier.evict_to_capacity(0);
+
+		assert_eq!(tier.metrics().evictions, 0, "a tier at its limit is not over it, so the write path frees nothing");
+		assert_eq!(tier.resident_bytes(), ByteSize::from_bytes(total), "and leaves no room for a read fill to charge");
+
+		tier.relieve();
+
+		let reserve = total - total / RESERVE_DIVISOR;
+		assert_eq!(tier.metrics().evictions, 1, "the reserve pass must evict the coldest partition, and only it");
+		assert!(
+			tier.resident_bytes().as_bytes() <= reserve,
+			"the pass must clear the reserve: {} bytes held against a {} byte mark",
+			tier.resident_bytes().as_bytes(),
+			reserve
+		);
+		assert_eq!(probe(&tier, &cold), None, "the evicted partition falls through");
+		assert_eq!(probe(&tier, &hot), Some(Some(row("v"))), "the most recently seeded partition survives");
 	}
 
 	#[test]

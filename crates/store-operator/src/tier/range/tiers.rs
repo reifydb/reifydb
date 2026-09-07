@@ -15,6 +15,7 @@ use reifydb_core::{
 	state::typed::SuffixBytes,
 };
 use reifydb_store::tier::range::{RangeConfig, RangeMetrics, RangeTier};
+use tracing::instrument;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::{range::typed::TypedDomain, typed::TypedPartition};
@@ -44,6 +45,8 @@ pub trait AnyRangeTier: Send + Sync {
 	fn retract(&self, operator: OperatorId, group: GroupId, suffix: &[u8]);
 
 	fn invalidate_operator(&self, operator: OperatorId);
+
+	fn relieve(&self);
 
 	fn keyspace_metrics(&self) -> Option<OperatorRangeKeyspaceMetrics>;
 
@@ -122,6 +125,10 @@ impl<K: Keyspace> AnyRangeTier for RangeTier<TypedDomain<K>> {
 
 	fn invalidate_operator(&self, operator: OperatorId) {
 		self.invalidate_dimensions_where(|dimension| dimension.operator == operator);
+	}
+
+	fn relieve(&self) {
+		RangeTier::relieve(self);
 	}
 
 	fn keyspace_metrics(&self) -> Option<OperatorRangeKeyspaceMetrics> {
@@ -238,6 +245,13 @@ impl RangeTiers {
 		};
 		if let Some(tier) = self.of(keyspace) {
 			tier.retract(operator, group, suffix);
+		}
+	}
+
+	#[instrument(name = "store::operator::range_relieve", level = "debug", skip_all)]
+	pub fn relieve(&self) {
+		for tier in self.tiers.values() {
+			tier.relieve();
 		}
 	}
 

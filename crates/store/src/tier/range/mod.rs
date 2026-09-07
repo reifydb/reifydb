@@ -87,6 +87,8 @@ pub trait RangeDomain: Copy + Debug + 'static {
 
 pub const DEFAULT_COVERAGE_INTERVALS: usize = 256;
 
+pub const RESERVE_DIVISOR: u64 = 8;
+
 #[derive(Clone, Copy, Debug)]
 pub struct RangeConfig {
 	pub shard_bytes: Option<ByteSize>,
@@ -158,6 +160,7 @@ impl<K, R> Partition<K, R> {
 struct Shard<D: RangeDomain> {
 	partitions: HashMap<D::Partition, Partition<D::Key, D::Row>>,
 	budget: MemoryBudget,
+	reserve: u64,
 	next_tick: u64,
 	writes: u64,
 	gaps: GapHistogram,

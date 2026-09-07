@@ -99,6 +99,8 @@ pub mod store {
 	pub const OPERATOR_RANGE_TIER: ByteSize = ByteSize::from_mib(1);
 	pub const OPERATOR_RANGE_TIER_TESTING: ByteSize = ByteSize::from_kib(32);
 
+	pub const OPERATOR_RANGE_RELIEF_INTERVAL: Duration = Duration::from_seconds_const(1);
+
 	pub const OPERATOR_RESIDENT_BUDGET: ByteSize = ByteSize::from_mib(128);
 	pub const OPERATOR_RESIDENT_BUDGET_TESTING: ByteSize = ByteSize::from_kib(64);
 
