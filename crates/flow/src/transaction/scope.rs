@@ -13,8 +13,8 @@ use reifydb_codec::key::{
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
-		kind::KeyKind,
 		operator::state::{GroupStateKey, NODE_PREFIX_LEN, OperatorStateKey, extend_node_prefix, node_prefix},
+		tag::KeyTag,
 	},
 };
 
@@ -50,7 +50,7 @@ pub(crate) fn operator_state_scope(range: &EncodedKeyRange) -> Option<OperatorRa
 		Included(key) | Excluded(key) => key,
 		Unbounded => return None,
 	};
-	if KeyKind::of(start_key) != Some(KeyKind::OperatorState) {
+	if KeyTag::of(start_key) != Some(KeyTag::OperatorState) {
 		return None;
 	}
 	let operator = operator_state_coordinates(start_key)

@@ -51,7 +51,7 @@ impl CatalogStore {
 			return Ok(Some(Namespace::default_namespace()));
 		}
 
-		rx.get(&NamespaceKey::encoded(id))?.map(convert_namespace).transpose()
+		rx.get(&NamespaceKey::new(id))?.map(convert_namespace).transpose()
 	}
 }
 

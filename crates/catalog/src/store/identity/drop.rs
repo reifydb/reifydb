@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::key::{
+	any::TaggedKey,
 	identity::{GrantedRoleKey, IdentityAttributeValueKey, IdentityKey},
-	typed::key::Key,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 use reifydb_value::value::identity::IdentityId;
@@ -18,13 +18,13 @@ impl CatalogStore {
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;
-				if let Some(key) = GrantedRoleKey::decode(&entry.key) {
+				if let TaggedKey::GrantedRole(key) = entry.key {
 					keys_to_remove.push(key);
 				}
 			}
 			drop(stream);
 			for key in keys_to_remove {
-				txn.remove(&GrantedRoleKey::encoded(key.identity, key.role))?;
+				txn.remove(&GrantedRoleKey::new(key.identity, key.role))?;
 			}
 		}
 
@@ -34,17 +34,17 @@ impl CatalogStore {
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;
-				if let Some(key) = IdentityAttributeValueKey::decode(&entry.key) {
+				if let TaggedKey::IdentityAttributeValue(key) = entry.key {
 					keys_to_remove.push(key);
 				}
 			}
 			drop(stream);
 			for key in keys_to_remove {
-				txn.remove(&IdentityAttributeValueKey::encoded(key.identity, key.attribute))?;
+				txn.remove(&IdentityAttributeValueKey::new(key.identity, key.attribute))?;
 			}
 		}
 
-		txn.remove(&IdentityKey::encoded(identity))?;
+		txn.remove(&IdentityKey::new(identity))?;
 		Ok(())
 	}
 }

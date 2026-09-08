@@ -15,7 +15,7 @@ use reifydb_core::{
 			state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 			traits::{Keyspace, group_scoped},
 		},
-		typed::{Edge, TypedKey, range::KeyRange},
+		typed::{BoundedKey, Edge, range::KeyRange},
 	},
 	state::typed::SuffixBytes,
 };
@@ -25,7 +25,7 @@ use reifydb_store::{
 		interval::Interval,
 		plan::Segment,
 	},
-	tier::range::{Materialize, RangeScan, RangeTier, proven_span},
+	tier::range::{Materialize, RangeDomain, RangeScan, RangeTier, proven_span},
 };
 
 use crate::{
@@ -152,7 +152,7 @@ pub(crate) struct TierPager<'a, K: Keyspace> {
 	segment_index: usize,
 	cursor: Cursor<(), K::Suffix>,
 	pending: Option<(Interval<K::Suffix>, bool, usize)>,
-	claim_start: Option<K::Suffix>,
+	claim_start: Option<Edge<K::Suffix>>,
 	materializing: bool,
 	exhausted: bool,
 }
@@ -185,14 +185,21 @@ impl<'a, K: Keyspace> TierPager<'a, K> {
 	}
 
 	fn read_range(&self, interval: &Interval<K::Suffix>) -> EncodedKeyRange {
+		let whole = keyspace_inner_range(self.group, K::ID);
 		let start = match self.cursor.last_key() {
 			Some(last) => Bound::Excluded(self.encode(last)),
-			None => Bound::Included(self.encode(&interval.start)),
+			None => match interval.start.lower_bound() {
+				Some(Bound::Included(key)) => Bound::Included(self.encode(&key)),
+				Some(Bound::Excluded(key)) => Bound::Excluded(self.encode(&key)),
+				Some(Bound::Unbounded) => whole.start.clone(),
+				None => return EncodedKeyRange::new(whole.start.clone(), whole.start),
+			},
 		};
-		let end = match &interval.end {
-			Edge::Bottom => Bound::Excluded(self.encode(&interval.start)),
-			Edge::Key(key) => Bound::Excluded(self.encode(key)),
-			Edge::Top => keyspace_inner_range(self.group, K::ID).end,
+		let end = match interval.end.upper_bound() {
+			Some(Bound::Included(key)) => Bound::Included(self.encode(&key)),
+			Some(Bound::Excluded(key)) => Bound::Excluded(self.encode(&key)),
+			Some(Bound::Unbounded) => whole.end,
+			None => return EncodedKeyRange::new(whole.start.clone(), whole.start),
 		};
 		EncodedKeyRange::new(start, end)
 	}
@@ -227,12 +234,12 @@ impl<K: Keyspace> PageSource for TierPager<'_, K> {
 					let start = self.claim_start.clone().unwrap_or_else(|| interval.start.clone());
 					let span = Interval::new(start, interval.end.clone());
 					let last = typed.last().map(|(key, _)| key);
-					if let Some(proven) = proven_span(&span, last, complete) {
+					if let Some(proven) = proven_span::<TypedDomain<K>>(&span, last, complete) {
 						match self.tier.materialize(&self.scan, &proven, &typed) {
 							Materialize::Materialized | Materialize::NothingCacheable => {
-								self.claim_start = typed
-									.last()
-									.and_then(|(key, _)| key.successor());
+								self.claim_start = typed.last().map(|(key, _)| {
+									TypedDomain::<K>::just_past(key)
+								});
 							}
 							Materialize::Refused => self.materializing = false,
 						}
@@ -298,7 +305,7 @@ impl<K: Keyspace> PageSource for TierPager<'_, K> {
 						..
 					}) = self.scan.segments().get(self.segment_index + consumed)
 					{
-						if span.end != Edge::Key(next.start.clone()) {
+						if span.end != next.start {
 							break;
 						}
 						span.end = next.end.clone();

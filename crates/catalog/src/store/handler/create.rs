@@ -57,20 +57,20 @@ impl CatalogStore {
 		handler_shape::set_on_variant_tag(&mut row, to_create.variant.variant_tag);
 		handler_shape::set_body_source(&mut row, &to_create.body_source);
 
-		txn.set(&HandlerKey::encoded(handler_id), row.freeze())?;
+		txn.set(&HandlerKey::new(handler_id), row.freeze())?;
 
 		let mut ns_row = handler_namespace::allocate();
 		handler_namespace::set_id(&mut ns_row, u64::from(handler_id));
 		handler_namespace::set_name(&mut ns_row, to_create.name.text());
 
-		txn.set(&NamespaceHandlerKey::encoded(namespace_id, handler_id), ns_row.freeze())?;
+		txn.set(&NamespaceHandlerKey::new(namespace_id, handler_id), ns_row.freeze())?;
 
 		let mut var_row = handler_namespace::allocate();
 		handler_namespace::set_id(&mut var_row, u64::from(handler_id));
 		handler_namespace::set_name(&mut var_row, to_create.name.text());
 
 		txn.set(
-			&VariantHandlerKey::encoded(
+			&VariantHandlerKey::new(
 				namespace_id,
 				to_create.variant.sumtype_id,
 				to_create.variant.variant_tag,

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
-use reifydb_core::key::{catalog::BindingKey, typed::key::Key};
+use reifydb_core::key::{any::TaggedKey, catalog::BindingKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{Result, cache::CatalogCache, store::binding::find::decode_binding};
@@ -13,7 +13,7 @@ pub(crate) fn load_bindings(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
-		if let Some(k) = BindingKey::decode(&multi.key) {
+		if let TaggedKey::Binding(k) = &multi.key {
 			let binding = decode_binding(EncodedCatalogRow::view(&multi.bytes));
 			catalog.set_binding(k.binding, version, Some(binding));
 		}

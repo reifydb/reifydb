@@ -30,7 +30,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		id: ColumnSnapshotId,
 	) -> Result<Option<ColumnSnapshot>> {
-		let Some(multi) = rx.get(&ColumnSnapshotKey::encoded(id))? else {
+		let Some(multi) = rx.get(&ColumnSnapshotKey::new(id))? else {
 			return Ok(None);
 		};
 		Ok(Some(decode_column_snapshot(EncodedCatalogRow::view(&multi.bytes))))

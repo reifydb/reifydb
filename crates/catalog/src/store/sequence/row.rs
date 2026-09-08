@@ -17,7 +17,7 @@ pub struct RowSequence {}
 
 impl RowSequence {
 	pub(crate) fn next_row_number(txn: &mut impl SequenceTransaction, table: TableId) -> Result<RowNumber> {
-		GeneratorU64::next(txn, &RowSequenceKey::encoded(table), None).map(RowNumber)
+		GeneratorU64::next(txn, &RowSequenceKey::new(StorageId::from(table)), None).map(RowNumber)
 	}
 
 	pub(crate) fn next_row_number_batch(
@@ -32,7 +32,7 @@ impl RowSequence {
 		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,
 	) -> Result<RowNumber> {
-		GeneratorU64::next(txn, &RowSequenceKey::encoded(ringbuffer), None).map(RowNumber)
+		GeneratorU64::next(txn, &RowSequenceKey::new(StorageId::from(ringbuffer)), None).map(RowNumber)
 	}
 
 	pub(crate) fn next_row_number_batch_for_ringbuffer(
@@ -47,7 +47,7 @@ impl RowSequence {
 		txn: &mut impl SequenceTransaction,
 		queue: QueueId,
 	) -> Result<RowNumber> {
-		GeneratorU64::next(txn, &RowSequenceKey::encoded(queue), None).map(RowNumber)
+		GeneratorU64::next(txn, &RowSequenceKey::new(StorageId::from(queue)), None).map(RowNumber)
 	}
 
 	pub(crate) fn next_row_number_batch_for_queue(
@@ -63,7 +63,7 @@ impl RowSequence {
 		storage: StorageId,
 		count: u64,
 	) -> Result<Vec<RowNumber>> {
-		let last_row_number = GeneratorU64::next_batched(txn, &RowSequenceKey::encoded(storage), None, count)?;
+		let last_row_number = GeneratorU64::next_batched(txn, &RowSequenceKey::new(storage), None, count)?;
 
 		let first_row_number = last_row_number.saturating_sub(count - 1);
 

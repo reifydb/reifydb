@@ -47,7 +47,7 @@ fn test_multiple_write() {
 		assert_eq!(from_bytes!(i32, *sv.bytes()), 8);
 		drop(sv);
 
-		assert!(txn.contains_key(&as_key!(8)).unwrap());
+		assert!(txn.contains(&as_key!(8)).unwrap());
 
 		txn.commit(vec![]).unwrap();
 	}
@@ -55,7 +55,7 @@ fn test_multiple_write() {
 	let k = 8;
 	let v = 8;
 	let txn = engine.begin_query().unwrap();
-	assert!(txn.contains_key(&as_key!(k)).unwrap());
+	assert!(txn.contains(&as_key!(k)).unwrap());
 	let sv = txn.get(&as_key!(k)).unwrap().unwrap();
 	assert_eq!(from_bytes!(i32, *sv.bytes()), v);
 }

@@ -529,10 +529,10 @@ pub fn keys_after<K: Keyspace>(
 		at
 	);
 	let mut params = vec![Value::Integer(operator.0 as i64)];
-	if let Some(key) = after {
-		if !K::columns().is_empty() {
-			params.extend(K::bind_key(key));
-		}
+	if let Some(key) = after
+		&& !K::columns().is_empty()
+	{
+		params.extend(K::bind_key(key));
 	}
 	params.push(Value::Integer(limit as i64));
 	let mut stmt = conn.prepare_cached(&sql).expect("operator state key scan could not be prepared");

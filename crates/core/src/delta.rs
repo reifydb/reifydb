@@ -1,25 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::cmp;
+use reifydb_codec::row::bytes::EncodedBytes;
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use serde::{Deserialize, Serialize};
+use crate::key::any::TaggedKey;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Delta {
 	Set {
-		key: EncodedKey,
+		key: TaggedKey,
 		bytes: EncodedBytes,
 	},
 
 	Remove {
-		key: EncodedKey,
+		key: TaggedKey,
 		announce: RemoveAnnounce,
 	},
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RemoveVisibility {
 	Silent,
 
@@ -28,7 +27,7 @@ pub enum RemoveVisibility {
 	Unobserved,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RemoveAnnounce {
 	Silent,
 
@@ -63,27 +62,15 @@ impl RemoveAnnounce {
 	}
 }
 
-impl PartialOrd for Delta {
-	fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-		Some(self.cmp(other))
-	}
-}
-
-impl Ord for Delta {
-	fn cmp(&self, other: &Self) -> cmp::Ordering {
-		self.key().cmp(other.key())
-	}
-}
-
 impl Delta {
-	pub fn remove_silent(key: EncodedKey) -> Self {
+	pub fn remove_silent(key: TaggedKey) -> Self {
 		Self::Remove {
 			key,
 			announce: RemoveAnnounce::Silent,
 		}
 	}
 
-	pub fn remove_announced(key: EncodedKey, pre: EncodedBytes) -> Self {
+	pub fn remove_announced(key: TaggedKey, pre: EncodedBytes) -> Self {
 		Self::Remove {
 			key,
 			announce: RemoveAnnounce::Announced {
@@ -92,7 +79,7 @@ impl Delta {
 		}
 	}
 
-	pub fn remove_unobserved(key: EncodedKey, pre: EncodedBytes) -> Self {
+	pub fn remove_unobserved(key: TaggedKey, pre: EncodedBytes) -> Self {
 		Self::Remove {
 			key,
 			announce: RemoveAnnounce::Unobserved {
@@ -101,7 +88,7 @@ impl Delta {
 		}
 	}
 
-	pub fn key(&self) -> &EncodedKey {
+	pub fn key(&self) -> &TaggedKey {
 		match self {
 			Self::Set {
 				key,

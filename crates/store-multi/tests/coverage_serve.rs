@@ -25,7 +25,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::MultiVersionCommit,
 	},
-	key::row::RowKey,
+	key::{any::TaggedKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_store_commit::MultiVersionScope;
@@ -110,7 +110,7 @@ fn commit_set(store: &StandardMultiStore, storage: StorageId, row: u64, version:
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
-			key: RowKey::encoded(storage, row),
+			key: TaggedKey::from(RowKey::new(storage, row)),
 			bytes: EncodedBytes(CowVec::new(value.as_bytes().to_vec())),
 		}],
 		CommitVersion(version),
@@ -121,7 +121,7 @@ fn commit_set(store: &StandardMultiStore, storage: StorageId, row: u64, version:
 fn commit_remove(store: &StandardMultiStore, storage: StorageId, row: u64, version: u64) {
 	MultiVersionCommit::commit(
 		store,
-		cow_vec![Delta::remove_silent(RowKey::encoded(storage, row))],
+		cow_vec![Delta::remove_silent(TaggedKey::from(RowKey::new(storage, row)))],
 		CommitVersion(version),
 	)
 	.unwrap();
@@ -143,7 +143,7 @@ fn batches(store: &StandardMultiStore, storage: StorageId, read: u64) -> Vec<(Ve
 		let batch = store
 			.range_next(
 				&mut cursor,
-				RowKey::full_scan(storage),
+				RowKey::full_scan(storage).encode(),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(read),
 				},
@@ -151,7 +151,7 @@ fn batches(store: &StandardMultiStore, storage: StorageId, read: u64) -> Vec<(Ve
 			)
 			.unwrap();
 		let rows: Vec<Row> =
-			batch.items.iter().map(|r| (r.key.to_vec(), r.bytes.to_vec(), r.version)).collect();
+			batch.items.iter().map(|r| (r.key.encode().to_vec(), r.bytes.to_vec(), r.version)).collect();
 		let more = batch.has_more;
 		out.push((rows, more));
 		if !more {

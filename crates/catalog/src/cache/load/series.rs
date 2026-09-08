@@ -51,7 +51,7 @@ pub(crate) fn load_series(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 	Ok(())
 }
 
-fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Result<Series> {
+fn convert_series<K>(multi: MultiVersionRow<K>, primary_key: Option<PrimaryKey>) -> Result<Series> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = SeriesId(series::get_id(&bytes));
 	let namespace = NamespaceId(series::get_namespace(&bytes));
@@ -89,7 +89,7 @@ fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Re
 	})
 }
 
-fn get_series_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
+fn get_series_primary_key_id<K>(multi: &MultiVersionRow<K>) -> Option<PrimaryKeyId> {
 	let pk_id_raw = series::get_primary_key(EncodedCatalogRow::view(&multi.bytes));
 	if pk_id_raw == 0 {
 		None

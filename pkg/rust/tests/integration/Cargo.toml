@@ -11,7 +11,7 @@ publish = false
 bs58 = { workspace = true }
 ed25519-dalek = { workspace = true }
 reifydb-codec = { workspace = true }
-reifydb = { workspace = true, features = ["testing"] }
+reifydb = { workspace = true, features = ["sub_flow", "sub_server", "testing"] }
 reifydb-sub-metrics = { workspace = true }
 reifydb-value = { workspace = true }
 reifydb-test-harness = { workspace = true, features = ["auth"] }

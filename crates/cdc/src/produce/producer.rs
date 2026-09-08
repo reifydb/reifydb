@@ -16,7 +16,7 @@ use reifydb_core::{
 		cdc::{Cdc, CdcChange},
 		store::MultiVersionGetPrevious,
 	},
-	key::{cdc::should_exclude_from_cdc, kind::KeyKind},
+	key::cdc::should_exclude_from_cdc,
 };
 use reifydb_runtime::{
 	actor::{
@@ -88,7 +88,7 @@ where
 
 	#[inline]
 	fn is_excluded_kind(delta: &Delta) -> bool {
-		KeyKind::of(delta.key()).map(should_exclude_from_cdc).unwrap_or(false)
+		should_exclude_from_cdc(delta.key().kind())
 	}
 
 	#[inline]
@@ -174,16 +174,17 @@ fn delta_to_raw_cdc_change(
 			key,
 			bytes,
 		} => {
+			let encoded = key.encode();
 			let pre = transaction_store.get_previous_version(key, version).ok().flatten();
 			Some(if let Some(prev) = pre {
 				CdcChange::Update {
-					key: key.clone(),
+					key: encoded,
 					pre: prev.bytes,
 					post: bytes.clone(),
 				}
 			} else {
 				CdcChange::Insert {
-					key: key.clone(),
+					key: encoded,
 					post: bytes.clone(),
 				}
 			})
@@ -194,7 +195,7 @@ fn delta_to_raw_cdc_change(
 				pre,
 			},
 		} => Some(CdcChange::Delete {
-			key: key.clone(),
+			key: key.encode(),
 			pre: Some(pre.clone()),
 			visible: true,
 		}),
@@ -204,7 +205,7 @@ fn delta_to_raw_cdc_change(
 				pre,
 			},
 		} => Some(CdcChange::Delete {
-			key: key.clone(),
+			key: key.encode(),
 			pre: Some(pre.clone()),
 			visible: false,
 		}),
@@ -383,7 +384,7 @@ pub mod tests {
 				key,
 				post,
 			} => {
-				assert_eq!(key.as_ref(), b"test_key");
+				assert_eq!(key, &make_key("test_key").encode());
 				assert_eq!(post.0.as_slice(), b"test_value");
 			}
 			_ => panic!("Expected Insert change"),
@@ -462,7 +463,7 @@ pub mod tests {
 				version: CommitVersion(1),
 				changed_at: DateTime::from_nanos(1),
 				deltas: vec![Delta::Set {
-					key: RowKey::encoded(StorageId::table(1), RowNumber(1)),
+					key: RowKey::new(StorageId::table(1), RowNumber(1)).into(),
 					bytes: make_bytes("row"),
 				}],
 			})

@@ -6,32 +6,34 @@ use reifydb_value::value::dictionary::DictionaryId;
 
 use crate::{
 	interface::catalog::{metrics::MetricsId, object::ObjectId},
-	key::{catalog::KeyDeserializerCatalogExt, kind::KeyKind},
+	key::{catalog::KeyDeserializerCatalogExt, tag::KeyTag},
 };
 
 pub fn parse_id(key: &[u8]) -> MetricsId {
-	let Some(kind) = KeyKind::of(key) else {
+	let Some(kind) = KeyTag::of(key) else {
 		return MetricsId::System;
 	};
 	extract_metrics_id(key, kind)
 }
 
-fn extract_metrics_id(key: &[u8], kind: KeyKind) -> MetricsId {
+fn extract_metrics_id(key: &[u8], kind: KeyTag) -> MetricsId {
 	match kind {
-		KeyKind::Row
-		| KeyKind::SeriesRow
-		| KeyKind::PartitionedRow
-		| KeyKind::PartitionedSeriesRow
-		| KeyKind::RowSequence
-		| KeyKind::Column
-		| KeyKind::Columns
-		| KeyKind::ColumnSequence
-		| KeyKind::ColumnProperty
-		| KeyKind::Index
-		| KeyKind::IndexEntry
-		| KeyKind::PrimaryKey => extract_object_id(key).map(MetricsId::Object).unwrap_or(MetricsId::System),
+		KeyTag::Row
+		| KeyTag::SeriesRow
+		| KeyTag::PartitionedRow
+		| KeyTag::PartitionedSeriesRow
+		| KeyTag::SortedViewRow
+		| KeyTag::PartitionedSortedViewRow
+		| KeyTag::RowSequence
+		| KeyTag::Column
+		| KeyTag::Columns
+		| KeyTag::ColumnSequence
+		| KeyTag::ColumnProperty
+		| KeyTag::Index
+		| KeyTag::IndexEntry
+		| KeyTag::PrimaryKey => extract_object_id(key).map(MetricsId::Object).unwrap_or(MetricsId::System),
 
-		KeyKind::DictionaryEntry | KeyKind::DictionaryEntryIndex => extract_dictionary_id(key)
+		KeyTag::DictionaryEntry | KeyTag::DictionaryEntryIndex => extract_dictionary_id(key)
 			.map(|id| MetricsId::Object(ObjectId::Dictionary(DictionaryId(id))))
 			.unwrap_or(MetricsId::System),
 
@@ -58,7 +60,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		interface::catalog::{object::ObjectId, storage::StorageId},
-		key::{catalog::DictionaryEntryKey, row::RowKey, typed::key::Key},
+		key::{catalog::DictionaryEntryKey, row::RowKey},
 	};
 
 	#[test]

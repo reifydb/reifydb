@@ -28,7 +28,7 @@ pub(crate) fn load_operators(rx: &mut Transaction<'_>, catalog: &CatalogCache) -
 	Ok(())
 }
 
-fn convert_operator(multi: MultiVersionRow) -> Result<Operator> {
+fn convert_operator<K>(multi: MultiVersionRow<K>) -> Result<Operator> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = OperatorId(operator::get_id(&bytes));
 	let flow = FlowId(operator::get_flow(&bytes));

@@ -15,7 +15,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		operator: OperatorId,
 	) -> Result<Option<OperatorSettings>> {
-		let value = rx.get(&OperatorSettingsKey::encoded(operator))?;
+		let value = rx.get(&OperatorSettingsKey::new(operator))?;
 		Ok(value.and_then(|v| decode_operator_settings(EncodedCatalogRow::view(&v.bytes))))
 	}
 }

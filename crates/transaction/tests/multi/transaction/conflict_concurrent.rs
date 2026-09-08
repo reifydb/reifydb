@@ -18,13 +18,13 @@ use std::sync::{
 	atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_core::key::{any::TaggedKey, bound::TaggedKeyBoundRange};
 use reifydb_transaction::multi::{RangeScope, transaction::write::MultiWriteTransaction};
 
 use super::test_multi;
 use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
 
-fn read_u64(txn: &mut MultiWriteTransaction, key: &EncodedKey) -> Option<u64> {
+fn read_u64(txn: &mut MultiWriteTransaction, key: &TaggedKey) -> Option<u64> {
 	txn.get(key).unwrap().map(|sv| {
 		let row = sv.bytes();
 		from_bytes!(u64, row)
@@ -36,7 +36,7 @@ fn test_conflict_point_get_admits_exactly_one_writer() {
 	const LOOPS: usize = 10;
 	const THREADS: usize = 16;
 
-	let key: EncodedKey = as_key!("foo".to_string());
+	let key = as_key!("foo".to_string());
 
 	for loop_index in 0..LOOPS {
 		let engine = Arc::new(test_multi());
@@ -85,7 +85,7 @@ fn test_conflict_range_scan_admits_exactly_one_writer() {
 	const LOOPS: usize = 10;
 	const THREADS: usize = 16;
 
-	let key: EncodedKey = as_key!("foo".to_string());
+	let key = as_key!("foo".to_string());
 
 	for loop_index in 0..LOOPS {
 		let engine = Arc::new(test_multi());
@@ -102,7 +102,7 @@ fn test_conflict_range_scan_admits_exactly_one_writer() {
 				std::thread::spawn(move || {
 					let mut txn = engine.begin_command().unwrap();
 					let found = txn
-						.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+						.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 						.next()
 						.is_some();
 
@@ -141,7 +141,7 @@ fn test_read_after_write_is_visible_to_a_later_transaction() {
 		.map(|i| {
 			let engine = Arc::clone(&engine);
 			std::thread::spawn(move || {
-				let key: EncodedKey = as_key!(i);
+				let key = as_key!(i);
 
 				let mut writer = engine.begin_command().unwrap();
 				writer.set(&key, as_values!(i)).unwrap();

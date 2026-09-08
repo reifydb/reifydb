@@ -18,14 +18,14 @@ use reifydb_benches::{
 	BenchReport, env_flag, env_list_usize, env_opt, env_select, env_u64, env_usize, latency_histogram,
 	median_by_throughput, merge,
 };
-use reifydb_codec::{key as keycode, key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{key as keycode, row::bytes::EncodedBytes};
 use reifydb_core::{
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, classify_key},
 	},
-	key::{row::RowKey, typed::key::Key},
+	key::row::RowKey,
 	testing::ProfileConfig,
 };
 use reifydb_runtime::{
@@ -85,12 +85,11 @@ fn build_stack() -> (ActorSystem, MultiTransaction) {
 	(actor_system, multi)
 }
 
-fn encoded_key(layout: TableLayout, thread_id: u64, index: u64) -> EncodedKey {
+fn encoded_key(layout: TableLayout, thread_id: u64, index: u64) -> RowKey {
 	RowKey {
 		storage: layout.storage_for(thread_id),
 		row: RowNumber(thread_id * KEY_STRIDE + index + 1),
 	}
-	.encode()
 }
 
 fn encoded_bytes(value: u64) -> EncodedBytes {
@@ -240,24 +239,24 @@ fn write_txns(
 }
 
 fn verify_key_classification() {
-	let shared = classify_key(&encoded_key(TableLayout::SharedTable, 0, 0));
-	let other = classify_key(&encoded_key(TableLayout::SharedTable, 7, 0));
+	let shared = classify_key(&encoded_key(TableLayout::SharedTable, 0, 0).encode());
+	let other = classify_key(&encoded_key(TableLayout::SharedTable, 7, 0).encode());
 	assert_eq!(shared, other, "shared_table must place every thread in one storage entry");
 	assert_ne!(
 		shared,
 		EntryKind::Multi,
-		"benchmark keys must decode as Key::Row, otherwise every thread contends on EntryKind::Multi"
+		"benchmark keys must decode as KeyCodec::Row, otherwise every thread contends on EntryKind::Multi"
 	);
 
-	let a = classify_key(&encoded_key(TableLayout::TablePerThread, 0, 0));
-	let b = classify_key(&encoded_key(TableLayout::TablePerThread, 1, 0));
+	let a = classify_key(&encoded_key(TableLayout::TablePerThread, 0, 0).encode());
+	let b = classify_key(&encoded_key(TableLayout::TablePerThread, 1, 0).encode());
 	assert_ne!(a, b, "table_per_thread must place each thread in its own storage entry");
 
 	for layout in [TableLayout::SharedTable, TableLayout::TablePerThread] {
 		let mut seen = HashSet::new();
 		for thread_id in 0..32u64 {
 			for index in [0u64, 1, KEY_STRIDE - 1] {
-				let key = encoded_key(layout, thread_id, index);
+				let key = encoded_key(layout, thread_id, index).encode();
 				assert!(
 					seen.insert(key),
 					"{} produced a duplicate key for thread {thread_id} index {index}; \

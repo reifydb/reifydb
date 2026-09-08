@@ -44,11 +44,11 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 	Ok(())
 }
 
-fn convert_view(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Result<View> {
+fn convert_view<K>(multi: MultiVersionRow<K>, primary_key: Option<PrimaryKey>) -> Result<View> {
 	decode_view(EncodedCatalogRow::view(&multi.bytes), vec![], primary_key)
 }
 
-fn get_view_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
+fn get_view_primary_key_id<K>(multi: &MultiVersionRow<K>) -> Option<PrimaryKeyId> {
 	let pk_id_raw = view::get_primary_key(EncodedCatalogRow::view(&multi.bytes));
 	if pk_id_raw == 0 {
 		None

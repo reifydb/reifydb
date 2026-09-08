@@ -41,5 +41,5 @@ tracing = { workspace = true }
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
 rand = { workspace = true }
-reifydb = { workspace = true, features = ["testing"] }
+reifydb = { workspace = true, features = ["sub_flow", "testing"] }
 reifydb-test-harness = { workspace = true, features = ["operator"] }

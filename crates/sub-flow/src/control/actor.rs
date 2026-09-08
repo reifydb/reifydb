@@ -733,8 +733,9 @@ mod pull_protocol {
 			change::{ChangeOrigin, Diff},
 		},
 		key::{
-			kind::KeyKind,
+			bound::TaggedKeyBoundRange,
 			operator::state::{KeyspaceId, OperatorStateKey},
+			tag::KeyTag,
 		},
 	};
 	use reifydb_flow::{
@@ -1443,7 +1444,7 @@ mod pull_protocol {
 							key,
 							pre,
 							..
-						} if matches!(KeyKind::of(&key), Some(KeyKind::Row)) => Some((key, pre)),
+						} if matches!(KeyTag::of(&key), Some(KeyTag::Row)) => Some((key, pre)),
 						_ => None,
 					})
 			})
@@ -1535,7 +1536,7 @@ mod pull_protocol {
 							key,
 							pre,
 							visible,
-						} if matches!(KeyKind::of(&key), Some(KeyKind::Row)) => Some((key, pre, visible)),
+						} if matches!(KeyTag::of(&key), Some(KeyTag::Row)) => Some((key, pre, visible)),
 						_ => None,
 					})
 					.collect();
@@ -1637,7 +1638,7 @@ mod pull_protocol {
 			.cdc_records()
 			.into_iter()
 			.flat_map(|cdc| cdc.changes)
-			.filter(|change| matches!(KeyKind::of(change.key()), Some(KeyKind::OperatorState)))
+			.filter(|change| matches!(KeyTag::of(change.key()), Some(KeyTag::OperatorState)))
 			.count();
 		assert_eq!(cdc_state_keys, 0, "no CDC record may carry an OperatorState key either");
 
@@ -1746,11 +1747,11 @@ mod pull_protocol {
 		let stored = {
 			let query = h.engine.multi().begin_query().expect("query");
 			let rows: Vec<_> = query
-				.range(EncodedKeyRange::all(), RangeScope::All, 100_000)
+				.range(TaggedKeyBoundRange::all(), RangeScope::All, 100_000)
 				.collect::<Result<Vec<_>>>()
 				.expect("scan for the ringbuffer metadata row")
 				.into_iter()
-				.filter(|row| KeyKind::of(&row.key) == Some(KeyKind::RingBufferMetadata))
+				.filter(|row| row.key.kind() == KeyTag::RingBufferMetadata)
 				.collect();
 			assert_eq!(rows.len(), 1, "the test view owns exactly one unpartitioned metadata row");
 			decode_ringbuffer_metadata(EncodedPodRow::view(&rows[0].bytes))

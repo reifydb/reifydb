@@ -15,11 +15,14 @@ use reifydb_codec::key::{
 };
 use reifydb_value::util::hash::{Hash128, xxh3_128};
 use serde::{Deserialize, Serialize};
+use smallvec::{SmallVec, smallvec};
 
-use super::super::{EncodableKey, KeyKind};
+use super::super::KeyTag;
 use crate::{
 	interface::catalog::flow::OperatorId,
 	key::{
+		any::{ByteEncoding, Field, KeyFields, RawEncoding, Width},
+		bound::{TaggedKeyBound, TaggedKeyBoundRange},
 		operator::{
 			keyspace::{
 				KeyspaceVisitor, REGISTERED, dispatch,
@@ -28,7 +31,7 @@ use crate::{
 			},
 			traits::Keyspace,
 		},
-		typed::{TypedKey, layout::KeyLayout},
+		typed::{BoundedKey, layout::KeyLayout},
 	},
 	metrics::heap::HeapSize,
 	state::typed::{SuffixBytes, typed_key},
@@ -368,7 +371,7 @@ pub fn is_identity_framed_inner(inner: &[u8]) -> bool {
 		.is_some_and(|(_, keyspace, _)| keyspace.is_identity() && keyspace.is_known())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OperatorStateKey {
 	pub operator: OperatorId,
 	pub group: GroupId,
@@ -399,7 +402,7 @@ impl OperatorStateKey {
 		let suffix = suffix.as_ref();
 		let mut serializer = KeySerializer::with_capacity(NODE_GROUP_PREFIX_LEN + 1 + suffix.len());
 		serializer
-			.extend_u8(KeyKind::OperatorState as u8)
+			.extend_u8(KeyTag::OperatorState as u8)
 			.extend_u64(operator.0)
 			.extend_fixed(*group.as_bytes())
 			.extend_u8(keyspace.0)
@@ -434,14 +437,14 @@ impl OperatorStateKey {
 		Some((GroupId::from_bytes(group), KeyspaceId(keyspace), suffix))
 	}
 
-	pub fn node_range(operator: OperatorId) -> EncodedKeyRange {
+	pub fn node_range(operator: OperatorId) -> TaggedKeyBoundRange {
 		node_range(operator)
 	}
 
 	pub fn decode_operator(key: &EncodedKey) -> Option<(OperatorId, EncodedKey)> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != KeyKind::OperatorState {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != KeyTag::OperatorState {
 			return None;
 		}
 		let operator = de.read_u64().ok()?;
@@ -450,13 +453,13 @@ impl OperatorStateKey {
 	}
 }
 
-impl EncodableKey for OperatorStateKey {
-	const KIND: KeyKind = KeyKind::OperatorState;
+impl OperatorStateKey {
+	pub const TAG: KeyTag = KeyTag::OperatorState;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(NODE_GROUP_PREFIX_LEN + 1 + self.suffix.len());
 		serializer
-			.extend_u8(KeyKind::OperatorState as u8)
+			.extend_u8(KeyTag::OperatorState as u8)
 			.extend_u64(self.operator.0)
 			.extend_fixed(*self.group.as_bytes())
 			.extend_u8(self.keyspace.0)
@@ -464,11 +467,11 @@ impl EncodableKey for OperatorStateKey {
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != KeyKind::OperatorState {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != KeyTag::OperatorState {
 			return None;
 		}
 
@@ -599,7 +602,7 @@ fn suffix_at_edge(keyspace: KeyspaceId, suffix: &[u8], edge: SuffixEdge) -> Vec<
 
 		fn visit<K: Keyspace>(self) -> Self::Output {
 			let template = match self.edge {
-				SuffixEdge::Low => <K::Suffix as TypedKey>::low().to_suffix_bytes(),
+				SuffixEdge::Low => <K::Suffix as BoundedKey>::low().to_suffix_bytes(),
 				SuffixEdge::High => <K::Suffix as KeyLayout>::high().to_suffix_bytes(),
 			};
 			let mut bytes = self.suffix.to_vec();
@@ -736,7 +739,7 @@ pub const KEYSPACE_INNER_PREFIX_LEN: usize = GroupId::WIDTH + size_of::<u8>();
 pub const NODE_GROUP_PREFIX_LEN: usize = NODE_PREFIX_LEN + GroupId::WIDTH;
 
 pub fn extend_node_prefix(serializer: &mut KeySerializer, operator: OperatorId) {
-	serializer.extend_u8(KeyKind::OperatorState as u8).extend_u64(operator.0);
+	serializer.extend_u8(KeyTag::OperatorState as u8).extend_u64(operator.0);
 }
 
 pub fn node_prefix(operator: OperatorId) -> Vec<u8> {
@@ -745,42 +748,69 @@ pub fn node_prefix(operator: OperatorId) -> Vec<u8> {
 	serializer.finish().as_ref().to_vec()
 }
 
-fn group_prefix(operator: OperatorId, group: GroupId) -> Vec<u8> {
-	let mut serializer = KeySerializer::with_capacity(NODE_GROUP_PREFIX_LEN);
-	serializer.extend_u8(KeyKind::OperatorState as u8).extend_u64(operator.0).extend_fixed(*group.as_bytes());
-	serializer.finish().as_ref().to_vec()
+pub fn node_range(operator: OperatorId) -> TaggedKeyBoundRange {
+	TaggedKeyBoundRange::prefix(KeyTag::OperatorState, [Field::UDesc(Width::U64, operator.0 as u128)])
 }
 
-fn keyspace_prefix(operator: OperatorId, group: GroupId, keyspace: KeyspaceId) -> Vec<u8> {
-	let mut prefix = group_prefix(operator, group);
-	prefix.push(encode_u8(keyspace.0));
-	prefix
+pub fn group_range(operator: OperatorId, group: GroupId) -> TaggedKeyBoundRange {
+	TaggedKeyBoundRange::prefix(
+		KeyTag::OperatorState,
+		[
+			Field::UDesc(Width::U64, operator.0 as u128),
+			Field::BytesDesc(ByteEncoding::Fixed, Cow::Owned(group.as_bytes().to_vec())),
+		],
+	)
 }
 
-pub fn node_range(operator: OperatorId) -> EncodedKeyRange {
-	EncodedKeyRange::prefix(&node_prefix(operator))
+pub fn keyspace_range(operator: OperatorId, group: GroupId, keyspace: KeyspaceId) -> TaggedKeyBoundRange {
+	TaggedKeyBoundRange::prefix(
+		KeyTag::OperatorState,
+		[
+			Field::UDesc(Width::U64, operator.0 as u128),
+			Field::BytesDesc(ByteEncoding::Fixed, Cow::Owned(group.as_bytes().to_vec())),
+			Field::UDesc(Width::U8, keyspace.0 as u128),
+		],
+	)
 }
 
-pub fn group_range(operator: OperatorId, group: GroupId) -> EncodedKeyRange {
-	EncodedKeyRange::prefix(&group_prefix(operator, group))
+pub fn group_data_range(operator: OperatorId, group: GroupId) -> TaggedKeyBoundRange {
+	TaggedKeyBoundRange {
+		start: Bound::Included(TaggedKeyBound::prefix(
+			KeyTag::OperatorState,
+			[
+				Field::UDesc(Width::U64, operator.0 as u128),
+				Field::BytesDesc(ByteEncoding::Fixed, Cow::Owned(group.as_bytes().to_vec())),
+				Field::UDesc(Width::U8, KeyspaceId::HIGHEST_DATA as u128),
+			],
+		)),
+		end: Bound::Excluded(TaggedKeyBound::prefix_end(
+			KeyTag::OperatorState,
+			[
+				Field::UDesc(Width::U64, operator.0 as u128),
+				Field::BytesDesc(ByteEncoding::Fixed, Cow::Owned(group.as_bytes().to_vec())),
+			],
+		)),
+	}
 }
 
-pub fn keyspace_range(operator: OperatorId, group: GroupId, keyspace: KeyspaceId) -> EncodedKeyRange {
-	EncodedKeyRange::prefix(&keyspace_prefix(operator, group, keyspace))
-}
-
-pub fn group_data_range(operator: OperatorId, group: GroupId) -> EncodedKeyRange {
-	let prefix = group_prefix(operator, group);
-	let mut start = prefix.clone();
-	start.push(encode_u8(KeyspaceId::HIGHEST_DATA));
-	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), EncodedKeyRange::prefix(&prefix).end)
-}
-
-pub fn group_identity_range(operator: OperatorId, group: GroupId) -> EncodedKeyRange {
-	let prefix = group_prefix(operator, group);
-	let mut end = prefix.clone();
-	end.push(encode_u8(KeyspaceId::HIGHEST_DATA));
-	EncodedKeyRange::new(Bound::Included(EncodedKey::new(prefix)), Bound::Excluded(EncodedKey::new(end)))
+pub fn group_identity_range(operator: OperatorId, group: GroupId) -> TaggedKeyBoundRange {
+	TaggedKeyBoundRange {
+		start: Bound::Included(TaggedKeyBound::prefix(
+			KeyTag::OperatorState,
+			[
+				Field::UDesc(Width::U64, operator.0 as u128),
+				Field::BytesDesc(ByteEncoding::Fixed, Cow::Owned(group.as_bytes().to_vec())),
+			],
+		)),
+		end: Bound::Excluded(TaggedKeyBound::prefix(
+			KeyTag::OperatorState,
+			[
+				Field::UDesc(Width::U64, operator.0 as u128),
+				Field::BytesDesc(ByteEncoding::Fixed, Cow::Owned(group.as_bytes().to_vec())),
+				Field::UDesc(Width::U8, KeyspaceId::HIGHEST_DATA as u128),
+			],
+		)),
+	}
 }
 
 #[cfg(test)]
@@ -796,7 +826,7 @@ mod tests {
 		group_inner_range, group_range, is_framed_inner, is_guest_framed_inner, keyspace_range, node_prefix,
 		node_range,
 	};
-	use crate::{interface::catalog::flow::OperatorId, key::EncodableKey};
+	use crate::interface::catalog::flow::OperatorId;
 
 	const NODES: [u64; 4] = [1, 17, 300, 70_000];
 	const GROUPS: [u128; 8] = [1, 2, 127, 128, 1000, 100_000, 1 << 30, u128::MAX];
@@ -1009,7 +1039,7 @@ mod tests {
 		for operator in NODES {
 			for group in GROUPS {
 				let group_id = GroupId::hashed(Hash128(group));
-				let range = group_range(OperatorId(operator), group_id);
+				let range = group_range(OperatorId(operator), group_id).encode();
 				for key in &population {
 					let encoded = key.encode();
 					let expected = key.operator.0 == operator && key.group == group_id;
@@ -1065,8 +1095,8 @@ mod tests {
 		for operator in NODES {
 			for group in GROUPS {
 				let group = GroupId::hashed(Hash128(group));
-				let data = group_data_range(OperatorId(operator), group);
-				let identity = group_identity_range(OperatorId(operator), group);
+				let data = group_data_range(OperatorId(operator), group).encode();
+				let identity = group_identity_range(OperatorId(operator), group).encode();
 
 				for keyspace in DATA_KEYSPACES {
 					let key = OperatorStateKey::new(
@@ -1179,8 +1209,8 @@ mod tests {
 
 			let group = GroupId::hashed(Hash128(4));
 			let key = OperatorStateKey::new(OperatorId(9), group, keyspace, vec![7, 7]).encode();
-			let data = contains(&group_data_range(OperatorId(9), group), key.as_slice());
-			let identity = contains(&group_identity_range(OperatorId(9), group), key.as_slice());
+			let data = contains(&group_data_range(OperatorId(9), group).encode(), key.as_slice());
+			let identity = contains(&group_identity_range(OperatorId(9), group).encode(), key.as_slice());
 
 			assert!(data != identity, "{name} must fall in exactly one phase, not {data} and {identity}");
 			assert_eq!(
@@ -1208,7 +1238,7 @@ mod tests {
 			)
 			.encode();
 			for group in GROUPS {
-				let range = group_range(OperatorId(operator), GroupId::hashed(Hash128(group)));
+				let range = group_range(OperatorId(operator), GroupId::hashed(Hash128(group))).encode();
 				assert!(
 					!contains(&range, counter.as_slice()),
 					"group {group} range must not contain the root group's counter"
@@ -1222,7 +1252,7 @@ mod tests {
 		// a node range must contain exactly its own operator's keys, since drop_operator deletes by range
 		let population = population();
 		for operator in NODES {
-			let range = node_range(OperatorId(operator));
+			let range = node_range(OperatorId(operator)).encode();
 			for key in &population {
 				let encoded = key.encode();
 				assert_eq!(
@@ -1240,7 +1270,7 @@ mod tests {
 		// a keyspace range must isolate exactly one keyspace of one group, or scans mix incompatible payloads
 		let operator = OperatorId(17);
 		let group = GroupId::hashed(Hash128(42));
-		let range = keyspace_range(operator, group, KeyspaceId::BUFFER);
+		let range = keyspace_range(operator, group, KeyspaceId::BUFFER).encode();
 
 		let inside = OperatorStateKey::new(operator, group, KeyspaceId::BUFFER, vec![1]).encode();
 		assert!(contains(&range, inside.as_slice()));
@@ -1474,5 +1504,16 @@ mod tests {
 
 		assert!(set.is_empty());
 		assert!(!set.contains(GroupId::FIRST_NON_ROOT));
+	}
+}
+
+impl KeyFields for OperatorStateKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![
+			Field::UDesc(Width::U64, self.operator.0 as u128),
+			Field::BytesDesc(ByteEncoding::Fixed, Cow::Borrowed(self.group.as_bytes())),
+			Field::UDesc(Width::U8, self.keyspace.0 as u128),
+			Field::RawAsc(RawEncoding::Verbatim, Cow::Borrowed(&self.suffix)),
+		]
 	}
 }

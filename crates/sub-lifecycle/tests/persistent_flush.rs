@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	default,
@@ -17,10 +17,12 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
+			id::QueueId,
 			storage::StorageId,
 		},
 		store::MultiVersionCommit,
 	},
+	key::queue::QueueDeduplicationKey,
 	lifecycle::{progress::Progress, task::LifecycleTask, watermark::EvictionWatermark},
 };
 use reifydb_runtime::{context::clock::Clock, version_epoch::VersionEpoch};
@@ -97,7 +99,11 @@ fn seeded_task(store: &StandardMultiStore, budget: u64) -> PersistentFlushTask {
 		MultiVersionCommit::commit(
 			store,
 			CowVec::new(vec![Delta::Set {
-				key: EncodedKey::new(format!("k{n}").into_bytes()),
+				key: QueueDeduplicationKey::new(
+					QueueId(1),
+					format!("k{n}").bytes().map(|b| !b).collect::<Vec<u8>>(),
+				)
+				.into(),
 				bytes: EncodedBytes(CowVec::new(b"v".to_vec())),
 			}]),
 			CommitVersion(n as u64),

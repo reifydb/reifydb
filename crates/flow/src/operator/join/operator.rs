@@ -1080,10 +1080,10 @@ mod seal_tests {
 		common::CommitVersion,
 		interface::store::MultiVersionRow,
 		key::{
-			EncodableKey,
+			any::TaggedKey,
 			operator::{
 				keyspace::join::{JoinLeft, JoinRight, JoinRowExpiryState as JoinRowExpiry},
-				state::{KeyspaceId, OperatorStateKey, keyspace_inner_range, node_prefix},
+				state::{KeyspaceId, keyspace_inner_range, node_prefix},
 				traits::Keyspace,
 			},
 		},
@@ -1250,7 +1250,7 @@ mod seal_tests {
 			.unwrap()
 			.items
 			.iter()
-			.filter(|item| OperatorStateKey::decode(&item.key).is_some_and(|key| key.group == group))
+			.filter(|item| matches!(&item.key, TaggedKey::OperatorState(key) if key.group == group))
 			.count()
 	}
 
@@ -1398,7 +1398,7 @@ mod seal_tests {
 			range: EncodedKeyRange,
 			scope: RangeScope,
 			batch_size: usize,
-		) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+		) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 			// a repeated enumeration of one keyspace must show up here as a repeated start bound
 			match &range.start {
 				Bound::Included(start) | Bound::Excluded(start) => self.scan_starts.push(start.clone()),
@@ -1410,7 +1410,7 @@ mod seal_tests {
 		fn fetch_state_external(
 			&mut self,
 			keys: Vec<EncodedKey>,
-			items: &mut Vec<MultiVersionRow>,
+			items: &mut Vec<MultiVersionRow<TaggedKey>>,
 		) -> Result<()> {
 			self.inner.fetch_state_external(keys, items)
 		}

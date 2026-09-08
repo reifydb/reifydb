@@ -34,11 +34,11 @@ cdc_value_bytes: 0
 stats_current
 ---
 current_count: 2
-current_key_bytes: 22
+current_key_bytes: 60
 current_value_bytes: 1
 
 stats_historical
 ---
 historical_count: 2
-historical_key_bytes: 22
+historical_key_bytes: 60
 historical_value_bytes: 2

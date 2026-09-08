@@ -1,21 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{ops::Bound, sync::Arc};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::EncodedBytes,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
 	delta::{Delta, RemoveVisibility},
 	execution::ExecutionResult,
 	interface::{
-		catalog::{object::ObjectId, policy::SessionOp},
+		catalog::{object::ObjectId, policy::SessionOp, storage::StorageId},
 		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
+	},
+	key::{
+		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
+		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 	testing::{CapturedEvent, CapturedInvocation},
 	value::column::columns::Columns,
@@ -104,8 +106,8 @@ pub(super) fn collect_transaction_writes(pending: &PendingWrites) -> Vec<(Encode
 			Delta::Set {
 				bytes,
 				..
-			} => (key.clone(), Some(bytes.clone())),
-			_ => (key.clone(), None),
+			} => (key.encode(), Some(bytes.clone())),
+			_ => (key.encode(), None),
 		})
 		.collect()
 }
@@ -113,7 +115,7 @@ pub(super) fn collect_transaction_writes(pending: &PendingWrites) -> Vec<(Encode
 #[inline]
 pub(super) fn apply_pre_commit_writes(
 	multi: &mut MultiWriteTransaction,
-	pending_writes: &[(EncodedKey, PendingWrite)],
+	pending_writes: &[(TaggedKey, PendingWrite)],
 ) -> Result<()> {
 	for (key, write) in pending_writes {
 		match write {
@@ -230,8 +232,8 @@ impl<'a> TestTransaction<'a> {
 				Delta::Set {
 					bytes,
 					..
-				} => (key.clone(), Some(bytes.clone())),
-				_ => (key.clone(), None),
+				} => (key.encode(), Some(bytes.clone())),
+				_ => (key.encode(), None),
 			})
 			.collect();
 
@@ -323,7 +325,7 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		match self {
 			Self::Command(txn) => txn.get(key),
 			Self::Admin(txn) => txn.get(key),
@@ -332,7 +334,10 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn get_committed(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+	pub fn get_committed<K: Into<TaggedKey> + Clone>(
+		&mut self,
+		key: &K,
+	) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		match self {
 			Self::Command(txn) => txn.get_committed(key),
 			Self::Admin(txn) => txn.get_committed(key),
@@ -341,16 +346,16 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
+	pub fn contains<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
 		match self {
-			Self::Command(txn) => txn.contains_key(key),
-			Self::Admin(txn) => txn.contains_key(key),
-			Self::Query(txn) => txn.contains_key(key),
-			Self::Test(t) => t.inner.contains_key(key),
+			Self::Command(txn) => txn.contains(key),
+			Self::Admin(txn) => txn.contains(key),
+			Self::Query(txn) => txn.contains(key),
+			Self::Test(t) => t.inner.contains(key),
 		}
 	}
 
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		match self {
 			Self::Command(txn) => txn.prefix(prefix),
 			Self::Admin(txn) => txn.prefix(prefix),
@@ -359,7 +364,7 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		match self {
 			Self::Command(txn) => txn.prefix_rev(prefix),
 			Self::Admin(txn) => txn.prefix_rev(prefix),
@@ -379,10 +384,10 @@ impl<'a> Transaction<'a> {
 
 	pub fn range(
 		&mut self,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		match self {
 			Transaction::Command(txn) => txn.range(range, scope, batch_size),
 			Transaction::Admin(txn) => txn.range(range, scope, batch_size),
@@ -391,12 +396,47 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn range_rev(
+	pub fn range_row(
 		&mut self,
-		range: EncodedKeyRange,
+		storage: StorageId,
+		start: Bound<StorageRowKey>,
+		end: Bound<StorageRowKey>,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_>> {
+		match self {
+			Transaction::Command(txn) => txn.range_row(storage, start, end, scope, batch_size),
+			Transaction::Admin(txn) => txn.range_row(storage, start, end, scope, batch_size),
+			Transaction::Query(txn) => Ok(txn.range_row(storage, start, end, scope, batch_size)),
+			Transaction::Test(t) => t.inner.range_row(storage, start, end, scope, batch_size),
+		}
+	}
+
+	#[inline]
+	pub fn range_partitioned_row(
+		&mut self,
+		storage: StorageId,
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_>> {
+		match self {
+			Transaction::Command(txn) => txn.range_partitioned_row(storage, start, end, scope, batch_size),
+			Transaction::Admin(txn) => txn.range_partitioned_row(storage, start, end, scope, batch_size),
+			Transaction::Query(txn) => {
+				Ok(txn.range_partitioned_row(storage, start, end, scope, batch_size))
+			}
+			Transaction::Test(t) => t.inner.range_partitioned_row(storage, start, end, scope, batch_size),
+		}
+	}
+
+	pub fn range_rev(
+		&mut self,
+		range: TaggedKeyBoundRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		match self {
 			Transaction::Command(txn) => txn.range_rev(range, scope, batch_size),
 			Transaction::Admin(txn) => txn.range_rev(range, scope, batch_size),
@@ -562,20 +602,20 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn set(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
-		Write::set(self.write_ops(), key, bytes.into())
+	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
+		Write::set(self.write_ops(), &key.clone().into(), bytes.into())
 	}
 
-	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
-		Write::remove_with_pre(self.write_ops(), key, pre)
+	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
+		Write::remove_with_pre(self.write_ops(), &key.clone().into(), pre)
 	}
 
-	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		Write::remove(self.write_ops(), key)
+	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
+		Write::remove(self.write_ops(), &key.clone().into())
 	}
 
-	pub fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()> {
-		Write::mark_preexisting(self.write_ops(), key)
+	pub fn mark_preexisting<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
+		Write::mark_preexisting(self.write_ops(), &key.clone().into())
 	}
 
 	pub fn track_row_change(&mut self, changes: &[RowChange]) {

@@ -5,7 +5,7 @@ use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKeyRange;
 
-use super::MultiKey;
+use super::OpaqueKey;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KeyRange<K> {
@@ -22,7 +22,7 @@ impl<K> KeyRange<K> {
 	}
 }
 
-impl From<&EncodedKeyRange> for KeyRange<MultiKey> {
+impl From<&EncodedKeyRange> for KeyRange<OpaqueKey> {
 	fn from(range: &EncodedKeyRange) -> Self {
 		Self {
 			start: range.start.clone(),

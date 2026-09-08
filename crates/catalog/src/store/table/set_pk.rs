@@ -17,7 +17,7 @@ impl CatalogStore {
 		table_id: TableId,
 		primary_key_id: PrimaryKeyId,
 	) -> Result<()> {
-		let multi = match txn.get(&TableKey::encoded(table_id))? {
+		let multi = match txn.get(&TableKey::new(table_id))? {
 			Some(v) => v,
 			None => return_internal_error!(format!(
 				"Table with ID {} not found when setting primary key. This indicates a critical catalog inconsistency.",
@@ -28,7 +28,7 @@ impl CatalogStore {
 		let mut updated_row = EncodedCatalogRow::try_from(multi.bytes.clone())?.thaw();
 		table::set_primary_key(&mut updated_row, primary_key_id.0);
 
-		txn.set(&TableKey::encoded(table_id), updated_row.freeze())?;
+		txn.set(&TableKey::new(table_id), updated_row.freeze())?;
 
 		Ok(())
 	}

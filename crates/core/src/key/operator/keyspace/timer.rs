@@ -10,7 +10,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			TypedKey,
+			BoundedKey, DenseKey, KeyLayout,
 			direction::{Asc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues},
 		},
@@ -19,14 +19,14 @@ use crate::{
 	state::timer::TimerKind,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct TimerWheelKey {
 	pub due: Asc<DateTime>,
 	pub kind: Asc<TimerKind>,
 	pub id: Asc<[u8; 16]>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct TimerIndexKey {
 	pub kind: Asc<TimerKind>,
 	pub id: Asc<[u8; 16]>,

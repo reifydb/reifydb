@@ -28,7 +28,7 @@ pub(crate) fn load_flow_edges(rx: &mut Transaction<'_>, catalog: &CatalogCache) 
 	Ok(())
 }
 
-fn convert_flow_edge(multi: MultiVersionRow) -> Result<FlowEdge> {
+fn convert_flow_edge<K>(multi: MultiVersionRow<K>) -> Result<FlowEdge> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = FlowEdgeId(flow_edge::get_id(&bytes));
 	let flow = FlowId(flow_edge::get_flow(&bytes));

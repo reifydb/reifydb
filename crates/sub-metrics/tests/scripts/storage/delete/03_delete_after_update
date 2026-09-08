@@ -12,7 +12,7 @@ ok
 stats
 ---
 current_count: 1
-current_key_bytes: 11
+current_key_bytes: 30
 current_value_bytes: 1
 historical_count: 0
 historical_key_bytes: 0
@@ -20,7 +20,7 @@ historical_value_bytes: 0
 cdc_count: 0
 cdc_key_bytes: 0
 cdc_value_bytes: 0
-total_bytes: 12
+total_bytes: 31
 
 # First update - adds to historical
 set a=2
@@ -30,7 +30,7 @@ ok
 stats_historical
 ---
 historical_count: 1
-historical_key_bytes: 11
+historical_key_bytes: 30
 historical_value_bytes: 1
 
 # Second update - adds to historical
@@ -41,7 +41,7 @@ ok
 stats_historical
 ---
 historical_count: 2
-historical_key_bytes: 22
+historical_key_bytes: 60
 historical_value_bytes: 2
 
 # Delete - moves the live row to historical and leaves a tombstone as the current version
@@ -53,7 +53,7 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 11
+current_key_bytes: 30
 current_value_bytes: 0
 
 # Historical should have:
@@ -63,5 +63,5 @@ current_value_bytes: 0
 stats_historical
 ---
 historical_count: 3
-historical_key_bytes: 33
+historical_key_bytes: 90
 historical_value_bytes: 3

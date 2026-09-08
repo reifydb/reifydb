@@ -43,7 +43,7 @@ pub(crate) fn load_queues(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 	Ok(())
 }
 
-fn convert_queue(multi: MultiVersionRow) -> Result<Queue> {
+fn convert_queue<K>(multi: MultiVersionRow<K>) -> Result<Queue> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = QueueId(queue::get_id(&bytes));
 	let namespace = NamespaceId(queue::get_namespace(&bytes));

@@ -4,13 +4,11 @@
 use std::{collections::HashSet, sync::LazyLock};
 
 use postcard::to_stdvec;
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::shape::{RowFamily, RowShape, RowShapeField},
-};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::{
 	interface::catalog::{id::TableId, object::ObjectId, table::Table},
 	key::{
+		any::TaggedKey,
 		partition::PartitionKey,
 		row::{PartitionedRowKey, RowKey},
 	},
@@ -33,19 +31,19 @@ pub fn table_partition_of_row(table: &Table, shape: &RowShape, row: &[u8]) -> Pa
 	Partition::of(&partition_values(shape, row, &indices))
 }
 
-pub fn table_row_key(table: &Table, shape: &RowShape, row: &[u8], row_number: RowNumber) -> EncodedKey {
+pub fn table_row_key(table: &Table, shape: &RowShape, row: &[u8], row_number: RowNumber) -> TaggedKey {
 	if table.partition_by.is_empty() {
-		RowKey::encoded(table.id, row_number)
+		RowKey::new(table.id, row_number).into()
 	} else {
 		let partition = table_partition_of_row(table, shape, row);
-		PartitionedRowKey::encoded(table.id, partition, row_number)
+		PartitionedRowKey::new(table.id, partition, row_number).into()
 	}
 }
 
-pub fn row_key_from_partition(table_id: TableId, partition: Option<Partition>, row_number: RowNumber) -> EncodedKey {
+pub fn row_key_from_partition(table_id: TableId, partition: Option<Partition>, row_number: RowNumber) -> TaggedKey {
 	match partition {
-		None => RowKey::encoded(table_id, row_number),
-		Some(partition) => PartitionedRowKey::encoded(table_id, partition, row_number),
+		None => RowKey::new(table_id, row_number).into(),
+		Some(partition) => PartitionedRowKey::new(table_id, partition, row_number).into(),
 	}
 }
 
@@ -59,7 +57,7 @@ pub fn resolve_partition(
 	if !verified.insert(partition) {
 		return Ok(());
 	}
-	let key = PartitionKey::encoded(object, partition);
+	let key = PartitionKey::new(object, partition);
 	let encoded = to_stdvec(values).expect("value postcard is total");
 	let candidate = Value::Blob(Blob::from(encoded));
 	match txn.get(&key)? {

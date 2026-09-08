@@ -3,10 +3,8 @@
 
 use std::{sync::Arc, thread::spawn, time::Instant};
 
-use reifydb_codec::{
-	key::{encoded::EncodedKey, serializer::KeySerializer},
-	row::bytes::EncodedBytes,
-};
+use reifydb_codec::{key::serializer::KeySerializer, row::bytes::EncodedBytes};
+use reifydb_core::{interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_value::util::cowvec::CowVec;
 
@@ -31,7 +29,7 @@ impl KeyBytes for String {
 }
 
 macro_rules! as_key {
-	($key:expr) => {{ EncodedKey::new($key.key_bytes()) }};
+	($key:expr) => {{ QueueDeduplicationKey::new(QueueId(1), $key.key_bytes().iter().map(|b| !b).collect::<Vec<u8>>()) }};
 }
 
 macro_rules! as_values {

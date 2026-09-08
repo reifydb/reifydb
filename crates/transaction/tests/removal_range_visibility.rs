@@ -7,11 +7,11 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{id::TableId, storage::StorageId},
-	key::row::RowKey,
+	key::{any::TaggedKey, row::RowKey},
 	testing::ProfileConfig,
 };
 use reifydb_runtime::{
@@ -54,11 +54,11 @@ fn test_engine() -> MultiTransaction {
 	.unwrap()
 }
 
-fn coord_key(storage: u64, row: u64) -> EncodedKey {
-	RowKey::encoded(StorageId::Table(TableId(storage)), RowNumber(row))
+fn coord_key(storage: u64, row: u64) -> RowKey {
+	RowKey::new(StorageId::Table(TableId(storage)), RowNumber(row))
 }
 
-fn range_keys(engine: &MultiTransaction, storage: u64) -> Vec<EncodedKey> {
+fn range_keys(engine: &MultiTransaction, storage: u64) -> Vec<TaggedKey> {
 	let query = MultiReadTransaction::new(engine.clone(), None).unwrap();
 	query.range(RowKey::full_scan(StorageId::Table(TableId(storage))), RangeScope::All, 1024)
 		.map(|r| r.unwrap().key)
@@ -80,7 +80,11 @@ fn committed_drop_is_invisible_to_later_range_scan() {
 	tx.commit(vec![]).unwrap();
 
 	// Row keys are keycode-encoded, so a scan returns them by descending row number.
-	assert_eq!(range_keys(&engine, node), vec![key_b.clone(), key_a.clone()], "both entries visible before drop");
+	assert_eq!(
+		range_keys(&engine, node),
+		vec![key_b.clone().into(), key_a.clone().into()],
+		"both entries visible before drop"
+	);
 
 	let mut tx = MultiWriteTransaction::new(engine.clone()).unwrap();
 	tx.remove_silent(&key_a).unwrap();
@@ -88,7 +92,7 @@ fn committed_drop_is_invisible_to_later_range_scan() {
 
 	assert_eq!(
 		range_keys(&engine, node),
-		vec![key_b.clone()],
+		vec![key_b.into()],
 		"a committed drop must be invisible to a later range scan"
 	);
 }

@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, sync::Arc};
+use std::sync::Arc;
 
 use postcard::from_bytes;
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedDictionary, store::SingleVersionRange},
 	internal_error,
-	key::{EncodableKey, catalog::DictionaryEntryIndexKey},
+	key::{any::TaggedKey, bound::TaggedKeyBoundRange, catalog::DictionaryEntryIndexKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -28,7 +27,7 @@ pub struct DictionaryScanNode {
 	dictionary: ResolvedDictionary,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
-	last_key: Option<EncodedKey>,
+	last_key: Option<TaggedKey>,
 	exhausted: bool,
 }
 
@@ -50,10 +49,10 @@ impl DictionaryScanNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::dictionary::drain")]
 	fn drain_batch<'a>(
 		rx: &mut Transaction<'a>,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		batch_size: u64,
 		dict_def: &Dictionary,
-	) -> Result<(Vec<DictionaryEntryId>, Vec<Value>, Option<EncodedKey>)> {
+	) -> Result<(Vec<DictionaryEntryId>, Vec<Value>, Option<TaggedKey>)> {
 		let mut ids: Vec<DictionaryEntryId> = Vec::new();
 		let mut values: Vec<Value> = Vec::new();
 		let mut new_last_key = None;
@@ -62,21 +61,24 @@ impl DictionaryScanNode {
 			.single()
 			.ok_or_else(|| internal_error!("single-version store is not available for dictionary scans"))?;
 		let store = single.read_store();
-		let batch = SingleVersionRange::range_batch(&store, range, batch_size)?;
+		let batch = SingleVersionRange::range_batch(&store, range.encode(), batch_size)?;
 
 		for entry in batch.items {
-			new_last_key = Some(entry.key.clone());
+			let Some(key) = DictionaryEntryIndexKey::decode(&entry.key) else {
+				panic!(
+					"dictionary {} holds an entry index key that does not decode: {:?}",
+					dict_def.id, entry.key
+				);
+			};
 
-			if let Some(key) = DictionaryEntryIndexKey::decode(&entry.key) {
-				let entry_id = DictionaryEntryId::from_u128(key.id, dict_def.id_type.clone())?;
+			let entry_id = DictionaryEntryId::from_u128(key.id, dict_def.id_type.clone())?;
+			new_last_key = Some(TaggedKey::from(key));
 
-				let value: Value = from_bytes(&entry.bytes).map_err(|e| {
-					internal_error!("Failed to deserialize dictionary value: {}", e)
-				})?;
+			let value: Value = from_bytes(&entry.bytes)
+				.map_err(|e| internal_error!("Failed to deserialize dictionary value: {}", e))?;
 
-				ids.push(entry_id);
-				values.push(value);
-			}
+			ids.push(entry_id);
+			values.push(value);
 		}
 
 		Ok((ids, values, new_last_key))
@@ -125,11 +127,7 @@ impl QueryNode for DictionaryScanNode {
 		let batch_size = stored_ctx.batch_size;
 		let dict_def = self.dictionary.def();
 
-		let full_scan = DictionaryEntryIndexKey::full_scan(dict_def.id);
-		let range = match &self.last_key {
-			None => full_scan,
-			Some(last) => EncodedKeyRange::new(Bound::Excluded(last.clone()), full_scan.end),
-		};
+		let range = DictionaryEntryIndexKey::full_scan(dict_def.id).resume_after(self.last_key.as_ref());
 
 		let (ids, values, new_last_key) = Self::drain_batch(rx, range, batch_size, dict_def)?;
 

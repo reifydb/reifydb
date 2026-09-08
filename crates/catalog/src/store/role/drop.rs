@@ -4,8 +4,8 @@
 use reifydb_core::{
 	interface::catalog::identity::RoleId,
 	key::{
+		any::TaggedKey,
 		identity::{GrantedRoleKey, RoleKey},
-		typed::key::Key,
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
@@ -20,7 +20,7 @@ impl CatalogStore {
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;
-				if let Some(key) = GrantedRoleKey::decode(&entry.key)
+				if let TaggedKey::GrantedRole(key) = entry.key
 					&& key.role == role
 				{
 					keys_to_remove.push(key);
@@ -28,11 +28,11 @@ impl CatalogStore {
 			}
 			drop(stream);
 			for key in keys_to_remove {
-				txn.remove(&GrantedRoleKey::encoded(key.identity, key.role))?;
+				txn.remove(&GrantedRoleKey::new(key.identity, key.role))?;
 			}
 		}
 
-		txn.remove(&RoleKey::encoded(role))?;
+		txn.remove(&RoleKey::new(role))?;
 		Ok(())
 	}
 }

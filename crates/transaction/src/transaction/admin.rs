@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem::take, sync::Arc};
+use std::{mem::take, ops::Bound, sync::Arc};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::EncodedBytes,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
@@ -14,9 +11,14 @@ use reifydb_core::{
 	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
-		catalog::object::ObjectId,
+		catalog::{object::ObjectId, storage::StorageId},
 		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
+	},
+	key::{
+		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
+		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 };
 use reifydb_runtime::context::clock::Clock;
@@ -257,7 +259,7 @@ impl AdminTransaction {
 	#[inline]
 	fn apply_writes_and_take_command(
 		&mut self,
-		pending_writes: &[(EncodedKey, PendingWrite)],
+		pending_writes: &[(TaggedKey, PendingWrite)],
 	) -> Result<MultiWriteTransaction> {
 		let Some(mut multi) = self.cmd.take() else {
 			unreachable!("Transaction state inconsistency")
@@ -373,31 +375,34 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
 	#[inline]
-	pub fn get_committed(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+	pub fn get_committed<K: Into<TaggedKey> + Clone>(
+		&mut self,
+		key: &K,
+	) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().get_committed(key)?.map(|v| v.into_multi_version_row()))
 	}
 
 	#[inline]
-	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
+	pub fn contains<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().contains_key(key)
+		self.cmd.as_mut().unwrap().contains(key)
 	}
 
 	#[inline]
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().prefix(prefix)
 	}
 
 	#[inline]
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().prefix_rev(prefix)
 	}
@@ -410,25 +415,25 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	pub fn set(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
+	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set(key, bytes.into())
 	}
 
 	#[inline]
-	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
+	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_with_pre(key, pre)
 	}
 
 	#[inline]
-	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove(key)
 	}
 
 	#[inline]
-	pub fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()> {
+	pub fn mark_preexisting<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().mark_preexisting(key);
 		Ok(())
@@ -437,21 +442,46 @@ impl AdminTransaction {
 	#[inline]
 	pub fn range(
 		&mut self,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range(range, scope, batch_size))
+	}
+
+	pub fn range_row(
+		&mut self,
+		storage: StorageId,
+		start: Bound<StorageRowKey>,
+		end: Bound<StorageRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_>> {
+		self.check_active()?;
+		Ok(self.cmd.as_mut().unwrap().range_row(storage, start, end, scope, batch_size))
+	}
+
+	#[inline]
+	pub fn range_partitioned_row(
+		&mut self,
+		storage: StorageId,
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_>> {
+		self.check_active()?;
+		Ok(self.cmd.as_mut().unwrap().range_partitioned_row(storage, start, end, scope, batch_size))
 	}
 
 	#[inline]
 	pub fn range_rev(
 		&mut self,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_rev(range, scope, batch_size))
 	}
@@ -465,19 +495,19 @@ impl WithEventBus for AdminTransaction {
 
 impl Write for AdminTransaction {
 	#[inline]
-	fn set(&mut self, key: &EncodedKey, bytes: EncodedBytes) -> Result<()> {
+	fn set(&mut self, key: &TaggedKey, bytes: EncodedBytes) -> Result<()> {
 		AdminTransaction::set(self, key, bytes)
 	}
 	#[inline]
-	fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
+	fn remove_with_pre(&mut self, key: &TaggedKey, pre: EncodedBytes) -> Result<()> {
 		AdminTransaction::remove_with_pre(self, key, pre)
 	}
 	#[inline]
-	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+	fn remove(&mut self, key: &TaggedKey) -> Result<()> {
 		AdminTransaction::remove(self, key)
 	}
 	#[inline]
-	fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()> {
+	fn mark_preexisting(&mut self, key: &TaggedKey) -> Result<()> {
 		AdminTransaction::mark_preexisting(self, key)
 	}
 	#[inline]

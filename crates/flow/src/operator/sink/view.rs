@@ -24,7 +24,10 @@ use reifydb_core::{
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
-	key::row::{PartitionedRowKey, RowKey},
+	key::{
+		row::{PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey},
+		sort_run::SortRun,
+	},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
 	value::column::{buffer::ColumnBuffer, columns::Columns},
@@ -54,8 +57,6 @@ pub struct SinkTableViewOperator {
 	view: ResolvedView,
 	storage: StorageId,
 
-	key_prefix: Vec<u8>,
-	partitioned_prefix: Vec<u8>,
 	shape: RowShape,
 	sort: Vec<ViewSortKey>,
 	partition_indices: Vec<usize>,
@@ -66,8 +67,6 @@ pub struct SinkTableViewOperator {
 impl SinkTableViewOperator {
 	pub fn new(operator: OperatorId, view: ResolvedView, partition_by: Vec<String>) -> Self {
 		let storage = view.def().storage_id();
-		let key_prefix: Vec<u8> = RowKey::storage_start(storage).as_slice().to_vec();
-		let partitioned_prefix: Vec<u8> = PartitionedRowKey::storage_start(storage).as_slice().to_vec();
 		let shape = row_shape_from_columns(RowFamily::Table, view.def().columns());
 		let sort = view.def().sort().to_vec();
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
@@ -75,8 +74,6 @@ impl SinkTableViewOperator {
 			operator,
 			view,
 			storage,
-			key_prefix,
-			partitioned_prefix,
 			shape,
 			sort,
 			partition_indices,
@@ -96,18 +93,21 @@ impl SinkTableViewOperator {
 	}
 
 	#[inline]
-	fn clustered_key(&self, cols: &Columns, row_idx: usize, row: RowNumber) -> EncodedKey {
-		if self.sort.is_empty() {
-			return self.row_key(row);
-		}
+	fn sort_run(&self, cols: &Columns, row_idx: usize) -> SortRun {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_raw(&self.key_prefix);
 		for key in &self.sort {
 			let value = cols.data_at(key.column.0 as usize).get_value(row_idx);
 			serializer.extend_value_with_direction(&value, key.direction.clone().into());
 		}
-		serializer.extend_raw(&row.0.to_be_bytes());
-		serializer.to_encoded_key()
+		SortRun::from_encoded(serializer.to_encoded_key())
+	}
+
+	#[inline]
+	fn sorted_view_key(&self, cols: &Columns, row_idx: usize, row: RowNumber) -> EncodedKey {
+		if self.sort.is_empty() {
+			return self.row_key(row);
+		}
+		SortedViewRowKey::encoded(self.storage, self.sort_run(cols, row_idx), row)
 	}
 
 	#[inline]
@@ -115,15 +115,7 @@ impl SinkTableViewOperator {
 		if self.sort.is_empty() {
 			return PartitionedRowKey::encoded(self.storage, partition, row);
 		}
-		let mut serializer = KeySerializer::new();
-		serializer.extend_raw(&self.partitioned_prefix);
-		serializer.extend_u128(partition.0);
-		for key in &self.sort {
-			let value = cols.data_at(key.column.0 as usize).get_value(row_idx);
-			serializer.extend_value_with_direction(&value, key.direction.clone().into());
-		}
-		serializer.extend_raw(&row.0.to_be_bytes());
-		serializer.to_encoded_key()
+		PartitionedSortedViewRowKey::encoded(self.storage, partition, self.sort_run(cols, row_idx), row)
 	}
 }
 
@@ -186,7 +178,7 @@ impl SinkTableViewOperator {
 				)?;
 				self.partitioned_key(source, row_idx, partition, row_number)
 			} else {
-				self.clustered_key(source, row_idx, row_number)
+				self.sorted_view_key(source, row_idx, row_number)
 			};
 			remember_created_at(&mut self.created_at, row_number, read_created_at(&encoded));
 			keys.push(key);
@@ -252,8 +244,8 @@ impl SinkTableViewOperator {
 				)
 			} else {
 				(
-					self.clustered_key(source_pre, row_idx, pre_row_number),
-					self.clustered_key(source_post, row_idx, post_row_number),
+					self.sorted_view_key(source_pre, row_idx, pre_row_number),
+					self.sorted_view_key(source_post, row_idx, post_row_number),
 				)
 			};
 
@@ -329,7 +321,7 @@ impl SinkTableViewOperator {
 				let (partition, _values) = partition_of(&self.partition_indices, &coerced, row_idx);
 				self.partitioned_key(source, row_idx, partition, row_number)
 			} else {
-				self.clustered_key(source, row_idx, row_number)
+				self.sorted_view_key(source, row_idx, row_number)
 			};
 			keys.push(key);
 		}
@@ -420,7 +412,7 @@ mod tests {
 			resolved::ResolvedNamespace,
 			store::SingleVersionGet,
 		},
-		key::catalog::DictionaryEntryIndexKey,
+		key::{any::TaggedKey, catalog::DictionaryEntryIndexKey},
 		value::column::ColumnWithName,
 	};
 	use reifydb_test_harness::engine::TestEngine;
@@ -483,18 +475,19 @@ mod tests {
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_admin(IdentityId::system()).unwrap();
 		for (key, pw) in pending.iter_sorted() {
+			let key = TaggedKey::decode(key).unwrap();
 			match pw {
-				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
+				PendingWrite::Set(v) => cmd.set(&key, v.clone()).unwrap(),
 				PendingWrite::Remove {
 					..
-				} => cmd.remove(key).unwrap(),
+				} => cmd.remove(&key).unwrap(),
 			};
 		}
 		cmd.commit().unwrap();
 	}
 
 	fn stored_view_bytes(engine: &TestEngine, sink: &SinkTableViewOperator, rn: u64) -> EncodedTableRow {
-		let key = sink.row_key(RowNumber(rn));
+		let key = RowKey::new(sink.storage, RowNumber(rn));
 		let query = engine.inner().multi().begin_query().unwrap();
 		EncodedTableRow::from(query.get(&key).unwrap().expect("the view row must exist").bytes().clone())
 	}

@@ -19,8 +19,12 @@ use reifydb_core::{
 		store::{EntryKind, EntryLayout},
 	},
 	key::{
-		row::{RowKey, StorageRowKey},
-		typed::{Edge, TypedKey, key::Key, range::KeyRange},
+		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey, StorageRowKey},
+		series::{
+			PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange,
+			StoragePartitionedSeriesKey, StorageSeriesKey,
+		},
+		typed::{BoundedKey, DenseKey, Edge, range::KeyRange},
 	},
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
@@ -75,42 +79,181 @@ const BUCKETS: u64 = 1 << (u64::BITS - ROW_BUCKET_SHIFT);
 #[derive(Clone, Copy, Debug)]
 pub struct MultiDomain;
 
-pub fn row_storage(kind: EntryKind) -> Option<StorageId> {
-	match kind {
-		EntryKind::Source(storage, EntryLayout::Row) => Some(storage),
-		_ => None,
+pub trait NarrowLayout: DenseKey + Copy {
+	type Wide;
+
+	fn kind(storage: StorageId) -> EntryKind;
+
+	fn owns(kind: EntryKind) -> Option<StorageId>;
+
+	fn narrow(kind: EntryKind, key: &EncodedKey) -> Option<Self>;
+
+	fn widen(storage: StorageId, key: &Self) -> EncodedKey;
+
+	fn storage_start(storage: StorageId) -> EncodedKey;
+
+	fn storage_end(storage: StorageId) -> EncodedKey;
+}
+
+impl NarrowLayout for StorageRowKey {
+	type Wide = RowKey;
+
+	fn kind(storage: StorageId) -> EntryKind {
+		EntryKind::Source(storage, EntryLayout::Row)
 	}
+
+	fn owns(kind: EntryKind) -> Option<StorageId> {
+		match kind {
+			EntryKind::Source(storage, EntryLayout::Row) => Some(storage),
+			_ => None,
+		}
+	}
+
+	fn narrow(kind: EntryKind, key: &EncodedKey) -> Option<Self> {
+		let storage = Self::owns(kind)?;
+		let row = RowKey::decode(key)?;
+		(row.storage == storage).then(|| StorageRowKey::from(row))
+	}
+
+	fn widen(storage: StorageId, key: &Self) -> EncodedKey {
+		RowKey::encoded(storage, key.row())
+	}
+
+	fn storage_start(storage: StorageId) -> EncodedKey {
+		RowKey::storage_start(storage)
+	}
+
+	fn storage_end(storage: StorageId) -> EncodedKey {
+		RowKey::storage_end(storage)
+	}
+}
+
+impl NarrowLayout for StoragePartitionedRowKey {
+	type Wide = PartitionedRowKey;
+
+	fn kind(storage: StorageId) -> EntryKind {
+		EntryKind::PartitionedSource(storage, EntryLayout::Row)
+	}
+
+	fn owns(kind: EntryKind) -> Option<StorageId> {
+		match kind {
+			EntryKind::PartitionedSource(storage, EntryLayout::Row) => Some(storage),
+			_ => None,
+		}
+	}
+
+	fn narrow(kind: EntryKind, key: &EncodedKey) -> Option<Self> {
+		let storage = Self::owns(kind)?;
+		let row = PartitionedRowKey::decode(key)?;
+		(row.storage == storage).then(|| StoragePartitionedRowKey::from(row))
+	}
+
+	fn widen(storage: StorageId, key: &Self) -> EncodedKey {
+		PartitionedRowKey::encoded(storage, key.partition(), key.row())
+	}
+
+	fn storage_start(storage: StorageId) -> EncodedKey {
+		PartitionedRowKey::storage_start(storage)
+	}
+
+	fn storage_end(storage: StorageId) -> EncodedKey {
+		PartitionedRowKey::storage_end(storage)
+	}
+}
+
+impl NarrowLayout for StorageSeriesKey {
+	type Wide = SeriesRowKey;
+
+	fn kind(storage: StorageId) -> EntryKind {
+		EntryKind::Source(storage, EntryLayout::Series)
+	}
+
+	fn owns(kind: EntryKind) -> Option<StorageId> {
+		match kind {
+			EntryKind::Source(storage, EntryLayout::Series) => Some(storage),
+			_ => None,
+		}
+	}
+
+	fn narrow(kind: EntryKind, key: &EncodedKey) -> Option<Self> {
+		let storage = Self::owns(kind)?;
+		let row = SeriesRowKey::decode(key)?;
+		(row.storage == storage).then(|| StorageSeriesKey::from(row))
+	}
+
+	fn widen(storage: StorageId, key: &Self) -> EncodedKey {
+		key.with_storage(storage).encode()
+	}
+
+	fn storage_start(storage: StorageId) -> EncodedKey {
+		SeriesRowKeyRange::storage_start(storage)
+	}
+
+	fn storage_end(storage: StorageId) -> EncodedKey {
+		SeriesRowKeyRange::storage_end(storage)
+	}
+}
+
+impl NarrowLayout for StoragePartitionedSeriesKey {
+	type Wide = PartitionedSeriesRowKey;
+
+	fn kind(storage: StorageId) -> EntryKind {
+		EntryKind::PartitionedSource(storage, EntryLayout::Series)
+	}
+
+	fn owns(kind: EntryKind) -> Option<StorageId> {
+		match kind {
+			EntryKind::PartitionedSource(storage, EntryLayout::Series) => Some(storage),
+			_ => None,
+		}
+	}
+
+	fn narrow(kind: EntryKind, key: &EncodedKey) -> Option<Self> {
+		let storage = Self::owns(kind)?;
+		let row = PartitionedSeriesRowKey::decode(key)?;
+		(row.storage == storage).then(|| StoragePartitionedSeriesKey::from(row))
+	}
+
+	fn widen(storage: StorageId, key: &Self) -> EncodedKey {
+		key.with_storage(storage).encode()
+	}
+
+	fn storage_start(storage: StorageId) -> EncodedKey {
+		PartitionedSeriesRowKeyRange::storage_start(storage)
+	}
+
+	fn storage_end(storage: StorageId) -> EncodedKey {
+		PartitionedSeriesRowKeyRange::storage_end(storage)
+	}
+}
+
+pub fn resume_after<L: NarrowLayout>(kind: EntryKind, last: &EncodedKey) -> Option<EncodedKey> {
+	let storage = L::owns(kind)?;
+	let next = L::narrow(kind, last)?.successor()?;
+	Some(L::widen(storage, &next))
+}
+
+pub fn narrow_bound_of<L: NarrowLayout>(kind: EntryKind, bytes: &[u8]) -> Option<Edge<L>> {
+	let storage = L::owns(kind)?;
+	if bytes == L::storage_start(storage).as_slice() {
+		return Some(Edge::Bottom);
+	}
+	if bytes >= L::storage_end(storage).as_slice() {
+		return Some(Edge::Top);
+	}
+	L::narrow(kind, &EncodedKey::new(bytes)).map(Edge::Key)
 }
 
 pub fn narrow(kind: EntryKind, key: &EncodedKey) -> Option<StorageRowKey> {
-	let storage = row_storage(kind)?;
-	let row = RowKey::decode(key)?;
-	(row.storage == storage).then(|| StorageRowKey::from(row))
-}
-
-fn stops_in_band(kind: EntryKind, bytes: &[u8]) -> bool {
-	row_storage(kind).is_some_and(|storage| bytes <= RowKey::storage_end(storage).as_slice())
-}
-
-pub fn widen(storage: StorageId, key: &StorageRowKey) -> EncodedKey {
-	RowKey::encoded(storage, key.row())
-}
-
-pub fn resume_after(kind: EntryKind, last: &EncodedKey) -> Option<EncodedKey> {
-	let storage = row_storage(kind)?;
-	let next = narrow(kind, last)?.successor()?;
-	Some(widen(storage, &next))
+	StorageRowKey::narrow(kind, key)
 }
 
 pub fn narrow_bound(kind: EntryKind, bytes: &[u8]) -> Option<Edge<StorageRowKey>> {
-	let storage = row_storage(kind)?;
-	if bytes == RowKey::storage_start(storage).as_slice() {
-		return Some(Edge::Bottom);
-	}
-	if bytes >= RowKey::storage_end(storage).as_slice() {
-		return Some(Edge::Top);
-	}
-	narrow(kind, &EncodedKey::new(bytes)).map(Edge::Key)
+	narrow_bound_of::<StorageRowKey>(kind, bytes)
+}
+
+fn stops_in_band(kind: EntryKind, bytes: &[u8]) -> bool {
+	StorageRowKey::owns(kind).is_some_and(|storage| bytes <= StorageRowKey::storage_end(storage).as_slice())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -152,13 +295,6 @@ fn bucket_start(bucket: u64) -> StorageRowKey {
 	StorageRowKey::new(RowNumber(!(bucket << ROW_BUCKET_SHIFT)))
 }
 
-pub fn row_band(kind: EntryKind) -> Option<(EncodedKey, EncodedKey)> {
-	match kind {
-		EntryKind::Source(storage, _) => Some((RowKey::storage_start(storage), RowKey::storage_end(storage))),
-		_ => None,
-	}
-}
-
 #[derive(Clone, Debug)]
 pub struct MultiRow {
 	pub version: CommitVersion,
@@ -184,6 +320,10 @@ impl RangeDomain for MultiDomain {
 
 	const GAP_SCOPE: &'static str = "multi_range::gaps";
 
+	fn just_past(key: &Self::Key) -> Edge<Self::Key> {
+		Edge::just_past(key)
+	}
+
 	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Self::Partition {
 		PartitionId::of(dimension, key)
 	}
@@ -197,11 +337,11 @@ impl RangeDomain for MultiDomain {
 	}
 
 	fn head_band(dimension: Self::Dimension) -> Option<(Edge<Self::Key>, Edge<Self::Key>)> {
-		row_storage(dimension).map(|_| (Edge::Bottom, Edge::Top))
+		StorageRowKey::owns(dimension).map(|_| (Edge::Bottom, Edge::Top))
 	}
 
 	fn caches_ranges(partition: &Self::Partition) -> bool {
-		row_storage(partition.kind).is_some() && partition.kind.caches_ranges()
+		StorageRowKey::owns(partition.kind).is_some() && partition.kind.caches_ranges()
 	}
 
 	fn cache_run_end(_partition: &Self::Partition) -> Edge<Self::Key> {
@@ -381,7 +521,7 @@ impl MultiRangeTier {
 		let Some(scan) = self.tier.plan_scan(table, &KeyRange::new(Included(start), bound(&through))) else {
 			return false;
 		};
-		let span = Interval::new(start, proven);
+		let span = Interval::new(Edge::Key(start), proven);
 		matches!(self.tier.materialize(&scan, &span, &rows), Materialize::Materialized)
 	}
 
@@ -429,7 +569,10 @@ impl MultiRangeTier {
 		let Some(Segment::Resident(segment)) = scan.segments().first() else {
 			return self.chunk_proven_empty(table, &lo, &range_hi, cursor);
 		};
-		let partition = PartitionId::of(table, &segment.start);
+		let Some(at) = segment.start.anchor() else {
+			return ServedChunk::Gap;
+		};
+		let partition = PartitionId::of(table, &at);
 		let counters = &self.serves[self.tier.shard_index(&partition)];
 		if scan.advanced() {
 			counters.head_advances.fetch_add(1, Ordering::Relaxed);
@@ -444,7 +587,7 @@ impl MultiRangeTier {
 			.into_iter()
 			.filter(|(_, row)| scope.contains(row.version))
 			.map(|(key, row)| RawEntry {
-				key: widen(storage, &key),
+				key: StorageRowKey::widen(storage, &key),
 				version: row.version,
 				value: row.value,
 			})
@@ -483,7 +626,7 @@ fn just_past(end: &Edge<StorageRowKey>) -> Edge<StorageRowKey> {
 fn bound(end: &Edge<StorageRowKey>) -> Bound<StorageRowKey> {
 	match end {
 		Edge::Bottom => Bound::Excluded(StorageRowKey::low()),
-		Edge::Key(key) => Included(*key),
+		Edge::Key(key) | Edge::AfterKey(key) => Included(*key),
 		Edge::Top => Bound::Unbounded,
 	}
 }
@@ -495,7 +638,7 @@ fn anchor(table: EntryKind, lo: &Edge<StorageRowKey>, rows: &RangeRows<MultiDoma
 			MultiDomain::span(&PartitionId::of(table, first)).0.lowest()
 		}
 		Edge::Key(key) => Some(*key),
-		Edge::Top => None,
+		Edge::AfterKey(_) | Edge::Top => None,
 	}
 }
 
@@ -529,7 +672,7 @@ mod tests {
 		key::{
 			row::{RowKey, StorageRowKey},
 			series::SeriesRowKey,
-			typed::{key::Key, range::KeyRange},
+			typed::range::KeyRange,
 		},
 	};
 	use reifydb_store::coverage::plan::DEFAULT_GAP_GUARD;

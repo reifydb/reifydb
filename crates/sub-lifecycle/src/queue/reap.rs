@@ -20,10 +20,7 @@ use reifydb_core::{
 		},
 		store::SingleVersionRange,
 	},
-	key::{
-		queue::{QueueAttemptKey, QueueItemStateKey},
-		typed::key::Key,
-	},
+	key::queue::{QueueAttemptKey, QueueItemStateKey},
 	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
 };
 use reifydb_engine::engine::StandardEngine;
@@ -96,7 +93,7 @@ impl QueueLeaseReapTask {
 		after: Option<&EncodedKey>,
 		limit: usize,
 	) -> Result<Vec<Candidate>> {
-		let mut range = QueueItemStateKey::partition_scan(queue, partition);
+		let mut range = QueueItemStateKey::partition_scan(queue, partition).encode();
 		if let Some(after) = after {
 			range.start = Bound::Excluded(after.clone());
 		}
@@ -121,13 +118,13 @@ impl QueueLeaseReapTask {
 	fn attempt_record(&self, queue: QueueId, row: RowNumber, attempt: u32) -> Result<Option<QueueAttemptRecord>> {
 		let mut query_txn = self.engine.begin_query(IdentityId::system())?;
 		Ok(query_txn
-			.get(&QueueAttemptKey::encoded(queue, row, attempt))?
+			.get(&QueueAttemptKey::new(queue, row, attempt))?
 			.and_then(|stored| decode_queue_attempt(EncodedQueueAttemptRow::view(&stored.bytes))))
 	}
 
 	fn write_lost_attempt(&self, queue: QueueId, row: RowNumber, attempt: u32, now: DateTime) -> Result<()> {
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
-		let key = QueueAttemptKey::encoded(queue, row, attempt);
+		let key = QueueAttemptKey::new(queue, row, attempt);
 		if txn.get(&key)?.is_some() {
 			return Ok(());
 		}

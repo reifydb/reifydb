@@ -210,7 +210,7 @@ mod tests {
 	}
 
 	fn claim(tier: &RangeTier<D>, start: &EncodedKey, end: &EncodedKey) {
-		tier.coverage().write().extend(OP_A, start.clone(), Edge::Key(end.clone()));
+		tier.coverage().write().extend(OP_A, Edge::Key(start.clone()), Edge::Key(end.clone()));
 	}
 
 	fn point_hits(tier: &RangeTier<D>, id: &TestPartition) -> u64 {

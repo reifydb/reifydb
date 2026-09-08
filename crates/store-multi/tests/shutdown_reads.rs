@@ -19,7 +19,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, EntryLayout, MultiVersionCommit},
 	},
-	key::row::RowKey,
+	key::{any::TaggedKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::shutdown::Shutdown;
@@ -54,7 +54,7 @@ fn commit_set(store: &StandardMultiStore, row: u64, version: u64) {
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
-			key: RowKey::encoded(STORAGE, row),
+			key: TaggedKey::from(RowKey::new(STORAGE, row)),
 			bytes: EncodedBytes(CowVec::new(format!("v{row}").into_bytes())),
 		}],
 		CommitVersion(version),
@@ -81,7 +81,12 @@ fn tier_with_rows(rows: u64) -> (MultiPersistentTier, impl Drop) {
 	batch.insert(
 		EntryKind::Source(STORAGE, EntryLayout::Row),
 		(1..=rows)
-			.map(|row| (RowKey::encoded(STORAGE, row), Some(CowVec::new(format!("v{row}").into_bytes()))))
+			.map(|row| {
+				(
+					TaggedKey::from(RowKey::new(STORAGE, row)).encode(),
+					Some(CowVec::new(format!("v{row}").into_bytes())),
+				)
+			})
 			.collect::<Vec<_>>(),
 	);
 	tier.set(CommitVersion(WRITTEN_AT), batch).unwrap();
@@ -103,11 +108,11 @@ fn tier_chunk(tier: &MultiPersistentTier, cursor: &mut RangeCursor) -> reifydb_v
 
 /// The row number and value a returned row carries, so a dropped or stale row shows as a gap in the
 /// sequence rather than a byte diff nobody can read.
-fn row_and_value(row: &reifydb_core::interface::store::MultiVersionRow) -> (u64, String) {
-	let key = row.key.as_slice();
-	let mut encoded = [0u8; 8];
-	encoded.copy_from_slice(&key[key.len() - 8..]);
-	(!u64::from_be_bytes(encoded), String::from_utf8(row.bytes.to_vec()).unwrap())
+fn row_and_value(row: &reifydb_core::interface::store::MultiVersionRow<TaggedKey>) -> (u64, String) {
+	let TaggedKey::Row(key) = &row.key else {
+		panic!("the scan must yield row keys")
+	};
+	(key.row.0, String::from_utf8(row.bytes.to_vec()).unwrap())
 }
 
 /// A refusal must be debuggable from its message alone, so it names the condition and not just the failure.
@@ -155,7 +160,7 @@ fn a_store_scan_resumed_across_a_shutdown_fails_instead_of_returning_a_short_res
 	flush(&store, 20);
 
 	let mut cursor = MultiVersionRangeCursor::new();
-	let first = store.range_next(&mut cursor, RowKey::full_scan(STORAGE), as_of(30), CHUNK).unwrap();
+	let first = store.range_next(&mut cursor, RowKey::full_scan(STORAGE).encode(), as_of(30), CHUNK).unwrap();
 	assert_eq!(first.items.len() as u64, CHUNK, "the first chunk must fill");
 	// Five chunks must remain, or the shutdown lands on an already finished scan and proves nothing.
 	assert!(first.has_more, "rows must remain behind the resume point");
@@ -165,7 +170,7 @@ fn a_store_scan_resumed_across_a_shutdown_fails_instead_of_returning_a_short_res
 	let mut seen: Vec<(u64, String)> = first.items.iter().map(row_and_value).collect();
 	loop {
 		assert!(seen.len() as u64 <= CHUNK * 6, "the scan returned more rows than were ever written");
-		match store.range_next(&mut cursor, RowKey::full_scan(STORAGE), as_of(30), CHUNK) {
+		match store.range_next(&mut cursor, RowKey::full_scan(STORAGE).encode(), as_of(30), CHUNK) {
 			Err(error) => {
 				names_the_shutdown(&error);
 				break;
@@ -191,7 +196,7 @@ fn an_iteration_that_straddles_a_shutdown_yields_an_error_rather_than_ending() {
 	}
 	flush(&store, 20);
 
-	let mut rows = store.range(RowKey::full_scan(STORAGE), as_of(30), CHUNK as usize);
+	let mut rows = store.range(RowKey::full_scan(STORAGE).encode(), as_of(30), CHUNK as usize);
 	for _ in 0..CHUNK {
 		rows.next().expect("the first chunk must yield rows").expect("a live scan must not fail");
 	}
@@ -255,7 +260,7 @@ fn a_scan_that_keeps_reading_past_a_shutdown_errors_before_it_reports_the_range_
 	flush(&store, 20);
 
 	let mut cursor = MultiVersionRangeCursor::new();
-	let first = store.range_next(&mut cursor, RowKey::full_scan(STORAGE), as_of(30), CHUNK).unwrap();
+	let first = store.range_next(&mut cursor, RowKey::full_scan(STORAGE).encode(), as_of(30), CHUNK).unwrap();
 	assert_eq!(first.items.len() as u64, CHUNK, "the first chunk must fill");
 	assert!(first.has_more, "rows must remain behind the resume point");
 
@@ -266,7 +271,7 @@ fn a_scan_that_keeps_reading_past_a_shutdown_errors_before_it_reports_the_range_
 	loop {
 		calls += 1;
 		assert!(calls <= 64, "the scan neither ended nor failed after {calls} chunks over a drained pool");
-		match store.range_next(&mut cursor, RowKey::full_scan(STORAGE), as_of(30), CHUNK) {
+		match store.range_next(&mut cursor, RowKey::full_scan(STORAGE).encode(), as_of(30), CHUNK) {
 			Err(error) => {
 				names_the_shutdown(&error);
 				break;

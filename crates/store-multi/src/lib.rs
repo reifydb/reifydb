@@ -19,16 +19,23 @@ pub mod tier;
 pub mod config;
 pub mod store;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use config::{CommitStoreConfig, MultiStoreConfig};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	interface::store::{
-		MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious, MultiVersionRow,
-		MultiVersionStore,
+	interface::{
+		catalog::storage::StorageId,
+		store::{
+			MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious,
+			MultiVersionRow, MultiVersionStore,
+		},
+	},
+	key::{
+		any::TaggedKey,
+		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 	metrics::collect::MetricsCollector,
 };
@@ -180,7 +187,7 @@ impl Shutdown for MultiStore {
 
 impl MultiVersionGet for MultiStore {
 	#[inline]
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
+	fn get(&self, key: &TaggedKey, version: CommitVersion) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		match self {
 			MultiStore::Standard(store) => MultiVersionGet::get(store, key, version),
 		}
@@ -189,7 +196,7 @@ impl MultiVersionGet for MultiStore {
 
 impl MultiVersionContains for MultiStore {
 	#[inline]
-	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
+	fn contains(&self, key: &TaggedKey, version: CommitVersion) -> Result<bool> {
 		match self {
 			MultiStore::Standard(store) => MultiVersionContains::contains(store, key, version),
 		}
@@ -209,16 +216,20 @@ impl MultiVersionGetPrevious for MultiStore {
 	#[inline]
 	fn get_previous_version(
 		&self,
-		key: &EncodedKey,
+		key: &TaggedKey,
 		before_version: CommitVersion,
-	) -> Result<Option<MultiVersionRow>> {
+	) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		match self {
 			MultiStore::Standard(store) => store.get_previous_version(key, before_version),
 		}
 	}
 }
 
-pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>;
+pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'a>;
+pub type MultiVersionRowRangeIterator<'a> =
+	Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + 'a>;
+pub type MultiVersionPartitionedRowRangeIterator<'a> =
+	Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + 'a>;
 
 impl MultiStore {
 	pub fn range(
@@ -229,6 +240,36 @@ impl MultiStore {
 	) -> MultiVersionRangeIterator<'_> {
 		match self {
 			MultiStore::Standard(store) => Box::new(store.range(range, scope, batch_size)),
+		}
+	}
+
+	pub fn range_row(
+		&self,
+		storage: StorageId,
+		start: Bound<StorageRowKey>,
+		end: Bound<StorageRowKey>,
+		scope: MultiVersionScope,
+		batch_size: usize,
+	) -> MultiVersionRowRangeIterator<'_> {
+		match self {
+			MultiStore::Standard(store) => {
+				Box::new(store.range_row(storage, start, end, scope, batch_size))
+			}
+		}
+	}
+
+	pub fn range_partitioned_row(
+		&self,
+		storage: StorageId,
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+		scope: MultiVersionScope,
+		batch_size: usize,
+	) -> MultiVersionPartitionedRowRangeIterator<'_> {
+		match self {
+			MultiStore::Standard(store) => {
+				Box::new(store.range_partitioned_row(storage, start, end, scope, batch_size))
+			}
 		}
 	}
 

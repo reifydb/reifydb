@@ -74,10 +74,10 @@ impl KeyspaceOccupancy {
 	}
 
 	pub(crate) fn mask(&self, operator: OperatorId, seed: impl FnOnce() -> Vec<KeyspaceId>) -> u64 {
-		if let Some(entry) = self.masks.lock().get(&operator) {
-			if entry.seeded {
-				return entry.mask;
-			}
+		if let Some(entry) = self.masks.lock().get(&operator)
+			&& entry.seeded
+		{
+			return entry.mask;
 		}
 		let seeded = seed().into_iter().filter_map(bit).fold(0, |mask, bit| mask | bit);
 		let mut masks = self.masks.lock();

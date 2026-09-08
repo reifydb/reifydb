@@ -1,82 +1,67 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_macro::KeyCodec;
+
+use super::super::KeyTag;
+use crate::{
+	interface::catalog::flow::{FlowId, OperatorId},
+	key::{
+		any::{Field, KeyFields, Width},
+		bound::TaggedKeyBoundRange,
+	},
 };
-use reifydb_macro::Key;
 
-use super::super::{KeyKind, typed::key::Key};
-use crate::interface::catalog::flow::{FlowId, OperatorId};
-
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = Operator)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Operator)]
 pub struct OperatorKey {
 	pub operator: OperatorId,
 }
 
 impl OperatorKey {
-	pub fn encoded(operator: impl Into<OperatorId>) -> EncodedKey {
+	pub fn new(operator: impl Into<OperatorId>) -> Self {
 		Self {
 			operator: operator.into(),
 		}
-		.encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
+	pub fn encoded(operator: impl Into<OperatorId>) -> EncodedKey {
+		Self::new(operator).encode()
 	}
 
-	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8((Self::KIND as u8) - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = OperatorByFlow)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = OperatorByFlow)]
 pub struct OperatorByFlowKey {
 	pub flow: FlowId,
 	pub operator: OperatorId,
 }
 
 impl OperatorByFlowKey {
-	pub fn encoded(flow: impl Into<FlowId>, operator: impl Into<OperatorId>) -> EncodedKey {
+	pub fn new(flow: impl Into<FlowId>, operator: impl Into<OperatorId>) -> Self {
 		Self {
 			flow: flow.into(),
 			operator: operator.into(),
 		}
-		.encode()
 	}
 
-	pub fn full_scan(flow: FlowId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start(flow)), Some(Self::end(flow)))
+	pub fn encoded(flow: impl Into<FlowId>, operator: impl Into<OperatorId>) -> EncodedKey {
+		Self::new(flow, operator).encode()
 	}
 
-	fn start(flow: FlowId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(flow);
-		serializer.to_encoded_key()
-	}
-
-	fn end(flow: FlowId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(FlowId(flow.0 - 1));
-		serializer.to_encoded_key()
+	pub fn full_scan(flow: FlowId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, flow.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
-	use super::{Key, OperatorByFlowKey, OperatorKey};
+	use super::{OperatorByFlowKey, OperatorKey};
 	use crate::interface::catalog::flow::{FlowId, OperatorId};
 
 	#[test]
@@ -146,18 +131,18 @@ pub mod tests {
 mod verify_byte_identical {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::{Key, OperatorByFlowKey, OperatorKey};
+	use super::{OperatorByFlowKey, OperatorKey};
 	use crate::interface::catalog::flow::{FlowId, OperatorId};
 
 	fn legacy_encode_operator(key: &OperatorKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(OperatorKey::KIND as u8).extend_u64(key.operator);
+		serializer.extend_u8(OperatorKey::TAG as u8).extend_u64(key.operator);
 		serializer.to_encoded_key().as_slice().to_vec()
 	}
 
 	fn legacy_encode_by_flow(key: &OperatorByFlowKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(17);
-		serializer.extend_u8(OperatorByFlowKey::KIND as u8).extend_u64(key.flow).extend_u64(key.operator);
+		serializer.extend_u8(OperatorByFlowKey::TAG as u8).extend_u64(key.flow).extend_u64(key.operator);
 		serializer.to_encoded_key().as_slice().to_vec()
 	}
 

@@ -16,7 +16,7 @@ pub mod find;
 pub mod list;
 pub mod shape;
 
-pub(crate) fn convert_authentication(multi: MultiVersionRow) -> Result<Authentication> {
+pub(crate) fn convert_authentication<K>(multi: MultiVersionRow<K>) -> Result<Authentication> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = authentication::get_id(&bytes);
 	let identity = authentication::get_identity(&bytes);

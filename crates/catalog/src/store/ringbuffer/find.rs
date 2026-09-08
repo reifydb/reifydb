@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{
-	key::deserializer::KeyDeserializer,
-	row::{catalog::EncodedCatalogRow, pod::EncodedPodRow},
-};
+use reifydb_codec::row::{catalog::EncodedCatalogRow, pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, RingBufferId},
 		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata, decode_ringbuffer_metadata},
 	},
 	key::{
-		catalog::KeyDeserializerCatalogExt,
+		any::TaggedKey,
 		namespace::NamespaceRingBufferKey,
 		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
 	},
@@ -32,7 +29,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
 	) -> Result<Option<RingBuffer>> {
-		let Some(multi) = rx.get(&RingBufferKey::encoded(ringbuffer))? else {
+		let Some(multi) = rx.get(&RingBufferKey::new(ringbuffer))? else {
 			return Ok(None);
 		};
 
@@ -64,7 +61,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
 	) -> Result<Option<RingBufferMetadata>> {
-		let Some(multi) = rx.get(&RingBufferMetadataKey::encoded(ringbuffer))? else {
+		let Some(multi) = rx.get(&RingBufferMetadataKey::new(ringbuffer))? else {
 			return Ok(None);
 		};
 
@@ -76,7 +73,7 @@ impl CatalogStore {
 		ringbuffer: RingBufferId,
 		partition_values: &[Value],
 	) -> Result<Option<RingBufferMetadata>> {
-		let key = RingBufferMetadataKey::encoded_partition(ringbuffer, partition_values.to_vec());
+		let key = RingBufferMetadataKey::partition(ringbuffer, partition_values.to_vec());
 		let Some(multi) = rx.get(&key)? else {
 			return Ok(None);
 		};
@@ -95,22 +92,16 @@ impl CatalogStore {
 		for entry in stream {
 			let multi = entry?;
 			let metadata = decode_ringbuffer_metadata(EncodedPodRow::view(&multi.bytes))?;
-			let mut de = KeyDeserializer::from_bytes(multi.key.as_slice());
-
-			let _ = (de.read_u8(), de.read_object_id());
-			let mut partition_values = vec![];
-			while !de.is_empty() {
-				if let Ok(value) = de.read_value() {
-					partition_values.push(value);
-				} else {
-					break;
-				}
-			}
+			let TaggedKey::RingBufferMetadata(key) = multi.key else {
+				continue;
+			};
 			results.push(PartitionedMetadata {
 				metadata,
-				partition_values,
+				partition_values: key.partition_values,
 			});
 		}
+
+		results.sort_by(|left, right| left.partition_values.cmp(&right.partition_values));
 
 		Ok(results)
 	}

@@ -14,7 +14,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious},
-	key::row::RowKey,
+	key::{any::TaggedKey, row::RowKey},
 };
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_testing_chaos::fuzz::{pick, run_reported, split};
@@ -52,7 +52,7 @@ pub fn distinct_rows(rng: &mut StdRng, count: u64, keyspace: u64) -> Vec<u64> {
 }
 
 pub fn check_get(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u64, read: u64, step: u32) {
-	let key = RowKey::encoded(STORAGE, row);
+	let key = TaggedKey::from(RowKey::new(STORAGE, row));
 	let expected = oracle.resolve(
 		row,
 		Scope::AsOf {
@@ -123,11 +123,11 @@ fn collect_range(
 	} else {
 		store.range(range, scope.store(), batch).collect::<Result<Vec<_>, _>>().unwrap()
 	};
-	rows.into_iter().map(|r| (r.key.to_vec(), r.bytes.to_vec(), r.version.0)).collect()
+	rows.into_iter().map(|r| (r.key.encode().to_vec(), r.bytes.to_vec(), r.version.0)).collect()
 }
 
 pub fn check_range(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, scope: Scope, batch: usize, step: u32) {
-	check_range_inner(configs, oracle, scope, batch, step, RowKey::full_scan(STORAGE), None);
+	check_range_inner(configs, oracle, scope, batch, step, RowKey::full_scan(STORAGE).encode(), None);
 }
 
 /// A random sub-range: the store's `EncodedKeyRange` and the oracle's matching `RangeFilter`, both in
@@ -224,7 +224,7 @@ fn check_range_inner(
 }
 
 pub fn check_contains(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u64, read: u64, step: u32) {
-	let key = RowKey::encoded(STORAGE, row);
+	let key = TaggedKey::from(RowKey::new(STORAGE, row));
 	let expected = oracle
 		.resolve(
 			row,
@@ -243,7 +243,7 @@ pub fn check_contains(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, r
 }
 
 pub fn check_prev(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u64, before: u64, step: u32) {
-	let key = RowKey::encoded(STORAGE, row);
+	let key = TaggedKey::from(RowKey::new(STORAGE, row));
 	let expected = oracle.prev(row, before);
 	for (name, store) in configs {
 		let got = store
@@ -295,10 +295,10 @@ pub fn drive(seed: u64, p: Params) {
 					.iter()
 					.map(|(row, value)| match value {
 						Some(bytes) => Delta::Set {
-							key: RowKey::encoded(STORAGE, *row),
+							key: RowKey::new(STORAGE, *row).into(),
 							bytes: EncodedBytes(CowVec::new(bytes.clone())),
 						},
-						None => Delta::remove_silent(RowKey::encoded(STORAGE, *row)),
+						None => Delta::remove_silent(RowKey::new(STORAGE, *row).into()),
 					})
 					.collect();
 				MultiVersionCommit::commit(store, CowVec::new(store_deltas), CommitVersion(version))

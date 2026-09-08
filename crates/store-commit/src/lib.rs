@@ -13,7 +13,7 @@ pub mod store;
 use std::collections::HashMap;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind, key::typed::MultiKey};
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind, key::typed::OpaqueKey};
 use reifydb_store::coverage::cursor::{Cursor, ScannedStop};
 use reifydb_value::util::cowvec::CowVec;
 
@@ -81,19 +81,19 @@ impl VersionedGetResult {
 }
 
 #[derive(Debug, Clone)]
-pub struct RawEntry {
-	pub key: EncodedKey,
+pub struct RawEntry<K = EncodedKey> {
+	pub key: K,
 	pub version: CommitVersion,
 	pub value: Option<CowVec<u8>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct RangeBatch {
-	pub entries: Vec<RawEntry>,
+pub struct RangeBatch<K = EncodedKey> {
+	pub entries: Vec<RawEntry<K>>,
 	pub has_more: bool,
 }
 
-impl RangeBatch {
+impl<K> RangeBatch<K> {
 	pub fn empty() -> Self {
 		Self {
 			entries: Vec::new(),
@@ -112,7 +112,7 @@ pub enum RangeStop {
 	AbsentTable,
 }
 
-pub type RangeCursor = Cursor<RangeStop, MultiKey>;
+pub type RangeCursor = Cursor<RangeStop, OpaqueKey>;
 
 impl ScannedStop for RangeStop {
 	fn scanned(&self) -> bool {

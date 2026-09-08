@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::typed::{Edge, TypedKey};
+use reifydb_core::key::typed::{Edge, Key};
 
 use crate::coverage::interval::{CoverageSet, Interval};
 
@@ -22,7 +22,7 @@ pub struct ScanPlan<K> {
 	pub degraded: bool,
 }
 
-impl<K: TypedKey> ScanPlan<K> {
+impl<K: Key> ScanPlan<K> {
 	pub fn full(interval: Interval<K>) -> Self {
 		Self {
 			segments: vec![Segment::Gap {
@@ -47,12 +47,12 @@ impl<K: TypedKey> ScanPlan<K> {
 
 pub const DEFAULT_GAP_GUARD: usize = 4;
 
-pub fn plan<K, F>(coverage: &CoverageSet<K>, lo: K, hi: Edge<K>, guard: usize, exempt: F) -> ScanPlan<K>
+pub fn plan<K, F>(coverage: &CoverageSet<K>, lo: Edge<K>, hi: Edge<K>, guard: usize, exempt: F) -> ScanPlan<K>
 where
-	K: TypedKey,
+	K: Key,
 	F: Fn(&Interval<K>) -> bool,
 {
-	if !hi.covers(&lo) {
+	if lo >= hi {
 		return ScanPlan::empty();
 	}
 
@@ -123,7 +123,7 @@ impl GapHistogram {
 		Self::default()
 	}
 
-	pub fn record<K: TypedKey>(&mut self, plan: &ScanPlan<K>) {
+	pub fn record<K: Key>(&mut self, plan: &ScanPlan<K>) {
 		let count = plan.gaps - plan.exempted;
 		let bounds = Self::bounds();
 		let slot = bounds.iter().rposition(|bound| count >= *bound).unwrap_or(0);
@@ -181,17 +181,16 @@ impl GapHistogram {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::key::typed::{Edge, MultiKey};
+	use reifydb_core::key::typed::{Edge, OpaqueKey};
 
 	use super::{DEFAULT_GAP_GUARD, GapHistogram, ScanPlan, Segment, plan};
 	use crate::coverage::interval::{CoverageSet, Interval};
 
-	fn key(bytes: &[u8]) -> EncodedKey {
-		EncodedKey::new(bytes)
+	fn edge(bytes: &[u8]) -> Edge<OpaqueKey> {
+		Edge::of(bytes)
 	}
 
-	fn interval_of(segment: &Segment<MultiKey>) -> &Interval<MultiKey> {
+	fn interval_of(segment: &Segment<OpaqueKey>) -> &Interval<OpaqueKey> {
 		match segment {
 			Segment::Resident(interval) => interval,
 			Segment::Gap {
@@ -201,11 +200,11 @@ mod tests {
 		}
 	}
 
-	fn is_gap(segment: &Segment<MultiKey>) -> bool {
+	fn is_gap(segment: &Segment<OpaqueKey>) -> bool {
 		matches!(segment, Segment::Gap { .. })
 	}
 
-	fn counted(gaps: usize, exempt_gaps: usize, degraded: bool) -> ScanPlan<MultiKey> {
+	fn counted(gaps: usize, exempt_gaps: usize, degraded: bool) -> ScanPlan<OpaqueKey> {
 		ScanPlan {
 			segments: Vec::new(),
 			gaps,
@@ -214,26 +213,26 @@ mod tests {
 		}
 	}
 
-	fn punched() -> CoverageSet<MultiKey> {
+	fn punched() -> CoverageSet<OpaqueKey> {
 		let mut coverage = CoverageSet::new();
-		coverage.extend(key(b"b"), Edge::of(b"c"));
-		coverage.extend(key(b"d"), Edge::of(b"e"));
-		coverage.extend(key(b"f"), Edge::of(b"g"));
-		coverage.extend(key(b"h"), Edge::of(b"i"));
-		coverage.extend(key(b"j"), Edge::of(b"k"));
+		coverage.extend(edge(b"b"), Edge::of(b"c"));
+		coverage.extend(edge(b"d"), Edge::of(b"e"));
+		coverage.extend(edge(b"f"), Edge::of(b"g"));
+		coverage.extend(edge(b"h"), Edge::of(b"i"));
+		coverage.extend(edge(b"j"), Edge::of(b"k"));
 		coverage
 	}
 
 	#[test]
 	fn full_plan_is_one_non_exempt_gap_spanning_the_whole_range() {
 		// The guard fallback must be a single scan the caller can install as one interval.
-		let plan = ScanPlan::full(Interval::new(key(b"a"), Edge::of(b"m")));
+		let plan = ScanPlan::full(Interval::new(edge(b"a"), Edge::of(b"m")));
 
 		assert_eq!(plan.segments.len(), 1);
 		assert_eq!(
 			plan.segments[0],
 			Segment::Gap {
-				interval: Interval::new(key(b"a"), Edge::of(b"m")),
+				interval: Interval::new(edge(b"a"), Edge::of(b"m")),
 				exempt: false,
 			}
 		);
@@ -247,10 +246,10 @@ mod tests {
 		// Nothing resident must still answer the range, from the persistent tier alone.
 		let coverage = CoverageSet::new();
 
-		let plan = plan(&coverage, key(b"a"), Edge::of(b"m"), DEFAULT_GAP_GUARD, |_| false);
+		let plan = plan(&coverage, edge(b"a"), Edge::of(b"m"), DEFAULT_GAP_GUARD, |_| false);
 
 		assert_eq!(plan.segments.len(), 1);
-		assert_eq!(interval_of(&plan.segments[0]), &Interval::new(key(b"a"), Edge::of(b"m")));
+		assert_eq!(interval_of(&plan.segments[0]), &Interval::new(edge(b"a"), Edge::of(b"m")));
 		assert!(is_gap(&plan.segments[0]));
 		assert_eq!(plan.gaps, 1);
 		assert_eq!(plan.exempted, 0);
@@ -261,11 +260,11 @@ mod tests {
 	fn total_coverage_plans_one_ram_segment_and_no_gaps() {
 		// A fully covered range must never touch the persistent tier.
 		let mut coverage = CoverageSet::new();
-		coverage.extend(key(b"a"), Edge::Top);
+		coverage.extend(edge(b"a"), Edge::Top);
 
-		let plan = plan(&coverage, key(b"a"), Edge::of(b"m"), DEFAULT_GAP_GUARD, |_| false);
+		let plan = plan(&coverage, edge(b"a"), Edge::of(b"m"), DEFAULT_GAP_GUARD, |_| false);
 
-		assert_eq!(plan.segments, vec![Segment::Resident(Interval::new(key(b"a"), Edge::of(b"m")))]);
+		assert_eq!(plan.segments, vec![Segment::Resident(Interval::new(edge(b"a"), Edge::of(b"m")))]);
 		assert_eq!(plan.gaps, 0);
 		assert_eq!(plan.exempted, 0);
 		assert!(!plan.degraded);
@@ -275,31 +274,31 @@ mod tests {
 	fn plan_alternates_ram_and_gap_leaving_no_hole() {
 		// Segments must tile [lo, hi) exactly once: any hole or overlap loses or duplicates rows.
 		let mut coverage = CoverageSet::new();
-		coverage.extend(key(b"a"), Edge::of(b"d"));
-		coverage.extend(key(b"f"), Edge::of(b"h"));
+		coverage.extend(edge(b"a"), Edge::of(b"d"));
+		coverage.extend(edge(b"f"), Edge::of(b"h"));
 
-		let plan = plan(&coverage, key(b"a"), Edge::of(b"m"), DEFAULT_GAP_GUARD, |_| false);
+		let plan = plan(&coverage, edge(b"a"), Edge::of(b"m"), DEFAULT_GAP_GUARD, |_| false);
 
 		assert_eq!(
 			plan.segments,
 			vec![
-				Segment::Resident(Interval::new(key(b"a"), Edge::of(b"d"))),
+				Segment::Resident(Interval::new(edge(b"a"), Edge::of(b"d"))),
 				Segment::Gap {
-					interval: Interval::new(key(b"d"), Edge::of(b"f")),
+					interval: Interval::new(edge(b"d"), Edge::of(b"f")),
 					exempt: false,
 				},
-				Segment::Resident(Interval::new(key(b"f"), Edge::of(b"h"))),
+				Segment::Resident(Interval::new(edge(b"f"), Edge::of(b"h"))),
 				Segment::Gap {
-					interval: Interval::new(key(b"h"), Edge::of(b"m")),
+					interval: Interval::new(edge(b"h"), Edge::of(b"m")),
 					exempt: false,
 				},
 			]
 		);
 
-		assert_eq!(interval_of(&plan.segments[0]).start, key(b"a"));
+		assert_eq!(interval_of(&plan.segments[0]).start, edge(b"a"));
 		assert_eq!(interval_of(plan.segments.last().unwrap()).end, Edge::of(b"m"));
 		for pair in plan.segments.windows(2) {
-			assert_eq!(interval_of(&pair[0]).end, Edge::Key(interval_of(&pair[1]).start.clone()));
+			assert_eq!(interval_of(&pair[0]).end, interval_of(&pair[1]).start);
 			assert_ne!(is_gap(&pair[0]), is_gap(&pair[1]));
 		}
 	}
@@ -309,7 +308,7 @@ mod tests {
 		// Counting permanently uncacheable spans would degrade every group-wide scan forever.
 		let coverage = punched();
 
-		let plan = plan(&coverage, key(b"a"), Edge::of(b"m"), 1, |interval| interval.start != key(b"a"));
+		let plan = plan(&coverage, edge(b"a"), Edge::of(b"m"), 1, |interval| interval.start != edge(b"a"));
 
 		assert_eq!(plan.gaps, 6);
 		assert_eq!(plan.exempted, 5);
@@ -322,13 +321,13 @@ mod tests {
 		// Twenty small persistent round trips are worse than no cache, so the plan is abandoned.
 		let coverage = punched();
 
-		let plan = plan(&coverage, key(b"a"), Edge::of(b"m"), DEFAULT_GAP_GUARD, |_| false);
+		let plan = plan(&coverage, edge(b"a"), Edge::of(b"m"), DEFAULT_GAP_GUARD, |_| false);
 
 		assert!(plan.degraded);
 		assert_eq!(
 			plan.segments,
 			vec![Segment::Gap {
-				interval: Interval::new(key(b"a"), Edge::of(b"m")),
+				interval: Interval::new(edge(b"a"), Edge::of(b"m")),
 				exempt: false,
 			}]
 		);
@@ -341,7 +340,7 @@ mod tests {
 		// The budget is a maximum, not a threshold: exceeding it degrades, meeting it must not.
 		let coverage = punched();
 
-		let plan = plan(&coverage, key(b"a"), Edge::of(b"m"), 6, |_| false);
+		let plan = plan(&coverage, edge(b"a"), Edge::of(b"m"), 6, |_| false);
 
 		assert!(!plan.degraded);
 		assert_eq!(plan.gaps, 6);
@@ -352,20 +351,20 @@ mod tests {
 	fn unbounded_upper_end_keeps_its_trailing_gap_open() {
 		// A scan to Edge::Top must end in a gap that stays unbounded, not one clipped to a key.
 		let mut coverage = CoverageSet::new();
-		coverage.extend(key(b"d"), Edge::of(b"f"));
+		coverage.extend(edge(b"d"), Edge::of(b"f"));
 
-		let plan = plan(&coverage, key(b"a"), Edge::Top, DEFAULT_GAP_GUARD, |_| false);
+		let plan = plan(&coverage, edge(b"a"), Edge::Top, DEFAULT_GAP_GUARD, |_| false);
 
 		assert_eq!(
 			plan.segments,
 			vec![
 				Segment::Gap {
-					interval: Interval::new(key(b"a"), Edge::of(b"d")),
+					interval: Interval::new(edge(b"a"), Edge::of(b"d")),
 					exempt: false,
 				},
-				Segment::Resident(Interval::new(key(b"d"), Edge::of(b"f"))),
+				Segment::Resident(Interval::new(edge(b"d"), Edge::of(b"f"))),
 				Segment::Gap {
-					interval: Interval::new(key(b"f"), Edge::Top),
+					interval: Interval::new(edge(b"f"), Edge::Top),
 					exempt: false,
 				},
 			]
@@ -378,12 +377,12 @@ mod tests {
 		// An inverted or degenerate range must emit no segment, never a gap the caller would scan.
 		let coverage = punched();
 
-		let inverted = plan(&coverage, key(b"m"), Edge::of(b"a"), DEFAULT_GAP_GUARD, |_| false);
+		let inverted = plan(&coverage, edge(b"m"), Edge::of(b"a"), DEFAULT_GAP_GUARD, |_| false);
 		assert!(inverted.segments.is_empty());
 		assert_eq!(inverted.gaps, 0);
 		assert!(!inverted.degraded);
 
-		let degenerate = plan(&coverage, key(b"d"), Edge::of(b"d"), DEFAULT_GAP_GUARD, |_| false);
+		let degenerate = plan(&coverage, edge(b"d"), Edge::of(b"d"), DEFAULT_GAP_GUARD, |_| false);
 		assert!(degenerate.segments.is_empty());
 		assert_eq!(degenerate.gaps, 0);
 		assert!(!degenerate.degraded);

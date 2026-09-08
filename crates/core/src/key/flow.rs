@@ -1,49 +1,43 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_macro::KeyCodec;
+
+use super::KeyTag;
+use crate::{
+	interface::catalog::flow::{FlowEdgeId, FlowId},
+	key::{
+		any::{Field, KeyFields, Width},
+		bound::TaggedKeyBoundRange,
+	},
 };
-use reifydb_macro::Key;
 
-use super::{KeyKind, typed::key::Key};
-use crate::interface::catalog::flow::{FlowEdgeId, FlowId};
-
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = Flow)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Flow)]
 pub struct FlowKey {
 	pub flow: FlowId,
 }
 
 impl FlowKey {
-	pub fn encoded(flow: impl Into<FlowId>) -> EncodedKey {
+	pub fn new(flow: impl Into<FlowId>) -> Self {
 		Self {
 			flow: flow.into(),
 		}
-		.encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::flow_start()), Some(Self::flow_end()))
+	pub fn encoded(flow: impl Into<FlowId>) -> EncodedKey {
+		Self::new(flow).encode()
 	}
 
-	fn flow_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn flow_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 pub mod flow_key_tests {
-	use super::{FlowKey, Key};
+	use super::FlowKey;
 	use crate::interface::catalog::flow::FlowId;
 
 	#[test]
@@ -77,12 +71,12 @@ pub mod flow_key_tests {
 mod verify_byte_identical_flow_key {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::{FlowKey, Key};
+	use super::FlowKey;
 	use crate::interface::catalog::flow::FlowId;
 
 	fn legacy_encode(key: &FlowKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(FlowKey::KIND as u8).extend_u64(key.flow);
+		serializer.extend_u8(FlowKey::TAG as u8).extend_u64(key.flow);
 		serializer.to_encoded_key().as_slice().to_vec()
 	}
 
@@ -97,73 +91,55 @@ mod verify_byte_identical_flow_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = FlowEdge)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = FlowEdge)]
 pub struct FlowEdgeKey {
 	pub edge: FlowEdgeId,
 }
 
 impl FlowEdgeKey {
-	pub fn encoded(edge: impl Into<FlowEdgeId>) -> EncodedKey {
+	pub fn new(edge: impl Into<FlowEdgeId>) -> Self {
 		Self {
 			edge: edge.into(),
 		}
-		.encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
+	pub fn encoded(edge: impl Into<FlowEdgeId>) -> EncodedKey {
+		Self::new(edge).encode()
 	}
 
-	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8((Self::KIND as u8) - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = FlowEdgeByFlow)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = FlowEdgeByFlow)]
 pub struct FlowEdgeByFlowKey {
 	pub flow: FlowId,
 	pub edge: FlowEdgeId,
 }
 
 impl FlowEdgeByFlowKey {
-	pub fn encoded(flow: impl Into<FlowId>, edge: impl Into<FlowEdgeId>) -> EncodedKey {
+	pub fn new(flow: impl Into<FlowId>, edge: impl Into<FlowEdgeId>) -> Self {
 		Self {
 			flow: flow.into(),
 			edge: edge.into(),
 		}
-		.encode()
 	}
 
-	pub fn full_scan(flow: FlowId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start(flow)), Some(Self::end(flow)))
+	pub fn encoded(flow: impl Into<FlowId>, edge: impl Into<FlowEdgeId>) -> EncodedKey {
+		Self::new(flow, edge).encode()
 	}
 
-	fn start(flow: FlowId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(flow);
-		serializer.to_encoded_key()
-	}
-
-	fn end(flow: FlowId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(FlowId(flow.0 - 1));
-		serializer.to_encoded_key()
+	pub fn full_scan(flow: FlowId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, flow.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod flow_edge_by_flow_key_tests {
-	use super::{FlowEdgeByFlowKey, FlowEdgeKey, Key};
+	use super::{FlowEdgeByFlowKey, FlowEdgeKey};
 	use crate::interface::catalog::flow::{FlowEdgeId, FlowId};
 
 	#[test]
@@ -233,18 +209,18 @@ pub mod flow_edge_by_flow_key_tests {
 mod verify_byte_identical_flow_edge_by_flow_key {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::{FlowEdgeByFlowKey, FlowEdgeKey, Key};
+	use super::{FlowEdgeByFlowKey, FlowEdgeKey};
 	use crate::interface::catalog::flow::{FlowEdgeId, FlowId};
 
 	fn legacy_encode_edge(key: &FlowEdgeKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(FlowEdgeKey::KIND as u8).extend_u64(key.edge);
+		serializer.extend_u8(FlowEdgeKey::TAG as u8).extend_u64(key.edge);
 		serializer.to_encoded_key().as_slice().to_vec()
 	}
 
 	fn legacy_encode_by_flow(key: &FlowEdgeByFlowKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(17);
-		serializer.extend_u8(FlowEdgeByFlowKey::KIND as u8).extend_u64(key.flow).extend_u64(key.edge);
+		serializer.extend_u8(FlowEdgeByFlowKey::TAG as u8).extend_u64(key.flow).extend_u64(key.edge);
 		serializer.to_encoded_key().as_slice().to_vec()
 	}
 
@@ -274,8 +250,8 @@ mod verify_byte_identical_flow_edge_by_flow_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = FlowVersion)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = FlowVersion)]
 pub struct FlowVersionKey {
 	pub flow: FlowId,
 }
@@ -294,7 +270,7 @@ impl FlowVersionKey {
 
 #[cfg(test)]
 pub mod flow_version_key_tests {
-	use super::{FlowVersionKey, Key};
+	use super::FlowVersionKey;
 	use crate::interface::catalog::flow::FlowId;
 
 	#[test]
@@ -338,12 +314,12 @@ pub mod flow_version_key_tests {
 mod verify_byte_identical_flow_version_key {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::{FlowVersionKey, Key};
+	use super::FlowVersionKey;
 	use crate::interface::catalog::flow::FlowId;
 
 	fn legacy_encode(key: &FlowVersionKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(FlowVersionKey::KIND as u8).extend_u64(key.flow);
+		serializer.extend_u8(FlowVersionKey::TAG as u8).extend_u64(key.flow);
 		serializer.to_encoded_key().as_slice().to_vec()
 	}
 

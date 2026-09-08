@@ -190,7 +190,7 @@ pub mod tests {
 		}
 
 		let count = {
-			let range = OperatorStateKey::node_range(operator_id);
+			let range = OperatorStateKey::node_range(operator_id).encode();
 			let mut stream = txn.range(range, RangeScope::All, 1024);
 			let mut count = 0;
 			while let Some(result) = stream.next() {
@@ -204,7 +204,7 @@ pub mod tests {
 		state_clear(&mut host(&mut txn, operator_id)).unwrap();
 
 		let count = {
-			let range = OperatorStateKey::node_range(operator_id);
+			let range = OperatorStateKey::node_range(operator_id).encode();
 			let mut stream = txn.range(range, RangeScope::All, 1024);
 			let mut count = 0;
 			while let Some(result) = stream.next() {

@@ -1,19 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::Bound, sync::Arc};
+use std::sync::Arc;
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, queue::EncodedQueueRow, shape::RowShape},
-};
+use reifydb_codec::row::{bytes::EncodedBytes, queue::EncodedQueueRow, shape::RowShape};
 use reifydb_core::{
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedQueue, store::MultiVersionRow},
 	internal_error,
-	key::{
-		row::{RowKey, RowKeyRange},
-		typed::key::Key,
-	},
+	key::{any::TaggedKey, bound::TaggedKeyBoundRange, row::RowKeyRange},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -29,7 +23,7 @@ use crate::{
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
-type DrainedBatch = (Vec<EncodedBytes>, Vec<RowNumber>, Option<EncodedKey>, bool);
+type DrainedBatch = (Vec<EncodedBytes>, Vec<RowNumber>, Option<TaggedKey>, bool);
 
 pub struct QueueScan {
 	queue: ResolvedQueue,
@@ -37,7 +31,7 @@ pub struct QueueScan {
 	shape: Option<RowShape>,
 	storage_types: Vec<ValueType>,
 	dictionaries: Vec<Option<Dictionary>>,
-	last_key: Option<EncodedKey>,
+	last_key: Option<TaggedKey>,
 	exhausted: bool,
 	context: Option<Arc<QueryContext>>,
 }
@@ -98,15 +92,15 @@ impl QueueScan {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::range_open")]
 	fn open_range<'rx, 'tx>(
 		rx: &'rx mut Transaction<'tx>,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		batch_size: u64,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'rx>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'rx>> {
 		rx.range_rev(range, RangeScope::All, batch_size as usize)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::drain")]
 	fn drain_batch(
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
 		batch_size: u64,
 	) -> Result<DrainedBatch> {
 		let mut batch: Vec<EncodedBytes> = Vec::new();
@@ -117,9 +111,9 @@ impl QueueScan {
 		for _ in 0..batch_size {
 			match stream.next() {
 				Some(Ok(multi)) => {
-					if let Some(key) = RowKey::decode(&multi.key) {
-						batch.push(multi.bytes);
+					if let TaggedKey::Row(key) = &multi.key {
 						row_numbers.push(key.row);
+						batch.push(multi.bytes);
 						new_last_key = Some(multi.key);
 					}
 				}
@@ -171,12 +165,8 @@ impl QueueScan {
 		Ok(())
 	}
 
-	fn enqueue_order_range(&self) -> EncodedKeyRange {
-		let full = RowKeyRange::scan_range(self.queue.def().id.into(), None);
-		match &self.last_key {
-			Some(last_key) => EncodedKeyRange::new(full.start.clone(), Bound::Excluded(last_key.clone())),
-			None => full,
-		}
+	fn enqueue_order_range(&self) -> TaggedKeyBoundRange {
+		RowKeyRange::scan_range(self.queue.def().id.into(), None).resume_before(self.last_key.as_ref())
 	}
 
 	fn empty_declared_columns(&self) -> Columns {

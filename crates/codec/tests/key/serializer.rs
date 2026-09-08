@@ -359,17 +359,16 @@ fn test_extend_u128() {
 
 #[test]
 fn test_extend_bytes() {
-	// 0xff 0xff terminates a byte string, so a literal 0xff in the data is escaped to
-	// 0xff 0x00 and cannot be mistaken for the terminator.
+	// content inverts like every other column, so 0x00 is what needs escaping, not 0xff.
 	let mut serializer = KeySerializer::new();
 	serializer.extend_bytes(b"hello");
 	let result = serializer.finish();
-	assert_eq!(result, vec![b'h', b'e', b'l', b'l', b'o', 0xff, 0xff]);
+	assert_eq!(result, vec![!b'h', !b'e', !b'l', !b'l', !b'o', 0xff, 0xff]);
 
 	let mut serializer = KeySerializer::new();
-	serializer.extend_bytes(&[0x01, 0xff, 0x02]);
+	serializer.extend_bytes(&[0x01, 0x00, 0x02]);
 	let result = serializer.finish();
-	assert_eq!(result, vec![0x01, 0xff, 0x00, 0x02, 0xff, 0xff]);
+	assert_eq!(result, vec![0xfe, 0xff, 0x00, 0xfd, 0xff, 0xff]);
 }
 
 #[test]

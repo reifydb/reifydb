@@ -14,8 +14,8 @@ impl CatalogStore {
 		let binding = CatalogStore::find_binding(&mut Transaction::Admin(&mut *txn), binding_id)?;
 
 		if let Some(binding) = binding {
-			txn.remove(&NamespaceBindingKey::encoded(binding.namespace, binding_id))?;
-			txn.remove(&BindingKey::encoded(binding_id))?;
+			txn.remove(&NamespaceBindingKey::new(binding.namespace, binding_id))?;
+			txn.remove(&BindingKey::new(binding_id))?;
 		}
 
 		Ok(())

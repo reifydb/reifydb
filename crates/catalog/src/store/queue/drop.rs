@@ -5,9 +5,11 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::id::QueueId, store::SingleVersionRange},
 	key::{
+		any::TaggedKey,
 		namespace::NamespaceQueueKey,
 		queue::{QueueDueKey, QueueItemStateKey, QueueKey, QueuePartitionKey},
 	},
+	return_internal_error,
 };
 use reifydb_transaction::{
 	single::SingleTransaction,
@@ -19,13 +21,13 @@ use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
 impl CatalogStore {
 	pub(crate) fn drop_queue(txn: &mut AdminTransaction, queue: QueueId) -> Result<()> {
 		if let Some(queue_def) = Self::find_queue(&mut Transaction::Admin(&mut *txn), queue)? {
-			txn.remove(&NamespaceQueueKey::encoded(queue_def.namespace, queue))?;
+			txn.remove(&NamespaceQueueKey::new(queue_def.namespace, queue))?;
 			remove_queue_scheduling_state(&txn.single, queue, queue_def.partitions())?;
 		}
 
 		drop_object_metadata(txn, queue.into(), None)?;
 
-		txn.remove(&QueueKey::encoded(queue))?;
+		txn.remove(&QueueKey::new(queue))?;
 
 		Ok(())
 	}
@@ -35,9 +37,9 @@ fn remove_queue_scheduling_state(single: &SingleTransaction, queue: QueueId, par
 	let lock_keys: Vec<EncodedKey> =
 		(0..partitions).map(|partition| QueuePartitionKey::encoded(queue, partition)).collect();
 	let ranges = vec![
-		QueueItemStateKey::queue_scan(queue),
-		QueueDueKey::queue_scan(queue),
-		QueuePartitionKey::queue_scan(queue),
+		QueueItemStateKey::queue_scan(queue).encode(),
+		QueueDueKey::queue_scan(queue).encode(),
+		QueuePartitionKey::queue_scan(queue).encode(),
 	];
 
 	for range in &ranges {
@@ -50,7 +52,10 @@ fn remove_queue_scheduling_state(single: &SingleTransaction, queue: QueueId, par
 
 			let mut tx = single.begin_command_ranged(lock_keys.iter(), ranges.clone())?;
 			for item in &batch.items {
-				tx.remove(&item.key)?;
+				let Some(key) = TaggedKey::decode(&item.key) else {
+					return_internal_error!("scan yielded a key no typed key decodes");
+				};
+				tx.remove(&key)?;
 			}
 			tx.commit()?;
 		}

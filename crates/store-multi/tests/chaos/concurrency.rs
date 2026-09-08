@@ -23,10 +23,9 @@ use reifydb_core::{
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
 	key::{
-		EncodableKey,
+		any::TaggedKey,
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 		row::RowKey,
-		typed::key::Key,
 	},
 };
 use reifydb_store_commit::MultiVersionScope;
@@ -37,12 +36,17 @@ const STORAGE: StorageId = StorageId::Table(TableId(1));
 
 const OP_NODE: OperatorId = OperatorId(9);
 
-fn conc_op_key(row: u64) -> reifydb_codec::key::encoded::EncodedKey {
-	OperatorStateKey::encoded(OP_NODE, GroupId::ROOT, KeyspaceId::CUSTOM_NOT_CACHED, row.to_be_bytes().to_vec())
+fn conc_op_key(row: u64) -> TaggedKey {
+	TaggedKey::from(OperatorStateKey::new(
+		OP_NODE,
+		GroupId::ROOT,
+		KeyspaceId::CUSTOM_NOT_CACHED,
+		row.to_be_bytes().to_vec(),
+	))
 }
 
 fn scan_op_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bool) -> Vec<(u64, Vec<u8>)> {
-	let range = OperatorStateKey::node_range(OP_NODE);
+	let range = OperatorStateKey::node_range(OP_NODE).encode();
 	let scope = MultiVersionScope::AsOf {
 		read: CommitVersion(read),
 	};
@@ -53,7 +57,9 @@ fn scan_op_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bo
 	};
 	rows.into_iter()
 		.map(|r| {
-			let decoded = OperatorStateKey::decode(&r.key).unwrap();
+			let TaggedKey::OperatorState(decoded) = &r.key else {
+				panic!("the operator range must yield operator state keys, got {:?}", r.key)
+			};
 			(u64::from_be_bytes(decoded.suffix.as_slice().try_into().unwrap()), r.bytes.to_vec())
 		})
 		.collect()
@@ -104,7 +110,7 @@ fn check_structural(rows: &[(u64, Vec<u8>)], writers: u64, ctx: &str) {
 }
 
 fn scan_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bool) -> Vec<(u64, Vec<u8>)> {
-	let range = RowKey::full_scan(STORAGE);
+	let range = RowKey::full_scan(STORAGE).encode();
 	let scope = MultiVersionScope::AsOf {
 		read: CommitVersion(read),
 	};
@@ -113,7 +119,14 @@ fn scan_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bool)
 	} else {
 		store.range(range, scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
 	};
-	rows.into_iter().map(|r| (RowKey::decode(&r.key).unwrap().row.0, r.bytes.to_vec())).collect()
+	rows.into_iter()
+		.map(|r| {
+			let TaggedKey::Row(decoded) = &r.key else {
+				panic!("the row range must yield row keys, got {:?}", r.key)
+			};
+			(decoded.row.0, r.bytes.to_vec())
+		})
+		.collect()
 }
 
 pub struct Config {
@@ -191,7 +204,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 							MultiVersionCommit::commit(
 								&store,
 								CowVec::new(vec![Delta::remove_silent(
-									RowKey::encoded(STORAGE, row),
+									RowKey::new(STORAGE, row).into(),
 								)]),
 								CommitVersion(v),
 							)
@@ -203,7 +216,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 							MultiVersionCommit::commit(
 								&store,
 								CowVec::new(vec![Delta::Set {
-									key: RowKey::encoded(STORAGE, row),
+									key: RowKey::new(STORAGE, row).into(),
 									bytes: EncodedBytes(CowVec::new(value.clone())),
 								}]),
 								CommitVersion(v),
@@ -237,7 +250,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 								rng.random_range(1..=cfg.writers * cfg.rows_per_writer);
 							if let Some(r) = store
 								.get(
-									&RowKey::encoded(STORAGE, row),
+									&RowKey::new(STORAGE, row).into(),
 									CommitVersion(read),
 								)
 								.unwrap()

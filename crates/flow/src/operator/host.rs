@@ -14,7 +14,7 @@ use reifydb_core::{
 		flow::OperatorId,
 	},
 	key::{
-		EncodableKey,
+		any::TaggedKey,
 		operator::{
 			keyspace::join::JoinRowMappingKey,
 			state::{GroupId, GroupStateKey, OperatorStateKey, group_inner_range_split, node_prefix},
@@ -177,7 +177,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	) -> Result<()> {
 		let batch = self.txn.state_get_many(self.operator, keys)?;
 		for r in batch.items {
-			let Some(decoded) = OperatorStateKey::decode(&r.key) else {
+			let TaggedKey::OperatorState(decoded) = &r.key else {
 				continue;
 			};
 			let Some(inner) = GroupStateKey::from_framed(decoded.inner()) else {
@@ -215,7 +215,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		)?;
 		let mut out = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
-			if let Some(decoded) = OperatorStateKey::decode(&r.key)
+			if let TaggedKey::OperatorState(decoded) = &r.key
 				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 			{
 				out.push((inner, EncodedPodRow::from(r.bytes)));
@@ -228,7 +228,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		let batch = self.txn.state_group_range(self.operator, groups, limit)?;
 		let mut rows = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
-			if let Some(decoded) = OperatorStateKey::decode(&r.key)
+			if let TaggedKey::OperatorState(decoded) = &r.key
 				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 			{
 				rows.push((inner, EncodedPodRow::from(r.bytes)));
@@ -244,7 +244,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		let Some(r) = self.txn.state_last(self.operator, range)? else {
 			return Ok(None);
 		};
-		if let Some(decoded) = OperatorStateKey::decode(&r.key)
+		if let TaggedKey::OperatorState(decoded) = &r.key
 			&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 		{
 			return Ok(Some((inner, EncodedPodRow::from(r.bytes))));
@@ -443,8 +443,11 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 	}
 }
 
-fn unscope(key: &EncodedKey) -> Option<GroupStateKey> {
-	GroupStateKey::from_framed(OperatorStateKey::decode(key)?.inner())
+fn unscope(key: &TaggedKey) -> Option<GroupStateKey> {
+	let TaggedKey::OperatorState(key) = key else {
+		return None;
+	};
+	GroupStateKey::from_framed(key.inner())
 }
 
 fn range_site(range: &EncodedKeyRange) -> &'static str {

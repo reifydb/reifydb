@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
-use reifydb_macro::Key;
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_macro::KeyCodec;
 use reifydb_value::value::{dictionary::DictionaryId, sumtype::SumTypeId};
 
-use super::KeyKind;
+use super::KeyTag;
 use crate::{
 	interface::catalog::{
 		flow::FlowId,
@@ -17,44 +14,38 @@ use crate::{
 			SourceId, TableId, ViewId,
 		},
 	},
-	key::typed::key::Key,
+	key::{
+		any::{Field, KeyFields, Width},
+		bound::TaggedKeyBoundRange,
+	},
 };
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = Namespace)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Namespace)]
 pub struct NamespaceKey {
 	pub namespace: NamespaceId,
 }
 
 impl NamespaceKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 		}
-		.encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::namespace_start()), Some(Self::namespace_end()))
+	pub fn encoded(namespace: impl Into<NamespaceId>) -> EncodedKey {
+		Self::new(namespace).encode()
 	}
 
-	fn namespace_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn namespace_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(Self::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_key_tests {
 	use super::NamespaceKey;
-	use crate::{interface::catalog::id::NamespaceId, key::typed::key::Key};
+	use crate::interface::catalog::id::NamespaceId;
 
 	#[test]
 	fn test_encode_decode() {
@@ -70,46 +61,34 @@ pub mod namespace_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = NamespaceBinding)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceBinding)]
 pub struct NamespaceBindingKey {
 	pub namespace: NamespaceId,
 	pub binding: BindingId,
 }
 
 impl NamespaceBindingKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>, binding: impl Into<BindingId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>, binding: impl Into<BindingId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 			binding: binding.into(),
 		}
-		.encode()
 	}
 
-	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(namespace_id)), Some(Self::link_end(namespace_id)))
+	pub fn encoded(namespace: impl Into<NamespaceId>, binding: impl Into<BindingId>) -> EncodedKey {
+		Self::new(namespace, binding).encode()
 	}
 
-	fn link_start(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace_id);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace_id - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_binding_key_tests {
 	use super::NamespaceBindingKey;
-	use crate::{
-		interface::catalog::id::{BindingId, NamespaceId},
-		key::typed::key::Key,
-	};
+	use crate::interface::catalog::id::{BindingId, NamespaceId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -125,8 +104,8 @@ pub mod namespace_binding_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = NamespaceDictionary)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceDictionary)]
 pub struct NamespaceDictionaryKey {
 	pub namespace: NamespaceId,
 	pub dictionary: DictionaryId,
@@ -144,20 +123,8 @@ impl NamespaceDictionaryKey {
 		Self::new(namespace.into(), dictionary.into()).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(namespace)), Some(Self::link_end(namespace)))
-	}
-
-	fn link_start(namespace: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(namespace: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
@@ -181,52 +148,40 @@ pub mod namespace_dictionary_key_tests {
 
 	#[test]
 	fn test_namespace_dictionary_key_full_scan() {
-		let range = NamespaceDictionaryKey::full_scan(NamespaceId(1025));
+		let range = NamespaceDictionaryKey::full_scan(NamespaceId(1025)).encode();
 		assert!(matches!(range.start, Bound::Included(_) | Bound::Excluded(_)));
 		assert!(matches!(range.end, Bound::Included(_) | Bound::Excluded(_)));
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = NamespaceFlow)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceFlow)]
 pub struct NamespaceFlowKey {
 	pub namespace: NamespaceId,
 	pub flow: FlowId,
 }
 
 impl NamespaceFlowKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>, flow: impl Into<FlowId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>, flow: impl Into<FlowId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 			flow: flow.into(),
 		}
-		.encode()
 	}
 
-	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(namespace_id)), Some(Self::link_end(namespace_id)))
+	pub fn encoded(namespace: impl Into<NamespaceId>, flow: impl Into<FlowId>) -> EncodedKey {
+		Self::new(namespace, flow).encode()
 	}
 
-	fn link_start(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace_id);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace_id - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_flow_key_tests {
 	use super::NamespaceFlowKey;
-	use crate::{
-		interface::catalog::{flow::FlowId, id::NamespaceId},
-		key::typed::key::Key,
-	};
+	use crate::interface::catalog::{flow::FlowId, id::NamespaceId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -265,8 +220,8 @@ pub mod namespace_flow_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = NamespaceHandler)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceHandler)]
 pub struct NamespaceHandlerKey {
 	pub namespace: NamespaceId,
 	pub handler: HandlerId,
@@ -284,30 +239,15 @@ impl NamespaceHandlerKey {
 		Self::new(namespace.into(), handler.into()).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(namespace)), Some(Self::link_end(namespace)))
-	}
-
-	fn link_start(namespace: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(namespace: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_handler_key_tests {
 	use super::NamespaceHandlerKey;
-	use crate::{
-		interface::catalog::id::{HandlerId, NamespaceId},
-		key::typed::key::Key,
-	};
+	use crate::interface::catalog::id::{HandlerId, NamespaceId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -351,46 +291,34 @@ pub mod namespace_handler_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = NamespaceProcedure)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceProcedure)]
 pub struct NamespaceProcedureKey {
 	pub namespace: NamespaceId,
 	pub procedure: ProcedureId,
 }
 
 impl NamespaceProcedureKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>, procedure: impl Into<ProcedureId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>, procedure: impl Into<ProcedureId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 			procedure: procedure.into(),
 		}
-		.encode()
 	}
 
-	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(namespace_id)), Some(Self::link_end(namespace_id)))
+	pub fn encoded(namespace: impl Into<NamespaceId>, procedure: impl Into<ProcedureId>) -> EncodedKey {
+		Self::new(namespace, procedure).encode()
 	}
 
-	fn link_start(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace_id);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace_id - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_procedure_key_tests {
 	use super::NamespaceProcedureKey;
-	use crate::{
-		interface::catalog::id::{NamespaceId, ProcedureId},
-		key::typed::key::Key,
-	};
+	use crate::interface::catalog::id::{NamespaceId, ProcedureId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -428,8 +356,8 @@ pub mod namespace_procedure_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = NamespaceQueue)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceQueue)]
 pub struct NamespaceQueueKey {
 	pub namespace: NamespaceId,
 	pub queue: QueueId,
@@ -447,20 +375,8 @@ impl NamespaceQueueKey {
 		Self::new(namespace.into(), queue.into()).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(namespace)), Some(Self::link_end(namespace)))
-	}
-
-	fn link_start(namespace: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(namespace: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
@@ -484,12 +400,12 @@ mod namespace_queue_key_tests {
 	fn test_full_scan_contains_only_the_target_namespace() {
 		// Keys are stored bitwise-inverted, so a bound derived with the wrong sign would make DROP
 		// NAMESPACE either miss its queues or reach into a sibling.
-		let range = NamespaceQueueKey::full_scan(NamespaceId(3));
+		let range = NamespaceQueueKey::full_scan(NamespaceId(3)).encode();
 		let Bound::Included(start) = &range.start else {
 			panic!("expected an included start bound")
 		};
-		let Bound::Included(end) = &range.end else {
-			panic!("expected an included end bound")
+		let Bound::Excluded(end) = &range.end else {
+			panic!("expected an excluded end bound")
 		};
 
 		assert!(start.as_slice() < end.as_slice(), "the range must be non-empty under byte order");
@@ -497,7 +413,7 @@ mod namespace_queue_key_tests {
 		for queue in [QueueId(1), QueueId(u64::MAX)] {
 			let inside = NamespaceQueueKey::encoded(NamespaceId(3), queue);
 			assert!(
-				inside.as_slice() >= start.as_slice() && inside.as_slice() <= end.as_slice(),
+				inside.as_slice() >= start.as_slice() && inside.as_slice() < end.as_slice(),
 				"queue {queue:?} in namespace 3 must fall inside the scan range"
 			);
 		}
@@ -505,15 +421,15 @@ mod namespace_queue_key_tests {
 		for namespace in [NamespaceId(2), NamespaceId(4)] {
 			let neighbour = NamespaceQueueKey::encoded(namespace, QueueId(1));
 			assert!(
-				neighbour.as_slice() < start.as_slice() || neighbour.as_slice() > end.as_slice(),
+				neighbour.as_slice() < start.as_slice() || neighbour.as_slice() >= end.as_slice(),
 				"namespace {namespace:?} must fall outside namespace 3's scan range"
 			);
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = NamespaceRingBuffer)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceRingBuffer)]
 pub struct NamespaceRingBufferKey {
 	pub namespace: NamespaceId,
 	pub ringbuffer: RingBufferId,
@@ -531,30 +447,15 @@ impl NamespaceRingBufferKey {
 		Self::new(namespace.into(), ringbuffer.into()).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(namespace)), Some(Self::link_end(namespace)))
-	}
-
-	fn link_start(namespace: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(namespace: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_ring_buffer_key_tests {
 	use super::NamespaceRingBufferKey;
-	use crate::{
-		interface::catalog::id::{NamespaceId, RingBufferId},
-		key::typed::key::Key,
-	};
+	use crate::interface::catalog::id::{NamespaceId, RingBufferId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -581,8 +482,8 @@ pub mod namespace_ring_buffer_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = NamespaceSeries)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceSeries)]
 pub struct NamespaceSeriesKey {
 	pub namespace: NamespaceId,
 	pub series: SeriesId,
@@ -600,30 +501,15 @@ impl NamespaceSeriesKey {
 		Self::new(namespace.into(), series.into()).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(namespace)), Some(Self::link_end(namespace)))
-	}
-
-	fn link_start(namespace: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(namespace: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_series_key_tests {
 	use super::NamespaceSeriesKey;
-	use crate::{
-		interface::catalog::id::{NamespaceId, SeriesId},
-		key::typed::key::Key,
-	};
+	use crate::interface::catalog::id::{NamespaceId, SeriesId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -650,46 +536,34 @@ pub mod namespace_series_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = NamespaceSink)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceSink)]
 pub struct NamespaceSinkKey {
 	pub namespace: NamespaceId,
 	pub sink: SinkId,
 }
 
 impl NamespaceSinkKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>, sink: impl Into<SinkId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>, sink: impl Into<SinkId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 			sink: sink.into(),
 		}
-		.encode()
 	}
 
-	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(namespace_id)), Some(Self::link_end(namespace_id)))
+	pub fn encoded(namespace: impl Into<NamespaceId>, sink: impl Into<SinkId>) -> EncodedKey {
+		Self::new(namespace, sink).encode()
 	}
 
-	fn link_start(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace_id);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace_id - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_sink_key_tests {
 	use super::NamespaceSinkKey;
-	use crate::{
-		interface::catalog::id::{NamespaceId, SinkId},
-		key::typed::key::Key,
-	};
+	use crate::interface::catalog::id::{NamespaceId, SinkId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -728,46 +602,34 @@ pub mod namespace_sink_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = NamespaceSource)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceSource)]
 pub struct NamespaceSourceKey {
 	pub namespace: NamespaceId,
 	pub source: SourceId,
 }
 
 impl NamespaceSourceKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>, source: impl Into<SourceId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>, source: impl Into<SourceId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 			source: source.into(),
 		}
-		.encode()
 	}
 
-	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(namespace_id)), Some(Self::link_end(namespace_id)))
+	pub fn encoded(namespace: impl Into<NamespaceId>, source: impl Into<SourceId>) -> EncodedKey {
+		Self::new(namespace, source).encode()
 	}
 
-	fn link_start(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace_id);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace_id - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_source_key_tests {
 	use super::NamespaceSourceKey;
-	use crate::{
-		interface::catalog::id::{NamespaceId, SourceId},
-		key::typed::key::Key,
-	};
+	use crate::interface::catalog::id::{NamespaceId, SourceId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -806,8 +668,8 @@ pub mod namespace_source_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = NamespaceSumType)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceSumType)]
 pub struct NamespaceSumTypeKey {
 	pub namespace: NamespaceId,
 	pub sumtype: SumTypeId,
@@ -825,20 +687,8 @@ impl NamespaceSumTypeKey {
 		Self::new(namespace.into(), sumtype.into()).encode()
 	}
 
-	pub fn full_scan(namespace: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(namespace)), Some(Self::link_end(namespace)))
-	}
-
-	fn link_start(namespace: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(namespace: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
@@ -847,7 +697,7 @@ pub mod namespace_sum_type_key_tests {
 	use reifydb_value::value::sumtype::SumTypeId;
 
 	use super::NamespaceSumTypeKey;
-	use crate::{interface::catalog::id::NamespaceId, key::typed::key::Key};
+	use crate::interface::catalog::id::NamespaceId;
 
 	#[test]
 	fn test_encode_decode() {
@@ -874,46 +724,34 @@ pub mod namespace_sum_type_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = NamespaceTable)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceTable)]
 pub struct NamespaceTableKey {
 	pub namespace: NamespaceId,
 	pub table: TableId,
 }
 
 impl NamespaceTableKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>, table: impl Into<TableId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>, table: impl Into<TableId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 			table: table.into(),
 		}
-		.encode()
 	}
 
-	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(namespace_id)), Some(Self::link_end(namespace_id)))
+	pub fn encoded(namespace: impl Into<NamespaceId>, table: impl Into<TableId>) -> EncodedKey {
+		Self::new(namespace, table).encode()
 	}
 
-	fn link_start(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace_id);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace_id - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_table_key_tests {
 	use super::NamespaceTableKey;
-	use crate::{
-		interface::catalog::id::{NamespaceId, TableId},
-		key::typed::key::Key,
-	};
+	use crate::interface::catalog::id::{NamespaceId, TableId};
 
 	#[test]
 	fn test_encode_decode() {
@@ -959,46 +797,34 @@ pub mod namespace_table_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = NamespaceView)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceView)]
 pub struct NamespaceViewKey {
 	pub namespace: NamespaceId,
 	pub view: ViewId,
 }
 
 impl NamespaceViewKey {
-	pub fn encoded(namespace: impl Into<NamespaceId>, view: impl Into<ViewId>) -> EncodedKey {
+	pub fn new(namespace: impl Into<NamespaceId>, view: impl Into<ViewId>) -> Self {
 		Self {
 			namespace: namespace.into(),
 			view: view.into(),
 		}
-		.encode()
 	}
 
-	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::link_start(namespace_id)), Some(Self::link_end(namespace_id)))
+	pub fn encoded(namespace: impl Into<NamespaceId>, view: impl Into<ViewId>) -> EncodedKey {
+		Self::new(namespace, view).encode()
 	}
 
-	fn link_start(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace_id);
-		serializer.to_encoded_key()
-	}
-
-	fn link_end(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace_id - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
 	}
 }
 
 #[cfg(test)]
 pub mod namespace_view_key_tests {
 	use super::NamespaceViewKey;
-	use crate::{
-		interface::catalog::id::{NamespaceId, ViewId},
-		key::typed::key::Key,
-	};
+	use crate::interface::catalog::id::{NamespaceId, ViewId};
 
 	#[test]
 	fn test_encode_decode() {

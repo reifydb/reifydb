@@ -1,12 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::store::{MultiVersionBatch, MultiVersionRow},
+	interface::{
+		catalog::storage::StorageId,
+		store::{MultiVersionBatch, MultiVersionRow},
+	},
+	key::{
+		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
+		row::{StoragePartitionedRowKey, StorageRowKey},
+	},
 };
 use reifydb_value::Result;
 use tracing::instrument;
@@ -55,9 +63,9 @@ impl MultiReadTransaction {
 		self.read_as_of_version_exclusive(CommitVersion(version.0 + 1))
 	}
 
-	pub fn get(&self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
+	pub fn get<K: Into<TaggedKey> + Clone>(&self, key: &K) -> Result<Option<TransactionValue>> {
 		let version = self.tm.version();
-		Ok(self.engine.get(key, version)?.map(Into::into))
+		Ok(self.engine.get(&key.clone().into(), version)?.map(Into::into))
 	}
 
 	#[instrument(name = "transaction::get_many", level = "trace", skip(self, keys), fields(key_count = keys.len()))]
@@ -66,23 +74,14 @@ impl MultiReadTransaction {
 		self.engine.store.get_many(keys, version)
 	}
 
-	pub fn contains_key(&self, key: &EncodedKey) -> Result<bool> {
+	pub fn contains<K: Into<TaggedKey> + Clone>(&self, key: &K) -> Result<bool> {
 		let version = self.tm.version();
-		self.engine.contains_key(key, version)
+		self.engine.contains_key(&key.clone().into(), version)
 	}
 
-	pub fn scan(&self) -> Result<MultiVersionBatch> {
-		let items: Vec<_> =
-			self.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>()?;
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
-	pub fn prefix(&self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn scan(&self) -> Result<MultiVersionBatch<TaggedKey>> {
 		let items: Vec<_> = self
-			.range(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
+			.range_encoded(EncodedKeyRange::all(), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
@@ -90,9 +89,9 @@ impl MultiReadTransaction {
 		})
 	}
 
-	pub fn prefix_rev(&self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix(&self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		let items: Vec<_> = self
-			.range_rev(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
+			.range_encoded(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
@@ -100,24 +99,78 @@ impl MultiReadTransaction {
 		})
 	}
 
-	pub fn range(
+	pub fn prefix_rev(&self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
+		let items: Vec<_> = self
+			.range_rev_encoded(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
+			.collect::<Result<Vec<_>>>()?;
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
+	}
+
+	pub fn range_encoded(
 		&self,
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range(range, multi_scope, batch_size))
 	}
 
-	pub fn range_rev(
+	pub fn range_rev_encoded(
 		&self,
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range_rev(range, multi_scope, batch_size))
+	}
+
+	pub fn range(
+		&self,
+		range: TaggedKeyBoundRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.tm.version());
+		Box::new(self.engine.store.range(range.encode(), multi_scope, batch_size))
+	}
+
+	pub fn range_row(
+		&self,
+		storage: StorageId,
+		start: Bound<StorageRowKey>,
+		end: Bound<StorageRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.tm.version());
+		Box::new(self.engine.store.range_row(storage, start, end, multi_scope, batch_size))
+	}
+
+	pub fn range_partitioned_row(
+		&self,
+		storage: StorageId,
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.tm.version());
+		Box::new(self.engine.store.range_partitioned_row(storage, start, end, multi_scope, batch_size))
+	}
+
+	pub fn range_rev(
+		&self,
+		range: TaggedKeyBoundRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.tm.version());
+		Box::new(self.engine.store.range_rev(range.encode(), multi_scope, batch_size))
 	}
 }
 

@@ -17,7 +17,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, EntryLayout, MultiVersionGet, classify_key},
 	},
-	key::row::RowKey,
+	key::{any::TaggedKey, row::RowKey},
 	util::bloom::hash_item,
 };
 use reifydb_filter::{
@@ -43,6 +43,10 @@ const OTHER: EntryKind = EntryKind::Source(StorageId::Table(TableId(1)), EntryLa
 
 fn key(n: u64) -> EncodedKey {
 	RowKey::encoded(StorageId::table(TableId(1)), RowNumber(n))
+}
+
+fn any_key(n: u64) -> TaggedKey {
+	RowKey::new(StorageId::table(TableId(1)), RowNumber(n)).into()
 }
 
 fn body(n: u64) -> CowVec<u8> {
@@ -206,7 +210,9 @@ fn a_store_opened_on_empty_tables_starts_armed_and_rules_out_a_key_nothing_ever_
 
 	let before = persistent.filter().metrics();
 	assert!(
-		MultiVersionGet::get(&store, &key(404), CommitVersion(u64::MAX)).expect("the read failed").is_none(),
+		MultiVersionGet::get(&store, &any_key(404), CommitVersion(u64::MAX))
+			.expect("the read failed")
+			.is_none(),
 		"a key nothing ever wrote must read as absent"
 	);
 	let after = persistent.filter().metrics();
@@ -241,7 +247,7 @@ fn a_store_opened_on_populated_tables_starts_disabled_and_serves_back_every_exis
 	);
 
 	for n in 0..32u64 {
-		let found = MultiVersionGet::get(&store, &key(n), CommitVersion(u64::MAX))
+		let found = MultiVersionGet::get(&store, &any_key(n), CommitVersion(u64::MAX))
 			.expect("the read failed")
 			.unwrap_or_else(|| {
 				panic!("row {n} exists in sqlite but the reopened store reported it absent")

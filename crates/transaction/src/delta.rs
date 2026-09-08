@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashSet;
-
-use indexmap::{
-	IndexMap,
-	map::Entry::{Occupied, Vacant},
+use std::collections::{
+	BTreeMap, BTreeSet,
+	btree_map::Entry::{Occupied, Vacant},
 };
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use reifydb_core::delta::{Delta, RemoveAnnounce};
+
+use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_core::{
+	delta::{Delta, RemoveAnnounce},
+	key::any::TaggedKey,
+};
 
 #[derive(Debug, Clone)]
 enum OptimizedDeltaState {
@@ -23,10 +25,10 @@ enum OptimizedDeltaState {
 	Cancelled,
 }
 
-pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys: &HashSet<EncodedKey>) -> Vec<Delta> {
+pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys: &BTreeSet<TaggedKey>) -> Vec<Delta> {
 	let deltas: Vec<Delta> = deltas.into_iter().collect();
 	let collided = {
-		let mut seen: HashSet<&EncodedKey> = HashSet::with_capacity(deltas.len());
+		let mut seen: BTreeSet<&TaggedKey> = BTreeSet::new();
 		!deltas.iter().all(|delta| seen.insert(delta.key()))
 	};
 	if !collided {
@@ -35,8 +37,8 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 	optimize_collided(deltas, preexisting_keys)
 }
 
-fn optimize_collided(deltas: Vec<Delta>, preexisting_keys: &HashSet<EncodedKey>) -> Vec<Delta> {
-	let mut key_states: IndexMap<EncodedKey, (OptimizedDeltaState, usize)> = IndexMap::new();
+fn optimize_collided(deltas: Vec<Delta>, preexisting_keys: &BTreeSet<TaggedKey>) -> Vec<Delta> {
+	let mut key_states: BTreeMap<TaggedKey, (OptimizedDeltaState, usize)> = BTreeMap::new();
 
 	for (idx, delta) in deltas.into_iter().enumerate() {
 		match delta {
@@ -159,12 +161,13 @@ fn optimize_collided(deltas: Vec<Delta>, preexisting_keys: &HashSet<EncodedKey>)
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::{interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 
-	fn make_key(s: &str) -> EncodedKey {
-		EncodedKey::new(s.as_bytes())
+	fn make_key(s: &str) -> TaggedKey {
+		QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>()).into()
 	}
 
 	fn make_bytes(s: &str) -> EncodedBytes {
@@ -174,7 +177,7 @@ pub mod tests {
 	#[test]
 	fn the_distinct_key_fast_path_agrees_with_the_collision_path() {
 		// the fast path returns the input untouched whenever no key repeats, so it must produce exactly what
-		// the IndexMap pass produces for the same input; a divergence here silently rewrites a commit
+		// the BTreeMap pass produces for the same input; a divergence here silently rewrites a commit
 		let distinct = vec![
 			Delta::Set {
 				key: make_key("key_a"),
@@ -187,8 +190,8 @@ pub mod tests {
 			Delta::remove_announced(make_key("key_c"), make_bytes("c")),
 		];
 
-		let fast = optimize_deltas(distinct.clone(), &HashSet::new());
-		let collided = optimize_collided(distinct.clone(), &HashSet::new());
+		let fast = optimize_deltas(distinct.clone(), &BTreeSet::new());
+		let collided = optimize_collided(distinct.clone(), &BTreeSet::new());
 
 		assert_eq!(fast.len(), distinct.len(), "a run of distinct keys must keep every delta");
 		assert_eq!(
@@ -212,7 +215,7 @@ pub mod tests {
 			},
 		];
 
-		let optimized = optimize_deltas(repeated, &HashSet::new());
+		let optimized = optimize_deltas(repeated, &BTreeSet::new());
 
 		assert_eq!(optimized.len(), 1, "a repeated key must collapse to a single delta");
 		match &optimized[0] {
@@ -236,7 +239,7 @@ pub mod tests {
 			Delta::remove_announced(make_key("key_a"), make_bytes("value1")),
 		];
 
-		let optimized = optimize_deltas(from_delta_log, &HashSet::new());
+		let optimized = optimize_deltas(from_delta_log, &BTreeSet::new());
 
 		assert!(optimized.is_empty(), "the delta-log path sees both writes and cancels them");
 	}
@@ -245,7 +248,7 @@ pub mod tests {
 	fn pending_writes_sourcing_emits_a_tombstone_for_the_same_transaction() {
 		let from_pending_writes = vec![Delta::remove_announced(make_key("key_a"), make_bytes("value1"))];
 
-		let optimized = optimize_deltas(from_pending_writes, &HashSet::new());
+		let optimized = optimize_deltas(from_pending_writes, &BTreeSet::new());
 
 		assert_eq!(
 			optimized.len(),
@@ -266,7 +269,7 @@ pub mod tests {
 			Delta::remove_announced(make_key("key_a"), make_bytes("value1")),
 		];
 
-		let optimized = optimize_deltas(deltas, &HashSet::new());
+		let optimized = optimize_deltas(deltas, &BTreeSet::new());
 
 		assert_eq!(optimized.len(), 0);
 	}
@@ -281,7 +284,7 @@ pub mod tests {
 			Delta::remove_announced(make_key("key_a"), make_bytes("value1")),
 		];
 
-		let mut preexisting = HashSet::new();
+		let mut preexisting = BTreeSet::new();
 		preexisting.insert(make_key("key_a"));
 		let optimized = optimize_deltas(deltas, &preexisting);
 
@@ -294,7 +297,7 @@ pub mod tests {
 					pre,
 				},
 			} => {
-				assert_eq!(key.as_ref(), b"key_a");
+				assert_eq!(key, &make_key("key_a"));
 				assert_eq!(
 					pre.0.as_slice(),
 					b"value1",
@@ -317,7 +320,7 @@ pub mod tests {
 			Delta::remove_silent(make_key("key_a")),
 		];
 
-		let mut preexisting = HashSet::new();
+		let mut preexisting = BTreeSet::new();
 		preexisting.insert(make_key("key_a"));
 		let optimized = optimize_deltas(deltas, &preexisting);
 
@@ -327,7 +330,7 @@ pub mod tests {
 				key,
 				announce,
 			} => {
-				assert_eq!(key.as_ref(), b"key_a");
+				assert_eq!(key, &make_key("key_a"));
 				assert_eq!(
 					*announce,
 					RemoveAnnounce::Silent,
@@ -355,7 +358,7 @@ pub mod tests {
 			},
 		];
 
-		let optimized = optimize_deltas(deltas, &HashSet::new());
+		let optimized = optimize_deltas(deltas, &BTreeSet::new());
 
 		assert_eq!(optimized.len(), 1);
 		match &optimized[0] {
@@ -363,7 +366,7 @@ pub mod tests {
 				key,
 				bytes,
 			} => {
-				assert_eq!(key.as_ref(), b"key_a");
+				assert_eq!(key, &make_key("key_a"));
 				assert_eq!(bytes.0.as_slice(), b"value3");
 			}
 			_ => panic!("Expected Set delta"),
@@ -384,7 +387,7 @@ pub mod tests {
 			Delta::remove_announced(make_key("key_a"), make_bytes("value2")),
 		];
 
-		let optimized = optimize_deltas(deltas, &HashSet::new());
+		let optimized = optimize_deltas(deltas, &BTreeSet::new());
 
 		assert_eq!(optimized.len(), 0);
 	}
@@ -407,7 +410,7 @@ pub mod tests {
 			},
 		];
 
-		let optimized = optimize_deltas(deltas, &HashSet::new());
+		let optimized = optimize_deltas(deltas, &BTreeSet::new());
 
 		// key_a cancels; key_b and key_c survive.
 		assert_eq!(optimized.len(), 2);

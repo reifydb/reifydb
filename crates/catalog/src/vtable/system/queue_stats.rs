@@ -7,10 +7,7 @@ use reifydb_core::{
 		catalog::queue::{Queue, QueuePartitionCounters, decode_queue_partition_counters},
 		store::{SingleVersionGet, SingleVersionRangeRev},
 	},
-	key::{
-		queue::{QueueDueKey, QueuePartitionKey},
-		typed::key::Key,
-	},
+	key::queue::{QueueDueKey, QueuePartitionKey},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::datetime::DateTime;
@@ -38,7 +35,7 @@ pub(crate) fn partition_stats(txn: &mut Transaction<'_>, queue: &Queue) -> Resul
 
 		let batch = SingleVersionRangeRev::range_rev_batch(
 			&store,
-			QueueDueKey::partition_scan(queue.id, partition),
+			QueueDueKey::partition_scan(queue.id, partition).encode(),
 			1,
 		)?;
 		let oldest_due_at =

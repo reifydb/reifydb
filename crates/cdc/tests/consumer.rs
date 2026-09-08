@@ -18,14 +18,18 @@ use reifydb_cdc::consume::{
 	consumer::{CdcConsume, CdcConsumer},
 	poll::{PollConsumer, PollConsumerConfig},
 };
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{config::ConfigKey, id::TableId, storage::StorageId},
+		catalog::{
+			config::ConfigKey,
+			id::{QueueId, TableId},
+			storage::StorageId,
+		},
 		cdc::{Cdc, CdcChange, CdcConsumerId, ConsumerClass},
 	},
-	key::{EncodableKey, cdc::CdcConsumerKey, row::RowKey, typed::key::Key},
+	key::{cdc::CdcConsumerKey, queue::QueueDeduplicationKey, row::RowKey},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -176,8 +180,7 @@ fn test_checkpoint_persistence() {
 	let mut txn = t.begin_query(IdentityId::system()).expect("Failed to begin transaction");
 	let consumer_key = CdcConsumerKey {
 		consumer: consumer_id,
-	}
-	.encode();
+	};
 
 	let checkpoint = txn.get(&consumer_key).expect("Failed to get checkpoint").expect("Checkpoint should exist");
 
@@ -386,12 +389,10 @@ fn test_multiple_consumers() {
 
 	let consumer1_key = CdcConsumerKey {
 		consumer: consumer_id1,
-	}
-	.encode();
+	};
 	let consumer2_key = CdcConsumerKey {
 		consumer: consumer_id2,
-	}
-	.encode();
+	};
 
 	let checkpoint1 =
 		txn.get(&consumer1_key).expect("Failed to get checkpoint 1").expect("Checkpoint 1 should exist");
@@ -426,10 +427,11 @@ fn test_non_table_events_filtered() {
 
 	let mut txn = t.begin_command(IdentityId::system()).expect("Failed to begin transaction");
 
-	let table_key = RowKey::encoded(StorageId::table(1), RowNumber(1));
+	let table_key = RowKey::new(StorageId::table(1), RowNumber(1));
 	txn.set(&table_key, EncodedBytes(CowVec::new(b"table_value".to_vec()))).expect("Failed to set table encoded");
 
-	let non_table_key = EncodedKey::new(b"non_table_key");
+	let non_table_key =
+		QueueDeduplicationKey::new(QueueId(1), b"non_table_key".iter().map(|b| !b).collect::<Vec<u8>>());
 	txn.set(&non_table_key, EncodedBytes(CowVec::new(b"non_table_value".to_vec())))
 		.expect("Failed to set non-table encoded");
 
@@ -797,7 +799,7 @@ fn test_multiple_consumers_different_batch_sizes() {
 
 struct TestConsumer {
 	host: StandardEngine,
-	consumer_key: EncodedKey,
+	consumer_key: CdcConsumerKey,
 	cdc_received: Arc<Mutex<Vec<Cdc>>>,
 	process_count: Arc<AtomicUsize>,
 	call_count: Arc<AtomicUsize>,
@@ -809,8 +811,7 @@ impl TestConsumer {
 	fn new(host: StandardEngine, consumer_id: CdcConsumerId) -> Self {
 		let consumer_key = CdcConsumerKey {
 			consumer: consumer_id,
-		}
-		.encode();
+		};
 		Self {
 			host,
 			consumer_key,
@@ -942,7 +943,7 @@ fn await_until<F: Fn() -> bool>(label: &str, check: F) {
 fn insert_test_events(engine: &StandardEngine, count: usize) {
 	for i in 0..count {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
-		let key = RowKey::encoded(StorageId::table(1), RowNumber((i + 1) as u64));
+		let key = RowKey::new(StorageId::table(1), RowNumber((i + 1) as u64));
 		let value = format!("value_{}", i);
 		txn.set(&key, EncodedBytes(CowVec::new(value.into_bytes()))).unwrap();
 		txn.commit().unwrap();

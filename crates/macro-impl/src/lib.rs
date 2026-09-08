@@ -11,6 +11,7 @@ pub mod from_frame;
 pub mod generate;
 pub mod heap_size;
 pub mod key;
+pub mod key_conformance;
 pub mod operator_state;
 pub mod parse;
 pub mod typed_key;

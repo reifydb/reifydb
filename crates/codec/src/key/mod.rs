@@ -14,6 +14,8 @@ use reifydb_value::value::datetime::DateTime;
 pub mod buf;
 pub mod deserializer;
 pub mod encoded;
+#[cfg(test)]
+mod ordering;
 pub mod serializer;
 pub mod sort;
 pub(crate) mod varint;
@@ -211,7 +213,11 @@ pub fn decode_u128_asc(bytes: [u8; 16]) -> u128 {
 	u128::from_be_bytes(bytes)
 }
 
-pub fn encode_u64_varint<B: ByteSink>(value: u64, output: &mut B) {
+fn encode_u64_varint<B: ByteSink>(value: u64, output: &mut B) {
+	debug_assert!(
+		value < (1 << 56),
+		"encode_u64_varint is a private helper for encode_u128_varint, which only calls it below 2^56"
+	);
 	if value < (1 << 7) {
 		output.push(!(value as u8));
 	} else if value < (1 << 14) {
@@ -247,8 +253,8 @@ pub fn encode_u64_varint<B: ByteSink>(value: u64, output: &mut B) {
 		output.push(!((value >> 16) as u8));
 		output.push(!((value >> 8) as u8));
 		output.push(!(value as u8));
-	} else if value < (1 << 56) {
-		output.push(!(0xfe | (value >> 56) as u8));
+	} else {
+		output.push(!0xfe);
 		output.push(!((value >> 48) as u8));
 		output.push(!((value >> 40) as u8));
 		output.push(!((value >> 32) as u8));
@@ -256,10 +262,6 @@ pub fn encode_u64_varint<B: ByteSink>(value: u64, output: &mut B) {
 		output.push(!((value >> 16) as u8));
 		output.push(!((value >> 8) as u8));
 		output.push(!(value as u8));
-	} else {
-		output.push(!0xff);
-		let inv = !value;
-		output.extend_from_slice(&inv.to_be_bytes());
 	}
 }
 
@@ -349,14 +351,14 @@ pub fn decode_u128_varint(input: &mut &[u8]) -> Result<u128> {
 pub const CONTAINER_END: u8 = 0xff;
 
 pub fn encode_bytes<B: ByteSink>(bytes: &[u8], output: &mut B) {
-	let mut start = 0;
-	while let Some(pos) = bytes[start..].iter().position(|&b| b == 0xff) {
-		let end = start + pos;
-		output.extend_from_slice(&bytes[start..end]);
-		output.extend_from_slice(&[0xff, 0x00]);
-		start = end + 1;
+	for &byte in bytes {
+		if byte == 0x00 {
+			output.push(0xff);
+			output.push(0x00);
+		} else {
+			output.push(!byte);
+		}
 	}
-	output.extend_from_slice(&bytes[start..]);
 	output.extend_from_slice(&[0xff, 0xff]);
 }
 

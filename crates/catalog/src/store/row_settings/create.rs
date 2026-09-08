@@ -13,7 +13,7 @@ use crate::Result;
 
 pub fn create_row_settings(txn: &mut AdminTransaction, storage: StorageId, settings: &RowSettings) -> Result<()> {
 	let value = encode_row_settings(settings);
-	txn.set(&RowSettingsKey::encoded(storage), value)?;
+	txn.set(&RowSettingsKey::new(storage), value)?;
 	txn.track_row_settings_created(storage, settings.clone())?;
 	Ok(())
 }

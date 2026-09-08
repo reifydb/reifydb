@@ -12,13 +12,13 @@ use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
 impl CatalogStore {
 	pub(crate) fn drop_table(txn: &mut AdminTransaction, table: TableId) -> Result<()> {
 		if let Some(table_def) = Self::find_table(&mut Transaction::Admin(&mut *txn), table)? {
-			txn.remove(&NamespaceTableKey::encoded(table_def.namespace, table))?;
+			txn.remove(&NamespaceTableKey::new(table_def.namespace, table))?;
 		}
 
 		let pk_id = Self::get_table_pk_id(&mut Transaction::Admin(&mut *txn), table)?;
 		drop_object_metadata(txn, StorageId::Table(table), pk_id)?;
 
-		txn.remove(&TableKey::encoded(table))?;
+		txn.remove(&TableKey::new(table))?;
 
 		Ok(())
 	}

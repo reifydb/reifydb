@@ -7,9 +7,14 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{flow::OperatorId, id::TableId, storage::StorageId},
+	interface::catalog::{
+		flow::OperatorId,
+		id::{QueueId, TableId},
+		storage::StorageId,
+	},
 	key::{
 		operator::state::{GroupStateKey, OperatorStateKey},
+		queue::QueueDeduplicationKey,
 		row::RowKey,
 	},
 };
@@ -68,17 +73,22 @@ fn update_replaces_the_row_wholesale() {
 fn row_reads_stay_pinned_to_requested_version() {
 	// Hydration reads as-of a version, so a row committed above it must never become visible.
 	let engine = TestEngine::new();
-	let row_key = RowKey::encoded(StorageId::table(TableId(7)), RowNumber(1));
+	let row = RowKey::new(StorageId::table(TableId(7)), RowNumber(1));
+	let row_key = row.encode();
 	let row_value = make_value("own_row").into_bytes();
 
 	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
-	cmd.set(&key("warmup").into_encoded(), make_value("w").into_bytes()).unwrap();
+	cmd.set(
+		&QueueDeduplicationKey::new(QueueId(1), b"warmup".iter().map(|b| !b).collect::<Vec<u8>>()),
+		make_value("w").into_bytes(),
+	)
+	.unwrap();
 	let low_version = cmd.commit_unchecked().unwrap();
 
 	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
-	cmd.set(&row_key, row_value).unwrap();
+	cmd.set(&row, row_value).unwrap();
 	let committed_at = cmd.commit_unchecked().unwrap();
 	assert!(low_version < committed_at);
 

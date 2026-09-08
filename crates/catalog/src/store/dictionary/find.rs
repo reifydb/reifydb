@@ -19,7 +19,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		dictionary_id: DictionaryId,
 	) -> Result<Option<Dictionary>> {
-		let Some(multi) = rx.get(&DictionaryKey::encoded(dictionary_id))? else {
+		let Some(multi) = rx.get(&DictionaryKey::new(dictionary_id))? else {
 			return Ok(None);
 		};
 

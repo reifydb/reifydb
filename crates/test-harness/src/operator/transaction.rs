@@ -9,11 +9,12 @@ use reifydb_core::{
 	delta::RemoveVisibility,
 	interface::catalog::flow::OperatorId,
 	key::{
-		kind::KeyKind,
+		any::TaggedKey,
 		operator::{
 			keyspace::KEYSPACES,
 			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 		},
+		tag::KeyTag,
 	},
 };
 use reifydb_flow::transaction::{
@@ -121,20 +122,21 @@ impl FlowTxn for TestEngine {
 		let mut cmd = self.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();
 		for (key, pw) in pending.iter_sorted() {
-			if matches!(KeyKind::of(key), Some(KeyKind::OperatorState)) {
+			if matches!(KeyTag::of(key), Some(KeyTag::OperatorState)) {
 				continue;
 			}
+			let key = TaggedKey::decode(key).expect("a pending write must carry a key a typed key decodes");
 			match pw {
-				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
+				PendingWrite::Set(v) => cmd.set(&key, v.clone()).unwrap(),
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Announced,
-				} => cmd.remove(key).unwrap(),
+				} => cmd.remove(&key).unwrap(),
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Unobserved,
-				} => cmd.remove_unobserved(key).unwrap(),
+				} => cmd.remove_unobserved(&key).unwrap(),
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Silent,
-				} => cmd.remove_silent(key).unwrap(),
+				} => cmd.remove_silent(&key).unwrap(),
 			};
 		}
 		cmd.commit_unchecked().unwrap();

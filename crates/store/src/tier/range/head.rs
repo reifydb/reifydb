@@ -18,20 +18,17 @@ pub(super) fn in_head_band<D: RangeDomain>(dimension: D::Dimension, key: &D::Key
 pub(super) fn advance_to_head<D: RangeDomain>(
 	coverage: &CoverageIndex<D::Dimension, D::Key>,
 	dimension: D::Dimension,
-	lo: D::Key,
+	lo: Edge<D::Key>,
 	hi: &Edge<D::Key>,
-) -> D::Key {
+) -> Edge<D::Key> {
 	let Some((start, _)) = D::head_band(dimension) else {
 		return lo;
 	};
-	if start.covers(&lo) {
+	if start > lo {
 		return lo;
 	}
 	match coverage.head(dimension) {
-		Some(at) if at.cmp_key(&lo).is_gt() && hi > at => match at.key() {
-			Some(key) => key.clone(),
-			None => lo,
-		},
+		Some(at) if *at > lo && hi > at => at.clone(),
 		_ => lo,
 	}
 }

@@ -15,10 +15,7 @@ use reifydb_core::{
 		},
 		store::{SingleVersionGet, SingleVersionRange},
 	},
-	key::{
-		queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
-		typed::key::Key,
-	},
+	key::queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
@@ -41,7 +38,7 @@ fn queue_id(t: &TestEngine, name: &str) -> QueueId {
 
 fn states(t: &TestEngine, queue: QueueId) -> Vec<(QueueItemStateKey, QueueItemState)> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue), 1024)
+	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -56,7 +53,7 @@ fn states(t: &TestEngine, queue: QueueId) -> Vec<(QueueItemStateKey, QueueItemSt
 
 fn dues(t: &TestEngine, queue: QueueId) -> Vec<QueueDueKey> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueDueKey::queue_scan(queue), 1024)
+	SingleVersionRange::range_batch(&store, QueueDueKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -74,7 +71,7 @@ fn counters(t: &TestEngine, queue: QueueId, partition: u16) -> QueuePartitionCou
 
 fn counter_rows(t: &TestEngine, queue: QueueId) -> Vec<(QueuePartitionKey, QueuePartitionCounters)> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueuePartitionKey::queue_scan(queue), 1024)
+	SingleVersionRange::range_batch(&store, QueuePartitionKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()

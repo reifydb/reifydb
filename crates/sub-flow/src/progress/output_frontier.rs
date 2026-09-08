@@ -5,7 +5,7 @@ use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::object::ObjectId, store::SingleVersionRange},
-	key::{output_frontier::OutputFrontierKey, typed::key::Key},
+	key::output_frontier::OutputFrontierKey,
 };
 use reifydb_flow::transaction::frontier::{FrontierEntries, FrontierEntry, OutputFrontiers};
 use reifydb_store_single::SingleStore;
@@ -40,9 +40,9 @@ pub fn persist(single: &SingleTransaction, entries: &FrontierEntries) -> Result<
 	}
 
 	let anchor = OutputFrontierKey::encoded(entries[0].output);
-	let mut txn = single.begin_command_ranged([&anchor], vec![OutputFrontierKey::full_scan()])?;
+	let mut txn = single.begin_command_ranged([&anchor], vec![OutputFrontierKey::full_scan().encode()])?;
 	for entry in entries {
-		txn.set(&OutputFrontierKey::encoded(entry.output), encode(entry).into_bytes())?;
+		txn.set(&OutputFrontierKey::new(entry.output), encode(entry).into_bytes())?;
 	}
 	txn.commit()?;
 	Ok(())
@@ -60,7 +60,7 @@ pub fn sweep(single: &SingleTransaction, frontiers: &OutputFrontiers) {
 
 pub fn hydrate(store: &SingleStore) -> Result<FrontierEntries> {
 	let mut out = Vec::new();
-	let batch = SingleVersionRange::range_batch(store, OutputFrontierKey::full_scan(), HYDRATE_BATCH)?;
+	let batch = SingleVersionRange::range_batch(store, OutputFrontierKey::full_scan().encode(), HYDRATE_BATCH)?;
 	for row in batch.items {
 		let Some(key) = OutputFrontierKey::decode(&row.key) else {
 			continue;

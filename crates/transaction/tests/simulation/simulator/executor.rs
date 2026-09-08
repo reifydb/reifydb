@@ -4,14 +4,18 @@
 use std::collections::{BTreeMap, HashMap};
 
 use reifydb_codec::{
-	key::{
-		deserializer::KeyDeserializer,
-		encoded::{EncodedKey, EncodedKeyRange},
-		serializer::KeySerializer,
-	},
+	key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer},
 	row::bytes::EncodedBytes,
 };
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::{
+		id::{IndexId, TableId},
+		object::ObjectId,
+	},
+	key::{bound::TaggedKeyBoundRange, catalog::IndexEntryKey},
+	value::index::encoded::EncodedIndexKey,
+};
 use reifydb_transaction::multi::{
 	RangeScope,
 	transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction},
@@ -64,10 +68,9 @@ pub struct Executor {
 	engine: MultiTransaction,
 }
 
-fn encode_key(key: &str) -> EncodedKey {
-	let mut ser = KeySerializer::new();
-	ser.extend_str(key);
-	ser.finish()
+fn encode_key(key: &str) -> IndexEntryKey {
+	// extend_raw appends the tail verbatim, so encoded order matches the raw key order.
+	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(key.as_bytes()))
 }
 
 fn encode_bytes(value: &str) -> EncodedBytes {
@@ -76,8 +79,11 @@ fn encode_bytes(value: &str) -> EncodedBytes {
 	EncodedBytes(CowVec::new(ser.finish().as_slice().to_vec()))
 }
 
-fn decode_key(bytes: &[u8]) -> String {
-	KeyDeserializer::from_bytes(bytes).read_str().unwrap_or_else(|_| format!("<raw:{}>", hex::encode(bytes)))
+pub fn decode_key(key: &EncodedKey) -> String {
+	match IndexEntryKey::decode(key) {
+		Some(key) => String::from_utf8_lossy(key.key.as_ref()).into_owned(),
+		None => format!("<raw:{}>", hex::encode(key.as_ref())),
+	}
 }
 
 fn decode_values(bytes: &[u8]) -> String {
@@ -180,7 +186,7 @@ impl Executor {
 				},
 				Op::Scan => match handles.get_mut(&tx_id) {
 					Some(TxHandle::Write(tx)) => {
-						match tx.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+						match tx.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 							.collect::<Result<Vec<_>, _>>()
 						{
 							Ok(items) => {
@@ -188,7 +194,9 @@ impl Executor {
 									.iter()
 									.map(|mv| {
 										(
-											mv.key.as_ref().to_vec(),
+											mv.key.encode()
+												.as_ref()
+												.to_vec(),
 											mv.bytes.to_vec(),
 										)
 									})
@@ -202,7 +210,7 @@ impl Executor {
 						}
 					}
 					Some(TxHandle::Read(rx)) => {
-						match rx.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+						match rx.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 							.collect::<Result<Vec<_>, _>>()
 						{
 							Ok(items) => {
@@ -210,7 +218,9 @@ impl Executor {
 									.iter()
 									.map(|mv| {
 										(
-											mv.key.as_ref().to_vec(),
+											mv.key.encode()
+												.as_ref()
+												.to_vec(),
 											mv.bytes.to_vec(),
 										)
 									})
@@ -271,12 +281,14 @@ impl Executor {
 
 	fn read_final_state(&self) -> BTreeMap<String, String> {
 		let rx = self.engine.begin_query().unwrap();
-		let items: Vec<_> =
-			rx.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+		let items: Vec<_> = rx
+			.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap();
 
 		let mut state = BTreeMap::new();
 		for mv in items {
-			let key = decode_key(mv.key.as_ref());
+			let key = decode_key(&mv.key.encode());
 			let value = decode_values(mv.bytes.as_ref());
 			state.insert(key, value);
 		}

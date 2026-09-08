@@ -2,21 +2,33 @@
 // Copyright (c) 2026 ReifyDB
 
 use core::mem;
-use std::{cmp::Ordering, collections::HashSet, iter, ops::RangeBounds, sync::Arc, vec};
+use std::{
+	cmp::Ordering,
+	collections::BTreeSet,
+	iter,
+	ops::{Bound, RangeBounds},
+	sync::Arc,
+	vec,
+};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::bytes::EncodedBytes,
 };
-#[cfg(reifydb_assertions)]
-use reifydb_core::key::{EncodableKey, operator::state::OperatorStateKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::{Delta, RemoveAnnounce},
 	event::transaction::PostCommitEvent,
 	interface::{
+		catalog::{object::ObjectId, storage::StorageId},
 		change::Change,
 		store::{MultiVersionBatch, MultiVersionContains, MultiVersionGet, MultiVersionRow},
+	},
+	key::{
+		any::TaggedKey,
+		bound::{TaggedKeyBound, TaggedKeyBoundRange, object_fields},
+		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey, StorageRowKey},
+		tag::KeyTag,
 	},
 };
 use reifydb_value::{
@@ -50,7 +62,7 @@ pub struct WriteSavepoint {
 	pub(crate) duplicates: Vec<DeltaEntry>,
 	pub(crate) delta_log_len: usize,
 	pub(crate) conflicts: ConflictManager,
-	pub(crate) preexisting_keys: HashSet<EncodedKey>,
+	pub(crate) preexisting_keys: BTreeSet<TaggedKey>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -75,7 +87,7 @@ pub struct MultiWriteTransaction {
 
 	pub(crate) delta_log: Vec<DeltaEntry>,
 
-	pub(crate) preexisting_keys: HashSet<EncodedKey>,
+	pub(crate) preexisting_keys: BTreeSet<TaggedKey>,
 
 	pub(crate) lifecycle: Lifecycle,
 
@@ -103,7 +115,7 @@ impl MultiWriteTransaction {
 			pending_writes: PendingWrites::new(),
 			duplicates: Vec::new(),
 			delta_log: Vec::new(),
-			preexisting_keys: HashSet::new(),
+			preexisting_keys: BTreeSet::new(),
 			lifecycle: Lifecycle::Active,
 			self_lease: None,
 			pending_query_pin: None,
@@ -161,11 +173,11 @@ impl MultiWriteTransaction {
 		&self.conflicts
 	}
 
-	pub fn mark_preexisting(&mut self, key: &EncodedKey) {
-		self.preexisting_keys.insert(key.clone());
+	pub fn mark_preexisting<K: Into<TaggedKey> + Clone>(&mut self, key: &K) {
+		self.preexisting_keys.insert(key.clone().into());
 	}
 
-	pub fn preexisting_keys(&self) -> &HashSet<EncodedKey> {
+	pub fn preexisting_keys(&self) -> &BTreeSet<TaggedKey> {
 		&self.preexisting_keys
 	}
 }
@@ -203,11 +215,11 @@ impl MultiWriteTransaction {
 		(Marker::new(&mut self.conflicts), &self.pending_writes)
 	}
 
-	pub fn mark_read(&mut self, k: &EncodedKey) {
+	pub fn mark_read(&mut self, k: &TaggedKey) {
 		self.conflicts.mark_read(k);
 	}
 
-	pub fn mark_write(&mut self, k: &EncodedKey) {
+	pub fn mark_write(&mut self, k: &TaggedKey) {
 		self.conflicts.mark_write(k);
 	}
 
@@ -223,109 +235,161 @@ impl MultiWriteTransaction {
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::set", level = "trace", skip(self, bytes), fields(
 		txn_id = %self.id,
-		key_hex = %hex_display(key.as_ref())
+		key = ?key
 	))]
-	pub fn set(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
+	fn set_any(&mut self, key: TaggedKey, bytes: EncodedBytes) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		self.modify(DeltaEntry {
-			delta: Delta::Set {
-				key: key.clone(),
-				bytes: bytes.into(),
+		let encoded = key.encode();
+		self.modify(
+			encoded,
+			DeltaEntry {
+				delta: Delta::Set {
+					key,
+					bytes,
+				},
+				version: self.base_version(),
 			},
-			version: self.base_version(),
-		})
+		)
+	}
+
+	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
+		self.set_any(key.clone().into(), bytes.into())
 	}
 
 	#[instrument(name = "transaction::command::remove_with_pre", level = "trace", skip(self, pre), fields(
 		txn_id = %self.id,
-		key_hex = %hex_display(key.as_ref()),
+		key = ?key,
 		value_len = pre.len()
 	))]
-	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
+	fn remove_with_pre_any(&mut self, key: TaggedKey, pre: EncodedBytes) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		self.modify(DeltaEntry {
-			delta: Delta::remove_announced(key.clone(), pre),
-			version: self.base_version(),
-		})
+		let encoded = key.encode();
+		self.modify(
+			encoded,
+			DeltaEntry {
+				delta: Delta::remove_announced(key, pre),
+				version: self.base_version(),
+			},
+		)
+	}
+
+	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
+		self.remove_with_pre_any(key.clone().into(), pre)
 	}
 
 	#[instrument(name = "transaction::command::remove", level = "trace", skip(self), fields(
 		txn_id = %self.id,
-		key_len = key.len()
+		key = ?key
 	))]
-	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+	fn remove_any(&mut self, key: TaggedKey) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		let announce = match self.get(key)? {
+		let encoded = key.encode();
+		let announce = match self.get(&key)? {
 			Some(found) => RemoveAnnounce::Announced {
 				pre: found.bytes().clone(),
 			},
 			None => RemoveAnnounce::Silent,
 		};
-		self.modify(DeltaEntry {
-			delta: Delta::Remove {
-				key: key.clone(),
-				announce,
+		self.modify(
+			encoded,
+			DeltaEntry {
+				delta: Delta::Remove {
+					key,
+					announce,
+				},
+				version: self.base_version(),
 			},
-			version: self.base_version(),
-		})
+		)
+	}
+
+	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
+		self.remove_any(key.clone().into())
 	}
 
 	#[instrument(name = "transaction::command::remove_unobserved", level = "trace", skip(self), fields(
 		txn_id = %self.id,
-		key_len = key.len()
+		key = ?key
 	))]
-	pub fn remove_unobserved(&mut self, key: &EncodedKey) -> Result<()> {
+	fn remove_unobserved_any(&mut self, key: TaggedKey) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		let announce = match self.get(key)? {
+		let encoded = key.encode();
+		let announce = match self.get(&key)? {
 			Some(found) => RemoveAnnounce::Unobserved {
 				pre: found.bytes().clone(),
 			},
 			None => RemoveAnnounce::Silent,
 		};
-		self.modify(DeltaEntry {
-			delta: Delta::Remove {
-				key: key.clone(),
-				announce,
+		self.modify(
+			encoded,
+			DeltaEntry {
+				delta: Delta::Remove {
+					key,
+					announce,
+				},
+				version: self.base_version(),
 			},
-			version: self.base_version(),
-		})
+		)
+	}
+
+	pub fn remove_unobserved<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
+		self.remove_unobserved_any(key.clone().into())
 	}
 
 	#[instrument(name = "transaction::command::remove_unobserved_with_pre", level = "trace", skip(self, pre), fields(
 		txn_id = %self.id,
-		key_hex = %hex_display(key.as_ref()),
+		key = ?key,
 		value_len = pre.len()
 	))]
-	pub fn remove_unobserved_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
+	fn remove_unobserved_with_pre_any(&mut self, key: TaggedKey, pre: EncodedBytes) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		self.modify(DeltaEntry {
-			delta: Delta::remove_unobserved(key.clone(), pre),
-			version: self.base_version(),
-		})
+		let encoded = key.encode();
+		self.modify(
+			encoded,
+			DeltaEntry {
+				delta: Delta::remove_unobserved(key, pre),
+				version: self.base_version(),
+			},
+		)
+	}
+
+	pub fn remove_unobserved_with_pre<K: Into<TaggedKey> + Clone>(
+		&mut self,
+		key: &K,
+		pre: EncodedBytes,
+	) -> Result<()> {
+		self.remove_unobserved_with_pre_any(key.clone().into(), pre)
 	}
 
 	#[instrument(name = "transaction::command::remove_silent", level = "trace", skip(self), fields(
 		txn_id = %self.id,
-		key_len = key.len()
+		key = ?key
 	))]
-	pub fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
+	fn remove_silent_any(&mut self, key: TaggedKey) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		self.modify(DeltaEntry {
-			delta: Delta::remove_silent(key.clone()),
-			version: self.base_version(),
-		})
+		let encoded = key.encode();
+		self.modify(
+			encoded,
+			DeltaEntry {
+				delta: Delta::remove_silent(key),
+				version: self.base_version(),
+			},
+		)
+	}
+
+	pub fn remove_silent<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
+		self.remove_silent_any(key.clone().into())
 	}
 
 	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self), fields(txn_id = %self.id))]
@@ -341,17 +405,17 @@ impl MultiWriteTransaction {
 		Ok(())
 	}
 
-	#[instrument(name = "transaction::command::contains_key", level = "trace", skip(self), fields(
-		txn_id = %self.id,
-		key_hex = %hex_display(key.as_ref())
+	#[instrument(name = "transaction::command::contains_key", level = "trace", skip(self, key), fields(
+		txn_id = %self.id
 	))]
-	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
+	pub fn contains<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 
+		let key = key.clone().into();
 		let version = self.version();
-		match self.pending_writes.get(key) {
+		match self.pending_writes.get(&key) {
 			Some(pending) => {
 				if pending.was_removed() {
 					return Ok(false);
@@ -359,27 +423,27 @@ impl MultiWriteTransaction {
 				Ok(true)
 			}
 			None => {
-				self.conflicts.mark_read(key);
-				MultiVersionContains::contains(&self.engine.store, key, version)
+				self.conflicts.mark_read(&key);
+				MultiVersionContains::contains(&self.engine.store, &key, version)
 			}
 		}
 	}
 
-	#[instrument(name = "transaction::command::get", level = "trace", skip(self), fields(
-		txn_id = %self.id,
-		key_hex = %hex_display(key.as_ref())
+	#[instrument(name = "transaction::command::get", level = "trace", skip(self, key), fields(
+		txn_id = %self.id
 	))]
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
+	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<TransactionValue>> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 
+		let key = key.clone().into();
 		let version = self.version();
-		if let Some(v) = self.pending_writes.get(key) {
+		if let Some(v) = self.pending_writes.get(&key) {
 			if let Some(bytes) = v.bytes() {
 				return Ok(Some(DeltaEntry {
 					delta: Delta::Set {
-						key: key.clone(),
+						key: v.key().clone(),
 						bytes: bytes.clone(),
 					},
 					version: v.version,
@@ -388,37 +452,37 @@ impl MultiWriteTransaction {
 			}
 			return Ok(None);
 		}
-		self.conflicts.mark_read(key);
-		Ok(MultiVersionGet::get(&self.engine.store, key, version)?.map(Into::into))
+		self.conflicts.mark_read(&key);
+		Ok(MultiVersionGet::get(&self.engine.store, &key, version)?.map(Into::into))
 	}
 
-	#[instrument(name = "transaction::command::get_committed", level = "trace", skip(self), fields(
-		txn_id = %self.id,
-		key_hex = %hex_display(key.as_ref())
+	#[instrument(name = "transaction::command::get_committed", level = "trace", skip(self, key), fields(
+		txn_id = %self.id
 	))]
-	pub fn get_committed(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
+	pub fn get_committed<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<TransactionValue>> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
+		let key = key.clone().into();
 		let version = self.version();
-		self.conflicts.mark_read(key);
-		Ok(MultiVersionGet::get(&self.engine.store, key, version)?.map(Into::into))
+		self.conflicts.mark_read(&key);
+		Ok(MultiVersionGet::get(&self.engine.store, &key, version)?.map(Into::into))
 	}
 }
 
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::modify", level = "trace", skip(self, pending), fields(
 		txn_id = %self.id,
-		key_hex = %hex_display(pending.key().as_ref()),
+		key_hex = %hex_display(encoded.as_ref()),
 		is_remove = pending.was_removed()
 	))]
-	fn modify(&mut self, pending: DeltaEntry) -> Result<()> {
+	fn modify(&mut self, encoded: EncodedKey, pending: DeltaEntry) -> Result<()> {
 		reifydb_assertions! {
 			assert!(
-				OperatorStateKey::decode(pending.key()).is_none(),
+				!matches!(pending.key(), TaggedKey::OperatorState(_)),
 				"operator state must reach the operator store through the committer split, never the \
 				 multi store: {}",
-				hex_display(pending.key().as_ref())
+				hex_display(encoded.as_ref())
 			);
 		}
 
@@ -433,14 +497,13 @@ impl MultiWriteTransaction {
 
 		self.conflicts.mark_write(pending.key());
 
-		let key = pending.key();
 		let version = pending.version;
 
 		let superseded = self
 			.pending_writes
-			.get_entry(key)
+			.get_entry(pending.key())
 			.filter(|(_, old_value)| old_value.version != version)
-			.map(|(old_key, _)| old_key.clone());
+			.map(|(_, old_value)| old_value.key().clone());
 
 		if let Some(old_key) = superseded {
 			self.duplicates.push(DeltaEntry {
@@ -465,7 +528,7 @@ impl MultiWriteTransaction {
 		}
 
 		self.delta_log.push(pending.clone());
-		self.pending_writes.insert(key.clone(), pending);
+		self.pending_writes.insert(pending);
 
 		Ok(())
 	}
@@ -638,9 +701,9 @@ impl MultiWriteTransaction {
 }
 
 impl MultiWriteTransaction {
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		let items: Vec<_> = self
-			.range(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
+			.range_encoded(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
@@ -648,9 +711,9 @@ impl MultiWriteTransaction {
 		})
 	}
 
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		let items: Vec<_> = self
-			.range_rev(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
+			.range_encoded_rev(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
@@ -658,86 +721,199 @@ impl MultiWriteTransaction {
 		})
 	}
 
-	pub fn range(
+	fn range_encoded(
 		&mut self,
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
 		let (mut marker, pw) = self.marker_with_pending_writes();
-		let start = range.start_bound();
-		let end = range.end_bound();
 
-		marker.mark_range(range.clone());
+		marker.mark_range_encoded(range.clone());
 
-		let pending: Vec<(EncodedKey, DeltaEntry)> =
-			pw.range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect();
+		let pending: Vec<(TaggedKey, DeltaEntry)> = pw
+			.iter()
+			.filter(|(k, _)| range.contains(&k.encode()))
+			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
+			.collect();
 
 		let storage_iter = self.engine.store.range(range, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, false))
 	}
 
-	pub fn range_persistence(
+	fn range_encoded_rev(
 		&mut self,
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
 		let (mut marker, pw) = self.marker_with_pending_writes();
-		let start = range.start_bound();
-		let end = range.end_bound();
 
-		marker.mark_range(range.clone());
+		marker.mark_range_encoded(range.clone());
 
-		let pending: Vec<(EncodedKey, DeltaEntry)> =
-			pw.range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect();
-
-		let storage_iter = self.engine.store.range_persistence(range, multi_scope, batch_size);
-
-		Box::new(MergePendingIterator::new(pending, storage_iter, false))
-	}
-
-	pub fn range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-		scope: RangeScope,
-		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
-		let multi_scope = scope.into_multi(self.version());
-		let (mut marker, pw) = self.marker_with_pending_writes();
-		let start = range.start_bound();
-		let end = range.end_bound();
-
-		marker.mark_range(range.clone());
-
-		let pending: Vec<(EncodedKey, DeltaEntry)> =
-			pw.range((start, end)).rev().map(|(k, v)| (k.clone(), v.clone())).collect();
+		let mut pending: Vec<(TaggedKey, DeltaEntry)> = pw
+			.iter()
+			.filter(|(k, _)| range.contains(&k.encode()))
+			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
+			.collect();
+		pending.reverse();
 
 		let storage_iter = self.engine.store.range_rev(range, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, true))
 	}
 
-	pub fn range_rev_persistence(
+	pub fn range(
 		&mut self,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let multi_scope = scope.into_multi(self.version());
+		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
-		let start = range.start_bound();
-		let end = range.end_bound();
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(EncodedKey, DeltaEntry)> =
-			pw.range((start, end)).rev().map(|(k, v)| (k.clone(), v.clone())).collect();
+		let pending: Vec<(TaggedKey, DeltaEntry)> = pw
+			.range((range.start.as_ref(), range.end.as_ref()))
+			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
+			.collect();
 
-		let storage_iter = self.engine.store.range_rev_persistence(range, multi_scope, batch_size);
+		let storage_iter = self.engine.store.range(encoded, multi_scope, batch_size);
+
+		Box::new(MergePendingIterator::new(pending, storage_iter, false))
+	}
+
+	pub fn range_row(
+		&mut self,
+		storage: StorageId,
+		start: Bound<StorageRowKey>,
+		end: Bound<StorageRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.version());
+		let range = row_bounds_to_typed(storage, &start, &end);
+		let (mut marker, pw) = self.marker_with_pending_writes();
+
+		marker.mark_range(range.clone());
+
+		let pending: Vec<(StorageRowKey, DeltaEntry)> = pw
+			.iter()
+			.filter_map(|(k, v)| {
+				let TaggedKeyBound::Key(TaggedKey::Row(decoded)) = k else {
+					return None;
+				};
+				(decoded.storage == storage && range.contains(k))
+					.then(|| (StorageRowKey::new(decoded.row), v.clone()))
+			})
+			.collect();
+
+		let storage_iter = self.engine.store.range_row(storage, start, end, multi_scope, batch_size);
+
+		Box::new(MergePendingIterator::new(pending, storage_iter, false))
+	}
+
+	pub fn range_partitioned_row(
+		&mut self,
+		storage: StorageId,
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.version());
+		let range = partitioned_row_bounds_to_typed(storage, &start, &end);
+		let (mut marker, pw) = self.marker_with_pending_writes();
+
+		marker.mark_range(range.clone());
+
+		let pending: Vec<(StoragePartitionedRowKey, DeltaEntry)> = pw
+			.iter()
+			.filter_map(|(k, v)| {
+				let TaggedKeyBound::Key(TaggedKey::PartitionedRow(decoded)) = k else {
+					return None;
+				};
+				(decoded.storage == storage && range.contains(k)).then(|| {
+					(StoragePartitionedRowKey::new(decoded.partition, decoded.row), v.clone())
+				})
+			})
+			.collect();
+
+		let storage_iter =
+			self.engine.store.range_partitioned_row(storage, start, end, multi_scope, batch_size);
+
+		Box::new(MergePendingIterator::new(pending, storage_iter, false))
+	}
+
+	pub fn range_persistence(
+		&mut self,
+		range: TaggedKeyBoundRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.version());
+		let encoded = range.encode();
+		let (mut marker, pw) = self.marker_with_pending_writes();
+
+		marker.mark_range(range.clone());
+
+		let pending: Vec<(TaggedKey, DeltaEntry)> = pw
+			.range((range.start.as_ref(), range.end.as_ref()))
+			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
+			.collect();
+
+		let storage_iter = self.engine.store.range_persistence(encoded, multi_scope, batch_size);
+
+		Box::new(MergePendingIterator::new(pending, storage_iter, false))
+	}
+
+	pub fn range_rev(
+		&mut self,
+		range: TaggedKeyBoundRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.version());
+		let encoded = range.encode();
+		let (mut marker, pw) = self.marker_with_pending_writes();
+
+		marker.mark_range(range.clone());
+
+		let pending: Vec<(TaggedKey, DeltaEntry)> = pw
+			.range((range.start.as_ref(), range.end.as_ref()))
+			.rev()
+			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
+			.collect();
+
+		let storage_iter = self.engine.store.range_rev(encoded, multi_scope, batch_size);
+
+		Box::new(MergePendingIterator::new(pending, storage_iter, true))
+	}
+
+	pub fn range_rev_persistence(
+		&mut self,
+		range: TaggedKeyBoundRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		let multi_scope = scope.into_multi(self.version());
+		let encoded = range.encode();
+		let (mut marker, pw) = self.marker_with_pending_writes();
+
+		marker.mark_range(range.clone());
+
+		let pending: Vec<(TaggedKey, DeltaEntry)> = pw
+			.range((range.start.as_ref(), range.end.as_ref()))
+			.rev()
+			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
+			.collect();
+
+		let storage_iter = self.engine.store.range_rev_persistence(encoded, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, true))
 	}
@@ -746,16 +922,17 @@ impl MultiWriteTransaction {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::serializer::KeySerializer;
-	use reifydb_core::common::CommitVersion;
-	use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
+	use reifydb_core::{common::CommitVersion, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
+	use reifydb_value::{
+		util::cowvec::CowVec,
+		value::{duration::Duration, partition::Partition, row_number::RowNumber},
+	};
 
 	use super::*;
 	use crate::multi::transaction::MultiTransaction;
 
-	fn test_key(s: &str) -> EncodedKey {
-		let mut ser = KeySerializer::new();
-		ser.extend_str(s);
-		ser.finish()
+	fn test_key(s: &str) -> QueueDeduplicationKey {
+		QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>())
 	}
 
 	fn test_bytes(s: &str) -> EncodedBytes {
@@ -801,20 +978,107 @@ mod tests {
 			"commit of our own freshly-allocated version must succeed even under a racing query watermark"
 		);
 	}
+
+	fn storage() -> StorageId {
+		StorageId::table(7)
+	}
+
+	fn row_range_bytes(start: Bound<StorageRowKey>, end: Bound<StorageRowKey>) -> EncodedKeyRange {
+		row_bounds_to_typed(storage(), &start, &end).encode()
+	}
+
+	fn partitioned_range_bytes(
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+	) -> EncodedKeyRange {
+		partitioned_row_bounds_to_typed(storage(), &start, &end).encode()
+	}
+
+	#[test]
+	fn an_unbounded_row_range_still_spans_exactly_the_storages_own_bytes() {
+		// The conflict manager now tracks these ranges typed, so the typed spelling of an
+		// open end has to land on the same byte as the storage_end producer it replaced.
+		// Anything wider silently reports conflicts that are not there; anything narrower
+		// silently misses real ones, and neither shows up as a failure anywhere else.
+		let range = row_range_bytes(Bound::Unbounded, Bound::Unbounded);
+		assert_eq!(range.start, Bound::Included(RowKey::storage_start(storage())));
+		assert_eq!(range.end, Bound::Included(RowKey::storage_end(storage())));
+
+		let range = partitioned_range_bytes(Bound::Unbounded, Bound::Unbounded);
+		assert_eq!(range.start, Bound::Included(PartitionedRowKey::storage_start(storage())));
+		assert_eq!(range.end, Bound::Included(PartitionedRowKey::storage_end(storage())));
+	}
+
+	#[test]
+	fn a_bounded_row_range_encodes_the_keys_it_names() {
+		let low = StorageRowKey::new(RowNumber(1));
+		let high = StorageRowKey::new(RowNumber(9));
+		let range = row_range_bytes(Bound::Included(low), Bound::Excluded(high));
+		assert_eq!(range.start, Bound::Included(RowKey::encoded(storage(), RowNumber(1))));
+		assert_eq!(range.end, Bound::Excluded(RowKey::encoded(storage(), RowNumber(9))));
+
+		let low = StoragePartitionedRowKey::new(Partition(3), RowNumber(1));
+		let high = StoragePartitionedRowKey::new(Partition(3), RowNumber(9));
+		let range = partitioned_range_bytes(Bound::Excluded(low), Bound::Included(high));
+		assert_eq!(
+			range.start,
+			Bound::Excluded(PartitionedRowKey::encoded(storage(), Partition(3), RowNumber(1)))
+		);
+		assert_eq!(
+			range.end,
+			Bound::Included(PartitionedRowKey::encoded(storage(), Partition(3), RowNumber(9)))
+		);
+	}
+
+	#[test]
+	fn a_row_range_contains_the_same_keys_typed_as_its_bytes_do() {
+		// The pending-writes filter reads containment off the typed bounds while the storage
+		// iterator reads it off the bytes; a disagreement hides a transaction's own writes.
+		// Row numbers encode descending, so a non-empty span runs from the higher number to
+		// the lower one. Spelling it 3..9 would make every case empty and let the end bound
+		// answer alone, which hides whatever the start bound does.
+		let rows: Vec<RowNumber> = (0u64..12).map(RowNumber).collect();
+		let low = StorageRowKey::new(RowNumber(9));
+		let high = StorageRowKey::new(RowNumber(3));
+		let cases = [
+			(Bound::Unbounded, Bound::Unbounded),
+			(Bound::Included(low), Bound::Unbounded),
+			(Bound::Excluded(low), Bound::Unbounded),
+			(Bound::Excluded(low), Bound::Excluded(high)),
+			(Bound::Included(low), Bound::Included(high)),
+			(Bound::Unbounded, Bound::Excluded(high)),
+			(Bound::Unbounded, Bound::Included(high)),
+		];
+
+		for (start, end) in cases {
+			let typed = row_bounds_to_typed(storage(), &start, &end);
+			let bytes = typed.encode();
+			for row in &rows {
+				let key = RowKey::new(storage(), *row);
+				let encoded = RowKey::encoded(storage(), *row);
+				assert_eq!(
+					typed.contains(&TaggedKeyBound::Key(TaggedKey::Row(key))),
+					bytes.contains(&encoded),
+					"row {row:?} in {start:?}..{end:?}"
+				);
+			}
+		}
+	}
 }
 
-pub(crate) struct MergePendingIterator<I> {
-	pending_iter: iter::Peekable<vec::IntoIter<(EncodedKey, DeltaEntry)>>,
+pub(crate) struct MergePendingIterator<I, K = EncodedKey> {
+	pending_iter: iter::Peekable<vec::IntoIter<(K, DeltaEntry)>>,
 	storage_iter: I,
-	next_storage: Option<MultiVersionRow>,
+	next_storage: Option<MultiVersionRow<K>>,
 	reverse: bool,
 }
 
-impl<I> MergePendingIterator<I>
+impl<I, K> MergePendingIterator<I, K>
 where
-	I: Iterator<Item = Result<MultiVersionRow>>,
+	K: Ord,
+	I: Iterator<Item = Result<MultiVersionRow<K>>>,
 {
-	pub(crate) fn new(pending: Vec<(EncodedKey, DeltaEntry)>, storage_iter: I, reverse: bool) -> Self {
+	pub(crate) fn new(pending: Vec<(K, DeltaEntry)>, storage_iter: I, reverse: bool) -> Self {
 		Self {
 			pending_iter: pending.into_iter().peekable(),
 			storage_iter,
@@ -824,11 +1088,12 @@ where
 	}
 }
 
-impl<I> Iterator for MergePendingIterator<I>
+impl<I, K> Iterator for MergePendingIterator<I, K>
 where
-	I: Iterator<Item = Result<MultiVersionRow>>,
+	K: Ord,
+	I: Iterator<Item = Result<MultiVersionRow<K>>>,
 {
-	type Item = Result<MultiVersionRow>;
+	type Item = Result<MultiVersionRow<K>>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -889,4 +1154,58 @@ where
 			}
 		}
 	}
+}
+
+fn row_bounds_to_typed(
+	storage: StorageId,
+	start: &Bound<StorageRowKey>,
+	end: &Bound<StorageRowKey>,
+) -> TaggedKeyBoundRange {
+	let bound = |k: &StorageRowKey| TaggedKeyBound::Key(TaggedKey::Row(RowKey::new(storage, k.row())));
+	let lower = match start {
+		Bound::Included(k) => Bound::Included(bound(k)),
+		Bound::Excluded(k) => Bound::Excluded(bound(k)),
+		Bound::Unbounded => Bound::Included(storage_span_start(KeyTag::Row, storage)),
+	};
+	let upper = match end {
+		Bound::Included(k) => Bound::Included(bound(k)),
+		Bound::Excluded(k) => Bound::Excluded(bound(k)),
+		Bound::Unbounded => Bound::Included(storage_span_end(KeyTag::Row, storage)),
+	};
+	TaggedKeyBoundRange {
+		start: lower,
+		end: upper,
+	}
+}
+
+fn partitioned_row_bounds_to_typed(
+	storage: StorageId,
+	start: &Bound<StoragePartitionedRowKey>,
+	end: &Bound<StoragePartitionedRowKey>,
+) -> TaggedKeyBoundRange {
+	let bound = |k: &StoragePartitionedRowKey| {
+		TaggedKeyBound::Key(TaggedKey::PartitionedRow(PartitionedRowKey::new(storage, k.partition(), k.row())))
+	};
+	let lower = match start {
+		Bound::Included(k) => Bound::Included(bound(k)),
+		Bound::Excluded(k) => Bound::Excluded(bound(k)),
+		Bound::Unbounded => Bound::Included(storage_span_start(KeyTag::PartitionedRow, storage)),
+	};
+	let upper = match end {
+		Bound::Included(k) => Bound::Included(bound(k)),
+		Bound::Excluded(k) => Bound::Excluded(bound(k)),
+		Bound::Unbounded => Bound::Included(storage_span_end(KeyTag::PartitionedRow, storage)),
+	};
+	TaggedKeyBoundRange {
+		start: lower,
+		end: upper,
+	}
+}
+
+fn storage_span_start(kind: KeyTag, storage: StorageId) -> TaggedKeyBound {
+	TaggedKeyBound::prefix(kind, object_fields(ObjectId::from(storage)))
+}
+
+fn storage_span_end(kind: KeyTag, storage: StorageId) -> TaggedKeyBound {
+	TaggedKeyBound::prefix(kind, object_fields(ObjectId::from(storage).prev()))
 }

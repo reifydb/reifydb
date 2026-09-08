@@ -28,7 +28,7 @@ impl ColumnSequence {
 		column: ColumnId,
 	) -> Result<Value> {
 		let column = CatalogStore::get_column(&mut txn.as_transaction(), column)?;
-		let key = ColumnSequenceKey::encoded(object, column.id);
+		let key = ColumnSequenceKey::new(object, column.id);
 
 		Ok(match column.constraint.get_type() {
 			ValueType::Int1 => Value::Int1(GeneratorI8::next(txn, &key, None)?),
@@ -61,7 +61,7 @@ impl ColumnSequence {
 			assert!(value.get_type() == column.constraint.get_type());
 		}
 
-		let key = ColumnSequenceKey::encoded(object, column.id);
+		let key = ColumnSequenceKey::new(object, column.id);
 		match value {
 			Value::Int1(v) => GeneratorI8::set(txn, &key, v),
 			Value::Int2(v) => GeneratorI16::set(txn, &key, v),

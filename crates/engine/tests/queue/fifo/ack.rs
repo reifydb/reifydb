@@ -15,8 +15,8 @@ use reifydb_core::{
 		store::{SingleVersionGet, SingleVersionRange},
 	},
 	key::{
+		any::TaggedKey,
 		queue::{QueueAttemptKey, QueueDueKey, QueueItemStateKey, QueuePartitionKey},
-		typed::key::Key,
 	},
 };
 use reifydb_test_harness::engine::TestEngine;
@@ -44,7 +44,7 @@ fn queue_id(t: &TestEngine, name: &str) -> QueueId {
 
 fn states(t: &TestEngine, queue: QueueId) -> Vec<(QueueItemStateKey, QueueItemState)> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue), 1024)
+	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -63,7 +63,7 @@ fn state_of(t: &TestEngine, queue: QueueId) -> QueueItemState {
 
 fn dues(t: &TestEngine, queue: QueueId) -> Vec<QueueDueKey> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueDueKey::queue_scan(queue), 1024)
+	SingleVersionRange::range_batch(&store, QueueDueKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -90,7 +90,10 @@ fn attempts(t: &TestEngine, queue: QueueId) -> Vec<(QueueAttemptKey, QueueAttemp
 	while let Some(item) = stream.next() {
 		let item = item.unwrap();
 		out.push((
-			QueueAttemptKey::decode(&item.key).unwrap(),
+			match item.key {
+				TaggedKey::QueueAttempt(key) => key,
+				other => panic!("queue attempt scan yielded {other:?}"),
+			},
 			decode_queue_attempt(EncodedQueueAttemptRow::view(&item.bytes)).unwrap(),
 		));
 	}

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cmp::Ordering, fmt::Debug, hash::Hash};
+use std::{cmp::Ordering, fmt::Debug, hash::Hash, ops::Bound};
 
 use reifydb_codec::key::encoded::EncodedKey;
-pub use reifydb_macro::{Key, TypedKey};
+pub use reifydb_macro::{KeyCodec, KeyLayout};
 
 use crate::metrics::heap::HeapSize;
 
@@ -13,9 +13,15 @@ pub mod key;
 pub mod layout;
 pub mod range;
 
-pub trait TypedKey: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {
-	fn low() -> Self;
+pub trait Key: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {}
 
+impl<T> Key for T where T: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {}
+
+pub trait BoundedKey: Key {
+	fn low() -> Self;
+}
+
+pub trait DenseKey: Key {
 	fn successor(&self) -> Option<Self>;
 }
 
@@ -23,40 +29,54 @@ pub trait TypedKey: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'stati
 pub enum Edge<K> {
 	Bottom,
 	Key(K),
+	AfterKey(K),
 	Top,
-}
-
-impl<K> Edge<K> {
-	pub fn is_bottom(&self) -> bool {
-		matches!(self, Edge::Bottom)
-	}
-
-	pub fn is_top(&self) -> bool {
-		matches!(self, Edge::Top)
-	}
-
-	pub fn key(&self) -> Option<&K> {
-		match self {
-			Edge::Key(key) => Some(key),
-			Edge::Bottom | Edge::Top => None,
-		}
-	}
 }
 
 impl<K: HeapSize> HeapSize for Edge<K> {
 	fn heap_size(&self) -> usize {
 		match self {
-			Edge::Key(key) => key.heap_size(),
+			Edge::Key(key) | Edge::AfterKey(key) => key.heap_size(),
 			Edge::Bottom | Edge::Top => 0,
 		}
 	}
 }
 
-impl<K: TypedKey> Edge<K> {
+impl<K: DenseKey> Edge<K> {
 	pub fn just_past(key: &K) -> Self {
 		match key.successor() {
 			Some(next) => Edge::Key(next),
-			None => Edge::Top,
+			None => Edge::AfterKey(key.clone()),
+		}
+	}
+}
+
+impl<K: Clone> Edge<K> {
+	pub fn lower_bound(&self) -> Option<Bound<K>> {
+		match self {
+			Edge::Bottom => Some(Bound::Unbounded),
+			Edge::Key(key) => Some(Bound::Included(key.clone())),
+			Edge::AfterKey(key) => Some(Bound::Excluded(key.clone())),
+			Edge::Top => None,
+		}
+	}
+
+	pub fn upper_bound(&self) -> Option<Bound<K>> {
+		match self {
+			Edge::Bottom => None,
+			Edge::Key(key) => Some(Bound::Excluded(key.clone())),
+			Edge::AfterKey(key) => Some(Bound::Included(key.clone())),
+			Edge::Top => Some(Bound::Unbounded),
+		}
+	}
+}
+
+impl<K: BoundedKey> Edge<K> {
+	pub fn anchor(&self) -> Option<K> {
+		match self {
+			Edge::Bottom => Some(K::low()),
+			Edge::Key(key) | Edge::AfterKey(key) => Some(key.clone()),
+			Edge::Top => None,
 		}
 	}
 
@@ -64,12 +84,12 @@ impl<K: TypedKey> Edge<K> {
 		match self {
 			Edge::Bottom => Some(K::low()),
 			Edge::Key(key) => Some(key.clone()),
-			Edge::Top => None,
+			Edge::AfterKey(_) | Edge::Top => None,
 		}
 	}
 }
 
-impl Edge<MultiKey> {
+impl Edge<OpaqueKey> {
 	pub fn of(key: impl AsRef<[u8]>) -> Self {
 		Edge::Key(EncodedKey::new(key))
 	}
@@ -80,6 +100,10 @@ impl<K: Ord> Edge<K> {
 		match self {
 			Edge::Bottom => Ordering::Less,
 			Edge::Key(edge) => edge.cmp(key),
+			Edge::AfterKey(edge) => match edge.cmp(key) {
+				Ordering::Less => Ordering::Less,
+				Ordering::Equal | Ordering::Greater => Ordering::Greater,
+			},
 			Edge::Top => Ordering::Greater,
 		}
 	}
@@ -88,16 +112,12 @@ impl<K: Ord> Edge<K> {
 		self.cmp_key(key) == Ordering::Greater
 	}
 
-	pub fn min(self, other: Self) -> Self {
-		if self <= other {
-			self
-		} else {
-			other
-		}
+	pub fn admits(&self, key: &K) -> bool {
+		self.cmp_key(key) != Ordering::Greater
 	}
 
-	pub fn max(self, other: Self) -> Self {
-		if self >= other {
+	pub fn min(self, other: Self) -> Self {
+		if self <= other {
 			self
 		} else {
 			other
@@ -118,28 +138,35 @@ impl<K: Ord> Ord for Edge<K> {
 			(Edge::Bottom, _) => Ordering::Less,
 			(_, Edge::Bottom) => Ordering::Greater,
 			(Edge::Top, Edge::Top) => Ordering::Equal,
-			(Edge::Top, Edge::Key(_)) => Ordering::Greater,
-			(Edge::Key(_), Edge::Top) => Ordering::Less,
+			(Edge::Top, _) => Ordering::Greater,
+			(_, Edge::Top) => Ordering::Less,
 			(Edge::Key(left), Edge::Key(right)) => left.cmp(right),
+			(Edge::AfterKey(left), Edge::AfterKey(right)) => left.cmp(right),
+			(Edge::Key(left), Edge::AfterKey(right)) => left.cmp(right).then(Ordering::Less),
+			(Edge::AfterKey(left), Edge::Key(right)) => left.cmp(right).then(Ordering::Greater),
 		}
 	}
 }
 
-pub type MultiKey = EncodedKey;
+pub type OpaqueKey = EncodedKey;
 
-impl TypedKey for () {
+impl BoundedKey for () {
 	fn low() -> Self {}
+}
 
+impl DenseKey for () {
 	fn successor(&self) -> Option<Self> {
 		None
 	}
 }
 
-impl TypedKey for EncodedKey {
+impl BoundedKey for EncodedKey {
 	fn low() -> Self {
 		EncodedKey::new([])
 	}
+}
 
+impl DenseKey for EncodedKey {
 	fn successor(&self) -> Option<Self> {
 		let mut bytes = Vec::with_capacity(self.as_slice().len() + 1);
 		bytes.extend_from_slice(self.as_slice());
@@ -152,18 +179,18 @@ impl TypedKey for EncodedKey {
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use super::{Edge, MultiKey, TypedKey};
+	use super::{BoundedKey, DenseKey, Edge, OpaqueKey};
 
 	#[test]
 	fn unit_key_has_no_successor() {
 		// a group only keyspace subtracts its whole key, so the empty key must report the top of its space
-		assert_eq!(<() as TypedKey>::low(), ());
-		assert_eq!(<() as TypedKey>::successor(&()), None);
+		assert_eq!(<() as BoundedKey>::low(), ());
+		assert_eq!(<() as DenseKey>::successor(&()), None);
 	}
 
 	#[test]
 	fn encoded_key_low_is_empty() {
-		assert_eq!(<MultiKey as TypedKey>::low().as_slice(), &[] as &[u8]);
+		assert_eq!(<OpaqueKey as BoundedKey>::low().as_slice(), &[] as &[u8]);
 	}
 
 	#[test]
@@ -194,16 +221,16 @@ mod tests {
 
 	#[test]
 	fn exclusive_upper_end_carries_a_key_or_the_top() {
-		let end: Edge<MultiKey> = Edge::Key(EncodedKey::new([0x01]));
+		let end: Edge<OpaqueKey> = Edge::Key(EncodedKey::new([0x01]));
 		assert_ne!(end, Edge::Top);
 		assert_eq!(end.clone(), end);
 	}
 
 	#[test]
-	fn just_past_promotes_a_key_with_no_successor_to_the_top() {
-		// successor became partial when keys stopped being byte strings; mapping None to anything but
-		// Top would drop the greatest key out of every range that was meant to include it
-		assert_eq!(Edge::just_past(&()), Edge::Top);
+	fn just_past_names_a_key_that_needs_no_successor() {
+		// the unit key has no successor to name, and answering Top would swallow every key above it, so
+		// the edge has to carry the exclusivity itself to end a range on the greatest key
+		assert_eq!(Edge::just_past(&()), Edge::AfterKey(()));
 		assert!(Edge::just_past(&()).covers(&()));
 	}
 

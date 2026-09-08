@@ -34,7 +34,7 @@ impl CatalogStore {
 		migration_shape::set_rollback_body(&mut row, to_create.rollback_body.as_deref().unwrap_or(""));
 		migration_shape::set_hash(&mut row, to_create.hash.0);
 
-		txn.set(&MigrationKey::encoded(migration_id), row.freeze())?;
+		txn.set(&MigrationKey::new(migration_id), row.freeze())?;
 
 		Ok(Migration {
 			id: migration_id,
@@ -63,7 +63,7 @@ impl CatalogStore {
 			},
 		);
 
-		txn.set(&MigrationEventKey::encoded(event_id), row.freeze())?;
+		txn.set(&MigrationEventKey::new(event_id), row.freeze())?;
 
 		Ok(MigrationEvent {
 			id: event_id,

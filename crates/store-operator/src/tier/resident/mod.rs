@@ -984,6 +984,7 @@ impl OperatorResidentState {
 		}
 	}
 
+	#[cfg_attr(not(all(feature = "sqlite", not(target_arch = "wasm32"))), allow(dead_code))]
 	pub(crate) fn filter(&self) -> Arc<AdaptiveKeyFilter> {
 		self.shared.filter.clone()
 	}

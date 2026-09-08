@@ -3,7 +3,11 @@
 
 use reifydb_core::{
 	interface::catalog::{id::ViewId, storage::StorageId, view::ViewStorageKind},
-	key::{catalog::ViewKey, namespace::NamespaceViewKey, ringbuffer::RingBufferMetadataKey, row::RowSettingsKey},
+	key::{
+		any::TaggedKey, catalog::ViewKey, namespace::NamespaceViewKey, ringbuffer::RingBufferMetadataKey,
+		row::RowSettingsKey,
+	},
+	return_internal_error,
 };
 use reifydb_transaction::{
 	multi::RangeScope,
@@ -15,7 +19,7 @@ use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
 impl CatalogStore {
 	pub(crate) fn drop_view(txn: &mut AdminTransaction, view: ViewId) -> Result<()> {
 		let pk_id = if let Some(view_def) = Self::find_view(&mut Transaction::Admin(&mut *txn), view)? {
-			txn.remove(&NamespaceViewKey::encoded(view_def.namespace(), view))?;
+			txn.remove(&NamespaceViewKey::new(view_def.namespace(), view))?;
 			Self::drop_view_family_metadata(txn, view, view_def.storage_kind())?;
 			view_def.primary_key().map(|pk| pk.id)
 		} else {
@@ -24,9 +28,9 @@ impl CatalogStore {
 
 		drop_object_metadata(txn, view.into(), pk_id)?;
 
-		txn.remove(&RowSettingsKey::encoded(StorageId::View(view)))?;
+		txn.remove(&RowSettingsKey::new(StorageId::View(view)))?;
 
-		txn.remove(&ViewKey::encoded(view))?;
+		txn.remove(&ViewKey::new(view))?;
 
 		Ok(())
 	}
@@ -39,7 +43,12 @@ impl CatalogStore {
 				let mut stream = txn.range(range, RangeScope::All, 1024)?;
 				let mut keys = Vec::new();
 				for entry in stream.by_ref() {
-					keys.push(entry?.key.clone());
+					let TaggedKey::RingBufferMetadata(key) = entry?.key else {
+						return_internal_error!(
+							"ring buffer metadata scan yielded a key that is not a RingBufferMetadataKey"
+						);
+					};
+					keys.push(key);
 				}
 				drop(stream);
 				for key in keys {

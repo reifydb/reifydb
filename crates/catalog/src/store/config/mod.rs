@@ -4,7 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::{catalog::config::ConfigKey, store::MultiVersionRow},
-	key::{EncodableKey, config::ConfigStorageKey},
+	key::any::TaggedKey,
 };
 use reifydb_value::value::Value;
 use tracing::warn;
@@ -14,14 +14,12 @@ use crate::store::config::shape::config;
 pub mod set;
 pub mod shape;
 
-pub(crate) fn convert_config(multi: MultiVersionRow) -> Option<(ConfigKey, Value)> {
-	let config_key = match ConfigStorageKey::decode(&multi.key) {
-		Some(k) => k.key,
-		None => {
-			warn!("skipping unknown persisted config key");
-			return None;
-		}
+pub(crate) fn convert_config(multi: MultiVersionRow<TaggedKey>) -> Option<(ConfigKey, Value)> {
+	let TaggedKey::ConfigStorage(stored) = &multi.key else {
+		warn!("skipping unknown persisted config key");
+		return None;
 	};
+	let config_key = stored.key;
 
 	let value = match config::get_value(EncodedCatalogRow::view(&multi.bytes)) {
 		Value::Any(inner) => *inner,

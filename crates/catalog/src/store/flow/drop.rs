@@ -41,12 +41,12 @@ impl CatalogStore {
 				CatalogStore::drop_flow_edge(txn, edge.id)?;
 			}
 
-			txn.remove(&FlowVersionKey::encoded(flow_id))?;
-			txn.remove(&CdcConsumerKey::encoded(CdcConsumerId::new(format!("flow:{}", flow_id.0))))?;
+			txn.remove(&FlowVersionKey::new(flow_id))?;
+			txn.remove(&CdcConsumerKey::new(CdcConsumerId::new(format!("flow:{}", flow_id.0))))?;
 
-			txn.remove(&NamespaceFlowKey::encoded(flow.namespace, flow_id))?;
+			txn.remove(&NamespaceFlowKey::new(flow.namespace, flow_id))?;
 
-			txn.remove(&FlowKey::encoded(flow_id))?;
+			txn.remove(&FlowKey::new(flow_id))?;
 		}
 
 		Ok(())

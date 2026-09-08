@@ -10,7 +10,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			TypedKey,
+			BoundedKey, DenseKey, KeyLayout,
 			direction::{Asc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues},
 		},
@@ -18,47 +18,47 @@ use crate::{
 	metrics::heap::HeapSize,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct RingbufferForwardKey {
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct RingbufferEntryKey {
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct RingbufferExpiryKey {
 	pub expires_at: Asc<u64>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct RingbufferTtlArmKey {}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct RingbufferMetaKey {}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct PartitionedRingbufferEntryKey {
 	pub partition: Asc<Partition>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct PartitionedRingbufferExpiryKey {
 	pub partition: Asc<Partition>,
 	pub expires_at: Asc<u64>,
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct PartitionedRingbufferTtlArmKey {
 	pub partition: Asc<Partition>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct PartitionedRingbufferMetaKey {
 	pub partition: Asc<Partition>,
 }

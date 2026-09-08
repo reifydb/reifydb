@@ -14,7 +14,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	key::{EncodableKey, kind::KeyKind, operator::state::OperatorStateKey},
+	key::{any::TaggedKey, tag::KeyTag},
 	state::timer::TimerKind,
 };
 use reifydb_flow::{
@@ -113,7 +113,7 @@ impl<O> Harness<O> {
 		);
 		let mut rest = Pending::new();
 		for (key, write) in pending.iter_sorted() {
-			if matches!(KeyKind::of(key), Some(KeyKind::OperatorState)) {
+			if matches!(KeyTag::of(key), Some(KeyTag::OperatorState)) {
 				continue;
 			}
 			match write {
@@ -188,10 +188,13 @@ impl<O: HostOperator> Harness<O> {
 		let batch = txn.state_scan_all(operator)?;
 		let mut footprint = StateFootprint::default();
 		for item in &batch.items {
-			let decoded = OperatorStateKey::decode(&item.key);
-			match decoded {
-				Some(state) if state.keyspace.is_identity() => footprint.identity_rows += 1,
-				Some(state) if state.group.is_root() => footprint.node_scoped_data_rows += 1,
+			match &item.key {
+				TaggedKey::OperatorState(state) if state.keyspace.is_identity() => {
+					footprint.identity_rows += 1
+				}
+				TaggedKey::OperatorState(state) if state.group.is_root() => {
+					footprint.node_scoped_data_rows += 1
+				}
 				_ => footprint.data_rows += 1,
 			}
 		}
@@ -203,7 +206,7 @@ impl<O: HostOperator> Harness<O> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(DateTime::default());
 		let batch = txn.state_scan_all(operator)?;
-		let items = batch.items.into_iter().map(|item| (item.key, item.bytes)).collect();
+		let items = batch.items.into_iter().map(|item| (item.key.encode(), item.bytes)).collect();
 		self.end(txn);
 		Ok(items)
 	}

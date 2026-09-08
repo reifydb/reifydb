@@ -16,7 +16,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			TypedKey,
+			Key,
 			direction::Direction,
 			layout::{KeyColumnType, KeyLayout, KeyValue},
 		},
@@ -24,7 +24,7 @@ use crate::{
 	state::timer::StateStore,
 };
 
-pub trait SuffixBytes: TypedKey {
+pub trait SuffixBytes: Key {
 	fn to_suffix_bytes(&self) -> Vec<u8>;
 
 	fn from_suffix_bytes(bytes: &[u8]) -> Option<Self>

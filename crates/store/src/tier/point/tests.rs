@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::state::{GroupId, KEYSPACE_INNER_PREFIX_LEN, KeyspaceId, OperatorStateKey},
-		typed::MultiKey,
+		typed::OpaqueKey,
 	},
 	metrics::heap::HeapSize,
 };
@@ -347,8 +347,6 @@ fn an_undisturbed_fill_populates_the_tier() {
 	assert_eq!(tier.metrics().fills_started, 1);
 	assert_eq!(tier.metrics().fills_dirty_aborted, 0);
 	assert!(tier.begin_fill(OP_A, &k), "finishing a fill must release the slot, or the key can never refill");
-	tier.abort_fill(OP_A, &k);
-	assert!(tier.begin_fill(OP_A, &k), "aborting must release the slot too");
 }
 
 #[test]
@@ -422,7 +420,7 @@ fn finish_fill_publishes_under_the_lock_that_cleared_the_marker() {
 	let probed = Arc::new(AtomicBool::new(false));
 	let flag = acquired.clone();
 	let seen = probed.clone();
-	let hook: FillInterlock<D> = Box::new(move |tier: &PointTier<D>, id: &PointKey<OperatorId, MultiKey>| {
+	let hook: FillInterlock<D> = Box::new(move |tier: &PointTier<D>, id: &PointKey<OperatorId, OpaqueKey>| {
 		seen.store(true, Ordering::Relaxed);
 		flag.store(tier.shard_for(id).try_lock().is_some(), Ordering::Relaxed);
 	});

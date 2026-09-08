@@ -11,13 +11,13 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::key::typed::{Edge, MultiKey};
+use reifydb_core::key::typed::{Edge, OpaqueKey};
 
 use crate::coverage::{interval::CoverageSet, retraction::Retractions};
 
 type PartId = u8;
 
-type Hull = (EncodedKey, Edge<MultiKey>);
+type Hull = (Edge<OpaqueKey>, Edge<OpaqueKey>);
 
 type Interlock = Box<dyn Fn(&ModelCache) + Send + Sync>;
 
@@ -33,14 +33,14 @@ fn part_of(key: &EncodedKey) -> PartId {
 }
 
 fn island(at: &EncodedKey) -> Hull {
-	(at.clone(), Edge::just_past(at))
+	(Edge::Key(at.clone()), Edge::just_past(at))
 }
 
 fn widen(slot: &mut Option<Hull>, span: Hull) {
 	match slot {
 		None => *slot = Some(span),
 		Some((start, end)) => {
-			if span.0.as_slice() < start.as_slice() {
+			if span.0 < *start {
 				*start = span.0;
 			}
 			*end = end.clone().max(span.1);
@@ -58,7 +58,7 @@ struct Partition {
 
 struct ModelCache {
 	partitions: Mutex<HashMap<PartId, Partition>>,
-	coverage: RwLock<CoverageSet<MultiKey>>,
+	coverage: RwLock<CoverageSet<OpaqueKey>>,
 	retractions: Retractions,
 	sequence: AtomicU64,
 	tick: AtomicU64,
@@ -139,7 +139,7 @@ impl ModelCache {
 
 	fn materialize(&self, lo: &EncodedKey, through: &EncodedKey, rows: &[(EncodedKey, u64)]) -> bool {
 		let token = self.retractions.token();
-		let span = (lo.clone(), Edge::just_past(through));
+		let span = (Edge::Key(lo.clone()), Edge::just_past(through));
 		if self.place(rows, &span).is_none() {
 			return false;
 		}

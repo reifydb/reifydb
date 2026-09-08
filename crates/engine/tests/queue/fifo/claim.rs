@@ -15,10 +15,7 @@ use reifydb_core::{
 		},
 		store::{SingleVersionGet, SingleVersionRange},
 	},
-	key::{
-		queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
-		typed::key::Key,
-	},
+	key::queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{single::write::SingleWriteTransaction, transaction::Transaction};
@@ -41,7 +38,7 @@ fn queue_id(t: &TestEngine, name: &str) -> QueueId {
 
 fn states(t: &TestEngine, queue: QueueId) -> Vec<(QueueItemStateKey, QueueItemState)> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue), 1024)
+	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -56,7 +53,7 @@ fn states(t: &TestEngine, queue: QueueId) -> Vec<(QueueItemStateKey, QueueItemSt
 
 fn dues(t: &TestEngine, queue: QueueId) -> Vec<QueueDueKey> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueDueKey::queue_scan(queue), 1024)
+	SingleVersionRange::range_batch(&store, QueueDueKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -74,7 +71,7 @@ fn counters(t: &TestEngine, queue: QueueId, partition: u16) -> QueuePartitionCou
 
 fn totals(t: &TestEngine, queue: QueueId) -> QueuePartitionCounters {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueuePartitionKey::queue_scan(queue), 1024)
+	SingleVersionRange::range_batch(&store, QueuePartitionKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -97,8 +94,8 @@ where
 		.begin_command_ranged(
 			[&lock_key],
 			vec![
-				QueueItemStateKey::partition_scan(queue, partition),
-				QueueDueKey::partition_scan(queue, partition),
+				QueueItemStateKey::partition_scan(queue, partition).encode(),
+				QueueDueKey::partition_scan(queue, partition).encode(),
 			],
 		)
 		.unwrap();
@@ -112,8 +109,7 @@ where
 /// single-threaded test otherwise cannot.
 fn plant_stale_due_entry(t: &TestEngine, queue: QueueId, partition: u16, row: RowNumber, due: DateTime) {
 	with_partition(t, queue, partition, |tx| {
-		tx.set(&QueueDueKey::encoded(queue, partition, due, row), EncodedPodRow::new(&[]).into_bytes())
-			.unwrap();
+		tx.set(&QueueDueKey::new(queue, partition, due, row), EncodedPodRow::new(&[]).into_bytes()).unwrap();
 	});
 }
 

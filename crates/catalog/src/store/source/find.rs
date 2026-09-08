@@ -20,7 +20,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_source(rx: &mut Transaction<'_>, id: SourceId) -> Result<Option<Source>> {
-		let Some(multi) = rx.get(&SourceKey::encoded(id))? else {
+		let Some(multi) = rx.get(&SourceKey::new(id))? else {
 			return Ok(None);
 		};
 

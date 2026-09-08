@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{collections::HashMap, error::Error as StdError, fmt::Write, sync::Arc};
+use std::{collections::HashMap, error::Error as StdError, fmt::Write, ops::Bound, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -19,14 +19,23 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	event::EventBus,
-	interface::store::{
-		EntryKind, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, classify_key,
+	interface::{
+		catalog::{
+			id::{IndexId, TableId},
+			object::ObjectId,
+		},
+		store::{
+			EntryKind, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow,
+			classify_key,
+		},
 	},
+	key::{any::TaggedKey, catalog::IndexEntryKey},
 	lifecycle::watermark::EvictionWatermark,
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
 	},
+	value::index::encoded::EncodedIndexKey,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -117,7 +126,10 @@ impl testscript::runner::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
-				let value = self.store.get(&key, version)?.map(|sv: MultiVersionRow| sv.bytes.to_vec());
+				let value = self
+					.store
+					.get(&TaggedKey::from(script_key(&key)), version)?
+					.map(|sv: MultiVersionRow<TaggedKey>| sv.bytes.to_vec());
 
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
@@ -132,9 +144,10 @@ impl testscript::runner::Runner for Runner {
 					.collect();
 				args.reject_rest()?;
 
-				let found = self.store.get_many(&keys, version)?;
-				for key in &keys {
-					let value = found.get(key).map(|bytes| bytes.bytes.to_vec());
+				let stored: Vec<EncodedKey> = keys.iter().map(|key| script_key(key).encode()).collect();
+				let found = self.store.get_many(&stored, version)?;
+				for (key, stored) in keys.iter().zip(&stored) {
+					let value = found.get(stored).map(|bytes| bytes.bytes.to_vec());
 					writeln!(output, "{}", Raw::key_maybe_value(key, value))?;
 				}
 			}
@@ -144,7 +157,7 @@ impl testscript::runner::Runner for Runner {
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
-				let contains = self.store.contains(&key, version)?;
+				let contains = self.store.contains(&TaggedKey::from(script_key(&key)), version)?;
 				writeln!(output, "{} => {}", Raw::key(&key), contains)?;
 			}
 
@@ -183,9 +196,9 @@ impl testscript::runner::Runner for Runner {
 			"range" => {
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let range = EncodedKeyRange::parse(
+				let range = script_range(EncodedKeyRange::parse(
 					args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."),
-				);
+				));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
@@ -225,7 +238,7 @@ impl testscript::runner::Runner for Runner {
 				));
 				args.reject_rest()?;
 
-				let range = EncodedKeyRange::prefix(prefix.as_slice());
+				let range = EncodedKeyRange::prefix(script_prefix(prefix.as_slice()).as_slice());
 				if !reverse {
 					let items: Vec<_> = self
 						.store
@@ -270,7 +283,7 @@ impl testscript::runner::Runner for Runner {
 					&self.store,
 					cow_vec![
 						(Delta::Set {
-							key,
+							key: script_key(&key).into(),
 							bytes
 						})
 					],
@@ -291,7 +304,11 @@ impl testscript::runner::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				MultiVersionCommit::commit(&self.store, cow_vec![Delta::remove_silent(key)], version)?;
+				MultiVersionCommit::commit(
+					&self.store,
+					cow_vec![Delta::remove_silent(script_key(&key).into())],
+					version,
+				)?;
 				self.maybe_flush();
 			}
 
@@ -310,7 +327,7 @@ impl testscript::runner::Runner for Runner {
 
 				MultiVersionCommit::commit(
 					&self.store,
-					cow_vec![Delta::remove_announced(key, bytes)],
+					cow_vec![Delta::remove_announced(script_key(&key).into(), bytes)],
 					version,
 				)?;
 				self.maybe_flush();
@@ -339,9 +356,10 @@ impl testscript::runner::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
+				let stored = script_key(&key).encode();
 				let buffer = self.store.commit();
-				let table = classify_key(&key);
-				let value = match buffer.get(table, key.as_ref(), version)? {
+				let table = classify_key(&stored);
+				let value = match buffer.get(table, stored.as_ref(), version)? {
 					VersionedGetResult::Value {
 						value,
 						..
@@ -359,9 +377,11 @@ impl testscript::runner::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
+				let stored = script_key(&key).encode();
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
-				let table = classify_key(&key);
-				let value = persistent.get(table, key.as_ref(), version)?.value().map(|v| v.to_vec());
+				let table = classify_key(&stored);
+				let value =
+					persistent.get(table, stored.as_ref(), version)?.value().map(|v| v.to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
 
@@ -372,9 +392,10 @@ impl testscript::runner::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
+				let stored = script_key(&key).encode();
 				let buffer = self.store.commit();
-				let table = classify_key(&key);
-				let line = match buffer.get(table, key.as_ref(), version)? {
+				let table = classify_key(&stored);
+				let line = match buffer.get(table, stored.as_ref(), version)? {
 					VersionedGetResult::Value {
 						value,
 						version: found,
@@ -397,9 +418,10 @@ impl testscript::runner::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
+				let stored = script_key(&key).encode();
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
-				let table = classify_key(&key);
-				let line = match persistent.get(table, key.as_ref(), version)? {
+				let table = classify_key(&stored);
+				let line = match persistent.get(table, stored.as_ref(), version)? {
 					VersionedGetResult::Value {
 						value,
 						version: found,
@@ -428,11 +450,12 @@ impl testscript::runner::Runner for Runner {
 				};
 				args.reject_rest()?;
 
+				let stored = script_key(&key).encode();
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
-				let table = classify_key(&key);
+				let table = classify_key(&stored);
 				let mut batches: HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>> =
 					HashMap::new();
-				batches.entry(table).or_default().push((key, Some(CowVec::new(value_bytes))));
+				batches.entry(table).or_default().push((stored, Some(CowVec::new(value_bytes))));
 				persistent.set(version, batches)?;
 			}
 
@@ -442,9 +465,10 @@ impl testscript::runner::Runner for Runner {
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 
+				let stored = script_key(&key).encode();
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
-				let table = classify_key(&key);
-				persistent.delete_keys(table, &[key])?;
+				let table = classify_key(&stored);
+				persistent.delete_keys(table, &[stored])?;
 			}
 
 			name => {
@@ -465,9 +489,37 @@ impl EvictionWatermark for FixedWatermark {
 	}
 }
 
-fn print<I: Iterator<Item = MultiVersionRow>>(output: &mut String, iter: I) {
+fn script_key(raw: &EncodedKey) -> IndexEntryKey {
+	// extend_raw appends the tail verbatim, so encoded order matches the script's raw byte order.
+	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(raw.as_slice()))
+}
+
+fn script_raw(key: &TaggedKey) -> EncodedKey {
+	let TaggedKey::IndexEntry(entry) = key else {
+		panic!("script key must be an index entry")
+	};
+	EncodedKey::new(entry.key.as_ref())
+}
+
+fn script_prefix(raw: &[u8]) -> EncodedKey {
+	script_key(&EncodedKey::new(raw)).encode()
+}
+
+fn script_bound(bound: Bound<EncodedKey>) -> Bound<EncodedKey> {
+	match bound {
+		Bound::Included(key) => Bound::Included(script_key(&key).encode()),
+		Bound::Excluded(key) => Bound::Excluded(script_key(&key).encode()),
+		Bound::Unbounded => Bound::Unbounded,
+	}
+}
+
+fn script_range(range: EncodedKeyRange) -> EncodedKeyRange {
+	EncodedKeyRange::new(script_bound(range.start), script_bound(range.end))
+}
+
+fn print<I: Iterator<Item = MultiVersionRow<TaggedKey>>>(output: &mut String, iter: I) {
 	for item in iter {
-		let fmtkv = Raw::key_value(&item.key, item.bytes.as_slice());
+		let fmtkv = Raw::key_value(&script_raw(&item.key), item.bytes.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

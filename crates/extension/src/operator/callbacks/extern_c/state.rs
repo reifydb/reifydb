@@ -749,10 +749,14 @@ mod join_row_expiry_guard_tests {
 			catalog::{config::ConfigKey, flow::OperatorId},
 			store::MultiVersionRow,
 		},
-		key::operator::{
-			keyspace::{join::JoinRowMappingKey, suffix_width_of},
-			state::{
-				GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range, keyspace_inner_range_split,
+		key::{
+			any::TaggedKey,
+			operator::{
+				keyspace::{join::JoinRowMappingKey, suffix_width_of},
+				state::{
+					GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range,
+					keyspace_inner_range_split,
+				},
 			},
 		},
 		state::timer::{StateStore, TimerStore},
@@ -952,7 +956,7 @@ mod join_row_expiry_guard_tests {
 		}
 
 		fn state_range_iter(&mut self, _range: EncodedKeyRange) -> StateIterator<'_> {
-			StateIterator::new(Box::new(empty::<Result<MultiVersionRow>>()))
+			StateIterator::new(Box::new(empty::<Result<MultiVersionRow<TaggedKey>>>()))
 		}
 
 		fn state_clear(&mut self) -> Result<()> {

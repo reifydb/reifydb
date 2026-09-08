@@ -37,7 +37,7 @@ fn declare(db: &TestDb) {
 /// here because the frontier instant says nothing about which sweep wrote it.
 fn persisted_stamps(db: &TestDb) -> Vec<CommitVersion> {
 	let store = db.engine().single().read_store();
-	let batch = SingleVersionRange::range_batch(&store, OutputFrontierKey::full_scan(), SCAN_BATCH)
+	let batch = SingleVersionRange::range_batch(&store, OutputFrontierKey::full_scan().encode(), SCAN_BATCH)
 		.expect("scan the output frontier keyspace");
 	batch.items
 		.iter()

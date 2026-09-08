@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{ops::Bound, sync::Arc};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{
-		bytes::{EncodedBytes, read_fingerprint},
-		shape::RowShape,
-	},
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, read_fingerprint},
+	shape::RowShape,
 };
 use reifydb_core::{
 	interface::{
@@ -18,9 +15,10 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		row::{PartitionedRowKey, RowKey, RowKeyRange},
-		series::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange},
-		typed::key::Key,
+		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
+		row::{PartitionedSortedViewRowKey, RowKeyRange, SortedViewRowKey, StoragePartitionedRowKey},
+		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
@@ -38,7 +36,32 @@ use crate::{
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
-type DrainedBatch = (Vec<EncodedBytes>, Vec<RowNumber>, Option<EncodedKey>, bool);
+type DrainedBatch = (Vec<EncodedBytes>, Vec<RowNumber>, Option<TaggedKey>, bool);
+
+type DrainedPartitionedBatch = (Vec<EncodedBytes>, Vec<RowNumber>, Option<StoragePartitionedRowKey>, bool);
+
+enum Resume {
+	Key(Option<TaggedKey>),
+	Partitioned(Option<StoragePartitionedRowKey>),
+}
+
+fn partitioned_bounds(
+	partition: Option<Partition>,
+	last: Option<StoragePartitionedRowKey>,
+) -> (Bound<StoragePartitionedRowKey>, Bound<StoragePartitionedRowKey>) {
+	let start = match (last, partition) {
+		(Some(key), _) => Bound::Excluded(key),
+		(None, Some(partition)) => {
+			Bound::Included(StoragePartitionedRowKey::new(partition, RowNumber(u64::MAX)))
+		}
+		(None, None) => Bound::Unbounded,
+	};
+	let end = match partition {
+		Some(partition) => Bound::Included(StoragePartitionedRowKey::new(partition, RowNumber(u64::MIN))),
+		None => Bound::Unbounded,
+	};
+	(start, end)
+}
 
 pub(crate) struct ViewScanNode {
 	view: ResolvedView,
@@ -47,7 +70,7 @@ pub(crate) struct ViewScanNode {
 	storage_types: Vec<ValueType>,
 	dictionaries: Vec<Option<Dictionary>>,
 	shape: Option<RowShape>,
-	last_key: Option<EncodedKey>,
+	resume: Resume,
 	exhausted: bool,
 	sorted: bool,
 	partitioned: bool,
@@ -84,8 +107,14 @@ impl ViewScanNode {
 			columns: view.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
 		let series = view.def().storage_kind() == ViewStorageKind::Series;
-		let sorted = !view.def().sort().is_empty();
+		let sorted = !view.def().sort().is_empty() && view.def().storage_kind() == ViewStorageKind::Table;
 		let partitioned = !view.def().partition_by().is_empty();
+
+		let resume = if partitioned && !series && !sorted {
+			Resume::Partitioned(None)
+		} else {
+			Resume::Key(None)
+		};
 
 		Ok(Self {
 			view,
@@ -94,7 +123,7 @@ impl ViewScanNode {
 			storage_types,
 			dictionaries,
 			shape: None,
-			last_key: None,
+			resume,
 			exhausted: false,
 			sorted,
 			partitioned,
@@ -127,16 +156,16 @@ impl ViewScanNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::view::range_open")]
 	fn open_range<'rx, 'tx>(
 		rx: &'rx mut Transaction<'tx>,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		batch_size: u64,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'rx>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'rx>> {
 		rx.range(range, RangeScope::All, batch_size as usize)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::view::drain")]
 	fn drain_batch(
 		&self,
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
 		batch_size: u64,
 	) -> Result<DrainedBatch> {
 		let mut batch = Vec::new();
@@ -149,33 +178,71 @@ impl ViewScanNode {
 				Some(Ok(multi)) => {
 					let row = if self.series {
 						if self.partitioned {
-							match PartitionedSeriesRowKey::decode(&multi.key) {
-								Some(key) => RowNumber(key.sequence),
-								None => continue,
+							match &multi.key {
+								TaggedKey::PartitionedSeriesRow(key) => {
+									RowNumber(key.sequence)
+								}
+								_ => continue,
 							}
 						} else {
-							match SeriesRowKey::decode(&multi.key) {
-								Some(key) => RowNumber(key.sequence),
-								None => continue,
+							match &multi.key {
+								TaggedKey::SeriesRow(key) => RowNumber(key.sequence),
+								_ => continue,
 							}
 						}
 					} else if self.sorted {
-						let bytes = multi.key.as_slice();
-						RowNumber(u64::from_be_bytes(
-							bytes[bytes.len() - 8..].try_into().unwrap(),
-						))
-					} else if self.partitioned {
-						match PartitionedRowKey::decode(&multi.key) {
-							Some(key) => key.row,
+						let row = if self.partitioned {
+							match &multi.key {
+								TaggedKey::PartitionedSortedViewRow(key) => {
+									Some(key.row.0)
+								}
+								_ => None,
+							}
+						} else {
+							match &multi.key {
+								TaggedKey::SortedViewRow(key) => Some(key.row.0),
+								_ => None,
+							}
+						};
+						match row {
+							Some(row) => row,
 							None => continue,
 						}
-					} else if let Some(key) = RowKey::decode(&multi.key) {
+					} else if let TaggedKey::Row(key) = &multi.key {
 						key.row
 					} else {
 						continue;
 					};
 					batch.push(multi.bytes);
 					row_numbers.push(row);
+					new_last_key = Some(multi.key);
+				}
+				Some(Err(e)) => return Err(e),
+				None => {
+					drained = true;
+					break;
+				}
+			}
+		}
+
+		Ok((batch, row_numbers, new_last_key, drained))
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::view::drain_partitioned")]
+	fn drain_batch_partitioned(
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>>,
+		batch_size: u64,
+	) -> Result<DrainedPartitionedBatch> {
+		let mut batch = Vec::new();
+		let mut row_numbers = Vec::new();
+		let mut new_last_key = None;
+		let mut drained = false;
+
+		for _ in 0..batch_size {
+			match stream.next() {
+				Some(Ok(multi)) => {
+					batch.push(multi.bytes);
+					row_numbers.push(multi.key.row());
 					new_last_key = Some(multi.key);
 				}
 				Some(Err(e)) => return Err(e),
@@ -235,28 +302,64 @@ impl QueryNode for ViewScanNode {
 
 		let batch_size = stored_ctx.batch_size;
 		let storage = self.view.def().storage_id();
-		let range = match (self.series, self.partitioned, self.partition) {
-			(true, true, Some(partition)) => PartitionedSeriesRowKeyRange::partition_scan_range(
-				storage,
-				partition,
-				self.last_key.as_ref(),
-			),
-			(true, true, None) => {
-				PartitionedSeriesRowKeyRange::full_scan_range(storage, self.last_key.as_ref())
-			}
-			(true, false, _) => {
-				SeriesRowKeyRange::scan_range(storage, None, None, None, self.last_key.as_ref())
-			}
-			(false, true, Some(partition)) => {
-				PartitionedRowKey::partition_scan_range(storage, partition, self.last_key.as_ref())
-			}
-			(false, true, None) => PartitionedRowKey::scan_range(storage, self.last_key.as_ref()),
-			(false, false, _) => RowKeyRange::scan_range(storage, self.last_key.as_ref()),
-		};
 
-		let (batch, row_numbers, new_last_key, drained) = {
-			let mut stream = Self::open_range(rx, range, batch_size)?;
-			self.drain_batch(&mut stream, batch_size)?
+		let (batch, row_numbers, next_resume, resumed, drained) = match &self.resume {
+			Resume::Partitioned(last) => {
+				let last = *last;
+				let (start, end) = partitioned_bounds(self.partition, last);
+				let (batch, row_numbers, new_last_key, drained) = {
+					let mut stream = rx.range_partitioned_row(
+						storage,
+						start,
+						end,
+						RangeScope::All,
+						batch_size as usize,
+					)?;
+					Self::drain_batch_partitioned(&mut stream, batch_size)?
+				};
+				(batch, row_numbers, Resume::Partitioned(new_last_key), last.is_some(), drained)
+			}
+			Resume::Key(last) => {
+				let range = match (self.series, self.partitioned, self.partition) {
+					(true, true, Some(partition)) => {
+						PartitionedSeriesRowKeyRange::partition_scan_range(
+							storage,
+							partition,
+							last.as_ref(),
+						)
+					}
+					(true, true, None) => {
+						PartitionedSeriesRowKeyRange::full_scan_range(storage, last.as_ref())
+					}
+					(true, false, _) => {
+						SeriesRowKeyRange::scan_range(storage, None, None, None, last.as_ref())
+					}
+					(false, true, Some(partition)) if self.sorted => {
+						PartitionedSortedViewRowKey::partition_scan_range(
+							storage,
+							partition,
+							last.as_ref(),
+						)
+					}
+					(false, true, None) if self.sorted => {
+						PartitionedSortedViewRowKey::scan_range(storage, last.as_ref())
+					}
+					(false, false, _) if self.sorted => {
+						SortedViewRowKey::scan_range(storage, last.as_ref())
+					}
+					(false, false, _) => RowKeyRange::scan_range(storage, last.as_ref()),
+					(false, true, _) => unreachable!(
+						"unsorted partitioned view rows resume through Resume::Partitioned"
+					),
+				};
+
+				let resumed = last.is_some();
+				let (batch, row_numbers, new_last_key, drained) = {
+					let mut stream = Self::open_range(rx, range, batch_size)?;
+					self.drain_batch(&mut stream, batch_size)?
+				};
+				(batch, row_numbers, Resume::Key(new_last_key), resumed, drained)
+			}
 		};
 
 		if drained {
@@ -265,13 +368,13 @@ impl QueryNode for ViewScanNode {
 
 		if batch.is_empty() {
 			self.exhausted = true;
-			if self.last_key.is_none() {
+			if !resumed {
 				return Ok(Some(Columns::from_catalog_columns(self.view.columns())));
 			}
 			return Ok(None);
 		}
 
-		self.last_key = new_last_key;
+		self.resume = next_resume;
 
 		let mut columns = Columns::with_system(self.storage_columns(), SystemColumns::default());
 		self.append_batch(rx, &mut columns, batch, row_numbers)?;

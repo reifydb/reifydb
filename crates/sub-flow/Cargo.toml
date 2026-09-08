@@ -59,7 +59,7 @@ reifydb-testing-sdk = { workspace = true }
 reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-value = { workspace = true }
 reifydb-rql = { workspace = true }
-reifydb = { workspace = true, features = ["testing"] }
+reifydb = { workspace = true, features = ["sub_flow", "testing"] }
 reifydb-test-harness = { workspace = true, features = ["operator"] }
 reifydb-testing-chaos = { workspace = true, features = ["operator"] }
 reifydb-testing-flow = { workspace = true }

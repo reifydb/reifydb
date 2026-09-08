@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_core::{interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_value::util::cowvec::CowVec;
 
@@ -9,8 +10,8 @@ fn test_multi() -> MultiTransaction {
 	MultiTransaction::testing()
 }
 
-fn make_key(s: &str) -> EncodedKey {
-	EncodedKey::new(s.as_bytes())
+fn make_key(s: &str) -> QueueDeduplicationKey {
+	QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>())
 }
 
 fn make_bytes(s: &str) -> EncodedBytes {

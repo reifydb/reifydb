@@ -26,8 +26,8 @@ impl CatalogStore {
 
 	#[inline]
 	fn unlink_node(txn: &mut AdminTransaction, operator_id: OperatorId, flow: FlowId) -> Result<()> {
-		txn.remove(&OperatorKey::encoded(operator_id))?;
-		txn.remove(&OperatorByFlowKey::encoded(flow, operator_id))?;
+		txn.remove(&OperatorKey::new(operator_id))?;
+		txn.remove(&OperatorByFlowKey::new(flow, operator_id))?;
 		Ok(())
 	}
 }

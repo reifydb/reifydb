@@ -15,7 +15,7 @@ use reifydb_core::{
 			state::{GroupId, KeyspaceId, OperatorStateKey},
 			traits::{Keyspace, group_scoped},
 		},
-		typed::{TypedKey, layout::KeyLayout, range::KeyRange},
+		typed::{BoundedKey, layout::KeyLayout, range::KeyRange},
 	},
 	state::typed::SuffixBytes,
 };
@@ -49,7 +49,7 @@ fn typed_key<K: Keyspace>(group: GroupId, suffix: &[u8], edge: K::Suffix) -> K::
 }
 
 fn lowest<K: Keyspace>() -> K::Suffix {
-	<K::Suffix as TypedKey>::low()
+	<K::Suffix as BoundedKey>::low()
 }
 
 fn highest<K: Keyspace>() -> K::Suffix {

@@ -11,7 +11,6 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
@@ -19,6 +18,7 @@ use reifydb_core::{
 		catalog::config::GetConfig,
 		store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet},
 	},
+	key::any::TaggedKey,
 	testing::ProfileConfig,
 };
 use reifydb_runtime::{
@@ -30,7 +30,7 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::MultiStore;
-use reifydb_value::{Result, util::hex, value::duration::Duration};
+use reifydb_value::{Result, value::duration::Duration};
 use tracing::{instrument, warn};
 use version::{StandardVersionProvider, VersionProvider};
 
@@ -389,13 +389,13 @@ pub enum TransactionType {
 }
 
 impl MultiTransaction {
-	#[instrument(name = "transaction::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
-	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>> {
+	#[instrument(name = "transaction::get", level = "trace", skip(self, key), fields(version = version.0))]
+	pub fn get(&self, key: &TaggedKey, version: CommitVersion) -> Result<Option<Committed>> {
 		Ok(MultiVersionGet::get(&self.store, key, version)?.map(|sv| sv.into()))
 	}
 
-	#[instrument(name = "transaction::contains_key", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
-	pub fn contains_key(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
+	#[instrument(name = "transaction::contains_key", level = "trace", skip(self, key), fields(version = version.0))]
+	pub fn contains_key(&self, key: &TaggedKey, version: CommitVersion) -> Result<bool> {
 		MultiVersionContains::contains(&self.store, key, version)
 	}
 

@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
-use reifydb_core::key::{
-	row::{RowSettingsKey, RowSettingsKeyRange},
-	typed::key::Key,
-};
+use reifydb_core::key::{any::TaggedKey, row::RowSettingsKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use tracing::warn;
 
@@ -13,14 +10,14 @@ use super::CatalogCache;
 use crate::{Result, store::row_settings::decode_row_settings};
 
 pub(crate) fn load_row_settings(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
-	let range = RowSettingsKeyRange::full_scan();
+	let range = RowSettingsKey::full_scan();
 	let stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
 
-		let Some(key) = RowSettingsKey::decode(&multi.key) else {
+		let TaggedKey::RowSettings(key) = &multi.key else {
 			warn!("Failed to decode RowSettingsKey from catalog entry, skipping");
 			continue;
 		};

@@ -19,7 +19,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		id: AuthenticationId,
 	) -> Result<Option<Authentication>> {
-		rx.get(&AuthenticationKey::encoded(id))?.map(convert_authentication).transpose()
+		rx.get(&AuthenticationKey::new(id))?.map(convert_authentication).transpose()
 	}
 
 	pub(crate) fn find_authentication_by_identity_and_method(

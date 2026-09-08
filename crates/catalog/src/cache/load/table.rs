@@ -49,7 +49,7 @@ pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 	Ok(())
 }
 
-fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Result<Table> {
+fn convert_table<K>(multi: MultiVersionRow<K>, primary_key: Option<PrimaryKey>) -> Result<Table> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = TableId(table::get_id(&bytes));
 	let namespace = NamespaceId(table::get_namespace(&bytes));
@@ -73,7 +73,7 @@ fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Res
 	})
 }
 
-fn get_table_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
+fn get_table_primary_key_id<K>(multi: &MultiVersionRow<K>) -> Option<PrimaryKeyId> {
 	let pk_id_raw = table::get_primary_key(EncodedCatalogRow::view(&multi.bytes));
 	if pk_id_raw == 0 {
 		None

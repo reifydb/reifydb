@@ -12,7 +12,7 @@ use crate::{CatalogStore, Result, store::relationship::list::decode_relationship
 
 impl CatalogStore {
 	pub(crate) fn find_relationship(rx: &mut Transaction<'_>, id: RelationshipId) -> Result<Option<Relationship>> {
-		let multi = match rx.get(&RelationshipKey::encoded(id))? {
+		let multi = match rx.get(&RelationshipKey::new(id))? {
 			Some(multi) => multi,
 			None => return Ok(None),
 		};

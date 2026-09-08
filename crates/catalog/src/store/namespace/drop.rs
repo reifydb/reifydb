@@ -4,11 +4,11 @@
 use reifydb_core::{
 	interface::catalog::id::NamespaceId,
 	key::{
+		any::TaggedKey,
 		namespace::{
 			NamespaceDictionaryKey, NamespaceFlowKey, NamespaceKey, NamespaceQueueKey,
 			NamespaceRingBufferKey, NamespaceSumTypeKey, NamespaceTableKey, NamespaceViewKey,
 		},
-		typed::key::Key,
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
@@ -24,7 +24,7 @@ impl CatalogStore {
 		Self::drop_namespace_flows(txn, namespace)?;
 		Self::drop_namespace_dictionaries(txn, namespace)?;
 		Self::drop_namespace_sumtypes(txn, namespace)?;
-		txn.remove(&NamespaceKey::encoded(namespace))?;
+		txn.remove(&NamespaceKey::new(namespace))?;
 		Ok(())
 	}
 
@@ -35,7 +35,7 @@ impl CatalogStore {
 		let mut table_ids = Vec::new();
 		for entry in stream.by_ref() {
 			let entry = entry?;
-			if let Some(key) = NamespaceTableKey::decode(&entry.key) {
+			if let TaggedKey::NamespaceTable(key) = &entry.key {
 				table_ids.push(key.table);
 			}
 		}
@@ -53,7 +53,7 @@ impl CatalogStore {
 		let mut view_ids = Vec::new();
 		for entry in stream.by_ref() {
 			let entry = entry?;
-			if let Some(key) = NamespaceViewKey::decode(&entry.key) {
+			if let TaggedKey::NamespaceView(key) = &entry.key {
 				view_ids.push(key.view);
 			}
 		}
@@ -71,7 +71,7 @@ impl CatalogStore {
 		let mut rb_ids = Vec::new();
 		for entry in stream.by_ref() {
 			let entry = entry?;
-			if let Some(key) = NamespaceRingBufferKey::decode(&entry.key) {
+			if let TaggedKey::NamespaceRingBuffer(key) = &entry.key {
 				rb_ids.push(key.ringbuffer);
 			}
 		}
@@ -89,7 +89,7 @@ impl CatalogStore {
 		let mut queue_ids = Vec::new();
 		for entry in stream.by_ref() {
 			let entry = entry?;
-			if let Some(key) = NamespaceQueueKey::decode(&entry.key) {
+			if let TaggedKey::NamespaceQueue(key) = &entry.key {
 				queue_ids.push(key.queue);
 			}
 		}
@@ -107,7 +107,7 @@ impl CatalogStore {
 		let mut flow_ids = Vec::new();
 		for entry in stream.by_ref() {
 			let entry = entry?;
-			if let Some(key) = NamespaceFlowKey::decode(&entry.key) {
+			if let TaggedKey::NamespaceFlow(key) = &entry.key {
 				flow_ids.push(key.flow);
 			}
 		}
@@ -125,7 +125,7 @@ impl CatalogStore {
 		let mut dict_ids = Vec::new();
 		for entry in stream.by_ref() {
 			let entry = entry?;
-			if let Some(key) = NamespaceDictionaryKey::decode(&entry.key) {
+			if let TaggedKey::NamespaceDictionary(key) = &entry.key {
 				dict_ids.push(key.dictionary);
 			}
 		}
@@ -143,7 +143,7 @@ impl CatalogStore {
 		let mut st_ids = Vec::new();
 		for entry in stream.by_ref() {
 			let entry = entry?;
-			if let Some(key) = NamespaceSumTypeKey::decode(&entry.key) {
+			if let TaggedKey::NamespaceSumType(key) = &entry.key {
 				st_ids.push(key.sumtype);
 			}
 		}

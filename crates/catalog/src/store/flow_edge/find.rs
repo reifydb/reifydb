@@ -12,7 +12,7 @@ use crate::{CatalogStore, Result, store::flow_edge::shape::flow_edge};
 
 impl CatalogStore {
 	pub(crate) fn find_flow_edge(rx: &mut Transaction<'_>, edge: FlowEdgeId) -> Result<Option<FlowEdge>> {
-		let Some(multi) = rx.get(&FlowEdgeKey::encoded(edge))? else {
+		let Some(multi) = rx.get(&FlowEdgeKey::new(edge))? else {
 			return Ok(None);
 		};
 

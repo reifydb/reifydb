@@ -10,7 +10,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			TypedKey,
+			BoundedKey, DenseKey, KeyLayout,
 			direction::{Desc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues},
 		},
@@ -18,13 +18,13 @@ use crate::{
 	metrics::heap::HeapSize,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct ExpiryKey {
 	pub threshold: Desc<u64>,
 	pub owner: Desc<Hash128>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct TumblingExpiryKey {
 	pub group: Desc<GroupId>,
 	pub threshold: Desc<u64>,
@@ -32,14 +32,14 @@ pub struct TumblingExpiryKey {
 	pub window_start: Desc<u64>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct TumblingExpirySuffix {
 	pub threshold: Desc<u64>,
 	pub owner: Desc<Hash128>,
 	pub window_start: Desc<u64>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct ReapQueueKey {
 	pub group: Desc<GroupId>,
 }

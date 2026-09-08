@@ -16,7 +16,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet},
 	},
-	key::row::RowKey,
+	key::{any::TaggedKey, row::RowKey},
 };
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::store::StandardMultiStore;
@@ -126,7 +126,7 @@ fn physical_delete_storage(store: &StandardMultiStore, storage_id: StorageId, ro
 }
 
 fn check_get_ms(configs: &[(&str, StandardMultiStore)], oracle: &MsOracle, s: usize, row: u64, read: u64, step: u32) {
-	let key = RowKey::encoded(storage(s), row);
+	let key = TaggedKey::from(RowKey::new(storage(s), row));
 	let expected = oracle.get(s, row);
 	for (name, store) in configs {
 		let got = store.get(&key, CommitVersion(read)).unwrap().map(|r| (r.bytes.to_vec(), r.version.0));
@@ -148,11 +148,15 @@ fn collect_range_ms(
 		read: CommitVersion(read),
 	};
 	let rows = if reverse {
-		store.range_rev(RowKey::full_scan(storage(s)), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range_rev(RowKey::full_scan(storage(s)).encode(), scope, batch)
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap()
 	} else {
-		store.range(RowKey::full_scan(storage(s)), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range(RowKey::full_scan(storage(s)).encode(), scope, batch)
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap()
 	};
-	rows.into_iter().map(|r| (r.key.to_vec(), r.bytes.to_vec(), r.version.0)).collect()
+	rows.into_iter().map(|r| (r.key.encode().to_vec(), r.bytes.to_vec(), r.version.0)).collect()
 }
 
 fn check_range_ms(
@@ -246,10 +250,10 @@ pub fn drive(seed: u64, p: Params) {
 					.iter()
 					.map(|(row, value)| match value {
 						Some(bytes) => Delta::Set {
-							key: RowKey::encoded(storage(s), *row),
+							key: RowKey::new(storage(s), *row).into(),
 							bytes: EncodedBytes(CowVec::new(bytes.clone())),
 						},
-						None => Delta::remove_silent(RowKey::encoded(storage(s), *row)),
+						None => Delta::remove_silent(RowKey::new(storage(s), *row).into()),
 					})
 					.collect();
 				MultiVersionCommit::commit(store, CowVec::new(deltas), CommitVersion(version)).unwrap();

@@ -6,11 +6,8 @@ use std::{
 	thread,
 };
 
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::shape::{RowFamily, RowShape},
-};
-use reifydb_core::event::EventBus;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
+use reifydb_core::{event::EventBus, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::single::SingleTransaction;
@@ -35,18 +32,23 @@ fn concurrent_read_modify_write_on_a_fresh_key_is_serialized() {
 	const ROUNDS: u64 = 100;
 
 	for round in 0..ROUNDS {
-		let key = EncodedKey::new(format!("counter:{round}").into_bytes());
+		let key = QueueDeduplicationKey::new(
+			QueueId(1),
+			format!("counter:{round}").bytes().map(|b| !b).collect::<Vec<u8>>(),
+		);
+		let locked = key.encode();
 		let barrier = Arc::new(Barrier::new(THREADS as usize));
 
 		thread::scope(|scope| {
 			for _ in 0..THREADS {
 				let txn = txn.clone();
 				let key = key.clone();
+				let locked = locked.clone();
 				let barrier = Arc::clone(&barrier);
 				scope.spawn(move || {
 					let shape = u64_shape();
 					barrier.wait();
-					txn.with_command([&key], |tx| {
+					txn.with_command([&locked], |tx| {
 						let current = match tx.get(&key)? {
 							Some(existing) => shape.get::<u64>(&existing.bytes, 0),
 							None => 0,
@@ -62,7 +64,7 @@ fn concurrent_read_modify_write_on_a_fresh_key_is_serialized() {
 
 		let shape = u64_shape();
 		let total = txn
-			.with_command([&key], |tx| {
+			.with_command([&locked], |tx| {
 				Ok(shape.get::<u64>(
 					&tx.get(&key)?.expect("counter key must exist after the round").bytes,
 					0,

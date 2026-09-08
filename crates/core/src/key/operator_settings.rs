@@ -1,48 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
-use reifydb_macro::Key;
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_macro::KeyCodec;
 use serde::{Deserialize, Serialize};
 
-use super::{KeyKind, typed::key::Key};
-use crate::interface::catalog::flow::OperatorId;
+use super::KeyTag;
+use crate::{
+	interface::catalog::flow::OperatorId,
+	key::{
+		any::{Field, KeyFields, Width},
+		bound::TaggedKeyBoundRange,
+	},
+};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Key)]
-#[key(kind = OperatorSettings)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, KeyCodec, Hash)]
+#[key(tag = OperatorSettings)]
 pub struct OperatorSettingsKey {
 	pub operator: OperatorId,
 }
 
 impl OperatorSettingsKey {
-	pub fn encoded(operator: impl Into<OperatorId>) -> EncodedKey {
+	pub fn new(operator: impl Into<OperatorId>) -> Self {
 		Self {
 			operator: operator.into(),
 		}
-		.encode()
-	}
-}
-
-pub struct OperatorSettingsKeyRange;
-
-impl OperatorSettingsKeyRange {
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
 	}
 
-	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(OperatorSettingsKey::KIND as u8);
-		serializer.to_encoded_key()
+	pub fn encoded(operator: impl Into<OperatorId>) -> EncodedKey {
+		Self::new(operator).encode()
 	}
 
-	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(OperatorSettingsKey::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
@@ -91,12 +81,12 @@ pub mod tests {
 mod verify_byte_identical {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::{Key, OperatorSettingsKey};
+	use super::OperatorSettingsKey;
 	use crate::interface::catalog::flow::OperatorId;
 
 	fn legacy_encode(key: &OperatorSettingsKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(OperatorSettingsKey::KIND as u8).extend_u64(key.operator);
+		serializer.extend_u8(OperatorSettingsKey::TAG as u8).extend_u64(key.operator);
 		serializer.to_encoded_key().as_slice().to_vec()
 	}
 

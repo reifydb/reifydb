@@ -12,10 +12,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::store::{SingleVersionGet, SingleVersionRange},
-	key::{
-		EncodableKey,
-		catalog::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
-	},
+	key::catalog::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
 };
 use reifydb_store_single::{
 	SingleStore,
@@ -34,14 +31,14 @@ pub trait DictionaryStore: Send + Sync {
 }
 
 pub struct DictEntryWrite {
-	pub entry_key: EncodedKey,
+	pub entry_key: DictionaryEntryKey,
 	pub entry_value: EncodedPodRow,
-	pub index_key: EncodedKey,
+	pub index_key: DictionaryEntryIndexKey,
 	pub index_value: EncodedPodRow,
 }
 
 pub fn durable_max_index_id(store: &SingleStore, dictionary: DictionaryId) -> Result<Option<u128>> {
-	let range = DictionaryEntryIndexKey::full_scan(dictionary);
+	let range = DictionaryEntryIndexKey::full_scan(dictionary).encode();
 	match store.persistent() {
 		Some(tier) => {
 			let mut cursor = RangeCursor::new();
@@ -99,7 +96,11 @@ impl DictionaryStore for SingleDictionaryStore {
 
 	fn max_index_id(&self, dictionary: DictionaryId) -> Result<Option<u128>> {
 		let store = self.single.read_store();
-		let batch = SingleVersionRange::range_batch(&store, DictionaryEntryIndexKey::full_scan(dictionary), 1)?;
+		let batch = SingleVersionRange::range_batch(
+			&store,
+			DictionaryEntryIndexKey::full_scan(dictionary).encode(),
+			1,
+		)?;
 		match batch.items.first() {
 			Some(row) => Ok(DictionaryEntryIndexKey::decode(&row.key).map(|key| key.id)),
 			None => Ok(None),
@@ -110,8 +111,10 @@ impl DictionaryStore for SingleDictionaryStore {
 		debug_assert!(!writes.is_empty(), "commit_entries must not be called with no writes");
 
 		let lock_key = DictionaryKey::encoded(dictionary);
-		let ranges =
-			vec![DictionaryEntryKey::full_scan(dictionary), DictionaryEntryIndexKey::full_scan(dictionary)];
+		let ranges = vec![
+			DictionaryEntryKey::full_scan(dictionary).encode(),
+			DictionaryEntryIndexKey::full_scan(dictionary).encode(),
+		];
 		let mut txn = self.single.begin_command_ranged([&lock_key], ranges)?;
 		for write in writes {
 			txn.set(&write.index_key, write.index_value.clone())?;

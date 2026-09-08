@@ -1,25 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{
-	deserializer::KeyDeserializer,
-	encoded::{EncodedKey, EncodedKeyRange},
-	serializer::KeySerializer,
-};
-use reifydb_macro::Key;
-use reifydb_value::value::Value;
+use std::borrow::Cow;
 
-use super::{EncodableKey, KeyKind};
+use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
+use reifydb_macro::KeyCodec;
+use reifydb_value::value::Value;
+use smallvec::{SmallVec, smallvec};
+
+use super::KeyTag;
 use crate::{
 	interface::catalog::{id::RingBufferId, object::ObjectId, storage::StorageId},
 	key::{
+		any::{Field, KeyFields, RawEncoding, Width, encode_values},
+		bound::{TaggedKeyBoundRange, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
-		typed::key::Key,
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Key)]
-#[key(kind = RingBuffer)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = RingBuffer)]
 pub struct RingBufferKey {
 	pub ringbuffer: RingBufferId,
 }
@@ -32,27 +32,15 @@ impl RingBufferKey {
 	}
 
 	pub fn encoded(ringbuffer: impl Into<RingBufferId>) -> EncodedKey {
-		Key::encode(&Self::new(ringbuffer.into()))
+		Self::new(ringbuffer.into()).encode()
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::ringbuffer_start()), Some(Self::ringbuffer_end()))
-	}
-
-	fn ringbuffer_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<Self as Key>::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn ringbuffer_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(<Self as Key>::KIND as u8 - 1);
-		serializer.to_encoded_key()
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct RingBufferMetadataKey {
 	pub storage: StorageId,
 	pub partition_values: Vec<Value>,
@@ -70,46 +58,39 @@ impl RingBufferMetadataKey {
 		Self::new(storage).encode()
 	}
 
-	pub fn encoded_partition(storage: impl Into<StorageId>, partition_values: Vec<Value>) -> EncodedKey {
+	pub fn partition(storage: impl Into<StorageId>, partition_values: Vec<Value>) -> Self {
 		Self {
 			storage: storage.into(),
 			partition_values,
 		}
-		.encode()
 	}
 
-	pub fn full_scan_for_storage(storage: impl Into<StorageId>) -> EncodedKeyRange {
-		let storage = ObjectId::from(storage.into());
+	pub fn encoded_partition(storage: impl Into<StorageId>, partition_values: Vec<Value>) -> EncodedKey {
+		Self::partition(storage, partition_values).encode()
+	}
 
-		let mut start = KeySerializer::with_capacity(10);
-		start.extend_u8(Self::KIND as u8).extend_object_id(storage);
-		let start_key = start.to_encoded_key();
-
-		let mut end = KeySerializer::with_capacity(10);
-		end.extend_u8(Self::KIND as u8).extend_object_id(storage.prev());
-		let end_key = end.to_encoded_key();
-
-		EncodedKeyRange::start_end(Some(start_key), Some(end_key))
+	pub fn full_scan_for_storage(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(ObjectId::from(storage.into())))
 	}
 }
 
-impl EncodableKey for RingBufferMetadataKey {
-	const KIND: KeyKind = KeyKind::RingBufferMetadata;
+impl RingBufferMetadataKey {
+	pub const TAG: KeyTag = KeyTag::RingBufferMetadata;
 
-	fn encode(&self) -> EncodedKey {
+	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(32);
-		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.storage);
+		serializer.extend_u8(Self::TAG as u8).extend_object_id(self.storage);
 		for value in &self.partition_values {
 			serializer.extend_value(value);
 		}
 		serializer.to_encoded_key()
 	}
 
-	fn decode(key: &EncodedKey) -> Option<Self> {
+	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
+		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
+		if kind != Self::TAG {
 			return None;
 		}
 
@@ -181,7 +162,7 @@ mod tests {
 	#[test]
 	fn test_full_scan_for_storage_excludes_a_view_with_the_same_id() {
 		// Ring buffer 42 and view 42 share a numeric id, so only the tag byte separates their scans.
-		let range = RingBufferMetadataKey::full_scan_for_storage(RingBufferId(42));
+		let range = RingBufferMetadataKey::full_scan_for_storage(RingBufferId(42)).encode();
 		let ringbuffer = RingBufferMetadataKey::encoded(RingBufferId(42));
 		let view = RingBufferMetadataKey::encoded(ViewId(42));
 		assert!(range.contains(&ringbuffer));
@@ -192,8 +173,21 @@ mod tests {
 	fn test_ring_buffer_key_matches_legacy_byte_layout() {
 		for id in [RingBufferId(0), RingBufferId(1), RingBufferId(u64::MAX)] {
 			let mut legacy = KeySerializer::with_capacity(9);
-			legacy.extend_u8(KeyKind::RingBuffer as u8).extend_u64(id);
+			legacy.extend_u8(KeyTag::RingBuffer as u8).extend_u64(id);
 			assert_eq!(legacy.to_encoded_key().as_slice(), RingBufferKey::encoded(id).as_slice());
 		}
+	}
+}
+
+impl KeyFields for RingBufferMetadataKey {
+	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
+		smallvec![
+			Field::UAsc(Width::U8, ObjectId::from(self.storage).type_tag() as u128),
+			Field::UDesc(Width::U64, ObjectId::from(self.storage).as_u64() as u128),
+			Field::RawAsc(
+				RawEncoding::Verbatim,
+				Cow::Owned(encode_values(&self.partition_values).as_slice().to_vec())
+			),
+		]
 	}
 }

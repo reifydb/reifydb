@@ -218,7 +218,7 @@ fn write_deduplication_record(
 ) -> Result<()> {
 	let ttl = queue.deduplicate.as_ref().map(|d| d.ttl).unwrap_or(Duration::MAX);
 	let record = encode_queue_deduplication(row_number, now.saturating_add(ttl));
-	txn.set(&QueueDeduplicationKey::encoded(queue.id, key), record.into_bytes())?;
+	txn.set(&QueueDeduplicationKey::new(queue.id, key), record.into_bytes())?;
 	Ok(())
 }
 
@@ -245,7 +245,7 @@ fn resolve_duplicates(
 			continue;
 		}
 
-		let stored = txn.get(&QueueDeduplicationKey::encoded(queue.id, key.clone()))?;
+		let stored = txn.get(&QueueDeduplicationKey::new(queue.id, key.clone()))?;
 		if let Some(stored) = stored {
 			let Some((row_number, expires_at)) =
 				decode_queue_deduplication(EncodedQueueDeduplicationRow::view(&stored.bytes))
@@ -257,7 +257,7 @@ fn resolve_duplicates(
 				)
 			};
 			if expires_at > now {
-				let encoded = txn.get(&RowKey::encoded(queue.id, row_number))?.map(|item| item.bytes);
+				let encoded = txn.get(&RowKey::new(queue.id, row_number))?.map(|item| item.bytes);
 				outcomes.push(Outcome::Duplicate {
 					row_number,
 					encoded,

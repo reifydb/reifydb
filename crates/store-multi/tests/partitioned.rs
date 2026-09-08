@@ -15,7 +15,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet},
 	},
-	key::row::PartitionedRowKey,
+	key::{any::TaggedKey, row::PartitionedRowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::{
@@ -75,9 +75,9 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	let storage = StorageId::Table(TableId(1));
 	let us = Partition::of(&[Value::Utf8("us".to_string())]);
 	let eu = Partition::of(&[Value::Utf8("eu".to_string())]);
-	let k_us1 = PartitionedRowKey::encoded(storage, us, RowNumber(1));
-	let k_eu2 = PartitionedRowKey::encoded(storage, eu, RowNumber(2));
-	let k_us3 = PartitionedRowKey::encoded(storage, us, RowNumber(3));
+	let k_us1 = TaggedKey::from(PartitionedRowKey::new(storage, us, RowNumber(1)));
+	let k_eu2 = TaggedKey::from(PartitionedRowKey::new(storage, eu, RowNumber(2)));
+	let k_us3 = TaggedKey::from(PartitionedRowKey::new(storage, us, RowNumber(3)));
 
 	MultiVersionCommit::commit(
 		&store,
@@ -113,12 +113,14 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 		read: CommitVersion(2),
 	};
 
-	let all: Vec<_> =
-		store.range(PartitionedRowKey::full_scan(storage), scope, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let all: Vec<_> = store
+		.range(PartitionedRowKey::full_scan(storage).encode(), scope, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	assert_eq!(all.len(), 3, "full-object range must return flushed + buffered partitioned rows across tiers");
 
 	let us_rows: Vec<_> = store
-		.range(PartitionedRowKey::partition_range(storage, us), scope, 1024)
+		.range(PartitionedRowKey::partition_range(storage, us).encode(), scope, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap();
 	assert_eq!(us_rows.len(), 2, "us partition range must return only us rows across tiers");
@@ -135,14 +137,18 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	let persistent = store.persistent().expect("persistent tier configured");
 	assert!(
 		persistent
-			.get(EntryKind::PartitionedSource(storage, EntryLayout::Row), k_us1.as_ref(), CommitVersion(2))
+			.get(
+				EntryKind::PartitionedSource(storage, EntryLayout::Row),
+				k_us1.encode().as_ref(),
+				CommitVersion(2)
+			)
 			.unwrap()
 			.value()
 			.is_some(),
 		"flushed partitioned row must live in the partsource_<storage> table"
 	);
 	assert!(
-		persistent.get(EntryKind::Multi, k_us1.as_ref(), CommitVersion(2)).unwrap().value().is_none(),
+		persistent.get(EntryKind::Multi, k_us1.encode().as_ref(), CommitVersion(2)).unwrap().value().is_none(),
 		"partitioned row must NOT be in the multi table"
 	);
 }

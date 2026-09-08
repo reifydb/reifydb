@@ -13,10 +13,7 @@ use reifydb_core::{
 		},
 		store::{SingleVersionGet, SingleVersionRange},
 	},
-	key::{
-		queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
-		typed::key::Key,
-	},
+	key::queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
@@ -46,7 +43,7 @@ fn queue_id(t: &TestEngine, name: &str) -> QueueId {
 
 fn states(t: &TestEngine, queue: QueueId) -> Vec<(QueueItemStateKey, QueueItemState)> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue), 1024)
+	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -70,7 +67,7 @@ fn status_of(t: &TestEngine, queue: QueueId, row: u64) -> QueueItemStatus {
 
 fn dues(t: &TestEngine, queue: QueueId) -> Vec<QueueDueKey> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueDueKey::queue_scan(queue), 1024)
+	SingleVersionRange::range_batch(&store, QueueDueKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -86,7 +83,7 @@ fn due_rows(t: &TestEngine, queue: QueueId) -> Vec<u64> {
 
 fn chains(t: &TestEngine, queue: QueueId) -> Vec<QueueKeyActiveKey> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueKeyActiveKey::queue_scan(queue), 1024)
+	SingleVersionRange::range_batch(&store, QueueKeyActiveKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()

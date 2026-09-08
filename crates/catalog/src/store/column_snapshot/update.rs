@@ -82,7 +82,7 @@ impl CatalogStore {
 		column_snapshot::set_read_version(&mut row, patch.read_version.0);
 		column_snapshot::set_row_count(&mut row, patch.row_count);
 
-		txn.set(&ColumnSnapshotKey::encoded(existing.id), row.freeze())?;
+		txn.set(&ColumnSnapshotKey::new(existing.id), row.freeze())?;
 
 		Ok(ColumnSnapshot {
 			id: existing.id,

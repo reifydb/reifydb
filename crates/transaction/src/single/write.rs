@@ -4,7 +4,10 @@
 use std::{mem::take, ops::RangeBounds};
 
 use indexmap::IndexMap;
-use reifydb_core::interface::store::{SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRow};
+use reifydb_core::{
+	interface::store::{SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRow},
+	key::any::TaggedKey,
+};
 use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockWriteGuard};
 use reifydb_value::{
 	Result, reifydb_assertions,
@@ -64,16 +67,17 @@ impl<'a> SingleWriteTransaction<'a> {
 		}
 	}
 
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
-		self.check_key_allowed(key)?;
+	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<SingleVersionRow>> {
+		let encoded = key.clone().into().encode();
+		self.check_key_allowed(&encoded)?;
 
-		if let Some(delta) = self.pending.get(key) {
+		if let Some(delta) = self.pending.get(&encoded) {
 			return match delta {
 				Delta::Set {
 					bytes,
 					..
 				} => Ok(Some(SingleVersionRow {
-					key: key.clone(),
+					key: encoded,
 					bytes: bytes.clone(),
 				})),
 				Delta::Remove {
@@ -83,10 +87,11 @@ impl<'a> SingleWriteTransaction<'a> {
 		}
 
 		let store = self.inner.store.read().clone();
-		SingleVersionGet::get(&store, key)
+		SingleVersionGet::get(&store, &encoded)
 	}
 
-	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
+	pub fn contains_key<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
+		let key = &key.clone().into().encode();
 		self.check_key_allowed(key)?;
 
 		if let Some(delta) = self.pending.get(key) {
@@ -104,28 +109,34 @@ impl<'a> SingleWriteTransaction<'a> {
 		SingleVersionContains::contains(&store, key)
 	}
 
-	pub fn set(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
-		self.check_key_allowed(key)?;
+	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
+		let key: TaggedKey = key.clone().into();
+		let encoded = key.encode();
+		self.check_key_allowed(&encoded)?;
 
 		let delta = Delta::Set {
-			key: key.clone(),
+			key,
 			bytes: bytes.into(),
 		};
-		self.pending.insert(key.clone(), delta);
+		self.pending.insert(encoded, delta);
 		Ok(())
 	}
 
-	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
-		self.check_key_allowed(key)?;
+	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
+		let key: TaggedKey = key.clone().into();
+		let encoded = key.encode();
+		self.check_key_allowed(&encoded)?;
 
-		self.pending.insert(key.clone(), Delta::remove_announced(key.clone(), pre));
+		self.pending.insert(encoded, Delta::remove_announced(key, pre));
 		Ok(())
 	}
 
-	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		self.check_key_allowed(key)?;
+	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
+		let key: TaggedKey = key.clone().into();
+		let encoded = key.encode();
+		self.check_key_allowed(&encoded)?;
 
-		self.pending.insert(key.clone(), Delta::remove_silent(key.clone()));
+		self.pending.insert(encoded, Delta::remove_silent(key));
 		Ok(())
 	}
 

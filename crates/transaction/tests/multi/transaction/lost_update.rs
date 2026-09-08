@@ -6,8 +6,7 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{common::CommitVersion, key::any::TaggedKey};
 use reifydb_transaction::multi::transaction::write::MultiWriteTransaction;
 
 use super::test_multi;
@@ -15,7 +14,7 @@ use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
 
 const COUNTER: u64 = 1;
 
-fn read_counter(txn: &mut MultiWriteTransaction, key: &EncodedKey) -> u64 {
+fn read_counter(txn: &mut MultiWriteTransaction, key: &TaggedKey) -> u64 {
 	let sv = txn.get(key).unwrap().unwrap();
 	let row = sv.bytes();
 	from_bytes!(u64, row)
@@ -24,7 +23,7 @@ fn read_counter(txn: &mut MultiWriteTransaction, key: &EncodedKey) -> u64 {
 #[test]
 fn test_self_cancelling_writer_still_takes_a_commit_version() {
 	// Set-then-remove on a never-read key optimizes to zero deltas, which must never gate the commit.
-	let key: EncodedKey = as_key!(COUNTER);
+	let key = as_key!(COUNTER);
 	let engine = test_multi();
 
 	let mut txn = engine.begin_command().unwrap();
@@ -44,7 +43,7 @@ fn test_self_cancelling_writer_still_takes_a_commit_version() {
 #[test]
 fn test_self_cancelling_writer_is_still_validated_against_a_concurrent_writer() {
 	// The optimized delta set is empty here, so only the write set can carry this into conflict detection.
-	let key: EncodedKey = as_key!(COUNTER);
+	let key = as_key!(COUNTER);
 	let engine = test_multi();
 
 	let mut winner = engine.begin_command().unwrap();
@@ -66,7 +65,7 @@ fn test_self_cancelling_writer_is_still_validated_against_a_concurrent_writer() 
 
 #[test]
 fn test_lost_update_rejected_when_commits_are_serialized() {
-	let key: EncodedKey = as_key!(COUNTER);
+	let key = as_key!(COUNTER);
 	let engine = test_multi();
 
 	let mut seed = engine.begin_command().unwrap();
@@ -106,7 +105,7 @@ fn test_lost_update_rejected_when_commits_race() {
 	const THREADS: usize = 16;
 	const ROUNDS: usize = 500;
 
-	let key: EncodedKey = as_key!(COUNTER);
+	let key = as_key!(COUNTER);
 
 	let mut lossy_rounds = 0usize;
 	let mut first_loss: Option<(usize, u64, u64)> = None;

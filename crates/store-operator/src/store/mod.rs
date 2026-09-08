@@ -136,18 +136,18 @@ impl StandardOperatorStore {
 			resident.attach_flusher(flush.clone());
 		}
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		if let Some(persistent) = persistent.as_ref() {
-			if !persistent.census().is_empty() {
-				let actor = FilterActor::spawn(&spawner);
-				let _ = actor.send(FilterMessage::Register {
-					filter: resident.filter(),
-					source: Box::new(OperatorStateKeySource::new(persistent.clone())),
-					config: FilterConfig {
-						min_size_keys: FILTER_KEYS,
-						..FilterConfig::default()
-					},
-				});
-			}
+		if let Some(persistent) = persistent.as_ref()
+			&& !persistent.census().is_empty()
+		{
+			let actor = FilterActor::spawn(&spawner);
+			let _ = actor.send(FilterMessage::Register {
+				filter: resident.filter(),
+				source: Box::new(OperatorStateKeySource::new(persistent.clone())),
+				config: FilterConfig {
+					min_size_keys: FILTER_KEYS,
+					..FilterConfig::default()
+				},
+			});
 		}
 
 		Self(Arc::new(StandardOperatorStoreInner {

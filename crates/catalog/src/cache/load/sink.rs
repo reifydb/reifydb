@@ -33,7 +33,7 @@ pub(crate) fn load_sinks(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 	Ok(())
 }
 
-fn convert_sink(multi: MultiVersionRow) -> Result<Sink> {
+fn convert_sink<K>(multi: MultiVersionRow<K>) -> Result<Sink> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = SinkId(sink::get_id(&bytes));
 	let namespace = NamespaceId(sink::get_namespace(&bytes));

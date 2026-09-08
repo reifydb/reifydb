@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-		typed::{Edge, MultiKey},
+		typed::{Edge, OpaqueKey},
 	},
 };
 
@@ -55,7 +55,7 @@ impl TestPartition {
 		EncodedKey::new(OperatorStateKey::inner_encoded(self.group, self.keyspace, [0u8; 0]).as_bytes())
 	}
 
-	pub fn span(&self) -> (Edge<MultiKey>, Edge<MultiKey>) {
+	pub fn span(&self) -> (Edge<OpaqueKey>, Edge<OpaqueKey>) {
 		let start = self.prefix();
 		let end = match prefix_successor(start.as_slice()) {
 			Some(successor) => Edge::of(successor),
@@ -64,7 +64,7 @@ impl TestPartition {
 		(Edge::Key(start), end)
 	}
 
-	pub fn group_end(&self) -> Edge<MultiKey> {
+	pub fn group_end(&self) -> Edge<OpaqueKey> {
 		let prefix = self.prefix();
 		let group = &prefix.as_slice()[..OperatorStateKey::KEYSPACE_INNER_OFFSET as usize];
 		match prefix_successor(group) {
@@ -93,7 +93,7 @@ static CACHE_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 impl RangeDomain for TestDomain {
 	type Dimension = OperatorId;
 	type Partition = TestPartition;
-	type Key = MultiKey;
+	type Key = OpaqueKey;
 	type MetricBucket = KeyspaceId;
 	type Row = EncodedPodRow;
 
@@ -102,6 +102,10 @@ impl RangeDomain for TestDomain {
 	const SCOPE: &'static str = "operator_range";
 
 	const GAP_SCOPE: &'static str = "operator_range::gaps";
+
+	fn just_past(key: &Self::Key) -> Edge<Self::Key> {
+		Edge::just_past(key)
+	}
 
 	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Self::Partition {
 		TestPartition::of(dimension, key)
@@ -159,7 +163,7 @@ pub(super) struct AdmittingDomain;
 impl RangeDomain for AdmittingDomain {
 	type Dimension = OperatorId;
 	type Partition = TestPartition;
-	type Key = MultiKey;
+	type Key = OpaqueKey;
 	type MetricBucket = KeyspaceId;
 	type Row = EncodedPodRow;
 
@@ -168,6 +172,10 @@ impl RangeDomain for AdmittingDomain {
 	const SCOPE: &'static str = "admitting_range";
 
 	const GAP_SCOPE: &'static str = "admitting_range::gaps";
+
+	fn just_past(key: &Self::Key) -> Edge<Self::Key> {
+		Edge::just_past(key)
+	}
 
 	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Self::Partition {
 		TestDomain::partition(dimension, key)

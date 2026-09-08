@@ -4,7 +4,7 @@
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{
 		pod::EncodedPodRow, queue_attempt::EncodedQueueAttemptRow,
 		queue_deduplication::EncodedQueueDeduplicationRow,
@@ -23,15 +23,17 @@ use reifydb_core::{
 		store::SingleVersionRange,
 	},
 	key::{
+		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
 		queue::{QueueAttemptKey, QueueDeduplicationKey, QueueItemStateKey},
 		row::RowKey,
-		typed::key::Key,
 	},
 	lifecycle::{
 		class::{Floor, FloorTerm, RetentionClass},
 		progress::Progress,
 		task::LifecycleTask,
 	},
+	return_internal_error,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::Clock;
@@ -61,7 +63,7 @@ pub struct QueueRetentionTask {
 	clock: Clock,
 	config: Arc<dyn GetConfig>,
 	item_cursor: Option<ItemCursor>,
-	dedup_cursor: HashMap<QueueId, EncodedKey>,
+	dedup_cursor: HashMap<QueueId, TaggedKey>,
 }
 
 impl QueueRetentionTask {
@@ -91,7 +93,7 @@ impl QueueRetentionTask {
 		after: Option<&EncodedKey>,
 		limit: usize,
 	) -> Result<Vec<(EncodedKey, RowNumber, QueueItemStatus, u32)>> {
-		let mut range = QueueItemStateKey::partition_scan(queue, partition);
+		let mut range = QueueItemStateKey::partition_scan(queue, partition).encode();
 		if let Some(after) = after {
 			range.start = Bound::Excluded(after.clone());
 		}
@@ -112,7 +114,7 @@ impl QueueRetentionTask {
 	fn classify(&self, queue: QueueId, row: RowNumber, attempt: u32, cutoff: DateTime) -> Result<Option<Doomed>> {
 		let mut query_txn = self.engine.begin_query(IdentityId::system())?;
 		let record = query_txn
-			.get(&QueueAttemptKey::encoded(queue, row, attempt))?
+			.get(&QueueAttemptKey::new(queue, row, attempt))?
 			.and_then(|stored| decode_queue_attempt(EncodedQueueAttemptRow::view(&stored.bytes)));
 
 		if let Some(record) = record {
@@ -125,7 +127,7 @@ impl QueueRetentionTask {
 			}));
 		}
 
-		if query_txn.get(&RowKey::encoded(queue, row))?.is_some() {
+		if query_txn.get(&RowKey::new(queue, row))?.is_some() {
 			warn!(
 				queue = queue.0,
 				item = row.0,
@@ -152,7 +154,13 @@ impl QueueRetentionTask {
 		for item in &purge {
 			let stream = txn.range(QueueAttemptKey::item_scan(queue, item.row), RangeScope::All, 1024)?;
 			for entry in stream {
-				attempt_keys.push(entry?.key.clone());
+				let entry = entry?;
+				let TaggedKey::QueueAttempt(key) = entry.key else {
+					return_internal_error!(
+						"queue attempt scan yielded a key that is not a QueueAttemptKey"
+					)
+				};
+				attempt_keys.push(key);
 			}
 		}
 
@@ -160,7 +168,7 @@ impl QueueRetentionTask {
 			txn.remove(key)?;
 		}
 		for item in &purge {
-			txn.remove(&RowKey::encoded(queue, item.row))?;
+			txn.remove(&RowKey::new(queue, item.row))?;
 		}
 		txn.commit()?;
 
@@ -168,10 +176,7 @@ impl QueueRetentionTask {
 	}
 
 	fn sweep_deduplication(&mut self, queue: QueueId, now: DateTime, limit: usize) -> Result<(u64, bool)> {
-		let mut range = QueueDeduplicationKey::full_scan(queue);
-		if let Some(after) = self.dedup_cursor.get(&queue) {
-			range.start = Bound::Excluded(after.clone());
-		}
+		let range = QueueDeduplicationKey::full_scan(queue).resume_after(self.dedup_cursor.get(&queue));
 
 		let expired = self.expired_deduplication_keys(range, now, limit)?;
 		let drained = expired.scanned < limit;
@@ -197,7 +202,7 @@ impl QueueRetentionTask {
 
 	fn expired_deduplication_keys(
 		&self,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		now: DateTime,
 		limit: usize,
 	) -> Result<ExpiredDeduplication> {
@@ -217,7 +222,12 @@ impl QueueRetentionTask {
 				decode_queue_deduplication(EncodedQueueDeduplicationRow::view(&entry.bytes))
 				&& expires_at <= now
 			{
-				out.keys.push(entry.key.clone());
+				let TaggedKey::QueueDeduplication(key) = entry.key else {
+					return_internal_error!(
+						"queue deduplication scan yielded a key that is not a QueueDeduplicationKey"
+					)
+				};
+				out.keys.push(key);
 			}
 		}
 
@@ -236,8 +246,8 @@ impl QueueRetentionTask {
 
 #[derive(Default)]
 struct ExpiredDeduplication {
-	keys: Vec<EncodedKey>,
-	last: Option<EncodedKey>,
+	keys: Vec<QueueDeduplicationKey>,
+	last: Option<TaggedKey>,
 	scanned: usize,
 }
 

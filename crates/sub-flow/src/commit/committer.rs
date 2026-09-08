@@ -13,7 +13,8 @@ use reifydb_core::{
 		cdc::{CdcConsumerId, ConsumerClass},
 		change::Change,
 	},
-	key::kind::KeyKind,
+	key::{any::TaggedKey, tag::KeyTag},
+	return_internal_error,
 };
 #[cfg(test)]
 use reifydb_engine::engine::StandardEngine;
@@ -28,9 +29,9 @@ use reifydb_transaction::{
 	commit::{CommitApply, CommitCompletion, CommitHandle, CommitSubmission},
 	transaction::command::CommandTransaction,
 };
-use reifydb_value::Result;
 #[cfg(test)]
 use reifydb_value::value::identity::IdentityId;
+use reifydb_value::{Result, util::hex::display as hex_display};
 use tracing::instrument;
 
 use crate::{commit::quiescence::FlowMaterialization, progress::tracker::FlowPositionTracker};
@@ -280,41 +281,47 @@ impl Committer {
 
 #[instrument(name = "flow::committer::apply_pending", level = "debug", skip_all)]
 fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
-	for (key, pw) in combined.iter_ordered() {
-		if matches!(KeyKind::of(key), Some(KeyKind::OperatorState)) {
+	for (encoded, pw) in combined.iter_ordered() {
+		if matches!(KeyTag::of(encoded), Some(KeyTag::OperatorState)) {
 			continue;
 		}
+		let Some(key) = TaggedKey::decode(encoded) else {
+			return_internal_error!(
+				"flow pending write carries a key no typed key decodes: {}",
+				hex_display(encoded.as_ref())
+			)
+		};
 		match pw {
-			PendingWrite::Set(value) => transaction.set(key, value.clone())?,
+			PendingWrite::Set(value) => transaction.set(&key, value.clone())?,
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Announced,
 			} => {
-				if matches!(KeyKind::of(key), Some(KeyKind::Row | KeyKind::SeriesRow)) {
-					match transaction.get(key)? {
-						Some(existing) => transaction.remove_with_pre(key, existing.bytes)?,
-						None => transaction.remove(key)?,
+				if matches!(key, TaggedKey::Row(_) | TaggedKey::SeriesRow(_)) {
+					match transaction.get(&key)? {
+						Some(existing) => transaction.remove_with_pre(&key, existing.bytes)?,
+						None => transaction.remove(&key)?,
 					}
 				} else {
-					transaction.remove(key)?;
+					transaction.remove(&key)?;
 				}
 			}
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Unobserved,
 			} => {
-				if matches!(KeyKind::of(key), Some(KeyKind::Row | KeyKind::SeriesRow)) {
-					match transaction.get(key)? {
+				if matches!(key, TaggedKey::Row(_) | TaggedKey::SeriesRow(_)) {
+					match transaction.get(&key)? {
 						Some(existing) => {
-							transaction.remove_unobserved_with_pre(key, existing.bytes)?
+							transaction.remove_unobserved_with_pre(&key, existing.bytes)?
 						}
-						None => transaction.remove_unobserved(key)?,
+						None => transaction.remove_unobserved(&key)?,
 					}
 				} else {
-					transaction.remove_unobserved(key)?;
+					transaction.remove_unobserved(&key)?;
 				}
 			}
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Silent,
-			} => transaction.remove_silent(key)?,
+			} => transaction.remove_silent(&key)?,
 		}
 	}
 	Ok(())
@@ -330,13 +337,19 @@ mod commit_integration {
 		row::{bytes::EncodedBytes, pod::EncodedPodRow},
 	};
 	use reifydb_core::{
-		interface::catalog::flow::OperatorId,
+		interface::catalog::{
+			flow::OperatorId,
+			id::{IndexId, TableId},
+			object::ObjectId,
+		},
 		internal_error,
 		key::{
-			EncodableKey,
-			cdc::{CdcConsumerKey, CdcConsumerKeyRange},
+			any::TaggedKey,
+			catalog::IndexEntryKey,
+			cdc::CdcConsumerKey,
 			operator::state::{GroupStateKey, OperatorStateKey, custom_not_cached_key},
 		},
+		value::index::encoded::EncodedIndexKey,
 	};
 	use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
 	use reifydb_test_harness::engine::TestEngine;
@@ -384,9 +397,14 @@ mod commit_integration {
 	}
 
 	fn synthetic_key(index: u64) -> EncodedKey {
-		// 0xEE maps to no KeyKind: every CDC consumer ignores it, but the producer
-		// includes unknown kinds, so the write is observable in the CDC record.
-		EncodedKey::new(vec![0xEE, index as u8])
+		// IndexEntry is neither CDC-excluded nor consumer-relevant: the producer records
+		// the write while every consumer ignores it.
+		IndexEntryKey::new(
+			ObjectId::Table(TableId(1)),
+			IndexId::primary(1u64),
+			EncodedIndexKey::new([index as u8]),
+		)
+		.encode()
 	}
 
 	fn synthetic_slice(index: u64) -> FlowSlice {
@@ -467,11 +485,11 @@ mod commit_integration {
 		let mut query = engine.begin_query(IdentityId::system()).expect("begin query");
 		let mut consumers: Vec<String> = Vec::new();
 		for multi in Transaction::Query(&mut query)
-			.range(CdcConsumerKeyRange::full_scan(), RangeScope::All, 1024)
+			.range(CdcConsumerKey::full_scan(), RangeScope::All, 1024)
 			.expect("scan consumer checkpoints")
 		{
 			let multi = multi.expect("consumer checkpoint row");
-			if let Some(key) = CdcConsumerKey::decode(&multi.key) {
+			if let TaggedKey::CdcConsumer(key) = &multi.key {
 				consumers.push(key.consumer.as_ref().to_string());
 			}
 		}

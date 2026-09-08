@@ -22,13 +22,10 @@ use reifydb_value::{
 		blob::Blob,
 		date::Date,
 		datetime::DateTime,
-		decimal::Decimal,
 		duration::Duration,
 		identity::IdentityId,
-		int::Int,
 		row_number::RowNumber,
 		time::Time,
-		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
 };
@@ -330,21 +327,6 @@ impl EncodedKeyBuilder {
 
 	pub fn blob(mut self, blob: &Blob) -> Self {
 		self.serializer.extend_blob(blob);
-		self
-	}
-
-	pub fn int(mut self, int: &Int) -> Self {
-		self.serializer.extend_int(int);
-		self
-	}
-
-	pub fn uint(mut self, uint: &Uint) -> Self {
-		self.serializer.extend_uint(uint);
-		self
-	}
-
-	pub fn decimal(mut self, decimal: &Decimal) -> Self {
-		self.serializer.extend_decimal(decimal);
 		self
 	}
 

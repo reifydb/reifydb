@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{ops::Bound, sync::Arc};
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	execution::ExecutionResult,
@@ -40,6 +40,11 @@ use reifydb_core::{
 			view::View,
 		},
 		store::{MultiVersionBatch, MultiVersionRow},
+	},
+	key::{
+		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
+		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 	row::{OperatorSettings, RowSettings},
 };
@@ -119,22 +124,22 @@ impl QueryTransaction {
 	}
 
 	#[inline]
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		Ok(self.multi.get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
 	#[inline]
-	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		self.multi.contains_key(key)
+	pub fn contains<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
+		self.multi.contains(key)
 	}
 
 	#[inline]
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		self.multi.prefix(prefix)
 	}
 
 	#[inline]
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		self.multi.prefix_rev(prefix)
 	}
 
@@ -147,20 +152,43 @@ impl QueryTransaction {
 	#[inline]
 	pub fn range(
 		&self,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		self.multi.range(range, scope, batch_size)
+	}
+
+	pub fn range_row(
+		&self,
+		storage: StorageId,
+		start: Bound<StorageRowKey>,
+		end: Bound<StorageRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_> {
+		self.multi.range_row(storage, start, end, scope, batch_size)
+	}
+
+	#[inline]
+	pub fn range_partitioned_row(
+		&self,
+		storage: StorageId,
+		start: Bound<StoragePartitionedRowKey>,
+		end: Bound<StoragePartitionedRowKey>,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_> {
+		self.multi.range_partitioned_row(storage, start, end, scope, batch_size)
 	}
 
 	#[inline]
 	pub fn range_rev(
 		&self,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		self.multi.range_rev(range, scope, batch_size)
 	}
 

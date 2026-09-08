@@ -187,7 +187,7 @@ fn existing_attempt(
 	ctx: &mut ProcedureContext<'_, '_>,
 	token: &ClaimToken,
 ) -> Result<Option<QueueAttemptRecord>, RoutineError> {
-	let key = QueueAttemptKey::encoded(token.queue, token.row, token.attempt);
+	let key = QueueAttemptKey::new(token.queue, token.row, token.attempt);
 	Ok(ctx.tx.get(&key)?.and_then(|stored| decode_queue_attempt(EncodedQueueAttemptRow::view(&stored.bytes))))
 }
 
@@ -196,7 +196,7 @@ fn write_attempt(
 	token: &ClaimToken,
 	record: QueueAttemptRecord,
 ) -> Result<(), RoutineError> {
-	let key = QueueAttemptKey::encoded(token.queue, token.row, token.attempt);
+	let key = QueueAttemptKey::new(token.queue, token.row, token.attempt);
 	ctx.tx.set(&key, encode_queue_attempt(&record))?;
 	Ok(())
 }

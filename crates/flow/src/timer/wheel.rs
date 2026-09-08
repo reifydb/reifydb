@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
-		EncodableKey,
+		any::TaggedKey,
 		operator::{
 			keyspace::timer::{
 				TimerIndex as TimerIndexSpace, TimerIndexKey, TimerWheel as TimerWheelSpace,
@@ -172,8 +172,9 @@ impl TimerWheel {
 		let mut due = Vec::new();
 		let mut next = None;
 		for item in &batch.items {
-			let decoded = OperatorStateKey::decode(&item.key)
-				.expect("state_range must return OperatorState keys");
+			let TaggedKey::OperatorState(decoded) = &item.key else {
+				panic!("state_range must return OperatorState keys");
+			};
 			let suffix = TimerWheelKey::from_suffix_bytes(&decoded.suffix)
 				.expect("state_range must return timer wheel suffixes");
 			let timer = Timer {
@@ -197,7 +198,7 @@ impl TimerWheel {
 		if !maintenance_indices.is_empty() {
 			for row in txn.state_get_many(operator, &maintenance_indices)?.items {
 				let payload = decode_payload::<DateTime>(&EncodedPodRow::from(row.bytes))?;
-				armed.insert(row.key, payload);
+				armed.insert(row.key.encode(), payload);
 			}
 		}
 

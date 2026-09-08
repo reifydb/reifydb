@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::typed::MultiKey;
+use reifydb_core::key::typed::OpaqueKey;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum Cursor<S, K> {
@@ -16,7 +16,7 @@ pub enum Cursor<S, K> {
 	},
 }
 
-pub type RangeCursor = Cursor<(), MultiKey>;
+pub type RangeCursor = Cursor<(), OpaqueKey>;
 
 pub trait ScannedStop {
 	fn scanned(&self) -> bool;

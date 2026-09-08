@@ -48,7 +48,7 @@ impl CatalogStore {
 			column_property::set_value(&mut row, value);
 		}
 
-		txn.set(&ColumnPropertyKey::encoded(column, id), row.freeze())?;
+		txn.set(&ColumnPropertyKey::new(column, id), row.freeze())?;
 
 		Ok(ColumnProperty {
 			id,

@@ -4,15 +4,25 @@
 use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::store::EntryKind,
+	key::{
+		row::{StoragePartitionedRowKey, StorageRowKey},
+		series::{StoragePartitionedSeriesKey, StorageSeriesKey},
+	},
+};
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_store::{filter::KeyFilter, metrics::PageCacheMetrics};
-use reifydb_store_commit::{MultiVersionScope, RangeBatch, RangeCursor, TierBatch, VersionedGetResult};
+use reifydb_store::{coverage::cursor::Cursor, filter::KeyFilter, metrics::PageCacheMetrics};
+use reifydb_store_commit::{MultiVersionScope, RangeBatch, RangeCursor, RangeStop, TierBatch, VersionedGetResult};
 use reifydb_value::{Result, value::datetime::DateTime};
 
-use crate::{filter::MultiKeys, tier::TierStorage};
+use crate::{
+	filter::MultiKeys,
+	tier::{TierStorage, range::NarrowLayout},
+};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;
@@ -20,11 +30,146 @@ pub mod sqlite;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use sqlite::storage::SqlitePersistentStorage;
 
+pub struct NarrowRangeRequest<'a, K> {
+	pub table: EntryKind,
+	pub start: Bound<&'a K>,
+	pub end: Bound<&'a K>,
+	pub scope: MultiVersionScope,
+	pub batch_size: usize,
+	pub descending: bool,
+}
+
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
 pub enum MultiPersistentTier {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	Sqlite(SqlitePersistentStorage) = 0,
+}
+
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+impl MultiPersistentTier {
+	pub(crate) fn range_next_row(
+		&self,
+		cursor: &mut Cursor<RangeStop, StorageRowKey>,
+		request: NarrowRangeRequest<'_, StorageRowKey>,
+	) -> Result<RangeBatch<StorageRowKey>> {
+		match self {
+			Self::Sqlite(s) => s.range_chunk_row(cursor, request),
+		}
+	}
+
+	pub(crate) fn range_next_partitioned_row(
+		&self,
+		cursor: &mut Cursor<RangeStop, StoragePartitionedRowKey>,
+		request: NarrowRangeRequest<'_, StoragePartitionedRowKey>,
+	) -> Result<RangeBatch<StoragePartitionedRowKey>> {
+		match self {
+			Self::Sqlite(s) => s.range_chunk_partitioned(cursor, request),
+		}
+	}
+
+	pub(crate) fn range_next_series(
+		&self,
+		cursor: &mut Cursor<RangeStop, StorageSeriesKey>,
+		request: NarrowRangeRequest<'_, StorageSeriesKey>,
+	) -> Result<RangeBatch<StorageSeriesKey>> {
+		match self {
+			Self::Sqlite(s) => s.range_chunk_series(cursor, request),
+		}
+	}
+
+	pub(crate) fn range_next_partitioned_series(
+		&self,
+		cursor: &mut Cursor<RangeStop, StoragePartitionedSeriesKey>,
+		request: NarrowRangeRequest<'_, StoragePartitionedSeriesKey>,
+	) -> Result<RangeBatch<StoragePartitionedSeriesKey>> {
+		match self {
+			Self::Sqlite(s) => s.range_chunk_partitioned_series(cursor, request),
+		}
+	}
+}
+
+#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
+impl MultiPersistentTier {
+	pub(crate) fn range_next_row(
+		&self,
+		_cursor: &mut Cursor<RangeStop, StorageRowKey>,
+		_request: NarrowRangeRequest<'_, StorageRowKey>,
+	) -> Result<RangeBatch<StorageRowKey>> {
+		match *self {}
+	}
+
+	pub(crate) fn range_next_partitioned_row(
+		&self,
+		_cursor: &mut Cursor<RangeStop, StoragePartitionedRowKey>,
+		_request: NarrowRangeRequest<'_, StoragePartitionedRowKey>,
+	) -> Result<RangeBatch<StoragePartitionedRowKey>> {
+		match *self {}
+	}
+
+	pub(crate) fn range_next_series(
+		&self,
+		_cursor: &mut Cursor<RangeStop, StorageSeriesKey>,
+		_request: NarrowRangeRequest<'_, StorageSeriesKey>,
+	) -> Result<RangeBatch<StorageSeriesKey>> {
+		match *self {}
+	}
+
+	pub(crate) fn range_next_partitioned_series(
+		&self,
+		_cursor: &mut Cursor<RangeStop, StoragePartitionedSeriesKey>,
+		_request: NarrowRangeRequest<'_, StoragePartitionedSeriesKey>,
+	) -> Result<RangeBatch<StoragePartitionedSeriesKey>> {
+		match *self {}
+	}
+}
+
+pub trait PersistentRangeLayout: NarrowLayout {
+	fn range_next(
+		persistent: &MultiPersistentTier,
+		cursor: &mut Cursor<RangeStop, Self>,
+		request: NarrowRangeRequest<'_, Self>,
+	) -> Result<RangeBatch<Self>>;
+}
+
+impl PersistentRangeLayout for StorageRowKey {
+	fn range_next(
+		persistent: &MultiPersistentTier,
+		cursor: &mut Cursor<RangeStop, Self>,
+		request: NarrowRangeRequest<'_, Self>,
+	) -> Result<RangeBatch<Self>> {
+		persistent.range_next_row(cursor, request)
+	}
+}
+
+impl PersistentRangeLayout for StoragePartitionedRowKey {
+	fn range_next(
+		persistent: &MultiPersistentTier,
+		cursor: &mut Cursor<RangeStop, Self>,
+		request: NarrowRangeRequest<'_, Self>,
+	) -> Result<RangeBatch<Self>> {
+		persistent.range_next_partitioned_row(cursor, request)
+	}
+}
+
+impl PersistentRangeLayout for StorageSeriesKey {
+	fn range_next(
+		persistent: &MultiPersistentTier,
+		cursor: &mut Cursor<RangeStop, Self>,
+		request: NarrowRangeRequest<'_, Self>,
+	) -> Result<RangeBatch<Self>> {
+		persistent.range_next_series(cursor, request)
+	}
+}
+
+impl PersistentRangeLayout for StoragePartitionedSeriesKey {
+	fn range_next(
+		persistent: &MultiPersistentTier,
+		cursor: &mut Cursor<RangeStop, Self>,
+		request: NarrowRangeRequest<'_, Self>,
+	) -> Result<RangeBatch<Self>> {
+		persistent.range_next_partitioned_series(cursor, request)
+	}
 }
 
 impl Shutdown for MultiPersistentTier {

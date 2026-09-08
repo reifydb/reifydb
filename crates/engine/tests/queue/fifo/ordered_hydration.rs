@@ -3,10 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::{
 		catalog::queue::{
@@ -16,8 +13,8 @@ use reifydb_core::{
 		store::{SingleVersionGet, SingleVersionRange, SingleVersionRow},
 	},
 	key::{
+		any::TaggedKey,
 		queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
-		typed::key::Key,
 	},
 };
 use reifydb_engine::queue::hydrate::hydrate_queues;
@@ -53,7 +50,7 @@ fn scan(t: &TestEngine, range: EncodedKeyRange) -> Vec<SingleVersionRow> {
 }
 
 fn states(t: &TestEngine, queue: &Queue) -> BTreeMap<RowNumber, QueueItemState> {
-	scan(t, QueueItemStateKey::queue_scan(queue.id))
+	scan(t, QueueItemStateKey::queue_scan(queue.id).encode())
 		.iter()
 		.map(|item| {
 			let key = QueueItemStateKey::decode(&item.key).unwrap();
@@ -67,7 +64,7 @@ fn statuses(t: &TestEngine, queue: &Queue) -> BTreeMap<u64, QueueItemStatus> {
 }
 
 fn due_rows(t: &TestEngine, queue: &Queue) -> Vec<u64> {
-	let mut rows: Vec<u64> = scan(t, QueueDueKey::queue_scan(queue.id))
+	let mut rows: Vec<u64> = scan(t, QueueDueKey::queue_scan(queue.id).encode())
 		.iter()
 		.map(|item| QueueDueKey::decode(&item.key).unwrap().row.0)
 		.collect();
@@ -76,7 +73,7 @@ fn due_rows(t: &TestEngine, queue: &Queue) -> Vec<u64> {
 }
 
 fn chain_rows(t: &TestEngine, queue: &Queue) -> Vec<u64> {
-	let mut rows: Vec<u64> = scan(t, QueueKeyActiveKey::queue_scan(queue.id))
+	let mut rows: Vec<u64> = scan(t, QueueKeyActiveKey::queue_scan(queue.id).encode())
 		.iter()
 		.map(|item| QueueKeyActiveKey::decode(&item.key).unwrap().row.0)
 		.collect();
@@ -92,8 +89,8 @@ fn counters(t: &TestEngine, queue: &Queue, partition: u16) -> QueuePartitionCoun
 		.unwrap_or_default()
 }
 
-fn keys_in(t: &TestEngine, range: EncodedKeyRange) -> Vec<EncodedKey> {
-	scan(t, range).into_iter().map(|item| item.key).collect()
+fn keys_in(t: &TestEngine, range: EncodedKeyRange) -> Vec<TaggedKey> {
+	scan(t, range).into_iter().map(|item| TaggedKey::decode(&item.key).unwrap()).collect()
 }
 
 fn with_partition<F>(t: &TestEngine, queue: &Queue, partition: u16, f: F)
@@ -106,9 +103,9 @@ where
 		.begin_command_ranged(
 			[&lock_key],
 			vec![
-				QueueItemStateKey::partition_scan(queue.id, partition),
-				QueueDueKey::partition_scan(queue.id, partition),
-				QueueKeyActiveKey::partition_scan(queue.id, partition),
+				QueueItemStateKey::partition_scan(queue.id, partition).encode(),
+				QueueDueKey::partition_scan(queue.id, partition).encode(),
+				QueueKeyActiveKey::partition_scan(queue.id, partition).encode(),
 			],
 		)
 		.unwrap();
@@ -118,10 +115,10 @@ where
 
 fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
 	for partition in 0..queue.partitions() {
-		let keys: Vec<EncodedKey> = keys_in(t, QueueItemStateKey::partition_scan(queue.id, partition))
+		let keys: Vec<TaggedKey> = keys_in(t, QueueItemStateKey::partition_scan(queue.id, partition).encode())
 			.into_iter()
-			.chain(keys_in(t, QueueDueKey::partition_scan(queue.id, partition)))
-			.chain(keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, partition)))
+			.chain(keys_in(t, QueueDueKey::partition_scan(queue.id, partition).encode()))
+			.chain(keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, partition).encode()))
 			.collect();
 		if keys.is_empty() {
 			continue;
@@ -131,21 +128,21 @@ fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
 			for key in &keys {
 				tx.remove(key).unwrap();
 			}
-			tx.remove(&QueuePartitionKey::encoded(queue.id, partition)).unwrap();
+			tx.remove(&QueuePartitionKey::new(queue.id, partition)).unwrap();
 		});
 	}
 }
 
 fn forget_items(t: &TestEngine, queue: &Queue, rows: &[u64], blocked_delta: u64) {
-	let doomed: Vec<EncodedKey> = keys_in(t, QueueItemStateKey::partition_scan(queue.id, 0))
+	let doomed: Vec<TaggedKey> = keys_in(t, QueueItemStateKey::partition_scan(queue.id, 0).encode())
 		.into_iter()
-		.filter(|key| rows.contains(&QueueItemStateKey::decode(key).unwrap().row.0))
-		.chain(keys_in(t, QueueDueKey::partition_scan(queue.id, 0))
+		.filter(|key| matches!(key, TaggedKey::QueueItemState(key) if rows.contains(&key.row.0)))
+		.chain(keys_in(t, QueueDueKey::partition_scan(queue.id, 0).encode())
 			.into_iter()
-			.filter(|key| rows.contains(&QueueDueKey::decode(key).unwrap().row.0)))
-		.chain(keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, 0))
+			.filter(|key| matches!(key, TaggedKey::QueueDue(key) if rows.contains(&key.row.0))))
+		.chain(keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, 0).encode())
 			.into_iter()
-			.filter(|key| rows.contains(&QueueKeyActiveKey::decode(key).unwrap().row.0)))
+			.filter(|key| matches!(key, TaggedKey::QueueKeyActive(key) if rows.contains(&key.row.0))))
 		.collect();
 
 	let mut counters = counters(t, queue, 0);
@@ -156,7 +153,7 @@ fn forget_items(t: &TestEngine, queue: &Queue, rows: &[u64], blocked_delta: u64)
 		for key in &doomed {
 			tx.remove(key).unwrap();
 		}
-		tx.set(&QueuePartitionKey::encoded(queue.id, 0), encode_queue_partition_counters(&counters)).unwrap();
+		tx.set(&QueuePartitionKey::new(queue.id, 0), encode_queue_partition_counters(&counters)).unwrap();
 	});
 }
 

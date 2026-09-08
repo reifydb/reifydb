@@ -4,7 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::binding::Binding,
-	key::{catalog::BindingKey, typed::key::Key},
+	key::{any::TaggedKey, catalog::BindingKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -17,7 +17,7 @@ impl CatalogStore {
 		let stream = rx.range(BindingKey::full_scan(), RangeScope::All, 1024)?;
 		for entry in stream {
 			let entry = entry?;
-			if BindingKey::decode(&entry.key).is_some() {
+			if matches!(&entry.key, TaggedKey::Binding(_)) {
 				out.push(decode_binding(EncodedCatalogRow::view(&entry.bytes)));
 			}
 		}

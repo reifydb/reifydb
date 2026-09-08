@@ -4,13 +4,13 @@
 use smallvec::SmallVec;
 
 use crate::key::typed::{
-	TypedKey,
+	BoundedKey, DenseKey,
 	direction::{Asc, Desc, Direction, KeyScalar},
 };
 
 pub type KeyValues = SmallVec<[KeyValue; 4]>;
 
-pub trait KeyLayout: TypedKey {
+pub trait KeyLayout: BoundedKey + DenseKey {
 	const COLUMNS: &'static [KeyColumn];
 
 	fn key_values(&self) -> KeyValues;
@@ -138,20 +138,20 @@ mod tests {
 		key::{
 			operator::state::GroupId,
 			typed::{
-				TypedKey,
+				BoundedKey, DenseKey, KeyLayout,
 				direction::{Asc, Desc, Direction, KeyField},
 			},
 		},
 		metrics::heap::HeapSize,
 	};
 
-	#[derive(Clone, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+	#[derive(Clone, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 	struct ProbeKey {
 		threshold: Desc<u64>,
 		side: Asc<u8>,
 	}
 
-	#[derive(Clone, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+	#[derive(Clone, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 	struct JoinLeftKey {
 		group: Desc<GroupId>,
 		row: Asc<RowNumber>,

@@ -390,9 +390,9 @@ fn entry_write(dictionary: &Dictionary, value_bytes: &[u8], hash: [u8; 16], id: 
 	entry_value.extend_from_slice(value_bytes);
 
 	DictEntryWrite {
-		entry_key: DictionaryEntryKey::encoded(dictionary.id, hash),
+		entry_key: DictionaryEntryKey::new(dictionary.id, hash),
 		entry_value: EncodedPodRow::new(&entry_value),
-		index_key: DictionaryEntryIndexKey::encoded(dictionary.id, id),
+		index_key: DictionaryEntryIndexKey::new(dictionary.id, id),
 		index_value: EncodedPodRow::new(value_bytes),
 	}
 }
@@ -402,7 +402,7 @@ mod tests {
 	use std::{collections::BTreeMap, thread};
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::{interface::catalog::id::NamespaceId, key::EncodableKey};
+	use reifydb_core::interface::catalog::id::NamespaceId;
 
 	use super::*;
 
@@ -448,8 +448,8 @@ mod tests {
 		fn commit_entries(&self, _dictionary: DictionaryId, writes: &[DictEntryWrite]) -> Result<()> {
 			let mut inner = self.inner.lock();
 			for write in writes {
-				inner.rows.insert(write.entry_key.clone(), write.entry_value.clone().into_bytes());
-				inner.rows.insert(write.index_key.clone(), write.index_value.clone().into_bytes());
+				inner.rows.insert(write.entry_key.encode(), write.entry_value.clone().into_bytes());
+				inner.rows.insert(write.index_key.encode(), write.index_value.clone().into_bytes());
 			}
 			inner.commits += 1;
 			Ok(())

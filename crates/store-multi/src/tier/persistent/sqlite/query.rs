@@ -456,3 +456,268 @@ pub(super) fn build_range_current_sql(
 	}
 	sql
 }
+
+pub(super) fn build_range_current_sql_series(
+	table_name: &str,
+	lower: Bound<()>,
+	upper: Bound<()>,
+	has_last_key: bool,
+	descending: bool,
+) -> String {
+	let mut sql = format!("SELECT variant_tag, key, sequence, version, value FROM \"{}\" WHERE 1=1", table_name);
+	match lower {
+		Bound::Included(()) => sql.push_str(" AND (variant_tag, key, sequence) >= (?, ?, ?)"),
+		Bound::Excluded(()) => sql.push_str(" AND (variant_tag, key, sequence) > (?, ?, ?)"),
+		Bound::Unbounded => {}
+	}
+	match upper {
+		Bound::Included(()) => sql.push_str(" AND (variant_tag, key, sequence) <= (?, ?, ?)"),
+		Bound::Excluded(()) => sql.push_str(" AND (variant_tag, key, sequence) < (?, ?, ?)"),
+		Bound::Unbounded => {}
+	}
+	if has_last_key {
+		sql.push_str(if descending {
+			" AND (variant_tag, key, sequence) < (?, ?, ?)"
+		} else {
+			" AND (variant_tag, key, sequence) > (?, ?, ?)"
+		});
+	}
+	sql.push_str(" AND value IS NOT NULL AND version <= ?");
+	if descending {
+		sql.push_str(" ORDER BY variant_tag DESC, key DESC, sequence DESC LIMIT ?");
+	} else {
+		sql.push_str(" ORDER BY variant_tag ASC, key ASC, sequence ASC LIMIT ?");
+	}
+	sql
+}
+
+pub(super) fn build_range_current_sql_partitioned_series(
+	table_name: &str,
+	lower: Bound<()>,
+	upper: Bound<()>,
+	has_last_key: bool,
+	descending: bool,
+) -> String {
+	let mut sql = format!(
+		"SELECT partition_hi, partition_lo, variant_tag, key, sequence, version, value FROM \"{}\" WHERE 1=1",
+		table_name
+	);
+	match lower {
+		Bound::Included(()) => {
+			sql.push_str(" AND (partition_hi, partition_lo, variant_tag, key, sequence) >= (?, ?, ?, ?, ?)")
+		}
+		Bound::Excluded(()) => {
+			sql.push_str(" AND (partition_hi, partition_lo, variant_tag, key, sequence) > (?, ?, ?, ?, ?)")
+		}
+		Bound::Unbounded => {}
+	}
+	match upper {
+		Bound::Included(()) => {
+			sql.push_str(" AND (partition_hi, partition_lo, variant_tag, key, sequence) <= (?, ?, ?, ?, ?)")
+		}
+		Bound::Excluded(()) => {
+			sql.push_str(" AND (partition_hi, partition_lo, variant_tag, key, sequence) < (?, ?, ?, ?, ?)")
+		}
+		Bound::Unbounded => {}
+	}
+	if has_last_key {
+		sql.push_str(if descending {
+			" AND (partition_hi, partition_lo, variant_tag, key, sequence) < (?, ?, ?, ?, ?)"
+		} else {
+			" AND (partition_hi, partition_lo, variant_tag, key, sequence) > (?, ?, ?, ?, ?)"
+		});
+	}
+	sql.push_str(" AND value IS NOT NULL AND version <= ?");
+	if descending {
+		sql.push_str(
+			" ORDER BY partition_hi DESC, partition_lo DESC, variant_tag DESC, key DESC, \
+			 sequence DESC LIMIT ?",
+		);
+	} else {
+		sql.push_str(
+			" ORDER BY partition_hi ASC, partition_lo ASC, variant_tag ASC, key ASC, \
+			 sequence ASC LIMIT ?",
+		);
+	}
+	sql
+}
+
+pub(super) fn build_create_current_sql_series(table_name: &str) -> String {
+	format!(
+		"CREATE TABLE IF NOT EXISTS \"{0}\" (\
+			variant_tag INTEGER NOT NULL,\
+			key INTEGER NOT NULL,\
+			sequence INTEGER NOT NULL,\
+			version BLOB NOT NULL,\
+			value BLOB,\
+			updated_at INTEGER,\
+			PRIMARY KEY (variant_tag, key, sequence)\
+		) WITHOUT ROWID;\
+		CREATE INDEX IF NOT EXISTS \"{0}__expiry\" ON \"{0}\" (updated_at) \
+			WHERE value IS NOT NULL AND updated_at IS NOT NULL;",
+		table_name
+	)
+}
+
+pub(super) fn build_create_current_sql_partitioned_series(table_name: &str) -> String {
+	format!(
+		"CREATE TABLE IF NOT EXISTS \"{0}\" (\
+			partition_hi INTEGER NOT NULL,\
+			partition_lo INTEGER NOT NULL,\
+			variant_tag INTEGER NOT NULL,\
+			key INTEGER NOT NULL,\
+			sequence INTEGER NOT NULL,\
+			version BLOB NOT NULL,\
+			value BLOB,\
+			updated_at INTEGER,\
+			PRIMARY KEY (partition_hi, partition_lo, variant_tag, key, sequence)\
+		) WITHOUT ROWID;\
+		CREATE INDEX IF NOT EXISTS \"{0}__expiry\" ON \"{0}\" (updated_at) \
+			WHERE value IS NOT NULL AND updated_at IS NOT NULL;",
+		table_name
+	)
+}
+
+fn column_list(columns: &[&str]) -> String {
+	columns.join(", ")
+}
+
+fn column_tuple(columns: &[&str]) -> String {
+	format!("({})", column_list(columns))
+}
+
+fn placeholder_tuple(count: usize) -> String {
+	let mut out = String::with_capacity(count.saturating_mul(3) + 2);
+	out.push('(');
+	for i in 0..count {
+		if i > 0 {
+			out.push_str(", ");
+		}
+		out.push('?');
+	}
+	out.push(')');
+	out
+}
+
+fn build_keyed_predicate(columns: &[&str], key_count: usize) -> String {
+	let mut out = String::new();
+	for i in 0..key_count {
+		if i > 0 {
+			out.push_str(" OR ");
+		}
+		out.push('(');
+		for (c, column) in columns.iter().enumerate() {
+			if c > 0 {
+				out.push_str(" AND ");
+			}
+			out.push_str(column);
+			out.push_str(" = ?");
+		}
+		out.push(')');
+	}
+	out
+}
+
+pub(super) fn build_get_current_sql_keyed(table_name: &str, columns: &[&str]) -> String {
+	format!("SELECT version, value FROM \"{}\" WHERE {}", table_name, build_keyed_predicate(columns, 1))
+}
+
+pub(super) fn build_upsert_current_sql_keyed(table_name: &str, columns: &[&str]) -> String {
+	format!(
+		"INSERT INTO \"{0}\" ({1}, version, value, updated_at) VALUES {2} \
+		 ON CONFLICT{3} DO UPDATE SET \
+		     version = excluded.version, \
+		     value = excluded.value, \
+		     updated_at = excluded.updated_at \
+		 WHERE excluded.version >= \"{0}\".version",
+		table_name,
+		column_list(columns),
+		placeholder_tuple(columns.len() + 3),
+		column_tuple(columns)
+	)
+}
+
+pub(super) fn build_chunked_upsert_sql_keyed(table_name: &str, columns: &[&str], chunk: usize) -> String {
+	format!(
+		"INSERT INTO \"{0}\" ({1}, version, value, updated_at) VALUES {2} \
+		 ON CONFLICT{3} DO UPDATE SET \
+		     version = excluded.version, \
+		     value = excluded.value, \
+		     updated_at = excluded.updated_at \
+		 WHERE excluded.version >= \"{0}\".version \
+		 RETURNING {1}",
+		table_name,
+		column_list(columns),
+		values_placeholders(chunk, columns.len() + 3),
+		column_tuple(columns)
+	)
+}
+
+pub(super) fn build_delete_current_sql_keyed(
+	table_name: &str,
+	columns: &[&str],
+	key_count: usize,
+	returning: bool,
+) -> String {
+	let suffix = if returning {
+		format!(" RETURNING {}", column_list(columns))
+	} else {
+		String::new()
+	};
+	format!(
+		"DELETE FROM \"{}\" WHERE ({}) AND version <= ?{}",
+		table_name,
+		build_keyed_predicate(columns, key_count),
+		suffix
+	)
+}
+
+pub(super) fn build_delete_keys_sql_keyed(table_name: &str, columns: &[&str], key_count: usize) -> String {
+	format!("DELETE FROM \"{}\" WHERE {}", table_name, build_keyed_predicate(columns, key_count))
+}
+
+pub(super) fn build_current_keys_sql_keyed(table_name: &str, columns: &[&str], has_cursor: bool) -> String {
+	if has_cursor {
+		format!(
+			"SELECT {1} FROM \"{0}\" WHERE {2} > {3} ORDER BY {1} LIMIT ?",
+			table_name,
+			column_list(columns),
+			column_tuple(columns),
+			placeholder_tuple(columns.len())
+		)
+	} else {
+		format!("SELECT {1} FROM \"{0}\" ORDER BY {1} LIMIT ?", table_name, column_list(columns))
+	}
+}
+
+pub(super) fn build_get_many_current_sql_keyed(table_name: &str, columns: &[&str], key_count: usize) -> String {
+	format!(
+		"SELECT {1}, version, value FROM \"{0}\" WHERE {2}",
+		table_name,
+		column_list(columns),
+		build_keyed_predicate(columns, key_count)
+	)
+}
+
+pub(super) fn build_expired_keys_sql_keyed(
+	table_name: &str,
+	columns: &[&str],
+	has_cursor: bool,
+	limit: usize,
+) -> String {
+	let list = column_list(columns);
+	let mut sql = format!(
+		"SELECT {1}, updated_at FROM \"{0}\" \
+		 WHERE value IS NOT NULL AND updated_at IS NOT NULL AND updated_at <= ?1",
+		table_name, list
+	);
+	if has_cursor {
+		sql.push_str(&format!(
+			" AND (updated_at > ?2 OR (updated_at = ?2 AND {} > {}))",
+			column_tuple(columns),
+			placeholder_tuple(columns.len())
+		));
+	}
+	sql.push_str(&format!(" ORDER BY updated_at, {} LIMIT {}", list, limit));
+	sql
+}

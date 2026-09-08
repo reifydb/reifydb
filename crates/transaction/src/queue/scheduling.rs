@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::{
 		id::QueueId,
@@ -40,9 +37,9 @@ struct TransitionEffect {
 
 fn partition_ranges(queue: QueueId, partition: u16) -> Vec<EncodedKeyRange> {
 	vec![
-		QueueItemStateKey::partition_scan(queue, partition),
-		QueueDueKey::partition_scan(queue, partition),
-		QueueKeyActiveKey::partition_scan(queue, partition),
+		QueueItemStateKey::partition_scan(queue, partition).encode(),
+		QueueDueKey::partition_scan(queue, partition).encode(),
+		QueueKeyActiveKey::partition_scan(queue, partition).encode(),
 	]
 }
 
@@ -56,14 +53,14 @@ pub fn admit_ready_items(
 		return Ok(0);
 	}
 
-	let lock_key = QueuePartitionKey::encoded(queue, partition);
-	let mut tx = single.begin_command_ranged([&lock_key], partition_ranges(queue, partition))?;
+	let lock_key = QueuePartitionKey::new(queue, partition);
+	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
 
 	let mut overlay = ChainOverlay::default();
 	let mut admitted = 0u64;
 	let mut blocked_delta = 0i64;
 	for item in items {
-		let state_key = QueueItemStateKey::encoded(queue, partition, item.row);
+		let state_key = QueueItemStateKey::new(queue, partition, item.row);
 		if tx.contains_key(&state_key)? {
 			continue;
 		}
@@ -112,15 +109,15 @@ pub fn apply_ack_transitions(
 		return Ok(0);
 	}
 
-	let lock_key = QueuePartitionKey::encoded(queue, partition);
-	let mut tx = single.begin_command_ranged([&lock_key], partition_ranges(queue, partition))?;
+	let lock_key = QueuePartitionKey::new(queue, partition);
+	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
 
 	let mut overlay = ChainOverlay::default();
 	let mut applied = 0u64;
 	let mut requeued = 0u64;
 	let mut blocked_delta = 0i64;
 	for ack in acks {
-		let state_key = QueueItemStateKey::encoded(queue, partition, ack.row_number);
+		let state_key = QueueItemStateKey::new(queue, partition, ack.row_number);
 		let Some(stored) = tx.get(&state_key)? else {
 			debug!(queue = queue.0, partition, item = ack.row_number.0, "ack has no item state");
 			continue;
@@ -179,10 +176,10 @@ pub fn apply_reap_transition(
 	transition: &QueueAckTransition,
 	now: DateTime,
 ) -> Result<bool> {
-	let lock_key = QueuePartitionKey::encoded(queue, partition);
-	let mut tx = single.begin_command_ranged([&lock_key], partition_ranges(queue, partition))?;
+	let lock_key = QueuePartitionKey::new(queue, partition);
+	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
 
-	let state_key = QueueItemStateKey::encoded(queue, partition, lease.row);
+	let state_key = QueueItemStateKey::new(queue, partition, lease.row);
 	let Some(stored) = tx.get(&state_key)? else {
 		return Ok(false);
 	};
@@ -235,10 +232,10 @@ pub fn apply_replay_transition(
 	row: RowNumber,
 	key_hash: Option<u64>,
 ) -> Result<ReplayOutcome> {
-	let lock_key = QueuePartitionKey::encoded(queue, partition);
-	let mut tx = single.begin_command_ranged([&lock_key], partition_ranges(queue, partition))?;
+	let lock_key = QueuePartitionKey::new(queue, partition);
+	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
 
-	let state_key = QueueItemStateKey::encoded(queue, partition, row);
+	let state_key = QueueItemStateKey::new(queue, partition, row);
 	let Some(stored) = tx.get(&state_key)? else {
 		return Ok(ReplayOutcome::Unknown);
 	};
@@ -298,12 +295,12 @@ pub fn remove_item_states(
 		return Ok(0);
 	}
 
-	let lock_key = QueuePartitionKey::encoded(queue, partition);
-	let mut tx = single.begin_command_ranged([&lock_key], partition_ranges(queue, partition))?;
+	let lock_key = QueuePartitionKey::new(queue, partition);
+	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
 
 	let mut removed = 0u64;
 	for row in rows {
-		let state_key = QueueItemStateKey::encoded(queue, partition, *row);
+		let state_key = QueueItemStateKey::new(queue, partition, *row);
 		let Some(stored) = tx.get(&state_key)? else {
 			continue;
 		};
@@ -395,7 +392,7 @@ fn apply_state_transition(
 		}
 	};
 
-	tx.set(&QueueItemStateKey::encoded(queue, partition, row), encode_queue_item_state(state))?;
+	tx.set(&QueueItemStateKey::new(queue, partition, row), encode_queue_item_state(state))?;
 
 	let blocked_delta = match (terminal, key_hash) {
 		(true, Some(key_hash)) => {
@@ -425,7 +422,7 @@ fn promote_next(
 		ChainHead::Multiple(row) => (row, 0),
 	};
 
-	let state_key = QueueItemStateKey::encoded(queue, partition, successor);
+	let state_key = QueueItemStateKey::new(queue, partition, successor);
 	let Some(stored) = tx.get(&state_key)? else {
 		debug!(queue = queue.0, partition, item = successor.0, "the successor of a key has no item state");
 		return Ok(blocked_delta);
@@ -458,10 +455,10 @@ fn expose_due(
 	row: RowNumber,
 	state: &QueueItemState,
 ) -> Result<()> {
-	tx.set(&QueueDueKey::encoded(queue, partition, state.due(), row), EncodedPodRow::new(&[]).into_bytes())
+	tx.set(&QueueDueKey::new(queue, partition, state.due(), row), EncodedPodRow::new(&[]).into_bytes())
 }
 
-fn read_counters(tx: &mut SingleWriteTransaction<'_>, lock_key: &EncodedKey) -> Result<QueuePartitionCounters> {
+fn read_counters(tx: &mut SingleWriteTransaction<'_>, lock_key: &QueuePartitionKey) -> Result<QueuePartitionCounters> {
 	Ok(tx.get(lock_key)?
 		.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
 		.unwrap_or_default())
@@ -469,7 +466,7 @@ fn read_counters(tx: &mut SingleWriteTransaction<'_>, lock_key: &EncodedKey) -> 
 
 fn adjust_counters(
 	tx: &mut SingleWriteTransaction<'_>,
-	lock_key: &EncodedKey,
+	lock_key: &QueuePartitionKey,
 	applied: u64,
 	requeued: u64,
 	blocked_delta: i64,

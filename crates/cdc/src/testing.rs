@@ -4,8 +4,13 @@
 use std::sync::Arc;
 
 use reifydb_catalog::{cache::CatalogCache, catalog::Catalog};
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use reifydb_core::{common::CommitVersion, event::EventBus};
+use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_core::{
+	common::CommitVersion,
+	event::EventBus,
+	interface::catalog::id::QueueId,
+	key::{any::TaggedKey, queue::QueueDeduplicationKey},
+};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{
@@ -124,8 +129,8 @@ impl CdcHost for TestCdcHost {
 	}
 }
 
-pub fn make_key(s: &str) -> EncodedKey {
-	EncodedKey::new(s.as_bytes())
+pub fn make_key(s: &str) -> TaggedKey {
+	QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>()).into()
 }
 
 pub fn make_bytes(s: &str) -> EncodedBytes {

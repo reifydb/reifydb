@@ -11,8 +11,8 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
+		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
-		typed::key::Key,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
@@ -221,7 +221,7 @@ impl RingBufferScan {
 			let mut out = Vec::new();
 			for rn_value in pm.metadata.head..pm.metadata.tail {
 				let rn = RowNumber(rn_value);
-				if let Some(multi) = txn.get(&RowKey::encoded(rb_id, rn))? {
+				if let Some(multi) = txn.get(&RowKey::new(rb_id, rn))? {
 					out.push((rn, multi.bytes));
 				}
 			}
@@ -244,10 +244,10 @@ impl RingBufferScan {
 			}
 			let n = batch.len();
 			for entry in batch {
-				if let Some(rn) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.row) {
-					out.push((rn, entry.bytes));
+				if let TaggedKey::PartitionedRow(pk) = &entry.key {
+					out.push((pk.row, entry.bytes));
 				}
-				last_key = Some(entry.key);
+				last_key = Some(entry.key.clone());
 			}
 			if n < 1024 {
 				break;

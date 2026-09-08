@@ -19,8 +19,8 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
 	key::{
+		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
-		typed::key::Key,
 	},
 	value::column::columns::Columns,
 };
@@ -276,7 +276,7 @@ fn collect_partition_row_numbers(
 		let mut out = Vec::new();
 		for row_num_value in metadata.head..metadata.tail {
 			let row_num = RowNumber(row_num_value);
-			if txn.get(&RowKey::encoded(ringbuffer.id, row_num))?.is_some() {
+			if txn.get(&RowKey::new(ringbuffer.id, row_num))?.is_some() {
 				out.push(row_num);
 			}
 		}
@@ -298,10 +298,10 @@ fn collect_partition_row_numbers(
 		}
 		let n = batch.len();
 		for entry in batch {
-			if let Some(rn) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.row) {
-				out.push(rn);
+			if let TaggedKey::PartitionedRow(pk) = &entry.key {
+				out.push(pk.row);
 			}
-			last_key = Some(entry.key);
+			last_key = Some(entry.key.clone());
 		}
 		if n < 1024 {
 			break;

@@ -207,9 +207,7 @@ impl<D: RangeDomain> RangeTier<D> {
 	fn retract_partition(&self, victim: &D::Partition) {
 		let (start, end) = D::span(victim);
 		let mut coverage = self.coverage().write();
-		if let Some(start) = start.lowest() {
-			coverage.drop_overlapping(D::dimension(victim), &start, &end);
-		}
+		coverage.drop_overlapping(D::dimension(victim), &start, &end);
 		self.record_retraction();
 	}
 
@@ -358,9 +356,6 @@ impl<D: RangeDomain> RangeTier<D> {
 					continue;
 				};
 				let (start, end) = D::span(&id);
-				let Some(start) = start.lowest() else {
-					continue;
-				};
 				intervals[D::metric_bucket(&id)] += set.overlapping(&start, &end).len();
 			}
 		}
@@ -529,7 +524,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::{
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
-			typed::{MultiKey, range::KeyRange},
+			typed::{OpaqueKey, range::KeyRange},
 		},
 		metrics::{
 			collect::MetricsCollector,
@@ -634,7 +629,6 @@ mod tests {
 			}
 		}
 		let (start, end) = id.span();
-		let start = start.lowest().expect("a partition span starts at a key");
 		tier.coverage().write().extend(id.dimension, start, end);
 	}
 
@@ -658,11 +652,11 @@ mod tests {
 		}
 	}
 
-	fn claims(tier: &RangeTier<D>) -> Vec<Interval<MultiKey>> {
+	fn claims(tier: &RangeTier<D>) -> Vec<Interval<OpaqueKey>> {
 		tier.coverage().read().set(OP_A).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
-	fn scan_plan(gaps: usize, degraded: bool) -> ScanPlan<MultiKey> {
+	fn scan_plan(gaps: usize, degraded: bool) -> ScanPlan<OpaqueKey> {
 		ScanPlan {
 			segments: Vec::new(),
 			gaps,

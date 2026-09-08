@@ -4,21 +4,14 @@
 use std::collections::BTreeMap;
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{queue::EncodedQueueRow, shape::RowShape},
-};
+use reifydb_codec::row::{queue::EncodedQueueRow, shape::RowShape};
 use reifydb_core::{
 	interface::{
 		catalog::{id::QueueId, queue::Queue},
 		store::SingleVersionGet,
 	},
 	internal_error,
-	key::{
-		queue::QueueItemStateKey,
-		row::{RowKey, RowKeyRange},
-		typed::key::Key,
-	},
+	key::{any::TaggedKey, queue::QueueItemStateKey, row::RowKeyRange},
 };
 use reifydb_transaction::{
 	multi::RangeScope,
@@ -66,7 +59,7 @@ fn hydrate_queue(
 	let ordered_by = ordered_by_index(queue)?;
 
 	let mut pending: BTreeMap<u16, Vec<QueueAdmission>> = BTreeMap::new();
-	let mut last_key: Option<EncodedKey> = None;
+	let mut last_key: Option<TaggedKey> = None;
 	let mut admitted = 0u64;
 
 	loop {
@@ -81,10 +74,10 @@ fn hydrate_queue(
 				match stream.next() {
 					Some(Ok(item)) => {
 						fetched += 1;
-						if let Some(key) = RowKey::decode(&item.key) {
+						if let TaggedKey::Row(key) = &item.key {
 							batch.push((key.row, EncodedQueueRow::from(item.bytes)));
 						}
-						last_key = Some(item.key);
+						last_key = Some(item.key.clone());
 					}
 					Some(Err(err)) => return Err(err),
 					None => break,

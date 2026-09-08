@@ -15,7 +15,6 @@ use reifydb_core::{
 	key::{
 		queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 		row::RowKey,
-		typed::key::Key,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
@@ -228,7 +227,7 @@ fn readable_candidates(
 ) -> Result<Vec<RowNumber>, RoutineError> {
 	let mut readable = Vec::with_capacity(candidates.len());
 	for row in candidates {
-		if ctx.tx.get(&RowKey::encoded(queue.id, *row))?.is_some() {
+		if ctx.tx.get(&RowKey::new(queue.id, *row))?.is_some() {
 			readable.push(*row);
 		} else {
 			debug!(
@@ -253,7 +252,7 @@ fn due_candidates(
 	let store = single.read_store();
 	let batch = SingleVersionRangeRev::range_rev_batch(
 		&store,
-		QueueDueKey::partition_scan(queue.id, partition),
+		QueueDueKey::partition_scan(queue.id, partition).encode(),
 		need as u64,
 	)?;
 
@@ -273,18 +272,18 @@ fn lease_candidates(
 	lease_ttl: Duration,
 	now: DateTime,
 ) -> Result<Vec<Lease>, RoutineError> {
-	let lock_key = QueuePartitionKey::encoded(queue.id, partition);
+	let lock_key = QueuePartitionKey::new(queue.id, partition);
 	let mut tx = single.begin_command_ranged(
-		[&lock_key],
+		[&lock_key.encode()],
 		vec![
-			QueueItemStateKey::partition_scan(queue.id, partition),
-			QueueDueKey::partition_scan(queue.id, partition),
+			QueueItemStateKey::partition_scan(queue.id, partition).encode(),
+			QueueDueKey::partition_scan(queue.id, partition).encode(),
 		],
 	)?;
 
 	let mut leases = Vec::new();
 	for row in candidates {
-		let state_key = QueueItemStateKey::encoded(queue.id, partition, *row);
+		let state_key = QueueItemStateKey::new(queue.id, partition, *row);
 		let Some(stored) = tx.get(&state_key)? else {
 			continue;
 		};
@@ -303,7 +302,7 @@ fn lease_candidates(
 		state.lease_deadline = Some(deadline);
 
 		tx.set(&state_key, encode_queue_item_state(&state))?;
-		tx.remove(&QueueDueKey::encoded(queue.id, partition, due, *row))?;
+		tx.remove(&QueueDueKey::new(queue.id, partition, due, *row))?;
 
 		leases.push(Lease {
 			partition,
@@ -397,7 +396,7 @@ fn push_payload(
 	row: RowNumber,
 	payloads: &mut [ColumnBuffer],
 ) -> Result<(), RoutineError> {
-	let stored = ctx.tx.get(&RowKey::encoded(queue.id, row))?;
+	let stored = ctx.tx.get(&RowKey::new(queue.id, row))?;
 
 	let Some(stored) = stored else {
 		for buffer in payloads.iter_mut() {

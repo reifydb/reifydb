@@ -5,17 +5,25 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	interface::{catalog::flow::OperatorId, store::MultiVersionCommit},
+	interface::{
+		catalog::{flow::OperatorId, id::QueueId},
+		store::MultiVersionCommit,
+	},
 	key::{
-		EncodableKey,
+		any::TaggedKey,
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+		queue::QueueDeduplicationKey,
 	},
 };
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::util::cowvec::CowVec;
 
-fn fns(node: u64, payload: &[u8]) -> EncodedKey {
-	OperatorStateKey::new(OperatorId(node), GroupId::ROOT, KeyspaceId::CUSTOM_NOT_CACHED, payload.to_vec()).encode()
+fn fns(node: u64, payload: &[u8]) -> TaggedKey {
+	OperatorStateKey::new(OperatorId(node), GroupId::ROOT, KeyspaceId::CUSTOM_NOT_CACHED, payload.to_vec()).into()
+}
+
+fn multi(payload: &[u8]) -> TaggedKey {
+	QueueDeduplicationKey::new(QueueId(1), payload.iter().map(|b| !b).collect::<Vec<u8>>()).into()
 }
 
 fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {
@@ -28,9 +36,9 @@ fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
 	// keys all classify to the single Multi table.
 	let k1 = fns(1, b"shared");
 	let k2 = fns(2, b"shared");
-	let p = EncodedKey::new(b"plain");
+	let p = multi(b"plain");
 	let absent_op = fns(1, b"ghost");
-	let absent_multi = EncodedKey::new(b"nope");
+	let absent_multi = multi(b"nope");
 
 	MultiVersionCommit::commit(
 		store,
@@ -58,17 +66,17 @@ fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
 
 	let found = store
 		.get_many(
-			&[k1.clone(), k2.clone(), p.clone(), absent_op.clone(), absent_multi.clone()],
+			&[k1.encode(), k2.encode(), p.encode(), absent_op.encode(), absent_multi.encode()],
 			CommitVersion(1),
 		)
 		.unwrap();
 
 	assert_eq!(found.len(), 3);
-	assert_eq!(found.get(&k1).map(|r| r.bytes.to_vec()), Some(b"n1".to_vec()));
-	assert_eq!(found.get(&k2).map(|r| r.bytes.to_vec()), Some(b"n2".to_vec()));
-	assert_eq!(found.get(&p).map(|r| r.bytes.to_vec()), Some(b"pp".to_vec()));
-	assert!(!found.contains_key(&absent_op));
-	assert!(!found.contains_key(&absent_multi));
+	assert_eq!(found.get(&k1.encode()).map(|r| r.bytes.to_vec()), Some(b"n1".to_vec()));
+	assert_eq!(found.get(&k2.encode()).map(|r| r.bytes.to_vec()), Some(b"n2".to_vec()));
+	assert_eq!(found.get(&p.encode()).map(|r| r.bytes.to_vec()), Some(b"pp".to_vec()));
+	assert!(!found.contains_key(&absent_op.encode()));
+	assert!(!found.contains_key(&absent_multi.encode()));
 }
 
 fn check_get_many_bucket_boundaries(store: &StandardMultiStore) {
@@ -83,7 +91,7 @@ fn check_get_many_bucket_boundaries(store: &StandardMultiStore) {
 			key: key.clone(),
 			bytes: encoded_bytes(format!("v{}", i).as_bytes()),
 		});
-		present.push(key);
+		present.push(key.encode());
 	}
 	MultiVersionCommit::commit(store, CowVec::new(deltas), CommitVersion(1)).unwrap();
 	store.flush_pending_blocking();
@@ -91,12 +99,16 @@ fn check_get_many_bucket_boundaries(store: &StandardMultiStore) {
 	for count in [1usize, 2, 7, 8, 9, 63, 64, 65, 129, 130] {
 		let absent = fns(7, format!("ghost{:04}", count).as_bytes());
 		let mut lookup: Vec<EncodedKey> = present[..count].to_vec();
-		lookup.push(absent.clone());
+		lookup.push(absent.encode());
 
 		let found = store.get_many(&lookup, CommitVersion(1)).unwrap();
 
 		assert_eq!(found.len(), count, "count={}: expected exactly {} resolved keys", count, count);
-		assert!(!found.contains_key(&absent), "count={}: absent key must not resolve via padding", count);
+		assert!(
+			!found.contains_key(&absent.encode()),
+			"count={}: absent key must not resolve via padding",
+			count
+		);
 		for (i, key) in present[..count].iter().enumerate() {
 			assert_eq!(
 				found.get(key).map(|r| r.bytes.to_vec()),

@@ -7,10 +7,7 @@ use std::sync::{
 };
 
 use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
-use reifydb_core::{
-	common::CommitVersion,
-	key::{system::TransactionVersionKey, typed::key::Key},
-};
+use reifydb_core::{common::CommitVersion, key::system::TransactionVersionKey};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{Result, reifydb_assertions, value::value_type::ValueType};
 
@@ -74,21 +71,23 @@ impl StandardVersionProvider {
 	}
 
 	fn load_current_version(shape: &RowShape, single: &SingleTransaction) -> Result<u64> {
-		let key = TransactionVersionKey {}.encode();
+		let key = TransactionVersionKey {};
+		let locked = key.encode();
 
-		let mut tx = single.begin_query([&key])?;
-		match tx.get(&key)? {
+		let mut tx = single.begin_query([&locked])?;
+		match tx.get(&locked)? {
 			None => Ok(0),
 			Some(single) => Ok(shape.get::<u64>(&single.bytes, 0)),
 		}
 	}
 
 	fn persist_version(shape: &RowShape, single: &SingleTransaction, version: u64) -> Result<()> {
-		let key = TransactionVersionKey {}.encode();
+		let key = TransactionVersionKey {};
+		let encoded = key.encode();
 		let mut row = shape.allocate_pod();
 		shape.set::<u64>(&mut row, 0, version);
 
-		let mut tx = single.begin_command([&key])?;
+		let mut tx = single.begin_command([&encoded])?;
 		tx.set(&key, row.freeze())?;
 		tx.commit()
 	}
@@ -323,12 +322,13 @@ pub mod tests {
 
 		let shape =
 			RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("version", ValueType::Uint8)]);
-		let key = TransactionVersionKey {}.encode();
+		let key = TransactionVersionKey {};
+		let locked = key.encode();
 		let mut row = shape.allocate_pod();
 		shape.set::<u64>(&mut row, 0, 500u64);
 
 		{
-			let mut tx = single.begin_command([&key]).unwrap();
+			let mut tx = single.begin_command([&locked]).unwrap();
 			tx.set(&key, row.freeze()).unwrap();
 			tx.commit().unwrap();
 		} // dropped here, releasing the key lock the provider needs

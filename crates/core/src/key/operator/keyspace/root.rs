@@ -10,7 +10,7 @@ use crate::{
 			traits::Keyspace,
 		},
 		typed::{
-			TypedKey,
+			BoundedKey, DenseKey, KeyLayout,
 			direction::{Asc, Desc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues},
 		},
@@ -18,15 +18,15 @@ use crate::{
 	metrics::heap::HeapSize,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct SourceWatermarkKey {}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct SealLedgerKey {
 	pub group: Desc<GroupId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct NodeCounterKey {
 	pub kind: Asc<u8>,
 }
@@ -62,34 +62,34 @@ impl NodeCounterKey {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct GateVisibilityKey {
 	pub row: Asc<RowNumber>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct GroupRowMappingKey {
 	pub group: Desc<GroupId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct GuestRowMappingKey {
 	pub group: Desc<GroupId>,
 	pub id: Asc<[u8; 16]>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct GuestRowMappingSuffix {
 	pub id: Asc<[u8; 16]>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct CustomNotCachedKey {
 	pub group: Desc<GroupId>,
 	pub id: Asc<[u8; 16]>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TypedKey, HeapSize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct CustomNotCachedSuffix {
 	pub id: Asc<[u8; 16]>,
 }

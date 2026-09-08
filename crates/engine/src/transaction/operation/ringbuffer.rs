@@ -2,13 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{
-		bytes::{EncodedBytes, RowBuilder},
-		ringbuffer::EncodedRingBufferRow,
-		shape::{RowFamily, RowShape},
-	},
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, RowBuilder},
+	ringbuffer::EncodedRingBufferRow,
+	shape::{RowFamily, RowShape},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -19,7 +16,10 @@ use reifydb_core::{
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::row::{PartitionedRowKey, RowKey},
+	key::{
+		any::TaggedKey,
+		row::{PartitionedRowKey, RowKey},
+	},
 	partition::{PartitionError, partition_col_indices},
 	row::row_shape_from_columns,
 	value::column::columns::Columns,
@@ -36,10 +36,10 @@ use smallvec::smallvec;
 
 use crate::{Result, partition::partition_values};
 
-fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_number: RowNumber) -> EncodedKey {
+fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_number: RowNumber) -> TaggedKey {
 	match partition {
-		None => RowKey::encoded(ringbuffer.id, row_number),
-		Some(partition) => PartitionedRowKey::encoded(ringbuffer.id, partition, row_number),
+		None => RowKey::new(ringbuffer.id, row_number).into(),
+		Some(partition) => PartitionedRowKey::new(ringbuffer.id, partition, row_number).into(),
 	}
 }
 

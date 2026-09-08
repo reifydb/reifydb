@@ -9,7 +9,7 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn revoke_role(txn: &mut AdminTransaction, identity: IdentityId, role: RoleId) -> Result<()> {
-		txn.remove(&GrantedRoleKey::encoded(identity, role))?;
+		txn.remove(&GrantedRoleKey::new(identity, role))?;
 		Ok(())
 	}
 }

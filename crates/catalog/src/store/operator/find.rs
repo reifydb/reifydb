@@ -12,7 +12,7 @@ use crate::{CatalogStore, Result, store::operator::shape::operator};
 
 impl CatalogStore {
 	pub(crate) fn find_operator(rx: &mut Transaction<'_>, operator_id: OperatorId) -> Result<Option<Operator>> {
-		let Some(multi) = rx.get(&OperatorKey::encoded(operator_id))? else {
+		let Some(multi) = rx.get(&OperatorKey::new(operator_id))? else {
 			return Ok(None);
 		};
 

@@ -2,11 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::config::{ConfigKey, GetConfig},
-	key::{system::VersionEpochKey, typed::key::Key},
+	key::{any::TaggedKey, system::VersionEpochKey},
+	return_internal_error,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::version_epoch::{BUCKET_WIDTH, EpochSeconds, EpochSpan};
@@ -53,7 +54,7 @@ impl EpochLog {
 		}
 
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
-		txn.set(&VersionEpochKey::encoded(period), encode(at, version).into_bytes())?;
+		txn.set(&VersionEpochKey::new(period), encode(at, version).into_bytes())?;
 		let written_at = txn.commit_unchecked()?;
 
 		self.last = Some((period, written_at.0.max(version.0)));
@@ -67,7 +68,7 @@ impl EpochLog {
 		let txn = self.engine.begin_query(IdentityId::system())?;
 		for entry in txn.range(VersionEpochKey::floor_scan(now), RangeScope::All, RANGE_BATCH) {
 			let entry = entry?;
-			let Some(key) = VersionEpochKey::decode(&entry.key) else {
+			let TaggedKey::VersionEpoch(key) = &entry.key else {
 				continue;
 			};
 			if key.bucket.plus(bucket) <= oldest {
@@ -85,7 +86,7 @@ impl EpochLog {
 		Ok(samples)
 	}
 
-	pub fn expired_before(&self, oldest: EpochSeconds, budget: usize) -> Result<Vec<EncodedKey>> {
+	pub fn expired_before(&self, oldest: EpochSeconds, budget: usize) -> Result<Vec<VersionEpochKey>> {
 		let mut expired = Vec::new();
 
 		let txn = self.engine.begin_query(IdentityId::system())?;
@@ -97,7 +98,10 @@ impl EpochLog {
 			if sample.at >= oldest {
 				continue;
 			}
-			expired.push(entry.key.clone());
+			let TaggedKey::VersionEpoch(key) = entry.key else {
+				return_internal_error!("epoch log scan yielded a key that is not a VersionEpochKey")
+			};
+			expired.push(key);
 			if expired.len() >= budget {
 				break;
 			}

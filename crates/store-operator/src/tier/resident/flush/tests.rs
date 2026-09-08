@@ -886,8 +886,6 @@ fn a_tombstone_count_resting_on_the_entry_limit_does_not_flush() {
 }
 
 fn rebuilding_fixture() -> (OperatorResidentState, SqliteOperatorStorage, SqliteTempPathGuard) {
-	// state already in sqlite is what a store boots over after a restart, and it is what stops the buffer
-	// arming a filter of its own, so a rebuild scan is the only thing that can arm one here
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorResidentState::new();
 	buffer.attach_sinks(tier(&storage), None);
@@ -901,10 +899,6 @@ fn rebuilding_fixture() -> (OperatorResidentState, SqliteOperatorStorage, Sqlite
 
 #[test]
 fn a_key_flushed_while_the_filter_is_rebuilding_is_in_the_filter_that_rebuild_commits() {
-	// The rebuild scan can only see what sqlite held when it read the census and passed a key's position. A
-	// key flushed behind the cursor, or into a keyspace the census reported empty, is invisible to it, so the
-	// flush that wrote it is the only thing that can put it in the filter being built. Miss it and the commit
-	// installs a filter that denies a durable row for as long as that filter lives.
 	let (buffer, _storage, _guard) = rebuilding_fixture();
 	let filter = buffer.filter();
 

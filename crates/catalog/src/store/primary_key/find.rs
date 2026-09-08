@@ -53,7 +53,7 @@ impl CatalogStore {
 			}
 		};
 
-		let primary_key_multi = match rx.get(&PrimaryKeyKey::encoded(primary_key_id))? {
+		let primary_key_multi = match rx.get(&PrimaryKeyKey::new(primary_key_id))? {
 			Some(multi) => multi,
 			None => return_internal_error!(format!(
 				"Primary key with ID {:?} referenced but not found",

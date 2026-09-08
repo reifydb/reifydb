@@ -7,9 +7,13 @@ use std::{
 };
 
 use reifydb_codec::row::bytes::EncodedBytes;
-use reifydb_core::interface::{
-	catalog::metrics::{MetricsId, parser::parse_id},
-	store::SingleVersionStore,
+use reifydb_core::{
+	delta::Delta,
+	interface::{
+		catalog::metrics::{MetricsId, parser::parse_id},
+		store::SingleVersionStore,
+	},
+	key::metric::MetricCdcKey,
 };
 use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::CowVec};
 
@@ -109,8 +113,10 @@ impl<S: SingleVersionStore> CdcMetricsWriter<S> {
 		let dirty: Vec<MetricsId> = self.dirty.drain().collect();
 		for id in dirty {
 			if let Some(stats) = self.stats.get(&id) {
-				let storage_key = encode_cdc_stats_key(id);
-				self.storage.set(&storage_key, EncodedBytes(CowVec::new(encode_cdc_stats(stats))))?;
+				self.storage.commit(CowVec::new(vec![Delta::Set {
+					key: MetricCdcKey::new(id).into(),
+					bytes: EncodedBytes(CowVec::new(encode_cdc_stats(stats))),
+				}]))?;
 			}
 		}
 		Ok(())

@@ -19,10 +19,9 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 	key::{
-		kind::KeyKind,
-		row::{PartitionedRowKey, RowKey},
+		row::{PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey},
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
-		typed::key::Key,
+		tag::KeyTag,
 	},
 	value::column::columns::Columns,
 };
@@ -56,35 +55,43 @@ struct Bucket {
 }
 
 pub fn row_target(key: &EncodedKey) -> Option<RowTarget> {
-	match KeyKind::of(key)? {
-		KeyKind::Row => {
+	match KeyTag::of(key)? {
+		KeyTag::Row => {
 			let row_key = RowKey::decode(key)?;
 			Some(RowTarget {
 				object: ObjectId::from(row_key.storage),
 				row: row_key.row,
 			})
 		}
-		KeyKind::SeriesRow => {
+		KeyTag::SeriesRow => {
 			let series_key = SeriesRowKey::decode(key)?;
 			Some(RowTarget {
 				object: ObjectId::from(series_key.storage),
 				row: RowNumber(series_key.sequence),
 			})
 		}
-		KeyKind::PartitionedRow => {
+		KeyTag::PartitionedRow => {
 			let partitioned = PartitionedRowKey::decode(key)?;
 			Some(RowTarget {
 				object: ObjectId::from(partitioned.storage),
 				row: partitioned.row,
 			})
 		}
-		KeyKind::PartitionedSeriesRow => {
+		KeyTag::PartitionedSeriesRow => {
 			let partitioned = PartitionedSeriesRowKey::decode(key)?;
 			Some(RowTarget {
 				object: ObjectId::from(partitioned.storage),
 				row: RowNumber(partitioned.sequence),
 			})
 		}
+		KeyTag::SortedViewRow => Some(RowTarget {
+			object: ObjectId::from(SortedViewRowKey::storage_of(key)?),
+			row: SortedViewRowKey::row_of(key)?,
+		}),
+		KeyTag::PartitionedSortedViewRow => Some(RowTarget {
+			object: ObjectId::from(PartitionedSortedViewRowKey::storage_of(key)?),
+			row: PartitionedSortedViewRowKey::row_of(key)?,
+		}),
 		_ => None,
 	}
 }
@@ -255,7 +262,6 @@ mod tests {
 		key::{
 			row::{PartitionedRowKey, RowKey},
 			series::{PartitionedSeriesRowKey, SeriesRowKey},
-			typed::key::Key,
 		},
 	};
 	use reifydb_value::value::partition::Partition;

@@ -90,7 +90,7 @@ mod tests {
 				CommitVersion(v),
 				DateTime::from_nanos(1000),
 				vec![CdcChange::Insert {
-					key: make_key(&format!("k{v}")),
+					key: make_key(&format!("k{v}")).encode(),
 					post: make_bytes("v"),
 				}],
 			);

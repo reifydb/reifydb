@@ -13,7 +13,7 @@ use crate::{
 	key::{
 		operator::state::GroupId,
 		typed::{
-			TypedKey,
+			BoundedKey, DenseKey,
 			layout::{KeyColumnType, KeyValue},
 		},
 	},
@@ -367,21 +367,25 @@ impl KeyScalar for TimerKind {
 	}
 }
 
-impl<T: KeyScalar> TypedKey for Asc<T> {
+impl<T: KeyScalar> BoundedKey for Asc<T> {
 	fn low() -> Self {
 		Asc(T::MIN)
 	}
+}
 
+impl<T: KeyScalar> DenseKey for Asc<T> {
 	fn successor(&self) -> Option<Self> {
 		self.0.successor().map(Asc)
 	}
 }
 
-impl<T: KeyScalar> TypedKey for Desc<T> {
+impl<T: KeyScalar> BoundedKey for Desc<T> {
 	fn low() -> Self {
 		Desc(T::MAX)
 	}
+}
 
+impl<T: KeyScalar> DenseKey for Desc<T> {
 	fn successor(&self) -> Option<Self> {
 		self.0.predecessor().map(Desc)
 	}
@@ -439,7 +443,10 @@ mod tests {
 
 	use super::{Asc, Desc, Direction, KeyField, KeyScalar};
 	use crate::{
-		key::{operator::state::GroupId, typed::TypedKey},
+		key::{
+			operator::state::GroupId,
+			typed::{BoundedKey, DenseKey},
+		},
 		metrics::heap::HeapSize,
 		state::{join::ContentVersion, timer::TimerKind},
 	};
@@ -509,18 +516,18 @@ mod tests {
 		// the column is written as to_bits(), so Ord disagreeing with bit order would make a wheel scan
 		// return rows the range never contained
 		assert!(DateTime::from_bits(1) < DateTime::from_bits(2));
-		assert_eq!(<Desc<DateTime> as TypedKey>::low(), Desc(DateTime::MAX));
-		assert_eq!(<Asc<DateTime> as TypedKey>::low(), Asc(DateTime::EPOCH));
+		assert_eq!(<Desc<DateTime> as BoundedKey>::low(), Desc(DateTime::MAX));
+		assert_eq!(<Asc<DateTime> as BoundedKey>::low(), Asc(DateTime::EPOCH));
 	}
 
 	#[test]
 	fn desc_of_every_new_scalar_starts_at_its_maximum() {
 		// Desc<T>::low() is T::MAX by definition; a scalar whose MAX is not its true top would start a
 		// descending scan below the first row and skip it
-		assert_eq!(<Desc<Hash128> as TypedKey>::low(), Desc(Hash128(u128::MAX)));
-		assert_eq!(<Desc<Partition> as TypedKey>::low(), Desc(Partition(u128::MAX)));
-		assert_eq!(<Desc<ContentVersion> as TypedKey>::low(), Desc(ContentVersion(u64::MAX)));
-		assert_eq!(<Desc<TimerKind> as TypedKey>::low(), Desc(TimerKind::Maintenance));
+		assert_eq!(<Desc<Hash128> as BoundedKey>::low(), Desc(Hash128(u128::MAX)));
+		assert_eq!(<Desc<Partition> as BoundedKey>::low(), Desc(Partition(u128::MAX)));
+		assert_eq!(<Desc<ContentVersion> as BoundedKey>::low(), Desc(ContentVersion(u64::MAX)));
+		assert_eq!(<Desc<TimerKind> as BoundedKey>::low(), Desc(TimerKind::Maintenance));
 	}
 
 	#[test]
@@ -570,7 +577,7 @@ mod tests {
 
 	#[test]
 	fn asc_runs_the_inner_domain_forwards() {
-		assert_eq!(<Asc<u64> as TypedKey>::low(), Asc(u64::MIN));
+		assert_eq!(<Asc<u64> as BoundedKey>::low(), Asc(u64::MIN));
 		assert_eq!(Asc(5u64).successor(), Some(Asc(6)));
 		assert_eq!(Asc(u64::MAX).successor(), None);
 	}
@@ -579,8 +586,8 @@ mod tests {
 	fn desc_low_is_the_inner_maximum() {
 		// Desc runs the order backwards, so the first key of a descending column is the largest value;
 		// low() returning the minimum would place the scan start past the end of the keyspace
-		assert_eq!(<Desc<u64> as TypedKey>::low(), Desc(u64::MAX));
-		assert_eq!(<Desc<u8> as TypedKey>::low(), Desc(u8::MAX));
+		assert_eq!(<Desc<u64> as BoundedKey>::low(), Desc(u64::MAX));
+		assert_eq!(<Desc<u8> as BoundedKey>::low(), Desc(u8::MAX));
 	}
 
 	#[test]
@@ -601,7 +608,7 @@ mod tests {
 	#[test]
 	fn desc_low_and_successor_walk_the_whole_order() {
 		// low() then repeated successor() must visit a descending column in its own sort order
-		let mut walk = vec![<Desc<u8> as TypedKey>::low()];
+		let mut walk = vec![<Desc<u8> as BoundedKey>::low()];
 		while let Some(next) = walk.last().unwrap().successor() {
 			walk.push(next);
 			if walk.len() > 4 {
@@ -629,9 +636,9 @@ mod tests {
 	fn group_and_row_number_scalars_bound_their_domains() {
 		assert_eq!(<GroupId as KeyScalar>::MIN, GroupId::ROOT);
 		assert_eq!(GroupId::MAX.successor(), None);
-		assert_eq!(<Desc<GroupId> as TypedKey>::low(), Desc(GroupId::MAX));
+		assert_eq!(<Desc<GroupId> as BoundedKey>::low(), Desc(GroupId::MAX));
 		assert_eq!(<RowNumber as KeyScalar>::MAX, RowNumber(u64::MAX));
 		assert_eq!(RowNumber(0).predecessor(), None);
-		assert_eq!(<Desc<RowNumber> as TypedKey>::low(), Desc(RowNumber(u64::MAX)));
+		assert_eq!(<Desc<RowNumber> as BoundedKey>::low(), Desc(RowNumber(u64::MAX)));
 	}
 }

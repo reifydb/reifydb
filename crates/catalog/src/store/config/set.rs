@@ -11,7 +11,7 @@ impl CatalogStore {
 	pub(crate) fn set_config(txn: &mut AdminTransaction, key: ConfigKey, value: &Value) -> Result<()> {
 		let mut row = config::allocate();
 		config::set_value(&mut row, &Value::any(value.clone()));
-		txn.set(&ConfigStorageKey::for_key(key), row.freeze())?;
+		txn.set(&ConfigStorageKey::new(key), row.freeze())?;
 		Ok(())
 	}
 }

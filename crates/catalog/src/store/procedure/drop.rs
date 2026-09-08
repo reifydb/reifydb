@@ -4,9 +4,9 @@
 use reifydb_core::{
 	interface::catalog::id::ProcedureId,
 	key::{
+		any::TaggedKey,
 		namespace::NamespaceProcedureKey,
 		procedure::{ProcedureKey, ProcedureParamKey},
-		typed::key::Key,
 	},
 };
 use reifydb_transaction::{
@@ -19,7 +19,7 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn drop_procedure(txn: &mut AdminTransaction, procedure: ProcedureId) -> Result<()> {
 		if let Some(p) = Self::find_procedure(&mut Transaction::Admin(&mut *txn), procedure)? {
-			txn.remove(&NamespaceProcedureKey::encoded(p.namespace(), procedure))?;
+			txn.remove(&NamespaceProcedureKey::new(p.namespace(), procedure))?;
 		}
 
 		let mut param_keys: Vec<ProcedureParamKey> = Vec::new();
@@ -27,16 +27,16 @@ impl CatalogStore {
 			let stream = txn.range(ProcedureParamKey::full_scan(procedure), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
-				if let Some(k) = ProcedureParamKey::decode(&entry.key) {
+				if let TaggedKey::ProcedureParam(k) = entry.key {
 					param_keys.push(k);
 				}
 			}
 		}
 		for key in param_keys {
-			txn.remove(&key.encode())?;
+			txn.remove(&key)?;
 		}
 
-		txn.remove(&ProcedureKey::encoded(procedure))?;
+		txn.remove(&ProcedureKey::new(procedure))?;
 
 		Ok(())
 	}

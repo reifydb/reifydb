@@ -1249,10 +1249,10 @@ mod seal_arm_tests {
 		common::{CommitVersion, WindowSize},
 		interface::catalog::flow::OperatorId,
 		key::{
-			EncodableKey,
+			any::TaggedKey,
 			operator::{
 				keyspace::timer::TimerWheelKey,
-				state::{KeyspaceId, OperatorStateKey, keyspace_inner_range},
+				state::{KeyspaceId, keyspace_inner_range},
 			},
 		},
 		state::typed::SuffixBytes,
@@ -1319,7 +1319,9 @@ mod seal_arm_tests {
 		.items
 		.iter()
 		.filter_map(|item| {
-			let decoded = OperatorStateKey::decode(&item.key).expect("a wheel row must decode");
+			let TaggedKey::OperatorState(decoded) = &item.key else {
+				panic!("a wheel row must decode");
+			};
 			let suffix =
 				TimerWheelKey::from_suffix_bytes(&decoded.suffix).expect("a wheel row must decode");
 			(suffix.kind.0 == TimerKind::Seal).then_some(suffix.due.0)

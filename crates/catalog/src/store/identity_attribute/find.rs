@@ -18,7 +18,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		id: IdentityAttributeId,
 	) -> Result<Option<IdentityAttribute>> {
-		rx.get(&IdentityAttributeKey::encoded(id))?.map(convert_identity_attribute).transpose()
+		rx.get(&IdentityAttributeKey::new(id))?.map(convert_identity_attribute).transpose()
 	}
 
 	pub(crate) fn find_identity_attribute_by_name(

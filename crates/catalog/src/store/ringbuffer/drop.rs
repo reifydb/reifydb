@@ -14,7 +14,7 @@ impl CatalogStore {
 		let pk_id = if let Some(ringbuffer_def) =
 			Self::find_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer)?
 		{
-			txn.remove(&NamespaceRingBufferKey::encoded(ringbuffer_def.namespace, ringbuffer))?;
+			txn.remove(&NamespaceRingBufferKey::new(ringbuffer_def.namespace, ringbuffer))?;
 
 			let partitions =
 				Self::list_ringbuffer_partitions(&mut Transaction::Admin(&mut *txn), &ringbuffer_def)?;
@@ -33,7 +33,7 @@ impl CatalogStore {
 
 		drop_object_metadata(txn, ringbuffer.into(), pk_id)?;
 
-		txn.remove(&RingBufferKey::encoded(ringbuffer))?;
+		txn.remove(&RingBufferKey::new(ringbuffer))?;
 
 		Ok(())
 	}

@@ -10,7 +10,7 @@ use std::{
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::key::{
 	operator::{state::KeyspaceId, traits::Keyspace},
-	typed::{Edge, TypedKey},
+	typed::{BoundedKey, Edge},
 };
 use reifydb_store::tier::range::RangeDomain;
 
@@ -44,6 +44,10 @@ impl<K: Keyspace> RangeDomain for TypedDomain<K> {
 	const SCOPE: &'static str = "operator_range";
 
 	const GAP_SCOPE: &'static str = "operator_range::gaps";
+
+	fn just_past(key: &Self::Key) -> Edge<Self::Key> {
+		Edge::just_past(key)
+	}
 
 	fn partition(dimension: Self::Dimension, _key: &Self::Key) -> Self::Partition {
 		dimension

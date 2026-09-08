@@ -284,7 +284,7 @@ impl<D: RangeDomain> RangeTier<D> {
 
 	pub(super) fn withdraw(&self, dimension: D::Dimension, key: &D::Key) {
 		let mut coverage = self.coverage().write();
-		coverage.shrink_key(dimension, key);
+		coverage.shrink_range(dimension, &Edge::Key(key.clone()), &D::just_past(key));
 		if in_head_band::<D>(dimension, key)
 			&& coverage.head(dimension).is_some_and(|current| current.covers(key))
 		{
@@ -301,7 +301,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		if !self.retractions_unchanged(token) {
 			return;
 		}
-		coverage.extend(dimension, key.clone(), Edge::just_past(key));
+		coverage.extend(dimension, Edge::Key(key.clone()), D::just_past(key));
 		self.enforce_coverage_limits(&mut coverage, dimension);
 	}
 }
@@ -325,7 +325,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::{
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-			typed::{Edge, MultiKey},
+			typed::{Edge, OpaqueKey},
 		},
 		util::sorted::SortedVecMap,
 	};
@@ -404,7 +404,7 @@ mod tests {
 	}
 
 	fn claim(tier: &RangeTier<D>, operator: OperatorId, start: &EncodedKey, end: &EncodedKey) {
-		tier.coverage().write().extend(operator, start.clone(), Edge::Key(end.clone()));
+		tier.coverage().write().extend(operator, Edge::Key(start.clone()), Edge::Key(end.clone()));
 	}
 
 	fn residency(tier: &RangeTier<D>, id: &TestPartition, at: &EncodedKey) -> Option<Entry<EncodedPodRow>> {
@@ -434,12 +434,12 @@ mod tests {
 		tier.coverage().read().contains(operator, at)
 	}
 
-	fn intervals(tier: &RangeTier<D>, operator: OperatorId) -> Vec<Interval<MultiKey>> {
+	fn intervals(tier: &RangeTier<D>, operator: OperatorId) -> Vec<Interval<OpaqueKey>> {
 		tier.coverage().read().set(operator).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
-	fn island(at: &EncodedKey) -> Interval<MultiKey> {
-		Interval::new(at.clone(), Edge::just_past(at))
+	fn island(at: &EncodedKey) -> Interval<OpaqueKey> {
+		Interval::new(Edge::Key(at.clone()), Edge::just_past(at))
 	}
 
 	#[test]

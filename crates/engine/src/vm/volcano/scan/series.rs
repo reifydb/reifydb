@@ -3,16 +3,14 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{series::EncodedSeriesRow, shape::RowShape},
-};
+use reifydb_codec::row::{series::EncodedSeriesRow, shape::RowShape};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::storage::StorageId, resolved::ResolvedSeries, store::MultiVersionRow},
 	key::{
-		series::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange, SeriesRowKey, SeriesRowKeyRange},
-		typed::key::Key,
+		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
+		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
@@ -44,7 +42,7 @@ pub struct SeriesScanNode {
 	partition: Option<Partition>,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
-	last_key: Option<EncodedKey>,
+	last_key: Option<TaggedKey>,
 	exhausted: bool,
 
 	min_commit_version: Option<CommitVersion>,
@@ -92,16 +90,16 @@ impl SeriesScanNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::series::range_open")]
 	fn open_range<'rx, 'tx>(
 		rx: &'rx mut Transaction<'tx>,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: u64,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'rx>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'rx>> {
 		rx.range(range, scope, batch_size as usize)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::series::drain")]
 	fn drain_batch(
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
 		batch_size: u64,
 		partitioned: bool,
 		has_tag: bool,
@@ -115,10 +113,17 @@ impl SeriesScanNode {
 			let entry = entry?;
 
 			let decoded: Option<(u64, u64, Option<u8>, Option<Partition>)> = if partitioned {
-				PartitionedSeriesRowKey::decode(&entry.key)
-					.map(|pk| (pk.key, pk.sequence, pk.variant_tag, Some(pk.partition)))
+				match &entry.key {
+					TaggedKey::PartitionedSeriesRow(pk) => {
+						Some((pk.key, pk.sequence, pk.variant_tag, Some(pk.partition)))
+					}
+					_ => None,
+				}
 			} else {
-				SeriesRowKey::decode(&entry.key).map(|k| (k.key, k.sequence, k.variant_tag, None))
+				match &entry.key {
+					TaggedKey::SeriesRow(k) => Some((k.key, k.sequence, k.variant_tag, None)),
+					_ => None,
+				}
 			};
 
 			if let Some((key_val, sequence, variant_tag, partition)) = decoded {
@@ -143,7 +148,7 @@ impl SeriesScanNode {
 				}
 				batch.data_rows.push(values);
 
-				batch.last_key = Some(entry.key);
+				batch.last_key = Some(entry.key.clone());
 				count += 1;
 				if count >= batch_size as usize {
 					break;
@@ -257,7 +262,7 @@ struct SeriesBatch {
 	time_values: Vec<DateTime>,
 	updated_at_values: Vec<DateTime>,
 	data_rows: Vec<Vec<Value>>,
-	last_key: Option<EncodedKey>,
+	last_key: Option<TaggedKey>,
 }
 
 impl QueryNode for SeriesScanNode {

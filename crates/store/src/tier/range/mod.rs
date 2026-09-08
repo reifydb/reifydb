@@ -13,9 +13,12 @@ mod write;
 
 use std::{borrow::Cow, collections::HashMap, fmt::Debug, hash::Hash, mem::size_of, ops::Bound, sync::Arc};
 
-use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::pod::EncodedPodRow,
+};
 use reifydb_core::{
-	key::typed::{Edge, MultiKey, TypedKey},
+	key::typed::{BoundedKey, Edge, Key, OpaqueKey},
 	util::{budget::MemoryBudget, sorted::SortedVecMap},
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
@@ -44,7 +47,7 @@ impl RowBytes for EncodedPodRow {
 pub trait RangeDomain: Copy + Debug + 'static {
 	type Dimension: Copy + Eq + Hash + Send + Sync + 'static;
 	type Partition: Copy + Eq + Hash + Send + Sync + 'static;
-	type Key: TypedKey;
+	type Key: BoundedKey;
 	type MetricBucket: Copy + Eq + Debug + Send + Sync + 'static;
 	type Row: RowBytes + Clone + Send + Sync + 'static;
 
@@ -53,6 +56,8 @@ pub trait RangeDomain: Copy + Debug + 'static {
 	const SCOPE: &'static str;
 
 	const GAP_SCOPE: &'static str;
+
+	fn just_past(key: &Self::Key) -> Edge<Self::Key>;
 
 	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Self::Partition;
 
@@ -116,21 +121,24 @@ impl RangeConfig {
 
 pub type RangeRows<D> = Vec<(<D as RangeDomain>::Key, <D as RangeDomain>::Row)>;
 
-pub fn scan_range(gap: &Interval<MultiKey>) -> EncodedKeyRange {
-	let end = match &gap.end {
-		Edge::Bottom => Bound::Excluded(gap.start.clone()),
-		Edge::Key(key) => Bound::Excluded(key.clone()),
-		Edge::Top => Bound::Unbounded,
+pub fn scan_range(gap: &Interval<OpaqueKey>) -> EncodedKeyRange {
+	let empty = EncodedKey::new([]);
+	let (Some(start), Some(end)) = (gap.start.lower_bound(), gap.end.upper_bound()) else {
+		return EncodedKeyRange::new(Bound::Included(empty.clone()), Bound::Excluded(empty));
 	};
-	EncodedKeyRange::new(Bound::Included(gap.start.clone()), end)
+	EncodedKeyRange::new(start, end)
 }
 
-pub fn proven_span<K: TypedKey>(gap: &Interval<K>, last_key: Option<&K>, exhausted: bool) -> Option<Interval<K>> {
+pub fn proven_span<D: RangeDomain>(
+	gap: &Interval<D::Key>,
+	last_key: Option<&D::Key>,
+	exhausted: bool,
+) -> Option<Interval<D::Key>> {
 	if exhausted {
 		return Some(gap.clone());
 	}
 	let last = last_key?;
-	Some(Interval::new(gap.start.clone(), Edge::just_past(last).min(gap.end.clone())))
+	Some(Interval::new(gap.start.clone(), D::just_past(last).min(gap.end.clone())))
 }
 
 struct Partition<K, R> {
@@ -177,13 +185,13 @@ const fn entry_overhead<K, R>() -> usize {
 }
 
 #[cfg(test)]
-const ENTRY_OVERHEAD: usize = entry_overhead::<MultiKey, EncodedPodRow>();
+const ENTRY_OVERHEAD: usize = entry_overhead::<OpaqueKey, EncodedPodRow>();
 
 const fn partition_overhead<D: RangeDomain>() -> usize {
 	size_of::<D::Partition>() + size_of::<Partition<D::Key, D::Row>>()
 }
 
-fn entry_footprint<K: TypedKey, R: RowBytes>(key: &K, entry: &Entry<R>) -> usize {
+fn entry_footprint<K: Key, R: RowBytes>(key: &K, entry: &Entry<R>) -> usize {
 	entry_overhead::<K, R>() + key.heap_size() + entry.value().map_or(0, RowBytes::row_bytes)
 }
 

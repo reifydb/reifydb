@@ -6,8 +6,11 @@ use std::sync::{
 	atomic::{AtomicUsize, Ordering},
 };
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use reifydb_core::{common::CommitVersion, event::EventBus, internal_err, testing::ProfileConfig};
+use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_core::{
+	common::CommitVersion, event::EventBus, interface::catalog::id::QueueId, internal_err,
+	key::queue::QueueDeduplicationKey, testing::ProfileConfig,
+};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{
@@ -75,8 +78,8 @@ fn harness() -> Harness {
 	}
 }
 
-fn key(name: &str) -> EncodedKey {
-	EncodedKey::new(name.as_bytes())
+fn key(name: &str) -> QueueDeduplicationKey {
+	QueueDeduplicationKey::new(QueueId(1), name.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>())
 }
 
 fn encoded_bytes(value: &str) -> EncodedBytes {
@@ -121,14 +124,19 @@ impl Recorder {
 	}
 }
 
-fn write_submission(recorder: &Arc<Recorder>, index: usize, k: EncodedKey, v: EncodedBytes) -> CommitSubmission {
+fn write_submission(
+	recorder: &Arc<Recorder>,
+	index: usize,
+	k: QueueDeduplicationKey,
+	v: EncodedBytes,
+) -> CommitSubmission {
 	CommitSubmission {
 		apply: Box::new(move |txn| txn.set(&k, v)),
 		completion: recorder.completion(index),
 	}
 }
 
-fn read_back(begin: &CommitBegin, k: &EncodedKey) -> Option<Vec<u8>> {
+fn read_back(begin: &CommitBegin, k: &QueueDeduplicationKey) -> Option<Vec<u8>> {
 	let mut txn = begin().expect("begin read-back transaction");
 	let result = txn.get(k).expect("get").map(|bytes| bytes.bytes.to_vec());
 	txn.rollback().expect("rollback read-back transaction");

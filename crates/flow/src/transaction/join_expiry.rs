@@ -4,21 +4,21 @@
 use std::ops::Bound;
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKeyRange,
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
-		EncodableKey,
+		any::TaggedKey,
 		operator::{
 			keyspace::join::{
 				JoinExpiryDue, JoinExpiryDueKey, JoinRowExpiry as JoinRowExpirySpace,
 				JoinRowExpiryState, JoinRowExpirySuffix, join_expiry_due_key,
 			},
-			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+			state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range},
 		},
-		typed::{TypedKey, direction::Asc},
+		typed::{BoundedKey, direction::Asc},
 	},
 	state::typed::{SuffixBytes, typed_key},
 };
@@ -75,9 +75,9 @@ pub fn join_due_floor_key(at: DateTime) -> GroupStateKey {
 		GroupId::ROOT,
 		&JoinExpiryDueKey {
 			at: Asc(at),
-			group: TypedKey::low(),
-			side: TypedKey::low(),
-			row: TypedKey::low(),
+			group: BoundedKey::low(),
+			side: BoundedKey::low(),
+			row: BoundedKey::low(),
 		},
 	)
 }
@@ -228,7 +228,9 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 
 impl<T: FlowTransaction> JoinRowExpiryExtension for T {}
 
-fn decode_due_suffix(key: &EncodedKey) -> Option<JoinExpiryDueKey> {
-	let decoded = OperatorStateKey::decode(key)?;
+fn decode_due_suffix(key: &TaggedKey) -> Option<JoinExpiryDueKey> {
+	let TaggedKey::OperatorState(decoded) = key else {
+		return None;
+	};
 	JoinExpiryDueKey::from_suffix_bytes(&decoded.suffix)
 }

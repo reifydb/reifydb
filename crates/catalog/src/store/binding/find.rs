@@ -18,7 +18,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_binding(rx: &mut Transaction<'_>, id: BindingId) -> Result<Option<Binding>> {
-		let Some(multi) = rx.get(&BindingKey::encoded(id))? else {
+		let Some(multi) = rx.get(&BindingKey::new(id))? else {
 			return Ok(None);
 		};
 		Ok(Some(decode_binding(EncodedCatalogRow::view(&multi.bytes))))

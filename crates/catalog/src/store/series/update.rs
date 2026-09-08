@@ -19,7 +19,7 @@ impl CatalogStore {
 		metadata: SeriesMetadata,
 	) -> Result<()> {
 		let row = encode_series_metadata(&metadata);
-		txn.set(&SeriesMetadataKey::encoded(series_id), row.into_bytes())?;
+		txn.set(&SeriesMetadataKey::new(series_id), row.into_bytes())?;
 		Ok(())
 	}
 }

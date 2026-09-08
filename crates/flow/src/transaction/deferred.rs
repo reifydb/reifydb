@@ -15,6 +15,7 @@ use reifydb_core::{
 	actors::pending::PendingLayers,
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
+	key::any::TaggedKey,
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
@@ -143,6 +144,7 @@ impl DeferredTransaction {
 
 const NO_OPERATOR_STORE: &str = "flow transaction was built without an operator store";
 const NO_READ_TRANSACTION: &str = "flow transaction was built without a read transaction";
+const UNDECODABLE_KEY: &str = "a key routed to the multi store must decode";
 
 pub(crate) fn deferred_storage_get(
 	operators: Option<&OperatorStore>,
@@ -163,7 +165,8 @@ pub(crate) fn deferred_storage_get(
 		ReadFrom::Query => query,
 		ReadFrom::OperatorState => unreachable!(),
 	};
-	Ok(query.expect(NO_READ_TRANSACTION).get(key)?.map(|multi| multi.bytes().clone()))
+	let key = TaggedKey::decode(key).expect(UNDECODABLE_KEY);
+	Ok(query.expect(NO_READ_TRANSACTION).get(&key)?.map(|multi| multi.bytes().clone()))
 }
 
 pub(crate) fn deferred_storage_contains(
@@ -184,7 +187,7 @@ pub(crate) fn deferred_storage_contains(
 		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
 		ReadFrom::Query => query,
 	};
-	query.expect(NO_READ_TRANSACTION).contains_key(key)
+	query.expect(NO_READ_TRANSACTION).contains(&TaggedKey::decode(key).expect(UNDECODABLE_KEY))
 }
 
 pub(crate) fn deferred_storage_range<'a>(
@@ -195,7 +198,7 @@ pub(crate) fn deferred_storage_range<'a>(
 	range: EncodedKeyRange,
 	scope: RangeScope,
 	batch_size: usize,
-) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a> {
+) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'a> {
 	if let Some(OperatorRangeScope {
 		operator,
 		inner,
@@ -210,7 +213,7 @@ pub(crate) fn deferred_storage_range<'a>(
 		));
 	}
 	let query = deferred_range_target(query, state_query, &range);
-	Box::new(query.range(range, scope, batch_size))
+	Box::new(query.range_encoded(range, scope, batch_size))
 }
 
 fn deferred_range_target<'a>(
@@ -235,7 +238,7 @@ pub(crate) fn deferred_fetch_state_external(
 	operators: Option<&OperatorStore>,
 	version: CommitVersion,
 	keys: Vec<EncodedKey>,
-	items: &mut Vec<MultiVersionRow>,
+	items: &mut Vec<MultiVersionRow<TaggedKey>>,
 ) {
 	if keys.is_empty() {
 		return;
@@ -262,7 +265,7 @@ pub(crate) fn deferred_fetch_state_external(
 	for (encoded_key, row) in keys.into_iter().zip(resolved) {
 		if let Some(row) = row {
 			items.push(MultiVersionRow {
-				key: encoded_key,
+				key: TaggedKey::decode(&encoded_key).expect(UNDECODABLE_KEY),
 				bytes: row.into_bytes(),
 				version,
 			});
@@ -362,7 +365,7 @@ impl FlowTransaction for DeferredTransaction {
 		range: EncodedKeyRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		deferred_storage_range(
 			self.substrate.operators.as_ref(),
 			self.query.as_ref(),
@@ -374,7 +377,11 @@ impl FlowTransaction for DeferredTransaction {
 		)
 	}
 
-	fn fetch_state_external(&mut self, keys: Vec<EncodedKey>, items: &mut Vec<MultiVersionRow>) -> Result<()> {
+	fn fetch_state_external(
+		&mut self,
+		keys: Vec<EncodedKey>,
+		items: &mut Vec<MultiVersionRow<TaggedKey>>,
+	) -> Result<()> {
 		deferred_fetch_state_external(self.substrate.operators.as_ref(), self.version, keys, items);
 		Ok(())
 	}

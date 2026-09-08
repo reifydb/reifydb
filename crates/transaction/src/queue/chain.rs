@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	interface::{catalog::id::QueueId, store::SingleVersionRangeRev},
-	key::{queue::QueueKeyActiveKey, typed::key::Key},
+	key::queue::QueueKeyActiveKey,
 };
 use reifydb_value::{Result, util::cowvec::CowVec, value::row_number::RowNumber};
 
@@ -42,7 +42,7 @@ pub fn chain_peek(
 	let budget = 2 + ChainOverlay::of_key(&overlay.removed, key_hash).count() as u64;
 	let batch = SingleVersionRangeRev::range_rev_batch(
 		&store,
-		QueueKeyActiveKey::key_scan(queue, partition, key_hash),
+		QueueKeyActiveKey::key_scan(queue, partition, key_hash).encode(),
 		budget,
 	)?;
 
@@ -72,7 +72,7 @@ pub fn chain_add(
 	key_hash: u64,
 	row: RowNumber,
 ) -> Result<()> {
-	tx.set(&QueueKeyActiveKey::encoded(queue, partition, key_hash, row), EncodedBytes(CowVec::new(vec![])))?;
+	tx.set(&QueueKeyActiveKey::new(queue, partition, key_hash, row), EncodedBytes(CowVec::new(vec![])))?;
 	overlay.removed.remove(&(key_hash, row));
 	overlay.added.insert((key_hash, row));
 
@@ -87,7 +87,7 @@ pub fn chain_remove(
 	key_hash: u64,
 	row: RowNumber,
 ) -> Result<()> {
-	tx.remove(&QueueKeyActiveKey::encoded(queue, partition, key_hash, row))?;
+	tx.remove(&QueueKeyActiveKey::new(queue, partition, key_hash, row))?;
 	overlay.added.remove(&(key_hash, row));
 	overlay.removed.insert((key_hash, row));
 

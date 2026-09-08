@@ -20,9 +20,9 @@ ok
 stats_totals
 ---
 total_count: 3
-current_bytes: 36
+current_bytes: 93
 historical_bytes: 0
-total_bytes: 36
+total_bytes: 93
 
 # Phase 2: Updates
 set a=11
@@ -36,9 +36,9 @@ ok
 stats_totals
 ---
 total_count: 5
-current_bytes: 38
-historical_bytes: 24
-total_bytes: 62
+current_bytes: 95
+historical_bytes: 62
+total_bytes: 157
 
 # Phase 3: Delete
 remove c
@@ -48,9 +48,9 @@ ok
 stats_totals
 ---
 total_count: 6
-current_bytes: 37
-historical_bytes: 36
-total_bytes: 73
+current_bytes: 94
+historical_bytes: 93
+total_bytes: 187
 
 # Phase 4: More updates on remaining keys
 set a=111
@@ -64,9 +64,9 @@ ok
 stats_totals
 ---
 total_count: 8
-current_bytes: 39
-historical_bytes: 62
-total_bytes: 101
+current_bytes: 96
+historical_bytes: 157
+total_bytes: 253
 
 # Phase 5: Remove key a. Nothing is erased: the live v7 row migrates into historical and the
 # tombstone takes over a's slot in current, so historical gains one entry and current keeps its
@@ -79,9 +79,9 @@ ok
 stats_totals
 ---
 total_count: 9
-current_bytes: 36
-historical_bytes: 76
-total_bytes: 112
+current_bytes: 93
+historical_bytes: 190
+total_bytes: 283
 
 # Phase 6: Final insert
 set d=4
@@ -91,21 +91,21 @@ ok
 stats_totals
 ---
 total_count: 10
-current_bytes: 48
-historical_bytes: 76
-total_bytes: 124
+current_bytes: 124
+historical_bytes: 190
+total_bytes: 314
 
 # Final full stats check. Current holds the two live rows (b and d) plus the two tombstones,
 # neither of which carries a value; historical holds every superseded version.
 stats
 ---
 current_count: 4
-current_key_bytes: 44
+current_key_bytes: 120
 current_value_bytes: 4
 historical_count: 6
-historical_key_bytes: 66
+historical_key_bytes: 180
 historical_value_bytes: 10
 cdc_count: 0
 cdc_key_bytes: 0
 cdc_value_bytes: 0
-total_bytes: 124
+total_bytes: 314

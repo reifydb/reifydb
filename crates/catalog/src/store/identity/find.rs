@@ -14,7 +14,7 @@ use crate::{
 impl CatalogStore {
 	#[allow(dead_code)]
 	pub(crate) fn find_identity(rx: &mut Transaction<'_>, id: IdentityId) -> Result<Option<Identity>> {
-		rx.get(&IdentityKey::encoded(id))?.map(convert_identity).transpose()
+		rx.get(&IdentityKey::new(id))?.map(convert_identity).transpose()
 	}
 
 	pub(crate) fn find_identity_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Identity>> {

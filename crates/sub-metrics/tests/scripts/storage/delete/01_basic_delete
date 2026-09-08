@@ -12,7 +12,7 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 11
+current_key_bytes: 30
 current_value_bytes: 1
 
 stats_historical
@@ -31,12 +31,12 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 11
+current_key_bytes: 30
 current_value_bytes: 0
 
 # Historical should have only the displaced pre-image: versioned_key=11, value=1
 stats_historical
 ---
 historical_count: 1
-historical_key_bytes: 11
+historical_key_bytes: 30
 historical_value_bytes: 1

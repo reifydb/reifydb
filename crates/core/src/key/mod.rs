@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use kind::KeyKind;
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use tag::KeyTag;
 
+pub mod any;
+pub mod bound;
 pub mod catalog;
 pub mod cdc;
 pub mod column;
 pub mod config;
+#[cfg(test)]
+mod cross_kind_order;
 pub mod flow;
 pub mod identity;
-pub mod kind;
+pub mod metric;
 pub mod namespace;
 pub mod operator;
 pub mod operator_settings;
@@ -21,21 +25,13 @@ pub mod queue;
 pub mod ringbuffer;
 pub mod row;
 pub mod series;
+pub mod sort_run;
 pub mod system;
+pub mod tag;
 pub mod typed;
 
-pub trait EncodableKey {
-	const KIND: KeyKind;
-
-	fn encode(&self) -> EncodedKey;
-
-	fn decode(key: &EncodedKey) -> Option<Self>
-	where
-		Self: Sized;
-}
-
-pub trait EncodableKeyRange {
-	const KIND: KeyKind;
+pub trait KeyRangeCodec {
+	const TAG: KeyTag;
 
 	fn start(&self) -> Option<EncodedKey>;
 
@@ -58,7 +54,6 @@ pub mod tests {
 			storage::StorageId,
 		},
 		key::{
-			EncodableKey,
 			catalog::{ColumnPropertyKey, IndexKey, RelationshipKey, SumTypeKey, TableKey},
 			column::{ColumnKey, ColumnSequenceKey, ColumnsKey},
 			namespace::{NamespaceKey, NamespaceSumTypeKey, NamespaceTableKey},
@@ -66,7 +61,6 @@ pub mod tests {
 			row::{RowKey, RowSequenceKey},
 			series::SeriesRowKey,
 			system::{SystemSequenceKey, TransactionVersionKey},
-			typed::key::Key,
 		},
 	};
 

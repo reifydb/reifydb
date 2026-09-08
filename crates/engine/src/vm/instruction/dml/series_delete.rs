@@ -18,8 +18,8 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
 	},
 	key::{
+		any::TaggedKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
-		typed::key::Key,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
@@ -217,14 +217,15 @@ fn drive_series_delete_input(
 			let sequence = u64::from(row_number);
 			let key_value = extract_series_delete_key_value(&columns, series, row_idx);
 			let variant_tag = extract_series_delete_variant_tag(&columns, has_tag, row_idx);
-			let encoded_key = if partitioned {
-				PartitionedSeriesRowKey::encoded(
+			let key: TaggedKey = if partitioned {
+				PartitionedSeriesRowKey::new(
 					StorageId::series(series.id),
 					columns.partitions()[row_idx],
 					variant_tag,
 					key_value,
 					sequence,
 				)
+				.into()
 			} else {
 				SeriesRowKey {
 					storage: StorageId::series(series.id),
@@ -232,16 +233,16 @@ fn drive_series_delete_input(
 					key: key_value,
 					sequence,
 				}
-				.encode()
+				.into()
 			};
 
-			let Some(pre_entry) = txn.get(&encoded_key)? else {
+			let Some(pre_entry) = txn.get(&key)? else {
 				continue;
 			};
 			let encoded_bytes = pre_entry.bytes;
 			let row_number = RowNumber::from(sequence);
 
-			let committed = txn.get_committed(&encoded_key)?.map(|v| v.bytes);
+			let committed = txn.get_committed(&key)?.map(|v| v.bytes);
 			let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_bytes.clone());
 
 			let pre = build_series_delete_pre_columns_from_input(
@@ -252,7 +253,7 @@ fn drive_series_delete_input(
 				row_number,
 				row_idx,
 			);
-			remove_series_row(txn, series, &encoded_key, pre_for_cdc, committed.is_some(), Some(pre))?;
+			remove_series_row(txn, series, &key, pre_for_cdc, committed.is_some(), Some(pre))?;
 			if has_returning {
 				returned_rows.push((row_number, encoded_bytes));
 			}

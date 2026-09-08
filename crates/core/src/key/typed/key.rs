@@ -1,45 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::EncodedKey;
-
-use crate::key::kind::KeyKind;
-
-pub trait Key: Sized {
-	const KIND: KeyKind;
-
-	fn encode(&self) -> EncodedKey;
-
-	fn decode(key: &EncodedKey) -> Option<Self>;
-}
-
 #[cfg(test)]
 mod tests {
 	use std::iter::once;
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_macro::Key;
+	use reifydb_macro::KeyCodec;
 	use reifydb_value::value::row_number::RowNumber;
 
-	use super::Key;
-	use crate::key::{kind::KeyKind, operator::state::GroupId};
+	use crate::key::{
+		any::{ByteEncoding, Field, KeyFields, RawEncoding, Width},
+		operator::state::GroupId,
+		tag::KeyTag,
+	};
 
-	#[derive(Debug, Clone, PartialEq, Key)]
-	#[key(kind = Row)]
+	#[derive(Debug, Clone, PartialEq, KeyCodec)]
+	#[key(tag = Row)]
 	struct ProbeRowKey {
 		table: u64,
 		row: RowNumber,
 	}
 
-	#[derive(Debug, Clone, PartialEq, Key)]
-	#[key(kind = Index)]
+	#[derive(Debug, Clone, PartialEq, KeyCodec)]
+	#[key(tag = Index)]
 	struct ProbeGroupKey {
 		group: GroupId,
 		slot: [u8; 16],
 	}
 
-	#[derive(Debug, Clone, PartialEq, Key)]
-	#[key(kind = Table)]
+	#[derive(Debug, Clone, PartialEq, KeyCodec)]
+	#[key(tag = Table)]
 	struct ProbeNarrowKey {
 		tag: u8,
 	}
@@ -50,8 +41,8 @@ mod tests {
 			table: 7,
 			row: RowNumber(1),
 		};
-		// extend_u8 inverts bits, matching the kind byte's inversion in every hand-rolled EncodableKey impl
-		assert_eq!(key.encode().as_slice()[0], !(KeyKind::Row as u8));
+		// extend_u8 inverts bits, matching the kind byte's inversion in every hand-rolled KeyCodec impl
+		assert_eq!(key.encode().as_slice()[0], !(KeyTag::Row as u8));
 	}
 
 	#[test]
@@ -62,7 +53,7 @@ mod tests {
 			row: RowNumber(0x0910111213141516),
 		};
 		let encoded = key.encode();
-		let expected: Vec<u8> = once(!(KeyKind::Row as u8))
+		let expected: Vec<u8> = once(!(KeyTag::Row as u8))
 			.chain((!0x0102030405060708u64).to_be_bytes())
 			.chain((!0x0910111213141516u64).to_be_bytes())
 			.collect();
@@ -121,7 +112,7 @@ mod tests {
 			tag: 0xAB,
 		};
 		let encoded = key.encode();
-		assert_eq!(encoded.as_slice(), &[!(KeyKind::Table as u8), !0xABu8]);
+		assert_eq!(encoded.as_slice(), &[!(KeyTag::Table as u8), !0xABu8]);
 		assert_eq!(ProbeNarrowKey::decode(&encoded), Some(key));
 	}
 

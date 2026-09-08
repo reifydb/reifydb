@@ -34,7 +34,7 @@ pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 	Ok(())
 }
 
-fn convert_sumtype(multi: MultiVersionRow) -> Result<SumType> {
+fn convert_sumtype<K>(multi: MultiVersionRow<K>) -> Result<SumType> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = SumTypeId(sumtype::get_id(&bytes));
 	let namespace = NamespaceId(sumtype::get_namespace(&bytes));

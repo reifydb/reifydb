@@ -125,7 +125,7 @@ fn store_with_two_stale_chunks(stale_from: u64, fresh_row: u64) -> (StandardMult
 	MultiVersionCommit::commit(
 		&store,
 		cow_vec![Delta::Set {
-			key: RowKey::encoded(STORAGE, fresh_row),
+			key: RowKey::new(STORAGE, fresh_row).into(),
 			bytes: EncodedBytes(v("fresh")),
 		}],
 		CommitVersion(55),
@@ -141,7 +141,7 @@ fn between_scan_keeps_commit_rows_above_a_fully_filtered_persistent_chunk() {
 	let (store, _guard) = store_with_two_stale_chunks(2, 1);
 
 	let scanned: Vec<(Vec<u8>, u64)> = store
-		.range(RowKey::full_scan(STORAGE), STALE_SCOPE, 10)
+		.range(RowKey::full_scan(STORAGE).encode(), STALE_SCOPE, 10)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -163,7 +163,7 @@ fn between_rev_scan_keeps_commit_rows_below_a_fully_filtered_persistent_chunk() 
 	let (store, _guard) = store_with_two_stale_chunks(1, 2 * SCAN_CHUNK + 1);
 
 	let scanned: Vec<(Vec<u8>, u64)> = store
-		.range_rev(RowKey::full_scan(STORAGE), STALE_SCOPE, 10)
+		.range_rev(RowKey::full_scan(STORAGE).encode(), STALE_SCOPE, 10)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()

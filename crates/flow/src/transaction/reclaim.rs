@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
-		EncodableKey,
+		any::TaggedKey,
 		operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 	},
 };
@@ -100,8 +100,9 @@ pub trait ReclaimExtension: StateExtension {
 				.items
 				.iter()
 				.map(|item| {
-					let decoded = OperatorStateKey::decode(&item.key)
-						.expect("state_range must return OperatorState keys");
+					let TaggedKey::OperatorState(decoded) = &item.key else {
+						panic!("state_range must return OperatorState keys");
+					};
 					GroupStateKey::from_framed(decoded.inner())
 						.expect("operator state rows carry a framed inner key")
 				})

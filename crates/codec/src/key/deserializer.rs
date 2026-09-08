@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use bigdecimal::BigDecimal as BigDecimalInner;
 use num_bigint::{BigInt, Sign};
 use reifydb_value::{
 	Result,
@@ -29,7 +30,10 @@ use super::{
 	CONTAINER_END, decode_bool, decode_f32, decode_f64, decode_fixed, decode_i8, decode_i16, decode_i32,
 	decode_i64, decode_i128, decode_u8, decode_u16, decode_u32, decode_u64, decode_u128, decode_u128_varint,
 };
-use crate::tag::{TypeTag, ValueKind};
+use crate::{
+	key::serializer::{DECIMAL_END_NEGATIVE, DECIMAL_END_POSITIVE},
+	tag::{TypeTag, ValueKind},
+};
 
 pub struct KeyDeserializer<'a> {
 	buffer: &'a [u8],
@@ -180,7 +184,7 @@ impl<'a> KeyDeserializer<'a> {
 				self.position += 1;
 
 				if next_byte == 0x00 {
-					result.push(0xff);
+					result.push(0x00);
 				} else if next_byte == 0xff {
 					break;
 				} else {
@@ -193,7 +197,7 @@ impl<'a> KeyDeserializer<'a> {
 					}));
 				}
 			} else {
-				result.push(byte);
+				result.push(!byte);
 			}
 		}
 		Ok(result)
@@ -285,31 +289,60 @@ impl<'a> KeyDeserializer<'a> {
 	}
 
 	pub fn read_int(&mut self) -> Result<Int> {
-		let sign = self.read_exact(1)?[0];
+		if decode_u8(self.read_exact(1)?[0]) == 0 {
+			let len = u32::from_be_bytes(self.read_exact(4)?.try_into()?) as usize;
+			let bytes = self.read_exact(len)?;
+			return Ok(Int(BigInt::from_bytes_be(Sign::Minus, bytes)));
+		}
 		let len = self.read_u32()? as usize;
-		let bytes = self.read_exact(len)?;
-
-		let sign = match sign {
-			0 => Sign::Minus,
-			_ => Sign::Plus,
-		};
-
-		Ok(Int(BigInt::from_bytes_be(sign, bytes)))
+		let bytes: Vec<u8> = self.read_exact(len)?.iter().map(|byte| decode_u8(*byte)).collect();
+		Ok(Int(BigInt::from_bytes_be(Sign::Plus, &bytes)))
 	}
 
 	pub fn read_uint(&mut self) -> Result<Uint> {
 		let len = self.read_u32()? as usize;
-		let bytes = self.read_exact(len)?;
-		Ok(Uint(BigInt::from_bytes_be(Sign::Plus, bytes)))
+		let bytes: Vec<u8> = self.read_exact(len)?.iter().map(|byte| decode_u8(*byte)).collect();
+		Ok(Uint(BigInt::from_bytes_be(Sign::Plus, &bytes)))
 	}
 
 	pub fn read_decimal(&mut self) -> Result<Decimal> {
-		let s = self.read_str()?;
-		s.parse::<Decimal>().map_err(|e| {
-			Error::from(TypeError::SerdeKeycode {
-				message: format!("invalid Decimal at position {}: {}", self.position, e),
-			})
-		})
+		let negative = decode_u8(self.read_exact(1)?[0]) == 0;
+		self.read_exact(4)?;
+
+		let terminator = if negative {
+			DECIMAL_END_NEGATIVE
+		} else {
+			DECIMAL_END_POSITIVE
+		};
+		let mut digits = Vec::new();
+		loop {
+			let byte = self.read_exact(1)?[0];
+			if byte == terminator {
+				break;
+			}
+			digits.push(if negative {
+				byte
+			} else {
+				decode_u8(byte)
+			});
+		}
+		let scale = self.read_i64()?;
+
+		let mantissa = if digits.is_empty() {
+			BigInt::from(0)
+		} else {
+			let magnitude = BigInt::parse_bytes(&digits, 10).ok_or_else(|| {
+				Error::from(TypeError::SerdeKeycode {
+					message: format!("invalid Decimal digits at position {}", self.position),
+				})
+			})?;
+			if negative {
+				-magnitude
+			} else {
+				magnitude
+			}
+		};
+		Ok(Decimal(BigDecimalInner::new(mantissa, scale)))
 	}
 
 	fn at_container_end(&mut self) -> Result<bool> {

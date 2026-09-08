@@ -4,8 +4,8 @@
 use reifydb_core::{
 	interface::catalog::policy::PolicyId,
 	key::{
+		any::TaggedKey,
 		identity::{PolicyKey, PolicyOpKey},
-		typed::key::Key,
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
@@ -20,17 +20,17 @@ impl CatalogStore {
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;
-				if let Some(key) = PolicyOpKey::decode(&entry.key) {
+				if let TaggedKey::PolicyOp(key) = entry.key {
 					keys_to_remove.push(key);
 				}
 			}
 			drop(stream);
 			for key in keys_to_remove {
-				txn.remove(&PolicyOpKey::encoded(key.policy, key.op_index))?;
+				txn.remove(&PolicyOpKey::new(key.policy, key.op_index))?;
 			}
 		}
 
-		txn.remove(&PolicyKey::encoded(policy))?;
+		txn.remove(&PolicyKey::new(policy))?;
 		Ok(())
 	}
 }

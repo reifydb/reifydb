@@ -5,7 +5,7 @@
 //! next commit onward, with no reclamation in between: window engines delete range-scanned bookkeeping
 //! and re-read it on the next apply, and a resurrected entry double-unmerges a running accumulator.
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -13,7 +13,10 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
-	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::{
+		any::TaggedKey,
+		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+	},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -48,19 +51,19 @@ fn memory_store() -> StandardMultiStore {
 	.unwrap()
 }
 
-fn coord_key(node: u64, suffix: &[u8]) -> EncodedKey {
-	OperatorStateKey::encoded(OperatorId(node), GroupId::ROOT, KeyspaceId::BUFFER, suffix)
+fn coord_key(node: u64, suffix: &[u8]) -> TaggedKey {
+	OperatorStateKey::new(OperatorId(node), GroupId::ROOT, KeyspaceId::BUFFER, suffix).into()
 }
 
 fn node_range(node: u64) -> reifydb_codec::key::encoded::EncodedKeyRange {
-	OperatorStateKey::node_range(OperatorId(node))
+	OperatorStateKey::node_range(OperatorId(node)).encode()
 }
 
 fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {
 	EncodedBytes(CowVec::new(bytes.to_vec()))
 }
 
-fn range_keys(store: &StandardMultiStore, node: u64, version: u64) -> Vec<EncodedKey> {
+fn range_keys(store: &StandardMultiStore, node: u64, version: u64) -> Vec<TaggedKey> {
 	store.range(
 		node_range(node),
 		MultiVersionScope::AsOf {

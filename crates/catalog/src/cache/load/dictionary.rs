@@ -29,7 +29,7 @@ pub(crate) fn load_dictionaries(rx: &mut Transaction<'_>, catalog: &CatalogCache
 	Ok(())
 }
 
-fn convert_dictionary(multi: MultiVersionRow) -> Result<Dictionary> {
+fn convert_dictionary<K>(multi: MultiVersionRow<K>) -> Result<Dictionary> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = DictionaryId(dictionary::get_id(&bytes));
 	let namespace = NamespaceId(dictionary::get_namespace(&bytes));

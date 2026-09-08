@@ -4,9 +4,11 @@
 use reifydb_core::{
 	interface::store::SingleVersionRange,
 	key::{
+		any::TaggedKey,
 		catalog::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
 		namespace::NamespaceDictionaryKey,
 	},
+	return_internal_error,
 };
 use reifydb_transaction::{
 	single::SingleTransaction,
@@ -23,12 +25,12 @@ impl CatalogStore {
 		}
 
 		if let Some(dictionary_def) = Self::find_dictionary(&mut Transaction::Admin(&mut *txn), dictionary)? {
-			txn.remove(&NamespaceDictionaryKey::encoded(dictionary_def.namespace, dictionary))?;
+			txn.remove(&NamespaceDictionaryKey::new(dictionary_def.namespace, dictionary))?;
 		}
 
 		remove_dictionary_entries(&txn.single, dictionary)?;
 
-		txn.remove(&DictionaryKey::encoded(dictionary))?;
+		txn.remove(&DictionaryKey::new(dictionary))?;
 
 		if let Some(registry) = txn.dictionary_allocators() {
 			registry.evict(dictionary);
@@ -40,7 +42,10 @@ impl CatalogStore {
 
 fn remove_dictionary_entries(single: &SingleTransaction, dictionary: DictionaryId) -> Result<()> {
 	let lock_key = DictionaryKey::encoded(dictionary);
-	let full_scans = [DictionaryEntryKey::full_scan(dictionary), DictionaryEntryIndexKey::full_scan(dictionary)];
+	let full_scans = [
+		DictionaryEntryKey::full_scan(dictionary).encode(),
+		DictionaryEntryIndexKey::full_scan(dictionary).encode(),
+	];
 	for full_scan in &full_scans {
 		loop {
 			let store = single.read_store();
@@ -50,7 +55,10 @@ fn remove_dictionary_entries(single: &SingleTransaction, dictionary: DictionaryI
 			}
 			let mut tx = single.begin_command_ranged([&lock_key], full_scans.to_vec())?;
 			for item in &batch.items {
-				tx.remove(&item.key)?;
+				let Some(key) = TaggedKey::decode(&item.key) else {
+					return_internal_error!("scan yielded a key no typed key decodes");
+				};
+				tx.remove(&key)?;
 			}
 			tx.commit()?;
 		}
@@ -130,12 +138,14 @@ pub mod tests {
 		let mut entry_value = Vec::with_capacity(16 + dummy_value.len());
 		entry_value.extend_from_slice(&next_id.to_be_bytes());
 		entry_value.extend_from_slice(&dummy_value);
-		let entry_key = DictionaryEntryKey::encoded(dict_def.id, dummy_hash);
-		let index_key = DictionaryEntryIndexKey::encoded(dict_def.id, next_id);
+		let entry = DictionaryEntryKey::new(dict_def.id, dummy_hash);
+		let index = DictionaryEntryIndexKey::new(dict_def.id, next_id);
+		let entry_key = entry.encode();
+		let index_key = index.encode();
 		txn.single
 			.with_command([&entry_key, &index_key], |tx| {
-				tx.set(&entry_key, EncodedBytes(CowVec::new(entry_value.clone())))?;
-				tx.set(&index_key, EncodedBytes(CowVec::new(dummy_value.clone())))
+				tx.set(&entry, EncodedBytes(CowVec::new(entry_value.clone())))?;
+				tx.set(&index, EncodedBytes(CowVec::new(dummy_value.clone())))
 			})
 			.unwrap();
 

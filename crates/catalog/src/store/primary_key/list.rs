@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
-
-use reifydb_codec::{key::encoded::EncodedKeyRange, row::catalog::EncodedCatalogRow};
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
-	interface::catalog::{column::Column, id::PrimaryKeyId, key::PrimaryKey},
-	key::{catalog::PrimaryKeyKey, typed::key::Key},
+	interface::catalog::{column::Column, key::PrimaryKey},
+	key::{any::TaggedKey, catalog::PrimaryKeyKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -24,12 +22,7 @@ impl CatalogStore {
 	pub(crate) fn list_primary_keys(rx: &mut Transaction<'_>) -> Result<Vec<PrimaryKeyInfo>> {
 		let mut result = Vec::new();
 
-		let primary_key_range = {
-			let start_key = PrimaryKeyKey::encoded(PrimaryKeyId(u64::MAX));
-			let end_key = PrimaryKeyKey::encoded(PrimaryKeyId(0));
-
-			EncodedKeyRange::new(Bound::Included(start_key), Bound::Included(end_key))
-		};
+		let primary_key_range = PrimaryKeyKey::full_scan();
 
 		let mut entries = Vec::new();
 		{
@@ -40,7 +33,7 @@ impl CatalogStore {
 		}
 
 		for entry in entries {
-			if let Some(pk_key) = PrimaryKeyKey::decode(&entry.key) {
+			if let TaggedKey::PrimaryKey(pk_key) = &entry.key {
 				let object_id = primary_key::get_source(EncodedCatalogRow::view(&entry.bytes));
 
 				let column_ids_blob =
@@ -79,19 +72,14 @@ impl CatalogStore {
 	pub(crate) fn list_primary_key_columns(rx: &mut Transaction<'_>) -> Result<Vec<(u64, u64, usize)>> {
 		let mut result = Vec::new();
 
-		let primary_key_range = {
-			let start_key = PrimaryKeyKey::encoded(PrimaryKeyId(u64::MAX));
-			let end_key = PrimaryKeyKey::encoded(PrimaryKeyId(0));
-
-			EncodedKeyRange::new(Bound::Included(start_key), Bound::Included(end_key))
-		};
+		let primary_key_range = PrimaryKeyKey::full_scan();
 
 		let stream = rx.range(primary_key_range, RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let entry = entry?;
 
-			if let Some(pk_key) = PrimaryKeyKey::decode(&entry.key) {
+			if let TaggedKey::PrimaryKey(pk_key) = &entry.key {
 				let column_ids_blob =
 					primary_key::get_column_ids(EncodedCatalogRow::view(&entry.bytes));
 				let column_ids = deserialize_column_ids(&column_ids_blob);

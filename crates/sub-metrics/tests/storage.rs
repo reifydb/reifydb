@@ -28,10 +28,16 @@ use reifydb_core::{
 		store::MetricsProcessedEvent,
 	},
 	interface::{
-		catalog::metrics::{parser::parse_id, storage::MultiStorageMetrics},
+		catalog::{
+			id::{IndexId, TableId},
+			metrics::{parser::parse_id, storage::MultiStorageMetrics},
+			object::ObjectId,
+		},
 		store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, Tier},
 	},
+	key::{any::TaggedKey, catalog::IndexEntryKey},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
+	value::index::encoded::EncodedIndexKey,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -183,8 +189,8 @@ impl TestRunner for Runner {
 
 				let value = self
 					.multi_store
-					.get(&key, version)?
-					.map(|sv: MultiVersionRow| sv.bytes.to_vec());
+					.get(&TaggedKey::from(script_key(&key)), version)?
+					.map(|sv: MultiVersionRow<TaggedKey>| sv.bytes.to_vec());
 
 				writeln!(output, "{}", format::raw::Raw::key_maybe_value(&key, value))?;
 			}
@@ -195,7 +201,8 @@ impl TestRunner for Runner {
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
-				let contains = self.multi_store.contains(&key, version)?;
+				let contains =
+					self.multi_store.contains(&TaggedKey::from(script_key(&key)), version)?;
 				writeln!(output, "{} => {}", format::raw::Raw::key(&key), contains)?;
 			}
 
@@ -245,7 +252,7 @@ impl TestRunner for Runner {
 					&self.multi_store,
 					cow_vec![
 						(Delta::Set {
-							key,
+							key: script_key(&key).into(),
 							bytes
 						})
 					],
@@ -272,13 +279,13 @@ impl TestRunner for Runner {
 				let prev_version = CommitVersion(version.0.saturating_sub(1));
 				let current_values = self
 					.multi_store
-					.get(&key, prev_version)?
+					.get(&TaggedKey::from(script_key(&key)), prev_version)?
 					.map(|mv| mv.bytes)
 					.unwrap_or_else(|| EncodedBytes(cow_vec![]));
 
 				MultiVersionCommit::commit(
 					&self.multi_store,
-					cow_vec![Delta::remove_announced(key, current_values)],
+					cow_vec![Delta::remove_announced(script_key(&key).into(), current_values)],
 					version,
 				)?
 			}
@@ -301,7 +308,7 @@ impl TestRunner for Runner {
 
 				MultiVersionCommit::commit(
 					&self.multi_store,
-					cow_vec![Delta::remove_silent(key)],
+					cow_vec![Delta::remove_silent(script_key(&key).into())],
 					version,
 				)?;
 			}
@@ -470,7 +477,7 @@ impl TestRunner for Runner {
 				args.reject_rest()?;
 
 				let entries = vec![CdcWrite {
-					key,
+					key: script_key(&key).encode(),
 					value_bytes: ByteSize::from_bytes(value_bytes),
 				}];
 				self.event_bus.emit(CdcWrittenEvent::new(entries, version));
@@ -490,9 +497,10 @@ impl TestRunner for Runner {
 				};
 				args.reject_rest()?;
 
+				let stored = script_key(&key).encode();
 				let entries = vec![CdcEviction {
-					id: parse_id(key.as_ref()),
-					key_bytes: ByteSize::from_bytes(key.as_ref().len() as u64),
+					id: parse_id(stored.as_ref()),
+					key_bytes: ByteSize::from_bytes(stored.as_ref().len() as u64),
 					value_bytes: ByteSize::from_bytes(value_bytes),
 					count: Count::new(1),
 				}];
@@ -508,9 +516,21 @@ impl TestRunner for Runner {
 	}
 }
 
-fn print<I: Iterator<Item = MultiVersionRow>>(output: &mut String, iter: I) {
+fn script_key(raw: &EncodedKey) -> IndexEntryKey {
+	// extend_raw appends the tail verbatim, so encoded order matches the script's raw byte order.
+	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(raw.as_slice()))
+}
+
+fn script_raw(key: &TaggedKey) -> EncodedKey {
+	let TaggedKey::IndexEntry(entry) = key else {
+		panic!("script key must be an index entry")
+	};
+	EncodedKey::new(entry.key.as_ref())
+}
+
+fn print<I: Iterator<Item = MultiVersionRow<TaggedKey>>>(output: &mut String, iter: I) {
 	for item in iter {
-		let fmtkv = format::raw::Raw::key_value(&item.key, item.bytes.as_slice());
+		let fmtkv = format::raw::Raw::key_value(&script_raw(&item.key), item.bytes.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }
