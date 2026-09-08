@@ -34,7 +34,7 @@ use reifydb_store_operator::{
 	types::{BufferedState, OperatorWrite},
 };
 use reifydb_testing::{keyspace::state_key, tempdir::temp_dir};
-use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
+use reifydb_value::util::hash::Hash128;
 
 const OP: OperatorId = OperatorId(1);
 
