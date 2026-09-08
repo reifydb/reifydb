@@ -197,6 +197,7 @@ impl CommitStore {
 		}
 	}
 
+	#[instrument(name = "store::multi::memory::collect_evictable_below", level = "debug", skip_all, fields(table = ?table, cutoff = cutoff.0))]
 	pub fn collect_evictable_below(
 		&self,
 		table: EntryKind,

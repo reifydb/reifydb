@@ -27,6 +27,7 @@ use reifydb_store::tier::{
 };
 use reifydb_store_commit::VersionedGetResult;
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
+use tracing::instrument;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MultiPointConfig {
@@ -371,6 +372,7 @@ impl MultiPointTier {
 		}
 	}
 
+	#[instrument(name = "store::multi::point::insert", level = "trace", skip_all)]
 	pub fn insert(
 		&self,
 		table: EntryKind,

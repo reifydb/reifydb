@@ -16,6 +16,7 @@ use reifydb_core::{
 };
 use reifydb_sqlite::batch::values_placeholders;
 use rusqlite::{Connection, Row, Transaction, params_from_iter, types::Value};
+use tracing::instrument;
 
 pub fn table_of(name: &str) -> String {
 	format!("operator_{}", name.to_ascii_lowercase())
@@ -227,6 +228,7 @@ fn remove_sql<K: Keyspace>(rows: usize) -> String {
 	)
 }
 
+#[instrument(name = "store::operator::persistent::sqlite::set_chunked", level = "debug", skip_all, fields(row_count = rows.len()))]
 pub fn set_chunked<K: Keyspace>(txn: &Transaction, rows: &[(OperatorId, K::GroupedKey, Vec<u8>)]) {
 	if rows.is_empty() {
 		return;
@@ -263,6 +265,7 @@ pub fn set_chunked<K: Keyspace>(txn: &Transaction, rows: &[(OperatorId, K::Group
 		.expect("operator state write failed");
 }
 
+#[instrument(name = "store::operator::persistent::sqlite::remove_chunked", level = "debug", skip_all, fields(key_count = keys.len()))]
 pub fn remove_chunked<K: Keyspace>(txn: &Transaction, keys: &[(OperatorId, K::GroupedKey)]) {
 	if keys.is_empty() {
 		return;

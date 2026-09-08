@@ -37,6 +37,7 @@ use reifydb_store::{
 };
 use reifydb_store_commit::{MultiVersionScope, RangeBatch, RangeCursor, RawEntry};
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec, value::row_number::RowNumber};
+use tracing::instrument;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MultiRangeConfig {
@@ -283,6 +284,7 @@ impl MultiRangeTier {
 		self.tier.complete_partitions()
 	}
 
+	#[instrument(name = "store::multi::range::insert", level = "trace", skip_all, fields(table = ?table, version = version.0))]
 	pub fn insert(&self, table: EntryKind, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
 		let Some(key) = narrow(table, &key) else {
 			return;

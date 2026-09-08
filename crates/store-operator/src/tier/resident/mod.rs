@@ -731,6 +731,7 @@ impl OperatorResidentState {
 		self.shared.filter.commit_rebuild(handle);
 	}
 
+	#[instrument(name = "store::operator::resident::take_drain_slice", level = "debug", skip_all)]
 	fn take_drain_slice(&self) -> Option<Arc<FlushBatch>> {
 		self.arm_filter();
 		let mut global = self.shared.global.lock();
@@ -845,6 +846,7 @@ impl OperatorResidentState {
 		global.in_flight_drops.clear();
 	}
 
+	#[instrument(name = "store::operator::resident::persist", level = "debug", skip_all)]
 	fn persist(&self, batch: &Arc<FlushBatch>) {
 		#[cfg(test)]
 		{
@@ -862,6 +864,7 @@ impl OperatorResidentState {
 		invalidate_flushed(sinks.range.as_ref(), batch);
 	}
 
+	#[instrument(name = "store::operator::resident::settle", level = "debug", skip_all)]
 	fn settle(&self, batch: Arc<FlushBatch>) {
 		{
 			let mut global = self.shared.global.lock();

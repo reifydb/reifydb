@@ -22,6 +22,7 @@ use reifydb_value::{Result, byte_size::ByteSize};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use rusqlite::{Connection, Transaction};
 use smallvec::SmallVec;
+use tracing::instrument;
 
 use crate::tier::{
 	bound::{KeyspaceIds, span, split_bound},
@@ -369,6 +370,7 @@ impl BucketMap {
 		(evicted, freed)
 	}
 
+	#[instrument(name = "store::operator::bucket::stage_dirty", level = "debug", skip_all, fields(operator = operator.0))]
 	pub fn stage_dirty(
 		&mut self,
 		operator: OperatorId,

@@ -32,7 +32,7 @@ use reifydb_value::byte_size::ByteSize;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use tracing::{debug, error, warn};
+use tracing::{debug, error, instrument, warn};
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::TierStorage;
@@ -172,6 +172,7 @@ impl FlushEngine {
 		while self.sweep_once(&mut guard, cutoff, FLUSH_BYTE_BUDGET).0.is_yielded() {}
 	}
 
+	#[instrument(name = "store::multi::flush::sweep_once", level = "debug", skip_all)]
 	fn sweep_once(&self, state: &mut FlushEngineState, cutoff: CommitVersion, budget: ByteSize) -> (Progress, u64) {
 		let Some(mut entry_kinds) = self.list_evictable_kinds() else {
 			return (Progress::Exhausted, 0);
@@ -298,6 +299,7 @@ impl FlushEngine {
 	}
 
 	#[inline]
+	#[instrument(name = "store::multi::flush::refresh_read_tier", level = "debug", skip_all, fields(persist_count = to_persist.len(), drop_count = to_drop.len()))]
 	fn refresh_read_tier(
 		&self,
 		table: EntryKind,
