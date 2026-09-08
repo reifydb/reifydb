@@ -776,11 +776,11 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reifydb-build"
-version = "0.9.0"
+version = "0.9.1"
 
 [[package]]
 name = "reifydb-catalog"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "crossbeam-skiplist",
  "once_cell",
@@ -802,7 +802,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-codec"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "bigdecimal",
  "num-bigint",
@@ -821,7 +821,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-core"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "bigdecimal",
  "crossbeam-skiplist",
@@ -844,7 +844,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-filter"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "reifydb-build",
  "reifydb-core",
@@ -869,14 +869,14 @@ dependencies = [
 
 [[package]]
 name = "reifydb-macro"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "reifydb-macro-impl",
 ]
 
 [[package]]
 name = "reifydb-macro-impl"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -885,7 +885,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-routine-abi"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "indexmap",
  "reifydb-build",
@@ -900,7 +900,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-rql"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "bumpalo",
  "postcard",
@@ -919,7 +919,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-runtime"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "cfg-if",
  "crossbeam-channel",
@@ -944,7 +944,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sqlite"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "reifydb-build",
  "reifydb-value",
@@ -955,7 +955,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-store"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "hashbrown 0.15.5",
  "reifydb-build",
@@ -970,7 +970,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-store-commit"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "reifydb-build",
  "reifydb-codec",
@@ -983,7 +983,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-store-multi"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "reifydb-build",
  "reifydb-codec",
@@ -1000,7 +1000,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-store-single"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "reifydb-build",
  "reifydb-codec",
@@ -1015,7 +1015,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-transaction"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "crossbeam-skiplist",
  "dashmap",
@@ -1038,7 +1038,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-value"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "bigdecimal",
  "num-bigint",
