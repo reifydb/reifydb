@@ -10,6 +10,7 @@ pub mod frame;
 #[cfg(feature = "json")]
 pub mod json;
 pub mod key;
+pub mod log;
 pub mod primitive;
 pub mod reader;
 pub mod row;

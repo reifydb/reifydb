@@ -78,13 +78,9 @@ fn two_optional_columns_sharing_one_dictionary_intern_one_id_per_value() {
 	let db = TestDb::memory();
 	db.admin("create namespace app");
 	db.admin("create dictionary app::syms for utf8 as uint4");
-	db.admin(
-		"create table app::t { id: int4, base: Option(utf8) with { dictionary: app::syms }, \
-		 quote: Option(utf8) with { dictionary: app::syms } }",
-	);
-	db.command(
-		"insert app::t [{ id: 1, base: 'sol', quote: 'usdc' }, { id: 2, base: 'usdc', quote: undefined }]",
-	);
+	db.admin("create table app::t { id: int4, base: Option(utf8) with { dictionary: app::syms }, \
+		 quote: Option(utf8) with { dictionary: app::syms } }");
+	db.command("insert app::t [{ id: 1, base: 'sol', quote: 'usdc' }, { id: 2, base: 'usdc', quote: undefined }]");
 
 	let entries = db.query("from app::syms | sort { id: asc }");
 	assert_eq!(

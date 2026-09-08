@@ -19,6 +19,7 @@ reifydb-build = { workspace = true }
 
 [dependencies]
 reifydb-value = { workspace = true }
+crc32fast = { workspace = true }
 num-bigint = { workspace = true }
 num-traits = { workspace = true }
 bigdecimal = { workspace = true }
