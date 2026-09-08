@@ -236,7 +236,7 @@ impl FlushEngine {
 
 		let mut dropped = 0usize;
 		for (kind, persistent_object, (to_persist, to_drop)) in plan {
-			self.refresh_read_tier(kind, persistent_object, &to_persist, &to_drop, &accepted);
+			self.refresh_read_tier(kind, persistent_object, &to_persist, &to_drop, &accepted_keys);
 			if persistent_object {
 				for (key, _, value) in &to_persist {
 					if accepted_keys.contains(key.as_slice()) {
@@ -306,13 +306,12 @@ impl FlushEngine {
 		persistent_object: bool,
 		to_persist: &[(EncodedKey, CommitVersion, Option<CowVec<u8>>)],
 		to_drop: &[EvictedVersion],
-		accepted: &[EncodedKey],
+		accepted: &HashSet<&[u8]>,
 	) {
 		if self.point.is_none() && self.range.is_none() {
 			return;
 		}
 		if persistent_object {
-			let accepted: HashSet<&[u8]> = accepted.iter().map(|k| k.as_slice()).collect();
 			for (key, version, value) in to_persist {
 				if accepted.contains(key.as_slice()) {
 					if let Some(range) = &self.range {
