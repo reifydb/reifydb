@@ -64,15 +64,18 @@ impl PartialOrd for TimerEntry {
 }
 
 enum SchedulerCommand {
+	/// Carries an absolute deadline, not a delay: the caller anchors it so the queue hop and the
+	/// scheduler thread's wakeup latency cannot stretch the delay the caller asked for.
 	ScheduleOnce {
 		id: u64,
-		delay: Duration,
+		deadline: Instant,
 		callback: Box<dyn FnOnce() + Send>,
 		cancelled: Arc<AtomicBool>,
 	},
 
 	ScheduleRepeat {
 		id: u64,
+		deadline: Instant,
 		interval: Duration,
 		callback: Arc<dyn Fn() -> Repeat + Send + Sync>,
 		cancelled: Arc<AtomicBool>,
@@ -113,7 +116,7 @@ impl SchedulerHandle {
 
 		let _ = self.command_tx.send(SchedulerCommand::ScheduleOnce {
 			id,
-			delay,
+			deadline: Instant::now() + delay,
 			callback: Box::new(callback),
 			cancelled,
 		});
@@ -131,6 +134,7 @@ impl SchedulerHandle {
 
 		let _ = self.command_tx.send(SchedulerCommand::ScheduleRepeat {
 			id,
+			deadline: Instant::now() + interval,
 			interval,
 			callback: Arc::new(callback),
 			cancelled,
@@ -185,8 +189,7 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>) {
 		if let Some(cmd) = command {
 			match apply_command(cmd, &mut heap) {
 				ControlFlow::Break(()) => return,
-				ControlFlow::Continue(true) => continue,
-				ControlFlow::Continue(false) => {}
+				ControlFlow::Continue(()) => {}
 			}
 		}
 
@@ -223,23 +226,14 @@ fn next_command(
 }
 
 #[inline]
-fn apply_command(cmd: SchedulerCommand, heap: &mut BinaryHeap<TimerEntry>) -> ControlFlow<(), bool> {
+fn apply_command(cmd: SchedulerCommand, heap: &mut BinaryHeap<TimerEntry>) -> ControlFlow<(), ()> {
 	match cmd {
 		SchedulerCommand::ScheduleOnce {
 			id,
-			delay,
+			deadline,
 			callback,
 			cancelled,
 		} => {
-			let deadline = if delay.is_zero() {
-				if !cancelled.load(Ordering::SeqCst) {
-					run_once_guarded(callback);
-				}
-				return ControlFlow::Continue(true);
-			} else {
-				Instant::now() + delay
-			};
-
 			heap.push(TimerEntry {
 				id,
 				deadline,
@@ -248,16 +242,15 @@ fn apply_command(cmd: SchedulerCommand, heap: &mut BinaryHeap<TimerEntry>) -> Co
 				},
 				cancelled,
 			});
-			ControlFlow::Continue(false)
+			ControlFlow::Continue(())
 		}
 		SchedulerCommand::ScheduleRepeat {
 			id,
+			deadline,
 			interval,
 			callback,
 			cancelled,
 		} => {
-			let deadline = Instant::now() + interval;
-
 			heap.push(TimerEntry {
 				id,
 				deadline,
@@ -267,7 +260,7 @@ fn apply_command(cmd: SchedulerCommand, heap: &mut BinaryHeap<TimerEntry>) -> Co
 				},
 				cancelled,
 			});
-			ControlFlow::Continue(false)
+			ControlFlow::Continue(())
 		}
 		SchedulerCommand::Shutdown => ControlFlow::Break(()),
 	}
