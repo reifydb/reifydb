@@ -11,10 +11,10 @@ use reifydb::{
 	Database, Frame as CoreFrame, IdentityId, Migration, MigrationSource, Result as ReifyResult,
 	auth::service::AuthResponse, embedded,
 };
-use reifydb_codec::json::to::convert_frames;
+use reifydb_codec::json::{to::convert_frames, wire_type::WireValueType};
 use reifydb_sub_server::wire::{WireParams, WireValue};
 use reifydb_value::{params::Params, value::uuid::Uuid7};
-use serde_json::{Value as JsonValue, json, to_string as json_to_string, to_value};
+use serde_json::{Value as JsonValue, from_value, json, to_string as json_to_string, to_value};
 use tokio::task::spawn_blocking;
 use uuid::Uuid;
 
@@ -25,7 +25,7 @@ pub struct ReifydbNode {
 
 #[napi(object)]
 pub struct ParamValue {
-	pub r#type: String,
+	pub r#type: JsonValue,
 	pub value: String,
 }
 
@@ -64,19 +64,31 @@ type ParamsInput = Either<Vec<ParamValue>, HashMap<String, ParamValue>>;
 fn parse_params(params: Option<ParamsInput>) -> Result<Params> {
 	let wire = match params {
 		None => return Ok(Params::None),
-		Some(Either::A(items)) => WireParams::Positional(items.into_iter().map(to_wire_value).collect()),
-		Some(Either::B(map)) => {
-			WireParams::Named(map.into_iter().map(|(name, value)| (name, to_wire_value(value))).collect())
-		}
+		Some(Either::A(items)) => WireParams::Positional(
+			items.into_iter()
+				.enumerate()
+				.map(|(index, value)| to_wire_value(&format!("${}", index + 1), value))
+				.collect::<Result<_>>()?,
+		),
+		Some(Either::B(map)) => WireParams::Named(
+			map.into_iter()
+				.map(|(name, value)| -> Result<_> {
+					let wire = to_wire_value(&format!("${name}"), value)?;
+					Ok((name, wire))
+				})
+				.collect::<Result<_>>()?,
+		),
 	};
 	wire.into_params().map_err(NapiError::from_reason)
 }
 
-fn to_wire_value(param: ParamValue) -> WireValue {
-	WireValue {
-		type_name: param.r#type,
+fn to_wire_value(parameter: &str, param: ParamValue) -> Result<WireValue> {
+	let r#type = from_value::<WireValueType>(param.r#type)
+		.map_err(|e| NapiError::from_reason(format!("parameter {parameter}: unknown type: {e}")))?;
+	Ok(WireValue {
+		r#type,
 		value: param.value,
-	}
+	})
 }
 
 #[cfg(reifydb_dst)]

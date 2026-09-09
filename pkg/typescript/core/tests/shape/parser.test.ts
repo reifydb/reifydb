@@ -9,8 +9,9 @@ import {
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     DurationValue, TimeValue,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
-    NoneValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue
+    NoneValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue, Option, isOption
 } from '../../src/value';
+import {ForeignOption} from '../foreign-option';
 
 describe('parseValue', () => {
     describe('primitive kind', () => {
@@ -118,26 +119,42 @@ describe('parseValue', () => {
         });
     });
 
-    describe('optional kind', () => {
+    describe('option kind', () => {
         it('should return undefined for undefined value', () => {
-            const shape: ShapeNode = {kind: 'optional', shape: {kind: 'primitive', type: 'Int4'}};
+            const shape: ShapeNode = {kind: 'option', inner: {kind: 'primitive', type: 'Int4'}};
             expect(parseValue(shape, undefined)).toBeUndefined();
         });
 
-        it('should parse inner shape when value is present', () => {
-            const shape: ShapeNode = {kind: 'optional', shape: {kind: 'primitive', type: 'Int4'}};
+        it('should lift a bare value into a Some over the parsed inner shape', () => {
+            const shape: ShapeNode = {kind: 'option', inner: {kind: 'primitive', type: 'Int4'}};
             const result = parseValue(shape, 42);
-            expect(result).toBeInstanceOf(Int4Value);
+            expect(result).toBeInstanceOf(Option);
+            expect(result.unwrap()).toBeInstanceOf(Int4Value);
         });
 
-        it('should handle optional wrapping a value kind', () => {
-            const shape: ShapeNode = {kind: 'optional', shape: {kind: 'value', type: 'Utf8'}};
-            const result = parseValue(shape, 'hello');
-            expect(result).toBeInstanceOf(Utf8Value);
+        it('should parse the inner shape through a Some and keep a None as it is', () => {
+            const shape: ShapeNode = {kind: 'option', inner: {kind: 'value', type: 'Utf8'}};
+            const some = parseValue(shape, Option.some('hello'));
+            expect(some.unwrap()).toBeInstanceOf(Utf8Value);
+            expect(some.unwrap().value).toBe('hello');
+            const none = parseValue(shape, Option.none('Utf8'));
+            expect(none.isNone()).toBe(true);
+            expect(none.type).toEqual({Option: 'Utf8'});
         });
 
-        it('should return undefined for optional wrapping value kind with undefined', () => {
-            const shape: ShapeNode = {kind: 'optional', shape: {kind: 'value', type: 'Utf8'}};
+        it('should parse through an Option from another copy of the module instead of wrapping it again', () => {
+            const shape: ShapeNode = {kind: 'option', inner: {kind: 'value', type: 'Utf8'}};
+            const some = parseValue(shape, ForeignOption.some('hello'));
+            expect(isOption(some)).toBe(true);
+            expect(some.unwrap()).toBeInstanceOf(Utf8Value);
+            expect(some.unwrap().value).toBe('hello');
+            const none = parseValue(shape, ForeignOption.none('Utf8'));
+            expect(none.isNone()).toBe(true);
+            expect(none.type).toEqual({Option: 'Utf8'});
+        });
+
+        it('should return undefined for option wrapping value kind with undefined', () => {
+            const shape: ShapeNode = {kind: 'option', inner: {kind: 'value', type: 'Utf8'}};
             expect(parseValue(shape, undefined)).toBeUndefined();
         });
     });
@@ -156,17 +173,17 @@ describe('parseValue', () => {
             expect(result.age).toBeInstanceOf(Int4Value);
         });
 
-        it('should parse object with optional fields', () => {
+        it('should parse object with option fields', () => {
             const shape: ShapeNode = {
                 kind: 'object',
                 properties: {
                     name: {kind: 'primitive', type: 'Utf8'},
-                    nickname: {kind: 'optional', shape: {kind: 'primitive', type: 'Utf8'}},
+                    nickname: {kind: 'option', inner: {kind: 'primitive', type: 'Utf8'}},
                 }
             };
-            const result = parseValue(shape, {name: 'Alice', nickname: undefined});
+            const result = parseValue(shape, {name: 'Alice', nickname: Option.none('Utf8')});
             expect(result.name).toBeInstanceOf(Utf8Value);
-            expect(result.nickname).toBeUndefined();
+            expect(result.nickname.isNone()).toBe(true);
         });
 
         it('should return undefined for null object', () => {

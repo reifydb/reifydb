@@ -37,9 +37,6 @@ impl DistinctNode {
 		let mut charged = 0usize;
 
 		while let Some(cols) = self.input.next(rx, ctx)? {
-			if cols.row_count() == 0 {
-				continue;
-			}
 			match &mut all_columns {
 				None => all_columns = Some(cols),
 				Some(existing) => existing.append_columns(cols)?,
@@ -123,7 +120,11 @@ impl QueryNode for DistinctNode {
 
 		let kept_indices = self.dedupe(&all_columns);
 
-		let result = Self::extract(&all_columns, &kept_indices);
+		let result = if kept_indices.is_empty() {
+			all_columns
+		} else {
+			Self::extract(&all_columns, &kept_indices)
+		};
 		self.headers = Some(ColumnHeaders::from_columns(&result));
 
 		Ok(Some(result))

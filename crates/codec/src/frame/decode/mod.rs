@@ -215,6 +215,9 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 
 	let encoding = Encoding::from_u8(encoding_byte).ok_or(DecodeError::UnknownEncoding(encoding_byte))?;
 	let has_nones = flags & COL_FLAG_HAS_NONES != 0;
+	let tag = TypeTag::from_byte(type_code)?;
+	let depth = tag.depth() as usize;
+	let base_code = tag.kind_bits();
 
 	check_len(data, pos, name_len)?;
 	let name = str::from_utf8(&data[pos..pos + name_len])
@@ -227,15 +230,31 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 	let result = (|| -> Result<(FrameColumnData, usize), DecodeError> {
 		let mut pos = pos;
 
-		let nones = if has_nones && nones_len > 0 {
-			check_len(data, pos, nones_len)?;
-			let bv = decode_bitvec(&data[pos..pos + nones_len], row_count);
-			pos += nones_len;
-			Some(bv)
-		} else {
-			pos += nones_len;
-			None
-		};
+		if has_nones != (depth > 0) {
+			return Err(DecodeError::InvalidData(format!(
+				"column type code 0x{type_code:02X} has option depth {depth} but the has-nones flag is {}",
+				if has_nones {
+					"set"
+				} else {
+					"clear"
+				}
+			)));
+		}
+		let layer_len = row_count.div_ceil(8);
+		if nones_len != depth * layer_len {
+			return Err(DecodeError::InvalidData(format!(
+				"nones length {nones_len} disagrees with option depth {depth} and row count {row_count} (expected {})",
+				depth * layer_len
+			)));
+		}
+		check_len(data, pos, nones_len)?;
+		let layers: Vec<BitVec> = (0..depth)
+			.map(|layer| {
+				let start = pos + layer * layer_len;
+				decode_bitvec(&data[start..start + layer_len], row_count)
+			})
+			.collect();
+		pos += nones_len;
 
 		check_len(data, pos, data_len)?;
 		let data_bytes = &data[pos..pos + data_len];
@@ -250,7 +269,7 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 		pos += extra_len;
 
 		let col_data = decode_column_dispatch(
-			type_code,
+			base_code,
 			encoding,
 			flags,
 			row_count,
@@ -259,14 +278,10 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 			extra_bytes,
 		)?;
 
-		let col_data = if let Some(bitvec) = nones {
-			FrameColumnData::Option {
-				inner: Box::new(col_data),
-				bitvec,
-			}
-		} else {
-			col_data
-		};
+		let col_data = layers.into_iter().rev().fold(col_data, |inner, bitvec| FrameColumnData::Option {
+			inner: Box::new(inner),
+			bitvec,
+		});
 
 		Ok((col_data, pos))
 	})()
@@ -287,13 +302,7 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 }
 
 pub(crate) fn column_type_from_code(type_code: u8) -> Result<ValueType, DecodeError> {
-	let tag = TypeTag::from_byte(type_code)?;
-	if tag.depth() != 0 {
-		return Err(DecodeError::InvalidData(format!(
-			"column type code 0x{type_code:02X} carries option depth"
-		)));
-	}
-	tag.to_type()
+	TypeTag::from_byte(type_code)?.to_type()
 }
 
 fn decode_column_dispatch(

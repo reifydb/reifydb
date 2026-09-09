@@ -44,10 +44,10 @@ describe('Concurrent requests', () => {
                 wsClient.admin("MAP {result: 'ReifyDB'};")
             ]);
 
-            expect(result1[0][0].result).toBe("1");
-            expect(result2[0][0].a).toBe("2");
-            expect(result2[0][0].b).toBe("3");
-            expect(result3[0][0].result).toBe('ReifyDB');
+            expect(result1[0][0].result.value).toBe(1);
+            expect(result2[0][0].a.value).toBe(2);
+            expect(result2[0][0].b.value).toBe(3);
+            expect(result3[0][0].result.value).toBe('ReifyDB');
         });
     });
 
@@ -59,10 +59,10 @@ describe('Concurrent requests', () => {
                 wsClient.command("MAP {result: 'ReifyDB'};")
             ]);
 
-            expect(result1[0][0].result).toBe("1");
-            expect(result2[0][0].a).toBe("2");
-            expect(result2[0][0].b).toBe("3");
-            expect(result3[0][0].result).toBe('ReifyDB');
+            expect(result1[0][0].result.value).toBe(1);
+            expect(result2[0][0].a.value).toBe(2);
+            expect(result2[0][0].b.value).toBe(3);
+            expect(result3[0][0].result.value).toBe('ReifyDB');
         });
     });
 
@@ -75,10 +75,10 @@ describe('Concurrent requests', () => {
                 wsClient.query("MAP {result: 'ReifyDB'};")
             ]);
 
-            expect(result1[0][0].result).toBe("1");
-            expect(result2[0][0].a).toBe("2");
-            expect(result2[0][0].b).toBe("3");
-            expect(result3[0][0].result).toBe('ReifyDB');
+            expect(result1[0][0].result.value).toBe(1);
+            expect(result2[0][0].a.value).toBe(2);
+            expect(result2[0][0].b.value).toBe(3);
+            expect(result3[0][0].result.value).toBe('ReifyDB');
         });
     });
 
@@ -90,10 +90,10 @@ describe('Concurrent requests', () => {
                 wsClient.admin("MAP {result: 'ReifyDB'};")
             ]);
 
-            expect(result1[0][0].result).toBe("1");
-            expect(result2[0][0].a).toBe("2");
-            expect(result2[0][0].b).toBe("3");
-            expect(result3[0][0].result).toBe('ReifyDB');
+            expect(result1[0][0].result.value).toBe(1);
+            expect(result2[0][0].a.value).toBe(2);
+            expect(result2[0][0].b.value).toBe(3);
+            expect(result3[0][0].result.value).toBe('ReifyDB');
         });
     });
 
@@ -105,10 +105,10 @@ describe('Concurrent requests', () => {
                 wsClient.command("MAP {result: 'ReifyDB'};")
             ]);
 
-            expect(result1[0][0].result).toBe("1");
-            expect(result2[0][0].a).toBe("2");
-            expect(result2[0][0].b).toBe("3");
-            expect(result3[0][0].result).toBe('ReifyDB');
+            expect(result1[0][0].result.value).toBe(1);
+            expect(result2[0][0].a.value).toBe(2);
+            expect(result2[0][0].b.value).toBe(3);
+            expect(result3[0][0].result.value).toBe('ReifyDB');
         });
     });
 });

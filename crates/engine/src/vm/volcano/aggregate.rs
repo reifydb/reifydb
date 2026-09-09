@@ -71,8 +71,14 @@ impl AggregateNode {
 		keys: &[&str],
 		projections: &mut [Projection],
 		dict: &mut GroupKeyDict,
+		key_types: &mut Vec<Option<ValueType>>,
 	) -> Result<()> {
 		while let Some(columns) = input.next(rx, ctx)? {
+			if key_types.is_empty() {
+				key_types.extend(keys
+					.iter()
+					.map(|key| columns.column(key).map(|c| c.data().get_type())));
+			}
 			let groups = columns.group_by_ids(keys, dict)?;
 
 			for projection in projections.iter_mut() {
@@ -99,7 +105,12 @@ impl AggregateNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::finalize")]
-	fn finalize(projections: Vec<Projection>, keys: &[&str], dict: &GroupKeyDict) -> Vec<ColumnWithName> {
+	fn finalize(
+		projections: Vec<Projection>,
+		keys: &[&str],
+		dict: &GroupKeyDict,
+		key_types: &[Option<ValueType>],
+	) -> Vec<ColumnWithName> {
 		let mut result_columns = Vec::new();
 
 		for projection in projections {
@@ -112,12 +123,12 @@ impl AggregateNode {
 					let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
 					let first_key_type = dict.values(GroupId(0)).map(|key| key[col_idx].get_type());
+					let key_type = first_key_type
+						.or_else(|| key_types.get(col_idx).cloned().flatten())
+						.unwrap_or(ValueType::Boolean);
 					let mut c = ColumnWithName {
 						name: Fragment::internal(alias.fragment()),
-						data: ColumnBuffer::none_typed(
-							first_key_type.unwrap_or(ValueType::Boolean),
-							0,
-						),
+						data: ColumnBuffer::none_typed(key_type, 0),
 					};
 					for (_, key) in dict.iter() {
 						c.data_mut().push_value(key[col_idx].clone());
@@ -166,10 +177,11 @@ impl QueryNode for AggregateNode {
 			parse_keys_and_aggregates(&self.by, &self.map, &stored_ctx.services.routines, stored_ctx)?;
 
 		let mut dict = GroupKeyDict::new();
+		let mut key_types = Vec::new();
 
-		Self::accumulate(&mut self.input, rx, ctx, &keys, &mut projections, &mut dict)?;
+		Self::accumulate(&mut self.input, rx, ctx, &keys, &mut projections, &mut dict, &mut key_types)?;
 
-		let result_columns = Self::finalize(projections, &keys, &dict);
+		let result_columns = Self::finalize(projections, &keys, &dict, &key_types);
 
 		let columns = Columns::new(result_columns);
 		self.headers = Some(ColumnHeaders::from_columns(&columns));

@@ -236,14 +236,16 @@ describe('Value encode method', () => {
     });
 
     describe('NoneValue', () => {
-        it('should encode none value as NONE_VALUE', () => {
-            const value = new NoneValue();
+        it('should encode none value as a typed none of its inner type', () => {
+            const value = new NoneValue('Int4');
             const encoded = value.encode();
 
-            expect(encoded.type).toBe('None');
+            expect(encoded.type).toEqual({Option: 'Int4'});
             expect(encoded.value).toBe(NONE_VALUE);
 
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
+            expect((decoded as NoneValue).innerType).toBe('Int4');
             expect(decoded.valueOf()).toBeUndefined();
         });
     });

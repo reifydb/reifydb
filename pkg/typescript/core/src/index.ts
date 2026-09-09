@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-export {NONE_VALUE, ROW_NUMBER_KEY} from './constant';
+export {NONE_VALUE, ROW_NUMBER_KEY, noneMarker, noneMarkerDepth} from './constant';
 export {decode, columnsToRows} from './decoder';
 export {encodeValue, encodeParams} from './encoder';
 export {TYPE_CODE, typeNameFromCode} from './type-code';

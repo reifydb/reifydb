@@ -3,8 +3,11 @@
 import {
     decode,
     columnsToRows,
+    framesFromWire,
     transformFrames,
     transformResult,
+    checkFrames,
+    checkFrame,
     ROW_NUMBER_KEY
 } from "@reifydb/core";
 import type {
@@ -51,9 +54,10 @@ import {
     buildSubscriptionRql,
     ReifyError
 } from "./types";
+import {jsonResponseToRows} from "./json-decode";
 import {encodeParams} from "./encoder";
 import {rbcf} from "./rbcf";
-import {CONTENT_TYPE_RBCF} from "./content-types";
+import {CONTENT_TYPE_FRAMES, CONTENT_TYPE_RBCF} from "./content-types";
 import {toCamelCaseKeys, toSnakeCaseKeys, WIRE_PASSTHROUGH_KEYS} from "./case";
 
 const enum BinaryKind {
@@ -371,7 +375,7 @@ export class WsClient {
                 name,
                 params: encodedParams
             },
-        } as CallRequest);
+        } as CallRequest, shapes);
 
         return { frames: transformFrames(result, shapes), meta };
     }
@@ -395,7 +399,7 @@ export class WsClient {
                 rql,
                 params: encodedParams
             },
-        } as AdminRequest | CommandRequest | QueryRequest);
+        } as AdminRequest | CommandRequest | QueryRequest, shapes);
 
         return { frames: transformFrames(result, shapes), meta };
     }
@@ -587,6 +591,7 @@ export class WsClient {
 
     async sendWithMeta(
         req: AdminRequest | CommandRequest | QueryRequest | CallRequest,
+        shapes?: readonly ShapeNode[],
     ): Promise<{ result: any, meta?: ResponseMeta }> {
         const id = req.id;
 
@@ -639,9 +644,14 @@ export class WsClient {
         const meta = (response.payload as any).meta as ResponseMeta | undefined;
 
         if (this.wireFormat() === "json") {
-            return { result: response.payload.body ?? [], meta };
+            return { result: jsonResponseToRows(response.payload.body ?? [], shapes), meta };
         }
-        const frames = response.payload.body?.frames || [];
+        // An rbcf response was decoded from bytes and already carries the client's own types; a frames
+        // response carries the wire's rendering and has to be read into them first.
+        const raw = response.payload.body?.frames || [];
+        const contentType = (response.payload as any).contentType;
+        const frames = contentType === CONTENT_TYPE_RBCF ? raw : framesFromWire(raw);
+        if (shapes) checkFrames(frames, shapes);
         return {
             result: frames.map((frame: any) => columnsToRows(frame.columns)),
             meta,
@@ -973,7 +983,7 @@ export class WsClient {
     }
 
     private handleChangeMessage(msg: ChangeMessage): void {
-        const {subscriptionId, body} = msg.payload;
+        const {subscriptionId, contentType, body} = msg.payload;
         const state = this.findSubscriptionState(subscriptionId);
 
         if (!state) {
@@ -981,10 +991,28 @@ export class WsClient {
             return;
         }
 
-        const frames = body?.frames || [];
+        // The frames content type carries each column's type in the wire's rendering; rbcf changes were
+        // already decoded into the client's own types on the way in.
+        const raw = body?.frames || [];
+        const frames = contentType === CONTENT_TYPE_FRAMES ? framesFromWire(raw) : raw;
         for (const frame of frames) {
-            this.dispatchChangeFrame(state, frame);
+            // One undecodable frame must not abandon the frames after it, nor escape into the
+            // socket handler, where it would stall every later message on this connection.
+            try {
+                this.dispatchChangeFrame(state, frame);
+            } catch (error) {
+                this.reportSubscriptionError(state, error);
+            }
         }
+    }
+
+    private reportSubscriptionError(state: SubscriptionState, error: unknown): void {
+        const reported = error instanceof Error ? error : new Error(String(error));
+        if (state.callbacks.onError) {
+            state.callbacks.onError(reported);
+            return;
+        }
+        console.error('Subscription change could not be delivered:', reported);
     }
 
     private dispatchChangeFrame(state: SubscriptionState, frame: any): void {
@@ -1006,6 +1034,7 @@ export class WsClient {
 
     private frameToRows(frame: any, shape?: ShapeNode): any[] {
         if (!frame.columns || frame.columns.length === 0) return [];
+        if (shape) checkFrame(frame.columns, shape);
 
         const rowCount = frame.columns[0].payload.length;
         const rowNumbers = frame.row_numbers;

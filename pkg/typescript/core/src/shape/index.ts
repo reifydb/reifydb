@@ -15,9 +15,9 @@ export interface ArrayShapeNode<T extends ShapeNode = ShapeNode> {
     items: T;
 }
 
-export interface OptionalShapeNode<T extends ShapeNode = ShapeNode> {
-    kind: 'optional';
-    shape: T;
+export interface OptionShapeNode<T extends ShapeNode = ShapeNode> {
+    kind: 'option';
+    inner: T;
 }
 
 export interface ValueShapeNode<T extends string = string> {
@@ -29,7 +29,7 @@ export type ShapeNode =
     | PrimitiveShapeNode
     | ObjectShapeNode
     | ArrayShapeNode
-    | OptionalShapeNode
+    | OptionShapeNode
     | ValueShapeNode;
 
 export type {
@@ -57,3 +57,9 @@ export {
     transformFrames,
     transformResult
 } from './transform';
+
+export {
+    ShapeMismatch,
+    checkFrames,
+    checkFrame
+} from './check';

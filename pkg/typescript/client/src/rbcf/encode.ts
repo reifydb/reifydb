@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { NONE_VALUE } from "@reifydb/core";
-import type { Type } from "@reifydb/core";
+import { noneMarkerDepth, optionDepth, unwrapOptionType } from "@reifydb/core";
 
 import {
     COL_FLAG_HAS_NONES, COLUMN_DESCRIPTOR_SIZE, ColumnEncoding, FRAME_HEADER_SIZE,
     MESSAGE_HEADER_SIZE, META_HAS_CREATED_AT, META_HAS_ROW_NUMBERS, META_HAS_UPDATED_AT,
-    RBCF_MAGIC, RBCF_VERSION, TYPE_CODE, type TypeName,
+    RBCF_MAGIC, RBCF_VERSION, TAG_DEPTH_SHIFT, TYPE_CODE, type TypeName,
 } from "./format";
 import { BinaryWriter } from "./writer";
 import { encodeBitvec } from "./nones";
@@ -58,41 +57,38 @@ function encodeFrame(w: BinaryWriter, frame: WireFrame): void {
     w.patchU32(frameHeaderAt + 8, frameSize);
 }
 
-function typeInfo(t: Type): { base: TypeName; isOption: boolean } {
-    if (typeof t === "object" && t !== null && "Option" in t) {
-        const inner = typeInfo((t as { Option: Type }).Option);
-        return { base: inner.base, isOption: true };
-    }
-    return { base: t as TypeName, isOption: false };
-}
-
 function encodeColumn(w: BinaryWriter, col: WireColumn): void {
-    const { base, isOption } = typeInfo(col.type);
+    const base = unwrapOptionType(col.type) as TypeName;
+    const depth = optionDepth(col.type);
     const rowCount = col.payload.length;
 
-    const typeCode = TYPE_CODE[base];
+    const typeCode = (depth << TAG_DEPTH_SHIFT) | TYPE_CODE[base];
 
-    const defined = new Array<boolean>(rowCount);
+    const layers = Array.from({ length: depth }, () => new Array<boolean>(rowCount).fill(true));
     const definedPayload = new Array<string>(rowCount);
     for (let i = 0; i < rowCount; i++) {
         const cell = col.payload[i];
-        if (cell === NONE_VALUE) {
-            defined[i] = false;
-            definedPayload[i] = placeholderFor(base);
-        } else {
-            defined[i] = true;
+        const noneAt = depth === 0 ? undefined : noneMarkerDepth(cell);
+        if (noneAt === undefined) {
             definedPayload[i] = cell;
+            continue;
         }
+        if (noneAt >= depth) {
+            throw new Error(
+                `RBCF encode: column '${col.name}' none under ${noneAt} Some layers cannot fit an option of depth ${depth}`
+            );
+        }
+        for (let layer = noneAt; layer < depth; layer++) layers[layer][i] = false;
+        definedPayload[i] = placeholderFor(base);
     }
 
-    const hasNones = isOption;
-    const nonesBytes = hasNones ? encodeBitvec(defined) : new Uint8Array(0);
+    const nonesBytes = concat(layers.map(encodeBitvec));
 
     const { data, offsets } = encodePlainData(base, definedPayload);
 
     w.u8(typeCode);
     w.u8(ColumnEncoding.Plain);
-    w.u8(hasNones ? COL_FLAG_HAS_NONES : 0);
+    w.u8(depth > 0 ? COL_FLAG_HAS_NONES : 0);
     w.u8(0);
     const nameBytes = new TextEncoder().encode(col.name);
     w.u16(nameBytes.length);
@@ -111,6 +107,16 @@ function encodeColumn(w: BinaryWriter, col: WireColumn): void {
     w.bytes(nonesBytes);
     w.bytes(data);
     w.bytes(offsets);
+}
+
+function concat(parts: Uint8Array[]): Uint8Array {
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let pos = 0;
+    for (const p of parts) {
+        out.set(p, pos);
+        pos += p.length;
+    }
+    return out;
 }
 
 function placeholderFor(base: TypeName): string {

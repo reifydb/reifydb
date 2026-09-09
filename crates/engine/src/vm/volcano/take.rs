@@ -16,6 +16,7 @@ pub(crate) struct TakeNode {
 	input: Box<dyn QueryNode>,
 	remaining: usize,
 	initialized: Option<()>,
+	emitted: bool,
 }
 
 impl TakeNode {
@@ -24,6 +25,7 @@ impl TakeNode {
 			input,
 			remaining: take,
 			initialized: None,
+			emitted: false,
 		}
 	}
 }
@@ -42,24 +44,33 @@ impl QueryNode for TakeNode {
 			assert!(self.initialized.is_some(), "TakeNode::next() called before initialize()");
 		}
 
-		if self.remaining == 0 {
+		if self.remaining == 0 && self.emitted {
 			return Ok(None);
 		}
 
+		let mut empty: Option<Columns> = None;
 		while let Some(columns) = self.input.next(rx, ctx)? {
-			if columns.row_count() == 0 {
-				continue;
-			}
 			let transform_ctx = TransformContext {
 				routines: &ctx.services.routines,
 				runtime_context: &ctx.services.runtime_context,
 				params: &ctx.params,
 			};
 			let result = self.apply(&transform_ctx, columns)?;
+			if result.row_count() == 0 && self.remaining > 0 {
+				if empty.is_none() {
+					empty = Some(result);
+				}
+				continue;
+			}
 			self.remaining -= result.row_count();
+			self.emitted = true;
 			return Ok(Some(result));
 		}
-		Ok(None)
+		if self.emitted {
+			return Ok(None);
+		}
+		self.emitted = true;
+		Ok(empty)
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

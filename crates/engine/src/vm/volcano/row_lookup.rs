@@ -118,7 +118,7 @@ impl QueryNode for RowPointLookupNode {
 
 			Ok(Some(columns))
 		} else {
-			Ok(None)
+			Ok(Some(columns_from_object(&self.source)))
 		}
 	}
 
@@ -134,6 +134,7 @@ pub(crate) struct RowListLookupNode {
 	headers: ColumnHeaders,
 	shape: Option<RowShape>,
 	current_index: usize,
+	emitted: bool,
 }
 
 impl RowListLookupNode {
@@ -147,7 +148,16 @@ impl RowListLookupNode {
 			headers,
 			shape: None,
 			current_index: 0,
+			emitted: false,
 		})
+	}
+
+	fn finish(&mut self) -> Result<Option<Columns>> {
+		if self.emitted {
+			return Ok(None);
+		}
+		self.emitted = true;
+		Ok(Some(columns_from_object(&self.source)))
 	}
 
 	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape> {
@@ -218,7 +228,7 @@ impl QueryNode for RowListLookupNode {
 		let batch_size = stored_ctx.batch_size as usize;
 
 		if self.current_index >= self.row_numbers.len() {
-			return Ok(None);
+			return self.finish();
 		}
 
 		let object_id = get_object_id(&self.source)?;
@@ -232,12 +242,13 @@ impl QueryNode for RowListLookupNode {
 			if self.current_index < self.row_numbers.len() {
 				return self.next(rx, ctx);
 			}
-			return Ok(None);
+			return self.finish();
 		}
 
 		let mut columns = columns_from_object(&self.source);
 		self.append_batch(rx, &mut columns, batch, found_row_numbers)?;
 
+		self.emitted = true;
 		Ok(Some(columns))
 	}
 
@@ -256,6 +267,7 @@ pub(crate) struct RowRangeScanNode {
 	shape: Option<RowShape>,
 	current_row: u64,
 	exhausted: bool,
+	emitted: bool,
 }
 
 impl RowRangeScanNode {
@@ -271,7 +283,16 @@ impl RowRangeScanNode {
 			shape: None,
 			current_row: start,
 			exhausted: false,
+			emitted: false,
 		})
+	}
+
+	fn finish(&mut self) -> Result<Option<Columns>> {
+		if self.emitted {
+			return Ok(None);
+		}
+		self.emitted = true;
+		Ok(Some(columns_from_object(&self.source)))
 	}
 
 	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape> {
@@ -342,7 +363,7 @@ impl QueryNode for RowRangeScanNode {
 		let batch_size = stored_ctx.batch_size as usize;
 
 		if self.exhausted || self.current_row > self.end {
-			return Ok(None);
+			return self.finish();
 		}
 
 		let object_id = get_object_id(&self.source)?;
@@ -359,12 +380,13 @@ impl QueryNode for RowRangeScanNode {
 			if !self.exhausted {
 				return self.next(rx, ctx);
 			}
-			return Ok(None);
+			return self.finish();
 		}
 
 		let mut columns = columns_from_object(&self.source);
 		self.append_batch(rx, &mut columns, batch, found_row_numbers)?;
 
+		self.emitted = true;
 		Ok(Some(columns))
 	}
 

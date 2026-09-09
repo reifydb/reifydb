@@ -26,9 +26,15 @@ importers:
       '@reifydb/core':
         specifier: ^0.9.0
         version: 0.9.0
+      '@reifydb/react':
+        specifier: link:../../../typescript/react
+        version: link:../../../typescript/react
       '@reifydb/reifydb':
         specifier: link:../../../typescript/reifydb
         version: link:../../../typescript/reifydb
+      '@reifydb/store':
+        specifier: link:../../../typescript/store
+        version: link:../../../typescript/store
       '@reifydb/ui':
         specifier: ^0.9.0
         version: 0.9.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)

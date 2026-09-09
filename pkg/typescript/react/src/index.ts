@@ -1,30 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-
 export * from '@reifydb/core';
 export * from '@reifydb/client';
-
-// Export connection utilities
-export {Connection, type ConnectionConfig, DEFAULT_CONFIG, DEFAULT_URL} from './connection/connection';
-export {getConnection, clearConnection} from './connection/connection-pool';
-export {ConnectionProvider, ConnectionContext, type ConnectionProviderProps} from './connection/connection-context';
-
-// Export React hooks
-export {useConnection} from './hooks/use-connection';
-export {useQueryExecutor, type QueryResult, type QueryState, type QueryExecutorOptions} from './hooks/use-query-executor';
-export {useQueryOne, useQueryMany, type QueryOptions} from './hooks/use-query';
-export {useCommandExecutor, type CommandResult, type CommandState, type CommandExecutorOptions} from './hooks/use-command-executor';
-export {useCommandOne, useCommandMany, type CommandOptions} from './hooks/use-command';
-export {useAdminExecutor, type AdminResult, type AdminState, type AdminExecutorOptions} from './hooks/use-admin-executor';
-export {useAdminOne, useAdminMany, type AdminOptions} from './hooks/use-admin';
-export {
-    useSubscriptionExecutor,
-    type SubscriptionExecutorOptions,
-    type SubscriptionState,
-    type ChangeEvent
-} from './hooks/use-subscription-executor';
-export {
-    useSubscription,
-    type SubscriptionOptions
-} from './hooks/use-subscription';
-export {useCatalog, type TableInfo, type ColumnInfo} from './hooks/use-catalog';
+export * from '@reifydb/store';
+export {StoreProvider, useStore} from './provider';
+export type {StoreProviderProps} from './provider';
+export {useSubscription} from './use-subscription';
+export type {UseSubscriptionOptions} from './use-subscription';
+export {useQuery} from './use-query';
+export type {UseQueryOptions} from './use-query';
+export {useCommand} from './use-command';
+export type {UseCommandResult} from './use-command';
+export {useAdmin} from './use-admin';
+export type {UseAdminResult} from './use-admin';

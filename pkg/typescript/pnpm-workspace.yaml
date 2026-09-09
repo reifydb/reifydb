@@ -7,6 +7,7 @@ packages:
   - react
   - reifydb
   - shell
+  - store
   - ui
   - wasm
 

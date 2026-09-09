@@ -14,13 +14,14 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 		return Encoding::Plain;
 	}
 
-	let inner = match data {
-		FrameColumnData::Option {
-			inner,
-			..
-		} => inner.as_ref(),
-		other => other,
-	};
+	let mut inner = data;
+	while let FrameColumnData::Option {
+		inner: next,
+		..
+	} = inner
+	{
+		inner = next;
+	}
 
 	if inner.len() < MIN_ROWS {
 		return Encoding::Plain;

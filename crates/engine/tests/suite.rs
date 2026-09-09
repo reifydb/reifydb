@@ -5,10 +5,15 @@
 mod bulk_insert;
 #[path = "callable_call_policy.rs"]
 mod callable_call_policy;
+#[path = "cast_target_diagnostics.rs"]
+mod cast_target_diagnostics;
+
 #[path = "closure.rs"]
 mod closure;
 #[path = "empty_batch_system_columns.rs"]
 mod empty_batch_system_columns;
+#[path = "empty_result_column_types.rs"]
+mod empty_result_column_types;
 #[path = "events.rs"]
 mod events;
 #[path = "flow_dag_load.rs"]
@@ -29,6 +34,8 @@ mod memory_limit;
 mod plan_cache;
 #[path = "positional_insert.rs"]
 mod positional_insert;
+#[path = "procedure_param_coercion.rs"]
+mod procedure_param_coercion;
 #[path = "procedure_read_policy_bypass.rs"]
 mod procedure_read_policy_bypass;
 #[path = "queue/main.rs"]
@@ -59,3 +66,5 @@ mod transaction;
 mod transactional_view_unimplemented;
 #[path = "udf.rs"]
 mod udf;
+#[path = "virtual_table_diagnostics.rs"]
+mod virtual_table_diagnostics;

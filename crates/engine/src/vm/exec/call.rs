@@ -25,7 +25,7 @@ use reifydb_rql::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::{Error as ReifyError, ProcedureErrorKind, TypeError},
+	error::{Error as ReifyError, FunctionErrorKind, ProcedureErrorKind, TypeError},
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions,
@@ -82,11 +82,11 @@ impl<'a> Vm<'a> {
 		}
 	}
 
-	fn coerce_value(&self, value: Value, target: &ValueType) -> Result<Value> {
+	fn coerce_value(&self, value: Value, target: &ValueType, fragment: Fragment) -> Result<Value> {
 		let mut data = ColumnBuffer::with_capacity(value.get_type(), 1);
 		data.push_value(value);
 		let ctx = self.eval_ctx();
-		let cast = cast_column_data(&ctx, &data, target.clone(), Fragment::internal("coerce_return"))?;
+		let cast = cast_column_data(&ctx, &data, target.clone(), fragment)?;
 		Ok(cast.get_value(0))
 	}
 }
@@ -391,7 +391,7 @@ impl<'a> Vm<'a> {
 
 		let mut data = ColumnBuffer::with_capacity(col_type.clone(), row_count);
 		for value in results {
-			let coerced = self.coerce_value(value, &col_type)?;
+			let coerced = self.coerce_value(value, &col_type, Fragment::internal("coerce_return"))?;
 			data.push_value(coerced);
 		}
 		let result_col = ColumnWithName::new(name.clone(), data);
@@ -573,13 +573,60 @@ impl<'a> Vm<'a> {
 		compiled_list: &[Compiled],
 		proc_params: &[ProcedureParam],
 		args: Vec<Value>,
-		_name: &Fragment,
+		name: &Fragment,
 	) -> Result<()> {
+		let args = if args.is_empty() && !proc_params.is_empty() && matches!(self.params, Params::Named(_)) {
+			let named: Vec<Value> = proc_params
+				.iter()
+				.filter_map(|p| self.params.get_named(strip_dollar_prefix(&p.name)).cloned())
+				.collect();
+			if named.len() != proc_params.len() {
+				return Err(TypeError::Function {
+					kind: FunctionErrorKind::ArityMismatch {
+						expected: proc_params.len(),
+						actual: named.len(),
+					},
+					message: format!(
+						"procedure {} expects {} arguments, got {} named",
+						name.text(),
+						proc_params.len(),
+						named.len()
+					),
+					fragment: name.clone(),
+				}
+				.into());
+			}
+			named
+		} else {
+			args
+		};
+		if args.len() != proc_params.len() {
+			return Err(TypeError::Function {
+				kind: FunctionErrorKind::ArityMismatch {
+					expected: proc_params.len(),
+					actual: args.len(),
+				},
+				message: format!(
+					"procedure {} expects {} arguments, got {}",
+					name.text(),
+					proc_params.len(),
+					args.len()
+				),
+				fragment: name.clone(),
+			}
+			.into());
+		}
+
 		let saved_ip = self.ip;
 		self.symbols.enter_scope(ScopeType::Function);
 
 		for (param_def, arg) in proc_params.iter().zip(args.into_iter()) {
 			let bare_name = strip_dollar_prefix(&param_def.name);
+			let arg = self.coerce_value(
+				arg,
+				&param_def.param_type.get_type(),
+				Fragment::internal(bare_name),
+			)?;
 			self.symbols.set(param_def.name.clone(), Variable::scalar_named(bare_name, arg), true)?;
 		}
 

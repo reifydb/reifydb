@@ -3,7 +3,7 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from "vitest";
 import {Client, WsClient} from "../../../src";
 import {waitForDatabase} from "../setup";
-import {Shape, Utf8Value, Int4Value, Int1Value, InferShape} from "@reifydb/core";
+import {Shape, Utf8Value, Int4Value, InferShape} from "@reifydb/core";
 
 // Define the shape once
 const versionShape = Shape.object({
@@ -163,8 +163,10 @@ describe.each([
             
             // Check that values are Value objects
             expect(row.name).toBeInstanceOf(Utf8Value);
-            // The number 42 fits in Int1 range, so it's encoded as Int1Value
-            expect(row.count).toBeInstanceOf(Int1Value); // Check it's an Int1Value object
+            // The server sends 42 as Int1, the narrowest type it fits. The value shape names the
+            // type the caller wants to hold, and Int4 holds every Int1, so the shape is honoured.
+            expect(row.count).toBeInstanceOf(Int4Value);
+            expect(row.count.type).toBe('Int4');
             
             // Verify they have valueOf methods
             expect(typeof row.name.valueOf).toBe('function');

@@ -5,7 +5,7 @@ use std::{fs, path::Path};
 
 use reifydb_codec::{
 	frame::{decode::decode_frames, encode::encode_frames, format::Encoding, options::EncodeOptions},
-	json::from::frames_from_json,
+	json::fixture::frames_from_fixture_json,
 };
 use serde_json::{Value, from_str, to_string};
 use test_each_file::test_each_path;
@@ -42,7 +42,7 @@ fn run_conformance_file(path: &Path, encoding: Encoding) {
 
 	for (i, case) in cases.iter().enumerate() {
 		let frames_json = to_string(case.get("frames").unwrap()).unwrap();
-		let expected_frames = frames_from_json(&frames_json).expect("failed to parse frames from JSON");
+		let expected_frames = frames_from_fixture_json(&frames_json).expect("failed to parse frames from JSON");
 
 		let options = EncodeOptions::forced(encoding);
 		let bytes = encode_frames(&expected_frames, &options)

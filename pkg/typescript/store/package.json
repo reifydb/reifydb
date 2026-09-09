@@ -1,0 +1,61 @@
+{
+  "name": "@reifydb/store",
+  "version": "0.9.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --dts --format esm --sourcemap",
+    "test": "pnpm test:unit",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:unit:watch": "vitest --config vitest.unit.config.ts",
+    "test:integration": "vitest run --config vitest.config.ts",
+    "test:integration:watch": "vitest --config vitest.config.ts",
+    "test:integration:coverage": "vitest run --coverage --config vitest.config.ts",
+    "test:coverage": "pnpm test:integration:coverage",
+    "pretest:integration": "pnpm build",
+    "prepublishOnly": "pnpm build",
+    "publish:npm": "pnpm publish --access public --no-git-checks"
+  },
+  "dependencies": {
+    "@reifydb/client": "workspace:*",
+    "@reifydb/core": "workspace:*",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.10",
+    "@vitest/coverage-v8": "^2.1.8",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "reifydb",
+    "database",
+    "store",
+    "state",
+    "typescript"
+  ],
+  "files": [
+    "dist/",
+    "package.json",
+    "readme.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "linkWorkspacePackages": false
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/reifydb/reifydb.git",
+    "directory": "pkg/typescript/store"
+  },
+  "homepage": "https://github.com/reifydb/reifydb#readme",
+  "bugs": {
+    "url": "https://github.com/reifydb/reifydb/issues"
+  }
+}

@@ -2,7 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 import {
     columnsToRows,
-    transformFrames
+    framesFromWire,
+    transformFrames,
+    checkFrames
 } from "@reifydb/core";
 import type {
     ShapeNode,
@@ -17,6 +19,7 @@ import type {
 import {
     ReifyError
 } from "./types";
+import {jsonResponseToRows} from "./json-decode";
 import {encodeParams} from "./encoder";
 import {rbcf} from "./rbcf";
 import {CONTENT_TYPE_JSON, CONTENT_TYPE_RBCF} from "./content-types";
@@ -270,7 +273,7 @@ export class HttpClient {
             ? encodeParams(params)
             : undefined;
 
-        const { result, meta } = await this.send(endpoint, rql, encodedParams, reqOpts);
+        const { result, meta } = await this.send(endpoint, rql, encodedParams, shapes, reqOpts);
 
         return { frames: transformFrames(result, shapes), meta };
     }
@@ -279,6 +282,7 @@ export class HttpClient {
         endpoint: string,
         rql: string,
         params: any,
+        shapes: readonly ShapeNode[],
         reqOpts?: RequestOptions,
     ): Promise<{ result: any, meta?: ResponseMeta }> {
         const timeoutMs = this.options.timeoutMs ?? 30_000;
@@ -331,6 +335,7 @@ export class HttpClient {
             if (isBinary) {
                 const buf = await response.arrayBuffer();
                 const frames = rbcf.decode(new Uint8Array(buf));
+                checkFrames(frames, shapes);
                 return { result: frames.map((frame: any) => columnsToRows(frame.columns)), meta };
             }
 
@@ -355,9 +360,10 @@ export class HttpClient {
             }
 
             if (format === "json") {
-                return { result: parsed ?? [], meta };
+                return { result: jsonResponseToRows(parsed ?? [], shapes), meta };
             }
-            const frames = parsed.frames || [];
+            const frames = framesFromWire(parsed.frames || []);
+            checkFrames(frames, shapes);
             return {
                 result: frames.map((frame: any) => columnsToRows(frame.columns)),
                 meta,

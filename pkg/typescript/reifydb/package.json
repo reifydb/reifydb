@@ -15,7 +15,8 @@
     "publish:npm": "pnpm publish --access public --no-git-checks"
   },
   "dependencies": {
-    "@reifydb/core": "workspace:*"
+    "@reifydb/core": "workspace:*",
+    "@reifydb/store": "workspace:*"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.4",

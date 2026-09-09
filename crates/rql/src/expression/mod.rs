@@ -1076,8 +1076,24 @@ impl ExpressionCompiler {
 			}
 			Ast::Cast(node) => {
 				let mut tuple = node.tuple;
+				// cast takes the value and the target type; anything else reaches here from a
+				// parse the compiler cannot serve, and must be reported rather than panic the
+				// statement's thread and with it the process.
+				if tuple.nodes.len() != 2 {
+					return Err(AstError::UnexpectedToken {
+						expected: "cast(value, type)".to_string(),
+						fragment: tuple.token.fragment.to_owned(),
+					}
+					.into());
+				}
 				let node = tuple.nodes.pop().unwrap();
-				let bump_fragment = node.as_identifier().token.fragment;
+				let Ast::Identifier(target) = &node else {
+					return Err(AstError::ExpectedIdentifier {
+						fragment: node.token().fragment.to_owned(),
+					}
+					.into());
+				};
+				let bump_fragment = target.token.fragment;
 				let ty = convert_data_type(&bump_fragment)?;
 				let fragment = bump_fragment.to_owned();
 

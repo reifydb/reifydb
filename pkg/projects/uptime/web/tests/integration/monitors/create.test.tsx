@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { act, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MonitorNewPage } from '@/pages/monitors/new.tsx'
-import { useRealtimeStore } from '@/store/realtime'
+import { regions } from '@/store/queries'
 import type { TestDb, TestFactory } from '@reifydb/reifydb'
-import { Shape, Utf8Value } from '@reifydb/core'
+import { Utf8Value } from '@reifydb/core'
+import { Option, Shape, type Store, type StoreClient } from '@reifydb/react'
 import { loadBackend } from '../../support/backend'
-import { renderWithProviders } from '../../support/render'
-import { insertMonitorRql, uuid7 } from '../../support/rql'
+import { bridgeStore, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
 
 // a dynamic import inside the factory runs lazily; a static one is hoisted above this call and throws TDZ
@@ -19,51 +19,35 @@ vi.mock('@tanstack/react-router', async () => (await import('../../support/route
 
 let create: TestFactory
 
+const OPTIONALS_RQL =
+  'from uptime::monitors filter { name == $name } map { http_method, expected_status, keyword, expected_ip }'
+
+const OPTIONALS = Shape.object({
+  http_method: Shape.option(Shape.string()),
+  expected_status: Shape.option(Shape.int2()),
+  keyword: Shape.option(Shape.string()),
+  expected_ip: Shape.option(Shape.string()),
+})
+
 beforeAll(() => {
   create = loadBackend()
 })
 
-// Stubs fetch, never the mutation hook, so apiFetch's real code path still executes.
-function installFetchBridge(db: TestDb) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString()
-      if (init?.method === 'POST' && url.endsWith('/monitors')) {
-        const body = JSON.parse(init.body as string)
-        const id = uuid7()
-        await db.commandRoot(insertMonitorRql(id, body), {}, [])
-        return new Response(JSON.stringify({ id, ...body }), {
-          status: 201,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      }
-      throw new Error(`unexpected fetch in test: ${init?.method ?? 'GET'} ${url}`)
-    }),
-  )
-}
-
-function renderPage() {
-  return renderWithProviders(<MonitorNewPage />)
-}
-
 describe('create monitor flow', () => {
   let db: TestDb
+  let store: Store
+  let client: StoreClient
 
-  beforeEach(() => {
+  beforeEach(async () => {
     db = create(1)
-    useRealtimeStore.setState({ regions: { 'region-1': { id: 'region-1', label: 'US East' } } })
-    installFetchBridge(db)
+    ;({ store, client } = await bridgeStore(db, 'tester'))
+    store.seed(regions.rql, null, regions.shape, [{ id: 'region-1', label: 'US East' }])
     navigate.mockClear()
   })
 
-  afterEach(() => {
-    // must run before RTL's own unmount, otherwise this store write hits a still-mounted subscriber outside act()
-    act(() => {
-      useRealtimeStore.getState().reset()
-    })
-    vi.unstubAllGlobals()
-  })
+  function renderPage() {
+    return renderWithProviders(<MonitorNewPage />, store)
+  }
 
   it('creates a monitor through the real form and it lands in the real uptime schema', async () => {
     renderPage()
@@ -99,8 +83,71 @@ describe('create monitor flow', () => {
     ])
   })
 
+  it('stores a none in every optional column when the form submits none of them', async () => {
+    renderPage()
+
+    await userEvent.type(screen.getByLabelText('Name'), 'db-port')
+    await userEvent.selectOptions(screen.getByLabelText('Type'), 'tcp')
+    await userEvent.type(screen.getByLabelText('Host and port'), 'db.example.com:5432')
+    await userEvent.click(screen.getByRole('button', { name: /create monitor/i }))
+
+    await waitFor(() => expect(navigate).toHaveBeenCalled())
+    const [rows] = await db.queryRoot(OPTIONALS_RQL, { name: 'db-port' }, [OPTIONALS])
+    expect(rows).toEqual([
+      {
+        httpMethod: Option.none('Utf8'),
+        expectedStatus: Option.none('Int2'),
+        keyword: Option.none('Utf8'),
+        expectedIp: Option.none('Utf8'),
+      },
+    ])
+  })
+
+  it('stores the http method, expected status and keyword the form submits for an http monitor', async () => {
+    renderPage()
+
+    await userEvent.type(screen.getByLabelText('Name'), 'api-health')
+    await userEvent.type(screen.getByLabelText('URL'), 'https://api.example.com/health')
+    await userEvent.selectOptions(screen.getByLabelText('HTTP method'), 'HEAD')
+    await userEvent.type(screen.getByLabelText('Expected status code (empty = any 2xx)'), '204')
+    await userEvent.type(screen.getByLabelText('Response keyword (optional)'), 'ok')
+    await userEvent.click(screen.getByRole('button', { name: /create monitor/i }))
+
+    await waitFor(() => expect(navigate).toHaveBeenCalled())
+    const [rows] = await db.queryRoot(OPTIONALS_RQL, { name: 'api-health' }, [OPTIONALS])
+    expect(rows).toEqual([
+      {
+        httpMethod: Option.some('HEAD'),
+        expectedStatus: Option.some(204),
+        keyword: Option.some('ok'),
+        expectedIp: Option.none('Utf8'),
+      },
+    ])
+  })
+
+  it('stores the expected ip the form submits for a dns monitor', async () => {
+    renderPage()
+
+    await userEvent.type(screen.getByLabelText('Name'), 'dns-check')
+    await userEvent.selectOptions(screen.getByLabelText('Type'), 'dns')
+    await userEvent.type(screen.getByLabelText('Hostname'), 'example.com')
+    await userEvent.type(screen.getByLabelText('Expected IP (optional)'), '93.184.216.34')
+    await userEvent.click(screen.getByRole('button', { name: /create monitor/i }))
+
+    await waitFor(() => expect(navigate).toHaveBeenCalled())
+    const [rows] = await db.queryRoot(OPTIONALS_RQL, { name: 'dns-check' }, [OPTIONALS])
+    expect(rows).toEqual([
+      {
+        httpMethod: Option.none('Utf8'),
+        expectedStatus: Option.none('Int2'),
+        keyword: Option.none('Utf8'),
+        expectedIp: Option.some('93.184.216.34'),
+      },
+    ])
+  })
+
   it('blocks submission client-side when no region is selected, never touching the network', async () => {
-    useRealtimeStore.setState({ regions: {} })
+    store.seed(regions.rql, null, regions.shape, [])
     renderPage()
 
     await userEvent.type(screen.getByLabelText('Name'), 'reifydb.com')
@@ -108,7 +155,7 @@ describe('create monitor flow', () => {
     await userEvent.click(screen.getByRole('button', { name: /create monitor/i }))
 
     expect(await screen.findByText(/select at least one region/i)).toBeInTheDocument()
-    expect(globalThis.fetch).not.toHaveBeenCalled()
+    expect(client.command).not.toHaveBeenCalled()
     expect(navigate).not.toHaveBeenCalled()
   })
 })

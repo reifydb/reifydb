@@ -93,6 +93,9 @@ pub(crate) fn update_ringbuffer(
 
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
+		if columns.row_count() == 0 {
+			continue;
+		}
 		PolicyEvaluator::new(services, symbols).enforce_write_policies(
 			txn,
 			namespace.name(),

@@ -244,5 +244,28 @@ pub fn migrations() -> Vec<Migration> {
 			}",
 			],
 		),
+		Migration::new(
+			"0007_create_monitor",
+			vec![
+				"create table policy uptime_monitors_owner_insert on uptime::monitors { \
+				insert: { filter { owner == $identity.id } } \
+			}",
+				"create procedure uptime::create_monitor { \
+				name: utf8, kind: utf8, target: utf8, interval: duration, timeout: duration, \
+				http_method: Option(utf8), expected_status: Option(int2), keyword: Option(utf8), \
+				expected_ip: Option(utf8), failure_threshold: int2, enabled: bool \
+			} as { \
+				insert uptime::monitors [{ id: uuid::v7(), owner: $identity.id, name: text::trim($name), \
+					kind: $kind, target: text::trim($target), interval: $interval, timeout: $timeout, \
+					http_method: $http_method, expected_status: $expected_status, keyword: $keyword, \
+					expected_ip: $expected_ip, failure_threshold: $failure_threshold, enabled: $enabled, \
+					created_at: datetime::now(), last_checked_at: none, consecutive_failures: 0, \
+					status: \"unknown\" }] returning { id } \
+			}",
+				"create procedure policy uptime_owner_call_create_monitor on uptime::create_monitor { \
+				call: { filter { $identity.kind == \"user\" or $identity.kind == \"guest\" } } \
+			}",
+			],
+		),
 	]
 }

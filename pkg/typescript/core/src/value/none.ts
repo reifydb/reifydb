@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-import {BaseType, Type, Value, TypeValuePair} from ".";
+import {Type, Value, TypeValuePair, optionDepth} from ".";
 import {NONE_VALUE} from "../constant";
 
 export class NoneValue implements Value {
     readonly type: Type = "None" as const;
-    public readonly innerType: BaseType;
+    public readonly innerType: Type;
 
-    constructor(innerType?: BaseType) {
+    constructor(innerType?: Type) {
         this.innerType = innerType ?? "None";
     }
 
-    static parse(str: string, innerType?: BaseType): NoneValue {
+    static parse(str: string, innerType?: Type): NoneValue {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === NONE_VALUE || trimmed === 'none') {
             return new NoneValue(innerType);
@@ -52,8 +52,12 @@ export class NoneValue implements Value {
 
     encode(): TypeValuePair {
         return {
-            type: "None",
+            type: {Option: this.innerType},
             value: NONE_VALUE
         };
     }
+}
+
+export function noneDepth(v: NoneValue): number {
+    return optionDepth(v.innerType) + 1;
 }

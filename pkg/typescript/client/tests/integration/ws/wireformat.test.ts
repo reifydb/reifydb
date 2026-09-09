@@ -49,10 +49,11 @@ describe('WS wire-format adherence', () => {
     it('a json client decodes a frames-format binding', async () => {
         const client = await Client.connectWs(WS_URL, {timeoutMs: 10000, token: AUTH_TOKEN, format: 'json'});
         try {
-            // The json wire format returns row values as json scalars (strings), unlike the
-            // shape-coerced frames/rbcf paths; the point here is that the correct value arrives.
+            // The json wire writes every number as text so nothing is rounded on the way, and the
+            // response carries the column types alongside the rows. The client reads both, so a shape
+            // resolves here to the same value the frames and rbcf paths produce.
             const frames = await client.call(framesBinding, {}, [Shape.object({result: Shape.number()})]);
-            expect(frames[0][0].result).toBe('42');
+            expect(frames[0][0].result).toBe(42);
         } finally {
             client.disconnect();
         }

@@ -1,36 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { act, render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Option, type Store } from '@reifydb/react'
 import { DashboardPage } from '@/pages/dashboard'
-import { useRealtimeStore } from '@/store/realtime'
-import type { Monitor } from '@/lib/types'
+import { monitorRegions, monitors, regions, type MonitorRow } from '@/store/queries'
 import { baseMonitor } from '../../support/fixtures'
+import { renderWithProviders, seededStore } from '../../support/store'
 
 // a dynamic import inside the factory runs lazily; a static one is hoisted above this call and throws TDZ
 vi.mock('@tanstack/react-router', async () => (await import('../../support/router-mock')).routerMock())
 
+let store: Store
+
+beforeEach(() => {
+  store = seededStore()
+})
+
 function renderPage() {
-  return render(<DashboardPage />)
+  return renderWithProviders(<DashboardPage />, store)
 }
 
 describe('monitors list', () => {
-  afterEach(() => {
-    // must run before RTL's own unmount, otherwise this store write hits a still-mounted subscriber outside act()
-    act(() => {
-      useRealtimeStore.getState().reset()
-    })
-  })
-
   it('shows a loading indicator before monitors are ready', () => {
     renderPage()
     expect(screen.getByText('Loading')).toBeInTheDocument()
   })
 
   it('shows an empty state with a create-monitor CTA when there are no monitors', () => {
-    useRealtimeStore.setState({ monitorsReady: true, monitors: {} })
+    store.seed(monitors.rql, null, monitors.shape, [])
     renderPage()
 
     expect(screen.getByRole('heading', { name: 'No monitors yet' })).toBeInTheDocument()
@@ -41,8 +41,8 @@ describe('monitors list', () => {
   })
 
   it('renders a monitor row with its name, type, target and last-checked time', () => {
-    const monitor: Monitor = { ...baseMonitor, id: 'mon-1', name: 'alpha-api' }
-    useRealtimeStore.setState({ monitorsReady: true, monitors: { [monitor.id]: monitor } })
+    const monitor: MonitorRow = { ...baseMonitor, id: 'mon-1', name: 'alpha-api' }
+    store.seed(monitors.rql, null, monitors.shape, [monitor])
     renderPage()
 
     const row = screen.getByRole('row', { name: /alpha-api/i })
@@ -52,8 +52,8 @@ describe('monitors list', () => {
   })
 
   it('links the monitor name to its detail page', () => {
-    const monitor: Monitor = { ...baseMonitor, id: 'mon-42', name: 'alpha-api' }
-    useRealtimeStore.setState({ monitorsReady: true, monitors: { [monitor.id]: monitor } })
+    const monitor: MonitorRow = { ...baseMonitor, id: 'mon-42', name: 'alpha-api' }
+    store.seed(monitors.rql, null, monitors.shape, [monitor])
     renderPage()
 
     expect(screen.getByRole('link', { name: 'alpha-api' })).toHaveAttribute(
@@ -63,14 +63,14 @@ describe('monitors list', () => {
   })
 
   it('shows Paused instead of a status badge for a disabled monitor', () => {
-    const monitor: Monitor = {
+    const monitor: MonitorRow = {
       ...baseMonitor,
       id: 'mon-1',
       name: 'beta-db',
       enabled: false,
       status: 'down',
     }
-    useRealtimeStore.setState({ monitorsReady: true, monitors: { [monitor.id]: monitor } })
+    store.seed(monitors.rql, null, monitors.shape, [monitor])
     renderPage()
 
     const row = screen.getByRole('row', { name: /beta-db/i })
@@ -79,39 +79,36 @@ describe('monitors list', () => {
   })
 
   it('shows the up-region fraction based on actual region statuses', () => {
-    const monitor: Monitor = { ...baseMonitor, id: 'mon-1', name: 'alpha-api', status: 'degraded' }
-    useRealtimeStore.setState({
-      monitorsReady: true,
-      monitors: { [monitor.id]: monitor },
-      regions: {
-        'r-us': { id: 'r-us', label: 'US East' },
-        'r-eu': { id: 'r-eu', label: 'EU West' },
-        'r-ap': { id: 'r-ap', label: 'AP South' },
+    const monitor: MonitorRow = { ...baseMonitor, id: 'mon-1', name: 'alpha-api', status: 'degraded' }
+    store.seed(monitors.rql, null, monitors.shape, [monitor])
+    store.seed(regions.rql, null, regions.shape, [
+      { id: 'r-us', label: 'US East' },
+      { id: 'r-eu', label: 'EU West' },
+      { id: 'r-ap', label: 'AP South' },
+    ])
+    store.seed(monitorRegions.rql, null, monitorRegions.shape, [
+      {
+        monitorId: 'mon-1',
+        regionId: 'r-us',
+        status: 'up',
+        lastCheckedAt: Option.none('DateTime'),
+        consecutiveFailures: 0,
       },
-      monitorRegions: {
-        'mon-1|r-us': {
-          monitor_id: 'mon-1',
-          region_id: 'r-us',
-          status: 'up',
-          last_checked_at: null,
-          consecutive_failures: 0,
-        },
-        'mon-1|r-eu': {
-          monitor_id: 'mon-1',
-          region_id: 'r-eu',
-          status: 'up',
-          last_checked_at: null,
-          consecutive_failures: 0,
-        },
-        'mon-1|r-ap': {
-          monitor_id: 'mon-1',
-          region_id: 'r-ap',
-          status: 'down',
-          last_checked_at: null,
-          consecutive_failures: 2,
-        },
+      {
+        monitorId: 'mon-1',
+        regionId: 'r-eu',
+        status: 'up',
+        lastCheckedAt: Option.none('DateTime'),
+        consecutiveFailures: 0,
       },
-    })
+      {
+        monitorId: 'mon-1',
+        regionId: 'r-ap',
+        status: 'down',
+        lastCheckedAt: Option.none('DateTime'),
+        consecutiveFailures: 2,
+      },
+    ])
     renderPage()
 
     const row = screen.getByRole('row', { name: /alpha-api/i })
@@ -119,22 +116,19 @@ describe('monitors list', () => {
   })
 
   it('only offers the region-expand toggle for monitors with regions, and it reveals region rows', async () => {
-    const withRegions: Monitor = { ...baseMonitor, id: 'mon-1', name: 'alpha-api' }
-    const withoutRegions: Monitor = { ...baseMonitor, id: 'mon-2', name: 'beta-db' }
-    useRealtimeStore.setState({
-      monitorsReady: true,
-      monitors: { [withRegions.id]: withRegions, [withoutRegions.id]: withoutRegions },
-      regions: { 'r-us': { id: 'r-us', label: 'US East' } },
-      monitorRegions: {
-        'mon-1|r-us': {
-          monitor_id: 'mon-1',
-          region_id: 'r-us',
-          status: 'up',
-          last_checked_at: null,
-          consecutive_failures: 0,
-        },
+    const withRegions: MonitorRow = { ...baseMonitor, id: 'mon-1', name: 'alpha-api' }
+    const withoutRegions: MonitorRow = { ...baseMonitor, id: 'mon-2', name: 'beta-db' }
+    store.seed(monitors.rql, null, monitors.shape, [withRegions, withoutRegions])
+    store.seed(regions.rql, null, regions.shape, [{ id: 'r-us', label: 'US East' }])
+    store.seed(monitorRegions.rql, null, monitorRegions.shape, [
+      {
+        monitorId: 'mon-1',
+        regionId: 'r-us',
+        status: 'up',
+        lastCheckedAt: Option.none('DateTime'),
+        consecutiveFailures: 0,
       },
-    })
+    ])
     renderPage()
 
     const rowWithoutRegions = screen.getByRole('row', { name: /beta-db/i })

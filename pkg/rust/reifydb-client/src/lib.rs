@@ -53,6 +53,8 @@ pub use grpc::{
 #[cfg(feature = "http")]
 pub use http::HttpClient;
 pub use reifydb_client_derive::FromFrame;
+#[cfg(any(feature = "http", feature = "ws"))]
+use reifydb_codec::json::{NONE_MARKER, wire_type::WireValueType};
 pub use reifydb_value as value;
 #[cfg(any(feature = "ws", feature = "grpc"))]
 use reifydb_value::error::Error;
@@ -146,7 +148,7 @@ impl Default for ReconnectOptions {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WireValue {
 	#[serde(rename = "type")]
-	pub type_name: String,
+	pub r#type: WireValueType,
 	pub value: String,
 }
 
@@ -158,47 +160,21 @@ pub enum WireParams {
 	Named(HashMap<String, WireValue>),
 }
 
+// a Rust Value has no Some wrapper, so a client can send a none of T but not a Some(None) of Option(T)
 #[cfg(any(feature = "http", feature = "ws"))]
 fn value_to_wire(value: Value) -> WireValue {
-	let (type_name, value_str): (&str, String) = match &value {
+	let text = match &value {
 		Value::None {
 			..
-		} => ("None", "\u{27EA}none\u{27EB}".to_string()),
-		Value::Boolean(b) => ("Boolean", b.to_string()),
-		Value::Float4(f) => ("Float4", f.to_string()),
-		Value::Float8(f) => ("Float8", f.to_string()),
-		Value::Int1(i) => ("Int1", i.to_string()),
-		Value::Int2(i) => ("Int2", i.to_string()),
-		Value::Int4(i) => ("Int4", i.to_string()),
-		Value::Int8(i) => ("Int8", i.to_string()),
-		Value::Int16(i) => ("Int16", i.to_string()),
-		Value::Utf8(s) => ("Utf8", s.clone()),
-		Value::Uint1(u) => ("Uint1", u.to_string()),
-		Value::Uint2(u) => ("Uint2", u.to_string()),
-		Value::Uint4(u) => ("Uint4", u.to_string()),
-		Value::Uint8(u) => ("Uint8", u.to_string()),
-		Value::Uint16(u) => ("Uint16", u.to_string()),
-		Value::Uuid4(u) => ("Uuid4", u.to_string()),
-		Value::Uuid7(u) => ("Uuid7", u.to_string()),
-		Value::Date(d) => ("Date", d.to_string()),
-		Value::DateTime(dt) => ("DateTime", dt.to_string()),
-		Value::Time(t) => ("Time", t.to_string()),
-		Value::Duration(d) => ("Duration", d.to_iso_string()),
-		Value::Blob(b) => ("Blob", b.to_hex()),
-		Value::IdentityId(id) => ("IdentityId", id.to_string()),
-		Value::Int(i) => ("Int", i.to_string()),
-		Value::Uint(u) => ("Uint", u.to_string()),
-		Value::Decimal(d) => ("Decimal", d.to_string()),
+		} => NONE_MARKER.to_string(),
+		Value::Duration(d) => d.to_iso_string(),
+		Value::Blob(b) => b.to_hex(),
 		Value::Any(v) => return value_to_wire(*v.clone()),
-		Value::DictionaryId(id) => ("DictionaryId", id.to_string()),
-		Value::Type(t) => ("ValueType", t.to_string()),
-		Value::List(items) => ("List", format!("{}", Value::List(items.clone()))),
-		Value::Record(fields) => ("Record", format!("{}", Value::Record(fields.clone()))),
-		Value::Tuple(items) => ("Tuple", format!("{}", Value::Tuple(items.clone()))),
+		other => other.to_string(),
 	};
 	WireValue {
-		type_name: type_name.to_string(),
-		value: value_str,
+		r#type: WireValueType(value.get_type()),
+		value: text,
 	}
 }
 
@@ -556,4 +532,58 @@ pub enum BatchPushEvent {
 	Change(BatchChangePayload),
 	MemberClosed(BatchMemberClosedPayload),
 	Closed(BatchClosedPayload),
+}
+
+#[cfg(all(test, any(feature = "http", feature = "ws")))]
+mod tests {
+	use serde_json::{json, to_value};
+
+	use super::*;
+
+	fn option(inner: ValueType) -> ValueType {
+		ValueType::Option(Box::new(inner))
+	}
+
+	#[test]
+	fn a_present_value_carries_its_own_type_and_text() {
+		let wire = value_to_wire(Value::Int4(5));
+		assert_eq!(wire.r#type.0, ValueType::Int4);
+		assert_eq!(wire.value, "5");
+	}
+
+	#[test]
+	fn a_none_of_int4_is_an_option_of_int4_with_the_bare_marker() {
+		let wire = value_to_wire(Value::none_of(ValueType::Int4));
+		assert_eq!(wire.r#type.0, option(ValueType::Int4));
+		assert_eq!(wire.value, NONE_MARKER);
+	}
+
+	#[test]
+	fn a_none_of_option_int4_is_a_two_layer_option_with_the_bare_marker() {
+		// The none sits at the outermost layer, so the marker carries no depth suffix even
+		// though the type has two Option layers.
+		let wire = value_to_wire(Value::none_of(option(ValueType::Int4)));
+		assert_eq!(wire.r#type.0, option(option(ValueType::Int4)));
+		assert_eq!(wire.value, NONE_MARKER);
+	}
+
+	#[test]
+	fn a_parameter_serializes_the_type_as_the_descriptor_the_server_parses() {
+		// The server reads a parameter type as a descriptor object, not as a bare name, so a
+		// regression here silently breaks every parameterized statement this client sends.
+		let wire = value_to_wire(Value::Int4(5));
+		assert_eq!(to_value(&wire).unwrap(), json!({"type": {"id": "Int4"}, "value": "5"}));
+	}
+
+	#[test]
+	fn a_none_parameter_serializes_the_option_layer_as_a_nested_descriptor() {
+		let wire = value_to_wire(Value::none_of(option(ValueType::Int4)));
+		assert_eq!(
+			to_value(&wire).unwrap(),
+			json!({
+				"type": {"id": "Option", "underlying": {"id": "Option", "underlying": {"id": "Int4"}}},
+				"value": NONE_MARKER
+			})
+		);
+	}
 }

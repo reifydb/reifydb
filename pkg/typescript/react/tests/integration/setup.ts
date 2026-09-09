@@ -1,58 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-import {Client} from "../../src";
-import {cleanup} from '@testing-library/react';
-import {afterEach} from 'vitest';
+import {Client} from '@reifydb/client';
+import type {WsClient} from '@reifydb/client';
 
-export async function waitForDatabase(maxRetries = 30, delay = 1000): Promise<void> {
-    for (let i = 0; i < maxRetries; i++) {
-        let url = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:18090';
-        let client = null;
-        try {
-            client = await Client.connectWs(url, {timeoutMs: 5000, token: process.env.REIFYDB_TOKEN});
-            // Test connection with simple query - query() requires 3 params
-            const result = await client.query(`MAP {test: 1}`, null, []);
-            if (!result || !Array.isArray(result)) {
-                throw new Error('Invalid query result');
-            }
-            return;
-        } catch (error: any) {
-            if (i === maxRetries - 1) {
-                throw new Error(`${url} not ready after ${maxRetries} attempts`);
-            }
-            await new Promise(resolve => setTimeout(resolve, delay));
-        } finally {
-            if (client) {
-                try {
-                    client.disconnect();
-                } catch (e) {
-                    // Ignore disconnect errors
-                }
-            }
-        }
-    }
+export async function connect(): Promise<WsClient> {
+    return Client.connectWs(process.env.REIFYDB_WS_URL!, {
+        timeoutMs: 10000,
+        token: process.env.REIFYDB_TOKEN,
+        format: 'rbcf',
+    });
 }
 
-export async function waitForDatabaseHttp(maxRetries = 30, delay = 1000): Promise<void> {
-    for (let i = 0; i < maxRetries; i++) {
-        let url = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091';
-        try {
-            const client = Client.connectHttp(url, {token: process.env.REIFYDB_TOKEN});
-            const result = await client.query(`MAP {test: 1}`, null, []);
-            if (!result || !Array.isArray(result)) {
-                throw new Error('Invalid query result');
-            }
-            return;
-        } catch (error: any) {
-            if (i === maxRetries - 1) {
-                throw new Error(`${url} not ready after ${maxRetries} attempts`);
-            }
-            await new Promise(resolve => setTimeout(resolve, delay));
-        }
-    }
+export function namespace(prefix: string): string {
+    return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// Auto cleanup after each test
-afterEach(() => {
-    cleanup();
-});
+export function poll(predicate: () => Promise<boolean>, timeoutMs = 5000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    const attempt = async (): Promise<void> => {
+        if (await predicate()) {
+            return;
+        }
+        if (Date.now() > deadline) {
+            throw new Error(`condition not met after ${timeoutMs}ms`);
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+        return attempt();
+    };
+    return attempt();
+}

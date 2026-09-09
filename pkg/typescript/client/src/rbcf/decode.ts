@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 import type { Type } from "@reifydb/core";
-import { NONE_VALUE } from "@reifydb/core";
+import { noneMarker } from "@reifydb/core";
 
 import {
     COL_FLAG_HAS_NONES, COLUMN_DESCRIPTOR_SIZE, ColumnEncoding, FRAME_HEADER_SIZE,
     META_HAS_CREATED_AT, META_HAS_ROW_NUMBERS, META_HAS_UPDATED_AT, MESSAGE_HEADER_SIZE,
-    RBCF_MAGIC, RBCF_VERSION, dictIndexWidthFromFlags, typeNameFromCode,
+    RBCF_MAGIC, RBCF_VERSION, TAG_DEPTH_SHIFT, TAG_KIND_MASK, dictIndexWidthFromFlags, typeNameFromCode,
 } from "./format";
 import { BinaryReader } from "./reader";
 import { decodeBitvec } from "./nones";
@@ -89,7 +89,7 @@ function decodeColumn(r: BinaryReader): WireColumn {
 
     const encoding = encodingByte as ColumnEncoding;
     const hasNones = (flags & COL_FLAG_HAS_NONES) !== 0;
-    const optionOuter = hasNones;
+    const depth = typeCode >> TAG_DEPTH_SHIFT;
 
     const name = r.utf8(nameLen);
     const namePad = (4 - (nameLen % 4)) % 4;
@@ -100,7 +100,18 @@ function decodeColumn(r: BinaryReader): WireColumn {
     const offsetsBytes = r.bytes(offsetsLen);
     const extraBytes = r.bytes(extraLen);
 
-    const baseName = typeNameFromCode(typeCode);
+    const bitmapLen = (rowCount + 7) >> 3;
+    if (nonesLen !== depth * bitmapLen) {
+        throw new Error(
+            `RBCF: column '${name}' nones length ${nonesLen} disagrees with option depth ${depth} ` +
+            `and row count ${rowCount} (expected ${depth * bitmapLen})`
+        );
+    }
+    if (hasNones !== depth > 0) {
+        throw new Error(`RBCF: column '${name}' has-nones flag disagrees with option depth ${depth}`);
+    }
+
+    const baseName = typeNameFromCode(typeCode & TAG_KIND_MASK);
     let payload: string[];
 
     try {
@@ -110,15 +121,20 @@ function decodeColumn(r: BinaryReader): WireColumn {
         throw new Error(`RBCF: column '${name}' decode failed: ${msg}`);
     }
 
-    if (hasNones && nonesLen > 0) {
-        const bits = decodeBitvec(nonesBytes, rowCount);
+    const defined = new Array<boolean>(rowCount).fill(true);
+    let type: Type = baseName as Type;
+    for (let layer = 0; layer < depth; layer++) {
+        const bits = decodeBitvec(nonesBytes.subarray(layer * bitmapLen, (layer + 1) * bitmapLen), rowCount);
+        const marker = noneMarker(layer);
         for (let i = 0; i < rowCount; i++) {
-            if (!bits[i]) payload[i] = NONE_VALUE;
+            if (!defined[i] || bits[i]) continue;
+            defined[i] = false;
+            payload[i] = marker;
         }
+        type = { Option: type };
     }
 
-    const finalType: Type = optionOuter ? { Option: baseName as Type } : (baseName as Type);
-    return { name, type: finalType, payload };
+    return { name, type, payload };
 }
 
 function decodeByStrategy(

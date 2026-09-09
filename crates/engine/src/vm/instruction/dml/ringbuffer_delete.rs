@@ -182,6 +182,9 @@ fn collect_row_numbers_for_ringbuffer_delete(
 
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
+		if columns.row_count() == 0 {
+			continue;
+		}
 		PolicyEvaluator::new(exec.services, exec.symbols).enforce_write_policies(
 			txn,
 			target.namespace.name(),

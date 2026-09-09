@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-import {Type} from '../value';
+import {Type, isOption} from '../value';
 import {ShapeNode} from '.';
 
 export function validateShape(shape: ShapeNode, value: any): boolean {
@@ -65,11 +65,11 @@ export function validateShape(shape: ShapeNode, value: any): boolean {
         return value.every(item => validateShape(shape.items, item));
     }
 
-    if (shape.kind === 'optional') {
-        if (value === undefined) {
-            return true;
+    if (shape.kind === 'option') {
+        if (!isOption(value)) {
+            return false;
         }
-        return validateShape(shape.shape, value);
+        return value.isNone() || validateShape(shape.inner, value.unwrap());
     }
 
     if (shape.kind === 'value') {

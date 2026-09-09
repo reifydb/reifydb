@@ -6,8 +6,9 @@ import {ShapeNode} from '../../src/shape';
 import {
     BooleanValue, Int4Value, Float8Value, Utf8Value,
     DateValue, DateTimeValue, TimeValue, DurationValue,
-    Uuid4Value, Uuid7Value, BlobValue, NoneValue, DecimalValue,
+    Uuid4Value, Uuid7Value, BlobValue, NoneValue, DecimalValue, Option,
 } from '../../src/value';
+import {ForeignOption, unbrandedOption} from '../foreign-option';
 
 describe('validateShape', () => {
     describe('primitive kind — correct types', () => {
@@ -137,20 +138,44 @@ describe('validateShape', () => {
         });
     });
 
-    describe('optional kind', () => {
-        it('should accept undefined', () => {
-            const shape: ShapeNode = {kind: 'optional', shape: {kind: 'primitive', type: 'Int4'}};
-            expect(validateShape(shape, undefined)).toBe(true);
+    describe('option kind', () => {
+        const shape: ShapeNode = {kind: 'option', inner: {kind: 'primitive', type: 'Int4'}};
+
+        it('should accept a None of any type, since the shape says nothing about which layer is missing', () => {
+            expect(validateShape(shape, Option.none('Int4'))).toBe(true);
+            expect(validateShape(shape, Option.none('Utf8'))).toBe(true);
         });
 
-        it('should accept correct inner value', () => {
-            const shape: ShapeNode = {kind: 'optional', shape: {kind: 'primitive', type: 'Int4'}};
-            expect(validateShape(shape, 42)).toBe(true);
+        it('should accept a Some whose value matches the inner shape', () => {
+            expect(validateShape(shape, Option.some(42))).toBe(true);
         });
 
-        it('should reject wrong inner type', () => {
-            const shape: ShapeNode = {kind: 'optional', shape: {kind: 'primitive', type: 'Int4'}};
-            expect(validateShape(shape, 'hello')).toBe(false);
+        it('should reject a Some whose value does not match the inner shape', () => {
+            expect(validateShape(shape, Option.some('hello'))).toBe(false);
+        });
+
+        it('should reject a bare value, undefined and null, since an option field is always an Option', () => {
+            expect(validateShape(shape, 42)).toBe(false);
+            expect(validateShape(shape, undefined)).toBe(false);
+            expect(validateShape(shape, null)).toBe(false);
+        });
+
+        it('should accept an Option from another copy of the module and still check its value', () => {
+            expect(validateShape(shape, ForeignOption.some(42))).toBe(true);
+            expect(validateShape(shape, ForeignOption.none('Int4'))).toBe(true);
+            expect(validateShape(shape, ForeignOption.some('hello'))).toBe(false);
+        });
+
+        it('should reject an unbranded object shaped like an Option', () => {
+            expect(validateShape(shape, unbrandedOption(42))).toBe(false);
+        });
+
+        it('should check every layer of a nested option', () => {
+            const nested: ShapeNode = {kind: 'option', inner: shape};
+            expect(validateShape(nested, Option.some(Option.some(1)))).toBe(true);
+            expect(validateShape(nested, Option.some(Option.none('Int4')))).toBe(true);
+            expect(validateShape(nested, Option.some(Option.some('x')))).toBe(false);
+            expect(validateShape(nested, Option.some(1))).toBe(false);
         });
     });
 
@@ -177,16 +202,17 @@ describe('validateShape', () => {
             expect(validateShape(shape, {name: 'Alice', age: 'not a number'})).toBe(false);
         });
 
-        it('should validate object with optional fields', () => {
+        it('should validate object with option fields', () => {
             const shape: ShapeNode = {
                 kind: 'object',
                 properties: {
                     name: {kind: 'primitive', type: 'Utf8'},
-                    nickname: {kind: 'optional', shape: {kind: 'primitive', type: 'Utf8'}},
+                    nickname: {kind: 'option', inner: {kind: 'primitive', type: 'Utf8'}},
                 }
             };
-            expect(validateShape(shape, {name: 'Alice', nickname: undefined})).toBe(true);
-            expect(validateShape(shape, {name: 'Alice', nickname: 'Ali'})).toBe(true);
+            expect(validateShape(shape, {name: 'Alice', nickname: Option.none('Utf8')})).toBe(true);
+            expect(validateShape(shape, {name: 'Alice', nickname: Option.some('Ali')})).toBe(true);
+            expect(validateShape(shape, {name: 'Alice', nickname: undefined})).toBe(false);
         });
 
         it('should reject null', () => {

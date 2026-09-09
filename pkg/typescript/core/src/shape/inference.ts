@@ -8,11 +8,11 @@ import {
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
     NoneValue, Utf8Value,
     Uuid4Value, Uuid7Value, IdentityIdValue,
-    BaseType
+    Option, BaseType
 } from '../value';
 import {
     PrimitiveShapeNode, ObjectShapeNode, ArrayShapeNode,
-    OptionalShapeNode, ValueShapeNode, ShapeNode
+    OptionShapeNode, ValueShapeNode, ShapeNode
 } from '.';
 
 export interface PrimitiveTSMap {
@@ -83,7 +83,7 @@ export type InferShape<S> =
         S extends ValueShapeNode<infer T> ? T extends BaseType ? PrimitiveToValue<T> : never :
             S extends ObjectShapeNode<infer P> ? { [K in keyof P as CamelCase<K & string>]: InferShape<P[K]> } :
                 S extends ArrayShapeNode<infer T> ? InferShape<T>[] :
-                    S extends OptionalShapeNode<infer T> ? InferShape<T> | undefined :
+                    S extends OptionShapeNode<infer T> ? Option<InferShape<T>> :
                         never;
 
 export type InferShapes<S extends readonly ShapeNode[]> = {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { encodeParams, columnsToRows, transformFrames } from '@reifydb/core'
+import { encodeParams, columnsToRows, transformFrames, checkFrames, framesFromWire } from '@reifydb/core'
 import type { FrameResults, ShapeNode } from '@reifydb/core'
 import type { Frame, ReifydbNode } from '../native'
 import type { Db } from './db'
@@ -38,7 +38,10 @@ export class NativeDb implements Db {
   }
 
   private async execute<const S extends readonly ShapeNode[]>(pending: Promise<Frame[]>, shapes: S): Promise<FrameResults<S>> {
-    const frames = await pending
+    // The native binding renders frames the same way the server does, so the column types arrive in the
+    // wire's rendering and have to be read into the client's own before anything decodes them.
+    const frames = framesFromWire(await pending)
+    checkFrames(frames, shapes)
     const rows = frames.map((frame) => columnsToRows(frame.columns))
     return transformFrames(rows, shapes)
   }

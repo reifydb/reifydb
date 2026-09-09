@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import { expect } from 'vitest';
+import type {Value} from "@reifydb/core";
 
 /**
  * Validates a single-frame, single-row JSON result with expected value and type
@@ -44,4 +45,19 @@ export function expectSingleNullResult(
     expect(frames).toHaveLength(1);
     expect(frames[0]).toHaveLength(1);
     expect(frames[0][0][fieldName]).toBeNull();
+}
+
+/**
+ * Validates a single-frame, single-row JSON result for Value object results
+ */
+export function expectSingleValueResult(
+    frames: any,
+    expectedValue: Value
+): void {
+    expect(frames).toHaveLength(1);
+    expect(frames[0]).toHaveLength(1);
+
+    const actualValue = frames[0][0].result;
+
+    expect(expectedValue.equals(actualValue)).toBe(true);
 }

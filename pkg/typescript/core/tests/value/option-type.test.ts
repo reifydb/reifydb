@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {describe, expect, it} from 'vitest';
-import {isOptionType, unwrapOptionType, BaseType, OptionType, Type} from '../../src/value';
+import {isOptionType, unwrapOptionType, optionDepth, innerOfOption, BaseType, OptionType, Type} from '../../src/value';
 
 describe('isOptionType', () => {
     it('should return false for BaseType string', () => {
@@ -69,5 +69,25 @@ describe('unwrapOptionType', () => {
     it('should recursively unwrap deeply nested options', () => {
         const deep: Type = {Option: {Option: {Option: 'Utf8'}}};
         expect(unwrapOptionType(deep)).toBe('Utf8');
+    });
+});
+
+describe('optionDepth', () => {
+    it('is zero for a base type', () => {
+        expect(optionDepth('Int4')).toBe(0);
+        expect(optionDepth('None')).toBe(0);
+    });
+
+    it('counts every Option layer', () => {
+        expect(optionDepth({Option: 'Int4'})).toBe(1);
+        expect(optionDepth({Option: {Option: 'Int4'}})).toBe(2);
+        expect(optionDepth({Option: {Option: {Option: 'Utf8'}}})).toBe(3);
+    });
+});
+
+describe('innerOfOption', () => {
+    it('removes exactly one layer, keeping the rest nested', () => {
+        expect(innerOfOption({Option: 'Int4'})).toBe('Int4');
+        expect(innerOfOption({Option: {Option: 'Int4'}})).toEqual({Option: 'Int4'});
     });
 });

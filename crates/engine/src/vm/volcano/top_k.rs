@@ -73,6 +73,7 @@ pub(crate) struct TopKNode {
 	by: Vec<SortKey>,
 	limit: usize,
 	initialized: Option<()>,
+	exhausted: bool,
 }
 
 impl TopKNode {
@@ -82,6 +83,7 @@ impl TopKNode {
 			by,
 			limit,
 			initialized: None,
+			exhausted: false,
 		}
 	}
 }
@@ -101,7 +103,17 @@ impl QueryNode for TopKNode {
 		}
 
 		if self.limit == 0 {
-			return Ok(None);
+			if self.exhausted {
+				return Ok(None);
+			}
+			self.exhausted = true;
+			return match self.input.next(rx, ctx)? {
+				Some(mut columns) => {
+					columns.take(0)?;
+					Ok(Some(columns))
+				}
+				None => Ok(None),
+			};
 		}
 
 		let columns_opt = self.collect_input(rx, ctx)?;

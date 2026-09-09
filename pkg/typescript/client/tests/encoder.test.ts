@@ -3,26 +3,44 @@
 import {describe, expect, it} from 'vitest';
 import {encodeValue, encodeParams} from '../src/encoder';
 import {
-    NONE_VALUE, NoneValue, Int4Value, BooleanValue, Utf8Value, Float8Value
+    NONE_VALUE, NoneValue, Int4Value, BooleanValue, Utf8Value, Float8Value, Option, noneMarker
 } from '@reifydb/core';
 
 describe('encodeValue', () => {
-    it('should encode null as None', () => {
-        const result = encodeValue(null);
-        expect(result.type).toBe('None');
+    it('should reject null naming the parameter', () => {
+        expect(() => encodeValue(null)).toThrow('parameter $1 is null or undefined, use Option.none(inner)');
+    });
+
+    it('should reject undefined naming the parameter', () => {
+        expect(() => encodeValue(undefined)).toThrow('parameter $1 is null or undefined, use Option.none(inner)');
+    });
+
+    it('should encode a typed NoneValue via .encode() as the Option of its inner type', () => {
+        const result = encodeValue(new NoneValue('Int4'));
+        expect(result.type).toEqual({Option: 'Int4'});
         expect(result.value).toBe(NONE_VALUE);
     });
 
-    it('should encode undefined as None', () => {
-        const result = encodeValue(undefined);
-        expect(result.type).toBe('None');
-        expect(result.value).toBe(NONE_VALUE);
+    it('should reject a NoneValue without an inner type naming the parameter', () => {
+        expect(() => encodeValue(new NoneValue())).toThrow('parameter $1 is a NoneValue without an inner type, use Option.none(inner)');
     });
 
-    it('should encode NoneValue via .encode()', () => {
-        const result = encodeValue(new NoneValue());
-        expect(result.type).toBe('None');
-        expect(result.value).toBe(NONE_VALUE);
+    it('should encode Option.some over base types with the type wrapped in one Option layer', () => {
+        expect(encodeValue(Option.some(new Int4Value(42)))).toEqual({type: {Option: 'Int4'}, value: '42'});
+        expect(encodeValue(Option.some(new Utf8Value('hello')))).toEqual({type: {Option: 'Utf8'}, value: 'hello'});
+        expect(encodeValue(Option.some(new BooleanValue(true)))).toEqual({type: {Option: 'Boolean'}, value: 'true'});
+        expect(encodeValue(Option.some(new Float8Value(3.14)))).toEqual({type: {Option: 'Float8'}, value: '3.14'});
+    });
+
+    it('should encode Option.none as the Option of the inner type with the bare none marker', () => {
+        expect(encodeValue(Option.none('Int4'))).toEqual({type: {Option: 'Int4'}, value: NONE_VALUE});
+        expect(encodeValue(Option.none('Utf8'))).toEqual({type: {Option: 'Utf8'}, value: NONE_VALUE});
+    });
+
+    it('should encode nested Options with one Option layer per level and the none marker at its depth', () => {
+        expect(encodeValue(Option.some(Option.some(new Int4Value(1))))).toEqual({type: {Option: {Option: 'Int4'}}, value: '1'});
+        expect(encodeValue(Option.some(Option.none('Int4')))).toEqual({type: {Option: {Option: 'Int4'}}, value: noneMarker(1)});
+        expect(encodeValue(Option.none({Option: 'Int4'}))).toEqual({type: {Option: {Option: 'Int4'}}, value: NONE_VALUE});
     });
 
     it('should encode Int4Value(undefined) as Int4 with NONE_VALUE', () => {
@@ -109,28 +127,38 @@ describe('encodeValue', () => {
 });
 
 describe('encodeParams', () => {
-    it('should encode array of null and undefined as None pairs', () => {
-        const result = encodeParams([null, undefined, new NoneValue()]);
-        expect(Array.isArray(result)).toBe(true);
-        const arr = result as any[];
-        expect(arr).toHaveLength(3);
-        expect(arr[0].type).toBe('None');
-        expect(arr[0].value).toBe(NONE_VALUE);
-        expect(arr[1].type).toBe('None');
-        expect(arr[1].value).toBe(NONE_VALUE);
-        expect(arr[2].type).toBe('None');
-        expect(arr[2].value).toBe(NONE_VALUE);
+    it('should reject null and undefined in an array naming the position', () => {
+        expect(() => encodeParams([42, null])).toThrow('parameter $2 is null or undefined, use Option.none(inner)');
+        expect(() => encodeParams([undefined])).toThrow('parameter $1 is null or undefined, use Option.none(inner)');
+        expect(() => encodeParams([42, 'hello', new NoneValue()])).toThrow('parameter $3 is a NoneValue without an inner type, use Option.none(inner)');
     });
 
-    it('should encode named params with null and undefined', () => {
-        const result = encodeParams({a: null, b: undefined});
-        expect(typeof result).toBe('object');
-        expect(Array.isArray(result)).toBe(false);
-        const obj = result as Record<string, any>;
-        expect(obj.a.type).toBe('None');
-        expect(obj.a.value).toBe(NONE_VALUE);
-        expect(obj.b.type).toBe('None');
-        expect(obj.b.value).toBe(NONE_VALUE);
+    it('should reject null and undefined in named params naming the parameter', () => {
+        expect(() => encodeParams({name: null})).toThrow('parameter $name is null or undefined, use Option.none(inner)');
+        expect(() => encodeParams({a: 1, name: undefined})).toThrow('parameter $name is null or undefined, use Option.none(inner)');
+    });
+
+    it('should encode positional Option params', () => {
+        expect(encodeParams([Option.some(new Int4Value(42)), Option.none('Utf8'), Option.some(Option.none('Int4')), Option.none({Option: 'Int4'})])).toEqual([
+            {type: {Option: 'Int4'}, value: '42'},
+            {type: {Option: 'Utf8'}, value: NONE_VALUE},
+            {type: {Option: {Option: 'Int4'}}, value: noneMarker(1)},
+            {type: {Option: {Option: 'Int4'}}, value: NONE_VALUE},
+        ]);
+    });
+
+    it('should encode named Option params', () => {
+        expect(encodeParams({
+            count: Option.some(new Int4Value(42)),
+            name: Option.none('Utf8'),
+            inner: Option.some(Option.some(new Int4Value(1))),
+            outer: Option.none({Option: 'Int4'}),
+        })).toEqual({
+            count: {type: {Option: 'Int4'}, value: '42'},
+            name: {type: {Option: 'Utf8'}, value: NONE_VALUE},
+            inner: {type: {Option: {Option: 'Int4'}}, value: '1'},
+            outer: {type: {Option: {Option: 'Int4'}}, value: NONE_VALUE},
+        });
     });
 
     it('should return empty array for null params', () => {
@@ -141,14 +169,14 @@ describe('encodeParams', () => {
         expect(encodeParams(undefined)).toEqual([]);
     });
 
-    it('should encode mixed array params', () => {
-        const result = encodeParams([42, 'hello', true, null]);
+    it('should encode mixed array params and reject a trailing null naming its position', () => {
+        const result = encodeParams([42, 'hello', true]);
         const arr = result as any[];
-        expect(arr).toHaveLength(4);
+        expect(arr).toHaveLength(3);
         expect(arr[0].type).toBe('Int1');
         expect(arr[1].type).toBe('Utf8');
         expect(arr[2].type).toBe('Boolean');
-        expect(arr[3].type).toBe('None');
+        expect(() => encodeParams([42, 'hello', true, null])).toThrow('parameter $4 is null or undefined, use Option.none(inner)');
     });
 
     it('should encode mixed named params', () => {

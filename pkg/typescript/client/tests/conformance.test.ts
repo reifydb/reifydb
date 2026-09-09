@@ -37,7 +37,7 @@ describe("RBCF Conformance", () => {
                         const framesJson = JSON.stringify(testCase.frames);
                         
                         // 1. Get golden bytes from Rust implementation via WASM
-                        const goldenBytes = wasm.encode_rbcf(framesJson, encoding);
+                        const goldenBytes = wasm.encode_rbcf_fixture(framesJson, encoding);
                         
                         // 2. Decode using TypeScript implementation
                         const decodedFrames = rbcf.decode(goldenBytes);

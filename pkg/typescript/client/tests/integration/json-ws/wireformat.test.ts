@@ -38,7 +38,7 @@ describe('JsonWs wire-format adherence', () => {
         const client = await Client.connectJsonWs(WS_URL, {timeoutMs: 10000, token: AUTH_TOKEN});
         try {
             const rows = await client.call(framesBinding, {});
-            expect(rows[0][0].result).toBe('42');
+            expect(rows[0][0].result.value).toBe(42);
         } finally {
             client.disconnect();
         }
@@ -48,7 +48,7 @@ describe('JsonWs wire-format adherence', () => {
         const client = await Client.connectJsonWs(WS_URL, {timeoutMs: 10000, token: AUTH_TOKEN});
         try {
             const rows = await client.call(rbcfBinding, {});
-            expect(rows[0][0].result).toBe('42');
+            expect(rows[0][0].result.value).toBe(42);
         } finally {
             client.disconnect();
         }

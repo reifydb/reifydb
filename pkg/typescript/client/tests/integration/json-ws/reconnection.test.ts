@@ -37,7 +37,7 @@ describe('WebSocket Client Reconnection', () => {
 
             const firstResult = await wsClient.query('MAP {result: 42}');
 
-            expect(firstResult[0][0].result).toBe("42");
+            expect(firstResult[0][0].result.value).toBe(42);
 
             const socket = (wsClient as any).socket;
             socket.close();
@@ -46,7 +46,7 @@ describe('WebSocket Client Reconnection', () => {
 
             const secondResult = await wsClient.query('MAP {result: 84}');
 
-            expect(secondResult[0][0].result).toBe("84");
+            expect(secondResult[0][0].result.value).toBe(84);
         }, 15000);
 
         it('should use exponential backoff for reconnection attempts', async () => {
@@ -159,10 +159,10 @@ describe('WebSocket Client Reconnection', () => {
             const results = [];
             for (let i = 0; i < 3; i++) {
                 const result = await wsClient.query(`MAP {result: ${i}}`);
-                results.push(result[0][0].result);
+                results.push(result[0][0].result.value);
             }
 
-            expect(results).toEqual(["0", "1", "2"]);
+            expect(results).toEqual([0, 1, 2]);
         }, 15000);
 
         it('should reset reconnection attempts counter after successful reconnection', async () => {
