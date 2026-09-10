@@ -7,6 +7,7 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::reifydb_assertions;
+use tracing::warn;
 
 use crate::engine::FlowEngineInner;
 
@@ -64,8 +65,10 @@ impl FlowEngineInner {
 			if ephemeral {
 				continue;
 			}
-			if let Some(store) = self.substrate.operators.as_ref() {
-				store.drop_operator_state(operator_id);
+			if let Some(store) = self.substrate.operators.as_ref()
+				&& let Err(e) = store.drop_operator(operator_id)
+			{
+				warn!(error = %e, "flow lifecycle: operator state drop failed");
 			}
 		}
 
@@ -121,6 +124,7 @@ mod tests {
 		// Census order follows the inverted keyspace byte, so a stable comparison has to sort by the raw id.
 		let mut keyspaces: Vec<KeyspaceId> = store
 			.census()
+			.unwrap()
 			.into_iter()
 			.filter(|entry| entry.operator == operator && entry.keys > 0)
 			.map(|entry| entry.keyspace)
@@ -181,17 +185,26 @@ mod tests {
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
 		store.apply_batch(&[OperatorWrite::Insert {
 			operator,
-			key: custom_not_cached_key(b"k")
-				.expect("a fixture name must fit the keyspace's id width")
-				.into_encoded(),
+			key: custom_not_cached_key(b"k").expect("a fixture name must fit the keyspace's id width"),
 			post: EncodedPodRow::new(&[1u8; 64]),
 		}]);
-		assert!(store.bytes(operator) > ByteSize::ZERO, "precondition: the operator's state is resident");
+		assert!(
+			store.bytes(operator).unwrap() > ByteSize::ZERO,
+			"precondition: the operator's state is resident"
+		);
 
 		inner.remove_flow(FlowId(1));
 
-		assert_eq!(store.bytes(operator), ByteSize::ZERO, "the retired operator's state must be dropped");
-		assert_eq!(store.total_bytes(), ByteSize::ZERO, "and its bytes must leave the process-wide accounting");
+		assert_eq!(
+			store.bytes(operator).unwrap(),
+			ByteSize::ZERO,
+			"the retired operator's state must be dropped"
+		);
+		assert_eq!(
+			store.total_bytes().unwrap(),
+			ByteSize::ZERO,
+			"and its bytes must leave the process-wide accounting"
+		);
 	}
 
 	#[test]
@@ -227,7 +240,7 @@ mod tests {
 		store.apply_batch(&[
 			OperatorWrite::Insert {
 				operator,
-				key: join_expiry_key(GroupId::hashed(Hash128(3)), 0, RowNumber(1)).into_encoded(),
+				key: join_expiry_key(GroupId::hashed(Hash128(3)), 0, RowNumber(1)),
 				post: JoinRowExpiry {
 					at,
 				}
@@ -236,8 +249,7 @@ mod tests {
 			},
 			OperatorWrite::Insert {
 				operator,
-				key: join_expiry_due_key(at, GroupId::hashed(Hash128(3)), 0, RowNumber(1))
-					.into_encoded(),
+				key: join_expiry_due_key(at, GroupId::hashed(Hash128(3)), 0, RowNumber(1)),
 				post: EncodedPodRow::new(&[]),
 			},
 		]);
@@ -255,12 +267,12 @@ mod tests {
 			"the retired operator must be left holding neither keyspace"
 		);
 		assert_eq!(
-			store.bytes(operator),
+			store.bytes(operator).unwrap(),
 			ByteSize::ZERO,
 			"the retired operator's join expiries must be dropped"
 		);
 		assert_eq!(
-			store.total_bytes(),
+			store.total_bytes().unwrap(),
 			ByteSize::ZERO,
 			"and their bytes must leave the process-wide accounting"
 		);
@@ -314,12 +326,10 @@ mod tests {
 		let operator = OperatorId(1);
 		store.apply_batch(&[OperatorWrite::Insert {
 			operator,
-			key: custom_not_cached_key(b"k")
-				.expect("a fixture name must fit the keyspace's id width")
-				.into_encoded(),
+			key: custom_not_cached_key(b"k").expect("a fixture name must fit the keyspace's id width"),
 			post: EncodedPodRow::new(&[1u8; 64]),
 		}]);
-		let durable_bytes = store.bytes(operator);
+		let durable_bytes = store.bytes(operator).unwrap();
 		assert!(durable_bytes > ByteSize::ZERO, "precondition: the durable operator's state is resident");
 
 		let mut inner = FlowEngineInner::new(
@@ -346,7 +356,7 @@ mod tests {
 		inner.remove_flow(FlowId(1));
 
 		assert_eq!(
-			store.bytes(operator),
+			store.bytes(operator).unwrap(),
 			durable_bytes,
 			"the durable operator's state must survive an unrelated flow retiring under its id"
 		);

@@ -8,6 +8,7 @@
 //! have no way to tell the two apart.
 
 use std::{
+	collections::HashMap,
 	path::Path,
 	thread,
 	time::{Duration, Instant},
@@ -16,7 +17,7 @@ use std::{
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, KeyspaceId},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -25,12 +26,10 @@ use reifydb_runtime::{
 };
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_operator::{
-	config::{OperatorPersistentConfig, OperatorResidentStateConfig, OperatorStoreConfig},
+	config::{OperatorPersistentConfig, OperatorStoreConfig, ResidentConfig},
+	range::OperatorRangeConfig,
+	resident::{Resident, ResidentLimits},
 	store::OperatorStore,
-	tier::{
-		range::OperatorRangeConfig,
-		resident::{OperatorResidentState, ResidentLimits},
-	},
 	types::{BufferedState, OperatorWrite},
 };
 use reifydb_testing::{keyspace::state_key, tempdir::temp_dir};
@@ -52,8 +51,8 @@ fn evicting_store_at(path: &Path) -> OperatorStore {
 	let spawner = actor_system.spawner();
 	std::mem::forget(actor_system);
 	OperatorStore::standard(OperatorStoreConfig {
-		resident: OperatorResidentStateConfig {
-			storage: OperatorResidentState::with_limits(ResidentLimits {
+		resident: ResidentConfig {
+			storage: Resident::with_limits(ResidentLimits {
 				entries: 2,
 				..ResidentLimits::default()
 			}),
@@ -77,7 +76,7 @@ fn row(seed: u64) -> EncodedPodRow {
 fn put(store: &OperatorStore, key: EncodedKey, row: EncodedPodRow) {
 	store.apply_batch(&[OperatorWrite::Insert {
 		operator: OP,
-		key,
+		key: GroupStateKey::bound_unchecked(key),
 		post: row,
 	}]);
 }
@@ -91,11 +90,11 @@ fn seed_durable_and_evict(store: &OperatorStore, seeds: impl Iterator<Item = u64
 		put(store, key(*seed), row(*seed));
 	}
 	assert!(store.flush_pending_blocking(), "the keys have to be durable before eviction may drop them");
-	store.resident_state().evict_to_capacity();
+	store.resident().evict_to_capacity();
 
 	let evicted: Vec<u64> = seeds
 		.into_iter()
-		.filter(|seed| matches!(store.resident_state().lookup_state(OP, &key(*seed)), BufferedState::Absent))
+		.filter(|seed| matches!(store.resident().lookup_state(OP, &key(*seed)), BufferedState::Absent))
 		.collect();
 	assert!(
 		!evicted.is_empty(),
@@ -124,7 +123,10 @@ fn a_key_flushed_after_the_filter_arms_is_still_readable_once_it_leaves_the_resi
 
 		for seed in evicted {
 			assert_eq!(
-				store.get(OP, &key(seed)).as_ref().map(|found| found.body().to_vec()),
+				store.state_get(OP, &GroupStateKey::bound_unchecked(key(seed)))
+					.unwrap()
+					.as_ref()
+					.map(|found| found.body().to_vec()),
 				Some(row(seed).body().to_vec()),
 				"key {seed} is in sqlite and is no longer resident, so the read has to reach sqlite; \
 				 an armed filter that never learned about the flush rejects it instead and the row \
@@ -144,20 +146,26 @@ fn every_read_entry_point_agrees_about_a_durable_key_that_left_the_resident_tier
 	temp_dir(|dir| {
 		let store = evicting_store_at(dir);
 		let evicted = seed_durable_and_evict(&store, 0..KEYS);
-		let keys: Vec<EncodedKey> = evicted.iter().map(|seed| key(*seed)).collect();
+		let keys: Vec<GroupStateKey> =
+			evicted.iter().map(|seed| GroupStateKey::bound_unchecked(key(*seed))).collect();
 
-		let batched = store.get_many(OP, &keys);
-		let probes: Vec<(OperatorId, EncodedKey)> = keys.iter().map(|key| (OP, key.clone())).collect();
-		let sizes = store.state_sizes(&probes);
+		let mut batched: HashMap<GroupStateKey, EncodedPodRow> = HashMap::new();
+		store.state_get_many(OP, &keys, &mut |key, row| {
+			batched.insert(key, row);
+			Ok(())
+		})
+		.unwrap();
+		let probes: Vec<(OperatorId, GroupStateKey)> = keys.iter().map(|key| (OP, key.clone())).collect();
+		let sizes = store.state_sizes(&probes).unwrap();
 
 		for (index, seed) in evicted.iter().enumerate() {
 			assert!(
-				batched[index].is_some(),
+				batched.contains_key(&keys[index]),
 				"get_many dropped durable key {seed}; the batched read skips sqlite on the same \
 				 filter answer the point read does"
 			);
 			assert!(
-				store.contains(OP, &keys[index]),
+				store.contains(OP, &keys[index]).unwrap(),
 				"contains denied durable key {seed}; a caller that gates a write on this decides \
 				 to insert a row that is already there"
 			);
@@ -189,7 +197,10 @@ fn a_key_written_after_the_filter_was_rebuilt_from_sqlite_is_still_readable_once
 		let evicted = seed_durable_and_evict(&booted, KEYS..(KEYS * 2));
 		for seed in evicted {
 			assert_eq!(
-				booted.get(OP, &key(seed)).as_ref().map(|found| found.body().to_vec()),
+				booted.state_get(OP, &GroupStateKey::bound_unchecked(key(seed)))
+					.unwrap()
+					.as_ref()
+					.map(|found| found.body().to_vec()),
 				Some(row(seed).body().to_vec()),
 				"key {seed} was flushed after the rebuild scan and then evicted; a filter that only \
 				 ever learns keys from a rebuild cannot know about it, so the row is durable and \

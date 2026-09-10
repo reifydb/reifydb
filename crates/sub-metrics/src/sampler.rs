@@ -25,7 +25,7 @@ use reifydb_store_multi::{
 	MultiStore,
 	tier::{point::MultiPointShardMetrics, range::MultiRangeShardMetrics},
 };
-use reifydb_store_operator::{store::OperatorStore, tier::range::tiers::OperatorRangeKeyspaceMetrics};
+use reifydb_store_operator::{range::tiers::RangeKeyspaceMetrics, store::OperatorStore};
 use reifydb_store_single::SingleStore;
 use reifydb_value::{
 	Result,
@@ -419,7 +419,7 @@ fn operator_range_keyspace_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 	store.range_keyspace_metrics().iter().map(operator_range_keyspace_row).collect()
 }
 
-fn operator_range_keyspace_row(metrics: &OperatorRangeKeyspaceMetrics) -> MetricsRow {
+fn operator_range_keyspace_row(metrics: &RangeKeyspaceMetrics) -> MetricsRow {
 	MetricsRow {
 		dimensions: vec![Value::Utf8(metrics.bucket.name().to_string())],
 		measures: vec![
@@ -612,12 +612,12 @@ fn lifecycle_rows(metrics: &RetentionMetrics) -> Vec<MetricsRow> {
 mod tests {
 	use reifydb_core::key::operator::state::KeyspaceId;
 	use reifydb_store_cdc::tier::read::CdcReadMetrics;
-	use reifydb_store_operator::tier::range::OperatorRangeMetrics;
+	use reifydb_store_operator::range::OperatorRangeMetrics;
 
 	use super::*;
 
-	fn range_sample() -> OperatorRangeKeyspaceMetrics {
-		OperatorRangeKeyspaceMetrics {
+	fn range_sample() -> RangeKeyspaceMetrics {
+		RangeKeyspaceMetrics {
 			bucket: KeyspaceId::SOURCE_WATERMARK,
 			used: ByteSize::from_bytes(20_733),
 			limit: ByteSize::from_bytes(131_072),

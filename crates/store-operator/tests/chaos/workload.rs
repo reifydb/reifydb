@@ -12,8 +12,9 @@ use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
+	key::operator::state::GroupStateKey,
 };
-use reifydb_store_operator::types::{DurablePre, OperatorWrite};
+use reifydb_store_operator::types::{LayeredPre, OperatorWrite};
 use reifydb_testing_chaos::fuzz::{pick, run_reported, split};
 
 use crate::{
@@ -94,13 +95,13 @@ fn write_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &Params
 			let write = match pre {
 				Some(pre_value_bytes) => OperatorWrite::Replace {
 					operator: OperatorId(operator),
-					key: key_bytes,
+					key: GroupStateKey::bound_unchecked(key_bytes),
 					pre_value_bytes,
 					post: value,
 				},
 				None => OperatorWrite::Insert {
 					operator: OperatorId(operator),
-					key: key_bytes,
+					key: GroupStateKey::bound_unchecked(key_bytes),
 					post: value,
 				},
 			};
@@ -111,13 +112,13 @@ fn write_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &Params
 		4..=5 => {
 			let key_bytes = random_key(rng, p);
 			let pre = match state.oracle.value_bytes(operator, key_bytes.as_slice()) {
-				Some(pre_value_bytes) => DurablePre::Present(pre_value_bytes),
-				None => DurablePre::Absent,
+				Some(pre_value_bytes) => LayeredPre::Present(pre_value_bytes),
+				None => LayeredPre::Absent,
 			};
 			state.oracle.remove(operator, key_bytes.as_slice());
 			let write = OperatorWrite::Remove {
 				operator: OperatorId(operator),
-				key: key_bytes,
+				key: GroupStateKey::bound_unchecked(key_bytes),
 				pre,
 			};
 			for config in &harness.configs {
@@ -150,7 +151,7 @@ fn checkpoint_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &P
 			let version = rng.random_range(1..=500u64);
 			state.oracle.checkpoint_set(flow, version);
 			for config in &harness.configs {
-				config.store.checkpoint_set(FlowId(flow), CommitVersion(version));
+				config.store.checkpoint_set(FlowId(flow), CommitVersion(version)).unwrap();
 			}
 			for model in &mut state.models {
 				model.set(flow, version);
@@ -159,7 +160,7 @@ fn checkpoint_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &P
 		_ => {
 			state.oracle.checkpoint_delete(flow);
 			for config in &harness.configs {
-				config.store.checkpoint_delete(FlowId(flow));
+				config.store.checkpoint_remove(FlowId(flow)).unwrap();
 			}
 			for model in &mut state.models {
 				model.delete(flow);
@@ -174,7 +175,7 @@ fn drop_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &Params)
 	let operator = rng.random_range(1..=p.operators);
 	state.oracle.drop_operator_state(operator);
 	for config in &harness.configs {
-		config.store.drop_operator_state(OperatorId(operator));
+		config.store.drop_operator(OperatorId(operator)).unwrap();
 	}
 	harness.after_mutation();
 	flush_eager_models(harness, state);
@@ -242,7 +243,11 @@ fn sweep(harness: &Harness, state: &mut State, p: &Params, step: u32) {
 pub fn check_get(configs: &[Config], oracle: &Oracle, operator: u64, key: &EncodedKey, step: u32) {
 	let expected = oracle.get(operator, key.as_slice());
 	for config in configs {
-		let got = config.store.get(OperatorId(operator), key).map(|row| row.body().to_vec());
+		let got = config
+			.store
+			.state_get(OperatorId(operator), &GroupStateKey::bound_unchecked(key.clone()))
+			.unwrap()
+			.map(|row| row.body().to_vec());
 		assert_eq!(
 			got,
 			expected,
@@ -256,7 +261,10 @@ pub fn check_get(configs: &[Config], oracle: &Oracle, operator: u64, key: &Encod
 pub fn check_contains(configs: &[Config], oracle: &Oracle, operator: u64, key: &EncodedKey, step: u32) {
 	let expected = oracle.contains(operator, key.as_slice());
 	for config in configs {
-		let got = config.store.contains(OperatorId(operator), key);
+		let got = config
+			.store
+			.contains(OperatorId(operator), &GroupStateKey::bound_unchecked(key.clone()))
+			.unwrap();
 		assert_eq!(
 			got,
 			expected,
@@ -280,13 +288,12 @@ pub fn check_range(
 	let expected_more = all.len() as u64 > limit;
 	let expected: Vec<(Vec<u8>, Vec<u8>)> = all.into_iter().take(limit as usize).collect();
 	for config in configs {
-		let batch = config.store.range_batch(
-			OperatorId(operator),
-			EncodedKeyRange::new(start.clone(), end.clone()),
-			limit,
-		);
+		let batch = config
+			.store
+			.range_batch(OperatorId(operator), EncodedKeyRange::new(start.clone(), end.clone()), limit)
+			.unwrap();
 		let got: Vec<(Vec<u8>, Vec<u8>)> =
-			batch.items.iter().map(|(key, row)| (key.to_vec(), row.body().to_vec())).collect();
+			batch.items.iter().map(|(key, row)| (key.as_bytes().to_vec(), row.body().to_vec())).collect();
 		assert_eq!(
 			got,
 			expected,
@@ -313,16 +320,19 @@ pub fn check_drain(configs: &[Config], oracle: &Oracle, operator: u64, limit: u6
 		let mut start: Bound<EncodedKey> = Bound::Unbounded;
 		let mut drained: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
 		loop {
-			let batch = config.store.range_batch(
-				OperatorId(operator),
-				EncodedKeyRange::new(start.clone(), Bound::Unbounded),
-				limit,
-			);
+			let batch = config
+				.store
+				.range_batch(
+					OperatorId(operator),
+					EncodedKeyRange::new(start.clone(), Bound::Unbounded),
+					limit,
+				)
+				.unwrap();
 			for (key, row) in &batch.items {
-				drained.push((key.to_vec(), row.body().to_vec()));
+				drained.push((key.as_bytes().to_vec(), row.body().to_vec()));
 			}
 			match batch.items.last() {
-				Some((key, _)) => start = Bound::Excluded(key.clone()),
+				Some((key, _)) => start = Bound::Excluded(key.as_encoded().clone()),
 				None => break,
 			}
 			if !batch.has_more {
@@ -356,6 +366,7 @@ pub fn check_census(configs: &[Config], oracle: &Oracle, step: u32) {
 		let got: Vec<CensusRow> = config
 			.store
 			.census()
+			.unwrap()
 			.into_iter()
 			.map(|entry| CensusRow {
 				operator: entry.operator.0,
@@ -379,7 +390,7 @@ pub fn check_bytes(configs: &[Config], oracle: &Oracle, operator: u64, step: u32
 		if !config.bytes_exact() {
 			continue;
 		}
-		let got = config.store.bytes(OperatorId(operator)).as_bytes();
+		let got = config.store.bytes(OperatorId(operator)).unwrap().as_bytes();
 		assert_eq!(
 			got, expected,
 			"BYTES mismatch: config={} step={step} operator={operator} store={got} oracle={expected}",
@@ -394,7 +405,7 @@ pub fn check_total_bytes(configs: &[Config], oracle: &Oracle, step: u32) {
 		if !config.bytes_exact() {
 			continue;
 		}
-		let got = config.store.total_bytes().as_bytes();
+		let got = config.store.total_bytes().unwrap().as_bytes();
 		assert_eq!(
 			got, expected,
 			"TOTAL_BYTES mismatch: config={} step={step} store={got} oracle={expected}",
@@ -408,14 +419,15 @@ pub fn check_checkpoint_entries(configs: &[Config], oracle: &Oracle, flows: u64,
 	for config in configs {
 		for flow in 1..=flows {
 			let expected = oracle.checkpoint_get(flow);
-			let got = config.store.checkpoint_get(FlowId(flow)).map(|version| version.0);
+			let got = config.store.checkpoint_get(FlowId(flow)).unwrap().map(|version| version.0);
 			assert_eq!(
 				got, expected,
 				"CKPT_GET mismatch: config={} step={step} flow={flow} store={got:?} oracle={expected:?}",
 				config.name
 			);
 		}
-		let got_list: Vec<u64> = config.store.checkpoint_list().into_iter().map(|flow| flow.0).collect();
+		let got_list: Vec<u64> =
+			config.store.checkpoint_list().unwrap().into_iter().map(|flow| flow.0).collect();
 		assert_eq!(
 			got_list, expected_list,
 			"CKPT_LIST mismatch: config={} step={step} store={got_list:?} oracle={expected_list:?}",
@@ -427,7 +439,7 @@ pub fn check_checkpoint_entries(configs: &[Config], oracle: &Oracle, flows: u64,
 fn check_floors(configs: &[Config], state: &State, step: u32) {
 	for (index, config) in configs.iter().enumerate() {
 		let expected = state.models[index].floor();
-		let got = config.store.checkpoint_floor().map(|version| version.0);
+		let got = config.store.checkpoint_floor().unwrap().map(|version| version.0);
 		assert_eq!(
 			got, expected,
 			"CKPT_FLOOR mismatch: config={} step={step} store={got:?} model={expected:?} (the floor may never run ahead of what a restart would restore)",
@@ -499,13 +511,13 @@ fn random_batch(rng: &mut StdRng, state: &mut State, p: &Params, step: u32) -> B
 				writes.push(match pre {
 					Some(pre_value_bytes) => OperatorWrite::Replace {
 						operator: OperatorId(operator),
-						key: key_bytes,
+						key: GroupStateKey::bound_unchecked(key_bytes),
 						pre_value_bytes,
 						post: value,
 					},
 					None => OperatorWrite::Insert {
 						operator: OperatorId(operator),
-						key: key_bytes,
+						key: GroupStateKey::bound_unchecked(key_bytes),
 						post: value,
 					},
 				});
@@ -514,13 +526,13 @@ fn random_batch(rng: &mut StdRng, state: &mut State, p: &Params, step: u32) -> B
 				let (operator, key_bytes) = batch_state_slot(rng, state, p, operator, &state_slots);
 				state_slots.push((operator, key_bytes.clone()));
 				let pre = match state.oracle.value_bytes(operator, key_bytes.as_slice()) {
-					Some(pre_value_bytes) => DurablePre::Present(pre_value_bytes),
-					None => DurablePre::Absent,
+					Some(pre_value_bytes) => LayeredPre::Present(pre_value_bytes),
+					None => LayeredPre::Absent,
 				};
 				state.oracle.remove(operator, key_bytes.as_slice());
 				writes.push(OperatorWrite::Remove {
 					operator: OperatorId(operator),
-					key: key_bytes,
+					key: GroupStateKey::bound_unchecked(key_bytes),
 					pre,
 				});
 			}

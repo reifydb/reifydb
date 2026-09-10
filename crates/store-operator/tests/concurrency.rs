@@ -13,10 +13,10 @@ use std::{
 	thread,
 };
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, KeyspaceId},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -26,9 +26,9 @@ use reifydb_runtime::{
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
+	range::OperatorRangeConfig,
 	store::OperatorStore,
-	tier::range::OperatorRangeConfig,
-	types::{DurablePre, OperatorWrite},
+	types::{LayeredPre, OperatorWrite, StagedWrite},
 };
 use reifydb_testing::keyspace::state_key;
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
@@ -62,8 +62,8 @@ fn store() -> (OperatorStore, SqliteTempPathGuard) {
 	(store, guard)
 }
 
-fn key(suffix: u64) -> EncodedKey {
-	state_key(group(), KeyspaceId::JOIN_LEFT, suffix)
+fn key(suffix: u64) -> GroupStateKey {
+	GroupStateKey::bound_unchecked(state_key(group(), KeyspaceId::JOIN_LEFT, suffix))
 }
 
 fn row(body: &str) -> EncodedPodRow {
@@ -79,7 +79,8 @@ fn parse_version(body: &str) -> usize {
 }
 
 fn body(store: &OperatorStore, operator: OperatorId, suffix: u64) -> Option<String> {
-	store.get(operator, &key(suffix))
+	store.state_get(operator, &key(suffix))
+		.unwrap()
 		.map(|row| String::from_utf8(row.body().to_vec()).expect("test bodies are utf8"))
 }
 
@@ -119,11 +120,11 @@ fn every_write_from_every_concurrent_writer_is_readable_after_the_flush() {
 		}
 	}
 
-	let persistent = store.persistent().expect("the sqlite tier is configured");
+	let persistent = store.persistent().sqlite_storage().expect("the sqlite tier is configured");
 	for writer in 1..=WRITERS {
 		for index in 0..KEYS_PER_WRITER {
 			assert!(
-				persistent.get(OperatorId(writer), &key(index)).is_some(),
+				persistent.get(OperatorId(writer), key(index).as_encoded()).is_some(),
 				"writer {writer} key {index} is served from memory but never reached sqlite, so it is \
 				 lost on the next restart"
 			);
@@ -135,7 +136,7 @@ fn every_write_from_every_concurrent_writer_is_readable_after_the_flush() {
 fn a_read_racing_the_flush_never_sees_the_value_the_flush_is_replacing() {
 	// between take_for_flush and complete_flush the row is in neither the live batch nor sqlite yet
 	let (store, _guard) = store();
-	let persistent = store.persistent().expect("the sqlite tier is configured");
+	let persistent = store.persistent().sqlite_storage().expect("the sqlite tier is configured");
 	// only the flusher may advance sqlite past this seed, otherwise a torn two-tier read reports a false regression
 	for index in 0..KEYS_PER_WRITER {
 		persistent.seed_durable(&[OperatorWrite::Insert {
@@ -220,7 +221,7 @@ fn a_read_racing_the_flush_never_sees_the_value_the_flush_is_replacing() {
 fn a_write_that_lands_after_a_drop_marker_survives_the_drop() {
 	// the marker runs first at flush time, so whatever the buffer still holds must outlive it
 	let (store, _guard) = store();
-	let persistent = store.persistent().expect("the sqlite tier is configured");
+	let persistent = store.persistent().sqlite_storage().expect("the sqlite tier is configured");
 	for index in 0..KEYS_PER_WRITER {
 		persistent.seed_durable(&[OperatorWrite::Insert {
 			operator: OP,
@@ -237,7 +238,7 @@ fn a_write_that_lands_after_a_drop_marker_survives_the_drop() {
 	let dropper = {
 		let store = store.clone();
 		thread::spawn(move || {
-			store.drop_operator_state(OP);
+			store.drop_operator(OP).unwrap();
 			store.apply_batch(&[OperatorWrite::Insert {
 				operator: OP,
 				key: key(2_000),
@@ -260,16 +261,16 @@ fn a_write_that_lands_after_a_drop_marker_survives_the_drop() {
 	);
 	for index in 0..KEYS_PER_WRITER {
 		assert!(
-			persistent.get(OP, &key(index)).is_none(),
+			persistent.get(OP, key(index).as_encoded()).is_none(),
 			"the marker must erase every row it masked no matter when the flush interleaved with it"
 		);
 	}
 	assert!(
-		persistent.get(OP, &key(1_000)).is_none(),
+		persistent.get(OP, key(1_000).as_encoded()).is_none(),
 		"a write the drop erased must never be replayed into sqlite behind the drop"
 	);
 	assert_eq!(
-		persistent.get(OP, &key(2_000)).map(|row| row.body().to_vec()),
+		persistent.get(OP, key(2_000).as_encoded()).map(|row| row.body().to_vec()),
 		Some(b"post-drop".to_vec()),
 		"the post-drop write must be durable too, not merely readable from memory"
 	);
@@ -285,7 +286,7 @@ fn interleaved_writes_and_removals_converge_on_the_last_write() {
 			let store = store.clone();
 			thread::spawn(move || {
 				for _ in 0..KEYS_PER_WRITER {
-					let write = match store.get(OP, &key(1)) {
+					let write = match store.state_get(OP, &key(1)).unwrap() {
 						Some(pre) => OperatorWrite::Replace {
 							operator: OP,
 							key: key(1),
@@ -303,7 +304,7 @@ fn interleaved_writes_and_removals_converge_on_the_last_write() {
 						OperatorWrite::Remove {
 							operator: OP,
 							key: key(1),
-							pre: DurablePre::Present(ByteSize::from_bytes(
+							pre: LayeredPre::Present(ByteSize::from_bytes(
 								row("churn").bytes().len() as u64,
 							)),
 						},
@@ -317,7 +318,10 @@ fn interleaved_writes_and_removals_converge_on_the_last_write() {
 	}
 
 	assert!(store.flush_pending_blocking(), "the churn must be drained before the final write");
-	assert!(store.get(OP, &key(1)).is_none(), "every thread ended on a removal, so the key must read as missing");
+	assert!(
+		store.state_get(OP, &key(1)).unwrap().is_none(),
+		"every thread ended on a removal, so the key must read as missing"
+	);
 
 	store.apply_batch(&[OperatorWrite::Insert {
 		operator: OP,
@@ -331,21 +335,20 @@ fn interleaved_writes_and_removals_converge_on_the_last_write() {
 		Some("final"),
 		"the last write must win over every tombstone that preceded it"
 	);
-	let persistent = store.persistent().expect("the sqlite tier is configured");
+	let persistent = store.persistent().sqlite_storage().expect("the sqlite tier is configured");
 	assert_eq!(
-		persistent.get(OP, &key(1)).map(|row| row.body().to_vec()),
+		persistent.get(OP, key(1).as_encoded()).map(|row| row.body().to_vec()),
 		Some(b"final".to_vec()),
 		"a delete flushed after the write it follows would leave sqlite empty while memory reports the key"
 	);
 }
-use reifydb_core::key::operator::state::OperatorStateKey;
-use reifydb_store_operator::tier::{persistent::sqlite::SqliteOperatorStorage, resident::batch::FlushBatch};
+use reifydb_store_operator::{persistent::sqlite::SqlitePersistent, types::FlushBatch};
 
 trait SeedDurable {
 	fn seed_durable(&self, writes: &[OperatorWrite]);
 }
 
-impl SeedDurable for SqliteOperatorStorage {
+impl SeedDurable for SqlitePersistent {
 	fn seed_durable(&self, writes: &[OperatorWrite]) {
 		let mut batch = FlushBatch::default();
 		for write in writes {
@@ -367,9 +370,11 @@ impl SeedDurable for SqliteOperatorStorage {
 					..
 				} => (*operator, key, None),
 			};
-			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
-				.expect("a seeded key must name a group and a keyspace");
-			batch.state.record_bytes(operator, keyspace, group, &suffix, post);
+			let write = match post {
+				Some(row) => StagedWrite::Set(row),
+				None => StagedWrite::Remove,
+			};
+			batch.writes.push((operator, key.clone(), write));
 		}
 		self.flush_batch(&batch);
 	}

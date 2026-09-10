@@ -12,10 +12,11 @@ use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
+	key::operator::state::GroupStateKey,
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
-	types::{DurablePre, OperatorWrite},
+	types::{LayeredPre, OperatorWrite},
 };
 use reifydb_testing::tempdir::temp_dir;
 
@@ -86,13 +87,13 @@ fn mutate(rng: &mut StdRng, store: &OperatorStore, oracle: &mut Oracle, p: &Para
 			store.apply_batch(&[match pre {
 				Some(pre_value_bytes) => OperatorWrite::Replace {
 					operator: OperatorId(operator),
-					key: key_bytes,
+					key: GroupStateKey::bound_unchecked(key_bytes),
 					pre_value_bytes,
 					post: value,
 				},
 				None => OperatorWrite::Insert {
 					operator: OperatorId(operator),
-					key: key_bytes,
+					key: GroupStateKey::bound_unchecked(key_bytes),
 					post: value,
 				},
 			}]);
@@ -104,13 +105,13 @@ fn mutate(rng: &mut StdRng, store: &OperatorStore, oracle: &mut Oracle, p: &Para
 			let key_bytes = key(group, keyspace, suffix);
 
 			let pre = match oracle.value_bytes(operator, key_bytes.as_slice()) {
-				Some(pre_value_bytes) => DurablePre::Present(pre_value_bytes),
-				None => DurablePre::Absent,
+				Some(pre_value_bytes) => LayeredPre::Present(pre_value_bytes),
+				None => LayeredPre::Absent,
 			};
 			oracle.remove(operator, key_bytes.as_slice());
 			store.apply_batch(&[OperatorWrite::Remove {
 				operator: OperatorId(operator),
-				key: key_bytes,
+				key: GroupStateKey::bound_unchecked(key_bytes),
 				pre,
 			}]);
 		}
@@ -119,11 +120,11 @@ fn mutate(rng: &mut StdRng, store: &OperatorStore, oracle: &mut Oracle, p: &Para
 			let version = rng.random_range(1..=500u64);
 
 			oracle.checkpoint_set(flow, version);
-			store.checkpoint_set(FlowId(flow), CommitVersion(version));
+			store.checkpoint_set(FlowId(flow), CommitVersion(version)).unwrap();
 		}
 		_ => {
 			oracle.drop_operator_state(operator);
-			store.drop_operator_state(OperatorId(operator));
+			store.drop_operator(OperatorId(operator)).unwrap();
 		}
 	}
 }

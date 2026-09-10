@@ -10,15 +10,16 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::{GroupId, KEYSPACE_INNER_PREFIX_LEN, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KEYSPACE_INNER_PREFIX_LEN, KeyspaceId, OperatorStateKey},
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
 	},
 };
 use reifydb_store_operator::{
+	range::RangeSink,
 	store::OperatorStore,
-	types::{BufferedState, DurablePre, OperatorWrite},
+	types::{BufferedState, LayeredPre, OperatorWrite, StagedWrite},
 };
 use reifydb_testing::{keyspace::suffix_width, testscript};
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
@@ -71,9 +72,7 @@ impl Runner {
 
 	/// Every writer of the persistent tier must retract the range tier's claim, or a cached row outlives the write.
 	fn invalidate_read(&self, operator: OperatorId, key: &EncodedKey) {
-		if let Some(range) = self.store.range() {
-			range.retract(operator, key);
-		}
+		self.store.range().retract(operator, key);
 	}
 }
 
@@ -93,7 +92,7 @@ impl testscript::runner::Runner for Runner {
 				let row = EncodedPodRow::new(&decode_binary(&kv.value));
 				args.reject_rest()?;
 
-				let pre = durable_pre(&self.store, operator, &key);
+				let pre = layered_pre(&self.store, operator, &key);
 				self.store.apply_batch(&[state_write(operator, key, row, pre)]);
 				self.maybe_flush();
 			}
@@ -108,7 +107,7 @@ impl testscript::runner::Runner for Runner {
 				);
 				args.reject_rest()?;
 
-				let pre = durable_pre(&self.store, operator, &key);
+				let pre = layered_pre(&self.store, operator, &key);
 				self.store.apply_batch(&[state_remove(operator, key, pre)]);
 				self.maybe_flush();
 			}
@@ -123,7 +122,11 @@ impl testscript::runner::Runner for Runner {
 				);
 				args.reject_rest()?;
 
-				let value = self.store.get(operator, &key).map(|row| row.body().to_vec());
+				let value = self
+					.store
+					.state_get(operator, &GroupStateKey::bound_unchecked(key.clone()))
+					.unwrap()
+					.map(|row| row.body().to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key_name(&key), value))?;
 			}
 
@@ -141,7 +144,9 @@ impl testscript::runner::Runner for Runner {
 					output,
 					"{} => {}",
 					Raw::key(&key_name(&key)),
-					self.store.contains(operator, &key)
+					self.store
+						.contains(operator, &GroupStateKey::bound_unchecked(key.clone()))
+						.unwrap()
 				)?;
 			}
 
@@ -161,9 +166,13 @@ impl testscript::runner::Runner for Runner {
 					frame_bound(parsed.start, keyspace),
 					frame_bound(parsed.end, keyspace),
 				);
-				let batch = self.store.range_batch(operator, range, batch_size);
+				let batch = self.store.range_batch(operator, range, batch_size).unwrap();
 				for (key, row) in &batch.items {
-					writeln!(output, "{}", Raw::key_value(&key_name(key), row.body()))?;
+					writeln!(
+						output,
+						"{}",
+						Raw::key_value(&key_name(key.as_encoded()), row.body())
+					)?;
 				}
 				writeln!(output, "has_more={}", batch.has_more)?;
 			}
@@ -173,7 +182,7 @@ impl testscript::runner::Runner for Runner {
 				let operator = operator_of(&mut args)?;
 				args.reject_rest()?;
 
-				self.store.drop_operator_state(operator);
+				self.store.drop_operator(operator).unwrap();
 				self.maybe_flush();
 			}
 
@@ -188,7 +197,11 @@ impl testscript::runner::Runner for Runner {
 
 			"batch_ckpt" => {
 				let (writes, checkpoints, deletes) = parse_batch(&self.store, command)?;
-				self.store.apply_batch_with_checkpoints(&writes, &checkpoints, &deletes);
+				if let Err(err) =
+					self.store.apply_batch_with_checkpoints(&writes, &checkpoints, &deletes)
+				{
+					writeln!(output, "error: {err}")?;
+				}
 				self.maybe_flush();
 			}
 
@@ -198,7 +211,9 @@ impl testscript::runner::Runner for Runner {
 				let version = CommitVersion(args.next_pos().ok_or("version not given")?.parse()?);
 				args.reject_rest()?;
 
-				self.store.checkpoint_set(flow, version);
+				if let Err(err) = self.store.checkpoint_set(flow, version) {
+					writeln!(output, "error: {err}")?;
+				}
 				self.maybe_flush();
 			}
 
@@ -207,7 +222,7 @@ impl testscript::runner::Runner for Runner {
 				let flow = FlowId(args.next_pos().ok_or("flow not given")?.parse()?);
 				args.reject_rest()?;
 
-				match self.store.checkpoint_get(flow) {
+				match self.store.checkpoint_get(flow).unwrap() {
 					Some(version) => writeln!(output, "flow {} => {}", flow.0, version.0)?,
 					None => writeln!(output, "flow {} => None", flow.0)?,
 				}
@@ -218,7 +233,7 @@ impl testscript::runner::Runner for Runner {
 				let flow = FlowId(args.next_pos().ok_or("flow not given")?.parse()?);
 				args.reject_rest()?;
 
-				self.store.checkpoint_delete(flow);
+				self.store.checkpoint_remove(flow).unwrap();
 				self.maybe_flush();
 			}
 
@@ -226,14 +241,14 @@ impl testscript::runner::Runner for Runner {
 				command.consume_args().reject_rest()?;
 
 				let flows: Vec<u64> =
-					self.store.checkpoint_list().into_iter().map(|flow| flow.0).collect();
+					self.store.checkpoint_list().unwrap().into_iter().map(|flow| flow.0).collect();
 				writeln!(output, "flows: {flows:?}")?;
 			}
 
 			"ckpt_floor" => {
 				command.consume_args().reject_rest()?;
 
-				match self.store.checkpoint_floor() {
+				match self.store.checkpoint_floor().unwrap() {
 					Some(version) => writeln!(output, "floor => {}", version.0)?,
 					None => writeln!(output, "floor => None")?,
 				}
@@ -244,19 +259,24 @@ impl testscript::runner::Runner for Runner {
 				let operator = operator_of(&mut args)?;
 				args.reject_rest()?;
 
-				writeln!(output, "bytes {} => {}", operator.0, self.store.bytes(operator).as_bytes())?;
+				writeln!(
+					output,
+					"bytes {} => {}",
+					operator.0,
+					self.store.bytes(operator).unwrap().as_bytes()
+				)?;
 			}
 
 			"total_bytes" => {
 				command.consume_args().reject_rest()?;
 
-				writeln!(output, "total_bytes => {}", self.store.total_bytes().as_bytes())?;
+				writeln!(output, "total_bytes => {}", self.store.total_bytes().unwrap().as_bytes())?;
 			}
 
 			"census" => {
 				command.consume_args().reject_rest()?;
 
-				let census = self.store.census();
+				let census = self.store.census().unwrap();
 				for entry in &census {
 					writeln!(
 						output,
@@ -290,7 +310,7 @@ impl testscript::runner::Runner for Runner {
 				);
 				args.reject_rest()?;
 
-				let buffer = self.store.resident_state();
+				let buffer = self.store.resident();
 				let name = key_name(&key);
 				match buffer.lookup_state(operator, &key) {
 					BufferedState::Row(row) => {
@@ -315,7 +335,11 @@ impl testscript::runner::Runner for Runner {
 				);
 				args.reject_rest()?;
 
-				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
+				let persistent = self
+					.store
+					.persistent()
+					.sqlite_storage()
+					.ok_or("persistent tier not configured")?;
 				let value = persistent.get(operator, &key).map(|row| row.body().to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key_name(&key), value))?;
 			}
@@ -332,7 +356,11 @@ impl testscript::runner::Runner for Runner {
 				let row = EncodedPodRow::new(&decode_binary(&kv.value));
 				args.reject_rest()?;
 
-				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
+				let persistent = self
+					.store
+					.persistent()
+					.sqlite_storage()
+					.ok_or("persistent tier not configured")?;
 				let pre = persistent
 					.get(operator, &key)
 					.map(|held| ByteSize::from_bytes(held.bytes().len() as u64));
@@ -350,7 +378,11 @@ impl testscript::runner::Runner for Runner {
 				);
 				args.reject_rest()?;
 
-				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
+				let persistent = self
+					.store
+					.persistent()
+					.sqlite_storage()
+					.ok_or("persistent tier not configured")?;
 				let pre = persistent
 					.get(operator, &key)
 					.map(|held| ByteSize::from_bytes(held.bytes().len() as u64));
@@ -429,7 +461,7 @@ fn parse_batch(store: &OperatorStore, command: &Command) -> Result<BatchArgs, Bo
 				let (key, body) = arg.value.split_once('/').ok_or("set needs key/value")?;
 				let key = encode_key(&decode_binary(key), keyspace);
 				let post = EncodedPodRow::new(&decode_binary(body));
-				let pre = pending_pre(store, &pending_state, operator, &key);
+				let pre = pending_layered_pre(store, &pending_state, operator, &key);
 				pending_state.insert(
 					(operator, key.clone()),
 					Some(ByteSize::from_bytes(post.bytes().len() as u64)),
@@ -438,7 +470,7 @@ fn parse_batch(store: &OperatorStore, command: &Command) -> Result<BatchArgs, Bo
 			}
 			"remove" => {
 				let key = encode_key(&decode_binary(&arg.value), keyspace);
-				let pre = pending_pre(store, &pending_state, operator, &key);
+				let pre = pending_layered_pre(store, &pending_state, operator, &key);
 				pending_state.insert((operator, key.clone()), None);
 				writes.push(state_remove(operator, key, pre));
 			}
@@ -454,11 +486,13 @@ fn parse_batch(store: &OperatorStore, command: &Command) -> Result<BatchArgs, Bo
 	Ok((writes, checkpoints, deletes))
 }
 
-fn durable_pre(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) -> Option<ByteSize> {
-	store.get(operator, key).map(|row| ByteSize::from_bytes(row.bytes().len() as u64))
+fn layered_pre(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) -> Option<ByteSize> {
+	store.state_get(operator, &GroupStateKey::bound_unchecked(key.clone()))
+		.unwrap()
+		.map(|row| ByteSize::from_bytes(row.bytes().len() as u64))
 }
 
-fn pending_pre(
+fn pending_layered_pre(
 	store: &OperatorStore,
 	overlay: &BTreeMap<(OperatorId, EncodedKey), Option<ByteSize>>,
 	operator: OperatorId,
@@ -466,11 +500,12 @@ fn pending_pre(
 ) -> Option<ByteSize> {
 	match overlay.get(&(operator, key.clone())) {
 		Some(pending) => *pending,
-		None => durable_pre(store, operator, key),
+		None => layered_pre(store, operator, key),
 	}
 }
 
 fn state_write(operator: OperatorId, key: EncodedKey, post: EncodedPodRow, pre: Option<ByteSize>) -> OperatorWrite {
+	let key = GroupStateKey::bound_unchecked(key);
 	match pre {
 		Some(pre_value_bytes) => OperatorWrite::Replace {
 			operator,
@@ -489,20 +524,20 @@ fn state_write(operator: OperatorId, key: EncodedKey, post: EncodedPodRow, pre: 
 fn state_remove(operator: OperatorId, key: EncodedKey, pre: Option<ByteSize>) -> OperatorWrite {
 	OperatorWrite::Remove {
 		operator,
-		key,
+		key: GroupStateKey::bound_unchecked(key),
 		pre: match pre {
-			Some(bytes) => DurablePre::Present(bytes),
-			None => DurablePre::Absent,
+			Some(bytes) => LayeredPre::Present(bytes),
+			None => LayeredPre::Absent,
 		},
 	}
 }
-use reifydb_store_operator::tier::{persistent::sqlite::SqliteOperatorStorage, resident::batch::FlushBatch};
+use reifydb_store_operator::{persistent::sqlite::SqlitePersistent, types::FlushBatch};
 
 trait SeedDurable {
 	fn seed_durable(&self, writes: &[OperatorWrite]);
 }
 
-impl SeedDurable for SqliteOperatorStorage {
+impl SeedDurable for SqlitePersistent {
 	fn seed_durable(&self, writes: &[OperatorWrite]) {
 		let mut batch = FlushBatch::default();
 		for write in writes {
@@ -524,9 +559,11 @@ impl SeedDurable for SqliteOperatorStorage {
 					..
 				} => (*operator, key, None),
 			};
-			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
-				.expect("a seeded key must name a group and a keyspace");
-			batch.state.record_bytes(operator, keyspace, group, &suffix, post);
+			let write = match post {
+				Some(row) => StagedWrite::Set(row),
+				None => StagedWrite::Remove,
+			};
+			batch.writes.push((operator, key.clone(), write));
 		}
 		self.flush_batch(&batch);
 	}

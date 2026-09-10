@@ -12,7 +12,7 @@ use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::{KEYSPACES, KeyspaceVisitor, dispatch},
-			state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+			state::{GroupId, KeyspaceId, OperatorStateKey, group_inner_range, keyspace_inner_range},
 			traits::{Keyspace, group_scoped},
 		},
 		typed::{BoundedKey, Edge, range::KeyRange},
@@ -29,63 +29,66 @@ use reifydb_store::{
 };
 
 use crate::{
+	error::Result,
+	persistent::{Page as PersistentPage, Persistent, PersistentTier},
+	range::{partition::TypedPartition, tiers::RangeTiers, typed::TypedDomain},
 	store::occupancy::occupies,
-	tier::{
-		persistent::OperatorPersistentTier,
-		range::{tiers::RangeTiers, typed::TypedDomain},
-		typed::TypedPartition,
-	},
 	types::OperatorBatch,
 };
 
 pub(crate) type Page = Vec<(EncodedKey, EncodedPodRow)>;
 
 pub(crate) trait PageSource {
-	fn next_page(&mut self, limit: u64) -> Page;
+	fn next_page(&mut self, limit: u64) -> Result<Page>;
 
 	fn is_exhausted(&self) -> bool;
+
+	fn ceiling(&self) -> Option<&EncodedKey> {
+		None
+	}
 }
 
 pub(crate) struct PersistentPager<'a> {
 	operator: OperatorId,
-	persistent: Option<&'a OperatorPersistentTier>,
+	persistent: &'a PersistentTier,
 	lower: Bound<EncodedKey>,
 	end: Bound<EncodedKey>,
 	exhausted: bool,
 }
 
 impl<'a> PersistentPager<'a> {
-	pub(crate) fn new(
-		operator: OperatorId,
-		persistent: Option<&'a OperatorPersistentTier>,
-		range: &EncodedKeyRange,
-	) -> Self {
+	pub(crate) fn new(operator: OperatorId, persistent: &'a PersistentTier, range: &EncodedKeyRange) -> Self {
 		Self {
 			operator,
 			persistent,
 			lower: range.start.clone(),
 			end: range.end.clone(),
-			exhausted: persistent.is_none(),
+			exhausted: persistent.is_absent(),
 		}
 	}
 }
 
+fn decoded(batch: OperatorBatch) -> Vec<(EncodedKey, EncodedPodRow)> {
+	batch.items.into_iter().map(|(key, row)| (key.into_encoded(), row)).collect()
+}
+
 impl PageSource for PersistentPager<'_> {
-	fn next_page(&mut self, limit: u64) -> Page {
-		let Some(persistent) = self.persistent else {
+	fn next_page(&mut self, limit: u64) -> Result<Page> {
+		if self.persistent.is_absent() {
 			self.exhausted = true;
-			return Vec::new();
-		};
-		let batch = persistent.range_batch(
+			return Ok(Vec::new());
+		}
+		let batch = self.persistent.range_batch(
 			self.operator,
 			EncodedKeyRange::new(self.lower.clone(), self.end.clone()),
 			limit,
-		);
+			u64::MAX,
+		)?;
 		self.exhausted = !batch.has_more || batch.items.is_empty();
 		if let Some((key, _)) = batch.items.last() {
-			self.lower = Bound::Excluded(key.clone());
+			self.lower = Bound::Excluded(key.as_encoded().clone());
 		}
-		batch.items
+		Ok(decoded(batch))
 	}
 
 	fn is_exhausted(&self) -> bool {
@@ -95,47 +98,68 @@ impl PageSource for PersistentPager<'_> {
 
 pub(crate) struct GroupPager<'a> {
 	operator: OperatorId,
-	persistent: Option<&'a OperatorPersistentTier>,
+	persistent: &'a PersistentTier,
 	groups: &'a [GroupId],
 	mask: u64,
 	exhausted: bool,
 	ceiling: Option<EncodedKey>,
+	served: usize,
+	fetch: u64,
 }
 
 impl<'a> GroupPager<'a> {
 	pub(crate) fn new(
 		operator: OperatorId,
-		persistent: Option<&'a OperatorPersistentTier>,
+		persistent: &'a PersistentTier,
 		groups: &'a [GroupId],
 		mask: u64,
+		dropped: bool,
 	) -> Self {
 		Self {
 			operator,
 			persistent,
 			groups,
 			mask,
-			exhausted: persistent.is_none() || groups.is_empty(),
+			exhausted: dropped || persistent.is_absent() || groups.is_empty(),
 			ceiling: None,
+			served: 0,
+			fetch: 0,
 		}
-	}
-
-	pub(crate) fn ceiling(&self) -> Option<&EncodedKey> {
-		self.ceiling.as_ref()
 	}
 }
 
 impl PageSource for GroupPager<'_> {
-	fn next_page(&mut self, limit: u64) -> Page {
-		let Some(persistent) = self.persistent.filter(|_| !self.exhausted) else {
+	fn ceiling(&self) -> Option<&EncodedKey> {
+		self.ceiling.as_ref()
+	}
+
+	fn next_page(&mut self, limit: u64) -> Result<Page> {
+		if self.exhausted || self.persistent.is_absent() {
 			self.exhausted = true;
-			return Vec::new();
-		};
-		let batch = persistent.group_page(self.operator, self.groups, limit, self.mask);
-		self.exhausted = true;
-		if batch.has_more {
-			self.ceiling = batch.items.last().map(|(key, _)| key.clone());
+			return Ok(Vec::new());
 		}
-		batch.items
+		self.fetch = match self.fetch {
+			0 => limit.max(1),
+			current => current.saturating_mul(2),
+		};
+		let batch = self.persistent.group_page(self.operator, self.groups, self.fetch, self.mask)?;
+		match batch.has_more {
+			true => self.ceiling = batch.items.last().map(|(key, _)| key.as_encoded().clone()),
+			false => {
+				self.exhausted = true;
+				self.ceiling = None;
+			}
+		}
+		let mut items = decoded(batch);
+		let taken = self.served.min(items.len());
+		let fresh = items.split_off(taken);
+		if fresh.is_empty() {
+			self.exhausted = true;
+			self.ceiling = None;
+			return Ok(Vec::new());
+		}
+		self.served += fresh.len();
+		Ok(fresh)
 	}
 
 	fn is_exhausted(&self) -> bool {
@@ -147,7 +171,7 @@ pub(crate) struct TierPager<'a, K: Keyspace> {
 	operator: OperatorId,
 	group: GroupId,
 	tier: &'a RangeTier<TypedDomain<K>>,
-	persistent: Option<&'a OperatorPersistentTier>,
+	persistent: &'a PersistentTier,
 	scan: RangeScan<TypedDomain<K>>,
 	segment_index: usize,
 	cursor: Cursor<(), K::Suffix>,
@@ -162,7 +186,7 @@ impl<'a, K: Keyspace> TierPager<'a, K> {
 		operator: OperatorId,
 		group: GroupId,
 		tier: &'a RangeTier<TypedDomain<K>>,
-		persistent: Option<&'a OperatorPersistentTier>,
+		persistent: &'a PersistentTier,
 		scan: RangeScan<TypedDomain<K>>,
 	) -> Self {
 		Self {
@@ -218,17 +242,22 @@ impl<'a, K: Keyspace> TierPager<'a, K> {
 }
 
 impl<K: Keyspace> PageSource for TierPager<'_, K> {
-	fn next_page(&mut self, limit: u64) -> Page {
+	fn next_page(&mut self, limit: u64) -> Result<Page> {
 		loop {
 			if let Some((interval, materializable, consumed)) = self.pending.take() {
-				let Some(persistent) = self.persistent else {
+				if self.persistent.is_absent() {
 					self.exhausted = true;
-					return Vec::new();
-				};
-				let batch: OperatorBatch =
-					persistent.range_batch(self.operator, self.read_range(&interval), limit);
+					return Ok(Vec::new());
+				}
+				let batch: OperatorBatch = self.persistent.range_batch(
+					self.operator,
+					self.read_range(&interval),
+					limit,
+					u64::MAX,
+				)?;
 				let complete = !batch.has_more || batch.items.is_empty();
-				let typed = self.decode_rows(&batch.items);
+				let items = decoded(batch);
+				let typed = self.decode_rows(&items);
 
 				if materializable && self.materializing {
 					let start = self.claim_start.clone().unwrap_or_else(|| interval.start.clone());
@@ -257,15 +286,15 @@ impl<K: Keyspace> PageSource for TierPager<'_, K> {
 					self.pending = Some((interval, materializable, consumed));
 				}
 
-				if batch.items.is_empty() {
+				if items.is_empty() {
 					continue;
 				}
-				return batch.items;
+				return Ok(items);
 			}
 
 			let Some(segment) = self.scan.segments().get(self.segment_index) else {
 				self.exhausted = true;
-				return Vec::new();
+				return Ok(Vec::new());
 			};
 			match segment {
 				Segment::Resident(interval) => {
@@ -284,10 +313,10 @@ impl<K: Keyspace> PageSource for TierPager<'_, K> {
 							if rows.is_empty() {
 								continue;
 							}
-							return rows
+							return Ok(rows
 								.into_iter()
 								.map(|(suffix, row)| (self.encode(&suffix), row))
-								.collect();
+								.collect());
 						}
 						ServedChunk::Gap => {
 							self.pending = Some((interval, false, 1));
@@ -365,7 +394,7 @@ pub(crate) struct GroupKeyspacePager<'a> {
 	tiers: &'a RangeTiers,
 	operator: OperatorId,
 	group: GroupId,
-	persistent: Option<&'a OperatorPersistentTier>,
+	persistent: &'a PersistentTier,
 	keyspaces: Vec<KeyspaceId>,
 	at: usize,
 	current: Option<Box<dyn PageSource + 'a>>,
@@ -376,7 +405,7 @@ impl<'a> GroupKeyspacePager<'a> {
 		tiers: &'a RangeTiers,
 		operator: OperatorId,
 		group: GroupId,
-		persistent: Option<&'a OperatorPersistentTier>,
+		persistent: &'a PersistentTier,
 		keyspaces: Vec<KeyspaceId>,
 	) -> Self {
 		Self {
@@ -414,11 +443,11 @@ impl<'a> GroupKeyspacePager<'a> {
 }
 
 impl PageSource for GroupKeyspacePager<'_> {
-	fn next_page(&mut self, limit: u64) -> Page {
+	fn next_page(&mut self, limit: u64) -> Result<Page> {
 		loop {
 			let Some(source) = self.current.as_mut() else {
 				let Some(keyspace) = self.keyspaces.get(self.at).copied() else {
-					return Vec::new();
+					return Ok(Vec::new());
 				};
 				self.at += 1;
 				self.current = Some(self.source_of(keyspace));
@@ -428,11 +457,11 @@ impl PageSource for GroupKeyspacePager<'_> {
 				self.current = None;
 				continue;
 			}
-			let page = source.next_page(limit);
+			let page = source.next_page(limit)?;
 			if page.is_empty() {
 				continue;
 			}
-			return page;
+			return Ok(page);
 		}
 	}
 
@@ -441,11 +470,82 @@ impl PageSource for GroupKeyspacePager<'_> {
 	}
 }
 
+pub(crate) struct GroupsPager<'a> {
+	tiers: &'a RangeTiers,
+	operator: OperatorId,
+	persistent: &'a PersistentTier,
+	groups: Vec<(GroupId, Vec<KeyspaceId>)>,
+	at: usize,
+	current: Option<GroupKeyspacePager<'a>>,
+	exhausted: bool,
+}
+
+impl<'a> GroupsPager<'a> {
+	pub(crate) fn new(
+		tiers: &'a RangeTiers,
+		operator: OperatorId,
+		persistent: &'a PersistentTier,
+		groups: &[GroupId],
+		occupied: u64,
+		dropped: bool,
+	) -> Self {
+		let groups: Vec<(GroupId, Vec<KeyspaceId>)> = groups
+			.iter()
+			.map(|group| (*group, keyspaces_of(*group, &group_inner_range(*group), occupied)))
+			.collect();
+		let exhausted = dropped || groups.is_empty();
+		Self {
+			tiers,
+			operator,
+			persistent,
+			groups,
+			at: 0,
+			current: None,
+			exhausted,
+		}
+	}
+}
+
+impl PageSource for GroupsPager<'_> {
+	fn next_page(&mut self, limit: u64) -> Result<Page> {
+		loop {
+			if self.exhausted {
+				return Ok(Vec::new());
+			}
+			let Some(source) = self.current.as_mut() else {
+				let Some((group, keyspaces)) = self.groups.get(self.at) else {
+					self.exhausted = true;
+					return Ok(Vec::new());
+				};
+				self.at += 1;
+				self.current = Some(GroupKeyspacePager::new(
+					self.tiers,
+					self.operator,
+					*group,
+					self.persistent,
+					keyspaces.clone(),
+				));
+				continue;
+			};
+			let page = source.next_page(limit)?;
+			if page.is_empty() {
+				self.current = None;
+				continue;
+			}
+			return Ok(page);
+		}
+	}
+
+	fn is_exhausted(&self) -> bool {
+		self.exhausted
+	}
+}
+
 pub(crate) struct ExhaustedPager;
 
 impl PageSource for ExhaustedPager {
-	fn next_page(&mut self, _limit: u64) -> Page {
-		Vec::new()
+	fn next_page(&mut self, _limit: u64) -> Result<Page> {
+		Ok(Vec::new())
 	}
 
 	fn is_exhausted(&self) -> bool {
@@ -457,7 +557,7 @@ pub(crate) struct PlanScan<'a> {
 	pub(crate) tiers: &'a RangeTiers,
 	pub(crate) operator: OperatorId,
 	pub(crate) group: GroupId,
-	pub(crate) persistent: Option<&'a OperatorPersistentTier>,
+	pub(crate) persistent: &'a PersistentTier,
 	pub(crate) start: Bound<Vec<u8>>,
 	pub(crate) end: Bound<Vec<u8>>,
 }

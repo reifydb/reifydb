@@ -11,8 +11,8 @@ use reifydb_runtime::{
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
+	range::OperatorRangeConfig,
 	store::OperatorStore,
-	tier::range::OperatorRangeConfig,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
 use test_each_file::test_each_path;

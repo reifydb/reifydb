@@ -25,13 +25,11 @@ use reifydb_store_multi::{
 	tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig},
 };
 use reifydb_store_operator::{
-	config::{OperatorPersistentConfig, OperatorResidentStateConfig, OperatorStoreConfig},
+	config::{OperatorPersistentConfig, OperatorStoreConfig, ResidentConfig},
+	persistent::PersistentTier,
+	range::OperatorRangeConfig,
+	resident::{Resident, ResidentLimits},
 	store::OperatorStore,
-	tier::{
-		persistent::OperatorPersistentTier,
-		range::OperatorRangeConfig,
-		resident::{OperatorResidentState, ResidentLimits},
-	},
 };
 use reifydb_store_single::{
 	SingleStore,
@@ -248,7 +246,7 @@ fn create_sqlite_store_with(
 		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("operator.db")),
 		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("operator.db")),
 	};
-	let operator_persistent = OperatorPersistentTier::sqlite(SqliteConfig {
+	let operator_persistent = PersistentTier::sqlite(SqliteConfig {
 		path: operator_path,
 		wal_autocheckpoint: None,
 		..config.clone()
@@ -256,8 +254,8 @@ fn create_sqlite_store_with(
 	operator_persistent.set_checkpoint_threshold(operator_wal_autocheckpoint);
 	let operator_store = OperatorStore::standard(OperatorStoreConfig {
 		range: operator_range,
-		resident: OperatorResidentStateConfig {
-			storage: OperatorResidentState::with_limits(operator_resident),
+		resident: ResidentConfig {
+			storage: Resident::with_limits(operator_resident),
 			flush_interval: operator_flush_interval,
 		},
 		..OperatorStoreConfig::sqlite(

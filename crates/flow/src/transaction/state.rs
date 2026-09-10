@@ -204,7 +204,7 @@ pub trait StateExtension: FlowTransaction {
 		}
 		let pending: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 		let version = self.version();
-		let batch = self.operator_store().group_page(id, &ordered, limit.saturating_add(1) as u64);
+		let batch = self.operator_store().group_page(id, &ordered, limit.saturating_add(1) as u64)?;
 		let truncated = batch.has_more;
 		let stored: Vec<Result<MultiVersionRow<TaggedKey>>> = batch
 			.items
@@ -245,7 +245,7 @@ pub trait StateExtension: FlowTransaction {
 		let version = self.version();
 		let store = self.operator_store();
 		let mut scan = store.state_last_iter(id, range);
-		let mut stored = next_stored(&mut scan, &prefix);
+		let mut stored = next_stored(&mut scan, &prefix)?;
 
 		let mut pending: Vec<(EncodedKey, PendingWrite)> = Vec::new();
 		let mut pending_end = prefixed_range.end.clone();
@@ -316,7 +316,7 @@ pub trait StateExtension: FlowTransaction {
 									version,
 								});
 							}
-							stored = next_stored(&mut scan, &prefix);
+							stored = next_stored(&mut scan, &prefix)?;
 						}
 					}
 				}
@@ -344,13 +344,18 @@ impl<T: FlowTransaction> StateExtension for T {}
 
 const UNDECODABLE_STATE_KEY: &str = "a scoped operator-state key must decode";
 
-fn next_stored(scan: &mut StateLastIter<'_>, prefix: &[u8]) -> Option<(EncodedKey, EncodedKey, EncodedBytes)> {
-	scan.next().map(|(inner, row)| {
-		let mut scoped = Vec::with_capacity(prefix.len() + inner.len());
-		scoped.extend_from_slice(prefix);
-		scoped.extend_from_slice(inner.as_slice());
-		(inner, EncodedKey::new(scoped), row.into_bytes())
-	})
+fn next_stored(scan: &mut StateLastIter<'_>, prefix: &[u8]) -> Result<Option<(EncodedKey, EncodedKey, EncodedBytes)>> {
+	scan.next()
+		.transpose()
+		.map(|entry| {
+			entry.map(|(inner, row)| {
+				let mut scoped = Vec::with_capacity(prefix.len() + inner.len());
+				scoped.extend_from_slice(prefix);
+				scoped.extend_from_slice(inner.as_slice());
+				(inner, EncodedKey::new(scoped), row.into_bytes())
+			})
+		})
+		.map_err(Into::into)
 }
 
 #[inline]

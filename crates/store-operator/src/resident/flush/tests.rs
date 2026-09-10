@@ -1,0 +1,927 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::{
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+	thread,
+	time::Instant,
+};
+
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::flow::{FlowId, OperatorId},
+	key::{
+		operator::{
+			keyspace::join::JoinLeft,
+			state::{GroupId, GroupStateKey},
+		},
+		typed::direction::Asc,
+	},
+	state::typed::typed_key,
+};
+use reifydb_runtime::{
+	actor::{
+		context::{CancellationToken, Context},
+		mailbox::ActorRef,
+		system::ActorSystem,
+		traits::{Actor, Directive},
+	},
+	context::clock::Clock,
+	shutdown::Shutdown,
+	sync::waiter::WaiterHandle,
+};
+use reifydb_sqlite::SqliteTempPathGuard;
+use reifydb_value::{
+	byte_size::ByteSize,
+	util::hash::Hash128,
+	value::{duration::Duration, row_number::RowNumber},
+};
+
+use super::actor::*;
+use crate::{
+	actor::Waker,
+	config::{OperatorPersistentConfig, OperatorStoreConfig},
+	persistent::{PersistentTier, sqlite::SqlitePersistent},
+	range::{OperatorRangeConfig, OperatorRangeTier},
+	resident::{
+		FILTER_KEYS, FLUSH_BUDGET_BYTES, FLUSH_INTERVAL, Resident, ResidentLimits,
+		evict::actor::ResidentEvictActor,
+	},
+	store::OperatorStore,
+	types::{BufferedState, FlushBatch, LayeredPre, OperatorWrite, StagedWrite},
+};
+
+const OP_A: OperatorId = OperatorId(1);
+const OP_B: OperatorId = OperatorId(2);
+const FLOW: FlowId = FlowId(7);
+
+fn operators_in(batch: &FlushBatch) -> Vec<OperatorId> {
+	let mut seen: Vec<OperatorId> = batch.writes.iter().map(|(operator, _, _)| *operator).collect();
+	seen.sort_unstable();
+	seen.dedup();
+	seen
+}
+
+fn tier(storage: &SqlitePersistent) -> PersistentTier {
+	PersistentTier::Sqlite(storage.clone())
+}
+
+fn store_fixture() -> (OperatorStore, SqlitePersistent, SqliteTempPathGuard) {
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock.clone());
+	let spawner = actor_system.spawner();
+	let (storage, guard) = SqlitePersistent::in_memory();
+	let store = OperatorStore::standard(OperatorStoreConfig {
+		resident: Default::default(),
+		persistent: Some(OperatorPersistentConfig::opened(PersistentTier::Sqlite(storage.clone()))),
+		range: Some(OperatorRangeConfig::testing()),
+		spawner,
+		clock,
+	});
+	(store, storage, guard)
+}
+
+fn buffer_fixture() -> (Resident, SqlitePersistent, ActorRef<FlushMessage>, SqliteTempPathGuard) {
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let spawner = actor_system.spawner();
+	let (storage, guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::new();
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone(), FLUSH_INTERVAL);
+	(buffer, storage, actor_ref, guard)
+}
+
+fn key(suffix: u8) -> EncodedKey {
+	typed_key::<JoinLeft>(GroupId::hashed(Hash128(7)), &Asc(RowNumber(suffix as u64))).into_encoded()
+}
+
+fn row(body: &str) -> EncodedPodRow {
+	EncodedPodRow::new(body.as_bytes())
+}
+
+fn entry_bytes(_suffix: u8, body: &str) -> ByteSize {
+	ByteSize::from_bytes((size_of::<Asc<RowNumber>>() + row(body).bytes().len()) as u64)
+}
+
+fn group_bytes() -> ByteSize {
+	ByteSize::from_bytes(size_of::<GroupId>() as u64)
+}
+
+fn tombstone_entry_bytes() -> ByteSize {
+	ByteSize::from_bytes(size_of::<Asc<RowNumber>>() as u64)
+}
+
+fn bucket_bytes(entries: u64, body: &str) -> ByteSize {
+	group_bytes().saturating_add(entry_bytes(0, body) * entries)
+}
+
+fn body(row: &EncodedPodRow) -> String {
+	String::from_utf8(row.body().to_vec()).expect("test bodies are utf8")
+}
+
+fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
+	let write = match store.state_get(operator, &GroupStateKey::bound_unchecked(key.clone())).unwrap() {
+		Some(pre) => OperatorWrite::Replace {
+			operator,
+			key: GroupStateKey::bound_unchecked(key),
+			pre_value_bytes: ByteSize::from_bytes(pre.bytes().len() as u64),
+			post: row,
+		},
+		None => OperatorWrite::Insert {
+			operator,
+			key: GroupStateKey::bound_unchecked(key),
+			post: row,
+		},
+	};
+	store.apply_batch(&[write]);
+}
+
+fn erase(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) {
+	let pre = match store.state_get(operator, &GroupStateKey::bound_unchecked(key.clone())).unwrap() {
+		Some(row) => LayeredPre::Present(ByteSize::from_bytes(row.bytes().len() as u64)),
+		None => LayeredPre::Absent,
+	};
+	store.apply_batch(&[OperatorWrite::Remove {
+		operator,
+		key: GroupStateKey::bound_unchecked(key.clone()),
+		pre,
+	}]);
+}
+
+#[test]
+fn a_buffered_write_becomes_durable_and_the_buffer_stops_shadowing_it() {
+	let (store, storage, _guard) = store_fixture();
+	put(&store, OP_A, key(1), row("written"));
+
+	assert!(
+		storage.get(OP_A, &key(1)).is_none(),
+		"the write must still be memory only before the flush; a synchronous sqlite write is exactly \
+		 what the resident state exists to remove from the flow commit path"
+	);
+
+	assert!(store.flush_pending_blocking(), "a healthy sqlite tier must report the flush as completed");
+
+	let durable = storage.get(OP_A, &key(1)).expect("the flush must have made the write durable");
+	assert_eq!(
+		body(&durable),
+		"written",
+		"a flush that does not reach sqlite loses every operator's state on restart while memory keeps \
+		 serving it, so nothing looks wrong until the process dies"
+	);
+
+	let served = store
+		.state_get(OP_A, &GroupStateKey::bound_unchecked(key(1)))
+		.unwrap()
+		.expect("the key must still read back after the flush");
+	assert_eq!(
+		body(&served),
+		"written",
+		"once complete_flush drops the in-flight layer the read has to fall through to sqlite; if the \
+		 flusher had not written it first the row would vanish under a live reader"
+	);
+}
+
+#[test]
+fn a_buffered_tombstone_flushes_as_a_delete_so_the_row_cannot_resurrect() {
+	let (store, storage, _guard) = store_fixture();
+	storage.seed_durable(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: GroupStateKey::bound_unchecked(key(1)),
+		post: row("durable"),
+	}]);
+
+	erase(&store, OP_A, &key(1));
+	assert!(store.flush_pending_blocking(), "the tombstone must reach the flusher");
+
+	assert!(
+		storage.get(OP_A, &key(1)).is_none(),
+		"the tombstone must be executed as a DELETE, not skipped as an absent write"
+	);
+	assert!(
+		store.state_get(OP_A, &GroupStateKey::bound_unchecked(key(1))).unwrap().is_none(),
+		"with the buffer drained the read reaches sqlite; a skipped delete resurrects the row the \
+		 operator already removed"
+	);
+}
+
+#[test]
+fn a_drop_flushes_before_the_writes_recorded_after_it() {
+	let (store, storage, _guard) = store_fixture();
+	storage.seed_durable(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: GroupStateKey::bound_unchecked(key(1)),
+		post: row("pre-drop-durable"),
+	}]);
+	storage.seed_durable(&[OperatorWrite::Insert {
+		operator: OP_B,
+		key: GroupStateKey::bound_unchecked(key(1)),
+		post: row("neighbour"),
+	}]);
+	put(&store, OP_A, key(2), row("pre-drop-buffered"));
+
+	store.drop_operator(OP_A).unwrap();
+	put(&store, OP_A, key(3), row("post-drop"));
+
+	assert!(store.flush_pending_blocking(), "the marker and the later write travel in one batch");
+
+	let survivor =
+		storage.get(OP_A, &key(3)).expect("the write recorded after the drop must survive the drop's DELETE");
+	assert_eq!(
+		body(&survivor),
+		"post-drop",
+		"running the writes before the markers deletes the post-drop write again, and a recreated \
+		 operator silently starts from empty state"
+	);
+	assert!(
+		storage.get(OP_A, &key(1)).is_none(),
+		"the marker must erase the flushed rows the drop only masked in memory"
+	);
+	assert!(
+		storage.get(OP_A, &key(2)).is_none(),
+		"a pre-drop buffered write must never be replayed into sqlite behind the drop"
+	);
+	assert!(
+		storage.get(OP_B, &key(1)).is_some(),
+		"the drop is scoped to one operator, otherwise one seal wipes the whole store"
+	);
+}
+
+#[test]
+fn a_checkpoint_upsert_and_a_checkpoint_delete_both_reach_the_table() {
+	let (buffer, storage, actor_ref, _guard) = buffer_fixture();
+
+	buffer.record_checkpoint_set(FLOW, CommitVersion(41));
+	buffer.record_checkpoint_set(FLOW, CommitVersion(42));
+	assert!(flush_pending(&actor_ref), "the checkpoint batch must reach the flusher");
+
+	assert_eq!(
+		storage.checkpoint_get(FLOW),
+		Some(CommitVersion(42)),
+		"the flushed checkpoint must be the latest recorded version; a plain INSERT would collide with \
+		 the previous row and a stale version replays slices that were already applied"
+	);
+
+	buffer.record_checkpoint_set(FLOW, CommitVersion(99));
+	assert!(flush_pending(&actor_ref), "a later checkpoint must overwrite the flushed one");
+	assert_eq!(
+		storage.checkpoint_get(FLOW),
+		Some(CommitVersion(99)),
+		"the upsert must move the version forward rather than keep the first write"
+	);
+
+	buffer.record_checkpoint_delete(FLOW);
+	assert!(flush_pending(&actor_ref), "the checkpoint tombstone must reach the flusher");
+	assert!(
+		storage.checkpoint_get(FLOW).is_none(),
+		"a deleted checkpoint must leave the table, otherwise a dropped flow resumes from the version \
+		 of a flow that no longer exists"
+	);
+}
+
+#[test]
+fn an_empty_flush_is_a_no_op_that_leaves_the_flusher_able_to_flush_again() {
+	let (store, storage, _guard) = store_fixture();
+
+	assert!(store.flush_pending_blocking(), "an empty buffer has nothing to write and must still succeed");
+	assert!(store.flush_pending_blocking(), "a second empty flush must behave exactly like the first");
+
+	put(&store, OP_A, key(1), row("after-the-empty-flushes"));
+	assert!(store.flush_pending_blocking(), "the flusher must still be usable after an empty drain");
+
+	let durable = storage.get(OP_A, &key(1)).expect("the write after two empty flushes must be durable");
+	assert_eq!(
+		body(&durable),
+		"after-the-empty-flushes",
+		"an empty tick that leaves the reentrancy flag set turns every later flush into a refused drain, \
+		 so the buffer grows without bound and nothing is ever persisted"
+	);
+}
+
+#[test]
+fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
+	let (storage, _guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::new();
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+	buffer.record_state_set(OP_A, key(1), row("first"));
+
+	let inside = Arc::new(AtomicBool::new(false));
+	let release = Arc::new(AtomicBool::new(false));
+	{
+		let inside = Arc::clone(&inside);
+		let release = Arc::clone(&release);
+		buffer.set_persist_interlock(Box::new(move || {
+			inside.store(true, Ordering::Release);
+			while !release.load(Ordering::Acquire) {
+				thread::yield_now();
+			}
+		}));
+	}
+
+	let running = {
+		let buffer = buffer.clone();
+		thread::spawn(move || flush_now(&buffer))
+	};
+	while !inside.load(Ordering::Acquire) {
+		thread::yield_now();
+	}
+
+	buffer.record_state_set(OP_A, key(2), row("second"));
+
+	let ran = Arc::new(AtomicBool::new(false));
+	let second = {
+		let buffer = buffer.clone();
+		let ran = Arc::clone(&ran);
+		thread::spawn(move || {
+			flush_now(&buffer);
+			ran.store(true, Ordering::Release);
+		})
+	};
+
+	thread::sleep(Duration::from_milliseconds_const(50).to_std());
+	assert!(
+		!ran.load(Ordering::Acquire),
+		"the second flush must wait while the first is still persisting; taking a batch beside a \
+		 running flush replaces the in-flight layer, and the first batch's rows are then invisible \
+		 to every reader while also not durable"
+	);
+	let BufferedState::Row(readable) = buffer.lookup_state(OP_A, &key(1)) else {
+		panic!("the running flusher's rows stay readable until it says they are durable")
+	};
+	assert_eq!(body(&readable), "first", "the running flusher's rows stay readable until it says they are durable");
+
+	release.store(true, Ordering::Release);
+	running.join().expect("the running flush must finish");
+	second.join().expect("the waiting flush must finish");
+
+	assert_eq!(
+		storage.get(OP_A, &key(1)).map(|row| body(&row)),
+		Some("first".to_string()),
+		"the first batch reached sqlite"
+	);
+	assert_eq!(
+		storage.get(OP_A, &key(2)).map(|row| body(&row)),
+		Some("second".to_string()),
+		"the waiting flush wrote what arrived while it waited; returning early instead would report \
+		 a durable store to a shutdown that then closes the connection under the running flusher"
+	);
+}
+
+#[test]
+fn a_write_proceeds_while_a_flush_is_persisting() {
+	let (storage, _guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::new();
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+	buffer.record_state_set(OP_A, key(1), row("first"));
+
+	let inside = Arc::new(AtomicBool::new(false));
+	let release = Arc::new(AtomicBool::new(false));
+	{
+		let inside = Arc::clone(&inside);
+		let release = Arc::clone(&release);
+		buffer.set_persist_interlock(Box::new(move || {
+			inside.store(true, Ordering::Release);
+			while !release.load(Ordering::Acquire) {
+				thread::yield_now();
+			}
+		}));
+	}
+
+	let running = {
+		let buffer = buffer.clone();
+		thread::spawn(move || flush_now(&buffer))
+	};
+	while !inside.load(Ordering::Acquire) {
+		thread::yield_now();
+	}
+
+	let wrote = Arc::new(AtomicBool::new(false));
+	let writer = {
+		let buffer = buffer.clone();
+		let wrote = Arc::clone(&wrote);
+		thread::spawn(move || {
+			let _applying = buffer.flush_guard();
+			buffer.record_state_set(OP_A, key(2), row("second"));
+			wrote.store(true, Ordering::Release);
+		})
+	};
+
+	let deadline = Instant::now() + Duration::from_milliseconds_const(2_000).to_std();
+	while !wrote.load(Ordering::Acquire) && Instant::now() < deadline {
+		thread::yield_now();
+	}
+	assert!(
+		wrote.load(Ordering::Acquire),
+		"an apply takes the staging guard the way StandardOperatorStore::apply_batch does, and it must \
+		 not wait for the sqlite commit; holding that guard across persist puts every operator-state \
+		 write behind the whole drain instead of behind one commit"
+	);
+
+	release.store(true, Ordering::Release);
+	running.join().expect("the running flush must finish");
+	writer.join().expect("the writer must finish");
+
+	let BufferedState::Row(readable) = buffer.lookup_state(OP_A, &key(2)) else {
+		panic!("the write taken during the flush must be readable")
+	};
+	assert_eq!(
+		body(&readable),
+		"second",
+		"the write taken during the flush must survive the flush that ran beside it"
+	);
+}
+
+#[test]
+fn a_cancelled_flusher_answers_the_pending_flush_instead_of_eating_it() {
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let spawner = actor_system.spawner();
+	let (storage, _guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::new();
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone(), FLUSH_INTERVAL);
+
+	let actor = ResidentFlushActor::new(buffer.clone(), FLUSH_INTERVAL);
+	let cancel = CancellationToken::new();
+	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
+	let mut state = actor.init(&ctx);
+
+	buffer.record_state_set(OP_A, key(1), row("pending-at-cancel"));
+	cancel.cancel();
+
+	let waiter = Arc::new(WaiterHandle::new());
+	let directive = actor.handle(
+		&mut state,
+		FlushMessage::FlushPending {
+			waiter: Arc::clone(&waiter),
+		},
+		&ctx,
+	);
+
+	assert!(matches!(directive, Directive::Stop), "a cancelled flusher must still stop");
+	assert!(
+		waiter.wait_timeout(Duration::from_milliseconds_const(1)),
+		"the waiter must be notified before the actor leaves; an unanswered caller waits out the full \
+		 timeout and then aborts the process on a flush that actually succeeded"
+	);
+	assert_eq!(
+		storage.get(OP_A, &key(1)).map(|row| body(&row)),
+		Some("pending-at-cancel".to_string()),
+		"the cancelled path must still drain, otherwise the reply is a lie in the other direction"
+	);
+}
+
+#[test]
+#[should_panic(expected = "operator state flush ran without an open connection")]
+fn a_flush_that_cannot_reach_sqlite_panics_instead_of_dropping_the_batch() {
+	let (storage, _guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::new();
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+
+	buffer.record_state_set(OP_A, key(1), row("never-written"));
+	storage.shutdown();
+
+	flush_now(&buffer);
+}
+
+#[test]
+#[should_panic(expected = "flushed before its sinks were attached")]
+fn a_flush_before_the_sinks_are_attached_panics_instead_of_dropping_the_batch() {
+	let buffer = Resident::new();
+	buffer.record_state_set(OP_A, key(1), row("never-written"));
+
+	flush_now(&buffer);
+}
+
+#[test]
+fn a_batch_spanning_more_than_one_chunk_writes_and_removes_every_row() {
+	let (store, storage, _guard) = store_fixture();
+	let suffixes: Vec<u8> = (0..150).collect();
+
+	for &suffix in &suffixes {
+		put(&store, OP_A, key(suffix), row("chunked"));
+	}
+	assert!(
+		store.flush_pending_blocking(),
+		"a set batch spanning a full 100-row chunk plus a 50-row remainder must still flush in one call"
+	);
+	for &suffix in &suffixes {
+		let durable = storage
+			.get(OP_A, &key(suffix))
+			.unwrap_or_else(|| panic!("key {suffix} must be durable once the chunked insert commits"));
+		assert_eq!(
+			body(&durable),
+			"chunked",
+			"every row must land regardless of which chunk it was batched into, or a stale VM-compiled plan \
+			 silently drops rows past the first chunk"
+		);
+	}
+
+	for &suffix in &suffixes {
+		erase(&store, OP_A, &key(suffix));
+	}
+	assert!(
+		store.flush_pending_blocking(),
+		"a remove batch spanning a full chunk plus a remainder must also flush in one call"
+	);
+	for &suffix in &suffixes {
+		assert!(
+			storage.get(OP_A, &key(suffix)).is_none(),
+			"every row must be deleted regardless of which chunk it was batched into"
+		);
+	}
+}
+
+#[test]
+fn the_memory_tier_reports_a_flush_as_complete_without_a_flusher() {
+	let store = OperatorStore::testing_memory();
+
+	assert!(
+		store.flush_pending_blocking(),
+		"the memory tier has nothing to persist, so reporting failure would abort a shutdown that is \
+		 already durable by definition"
+	);
+}
+
+#[test]
+fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
+	let (storage, _guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::with_budget(bucket_bytes(8, "v00"));
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+	for index in 0..67 {
+		buffer.record_state_set(OP_A, key(index), row(&format!("v{index}")));
+	}
+
+	flush_now(&buffer);
+
+	for index in 0..67 {
+		let durable = storage
+			.get(OP_A, &key(index))
+			.unwrap_or_else(|| panic!("key {index} must be durable once the bounded flush returns"));
+		assert_eq!(body(&durable), format!("v{index}"), "every slice must carry its own values to sqlite");
+	}
+	assert!(buffer.take_for_flush().is_none(), "a completed flush must leave nothing behind for the next tick");
+}
+
+#[test]
+fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
+	let (storage, _guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::with_budget(
+		group_bytes().saturating_add(entry_bytes(1, "early")).saturating_add(entry_bytes(2, "filler")),
+	);
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+	buffer.record_state_set(OP_A, key(1), row("early"));
+	buffer.record_state_set(OP_A, key(2), row("filler"));
+	buffer.record_state_set(OP_A, key(3), row("tail"));
+
+	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
+	storage.flush_batch(&first);
+	buffer.complete_flush();
+	assert_eq!(storage.get(OP_A, &key(1)).map(|row| body(&row)), Some("early".to_string()));
+
+	buffer.record_state_set(OP_A, key(1), row("late"));
+	flush_now(&buffer);
+
+	assert_eq!(
+		storage.get(OP_A, &key(1)).map(|row| body(&row)),
+		Some("late".to_string()),
+		"the rewrite must win; a split that replays the earlier value rolls the key back under a reader \
+		 that already saw the newer one"
+	);
+	assert_eq!(storage.get(OP_A, &key(3)).map(|row| body(&row)), Some("tail".to_string()));
+}
+
+#[test]
+fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let spawner = actor_system.spawner();
+	let (storage, _guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::with_budget(bucket_bytes(4, "at-shutdown"));
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone(), FLUSH_INTERVAL);
+
+	let actor = ResidentFlushActor::new(buffer.clone(), FLUSH_INTERVAL);
+	let ctx = Context::new(actor_ref, actor_system.clone(), CancellationToken::new());
+	let mut state = actor.init(&ctx);
+
+	for index in 0..41 {
+		buffer.record_state_set(OP_A, key(index), row("at-shutdown"));
+	}
+	let directive = actor.handle(&mut state, FlushMessage::Shutdown, &ctx);
+
+	assert!(matches!(directive, Directive::Stop), "the shutdown message must still stop the actor");
+	for index in 0..41 {
+		assert_eq!(
+			storage.get(OP_A, &key(index)).map(|row| body(&row)),
+			Some("at-shutdown".to_string()),
+			"key {index} was committed and acknowledged, so a shutdown that leaves it in memory loses it"
+		);
+	}
+	assert!(buffer.take_for_flush().is_none(), "the shutdown drain must empty the buffer, not bound it");
+}
+
+#[test]
+fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let spawner = actor_system.spawner();
+	let (storage, _guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::with_budget(bucket_bytes(4, "at-cancel"));
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone(), FLUSH_INTERVAL);
+
+	let actor = ResidentFlushActor::new(buffer.clone(), FLUSH_INTERVAL);
+	let cancel = CancellationToken::new();
+	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
+	let mut state = actor.init(&ctx);
+
+	for index in 0..37 {
+		buffer.record_state_set(OP_A, key(index), row("at-cancel"));
+	}
+	cancel.cancel();
+	let waiter = Arc::new(WaiterHandle::new());
+	actor.handle(
+		&mut state,
+		FlushMessage::FlushPending {
+			waiter: Arc::clone(&waiter),
+		},
+		&ctx,
+	);
+
+	for index in 0..37 {
+		assert_eq!(
+			storage.get(OP_A, &key(index)).map(|row| body(&row)),
+			Some("at-cancel".to_string()),
+			"key {index} must be durable before the cancelled flusher answers its waiter"
+		);
+	}
+}
+
+#[test]
+fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval() {
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let spawner = actor_system.spawner();
+	let (storage, _guard) = SqlitePersistent::in_memory();
+	let entries = 16u8;
+	let budget = bucket_bytes((entries - 1) as u64, "under-the-budget");
+	let buffer = Resident::with_budget(budget);
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone(), FLUSH_INTERVAL);
+	buffer.attach_evictor(Waker::Spawned(ResidentEvictActor::spawn(&spawner, buffer.clone())));
+	buffer.attach_flusher(Waker::Spawned(actor_ref));
+
+	for index in 0..entries - 1 {
+		buffer.record_state_set(OP_A, key(index), row("under-the-budget"));
+	}
+	thread::sleep(Duration::from_milliseconds_const(100).to_std());
+	assert!(
+		storage.get(OP_A, &key(0)).is_none(),
+		"a buffer resting exactly on the byte budget must not be flushed early; the budget is the window, \
+		 and a trigger that fires on it stops the buffer batching at all"
+	);
+
+	buffer.record_state_set(OP_A, key(entries - 1), row("under-the-budget"));
+
+	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
+	while Instant::now() < deadline && storage.get(OP_A, &key(0)).is_none() {
+		thread::sleep(Duration::from_milliseconds_const(5).to_std());
+	}
+	assert_eq!(
+		storage.get(OP_A, &key(0)).map(|row| body(&row)),
+		Some("under-the-budget".to_string()),
+		"crossing the byte budget must make the coldest key durable on its own; the flush interval here \
+		 is an hour, so anything less means only the timer can ever drain the buffer"
+	);
+	assert!(
+		buffer.metrics().backlog <= buffer.budget(),
+		"the pressure pass must leave the buffer at or under its cap; a pass that stops before it gets \
+		 there lets the buffer grow without bound"
+	);
+}
+
+#[test]
+fn a_hair_over_the_cap_drains_the_whole_flow_and_its_checkpoint_in_one_batch() {
+	let (storage, _guard) = SqlitePersistent::in_memory();
+	let large = "x".repeat(64 * 1024);
+	let resident = 64u8;
+	let cap = bucket_bytes(resident as u64, &large);
+	let buffer = Resident::with_budget(cap);
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+
+	let mut writes: Vec<OperatorWrite> = (0..resident)
+		.map(|index| OperatorWrite::Insert {
+			operator: OP_A,
+			key: GroupStateKey::bound_unchecked(key(index)),
+			post: row(&large),
+		})
+		.collect();
+	writes.push(OperatorWrite::Insert {
+		operator: OP_B,
+		key: GroupStateKey::bound_unchecked(key(resident)),
+		post: row(&large),
+	});
+	buffer.apply_batch_with_checkpoints(&writes, &[(FLOW, CommitVersion(41))], &[]);
+
+	let slice = buffer.take_for_flush().expect("a buffer past its cap must yield a slice");
+
+	assert_eq!(
+		operators_in(&slice),
+		vec![OP_A, OP_B],
+		"both operators of the flow must leave in one batch; stopping at the byte budget between them \
+		 strands the second operator's rows while the flow's checkpoint claims they are applied"
+	);
+	assert_eq!(
+		slice.writes.len(),
+		resident as usize + 1,
+		"one entry of overshoot must drain every row of the flow that owns it; a partial take strands \
+		 rows in memory that the durable checkpoint already claims are applied"
+	);
+	assert!(
+		slice.bytes > cap,
+		"the byte budget is a hint, not a cut: keeping the flow whole must be allowed to overshoot it, \
+		 otherwise the split that the checkpoint gate exists to prevent comes back"
+	);
+	assert_eq!(
+		slice.checkpoints.get(&FLOW).copied().flatten(),
+		Some(CommitVersion(41)),
+		"the checkpoint must ride out in the same batch as the last of its flow's state; written earlier \
+		 it replays nothing, written later a crash between the two replays state that is already durable"
+	);
+}
+
+fn flusher_fixture() -> (ResidentFlushActor, Resident, Context<FlushMessage>, ActorSystem, SqliteTempPathGuard) {
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let spawner = actor_system.spawner();
+	let (storage, guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::new();
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone(), FLUSH_INTERVAL);
+	let actor = ResidentFlushActor::new(buffer.clone(), FLUSH_INTERVAL);
+	let ctx = Context::new(actor_ref, actor_system.clone(), CancellationToken::new());
+	(actor, buffer, ctx, actor_system, guard)
+}
+
+#[test]
+fn a_flusher_with_no_config_attached_keeps_the_compiled_default_budget() {
+	let (_actor, buffer, _ctx, _system, _guard) = flusher_fixture();
+
+	assert_eq!(
+		buffer.budget(),
+		FLUSH_BUDGET_BYTES,
+		"an unattached flusher must keep the compiled default rather than adopt zero"
+	);
+	assert_eq!(
+		FLUSH_BUDGET_BYTES,
+		ByteSize::from_kib(64),
+		"the compiled fallback must be the testing budget under a test build"
+	);
+}
+
+trait SeedDurable {
+	fn seed_durable(&self, writes: &[OperatorWrite]);
+}
+
+impl SeedDurable for SqlitePersistent {
+	fn seed_durable(&self, writes: &[OperatorWrite]) {
+		let mut batch = FlushBatch::default();
+		for write in writes {
+			let (operator, key, post) = match write {
+				OperatorWrite::Insert {
+					operator,
+					key,
+					post,
+				} => (*operator, key, Some(post.clone())),
+				OperatorWrite::Replace {
+					operator,
+					key,
+					post,
+					..
+				} => (*operator, key, Some(post.clone())),
+				OperatorWrite::Remove {
+					operator,
+					key,
+					..
+				} => (*operator, key, None),
+			};
+			let write = match post {
+				Some(row) => StagedWrite::Set(row),
+				None => StagedWrite::Remove,
+			};
+			batch.writes.push((operator, key.clone(), write));
+		}
+		self.flush_batch(&batch);
+	}
+}
+
+#[test]
+fn a_buffer_that_fills_with_tombstones_flushes_even_though_they_cost_almost_no_bytes() {
+	let limit = 32u64;
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let spawner = actor_system.spawner();
+	let (storage, _guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::with_limits(ResidentLimits {
+		entries: limit,
+		..ResidentLimits::default()
+	});
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone(), FLUSH_INTERVAL);
+	buffer.attach_evictor(Waker::Spawned(ResidentEvictActor::spawn(&spawner, buffer.clone())));
+	buffer.attach_flusher(Waker::Spawned(actor_ref));
+
+	let tombstone_bytes = group_bytes().saturating_add(tombstone_entry_bytes() * (limit + 1));
+	assert!(
+		tombstone_bytes.as_bytes() * 8 < FLUSH_BUDGET_BYTES.as_bytes(),
+		"the flood must stay an order of magnitude under the byte budget, or this test proves nothing about \
+		 the entry trigger"
+	);
+
+	for index in 0..=limit as u8 {
+		buffer.record_state_remove(OP_A, key(index));
+	}
+
+	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
+	while Instant::now() < deadline && buffer.resident_entries() > limit as usize {
+		thread::sleep(Duration::from_milliseconds_const(5).to_std());
+	}
+	assert!(
+		buffer.resident_entries() <= limit as usize,
+		"a tombstone carries a key but no row, so it is nearly free in bytes and can never trip the byte \
+		 budget; without an entry ceiling the resident map grows without bound and every range read walks \
+		 the whole graveyard; the buffer holds {} entries against a ceiling of {}",
+		buffer.resident_entries(),
+		limit
+	);
+}
+
+#[test]
+fn a_tombstone_count_resting_on_the_entry_limit_does_not_flush() {
+	let limit = 32u64;
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let spawner = actor_system.spawner();
+	let (storage, _guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::with_limits(ResidentLimits {
+		entries: limit,
+		..ResidentLimits::default()
+	});
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone(), FLUSH_INTERVAL);
+	buffer.attach_flusher(Waker::Spawned(actor_ref));
+
+	for index in 0..limit as u8 {
+		buffer.record_state_remove(OP_A, key(index));
+	}
+
+	thread::sleep(Duration::from_milliseconds_const(100).to_std());
+	assert_eq!(
+		buffer.resident_entries(),
+		limit as usize,
+		"the entry limit is the window, exactly as the byte budget is; a trigger that fires on it stops the \
+		 buffer batching at all"
+	);
+}
+
+fn rebuilding_fixture() -> (Resident, SqlitePersistent, SqliteTempPathGuard) {
+	let (storage, guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::new();
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+	storage.seed_durable(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: GroupStateKey::bound_unchecked(key(1)),
+		post: row("already-durable"),
+	}]);
+	(buffer, storage, guard)
+}
+
+#[test]
+fn a_key_flushed_while_the_filter_is_rebuilding_is_in_the_filter_that_rebuild_commits() {
+	let (buffer, _storage, _guard) = rebuilding_fixture();
+	let filter = buffer.filter();
+
+	let handle = filter.begin_rebuild(FILTER_KEYS);
+	assert!(
+		!filter.is_enabled(),
+		"a rebuild over populated state runs with no armed filter behind it, which is the whole window \
+		 this test is about; if the filter is already armed here the write below is covered for the wrong \
+		 reason"
+	);
+
+	buffer.record_state_set(OP_A, key(2), row("written-during-the-rebuild"));
+	buffer.flush_all();
+
+	filter.commit_rebuild(handle);
+
+	assert!(
+		!buffer.never_persisted(OP_A, &key(2)),
+		"the key was flushed to sqlite while the rebuild was in flight and the committed filter denies it; \
+		 every read of that row now stops at the filter and reports absent while the row sits in sqlite"
+	);
+}

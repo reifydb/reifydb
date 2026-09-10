@@ -87,12 +87,15 @@ impl CommitterActor {
 		let completion_committer = self.committer.clone();
 		let completion: CommitCompletion = Box::new(move |result| match result {
 			Ok(version) => {
-				apply_operator_state_with_checkpoints(
+				if let Err(err) = apply_operator_state_with_checkpoints(
 					&completion_committer.operators,
 					&combined,
 					&checkpoints,
 					&checkpoint_deletes,
-				);
+				) {
+					(reply)(Err(err));
+					return;
+				}
 				if produced_output {
 					completion_committer.materialization.record_output(version);
 				}
@@ -273,7 +276,7 @@ impl Committer {
 
 		let commit_version = transaction.commit_unchecked()?;
 
-		apply_operator_state_with_checkpoints(&self.operators, &combined, &checkpoints, &checkpoint_deletes);
+		apply_operator_state_with_checkpoints(&self.operators, &combined, &checkpoints, &checkpoint_deletes)?;
 		self.post_commit_slice(&checkpoints, &checkpoint_deletes);
 		Ok((commit_version, combined))
 	}
@@ -503,7 +506,7 @@ mod commit_integration {
 
 		for flow in 1..=2u64 {
 			assert_eq!(
-				committer.operators.checkpoint_get(FlowId(flow)),
+				committer.operators.checkpoint_get(FlowId(flow)).unwrap(),
 				Some(CommitVersion(100 + flow)),
 				"the checkpoint must instead land in the operator store, where the flush writes it in \
 				 the same transaction as the state it belongs to"
@@ -558,12 +561,13 @@ mod commit_integration {
 			assert!(results[0].1.is_err(), "a commit that cannot begin must fail the slice commit");
 		}
 		assert_eq!(
-			store.get(operator, &EncodedKey::new(inner.as_slice())),
+			store.state_get(operator, &GroupStateKey::bound_unchecked(EncodedKey::new(inner.as_slice())))
+				.unwrap(),
 			None,
 			"a failed commit must not leak its operator-state writes into the store"
 		);
 		assert_eq!(
-			store.total_bytes(),
+			store.total_bytes().unwrap(),
 			ByteSize::ZERO,
 			"the operator state store must be byte-for-byte untouched"
 		);
@@ -586,7 +590,7 @@ mod commit_integration {
 		let slice = state_slice(&[(op_a, &inner_a, 1), (op_b, &inner_b, 2)]);
 
 		assert_eq!(
-			store.total_bytes(),
+			store.total_bytes().unwrap(),
 			ByteSize::ZERO,
 			"precondition: the store must be empty before the slice is submitted, or the post-commit read proves nothing"
 		);
@@ -610,10 +614,15 @@ mod commit_integration {
 		);
 
 		assert_eq!(
-			store.get(op_a, &EncodedKey::new(inner_a.as_slice())),
+			store.state_get(op_a, &GroupStateKey::bound_unchecked(EncodedKey::new(inner_a.as_slice())))
+				.unwrap(),
 			Some(EncodedPodRow::new(&[1; 4])),
 			"the committed slice's state must be readable from the store"
 		);
-		assert_eq!(store.get(op_b, &EncodedKey::new(inner_b.as_slice())), Some(EncodedPodRow::new(&[2; 4])));
+		assert_eq!(
+			store.state_get(op_b, &GroupStateKey::bound_unchecked(EncodedKey::new(inner_b.as_slice())))
+				.unwrap(),
+			Some(EncodedPodRow::new(&[2; 4]))
+		);
 	}
 }

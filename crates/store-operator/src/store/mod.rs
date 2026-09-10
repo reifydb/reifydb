@@ -3,7 +3,7 @@
 
 mod census;
 mod checkpoint;
-pub(crate) mod occupancy;
+pub mod occupancy;
 mod pager;
 pub mod state;
 #[cfg(test)]
@@ -36,24 +36,24 @@ use reifydb_store::metrics::PageCacheMetrics;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{
+	actor::Waker,
 	config::OperatorPersistentConfig,
-	tier::{
-		persistent::{filter::OperatorStateKeySource, sqlite::SqliteOperatorStorage},
-		range::{OperatorRangeConfig, evict::actor::RangeEvictActor},
-		resident::{FILTER_KEYS, evict::actor::ResidentEvictActor, flush::actor::ResidentFlushActor},
-	},
+	persistent::filter::OperatorStateKeySource,
+	range::{OperatorRangeConfig, evict::actor::RangeEvictActor},
+	resident::{FILTER_KEYS, evict::actor::ResidentEvictActor, flush::actor::ResidentFlushActor},
 };
 use crate::{
 	config::OperatorStoreConfig,
-	store::{census::OperatorCensus, occupancy::KeyspaceOccupancy},
-	tier::{
-		persistent::OperatorPersistentTier,
-		range::tiers::{OperatorRangeKeyspaceMetrics, RangeTiers},
-		resident::{
-			OperatorResidentState,
-			flush::actor::{FlushMessage, flush_now, flush_pending},
-		},
+	persistent::{Enumerate, Persistent, PersistentTier},
+	range::{
+		OperatorRangeTier, RangeSink,
+		tiers::{RangeKeyspaceMetrics, RangeTiers},
 	},
+	resident::{
+		Resident,
+		flush::actor::{FlushMessage, flush_now, flush_pending},
+	},
+	store::{census::OperatorCensus, occupancy::KeyspaceOccupancy},
 };
 
 #[repr(u8)]
@@ -71,11 +71,11 @@ type CheckpointInterlock = Box<dyn Fn(&StandardOperatorStore) + Send + Sync>;
 pub struct StandardOperatorStore(Arc<StandardOperatorStoreInner>);
 
 pub struct StandardOperatorStoreInner {
-	pub(crate) resident: OperatorResidentState,
+	pub(crate) resident: Resident,
 	pub(crate) occupancy: KeyspaceOccupancy,
 	pub(crate) census: OperatorCensus,
-	pub(crate) persistent: Option<OperatorPersistentTier>,
-	pub(crate) range: Option<RangeTiers>,
+	pub(crate) persistent: PersistentTier,
+	pub(crate) range: OperatorRangeTier,
 	pub(crate) flush: Option<ActorRef<FlushMessage>>,
 	#[allow(dead_code)]
 	pub(crate) spawner: ActorSpawner,
@@ -106,14 +106,20 @@ impl StandardOperatorStore {
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush) = {
 			if let Some(persistent) = config.persistent.as_ref() {
-				resident.attach_sinks(persistent.storage.clone(), range.clone());
+				resident.attach_sinks(
+					persistent.storage.clone(),
+					OperatorRangeTier::standard(range.clone()),
+				);
 			}
 			let flush = config
 				.persistent
 				.as_ref()
 				.map(|_| ResidentFlushActor::spawn(&spawner, resident.clone(), flush_interval));
 			if config.persistent.is_some() {
-				resident.attach_evictor(ResidentEvictActor::spawn(&spawner, resident.clone()));
+				resident.attach_evictor(Waker::Spawned(ResidentEvictActor::spawn(
+					&spawner,
+					resident.clone(),
+				)));
 			}
 			if let Some(range) = range.as_ref() {
 				RangeEvictActor::spawn(
@@ -122,23 +128,30 @@ impl StandardOperatorStore {
 					default::store::OPERATOR_RANGE_RELIEF_INTERVAL,
 				);
 			}
-			(config.persistent.map(|persistent| persistent.storage), flush)
+			(
+				config.persistent
+					.map(|persistent| persistent.storage)
+					.unwrap_or(PersistentTier::Absent),
+				flush,
+			)
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let (persistent, flush): (Option<OperatorPersistentTier>, Option<ActorRef<FlushMessage>>) = match config.persistent {
-			Some(persistent) => match persistent.storage {},
-			None => (None, None),
-		};
+		let (persistent, flush): (PersistentTier, Option<ActorRef<FlushMessage>>) = (
+			config.persistent.map(|persistent| persistent.storage).unwrap_or(PersistentTier::Absent),
+			None,
+		);
 
-		let range = persistent.as_ref().and(range);
+		let range = OperatorRangeTier::standard(if persistent.is_absent() {
+			None
+		} else {
+			range
+		});
 		if let Some(flush) = flush.as_ref() {
-			resident.attach_flusher(flush.clone());
+			resident.attach_flusher(Waker::Spawned(flush.clone()));
 		}
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		if let Some(persistent) = persistent.as_ref()
-			&& !persistent.census().is_empty()
-		{
+		if !persistent.is_absent() && persistent.census().is_ok_and(|census| !census.is_empty()) {
 			let actor = FilterActor::spawn(&spawner);
 			let _ = actor.send(FilterMessage::Register {
 				filter: resident.filter(),
@@ -153,7 +166,7 @@ impl StandardOperatorStore {
 		Self(Arc::new(StandardOperatorStoreInner {
 			resident,
 			occupancy: KeyspaceOccupancy::new(),
-			census: OperatorCensus::seeded(persistent.as_ref()),
+			census: OperatorCensus::seeded(&persistent),
 			persistent,
 			range,
 			flush,
@@ -178,13 +191,16 @@ impl StandardOperatorStore {
 	#[cfg(not(test))]
 	pub(crate) fn checkpoint_interlock(&self) {}
 
-	pub fn resident_state(&self) -> &OperatorResidentState {
+	pub fn resident(&self) -> &Resident {
 		&self.resident
 	}
 
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn persistent(&self) -> Option<&SqliteOperatorStorage> {
-		self.persistent.as_ref().map(OperatorPersistentTier::sqlite_storage)
+	pub fn occupancy(&self) -> &KeyspaceOccupancy {
+		&self.occupancy
+	}
+
+	pub fn persistent(&self) -> &PersistentTier {
+		&self.persistent
 	}
 
 	pub fn flush_pending_blocking(&self) -> bool {
@@ -194,12 +210,12 @@ impl StandardOperatorStore {
 		}
 	}
 
-	pub fn range(&self) -> Option<&RangeTiers> {
-		self.range.as_ref()
+	pub fn range(&self) -> &OperatorRangeTier {
+		&self.range
 	}
 
-	pub fn range_keyspace_metrics(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
-		self.range.as_ref().map(RangeTiers::keyspace_metrics).unwrap_or_default()
+	pub fn range_keyspace_metrics(&self) -> Vec<RangeKeyspaceMetrics> {
+		self.range.keyspace_metrics()
 	}
 
 	pub fn filter_metrics(&self) -> FilterMetrics {
@@ -207,14 +223,13 @@ impl StandardOperatorStore {
 	}
 
 	pub fn persistent_page_cache_metrics(&self) -> Option<PageCacheMetrics> {
-		self.persistent.as_ref().map(OperatorPersistentTier::page_cache_metrics)
+		self.persistent.page_cache_metrics()
 	}
 
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
-		let mut collectors =
-			self.persistent.as_ref().map(OperatorPersistentTier::metrics_collectors).unwrap_or_default();
-		if let Some(range) = &self.range {
-			collectors.push(Arc::new(range.clone()));
+		let mut collectors = Persistent::metrics_collectors(&self.persistent);
+		if let Some(tiers) = self.range.tiers() {
+			collectors.push(Arc::new(tiers.clone()));
 		}
 		collectors
 	}
@@ -222,11 +237,11 @@ impl StandardOperatorStore {
 
 impl Shutdown for StandardOperatorStore {
 	fn shutdown(&self) {
-		let Some(persistent) = self.persistent.as_ref() else {
+		if self.persistent.is_absent() {
 			return;
-		};
+		}
 		flush_now(&self.resident);
-		persistent.shutdown();
+		self.persistent.shutdown();
 	}
 }
 
@@ -265,14 +280,19 @@ impl OperatorStore {
 		})
 	}
 
-	pub fn resident_state(&self) -> &OperatorResidentState {
+	pub fn resident(&self) -> &Resident {
 		match self {
-			Self::Standard(store) => store.resident_state(),
+			Self::Standard(store) => store.resident(),
 		}
 	}
 
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn persistent(&self) -> Option<&SqliteOperatorStorage> {
+	pub fn occupancy(&self) -> &KeyspaceOccupancy {
+		match self {
+			Self::Standard(store) => store.occupancy(),
+		}
+	}
+
+	pub fn persistent(&self) -> &PersistentTier {
 		match self {
 			Self::Standard(store) => store.persistent(),
 		}
@@ -284,13 +304,13 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn range(&self) -> Option<&RangeTiers> {
+	pub fn range(&self) -> &OperatorRangeTier {
 		match self {
 			Self::Standard(store) => store.range(),
 		}
 	}
 
-	pub fn range_keyspace_metrics(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
+	pub fn range_keyspace_metrics(&self) -> Vec<RangeKeyspaceMetrics> {
 		match self {
 			Self::Standard(store) => store.range_keyspace_metrics(),
 		}
@@ -311,7 +331,7 @@ impl OperatorStore {
 
 impl CheckpointFloor for OperatorStore {
 	fn floor(&self) -> Option<CommitVersion> {
-		self.checkpoint_floor()
+		self.checkpoint_floor().ok().flatten()
 	}
 }
 

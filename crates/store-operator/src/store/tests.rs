@@ -13,7 +13,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::{GroupId, KeyspaceId, group_inner_range, keyspace_inner_range},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, group_inner_range, keyspace_inner_range},
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::SqliteTempPathGuard;
@@ -22,13 +22,11 @@ use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
 use crate::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
+	persistent::{PersistentTier, sqlite::SqlitePersistent},
+	range::OperatorRangeConfig,
+	resident::flush::actor::flush_now,
 	store::{CheckpointInterlock, StandardOperatorStore},
-	tier::{
-		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
-		range::OperatorRangeConfig,
-		resident::flush::actor::flush_now,
-	},
-	types::{DurablePre, OperatorWrite},
+	types::{LayeredPre, OperatorWrite},
 };
 
 const FLOW_A: FlowId = FlowId(1);
@@ -38,10 +36,10 @@ fn store_fixture() -> (StandardOperatorStore, SqliteTempPathGuard) {
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock.clone());
 	let spawner = actor_system.spawner();
-	let (storage, guard) = SqliteOperatorStorage::in_memory();
+	let (storage, guard) = SqlitePersistent::in_memory();
 	let store = StandardOperatorStore::new(OperatorStoreConfig {
 		resident: Default::default(),
-		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage))),
+		persistent: Some(OperatorPersistentConfig::opened(PersistentTier::Sqlite(storage))),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
 		clock,
@@ -89,24 +87,28 @@ fn all() -> EncodedKeyRange {
 fn insert(suffix: u8, value: &str) -> OperatorWrite {
 	OperatorWrite::Insert {
 		operator: OP,
-		key: key(suffix),
+		key: GroupStateKey::bound_unchecked(key(suffix)),
 		post: row(value),
 	}
 }
 
 fn remove(store: &StandardOperatorStore, suffix: u8) -> OperatorWrite {
 	let pre = store
-		.get(OP, &key(suffix))
-		.map_or(DurablePre::Absent, |row| DurablePre::Present(ByteSize::from_bytes(row.bytes().len() as u64)));
+		.state_get(OP, &GroupStateKey::bound_unchecked(key(suffix)))
+		.unwrap()
+		.map_or(LayeredPre::Absent, |row| LayeredPre::Present(ByteSize::from_bytes(row.bytes().len() as u64)));
 	OperatorWrite::Remove {
 		operator: OP,
-		key: key(suffix),
+		key: GroupStateKey::bound_unchecked(key(suffix)),
 		pre,
 	}
 }
 
 fn last(store: &StandardOperatorStore) -> Option<(u8, String)> {
-	store.state_last_iter(OP, all()).next().map(|(key, row)| (key.as_slice()[key.len() - 1], body(&row)))
+	store.state_last_iter(OP, all())
+		.next()
+		.map(|entry| entry.unwrap())
+		.map(|(key, row)| (key.as_slice()[key.len() - 1], body(&row)))
 }
 
 const SWEEP_BUDGET: u64 = 1024;
@@ -122,7 +124,7 @@ fn sweep_key(group: GroupId, keyspace: KeyspaceId, suffix: u64) -> EncodedKey {
 fn sweep_insert(group: GroupId, keyspace: KeyspaceId, suffix: u64, value: &str) -> OperatorWrite {
 	OperatorWrite::Insert {
 		operator: OP,
-		key: sweep_key(group, keyspace, suffix),
+		key: GroupStateKey::bound_unchecked(sweep_key(group, keyspace, suffix)),
 		post: row(value),
 	}
 }
@@ -145,11 +147,12 @@ fn encoded_order(groups: &[GroupId]) -> Vec<GroupId> {
 	ordered
 }
 
-fn per_group_pages(store: &StandardOperatorStore, groups: &[GroupId]) -> Vec<(EncodedKey, String)> {
+fn per_group_pages(store: &StandardOperatorStore, groups: &[GroupId]) -> Vec<(GroupStateKey, String)> {
 	let mut out = Vec::new();
 	for group in encoded_order(groups) {
 		out.extend(store
 			.range_batch(OP, group_inner_range(group), SWEEP_BUDGET)
+			.unwrap()
 			.items
 			.into_iter()
 			.map(|(key, value)| (key, body(&value))));
@@ -157,8 +160,13 @@ fn per_group_pages(store: &StandardOperatorStore, groups: &[GroupId]) -> Vec<(En
 	out
 }
 
-fn group_page(store: &StandardOperatorStore, groups: &[GroupId]) -> Vec<(EncodedKey, String)> {
-	store.group_page(OP, groups, SWEEP_BUDGET).items.into_iter().map(|(key, value)| (key, body(&value))).collect()
+fn group_page(store: &StandardOperatorStore, groups: &[GroupId]) -> Vec<(GroupStateKey, String)> {
+	store.group_page(OP, groups, SWEEP_BUDGET)
+		.unwrap()
+		.items
+		.into_iter()
+		.map(|(key, value)| (key, body(&value)))
+		.collect()
 }
 
 #[test]
@@ -193,18 +201,19 @@ fn a_group_page_hides_a_buffered_tombstone_over_a_durable_row() {
 
 	let doomed = sweep_key(groups[0], KeyspaceId::JOIN_LEFT, 1);
 	let pre = store
-		.get(OP, &doomed)
-		.map_or(DurablePre::Absent, |row| DurablePre::Present(ByteSize::from_bytes(row.bytes().len() as u64)));
+		.state_get(OP, &GroupStateKey::bound_unchecked(doomed.clone()))
+		.unwrap()
+		.map_or(LayeredPre::Absent, |row| LayeredPre::Present(ByteSize::from_bytes(row.bytes().len() as u64)));
 	store.apply_batch(&[OperatorWrite::Remove {
 		operator: OP,
-		key: doomed.clone(),
+		key: GroupStateKey::bound_unchecked(doomed.clone()),
 		pre,
 	}]);
 
 	let swept = group_page(&store, &groups);
 
 	assert_eq!(swept, per_group_pages(&store, &groups));
-	assert!(!swept.iter().any(|(key, _)| key == &doomed));
+	assert!(!swept.iter().any(|(key, _)| key.as_encoded() == &doomed));
 	assert_eq!(swept.len(), 7);
 }
 
@@ -229,7 +238,7 @@ fn a_group_page_reports_more_work_when_the_budget_cuts_the_set_short() {
 	seed_groups(&store, &groups);
 	flush(&store);
 
-	let batch = store.group_page(OP, &groups, 3);
+	let batch = store.group_page(OP, &groups, 3).unwrap();
 
 	assert_eq!(batch.items.len(), 3);
 	assert!(batch.has_more);
@@ -285,16 +294,16 @@ fn a_buffered_row_above_the_durable_tail_wins_the_last_read() {
 fn a_flush_between_the_two_tier_reads_cannot_hide_a_buffered_checkpoint_delete() {
 	let (store, _guard) = store_fixture();
 
-	store.checkpoint_set(FLOW_A, CommitVersion(10));
-	store.checkpoint_set(FLOW_B, CommitVersion(20));
+	store.checkpoint_set(FLOW_A, CommitVersion(10)).unwrap();
+	store.checkpoint_set(FLOW_B, CommitVersion(20)).unwrap();
 	flush(&store);
-	assert_eq!(store.checkpoint_list(), vec![FLOW_A, FLOW_B], "both checkpoints must start out durable");
+	assert_eq!(store.checkpoint_list().unwrap(), vec![FLOW_A, FLOW_B], "both checkpoints must start out durable");
 
-	store.checkpoint_delete(FLOW_A);
+	store.checkpoint_remove(FLOW_A).unwrap();
 	store.attach_checkpoint_interlock(flush_once_interlock());
 
 	assert_eq!(
-		store.checkpoint_list(),
+		store.checkpoint_list().unwrap(),
 		vec![FLOW_B],
 		"the delete is buffered and the interlock flushes it mid-merge; reading the persistent tier first \
 		 would see the pre-flush row for flow A and then find an already-drained buffer, resurrecting a \
@@ -306,15 +315,19 @@ fn a_flush_between_the_two_tier_reads_cannot_hide_a_buffered_checkpoint_delete()
 fn a_flush_between_the_two_tier_reads_cannot_raise_the_floor_over_a_buffered_checkpoint() {
 	let (store, _guard) = store_fixture();
 
-	store.checkpoint_set(FLOW_A, CommitVersion(100));
+	store.checkpoint_set(FLOW_A, CommitVersion(100)).unwrap();
 	flush(&store);
-	assert_eq!(store.checkpoint_floor(), Some(CommitVersion(100)), "the durable checkpoint sets the floor");
+	assert_eq!(
+		store.checkpoint_floor().unwrap(),
+		Some(CommitVersion(100)),
+		"the durable checkpoint sets the floor"
+	);
 
-	store.checkpoint_set(FLOW_B, CommitVersion(50));
+	store.checkpoint_set(FLOW_B, CommitVersion(50)).unwrap();
 	store.attach_checkpoint_interlock(flush_once_interlock());
 
 	assert_eq!(
-		store.checkpoint_floor(),
+		store.checkpoint_floor().unwrap(),
 		Some(CommitVersion(50)),
 		"the lower checkpoint is buffered and the interlock flushes it mid-merge; reading the persistent \
 		 tier first would miss it in both reads and leave the floor at 100, over a checkpoint at 50"
@@ -325,14 +338,14 @@ fn a_flush_between_the_two_tier_reads_cannot_raise_the_floor_over_a_buffered_che
 fn a_checkpoint_merge_without_an_interlock_is_unaffected() {
 	let (store, _guard) = store_fixture();
 
-	store.checkpoint_set(FLOW_A, CommitVersion(10));
-	store.checkpoint_set(FLOW_B, CommitVersion(20));
+	store.checkpoint_set(FLOW_A, CommitVersion(10)).unwrap();
+	store.checkpoint_set(FLOW_B, CommitVersion(20)).unwrap();
 	flush(&store);
-	store.checkpoint_delete(FLOW_A);
+	store.checkpoint_remove(FLOW_A).unwrap();
 
-	assert_eq!(store.checkpoint_list(), vec![FLOW_B], "a buffered delete must mask the durable row");
+	assert_eq!(store.checkpoint_list().unwrap(), vec![FLOW_B], "a buffered delete must mask the durable row");
 	assert_eq!(
-		store.checkpoint_floor(),
+		store.checkpoint_floor().unwrap(),
 		Some(CommitVersion(10)),
 		"the floor must hold at the durable version of a flow whose delete is still buffered, because a \
 		 crash loses the buffer and sends that flow back to 10; raising the floor to 20 would let retention \

@@ -181,7 +181,7 @@ impl FlowSupervisor {
 			};
 			self.reject_transactional_flow(&flow);
 			state.analyzer.add(flow.clone());
-			let seed = operators.checkpoint_get(flow_id).unwrap_or(migration_base);
+			let seed = operators.checkpoint_get(flow_id).ok().flatten().unwrap_or(migration_base);
 			seeds.push((flow_id, seed));
 			to_spawn.push((flow, seed));
 		}
@@ -546,7 +546,7 @@ impl FlowSupervisor {
 
 fn retire_flow(operators: &OperatorStore, flows: &mut BTreeMap<FlowId, FlowActorHandle>, flow_id: FlowId) -> bool {
 	let Some(handle) = flows.remove(&flow_id) else {
-		operators.checkpoint_delete(flow_id);
+		remove_checkpoint(operators, flow_id);
 		return false;
 	};
 	if handle
@@ -557,18 +557,24 @@ fn retire_flow(operators: &OperatorStore, flows: &mut BTreeMap<FlowId, FlowActor
 		})
 		.is_err()
 	{
-		operators.checkpoint_delete(flow_id);
+		remove_checkpoint(operators, flow_id);
 	}
 	true
 }
 
+fn remove_checkpoint(operators: &OperatorStore, flow_id: FlowId) {
+	if let Err(e) = operators.checkpoint_remove(flow_id) {
+		warn!(flow_id = flow_id.0, error = %e, "flow checkpoint removal failed");
+	}
+}
+
 fn reap_orphan_checkpoints(operators: &OperatorStore, known: &BTreeSet<FlowId>) -> usize {
 	let mut reaped = 0;
-	for flow_id in operators.checkpoint_list() {
+	for flow_id in operators.checkpoint_list().unwrap_or_default() {
 		if known.contains(&flow_id) {
 			continue;
 		}
-		operators.checkpoint_delete(flow_id);
+		remove_checkpoint(operators, flow_id);
 		reaped += 1;
 	}
 	reaped
@@ -663,20 +669,20 @@ mod tests {
 	fn bootstrap_reaps_a_checkpoint_whose_flow_the_catalog_no_longer_lists() {
 		// the retention floor is the minimum over these rows, so one orphan pins cdc truncation forever
 		let store = OperatorStore::testing_memory();
-		store.checkpoint_set(FlowId(1), CommitVersion(10));
-		store.checkpoint_set(FlowId(2), CommitVersion(20));
+		store.checkpoint_set(FlowId(1), CommitVersion(10)).unwrap();
+		store.checkpoint_set(FlowId(2), CommitVersion(20)).unwrap();
 
 		let reaped = reap_orphan_checkpoints(&store, &BTreeSet::from([FlowId(1)]));
 
 		assert_eq!(reaped, 1, "exactly the row with no flow behind it is the one that must go");
 		assert_eq!(
-			store.checkpoint_get(FlowId(1)),
+			store.checkpoint_get(FlowId(1)).unwrap(),
 			Some(CommitVersion(10)),
 			"a live flow's checkpoint is its resume point; reaping it in the same pass replays every \
 			 slice the flow ever consumed and double-counts every aggregate"
 		);
 		assert!(
-			store.checkpoint_get(FlowId(2)).is_none(),
+			store.checkpoint_get(FlowId(2)).unwrap().is_none(),
 			"the orphan must be deleted, otherwise its version stays the floor and no cdc entry in the \
 			 database is ever reaped again"
 		);
@@ -686,7 +692,7 @@ mod tests {
 	fn retiring_a_live_flow_leaves_the_delete_to_the_stop_message() {
 		// an out-of-band delete loses to the completion of a slice already in flight, stranding the row
 		let store = OperatorStore::testing_memory();
-		store.checkpoint_set(FlowId(1), CommitVersion(10));
+		store.checkpoint_set(FlowId(1), CommitVersion(10)).unwrap();
 
 		let actor_system = ActorSystem::testing(Clock::testing());
 		let deleted = Arc::new(AtomicBool::new(false));
@@ -706,7 +712,7 @@ mod tests {
 
 		assert!(stopped, "a live handle must be stopped");
 		assert_eq!(
-			store.checkpoint_get(FlowId(1)),
+			store.checkpoint_get(FlowId(1)).unwrap(),
 			Some(CommitVersion(10)),
 			"the supervisor must not delete out of band; only the stop slice may, because it is ordered \
 			 behind every slice the flow already has in flight"
@@ -722,14 +728,14 @@ mod tests {
 	fn a_dropped_flow_loses_its_checkpoint_even_when_this_process_holds_no_actor_for_it() {
 		// the stop message carries the delete, but a flow dropped before its actor spawned never gets one
 		let store = OperatorStore::testing_memory();
-		store.checkpoint_set(FlowId(1), CommitVersion(10));
+		store.checkpoint_set(FlowId(1), CommitVersion(10)).unwrap();
 		let mut flows = BTreeMap::new();
 
 		let stopped = retire_flow(&store, &mut flows, FlowId(1));
 
 		assert!(!stopped, "there is no live handle to stop, which is the case the stop path cannot cover");
 		assert!(
-			store.checkpoint_get(FlowId(1)).is_none(),
+			store.checkpoint_get(FlowId(1)).unwrap().is_none(),
 			"the delete must not be conditional on the handle; leaving the row behind turns every such \
 			 drop into a permanent pin on cdc retention"
 		);

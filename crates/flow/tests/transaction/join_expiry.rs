@@ -140,7 +140,8 @@ fn an_armed_join_expiry_writes_both_its_group_row_and_its_root_due_row() {
 
 	let store = engine.inner().operator_state();
 	let stored = store
-		.get(NODE, &join_expiry_key(group(), LEFT, RowNumber(42)).into_encoded())
+		.state_get(NODE, &join_expiry_key(group(), LEFT, RowNumber(42)))
+		.unwrap()
 		.expect("the group scoped join expiry must be durable");
 	assert_eq!(
 		JoinRowExpiry::decode_state(&stored).unwrap().at,
@@ -148,7 +149,8 @@ fn an_armed_join_expiry_writes_both_its_group_row_and_its_root_due_row() {
 		"the group scoped row carries the instant the point read answers with"
 	);
 	assert!(
-		store.get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(42)).into_encoded())
+		store.state_get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(42)))
+			.unwrap()
 			.is_some(),
 		"and the root due row must be keyed by that exact instant"
 	);
@@ -168,11 +170,12 @@ fn a_cleared_join_expiry_takes_its_root_due_row_with_it() {
 
 	let store = engine.inner().operator_state();
 	assert!(
-		store.get(NODE, &join_expiry_key(group(), LEFT, RowNumber(42)).into_encoded()).is_none(),
+		store.state_get(NODE, &join_expiry_key(group(), LEFT, RowNumber(42))).unwrap().is_none(),
 		"the group scoped row must go"
 	);
 	assert!(
-		store.get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(42)).into_encoded())
+		store.state_get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(42)))
+			.unwrap()
 			.is_none(),
 		"and so must the root due row that pointed at it"
 	);
@@ -193,7 +196,8 @@ fn a_join_expiry_removed_after_its_row_committed_is_invisible_to_the_minimum() {
 	assert!(
 		engine.inner()
 			.operator_state()
-			.get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(1)).into_encoded())
+			.state_get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(1)))
+			.unwrap()
 			.is_some(),
 		"precondition: the removed join expiry's due row is still durable"
 	);
@@ -222,7 +226,8 @@ fn an_expiry_moved_later_in_the_batch_wins_over_the_committed_earlier_one() {
 	assert!(
 		engine.inner()
 			.operator_state()
-			.get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(1)).into_encoded())
+			.state_get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(1)))
+			.unwrap()
 			.is_some(),
 		"precondition: the store still carries the earlier due row"
 	);
@@ -247,12 +252,14 @@ fn a_re_arm_removes_the_due_row_of_the_instant_it_left_behind() {
 
 	let store = engine.inner().operator_state();
 	assert!(
-		store.get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(1)).into_encoded())
+		store.state_get(NODE, &join_expiry_due_key(at_millis(5_000), group(), LEFT, RowNumber(1)))
+			.unwrap()
 			.is_none(),
 		"the due row of the instant that was moved away from must not survive the move"
 	);
 	assert!(
-		store.get(NODE, &join_expiry_due_key(at_millis(20_000), group(), LEFT, RowNumber(1)).into_encoded())
+		store.state_get(NODE, &join_expiry_due_key(at_millis(20_000), group(), LEFT, RowNumber(1)))
+			.unwrap()
 			.is_some(),
 		"only the new instant is due"
 	);
@@ -500,7 +507,7 @@ fn re_arming_a_join_expiry_the_store_already_holds_classifies_as_a_replace() {
 	let store = engine.inner().operator_state();
 	assert_eq!(
 		JoinRowExpiry::decode_state(
-			&store.get(NODE, &join_expiry_key(group(), LEFT, RowNumber(1)).into_encoded()).unwrap()
+			&store.state_get(NODE, &join_expiry_key(group(), LEFT, RowNumber(1))).unwrap().unwrap()
 		)
 		.unwrap()
 		.at,

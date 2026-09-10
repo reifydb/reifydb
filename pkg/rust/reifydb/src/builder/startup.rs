@@ -15,7 +15,7 @@ use reifydb_store_cdc::{
 };
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig};
-use reifydb_store_operator::tier::{range::OperatorRangeConfig, resident::ResidentLimits};
+use reifydb_store_operator::{range::OperatorRangeConfig, resident::ResidentLimits};
 use reifydb_value::{
 	byte_size::ByteSize,
 	value::{Value, duration::Duration},

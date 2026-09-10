@@ -32,9 +32,9 @@ use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::coverage::plan::DEFAULT_GAP_GUARD;
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
+	range::OperatorRangeConfig,
 	store::OperatorStore,
-	tier::range::OperatorRangeConfig,
-	types::{DurablePre, OperatorWrite},
+	types::{LayeredPre, OperatorWrite},
 };
 use reifydb_testing::keyspace::state_key;
 use reifydb_value::{
@@ -129,17 +129,19 @@ fn drain(
 	operator: OperatorId,
 	range: &EncodedKeyRange,
 	batch: u64,
-) -> Vec<(Vec<(EncodedKey, EncodedPodRow)>, bool)> {
+) -> Vec<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
 	// pages continue from an excluded cursor exactly like the flow-side iterator does
 	let mut pages = Vec::new();
 	let mut current = range.clone();
 	loop {
-		let page = store.range_batch(operator, current.clone(), batch);
+		let page = store.range_batch(operator, current.clone(), batch).unwrap();
 		let has_more = page.has_more;
 		let last = page.items.last().map(|(key, _)| key.clone());
 		pages.push((page.items, has_more));
 		match (has_more, last) {
-			(true, Some(last)) => current = EncodedKeyRange::new(Bound::Excluded(last), current.end),
+			(true, Some(last)) => {
+				current = EncodedKeyRange::new(Bound::Excluded(last.into_encoded()), current.end)
+			}
 			_ => return pages,
 		}
 	}
@@ -218,13 +220,13 @@ fn a_warm_cache_reads_far_less_than_the_oracle_for_the_same_answers() {
 		let write = match live.insert((operator, key.clone()), post_bytes) {
 			Some(pre_value_bytes) => OperatorWrite::Replace {
 				operator,
-				key,
+				key: GroupStateKey::bound_unchecked(key),
 				pre_value_bytes,
 				post: row,
 			},
 			None => OperatorWrite::Insert {
 				operator,
-				key,
+				key: GroupStateKey::bound_unchecked(key),
 				post: row,
 			},
 		};
@@ -244,7 +246,7 @@ fn a_warm_cache_reads_far_less_than_the_oracle_for_the_same_answers() {
 	drain_cacheable(&oracle);
 	let cold = before_cold.since();
 
-	let tier = cached.range().expect("the cached fixture configures a range tier");
+	let tier = cached.range().tiers().expect("the cached fixture configures a range tier");
 	let counters = tier.metrics();
 	assert!(
 		counters.materializes > 0,
@@ -283,13 +285,13 @@ fn cached_reads_equal_uncached_oracle_across_randomized_workload() {
 				let write = match live.insert((operator, key.clone()), post_bytes) {
 					Some(pre_value_bytes) => OperatorWrite::Replace {
 						operator,
-						key,
+						key: GroupStateKey::bound_unchecked(key),
 						pre_value_bytes,
 						post: row,
 					},
 					None => OperatorWrite::Insert {
 						operator,
-						key,
+						key: GroupStateKey::bound_unchecked(key),
 						post: row,
 					},
 				};
@@ -299,12 +301,12 @@ fn cached_reads_equal_uncached_oracle_across_randomized_workload() {
 			40..55 => {
 				let (operator, key) = key(&mut rng);
 				let pre = match live.remove(&(operator, key.clone())) {
-					Some(pre_value_bytes) => DurablePre::Present(pre_value_bytes),
-					None => DurablePre::Absent,
+					Some(pre_value_bytes) => LayeredPre::Present(pre_value_bytes),
+					None => LayeredPre::Absent,
 				};
 				let write = OperatorWrite::Remove {
 					operator,
-					key,
+					key: GroupStateKey::bound_unchecked(key),
 					pre,
 				};
 				cached.apply_batch(&[write.clone()]);
@@ -313,16 +315,20 @@ fn cached_reads_equal_uncached_oracle_across_randomized_workload() {
 			55..65 => {
 				let (operator, key) = key(&mut rng);
 				assert_eq!(
-					cached.get(operator, &key),
-					oracle.get(operator, &key),
+					cached.state_get(operator, &GroupStateKey::bound_unchecked(key.clone()))
+						.unwrap(),
+					oracle.state_get(operator, &GroupStateKey::bound_unchecked(key.clone()))
+						.unwrap(),
 					"point get diverged at step {step}"
 				);
 			}
 			65..70 => {
 				let (operator, key) = key(&mut rng);
 				assert_eq!(
-					cached.contains(operator, &key),
-					oracle.contains(operator, &key),
+					cached.contains(operator, &GroupStateKey::bound_unchecked(key.clone()))
+						.unwrap(),
+					oracle.contains(operator, &GroupStateKey::bound_unchecked(key.clone()))
+						.unwrap(),
 					"contains diverged at step {step}"
 				);
 			}
@@ -370,13 +376,13 @@ fn get_many_answers_exactly_as_repeated_get_across_randomized_workload() {
 				let write = match live.insert((operator, key.clone()), post_bytes) {
 					Some(pre_value_bytes) => OperatorWrite::Replace {
 						operator,
-						key,
+						key: GroupStateKey::bound_unchecked(key),
 						pre_value_bytes,
 						post: row,
 					},
 					None => OperatorWrite::Insert {
 						operator,
-						key,
+						key: GroupStateKey::bound_unchecked(key),
 						post: row,
 					},
 				};
@@ -385,27 +391,36 @@ fn get_many_answers_exactly_as_repeated_get_across_randomized_workload() {
 			40..55 => {
 				let (operator, key) = key(&mut rng);
 				let pre = match live.remove(&(operator, key.clone())) {
-					Some(pre_value_bytes) => DurablePre::Present(pre_value_bytes),
-					None => DurablePre::Absent,
+					Some(pre_value_bytes) => LayeredPre::Present(pre_value_bytes),
+					None => LayeredPre::Absent,
 				};
 				store.apply_batch(&[OperatorWrite::Remove {
 					operator,
-					key,
+					key: GroupStateKey::bound_unchecked(key),
 					pre,
 				}]);
 			}
 			55..95 => {
 				let operator = OperatorId(1 + rng.below(OPERATORS));
 				// duplicates in one batch must each resolve, so the same key is allowed to repeat
-				let batch: Vec<EncodedKey> = (0..1 + rng.below(12)).map(|_| key(&mut rng).1).collect();
-				let batched = store.get_many(operator, &batch);
+				let batch: Vec<GroupStateKey> = (0..1 + rng.below(12))
+					.map(|_| GroupStateKey::bound_unchecked(key(&mut rng).1))
+					.collect();
+				let mut found: HashMap<GroupStateKey, EncodedPodRow> = HashMap::new();
+				store.state_get_many(operator, &batch, &mut |key, row| {
+					found.insert(key, row);
+					Ok(())
+				})
+				.unwrap();
+				let batched: Vec<Option<EncodedPodRow>> =
+					batch.iter().map(|key| found.get(key).cloned()).collect();
 				assert_eq!(
 					batched.len(),
 					batch.len(),
 					"get_many must answer every slot at step {step}"
 				);
 				for (slot, key) in batch.iter().enumerate() {
-					let single = store.get(operator, key);
+					let single = store.state_get(operator, key).unwrap();
 					assert_eq!(
 						batched[slot], single,
 						"get_many slot {slot} diverged from get at step {step}"
@@ -414,7 +429,7 @@ fn get_many_answers_exactly_as_repeated_get_across_randomized_workload() {
 					// witness it
 					assert_eq!(
 						batched[slot].is_some(),
-						live.contains_key(&(operator, key.clone())),
+						live.contains_key(&(operator, key.as_encoded().clone())),
 						"get_many slot {slot} disagreed with the tracked live set at step {step}"
 					);
 					match single {
@@ -484,7 +499,7 @@ impl StoreState {
 
 impl StateStore for StoreState {
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		Ok(self.store.get(self.operator, key.as_encoded()))
+		Ok(self.store.state_get(self.operator, key)?)
 	}
 
 	fn state_get_many_visit(
@@ -493,7 +508,7 @@ impl StateStore for StoreState {
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		for key in keys {
-			if let Some(row) = self.store.get(self.operator, key.as_encoded()) {
+			if let Some(row) = self.store.state_get(self.operator, key)? {
 				visit(key.clone(), row)?;
 			}
 		}
@@ -506,13 +521,13 @@ impl StateStore for StoreState {
 		let write = match self.live.insert(encoded.clone(), post_bytes) {
 			Some(pre_value_bytes) => OperatorWrite::Replace {
 				operator: self.operator,
-				key: encoded,
+				key: key.clone(),
 				pre_value_bytes,
 				post: payload,
 			},
 			None => OperatorWrite::Insert {
 				operator: self.operator,
-				key: encoded,
+				key: key.clone(),
 				post: payload,
 			},
 		};
@@ -523,12 +538,12 @@ impl StateStore for StoreState {
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
 		let encoded = key.as_encoded().clone();
 		let pre = match self.live.remove(&encoded) {
-			Some(pre_value_bytes) => DurablePre::Present(pre_value_bytes),
-			None => DurablePre::Absent,
+			Some(pre_value_bytes) => LayeredPre::Present(pre_value_bytes),
+			None => LayeredPre::Absent,
 		};
 		self.store.apply_batch(&[OperatorWrite::Remove {
 			operator: self.operator,
-			key: encoded,
+			key: key.clone(),
 			pre,
 		}]);
 		Ok(())
@@ -548,18 +563,21 @@ impl StateStore for StoreState {
 			if limit.is_some_and(|limit| out.len() >= limit) {
 				return Ok(out);
 			}
-			let page = self.store.range_batch(self.operator, current.clone(), batch as u64);
+			let page = self.store.range_batch(self.operator, current.clone(), batch as u64)?;
 			let has_more = page.has_more;
 			let cursor = page.resume.clone().or_else(|| page.items.last().map(|(key, _)| key.clone()));
 			for (key, row) in page.items {
 				if limit.is_some_and(|limit| out.len() >= limit) {
 					return Ok(out);
 				}
-				out.push((GroupStateKey::bound_unchecked(key), row));
+				out.push((key, row));
 			}
 			match (has_more, cursor) {
 				(true, Some(cursor)) => {
-					current = EncodedKeyRange::new(Bound::Excluded(cursor), current.end)
+					current = EncodedKeyRange::new(
+						Bound::Excluded(cursor.into_encoded()),
+						current.end,
+					)
 				}
 				_ => return Ok(out),
 			}

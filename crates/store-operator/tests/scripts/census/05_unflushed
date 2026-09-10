@@ -9,9 +9,9 @@ bytes
 total_bytes
 census
 ---
-bytes 1 => 41
-total_bytes => 41
-operator 1 keyspace 0x1b keys=1 key_bytes=40 value_bytes=1
+bytes 1 => 42
+total_bytes => 42
+operator 1 keyspace 0x1b keys=1 key_bytes=41 value_bytes=1
 count=1
 
 # Flushing makes the key durable without changing the logical row set, so the numbers must not move with it.
@@ -22,9 +22,9 @@ total_bytes
 census
 ---
 ok
-bytes 1 => 41
-total_bytes => 41
-operator 1 keyspace 0x1b keys=1 key_bytes=40 value_bytes=1
+bytes 1 => 42
+total_bytes => 42
+operator 1 keyspace 0x1b keys=1 key_bytes=41 value_bytes=1
 count=1
 
 # An unflushed overwrite replaces the value of the one logical row. The durable pre-image sqlite still holds
@@ -34,8 +34,8 @@ set a=111
 bytes
 census
 ---
-bytes 1 => 43
-operator 1 keyspace 0x1b keys=1 key_bytes=40 value_bytes=3
+bytes 1 => 44
+operator 1 keyspace 0x1b keys=1 key_bytes=41 value_bytes=3
 count=1
 
 flush
@@ -43,8 +43,8 @@ bytes
 census
 ---
 ok
-bytes 1 => 43
-operator 1 keyspace 0x1b keys=1 key_bytes=40 value_bytes=3
+bytes 1 => 44
+operator 1 keyspace 0x1b keys=1 key_bytes=41 value_bytes=3
 count=1
 
 # A removal frees the row at once, before the delete lands. The durable copy sqlite still holds is not

@@ -34,7 +34,7 @@ use reifydb_flow::transaction::{
 	substrate::{FlowSubstrate, classify_pending, operator_writes},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
-use reifydb_store_operator::types::{DurablePre, OperatorWrite};
+use reifydb_store_operator::types::{LayeredPre, OperatorWrite};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
@@ -48,17 +48,17 @@ use crate::common::create_test_transaction;
 fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedPodRow) {
 	// Stands in for a prior slice's success-side operator state apply.
 	let store = engine.inner().operator_state();
-	let key = EncodedKey::new(key.as_slice());
-	let write = match store.get(operator, &key) {
+	let encoded = EncodedKey::new(key.as_slice());
+	let write = match store.state_get(operator, &GroupStateKey::bound_unchecked(encoded.clone())).unwrap() {
 		Some(pre) => OperatorWrite::Replace {
 			operator,
-			key,
+			key: key.clone(),
 			pre_value_bytes: ByteSize::from_bytes(pre.bytes().len() as u64),
 			post: row,
 		},
 		None => OperatorWrite::Insert {
 			operator,
-			key,
+			key: key.clone(),
 			post: row,
 		},
 	};
@@ -70,8 +70,8 @@ fn seed_state_tombstone(engine: &TestEngine, operator: OperatorId, key: &GroupSt
 	// come back full and carry no rows, which is what makes a scan believe it has reached the end.
 	engine.inner().operator_state().apply_batch(&[OperatorWrite::Remove {
 		operator,
-		key: EncodedKey::new(key.as_slice()),
-		pre: DurablePre::Absent,
+		key: key.clone(),
+		pre: LayeredPre::Absent,
 	}]);
 }
 
@@ -710,8 +710,11 @@ fn a_deferred_state_write_still_classifies_against_the_durable_pre_image() {
 	let seeded_inner = EncodedKey::new(seeded.as_slice());
 	let fresh_inner = EncodedKey::new(fresh.as_slice());
 	let expected_pre = ByteSize::from_bytes(
-		store.get(operator, &seeded_inner).expect("seeded row must be durable before the write").bytes().len()
-			as u64,
+		store.state_get(operator, &GroupStateKey::bound_unchecked(seeded_inner.clone()))
+			.unwrap()
+			.expect("seeded row must be durable before the write")
+			.bytes()
+			.len() as u64,
 	);
 
 	let mut txn = deferred_shared(&engine);
@@ -729,7 +732,7 @@ fn a_deferred_state_write_still_classifies_against_the_durable_pre_image() {
 				key,
 				pre_value_bytes,
 				..
-			} if *key == seeded_inner => Some(*pre_value_bytes),
+			} if key.as_encoded() == &seeded_inner => Some(*pre_value_bytes),
 			_ => None,
 		})
 		.expect("a write over a durable row must classify as Replace");
@@ -739,11 +742,15 @@ fn a_deferred_state_write_still_classifies_against_the_durable_pre_image() {
 	);
 
 	assert!(
-		writes.iter().any(|write| matches!(write, OperatorWrite::Insert { key, .. } if *key == fresh_inner)),
+		writes.iter().any(
+			|write| matches!(write, OperatorWrite::Insert { key, .. } if key.as_encoded() == &fresh_inner)
+		),
 		"a write over a key with no durable row must classify as Insert"
 	);
 	assert!(
-		!writes.iter().any(|write| matches!(write, OperatorWrite::Replace { key, .. } if *key == fresh_inner)),
+		!writes.iter().any(
+			|write| matches!(write, OperatorWrite::Replace { key, .. } if key.as_encoded() == &fresh_inner)
+		),
 		"an absent key must never be claimed as Replace"
 	);
 }
@@ -766,7 +773,8 @@ fn clearing_state_claims_a_pre_image_only_for_the_keys_the_store_actually_holds(
 	let durable_inner = EncodedKey::new(durable.as_slice());
 	let fresh_inner = EncodedKey::new(fresh.as_slice());
 	let expected_pre = ByteSize::from_bytes(
-		store.get(operator, &durable_inner)
+		store.state_get(operator, &GroupStateKey::bound_unchecked(durable_inner.clone()))
+			.unwrap()
 			.expect("the seeded row must be durable before the clear")
 			.bytes()
 			.len() as u64,
@@ -787,7 +795,7 @@ fn clearing_state_claims_a_pre_image_only_for_the_keys_the_store_actually_holds(
 					key,
 					pre,
 					..
-				} if key == wanted => Some(*pre),
+				} if key.as_encoded() == wanted => Some(*pre),
 				_ => None,
 			})
 			.expect("state_clear must emit a Remove for every key its scan reached")
@@ -795,12 +803,12 @@ fn clearing_state_claims_a_pre_image_only_for_the_keys_the_store_actually_holds(
 
 	assert_eq!(
 		pre_of(&durable_inner),
-		DurablePre::Present(expected_pre),
+		LayeredPre::Present(expected_pre),
 		"a key the store holds must be removed against its exact durable size"
 	);
 	assert_eq!(
 		pre_of(&fresh_inner),
-		DurablePre::Absent,
+		LayeredPre::Absent,
 		"a key that exists only as this transaction's own write must never be removed as Present"
 	);
 }

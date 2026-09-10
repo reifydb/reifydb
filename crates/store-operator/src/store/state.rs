@@ -20,26 +20,31 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator::{
 		keyspace::dispatch,
-		state::{GroupId, KeyspaceId, group_inner_range, group_inner_range_split, keyspace_inner_range_split},
+		state::{
+			GroupId, GroupStateKey, KeyspaceId, group_inner_range, group_inner_range_split,
+			keyspace_inner_range_split,
+		},
 	},
 	metrics::scan::record_page,
 };
 use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
-use tracing::instrument;
+use tracing::{instrument, warn};
 
 #[cfg(reifydb_assertions)]
-use crate::types::DurablePre;
+use crate::types::LayeredPre;
 use crate::{
+	error::{OperatorError, Result},
+	persistent::{Fetch, Measure, Page as PersistentPage, Persistent},
+	range::RangeSink,
 	store::{
 		OperatorStore, StandardOperatorStore,
 		pager::{
-			ExhaustedPager, GroupKeyspacePager, GroupPager, PageSource, PersistentPager, PlanScan,
-			keyspaces_of,
+			ExhaustedPager, GroupKeyspacePager, GroupPager, GroupsPager, PageSource, PersistentPager,
+			PlanScan, keyspaces_of,
 		},
 	},
-	tier::resident::batch::DropMarker,
-	types::{BufferedState, OperatorBatch, OperatorWrite},
+	types::{BufferedRange, BufferedState, DropMarker, OperatorBatch, OperatorWrite, Scan},
 };
 
 const SCAN_BUDGET_FACTOR: usize = 16;
@@ -64,26 +69,41 @@ impl StandardOperatorStore {
 		writes: &[OperatorWrite],
 		checkpoints: &[(FlowId, CommitVersion)],
 		checkpoint_deletes: &[FlowId],
-	) {
+	) -> Result<()> {
 		reifydb_assertions! {
 			self.verify_classification(writes);
 			verify_group_scope(writes);
 		}
 		let _flushing = self.resident.flush_guard();
+		for (flow, version) in checkpoints {
+			if let Some(current) = self.checkpoint_get(*flow)?
+				&& *version < current
+			{
+				return Err(OperatorError::CheckpointOutOfRange {
+					flow: *flow,
+				});
+			}
+		}
 		self.occupancy.record(writes);
 		self.census.record(writes);
 		self.resident.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes);
 		self.invalidate_read_batch(writes);
+		Ok(())
 	}
 
-	#[instrument(name = "store::operator::drop_operator_state", level = "debug", skip(self), fields(operator = operator.0))]
-	pub fn drop_operator_state(&self, operator: OperatorId) {
+	#[instrument(name = "store::operator::drop_operator", level = "debug", skip(self), fields(operator = operator.0))]
+	pub fn drop_operator(&self, operator: OperatorId) -> Result<()> {
 		self.resident.record_drop(DropMarker::OperatorState(operator));
 		self.occupancy.forget(operator);
 		self.census.forget(operator);
-		if let Some(range) = self.range.as_ref() {
-			range.invalidate_operator(operator);
-		}
+		self.range.invalidate_operator(operator);
+		Ok(())
+	}
+
+	#[instrument(name = "store::operator::state_write", level = "trace", skip(self, write))]
+	pub fn state_write(&self, write: OperatorWrite) -> Result<()> {
+		self.apply_batch(&[write]);
+		Ok(())
 	}
 
 	#[cfg(reifydb_assertions)]
@@ -110,16 +130,16 @@ impl StandardOperatorStore {
 					*operator,
 					key,
 					match pre {
-						DurablePre::Absent => Some(None),
-						DurablePre::Present(bytes) => Some(Some(*bytes)),
+						LayeredPre::Absent => Some(None),
+						LayeredPre::Present(bytes) => Some(Some(*bytes)),
 					},
 					None,
 				),
 			};
-			let slot = (operator, key.clone());
+			let slot = (operator, key.as_encoded().clone());
 			let observed = match overlay.get(&slot) {
 				Some(pending) => *pending,
-				None => self.durable_pre_image(operator, key).map(|row| value_bytes(&row)),
+				None => self.layered_pre_image(operator, key.as_encoded()).map(|row| value_bytes(&row)),
 			};
 			if let Some(claimed) = claimed {
 				assert_eq!(
@@ -135,35 +155,31 @@ impl StandardOperatorStore {
 	}
 
 	#[cfg(reifydb_assertions)]
-	fn durable_pre_image(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
+	fn layered_pre_image(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
 		match self.resident.lookup_state(operator, key) {
 			BufferedState::Row(row) => Some(row),
 			BufferedState::Tombstone | BufferedState::Dropped => None,
-			BufferedState::Absent => self.persistent.as_ref()?.get(operator, key),
+			BufferedState::Absent => self
+				.durable_get(operator, key)
+				.expect("operator durable read failed while verifying write classification"),
 		}
 	}
 
 	fn overwrite_range_read(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
-		if let Some(range) = self.range.as_ref() {
-			range.overwrite(operator, key, row.clone());
-		}
+		self.range.overwrite(operator, key, row.clone());
 	}
 
 	fn insert_range_read(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
-		if let Some(range) = self.range.as_ref() {
-			range.insert(operator, key, row.clone());
-		}
+		self.range.insert(operator, key, row.clone());
 	}
 
 	fn remove_range_read(&self, operator: OperatorId, key: &EncodedKey) {
-		if let Some(range) = self.range.as_ref() {
-			range.mark_deleted(operator, key);
-		}
+		self.range.mark_deleted(operator, key);
 	}
 
 	#[instrument(name = "store::operator::invalidate_read_batch", level = "debug", skip_all, fields(write_count = writes.len()))]
 	fn invalidate_read_batch(&self, writes: &[OperatorWrite]) {
-		if self.range.is_none() {
+		if self.range.is_absent() {
 			return;
 		}
 		for write in writes {
@@ -173,26 +189,27 @@ impl StandardOperatorStore {
 					key,
 					post,
 					..
-				} => self.overwrite_range_read(*operator, key, post),
+				} => self.overwrite_range_read(*operator, key.as_encoded(), post),
 				OperatorWrite::Insert {
 					operator,
 					key,
 					post,
-				} => self.insert_range_read(*operator, key, post),
+				} => self.insert_range_read(*operator, key.as_encoded(), post),
 				OperatorWrite::Remove {
 					operator,
 					key,
 					..
-				} => self.remove_range_read(*operator, key),
+				} => self.remove_range_read(*operator, key.as_encoded()),
 			}
 		}
 	}
 
 	#[instrument(name = "store::operator::state_sizes", level = "trace", skip(self, probes), fields(probe_count = probes.len()))]
-	pub fn state_sizes(&self, probes: &[(OperatorId, EncodedKey)]) -> Vec<Option<ByteSize>> {
+	pub fn state_sizes(&self, probes: &[(OperatorId, GroupStateKey)]) -> Result<Vec<Option<ByteSize>>> {
 		let mut sizes: Vec<Option<ByteSize>> = Vec::with_capacity(probes.len());
 		let mut residual: HashMap<OperatorId, Vec<(usize, EncodedKey)>> = HashMap::new();
 		for (index, (operator, key)) in probes.iter().enumerate() {
+			let key = key.as_encoded();
 			match self.resolve_size(*operator, key) {
 				SizeProbe::Known(size) => sizes.push(size),
 				SizeProbe::Persistent => {
@@ -201,17 +218,18 @@ impl StandardOperatorStore {
 				}
 			}
 		}
-		let Some(persistent) = self.persistent.as_ref() else {
-			return sizes;
-		};
+		if self.persistent.is_absent() {
+			return Ok(sizes);
+		}
 		for (operator, pending) in residual {
-			let keys: Vec<EncodedKey> = pending.iter().map(|(_, key)| key.clone()).collect();
-			let found = persistent.state_sizes(operator, &keys);
+			let keys: Vec<GroupStateKey> =
+				pending.iter().map(|(_, key)| GroupStateKey::bound_unchecked(key.clone())).collect();
+			let found = self.persistent.state_sizes(operator, &keys)?;
 			for (index, key) in pending {
-				sizes[index] = found.get(&key).copied();
+				sizes[index] = found.get(&GroupStateKey::bound_unchecked(key)).copied();
 			}
 		}
-		sizes
+		Ok(sizes)
 	}
 
 	fn resolve_size(&self, operator: OperatorId, key: &EncodedKey) -> SizeProbe {
@@ -220,10 +238,10 @@ impl StandardOperatorStore {
 			BufferedState::Tombstone | BufferedState::Dropped => return SizeProbe::Known(None),
 			BufferedState::Absent => {}
 		}
-		if self.persistent.is_none() {
+		if self.persistent.is_absent() {
 			return SizeProbe::Known(None);
 		}
-		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
+		if let Some(authoritative) = self.range.lookup(operator, key) {
 			return SizeProbe::Known(authoritative.as_ref().map(row_size));
 		}
 		if self.resident.never_persisted(operator, key) {
@@ -232,20 +250,27 @@ impl StandardOperatorStore {
 		SizeProbe::Persistent
 	}
 
-	#[instrument(name = "store::operator::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
-	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
+	#[instrument(name = "store::operator::state_get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.as_slice().len()))]
+	pub fn state_get(&self, operator: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
+		let key = key.as_encoded();
 		match self.resident.lookup_state(operator, key) {
-			BufferedState::Row(row) => Some(row),
-			BufferedState::Tombstone | BufferedState::Dropped => None,
+			BufferedState::Row(row) => Ok(Some(row)),
+			BufferedState::Tombstone | BufferedState::Dropped => Ok(None),
 			BufferedState::Absent => self.persistent_get(operator, key),
 		}
 	}
 
-	#[instrument(name = "store::operator::get_many", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
-	pub fn get_many(&self, operator: OperatorId, keys: &[EncodedKey]) -> Vec<Option<EncodedPodRow>> {
+	#[instrument(name = "store::operator::state_get_many", level = "trace", skip(self, keys, visit), fields(operator = operator.0, key_count = keys.len()))]
+	pub fn state_get_many(
+		&self,
+		operator: OperatorId,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
+	) -> Result<()> {
 		let mut results: Vec<Option<EncodedPodRow>> = Vec::with_capacity(keys.len());
 		let mut buffered: Vec<(usize, &EncodedKey)> = Vec::new();
 		for (index, key) in keys.iter().enumerate() {
+			let key = key.as_encoded();
 			match self.resident.lookup_state(operator, key) {
 				BufferedState::Row(row) => results.push(Some(row)),
 				BufferedState::Tombstone | BufferedState::Dropped => results.push(None),
@@ -255,68 +280,87 @@ impl StandardOperatorStore {
 				}
 			}
 		}
-		let Some(persistent) = self.persistent.as_ref() else {
-			return results;
-		};
 
-		let mut fetch: Vec<(usize, &EncodedKey)> = Vec::new();
-		for (index, key) in buffered {
-			if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
-				results[index] = authoritative;
-				continue;
+		if !self.persistent.is_absent() {
+			let mut fetch: Vec<(usize, &EncodedKey)> = Vec::new();
+			for (index, key) in buffered {
+				if let Some(authoritative) = self.range.lookup(operator, key) {
+					results[index] = authoritative;
+					continue;
+				}
+				if self.resident.never_persisted(operator, key) {
+					continue;
+				}
+				fetch.push((index, key));
 			}
-			if self.resident.never_persisted(operator, key) {
-				continue;
+			if !fetch.is_empty() {
+				let batch: Vec<GroupStateKey> = fetch
+					.iter()
+					.map(|(_, key)| GroupStateKey::bound_unchecked((*key).clone()))
+					.collect();
+				let found = self.persistent.get_many(operator, &batch)?;
+				for (index, key) in fetch {
+					results[index] =
+						found.get(&GroupStateKey::bound_unchecked(key.clone())).cloned();
+				}
 			}
-			fetch.push((index, key));
-		}
-		if fetch.is_empty() {
-			return results;
 		}
 
-		let batch: Vec<EncodedKey> = fetch.iter().map(|(_, key)| (*key).clone()).collect();
-		let found = persistent.get_many(operator, &batch);
-		for (index, key) in fetch {
-			results[index] = found.get(key).cloned();
+		for (key, row) in keys.iter().zip(results) {
+			if let Some(row) = row {
+				visit(key.clone(), row)?;
+			}
 		}
-		results
+		Ok(())
 	}
 
-	fn persistent_get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
-		let persistent = self.persistent.as_ref()?;
-		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
-			return authoritative;
+	fn persistent_get(&self, operator: OperatorId, key: &EncodedKey) -> Result<Option<EncodedPodRow>> {
+		if self.persistent.is_absent() {
+			return Ok(None);
+		}
+		if let Some(authoritative) = self.range.lookup(operator, key) {
+			return Ok(authoritative);
 		}
 		if self.resident.never_persisted(operator, key) {
-			return None;
+			return Ok(None);
 		}
-		persistent.get(operator, key)
+		self.durable_get(operator, key)
 	}
 
-	#[instrument(name = "store::operator::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()), ret)]
-	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
+	fn durable_get(&self, operator: OperatorId, key: &EncodedKey) -> Result<Option<EncodedPodRow>> {
+		self.persistent.get(operator, &GroupStateKey::bound_unchecked(key.clone()))
+	}
+
+	#[instrument(name = "store::operator::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.as_slice().len()), ret)]
+	pub fn contains(&self, operator: OperatorId, key: &GroupStateKey) -> Result<bool> {
+		let key = key.as_encoded();
 		match self.resident.lookup_state(operator, key) {
-			BufferedState::Row(_) => true,
-			BufferedState::Tombstone | BufferedState::Dropped => false,
+			BufferedState::Row(_) => Ok(true),
+			BufferedState::Tombstone | BufferedState::Dropped => Ok(false),
 			BufferedState::Absent => self.persistent_contains(operator, key),
 		}
 	}
 
-	fn persistent_contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
-		let Some(persistent) = self.persistent.as_ref() else {
-			return false;
-		};
-		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
-			return authoritative.is_some();
+	fn persistent_contains(&self, operator: OperatorId, key: &EncodedKey) -> Result<bool> {
+		if self.persistent.is_absent() {
+			return Ok(false);
+		}
+		if let Some(authoritative) = self.range.lookup(operator, key) {
+			return Ok(authoritative.is_some());
 		}
 		if self.resident.never_persisted(operator, key) {
-			return false;
+			return Ok(false);
 		}
-		persistent.contains(operator, key)
+		self.persistent.contains(operator, &GroupStateKey::bound_unchecked(key.clone()))
 	}
 
 	#[instrument(name = "store::operator::range_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
-	pub fn range_batch(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64) -> OperatorBatch {
+	pub fn range_batch(
+		&self,
+		operator: OperatorId,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<OperatorBatch> {
 		let limit = batch_size.max(1);
 		let target = (limit as usize).saturating_add(1);
 		let mut buffer_lower = range.start.clone();
@@ -324,10 +368,10 @@ impl StandardOperatorStore {
 		let mut buffered = snapshot.items;
 		let mut buffer_exhausted = buffered.len() < target;
 		if let Some((key, _)) = buffered.last() {
-			buffer_lower = Bound::Excluded(key.clone());
+			buffer_lower = Bound::Excluded(key.as_encoded().clone());
 		}
 		let mut source = self.page_source(operator, &range, snapshot.dropped);
-		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
+		let mut items: Vec<(GroupStateKey, EncodedPodRow)> = Vec::new();
 		let mut buffer_index = 0usize;
 		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 		let mut page_shadow: Vec<bool> = Vec::new();
@@ -336,11 +380,15 @@ impl StandardOperatorStore {
 		let mut consumed = 0usize;
 		let mut skipped = 0u64;
 		let mut spent = 0usize;
-		let mut walked: Option<EncodedKey> = None;
-		let mut resume: Option<EncodedKey> = None;
+		let mut walked: Option<GroupStateKey> = None;
+		let mut resume: Option<GroupStateKey> = None;
 
 		while items.len() < target {
+			let scanning = buffer_index < buffered.len()
+				|| !buffer_exhausted || page_index < page.len()
+				|| !source.is_exhausted();
 			if consumed >= scan_budget
+				&& scanning && !items.is_empty()
 				&& let Some(key) = walked.take()
 			{
 				resume = Some(key);
@@ -355,14 +403,14 @@ impl StandardOperatorStore {
 				);
 				buffer_exhausted = next.items.len() < target;
 				if let Some((key, _)) = next.items.last() {
-					buffer_lower = Bound::Excluded(key.clone());
+					buffer_lower = Bound::Excluded(key.as_encoded().clone());
 				}
 				buffered = next.items;
 				buffer_index = 0;
 				continue;
 			}
 			if page_index == page.len() && !source.is_exhausted() {
-				page = source.next_page(target.saturating_add(spent).min(scan_budget) as u64);
+				page = source.next_page(target.saturating_add(spent).min(scan_budget) as u64)?;
 				page_shadow = self.resident.tombstoned(operator, page.iter().map(|(key, _)| key));
 				page_index = 0;
 				spent = 0;
@@ -388,17 +436,17 @@ impl StandardOperatorStore {
 					page_index += 1;
 					consumed += 1;
 					if consumed >= scan_budget {
-						walked = Some(key.clone());
+						walked = Some(GroupStateKey::bound_unchecked(key.clone()));
 					}
 					if !dead {
-						items.push((key.clone(), row.clone()));
+						items.push((GroupStateKey::bound_unchecked(key.clone()), row.clone()));
 					} else {
 						spent += 1;
 						skipped += 1;
 					}
 				}
 				(Some((buffer_key, entry)), Some((page_key, page_row))) => {
-					match buffer_key.cmp(page_key) {
+					match buffer_key.as_encoded().cmp(page_key) {
 						Ordering::Less => {
 							buffer_index += 1;
 							consumed += 1;
@@ -417,10 +465,17 @@ impl StandardOperatorStore {
 							page_index += 1;
 							consumed += 1;
 							if consumed >= scan_budget {
-								walked = Some(page_key.clone());
+								walked = Some(GroupStateKey::bound_unchecked(
+									page_key.clone(),
+								));
 							}
 							if !dead {
-								items.push((page_key.clone(), page_row.clone()));
+								items.push((
+									GroupStateKey::bound_unchecked(
+										page_key.clone(),
+									),
+									page_row.clone(),
+								));
 							} else {
 								spent += 1;
 								skipped += 1;
@@ -446,17 +501,20 @@ impl StandardOperatorStore {
 		}
 
 		record_page(0, skipped);
+		if items.len() > limit as usize {
+			resume = Some(items[limit as usize].0.clone());
+		}
 		let has_more = items.len() > limit as usize || resume.is_some();
 		items.truncate(limit as usize);
-		OperatorBatch {
+		Ok(OperatorBatch {
 			items,
 			has_more,
 			resume,
-		}
+		})
 	}
 
 	#[instrument(name = "store::operator::group_page", level = "trace", skip(self, groups), fields(operator = operator.0, group_count = groups.len(), batch_size = batch_size))]
-	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64) -> OperatorBatch {
+	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64) -> Result<OperatorBatch> {
 		let limit = batch_size.max(1);
 		let target = (limit as usize).saturating_add(1);
 		let mut ordered: Vec<GroupId> = groups.to_vec();
@@ -465,19 +523,29 @@ impl StandardOperatorStore {
 
 		let mut buffer = GroupBuffer::new(self, operator, &ordered, target);
 		buffer.peek();
-		let persistent = self.persistent.as_ref().filter(|_| !buffer.dropped);
 		let mask = self.occupancy.mask(operator, || self.occupied_keyspaces(operator));
-		let mut source = GroupPager::new(operator, persistent, &ordered, mask);
+		let mut source: Box<dyn PageSource + '_> = match self.range.tiers() {
+			Some(tiers) => Box::new(GroupsPager::new(
+				tiers,
+				operator,
+				&self.persistent,
+				&ordered,
+				mask,
+				buffer.dropped,
+			)),
+			None => Box::new(GroupPager::new(operator, &self.persistent, &ordered, mask, buffer.dropped)),
+		};
 
-		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
+		let mut items: Vec<(GroupStateKey, EncodedPodRow)> = Vec::new();
 		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 		let mut page_shadow: Vec<bool> = Vec::new();
 		let mut page_index = 0usize;
 		let mut skipped = 0u64;
+		let mut resume: Option<GroupStateKey> = None;
 
 		while items.len() < target {
 			if page_index == page.len() && !source.is_exhausted() {
-				page = source.next_page(target as u64);
+				page = source.next_page(target as u64)?;
 				page_shadow = self.resident.tombstoned(operator, page.iter().map(|(key, _)| key));
 				page_index = 0;
 				continue;
@@ -487,6 +555,7 @@ impl StandardOperatorStore {
 				(None, None) => break,
 				(Some((key, entry)), None) => {
 					if source.ceiling().is_some_and(|ceiling| key.as_slice() > ceiling.as_slice()) {
+						resume = Some(key);
 						break;
 					}
 					buffer.bump();
@@ -498,13 +567,13 @@ impl StandardOperatorStore {
 					let dead = page_shadow.get(page_index).copied().unwrap_or(false);
 					page_index += 1;
 					if !dead {
-						items.push((key.clone(), row.clone()));
+						items.push((GroupStateKey::bound_unchecked(key.clone()), row.clone()));
 					} else {
 						skipped += 1;
 					}
 				}
 				(Some((buffer_key, entry)), Some((page_key, page_row))) => {
-					match buffer_key.cmp(page_key) {
+					match buffer_key.as_encoded().cmp(page_key) {
 						Ordering::Less => {
 							buffer.bump();
 							if let Some(row) = entry {
@@ -516,7 +585,12 @@ impl StandardOperatorStore {
 								page_shadow.get(page_index).copied().unwrap_or(false);
 							page_index += 1;
 							if !dead {
-								items.push((page_key.clone(), page_row.clone()));
+								items.push((
+									GroupStateKey::bound_unchecked(
+										page_key.clone(),
+									),
+									page_row.clone(),
+								));
 							} else {
 								skipped += 1;
 							}
@@ -534,20 +608,20 @@ impl StandardOperatorStore {
 		}
 
 		record_page(0, skipped);
-		let has_more = items.len() > limit as usize || source.ceiling().is_some();
+		if items.len() > limit as usize {
+			resume = Some(items[limit as usize].0.clone());
+		}
+		let has_more = items.len() > limit as usize || resume.is_some();
 		items.truncate(limit as usize);
-		OperatorBatch {
+		Ok(OperatorBatch {
 			items,
 			has_more,
-			resume: None,
-		}
+			resume,
+		})
 	}
 
 	fn occupied_keyspaces(&self, operator: OperatorId) -> Vec<KeyspaceId> {
-		match self.persistent.as_ref() {
-			Some(persistent) => persistent.occupied_keyspaces(operator),
-			None => Vec::new(),
-		}
+		self.persistent.occupied_keyspaces(operator)
 	}
 
 	fn page_source<'a>(
@@ -559,8 +633,8 @@ impl StandardOperatorStore {
 		if dropped {
 			return Box::new(ExhaustedPager);
 		}
-		let persistent = self.persistent.as_ref();
-		let Some(tiers) = self.range.as_ref() else {
+		let persistent = &self.persistent;
+		let Some(tiers) = self.range.tiers() else {
 			return Box::new(PersistentPager::new(operator, persistent, range));
 		};
 		let Some((group, keyspace, start, end)) = keyspace_inner_range_split(range) else {
@@ -594,6 +668,32 @@ impl StandardOperatorStore {
 		.unwrap_or_else(|| Box::new(PersistentPager::new(operator, persistent, range)))
 	}
 
+	#[instrument(name = "store::operator::state_page", level = "trace", skip(self, range), fields(operator = operator.0))]
+	pub fn state_page(
+		&self,
+		operator: OperatorId,
+		range: EncodedKeyRange,
+		limit: Option<usize>,
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		Ok(self.range_batch(operator, range, limit.unwrap_or(usize::MAX) as u64)?.items)
+	}
+
+	#[instrument(name = "store::operator::state_range", level = "trace", skip(self), fields(operator = operator.0, limit = limit))]
+	pub fn state_range(
+		&self,
+		operator: OperatorId,
+		group: GroupId,
+		scan: Scan,
+		limit: usize,
+	) -> Result<BufferedRange> {
+		let range = group_inner_range(group);
+		let (start, end) = (range.start.as_ref(), range.end.as_ref());
+		Ok(match scan {
+			Scan::Forward => self.resident.state_page(operator, start, end, limit),
+			Scan::Backward => self.resident.state_last_page(operator, start, end, limit),
+		})
+	}
+
 	#[instrument(name = "store::operator::state_last_iter", level = "trace", skip(self, range), fields(operator = operator.0))]
 	pub fn state_last_iter(&self, operator: OperatorId, range: EncodedKeyRange) -> StateLastIter<'_> {
 		let first = self.resident.state_last_page(
@@ -602,11 +702,11 @@ impl StandardOperatorStore {
 			range.end.as_ref(),
 			STATE_LAST_PAGE,
 		);
-		let stored_done = first.dropped || self.persistent.is_none();
+		let stored_done = first.dropped || self.persistent.is_absent();
 		let buffer_done = first.items.len() < STATE_LAST_PAGE;
 		let mut buffer_end = range.end.clone();
 		if let Some((key, _)) = first.items.last() {
-			buffer_end = Bound::Excluded(key.clone());
+			buffer_end = Bound::Excluded(key.as_encoded().clone());
 		}
 
 		StateLastIter {
@@ -622,6 +722,7 @@ impl StandardOperatorStore {
 			stored_index: 0,
 			stored_end: range.end,
 			stored_done,
+			failed: false,
 		}
 	}
 }
@@ -638,7 +739,7 @@ impl OperatorStore {
 		writes: &[OperatorWrite],
 		checkpoints: &[(FlowId, CommitVersion)],
 		checkpoint_deletes: &[FlowId],
-	) {
+	) -> Result<()> {
 		match self {
 			Self::Standard(store) => {
 				store.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes)
@@ -646,19 +747,25 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn drop_operator_state(&self, operator: OperatorId) {
+	pub fn drop_operator(&self, operator: OperatorId) -> Result<()> {
 		match self {
-			Self::Standard(store) => store.drop_operator_state(operator),
+			Self::Standard(store) => store.drop_operator(operator),
 		}
 	}
 
-	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
+	pub fn state_write(&self, write: OperatorWrite) -> Result<()> {
 		match self {
-			Self::Standard(store) => store.get(operator, key),
+			Self::Standard(store) => store.state_write(write),
 		}
 	}
 
-	pub fn state_sizes(&self, probes: &[(OperatorId, EncodedKey)]) -> Vec<Option<ByteSize>> {
+	pub fn state_get(&self, operator: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
+		match self {
+			Self::Standard(store) => store.state_get(operator, key),
+		}
+	}
+
+	pub fn state_sizes(&self, probes: &[(OperatorId, GroupStateKey)]) -> Result<Vec<Option<ByteSize>>> {
 		match self {
 			Self::Standard(store) => store.state_sizes(probes),
 		}
@@ -670,27 +777,60 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
+	pub fn contains(&self, operator: OperatorId, key: &GroupStateKey) -> Result<bool> {
 		match self {
 			Self::Standard(store) => store.contains(operator, key),
 		}
 	}
 
-	pub fn get_many(&self, operator: OperatorId, keys: &[EncodedKey]) -> Vec<Option<EncodedPodRow>> {
+	pub fn state_get_many(
+		&self,
+		operator: OperatorId,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
+	) -> Result<()> {
 		match self {
-			Self::Standard(store) => store.get_many(operator, keys),
+			Self::Standard(store) => store.state_get_many(operator, keys, visit),
 		}
 	}
 
-	pub fn range_batch(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64) -> OperatorBatch {
+	pub fn range_batch(
+		&self,
+		operator: OperatorId,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<OperatorBatch> {
 		match self {
 			Self::Standard(store) => store.range_batch(operator, range, batch_size),
 		}
 	}
 
-	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64) -> OperatorBatch {
+	pub fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch_size: u64) -> Result<OperatorBatch> {
 		match self {
 			Self::Standard(store) => store.group_page(operator, groups, batch_size),
+		}
+	}
+
+	pub fn state_page(
+		&self,
+		operator: OperatorId,
+		range: EncodedKeyRange,
+		limit: Option<usize>,
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		match self {
+			Self::Standard(store) => store.state_page(operator, range, limit),
+		}
+	}
+
+	pub fn state_range(
+		&self,
+		operator: OperatorId,
+		group: GroupId,
+		scan: Scan,
+		limit: usize,
+	) -> Result<BufferedRange> {
+		match self {
+			Self::Standard(store) => store.state_range(operator, group, scan, limit),
 		}
 	}
 
@@ -739,7 +879,7 @@ fn verify_group_scope(writes: &[OperatorWrite]) {
 	}
 }
 
-const STATE_LAST_PAGE: usize = 64;
+pub const STATE_LAST_PAGE: usize = 64;
 
 enum SizeProbe {
 	Known(Option<ByteSize>),
@@ -753,7 +893,7 @@ struct GroupBuffer<'a> {
 	next: usize,
 	lower: Bound<EncodedKey>,
 	end: Bound<EncodedKey>,
-	items: Vec<(EncodedKey, Option<EncodedPodRow>)>,
+	items: Vec<(GroupStateKey, Option<EncodedPodRow>)>,
 	at: usize,
 	drained: bool,
 	dropped: bool,
@@ -801,13 +941,13 @@ impl<'a> GroupBuffer<'a> {
 		self.dropped |= page.dropped;
 		self.drained = page.items.len() < self.target;
 		if let Some((key, _)) = page.items.last() {
-			self.lower = Bound::Excluded(key.clone());
+			self.lower = Bound::Excluded(key.as_encoded().clone());
 		}
 		self.items = page.items;
 		self.at = 0;
 	}
 
-	fn peek(&mut self) -> Option<&(EncodedKey, Option<EncodedPodRow>)> {
+	fn peek(&mut self) -> Option<&(GroupStateKey, Option<EncodedPodRow>)> {
 		loop {
 			if self.at < self.items.len() {
 				return self.items.get(self.at);
@@ -835,7 +975,7 @@ pub struct StateLastIter<'a> {
 	store: &'a StandardOperatorStore,
 	operator: OperatorId,
 	start: Bound<EncodedKey>,
-	buffer: Vec<(EncodedKey, Option<EncodedPodRow>)>,
+	buffer: Vec<(GroupStateKey, Option<EncodedPodRow>)>,
 	buffer_index: usize,
 	buffer_end: Bound<EncodedKey>,
 	buffer_done: bool,
@@ -844,12 +984,16 @@ pub struct StateLastIter<'a> {
 	stored_index: usize,
 	stored_end: Bound<EncodedKey>,
 	stored_done: bool,
+	failed: bool,
 }
 
 impl Iterator for StateLastIter<'_> {
-	type Item = (EncodedKey, EncodedPodRow);
+	type Item = Result<(EncodedKey, EncodedPodRow)>;
 
 	fn next(&mut self) -> Option<Self::Item> {
+		if self.failed {
+			return None;
+		}
 		loop {
 			if self.buffer_index == self.buffer.len() && !self.buffer_done {
 				let page = self.store.resident.state_last_page(
@@ -862,21 +1006,25 @@ impl Iterator for StateLastIter<'_> {
 				self.buffer_index = 0;
 				self.buffer_done = self.buffer.len() < STATE_LAST_PAGE;
 				if let Some((key, _)) = self.buffer.last() {
-					self.buffer_end = Bound::Excluded(key.clone());
+					self.buffer_end = Bound::Excluded(key.as_encoded().clone());
 				}
 			}
 			if self.stored_index == self.stored.len() && !self.stored_done {
-				let persistent =
-					self.store.persistent.as_ref().expect(
-						"a store without a persistent tier never reaches a stored page",
-					);
-				let batch = persistent.last_batch(
+				let batch = match self.store.persistent.last_batch(
 					self.operator,
 					EncodedKeyRange::new(self.start.clone(), self.stored_end.clone()),
 					STATE_LAST_PAGE as u64,
-				);
+					u64::MAX,
+				) {
+					Ok(batch) => batch,
+					Err(error) => {
+						self.failed = true;
+						return Some(Err(error));
+					}
+				};
 				self.stored_done = !batch.has_more;
-				self.stored = batch.items;
+				self.stored =
+					batch.items.into_iter().map(|(key, row)| (key.into_encoded(), row)).collect();
 				self.stored_shadow = self
 					.store
 					.resident
@@ -894,22 +1042,22 @@ impl Iterator for StateLastIter<'_> {
 				(Some((key, entry)), None) => {
 					self.buffer_index += 1;
 					if let Some(row) = entry {
-						return Some((key, row));
+						return Some(Ok((key.into_encoded(), row)));
 					}
 				}
 				(None, Some((key, row))) => {
 					let dead = self.stored_shadow.get(self.stored_index).copied().unwrap_or(false);
 					self.stored_index += 1;
 					if !dead {
-						return Some((key, row));
+						return Some(Ok((key, row)));
 					}
 				}
 				(Some((buffer_key, entry)), Some((stored_key, stored_row))) => {
-					match buffer_key.cmp(&stored_key) {
+					match buffer_key.as_encoded().cmp(&stored_key) {
 						Ordering::Greater => {
 							self.buffer_index += 1;
 							if let Some(row) = entry {
-								return Some((buffer_key, row));
+								return Some(Ok((buffer_key.into_encoded(), row)));
 							}
 						}
 						Ordering::Less => {
@@ -920,14 +1068,14 @@ impl Iterator for StateLastIter<'_> {
 								.unwrap_or(false);
 							self.stored_index += 1;
 							if !dead {
-								return Some((stored_key, stored_row));
+								return Some(Ok((stored_key, stored_row)));
 							}
 						}
 						Ordering::Equal => {
 							self.buffer_index += 1;
 							self.stored_index += 1;
 							if let Some(row) = entry {
-								return Some((buffer_key, row));
+								return Some(Ok((buffer_key.into_encoded(), row)));
 							}
 						}
 					}

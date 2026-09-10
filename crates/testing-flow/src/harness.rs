@@ -286,6 +286,7 @@ impl<O: HostOperator> Harness<O> {
 			.as_ref()
 			.expect("the flow harness is built with an operator store")
 			.bytes(self.operator.id())
+			.expect("operator state sizing must not fail")
 	}
 }
 

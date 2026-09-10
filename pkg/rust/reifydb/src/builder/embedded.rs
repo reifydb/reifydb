@@ -15,7 +15,7 @@ use reifydb_runtime::{
 use reifydb_store_cdc::{config::CdcCommitConfig, tier::read::CdcReadConfig};
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig};
-use reifydb_store_operator::tier::{range::OperatorRangeConfig, resident::ResidentLimits};
+use reifydb_store_operator::{range::OperatorRangeConfig, resident::ResidentLimits};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;

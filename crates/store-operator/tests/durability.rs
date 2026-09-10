@@ -16,7 +16,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::{GroupId, KeyspaceId},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -25,9 +25,10 @@ use reifydb_runtime::{
 };
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_operator::{
-	config::{OperatorPersistentConfig, OperatorResidentStateConfig, OperatorStoreConfig},
+	config::{OperatorPersistentConfig, OperatorStoreConfig, ResidentConfig},
+	range::OperatorRangeConfig,
+	resident::Resident,
 	store::OperatorStore,
-	tier::{range::OperatorRangeConfig, resident::OperatorResidentState},
 	types::OperatorWrite,
 };
 use reifydb_testing::{keyspace::state_key, tempdir::temp_dir};
@@ -65,8 +66,8 @@ fn sliced_store_at(path: &Path, budget: ByteSize) -> OperatorStore {
 	let spawner = actor_system.spawner();
 	std::mem::forget(actor_system);
 	OperatorStore::standard(OperatorStoreConfig {
-		resident: OperatorResidentStateConfig {
-			storage: OperatorResidentState::with_budget(budget),
+		resident: ResidentConfig {
+			storage: Resident::with_budget(budget),
 			..Default::default()
 		},
 		persistent: Some(OperatorPersistentConfig::sqlite(SqliteConfig::new(path))),
@@ -85,22 +86,23 @@ fn row(body: &str) -> EncodedPodRow {
 }
 
 fn body(store: &OperatorStore, operator: OperatorId, suffix: u8) -> Option<String> {
-	store.get(operator, &key(suffix))
+	store.state_get(operator, &GroupStateKey::bound_unchecked(key(suffix)))
+		.unwrap()
 		.map(|row| String::from_utf8(row.body().to_vec()).expect("test bodies are utf8"))
 }
 
 fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
 	// reading the pre-image back keeps the claim truthful even when an earlier write in the same test moved the key
-	let write = match store.get(operator, &key) {
+	let write = match store.state_get(operator, &GroupStateKey::bound_unchecked(key.clone())).unwrap() {
 		Some(pre) => OperatorWrite::Replace {
 			operator,
-			key,
+			key: GroupStateKey::bound_unchecked(key),
 			pre_value_bytes: ByteSize::from_bytes(pre.bytes().len() as u64),
 			post: row,
 		},
 		None => OperatorWrite::Insert {
 			operator,
-			key,
+			key: GroupStateKey::bound_unchecked(key),
 			post: row,
 		},
 	};
@@ -118,7 +120,7 @@ fn a_write_that_was_never_flushed_is_not_there_after_a_restart() {
 		let booted = store_at(dir);
 
 		assert!(
-			booted.get(OP, &key(1)).is_none(),
+			booted.state_get(OP, &GroupStateKey::bound_unchecked(key(1))).unwrap().is_none(),
 			"a write that never reached sqlite cannot come back from it; if it does, the write path is \
 			 bypassing the resident state and paying a synchronous sqlite write on every flow commit"
 		);
@@ -157,25 +159,30 @@ fn a_reopened_store_never_shows_a_checkpoint_ahead_of_the_state_it_was_earned_by
 			store.apply_batch_with_checkpoints(
 				&[OperatorWrite::Insert {
 					operator: OP,
-					key: key(*suffix),
+					key: GroupStateKey::bound_unchecked(key(*suffix)),
 					post: row(&format!("slice-{suffix}")),
 				}],
 				&[(FLOW, CommitVersion(*version))],
 				&[],
-			);
+			)
+			.expect("each slice moves the checkpoint forward, so the batch must be accepted");
 			if index == 0 {
 				assert!(store.flush_pending_blocking(), "the first slice must be made durable");
 			}
 		}
 
 		let booted = store_at(dir);
-		let checkpoint =
-			booted.checkpoint_get(FLOW).expect("the first slice was flushed, so a checkpoint is durable");
+		let checkpoint = booted
+			.checkpoint_get(FLOW)
+			.unwrap()
+			.expect("the first slice was flushed, so a checkpoint is durable");
 
 		for (suffix, version) in slices.iter() {
 			if *version <= checkpoint.0 {
 				assert!(
-					booted.get(OP, &key(*suffix)).is_some(),
+					booted.state_get(OP, &GroupStateKey::bound_unchecked(key(*suffix)))
+						.unwrap()
+						.is_some(),
 					"the checkpoint claims slice {version} was applied, so its state has to be durable \
 					 too; a checkpoint ahead of the state replays nothing and silently skips it"
 				);
@@ -189,7 +196,7 @@ fn a_reopened_store_never_shows_a_checkpoint_ahead_of_the_state_it_was_earned_by
 			 reached sqlite without a flush"
 		);
 		assert!(
-			booted.get(OP, &key(2)).is_none(),
+			booted.state_get(OP, &GroupStateKey::bound_unchecked(key(2))).unwrap().is_none(),
 			"the unflushed slices must be absent, otherwise the loop above passes for the wrong reason"
 		);
 		Ok(())
@@ -202,18 +209,18 @@ fn the_retention_floor_only_ever_reflects_a_flushed_checkpoint() {
 	// the floor is what cdc retention reaps against, so it must never run ahead of what a restart restores
 	temp_dir(|dir| {
 		let store = store_at(dir);
-		store.checkpoint_set(FLOW, CommitVersion(10));
+		store.checkpoint_set(FLOW, CommitVersion(10)).unwrap();
 		assert!(store.flush_pending_blocking(), "the older checkpoint has to be durable before this is a test");
 
-		store.checkpoint_set(FLOW, CommitVersion(80));
+		store.checkpoint_set(FLOW, CommitVersion(80)).unwrap();
 
 		assert_eq!(
-			store.checkpoint_get(FLOW),
+			store.checkpoint_get(FLOW).unwrap(),
 			Some(CommitVersion(80)),
 			"the layered read still serves the buffered checkpoint"
 		);
 		assert_eq!(
-			store.checkpoint_floor(),
+			store.checkpoint_floor().unwrap(),
 			Some(CommitVersion(10)),
 			"the floor must stay at the flushed version; advancing it lets retention reap versions 10..80, \
 			 which a restart would send the flow straight back to"
@@ -221,22 +228,22 @@ fn the_retention_floor_only_ever_reflects_a_flushed_checkpoint() {
 
 		let booted = store_at(dir);
 		assert_eq!(
-			booted.checkpoint_get(FLOW),
+			booted.checkpoint_get(FLOW).unwrap(),
 			Some(CommitVersion(10)),
 			"the restart confirms the floor was right about what is durable"
 		);
 
 		assert!(store.flush_pending_blocking(), "the newer checkpoint must reach the flusher");
 		assert_eq!(
-			store.checkpoint_floor(),
+			store.checkpoint_floor().unwrap(),
 			Some(CommitVersion(80)),
 			"once durable the floor must advance, otherwise retention is pinned at the first checkpoint the \
 			 database ever wrote and nothing is reaped again"
 		);
 
 		let rebooted = store_at(dir);
-		assert_eq!(rebooted.checkpoint_get(FLOW), Some(CommitVersion(80)));
-		assert_eq!(rebooted.checkpoint_floor(), Some(CommitVersion(80)));
+		assert_eq!(rebooted.checkpoint_get(FLOW).unwrap(), Some(CommitVersion(80)));
+		assert_eq!(rebooted.checkpoint_floor().unwrap(), Some(CommitVersion(80)));
 		Ok(())
 	})
 	.unwrap();
@@ -251,14 +258,14 @@ fn a_drop_recorded_before_a_flush_is_still_a_drop_after_a_restart() {
 		put(&store, OTHER, key(1), row("neighbour"));
 		assert!(store.flush_pending_blocking(), "the pre-drop rows must be durable for the drop to have work");
 
-		store.drop_operator_state(OP);
+		store.drop_operator(OP).unwrap();
 		put(&store, OP, key(2), row("after"));
 		assert!(store.flush_pending_blocking(), "the marker and the later write travel in one batch");
 
 		let booted = store_at(dir);
 
 		assert!(
-			booted.get(OP, &key(1)).is_none(),
+			booted.state_get(OP, &GroupStateKey::bound_unchecked(key(1))).unwrap().is_none(),
 			"the marker must erase the rows it only masked in memory, otherwise the drop is undone by the \
 			 first restart"
 		);
@@ -288,7 +295,7 @@ fn flushing_twice_writes_the_same_state_once_and_leaves_the_flusher_usable() {
 		assert!(store.flush_pending_blocking(), "a second empty flush must behave exactly like the first");
 
 		put(&store, OP, key(1), row("once"));
-		store.checkpoint_set(FLOW, CommitVersion(5));
+		store.checkpoint_set(FLOW, CommitVersion(5)).unwrap();
 		assert!(store.flush_pending_blocking(), "the write must reach the flusher");
 		assert!(
 			store.flush_pending_blocking(),
@@ -298,7 +305,7 @@ fn flushing_twice_writes_the_same_state_once_and_leaves_the_flusher_usable() {
 
 		let booted = store_at(dir);
 		assert_eq!(body(&booted, OP, 1).as_deref(), Some("once"), "repeated flushes must not lose the row");
-		assert_eq!(booted.checkpoint_get(FLOW), Some(CommitVersion(5)));
+		assert_eq!(booted.checkpoint_get(FLOW).unwrap(), Some(CommitVersion(5)));
 
 		put(&store, OP, key(2), row("after-the-repeats"));
 		assert!(store.flush_pending_blocking(), "the flusher must still be usable after the repeats");
@@ -324,7 +331,7 @@ fn a_drain_that_runs_many_slices_persists_every_slice_and_not_just_one() {
 			put(&store, OP, key(suffix), row(&format!("v{suffix}")));
 		}
 
-		store.resident_state().flush_all();
+		store.resident().flush_all();
 
 		let booted = sliced_store_at(dir, ByteSize::from_bytes(64));
 		for suffix in 1..=8u8 {
@@ -369,19 +376,42 @@ fn a_restart_over_populated_state_rebuilds_the_filter_without_hiding_a_durable_r
 
 		for seed in 0..KEYS {
 			assert!(
-				booted.get(OP, &state_key(group(), KeyspaceId::JOIN_LEFT, seed)).is_some(),
+				booted.state_get(
+					OP,
+					&GroupStateKey::bound_unchecked(state_key(
+						group(),
+						KeyspaceId::JOIN_LEFT,
+						seed
+					))
+				)
+				.unwrap()
+				.is_some(),
 				"the rebuilt filter rejected durable JOIN_LEFT key {seed}; a false negative here is \
 				 silent data loss, not a slow read"
 			);
 			assert!(
-				booted.get(OP, &state_key(group(), KeyspaceId::JOIN_RIGHT, seed)).is_some(),
+				booted.state_get(
+					OP,
+					&GroupStateKey::bound_unchecked(state_key(
+						group(),
+						KeyspaceId::JOIN_RIGHT,
+						seed
+					))
+				)
+				.unwrap()
+				.is_some(),
 				"the rebuilt filter rejected durable JOIN_RIGHT key {seed}; the scan must page every \
 				 keyspace table, not just the first"
 			);
 		}
 
 		assert!(
-			booted.get(OP, &state_key(group(), KeyspaceId::JOIN_LEFT, KEYS + 1)).is_none(),
+			booted.state_get(
+				OP,
+				&GroupStateKey::bound_unchecked(state_key(group(), KeyspaceId::JOIN_LEFT, KEYS + 1))
+			)
+			.unwrap()
+			.is_none(),
 			"a key nothing ever wrote must still read as absent once the filter is armed"
 		);
 		Ok(())
@@ -404,7 +434,7 @@ fn a_group_page_after_a_restart_sees_a_keyspace_this_store_has_not_written() {
 		let store = store_at(dir);
 		put(&store, OP, state_key(group(), KeyspaceId::JOIN_RIGHT, 9), row("fresh"));
 
-		let batch = store.group_page(OP, &[group()], 64);
+		let batch = store.group_page(OP, &[group()], 64).unwrap();
 		let bodies: Vec<String> = batch
 			.items
 			.iter()

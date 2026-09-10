@@ -514,6 +514,7 @@ fn level_count(metric: &'static str, count: u64) -> Measure {
 
 fn flow_state_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 	store.census()
+		.unwrap_or_default()
 		.into_iter()
 		.map(|entry| MetricsRow {
 			dimensions: vec![

@@ -8,24 +8,24 @@ bytes
 ---
 bytes 1 => 0
 
-# A stored key is 24 group bytes plus its keyspace's fixed suffix width; the keyspace itself is the table it
-# lands in and costs nothing per row. A row is its body alone, so "a" costs 40 + 1.
+# A stored key is 24 group bytes, the one keyspace byte that frames it, and its keyspace's fixed suffix
+# width. A row is its body alone, so "a" costs 41 + 1.
 
 set a=1
 flush
 bytes
 ---
 ok
-bytes 1 => 41
+bytes 1 => 42
 
-# "bb" costs the same 40 key bytes as "a", plus 2.
+# "bb" costs the same 41 key bytes as "a", plus 2.
 
 set bb=22
 flush
 bytes
 ---
 ok
-bytes 1 => 83
+bytes 1 => 85
 
 # A neighbouring operator is billed separately.
 
@@ -35,8 +35,8 @@ bytes
 bytes op=2
 ---
 ok
-bytes 1 => 83
-bytes 2 => 41
+bytes 1 => 85
+bytes 2 => 42
 
 # A removed key stops being counted.
 
@@ -45,7 +45,7 @@ flush
 bytes
 ---
 ok
-bytes 1 => 42
+bytes 1 => 43
 
 # An operator that owns nothing costs nothing.
 

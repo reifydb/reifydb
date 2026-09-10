@@ -1011,7 +1011,7 @@ mod pull_protocol {
 		}
 
 		fn persisted_checkpoint(&self) -> Option<CommitVersion> {
-			self.engine.operator_state().checkpoint_get(self.flow_id)
+			self.engine.operator_state().checkpoint_get(self.flow_id).unwrap()
 		}
 
 		fn await_checkpoint_beyond(&self, floor: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
@@ -1615,7 +1615,8 @@ mod pull_protocol {
 				.operators
 				.as_ref()
 				.expect("the harness substrate carries an operator store")
-				.total_bytes() > ByteSize::ZERO,
+				.total_bytes()
+				.unwrap() > ByteSize::ZERO,
 			"the aggregate's operator state must land in the shared operator store"
 		);
 
@@ -1656,7 +1657,11 @@ mod pull_protocol {
 		let (restarted_store, _restarted_guard) = OperatorStore::testing_memory_with_persistent_sqlite();
 		let substrate2 = FlowSubstrate::with_dictionary(h.engine.dictionary_allocators(), restarted_store);
 		let operators2 = substrate2.operators.clone().expect("the test substrate carries an operator store");
-		assert_eq!(operators2.total_bytes(), ByteSize::ZERO, "the restarted operator store starts empty");
+		assert_eq!(
+			operators2.total_bytes().unwrap(),
+			ByteSize::ZERO,
+			"the restarted operator store starts empty"
+		);
 		let committer2 = Committer::new(
 			h.tracker.clone(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
@@ -1713,7 +1718,7 @@ mod pull_protocol {
 			health2.poisoned()
 		);
 		assert!(
-			operators2.total_bytes() > ByteSize::ZERO,
+			operators2.total_bytes().unwrap() > ByteSize::ZERO,
 			"the restarted flow must rebuild its state in its own operator store"
 		);
 		drop(actor2);
@@ -1771,6 +1776,7 @@ mod pull_protocol {
 						EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded),
 						u64::MAX,
 					)
+					.unwrap()
 					.items
 					.into_iter()
 					.filter(|(key, _)| {

@@ -1,0 +1,1048 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::ops::Bound;
+
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::flow::{FlowId, OperatorId},
+	key::{
+		operator::{
+			keyspace::{
+				columns_width,
+				join::{JoinLeft, JoinRight},
+			},
+			state::{GroupId, GroupStateKey, KEYSPACE_INNER_PREFIX_LEN, KeyspaceId},
+			traits::Keyspace,
+		},
+		typed::{direction::Asc, layout::KeyLayout},
+	},
+	state::typed::typed_key,
+};
+use reifydb_value::{
+	byte_size::ByteSize,
+	util::hash::Hash128,
+	value::row_number::RowNumber,
+};
+
+use crate::{
+	resident::Resident,
+	types::{BufferedState, DropMarker, FlushBatch, LayeredPre, OperatorStateCensus, OperatorWrite, StagedWrite},
+};
+
+const OP_A: OperatorId = OperatorId(1);
+const OP_B: OperatorId = OperatorId(2);
+const FLOW_A: FlowId = FlowId(101);
+const FLOW_B: FlowId = FlowId(102);
+
+fn insert(operator: OperatorId, name: &str, value: &str) -> OperatorWrite {
+	OperatorWrite::Insert {
+		operator,
+		key: GroupStateKey::bound_unchecked(key(name)),
+		post: row(value),
+	}
+}
+
+fn write_in_flow(buffer: &Resident, flow: FlowId, version: u64, writes: &[OperatorWrite]) {
+	buffer.apply_batch_with_checkpoints(writes, &[(flow, CommitVersion(version))], &[]);
+}
+
+fn operators_of(batch: &FlushBatch) -> Vec<OperatorId> {
+	let mut seen: Vec<OperatorId> = batch.writes.iter().map(|(operator, _, _)| *operator).collect();
+	seen.sort_unstable();
+	seen.dedup();
+	seen
+}
+
+fn row_number_of(name: &str) -> RowNumber {
+	let mut bytes = [0u8; 8];
+	for (slot, byte) in bytes.iter_mut().zip(name.as_bytes()) {
+		*slot = *byte;
+	}
+	RowNumber(u64::from_be_bytes(bytes))
+}
+
+fn key_in(group: u128, name: &str) -> EncodedKey {
+	typed_key::<JoinLeft>(GroupId::hashed(Hash128(group)), &Asc(row_number_of(name))).into_encoded()
+}
+
+fn key(name: &str) -> EncodedKey {
+	key_in(7, name)
+}
+
+fn right_key_in(group: u128, name: &str) -> EncodedKey {
+	typed_key::<JoinRight>(GroupId::hashed(Hash128(group)), &Asc(row_number_of(name))).into_encoded()
+}
+
+fn state_key(tail: &str) -> EncodedKey {
+	key_in(9, tail)
+}
+
+fn state_key_bytes() -> ByteSize {
+	ByteSize::from_bytes(
+		(KEYSPACE_INNER_PREFIX_LEN + columns_width(<<JoinLeft as Keyspace>::Suffix as KeyLayout>::COLUMNS))
+			as u64,
+	)
+}
+
+fn row(body: &str) -> EncodedPodRow {
+	EncodedPodRow::new(body.as_bytes())
+}
+
+fn body(row: &Option<EncodedPodRow>) -> String {
+	row_body(row.as_ref().expect("the slot must carry a row"))
+}
+
+fn written<'a>(batch: &'a FlushBatch, operator: OperatorId, key: &EncodedKey) -> Option<&'a StagedWrite> {
+	batch.writes
+		.iter()
+		.find(|(candidate, staged, _)| *candidate == operator && staged.as_encoded() == key)
+		.map(|(_, _, write)| write)
+}
+
+fn staged_body(write: &StagedWrite) -> String {
+	match write {
+		StagedWrite::Set(row) => row_body(row),
+		StagedWrite::Remove => String::new(),
+	}
+}
+
+fn row_body(row: &EncodedPodRow) -> String {
+	String::from_utf8(row.body().to_vec()).expect("test bodies are utf8")
+}
+
+fn entry_bytes(_key_body: &str, row_body: &str) -> ByteSize {
+	let group = size_of::<GroupId>();
+	let suffix = size_of::<Asc<RowNumber>>();
+	ByteSize::from_bytes((group + suffix + row(row_body).bytes().len()) as u64)
+}
+
+fn live_bytes(buffer: &Resident) -> ByteSize {
+	let mut total = ByteSize::ZERO;
+	for operator in buffer.shared().operators() {
+		let Some(slot) = buffer.shared().slot(operator) else {
+			continue;
+		};
+		let bytes = slot.inner.lock().live.bytes;
+		total = total.saturating_add(bytes);
+	}
+	total
+}
+
+fn resident_bytes(buffer: &Resident) -> ByteSize {
+	buffer.resident_bytes()
+}
+
+fn dirty_entries_of(buffer: &Resident, operator: OperatorId) -> usize {
+	buffer.shared().slot(operator).map_or(0, |slot| {
+		let dirty = slot.inner.lock().dirty_entries();
+		dirty
+	})
+}
+
+fn flushing(buffer: &Resident) -> bool {
+	buffer.shared().global.lock().flushing
+}
+
+fn any_in_flight(buffer: &Resident) -> bool {
+	buffer.flushing_entries() > 0
+}
+
+#[test]
+fn a_removed_key_reads_back_as_a_tombstone_not_as_absent() {
+	let buffer = Resident::new();
+
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("k")),
+		BufferedState::Absent,
+		"a key no layer has seen must report as unknown so the read continues to sqlite"
+	);
+
+	buffer.record_state_set(OP_A, key("k"), row("v"));
+	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k")) else {
+		panic!("the live layer knows the key it just wrote")
+	};
+	assert_eq!(row_body(&found), "v", "the buffer must hand back the row that was written, not a stale one");
+
+	buffer.record_state_remove(OP_A, key("k"));
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("k")),
+		BufferedState::Tombstone,
+		"a removed key must read as a tombstone; reporting it unknown would send the read to sqlite \
+		 and resurrect the deleted row"
+	);
+}
+
+#[test]
+fn checkpoints_distinguish_a_delete_from_a_never_written_flow() {
+	let buffer = Resident::new();
+
+	assert!(
+		buffer.lookup_checkpoint(FlowId(7)).is_none(),
+		"an unwritten flow must be unknown so the read falls back to the durable checkpoint"
+	);
+
+	buffer.record_checkpoint_set(FlowId(7), CommitVersion(42));
+	assert_eq!(
+		buffer.lookup_checkpoint(FlowId(7)),
+		Some(Some(CommitVersion(42))),
+		"the buffered checkpoint must win over anything still in sqlite"
+	);
+
+	buffer.record_checkpoint_delete(FlowId(7));
+	assert_eq!(
+		buffer.lookup_checkpoint(FlowId(7)),
+		Some(None),
+		"a deleted checkpoint must be a definitive miss, otherwise a dropped flow resumes from a \
+		 stale version"
+	);
+}
+
+#[test]
+fn taken_entries_stay_readable_across_the_flush() {
+	let buffer = Resident::new();
+	buffer.record_state_set(OP_A, key("k"), row("v"));
+	buffer.record_state_remove(OP_A, key("gone"));
+	buffer.record_checkpoint_set(FlowId(3), CommitVersion(9));
+
+	let batch = buffer.take_for_flush().expect("a non-empty live batch must be handed to the flusher");
+	assert_eq!(batch.writes.len(), 2, "both the write and the tombstone belong to the taken batch");
+
+	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k")) else {
+		panic!("the taken row must stay readable")
+	};
+	assert_eq!(
+		row_body(&found),
+		"v",
+		"dropping the taken row would let a concurrent read fall through to sqlite and observe the \
+		 pre-flush value"
+	);
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("gone")),
+		BufferedState::Tombstone,
+		"a taken tombstone must stay a tombstone until the delete is durable"
+	);
+	assert_eq!(
+		buffer.lookup_checkpoint(FlowId(3)),
+		Some(Some(CommitVersion(9))),
+		"the checkpoint is only durable once its transaction commits"
+	);
+
+	buffer.complete_flush();
+
+	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k")) else {
+		panic!("a settled row must stay readable from memory")
+	};
+	assert_eq!(
+		row_body(&found),
+		"v",
+		"a settled row stays resident and keeps answering; dropping it on settle is the read \
+		 amplification this tier exists to remove"
+	);
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("gone")),
+		BufferedState::Tombstone,
+		"a settled tombstone matches the row sqlite no longer holds, so it may keep answering"
+	);
+	assert!(buffer.lookup_checkpoint(FlowId(3)).is_none());
+	assert_eq!(buffer.dirty_entries(), 0, "a settled entry matches sqlite and must not be rewritten");
+	assert_eq!(
+		buffer.flushing_entries(),
+		0,
+		"the settle must clear every staged mark, otherwise the next take re-arms the batch"
+	);
+}
+
+#[test]
+fn a_live_write_shadows_the_same_key_in_the_in_flight_batch() {
+	let buffer = Resident::new();
+	buffer.record_state_set(OP_A, key("k"), row("old"));
+	buffer.record_state_set(OP_A, key("doomed"), row("old"));
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+
+	buffer.record_state_set(OP_A, key("k"), row("new"));
+	buffer.record_state_remove(OP_A, key("doomed"));
+
+	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k")) else {
+		panic!("the live write must be visible")
+	};
+	assert_eq!(row_body(&found), "new", "the live layer must win over the older in-flight value");
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("doomed")),
+		BufferedState::Tombstone,
+		"a live tombstone must hide the in-flight value, otherwise a delete is silently undone"
+	);
+}
+
+#[test]
+fn a_state_page_is_ordered_operator_scoped_and_serves_the_latest_write() {
+	let buffer = Resident::new();
+	buffer.record_state_set(OP_A, key("a"), row("flushing-a"));
+	buffer.record_state_set(OP_A, key("b"), row("flushing-b"));
+	buffer.record_state_set(OP_A, key("c"), row("flushing-c"));
+	buffer.record_state_set(OP_B, key("b"), row("other-operator"));
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+
+	buffer.record_state_set(OP_A, key("b"), row("live-b"));
+	buffer.record_state_remove(OP_A, key("c"));
+	buffer.record_state_set(OP_A, key("d"), row("live-d"));
+
+	let all = buffer.state_page(OP_A, Bound::Unbounded, Bound::Unbounded, usize::MAX).items;
+	let keys: Vec<Vec<u8>> = all.iter().map(|(k, _)| k.as_slice().to_vec()).collect();
+	assert_eq!(
+		keys,
+		vec![key("a").to_vec(), key("b").to_vec(), key("d").to_vec()],
+		"the range cursor advances in key order, so an unordered range drops or duplicates keys"
+	);
+
+	assert_eq!(body(&all[0].1), "flushing-a", "a staged key must still be reported after its flush is taken");
+	assert_eq!(body(&all[1].1), "live-b", "the later write must replace the staged value for that key");
+	assert_eq!(body(&all[2].1), "live-d");
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("c")),
+		BufferedState::Tombstone,
+		"a removed key leaves the range but must still report as a tombstone, because that lookup is what \
+		 masks the row sqlite still holds for it"
+	);
+
+	let other = buffer.state_page(OP_B, Bound::Unbounded, Bound::Unbounded, usize::MAX).items;
+	assert_eq!(other.len(), 1, "a range must stay inside its operator, otherwise operators read each other");
+	assert_eq!(body(&other[0].1), "other-operator");
+
+	let window = buffer.state_page(OP_A, Bound::Included(&key("b")), Bound::Excluded(&key("d")), usize::MAX).items;
+	let window_keys: Vec<Vec<u8>> = window.iter().map(|(k, _)| k.as_slice().to_vec()).collect();
+	assert_eq!(
+		window_keys,
+		vec![key("b").to_vec()],
+		"the page must honour the bounds, otherwise it over-reads past its end"
+	);
+
+	let resumed = buffer.state_page(OP_A, Bound::Excluded(&key("a")), Bound::Included(&key("b")), usize::MAX).items;
+	let resumed_keys: Vec<Vec<u8>> = resumed.iter().map(|(k, _)| k.as_slice().to_vec()).collect();
+	assert_eq!(
+		resumed_keys,
+		vec![key("b").to_vec()],
+		"an excluded lower bound is how the cursor resumes a page, so it must skip the seen key"
+	);
+}
+
+#[test]
+fn a_window_that_spans_nothing_reads_empty_instead_of_panicking() {
+	let buffer = seeded_two_layer_buffer();
+
+	for (label, start, end) in [
+		("both bounds excluded on the same key", Bound::Excluded(key("b")), Bound::Excluded(key("b"))),
+		("an excluded end on the included start", Bound::Included(key("b")), Bound::Excluded(key("b"))),
+		("an excluded start under the included end", Bound::Excluded(key("b")), Bound::Included(key("b"))),
+		("a start past its end", Bound::Included(key("d")), Bound::Included(key("b"))),
+	] {
+		let window = buffer.state_page(OP_A, start.as_ref(), end.as_ref(), usize::MAX).items;
+		assert!(window.is_empty(), "{label} spans no key, so the range must report no rows");
+	}
+}
+
+#[test]
+fn a_window_closed_on_one_key_still_returns_that_key() {
+	let buffer = seeded_two_layer_buffer();
+
+	let window = buffer.state_page(OP_A, Bound::Included(&key("b")), Bound::Included(&key("b")), usize::MAX).items;
+	let keys: Vec<Vec<u8>> = window.iter().map(|(k, _)| k.as_slice().to_vec()).collect();
+	assert_eq!(keys, vec![key("b").to_vec()], "an inclusive pair on one key must still read that key");
+	assert_eq!(body(&window[0].1), "live-b", "the overlay must still apply inside a one-key window");
+}
+
+#[test]
+fn a_window_that_spans_nothing_still_reports_a_pending_drop() {
+	let buffer = seeded_two_layer_buffer_with_dropped_operator();
+
+	let window = buffer.state_page(OP_A, Bound::Excluded(&key("b")), Bound::Excluded(&key("b")), usize::MAX);
+	assert!(window.items.is_empty(), "an empty span carries no rows");
+	assert!(window.dropped, "a pending drop must be reported even when the span is empty");
+}
+
+fn seeded_two_layer_buffer() -> Resident {
+	let buffer = Resident::new();
+	buffer.record_state_set(OP_A, key("a"), row("flushing-a"));
+	buffer.record_state_set(OP_A, key("b"), row("flushing-b"));
+	buffer.record_state_set(OP_A, key("c"), row("flushing-c"));
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+
+	buffer.record_state_set(OP_A, key("b"), row("live-b"));
+	buffer.record_state_set(OP_A, key("d"), row("live-d"));
+	buffer
+}
+
+fn seeded_two_layer_buffer_with_dropped_operator() -> Resident {
+	let buffer = Resident::new();
+	buffer.record_drop(DropMarker::OperatorState(OP_A));
+	buffer.record_state_set(OP_A, key("a"), row("flushing-a"));
+	buffer.record_state_set(OP_A, key("b"), row("flushing-b"));
+	buffer.record_state_set(OP_A, key("c"), row("flushing-c"));
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+
+	buffer.record_state_set(OP_A, key("b"), row("live-b"));
+	buffer.record_state_set(OP_A, key("d"), row("live-d"));
+	buffer
+}
+
+#[test]
+fn a_drop_clears_what_came_before_it_and_keeps_what_came_after() {
+	let buffer = Resident::new();
+	buffer.record_state_set(OP_A, key("before"), row("v"));
+	buffer.record_state_set(OP_B, key("untouched"), row("v"));
+
+	buffer.record_drop(DropMarker::OperatorState(OP_A));
+
+	buffer.record_state_set(OP_A, key("after"), row("v"));
+
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("before")),
+		BufferedState::Dropped,
+		"a write the drop erased must never be replayed into sqlite behind the drop"
+	);
+	assert!(
+		matches!(buffer.lookup_state(OP_A, &key("after")), BufferedState::Row(_)),
+		"a write recorded after the drop must survive it, otherwise a recreated operator loses state"
+	);
+	assert!(
+		matches!(buffer.lookup_state(OP_B, &key("untouched")), BufferedState::Row(_)),
+		"the drop is scoped to one operator"
+	);
+
+	let batch = buffer.take_for_flush().expect("the batch carries the marker and the later write");
+	assert_eq!(
+		batch.drops,
+		vec![DropMarker::OperatorState(OP_A)],
+		"the marker must reach the flusher; clearing memory alone leaves the sqlite rows behind"
+	);
+	assert_eq!(batch.writes.len(), 2, "only the post-drop write and the other operator's write remain");
+}
+
+#[test]
+fn take_for_flush_on_an_empty_buffer_returns_none_and_leaves_flushing_clear() {
+	let buffer = Resident::new();
+
+	assert!(buffer.take_for_flush().is_none(), "an empty tick must not open a transaction");
+
+	assert!(
+		!flushing(&buffer),
+		"a refused take must leave the flag clear, otherwise every later drop blocks forever on a \
+		 flush that never runs"
+	);
+	assert!(!any_in_flight(&buffer), "nothing was taken, so there is no in-flight layer to read through");
+}
+
+#[test]
+fn a_buffer_holding_only_a_drop_is_still_worth_flushing() {
+	let buffer = Resident::new();
+	buffer.record_drop(DropMarker::OperatorState(OP_A));
+
+	let batch = buffer
+		.take_for_flush()
+		.expect("a drop with no writes must still flush; the rows it erases live in sqlite");
+	assert_eq!(batch.drops, vec![DropMarker::OperatorState(OP_A)]);
+}
+
+#[test]
+fn take_for_flush_sets_flushing_and_complete_flush_clears_it() {
+	let buffer = Resident::new();
+	buffer.record_state_set(OP_A, key("k"), row("v"));
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+
+	assert!(flushing(&buffer), "a taken batch must mark the buffer flushing while it is on the device");
+	assert!(any_in_flight(&buffer), "the taken batch stays readable while the flush runs");
+
+	buffer.complete_flush();
+
+	assert!(!flushing(&buffer), "a completed flush must clear the flushing mark");
+	assert!(!any_in_flight(&buffer), "the settled batch is durable, so nothing may still be staged for flush");
+}
+
+#[test]
+fn apply_batch_maps_every_write_variant_onto_its_entry() {
+	let buffer = Resident::new();
+	buffer.apply_batch(&[
+		OperatorWrite::Insert {
+			operator: OP_A,
+			key: GroupStateKey::bound_unchecked(key("set")),
+			post: row("v"),
+		},
+		OperatorWrite::Remove {
+			operator: OP_A,
+			key: GroupStateKey::bound_unchecked(key("removed")),
+			pre: LayeredPre::Absent,
+		},
+	]);
+
+	let BufferedState::Row(set) = buffer.lookup_state(OP_A, &key("set")) else {
+		panic!("a Set must land in the state map")
+	};
+	assert_eq!(row_body(&set), "v");
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("removed")),
+		BufferedState::Tombstone,
+		"a Remove must land as a tombstone, not as a missing entry"
+	);
+}
+
+#[test]
+fn a_combined_apply_lands_the_state_and_the_checkpoints_in_one_taken_batch() {
+	let buffer = Resident::new();
+
+	buffer.apply_batch_with_checkpoints(
+		&[OperatorWrite::Insert {
+			operator: OP_A,
+			key: GroupStateKey::bound_unchecked(key("state")),
+			post: row("v"),
+		}],
+		&[(FlowId(3), CommitVersion(12))],
+		&[FlowId(4)],
+	);
+
+	let batch = buffer.take_for_flush().expect("the combined apply must dirty the buffer");
+
+	assert_eq!(
+		staged_body(written(&batch, OP_A, &key("state")).expect("the state write must be in the batch")),
+		"v",
+		"the state of the committed slice must ride the same batch as its checkpoint"
+	);
+	assert_eq!(
+		batch.checkpoints.get(&FlowId(3)).copied(),
+		Some(Some(CommitVersion(12))),
+		"the checkpoint must be in the very batch that carries the state; landing it in a later one \
+		 lets a crash leave the checkpoint ahead of the state, and the flow resumes past state it \
+		 never wrote"
+	);
+	assert_eq!(
+		batch.checkpoints.get(&FlowId(4)).copied(),
+		Some(None),
+		"a checkpoint delete travels with the same slice, otherwise a dropped flow keeps a durable \
+		 version after its state is gone"
+	);
+
+	assert_eq!(
+		buffer.dirty_entries(),
+		0,
+		"nothing may be left behind for a second batch; a follow-up batch is exactly the split this \
+		 entry point exists to prevent"
+	);
+}
+
+#[test]
+fn a_combined_apply_with_nothing_to_record_leaves_the_buffer_untouched() {
+	let buffer = Resident::new();
+
+	buffer.apply_batch_with_checkpoints(&[], &[], &[]);
+
+	assert!(
+		buffer.take_for_flush().is_none(),
+		"a slice that changed nothing must not dirty the buffer, otherwise every idle commit opens a \
+		 sqlite transaction"
+	);
+}
+
+#[test]
+fn an_empty_write_batch_leaves_the_buffer_untouched() {
+	let buffer = Resident::new();
+	buffer.apply_batch(&[]);
+
+	assert!(
+		buffer.take_for_flush().is_none(),
+		"an empty apply must not dirty the buffer, otherwise every idle tick opens a transaction"
+	);
+}
+
+#[test]
+fn a_flow_whose_operators_still_hold_live_state_does_not_get_its_checkpoint_written() {
+	let buffer = Resident::with_budget(entry_bytes("k1", "v1"));
+	write_in_flow(&buffer, FLOW_A, 10, &[insert(OP_A, "k1", "v1")]);
+	write_in_flow(&buffer, FLOW_B, 20, &[insert(OP_B, "k2", "v2")]);
+
+	let first = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+	assert_eq!(
+		first.checkpoints.get(&FLOW_A).copied(),
+		Some(Some(CommitVersion(10))),
+		"the flow this slice drained completely is safe to check point in the same transaction"
+	);
+	assert!(
+		!first.checkpoints.contains_key(&FLOW_B),
+		"the flow the budget stopped before still holds live state, so its checkpoint must wait"
+	);
+	buffer.complete_flush();
+
+	let second = buffer.take_for_flush().expect("the second flow makes a second slice");
+	assert_eq!(
+		second.checkpoints.get(&FLOW_B).copied(),
+		Some(Some(CommitVersion(20))),
+		"the held checkpoint must go out with the state that earns it, or the flow never advances"
+	);
+}
+
+#[test]
+fn a_checkpoint_with_no_pending_state_is_written_without_waiting_for_a_drain() {
+	let buffer = Resident::new();
+	buffer.record_checkpoint_set(FLOW_A, CommitVersion(77));
+
+	let batch = buffer.take_for_flush().expect("a checkpoint alone is worth a transaction");
+	assert!(batch.writes.is_empty(), "the flow wrote no state, so none may be invented for it");
+	assert_eq!(
+		batch.checkpoints.get(&FLOW_A).copied(),
+		Some(Some(CommitVersion(77))),
+		"nothing is pending for this flow, so everything it claims is already durable"
+	);
+}
+
+#[test]
+fn the_flow_waiting_longest_drains_first() {
+	let buffer = Resident::with_budget(entry_bytes("k1", "v1"));
+	write_in_flow(&buffer, FLOW_B, 20, &[insert(OP_B, "k2", "v2")]);
+	write_in_flow(&buffer, FLOW_A, 10, &[insert(OP_A, "k1", "v1")]);
+
+	let first = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+	assert_eq!(
+		operators_of(&first),
+		vec![OP_B],
+		"the flow that has been pending longest must go first even though its id sorts last"
+	);
+}
+
+#[test]
+fn an_operator_with_no_flow_drains_without_blocking_any_checkpoint() {
+	let buffer = Resident::new();
+	buffer.record_state_set(OP_A, key("orphan"), row("v"));
+	buffer.record_checkpoint_set(FLOW_A, CommitVersion(5));
+
+	let batch = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+	assert!(written(&batch, OP_A, &key("orphan")).is_some(), "untagged state must still be made durable");
+	assert_eq!(
+		batch.checkpoints.get(&FLOW_A).copied(),
+		Some(Some(CommitVersion(5))),
+		"an operator with no flow claims no flow, so it must not hold one back"
+	);
+}
+
+#[test]
+fn a_buffer_far_past_the_budget_drains_whole_flows_and_loses_nothing() {
+	let entry = entry_bytes("k0", "v0");
+	let buffer = Resident::with_budget(entry * 2);
+	for index in 0..5u64 {
+		write_in_flow(&buffer, FLOW_A, index + 1, &[insert(OP_A, &format!("k{index}"), &format!("v{index}"))]);
+	}
+	for index in 5..10u64 {
+		write_in_flow(&buffer, FLOW_B, index + 1, &[insert(OP_B, &format!("k{index}"), &format!("v{index}"))]);
+	}
+
+	let mut seen: Vec<Vec<u8>> = Vec::new();
+	let mut slices = 0;
+	while let Some(batch) = buffer.take_for_flush() {
+		slices += 1;
+		assert!(slices <= 4, "the drain must make progress on every take or it never terminates");
+		assert_eq!(
+			operators_of(&batch).len(),
+			1,
+			"a slice that mixes operators from two flows has crossed a boundary the byte budget was \
+			 only ever allowed to stop at"
+		);
+		for (operator, taken, _) in &batch.writes {
+			assert_eq!(
+				dirty_entries_of(&buffer, *operator),
+				0,
+				"the operator kept unstaged state behind, so this slice split it; its flow \
+				 checkpoint would then promise state that never reached sqlite"
+			);
+			seen.push(taken.as_slice().to_vec());
+		}
+		buffer.complete_flush();
+	}
+
+	assert_eq!(slices, 2, "two flows drain as two whole slices, one each");
+	let mut unique = seen.clone();
+	unique.sort();
+	unique.dedup();
+	assert_eq!(
+		unique.len(),
+		seen.len(),
+		"a key handed out twice is a key written twice, which resurrects the value the later slice replaced"
+	);
+	assert_eq!(
+		seen.len(),
+		10,
+		"every buffered key must reach exactly one slice; a key left behind by the last take is committed \
+		 operator state that never becomes durable"
+	);
+}
+
+#[test]
+fn a_key_rewritten_during_its_flush_flushes_as_the_later_value() {
+	let buffer = Resident::new();
+	buffer.record_state_set(OP_A, key("k1"), row("early"));
+
+	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
+	assert_eq!(written(&first, OP_A, &key("k1")).map(staged_body), Some("early".to_string()));
+
+	buffer.record_state_set(OP_A, key("k1"), row("late"));
+	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k1")) else {
+		panic!("the rewritten key must read from the live layer")
+	};
+	assert_eq!(
+		row_body(&found),
+		"late",
+		"the in-flight slice still holds the earlier value, so a read that prefers it serves state the \
+		 operator has already replaced"
+	);
+	buffer.complete_flush();
+
+	let second = buffer.take_for_flush().expect("the rewrite recorded during the flush makes a second slice");
+	assert_eq!(
+		written(&second, OP_A, &key("k1")).map(staged_body),
+		Some("late".to_string()),
+		"the later slice must carry the later value; carrying the earlier one would overwrite the rewrite \
+		 in sqlite and silently roll the key back"
+	);
+	buffer.complete_flush();
+	assert!(buffer.take_for_flush().is_none(), "the drain must terminate once everything has been handed out");
+}
+
+#[test]
+fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
+	let entry = entry_bytes("k2", "post-drop");
+	let buffer = Resident::with_budget(entry);
+	write_in_flow(&buffer, FLOW_A, 1, &[insert(OP_A, "k1", "pre-drop")]);
+	buffer.record_drop(DropMarker::OperatorState(OP_A));
+	write_in_flow(&buffer, FLOW_A, 2, &[insert(OP_A, "k2", "post-drop")]);
+	write_in_flow(&buffer, FLOW_B, 3, &[insert(OP_B, "k3", "other-flow")]);
+
+	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
+	assert_eq!(
+		first.drops,
+		vec![DropMarker::OperatorState(OP_A)],
+		"every marker must ride the first slice, otherwise the drop lands after writes it must precede"
+	);
+	assert!(
+		written(&first, OP_A, &key("k1")).is_none(),
+		"a write recorded before the drop must have been cleared, not carried into a slice"
+	);
+	assert!(written(&first, OP_A, &key("k2")).is_some(), "the post-drop write rides out with its own flow");
+	buffer.complete_flush();
+
+	let second = buffer.take_for_flush().expect("the second flow makes a second slice");
+	assert!(
+		second.drops.is_empty(),
+		"a marker replayed in a later slice deletes the post-drop rows the first slice already made durable"
+	);
+	assert!(
+		written(&second, OP_B, &key("k3")).is_some(),
+		"the flow the budget stopped before must be the one left for the second slice"
+	);
+	buffer.complete_flush();
+	assert!(buffer.take_for_flush().is_none(), "both flows must have been handed out");
+}
+
+#[test]
+fn a_key_rewritten_while_its_flush_is_in_flight_is_counted_once() {
+	let buffer = Resident::new();
+	let k = state_key("a");
+	buffer.record_state_set(OP_A, k.clone(), row("v1"));
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+	buffer.record_state_set(OP_A, k.clone(), row("rewritten"));
+
+	let census = buffer.census();
+	assert_eq!(census.len(), 1, "one key in one keyspace is one bucket");
+	assert_eq!(census[0].keys, 1, "the key is one key, however many batches happen to hold a copy of it");
+	assert_eq!(
+		census[0].key_bytes,
+		state_key_bytes(),
+		"the key is billed once, not once per resident batch, and only for what its keyspace stores"
+	);
+	assert_eq!(
+		census[0].value_bytes,
+		ByteSize::from_bytes(row("rewritten").bytes().len() as u64),
+		"the live rewrite is the row that stands, so its size is the one billed"
+	);
+	assert_eq!(
+		buffer.total_bytes(),
+		state_key_bytes() + ByteSize::from_bytes(row("rewritten").bytes().len() as u64),
+		"total bytes must agree with the census it is derived from"
+	);
+	assert_eq!(buffer.bytes(OP_A), buffer.total_bytes(), "one operator holds everything here");
+}
+
+#[test]
+fn a_key_removed_while_its_flush_is_in_flight_is_not_counted_at_all() {
+	let buffer = Resident::new();
+	let k = state_key("a");
+	buffer.record_state_set(OP_A, k.clone(), row("v1"));
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+	buffer.record_state_remove(OP_A, k.clone());
+
+	assert!(buffer.census().is_empty(), "a key the newest batch tombstones is gone, not merely shadowed");
+	assert_eq!(buffer.total_bytes(), ByteSize::ZERO, "and it bills nothing");
+}
+
+#[test]
+fn a_rewritten_key_charges_its_key_once_and_only_the_row_that_stands() {
+	let buffer = Resident::new();
+	buffer.record_state_set(OP_A, key("k1"), row("aaaaaaaa"));
+	assert_eq!(live_bytes(&buffer), entry_bytes("k1", "aaaaaaaa"), "a first write charges its key and its row");
+
+	buffer.record_state_set(OP_A, key("k1"), row("bb"));
+
+	assert_eq!(
+		live_bytes(&buffer),
+		entry_bytes("k1", "bb"),
+		"the collapse must drop the outgoing row and charge the key exactly once, otherwise every rewrite \
+		 of a hot key counts twice"
+	);
+}
+
+#[test]
+fn a_tombstone_keeps_its_key_charged() {
+	let buffer = Resident::new();
+	buffer.record_state_set(OP_A, key("k1"), row("value"));
+
+	buffer.record_state_remove(OP_A, key("k1"));
+
+	assert_eq!(
+		live_bytes(&buffer),
+		entry_bytes("k1", ""),
+		"a tombstone still holds its key in memory; charging it zero hides a keyspace that is all deletes"
+	);
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("k1")),
+		BufferedState::Tombstone,
+		"the charge must come from a slot that is really still there"
+	);
+}
+
+#[test]
+fn a_tombstone_recorded_first_charges_its_key() {
+	let buffer = Resident::new();
+
+	buffer.record_state_remove(OP_A, key("k1"));
+
+	assert_eq!(
+		live_bytes(&buffer),
+		entry_bytes("k1", ""),
+		"a delete-only key is resident too; a free tombstone lets a delete storm escape the budget"
+	);
+}
+
+#[test]
+fn a_flow_boundary_split_moves_exactly_the_bytes_the_slice_carries_away() {
+	let buffer = Resident::with_budget(entry_bytes("k1", "aaa"));
+	write_in_flow(&buffer, FLOW_A, 1, &[insert(OP_A, "k1", "aaa")]);
+	write_in_flow(&buffer, FLOW_B, 2, &[insert(OP_B, "k2", "bbbbb")]);
+	let before = live_bytes(&buffer);
+
+	let taken = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+
+	assert_eq!(
+		taken.bytes,
+		entry_bytes("k1", "aaa"),
+		"the slice carries exactly the first flow's bytes; the budget may only stop at a flow boundary"
+	);
+	assert_eq!(
+		live_bytes(&buffer),
+		before,
+		"a staged entry stays resident, so the split moves the charge into the batch without releasing \
+		 it from memory"
+	);
+	assert_eq!(dirty_entries_of(&buffer, OP_A), 0, "the taken flow has nothing left needing a write");
+	assert_eq!(
+		dirty_entries_of(&buffer, OP_B),
+		1,
+		"the flow past the boundary stays dirty for the next slice; losing it drops committed state"
+	);
+}
+
+#[test]
+fn a_split_that_takes_everything_leaves_nothing_dirty() {
+	let buffer = Resident::new();
+	buffer.record_state_set(OP_A, key("k1"), row("aaa"));
+	let before = live_bytes(&buffer);
+
+	let taken = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+
+	assert_eq!(taken.bytes, before, "a slice that took everything carries the whole charge");
+	assert_eq!(
+		buffer.dirty_entries(),
+		0,
+		"a residue left unstaged never drains, so the buffer flushes on every commit forever"
+	);
+	assert_eq!(
+		live_bytes(&buffer),
+		before,
+		"taking everything stages the entries in place, so they stay resident for reads"
+	);
+}
+
+#[test]
+fn a_drop_marker_releases_the_bytes_of_everything_it_clears() {
+	let buffer = Resident::new();
+	buffer.record_state_set(OP_A, key("k1"), row("gone"));
+	buffer.record_state_set(OP_B, key("k2"), row("stays"));
+
+	buffer.record_drop(DropMarker::OperatorState(OP_A));
+
+	assert_eq!(
+		live_bytes(&buffer),
+		entry_bytes("k2", "stays"),
+		"only the surviving operator may still be charged; a dropped operator's bytes are gone from RAM"
+	);
+}
+
+#[test]
+fn a_selected_slice_stays_resident_across_the_settle() {
+	let buffer = Resident::new();
+	buffer.record_state_set(OP_A, key("k1"), row("value"));
+	let charged = live_bytes(&buffer);
+
+	let batch = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+
+	assert_eq!(batch.bytes, charged, "the slice carries the charge it took");
+	assert_eq!(
+		live_bytes(&buffer),
+		charged,
+		"staging marks the entries in place, so the live map keeps carrying them"
+	);
+	assert_eq!(
+		resident_bytes(&buffer),
+		charged,
+		"the in-flight slice is still held in memory, so the buffer must keep counting it"
+	);
+
+	buffer.complete_flush();
+
+	assert_eq!(
+		resident_bytes(&buffer),
+		charged,
+		"the settle makes the rows durable without evicting them; only the evictor gives memory back"
+	);
+	assert_eq!(buffer.dirty_entries(), 0, "a settled entry matches sqlite and must not be rewritten");
+}
+
+#[test]
+fn a_full_mutation_sequence_leaves_only_the_untouched_operator_in_the_census() {
+	let buffer = Resident::new();
+	let first = state_key("k1");
+	let second = state_key("k2");
+	let flushed = state_key("k4");
+	let neighbour = state_key("k5");
+
+	buffer.record_state_set(OP_A, first.clone(), row("v1"));
+
+	buffer.record_state_set(OP_A, second.clone(), row("v2"));
+	buffer.record_state_set(OP_A, flushed.clone(), row("v4"));
+
+	buffer.record_state_set(OP_A, first.clone(), row("v1-longer"));
+
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+
+	buffer.record_state_set(OP_A, first.clone(), row("v1-live"));
+
+	buffer.record_state_remove(OP_A, second.clone());
+
+	buffer.complete_flush();
+
+	buffer.record_state_set(OP_B, neighbour.clone(), row("v5"));
+
+	buffer.record_drop(DropMarker::OperatorState(OP_A));
+
+	assert_eq!(
+		buffer.census(),
+		vec![OperatorStateCensus {
+			operator: OP_B,
+			keyspace: KeyspaceId::JOIN_LEFT,
+			keys: 1,
+			key_bytes: state_key_bytes(),
+			value_bytes: ByteSize::from_bytes(row("v5").bytes().len() as u64),
+		}],
+		"only the untouched operator's key may survive the drop"
+	);
+}
+
+#[test]
+fn a_live_row_shadows_its_in_flight_twin_across_keyspaces() {
+	let buffer = Resident::new();
+	let mut flight = Vec::new();
+	for group in [7u128, 9] {
+		for name in ["a", "b"] {
+			flight.push(key_in(group, name));
+			flight.push(right_key_in(group, name));
+		}
+	}
+	for key in &flight {
+		buffer.record_state_set(OP_A, key.clone(), row("flight"));
+	}
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+
+	let shadowed = [key_in(7, "a"), right_key_in(9, "b")];
+	let added = right_key_in(7, "c");
+	for key in shadowed.iter().chain([&added]) {
+		buffer.record_state_set(OP_A, key.clone(), row("live"));
+	}
+
+	let mut expected = flight.clone();
+	expected.push(added.clone());
+	expected.sort();
+
+	let seen = buffer.state_page(OP_A, Bound::Unbounded, Bound::Unbounded, usize::MAX).items;
+	assert_eq!(
+		seen.iter().map(|(key, _)| key.as_slice().to_vec()).collect::<Vec<_>>(),
+		expected.iter().map(|key| key.to_vec()).collect::<Vec<_>>(),
+		"a key must appear exactly once, in encoded order, however many keyspaces the operator spans"
+	);
+
+	for ((_, found), key) in seen.iter().zip(expected.iter()) {
+		let want = if shadowed.contains(key) || key == &added {
+			"live"
+		} else {
+			"flight"
+		};
+		assert_eq!(body(found), want, "the live layer must win for every key it shadows");
+	}
+}
+
+#[test]
+fn a_last_page_is_the_exact_reverse_tail_of_a_forward_page() {
+	let buffer = Resident::new();
+	let mut seeded = Vec::new();
+	for group in [7u128, 9] {
+		for name in ["a", "b"] {
+			seeded.push(key_in(group, name));
+			seeded.push(right_key_in(group, name));
+		}
+	}
+	for key in &seeded {
+		buffer.record_state_set(OP_A, key.clone(), row("flight"));
+	}
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+	buffer.record_state_set(OP_A, seeded[0].clone(), row("live"));
+	buffer.record_state_remove(OP_A, seeded[5].clone());
+
+	let mut expected: Vec<_> = seeded.iter().filter(|key| *key != &seeded[5]).cloned().collect();
+	expected.sort();
+
+	let forward = buffer.state_page(OP_A, Bound::Unbounded, Bound::Unbounded, seeded.len()).items;
+	assert_eq!(
+		forward.iter().map(|(key, _)| key.as_slice().to_vec()).collect::<Vec<_>>(),
+		expected.iter().map(|key| key.to_vec()).collect::<Vec<_>>(),
+		"the forward page must serve every key once in encoded order before the reverse can mirror it"
+	);
+
+	for limit in 1..=forward.len() {
+		let back = buffer.state_last_page(OP_A, Bound::Unbounded, Bound::Unbounded, limit).items;
+		let mut tail = forward[forward.len() - limit..].to_vec();
+		tail.reverse();
+		assert_eq!(
+			back.iter()
+				.map(|(key, value)| (key.as_slice().to_vec(), value.as_ref().map(row_body)))
+				.collect::<Vec<_>>(),
+			tail.iter()
+				.map(|(key, value)| (key.as_slice().to_vec(), value.as_ref().map(row_body)))
+				.collect::<Vec<_>>(),
+			"a page taken from the back must mirror the tail of the forward page, values included"
+		);
+	}
+}

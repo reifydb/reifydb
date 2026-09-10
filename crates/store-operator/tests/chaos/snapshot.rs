@@ -13,8 +13,8 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
 };
-use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_store_operator::types::{DurablePre, OperatorWrite};
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::GroupStateKey};
+use reifydb_store_operator::types::{LayeredPre, OperatorWrite};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
@@ -87,16 +87,19 @@ pub fn drive(seed: u64, p: Params) {
 		let mut drained: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
 		let mut pulls = 0u32;
 		loop {
-			let page = config.store.range_batch(
-				FROZEN,
-				EncodedKeyRange::new(start.clone(), Bound::Included(high.clone())),
-				batch,
-			);
+			let page = config
+				.store
+				.range_batch(
+					FROZEN,
+					EncodedKeyRange::new(start.clone(), Bound::Included(high.clone())),
+					batch,
+				)
+				.unwrap();
 			for (item_key, item_row) in &page.items {
-				drained.push((item_key.to_vec(), item_row.body().to_vec()));
+				drained.push((item_key.as_bytes().to_vec(), item_row.body().to_vec()));
 			}
 			match page.items.last() {
-				Some((item_key, _)) => start = Bound::Excluded(item_key.clone()),
+				Some((item_key, _)) => start = Bound::Excluded(item_key.as_encoded().clone()),
 				None => break,
 			}
 			if !page.has_more {
@@ -145,13 +148,13 @@ fn interleave(rng: &mut StdRng, harness: &Harness, oracle: &mut Oracle, p: &Para
 				let suffix = p.frozen + rng.random_range(1..=p.mutable);
 				let key_bytes = key(GROUP, KEYSPACE, suffix);
 				let pre = match oracle.value_bytes(FROZEN.0, key_bytes.as_slice()) {
-					Some(pre_value_bytes) => DurablePre::Present(pre_value_bytes),
-					None => DurablePre::Absent,
+					Some(pre_value_bytes) => LayeredPre::Present(pre_value_bytes),
+					None => LayeredPre::Absent,
 				};
 				oracle.remove(FROZEN.0, key_bytes.as_slice());
 				let write = OperatorWrite::Remove {
 					operator: FROZEN,
-					key: key_bytes,
+					key: GroupStateKey::bound_unchecked(key_bytes),
 					pre,
 				};
 				for config in &harness.configs {
@@ -180,13 +183,13 @@ fn state_write(operator: OperatorId, key: EncodedKey, post: EncodedPodRow, pre: 
 	match pre {
 		Some(pre_value_bytes) => OperatorWrite::Replace {
 			operator,
-			key,
+			key: GroupStateKey::bound_unchecked(key),
 			pre_value_bytes,
 			post,
 		},
 		None => OperatorWrite::Insert {
 			operator,
-			key,
+			key: GroupStateKey::bound_unchecked(key),
 			post,
 		},
 	}

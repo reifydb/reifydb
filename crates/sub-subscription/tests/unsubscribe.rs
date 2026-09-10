@@ -38,7 +38,7 @@ fn dropping_a_subscription_leaves_a_views_operator_state_intact() {
 	assert_eq!(db.row_count("FROM app::v"), 2, "precondition: the view is at its limit");
 
 	let store = db.engine().operator_state();
-	let resident = store.total_bytes();
+	let resident = store.total_bytes().unwrap();
 	assert!(resident > ByteSize::ZERO, "precondition: the view's operators hold state to lose");
 
 	let frames = db.admin("CREATE SUBSCRIPTION AS { FROM app::t MAP { id } }");
@@ -46,7 +46,7 @@ fn dropping_a_subscription_leaves_a_views_operator_state_intact() {
 	db.admin(&format!("DROP SUBSCRIPTION {}", name));
 
 	assert_eq!(
-		store.total_bytes(),
+		store.total_bytes().unwrap(),
 		resident,
 		"no insert ran between the two reads, so any drop here is the unsubscribe taking the view's state"
 	);

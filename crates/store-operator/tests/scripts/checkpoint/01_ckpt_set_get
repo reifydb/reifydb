@@ -46,15 +46,19 @@ flow 7 => 42
 flow 8 => 5
 flow 9 => None
 
-# A checkpoint may move backwards if the caller says so; the store stores what it is given.
+# A checkpoint below the version the flow already holds is refused. The persistent tier stores whatever it is
+# handed, so the store is the only place a rewind is caught; let through, it hands retention a floor it has
+# already reaped past and the flow resumes into cdc entries that are gone. The held version stands and the
+# refusal stages nothing.
 
 ckpt_set 7 20
 ckpt_get 7
 ---
-flow 7 => 20
+error: flow 7 moved its checkpoint backwards
+flow 7 => 42
 
 flush
 ckpt_get 7
 ---
 ok
-flow 7 => 20
+flow 7 => 42

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, KeyspaceId},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -14,7 +14,7 @@ use reifydb_runtime::{
 use reifydb_store_operator::{
 	config::OperatorStoreConfig,
 	store::OperatorStore,
-	types::{DurablePre, OperatorWrite},
+	types::{LayeredPre, OperatorWrite},
 };
 use reifydb_testing::keyspace::state_key;
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
@@ -33,8 +33,8 @@ fn store() -> OperatorStore {
 	})
 }
 
-fn key() -> EncodedKey {
-	state_key(GroupId::hashed(Hash128(1)), KeyspaceId::JOIN_LEFT, 1)
+fn key() -> GroupStateKey {
+	GroupStateKey::bound_unchecked(state_key(GroupId::hashed(Hash128(1)), KeyspaceId::JOIN_LEFT, 1))
 }
 
 #[test]
@@ -89,10 +89,10 @@ fn a_correct_chain_of_claims_is_accepted() {
 		OperatorWrite::Remove {
 			operator: OperatorId(1),
 			key: key(),
-			pre: DurablePre::Present(ByteSize::from_bytes(
+			pre: LayeredPre::Present(ByteSize::from_bytes(
 				EncodedPodRow::new(b"twelve").bytes().len() as u64
 			)),
 		},
 	]);
-	assert!(store.get(OperatorId(1), &key()).is_none());
+	assert!(store.state_get(OperatorId(1), &key()).unwrap().is_none());
 }

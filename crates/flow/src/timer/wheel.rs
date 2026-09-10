@@ -29,6 +29,8 @@ use reifydb_core::{
 	},
 };
 use reifydb_store_operator::store::OperatorStore;
+
+const TIMER_WHEEL_SCAN: &str = "timer wheel scan must not fail";
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
 use crate::{
@@ -129,7 +131,7 @@ impl TimerWheel {
 	pub fn next_due_stored(operator: OperatorId, store: &OperatorStore) -> Option<TimerDue> {
 		let mut wheel = keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL);
 		loop {
-			let batch = store.range_batch(operator, wheel.clone(), 1);
+			let batch = store.range_batch(operator, wheel.clone(), 1).expect(TIMER_WHEEL_SCAN);
 			if let Some((key, _)) = batch.items.first() {
 				let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
 				return Some(TimerDue {
@@ -137,7 +139,7 @@ impl TimerWheel {
 					due: TimerWheelKey::from_suffix_bytes(suffix)?.due.0,
 				});
 			}
-			wheel = EncodedKeyRange::new(Bound::Excluded(batch.resume?), wheel.end);
+			wheel = EncodedKeyRange::new(Bound::Excluded(batch.resume?.into_encoded()), wheel.end);
 		}
 	}
 

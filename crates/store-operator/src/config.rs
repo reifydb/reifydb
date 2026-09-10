@@ -6,22 +6,22 @@ use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::value::duration::Duration;
 
-use crate::tier::{
-	persistent::OperatorPersistentTier,
+use crate::{
+	persistent::PersistentTier,
 	range::OperatorRangeConfig,
-	resident::{FLUSH_INTERVAL, OperatorResidentState},
+	resident::{FLUSH_INTERVAL, Resident},
 };
 
 #[derive(Debug, Clone)]
-pub struct OperatorResidentStateConfig {
-	pub storage: OperatorResidentState,
+pub struct ResidentConfig {
+	pub storage: Resident,
 	pub flush_interval: Duration,
 }
 
-impl Default for OperatorResidentStateConfig {
+impl Default for ResidentConfig {
 	fn default() -> Self {
 		Self {
-			storage: OperatorResidentState::default(),
+			storage: Resident::default(),
 			flush_interval: FLUSH_INTERVAL,
 		}
 	}
@@ -29,11 +29,11 @@ impl Default for OperatorResidentStateConfig {
 
 #[derive(Clone)]
 pub struct OperatorPersistentConfig {
-	pub storage: OperatorPersistentTier,
+	pub storage: PersistentTier,
 }
 
 impl OperatorPersistentConfig {
-	pub fn opened(storage: OperatorPersistentTier) -> Self {
+	pub fn opened(storage: PersistentTier) -> Self {
 		Self {
 			storage,
 		}
@@ -41,19 +41,19 @@ impl OperatorPersistentConfig {
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(config: SqliteConfig) -> Self {
-		Self::opened(OperatorPersistentTier::sqlite(config))
+		Self::opened(PersistentTier::sqlite(config))
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {
-		let (storage, guard) = OperatorPersistentTier::sqlite_in_memory();
+		let (storage, guard) = PersistentTier::sqlite_in_memory();
 		(Self::opened(storage), guard)
 	}
 }
 
 #[derive(Clone)]
 pub struct OperatorStoreConfig {
-	pub resident: OperatorResidentStateConfig,
+	pub resident: ResidentConfig,
 	pub persistent: Option<OperatorPersistentConfig>,
 	pub range: Option<OperatorRangeConfig>,
 	pub spawner: ActorSpawner,
@@ -63,7 +63,7 @@ pub struct OperatorStoreConfig {
 impl OperatorStoreConfig {
 	pub fn memory(spawner: ActorSpawner, clock: Clock) -> Self {
 		Self {
-			resident: OperatorResidentStateConfig::default(),
+			resident: ResidentConfig::default(),
 			persistent: None,
 			range: None,
 			spawner,
@@ -74,7 +74,7 @@ impl OperatorStoreConfig {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(persistent: OperatorPersistentConfig, spawner: ActorSpawner, clock: Clock) -> Self {
 		Self {
-			resident: OperatorResidentStateConfig::default(),
+			resident: ResidentConfig::default(),
 			persistent: Some(persistent),
 			range: None,
 			spawner,

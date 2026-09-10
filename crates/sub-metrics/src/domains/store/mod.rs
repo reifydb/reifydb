@@ -14,8 +14,7 @@ use reifydb_store_multi::{
 	tier::{point::MultiPointShardMetrics, range::MultiRangeShardMetrics},
 };
 use reifydb_store_operator::{
-	store::OperatorStore,
-	tier::{range::tiers::OperatorRangeKeyspaceMetrics, resident::OperatorResidentStateMetrics},
+	range::tiers::RangeKeyspaceMetrics, resident::OperatorResidentStateMetrics, store::OperatorStore,
 };
 use reifydb_store_single::{
 	SingleStore,
@@ -78,16 +77,16 @@ impl StoreReader {
 		self.single.persistent_probe_metrics()
 	}
 
-	pub fn operator_range_by_keyspace(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
+	pub fn operator_range_by_keyspace(&self) -> Vec<RangeKeyspaceMetrics> {
 		self.operator.range_keyspace_metrics()
 	}
 
 	pub fn operator_resident(&self) -> OperatorResidentStateMetrics {
-		self.operator.resident_state().metrics()
+		self.operator.resident().metrics()
 	}
 
 	pub fn operator_resident_budget(&self) -> ByteSize {
-		self.operator.resident_state().budget()
+		self.operator.resident().budget()
 	}
 
 	pub fn operator_persistent(&self) -> Option<PageCacheMetrics> {

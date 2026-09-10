@@ -15,6 +15,7 @@ doctest = false
 default = ["sqlite"]
 sqlite = ["rusqlite", "reifydb-sqlite", "reifydb-store/sqlite"]
 chaos = ["sqlite"]
+testing = ["sqlite"]
 
 [build-dependencies]
 reifydb-build = { workspace = true }

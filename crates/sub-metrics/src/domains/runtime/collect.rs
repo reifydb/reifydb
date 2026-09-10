@@ -101,7 +101,7 @@ fn push_operator_resident(c: &Collectors, out: &mut Vec<MetricsSample>) {
 	let Some(store) = c.engine.ioc().try_resolve::<OperatorStore>() else {
 		return;
 	};
-	let resident = store.resident_state();
+	let resident = store.resident();
 	let metrics = resident.metrics();
 	out.push(MetricsSample::heap("operator_resident", "backlog_bytes", metrics.backlog));
 	out.push(MetricsSample::bytes("operator_resident", "budget_bytes", resident.budget()));

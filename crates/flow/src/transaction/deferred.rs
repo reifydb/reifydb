@@ -15,7 +15,7 @@ use reifydb_core::{
 	actors::pending::PendingLayers,
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
-	key::any::TaggedKey,
+	key::{any::TaggedKey, operator::state::GroupStateKey},
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
@@ -145,6 +145,7 @@ impl DeferredTransaction {
 const NO_OPERATOR_STORE: &str = "flow transaction was built without an operator store";
 const NO_READ_TRANSACTION: &str = "flow transaction was built without a read transaction";
 const UNDECODABLE_KEY: &str = "a key routed to the multi store must decode";
+const EXTERNAL_STATE_FETCH: &str = "external operator state fetch must not fail";
 
 pub(crate) fn deferred_storage_get(
 	operators: Option<&OperatorStore>,
@@ -158,7 +159,10 @@ pub(crate) fn deferred_storage_get(
 			operator,
 			inner,
 		} = operator_state_coordinates(key).expect("an OperatorState-routed key must carry an operator id");
-		return Ok(operators.expect(NO_OPERATOR_STORE).get(operator, &inner).map(EncodedPodRow::into_bytes));
+		return Ok(operators
+			.expect(NO_OPERATOR_STORE)
+			.state_get(operator, &GroupStateKey::bound_unchecked(inner))?
+			.map(EncodedPodRow::into_bytes));
 	}
 	let query = match route {
 		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
@@ -182,7 +186,10 @@ pub(crate) fn deferred_storage_contains(
 				inner,
 			} = operator_state_coordinates(key)
 				.expect("an OperatorState-routed key must carry an operator id");
-			return Ok(operators.expect(NO_OPERATOR_STORE).contains(operator, &inner));
+			return operators
+				.expect(NO_OPERATOR_STORE)
+				.contains(operator, &GroupStateKey::bound_unchecked(inner))
+				.map_err(Into::into);
 		}
 		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
 		ReadFrom::Query => query,
@@ -256,9 +263,16 @@ pub(crate) fn deferred_fetch_state_external(
 
 	let mut resolved: Vec<Option<EncodedPodRow>> = vec![None; keys.len()];
 	for (operator, entries) in grouped {
-		let inners: Vec<EncodedKey> = entries.iter().map(|(_, inner)| inner.clone()).collect();
-		for ((index, _), row) in entries.into_iter().zip(store.get_many(operator, &inners)) {
-			resolved[index] = row;
+		let inners: Vec<GroupStateKey> =
+			entries.iter().map(|(_, inner)| GroupStateKey::bound_unchecked(inner.clone())).collect();
+		let mut found: HashMap<GroupStateKey, EncodedPodRow> = HashMap::new();
+		store.state_get_many(operator, &inners, &mut |key, row| {
+			found.insert(key, row);
+			Ok(())
+		})
+		.expect(EXTERNAL_STATE_FETCH);
+		for ((index, _), inner) in entries.into_iter().zip(inners) {
+			resolved[index] = found.get(&inner).cloned();
 		}
 	}
 

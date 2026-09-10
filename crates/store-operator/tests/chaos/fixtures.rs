@@ -18,8 +18,8 @@ use reifydb_runtime::{
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
+	range::OperatorRangeConfig,
 	store::OperatorStore,
-	tier::range::OperatorRangeConfig,
 };
 use reifydb_testing::keyspace::state_key;
 use reifydb_value::util::hash::Hash128;

@@ -8,9 +8,14 @@
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
+pub mod actor;
+pub mod bound;
 pub mod config;
+pub mod error;
+pub mod persistent;
+pub mod range;
+pub mod resident;
 pub mod store;
-pub mod tier;
 pub mod types;
 
 pub struct OperatorStoreVersion;

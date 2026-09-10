@@ -182,11 +182,17 @@ impl Iterator for OperatorStateRangeIter {
 				return None;
 			}
 			let range = EncodedKeyRange::new(self.cursor.clone(), self.end.clone());
-			let batch = self.store.range_batch(self.operator, range, self.batch_size);
+			let batch = match self.store.range_batch(self.operator, range, self.batch_size) {
+				Ok(batch) => batch,
+				Err(e) => {
+					self.exhausted = true;
+					return Some(Err(e.into()));
+				}
+			};
 			self.exhausted = !batch.has_more;
 			let resumed = match batch.resume {
 				Some(key) => {
-					self.cursor = Bound::Excluded(key);
+					self.cursor = Bound::Excluded(key.into_encoded());
 					true
 				}
 				None => false,
@@ -200,7 +206,7 @@ impl Iterator for OperatorStateRangeIter {
 			self.buffered = batch
 				.items
 				.into_iter()
-				.map(|(key, row)| (key, row.into_bytes()))
+				.map(|(key, row)| (key.into_encoded(), row.into_bytes()))
 				.collect::<Vec<_>>()
 				.into_iter();
 		}

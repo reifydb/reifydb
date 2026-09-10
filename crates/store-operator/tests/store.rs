@@ -10,18 +10,16 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::{GroupId, KeyspaceId},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
+	persistent::{PersistentTier, sqlite::SqlitePersistent},
+	range::OperatorRangeConfig,
 	store::OperatorStore,
-	tier::{
-		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
-		range::OperatorRangeConfig,
-	},
-	types::{DurablePre, OperatorBatch, OperatorWrite},
+	types::{LayeredPre, OperatorBatch, OperatorWrite, StagedWrite},
 };
 use reifydb_testing::keyspace::state_key;
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
@@ -30,14 +28,14 @@ const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
 const FLOW: FlowId = FlowId(7);
 
-fn flushed_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard) {
+fn flushed_store() -> (OperatorStore, SqlitePersistent, SqliteTempPathGuard) {
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock.clone());
 	let spawner = actor_system.spawner();
-	let (storage, guard) = SqliteOperatorStorage::in_memory();
+	let (storage, guard) = SqlitePersistent::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		resident: Default::default(),
-		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))),
+		persistent: Some(OperatorPersistentConfig::opened(PersistentTier::Sqlite(storage.clone()))),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
 		clock,
@@ -75,21 +73,21 @@ fn bodies(batch: &OperatorBatch) -> Vec<String> {
 }
 
 fn scan(store: &OperatorStore, operator: OperatorId) -> OperatorBatch {
-	store.range_batch(operator, EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded), 64)
+	store.range_batch(operator, EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded), 64).unwrap()
 }
 
 fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
 	// reading the pre-image back keeps the claim truthful even when an earlier write in the same test moved the key
-	let write = match store.get(operator, &key) {
+	let write = match store.state_get(operator, &GroupStateKey::bound_unchecked(key.clone())).unwrap() {
 		Some(pre) => OperatorWrite::Replace {
 			operator,
-			key,
+			key: GroupStateKey::bound_unchecked(key),
 			pre_value_bytes: ByteSize::from_bytes(pre.bytes().len() as u64),
 			post: row,
 		},
 		None => OperatorWrite::Insert {
 			operator,
-			key,
+			key: GroupStateKey::bound_unchecked(key),
 			post: row,
 		},
 	};
@@ -98,13 +96,13 @@ fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: Encode
 
 fn erase(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) {
 	// a removal must say whether the key was there, and only the store knows after the writes above it
-	let pre = match store.get(operator, key) {
-		Some(row) => DurablePre::Present(ByteSize::from_bytes(row.bytes().len() as u64)),
-		None => DurablePre::Absent,
+	let pre = match store.state_get(operator, &GroupStateKey::bound_unchecked(key.clone())).unwrap() {
+		Some(row) => LayeredPre::Present(ByteSize::from_bytes(row.bytes().len() as u64)),
+		None => LayeredPre::Absent,
 	};
 	store.apply_batch(&[OperatorWrite::Remove {
 		operator,
-		key: key.clone(),
+		key: GroupStateKey::bound_unchecked(key.clone()),
 		pre,
 	}]);
 }
@@ -114,13 +112,16 @@ fn a_buffered_write_shadows_the_flushed_row_for_the_same_key() {
 	let (store, storage, _guard) = flushed_store();
 	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
-		key: key(1),
+		key: GroupStateKey::bound_unchecked(key(1)),
 		post: row("durable"),
 	}]);
 
 	put(&store, OP_A, key(1), row("buffered"));
 
-	let found = store.get(OP_A, &key(1)).expect("the key exists in both layers");
+	let found = store
+		.state_get(OP_A, &GroupStateKey::bound_unchecked(key(1)))
+		.unwrap()
+		.expect("the key exists in both layers");
 	assert_eq!(
 		body(&found),
 		"buffered",
@@ -142,19 +143,19 @@ fn a_buffered_tombstone_hides_the_flushed_row_from_every_read() {
 	let (store, storage, _guard) = flushed_store();
 	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
-		key: key(1),
+		key: GroupStateKey::bound_unchecked(key(1)),
 		post: row("durable"),
 	}]);
 
 	erase(&store, OP_A, &key(1));
 
 	assert!(
-		store.get(OP_A, &key(1)).is_none(),
+		store.state_get(OP_A, &GroupStateKey::bound_unchecked(key(1))).unwrap().is_none(),
 		"a removed key must read as missing; reading through to sqlite resurrects the row until the \
 		 next flush"
 	);
 	assert!(
-		!store.contains(OP_A, &key(1)),
+		!store.contains(OP_A, &GroupStateKey::bound_unchecked(key(1))).unwrap(),
 		"contains must honour the tombstone too, otherwise an operator branches on a key it just deleted"
 	);
 	assert!(
@@ -173,7 +174,7 @@ fn paging_interleaved_layers_yields_every_key_once_in_order() {
 	for suffix in [1u8, 3, 5] {
 		storage.seed_durable(&[OperatorWrite::Insert {
 			operator: OP_A,
-			key: key(suffix),
+			key: GroupStateKey::bound_unchecked(key(suffix)),
 			post: row(&format!("durable-{suffix}")),
 		}]);
 	}
@@ -185,12 +186,12 @@ fn paging_interleaved_layers_yields_every_key_once_in_order() {
 	let mut flags: Vec<bool> = Vec::new();
 	let mut start = Bound::Unbounded;
 	loop {
-		let batch = store.range_batch(OP_A, EncodedKeyRange::new(start, Bound::Unbounded), 2);
+		let batch = store.range_batch(OP_A, EncodedKeyRange::new(start, Bound::Unbounded), 2).unwrap();
 		flags.push(batch.has_more);
 		let last = batch.items.last().map(|(key, _)| key.clone());
 		seen.extend(bodies(&batch));
 		match last {
-			Some(key) if batch.has_more => start = Bound::Excluded(key),
+			Some(key) if batch.has_more => start = Bound::Excluded(key.into_encoded()),
 			_ => break,
 		}
 	}
@@ -222,7 +223,7 @@ fn a_page_whose_flushed_rows_are_all_hidden_keeps_pulling_until_the_scan_is_exha
 	for suffix in 1u8..=6 {
 		storage.seed_durable(&[OperatorWrite::Insert {
 			operator: OP_A,
-			key: key(suffix),
+			key: GroupStateKey::bound_unchecked(key(suffix)),
 			post: row(&format!("durable-{suffix}")),
 		}]);
 	}
@@ -230,7 +231,7 @@ fn a_page_whose_flushed_rows_are_all_hidden_keeps_pulling_until_the_scan_is_exha
 		erase(&store, OP_A, &key(suffix));
 	}
 
-	let batch = store.range_batch(OP_A, EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded), 2);
+	let batch = store.range_batch(OP_A, EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded), 2).unwrap();
 
 	assert_eq!(
 		bodies(&batch),
@@ -251,12 +252,12 @@ fn a_scan_stays_inside_its_operator_when_a_neighbour_holds_the_same_keys() {
 	for suffix in [1u8, 2, 3] {
 		storage.seed_durable(&[OperatorWrite::Insert {
 			operator: OP_A,
-			key: key(suffix),
+			key: GroupStateKey::bound_unchecked(key(suffix)),
 			post: row(&format!("a-durable-{suffix}")),
 		}]);
 		storage.seed_durable(&[OperatorWrite::Insert {
 			operator: OP_B,
-			key: key(suffix),
+			key: GroupStateKey::bound_unchecked(key(suffix)),
 			post: row(&format!("b-durable-{suffix}")),
 		}]);
 		put(&store, OP_A, key(suffix + 10), row(&format!("a-buffered-{suffix}")));
@@ -284,36 +285,39 @@ fn a_buffered_state_drop_masks_sqlite_while_later_writes_survive() {
 	let (store, storage, _guard) = flushed_store();
 	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
-		key: key(1),
+		key: GroupStateKey::bound_unchecked(key(1)),
 		post: row("durable"),
 	}]);
 	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_B,
-		key: key(1),
+		key: GroupStateKey::bound_unchecked(key(1)),
 		post: row("neighbour"),
 	}]);
 
-	store.drop_operator_state(OP_A);
+	store.drop_operator(OP_A).unwrap();
 
 	assert!(
-		store.get(OP_A, &key(1)).is_none(),
+		store.state_get(OP_A, &GroupStateKey::bound_unchecked(key(1))).unwrap().is_none(),
 		"the drop must mask the rows it has not yet erased, otherwise a recreated operator reads the \
 		 dead operator's state"
 	);
-	assert!(!store.contains(OP_A, &key(1)));
+	assert!(!store.contains(OP_A, &GroupStateKey::bound_unchecked(key(1))).unwrap());
 	assert!(scan(&store, OP_A).items.is_empty(), "a scan must be masked by the drop just like a point read");
 	assert!(
 		storage.get(OP_A, &key(1)).is_some(),
 		"the drop is still only buffered; the mask is what makes it look applied"
 	);
 	assert!(
-		store.get(OP_B, &key(1)).is_some(),
+		store.state_get(OP_B, &GroupStateKey::bound_unchecked(key(1))).unwrap().is_some(),
 		"the mask is scoped to one operator, otherwise one drop blinds the whole store"
 	);
 
 	put(&store, OP_A, key(2), row("after"));
 
-	let found = store.get(OP_A, &key(2)).expect("a write recorded after the drop must be visible");
+	let found = store
+		.state_get(OP_A, &GroupStateKey::bound_unchecked(key(2)))
+		.unwrap()
+		.expect("a write recorded after the drop must be visible");
 	assert_eq!(
 		body(&found),
 		"after",
@@ -331,7 +335,7 @@ fn a_buffered_state_drop_masks_sqlite_while_later_writes_survive() {
 fn a_checkpoint_is_served_from_the_buffer_before_the_flush_and_from_sqlite_after_it() {
 	let (store, storage, _guard) = flushed_store();
 
-	store.checkpoint_set(FLOW, CommitVersion(41));
+	store.checkpoint_set(FLOW, CommitVersion(41)).unwrap();
 
 	assert!(
 		storage.checkpoint_get(FLOW).is_none(),
@@ -339,15 +343,15 @@ fn a_checkpoint_is_served_from_the_buffer_before_the_flush_and_from_sqlite_after
 		 the resident state exists to remove"
 	);
 	assert_eq!(
-		store.checkpoint_get(FLOW),
+		store.checkpoint_get(FLOW).unwrap(),
 		Some(CommitVersion(41)),
 		"the store must serve the buffered checkpoint, otherwise a restart-free reader sees the older \
 		 durable version and the flow re-runs work it already committed"
 	);
 
-	store.checkpoint_set(FLOW, CommitVersion(42));
+	store.checkpoint_set(FLOW, CommitVersion(42)).unwrap();
 	assert_eq!(
-		store.checkpoint_get(FLOW),
+		store.checkpoint_get(FLOW).unwrap(),
 		Some(CommitVersion(42)),
 		"a later checkpoint must supersede the buffered one rather than queue behind it"
 	);
@@ -361,7 +365,7 @@ fn a_checkpoint_is_served_from_the_buffer_before_the_flush_and_from_sqlite_after
 		 the next boot"
 	);
 	assert_eq!(
-		store.checkpoint_get(FLOW),
+		store.checkpoint_get(FLOW).unwrap(),
 		Some(CommitVersion(42)),
 		"with the buffer drained the read falls through to sqlite and must agree with what was written"
 	);
@@ -371,23 +375,23 @@ fn a_checkpoint_is_served_from_the_buffer_before_the_flush_and_from_sqlite_after
 fn the_memory_tier_serves_the_checkpoint_it_was_given_and_forgets_a_deleted_one() {
 	let store = OperatorStore::testing_memory();
 
-	store.checkpoint_set(FLOW, CommitVersion(9));
+	store.checkpoint_set(FLOW, CommitVersion(9)).unwrap();
 	assert_eq!(
-		store.checkpoint_get(FLOW),
+		store.checkpoint_get(FLOW).unwrap(),
 		Some(CommitVersion(9)),
 		"the memory tier is the only home the checkpoint has in memory mode"
 	);
 
 	assert!(store.flush_pending_blocking(), "the memory tier has nothing to flush and must still succeed");
 	assert_eq!(
-		store.checkpoint_get(FLOW),
+		store.checkpoint_get(FLOW).unwrap(),
 		Some(CommitVersion(9)),
 		"a flush must not discard the checkpoint on a tier that never persists it"
 	);
 
-	store.checkpoint_delete(FLOW);
+	store.checkpoint_remove(FLOW).unwrap();
 	assert!(
-		store.checkpoint_get(FLOW).is_none(),
+		store.checkpoint_get(FLOW).unwrap().is_none(),
 		"a dropped flow must leave no checkpoint behind, otherwise a flow recreated under the same id \
 		 resumes from a stranger's version"
 	);
@@ -396,13 +400,13 @@ fn the_memory_tier_serves_the_checkpoint_it_was_given_and_forgets_a_deleted_one(
 #[test]
 fn a_checkpoint_delete_masks_the_flushed_row_and_then_erases_it() {
 	let (store, storage, _guard) = flushed_store();
-	store.checkpoint_set(FLOW, CommitVersion(42));
+	store.checkpoint_set(FLOW, CommitVersion(42)).unwrap();
 	assert!(store.flush_pending_blocking(), "the checkpoint must be durable before the delete is tested");
 
-	store.checkpoint_delete(FLOW);
+	store.checkpoint_remove(FLOW).unwrap();
 
 	assert!(
-		store.checkpoint_get(FLOW).is_none(),
+		store.checkpoint_get(FLOW).unwrap().is_none(),
 		"the buffered tombstone must hide the durable row; reading through to sqlite resumes a \
 		 dropped flow from the version it died at"
 	);
@@ -418,7 +422,7 @@ fn a_checkpoint_delete_masks_the_flushed_row_and_then_erases_it() {
 		"the tombstone must execute as a DELETE, otherwise the row outlives the flow and pins CDC \
 		 retention forever"
 	);
-	assert!(store.checkpoint_get(FLOW).is_none(), "the drained buffer must not resurrect the deleted row");
+	assert!(store.checkpoint_get(FLOW).unwrap().is_none(), "the drained buffer must not resurrect the deleted row");
 }
 
 #[test]
@@ -429,23 +433,27 @@ fn a_freshly_opened_store_boots_from_the_flushed_checkpoint_and_the_state_it_rod
 	store.apply_batch_with_checkpoints(
 		&[OperatorWrite::Insert {
 			operator: OP_A,
-			key: key(1),
+			key: GroupStateKey::bound_unchecked(key(1)),
 			post: row("state"),
 		}],
 		&[(FLOW, CommitVersion(77))],
 		&[],
-	);
+	)
+	.expect("the store has no checkpoint yet, so the batch must be accepted");
 	assert!(store.flush_pending_blocking(), "only a flushed checkpoint can be booted from");
 
 	let booted = store_at(config);
 
 	assert_eq!(
-		booted.checkpoint_get(FLOW),
+		booted.checkpoint_get(FLOW).unwrap(),
 		Some(CommitVersion(77)),
 		"boot must read the durable checkpoint out of the operator store; falling back to the seed \
 		 replays every slice the flow ever consumed"
 	);
-	let state = booted.get(OP_A, &key(1)).expect("the state of the checkpointed slice must be durable too");
+	let state = booted
+		.state_get(OP_A, &GroupStateKey::bound_unchecked(key(1)))
+		.unwrap()
+		.expect("the state of the checkpointed slice must be durable too");
 	assert_eq!(
 		body(&state),
 		"state",
@@ -457,13 +465,13 @@ fn a_freshly_opened_store_boots_from_the_flushed_checkpoint_and_the_state_it_rod
 #[test]
 fn the_durable_floor_is_the_smallest_checkpoint_across_flows() {
 	let (store, _storage, _guard) = flushed_store();
-	store.checkpoint_set(FlowId(1), CommitVersion(90));
-	store.checkpoint_set(FlowId(2), CommitVersion(10));
-	store.checkpoint_set(FlowId(3), CommitVersion(50));
+	store.checkpoint_set(FlowId(1), CommitVersion(90)).unwrap();
+	store.checkpoint_set(FlowId(2), CommitVersion(10)).unwrap();
+	store.checkpoint_set(FlowId(3), CommitVersion(50)).unwrap();
 	assert!(store.flush_pending_blocking(), "only a flushed checkpoint contributes to the floor");
 
 	assert_eq!(
-		store.checkpoint_floor(),
+		store.checkpoint_floor().unwrap(),
 		Some(CommitVersion(10)),
 		"the floor must be the minimum across every flow; taking the newest or the first-seen row lets \
 		 retention delete cdc entries flow 2 has not consumed yet"
@@ -473,19 +481,19 @@ fn the_durable_floor_is_the_smallest_checkpoint_across_flows() {
 #[test]
 fn the_floor_ignores_a_buffered_checkpoint_until_the_flush_makes_it_durable() {
 	let (store, _storage, _guard) = flushed_store();
-	store.checkpoint_set(FLOW, CommitVersion(10));
+	store.checkpoint_set(FLOW, CommitVersion(10)).unwrap();
 	assert!(store.flush_pending_blocking(), "the older checkpoint has to be durable before this is a test");
 
-	store.checkpoint_set(FLOW, CommitVersion(80));
+	store.checkpoint_set(FLOW, CommitVersion(80)).unwrap();
 
 	assert_eq!(
-		store.checkpoint_floor(),
+		store.checkpoint_floor().unwrap(),
 		Some(CommitVersion(10)),
 		"the floor must stay at the flushed version while the newer one is still buffered; advancing \
 		 it here lets retention reap versions 10..80, which a crash would send the flow straight back to"
 	);
 	assert_eq!(
-		store.checkpoint_get(FLOW),
+		store.checkpoint_get(FLOW).unwrap(),
 		Some(CommitVersion(80)),
 		"the layered read still serves the buffered value; only the retention floor is deliberately \
 		 behind it"
@@ -494,7 +502,7 @@ fn the_floor_ignores_a_buffered_checkpoint_until_the_flush_makes_it_durable() {
 	assert!(store.flush_pending_blocking(), "the newer checkpoint must reach the flusher");
 
 	assert_eq!(
-		store.checkpoint_floor(),
+		store.checkpoint_floor().unwrap(),
 		Some(CommitVersion(80)),
 		"once the checkpoint is durable the floor must advance, otherwise cdc retention is pinned at \
 		 the first checkpoint the database ever wrote and nothing is reaped again"
@@ -506,12 +514,12 @@ fn an_empty_checkpoint_table_yields_no_floor_and_therefore_pins_nothing() {
 	let (store, _storage, _guard) = flushed_store();
 
 	assert!(
-		store.checkpoint_floor().is_none(),
+		store.checkpoint_floor().unwrap().is_none(),
 		"no rows means no pin; returning a zero floor here would stop cdc truncation forever on a \
 		 database that runs no flows"
 	);
 	assert!(
-		OperatorStore::testing_memory().checkpoint_floor().is_none(),
+		OperatorStore::testing_memory().checkpoint_floor().unwrap().is_none(),
 		"the memory tier must agree, otherwise memory-mode retention behaves differently from disk"
 	);
 }
@@ -519,13 +527,13 @@ fn an_empty_checkpoint_table_yields_no_floor_and_therefore_pins_nothing() {
 #[test]
 fn the_floor_covers_a_flow_whose_only_checkpoint_is_still_buffered() {
 	let (store, _storage, _guard) = flushed_store();
-	store.checkpoint_set(FlowId(1), CommitVersion(100));
+	store.checkpoint_set(FlowId(1), CommitVersion(100)).unwrap();
 	assert!(store.flush_pending_blocking(), "the older flow needs a durable row to raise the floor");
 
-	store.checkpoint_set(FlowId(2), CommitVersion(5));
+	store.checkpoint_set(FlowId(2), CommitVersion(5)).unwrap();
 
 	assert_eq!(
-		store.checkpoint_floor(),
+		store.checkpoint_floor().unwrap(),
 		Some(CommitVersion(5)),
 		"flow 2 has no durable row yet, so a floor taken from sqlite alone reports 100 and lets \
 		 retention reap versions 5..100; on the next boot flow 2 resumes from the migration base and \
@@ -536,15 +544,15 @@ fn the_floor_covers_a_flow_whose_only_checkpoint_is_still_buffered() {
 #[test]
 fn the_checkpoint_list_shows_buffered_writes_and_hides_buffered_deletes() {
 	let (store, _storage, _guard) = flushed_store();
-	store.checkpoint_set(FlowId(1), CommitVersion(1));
-	store.checkpoint_set(FlowId(2), CommitVersion(2));
+	store.checkpoint_set(FlowId(1), CommitVersion(1)).unwrap();
+	store.checkpoint_set(FlowId(2), CommitVersion(2)).unwrap();
 	assert!(store.flush_pending_blocking(), "the durable half of the merge must exist first");
 
-	store.checkpoint_delete(FlowId(1));
-	store.checkpoint_set(FlowId(3), CommitVersion(3));
+	store.checkpoint_remove(FlowId(1)).unwrap();
+	store.checkpoint_set(FlowId(3), CommitVersion(3)).unwrap();
 
 	assert_eq!(
-		store.checkpoint_list(),
+		store.checkpoint_list().unwrap(),
 		vec![FlowId(2), FlowId(3)],
 		"the list must merge the buffer over sqlite: dropping the buffered flow 3 leaves an orphan the \
 		 bootstrap reap can never see, and keeping the tombstoned flow 1 makes the reap delete a row \
@@ -555,20 +563,20 @@ fn the_checkpoint_list_shows_buffered_writes_and_hides_buffered_deletes() {
 #[test]
 fn the_memory_tier_reports_the_same_floor_and_list_as_the_sqlite_tier() {
 	let store = OperatorStore::testing_memory();
-	store.checkpoint_set(FlowId(1), CommitVersion(30));
-	store.checkpoint_set(FlowId(2), CommitVersion(7));
+	store.checkpoint_set(FlowId(1), CommitVersion(30)).unwrap();
+	store.checkpoint_set(FlowId(2), CommitVersion(7)).unwrap();
 
 	assert_eq!(
-		store.checkpoint_floor(),
+		store.checkpoint_floor().unwrap(),
 		Some(CommitVersion(7)),
 		"the memory tier floor must be the minimum across flows, not the last one written"
 	);
-	assert_eq!(store.checkpoint_list(), vec![FlowId(1), FlowId(2)]);
+	assert_eq!(store.checkpoint_list().unwrap(), vec![FlowId(1), FlowId(2)]);
 
-	store.checkpoint_delete(FlowId(2));
+	store.checkpoint_remove(FlowId(2)).unwrap();
 
 	assert_eq!(
-		store.checkpoint_floor(),
+		store.checkpoint_floor().unwrap(),
 		Some(CommitVersion(30)),
 		"a deleted flow must stop contributing to the floor, otherwise a dropped flow pins retention \
 		 for the life of the process"
@@ -583,22 +591,31 @@ fn a_zero_length_row_stays_present_in_the_buffer_and_never_reads_as_absent() {
 
 	store.apply_batch(&[OperatorWrite::Insert {
 		operator: OP_A,
-		key: key(1),
+		key: GroupStateKey::bound_unchecked(key(1)),
 		post: EncodedPodRow::new(&[]),
 	}]);
 
-	let found = store.get(OP_A, &key(1)).expect("a zero-length row is present, not absent");
+	let found = store
+		.state_get(OP_A, &GroupStateKey::bound_unchecked(key(1)))
+		.unwrap()
+		.expect("a zero-length row is present, not absent");
 	assert_eq!(found.len(), 0, "the row must round-trip at its written width");
-	assert!(store.contains(OP_A, &key(1)));
-	assert!(store.get(OP_A, &key(2)).is_none(), "an unwritten key stays absent, which is the other case");
+	assert!(store.contains(OP_A, &GroupStateKey::bound_unchecked(key(1))).unwrap());
+	assert!(
+		store.state_get(OP_A, &GroupStateKey::bound_unchecked(key(2))).unwrap().is_none(),
+		"an unwritten key stays absent, which is the other case"
+	);
 
 	store.apply_batch(&[OperatorWrite::Remove {
 		operator: OP_A,
-		key: key(1),
-		pre: DurablePre::Present(ByteSize::from_bytes(0)),
+		key: GroupStateKey::bound_unchecked(key(1)),
+		pre: LayeredPre::Present(ByteSize::from_bytes(0)),
 	}]);
-	assert!(store.get(OP_A, &key(1)).is_none(), "and a tombstone still reads absent");
-	assert!(!store.contains(OP_A, &key(1)));
+	assert!(
+		store.state_get(OP_A, &GroupStateKey::bound_unchecked(key(1))).unwrap().is_none(),
+		"and a tombstone still reads absent"
+	);
+	assert!(!store.contains(OP_A, &GroupStateKey::bound_unchecked(key(1))).unwrap());
 }
 
 #[test]
@@ -609,7 +626,7 @@ fn a_zero_length_row_survives_the_sqlite_blob_column_distinctly_from_absence() {
 
 	storage.seed_durable(&[OperatorWrite::Insert {
 		operator: OP_A,
-		key: key(1),
+		key: GroupStateKey::bound_unchecked(key(1)),
 		post: EncodedPodRow::new(&[]),
 	}]);
 
@@ -623,14 +640,13 @@ fn a_zero_length_row_survives_the_sqlite_blob_column_distinctly_from_absence() {
 	assert_eq!(scanned.items[0].1.len(), 0);
 }
 
-use reifydb_core::key::operator::state::OperatorStateKey;
-use reifydb_store_operator::tier::resident::batch::FlushBatch;
+use reifydb_store_operator::types::FlushBatch;
 
 trait SeedDurable {
 	fn seed_durable(&self, writes: &[OperatorWrite]);
 }
 
-impl SeedDurable for SqliteOperatorStorage {
+impl SeedDurable for SqlitePersistent {
 	fn seed_durable(&self, writes: &[OperatorWrite]) {
 		let mut batch = FlushBatch::default();
 		for write in writes {
@@ -652,9 +668,11 @@ impl SeedDurable for SqliteOperatorStorage {
 					..
 				} => (*operator, key, None),
 			};
-			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
-				.expect("a seeded key must name a group and a keyspace");
-			batch.state.record_bytes(operator, keyspace, group, &suffix, post);
+			let write = match post {
+				Some(row) => StagedWrite::Set(row),
+				None => StagedWrite::Remove,
+			};
+			batch.writes.push((operator, key.clone(), write));
 		}
 		self.flush_batch(&batch);
 	}

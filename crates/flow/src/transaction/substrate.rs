@@ -8,13 +8,16 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	interface::catalog::flow::FlowId,
+	key::operator::state::GroupStateKey,
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
-	types::{DurablePre, OperatorWrite},
+	types::{LayeredPre, OperatorWrite},
 };
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
-use reifydb_value::byte_size::ByteSize;
+use reifydb_value::{Result, byte_size::ByteSize};
+
+const DEFERRED_SIZING: &str = "deferred write sizing must not fail";
 
 use crate::transaction::{
 	frontier::OutputFrontiers,
@@ -55,9 +58,10 @@ pub fn apply_operator_state_with_checkpoints(
 	pending: &Pending,
 	checkpoints: &[(FlowId, CommitVersion)],
 	checkpoint_deletes: &[FlowId],
-) {
+) -> Result<()> {
 	let deferred = classify_pending(store, pending);
-	store.apply_batch_with_checkpoints(&operator_writes(pending, &deferred), checkpoints, checkpoint_deletes);
+	store.apply_batch_with_checkpoints(&operator_writes(pending, &deferred), checkpoints, checkpoint_deletes)?;
+	Ok(())
 }
 
 pub type DeferredClassification = HashMap<EncodedKey, Option<ByteSize>>;
@@ -77,12 +81,12 @@ pub fn classify_pending(store: &OperatorStore, pending: &Pending) -> DeferredCla
 			continue;
 		};
 		keys.push(key.clone());
-		probes.push((operator, inner));
+		probes.push((operator, GroupStateKey::bound_unchecked(inner)));
 	}
 	if probes.is_empty() {
 		return DeferredClassification::new();
 	}
-	let sizes = store.state_sizes(&probes);
+	let sizes = store.state_sizes(&probes).expect(DEFERRED_SIZING);
 	keys.into_iter().zip(sizes).collect()
 }
 
@@ -102,13 +106,13 @@ pub fn operator_writes(pending: &Pending, deferred: &DeferredClassification) -> 
 				match pending.pre_at(key).or_else(|| deferred.get(key).copied()) {
 					Some(Some(pre_value_bytes)) => OperatorWrite::Replace {
 						operator,
-						key: inner,
+						key: GroupStateKey::bound_unchecked(inner),
 						pre_value_bytes,
 						post,
 					},
 					Some(None) => OperatorWrite::Insert {
 						operator,
-						key: inner,
+						key: GroupStateKey::bound_unchecked(inner),
 						post,
 					},
 					None => panic!("unclassified operator state write on operator {}", operator.0),
@@ -118,10 +122,10 @@ pub fn operator_writes(pending: &Pending, deferred: &DeferredClassification) -> 
 				..
 			} => OperatorWrite::Remove {
 				operator,
-				key: inner,
+				key: GroupStateKey::bound_unchecked(inner),
 				pre: match pending.pre_at(key).or_else(|| deferred.get(key).copied()) {
-					Some(Some(bytes)) => DurablePre::Present(bytes),
-					Some(None) => DurablePre::Absent,
+					Some(Some(bytes)) => LayeredPre::Present(bytes),
+					Some(None) => LayeredPre::Absent,
 					None => panic!("unclassified operator state remove on operator {}", operator.0),
 				},
 			},

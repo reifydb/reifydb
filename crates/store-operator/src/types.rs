@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::KeyspaceId};
+use std::collections::BTreeMap;
+
+use reifydb_codec::row::pod::EncodedPodRow;
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::flow::{FlowId, OperatorId},
+	key::operator::state::{GroupStateKey, KeyspaceId},
+};
 use reifydb_value::byte_size::ByteSize;
 
 #[derive(Debug, Clone)]
 pub struct OperatorBatch {
-	pub items: Vec<(EncodedKey, EncodedPodRow)>,
+	pub items: Vec<(GroupStateKey, EncodedPodRow)>,
 	pub has_more: bool,
-	pub resume: Option<EncodedKey>,
+	pub resume: Option<GroupStateKey>,
 }
 
 impl OperatorBatch {
@@ -31,8 +37,8 @@ pub enum BufferedState {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct BufferedStateRange {
-	pub items: Vec<(EncodedKey, Option<EncodedPodRow>)>,
+pub struct BufferedRange {
+	pub items: Vec<(GroupStateKey, Option<EncodedPodRow>)>,
 	pub dropped: bool,
 }
 
@@ -46,7 +52,7 @@ pub struct OperatorStateCensus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DurablePre {
+pub enum LayeredPre {
 	Absent,
 	Present(ByteSize),
 }
@@ -55,18 +61,66 @@ pub enum DurablePre {
 pub enum OperatorWrite {
 	Insert {
 		operator: OperatorId,
-		key: EncodedKey,
+		key: GroupStateKey,
 		post: EncodedPodRow,
 	},
 	Replace {
 		operator: OperatorId,
-		key: EncodedKey,
+		key: GroupStateKey,
 		pre_value_bytes: ByteSize,
 		post: EncodedPodRow,
 	},
 	Remove {
 		operator: OperatorId,
-		key: EncodedKey,
-		pre: DurablePre,
+		key: GroupStateKey,
+		pre: LayeredPre,
 	},
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Applied {
+	pub rows: usize,
+	pub bytes: ByteSize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StagedWrite {
+	Set(EncodedPodRow),
+	Remove,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Budget {
+	pub rows: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Resume {
+	Done,
+	More,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scan {
+	Forward,
+	Backward,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DropMarker {
+	OperatorState(OperatorId),
+}
+
+#[derive(Default)]
+pub struct FlushBatch {
+	pub writes: Vec<(OperatorId, GroupStateKey, StagedWrite)>,
+	pub checkpoints: BTreeMap<FlowId, Option<CommitVersion>>,
+	pub drops: Vec<DropMarker>,
+	pub bytes: ByteSize,
+}
+
+impl FlushBatch {
+	pub fn is_empty(&self) -> bool {
+		self.writes.is_empty() && self.checkpoints.is_empty() && self.drops.is_empty()
+	}
 }
