@@ -88,6 +88,7 @@ mod tests {
 		for v in 1..=10u64 {
 			let cdc = Cdc::new(
 				CommitVersion(v),
+				CommitVersion(v),
 				DateTime::from_nanos(1000),
 				vec![CdcChange::Insert {
 					key: make_key(&format!("k{v}")).encode(),

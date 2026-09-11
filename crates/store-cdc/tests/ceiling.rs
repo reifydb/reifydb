@@ -58,6 +58,7 @@ fn record(version: u64) -> Cdc {
 	// every record must cost exactly the same, otherwise a ceiling in records is not a ceiling in bytes
 	Cdc::new(
 		CommitVersion(version),
+		CommitVersion(version),
 		DateTime::from_nanos(1_700_000_000_000_000_000 + version),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(version.to_be_bytes().to_vec()),

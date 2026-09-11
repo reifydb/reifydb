@@ -268,7 +268,7 @@ pub fn record(version: u64, timestamp: u64, changes: &[(u64, u64, usize, ChangeK
 		sources.insert(*table);
 		list.push(change);
 	}
-	let cdc = Cdc::new(CommitVersion(version), DateTime::from_nanos(timestamp), list);
+	let cdc = Cdc::new(CommitVersion(version), CommitVersion(version), DateTime::from_nanos(timestamp), list);
 	let record = Record {
 		changes: cdc.changes.clone(),
 		timestamp,

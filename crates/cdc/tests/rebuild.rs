@@ -335,6 +335,7 @@ fn rebuild_maps_a_view_row_key_to_the_view_object() {
 
 	let view_commit = Cdc::new(
 		table_commit.version,
+		table_commit.version,
 		table_commit.timestamp,
 		vec![CdcChange::Insert {
 			key: RowKey::encoded(StorageId::view(7), RowNumber(1)),

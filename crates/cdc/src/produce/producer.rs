@@ -107,7 +107,7 @@ where
 			self.backlog.publish(version, None);
 			return Ok(());
 		}
-		let cdc = Arc::new(Cdc::new(version, changed_at, cdc_changes.clone()));
+		let cdc = Arc::new(Cdc::new(version, version, changed_at, cdc_changes.clone()));
 		self.storage.write(&cdc)?;
 		debug!(version = version.0, "CDC written successfully");
 		self.emit_written_event(version, &cdc_changes);

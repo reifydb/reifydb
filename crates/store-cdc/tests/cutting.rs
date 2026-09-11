@@ -51,6 +51,7 @@ fn record(version: u64, units: usize) -> Cdc {
 	let payload = units * unit_bytes() - size_of::<Cdc>() - KEY_LEN;
 	Cdc::new(
 		CommitVersion(version),
+		CommitVersion(version),
 		DateTime::from_nanos(TIMESTAMP_BASE + version),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![b'k'; KEY_LEN]),

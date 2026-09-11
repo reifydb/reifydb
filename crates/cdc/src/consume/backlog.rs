@@ -275,6 +275,7 @@ mod tests {
 	fn cdc_with_payload(version: u64, payload: usize) -> Arc<Cdc> {
 		Arc::new(Cdc::new(
 			cv(version),
+			cv(version),
 			DateTime::default(),
 			vec![CdcChange::Insert {
 				key: EncodedKey::new(vec![0xAB; 4]),

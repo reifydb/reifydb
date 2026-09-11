@@ -22,6 +22,7 @@ use common::Fixture;
 fn cdc_minimal(version: u64) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
+		CommitVersion(version),
 		DateTime::from_nanos(1_700_000_000_000_000_000),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
@@ -145,6 +146,7 @@ mod cases {
 	pub fn count(fixture: Fixture) {
 		let store = fixture.store;
 		let cdc = Cdc::new(
+			CommitVersion(1),
 			CommitVersion(1),
 			DateTime::from_nanos(1),
 			(0..5).map(|i| CdcChange::Insert {
@@ -274,6 +276,7 @@ mod cases {
 		let store = fixture.store;
 		let cdc = Cdc::new(
 			CommitVersion(1),
+			CommitVersion(1),
 			DateTime::from_nanos(12345),
 			vec![CdcChange::Insert {
 				key: EncodedKey::new(vec![1, 2, 3]),
@@ -367,6 +370,37 @@ mod cases {
 		assert!(batch.items.is_empty());
 		assert!(!batch.has_more);
 	}
+
+	pub fn source_survives_the_commit_buffer_and_a_sealed_block(fixture: Fixture) {
+		// A flow commit's source differs from its version; losing it on either tier reorders views on replay.
+		let store = fixture.store;
+		let stamped = [(5u64, 2u64), (6, 6), (7, 3)];
+		for (version, source) in stamped {
+			store.write(&Cdc::new(
+				CommitVersion(version),
+				CommitVersion(source),
+				DateTime::from_nanos(1_700_000_000_000_000_000),
+				vec![CdcChange::Insert {
+					key: EncodedKey::new(vec![1, 2, 3]),
+					post: EncodedBytes(CowVec::new(vec![10, 20, 30])),
+				}],
+			))
+			.unwrap();
+		}
+		let want: Vec<(u64, u64)> = stamped.to_vec();
+		let check = |store: &CdcStore, tier: &str| {
+			for (version, source) in stamped {
+				let read = store.read(CommitVersion(version)).unwrap().expect("entry should exist");
+				assert_eq!(read.source, CommitVersion(source), "{tier}: read lost the source of {version}");
+			}
+			let batch = store.read_range(Bound::Unbounded, Bound::Unbounded, 16).unwrap();
+			let got: Vec<(u64, u64)> = batch.items.iter().map(|cdc| (cdc.version.0, cdc.source.0)).collect();
+			assert_eq!(got, want, "{tier}: read_range lost or swapped a source");
+		};
+		check(&store, "commit buffer");
+		assert!(store.flush_pending());
+		check(&store, "sealed block");
+	}
 }
 
 crate::tier_tests!(
@@ -400,5 +434,6 @@ crate::tier_tests!(
 		range_inverted_returns_empty,
 		range_excluded_zero_end_returns_empty,
 		range_excluded_pair_collapsing,
+		source_survives_the_commit_buffer_and_a_sealed_block,
 	]
 );

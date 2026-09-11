@@ -78,6 +78,7 @@ fn set_ttl_secs(catalog: &CatalogCache, secs: i64) {
 fn write_cdc(storage: &CdcStore, version: u64, timestamp_nanos: u64) {
 	let cdc = Cdc::new(
 		CommitVersion(version),
+		CommitVersion(version),
 		DateTime::from_nanos(timestamp_nanos),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![version as u8]),

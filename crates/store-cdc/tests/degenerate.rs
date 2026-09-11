@@ -31,6 +31,7 @@ const MANY_CHANGES: usize = 50_000;
 fn cdc_at(version: u64, timestamp: u64, changes: usize) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
+		CommitVersion(version),
 		DateTime::from_nanos(timestamp),
 		(0..changes)
 			.map(|i| CdcChange::Insert {
@@ -357,6 +358,7 @@ mod cases {
 		// the rollup must count it while charging zero bytes
 		let store = &fixture.store;
 		let cdc = Cdc::new(
+			CommitVersion(1),
 			CommitVersion(1),
 			DateTime::from_nanos(100),
 			vec![CdcChange::Insert {

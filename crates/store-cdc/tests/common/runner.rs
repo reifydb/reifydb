@@ -116,6 +116,7 @@ impl TsRunner for Runner {
 
 				let cdc = Cdc::new(
 					CommitVersion(version),
+					CommitVersion(version),
 					DateTime::from_nanos(timestamp),
 					(0..changes)
 						.map(|i| CdcChange::Insert {

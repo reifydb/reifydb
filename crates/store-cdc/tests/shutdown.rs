@@ -37,6 +37,7 @@ const SUMMARY_LIMIT: usize = 1024;
 fn cdc_minimal(version: u64) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
+		CommitVersion(version),
 		DateTime::from_nanos(1_700_000_000_000_000_000),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),

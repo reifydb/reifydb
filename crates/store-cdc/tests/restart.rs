@@ -71,6 +71,7 @@ fn cdc_at(version: u64) -> Cdc {
 	// every field derives from the version, so a store that returns a neighbouring record must fail on content
 	Cdc::new(
 		CommitVersion(version),
+		CommitVersion(version),
 		DateTime::from_nanos(TIMESTAMP + version),
 		(0..changes_for(version))
 			.map(|i| CdcChange::Insert {

@@ -219,6 +219,7 @@ mod tests {
 	fn cdc(version: u64, payload: usize) -> Cdc {
 		Cdc::new(
 			cv(version),
+			cv(version),
 			DateTime::default(),
 			vec![CdcChange::Insert {
 				key: EncodedKey::new(vec![0xAB; 4]),

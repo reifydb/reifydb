@@ -296,7 +296,7 @@ mod tests {
 	use super::*;
 
 	fn commit(changes: Vec<CdcChange>) -> Cdc {
-		Cdc::new(CommitVersion(1), DateTime::from_nanos(0), changes)
+		Cdc::new(CommitVersion(1), CommitVersion(1), DateTime::from_nanos(0), changes)
 	}
 
 	fn row() -> EncodedBytes {
