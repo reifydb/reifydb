@@ -5,7 +5,7 @@
 
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
@@ -126,7 +126,7 @@ fn tagged(mut diff: Diff, side: Side) -> Diff {
 fn change(diffs: Vec<Diff>) -> Change {
 	// The parent origin is only ever a fallback here since every diff names its own, but it must not
 	// be the join's own node - the operator short-circuits a change it published itself.
-	Change::from_flow(LEFT_OPERATOR, CommitVersion(1), diffs, DateTime::default())
+	Change::from_flow(LEFT_OPERATOR, ChangeVersion::from(CommitVersion(1)), diffs, DateTime::default())
 }
 
 pub struct JoinWorkload {

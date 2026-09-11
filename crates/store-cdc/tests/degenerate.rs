@@ -9,7 +9,7 @@ use std::{
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion},
 	interface::cdc::{Cdc, CdcBatch, CdcChange},
 };
 use reifydb_store_cdc::{
@@ -30,8 +30,7 @@ const MANY_CHANGES: usize = 50_000;
 
 fn cdc_at(version: u64, timestamp: u64, changes: usize) -> Cdc {
 	Cdc::new(
-		CommitVersion(version),
-		SourceVersion(version),
+		ChangeVersion::from(CommitVersion(version)),
 		DateTime::from_nanos(timestamp),
 		(0..changes)
 			.map(|i| CdcChange::Insert {
@@ -61,7 +60,7 @@ fn seal_each(store: &CdcStore, versions: impl IntoIterator<Item = u64>) {
 }
 
 fn version_list(batch: &CdcBatch) -> Vec<u64> {
-	batch.items.iter().map(|cdc| cdc.version.0).collect()
+	batch.items.iter().map(|cdc| cdc.version.commit.0).collect()
 }
 
 fn within<T: Send + 'static>(label: &str, seconds: u64, body: impl FnOnce() -> T + Send + 'static) -> T {
@@ -91,7 +90,7 @@ mod cases {
 		store.write(&cdc_minimal(0)).unwrap();
 		let check = |store: &CdcStore| {
 			let read = store.read(CommitVersion(0)).unwrap().expect("version 0 must be readable");
-			assert_eq!(read.version, CommitVersion(0));
+			assert_eq!(read.version.commit, CommitVersion(0));
 			assert_eq!(store.count(CommitVersion(0)).unwrap(), 1);
 			assert_eq!(store.min_version().unwrap(), Some(CommitVersion(0)));
 			assert_eq!(store.max_version().unwrap(), Some(CommitVersion(0)));
@@ -147,7 +146,7 @@ mod cases {
 		store.write(&cdc_minimal(u64::MAX)).unwrap();
 		let check = |store: &CdcStore| {
 			let read = store.read(CommitVersion(u64::MAX)).unwrap().expect("u64::MAX must be readable");
-			assert_eq!(read.version, CommitVersion(u64::MAX));
+			assert_eq!(read.version.commit, CommitVersion(u64::MAX));
 			assert_eq!(store.count(CommitVersion(u64::MAX)).unwrap(), 1);
 			assert_eq!(store.min_version().unwrap(), Some(CommitVersion(u64::MAX)));
 			assert_eq!(store.max_version().unwrap(), Some(CommitVersion(u64::MAX)));
@@ -358,8 +357,7 @@ mod cases {
 		// the rollup must count it while charging zero bytes
 		let store = &fixture.store;
 		let cdc = Cdc::new(
-			CommitVersion(1),
-			SourceVersion(1),
+			ChangeVersion::from(CommitVersion(1)),
 			DateTime::from_nanos(100),
 			vec![CdcChange::Insert {
 				key: EncodedKey::new(vec![]),

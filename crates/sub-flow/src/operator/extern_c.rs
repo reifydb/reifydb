@@ -9,7 +9,7 @@ use std::{
 };
 
 use reifydb_core::{
-	common::CommitVersion,
+	common::ChangeVersion,
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
@@ -193,7 +193,7 @@ impl HostOperator for ExternCOperatorHandle {
 		output_diff_count = field::Empty
 	))]
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
-		let version = host.version();
+		let version = ChangeVersion::from(host.version());
 		let key = timer.key.as_ref();
 
 		let mut host_ctx = ExternCHostContext::new(host);
@@ -288,7 +288,7 @@ impl ExternCOperatorHandle {
 fn drain_emitted_diffs(
 	registry: &BuilderRegistry,
 	operator_id: OperatorId,
-	version: CommitVersion,
+	version: ChangeVersion,
 	changed_at: DateTime,
 ) -> Change {
 	let emitted = registry.drain();

@@ -39,7 +39,6 @@ fn ephemeral(engine: &TestEngine) -> EphemeralTransaction {
 	);
 	txn.set_change_coordinate(ChangeCoordinate {
 		at: Some(DateTime::from_millis(0)),
-		version,
 	});
 	txn
 }

@@ -5,7 +5,7 @@ use std::{collections::Bound, sync::Arc, thread};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion},
 	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_runtime::{
@@ -36,8 +36,7 @@ const SUMMARY_LIMIT: usize = 1024;
 
 fn cdc_minimal(version: u64) -> Cdc {
 	Cdc::new(
-		CommitVersion(version),
-		SourceVersion(version),
+		ChangeVersion::from(CommitVersion(version)),
 		DateTime::from_nanos(1_700_000_000_000_000_000),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
@@ -174,7 +173,11 @@ mod cases {
 
 		match fixture.store.read(CommitVersion(2)) {
 			Ok(Some(cdc)) => {
-				assert_eq!(cdc.version, CommitVersion(2), "read must answer with the version asked for")
+				assert_eq!(
+					cdc.version.commit,
+					CommitVersion(2),
+					"read must answer with the version asked for"
+				)
 			}
 			Ok(None) => panic!("read after shutdown reported version 2 absent although shutdown sealed it"),
 			Err(_) => {}
@@ -182,7 +185,7 @@ mod cases {
 
 		match fixture.store.read_range(Bound::Unbounded, Bound::Unbounded, 100) {
 			Ok(batch) => {
-				let versions: Vec<u64> = batch.items.iter().map(|cdc| cdc.version.0).collect();
+				let versions: Vec<u64> = batch.items.iter().map(|cdc| cdc.version.commit.0).collect();
 				assert_eq!(versions, vec![1, 2, 3], "read_range after shutdown dropped sealed records");
 			}
 			Err(_) => {}

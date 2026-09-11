@@ -15,7 +15,7 @@ use std::{
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion},
 	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_store_cdc::{
@@ -65,8 +65,7 @@ const MIN_ROUNDS: usize = 24;
 
 fn cdc_at(version: u64) -> Cdc {
 	Cdc::new(
-		CommitVersion(version),
-		SourceVersion(version),
+		ChangeVersion::from(CommitVersion(version)),
 		DateTime::from_nanos(BASE_TIMESTAMP + version),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(version.to_be_bytes().to_vec()),
@@ -80,7 +79,7 @@ fn scan(store: &CdcStore) -> Vec<u64> {
 		.expect("a full scan must not error")
 		.items
 		.iter()
-		.map(|cdc| cdc.version.0)
+		.map(|cdc| cdc.version.commit.0)
 		.collect()
 }
 
@@ -414,7 +413,7 @@ mod cases {
 					};
 					reads += 1;
 					match store.read(head).expect("a point read must not error") {
-						Some(cdc) if cdc.version == head => {}
+						Some(cdc) if cdc.version.commit == head => {}
 						Some(_) => wrong_record += 1,
 						None => missing_head += 1,
 					}
@@ -424,7 +423,7 @@ mod cases {
 					}
 					reads += 1;
 					match store.read(probe).expect("a point read must not error") {
-						Some(cdc) if cdc.version == probe => {}
+						Some(cdc) if cdc.version.commit == probe => {}
 						Some(_) => wrong_record += 1,
 						None => missing_probe += 1,
 					}

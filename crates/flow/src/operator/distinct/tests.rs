@@ -4,7 +4,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
@@ -60,7 +60,7 @@ fn build_insert(value: i64, row_num: u64) -> Change {
 	);
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::insert(columns));
-	Change::from_flow(OperatorId(99), CommitVersion(1), diffs, now)
+	Change::from_flow(OperatorId(99), ChangeVersion::from(CommitVersion(1)), diffs, now)
 }
 
 fn build_remove(value: i64, row_num: u64) -> Change {
@@ -75,7 +75,7 @@ fn build_remove(value: i64, row_num: u64) -> Change {
 	);
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::remove(columns));
-	Change::from_flow(OperatorId(99), CommitVersion(1), diffs, now)
+	Change::from_flow(OperatorId(99), ChangeVersion::from(CommitVersion(1)), diffs, now)
 }
 
 fn persisted_rows(op: &DistinctOperator, txn: &mut DeferredTransaction) -> BTreeMap<Vec<u8>, Vec<u8>> {

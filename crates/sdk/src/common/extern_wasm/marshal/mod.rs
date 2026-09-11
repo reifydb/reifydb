@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod column;
-pub mod types;
 pub mod util;
 
 use std::{mem, mem::size_of, ptr, slice, str};

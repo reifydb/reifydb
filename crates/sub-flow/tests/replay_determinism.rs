@@ -20,7 +20,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	common::{CommitVersion, JoinType, WindowKind, WindowSize},
+	common::{ChangeVersion, CommitVersion, JoinType, WindowKind, WindowSize},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
@@ -114,7 +114,7 @@ fn change_of(events: &[Event]) -> Change {
 			Event::Update(pre, post) => Diff::update(Columns::from_row(pre), Columns::from_row(post)),
 		});
 	}
-	Change::from_flow(SOURCE, CommitVersion(1), diffs, DateTime::default())
+	Change::from_flow(SOURCE, ChangeVersion::from(CommitVersion(1)), diffs, DateTime::default())
 }
 
 fn feed<O: HostOperator>(h: &mut Harness<O>, events: &[Event], slices: &[usize]) -> Vec<Diff> {
@@ -494,7 +494,7 @@ mod join {
 				diff
 			})
 			.collect();
-		Change::from_flow(LEFT, CommitVersion(1), diffs, DateTime::default())
+		Change::from_flow(LEFT, ChangeVersion::from(CommitVersion(1)), diffs, DateTime::default())
 	}
 
 	fn events() -> Vec<JoinEvent> {

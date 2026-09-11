@@ -166,7 +166,7 @@ impl FlowBacklog {
 		self.shared.pull_hits.fetch_add(1, Ordering::Relaxed);
 		match truncated_at {
 			Some(_) => BacklogPull::Hit {
-				advance_to: items.last().expect("truncation implies at least one item").version,
+				advance_to: items.last().expect("truncation implies at least one item").version.commit,
 				items,
 				more: true,
 			},
@@ -264,7 +264,7 @@ mod tests {
 	use std::sync::atomic::AtomicUsize;
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-	use reifydb_core::common::SourceVersion;
+	use reifydb_core::common::ChangeVersion;
 	use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
 	use super::*;
@@ -275,8 +275,7 @@ mod tests {
 
 	fn cdc_with_payload(version: u64, payload: usize) -> Arc<Cdc> {
 		Arc::new(Cdc::new(
-			cv(version),
-			SourceVersion(version),
+			ChangeVersion::from(cv(version)),
 			DateTime::default(),
 			vec![CdcChange::Insert {
 				key: EncodedKey::new(vec![0xAB; 4]),

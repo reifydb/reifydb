@@ -130,19 +130,19 @@ impl SqliteCdcPersistent {
 		let last = block.entries.last().unwrap();
 		reifydb_assertions! {
 			assert!(
-				block.entries.windows(2).all(|w| w[0].version < w[1].version),
+				block.entries.windows(2).all(|w| w[0].version.commit < w[1].version.commit),
 				"block entries must be strictly ascending by version"
 			);
 			assert_eq!(
-				block.summary.id.0, last.version,
+				block.summary.id.0, last.version.commit,
 				"a block is identified by its highest version"
 			);
 			assert_eq!(
-				block.summary.min_version, first.version,
+				block.summary.min_version, first.version.commit,
 				"summary min_version must be the lowest entry version"
 			);
 			assert_eq!(
-				block.summary.max_version, last.version,
+				block.summary.max_version, last.version.commit,
 				"summary max_version must be the highest entry version"
 			);
 			assert_eq!(
@@ -170,8 +170,8 @@ impl SqliteCdcPersistent {
 		)
 		.map_err(|e| error!(internal(format!("cdc block insert prepare: {e}"))))?
 		.execute(params![
-			version_to_bytes(last.version).as_slice(),
-			version_to_bytes(first.version).as_slice(),
+			version_to_bytes(last.version.commit).as_slice(),
+			version_to_bytes(first.version.commit).as_slice(),
 			min_timestamp,
 			max_timestamp,
 			block.entries.len() as i64,

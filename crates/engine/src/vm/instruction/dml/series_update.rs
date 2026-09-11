@@ -9,7 +9,7 @@ use reifydb_codec::row::{
 	shape::RowShape,
 };
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
 		catalog::{
@@ -459,7 +459,7 @@ fn track_series_update_flow_change(
 	);
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::series(series.id)),
-		version: CommitVersion(0),
+		version: ChangeVersion::from(CommitVersion(0)),
 		diffs: smallvec![Diff::update(pre, post)],
 		changed_at: DateTime::default(),
 	});

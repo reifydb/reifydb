@@ -5,7 +5,7 @@ use std::collections::Bound;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion, SourceVersion},
 	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_store_cdc::{
@@ -21,8 +21,7 @@ use common::Fixture;
 
 fn cdc_minimal(version: u64) -> Cdc {
 	Cdc::new(
-		CommitVersion(version),
-		SourceVersion(version),
+		ChangeVersion::from(CommitVersion(version)),
 		DateTime::from_nanos(1_700_000_000_000_000_000),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
@@ -52,7 +51,7 @@ mod cases {
 		let store = fixture.store;
 		let check = |store: &CdcStore| {
 			let read = store.read(CommitVersion(1)).unwrap().expect("entry should exist");
-			assert_eq!(read.version, CommitVersion(1));
+			assert_eq!(read.version.commit, CommitVersion(1));
 			assert_eq!(read.changes.len(), 1);
 		};
 		store.write(&cdc_minimal(1)).unwrap();
@@ -78,8 +77,8 @@ mod cases {
 				.unwrap();
 			assert_eq!(batch.items.len(), 5);
 			assert!(!batch.has_more);
-			assert_eq!(batch.items[0].version, CommitVersion(3));
-			assert_eq!(batch.items[4].version, CommitVersion(7));
+			assert_eq!(batch.items[0].version.commit, CommitVersion(3));
+			assert_eq!(batch.items[4].version.commit, CommitVersion(7));
 		};
 		write_all(&store, 1..=10);
 		check(&store);
@@ -94,15 +93,15 @@ mod cases {
 				.read_range(Bound::Excluded(CommitVersion(2)), Bound::Included(CommitVersion(4)), 100)
 				.unwrap();
 			assert_eq!(batch.items.len(), 2);
-			assert_eq!(batch.items[0].version, CommitVersion(3));
-			assert_eq!(batch.items[1].version, CommitVersion(4));
+			assert_eq!(batch.items[0].version.commit, CommitVersion(3));
+			assert_eq!(batch.items[1].version.commit, CommitVersion(4));
 
 			let batch = store
 				.read_range(Bound::Included(CommitVersion(2)), Bound::Excluded(CommitVersion(4)), 100)
 				.unwrap();
 			assert_eq!(batch.items.len(), 2);
-			assert_eq!(batch.items[0].version, CommitVersion(2));
-			assert_eq!(batch.items[1].version, CommitVersion(3));
+			assert_eq!(batch.items[0].version.commit, CommitVersion(2));
+			assert_eq!(batch.items[1].version.commit, CommitVersion(3));
 		};
 		write_all(&store, 1..=5);
 		check(&store);
@@ -132,22 +131,21 @@ mod cases {
 		write_all(&store, 6..=10);
 
 		let batch = store.read_range(Bound::Unbounded, Bound::Unbounded, 100).unwrap();
-		let versions: Vec<u64> = batch.items.iter().map(|cdc| cdc.version.0).collect();
+		let versions: Vec<u64> = batch.items.iter().map(|cdc| cdc.version.commit.0).collect();
 		assert_eq!(versions, (1..=10).collect::<Vec<_>>());
 		assert!(!batch.has_more);
 
 		let batch = store
 			.read_range(Bound::Included(CommitVersion(4)), Bound::Included(CommitVersion(7)), 100)
 			.unwrap();
-		let versions: Vec<u64> = batch.items.iter().map(|cdc| cdc.version.0).collect();
+		let versions: Vec<u64> = batch.items.iter().map(|cdc| cdc.version.commit.0).collect();
 		assert_eq!(versions, vec![4, 5, 6, 7]);
 	}
 
 	pub fn count(fixture: Fixture) {
 		let store = fixture.store;
 		let cdc = Cdc::new(
-			CommitVersion(1),
-			SourceVersion(1),
+			ChangeVersion::from(CommitVersion(1)),
 			DateTime::from_nanos(1),
 			(0..5).map(|i| CdcChange::Insert {
 				key: EncodedKey::new(vec![i as u8]),
@@ -205,7 +203,7 @@ mod cases {
 		assert!(matches!(store.write(&cdc_minimal(1)), Err(CdcError::DuplicateVersion(CommitVersion(1)))));
 
 		store.write(&cdc_minimal(2)).unwrap();
-		assert_eq!(store.read(CommitVersion(2)).unwrap().unwrap().version, CommitVersion(2));
+		assert_eq!(store.read(CommitVersion(2)).unwrap().unwrap().version.commit, CommitVersion(2));
 	}
 
 	pub fn drop_before_empty(fixture: Fixture) {
@@ -275,8 +273,7 @@ mod cases {
 	pub fn drop_before_entry_stats(fixture: Fixture) {
 		let store = fixture.store;
 		let cdc = Cdc::new(
-			CommitVersion(1),
-			SourceVersion(1),
+			ChangeVersion::from(CommitVersion(1)),
 			DateTime::from_nanos(12345),
 			vec![CdcChange::Insert {
 				key: EncodedKey::new(vec![1, 2, 3]),
@@ -333,7 +330,7 @@ mod cases {
 		store.drop_before(Cutoff::Version(CommitVersion(4)), usize::MAX).unwrap();
 
 		let batch = store.read_range(Bound::Unbounded, Bound::Unbounded, 100).unwrap();
-		let versions: Vec<u64> = batch.items.iter().map(|cdc| cdc.version.0).collect();
+		let versions: Vec<u64> = batch.items.iter().map(|cdc| cdc.version.commit.0).collect();
 		assert_eq!(versions, vec![4, 5, 6]);
 		assert_eq!(store.truncated_before().unwrap(), CommitVersion(4));
 	}
@@ -377,8 +374,10 @@ mod cases {
 		let stamped = [(5u64, 2u64), (6, 6), (7, 3)];
 		for (version, source) in stamped {
 			store.write(&Cdc::new(
-				CommitVersion(version),
-				SourceVersion(source),
+				ChangeVersion {
+					commit: CommitVersion(version),
+					source: SourceVersion(source),
+				},
 				DateTime::from_nanos(1_700_000_000_000_000_000),
 				vec![CdcChange::Insert {
 					key: EncodedKey::new(vec![1, 2, 3]),
@@ -392,14 +391,14 @@ mod cases {
 			for (version, source) in stamped {
 				let read = store.read(CommitVersion(version)).unwrap().expect("entry should exist");
 				assert_eq!(
-					read.source,
+					read.version.source,
 					SourceVersion(source),
 					"{tier}: read lost the source of {version}"
 				);
 			}
 			let batch = store.read_range(Bound::Unbounded, Bound::Unbounded, 16).unwrap();
 			let got: Vec<(u64, u64)> =
-				batch.items.iter().map(|cdc| (cdc.version.0, cdc.source.0)).collect();
+				batch.items.iter().map(|cdc| (cdc.version.commit.0, cdc.version.source.0)).collect();
 			assert_eq!(got, want, "{tier}: read_range lost or swapped a source");
 		};
 		check(&store, "commit buffer");

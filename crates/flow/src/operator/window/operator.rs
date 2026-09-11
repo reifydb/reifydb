@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	common::{CommitVersion, WindowKind, WindowSize},
+	common::{ChangeVersion, CommitVersion, WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
 	state::timer::TimerKind,
@@ -229,7 +229,12 @@ impl HostOperator for WindowOperator {
 		if diffs.is_empty() {
 			Ok(None)
 		} else {
-			Ok(Some(Change::from_flow(self.core.operator, CommitVersion(0), diffs, timer.due)))
+			Ok(Some(Change::from_flow(
+				self.core.operator,
+				ChangeVersion::from(CommitVersion(0)),
+				diffs,
+				timer.due,
+			)))
 		}
 	}
 

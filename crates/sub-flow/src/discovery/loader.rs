@@ -109,7 +109,7 @@ impl LoaderActor {
 			state.memo.iter().find(|m| m.from <= from && from < m.advance_to && m.advance_to <= up_to)
 		{
 			self.metrics.inner.memo_hits.fetch_add(1, Ordering::Relaxed);
-			let start = memo.items.partition_point(|c| c.version <= from);
+			let start = memo.items.partition_point(|c| c.version.commit <= from);
 			return Ok((memo.items[start..].to_vec(), memo.advance_to));
 		}
 
@@ -151,18 +151,18 @@ impl LoaderActor {
 			for cdc in batch.items {
 				let bytes = cdc_bytes(&cdc);
 				if !items.is_empty() && taken + bytes > budget {
-					let advance_to = items.last().expect("non-empty").version;
+					let advance_to = items.last().expect("non-empty").version.commit;
 					return Ok((items, advance_to));
 				}
 				taken += bytes;
-				cursor = cdc.version;
+				cursor = cdc.version.commit;
 				items.push(Arc::new(cdc));
 			}
 			if exhausted {
 				return Ok((items, up_to));
 			}
 			if taken >= budget {
-				let advance_to = items.last().map(|c| c.version).unwrap_or(up_to);
+				let advance_to = items.last().map(|c| c.version.commit).unwrap_or(up_to);
 				return Ok((items, advance_to));
 			}
 		}
@@ -208,7 +208,7 @@ mod tests {
 	};
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-	use reifydb_core::{common::SourceVersion, interface::cdc::CdcChange};
+	use reifydb_core::{common::ChangeVersion, interface::cdc::CdcChange};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 	use reifydb_store_cdc::{config::CdcStoreConfig, storage::Cutoff};
 	use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
@@ -221,8 +221,7 @@ mod tests {
 
 	fn cdc(version: u64, payload: usize) -> Cdc {
 		Cdc::new(
-			cv(version),
-			SourceVersion(version),
+			ChangeVersion::from(cv(version)),
 			DateTime::default(),
 			vec![CdcChange::Insert {
 				key: EncodedKey::new(vec![0xAB; 4]),
@@ -275,7 +274,7 @@ mod tests {
 		let store = store_with(&system, [2, 3]);
 		let handle = spawn(&system, &store);
 		let (items, advance_to) = fetch(&handle, 1, 9, ByteSize::from_mib(1)).expect("chunk");
-		assert_eq!(items.iter().map(|c| c.version).collect::<Vec<_>>(), vec![cv(2), cv(3)]);
+		assert_eq!(items.iter().map(|c| c.version.commit).collect::<Vec<_>>(), vec![cv(2), cv(3)]);
 		assert_eq!(advance_to, cv(9), "an exhausted read must advance to up_to, not the last entry");
 	}
 
@@ -344,7 +343,7 @@ mod tests {
 
 		let (items, advance_to) = fetch(&handle, 2, 9, ByteSize::from_mib(1)).expect("chunk");
 		assert_eq!(
-			items.iter().map(|c| c.version).collect::<Vec<_>>(),
+			items.iter().map(|c| c.version.commit).collect::<Vec<_>>(),
 			vec![cv(3), cv(4), cv(5)],
 			"a cursor inside the memoized range must get exactly the records above it, and the wiped storage proves none came from a re-read"
 		);

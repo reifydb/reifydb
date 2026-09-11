@@ -4,7 +4,7 @@
 use std::{mem, result::Result as StdResult};
 
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::{flow::FlowId, id::SubscriptionId, object::ObjectId},
 		change::{Change, Diff, StagedBatch},
@@ -97,7 +97,7 @@ impl SubscriptionWorkerActor {
 			if diffs.is_empty() {
 				continue;
 			}
-			changes.push(Change::from_object(shape, version, diffs, now));
+			changes.push(Change::from_object(shape, ChangeVersion::from(version), diffs, now));
 		}
 		if !changes.is_empty() {
 			flow_engine.process_batch(&mut txn, changes, flow_id)?;

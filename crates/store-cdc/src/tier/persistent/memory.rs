@@ -65,19 +65,19 @@ impl MemoryCdcPersistent {
 		let last = block.entries.last().unwrap();
 		reifydb_assertions! {
 			assert!(
-				block.entries.windows(2).all(|w| w[0].version < w[1].version),
+				block.entries.windows(2).all(|w| w[0].version.commit < w[1].version.commit),
 				"block entries must be strictly ascending by version"
 			);
 			assert_eq!(
-				block.summary.id.0, last.version,
+				block.summary.id.0, last.version.commit,
 				"a block is identified by its highest version"
 			);
 			assert_eq!(
-				block.summary.min_version, first.version,
+				block.summary.min_version, first.version.commit,
 				"summary min_version must be the lowest entry version"
 			);
 			assert_eq!(
-				block.summary.max_version, last.version,
+				block.summary.max_version, last.version.commit,
 				"summary max_version must be the highest entry version"
 			);
 			assert_eq!(
@@ -89,9 +89,9 @@ impl MemoryCdcPersistent {
 		let stored_bytes = block.resident_bytes();
 		let rollup = aggregate_evictions(block.entries.iter().flat_map(|entry| entry.changes.iter()));
 		let summary = BlockSummary {
-			id: BlockId(last.version),
-			min_version: first.version,
-			max_version: last.version,
+			id: BlockId(last.version.commit),
+			min_version: first.version.commit,
+			max_version: last.version.commit,
 			min_timestamp: block.entries.iter().map(|cdc| cdc.timestamp).min().unwrap(),
 			max_timestamp: block.entries.iter().map(|cdc| cdc.timestamp).max().unwrap(),
 			count: Count::new(block.entries.len() as u64),
@@ -99,7 +99,7 @@ impl MemoryCdcPersistent {
 		};
 
 		self.inner.blocks.lock().insert(
-			last.version,
+			last.version.commit,
 			Resident {
 				block: Arc::new(Block {
 					summary,

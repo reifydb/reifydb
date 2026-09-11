@@ -16,7 +16,7 @@ use reifydb_codec::{
 	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion, SourceVersion},
 	delta::{Delta, RemoveAnnounce},
 	event::transaction::PostCommitEvent,
 	interface::{
@@ -679,8 +679,11 @@ impl MultiWriteTransaction {
 	#[inline]
 	fn publish(&self, commit_version: CommitVersion, deltas: CowVec<Delta>, flow_changes: Vec<Change>) {
 		self.oracle.done_commit(commit_version);
-		let source = self.source.unwrap_or(SourceVersion::from(commit_version));
-		self.engine.event_bus.emit(PostCommitEvent::new(deltas, commit_version, source, flow_changes));
+		let version = ChangeVersion {
+			commit: commit_version,
+			source: self.source.unwrap_or(SourceVersion::from(commit_version)),
+		};
+		self.engine.event_bus.emit(PostCommitEvent::new(deltas, version, flow_changes));
 	}
 }
 

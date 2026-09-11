@@ -14,6 +14,7 @@ use std::{
 
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::{
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::dictionary::Dictionary,
 		change::{Change, Diff},
@@ -103,7 +104,7 @@ impl SourceWorkload {
 	fn change(&self, diff: Diff) -> Change {
 		Change::from_flow(
 			crate::operators::source::SOURCE,
-			reifydb_core::common::CommitVersion(1),
+			ChangeVersion::from(CommitVersion(1)),
 			vec![diff],
 			DateTime::default(),
 		)

@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_core::{
 	actors::cdc::{CdcProduceHandle, CdcProduceMessage},
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion},
 	delta::{Delta, RemoveAnnounce},
 	event::{
 		EventBus, EventListener,
@@ -69,27 +69,21 @@ where
 		}
 	}
 
-	fn process(
-		&self,
-		version: CommitVersion,
-		source: SourceVersion,
-		changed_at: DateTime,
-		deltas: Vec<Delta>,
-	) -> CdcStorageResult<()> {
+	fn process(&self, version: ChangeVersion, changed_at: DateTime, deltas: Vec<Delta>) -> CdcStorageResult<()> {
 		let mut cdc_changes: Vec<CdcChange> = Vec::new();
 
-		debug!(version = version.0, delta_count = deltas.len(), "Processing CDC");
+		debug!(version = version.commit.0, delta_count = deltas.len(), "Processing CDC");
 
 		for delta in deltas {
 			if Self::is_excluded_kind(&delta) {
 				continue;
 			}
-			if let Some(change) = self.delta_to_cdc_change(delta, version) {
+			if let Some(change) = self.delta_to_cdc_change(delta, version.commit) {
 				cdc_changes.push(change);
 			}
 		}
 
-		self.write_and_emit(version, source, changed_at, cdc_changes)
+		self.write_and_emit(version, changed_at, cdc_changes)
 	}
 
 	#[inline]
@@ -105,21 +99,20 @@ where
 	#[inline]
 	fn write_and_emit(
 		&self,
-		version: CommitVersion,
-		source: SourceVersion,
+		version: ChangeVersion,
 		changed_at: DateTime,
 		cdc_changes: Vec<CdcChange>,
 	) -> CdcStorageResult<()> {
 		if cdc_changes.is_empty() {
-			self.backlog.publish(version, None);
+			self.backlog.publish(version.commit, None);
 			return Ok(());
 		}
-		let cdc = Arc::new(Cdc::new(version, source, changed_at, cdc_changes.clone()));
+		let cdc = Arc::new(Cdc::new(version, changed_at, cdc_changes.clone()));
 		self.storage.write(&cdc)?;
-		debug!(version = version.0, "CDC written successfully");
-		self.emit_written_event(version, &cdc_changes);
+		debug!(version = version.commit.0, "CDC written successfully");
+		self.emit_written_event(version.commit, &cdc_changes);
 		let relevant = is_relevant_cdc(&cdc).then_some(cdc);
-		self.backlog.publish(version, relevant);
+		self.backlog.publish(version.commit, relevant);
 		Ok(())
 	}
 
@@ -138,24 +131,23 @@ where
 	fn on_produce(
 		&self,
 		state: &mut CdcProducerState,
-		version: CommitVersion,
-		source: SourceVersion,
+		version: ChangeVersion,
 		changed_at: DateTime,
 		deltas: Vec<Delta>,
 	) -> CdcStorageResult<()> {
 		state.parked.insert(
-			version.0,
+			version.commit.0,
 			Parked {
-				source,
+				version,
 				changed_at,
 				deltas,
 			},
 		);
-		let floor = state.next.unwrap_or(version.0);
-		let mut next = floor.min(version.0);
+		let floor = state.next.unwrap_or(version.commit.0);
+		let mut next = floor.min(version.commit.0);
 		let mut released = false;
 		while let Some(parked) = state.parked.remove(&next) {
-			self.process(CommitVersion(next), parked.source, parked.changed_at, parked.deltas)?;
+			self.process(parked.version, parked.changed_at, parked.deltas)?;
 			self.watermark.advance(CommitVersion(next));
 			released = true;
 			let Some(following) = next.checked_add(1) else {
@@ -226,7 +218,7 @@ fn delta_to_raw_cdc_change(
 }
 
 struct Parked {
-	source: SourceVersion,
+	version: ChangeVersion,
 	changed_at: DateTime,
 	deltas: Vec<Delta>,
 }
@@ -258,12 +250,11 @@ where
 		match msg {
 			CdcProduceMessage::Produce {
 				version,
-				source,
 				changed_at,
 				deltas,
 			} => {
-				if let Err(e) = self.on_produce(state, version, source, changed_at, deltas) {
-					panic!("CDC producer failed to write version {}: {:?}", version.0, e);
+				if let Err(e) = self.on_produce(state, version, changed_at, deltas) {
+					panic!("CDC producer failed to write version {}: {:?}", version.commit.0, e);
 				}
 			}
 		}
@@ -297,7 +288,6 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 	fn on(&self, event: &PostCommitEvent) {
 		let msg = CdcProduceMessage::Produce {
 			version: *event.version(),
-			source: *event.source(),
 			changed_at: self.clock.now(),
 			deltas: event.deltas().iter().cloned().collect(),
 		};
@@ -377,8 +367,7 @@ pub mod tests {
 
 		handle.actor_ref()
 			.send(CdcProduceMessage::Produce {
-				version: CommitVersion(1),
-				source: SourceVersion(1),
+				version: ChangeVersion::from(CommitVersion(1)),
 				changed_at: DateTime::from_nanos(12345000),
 				deltas,
 			})
@@ -389,7 +378,7 @@ pub mod tests {
 		let cdc = storage.read(CommitVersion(1)).unwrap();
 		assert!(cdc.is_some());
 		let cdc = cdc.unwrap();
-		assert_eq!(cdc.version, CommitVersion(1));
+		assert_eq!(cdc.version.commit, CommitVersion(1));
 		assert_eq!(cdc.changes.len(), 1);
 
 		match &cdc.changes[0] {
@@ -432,8 +421,7 @@ pub mod tests {
 
 		handle.actor_ref()
 			.send(CdcProduceMessage::Produce {
-				version: CommitVersion(2),
-				source: SourceVersion(2),
+				version: ChangeVersion::from(CommitVersion(2)),
 				changed_at: DateTime::from_nanos(12345000),
 				deltas,
 			})
@@ -474,8 +462,7 @@ pub mod tests {
 
 		handle.actor_ref()
 			.send(CdcProduceMessage::Produce {
-				version: CommitVersion(1),
-				source: SourceVersion(1),
+				version: ChangeVersion::from(CommitVersion(1)),
 				changed_at: DateTime::from_nanos(1),
 				deltas: vec![Delta::Set {
 					key: RowKey::new(StorageId::table(1), RowNumber(1)).into(),
@@ -485,8 +472,7 @@ pub mod tests {
 			.unwrap();
 		handle.actor_ref()
 			.send(CdcProduceMessage::Produce {
-				version: CommitVersion(2),
-				source: SourceVersion(2),
+				version: ChangeVersion::from(CommitVersion(2)),
 				changed_at: DateTime::from_nanos(2),
 				deltas: vec![Delta::Set {
 					key: make_key("unknown_kind_key"),
@@ -510,7 +496,7 @@ pub mod tests {
 			}
 		};
 		assert_eq!(items.len(), 1, "only the flow-relevant commit may leave an entry");
-		assert_eq!(items[0].version, CommitVersion(1));
+		assert_eq!(items[0].version.commit, CommitVersion(1));
 		assert!(woken.load(Ordering::SeqCst) >= 1, "a produce must wake the backlog consumer");
 
 		match backlog.pull(CommitVersion(1), CommitVersion(2), ByteSize::from_mib(1)) {

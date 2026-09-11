@@ -7,7 +7,7 @@
 use std::{env, process::Command};
 
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
@@ -57,7 +57,8 @@ fn run_child() {
 
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::update(Columns::empty(), Columns::empty()));
-	let change = Change::from_flow(OperatorId(42), CommitVersion(0), diffs, DateTime::default());
+	let change =
+		Change::from_flow(OperatorId(42), ChangeVersion::from(CommitVersion(0)), diffs, DateTime::default());
 
 	let caps = &[OperatorCapability::Insert];
 	assert!(!caps.contains(&OperatorCapability::Update));

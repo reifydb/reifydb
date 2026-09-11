@@ -13,6 +13,7 @@ use reifydb_codec::row::{
 	shape::{RowFamily, RowShape},
 };
 use reifydb_core::{
+	common::ChangeVersion,
 	interface::{
 		catalog::{
 			column::Column as CatalogColumn,
@@ -67,7 +68,7 @@ pub trait DurableSink: Send {
 pub type BoxedDurableSink = Box<dyn DurableSink>;
 
 pub(crate) fn emit_view_change(txn: &mut DeferredTransaction, view: &View, diff: Diff) {
-	let version = txn.version();
+	let version = ChangeVersion::from(txn.version());
 	let changed_at = txn.clock().now();
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::view(view.id())),

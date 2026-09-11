@@ -166,8 +166,8 @@ fn absorb_rollup(bytes: &[u8], stats: &mut Stats) {
 }
 
 fn absorb(cdc: &Cdc, stats: &mut Stats) -> Result<()> {
-	stats.min_version = stats.min_version.min(cdc.version.0);
-	stats.max_version = stats.max_version.max(cdc.version.0);
+	stats.min_version = stats.min_version.min(cdc.version.commit.0);
+	stats.max_version = stats.max_version.max(cdc.version.commit.0);
 	stats.payload_raw += encoded_len(cdc)?;
 
 	if cdc.changes.is_empty() {
@@ -284,7 +284,7 @@ fn cdc_change_kind(change: &CdcChange) -> String {
 mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
-		common::{CommitVersion, SourceVersion},
+		common::{ChangeVersion, CommitVersion},
 		interface::catalog::{id::NamespaceId, storage::StorageId},
 		key::{namespace::NamespaceKey, row::RowKey},
 	};
@@ -296,7 +296,7 @@ mod tests {
 	use super::*;
 
 	fn commit(changes: Vec<CdcChange>) -> Cdc {
-		Cdc::new(CommitVersion(1), SourceVersion(1), DateTime::from_nanos(0), changes)
+		Cdc::new(ChangeVersion::from(CommitVersion(1)), DateTime::from_nanos(0), changes)
 	}
 
 	fn row() -> EncodedBytes {

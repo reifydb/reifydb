@@ -100,7 +100,6 @@ impl<O> Harness<O> {
 		});
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(at),
-			version: CommitVersion(self.version),
 		});
 		txn
 	}
@@ -269,7 +268,6 @@ impl<O: HostOperator> Harness<O> {
 			for timer in due {
 				txn.set_change_coordinate(ChangeCoordinate {
 					at: Some(timer.due),
-					version: CommitVersion(self.version),
 				});
 				let mut host = TxnHostContext::new(&mut txn, operator);
 				if let Some(change) = self.operator.on_timer(&mut host, timer)? {
@@ -302,7 +300,7 @@ fn coordinate_of(change: &Change) -> DateTime {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		common::CommitVersion,
+		common::{ChangeVersion, CommitVersion},
 		interface::{catalog::flow::OperatorId, change::Change},
 	};
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
@@ -324,7 +322,8 @@ mod tests {
 		// No row time is not the same as time zero: it means the workload declared no position, and the
 		// change's own stamp is the only honest answer left.
 		let stamped = DateTime::from_epoch_millis(4_242).unwrap();
-		let timeless = Change::from_flow(OperatorId(1), CommitVersion(1), Vec::new(), stamped);
+		let timeless =
+			Change::from_flow(OperatorId(1), ChangeVersion::from(CommitVersion(1)), Vec::new(), stamped);
 		assert_eq!(coordinate_of(&timeless), stamped);
 	}
 

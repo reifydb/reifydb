@@ -117,7 +117,7 @@ pub(crate) fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>
 #[cfg(test)]
 mod substrate_stamping_tests {
 	use reifydb_core::{
-		common::CommitVersion,
+		common::{ChangeVersion, CommitVersion},
 		interface::{
 			catalog::flow::OperatorId,
 			change::{Diff, Diffs},
@@ -166,7 +166,7 @@ mod substrate_stamping_tests {
 	}
 
 	fn change(diffs: Diffs) -> Change {
-		Change::from_flow(OperatorId(1), CommitVersion(1), diffs, at_millis(0))
+		Change::from_flow(OperatorId(1), ChangeVersion::from(CommitVersion(1)), diffs, at_millis(0))
 	}
 
 	#[test]

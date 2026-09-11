@@ -401,7 +401,7 @@ mod tests {
 	use postcard::from_bytes;
 	use reifydb_core::{
 		actors::pending::PendingWrite,
-		common::CommitVersion,
+		common::{ChangeVersion, CommitVersion},
 		interface::{
 			catalog::{
 				column::{Column as CatalogColumn, ColumnIndex},
@@ -505,7 +505,7 @@ mod tests {
 			&mut txn,
 			Change::from_flow(
 				OperatorId(1),
-				CommitVersion(1),
+				ChangeVersion::from(CommitVersion(1)),
 				vec![Diff::insert(one_row(1.0, 1_000))],
 				DateTime::from_nanos(0),
 			),
@@ -519,7 +519,7 @@ mod tests {
 			&mut txn,
 			Change::from_flow(
 				OperatorId(1),
-				CommitVersion(2),
+				ChangeVersion::from(CommitVersion(2)),
 				vec![Diff::update(one_row(1.0, 1_000), one_row(2.0, 5_000))],
 				DateTime::from_nanos(0),
 			),
@@ -540,7 +540,7 @@ mod tests {
 			&mut txn,
 			Change::from_flow(
 				OperatorId(1),
-				CommitVersion(3),
+				ChangeVersion::from(CommitVersion(3)),
 				vec![Diff::update(one_row(2.0, 5_000), one_row(3.0, 9_000))],
 				DateTime::from_nanos(0),
 			),

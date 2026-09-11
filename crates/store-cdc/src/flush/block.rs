@@ -23,9 +23,9 @@ fn seal(batch: &FlushBatch) -> Option<Block> {
 	let max_timestamp = batch.entries.iter().map(|cdc| cdc.timestamp).max()?;
 	Some(Block {
 		summary: BlockSummary {
-			id: BlockId(last.version),
-			min_version: first.version,
-			max_version: last.version,
+			id: BlockId(last.version.commit),
+			min_version: first.version.commit,
+			max_version: last.version.commit,
 			min_timestamp,
 			max_timestamp,
 			count: Count::new(batch.entries.len() as u64),

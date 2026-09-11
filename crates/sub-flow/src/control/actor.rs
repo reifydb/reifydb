@@ -1123,7 +1123,7 @@ mod pull_protocol {
 				.expect("read range")
 				.items
 				.iter()
-				.filter(|cdc| cdc.version > up_to)
+				.filter(|cdc| cdc.version.commit > up_to)
 				.filter(|cdc| {
 					changed_objects(cdc).iter().any(|object| matches!(object, ObjectId::View(_)))
 				})
@@ -1247,7 +1247,7 @@ mod pull_protocol {
 			let mut txn = Transaction::Query(&mut query);
 			self.cdc_records()
 				.into_iter()
-				.filter(|cdc| cdc.version > floor)
+				.filter(|cdc| cdc.version.commit > floor)
 				.flat_map(|cdc| rebuild_changes(&cdc, &catalog, &mut txn).expect("rebuild changes"))
 				.find(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
 		}
@@ -1757,7 +1757,7 @@ mod pull_protocol {
 			.poll_until(seconds(10), || {
 				h.cdc_records()
 					.into_iter()
-					.filter(|cdc| cdc.version > pre_tick)
+					.filter(|cdc| cdc.version.commit > pre_tick)
 					.flat_map(|cdc| cdc.changes)
 					.find_map(|sc| match sc {
 						CdcChange::Delete {
@@ -1773,7 +1773,7 @@ mod pull_protocol {
 		let inserted_post = h
 			.cdc_records()
 			.into_iter()
-			.filter(|cdc| cdc.version <= pre_tick)
+			.filter(|cdc| cdc.version.commit <= pre_tick)
 			.flat_map(|cdc| cdc.changes)
 			.find_map(|sc| match sc {
 				CdcChange::Insert {
@@ -1849,7 +1849,7 @@ mod pull_protocol {
 				let found: Vec<(EncodedKey, Option<EncodedBytes>, bool)> = h
 					.cdc_records()
 					.into_iter()
-					.filter(|cdc| cdc.version > stable)
+					.filter(|cdc| cdc.version.commit > stable)
 					.flat_map(|cdc| cdc.changes)
 					.filter_map(|sc| match sc {
 						CdcChange::Delete {
@@ -1883,7 +1883,7 @@ mod pull_protocol {
 		let mut rebuilt: Vec<RowNumber> = h
 			.cdc_records()
 			.into_iter()
-			.filter(|cdc| cdc.version > stable)
+			.filter(|cdc| cdc.version.commit > stable)
 			.flat_map(|cdc| rebuild_changes(&cdc, &catalog, &mut txn).expect("rebuild changes"))
 			.filter(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
 			.flat_map(|change| change.diffs)
@@ -2125,7 +2125,7 @@ mod pull_protocol {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tick_failures {
-	use std::{collections::HashMap, marker::PhantomData};
+	use std::{collections::HashMap, marker::PhantomData, sync::mpsc, time::Duration as StdDuration};
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::{
@@ -2199,6 +2199,28 @@ mod tick_failures {
 		}
 	}
 
+	struct Silent {
+		id: OperatorId,
+	}
+
+	impl HostOperator for Silent {
+		fn id(&self) -> OperatorId {
+			self.id
+		}
+
+		fn capabilities(&self) -> &[OperatorCapability] {
+			OperatorCapability::STANDARD
+		}
+
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> ValueResult<Change> {
+			Ok(change)
+		}
+
+		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> ValueResult<Option<Change>> {
+			Ok(None)
+		}
+	}
+
 	struct Idle<M> {
 		_marker: PhantomData<fn() -> M>,
 	}
@@ -2230,7 +2252,45 @@ mod tick_failures {
 			.clone()
 	}
 
-	fn boom_operators() -> CustomOperators {
+	struct TickRecorder {
+		sources: mpsc::Sender<SourceVersion>,
+	}
+
+	impl Actor for TickRecorder {
+		type State = ();
+		type Message = CommitterMessage;
+
+		fn init(&self, _ctx: &Context<Self::Message>) {}
+
+		fn handle(&self, _state: &mut (), msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
+			if let CommitterMessage::Tick {
+				source,
+				..
+			} = msg
+			{
+				self.sources.send(source).expect("the test still listens for tick commits");
+			}
+			Directive::Continue
+		}
+
+		fn config(&self) -> ActorConfig {
+			ActorConfig::new()
+		}
+	}
+
+	fn recorder(engine: &StandardEngine, sources: mpsc::Sender<SourceVersion>) -> ActorRef<CommitterMessage> {
+		engine.spawner()
+			.spawn_ephemeral(
+				"tick-stamp-committer",
+				TickRecorder {
+					sources,
+				},
+			)
+			.actor_ref()
+			.clone()
+	}
+
+	fn timer_operators() -> CustomOperators {
 		let mut map = HashMap::new();
 		map.insert(
 			"boom".to_string(),
@@ -2243,6 +2303,23 @@ mod tick_failures {
 				abi: None,
 				version: "0.0.1".to_string(),
 				description: "test-only operator whose timer handler always fails".to_string(),
+				capabilities: 0,
+				input: Vec::new(),
+				output: Vec::new(),
+			},
+		);
+		map.insert(
+			"silent".to_string(),
+			CustomOperatorEntry {
+				factory: Arc::new(|id, _config| {
+					Ok(Box::new(Silent {
+						id,
+					}) as BoxedHostOperator)
+				}),
+				abi: None,
+				version: "0.0.1".to_string(),
+				description: "test-only operator whose timer handler succeeds and emits nothing"
+					.to_string(),
 				capabilities: 0,
 				input: Vec::new(),
 				output: Vec::new(),
@@ -2304,6 +2381,14 @@ mod tick_failures {
 	}
 
 	fn actor_with_due_timer(armed: bool) -> (TestEngine, FlowHealthRegistry, FlowActor) {
+		actor_with(armed, "boom", |engine| idle(engine, "tick-failures-committer"))
+	}
+
+	fn actor_with(
+		armed: bool,
+		operator: &str,
+		committer: impl FnOnce(&StandardEngine) -> ActorRef<CommitterMessage>,
+	) -> (TestEngine, FlowHealthRegistry, FlowActor) {
 		let te = TestEngine::builder().with_cdc().build();
 		let engine = te.inner().clone();
 
@@ -2326,7 +2411,7 @@ mod tick_failures {
 		builder.add_node(FlowNode::new(
 			TIMED,
 			OperatorDef::Apply {
-				operator: "boom".to_string(),
+				operator: operator.to_string(),
 				expressions: Vec::new(),
 			},
 		));
@@ -2337,11 +2422,11 @@ mod tick_failures {
 		let health = FlowHealthRegistry::new();
 		let actor = FlowActor::new(FlowActorParams {
 			engine: engine.clone(),
-			committer: idle(&engine, "tick-failures-committer"),
+			committer: committer(&engine),
 			backlog: FlowBacklog::new(ByteSize::from_mib(8)),
 			loader: idle(&engine, "tick-failures-loader"),
 			control: ControlFrontier::new(),
-			custom_operators: boom_operators(),
+			custom_operators: timer_operators(),
 			substrate,
 			operator_samples: OperatorSampleRegistry::new(),
 			clock: engine.clock().clone(),
@@ -2466,6 +2551,29 @@ mod tick_failures {
 
 		assert_eq!(harness.state().retry_count, 0, "a tick that dispatched its timers is evidence of recovery");
 		assert!(!harness.state().poisoned, "a recovered flow must not be one strike from poison");
+	}
+
+	#[test]
+	fn a_tick_commit_is_stamped_one_past_the_cursor_it_ticked_from() {
+		let (sent, sources) = mpsc::channel();
+		let (_te, _health, actor) = actor_with(true, "silent", |engine| recorder(engine, sent));
+		let mut harness = TestHarness::new(actor);
+		assert!(!harness.state().poisoned, "precondition: registration must succeed");
+		harness.state_mut().cursor = CommitVersion(7);
+
+		tick(&mut harness);
+
+		assert_eq!(
+			harness.state().retry_count,
+			0,
+			"precondition: the timer must fire cleanly, otherwise no tick commit is sent"
+		);
+		assert_eq!(
+			sources.recv_timeout(StdDuration::from_secs(5)).expect("a fired timer must send a tick commit"),
+			SourceVersion(8),
+			"a reader level with this flow skips view rows at or below cursor 7, so a tick stamped at the cursor \
+			 is never read"
+		);
 	}
 
 	#[test]

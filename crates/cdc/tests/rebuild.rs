@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_cdc::rebuild::rebuild_changes;
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion},
 	event::{EventListener, transaction::PostCommitEvent},
 	interface::{
 		WithEventBus,
@@ -46,7 +46,9 @@ impl TrackedChanges {
 
 impl EventListener<PostCommitEvent> for TrackedChanges {
 	fn on(&self, event: &PostCommitEvent) {
-		self.0.lock().expect("tracked changes lock").insert(*event.version(), event.flow_changes().clone());
+		self.0.lock()
+			.expect("tracked changes lock")
+			.insert(event.version().commit, event.flow_changes().clone());
 	}
 }
 
@@ -129,7 +131,8 @@ fn canonical(changes: &[Change]) -> BTreeMap<String, Vec<String>> {
 
 fn assert_round_trip(t: &TestEngine, tracked: &TrackedChanges, label: &str) -> usize {
 	let tracked = tracked.settled(t);
-	let records: BTreeMap<CommitVersion, Cdc> = read_all(t).into_iter().map(|cdc| (cdc.version, cdc)).collect();
+	let records: BTreeMap<CommitVersion, Cdc> =
+		read_all(t).into_iter().map(|cdc| (cdc.version.commit, cdc)).collect();
 	let mut compared = 0;
 	for (version, changes) in &tracked {
 		let original = canonical(changes);
@@ -320,7 +323,7 @@ fn rebuild_maps_a_view_row_key_to_the_view_object() {
 		.0;
 	let table_commit = read_all(&t)
 		.into_iter()
-		.find(|cdc| cdc.version == insert_version)
+		.find(|cdc| cdc.version.commit == insert_version)
 		.expect("the insert must produce a cdc record");
 	let post =
 		match table_commit.changes.iter().find(|change| {
@@ -334,8 +337,7 @@ fn rebuild_maps_a_view_row_key_to_the_view_object() {
 		};
 
 	let view_commit = Cdc::new(
-		table_commit.version,
-		SourceVersion::from(table_commit.version),
+		ChangeVersion::from(table_commit.version.commit),
 		table_commit.timestamp,
 		vec![CdcChange::Insert {
 			key: RowKey::encoded(StorageId::view(7), RowNumber(1)),
@@ -372,7 +374,7 @@ fn rebuild_emits_no_change_for_queue_rows() {
 				None => false,
 			})
 			.count();
-		let original = tracked.get(&cdc.version).cloned().unwrap_or_default();
+		let original = tracked.get(&cdc.version.commit).cloned().unwrap_or_default();
 		assert!(canonical(&original).is_empty(), "a queue write must emit no change");
 		assert!(canonical(&rebuilt(&t, &cdc)).is_empty(), "the rebuild must not invent a queue change either");
 	}

@@ -61,7 +61,7 @@ mod tests {
 		testing::{TestCdcHost, make_bytes, make_key},
 	};
 	use reifydb_core::{
-		common::SourceVersion,
+		common::ChangeVersion,
 		interface::cdc::{Cdc, CdcChange, CdcConsumerId, ConsumerClass},
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, pool::Pools};
@@ -90,8 +90,7 @@ mod tests {
 		// Ttl only sees sealed blocks and drops them whole, so each entry is sealed on its own.
 		for v in 1..=10u64 {
 			let cdc = Cdc::new(
-				CommitVersion(v),
-				SourceVersion(v),
+				ChangeVersion::from(CommitVersion(v)),
 				DateTime::from_nanos(1000),
 				vec![CdcChange::Insert {
 					key: make_key(&format!("k{v}")).encode(),

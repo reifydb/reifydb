@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
+use reifydb_core::{
+	common::{ChangeVersion, CommitVersion},
+	interface::catalog::flow::FlowId,
+};
 use reifydb_value::Result;
 use tracing::instrument;
 
@@ -25,7 +28,7 @@ impl FlowEngineInner {
 
 		let topo = flow.topological_order();
 
-		self.dispatch_due_timers(txn, &flow, checkpoint, topo)?;
+		self.dispatch_due_timers(txn, &flow, ChangeVersion::from(checkpoint), topo)?;
 		Ok(())
 	}
 }

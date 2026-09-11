@@ -7,7 +7,7 @@ use reifydb_catalog::cache::CatalogCache;
 use reifydb_cdc::testing::TestCdcHost;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion},
 	event::{Event, EventBus, EventListener, metric::CdcEvictedEvent},
 	interface::{
 		catalog::config::ConfigKey,
@@ -77,8 +77,7 @@ fn set_ttl_secs(catalog: &CatalogCache, secs: i64) {
 /// own expiry and read as a ttl bug rather than a fixture artefact.
 fn write_cdc(storage: &CdcStore, version: u64, timestamp_nanos: u64) {
 	let cdc = Cdc::new(
-		CommitVersion(version),
-		SourceVersion(version),
+		ChangeVersion::from(CommitVersion(version)),
 		DateTime::from_nanos(timestamp_nanos),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![version as u8]),

@@ -13,7 +13,7 @@ use std::{
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion},
 	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_runtime::sync::waiter::WaiterHandle;
@@ -57,8 +57,7 @@ const CONDITION: StdDuration = StdDuration::from_secs(30);
 fn record(version: u64) -> Cdc {
 	// every record must cost exactly the same, otherwise a ceiling in records is not a ceiling in bytes
 	Cdc::new(
-		CommitVersion(version),
-		SourceVersion(version),
+		ChangeVersion::from(CommitVersion(version)),
 		DateTime::from_nanos(1_700_000_000_000_000_000 + version),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(version.to_be_bytes().to_vec()),
@@ -195,7 +194,7 @@ impl Case {
 	fn versions(&self) -> Vec<u64> {
 		let batch = self.store.read_range(Bound::Unbounded, Bound::Unbounded, 1_000_000).unwrap();
 		assert!(!batch.has_more, "{}: the whole log must fit one batch", self.name);
-		batch.items.iter().map(|cdc| cdc.version.0).collect()
+		batch.items.iter().map(|cdc| cdc.version.commit.0).collect()
 	}
 
 	fn assert_drained(&self) {
@@ -368,9 +367,14 @@ fn a_parked_writer_never_blocks_a_reader() {
 		assert!(!writer.returned(), "{}: the writer was never parked", case.name);
 
 		let sealed = case.store.read(CommitVersion(1)).unwrap();
-		assert_eq!(sealed.map(|cdc| cdc.version), Some(CommitVersion(1)), "{}: sealed read", case.name);
+		assert_eq!(sealed.map(|cdc| cdc.version.commit), Some(CommitVersion(1)), "{}: sealed read", case.name);
 		let live = case.store.read(CommitVersion(25)).unwrap();
-		assert_eq!(live.map(|cdc| cdc.version), Some(CommitVersion(25)), "{}: commit tier read", case.name);
+		assert_eq!(
+			live.map(|cdc| cdc.version.commit),
+			Some(CommitVersion(25)),
+			"{}: commit tier read",
+			case.name
+		);
 		assert_eq!(case.versions(), (1..=29).collect::<Vec<_>>(), "{}: range read", case.name);
 		assert_eq!(case.store.min_version().unwrap(), Some(CommitVersion(1)), "{}: min_version", case.name);
 		assert_eq!(case.store.max_version().unwrap(), Some(CommitVersion(29)), "{}: max_version", case.name);

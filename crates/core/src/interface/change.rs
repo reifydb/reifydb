@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
 use crate::{
-	common::CommitVersion,
+	common::ChangeVersion,
 	interface::{
 		catalog::{flow::OperatorId, object::ObjectId},
 		consolidate::coalesce_diffs,
@@ -196,7 +196,7 @@ pub struct Change {
 
 	pub diffs: Diffs,
 
-	pub version: CommitVersion,
+	pub version: ChangeVersion,
 
 	pub changed_at: DateTime,
 }
@@ -204,7 +204,7 @@ pub struct Change {
 impl Change {
 	pub fn from_object(
 		object: ObjectId,
-		version: CommitVersion,
+		version: ChangeVersion,
 		diffs: impl Into<Diffs>,
 		changed_at: DateTime,
 	) -> Self {
@@ -218,7 +218,7 @@ impl Change {
 
 	pub fn from_flow(
 		from: OperatorId,
-		version: CommitVersion,
+		version: ChangeVersion,
 		diffs: impl Into<Diffs>,
 		changed_at: DateTime,
 	) -> Self {
@@ -240,6 +240,12 @@ impl Change {
 		for mut ch in iter {
 			if ch.changed_at > merged.changed_at {
 				merged.changed_at = ch.changed_at;
+			}
+			if ch.version.commit > merged.version.commit {
+				merged.version.commit = ch.version.commit;
+			}
+			if ch.version.source > merged.version.source {
+				merged.version.source = ch.version.source;
 			}
 			if ch.origin != merged.origin {
 				for diff in ch.diffs.iter_mut() {

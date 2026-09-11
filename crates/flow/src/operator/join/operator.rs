@@ -1164,7 +1164,6 @@ mod seal_tests {
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_nanos(coordinate)),
-			version: CommitVersion(coordinate),
 		});
 		txn
 	}

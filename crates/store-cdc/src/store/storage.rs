@@ -17,12 +17,12 @@ use crate::{
 };
 
 impl CdcStorage for CdcStore {
-	#[instrument(name = "store::cdc::write", level = "debug", skip(self, cdc), fields(version = cdc.version.0, change_count = cdc.changes.len()))]
+	#[instrument(name = "store::cdc::write", level = "debug", skip(self, cdc), fields(version = cdc.version.commit.0, change_count = cdc.changes.len()))]
 	fn write(&self, cdc: &Cdc) -> CdcStorageResult<()> {
 		if self.commit.append(Arc::new(cdc.clone())) {
 			return Ok(());
 		}
-		Err(CdcError::DuplicateVersion(cdc.version))
+		Err(CdcError::DuplicateVersion(cdc.version.commit))
 	}
 
 	#[instrument(name = "store::cdc::read", level = "trace", skip(self), fields(version = version.0))]
@@ -34,7 +34,7 @@ impl CdcStorage for CdcStore {
 			return Ok(None);
 		};
 		Ok(block.entries
-			.binary_search_by(|cdc| cdc.version.cmp(&version))
+			.binary_search_by(|cdc| cdc.version.commit.cmp(&version))
 			.ok()
 			.map(|index| (*block.entries[index]).clone()))
 	}

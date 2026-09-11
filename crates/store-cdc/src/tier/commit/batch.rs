@@ -14,24 +14,24 @@ pub struct FlushBatch {
 
 impl FlushBatch {
 	pub(crate) fn min_version(&self) -> Option<CommitVersion> {
-		self.entries.first().map(|cdc| cdc.version)
+		self.entries.first().map(|cdc| cdc.version.commit)
 	}
 
 	pub(crate) fn max_version(&self) -> Option<CommitVersion> {
-		self.entries.last().map(|cdc| cdc.version)
+		self.entries.last().map(|cdc| cdc.version.commit)
 	}
 
 	pub(crate) fn get(&self, version: CommitVersion) -> Option<Arc<Cdc>> {
 		self.entries
-			.binary_search_by(|cdc| cdc.version.cmp(&version))
+			.binary_search_by(|cdc| cdc.version.commit.cmp(&version))
 			.ok()
 			.map(|index| Arc::clone(&self.entries[index]))
 	}
 
 	pub(crate) fn collect_range(&self, lo: CommitVersion, hi: CommitVersion, want: usize, out: &mut Vec<Arc<Cdc>>) {
-		let start = self.entries.partition_point(|cdc| cdc.version < lo);
+		let start = self.entries.partition_point(|cdc| cdc.version.commit < lo);
 		for cdc in &self.entries[start..] {
-			if out.len() >= want || cdc.version > hi {
+			if out.len() >= want || cdc.version.commit > hi {
 				return;
 			}
 			out.push(Arc::clone(cdc));

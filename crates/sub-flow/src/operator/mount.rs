@@ -7,6 +7,7 @@ use std::{
 };
 
 use reifydb_core::{
+	common::ChangeVersion,
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
 };
@@ -86,7 +87,7 @@ impl<C: GuestOperator + 'static> HostOperator for GuestAdapter<C> {
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
 		let due = timer.due;
-		let version = host.version();
+		let version = ChangeVersion::from(host.version());
 		let mut ctx = InProcessContext::new(host, self.operator);
 		{
 			let logic = &mut self.logic;
@@ -159,7 +160,6 @@ mod tests {
 		let mut txn = engine.flow_txn().at(CommitVersion(7)).deferred();
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_millis(0)),
-			version: CommitVersion(7),
 		});
 		let mut host = TxnHostContext::new(&mut txn, NODE);
 		let group = GroupId::of(&key("absent"));
@@ -182,7 +182,6 @@ mod tests {
 		let mut txn = engine.flow_txn().at(CommitVersion(7)).deferred();
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_millis(0)),
-			version: CommitVersion(7),
 		});
 		let mut host = TxnHostContext::new(&mut txn, NODE);
 

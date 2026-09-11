@@ -6,7 +6,7 @@ use reifydb_codec::row::{
 	shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::{flow::OperatorId, id::TableId, object::ObjectId},
 		change::{Change, ChangeOrigin, Diff, Diffs},
@@ -225,7 +225,7 @@ impl TestChangeBuilder {
 		Change {
 			origin: self.origin,
 			diffs: self.diffs,
-			version: self.version,
+			version: ChangeVersion::from(self.version),
 			changed_at: self.changed_at,
 		}
 	}
@@ -320,7 +320,7 @@ pub mod helpers {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		common::CommitVersion,
+		common::{ChangeVersion, CommitVersion},
 		interface::{catalog::object::ObjectId, change::ChangeOrigin},
 	};
 	use reifydb_value::value::{row_number::RowNumber, value_type::ValueType};
@@ -348,7 +348,7 @@ pub mod tests {
 			.remove_row(3, vec![Value::Int8(30i64)])
 			.build();
 
-		assert_eq!(change.version, CommitVersion(5));
+		assert_eq!(change.version, ChangeVersion::from(CommitVersion(5)));
 		assert_eq!(change.diffs.len(), 3);
 
 		match &change.origin {

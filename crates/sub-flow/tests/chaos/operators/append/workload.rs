@@ -5,7 +5,7 @@
 
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
@@ -64,7 +64,7 @@ fn tagged(mut diff: Diff, idx: usize) -> Diff {
 }
 
 fn change(diffs: Vec<Diff>) -> Change {
-	Change::from_flow(input(0), CommitVersion(1), diffs, DateTime::default())
+	Change::from_flow(input(0), ChangeVersion::from(CommitVersion(1)), diffs, DateTime::default())
 }
 
 pub struct AppendWorkload {

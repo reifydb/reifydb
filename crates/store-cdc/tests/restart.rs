@@ -5,7 +5,7 @@ use std::{collections::Bound, path::PathBuf};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion},
 	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_sqlite::SqliteConfig;
@@ -70,8 +70,7 @@ fn changes_total(versions: impl IntoIterator<Item = u64>) -> u64 {
 fn cdc_at(version: u64) -> Cdc {
 	// every field derives from the version, so a store that returns a neighbouring record must fail on content
 	Cdc::new(
-		CommitVersion(version),
-		SourceVersion(version),
+		ChangeVersion::from(CommitVersion(version)),
 		DateTime::from_nanos(TIMESTAMP + version),
 		(0..changes_for(version))
 			.map(|i| CdcChange::Insert {
@@ -98,7 +97,7 @@ fn seal_each(store: &CdcStore, versions: impl IntoIterator<Item = u64>) {
 
 fn assert_record(store: &CdcStore, version: u64) {
 	let cdc = store.read(CommitVersion(version)).unwrap().unwrap_or_else(|| panic!("v{version} must survive"));
-	assert_eq!(cdc.version, CommitVersion(version));
+	assert_eq!(cdc.version.commit, CommitVersion(version));
 	assert_eq!(cdc.timestamp.to_nanos(), TIMESTAMP + version, "v{version} lost its timestamp");
 	assert_eq!(cdc.changes.len(), changes_for(version), "v{version} lost changes");
 	for (i, change) in cdc.changes.iter().enumerate() {
@@ -108,7 +107,7 @@ fn assert_record(store: &CdcStore, version: u64) {
 }
 
 fn versions_in(store: &CdcStore, start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> Vec<u64> {
-	store.read_range(start, end, 1024).unwrap().items.iter().map(|cdc| cdc.version.0).collect()
+	store.read_range(start, end, 1024).unwrap().items.iter().map(|cdc| cdc.version.commit.0).collect()
 }
 
 fn all_versions(store: &CdcStore) -> Vec<u64> {

@@ -439,7 +439,7 @@ impl HostOperator for TakeOperator {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		common::CommitVersion,
+		common::{ChangeVersion, CommitVersion},
 		value::column::{ColumnWithName, buffer::ColumnBuffer},
 	};
 	use reifydb_test_harness::engine::TestEngine;
@@ -478,7 +478,7 @@ mod tests {
 		let operator = op.plan.operator;
 		let change = Change::from_flow(
 			operator,
-			CommitVersion(1),
+			ChangeVersion::from(CommitVersion(1)),
 			vec![Diff::insert(cols)],
 			DateTime::from_nanos(0),
 		);

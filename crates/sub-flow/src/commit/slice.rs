@@ -78,19 +78,19 @@ impl SliceComputer {
 	) -> Result<SliceStep> {
 		overlay.prune_through(cursor.cursor);
 
-		let start = items.partition_point(|c| c.version <= cursor.cursor);
+		let start = items.partition_point(|c| c.version.commit <= cursor.cursor);
 		let mut relevant: Vec<&Cdc> = items[start..]
 			.iter()
 			.map(Arc::as_ref)
 			.filter(|cdc| is_relevant(cdc, cursor.source_objects))
 			.collect();
 		let (mut advance_to, mut more) = (advance_to, more);
-		if let Some(cut) = relevant.iter().position(|cdc| cdc.source != relevant[0].source) {
-			advance_to = CommitVersion(relevant[cut].source.0 - 1);
+		if let Some(cut) = relevant.iter().position(|cdc| cdc.version.source != relevant[0].version.source) {
+			advance_to = CommitVersion(relevant[cut].version.source.0 - 1);
 			more = true;
 			relevant.truncate(cut);
 		}
-		let source = relevant.iter().map(|cdc| cdc.source).max();
+		let source = relevant.iter().map(|cdc| cdc.version.source).max();
 		let changes = collect_flow_changes(
 			&self.engine,
 			&relevant,
@@ -283,11 +283,8 @@ pub(crate) fn collect_flow_changes(
 
 	let mut out = Vec::new();
 	for cdc in relevant {
-		let mut rebuilt =
+		let rebuilt =
 			rebuild_selected_changes(cdc, &catalog, &mut txn, |object| accepts(object, source_objects))?;
-		for change in &mut rebuilt {
-			change.version = CommitVersion(cdc.source.0);
-		}
 		out.extend(retain_relevant(rebuilt, source_objects, completeness_objects));
 	}
 	Ok(out)
@@ -327,6 +324,7 @@ fn completeness_wakes(change: &Change, completeness_objects: Option<&BTreeSet<u6
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
+		common::ChangeVersion,
 		interface::{
 			catalog::{
 				flow::OperatorId,
@@ -344,7 +342,7 @@ mod tests {
 	fn change(origin: ChangeOrigin, version: u64) -> Change {
 		Change {
 			origin,
-			version: CommitVersion(version),
+			version: ChangeVersion::from(CommitVersion(version)),
 			diffs: smallvec![Diff::Insert {
 				post: Columns::empty(),
 				origin: None,
@@ -426,14 +424,14 @@ mod tests {
 		let out = retain_relevant(rebuilt, &sources, None);
 
 		assert_eq!(out.len(), 2);
-		assert_eq!(out[0].version, CommitVersion(5));
-		assert_eq!(out[1].version, CommitVersion(7));
+		assert_eq!(out[0].version, ChangeVersion::from(CommitVersion(5)));
+		assert_eq!(out[1].version, ChangeVersion::from(CommitVersion(7)));
 	}
 
 	fn completeness_change(objects: &[u64]) -> Change {
 		Change {
 			origin: ChangeOrigin::Object(COMPLETENESS_OBJECT),
-			version: CommitVersion(5),
+			version: ChangeVersion::from(CommitVersion(5)),
 			diffs: smallvec![Diff::insert(Columns::from_rows(
 				&["object_id", "complete_through"],
 				&objects.iter()
@@ -500,7 +498,7 @@ mod tests {
 		);
 		let retraction = Change {
 			origin: ChangeOrigin::Object(COMPLETENESS_OBJECT),
-			version: CommitVersion(5),
+			version: ChangeVersion::from(CommitVersion(5)),
 			diffs: smallvec![Diff::remove(pre)],
 			changed_at: DateTime::default(),
 		};
@@ -578,7 +576,7 @@ mod integration {
 		let more = batch.has_more;
 		let items: Vec<Arc<Cdc>> = batch.items.into_iter().map(Arc::new).collect();
 		let advance_to = if more {
-			items.last().expect("has_more implies items").version
+			items.last().expect("has_more implies items").version.commit
 		} else {
 			safe
 		};

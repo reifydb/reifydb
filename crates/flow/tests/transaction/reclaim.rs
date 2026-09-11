@@ -8,7 +8,6 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	actors::pending::PendingLayers,
-	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
 	key::{
 		any::TaggedKey,
@@ -56,7 +55,6 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 	// The substrate derives an intern's position from the change coordinate, so it is set here.
 	txn.set_change_coordinate(ChangeCoordinate {
 		at: Some(DateTime::from_millis(0)),
-		version: CommitVersion(0),
 	});
 	txn
 }

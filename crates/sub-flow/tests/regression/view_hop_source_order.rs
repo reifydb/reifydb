@@ -8,9 +8,12 @@ use reifydb::{
 	testing::db::{TestDb, poll_until},
 };
 use reifydb_cdc::rebuild::changed_objects;
-use reifydb_core::interface::catalog::{
-	id::{TableId, ViewId},
-	object::ObjectId,
+use reifydb_core::{
+	common::{ChangeVersion, SourceVersion},
+	interface::catalog::{
+		id::{TableId, ViewId},
+		object::ObjectId,
+	},
 };
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_store_cdc::storage::CdcStorage;
@@ -136,12 +139,6 @@ fn paired(pool: &str, usd: i64) -> (String, Option<i64>) {
 	(pool.to_string(), Some(usd))
 }
 
-#[derive(Debug, PartialEq)]
-struct Stamp {
-	version: u64,
-	source: u64,
-}
-
 fn catalog_id(db: &TestDb, system: &str, name: &str) -> u64 {
 	let frames = db.query(&format!("FROM system::{system} FILTER {{ name == '{name}' }}"));
 	let frame = frames.first().expect("system catalog frame");
@@ -161,24 +158,17 @@ fn view(db: &TestDb, name: &str) -> ObjectId {
 	ObjectId::View(ViewId(catalog_id(db, "views", name)))
 }
 
-fn stamps(db: &TestDb, object: ObjectId) -> Vec<Stamp> {
+fn stamps(db: &TestDb, object: ObjectId) -> Vec<ChangeVersion> {
 	let batch = db
 		.engine()
 		.cdc_store()
 		.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
 		.expect("the cdc store must answer a full read");
 	assert!(!batch.has_more, "a truncated read would hide commits and pass a count check it should fail");
-	batch.items
-		.iter()
-		.filter(|cdc| changed_objects(cdc).contains(&object))
-		.map(|cdc| Stamp {
-			version: cdc.version.0,
-			source: cdc.source.0,
-		})
-		.collect()
+	batch.items.iter().filter(|cdc| changed_objects(cdc).contains(&object)).map(|cdc| cdc.version).collect()
 }
 
-fn await_level_commits(db: &TestDb, want: usize) -> Vec<Stamp> {
+fn await_level_commits(db: &TestDb, want: usize) -> Vec<ChangeVersion> {
 	let level = level_table(db);
 	poll_until(
 		|| {
@@ -431,13 +421,18 @@ fn a_view_commit_is_stamped_with_the_table_commit_it_came_from() {
 
 	let level = stamps(&db, level_table(&db));
 	assert_eq!(level.len(), 1, "one rung insert must be one level commit");
-	assert_eq!(level[0].source, level[0].version, "a table commit must be stamped with its own version");
+	assert_eq!(
+		level[0].source,
+		SourceVersion::from(level[0].commit),
+		"a table commit must be stamped with its own version"
+	);
 
 	let curve = stamps(&db, view(&db, "curve"));
 	assert_eq!(curve.len(), 1, "one rung must produce one curve commit");
-	assert!(curve[0].version > level[0].version, "the curve commit must land above the rung it came from");
+	assert!(curve[0].commit > level[0].commit, "the curve commit must land above the rung it came from");
 	assert_eq!(
-		curve[0].source, level[0].version,
+		curve[0].source,
+		SourceVersion::from(level[0].commit),
 		"the curve commit must carry the rung's version, not its own later one"
 	);
 }
@@ -462,11 +457,12 @@ fn a_view_over_a_view_keeps_the_original_table_version() {
 	let curve2 = stamps(&db, view(&db, "curve2"));
 	assert_eq!(curve2.len(), 1, "one rung must produce one curve2 commit");
 	assert!(
-		curve2[0].version > curve[0].version,
+		curve2[0].commit > curve[0].commit,
 		"curve2 must commit above curve, otherwise this does not test a second hop"
 	);
 	assert_eq!(
-		curve2[0].source, level[0].version,
+		curve2[0].source,
+		SourceVersion::from(level[0].commit),
 		"curve2 must carry the rung's version through curve, not curve's commit version"
 	);
 }
@@ -485,10 +481,11 @@ fn a_view_with_downstream_readers_commits_once_per_source_version() {
 	settle(&db);
 	assert_curve_rows(&db, 2);
 
-	let sources: Vec<u64> = stamps(&db, view(&db, "curve")).iter().map(|stamp| stamp.source).collect();
+	let sources: Vec<SourceVersion> =
+		stamps(&db, view(&db, "curve")).iter().map(|version| version.source).collect();
 	assert_eq!(
 		sources,
-		vec![level[0].version, level[1].version],
+		vec![SourceVersion::from(level[0].commit), SourceVersion::from(level[1].commit)],
 		"curve must commit once per rung commit, each stamped with that rung's version"
 	);
 }
@@ -506,10 +503,11 @@ fn a_view_with_no_readers_still_commits_once_per_source_version() {
 	settle(&db);
 	assert_curve_rows(&db, 2);
 
-	let sources: Vec<u64> = stamps(&db, view(&db, "curve")).iter().map(|stamp| stamp.source).collect();
+	let sources: Vec<SourceVersion> =
+		stamps(&db, view(&db, "curve")).iter().map(|version| version.source).collect();
 	assert_eq!(
 		sources,
-		vec![level[0].version, level[1].version],
+		vec![SourceVersion::from(level[0].commit), SourceVersion::from(level[1].commit)],
 		"curve must commit once per rung commit even with no readers, each stamped with that rung's version"
 	);
 }

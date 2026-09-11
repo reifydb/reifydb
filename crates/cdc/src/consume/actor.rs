@@ -589,6 +589,6 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 #[inline]
 fn summarize_batch(checkpoint: CommitVersion, transactions: &[Cdc]) -> (usize, CommitVersion) {
 	let count = transactions.len();
-	let latest_version = transactions.iter().map(|tx| tx.version).max().unwrap_or(checkpoint);
+	let latest_version = transactions.iter().map(|tx| tx.version.commit).max().unwrap_or(checkpoint);
 	(count, latest_version)
 }

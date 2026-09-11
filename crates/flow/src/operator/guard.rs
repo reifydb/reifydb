@@ -73,7 +73,7 @@ pub fn enforce_apply_capabilities(operator_id: OperatorId, caps: &[OperatorCapab
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		common::CommitVersion,
+		common::{ChangeVersion, CommitVersion},
 		interface::{
 			catalog::flow::OperatorId,
 			change::{Change, Diff, Diffs},
@@ -89,7 +89,7 @@ mod tests {
 		for d in diffs {
 			sv.push(d);
 		}
-		Change::from_flow(OperatorId(1), CommitVersion(0), sv, DateTime::default())
+		Change::from_flow(OperatorId(1), ChangeVersion::from(CommitVersion(0)), sv, DateTime::default())
 	}
 
 	fn insert() -> Diff {

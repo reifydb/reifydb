@@ -9,7 +9,7 @@ use std::{
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion},
 	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_sqlite::SqliteConfig;
@@ -50,8 +50,7 @@ fn unit() -> ByteSize {
 fn record(version: u64, units: usize) -> Cdc {
 	let payload = units * unit_bytes() - size_of::<Cdc>() - KEY_LEN;
 	Cdc::new(
-		CommitVersion(version),
-		SourceVersion(version),
+		ChangeVersion::from(CommitVersion(version)),
 		DateTime::from_nanos(TIMESTAMP_BASE + version),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![b'k'; KEY_LEN]),
@@ -236,7 +235,7 @@ mod cases {
 		for version in 1..=30u64 {
 			fixture.store.write(&record(version, 1)).expect("an outstanding cut must never reject a write");
 			assert_eq!(
-				fixture.store.read(CommitVersion(version)).unwrap().map(|cdc| cdc.version),
+				fixture.store.read(CommitVersion(version)).unwrap().map(|cdc| cdc.version.commit),
 				Some(CommitVersion(version)),
 				"a record must be readable the instant it is written"
 			);
@@ -302,7 +301,7 @@ mod cases {
 		);
 
 		let batch = fixture.store.read_range(Bound::Unbounded, Bound::Unbounded, 1024).unwrap();
-		let versions: Vec<u64> = batch.items.iter().map(|cdc| cdc.version.0).collect();
+		let versions: Vec<u64> = batch.items.iter().map(|cdc| cdc.version.commit.0).collect();
 		assert_eq!(
 			versions,
 			(1..=25).collect::<Vec<_>>(),
@@ -313,7 +312,7 @@ mod cases {
 		for version in 1..=25u64 {
 			let cdc =
 				fixture.store.read(CommitVersion(version)).unwrap().expect("every record must survive");
-			assert_eq!(cdc.version, CommitVersion(version));
+			assert_eq!(cdc.version.commit, CommitVersion(version));
 			assert_eq!(
 				cdc.timestamp.to_nanos(),
 				TIMESTAMP_BASE + version,
@@ -348,16 +347,16 @@ mod cases {
 				.expect("a summary must name a block");
 			assert!(!block.entries.is_empty(), "an empty block has no version range");
 			assert!(
-				block.entries.windows(2).all(|w| w[0].version < w[1].version),
+				block.entries.windows(2).all(|w| w[0].version.commit < w[1].version.commit),
 				"block entries must be strictly ascending by version"
 			);
 			assert_eq!(
 				block.summary.id.0,
-				block.entries.last().unwrap().version,
+				block.entries.last().unwrap().version.commit,
 				"a block is identified by its highest version"
 			);
-			assert_eq!(block.summary.min_version, block.entries.first().unwrap().version);
-			assert_eq!(block.summary.max_version, block.entries.last().unwrap().version);
+			assert_eq!(block.summary.min_version, block.entries.first().unwrap().version.commit);
+			assert_eq!(block.summary.max_version, block.entries.last().unwrap().version.commit);
 			assert_eq!(
 				block.summary.count.as_u64(),
 				block.entries.len() as u64,
@@ -368,7 +367,7 @@ mod cases {
 				assert!(previous < block.min_version(), "blocks must not overlap");
 			}
 			previous_max = Some(block.max_version());
-			seen.extend(block.entries.iter().map(|cdc| cdc.version.0));
+			seen.extend(block.entries.iter().map(|cdc| cdc.version.commit.0));
 		}
 
 		assert_eq!(

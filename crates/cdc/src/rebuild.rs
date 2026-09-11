@@ -170,7 +170,7 @@ pub fn rebuild_selected_changes(
 						"CDC delete for key {:?} at version {} carries no pre-image, so its \
 						 change cannot be rebuilt",
 						key.as_slice(),
-						cdc.version.0
+						cdc.version.commit.0
 					))))
 				})?;
 				let fingerprint = read_fingerprint(pre);

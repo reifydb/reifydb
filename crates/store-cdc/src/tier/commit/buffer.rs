@@ -38,12 +38,14 @@ impl BufferInner {
 		if self.live.contains_key(&version) {
 			return false;
 		}
-		!self.in_flight.as_ref().is_some_and(|batch| batch.entries.iter().any(|cdc| cdc.version == version))
+		!self.in_flight
+			.as_ref()
+			.is_some_and(|batch| batch.entries.iter().any(|cdc| cdc.version.commit == version))
 	}
 
 	pub(crate) fn append(&mut self, cdc: Arc<Cdc>) {
 		self.live_bytes = self.live_bytes.saturating_add(cdc_resident_bytes(&cdc));
-		self.live.insert(cdc.version, cdc);
+		self.live.insert(cdc.version.commit, cdc);
 	}
 
 	#[instrument(name = "store::cdc::commit::cut_within", level = "debug", skip_all)]
@@ -61,7 +63,10 @@ impl BufferInner {
 			if ceiling.is_some_and(|ceiling| version >= ceiling) {
 				break;
 			}
-			if entries.last().is_some_and(|last: &Arc<Cdc>| version.0 != last.version.0.saturating_add(1)) {
+			if entries
+				.last()
+				.is_some_and(|last: &Arc<Cdc>| version.0 != last.version.commit.0.saturating_add(1))
+			{
 				break;
 			}
 			if !entries.is_empty() && bytes.saturating_add(cost) > cut_bytes {
@@ -75,7 +80,7 @@ impl BufferInner {
 		}
 		self.live_bytes = self.live_bytes.saturating_sub(bytes);
 		if let (Some(first), Some(last)) = (entries.first(), entries.last()) {
-			self.sealed.insert(first.version, last.version);
+			self.sealed.insert(first.version.commit, last.version.commit);
 		}
 		FlushBatch {
 			entries,

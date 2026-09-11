@@ -543,7 +543,7 @@ impl FlowSupervisor {
 	fn update_tracker(&self, cdcs: &[Arc<Cdc>]) {
 		for cdc in cdcs {
 			for object in changed_objects(cdc) {
-				self.tracker.update(object, cdc.version);
+				self.tracker.update(object, cdc.version.commit);
 			}
 		}
 	}

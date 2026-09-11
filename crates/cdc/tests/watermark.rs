@@ -6,7 +6,7 @@ use std::ops::Bound;
 use reifydb_cdc::consume::{checkpoint::CdcCheckpoint, watermark::compute_pinning_watermark};
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion},
 	interface::cdc::{Cdc, CdcChange, CdcConsumerId, ConsumerClass},
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
@@ -25,8 +25,7 @@ use reifydb_value::{
 
 fn make_cdc(version: u64) -> Cdc {
 	Cdc::new(
-		CommitVersion(version),
-		SourceVersion(version),
+		ChangeVersion::from(CommitVersion(version)),
 		DateTime::from_nanos(12345 + version),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![version as u8]),

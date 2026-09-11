@@ -11,7 +11,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	common::JoinType,
+	common::{ChangeVersion, CommitVersion, JoinType},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
@@ -84,7 +84,7 @@ fn tagged(mut diff: Diff, origin: OperatorId) -> Diff {
 }
 
 fn change(diffs: Vec<Diff>) -> Change {
-	Change::from_flow(LEFT_OPERATOR, reifydb_core::common::CommitVersion(1), diffs, DateTime::default())
+	Change::from_flow(LEFT_OPERATOR, ChangeVersion::from(CommitVersion(1)), diffs, DateTime::default())
 }
 
 fn join(engine: &TestEngine) -> JoinOperator {

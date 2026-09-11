@@ -108,6 +108,21 @@ impl From<CommitVersion> for SourceVersion {
 	}
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ChangeVersion {
+	pub commit: CommitVersion,
+	pub source: SourceVersion,
+}
+
+impl From<CommitVersion> for ChangeVersion {
+	fn from(commit: CommitVersion) -> Self {
+		Self {
+			commit,
+			source: SourceVersion::from(commit),
+		}
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum JoinType {
 	Inner,

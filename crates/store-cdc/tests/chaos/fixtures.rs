@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
 		cdc::{Cdc, CdcChange},
@@ -268,7 +268,7 @@ pub fn record(version: u64, timestamp: u64, changes: &[(u64, u64, usize, ChangeK
 		sources.insert(*table);
 		list.push(change);
 	}
-	let cdc = Cdc::new(CommitVersion(version), SourceVersion(version), DateTime::from_nanos(timestamp), list);
+	let cdc = Cdc::new(ChangeVersion::from(CommitVersion(version)), DateTime::from_nanos(timestamp), list);
 	let record = Record {
 		changes: cdc.changes.clone(),
 		timestamp,

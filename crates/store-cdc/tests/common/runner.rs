@@ -5,7 +5,7 @@ use std::{collections::Bound, error::Error as StdError, fmt::Write as _};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::{ChangeVersion, CommitVersion},
 	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_store_cdc::{
@@ -115,8 +115,7 @@ impl TsRunner for Runner {
 				args.reject_rest()?;
 
 				let cdc = Cdc::new(
-					CommitVersion(version),
-					SourceVersion(version),
+					ChangeVersion::from(CommitVersion(version)),
 					DateTime::from_nanos(timestamp),
 					(0..changes)
 						.map(|i| CdcChange::Insert {
@@ -171,7 +170,7 @@ impl TsRunner for Runner {
 				let (start, end) = parse_bounds(&spec)?;
 				let batch = self.store.read_range(start, end, batch_size)?;
 				for cdc in &batch.items {
-					writeln!(output, "v{}", cdc.version.0)?;
+					writeln!(output, "v{}", cdc.version.commit.0)?;
 				}
 				writeln!(output, "has_more={}", batch.has_more)?;
 			}

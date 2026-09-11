@@ -38,7 +38,7 @@ impl ReadCache {
 			.max_by_key(|(_, (_, read_to))| *read_to)
 			.map(|(_, read)| read)?;
 		Some(StreamRead {
-			items: items.iter().filter(|cdc| cdc.version > from).cloned().collect(),
+			items: items.iter().filter(|cdc| cdc.version.commit > from).cloned().collect(),
 			read_to: *read_to,
 			more: *read_to < up_to,
 		})
@@ -68,7 +68,7 @@ impl ObjectIndex {
 	fn touches(&self, cdc: &Cdc, objects: &HashSet<ObjectId>) -> bool {
 		self.changed
 			.borrow_mut()
-			.entry(cdc.version)
+			.entry(cdc.version.commit)
 			.or_insert_with(|| changed_objects(cdc))
 			.iter()
 			.any(|object| objects.contains(object))
@@ -88,7 +88,7 @@ impl UpstreamRead {
 			through = through.max(position.position);
 		}
 		if let Some(last) = self.view_items(index).last() {
-			through = through.max(CommitVersion(last.source.0.saturating_sub(1)));
+			through = through.max(CommitVersion(last.version.source.0.saturating_sub(1)));
 		}
 		through
 	}
@@ -97,7 +97,8 @@ impl UpstreamRead {
 		if !self.read.more {
 			return false;
 		}
-		let mut stamps = self.view_items(index).map(|cdc| cdc.source.0).filter(|source| *source > cursor.0);
+		let mut stamps =
+			self.view_items(index).map(|cdc| cdc.version.source.0).filter(|source| *source > cursor.0);
 		match stamps.next() {
 			Some(first) => stamps.all(|source| source == first),
 			None => false,
@@ -106,8 +107,8 @@ impl UpstreamRead {
 
 	pub fn cursor_after(&self, advance_to: CommitVersion, index: &ObjectIndex) -> CommitVersion {
 		self.view_items(index)
-			.find(|cdc| cdc.source.0 > advance_to.0)
-			.map(|cdc| CommitVersion(cdc.version.0 - 1))
+			.find(|cdc| cdc.version.source.0 > advance_to.0)
+			.map(|cdc| CommitVersion(cdc.version.commit.0 - 1))
 			.unwrap_or(self.read.read_to)
 	}
 }
@@ -146,14 +147,14 @@ pub fn merge(
 
 	let mut ordered: Vec<(u64, bool, CommitVersion, Arc<Cdc>)> = Vec::new();
 	for cdc in &tables.items {
-		if cdc.version > cursor && cdc.version <= target && !index.touches(cdc, &gated) {
-			ordered.push((cdc.source.0, true, cdc.version, cdc.clone()));
+		if cdc.version.commit > cursor && cdc.version.commit <= target && !index.touches(cdc, &gated) {
+			ordered.push((cdc.version.source.0, true, cdc.version.commit, cdc.clone()));
 		}
 	}
 	for upstream in upstreams.values() {
 		for cdc in upstream.view_items(index) {
-			if cdc.source.0 > cursor.0 && cdc.source.0 <= target.0 {
-				ordered.push((cdc.source.0, false, cdc.version, cdc.clone()));
+			if cdc.version.source.0 > cursor.0 && cdc.version.source.0 <= target.0 {
+				ordered.push((cdc.version.source.0, false, cdc.version.commit, cdc.clone()));
 			}
 		}
 	}
@@ -170,7 +171,7 @@ pub fn merge(
 mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
-		common::SourceVersion,
+		common::{ChangeVersion, SourceVersion},
 		interface::{
 			catalog::{id::ViewId, storage::StorageId},
 			cdc::CdcChange,
@@ -193,8 +194,10 @@ mod tests {
 
 	fn row(storage: StorageId, version: u64, source: u64) -> Arc<Cdc> {
 		Arc::new(Cdc::new(
-			cv(version),
-			SourceVersion(source),
+			ChangeVersion {
+				commit: cv(version),
+				source: SourceVersion(source),
+			},
 			DateTime::default(),
 			vec![CdcChange::Insert {
 				key: RowKey::encoded(storage, RowNumber(version)),
@@ -247,7 +250,7 @@ mod tests {
 	}
 
 	fn versions(merged: &Merged) -> Vec<(u64, u64)> {
-		merged.items.iter().map(|cdc| (cdc.version.0, cdc.source.0)).collect()
+		merged.items.iter().map(|cdc| (cdc.version.commit.0, cdc.version.source.0)).collect()
 	}
 
 	#[test]
