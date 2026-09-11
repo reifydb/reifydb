@@ -3,7 +3,7 @@
 
 import { encodeParams, columnsToRows, transformFrames, checkFrames, framesFromWire } from '@reifydb/core'
 import type { FrameResults, ShapeNode } from '@reifydb/core'
-import type { Frame, ReifydbNode } from '../native'
+import type { BatchSubscribed, Frame, ReifydbNode, SubscriptionTick } from '../native'
 import type { Db } from './db'
 
 export class NativeDb implements Db {
@@ -35,6 +35,38 @@ export class NativeDb implements Db {
 
   authenticate(method: string, credentials: Record<string, string>): Promise<string> {
     return this.node.authenticate(method, credentials)
+  }
+
+  subscribeRoot(rql: string, params: any): Promise<string> {
+    return this.node.subscribeRoot(rql, toWireParams(params))
+  }
+
+  subscribeAs(identity: string, rql: string, params: any): Promise<string> {
+    return this.node.subscribeAs(identity, rql, toWireParams(params))
+  }
+
+  batchSubscribeRoot(queries: string[]): Promise<BatchSubscribed> {
+    return this.node.batchSubscribeRoot(queries)
+  }
+
+  batchSubscribeAs(identity: string, queries: string[]): Promise<BatchSubscribed> {
+    return this.node.batchSubscribeAs(identity, queries)
+  }
+
+  unsubscribe(subscriptionId: string): void {
+    this.node.unsubscribe(subscriptionId)
+  }
+
+  batchUnsubscribe(batchId: string): Promise<void> {
+    return this.node.batchUnsubscribe(batchId)
+  }
+
+  tick(): SubscriptionTick {
+    return this.node.tick()
+  }
+
+  async caughtUp(): Promise<SubscriptionTick> {
+    return this.node.caughtUp()
   }
 
   private async execute<const S extends readonly ShapeNode[]>(pending: Promise<Frame[]>, shapes: S): Promise<FrameResults<S>> {

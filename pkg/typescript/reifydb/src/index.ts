@@ -8,3 +8,4 @@ export { Reifydb } from './reifydb';
 export { EmbeddedBuilder } from './embedded-builder';
 export type { Migration, MigrationInput } from './migration';
 export { storeClient } from './store-client';
+export type { BridgeClient, StoreClientOptions } from './store-client';

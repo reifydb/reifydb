@@ -29,6 +29,13 @@ function fakeDb(calls: Call[]): Db {
     commandAs: unused,
     adminAs: unused,
     authenticate: unused,
+    subscribeRoot: unused,
+    subscribeAs: unused,
+    batchSubscribeRoot: unused,
+    batchSubscribeAs: unused,
+    unsubscribe: () => undefined,
+    batchUnsubscribe: unused,
+    tick: () => ({ envelopes: [], closed: [], batchMemberClosed: [] }),
   }
 }
 
@@ -53,15 +60,4 @@ describe('storeClient', () => {
     expect(calls).toEqual([{ method: 'adminRoot', rql: 'create table t { id: int4 }', params: null, shapes: [shape] }])
   })
 
-  it('subscribe rejects with an error stating that the bridge has no subscription support', async () => {
-    const calls: Call[] = []
-    await expect(storeClient(fakeDb(calls)).subscribe('from t', null, shape, {})).rejects.toThrow(/bridge has no subscription support/)
-    expect(calls).toEqual([])
-  })
-
-  it('unsubscribe rejects with an error stating that the bridge has no subscription support', async () => {
-    const calls: Call[] = []
-    await expect(storeClient(fakeDb(calls)).unsubscribe('sub-1')).rejects.toThrow(/bridge has no subscription support/)
-    expect(calls).toEqual([])
-  })
 })

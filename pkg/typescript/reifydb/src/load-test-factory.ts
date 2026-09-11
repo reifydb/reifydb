@@ -11,14 +11,14 @@ export function loadTestFactory(addonPath: string): TestFactory {
   const cached = cache.get(addonPath)
   if (cached != null) return cached
 
-  const addon = { exports: {} as { create: (seed: number) => ReifydbNode } }
+  const addon = { exports: {} as { create: () => ReifydbNode } }
   try {
     process.dlopen(addon as unknown as NodeJS.Module, addonPath)
   } catch (err) {
     throw new Error(`failed to load native addon at ${addonPath}: ${err}`)
   }
 
-  const factory: TestFactory = (seed) => new NativeDb(addon.exports.create(seed))
+  const factory: TestFactory = () => new NativeDb(addon.exports.create())
   cache.set(addonPath, factory)
   return factory
 }

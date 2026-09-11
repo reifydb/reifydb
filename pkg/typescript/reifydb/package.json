@@ -15,6 +15,7 @@
     "publish:npm": "pnpm publish --access public --no-git-checks"
   },
   "dependencies": {
+    "@reifydb/client": "workspace:*",
     "@reifydb/core": "workspace:*",
     "@reifydb/store": "workspace:*"
   },
