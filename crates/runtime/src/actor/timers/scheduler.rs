@@ -64,8 +64,6 @@ impl PartialOrd for TimerEntry {
 }
 
 enum SchedulerCommand {
-	/// Carries an absolute deadline, not a delay: the caller anchors it so the queue hop and the
-	/// scheduler thread's wakeup latency cannot stretch the delay the caller asked for.
 	ScheduleOnce {
 		id: u64,
 		deadline: Instant,
