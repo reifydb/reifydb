@@ -3,16 +3,13 @@
 //
 // End-to-end authorization guard for running uptime probes under their own
 // CREATE SERVICE identity instead of root. These tests load the REAL uptime
-// migrations (via #[path] on src/schema.rs, including 0003_probe_service_policies)
+// migrations (via #[path] on src/schema.rs)
 // so they pin the actual policy DDL the app ships, not a copy of it.
 //
 // The intent being verified: a probe's queue + write operations must be
 // authorized ONLY for service identities. If the policies regress (dropped,
 // widened to `true`, or scoped to the wrong op) these tests fail because a
 // non-service identity would gain access, or a service would lose it.
-
-#[path = "../src/schema.rs"]
-mod schema;
 
 use std::collections::HashMap;
 
@@ -23,9 +20,10 @@ use reifydb::{
 		value::{datetime::DateTime, frame::frame::Frame, into::IntoValue, uuid::Uuid7},
 	},
 };
+use reifydb_uptime::migration_path;
 
 fn build() -> Database {
-	server::memory().with_flow(|f| f).with_migrations(schema::migrations()).build().expect("build memory db")
+	server::memory().with_flow(|f| f).with_migrations(migration_path()).build().expect("build memory db")
 }
 
 fn admin(db: &Database, rql: &str) {
@@ -205,14 +203,15 @@ fn service_reads_pending_jobs_but_user_sees_none() {
 fn service_claims_job_user_denied() {
 	let f = setup();
 
-	let mp = params(&[("monitor_id", f.monitor_id.into_value())]);
+	let mp = params(&[("monitor_id", f.monitor_id.into_value()), ("region_id", f.region_id.into_value())]);
 
 	// User CALL is rejected at the procedure call gate (not merely empty).
-	let denied = command_as(&f.db, f.user, "CALL uptime::claim_job($monitor_id)", mp.clone());
-	assert!(denied.is_err(), "user must be denied claim_job, got: {denied:?}");
+	let denied = command_as(&f.db, f.user, "CALL uptime::claim_job_in_region($monitor_id, $region_id)", mp.clone());
+	assert!(denied.is_err(), "user must be denied claim_job_in_region, got: {denied:?}");
 
 	// Service CALL passes the gate and pops the job.
-	let claimed = command_as(&f.db, f.service, "CALL uptime::claim_job($monitor_id)", mp).expect("service claim");
+	let claimed = command_as(&f.db, f.service, "CALL uptime::claim_job_in_region($monitor_id, $region_id)", mp)
+		.expect("service claim");
 	assert_eq!(rows(&claimed), 1, "service claim must return the popped job");
 
 	// The pop actually removed it.
@@ -234,8 +233,7 @@ fn service_reports_result_user_denied() {
 		&f.db,
 		f.user,
 		"INSERT uptime::results [{ id: $id, monitor_id: $m, owner: $owner, region_id: $r, probe: none, \
-		 requirement_id: none, checked_at: $now, success: true, response_time: none, status_code: none, \
-		 error: none }]",
+		 checked_at: $now, success: true, response_time: none, status_code: none, error: none }]",
 		params(&[
 			("id", Uuid7::generate(&f.db.clock().clone(), &f.db.engine().rng().clone()).into_value()),
 			("m", f.monitor_id.into_value()),
@@ -319,9 +317,7 @@ fn service_registers_and_heartbeats_user_denied() {
 
 #[test]
 fn service_finds_monitor_across_owner_user_denied() {
-	// A proc body compiles under the caller's from-policies, so the service reads a monitor it does not own only
-	// because 0006 widened the owner filter; a denied body read yields a `value: none` frame that still counts as
-	// one row, so the owner column must be asserted.
+	// A denied body read still yields one `none` row, so only the owner column proves the service saw the monitor.
 	let f = setup();
 	let mp = params(&[("monitor_id", f.monitor_id.into_value())]);
 
@@ -342,9 +338,88 @@ fn root_still_bypasses_probe_policies() {
 	let claimed = command_as(
 		&f.db,
 		IdentityId::root(),
-		"CALL uptime::claim_job($monitor_id)",
-		params(&[("monitor_id", f.monitor_id.into_value())]),
+		"CALL uptime::claim_job_in_region($monitor_id, $region_id)",
+		params(&[("monitor_id", f.monitor_id.into_value()), ("region_id", f.region_id.into_value())]),
 	)
 	.expect("root claim");
 	assert_eq!(rows(&claimed), 1, "root must still be able to claim jobs");
+}
+
+fn values(frames: &[Frame], name: &str) -> Vec<Value> {
+	let Some(frame) = frames.first() else {
+		return Vec::new();
+	};
+	let Some(col) = frame.columns.iter().find(|c| c.name == name) else {
+		return Vec::new();
+	};
+	(0..frame.row_count()).map(|i| col.data.get_value(i)).collect()
+}
+
+#[test]
+fn report_result_ignores_region_rows_another_owner_planted_on_the_monitor() {
+	// Any user may insert region rows it owns, so a planted row must never copy the status or sway the rollup.
+	let f = setup();
+	admin(&f.db, "CREATE USER mallory");
+	let attacker = lookup_identity(&f.db, "mallory");
+	let other_region = Uuid7::generate(&f.db.clock().clone(), &f.db.engine().rng().clone());
+	for (region, status) in [(f.region_id, "unknown"), (other_region, "down")] {
+		command_as(
+			&f.db,
+			attacker,
+			"INSERT uptime::monitor_regions [{ monitor_id: $m, owner: $owner, region_id: $r, status: $s, \
+			 last_checked_at: none, consecutive_failures: 0 }]",
+			params(&[
+				("m", f.monitor_id.into_value()),
+				("owner", attacker.into_value()),
+				("r", region.into_value()),
+				("s", Value::Utf8(status.to_string())),
+			]),
+		)
+		.expect("the insert policy admits a region row the caller owns");
+	}
+
+	command_as(&f.db, f.service, REPORT_CALL, report_params(&f, true)).expect("service report (up)");
+
+	let read = |owner: IdentityId| {
+		query_as(
+			&f.db,
+			IdentityId::root(),
+			"from uptime::monitor_regions filter { monitor_id == $m and owner == $owner } \
+			 map { region_id, status, last_checked_at }",
+			params(&[("m", f.monitor_id.into_value()), ("owner", owner.into_value())]),
+		)
+		.expect("root region read")
+	};
+	let own = read(f.owner);
+	assert_eq!(values(&own, "status"), vec![Value::Utf8("up".to_string())], "the owner's row must take the report");
+	let planted = read(attacker);
+	assert_eq!(rows(&planted), 2, "the planted rows must still be there to prove they were ignored");
+	for (region, status) in values(&planted, "region_id").into_iter().zip(values(&planted, "status")) {
+		let expected = if region == f.region_id.into_value() {
+			"unknown"
+		} else {
+			"down"
+		};
+		assert_eq!(
+			status,
+			Value::Utf8(expected.to_string()),
+			"a planted row must not receive the victim's status"
+		);
+	}
+	assert!(
+		values(&planted, "last_checked_at").iter().all(|v| matches!(v, Value::None { .. })),
+		"a planted row must not receive the victim's check time"
+	);
+	let monitor = query_as(
+		&f.db,
+		IdentityId::root(),
+		"from uptime::monitors filter { id == $m } map { status }",
+		params(&[("m", f.monitor_id.into_value())]),
+	)
+	.expect("root monitor read");
+	assert_eq!(
+		values(&monitor, "status"),
+		vec![Value::Utf8("up".to_string())],
+		"a planted `down` row must not turn the victim's rollup degraded"
+	);
 }

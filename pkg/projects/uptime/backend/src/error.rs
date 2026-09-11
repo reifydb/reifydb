@@ -14,7 +14,6 @@ use tracing::error;
 
 #[derive(Debug)]
 pub enum ApiError {
-	Unauthorized,
 	NotFound,
 	Conflict(String),
 	Validation(String),
@@ -37,7 +36,6 @@ impl From<Error> for ApiError {
 impl IntoResponse for ApiError {
 	fn into_response(self) -> Response {
 		let (status, message) = match self {
-			ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized".to_string()),
 			ApiError::NotFound => (StatusCode::NOT_FOUND, "not found".to_string()),
 			ApiError::Conflict(m) => (StatusCode::CONFLICT, m),
 			ApiError::Validation(m) => (StatusCode::UNPROCESSABLE_ENTITY, m),

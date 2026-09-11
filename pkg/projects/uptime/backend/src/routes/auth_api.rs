@@ -4,20 +4,18 @@
 use std::collections::HashMap;
 
 use axum::{
-	Extension, Json,
+	Json,
 	extract::State,
 	http::{HeaderMap, StatusCode},
 };
 use reifydb::{
-	Error, IdentityId,
-	auth::{method::password::PasswordProvider, service::AuthResponse},
-	core::interface::auth::AuthenticationProvider,
+	Error, IdentityId, auth::method::password::PasswordProvider, core::interface::auth::AuthenticationProvider,
 	value::params,
 };
 
 use crate::{
-	auth::{CurrentUser, bearer_token, identity_for_token, valid_email},
-	dto::{GuestSessionResponse, LoginRequest, LoginResponse, MeDto, RegisterRequest},
+	auth::{bearer_token, identity_for_token, valid_email},
+	dto::{GuestSessionResponse, RegisterRequest},
 	error::ApiError,
 	guest::{self, PromotionError},
 	state::AppState,
@@ -132,43 +130,4 @@ async fn promote(st: &AppState, identity: IdentityId, email: String, password: S
 		}
 		Err(PromotionError::Database(err)) => Err(ApiError::from(err)),
 	}
-}
-
-pub async fn login(
-	State(st): State<AppState>,
-	Json(request): Json<LoginRequest>,
-) -> Result<Json<LoginResponse>, ApiError> {
-	let auth = st.auth.clone();
-	let credentials = HashMap::from([
-		("identifier".to_string(), request.email.trim().to_lowercase()),
-		("password".to_string(), request.password),
-	]);
-	let response =
-		st.tokio.spawn_blocking(move || auth.authenticate("password", credentials))
-			.await
-			.map_err(|e| ApiError::internal("login task failed", e))?;
-
-	match response {
-		Ok(AuthResponse::Authenticated {
-			identity,
-			token,
-		}) => Ok(Json(LoginResponse {
-			token,
-			identity: identity.to_string(),
-		})),
-		_ => Err(ApiError::Unauthorized),
-	}
-}
-
-pub async fn me(
-	State(st): State<AppState>,
-	Extension(CurrentUser(identity)): Extension<CurrentUser>,
-) -> Result<Json<MeDto>, ApiError> {
-	let summary = store::find_identity_summary(&st, identity).await?.ok_or(ApiError::Unauthorized)?;
-	let guest = guest::is_guest_kind(&summary.kind);
-	Ok(Json(MeDto {
-		id: identity.to_string(),
-		email: (!guest).then_some(summary.name),
-		guest,
-	}))
 }

@@ -23,12 +23,10 @@
     "@reifydb/reifydb": "link:../../../typescript/reifydb",
     "@reifydb/store": "link:../../../typescript/store",
     "@reifydb/ui": "link:../../../typescript/ui",
-    "@tanstack/react-query": "^5.90.19",
     "@tanstack/react-router": "^1.154.7",
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "zustand": "^5.0.14"
+    "react-dom": "^19.2.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",

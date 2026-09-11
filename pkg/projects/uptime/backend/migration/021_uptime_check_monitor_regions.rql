@@ -1,0 +1,14 @@
+CREATE MIGRATION 'uptime_check_monitor_regions' {
+    create procedure uptime::check_monitor_regions { monitor_id: uuid7 } as {
+        let $monitor = from uptime::monitors filter { id == $monitor_id and owner == $identity.id }
+            map { id, owner };
+        assert { is::some($monitor.id) } "monitor not found";
+        let $count = from uptime::monitor_regions
+            filter { monitor_id == $monitor_id and owner == $identity.id }
+            aggregate { n: math::count(region_id) } by { monitor_id };
+        assert { is::some($count.n) and $count.n >= 1 } "a monitor must use at least one region"
+    };
+    create procedure policy uptime_call_check_monitor_regions on uptime::check_monitor_regions {
+        call: { filter { $identity.kind == "user" or $identity.kind == "guest" } }
+    }
+};

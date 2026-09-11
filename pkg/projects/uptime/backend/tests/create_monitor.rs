@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-//
-// Guards for uptime::create_monitor, the procedure the web app calls instead
-// of the HTTP create route. The point of the procedure is that the server, not
-// the client, decides who owns the monitor and what its id, creation time and
-// initial state are: the owner is the caller identity, the id and created_at
-// are generated in the body, and the row starts as an unchecked monitor. These
-// tests load the real migrations via #[path] on src/schema.rs so a regression
-// in the shipped DDL or its policies fails here.
-
-#[path = "../src/schema.rs"]
-mod schema;
 
 use std::collections::HashMap;
 
@@ -23,9 +12,10 @@ use reifydb::{
 		},
 	},
 };
+use reifydb_uptime::migration_path;
 
 fn build() -> Database {
-	server::memory().with_flow(|f| f).with_migrations(schema::migrations()).build().expect("build memory db")
+	server::memory().with_flow(|f| f).with_migrations(migration_path()).build().expect("build memory db")
 }
 
 fn admin(db: &Database, rql: &str) {
@@ -95,11 +85,12 @@ fn column(frames: &[Frame], name: &str) -> Value {
 	frame.columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("column {name}")).data.get_value(0)
 }
 
-const CREATE_CALL: &str = "CALL uptime::create_monitor($name, $kind, $target, $interval, $timeout, \
+const CREATE_CALL: &str = "CALL uptime::create_monitor($id, $name, $kind, $target, $interval, $timeout, \
 	 $http_method, $expected_status, $keyword, $expected_ip, $failure_threshold, $enabled)";
 
-fn create_params(name: &str, target: &str) -> Params {
+fn create_params(id: Uuid7, name: &str, target: &str) -> Params {
 	params(&[
+		("id", id.into_value()),
 		("name", Value::Utf8(name.to_string())),
 		("kind", Value::Utf8("http".to_string())),
 		("target", Value::Utf8(target.to_string())),
@@ -115,10 +106,14 @@ fn create_params(name: &str, target: &str) -> Params {
 }
 
 fn create_as(db: &Database, caller: IdentityId, name: &str, target: &str) -> Uuid7 {
-	let frames = command_as(db, caller, CREATE_CALL, create_params(name, target)).expect("create_monitor call");
+	let id = Uuid7::generate(db.clock(), db.engine().rng());
+	let frames = command_as(db, caller, CREATE_CALL, create_params(id, name, target)).expect("create_monitor call");
 	match column(&frames, "id") {
-		Value::Uuid7(id) => id,
-		other => panic!("create_monitor must return the generated id, got {other:?}"),
+		Value::Uuid7(returned) => {
+			assert_eq!(returned, id, "create_monitor must return the id the caller passed");
+			returned
+		}
+		other => panic!("create_monitor must return the id, got {other:?}"),
 	}
 }
 
@@ -135,10 +130,8 @@ fn monitor_row(db: &Database, id: Uuid7) -> Vec<Frame> {
 }
 
 #[test]
-fn user_creates_monitor_with_server_generated_id_time_and_initial_state() {
-	// The client sends only what it knows; id, created_at, owner and the unchecked initial state
-	// are the server's. If the procedure ever stopped generating them, or accepted them from the
-	// caller, the row read back would differ from what the call returned or from the clock.
+fn user_creates_monitor_with_client_id_and_server_time_and_initial_state() {
+	// The id is the caller's; created_at, owner and the unchecked initial state must never come from input.
 	let db = build();
 	let alice = new_user(&db, "alice");
 
@@ -185,7 +178,6 @@ fn owner_is_the_caller_not_a_parameter() {
 
 	let alice_id = create_as(&db, alice, "shared", "https://example.com");
 	let bob_id = create_as(&db, bob, "shared", "https://example.com");
-	assert_ne!(alice_id, bob_id, "each call must generate its own id");
 
 	assert_eq!(column(&monitor_row(&db, alice_id), "owner"), Value::IdentityId(alice));
 	assert_eq!(column(&monitor_row(&db, bob_id), "owner"), Value::IdentityId(bob));
@@ -215,7 +207,8 @@ fn service_is_denied_at_the_call_gate() {
 	admin(&db, "CREATE SERVICE probe_svc");
 	let service = lookup_identity(&db, "probe_svc");
 
-	let denied = command_as(&db, service, CREATE_CALL, create_params("m", "https://example.com"));
+	let id = Uuid7::generate(db.clock(), db.engine().rng());
+	let denied = command_as(&db, service, CREATE_CALL, create_params(id, "m", "https://example.com"));
 	assert!(denied.is_err(), "service must be denied create_monitor, got: {denied:?}");
 
 	let all =

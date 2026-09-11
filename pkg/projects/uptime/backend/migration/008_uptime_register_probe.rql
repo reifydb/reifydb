@@ -1,0 +1,8 @@
+CREATE MIGRATION 'uptime_register_probe' {
+    create procedure uptime::register_probe { probe: identity_id, name: utf8, seen: datetime }
+        as { delete uptime::probes filter { id == $probe };
+        insert uptime::probes [{ id: $probe, name: $name, last_seen: $seen }] };
+    create procedure policy uptime_call_register_probe on uptime::register_probe {
+        call: { filter { $identity.kind == "service" } }
+    }
+};

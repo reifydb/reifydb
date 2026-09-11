@@ -9,7 +9,7 @@ interface LiveQuery<S extends ShapeNode> {
   config: SubscriptionConfig
 }
 
-const RESULTS_HYDRATION_CAP = 2000
+const RESULTS_HYDRATION_CAP = 200
 
 function live<S extends ShapeNode>(rql: string, shape: S, maxRows: number): LiveQuery<S> {
   return { rql, shape, config: { hydration: { enabled: true, maxRows } } }
@@ -66,9 +66,8 @@ export const regions = live(
 export type RegionRow = InferShape<typeof regions.shape>
 
 export const results = live(
-  `from uptime::results map { monitor_id, region_id, probe, checked_at, success, response_time, status_code, error } take ${RESULTS_HYDRATION_CAP}`,
+  `from uptime::results filter { monitor_id == $monitor_id } map { region_id, probe, checked_at, success, response_time, status_code, error } take ${RESULTS_HYDRATION_CAP}`,
   Shape.object({
-    monitor_id: Shape.uuid7(),
     region_id: Shape.uuid7(),
     probe: Shape.option(Shape.identityid()),
     checked_at: Shape.datetime(),

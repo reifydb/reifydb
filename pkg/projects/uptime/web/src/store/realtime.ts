@@ -100,25 +100,25 @@ export function useLiveMonitors(): Monitor[] | null {
   }, [entry.status, entry.data])
 }
 
-export function useLiveMonitor(id: string): { monitor: Monitor | undefined; ready: boolean } {
+export function useLiveMonitor(id: string): { monitor: Monitor | undefined; ready: boolean; error: Error | undefined } {
   const entry = useSubscription(monitors.rql, null, monitors.shape, { config: monitors.config })
   return useMemo(() => {
     const row = entry.data.find((r) => r.id === id)
-    return { monitor: row == null ? undefined : toMonitor(row), ready: entry.status === 'ready' }
-  }, [entry.status, entry.data, id])
+    return { monitor: row == null ? undefined : toMonitor(row), ready: entry.status === 'ready', error: entry.error }
+  }, [entry.status, entry.data, entry.error, id])
 }
 
-export function useLiveResults(id: string): Result[] | undefined {
-  const entry = useSubscription(results.rql, null, results.shape, { config: results.config })
-  return useMemo(
+export function useLiveResults(id: string): { data: Result[]; error: Error | undefined } {
+  const entry = useSubscription(results.rql, { monitor_id: id }, results.shape, { config: results.config })
+  const data = useMemo(
     () =>
       entry.data
-        .filter((r) => r.monitorId === id)
         .map(toResult)
         .sort((a, b) => (a.checked_at < b.checked_at ? 1 : -1))
         .slice(0, RESULTS_CAP),
-    [entry.data, id],
+    [entry.data],
   )
+  return { data, error: entry.error }
 }
 
 export function useLiveDaily(): Map<string, DailyUptime[]> {
@@ -170,11 +170,11 @@ export function useRegionLabels(): Record<string, string> {
   }, [entry.data])
 }
 
-export function useMonitorRegions(monitorId: string): MonitorRegion[] {
+export function useMonitorRegions(monitorId: string): { data: MonitorRegion[]; ready: boolean; error: Error | undefined } {
   const entry = useSubscription(monitorRegions.rql, null, monitorRegions.shape, {
     config: monitorRegions.config,
   })
-  return useMemo(
+  const data = useMemo(
     () =>
       entry.data
         .filter((mr) => mr.monitorId === monitorId)
@@ -182,6 +182,7 @@ export function useMonitorRegions(monitorId: string): MonitorRegion[] {
         .sort(byRegionId),
     [entry.data, monitorId],
   )
+  return { data, ready: entry.status === 'ready', error: entry.error }
 }
 
 export function useAllMonitorRegions(): Map<string, MonitorRegion[]> {

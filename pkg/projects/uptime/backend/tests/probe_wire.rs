@@ -5,13 +5,10 @@
 // (public, auth-required port) + the reifydb-client WsClient authenticating with only
 // a service token, then driving the exact RQL the standalone probe issues. This
 // exercises the wire transport, token login, `$identity` resolution, and every probe
-// procedure/query under real over-the-wire policy enforcement (migrations 0003 + 0004)
+// procedure/query under real over-the-wire policy enforcement
 // - the parts the in-process engine tests in probe_service_policies.rs cannot reach.
 //
 // It loads the real migrations via #[path] so the shipped policy DDL is what gets tested.
-
-#[path = "../src/schema.rs"]
-mod schema;
 
 use std::collections::HashMap;
 
@@ -20,6 +17,7 @@ use reifydb::{
 	value::value::{duration::Duration, into::IntoValue, uuid::Uuid7},
 };
 use reifydb_client::{Params, WireFormat, WsClient};
+use reifydb_uptime::migration_path;
 use tokio::runtime::Runtime;
 
 fn params(entries: &[(&str, Value)]) -> Params {
@@ -34,7 +32,7 @@ fn build_server() -> Database {
 	server::memory()
 		.with_flow(|f| f)
 		.with_ws(|ws| ws.bind_addr("[::1]:0"))
-		.with_migrations(schema::migrations())
+		.with_migrations(migration_path())
 		.build()
 		.expect("build ws server")
 }
@@ -135,7 +133,7 @@ fn standalone_probe_runs_the_full_cycle_over_the_wire_with_only_a_token() {
 			other => panic!("unexpected identity id: {other:?}"),
 		};
 
-		// Register self (insert into probes) - authorized by 0003 over the wire.
+		// Register self (insert into probes) - authorized by the service-only probe policies over the wire.
 		client.command(
 			"CALL uptime::register_probe($probe, $name, $seen)",
 			Some(params(&[
@@ -158,8 +156,11 @@ fn standalone_probe_runs_the_full_cycle_over_the_wire_with_only_a_token() {
 		// Claim it (procedure call policy + ringbuffer delete policy).
 		let claimed = client
 			.command(
-				"CALL uptime::claim_job($monitor_id)",
-				Some(params(&[("monitor_id", monitor_id.into_value())])),
+				"CALL uptime::claim_job_in_region($monitor_id, $region_id)",
+				Some(params(&[
+					("monitor_id", monitor_id.into_value()),
+					("region_id", region_id.into_value()),
+				])),
 			)
 			.await
 			.expect("claim over wire");
@@ -169,7 +170,7 @@ fn standalone_probe_runs_the_full_cycle_over_the_wire_with_only_a_token() {
 			"service must claim the job over the wire"
 		);
 
-		// Read the monitor it does not own, via the find_monitor procedure (0004).
+		// Read the monitor it does not own, via the find_monitor procedure.
 		let mon = client
 			.command(
 				"CALL uptime::find_monitor($monitor_id)",
@@ -183,7 +184,7 @@ fn standalone_probe_runs_the_full_cycle_over_the_wire_with_only_a_token() {
 			"service must read the monitor over the wire"
 		);
 
-		// Report a result (insert results + update monitor_regions + monitors, all under 0003).
+		// Report a result (insert results + update monitor_regions + monitors, all under the service policies).
 		let result_id = Uuid7::generate(&clock, &rng);
 		client.command(
 			"CALL uptime::report_result($result_id, $monitor_id, $owner, $region_id, $probe, \

@@ -23,7 +23,6 @@ reifydb-client = { workspace = true, features = ["ws"] }
 
 axum = { workspace = true }
 tokio = { workspace = true }
-tower = { workspace = true }
 tower-http = { workspace = true }
 
 serde = { workspace = true }
@@ -36,7 +35,6 @@ libc = { workspace = true }
 reqwest = { workspace = true, features = ["rustls-no-provider"] }
 rustls = { workspace = true }
 surge-ping = { workspace = true }
-uuid = { workspace = true }
 
 [dev-dependencies]
 reifydb = { workspace = true, features = ["testing"] }

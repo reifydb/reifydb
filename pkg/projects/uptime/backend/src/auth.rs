@@ -1,18 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use axum::{
-	extract::{Request, State},
-	http::{HeaderMap, header::AUTHORIZATION},
-	middleware::Next,
-	response::Response,
-};
+use axum::http::{HeaderMap, header::AUTHORIZATION};
 use reifydb::IdentityId;
 
 use crate::{error::ApiError, state::AppState};
-
-#[derive(Clone, Copy)]
-pub struct CurrentUser(pub IdentityId);
 
 pub fn bearer_token(headers: &HeaderMap) -> Option<String> {
 	let header = headers.get(AUTHORIZATION)?.to_str().ok()?;
@@ -31,13 +23,6 @@ pub async fn identity_for_token(st: &AppState, token: String) -> Result<Option<I
 			.map_err(|e| ApiError::internal("token validation task failed", e))?
 			.map_err(|e| ApiError::internal("token validation could not reach storage", e))?;
 	Ok(validated.map(|token| token.identity))
-}
-
-pub async fn require_auth(State(st): State<AppState>, mut req: Request, next: Next) -> Result<Response, ApiError> {
-	let token = bearer_token(req.headers()).ok_or(ApiError::Unauthorized)?;
-	let identity = identity_for_token(&st, token).await?.ok_or(ApiError::Unauthorized)?;
-	req.extensions_mut().insert(CurrentUser(identity));
-	Ok(next.run(req).await)
 }
 
 pub fn valid_email(email: &str) -> bool {

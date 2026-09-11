@@ -1,0 +1,8 @@
+CREATE MIGRATION 'uptime_claim_job_in_region' {
+    create procedure uptime::claim_job_in_region { monitor_id: uuid7, region_id: uuid7 }
+        as { delete uptime::jobs filter { monitor_id == $monitor_id and region_id == $region_id } take 1
+        returning { monitor_id, region_id } };
+    create procedure policy uptime_call_claim_job_in_region on uptime::claim_job_in_region {
+        call: { filter { $identity.kind == "service" } }
+    }
+};

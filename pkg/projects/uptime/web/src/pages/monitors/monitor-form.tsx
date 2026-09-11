@@ -52,8 +52,18 @@ function validate(s: FormState): string | null {
   if (s.kind === 'http' && !/^https?:\/\//.test(target)) {
     return 'URL must start with http:// or https://'
   }
+  if (s.kind === 'http' && !URL.canParse(target)) {
+    return 'URL is not valid'
+  }
   if (s.kind === 'tcp' && !/^.+:\d+$/.test(target)) {
     return 'TCP target must be host:port'
+  }
+  if (s.kind === 'tcp') {
+    const port = Number(target.slice(target.lastIndexOf(':') + 1))
+    if (port < 1 || port > 65535) return 'TCP port must be between 1 and 65535'
+  }
+  if ((s.kind === 'ping' || s.kind === 'dns') && /[\s/:]/.test(target)) {
+    return 'Target must be a plain hostname'
   }
   const interval = Number(s.interval_s)
   if (!Number.isFinite(interval) || interval < 5) {

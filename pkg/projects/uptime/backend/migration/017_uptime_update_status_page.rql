@@ -1,0 +1,24 @@
+CREATE MIGRATION 'uptime_update_status_page' {
+    create procedure uptime::update_status_page { id: uuid7, slug: utf8, title: utf8 } as {
+        assert { text::length(text::trim($title)) > 0 and text::length(text::trim($title)) <= 200 }
+            "title must be between 1 and 200 characters";
+        assert { text::length($slug) > 0 and text::length($slug) <= 64 } "slug must be between 1 and 64 characters";
+        let $rest = $slug;
+        while text::count($rest) > 0 {
+            assert { text::contains("abcdefghijklmnopqrstuvwxyz0123456789-", text::substring($rest, 0, 1)) }
+                "slug must contain only lowercase letters, digits, and hyphens";
+            $rest = text::substring($rest, 1, 64)
+        };
+        assert { not text::starts_with($slug, "-") } "slug must not start with a hyphen";
+        let $page = from uptime::status_pages filter { id == $id and owner == $identity.id } map { id, owner };
+        assert { is::some($page.id) } "status page not found";
+        let $taken = from uptime::status_pages
+            filter { slug == $slug and owner == $identity.id and id != $id } map { id, slug };
+        assert { is::none($taken.id) } "this slug is already taken";
+        update uptime::status_pages { slug: $slug, title: text::trim($title) }
+            filter { id == $id and owner == $identity.id }
+    };
+    create procedure policy uptime_call_update_status_page on uptime::update_status_page {
+        call: { filter { $identity.kind == "user" or $identity.kind == "guest" } }
+    }
+};

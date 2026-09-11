@@ -9,6 +9,7 @@ import {
   useUpdateStatusPage,
 } from '@/hooks/use-status-pages'
 import { useLiveMonitors } from '@/store/realtime'
+import { errorMessage, rethrowUnrecorded } from '@/lib/errors'
 import type { StatusPage, StatusPageInput } from '@/lib/types'
 import { Button, Card, CardContent, Input, Loading } from '@reifydb/ui'
 
@@ -76,6 +77,7 @@ function StatusPageForm({
   }
 
   const error = validationError ?? submitError
+  const missing = monitors == null ? [] : [...selected].filter((id) => !monitors.some((m) => m.id === id))
 
   return (
     <Card>
@@ -123,6 +125,15 @@ function StatusPageForm({
                   <span className="text-text-muted text-xs truncate">{m.target}</span>
                 </label>
               ))}
+              {missing.map((id) => (
+                <div key={id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                  <span className="font-medium text-status-error">Deleted monitor</span>
+                  <span className="text-text-muted text-xs truncate">{id}</span>
+                  <Button type="button" variant="ghost" size="sm" className="ml-auto" onClick={() => toggle(id)}>
+                    Remove
+                  </Button>
+                </div>
+              ))}
               {(monitors ?? []).length === 0 && (
                 <p className="px-3 py-4 text-sm text-text-muted">
                   No monitors available. Create a monitor first.
@@ -144,18 +155,16 @@ function StatusPageForm({
 
 export function StatusPageNewPage() {
   const navigate = useNavigate()
-  const create = useCreateStatusPage()
+  const { create, isPending, error } = useCreateStatusPage()
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl">New status page</h1>
       <StatusPageForm
-        submitting={create.isPending}
-        submitError={create.error?.message ?? null}
+        submitting={isPending}
+        submitError={error == null ? null : errorMessage(error)}
         onSubmit={(input) =>
-          create.mutate(input, {
-            onSuccess: () => void navigate({ to: '/status-pages' }),
-          })
+          void create(input).then(() => navigate({ to: '/status-pages' }), rethrowUnrecorded)
         }
       />
     </div>
@@ -166,7 +175,7 @@ export function StatusPageEditPage() {
   const { pageId } = useParams({ strict: false }) as { pageId: string }
   const navigate = useNavigate()
   const { data: page, isLoading, error } = useStatusPage(pageId)
-  const update = useUpdateStatusPage(pageId)
+  const { update, isPending, error: updateError } = useUpdateStatusPage(pageId)
 
   if (isLoading) return <Loading />
   if (error != null || page == null) {
@@ -178,12 +187,10 @@ export function StatusPageEditPage() {
       <h1 className="text-2xl">Edit {page.title}</h1>
       <StatusPageForm
         page={page}
-        submitting={update.isPending}
-        submitError={update.error?.message ?? null}
+        submitting={isPending}
+        submitError={updateError == null ? null : errorMessage(updateError)}
         onSubmit={(input) =>
-          update.mutate(input, {
-            onSuccess: () => void navigate({ to: '/status-pages' }),
-          })
+          void update(input).then(() => navigate({ to: '/status-pages' }), rethrowUnrecorded)
         }
       />
     </div>

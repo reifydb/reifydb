@@ -1,0 +1,52 @@
+CREATE MIGRATION 'uptime_policies' {
+    create session policy uptime_realtime {
+        subscription: { filter { true } }
+    };
+    create table policy uptime_monitors on uptime::monitors {
+        from: { filter { owner == $identity.id or $identity.kind == "service" } },
+        insert: { filter { owner == $identity.id } },
+        update: { filter { owner == $identity.id or $identity.kind == "service" } },
+        delete: { filter { owner == $identity.id } }
+    };
+    create table policy uptime_results on uptime::results {
+        from: { filter { owner == $identity.id } },
+        insert: { filter { $identity.kind == "service" } },
+        delete: { filter { owner == $identity.id } }
+    };
+    create table policy uptime_monitor_regions on uptime::monitor_regions {
+        from: { filter { owner == $identity.id or $identity.kind == "service" } },
+        insert: { filter { owner == $identity.id } },
+        update: { filter { $identity.kind == "service" } },
+        delete: { filter { owner == $identity.id } }
+    };
+    create table policy uptime_regions on uptime::regions {
+        from: { filter { true } }
+    };
+    create table policy uptime_status_pages on uptime::status_pages {
+        from: { filter { owner == $identity.id } },
+        insert: { filter { owner == $identity.id } },
+        update: { filter { owner == $identity.id } },
+        delete: { filter { owner == $identity.id } }
+    };
+    create table policy uptime_status_page_monitors on uptime::status_page_monitors {
+        from: { filter { owner == $identity.id } },
+        insert: { filter { owner == $identity.id } },
+        delete: { filter { owner == $identity.id } }
+    };
+    create table policy uptime_probes on uptime::probes {
+        from: { filter { true } },
+        insert: { filter { $identity.kind == "service" } },
+        update: { filter { $identity.kind == "service" } },
+        delete: { filter { $identity.kind == "service" } }
+    };
+    create ringbuffer policy uptime_jobs on uptime::jobs {
+        from: { filter { $identity.kind == "service" } },
+        delete: { filter { $identity.kind == "service" } }
+    };
+    create view policy uptime_daily_totals on uptime::daily_totals {
+        from: { filter { owner == $identity.id } }
+    };
+    create view policy uptime_daily_ups on uptime::daily_ups {
+        from: { filter { owner == $identity.id } }
+    }
+};

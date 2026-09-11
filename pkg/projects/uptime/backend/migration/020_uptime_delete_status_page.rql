@@ -1,0 +1,11 @@
+CREATE MIGRATION 'uptime_delete_status_page' {
+    create procedure uptime::delete_status_page { id: uuid7 } as {
+        let $page = from uptime::status_pages filter { id == $id and owner == $identity.id } map { id, owner };
+        assert { is::some($page.id) } "status page not found";
+        delete uptime::status_pages filter { id == $id and owner == $identity.id };
+        delete uptime::status_page_monitors filter { status_page_id == $id and owner == $identity.id }
+    };
+    create procedure policy uptime_call_delete_status_page on uptime::delete_status_page {
+        call: { filter { $identity.kind == "user" or $identity.kind == "guest" } }
+    }
+};

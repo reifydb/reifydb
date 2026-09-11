@@ -3,7 +3,6 @@
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 
-mod assets;
 mod auth;
 mod checks;
 mod cli;
@@ -13,7 +12,6 @@ mod guest;
 mod probe;
 mod routes;
 mod scheduler;
-mod schema;
 mod state;
 mod store;
 
@@ -29,6 +27,7 @@ use reifydb::{
 	value::value::duration::Duration,
 };
 use reifydb_client::{WireFormat, WsClient};
+use reifydb_uptime::migration_path;
 use reqwest::{Client, redirect::Policy};
 use rustls::crypto::ring::default_provider;
 use tokio::{net::TcpListener, pin, runtime::Builder, select, sync::watch, time::interval};
@@ -98,7 +97,7 @@ fn main() {
 		.with_http(move |http| http.bind_addr(reifydb_http_bind))
 		.with_ws(move |ws| ws.bind_addr(reifydb_ws_bind))
 		.with_flow(|flow| flow)
-		.with_migrations(schema::migrations())
+		.with_migrations(migration_path())
 		.with_tracing(|t| {
 			t.with_console(|console| console.color(true)).with_filter("info,reifydb_uptime=debug")
 		})

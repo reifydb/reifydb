@@ -15,6 +15,7 @@ use tracing::{debug, warn};
 use crate::{
 	checks::{self, CheckContext},
 	error::ApiError,
+	scheduler::bounded_timeout,
 	store::{self, JobRow, ProbeBackend},
 };
 
@@ -85,9 +86,10 @@ async fn handle_job(
 	name: &str,
 	job: &JobRow,
 ) -> Result<(), ApiError> {
-	let Some(monitor) = store::find_monitor_for_check(backend, job.monitor_id).await? else {
+	let Some(mut monitor) = store::find_monitor_for_check(backend, job.monitor_id).await? else {
 		return Ok(());
 	};
+	monitor.timeout = bounded_timeout(monitor.timeout, monitor.interval);
 	let outcome = checks::run_check(ctx, &monitor).await;
 	debug!(probe = %name, monitor = %monitor.name, success = outcome.success, "check completed");
 	let checked_at = ctx.clock.now();

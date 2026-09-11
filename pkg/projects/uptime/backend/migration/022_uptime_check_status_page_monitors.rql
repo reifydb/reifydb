@@ -1,0 +1,14 @@
+CREATE MIGRATION 'uptime_check_status_page_monitors' {
+    create procedure uptime::check_status_page_monitors { status_page_id: uuid7 } as {
+        let $page = from uptime::status_pages filter { id == $status_page_id and owner == $identity.id }
+            map { id, owner };
+        assert { is::some($page.id) } "status page not found";
+        let $count = from uptime::status_page_monitors
+            filter { status_page_id == $status_page_id and owner == $identity.id }
+            aggregate { n: math::count(monitor_id) } by { status_page_id };
+        assert { is::some($count.n) and $count.n >= 1 } "a status page must contain at least one monitor"
+    };
+    create procedure policy uptime_call_check_status_page_monitors on uptime::check_status_page_monitors {
+        call: { filter { $identity.kind == "user" or $identity.kind == "guest" } }
+    }
+};

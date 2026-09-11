@@ -3,17 +3,16 @@
 
 import { useCallback } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@reifydb/auth'
+import type { Store } from '@reifydb/react'
 import { markSignedOut } from '@/lib/session-flags'
+import { isGuestSession } from './use-me'
 
 export function useSessionReset(): () => Promise<void> {
   const { signOut } = useAuth()
-  const queryClient = useQueryClient()
   return useCallback(async () => {
     await signOut()
-    queryClient.clear()
-  }, [signOut, queryClient])
+  }, [signOut])
 }
 
 export function useSignOut(): () => Promise<void> {
@@ -24,4 +23,10 @@ export function useSignOut(): () => Promise<void> {
     await reset()
     await navigate({ to: '/login' })
   }, [reset, navigate])
+}
+
+export function useEndSession(): (store: Store) => Promise<void> {
+  const reset = useSessionReset()
+  const signOut = useSignOut()
+  return useCallback((store: Store) => (isGuestSession(store) ? reset() : signOut()), [reset, signOut])
 }

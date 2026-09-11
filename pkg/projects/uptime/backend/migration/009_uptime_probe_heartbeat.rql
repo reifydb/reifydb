@@ -1,0 +1,7 @@
+CREATE MIGRATION 'uptime_probe_heartbeat' {
+    create procedure uptime::probe_heartbeat { probe: identity_id, seen: datetime }
+        as { update uptime::probes { last_seen: $seen } filter { id == $probe } };
+    create procedure policy uptime_call_probe_heartbeat on uptime::probe_heartbeat {
+        call: { filter { $identity.kind == "service" } }
+    }
+};

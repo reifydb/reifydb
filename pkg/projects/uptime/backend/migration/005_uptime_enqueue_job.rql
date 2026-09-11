@@ -1,0 +1,4 @@
+CREATE MIGRATION 'uptime_enqueue_job' {
+    create procedure uptime::enqueue_job { job_id: uuid7, monitor_id: uuid7, region_id: uuid7 }
+        as { insert uptime::jobs [{ id: $job_id, monitor_id: $monitor_id, region_id: $region_id }] }
+};

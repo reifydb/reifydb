@@ -1,0 +1,14 @@
+CREATE MIGRATION 'uptime_delete_monitor' {
+    create procedure uptime::delete_monitor { id: uuid7 } as {
+        let $monitor = from uptime::monitors filter { id == $id and owner == $identity.id } map { id, owner };
+        assert { is::some($monitor.id) } "monitor not found";
+        delete uptime::monitors filter { id == $id and owner == $identity.id };
+        delete uptime::monitor_regions filter { monitor_id == $id and owner == $identity.id };
+        delete uptime::results filter { monitor_id == $id and owner == $identity.id };
+        delete uptime::status_page_monitors filter { monitor_id == $id and owner == $identity.id }
+    };
+
+    create procedure policy uptime_call_delete_monitor on uptime::delete_monitor {
+        call: { filter { $identity.kind == "user" or $identity.kind == "guest" } }
+    }
+};

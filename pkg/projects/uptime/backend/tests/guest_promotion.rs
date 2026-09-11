@@ -13,8 +13,6 @@
 
 #[path = "../src/guest.rs"]
 mod guest;
-#[path = "../src/schema.rs"]
-mod schema;
 
 use std::collections::HashMap;
 
@@ -27,13 +25,14 @@ use reifydb::{
 		value::{duration::Duration, frame::frame::Frame, into::IntoValue, uuid::Uuid7},
 	},
 };
+use reifydb_uptime::migration_path;
 
 use crate::guest::{PromotionError, create_guest, guest_session_ttl, promote_guest};
 
 const PASSWORD: &str = "correct horse battery";
 
 fn build() -> Database {
-	server::memory().with_flow(|f| f).with_migrations(schema::migrations()).build().expect("build memory db")
+	server::memory().with_flow(|f| f).with_migrations(migration_path()).build().expect("build memory db")
 }
 
 fn params(entries: &[(&str, Value)]) -> Params {

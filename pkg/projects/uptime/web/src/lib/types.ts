@@ -87,11 +87,6 @@ export interface DailyUptime {
   up: number;
 }
 
-export interface MonitorDaily {
-  monitor_id: string;
-  daily: DailyUptime[];
-}
-
 export interface PublicStatusRegion {
   label: string;
   status: MonitorStatus;

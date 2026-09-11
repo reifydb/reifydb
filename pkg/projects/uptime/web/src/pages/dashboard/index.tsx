@@ -12,6 +12,7 @@ import {
   useRegionLabels,
 } from '@/store/realtime'
 import type { MonitorRegion, Result } from '@/lib/types'
+import { errorMessage } from '@/lib/errors'
 import { formatLatency } from '@/lib/format'
 import { RelativeTime } from '@/components/relative-time'
 import {
@@ -47,7 +48,16 @@ function RegionRows({
   regions: MonitorRegion[]
   labels: Record<string, string>
 }) {
-  const results = useLiveResults(monitorId) ?? []
+  const { data: results, error } = useLiveResults(monitorId)
+  if (error != null) {
+    return (
+      <TableRow className="bg-bg-secondary/40">
+        <td colSpan={6} className="py-3.5 pl-10">
+          <p className="text-sm text-status-error">Failed to load checks: {errorMessage(error)}</p>
+        </td>
+      </TableRow>
+    )
+  }
   return (
     <>
       {regions.map((r) => {

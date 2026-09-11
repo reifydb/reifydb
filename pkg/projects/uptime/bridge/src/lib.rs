@@ -4,9 +4,9 @@
 use napi::{Error as NapiError, Result as NapiResult};
 use napi_derive::napi;
 use reifydb_node::ReifydbNode;
-use reifydb_uptime::schema;
+use reifydb_uptime::migration_path;
 
 #[napi]
 pub fn create() -> NapiResult<ReifydbNode> {
-	ReifydbNode::new(schema::migrations()).map_err(|e| NapiError::from_reason(format!("{e:?}")))
+	ReifydbNode::new(migration_path()).map_err(|e| NapiError::from_reason(format!("{e:?}")))
 }

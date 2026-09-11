@@ -1,0 +1,34 @@
+CREATE MIGRATION 'uptime_create_monitor' {
+    create procedure uptime::create_monitor {
+        id: uuid7, name: utf8, kind: utf8, target: utf8, interval: duration, timeout: duration,
+        http_method: Option(utf8), expected_status: Option(int2), keyword: Option(utf8),
+        expected_ip: Option(utf8), failure_threshold: int2, enabled: bool
+    } as {
+        assert { text::length(text::trim($name)) > 0 and text::length(text::trim($name)) <= 200 }
+            "name must be between 1 and 200 characters";
+        assert { text::length(text::trim($target)) > 0 and text::length(text::trim($target)) <= 500 }
+            "target must be between 1 and 500 characters";
+        assert { $interval >= duration::seconds(5) } "interval must be at least 5 seconds";
+        assert { $timeout >= duration::seconds(1) } "timeout must be at least 1 second";
+        assert { $timeout <= $interval } "timeout must not exceed the interval";
+        assert { $failure_threshold >= 1 } "failure threshold must be at least 1";
+        assert { is::none($expected_status) or ($expected_status >= 100 and $expected_status <= 599) }
+            "expected status must be a valid HTTP status code";
+        assert { $kind == "http" or $kind == "tcp" or $kind == "ping" or $kind == "dns" }
+            "kind must be one of http, tcp, ping, dns";
+        assert { $kind != "http" or is::none($http_method) or $http_method == "GET" or $http_method == "HEAD" }
+            "http method must be GET or HEAD";
+        assert { is::none($keyword) or text::length($keyword) <= 200 } "keyword must be at most 200 characters";
+        assert { is::none($expected_ip) or text::length($expected_ip) <= 45 }
+            "expected ip must be at most 45 characters";
+        insert uptime::monitors [{ id: $id, owner: $identity.id, name: text::trim($name),
+            kind: $kind, target: text::trim($target), interval: $interval, timeout: $timeout,
+            http_method: $http_method, expected_status: $expected_status, keyword: $keyword,
+            expected_ip: $expected_ip, failure_threshold: $failure_threshold, enabled: $enabled,
+            created_at: datetime::now(), last_checked_at: none, consecutive_failures: 0,
+            status: "unknown" }] returning { id }
+    };
+    create procedure policy uptime_call_create_monitor on uptime::create_monitor {
+        call: { filter { $identity.kind == "user" or $identity.kind == "guest" } }
+    }
+};

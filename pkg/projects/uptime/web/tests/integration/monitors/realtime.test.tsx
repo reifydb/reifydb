@@ -11,7 +11,7 @@
 
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DurationValue, Option, type Store } from '@reifydb/react'
+import { DurationValue, Option, Uuid7Value, type Store } from '@reifydb/react'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { DashboardPage } from '@/pages/dashboard'
 import { loadBackend } from '../../support/backend'
@@ -22,7 +22,7 @@ vi.mock('@reifydb/auth', async () => (await import('../../support/auth-mock')).a
 vi.mock('@tanstack/react-router', async () => (await import('../../support/router-mock')).routerMock())
 
 const CREATE_MONITOR =
-  'CALL uptime::create_monitor($name, $kind, $target, $interval, $timeout, $http_method, $expected_status, $keyword, $expected_ip, $failure_threshold, $enabled)'
+  'CALL uptime::create_monitor($id, $name, $kind, $target, $interval, $timeout, $http_method, $expected_status, $keyword, $expected_ip, $failure_threshold, $enabled)'
 
 let create: TestFactory
 
@@ -46,6 +46,7 @@ describe('the dashboard over a live subscription, unbatched', () => {
     return client.command(
       CREATE_MONITOR,
       {
+        id: Uuid7Value.generate().toString(),
         name,
         kind: 'http',
         target,
@@ -140,6 +141,7 @@ describe('the dashboard over one batched subscription', () => {
     await client.command(
       CREATE_MONITOR,
       {
+        id: Uuid7Value.generate().toString(),
         name: 'gamma-api',
         kind: 'http',
         target: 'https://gamma.example.com/health',
@@ -162,6 +164,7 @@ describe('the dashboard over one batched subscription', () => {
     await client.command(
       CREATE_MONITOR,
       {
+        id: Uuid7Value.generate().toString(),
         name: 'delta-api',
         kind: 'http',
         target: 'https://delta.example.com/health',

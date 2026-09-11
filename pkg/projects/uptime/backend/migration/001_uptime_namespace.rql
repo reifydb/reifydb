@@ -1,0 +1,4 @@
+CREATE MIGRATION 'uptime_namespace' {
+    create namespace uptime;
+    create user attribute email: utf8
+};

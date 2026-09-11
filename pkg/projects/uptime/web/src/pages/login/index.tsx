@@ -3,7 +3,6 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@reifydb/auth'
 import { useMe } from '@/hooks/use-me'
 import { clearSignedOut } from '@/lib/session-flags'
@@ -12,7 +11,6 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@reifyd
 export function LoginPage() {
   const { signIn, status, error } = useAuth()
   const { data: me } = useMe()
-  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -32,7 +30,6 @@ export function LoginPage() {
     if (email.trim().length === 0 || password.length === 0) return
     await signIn({ identifier: email.trim().toLowerCase(), password })
     clearSignedOut()
-    await queryClient.invalidateQueries({ queryKey: ['me'] })
   }
 
   function continueAsGuest() {

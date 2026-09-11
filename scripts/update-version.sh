@@ -80,7 +80,9 @@ TS_PACKAGES=(
     "pkg/typescript/auth-solana/package.json"
     "pkg/typescript/editor/package.json"
     "pkg/typescript/react/package.json"
+    "pkg/typescript/reifydb/package.json"
     "pkg/typescript/shell/package.json"
+    "pkg/typescript/store/package.json"
     "pkg/typescript/ui/package.json"
     "pkg/typescript/wasm/package.json"
 )

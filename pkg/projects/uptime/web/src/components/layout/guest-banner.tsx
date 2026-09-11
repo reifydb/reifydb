@@ -2,8 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 import { Link } from '@tanstack/react-router'
+import { useMe } from '@/hooks/use-me'
 
 export function GuestBanner() {
+  const { data: me } = useMe()
+  if (me?.guest !== true) return null
   return (
     <div className="w-full border-b-2 border-border-default bg-primary">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-6">

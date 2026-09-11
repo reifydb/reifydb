@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+import { useNow } from '@/hooks/use-now'
 import { useProbes } from '@/hooks/use-probes'
 import { RelativeTime } from '@/components/relative-time'
 import {
@@ -19,6 +20,7 @@ const ONLINE_WINDOW_MS = 30_000
 
 export function ProbesPage() {
   const { data: probes, isLoading, error } = useProbes()
+  const now = useNow()
 
   return (
     <div className="space-y-6">
@@ -51,7 +53,7 @@ export function ProbesPage() {
             </TableHead>
             <TableBody>
               {probes.map((p) => {
-                const online = Date.now() - Date.parse(p.last_seen) < ONLINE_WINDOW_MS
+                const online = now - Date.parse(p.last_seen) < ONLINE_WINDOW_MS
                 return (
                   <TableRow key={p.id}>
                     <TableCell className="font-mono font-medium text-text-primary">

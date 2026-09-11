@@ -8,6 +8,7 @@ import { useDeleteMonitor, useUpdateMonitor } from '@/hooks/use-monitors'
 import { useLiveMonitor, useLiveResults, useMonitorRegions, useRegionLabels } from '@/store/realtime'
 import { useProbeNames } from '@/hooks/use-probes'
 import type { Result, Monitor } from '@/lib/types'
+import { errorMessage, rethrowUnrecorded } from '@/lib/errors'
 import { formatDateTime, formatLatency } from '@/lib/format'
 import {
   Badge,
@@ -64,21 +65,23 @@ function to_input(monitor: Monitor, regions: string[], enabled: boolean) {
 export function MonitorDetailPage() {
   const { monitorId } = useParams({ strict: false }) as { monitorId: string }
   const navigate = useNavigate()
-  const { monitor, ready } = useLiveMonitor(monitorId)
-  const results = useLiveResults(monitorId)
-  const monitorRegions = useMonitorRegions(monitorId)
+  const { monitor, ready, error: monitorError } = useLiveMonitor(monitorId)
+  const { data: checks, error: checksError } = useLiveResults(monitorId)
+  const { data: monitorRegions } = useMonitorRegions(monitorId)
   const regionLabels = useRegionLabels()
-  const probeNames = useProbeNames()
-  const update = useUpdateMonitor(monitorId)
-  const remove = useDeleteMonitor()
+  const { data: probeNames, error: probeNamesError } = useProbeNames()
+  const { update, isPending: updating, error: updateError } = useUpdateMonitor(monitorId)
+  const { remove, isPending: removing, error: removeError } = useDeleteMonitor()
   const [regionFilter, setRegionFilter] = useState<string | null>(null)
 
+  if (monitorError != null) {
+    return <p className="text-sm text-status-error">Failed to load monitor: {errorMessage(monitorError)}</p>
+  }
   if (!ready) return <Loading />
   if (monitor == null) {
     return <p className="text-sm text-status-error">Monitor not found</p>
   }
 
-  const checks = results ?? []
   const regionIds = monitorRegions.map((mr) => mr.region_id)
   const upCount = monitorRegions.filter((mr) => mr.status === 'up').length
   const filteredChecks =
@@ -86,15 +89,13 @@ export function MonitorDetailPage() {
 
   function toggle_enabled() {
     if (monitor == null) return
-    update.mutate(to_input(monitor, regionIds, !monitor.enabled))
+    void update(to_input(monitor, regionIds, !monitor.enabled)).catch(rethrowUnrecorded)
   }
 
   function delete_monitor() {
     if (monitor == null) return
     if (!window.confirm(`Delete monitor "${monitor.name}"? This cannot be undone.`)) return
-    remove.mutate(monitor.id, {
-      onSuccess: () => void navigate({ to: '/monitors' }),
-    })
+    void remove(monitor.id).then(() => navigate({ to: '/monitors' }), rethrowUnrecorded)
   }
 
   return (
@@ -122,7 +123,13 @@ export function MonitorDetailPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={toggle_enabled} disabled={update.isPending}>
+          {updateError != null && (
+            <p className="text-sm text-status-error">Failed to update monitor: {errorMessage(updateError)}</p>
+          )}
+          {removeError != null && (
+            <p className="text-sm text-status-error">Failed to delete monitor: {errorMessage(removeError)}</p>
+          )}
+          <Button variant="secondary" size="sm" onClick={toggle_enabled} disabled={updating}>
             {monitor.enabled ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             {monitor.enabled ? 'Pause' : 'Resume'}
           </Button>
@@ -136,7 +143,7 @@ export function MonitorDetailPage() {
             variant="destructive"
             size="sm"
             onClick={delete_monitor}
-            disabled={remove.isPending}
+            disabled={removing}
           >
             <Trash2 className="h-4 w-4" />
             Delete
@@ -208,7 +215,12 @@ export function MonitorDetailPage() {
               </div>
             )}
           </div>
-          {filteredChecks.length === 0 ? (
+          {probeNamesError != null && (
+            <p className="text-sm text-status-error">Failed to load probes: {errorMessage(probeNamesError)}</p>
+          )}
+          {checksError != null ? (
+            <p className="text-sm text-status-error">Failed to load checks: {errorMessage(checksError)}</p>
+          ) : filteredChecks.length === 0 ? (
             <EmptyState title="No checks recorded yet" />
           ) : (
             <Table>

@@ -38,35 +38,10 @@ pub struct MonitorRow {
 	pub keyword: Option<String>,
 	#[frame(optional)]
 	pub expected_ip: Option<String>,
-	pub failure_threshold: i16,
 	pub enabled: bool,
-	pub created_at: DateTime,
 	#[frame(optional)]
 	pub last_checked_at: Option<DateTime>,
-	pub consecutive_failures: i32,
 	pub status: String,
-}
-
-#[derive(FromFrame, Clone, Debug)]
-pub struct ResultRow {
-	pub region_id: Uuid7,
-	#[frame(optional)]
-	pub probe: Option<IdentityId>,
-	pub checked_at: DateTime,
-	pub success: bool,
-	#[frame(optional)]
-	pub response_time: Option<Duration>,
-	#[frame(optional)]
-	pub status_code: Option<i16>,
-	#[frame(optional)]
-	pub error: Option<String>,
-}
-
-#[derive(FromFrame, Clone, Debug)]
-pub struct ProbeRow {
-	pub id: IdentityId,
-	pub name: String,
-	pub last_seen: DateTime,
 }
 
 #[derive(FromFrame, Clone, Debug)]
@@ -78,6 +53,7 @@ pub struct JobRow {
 #[derive(FromFrame, Clone, Debug)]
 pub struct MonitorRegionRow {
 	pub monitor_id: Uuid7,
+	pub owner: IdentityId,
 	pub region_id: Uuid7,
 	pub status: String,
 	#[frame(optional)]
@@ -90,7 +66,6 @@ pub struct StatusPageRow {
 	pub owner: IdentityId,
 	pub slug: String,
 	pub title: String,
-	pub created_at: DateTime,
 }
 
 #[derive(FromFrame)]
@@ -111,7 +86,6 @@ struct IdentityRow {
 
 #[derive(FromFrame)]
 struct IdentityKindRow {
-	name: String,
 	kind: String,
 }
 
@@ -246,17 +220,11 @@ fn rows<T: FromFrame>(frames: &[Frame]) -> Result<Vec<T>, ApiError> {
 	T::from_frame(frame).map_err(|e| ApiError::internal("failed to decode frame", e))
 }
 
-pub async fn list_monitors(st: &AppState, owner: IdentityId) -> Result<Vec<MonitorRow>, ApiError> {
-	let frames = exec_query(
-		st,
-		"from uptime::monitors filter { owner == $owner } sort {created_at:desc}".to_string(),
-		params! { owner: owner },
-	)
-	.await?;
-	rows(&frames)
-}
-
-pub async fn find_monitor(st: &AppState, owner: IdentityId, id: Uuid7) -> Result<Option<MonitorRow>, ApiError> {
+pub async fn find_monitor_owned_by(
+	st: &AppState,
+	id: Uuid7,
+	owner: IdentityId,
+) -> Result<Option<MonitorRow>, ApiError> {
 	let frames = exec_query(
 		st,
 		"from uptime::monitors filter { id == $id and owner == $owner }".to_string(),
@@ -266,141 +234,9 @@ pub async fn find_monitor(st: &AppState, owner: IdentityId, id: Uuid7) -> Result
 	Ok(rows::<MonitorRow>(&frames)?.into_iter().next())
 }
 
-pub async fn find_monitor_any_owner(st: &AppState, id: Uuid7) -> Result<Option<MonitorRow>, ApiError> {
-	let frames =
-		exec_query(st, "from uptime::monitors filter { id == $id }".to_string(), params! { id: id }).await?;
-	Ok(rows::<MonitorRow>(&frames)?.into_iter().next())
-}
-
 pub async fn enabled_monitors(st: &AppState) -> Result<Vec<MonitorRow>, ApiError> {
 	let frames =
 		exec_query(st, "from uptime::monitors filter { enabled == true }".to_string(), Params::None).await?;
-	rows(&frames)
-}
-
-fn monitor_regions_insert_statement(count: usize) -> String {
-	let rows: Vec<String> = (0..count)
-		.map(|i| {
-			format!("{{ monitor_id: $id, owner: $owner, region_id: $reg{i}, status: \"unknown\", \
-				 last_checked_at: none, consecutive_failures: 0 }}")
-		})
-		.collect();
-	format!("INSERT uptime::monitor_regions [{}]", rows.join(", "))
-}
-
-pub async fn insert_monitor(st: &AppState, row: &MonitorRow, regions: &[Uuid7]) -> Result<(), ApiError> {
-	let mut map: HashMap<String, Value> = HashMap::new();
-	map.insert("id".into(), row.id.into_value());
-	map.insert("owner".into(), row.owner.into_value());
-	map.insert("name".into(), row.name.clone().into_value());
-	map.insert("kind".into(), row.kind.clone().into_value());
-	map.insert("target".into(), row.target.clone().into_value());
-	map.insert("interval".into(), row.interval.into_value());
-	map.insert("timeout".into(), row.timeout.into_value());
-	map.insert("http_method".into(), opt_value(row.http_method.clone()));
-	map.insert("expected_status".into(), opt_value(row.expected_status));
-	map.insert("keyword".into(), opt_value(row.keyword.clone()));
-	map.insert("expected_ip".into(), opt_value(row.expected_ip.clone()));
-	map.insert("failure_threshold".into(), row.failure_threshold.into_value());
-	map.insert("enabled".into(), row.enabled.into_value());
-	map.insert("created_at".into(), row.created_at.into_value());
-	for (i, region_id) in regions.iter().enumerate() {
-		map.insert(format!("reg{i}"), (*region_id).into_value());
-	}
-	let mut rql = String::from(
-		"INSERT uptime::monitors [{ \
-			id: $id, owner: $owner, name: $name, kind: $kind, target: $target, \
-			interval: $interval, timeout: $timeout, http_method: $http_method, \
-			expected_status: $expected_status, keyword: $keyword, expected_ip: $expected_ip, \
-			failure_threshold: $failure_threshold, enabled: $enabled, created_at: $created_at, \
-			last_checked_at: none, consecutive_failures: 0, status: \"unknown\" \
-		}]",
-	);
-	if !regions.is_empty() {
-		rql.push_str(";\n");
-		rql.push_str(&monitor_regions_insert_statement(regions.len()));
-	}
-	exec_command(st, rql, Params::from(map)).await?;
-	Ok(())
-}
-
-pub async fn update_monitor(
-	st: &AppState,
-	owner: IdentityId,
-	row: &MonitorRow,
-	regions: &[Uuid7],
-) -> Result<(), ApiError> {
-	let mut map: HashMap<String, Value> = HashMap::new();
-	map.insert("id".into(), row.id.into_value());
-	map.insert("owner".into(), owner.into_value());
-	map.insert("name".into(), row.name.clone().into_value());
-	map.insert("kind".into(), row.kind.clone().into_value());
-	map.insert("target".into(), row.target.clone().into_value());
-	map.insert("interval".into(), row.interval.into_value());
-	map.insert("timeout".into(), row.timeout.into_value());
-	map.insert("http_method".into(), opt_value(row.http_method.clone()));
-	map.insert("expected_status".into(), opt_value(row.expected_status));
-	map.insert("keyword".into(), opt_value(row.keyword.clone()));
-	map.insert("expected_ip".into(), opt_value(row.expected_ip.clone()));
-	map.insert("failure_threshold".into(), row.failure_threshold.into_value());
-	map.insert("enabled".into(), row.enabled.into_value());
-	exec_command(
-		st,
-		"UPDATE uptime::monitors { \
-			name: $name, kind: $kind, target: $target, interval: $interval, timeout: $timeout, \
-			http_method: $http_method, expected_status: $expected_status, keyword: $keyword, \
-			expected_ip: $expected_ip, failure_threshold: $failure_threshold, enabled: $enabled \
-		} FILTER id == $id and owner == $owner"
-			.to_string(),
-		Params::from(map),
-	)
-	.await?;
-	reconcile_monitor_regions(st, owner, row.id, regions).await?;
-	Ok(())
-}
-
-async fn reconcile_monitor_regions(
-	st: &AppState,
-	owner: IdentityId,
-	monitor_id: Uuid7,
-	desired: &[Uuid7],
-) -> Result<(), ApiError> {
-	let existing: HashSet<Uuid7> =
-		monitor_regions_for_monitor(st, monitor_id).await?.into_iter().map(|r| r.region_id).collect();
-	let desired_set: HashSet<Uuid7> = desired.iter().copied().collect();
-	let removed: Vec<Uuid7> = existing.iter().copied().filter(|r| !desired_set.contains(r)).collect();
-	let added: Vec<Uuid7> = desired.iter().copied().filter(|r| !existing.contains(r)).collect();
-	if removed.is_empty() && added.is_empty() {
-		return Ok(());
-	}
-	let mut map: HashMap<String, Value> = HashMap::new();
-	map.insert("id".into(), monitor_id.into_value());
-	map.insert("owner".into(), owner.into_value());
-	let mut stmts: Vec<String> = Vec::new();
-	for (i, region_id) in removed.iter().enumerate() {
-		map.insert(format!("del{i}"), (*region_id).into_value());
-		stmts.push(format!("DELETE uptime::monitor_regions FILTER monitor_id == $id and region_id == $del{i}"));
-		stmts.push(format!("DELETE uptime::results FILTER monitor_id == $id and region_id == $del{i}"));
-	}
-	if !added.is_empty() {
-		for (i, region_id) in added.iter().enumerate() {
-			map.insert(format!("reg{i}"), (*region_id).into_value());
-		}
-		stmts.push(monitor_regions_insert_statement(added.len()));
-	}
-	exec_command(st, stmts.join(";\n"), Params::from(map)).await?;
-	Ok(())
-}
-
-pub async fn monitor_regions_for_monitor(st: &AppState, monitor_id: Uuid7) -> Result<Vec<MonitorRegionRow>, ApiError> {
-	let frames = exec_query(
-		st,
-		"from uptime::monitor_regions filter { monitor_id == $mid } \
-		 map { monitor_id, region_id, status, last_checked_at }"
-			.to_string(),
-		params! { mid: monitor_id },
-	)
-	.await?;
 	rows(&frames)
 }
 
@@ -408,7 +244,7 @@ pub async fn all_monitor_regions(st: &AppState) -> Result<Vec<MonitorRegionRow>,
 	let frames = exec_query(
 		st,
 		"from uptime::monitor_regions \
-		 map { monitor_id, region_id, status, last_checked_at }"
+		 map { monitor_id, owner, region_id, status, last_checked_at }"
 			.to_string(),
 		Params::None,
 	)
@@ -431,26 +267,12 @@ pub async fn monitor_regions_by_owner(st: &AppState, owner: IdentityId) -> Resul
 	let frames = exec_query(
 		st,
 		"from uptime::monitor_regions filter { owner == $owner } \
-		 map { monitor_id, region_id, status, last_checked_at }"
+		 map { monitor_id, owner, region_id, status, last_checked_at }"
 			.to_string(),
 		params! { owner: owner },
 	)
 	.await?;
 	rows(&frames)
-}
-
-pub async fn delete_monitor(st: &AppState, owner: IdentityId, id: Uuid7) -> Result<(), ApiError> {
-	exec_command(
-		st,
-		"DELETE uptime::monitors FILTER id == $id and owner == $owner;\n\
-		 DELETE uptime::monitor_regions FILTER monitor_id == $id;\n\
-		 DELETE uptime::results FILTER monitor_id == $id;\n\
-		 DELETE uptime::status_page_monitors FILTER monitor_id == $id"
-			.to_string(),
-		params! { id: id, owner: owner },
-	)
-	.await?;
-	Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -483,26 +305,6 @@ pub async fn report_result(
 	)
 	.await?;
 	Ok(())
-}
-
-pub async fn recent_results(st: &AppState, monitor_id: Uuid7) -> Result<Vec<ResultRow>, ApiError> {
-	let frames = exec_query(
-		st,
-		"from uptime::results filter { monitor_id == $mid } \
-		 map { region_id, probe, checked_at, success, response_time, status_code, error } \
-		 sort {checked_at:desc} take 200"
-			.to_string(),
-		params! { mid: monitor_id },
-	)
-	.await?;
-	rows(&frames)
-}
-
-pub async fn list_probes(st: &AppState) -> Result<Vec<ProbeRow>, ApiError> {
-	let frames =
-		exec_query(st, "from uptime::probes map { id, name, last_seen } sort {name}".to_string(), Params::None)
-			.await?;
-	rows(&frames)
 }
 
 pub async fn register_probe(
@@ -718,26 +520,6 @@ pub async fn uptime_since(st: &AppState, monitor_id: Uuid7, since: DateTime) -> 
 	Ok(Some(up as f64 / results.len() as f64))
 }
 
-pub async fn list_status_pages(st: &AppState, owner: IdentityId) -> Result<Vec<StatusPageRow>, ApiError> {
-	let frames = exec_query(
-		st,
-		"from uptime::status_pages filter { owner == $owner } sort {created_at:desc}".to_string(),
-		params! { owner: owner },
-	)
-	.await?;
-	rows(&frames)
-}
-
-pub async fn find_status_page(st: &AppState, owner: IdentityId, id: Uuid7) -> Result<Option<StatusPageRow>, ApiError> {
-	let frames = exec_query(
-		st,
-		"from uptime::status_pages filter { id == $id and owner == $owner }".to_string(),
-		params! { id: id, owner: owner },
-	)
-	.await?;
-	Ok(rows::<StatusPageRow>(&frames)?.into_iter().next())
-}
-
 pub async fn find_status_page_by_slug(st: &AppState, slug: &str) -> Result<Option<StatusPageRow>, ApiError> {
 	let frames = exec_query(
 		st,
@@ -748,80 +530,16 @@ pub async fn find_status_page_by_slug(st: &AppState, slug: &str) -> Result<Optio
 	Ok(rows::<StatusPageRow>(&frames)?.into_iter().next())
 }
 
-pub async fn status_page_members(st: &AppState, page_id: Uuid7) -> Result<Vec<Uuid7>, ApiError> {
+pub async fn status_page_members(st: &AppState, page_id: Uuid7, owner: IdentityId) -> Result<Vec<Uuid7>, ApiError> {
 	let frames = exec_query(
 		st,
-		"from uptime::status_page_monitors filter { status_page_id == $pid } \
+		"from uptime::status_page_monitors filter { status_page_id == $pid and owner == $owner } \
 		 sort {position} map { monitor_id }"
 			.to_string(),
-		params! { pid: page_id },
+		params! { pid: page_id, owner: owner },
 	)
 	.await?;
 	Ok(rows::<MemberRow>(&frames)?.into_iter().map(|m| m.monitor_id).collect())
-}
-
-fn members_insert_statement(page_param: &str, count: usize) -> String {
-	let rows: Vec<String> = (0..count)
-		.map(|i| format!("{{ status_page_id: ${page_param}, monitor_id: $m{i}, position: $p{i} }}"))
-		.collect();
-	format!("INSERT uptime::status_page_monitors [{}]", rows.join(", "))
-}
-
-pub async fn insert_status_page(st: &AppState, row: &StatusPageRow, monitor_ids: &[Uuid7]) -> Result<(), ApiError> {
-	let mut map: HashMap<String, Value> = HashMap::new();
-	map.insert("id".into(), row.id.into_value());
-	map.insert("owner".into(), row.owner.into_value());
-	map.insert("slug".into(), row.slug.clone().into_value());
-	map.insert("title".into(), row.title.clone().into_value());
-	map.insert("created_at".into(), row.created_at.into_value());
-	for (i, mid) in monitor_ids.iter().enumerate() {
-		map.insert(format!("m{i}"), mid.into_value());
-		map.insert(format!("p{i}"), (i as i16).into_value());
-	}
-	let rql = format!(
-		"INSERT uptime::status_pages [{{ id: $id, owner: $owner, slug: $slug, title: $title, created_at: $created_at }}];\n{}",
-		members_insert_statement("id", monitor_ids.len())
-	);
-	exec_command(st, rql, Params::from(map)).await?;
-	Ok(())
-}
-
-pub async fn update_status_page(
-	st: &AppState,
-	owner: IdentityId,
-	page_id: Uuid7,
-	slug: &str,
-	title: &str,
-	monitor_ids: &[Uuid7],
-) -> Result<(), ApiError> {
-	let mut map: HashMap<String, Value> = HashMap::new();
-	map.insert("id".into(), page_id.into_value());
-	map.insert("owner".into(), owner.into_value());
-	map.insert("slug".into(), slug.to_string().into_value());
-	map.insert("title".into(), title.to_string().into_value());
-	for (i, mid) in monitor_ids.iter().enumerate() {
-		map.insert(format!("m{i}"), mid.into_value());
-		map.insert(format!("p{i}"), (i as i16).into_value());
-	}
-	let rql = format!(
-		"UPDATE uptime::status_pages {{ slug: $slug, title: $title }} FILTER id == $id and owner == $owner;\n\
-		 DELETE uptime::status_page_monitors FILTER status_page_id == $id;\n{}",
-		members_insert_statement("id", monitor_ids.len())
-	);
-	exec_command(st, rql, Params::from(map)).await?;
-	Ok(())
-}
-
-pub async fn delete_status_page(st: &AppState, owner: IdentityId, id: Uuid7) -> Result<(), ApiError> {
-	exec_command(
-		st,
-		"DELETE uptime::status_pages FILTER id == $id and owner == $owner;\n\
-		 DELETE uptime::status_page_monitors FILTER status_page_id == $id"
-			.to_string(),
-		params! { id: id, owner: owner },
-	)
-	.await?;
-	Ok(())
 }
 
 pub async fn find_identity_by_name(st: &AppState, name: &str) -> Result<Option<IdentityId>, ApiError> {
@@ -835,19 +553,17 @@ pub async fn find_identity_by_name(st: &AppState, name: &str) -> Result<Option<I
 }
 
 pub struct IdentitySummary {
-	pub name: String,
 	pub kind: String,
 }
 
 pub async fn find_identity_summary(st: &AppState, id: IdentityId) -> Result<Option<IdentitySummary>, ApiError> {
 	let frames = exec_query(
 		st,
-		"from system::identities filter { id == $id } map { name, kind }".to_string(),
+		"from system::identities filter { id == $id } map { kind }".to_string(),
 		params! { id: id },
 	)
 	.await?;
 	Ok(rows::<IdentityKindRow>(&frames)?.into_iter().next().map(|r| IdentitySummary {
-		name: r.name,
 		kind: r.kind,
 	}))
 }

@@ -3,7 +3,6 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@reifydb/auth'
 import { ApiError } from '@/lib/api'
 import { useApi } from '@/hooks/use-api'
@@ -15,7 +14,6 @@ export function RegisterPage() {
   const { signIn, status, error: authError } = useAuth()
   const api = useApi()
   const { data: me } = useMe()
-  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -51,7 +49,6 @@ export function RegisterPage() {
       })
       await signIn({ identifier: normalized, password })
       clearSignedOut()
-      await queryClient.invalidateQueries({ queryKey: ['me'] })
     } catch (err) {
       if (err instanceof ApiError) {
         setFormError(err.message)

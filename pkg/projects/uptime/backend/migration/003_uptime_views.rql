@@ -1,0 +1,23 @@
+CREATE MIGRATION 'uptime_views' {
+    create deferred view uptime::daily_totals {
+        owner: identity_id,
+        monitor_id: uuid7,
+        day: date,
+        n: int8
+    } as {
+        from uptime::results
+        map { owner, monitor_id, day: datetime::date(checked_at) }
+        aggregate { n: math::count(day) } by { owner, monitor_id, day }
+    };
+    create deferred view uptime::daily_ups {
+        owner: identity_id,
+        monitor_id: uuid7,
+        day: date,
+        n: int8
+    } as {
+        from uptime::results
+        filter { success == true }
+        map { owner, monitor_id, day: datetime::date(checked_at) }
+        aggregate { n: math::count(day) } by { owner, monitor_id, day }
+    }
+};

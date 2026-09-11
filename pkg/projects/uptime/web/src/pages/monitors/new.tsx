@@ -3,6 +3,7 @@
 
 import { useNavigate } from '@tanstack/react-router'
 import { useCreateMonitor } from '@/hooks/use-monitors'
+import { errorMessage, rethrowUnrecorded } from '@/lib/errors'
 import type { MonitorInput } from '@/lib/types'
 import { MonitorForm } from './monitor-form.tsx'
 
@@ -11,10 +12,9 @@ export function MonitorNewPage() {
   const { create, isPending, error } = useCreateMonitor()
 
   function onSubmit(input: MonitorInput) {
-    // the hook keeps the error for the form, so the rejection only needs to be settled here
     void create(input).then(
       (id) => navigate({ to: '/monitors/$monitorId', params: { monitorId: id } }),
-      () => undefined,
+      rethrowUnrecorded,
     )
   }
 
@@ -23,7 +23,7 @@ export function MonitorNewPage() {
       <h1 className="text-2xl">New monitor</h1>
       <MonitorForm
         submitting={isPending}
-        submitError={error?.message ?? null}
+        submitError={error == null ? null : errorMessage(error)}
         onSubmit={onSubmit}
       />
     </div>

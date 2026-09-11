@@ -1,0 +1,8 @@
+CREATE MIGRATION 'uptime_find_monitor' {
+    create procedure uptime::find_monitor { monitor_id: uuid7 }
+        as { from uptime::monitors filter { id == $monitor_id } };
+
+    create procedure policy uptime_call_find_monitor on uptime::find_monitor {
+        call: { filter { $identity.kind == "service" } }
+    }
+};

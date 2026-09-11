@@ -4084,10 +4084,8 @@ dependencies = [
  "serde_json",
  "surge-ping",
  "tokio",
- "tower",
  "tower-http",
  "tracing",
- "uuid",
 ]
 
 [[package]]

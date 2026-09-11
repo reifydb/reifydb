@@ -1,7 +1,7 @@
 # ReifyDB Uptime
 
 Self-hostable, multi-user uptime monitoring built on ReifyDB. Runs as a single
-binary that embeds a ReifyDB server, an HTTP API, the web UI, and the check
+binary that embeds a ReifyDB server, an HTTP API, and the check
 worker. Deployed publicly at uptime.reifydb.com.
 
 ## Features
@@ -20,15 +20,12 @@ worker. Deployed publicly at uptime.reifydb.com.
 ## Quick start
 
 ```sh
-cd web && pnpm install && pnpm build && cd ..
 cargo run -p reifydb-uptime-backend
+cd web && pnpm install && pnpm dev
 ```
 
-Open http://localhost:8080 and create a monitor - no account needed.
-Without `web/dist`, the binary still builds and serves a placeholder page.
-
-For UI development run `pnpm dev` in `web/` (Vite on :5173, proxying `/api`
-and `/db` to :8080) while the binary is running. `pnpm dev:local` does the same
+Open http://localhost:5173 and create a monitor - no account needed. Vite
+proxies `/api` and `/db` to the binary on :8080. `pnpm dev:local` does the same
 but resolves the `@reifydb/*` packages from the local sources in
 `pkg/typescript` instead of the published npm packages.
 
@@ -36,11 +33,10 @@ but resolves the `@reifydb/*` packages from the local sources in
 
 | Flag | Env | Default | Purpose |
 |---|---|---|---|
-| `--http-bind` | `UPTIME_HTTP_BIND` | `0.0.0.0:8080` | UI + API + public status pages |
+| `--http-bind` | `UPTIME_HTTP_BIND` | `0.0.0.0:8080` | API + public status pages |
 | `--reifydb-http-bind` | `UPTIME_REIFYDB_HTTP_BIND` | `127.0.0.1:8090` | ReifyDB HTTP subsystem (auth forward target) |
 | `--reifydb-ws-bind` | `UPTIME_REIFYDB_WS_BIND` | `127.0.0.1:8091` | ReifyDB WebSocket subsystem |
 | `--data-dir` | `UPTIME_DATA_DIR` | `/tmp/uptime` | SQLite storage directory |
-| `--max-concurrent-checks` | `UPTIME_MAX_CONCURRENT_CHECKS` | `64` | Check fan-out limit |
 | `--allow-private-targets` | `UPTIME_ALLOW_PRIVATE_TARGETS` | off | Permit monitors that resolve to private/loopback ranges |
 | `--memory` | | off | In-memory storage (demo/tests, no persistence) |
 
@@ -50,7 +46,7 @@ One process, three parts, all on the ReifyDB runtime:
 
 - ReifyDB in server mode (SQLite storage) with HTTP and WS subsystems bound to
   loopback. Schema is bootstrapped through ReifyDB migrations.
-- An Axum server serving the embedded React UI, the `/api` endpoints, and a
+- An Axum server serving the `/api` endpoints and a
   `/db/v1/authenticate` + `/db/v1/logout` forward to the ReifyDB HTTP
   subsystem, so the browser talks to ReifyDB auth same-origin.
 - A scheduler loop that queries due monitors every 2 seconds and fans out

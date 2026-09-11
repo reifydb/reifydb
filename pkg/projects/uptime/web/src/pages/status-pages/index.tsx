@@ -4,6 +4,7 @@
 import { Link } from '@tanstack/react-router'
 import { ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useDeleteStatusPage, useStatusPages } from '@/hooks/use-status-pages'
+import { errorMessage, rethrowUnrecorded } from '@/lib/errors'
 import {
   Button,
   Card,
@@ -19,11 +20,11 @@ import {
 
 export function StatusPagesPage() {
   const { data: pages, isLoading, error } = useStatusPages()
-  const remove = useDeleteStatusPage()
+  const { remove, isPending: removing, error: removeError } = useDeleteStatusPage()
 
   function delete_page(id: string, title: string) {
     if (!window.confirm(`Delete status page "${title}"?`)) return
-    remove.mutate(id)
+    void remove(id).catch(rethrowUnrecorded)
   }
 
   return (
@@ -40,7 +41,10 @@ export function StatusPagesPage() {
 
       {isLoading && <Loading />}
       {error != null && (
-        <p className="text-sm text-status-error">Failed to load status pages: {error.message}</p>
+        <p className="text-sm text-status-error">Failed to load status pages: {errorMessage(error)}</p>
+      )}
+      {removeError != null && (
+        <p className="text-sm text-status-error">Failed to delete status page: {errorMessage(removeError)}</p>
       )}
 
       {pages != null && pages.length === 0 && (
@@ -99,8 +103,9 @@ export function StatusPagesPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="Delete status page"
                         onClick={() => delete_page(p.id, p.title)}
-                        disabled={remove.isPending}
+                        disabled={removing}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

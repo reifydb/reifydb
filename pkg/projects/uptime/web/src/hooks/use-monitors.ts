@@ -2,37 +2,65 @@
 // Copyright (c) 2026 ReifyDB
 
 import { useCallback } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { DurationValue, Option, Shape, useCommand } from '@reifydb/react'
-import { useApi } from './use-api'
-import type { Monitor, MonitorInput } from '@/lib/types'
+import { DurationValue, Option, Utf8Value, Uuid7Value, useCommand } from '@reifydb/react'
+import { useMonitorRegions } from '@/store/realtime'
+import { recorded } from '@/lib/errors'
+import type { MonitorInput } from '@/lib/types'
 
-const CREATE_MONITOR =
-  'CALL uptime::create_monitor($name, $kind, $target, $interval, $timeout, $http_method, $expected_status, $keyword, $expected_ip, $failure_threshold, $enabled)'
+const MONITOR_PARAMS =
+  '$name, $kind, $target, $interval, $timeout, $http_method, $expected_status, $keyword, $expected_ip, $failure_threshold, $enabled'
 
-const CREATED = [Shape.object({ id: Shape.uuid7() })] as const
+const CREATE_MONITOR = `CALL uptime::create_monitor($id, ${MONITOR_PARAMS})`
+
+const UPDATE_MONITOR = `CALL uptime::update_monitor($id, ${MONITOR_PARAMS})`
+
+const DELETE_MONITOR = 'CALL uptime::delete_monitor($id)'
+
+const CHECK_MONITOR_REGIONS = 'CALL uptime::check_monitor_regions($id)'
+
+const NO_FRAMES = [] as const
+
+function optionalUtf8(value: string | undefined) {
+  return value === undefined ? Option.none('Utf8') : Option.some(new Utf8Value(value))
+}
+
+function monitorParams(id: Uuid7Value, input: MonitorInput) {
+  return {
+    id,
+    name: new Utf8Value(input.name),
+    kind: new Utf8Value(input.kind),
+    target: new Utf8Value(input.target),
+    interval: DurationValue.fromMilliseconds(input.interval_ms),
+    timeout: DurationValue.fromMilliseconds(input.timeout_ms),
+    http_method: optionalUtf8(input.http_method),
+    expected_status: input.expected_status === undefined ? Option.none('Int2') : Option.some(input.expected_status),
+    keyword: optionalUtf8(input.keyword),
+    expected_ip: optionalUtf8(input.expected_ip),
+    failure_threshold: input.failure_threshold,
+    enabled: input.enabled,
+  }
+}
+
+function regionCalls(procedure: 'add_monitor_region' | 'remove_monitor_region', key: string, regionIds: string[]) {
+  return {
+    statements: regionIds.map((_, i) => `CALL uptime::${procedure}($id, $${key}_${i})`),
+    params: Object.fromEntries(regionIds.map((regionId, i) => [`${key}_${i}`, new Uuid7Value(regionId)])),
+  }
+}
 
 export function useCreateMonitor() {
-  const { run, isPending, error } = useCommand(CREATED)
+  const { run, isPending, error } = useCommand(NO_FRAMES)
   const create = useCallback(
     async (input: MonitorInput): Promise<string> => {
-      // regions are not sent: RQL has no list-typed procedure parameter yet, so the procedure cannot take them
-      const [rows] = await run(CREATE_MONITOR, {
-        name: input.name,
-        kind: input.kind,
-        target: input.target,
-        interval: DurationValue.fromMilliseconds(input.interval_ms),
-        timeout: DurationValue.fromMilliseconds(input.timeout_ms),
-        http_method: input.http_method === undefined ? Option.none('Utf8') : Option.some(input.http_method),
-        expected_status: input.expected_status === undefined ? Option.none('Int2') : Option.some(input.expected_status),
-        keyword: input.keyword === undefined ? Option.none('Utf8') : Option.some(input.keyword),
-        expected_ip: input.expected_ip === undefined ? Option.none('Utf8') : Option.some(input.expected_ip),
-        failure_threshold: input.failure_threshold,
-        enabled: input.enabled,
-      })
-      const id = rows[0]?.id
-      if (id == null) throw new Error('uptime::create_monitor returned no id')
-      return id
+      const id = Uuid7Value.generate()
+      const added = regionCalls('add_monitor_region', 'add', input.regions)
+      await recorded(
+        run([CREATE_MONITOR, ...added.statements, CHECK_MONITOR_REGIONS].join('; '), {
+          ...monitorParams(id, input),
+          ...added.params,
+        }),
+      )
+      return id.toString()
     },
     [run],
   )
@@ -40,16 +68,41 @@ export function useCreateMonitor() {
 }
 
 export function useUpdateMonitor(id: string) {
-  const api = useApi()
-  return useMutation({
-    mutationFn: (input: MonitorInput) =>
-      api<Monitor>(`/monitors/${id}`, { method: 'PUT', body: input }),
-  })
+  const { data: current } = useMonitorRegions(id)
+  const { run, isPending, error } = useCommand(NO_FRAMES)
+  const update = useCallback(
+    async (input: MonitorInput): Promise<void> => {
+      const before = current.map((mr) => mr.region_id)
+      const removed = regionCalls(
+        'remove_monitor_region',
+        'remove',
+        before.filter((regionId) => !input.regions.includes(regionId)),
+      )
+      const added = regionCalls(
+        'add_monitor_region',
+        'add',
+        input.regions.filter((regionId) => !before.includes(regionId)),
+      )
+      await recorded(
+        run([UPDATE_MONITOR, ...removed.statements, ...added.statements, CHECK_MONITOR_REGIONS].join('; '), {
+          ...monitorParams(new Uuid7Value(id), input),
+          ...removed.params,
+          ...added.params,
+        }),
+      )
+    },
+    [run, id, current],
+  )
+  return { update, isPending, error }
 }
 
 export function useDeleteMonitor() {
-  const api = useApi()
-  return useMutation({
-    mutationFn: (id: string) => api<void>(`/monitors/${id}`, { method: 'DELETE' }),
-  })
+  const { run, isPending, error } = useCommand(NO_FRAMES)
+  const remove = useCallback(
+    async (id: string): Promise<void> => {
+      await recorded(run(DELETE_MONITOR, { id: new Uuid7Value(id) }))
+    },
+    [run],
+  )
+  return { remove, isPending, error }
 }
