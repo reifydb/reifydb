@@ -3,9 +3,10 @@
 
 import type { ReactElement } from 'react'
 import { render } from '@testing-library/react'
-import { Shape, Store, StoreProvider, type StoreClient } from '@reifydb/react'
-import type { TestDb } from '@reifydb/reifydb'
+import { Shape, Store, StoreProvider, type StoreClient, type StoreOptions } from '@reifydb/react'
+import { storeClient, type BridgeClient, type TestDb } from '@reifydb/reifydb'
 import { vi } from 'vitest'
+import { STORE_OPTIONS } from '@/store/client'
 
 // Never settles, so a subscription the test did not seed stays loading instead of flipping state outside act().
 function pendingClient(): StoreClient {
@@ -18,23 +19,22 @@ export function seededStore(): Store {
 }
 
 // The engine leaves $identity unset for root and uptime::create_monitor reads $identity.id, so the bridge runs as a real user.
-export async function bridgeStore(db: TestDb, user: string): Promise<{ store: Store; client: StoreClient }> {
+export async function bridgeStore(
+  db: TestDb,
+  user: string,
+  overrides: StoreOptions = {},
+): Promise<{ store: Store; client: BridgeClient }> {
   await db.adminRoot(`CREATE USER ${user}`, {}, [])
   const [[row]] = await db.queryRoot(
     'from system::identities filter { name == $name } map { id }',
     { name: user },
     [Shape.object({ id: Shape.identityid() })],
   )
-  const identity = row.id
-  const noSubscriptions = () => Promise.reject(new Error('the native bridge has no subscription support'))
-  const client: StoreClient = {
-    query: (rql, params, shapes) => db.queryAs(identity, rql, params, shapes),
-    command: (rql, params, shapes) => db.commandAs(identity, rql, params, shapes),
-    subscribe: noSubscriptions,
-    unsubscribe: noSubscriptions,
-  }
+  const client = storeClient(db, { identity: row.id })
   vi.spyOn(client, 'command')
-  return { store: new Store(client), client }
+  vi.spyOn(client, 'subscribe')
+  vi.spyOn(client, 'batchSubscribe')
+  return { store: new Store(client, { ...STORE_OPTIONS, ...overrides }), client }
 }
 
 export function renderWithProviders(ui: ReactElement, store: Store) {

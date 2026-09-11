@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { Client, Store, type WsClient } from '@reifydb/react'
+import { Client, Store, type StoreOptions, type WsClient } from '@reifydb/react'
 import { create } from 'zustand'
 import { UPTIME_CONFIG } from '@/config'
 
@@ -19,6 +19,13 @@ function setStatus(status: ConnectionStatus) {
 
 export function useConnectionStatus(): ConnectionStatus {
   return useConnection((s) => s.status)
+}
+
+// A page mounts its subscriptions in one React pass, so batching turns a dashboard's five round
+// trips into one. The tests build their store from this same object so the two cannot drift.
+export const STORE_OPTIONS: StoreOptions = {
+  batch: true,
+  onBackgroundError: (err) => console.error('uptime store background error', err),
 }
 
 let client: WsClient | null = null
@@ -51,9 +58,7 @@ export async function connect(token: string): Promise<Store | undefined> {
       return undefined
     }
     client = c
-    store = new Store(c, {
-      onBackgroundError: (err) => console.error('uptime store background error', err),
-    })
+    store = new Store(c, STORE_OPTIONS)
     setStatus('live')
     return store
   } catch (err) {

@@ -7,6 +7,6 @@ use reifydb_node::ReifydbNode;
 use reifydb_uptime::schema;
 
 #[napi]
-pub fn create(seed: u32) -> NapiResult<ReifydbNode> {
-	ReifydbNode::new(seed, schema::migrations()).map_err(|e| NapiError::from_reason(format!("{e:?}")))
+pub fn create() -> NapiResult<ReifydbNode> {
+	ReifydbNode::new(schema::migrations()).map_err(|e| NapiError::from_reason(format!("{e:?}")))
 }

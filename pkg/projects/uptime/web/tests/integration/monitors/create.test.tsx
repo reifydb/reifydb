@@ -39,7 +39,7 @@ describe('create monitor flow', () => {
   let client: StoreClient
 
   beforeEach(async () => {
-    db = create(1)
+    db = create()
     ;({ store, client } = await bridgeStore(db, 'tester'))
     store.seed(regions.rql, null, regions.shape, [{ id: 'region-1', label: 'US East' }])
     navigate.mockClear()
