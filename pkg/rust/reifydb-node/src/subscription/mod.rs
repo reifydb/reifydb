@@ -108,7 +108,7 @@ impl Subscriptions {
 	pub async fn batch_subscribe(
 		&self,
 		identity: IdentityId,
-		queries: &[String],
+		queries: &[(String, Params)],
 	) -> Result<BatchAck, BatchSubscribeError<Error>> {
 		let mut ack = handle_batch_subscribe(
 			&self.host,
@@ -145,7 +145,8 @@ impl Subscriptions {
 				handle.abort();
 			}
 		}
-		let _ = handle_batch_unsubscribe(self.host.engine(), &self.registry, batch_id).await;
+		let _ = handle_batch_unsubscribe(self.host.engine(), &self.registry, self.connection_id, batch_id)
+			.await;
 	}
 
 	/// Moves whatever the pipeline staged into the sink, then empties it.

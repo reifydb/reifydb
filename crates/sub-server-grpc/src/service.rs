@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
 use reifydb_core::{
@@ -10,7 +10,7 @@ use reifydb_core::{
 	metrics::execution::ExecutionMetrics,
 };
 use reifydb_engine::subscription::HydrateError;
-use reifydb_runtime::actor::reply::reply_channel;
+use reifydb_runtime::{actor::reply::reply_channel, sync::mutex::Mutex};
 use reifydb_sub_core::{
 	cleanup::cleanup_subscription_sync,
 	errors::CreateSubscriptionError,
@@ -72,10 +72,17 @@ type BatchSink = (
 	GrpcWireSink,
 );
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct StreamOwner {
+	peer: SocketAddr,
+	identity: IdentityId,
+}
+
 pub struct ReifyDbService {
 	state: GrpcServerState,
 	admin_enabled: bool,
 	registry: Arc<SubscriptionRegistry>,
+	owners: Arc<Mutex<HashMap<Uuid7, StreamOwner>>>,
 	shutdown_rx: watch::Receiver<bool>,
 }
 
@@ -90,8 +97,20 @@ impl ReifyDbService {
 			state,
 			admin_enabled,
 			registry,
+			owners: Arc::new(Mutex::new(HashMap::new())),
 			shutdown_rx,
 		}
+	}
+
+	fn stream_owner<T>(request: &Request<T>, identity: IdentityId) -> Option<StreamOwner> {
+		request.remote_addr().map(|peer| StreamOwner {
+			peer,
+			identity,
+		})
+	}
+
+	fn owns(&self, caller: Option<StreamOwner>, connection_id: &Uuid7) -> bool {
+		caller.is_some_and(|caller| self.owners.lock().get(connection_id) == Some(&caller))
 	}
 
 	fn extract_identity<T>(&self, request: &Request<T>) -> Result<IdentityId, GrpcError> {
@@ -214,12 +233,17 @@ impl ReifyDbService {
 		tx: mpsc::UnboundedSender<Result<SubscriptionEvent, Status>>,
 		rx: mpsc::UnboundedReceiver<Result<SubscriptionEvent, Status>>,
 		connection_id: Uuid7,
+		owner: Option<StreamOwner>,
 	) -> Response<UnboundedReceiverStream<Result<SubscriptionEvent, Status>>> {
 		let subscription_id = ack.subscription_id;
 		let registry = self.registry.clone();
 		let engine = self.state.engine_clone();
 		let mut shutdown_rx = self.shutdown_rx.clone();
 		let remote_handle = ack.remote_handle;
+		let owners = self.owners.clone();
+		if let Some(owner) = owner {
+			owners.lock().insert(connection_id, owner);
+		}
 		spawn(async move {
 			let client_disconnected = select! {
 				_ = tx.closed() => true,
@@ -235,6 +259,7 @@ impl ReifyDbService {
 				handle.abort();
 			}
 			registry.cleanup_connection(connection_id);
+			owners.lock().remove(&connection_id);
 
 			if client_disconnected {
 				let engine_clone = engine.clone();
@@ -265,6 +290,7 @@ impl ReifyDbService {
 		batch_rx: mpsc::UnboundedReceiver<Result<BatchSubscriptionEvent, Status>>,
 		connection_id: Uuid7,
 		format: WireFormat,
+		owner: Option<StreamOwner>,
 	) -> Response<UnboundedReceiverStream<Result<BatchSubscriptionEvent, Status>>> {
 		let batch_id = ack.batch_id;
 		let registry = self.registry.clone();
@@ -272,6 +298,10 @@ impl ReifyDbService {
 		let batch_tx_for_close = batch_tx.clone();
 		let mut shutdown_rx = self.shutdown_rx.clone();
 		let remote_handles = ack.remote_handles;
+		let owners = self.owners.clone();
+		if let Some(owner) = owner {
+			owners.lock().insert(connection_id, owner);
+		}
 		spawn(async move {
 			let client_disconnected = select! {
 				_ = batch_tx_for_close.closed() => true,
@@ -285,6 +315,7 @@ impl ReifyDbService {
 			}
 
 			let removed_members = registry.cleanup_connection(connection_id);
+			owners.lock().remove(&connection_id);
 
 			if client_disconnected && !removed_members.is_empty() {
 				for member in removed_members {
@@ -418,6 +449,7 @@ impl ReifyDb for ReifyDbService {
 	) -> Result<Response<Self::SubscribeStream>, Status> {
 		let identity = self.extract_identity(&request)?;
 		let metadata = Self::build_metadata(&request);
+		let owner = Self::stream_owner(&request, identity);
 		let inner = request.into_inner();
 		let format = WireFormat::Rbcf;
 
@@ -437,7 +469,7 @@ impl ReifyDb for ReifyDbService {
 		)
 		.await
 		{
-			Ok(ack) => Ok(self.spawn_single_cleanup(ack, tx, rx, connection_id)),
+			Ok(ack) => Ok(self.spawn_single_cleanup(ack, tx, rx, connection_id, owner)),
 			Err(err) => Err(subscribe_error_to_status(err)),
 		}
 	}
@@ -446,7 +478,8 @@ impl ReifyDb for ReifyDbService {
 		&self,
 		request: Request<UnsubscribeRequest>,
 	) -> Result<Response<UnsubscribeResponse>, Status> {
-		let _identity = self.extract_identity(&request)?;
+		let identity = self.extract_identity(&request)?;
+		let caller = Self::stream_owner(&request, identity);
 		let inner = request.into_inner();
 		let subscription_id = SubscriptionId(
 			inner.subscription_id
@@ -454,16 +487,28 @@ impl ReifyDb for ReifyDbService {
 				.map_err(|_| Status::invalid_argument("Invalid subscription ID"))?,
 		);
 
-		self.registry.unsubscribe(subscription_id);
+		let owned = self
+			.registry
+			.connection_of(&subscription_id)
+			.filter(|connection_id| self.owns(caller, connection_id))
+			.is_some_and(|connection_id| self.registry.unsubscribe_owned(connection_id, subscription_id));
 
-		let engine = self.state.engine_clone();
-		let result = spawn_blocking(move || cleanup_subscription_sync(&engine, subscription_id)).await;
-		match result {
-			Ok(Ok(())) => debug!("gRPC subscription {} unsubscribed", subscription_id),
-			Ok(Err(e)) => {
-				warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e)
+		if owned {
+			let engine = self.state.engine_clone();
+			let result = spawn_blocking(move || cleanup_subscription_sync(&engine, subscription_id)).await;
+			match result {
+				Ok(Ok(())) => debug!("gRPC subscription {} unsubscribed", subscription_id),
+				Ok(Err(e)) => {
+					warn!(
+						"Failed to cleanup subscription {} from database: {:?}",
+						subscription_id, e
+					)
+				}
+				Err(e) => warn!(
+					"Blocking task error cleaning up subscription {}: {:?}",
+					subscription_id, e
+				),
 			}
-			Err(e) => warn!("Blocking task error cleaning up subscription {}: {:?}", subscription_id, e),
 		}
 
 		Ok(Response::new(UnsubscribeResponse {
@@ -479,17 +524,19 @@ impl ReifyDb for ReifyDbService {
 	) -> Result<Response<Self::BatchSubscribeStream>, Status> {
 		let identity = self.extract_identity(&request)?;
 		let metadata = Self::build_metadata(&request);
+		let owner = Self::stream_owner(&request, identity);
 		let inner = request.into_inner();
 		let format = WireFormat::Rbcf;
 
 		let (batch_tx, batch_rx, connection_id, batch_sink) = self.build_batch_sink();
 
+		let queries: Vec<(String, Params)> = inner.rql.into_iter().map(|rql| (rql, Params::None)).collect();
 		let host = self.state.subscribe_host(metadata);
 		match shared_batch_subscribe(
 			&host,
 			connection_id,
 			identity,
-			&inner.rql,
+			&queries,
 			batch_sink,
 			&self.registry,
 			format,
@@ -497,7 +544,7 @@ impl ReifyDb for ReifyDbService {
 		)
 		.await
 		{
-			Ok(ack) => Ok(self.spawn_batch_cleanup(ack, batch_tx, batch_rx, connection_id, format)),
+			Ok(ack) => Ok(self.spawn_batch_cleanup(ack, batch_tx, batch_rx, connection_id, format, owner)),
 			Err(err) => Err(batch_subscribe_error_to_status(err)),
 		}
 	}
@@ -506,12 +553,18 @@ impl ReifyDb for ReifyDbService {
 		&self,
 		request: Request<BatchUnsubscribeRequest>,
 	) -> Result<Response<BatchUnsubscribeResponse>, Status> {
-		let _identity = self.extract_identity(&request)?;
+		let identity = self.extract_identity(&request)?;
+		let caller = Self::stream_owner(&request, identity);
 		let inner = request.into_inner();
 		let batch_id: BatchId =
 			inner.batch_id.parse().map_err(|_| Status::invalid_argument("Invalid batch ID"))?;
 
-		if let Some(members) = self.registry.unsubscribe_batch(batch_id) {
+		let members = self
+			.registry
+			.batch_connection(&batch_id)
+			.filter(|connection_id| self.owns(caller, connection_id))
+			.and_then(|connection_id| self.registry.unsubscribe_batch_owned(connection_id, batch_id));
+		if let Some(members) = members {
 			for member in members {
 				let engine = self.state.engine_clone();
 				match spawn_blocking(move || cleanup_subscription_sync(&engine, member)).await {

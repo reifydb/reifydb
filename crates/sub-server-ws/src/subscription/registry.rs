@@ -1083,4 +1083,70 @@ pub mod tests {
 			"after the near member drains, the deadline tracks the remaining member"
 		);
 	}
+
+	fn two_member_batch()
+	-> (SubscriptionRegistry, SubscriptionId, SubscriptionId, mpsc::UnboundedReceiver<PushMessage>) {
+		let (_, clock, rng) = test_clock_and_rng();
+		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, push_rx) = mpsc::unbounded_channel();
+		let sink = WsWireSink::new(push_tx);
+		let sub_a = SubscriptionId(1);
+		let sub_b = SubscriptionId(2);
+		for sub in [sub_a, sub_b] {
+			registry.subscribe(
+				sub,
+				connection_id,
+				sink.clone(),
+				WireFormat::Frames,
+				None,
+				Duration::zero(),
+				Duration::zero(),
+			);
+		}
+		registry.register_batch(
+			connection_id,
+			vec![(sub_a, Duration::zero()), (sub_b, Duration::zero())],
+			sink,
+			WireFormat::Frames,
+			&clock,
+			&rng,
+		);
+		(registry, sub_a, sub_b, push_rx)
+	}
+
+	#[tokio::test]
+	async fn unsubscribing_the_last_member_drops_the_batch() {
+		// Clients release batch members one by one, so an emptied batch must not outlive its last member.
+		let (registry, sub_a, sub_b, _push_rx) = two_member_batch();
+
+		registry.unsubscribe(sub_a);
+		assert_eq!(registry.batch_count(), 1, "a batch with a member left must keep streaming");
+
+		registry.unsubscribe(sub_b);
+		assert_eq!(registry.batch_count(), 0, "a batch with no members left must be dropped");
+	}
+
+	#[tokio::test]
+	async fn an_unsubscribed_member_sends_none_of_its_queued_changes() {
+		// A change queued before the unsubscribe must never reach the client after it was acknowledged.
+		let (registry, sub_a, sub_b, mut push_rx) = two_member_batch();
+		registry.try_deliver(&sub_a, DiffType::Insert, single_int_columns("value", 1));
+		registry.try_deliver(&sub_b, DiffType::Insert, single_int_columns("value", 2));
+
+		registry.unsubscribe(sub_a);
+		registry.flush();
+
+		match push_rx.try_recv().expect("the remaining member's change must still be sent") {
+			PushMessage::BatchChangeJson {
+				entries,
+				..
+			} => {
+				let ids: Vec<SubscriptionId> =
+					entries.iter().map(|entry| entry.subscription_id).collect();
+				assert_eq!(ids, vec![sub_b]);
+			}
+			other => panic!("expected BatchChangeJson, got {:?}", other),
+		}
+	}
 }

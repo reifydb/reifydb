@@ -242,14 +242,23 @@ impl ReifydbNode {
 	}
 
 	#[napi(js_name = "batchSubscribeRoot")]
-	pub async fn batch_subscribe_root(&self, queries: Vec<String>) -> Result<BatchSubscribed> {
-		self.batch_subscribe_with(IdentityId::root(), queries).await
+	pub async fn batch_subscribe_root(
+		&self,
+		queries: Vec<String>,
+		params: Vec<Option<ParamsInput>>,
+	) -> Result<BatchSubscribed> {
+		self.batch_subscribe_with(IdentityId::root(), queries, params).await
 	}
 
 	#[napi(js_name = "batchSubscribeAs")]
-	pub async fn batch_subscribe_as(&self, identity: String, queries: Vec<String>) -> Result<BatchSubscribed> {
+	pub async fn batch_subscribe_as(
+		&self,
+		identity: String,
+		queries: Vec<String>,
+		params: Vec<Option<ParamsInput>>,
+	) -> Result<BatchSubscribed> {
 		let identity = parse_identity(&identity)?;
-		self.batch_subscribe_with(identity, queries).await
+		self.batch_subscribe_with(identity, queries, params).await
 	}
 
 	#[napi(js_name = "batchUnsubscribe")]
@@ -351,7 +360,24 @@ impl ReifydbNode {
 		Ok(())
 	}
 
-	async fn batch_subscribe_with(&self, identity: IdentityId, queries: Vec<String>) -> Result<BatchSubscribed> {
+	async fn batch_subscribe_with(
+		&self,
+		identity: IdentityId,
+		queries: Vec<String>,
+		params: Vec<Option<ParamsInput>>,
+	) -> Result<BatchSubscribed> {
+		if params.len() != queries.len() {
+			return Err(NapiError::from_reason(format!(
+				"expected one params entry per query, got {} params for {} queries",
+				params.len(),
+				queries.len()
+			)));
+		}
+		let queries = queries
+			.into_iter()
+			.zip(params)
+			.map(|(rql, params)| Ok((rql, parse_params(params)?)))
+			.collect::<Result<Vec<_>>>()?;
 		let ack = self
 			.subscriptions
 			.batch_subscribe(identity, &queries)

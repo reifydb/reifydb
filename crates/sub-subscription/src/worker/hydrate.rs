@@ -37,20 +37,23 @@ impl SubscriptionWorkerActor {
 		lease: VersionLeaseGuard,
 		max_rows: u64,
 	) -> StdResult<HydrateOutcome, HydrateError> {
-		if !state.flows.contains_key(&flow_id) {
+		let Some(flow_state) =
+			state.flows.get_mut(&flow_id).filter(|flow_state| flow_state.identity == identity)
+		else {
 			return Err(HydrateError::SubscriptionNotFound);
-		}
+		};
 
 		let version = lease.version();
-		if let Some(flow_state) = state.flows.get_mut(&flow_id) {
-			flow_state.gate = version;
-		}
+		flow_state.gate = version;
+		let params = flow_state.params.clone();
+		let subscriber = flow_state.identity;
 		let hydrate_start = self.engine.clock().instant();
 
 		let flow = state.flow_engine.flow_by_id(flow_id).ok_or(HydrateError::SubscriptionNotFound)?;
-		let mut outer = self.engine.begin_query_at_version(&lease, identity)?;
+		let mut outer = self.engine.begin_query_at_version(&lease, subscriber)?;
 		let sources = collect_source_descriptors(&flow, &self.catalog, &mut outer)?;
-		let (source_frames, statements) = run_source_queries(&self.engine, &mut outer, sources, max_rows)?;
+		let (source_frames, statements) =
+			run_source_queries(&self.engine, &mut outer, sources, &params, max_rows)?;
 
 		self.store.begin_hydration(sub_id);
 

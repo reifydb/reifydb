@@ -27,7 +27,7 @@ use reifydb_runtime::{
 	sync::mutex::Mutex,
 };
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
-use reifydb_value::{Result, value::identity::IdentityId};
+use reifydb_value::{Result, params::Params, value::identity::IdentityId};
 use tracing::error;
 
 use crate::{delivery::DeliveryBuffer, store::SubscriptionStore, subsystem::registration::register_ephemeral_flow};
@@ -78,13 +78,17 @@ pub enum SubscriptionWorkerMessage {
 struct SubscriptionFlowState {
 	keyed_state: HashMap<EncodedKey, EncodedBytes>,
 	gate: CommitVersion,
+	identity: IdentityId,
+	params: Params,
 }
 
 impl SubscriptionFlowState {
-	fn new(gate: CommitVersion) -> Self {
+	fn new(gate: CommitVersion, identity: IdentityId, params: Params) -> Self {
 		Self {
 			keyed_state: HashMap::new(),
 			gate,
+			identity,
+			params,
 		}
 	}
 }
@@ -230,7 +234,7 @@ impl SubscriptionWorkerActor {
 						return;
 					}
 				};
-				state.flows.insert(flow_id, SubscriptionFlowState::new(gate));
+				state.flows.insert(flow_id, SubscriptionFlowState::new(gate, ctx.identity, ctx.params));
 				reply(Ok(()));
 			}
 			Err(e) => reply(Err(e)),

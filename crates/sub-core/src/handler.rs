@@ -385,7 +385,7 @@ pub async fn handle_batch_subscribe<S: WireSink, H: SubscribeHost>(
 	host: &H,
 	connection_id: ConnectionId,
 	identity: IdentityId,
-	queries: &[String],
+	queries: &[(String, Params)],
 	sink: S,
 	registry: &Arc<SubscriptionRegistry<S>>,
 	format: S::Format,
@@ -448,7 +448,7 @@ type BatchAckParts = (BatchId, Vec<BatchMemberInfo>, Vec<(SubscriptionId, Remote
 async fn resolve_batch_members<S: WireSink, H: SubscribeHost>(
 	host: &H,
 	identity: IdentityId,
-	queries: &[String],
+	queries: &[(String, Params)],
 	format: S::Format,
 ) -> Result<ResolvedBatch, BatchSubscribeError<H::Error>> {
 	let ctx = host.context();
@@ -456,8 +456,8 @@ async fn resolve_batch_members<S: WireSink, H: SubscribeHost>(
 	let mut local_hydrations: Vec<LocalHydration> = Vec::new();
 	let mut member_lingers: HashMap<SubscriptionId, Duration> = HashMap::new();
 
-	for (index, user_rql) in queries.iter().enumerate() {
-		match create_subscription(host, identity, user_rql, Params::None).await {
+	for (index, (user_rql, params)) in queries.iter().enumerate() {
+		match create_subscription(host, identity, user_rql, params.clone()).await {
 			Ok(CreateSubscriptionResult::Local {
 				id: subscription_id,
 				hydration,
@@ -790,9 +790,10 @@ fn spawn_batch_remote_proxies<S: WireSink>(
 pub async fn handle_batch_unsubscribe<S: WireSink>(
 	engine: &StandardEngine,
 	registry: &Arc<SubscriptionRegistry<S>>,
+	connection_id: ConnectionId,
 	batch_id: BatchId,
 ) -> Option<Vec<SubscriptionId>> {
-	let members = registry.unsubscribe_batch(batch_id)?;
+	let members = registry.unsubscribe_batch_owned(connection_id, batch_id)?;
 	for subscription_id in &members {
 		#[cfg(not(reifydb_single_threaded))]
 		let cleaned = cleanup_subscription(engine, *subscription_id).await;

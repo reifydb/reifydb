@@ -504,11 +504,59 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 				self.connections.remove(&connection_id);
 			}
 
+			if let Some(batch_id) = state.batch_id {
+				self.drop_batch_member(batch_id, subscription_id);
+			}
+
 			debug!("Unsubscribed subscription {}", subscription_id);
 			true
 		} else {
 			false
 		}
+	}
+
+	#[inline]
+	fn drop_batch_member(&self, batch_id: BatchId, subscription_id: SubscriptionId) {
+		let emptied = self.batches.get_mut(&batch_id).and_then(|mut batch| {
+			batch.member_ids.retain(|id| *id != subscription_id);
+			batch.pending.remove(&subscription_id);
+			batch.lingers.remove(&subscription_id);
+			batch.throttles.remove(&subscription_id);
+			batch.member_ids.is_empty().then_some(batch.connection_id)
+		});
+		if let Some(connection_id) = emptied {
+			self.batches.remove(&batch_id);
+			self.prune_empty_connection_batches(connection_id, batch_id);
+		}
+	}
+
+	pub fn unsubscribe_owned(&self, connection_id: ConnectionId, subscription_id: SubscriptionId) -> bool {
+		let owned = self
+			.subscriptions
+			.get(&subscription_id)
+			.is_some_and(|state| state.connection_id == connection_id);
+		owned && self.unsubscribe(subscription_id)
+	}
+
+	pub fn unsubscribe_batch_owned(
+		&self,
+		connection_id: ConnectionId,
+		batch_id: BatchId,
+	) -> Option<Vec<SubscriptionId>> {
+		let owned = self.batches.get(&batch_id).is_some_and(|batch| batch.connection_id == connection_id);
+		if owned {
+			self.unsubscribe_batch(batch_id)
+		} else {
+			None
+		}
+	}
+
+	pub fn connection_of(&self, subscription_id: &SubscriptionId) -> Option<ConnectionId> {
+		self.subscriptions.get(subscription_id).map(|state| state.connection_id)
+	}
+
+	pub fn batch_connection(&self, batch_id: &BatchId) -> Option<ConnectionId> {
+		self.batches.get(batch_id).map(|batch| batch.connection_id)
 	}
 
 	pub fn cleanup_connection(&self, connection_id: ConnectionId) -> Vec<SubscriptionId> {

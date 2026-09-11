@@ -162,6 +162,10 @@ fn render_expr_rql(expr: &Expression) -> Option<String> {
 		Expression::Cast(c) => {
 			Some(format!("cast({}, {})", render_expr_rql(&c.expression)?, c.to.fragment.text()))
 		}
+		Expression::Variable(v) => Some(format!("${}", v.name())),
+		Expression::FieldAccess(e) if matches!(e.object.as_ref(), Expression::Variable(_)) => {
+			Some(format!("{}.{}", render_expr_rql(&e.object)?, e.field.text()))
+		}
 		_ => None,
 	}
 }
@@ -376,6 +380,26 @@ mod tests {
 	}
 
 	#[test]
+	fn walk_pushes_take_through_a_filter_on_a_variable() {
+		// A $name the params bind must not block the take, or the cap counts every matching row.
+		let parts = walk(vec![
+			source(),
+			filter_on("monitor == $monitor"),
+			OperatorDef::Take {
+				limit: 5,
+			},
+		]);
+
+		assert_eq!(
+			parts,
+			vec![
+				"filter { (monitor == $monitor) }".to_string(),
+				"sort {created_at:DESC, rownum:DESC} | take 5".to_string()
+			]
+		);
+	}
+
+	#[test]
 	fn walk_does_not_render_a_filter_after_a_map() {
 		// Map may rename, drop or add columns, so the filter can reference a column the source does not have.
 		let parts = walk(vec![
@@ -516,6 +540,12 @@ mod tests {
 	fn render_keeps_the_cast_it_was_given() {
 		// Dropping the cast would push a filter that compares a different type than the operator does.
 		assert_eq!(render_and_reparse("cast(id, int4) == 1"), "(cast(id, int4) == 1)");
+	}
+
+	#[test]
+	fn render_keeps_the_field_of_an_identity_access() {
+		// Dropping .id would compare the column against the whole identity row instead of its id.
+		assert_eq!(render_and_reparse("owner == $identity.id"), "(owner == $identity.id)");
 	}
 
 	#[test]

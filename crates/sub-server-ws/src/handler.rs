@@ -574,7 +574,7 @@ async fn handle_unsubscribe(
 		}
 	};
 
-	let removed = conn.registry.unsubscribe(subscription_id);
+	let removed = conn.registry.unsubscribe_owned(conn.connection_id, subscription_id);
 
 	if removed {
 		if let Err(e) = cleanup_subscription(conn.state.engine(), subscription_id).await {

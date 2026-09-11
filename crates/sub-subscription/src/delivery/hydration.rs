@@ -29,6 +29,7 @@ pub(crate) fn run_source_queries(
 	engine: &StandardEngine,
 	outer: &mut QueryTransaction,
 	sources: Vec<SourceDescriptor>,
+	params: &Params,
 	max_rows: u64,
 ) -> StdResult<(SourceFrames, Vec<StatementMetrics>), HydrateError> {
 	let mut total_rows: u64 = 0;
@@ -40,7 +41,7 @@ pub(crate) fn run_source_queries(
 		bound,
 	} in sources
 	{
-		let result = engine.query_in_txn(outer, &query_string, Params::None);
+		let result = engine.query_in_txn(outer, &query_string, params.clone());
 		if let Some(err) = result.error {
 			return Err(err.into());
 		}

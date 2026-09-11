@@ -77,15 +77,21 @@ pub(crate) async fn handle_batch_subscribe(
 	let metadata = RequestMetadata::new(Protocol::WebSocket);
 	let sink = WsWireSink::new(conn.push_tx.clone());
 
+	let format = req.format;
+	let queries = match req.into_queries() {
+		Ok(queries) => queries,
+		Err(e) => return Some(build_error(request_id, "INVALID_PARAMS", &e)),
+	};
+
 	let host = conn.state.subscribe_host(metadata);
 	match shared_batch_subscribe(
 		&host,
 		conn.connection_id,
 		identity,
-		&req.queries,
+		&queries,
 		sink,
 		conn.registry,
-		req.format,
+		format,
 		conn.shutdown.clone(),
 	)
 	.await
@@ -120,7 +126,7 @@ pub(crate) async fn handle_batch_unsubscribe(
 
 	abort_local_batch_handles(conn, &batch_id);
 
-	let _ = shared_batch_unsubscribe(conn.state.engine(), conn.registry, batch_id).await;
+	let _ = shared_batch_unsubscribe(conn.state.engine(), conn.registry, conn.connection_id, batch_id).await;
 
 	Some(Response::batch_unsubscribed(request_id, batch_id.to_string()).to_json())
 }

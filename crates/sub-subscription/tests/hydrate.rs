@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashSet, thread};
+use std::{
+	collections::{HashMap, HashSet},
+	thread,
+};
 
-use reifydb::testing::db::TestDb;
+use reifydb::{Params, testing::db::TestDb};
 use reifydb_core::interface::{catalog::id::SubscriptionId, change::StagedBatch};
 use reifydb_engine::{
 	engine::StandardEngine,
 	subscription::{HydrateError, HydrationBound, SubscriptionServiceRef},
 };
+use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
 use reifydb_value::value::{
 	Value, datetime::DateTime, diff_type::DiffType, duration::Duration, frame::frame::Frame, identity::IdentityId,
@@ -445,6 +449,273 @@ fn hydrate_does_not_push_take_below_distinct() {
 		}
 		other => panic!("unexpected error: {:?}", other),
 	}
+}
+
+fn subscribe_with_params(
+	db: &TestDb,
+	identity: IdentityId,
+	query: &str,
+	params: Params,
+) -> (StandardEngine, SubscriptionId, VersionLeaseGuard, SubscriptionServiceRef) {
+	let stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", query);
+	let result = db.engine().subscribe_as(identity, &stmt, params);
+	assert!(result.error.is_none(), "subscribe failed: {:?}", result.error);
+	let sub_id = extract_sub_id(&result.frames);
+	let (engine, lease, sub_service) = engine_lease_service(db);
+	thread::sleep(Duration::from_milliseconds(50).unwrap().to_std());
+	(engine, sub_id, lease, sub_service)
+}
+
+fn monitor_param(monitor: &str) -> Params {
+	Params::from(HashMap::from([("monitor".to_string(), Value::Utf8(monitor.to_string()))]))
+}
+
+fn seed_two_monitors(db: &TestDb, rows: usize) {
+	// Even ids belong to monitor a and odd ids to b, so every other row is one the filter must drop.
+	let mut insert_stmt = String::from("INSERT app::checks [");
+	for i in 0..rows {
+		if i > 0 {
+			insert_stmt.push(',');
+		}
+		let monitor = if i % 2 == 0 {
+			"a"
+		} else {
+			"b"
+		};
+		insert_stmt.push_str(&format!("{{id: {}, monitor: '{}'}}", i, monitor));
+	}
+	insert_stmt.push(']');
+	db.command(&insert_stmt);
+}
+
+fn two_monitor_db() -> TestDb {
+	let db = TestDb::memory();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::checks { id: int4, monitor: utf8 }");
+	seed_two_monitors(&db, 60);
+	db
+}
+
+fn lookup_identity(db: &TestDb, name: &str) -> IdentityId {
+	let frames = db.query(&format!("from system::identities filter {{ name == '{name}' }}"));
+	let frame = frames.first().expect("identity frame");
+	let col = frame.columns.iter().find(|c| c.name == "id").expect("id column");
+	match col.data.get_value(0) {
+		Value::IdentityId(id) => id,
+		other => panic!("unexpected identity value: {other:?}"),
+	}
+}
+
+fn drain_live(db: &TestDb, sub_id: SubscriptionId) -> Vec<StagedBatch> {
+	let target = db.watermarks().tx().current().expect("current version");
+	let caught_up = db.watermarks().cdc().wait_for_consumer(target, Duration::from_seconds(10).unwrap());
+	assert!(caught_up, "cdc consumer did not reach {:?}", target);
+	let subsystem = db.subsystem::<SubscriptionSubsystem>().expect("subscription subsystem present");
+	subsystem.store().drain(&sub_id, usize::MAX)
+}
+
+fn ids_with_op(batches: &[StagedBatch], want: DiffType) -> Vec<i32> {
+	let only: Vec<StagedBatch> = batches.iter().filter(|(op, _)| *op == want).cloned().collect();
+	announced_ids(&only)
+}
+
+#[test]
+fn hydrate_bounds_a_param_filtered_take_by_its_limit_not_by_the_matching_rows() {
+	// A $name filter that stops the take reaching the source makes take 5 fail a cap of 5 it satisfies.
+	let db = two_monitor_db();
+
+	let (engine, sub_id, lease, sub_service) = subscribe_with_params(
+		&db,
+		IdentityId::root(),
+		"from app::checks | filter { monitor == $monitor } | take 5",
+		monitor_param("a"),
+	);
+
+	let outcome = sub_service
+		.hydrate(sub_id, &engine, IdentityId::root(), lease, 5)
+		.expect("take 5 bounds the snapshot, so a cap of 5 must hold however many rows match");
+
+	assert_eq!(
+		announced_ids(&outcome.batches),
+		vec![58, 56, 54, 52, 50],
+		"the snapshot must be the five newest matching rows, newest first, as the live window holds them"
+	);
+}
+
+#[test]
+fn hydrate_bounds_a_policy_scoped_param_filtered_take_by_its_limit() {
+	// The injected $identity.id policy filter sits first, so it must not block the take reaching the source.
+	let db = TestDb::memory();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::checks { id: int4, monitor: utf8, owner: identity_id }");
+	db.admin("create user alice");
+	db.admin("create user bob");
+	db.admin("create session policy allow_subscribe { subscription: { filter { true } } }");
+	db.admin("create table policy checks_owner on app::checks { from: { filter { owner == $identity.id } } }");
+	let alice = lookup_identity(&db, "alice");
+	let bob = lookup_identity(&db, "bob");
+
+	let mut insert_stmt = String::from("INSERT app::checks [");
+	for i in 0..90 {
+		if i > 0 {
+			insert_stmt.push(',');
+		}
+		let owner = if i % 3 == 0 {
+			bob
+		} else {
+			alice
+		};
+		let monitor = if i % 2 == 0 {
+			"a"
+		} else {
+			"b"
+		};
+		insert_stmt
+			.push_str(&format!("{{id: {i}, monitor: '{monitor}', owner: cast('{owner}', identity_id)}}"));
+	}
+	insert_stmt.push(']');
+	db.command(&insert_stmt);
+
+	let (engine, sub_id, lease, sub_service) = subscribe_with_params(
+		&db,
+		alice,
+		"from app::checks filter { monitor == $monitor } map { id, monitor } take 5",
+		monitor_param("a"),
+	);
+
+	let outcome = sub_service
+		.hydrate(sub_id, &engine, alice, lease, 5)
+		.expect("take 5 bounds the snapshot, so a cap of 5 must hold however many rows alice owns");
+
+	assert_eq!(
+		announced_ids(&outcome.batches),
+		vec![88, 86, 82, 80, 76],
+		"the snapshot must be alice's five newest monitor a rows; bob's 84 and 78 must never appear"
+	);
+}
+
+#[test]
+fn hydrate_refuses_an_identity_other_than_the_subscriber() {
+	// a hydrate run as another identity must be refused, never seed or return a snapshot of the subscriber's flow.
+	let db = TestDb::memory();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::checks { id: int4, owner: identity_id }");
+	db.admin("create user alice");
+	db.admin("create user bob");
+	db.admin("create session policy allow_subscribe { subscription: { filter { true } } }");
+	db.admin("create table policy checks_owner on app::checks { from: { filter { owner == $identity.id } } }");
+	let alice = lookup_identity(&db, "alice");
+	let bob = lookup_identity(&db, "bob");
+	assert_ne!(alice, bob, "the test needs two distinct identities");
+	db.command(&format!(
+		"INSERT app::checks [{{id: 1, owner: cast('{alice}', identity_id)}}, {{id: 2, owner: cast('{bob}', identity_id)}}, \
+		 {{id: 3, owner: cast('{alice}', identity_id)}}, {{id: 4, owner: cast('{bob}', identity_id)}}]"
+	));
+
+	let (engine, sub_id, lease, sub_service) =
+		subscribe_with_params(&db, alice, "from app::checks map { id }", Params::None);
+
+	match sub_service.hydrate(sub_id, &engine, bob, lease, 50) {
+		Err(HydrateError::SubscriptionNotFound) => {}
+		Ok(outcome) => panic!(
+			"bob hydrated alice's subscription and received ids {:?}",
+			announced_ids(&outcome.batches)
+		),
+		Err(other) => panic!("unexpected error: {other:?}"),
+	}
+
+	let (_, lease, _) = engine_lease_service(&db);
+	let outcome =
+		sub_service.hydrate(sub_id, &engine, alice, lease, 50).expect("alice hydrates her own subscription");
+	let mut ids = announced_ids(&outcome.batches);
+	ids.sort_unstable();
+	assert_eq!(ids, vec![1, 3], "alice's snapshot must hold exactly her rows");
+}
+
+#[test]
+fn hydrate_still_refuses_a_param_filtered_take_larger_than_the_cap() {
+	// take 20 admits twenty matching rows, so a cap of 10 must refuse the snapshot rather than truncate it.
+	let db = two_monitor_db();
+
+	let (engine, sub_id, lease, sub_service) = subscribe_with_params(
+		&db,
+		IdentityId::root(),
+		"from app::checks | filter { monitor == $monitor } | take 20",
+		monitor_param("a"),
+	);
+
+	let err = sub_service
+		.hydrate(sub_id, &engine, IdentityId::root(), lease, 10)
+		.expect_err("expected RowCapExceeded: take 20 exceeds a cap of 10");
+
+	match err {
+		HydrateError::RowCapExceeded {
+			cap,
+			bound,
+		} => {
+			assert_eq!(cap, 10);
+			assert_eq!(
+				bound,
+				HydrationBound::Pushed,
+				"the take reached the source, so only raising the cap helps"
+			);
+		}
+		other => panic!("unexpected error: {:?}", other),
+	}
+}
+
+#[test]
+fn hydrate_still_refuses_a_param_filter_with_no_take_over_the_cap() {
+	// Pushing the filter must not pass for a bound: thirty matching rows with no take still exceed a cap of 10.
+	let db = two_monitor_db();
+
+	let (engine, sub_id, lease, sub_service) = subscribe_with_params(
+		&db,
+		IdentityId::root(),
+		"from app::checks | filter { monitor == $monitor }",
+		monitor_param("a"),
+	);
+
+	let err = sub_service
+		.hydrate(sub_id, &engine, IdentityId::root(), lease, 10)
+		.expect_err("expected RowCapExceeded: nothing bounds thirty matching rows");
+
+	match err {
+		HydrateError::RowCapExceeded {
+			cap,
+			bound,
+		} => {
+			assert_eq!(cap, 10);
+			assert_eq!(
+				bound,
+				HydrationBound::Absent,
+				"the query has no take, so the advice must be to add one"
+			);
+		}
+		other => panic!("unexpected error: {:?}", other),
+	}
+}
+
+#[test]
+fn a_live_match_after_a_param_filtered_hydration_evicts_the_oldest_hydrated_row() {
+	// A window seeded from the pushed snapshot must evict its oldest row on the next match and ignore a non-match.
+	let db = two_monitor_db();
+
+	let (engine, sub_id, lease, sub_service) = subscribe_with_params(
+		&db,
+		IdentityId::root(),
+		"from app::checks | filter { monitor == $monitor } | take 5",
+		monitor_param("a"),
+	);
+	sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 5).expect("hydrate succeeds");
+	drain_live(&db, sub_id);
+
+	db.command("INSERT app::checks [{id: 60, monitor: 'a'}]");
+	db.command("INSERT app::checks [{id: 61, monitor: 'b'}]");
+	let live = drain_live(&db, sub_id);
+
+	assert_eq!(ids_with_op(&live, DiffType::Insert), vec![60], "only the new monitor a row may enter the window");
+	assert_eq!(ids_with_op(&live, DiffType::Remove), vec![50], "the oldest hydrated row must be the one evicted");
 }
 
 #[test]
