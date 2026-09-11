@@ -358,11 +358,6 @@ pub fn remove<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::Gro
 	conn.execute(&sql, params_from_iter(params)).expect("operator state row could not be removed");
 }
 
-pub fn drop_operator<K: Keyspace>(conn: &Connection, operator: OperatorId) {
-	let sql = format!("DELETE FROM \"{}\" WHERE \"operator\" = ?1", K::table());
-	conn.execute(&sql, [operator.0 as i64]).expect("operator state rows could not be dropped");
-}
-
 pub fn scan<K: Keyspace>(conn: &Connection, operator: OperatorId) -> Vec<(K::GroupedKey, Vec<u8>)> {
 	let sql = format!(
 		"SELECT {}\"bytes\" FROM \"{}\" WHERE \"operator\" = ?1{}",
@@ -662,8 +657,13 @@ mod tests {
 	use reifydb_value::{util::hash::Hash128, value::row_number::RowNumber};
 	use rusqlite::Connection;
 
-	use super::{SqlKey, census, create_table, drop_operator, get, last, range, remove, scan, set, table_of};
+	use super::{SqlKey, census, create_table, get, last, range, remove, scan, set, table_of};
 	use crate::persistent::sqlite::schema::ensure_schema;
+
+	fn drop_operator<K: Keyspace>(conn: &Connection, operator: OperatorId) {
+		let sql = format!("DELETE FROM \"{}\" WHERE \"operator\" = ?1", K::table());
+		conn.execute(&sql, [operator.0 as i64]).expect("operator state rows could not be dropped");
+	}
 
 	fn db() -> Connection {
 		let conn = Connection::open_in_memory().unwrap();

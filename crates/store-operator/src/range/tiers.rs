@@ -16,9 +16,8 @@ use reifydb_core::{
 };
 use reifydb_store::tier::range::{RangeComposition, RangeConfig, RangeMetrics, RangeTier};
 use reifydb_value::byte_size::ByteSize;
-use tracing::instrument;
 
-use crate::range::{partition::TypedPartition, typed::TypedDomain};
+use crate::range::{TypedPartition, typed::TypedDomain};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RangeKeyspaceMetrics {
@@ -262,7 +261,6 @@ impl RangeTiers {
 		}
 	}
 
-	#[instrument(name = "store::operator::range_relieve", level = "debug", skip_all)]
 	pub fn relieve(&self) {
 		for tier in self.tiers.values() {
 			tier.relieve();

@@ -29,8 +29,11 @@ use reifydb_value::{
 };
 use rusqlite::Connection;
 
-use super::{AnyBucket, BucketMap, Budget, Resume, Scan, write::TypedBucket};
-use crate::persistent::sqlite::{schema::ensure_schema, typed};
+use super::{AnyBucket, BucketMap, write::TypedBucket};
+use crate::{
+	persistent::sqlite::{schema::ensure_schema, typed},
+	types::{Budget, Resume, Scan},
+};
 
 const OP: OperatorId = OperatorId(1);
 

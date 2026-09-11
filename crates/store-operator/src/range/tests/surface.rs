@@ -28,12 +28,11 @@ use reifydb_store::{
 };
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
 
-use super::{
-	OperatorRangeConfig, OperatorRangeMetrics,
+use crate::range::{
+	OperatorRangeConfig, OperatorRangeMetrics, TypedPartition,
 	tiers::{RangeKeyspaceMetrics, RangeTiers},
 	typed::TypedDomain,
 };
-use crate::range::partition::TypedPartition;
 
 const OP_A: OperatorId = OperatorId(1);
 
@@ -343,18 +342,18 @@ fn a_keyspace_that_caches_no_ranges_owns_no_tier_at_all() {
 	assert!(
 		tiers.typed::<CustomNotCached>().is_none(),
 		"{} caches nothing, so it must never be given a tier; a tier that exists only to refuse every call \
-         still costs a budget, a lock and a metrics row",
+        still costs a budget, a lock and a metrics row",
 		CustomNotCached::NAME
 	);
 	assert!(
 		tiers.of(KeyspaceId::CUSTOM_NOT_CACHED).is_none(),
 		"and the runtime lookup must agree with the typed one, or a byte-keyed caller admits what the typed \
-         caller refuses"
+        caller refuses"
 	);
 	assert!(
 		tiers.typed::<JoinLeft>().is_some(),
 		"the control: a gate that refused every keyspace would pass the assertions above while turning the \
-         whole tier set into an off switch, and that only shows up as a throughput loss in a replay"
+        whole tier set into an off switch, and that only shows up as a throughput loss in a replay"
 	);
 }
 
@@ -393,7 +392,7 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 		tiers.keyspace_metrics().len(),
 		2,
 		"only the two keyspaces that were touched may be reported; a tier per keyspace must never surface as \
-         42 rows of zeros"
+        42 rows of zeros"
 	);
 
 	let left = keyspace_row(&tiers, KeyspaceId::JOIN_LEFT);

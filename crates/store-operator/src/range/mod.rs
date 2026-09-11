@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod partition;
 #[cfg(test)]
-mod scan;
-#[cfg(test)]
-mod surface;
+mod tests;
 pub mod tiers;
 pub mod typed;
 
@@ -47,6 +44,12 @@ impl From<OperatorRangeConfig> for RangeConfig {
 }
 
 pub type OperatorRangeMetrics = RangeMetrics;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TypedPartition {
+	pub operator: OperatorId,
+	pub group: GroupId,
+}
 
 pub trait RangeSink: Send + Sync + 'static {
 	fn lookup(&self, operator: OperatorId, key: &EncodedKey) -> Option<Option<EncodedPodRow>>;

@@ -11,9 +11,6 @@ pub mod sql;
 mod state;
 pub mod typed;
 
-#[cfg(test)]
-mod tests;
-
 use std::sync::{
 	Arc,
 	atomic::{AtomicBool, AtomicU64, Ordering},

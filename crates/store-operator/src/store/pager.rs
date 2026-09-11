@@ -31,7 +31,7 @@ use reifydb_store::{
 use crate::{
 	error::Result,
 	persistent::{Page as PersistentPage, Persistent, PersistentTier},
-	range::{partition::TypedPartition, tiers::RangeTiers, typed::TypedDomain},
+	range::{TypedPartition, tiers::RangeTiers, typed::TypedDomain},
 	store::occupancy::occupies,
 	types::OperatorBatch,
 };
