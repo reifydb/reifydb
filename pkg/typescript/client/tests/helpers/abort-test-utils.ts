@@ -33,7 +33,7 @@ export const LOGIN_SUCCESS_RESPONSE = {
 
 export const FRAMES_SUCCESS_RESPONSE = {
     frames: [{
-        columns: [{name: 'result', type: 'Int4', payload: ['42']}]
+        columns: [{name: 'result', type: {id: 'Int4'}, payload: ['42']}]
     }]
 };
 

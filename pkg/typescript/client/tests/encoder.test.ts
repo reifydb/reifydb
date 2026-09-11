@@ -140,10 +140,10 @@ describe('encodeParams', () => {
 
     it('should encode positional Option params', () => {
         expect(encodeParams([Option.some(new Int4Value(42)), Option.none('Utf8'), Option.some(Option.none('Int4')), Option.none({Option: 'Int4'})])).toEqual([
-            {type: {Option: 'Int4'}, value: '42'},
-            {type: {Option: 'Utf8'}, value: NONE_VALUE},
-            {type: {Option: {Option: 'Int4'}}, value: noneMarker(1)},
-            {type: {Option: {Option: 'Int4'}}, value: NONE_VALUE},
+            {type: {id: 'Option', underlying: {id: 'Int4'}}, value: '42'},
+            {type: {id: 'Option', underlying: {id: 'Utf8'}}, value: NONE_VALUE},
+            {type: {id: 'Option', underlying: {id: 'Option', underlying: {id: 'Int4'}}}, value: noneMarker(1)},
+            {type: {id: 'Option', underlying: {id: 'Option', underlying: {id: 'Int4'}}}, value: NONE_VALUE},
         ]);
     });
 
@@ -154,10 +154,10 @@ describe('encodeParams', () => {
             inner: Option.some(Option.some(new Int4Value(1))),
             outer: Option.none({Option: 'Int4'}),
         })).toEqual({
-            count: {type: {Option: 'Int4'}, value: '42'},
-            name: {type: {Option: 'Utf8'}, value: NONE_VALUE},
-            inner: {type: {Option: {Option: 'Int4'}}, value: '1'},
-            outer: {type: {Option: {Option: 'Int4'}}, value: NONE_VALUE},
+            count: {type: {id: 'Option', underlying: {id: 'Int4'}}, value: '42'},
+            name: {type: {id: 'Option', underlying: {id: 'Utf8'}}, value: NONE_VALUE},
+            inner: {type: {id: 'Option', underlying: {id: 'Option', underlying: {id: 'Int4'}}}, value: '1'},
+            outer: {type: {id: 'Option', underlying: {id: 'Option', underlying: {id: 'Int4'}}}, value: NONE_VALUE},
         });
     });
 
@@ -173,18 +173,18 @@ describe('encodeParams', () => {
         const result = encodeParams([42, 'hello', true]);
         const arr = result as any[];
         expect(arr).toHaveLength(3);
-        expect(arr[0].type).toBe('Int1');
-        expect(arr[1].type).toBe('Utf8');
-        expect(arr[2].type).toBe('Boolean');
+        expect(arr[0].type).toEqual({id: 'Int1'});
+        expect(arr[1].type).toEqual({id: 'Utf8'});
+        expect(arr[2].type).toEqual({id: 'Boolean'});
         expect(() => encodeParams([42, 'hello', true, null])).toThrow('parameter $4 is null or undefined, use Option.none(inner)');
     });
 
     it('should encode mixed named params', () => {
         const result = encodeParams({count: 42, name: 'test', active: true});
         const obj = result as Record<string, any>;
-        expect(obj.count.type).toBe('Int1');
-        expect(obj.name.type).toBe('Utf8');
-        expect(obj.active.type).toBe('Boolean');
+        expect(obj.count.type).toEqual({id: 'Int1'});
+        expect(obj.name.type).toEqual({id: 'Utf8'});
+        expect(obj.active.type).toEqual({id: 'Boolean'});
     });
 
     it('should throw for invalid params type', () => {
