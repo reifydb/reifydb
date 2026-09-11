@@ -30,6 +30,8 @@ mod interceptor;
 mod join_retention_ddl;
 #[path = "memory_limit.rs"]
 mod memory_limit;
+#[path = "nested_read_policy_bypass.rs"]
+mod nested_read_policy_bypass;
 #[path = "plan_cache.rs"]
 mod plan_cache;
 #[path = "positional_insert.rs"]
@@ -68,3 +70,5 @@ mod transactional_view_unimplemented;
 mod udf;
 #[path = "virtual_table_diagnostics.rs"]
 mod virtual_table_diagnostics;
+#[path = "write_policy_old_row.rs"]
+mod write_policy_old_row;

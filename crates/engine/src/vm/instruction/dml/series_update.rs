@@ -113,6 +113,7 @@ pub(crate) fn update_series(
 		let row_numbers = columns.row_numbers();
 		let updates_to_apply =
 			build_series_updates_to_apply(services, txn, &series, &columns, row_numbers, has_tag)?;
+		enforce_old_row_policies(services, symbols, txn, &target_data, &updates_to_apply, row_numbers)?;
 
 		for (key, row, row_idx) in updates_to_apply {
 			let pre_values = match txn.get(&key)? {
@@ -297,6 +298,37 @@ fn build_series_updates_to_apply(
 		updates_to_apply.push((key, row, row_idx));
 	}
 	Ok(updates_to_apply)
+}
+
+fn enforce_old_row_policies(
+	services: &Arc<Services>,
+	symbols: &SymbolTable,
+	txn: &mut Transaction<'_>,
+	target: &SeriesTarget<'_>,
+	updates: &[(TaggedKey, EncodedBytes, usize)],
+	row_numbers: &[RowNumber],
+) -> Result<()> {
+	if txn.identity().is_privileged() {
+		return Ok(());
+	}
+	let series = target.series;
+	let mut old_rows: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(updates.len());
+	for (key, _, row_idx) in updates {
+		if let Some(old) = txn.get(key)? {
+			old_rows.push((row_numbers[*row_idx], old.bytes));
+		}
+	}
+	let shape = get_or_create_series_shape(&services.catalog, series, txn)?;
+	let mut old_columns = decode_rows_to_columns(&shape, &old_rows);
+	decode_returning_dictionaries(services, txn, &series.columns, &mut old_columns)?;
+	PolicyEvaluator::new(services, symbols).enforce_write_policies(
+		txn,
+		target.namespace.name(),
+		&series.name,
+		DataOp::Update,
+		&old_columns,
+		PolicyTargetType::Series,
+	)
 }
 
 #[inline]

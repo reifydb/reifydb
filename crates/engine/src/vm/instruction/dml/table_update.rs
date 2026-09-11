@@ -191,6 +191,7 @@ fn run_table_update(
 		let row_numbers: Vec<RowNumber> = columns.row_numbers().to_vec();
 		let sidecar_partitions: Vec<Partition> = columns.partitions().to_vec();
 		let row_count = columns.row_count();
+		enforce_old_row_policies(exec, txn, target, shape, &row_numbers, &sidecar_partitions)?;
 
 		let mut prepared_rows: Vec<EncodedTableRowBuilder> = Vec::with_capacity(row_count);
 		let mut partitions_out: Vec<Partition> = Vec::with_capacity(row_count);
@@ -262,6 +263,35 @@ fn run_table_update(
 		}
 	}
 	Ok((updated_count, returned_rows, pre_rows))
+}
+
+fn enforce_old_row_policies(
+	exec: &WriteExecCtx<'_>,
+	txn: &mut Transaction<'_>,
+	target: &TableTarget<'_>,
+	shape: &RowShape,
+	row_numbers: &[RowNumber],
+	partitions: &[Partition],
+) -> Result<()> {
+	if txn.identity().is_privileged() {
+		return Ok(());
+	}
+	let mut old_rows: ReturnedRows = Vec::with_capacity(row_numbers.len());
+	for (row_idx, &row_number) in row_numbers.iter().enumerate() {
+		let row_key = row_key_from_partition(target.table.id, partitions.get(row_idx).copied(), row_number);
+		let bytes = txn.get(&row_key)?.expect("bytes must exist for update").bytes;
+		old_rows.push((row_number, bytes));
+	}
+	let mut old_columns = decode_rows_to_columns(shape, &old_rows);
+	decode_returning_dictionaries(exec.services, txn, &target.table.columns, &mut old_columns)?;
+	PolicyEvaluator::new(exec.services, exec.symbols).enforce_write_policies(
+		txn,
+		target.namespace.name(),
+		&target.table.name,
+		DataOp::Update,
+		&old_columns,
+		PolicyTargetType::Table,
+	)
 }
 
 #[inline]

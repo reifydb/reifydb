@@ -107,6 +107,7 @@ pub(crate) fn update_ringbuffer(
 		if columns.row_numbers().is_empty() {
 			return_error!(engine::missing_row_number_column());
 		}
+		enforce_old_row_policies(services, symbols, txn, &target_data, &shape, &columns)?;
 		let row_numbers = columns.row_numbers();
 		let mut column_map: HashMap<&str, usize> = HashMap::new();
 		for (idx, col) in columns.iter().enumerate() {
@@ -235,6 +236,44 @@ fn build_update_ringbuffer_query_context(
 		identity,
 		memory: query_budget(services),
 	}
+}
+
+fn enforce_old_row_policies(
+	services: &Arc<Services>,
+	symbols: &SymbolTable,
+	txn: &mut Transaction<'_>,
+	target: &RingBufferTarget<'_>,
+	shape: &RowShape,
+	columns: &Columns,
+) -> Result<()> {
+	if txn.identity().is_privileged() {
+		return Ok(());
+	}
+	let ringbuffer = target.ringbuffer;
+	let mut old_rows: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(columns.row_count());
+	for (row_idx, &row_number) in columns.row_numbers().iter().enumerate() {
+		let old_row_key = if columns.partitions().is_empty() {
+			TaggedKey::from(RowKey::new(ringbuffer.id, row_number))
+		} else {
+			TaggedKey::from(PartitionedRowKey::new(
+				ringbuffer.id,
+				columns.partitions()[row_idx],
+				row_number,
+			))
+		};
+		let bytes = txn.get(&old_row_key)?.expect("bytes must exist for update").bytes;
+		old_rows.push((row_number, bytes));
+	}
+	let mut old_columns = decode_rows_to_columns(shape, &old_rows);
+	decode_returning_dictionaries(services, txn, &ringbuffer.columns, &mut old_columns)?;
+	PolicyEvaluator::new(services, symbols).enforce_write_policies(
+		txn,
+		target.namespace.name(),
+		&ringbuffer.name,
+		DataOp::Update,
+		&old_columns,
+		PolicyTargetType::RingBuffer,
+	)
 }
 
 #[inline]

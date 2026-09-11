@@ -18,9 +18,11 @@ use reifydb_core::interface::{
 };
 use reifydb_rql::{
 	ast::parse_str,
+	bump::BumpBox,
 	expression::{ConstantExpression, Expression},
 	plan::logical::{
-		CreateSubscriptionNode, FilterNode, LogicalPlan, ObjectScanNode, PipelineNode, compile_logical,
+		AppendNode, AppendSourcePlan, AssignValue, CreateSubscriptionNode, ElseIfBranch, FilterNode, LetValue,
+		LogicalPlan, ObjectScanNode, PipelineNode, compile_logical, function::ReturnValue,
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -49,15 +51,14 @@ fn inject_plans<'a>(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 ) -> Result<BumpVec<'a, LogicalPlan<'a>>> {
-	let has_scan = plans.iter().any(|p| matches!(p, LogicalPlan::SourceScan(_)));
-	if has_scan {
-		let injected = inject_pipeline(plans, bump, catalog, tx)?;
-		return Ok(injected);
-	}
-
-	let mut result = BumpVec::with_capacity_in(plans.len(), bump);
+	let mut result = BumpVec::with_capacity_in(plans.len() + 4, bump);
 	for plan in plans {
-		result.push(inject_plan(plan, bump, catalog, tx)?);
+		match plan {
+			scan @ LogicalPlan::SourceScan(_) => {
+				inject_scan_with_policies(scan, &mut result, bump, catalog, tx)?
+			}
+			other => result.push(inject_plan(other, bump, catalog, tx)?),
+		}
 	}
 	Ok(result)
 }
@@ -69,8 +70,15 @@ fn inject_plan<'a>(
 	tx: &mut Transaction<'_>,
 ) -> Result<LogicalPlan<'a>> {
 	match plan {
+		scan @ LogicalPlan::SourceScan(_) => {
+			let mut steps = BumpVec::with_capacity_in(4, bump);
+			inject_scan_with_policies(scan, &mut steps, bump, catalog, tx)?;
+			Ok(LogicalPlan::Pipeline(PipelineNode {
+				steps,
+			}))
+		}
 		LogicalPlan::Pipeline(pipeline) => {
-			let steps = inject_pipeline(pipeline.steps, bump, catalog, tx)?;
+			let steps = inject_plans(pipeline.steps, bump, catalog, tx)?;
 			Ok(LogicalPlan::Pipeline(PipelineNode {
 				steps,
 			}))
@@ -85,24 +93,138 @@ fn inject_plan<'a>(
 				linger: node.linger,
 			}))
 		}
+		LogicalPlan::Declare(mut node) => {
+			node.value = match node.value {
+				LetValue::Statement(plans) => {
+					LetValue::Statement(inject_plans(plans, bump, catalog, tx)?)
+				}
+				value => value,
+			};
+			Ok(LogicalPlan::Declare(node))
+		}
+		LogicalPlan::Assign(mut node) => {
+			node.value = match node.value {
+				AssignValue::Statement(plans) => {
+					AssignValue::Statement(inject_plans(plans, bump, catalog, tx)?)
+				}
+				value => value,
+			};
+			Ok(LogicalPlan::Assign(node))
+		}
+		LogicalPlan::Append(AppendNode::IntoVariable {
+			target,
+			source: AppendSourcePlan::Statement(plans),
+		}) => Ok(LogicalPlan::Append(AppendNode::IntoVariable {
+			target,
+			source: AppendSourcePlan::Statement(inject_plans(plans, bump, catalog, tx)?),
+		})),
+		LogicalPlan::Append(AppendNode::Query {
+			with,
+		}) => Ok(LogicalPlan::Append(AppendNode::Query {
+			with: inject_plans(with, bump, catalog, tx)?,
+		})),
+		LogicalPlan::Conditional(mut node) => {
+			node.then_branch = inject_boxed(node.then_branch, bump, catalog, tx)?;
+			node.else_ifs = node
+				.else_ifs
+				.into_iter()
+				.map(|branch| {
+					Ok(ElseIfBranch {
+						condition: branch.condition,
+						then_branch: inject_boxed(branch.then_branch, bump, catalog, tx)?,
+					})
+				})
+				.collect::<Result<_>>()?;
+			node.else_branch =
+				node.else_branch.map(|branch| inject_boxed(branch, bump, catalog, tx)).transpose()?;
+			Ok(LogicalPlan::Conditional(node))
+		}
+		LogicalPlan::Loop(mut node) => {
+			node.body = inject_bodies(node.body, bump, catalog, tx)?;
+			Ok(LogicalPlan::Loop(node))
+		}
+		LogicalPlan::While(mut node) => {
+			node.body = inject_bodies(node.body, bump, catalog, tx)?;
+			Ok(LogicalPlan::While(node))
+		}
+		LogicalPlan::For(mut node) => {
+			node.iterable = inject_plans(node.iterable, bump, catalog, tx)?;
+			node.body = inject_bodies(node.body, bump, catalog, tx)?;
+			Ok(LogicalPlan::For(node))
+		}
+		LogicalPlan::DefineFunction(mut node) => {
+			node.body = inject_bodies(node.body, bump, catalog, tx)?;
+			Ok(LogicalPlan::DefineFunction(node))
+		}
+		LogicalPlan::DefineClosure(mut node) => {
+			node.body = inject_bodies(node.body, bump, catalog, tx)?;
+			Ok(LogicalPlan::DefineClosure(node))
+		}
+		LogicalPlan::Return(mut node) => {
+			node.value = match node.value {
+				Some(ReturnValue::Statement(plans)) => {
+					Some(ReturnValue::Statement(inject_plans(plans, bump, catalog, tx)?))
+				}
+				value => value,
+			};
+			Ok(LogicalPlan::Return(node))
+		}
+		LogicalPlan::Scalarize(mut node) => {
+			node.input = inject_boxed(node.input, bump, catalog, tx)?;
+			Ok(LogicalPlan::Scalarize(node))
+		}
+		LogicalPlan::JoinInner(mut node) => {
+			node.with = inject_plans(node.with, bump, catalog, tx)?;
+			Ok(LogicalPlan::JoinInner(node))
+		}
+		LogicalPlan::JoinLeft(mut node) => {
+			node.with = inject_plans(node.with, bump, catalog, tx)?;
+			Ok(LogicalPlan::JoinLeft(node))
+		}
+		LogicalPlan::JoinNatural(mut node) => {
+			node.with = inject_plans(node.with, bump, catalog, tx)?;
+			Ok(LogicalPlan::JoinNatural(node))
+		}
+		LogicalPlan::InsertTable(mut node) => {
+			node.source = inject_boxed(node.source, bump, catalog, tx)?;
+			Ok(LogicalPlan::InsertTable(node))
+		}
+		LogicalPlan::InsertRingBuffer(mut node) => {
+			node.source = inject_boxed(node.source, bump, catalog, tx)?;
+			Ok(LogicalPlan::InsertRingBuffer(node))
+		}
+		LogicalPlan::InsertQueue(mut node) => {
+			node.source = inject_boxed(node.source, bump, catalog, tx)?;
+			Ok(LogicalPlan::InsertQueue(node))
+		}
+		LogicalPlan::InsertDictionary(mut node) => {
+			node.source = inject_boxed(node.source, bump, catalog, tx)?;
+			Ok(LogicalPlan::InsertDictionary(node))
+		}
+		LogicalPlan::InsertSeries(mut node) => {
+			node.source = inject_boxed(node.source, bump, catalog, tx)?;
+			Ok(LogicalPlan::InsertSeries(node))
+		}
 		other => Ok(other),
 	}
 }
 
-fn inject_pipeline<'a>(
-	steps: BumpVec<'a, LogicalPlan<'a>>,
+fn inject_bodies<'a>(
+	bodies: Vec<BumpVec<'a, LogicalPlan<'a>>>,
 	bump: &'a Bump,
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-) -> Result<BumpVec<'a, LogicalPlan<'a>>> {
-	let mut result = BumpVec::with_capacity_in(steps.len() + 4, bump);
-	for step in steps {
-		match &step {
-			LogicalPlan::SourceScan(_) => inject_scan_with_policies(step, &mut result, bump, catalog, tx)?,
-			_ => result.push(step),
-		}
-	}
-	Ok(result)
+) -> Result<Vec<BumpVec<'a, LogicalPlan<'a>>>> {
+	bodies.into_iter().map(|plans| inject_plans(plans, bump, catalog, tx)).collect()
+}
+
+fn inject_boxed<'a>(
+	plan: BumpBox<'a, LogicalPlan<'a>>,
+	bump: &'a Bump,
+	catalog: &Catalog,
+	tx: &mut Transaction<'_>,
+) -> Result<BumpBox<'a, LogicalPlan<'a>>> {
+	Ok(BumpBox::new_in(inject_plan(BumpBox::into_inner(plan), bump, catalog, tx)?, bump))
 }
 
 fn inject_scan_with_policies<'a>(
