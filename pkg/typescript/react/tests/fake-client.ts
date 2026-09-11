@@ -2,12 +2,21 @@
 // Copyright (c) 2026 ReifyDB
 import {asFrameResults} from '@reifydb/core';
 import type {FrameResults, ShapeNode} from '@reifydb/core';
-import type {SubscriptionCallbacks, SubscriptionConfig} from '@reifydb/client';
+import type {
+    BatchSubscription,
+    BatchSubscriptionMember,
+    SubscriptionCallbacks,
+    SubscriptionConfig
+} from '@reifydb/client';
 import type {StoreClient} from '@reifydb/store';
 
 export interface Deferred<T> {
     resolve: (value: T) => void;
     reject: (error: Error) => void;
+}
+
+export interface BatchSubscribeCall extends Deferred<BatchSubscription> {
+    members: BatchSubscriptionMember[];
 }
 
 export interface SubscribeCall extends Deferred<string> {
@@ -82,6 +91,16 @@ export class FakeClient implements StoreClient {
     unsubscribe(subscriptionId: string): Promise<void> {
         const {promise, ...call} = deferred<void>();
         this.unsubscribes.push({subscriptionId, ...call});
+        return promise;
+    }
+}
+
+export class BatchingFakeClient extends FakeClient {
+    readonly batches: BatchSubscribeCall[] = [];
+
+    batchSubscribe(members: BatchSubscriptionMember[]): Promise<BatchSubscription> {
+        const {promise, ...call} = deferred<BatchSubscription>();
+        this.batches.push({members, ...call});
         return promise;
     }
 }
