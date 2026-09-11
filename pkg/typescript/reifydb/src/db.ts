@@ -19,8 +19,8 @@ export interface Db {
    */
   subscribeRoot(rql: string, params: any): Promise<string>
   subscribeAs(identity: string, rql: string, params: any): Promise<string>
-  batchSubscribeRoot(queries: string[]): Promise<BatchSubscribed>
-  batchSubscribeAs(identity: string, queries: string[]): Promise<BatchSubscribed>
+  batchSubscribeRoot(queries: string[], params: any[]): Promise<BatchSubscribed>
+  batchSubscribeAs(identity: string, queries: string[], params: any[]): Promise<BatchSubscribed>
   unsubscribe(subscriptionId: string): void
   batchUnsubscribe(batchId: string): Promise<void>
 

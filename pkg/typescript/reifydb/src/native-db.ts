@@ -45,12 +45,12 @@ export class NativeDb implements Db {
     return this.node.subscribeAs(identity, rql, toWireParams(params))
   }
 
-  batchSubscribeRoot(queries: string[]): Promise<BatchSubscribed> {
-    return this.node.batchSubscribeRoot(queries)
+  batchSubscribeRoot(queries: string[], params: any[]): Promise<BatchSubscribed> {
+    return this.node.batchSubscribeRoot(queries, params.map(toWireParams))
   }
 
-  batchSubscribeAs(identity: string, queries: string[]): Promise<BatchSubscribed> {
-    return this.node.batchSubscribeAs(identity, queries)
+  batchSubscribeAs(identity: string, queries: string[], params: any[]): Promise<BatchSubscribed> {
+    return this.node.batchSubscribeAs(identity, queries, params.map(toWireParams))
   }
 
   unsubscribe(subscriptionId: string): void {

@@ -55,7 +55,7 @@ import {encodeParams} from "./encoder";
 import {rbcf} from "./rbcf";
 import {CONTENT_TYPE_RBCF} from "./content-types";
 import {toCamelCaseKeys, toSnakeCaseKeys, WIRE_PASSTHROUGH_KEYS} from "./case";
-import {BinaryKind, decodeBatchEnvelope, decodeEnvelope, dispatchChange} from "./subscription-decode";
+import {BinaryKind, decodeBatchEnvelope, decodeEnvelope, dispatchChange, reportSubscriptionError} from "./subscription-decode";
 
 export interface WsClientOptions {
     url: string;
@@ -80,6 +80,7 @@ export interface WsClientOptions {
 
 interface SubscriptionState<T = any> {
     subscriptionId: string;
+    batchId?: string;
     rql: string;
     params?: any;
     shape?: ShapeNode;
@@ -89,10 +90,41 @@ interface SubscriptionState<T = any> {
 
 interface BatchState {
     batchId: string;
-    members: BatchSubscriptionMember[];
     membersBySubId: Map<string, SubscriptionState>;
     batchCallbacks?: BatchSubscriptionCallbacks;
 }
+
+interface Caller<T> {
+    resolve: (value: T) => void;
+    reject: (error: unknown) => void;
+}
+
+interface SingleIntent {
+    kind: "single";
+    member: BatchSubscriptionMember;
+    caller?: Caller<string>;
+}
+
+interface BatchIntent {
+    kind: "batch";
+    members: BatchSubscriptionMember[];
+    batchCallbacks?: BatchSubscriptionCallbacks;
+    caller?: Caller<BatchSubscription>;
+}
+
+type SubscribeIntent = SingleIntent | BatchIntent;
+
+const CONNECTION_LOST: ErrorResponse = {
+    id: "connection-error",
+    type: "Err",
+    payload: {
+        diagnostic: {
+            code: "CONNECTION_LOST",
+            message: "Connection lost",
+            notes: []
+        }
+    }
+};
 
 type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | CallResponse | SubscribedResponse | UnsubscribedResponse | BatchSubscribedResponse | BatchUnsubscribedResponse | LogoutResponse;
 
@@ -115,6 +147,7 @@ async function createWebSocket(url: string): Promise<WebSocket> {
 interface PendingEntry {
     type: string;
     handler: (response: ResponsePayload) => void;
+    onConnectionLost?: () => void;
 }
 
 
@@ -131,6 +164,8 @@ export class WsClient {
     private subscriptions = new Map<string, SubscriptionState>();
     private batches = new Map<string, BatchState>();
     private subToBatch = new Map<string, string>();
+    private resubscribing = new Map<string, SubscriptionState>();
+    private waiting: SubscribeIntent[] = [];
 
     private constructor(socket: WebSocket, options: WsClientOptions) {
         this.options = options;
@@ -329,49 +364,189 @@ export class WsClient {
         callbacks: SubscriptionCallbacks<T>,
         config?: SubscriptionConfig
     ): Promise<string> {
-        const id = `sub-${this.nextId++}`;
-
-        const subFormat = this.options.format === "rbcf" ? "rbcf" : "frames";
-        const wireRql = buildSubscriptionRql(rql, config);
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
-            : undefined;
-        const request: SubscribeRequest = {
-            id,
-            type: "Subscribe",
-            payload: {rql: wireRql, params: encodedParams, format: subFormat} as any
-        };
-
         return new Promise((resolve, reject) => {
-            this.pending.set(id, {
-                type: "Subscribe",
+            this.dispatch({kind: "single", member: {rql, params, shape, callbacks, config}, caller: {resolve, reject}});
+        });
+    }
+
+    private dispatch(intent: SubscribeIntent): void {
+        if (this.socket.readyState === 1) {
+            this.sendIntent(intent);
+        } else if (this.shouldReconnect) {
+            this.waiting.push(intent);
+        } else {
+            this.failIntent(intent, new ReifyError(CONNECTION_LOST));
+        }
+    }
+
+    private sendIntent(intent: SubscribeIntent): Promise<void> {
+        return new Promise(done => {
+            let request: SubscribeRequest | BatchSubscribeRequest;
+            try {
+                request = this.subscribeRequest(intent);
+            } catch (error) {
+                this.failIntent(intent, error);
+                done();
+                return;
+            }
+            this.pending.set(request.id, {
+                type: request.type,
                 handler: (response) => {
-                    if (response.type === "Err") {
-                        reject(new ReifyError(response));
-                    } else if (response.type === "Subscribed") {
-                        const subscriptionId = response.payload.subscriptionId;
-
-                        this.subscriptions.set(subscriptionId, {
-                            subscriptionId,
-                            rql,
-                            params,
-                            shape,
-                            callbacks,
-                            config
-                        });
-
-                        resolve(subscriptionId);
-                    } else {
-                        reject(new Error("Unexpected response type"));
-                    }
+                    this.settleIntent(intent, response);
+                    done();
+                },
+                onConnectionLost: () => {
+                    this.waiting.push(intent);
+                    done();
                 }
             });
-
             this.socket.send(JSON.stringify(toSnakeCaseKeys(request, WIRE_PASSTHROUGH_KEYS)));
         });
     }
 
+    private subscribeRequest(intent: SubscribeIntent): SubscribeRequest | BatchSubscribeRequest {
+        const subFormat = this.options.format === "rbcf" ? "rbcf" : "frames";
+        if (intent.kind === "single") {
+            const {rql, params, config} = intent.member;
+            return {
+                id: `sub-${this.nextId++}`,
+                type: "Subscribe",
+                payload: {
+                    rql: buildSubscriptionRql(rql, config),
+                    params: params !== undefined && params !== null ? encodeParams(params) : undefined,
+                    format: subFormat
+                } as any
+            };
+        }
+        return {
+            id: `batch-sub-${this.nextId++}`,
+            type: "BatchSubscribe",
+            payload: {
+                queries: intent.members.map(m => buildSubscriptionRql(m.rql, m.config)),
+                params: intent.members.map(m => m.params !== undefined && m.params !== null ? encodeParams(m.params) : null) as any,
+                format: subFormat as any
+            }
+        };
+    }
+
+    private settleIntent(intent: SubscribeIntent, response: ResponsePayload): void {
+        if (response.type === "Err") {
+            this.failIntent(intent, new ReifyError(response));
+        } else if (intent.kind === "single" && response.type === "Subscribed") {
+            this.attachSingle(intent, response.payload.subscriptionId);
+        } else if (intent.kind === "batch" && response.type === "BatchSubscribed") {
+            this.attachBatch(intent, response.payload.batchId, response.payload.members);
+        } else {
+            this.failIntent(intent, new Error("Unexpected response type"));
+        }
+    }
+
+    private attachSingle(intent: SingleIntent, subscriptionId: string): void {
+        const {rql, params, shape, callbacks, config} = intent.member;
+        const state: SubscriptionState = {subscriptionId, rql, params, shape, callbacks, config};
+        this.subscriptions.set(subscriptionId, state);
+        if (intent.caller) {
+            intent.caller.resolve(subscriptionId);
+        } else if (this.retire(intent.member)) {
+            this.notifyResubscribed(state);
+        } else {
+            this.giveBack(state);
+        }
+    }
+
+    private attachBatch(intent: BatchIntent, batchId: string, acked: BatchSubscribedResponse["payload"]["members"]): void {
+        const membersBySubId = new Map<string, SubscriptionState>();
+        const subscriptionIds: string[] = new Array(intent.members.length);
+
+        for (const info of acked) {
+            const member = intent.members[info.index];
+            if (!member) continue;
+            subscriptionIds[info.index] = info.subscriptionId;
+            membersBySubId.set(info.subscriptionId, {
+                subscriptionId: info.subscriptionId,
+                batchId,
+                rql: member.rql,
+                params: member.params,
+                shape: member.shape,
+                callbacks: member.callbacks,
+                config: member.config
+            });
+            this.subToBatch.set(info.subscriptionId, batchId);
+        }
+
+        this.batches.set(batchId, {batchId, membersBySubId, batchCallbacks: intent.batchCallbacks});
+
+        if (intent.caller) {
+            intent.caller.resolve({batchId, subscriptionIds});
+            return;
+        }
+        intent.members.forEach((member, index) => {
+            const state = membersBySubId.get(subscriptionIds[index]);
+            if (!this.retire(member)) {
+                if (state) this.giveBack(state);
+            } else if (state) {
+                this.notifyResubscribed(state);
+            } else {
+                reportSubscriptionError(member, new Error("the batch ack named no id for this member"));
+            }
+        });
+    }
+
+    private notifyResubscribed(state: SubscriptionState): void {
+        try {
+            state.callbacks.onResubscribe?.(state.subscriptionId);
+        } catch (error) {
+            reportSubscriptionError(state, error);
+        }
+    }
+
+    private failIntent(intent: SubscribeIntent, error: unknown): void {
+        if (intent.caller) {
+            intent.caller.reject(error);
+            return;
+        }
+        const members = intent.kind === "single" ? [intent.member] : intent.members;
+        members.filter(member => this.retire(member)).forEach(member => reportSubscriptionError(member, error));
+    }
+
+    private held(member: BatchSubscriptionMember): boolean {
+        return this.resubscribing.get((member as SubscriptionState).subscriptionId) === member;
+    }
+
+    private retire(member: BatchSubscriptionMember): boolean {
+        return this.held(member) && this.resubscribing.delete((member as SubscriptionState).subscriptionId);
+    }
+
+    private stillWanted(intent: SubscribeIntent): SubscribeIntent | undefined {
+        if (intent.caller) {
+            return intent;
+        }
+        if (intent.kind === "single") {
+            return this.held(intent.member) ? intent : undefined;
+        }
+        const members = intent.members.filter(member => this.held(member));
+        return members.length > 0 ? {...intent, members} : undefined;
+    }
+
+    private giveBack(state: SubscriptionState): void {
+        this.unsubscribe(state.subscriptionId).catch(error => reportSubscriptionError(state, error));
+    }
+
+    private forget(subscriptionId: string): void {
+        this.subscriptions.delete(subscriptionId);
+        this.dropBatchMember(subscriptionId);
+    }
+
     async unsubscribe(subscriptionId: string): Promise<void> {
+        if (!this.subscriptions.has(subscriptionId) && !this.subToBatch.has(subscriptionId)) {
+            this.resubscribing.delete(subscriptionId);
+            return;
+        }
+        if (this.socket.readyState !== 1) {
+            this.forget(subscriptionId);
+            return;
+        }
+
         const id = `unsub-${this.nextId++}`;
 
         const request: UnsubscribeRequest = {
@@ -387,11 +562,15 @@ export class WsClient {
                     if (response.type === "Err") {
                         reject(new ReifyError(response));
                     } else if (response.type === "Unsubscribed") {
-                        this.subscriptions.delete(subscriptionId);
+                        this.forget(subscriptionId);
                         resolve();
                     } else {
                         reject(new Error("Unexpected response type"));
                     }
+                },
+                onConnectionLost: () => {
+                    this.forget(subscriptionId);
+                    resolve();
                 }
             });
 
@@ -406,66 +585,22 @@ export class WsClient {
         if (members.length === 0) {
             throw new Error("batchSubscribe requires at least one member");
         }
-
-        const id = `batch-sub-${this.nextId++}`;
-        const subFormat = this.options.format === "rbcf" ? "rbcf" : "frames";
-        const request: BatchSubscribeRequest = {
-            id,
-            type: "BatchSubscribe",
-            payload: {
-                queries: members.map(m => buildSubscriptionRql(m.rql, m.config)),
-                format: subFormat as any
-            }
-        };
-
         return new Promise((resolve, reject) => {
-            this.pending.set(id, {
-                type: "BatchSubscribe",
-                handler: (response) => {
-                    if (response.type === "Err") {
-                        reject(new ReifyError(response));
-                        return;
-                    }
-                    if (response.type !== "BatchSubscribed") {
-                        reject(new Error("Unexpected response type"));
-                        return;
-                    }
-
-                    const {batchId, members: memberInfos} = response.payload;
-                    const membersBySubId = new Map<string, SubscriptionState>();
-                    const subscriptionIds: string[] = new Array(members.length);
-
-                    for (const info of memberInfos) {
-                        const member = members[info.index];
-                        if (!member) continue;
-                        subscriptionIds[info.index] = info.subscriptionId;
-                        membersBySubId.set(info.subscriptionId, {
-                            subscriptionId: info.subscriptionId,
-                            rql: member.rql,
-                            params: member.params,
-                            shape: member.shape,
-                            callbacks: member.callbacks,
-                            config: member.config
-                        });
-                        this.subToBatch.set(info.subscriptionId, batchId);
-                    }
-
-                    this.batches.set(batchId, {
-                        batchId,
-                        members,
-                        membersBySubId,
-                        batchCallbacks
-                    });
-
-                    resolve({batchId, subscriptionIds});
-                }
-            });
-
-            this.socket.send(JSON.stringify(toSnakeCaseKeys(request, WIRE_PASSTHROUGH_KEYS)));
+            this.dispatch({kind: "batch", members, batchCallbacks, caller: {resolve, reject}});
         });
     }
 
     async batchUnsubscribe(batchId: string): Promise<void> {
+        this.resubscribing.forEach((state, subscriptionId) => {
+            if (state.batchId === batchId) {
+                this.resubscribing.delete(subscriptionId);
+            }
+        });
+        if (this.socket.readyState !== 1) {
+            this.cleanupBatch(batchId);
+            return;
+        }
+
         const id = `batch-unsub-${this.nextId++}`;
 
         const request: BatchUnsubscribeRequest = {
@@ -486,11 +621,27 @@ export class WsClient {
                     } else {
                         reject(new Error("Unexpected response type"));
                     }
+                },
+                onConnectionLost: () => {
+                    this.cleanupBatch(batchId);
+                    resolve();
                 }
             });
 
             this.socket.send(JSON.stringify(toSnakeCaseKeys(request, WIRE_PASSTHROUGH_KEYS)));
         });
+    }
+
+    private dropBatchMember(subscriptionId: string): void {
+        const batchId = this.subToBatch.get(subscriptionId);
+        if (batchId === undefined) return;
+        this.subToBatch.delete(subscriptionId);
+        const batch = this.batches.get(batchId);
+        if (!batch) return;
+        batch.membersBySubId.delete(subscriptionId);
+        if (batch.membersBySubId.size === 0) {
+            this.batches.delete(batchId);
+        }
     }
 
     private cleanupBatch(batchId: string): void {
@@ -728,6 +879,8 @@ export class WsClient {
         this.subscriptions.clear();
         this.batches.clear();
         this.subToBatch.clear();
+        this.resubscribing.clear();
+        this.failWaiting();
 
         if (this.reconnectTimer !== null) {
             clearTimeout(this.reconnectTimer);
@@ -769,17 +922,30 @@ export class WsClient {
         this.options.onDisconnect?.();
         this.rejectAllPendingRequests();
 
-        if (!this.shouldReconnect || this.isReconnecting) {
+        if (this.isReconnecting) {
             return;
         }
 
         const maxAttempts = this.options.maxReconnectAttempts ?? 5;
-        if (this.reconnectAttempts >= maxAttempts) {
+        if (this.shouldReconnect && this.reconnectAttempts >= maxAttempts) {
             console.error(`Max reconnection attempts (${maxAttempts}) reached`);
+            this.shouldReconnect = false;
+        }
+
+        if (!this.shouldReconnect) {
+            this.failWaiting();
             return;
         }
 
         this.attemptReconnect();
+    }
+
+    private failWaiting(): void {
+        const waiting = this.waiting;
+        this.waiting = [];
+        for (const intent of waiting) {
+            intent.caller?.reject(new ReifyError(CONNECTION_LOST));
+        }
     }
 
     private async attemptReconnect() {
@@ -859,37 +1025,47 @@ export class WsClient {
             this.reconnectAttempts = 0;
             this.isReconnecting = false;
 
-            await this.resubscribeAll();
-            this.options.onReconnect?.();
+            if (await this.resubscribeAll()) {
+                this.options.onReconnect?.();
+            }
         } catch (error) {
             this.isReconnecting = false;
             this.handleDisconnect();
         }
     }
 
-    private async resubscribeAll(): Promise<void> {
-        const subscriptionsToReestablish = Array.from(this.subscriptions.values());
-        const batchesToReestablish = Array.from(this.batches.values());
+    private async resubscribeAll(): Promise<boolean> {
+        const socket = this.socket;
+        const intents: SubscribeIntent[] = [
+            ...Array.from(this.subscriptions.values(), (member): SubscribeIntent => ({kind: "single", member})),
+            ...Array.from(this.batches.values())
+                .filter(batch => batch.membersBySubId.size > 0)
+                .map((batch): SubscribeIntent => ({
+                    kind: "batch",
+                    members: Array.from(batch.membersBySubId.values()),
+                    batchCallbacks: batch.batchCallbacks
+                })),
+            ...this.waiting
+        ];
 
+        this.subscriptions.forEach(state => this.resubscribing.set(state.subscriptionId, state));
+        this.batches.forEach(batch => batch.membersBySubId.forEach(state => this.resubscribing.set(state.subscriptionId, state)));
         this.subscriptions.clear();
         this.batches.clear();
         this.subToBatch.clear();
+        this.waiting = [];
 
-        for (const state of subscriptionsToReestablish) {
-            try {
-                await (this.subscribe as any)(state.rql, state.params, state.shape, state.callbacks, state.config);
-            } catch (err) {
-                console.error(`Failed to resubscribe to ${state.rql}:`, err);
+        for (let i = 0; i < intents.length; i++) {
+            if (this.socket !== socket || socket.readyState !== 1) {
+                this.waiting.push(...intents.slice(i));
+                return false;
+            }
+            const intent = this.stillWanted(intents[i]);
+            if (intent !== undefined) {
+                await this.sendIntent(intent);
             }
         }
-
-        for (const batch of batchesToReestablish) {
-            try {
-                await this.batchSubscribe(batch.members, batch.batchCallbacks);
-            } catch (err) {
-                console.error(`Failed to re-establish batch subscription:`, err);
-            }
-        }
+        return this.socket === socket && socket.readyState === 1;
     }
 
     private findSubscriptionState(subscriptionId: string): SubscriptionState | undefined {
@@ -1002,20 +1178,12 @@ export class WsClient {
     }
 
     private rejectAllPendingRequests() {
-        const error: ErrorResponse = {
-            id: "connection-error",
-            type: "Err",
-            payload: {
-                diagnostic: {
-                    code: "CONNECTION_LOST",
-                    message: "Connection lost",
-                    notes: []
-                }
-            }
-        };
-
         for (const entry of this.pending.values()) {
-            entry.handler(error);
+            if (entry.onConnectionLost) {
+                entry.onConnectionLost();
+            } else {
+                entry.handler(CONNECTION_LOST);
+            }
         }
         this.pending.clear();
     }

@@ -152,6 +152,7 @@ export interface SubscriptionCallbacks<T = any> {
     onRemove?: (rows: SubscriptionRow<T>[]) => void;
     // A change that cannot be decoded is reported here; without it the rows would be dropped silently.
     onError?: (error: Error) => void;
+    onResubscribe?: (subscriptionId: string) => void;
 }
 
 export interface HydrationConfig {
@@ -204,6 +205,7 @@ export interface BatchSubscribeRequest {
     type: "BatchSubscribe";
     payload: {
         queries: string[];
+        params?: (Params | null)[];
         format?: "json" | "frames" | "rbcf";
     };
 }

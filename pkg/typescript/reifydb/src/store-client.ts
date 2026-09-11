@@ -113,9 +113,10 @@ export function storeClient(db: Db, options: StoreClientOptions = {}): BridgeCli
       alone(async () => {
         if (members.length === 0) throw new Error('batchSubscribe requires at least one member')
         const queries = members.map((member) => buildSubscriptionRql(member.rql, member.config))
+        const params = members.map((member) => member.params)
         const ack = identity
-          ? await db.batchSubscribeAs(identity, queries)
-          : await db.batchSubscribeRoot(queries)
+          ? await db.batchSubscribeAs(identity, queries, params)
+          : await db.batchSubscribeRoot(queries, params)
 
         const subscriptionIds: string[] = new Array(members.length)
         for (const acked of ack.members) {

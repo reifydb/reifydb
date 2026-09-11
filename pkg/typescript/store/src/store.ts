@@ -162,6 +162,7 @@ export class Store {
                     this.update(key, entry => withStatus(entry, 'error', toError(error)));
                 }
             },
+            onResubscribe: id => this.attach(key, sub, id, new Map()),
         };
         if (this.batch && this.client.batchSubscribe !== undefined) {
             this.queued.push({key, sub, member: {rql, params, shape, callbacks, config}});
@@ -221,13 +222,13 @@ export class Store {
         );
     }
 
-    private attach(key: string, sub: Subscription, id: string): void {
+    private attach(key: string, sub: Subscription, id: string, rows?: Map<number, unknown>): void {
         if (sub.closed) {
             this.client.unsubscribe(id).catch(error => this.onBackgroundError(toError(error)));
             return;
         }
         sub.id = id;
-        this.update(key, entry => withStatus(entry, 'ready'));
+        this.update(key, entry => withStatus(rows === undefined ? entry : withRows(entry, rows), 'ready'));
     }
 
     private reject(key: string, sub: Subscription, error: unknown): void {
