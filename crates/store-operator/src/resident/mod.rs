@@ -760,16 +760,24 @@ impl Resident {
 		groups
 	}
 
+	/// Arming publishes an empty filter as the authoritative one, which is only sound over a device
+	/// that holds nothing: from there every persisted key passes through `add` and the filter sees
+	/// all of them. Over a device that already holds rows it is a filter that rejects keys the store
+	/// still has, and a rejection is final, so a read answers absent for a durable row. Anything short
+	/// of a positive answer that the device is empty therefore has to leave the filter alone: an
+	/// unarmed filter admits every key and costs a device read, which is the direction that stays
+	/// correct.
 	fn arm_filter(&self) {
-		if self.shared.filter_armed.swap(true, Ordering::AcqRel) {
+		let Some(sinks) = self.shared.sinks.get() else {
+			return;
+		};
+		let Ok(census) = sinks.persistent.census() else {
+			return;
+		};
+		if !census.is_empty() {
 			return;
 		}
-		let empty = self
-			.shared
-			.sinks
-			.get()
-			.is_none_or(|sinks| sinks.persistent.census().is_ok_and(|census| census.is_empty()));
-		if !empty {
+		if self.shared.filter_armed.swap(true, Ordering::AcqRel) {
 			return;
 		}
 		let handle = self.shared.filter.begin_rebuild(FILTER_KEYS);
