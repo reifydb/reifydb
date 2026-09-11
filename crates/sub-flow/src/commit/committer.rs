@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	delta::RemoveVisibility,
 	interface::{
 		catalog::flow::FlowId,
@@ -74,6 +74,7 @@ impl CommitterActor {
 			checkpoint_deletes,
 			view_changes,
 			control_cursor,
+			source,
 		} = slice;
 		let produced_output = combined.iter_sorted().next().is_some() || !view_changes.is_empty();
 		let combined = Arc::new(combined);
@@ -81,7 +82,7 @@ impl CommitterActor {
 		let apply_committer = self.committer.clone();
 		let apply_combined = Arc::clone(&combined);
 		let apply: CommitApply = Box::new(move |transaction| {
-			apply_committer.apply_slice(transaction, &apply_combined, view_changes, &control_cursor)
+			apply_committer.apply_slice(transaction, &apply_combined, view_changes, &control_cursor, source)
 		});
 
 		let completion_committer = self.committer.clone();
@@ -175,6 +176,8 @@ pub struct FlowSlice {
 	pub view_changes: Vec<Change>,
 
 	pub control_cursor: Option<(CdcConsumerId, CommitVersion)>,
+
+	pub source: Option<SourceVersion>,
 }
 
 impl FlowSlice {
@@ -185,6 +188,7 @@ impl FlowSlice {
 			checkpoint_deletes: Vec::new(),
 			view_changes: Vec::new(),
 			control_cursor: None,
+			source: None,
 		}
 	}
 }
@@ -216,7 +220,11 @@ impl Committer {
 		combined: &Pending,
 		view_changes: Vec<Change>,
 		control_cursor: &Option<(CdcConsumerId, CommitVersion)>,
+		source: Option<SourceVersion>,
 	) -> Result<()> {
+		if let Some(source) = source {
+			transaction.stamp_source(source)?;
+		}
 		apply_pending_writes(transaction, combined)?;
 
 		for change in view_changes {
@@ -267,12 +275,13 @@ impl Committer {
 			checkpoint_deletes,
 			view_changes,
 			control_cursor,
+			source,
 		} = slice;
 
 		let mut transaction = engine.begin_command(IdentityId::system())?;
 		transaction.disable_conflict_tracking()?;
 
-		self.apply_slice(&mut transaction, &combined, view_changes, &control_cursor)?;
+		self.apply_slice(&mut transaction, &combined, view_changes, &control_cursor, source)?;
 
 		let commit_version = transaction.commit_unchecked()?;
 

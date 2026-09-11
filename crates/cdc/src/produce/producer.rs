@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_core::{
 	actors::cdc::{CdcProduceHandle, CdcProduceMessage},
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	delta::{Delta, RemoveAnnounce},
 	event::{
 		EventBus, EventListener,
@@ -69,7 +69,13 @@ where
 		}
 	}
 
-	fn process(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) -> CdcStorageResult<()> {
+	fn process(
+		&self,
+		version: CommitVersion,
+		source: SourceVersion,
+		changed_at: DateTime,
+		deltas: Vec<Delta>,
+	) -> CdcStorageResult<()> {
 		let mut cdc_changes: Vec<CdcChange> = Vec::new();
 
 		debug!(version = version.0, delta_count = deltas.len(), "Processing CDC");
@@ -83,7 +89,7 @@ where
 			}
 		}
 
-		self.write_and_emit(version, changed_at, cdc_changes)
+		self.write_and_emit(version, source, changed_at, cdc_changes)
 	}
 
 	#[inline]
@@ -100,6 +106,7 @@ where
 	fn write_and_emit(
 		&self,
 		version: CommitVersion,
+		source: SourceVersion,
 		changed_at: DateTime,
 		cdc_changes: Vec<CdcChange>,
 	) -> CdcStorageResult<()> {
@@ -107,7 +114,7 @@ where
 			self.backlog.publish(version, None);
 			return Ok(());
 		}
-		let cdc = Arc::new(Cdc::new(version, version, changed_at, cdc_changes.clone()));
+		let cdc = Arc::new(Cdc::new(version, source, changed_at, cdc_changes.clone()));
 		self.storage.write(&cdc)?;
 		debug!(version = version.0, "CDC written successfully");
 		self.emit_written_event(version, &cdc_changes);
@@ -132,12 +139,14 @@ where
 		&self,
 		state: &mut CdcProducerState,
 		version: CommitVersion,
+		source: SourceVersion,
 		changed_at: DateTime,
 		deltas: Vec<Delta>,
 	) -> CdcStorageResult<()> {
 		state.parked.insert(
 			version.0,
 			Parked {
+				source,
 				changed_at,
 				deltas,
 			},
@@ -146,7 +155,7 @@ where
 		let mut next = floor.min(version.0);
 		let mut released = false;
 		while let Some(parked) = state.parked.remove(&next) {
-			self.process(CommitVersion(next), parked.changed_at, parked.deltas)?;
+			self.process(CommitVersion(next), parked.source, parked.changed_at, parked.deltas)?;
 			self.watermark.advance(CommitVersion(next));
 			released = true;
 			let Some(following) = next.checked_add(1) else {
@@ -217,6 +226,7 @@ fn delta_to_raw_cdc_change(
 }
 
 struct Parked {
+	source: SourceVersion,
 	changed_at: DateTime,
 	deltas: Vec<Delta>,
 }
@@ -248,10 +258,11 @@ where
 		match msg {
 			CdcProduceMessage::Produce {
 				version,
+				source,
 				changed_at,
 				deltas,
 			} => {
-				if let Err(e) = self.on_produce(state, version, changed_at, deltas) {
+				if let Err(e) = self.on_produce(state, version, source, changed_at, deltas) {
 					panic!("CDC producer failed to write version {}: {:?}", version.0, e);
 				}
 			}
@@ -286,6 +297,7 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 	fn on(&self, event: &PostCommitEvent) {
 		let msg = CdcProduceMessage::Produce {
 			version: *event.version(),
+			source: *event.source(),
 			changed_at: self.clock.now(),
 			deltas: event.deltas().iter().cloned().collect(),
 		};
@@ -366,6 +378,7 @@ pub mod tests {
 		handle.actor_ref()
 			.send(CdcProduceMessage::Produce {
 				version: CommitVersion(1),
+				source: SourceVersion(1),
 				changed_at: DateTime::from_nanos(12345000),
 				deltas,
 			})
@@ -420,6 +433,7 @@ pub mod tests {
 		handle.actor_ref()
 			.send(CdcProduceMessage::Produce {
 				version: CommitVersion(2),
+				source: SourceVersion(2),
 				changed_at: DateTime::from_nanos(12345000),
 				deltas,
 			})
@@ -461,6 +475,7 @@ pub mod tests {
 		handle.actor_ref()
 			.send(CdcProduceMessage::Produce {
 				version: CommitVersion(1),
+				source: SourceVersion(1),
 				changed_at: DateTime::from_nanos(1),
 				deltas: vec![Delta::Set {
 					key: RowKey::new(StorageId::table(1), RowNumber(1)).into(),
@@ -471,6 +486,7 @@ pub mod tests {
 		handle.actor_ref()
 			.send(CdcProduceMessage::Produce {
 				version: CommitVersion(2),
+				source: SourceVersion(2),
 				changed_at: DateTime::from_nanos(2),
 				deltas: vec![Delta::Set {
 					key: make_key("unknown_kind_key"),

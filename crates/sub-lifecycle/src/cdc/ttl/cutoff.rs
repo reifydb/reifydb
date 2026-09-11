@@ -60,7 +60,10 @@ mod tests {
 		consume::checkpoint::CdcCheckpoint,
 		testing::{TestCdcHost, make_bytes, make_key},
 	};
-	use reifydb_core::interface::cdc::{Cdc, CdcChange, CdcConsumerId, ConsumerClass};
+	use reifydb_core::{
+		common::SourceVersion,
+		interface::cdc::{Cdc, CdcChange, CdcConsumerId, ConsumerClass},
+	};
 	use reifydb_runtime::{actor::system::ActorSystem, pool::Pools};
 	use reifydb_store_cdc::{config::CdcStoreConfig, store::CdcStore};
 	use reifydb_value::value::{Value, datetime::DateTime, duration::Duration};
@@ -88,7 +91,7 @@ mod tests {
 		for v in 1..=10u64 {
 			let cdc = Cdc::new(
 				CommitVersion(v),
-				CommitVersion(v),
+				SourceVersion(v),
 				DateTime::from_nanos(1000),
 				vec![CdcChange::Insert {
 					key: make_key(&format!("k{v}")).encode(),

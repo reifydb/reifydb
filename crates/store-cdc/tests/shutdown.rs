@@ -5,7 +5,7 @@ use std::{collections::Bound, sync::Arc, thread};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_runtime::{
@@ -37,7 +37,7 @@ const SUMMARY_LIMIT: usize = 1024;
 fn cdc_minimal(version: u64) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
-		CommitVersion(version),
+		SourceVersion(version),
 		DateTime::from_nanos(1_700_000_000_000_000_000),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
@@ -285,7 +285,8 @@ fn shutdown_seals_partial_block_after_the_flusher_is_gone(persistent: CdcPersist
 	let system = ActorSystem::new(Pools::new(PoolConfig::default()), Clock::Real);
 	let store = CdcStore::new(CdcStoreConfig {
 		commit: CdcCommitConfig::default(),
-		persistent: CdcPersistentConfig::opened(persistent.clone()).flush_interval(Duration::from_hours_const(1)),
+		persistent: CdcPersistentConfig::opened(persistent.clone())
+			.flush_interval(Duration::from_hours_const(1)),
 		read: None,
 		spawner: system.spawner(),
 		clock: Clock::Real,
@@ -298,7 +299,11 @@ fn shutdown_seals_partial_block_after_the_flusher_is_gone(persistent: CdcPersist
 	within_deadline("shutdown after the flusher is gone", move || closing.shutdown());
 
 	let summaries = persistent.summaries_from(CommitVersion(0), SUMMARY_LIMIT).unwrap();
-	assert_eq!(summaries.len(), 1, "shutdown sealed nothing once the flush actor was gone, so the unflushed tail is lost");
+	assert_eq!(
+		summaries.len(),
+		1,
+		"shutdown sealed nothing once the flush actor was gone, so the unflushed tail is lost"
+	);
 	assert_eq!(summaries[0].min_version, CommitVersion(1), "the sealed block must start at the first record");
 	assert_eq!(summaries[0].max_version, CommitVersion(3), "the sealed block must end at the last record");
 }

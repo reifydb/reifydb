@@ -9,7 +9,7 @@ use std::{
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	interface::cdc::{Cdc, CdcBatch, CdcChange},
 };
 use reifydb_store_cdc::{
@@ -31,7 +31,7 @@ const MANY_CHANGES: usize = 50_000;
 fn cdc_at(version: u64, timestamp: u64, changes: usize) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
-		CommitVersion(version),
+		SourceVersion(version),
 		DateTime::from_nanos(timestamp),
 		(0..changes)
 			.map(|i| CdcChange::Insert {
@@ -359,7 +359,7 @@ mod cases {
 		let store = &fixture.store;
 		let cdc = Cdc::new(
 			CommitVersion(1),
-			CommitVersion(1),
+			SourceVersion(1),
 			DateTime::from_nanos(100),
 			vec![CdcChange::Insert {
 				key: EncodedKey::new(vec![]),

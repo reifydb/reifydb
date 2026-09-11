@@ -105,9 +105,12 @@ impl LoaderActor {
 		up_to: CommitVersion,
 		budget: ByteSize,
 	) -> LoadedChunk {
-		if let Some(memo) = state.memo.iter().find(|m| m.from == from && m.advance_to <= up_to) {
+		if let Some(memo) =
+			state.memo.iter().find(|m| m.from <= from && from < m.advance_to && m.advance_to <= up_to)
+		{
 			self.metrics.inner.memo_hits.fetch_add(1, Ordering::Relaxed);
-			return Ok((memo.items.clone(), memo.advance_to));
+			let start = memo.items.partition_point(|c| c.version <= from);
+			return Ok((memo.items[start..].to_vec(), memo.advance_to));
 		}
 
 		let (items, advance_to) = self.load(from, up_to, budget)?;
@@ -205,7 +208,7 @@ mod tests {
 	};
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-	use reifydb_core::interface::cdc::CdcChange;
+	use reifydb_core::{common::SourceVersion, interface::cdc::CdcChange};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 	use reifydb_store_cdc::{config::CdcStoreConfig, storage::Cutoff};
 	use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
@@ -219,7 +222,7 @@ mod tests {
 	fn cdc(version: u64, payload: usize) -> Cdc {
 		Cdc::new(
 			cv(version),
-			cv(version),
+			SourceVersion(version),
 			DateTime::default(),
 			vec![CdcChange::Insert {
 				key: EncodedKey::new(vec![0xAB; 4]),
@@ -316,10 +319,39 @@ mod tests {
 		);
 		assert_eq!(second.1, first.1);
 
-		let miss = fetch(&handle, 2, 5, ByteSize::from_mib(1)).expect("chunk");
+		let miss = fetch(&handle, 5, 9, ByteSize::from_mib(1)).expect("chunk");
 		assert!(
 			miss.0.is_empty(),
-			"a different cursor must go to storage, and the wiped storage proves it did"
+			"a cursor past the memoized range must go to storage, and the wiped storage proves it did"
 		);
+		assert_eq!(miss.1, cv(9), "only a storage read advances to a bound the memo never covered");
+	}
+
+	#[test]
+	fn a_later_cursor_inside_a_memoized_range_is_served_without_a_second_read() {
+		// A flow that cuts a step at a source change resumes inside the chunk it just loaded; a re-read per
+		// step makes replay quadratic.
+		let system = ActorSystem::new(Pools::default(), Clock::Real);
+		let store = store_with(&system, 1..=5);
+		let handle = spawn(&system, &store);
+
+		let first = fetch(&handle, 0, 5, ByteSize::from_mib(1)).expect("chunk");
+		assert_eq!(first.0.len(), 5);
+
+		assert!(store.flush_pending(), "the wipe drops sealed blocks, so every record must be sealed first");
+		store.drop_before(Cutoff::Version(CommitVersion(6)), usize::MAX).unwrap();
+		assert!(store.read_range(Bound::Unbounded, Bound::Unbounded, 64).unwrap().items.is_empty());
+
+		let (items, advance_to) = fetch(&handle, 2, 9, ByteSize::from_mib(1)).expect("chunk");
+		assert_eq!(
+			items.iter().map(|c| c.version).collect::<Vec<_>>(),
+			vec![cv(3), cv(4), cv(5)],
+			"a cursor inside the memoized range must get exactly the records above it, and the wiped storage proves none came from a re-read"
+		);
+		assert_eq!(advance_to, cv(5), "the memo only vouches for its own range, never up to the larger bound");
+
+		let beyond = fetch(&handle, 5, 9, ByteSize::from_mib(1)).expect("chunk");
+		assert!(beyond.0.is_empty(), "a cursor at the memo's end must go to storage");
+		assert_eq!(beyond.1, cv(9), "an exhausted storage read must advance to the requested bound");
 	}
 }

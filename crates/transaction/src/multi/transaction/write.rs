@@ -16,7 +16,7 @@ use reifydb_codec::{
 	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	delta::{Delta, RemoveAnnounce},
 	event::transaction::PostCommitEvent,
 	interface::{
@@ -78,6 +78,7 @@ pub struct MultiWriteTransaction {
 	pub(crate) id: TransactionId,
 	pub(crate) version: CommitVersion,
 	pub(crate) read_version: Option<CommitVersion>,
+	source: Option<SourceVersion>,
 	pub(crate) size: ByteSize,
 	pub(crate) count: u64,
 	pub(crate) oracle: Arc<Oracle<StandardVersionProvider>>,
@@ -108,6 +109,7 @@ impl MultiWriteTransaction {
 			id,
 			version,
 			read_version: None,
+			source: None,
 			size: ByteSize::ZERO,
 			count: 0,
 			oracle,
@@ -154,6 +156,10 @@ impl MultiWriteTransaction {
 
 	pub fn base_version(&self) -> CommitVersion {
 		self.version
+	}
+
+	pub fn stamp_source(&mut self, source: SourceVersion) {
+		self.source = Some(source);
 	}
 
 	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) {
@@ -673,7 +679,8 @@ impl MultiWriteTransaction {
 	#[inline]
 	fn publish(&self, commit_version: CommitVersion, deltas: CowVec<Delta>, flow_changes: Vec<Change>) {
 		self.oracle.done_commit(commit_version);
-		self.engine.event_bus.emit(PostCommitEvent::new(deltas, commit_version, flow_changes));
+		let source = self.source.unwrap_or(SourceVersion::from(commit_version));
+		self.engine.event_bus.emit(PostCommitEvent::new(deltas, commit_version, source, flow_changes));
 	}
 }
 

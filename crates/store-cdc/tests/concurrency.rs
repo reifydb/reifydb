@@ -15,7 +15,7 @@ use std::{
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_store_cdc::{
@@ -66,7 +66,7 @@ const MIN_ROUNDS: usize = 24;
 fn cdc_at(version: u64) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
-		CommitVersion(version),
+		SourceVersion(version),
 		DateTime::from_nanos(BASE_TIMESTAMP + version),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(version.to_be_bytes().to_vec()),

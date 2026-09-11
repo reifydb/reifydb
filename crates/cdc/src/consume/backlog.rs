@@ -264,6 +264,7 @@ mod tests {
 	use std::sync::atomic::AtomicUsize;
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+	use reifydb_core::common::SourceVersion;
 	use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
 	use super::*;
@@ -275,7 +276,7 @@ mod tests {
 	fn cdc_with_payload(version: u64, payload: usize) -> Arc<Cdc> {
 		Arc::new(Cdc::new(
 			cv(version),
-			cv(version),
+			SourceVersion(version),
 			DateTime::default(),
 			vec![CdcChange::Insert {
 				key: EncodedKey::new(vec![0xAB; 4]),

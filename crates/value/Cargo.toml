@@ -13,7 +13,6 @@ doctest = false
 [features]
 default = []
 host = ["uuid/v4", "uuid/v7", "uuid/js"]
-cow-stats = []
 
 [build-dependencies]
 reifydb-build = { workspace = true }

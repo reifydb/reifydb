@@ -284,7 +284,7 @@ fn cdc_change_kind(change: &CdcChange) -> String {
 mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
-		common::CommitVersion,
+		common::{CommitVersion, SourceVersion},
 		interface::catalog::{id::NamespaceId, storage::StorageId},
 		key::{namespace::NamespaceKey, row::RowKey},
 	};
@@ -296,7 +296,7 @@ mod tests {
 	use super::*;
 
 	fn commit(changes: Vec<CdcChange>) -> Cdc {
-		Cdc::new(CommitVersion(1), CommitVersion(1), DateTime::from_nanos(0), changes)
+		Cdc::new(CommitVersion(1), SourceVersion(1), DateTime::from_nanos(0), changes)
 	}
 
 	fn row() -> EncodedBytes {

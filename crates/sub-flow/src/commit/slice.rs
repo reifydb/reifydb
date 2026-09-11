@@ -79,9 +79,24 @@ impl SliceComputer {
 		overlay.prune_through(cursor.cursor);
 
 		let start = items.partition_point(|c| c.version <= cursor.cursor);
-		let refs: Vec<&Cdc> = items[start..].iter().map(Arc::as_ref).collect();
-		let changes =
-			collect_flow_changes(&self.engine, &refs, cursor.source_objects, cursor.completeness_objects)?;
+		let mut relevant: Vec<&Cdc> = items[start..]
+			.iter()
+			.map(Arc::as_ref)
+			.filter(|cdc| is_relevant(cdc, cursor.source_objects))
+			.collect();
+		let (mut advance_to, mut more) = (advance_to, more);
+		if let Some(cut) = relevant.iter().position(|cdc| cdc.source != relevant[0].source) {
+			advance_to = CommitVersion(relevant[cut].version.0 - 1);
+			more = true;
+			relevant.truncate(cut);
+		}
+		let source = relevant.iter().map(|cdc| cdc.source).max();
+		let changes = collect_flow_changes(
+			&self.engine,
+			&relevant,
+			cursor.source_objects,
+			cursor.completeness_objects,
+		)?;
 		if changes.is_empty() {
 			return self.skip_or_checkpoint(
 				flow_engine,
@@ -104,6 +119,7 @@ impl SliceComputer {
 				checkpoint_deletes: Vec::new(),
 				view_changes,
 				control_cursor: None,
+				source,
 			},
 			advance_to,
 			more,
@@ -243,14 +259,20 @@ impl SliceComputer {
 	}
 }
 
+fn accepts(object: ObjectId, source_objects: &BTreeSet<ObjectId>) -> bool {
+	object == COMPLETENESS_OBJECT || source_objects.contains(&object)
+}
+
+fn is_relevant(cdc: &Cdc, source_objects: &BTreeSet<ObjectId>) -> bool {
+	changed_objects(cdc).into_iter().any(|object| accepts(object, source_objects))
+}
+
 pub(crate) fn collect_flow_changes(
 	engine: &StandardEngine,
-	cdcs: &[&Cdc],
+	relevant: &[&Cdc],
 	source_objects: &BTreeSet<ObjectId>,
 	completeness_objects: Option<&BTreeSet<u64>>,
 ) -> Result<Vec<Change>> {
-	let accept = |object: ObjectId| object == COMPLETENESS_OBJECT || source_objects.contains(&object);
-	let relevant: Vec<&&Cdc> = cdcs.iter().filter(|cdc| changed_objects(cdc).into_iter().any(accept)).collect();
 	if relevant.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -261,7 +283,8 @@ pub(crate) fn collect_flow_changes(
 
 	let mut out = Vec::new();
 	for cdc in relevant {
-		let rebuilt = rebuild_selected_changes(cdc, &catalog, &mut txn, accept)?;
+		let rebuilt =
+			rebuild_selected_changes(cdc, &catalog, &mut txn, |object| accepts(object, source_objects))?;
 		out.extend(retain_relevant(rebuilt, source_objects, completeness_objects));
 	}
 	Ok(out)

@@ -4,7 +4,10 @@
 use reifydb_runtime::actor::system::ActorHandle;
 use reifydb_value::{Result, value::datetime::DateTime};
 
-use crate::{common::CommitVersion, delta::Delta};
+use crate::{
+	common::{CommitVersion, SourceVersion},
+	delta::Delta,
+};
 
 pub type CdcProduceHandle = ActorHandle<CdcProduceMessage>;
 
@@ -12,6 +15,7 @@ pub type CdcProduceHandle = ActorHandle<CdcProduceMessage>;
 pub enum CdcProduceMessage {
 	Produce {
 		version: CommitVersion,
+		source: SourceVersion,
 		changed_at: DateTime,
 		deltas: Vec<Delta>,
 	},

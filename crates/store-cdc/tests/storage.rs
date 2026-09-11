@@ -5,7 +5,7 @@ use std::collections::Bound;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_store_cdc::{
@@ -22,7 +22,7 @@ use common::Fixture;
 fn cdc_minimal(version: u64) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
-		CommitVersion(version),
+		SourceVersion(version),
 		DateTime::from_nanos(1_700_000_000_000_000_000),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
@@ -147,7 +147,7 @@ mod cases {
 		let store = fixture.store;
 		let cdc = Cdc::new(
 			CommitVersion(1),
-			CommitVersion(1),
+			SourceVersion(1),
 			DateTime::from_nanos(1),
 			(0..5).map(|i| CdcChange::Insert {
 				key: EncodedKey::new(vec![i as u8]),
@@ -276,7 +276,7 @@ mod cases {
 		let store = fixture.store;
 		let cdc = Cdc::new(
 			CommitVersion(1),
-			CommitVersion(1),
+			SourceVersion(1),
 			DateTime::from_nanos(12345),
 			vec![CdcChange::Insert {
 				key: EncodedKey::new(vec![1, 2, 3]),
@@ -378,7 +378,7 @@ mod cases {
 		for (version, source) in stamped {
 			store.write(&Cdc::new(
 				CommitVersion(version),
-				CommitVersion(source),
+				SourceVersion(source),
 				DateTime::from_nanos(1_700_000_000_000_000_000),
 				vec![CdcChange::Insert {
 					key: EncodedKey::new(vec![1, 2, 3]),
@@ -391,10 +391,15 @@ mod cases {
 		let check = |store: &CdcStore, tier: &str| {
 			for (version, source) in stamped {
 				let read = store.read(CommitVersion(version)).unwrap().expect("entry should exist");
-				assert_eq!(read.source, CommitVersion(source), "{tier}: read lost the source of {version}");
+				assert_eq!(
+					read.source,
+					SourceVersion(source),
+					"{tier}: read lost the source of {version}"
+				);
 			}
 			let batch = store.read_range(Bound::Unbounded, Bound::Unbounded, 16).unwrap();
-			let got: Vec<(u64, u64)> = batch.items.iter().map(|cdc| (cdc.version.0, cdc.source.0)).collect();
+			let got: Vec<(u64, u64)> =
+				batch.items.iter().map(|cdc| (cdc.version.0, cdc.source.0)).collect();
 			assert_eq!(got, want, "{tier}: read_range lost or swapped a source");
 		};
 		check(&store, "commit buffer");
