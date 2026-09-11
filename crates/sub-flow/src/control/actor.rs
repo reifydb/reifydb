@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, mem::take, sync::Arc};
+use std::{
+	collections::{BTreeSet, HashMap},
+	mem::take,
+	sync::Arc,
+};
 
 use reifydb_cdc::consume::backlog::{BacklogPull, FlowBacklog};
 use reifydb_core::{
 	actors::{flow::FlowActorMessage, pending::Pending},
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -45,13 +49,17 @@ use crate::{
 	builder::CustomOperators,
 	commit::{
 		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply},
+		merge::{ObjectIndex, ReadCache, StreamRead, UpstreamRead, UpstreamReads, merge},
 		overlay::FlowWriteOverlay,
 		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep},
 	},
 	control::health::FlowHealthRegistry,
 	discovery::loader::{LoaderMessage, LoaderReply},
 	operator::provider::StandardOperatorProvider,
-	progress::{frontier::ControlFrontier, tracker::FlowPositionTracker},
+	progress::{
+		frontier::ControlFrontier,
+		tracker::{FlowPositionTracker, FlowUpstreams},
+	},
 };
 
 pub struct FlowActorParams {
@@ -119,6 +127,10 @@ pub struct FlowActorState {
 	pending_holds: WatermarkHolds,
 	drain_after_commit: bool,
 	last_checkpoint_at: DateTime,
+	view_cursors: HashMap<FlowId, CommitVersion>,
+	pending_view_cursors: HashMap<FlowId, CommitVersion>,
+	read_cache: ReadCache,
+	loading_from: CommitVersion,
 }
 
 impl FlowActor {
@@ -243,14 +255,118 @@ impl FlowActor {
 			self.checkpoint_if_stale(state, ctx);
 			return;
 		}
+		let upstreams = self.flow_tracker.upstreams(self.flow_id);
+		if !upstreams.is_empty() {
+			self.drain_merged(state, ctx, safe, &upstreams);
+			return;
+		}
 		match self.backlog.pull(state.cursor, safe, self.pull_batch_bytes) {
 			BacklogPull::Hit {
 				items,
 				advance_to,
 				more,
 			} => self.apply_items(state, ctx, &items, advance_to, more),
-			BacklogPull::Behind => self.request_load(state, ctx, safe),
+			BacklogPull::Behind => self.request_load(state, ctx, state.cursor, safe),
 		}
+	}
+
+	fn drain_merged(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		safe: CommitVersion,
+		upstreams: &FlowUpstreams,
+	) {
+		let cursor = state.cursor;
+		let Some(tables) = self.read_range(state, ctx, cursor, safe) else {
+			return;
+		};
+		let mut upstream_reads = UpstreamReads {
+			reads: HashMap::with_capacity(upstreams.len()),
+			index: ObjectIndex::default(),
+		};
+		for (producer, views) in upstreams {
+			let from = state.view_cursors.get(producer).copied().unwrap_or(cursor).max(cursor);
+			let Some(read) = self.read_range(state, ctx, from, safe) else {
+				return;
+			};
+			let mut upstream = UpstreamRead {
+				views: views.clone(),
+				position: self.flow_tracker.upstream_position(*producer),
+				read,
+			};
+			while upstream.needs_extension(cursor, &upstream_reads.index) {
+				let Some(next) = self.read_range(state, ctx, upstream.read.read_to, safe) else {
+					return;
+				};
+				upstream.read.items.extend(next.items);
+				upstream.read.read_to = next.read_to;
+				upstream.read.more = next.more;
+			}
+			upstream_reads.reads.insert(*producer, upstream);
+		}
+		state.read_cache.clear();
+
+		let merged = merge(cursor, &tables, &upstream_reads.reads, &upstream_reads.index);
+		if merged.target <= cursor {
+			let moved = self.advance_view_cursors(state, &upstream_reads, cursor);
+			if moved && merged.more {
+				let _ = ctx.self_ref().send(FlowActorMessage::Drain);
+			} else {
+				state.overlay.prune_through(cursor);
+				self.checkpoint_if_stale(state, ctx);
+			}
+			return;
+		}
+		let step = self.compute_step(state, &merged.items, merged.target, merged.more);
+		self.apply_step(state, ctx, step, Some(&upstream_reads));
+	}
+
+	fn read_range(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		from: CommitVersion,
+		up_to: CommitVersion,
+	) -> Option<StreamRead> {
+		if let Some(read) = state.read_cache.get(from, up_to) {
+			return Some(read);
+		}
+		match self.backlog.pull(from, up_to, self.pull_batch_bytes) {
+			BacklogPull::Hit {
+				items,
+				advance_to,
+				more,
+			} => {
+				state.read_cache.insert(from, items.clone(), advance_to);
+				Some(StreamRead {
+					items,
+					read_to: advance_to,
+					more,
+				})
+			}
+			BacklogPull::Behind => {
+				self.request_load(state, ctx, from, up_to);
+				None
+			}
+		}
+	}
+
+	fn advance_view_cursors(
+		&self,
+		state: &mut FlowActorState,
+		reads: &UpstreamReads,
+		advance_to: CommitVersion,
+	) -> bool {
+		let mut moved = false;
+		for (producer, next) in reads.cursors_after(advance_to) {
+			let current = state.view_cursors.entry(producer).or_insert(state.cursor);
+			if next > *current {
+				*current = next;
+				moved = true;
+			}
+		}
+		moved
 	}
 
 	fn apply_items(
@@ -261,7 +377,18 @@ impl FlowActor {
 		advance_to: CommitVersion,
 		more: bool,
 	) {
-		let step = self.computer.compute_pulled(
+		let step = self.compute_step(state, items, advance_to, more);
+		self.apply_step(state, ctx, step, None);
+	}
+
+	fn compute_step(
+		&self,
+		state: &mut FlowActorState,
+		items: &[Arc<Cdc>],
+		advance_to: CommitVersion,
+		more: bool,
+	) -> Result<SliceStep> {
+		self.computer.compute_pulled(
 			&mut state.flow_engine,
 			items,
 			SliceCursor {
@@ -275,7 +402,16 @@ impl FlowActor {
 			more,
 			&self.config,
 			&mut state.overlay,
-		);
+		)
+	}
+
+	fn apply_step(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		step: Result<SliceStep>,
+		reads: Option<&UpstreamReads>,
+	) {
 		match step {
 			Ok(SliceStep::Skip {
 				advance_to,
@@ -283,6 +419,9 @@ impl FlowActor {
 				holds,
 			}) => {
 				state.retry_count = 0;
+				if let Some(reads) = reads {
+					self.advance_view_cursors(state, reads, advance_to);
+				}
 				state.cursor = advance_to;
 				for hold in holds {
 					self.substrate.frontiers.publish(hold.object, hold.frontier, advance_to);
@@ -300,6 +439,8 @@ impl FlowActor {
 				more,
 				holds,
 			}) => {
+				state.pending_view_cursors =
+					reads.map(|reads| reads.cursors_after(advance_to)).unwrap_or_default();
 				self.dispatch_commit(state, ctx, slice, advance_to, more, holds);
 			}
 			Err(e) => {
@@ -308,8 +449,15 @@ impl FlowActor {
 		}
 	}
 
-	fn request_load(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, up_to: CommitVersion) {
+	fn request_load(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		from: CommitVersion,
+		up_to: CommitVersion,
+	) {
 		state.awaiting_load = true;
+		state.loading_from = from;
 		let self_ref = ctx.self_ref().clone();
 		let reply: LoaderReply = Box::new(move |outcome| {
 			let _ = self_ref.send(FlowActorMessage::Loaded {
@@ -318,7 +466,7 @@ impl FlowActor {
 		});
 		if self.loader
 			.send(LoaderMessage::Fetch {
-				from: state.cursor,
+				from,
 				up_to,
 				budget: self.load_batch_bytes,
 				reply,
@@ -346,6 +494,11 @@ impl FlowActor {
 		}
 		match outcome {
 			Ok((items, advance_to)) => {
+				if !self.flow_tracker.upstreams(self.flow_id).is_empty() {
+					state.read_cache.insert(state.loading_from, items, advance_to);
+					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
+					return;
+				}
 				if advance_to <= state.cursor {
 					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 					return;
@@ -429,6 +582,12 @@ impl FlowActor {
 		match result {
 			Ok(()) => {
 				state.retry_count = 0;
+				for (producer, cursor) in take(&mut state.pending_view_cursors) {
+					let current = state.view_cursors.entry(producer).or_insert(cursor);
+					if cursor > *current {
+						*current = cursor;
+					}
+				}
 				state.cursor = advance_to;
 				state.durable_cursor = advance_to;
 				state.last_checkpoint_at = self.clock.now();
@@ -436,6 +595,7 @@ impl FlowActor {
 				self.resume_after_commit(state, ctx, more);
 			}
 			Err(e) => {
+				state.pending_view_cursors.clear();
 				self.retry_or_poison(state, ctx, format!("slice commit failed: {e}"));
 			}
 		}
@@ -554,6 +714,8 @@ impl FlowActor {
 		});
 		if self.committer
 			.send(CommitterMessage::Tick {
+				flow_id: self.flow_id,
+				source: SourceVersion(state.cursor.0 + 1),
 				pending,
 				view_changes,
 				reply,
@@ -617,6 +779,10 @@ impl Actor for FlowActor {
 			pending_holds: WatermarkHolds::new(),
 			drain_after_commit: false,
 			last_checkpoint_at: self.clock.now(),
+			view_cursors: HashMap::new(),
+			pending_view_cursors: HashMap::new(),
+			read_cache: ReadCache::default(),
+			loading_from: self.initial_cursor,
 		};
 
 		if !state.poisoned {
@@ -737,6 +903,7 @@ mod pull_protocol {
 			operator::state::{KeyspaceId, OperatorStateKey},
 			tag::KeyTag,
 		},
+		metrics::{collect::MetricsCollector, sample::Reading},
 	};
 	use reifydb_flow::{
 		operator::provider::EmptyOperatorProvider,
@@ -891,6 +1058,17 @@ mod pull_protocol {
 			cursor: CommitVersion,
 			substrate: FlowSubstrate,
 		) -> FlowActorHandle {
+			self.spawn_flow_actor(self.flow.clone(), self.source_objects.clone(), cursor, substrate)
+		}
+
+		fn spawn_flow_actor(
+			&self,
+			flow: FlowDag,
+			source_objects: Arc<BTreeSet<ObjectId>>,
+			cursor: CommitVersion,
+			substrate: FlowSubstrate,
+		) -> FlowActorHandle {
+			let flow_id = flow.id;
 			self.await_safe_watermark(cursor);
 
 			let handle = self.engine.spawner().spawn_flow(
@@ -907,8 +1085,8 @@ mod pull_protocol {
 					clock: self.engine.clock().clone(),
 					health: self.health.clone(),
 					flow_tracker: self.tracker.clone(),
-					flow: self.flow.clone(),
-					source_objects: self.source_objects.clone(),
+					flow,
+					source_objects,
 					completeness_objects: None,
 					cursor: CommitVersion(cursor.0 - 1),
 					pull_batch_bytes: ByteSize::from_mib(8),
@@ -921,7 +1099,7 @@ mod pull_protocol {
 			);
 
 			assert_eq!(
-				self.await_position(cursor, StdDuration::from_secs(10)),
+				self.await_flow_position(flow_id, cursor, StdDuration::from_secs(10)),
 				Some(cursor),
 				"the init Drain must be consumed, and the cursor settled at {}, before the test \
 				 writes anything a wake will deliver",
@@ -976,9 +1154,18 @@ mod pull_protocol {
 		}
 
 		fn await_position(&self, want: CommitVersion, timeout: StdDuration) -> Option<CommitVersion> {
+			self.await_flow_position(self.flow_id, want, timeout)
+		}
+
+		fn await_flow_position(
+			&self,
+			flow_id: FlowId,
+			want: CommitVersion,
+			timeout: StdDuration,
+		) -> Option<CommitVersion> {
 			let deadline = Instant::now() + timeout;
 			loop {
-				let got = self.tracker.all().get(&self.flow_id).copied();
+				let got = self.tracker.all().get(&flow_id).copied();
 				if got == Some(want) || Instant::now() >= deadline {
 					return got;
 				}
@@ -1064,6 +1251,65 @@ mod pull_protocol {
 				.flat_map(|cdc| rebuild_changes(&cdc, &catalog, &mut txn).expect("rebuild changes"))
 				.find(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
 		}
+
+		fn reader_flow(&self) -> (FlowDag, Arc<BTreeSet<ObjectId>>, FlowUpstreams) {
+			let flow_catalog = FlowCatalog::new(self.engine.catalog());
+			let mut query = self.engine.begin_query(IdentityId::system()).expect("query");
+			let reader_id = self
+				.engine
+				.catalog()
+				.list_flows_all(&mut Transaction::Query(&mut query))
+				.expect("list flows")
+				.into_iter()
+				.map(|flow| flow.id)
+				.find(|id| *id != self.flow_id)
+				.expect("a second flow reads the producer's view");
+			drop(query);
+
+			let mut probe = FlowEngineInner::new(
+				self.engine.catalog(),
+				self.engine.executor().routines.clone(),
+				RuntimeContext::with_clock(self.engine.clock().clone()),
+				Arc::new(EmptyOperatorProvider),
+				self.substrate.clone(),
+				OperatorSampleRegistry::new(),
+			);
+			let mut txn = self.engine.begin_command(IdentityId::system()).expect("command");
+			let (reader, _) = flow_catalog
+				.get_or_load_flow(&mut Transaction::Command(&mut txn), reader_id)
+				.expect("load reader");
+			probe.register(&mut txn, self.flow.clone()).expect("register producer probe");
+			probe.register(&mut txn, reader.clone()).expect("register reader probe");
+			txn.rollback().expect("rollback probe");
+
+			let graph = probe.get_dependency_graph();
+			let registered = |f: FlowId| f == self.flow_id || f == reader_id;
+			let view_kind = |vid| flow_catalog.find_view(vid).map(|v| v.kind());
+			let source_objects =
+				Arc::new(routing::flow_source_objects(&graph, reader_id, &registered, &view_kind));
+			let upstreams = routing::flow_upstreams(&graph, reader_id, &view_kind);
+			(reader, source_objects, upstreams)
+		}
+
+		fn flow_position(&self, flow_id: FlowId) -> Option<CommitVersion> {
+			self.tracker.all().get(&flow_id).copied()
+		}
+
+		fn await_query_rows(&self, rql: &str, want: usize, timeout: Duration) -> Option<usize> {
+			self.poll_until(timeout, || {
+				Some(self.te.query(rql).first().map(|f| f.row_count()).unwrap_or(0))
+					.filter(|got| *got >= want)
+			})
+		}
+
+		fn pull_behinds(&self) -> Reading {
+			let mut samples = Vec::new();
+			self.backlog.collect(&mut samples);
+			samples.into_iter()
+				.find(|sample| sample.metric == "pull_behinds")
+				.expect("the backlog reports its behind count")
+				.reading
+		}
 	}
 
 	fn seconds(seconds: i64) -> Duration {
@@ -1105,7 +1351,7 @@ mod pull_protocol {
 	}
 
 	#[test]
-	fn a_burst_of_commits_coalesces_into_few_slices() {
+	fn a_burst_of_commits_gets_one_flow_commit_per_insert() {
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
@@ -1120,14 +1366,14 @@ mod pull_protocol {
 		h.wake(&actor);
 
 		let rows = h.await_view_rows(total, StdDuration::from_secs(15));
-		assert_eq!(rows, total, "coalescing must not drop an accumulated version");
+		assert_eq!(rows, total, "a burst must not drop an accumulated version");
 
-		let slices = h.view_bearing_records(target);
-		assert!(
-			slices <= 4,
-			"the rows that accumulated behind the first commit must be pulled as one slice, \
-			 not one each: expected 2 view-bearing commits, tolerated up to 4, got {slices} \
-			 (with no coalescing this is {total})"
+		h.await_safe_watermark(h.engine.current_version().expect("current version"));
+		let commits = h.view_bearing_records(v0);
+		assert_eq!(
+			commits, total,
+			"every insert is its own source version, so the flow must commit once per insert: fewer means \
+			 versions were merged into one commit, more means a version was committed twice"
 		);
 		drop(actor);
 	}
@@ -1163,6 +1409,80 @@ mod pull_protocol {
 			"no version may be applied twice across the loader chunk and later backlog pulls"
 		);
 		drop(actor);
+	}
+
+	#[test]
+	fn a_gated_reader_resumes_from_its_published_position_after_the_backlog_is_evicted_there() {
+		let h = harness();
+		h.te.admin("CREATE DEFERRED VIEW app::w { id: int4 } AS { FROM app::v MAP { id } }");
+		let (reader, reader_sources, upstreams) = h.reader_flow();
+		let reader_id = reader.id;
+		assert!(
+			upstreams.contains_key(&h.flow_id),
+			"precondition: the reader must gate on the producer, otherwise it never takes the merged path"
+		);
+		h.tracker.set_upstreams(reader_id, upstreams);
+
+		let v0 = h.engine.current_version().expect("current version");
+		let producer = h.spawn_actor(v0);
+		let consumer = h.spawn_flow_actor(reader, reader_sources, v0, h.substrate.clone());
+
+		h.te.command("INSERT app::t [{ id: 1 }]");
+		let first = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(first);
+		h.wake(&producer);
+		assert_eq!(h.await_view_rows(1, StdDuration::from_secs(10)), 1, "the producer must emit the first row");
+		let producer_position = h
+			.await_position_at_least(first, seconds(10))
+			.expect("the producer must publish its first commit");
+
+		h.te.command("INSERT app::t [{ id: 2 }]");
+		let read_end = h.engine.current_version().expect("current version");
+		assert!(
+			producer_position < read_end,
+			"precondition: the producer must lag the version the reader reads through, otherwise the gate \
+			 does not hold the reader below its read end"
+		);
+		h.await_safe_watermark(read_end);
+		h.wake(&consumer);
+		assert_eq!(
+			h.await_query_rows("FROM app::w", 1, seconds(10)),
+			Some(1),
+			"the reader must handle the view row stamped with the first insert"
+		);
+		let floor = h
+			.poll_until(seconds(10), || h.flow_position(reader_id).filter(|position| *position >= first))
+			.expect("the reader must publish the position its first commit reached");
+
+		let behinds = h.pull_behinds();
+		h.backlog.evict_below(floor);
+
+		h.wake(&producer);
+		assert_eq!(
+			h.await_view_rows(2, StdDuration::from_secs(10)),
+			2,
+			"the producer must emit the second row"
+		);
+		assert!(
+			h.await_position_at_least(read_end, seconds(10)).is_some(),
+			"the producer must publish the commit carrying the second row"
+		);
+		h.await_safe_watermark(h.engine.current_version().expect("current version"));
+		h.wake(&consumer);
+
+		assert_eq!(
+			h.await_query_rows("FROM app::w", 2, seconds(15)),
+			Some(2),
+			"the reader must handle the view row stamped after its published position"
+		);
+		assert_eq!(
+			h.pull_behinds(),
+			behinds,
+			"a pull from the published position fell behind an eviction at that position, so the position \
+			 passed a version the reader had not handled"
+		);
+		drop(consumer);
+		drop(producer);
 	}
 
 	#[test]

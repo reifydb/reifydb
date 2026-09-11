@@ -285,10 +285,11 @@ impl<D: RangeDomain> RangeTier<D> {
 	pub(super) fn withdraw(&self, dimension: D::Dimension, key: &D::Key) {
 		let mut coverage = self.coverage().write();
 		coverage.shrink_range(dimension, &Edge::Key(key.clone()), &D::just_past(key));
-		if in_head_band::<D>(dimension, key)
-			&& coverage.head(dimension).is_some_and(|current| current.covers(key))
-		{
-			coverage.set_head(dimension, Edge::Key(key.clone()));
+		if in_head_band::<D>(dimension, key) {
+			if coverage.head(dimension).is_some_and(|current| current.covers(key)) {
+				coverage.set_head(dimension, Edge::Key(key.clone()));
+			}
+			self.record_head_change();
 		}
 		self.record_retraction();
 	}

@@ -38,10 +38,12 @@ use reifydb_runtime::sync::{
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions, value::duration::Duration};
 use tracing::instrument;
 
+#[cfg(reifydb_assertions)]
+use crate::persistent::Fetch;
 use crate::{
 	actor::{Waker, resident_evict::EvictMessage, resident_flush::FlushMessage},
 	error::Result,
-	persistent::{Apply, Enumerate, Fetch, Persistent, PersistentTier},
+	persistent::{Apply, Enumerate, Persistent, PersistentTier},
 	range::{OperatorRangeTier, RangeSink},
 	resident::{
 		bucket::write::Staged,

@@ -119,14 +119,19 @@ impl FlowEngineInner {
 		version_changes: Vec<Change>,
 		topo: &[OperatorId],
 	) -> Result<u32> {
-		let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
+		let mut views: HashMap<OperatorId, Vec<Change>> = HashMap::new();
+		let mut others: HashMap<OperatorId, Vec<Change>> = HashMap::new();
 		let mut asserted: BTreeMap<u64, DateTime> = BTreeMap::new();
 		for change in version_changes {
 			if change.origin == ChangeOrigin::Object(COMPLETENESS_OBJECT) {
 				collect_completeness(&change, &mut asserted);
 				continue;
 			}
-			self.seed_entry_nodes(flow, flow_id, change, &mut pending);
+			let pending = match change.origin {
+				ChangeOrigin::Object(ObjectId::View(_)) => &mut views,
+				_ => &mut others,
+			};
+			self.seed_entry_nodes(flow, flow_id, change, pending);
 		}
 
 		let sources: Vec<OperatorId> = topo
@@ -134,8 +139,9 @@ impl FlowEngineInner {
 			.copied()
 			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.declares_time()))
 			.collect();
-		let mut arrivals: SourceArrivals = pending
+		let mut arrivals: SourceArrivals = views
 			.iter()
+			.chain(others.iter())
 			.filter_map(|(operator_id, changes)| {
 				changes.iter().filter_map(max_input_time).max().map(|at| SourceArrival {
 					source: *operator_id,
@@ -150,7 +156,8 @@ impl FlowEngineInner {
 		arrivals.extend(published);
 		freeze_arrival_frontier(txn, &sources, &arrivals)?;
 
-		let mut nodes_processed = self.run_topology(txn, flow, pending, topo)?;
+		let mut nodes_processed = self.run_topology(txn, flow, views, topo)?;
+		nodes_processed += self.run_topology(txn, flow, others, topo)?;
 		nodes_processed += self.dispatch_due_timers(txn, flow, version, topo)?;
 		Ok(nodes_processed)
 	}

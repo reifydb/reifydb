@@ -220,6 +220,7 @@ impl FlowSupervisor {
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
+			self.publish_upstreams(state, flow_id);
 			let handle = self.spawn_flow(flow, source_objects, completeness_objects, seed);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned deferred flow actor");
@@ -372,6 +373,7 @@ impl FlowSupervisor {
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
+			self.publish_upstreams(state, flow_id);
 			let handle = self.spawn_flow(flow, source_objects, completeness_objects, seed);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned new deferred flow actor");
@@ -384,6 +386,7 @@ impl FlowSupervisor {
 				let source_objects = self.compute_source_objects(state, flow_id, &registered);
 				let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 				state.sources.insert(flow_id, source_objects.clone());
+				self.publish_upstreams(state, flow_id);
 				if let Some(handle) = state.flows.get(&flow_id) {
 					let _ = handle.actor_ref().send(FlowActorMessage::UpdateSources {
 						source_objects,
@@ -488,7 +491,7 @@ impl FlowSupervisor {
 	) -> FlowActorHandle {
 		let flow_id = flow.id;
 
-		self.flow_tracker.update(flow_id, cursor);
+		self.flow_tracker.update_committed(flow_id, cursor, self.engine.done_until());
 		let params = FlowActorParams {
 			engine: self.engine.clone(),
 			committer: self.committer.clone(),
@@ -512,7 +515,15 @@ impl FlowSupervisor {
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
 		};
-		self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), FlowActor::new(params))
+		let handle = self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), FlowActor::new(params));
+		self.flow_tracker.set_waker(flow_id, handle.actor_ref().clone());
+		handle
+	}
+
+	fn publish_upstreams(&self, state: &SupervisorState, flow_id: FlowId) {
+		let graph = state.analyzer.get_dependency_graph();
+		let view_kind = |view_id| self.flow_catalog.find_view(view_id).map(|v| v.kind());
+		self.flow_tracker.set_upstreams(flow_id, routing::flow_upstreams(graph, flow_id, &view_kind));
 	}
 
 	fn commit_control(&self, seeds: Vec<(FlowId, CommitVersion)>, cursor: Option<CommitVersion>) {

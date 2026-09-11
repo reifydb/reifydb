@@ -86,7 +86,7 @@ impl SliceComputer {
 			.collect();
 		let (mut advance_to, mut more) = (advance_to, more);
 		if let Some(cut) = relevant.iter().position(|cdc| cdc.source != relevant[0].source) {
-			advance_to = CommitVersion(relevant[cut].version.0 - 1);
+			advance_to = CommitVersion(relevant[cut].source.0 - 1);
 			more = true;
 			relevant.truncate(cut);
 		}
@@ -283,8 +283,11 @@ pub(crate) fn collect_flow_changes(
 
 	let mut out = Vec::new();
 	for cdc in relevant {
-		let rebuilt =
+		let mut rebuilt =
 			rebuild_selected_changes(cdc, &catalog, &mut txn, |object| accepts(object, source_objects))?;
+		for change in &mut rebuilt {
+			change.version = CommitVersion(cdc.source.0);
+		}
 		out.extend(retain_relevant(rebuilt, source_objects, completeness_objects));
 	}
 	Ok(out)

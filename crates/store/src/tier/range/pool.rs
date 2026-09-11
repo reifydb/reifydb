@@ -41,6 +41,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				shards: build_shards::<D>(config, shard_bytes),
 				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
+				head_changes: Retractions::new(),
 				gap_guard: config.gap_guard,
 				coverage_bytes: config.coverage_bytes.unwrap_or(shard_bytes).as_bytes(),
 				coverage_intervals: config.coverage_intervals,
@@ -60,6 +61,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				shards: build_shards::<D>(config, shard_bytes),
 				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
+				head_changes: Retractions::new(),
 				gap_guard: config.gap_guard,
 				coverage_bytes: config.coverage_bytes.unwrap_or(shard_bytes).as_bytes(),
 				coverage_intervals: config.coverage_intervals,
@@ -77,6 +79,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				shards: build_shards::<D>(config, shard_bytes),
 				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
+				head_changes: Retractions::new(),
 				gap_guard: config.gap_guard,
 				coverage_bytes: config.coverage_bytes.unwrap_or(shard_bytes).as_bytes(),
 				coverage_intervals: config.coverage_intervals,
@@ -135,6 +138,18 @@ impl<D: RangeDomain> RangeTier<D> {
 
 	pub(super) fn record_retraction(&self) {
 		self.inner.retractions.record()
+	}
+
+	pub fn head_token(&self) -> u64 {
+		self.inner.head_changes.token()
+	}
+
+	pub(super) fn head_unchanged(&self, token: u64) -> bool {
+		self.inner.head_changes.unchanged(token)
+	}
+
+	pub(super) fn record_head_change(&self) {
+		self.inner.head_changes.record()
 	}
 
 	pub(super) fn gap_guard(&self) -> usize {

@@ -72,7 +72,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			return;
 		}
 		let mut coverage = self.coverage().write();
-		if !self.retractions_unchanged(token) {
+		if !self.head_unchanged(token) {
 			return;
 		}
 		if coverage.head(dimension).is_none_or(|current| *current < proven) {
@@ -84,6 +84,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		if !in_head_band::<D>(dimension, key) {
 			return;
 		}
+		self.record_head_change();
 		{
 			let coverage = self.coverage().read();
 			if coverage.head(dimension).is_none_or(|current| !current.covers(key)) {

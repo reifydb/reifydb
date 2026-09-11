@@ -79,6 +79,19 @@ fn create_left_cost(db: &TestDb) {
 		 MAP { pool, usd: c_usd } }");
 }
 
+fn create_depth(db: &TestDb) {
+	db.admin(
+		"CREATE DEFERRED VIEW app::depth { pool: utf8, qty: int8 } AS { FROM app::level MAP { pool, qty: px } }",
+	);
+}
+
+fn create_diamond_cost(db: &TestDb) {
+	db.admin("CREATE DEFERRED VIEW app::cost { pool: utf8, usd: int8 } AS { \
+		 FROM app::depth \
+		 INNER JOIN { FROM app::curve } AS c USING (pool, c.pool) WITH { snapshot: true, latest: true } \
+		 MAP { pool, usd: c_usd } }");
+}
+
 fn insert_rung(db: &TestDb, pool: &str, px: i64) {
 	db.command(&format!("INSERT app::level [{{ pool: '{pool}', px: {px} }}]"));
 }
@@ -499,4 +512,53 @@ fn a_view_with_no_readers_still_commits_once_per_source_version() {
 		vec![level[0].version, level[1].version],
 		"curve must commit once per rung commit even with no readers, each stamped with that rung's version"
 	);
+}
+
+#[test]
+fn two_tables_in_one_commit_pair_through_a_snapshot_join() {
+	// A snapshot join must apply a version's right side before its left, or a same-commit left row pairs with
+	// nothing.
+	let db = memory_db();
+	create_tables(&db);
+	db.admin("CREATE DEFERRED VIEW app::cost { pool: utf8, usd: int8 } AS { \
+		 FROM app::snap \
+		 INNER JOIN { FROM app::level } AS l USING (pool, l.pool) WITH { snapshot: true, latest: true } \
+		 MAP { pool, usd: l_px } }");
+
+	db.command("INSERT app::level [{ pool: 'a', px: 10 }]; INSERT app::snap [{ pool: 'a' }]");
+	settle(&db);
+	assert_eq!(cost_rows(&db), vec![paired("a", 10)]);
+}
+
+#[test]
+fn two_views_made_from_one_commit_pair_across_fifty_live_rounds() {
+	// A join over two views of one table must see both sides of a source together, whichever producer commits
+	// first.
+	let db = memory_db();
+	create_tables(&db);
+	create_curve(&db);
+	create_depth(&db);
+	create_diamond_cost(&db);
+	settle(&db);
+
+	for round in 0..LIVE_ROUNDS {
+		insert_rung(&db, &format!("p{round:02}"), round as i64);
+	}
+	settle(&db);
+	assert_curve_rows(&db, LIVE_ROUNDS);
+	assert_eq!(
+		db.row_count("FROM app::depth"),
+		LIVE_ROUNDS,
+		"the depth view itself is incomplete, so a wrong cost says nothing about ordering across the hops"
+	);
+
+	let want: Vec<_> = (0..LIVE_ROUNDS).map(|round| paired(&format!("p{round:02}"), round as i64 * 2)).collect();
+	let got = cost_rows(&db);
+	assert_eq!(
+		got.len(),
+		LIVE_ROUNDS,
+		"{} of {LIVE_ROUNDS} depth rows paired; the rest ran before the curve row made from the same commit",
+		got.len()
+	);
+	assert_eq!(got, want);
 }

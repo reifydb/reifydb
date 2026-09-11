@@ -424,6 +424,10 @@ impl MultiRangeTier {
 		self.tier.complete_partitions()
 	}
 
+	pub fn head_token(&self) -> u64 {
+		self.tier.head_token()
+	}
+
 	#[instrument(name = "store::multi::range::insert", level = "trace", skip_all, fields(table = ?table, version = version.0))]
 	pub fn insert(&self, table: EntryKind, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
 		let Some(key) = narrow(table, &key) else {
@@ -487,6 +491,7 @@ impl MultiRangeTier {
 		lo: &EncodedKey,
 		through: &EncodedKey,
 		entries: &[RawEntry],
+		head_token: u64,
 	) -> bool {
 		if !table.caches_ranges() {
 			return false;
@@ -511,7 +516,7 @@ impl MultiRangeTier {
 			})
 			.collect();
 		let proven = just_past(&through);
-		self.tier.raise_head(table, &lo, &proven, rows.first().map(|(key, _)| key), self.tier.retractions());
+		self.tier.raise_head(table, &lo, &proven, rows.first().map(|(key, _)| key), head_token);
 		let Some(start) = anchor(table, &lo, &rows) else {
 			return false;
 		};
@@ -760,7 +765,7 @@ mod tests {
 	/// descending by row number.
 	fn materialize_from_prefix(tier: &MultiRangeTier, rows: &[u64], version: u64) {
 		let entries: Vec<RawEntry> = rows.iter().map(|n| entry(*n, version)).collect();
-		tier.materialize_scanned_chunk(source(), &storage_start(), &storage_end(), &entries);
+		tier.materialize_scanned_chunk(source(), &storage_start(), &storage_end(), &entries, tier.head_token());
 	}
 
 	fn serve_whole_storage(tier: &MultiRangeTier, cursor: &mut RangeCursor) -> ServedChunk {
@@ -815,7 +820,13 @@ mod tests {
 		let mut entries: Vec<RawEntry> = rows.iter().map(|n| entry(*n, version)).collect();
 		entries.sort_by(|left, right| left.key.cmp(&right.key));
 		assert!(
-			tier.materialize_scanned_chunk(source(), &row(base + BUCKET - 1), &row(base), &entries),
+			tier.materialize_scanned_chunk(
+				source(),
+				&row(base + BUCKET - 1),
+				&row(base),
+				&entries,
+				tier.head_token(),
+			),
 			"a whole-bucket chunk must publish its claim"
 		);
 	}
@@ -853,7 +864,7 @@ mod tests {
 			value: Some(CowVec::new(b"scanned".to_vec())),
 		}];
 		assert!(
-			tier.materialize_scanned_chunk(kind, &lo, &through, &stale),
+			tier.materialize_scanned_chunk(kind, &lo, &through, &stale, tier.head_token()),
 			"the chunk must claim its span, or the test never reaches the case it is here to pin"
 		);
 
@@ -926,7 +937,7 @@ mod tests {
 			value: Some(CowVec::new(b"v5".to_vec())),
 		}];
 		assert!(
-			tier.materialize_scanned_chunk(kind, &key, &through, &newer),
+			tier.materialize_scanned_chunk(kind, &key, &through, &newer, tier.head_token()),
 			"the chunk must claim its span, or the write below never lands on a resident row"
 		);
 
@@ -963,7 +974,13 @@ mod tests {
 		let tier = tight();
 		let entries = vec![entry(BUCKET * 4 + 3, 1), entry(BUCKET * 4 + 2, 1), entry(BUCKET * 4 + 1, 1)];
 		assert!(
-			tier.materialize_scanned_chunk(source(), &storage_start(), &storage_end(), &entries),
+			tier.materialize_scanned_chunk(
+				source(),
+				&storage_start(),
+				&storage_end(),
+				&entries,
+				tier.head_token(),
+			),
 			"the chunk must publish its claim, or the test never reaches the case it is here to pin"
 		);
 		assert_eq!(
@@ -998,7 +1015,7 @@ mod tests {
 		// never read it from any tier. Placing a row can only ever be evidence that the span below the head
 		// is not empty after all, so the head must yield to it.
 		let tier = tier();
-		tier.tier.raise_head(source(), &Edge::Bottom, &Edge::Top, Some(&key(3)), tier.tier.retractions());
+		tier.tier.raise_head(source(), &Edge::Bottom, &Edge::Top, Some(&key(3)), tier.tier.head_token());
 
 		tier.insert(source(), row(7), CommitVersion(1), Some(CowVec::new(vec![1])));
 
@@ -1015,15 +1032,37 @@ mod tests {
 		// between the scan and the raise. Publishing the raise anyway makes every later scan start past the
 		// new row and never read it from any tier, with no gap and no error to show for it.
 		let tier = tier();
-		let token = tier.tier.retractions();
+		let token = tier.tier.head_token();
 
 		tier.invalidate(source(), &row(7));
 
 		tier.tier.raise_head(source(), &Edge::Bottom, &Edge::Top, Some(&key(3)), token);
 		assert_eq!(tier.tier.head(source()), None, "a head published across a withdrawal");
 
-		tier.tier.raise_head(source(), &Edge::Bottom, &Edge::Top, Some(&key(3)), tier.tier.retractions());
+		tier.tier.raise_head(source(), &Edge::Bottom, &Edge::Top, Some(&key(3)), tier.tier.head_token());
 		assert_eq!(tier.tier.head(source()), Some(Edge::Key(key(3))), "a fresh token must publish");
+	}
+
+	#[test]
+	fn a_head_raised_from_a_read_that_missed_a_flushed_row_never_hides_it() {
+		// A stale head leaves the flushed row in ram below it, where no scan starting at the head reads it.
+		let tier = tier();
+		let token = tier.head_token();
+
+		tier.insert(source(), row(126), CommitVersion(126), Some(CowVec::new(vec![1])));
+
+		let stale: Vec<RawEntry> = (1..=125).rev().map(|n| entry(n, n)).collect();
+		assert!(
+			tier.materialize_scanned_chunk(source(), &storage_start(), &storage_end(), &stale, token),
+			"the chunk must publish its claim, or the test never reaches the case it is here to pin"
+		);
+
+		let mut cursor = RangeCursor::new();
+		let chunk = serve_whole_storage(&tier, &mut cursor);
+		assert!(
+			is_gap(&chunk) || rows_of(&chunk).contains(&126),
+			"a head raised from a read that predates the flush moved the scan past row 126, which then reads as absent from every tier"
+		);
 	}
 
 	#[test]
@@ -1041,7 +1080,7 @@ mod tests {
 			"a bound below the row band must not resolve to an edge of it"
 		);
 		assert!(
-			!tier.materialize_scanned_chunk(source(), &series(9), &storage_end(), &[]),
+			!tier.materialize_scanned_chunk(source(), &series(9), &storage_end(), &[], tier.head_token()),
 			"a scan that started below the row band must not be claimed"
 		);
 
@@ -1164,7 +1203,7 @@ mod tests {
 		let mut first = RangeCursor::new();
 		assert!(is_gap(&serve_whole_storage(&tier, &mut first)), "nothing is proven before the first scan");
 
-		tier.materialize_scanned_chunk(source(), &storage_start(), &storage_end(), &[]);
+		tier.materialize_scanned_chunk(source(), &storage_start(), &storage_end(), &[], tier.head_token());
 
 		let mut second = RangeCursor::new();
 		let chunk = serve_whole_storage(&tier, &mut second);
@@ -1275,7 +1314,13 @@ mod tests {
 		let tier = tier();
 		let entries = vec![entry(3, 10), entry(2, 10), entry(1, 10)];
 		assert!(
-			tier.materialize_scanned_chunk(source(), &storage_start(), &row(1), &entries),
+			tier.materialize_scanned_chunk(
+				source(),
+				&storage_start(),
+				&row(1),
+				&entries,
+				tier.head_token(),
+			),
 			"the chunk must publish its claim, or the test never reaches the case it is here to pin"
 		);
 

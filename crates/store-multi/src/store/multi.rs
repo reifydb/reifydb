@@ -973,6 +973,7 @@ impl StandardMultiStore {
 		descending: bool,
 	) -> Result<()> {
 		let resumed_at = cursor.persistent.last_key().cloned();
+		let head_token = self.range.as_ref().map(|range| range.head_token());
 		let batch = if descending {
 			persistent.range_rev_next(
 				scan.table,
@@ -997,6 +998,7 @@ impl StandardMultiStore {
 				persistent,
 				scan,
 				resumed_at.as_ref(),
+				head_token,
 				&cursor.persistent,
 				&batch,
 			)?;
@@ -1010,10 +1012,12 @@ impl StandardMultiStore {
 		persistent: &MultiPersistentTier,
 		scan: &TierScanQuery,
 		resumed_at: Option<&EncodedKey>,
+		head_token: Option<u64>,
 		cursor: &RangeCursor,
 		batch: &RangeBatch,
 	) -> Result<()> {
-		let (Some(range), true) = (&self.range, scan.table.caches_ranges()) else {
+		let (Some(range), Some(head_token), true) = (&self.range, head_token, scan.table.caches_ranges())
+		else {
 			return Ok(());
 		};
 		let MultiVersionScope::AsOf {
@@ -1039,7 +1043,7 @@ impl StandardMultiStore {
 			(false, false, Some(last)) => last.clone(),
 			(false, false, None) => return Ok(()),
 		};
-		range.materialize_scanned_chunk(scan.table, &lo, &through, &batch.entries);
+		range.materialize_scanned_chunk(scan.table, &lo, &through, &batch.entries, head_token);
 		Ok(())
 	}
 }
@@ -1776,6 +1780,7 @@ mod cache_tests {
 					version: CommitVersion(1),
 					value: Some(CowVec::new(b"neighbor".to_vec())),
 				}],
+				range.head_token(),
 			),
 			"the seeding chunk must publish its claim"
 		);

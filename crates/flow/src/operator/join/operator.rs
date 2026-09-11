@@ -877,6 +877,7 @@ impl HostOperator for JoinOperator {
 
 		let version = change.version;
 		let parent_origin = change.origin.clone();
+		let mut sided = Vec::with_capacity(change.diffs.len());
 		for diff in change.diffs {
 			let diff_origin = diff.origin().cloned().unwrap_or_else(|| parent_origin.clone());
 			let side = self.determine_side_from_origin(&diff_origin).ok_or_else(|| {
@@ -885,6 +886,12 @@ impl HostOperator for JoinOperator {
 					origin: None,
 				})
 			})?;
+			sided.push((side, diff));
+		}
+		if self.snapshot {
+			sided.sort_by_key(|(side, _)| *side != JoinSide::Right);
+		}
+		for (side, diff) in sided {
 			match diff {
 				Diff::Insert {
 					post,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind};
 use reifydb_rql::flow::analyzer::FlowDependencyGraph;
@@ -20,6 +20,27 @@ pub fn flow_completeness_objects(
 		admitted.get_or_insert_with(BTreeSet::new).extend(objects.iter().map(|object| object.to_u64()));
 	}
 	admitted
+}
+
+pub fn flow_upstreams(
+	graph: &FlowDependencyGraph,
+	flow: FlowId,
+	view_kind: &dyn Fn(ViewId) -> Option<ViewKind>,
+) -> HashMap<FlowId, HashSet<ObjectId>> {
+	let mut upstreams: HashMap<FlowId, HashSet<ObjectId>> = HashMap::new();
+	for (view_id, consumer_flows) in &graph.source_views {
+		if !consumer_flows.contains(&flow) {
+			continue;
+		}
+		if view_kind(*view_id) == Some(ViewKind::Transactional) {
+			continue;
+		}
+		let Some(producer) = graph.sink_views.get(view_id) else {
+			continue;
+		};
+		upstreams.entry(*producer).or_default().insert(ObjectId::View(*view_id));
+	}
+	upstreams
 }
 
 pub fn flow_source_objects(
@@ -207,6 +228,48 @@ mod tests {
 		let objects = flow_source_objects(&graph, FlowId(20), &none_registered, &view_kind);
 
 		assert_eq!(objects.into_iter().collect::<Vec<_>>(), vec![ObjectId::View(ViewId(5))]);
+	}
+
+	#[test]
+	fn a_deferred_view_gates_on_its_producer_whether_or_not_it_is_registered() {
+		// A reader that skipped the gate while its producer is not yet spawned would run ahead of the view
+		// rows.
+		let mut graph = empty_graph();
+		graph.source_views.insert(ViewId(5), vec![FlowId(20)]);
+		graph.source_views.insert(ViewId(6), vec![FlowId(20)]);
+		graph.sink_views.insert(ViewId(5), FlowId(10));
+		graph.sink_views.insert(ViewId(6), FlowId(10));
+		graph.source_tables.insert(TableId(1), vec![FlowId(20)]);
+
+		let view_kind = |_view_id: ViewId| Some(ViewKind::Deferred);
+
+		assert_eq!(
+			flow_upstreams(&graph, FlowId(20), &view_kind),
+			HashMap::from([(
+				FlowId(10),
+				HashSet::from([ObjectId::View(ViewId(5)), ObjectId::View(ViewId(6))])
+			)]),
+			"both views of one producer must share one stream, or a commit that writes both is read twice"
+		);
+	}
+
+	#[test]
+	fn transactional_and_producerless_views_carry_no_gate() {
+		// Their rows commit at their own source version, so a gate would wait on a position nobody publishes.
+		let mut graph = empty_graph();
+		graph.source_views.insert(ViewId(5), vec![FlowId(20)]);
+		graph.source_views.insert(ViewId(6), vec![FlowId(20)]);
+		graph.sink_views.insert(ViewId(5), FlowId(10));
+
+		let view_kind = |view_id: ViewId| {
+			if view_id == ViewId(5) {
+				Some(ViewKind::Transactional)
+			} else {
+				Some(ViewKind::Deferred)
+			}
+		};
+
+		assert!(flow_upstreams(&graph, FlowId(20), &view_kind).is_empty());
 	}
 
 	#[test]

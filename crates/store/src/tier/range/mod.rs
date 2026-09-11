@@ -286,6 +286,7 @@ struct PoolInner<D: RangeDomain> {
 	shards: Box<[Mutex<Shard<D>>]>,
 	coverage: RwLock<CoverageIndex<D::Dimension, D::Key>>,
 	retractions: Retractions,
+	head_changes: Retractions,
 	gap_guard: usize,
 	coverage_bytes: u64,
 	coverage_intervals: usize,
