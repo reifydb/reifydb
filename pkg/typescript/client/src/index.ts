@@ -88,6 +88,8 @@ export type {
     LogoutRequest,
     LogoutResponse,
 } from './types';
+export {BinaryKind, decodeBatchEnvelope, decodeEnvelope, dispatchChange, reportSubscriptionError} from './subscription-decode';
+export type {BatchBinaryEnvelope, BinaryEnvelope, SubscriptionTarget} from './subscription-decode';
 export {
     defaultHydrationConfig,
     defaultSubscriptionConfig,

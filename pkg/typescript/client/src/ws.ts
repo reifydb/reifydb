@@ -1,14 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {
-    decode,
     columnsToRows,
     framesFromWire,
     transformFrames,
-    transformResult,
-    checkFrames,
-    checkFrame,
-    ROW_NUMBER_KEY
+    checkFrames
 } from "@reifydb/core";
 import type {
     ShapeNode,
@@ -57,87 +53,9 @@ import {
 import {jsonResponseToRows} from "./json-decode";
 import {encodeParams} from "./encoder";
 import {rbcf} from "./rbcf";
-import {CONTENT_TYPE_FRAMES, CONTENT_TYPE_RBCF} from "./content-types";
+import {CONTENT_TYPE_RBCF} from "./content-types";
 import {toCamelCaseKeys, toSnakeCaseKeys, WIRE_PASSTHROUGH_KEYS} from "./case";
-
-const enum BinaryKind {
-    Response = 0x00,
-    Change = 0x01,
-    BatchChange = 0x02,
-}
-
-interface BinaryEnvelope {
-    kind: BinaryKind;
-    id: string;
-    meta?: ResponseMeta;
-    rbcf: Uint8Array;
-}
-
-interface BatchBinaryEnvelope {
-    batchId: string;
-    entries: Array<{ subscriptionId: string; rbcf: Uint8Array }>;
-}
-
-function decodeEnvelope(bytes: Uint8Array): BinaryEnvelope | null {
-    if (bytes.length < 5) return null;
-    const kind = bytes[0] as BinaryKind;
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    const idLen = view.getUint32(1, true);
-    if (bytes.length < 5 + idLen + 4) return null;
-    const decoder = new TextDecoder("utf-8");
-    const id = decoder.decode(bytes.subarray(5, 5 + idLen));
-
-    const metaLen = view.getUint32(5 + idLen, true);
-    if (bytes.length < 5 + idLen + 4 + metaLen) return null;
-
-    let meta: ResponseMeta | undefined;
-    if (metaLen > 0) {
-        const metaJson = decoder.decode(bytes.subarray(5 + idLen + 4, 5 + idLen + 4 + metaLen));
-        try {
-            meta = JSON.parse(metaJson);
-        } catch (e) {
-            console.error("Failed to parse RBCF metadata", e);
-        }
-    }
-
-    const rbcfBytes = bytes.subarray(5 + idLen + 4 + metaLen);
-    return {kind, id, meta, rbcf: rbcfBytes};
-}
-
-function decodeBatchEnvelope(bytes: Uint8Array): BatchBinaryEnvelope | null {
-    if (bytes.length < 9) return null;
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    const decoder = new TextDecoder("utf-8");
-
-    const batchIdLen = view.getUint32(1, true);
-    let offset = 5;
-    if (bytes.length < offset + batchIdLen + 4) return null;
-    const batchId = decoder.decode(bytes.subarray(offset, offset + batchIdLen));
-    offset += batchIdLen;
-
-    const numEntries = view.getUint32(offset, true);
-    offset += 4;
-
-    const entries: Array<{ subscriptionId: string; rbcf: Uint8Array }> = [];
-    for (let i = 0; i < numEntries; i++) {
-        if (bytes.length < offset + 4) return null;
-        const subIdLen = view.getUint32(offset, true);
-        offset += 4;
-        if (bytes.length < offset + subIdLen + 4) return null;
-        const subscriptionId = decoder.decode(bytes.subarray(offset, offset + subIdLen));
-        offset += subIdLen;
-
-        const rbcfLen = view.getUint32(offset, true);
-        offset += 4;
-        if (bytes.length < offset + rbcfLen) return null;
-        const rbcfBytes = bytes.subarray(offset, offset + rbcfLen);
-        offset += rbcfLen;
-
-        entries.push({subscriptionId, rbcf: rbcfBytes});
-    }
-
-    return {batchId, entries};
-}
+import {BinaryKind, decodeBatchEnvelope, decodeEnvelope, dispatchChange} from "./subscription-decode";
 
 export interface WsClientOptions {
     url: string;
@@ -991,72 +909,7 @@ export class WsClient {
             return;
         }
 
-        // The frames content type carries each column's type in the wire's rendering; rbcf changes were
-        // already decoded into the client's own types on the way in.
-        const raw = body?.frames || [];
-        const frames = contentType === CONTENT_TYPE_FRAMES ? framesFromWire(raw) : raw;
-        for (const frame of frames) {
-            // One undecodable frame must not abandon the frames after it, nor escape into the
-            // socket handler, where it would stall every later message on this connection.
-            try {
-                this.dispatchChangeFrame(state, frame);
-            } catch (error) {
-                this.reportSubscriptionError(state, error);
-            }
-        }
-    }
-
-    private reportSubscriptionError(state: SubscriptionState, error: unknown): void {
-        const reported = error instanceof Error ? error : new Error(String(error));
-        if (state.callbacks.onError) {
-            state.callbacks.onError(reported);
-            return;
-        }
-        console.error('Subscription change could not be delivered:', reported);
-    }
-
-    private dispatchChangeFrame(state: SubscriptionState, frame: any): void {
-        const rows = this.frameToRows(frame, state.shape);
-        if (rows.length === 0) return;
-
-        switch (frame.op) {
-            case 2:
-                state.callbacks.onUpdate?.(rows);
-                break;
-            case 3:
-                state.callbacks.onRemove?.(rows);
-                break;
-            default:
-                state.callbacks.onInsert?.(rows);
-                break;
-        }
-    }
-
-    private frameToRows(frame: any, shape?: ShapeNode): any[] {
-        if (!frame.columns || frame.columns.length === 0) return [];
-        if (shape) checkFrame(frame.columns, shape);
-
-        const rowCount = frame.columns[0].payload.length;
-        const rowNumbers = frame.row_numbers;
-        const rows: any[] = [];
-
-        for (let i = 0; i < rowCount; i++) {
-            const row: any = {};
-            for (const col of frame.columns) {
-                row[col.name] = decode({type: col.type, value: col.payload[i]});
-            }
-            rows.push(row);
-        }
-
-        const shaped = shape ? rows.map(row => transformResult(row, shape)) : rows;
-
-        if (rowNumbers) {
-            for (let i = 0; i < shaped.length; i++) {
-                if (rowNumbers[i] !== undefined) shaped[i][ROW_NUMBER_KEY] = Number(rowNumbers[i]);
-            }
-        }
-
-        return shaped;
+        dispatchChange(state, contentType, body);
     }
 
     private handleBatchChange(msg: BatchChangeMessage): void {
