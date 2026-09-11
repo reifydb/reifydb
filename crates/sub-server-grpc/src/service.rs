@@ -11,20 +11,21 @@ use reifydb_core::{
 };
 use reifydb_engine::subscription::HydrateError;
 use reifydb_runtime::actor::reply::reply_channel;
+use reifydb_sub_core::{
+	cleanup::cleanup_subscription_sync,
+	errors::CreateSubscriptionError,
+	handler::{
+		BatchAck, BatchSubscribeError, SubscribeAck, SubscribeError,
+		handle_batch_subscribe as shared_batch_subscribe, handle_subscribe as shared_subscribe,
+	},
+};
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_auth_header},
 	binding::dispatch_binding,
 	claim::{WireClaimRequest, native::dispatch_claim},
 	dispatch::dispatch,
+	execute::ExecuteError,
 	interceptor::{Protocol, RequestContext, RequestMetadata},
-	subscription::{
-		cleanup::cleanup_subscription_sync,
-		errors::CreateSubscriptionError,
-		handler::{
-			BatchAck, BatchSubscribeError, SubscribeAck, SubscribeError,
-			handle_batch_subscribe as shared_batch_subscribe, handle_subscribe as shared_subscribe,
-		},
-	},
 };
 use reifydb_subscription::batch::BatchId;
 use reifydb_value::{
@@ -422,8 +423,9 @@ impl ReifyDb for ReifyDbService {
 
 		let (tx, rx, connection_id, sink) = self.build_single_sink();
 
+		let host = self.state.subscribe_host(metadata);
 		match shared_subscribe(
-			&self.state,
+			&host,
 			connection_id,
 			identity,
 			inner.rql,
@@ -432,7 +434,6 @@ impl ReifyDb for ReifyDbService {
 			&self.registry,
 			format,
 			self.shutdown_rx.clone(),
-			metadata,
 		)
 		.await
 		{
@@ -483,8 +484,9 @@ impl ReifyDb for ReifyDbService {
 
 		let (batch_tx, batch_rx, connection_id, batch_sink) = self.build_batch_sink();
 
+		let host = self.state.subscribe_host(metadata);
 		match shared_batch_subscribe(
-			&self.state,
+			&host,
 			connection_id,
 			identity,
 			&inner.rql,
@@ -492,7 +494,6 @@ impl ReifyDb for ReifyDbService {
 			&self.registry,
 			format,
 			self.shutdown_rx.clone(),
-			metadata,
 		)
 		.await
 		{
@@ -656,7 +657,7 @@ fn insert_meta_headers(metadata: &mut MetadataMap, metrics: &ExecutionMetrics) {
 	metadata.insert("x-duration", metrics.total.to_string().parse().unwrap());
 }
 
-fn subscribe_error_to_status(err: SubscribeError) -> Status {
+fn subscribe_error_to_status(err: SubscribeError<ExecuteError>) -> Status {
 	match err {
 		SubscribeError::Create(CreateSubscriptionError::Execute(e)) => Status::from(GrpcError::from(e)),
 		SubscribeError::Create(CreateSubscriptionError::ExtractionFailed) => {
@@ -686,7 +687,7 @@ fn subscribe_error_to_status(err: SubscribeError) -> Status {
 	}
 }
 
-fn batch_subscribe_error_to_status(err: BatchSubscribeError) -> Status {
+fn batch_subscribe_error_to_status(err: BatchSubscribeError<ExecuteError>) -> Status {
 	match err {
 		BatchSubscribeError::Empty => Status::invalid_argument("BatchSubscribe requires at least one query"),
 		BatchSubscribeError::Create(CreateSubscriptionError::Execute(e)) => Status::from(GrpcError::from(e)),

@@ -3,14 +3,12 @@
 
 use std::fmt;
 
-use crate::execute::ExecuteError;
-
-pub enum CreateSubscriptionError {
-	Execute(ExecuteError),
+pub enum CreateSubscriptionError<E> {
+	Execute(E),
 	ExtractionFailed,
 }
 
-impl fmt::Display for CreateSubscriptionError {
+impl<E: fmt::Display> fmt::Display for CreateSubscriptionError<E> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			CreateSubscriptionError::Execute(e) => write!(f, "{}", e),
@@ -19,17 +17,11 @@ impl fmt::Display for CreateSubscriptionError {
 	}
 }
 
-impl fmt::Debug for CreateSubscriptionError {
+impl<E: fmt::Debug> fmt::Debug for CreateSubscriptionError<E> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			CreateSubscriptionError::Execute(e) => f.debug_tuple("Execute").field(e).finish(),
 			CreateSubscriptionError::ExtractionFailed => write!(f, "ExtractionFailed"),
 		}
-	}
-}
-
-impl From<ExecuteError> for CreateSubscriptionError {
-	fn from(err: ExecuteError) -> Self {
-		CreateSubscriptionError::Execute(err)
 	}
 }

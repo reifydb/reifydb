@@ -7,10 +7,13 @@ use reifydb_codec::{
 	json::to::convert_frames,
 };
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use reifydb_sub_core::{
+	envelope::{BinaryKind, encode_rbcf_batch_envelope, encode_rbcf_envelope},
+	wire_sink::{BatchSubscribedMember, WireSink},
+};
 use reifydb_sub_server::{
 	format::WireFormat,
 	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, resolve_change_json},
-	subscription::wire_sink::{BatchSubscribedMember, WireSink},
 };
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_value::value::{diff_type::DiffType, frame::frame::Frame, uuid::Uuid7};
@@ -18,11 +21,9 @@ use serde_json::{Value as JsonValue, from_str, json};
 use tokio::sync::mpsc;
 use tracing::{instrument, warn};
 
-use crate::handler::{BinaryKind, encode_rbcf_envelope};
-
 pub type ConnectionId = Uuid7;
 
-pub type SubscriptionRegistry = reifydb_sub_server::subscription::registry::SubscriptionRegistry<WsWireSink>;
+pub type SubscriptionRegistry = reifydb_sub_core::registry::SubscriptionRegistry<WsWireSink>;
 
 #[derive(Debug, Clone)]
 pub struct BatchChangeEntryPush {
@@ -360,29 +361,6 @@ fn encode_change(
 	}
 }
 
-fn encode_rbcf_batch_envelope(batch_id: &str, entries: &[(String, Vec<u8>)]) -> Vec<u8> {
-	let batch_id_bytes = batch_id.as_bytes();
-	let mut total_entries_bytes = 0usize;
-	for (sub_id, rbcf) in entries {
-		total_entries_bytes += 4 + sub_id.len() + 4 + rbcf.len();
-	}
-
-	let mut envelope = Vec::with_capacity(1 + 4 + batch_id_bytes.len() + 4 + total_entries_bytes);
-	envelope.push(BinaryKind::BatchChange as u8);
-	envelope.extend_from_slice(&(batch_id_bytes.len() as u32).to_le_bytes());
-	envelope.extend_from_slice(batch_id_bytes);
-	envelope.extend_from_slice(&(entries.len() as u32).to_le_bytes());
-
-	for (sub_id, rbcf) in entries {
-		let sub_id_bytes = sub_id.as_bytes();
-		envelope.extend_from_slice(&(sub_id_bytes.len() as u32).to_le_bytes());
-		envelope.extend_from_slice(sub_id_bytes);
-		envelope.extend_from_slice(&(rbcf.len() as u32).to_le_bytes());
-		envelope.extend_from_slice(rbcf);
-	}
-	envelope
-}
-
 #[cfg(test)]
 pub mod tests {
 	use std::collections::HashSet;
@@ -393,7 +371,7 @@ pub mod tests {
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
-	use reifydb_sub_server::subscription::registry::PromoteResult;
+	use reifydb_sub_core::registry::PromoteResult;
 	use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 	use reifydb_value::value::{
 		Value, duration::Duration, row_number::RowNumber, system_columns::SystemColumn, uuid::Uuid7,
@@ -531,7 +509,6 @@ pub mod tests {
 		registry.subscribe(
 			sub_id,
 			connection_id,
-			"FROM test".to_string(),
 			sink,
 			WireFormat::Frames,
 			None,
@@ -560,7 +537,6 @@ pub mod tests {
 		registry.subscribe(
 			sub1,
 			connection_id,
-			"FROM test1".to_string(),
 			WsWireSink::new(tx1),
 			WireFormat::Json,
 			None,
@@ -570,7 +546,6 @@ pub mod tests {
 		registry.subscribe(
 			sub2,
 			connection_id,
-			"FROM test2".to_string(),
 			WsWireSink::new(tx2),
 			WireFormat::Json,
 			None,
@@ -598,7 +573,6 @@ pub mod tests {
 		registry.subscribe(
 			sub_a,
 			connection_id,
-			"FROM a".to_string(),
 			sink.clone(),
 			WireFormat::Frames,
 			None,
@@ -608,7 +582,6 @@ pub mod tests {
 		registry.subscribe(
 			sub_b,
 			connection_id,
-			"FROM b".to_string(),
 			sink.clone(),
 			WireFormat::Frames,
 			None,
@@ -670,7 +643,6 @@ pub mod tests {
 		registry.subscribe(
 			sub_a,
 			connection_id,
-			"FROM a".to_string(),
 			sink.clone(),
 			WireFormat::Frames,
 			None,
@@ -719,7 +691,6 @@ pub mod tests {
 		registry.subscribe(
 			sub,
 			connection_id,
-			"FROM warm".to_string(),
 			sink,
 			WireFormat::Frames,
 			Some(16),
@@ -767,7 +738,6 @@ pub mod tests {
 		registry.subscribe(
 			sub,
 			connection_id,
-			"FROM warm".to_string(),
 			sink,
 			WireFormat::Frames,
 			Some(2),
@@ -816,7 +786,6 @@ pub mod tests {
 		registry.subscribe(
 			sub_short,
 			connection_id,
-			"FROM a".to_string(),
 			sink.clone(),
 			WireFormat::Frames,
 			None,
@@ -826,7 +795,6 @@ pub mod tests {
 		registry.subscribe(
 			sub_long,
 			connection_id,
-			"FROM b".to_string(),
 			sink.clone(),
 			WireFormat::Frames,
 			None,
@@ -898,7 +866,6 @@ pub mod tests {
 		registry.subscribe(
 			sub_a,
 			connection_id,
-			"FROM a".to_string(),
 			sink.clone(),
 			WireFormat::Frames,
 			None,
@@ -955,7 +922,6 @@ pub mod tests {
 		registry.subscribe(
 			sub_z,
 			connection_id,
-			"FROM z".to_string(),
 			sink.clone(),
 			WireFormat::Frames,
 			None,
@@ -996,7 +962,6 @@ pub mod tests {
 		registry.subscribe(
 			sub,
 			connection_id,
-			"FROM s".to_string(),
 			sink,
 			WireFormat::Frames,
 			None,
@@ -1030,7 +995,6 @@ pub mod tests {
 		registry.subscribe(
 			sub,
 			connection_id,
-			"FROM t".to_string(),
 			sink.clone(),
 			WireFormat::Frames,
 			None,
@@ -1076,7 +1040,6 @@ pub mod tests {
 		registry.subscribe(
 			sub_a,
 			connection_id,
-			"FROM a".to_string(),
 			sink.clone(),
 			WireFormat::Frames,
 			None,
@@ -1086,7 +1049,6 @@ pub mod tests {
 		registry.subscribe(
 			sub_b,
 			connection_id,
-			"FROM b".to_string(),
 			sink.clone(),
 			WireFormat::Frames,
 			None,

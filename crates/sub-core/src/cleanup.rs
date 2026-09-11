@@ -11,9 +11,6 @@ use reifydb_value::{Result as TypeResult, params::Params, value::identity::Ident
 #[cfg(not(reifydb_single_threaded))]
 use tokio::task::spawn_blocking;
 
-#[cfg(not(reifydb_single_threaded))]
-use crate::state::AppState;
-
 pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: SubscriptionId) -> TypeResult<()> {
 	let rql = format!("drop subscription if exists subscription_{};", subscription_id.0);
 	engine.admin_as(IdentityId::system(), &rql, Params::None).check()?;
@@ -21,8 +18,8 @@ pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: Subsc
 }
 
 #[cfg(not(reifydb_single_threaded))]
-pub async fn cleanup_subscription(state: &AppState, subscription_id: SubscriptionId) -> TypeResult<()> {
-	let engine = state.engine_clone();
+pub async fn cleanup_subscription(engine: &StandardEngine, subscription_id: SubscriptionId) -> TypeResult<()> {
+	let engine = engine.clone();
 
 	spawn_blocking(move || cleanup_subscription_sync(&engine, subscription_id))
 		.await

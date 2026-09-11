@@ -23,6 +23,7 @@ reifydb-sub-subscription = { workspace = true }
 reifydb-subscription = { workspace = true }
 reifydb-value = { workspace = true }
 reifydb-sub-api = { workspace = true }
+reifydb-sub-core = { workspace = true }
 reifydb-sub-server = { workspace = true }
 reifydb-client = { workspace = true }
 

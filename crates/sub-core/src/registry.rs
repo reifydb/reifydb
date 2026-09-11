@@ -28,9 +28,9 @@ use reifydb_value::{
 	value::{diff_type::DiffType, duration::Duration, frame::frame::Frame, uuid::Uuid7},
 };
 use tokio::sync::Notify;
-use tracing::{debug, instrument, trace};
+use tracing::{debug, instrument};
 
-use crate::subscription::wire_sink::WireSink;
+use crate::wire_sink::WireSink;
 
 pub type ConnectionId = Uuid7;
 
@@ -50,8 +50,6 @@ struct SubscriptionState<S: WireSink> {
 	connection_id: ConnectionId,
 	sink: S,
 	format: S::Format,
-	#[allow(dead_code)]
-	query: String,
 	batch_id: Option<BatchId>,
 	warming: Option<WarmingBuffer>,
 	throttle: ThrottleState,
@@ -231,7 +229,6 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		&self,
 		subscription_id: SubscriptionId,
 		connection_id: ConnectionId,
-		query: String,
 		sink: S,
 		format: S::Format,
 		warming_cap: Option<usize>,
@@ -244,7 +241,6 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 				connection_id,
 				sink,
 				format,
-				query,
 				batch_id: None,
 				warming: warming_cap.map(WarmingBuffer::new),
 				throttle: ThrottleState::new(throttle, linger),
@@ -541,23 +537,12 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		self.throttle_pending.store(0, Ordering::Release);
 	}
 
-	#[allow(dead_code)]
 	pub fn subscription_count(&self) -> usize {
 		self.subscriptions.len()
 	}
 
-	#[allow(dead_code)]
 	pub fn connection_count(&self) -> usize {
 		self.connections.len()
-	}
-
-	#[allow(dead_code)]
-	pub fn log_stats(&self) {
-		trace!(
-			"Registry stats: {} subscriptions, {} connections",
-			self.subscriptions.len(),
-			self.connections.len()
-		);
 	}
 
 	#[inline]

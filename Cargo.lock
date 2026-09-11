@@ -2854,6 +2854,7 @@ dependencies = [
  "reifydb-store-operator",
  "reifydb-store-single",
  "reifydb-sub-api",
+ "reifydb-sub-core",
  "reifydb-sub-flow",
  "reifydb-sub-lifecycle",
  "reifydb-sub-metrics",
@@ -3257,6 +3258,7 @@ dependencies = [
  "reifydb-value",
  "serde_json",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -3577,6 +3579,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-sub-core"
+version = "0.9.0"
+dependencies = [
+ "dashmap",
+ "reifydb-build",
+ "reifydb-client",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-remote-proxy",
+ "reifydb-runtime",
+ "reifydb-subscription",
+ "reifydb-transaction",
+ "reifydb-value",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "reifydb-sub-flow"
 version = "0.9.0"
 dependencies = [
@@ -3680,20 +3700,16 @@ dependencies = [
 name = "reifydb-sub-server"
 version = "0.9.0"
 dependencies = [
- "dashmap",
  "futures-util",
  "indexmap",
  "libc",
  "reifydb-auth",
  "reifydb-build",
- "reifydb-client",
  "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-remote-proxy",
  "reifydb-runtime",
- "reifydb-subscription",
- "reifydb-transaction",
+ "reifydb-sub-core",
  "reifydb-value",
  "serde",
  "serde_json",
@@ -3735,6 +3751,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-runtime",
  "reifydb-sub-api",
+ "reifydb-sub-core",
  "reifydb-sub-server",
  "reifydb-sub-subscription",
  "reifydb-subscription",
@@ -3799,6 +3816,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-runtime",
  "reifydb-sub-api",
+ "reifydb-sub-core",
  "reifydb-sub-server",
  "reifydb-sub-subscription",
  "reifydb-subscription",

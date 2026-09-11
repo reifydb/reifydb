@@ -2,16 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::{id::SubscriptionId, subscription::HydrationConfig};
-use reifydb_value::value::duration::Duration;
-#[cfg(not(reifydb_single_threaded))]
-use reifydb_value::value::frame::{column::FrameColumn, frame::Frame};
-#[cfg(not(reifydb_single_threaded))]
 use reifydb_value::{
 	params::Params,
-	value::{Value, identity::IdentityId},
+	value::{
+		Value,
+		duration::Duration,
+		frame::{column::FrameColumn, frame::Frame},
+		identity::IdentityId,
+	},
 };
-#[cfg(not(reifydb_single_threaded))]
 use tracing::{debug, error};
+
+use crate::{errors::CreateSubscriptionError, host::SubscribeHost};
 
 pub enum CreateSubscriptionResult {
 	Local {
@@ -30,35 +32,18 @@ pub enum CreateSubscriptionResult {
 	},
 }
 
-#[cfg(not(reifydb_single_threaded))]
-use reifydb_core::actors::server::Operation;
-
-#[cfg(not(reifydb_single_threaded))]
-use crate::{
-	dispatch::dispatch_subscribe,
-	interceptor::{RequestContext, RequestMetadata},
-	state::AppState,
-	subscription::errors::CreateSubscriptionError,
-};
-
-#[cfg(not(reifydb_single_threaded))]
-pub async fn create_subscription(
-	state: &AppState,
+pub async fn create_subscription<H: SubscribeHost>(
+	host: &H,
 	identity: IdentityId,
 	rql: &str,
 	params: Params,
-	metadata: RequestMetadata,
-) -> Result<CreateSubscriptionResult, CreateSubscriptionError> {
+) -> Result<CreateSubscriptionResult, CreateSubscriptionError<H::Error>> {
 	debug!("Subscription rql: {}", rql);
 
-	let ctx = RequestContext {
-		identity,
-		operation: Operation::Subscribe,
-		rql: rql.to_string(),
-		params,
-		metadata,
-	};
-	let (frames, _metrics) = dispatch_subscribe(state, ctx).await?;
+	let frames = host
+		.execute_subscribe(identity, rql.to_string(), params)
+		.await
+		.map_err(CreateSubscriptionError::Execute)?;
 	let frame = frames.first().ok_or(CreateSubscriptionError::ExtractionFailed)?;
 
 	if let Some(remote) = extract_remote_result(frame)? {
@@ -67,8 +52,7 @@ pub async fn create_subscription(
 	extract_local_result(frame)
 }
 
-#[cfg(not(reifydb_single_threaded))]
-fn extract_remote_result(frame: &Frame) -> Result<Option<CreateSubscriptionResult>, CreateSubscriptionError> {
+fn extract_remote_result<E>(frame: &Frame) -> Result<Option<CreateSubscriptionResult>, CreateSubscriptionError<E>> {
 	let Some(addr_col) = frame.columns.iter().find(|c| c.name == "remote_address") else {
 		return Ok(None);
 	};
@@ -102,8 +86,7 @@ fn extract_remote_result(frame: &Frame) -> Result<Option<CreateSubscriptionResul
 	}))
 }
 
-#[cfg(not(reifydb_single_threaded))]
-fn extract_local_result(frame: &Frame) -> Result<CreateSubscriptionResult, CreateSubscriptionError> {
+fn extract_local_result<E>(frame: &Frame) -> Result<CreateSubscriptionResult, CreateSubscriptionError<E>> {
 	let id = frame
 		.columns
 		.iter()
@@ -141,7 +124,6 @@ fn extract_local_result(frame: &Frame) -> Result<CreateSubscriptionResult, Creat
 	})
 }
 
-#[cfg(not(reifydb_single_threaded))]
 #[inline]
 fn first_utf8_value(col: &FrameColumn) -> Option<String> {
 	if col.data.is_empty() {
@@ -153,7 +135,6 @@ fn first_utf8_value(col: &FrameColumn) -> Option<String> {
 	}
 }
 
-#[cfg(not(reifydb_single_threaded))]
 #[inline]
 fn first_bool_value(frame: &Frame, name: &str) -> Option<bool> {
 	let col = frame.columns.iter().find(|c| c.name == name)?;
@@ -166,7 +147,6 @@ fn first_bool_value(frame: &Frame, name: &str) -> Option<bool> {
 	}
 }
 
-#[cfg(not(reifydb_single_threaded))]
 #[inline]
 fn first_uint8_value(frame: &Frame, name: &str) -> Option<u64> {
 	let col = frame.columns.iter().find(|c| c.name == name)?;

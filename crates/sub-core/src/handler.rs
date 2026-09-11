@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+#[cfg(not(reifydb_single_threaded))]
 use reifydb_client::{
 	HydrationConfig as ClientHydrationConfig, Linger as ClientLinger,
 	SubscriptionConfig as ClientSubscriptionConfig, Throttle as ClientThrottle,
@@ -15,8 +16,10 @@ use reifydb_core::{
 	},
 	metrics::execution::ExecutionMetrics,
 };
-use reifydb_engine::subscription::{HydrateError, SubscriptionServiceRef};
-use reifydb_remote_proxy::{RemoteSubscription, connect_remote, proxy_remote_to_sink};
+use reifydb_engine::{
+	engine::StandardEngine,
+	subscription::{HydrateError, SubscriptionServiceRef},
+};
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
 use reifydb_value::{
@@ -24,20 +27,26 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
-use tokio::{spawn, sync::watch::Receiver as WatchReceiver, task::JoinHandle};
+#[cfg(not(reifydb_single_threaded))]
+use tokio::spawn;
+use tokio::{sync::watch::Receiver as WatchReceiver, task::JoinHandle};
 use tracing::{debug, warn};
 
+#[cfg(not(reifydb_single_threaded))]
 use crate::{
-	interceptor::RequestMetadata,
-	state::AppState,
-	subscription::{
-		cleanup::cleanup_subscription,
-		create::{CreateSubscriptionResult, create_subscription},
-		errors::CreateSubscriptionError,
-		hydrate::run_hydrate,
-		registry::{ConnectionId, PromoteResult, SubscriptionRegistry},
-		wire_sink::{BatchSubscribedMember, WireSink},
-	},
+	cleanup::cleanup_subscription,
+	hydrate::run_hydrate,
+	remote::{connect_remote, proxy_remote_to_sink},
+};
+#[cfg(reifydb_single_threaded)]
+use crate::{cleanup::cleanup_subscription_sync, hydrate::run_hydrate_sync};
+use crate::{
+	create::{CreateSubscriptionResult, create_subscription},
+	errors::CreateSubscriptionError,
+	host::{SubscribeContext, SubscribeHost},
+	registry::{ConnectionId, PromoteResult, SubscriptionRegistry},
+	remote::RemoteSubscription,
+	wire_sink::{BatchSubscribedMember, WireSink},
 };
 
 #[derive(Debug, Clone)]
@@ -58,8 +67,8 @@ pub struct SubscribeAck {
 }
 
 #[derive(Debug)]
-pub enum SubscribeError {
-	Create(CreateSubscriptionError),
+pub enum SubscribeError<E> {
+	Create(CreateSubscriptionError<E>),
 	RemoteConnect(String),
 	InvalidRemoteId,
 	LeaseFailed {
@@ -76,9 +85,9 @@ pub enum SubscribeError {
 }
 
 #[derive(Debug)]
-pub enum BatchSubscribeError {
+pub enum BatchSubscribeError<E> {
 	Empty,
-	Create(CreateSubscriptionError),
+	Create(CreateSubscriptionError<E>),
 	RemoteConnect(String),
 	InvalidRemoteId,
 	LeaseFailed {
@@ -98,7 +107,6 @@ enum ResolvedBatchMember {
 	Local {
 		index: usize,
 		subscription_id: SubscriptionId,
-		query: String,
 	},
 	Remote {
 		index: usize,
@@ -136,8 +144,8 @@ impl ResolvedBatchMember {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn handle_subscribe<S: WireSink>(
-	state: &AppState,
+pub async fn handle_subscribe<S: WireSink, H: SubscribeHost>(
+	host: &H,
 	connection_id: ConnectionId,
 	identity: IdentityId,
 	rql: String,
@@ -146,9 +154,8 @@ pub async fn handle_subscribe<S: WireSink>(
 	registry: &Arc<SubscriptionRegistry<S>>,
 	format: S::Format,
 	shutdown: WatchReceiver<bool>,
-	metadata: RequestMetadata,
-) -> Result<SubscribeAck, SubscribeError> {
-	match create_subscription(state, identity, &rql, params, metadata).await {
+) -> Result<SubscribeAck, SubscribeError<H::Error>> {
+	match create_subscription(host, identity, &rql, params).await {
 		Ok(CreateSubscriptionResult::Local {
 			id: subscription_id,
 			hydration,
@@ -156,7 +163,7 @@ pub async fn handle_subscribe<S: WireSink>(
 			linger,
 		}) => {
 			handle_subscribe_local(
-				state,
+				host,
 				connection_id,
 				identity,
 				rql,
@@ -198,8 +205,8 @@ pub async fn handle_subscribe<S: WireSink>(
 
 #[inline]
 #[allow(clippy::too_many_arguments)]
-async fn handle_subscribe_local<S: WireSink>(
-	state: &AppState,
+async fn handle_subscribe_local<S: WireSink, H: SubscribeHost>(
+	host: &H,
 	connection_id: ConnectionId,
 	identity: IdentityId,
 	rql: String,
@@ -210,10 +217,11 @@ async fn handle_subscribe_local<S: WireSink>(
 	hydration: HydrationConfig,
 	throttle: Option<Duration>,
 	linger: Option<Duration>,
-) -> Result<SubscribeAck, SubscribeError> {
-	let server_cap = state.subscribe_max_hydration_rows();
-	let throttle = state.clamp_throttle(throttle);
-	let linger = state.clamp_linger(linger);
+) -> Result<SubscribeAck, SubscribeError<H::Error>> {
+	let ctx = host.context();
+	let server_cap = ctx.max_hydration_rows();
+	let throttle = ctx.clamp_throttle(throttle);
+	let linger = ctx.clamp_linger(linger);
 	let max_rows = match hydration.max_rows {
 		Some(n) if n > server_cap => {
 			warn!("clamping hydration.max_rows from {} to server cap {}", n, server_cap);
@@ -239,19 +247,10 @@ async fn handle_subscribe_local<S: WireSink>(
 		);
 	}
 
-	registry.subscribe(
-		subscription_id,
-		connection_id,
-		rql.clone(),
-		sink.clone(),
-		format,
-		warming_cap,
-		throttle,
-		linger,
-	);
+	registry.subscribe(subscription_id, connection_id, sink.clone(), format, warming_cap, throttle, linger);
 
 	if !matches!(sink.send_subscribed(subscription_id), DeliveryResult::Delivered) {
-		abort_warming(state, registry, subscription_id).await;
+		abort_warming(ctx.engine(), registry, subscription_id).await;
 		return Err(SubscribeError::LeaseFailed {
 			code: "STREAM_CLOSED",
 			message: "Client stream closed before Subscribed could be delivered".to_string(),
@@ -259,7 +258,7 @@ async fn handle_subscribe_local<S: WireSink>(
 	}
 
 	if hydration.enabled {
-		let lease = match state.engine().acquire_current_snapshot_lease() {
+		let lease = match ctx.engine().acquire_current_snapshot_lease() {
 			Ok((_, lease)) => lease,
 			Err(e) => {
 				let code = if e.0.code == "TXN_012" {
@@ -267,7 +266,7 @@ async fn handle_subscribe_local<S: WireSink>(
 				} else {
 					"PIN_VERSION_FAILED"
 				};
-				abort_warming(state, registry, subscription_id).await;
+				abort_warming(ctx.engine(), registry, subscription_id).await;
 				return Err(SubscribeError::LeaseFailed {
 					code,
 					message: e.to_string(),
@@ -276,7 +275,7 @@ async fn handle_subscribe_local<S: WireSink>(
 		};
 
 		if let Err(err) = run_member_hydrate(
-			state,
+			ctx,
 			registry,
 			&sink,
 			subscription_id,
@@ -305,9 +304,28 @@ async fn handle_subscribe_local<S: WireSink>(
 	})
 }
 
+#[cfg(reifydb_single_threaded)]
 #[inline]
 #[allow(clippy::too_many_arguments)]
-async fn handle_subscribe_remote<S: WireSink>(
+async fn handle_subscribe_remote<S: WireSink, E>(
+	_connection_id: ConnectionId,
+	_sink: S,
+	_format: S::Format,
+	_shutdown: WatchReceiver<bool>,
+	_address: String,
+	_body: String,
+	_ns_token: Option<String>,
+	_hydration: HydrationConfig,
+	_throttle: Option<Duration>,
+	_linger: Option<Duration>,
+) -> Result<SubscribeAck, SubscribeError<E>> {
+	Err(SubscribeError::RemoteConnect("Remote subscriptions require a threaded runtime".to_string()))
+}
+
+#[cfg(not(reifydb_single_threaded))]
+#[inline]
+#[allow(clippy::too_many_arguments)]
+async fn handle_subscribe_remote<S: WireSink, E>(
 	connection_id: ConnectionId,
 	sink: S,
 	format: S::Format,
@@ -318,7 +336,7 @@ async fn handle_subscribe_remote<S: WireSink>(
 	hydration: HydrationConfig,
 	throttle: Option<Duration>,
 	linger: Option<Duration>,
-) -> Result<SubscribeAck, SubscribeError> {
+) -> Result<SubscribeAck, SubscribeError<E>> {
 	let client_format = S::client_wire_format(format);
 	let config = ClientSubscriptionConfig {
 		hydration: ClientHydrationConfig {
@@ -363,8 +381,8 @@ async fn handle_subscribe_remote<S: WireSink>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn handle_batch_subscribe<S: WireSink>(
-	state: &AppState,
+pub async fn handle_batch_subscribe<S: WireSink, H: SubscribeHost>(
+	host: &H,
 	connection_id: ConnectionId,
 	identity: IdentityId,
 	queries: &[String],
@@ -372,19 +390,19 @@ pub async fn handle_batch_subscribe<S: WireSink>(
 	registry: &Arc<SubscriptionRegistry<S>>,
 	format: S::Format,
 	shutdown: WatchReceiver<bool>,
-	metadata: RequestMetadata,
-) -> Result<BatchAck, BatchSubscribeError> {
+) -> Result<BatchAck, BatchSubscribeError<H::Error>> {
 	if queries.is_empty() {
 		return Err(BatchSubscribeError::Empty);
 	}
 
+	let ctx = host.context();
 	let (resolved, local_hydrations, member_lingers) =
-		resolve_batch_members::<S>(state, identity, queries, format, &metadata).await?;
+		resolve_batch_members::<S, H>(host, identity, queries, format).await?;
 
-	let server_cap = state.subscribe_max_hydration_rows();
+	let server_cap = ctx.max_hydration_rows();
 	let effective_max_rows = compute_effective_max_rows(&local_hydrations, server_cap);
 	register_local_members(
-		state,
+		ctx,
 		connection_id,
 		&sink,
 		registry,
@@ -396,11 +414,10 @@ pub async fn handle_batch_subscribe<S: WireSink>(
 	);
 
 	let (batch_id, members_for_ack, remote_members_taken) =
-		register_batch_and_ack(state, connection_id, &sink, registry, format, resolved, &member_lingers)
-			.await?;
+		register_batch_and_ack(ctx, connection_id, &sink, registry, format, resolved, &member_lingers).await?;
 
 	hydrate_batch_locals(
-		state,
+		ctx,
 		identity,
 		&sink,
 		registry,
@@ -428,31 +445,30 @@ type ResolvedBatch = (Vec<ResolvedBatchMember>, Vec<LocalHydration>, HashMap<Sub
 type BatchAckParts = (BatchId, Vec<BatchMemberInfo>, Vec<(SubscriptionId, RemoteSubscription)>);
 
 #[inline]
-async fn resolve_batch_members<S: WireSink>(
-	state: &AppState,
+async fn resolve_batch_members<S: WireSink, H: SubscribeHost>(
+	host: &H,
 	identity: IdentityId,
 	queries: &[String],
 	format: S::Format,
-	metadata: &RequestMetadata,
-) -> Result<ResolvedBatch, BatchSubscribeError> {
+) -> Result<ResolvedBatch, BatchSubscribeError<H::Error>> {
+	let ctx = host.context();
 	let mut resolved: Vec<ResolvedBatchMember> = Vec::with_capacity(queries.len());
 	let mut local_hydrations: Vec<LocalHydration> = Vec::new();
 	let mut member_lingers: HashMap<SubscriptionId, Duration> = HashMap::new();
 
 	for (index, user_rql) in queries.iter().enumerate() {
-		match create_subscription(state, identity, user_rql, Params::None, metadata.clone()).await {
+		match create_subscription(host, identity, user_rql, Params::None).await {
 			Ok(CreateSubscriptionResult::Local {
 				id: subscription_id,
 				hydration,
 				throttle,
 				linger,
 			}) => {
-				member_lingers.insert(subscription_id, state.clamp_linger(linger));
+				member_lingers.insert(subscription_id, ctx.clamp_linger(linger));
 				local_hydrations.push((subscription_id, user_rql.clone(), hydration, throttle));
 				resolved.push(ResolvedBatchMember::Local {
 					index,
 					subscription_id,
-					query: user_rql.clone(),
 				});
 			}
 			Ok(CreateSubscriptionResult::Remote {
@@ -463,39 +479,18 @@ async fn resolve_batch_members<S: WireSink>(
 				throttle,
 				linger,
 			}) => {
-				let client_format = S::client_wire_format(format);
-				let config = ClientSubscriptionConfig {
-					hydration: ClientHydrationConfig {
-						enabled: hydration.enabled,
-						max_rows: hydration.max_rows,
-					},
-					throttle: throttle.map(ClientThrottle::new),
-					linger: linger.map(ClientLinger::new),
-				};
-				let remote_sub = match connect_remote(
-					&address,
-					&body,
-					config,
-					ns_token.as_deref(),
-					client_format,
+				let (subscription_id, remote_sub) = match connect_batch_remote_member::<S, H::Error>(
+					address, body, ns_token, hydration, throttle, linger, format,
 				)
 				.await
 				{
-					Ok(s) => s,
+					Ok(connected) => connected,
 					Err(e) => {
-						rollback_batch_members(state, &resolved).await;
-						return Err(BatchSubscribeError::RemoteConnect(e.to_string()));
+						rollback_batch_members(ctx.engine(), &resolved).await;
+						return Err(e);
 					}
 				};
-				let remote_id = remote_sub.subscription_id().to_string();
-				let subscription_id = match remote_id.parse::<u64>() {
-					Ok(n) => SubscriptionId(n),
-					Err(_) => {
-						rollback_batch_members(state, &resolved).await;
-						return Err(BatchSubscribeError::InvalidRemoteId);
-					}
-				};
-				member_lingers.insert(subscription_id, state.clamp_linger(linger));
+				member_lingers.insert(subscription_id, ctx.clamp_linger(linger));
 				resolved.push(ResolvedBatchMember::Remote {
 					index,
 					subscription_id,
@@ -503,7 +498,7 @@ async fn resolve_batch_members<S: WireSink>(
 				});
 			}
 			Err(e) => {
-				rollback_batch_members(state, &resolved).await;
+				rollback_batch_members(ctx.engine(), &resolved).await;
 				return Err(BatchSubscribeError::Create(e));
 			}
 		}
@@ -521,6 +516,51 @@ async fn resolve_batch_members<S: WireSink>(
 	}
 
 	Ok((resolved, local_hydrations, member_lingers))
+}
+
+#[cfg(reifydb_single_threaded)]
+#[inline]
+#[allow(clippy::too_many_arguments)]
+async fn connect_batch_remote_member<S: WireSink, E>(
+	_address: String,
+	_body: String,
+	_ns_token: Option<String>,
+	_hydration: HydrationConfig,
+	_throttle: Option<Duration>,
+	_linger: Option<Duration>,
+	_format: S::Format,
+) -> Result<(SubscriptionId, RemoteSubscription), BatchSubscribeError<E>> {
+	Err(BatchSubscribeError::RemoteConnect("Remote subscriptions require a threaded runtime".to_string()))
+}
+
+#[cfg(not(reifydb_single_threaded))]
+#[inline]
+#[allow(clippy::too_many_arguments)]
+async fn connect_batch_remote_member<S: WireSink, E>(
+	address: String,
+	body: String,
+	ns_token: Option<String>,
+	hydration: HydrationConfig,
+	throttle: Option<Duration>,
+	linger: Option<Duration>,
+	format: S::Format,
+) -> Result<(SubscriptionId, RemoteSubscription), BatchSubscribeError<E>> {
+	let client_format = S::client_wire_format(format);
+	let config = ClientSubscriptionConfig {
+		hydration: ClientHydrationConfig {
+			enabled: hydration.enabled,
+			max_rows: hydration.max_rows,
+		},
+		throttle: throttle.map(ClientThrottle::new),
+		linger: linger.map(ClientLinger::new),
+	};
+	let remote_sub = connect_remote(&address, &body, config, ns_token.as_deref(), client_format)
+		.await
+		.map_err(|e| BatchSubscribeError::RemoteConnect(e.to_string()))?;
+	let remote_id = remote_sub.subscription_id().to_string();
+	let subscription_id =
+		SubscriptionId(remote_id.parse::<u64>().map_err(|_| BatchSubscribeError::InvalidRemoteId)?);
+	Ok((subscription_id, remote_sub))
 }
 
 #[inline]
@@ -543,7 +583,7 @@ fn compute_effective_max_rows(local_hydrations: &[LocalHydration], server_cap: u
 #[inline]
 #[allow(clippy::too_many_arguments)]
 fn register_local_members<S: WireSink>(
-	state: &AppState,
+	ctx: &SubscribeContext,
 	connection_id: ConnectionId,
 	sink: &S,
 	registry: &Arc<SubscriptionRegistry<S>>,
@@ -556,7 +596,6 @@ fn register_local_members<S: WireSink>(
 	for member in resolved {
 		if let ResolvedBatchMember::Local {
 			subscription_id,
-			query,
 			..
 		} = member
 		{
@@ -571,7 +610,7 @@ fn register_local_members<S: WireSink>(
 						None
 					}
 				});
-			let throttle = state.clamp_throttle(
+			let throttle = ctx.clamp_throttle(
 				local_hydrations
 					.iter()
 					.find(|(sid, _, _, _)| sid == subscription_id)
@@ -580,7 +619,6 @@ fn register_local_members<S: WireSink>(
 			registry.subscribe(
 				*subscription_id,
 				connection_id,
-				query.clone(),
 				sink.clone(),
 				format,
 				warming_cap,
@@ -593,15 +631,15 @@ fn register_local_members<S: WireSink>(
 
 #[inline]
 #[allow(clippy::too_many_arguments)]
-async fn register_batch_and_ack<S: WireSink>(
-	state: &AppState,
+async fn register_batch_and_ack<S: WireSink, E>(
+	ctx: &SubscribeContext,
 	connection_id: ConnectionId,
 	sink: &S,
 	registry: &Arc<SubscriptionRegistry<S>>,
 	format: S::Format,
 	resolved: Vec<ResolvedBatchMember>,
 	member_lingers: &HashMap<SubscriptionId, Duration>,
-) -> Result<BatchAckParts, BatchSubscribeError> {
+) -> Result<BatchAckParts, BatchSubscribeError<E>> {
 	let members: Vec<(SubscriptionId, Duration)> = resolved
 		.iter()
 		.map(|m| {
@@ -609,8 +647,7 @@ async fn register_batch_and_ack<S: WireSink>(
 			(id, member_lingers.get(&id).copied().unwrap_or(Duration::zero()))
 		})
 		.collect();
-	let batch_id =
-		registry.register_batch(connection_id, members, sink.clone(), format, state.clock(), state.rng());
+	let batch_id = registry.register_batch(connection_id, members, sink.clone(), format, ctx.clock(), ctx.rng());
 
 	let mut remote_members_taken: Vec<(SubscriptionId, RemoteSubscription)> = Vec::new();
 	let mut members_for_ack: Vec<BatchMemberInfo> = Vec::with_capacity(resolved.len());
@@ -638,7 +675,7 @@ async fn register_batch_and_ack<S: WireSink>(
 		.collect();
 	if !matches!(sink.send_batch_subscribed(batch_id, &subscribed_members), DeliveryResult::Delivered) {
 		registry.unsubscribe_batch(batch_id);
-		rollback_batch_members(state, &[]).await;
+		rollback_batch_members(ctx.engine(), &[]).await;
 		return Err(BatchSubscribeError::LeaseFailed {
 			code: "STREAM_CLOSED",
 			message: "Client stream closed before BatchSubscribed could be delivered".to_string(),
@@ -650,8 +687,8 @@ async fn register_batch_and_ack<S: WireSink>(
 
 #[inline]
 #[allow(clippy::too_many_arguments)]
-async fn hydrate_batch_locals<S: WireSink>(
-	state: &AppState,
+async fn hydrate_batch_locals<S: WireSink, E>(
+	ctx: &SubscribeContext,
 	identity: IdentityId,
 	sink: &S,
 	registry: &Arc<SubscriptionRegistry<S>>,
@@ -660,10 +697,10 @@ async fn hydrate_batch_locals<S: WireSink>(
 	local_hydrations: &[LocalHydration],
 	effective_max_rows: &HashMap<SubscriptionId, u64>,
 	server_cap: u64,
-) -> Result<(), BatchSubscribeError> {
+) -> Result<(), BatchSubscribeError<E>> {
 	let any_hydration = local_hydrations.iter().any(|(_, _, h, _)| h.enabled);
 	if any_hydration {
-		let lease = match state.engine().acquire_current_snapshot_lease() {
+		let lease = match ctx.engine().acquire_current_snapshot_lease() {
 			Ok((_, lease)) => lease,
 			Err(e) => {
 				let code = if e.0.code == "TXN_012" {
@@ -684,7 +721,7 @@ async fn hydrate_batch_locals<S: WireSink>(
 			}
 			let max_rows = *effective_max_rows.get(sub_id).unwrap_or(&server_cap);
 			if let Err(err) = run_member_hydrate(
-				state,
+				ctx,
 				registry,
 				sink,
 				*sub_id,
@@ -708,6 +745,28 @@ async fn hydrate_batch_locals<S: WireSink>(
 	Ok(())
 }
 
+#[cfg(reifydb_single_threaded)]
+#[inline]
+fn spawn_batch_remote_proxies<S: WireSink>(
+	_registry: &Arc<SubscriptionRegistry<S>>,
+	_batch_id: BatchId,
+	remote_members_taken: Vec<(SubscriptionId, RemoteSubscription)>,
+	_shutdown: &WatchReceiver<bool>,
+) -> Vec<JoinHandle<()>> {
+	reifydb_assertions! {
+		let taken = remote_members_taken.len();
+		assert!(
+			taken == 0,
+			"a single-threaded batch must never carry a remote member (taken={taken}); resolution \
+			 rejects remote members before registration, so a non-empty list means a remote stream \
+			 was accepted with no task to drain it"
+		);
+	}
+	let _ = remote_members_taken;
+	Vec::new()
+}
+
+#[cfg(not(reifydb_single_threaded))]
 #[inline]
 fn spawn_batch_remote_proxies<S: WireSink>(
 	registry: &Arc<SubscriptionRegistry<S>>,
@@ -729,19 +788,25 @@ fn spawn_batch_remote_proxies<S: WireSink>(
 }
 
 pub async fn handle_batch_unsubscribe<S: WireSink>(
-	state: &AppState,
+	engine: &StandardEngine,
 	registry: &Arc<SubscriptionRegistry<S>>,
 	batch_id: BatchId,
 ) -> Option<Vec<SubscriptionId>> {
 	let members = registry.unsubscribe_batch(batch_id)?;
 	for subscription_id in &members {
-		if let Err(e) = cleanup_subscription(state, *subscription_id).await {
+		#[cfg(not(reifydb_single_threaded))]
+		let cleaned = cleanup_subscription(engine, *subscription_id).await;
+		#[cfg(reifydb_single_threaded)]
+		let cleaned = cleanup_subscription_sync(engine, *subscription_id);
+
+		if let Err(e) = cleaned {
 			warn!("Failed to cleanup batch member subscription {} from database: {:?}", subscription_id, e);
 		}
 	}
 	Some(members)
 }
 
+#[cfg(not(reifydb_single_threaded))]
 async fn run_batch_remote_proxy<S: WireSink>(
 	registry: Arc<SubscriptionRegistry<S>>,
 	batch_id: BatchId,
@@ -760,7 +825,7 @@ async fn run_batch_remote_proxy<S: WireSink>(
 
 #[allow(clippy::too_many_arguments)]
 async fn run_member_hydrate<S: WireSink>(
-	state: &AppState,
+	ctx: &SubscribeContext,
 	registry: &Arc<SubscriptionRegistry<S>>,
 	sink: &S,
 	subscription_id: SubscriptionId,
@@ -770,10 +835,10 @@ async fn run_member_hydrate<S: WireSink>(
 	max_rows: u64,
 	format: S::Format,
 ) -> Result<(), MemberHydrateError> {
-	let service: SubscriptionServiceRef = match state.engine().services().ioc.resolve() {
+	let service: SubscriptionServiceRef = match ctx.engine().services().ioc.resolve() {
 		Ok(s) => s,
 		Err(e) => {
-			abort_warming(state, registry, subscription_id).await;
+			abort_warming(ctx.engine(), registry, subscription_id).await;
 			return Err(MemberHydrateError {
 				rql: rql.to_string(),
 				max_rows,
@@ -782,20 +847,24 @@ async fn run_member_hydrate<S: WireSink>(
 		}
 	};
 
-	let engine = state.engine_clone();
+	let engine = ctx.engine_clone();
 
-	let (version, batches, metrics): (CommitVersion, Vec<StagedBatch>, ExecutionMetrics) =
-		match run_hydrate(service, engine, subscription_id, identity, lease, max_rows).await {
-			Ok(t) => t,
-			Err(err) => {
-				abort_warming(state, registry, subscription_id).await;
-				return Err(MemberHydrateError {
-					rql: rql.to_string(),
-					max_rows,
-					kind: MemberHydrateErrorKind::Failed(err),
-				});
-			}
-		};
+	#[cfg(not(reifydb_single_threaded))]
+	let hydrated = run_hydrate(service, engine, subscription_id, identity, lease, max_rows).await;
+	#[cfg(reifydb_single_threaded)]
+	let hydrated = run_hydrate_sync(service, engine, subscription_id, identity, lease, max_rows);
+
+	let (version, batches, metrics): (CommitVersion, Vec<StagedBatch>, ExecutionMetrics) = match hydrated {
+		Ok(t) => t,
+		Err(err) => {
+			abort_warming(ctx.engine(), registry, subscription_id).await;
+			return Err(MemberHydrateError {
+				rql: rql.to_string(),
+				max_rows,
+				kind: MemberHydrateErrorKind::Failed(err),
+			});
+		}
+	};
 
 	if !batches.is_empty() {
 		let row_count: usize = batches.iter().map(|(_, cols)| cols.row_count()).sum();
@@ -846,7 +915,7 @@ enum MemberHydrateErrorKind {
 }
 
 impl MemberHydrateError {
-	fn into_batch(self) -> BatchSubscribeError {
+	fn into_batch<E>(self) -> BatchSubscribeError<E> {
 		match self.kind {
 			MemberHydrateErrorKind::ServiceUnavailable(msg) => {
 				BatchSubscribeError::HydrationServiceUnavailable(msg)
@@ -861,7 +930,7 @@ impl MemberHydrateError {
 	}
 }
 
-impl From<MemberHydrateError> for SubscribeError {
+impl<E> From<MemberHydrateError> for SubscribeError<E> {
 	fn from(e: MemberHydrateError) -> Self {
 		match e.kind {
 			MemberHydrateErrorKind::ServiceUnavailable(msg) => {
@@ -877,25 +946,41 @@ impl From<MemberHydrateError> for SubscribeError {
 	}
 }
 
-async fn rollback_batch_members(state: &AppState, resolved: &[ResolvedBatchMember]) {
+async fn rollback_batch_members(engine: &StandardEngine, resolved: &[ResolvedBatchMember]) {
 	for member in resolved {
 		if let ResolvedBatchMember::Local {
 			subscription_id,
 			..
-		} = member && let Err(e) = cleanup_subscription(state, *subscription_id).await
+		} = member
 		{
-			warn!("Failed to cleanup partial batch member {} during rollback: {:?}", subscription_id, e);
+			#[cfg(not(reifydb_single_threaded))]
+			let cleaned = cleanup_subscription(engine, *subscription_id).await;
+			#[cfg(reifydb_single_threaded)]
+			let cleaned = cleanup_subscription_sync(engine, *subscription_id);
+
+			if let Err(e) = cleaned {
+				warn!(
+					"Failed to cleanup partial batch member {} during rollback: {:?}",
+					subscription_id, e
+				);
+			}
 		}
 	}
 }
 
 async fn abort_warming<S: WireSink>(
-	state: &AppState,
+	engine: &StandardEngine,
 	registry: &Arc<SubscriptionRegistry<S>>,
 	subscription_id: SubscriptionId,
 ) {
 	registry.unsubscribe(subscription_id);
-	if let Err(e) = cleanup_subscription(state, subscription_id).await {
+
+	#[cfg(not(reifydb_single_threaded))]
+	let cleaned = cleanup_subscription(engine, subscription_id).await;
+	#[cfg(reifydb_single_threaded)]
+	let cleaned = cleanup_subscription_sync(engine, subscription_id);
+
+	if let Err(e) = cleaned {
 		warn!("Failed to cleanup subscription {} after hydrate failure: {:?}", subscription_id, e);
 	}
 }
