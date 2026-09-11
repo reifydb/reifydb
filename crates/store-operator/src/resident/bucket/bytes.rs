@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
-
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -127,101 +125,6 @@ impl BucketMap {
 			},
 		)
 		.unwrap_or(false)
-	}
-
-	pub fn get_bytes(
-		&mut self,
-		operator: OperatorId,
-		keyspace: KeyspaceId,
-		group: GroupId,
-		suffix: &[u8],
-	) -> Option<WriteEntry> {
-		struct Get<'a> {
-			map: &'a mut BucketMap,
-			operator: OperatorId,
-			group: GroupId,
-			suffix: &'a [u8],
-		}
-
-		impl KeyspaceVisitor for Get<'_> {
-			type Output = Option<WriteEntry>;
-
-			fn visit<K: Keyspace>(self) -> Self::Output {
-				let suffix = <K::Suffix as SuffixBytes>::from_suffix_bytes(self.suffix)?;
-				self.map.bucket::<K>(self.operator).get(self.group, &suffix).cloned()
-			}
-		}
-
-		dispatch(
-			keyspace,
-			Get {
-				map: self,
-				operator,
-				group,
-				suffix,
-			},
-		)
-		.flatten()
-	}
-
-	pub fn page_bytes(
-		&mut self,
-		operator: OperatorId,
-		keyspace: KeyspaceId,
-		group: GroupId,
-		from: Bound<Vec<u8>>,
-		until: Bound<Vec<u8>>,
-		limit: Option<usize>,
-	) -> Vec<(Vec<u8>, WriteEntry)> {
-		struct Page<'a> {
-			map: &'a mut BucketMap,
-			operator: OperatorId,
-			group: GroupId,
-			from: Bound<Vec<u8>>,
-			until: Bound<Vec<u8>>,
-			limit: Option<usize>,
-		}
-
-		fn decode<S: SuffixBytes>(bound: Bound<Vec<u8>>) -> Bound<S> {
-			match bound {
-				Bound::Unbounded => Bound::Unbounded,
-				Bound::Included(bytes) => {
-					S::from_suffix_bytes(&bytes).map_or(Bound::Unbounded, Bound::Included)
-				}
-				Bound::Excluded(bytes) => {
-					S::from_suffix_bytes(&bytes).map_or(Bound::Unbounded, Bound::Excluded)
-				}
-			}
-		}
-
-		impl KeyspaceVisitor for Page<'_> {
-			type Output = Vec<(Vec<u8>, WriteEntry)>;
-
-			fn visit<K: Keyspace>(self) -> Self::Output {
-				let bounds = (decode::<K::Suffix>(self.from), decode::<K::Suffix>(self.until));
-				let rows =
-					self.map.bucket::<K>(self.operator)
-						.range(self.group, bounds)
-						.map(|(suffix, entry)| (suffix.to_suffix_bytes(), entry.clone()));
-				match self.limit {
-					Some(limit) => rows.take(limit).collect(),
-					None => rows.collect(),
-				}
-			}
-		}
-
-		dispatch(
-			keyspace,
-			Page {
-				map: self,
-				operator,
-				group,
-				from,
-				until,
-				limit,
-			},
-		)
-		.unwrap_or_default()
 	}
 
 	pub fn get_bytes_ref(

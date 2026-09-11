@@ -19,14 +19,10 @@ use reifydb_core::{
 	},
 	state::typed::SuffixBytes,
 };
-use reifydb_value::{
-	byte_size::ByteSize,
-	util::hash::Hash128,
-	value::row_number::RowNumber,
-};
+use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
 
-use super::{Bucket, BucketMap, write::StandardBucket};
-use crate::types::{Budget, Resume, Scan};
+use super::{BucketMap, write::StandardBucket};
+use crate::types::Scan;
 
 const OP: OperatorId = OperatorId(1);
 
@@ -116,43 +112,6 @@ fn overwriting_a_suffix_does_not_count_it_twice() {
 		after_first,
 		"the flush budget is driven by the footprint, so double counting an overwrite starves it"
 	);
-}
-
-#[test]
-fn reaping_a_group_releases_only_that_group() {
-	let mut bucket = bucket();
-	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("seven")));
-	bucket.record(GroupId::hashed(Hash128(9)), suffix(1), Some(row("nine")));
-
-	let mut budget = Budget {
-		rows: 16,
-	};
-	assert_eq!(bucket.reap_group(GroupId::hashed(Hash128(7)), &mut budget).expect("reap"), Resume::Done);
-
-	assert!(bucket.get(GroupId::hashed(Hash128(7)), &suffix(1)).is_none(), "the reaped group must be gone");
-	assert!(
-		bucket.get(GroupId::hashed(Hash128(9)), &suffix(1)).is_some(),
-		"a reap is scoped to one group; taking a neighbour's rows with it loses committed state"
-	);
-}
-
-#[test]
-fn a_reap_that_runs_out_of_budget_asks_to_be_resumed() {
-	let mut bucket = bucket();
-	for n in 0..4u64 {
-		bucket.record(GroupId::hashed(Hash128(7)), suffix(n), Some(row("v")));
-	}
-
-	let mut budget = Budget {
-		rows: 2,
-	};
-	assert_eq!(
-		bucket.reap_group(GroupId::hashed(Hash128(7)), &mut budget).expect("reap"),
-		Resume::More,
-		"a partially reaped group must report More or the caller drops the remainder on the floor"
-	);
-	assert_eq!(budget.rows, 0, "the reap must spend exactly the budget it was given");
-	assert_eq!(bucket.len(), 2, "the unreaped half must still be there");
 }
 
 #[test]
@@ -257,55 +216,6 @@ fn every_keyspace_in_the_catalogue_is_reachable_through_the_dispatch() {
 	);
 }
 
-#[test]
-fn an_erased_page_returns_its_suffixes_in_the_key_types_order() {
-	let mut map = BucketMap::default();
-	for n in [3u64, 1, 2] {
-		map.record_bytes(
-			OP,
-			JoinLeft::ID,
-			GroupId::hashed(Hash128(7)),
-			&suffix(n).to_suffix_bytes(),
-			Some(row("v")),
-		);
-	}
-
-	let page =
-		map.page_bytes(OP, JoinLeft::ID, GroupId::hashed(Hash128(7)), Bound::Unbounded, Bound::Unbounded, None);
-	let order: Vec<Vec<u8>> = page.iter().map(|(suffix, _)| suffix.clone()).collect();
-	let mut sorted = order.clone();
-	sorted.sort();
-	assert_eq!(
-		order, sorted,
-		"a page feeds a merge against a sorted durable page, so the erased path must preserve the typed order"
-	);
-	assert_eq!(order.len(), 3);
-}
-
-#[test]
-fn an_erased_page_honours_its_limit() {
-	let mut map = BucketMap::default();
-	for n in 0..5u64 {
-		map.record_bytes(
-			OP,
-			JoinLeft::ID,
-			GroupId::hashed(Hash128(7)),
-			&suffix(n).to_suffix_bytes(),
-			Some(row("v")),
-		);
-	}
-
-	let page = map.page_bytes(
-		OP,
-		JoinLeft::ID,
-		GroupId::hashed(Hash128(7)),
-		Bound::Unbounded,
-		Bound::Unbounded,
-		Some(2),
-	);
-	assert_eq!(page.len(), 2, "an unbounded page would blow the caller's budget on a large group");
-}
-
 fn seeded_pair() -> BucketMap {
 	let mut map = BucketMap::default();
 	for group in [GroupId::hashed(Hash128(7)), GroupId::hashed(Hash128(9))] {
@@ -334,20 +244,6 @@ fn expected_order() -> Vec<EncodedKey> {
 	}
 	keys.sort();
 	keys
-}
-
-#[test]
-fn a_scan_across_two_keyspaces_orders_by_group_before_keyspace() {
-	let map = seeded_pair();
-
-	let scanned: Vec<EncodedKey> = map.encoded_entries(OP).into_iter().map(|(key, _)| key).collect();
-
-	assert_eq!(
-		scanned,
-		expected_order(),
-		"a scan that groups by keyspace first reorders every multi group operator, and the merge it \
-		 feeds then misses its equal arm and serves a stale row"
-	);
 }
 
 #[test]

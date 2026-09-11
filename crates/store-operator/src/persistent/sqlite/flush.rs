@@ -198,9 +198,8 @@ mod tests {
 		map.bucket::<JoinLeft>(OP).record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("payload")));
 		write(&conn, &map);
 
-		let stored =
-			typed::get::<JoinLeft>(&conn, OP, &JoinLeft::join(GroupId::hashed(Hash128(7)), suffix(1)))
-				.expect("the row");
+		let stored = typed::get::<JoinLeft>(&conn, OP, &JoinLeft::join(GroupId::hashed(Hash128(7)), suffix(1)))
+			.expect("the row");
 		let restored = EncodedPodRow::from(EncodedBytes(CowVec::new(stored)));
 		assert_eq!(
 			String::from_utf8(restored.body().to_vec()).expect("utf8"),

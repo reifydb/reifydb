@@ -383,7 +383,7 @@ impl Resident {
 			let Some(slot) = self.shared.slot(operator) else {
 				continue;
 			};
-			total = total.saturating_add(slot.inner.lock().resident_bytes());
+			total = total.saturating_add(slot.inner.lock().buckets.footprint());
 		}
 		total
 	}
@@ -396,7 +396,7 @@ impl Resident {
 				continue;
 			};
 			let inner = slot.inner.lock();
-			inner.live.state.for_each_entry(operator, |_, _, _, entry| {
+			inner.buckets.for_each_entry(operator, |_, _, _, entry| {
 				if matches!(entry.staged, Staged::Flushing) {
 					total += 1;
 				}
@@ -412,7 +412,7 @@ impl Resident {
 			let Some(slot) = self.shared.slot(operator) else {
 				continue;
 			};
-			total = total.saturating_add(slot.inner.lock().dirty_entries());
+			total = total.saturating_add(slot.inner.lock().buckets.dirty_count());
 		}
 		total
 	}
@@ -424,7 +424,7 @@ impl Resident {
 			let Some(slot) = self.shared.slot(operator) else {
 				continue;
 			};
-			total = total.saturating_add(slot.inner.lock().dirty_bytes());
+			total = total.saturating_add(slot.inner.lock().buckets.dirty_footprint());
 		}
 		total
 	}
@@ -435,7 +435,7 @@ impl Resident {
 			let Some(slot) = self.shared.slot(operator) else {
 				continue;
 			};
-			total = total.saturating_add(slot.inner.lock().resident_entries());
+			total = total.saturating_add(slot.inner.lock().buckets.entry_count());
 		}
 		total
 	}
@@ -485,17 +485,17 @@ impl Resident {
 		for (operator, group) in grouped {
 			let slot = self.shared.slot_or_create(operator);
 			let mut inner = slot.inner.lock();
-			let before = inner.live.bytes;
-			let before_entries = inner.live.entry_count();
-			let before_dirty = inner.live.dirty_count();
-			let before_dirty_bytes = inner.live.dirty_bytes();
+			let before = inner.buckets.footprint();
+			let before_entries = inner.buckets.entry_count();
+			let before_dirty = inner.buckets.dirty_count();
+			let before_dirty_bytes = inner.buckets.dirty_footprint();
 			for write in group {
 				self.apply_write(&mut inner, write);
 			}
-			let after = inner.live.bytes;
-			let after_entries = inner.live.entry_count();
-			let after_dirty = inner.live.dirty_count();
-			let after_dirty_bytes = inner.live.dirty_bytes();
+			let after = inner.buckets.footprint();
+			let after_entries = inner.buckets.entry_count();
+			let after_dirty = inner.buckets.dirty_count();
+			let after_dirty_bytes = inner.buckets.dirty_footprint();
 			self.shared.budget.charge(after.saturating_sub(before));
 			self.shared.budget.release(before.saturating_sub(after));
 			self.shared.charge_entries(after_entries.saturating_sub(before_entries));
@@ -512,7 +512,7 @@ impl Resident {
 	}
 
 	fn mark_pending(&self, inner: &mut SlotInner) {
-		if !inner.live.has_dirty() {
+		if inner.buckets.dirty_count() == 0 {
 			inner.pending_seq = None;
 			return;
 		}
@@ -525,15 +525,15 @@ impl Resident {
 		let slot = self.shared.slot_or_create(operator);
 		let out = {
 			let mut inner = slot.inner.lock();
-			let before = inner.live.bytes;
-			let before_entries = inner.live.entry_count();
-			let before_dirty = inner.live.dirty_count();
-			let before_dirty_bytes = inner.live.dirty_bytes();
+			let before = inner.buckets.footprint();
+			let before_entries = inner.buckets.entry_count();
+			let before_dirty = inner.buckets.dirty_count();
+			let before_dirty_bytes = inner.buckets.dirty_footprint();
 			let out = mutate(&mut inner);
-			let after = inner.live.bytes;
-			let after_entries = inner.live.entry_count();
-			let after_dirty = inner.live.dirty_count();
-			let after_dirty_bytes = inner.live.dirty_bytes();
+			let after = inner.buckets.footprint();
+			let after_entries = inner.buckets.entry_count();
+			let after_dirty = inner.buckets.dirty_count();
+			let after_dirty_bytes = inner.buckets.dirty_footprint();
 			self.shared.budget.charge(after.saturating_sub(before));
 			self.shared.budget.release(before.saturating_sub(after));
 			self.shared.charge_entries(after_entries.saturating_sub(before_entries));
@@ -560,15 +560,15 @@ impl Resident {
 			return;
 		};
 		let mut inner = slot.inner.lock();
-		let before = inner.live.bytes;
-		let before_entries = inner.live.entry_count();
-		let before_dirty = inner.live.dirty_count();
-		let before_dirty_bytes = inner.live.dirty_bytes();
+		let before = inner.buckets.footprint();
+		let before_entries = inner.buckets.entry_count();
+		let before_dirty = inner.buckets.dirty_count();
+		let before_dirty_bytes = inner.buckets.dirty_footprint();
 		clear_drop(&mut inner, marker);
-		let after = inner.live.bytes;
-		let after_entries = inner.live.entry_count();
-		let after_dirty = inner.live.dirty_count();
-		let after_dirty_bytes = inner.live.dirty_bytes();
+		let after = inner.buckets.footprint();
+		let after_entries = inner.buckets.entry_count();
+		let after_dirty = inner.buckets.dirty_count();
+		let after_dirty_bytes = inner.buckets.dirty_footprint();
 		self.shared.budget.release(before.saturating_sub(after));
 		self.shared.release_entries(before_entries.saturating_sub(after_entries));
 		self.shared.release_dirty(before_dirty.saturating_sub(after_dirty));
@@ -621,7 +621,7 @@ impl Resident {
 				continue;
 			};
 			let mut inner = slot.inner.lock();
-			let (count, released) = inner.live.evict_clean(bytes, entries);
+			let (count, released) = inner.buckets.evict_clean(bytes, entries);
 			self.shared.budget.release(released);
 			self.shared.release_entries(count);
 			evicted += count;
@@ -713,7 +713,7 @@ impl Resident {
 				continue;
 			};
 			let inner = slot.inner.lock();
-			inner.live.state.for_each_entry(*operator, |keyspace, group, suffix, entry| {
+			inner.buckets.for_each_entry(*operator, |keyspace, group, suffix, entry| {
 				if !matches!(entry.staged, Staged::Flushing) {
 					return;
 				}
@@ -737,7 +737,7 @@ impl Resident {
 				continue;
 			};
 			let inner = slot.inner.lock();
-			if !inner.live.has_dirty() {
+			if inner.buckets.dirty_count() == 0 {
 				continue;
 			}
 			let flow = inner.flow;
@@ -803,23 +803,23 @@ impl Resident {
 					continue;
 				};
 				let mut inner = slot.inner.lock();
-				if !inner.live.has_dirty() {
+				if inner.buckets.dirty_count() == 0 {
 					continue;
 				}
-				let before_dirty_bytes = inner.live.dirty_bytes();
-				let carried =
-					inner.live.state.stage_dirty(operator, |keyspace, group, suffix, entry| {
-						batch.writes.push((
-							operator,
-							GroupStateKey::new(group, keyspace, suffix),
-							staged_write(entry.post.clone()),
-						));
-						staged += 1;
-						self.shared.filter.add(state_hash(operator, keyspace, group, suffix));
-					});
+				let before_dirty_bytes = inner.buckets.dirty_footprint();
+				let carried = inner.buckets.stage_dirty(operator, |keyspace, group, suffix, entry| {
+					batch.writes.push((
+						operator,
+						GroupStateKey::new(group, keyspace, suffix),
+						staged_write(entry.post.clone()),
+					));
+					staged += 1;
+					self.shared.filter.add(state_hash(operator, keyspace, group, suffix));
+				});
 				consumed = consumed.saturating_add(carried);
-				staged_bytes = staged_bytes
-					.saturating_add(before_dirty_bytes.saturating_sub(inner.live.dirty_bytes()));
+				staged_bytes = staged_bytes.saturating_add(
+					before_dirty_bytes.saturating_sub(inner.buckets.dirty_footprint()),
+				);
 				self.mark_pending(&mut inner);
 				touched.push(operator);
 			}
@@ -863,7 +863,7 @@ impl Resident {
 				continue;
 			};
 			let inner = slot.inner.lock();
-			if !inner.live.has_dirty() {
+			if inner.buckets.dirty_count() == 0 {
 				continue;
 			}
 			if let Some(flow) = inner.flow {
@@ -881,10 +881,10 @@ impl Resident {
 				continue;
 			};
 			let mut inner = slot.inner.lock();
-			let before_dirty_bytes = inner.live.dirty_bytes();
-			rearmed += inner.live.revert_flushing();
+			let before_dirty_bytes = inner.buckets.dirty_footprint();
+			rearmed += inner.buckets.revert_flushing();
 			rearmed_bytes = rearmed_bytes
-				.saturating_add(inner.live.dirty_bytes().saturating_sub(before_dirty_bytes));
+				.saturating_add(inner.buckets.dirty_footprint().saturating_sub(before_dirty_bytes));
 		}
 		self.shared.charge_dirty(rearmed);
 		self.shared.charge_dirty_bytes(rearmed_bytes);
@@ -959,7 +959,7 @@ impl Resident {
 					continue;
 				};
 				let mut inner = slot.inner.lock();
-				inner.live.settle_flushing();
+				inner.buckets.settle_flushing();
 			}
 			self.clear_in_flight(&mut global);
 		}
@@ -1053,7 +1053,7 @@ impl Resident {
 				key,
 				post,
 				..
-			} => inner.live.insert_state(key.as_encoded().clone(), Some(post.clone())),
+			} => inner.insert_state(key.as_encoded().clone(), Some(post.clone())),
 			OperatorWrite::Replace {
 				key,
 				post,
@@ -1063,12 +1063,12 @@ impl Resident {
 				key,
 				..
 			} => {
-				if inner.live.erase_state(key.as_encoded()) {
+				if inner.erase_state(key.as_encoded()) {
 					#[cfg(reifydb_assertions)]
 					self.assert_erasable(inner, key.as_encoded());
 					return;
 				}
-				if self.never_persisted(inner.live.operator, key.as_encoded()) {
+				if self.never_persisted(inner.operator, key.as_encoded()) {
 					#[cfg(reifydb_assertions)]
 					self.assert_erasable(inner, key.as_encoded());
 					return;
@@ -1097,7 +1097,7 @@ impl Resident {
 	#[cfg(reifydb_assertions)]
 	fn assert_erasable(&self, inner: &SlotInner, key: &EncodedKey) {
 		reifydb_assertions! {
-			let operator = inner.live.operator;
+			let operator = inner.operator;
 			let durable = self
 				.shared
 				.sinks
@@ -1149,13 +1149,13 @@ fn drop_operator(marker: &DropMarker) -> OperatorId {
 }
 
 pub(crate) fn record_state(inner: &mut SlotInner, key: EncodedKey, post: Option<EncodedPodRow>) {
-	inner.live.record_state(key, post);
+	inner.record_state(key, post);
 }
 
 fn clear_drop(inner: &mut SlotInner, marker: DropMarker) {
 	match marker {
 		DropMarker::OperatorState(_) => {
-			inner.live.clear_state();
+			inner.clear_state();
 		}
 	}
 }

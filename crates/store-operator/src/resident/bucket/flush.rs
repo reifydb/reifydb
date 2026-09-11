@@ -11,7 +11,7 @@ use tracing::instrument;
 use crate::resident::bucket::{BucketMap, write::WriteEntry};
 
 impl BucketMap {
-	pub fn dirty_len(&self) -> usize {
+	pub fn dirty_count(&self) -> usize {
 		self.buckets.values().map(|bucket| bucket.dirty_len()).sum()
 	}
 

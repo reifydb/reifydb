@@ -706,7 +706,7 @@ mod tests {
 		// direction lives in the stored bytes now, so every column must compare ASC; a DESC left in the
 		// clause would invert an already inverted column and a bounded row value compare could not be
 		// written against this table at all
-		let ddl = create_table(&KEYSPACES.iter().find(|spec| spec.name == "JOIN_LEFT").unwrap());
+		let ddl = create_table(KEYSPACES.iter().find(|spec| spec.name == "JOIN_LEFT").unwrap());
 		assert!(ddl.contains(r#"PRIMARY KEY ("operator", "group", "row")"#), "{ddl}");
 		assert!(!ddl.contains("DESC"), "{ddl}");
 		assert!(!ddl.contains(" ASC"), "{ddl}");
@@ -724,7 +724,7 @@ mod tests {
 			group: Desc(GroupId::ROOT),
 			row: Asc(RowNumber(0)),
 		};
-		set_one::<JoinLeft>(&conn,OperatorId(1), &root, b"x");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &root, b"x");
 		let (group, row): (Vec<u8>, Vec<u8>) = conn
 			.query_row(r#"SELECT "group", "row" FROM "operator_join_left""#, [], |r| {
 				Ok((r.get(0).unwrap(), r.get(1).unwrap()))
@@ -739,7 +739,7 @@ mod tests {
 	fn a_typed_key_survives_a_write_and_a_read_back() {
 		let conn = db();
 		let key = left(u128::MAX - 7, 41);
-		set_one::<JoinLeft>(&conn,OperatorId(3), &key, b"payload");
+		set_one::<JoinLeft>(&conn, OperatorId(3), &key, b"payload");
 		assert_eq!(get::<JoinLeft>(&conn, OperatorId(3), &key).as_deref(), Some(b"payload".as_slice()));
 	}
 
@@ -750,7 +750,7 @@ mod tests {
 		let conn = db();
 		let mut keys = vec![left(5, 2), left(1, 9), left(5, 1), left(9, 3), left(1, 0)];
 		for key in &keys {
-			set_one::<JoinLeft>(&conn,OperatorId(1), key, b"x");
+			set_one::<JoinLeft>(&conn, OperatorId(1), key, b"x");
 		}
 		let scanned: Vec<JoinLeftKey> =
 			scan::<JoinLeft>(&conn, OperatorId(1)).into_iter().map(|(k, _)| k).collect();
@@ -764,8 +764,8 @@ mod tests {
 		// dropped it would hand one flow another flow's state
 		let conn = db();
 		let key = left(4, 4);
-		set_one::<JoinLeft>(&conn,OperatorId(1), &key, b"mine");
-		set_one::<JoinLeft>(&conn,OperatorId(2), &key, b"yours");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &key, b"mine");
+		set_one::<JoinLeft>(&conn, OperatorId(2), &key, b"yours");
 		assert_eq!(get::<JoinLeft>(&conn, OperatorId(1), &key).as_deref(), Some(b"mine".as_slice()));
 		assert_eq!(scan::<JoinLeft>(&conn, OperatorId(2)).len(), 1);
 		drop_operator::<JoinLeft>(&conn, OperatorId(1));
@@ -779,8 +779,8 @@ mod tests {
 		// rows the scan then serves as two distinct keys
 		let conn = db();
 		let key = left(2, 2);
-		set_one::<JoinLeft>(&conn,OperatorId(1), &key, b"first");
-		set_one::<JoinLeft>(&conn,OperatorId(1), &key, b"second");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &key, b"first");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &key, b"second");
 		assert_eq!(scan::<JoinLeft>(&conn, OperatorId(1)).len(), 1);
 		assert_eq!(get::<JoinLeft>(&conn, OperatorId(1), &key).as_deref(), Some(b"second".as_slice()));
 	}
@@ -788,9 +788,9 @@ mod tests {
 	#[test]
 	fn a_removed_key_is_gone_and_its_neighbours_are_not() {
 		let conn = db();
-		set_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 1), b"a");
-		set_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 2), b"b");
-		remove_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 1));
+		set_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 1), b"a");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 2), b"b");
+		remove_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 1));
 		assert_eq!(get::<JoinLeft>(&conn, OperatorId(1), &left(1, 1)), None);
 		assert_eq!(get::<JoinLeft>(&conn, OperatorId(1), &left(1, 2)).as_deref(), Some(b"b".as_slice()));
 	}
@@ -799,10 +799,10 @@ mod tests {
 		let conn = db();
 		for group in [1u128, 2] {
 			for row in 0u64..4 {
-				set_one::<JoinLeft>(&conn,OperatorId(1), &left(group, row), &[group as u8, row as u8]);
+				set_one::<JoinLeft>(&conn, OperatorId(1), &left(group, row), &[group as u8, row as u8]);
 			}
 		}
-		set_one::<JoinLeft>(&conn,OperatorId(2), &left(1, 0), b"other");
+		set_one::<JoinLeft>(&conn, OperatorId(2), &left(1, 0), b"other");
 		conn
 	}
 
@@ -929,9 +929,9 @@ mod tests {
 		// the census drives the memory budget; counting a shared table without grouping by operator would
 		// charge every flow for every other flow's state
 		let conn = db();
-		set_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 1), b"aaa");
-		set_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 2), b"bb");
-		set_one::<JoinLeft>(&conn,OperatorId(2), &left(1, 1), b"c");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 1), b"aaa");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 2), b"bb");
+		set_one::<JoinLeft>(&conn, OperatorId(2), &left(1, 1), b"c");
 		let mut counted = census::<JoinLeft>(&conn);
 		counted.sort_by_key(|(operator, _, _)| operator.0);
 		assert_eq!(counted, vec![(OperatorId(1), 2, 5), (OperatorId(2), 1, 1)]);
@@ -942,9 +942,9 @@ mod tests {
 		// the census is what the budget spends against, so a delete that left its row counted would keep
 		// charging for state that is gone and never let the budget recover
 		let conn = db();
-		set_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 1), b"aaa");
-		set_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 2), b"bb");
-		remove_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 1));
+		set_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 1), b"aaa");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 2), b"bb");
+		remove_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 1));
 		assert_eq!(census::<JoinLeft>(&conn), vec![(OperatorId(1), 1, 2)]);
 	}
 
@@ -953,8 +953,8 @@ mod tests {
 		// an upsert must replace, not append; a census that counted the key twice would report a table
 		// twice its real size and the budget would evict state that was never there
 		let conn = db();
-		set_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 1), b"aaaaa");
-		set_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 1), b"b");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 1), b"aaaaa");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 1), b"b");
 		assert_eq!(census::<JoinLeft>(&conn), vec![(OperatorId(1), 1, 1)]);
 	}
 
@@ -963,8 +963,8 @@ mod tests {
 		// a dropped flow must stop being charged entirely; a lingering entry would hold budget forever
 		// because nothing will ever write to that operator again to correct it
 		let conn = db();
-		set_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 1), b"aa");
-		set_one::<JoinLeft>(&conn,OperatorId(2), &left(1, 1), b"bbb");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 1), b"aa");
+		set_one::<JoinLeft>(&conn, OperatorId(2), &left(1, 1), b"bbb");
 		drop_operator::<JoinLeft>(&conn, OperatorId(1));
 		assert_eq!(census::<JoinLeft>(&conn), vec![(OperatorId(2), 1, 3)]);
 	}
@@ -975,8 +975,8 @@ mod tests {
 		// nothing here and make an empty table look like a live one
 		let conn = db();
 		assert_eq!(census::<JoinLeft>(&conn), vec![]);
-		set_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 1), b"a");
-		remove_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 1));
+		set_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 1), b"a");
+		remove_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 1));
 		assert_eq!(census::<JoinLeft>(&conn), vec![]);
 	}
 
@@ -985,8 +985,8 @@ mod tests {
 		// two keyspaces of one operator share the group and the key shape and differ only by table; a
 		// census that read across them would charge each keyspace for the other's bytes
 		let conn = db();
-		set_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 1), b"aaaa");
-		set_one::<JoinRight>(&conn,OperatorId(1), &right(1, 1), b"bb");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 1), b"aaaa");
+		set_one::<JoinRight>(&conn, OperatorId(1), &right(1, 1), b"bb");
 		assert_eq!(census::<JoinLeft>(&conn), vec![(OperatorId(1), 1, 4)]);
 		assert_eq!(census::<JoinRight>(&conn), vec![(OperatorId(1), 1, 2)]);
 	}
@@ -998,8 +998,8 @@ mod tests {
 		let conn = db();
 		let low = left(0, 0);
 		let high = left(u128::MAX, 0);
-		set_one::<JoinLeft>(&conn,OperatorId(1), &low, b"low");
-		set_one::<JoinLeft>(&conn,OperatorId(1), &high, b"high");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &low, b"low");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &high, b"high");
 		let payloads: Vec<Vec<u8>> =
 			scan::<JoinLeft>(&conn, OperatorId(1)).into_iter().map(|(_, v)| v).collect();
 		assert_eq!(
@@ -1020,7 +1020,7 @@ mod tests {
 		let conn = db();
 		let rows = [0u64, 1, i64::MAX as u64, i64::MAX as u64 + 1, u64::MAX];
 		for row in rows {
-			set_one::<JoinLeft>(&conn,OperatorId(1), &left(1, row), &row.to_be_bytes());
+			set_one::<JoinLeft>(&conn, OperatorId(1), &left(1, row), &row.to_be_bytes());
 		}
 		let served: Vec<u64> =
 			scan::<JoinLeft>(&conn, OperatorId(1)).into_iter().map(|(key, _)| key.row.0.0).collect();
@@ -1032,7 +1032,7 @@ mod tests {
 		// the column width is what makes memcmp agree with the integer order; a short or variable
 		// encoding would order 0x0100 before 0xff and nothing downstream would notice
 		let conn = db();
-		set_one::<JoinLeft>(&conn,OperatorId(1), &left(1, 7), b"x");
+		set_one::<JoinLeft>(&conn, OperatorId(1), &left(1, 7), b"x");
 		let width: i64 = conn
 			.query_row(r#"SELECT LENGTH("row") FROM "operator_join_left" LIMIT 1"#, [], |row| row.get(0))
 			.unwrap();
@@ -1044,7 +1044,7 @@ mod tests {
 		// several keyspaces carry only the group, so the generated statement has to stay valid with an
 		// empty column list rather than emitting a dangling comma
 		let conn = db();
-		let ddl = create_table(&KEYSPACES.iter().find(|spec| spec.name == TimerWheel::NAME).unwrap());
+		let ddl = create_table(KEYSPACES.iter().find(|spec| spec.name == TimerWheel::NAME).unwrap());
 		assert!(ddl.contains("PRIMARY KEY"), "{ddl}");
 		assert!(conn.prepare(&format!(r#"SELECT * FROM "{}""#, <TimerWheel as SqlKey>::table())).is_ok());
 	}

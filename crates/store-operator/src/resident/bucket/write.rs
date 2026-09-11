@@ -10,13 +10,13 @@ use std::{
 	sync::atomic::{AtomicBool, Ordering},
 };
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::{
 			keyspace::columns_width,
-			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+			state::{GroupId, GroupStateKey, OperatorStateKey},
 			traits::Keyspace,
 		},
 		typed::layout::KeyLayout,
@@ -24,11 +24,11 @@ use reifydb_core::{
 	state::typed::SuffixBytes,
 	util::sorted::SortedVecMap,
 };
-use reifydb_value::{Result, byte_size::ByteSize};
+use reifydb_value::byte_size::ByteSize;
 
 use crate::{
 	resident::bucket::{Bucket, GroupIds},
-	types::{Budget, Resume, Scan},
+	types::Scan,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -525,10 +525,6 @@ impl<K: Keyspace> StandardBucket<K> {
 }
 
 impl<K: Keyspace> Bucket for StandardBucket<K> {
-	fn keyspace(&self) -> KeyspaceId {
-		K::ID
-	}
-
 	fn footprint(&self) -> ByteSize {
 		self.bytes
 	}
@@ -561,66 +557,10 @@ impl<K: Keyspace> Bucket for StandardBucket<K> {
 		StandardBucket::settle_flushing(self)
 	}
 
-	fn reap_group(&mut self, group: GroupId, budget: &mut Budget) -> Result<Resume> {
-		let Some(partition) = self.partitions.get_mut(&group) else {
-			return Ok(Resume::Done);
-		};
-		let mut released = ByteSize::ZERO;
-		let had_dirty = partition.dirty > 0;
-		while budget.rows > 0 {
-			let next = match (partition.live.first_key_value(), partition.deleted.first_key_value()) {
-				(None, None) => None,
-				(Some(_), None) => partition.live.pop_first(),
-				(None, Some(_)) => partition.deleted.pop_first(),
-				(Some((live, _)), Some((deleted, _))) => match live <= deleted {
-					true => partition.live.pop_first(),
-					false => partition.deleted.pop_first(),
-				},
-			};
-			let Some((_, entry)) = next else {
-				break;
-			};
-			budget.rows -= 1;
-			self.entries -= 1;
-			if entry.staged.is_dirty() {
-				self.dirty -= 1;
-				partition.dirty -= 1;
-				self.dirty_bytes = self
-					.dirty_bytes
-					.saturating_sub(Self::suffix_bytes())
-					.saturating_sub(entry.row_bytes());
-			}
-			released = released.saturating_add(Self::suffix_bytes()).saturating_add(entry.row_bytes());
-		}
-		if had_dirty && partition.dirty == 0 {
-			self.dirty_groups -= 1;
-		}
-		let drained = partition.is_empty();
-		self.bytes = self.bytes.saturating_sub(released);
-		if drained {
-			self.partitions.remove(&group);
-			self.bytes = self.bytes.saturating_sub(Self::group_bytes());
-			return Ok(Resume::Done);
-		}
-		Ok(Resume::More)
-	}
-
 	fn for_each(&self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) {
 		for (group, suffix, entry) in self.entries() {
 			visit(group, &suffix.to_suffix_bytes(), entry);
 		}
-	}
-
-	fn encoded_entries(&self) -> Vec<(EncodedKey, WriteEntry)> {
-		self.entries()
-			.map(|(group, suffix, entry)| {
-				(
-					OperatorStateKey::inner_encoded(group, K::ID, suffix.to_suffix_bytes())
-						.into_encoded(),
-					entry.clone(),
-				)
-			})
-			.collect()
 	}
 
 	fn groups_in_range(&self, lower: &Bound<GroupId>, upper: &Bound<GroupId>) -> GroupIds {

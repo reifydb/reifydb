@@ -7,7 +7,6 @@ use std::{
 		atomic::{AtomicBool, Ordering},
 	},
 	thread,
-	time::Instant,
 };
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
@@ -406,8 +405,8 @@ fn a_write_proceeds_while_a_flush_is_persisting() {
 		})
 	};
 
-	let deadline = Instant::now() + Duration::from_milliseconds_const(2_000).to_std();
-	while !wrote.load(Ordering::Acquire) && Instant::now() < deadline {
+	let deadline = Clock::Real.instant() + Duration::from_milliseconds_const(2_000).to_std();
+	while !wrote.load(Ordering::Acquire) && Clock::Real.instant() < deadline {
 		thread::yield_now();
 	}
 	assert!(
@@ -684,8 +683,8 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 
 	buffer.record_state_set(OP_A, key(entries - 1), row("under-the-budget"));
 
-	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
-	while Instant::now() < deadline && storage.get(OP_A, &key(0)).is_none() {
+	let deadline = Clock::Real.instant() + Duration::from_seconds_const(5).to_std();
+	while Clock::Real.instant() < deadline && storage.get(OP_A, &key(0)).is_none() {
 		thread::sleep(Duration::from_milliseconds_const(5).to_std());
 	}
 	assert_eq!(
@@ -843,8 +842,8 @@ fn a_buffer_that_fills_with_tombstones_flushes_even_though_they_cost_almost_no_b
 		buffer.record_state_remove(OP_A, key(index));
 	}
 
-	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
-	while Instant::now() < deadline && buffer.resident_entries() > limit as usize {
+	let deadline = Clock::Real.instant() + Duration::from_seconds_const(5).to_std();
+	while Clock::Real.instant() < deadline && buffer.resident_entries() > limit as usize {
 		thread::sleep(Duration::from_milliseconds_const(5).to_std());
 	}
 	assert!(
