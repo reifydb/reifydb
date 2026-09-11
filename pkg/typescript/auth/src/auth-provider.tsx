@@ -222,7 +222,13 @@ export function AuthProvider<TClient extends AuthCapableClient>(
         parsed.walletAddress !== current.walletAddress ||
         parsed.identity !== current.identity
       ) {
-        tearDown("disconnected", null);
+        const followed =
+          sessionScope === "browser" ? readStoredSession(effectiveNamespace) : null;
+        if (followed == null) {
+          tearDown("disconnected", null);
+          return;
+        }
+        setState({ status: "verifying", session: followed, clientReady: false, error: null });
       }
 
       // Same principal, different token: a concurrent sign-in in another tab,
@@ -232,7 +238,7 @@ export function AuthProvider<TClient extends AuthCapableClient>(
     return () => {
       window.removeEventListener("storage", onStorage);
     };
-  }, [effectiveNamespace, tearDown]);
+  }, [effectiveNamespace, sessionScope, tearDown]);
 
   // Housekeeping: drop expired per-tab slots left behind by closed tabs.
   useEffect(() => {

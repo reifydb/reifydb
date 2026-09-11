@@ -240,6 +240,52 @@ describe("AuthProvider (password flow)", () => {
     });
   });
 
+  it("a browser-scoped tab follows another tab's sign-in instead of clearing the shared slot", async () => {
+    // A tab that clears the shared slot on another tab's sign-in signs that tab straight back out.
+    writeStoredSession(
+      NS,
+      passwordSession({
+        method: "token",
+        token: "guest-tok",
+        identity: "guest-id",
+        identifier: undefined,
+        walletAddress: "guest-id",
+      }),
+    );
+    const transport = fakeTransport(fakeClient(), fakeClient());
+    const tabA: { current: ProbeRef | null } = { current: null };
+    const tabB: { current: ProbeRef | null } = { current: null };
+    mount(transport, tabA, "browser");
+    mount(transport, tabB, "browser");
+    await waitFor(() => {
+      expect(tabA.current?.status).toBe("authenticated");
+      expect(tabB.current?.status).toBe("authenticated");
+    });
+    const guestSlot = localStorage.getItem(storageKeyFor(NS));
+
+    await act(async () => {
+      await tabA.current?.signIn({ identifier: EMAIL, password: "hunter2" });
+    });
+    const userSlot = localStorage.getItem(storageKeyFor(NS));
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: storageKeyFor(NS),
+          newValue: userSlot,
+          oldValue: guestSlot,
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(tabB.current?.status).toBe("authenticated");
+      expect(tabB.current?.identifier).toBe(EMAIL);
+    });
+    expect(tabA.current?.status).toBe("authenticated");
+    expect(tabA.current?.identifier).toBe(EMAIL);
+    expect(localStorage.getItem(storageKeyFor(NS))).toBe(userSlot);
+  });
+
   it("signOut revokes server-side, clears storage, and disconnects", async () => {
     const authedClient = fakeClient();
     const transport = fakeTransport(fakeClient(), authedClient);
