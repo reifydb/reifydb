@@ -5,7 +5,7 @@ use std::{
 	any::Any,
 	collections::{BTreeMap, btree_map::Entry},
 	iter::Peekable,
-	mem::{replace, size_of, take},
+	mem::size_of,
 	ops::{Bound, RangeBounds},
 	sync::atomic::{AtomicBool, Ordering},
 };
@@ -25,11 +25,7 @@ use reifydb_core::{
 	util::sorted::SortedVecMap,
 };
 use reifydb_value::{Result, byte_size::ByteSize};
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use rusqlite::{Connection, Transaction};
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::persistent::sqlite::typed;
 use crate::{
 	resident::bucket::{Bucket, GroupIds},
 	types::{Budget, Resume, Scan},
@@ -518,17 +514,6 @@ impl<K: Keyspace> StandardBucket<K> {
 		})
 	}
 
-	pub fn absorb(&mut self, other: Self) {
-		for (group, partition) in other.partitions {
-			for (suffix, entry) in partition.live {
-				self.record(group, suffix, entry.post);
-			}
-			for (suffix, entry) in partition.deleted {
-				self.record(group, suffix, entry.post);
-			}
-		}
-	}
-
 	pub fn clear(&mut self) {
 		self.partitions.clear();
 		self.bytes = ByteSize::ZERO;
@@ -574,38 +559,6 @@ impl<K: Keyspace> Bucket for StandardBucket<K> {
 
 	fn settle_flushing(&mut self) {
 		StandardBucket::settle_flushing(self)
-	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	fn write_into(&self, txn: &Transaction) {
-		let mut sets: Vec<(OperatorId, K::GroupedKey, Vec<u8>)> = Vec::new();
-		let mut removes: Vec<(OperatorId, K::GroupedKey)> = Vec::new();
-		for (group, suffix, entry) in self.entries() {
-			let key = K::join(group, suffix.clone());
-			match &entry.post {
-				Some(row) => sets.push((self.operator, key, row.as_slice().to_vec())),
-				None => removes.push((self.operator, key)),
-			}
-		}
-		typed::set_chunked::<K>(txn, &sets);
-		typed::remove_chunked::<K>(txn, &removes);
-	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	fn flush(&mut self, conn: &Connection) -> Result<()> {
-		for (group, partition) in take(&mut self.partitions) {
-			for (suffix, entry) in partition.live {
-				let key = K::join(group, suffix);
-				let row = entry.post.expect("a live entry carries a row");
-				typed::set::<K>(conn, self.operator, &key, row.as_slice());
-			}
-			for (suffix, _) in partition.deleted {
-				typed::remove::<K>(conn, self.operator, &K::join(group, suffix));
-			}
-		}
-		self.bytes = ByteSize::ZERO;
-		self.entries = 0;
-		Ok(())
 	}
 
 	fn reap_group(&mut self, group: GroupId, budget: &mut Budget) -> Result<Resume> {
@@ -715,22 +668,6 @@ impl<K: Keyspace> Bucket for StandardBucket<K> {
 				out
 			}
 		}
-	}
-
-	fn absorb_any(&mut self, other: &mut dyn Bucket) {
-		let other = other
-			.as_any_mut()
-			.downcast_mut::<Self>()
-			.expect("a keyspace id must map to exactly one key type");
-		self.absorb(Self {
-			operator: other.operator,
-			partitions: take(&mut other.partitions),
-			bytes: replace(&mut other.bytes, ByteSize::ZERO),
-			entries: replace(&mut other.entries, 0),
-			dirty: replace(&mut other.dirty, 0),
-			dirty_bytes: replace(&mut other.dirty_bytes, ByteSize::ZERO),
-			dirty_groups: replace(&mut other.dirty_groups, 0),
-		});
 	}
 
 	fn as_any(&self) -> &dyn Any {

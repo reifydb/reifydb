@@ -590,6 +590,7 @@ mod tests {
 					join::{JoinLeft, JoinLeftKey, JoinRight, JoinRightKey},
 				},
 				state::{GroupId, KeyspaceId, group_inner_range},
+				traits::Keyspace,
 			},
 			typed::direction::{Asc, Desc},
 		},
@@ -602,13 +603,19 @@ mod tests {
 		persistent::sqlite::{
 			route::{bounded, bounded_in},
 			schema::ensure_schema,
-			typed::set,
+			typed::set_chunked,
 		},
 	};
 
 	const OPERATOR: OperatorId = OperatorId(1);
 
 	const LIMIT: u64 = 1024;
+
+	fn set_one<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::GroupedKey, bytes: &[u8]) {
+		let txn = conn.unchecked_transaction().expect("begin");
+		set_chunked::<K>(&txn, &[(operator, key.clone(), bytes.to_vec())]);
+		txn.commit().expect("commit");
+	}
 
 	fn db() -> Connection {
 		let conn = Connection::open_in_memory().expect("an in memory sqlite database must open");
@@ -629,7 +636,7 @@ mod tests {
 	fn seed(conn: &Connection, groups: &[GroupId]) {
 		for group in groups {
 			for row in [1u64, 2] {
-				set::<JoinLeft>(
+				set_one::<JoinLeft>(
 					conn,
 					OPERATOR,
 					&JoinLeftKey {
@@ -639,7 +646,7 @@ mod tests {
 					b"left",
 				);
 			}
-			set::<JoinRight>(
+			set_one::<JoinRight>(
 				conn,
 				OPERATOR,
 				&JoinRightKey {
@@ -648,7 +655,7 @@ mod tests {
 				},
 				b"right",
 			);
-			set::<DistinctEntry>(
+			set_one::<DistinctEntry>(
 				conn,
 				OPERATOR,
 				&DistinctEntryKey {
@@ -660,7 +667,7 @@ mod tests {
 	}
 
 	fn seed_groupless(conn: &Connection) {
-		set::<Expiry>(
+		set_one::<Expiry>(
 			conn,
 			OPERATOR,
 			&ExpiryKey {

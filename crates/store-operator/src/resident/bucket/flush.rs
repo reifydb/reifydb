@@ -6,8 +6,6 @@ use reifydb_core::{
 	key::operator::state::{GroupId, KeyspaceId},
 };
 use reifydb_value::byte_size::ByteSize;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use rusqlite::Transaction;
 use tracing::instrument;
 
 use crate::resident::bucket::{BucketMap, write::WriteEntry};
@@ -67,23 +65,5 @@ impl BucketMap {
 				}));
 		}
 		staged
-	}
-
-	pub fn absorb(&mut self, mut other: BucketMap) {
-		for (address, mut bucket) in other.buckets.drain() {
-			match self.buckets.get_mut(&address) {
-				Some(existing) => existing.absorb_any(bucket.as_mut()),
-				None => {
-					self.buckets.insert(address, bucket);
-				}
-			}
-		}
-	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn write_into(&self, txn: &Transaction) {
-		for bucket in self.buckets.values() {
-			bucket.write_into(txn);
-		}
 	}
 }

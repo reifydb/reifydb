@@ -21,8 +21,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::{Result, byte_size::ByteSize};
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use rusqlite::{Connection, Transaction};
 use smallvec::SmallVec;
 
 use crate::{
@@ -72,15 +70,7 @@ pub trait Bucket: Any + Send + Sync {
 		tombstones: bool,
 	) -> Vec<(GroupStateKey, WriteEntry)>;
 
-	fn absorb_any(&mut self, other: &mut dyn Bucket);
-
 	fn as_any(&self) -> &dyn Any;
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	fn flush(&mut self, conn: &Connection) -> Result<()>;
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	fn write_into(&self, txn: &Transaction);
 
 	fn reap_group(&mut self, group: GroupId, budget: &mut Budget) -> Result<Resume>;
 
@@ -107,6 +97,10 @@ impl BucketMap {
 		ids.sort_by_key(|operator| operator.0);
 		ids.dedup();
 		ids
+	}
+
+	pub fn buckets(&self) -> impl Iterator<Item = (&(OperatorId, KeyspaceId), &dyn Bucket)> {
+		self.buckets.iter().map(|(address, bucket)| (address, bucket.as_ref()))
 	}
 
 	pub fn iter_mut(&mut self) -> impl Iterator<Item = (&(OperatorId, KeyspaceId), &mut Box<dyn Bucket>)> {

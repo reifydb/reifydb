@@ -3,10 +3,7 @@
 
 use std::ops::Bound;
 
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, pod::EncodedPodRow},
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
@@ -24,16 +21,12 @@ use reifydb_core::{
 };
 use reifydb_value::{
 	byte_size::ByteSize,
-	util::{cowvec::CowVec, hash::Hash128},
+	util::hash::Hash128,
 	value::row_number::RowNumber,
 };
-use rusqlite::Connection;
 
 use super::{Bucket, BucketMap, write::StandardBucket};
-use crate::{
-	persistent::sqlite::{schema::ensure_schema, typed},
-	types::{Budget, Resume, Scan},
-};
+use crate::types::{Budget, Resume, Scan};
 
 const OP: OperatorId = OperatorId(1);
 
@@ -193,59 +186,23 @@ fn two_operators_never_share_a_bucket() {
 }
 
 #[test]
-fn a_flush_writes_every_group_into_the_keyspaces_own_table() {
-	let conn = Connection::open_in_memory().expect("in memory db");
-	ensure_schema(&conn);
-
+fn a_staged_row_is_not_staged_again_by_the_next_flush() {
 	let mut bucket = bucket();
 	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("seven")));
 	bucket.record(GroupId::hashed(Hash128(9)), suffix(2), Some(row("nine")));
-	bucket.flush(&conn).expect("flush");
 
-	let rows = typed::scan::<JoinLeft>(&conn, OP);
-	assert_eq!(rows.len(), 2, "every group in the bucket must reach the table, not just the first");
-	assert!(bucket.is_empty(), "a flushed bucket must release its rows or the next flush writes them twice");
+	let mut first = 0usize;
+	bucket.stage_dirty(&mut |_, _, _| first += 1);
+	let mut second = 0usize;
+	bucket.stage_dirty(&mut |_, _, _| second += 1);
+
+	assert_eq!(first, 2, "every dirty row in every group must be staged, not just the first group's");
+	assert_eq!(second, 0, "a staged row must leave the dirty set or the next flush writes it twice");
+	assert_eq!(bucket.dirty_len(), 0, "a staged row still counted dirty is written again by the next flush");
 	assert_eq!(
-		bucket.footprint(),
+		bucket.dirty_footprint(),
 		ByteSize::ZERO,
-		"the footprint drives the flush budget, so a flush that does not release it never lets the budget recover"
-	);
-}
-
-#[test]
-fn a_flushed_tombstone_deletes_the_row_rather_than_storing_a_none() {
-	let conn = Connection::open_in_memory().expect("in memory db");
-	ensure_schema(&conn);
-
-	let mut bucket = bucket();
-	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("live")));
-	bucket.flush(&conn).expect("first flush");
-
-	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), None);
-	bucket.flush(&conn).expect("second flush");
-
-	assert!(
-		typed::scan::<JoinLeft>(&conn, OP).is_empty(),
-		"a removal must delete the durable row; leaving it behind resurrects state the operator deleted"
-	);
-}
-
-#[test]
-fn a_flushed_row_survives_the_round_trip_through_its_payload() {
-	let conn = Connection::open_in_memory().expect("in memory db");
-	ensure_schema(&conn);
-
-	let mut bucket = bucket();
-	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("payload")));
-	bucket.flush(&conn).expect("flush");
-
-	let stored = typed::get::<JoinLeft>(&conn, OP, &JoinLeft::join(GroupId::hashed(Hash128(7)), suffix(1)))
-		.expect("the row");
-	let restored = EncodedPodRow::from(EncodedBytes(CowVec::new(stored)));
-	assert_eq!(
-		String::from_utf8(restored.body().to_vec()).expect("utf8"),
-		"payload",
-		"the payload round trip carries the pod header, so reading back the body alone would truncate the row"
+		"the dirty footprint drives the flush budget, so a stage that does not release it never lets the budget recover"
 	);
 }
 
