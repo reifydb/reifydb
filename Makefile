@@ -8,6 +8,8 @@
 # Configuration
 TEST_SUITE_DIR ?= ../testsuite
 TEST_REFERENCE_DIR ?= ../testreference
+TEST_CHAOS_DIR ?= ../testchaos
+TEST_CRATE_DIR ?= ../testcrate
 EXTERNAL_DIR ?= ../external
 TEST_PKG_DIR := ./pkg
 
@@ -54,9 +56,10 @@ help:
 	@printf "  %-25s %s\n" "test-dev" "Fast development tests (db + embedded_blocking only)"
 	@printf "  %-25s %s\n" "test" "Full test suite (db + all test-suites + test clients)"
 	@printf "  %-25s %s\n" "test-full" "Same as 'make test'"
-	@printf "  %-25s %s\n" "test-workspace" "Run only workspace tests (N=K to repeat K times)"
+	@printf "  %-25s %s\n" "test-workspace" "Run only workspace tests (REPEAT=K to repeat K times)"
 	@printf "  %-25s %s\n" "test-dst" "Run deterministic simulation tests"
-	@printf "  %-25s %s\n" "test-chaos N=64" "Run chaos tests (N= per workload, FILTER=, SEED=, PACKAGE=, PACKAGES=)"
+	@printf "  %-25s %s\n" "test-chaos" "Run chaos mirror tests in ../testchaos (N= per workload, REPEAT=, SEED=, FILTER=, SUITE=)"
+	@printf "  %-25s %s\n" "test-workspace-chaos N=64" "Run workspace chaos tests (N= per workload, FILTER=, SEED=, PACKAGE=, PACKAGES=)"
 	@printf "  %-25s %s\n" "list-chaos" "List chaos tests (PACKAGE=, PACKAGES=, FILTER=)"
 	@echo ""
 	@echo "  📈 Coverage"
@@ -71,6 +74,10 @@ help:
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@printf "  %-25s %s\n" "test-suite" "Run all test suites (smoke, compatibility, etc.)"
 	@printf "  %-25s %s\n" "test-suite-dev" "Run fast development tests for all test suites"
+	@printf "  %-25s %s\n" "test-crate" "Run the crate mirror tests (../testcrate; REPEAT=K to repeat K times)"
+	@printf "  %-25s %s\n" "test-crate-dev" "Run fast crate mirror tests, loom excluded"
+	@printf "  %-25s %s\n" "test-crate-dst" "Run crate mirror DST tests (also part of test-dst)"
+	@printf "  %-25s %s\n" "test-crate-loom" "Run crate mirror loom tests (part of all)"
 	@printf "  %-25s %s\n" "test-reference" "Run the reference conformance suites (../testreference)"
 	@printf "  %-25s %s\n" "test-reference-dev" "Run fast reference conformance tests"
 	@printf "  %-25s %s\n" "test-pkg-rust" "Run test packages (rust)"
@@ -144,11 +151,11 @@ help:
 # =============================================================================
 
 .PHONY: all
-all: format-check check-code-quality check build build-testcontainer test-full test-chaos-ci push-testcontainer push
+all: format-check check-code-quality check build build-testcontainer test-full test-chaos-ci test-crate-loom push-testcontainer push
 
 .PHONY: test-chaos-ci
 test-chaos-ci:
-	$(MAKE) test-chaos N=100
+	$(MAKE) test-workspace-chaos N=100
 
 .PHONY: check-code-quality
 check-code-quality:
@@ -200,22 +207,24 @@ push: check
 .PHONY: test test-full test-dev
 test: test-full
 
-test-full: test-workspace test-dst test-pkg-rust test-examples test-suite test-external test-pkg-typescript test-projects fuzz-regression
+test-full: test-workspace test-dst test-pkg-rust test-examples test-suite test-crate test-chaos test-external test-pkg-typescript test-projects fuzz-regression
 	@echo "✅ All tests completed successfully!"
 
-test-dev: test-workspace test-dst test-pkg-rust test-examples test-suite-dev
+test-dev: test-workspace test-dst test-pkg-rust test-examples test-suite-dev test-crate-dev
 	@echo "🚀 Development tests completed!"
 
 # Include testing sub-makefiles
 include mk/test-workspace.mk
 include mk/test-dst.mk
 include mk/test-suites.mk
+include mk/test-crate.mk
 include mk/test-reference.mk
 include mk/test-external.mk
 include mk/test-pkg-rust.mk
 include mk/test-pkg-typescript.mk
 include mk/test-projects.mk
 include mk/test-examples.mk
+include mk/test-workspace-chaos.mk
 include mk/test-chaos.mk
 include mk/coverage.mk
 

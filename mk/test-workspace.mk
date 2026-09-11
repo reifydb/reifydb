@@ -5,18 +5,18 @@
 # Workspace Testing (all workspace tests)
 # =============================================================================
 
-# Number of times to repeat test-workspace. Default 1; set N=K to repeat K times,
+# Number of times to repeat test-workspace. Default 1; set REPEAT=K to repeat K times,
 # stopping at the first failure and reporting the iteration number.
-N ?= 1
+REPEAT ?= 1
 
 .PHONY: test-workspace
 test-workspace:
 	@total_start=$$(date +%s); \
-	for i in $$(seq 1 $(N)); do \
+	for i in $$(seq 1 $(REPEAT)); do \
 		iter_start=$$(date +%s); \
-		if [ $(N) -gt 1 ]; then \
+		if [ $(REPEAT) -gt 1 ]; then \
 			echo ""; \
-			echo "==> [iter $$i/$(N)] starting at $$(date -Iseconds)"; \
+			echo "==> [iter $$i/$(REPEAT)] starting at $$(date -Iseconds)"; \
 		fi; \
 		echo "🔨 Building examples..."; \
 		MAKEFLAGS= cargo build --release --workspace --examples $(CARGO_OFFLINE) || { \
@@ -24,7 +24,7 @@ test-workspace:
 			iter_end=$$(date +%s); \
 			total_end=$$(date +%s); \
 			echo ""; \
-			echo "==> FAILED at iteration $$i/$(N) (exit=$$rc, iter=$$((iter_end - iter_start))s, elapsed=$$((total_end - total_start))s)"; \
+			echo "==> FAILED at iteration $$i/$(REPEAT) (exit=$$rc, iter=$$((iter_end - iter_start))s, elapsed=$$((total_end - total_start))s)"; \
 			exit $$rc; \
 		}; \
 		echo "🧪 Running workspace tests..."; \
@@ -33,17 +33,17 @@ test-workspace:
 			iter_end=$$(date +%s); \
 			total_end=$$(date +%s); \
 			echo ""; \
-			echo "==> FAILED at iteration $$i/$(N) (exit=$$rc, iter=$$((iter_end - iter_start))s, elapsed=$$((total_end - total_start))s)"; \
+			echo "==> FAILED at iteration $$i/$(REPEAT) (exit=$$rc, iter=$$((iter_end - iter_start))s, elapsed=$$((total_end - total_start))s)"; \
 			exit $$rc; \
 		}; \
 		iter_end=$$(date +%s); \
-		if [ $(N) -gt 1 ]; then \
-			echo "==> [iter $$i/$(N)] OK ($$((iter_end - iter_start))s)"; \
+		if [ $(REPEAT) -gt 1 ]; then \
+			echo "==> [iter $$i/$(REPEAT)] OK ($$((iter_end - iter_start))s)"; \
 		fi; \
 	done; \
-	if [ $(N) -gt 1 ]; then \
+	if [ $(REPEAT) -gt 1 ]; then \
 		total_end=$$(date +%s); \
 		echo ""; \
-		echo "==> ALL $(N) iterations PASSED (total=$$((total_end - total_start))s)"; \
+		echo "==> ALL $(REPEAT) iterations PASSED (total=$$((total_end - total_start))s)"; \
 	fi
 	@$(MAKE) --no-print-directory sweep-auto
