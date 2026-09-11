@@ -8,8 +8,19 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, CdcChange},
 };
-use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
-use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::clock::Clock,
+	pool::{PoolConfig, Pools},
+	sync::{mutex::Mutex, waiter::WaiterHandle},
+};
+use reifydb_sqlite::SqliteConfig;
+use reifydb_store_cdc::{
+	config::{CdcCommitConfig, CdcPersistentConfig, CdcStoreConfig},
+	storage::CdcStorage,
+	store::CdcStore,
+	tier::persistent::CdcPersistentTier,
+};
 use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{datetime::DateTime, duration::Duration},
@@ -266,6 +277,40 @@ mod cases {
 		);
 		drop(guard);
 	}
+}
+
+fn shutdown_seals_partial_block_after_the_flusher_is_gone(persistent: CdcPersistentTier) {
+	// The database stops the runtime before its stores, so a shutdown that needs the flush actor loses the tail.
+	let system = ActorSystem::new(Pools::new(PoolConfig::default()), Clock::Real);
+	let store = CdcStore::new(CdcStoreConfig {
+		commit: CdcCommitConfig::default(),
+		persistent: CdcPersistentConfig::opened(persistent.clone()).flush_interval(Duration::from_hours_const(1)),
+		read: None,
+		spawner: system.spawner(),
+		clock: Clock::Real,
+	});
+	write_all(&store, 1..=3);
+	system.shutdown();
+	system.join().expect("the flush actor must stop once its system is shut down");
+
+	let closing = store.clone();
+	within_deadline("shutdown after the flusher is gone", move || closing.shutdown());
+
+	let summaries = persistent.summaries_from(CommitVersion(0), SUMMARY_LIMIT).unwrap();
+	assert_eq!(summaries.len(), 1, "shutdown sealed nothing once the flush actor was gone, so the unflushed tail is lost");
+	assert_eq!(summaries[0].min_version, CommitVersion(1), "the sealed block must start at the first record");
+	assert_eq!(summaries[0].max_version, CommitVersion(3), "the sealed block must end at the last record");
+}
+
+#[test]
+fn shutdown_seals_partial_block_after_the_flusher_is_gone_on_memory() {
+	shutdown_seals_partial_block_after_the_flusher_is_gone(CdcPersistentTier::memory());
+}
+
+#[test]
+fn shutdown_seals_partial_block_after_the_flusher_is_gone_on_sqlite() {
+	let (config, _guard) = SqliteConfig::in_memory();
+	shutdown_seals_partial_block_after_the_flusher_is_gone(CdcPersistentTier::sqlite(config));
 }
 
 crate::tier_tests!(

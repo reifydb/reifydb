@@ -14,7 +14,7 @@ use crate::{
 	config::CdcStoreConfig,
 	flush::{
 		actor::{CdcFlushActor, FlushMessage, flush_pending},
-		block::flush_with,
+		block::{flush_now, flush_with},
 	},
 	tier::{commit::CdcCommitBufferTier, persistent::CdcPersistentTier, read::CdcReadBufferTier},
 };
@@ -74,7 +74,7 @@ impl CdcStore {
 
 	#[instrument(name = "store::cdc::shutdown", level = "debug", skip(self))]
 	pub fn shutdown(&self) {
-		self.flush_pending();
+		flush_now(&self.commit, &self.persistent, self.read.as_ref());
 		self.persistent.shutdown();
 	}
 }
