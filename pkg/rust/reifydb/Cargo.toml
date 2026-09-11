@@ -38,6 +38,7 @@ reifydb-store-commit = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-operator = { workspace = true }
 reifydb-store-single = { workspace = true }
+reifydb-sub-core = { workspace = true }
 reifydb-sub-metrics = { workspace = true }
 reifydb-subscription = { workspace = true}
 reifydb-transaction = { workspace = true }
@@ -108,3 +109,8 @@ testing = ["reifydb-core/testing", "dep:reifydb-testing", "dep:reifydb-testing-c
 name = "testing_surface"
 path = "tests/testing_surface.rs"
 required-features = ["flow_testing"]
+
+[[test]]
+name = "dst_subscription"
+path = "tests/dst_subscription.rs"
+required-features = ["sub_flow"]

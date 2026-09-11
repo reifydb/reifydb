@@ -123,6 +123,10 @@ impl SubscriptionStore {
 		self.inner.get(id).map(|buf| buf.capacity).unwrap_or(0)
 	}
 
+	pub fn pending_batches(&self) -> usize {
+		self.inner.iter().map(|entry| entry.queue.len()).sum()
+	}
+
 	pub fn active_subscriptions(&self) -> Vec<SubscriptionId> {
 		self.inner.iter().map(|entry| *entry.key()).collect()
 	}
@@ -363,6 +367,71 @@ mod tests {
 		assert_eq!(active.len(), 2);
 		assert!(active.contains(&id1));
 		assert!(active.contains(&id2));
+	}
+
+	#[test]
+	fn pending_batches_is_zero_until_something_is_committed() {
+		// The settle loop starts by asking whether there is work; a registered but idle subscription must not
+		// read as pending or the loop never terminates.
+		let store = SubscriptionStore::new(16);
+		assert_eq!(store.pending_batches(), 0, "a fresh store buffers nothing");
+
+		let id = store.next_id();
+		store.register(id, vec!["test".to_string()]);
+
+		assert_eq!(store.pending_batches(), 0, "registering a subscription queues no work by itself");
+	}
+
+	#[test]
+	fn pending_batches_sums_every_subscription() {
+		// The count is the global quiescence signal, so work buffered for any subscription has to show up in
+		// it, not just the first one iterated.
+		let store = SubscriptionStore::new(16);
+		let first = store.next_id();
+		let second = store.next_id();
+		store.register(first, vec!["test".to_string()]);
+		store.register(second, vec!["test".to_string()]);
+
+		store.commit_staged(stage(first, &[1, 2]));
+		assert_eq!(store.pending_batches(), 2);
+
+		store.commit_staged(stage(second, &[3, 4, 5]));
+		assert_eq!(store.pending_batches(), 5, "both queues must be counted");
+	}
+
+	#[test]
+	fn pending_batches_tracks_what_a_drain_leaves_behind() {
+		// A driver that polls and drains until the count reaches zero would spin forever if a partial drain
+		// still reported the original depth, and would stop early if it reported zero too soon.
+		let store = SubscriptionStore::new(16);
+		let id = store.next_id();
+		store.register(id, vec!["test".to_string()]);
+
+		store.commit_staged(stage(id, &[1, 2, 3]));
+		assert_eq!(store.pending_batches(), 3);
+
+		assert_eq!(store.drain(&id, 2).len(), 2);
+		assert_eq!(store.pending_batches(), 1, "only the undrained remainder is still pending");
+
+		assert_eq!(store.drain(&id, 10).len(), 1);
+		assert_eq!(store.pending_batches(), 0, "a fully drained store is quiescent again");
+	}
+
+	#[test]
+	fn a_lagged_subscription_has_no_pending_batches() {
+		// Lag clears the queue and refuses every later batch, so there is nothing left to deliver. The count
+		// must report that, otherwise a settle loop blocks forever on a subscription that can never make
+		// progress.
+		let store = SubscriptionStore::new(2);
+		let id = store.next_id();
+		store.register(id, vec!["test".to_string()]);
+
+		store.commit_staged(stage(id, &[1]));
+		store.commit_staged(stage(id, &[2]));
+		store.commit_staged(stage(id, &[3]));
+		assert!(store.overrun(&id).is_some(), "the subscription is lagged");
+
+		assert_eq!(store.pending_batches(), 0, "a lagged subscription surrendered its queue and takes no more");
 	}
 
 	#[test]
