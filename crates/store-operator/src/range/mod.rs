@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod evict;
 pub mod partition;
 #[cfg(test)]
 mod scan;

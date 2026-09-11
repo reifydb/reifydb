@@ -128,7 +128,7 @@ fn write_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &Params
 		_ => {
 			let (writes, checkpoints, deletes) = random_batch(rng, state, p, step);
 			for config in &harness.configs {
-				config.store.apply_batch_with_checkpoints(&writes, &checkpoints, &deletes);
+				config.store.apply_batch_with_checkpoints(&writes, &checkpoints, &deletes).unwrap();
 			}
 			for model in &mut state.models {
 				for (flow, version) in &checkpoints {

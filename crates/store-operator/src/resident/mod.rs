@@ -3,8 +3,6 @@
 
 pub mod batch;
 pub mod bucket;
-pub mod evict;
-pub mod flush;
 
 mod census;
 mod checkpoint;
@@ -41,14 +39,12 @@ use reifydb_value::{byte_size::ByteSize, reifydb_assertions, value::duration::Du
 use tracing::instrument;
 
 use crate::{
-	actor::Waker,
+	actor::{Waker, resident_evict::EvictMessage, resident_flush::FlushMessage},
 	error::Result,
 	persistent::{Apply, Enumerate, Fetch, Persistent, PersistentTier},
 	range::{OperatorRangeTier, RangeSink},
 	resident::{
 		bucket::write::Staged,
-		evict::actor::EvictMessage,
-		flush::actor::FlushMessage,
 		slot::{Slot, SlotInner},
 	},
 	types::{Applied, DropMarker, FlushBatch, OperatorWrite, StagedWrite},

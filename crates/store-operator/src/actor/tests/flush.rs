@@ -41,16 +41,12 @@ use reifydb_value::{
 	value::{duration::Duration, row_number::RowNumber},
 };
 
-use super::actor::*;
 use crate::{
-	actor::Waker,
+	actor::{Waker, resident_evict::ResidentEvictActor, resident_flush::*},
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	persistent::{PersistentTier, sqlite::SqlitePersistent},
 	range::{OperatorRangeConfig, OperatorRangeTier},
-	resident::{
-		FILTER_KEYS, FLUSH_BUDGET_BYTES, FLUSH_INTERVAL, Resident, ResidentLimits,
-		evict::actor::ResidentEvictActor,
-	},
+	resident::{FILTER_KEYS, FLUSH_BUDGET_BYTES, FLUSH_INTERVAL, Resident, ResidentLimits},
 	store::OperatorStore,
 	types::{BufferedState, FlushBatch, LayeredPre, OperatorWrite, StagedWrite},
 };

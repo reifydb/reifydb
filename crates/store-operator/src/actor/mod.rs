@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+pub mod range_evict;
+pub mod resident_evict;
+pub mod resident_flush;
+
+#[cfg(test)]
+mod tests;
+
 use std::sync::Arc;
 
 use reifydb_runtime::{actor::mailbox::ActorRef, sync::mutex::Mutex};

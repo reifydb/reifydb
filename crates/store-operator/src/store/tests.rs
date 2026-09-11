@@ -21,10 +21,10 @@ use reifydb_testing::keyspace::state_key;
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
 use crate::{
+	actor::resident_flush::flush_now,
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	persistent::{PersistentTier, sqlite::SqlitePersistent},
 	range::OperatorRangeConfig,
-	resident::flush::actor::flush_now,
 	store::{CheckpointInterlock, StandardOperatorStore},
 	types::{LayeredPre, OperatorWrite},
 };
