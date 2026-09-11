@@ -350,7 +350,7 @@ impl ActorSystem {
 			let entry = self.inner.ready_queue.borrow_mut().pop();
 			let entry = match entry {
 				Some(e) => e,
-				None => return StepResult::Idle,
+				None => return self.step_children(),
 			};
 
 			let actor_id = entry.actor_id;
@@ -433,8 +433,39 @@ impl ActorSystem {
 		}
 	}
 
+	/// Steps the first child scope that has work, visiting children in creation order.
+	///
+	/// Scopes each own their ready queue and their own logical clock, so entries from different
+	/// scopes carry timestamps that cannot be meaningfully compared and the queues cannot simply
+	/// be merged. Children are visited in a fixed order instead, which is what keeps a run
+	/// reproducible. Draining is still complete: `run_until_idle` calls back in from the top after
+	/// every message, so work a child hands to the root is picked up on the next call and the
+	/// whole tree converges.
+	///
+	/// The child list is copied before stepping because running an actor may create a new scope,
+	/// which would borrow the list again.
+	fn step_children(&self) -> StepResult {
+		let children: Vec<ActorSystem> = self.inner.children.borrow().clone();
+		for child in children {
+			match child.step() {
+				StepResult::Idle => continue,
+				other => return other,
+			}
+		}
+		StepResult::Idle
+	}
+
+	/// Whether any actor anywhere in this system's scope tree has a message waiting.
+	///
+	/// Subsystems spawn into scopes, so a root-only answer reports idle while a child queue is
+	/// still full. A driver that treats that as quiescence stops before the work it was waiting
+	/// for has run.
 	pub fn has_pending(&self) -> bool {
-		!self.inner.ready_queue.borrow().is_empty()
+		if !self.inner.ready_queue.borrow().is_empty() {
+			return true;
+		}
+		let children: Vec<ActorSystem> = self.inner.children.borrow().clone();
+		children.iter().any(|child| child.has_pending())
 	}
 
 	pub fn alive_count(&self) -> usize {

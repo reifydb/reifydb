@@ -103,6 +103,7 @@ impl SubscriptionSubsystem {
 			subscription_flows: RwLock::new(HashMap::new()),
 			multi,
 			position_tracker: position_tracker.clone(),
+			spawner: spawner.clone(),
 		});
 
 		let cdc_consumer = SubscriptionCdcConsumer::new(
@@ -151,6 +152,11 @@ impl SubscriptionSubsystem {
 
 	#[inline]
 	fn resolve_worker_count(catalog: &Catalog, spawner: &ActorSpawner) -> usize {
+		// A single worker keeps dispatch order deterministic when there is only one thread to
+		// dispatch on, which is what the dst/wasm builds need.
+		if cfg!(reifydb_single_threaded) {
+			return 1;
+		}
 		let configured = catalog.get_config_uint2(ConfigKey::SubscriptionWorkerThreads) as usize;
 		if configured == 0 {
 			spawner.pools().coordination_thread_count()
