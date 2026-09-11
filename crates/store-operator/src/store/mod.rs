@@ -36,15 +36,15 @@ use reifydb_store::metrics::PageCacheMetrics;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{
-	actor::Waker,
 	config::OperatorPersistentConfig,
-	persistent::filter::OperatorStateKeySource,
+	persistent::{Enumerate, filter::OperatorStateKeySource},
 	range::{OperatorRangeConfig, evict::actor::RangeEvictActor},
 	resident::{FILTER_KEYS, evict::actor::ResidentEvictActor, flush::actor::ResidentFlushActor},
 };
 use crate::{
+	actor::Waker,
 	config::OperatorStoreConfig,
-	persistent::{Enumerate, Persistent, PersistentTier},
+	persistent::{Persistent, PersistentTier},
 	range::{
 		OperatorRangeTier, RangeSink,
 		tiers::{RangeKeyspaceMetrics, RangeTiers},

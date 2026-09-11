@@ -6,34 +6,39 @@ use std::sync::Arc;
 use reifydb_core::metrics::{collect::MetricsCollector, sample::MetricsSample};
 use reifydb_store::{metrics::PageCacheMetrics, sqlite::page_cache_metrics};
 
-use crate::persistent::sqlite::SqlitePersistent;
+use crate::persistent::sqlite::{SqlitePersistent, StoreInner};
 
 const SQLITE_SCOPE: &str = "sqlite::operator";
 
-impl SqlitePersistent {
-	pub fn page_cache_metrics(&self) -> PageCacheMetrics {
-		page_cache_metrics(
-			&self.inner.conn,
-			&self.inner.readers,
-			&self.inner.cache_hits,
-			&self.inner.cache_misses,
-		)
-	}
-
-	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
-		vec![Arc::new(OperatorPageCacheCollector {
-			store: self.clone(),
-		})]
+impl StoreInner {
+	fn page_cache_metrics(&self) -> PageCacheMetrics {
+		page_cache_metrics(&self.conn, &self.readers, &self.cache_hits, &self.cache_misses)
 	}
 }
 
+impl SqlitePersistent {
+	pub fn page_cache_metrics(&self) -> PageCacheMetrics {
+		self.inner.page_cache_metrics()
+	}
+
+	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
+		vec![self.collector.clone()]
+	}
+}
+
+pub(super) fn page_cache_collector(inner: Arc<StoreInner>) -> Arc<dyn MetricsCollector> {
+	Arc::new(OperatorPageCacheCollector {
+		inner,
+	})
+}
+
 struct OperatorPageCacheCollector {
-	store: SqlitePersistent,
+	inner: Arc<StoreInner>,
 }
 
 impl MetricsCollector for OperatorPageCacheCollector {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
-		let metrics = self.store.page_cache_metrics();
+		let metrics = self.inner.page_cache_metrics();
 		out.push(MetricsSample::bytes(SQLITE_SCOPE, "page_cache_used_bytes", metrics.used));
 		out.push(MetricsSample::counter(SQLITE_SCOPE, "page_cache_hit_count", metrics.hits.as_u64()));
 		out.push(MetricsSample::counter(SQLITE_SCOPE, "page_cache_miss_count", metrics.misses.as_u64()));

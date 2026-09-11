@@ -19,6 +19,7 @@ use std::sync::{
 	atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
+use reifydb_core::metrics::collect::MetricsCollector;
 use reifydb_runtime::{
 	shutdown::Shutdown,
 	sync::mutex::{Mutex, MutexGuard},
@@ -34,6 +35,8 @@ use crate::persistent::sqlite::{schema::ensure_schema, state::state_exists};
 #[derive(Clone)]
 pub struct SqlitePersistent {
 	inner: Arc<StoreInner>,
+	/// Created once so that every call to `metrics_collectors` hands out the same collector.
+	collector: Arc<dyn MetricsCollector>,
 }
 
 struct StoreInner {
@@ -74,14 +77,16 @@ impl SqlitePersistent {
 	fn with_connections(conn: Connection, readers: ReadPool) -> Self {
 		ensure_schema(&conn);
 		let state_written = state_exists(&conn);
+		let inner = Arc::new(StoreInner {
+			conn: Mutex::new(Some(conn)),
+			readers,
+			cache_hits: AtomicU64::new(0),
+			cache_misses: AtomicU64::new(0),
+			state_written: AtomicBool::new(state_written),
+		});
 		Self {
-			inner: Arc::new(StoreInner {
-				conn: Mutex::new(Some(conn)),
-				readers,
-				cache_hits: AtomicU64::new(0),
-				cache_misses: AtomicU64::new(0),
-				state_written: AtomicBool::new(state_written),
-			}),
+			collector: metrics::page_cache_collector(inner.clone()),
+			inner,
 		}
 	}
 

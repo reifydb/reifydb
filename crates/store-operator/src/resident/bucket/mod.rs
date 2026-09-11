@@ -68,6 +68,7 @@ pub trait AnyBucket: Any + Send + Sync {
 		end: &Bound<Vec<u8>>,
 		scan: Scan,
 		limit: usize,
+		tombstones: bool,
 	) -> Vec<(GroupStateKey, WriteEntry)>;
 
 	fn absorb_any(&mut self, other: &mut dyn AnyBucket);
@@ -470,6 +471,33 @@ impl BucketMap {
 		scan: Scan,
 		limit: usize,
 	) -> Vec<(GroupStateKey, WriteEntry)> {
+		self.range_of(operator, lower, upper, scan, limit, false)
+	}
+
+	/// The same walk, but the page also carries the resident tombstones. Only the merge in
+	/// `store::state` asks for them: it has to suppress the durable row of a key the resident
+	/// already deleted, and probing for that separately from the page reads the two at different
+	/// instants, which lets a remove and the rewrite that follows it slip between the probes.
+	pub fn encoded_range_shadowed(
+		&self,
+		operator: OperatorId,
+		lower: &Bound<EncodedKey>,
+		upper: &Bound<EncodedKey>,
+		scan: Scan,
+		limit: usize,
+	) -> Vec<(GroupStateKey, WriteEntry)> {
+		self.range_of(operator, lower, upper, scan, limit, true)
+	}
+
+	fn range_of(
+		&self,
+		operator: OperatorId,
+		lower: &Bound<EncodedKey>,
+		upper: &Bound<EncodedKey>,
+		scan: Scan,
+		limit: usize,
+		tombstones: bool,
+	) -> Vec<(GroupStateKey, WriteEntry)> {
 		let (start, start_group, start_at) = split_bound(lower.as_ref());
 		let (end, end_group, end_at) = split_bound(upper.as_ref());
 		let end_open = matches!(end, Bound::Excluded(ref suffix) if suffix.is_empty());
@@ -512,8 +540,13 @@ impl BucketMap {
 					true => end.clone(),
 					false => Bound::Unbounded,
 				};
-				let chunk = bucket.encoded_range_in(group, &from, &to, scan, limit - taken);
-				taken += chunk.len();
+				let chunk = bucket.encoded_range_in(group, &from, &to, scan, limit - taken, tombstones);
+				// `limit` is a budget of rows, and a shadowed chunk carries tombstones on top of
+				// them, so counting entries here would end the walk with rows still unread.
+				taken += match tombstones {
+					true => chunk.iter().filter(|(_, entry)| entry.post.is_some()).count(),
+					false => chunk.len(),
+				};
 				chunks.push(chunk);
 				if taken >= limit {
 					break 'groups;

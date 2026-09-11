@@ -40,18 +40,6 @@ impl Resident {
 		BufferedState::Absent
 	}
 
-	pub fn tombstoned<'a>(
-		&self,
-		operator: OperatorId,
-		keys: impl ExactSizeIterator<Item = &'a EncodedKey>,
-	) -> Vec<bool> {
-		let Some(slot) = self.shared().slot(operator) else {
-			return vec![false; keys.len()];
-		};
-		let inner = lock_slot(&slot, operator);
-		keys.map(|key| inner.live.is_deleted(key)).collect()
-	}
-
 	pub fn state_page(
 		&self,
 		operator: OperatorId,
@@ -59,7 +47,7 @@ impl Resident {
 		end: Bound<&EncodedKey>,
 		limit: usize,
 	) -> BufferedRange {
-		self.page(operator, start, end, limit, Scan::Forward)
+		self.page(operator, start, end, limit, Scan::Forward, false)
 	}
 
 	pub fn state_last_page(
@@ -69,7 +57,27 @@ impl Resident {
 		end: Bound<&EncodedKey>,
 		limit: usize,
 	) -> BufferedRange {
-		self.page(operator, start, end, limit, Scan::Backward)
+		self.page(operator, start, end, limit, Scan::Backward, false)
+	}
+
+	pub fn state_page_shadowed(
+		&self,
+		operator: OperatorId,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+		limit: usize,
+	) -> BufferedRange {
+		self.page(operator, start, end, limit, Scan::Forward, true)
+	}
+
+	pub fn state_last_page_shadowed(
+		&self,
+		operator: OperatorId,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+		limit: usize,
+	) -> BufferedRange {
+		self.page(operator, start, end, limit, Scan::Backward, true)
 	}
 
 	#[instrument(name = "store::operator::resident::state_page", level = "trace", skip(self, start, end), fields(
@@ -83,6 +91,7 @@ impl Resident {
 		end: Bound<&EncodedKey>,
 		limit: usize,
 		scan: Scan,
+		tombstones: bool,
 	) -> BufferedRange {
 		let lower = owned(start);
 		let upper = owned(end);
@@ -91,13 +100,12 @@ impl Resident {
 		if let Some(slot) = self.shared().slot(operator) {
 			let inner = lock_slot(&slot, operator);
 			if limit > 0 && !is_empty_range(&lower, &upper) {
-				items = inner
-					.live
-					.state
-					.encoded_range(operator, &lower, &upper, scan, limit)
-					.into_iter()
-					.map(|(key, entry)| (key, entry.post))
-					.collect();
+				let state = &inner.live.state;
+				let page = match tombstones {
+					true => state.encoded_range_shadowed(operator, &lower, &upper, scan, limit),
+					false => state.encoded_range(operator, &lower, &upper, scan, limit),
+				};
+				items = page.into_iter().map(|(key, entry)| (key, entry.post)).collect();
 				if scan == Scan::Backward {
 					items.reverse();
 				}

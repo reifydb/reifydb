@@ -917,7 +917,7 @@ impl Resident {
 		{
 			let mut global = self.shared.global.lock();
 			for (flow, version) in &batch.checkpoints {
-				global.checkpoints.insert(*flow, *version);
+				global.checkpoints.entry(*flow).or_insert(*version);
 			}
 			let mut restored = batch.drops.clone();
 			restored.append(&mut global.drops);

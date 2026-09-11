@@ -141,13 +141,63 @@ impl<K: Keyspace> Partition<K> {
 		Merged {
 			live: self.live.iter().peekable(),
 			deleted: self.deleted.iter().peekable(),
+			scan: Scan::Forward,
 		}
 	}
+
+	fn merged_range(
+		&self,
+		bounds: (Bound<K::Suffix>, Bound<K::Suffix>),
+		scan: Scan,
+		limit: usize,
+	) -> Vec<(&K::Suffix, &WriteEntry)> {
+		match scan {
+			Scan::Forward => take_rows(
+				Merged {
+					live: self.live.range(bounds.clone()).peekable(),
+					deleted: self.deleted.range(bounds).peekable(),
+					scan,
+				},
+				limit,
+			),
+			Scan::Backward => {
+				let mut out = take_rows(
+					Merged {
+						live: self.live.range(bounds.clone()).rev().peekable(),
+						deleted: self.deleted.range(bounds).rev().peekable(),
+						scan,
+					},
+					limit,
+				);
+				out.reverse();
+				out
+			}
+		}
+	}
+}
+
+fn take_rows<'a, S: 'a>(
+	entries: impl Iterator<Item = (&'a S, &'a WriteEntry)>,
+	limit: usize,
+) -> Vec<(&'a S, &'a WriteEntry)> {
+	let mut out = Vec::new();
+	let mut rows = 0usize;
+	for (suffix, entry) in entries {
+		if entry.post.is_some() {
+			rows += 1;
+		}
+		out.push((suffix, entry));
+		if rows == limit {
+			break;
+		}
+	}
+	out
 }
 
 struct Merged<I: Iterator> {
 	live: Peekable<I>,
 	deleted: Peekable<I>,
+	scan: Scan,
 }
 
 impl<'a, S: Ord + 'a, I: Iterator<Item = (&'a S, &'a WriteEntry)>> Iterator for Merged<I> {
@@ -158,10 +208,16 @@ impl<'a, S: Ord + 'a, I: Iterator<Item = (&'a S, &'a WriteEntry)>> Iterator for 
 			(None, None) => None,
 			(Some(_), None) => self.live.next(),
 			(None, Some(_)) => self.deleted.next(),
-			(Some((live, _)), Some((deleted, _))) => match live <= deleted {
-				true => self.live.next(),
-				false => self.deleted.next(),
-			},
+			(Some((live, _)), Some((deleted, _))) => {
+				let ahead = match self.scan {
+					Scan::Forward => live <= deleted,
+					Scan::Backward => live >= deleted,
+				};
+				match ahead {
+					true => self.live.next(),
+					false => self.deleted.next(),
+				}
+			}
 		}
 	}
 }
@@ -625,12 +681,23 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 		end: &Bound<Vec<u8>>,
 		scan: Scan,
 		limit: usize,
+		tombstones: bool,
 	) -> Vec<(GroupStateKey, WriteEntry)> {
 		let bounds = (suffix_bound::<K>(start, 0x00), suffix_bound::<K>(end, 0xFF));
 		let encode = |suffix: &K::Suffix, entry: &WriteEntry| {
 			entry.touch();
 			(OperatorStateKey::inner_encoded(group, K::ID, suffix.to_suffix_bytes()), entry.clone())
 		};
+		if tombstones {
+			let Some(partition) = self.partitions.get(&group) else {
+				return Vec::new();
+			};
+			return partition
+				.merged_range(bounds, scan, limit)
+				.into_iter()
+				.map(|(suffix, entry)| encode(suffix, entry))
+				.collect();
+		}
 		match scan {
 			Scan::Forward => self
 				.range(group, bounds)

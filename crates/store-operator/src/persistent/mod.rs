@@ -10,10 +10,9 @@ pub mod testing;
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
@@ -28,14 +27,17 @@ use reifydb_value::byte_size::ByteSize;
 use tracing::warn;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::persistent::sqlite::SqlitePersistent;
+use crate::{
+	persistent::sqlite::SqlitePersistent,
+	types::{DropMarker, StagedWrite},
+};
 use crate::{
 	error::Result,
 	persistent::{
 		memory::MemoryPersistent,
 		testing::{PersistentHooks, TestingPersistent},
 	},
-	types::{Applied, DropMarker, FlushBatch, OperatorBatch, OperatorStateCensus, StagedWrite},
+	types::{Applied, FlushBatch, OperatorBatch, OperatorStateCensus},
 };
 
 #[derive(Clone)]
@@ -487,6 +489,7 @@ impl Checkpoint for PersistentTier {
 	}
 }
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 fn written_bytes(batch: &FlushBatch) -> ByteSize {
 	let total: u64 = batch
 		.writes

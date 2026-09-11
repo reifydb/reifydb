@@ -364,9 +364,10 @@ impl StandardOperatorStore {
 		let limit = batch_size.max(1);
 		let target = (limit as usize).saturating_add(1);
 		let mut buffer_lower = range.start.clone();
-		let snapshot = self.resident.state_page(operator, buffer_lower.as_ref(), range.end.as_ref(), target);
+		let snapshot =
+			self.resident.state_page_shadowed(operator, buffer_lower.as_ref(), range.end.as_ref(), target);
 		let mut buffered = snapshot.items;
-		let mut buffer_exhausted = buffered.len() < target;
+		let mut buffer_exhausted = buffered_rows(&buffered) < target;
 		if let Some((key, _)) = buffered.last() {
 			buffer_lower = Bound::Excluded(key.as_encoded().clone());
 		}
@@ -374,7 +375,6 @@ impl StandardOperatorStore {
 		let mut items: Vec<(GroupStateKey, EncodedPodRow)> = Vec::new();
 		let mut buffer_index = 0usize;
 		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
-		let mut page_shadow: Vec<bool> = Vec::new();
 		let mut page_index = 0usize;
 		let scan_budget = target.saturating_mul(SCAN_BUDGET_FACTOR);
 		let mut consumed = 0usize;
@@ -395,13 +395,13 @@ impl StandardOperatorStore {
 				break;
 			}
 			if buffer_index == buffered.len() && !buffer_exhausted {
-				let next = self.resident.state_page(
+				let next = self.resident.state_page_shadowed(
 					operator,
 					buffer_lower.as_ref(),
 					range.end.as_ref(),
 					target,
 				);
-				buffer_exhausted = next.items.len() < target;
+				buffer_exhausted = buffered_rows(&next.items) < target;
 				if let Some((key, _)) = next.items.last() {
 					buffer_lower = Bound::Excluded(key.as_encoded().clone());
 				}
@@ -411,7 +411,6 @@ impl StandardOperatorStore {
 			}
 			if page_index == page.len() && !source.is_exhausted() {
 				page = source.next_page(target.saturating_add(spent).min(scan_budget) as u64)?;
-				page_shadow = self.resident.tombstoned(operator, page.iter().map(|(key, _)| key));
 				page_index = 0;
 				spent = 0;
 				continue;
@@ -421,47 +420,39 @@ impl StandardOperatorStore {
 				(None, None) => break,
 				(Some((key, entry)), None) => {
 					buffer_index += 1;
+					let Some(row) = entry else {
+						skipped += 1;
+						continue;
+					};
 					consumed += 1;
 					if consumed >= scan_budget {
 						walked = Some(key.clone());
 					}
-					if let Some(row) = entry {
-						items.push((key.clone(), row.clone()));
-					} else {
-						skipped += 1;
-					}
+					items.push((key.clone(), row.clone()));
 				}
 				(None, Some((key, row))) => {
-					let dead = page_shadow.get(page_index).copied().unwrap_or(false);
 					page_index += 1;
 					consumed += 1;
 					if consumed >= scan_budget {
 						walked = Some(GroupStateKey::bound_unchecked(key.clone()));
 					}
-					if !dead {
-						items.push((GroupStateKey::bound_unchecked(key.clone()), row.clone()));
-					} else {
-						spent += 1;
-						skipped += 1;
-					}
+					items.push((GroupStateKey::bound_unchecked(key.clone()), row.clone()));
 				}
 				(Some((buffer_key, entry)), Some((page_key, page_row))) => {
 					match buffer_key.as_encoded().cmp(page_key) {
 						Ordering::Less => {
 							buffer_index += 1;
+							let Some(row) = entry else {
+								skipped += 1;
+								continue;
+							};
 							consumed += 1;
 							if consumed >= scan_budget {
 								walked = Some(buffer_key.clone());
 							}
-							if let Some(row) = entry {
-								items.push((buffer_key.clone(), row.clone()));
-							} else {
-								skipped += 1;
-							}
+							items.push((buffer_key.clone(), row.clone()));
 						}
 						Ordering::Greater => {
-							let dead =
-								page_shadow.get(page_index).copied().unwrap_or(false);
 							page_index += 1;
 							consumed += 1;
 							if consumed >= scan_budget {
@@ -469,23 +460,20 @@ impl StandardOperatorStore {
 									page_key.clone(),
 								));
 							}
-							if !dead {
-								items.push((
-									GroupStateKey::bound_unchecked(
-										page_key.clone(),
-									),
-									page_row.clone(),
-								));
-							} else {
-								spent += 1;
-								skipped += 1;
-							}
+							items.push((
+								GroupStateKey::bound_unchecked(page_key.clone()),
+								page_row.clone(),
+							));
 						}
 						Ordering::Equal => {
 							buffer_index += 1;
 							page_index += 1;
 							spent += 1;
-							consumed += 2;
+
+							consumed += match entry {
+								Some(_) => 2,
+								None => 1,
+							};
 							if consumed >= scan_budget {
 								walked = Some(buffer_key.clone());
 							}
@@ -538,7 +526,6 @@ impl StandardOperatorStore {
 
 		let mut items: Vec<(GroupStateKey, EncodedPodRow)> = Vec::new();
 		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
-		let mut page_shadow: Vec<bool> = Vec::new();
 		let mut page_index = 0usize;
 		let mut skipped = 0u64;
 		let mut resume: Option<GroupStateKey> = None;
@@ -546,7 +533,6 @@ impl StandardOperatorStore {
 		while items.len() < target {
 			if page_index == page.len() && !source.is_exhausted() {
 				page = source.next_page(target as u64)?;
-				page_shadow = self.resident.tombstoned(operator, page.iter().map(|(key, _)| key));
 				page_index = 0;
 				continue;
 			}
@@ -559,47 +545,37 @@ impl StandardOperatorStore {
 						break;
 					}
 					buffer.bump();
-					if let Some(row) = entry {
-						items.push((key, row));
+					match entry {
+						Some(row) => items.push((key, row)),
+						None => skipped += 1,
 					}
 				}
 				(None, Some((key, row))) => {
-					let dead = page_shadow.get(page_index).copied().unwrap_or(false);
 					page_index += 1;
-					if !dead {
-						items.push((GroupStateKey::bound_unchecked(key.clone()), row.clone()));
-					} else {
-						skipped += 1;
-					}
+					items.push((GroupStateKey::bound_unchecked(key.clone()), row.clone()));
 				}
 				(Some((buffer_key, entry)), Some((page_key, page_row))) => {
 					match buffer_key.as_encoded().cmp(page_key) {
 						Ordering::Less => {
 							buffer.bump();
-							if let Some(row) = entry {
-								items.push((buffer_key, row));
+							match entry {
+								Some(row) => items.push((buffer_key, row)),
+								None => skipped += 1,
 							}
 						}
 						Ordering::Greater => {
-							let dead =
-								page_shadow.get(page_index).copied().unwrap_or(false);
 							page_index += 1;
-							if !dead {
-								items.push((
-									GroupStateKey::bound_unchecked(
-										page_key.clone(),
-									),
-									page_row.clone(),
-								));
-							} else {
-								skipped += 1;
-							}
+							items.push((
+								GroupStateKey::bound_unchecked(page_key.clone()),
+								page_row.clone(),
+							));
 						}
 						Ordering::Equal => {
 							buffer.bump();
 							page_index += 1;
-							if let Some(row) = entry {
-								items.push((buffer_key, row));
+							match entry {
+								Some(row) => items.push((buffer_key, row)),
+								None => skipped += 1,
 							}
 						}
 					}
@@ -696,14 +672,14 @@ impl StandardOperatorStore {
 
 	#[instrument(name = "store::operator::state_last_iter", level = "trace", skip(self, range), fields(operator = operator.0))]
 	pub fn state_last_iter(&self, operator: OperatorId, range: EncodedKeyRange) -> StateLastIter<'_> {
-		let first = self.resident.state_last_page(
+		let first = self.resident.state_last_page_shadowed(
 			operator,
 			range.start.as_ref(),
 			range.end.as_ref(),
 			STATE_LAST_PAGE,
 		);
 		let stored_done = first.dropped || self.persistent.is_absent();
-		let buffer_done = first.items.len() < STATE_LAST_PAGE;
+		let buffer_done = buffered_rows(&first.items) < STATE_LAST_PAGE;
 		let mut buffer_end = range.end.clone();
 		if let Some((key, _)) = first.items.last() {
 			buffer_end = Bound::Excluded(key.as_encoded().clone());
@@ -718,7 +694,6 @@ impl StandardOperatorStore {
 			buffer_end,
 			buffer_done,
 			stored: Vec::new(),
-			stored_shadow: Vec::new(),
 			stored_index: 0,
 			stored_end: range.end,
 			stored_done,
@@ -932,14 +907,14 @@ impl<'a> GroupBuffer<'a> {
 	}
 
 	fn fill(&mut self) {
-		let page = self.store.resident.state_page(
+		let page = self.store.resident.state_page_shadowed(
 			self.operator,
 			self.lower.as_ref(),
 			self.end.as_ref(),
 			self.target,
 		);
 		self.dropped |= page.dropped;
-		self.drained = page.items.len() < self.target;
+		self.drained = buffered_rows(&page.items) < self.target;
 		if let Some((key, _)) = page.items.last() {
 			self.lower = Bound::Excluded(key.as_encoded().clone());
 		}
@@ -971,6 +946,10 @@ fn row_size(row: &EncodedPodRow) -> ByteSize {
 	ByteSize::from_bytes(row.bytes().len() as u64)
 }
 
+fn buffered_rows(items: &[(GroupStateKey, Option<EncodedPodRow>)]) -> usize {
+	items.iter().filter(|(_, entry)| entry.is_some()).count()
+}
+
 pub struct StateLastIter<'a> {
 	store: &'a StandardOperatorStore,
 	operator: OperatorId,
@@ -980,7 +959,6 @@ pub struct StateLastIter<'a> {
 	buffer_end: Bound<EncodedKey>,
 	buffer_done: bool,
 	stored: Vec<(EncodedKey, EncodedPodRow)>,
-	stored_shadow: Vec<bool>,
 	stored_index: usize,
 	stored_end: Bound<EncodedKey>,
 	stored_done: bool,
@@ -996,7 +974,7 @@ impl Iterator for StateLastIter<'_> {
 		}
 		loop {
 			if self.buffer_index == self.buffer.len() && !self.buffer_done {
-				let page = self.store.resident.state_last_page(
+				let page = self.store.resident.state_last_page_shadowed(
 					self.operator,
 					self.start.as_ref(),
 					self.buffer_end.as_ref(),
@@ -1004,7 +982,7 @@ impl Iterator for StateLastIter<'_> {
 				);
 				self.buffer = page.items;
 				self.buffer_index = 0;
-				self.buffer_done = self.buffer.len() < STATE_LAST_PAGE;
+				self.buffer_done = buffered_rows(&self.buffer) < STATE_LAST_PAGE;
 				if let Some((key, _)) = self.buffer.last() {
 					self.buffer_end = Bound::Excluded(key.as_encoded().clone());
 				}
@@ -1025,10 +1003,6 @@ impl Iterator for StateLastIter<'_> {
 				self.stored_done = !batch.has_more;
 				self.stored =
 					batch.items.into_iter().map(|(key, row)| (key.into_encoded(), row)).collect();
-				self.stored_shadow = self
-					.store
-					.resident
-					.tombstoned(self.operator, self.stored.iter().map(|(key, _)| key));
 				self.stored_index = 0;
 				if let Some((key, _)) = self.stored.last() {
 					self.stored_end = Bound::Excluded(key.clone());
@@ -1046,11 +1020,8 @@ impl Iterator for StateLastIter<'_> {
 					}
 				}
 				(None, Some((key, row))) => {
-					let dead = self.stored_shadow.get(self.stored_index).copied().unwrap_or(false);
 					self.stored_index += 1;
-					if !dead {
-						return Some(Ok((key, row)));
-					}
+					return Some(Ok((key, row)));
 				}
 				(Some((buffer_key, entry)), Some((stored_key, stored_row))) => {
 					match buffer_key.as_encoded().cmp(&stored_key) {
@@ -1061,15 +1032,8 @@ impl Iterator for StateLastIter<'_> {
 							}
 						}
 						Ordering::Less => {
-							let dead = self
-								.stored_shadow
-								.get(self.stored_index)
-								.copied()
-								.unwrap_or(false);
 							self.stored_index += 1;
-							if !dead {
-								return Some(Ok((stored_key, stored_row)));
-							}
+							return Some(Ok((stored_key, stored_row)));
 						}
 						Ordering::Equal => {
 							self.buffer_index += 1;

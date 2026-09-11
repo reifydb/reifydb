@@ -20,11 +20,7 @@ use reifydb_core::{
 	},
 	state::typed::typed_key,
 };
-use reifydb_value::{
-	byte_size::ByteSize,
-	util::hash::Hash128,
-	value::row_number::RowNumber,
-};
+use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
 
 use crate::{
 	resident::Resident,
