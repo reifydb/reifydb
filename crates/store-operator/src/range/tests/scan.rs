@@ -198,11 +198,7 @@ fn serve_never_returns_an_empty_chunk_that_reports_more_work() {
 	let scan = plan(&tiers);
 	let mut cursor: Cursor<(), Suffix> = Cursor::new();
 	let chunk = tier(&tiers).serve(&scan, &span, &mut cursor, 1);
-	assert_eq!(
-		chunk.served(),
-		Some(Vec::new()),
-		"a span of nothing but removals is a proven absence, not a row"
-	);
+	assert_eq!(chunk.served(), Some(Vec::new()), "a span of nothing but removals is a proven absence, not a row");
 	assert!(
 		cursor.is_exhausted(),
 		"an empty chunk must report the segment exhausted, or the caller never advances past it"
@@ -244,21 +240,9 @@ fn a_materialize_that_proves_an_empty_span_claims_it_without_paying_for_a_partit
 
 	assert_eq!(claim(&tiers, &whole(), &[]), Materialize::Materialized);
 
-	assert_eq!(
-		tier(&tiers).partitions(),
-		0,
-		"a proof of emptiness must not materialise a partition to hold it"
-	);
-	assert_eq!(
-		tier(&tiers).intervals(),
-		1,
-		"the claim itself must survive, or the span is read again forever"
-	);
-	assert_eq!(
-		tier(&tiers).resident_bytes(),
-		ByteSize::ZERO,
-		"an unmaterialised proof must cost no budget"
-	);
+	assert_eq!(tier(&tiers).partitions(), 0, "a proof of emptiness must not materialise a partition to hold it");
+	assert_eq!(tier(&tiers).intervals(), 1, "the claim itself must survive, or the span is read again forever");
+	assert_eq!(tier(&tiers).resident_bytes(), ByteSize::ZERO, "an unmaterialised proof must cost no budget");
 	assert_eq!(
 		tier(&tiers).lookup_in(part(), part(), &at(1)),
 		Some(None),
@@ -268,7 +252,8 @@ fn a_materialize_that_proves_an_empty_span_claims_it_without_paying_for_a_partit
 
 #[test]
 fn a_write_into_a_span_proved_empty_lands_instead_of_vanishing_behind_the_proof() {
-	// once a claim can outlive its partition, dropping a write into it leaves the claim asserting the tier holds a key it no longer does
+	// once a claim can outlive its partition, dropping a write into it leaves the claim asserting the tier holds a
+	// key it no longer does
 	let tiers = roomy();
 
 	assert_eq!(claim(&tiers, &whole(), &[]), Materialize::Materialized);

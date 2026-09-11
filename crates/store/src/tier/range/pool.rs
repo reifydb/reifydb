@@ -227,7 +227,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			if partition.progress() != progress {
 				return false;
 			}
-			
+
 			let releasing = Self::releases_removals();
 			let Partition {
 				entries,

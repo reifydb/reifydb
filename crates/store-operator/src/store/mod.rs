@@ -34,16 +34,6 @@ use reifydb_runtime::{
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::metrics::PageCacheMetrics;
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::{
-	actor::{
-		range_evict::RangeEvictActor, resident_evict::ResidentEvictActor, resident_flush::ResidentFlushActor,
-	},
-	config::OperatorPersistentConfig,
-	persistent::{Enumerate, filter::OperatorStateKeySource},
-	range::OperatorRangeConfig,
-	resident::FILTER_KEYS,
-};
 use crate::{
 	actor::{
 		Waker,
@@ -57,6 +47,14 @@ use crate::{
 	},
 	resident::Resident,
 	store::{census::OperatorCensus, occupancy::KeyspaceOccupancy},
+};
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::{
+	actor::{range_evict::RangeEvictActor, resident_evict::ResidentEvictActor, resident_flush::ResidentFlushActor},
+	config::OperatorPersistentConfig,
+	persistent::{Enumerate, filter::OperatorStateKeySource},
+	range::OperatorRangeConfig,
+	resident::FILTER_KEYS,
 };
 
 #[repr(u8)]
