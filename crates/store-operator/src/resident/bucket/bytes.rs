@@ -15,8 +15,8 @@ use reifydb_core::{
 };
 
 use crate::resident::bucket::{
-	AnyBucket, BucketMap,
-	write::{TypedBucket, WriteEntry},
+	Bucket, BucketMap,
+	write::{StandardBucket, WriteEntry},
 };
 
 impl BucketMap {
@@ -232,7 +232,7 @@ impl BucketMap {
 		suffix: &[u8],
 	) -> Option<WriteEntry> {
 		struct Get<'a> {
-			bucket: &'a dyn AnyBucket,
+			bucket: &'a dyn Bucket,
 			group: GroupId,
 			suffix: &'a [u8],
 		}
@@ -244,7 +244,7 @@ impl BucketMap {
 				let suffix = <K::Suffix as SuffixBytes>::from_suffix_bytes(self.suffix)?;
 				self.bucket
 					.as_any()
-					.downcast_ref::<TypedBucket<K>>()
+					.downcast_ref::<StandardBucket<K>>()
 					.expect("a keyspace id must map to exactly one key type")
 					.get(self.group, &suffix)
 					.map(|entry| {

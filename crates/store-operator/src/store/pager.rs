@@ -25,13 +25,17 @@ use reifydb_store::{
 		interval::Interval,
 		plan::Segment,
 	},
-	tier::range::{Materialize, RangeDomain, RangeScan, RangeTier, proven_span},
+	tier::range::{Materialize, RangeDomain, RangeScan, proven_span},
 };
 
 use crate::{
 	error::Result,
 	persistent::{Page as PersistentPage, Persistent, PersistentTier},
-	range::{TypedPartition, tiers::RangeTiers, typed::TypedDomain},
+	range::{
+		TypedPartition,
+		tiers::RangeTiers,
+		typed::{StandardRangeTier, TypedDomain},
+	},
 	store::occupancy::occupies,
 	types::OperatorBatch,
 };
@@ -170,7 +174,7 @@ impl PageSource for GroupPager<'_> {
 pub(crate) struct TierPager<'a, K: Keyspace> {
 	operator: OperatorId,
 	group: GroupId,
-	tier: &'a RangeTier<TypedDomain<K>>,
+	tier: &'a StandardRangeTier<K>,
 	persistent: &'a PersistentTier,
 	scan: RangeScan<TypedDomain<K>>,
 	segment_index: usize,
@@ -185,7 +189,7 @@ impl<'a, K: Keyspace> TierPager<'a, K> {
 	pub(crate) fn new(
 		operator: OperatorId,
 		group: GroupId,
-		tier: &'a RangeTier<TypedDomain<K>>,
+		tier: &'a StandardRangeTier<K>,
 		persistent: &'a PersistentTier,
 		scan: RangeScan<TypedDomain<K>>,
 	) -> Self {

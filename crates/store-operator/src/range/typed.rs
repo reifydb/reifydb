@@ -12,9 +12,11 @@ use reifydb_core::key::{
 	operator::{state::KeyspaceId, traits::Keyspace},
 	typed::{BoundedKey, Edge},
 };
-use reifydb_store::tier::range::RangeDomain;
+use reifydb_store::tier::range::{RangeDomain, RangeTier};
 
 use crate::range::TypedPartition;
+
+pub type StandardRangeTier<K> = RangeTier<TypedDomain<K>>;
 
 pub struct TypedDomain<K: Keyspace>(PhantomData<fn() -> K>);
 

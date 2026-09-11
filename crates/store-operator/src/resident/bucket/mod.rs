@@ -27,13 +27,13 @@ use smallvec::SmallVec;
 
 use crate::{
 	bound::KeyspaceIds,
-	resident::bucket::write::{TypedBucket, WriteEntry},
+	resident::bucket::write::{StandardBucket, WriteEntry},
 	types::{Budget, Resume, Scan},
 };
 
 pub type GroupIds = SmallVec<[GroupId; 4]>;
 
-pub trait AnyBucket: Any + Send + Sync {
+pub trait Bucket: Any + Send + Sync {
 	fn keyspace(&self) -> KeyspaceId;
 
 	fn footprint(&self) -> ByteSize;
@@ -72,7 +72,7 @@ pub trait AnyBucket: Any + Send + Sync {
 		tombstones: bool,
 	) -> Vec<(GroupStateKey, WriteEntry)>;
 
-	fn absorb_any(&mut self, other: &mut dyn AnyBucket);
+	fn absorb_any(&mut self, other: &mut dyn Bucket);
 
 	fn as_any(&self) -> &dyn Any;
 
@@ -89,14 +89,14 @@ pub trait AnyBucket: Any + Send + Sync {
 
 #[derive(Default)]
 pub struct BucketMap {
-	buckets: HashMap<(OperatorId, KeyspaceId), Box<dyn AnyBucket>>,
+	buckets: HashMap<(OperatorId, KeyspaceId), Box<dyn Bucket>>,
 }
 
 impl BucketMap {
-	pub fn bucket<K: Keyspace>(&mut self, operator: OperatorId) -> &mut TypedBucket<K> {
+	pub fn bucket<K: Keyspace>(&mut self, operator: OperatorId) -> &mut StandardBucket<K> {
 		self.buckets
 			.entry((operator, K::ID))
-			.or_insert_with(|| Box::new(TypedBucket::<K>::new(operator)))
+			.or_insert_with(|| Box::new(StandardBucket::<K>::new(operator)))
 			.as_any_mut()
 			.downcast_mut()
 			.expect("a keyspace id must map to exactly one key type")
@@ -109,11 +109,7 @@ impl BucketMap {
 		ids
 	}
 
-	pub fn any(&mut self, operator: OperatorId, keyspace: KeyspaceId) -> Option<&mut dyn AnyBucket> {
-		self.buckets.get_mut(&(operator, keyspace)).map(|bucket| bucket.as_mut())
-	}
-
-	pub fn iter_mut(&mut self) -> impl Iterator<Item = (&(OperatorId, KeyspaceId), &mut Box<dyn AnyBucket>)> {
+	pub fn iter_mut(&mut self) -> impl Iterator<Item = (&(OperatorId, KeyspaceId), &mut Box<dyn Bucket>)> {
 		self.buckets.iter_mut()
 	}
 

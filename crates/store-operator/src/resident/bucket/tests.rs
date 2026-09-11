@@ -29,7 +29,7 @@ use reifydb_value::{
 };
 use rusqlite::Connection;
 
-use super::{AnyBucket, BucketMap, write::TypedBucket};
+use super::{Bucket, BucketMap, write::StandardBucket};
 use crate::{
 	persistent::sqlite::{schema::ensure_schema, typed},
 	types::{Budget, Resume, Scan},
@@ -37,8 +37,8 @@ use crate::{
 
 const OP: OperatorId = OperatorId(1);
 
-fn bucket() -> TypedBucket<JoinLeft> {
-	TypedBucket::<JoinLeft>::new(OP)
+fn bucket() -> StandardBucket<JoinLeft> {
+	StandardBucket::<JoinLeft>::new(OP)
 }
 
 fn row(body: &str) -> EncodedPodRow {

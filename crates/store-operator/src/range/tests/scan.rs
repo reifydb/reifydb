@@ -17,14 +17,18 @@ use reifydb_store::{
 		interval::Interval,
 		plan::Segment,
 	},
-	tier::range::{Materialize, RangeScan, RangeTier},
+	tier::range::{Materialize, RangeScan},
 };
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
 
-use crate::range::{OperatorRangeConfig, TypedPartition, tiers::RangeTiers, typed::TypedDomain};
+use crate::range::{
+	OperatorRangeConfig, TypedPartition,
+	tiers::RangeTiers,
+	typed::{StandardRangeTier, TypedDomain},
+};
 
 type Suffix = Asc<RowNumber>;
-type Tier = RangeTier<TypedDomain<JoinLeft>>;
+type Tier = StandardRangeTier<JoinLeft>;
 
 const OP: OperatorId = OperatorId(1);
 fn group() -> GroupId {

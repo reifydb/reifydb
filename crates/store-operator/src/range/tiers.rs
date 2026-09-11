@@ -14,10 +14,10 @@ use reifydb_core::{
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	state::typed::SuffixBytes,
 };
-use reifydb_store::tier::range::{RangeComposition, RangeConfig, RangeMetrics, RangeTier};
+use reifydb_store::tier::range::{RangeComposition, RangeConfig, RangeMetrics};
 use reifydb_value::byte_size::ByteSize;
 
-use crate::range::{TypedPartition, typed::TypedDomain};
+use crate::range::{TypedPartition, typed::StandardRangeTier};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RangeKeyspaceMetrics {
@@ -30,7 +30,7 @@ pub struct RangeKeyspaceMetrics {
 	pub counters: RangeMetrics,
 }
 
-pub trait AnyRangeTier: Send + Sync {
+pub trait RangeTier: Send + Sync {
 	fn keyspace(&self) -> KeyspaceId;
 
 	fn lookup(&self, operator: OperatorId, group: GroupId, suffix: &[u8]) -> Option<Option<EncodedPodRow>>;
@@ -68,7 +68,7 @@ pub trait AnyRangeTier: Send + Sync {
 	fn as_any(&self) -> &dyn Any;
 }
 
-impl<K: Keyspace> AnyRangeTier for RangeTier<TypedDomain<K>> {
+impl<K: Keyspace> RangeTier for StandardRangeTier<K> {
 	fn keyspace(&self) -> KeyspaceId {
 		K::ID
 	}
@@ -137,18 +137,18 @@ impl<K: Keyspace> AnyRangeTier for RangeTier<TypedDomain<K>> {
 	}
 
 	fn relieve(&self) {
-		RangeTier::relieve(self);
+		StandardRangeTier::<K>::relieve(self);
 	}
 
 	fn composition(&self) -> RangeComposition {
-		RangeTier::composition(self)
+		StandardRangeTier::<K>::composition(self)
 	}
 
 	fn keyspace_metrics(&self) -> Option<RangeKeyspaceMetrics> {
 		self.bucket_metrics().into_iter().next().map(|row| RangeKeyspaceMetrics {
 			bucket: K::ID,
 			used: row.used,
-			limit: RangeTier::shard_limit_bytes(self),
+			limit: StandardRangeTier::<K>::shard_limit_bytes(self),
 			partitions: row.partitions,
 			intervals: row.intervals,
 			entries: row.entries,
@@ -157,27 +157,27 @@ impl<K: Keyspace> AnyRangeTier for RangeTier<TypedDomain<K>> {
 	}
 
 	fn entries(&self) -> usize {
-		RangeTier::entries(self)
+		StandardRangeTier::<K>::entries(self)
 	}
 
 	fn intervals(&self) -> usize {
-		RangeTier::intervals(self)
+		StandardRangeTier::<K>::intervals(self)
 	}
 
 	fn partitions(&self) -> usize {
-		RangeTier::partitions(self)
+		StandardRangeTier::<K>::partitions(self)
 	}
 
 	fn resident_bytes(&self) -> ByteSize {
-		RangeTier::resident_bytes(self)
+		StandardRangeTier::<K>::resident_bytes(self)
 	}
 
 	fn limit_bytes(&self) -> ByteSize {
-		RangeTier::shard_limit_bytes(self)
+		StandardRangeTier::<K>::shard_limit_bytes(self)
 	}
 
 	fn metrics(&self) -> RangeMetrics {
-		RangeTier::metrics(self)
+		StandardRangeTier::<K>::metrics(self)
 	}
 
 	fn as_any(&self) -> &dyn Any {
@@ -188,21 +188,21 @@ impl<K: Keyspace> AnyRangeTier for RangeTier<TypedDomain<K>> {
 struct Build(RangeConfig);
 
 impl KeyspaceVisitor for Build {
-	type Output = Option<Box<dyn AnyRangeTier>>;
+	type Output = Option<Box<dyn RangeTier>>;
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
-		RangeTier::<TypedDomain<K>>::new(self.0).map(|tier| Box::new(tier) as Box<dyn AnyRangeTier>)
+		StandardRangeTier::<K>::new(self.0).map(|tier| Box::new(tier) as Box<dyn RangeTier>)
 	}
 }
 
 #[derive(Clone)]
 pub struct RangeTiers {
-	tiers: Arc<HashMap<KeyspaceId, Box<dyn AnyRangeTier>>>,
+	tiers: Arc<HashMap<KeyspaceId, Box<dyn RangeTier>>>,
 }
 
 impl RangeTiers {
 	pub fn new(config: RangeConfig) -> Option<Self> {
-		let mut tiers: HashMap<KeyspaceId, Box<dyn AnyRangeTier>> = HashMap::new();
+		let mut tiers: HashMap<KeyspaceId, Box<dyn RangeTier>> = HashMap::new();
 		for spec in KEYSPACES.iter().filter(|spec| spec.range_cached) {
 			let tier = dispatch(spec.id, Build(config)).expect("a catalogued keyspace must dispatch")?;
 			tiers.insert(spec.id, tier);
@@ -212,11 +212,11 @@ impl RangeTiers {
 		})
 	}
 
-	pub fn of(&self, keyspace: KeyspaceId) -> Option<&dyn AnyRangeTier> {
+	pub fn of(&self, keyspace: KeyspaceId) -> Option<&dyn RangeTier> {
 		self.tiers.get(&keyspace).map(AsRef::as_ref)
 	}
 
-	pub fn typed<K: Keyspace>(&self) -> Option<&RangeTier<TypedDomain<K>>> {
+	pub fn typed<K: Keyspace>(&self) -> Option<&StandardRangeTier<K>> {
 		self.of(K::ID)?.as_any().downcast_ref()
 	}
 

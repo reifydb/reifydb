@@ -31,7 +31,7 @@ use rusqlite::{Connection, Transaction};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::persistent::sqlite::typed;
 use crate::{
-	resident::bucket::{AnyBucket, GroupIds},
+	resident::bucket::{Bucket, GroupIds},
 	types::{Budget, Resume, Scan},
 };
 
@@ -222,7 +222,7 @@ impl<'a, S: Ord + 'a, I: Iterator<Item = (&'a S, &'a WriteEntry)>> Iterator for 
 	}
 }
 
-pub struct TypedBucket<K: Keyspace> {
+pub struct StandardBucket<K: Keyspace> {
 	operator: OperatorId,
 	partitions: BTreeMap<GroupId, Partition<K>>,
 	bytes: ByteSize,
@@ -232,7 +232,7 @@ pub struct TypedBucket<K: Keyspace> {
 	dirty_groups: usize,
 }
 
-impl<K: Keyspace> TypedBucket<K> {
+impl<K: Keyspace> StandardBucket<K> {
 	pub fn new(operator: OperatorId) -> Self {
 		Self {
 			operator,
@@ -539,7 +539,7 @@ impl<K: Keyspace> TypedBucket<K> {
 	}
 }
 
-impl<K: Keyspace> AnyBucket for TypedBucket<K> {
+impl<K: Keyspace> Bucket for StandardBucket<K> {
 	fn keyspace(&self) -> KeyspaceId {
 		K::ID
 	}
@@ -549,31 +549,31 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 	}
 
 	fn len(&self) -> usize {
-		TypedBucket::len(self)
+		StandardBucket::len(self)
 	}
 
 	fn dirty_len(&self) -> usize {
-		TypedBucket::dirty_len(self)
+		StandardBucket::dirty_len(self)
 	}
 
 	fn dirty_footprint(&self) -> ByteSize {
-		TypedBucket::dirty_footprint(self)
+		StandardBucket::dirty_footprint(self)
 	}
 
 	fn stage_dirty(&mut self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) -> ByteSize {
-		TypedBucket::stage_dirty(self, visit)
+		StandardBucket::stage_dirty(self, visit)
 	}
 
 	fn revert_flushing(&mut self) -> usize {
-		TypedBucket::revert_flushing(self)
+		StandardBucket::revert_flushing(self)
 	}
 
 	fn evict_clean(&mut self, bytes: &mut ByteSize, entries: &mut usize) -> (usize, ByteSize) {
-		TypedBucket::evict_clean(self, bytes, entries)
+		StandardBucket::evict_clean(self, bytes, entries)
 	}
 
 	fn settle_flushing(&mut self) {
-		TypedBucket::settle_flushing(self)
+		StandardBucket::settle_flushing(self)
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -717,7 +717,7 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 		}
 	}
 
-	fn absorb_any(&mut self, other: &mut dyn AnyBucket) {
+	fn absorb_any(&mut self, other: &mut dyn Bucket) {
 		let other = other
 			.as_any_mut()
 			.downcast_mut::<Self>()

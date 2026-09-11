@@ -24,14 +24,14 @@ use reifydb_store::{
 		interval::Interval,
 		plan::{DEFAULT_GAP_GUARD, Segment},
 	},
-	tier::range::{Materialize, RangeScan, RangeTier},
+	tier::range::{Materialize, RangeScan},
 };
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
 
 use crate::range::{
 	OperatorRangeConfig, OperatorRangeMetrics, TypedPartition,
 	tiers::{RangeKeyspaceMetrics, RangeTiers},
-	typed::TypedDomain,
+	typed::{StandardRangeTier, TypedDomain},
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -59,7 +59,7 @@ fn roomy() -> RangeTiers {
 	tiers(ByteSize::from_mib(1).as_bytes())
 }
 
-fn tier_of<K: Keyspace>(tiers: &RangeTiers) -> &RangeTier<TypedDomain<K>> {
+fn tier_of<K: Keyspace>(tiers: &RangeTiers) -> &StandardRangeTier<K> {
 	tiers.typed::<K>().unwrap_or_else(|| panic!("{} must own a range tier", K::NAME))
 }
 
