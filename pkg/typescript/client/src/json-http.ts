@@ -11,7 +11,7 @@ import {
 import {encodeParams} from "./encoder";
 import {CONTENT_TYPE_JSON} from "./content-types";
 import {toCamelCaseKeys, toSnakeCaseKeys, WIRE_PASSTHROUGH_KEYS} from "./case";
-import {transformFrames} from "@reifydb/core";
+import {decodeJsonResponse, decodeUnwrappedJsonResponse} from "./json-decode";
 import type {ShapeNode} from "@reifydb/core";
 
 export interface JsonHttpClientOptions {
@@ -256,7 +256,12 @@ export class JsonHttpClient {
             : undefined;
 
         const { data, meta } = await this.send(endpoint, rql, encodedParams, reqOpts);
-        return { data: transformFrames(data ?? [], shapes ?? []), meta };
+        return {
+            data: this.options.unwrap
+                ? decodeUnwrappedJsonResponse(data, shapes)
+                : decodeJsonResponse(data, shapes),
+            meta,
+        };
     }
 
     private async send(

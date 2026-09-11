@@ -63,7 +63,11 @@ use reifydb_transaction::{
 	TransactionVersion, interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 };
-use reifydb_value::{byte_size::ByteSize, params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	byte_size::ByteSize,
+	params::Params,
+	value::{frame::frame::Frame, identity::IdentityId},
+};
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
@@ -75,7 +79,7 @@ use console_error_panic_hook::set_once as set_panic_hook;
 pub use error::JsError;
 use reifydb_codec::{
 	frame::{decode::decode_frames, encode::encode_frames, format::Encoding, options::EncodeOptions},
-	json::{from::frames_from_json, to::frames_to_json},
+	json::{fixture::frames_from_fixture_json, from::frames_from_json, to::frames_to_json},
 };
 use reifydb_extension::transform::registry::Transforms;
 use reifydb_runtime::context::RuntimeContext;
@@ -83,6 +87,20 @@ use reifydb_runtime::context::RuntimeContext;
 #[wasm_bindgen(js_name = encode_rbcf)]
 pub fn encode_rbcf(frames_json: &str, forced_encoding: Option<String>) -> Result<Vec<u8>, JsValue> {
 	let frames = frames_from_json(frames_json).map_err(|e| JsError::from_error(&e))?;
+	encode_rbcf_frames(frames, forced_encoding)
+}
+
+/// Encodes frames written in the notation the conformance corpus uses, where a column type carries
+/// `ValueType`'s serde rendering instead of the wire's type descriptor. The corpus pins RBCF, so it
+/// must not have to be rewritten whenever the JSON wire changes how it renders a type;
+/// `encode_rbcf` reads the wire's own rendering.
+#[wasm_bindgen(js_name = encode_rbcf_fixture)]
+pub fn encode_rbcf_fixture(frames_json: &str, forced_encoding: Option<String>) -> Result<Vec<u8>, JsValue> {
+	let frames = frames_from_fixture_json(frames_json).map_err(|e| JsError::from_error(&e))?;
+	encode_rbcf_frames(frames, forced_encoding)
+}
+
+fn encode_rbcf_frames(frames: Vec<Frame>, forced_encoding: Option<String>) -> Result<Vec<u8>, JsValue> {
 	let mut options = EncodeOptions::default();
 	if let Some(enc_str) = forced_encoding {
 		let enc = match enc_str.to_lowercase().as_str() {

@@ -4,7 +4,8 @@
 use std::{error, fmt};
 
 use reifydb_codec::error::DecodeError;
-use reifydb_sub_server::{auth::AuthError, execute::ExecuteError, subscription::errors::CreateSubscriptionError};
+use reifydb_sub_core::errors::CreateSubscriptionError;
+use reifydb_sub_server::{auth::AuthError, execute::ExecuteError};
 use reifydb_value::error::Diagnostic;
 use serde_json::to_string as to_json;
 use tonic::{Code, Status};
@@ -78,8 +79,8 @@ impl From<DecodeError> for GrpcError {
 	}
 }
 
-impl From<CreateSubscriptionError> for GrpcError {
-	fn from(err: CreateSubscriptionError) -> Self {
+impl From<CreateSubscriptionError<ExecuteError>> for GrpcError {
+	fn from(err: CreateSubscriptionError<ExecuteError>) -> Self {
 		match err {
 			CreateSubscriptionError::Execute(e) => GrpcError::Execute(e),
 			CreateSubscriptionError::ExtractionFailed => {

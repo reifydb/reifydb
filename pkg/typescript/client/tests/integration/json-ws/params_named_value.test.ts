@@ -3,7 +3,7 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from "vitest";
 import {waitForDatabase} from "../setup";
 import {Client, JsonWsClient} from "../../../src";
-import {expectSingleResult, expectSingleNullResult} from "./test-helper";
+import {expectSingleValueResult} from "./test-helper";
 import {
     BooleanValue, Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
@@ -46,7 +46,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new BooleanValue(true) }
             );
 
-            expectSingleResult(frames, true, 'boolean');
+            expectSingleValueResult(frames, new BooleanValue(true));
         }, 1000);
 
         it('Int1', async () => {
@@ -55,7 +55,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int1Value(42) }
             );
 
-            expectSingleResult(frames, "42", 'string');
+            expectSingleValueResult(frames, new Int1Value(42));
         }, 1000);
 
         it('Int2', async () => {
@@ -64,7 +64,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int2Value(1234) }
             );
 
-            expectSingleResult(frames, "1234", 'string');
+            expectSingleValueResult(frames, new Int2Value(1234));
         }, 1000);
 
         it('Int4', async () => {
@@ -73,7 +73,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int4Value(12345678) }
             );
 
-            expectSingleResult(frames, "12345678", 'string');
+            expectSingleValueResult(frames, new Int4Value(12345678));
         }, 1000);
 
         it('Int8', async () => {
@@ -82,7 +82,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int8Value(BigInt("42")) }
             );
 
-            expectSingleResult(frames, "42", 'string');
+            expectSingleValueResult(frames, new Int8Value(BigInt("42")));
         }, 1000);
 
         it('Int16', async () => {
@@ -91,7 +91,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int16Value(BigInt("170141183460469231731687303715884105727")) }
             );
 
-            expectSingleResult(frames, "170141183460469231731687303715884105727", 'string');
+            expectSingleValueResult(frames, new Int16Value(BigInt("170141183460469231731687303715884105727")));
         }, 1000);
 
         it('Uint1', async () => {
@@ -100,7 +100,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint1Value(255) }
             );
 
-            expectSingleResult(frames, "255", 'string');
+            expectSingleValueResult(frames, new Uint1Value(255));
         }, 1000);
 
         it('Uint2', async () => {
@@ -109,7 +109,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint2Value(65535) }
             );
 
-            expectSingleResult(frames, "65535", 'string');
+            expectSingleValueResult(frames, new Uint2Value(65535));
         }, 1000);
 
         it('Uint4', async () => {
@@ -118,7 +118,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint4Value(4294967295) }
             );
 
-            expectSingleResult(frames, "4294967295", 'string');
+            expectSingleValueResult(frames, new Uint4Value(4294967295));
         }, 1000);
 
         it('Uint8', async () => {
@@ -127,7 +127,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint8Value(BigInt("255")) }
             );
 
-            expectSingleResult(frames, "255", 'string');
+            expectSingleValueResult(frames, new Uint8Value(BigInt("255")));
         }, 1000);
 
         it('Uint16', async () => {
@@ -136,7 +136,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint16Value(BigInt("340282366920938463463374607431768211455")) }
             );
 
-            expectSingleResult(frames, "340282366920938463463374607431768211455", 'string');
+            expectSingleValueResult(frames, new Uint16Value(BigInt("340282366920938463463374607431768211455")));
         }, 1000);
 
         it('Float4', async () => {
@@ -145,10 +145,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Float4Value(3.14) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe("3.14");
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new Float4Value(3.14));
         }, 1000);
 
         it('Float8', async () => {
@@ -157,10 +154,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Float8Value(3.141592653589793) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe("3.14159265358979");
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new Float8Value(3.141592653589793));
         }, 1000);
 
         it('Decimal', async () => {
@@ -169,7 +163,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new DecimalValue("123.456789") }
             );
 
-            expectSingleResult(frames, "123.456789", 'string');
+            expectSingleValueResult(frames, new DecimalValue("123.456789"));
         }, 1000);
 
         it('Utf8', async () => {
@@ -178,7 +172,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Utf8Value("Hello, World!") }
             );
 
-            expectSingleResult(frames, "Hello, World!", 'string');
+            expectSingleValueResult(frames, new Utf8Value("Hello, World!"));
         }, 1000);
 
         it('Blob', async () => {
@@ -188,9 +182,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new BlobValue(data) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new BlobValue(data));
         }, 1000);
 
         it('Date', async () => {
@@ -200,9 +192,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new DateValue(date) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new DateValue(date));
         }, 1000);
 
         it('Time', async () => {
@@ -211,9 +201,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new TimeValue("14:30:00.123456789") }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new TimeValue("14:30:00.123456789"));
         }, 1000);
 
         it('DateTime', async () => {
@@ -223,9 +211,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new DateTimeValue(datetime) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new DateTimeValue(datetime));
         }, 1000);
 
         it('Duration', async () => {
@@ -234,7 +220,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new DurationValue("P1DT2H30M") }
             );
 
-            expectSingleResult(frames, "P1DT2H30M", 'string');
+            expectSingleValueResult(frames, new DurationValue("P1DT2H30M"));
         }, 1000);
 
         it('Uuid4', async () => {
@@ -244,7 +230,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uuid4Value(uuid) }
             );
 
-            expectSingleResult(frames, uuid, 'string');
+            expectSingleValueResult(frames, new Uuid4Value(uuid));
         }, 1000);
 
         it('Uuid7', async () => {
@@ -254,7 +240,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uuid7Value(uuid) }
             );
 
-            expectSingleResult(frames, uuid, 'string');
+            expectSingleValueResult(frames, new Uuid7Value(uuid));
         }, 1000);
 
         it('IdentityId', async () => {
@@ -264,16 +250,16 @@ describe('Named Parameters (Value)', () => {
                 { value: new IdentityIdValue(identityId) }
             );
 
-            expectSingleResult(frames, identityId, 'string');
+            expectSingleValueResult(frames, new IdentityIdValue(identityId));
         }, 1000);
 
         it('None', async () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
-                { value: new NoneValue() }
+                { value: new NoneValue('Int4') }
             );
 
-            expectSingleNullResult(frames);
+            expectSingleValueResult(frames, new NoneValue('Int4'));
         }, 1000);
 
     });
@@ -286,7 +272,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new BooleanValue(true) }
             );
 
-            expectSingleResult(frames, true, 'boolean');
+            expectSingleValueResult(frames, new BooleanValue(true));
         }, 1000);
 
         it('Int1', async () => {
@@ -295,7 +281,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int1Value(42) }
             );
 
-            expectSingleResult(frames, "42", 'string');
+            expectSingleValueResult(frames, new Int1Value(42));
         }, 1000);
 
         it('Int2', async () => {
@@ -304,7 +290,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int2Value(1234) }
             );
 
-            expectSingleResult(frames, "1234", 'string');
+            expectSingleValueResult(frames, new Int2Value(1234));
         }, 1000);
 
         it('Int4', async () => {
@@ -313,7 +299,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int4Value(12345678) }
             );
 
-            expectSingleResult(frames, "12345678", 'string');
+            expectSingleValueResult(frames, new Int4Value(12345678));
         }, 1000);
 
         it('Int8', async () => {
@@ -322,7 +308,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int8Value(BigInt("42")) }
             );
 
-            expectSingleResult(frames, "42", 'string');
+            expectSingleValueResult(frames, new Int8Value(BigInt("42")));
         }, 1000);
 
         it('Int16', async () => {
@@ -331,7 +317,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int16Value(BigInt("170141183460469231731687303715884105727")) }
             );
 
-            expectSingleResult(frames, "170141183460469231731687303715884105727", 'string');
+            expectSingleValueResult(frames, new Int16Value(BigInt("170141183460469231731687303715884105727")));
         }, 1000);
 
         it('Uint1', async () => {
@@ -340,7 +326,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint1Value(255) }
             );
 
-            expectSingleResult(frames, "255", 'string');
+            expectSingleValueResult(frames, new Uint1Value(255));
         }, 1000);
 
         it('Uint2', async () => {
@@ -349,7 +335,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint2Value(65535) }
             );
 
-            expectSingleResult(frames, "65535", 'string');
+            expectSingleValueResult(frames, new Uint2Value(65535));
         }, 1000);
 
         it('Uint4', async () => {
@@ -358,7 +344,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint4Value(4294967295) }
             );
 
-            expectSingleResult(frames, "4294967295", 'string');
+            expectSingleValueResult(frames, new Uint4Value(4294967295));
         }, 1000);
 
         it('Uint8', async () => {
@@ -367,7 +353,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint8Value(BigInt("255")) }
             );
 
-            expectSingleResult(frames, "255", 'string');
+            expectSingleValueResult(frames, new Uint8Value(BigInt("255")));
         }, 1000);
 
         it('Uint16', async () => {
@@ -376,7 +362,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint16Value(BigInt("340282366920938463463374607431768211455")) }
             );
 
-            expectSingleResult(frames, "340282366920938463463374607431768211455", 'string');
+            expectSingleValueResult(frames, new Uint16Value(BigInt("340282366920938463463374607431768211455")));
         }, 1000);
 
         it('Float4', async () => {
@@ -385,10 +371,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Float4Value(3.14) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe("3.14");
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new Float4Value(3.14));
         }, 1000);
 
         it('Float8', async () => {
@@ -397,10 +380,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Float8Value(3.141592653589793) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe("3.14159265358979");
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new Float8Value(3.141592653589793));
         }, 1000);
 
         it('Decimal', async () => {
@@ -409,7 +389,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new DecimalValue("123.456789") }
             );
 
-            expectSingleResult(frames, "123.456789", 'string');
+            expectSingleValueResult(frames, new DecimalValue("123.456789"));
         }, 1000);
 
         it('Utf8', async () => {
@@ -418,7 +398,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Utf8Value("Hello, World!") }
             );
 
-            expectSingleResult(frames, "Hello, World!", 'string');
+            expectSingleValueResult(frames, new Utf8Value("Hello, World!"));
         }, 1000);
 
         it('Blob', async () => {
@@ -428,9 +408,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new BlobValue(data) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new BlobValue(data));
         }, 1000);
 
         it('Date', async () => {
@@ -440,9 +418,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new DateValue(date) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new DateValue(date));
         }, 1000);
 
         it('Time', async () => {
@@ -451,9 +427,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new TimeValue("14:30:00.123456789") }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new TimeValue("14:30:00.123456789"));
         }, 1000);
 
         it('DateTime', async () => {
@@ -463,9 +437,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new DateTimeValue(datetime) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new DateTimeValue(datetime));
         }, 1000);
 
         it('Duration', async () => {
@@ -474,7 +446,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new DurationValue("P1DT2H30M") }
             );
 
-            expectSingleResult(frames, "P1DT2H30M", 'string');
+            expectSingleValueResult(frames, new DurationValue("P1DT2H30M"));
         }, 1000);
 
         it('Uuid4', async () => {
@@ -484,7 +456,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uuid4Value(uuid) }
             );
 
-            expectSingleResult(frames, uuid, 'string');
+            expectSingleValueResult(frames, new Uuid4Value(uuid));
         }, 1000);
 
         it('Uuid7', async () => {
@@ -494,7 +466,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uuid7Value(uuid) }
             );
 
-            expectSingleResult(frames, uuid, 'string');
+            expectSingleValueResult(frames, new Uuid7Value(uuid));
         }, 1000);
 
         it('IdentityId', async () => {
@@ -504,16 +476,16 @@ describe('Named Parameters (Value)', () => {
                 { value: new IdentityIdValue(identityId) }
             );
 
-            expectSingleResult(frames, identityId, 'string');
+            expectSingleValueResult(frames, new IdentityIdValue(identityId));
         }, 1000);
 
         it('None', async () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
-                { value: new NoneValue() }
+                { value: new NoneValue('Int4') }
             );
 
-            expectSingleNullResult(frames);
+            expectSingleValueResult(frames, new NoneValue('Int4'));
         }, 1000);
 
     });
@@ -526,7 +498,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new BooleanValue(true) }
             );
 
-            expectSingleResult(frames, true, 'boolean');
+            expectSingleValueResult(frames, new BooleanValue(true));
         }, 1000);
 
         it('Int1', async () => {
@@ -535,7 +507,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int1Value(42) }
             );
 
-            expectSingleResult(frames, "42", 'string');
+            expectSingleValueResult(frames, new Int1Value(42));
         }, 1000);
 
         it('Int2', async () => {
@@ -544,7 +516,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int2Value(1234) }
             );
 
-            expectSingleResult(frames, "1234", 'string');
+            expectSingleValueResult(frames, new Int2Value(1234));
         }, 1000);
 
         it('Int4', async () => {
@@ -553,7 +525,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int4Value(12345678) }
             );
 
-            expectSingleResult(frames, "12345678", 'string');
+            expectSingleValueResult(frames, new Int4Value(12345678));
         }, 1000);
 
         it('Int8', async () => {
@@ -562,7 +534,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int8Value(BigInt("42")) }
             );
 
-            expectSingleResult(frames, "42", 'string');
+            expectSingleValueResult(frames, new Int8Value(BigInt("42")));
         }, 1000);
 
         it('Int16', async () => {
@@ -571,7 +543,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Int16Value(BigInt("170141183460469231731687303715884105727")) }
             );
 
-            expectSingleResult(frames, "170141183460469231731687303715884105727", 'string');
+            expectSingleValueResult(frames, new Int16Value(BigInt("170141183460469231731687303715884105727")));
         }, 1000);
 
         it('Uint1', async () => {
@@ -580,7 +552,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint1Value(255) }
             );
 
-            expectSingleResult(frames, "255", 'string');
+            expectSingleValueResult(frames, new Uint1Value(255));
         }, 1000);
 
         it('Uint2', async () => {
@@ -589,7 +561,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint2Value(65535) }
             );
 
-            expectSingleResult(frames, "65535", 'string');
+            expectSingleValueResult(frames, new Uint2Value(65535));
         }, 1000);
 
         it('Uint4', async () => {
@@ -598,7 +570,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint4Value(4294967295) }
             );
 
-            expectSingleResult(frames, "4294967295", 'string');
+            expectSingleValueResult(frames, new Uint4Value(4294967295));
         }, 1000);
 
         it('Uint8', async () => {
@@ -607,7 +579,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint8Value(BigInt("255")) }
             );
 
-            expectSingleResult(frames, "255", 'string');
+            expectSingleValueResult(frames, new Uint8Value(BigInt("255")));
         }, 1000);
 
         it('Uint16', async () => {
@@ -616,7 +588,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uint16Value(BigInt("340282366920938463463374607431768211455")) }
             );
 
-            expectSingleResult(frames, "340282366920938463463374607431768211455", 'string');
+            expectSingleValueResult(frames, new Uint16Value(BigInt("340282366920938463463374607431768211455")));
         }, 1000);
 
         it('Float4', async () => {
@@ -625,10 +597,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Float4Value(3.14) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe("3.14");
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new Float4Value(3.14));
         }, 1000);
 
         it('Float8', async () => {
@@ -637,10 +606,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Float8Value(3.141592653589793) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe("3.14159265358979");
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new Float8Value(3.141592653589793));
         }, 1000);
 
         it('Decimal', async () => {
@@ -649,7 +615,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new DecimalValue("123.456789") }
             );
 
-            expectSingleResult(frames, "123.456789", 'string');
+            expectSingleValueResult(frames, new DecimalValue("123.456789"));
         }, 1000);
 
         it('Utf8', async () => {
@@ -658,7 +624,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Utf8Value("Hello, World!") }
             );
 
-            expectSingleResult(frames, "Hello, World!", 'string');
+            expectSingleValueResult(frames, new Utf8Value("Hello, World!"));
         }, 1000);
 
         it('Blob', async () => {
@@ -668,9 +634,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new BlobValue(data) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new BlobValue(data));
         }, 1000);
 
         it('Date', async () => {
@@ -680,9 +644,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new DateValue(date) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new DateValue(date));
         }, 1000);
 
         it('Time', async () => {
@@ -691,9 +653,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new TimeValue("14:30:00.123456789") }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new TimeValue("14:30:00.123456789"));
         }, 1000);
 
         it('DateTime', async () => {
@@ -703,9 +663,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new DateTimeValue(datetime) }
             );
 
-            expect(frames).toHaveLength(1);
-            expect(frames[0]).toHaveLength(1);
-            expect(typeof frames[0][0].result).toBe('string');
+            expectSingleValueResult(frames, new DateTimeValue(datetime));
         }, 1000);
 
         it('Duration', async () => {
@@ -714,7 +672,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new DurationValue("P1DT2H30M") }
             );
 
-            expectSingleResult(frames, "P1DT2H30M", 'string');
+            expectSingleValueResult(frames, new DurationValue("P1DT2H30M"));
         }, 1000);
 
         it('Uuid4', async () => {
@@ -724,7 +682,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uuid4Value(uuid) }
             );
 
-            expectSingleResult(frames, uuid, 'string');
+            expectSingleValueResult(frames, new Uuid4Value(uuid));
         }, 1000);
 
         it('Uuid7', async () => {
@@ -734,7 +692,7 @@ describe('Named Parameters (Value)', () => {
                 { value: new Uuid7Value(uuid) }
             );
 
-            expectSingleResult(frames, uuid, 'string');
+            expectSingleValueResult(frames, new Uuid7Value(uuid));
         }, 1000);
 
         it('IdentityId', async () => {
@@ -744,16 +702,16 @@ describe('Named Parameters (Value)', () => {
                 { value: new IdentityIdValue(identityId) }
             );
 
-            expectSingleResult(frames, identityId, 'string');
+            expectSingleValueResult(frames, new IdentityIdValue(identityId));
         }, 1000);
 
         it('None', async () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
-                { value: new NoneValue() }
+                { value: new NoneValue('Int4') }
             );
 
-            expectSingleNullResult(frames);
+            expectSingleValueResult(frames, new NoneValue('Int4'));
         }, 1000);
 
     });

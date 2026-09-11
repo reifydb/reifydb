@@ -18,7 +18,10 @@ use reifydb_engine::{
 	subscription::{HydrateError, HydrateOutcome, SubscriptionContext, SubscriptionService},
 };
 use reifydb_rql::flow::flow::FlowDag;
-use reifydb_runtime::{actor::mailbox::ActorRef, sync::rwlock::RwLock};
+use reifydb_runtime::{
+	actor::{mailbox::ActorRef, system::ActorSpawner},
+	sync::rwlock::RwLock,
+};
 use reifydb_transaction::{
 	multi::{lease::VersionLeaseGuard, transaction::MultiTransaction},
 	transaction::Transaction,
@@ -33,6 +36,20 @@ pub(super) struct SubscriptionState {
 	pub(super) subscription_flows: RwLock<HashMap<SubscriptionId, FlowId>>,
 	pub(super) multi: MultiTransaction,
 	pub(super) position_tracker: SubscriptionPositionTracker,
+	pub(super) spawner: ActorSpawner,
+}
+
+#[cfg(reifydb_dst)]
+fn await_reply<T>(spawner: &ActorSpawner, rx: &mpsc::Receiver<T>) -> Option<T> {
+	if spawner.is_alive() {
+		spawner.system().run_until_idle();
+	}
+	rx.try_recv().ok()
+}
+
+#[cfg(not(reifydb_dst))]
+fn await_reply<T>(_spawner: &ActorSpawner, rx: &mpsc::Receiver<T>) -> Option<T> {
+	rx.recv().ok()
 }
 
 impl SubscriptionState {
@@ -53,7 +70,7 @@ impl SubscriptionState {
 				reply,
 			})
 			.ok()?;
-		rx.recv().ok().flatten()
+		await_reply(&self.spawner, &rx).flatten()
 	}
 }
 
@@ -101,8 +118,8 @@ impl SubscriptionService for SubscriptionServiceImpl {
 				reply,
 			})
 			.map_err(|_| Error(Box::new(internal!("subscription worker unavailable"))))?;
-		let registered =
-			rx.recv().map_err(|_| Error(Box::new(internal!("subscription worker dropped reply"))))?;
+		let registered = await_reply(&self.state.spawner, &rx)
+			.ok_or_else(|| Error(Box::new(internal!("subscription worker dropped reply"))))?;
 		registered?;
 
 		self.state.subscription_flows.write().insert(id, flow_id);
@@ -126,7 +143,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 				})
 				.is_ok()
 			{
-				let _ = rx.recv();
+				let _ = await_reply(&self.state.spawner, &rx);
 			}
 		}
 
@@ -165,7 +182,8 @@ impl SubscriptionService for SubscriptionServiceImpl {
 				reply,
 			})
 			.map_err(|_| HydrateError::Internal("subscription worker unavailable".to_string()))?;
-		rx.recv()
-			.map_err(|_| HydrateError::Internal("subscription worker dropped hydrate reply".to_string()))?
+		await_reply(&self.state.spawner, &rx).ok_or_else(|| {
+			HydrateError::Internal("subscription worker dropped hydrate reply".to_string())
+		})?
 	}
 }

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {ShapeNode} from '.';
+import {ShapeMismatch} from './check';
+import {widen} from './widen';
+import {NoneValue, Option, noneDepth} from '../value';
 import {FrameResults} from '../types';
 
 function snakeToCamel(key: string): string {
@@ -35,7 +38,7 @@ export function transformResult(row: any, resultShape: any): any {
                     transformedRow[outputKey] = coerceToPrimitiveType(value, propertyShape.type);
                 }
             } else if (propertyShape && propertyShape.kind === 'value') {
-                transformedRow[outputKey] = value;
+                transformedRow[outputKey] = widen(value, propertyShape.type);
             } else {
                 transformedRow[outputKey] = propertyShape ? transformResult(value, propertyShape) : value;
             }
@@ -51,7 +54,7 @@ export function transformResult(row: any, resultShape: any): any {
     }
 
     if (resultShape && resultShape.kind === 'value') {
-        return row;
+        return widen(row, resultShape.type);
     }
 
     if (resultShape && resultShape.kind === 'array') {
@@ -61,17 +64,25 @@ export function transformResult(row: any, resultShape: any): any {
         return row;
     }
 
-    if (resultShape && resultShape.kind === 'optional') {
-        if (row === undefined) {
-            return undefined;
+    if (resultShape && resultShape.kind === 'option') {
+        if (row instanceof NoneValue) {
+            const remaining = optionLayers(resultShape);
+            const depth = noneDepth(row);
+            if (depth > remaining) {
+                throw new ShapeMismatch(`a none ${depth} layers deep does not fit a shape with ${remaining} option layers`);
+            }
+            if (depth === remaining) {
+                return Option.none(row.innerType);
+            }
         }
-        if (row === null) {
-            return null;
-        }
-        return transformResult(row, resultShape.shape);
+        return Option.some(transformResult(row, resultShape.inner));
     }
 
     return row;
+}
+
+function optionLayers(shape: ShapeNode): number {
+    return shape.kind === 'option' ? optionLayers(shape.inner) + 1 : 0;
 }
 
 function coerceToPrimitiveType(value: any, valueType: string): any {

@@ -4,7 +4,14 @@
 use reifydb_value::value::{Value, diff_type::DiffType, frame::frame::Frame};
 use serde_json::{Error, to_string};
 
-use crate::json::types::{ResponseColumn, ResponseFrame};
+use crate::{
+	json::{
+		none_marker,
+		types::{ResponseColumn, ResponseFrame},
+		wire_type::WireValueType,
+	},
+	tag::peel_options,
+};
 
 pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 	let mut result = Vec::new();
@@ -18,13 +25,15 @@ pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 		let mut columns = Vec::new();
 
 		for column in frame.iter() {
+			let column_type = column.data.get_type();
+			let column_depth = peel_options(&column_type).1;
 			let column_data: Vec<String> = column
 				.data
 				.iter()
 				.map(|value| match value {
 					Value::None {
-						..
-					} => "⟪none⟫".to_string(),
+						inner,
+					} => none_marker(column_depth.saturating_sub(peel_options(&inner).1 + 1)),
 					Value::Blob(b) => b.to_hex(),
 					_ => value.to_string(),
 				})
@@ -32,7 +41,7 @@ pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 
 			columns.push(ResponseColumn {
 				name: column.name.clone(),
-				r#type: column.data.get_type(),
+				r#type: WireValueType(column_type),
 				payload: column_data,
 			});
 		}

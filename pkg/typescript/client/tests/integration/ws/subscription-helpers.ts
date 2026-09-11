@@ -105,6 +105,7 @@ export function createCallbackTracker<S extends ShapeNode>(
     clear: () => void;
     waitForCall: (timeoutMs?: number) => Promise<InferShape<S>[]>;
     waitForRows: (count: number, timeoutMs?: number) => Promise<void>;
+    waitForRowMatching: (predicate: (row: InferShape<S>) => boolean, timeoutMs?: number) => Promise<InferShape<S>>;
 };
 
 // Overload 2: Without shape (explicit type)
@@ -116,6 +117,7 @@ export function createCallbackTracker<T = any>(): {
     clear: () => void;
     waitForCall: (timeoutMs?: number) => Promise<T[]>;
     waitForRows: (count: number, timeoutMs?: number) => Promise<void>;
+    waitForRowMatching: (predicate: (row: T) => boolean, timeoutMs?: number) => Promise<T>;
 };
 
 // Implementation
@@ -124,6 +126,10 @@ export function createCallbackTracker<S extends ShapeNode = any>(
 ) {
     const calls: any[][] = [];
     let pendingResolve: ((rows: any[]) => void) | null = null;
+    // How many recorded calls waitForCall has already handed out. A notification can land before the
+    // waiting starts, so waitForCall has to be able to take one that already arrived; the cursor keeps
+    // a second wait on the same tracker from being satisfied by the call the first one consumed.
+    let consumed = 0;
 
     return {
         callback: (rows: any[]) => {
@@ -139,9 +145,15 @@ export function createCallbackTracker<S extends ShapeNode = any>(
         getAllRows: () => calls.flat(),
         clear: () => {
             calls.length = 0;
+            consumed = 0;
         },
         waitForCall: (timeoutMs: number = 5000): Promise<any[]> => {
             return new Promise((resolve, reject) => {
+                if (consumed < calls.length) {
+                    resolve(calls[consumed++]);
+                    return;
+                }
+
                 const timeout = setTimeout(() => {
                     pendingResolve = null;
                     reject(new Error(`Callback timeout after ${timeoutMs}ms`));
@@ -149,6 +161,7 @@ export function createCallbackTracker<S extends ShapeNode = any>(
 
                 pendingResolve = (rows) => {
                     clearTimeout(timeout);
+                    consumed = calls.length;
                     resolve(rows);
                 };
             });
@@ -165,6 +178,34 @@ export function createCallbackTracker<S extends ShapeNode = any>(
                         clearTimeout(timeout);
                         pendingResolve = null;
                         resolve();
+                    } else {
+                        pendingResolve = check;
+                    }
+                };
+                pendingResolve = check;
+            });
+        },
+        // Waits for the row the caller is actually about to assert on. A reconnection replays the rows a
+        // subscription already delivered, so "one more callback" can be satisfied by a replay of an
+        // earlier row while the awaited one is still in flight.
+        waitForRowMatching: (predicate: (row: any) => boolean, timeoutMs: number = 5000): Promise<any> => {
+            return new Promise((resolve, reject) => {
+                const found = () => calls.flat().find(predicate);
+                const already = found();
+                if (already !== undefined) {
+                    resolve(already);
+                    return;
+                }
+                const timeout = setTimeout(() => {
+                    pendingResolve = null;
+                    reject(new Error(`Timed out after ${timeoutMs}ms waiting for a matching row`));
+                }, timeoutMs);
+                const check = () => {
+                    const row = found();
+                    if (row !== undefined) {
+                        clearTimeout(timeout);
+                        pendingResolve = null;
+                        resolve(row);
                     } else {
                         pendingResolve = check;
                     }

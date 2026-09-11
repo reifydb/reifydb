@@ -190,6 +190,29 @@ impl EventBus {
 		}
 	}
 
+	/// Waits until the bus has drained everything queued ahead of this call.
+	///
+	/// Under dst the caller's thread is also the thread that steps the actor system, so it drives
+	/// the system to quiescence itself and then picks the reply up without blocking. A blocking
+	/// receive here would park the only thread that can run the bus actor, so the reply it waits
+	/// for could never be sent; that deadlocks subsystem start-up before any test can run.
+	#[cfg(reifydb_dst)]
+	pub fn wait_for_completion(&self) {
+		let (tx, rx) = sync::mpsc::channel();
+		if self.actor_ref.send(EventBusMessage::WaitForCompletion(tx)).is_err() {
+			return;
+		}
+		if self.spawner.is_alive() {
+			self.spawner.system().run_until_idle();
+		}
+		let _ = rx.try_recv();
+	}
+
+	/// Waits until the bus has drained everything queued ahead of this call.
+	///
+	/// Off dst the bus actor runs on its own thread (host) or inline on `send` (wasm), so a
+	/// blocking receive is both correct and the cheapest way to wait.
+	#[cfg(not(reifydb_dst))]
 	pub fn wait_for_completion(&self) {
 		let (tx, rx) = sync::mpsc::channel();
 		let _ = self.actor_ref.send(EventBusMessage::WaitForCompletion(tx));

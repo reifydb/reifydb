@@ -23,7 +23,7 @@ import {
 } from "./types";
 import {encodeParams} from "./encoder";
 import {toCamelCaseKeys, toSnakeCaseKeys, WIRE_PASSTHROUGH_KEYS} from "./case";
-import {transformFrames} from "@reifydb/core";
+import {decodeJsonResponse, decodeUnwrappedJsonResponse} from "./json-decode";
 import type {ShapeNode} from "@reifydb/core";
 
 export interface JsonWsClientOptions {
@@ -233,7 +233,12 @@ export class JsonWsClient {
             },
         } as CallRequest);
 
-        return { data: transformFrames(data ?? [], shapes ?? []), meta };
+        return {
+            data: this.options.unwrap
+                ? decodeUnwrappedJsonResponse(data, shapes)
+                : decodeJsonResponse(data, shapes),
+            meta,
+        };
     }
 
     private async execute(
@@ -259,7 +264,12 @@ export class JsonWsClient {
             },
         } as AdminRequest | CommandRequest | QueryRequest);
 
-        return { data: transformFrames(data ?? [], shapes ?? []), meta };
+        return {
+            data: this.options.unwrap
+                ? decodeUnwrappedJsonResponse(data, shapes)
+                : decodeJsonResponse(data, shapes),
+            meta,
+        };
     }
 
     async send(req: AdminRequest | CommandRequest | QueryRequest | CallRequest): Promise<any> {

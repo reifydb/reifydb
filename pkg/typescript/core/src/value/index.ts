@@ -19,11 +19,13 @@ export {Uint2Value} from './uint2';
 export {Uint4Value} from './uint4';
 export {Uint8Value} from './uint8';
 export {Uint16Value} from './uint16';
-export {NoneValue} from './none';
+export {NoneValue, noneDepth} from './none';
+export {Option, isOption} from './option';
 export {Utf8Value} from './utf8';
 export {Uuid4Value} from './uuid4';
 export {Uuid7Value} from './uuid7';
 export {IdentityIdValue} from './identityid';
+export {WireType, typeToWire, typeFromWire, columnsFromWire, framesFromWire, envelopeToColumns, envelopesToFrames} from './wire-type';
 
 export type BaseType =
     | "Blob"
@@ -48,6 +50,14 @@ export function isOptionType(t: Type): t is OptionType {
 export function unwrapOptionType(t: Type): BaseType {
     if (isOptionType(t)) return unwrapOptionType(t.Option);
     return t;
+}
+
+export function optionDepth(t: Type): number {
+    return isOptionType(t) ? optionDepth(t.Option) + 1 : 0;
+}
+
+export function innerOfOption(t: OptionType): Type {
+    return t.Option;
 }
 
 export interface TypeValuePair {

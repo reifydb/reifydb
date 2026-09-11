@@ -150,6 +150,8 @@ export interface SubscriptionCallbacks<T = any> {
     onInsert?: (rows: SubscriptionRow<T>[]) => void;
     onUpdate?: (rows: SubscriptionRow<T>[]) => void;
     onRemove?: (rows: SubscriptionRow<T>[]) => void;
+    // A change that cannot be decoded is reported here; without it the rows would be dropped silently.
+    onError?: (error: Error) => void;
 }
 
 export interface HydrationConfig {

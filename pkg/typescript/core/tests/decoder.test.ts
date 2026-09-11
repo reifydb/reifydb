@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import { describe, expect, it } from 'vitest';
-import { decode } from '../src/decoder';
+import { columnsToRows, decode } from '../src/decoder';
 import {
     BlobValue, BooleanValue, DateValue, DateTimeValue, DecimalValue,
     Float4Value, Float8Value,
     Int4Value, DurationValue, TimeValue,
     NoneValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue
 } from '../src/value';
-import { NONE_VALUE } from '../src/constant';
+import { NONE_VALUE, noneMarker, noneMarkerDepth } from '../src/constant';
 
 describe('decode', () => {
     it('should decode Boolean type with "true" value', () => {
@@ -179,6 +179,57 @@ describe('decode', () => {
         expect(decoded.valueOf()).toBe(original.valueOf());
     });
 
+    describe('none marker', () => {
+        it('round trips the depth through the marker text', () => {
+            expect(noneMarker(0)).toBe(NONE_VALUE);
+            expect(noneMarkerDepth(noneMarker(0))).toBe(0);
+            expect(noneMarkerDepth(noneMarker(1))).toBe(1);
+            expect(noneMarkerDepth(noneMarker(12))).toBe(12);
+            expect(noneMarker(1)).not.toBe(NONE_VALUE);
+            expect(noneMarker(1).startsWith(NONE_VALUE.slice(0, -1))).toBe(true);
+            expect(noneMarker(1).endsWith(NONE_VALUE.slice(-1))).toBe(true);
+        });
+
+        it('does not read an empty payload as a none, because an empty string is a value', () => {
+            expect(noneMarkerDepth('')).toBeUndefined();
+        });
+
+        it('does not read a value payload or a malformed marker as a none', () => {
+            expect(noneMarkerDepth('7')).toBeUndefined();
+            expect(noneMarkerDepth('none')).toBeUndefined();
+            expect(noneMarkerDepth(NONE_VALUE.slice(0, -1) + ':0' + NONE_VALUE.slice(-1))).toBeUndefined();
+            expect(noneMarkerDepth(NONE_VALUE.slice(0, -1) + ':x' + NONE_VALUE.slice(-1))).toBeUndefined();
+            expect(noneMarkerDepth(NONE_VALUE.slice(0, -1) + ':1')).toBeUndefined();
+        });
+    });
+
+    describe('Option(Option(Int4)) decoding', () => {
+        const type = { Option: { Option: 'Int4' as const } };
+
+        it('decodes the outermost none as a NoneValue missing an Option(Int4)', () => {
+            const result = decode({ type, value: NONE_VALUE });
+            expect(result).toBeInstanceOf(NoneValue);
+            expect((result as NoneValue).innerType).toEqual({ Option: 'Int4' });
+        });
+
+        it('decodes a none under one Some as a NoneValue missing an Int4', () => {
+            const result = decode({ type, value: noneMarker(1) });
+            expect(result).toBeInstanceOf(NoneValue);
+            expect((result as NoneValue).innerType).toBe('Int4');
+        });
+
+        it('decodes a value payload with the base type', () => {
+            const result = decode({ type, value: '7' });
+            expect(result).toBeInstanceOf(Int4Value);
+            expect(result.valueOf()).toBe(7);
+        });
+
+        it('rejects a none deeper than the column has Some layers', () => {
+            expect(() => decode({ type, value: noneMarker(2) })).toThrow('none under 2 Some layers cannot fit an option of depth 2');
+            expect(() => decode({ type: { Option: 'Int4' as const }, value: noneMarker(1) })).toThrow('none under 1 Some layers cannot fit an option of depth 1');
+        });
+    });
+
     describe('Option type decoding', () => {
         it('should decode Option<Int4> with value', () => {
             const pair = { type: { Option: 'Int4' as const }, value: '42' };
@@ -197,12 +248,12 @@ describe('decode', () => {
             expect(result.valueOf()).toBeUndefined();
         });
 
-        it('should decode Option<Int4> with empty value as none', () => {
+        it('should not read an empty Option<Int4> payload as none', () => {
             const pair = { type: { Option: 'Int4' as const }, value: '' };
             const result = decode(pair);
 
-            expect(result).toBeInstanceOf(NoneValue);
-            expect(result.valueOf()).toBeUndefined();
+            expect(result).not.toBeInstanceOf(NoneValue);
+            expect(result).toBeInstanceOf(Int4Value);
         });
 
         it('should decode Option<Boolean> with true value', () => {
@@ -253,12 +304,11 @@ describe('decode', () => {
             expect((result as NoneValue).innerType).toBe('Date');
         });
 
-        it('should decode Option<Date> with empty value as none', () => {
+        it('should not read an empty Option<Date> payload as none', () => {
             const pair = { type: { Option: 'Date' as const }, value: '' };
             const result = decode(pair);
 
-            expect(result).toBeInstanceOf(NoneValue);
-            expect((result as NoneValue).innerType).toBe('Date');
+            expect(result).not.toBeInstanceOf(NoneValue);
         });
 
         it('should decode Option<DateTime> with value', () => {
@@ -416,12 +466,25 @@ describe('decode', () => {
             expect((result as NoneValue).innerType).toBe('Boolean');
         });
 
-        it('should decode Option<Utf8> with empty value and preserve innerType', () => {
+        it('should decode an empty Option<Utf8> payload as the empty string, not as none', () => {
+            // An empty string is a value: a column that holds one must stay distinguishable from a
+            // column that holds nothing, or a subscriber silently loses every empty cell.
             const pair = { type: { Option: 'Utf8' as const }, value: '' };
             const result = decode(pair);
 
-            expect(result).toBeInstanceOf(NoneValue);
-            expect((result as NoneValue).innerType).toBe('Utf8');
+            expect(result).not.toBeInstanceOf(NoneValue);
+            expect(result).toBeInstanceOf(Utf8Value);
+            expect(result.valueOf()).toBe('');
+        });
+
+        it('should keep an empty string and a none apart in the same Option<Utf8> column', () => {
+            const rows = columnsToRows([
+                {name: 'value', type: {Option: 'Utf8' as const}, payload: ['', NONE_VALUE]}
+            ]);
+
+            expect(rows[0].value).toBeInstanceOf(Utf8Value);
+            expect(rows[0].value.valueOf()).toBe('');
+            expect(rows[1].value).toBeInstanceOf(NoneValue);
         });
     });
 });

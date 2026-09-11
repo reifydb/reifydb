@@ -87,12 +87,15 @@ describe('WS caller identity', () => {
         try {
             const received: any[] = [];
             const sink = (rows: any[]) => received.push(...rows);
-            await rogue.subscribe(
+            // The server refuses the subscription outright rather than opening one that starves, so the
+            // rogue never holds a stream at all. Pinning the refusal is the stronger contract: an empty
+            // callback list would also be satisfied by a subscription that simply had not delivered yet.
+            await expect(rogue.subscribe(
                 `from ${ns}::${denied}`,
                 null,
                 Shape.object({id: Shape.number()}),
                 {onInsert: sink, onUpdate: sink, onRemove: sink}
-            );
+            )).rejects.toThrow('SESSION_001');
             await new Promise(resolve => setTimeout(resolve, 2000));
             expect(received).toHaveLength(0);
         } finally {

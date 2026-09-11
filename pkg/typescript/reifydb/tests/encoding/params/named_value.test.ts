@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-import {beforeAll, describe, it} from "vitest";
+import {beforeAll, describe, expect, it} from "vitest";
 import {Reifydb} from "../../../src/index";
 import type {Db} from "../../../src/db";
 import {
@@ -261,11 +261,12 @@ describe('Named Parameters (value)', () => {
         it('None', async () => {
             const frames = await db.adminRoot(
                 'MAP {result: $value}',
-                { value: new NoneValue() },
+                { value: new NoneValue('Int4') },
                 [Shape.object({result: Shape.noneValue()})]
             );
 
-            expectSingleValueResult(frames, new NoneValue());
+            expectSingleValueResult(frames, new NoneValue('Int4'));
+            expect((frames[0][0].result as NoneValue).innerType).toBe('Int4');
         });
 
     });
@@ -511,11 +512,12 @@ describe('Named Parameters (value)', () => {
         it('None', async () => {
             const frames = await db.commandRoot(
                 'MAP {result: $value}',
-                { value: new NoneValue() },
+                { value: new NoneValue('Int4') },
                 [Shape.object({result: Shape.noneValue()})]
             );
 
-            expectSingleValueResult(frames, new NoneValue());
+            expectSingleValueResult(frames, new NoneValue('Int4'));
+            expect((frames[0][0].result as NoneValue).innerType).toBe('Int4');
         });
 
     });
@@ -761,11 +763,12 @@ describe('Named Parameters (value)', () => {
         it('None', async () => {
             const frames = await db.queryRoot(
                 'MAP {result: $value}',
-                { value: new NoneValue() },
+                { value: new NoneValue('Int4') },
                 [Shape.object({result: Shape.noneValue()})]
             );
 
-            expectSingleValueResult(frames, new NoneValue());
+            expectSingleValueResult(frames, new NoneValue('Int4'));
+            expect((frames[0][0].result as NoneValue).innerType).toBe('Int4');
         });
 
     });

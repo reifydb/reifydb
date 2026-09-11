@@ -25,6 +25,7 @@ use crate::{
 		heuristics::choose_encoding,
 		options::EncodeOptions,
 	},
+	tag::TypeTag,
 };
 
 pub(crate) struct EncodedColumn {
@@ -176,16 +177,19 @@ fn encode_column(
 }
 
 fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<EncodedColumn, EncodeError> {
-	let (inner, nones, has_nones) = match col_data {
-		FrameColumnData::Option {
-			inner,
-			bitvec,
-		} => {
-			let bitmap = encode_bitvec(bitvec);
-			(inner.as_ref(), bitmap, true)
-		}
-		other => (other, vec![], false),
-	};
+	let mut inner = col_data;
+	let mut nones = Vec::new();
+	let mut depth = 0u32;
+	while let FrameColumnData::Option {
+		inner: next,
+		bitvec,
+	} = inner
+	{
+		nones.extend(encode_bitvec(bitvec));
+		depth += 1;
+		inner = next;
+	}
+	let has_nones = depth > 0;
 
 	let row_count = inner.len() as u32;
 
@@ -200,7 +204,7 @@ fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<Enco
 	let mut enc = match result {
 		Some(enc) => enc,
 		None => {
-			let plain = encode_plain(col_data)?;
+			let plain = encode_plain(inner)?;
 			EncodedColumn {
 				type_code: plain.type_code,
 				encoding: Encoding::Plain,
@@ -215,6 +219,7 @@ fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<Enco
 	};
 
 	if has_nones {
+		enc.type_code = TypeTag::of_type(&col_data.get_type())?.byte();
 		enc.nones = nones;
 		enc.flags |= COL_FLAG_HAS_NONES;
 	}

@@ -1,0 +1,32 @@
+[package]
+name = "reifydb-sub-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Transport-agnostic subscription machinery for ReifyDB"
+
+[lib]
+doctest = false
+
+[features]
+default = ["remote"]
+remote = ["dep:reifydb-remote-proxy"]
+
+[dependencies]
+reifydb-client = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-remote-proxy = { workspace = true, optional = true }
+reifydb-runtime = { workspace = true }
+reifydb-subscription = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-value = { workspace = true }
+
+dashmap = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+
+[build-dependencies]
+reifydb-build = { workspace = true }

@@ -5,6 +5,7 @@ use std::{error::Error, future::Future, sync::Arc};
 
 use reifydb::{Database, runtime::context::clock::MockClock};
 use reifydb_client::{ChangePayload, SubscriptionConfig, WireFormat, WsClient};
+use reifydb_codec::json::wire_type::from_json as type_from_json;
 use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, time::timeout};
 
@@ -76,8 +77,21 @@ pub struct JsonColumn {
 	pub payload: Vec<String>,
 }
 
+/// The wire renders a column type as a descriptor object, so a test that wants to name the type
+/// has to read it back through the wire's own reader. A parse failure panics rather than yielding
+/// an empty name: a type the wire cannot describe is a defect, not a column without a type.
+fn column_type(column: &serde_json::Value) -> String {
+	let Some(value) = column.get("type") else {
+		panic!("column is missing a type: {column}");
+	};
+	match type_from_json(value) {
+		Ok(ty) => ty.to_string(),
+		Err(e) => panic!("column type is not a type descriptor: {e}"),
+	}
+}
+
 /// Body shape: `{ "frames": [{ "row_numbers": [...], "columns": [...] }] }` where each column
-/// is `{ "name": "...", "type": "...", "payload": [...] }`.
+/// is `{ "name": "...", "type": {"id": "..."}, "payload": [...] }`.
 pub fn extract_columns(body: &serde_json::Value) -> Vec<JsonColumn> {
 	let frames = body.get("frames").and_then(|f| f.as_array());
 	let frame = frames.and_then(|f| f.first());
@@ -87,7 +101,7 @@ pub fn extract_columns(body: &serde_json::Value) -> Vec<JsonColumn> {
 			.iter()
 			.map(|c| JsonColumn {
 				name: c.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string(),
-				r#type: c.get("type").and_then(|t| t.as_str()).unwrap_or("").to_string(),
+				r#type: column_type(c),
 				payload: c
 					.get("payload")
 					.and_then(|d| d.as_array())

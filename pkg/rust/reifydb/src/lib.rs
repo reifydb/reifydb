@@ -13,6 +13,8 @@ pub mod event;
 mod health;
 mod session;
 #[cfg(feature = "sub_flow")]
+mod settle;
+#[cfg(feature = "sub_flow")]
 mod subscribe;
 pub mod subsystem;
 pub mod system;
@@ -85,6 +87,7 @@ pub use reifydb_store_commit::store::CommitStore;
 pub use reifydb_store_multi as multi_storage;
 pub use reifydb_store_single as single_storage;
 pub use reifydb_sub_api as sub;
+pub use reifydb_sub_core as sub_core;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
 pub use reifydb_sub_metrics as sub_metrics;
@@ -150,6 +153,10 @@ pub use reifydb_value::{
 		value_type::ValueType,
 	},
 };
+#[cfg(feature = "sub_flow")]
+pub use settle::CaughtUp;
+#[cfg(all(feature = "sub_flow", reifydb_dst))]
+pub use settle::{SettleBudget, Settled};
 #[cfg(feature = "sub_flow")]
 pub use subscribe::Subscription;
 pub mod test;

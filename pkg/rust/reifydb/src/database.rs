@@ -13,14 +13,14 @@ use std::{
 use libc::{SIGHUP, SIGINT, SIGQUIT, SIGTERM, c_int, sighandler_t, signal};
 use reifydb_auth::service::AuthService;
 use reifydb_catalog::catalog::Catalog;
-#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+#[cfg(feature = "sub_flow")]
 use reifydb_core::{
 	error::diagnostic::{subscription::hydration_row_cap_exceeded, subsystem::feature_disabled},
 	interface::catalog::{id::SubscriptionId, subscription::HydrationConfig},
 	internal,
 };
 use reifydb_engine::engine::StandardEngine;
-#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+#[cfg(feature = "sub_flow")]
 use reifydb_engine::subscription::{HydrateError, SubscriptionServiceRef};
 use reifydb_runtime::{
 	Runtime, RuntimeHandle,
@@ -34,7 +34,7 @@ use reifydb_store_multi::MultiStore;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::HealthStatus;
-#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+#[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::subsystem::FlowSubsystem;
 #[cfg(all(feature = "sub_server_grpc", not(reifydb_single_threaded)))]
 use reifydb_sub_server_grpc::subsystem::GrpcSubsystem;
@@ -42,7 +42,7 @@ use reifydb_sub_server_grpc::subsystem::GrpcSubsystem;
 use reifydb_sub_server_http::subsystem::HttpSubsystem;
 #[cfg(all(feature = "sub_server_ws", not(reifydb_single_threaded)))]
 use reifydb_sub_server_ws::subsystem::WsSubsystem;
-#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+#[cfg(feature = "sub_flow")]
 use reifydb_sub_subscription::{store::SubscriptionStore, subsystem::SubscriptionSubsystem};
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
@@ -51,11 +51,13 @@ use reifydb_value::{
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
-#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+#[cfg(feature = "sub_flow")]
 use reifydb_value::{error::Error, value::Value};
 use tracing::{info, instrument, warn};
 
-#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+#[cfg(all(feature = "sub_flow", reifydb_dst))]
+use crate::settle::SettleBudget;
+#[cfg(feature = "sub_flow")]
 use crate::subscribe::Subscription;
 use crate::{
 	health::{ComponentHealth, HealthMonitor},
@@ -64,7 +66,7 @@ use crate::{
 	watermarks::Watermarks,
 };
 
-#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+#[cfg(feature = "sub_flow")]
 fn hydrate_error_to_error(e: HydrateError) -> Error {
 	match e {
 		HydrateError::Engine(err) => err,
@@ -96,7 +98,7 @@ pub struct Database {
 }
 
 impl Database {
-	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	#[cfg(feature = "sub_flow")]
 	pub fn sub_flow(&self) -> Option<&FlowSubsystem> {
 		self.subsystem::<FlowSubsystem>()
 	}
@@ -183,6 +185,13 @@ impl Database {
 
 	pub fn pools(&self) -> Pools {
 		self.spawner.pools()
+	}
+
+	/// The spawner every subsystem was built from, so `settle` can reach the one actor system
+	/// that owns them.
+	#[cfg(all(feature = "sub_flow", reifydb_dst))]
+	pub(crate) fn spawner(&self) -> &ActorSpawner {
+		&self.spawner
 	}
 
 	pub fn runtime(&self) -> &RuntimeHandle {
@@ -326,17 +335,31 @@ impl Database {
 		}
 	}
 
-	#[cfg(not(all(feature = "sub_flow", not(reifydb_single_threaded))))]
+	/// Under dst the calling thread is the only thread that can run an actor, so the wall-clock
+	/// plateau loop above would spin without ever letting a consumer make progress. Settling the
+	/// subscription pipeline is the equivalent that actually advances work, and unlike the host
+	/// body it is not gated on the flow subsystem: the subscription subsystem consumes cdc on its
+	/// own, and settling is already a no-op when neither is present.
+	#[cfg(all(feature = "sub_flow", reifydb_dst))]
+	fn drain_cdc_consumers(&self, _timeout: Duration) {
+		if let Err(e) = self.settle_subscriptions_within(SettleBudget::Default) {
+			warn!(error = %e, "shutdown drain did not settle; flushing already-committed data anyway");
+		}
+	}
+
+	/// Single-threaded non-dst targets have no way to drive a consumer from here: there is no
+	/// worker thread and no steppable actor system, so there is nothing to drain.
+	#[cfg(any(not(feature = "sub_flow"), all(reifydb_single_threaded, not(reifydb_dst))))]
 	fn drain_cdc_consumers(&self, _timeout: Duration) {}
 
-	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	#[cfg(feature = "sub_flow")]
 	fn persist_flow_frontiers(&self) {
 		if let Some(sub_flow) = self.sub_flow() {
 			sub_flow.persist_frontiers();
 		}
 	}
 
-	#[cfg(not(all(feature = "sub_flow", not(reifydb_single_threaded))))]
+	#[cfg(not(feature = "sub_flow"))]
 	fn persist_flow_frontiers(&self) {}
 
 	pub fn health_status(&self) -> HealthStatus {
@@ -412,7 +435,7 @@ impl Database {
 	/// `query` is the subscription body only, e.g. `from ns::t | map { id, score }`; it is wrapped
 	/// in `CREATE SUBSCRIPTION AS { .. }`. `HydrationConfig::default()` delivers the current
 	/// snapshot before forward changes.
-	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	#[cfg(feature = "sub_flow")]
 	pub fn subscribe_as_root(
 		&self,
 		query: &str,
@@ -425,7 +448,7 @@ impl Database {
 	/// `query` is the subscription body only, e.g. `from ns::t | map { id, score }`. With hydration
 	/// enabled the snapshot at subscribe time is delivered before forward CDC changes, so a
 	/// subscription created over a non-empty source still observes the existing rows.
-	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	#[cfg(feature = "sub_flow")]
 	pub fn subscribe_as(
 		&self,
 		identity: IdentityId,
@@ -441,7 +464,7 @@ impl Database {
 		Ok(Subscription::new(id, store, column_names, prelude))
 	}
 
-	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	#[cfg(feature = "sub_flow")]
 	#[inline]
 	fn resolve_subscription_store(&self) -> Result<Arc<SubscriptionStore>> {
 		Ok(self.subsystem::<SubscriptionSubsystem>()
@@ -450,7 +473,7 @@ impl Database {
 			.clone())
 	}
 
-	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	#[cfg(feature = "sub_flow")]
 	#[inline]
 	fn parse_subscription_id(frames: &[Frame]) -> Result<SubscriptionId> {
 		frames.first()
@@ -468,7 +491,7 @@ impl Database {
 			})
 	}
 
-	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	#[cfg(feature = "sub_flow")]
 	#[inline]
 	fn build_hydration_prelude(
 		&self,
@@ -493,7 +516,7 @@ impl Database {
 
 	/// Use after `stop()` + reopen: a handle from `subscribe_as` holds the pre-restart store and
 	/// is stale afterwards. `None` if the subscription subsystem is not running.
-	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	#[cfg(feature = "sub_flow")]
 	pub fn subscription(&self, id: SubscriptionId) -> Option<Subscription> {
 		let subsystem = self.subsystem::<SubscriptionSubsystem>()?;
 		let store = subsystem.store().clone();

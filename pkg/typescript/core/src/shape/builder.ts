@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 import {
     PrimitiveShapeNode, ObjectShapeNode, ArrayShapeNode,
-    OptionalShapeNode, ValueShapeNode, ShapeNode
+    OptionShapeNode, ValueShapeNode, ShapeNode
 } from '.';
 
 export class ShapeBuilder {
@@ -139,8 +139,8 @@ export class ShapeBuilder {
         return {kind: 'array', items};
     }
 
-    static optional<T extends ShapeNode>(shape: T): OptionalShapeNode<T> {
-        return {kind: 'optional', shape};
+    static option<T extends ShapeNode>(inner: T): OptionShapeNode<T> {
+        return {kind: 'option', inner};
     }
 
     static number(): PrimitiveShapeNode<'Float8'> {

@@ -3,7 +3,7 @@
 use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};
 use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-use reifydb_sub_server::subscription::wire_sink::{BatchSubscribedMember, WireSink};
+use reifydb_sub_core::wire_sink::{BatchSubscribedMember, WireSink};
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_value::value::{diff_type::DiffType, frame::frame::Frame};
 use tokio::sync::mpsc;
@@ -21,7 +21,7 @@ pub enum WireFormat {
 	Rbcf,
 }
 
-pub type SubscriptionRegistry = reifydb_sub_server::subscription::registry::SubscriptionRegistry<GrpcWireSink>;
+pub type SubscriptionRegistry = reifydb_sub_core::registry::SubscriptionRegistry<GrpcWireSink>;
 
 #[derive(Clone)]
 pub enum GrpcWireSink {
@@ -209,7 +209,7 @@ mod tests {
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
-	use reifydb_sub_server::subscription::registry::PromoteResult;
+	use reifydb_sub_core::registry::PromoteResult;
 	use reifydb_subscription::delivery::SubscriptionDelivery;
 	use reifydb_value::value::{Value, duration::Duration, uuid::Uuid7};
 
@@ -239,7 +239,6 @@ mod tests {
 		registry.subscribe(
 			sub_a,
 			connection_id,
-			"FROM a".to_string(),
 			batch_sink.clone(),
 			WireFormat::Rbcf,
 			None,
@@ -249,7 +248,6 @@ mod tests {
 		registry.subscribe(
 			sub_b,
 			connection_id,
-			"FROM b".to_string(),
 			batch_sink.clone(),
 			WireFormat::Rbcf,
 			None,
@@ -365,7 +363,6 @@ mod tests {
 		registry.subscribe(
 			sub,
 			connection_id,
-			"FROM warm".to_string(),
 			sink,
 			WireFormat::Rbcf,
 			Some(16),
@@ -413,7 +410,6 @@ mod tests {
 		registry.subscribe(
 			sub,
 			connection_id,
-			"FROM warm".to_string(),
 			sink,
 			WireFormat::Rbcf,
 			Some(2),

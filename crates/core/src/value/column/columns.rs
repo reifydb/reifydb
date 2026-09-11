@@ -437,7 +437,7 @@ impl Columns {
 
 		for encoded in bytes_slice {
 			for (i, _) in fields.iter().enumerate() {
-				columns_vec[i].data.push_value(shape.get_value(encoded, i));
+				push_keeping_option(&mut columns_vec[i].data, shape.get_value(encoded, i));
 			}
 		}
 
@@ -484,7 +484,7 @@ impl Columns {
 		for col in self.columns.iter() {
 			let mut new_data = col.empty_like(indices.len());
 			for &idx in indices {
-				new_data.push_value(col.get_value(idx));
+				push_keeping_option(&mut new_data, col.get_value(idx));
 			}
 			new_buffers.push(new_data);
 		}
@@ -662,6 +662,19 @@ impl Columns {
 			self.names.push(Fragment::internal(name));
 			self.columns.push(data);
 		}
+	}
+}
+
+fn push_keeping_option(buffer: &mut ColumnBuffer, value: Value) {
+	match buffer {
+		ColumnBuffer::Option {
+			inner,
+			bitvec,
+		} if !matches!(value, Value::None { .. }) => {
+			inner.push_value(value);
+			bitvec.push(true);
+		}
+		data => data.push_value(value),
 	}
 }
 

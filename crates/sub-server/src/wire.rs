@@ -3,26 +3,14 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_value::{
-	fragment::Fragment,
-	params::Params,
-	value::{
-		Value,
-		blob::Blob,
-		decimal::parse::parse_decimal,
-		identity::IdentityId,
-		temporal::parse::{
-			date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
-		},
-		uuid::parse::{parse_uuid4, parse_uuid7},
-	},
-};
+use reifydb_codec::json::{from::parse_value, wire_type::WireValueType};
+use reifydb_value::{params::Params, value::Value};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WireValue {
 	#[serde(rename = "type")]
-	pub type_name: String,
+	pub r#type: WireValueType,
 	pub value: String,
 }
 
@@ -33,70 +21,8 @@ pub enum WireParams {
 	Named(HashMap<String, WireValue>),
 }
 
-fn wire_value_to_value(wire: WireValue) -> Result<Value, String> {
-	let v = wire.value.as_str();
-	match wire.type_name.as_str() {
-		"None" => Ok(Value::none()),
-		"Boolean" => v
-			.parse::<bool>()
-			.map(Value::Boolean)
-			.map_err(|e| format!("invalid Boolean value '{}': {}", v, e)),
-		"Float4" => {
-			v.parse::<f32>().map(Value::float4).map_err(|e| format!("invalid Float4 value '{}': {}", v, e))
-		}
-		"Float8" => {
-			v.parse::<f64>().map(Value::float8).map_err(|e| format!("invalid Float8 value '{}': {}", v, e))
-		}
-		"Int1" => v.parse::<i8>().map(Value::Int1).map_err(|e| format!("invalid Int1 value '{}': {}", v, e)),
-		"Int2" => v.parse::<i16>().map(Value::Int2).map_err(|e| format!("invalid Int2 value '{}': {}", v, e)),
-		"Int4" => v.parse::<i32>().map(Value::Int4).map_err(|e| format!("invalid Int4 value '{}': {}", v, e)),
-		"Int8" => v.parse::<i64>().map(Value::Int8).map_err(|e| format!("invalid Int8 value '{}': {}", v, e)),
-		"Int16" => {
-			v.parse::<i128>().map(Value::Int16).map_err(|e| format!("invalid Int16 value '{}': {}", v, e))
-		}
-		"Utf8" => Ok(Value::Utf8(v.to_string())),
-		"Uint1" => v.parse::<u8>().map(Value::Uint1).map_err(|e| format!("invalid Uint1 value '{}': {}", v, e)),
-		"Uint2" => {
-			v.parse::<u16>().map(Value::Uint2).map_err(|e| format!("invalid Uint2 value '{}': {}", v, e))
-		}
-		"Uint4" => {
-			v.parse::<u32>().map(Value::Uint4).map_err(|e| format!("invalid Uint4 value '{}': {}", v, e))
-		}
-		"Uint8" => {
-			v.parse::<u64>().map(Value::Uint8).map_err(|e| format!("invalid Uint8 value '{}': {}", v, e))
-		}
-		"Uint16" => {
-			v.parse::<u128>().map(Value::Uint16).map_err(|e| format!("invalid Uint16 value '{}': {}", v, e))
-		}
-		"Uuid4" => parse_uuid4(Fragment::internal(v))
-			.map(Value::Uuid4)
-			.map_err(|e| format!("invalid Uuid4 value '{}': {:?}", v, e)),
-		"Uuid7" => parse_uuid7(Fragment::internal(v))
-			.map(Value::Uuid7)
-			.map_err(|e| format!("invalid Uuid7 value '{}': {:?}", v, e)),
-		"Date" => parse_date(Fragment::internal(v))
-			.map(Value::Date)
-			.map_err(|e| format!("invalid Date value '{}': {:?}", v, e)),
-		"DateTime" => parse_datetime(Fragment::internal(v))
-			.map(Value::DateTime)
-			.map_err(|e| format!("invalid DateTime value '{}': {:?}", v, e)),
-		"Time" => parse_time(Fragment::internal(v))
-			.map(Value::Time)
-			.map_err(|e| format!("invalid Time value '{}': {:?}", v, e)),
-		"Duration" => parse_duration(Fragment::internal(v))
-			.map(Value::Duration)
-			.map_err(|e| format!("invalid Duration value '{}': {:?}", v, e)),
-		"Blob" => Blob::from_hex(Fragment::internal(v))
-			.map(Value::Blob)
-			.map_err(|e| format!("invalid Blob value '{}': {:?}", v, e)),
-		"Decimal" => parse_decimal(Fragment::internal(v))
-			.map(Value::Decimal)
-			.map_err(|e| format!("invalid Decimal value '{}': {:?}", v, e)),
-		"IdentityId" => parse_uuid7(Fragment::internal(v))
-			.map(|u| Value::IdentityId(IdentityId::new(u)))
-			.map_err(|e| format!("invalid IdentityId value '{}': {:?}", v, e)),
-		_ => Err(format!("unknown type '{}'", wire.type_name)),
-	}
+fn wire_value_to_value(parameter: &str, wire: WireValue) -> Result<Value, String> {
+	parse_value(&wire.r#type.0, &wire.value).map_err(|e| format!("parameter {parameter}: {e}"))
 }
 
 impl WireParams {
@@ -104,18 +30,109 @@ impl WireParams {
 		match self {
 			WireParams::Positional(items) => {
 				let mut values = Vec::with_capacity(items.len());
-				for item in items {
-					values.push(wire_value_to_value(item)?);
+				for (index, item) in items.into_iter().enumerate() {
+					values.push(wire_value_to_value(&format!("${}", index + 1), item)?);
 				}
 				Ok(Params::Positional(Arc::new(values)))
 			}
 			WireParams::Named(map) => {
 				let mut result = HashMap::with_capacity(map.len());
 				for (key, wire) in map {
-					result.insert(key, wire_value_to_value(wire)?);
+					let value = wire_value_to_value(&format!("${key}"), wire)?;
+					result.insert(key, value);
 				}
 				Ok(Params::Named(Arc::new(result)))
 			}
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_codec::json::{NONE_MARKER, none_marker};
+	use reifydb_value::value::value_type::ValueType;
+	use serde_json::from_str;
+
+	use super::*;
+
+	fn positional(json: &str) -> Result<Params, String> {
+		from_str::<WireParams>(json).expect("wire params should deserialise").into_params()
+	}
+
+	fn named(json: &str) -> Result<Params, String> {
+		from_str::<WireParams>(json).expect("wire params should deserialise").into_params()
+	}
+
+	fn option(inner: ValueType) -> ValueType {
+		ValueType::Option(Box::new(inner))
+	}
+
+	fn option_option_int4(value: &str) -> String {
+		format!(
+			r#"{{"type":{{"id":"Option","underlying":{{"id":"Option","underlying":{{"id":"Int4"}}}}}},"value":"{value}"}}"#
+		)
+	}
+
+	#[test]
+	fn a_none_under_one_some_layer_of_option_option_int4_is_a_none_of_int4() {
+		let params = positional(&format!("[{}]", option_option_int4(&none_marker(1)))).unwrap();
+		assert_eq!(params.get_positional(0), Some(&Value::none_of(ValueType::Int4)));
+
+		let params = named(&format!(r#"{{"v":{}}}"#, option_option_int4(&none_marker(1)))).unwrap();
+		assert_eq!(params.get_named("v"), Some(&Value::none_of(ValueType::Int4)));
+	}
+
+	#[test]
+	fn a_bare_marker_on_option_option_int4_is_a_none_of_option_int4() {
+		let params = positional(&format!("[{}]", option_option_int4(NONE_MARKER))).unwrap();
+		assert_eq!(params.get_positional(0), Some(&Value::none_of(option(ValueType::Int4))));
+
+		let params = named(&format!(r#"{{"v":{}}}"#, option_option_int4(NONE_MARKER))).unwrap();
+		assert_eq!(params.get_named("v"), Some(&Value::none_of(option(ValueType::Int4))));
+	}
+
+	#[test]
+	fn a_present_value_on_option_option_int4_is_the_base_value() {
+		let params = positional(&format!("[{}]", option_option_int4("5"))).unwrap();
+		assert_eq!(params.get_positional(0), Some(&Value::Int4(5)));
+
+		let params = named(&format!(r#"{{"v":{}}}"#, option_option_int4("5"))).unwrap();
+		assert_eq!(params.get_named("v"), Some(&Value::Int4(5)));
+	}
+
+	#[test]
+	fn a_scalar_descriptor_is_a_base_type() {
+		let params = positional(r#"[{"type":{"id":"Int4"},"value":"7"}]"#).unwrap();
+		assert_eq!(params.get_positional(0), Some(&Value::Int4(7)));
+	}
+
+	#[test]
+	fn nested_descriptors_carry_the_option_layers() {
+		let params = positional(
+			r#"[{"type":{"id":"Option","underlying":{"id":"Option","underlying":{"id":"Utf8"}}},"value":"⟪none:1⟫"},{"type":{"id":"Option","underlying":{"id":"Utf8"}},"value":"seven"}]"#,
+		)
+		.unwrap();
+		assert_eq!(params.get_positional(0), Some(&Value::none_of(ValueType::Utf8)));
+		assert_eq!(params.get_positional(1), Some(&Value::Utf8("seven".to_string())));
+	}
+
+	#[test]
+	fn the_none_type_name_is_unknown() {
+		let err = from_str::<WireValue>(r#"{"type":{"id":"None"},"value":"⟪none⟫"}"#).unwrap_err().to_string();
+		assert!(err.contains("unknown type id `None`"), "{err}");
+	}
+
+	#[test]
+	fn a_positional_error_names_the_position_and_the_type() {
+		let err = positional(r#"[{"type":{"id":"Int4"},"value":"1"},{"type":{"id":"Int4"},"value":"abc"}]"#)
+			.unwrap_err();
+		assert_eq!(err, "parameter $2: invalid data: cannot parse 'abc' as Int4");
+	}
+
+	#[test]
+	fn a_named_error_names_the_parameter_and_the_type() {
+		let params = from_str::<WireParams>(r#"{"id":{"type":{"id":"Int4"},"value":"⟪none⟫"}}"#).unwrap();
+		let err = params.into_params().unwrap_err();
+		assert_eq!(err, "parameter $id: invalid data: none marker for non-Option type Int4");
 	}
 }

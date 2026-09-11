@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import { describe, expect, it } from 'vitest';
-import { NoneValue } from '../../src';
+import { NONE_VALUE, NoneValue, noneDepth } from '../../src';
 
 describe('NoneValue', () => {
     describe('constructor', () => {
@@ -17,6 +17,20 @@ describe('NoneValue', () => {
             expect(value.value).toBeUndefined();
             expect(value.type).toBe('None');
             expect(value.innerType).toBe('Int4');
+        });
+
+        it('should keep a nested Option innerType, since the missing value can itself be an Option', () => {
+            const value = new NoneValue({Option: 'Int4'});
+            expect(value.innerType).toEqual({Option: 'Int4'});
+        });
+    });
+
+    describe('noneDepth', () => {
+        it('is one more than the option depth of the missing type', () => {
+            expect(noneDepth(new NoneValue())).toBe(1);
+            expect(noneDepth(new NoneValue('Int4'))).toBe(1);
+            expect(noneDepth(new NoneValue({Option: 'Int4'}))).toBe(2);
+            expect(noneDepth(new NoneValue({Option: {Option: 'Int4'}}))).toBe(3);
         });
     });
 
@@ -97,11 +111,11 @@ describe('NoneValue', () => {
     });
 
     describe('encode', () => {
-        it('should encode as None type with NONE_VALUE', () => {
-            const value = new NoneValue();
+        it('should encode as the Option of its inner type with NONE_VALUE', () => {
+            const value = new NoneValue('Int4');
             const encoded = value.encode();
-            expect(encoded.type).toBe('None');
-            expect(encoded.value).toBe('⟪none⟫');
+            expect(encoded.type).toEqual({Option: 'Int4'});
+            expect(encoded.value).toBe(NONE_VALUE);
         });
     });
 });

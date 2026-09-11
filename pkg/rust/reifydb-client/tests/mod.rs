@@ -6,6 +6,7 @@ pub mod auth;
 pub(crate) mod common;
 pub mod grpc;
 pub mod meta;
+pub mod params;
 #[path = "common/proxy.rs"]
 pub(crate) mod proxy;
 pub mod queue;

@@ -21,6 +21,7 @@ default = []
 [dependencies]
 reifydb-codec = { workspace = true }
 reifydb-auth = { workspace = true }
+reifydb-sub-core = { workspace = true }
 reifydb-sub-server = { workspace = true }
 reifydb-client = { workspace = true }
 reifydb-sub-api = { workspace = true }

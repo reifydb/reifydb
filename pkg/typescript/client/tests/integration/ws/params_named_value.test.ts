@@ -289,11 +289,11 @@ describe.each([
         it('None', async () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
-                { value: new NoneValue() },
+                { value: new NoneValue('Int4') },
                 [Shape.object({result: Shape.noneValue()})]
             );
 
-            expectSingleValueResult(frames, new NoneValue());
+            expectSingleValueResult(frames, new NoneValue('Int4'));
         }, 1000);
 
     });
@@ -539,11 +539,11 @@ describe.each([
         it('None', async () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
-                { value: new NoneValue() },
+                { value: new NoneValue('Int4') },
                 [Shape.object({result: Shape.noneValue()})]
             );
 
-            expectSingleValueResult(frames, new NoneValue());
+            expectSingleValueResult(frames, new NoneValue('Int4'));
         }, 1000);
 
     });
@@ -789,11 +789,11 @@ describe.each([
         it('None', async () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
-                { value: new NoneValue() },
+                { value: new NoneValue('Int4') },
                 [Shape.object({result: Shape.noneValue()})]
             );
 
-            expectSingleValueResult(frames, new NoneValue());
+            expectSingleValueResult(frames, new NoneValue('Int4'));
         }, 1000);
 
     });

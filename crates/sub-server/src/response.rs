@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
+use reifydb_codec::{
+	frame::{encode::encode_frames, options::EncodeOptions},
+	json::{none_marker, wire_type::to_json as type_to_json},
+};
 use reifydb_value::{
 	reifydb_assertions,
-	value::{diff_type::DiffType, frame::frame::Frame, system_columns::SystemColumn},
+	value::{Value, diff_type::DiffType, frame::frame::Frame, system_columns::SystemColumn, value_type::ValueType},
 };
 use serde_json::{self, Map, Value as JsonValue, to_string as json_to_string};
 
@@ -37,7 +40,7 @@ fn change_envelope(frame: &Frame) -> JsonValue {
 				obj.insert(SystemColumn::RowNumbers.name().to_string(), JsonValue::from(rn.value()));
 			}
 			for col in frame.iter() {
-				obj.insert(col.name.clone(), col.data.get_value(i).to_json_value());
+				obj.insert(col.name.clone(), row_value(&col.data.get_type(), col.data.get_value(i)));
 			}
 			JsonValue::Object(obj)
 		})
@@ -47,6 +50,7 @@ fn change_envelope(frame: &Frame) -> JsonValue {
 	if let Some(op) = frame.op {
 		envelope.insert("op".to_string(), JsonValue::from(DiffType::as_u8(op)));
 	}
+	envelope.insert("types".to_string(), frame_types(frame));
 	envelope.insert("rows".to_string(), JsonValue::Array(rows));
 	JsonValue::Object(envelope)
 }
@@ -110,15 +114,59 @@ fn render_body_column(frame: Frame, unwrap: bool) -> String {
 	}
 }
 
+fn option_depth(ty: &ValueType) -> u32 {
+	let mut depth = 0;
+	let mut base = ty;
+	while let ValueType::Option(inner) = base {
+		depth += 1;
+		base = inner;
+	}
+	depth
+}
+
+fn row_value(column_type: &ValueType, value: Value) -> JsonValue {
+	match &value {
+		Value::None {
+			inner,
+		} => {
+			let wrapped = option_depth(column_type).saturating_sub(option_depth(inner) + 1);
+			if wrapped == 0 {
+				JsonValue::Null
+			} else {
+				JsonValue::String(none_marker(wrapped))
+			}
+		}
+		_ => value.to_json_value(),
+	}
+}
+
+fn frame_types(frame: &Frame) -> JsonValue {
+	let mut types = Map::new();
+	for col in frame.iter() {
+		types.insert(col.name.clone(), type_to_json(&col.data.get_type()));
+	}
+	JsonValue::Object(types)
+}
+
 #[inline]
 fn render_frame_rows(frames: &[Frame], unwrap: bool) -> String {
 	let json_frames = frames_to_json_rows(frames);
 
 	if unwrap && json_frames.len() == 1 && json_frames[0].len() == 1 {
-		json_to_string(&json_frames[0][0]).unwrap()
-	} else {
-		json_to_string(&json_frames).unwrap()
+		return json_to_string(&json_frames[0][0]).unwrap();
 	}
+
+	let envelopes: Vec<JsonValue> = frames
+		.iter()
+		.zip(json_frames)
+		.map(|(frame, rows)| {
+			let mut envelope = Map::new();
+			envelope.insert("types".to_string(), frame_types(frame));
+			envelope.insert("rows".to_string(), JsonValue::Array(rows));
+			JsonValue::Object(envelope)
+		})
+		.collect();
+	json_to_string(&envelopes).unwrap()
 }
 
 fn frames_to_json_rows(frames: &[Frame]) -> Vec<Vec<JsonValue>> {
@@ -129,7 +177,10 @@ fn frames_to_json_rows(frames: &[Frame]) -> Vec<Vec<JsonValue>> {
 				.map(|i| {
 					let mut obj = Map::new();
 					for col in frame.iter() {
-						obj.insert(col.name.clone(), col.data.get_value(i).to_json_value());
+						obj.insert(
+							col.name.clone(),
+							row_value(&col.data.get_type(), col.data.get_value(i)),
+						);
 					}
 					JsonValue::Object(obj)
 				})

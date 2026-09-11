@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 import {beforeAll, describe, expect, it} from "vitest";
 import {Client, HttpClient} from "../../../src";
-import {Shape, Utf8Value, Int4Value, Int1Value, InferShape} from "@reifydb/core";
+import {Shape, Utf8Value, Int4Value, InferShape} from "@reifydb/core";
 
 // Define the shape once
 const versionShape = Shape.object({
@@ -82,18 +82,19 @@ describe.each([
 
             const row = result[0][0];
 
-            // Verify primitive types
-            expect(typeof row.str_val).toBe('string');
-            expect(row.str_val).toBe('test');
+            // A shape declares each property by the column name the wire uses; the transform hands the
+            // row back with camelCase keys, so the assertions read the transformed name.
+            expect(typeof row.strVal).toBe('string');
+            expect(row.strVal).toBe('test');
 
-            expect(typeof row.int_val).toBe('number');
-            expect(row.int_val).toBe(42);
+            expect(typeof row.intVal).toBe('number');
+            expect(row.intVal).toBe(42);
 
-            expect(typeof row.bool_val).toBe('boolean');
-            expect(row.bool_val).toBe(true);
+            expect(typeof row.boolVal).toBe('boolean');
+            expect(row.boolVal).toBe(true);
 
-            expect(typeof row.float_val).toBe('number');
-            expect(row.float_val).toBeCloseTo(3.14);
+            expect(typeof row.floatVal).toBe('number');
+            expect(row.floatVal).toBeCloseTo(3.14);
         }, 5000);
 
         it('should handle bigint types correctly', async () => {
@@ -114,11 +115,11 @@ describe.each([
             const row = result[0][0];
 
             // Verify bigint types
-            expect(typeof row.big_val).toBe('bigint');
-            expect(row.big_val).toBe(BigInt("9223372036854775807"));
+            expect(typeof row.bigVal).toBe('bigint');
+            expect(row.bigVal).toBe(BigInt("9223372036854775807"));
 
-            expect(typeof row.another_val).toBe('bigint');
-            expect(row.another_val).toBe(BigInt(1));
+            expect(typeof row.anotherVal).toBe('bigint');
+            expect(row.anotherVal).toBe(BigInt(1));
         }, 5000);
     });
 
@@ -142,8 +143,10 @@ describe.each([
 
             // Check that values are Value objects
             expect(row.name).toBeInstanceOf(Utf8Value);
-            // The number 42 fits in Int1 range, so it's encoded as Int1Value
-            expect(row.count).toBeInstanceOf(Int1Value);
+            // The server sends 42 as Int1, the narrowest type it fits. The value shape names the
+            // type the caller wants to hold, and Int4 holds every Int1, so the shape is honoured.
+            expect(row.count).toBeInstanceOf(Int4Value);
+            expect(row.count.type).toBe('Int4');
 
             // Verify they have valueOf methods
             expect(typeof row.name.valueOf).toBe('function');

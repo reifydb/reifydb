@@ -28,6 +28,9 @@ pub(crate) struct FilterNode {
 	expressions: Vec<Expression>,
 	udf_names: Vec<String>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
+	emitted: bool,
+
+	empty: Option<Columns>,
 }
 
 impl FilterNode {
@@ -37,6 +40,8 @@ impl FilterNode {
 			expressions,
 			udf_names: Vec::new(),
 			context: None,
+			emitted: false,
+			empty: None,
 		}
 	}
 
@@ -133,12 +138,22 @@ impl QueryNode for FilterNode {
 						params: &stored_ctx.params,
 					};
 					let mut columns = self.apply(&transform_ctx, columns)?;
+					strip_udf_columns(&mut columns, &self.udf_names);
 					if columns.row_count() > 0 {
-						strip_udf_columns(&mut columns, &self.udf_names);
+						self.emitted = true;
 						return Ok(Some(columns));
 					}
+					if !self.emitted && self.empty.is_none() {
+						self.empty = Some(columns);
+					}
 				}
-				None => return Ok(None),
+				None => {
+					if self.emitted {
+						return Ok(None);
+					}
+					self.emitted = true;
+					return Ok(self.empty.take());
+				}
 			}
 		}
 	}

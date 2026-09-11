@@ -266,11 +266,11 @@ describe.each([
         it('None', async () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
-                [new NoneValue()],
+                [new NoneValue('Int4')],
                 [Shape.object({result: Shape.noneValue()})]
             );
 
-            expectSingleValueResult(frames, new NoneValue());
+            expectSingleValueResult(frames, new NoneValue('Int4'));
         }, 1000);
 
     });
@@ -515,11 +515,11 @@ describe.each([
         it('None', async () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
-                [new NoneValue()],
+                [new NoneValue('Int4')],
                 [Shape.object({result: Shape.noneValue()})]
             );
 
-            expectSingleValueResult(frames, new NoneValue());
+            expectSingleValueResult(frames, new NoneValue('Int4'));
         }, 1000);
 
     });
@@ -764,11 +764,11 @@ describe.each([
         it('None', async () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
-                [new NoneValue()],
+                [new NoneValue('Int4')],
                 [Shape.object({result: Shape.noneValue()})]
             );
 
-            expectSingleValueResult(frames, new NoneValue());
+            expectSingleValueResult(frames, new NoneValue('Int4'));
         }, 1000);
 
     });

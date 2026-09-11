@@ -3,8 +3,6 @@
 
 PKG := reifydb-uptime-backend
 
-REPO_ROOT := $(shell git rev-parse --show-toplevel)
-
 REIFYDB_WS := ws://127.0.0.1:8091
 
 PROBE_A_TOKEN := probe-a-dev-token
@@ -26,8 +24,7 @@ help:
 
 test:
 	cargo test -p $(PKG)
-	CARGO_TARGET_DIR=$(REPO_ROOT)/target/dst REIFYDB_DST=1 \
-		cargo build --release -p reifydb-uptime-bridge
+	cargo build --release -p reifydb-uptime-bridge
 	cd web && pnpm test
 
 service:

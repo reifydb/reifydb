@@ -62,22 +62,31 @@ use reifydb_catalog::vtable::{
 	},
 	tables::VTables,
 };
-use reifydb_core::interface::catalog::id::NamespaceId;
+use reifydb_core::{
+	error::diagnostic::catalog::virtual_table_not_found,
+	interface::catalog::id::NamespaceId,
+	value::column::{columns::Columns, headers::ColumnHeaders},
+};
 use reifydb_rql::nodes::TableVirtualScanNode;
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::return_error;
 
-use crate::vm::volcano::{
-	query::{QueryContext, QueryNode},
-	scan::vtable::VirtualScanNode,
+use crate::{
+	Result,
+	vm::volcano::{
+		query::{QueryContext, QueryNode},
+		scan::vtable::VirtualScanNode,
+	},
 };
 
 pub(crate) fn compile_virtual_scan(node: TableVirtualScanNode, context: Arc<QueryContext>) -> Box<dyn QueryNode> {
 	let namespace = node.source.namespace().def();
 	let table = node.source.def();
 
-	let virtual_table_impl: VTables = if let Some(user_table) =
+	let virtual_table_impl: Option<VTables> = if let Some(user_table) =
 		context.services.virtual_table_registry.find_by_name(namespace.id(), &table.name)
 	{
-		user_table
+		Some(user_table)
 	} else if namespace.id() == NamespaceId::SYSTEM {
 		compile_system_vtable(&table.name, &context)
 	} else if namespace.id() == NamespaceId::SYSTEM_PROCEDURES {
@@ -85,7 +94,14 @@ pub(crate) fn compile_virtual_scan(node: TableVirtualScanNode, context: Arc<Quer
 	} else if namespace.id() == NamespaceId::SYSTEM_BINDINGS {
 		compile_bindings_vtable(&table.name)
 	} else {
-		panic!("Unknown virtual table type: {}.{}", namespace.name(), table.name)
+		None
+	};
+
+	let Some(virtual_table_impl) = virtual_table_impl else {
+		return Box::new(UnknownVirtualScanNode {
+			namespace: namespace.name().to_string(),
+			name: table.name.clone(),
+		});
 	};
 
 	let virtual_context = node
@@ -102,8 +118,8 @@ pub(crate) fn compile_virtual_scan(node: TableVirtualScanNode, context: Arc<Quer
 	Box::new(VirtualScanNode::new(virtual_table_impl, context, virtual_context).unwrap())
 }
 
-fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
-	match name {
+fn compile_system_vtable(name: &str, context: &QueryContext) -> Option<VTables> {
+	Some(match name {
 		"sequences" => VTables::Sequences(SystemSequences::new()),
 		"namespaces" => VTables::Namespaces(SystemNamespaces::new()),
 		"tables" => VTables::Tables(SystemTables::new()),
@@ -164,27 +180,46 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		"virtual_table_columns" => {
 			VTables::VirtualTableColumns(SystemVirtualTableColumns::new(context.services.catalog.clone()))
 		}
-		_ => panic!("Unknown virtual table type: {}", name),
-	}
+		_ => return None,
+	})
 }
 
-fn compile_procedures_vtable(name: &str, context: &QueryContext) -> VTables {
+fn compile_procedures_vtable(name: &str, context: &QueryContext) -> Option<VTables> {
 	let catalog = context.services.catalog.clone();
-	match name {
+	Some(match name {
 		"rql" => VTables::ProceduresRql(SystemProceduresRql::new()),
 		"test" => VTables::ProceduresTest(SystemProceduresTest::new()),
 		"in_process" => VTables::ProceduresInProcess(SystemProceduresInProcess::new(catalog)),
 		"extern_c" => VTables::ProceduresExternC(SystemProceduresExternC::new(catalog)),
 		"extern_wasm" => VTables::ProceduresExternWasm(SystemProceduresExternWasm::new(catalog)),
-		_ => panic!("Unknown system::procedures virtual table: {}", name),
-	}
+		_ => return None,
+	})
 }
 
-fn compile_bindings_vtable(name: &str) -> VTables {
-	match name {
+fn compile_bindings_vtable(name: &str) -> Option<VTables> {
+	Some(match name {
 		"http" => VTables::BindingsHttp(SystemBindingsHttp::new()),
 		"grpc" => VTables::BindingsGrpc(SystemBindingsGrpc::new()),
 		"ws" => VTables::BindingsWs(SystemBindingsWs::new()),
-		_ => panic!("Unknown system::bindings virtual table: {}", name),
+		_ => return None,
+	})
+}
+
+struct UnknownVirtualScanNode {
+	namespace: String,
+	name: String,
+}
+
+impl QueryNode for UnknownVirtualScanNode {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+		return_error!(virtual_table_not_found(&self.namespace, &self.name));
+	}
+
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+		Ok(None)
+	}
+
+	fn headers(&self) -> Option<ColumnHeaders> {
+		None
 	}
 }

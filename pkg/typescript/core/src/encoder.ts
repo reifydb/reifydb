@@ -1,12 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-import {NONE_VALUE} from "./constant";
-import {TypeValuePair} from "./value";
+import {NONE_VALUE, noneMarker, noneMarkerDepth} from "./constant";
+import {NoneValue, TypeValuePair, WireType, isOption, typeToWire} from "./value";
 
-export function encodeValue(value: any): TypeValuePair {
+export function encodeValue(value: any, name: string = '$1'): TypeValuePair {
 
     if (value === null || value === undefined) {
-        return { type: 'None', value: NONE_VALUE };
+        throw new Error(`parameter ${name} is null or undefined, use Option.none(inner)`);
+    }
+
+    if (value instanceof NoneValue && value.innerType === 'None') {
+        throw new Error(`parameter ${name} is a NoneValue without an inner type, use Option.none(inner)`);
+    }
+
+    if (isOption(value)) {
+        if (value.isNone()) {
+            return { type: value.type, value: NONE_VALUE };
+        }
+        const inner = encodeValue(value.unwrap(), name);
+        const noneAt = noneMarkerDepth(inner.value);
+        return {
+            type: { Option: inner.type },
+            value: noneAt === undefined ? inner.value : noneMarker(noneAt + 1),
+        };
     }
 
     if (value && typeof value === 'object' && 'encode' in value && typeof value.encode === 'function') {
@@ -92,17 +108,27 @@ export function encodeValue(value: any): TypeValuePair {
     throw new Error(`Cannot encode value of type ${typeof value}: ${value}`);
 }
 
-export function encodeParams(params: any): TypeValuePair[] | Record<string, TypeValuePair> {
+/** A parameter as it goes on the wire: the same value, with the type in the wire's own rendering. */
+export interface WireValue {
+    type: WireType;
+    value: string;
+}
+
+function toWire(pair: TypeValuePair): WireValue {
+    return {type: typeToWire(pair.type), value: pair.value};
+}
+
+export function encodeParams(params: any): WireValue[] | Record<string, WireValue> {
     if (params === undefined || params === null) {
         return [];
     }
 
     if (Array.isArray(params)) {
-        return params.map(param => encodeValue(param));
+        return params.map((param, i) => toWire(encodeValue(param, `$${i + 1}`)));
     } else if (typeof params === 'object') {
-        const encoded: Record<string, TypeValuePair> = {};
+        const encoded: Record<string, WireValue> = {};
         for (const [key, value] of Object.entries(params)) {
-            encoded[key] = encodeValue(value);
+            encoded[key] = toWire(encodeValue(value, `$${key}`));
         }
         return encoded;
     }

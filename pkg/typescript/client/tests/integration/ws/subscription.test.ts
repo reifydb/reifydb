@@ -757,7 +757,9 @@ describe('WebSocket Subscriptions', () => {
                 null,
                 []
             );
-            await tracker.waitForCall();
+            // Reconnection replays the row the subscription already delivered, so waiting for one more
+            // callback can be satisfied by that replay while the second insert is still in flight.
+            await tracker.waitForRowMatching(r => r.id === 2);
 
             // Verify callback was invoked again after reconnection
             expect(tracker.getCallCount()).toBeGreaterThan(callsBeforeReconnect);

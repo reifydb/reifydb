@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::value_type::ValueType;
 use serde::{Deserialize, Serialize};
+
+use crate::json::wire_type::WireValueType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseFrame {
@@ -23,6 +24,6 @@ pub struct ResponseFrame {
 pub struct ResponseColumn {
 	pub name: String,
 	#[serde(rename = "type")]
-	pub r#type: ValueType,
+	pub r#type: WireValueType,
 	pub payload: Vec<String>,
 }

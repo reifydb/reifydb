@@ -5,19 +5,27 @@ import {
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, DurationValue,
     TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Uint16Value, NoneValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue,
-    Value, TypeValuePair, isOptionType, unwrapOptionType
+    Value, TypeValuePair, Type, isOptionType, unwrapOptionType, optionDepth, innerOfOption
 } from './value';
-import {NONE_VALUE} from './constant';
+import {noneMarkerDepth} from './constant';
 import {Column} from './types';
 
 
+function stripOptionLayers(type: Type, layers: number): Type {
+    return layers === 0 || !isOptionType(type) ? type : stripOptionLayers(innerOfOption(type), layers - 1);
+}
+
 export function decode(pair: TypeValuePair): Value {
     if (isOptionType(pair.type)) {
-        const innerType = unwrapOptionType(pair.type);
-        if (pair.value === NONE_VALUE || pair.value === '') {
-            return new NoneValue(innerType);
+        const noneAt = noneMarkerDepth(pair.value);
+        if (noneAt === undefined) {
+            return decode({type: unwrapOptionType(pair.type), value: pair.value});
         }
-        return decode({type: innerType, value: pair.value});
+        const depth = optionDepth(pair.type);
+        if (noneAt >= depth) {
+            throw new Error(`none under ${noneAt} Some layers cannot fit an option of depth ${depth}`);
+        }
+        return new NoneValue(stripOptionLayers(pair.type, noneAt + 1));
     }
 
     switch (pair.type) {

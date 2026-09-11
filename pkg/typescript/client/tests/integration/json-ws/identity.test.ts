@@ -55,9 +55,9 @@ describe('JsonWs caller identity', () => {
         const alice = await Client.connectJsonWs(WS_URL, {timeoutMs: 10000, token: aliceToken});
         try {
             const rows = await alice.call(binding, {});
-            // JsonWsClient returns row-shaped data; the observed caller must be alice, not bob.
-            expect(rows[0][0].caller).toBe(aliceId);
-            expect(rows[0][0].caller).not.toBe(bobId);
+            // JsonWsClient decodes rows into Value objects; the observed caller must be alice, not bob.
+            expect(rows[0][0].caller.value).toBe(aliceId);
+            expect(rows[0][0].caller.value).not.toBe(bobId);
         } finally {
             alice.disconnect();
         }
@@ -67,7 +67,7 @@ describe('JsonWs caller identity', () => {
         const bob = await Client.connectJsonWs(WS_URL, {timeoutMs: 10000, token: bobToken});
         try {
             const rows = await bob.call(binding, {});
-            expect(rows[0][0].caller).toBe(bobId);
+            expect(rows[0][0].caller.value).toBe(bobId);
         } finally {
             bob.disconnect();
         }

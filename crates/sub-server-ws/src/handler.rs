@@ -16,6 +16,10 @@ use reifydb_core::{
 	metrics::execution::ExecutionMetrics,
 };
 use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel, system::ActorHandle};
+use reifydb_sub_core::{
+	cleanup::cleanup_subscription,
+	envelope::{BinaryKind, encode_rbcf_envelope},
+};
 use reifydb_sub_server::{
 	actor::ServerActor,
 	auth::{AuthError, extract_identity_from_ws_auth},
@@ -27,7 +31,6 @@ use reifydb_sub_server::{
 	interceptor::{Protocol, RequestContext, RequestMetadata},
 	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, encode_frames_rbcf, resolve_response_json},
 	state::AppState,
-	subscription::cleanup::cleanup_subscription,
 	wire::WireParams,
 };
 use reifydb_subscription::batch::BatchId;
@@ -62,34 +65,6 @@ use crate::{
 pub(crate) enum WsResponse {
 	Text(String),
 	Binary(Vec<u8>),
-}
-
-#[repr(u8)]
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum BinaryKind {
-	Response = 0x00,
-	Change = 0x01,
-	BatchChange = 0x02,
-}
-
-pub(crate) fn encode_rbcf_envelope(
-	kind: BinaryKind,
-	id: &str,
-	rbcf_bytes: &[u8],
-	meta: Option<&ResponseMeta>,
-) -> Vec<u8> {
-	let id_bytes = id.as_bytes();
-	let meta_json = meta.map(|m| json_to_string(m).unwrap()).unwrap_or_default();
-	let meta_bytes = meta_json.as_bytes();
-
-	let mut envelope = Vec::with_capacity(1 + 4 + id_bytes.len() + 4 + meta_bytes.len() + rbcf_bytes.len());
-	envelope.push(kind as u8);
-	envelope.extend_from_slice(&(id_bytes.len() as u32).to_le_bytes());
-	envelope.extend_from_slice(id_bytes);
-	envelope.extend_from_slice(&(meta_bytes.len() as u32).to_le_bytes());
-	envelope.extend_from_slice(meta_bytes);
-	envelope.extend_from_slice(rbcf_bytes);
-	envelope
 }
 
 pub async fn handle_connection(
@@ -338,7 +313,7 @@ async fn cleanup_connection_subscriptions(
 ) {
 	let subscription_ids = registry.cleanup_connection(connection_id);
 	for subscription_id in subscription_ids {
-		if let Err(e) = cleanup_subscription(state, subscription_id).await {
+		if let Err(e) = cleanup_subscription(state.engine(), subscription_id).await {
 			warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
 		}
 	}
@@ -602,7 +577,7 @@ async fn handle_unsubscribe(
 	let removed = conn.registry.unsubscribe(subscription_id);
 
 	if removed {
-		if let Err(e) = cleanup_subscription(conn.state, subscription_id).await {
+		if let Err(e) = cleanup_subscription(conn.state.engine(), subscription_id).await {
 			warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
 		}
 
@@ -658,7 +633,7 @@ fn encode_dispatch_result(
 						BinaryKind::Response,
 						request_id,
 						&rbcf_bytes,
-						Some(&meta),
+						Some(&json_to_string(&meta).unwrap()),
 					))),
 					Err(e) => Some(WsResponse::Text(build_error(
 						request_id,
@@ -897,7 +872,7 @@ fn encode_call_response(
 				BinaryKind::Response,
 				request_id,
 				&rbcf,
-				Some(&meta),
+				Some(&json_to_string(&meta).unwrap()),
 			))),
 			Err(e) => Err(build_error(request_id, "ENCODE_ERROR", &format!("RBCF encode error: {}", e))),
 		},

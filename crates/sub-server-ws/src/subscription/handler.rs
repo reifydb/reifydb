@@ -2,15 +2,16 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_engine::subscription::HydrateError;
-use reifydb_sub_server::{
-	interceptor::{Protocol, RequestMetadata},
-	subscription::{
-		errors::CreateSubscriptionError,
-		handler::{
-			BatchSubscribeError, SubscribeError, handle_batch_subscribe as shared_batch_subscribe,
-			handle_batch_unsubscribe as shared_batch_unsubscribe, handle_subscribe as shared_subscribe,
-		},
+use reifydb_sub_core::{
+	errors::CreateSubscriptionError,
+	handler::{
+		BatchSubscribeError, SubscribeError, handle_batch_subscribe as shared_batch_subscribe,
+		handle_batch_unsubscribe as shared_batch_unsubscribe, handle_subscribe as shared_subscribe,
 	},
+};
+use reifydb_sub_server::{
+	execute::ExecuteError,
+	interceptor::{Protocol, RequestMetadata},
 };
 use reifydb_subscription::batch::BatchId;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -43,8 +44,9 @@ pub(crate) async fn handle_subscribe(
 		},
 	};
 
+	let host = conn.state.subscribe_host(metadata);
 	match shared_subscribe(
-		conn.state,
+		&host,
 		conn.connection_id,
 		identity,
 		sub.rql.clone(),
@@ -53,7 +55,6 @@ pub(crate) async fn handle_subscribe(
 		conn.registry,
 		sub.format,
 		conn.shutdown.clone(),
-		metadata,
 	)
 	.await
 	{
@@ -76,8 +77,9 @@ pub(crate) async fn handle_batch_subscribe(
 	let metadata = RequestMetadata::new(Protocol::WebSocket);
 	let sink = WsWireSink::new(conn.push_tx.clone());
 
+	let host = conn.state.subscribe_host(metadata);
 	match shared_batch_subscribe(
-		conn.state,
+		&host,
 		conn.connection_id,
 		identity,
 		&req.queries,
@@ -85,7 +87,6 @@ pub(crate) async fn handle_batch_subscribe(
 		conn.registry,
 		req.format,
 		conn.shutdown.clone(),
-		metadata,
 	)
 	.await
 	{
@@ -119,7 +120,7 @@ pub(crate) async fn handle_batch_unsubscribe(
 
 	abort_local_batch_handles(conn, &batch_id);
 
-	let _ = shared_batch_unsubscribe(conn.state, conn.registry, batch_id).await;
+	let _ = shared_batch_unsubscribe(conn.state.engine(), conn.registry, batch_id).await;
 
 	Some(Response::batch_unsubscribed(request_id, batch_id.to_string()).to_json())
 }
@@ -140,7 +141,7 @@ fn abort_local_batch_handles(conn: &mut ConnectionContext<'_>, batch_id: &BatchI
 	}
 }
 
-fn subscribe_error_to_response(request_id: &str, err: SubscribeError) -> String {
+fn subscribe_error_to_response(request_id: &str, err: SubscribeError<ExecuteError>) -> String {
 	match err {
 		SubscribeError::Create(CreateSubscriptionError::Execute(e)) => error_to_response(request_id, e),
 		SubscribeError::Create(CreateSubscriptionError::ExtractionFailed) => {
@@ -177,7 +178,7 @@ fn subscribe_error_to_response(request_id: &str, err: SubscribeError) -> String 
 	}
 }
 
-fn batch_subscribe_error_to_response(request_id: &str, err: BatchSubscribeError) -> String {
+fn batch_subscribe_error_to_response(request_id: &str, err: BatchSubscribeError<ExecuteError>) -> String {
 	match err {
 		BatchSubscribeError::Empty => Response::internal_error(
 			request_id,

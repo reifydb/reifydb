@@ -190,7 +190,7 @@ impl RingBufferScan {
 			.iter()
 			.map(|col| ColumnWithName {
 				name: Fragment::internal(&col.name),
-				data: ColumnBuffer::none_typed(col.constraint.get_type(), 0),
+				data: ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
 			})
 			.collect()
 	}

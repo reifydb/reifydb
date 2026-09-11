@@ -33,17 +33,17 @@ describe('JsonWs call RPC', () => {
 
     it('invokes a zero-parameter binding and returns the procedure rows', async () => {
         const rows = await client.call(greetBinding, {});
-        expect(rows[0][0].result).toBe('42');
+        expect(rows[0][0].result.value).toBe(42);
     }, 10000);
 
     it('passes named params through to the procedure body', async () => {
         const rows = await client.call(echoBinding, {n: 7});
-        expect(rows[0][0].out).toBe('7');
+        expect(rows[0][0].out.value).toBe(7);
     }, 10000);
 
     it('returns server meta alongside data', async () => {
         const {data, meta} = await client.callWithMeta(greetBinding, {});
-        expect(data[0][0].result).toBe('42');
+        expect(data[0][0].result.value).toBe(42);
         expect(meta?.fingerprint).toEqual(expect.any(String));
         expect(meta?.duration).toEqual(expect.any(String));
     }, 10000);

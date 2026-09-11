@@ -8,7 +8,7 @@ import {
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
     NoneValue, Utf8Value,
     Uuid4Value, Uuid7Value, IdentityIdValue,
-    BaseType
+    Option, BaseType, isOption
 } from '../value';
 import {ShapeNode} from '.';
 import {PrimitiveToValue} from './inference';
@@ -94,11 +94,14 @@ export function parseValue(shape: ShapeNode, value: any): any {
         return value.map(item => parseValue(shape.items, item));
     }
 
-    if (shape.kind === 'optional') {
-        if (value === undefined) {
+    if (shape.kind === 'option') {
+        if (value === null || value === undefined) {
             return undefined;
         }
-        return parseValue(shape.shape, value);
+        if (isOption(value)) {
+            return value.map(item => parseValue(shape.inner, item));
+        }
+        return Option.some(parseValue(shape.inner, value));
     }
 
     if (shape.kind === 'value') {

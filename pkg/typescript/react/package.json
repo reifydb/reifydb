@@ -7,7 +7,9 @@
   "scripts": {
     "build": "tsup src/index.ts --dts --format esm --sourcemap",
     "dev": "tsc --watch",
-    "test": "pnpm test:integration",
+    "test": "pnpm test:unit",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:unit:watch": "vitest --config vitest.unit.config.ts",
     "test:integration": "vitest run --config vitest.config.ts",
     "test:integration:watch": "vitest --config vitest.config.ts",
     "test:integration:coverage": "vitest run --coverage --config vitest.config.ts",
@@ -18,7 +20,8 @@
   },
   "dependencies": {
     "@reifydb/core": "workspace:*",
-    "@reifydb/client": "workspace:*"
+    "@reifydb/client": "workspace:*",
+    "@reifydb/store": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=16.8.0"
