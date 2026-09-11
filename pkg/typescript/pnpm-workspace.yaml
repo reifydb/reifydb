@@ -10,5 +10,11 @@ packages:
   - ui
   - wasm
 
+allowBuilds:
+  '@swc/core': true
+  bufferutil: true
+  esbuild: true
+  utf-8-validate: true
+
 overrides:
   '@reifydb/core': link:core

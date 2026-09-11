@@ -76,7 +76,6 @@ help:
 	@printf "  %-25s %s\n" "test-suite-dev" "Run fast development tests for all test suites"
 	@printf "  %-25s %s\n" "test-crate" "Run the crate mirror tests (../testcrate; REPEAT=K to repeat K times)"
 	@printf "  %-25s %s\n" "test-crate-dev" "Run fast crate mirror tests, loom excluded"
-	@printf "  %-25s %s\n" "test-crate-dst" "Run crate mirror DST tests (also part of test-dst)"
 	@printf "  %-25s %s\n" "test-crate-loom" "Run crate mirror loom tests (part of all)"
 	@printf "  %-25s %s\n" "test-reference" "Run the reference conformance suites (../testreference)"
 	@printf "  %-25s %s\n" "test-reference-dev" "Run fast reference conformance tests"
