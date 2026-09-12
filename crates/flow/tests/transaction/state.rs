@@ -25,6 +25,7 @@ use reifydb_core::{
 		queue::QueueDeduplicationKey,
 		row::RowKey,
 	},
+	metrics::scan::PageRequests,
 	state::timer::sweep_order,
 };
 use reifydb_flow::transaction::{
@@ -906,4 +907,63 @@ fn a_group_range_honours_a_pending_write_that_storage_has_never_seen() {
 
 	assert!(!keys.contains(&full_key(operator, &doomed)), "a pending remove must not come back from storage");
 	assert!(keys.contains(&full_key(operator, &added)), "a pending insert must be visible to the batched read");
+}
+
+#[test]
+fn the_emptiness_probe_crosses_freed_entries_in_pages_not_in_pairs() {
+	// The join reaper asks one question per emptied group: does it still hold a row expiry entry?
+	// One row answers it, so the pre-fix probe sized its page request to that one row and re-entered
+	// the store once per handful of freed entries - paying for the tombstones the reaper itself just
+	// created. The answer must cost a page request per page of wall, never one per handful, or the
+	// reaper degrades exactly as the churn it is draining grows.
+	let (parent, operators) = create_test_transaction();
+	let operator_id = OperatorId(1);
+	let freed = 4096u64;
+
+	let armed: Vec<OperatorWrite> = (0..freed)
+		.map(|entry| OperatorWrite::Insert {
+			operator: operator_id,
+			key: make_key(&format!("expiry{entry:05}")),
+			post: make_value("armed"),
+		})
+		.collect();
+	operators.apply_batch(&armed);
+	let released: Vec<OperatorWrite> = (0..freed)
+		.map(|entry| OperatorWrite::Remove {
+			operator: operator_id,
+			key: make_key(&format!("expiry{entry:05}")),
+			pre: LayeredPre::Present(ByteSize::from_bytes(5)),
+		})
+		.collect();
+	operators.apply_batch(&released);
+
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+		&parent,
+		operators.clone(),
+		CommitVersion(1),
+		Catalog::testing(),
+		Interceptors::new(),
+		Clock::Mock(MockClock::from_millis(1000)),
+	));
+
+	let range = EncodedKeyRange::new(
+		Bound::Included(make_key("expiry00000").into_encoded()),
+		Bound::Included(make_key("expiry99999").into_encoded()),
+	);
+
+	let wide_before = PageRequests::sample();
+	let live = txn.state_any_live(operator_id, range.clone(), "probe").unwrap();
+	let wide = wide_before.since();
+
+	let narrow_before = PageRequests::sample();
+	let narrow = txn.state_range(operator_id, StateRange::forward(range, "probe").limit(1)).unwrap();
+	let narrow_pages = narrow_before.since();
+
+	assert!(!live, "every entry was freed, so the probe must report the group holds nothing live");
+	assert!(narrow.items.is_empty(), "both formulations must agree on the answer, only on its cost");
+	assert!(
+		wide * 4 < narrow_pages,
+		"a full-page probe must cross {freed} freed entries in far fewer store re-entries than a \
+		 probe paged to its one-row limit: {wide} against {narrow_pages}"
+	);
 }

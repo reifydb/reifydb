@@ -14,6 +14,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, group_inner_range, keyspace_inner_range},
+	metrics::scan::PageRequests,
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::SqliteTempPathGuard;
@@ -351,4 +352,62 @@ fn a_checkpoint_merge_without_an_interlock_is_unaffected() {
 		 crash loses the buffer and sends that flow back to 10; raising the floor to 20 would let retention \
 		 reap the versions the restart needs"
 	);
+}
+
+const EXPIRY_KEYSPACE: KeyspaceId = KeyspaceId::JOIN_ROW_EXPIRY;
+
+fn expiry_group() -> GroupId {
+	GroupId::hashed(Hash128(91))
+}
+
+fn expiry_range() -> EncodedKeyRange {
+	keyspace_inner_range(expiry_group(), EXPIRY_KEYSPACE)
+}
+
+fn expiry_remove(store: &StandardOperatorStore, suffix: u64) -> OperatorWrite {
+	let key = GroupStateKey::bound_unchecked(sweep_key(expiry_group(), EXPIRY_KEYSPACE, suffix));
+	let pre = store
+		.state_get(OP, &key)
+		.unwrap()
+		.map_or(LayeredPre::Absent, |row| LayeredPre::Present(ByteSize::from_bytes(row.bytes().len() as u64)));
+	OperatorWrite::Remove {
+		operator: OP,
+		key,
+		pre,
+	}
+}
+
+fn tombstone_wall(store: &StandardOperatorStore, dead: u64) {
+	let armed: Vec<OperatorWrite> =
+		(0..dead).map(|suffix| sweep_insert(expiry_group(), EXPIRY_KEYSPACE, suffix, "armed")).collect();
+	store.apply_batch(&armed);
+	flush(store);
+
+	let freed: Vec<OperatorWrite> = (0..dead).map(|suffix| expiry_remove(store, suffix)).collect();
+	store.apply_batch(&freed);
+}
+
+fn probe(store: &StandardOperatorStore, batch_size: u64) -> (u64, usize) {
+	let before = PageRequests::sample();
+	let batch = store.range_batch(OP, expiry_range(), batch_size).unwrap();
+	(before.since(), batch.items.len())
+}
+
+#[test]
+fn an_emptiness_probe_crosses_a_tombstone_wall_in_pages_not_in_handfuls() {
+	let (store, _guard) = store_fixture();
+	let dead = 4096;
+	tombstone_wall(&store, dead);
+
+	let (pages_at_one, items_at_one) = probe(&store, 1);
+	let (pages_at_max, items_at_max) = probe(&store, 1024);
+
+	assert_eq!(items_at_one, 0, "every entry in the group is a tombstone, so the probe answers empty");
+	assert_eq!(items_at_max, 0, "the page size must not change the answer, only the cost of reaching it");
+	assert!(
+		pages_at_one > pages_at_max * 8,
+		"a narrow page must cost an order of magnitude more store re-entries than a full one to cross \
+		 the same {dead} tombstones: {pages_at_one} against {pages_at_max}"
+	);
+	assert!(pages_at_max < 32, "a full page must cross the wall in a handful of requests, not {pages_at_max}");
 }

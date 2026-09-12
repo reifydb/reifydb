@@ -7,6 +7,7 @@ use std::{
 		atomic::{AtomicBool, Ordering},
 	},
 	thread,
+	time::Instant,
 };
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
@@ -367,6 +368,7 @@ fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 }
 
 #[test]
+#[allow(clippy::disallowed_methods)]
 fn a_write_proceeds_while_a_flush_is_persisting() {
 	let (storage, _guard) = SqlitePersistent::in_memory();
 	let buffer = Resident::new();
@@ -405,8 +407,8 @@ fn a_write_proceeds_while_a_flush_is_persisting() {
 		})
 	};
 
-	let deadline = Clock::Real.instant() + Duration::from_milliseconds_const(2_000).to_std();
-	while !wrote.load(Ordering::Acquire) && Clock::Real.instant() < deadline {
+	let deadline = Instant::now() + Duration::from_milliseconds_const(2_000).to_std();
+	while !wrote.load(Ordering::Acquire) && Instant::now() < deadline {
 		thread::yield_now();
 	}
 	assert!(
@@ -658,6 +660,7 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 }
 
 #[test]
+#[allow(clippy::disallowed_methods)]
 fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval() {
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock);
@@ -683,8 +686,10 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 
 	buffer.record_state_set(OP_A, key(entries - 1), row("under-the-budget"));
 
-	let deadline = Clock::Real.instant() + Duration::from_seconds_const(5).to_std();
-	while Clock::Real.instant() < deadline && storage.get(OP_A, &key(0)).is_none() {
+	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
+	while Instant::now() < deadline
+		&& (storage.get(OP_A, &key(0)).is_none() || buffer.metrics().backlog > buffer.budget())
+	{
 		thread::sleep(Duration::from_milliseconds_const(5).to_std());
 	}
 	assert_eq!(
@@ -816,6 +821,7 @@ impl SeedDurable for SqlitePersistent {
 }
 
 #[test]
+#[allow(clippy::disallowed_methods)]
 fn a_buffer_that_fills_with_tombstones_flushes_even_though_they_cost_almost_no_bytes() {
 	let limit = 32u64;
 	let clock = Clock::testing();
@@ -842,8 +848,8 @@ fn a_buffer_that_fills_with_tombstones_flushes_even_though_they_cost_almost_no_b
 		buffer.record_state_remove(OP_A, key(index));
 	}
 
-	let deadline = Clock::Real.instant() + Duration::from_seconds_const(5).to_std();
-	while Clock::Real.instant() < deadline && buffer.resident_entries() > limit as usize {
+	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
+	while Instant::now() < deadline && buffer.resident_entries() > limit as usize {
 		thread::sleep(Duration::from_milliseconds_const(5).to_std());
 	}
 	assert!(
