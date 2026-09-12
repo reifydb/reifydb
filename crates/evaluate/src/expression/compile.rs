@@ -84,13 +84,17 @@ impl CompiledExpr {
 			CompiledExprInner::Single(f) => f(ctx),
 			CompiledExprInner::Multi(f) => {
 				let columns = f(ctx)?;
-				Ok(columns.into_iter().next().unwrap_or_else(|| ColumnWithName {
-					name: Fragment::internal("none"),
-					data: ColumnBuffer::with_capacity(
-						ValueType::Option(Box::new(ValueType::Boolean)),
-						0,
-					),
-				}))
+				if columns.len() == 1 {
+					return Ok(columns.into_iter().next().unwrap());
+				}
+				Err(TypeError::Runtime {
+					kind: RuntimeErrorKind::ExpectedSingleColumn {
+						actual: columns.len(),
+					},
+					message: "expression produces more than one column where one is required"
+						.to_string(),
+				}
+				.into())
 			}
 		}
 	}
@@ -1053,6 +1057,10 @@ fn is_truthy(value: &Value) -> bool {
 	}
 }
 
+fn describe_branch(columns: &[ColumnWithName]) -> Vec<String> {
+	columns.iter().map(|col| format!("{}: {}", col.name.text(), col.data().get_type())).collect()
+}
+
 fn execute_if_multi(
 	ctx: &EvalContext,
 	condition: &CompiledExpr,
@@ -1114,6 +1122,42 @@ fn execute_if_multi(
 		evaluated[branch] = Some(columns);
 	}
 
+	let mut layout: Option<(Vec<ValueType>, Vec<String>)> = None;
+	for columns in evaluated.iter().flatten() {
+		let Some((expected, expected_names)) = layout.as_mut() else {
+			layout = Some((
+				columns.iter().map(|col| col.data().get_type().inner_type().clone()).collect(),
+				describe_branch(columns),
+			));
+			continue;
+		};
+
+		let mut disagrees = columns.len() != expected.len();
+		if !disagrees {
+			for (slot, col) in expected.iter_mut().zip(columns.iter()) {
+				let incoming = col.data().get_type().inner_type().clone();
+				if *slot == ValueType::Any {
+					*slot = incoming;
+				} else if incoming != ValueType::Any && incoming != *slot {
+					disagrees = true;
+					break;
+				}
+			}
+		}
+
+		if disagrees {
+			return Err(TypeError::Runtime {
+				kind: RuntimeErrorKind::ConditionalBranchMismatch {
+					expected: expected_names.clone(),
+					actual: describe_branch(columns),
+					fragment: _fragment.clone(),
+				},
+				message: "conditional branches produce different columns".to_string(),
+			}
+			.into());
+		}
+	}
+
 	let mut result_data: Option<Vec<ColumnBuffer>> = None;
 	let mut result_names: Vec<Fragment> = Vec::new();
 
@@ -1147,11 +1191,8 @@ fn execute_if_multi(
 		}
 
 		let data = result_data.as_mut().unwrap();
-		for (i, branch_col) in branch_results.iter().enumerate() {
-			if i < data.len() {
-				let branch_value = branch_col.data().get_value(row_idx);
-				data[i].push_value(branch_value);
-			}
+		for (slot, branch_col) in data.iter_mut().zip(branch_results.iter()) {
+			slot.push_value(branch_col.data().get_value(row_idx));
 		}
 	}
 
@@ -1240,7 +1281,7 @@ mod tests {
 	};
 	use reifydb_rql::expression::{
 		CastExpression, ColumnExpression, ConstantExpression, ElseIfExpression, Expression, IfExpression,
-		TypeExpression,
+		MapExpression, TypeExpression,
 	};
 	use reifydb_value::{
 		fragment::Fragment,
@@ -1313,8 +1354,8 @@ mod tests {
 			4,
 		);
 
-		let result = evaluate(&ctx, &conditional(column("flag"), column("hi"), vec![], Some(column("lo"))))
-			.unwrap();
+		let result =
+			evaluate(&ctx, &conditional(column("flag"), column("hi"), vec![], Some(column("lo")))).unwrap();
 
 		assert_eq!(*result.data(), ColumnBuffer::int4([100, 2, 3, 400]));
 	}
@@ -1354,8 +1395,10 @@ mod tests {
 		// Without an else branch the unmatched rows must still occupy their slot, otherwise the
 		// result column is shorter than the input and every downstream row pairs with the wrong key.
 		let base = EvalContext::testing();
-		let ctx = base
-			.with_eval(Columns::new(vec![bools("flag", [true, false, false, true]), ints("hi", [7, 8, 9, 10])]), 4);
+		let ctx = base.with_eval(
+			Columns::new(vec![bools("flag", [true, false, false, true]), ints("hi", [7, 8, 9, 10])]),
+			4,
+		);
 
 		let result = evaluate(&ctx, &conditional(column("flag"), column("hi"), vec![], None)).unwrap();
 
@@ -1376,7 +1419,8 @@ mod tests {
 			4,
 		);
 
-		let skipped = evaluate(&all_true, &conditional(column("flag"), column("hi"), vec![], Some(uncastable())));
+		let skipped =
+			evaluate(&all_true, &conditional(column("flag"), column("hi"), vec![], Some(uncastable())));
 
 		assert!(skipped.is_ok(), "an else branch no row selects must not be evaluated");
 
@@ -1385,8 +1429,137 @@ mod tests {
 			4,
 		);
 
-		let taken = evaluate(&one_false, &conditional(column("flag"), column("hi"), vec![], Some(uncastable())));
+		let taken =
+			evaluate(&one_false, &conditional(column("flag"), column("hi"), vec![], Some(uncastable())));
 
-		assert!(taken.is_err(), "the branch must really fail when a row selects it, or the case above is vacuous");
+		assert!(
+			taken.is_err(),
+			"the branch must really fail when a row selects it, or the case above is vacuous"
+		);
+	}
+
+	fn multi(names: [&str; 2]) -> Expression {
+		Expression::Map(MapExpression {
+			expressions: names.iter().map(|name| column(name)).collect(),
+			fragment: Fragment::testing_empty(),
+		})
+	}
+
+	fn none_literal() -> Expression {
+		Expression::Constant(ConstantExpression::None {
+			fragment: Fragment::testing_empty(),
+		})
+	}
+
+	fn four_row_ctx(extra: Vec<ColumnWithName>) -> Columns {
+		let mut cols = vec![bools("flag", [true, false, false, true])];
+		cols.extend(extra);
+		Columns::new(cols)
+	}
+
+	#[test]
+	fn branches_of_different_types_are_rejected_instead_of_aborting() {
+		// The column buffer matches the value variant exactly and panics on anything else, so an
+		// unvalidated mismatch takes the process down rather than failing the query.
+		let base = EvalContext::testing();
+		let ctx = base.with_eval(
+			four_row_ctx(vec![
+				ints("small", [1, 2, 3, 4]),
+				ColumnWithName::new(Fragment::internal("wide"), ColumnBuffer::int8([5i64, 6, 7, 8])),
+			]),
+			4,
+		);
+
+		let err = evaluate(&ctx, &conditional(column("flag"), column("small"), vec![], Some(column("wide"))))
+			.expect_err("int4 and int8 branches must not be accepted");
+
+		assert_eq!(err.0.code, "RUNTIME_012");
+	}
+
+	#[test]
+	fn an_optional_branch_still_pairs_with_its_bare_type() {
+		// Option is a wrapper over the same base type, so these branches agree; rejecting them
+		// would break every conditional whose branches differ only in nullability.
+		let base = EvalContext::testing();
+		let ctx = base.with_eval(
+			four_row_ctx(vec![
+				ints("bare", [1, 2, 3, 4]),
+				ColumnWithName::new(
+					Fragment::internal("opt"),
+					ColumnBuffer::int4_with_bitvec([9, 8, 7, 6], vec![true, false, true, true]),
+				),
+			]),
+			4,
+		);
+
+		let result = evaluate(&ctx, &conditional(column("flag"), column("bare"), vec![], Some(column("opt"))))
+			.expect("a bare and an optional branch of one base type must agree");
+
+		assert_eq!(result.data().len(), 4);
+	}
+
+	#[test]
+	fn a_none_branch_widens_to_the_other_branch_type() {
+		// A none literal carries Option(Any); treating Any as a concrete type would reject the
+		// guarded-value shape that every conditional projection relies on.
+		let base = EvalContext::testing();
+		let ctx = base.with_eval(four_row_ctx(vec![ints("hi", [7, 8, 9, 10])]), 4);
+
+		let result = evaluate(&ctx, &conditional(column("flag"), column("hi"), vec![], Some(none_literal())))
+			.expect("a none branch must widen to the other branch type");
+
+		assert_eq!(result.data().get_value(0), Value::Int4(7));
+		assert!(matches!(result.data().get_value(1), Value::None { .. }));
+	}
+
+	#[test]
+	fn branches_of_different_widths_are_rejected() {
+		// A narrower branch used to leave its unfilled columns short, silently misaligning every
+		// value after the first switch; a wider one had its surplus columns dropped.
+		let base = EvalContext::testing();
+		let ctx = base.with_eval(four_row_ctx(vec![ints("a", [1, 2, 3, 4]), ints("b", [10, 20, 30, 40])]), 4);
+
+		let wide_then =
+			evaluate(&ctx, &conditional(column("flag"), multi(["a", "b"]), vec![], Some(column("a"))))
+				.expect_err("a two column branch must not pair with a one column branch");
+		assert_eq!(wide_then.0.code, "RUNTIME_012");
+
+		let wide_else =
+			evaluate(&ctx, &conditional(column("flag"), column("a"), vec![], Some(multi(["a", "b"]))))
+				.expect_err("a one column branch must not pair with a two column branch");
+		assert_eq!(wide_else.0.code, "RUNTIME_012");
+	}
+
+	#[test]
+	fn a_mismatched_branch_no_row_selects_is_still_not_rejected() {
+		// Validation must read only the branches that were evaluated, otherwise it resurrects the
+		// eager evaluation that the guard exists to prevent.
+		let base = EvalContext::testing();
+		let ctx = base.with_eval(
+			Columns::new(vec![
+				bools("flag", [true, true, true, true]),
+				ints("small", [1, 2, 3, 4]),
+				ColumnWithName::new(Fragment::internal("wide"), ColumnBuffer::int8([5i64, 6, 7, 8])),
+			]),
+			4,
+		);
+
+		let result =
+			evaluate(&ctx, &conditional(column("flag"), column("small"), vec![], Some(column("wide"))))
+				.expect("an unselected branch must not be validated");
+
+		assert_eq!(result.data().len(), 4);
+	}
+
+	#[test]
+	fn a_multi_column_value_in_a_single_column_slot_is_rejected() {
+		// Taking the first column and discarding the rest loses data with no signal; map, extend
+		// and patch all reach a value expression through this path.
+		let base = EvalContext::testing();
+		let ctx = base.with_eval(four_row_ctx(vec![ints("a", [1, 2, 3, 4]), ints("b", [10, 20, 30, 40])]), 4);
+
+		let err = evaluate(&ctx, &multi(["a", "b"])).expect_err("a two column value must not be truncated");
+
+		assert_eq!(err.0.code, "RUNTIME_010");
 	}
 }

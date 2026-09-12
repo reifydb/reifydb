@@ -11,3 +11,10 @@ pub fn create_test_transaction() -> (AdminTransaction, OperatorStore) {
 	let operators = t.inner().operator_state();
 	(t.begin_admin(IdentityId::system()).unwrap(), operators)
 }
+
+pub fn create_test_transaction_owned() -> (TestEngine, AdminTransaction, OperatorStore) {
+	let t = TestEngine::new();
+	let operators = t.inner().operator_state();
+	let txn = t.begin_admin(IdentityId::system()).unwrap();
+	(t, txn, operators)
+}

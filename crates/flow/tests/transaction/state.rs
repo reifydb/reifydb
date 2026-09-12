@@ -44,7 +44,7 @@ use reifydb_value::{
 	value::{identity::IdentityId, row_number::RowNumber},
 };
 
-use crate::common::create_test_transaction;
+use crate::common::{create_test_transaction, create_test_transaction_owned};
 
 fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedPodRow) {
 	// Stands in for a prior slice's success-side operator state apply.
@@ -916,7 +916,7 @@ fn the_emptiness_probe_crosses_freed_entries_in_pages_not_in_pairs() {
 	// the store once per handful of freed entries - paying for the tombstones the reaper itself just
 	// created. The answer must cost a page request per page of wall, never one per handful, or the
 	// reaper degrades exactly as the churn it is draining grows.
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction_owned();
 	let operator_id = OperatorId(1);
 	let freed = 4096u64;
 

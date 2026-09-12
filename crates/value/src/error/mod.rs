@@ -364,6 +364,11 @@ pub enum RuntimeErrorKind {
 	ExpectedSingleColumn {
 		actual: usize,
 	},
+	ConditionalBranchMismatch {
+		expected: Vec<String>,
+		actual: Vec<String>,
+		fragment: Fragment,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq)]
