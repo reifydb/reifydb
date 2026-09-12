@@ -10,7 +10,10 @@ use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_core::{common::JoinType, row::JoinPick};
 use reifydb_flow::{
 	context::FlowContext,
-	operator::join::operator::{JoinOperator, JoinSideConfig},
+	operator::{
+		HostOperator,
+		join::operator::{JoinOperator, JoinSideConfig},
+	},
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::engine::TestEngine;
@@ -266,6 +269,7 @@ fn drive_with(seed: u64, params: Params, flip_definedness: bool, oracle: Variant
 		rekey_pct: params.rekey_pct,
 		coord_span_ms: params.coord_span_ms,
 		flip_definedness,
+		order: harness.operator().input_order(),
 	};
 	let scenario = scenario(&params);
 
@@ -308,6 +312,7 @@ pub fn drive_static_right(seed: u64, params: Params) -> DriveOutcome {
 		rekey_pct: params.rekey_pct,
 		coord_span_ms: params.coord_span_ms,
 		flip_definedness: false,
+		order: harness.operator().input_order(),
 	};
 	let loaded = right_side(seed, &params);
 	let emitted = harness.apply(workload.insert(&loaded)).expect("loading the right side must succeed");

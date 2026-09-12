@@ -85,6 +85,10 @@ impl<O> Harness<O> {
 		}
 	}
 
+	pub fn operator(&self) -> &O {
+		&self.operator
+	}
+
 	fn begin(&mut self, at: DateTime) -> DeferredTransaction {
 		let query = self.engine.multi().begin_query().expect("begin_query");
 		let state_query = self.engine.multi().begin_query().expect("begin_query");

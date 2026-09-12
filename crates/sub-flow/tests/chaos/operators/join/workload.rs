@@ -12,6 +12,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_flow::operator::InputOrder;
 use reifydb_testing_chaos::operator::workload::{Lanes, Op, Workload};
 use reifydb_value::{
 	fragment::Fragment,
@@ -123,10 +124,30 @@ fn tagged(mut diff: Diff, side: Side) -> Diff {
 	diff
 }
 
-fn change(diffs: Vec<Diff>) -> Change {
+fn change(order: InputOrder, diffs: Vec<Diff>) -> Change {
 	// The parent origin is only ever a fallback here since every diff names its own, but it must not
 	// be the join's own node - the operator short-circuits a change it published itself.
-	Change::from_flow(LEFT_OPERATOR, ChangeVersion::from(CommitVersion(1)), diffs, DateTime::default())
+	Change::from_flow(
+		LEFT_OPERATOR,
+		ChangeVersion::from(CommitVersion(1)),
+		ordered(order, diffs),
+		DateTime::default(),
+	)
+}
+
+/// The arrangement the flow engine would have assembled, applied here so the corpus can only hand the
+/// operator an order production is able to produce. Reads the join's own declaration, never a copy.
+fn ordered(order: InputOrder, mut diffs: Vec<Diff>) -> Vec<Diff> {
+	let inputs = [LEFT_OPERATOR, RIGHT_OPERATOR];
+	diffs.sort_by_key(|diff| match diff.origin() {
+		Some(ChangeOrigin::Flow(node)) => inputs
+			.iter()
+			.position(|input| input == node)
+			.map(|position| order.rank(position, inputs.len()))
+			.unwrap_or(inputs.len()),
+		_ => inputs.len(),
+	});
+	diffs
 }
 
 pub struct JoinWorkload {
@@ -143,6 +164,10 @@ pub struct JoinWorkload {
 	/// Whether an update may move a key between defined and undefined. Off everywhere but the sweep
 	/// written for that transition, which would otherwise fail every sweep for the same single reason.
 	pub flip_definedness: bool,
+
+	/// Taken from the operator under test rather than restated, so the corpus follows the join if it
+	/// ever declares a different order and cannot quietly drift from what the engine would deliver.
+	pub order: InputOrder,
 }
 
 impl JoinWorkload {
@@ -208,19 +233,19 @@ impl Workload for JoinWorkload {
 	}
 
 	fn insert(&self, rows: &[JoinRow]) -> Change {
-		change(coalesce(&rows.iter().cloned().map(Op::Insert).collect::<Vec<_>>()))
+		change(self.order, coalesce(&rows.iter().cloned().map(Op::Insert).collect::<Vec<_>>()))
 	}
 
 	fn remove(&self, row: &JoinRow) -> Change {
-		change(vec![tagged(Diff::remove(columns_of(&[row])), row.side)])
+		change(self.order, vec![tagged(Diff::remove(columns_of(&[row])), row.side)])
 	}
 
 	fn update(&self, pre: &JoinRow, post: &JoinRow) -> Change {
-		change(vec![tagged(Diff::update(columns_of(&[pre]), columns_of(&[post])), pre.side)])
+		change(self.order, vec![tagged(Diff::update(columns_of(&[pre]), columns_of(&[post])), pre.side)])
 	}
 
 	fn change(&self, ops: &[Op<JoinRow>]) -> Change {
-		change(coalesce(ops))
+		change(self.order, coalesce(ops))
 	}
 
 	fn projection(&self) -> &[usize] {

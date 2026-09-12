@@ -344,6 +344,18 @@ pub struct SnapshotOracle {
 	latest: bool,
 	right: BTreeMap<u64, JoinRow>,
 	published: BTreeMap<OutputKey, MaterializedRow>,
+
+	/// Left-side work held until the step's right side has fully landed. A change carries exactly one
+	/// source version, which is atomic: nothing in it is before or after anything else, so a left row
+	/// reads the version's finished right side and never a half of it.
+	deferred: Vec<LeftOp>,
+}
+
+/// What a left row did, replayed once the right side is final. Order within the step is kept: two
+/// touches of one left row must resolve in the order they arrived or the last writer is lost.
+enum LeftOp {
+	Republish(JoinRow),
+	Withdraw(JoinRow),
 }
 
 impl SnapshotOracle {
@@ -353,6 +365,7 @@ impl SnapshotOracle {
 			latest,
 			right: BTreeMap::new(),
 			published: BTreeMap::new(),
+			deferred: Vec::new(),
 		}
 	}
 
@@ -416,7 +429,7 @@ impl Model<JoinRow> for SnapshotOracle {
 			Side::Right => {
 				self.right.insert(row.number.0, row.clone());
 			}
-			Side::Left => self.republish(row),
+			Side::Left => self.deferred.push(LeftOp::Republish(row.clone())),
 		}
 		true
 	}
@@ -428,11 +441,20 @@ impl Model<JoinRow> for SnapshotOracle {
 			}
 			// A left row takes exactly what it published with it; recomputing the withdrawal from
 			// the current right side is what strands rows in the view.
-			Side::Left => self.withdraw(row),
+			Side::Left => self.deferred.push(LeftOp::Withdraw(row.clone())),
 		}
 	}
 
 	fn advance_ledger(&mut self, _at_ms: u64) {}
+
+	fn step_complete(&mut self) {
+		for op in std::mem::take(&mut self.deferred) {
+			match op {
+				LeftOp::Republish(row) => self.republish(&row),
+				LeftOp::Withdraw(row) => self.withdraw(&row),
+			}
+		}
+	}
 
 	fn live(&self) -> ViewClaim {
 		self.all()

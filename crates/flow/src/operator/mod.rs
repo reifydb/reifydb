@@ -66,10 +66,31 @@ pub mod take;
 pub mod window;
 
 #[cfg(feature = "runtime")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputOrder {
+	Declared,
+	Reversed,
+}
+
+#[cfg(feature = "runtime")]
+impl InputOrder {
+	pub fn rank(self, position: usize, arity: usize) -> usize {
+		match self {
+			InputOrder::Declared => position,
+			InputOrder::Reversed => arity.saturating_sub(position + 1),
+		}
+	}
+}
+
+#[cfg(feature = "runtime")]
 pub trait HostOperator: Send {
 	fn id(&self) -> OperatorId;
 
 	fn capabilities(&self) -> &[OperatorCapability];
+
+	fn input_order(&self) -> InputOrder {
+		InputOrder::Declared
+	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change>;
 
