@@ -1061,42 +1061,69 @@ fn execute_if_multi(
 	else_branch: &Option<Vec<CompiledExpr>>,
 	_fragment: &Fragment,
 ) -> Result<Vec<ColumnWithName>> {
+	const NO_BRANCH: usize = usize::MAX;
+
 	let condition_column = condition.execute(ctx)?;
+
+	let else_index = else_ifs.len() + 1;
+	let mut selection: Vec<usize> = Vec::with_capacity(ctx.row_count);
+	let mut unresolved: Vec<usize> = Vec::new();
+
+	for row_idx in 0..ctx.row_count {
+		if is_truthy(&condition_column.data().get_value(row_idx)) {
+			selection.push(0);
+		} else {
+			selection.push(NO_BRANCH);
+			unresolved.push(row_idx);
+		}
+	}
+
+	for (offset, (else_if_condition, _)) in else_ifs.iter().enumerate() {
+		if unresolved.is_empty() {
+			break;
+		}
+		let else_if_column = else_if_condition.execute(ctx)?;
+		unresolved.retain(|&row_idx| {
+			if is_truthy(&else_if_column.data().get_value(row_idx)) {
+				selection[row_idx] = offset + 1;
+				false
+			} else {
+				true
+			}
+		});
+	}
+
+	if else_branch.is_some() {
+		for &row_idx in &unresolved {
+			selection[row_idx] = else_index;
+		}
+	}
+
+	let mut evaluated: Vec<Option<Vec<ColumnWithName>>> = (0..=else_index).map(|_| None).collect();
+	for &branch in &selection {
+		if branch == NO_BRANCH || evaluated[branch].is_some() {
+			continue;
+		}
+		let columns = if branch == 0 {
+			execute_multi_exprs(ctx, then_expr)?
+		} else if branch < else_index {
+			execute_multi_exprs(ctx, &else_ifs[branch - 1].1)?
+		} else {
+			execute_multi_exprs(ctx, else_branch.as_ref().unwrap())?
+		};
+		evaluated[branch] = Some(columns);
+	}
 
 	let mut result_data: Option<Vec<ColumnBuffer>> = None;
 	let mut result_names: Vec<Fragment> = Vec::new();
 
-	for row_idx in 0..ctx.row_count {
-		let condition_value = condition_column.data().get_value(row_idx);
-
-		let branch_results = if is_truthy(&condition_value) {
-			execute_multi_exprs(ctx, then_expr)?
-		} else {
-			let mut found_branch = false;
-			let mut branch_columns = None;
-
-			for (else_if_condition, else_if_then) in else_ifs {
-				let else_if_col = else_if_condition.execute(ctx)?;
-				let else_if_value = else_if_col.data().get_value(row_idx);
-
-				if is_truthy(&else_if_value) {
-					branch_columns = Some(execute_multi_exprs(ctx, else_if_then)?);
-					found_branch = true;
-					break;
-				}
-			}
-
-			if found_branch {
-				branch_columns.unwrap()
-			} else if let Some(else_exprs) = else_branch {
-				execute_multi_exprs(ctx, else_exprs)?
-			} else {
-				vec![]
-			}
+	for (row_idx, &selected) in selection.iter().enumerate() {
+		let branch_results: &[ColumnWithName] = match selected {
+			NO_BRANCH => &[],
+			branch => evaluated[branch].as_deref().unwrap(),
 		};
 
-		let is_empty_result = branch_results.is_empty();
-		if is_empty_result {
+		if branch_results.is_empty() {
 			if let Some(data) = result_data.as_mut() {
 				for col_data in data.iter_mut() {
 					col_data.push_value(Value::none());
@@ -1203,4 +1230,163 @@ fn wrap_cast_error(err: Error, fragment: Fragment, target: &ValueType) -> Error 
 		}
 	};
 	Error::from(wrapped)
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::{
+		interface::identifier::ColumnIdentifier,
+		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	};
+	use reifydb_rql::expression::{
+		CastExpression, ColumnExpression, ConstantExpression, ElseIfExpression, Expression, IfExpression,
+		TypeExpression,
+	};
+	use reifydb_value::{
+		fragment::Fragment,
+		value::{Value, value_type::ValueType},
+	};
+
+	use crate::expression::{context::EvalContext, eval::evaluate};
+
+	fn column(name: &str) -> Expression {
+		Expression::Column(ColumnExpression(ColumnIdentifier::with_alias(
+			Fragment::internal("t"),
+			Fragment::internal(name),
+		)))
+	}
+
+	fn uncastable() -> Expression {
+		Expression::Cast(CastExpression {
+			fragment: Fragment::testing_empty(),
+			expression: Box::new(Expression::Constant(ConstantExpression::Text {
+				fragment: Fragment::internal("not-a-number"),
+			})),
+			to: TypeExpression {
+				fragment: Fragment::testing_empty(),
+				ty: ValueType::Int4,
+			},
+		})
+	}
+
+	fn conditional(
+		condition: Expression,
+		then_expr: Expression,
+		else_ifs: Vec<(Expression, Expression)>,
+		else_expr: Option<Expression>,
+	) -> Expression {
+		Expression::If(IfExpression {
+			condition: Box::new(condition),
+			then_expr: Box::new(then_expr),
+			else_ifs: else_ifs
+				.into_iter()
+				.map(|(condition, then_expr)| ElseIfExpression {
+					condition: Box::new(condition),
+					then_expr: Box::new(then_expr),
+					fragment: Fragment::testing_empty(),
+				})
+				.collect(),
+			else_expr: else_expr.map(Box::new),
+			fragment: Fragment::testing_empty(),
+		})
+	}
+
+	fn bools(name: &str, data: [bool; 4]) -> ColumnWithName {
+		ColumnWithName::new(Fragment::internal(name), ColumnBuffer::bool(data))
+	}
+
+	fn ints(name: &str, data: [i32; 4]) -> ColumnWithName {
+		ColumnWithName::new(Fragment::internal(name), ColumnBuffer::int4(data))
+	}
+
+	#[test]
+	fn every_row_reads_its_own_index_from_the_branch_it_selected() {
+		// A branch is evaluated as a whole column, so row i must take branch[i]. Assembling the
+		// result in append order instead of by row index shifts every value after the first switch.
+		let base = EvalContext::testing();
+		let ctx = base.with_eval(
+			Columns::new(vec![
+				bools("flag", [true, false, false, true]),
+				ints("hi", [100, 200, 300, 400]),
+				ints("lo", [1, 2, 3, 4]),
+			]),
+			4,
+		);
+
+		let result = evaluate(&ctx, &conditional(column("flag"), column("hi"), vec![], Some(column("lo"))))
+			.unwrap();
+
+		assert_eq!(*result.data(), ColumnBuffer::int4([100, 2, 3, 400]));
+	}
+
+	#[test]
+	fn an_else_if_chain_gives_each_row_its_first_matching_branch() {
+		// Later conditions must never override an earlier match: row 1 satisfies both `second` and
+		// nothing else, row 2 satisfies `second` alone, and row 3 falls through to the else.
+		let base = EvalContext::testing();
+		let ctx = base.with_eval(
+			Columns::new(vec![
+				bools("first", [true, false, false, false]),
+				bools("second", [true, true, true, false]),
+				ints("a", [10, 20, 30, 40]),
+				ints("b", [1, 2, 3, 4]),
+				ints("c", [-1, -2, -3, -4]),
+			]),
+			4,
+		);
+
+		let result = evaluate(
+			&ctx,
+			&conditional(
+				column("first"),
+				column("a"),
+				vec![(column("second"), column("b"))],
+				Some(column("c")),
+			),
+		)
+		.unwrap();
+
+		assert_eq!(*result.data(), ColumnBuffer::int4([10, 2, 3, -4]));
+	}
+
+	#[test]
+	fn a_row_that_matches_no_branch_becomes_none() {
+		// Without an else branch the unmatched rows must still occupy their slot, otherwise the
+		// result column is shorter than the input and every downstream row pairs with the wrong key.
+		let base = EvalContext::testing();
+		let ctx = base
+			.with_eval(Columns::new(vec![bools("flag", [true, false, false, true]), ints("hi", [7, 8, 9, 10])]), 4);
+
+		let result = evaluate(&ctx, &conditional(column("flag"), column("hi"), vec![], None)).unwrap();
+
+		assert_eq!(result.data().len(), 4);
+		assert_eq!(result.data().get_value(0), Value::Int4(7));
+		assert!(matches!(result.data().get_value(1), Value::None { .. }));
+		assert!(matches!(result.data().get_value(2), Value::None { .. }));
+		assert_eq!(result.data().get_value(3), Value::Int4(10));
+	}
+
+	#[test]
+	fn a_branch_that_no_row_selects_is_never_evaluated() {
+		// Hoisting a branch out of the row loop must not make it eager: a guard exists precisely to
+		// keep a failing expression away from the rows that cannot satisfy it.
+		let base = EvalContext::testing();
+		let all_true = base.with_eval(
+			Columns::new(vec![bools("flag", [true, true, true, true]), ints("hi", [1, 2, 3, 4])]),
+			4,
+		);
+
+		let skipped = evaluate(&all_true, &conditional(column("flag"), column("hi"), vec![], Some(uncastable())));
+
+		assert!(skipped.is_ok(), "an else branch no row selects must not be evaluated");
+
+		let one_false = base.with_eval(
+			Columns::new(vec![bools("flag", [true, true, false, true]), ints("hi", [1, 2, 3, 4])]),
+			4,
+		);
+
+		let taken = evaluate(&one_false, &conditional(column("flag"), column("hi"), vec![], Some(uncastable())));
+
+		assert!(taken.is_err(), "the branch must really fail when a row selects it, or the case above is vacuous");
+	}
 }
