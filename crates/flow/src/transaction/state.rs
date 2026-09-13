@@ -44,10 +44,13 @@ pub(crate) fn decode_payload<T: OperatorState>(row: &EncodedPodRow) -> Result<T>
 	Ok(decode(row)?)
 }
 
+const MAX_STATE_PAGE: usize = 1024;
+
 #[derive(Debug, Clone)]
 pub struct StateRange {
 	pub range: EncodedKeyRange,
 	pub limit: Option<usize>,
+	pub page: Option<usize>,
 	pub site: &'static str,
 }
 
@@ -56,6 +59,7 @@ impl StateRange {
 		Self {
 			range,
 			limit: None,
+			page: None,
 			site,
 		}
 	}
@@ -63,6 +67,15 @@ impl StateRange {
 	pub fn limit(mut self, limit: usize) -> Self {
 		self.limit = Some(limit);
 		self
+	}
+
+	pub fn page(mut self, page: usize) -> Self {
+		self.page = Some(page);
+		self
+	}
+
+	pub fn full_page(self) -> Self {
+		self.page(MAX_STATE_PAGE)
 	}
 }
 
@@ -164,7 +177,10 @@ pub trait StateExtension: FlowTransaction {
 		);
 		let before = ScanCounters::sample();
 		let prefixed_range = query.range.with_prefix(EncodedKey::new(node_prefix(id)));
-		let batch_size = query.limit.map_or(1024, |limit| limit.saturating_add(1).min(1024));
+		let batch_size = match query.page {
+			Some(page) => page.clamp(1, MAX_STATE_PAGE),
+			None => query.limit.map_or(MAX_STATE_PAGE, |limit| limit.saturating_add(1).min(MAX_STATE_PAGE)),
+		};
 		let iter = self.range(prefixed_range, RangeScope::All, batch_size);
 		let mut items = Vec::new();
 		let mut has_more = false;
@@ -183,6 +199,15 @@ pub trait StateExtension: FlowTransaction {
 			items,
 			has_more,
 		})
+	}
+
+	#[instrument(name = "flow::state::any_live", level = "debug", skip(self, range), fields(
+		operator_id = id.0,
+		site = site
+	))]
+	fn state_any_live(&mut self, id: OperatorId, range: EncodedKeyRange, site: &'static str) -> Result<bool> {
+		let query = StateRange::forward(range, site).limit(1).full_page();
+		Ok(!self.state_range(id, query)?.items.is_empty())
 	}
 
 	#[instrument(name = "flow::state::group_range", level = "debug", skip(self, groups), fields(

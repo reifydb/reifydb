@@ -89,6 +89,8 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 		Ok(())
 	}
 
+	fn state_any_live(&mut self, range: EncodedKeyRange) -> Result<bool>;
+
 	fn state_range_iter(&mut self, range: EncodedKeyRange) -> StateIterator<'_>;
 
 	fn state_clear(&mut self) -> Result<()>;
@@ -210,6 +212,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 			StateRange {
 				range,
 				limit,
+				page: None,
 				site: "operator::host_page",
 			},
 		)?;
@@ -373,6 +376,11 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 			visit(key, EncodedPodRow::from(r.bytes))?;
 		}
 		Ok(())
+	}
+
+	fn state_any_live(&mut self, range: EncodedKeyRange) -> Result<bool> {
+		let site = range_site(&range);
+		self.txn.state_any_live(self.operator, range, site)
 	}
 
 	fn state_range_iter(&mut self, range: EncodedKeyRange) -> StateIterator<'_> {

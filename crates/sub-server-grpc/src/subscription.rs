@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};
-use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
+use reifydb_codec::{
+	frame::{encode::encode_frames, options::EncodeOptions},
+	wire::{RawChangePayload, WireFormat as ClientWireFormat},
+};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_sub_core::wire_sink::{BatchSubscribedMember, WireSink};
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{
-	Database, Error, Frame, IdentityId, Params,
+	Database, Error, Frame, IdentityId, Params, Result as ReifyResult,
 	engine::engine::StandardEngine,
 	runtime::context::rng::Rng,
 	sub_core::host::{SubscribeContext, SubscribeHost},
@@ -23,7 +23,7 @@ pub struct NodeSubscribeHost {
 }
 
 impl NodeSubscribeHost {
-	pub fn new(db: &Database) -> reifydb::Result<Self> {
+	pub fn new(db: &Database) -> ReifyResult<Self> {
 		let rng = db.engine().ioc().resolve::<Rng>()?;
 		Ok(Self {
 			context: SubscribeContext::new(

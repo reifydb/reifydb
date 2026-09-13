@@ -15,6 +15,7 @@ use reifydb_core::{
 	interface::change::Diff,
 	value::column::columns::Columns,
 };
+use reifydb_flow::operator::HostOperator;
 use reifydb_testing_chaos::{
 	fuzz::run_reported,
 	operator::{
@@ -504,6 +505,8 @@ chaos_test!(window_rolling_count_random_chaos, |seed| {
 fn a_join_operator_can_be_built_and_driven() {
 	// If the corpus stopped tagging diff origins, or tagged both sides the same, every join sweep
 	// below would still run and would simply never join anything.
+	let mut harness =
+		Harness::with_engine(|engine, _| operators::join::build(engine, Variant::inner(), None, None));
 	let workload = JoinWorkload {
 		keys: 1,
 		right_pct: 0,
@@ -511,9 +514,8 @@ fn a_join_operator_can_be_built_and_driven() {
 		rekey_pct: 0,
 		coord_span_ms: 1,
 		flip_definedness: false,
+		order: harness.operator().input_order(),
 	};
-	let mut harness =
-		Harness::with_engine(|engine, _| operators::join::build(engine, Variant::inner(), None, None));
 
 	let left = JoinRow {
 		side: Side::Left,

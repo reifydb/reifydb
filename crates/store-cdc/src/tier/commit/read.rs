@@ -55,7 +55,7 @@ impl CdcCommitBufferTier {
 		let mut live = inner.live.range(lo..=hi).map(|(_, cdc)| Arc::clone(cdc)).peekable();
 		while out.len() < want {
 			let take_cut = match (cut.peek(), live.peek()) {
-				(Some(cut), Some(live)) => cut.version <= live.version,
+				(Some(cut), Some(live)) => cut.version.commit <= live.version.commit,
 				(Some(_), None) => true,
 				(None, Some(_)) => false,
 				(None, None) => break,

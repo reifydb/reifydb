@@ -3536,7 +3536,6 @@ name = "reifydb-store-operator"
 version = "0.9.1"
 dependencies = [
  "dashmap",
- "rand 0.10.1",
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
@@ -3545,12 +3544,9 @@ dependencies = [
  "reifydb-sqlite",
  "reifydb-store",
  "reifydb-testing",
- "reifydb-testing-chaos",
- "reifydb-testing-macro",
  "reifydb-value",
  "rusqlite",
  "smallvec",
- "test_each_file",
  "tracing",
 ]
 
@@ -3596,6 +3592,7 @@ dependencies = [
  "dashmap",
  "reifydb-build",
  "reifydb-client",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-remote-proxy",
@@ -3756,7 +3753,6 @@ dependencies = [
  "prost",
  "reifydb-auth",
  "reifydb-build",
- "reifydb-client",
  "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
@@ -3821,7 +3817,6 @@ dependencies = [
  "futures-util",
  "reifydb-auth",
  "reifydb-build",
- "reifydb-client",
  "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",

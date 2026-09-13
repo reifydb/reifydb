@@ -14,9 +14,6 @@ publish = false
 [lib]
 doctest = false
 
-[features]
-cow-stats = ["reifydb-value/cow-stats"]
-
 [dependencies]
 hdrhistogram = { workspace = true }
 rand = { workspace = true }
@@ -45,11 +42,6 @@ harness = false
 [[bench]]
 name = "scan-profile"
 path = "benches/scan_profile.rs"
-harness = false
-
-[[bench]]
-name = "cow-profile"
-path = "benches/cow_profile.rs"
 harness = false
 
 [[bench]]

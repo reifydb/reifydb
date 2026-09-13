@@ -5,7 +5,7 @@ use std::{mem::take, ops::Bound, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	event::EventBus,
 	execution::ExecutionResult,
 	interface::{
@@ -420,6 +420,12 @@ impl CommandTransaction {
 	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().read_as_of_version_exclusive(version);
+		Ok(())
+	}
+
+	pub fn stamp_source(&mut self, source: SourceVersion) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().stamp_source(source);
 		Ok(())
 	}
 

@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion, SourceVersion},
 	interface::{
 		catalog::{
 			flow::{FlowId, OperatorId},
@@ -42,7 +42,7 @@ impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process", level = "debug", skip(self, txn, change), fields(
 		flow_id = ?flow_id,
 		origin = ?change.origin,
-		version = change.version.0,
+		version = change.version.source.0,
 		diff_count = change.diffs.len(),
 		row_count = change.row_count(),
 		nodes_processed = field::Empty
@@ -69,17 +69,26 @@ impl FlowEngineInner {
 			None => return Ok(()),
 		};
 
-		let mut by_version: BTreeMap<CommitVersion, Vec<Change>> = BTreeMap::new();
+		let mut by_source: BTreeMap<SourceVersion, Vec<Change>> = BTreeMap::new();
 		for change in changes {
-			by_version.entry(change.version).or_default().push(change);
+			by_source.entry(change.version.source).or_default().push(change);
 		}
-		Span::current().record("version_count", by_version.len());
+		Span::current().record("version_count", by_source.len());
 
 		let topo = flow.topological_order();
 		let mut nodes_processed = 0u32;
 
-		for (version, version_changes) in by_version {
-			nodes_processed += self.process_version(txn, &flow, flow_id, version, version_changes, topo)?;
+		for (source, source_changes) in by_source {
+			let commit = source_changes
+				.iter()
+				.map(|change| change.version.commit)
+				.max()
+				.expect("a source group holds at least one change");
+			let version = ChangeVersion {
+				commit,
+				source,
+			};
+			nodes_processed += self.process_version(txn, &flow, flow_id, version, source_changes, topo)?;
 		}
 
 		Span::current().record("nodes_processed", nodes_processed);
@@ -115,18 +124,23 @@ impl FlowEngineInner {
 		txn: &mut T,
 		flow: &FlowDag,
 		flow_id: FlowId,
-		version: CommitVersion,
-		version_changes: Vec<Change>,
+		version: ChangeVersion,
+		source_changes: Vec<Change>,
 		topo: &[OperatorId],
 	) -> Result<u32> {
-		let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
+		let mut views: HashMap<OperatorId, Vec<Change>> = HashMap::new();
+		let mut others: HashMap<OperatorId, Vec<Change>> = HashMap::new();
 		let mut asserted: BTreeMap<u64, DateTime> = BTreeMap::new();
-		for change in version_changes {
+		for change in source_changes {
 			if change.origin == ChangeOrigin::Object(COMPLETENESS_OBJECT) {
 				collect_completeness(&change, &mut asserted);
 				continue;
 			}
-			self.seed_entry_nodes(flow, flow_id, change, &mut pending);
+			let pending = match change.origin {
+				ChangeOrigin::Object(ObjectId::View(_)) => &mut views,
+				_ => &mut others,
+			};
+			self.seed_entry_nodes(flow, flow_id, change, pending);
 		}
 
 		let sources: Vec<OperatorId> = topo
@@ -134,8 +148,9 @@ impl FlowEngineInner {
 			.copied()
 			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.declares_time()))
 			.collect();
-		let mut arrivals: SourceArrivals = pending
+		let mut arrivals: SourceArrivals = views
 			.iter()
+			.chain(others.iter())
 			.filter_map(|(operator_id, changes)| {
 				changes.iter().filter_map(max_input_time).max().map(|at| SourceArrival {
 					source: *operator_id,
@@ -144,13 +159,18 @@ impl FlowEngineInner {
 			})
 			.collect();
 		arrivals.extend(completeness_arrivals(&self.sources, flow_id, &asserted));
-		let (published, silent) =
-			published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version);
+		let (published, silent) = published_arrivals(
+			&self.sources,
+			&self.substrate.frontiers,
+			flow_id,
+			CommitVersion(version.source.0),
+		);
 		warn_unpublished(flow_id, &silent);
 		arrivals.extend(published);
 		freeze_arrival_frontier(txn, &sources, &arrivals)?;
 
-		let mut nodes_processed = self.run_topology(txn, flow, pending, topo)?;
+		let mut nodes_processed = self.run_topology(txn, flow, views, topo)?;
+		nodes_processed += self.run_topology(txn, flow, others, topo)?;
 		nodes_processed += self.dispatch_due_timers(txn, flow, version, topo)?;
 		Ok(nodes_processed)
 	}
@@ -175,14 +195,8 @@ impl FlowEngineInner {
 			};
 
 			let at = inbox.iter().filter_map(max_input_time).max();
-			let version = inbox
-				.iter()
-				.map(|change| change.version)
-				.max()
-				.expect("a non-empty inbox has a version");
 			txn.set_change_coordinate(ChangeCoordinate {
 				at,
-				version,
 			});
 
 			let combined_output = self.dispatch_node(txn, flow.id, &operator, inbox)?;
@@ -360,7 +374,7 @@ mod tests {
 		);
 		Change {
 			origin: ChangeOrigin::Object(COMPLETENESS_OBJECT),
-			version: CommitVersion(1),
+			version: ChangeVersion::from(CommitVersion(1)),
 			diffs: smallvec![Diff::insert(post)],
 			changed_at: DateTime::default(),
 		}
@@ -397,7 +411,7 @@ mod tests {
 		);
 		let change = Change {
 			origin: ChangeOrigin::Object(COMPLETENESS_OBJECT),
-			version: CommitVersion(1),
+			version: ChangeVersion::from(CommitVersion(1)),
 			diffs: smallvec![Diff::remove(pre)],
 			changed_at: DateTime::default(),
 		};
@@ -595,7 +609,8 @@ mod tests {
 
 		let mut txn = deferred(&engine);
 		let topo = flow.topological_order();
-		inner.process_version(&mut txn, &flow, FlowId(1), CommitVersion(5), vec![], topo).unwrap();
+		inner.process_version(&mut txn, &flow, FlowId(1), ChangeVersion::from(CommitVersion(5)), vec![], topo)
+			.unwrap();
 
 		assert_eq!(
 			SourceWatermarks::source_watermark(SOURCE, &mut txn).unwrap(),
@@ -638,7 +653,7 @@ mod tests {
 			&mut txn,
 			&flow,
 			FlowId(1),
-			CommitVersion(1),
+			ChangeVersion::from(CommitVersion(1)),
 			vec![completeness_change(&[(9, at_millis(30_000))])],
 			&topo,
 		)

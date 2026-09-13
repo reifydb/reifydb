@@ -13,7 +13,7 @@ use reifydb_core::{
 	metrics::scan::record_page,
 };
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
-use rusqlite::{Connection, Transaction, TransactionBehavior};
+use rusqlite::Connection;
 use tracing::instrument;
 
 use crate::{
@@ -150,18 +150,6 @@ impl SqlitePersistent {
 			return Vec::new();
 		};
 		route::keys_after(conn, operator, keyspace, after, limit)
-	}
-
-	#[instrument(name = "store::operator::persistent::sqlite::drop_operator_state", level = "debug", skip(self), fields(operator = operator.0))]
-	pub fn drop_operator_state(&self, operator: OperatorId) {
-		let guard = self.inner.conn.lock();
-		let Some(conn) = guard.as_ref() else {
-			return;
-		};
-		let transaction = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
-			.expect("operator state drop could not begin");
-		route::drop_operator(&transaction, operator);
-		transaction.commit().expect("operator state drop could not commit");
 	}
 }
 

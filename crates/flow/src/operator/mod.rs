@@ -66,10 +66,31 @@ pub mod take;
 pub mod window;
 
 #[cfg(feature = "runtime")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputOrder {
+	Declared,
+	Reversed,
+}
+
+#[cfg(feature = "runtime")]
+impl InputOrder {
+	pub fn rank(self, position: usize, arity: usize) -> usize {
+		match self {
+			InputOrder::Declared => position,
+			InputOrder::Reversed => arity.saturating_sub(position + 1),
+		}
+	}
+}
+
+#[cfg(feature = "runtime")]
 pub trait HostOperator: Send {
 	fn id(&self) -> OperatorId;
 
 	fn capabilities(&self) -> &[OperatorCapability];
+
+	fn input_order(&self) -> InputOrder {
+		InputOrder::Declared
+	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change>;
 
@@ -117,7 +138,7 @@ pub(crate) fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>
 #[cfg(test)]
 mod substrate_stamping_tests {
 	use reifydb_core::{
-		common::CommitVersion,
+		common::{ChangeVersion, CommitVersion},
 		interface::{
 			catalog::flow::OperatorId,
 			change::{Diff, Diffs},
@@ -166,7 +187,7 @@ mod substrate_stamping_tests {
 	}
 
 	fn change(diffs: Diffs) -> Change {
-		Change::from_flow(OperatorId(1), CommitVersion(1), diffs, at_millis(0))
+		Change::from_flow(OperatorId(1), ChangeVersion::from(CommitVersion(1)), diffs, at_millis(0))
 	}
 
 	#[test]

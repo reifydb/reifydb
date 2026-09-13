@@ -5,7 +5,7 @@
 
 use reifydb_codec::tag::ValueKind;
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
@@ -166,7 +166,7 @@ pub fn round_trip_column(name: &str, input: ColumnBuffer) -> ColumnBuffer {
 
 	let mut diffs: Diffs = Diffs::new();
 	diffs.push(Diff::insert(columns));
-	let change = Change::from_flow(OperatorId(1), CommitVersion(1), diffs, now);
+	let change = Change::from_flow(OperatorId(1), ChangeVersion::from(CommitVersion(1)), diffs, now);
 
 	let mut harness = ExternCOperatorHarnessBuilder::<PassthroughOperator>::new()
 		.with_node_id(OperatorId(1))

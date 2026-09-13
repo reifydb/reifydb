@@ -55,10 +55,10 @@ pub fn drive(seed: u64, p: Params) {
 				.read_range(cursor, Bound::Included(CommitVersion(p.frozen)), batch)
 				.unwrap();
 			for cdc in &page.items {
-				drained.push(cdc.version.0);
+				drained.push(cdc.version.commit.0);
 			}
 			match page.items.last() {
-				Some(cdc) => cursor = Bound::Excluded(cdc.version),
+				Some(cdc) => cursor = Bound::Excluded(cdc.version.commit),
 				None => break,
 			}
 			if !page.has_more {

@@ -17,3 +17,4 @@ pub mod row;
 pub mod tag;
 pub mod typeinfo;
 pub mod value;
+pub mod wire;

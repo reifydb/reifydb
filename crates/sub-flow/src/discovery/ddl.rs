@@ -21,7 +21,7 @@ pub fn extract_new_flows(cdcs: &[Arc<Cdc>]) -> Vec<(FlowId, CommitVersion)> {
 				..
 			} = change && let Some(flow_key) = FlowKey::decode(key)
 			{
-				flows.push((flow_key.flow, cdc.version));
+				flows.push((flow_key.flow, cdc.version.commit));
 			}
 		}
 	}

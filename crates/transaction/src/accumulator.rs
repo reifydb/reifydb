@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::object::ObjectId,
 		change::{Change, ChangeOrigin, Diff},
@@ -95,7 +95,7 @@ fn build_changes(entries: Vec<(ObjectId, Diff)>, version: CommitVersion, changed
 		result.push(Change {
 			origin: ChangeOrigin::Object(id),
 			diffs: coalesced.into(),
-			version,
+			version: ChangeVersion::from(version),
 			changed_at,
 		});
 	}

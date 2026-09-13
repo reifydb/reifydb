@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::{
 			object::ObjectId,
@@ -23,7 +23,7 @@ use crate::Result;
 pub(crate) fn emit_series_remove_change(txn: &mut Transaction<'_>, series: &Series, pre: Columns) {
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Object(ObjectId::series(series.id)),
-		version: CommitVersion(0),
+		version: ChangeVersion::from(CommitVersion(0)),
 		diffs: smallvec![Diff::remove(pre)],
 		changed_at: DateTime::default(),
 	});

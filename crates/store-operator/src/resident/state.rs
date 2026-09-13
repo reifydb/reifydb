@@ -100,7 +100,7 @@ impl Resident {
 		if let Some(slot) = self.shared().slot(operator) {
 			let inner = lock_slot(&slot, operator);
 			if limit > 0 && !is_empty_range(&lower, &upper) {
-				let state = &inner.live.state;
+				let state = &inner.buckets;
 				let page = match tombstones {
 					true => state.encoded_range_shadowed(operator, &lower, &upper, scan, limit),
 					false => state.encoded_range(operator, &lower, &upper, scan, limit),

@@ -208,7 +208,7 @@ impl<'a> InProcessChangeView<'a> {
 
 impl<'a> ChangeView for InProcessChangeView<'a> {
 	fn version(&self) -> u64 {
-		self.change.version.0
+		self.change.version.source.0
 	}
 
 	fn changed_at_nanos(&self) -> u64 {

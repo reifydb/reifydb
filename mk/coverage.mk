@@ -14,7 +14,7 @@
 #   make coverage-open
 #
 # N, FILTER, SEED, PACKAGE and PACKAGES mean exactly what they mean in
-# mk/test-chaos.mk, and coverage-chaos reuses that file's test selection and
+# mk/test-workspace-chaos.mk, and coverage-chaos reuses that file's test selection and
 # package list, so this file must be included after it. N is the per-workload
 # iteration count: each iteration draws its own seed, so raising N widens the
 # state space a single run explores. It is read at compile time and recompiles
@@ -32,7 +32,7 @@
 # unmatched name filters out every real crate and reports nothing.
 #
 # `coverage` honours PACKAGE and PACKAGES only when they actually came from the
-# caller. mk/test-chaos.mk defaults PACKAGES to its own crate list, so reading it
+# caller. mk/test-workspace-chaos.mk defaults PACKAGES to its own crate list, so reading it
 # unconditionally would make a bare `make coverage` cover the chaos crates
 # instead of the workspace. `coverage-chaos` wants that default and takes it.
 #

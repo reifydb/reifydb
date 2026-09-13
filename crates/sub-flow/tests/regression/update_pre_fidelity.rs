@@ -293,7 +293,7 @@ mod join {
 	use std::sync::Arc;
 
 	use reifydb_core::{
-		common::{CommitVersion, JoinType},
+		common::{ChangeVersion, CommitVersion, JoinType},
 		interface::{
 			catalog::flow::OperatorId,
 			change::{Change, ChangeOrigin, Diff},
@@ -380,7 +380,7 @@ mod join {
 	}
 
 	fn change(diffs: Vec<Diff>) -> Change {
-		Change::from_flow(LEFT, CommitVersion(1), diffs, DateTime::default())
+		Change::from_flow(LEFT, ChangeVersion::from(CommitVersion(1)), diffs, DateTime::default())
 	}
 
 	fn label(outer: bool, latest: bool, snapshot: bool) -> String {
@@ -534,7 +534,7 @@ mod join {
 // decoding `post` but not `pre` passes all 160 iterations of the source sweeps.
 mod source {
 	use reifydb_core::{
-		common::{CommitVersion, TimeSource},
+		common::{ChangeVersion, CommitVersion, TimeSource},
 		interface::{
 			catalog::{
 				flow::OperatorId,
@@ -665,7 +665,7 @@ mod source {
 			let out = harness
 				.apply(Change::from_flow(
 					SOURCE,
-					CommitVersion(1),
+					ChangeVersion::from(CommitVersion(1)),
 					vec![Diff::update(
 						encoded(dictionary.id, &intern(BEFORE)),
 						encoded(dictionary.id, &intern(AFTER)),
@@ -715,7 +715,7 @@ mod source {
 			let out = harness
 				.apply(Change::from_flow(
 					SOURCE,
-					CommitVersion(1),
+					ChangeVersion::from(CommitVersion(1)),
 					vec![Diff::remove(encoded(dictionary.id, &entry))],
 					DateTime::default(),
 				))

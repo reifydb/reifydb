@@ -55,7 +55,6 @@ use crate::{
 #[derive(Clone, Copy)]
 pub struct ChangeCoordinate {
 	pub at: Option<DateTime>,
-	pub version: CommitVersion,
 }
 
 pub struct DeferredParams {

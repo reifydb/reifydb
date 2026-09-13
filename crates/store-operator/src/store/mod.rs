@@ -34,26 +34,27 @@ use reifydb_runtime::{
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::metrics::PageCacheMetrics;
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{
-	config::OperatorPersistentConfig,
-	persistent::{Enumerate, filter::OperatorStateKeySource},
-	range::{OperatorRangeConfig, evict::actor::RangeEvictActor},
-	resident::{FILTER_KEYS, evict::actor::ResidentEvictActor, flush::actor::ResidentFlushActor},
-};
-use crate::{
-	actor::Waker,
+	actor::{
+		Waker,
+		resident_flush::{FlushMessage, flush_now, flush_pending},
+	},
 	config::OperatorStoreConfig,
 	persistent::{Persistent, PersistentTier},
 	range::{
 		OperatorRangeTier, RangeSink,
 		tiers::{RangeKeyspaceMetrics, RangeTiers},
 	},
-	resident::{
-		Resident,
-		flush::actor::{FlushMessage, flush_now, flush_pending},
-	},
+	resident::Resident,
 	store::{census::OperatorCensus, occupancy::KeyspaceOccupancy},
+};
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::{
+	actor::{range_evict::RangeEvictActor, resident_evict::ResidentEvictActor, resident_flush::ResidentFlushActor},
+	config::OperatorPersistentConfig,
+	persistent::{Enumerate, filter::OperatorStateKeySource},
+	range::OperatorRangeConfig,
+	resident::FILTER_KEYS,
 };
 
 #[repr(u8)]

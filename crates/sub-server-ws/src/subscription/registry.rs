@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};
 use reifydb_codec::{
 	frame::{encode::encode_frames, options::EncodeOptions},
 	json::to::convert_frames,
+	wire::{RawChangePayload, WireFormat as ClientWireFormat},
 };
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_sub_core::{

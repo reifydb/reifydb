@@ -154,7 +154,10 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 	}
 
 	fn join_expiry_min(&mut self, id: OperatorId) -> Result<Option<DateTime>> {
-		let batch = self.state_range(id, StateRange::forward(join_due_range(), "join::expiry_min").limit(1))?;
+		let batch = self.state_range(
+			id,
+			StateRange::forward(join_due_range(), "join::expiry_min").limit(1).full_page(),
+		)?;
 		let Some(row) = batch.items.first() else {
 			return Ok(None);
 		};

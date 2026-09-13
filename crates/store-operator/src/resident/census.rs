@@ -27,8 +27,8 @@ fn key_bytes(keyspace: KeyspaceId) -> u64 {
 }
 
 fn scan_state(inner: &SlotInner, mut visit: impl FnMut(KeyspaceId, &EncodedPodRow)) {
-	let operator = inner.live.operator;
-	inner.live.state.for_each_entry(operator, |keyspace, _, _, entry| {
+	let operator = inner.operator;
+	inner.buckets.for_each_entry(operator, |keyspace, _, _, entry| {
 		if let Some(row) = &entry.post {
 			visit(keyspace, row);
 		}

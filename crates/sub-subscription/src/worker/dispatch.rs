@@ -107,17 +107,17 @@ impl SubscriptionWorkerActor {
 		flow_id: FlowId,
 		operator_id: OperatorId,
 	) {
-		if change.version <= flow_state.gate {
+		if change.version.commit <= flow_state.gate {
 			return;
 		}
 
 		let keyed = mem::take(&mut flow_state.keyed_state);
 
 		let mut query = base_query.clone();
-		query.read_as_of_version_inclusive(change.version);
+		query.read_as_of_version_inclusive(change.version.commit);
 
 		let mut txn = EphemeralTransaction::new(
-			change.version,
+			change.version.commit,
 			query,
 			self.catalog.clone(),
 			keyed,
@@ -149,9 +149,9 @@ fn min_version_the_flows_will_read(state: &SubscriptionWorkerState, changes: &[C
 		};
 		let read_by_any_flow = flow_entries
 			.iter()
-			.any(|(flow_id, _)| state.flows.get(flow_id).is_some_and(|fs| change.version > fs.gate));
+			.any(|(flow_id, _)| state.flows.get(flow_id).is_some_and(|fs| change.version.commit > fs.gate));
 		if read_by_any_flow {
-			min_needed = Some(min_needed.map_or(change.version, |m| m.min(change.version)));
+			min_needed = Some(min_needed.map_or(change.version.commit, |m| m.min(change.version.commit)));
 		}
 	}
 	min_needed

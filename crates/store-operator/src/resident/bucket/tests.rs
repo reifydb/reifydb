@@ -3,10 +3,7 @@
 
 use std::ops::Bound;
 
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, pod::EncodedPodRow},
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
@@ -22,20 +19,15 @@ use reifydb_core::{
 	},
 	state::typed::SuffixBytes,
 };
-use reifydb_value::{
-	byte_size::ByteSize,
-	util::{cowvec::CowVec, hash::Hash128},
-	value::row_number::RowNumber,
-};
-use rusqlite::Connection;
+use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
 
-use super::{AnyBucket, BucketMap, Budget, Resume, Scan, write::TypedBucket};
-use crate::persistent::sqlite::{schema::ensure_schema, typed};
+use super::{BucketMap, write::StandardBucket};
+use crate::types::Scan;
 
 const OP: OperatorId = OperatorId(1);
 
-fn bucket() -> TypedBucket<JoinLeft> {
-	TypedBucket::<JoinLeft>::new(OP)
+fn bucket() -> StandardBucket<JoinLeft> {
+	StandardBucket::<JoinLeft>::new(OP)
 }
 
 fn row(body: &str) -> EncodedPodRow {
@@ -123,43 +115,6 @@ fn overwriting_a_suffix_does_not_count_it_twice() {
 }
 
 #[test]
-fn reaping_a_group_releases_only_that_group() {
-	let mut bucket = bucket();
-	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("seven")));
-	bucket.record(GroupId::hashed(Hash128(9)), suffix(1), Some(row("nine")));
-
-	let mut budget = Budget {
-		rows: 16,
-	};
-	assert_eq!(bucket.reap_group(GroupId::hashed(Hash128(7)), &mut budget).expect("reap"), Resume::Done);
-
-	assert!(bucket.get(GroupId::hashed(Hash128(7)), &suffix(1)).is_none(), "the reaped group must be gone");
-	assert!(
-		bucket.get(GroupId::hashed(Hash128(9)), &suffix(1)).is_some(),
-		"a reap is scoped to one group; taking a neighbour's rows with it loses committed state"
-	);
-}
-
-#[test]
-fn a_reap_that_runs_out_of_budget_asks_to_be_resumed() {
-	let mut bucket = bucket();
-	for n in 0..4u64 {
-		bucket.record(GroupId::hashed(Hash128(7)), suffix(n), Some(row("v")));
-	}
-
-	let mut budget = Budget {
-		rows: 2,
-	};
-	assert_eq!(
-		bucket.reap_group(GroupId::hashed(Hash128(7)), &mut budget).expect("reap"),
-		Resume::More,
-		"a partially reaped group must report More or the caller drops the remainder on the floor"
-	);
-	assert_eq!(budget.rows, 0, "the reap must spend exactly the budget it was given");
-	assert_eq!(bucket.len(), 2, "the unreaped half must still be there");
-}
-
-#[test]
 fn the_bucket_map_hands_back_the_same_bucket_for_one_operator_and_keyspace() {
 	let mut map = BucketMap::default();
 
@@ -190,59 +145,23 @@ fn two_operators_never_share_a_bucket() {
 }
 
 #[test]
-fn a_flush_writes_every_group_into_the_keyspaces_own_table() {
-	let conn = Connection::open_in_memory().expect("in memory db");
-	ensure_schema(&conn);
-
+fn a_staged_row_is_not_staged_again_by_the_next_flush() {
 	let mut bucket = bucket();
 	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("seven")));
 	bucket.record(GroupId::hashed(Hash128(9)), suffix(2), Some(row("nine")));
-	bucket.flush(&conn).expect("flush");
 
-	let rows = typed::scan::<JoinLeft>(&conn, OP);
-	assert_eq!(rows.len(), 2, "every group in the bucket must reach the table, not just the first");
-	assert!(bucket.is_empty(), "a flushed bucket must release its rows or the next flush writes them twice");
+	let mut first = 0usize;
+	bucket.stage_dirty(&mut |_, _, _| first += 1);
+	let mut second = 0usize;
+	bucket.stage_dirty(&mut |_, _, _| second += 1);
+
+	assert_eq!(first, 2, "every dirty row in every group must be staged, not just the first group's");
+	assert_eq!(second, 0, "a staged row must leave the dirty set or the next flush writes it twice");
+	assert_eq!(bucket.dirty_len(), 0, "a staged row still counted dirty is written again by the next flush");
 	assert_eq!(
-		bucket.footprint(),
+		bucket.dirty_footprint(),
 		ByteSize::ZERO,
-		"the footprint drives the flush budget, so a flush that does not release it never lets the budget recover"
-	);
-}
-
-#[test]
-fn a_flushed_tombstone_deletes_the_row_rather_than_storing_a_none() {
-	let conn = Connection::open_in_memory().expect("in memory db");
-	ensure_schema(&conn);
-
-	let mut bucket = bucket();
-	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("live")));
-	bucket.flush(&conn).expect("first flush");
-
-	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), None);
-	bucket.flush(&conn).expect("second flush");
-
-	assert!(
-		typed::scan::<JoinLeft>(&conn, OP).is_empty(),
-		"a removal must delete the durable row; leaving it behind resurrects state the operator deleted"
-	);
-}
-
-#[test]
-fn a_flushed_row_survives_the_round_trip_through_its_payload() {
-	let conn = Connection::open_in_memory().expect("in memory db");
-	ensure_schema(&conn);
-
-	let mut bucket = bucket();
-	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("payload")));
-	bucket.flush(&conn).expect("flush");
-
-	let stored = typed::get::<JoinLeft>(&conn, OP, &JoinLeft::join(GroupId::hashed(Hash128(7)), suffix(1)))
-		.expect("the row");
-	let restored = EncodedPodRow::from(EncodedBytes(CowVec::new(stored)));
-	assert_eq!(
-		String::from_utf8(restored.body().to_vec()).expect("utf8"),
-		"payload",
-		"the payload round trip carries the pod header, so reading back the body alone would truncate the row"
+		"the dirty footprint drives the flush budget, so a stage that does not release it never lets the budget recover"
 	);
 }
 
@@ -297,55 +216,6 @@ fn every_keyspace_in_the_catalogue_is_reachable_through_the_dispatch() {
 	);
 }
 
-#[test]
-fn an_erased_page_returns_its_suffixes_in_the_key_types_order() {
-	let mut map = BucketMap::default();
-	for n in [3u64, 1, 2] {
-		map.record_bytes(
-			OP,
-			JoinLeft::ID,
-			GroupId::hashed(Hash128(7)),
-			&suffix(n).to_suffix_bytes(),
-			Some(row("v")),
-		);
-	}
-
-	let page =
-		map.page_bytes(OP, JoinLeft::ID, GroupId::hashed(Hash128(7)), Bound::Unbounded, Bound::Unbounded, None);
-	let order: Vec<Vec<u8>> = page.iter().map(|(suffix, _)| suffix.clone()).collect();
-	let mut sorted = order.clone();
-	sorted.sort();
-	assert_eq!(
-		order, sorted,
-		"a page feeds a merge against a sorted durable page, so the erased path must preserve the typed order"
-	);
-	assert_eq!(order.len(), 3);
-}
-
-#[test]
-fn an_erased_page_honours_its_limit() {
-	let mut map = BucketMap::default();
-	for n in 0..5u64 {
-		map.record_bytes(
-			OP,
-			JoinLeft::ID,
-			GroupId::hashed(Hash128(7)),
-			&suffix(n).to_suffix_bytes(),
-			Some(row("v")),
-		);
-	}
-
-	let page = map.page_bytes(
-		OP,
-		JoinLeft::ID,
-		GroupId::hashed(Hash128(7)),
-		Bound::Unbounded,
-		Bound::Unbounded,
-		Some(2),
-	);
-	assert_eq!(page.len(), 2, "an unbounded page would blow the caller's budget on a large group");
-}
-
 fn seeded_pair() -> BucketMap {
 	let mut map = BucketMap::default();
 	for group in [GroupId::hashed(Hash128(7)), GroupId::hashed(Hash128(9))] {
@@ -374,20 +244,6 @@ fn expected_order() -> Vec<EncodedKey> {
 	}
 	keys.sort();
 	keys
-}
-
-#[test]
-fn a_scan_across_two_keyspaces_orders_by_group_before_keyspace() {
-	let map = seeded_pair();
-
-	let scanned: Vec<EncodedKey> = map.encoded_entries(OP).into_iter().map(|(key, _)| key).collect();
-
-	assert_eq!(
-		scanned,
-		expected_order(),
-		"a scan that groups by keyspace first reorders every multi group operator, and the merge it \
-		 feeds then misses its equal arm and serves a stale row"
-	);
 }
 
 #[test]

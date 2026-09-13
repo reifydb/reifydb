@@ -26,11 +26,6 @@ use reifydb_store::metrics::PageCacheMetrics;
 use reifydb_value::byte_size::ByteSize;
 use tracing::warn;
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::{
-	persistent::sqlite::SqlitePersistent,
-	types::{DropMarker, StagedWrite},
-};
 use crate::{
 	error::Result,
 	persistent::{
@@ -38,6 +33,11 @@ use crate::{
 		testing::{PersistentHooks, TestingPersistent},
 	},
 	types::{Applied, FlushBatch, OperatorBatch, OperatorStateCensus},
+};
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::{
+	persistent::sqlite::SqlitePersistent,
+	types::{DropMarker, StagedWrite},
 };
 
 #[derive(Clone)]

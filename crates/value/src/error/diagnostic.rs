@@ -1402,6 +1402,10 @@ impl IntoDiagnostic for TypeError {
 						"RUNTIME_011",
 						Some("APPEND requires the new rows to have the same columns as the target.".to_string()),
 					),
+					RuntimeErrorKind::ConditionalBranchMismatch { .. } => (
+						"RUNTIME_012",
+						Some("Every branch of a conditional must produce the same columns with the same types.".to_string()),
+					),
 					RuntimeErrorKind::ExpectedSingleColumn { actual } => (
 						"RUNTIME_010",
 						Some(format!(
@@ -1425,6 +1429,10 @@ impl IntoDiagnostic for TypeError {
 					RuntimeErrorKind::AppendColumnMismatch { existing, incoming, .. } => vec![
 						format!("existing columns: [{}]", existing.join(", ")),
 						format!("incoming columns: [{}]", incoming.join(", ")),
+					],
+					RuntimeErrorKind::ConditionalBranchMismatch { expected, actual, .. } => vec![
+						format!("first branch yields: [{}]", expected.join(", ")),
+						format!("this branch yields: [{}]", actual.join(", ")),
 					],
 					_ => vec![],
 				};

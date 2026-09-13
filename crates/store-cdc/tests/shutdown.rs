@@ -5,11 +5,22 @@ use std::{collections::Bound, sync::Arc, thread};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::cdc::{Cdc, CdcChange},
 };
-use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
-use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::clock::Clock,
+	pool::{PoolConfig, Pools},
+	sync::{mutex::Mutex, waiter::WaiterHandle},
+};
+use reifydb_sqlite::SqliteConfig;
+use reifydb_store_cdc::{
+	config::{CdcCommitConfig, CdcPersistentConfig, CdcStoreConfig},
+	storage::CdcStorage,
+	store::CdcStore,
+	tier::persistent::CdcPersistentTier,
+};
 use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{datetime::DateTime, duration::Duration},
@@ -25,7 +36,7 @@ const SUMMARY_LIMIT: usize = 1024;
 
 fn cdc_minimal(version: u64) -> Cdc {
 	Cdc::new(
-		CommitVersion(version),
+		ChangeVersion::from(CommitVersion(version)),
 		DateTime::from_nanos(1_700_000_000_000_000_000),
 		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
@@ -162,7 +173,11 @@ mod cases {
 
 		match fixture.store.read(CommitVersion(2)) {
 			Ok(Some(cdc)) => {
-				assert_eq!(cdc.version, CommitVersion(2), "read must answer with the version asked for")
+				assert_eq!(
+					cdc.version.commit,
+					CommitVersion(2),
+					"read must answer with the version asked for"
+				)
 			}
 			Ok(None) => panic!("read after shutdown reported version 2 absent although shutdown sealed it"),
 			Err(_) => {}
@@ -170,7 +185,7 @@ mod cases {
 
 		match fixture.store.read_range(Bound::Unbounded, Bound::Unbounded, 100) {
 			Ok(batch) => {
-				let versions: Vec<u64> = batch.items.iter().map(|cdc| cdc.version.0).collect();
+				let versions: Vec<u64> = batch.items.iter().map(|cdc| cdc.version.commit.0).collect();
 				assert_eq!(versions, vec![1, 2, 3], "read_range after shutdown dropped sealed records");
 			}
 			Err(_) => {}
@@ -266,6 +281,45 @@ mod cases {
 		);
 		drop(guard);
 	}
+}
+
+fn shutdown_seals_partial_block_after_the_flusher_is_gone(persistent: CdcPersistentTier) {
+	// The database stops the runtime before its stores, so a shutdown that needs the flush actor loses the tail.
+	let system = ActorSystem::new(Pools::new(PoolConfig::default()), Clock::Real);
+	let store = CdcStore::new(CdcStoreConfig {
+		commit: CdcCommitConfig::default(),
+		persistent: CdcPersistentConfig::opened(persistent.clone())
+			.flush_interval(Duration::from_hours_const(1)),
+		read: None,
+		spawner: system.spawner(),
+		clock: Clock::Real,
+	});
+	write_all(&store, 1..=3);
+	system.shutdown();
+	system.join().expect("the flush actor must stop once its system is shut down");
+
+	let closing = store.clone();
+	within_deadline("shutdown after the flusher is gone", move || closing.shutdown());
+
+	let summaries = persistent.summaries_from(CommitVersion(0), SUMMARY_LIMIT).unwrap();
+	assert_eq!(
+		summaries.len(),
+		1,
+		"shutdown sealed nothing once the flush actor was gone, so the unflushed tail is lost"
+	);
+	assert_eq!(summaries[0].min_version, CommitVersion(1), "the sealed block must start at the first record");
+	assert_eq!(summaries[0].max_version, CommitVersion(3), "the sealed block must end at the last record");
+}
+
+#[test]
+fn shutdown_seals_partial_block_after_the_flusher_is_gone_on_memory() {
+	shutdown_seals_partial_block_after_the_flusher_is_gone(CdcPersistentTier::memory());
+}
+
+#[test]
+fn shutdown_seals_partial_block_after_the_flusher_is_gone_on_sqlite() {
+	let (config, _guard) = SqliteConfig::in_memory();
+	shutdown_seals_partial_block_after_the_flusher_is_gone(CdcPersistentTier::sqlite(config));
 }
 
 crate::tier_tests!(

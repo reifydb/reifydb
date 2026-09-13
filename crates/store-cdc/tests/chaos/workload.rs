@@ -412,7 +412,7 @@ pub fn check_read(config: &Config, version: Version, step: u32) {
 	match (got, expected) {
 		(Some(cdc), Some(record)) => {
 			assert_eq!(
-				cdc.version,
+				cdc.version.commit,
 				CommitVersion(version),
 				"READ answered for the wrong version: config={} step={step} version={version}",
 				config.name
@@ -449,7 +449,7 @@ pub fn check_count(config: &Config, version: Version, step: u32) {
 /// consumer an empty poll every page, and a denied one strands the tail forever.
 pub fn check_range(config: &Config, start: Bound<CommitVersion>, end: Bound<CommitVersion>, batch: u64, step: u32) {
 	let got = config.store.read_range(start, end, batch).unwrap();
-	let versions: Vec<u64> = got.items.iter().map(|cdc| cdc.version.0).collect();
+	let versions: Vec<u64> = got.items.iter().map(|cdc| cdc.version.commit.0).collect();
 
 	let Some((lo, hi)) = normalize(start, end) else {
 		assert!(
@@ -528,10 +528,10 @@ pub fn check_drain(config: &Config, start: Bound<CommitVersion>, end: Bound<Comm
 		let page = config.store.read_range(cursor, end, batch).unwrap();
 		assert_content(config, &page.items, step);
 		for cdc in &page.items {
-			drained.push(cdc.version.0);
+			drained.push(cdc.version.commit.0);
 		}
 		match page.items.last() {
-			Some(cdc) => cursor = Bound::Excluded(cdc.version),
+			Some(cdc) => cursor = Bound::Excluded(cdc.version.commit),
 			None => break,
 		}
 		if !page.has_more {
@@ -647,7 +647,7 @@ pub fn check_dropped_unreadable(config: &Config, step: u32) {
 	if floor > 0 {
 		let page =
 			config.store.read_range(Bound::Unbounded, Bound::Excluded(CommitVersion(floor)), 64).unwrap();
-		let leaked: Vec<u64> = page.items.iter().map(|cdc| cdc.version.0).collect();
+		let leaked: Vec<u64> = page.items.iter().map(|cdc| cdc.version.commit.0).collect();
 		assert!(
 			leaked.is_empty(),
 			"a range below the floor returned rows: config={} step={step} floor={floor} rows={leaked:?}",
@@ -687,10 +687,10 @@ pub fn check_commit_metrics(config: &Config, step: u32) {
 
 fn assert_content(config: &Config, items: &[Cdc], step: u32) {
 	for cdc in items {
-		let record = config.oracle.read(cdc.version.0).unwrap_or_else(|| {
+		let record = config.oracle.read(cdc.version.commit.0).unwrap_or_else(|| {
 			panic!(
 				"RANGE returned a version the model does not hold: config={} step={step} version={}",
-				config.name, cdc.version.0
+				config.name, cdc.version.commit.0
 			)
 		});
 		assert_eq!(
@@ -698,7 +698,7 @@ fn assert_content(config: &Config, items: &[Cdc], step: u32) {
 			(&record.changes, record.timestamp),
 			"RANGE returned the wrong record: config={} step={step} version={}",
 			config.name,
-			cdc.version.0
+			cdc.version.commit.0
 		);
 	}
 }
@@ -914,7 +914,7 @@ pub fn check_store_metrics(config: &Config, step: u32) {
 }
 
 fn versions_of(batch: &CdcBatch) -> Vec<u64> {
-	batch.items.iter().map(|cdc| cdc.version.0).collect()
+	batch.items.iter().map(|cdc| cdc.version.commit.0).collect()
 }
 
 fn sample_bytes(samples: &[MetricsSample], scope: &str, metric: &str) -> u64 {

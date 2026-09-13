@@ -10,10 +10,10 @@
 pub mod host;
 pub mod sink;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, mem, sync::Arc};
 
 use reifydb::{
-	Database, Error, IdentityId, Params,
+	Database, Error, IdentityId, Params, Result as ReifyResult,
 	core::{interface::catalog::id::SubscriptionId, internal},
 	runtime::sync::mutex::Mutex,
 	sub_core::{
@@ -61,7 +61,7 @@ pub struct Subscriptions {
 }
 
 impl Subscriptions {
-	pub fn new(db: &Database) -> reifydb::Result<Self> {
+	pub fn new(db: &Database) -> ReifyResult<Self> {
 		let store = db
 			.subsystem::<SubscriptionSubsystem>()
 			.ok_or_else(|| Error(Box::new(internal!("the subscription subsystem is not running"))))?
@@ -122,7 +122,7 @@ impl Subscriptions {
 		)
 		.await?;
 		if !ack.remote_handles.is_empty() {
-			let handles = std::mem::take(&mut ack.remote_handles);
+			let handles = mem::take(&mut ack.remote_handles);
 			self.batch_remote_tasks.lock().entry(ack.batch_id).or_default().extend(handles);
 		}
 		Ok(ack)
@@ -130,7 +130,7 @@ impl Subscriptions {
 
 	/// Drops the subscription and the row that backs it. Unsubscribing twice is not an error: the
 	/// second call finds nothing to remove and the drop is written `if exists`.
-	pub fn unsubscribe(&self, subscription_id: SubscriptionId) -> reifydb::Result<()> {
+	pub fn unsubscribe(&self, subscription_id: SubscriptionId) -> ReifyResult<()> {
 		if let Some(handle) = self.remote_tasks.lock().remove(&subscription_id) {
 			handle.abort();
 			return Ok(());
@@ -162,7 +162,7 @@ impl Subscriptions {
 	/// Everything produced by a write that committed before this call.
 	///
 	/// [`Database::caught_up`] only stages; draining what was staged is this transport's job.
-	pub fn caught_up(&self, db: &Database) -> reifydb::Result<Vec<NodePush>> {
+	pub fn caught_up(&self, db: &Database) -> ReifyResult<Vec<NodePush>> {
 		db.caught_up()?;
 
 		let mut pushes = Vec::new();

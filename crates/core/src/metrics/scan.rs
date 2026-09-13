@@ -6,6 +6,24 @@ use std::cell::Cell;
 thread_local! {
 	static FETCHED: Cell<u64> = const { Cell::new(0) };
 	static TOMBSTONES: Cell<u64> = const { Cell::new(0) };
+	static PAGE_REQUESTS: Cell<u64> = const { Cell::new(0) };
+}
+
+pub fn record_page_request() {
+	PAGE_REQUESTS.with(|c| c.set(c.get().wrapping_add(1)));
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PageRequests(u64);
+
+impl PageRequests {
+	pub fn sample() -> Self {
+		Self(PAGE_REQUESTS.with(|c| c.get()))
+	}
+
+	pub fn since(self) -> u64 {
+		Self::sample().0.wrapping_sub(self.0)
+	}
 }
 
 pub fn record_page(fetched: u64, tombstones: u64) {

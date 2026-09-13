@@ -50,7 +50,7 @@ use crate::{
 	context::FlowContext,
 	error::{FlowGraphError, FlowStateError},
 	operator::{
-		HostOperator,
+		HostOperator, InputOrder,
 		host::HostContext,
 		join::{Emitted, Identity, expiry::JoinExpiryIndex},
 		state::{
@@ -505,16 +505,16 @@ impl JoinOperator {
 		};
 
 		for group in emptied {
-			if !host.state_range_limited(join_expiry_range(group), Some(1))?.is_empty()
+			if host.state_any_live(join_expiry_range(group))?
 				|| state.left.holds_rows(host, group)?
 				|| state.right.holds_rows(host, group)?
 			{
 				continue;
 			}
 			reifydb_assertions! {
-				let stranded = host.state_range_limited(join_expiry_range(group), Some(1))?.len();
+				let stranded = host.state_any_live(join_expiry_range(group))?;
 				assert!(
-					stranded == 0,
+					!stranded,
 					"group {group} reached the reaper still holding a row expiry entry; reaping it \
 					 strands that entry's due-index sibling behind a group id nothing resolves again"
 				);
@@ -861,6 +861,10 @@ impl HostOperator for JoinOperator {
 		Some(OperatorSample::default())
 	}
 
+	fn input_order(&self) -> InputOrder {
+		InputOrder::Reversed
+	}
+
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.operator
@@ -1157,7 +1161,6 @@ mod seal_tests {
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_nanos(coordinate)),
-			version: CommitVersion(coordinate),
 		});
 		txn
 	}

@@ -13,13 +13,13 @@ use crate::{
 };
 
 impl CdcCommitBufferTier {
-	#[instrument(name = "store::cdc::commit::append", level = "trace", skip(self, cdc), fields(version = cdc.version.0))]
+	#[instrument(name = "store::cdc::commit::append", level = "trace", skip(self, cdc), fields(version = cdc.version.commit.0))]
 	pub fn append(&self, cdc: Arc<Cdc>) -> bool {
 		let mut inner = self.shared.inner.lock();
-		if !inner.accepts(cdc.version) {
+		if !inner.accepts(cdc.version.commit) {
 			return false;
 		}
-		if !self.stall_above_ceiling(&mut inner, cdc.version) {
+		if !self.stall_above_ceiling(&mut inner, cdc.version.commit) {
 			return false;
 		}
 		inner.append(cdc);

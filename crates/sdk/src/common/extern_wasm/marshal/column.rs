@@ -1,33 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem, mem::size_of, ptr, slice, str};
+use std::{mem, mem::size_of, ptr};
 
-use reifydb_codec::{
-	extern_c::cells::{
-		encode_any_cell, encode_decimal_cell, encode_dictionary_id_cell, encode_int_cell, encode_uint_cell,
-	},
-	tag::ValueKind,
+use reifydb_codec::extern_c::cells::{
+	encode_any_cell, encode_decimal_cell, encode_dictionary_id_cell, encode_int_cell, encode_uint_cell,
 };
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
 	value::{
 		Value,
-		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
 		duration::Duration,
 		identity::IdentityId,
 		int::Int,
-		row_number::RowNumber,
-		system_columns::SystemColumns,
 		time::Time,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
-		value_type::ValueType,
 	},
 };
 use tracing::instrument;
@@ -86,55 +79,6 @@ impl Arena {
 			time: time_ptr,
 		}
 	}
-
-	pub fn unmarshal_columns(&self, extern_c: &ExternCColumns) -> Columns {
-		if extern_c.is_empty() || extern_c.columns.is_null() {
-			return Columns::empty();
-		}
-
-		let row_numbers: Vec<RowNumber> = if !extern_c.row_numbers.is_null() && extern_c.row_count > 0 {
-			// SAFETY: guarded non-null with `row_count > 0`; `marshal_columns` sets this field from a
-			// live `&[RowNumber]` (repr(transparent) u64), so it is aligned and covers `row_count`
-			// initialised elements.
-			unsafe {
-				let slice = slice::from_raw_parts(extern_c.row_numbers, extern_c.row_count);
-				slice.iter().map(|&n| RowNumber(n)).collect()
-			}
-		} else {
-			Vec::new()
-		};
-
-		let time: Vec<DateTime> = if !extern_c.time.is_null() && extern_c.row_count > 0 {
-			// SAFETY: guarded non-null with `row_count > 0`; `marshal_columns` sets this field from a
-			// live `&[DateTime]` (repr(transparent) u64), so it is aligned and covers `row_count`
-			// initialised elements.
-			unsafe {
-				let slice = slice::from_raw_parts(extern_c.time, extern_c.row_count);
-				slice.iter().map(|&n| DateTime::from_nanos(n)).collect()
-			}
-		} else {
-			Vec::new()
-		};
-
-		let mut columns: Vec<ColumnWithName> = Vec::with_capacity(extern_c.column_count);
-		// SAFETY: `extern_c.columns` was checked non-null above; `marshal_columns` points it at an 8-aligned
-		// arena array of exactly `column_count` initialised `ExternCColumn`.
-		unsafe {
-			let cols_slice = slice::from_raw_parts(extern_c.columns, extern_c.column_count);
-			for col in cols_slice {
-				columns.push(self.unmarshal_column(col, extern_c.row_count));
-			}
-		}
-
-		if row_numbers.is_empty() {
-			Columns::new(columns)
-		} else {
-			Columns::with_system(
-				columns,
-				SystemColumns::new(row_numbers, Vec::new(), Vec::new(), Vec::new(), time),
-			)
-		}
-	}
 }
 
 impl Arena {
@@ -184,170 +128,6 @@ impl Arena {
 			data: data_buffer,
 			defined_bitvec,
 			offsets: offsets_buffer,
-		}
-	}
-
-	pub(super) fn unmarshal_column(&self, extern_c: &ExternCColumn, row_count: usize) -> ColumnWithName {
-		let name = if !extern_c.name.ptr.is_null() && extern_c.name.len > 0 {
-			// SAFETY: the branch above rules out a null or zero-length name buffer; the producer owns
-			// those `name.len` initialised bytes for the duration of the call.
-			unsafe {
-				let bytes = slice::from_raw_parts(extern_c.name.ptr, extern_c.name.len);
-				let s = str::from_utf8(bytes).unwrap_or("");
-				Fragment::internal(s)
-			}
-		} else {
-			Fragment::internal("")
-		};
-
-		let data = self.unmarshal_column_data(&extern_c.data, row_count);
-
-		ColumnWithName::new(name, data)
-	}
-
-	pub(super) fn unmarshal_column_data(&self, extern_c: &ExternCColumnData, row_count: usize) -> ColumnBuffer {
-		if row_count == 0 {
-			return ColumnBuffer::none_typed(ValueType::Boolean, 0);
-		}
-
-		let inner = match extern_c.type_code {
-			ValueKind::Boolean => {
-				let container = self.unmarshal_bool_data(extern_c);
-				ColumnBuffer::Bool(container)
-			}
-			ValueKind::Float4 => {
-				let container = self.unmarshal_numeric_data::<f32>(extern_c);
-				ColumnBuffer::Float4(container)
-			}
-			ValueKind::Float8 => {
-				let container = self.unmarshal_numeric_data::<f64>(extern_c);
-				ColumnBuffer::Float8(container)
-			}
-			ValueKind::Int1 => {
-				let container = self.unmarshal_numeric_data::<i8>(extern_c);
-				ColumnBuffer::Int1(container)
-			}
-			ValueKind::Int2 => {
-				let container = self.unmarshal_numeric_data::<i16>(extern_c);
-				ColumnBuffer::Int2(container)
-			}
-			ValueKind::Int4 => {
-				let container = self.unmarshal_numeric_data::<i32>(extern_c);
-				ColumnBuffer::Int4(container)
-			}
-			ValueKind::Int8 => {
-				let container = self.unmarshal_numeric_data::<i64>(extern_c);
-				ColumnBuffer::Int8(container)
-			}
-			ValueKind::Int16 => {
-				let container = self.unmarshal_numeric_data::<i128>(extern_c);
-				ColumnBuffer::Int16(container)
-			}
-			ValueKind::Uint1 => {
-				let container = self.unmarshal_numeric_data::<u8>(extern_c);
-				ColumnBuffer::Uint1(container)
-			}
-			ValueKind::Uint2 => {
-				let container = self.unmarshal_numeric_data::<u16>(extern_c);
-				ColumnBuffer::Uint2(container)
-			}
-			ValueKind::Uint4 => {
-				let container = self.unmarshal_numeric_data::<u32>(extern_c);
-				ColumnBuffer::Uint4(container)
-			}
-			ValueKind::Uint8 => {
-				let container = self.unmarshal_numeric_data::<u64>(extern_c);
-				ColumnBuffer::Uint8(container)
-			}
-			ValueKind::Uint16 => {
-				let container = self.unmarshal_numeric_data::<u128>(extern_c);
-				ColumnBuffer::Uint16(container)
-			}
-			ValueKind::Utf8 => {
-				let container = self.unmarshal_utf8_data(extern_c);
-				ColumnBuffer::Utf8 {
-					container,
-					max_bytes: MaxBytes::MAX,
-				}
-			}
-			ValueKind::Date => {
-				let container = self.unmarshal_date_data(extern_c);
-				ColumnBuffer::Date(container)
-			}
-			ValueKind::DateTime => {
-				let container = self.unmarshal_datetime_data(extern_c);
-				ColumnBuffer::DateTime(container)
-			}
-			ValueKind::Time => {
-				let container = self.unmarshal_time_data(extern_c);
-				ColumnBuffer::Time(container)
-			}
-			ValueKind::Duration => {
-				let container = self.unmarshal_duration_data(extern_c);
-				ColumnBuffer::Duration(container)
-			}
-			ValueKind::IdentityId => {
-				let container = self.unmarshal_identity_id_data(extern_c);
-				ColumnBuffer::IdentityId(container)
-			}
-			ValueKind::Uuid4 => {
-				let container = self.unmarshal_uuid4_data(extern_c);
-				ColumnBuffer::Uuid4(container)
-			}
-			ValueKind::Uuid7 => {
-				let container = self.unmarshal_uuid7_data(extern_c);
-				ColumnBuffer::Uuid7(container)
-			}
-			ValueKind::Blob => {
-				let container = self.unmarshal_blob_data(extern_c);
-				ColumnBuffer::Blob {
-					container,
-					max_bytes: MaxBytes::MAX,
-				}
-			}
-			ValueKind::Int => {
-				let container = self.unmarshal_int_data(extern_c);
-				ColumnBuffer::Int {
-					container,
-					max_bytes: MaxBytes::MAX,
-				}
-			}
-			ValueKind::Uint => {
-				let container = self.unmarshal_uint_data(extern_c);
-				ColumnBuffer::Uint {
-					container,
-					max_bytes: MaxBytes::MAX,
-				}
-			}
-			ValueKind::Decimal => {
-				let container = self.unmarshal_decimal_data(extern_c);
-				ColumnBuffer::Decimal {
-					container,
-					precision: Precision::MAX,
-					scale: Scale::MIN,
-				}
-			}
-			ValueKind::Any => {
-				let container = self.unmarshal_any_data(extern_c);
-				ColumnBuffer::Any(container)
-			}
-			ValueKind::DictionaryId => {
-				let container = self.unmarshal_dictionary_id_data(extern_c);
-				ColumnBuffer::DictionaryId(container)
-			}
-			ValueKind::None | ValueKind::Type | ValueKind::List | ValueKind::Record | ValueKind::Tuple => {
-				ColumnBuffer::none_typed(ValueType::Boolean, row_count)
-			}
-		};
-
-		if !extern_c.defined_bitvec.is_empty() {
-			let bitvec = self.unmarshal_bitvec(&extern_c.defined_bitvec, row_count);
-			ColumnBuffer::Option {
-				inner: Box::new(inner),
-				bitvec,
-			}
-		} else {
-			inner
 		}
 	}
 }
@@ -602,16 +382,87 @@ impl Arena {
 			cap: byte_count,
 		}
 	}
+}
 
-	pub(super) fn unmarshal_bitvec(&self, extern_c: &ExternCBuffer, row_count: usize) -> BitVec {
-		if extern_c.is_empty() {
-			return BitVec::empty();
-		}
-		// SAFETY: `is_empty` above ruled out a null pointer and a zero length; the producer owns
-		// `extern_c.len` initialised bytes at `extern_c.ptr` for the duration of the call.
-		unsafe {
-			let bytes = slice::from_raw_parts(extern_c.ptr, extern_c.len);
-			BitVec::from_raw(bytes.to_vec(), row_count)
-		}
+#[cfg(test)]
+mod tests {
+	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+	use reifydb_value::{
+		fragment::Fragment,
+		value::{
+			container::temporal::TemporalContainer, date::Date, datetime::DateTime, duration::Duration,
+			time::Time,
+		},
+	};
+
+	use crate::flow::operator::{
+		change::{BorrowedColumn, BorrowedColumns},
+		extern_c::binding::arena::Arena,
+	};
+
+	fn read_back<T>(data: ColumnBuffer, read: impl Fn(&BorrowedColumn, usize) -> Option<T>) -> Vec<T> {
+		let columns = Columns::new(vec![ColumnWithName::new(Fragment::internal("c"), data)]);
+		let mut arena = Arena::new();
+		let ffi = arena.marshal_columns(&columns);
+		// SAFETY: `ffi` points into `arena` and `columns`, and both outlive every read below.
+		let borrowed = unsafe { BorrowedColumns::from_extern_c(&ffi) };
+		let column = borrowed.column_at_index(0).expect("one column was marshalled");
+		(0..columns.row_count())
+			.map(|row| read(&column, row).expect("every marshalled row must read back"))
+			.collect()
+	}
+
+	#[test]
+	fn datetime_column_marshal_borrow_roundtrip() {
+		// The marshal is zero-copy raw u64 nanos, so a reader using a seconds constructor would rescale every
+		// value.
+		let values = vec![
+			DateTime::from_nanos(0),
+			DateTime::from_nanos(1_700_000_000_000_000_000),
+			DateTime::from_nanos(u64::MAX),
+		];
+		let got = read_back(ColumnBuffer::DateTime(TemporalContainer::new(values.clone())), |column, row| {
+			column.datetime_at(row)
+		});
+		assert_eq!(got, values);
+	}
+
+	#[test]
+	fn date_column_marshal_borrow_roundtrip() {
+		// The marshal is zero-copy raw i32 days since the epoch, so the reader must read the same units.
+		let values = vec![Date::default(), Date::new(2024, 3, 15).unwrap(), Date::new(1970, 1, 1).unwrap()];
+		let got = read_back(ColumnBuffer::Date(TemporalContainer::new(values.clone())), |column, row| {
+			column.date_at(row)
+		});
+		assert_eq!(got, values);
+	}
+
+	#[test]
+	fn time_column_marshal_borrow_roundtrip() {
+		// The marshal is zero-copy raw u64 nanos since midnight, so the reader must read the same units.
+		let values = vec![
+			Time::default(),
+			Time::new(14, 30, 45, 123_456_789).unwrap(),
+			Time::new(23, 59, 59, 999_999_999).unwrap(),
+		];
+		let got = read_back(ColumnBuffer::Time(TemporalContainer::new(values.clone())), |column, row| {
+			column.time_at(row)
+		});
+		assert_eq!(got, values);
+	}
+
+	#[test]
+	fn duration_column_marshal_borrow_roundtrip() {
+		// The marshal is zero-copy 16-byte structs, so a reader expecting postcard plus offsets reads bytes
+		// never written.
+		let values = vec![
+			Duration::default(),
+			Duration::new(13, 5, 3_600_000_000_000).expect("duration"),
+			Duration::from_seconds(-30).expect("duration"),
+		];
+		let got = read_back(ColumnBuffer::Duration(TemporalContainer::new(values.clone())), |column, row| {
+			column.duration_at(row)
+		});
+		assert_eq!(got, values);
 	}
 }

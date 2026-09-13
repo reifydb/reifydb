@@ -14,7 +14,8 @@ use tracing::{Span, field, instrument};
 use crate::{
 	engine::FlowEngineInner,
 	operator::{
-		BoxedHostOperator, guard::enforce_apply_capabilities, host::TxnHostContext, sink::BoxedDurableSink,
+		BoxedHostOperator, InputOrder, guard::enforce_apply_capabilities, host::TxnHostContext,
+		sink::BoxedDurableSink,
 	},
 	transaction::FlowTransaction,
 };
@@ -22,6 +23,23 @@ use crate::{
 pub(super) enum Node<'a> {
 	Operator(&'a mut BoxedHostOperator),
 	DurableSink(&'a mut BoxedDurableSink),
+}
+
+fn order_inbox(operator: &FlowNode, order: InputOrder, mut inbox: Vec<Change>) -> Vec<Change> {
+	let arity = operator.inputs.len();
+	if order == InputOrder::Declared || arity < 2 {
+		return inbox;
+	}
+	inbox.sort_by_key(|change| match &change.origin {
+		ChangeOrigin::Flow(node) => operator
+			.inputs
+			.iter()
+			.position(|input| input == node)
+			.map(|position| order.rank(position, arity))
+			.unwrap_or(arity),
+		_ => arity,
+	});
+	inbox
 }
 
 impl FlowEngineInner {
@@ -67,6 +85,12 @@ impl FlowEngineInner {
 		operator: &FlowNode,
 		inbox: Vec<Change>,
 	) -> Result<Change> {
+		let order = self
+			.operators
+			.get(&(flow_id, operator.id))
+			.map(|operator| operator.input_order())
+			.unwrap_or(InputOrder::Declared);
+		let inbox = order_inbox(operator, order, inbox);
 		let merged = Change::merge(inbox)?;
 		let version = merged.version;
 		let changed_at = merged.changed_at;

@@ -5,7 +5,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_value::value::datetime::DateTime;
 use serde::{Deserialize, Serialize};
 
-use crate::common::CommitVersion;
+use crate::common::{ChangeVersion, CommitVersion};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -140,14 +140,14 @@ impl CdcChange {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cdc {
-	pub version: CommitVersion,
+	pub version: ChangeVersion,
 	pub timestamp: DateTime,
 
 	pub changes: Vec<CdcChange>,
 }
 
 impl Cdc {
-	pub fn new(version: CommitVersion, timestamp: DateTime, changes: Vec<CdcChange>) -> Self {
+	pub fn new(version: ChangeVersion, timestamp: DateTime, changes: Vec<CdcChange>) -> Self {
 		Self {
 			version,
 			timestamp,

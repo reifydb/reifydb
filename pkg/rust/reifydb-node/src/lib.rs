@@ -23,6 +23,7 @@ use reifydb_codec::json::{to::convert_frames, wire_type::WireValueType};
 use reifydb_sub_server::wire::{WireParams, WireValue};
 use reifydb_value::{params::Params, value::uuid::Uuid7};
 use serde_json::{Value as JsonValue, from_value, json, to_string as json_to_string, to_value};
+use tokio::task::spawn_blocking;
 use uuid::Uuid;
 
 pub mod subscription;
@@ -402,7 +403,7 @@ where
 	T: Send + 'static,
 	F: FnOnce() -> Result<T> + Send + 'static,
 {
-	tokio::task::spawn_blocking(work).await.expect("blocking task panicked")
+	spawn_blocking(work).await.expect("blocking task panicked")
 }
 
 fn to_tick(pushes: Vec<NodePush>) -> SubscriptionTick {

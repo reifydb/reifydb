@@ -16,6 +16,7 @@ remote = ["dep:reifydb-remote-proxy"]
 
 [dependencies]
 reifydb-client = { workspace = true }
+reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-remote-proxy = { workspace = true, optional = true }

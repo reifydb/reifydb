@@ -7,7 +7,7 @@ use reifydb_codec::row::{
 	table::EncodedTableRowBuilder,
 };
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::{object::ObjectId, table::Table},
 		change::{Change, ChangeOrigin, Diff},
@@ -37,7 +37,7 @@ fn build_table_insert_change(
 ) -> Change {
 	Change {
 		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
-		version: CommitVersion(0),
+		version: ChangeVersion::from(CommitVersion(0)),
 		diffs: smallvec![Diff::insert(Columns::from_encoded_bytes(shape, ids, bytes_slice))],
 		changed_at: DateTime::default(),
 	}
@@ -52,7 +52,7 @@ fn build_table_update_change(
 ) -> Change {
 	Change {
 		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
-		version: CommitVersion(0),
+		version: ChangeVersion::from(CommitVersion(0)),
 		diffs: smallvec![Diff::update(
 			Columns::from_encoded_bytes(shape, ids, pres),
 			Columns::from_encoded_bytes(shape, ids, posts),
@@ -69,7 +69,7 @@ fn build_table_remove_change(
 ) -> Change {
 	Change {
 		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
-		version: CommitVersion(0),
+		version: ChangeVersion::from(CommitVersion(0)),
 		diffs: smallvec![Diff::remove(Columns::from_encoded_bytes(shape, ids, bytes_slice))],
 		changed_at: DateTime::default(),
 	}

@@ -50,15 +50,14 @@ impl<'a> FlowTxnBuilder<'a> {
 				self.engine.inner().operator_state(),
 			),
 		});
-		txn.set_change_coordinate(default_coordinate(version));
+		txn.set_change_coordinate(default_coordinate());
 		txn
 	}
 }
 
-fn default_coordinate(version: CommitVersion) -> ChangeCoordinate {
+fn default_coordinate() -> ChangeCoordinate {
 	ChangeCoordinate {
 		at: Some(DateTime::from_millis(0)),
-		version,
 	}
 }
 

@@ -70,7 +70,6 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 		});
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_millis(self.version)),
-			version: CommitVersion(self.version),
 		});
 		txn
 	}

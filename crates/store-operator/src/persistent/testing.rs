@@ -17,7 +17,6 @@ use reifydb_core::{
 	metrics::collect::MetricsCollector,
 };
 use reifydb_value::byte_size::ByteSize;
-use tracing::instrument;
 
 use crate::{
 	error::{OperatorError, Result},
@@ -48,40 +47,32 @@ pub enum Continue {
 }
 
 pub trait PersistentHooks: Send + Sync {
-	#[instrument(name = "store::operator::persistent::testing::on_get", level = "trace", skip_all)]
 	fn on_get(&self, _operator: OperatorId, _key: &GroupStateKey) -> ReadOutcome {
 		ReadOutcome::Clean
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::on_page", level = "trace", skip_all)]
 	fn on_page(&self, _operator: OperatorId, _len: usize) -> ReadOutcome {
 		ReadOutcome::Clean
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::on_apply", level = "trace", skip_all)]
 	fn on_apply(&self, _batch: &FlushBatch) -> ApplyOutcome {
 		ApplyOutcome::Land
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::on_checkpoint", level = "trace", skip_all)]
 	fn on_checkpoint(&self, _flow: FlowId) -> ApplyOutcome {
 		ApplyOutcome::Land
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::on_checkpoint_remove", level = "trace", skip_all)]
 	fn on_checkpoint_remove(&self, _flow: FlowId) -> ApplyOutcome {
 		ApplyOutcome::Land
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::on_drop", level = "trace", skip_all)]
 	fn on_drop(&self, _operator: OperatorId) -> ApplyOutcome {
 		ApplyOutcome::Land
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::during_apply", level = "trace", skip_all)]
 	fn during_apply(&self, _batch: &FlushBatch) {}
 
-	#[instrument(name = "store::operator::persistent::testing::on_call", level = "trace", skip_all)]
 	fn on_call(&self, _call: u64) -> Continue {
 		Continue::Yes
 	}
@@ -101,12 +92,10 @@ struct Inner {
 pub struct TestingPersistent(Arc<Inner>);
 
 impl TestingPersistent {
-	#[instrument(name = "store::operator::persistent::testing::new", level = "trace", skip_all)]
 	pub fn new(hooks: Arc<dyn PersistentHooks>) -> Self {
 		Self::over(MemoryPersistent::new(), hooks)
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::over", level = "trace", skip_all)]
 	pub fn over(durable: MemoryPersistent, hooks: Arc<dyn PersistentHooks>) -> Self {
 		Self(Arc::new(Inner {
 			durable,
@@ -115,17 +104,14 @@ impl TestingPersistent {
 		}))
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::durable", level = "trace", skip_all)]
 	pub fn durable(&self) -> &MemoryPersistent {
 		&self.0.durable
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::calls", level = "trace", skip_all)]
 	pub fn calls(&self) -> u64 {
 		self.0.calls.load(Ordering::SeqCst)
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::call", level = "trace", skip_all)]
 	fn call(&self) {
 		let call = self.0.calls.fetch_add(1, Ordering::SeqCst) + 1;
 		if self.0.hooks.on_call(call) == Continue::Crash {
@@ -134,7 +120,6 @@ impl TestingPersistent {
 	}
 }
 
-#[instrument(name = "store::operator::persistent::testing::shorten", level = "trace", skip_all)]
 fn shorten(mut batch: OperatorBatch, outcome: ReadOutcome) -> Result<OperatorBatch> {
 	match outcome {
 		ReadOutcome::Clean => Ok(batch),
@@ -149,14 +134,12 @@ fn shorten(mut batch: OperatorBatch, outcome: ReadOutcome) -> Result<OperatorBat
 }
 
 impl Persistent for TestingPersistent {
-	#[instrument(name = "store::operator::persistent::testing::metrics_collectors", level = "trace", skip_all)]
 	fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		self.0.durable.metrics_collectors()
 	}
 }
 
 impl Fetch for TestingPersistent {
-	#[instrument(name = "store::operator::persistent::testing::get", level = "trace", skip_all)]
 	fn get(&self, operator: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 		self.call();
 		match self.0.hooks.on_get(operator, key) {
@@ -166,7 +149,6 @@ impl Fetch for TestingPersistent {
 		}
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::get_many", level = "trace", skip_all)]
 	fn get_many(
 		&self,
 		operator: OperatorId,
@@ -182,14 +164,12 @@ impl Fetch for TestingPersistent {
 		Ok(found)
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::contains", level = "trace", skip_all)]
 	fn contains(&self, operator: OperatorId, key: &GroupStateKey) -> Result<bool> {
 		Ok(self.get(operator, key)?.is_some())
 	}
 }
 
 impl Page for TestingPersistent {
-	#[instrument(name = "store::operator::persistent::testing::range_batch", level = "trace", skip_all)]
 	fn range_batch(
 		&self,
 		operator: OperatorId,
@@ -203,7 +183,6 @@ impl Page for TestingPersistent {
 		shorten(page, outcome)
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::last_batch", level = "trace", skip_all)]
 	fn last_batch(
 		&self,
 		operator: OperatorId,
@@ -217,7 +196,6 @@ impl Page for TestingPersistent {
 		shorten(page, outcome)
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::group_page", level = "trace", skip_all)]
 	fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch: u64, mask: u64) -> Result<OperatorBatch> {
 		self.call();
 		let page = self.0.durable.group_page(operator, groups, batch, mask)?;
@@ -227,7 +205,6 @@ impl Page for TestingPersistent {
 }
 
 impl Measure for TestingPersistent {
-	#[instrument(name = "store::operator::persistent::testing::state_sizes", level = "trace", skip_all)]
 	fn state_sizes(
 		&self,
 		operator: OperatorId,
@@ -237,7 +214,6 @@ impl Measure for TestingPersistent {
 		self.0.durable.state_sizes(operator, keys)
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::bytes", level = "trace", skip_all)]
 	fn bytes(&self, operator: OperatorId) -> Result<ByteSize> {
 		self.call();
 		self.0.durable.bytes(operator)
@@ -245,19 +221,16 @@ impl Measure for TestingPersistent {
 }
 
 impl Enumerate for TestingPersistent {
-	#[instrument(name = "store::operator::persistent::testing::census", level = "trace", skip_all)]
 	fn census(&self) -> Result<Vec<OperatorStateCensus>> {
 		self.call();
 		self.0.durable.census()
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::operators", level = "trace", skip_all)]
 	fn operators(&self) -> Result<Vec<OperatorId>> {
 		self.call();
 		self.0.durable.operators()
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::keyspaces", level = "trace", skip_all)]
 	fn keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>> {
 		self.call();
 		self.0.durable.keyspaces(operator)
@@ -265,13 +238,11 @@ impl Enumerate for TestingPersistent {
 }
 
 impl Checkpoint for TestingPersistent {
-	#[instrument(name = "store::operator::persistent::testing::checkpoint_get", level = "trace", skip_all)]
 	fn checkpoint_get(&self, flow: FlowId) -> Result<Option<CommitVersion>> {
 		self.call();
 		self.0.durable.checkpoint_get(flow)
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::checkpoint_set", level = "trace", skip_all)]
 	fn checkpoint_set(&self, flow: FlowId, version: CommitVersion) -> Result<()> {
 		self.call();
 		match self.0.hooks.on_checkpoint(flow) {
@@ -281,7 +252,6 @@ impl Checkpoint for TestingPersistent {
 		}
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::checkpoint_remove", level = "trace", skip_all)]
 	fn checkpoint_remove(&self, flow: FlowId) -> Result<()> {
 		self.call();
 		match self.0.hooks.on_checkpoint_remove(flow) {
@@ -291,13 +261,11 @@ impl Checkpoint for TestingPersistent {
 		}
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::checkpoint_floor", level = "trace", skip_all)]
 	fn checkpoint_floor(&self) -> Result<Option<CommitVersion>> {
 		self.call();
 		self.0.durable.checkpoint_floor()
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::checkpoint_list", level = "trace", skip_all)]
 	fn checkpoint_list(&self) -> Result<Vec<FlowId>> {
 		self.call();
 		self.0.durable.checkpoint_list()
@@ -305,7 +273,6 @@ impl Checkpoint for TestingPersistent {
 }
 
 impl Apply for TestingPersistent {
-	#[instrument(name = "store::operator::persistent::testing::apply", level = "trace", skip_all)]
 	fn apply(&self, batch: &FlushBatch) -> Result<Applied> {
 		self.call();
 		let applied = match self.0.hooks.on_apply(batch) {
@@ -332,7 +299,6 @@ impl Apply for TestingPersistent {
 		applied
 	}
 
-	#[instrument(name = "store::operator::persistent::testing::drop_operator", level = "trace", skip_all)]
 	fn drop_operator(&self, operator: OperatorId) -> Result<()> {
 		self.call();
 		match self.0.hooks.on_drop(operator) {

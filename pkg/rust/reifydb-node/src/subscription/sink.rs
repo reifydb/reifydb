@@ -4,12 +4,15 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use reifydb::{
-	codec::frame::{encode::encode_frames, options::EncodeOptions},
+	codec::{
+		frame::{encode::encode_frames, options::EncodeOptions},
+		wire::{RawChangePayload, WireFormat as ClientWireFormat},
+	},
 	core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns},
 	runtime::sync::mutex::Mutex,
 	sub_core::{
 		envelope::{BinaryKind, encode_rbcf_batch_envelope, encode_rbcf_envelope},
-		wire_sink::{BatchSubscribedMember, ClientWireFormat, RawChangePayload, WireSink},
+		wire_sink::{BatchSubscribedMember, WireSink},
 	},
 	subscription::{batch::BatchId, delivery::DeliveryResult},
 	value::value::{diff_type::DiffType, frame::frame::Frame},

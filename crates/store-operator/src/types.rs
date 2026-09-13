@@ -90,17 +90,6 @@ pub enum StagedWrite {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Budget {
-	pub rows: usize,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Resume {
-	Done,
-	More,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scan {
 	Forward,
 	Backward,

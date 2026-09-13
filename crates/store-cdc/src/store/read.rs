@@ -73,7 +73,7 @@ impl CdcStore {
 				}
 				continue;
 			};
-			if block.entries.iter().any(|cdc| cdc.version >= cursor && cdc.version <= hi) {
+			if block.entries.iter().any(|cdc| cdc.version.commit >= cursor && cdc.version.commit <= hi) {
 				return Ok(true);
 			}
 			let Some(next) = block.max_version().0.checked_add(1) else {
@@ -111,7 +111,7 @@ impl CdcStore {
 
 		while !exhausted && items.len() < want && cursor <= hi {
 			let pending = self.commit.range(cursor, hi, want - items.len());
-			let boundary = pending.first().map(|cdc| cdc.version);
+			let boundary = pending.first().map(|cdc| cdc.version.commit);
 
 			while items.len() < want && cursor <= hi && boundary.is_none_or(|edge| cursor < edge) {
 				let block = match self.block_for(cursor)? {
@@ -128,13 +128,13 @@ impl CdcStore {
 					},
 				};
 				for cdc in block.entries.iter() {
-					if cdc.version < cursor {
+					if cdc.version.commit < cursor {
 						continue;
 					}
-					if cdc.version > hi || items.len() == want {
+					if cdc.version.commit > hi || items.len() == want {
 						break;
 					}
-					if boundary.is_some_and(|edge| cdc.version >= edge) {
+					if boundary.is_some_and(|edge| cdc.version.commit >= edge) {
 						break;
 					}
 					items.push((**cdc).clone());
@@ -158,17 +158,17 @@ impl CdcStore {
 
 			let drained = items.len();
 			for cdc in pending {
-				if items.len() >= want || cdc.version > hi {
+				if items.len() >= want || cdc.version.commit > hi {
 					break;
 				}
-				if cdc.version < cursor {
+				if cdc.version.commit < cursor {
 					continue;
 				}
-				if cdc.version > cursor && !items.is_empty() {
+				if cdc.version.commit > cursor && !items.is_empty() {
 					break;
 				}
 				items.push((*cdc).clone());
-				match cdc.version.0.checked_add(1) {
+				match cdc.version.commit.0.checked_add(1) {
 					Some(next) => cursor = CommitVersion(next),
 					None => exhausted = true,
 				}
@@ -179,7 +179,7 @@ impl CdcStore {
 		}
 
 		let has_more = match items.last() {
-			Some(last) => match last.version.0.checked_add(1) {
+			Some(last) => match last.version.commit.0.checked_add(1) {
 				Some(next) => self.holds_any(CommitVersion(next), hi)?,
 				None => false,
 			},

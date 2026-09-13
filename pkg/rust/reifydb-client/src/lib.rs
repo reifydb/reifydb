@@ -4,14 +4,7 @@
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[cfg_attr(any(feature = "http", feature = "ws"), derive(Serialize, Deserialize))]
-#[cfg_attr(any(feature = "http", feature = "ws"), serde(rename_all = "lowercase"))]
-pub enum WireFormat {
-	#[default]
-	Frames,
-	Rbcf,
-}
+pub use reifydb_codec::wire::WireFormat;
 
 #[cfg(any(feature = "ws", feature = "grpc"))]
 mod changes;

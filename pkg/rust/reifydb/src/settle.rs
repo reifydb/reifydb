@@ -389,7 +389,7 @@ mod tests {
 	use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 	use reifydb_value::{params::Params, value::frame::frame::Frame};
 
-	use super::{SettleBudget, SettleState};
+	use super::{SettleBudget, SettleGuard, SettleState};
 	use crate::{Database, WithSubsystem, embedded, subscribe::Subscription};
 
 	fn db() -> Database {
@@ -555,7 +555,7 @@ mod tests {
 		// process_one, which panics on the state borrow and is then swallowed by catch_unwind
 		// into a silently dead actor. The guard has to turn that into an error the caller sees.
 		let db = with_table();
-		let outer = super::SettleGuard::enter().expect("first entry");
+		let outer = SettleGuard::enter().expect("first entry");
 		let nested = db.settle_subscriptions();
 		assert!(nested.is_err(), "a nested settle must be refused");
 		assert!(

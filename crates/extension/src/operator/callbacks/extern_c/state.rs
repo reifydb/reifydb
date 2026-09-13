@@ -955,6 +955,10 @@ mod join_row_expiry_guard_tests {
 			Ok(Vec::new())
 		}
 
+		fn state_any_live(&mut self, _range: EncodedKeyRange) -> Result<bool> {
+			Ok(false)
+		}
+
 		fn state_range_iter(&mut self, _range: EncodedKeyRange) -> StateIterator<'_> {
 			StateIterator::new(Box::new(empty::<Result<MultiVersionRow<TaggedKey>>>()))
 		}

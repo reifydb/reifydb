@@ -114,27 +114,12 @@ fn entry_bytes(_key_body: &str, row_body: &str) -> ByteSize {
 	ByteSize::from_bytes((group + suffix + row(row_body).bytes().len()) as u64)
 }
 
-fn live_bytes(buffer: &Resident) -> ByteSize {
-	let mut total = ByteSize::ZERO;
-	for operator in buffer.shared().operators() {
-		let Some(slot) = buffer.shared().slot(operator) else {
-			continue;
-		};
-		let bytes = slot.inner.lock().live.bytes;
-		total = total.saturating_add(bytes);
-	}
-	total
-}
-
 fn resident_bytes(buffer: &Resident) -> ByteSize {
 	buffer.resident_bytes()
 }
 
 fn dirty_entries_of(buffer: &Resident, operator: OperatorId) -> usize {
-	buffer.shared().slot(operator).map_or(0, |slot| {
-		let dirty = slot.inner.lock().dirty_entries();
-		dirty
-	})
+	buffer.shared().slot(operator).map_or(0, |slot| slot.inner.lock().buckets.dirty_count())
 }
 
 fn flushing(buffer: &Resident) -> bool {
@@ -780,12 +765,12 @@ fn a_key_removed_while_its_flush_is_in_flight_is_not_counted_at_all() {
 fn a_rewritten_key_charges_its_key_once_and_only_the_row_that_stands() {
 	let buffer = Resident::new();
 	buffer.record_state_set(OP_A, key("k1"), row("aaaaaaaa"));
-	assert_eq!(live_bytes(&buffer), entry_bytes("k1", "aaaaaaaa"), "a first write charges its key and its row");
+	assert_eq!(resident_bytes(&buffer), entry_bytes("k1", "aaaaaaaa"), "a first write charges its key and its row");
 
 	buffer.record_state_set(OP_A, key("k1"), row("bb"));
 
 	assert_eq!(
-		live_bytes(&buffer),
+		resident_bytes(&buffer),
 		entry_bytes("k1", "bb"),
 		"the collapse must drop the outgoing row and charge the key exactly once, otherwise every rewrite \
 		 of a hot key counts twice"
@@ -800,7 +785,7 @@ fn a_tombstone_keeps_its_key_charged() {
 	buffer.record_state_remove(OP_A, key("k1"));
 
 	assert_eq!(
-		live_bytes(&buffer),
+		resident_bytes(&buffer),
 		entry_bytes("k1", ""),
 		"a tombstone still holds its key in memory; charging it zero hides a keyspace that is all deletes"
 	);
@@ -818,7 +803,7 @@ fn a_tombstone_recorded_first_charges_its_key() {
 	buffer.record_state_remove(OP_A, key("k1"));
 
 	assert_eq!(
-		live_bytes(&buffer),
+		resident_bytes(&buffer),
 		entry_bytes("k1", ""),
 		"a delete-only key is resident too; a free tombstone lets a delete storm escape the budget"
 	);
@@ -829,7 +814,7 @@ fn a_flow_boundary_split_moves_exactly_the_bytes_the_slice_carries_away() {
 	let buffer = Resident::with_budget(entry_bytes("k1", "aaa"));
 	write_in_flow(&buffer, FLOW_A, 1, &[insert(OP_A, "k1", "aaa")]);
 	write_in_flow(&buffer, FLOW_B, 2, &[insert(OP_B, "k2", "bbbbb")]);
-	let before = live_bytes(&buffer);
+	let before = resident_bytes(&buffer);
 
 	let taken = buffer.take_for_flush().expect("the seeded buffer yields a slice");
 
@@ -839,7 +824,7 @@ fn a_flow_boundary_split_moves_exactly_the_bytes_the_slice_carries_away() {
 		"the slice carries exactly the first flow's bytes; the budget may only stop at a flow boundary"
 	);
 	assert_eq!(
-		live_bytes(&buffer),
+		resident_bytes(&buffer),
 		before,
 		"a staged entry stays resident, so the split moves the charge into the batch without releasing \
 		 it from memory"
@@ -856,7 +841,7 @@ fn a_flow_boundary_split_moves_exactly_the_bytes_the_slice_carries_away() {
 fn a_split_that_takes_everything_leaves_nothing_dirty() {
 	let buffer = Resident::new();
 	buffer.record_state_set(OP_A, key("k1"), row("aaa"));
-	let before = live_bytes(&buffer);
+	let before = resident_bytes(&buffer);
 
 	let taken = buffer.take_for_flush().expect("the seeded buffer yields a slice");
 
@@ -867,7 +852,7 @@ fn a_split_that_takes_everything_leaves_nothing_dirty() {
 		"a residue left unstaged never drains, so the buffer flushes on every commit forever"
 	);
 	assert_eq!(
-		live_bytes(&buffer),
+		resident_bytes(&buffer),
 		before,
 		"taking everything stages the entries in place, so they stay resident for reads"
 	);
@@ -882,7 +867,7 @@ fn a_drop_marker_releases_the_bytes_of_everything_it_clears() {
 	buffer.record_drop(DropMarker::OperatorState(OP_A));
 
 	assert_eq!(
-		live_bytes(&buffer),
+		resident_bytes(&buffer),
 		entry_bytes("k2", "stays"),
 		"only the surviving operator may still be charged; a dropped operator's bytes are gone from RAM"
 	);
@@ -892,16 +877,11 @@ fn a_drop_marker_releases_the_bytes_of_everything_it_clears() {
 fn a_selected_slice_stays_resident_across_the_settle() {
 	let buffer = Resident::new();
 	buffer.record_state_set(OP_A, key("k1"), row("value"));
-	let charged = live_bytes(&buffer);
+	let charged = resident_bytes(&buffer);
 
 	let batch = buffer.take_for_flush().expect("the seeded buffer yields a slice");
 
 	assert_eq!(batch.bytes, charged, "the slice carries the charge it took");
-	assert_eq!(
-		live_bytes(&buffer),
-		charged,
-		"staging marks the entries in place, so the live map keeps carrying them"
-	);
 	assert_eq!(
 		resident_bytes(&buffer),
 		charged,

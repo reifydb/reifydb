@@ -17,7 +17,7 @@ use reifydb_codec::{
 	},
 };
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin},
@@ -150,7 +150,7 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 		if diffs.is_empty() {
 			return Ok(None);
 		}
-		let output = Change::from_flow(self.operator_id, version, diffs, at);
+		let output = Change::from_flow(self.operator_id, ChangeVersion::from(version), diffs, at);
 		self.history.push(output.clone());
 		Ok(Some(output))
 	}
@@ -1084,6 +1084,14 @@ impl<T: ExternCOperator> Subject for ExternCOperatorHarness<T> {
 	}
 
 	fn tick(&mut self, at_ms: u64) -> ValueResult<Option<Change>> {
-		self.on_timer(DateTime::from_epoch_millis(at_ms).unwrap(), TimerKind::Seal, &[]).map_err(Into::into)
+		let at = DateTime::from_epoch_millis(at_ms).unwrap();
+		self.advance_watermark(at)?;
+		let diffs = into_diffs(self.builder_registry.drain_diffs());
+		if diffs.is_empty() {
+			return Ok(None);
+		}
+		let output = Change::from_flow(self.operator_id, ChangeVersion::from(self.version()), diffs, at);
+		self.history.push(output.clone());
+		Ok(Some(output))
 	}
 }

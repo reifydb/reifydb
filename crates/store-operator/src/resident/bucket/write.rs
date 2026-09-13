@@ -5,18 +5,18 @@ use std::{
 	any::Any,
 	collections::{BTreeMap, btree_map::Entry},
 	iter::Peekable,
-	mem::{replace, size_of, take},
+	mem::size_of,
 	ops::{Bound, RangeBounds},
 	sync::atomic::{AtomicBool, Ordering},
 };
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::{
 			keyspace::columns_width,
-			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+			state::{GroupId, GroupStateKey, OperatorStateKey},
 			traits::Keyspace,
 		},
 		typed::layout::KeyLayout,
@@ -24,15 +24,11 @@ use reifydb_core::{
 	state::typed::SuffixBytes,
 	util::sorted::SortedVecMap,
 };
-use reifydb_value::{Result, byte_size::ByteSize};
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use rusqlite::{Connection, Transaction};
+use reifydb_value::byte_size::ByteSize;
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::persistent::sqlite::typed;
 use crate::{
-	resident::bucket::{AnyBucket, GroupIds},
-	types::{Budget, Resume, Scan},
+	resident::bucket::{Bucket, GroupIds},
+	types::Scan,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -222,7 +218,7 @@ impl<'a, S: Ord + 'a, I: Iterator<Item = (&'a S, &'a WriteEntry)>> Iterator for 
 	}
 }
 
-pub struct TypedBucket<K: Keyspace> {
+pub struct StandardBucket<K: Keyspace> {
 	operator: OperatorId,
 	partitions: BTreeMap<GroupId, Partition<K>>,
 	bytes: ByteSize,
@@ -232,7 +228,7 @@ pub struct TypedBucket<K: Keyspace> {
 	dirty_groups: usize,
 }
 
-impl<K: Keyspace> TypedBucket<K> {
+impl<K: Keyspace> StandardBucket<K> {
 	pub fn new(operator: OperatorId) -> Self {
 		Self {
 			operator,
@@ -518,17 +514,6 @@ impl<K: Keyspace> TypedBucket<K> {
 		})
 	}
 
-	pub fn absorb(&mut self, other: Self) {
-		for (group, partition) in other.partitions {
-			for (suffix, entry) in partition.live {
-				self.record(group, suffix, entry.post);
-			}
-			for (suffix, entry) in partition.deleted {
-				self.record(group, suffix, entry.post);
-			}
-		}
-	}
-
 	pub fn clear(&mut self) {
 		self.partitions.clear();
 		self.bytes = ByteSize::ZERO;
@@ -539,135 +524,43 @@ impl<K: Keyspace> TypedBucket<K> {
 	}
 }
 
-impl<K: Keyspace> AnyBucket for TypedBucket<K> {
-	fn keyspace(&self) -> KeyspaceId {
-		K::ID
-	}
-
+impl<K: Keyspace> Bucket for StandardBucket<K> {
 	fn footprint(&self) -> ByteSize {
 		self.bytes
 	}
 
 	fn len(&self) -> usize {
-		TypedBucket::len(self)
+		StandardBucket::len(self)
 	}
 
 	fn dirty_len(&self) -> usize {
-		TypedBucket::dirty_len(self)
+		StandardBucket::dirty_len(self)
 	}
 
 	fn dirty_footprint(&self) -> ByteSize {
-		TypedBucket::dirty_footprint(self)
+		StandardBucket::dirty_footprint(self)
 	}
 
 	fn stage_dirty(&mut self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) -> ByteSize {
-		TypedBucket::stage_dirty(self, visit)
+		StandardBucket::stage_dirty(self, visit)
 	}
 
 	fn revert_flushing(&mut self) -> usize {
-		TypedBucket::revert_flushing(self)
+		StandardBucket::revert_flushing(self)
 	}
 
 	fn evict_clean(&mut self, bytes: &mut ByteSize, entries: &mut usize) -> (usize, ByteSize) {
-		TypedBucket::evict_clean(self, bytes, entries)
+		StandardBucket::evict_clean(self, bytes, entries)
 	}
 
 	fn settle_flushing(&mut self) {
-		TypedBucket::settle_flushing(self)
-	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	fn write_into(&self, txn: &Transaction) {
-		let mut sets: Vec<(OperatorId, K::GroupedKey, Vec<u8>)> = Vec::new();
-		let mut removes: Vec<(OperatorId, K::GroupedKey)> = Vec::new();
-		for (group, suffix, entry) in self.entries() {
-			let key = K::join(group, suffix.clone());
-			match &entry.post {
-				Some(row) => sets.push((self.operator, key, row.as_slice().to_vec())),
-				None => removes.push((self.operator, key)),
-			}
-		}
-		typed::set_chunked::<K>(txn, &sets);
-		typed::remove_chunked::<K>(txn, &removes);
-	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	fn flush(&mut self, conn: &Connection) -> Result<()> {
-		for (group, partition) in take(&mut self.partitions) {
-			for (suffix, entry) in partition.live {
-				let key = K::join(group, suffix);
-				let row = entry.post.expect("a live entry carries a row");
-				typed::set::<K>(conn, self.operator, &key, row.as_slice());
-			}
-			for (suffix, _) in partition.deleted {
-				typed::remove::<K>(conn, self.operator, &K::join(group, suffix));
-			}
-		}
-		self.bytes = ByteSize::ZERO;
-		self.entries = 0;
-		Ok(())
-	}
-
-	fn reap_group(&mut self, group: GroupId, budget: &mut Budget) -> Result<Resume> {
-		let Some(partition) = self.partitions.get_mut(&group) else {
-			return Ok(Resume::Done);
-		};
-		let mut released = ByteSize::ZERO;
-		let had_dirty = partition.dirty > 0;
-		while budget.rows > 0 {
-			let next = match (partition.live.first_key_value(), partition.deleted.first_key_value()) {
-				(None, None) => None,
-				(Some(_), None) => partition.live.pop_first(),
-				(None, Some(_)) => partition.deleted.pop_first(),
-				(Some((live, _)), Some((deleted, _))) => match live <= deleted {
-					true => partition.live.pop_first(),
-					false => partition.deleted.pop_first(),
-				},
-			};
-			let Some((_, entry)) = next else {
-				break;
-			};
-			budget.rows -= 1;
-			self.entries -= 1;
-			if entry.staged.is_dirty() {
-				self.dirty -= 1;
-				partition.dirty -= 1;
-				self.dirty_bytes = self
-					.dirty_bytes
-					.saturating_sub(Self::suffix_bytes())
-					.saturating_sub(entry.row_bytes());
-			}
-			released = released.saturating_add(Self::suffix_bytes()).saturating_add(entry.row_bytes());
-		}
-		if had_dirty && partition.dirty == 0 {
-			self.dirty_groups -= 1;
-		}
-		let drained = partition.is_empty();
-		self.bytes = self.bytes.saturating_sub(released);
-		if drained {
-			self.partitions.remove(&group);
-			self.bytes = self.bytes.saturating_sub(Self::group_bytes());
-			return Ok(Resume::Done);
-		}
-		Ok(Resume::More)
+		StandardBucket::settle_flushing(self)
 	}
 
 	fn for_each(&self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) {
 		for (group, suffix, entry) in self.entries() {
 			visit(group, &suffix.to_suffix_bytes(), entry);
 		}
-	}
-
-	fn encoded_entries(&self) -> Vec<(EncodedKey, WriteEntry)> {
-		self.entries()
-			.map(|(group, suffix, entry)| {
-				(
-					OperatorStateKey::inner_encoded(group, K::ID, suffix.to_suffix_bytes())
-						.into_encoded(),
-					entry.clone(),
-				)
-			})
-			.collect()
 	}
 
 	fn groups_in_range(&self, lower: &Bound<GroupId>, upper: &Bound<GroupId>) -> GroupIds {
@@ -715,22 +608,6 @@ impl<K: Keyspace> AnyBucket for TypedBucket<K> {
 				out
 			}
 		}
-	}
-
-	fn absorb_any(&mut self, other: &mut dyn AnyBucket) {
-		let other = other
-			.as_any_mut()
-			.downcast_mut::<Self>()
-			.expect("a keyspace id must map to exactly one key type");
-		self.absorb(Self {
-			operator: other.operator,
-			partitions: take(&mut other.partitions),
-			bytes: replace(&mut other.bytes, ByteSize::ZERO),
-			entries: replace(&mut other.entries, 0),
-			dirty: replace(&mut other.dirty, 0),
-			dirty_bytes: replace(&mut other.dirty_bytes, ByteSize::ZERO),
-			dirty_groups: replace(&mut other.dirty_groups, 0),
-		});
 	}
 
 	fn as_any(&self) -> &dyn Any {

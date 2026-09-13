@@ -62,7 +62,7 @@ impl SubscriptionCdcConsumer {
 		for cdc in cdcs {
 			for change in rebuild_changes(cdc, &catalog, &mut txn)? {
 				if let ChangeOrigin::Object(object_id) = &change.origin {
-					self.source_tracker.update(*object_id, cdc.version);
+					self.source_tracker.update(*object_id, cdc.version.commit);
 				}
 				out.push(change);
 			}
@@ -147,8 +147,8 @@ impl CdcConsume for SubscriptionCdcConsumer {
 
 		let mut max_version = CommitVersion(0);
 		for cdc in &cdcs {
-			if cdc.version > max_version {
-				max_version = cdc.version;
+			if cdc.version.commit > max_version {
+				max_version = cdc.version.commit;
 			}
 		}
 

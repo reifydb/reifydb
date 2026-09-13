@@ -97,6 +97,32 @@ impl<'de> Deserialize<'de> for CommitVersion {
 	}
 }
 
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SourceVersion(pub u64);
+
+impl From<CommitVersion> for SourceVersion {
+	fn from(version: CommitVersion) -> Self {
+		Self(version.0)
+	}
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ChangeVersion {
+	pub commit: CommitVersion,
+	pub source: SourceVersion,
+}
+
+impl From<CommitVersion> for ChangeVersion {
+	fn from(commit: CommitVersion) -> Self {
+		Self {
+			commit,
+			source: SourceVersion::from(commit),
+		}
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum JoinType {
 	Inner,

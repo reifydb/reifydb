@@ -108,7 +108,7 @@ impl Runner {
 			writeln!(out, "ok")?;
 		} else {
 			for cdc in &batch.items {
-				let script_v = self.to_script_version(cdc.version);
+				let script_v = self.to_script_version(cdc.version.commit);
 				for (i, sc) in cdc.changes.iter().enumerate() {
 					writeln!(out, "v{} {}", script_v, format_change(i + 1, sc))?;
 				}

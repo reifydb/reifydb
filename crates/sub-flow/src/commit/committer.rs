@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	delta::RemoveVisibility,
 	interface::{
 		catalog::flow::FlowId,
@@ -48,6 +48,8 @@ pub enum CommitterMessage {
 	},
 
 	Tick {
+		flow_id: FlowId,
+		source: SourceVersion,
 		pending: Pending,
 		view_changes: Vec<Change>,
 		reply: TickCommitReply,
@@ -74,6 +76,7 @@ impl CommitterActor {
 			checkpoint_deletes,
 			view_changes,
 			control_cursor,
+			source,
 		} = slice;
 		let produced_output = combined.iter_sorted().next().is_some() || !view_changes.is_empty();
 		let combined = Arc::new(combined);
@@ -81,7 +84,7 @@ impl CommitterActor {
 		let apply_committer = self.committer.clone();
 		let apply_combined = Arc::clone(&combined);
 		let apply: CommitApply = Box::new(move |transaction| {
-			apply_committer.apply_slice(transaction, &apply_combined, view_changes, &control_cursor)
+			apply_committer.apply_slice(transaction, &apply_combined, view_changes, &control_cursor, source)
 		});
 
 		let completion_committer = self.committer.clone();
@@ -99,7 +102,7 @@ impl CommitterActor {
 				if produced_output {
 					completion_committer.materialization.record_output(version);
 				}
-				completion_committer.post_commit_slice(&checkpoints, &checkpoint_deletes);
+				completion_committer.post_commit_slice(version, &checkpoints, &checkpoint_deletes);
 				let combined = Arc::try_unwrap(combined).unwrap_or_else(|shared| (*shared).clone());
 				(reply)(Ok((version, combined)));
 			}
@@ -112,13 +115,20 @@ impl CommitterActor {
 		});
 	}
 
-	fn submit_tick(&self, pending: Pending, view_changes: Vec<Change>, reply: TickCommitReply) {
+	fn submit_tick(
+		&self,
+		flow_id: FlowId,
+		source: SourceVersion,
+		pending: Pending,
+		view_changes: Vec<Change>,
+		reply: TickCommitReply,
+	) {
 		let pending = Arc::new(pending);
 
 		let apply_committer = self.committer.clone();
 		let apply_pending = Arc::clone(&pending);
 		let apply: CommitApply = Box::new(move |transaction| {
-			apply_committer.apply_tick(transaction, &apply_pending, view_changes)
+			apply_committer.apply_tick(transaction, &apply_pending, view_changes, source)
 		});
 
 		let completion_committer = self.committer.clone();
@@ -126,6 +136,7 @@ impl CommitterActor {
 			Ok(version) => {
 				apply_operator_state(&completion_committer.operators, &pending);
 				completion_committer.materialization.record_output(version);
+				completion_committer.flow_tracker.record_commit(flow_id, version);
 				let pending = Arc::try_unwrap(pending).unwrap_or_else(|shared| (*shared).clone());
 				(reply)(Ok((version, pending)));
 			}
@@ -152,10 +163,12 @@ impl Actor for CommitterActor {
 				reply,
 			} => self.submit_slice(slice, reply),
 			CommitterMessage::Tick {
+				flow_id,
+				source,
 				pending,
 				view_changes,
 				reply,
-			} => self.submit_tick(pending, view_changes, reply),
+			} => self.submit_tick(flow_id, source, pending, view_changes, reply),
 		}
 		Directive::Continue
 	}
@@ -175,6 +188,8 @@ pub struct FlowSlice {
 	pub view_changes: Vec<Change>,
 
 	pub control_cursor: Option<(CdcConsumerId, CommitVersion)>,
+
+	pub source: Option<SourceVersion>,
 }
 
 impl FlowSlice {
@@ -185,6 +200,7 @@ impl FlowSlice {
 			checkpoint_deletes: Vec::new(),
 			view_changes: Vec::new(),
 			control_cursor: None,
+			source: None,
 		}
 	}
 }
@@ -216,7 +232,11 @@ impl Committer {
 		combined: &Pending,
 		view_changes: Vec<Change>,
 		control_cursor: &Option<(CdcConsumerId, CommitVersion)>,
+		source: Option<SourceVersion>,
 	) -> Result<()> {
+		if let Some(source) = source {
+			transaction.stamp_source(source)?;
+		}
 		apply_pending_writes(transaction, combined)?;
 
 		for change in view_changes {
@@ -230,9 +250,14 @@ impl Committer {
 		Ok(())
 	}
 
-	fn post_commit_slice(&self, checkpoints: &[(FlowId, CommitVersion)], checkpoint_deletes: &[FlowId]) {
+	fn post_commit_slice(
+		&self,
+		commit: CommitVersion,
+		checkpoints: &[(FlowId, CommitVersion)],
+		checkpoint_deletes: &[FlowId],
+	) {
 		for (flow_id, version) in checkpoints {
-			self.flow_tracker.update(*flow_id, *version);
+			self.flow_tracker.update_committed(*flow_id, *version, commit);
 		}
 
 		for flow_id in checkpoint_deletes {
@@ -246,7 +271,9 @@ impl Committer {
 		transaction: &mut CommandTransaction,
 		pending: &Pending,
 		view_changes: Vec<Change>,
+		source: SourceVersion,
 	) -> Result<()> {
+		transaction.stamp_source(source)?;
 		apply_pending_writes(transaction, pending)?;
 
 		for change in view_changes {
@@ -267,17 +294,18 @@ impl Committer {
 			checkpoint_deletes,
 			view_changes,
 			control_cursor,
+			source,
 		} = slice;
 
 		let mut transaction = engine.begin_command(IdentityId::system())?;
 		transaction.disable_conflict_tracking()?;
 
-		self.apply_slice(&mut transaction, &combined, view_changes, &control_cursor)?;
+		self.apply_slice(&mut transaction, &combined, view_changes, &control_cursor, source)?;
 
 		let commit_version = transaction.commit_unchecked()?;
 
 		apply_operator_state_with_checkpoints(&self.operators, &combined, &checkpoints, &checkpoint_deletes)?;
-		self.post_commit_slice(&checkpoints, &checkpoint_deletes);
+		self.post_commit_slice(commit_version, &checkpoints, &checkpoint_deletes);
 		Ok((commit_version, combined))
 	}
 }

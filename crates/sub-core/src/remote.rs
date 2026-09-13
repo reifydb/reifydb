@@ -2,9 +2,13 @@
 // Copyright (c) 2026 ReifyDB
 
 #[cfg(not(feature = "remote"))]
-pub use disabled::{RemoteSubscription, RemoteSubscriptionError, connect_remote, proxy_remote_to_sink};
+pub(crate) use disabled::RemoteSubscription;
+#[cfg(all(not(feature = "remote"), not(reifydb_single_threaded)))]
+pub(crate) use disabled::{connect_remote, proxy_remote_to_sink};
 #[cfg(feature = "remote")]
-pub use reifydb_remote_proxy::{RemoteSubscription, RemoteSubscriptionError, connect_remote, proxy_remote_to_sink};
+pub(crate) use reifydb_remote_proxy::RemoteSubscription;
+#[cfg(all(feature = "remote", not(reifydb_single_threaded)))]
+pub(crate) use reifydb_remote_proxy::{connect_remote, proxy_remote_to_sink};
 
 #[cfg(not(feature = "remote"))]
 mod disabled {

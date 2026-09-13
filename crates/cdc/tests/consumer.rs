@@ -889,7 +889,7 @@ impl CdcConsume for TestConsumer {
 		}
 
 		// The poll actor only sees progress through the persisted checkpoint.
-		let latest_version = transactions.last().map(|c| c.version);
+		let latest_version = transactions.last().map(|c| c.version.commit);
 		if let Some(version) = latest_version {
 			match self.host.begin_command(IdentityId::system()) {
 				Ok(mut txn) => {
@@ -966,7 +966,7 @@ impl ResyncConsumer {
 	}
 
 	fn received_versions(&self) -> Vec<CommitVersion> {
-		self.cdc_received.lock().unwrap().iter().map(|c| c.version).collect()
+		self.cdc_received.lock().unwrap().iter().map(|c| c.version.commit).collect()
 	}
 
 	fn overtaken_calls(&self) -> Vec<(CommitVersion, CommitVersion)> {

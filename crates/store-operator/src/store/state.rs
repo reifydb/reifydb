@@ -25,7 +25,7 @@ use reifydb_core::{
 			keyspace_inner_range_split,
 		},
 	},
-	metrics::scan::record_page,
+	metrics::scan::{record_page, record_page_request},
 };
 use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
@@ -364,6 +364,7 @@ impl StandardOperatorStore {
 		let limit = batch_size.max(1);
 		let target = (limit as usize).saturating_add(1);
 		let mut buffer_lower = range.start.clone();
+		record_page_request();
 		let snapshot =
 			self.resident.state_page_shadowed(operator, buffer_lower.as_ref(), range.end.as_ref(), target);
 		let mut buffered = snapshot.items;
@@ -395,6 +396,7 @@ impl StandardOperatorStore {
 				break;
 			}
 			if buffer_index == buffered.len() && !buffer_exhausted {
+				record_page_request();
 				let next = self.resident.state_page_shadowed(
 					operator,
 					buffer_lower.as_ref(),
@@ -410,6 +412,7 @@ impl StandardOperatorStore {
 				continue;
 			}
 			if page_index == page.len() && !source.is_exhausted() {
+				record_page_request();
 				page = source.next_page(target.saturating_add(spent).min(scan_budget) as u64)?;
 				page_index = 0;
 				spent = 0;

@@ -16,6 +16,7 @@ use reifydb_codec::{
 	},
 };
 use reifydb_core::{
+	common::ChangeVersion,
 	interface::{
 		catalog::{
 			flow::OperatorId,
@@ -644,7 +645,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 		self.sync_row_ttl_timer(txn, &partition_values)?;
 
 		if evicted_any {
-			let version = txn.version();
+			let version = ChangeVersion::from(txn.version());
 			return Ok(Some(Change::from_flow(self.operator, version, Vec::new(), timer.due)));
 		}
 		Ok(None)
@@ -1297,7 +1298,7 @@ mod tests {
 			&mut txn,
 			Change::from_flow(
 				OperatorId(1),
-				CommitVersion(1),
+				ChangeVersion::from(CommitVersion(1)),
 				vec![Diff::insert(columns_at(partitioned, rows, first_source_rn, time))],
 				DateTime::from_nanos(time),
 			),

@@ -159,7 +159,7 @@ fn row_to_materialized(row: &Row) -> MaterializedRow {
 mod tests {
 	use reifydb_codec::row::shape::RowShapeField;
 	use reifydb_core::{
-		common::CommitVersion,
+		common::{ChangeVersion, CommitVersion},
 		interface::{
 			catalog::object::ObjectId,
 			change::{Change, ChangeOrigin, Diff, Diffs},
@@ -193,7 +193,7 @@ mod tests {
 		Change {
 			origin: ChangeOrigin::Object(ObjectId::table(1)),
 			diffs: Diffs::from_iter(diffs),
-			version: CommitVersion(1),
+			version: ChangeVersion::from(CommitVersion(1)),
 			changed_at: DateTime::default(),
 		}
 	}

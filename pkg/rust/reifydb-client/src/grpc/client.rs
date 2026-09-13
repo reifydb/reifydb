@@ -9,6 +9,7 @@ use std::{
 	},
 };
 
+pub use reifydb_codec::wire::RawChangePayload;
 use reifydb_codec::{frame::decode::decode_frames, value::encode_value};
 use reifydb_value::{
 	error::{Diagnostic, Error},
@@ -52,20 +53,6 @@ fn extract_meta(metadata: &MetadataMap) -> Option<ResponseMeta> {
 		fingerprint: fingerprint.to_string(),
 		duration: duration.to_string(),
 	})
-}
-
-pub enum RawChangePayload {
-	Rbcf(Vec<u8>),
-	Empty,
-}
-
-impl RawChangePayload {
-	pub fn into_frames(self) -> Vec<Frame> {
-		match self {
-			Self::Rbcf(bytes) => decode_frames(&bytes).unwrap_or_default(),
-			Self::Empty => Vec::new(),
-		}
-	}
 }
 
 #[derive(Debug, Clone)]

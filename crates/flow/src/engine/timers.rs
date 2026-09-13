@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::{
-	common::CommitVersion,
+	common::ChangeVersion,
 	interface::{catalog::flow::OperatorId, change::Change},
 	key::operator::keyspace::timer::TimerWheelKey,
 };
@@ -26,7 +26,7 @@ impl FlowEngineInner {
 		&mut self,
 		txn: &mut T,
 		flow: &FlowDag,
-		version: CommitVersion,
+		version: ChangeVersion,
 		topo: &[OperatorId],
 	) -> Result<u32> {
 		let sources: Vec<OperatorId> = topo
@@ -48,7 +48,7 @@ impl FlowEngineInner {
 		&mut self,
 		txn: &mut T,
 		flow: &FlowDag,
-		version: CommitVersion,
+		version: ChangeVersion,
 		topo: &[OperatorId],
 		sources: &[OperatorId],
 		stage: &mut TimerStage,
@@ -105,7 +105,7 @@ impl FlowEngineInner {
 					 version {}: watermark {} ms, {} timers still due, oldest armed at {:?} ms, \
 					 {:?} ms behind the watermark; a lag near zero means an operator re-arms \
 					 what it just fired, a large lag means the watermark jumped past a backlog",
-					version.0,
+					version.commit.0,
 					watermark.to_millis(),
 					due.len(),
 					oldest,
@@ -137,7 +137,6 @@ impl FlowEngineInner {
 				};
 				txn.set_change_coordinate(ChangeCoordinate {
 					at: Some(timer.due),
-					version,
 				});
 				let fired = match node {
 					Node::Operator(operator) => {
@@ -168,7 +167,7 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
-		common::CommitVersion,
+		common::{ChangeVersion, CommitVersion},
 		interface::{
 			catalog::{
 				flow::{FlowId, OperatorId},
@@ -312,8 +311,14 @@ mod tests {
 		probe(&mut inner, false);
 
 		let mut txn = engine.flow_txn().deferred();
-		let fired =
-			inner.dispatch_due_timers(&mut txn, &flow, CommitVersion(1), flow.topological_order()).unwrap();
+		let fired = inner
+			.dispatch_due_timers(
+				&mut txn,
+				&flow,
+				ChangeVersion::from(CommitVersion(1)),
+				flow.topological_order(),
+			)
+			.unwrap();
 
 		assert_eq!(
 			fired as usize,
@@ -369,8 +374,13 @@ mod tests {
 		probe(&mut inner, true);
 		let mut failing = engine.flow_txn().deferred();
 		assert!(
-			inner.dispatch_due_timers(&mut failing, &flow, CommitVersion(1), flow.topological_order())
-				.is_err(),
+			inner.dispatch_due_timers(
+				&mut failing,
+				&flow,
+				ChangeVersion::from(CommitVersion(1)),
+				flow.topological_order()
+			)
+			.is_err(),
 			"the probe must fail the dispatch after take_due has staged its removes"
 		);
 		drop(failing);
@@ -387,7 +397,12 @@ mod tests {
 		probe(&mut inner, false);
 		let mut retry = engine.flow_txn().deferred();
 		let fired = inner
-			.dispatch_due_timers(&mut retry, &flow, CommitVersion(1), flow.topological_order())
+			.dispatch_due_timers(
+				&mut retry,
+				&flow,
+				ChangeVersion::from(CommitVersion(1)),
+				flow.topological_order(),
+			)
 			.unwrap();
 
 		assert_eq!(fired, 1, "the timer the failed dispatch never committed must still be due");

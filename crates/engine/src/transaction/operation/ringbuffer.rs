@@ -8,7 +8,7 @@ use reifydb_codec::row::{
 	shape::{RowFamily, RowShape},
 };
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::{
 			object::ObjectId,
@@ -53,7 +53,7 @@ fn build_ringbuffer_insert_change(
 	let rows = [encoded.clone()];
 	Change {
 		origin: ChangeOrigin::Object(ObjectId::ringbuffer(rb.id)),
-		version: CommitVersion(0),
+		version: ChangeVersion::from(CommitVersion(0)),
 		diffs: smallvec![Diff::insert(Columns::from_encoded_bytes(shape, &ids, &rows))],
 		changed_at: DateTime::default(),
 	}
@@ -71,7 +71,7 @@ fn build_ringbuffer_update_change(
 	let posts = [post.clone()];
 	Change {
 		origin: ChangeOrigin::Object(ObjectId::ringbuffer(rb.id)),
-		version: CommitVersion(0),
+		version: ChangeVersion::from(CommitVersion(0)),
 		diffs: smallvec![Diff::update(
 			Columns::from_encoded_bytes(&shape, &ids, &pres),
 			Columns::from_encoded_bytes(&shape, &ids, &posts),
@@ -86,7 +86,7 @@ fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encode
 	let rows = [encoded.clone()];
 	Change {
 		origin: ChangeOrigin::Object(ObjectId::ringbuffer(rb.id)),
-		version: CommitVersion(0),
+		version: ChangeVersion::from(CommitVersion(0)),
 		diffs: smallvec![Diff::remove(Columns::from_encoded_bytes(&shape, &ids, &rows))],
 		changed_at: DateTime::default(),
 	}
