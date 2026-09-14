@@ -124,12 +124,12 @@ impl AggregateSlot {
 				Some(immutable) => AggregateSlot::MinSealed(SealingMin::immutable(immutable)),
 				None => AggregateSlot::Min(Multiset::default()),
 			},
-			SlotKind::Max => match immutable {
+			SlotKind::Max | SlotKind::WindowLast => match immutable {
 				Some(immutable) => AggregateSlot::MaxSealed(SealingMax::immutable(immutable)),
 				None => AggregateSlot::Max(Multiset::default()),
 			},
 			SlotKind::First => AggregateSlot::First(endpoint(immutable)),
-			SlotKind::Last | SlotKind::WindowLast => AggregateSlot::Last(endpoint(immutable)),
+			SlotKind::Last => AggregateSlot::Last(endpoint(immutable)),
 			SlotKind::WindowStart | SlotKind::WindowEnd | SlotKind::WindowDuration => AggregateSlot::Span {
 				n: 0,
 			},
@@ -846,6 +846,32 @@ mod tests {
 		a.add(&(at_time(30, 2), vec![Some(dt(30))]));
 		a.remove(&(at_time(30, 2), vec![Some(dt(30))]));
 		assert_eq!(a.finalize(), Some(vec![dt(10)]));
+	}
+
+	#[test]
+	fn window_last_stores_one_entry_per_event_time_not_one_per_row() {
+		// An entry per row grows the saved window with its row count, and every batch decodes and re-encodes all of it.
+		let mut one = accumulator(&[SlotKind::WindowLast]);
+		one.add(&(at_time(30, 0), vec![Some(dt(30))]));
+		let mut many = accumulator(&[SlotKind::WindowLast]);
+		for seq in 0..1000 {
+			many.add(&(at_time(30, seq), vec![Some(dt(30))]));
+		}
+		let one_bytes = one.encode_state().unwrap().as_slice().len();
+		let many_bytes = many.encode_state().unwrap().as_slice().len();
+		assert!(
+			many_bytes <= one_bytes + 8,
+			"1000 rows at one event time encode to {many_bytes} bytes, one row to {one_bytes}"
+		);
+		assert_eq!(many.finalize(), Some(vec![dt(30)]));
+
+		// Rows at one event time must still retract one by one, or the time outlives its last row.
+		for seq in 0..999 {
+			many.remove(&(at_time(30, seq), vec![Some(dt(30))]));
+		}
+		assert_eq!(many.finalize(), Some(vec![dt(30)]), "one row at 30s is still in the window");
+		many.remove(&(at_time(30, 999), vec![Some(dt(30))]));
+		assert!(many.is_empty(), "every row at 30s was retracted");
 	}
 
 	#[test]
