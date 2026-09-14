@@ -12,11 +12,12 @@ use reifydb_core::{
 				join::{JoinLeft, JoinRight},
 				root::CustomNotCached,
 			},
-			state::{GroupId, KeyspaceId},
+			state::{GroupId, GroupStateKey, KeyspaceId},
 			traits::Keyspace,
 		},
 		typed::{BoundedKey, direction::Asc, range::KeyRange},
 	},
+	state::typed::SuffixBytes,
 };
 use reifydb_store::{
 	coverage::{
@@ -555,4 +556,31 @@ fn invalidating_one_operator_leaves_every_group_of_every_other_operator_claimed(
 		"another operator's claim in the same group must survive, or one flow restarting cold-starts the rest"
 	);
 	assert_eq!(tier.partitions(), 1);
+}
+
+#[test]
+fn a_run_of_removals_spanning_two_groups_retracts_each_key_from_its_own_group() {
+	// Grouping a run by keyspace alone retracts one group's key from another, so its stale row is served.
+	let tiers = roomy();
+	let tier = tier_of::<JoinLeft>(&tiers);
+	let held_a = one_row_partition::<JoinLeft>(&tiers, group_a());
+	let held_b = one_row_partition::<JoinLeft>(&tiers, group_b());
+	let encoded = |group: GroupId, suffix: Asc<RowNumber>| {
+		GroupStateKey::new(group, JoinLeft::ID, suffix.to_suffix_bytes()).as_encoded().clone()
+	};
+	let removed_a = encoded(group_a(), held_a);
+	let removed_b = encoded(group_b(), held_b);
+
+	tiers.retract_run(OP_A, &[&removed_a, &removed_b]);
+
+	assert_eq!(
+		tier.lookup_in(part(group_a()), part(group_a()), &held_a),
+		Some(None),
+		"the first group's removal must land in the first group"
+	);
+	assert_eq!(
+		tier.lookup_in(part(group_b()), part(group_b()), &held_b),
+		Some(None),
+		"the second group's removal must land in the second group, or its removed row stays readable"
+	);
 }

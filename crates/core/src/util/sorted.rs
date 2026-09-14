@@ -193,8 +193,37 @@ impl<K: Ord, V> FromIterator<(K, V)> for SortedVecMap<K, V> {
 
 impl<K: Ord, V> Extend<(K, V)> for SortedVecMap<K, V> {
 	fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
-		for (key, value) in iter {
-			self.insert(key, value);
+		let mut incoming: Vec<(K, V)> = iter.into_iter().collect();
+		if incoming.len() <= 1 {
+			for (key, value) in incoming {
+				self.insert(key, value);
+			}
+			return;
+		}
+		incoming.sort_by(|left, right| left.0.cmp(&right.0));
+		let start = self.slots.partition_point(|(resident, _)| *resident < incoming[0].0);
+		let tail = self.slots.split_off(start);
+		self.slots.reserve(tail.len() + incoming.len());
+		let mut tail = tail.into_iter().peekable();
+		let mut incoming = incoming.into_iter().peekable();
+		loop {
+			let from_tail = match (tail.peek(), incoming.peek()) {
+				(None, None) => break,
+				(Some(_), None) => true,
+				(None, Some(_)) => false,
+				(Some((resident, _)), Some((arriving, _))) => resident <= arriving,
+			};
+			let Some(slot) = (if from_tail {
+				tail.next()
+			} else {
+				incoming.next()
+			}) else {
+				break;
+			};
+			if self.slots.last().is_some_and(|(last, _)| *last == slot.0) {
+				self.slots.pop();
+			}
+			self.slots.push(slot);
 		}
 	}
 }
@@ -469,6 +498,38 @@ mod tests {
 			assert!(decoded.contains_key(&key), "every decoded key must be findable by search");
 		}
 		assert_eq!(decoded.get(&7), None, "a key that was never present must not be invented");
+	}
+
+	#[test]
+	fn extending_with_an_unsorted_overlapping_run_agrees_with_a_btreemap() {
+		// the merge must let a later arrival win on a shared key, or a flushed removal loses to stale state
+		let mut state = 0x2545_F491_4F6C_DD1Du64;
+		let mut next = move || {
+			state ^= state << 13;
+			state ^= state >> 7;
+			state ^= state << 17;
+			state
+		};
+		for round in 0..200u64 {
+			let mut sorted: SortedVecMap<u64, u64> = SortedVecMap::new();
+			let mut expected: BTreeMap<u64, u64> = BTreeMap::new();
+			for step in 0..(next() % 60) {
+				let key = next() % 80;
+				sorted.insert(key, step);
+				expected.insert(key, step);
+			}
+			let run: Vec<(u64, u64)> = (0..(next() % 40)).map(|step| (next() % 80, 1000 + step)).collect();
+			sorted.extend(run.clone());
+			expected.extend(run.clone());
+			assert_eq!(
+				sorted.iter().collect::<Vec<_>>(),
+				expected.iter().collect::<Vec<_>>(),
+				"round {round} extended by {run:?}"
+			);
+			for key in 0..80u64 {
+				assert_eq!(sorted.get(&key), expected.get(&key), "lookup of {key} in round {round}");
+			}
+		}
 	}
 
 	#[test]

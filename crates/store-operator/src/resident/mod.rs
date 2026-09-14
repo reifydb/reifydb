@@ -1169,7 +1169,7 @@ fn staged_write(post: Option<EncodedPodRow>) -> StagedWrite {
 	}
 }
 
-fn invalidate_flushed(range: &OperatorRangeTier, batch: &FlushBatch) {
+fn invalidate_flushed(range: &impl RangeSink, batch: &FlushBatch) {
 	for marker in &batch.drops {
 		match marker {
 			DropMarker::OperatorState(operator) => {
@@ -1177,14 +1177,26 @@ fn invalidate_flushed(range: &OperatorRangeTier, batch: &FlushBatch) {
 			}
 		}
 	}
+	let mut run: Vec<&EncodedKey> = Vec::new();
+	let mut run_operator: Option<OperatorId> = None;
 	for (operator, key, write) in &batch.writes {
+		if (!matches!(write, StagedWrite::Remove) || run_operator != Some(*operator))
+			&& let Some(owner) = run_operator.take()
+		{
+			range.retract_run(owner, &run);
+			run.clear();
+		}
 		match write {
 			StagedWrite::Set(row) => {
 				range.insert(*operator, key.as_encoded(), row.clone());
 			}
 			StagedWrite::Remove => {
-				range.retract(*operator, key.as_encoded());
+				run_operator = Some(*operator);
+				run.push(key.as_encoded());
 			}
 		}
+	}
+	if let Some(owner) = run_operator {
+		range.retract_run(owner, &run);
 	}
 }

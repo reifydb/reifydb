@@ -3,6 +3,7 @@
 
 #[cfg(test)]
 use std::cell::RefCell;
+use std::slice;
 
 use reifydb_core::{key::typed::Edge, util::sorted::SortedVecMap};
 use reifydb_value::byte_size::ByteSize;
@@ -104,23 +105,95 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	pub fn retract(&self, dimension: D::Dimension, key: &D::Key) {
-		self.retract_within(dimension, None, key)
-	}
-
-	pub fn retract_in(&self, dimension: D::Dimension, partition: D::Partition, key: &D::Key) {
-		self.retract_within(dimension, Some(partition), key)
-	}
-
-	fn retract_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: &D::Key) {
-		let Some(partition) = self.cacheable(dimension, confined, key) else {
-			return;
-		};
-		let index = self.shard_index(&partition);
-		if self.place(index, &partition, key.clone(), Entry::absent()) {
-			self.evict_to_capacity(index);
-		} else {
-			self.discard(index, &partition, key);
+		if let Some(partition) = self.cacheable(dimension, None, key) {
+			self.retract_run(partition, slice::from_ref(key));
 		}
+	}
+
+	pub fn retract_run(&self, partition: D::Partition, keys: &[D::Key]) {
+		if keys.is_empty() || !D::caches_ranges(&partition) {
+			return;
+		}
+		let index = self.shard_index(&partition);
+		if self.place_absences(index, &partition, keys) {
+			self.evict_to_capacity(index);
+		}
+	}
+
+	fn place_absences(&self, index: usize, partition: &D::Partition, keys: &[D::Key]) -> bool {
+		let mut shard = self.shard(index).lock();
+		let first = match shard.partitions.get(partition).map(|target| target.covered) {
+			_ if D::admits_unproven_writes() => Some(0),
+			Some(covered) => covered.then_some(0),
+			None => keys.iter().position(|key| self.claims(partition, key)),
+		};
+		let next = shard.next_tick;
+		let writes = shard.writes;
+		let Some(first) = first else {
+			let Shard {
+				partitions,
+				budget,
+				..
+			} = &mut *shard;
+			if let Some(target) = partitions.get_mut(partition) {
+				for key in keys {
+					if let Some(previous) = target.entries.remove(key) {
+						target.pinned.remove(&previous);
+						account(&mut target.bytes, budget, entry_footprint(key, &previous), 0);
+					}
+				}
+			}
+			return false;
+		};
+		let placed = (keys.len() - first) as u64;
+		{
+			let Shard {
+				partitions,
+				budget,
+				..
+			} = &mut *shard;
+			let fresh = !partitions.contains_key(partition);
+			let target = partitions.entry(*partition).or_insert_with(|| Partition {
+				entries: SortedVecMap::new(),
+				pinned: PinnedCount::new(),
+				bytes: partition_overhead::<D>(),
+				tick: next,
+				created: next,
+				materializes: 0,
+				written_at: 0,
+				covered: true,
+			});
+			if fresh {
+				budget.charge(ByteSize::from_bytes(partition_overhead::<D>() as u64));
+			}
+			let mut run: Vec<&D::Key> = keys[first..].iter().collect();
+			run.sort();
+			run.dedup();
+			let mut markers = Vec::new();
+			for key in run {
+				let marker = Entry::absent();
+				let new = entry_footprint(key, &marker);
+				match target.entries.get_mut(key) {
+					Some(previous) => {
+						let old = entry_footprint(key, previous);
+						target.pinned.replace(previous, &marker);
+						account(&mut target.bytes, budget, old, new);
+						*previous = marker;
+					}
+					None => {
+						target.pinned.insert(&marker);
+						account(&mut target.bytes, budget, 0, new);
+						markers.push((key.clone(), marker));
+					}
+				}
+			}
+			target.entries.extend(markers);
+			target.tick = next + placed - 1;
+			target.written_at = writes + placed;
+		}
+		shard.next_tick = next + placed;
+		shard.writes = writes + placed;
+		true
 	}
 
 	pub fn invalidate(&self, dimension: D::Dimension, key: &D::Key) {
@@ -751,6 +824,135 @@ mod tests {
 		target.pinned.insert(&entry);
 		target.bytes += charged;
 		target.entries.insert(at.clone(), entry);
+	}
+
+	type RunSnapshot = (
+		Vec<Option<Entry<EncodedPodRow>>>,
+		PinnedCount,
+		usize,
+		bool,
+		ByteSize,
+		u64,
+		u64,
+		Option<(u64, u64, u64)>,
+		Vec<Option<Option<EncodedPodRow>>>,
+	);
+
+	fn run_snapshot(tier: &RangeTier<D>, id: &TestPartition, universe: &[EncodedKey]) -> RunSnapshot {
+		let (used, next_tick, writes, stamps) = {
+			let shard = tier.shard_for(id).lock();
+			(
+				shard.budget.used(),
+				shard.next_tick,
+				shard.writes,
+				shard.partitions.get(id).map(|target| (target.tick, target.created, target.written_at)),
+			)
+		};
+		(
+			universe.iter().map(|at| residency(tier, id, at)).collect(),
+			pinned(tier, id),
+			bytes(tier, id),
+			has_partition(tier, id),
+			used,
+			next_tick,
+			writes,
+			stamps,
+			universe.iter().map(|at| tier.lookup(OP_A, at)).collect(),
+		)
+	}
+
+	fn seat_run_case(case: usize, tier: &RangeTier<D>) {
+		// Each case reaches a different admission branch, or the run is only ever tested on the easy one.
+		let id = partition(OP_A, CACHED);
+		match case {
+			0 => {
+				participate(tier, id);
+				for name in ["b", "d", "f"] {
+					tier.overwrite(OP_A, key(CACHED, name.as_bytes()), row("v"));
+				}
+			}
+			1 => seat_unclaimed_holding(tier, id, &key(CACHED, b"c"), Entry::row(row("v"))),
+			_ => claim(tier, OP_A, &key(CACHED, b"m"), &key(CACHED, b"z")),
+		}
+	}
+
+	#[test]
+	fn a_run_of_retracts_leaves_what_retracting_each_key_in_turn_leaves() {
+		// A run that places, pins, charges or stamps differently from its keys one by one corrupts the tier.
+		let id = partition(OP_A, CACHED);
+		let at = |name: &str| key(CACHED, name.as_bytes());
+		let universe: Vec<EncodedKey> = ["a", "b", "c", "d", "f", "m", "n", "p"].into_iter().map(at).collect();
+		let absent = |name: &str| entry_footprint(&at(name), &Entry::<EncodedPodRow>::absent());
+		let held = |name: &str| entry_footprint(&at(name), &Entry::row(row("v")));
+		let runs: [Vec<EncodedKey>; 3] = [
+			["f", "a", "d", "c", "a"].into_iter().map(at).collect(),
+			["a", "c"].into_iter().map(at).collect(),
+			["c", "n", "b", "p"].into_iter().map(at).collect(),
+		];
+
+		for (case, run) in runs.iter().enumerate() {
+			let one = tier();
+			seat_run_case(case, &one);
+			one.retract_run(id, run);
+
+			let each = tier();
+			seat_run_case(case, &each);
+			for at in run {
+				each.retract(OP_A, at);
+			}
+
+			assert_eq!(
+				run_snapshot(&one, &id, &universe),
+				run_snapshot(&each, &id, &universe),
+				"case {case}: the run must leave the tier exactly as its keys retracted in turn"
+			);
+		}
+
+		let covered = tier();
+		seat_run_case(0, &covered);
+		covered.retract_run(id, &runs[0]);
+		for name in ["a", "c", "d", "f"] {
+			assert_eq!(
+				residency(&covered, &id, &at(name)),
+				Some(Entry::Absent),
+				"{name} must hold a proven absence"
+			);
+		}
+		assert_eq!(
+			residency(&covered, &id, &at("b")),
+			Some(Entry::Row(row("v"))),
+			"an untouched row must survive"
+		);
+		assert_eq!(pinned(&covered, &id).total(), 5, "a repeated key in one run is still one entry");
+		assert_eq!(
+			bytes(&covered, &id),
+			PARTITION_OVERHEAD + held("b") + absent("a") + absent("c") + absent("d") + absent("f")
+		);
+
+		let uncovered = tier();
+		seat_run_case(1, &uncovered);
+		uncovered.retract_run(id, &runs[1]);
+		assert_eq!(residency(&uncovered, &id, &at("c")), None, "an unprovable removal must be forgotten");
+		assert_eq!(pinned(&uncovered, &id).total(), 0);
+		assert_eq!(bytes(&uncovered, &id), PARTITION_OVERHEAD);
+
+		let claimed = tier();
+		seat_run_case(2, &claimed);
+		claimed.retract_run(id, &runs[2]);
+		assert_eq!(
+			residency(&claimed, &id, &at("c")),
+			None,
+			"a key before the first claimed one stores nothing"
+		);
+		for name in ["n", "b", "p"] {
+			assert_eq!(
+				residency(&claimed, &id, &at(name)),
+				Some(Entry::Absent),
+				"{name} follows the claimed key that seated the partition, so it must hold an absence"
+			);
+		}
+		assert_eq!(pinned(&claimed, &id).total(), 3);
+		assert_eq!(bytes(&claimed, &id), PARTITION_OVERHEAD + absent("n") + absent("b") + absent("p"));
 	}
 
 	#[test]

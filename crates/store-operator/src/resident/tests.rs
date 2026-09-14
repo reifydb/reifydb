@@ -20,6 +20,7 @@ use reifydb_core::{
 	},
 	state::typed::typed_key,
 };
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
 
 use crate::{
@@ -27,8 +28,8 @@ use crate::{
 		PersistentTier,
 		testing::{NoFaults, TestingPersistent},
 	},
-	range::OperatorRangeTier,
-	resident::Resident,
+	range::{OperatorRangeTier, RangeSink, tiers::RangeKeyspaceMetrics},
+	resident::{Resident, invalidate_flushed},
 	types::{BufferedState, DropMarker, FlushBatch, LayeredPre, OperatorStateCensus, OperatorWrite, StagedWrite},
 };
 
@@ -1047,5 +1048,77 @@ fn an_idle_flush_over_a_populated_device_never_touches_the_device() {
 		settled,
 		"a flush with nothing staged must not call the device; a census per slice scans every row on disk \
 		 and holds the commit lock for as long as the scan runs"
+	);
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum RangeCall {
+	Insert(OperatorId, EncodedKey),
+	Retract(OperatorId, Vec<EncodedKey>),
+}
+
+#[derive(Default)]
+struct RecordingRange {
+	calls: Mutex<Vec<RangeCall>>,
+}
+
+impl RangeSink for RecordingRange {
+	fn lookup(&self, _operator: OperatorId, _key: &EncodedKey) -> Option<Option<EncodedPodRow>> {
+		None
+	}
+
+	fn overwrite(&self, _operator: OperatorId, _key: &EncodedKey, _row: EncodedPodRow) {}
+
+	fn insert(&self, operator: OperatorId, key: &EncodedKey, _row: EncodedPodRow) {
+		self.calls.lock().push(RangeCall::Insert(operator, key.clone()));
+	}
+
+	fn mark_deleted(&self, _operator: OperatorId, _key: &EncodedKey) {}
+
+	fn retract_run(&self, operator: OperatorId, keys: &[&EncodedKey]) {
+		self.calls.lock().push(RangeCall::Retract(operator, keys.iter().map(|key| (*key).clone()).collect()));
+	}
+
+	fn invalidate_group(&self, _operator: OperatorId, _group: GroupId) {}
+
+	fn invalidate_operator(&self, _operator: OperatorId) {}
+
+	fn keyspace_metrics(&self) -> Vec<RangeKeyspaceMetrics> {
+		Vec::new()
+	}
+}
+
+#[test]
+fn a_flush_hands_the_range_tier_each_unbroken_run_of_removals_in_batch_order() {
+	let group = GroupId::hashed(Hash128(7));
+	let staged = |name: &str| GroupStateKey::new(group, KeyspaceId::JOIN_EXPIRY_DUE, name.as_bytes());
+	let batch = FlushBatch {
+		writes: vec![
+			(OP_A, staged("a1"), StagedWrite::Set(row("v"))),
+			(OP_A, staged("a2"), StagedWrite::Remove),
+			(OP_A, staged("a3"), StagedWrite::Remove),
+			(OP_A, staged("a4"), StagedWrite::Set(row("v"))),
+			(OP_A, staged("a5"), StagedWrite::Remove),
+			(OP_B, staged("b1"), StagedWrite::Remove),
+			(OP_A, staged("a6"), StagedWrite::Remove),
+		],
+		..FlushBatch::default()
+	};
+	let range = RecordingRange::default();
+
+	invalidate_flushed(&range, &batch);
+
+	let encoded = |name: &str| staged(name).as_encoded().clone();
+	assert_eq!(
+		*range.calls.lock(),
+		vec![
+			RangeCall::Insert(OP_A, encoded("a1")),
+			RangeCall::Retract(OP_A, vec![encoded("a2"), encoded("a3")]),
+			RangeCall::Insert(OP_A, encoded("a4")),
+			RangeCall::Retract(OP_A, vec![encoded("a5")]),
+			RangeCall::Retract(OP_B, vec![encoded("b1")]),
+			RangeCall::Retract(OP_A, vec![encoded("a6")]),
+		],
+		"removals must reach the range tier as unbroken runs, in the order the batch staged them"
 	);
 }
