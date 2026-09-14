@@ -3,7 +3,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	actors::pending::PendingLayers,
+	actors::pending::Pending,
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 };
@@ -26,7 +26,7 @@ fn deferred(engine: &TestEngine, clock: MockClock) -> DeferredTransaction {
 	let version = parent.version();
 	DeferredTransaction::new(DeferredParams {
 		version,
-		pending: PendingLayers::empty(),
+		pending: Pending::new(),
 		query: Some(parent.multi.begin_query().unwrap()),
 		state_query: Some(parent.multi.begin_query().unwrap()),
 		catalog: Catalog::testing(),

@@ -1080,7 +1080,7 @@ mod seal_tests {
 		row::{bytes::EncodedBytes, operator::state::decode, shape::RowShape},
 	};
 	use reifydb_core::{
-		actors::pending::PendingLayers,
+		actors::pending::Pending,
 		common::CommitVersion,
 		interface::store::MultiVersionRow,
 		key::{
@@ -1336,12 +1336,12 @@ mod seal_tests {
 			self.inner.substrate()
 		}
 
-		fn pending_layers(&self) -> &PendingLayers {
-			self.inner.pending_layers()
+		fn pending(&self) -> &Pending {
+			self.inner.pending()
 		}
 
-		fn pending_layers_mut(&mut self) -> &mut PendingLayers {
-			self.inner.pending_layers_mut()
+		fn pending_mut(&mut self) -> &mut Pending {
+			self.inner.pending_mut()
 		}
 
 		fn accumulator_mut(&mut self) -> &mut ChangeAccumulator {

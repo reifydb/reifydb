@@ -3,7 +3,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{actors::pending::PendingLayers, interface::catalog::flow::OperatorId, state::timer::TimerKind};
+use reifydb_core::{actors::pending::Pending, interface::catalog::flow::OperatorId, state::timer::TimerKind};
 use reifydb_flow::{
 	timer::{
 		Timer, TimerDue,
@@ -32,7 +32,7 @@ fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> DeferredTransac
 	let version = parent.version();
 	DeferredTransaction::new(DeferredParams {
 		version,
-		pending: PendingLayers::empty(),
+		pending: Pending::new(),
 		query: Some(parent.multi.begin_query().unwrap()),
 		state_query: Some(parent.multi.begin_query().unwrap()),
 		catalog: Catalog::testing(),

@@ -12,7 +12,7 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape},
 };
 use reifydb_core::{
-	actors::pending::PendingLayers,
+	actors::pending::Pending,
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
 	key::{any::TaggedKey, operator::state::GroupStateKey},
@@ -95,7 +95,7 @@ use crate::{
 
 pub struct DeferredTransaction {
 	pub version: CommitVersion,
-	pub pending: PendingLayers,
+	pub pending: Pending,
 	pub query: Option<MultiReadTransaction>,
 	pub state_query: Option<MultiReadTransaction>,
 	pub catalog: Catalog,
@@ -308,11 +308,11 @@ impl FlowTransaction for DeferredTransaction {
 		&self.substrate
 	}
 
-	fn pending_layers(&self) -> &PendingLayers {
+	fn pending(&self) -> &Pending {
 		&self.pending
 	}
 
-	fn pending_layers_mut(&mut self) -> &mut PendingLayers {
+	fn pending_mut(&mut self) -> &mut Pending {
 		&mut self.pending
 	}
 

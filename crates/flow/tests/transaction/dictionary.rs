@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	actors::pending::PendingLayers,
+	actors::pending::Pending,
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 };
 use reifydb_flow::transaction::{
@@ -44,7 +44,7 @@ fn flow_txn(engine: &TestEngine, registry: DictionaryAllocatorRegistry) -> Defer
 	let version = parent.version();
 	DeferredTransaction::new(DeferredParams {
 		version,
-		pending: PendingLayers::empty(),
+		pending: Pending::new(),
 		query: Some(parent.multi.begin_query().unwrap()),
 		state_query: Some(parent.multi.begin_query().unwrap()),
 		catalog: Catalog::testing(),

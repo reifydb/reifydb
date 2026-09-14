@@ -38,8 +38,8 @@ use crate::{commit::quiescence::FlowMaterialization, progress::tracker::FlowPosi
 
 pub type CommitterHandle = ActorHandle<CommitterMessage>;
 
-pub(crate) type SliceCommitReply = Box<dyn FnOnce(Result<(CommitVersion, Pending)>) + Send>;
-pub(crate) type TickCommitReply = Box<dyn FnOnce(Result<(CommitVersion, Pending)>) + Send>;
+pub(crate) type SliceCommitReply = Box<dyn FnOnce(Result<CommitVersion>) + Send>;
+pub(crate) type TickCommitReply = Box<dyn FnOnce(Result<()>) + Send>;
 
 pub enum CommitterMessage {
 	Slice {
@@ -103,8 +103,7 @@ impl CommitterActor {
 					completion_committer.materialization.record_output(version);
 				}
 				completion_committer.post_commit_slice(version, &checkpoints, &checkpoint_deletes);
-				let combined = Arc::try_unwrap(combined).unwrap_or_else(|shared| (*shared).clone());
-				(reply)(Ok((version, combined)));
+				(reply)(Ok(version));
 			}
 			Err(e) => (reply)(Err(e)),
 		});
@@ -137,8 +136,7 @@ impl CommitterActor {
 				apply_operator_state(&completion_committer.operators, &pending);
 				completion_committer.materialization.record_output(version);
 				completion_committer.flow_tracker.record_commit(flow_id, version);
-				let pending = Arc::try_unwrap(pending).unwrap_or_else(|shared| (*shared).clone());
-				(reply)(Ok((version, pending)));
+				(reply)(Ok(()));
 			}
 			Err(e) => (reply)(Err(e)),
 		});
@@ -284,32 +282,6 @@ impl Committer {
 	}
 }
 
-#[cfg(test)]
-impl Committer {
-	#[instrument(name = "flow::committer::commit_slice", level = "debug", skip_all)]
-	pub fn commit_slice(&self, engine: &StandardEngine, slice: FlowSlice) -> Result<(CommitVersion, Pending)> {
-		let FlowSlice {
-			combined,
-			checkpoints,
-			checkpoint_deletes,
-			view_changes,
-			control_cursor,
-			source,
-		} = slice;
-
-		let mut transaction = engine.begin_command(IdentityId::system())?;
-		transaction.disable_conflict_tracking()?;
-
-		self.apply_slice(&mut transaction, &combined, view_changes, &control_cursor, source)?;
-
-		let commit_version = transaction.commit_unchecked()?;
-
-		apply_operator_state_with_checkpoints(&self.operators, &combined, &checkpoints, &checkpoint_deletes)?;
-		self.post_commit_slice(commit_version, &checkpoints, &checkpoint_deletes);
-		Ok((commit_version, combined))
-	}
-}
-
 #[instrument(name = "flow::committer::apply_pending", level = "debug", skip_all)]
 fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
 	for (encoded, pw) in combined.iter_ordered() {
@@ -390,7 +362,7 @@ mod commit_integration {
 	use super::*;
 
 	struct SliceReplies {
-		results: Mutex<Vec<(usize, Result<(CommitVersion, Pending)>)>>,
+		results: Mutex<Vec<(usize, Result<CommitVersion>)>>,
 		remaining: AtomicUsize,
 		done: WaiterHandle,
 	}
@@ -422,7 +394,7 @@ mod commit_integration {
 			self.results
 				.lock()
 				.iter()
-				.map(|(i, r)| (*i, r.as_ref().expect("expected committed slice").0))
+				.map(|(i, r)| (*i, *r.as_ref().expect("expected committed slice")))
 				.collect()
 		}
 	}

@@ -7,7 +7,7 @@ use reifydb_codec::{
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
-	actors::pending::PendingLayers,
+	actors::pending::Pending,
 	interface::catalog::flow::OperatorId,
 	key::{
 		any::TaggedKey,
@@ -41,7 +41,7 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 	let version = parent.version();
 	let mut txn = DeferredTransaction::new(DeferredParams {
 		version,
-		pending: PendingLayers::empty(),
+		pending: Pending::new(),
 		query: Some(parent.multi.begin_query().unwrap()),
 		state_query: Some(parent.multi.begin_query().unwrap()),
 		catalog: Catalog::testing(),

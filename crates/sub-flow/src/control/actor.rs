@@ -50,7 +50,6 @@ use crate::{
 	commit::{
 		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply},
 		merge::{ObjectIndex, ReadCache, StreamRead, UpstreamRead, UpstreamReads, merge},
-		overlay::FlowWriteOverlay,
 		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep},
 	},
 	control::health::FlowHealthRegistry,
@@ -123,7 +122,6 @@ pub struct FlowActorState {
 	awaiting_load: bool,
 	poisoned: bool,
 	retry_count: u32,
-	overlay: FlowWriteOverlay,
 	pending_holds: WatermarkHolds,
 	drain_after_commit: bool,
 	last_checkpoint_at: DateTime,
@@ -251,7 +249,6 @@ impl FlowActor {
 		}
 		let safe = self.safe_bound();
 		if safe <= state.cursor {
-			state.overlay.prune_through(state.cursor);
 			self.checkpoint_if_stale(state, ctx);
 			return;
 		}
@@ -313,7 +310,6 @@ impl FlowActor {
 			if moved && merged.more {
 				let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 			} else {
-				state.overlay.prune_through(cursor);
 				self.checkpoint_if_stale(state, ctx);
 			}
 			return;
@@ -401,7 +397,6 @@ impl FlowActor {
 			advance_to,
 			more,
 			&self.config,
-			&mut state.overlay,
 		)
 	}
 
@@ -527,6 +522,14 @@ impl FlowActor {
 				 would record a durability this commit never wrote, and the flow would stop \
 				 checkpointing because it believes it has nothing left to record"
 			);
+			for (key, _) in slice.combined.iter_ordered() {
+				assert!(
+					reifydb_flow::transaction::read::read_from(key) != reifydb_flow::transaction::read::ReadFrom::Query,
+					"flow {:?} committed {:?}, a key it reads back through the query pinned at its cursor, which never sees this commit",
+					self.flow_id,
+					reifydb_core::key::tag::KeyTag::of(key)
+				);
+			}
 		}
 		state.committing = true;
 		state.pending_holds = holds;
@@ -562,13 +565,12 @@ impl FlowActor {
 		advance_to: CommitVersion,
 		more: bool,
 		result: Result<()>,
-		committed: Option<(CommitVersion, Pending)>,
+		committed: Option<CommitVersion>,
 	) {
-		let commit_version = committed.as_ref().map(|(version, _)| *version);
-		self.settle_commit(state, committed);
+		state.committing = false;
 		let holds = take(&mut state.pending_holds);
 		if result.is_ok()
-			&& let Some(version) = commit_version
+			&& let Some(version) = committed
 		{
 			let at = if version > CommitVersion(0) {
 				version
@@ -601,14 +603,8 @@ impl FlowActor {
 		}
 	}
 
-	fn on_tick_committed(
-		&self,
-		state: &mut FlowActorState,
-		ctx: &Context<FlowActorMessage>,
-		result: Result<()>,
-		committed: Option<(CommitVersion, Pending)>,
-	) {
-		self.settle_commit(state, committed);
+	fn on_tick_committed(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, result: Result<()>) {
+		state.committing = false;
 		match result {
 			Ok(()) => {
 				state.retry_count = 0;
@@ -617,13 +613,6 @@ impl FlowActor {
 			Err(e) => {
 				self.retry_or_poison(state, ctx, format!("tick commit failed: {e}"));
 			}
-		}
-	}
-
-	fn settle_commit(&self, state: &mut FlowActorState, committed: Option<(CommitVersion, Pending)>) {
-		state.committing = false;
-		if let Some((commit_version, pending)) = committed {
-			state.overlay.promote(commit_version, pending);
 		}
 	}
 
@@ -699,17 +688,22 @@ impl FlowActor {
 		pending: Pending,
 		view_changes: Vec<Change>,
 	) {
+		reifydb_assertions! {
+			for (key, _) in pending.iter_ordered() {
+				assert!(
+					reifydb_flow::transaction::read::read_from(key) != reifydb_flow::transaction::read::ReadFrom::Query,
+					"flow {:?} committed {:?} on a tick, a key it reads back through the query pinned at its cursor, which never sees this commit",
+					self.flow_id,
+					reifydb_core::key::tag::KeyTag::of(key)
+				);
+			}
+		}
 		state.committing = true;
 		state.drain_after_commit = true;
 		let self_ref = ctx.self_ref().clone();
-		let reply: TickCommitReply = Box::new(move |outcome| {
-			let (result, committed) = match outcome {
-				Ok(committed) => (Ok(()), Some(committed)),
-				Err(e) => (Err(e), None),
-			};
+		let reply: TickCommitReply = Box::new(move |result| {
 			let _ = self_ref.send(FlowActorMessage::TickCommitted {
 				result,
-				committed,
 			});
 		});
 		if self.committer
@@ -775,7 +769,6 @@ impl Actor for FlowActor {
 			awaiting_load: false,
 			poisoned,
 			retry_count: 0,
-			overlay: FlowWriteOverlay::new(),
 			pending_holds: WatermarkHolds::new(),
 			drain_after_commit: false,
 			last_checkpoint_at: self.clock.now(),
@@ -848,9 +841,8 @@ impl Actor for FlowActor {
 			}
 			FlowActorMessage::TickCommitted {
 				result,
-				committed,
 			} => {
-				self.on_tick_committed(state, ctx, result, committed);
+				self.on_tick_committed(state, ctx, result);
 				Directive::Continue
 			}
 			FlowActorMessage::Stop {
@@ -889,7 +881,7 @@ mod pull_protocol {
 		row::{bytes::EncodedBytes, pod::EncodedPodRow},
 	};
 	use reifydb_core::{
-		actors::{flow::FlowActorHandle, pending::PendingLayers},
+		actors::{flow::FlowActorHandle, pending::Pending},
 		interface::{
 			catalog::{
 				flow::OperatorId,
@@ -1214,7 +1206,7 @@ mod pull_protocol {
 			assert!(!sources.is_empty(), "the flow under test must have a source to advance");
 			let mut txn = DeferredTransaction::new(DeferredParams {
 				version: self.engine.current_version().expect("current version"),
-				pending: PendingLayers::empty(),
+				pending: Pending::new(),
 				query: Some(self.engine.multi().begin_query().expect("query")),
 				state_query: Some(self.engine.multi().begin_query().expect("state query")),
 				catalog: self.engine.catalog(),
@@ -2127,9 +2119,9 @@ mod pull_protocol {
 mod tick_failures {
 	use std::{collections::HashMap, marker::PhantomData, sync::mpsc, time::Duration as StdDuration};
 
-	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
-		actors::pending::{Pending, PendingLayers},
+		actors::pending::Pending,
 		interface::{
 			catalog::{flow::OperatorId, id::ViewId},
 			change::Change,
@@ -2160,7 +2152,6 @@ mod tick_failures {
 		Result as ValueResult,
 		error::{Diagnostic, Error},
 		factory::time::at_millis,
-		util::cowvec::CowVec,
 	};
 
 	use super::*;
@@ -2349,7 +2340,7 @@ mod tick_failures {
 		let state_query = engine.multi().begin_query_at_version(&lease).expect("state query");
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version,
-			pending: PendingLayers::empty(),
+			pending: Pending::new(),
 			query: Some(query),
 			state_query: Some(state_query),
 			catalog: engine.catalog(),
@@ -2512,7 +2503,6 @@ mod tick_failures {
 
 		harness.send(FlowActorMessage::TickCommitted {
 			result: Err(internal_error!("commit rejected")),
-			committed: None,
 		});
 		assert_eq!(harness.process_one(), Some(Directive::Continue), "the reply must be handled");
 
@@ -2533,7 +2523,6 @@ mod tick_failures {
 
 		harness.send(FlowActorMessage::TickCommitted {
 			result: Ok(()),
-			committed: None,
 		});
 		assert_eq!(harness.process_one(), Some(Directive::Continue), "the reply must be handled");
 
@@ -2599,39 +2588,6 @@ mod tick_failures {
 			1,
 			"the same tick must compute once the latch clears, or the assertion above passed only \
 			 because there was nothing to compute"
-		);
-	}
-
-	#[test]
-	fn a_drain_while_a_commit_is_in_flight_returns_before_touching_anything() {
-		let (_te, _health, actor) = ticking_actor();
-		let mut harness = TestHarness::new(actor);
-		let mut generation = Pending::new();
-		generation.insert(EncodedKey::new(b"k"), EncodedBytes(CowVec::new(vec![1])));
-		harness.state_mut().cursor = CommitVersion(1);
-		harness.state_mut().overlay.promote(CommitVersion(1), generation);
-		assert_eq!(harness.state().overlay.generations_len(), 1, "precondition: the overlay must hold work");
-		harness.state_mut().committing = true;
-
-		harness.send(FlowActorMessage::Drain);
-		assert_eq!(harness.process_one(), Some(Directive::Continue), "the drain must be handled");
-
-		assert_eq!(
-			harness.state().overlay.generations_len(),
-			1,
-			"the latch must stop the drain before it prunes; anything it touched proves it ran beside \
-			 an in-flight commit"
-		);
-
-		harness.state_mut().committing = false;
-		harness.send(FlowActorMessage::Drain);
-		assert_eq!(harness.process_one(), Some(Directive::Continue), "the drain must be handled");
-
-		assert_eq!(
-			harness.state().overlay.generations_len(),
-			0,
-			"the same drain must prune once the latch clears, or the assertion above passed only \
-			 because the overlay had nothing to prune"
 		);
 	}
 

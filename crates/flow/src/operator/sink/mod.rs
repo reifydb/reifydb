@@ -282,7 +282,7 @@ mod tests {
 		shape::{RowFamily, RowShapeField},
 		table::EncodedTableRow,
 	};
-	use reifydb_core::{actors::pending::PendingLayers, interface::catalog::dictionary::Dictionary};
+	use reifydb_core::{actors::pending::Pending, interface::catalog::dictionary::Dictionary};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{
@@ -304,7 +304,7 @@ mod tests {
 		let version = parent.version();
 		DeferredTransaction::new(DeferredParams {
 			version,
-			pending: PendingLayers::empty(),
+			pending: Pending::new(),
 			query: Some(parent.multi.begin_query().unwrap()),
 			state_query: Some(parent.multi.begin_query().unwrap()),
 			catalog: engine.inner().catalog().clone(),

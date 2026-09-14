@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, iter::once, mem::take, ops::RangeBounds};
+use std::{collections::BTreeMap, ops::RangeBounds};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_value::byte_size::ByteSize;
@@ -53,7 +53,7 @@ impl Pending {
 		self.entries.push((key, write));
 	}
 
-	fn write_at(&self, key: &EncodedKey) -> Option<&PendingWrite> {
+	pub fn write_at(&self, key: &EncodedKey) -> Option<&PendingWrite> {
 		self.index.get(key).map(|slot| &self.entries[*slot].1)
 	}
 
@@ -152,139 +152,22 @@ impl Pending {
 	{
 		self.index.range(range).map(|(k, slot)| (k, &self.entries[*slot].1))
 	}
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct PendingLayers {
-	layers: Vec<Pending>,
-	top: Pending,
-}
-
-impl PendingLayers {
-	pub fn empty() -> Self {
-		Self {
-			layers: Vec::new(),
-			top: Pending::new(),
-		}
-	}
-
-	pub fn over(layers: Vec<Pending>) -> Self {
-		Self {
-			layers,
-			top: Pending::new(),
-		}
-	}
-
-	pub fn with_top(top: Pending) -> Self {
-		Self {
-			layers: Vec::new(),
-			top,
-		}
-	}
-
-	pub fn depth(&self) -> usize {
-		self.layers.len()
-	}
-
-	pub fn len(&self) -> usize {
-		self.layers.iter().map(|layer| layer.len()).sum::<usize>() + self.top.len()
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.top.is_empty() && self.layers.iter().all(|layer| layer.is_empty())
-	}
-
-	pub fn top(&self) -> &Pending {
-		&self.top
-	}
-
-	pub fn take_top(&mut self) -> Pending {
-		take(&mut self.top)
-	}
-
-	pub fn insert(&mut self, key: EncodedKey, value: EncodedBytes) {
-		self.top.insert(key, value);
-	}
-
-	pub fn remove(&mut self, key: EncodedKey) {
-		self.top.remove(key);
-	}
-
-	pub fn remove_silent(&mut self, key: EncodedKey) {
-		self.top.remove_silent(key);
-	}
-
-	pub fn remove_unobserved(&mut self, key: EncodedKey) {
-		self.top.remove_unobserved(key);
-	}
-
-	pub fn insert_batch(&mut self, keys: &[EncodedKey], values: &[EncodedBytes]) {
-		self.top.insert_batch(keys, values);
-	}
-
-	pub fn remove_batch(&mut self, keys: &[EncodedKey]) {
-		self.top.remove_batch(keys);
-	}
-
-	pub fn classify(&mut self, key: EncodedKey, pre: Option<ByteSize>) {
-		self.top.classify(key, pre);
-	}
-
-	pub fn is_classified(&self, key: &EncodedKey) -> bool {
-		self.top.is_classified(key)
-	}
-
-	fn newest_containing(&self, key: &EncodedKey) -> Option<&Pending> {
-		if self.top.contains_key(key) {
-			return Some(&self.top);
-		}
-		self.layers.iter().rev().find(|layer| layer.contains_key(key))
-	}
-
-	pub fn write_at(&self, key: &EncodedKey) -> Option<&PendingWrite> {
-		if let Some(write) = self.top.write_at(key) {
-			return Some(write);
-		}
-		self.layers.iter().rev().find_map(|layer| layer.write_at(key))
-	}
-
-	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedBytes> {
-		match self.write_at(key) {
-			Some(PendingWrite::Set(value)) => Some(value),
-			_ => None,
-		}
-	}
-
-	pub fn is_removed(&self, key: &EncodedKey) -> bool {
-		matches!(self.write_at(key), Some(PendingWrite::Remove { .. }))
-	}
-
-	pub fn contains_key(&self, key: &EncodedKey) -> bool {
-		self.newest_containing(key).is_some()
-	}
 
 	pub fn collect_range<R>(&self, range: R, out: &mut BTreeMap<EncodedKey, PendingWrite>)
 	where
-		R: RangeBounds<EncodedKey> + Clone,
+		R: RangeBounds<EncodedKey>,
 	{
-		for layer in self.layers.iter().chain(once(&self.top)) {
-			for (key, write) in layer.range(range.clone()) {
-				out.insert(key.clone(), write.clone());
-			}
+		for (key, write) in self.range(range) {
+			out.insert(key.clone(), write.clone());
 		}
 	}
 
 	pub fn collect_range_back<R>(&self, range: R, limit: usize, out: &mut BTreeMap<EncodedKey, PendingWrite>)
 	where
-		R: RangeBounds<EncodedKey> + Clone,
+		R: RangeBounds<EncodedKey>,
 	{
-		for layer in self.layers.iter().chain(once(&self.top)) {
-			for (key, write) in layer.range(range.clone()).rev().take(limit) {
-				out.insert(key.clone(), write.clone());
-			}
-		}
-		while out.len() > limit {
-			out.pop_first();
+		for (key, write) in self.range(range).rev().take(limit) {
+			out.insert(key.clone(), write.clone());
 		}
 	}
 }
@@ -305,11 +188,11 @@ pub mod tests {
 		EncodedBytes(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn back_page(layers: &PendingLayers, limit: usize) -> Vec<(EncodedKey, PendingWrite)> {
+	fn back_page(pending: &Pending, limit: usize) -> Vec<(EncodedKey, PendingWrite)> {
 		// Every back-page assertion below wants the whole keyspace, so the range is fixed here and only the
 		// limit varies.
 		let mut out = BTreeMap::new();
-		layers.collect_range_back(.., limit, &mut out);
+		pending.collect_range_back(.., limit, &mut out);
 		out.into_iter().collect()
 	}
 
@@ -317,61 +200,26 @@ pub mod tests {
 	fn a_back_page_returns_the_greatest_keys_of_the_range() {
 		// The caller walks down from the greatest key looking for the last live row. A page taken from the
 		// low end hands it keys it has already passed, so it reports a last row that is not the last.
-		let mut layers = PendingLayers::empty();
+		let mut pending = Pending::new();
 		for n in 1..=5 {
-			layers.insert(make_key(&format!("k{n:02}")), make_value("v"));
+			pending.insert(make_key(&format!("k{n:02}")), make_value("v"));
 		}
 
-		let keys: Vec<EncodedKey> = back_page(&layers, 2).into_iter().map(|(key, _)| key).collect();
+		let keys: Vec<EncodedKey> = back_page(&pending, 2).into_iter().map(|(key, _)| key).collect();
 
 		assert_eq!(keys, vec![make_key("k04"), make_key("k05")]);
-	}
-
-	#[test]
-	fn a_back_page_trims_a_key_that_only_ranks_high_inside_its_own_layer() {
-		// Each layer is asked for its own greatest keys, so a layer holding nothing but low keys still
-		// offers them. Keeping them makes the page larger than its limit and puts a key below the true
-		// page ahead of one inside it.
-		let mut older = Pending::new();
-		older.insert(make_key("k01"), make_value("old"));
-		older.insert(make_key("k02"), make_value("old"));
-		let mut layers = PendingLayers::over(vec![older]);
-		layers.insert(make_key("k08"), make_value("new"));
-		layers.insert(make_key("k09"), make_value("new"));
-
-		let keys: Vec<EncodedKey> = back_page(&layers, 2).into_iter().map(|(key, _)| key).collect();
-
-		assert_eq!(keys, vec![make_key("k08"), make_key("k09")], "the page must hold the two greatest keys");
-	}
-
-	#[test]
-	fn a_back_page_lets_the_newest_layer_win_a_key_two_layers_hold() {
-		// Layers are merged oldest first so the newest write survives. Reversing that order resurrects a
-		// value the transaction already overwrote.
-		let mut older = Pending::new();
-		older.insert(make_key("k05"), make_value("old"));
-		let mut layers = PendingLayers::over(vec![older]);
-		layers.insert(make_key("k05"), make_value("new"));
-
-		let page = back_page(&layers, 2);
-
-		assert_eq!(page.len(), 1, "one key held twice must collapse to one entry");
-		let PendingWrite::Set(value) = &page[0].1 else {
-			panic!("the key was written, so the merged page must carry its value");
-		};
-		assert_eq!(value, &make_value("new"), "the newest layer's value must survive the merge");
 	}
 
 	#[test]
 	fn a_back_page_wider_than_the_range_returns_every_key() {
 		// The caller stops paging when a page comes back short. A page that drops a key at a limit it never
 		// reached ends the walk early and reports no last row at all.
-		let mut layers = PendingLayers::empty();
+		let mut pending = Pending::new();
 		for n in 1..=3 {
-			layers.insert(make_key(&format!("k{n:02}")), make_value("v"));
+			pending.insert(make_key(&format!("k{n:02}")), make_value("v"));
 		}
 
-		let keys: Vec<EncodedKey> = back_page(&layers, 99).into_iter().map(|(key, _)| key).collect();
+		let keys: Vec<EncodedKey> = back_page(&pending, 99).into_iter().map(|(key, _)| key).collect();
 
 		assert_eq!(keys, vec![make_key("k01"), make_key("k02"), make_key("k03")]);
 	}

@@ -12,7 +12,7 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, shape::RowShape},
 };
 use reifydb_core::{
-	actors::pending::{Pending, PendingLayers, PendingWrite},
+	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	interface::{
 		catalog::{flow::OperatorId, object::ObjectId},
@@ -59,7 +59,7 @@ pub struct ChangeCoordinate {
 
 pub struct DeferredParams {
 	pub version: CommitVersion,
-	pub pending: PendingLayers,
+	pub pending: Pending,
 	pub query: Option<MultiReadTransaction>,
 	pub state_query: Option<MultiReadTransaction>,
 	pub catalog: Catalog,
@@ -80,7 +80,7 @@ impl DeferredParams {
 	) -> Self {
 		Self {
 			version,
-			pending: PendingLayers::empty(),
+			pending: Pending::new(),
 			query: Some(parent.multi.begin_query().unwrap()),
 			state_query: Some(parent.multi.begin_query().unwrap()),
 			catalog,
@@ -106,9 +106,9 @@ pub trait FlowTransaction: Sized + Send + 'static {
 
 	fn substrate(&self) -> &FlowSubstrate;
 
-	fn pending_layers(&self) -> &PendingLayers;
+	fn pending(&self) -> &Pending;
 
-	fn pending_layers_mut(&mut self) -> &mut PendingLayers;
+	fn pending_mut(&mut self) -> &mut Pending;
 
 	fn accumulator_mut(&mut self) -> &mut ChangeAccumulator;
 
@@ -147,12 +147,8 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		items: &mut Vec<MultiVersionRow<TaggedKey>>,
 	) -> Result<()>;
 
-	fn pending(&self) -> &Pending {
-		self.pending_layers().top()
-	}
-
 	fn take_pending(&mut self) -> Pending {
-		self.pending_layers_mut().take_top()
+		take(self.pending_mut())
 	}
 
 	fn push_armed(&mut self, armed: TimerDue) {
@@ -164,7 +160,7 @@ pub trait FlowTransaction: Sized + Send + 'static {
 	}
 
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		let pending = match self.pending_layers().write_at(key) {
+		let pending = match self.pending().write_at(key) {
 			Some(PendingWrite::Remove {
 				..
 			}) => Some(None),
@@ -178,7 +174,7 @@ pub trait FlowTransaction: Sized + Send + 'static {
 	}
 
 	fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		let pending = match self.pending_layers().write_at(key) {
+		let pending = match self.pending().write_at(key) {
 			Some(PendingWrite::Remove {
 				..
 			}) => Some(false),
@@ -198,7 +194,7 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 		let mut merged = BTreeMap::new();
-		self.pending_layers().collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
+		self.pending().collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 		let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 		let version = self.version();
 		let storage_iter = self.storage_range(range, scope, batch_size);
@@ -215,46 +211,46 @@ pub trait FlowTransaction: Sized + Send + 'static {
 	}
 
 	fn set(&mut self, key: &EncodedKey, value: impl Into<EncodedBytes>) -> Result<()> {
-		self.pending_layers_mut().insert(key.clone(), value.into());
+		self.pending_mut().insert(key.clone(), value.into());
 		Ok(())
 	}
 
 	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		self.pending_layers_mut().remove(key.clone());
+		self.pending_mut().remove(key.clone());
 		Ok(())
 	}
 
 	fn remove_unobserved(&mut self, key: &EncodedKey) -> Result<()> {
-		self.pending_layers_mut().remove_unobserved(key.clone());
+		self.pending_mut().remove_unobserved(key.clone());
 		Ok(())
 	}
 
 	fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
-		self.pending_layers_mut().remove_silent(key.clone());
+		self.pending_mut().remove_silent(key.clone());
 		Ok(())
 	}
 
 	fn set_batch(&mut self, keys: &[EncodedKey], values: &[EncodedBytes]) -> Result<()> {
-		self.pending_layers_mut().insert_batch(keys, values);
+		self.pending_mut().insert_batch(keys, values);
 		Ok(())
 	}
 
 	fn remove_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
-		self.pending_layers_mut().remove_batch(keys);
+		self.pending_mut().remove_batch(keys);
 		Ok(())
 	}
 
 	fn classify(&mut self, key: &EncodedKey, pre: Option<ByteSize>) {
-		self.pending_layers_mut().classify(key.clone(), pre);
+		self.pending_mut().classify(key.clone(), pre);
 	}
 
 	fn is_classified(&self, key: &EncodedKey) -> bool {
-		self.pending_layers().is_classified(key)
+		self.pending().is_classified(key)
 	}
 
 	#[inline]
 	fn lookup_overlays(&self, key: &EncodedKey) -> Option<Option<EncodedBytes>> {
-		match self.pending_layers().write_at(key) {
+		match self.pending().write_at(key) {
 			Some(PendingWrite::Remove {
 				..
 			}) => Some(None),

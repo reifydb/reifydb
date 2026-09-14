@@ -4,7 +4,7 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::operator::state::OperatorState;
 use reifydb_core::{
-	actors::pending::PendingLayers,
+	actors::pending::Pending,
 	interface::catalog::flow::OperatorId,
 	key::operator::{
 		keyspace::join::{JoinRowExpiryState as JoinRowExpiry, join_expiry_due_key},
@@ -53,7 +53,7 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 	let version = parent.version();
 	DeferredTransaction::new(DeferredParams {
 		version,
-		pending: PendingLayers::empty(),
+		pending: Pending::new(),
 		query: Some(parent.multi.begin_query().unwrap()),
 		state_query: Some(parent.multi.begin_query().unwrap()),
 		catalog: Catalog::testing(),

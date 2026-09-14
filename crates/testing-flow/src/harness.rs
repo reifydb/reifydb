@@ -6,7 +6,7 @@ use std::{mem, sync::Arc};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	actors::pending::{Pending, PendingLayers, PendingWrite},
+	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	delta::RemoveVisibility,
 	interface::{
@@ -94,7 +94,7 @@ impl<O> Harness<O> {
 		let state_query = self.engine.multi().begin_query().expect("begin_query");
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: CommitVersion(self.version),
-			pending: PendingLayers::with_top(mem::take(&mut self.pending)),
+			pending: mem::take(&mut self.pending),
 			query: Some(query),
 			state_query: Some(state_query),
 			catalog: self.catalog.clone(),

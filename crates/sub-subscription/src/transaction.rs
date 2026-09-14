@@ -17,7 +17,7 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, shape::RowShape},
 };
 use reifydb_core::{
-	actors::pending::{PendingLayers, PendingWrite},
+	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
 	key::any::TaggedKey,
@@ -41,7 +41,7 @@ use reifydb_value::{Result, error::Error, value::datetime::DateTime};
 
 pub struct EphemeralTransaction {
 	pub version: CommitVersion,
-	pub pending: PendingLayers,
+	pub pending: Pending,
 	pub query: MultiReadTransaction,
 	pub catalog: Catalog,
 	pub accumulator: ChangeAccumulator,
@@ -69,7 +69,7 @@ impl EphemeralTransaction {
 
 		Self {
 			version,
-			pending: PendingLayers::empty(),
+			pending: Pending::new(),
 			query,
 			catalog,
 			accumulator: ChangeAccumulator::new(),
@@ -85,7 +85,7 @@ impl EphemeralTransaction {
 	}
 
 	pub fn merge_state(&mut self) {
-		let own = self.pending.take_top();
+		let own = std::mem::take(&mut self.pending);
 		for (key, write) in own.iter_sorted() {
 			if matches!(read_from(key), ReadFrom::OperatorState | ReadFrom::StateQuery) {
 				match write {
@@ -219,11 +219,11 @@ impl FlowTransaction for EphemeralTransaction {
 		&self.substrate
 	}
 
-	fn pending_layers(&self) -> &PendingLayers {
+	fn pending(&self) -> &Pending {
 		&self.pending
 	}
 
-	fn pending_layers_mut(&mut self) -> &mut PendingLayers {
+	fn pending_mut(&mut self) -> &mut Pending {
 		&mut self.pending
 	}
 

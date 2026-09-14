@@ -6,7 +6,7 @@ use std::{collections::BTreeSet, sync::Arc};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_cdc::rebuild::{changed_objects, rebuild_selected_changes};
 use reifydb_core::{
-	actors::pending::{Pending, PendingLayers},
+	actors::pending::Pending,
 	common::CommitVersion,
 	interface::{
 		catalog::{flow::FlowId, object::ObjectId},
@@ -25,7 +25,7 @@ use reifydb_value::{
 	value::{Value, identity::IdentityId},
 };
 
-use crate::commit::{committer::FlowSlice, overlay::FlowWriteOverlay};
+use crate::commit::committer::FlowSlice;
 
 pub struct SliceConfig {
 	pub checkpoint_lag: u64,
@@ -74,10 +74,7 @@ impl SliceComputer {
 		advance_to: CommitVersion,
 		more: bool,
 		config: &SliceConfig,
-		overlay: &mut FlowWriteOverlay,
 	) -> Result<SliceStep> {
-		overlay.prune_through(cursor.cursor);
-
 		let start = items.partition_point(|c| c.version.commit <= cursor.cursor);
 		let mut relevant: Vec<&Cdc> = items[start..]
 			.iter()
@@ -108,9 +105,7 @@ impl SliceComputer {
 			);
 		}
 
-		overlay.prune_through(advance_to);
-		let (combined, view_changes, holds) =
-			self.compute(flow_engine, cursor.flow_id, advance_to, changes, overlay.merged())?;
+		let (combined, view_changes, holds) = self.compute(flow_engine, cursor.flow_id, advance_to, changes)?;
 
 		Ok(SliceStep::Commit {
 			slice: FlowSlice {
@@ -167,7 +162,7 @@ impl SliceComputer {
 
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: state_version,
-			pending: PendingLayers::empty(),
+			pending: Pending::new(),
 			query: None,
 			state_query: None,
 			catalog,
@@ -187,7 +182,6 @@ impl SliceComputer {
 		flow_id: FlowId,
 		state_version: CommitVersion,
 		changes: Vec<Change>,
-		pending: PendingLayers,
 	) -> Result<(Pending, Vec<Change>, WatermarkHolds)> {
 		let catalog: Catalog = self.engine.catalog();
 		let interceptors = self.engine.create_interceptors();
@@ -201,7 +195,7 @@ impl SliceComputer {
 
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: state_version,
-			pending,
+			pending: Pending::new(),
 			query: Some(query),
 			state_query: Some(state_query),
 			catalog,
@@ -243,7 +237,7 @@ impl SliceComputer {
 
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: state_version,
-			pending: PendingLayers::empty(),
+			pending: Pending::new(),
 			query: Some(query),
 			state_query: Some(state_query),
 			catalog: self.engine.catalog(),
@@ -511,10 +505,9 @@ mod tests {
 
 #[cfg(test)]
 mod integration {
-	use std::{collections::HashSet, ops::Bound, thread::sleep, time::Duration as StdDuration};
+	use std::{collections::HashSet, ops::Bound, sync::mpsc, thread::sleep, time::Duration as StdDuration};
 
 	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
-	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		common::TimeDomain,
@@ -540,16 +533,49 @@ mod integration {
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_store_cdc::storage::CdcStorage;
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::transaction::Transaction;
-	use reifydb_value::{factory::time::at_millis, util::cowvec::CowVec, value::identity::IdentityId};
+	use reifydb_transaction::{
+		commit::{CommitBegin, CommitHandle},
+		transaction::Transaction,
+	};
+	use reifydb_value::{factory::time::at_millis, value::identity::IdentityId};
 
 	use super::*;
 	use crate::{
 		catalog::FlowCatalog,
-		commit::{committer::Committer, quiescence::FlowMaterialization},
+		commit::{
+			committer::{Committer, CommitterActor, CommitterHandle, CommitterMessage},
+			quiescence::FlowMaterialization,
+		},
 		discovery::routing,
 		progress::tracker::FlowPositionTracker,
 	};
+
+	fn spawn_committer(engine: &StandardEngine) -> CommitterHandle {
+		let committer = Committer::new(
+			FlowPositionTracker::new(),
+			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			engine.operator_state(),
+		);
+		let begin_engine = engine.clone();
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		engine.spawner()
+			.spawn_flow("slice-test-committer", CommitterActor::new(committer, CommitHandle::new(begin)))
+	}
+
+	fn commit(committer: &CommitterHandle, slice: FlowSlice) -> CommitVersion {
+		let (sender, receiver) = mpsc::channel();
+		let sent = committer
+			.actor_ref()
+			.send(CommitterMessage::Slice {
+				slice,
+				reply: Box::new(move |result| {
+					let _ = sender.send(result);
+				}),
+			})
+			.is_ok();
+		assert!(sent, "the committer must accept the slice");
+		receiver.recv_timeout(StdDuration::from_secs(10)).expect("slice reply timed out").expect("commit slice")
+	}
 
 	fn view_row_count(te: &TestEngine, rql: &str) -> usize {
 		te.query(rql).first().map(|f| f.row_count()).unwrap_or(0)
@@ -562,7 +588,6 @@ mod integration {
 		flow_engine: &mut FlowEngineInner,
 		cursor: SliceCursor,
 		config: &SliceConfig,
-		overlay: &mut FlowWriteOverlay,
 	) -> Option<SliceStep> {
 		// The actor's drain path in miniature; None stands in for its "nothing to do" return.
 		let safe = engine.cdc_producer_watermark().min(engine.done_until());
@@ -581,7 +606,7 @@ mod integration {
 			safe
 		};
 		Some(computer
-			.compute_pulled(flow_engine, &items, cursor, advance_to, more, config, overlay)
+			.compute_pulled(flow_engine, &items, cursor, advance_to, more, config)
 			.expect("compute_pulled"))
 	}
 
@@ -608,7 +633,7 @@ mod integration {
 
 		DeferredTransaction::new(DeferredParams {
 			version,
-			pending: PendingLayers::empty(),
+			pending: Pending::new(),
 			query: Some(query),
 			state_query: Some(state_query),
 			catalog: engine.catalog(),
@@ -732,87 +757,6 @@ mod integration {
 	}
 
 	#[test]
-	fn a_step_with_nothing_to_do_still_drains_generations_at_or_below_the_cursor() {
-		// A generation at or below the cursor is already served by the store at any version a
-		// later compute can pin, so a step that decides to do nothing must still drop it -
-		// otherwise an idle flow keeps every write set it has ever committed.
-		let te = TestEngine::builder().with_cdc().build();
-		te.admin("CREATE NAMESPACE app");
-		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
-		te.command("INSERT app::t [{id: 1, val: 10}]");
-
-		let engine = te.inner().clone();
-		let mut flow_engine = build_flow_engine(&engine);
-
-		// An empty source set makes every CDC record irrelevant, reproducing a caught-up flow
-		// with nothing it cares about being written.
-		let source_objects: BTreeSet<ObjectId> = BTreeSet::new();
-		let computer = SliceComputer::new(engine.clone());
-		let config = SliceConfig {
-			checkpoint_lag: 10_000,
-		};
-
-		let mut overlay = FlowWriteOverlay::new();
-
-		te.await_cdc();
-
-		let mut drive = |cursor: &mut CommitVersion, overlay: &mut FlowWriteOverlay| {
-			for _ in 0..400 {
-				match pull_step(
-					&engine,
-					&computer,
-					&mut flow_engine,
-					SliceCursor {
-						flow_id: FlowId(1),
-						source_objects: &source_objects,
-						completeness_objects: None,
-						cursor: *cursor,
-						durable_cursor: CommitVersion(0),
-					},
-					&config,
-					overlay,
-				) {
-					Some(SliceStep::Commit {
-						advance_to,
-						..
-					})
-					| Some(SliceStep::Skip {
-						advance_to,
-						..
-					}) => *cursor = advance_to,
-					None => return,
-				}
-			}
-			panic!("the drive loop never settled");
-		};
-
-		// Promoting AT the settled cursor is the steady state that leaks: a caught-up flow whose
-		// own commit has just been promoted.
-		let mut cursor = CommitVersion(0);
-		drive(&mut cursor, &mut overlay);
-		let mut pending = Pending::new();
-		pending.insert(EncodedKey::new(b"own-write"), EncodedBytes(CowVec::new(vec![1, 2, 3])));
-		overlay.promote(cursor, pending);
-		assert_eq!(overlay.generations_len(), 1, "precondition: one unpruned write set");
-
-		// A commit this flow does not care about: the step it triggers takes the
-		// nothing-relevant exit, and that exact step must be the one that prunes.
-		te.command("INSERT app::t [{id: 2, val: 20}]");
-		te.await_cdc();
-		let before = cursor;
-		drive(&mut cursor, &mut overlay);
-		assert!(
-			cursor > before,
-			"precondition: the irrelevant commit must have advanced the cursor, or no step ran"
-		);
-		assert_eq!(
-			overlay.generations_len(),
-			0,
-			"a generation at or below the cursor must be dropped even by a step that does no work"
-		);
-	}
-
-	#[test]
 	fn deferred_view_materializes_through_slice_step() {
 		let te = TestEngine::builder().with_cdc().build();
 		te.admin("CREATE NAMESPACE app");
@@ -846,11 +790,7 @@ mod integration {
 		};
 
 		let computer = SliceComputer::new(engine.clone());
-		let committer = Committer::new(
-			FlowPositionTracker::new(),
-			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
-			engine.operator_state(),
-		);
+		let committer = spawn_committer(&engine);
 		let config = SliceConfig {
 			checkpoint_lag: 10_000,
 		};
@@ -858,7 +798,6 @@ mod integration {
 		let mut cursor = CommitVersion(0);
 		let mut durable = CommitVersion(0);
 		let mut committed_any = false;
-		let mut overlay = FlowWriteOverlay::new();
 
 		// CDC production is async, so the drain has to spin until the producer catches up.
 		for _ in 0..400 {
@@ -874,16 +813,13 @@ mod integration {
 					durable_cursor: durable,
 				},
 				&config,
-				&mut overlay,
 			) {
 				Some(SliceStep::Commit {
 					slice,
 					advance_to,
 					..
 				}) => {
-					let (commit_version, pending) =
-						committer.commit_slice(&engine, slice).expect("commit slice");
-					overlay.promote(commit_version, pending);
+					commit(&committer, slice);
 					cursor = advance_to;
 					durable = advance_to;
 					committed_any = true;
@@ -913,10 +849,9 @@ mod integration {
 	}
 
 	#[test]
-	fn pinned_slice_reads_prior_commit_across_restart_window() {
-		// A slice's output rows commit above the chunk_end pinning the next slice's snapshot, so
-		// a later slice must still see them with an EMPTY overlay - the post-restart window,
-		// where the in-memory overlay is gone.
+	fn pinned_slice_reads_prior_commit_from_the_store() {
+		// Output rows commit above the version pinning the next slice, so a store read that misses them loses
+		// the flow's own rows.
 		let te = TestEngine::builder().with_cdc().build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
@@ -949,17 +884,12 @@ mod integration {
 		};
 
 		let computer = SliceComputer::new(engine.clone());
-		let committer = Committer::new(
-			FlowPositionTracker::new(),
-			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
-			engine.operator_state(),
-		);
+		let committer = spawn_committer(&engine);
 		let config = SliceConfig {
 			checkpoint_lag: 10_000,
 		};
 
 		let mut cursor = CommitVersion(0);
-		let mut overlay = FlowWriteOverlay::new();
 
 		for _ in 0..400 {
 			match pull_step(
@@ -974,7 +904,6 @@ mod integration {
 					durable_cursor: cursor,
 				},
 				&config,
-				&mut overlay,
 			) {
 				Some(SliceStep::Commit {
 					slice,
@@ -985,14 +914,8 @@ mod integration {
 					// but before the flow output commits, so the flow's own rows land
 					// above the window the next slice is pinned to.
 					te.command("INSERT app::t [{id: 3, val: 30}]");
-					let (commit_version, pending) =
-						committer.commit_slice(&engine, slice).expect("commit slice");
-					assert!(
-						commit_version.0 > advance_to.0 + 1,
-						"the slice output must commit beyond the read window pinned at chunk_end"
-					);
-
-					let row_keys: Vec<_> = pending
+					let row_keys: Vec<_> = slice
+						.combined
 						.iter_sorted()
 						.filter(|(k, w)| {
 							matches!(KeyTag::of(k), Some(KeyTag::Row))
@@ -1001,32 +924,26 @@ mod integration {
 						.map(|(k, _)| k.clone())
 						.collect();
 					assert!(!row_keys.is_empty(), "the slice must have produced view rows");
+					let commit_version = commit(&committer, slice);
+					assert!(
+						commit_version.0 > advance_to.0 + 1,
+						"the slice output must commit beyond the read window pinned at chunk_end"
+					);
 
-					overlay.promote(commit_version, pending);
-
-					let pinned_txn = |pending: PendingLayers| {
-						DeferredTransaction::new(DeferredParams {
-							version: advance_to,
-							pending,
-							query: Some(engine.multi().begin_query().unwrap()),
-							state_query: Some(engine.multi().begin_query().unwrap()),
-							catalog: engine.catalog(),
-							interceptors: engine.create_interceptors(),
-							clock: engine.clock().clone(),
-							substrate: flow_engine.substrate().clone(),
-						})
-					};
-
-					let mut with_overlay = pinned_txn(overlay.merged());
-					let mut empty_overlay = pinned_txn(PendingLayers::empty());
+					let mut pinned = DeferredTransaction::new(DeferredParams {
+						version: advance_to,
+						pending: Pending::new(),
+						query: Some(engine.multi().begin_query().unwrap()),
+						state_query: Some(engine.multi().begin_query().unwrap()),
+						catalog: engine.catalog(),
+						interceptors: engine.create_interceptors(),
+						clock: engine.clock().clone(),
+						substrate: flow_engine.substrate().clone(),
+					});
 					for key in &row_keys {
 						assert!(
-							empty_overlay.get(key).unwrap().is_some(),
-							"restart window: a pinned txn with an empty overlay must read owned rows at the state version"
-						);
-						assert!(
-							with_overlay.get(key).unwrap().is_some(),
-							"a pinned read below the flow's commit version must see its own rows through the overlay"
+							pinned.get(key).unwrap().is_some(),
+							"a txn pinned below the flow's commit version must read the flow's own rows from the store"
 						);
 					}
 					return;
@@ -1047,9 +964,8 @@ mod integration {
 
 	#[test]
 	fn a_flow_never_commits_a_key_it_would_later_read_through_the_pinned_query() {
-		// A Query-routed write is the only class that could read stale below its own commit
-		// version, so it is the only class the overlay could be load-bearing for. If a flow never
-		// commits one, the overlay is not needed at all.
+		// A Query-routed write is read back through the query pinned at the cursor, which never sees the flow's
+		// own later commit.
 		let te = TestEngine::builder().with_cdc().build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
@@ -1087,18 +1003,13 @@ mod integration {
 		};
 
 		let computer = SliceComputer::new(engine.clone());
-		let committer = Committer::new(
-			FlowPositionTracker::new(),
-			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
-			engine.operator_state(),
-		);
+		let committer = spawn_committer(&engine);
 		let config = SliceConfig {
 			checkpoint_lag: 10_000,
 		};
 
 		let mut cursor = CommitVersion(0);
 		let mut durable = CommitVersion(0);
-		let mut overlay = FlowWriteOverlay::new();
 		let mut committed_kinds: HashSet<Option<KeyTag>> = HashSet::new();
 		let mut stale_reads: HashSet<Option<KeyTag>> = HashSet::new();
 
@@ -1115,17 +1026,14 @@ mod integration {
 					durable_cursor: durable,
 				},
 				&config,
-				&mut overlay,
 			) {
 				Some(SliceStep::Commit {
 					slice,
 					advance_to,
 					..
 				}) => {
-					let (commit_version, pending) =
-						committer.commit_slice(&engine, slice).expect("commit slice");
 					let mut live_keys = Vec::new();
-					for (key, write) in pending.iter_sorted() {
+					for (key, write) in slice.combined.iter_sorted() {
 						committed_kinds.insert(KeyTag::of(key));
 						if read_from(key) == ReadFrom::Query {
 							stale_reads.insert(KeyTag::of(key));
@@ -1134,13 +1042,12 @@ mod integration {
 							live_keys.push(key.clone());
 						}
 					}
-					overlay.promote(commit_version, pending);
-
-					// The restart window asserted directly rather than by inference, and
-					// it reaches OperatorState as well as Row.
-					let mut empty_overlay = DeferredTransaction::new(DeferredParams {
+					commit(&committer, slice);
+					// Asserted for operator state as well as rows, since both must resolve from the
+					// store alone.
+					let mut pinned = DeferredTransaction::new(DeferredParams {
 						version: advance_to,
-						pending: PendingLayers::empty(),
+						pending: Pending::new(),
 						query: Some(engine.multi().begin_query().unwrap()),
 						state_query: Some(engine.multi().begin_query().unwrap()),
 						catalog: engine.catalog(),
@@ -1150,8 +1057,8 @@ mod integration {
 					});
 					for key in &live_keys {
 						assert!(
-							empty_overlay.get(key).unwrap().is_some(),
-							"restart window: {:?} must resolve with no overlay at all",
+							pinned.get(key).unwrap().is_some(),
+							"{:?} must resolve from the store with no pending writes",
 							KeyTag::of(key)
 						);
 					}
@@ -1189,8 +1096,7 @@ mod integration {
 		assert!(
 			stale_reads.is_empty(),
 			"a flow committed keys that it would read back through the version-pinned query: {stale_reads:?}. \
-			 Those reads cannot see the flow's own commit, so FlowWriteOverlay is load-bearing for them and \
-			 must not be removed"
+			 Those reads cannot see the flow's own commit, so the flow reads stale state for them"
 		);
 	}
 }

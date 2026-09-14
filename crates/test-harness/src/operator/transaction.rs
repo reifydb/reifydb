@@ -4,7 +4,7 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
-	actors::pending::{PendingLayers, PendingWrite},
+	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	delta::RemoveVisibility,
 	interface::catalog::flow::OperatorId,
@@ -78,7 +78,7 @@ impl<'a> FlowTxnBuilder<'a> {
 		let version = self.version;
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version,
-			pending: PendingLayers::empty(),
+			pending: Pending::new(),
 			query: Some(self.engine.multi().begin_query().unwrap()),
 			state_query: Some(self.engine.multi().begin_query().unwrap()),
 			catalog: self.catalog,

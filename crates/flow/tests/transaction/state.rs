@@ -9,7 +9,7 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
-	actors::pending::{Pending, PendingLayers},
+	actors::pending::Pending,
 	common::CommitVersion,
 	interface::catalog::{
 		flow::OperatorId,
@@ -82,7 +82,7 @@ fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 	let version = parent.version();
 	DeferredTransaction::new(DeferredParams {
 		version,
-		pending: PendingLayers::empty(),
+		pending: Pending::new(),
 		query: Some(parent.multi.begin_query().unwrap()),
 		state_query: Some(parent.multi.begin_query().unwrap()),
 		catalog: Catalog::testing(),
@@ -497,7 +497,7 @@ fn deferred_read_sees_state_committed_above_object_version() {
 
 	let mut txn = DeferredTransaction::new(DeferredParams {
 		version: object_version,
-		pending: PendingLayers::empty(),
+		pending: Pending::new(),
 		query: Some(engine.multi().begin_query().unwrap()),
 		state_query: Some(engine.multi().begin_query().unwrap()),
 		catalog: Catalog::testing(),
@@ -516,62 +516,6 @@ fn deferred_read_sees_state_committed_above_object_version() {
 		"operator state applied above object_version {object_version:?} must be visible to a deferred read"
 	);
 	assert_eq!(batch.items[0].bytes, value.into_bytes());
-}
-
-#[test]
-fn deferred_read_sees_base_pending_overlay() {
-	// base_pending must shadow whatever the operator state store already holds.
-	let engine = TestEngine::new();
-	let operator_id = OperatorId(1);
-
-	let committed_key = make_key("committed");
-	let committed_value = make_value("committed_value");
-	let low_version = engine.inner().current_version().unwrap();
-	seed_state_row(&engine, operator_id, &committed_key, committed_value.clone());
-
-	let overlaid_key = make_key("overlaid");
-	let overlaid_value = make_value("overlaid_value");
-	let mut base_pending = Pending::new();
-	base_pending.insert(full_key(operator_id, &overlaid_key).encode(), overlaid_value.clone().into_bytes());
-	base_pending.remove(full_key(operator_id, &committed_key).encode());
-
-	let mut txn = DeferredTransaction::new(DeferredParams {
-		version: low_version,
-		pending: PendingLayers::over(vec![base_pending]),
-		query: Some(engine.multi().begin_query().unwrap()),
-		state_query: Some(engine.multi().begin_query().unwrap()),
-		catalog: Catalog::testing(),
-		interceptors: engine.create_interceptors(),
-		clock: engine.clock().clone(),
-		substrate: FlowSubstrate::with_dictionary(
-			engine.inner().dictionary_allocators(),
-			engine.inner().operator_state(),
-		),
-	});
-
-	assert_eq!(
-		txn.state_get(operator_id, &overlaid_key).unwrap(),
-		Some(overlaid_value.clone()),
-		"a Set in base_pending must resolve through the overlay"
-	);
-	assert_eq!(
-		txn.state_get(operator_id, &committed_key).unwrap(),
-		None,
-		"a Remove in base_pending must shadow the committed row"
-	);
-
-	let batch = txn.state_get_many(operator_id, &[overlaid_key.clone(), committed_key.clone()]).unwrap();
-	assert_eq!(batch.items.len(), 1);
-	assert_eq!(batch.items[0].bytes, overlaid_value.clone().into_bytes());
-
-	let scan = txn.state_scan_all(operator_id).unwrap();
-	let scanned: Vec<_> = scan.items.iter().map(|item| item.bytes.clone()).collect();
-	assert!(scanned.contains(&overlaid_value.clone().into_bytes()), "range merge must surface base_pending Sets");
-	assert!(!scanned.contains(&committed_value.into_bytes()), "range merge must shadow base_pending Removes");
-
-	let shadow_value = make_value("shadow");
-	txn.state_set(operator_id, &overlaid_key, shadow_value.clone()).unwrap();
-	assert_eq!(txn.state_get(operator_id, &overlaid_key).unwrap(), Some(shadow_value));
 }
 
 #[test]
@@ -600,7 +544,7 @@ fn deferred_reads_owned_rows_at_state_version() {
 
 	let mut txn = DeferredTransaction::new(DeferredParams {
 		version: low_version,
-		pending: PendingLayers::empty(),
+		pending: Pending::new(),
 		query: Some(engine.multi().begin_query().unwrap()),
 		state_query: Some(engine.multi().begin_query().unwrap()),
 		catalog: Catalog::testing(),

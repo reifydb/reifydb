@@ -6,7 +6,7 @@ use std::{collections::HashMap, marker::PhantomData, mem, ops::Index};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::operator::state::OperatorState;
 use reifydb_core::{
-	actors::pending::{Pending, PendingLayers, PendingWrite},
+	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	delta::RemoveVisibility,
 	interface::{catalog::flow::OperatorId, change::Change},
@@ -60,7 +60,7 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 		let state_query = self.engine.multi().begin_query().expect("begin_query");
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: CommitVersion(self.version),
-			pending: PendingLayers::with_top(mem::take(&mut self.pending)),
+			pending: mem::take(&mut self.pending),
 			query: Some(query),
 			state_query: Some(state_query),
 			catalog: Catalog::testing(),

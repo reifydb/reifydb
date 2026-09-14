@@ -121,7 +121,7 @@ pub trait StateExtension: FlowTransaction {
 
 	fn state_classify(&mut self, id: OperatorId, key: &GroupStateKey, pre: Option<ByteSize>) {
 		let scoped = scoped_key(id, key);
-		if self.pending_layers().top().contains_key(&scoped) {
+		if self.pending().contains_key(&scoped) {
 			return;
 		}
 		self.classify(&scoped, pre);
@@ -225,7 +225,7 @@ pub trait StateExtension: FlowTransaction {
 		let mut merged = BTreeMap::new();
 		for group in &ordered {
 			let range = group_inner_range(*group).with_prefix(prefix.clone());
-			self.pending_layers().collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
+			self.pending().collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 		}
 		let pending: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 		let version = self.version();
@@ -280,7 +280,7 @@ pub trait StateExtension: FlowTransaction {
 		let found = loop {
 			if index == pending.len() && !pending_done {
 				let mut merged = BTreeMap::new();
-				self.pending_layers().collect_range_back(
+				self.pending().collect_range_back(
 					(prefixed_range.start.as_ref(), pending_end.as_ref()),
 					PENDING_LAST_PAGE,
 					&mut merged,
@@ -395,7 +395,7 @@ fn scan_keys_for_clear<T: FlowTransaction>(txn: &mut T, id: OperatorId) -> Resul
 	}
 	Ok(keys.into_iter()
 		.map(|(key, pre)| {
-			let durable = !txn.pending_layers().top().contains_key(&key);
+			let durable = !txn.pending().contains_key(&key);
 			(key, durable.then_some(pre))
 		})
 		.collect())
