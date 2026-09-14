@@ -125,8 +125,8 @@ describe('the dashboard over one batched subscription', () => {
 
     expect(client.subscribe).not.toHaveBeenCalled()
     expect(client.batchSubscribe).toHaveBeenCalledTimes(1)
-    const members = (client.batchSubscribe as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]
-    expect(members.map((member: { rql: string }) => member.rql).sort()).toEqual([
+    const subscriptions = (client.batchSubscribe as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(subscriptions.map((subscription: { rql: string }) => subscription.rql).sort()).toEqual([
       'from uptime::daily_totals',
       'from uptime::daily_ups',
       'from uptime::monitor_regions',

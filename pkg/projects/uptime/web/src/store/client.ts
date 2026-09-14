@@ -56,9 +56,11 @@ function watchAuth(c: WsClient, onAuthError: () => void): StoreClient {
     subscribe: (rql, params, shape, callbacks, config) =>
       watch(c.subscribe(rql, params, shape, watchErrors(callbacks), config)),
     unsubscribe: (subscriptionId) => watch(c.unsubscribe(subscriptionId)),
-    batchSubscribe: (members) =>
+    batchSubscribe: (subscriptions) =>
       watch(
-        c.batchSubscribe(members.map((member) => ({ ...member, callbacks: watchErrors(member.callbacks) }))),
+        c.batchSubscribe(
+          subscriptions.map((subscription) => ({ ...subscription, callbacks: watchErrors(subscription.callbacks) })),
+        ),
       ),
   }
 }

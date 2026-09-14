@@ -415,11 +415,11 @@ class ScriptedSocket {
 
   ackBatch() {
     const [request] = this.batches()
-    const members = request.payload.queries.map((_: unknown, index: number) => ({
+    const subscriptions = request.payload.subscriptions.map((_: unknown, index: number) => ({
       index,
       subscription_id: `server-${index}`,
     }))
-    this.receive({ id: request.id, type: 'BatchSubscribed', payload: { batch_id: 'batch-1', members } })
+    this.receive({ id: request.id, type: 'BatchSubscribed', payload: { batch_id: 'batch-1', subscriptions } })
   }
 
   refuseBatch(code: string) {
@@ -427,9 +427,9 @@ class ScriptedSocket {
     this.receive({ id: request.id, type: 'Err', payload: { diagnostic: { code, message: code, notes: [] } } })
   }
 
-  memberId(table: string): string {
+  subscriptionId(table: string): string {
     const [request] = this.batches()
-    return `server-${request.payload.queries.findIndex((query: string) => query.includes(table))}`
+    return `server-${request.payload.subscriptions.findIndex((subscription: { rql: string }) => subscription.rql.includes(table))}`
   }
 
   insertRegion(subscriptionId: string, rownum: number, label: string) {
@@ -472,7 +472,7 @@ async function reconnectedLayout(): Promise<ScriptedSocket> {
 
 describe('a websocket auth error on a batch subscribe', () => {
   beforeEach(() => {
-    // Sign-out must keep the session here, otherwise the layout drops the store before a refused member can render its error.
+    // Sign-out must keep the session here, otherwise the layout drops the store before a refused subscription can render its error.
     signOut.mockImplementation(async () => undefined)
     sockets = []
     vi.stubGlobal('WebSocket', function WebSocket() {
@@ -507,7 +507,7 @@ describe('a websocket auth error on a batch subscribe', () => {
     vi.stubGlobal('fetch', fetch)
     const first = await firstBatch(renderGatedLayout)
     act(() => first.ackBatch())
-    act(() => first.insertRegion(first.memberId('uptime::regions'), 1, 'US East'))
+    act(() => first.insertRegion(first.subscriptionId('uptime::regions'), 1, 'US East'))
     expect(await screen.findByText('region labels US East')).toBeInTheDocument()
     act(() => first.close())
     await waitFor(() => expect(sockets[1]?.batches()).toHaveLength(1))
@@ -516,9 +516,9 @@ describe('a websocket auth error on a batch subscribe', () => {
 
     await waitFor(() => expect(sockets[2]?.batches()).toHaveLength(1))
     const next = sockets[2]
-    expect(next.batches()[0].payload.queries).toEqual(first.batches()[0].payload.queries)
+    expect(next.batches()[0].payload.subscriptions).toEqual(first.batches()[0].payload.subscriptions)
     act(() => next.ackBatch())
-    act(() => next.insertRegion(next.memberId('uptime::regions'), 2, 'EU West'))
+    act(() => next.insertRegion(next.subscriptionId('uptime::regions'), 2, 'EU West'))
     expect(await screen.findByText('region labels EU West')).toBeInTheDocument()
     expect(screen.getByText('monitors ready')).toBeInTheDocument()
     expect(screen.getByText('regions ready')).toBeInTheDocument()
@@ -528,10 +528,10 @@ describe('a websocket auth error on a batch subscribe', () => {
     expect(screen.queryByText('redirected to /login')).not.toBeInTheDocument()
   })
 
-  it('signs out exactly once when a first batch of several members is refused for auth', async () => {
-    // One refusal fails every member of the batch; a sign-out per member would run the sign-out and its redirect twice.
+  it('signs out exactly once when a first batch of several subscriptions is refused for auth', async () => {
+    // One refusal fails every subscription of the batch; a sign-out per subscription would run the sign-out and its redirect twice.
     const socket = await firstBatch()
-    expect(socket.batches()[0].payload.queries).toHaveLength(2)
+    expect(socket.batches()[0].payload.subscriptions).toHaveLength(2)
 
     act(() => socket.refuseBatch('AUTH_REQUIRED'))
 
@@ -540,10 +540,10 @@ describe('a websocket auth error on a batch subscribe', () => {
     expect(signOut).toHaveBeenCalledTimes(1)
   })
 
-  it('signs out exactly once when a resubscribed batch of several members is refused for auth', async () => {
-    // The client reports a refused resubscribe to each member; a sign-out per member would run the sign-out twice.
+  it('signs out exactly once when a resubscribed batch of several subscriptions is refused for auth', async () => {
+    // The client reports a refused resubscribe to each subscription; a sign-out per subscription would run the sign-out twice.
     const socket = await reconnectedLayout()
-    expect(socket.batches()[0].payload.queries).toHaveLength(2)
+    expect(socket.batches()[0].payload.subscriptions).toHaveLength(2)
 
     act(() => socket.refuseBatch('AUTH_REQUIRED'))
 
