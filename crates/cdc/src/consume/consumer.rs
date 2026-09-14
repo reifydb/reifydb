@@ -8,6 +8,8 @@ use reifydb_value::{Result, error};
 pub trait CdcConsume: Send + Sync + 'static {
 	fn consume(&self, cdcs: Vec<Cdc>, reply: Box<dyn FnOnce(Result<()>) + Send>);
 
+	fn describe_pending(&self) -> String;
+
 	fn overtaken(
 		&self,
 		cursor: CommitVersion,

@@ -3,13 +3,14 @@
 
 use std::{
 	env,
+	io::Read,
 	os::unix::process::ExitStatusExt,
-	process::Command,
+	process::{Command, ExitStatus, Stdio},
 	sync::{
 		Arc, Mutex,
 		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
-	thread::sleep,
+	thread::{self, JoinHandle, sleep},
 	time::Instant,
 };
 
@@ -239,10 +240,60 @@ fn run_abort_child() {
 	sleep(poll_timeout().to_std());
 }
 
+const STALL_CHILD_ENV: &str = "REIFYDB_CDC_STALL_CHILD";
+const STALL_BATCH_MARKER: &str = "stall child batch version: ";
+
 #[test]
-fn test_recovers_when_consume_reply_is_lost() {
-	// Without the consume-wait backstop the actor stays in WaitingForConsume forever, so a single
-	// dropped reply wedges the poll loop and nothing after it is ever consumed.
+fn test_lost_consume_reply_aborts_naming_consumer_pending_work_and_batch() {
+	// A consume reply that never comes must abort once the wait timeout passes, or the poll loop wedges silently.
+	if env::var(STALL_CHILD_ENV).is_ok() {
+		run_stall_child();
+		return;
+	}
+
+	let child = run_child_with_limit(
+		"test_lost_consume_reply_aborts_naming_consumer_pending_work_and_batch",
+		STALL_CHILD_ENV,
+		Duration::from_seconds(60).unwrap(),
+	);
+	assert!(
+		!child.timed_out,
+		"the stalled child must abort before its wall-clock limit\nstderr:\n{}",
+		child.stderr
+	);
+	assert_eq!(
+		child.status.signal(),
+		Some(6),
+		"a lost consume reply must abort with SIGABRT, but the child exited with {:?}\nstderr:\n{}",
+		child.status,
+		child.stderr
+	);
+	let batch = child
+		.stdout
+		.lines()
+		.find_map(|line| line.split_once(STALL_BATCH_MARKER).map(|(_, version)| version))
+		.expect("the child must announce the batch version it stalls on");
+	assert_eq!(
+		report_field(&child.stderr, "consumer"),
+		Some(format!("{:?}", CdcConsumerId::flow_consumer())),
+		"the abort must name the stalled consumer\nstderr:\n{}",
+		child.stderr
+	);
+	assert_eq!(
+		report_field(&child.stderr, "pending").as_deref(),
+		Some("test-consumer"),
+		"the abort must name the work that never replied\nstderr:\n{}",
+		child.stderr
+	);
+	assert_eq!(
+		report_field(&child.stderr, "batch").as_deref(),
+		Some(batch),
+		"the abort must name the batch version that stalled\nstderr:\n{}",
+		child.stderr
+	);
+}
+
+fn run_stall_child() {
 	let t = TestEngine::new();
 	t.inner()
 		.catalog()
@@ -257,39 +308,79 @@ fn test_recovers_when_consume_reply_is_lost() {
 	let cdc_store = t.cdc_store();
 	let consumer_id = CdcConsumerId::flow_consumer();
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
-	let consumer_clone = consumer.clone();
+	consumer.set_drop_reply(true);
 	let pools = Pools::new(PoolConfig::default());
 	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let runtime = actor_system.spawner();
 
 	insert_test_events(&t, 3);
+	let batch = t.inner().current_version().expect("Failed to read current version");
+	await_until("cdc produced through the last insert", || {
+		t.inner().cdc_producer_watermark() >= batch && t.inner().done_until() >= batch
+	});
+	println!("{STALL_BATCH_MARKER}{}", batch.0);
 
 	let config =
 		PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_milliseconds(50).unwrap(), None);
 	let mut test_instance = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store, runtime);
 
 	test_instance.start().expect("Failed to start consumer");
-	await_until("processes initial 3", || consumer_clone.get_total_changes() >= 3);
 
-	// New work arrives while replies are dropped: the consumer dispatches but never hears back.
-	consumer_clone.set_drop_reply(true);
-	let calls_before_drop = consumer_clone.get_call_count();
-	insert_test_events(&t, 2);
+	sleep(poll_timeout().to_std());
+}
 
-	// The timeout must keep re-dispatching the un-acked batch rather than stalling.
-	await_until("re-dispatches after lost reply", || consumer_clone.get_call_count() >= calls_before_drop + 2);
-	assert_eq!(
-		consumer_clone.get_total_changes(),
-		3,
-		"No new changes should be processed while replies are lost (checkpoint must not advance)"
-	);
+struct ChildOutput {
+	status: ExitStatus,
+	timed_out: bool,
+	stdout: String,
+	stderr: String,
+}
 
-	// Once replies flow again, the still-un-acked batch is processed.
-	consumer_clone.set_drop_reply(false);
-	await_until("recovery processes 5", || consumer_clone.get_total_changes() >= 5);
-	assert_eq!(consumer_clone.get_total_changes(), 5, "Should process the batch once replies resume");
+fn run_child_with_limit(test_name: &str, child_env: &str, limit: Duration) -> ChildOutput {
+	let exe = env::current_exe().expect("Failed to resolve test binary path");
+	let mut child = Command::new(exe)
+		.args([test_name, "--exact", "--nocapture", "--test-threads=1"])
+		.env(child_env, "1")
+		.stdout(Stdio::piped())
+		.stderr(Stdio::piped())
+		.spawn()
+		.expect("Failed to spawn child process");
+	let stdout = read_in_background(child.stdout.take().expect("child stdout is piped"));
+	let stderr = read_in_background(child.stderr.take().expect("child stderr is piped"));
 
-	test_instance.stop().expect("Failed to stop consumer");
+	let deadline = Instant::now() + limit.to_std();
+	let mut timed_out = false;
+	let status = loop {
+		if let Some(status) = child.try_wait().expect("Failed to poll child process") {
+			break status;
+		}
+		if Instant::now() >= deadline {
+			timed_out = true;
+			child.kill().expect("Failed to kill child past its wall-clock limit");
+			break child.wait().expect("Failed to reap killed child");
+		}
+		sleep(poll_interval().to_std());
+	};
+
+	ChildOutput {
+		status,
+		timed_out,
+		stdout: stdout.join().expect("child stdout reader panicked"),
+		stderr: stderr.join().expect("child stderr reader panicked"),
+	}
+}
+
+fn read_in_background(mut pipe: impl Read + Send + 'static) -> JoinHandle<String> {
+	thread::spawn(move || {
+		let mut bytes = Vec::new();
+		pipe.read_to_end(&mut bytes).expect("Failed to read child output");
+		String::from_utf8_lossy(&bytes).into_owned()
+	})
+}
+
+fn report_field(stderr: &str, key: &str) -> Option<String> {
+	let prefix = format!("{key}:");
+	stderr.lines().find_map(|line| line.strip_prefix(prefix.as_str()).map(|value| value.trim().to_string()))
 }
 
 #[test]
@@ -802,7 +893,6 @@ struct TestConsumer {
 	consumer_key: CdcConsumerKey,
 	cdc_received: Arc<Mutex<Vec<Cdc>>>,
 	process_count: Arc<AtomicUsize>,
-	call_count: Arc<AtomicUsize>,
 	should_fail: Arc<AtomicBool>,
 	drop_reply: Arc<AtomicBool>,
 }
@@ -817,7 +907,6 @@ impl TestConsumer {
 			consumer_key,
 			cdc_received: Arc::new(Mutex::new(Vec::new())),
 			process_count: Arc::new(AtomicUsize::new(0)),
-			call_count: Arc::new(AtomicUsize::new(0)),
 			should_fail: Arc::new(AtomicBool::new(false)),
 			drop_reply: Arc::new(AtomicBool::new(false)),
 		}
@@ -842,10 +931,6 @@ impl TestConsumer {
 	fn get_process_count(&self) -> usize {
 		self.process_count.load(Ordering::SeqCst)
 	}
-
-	fn get_call_count(&self) -> usize {
-		self.call_count.load(Ordering::SeqCst)
-	}
 }
 
 impl Clone for TestConsumer {
@@ -855,7 +940,6 @@ impl Clone for TestConsumer {
 			consumer_key: self.consumer_key.clone(),
 			cdc_received: Arc::clone(&self.cdc_received),
 			process_count: Arc::clone(&self.process_count),
-			call_count: Arc::clone(&self.call_count),
 			should_fail: Arc::clone(&self.should_fail),
 			drop_reply: Arc::clone(&self.drop_reply),
 		}
@@ -864,8 +948,6 @@ impl Clone for TestConsumer {
 
 impl CdcConsume for TestConsumer {
 	fn consume(&self, transactions: Vec<Cdc>, reply: Box<dyn FnOnce(reifydb_value::Result<()>) + Send>) {
-		self.call_count.fetch_add(1, Ordering::SeqCst);
-
 		if self.drop_reply.load(Ordering::SeqCst) {
 			// Simulate a lost reply: the callback is dropped without ever being invoked.
 			drop(reply);
@@ -918,6 +1000,10 @@ impl CdcConsume for TestConsumer {
 		received.extend(transactions);
 		self.process_count.fetch_add(1, Ordering::SeqCst);
 		(reply)(Ok(()));
+	}
+
+	fn describe_pending(&self) -> String {
+		"test-consumer".to_string()
 	}
 }
 
@@ -988,6 +1074,10 @@ impl CdcConsume for ResyncConsumer {
 	fn consume(&self, transactions: Vec<Cdc>, reply: Box<dyn FnOnce(reifydb_value::Result<()>) + Send>) {
 		self.cdc_received.lock().unwrap().extend(transactions);
 		(reply)(Ok(()));
+	}
+
+	fn describe_pending(&self) -> String {
+		"resync-consumer".to_string()
 	}
 
 	fn overtaken(
@@ -1098,6 +1188,10 @@ impl CdcConsume for EvictedBatchConsumer {
 			return;
 		}
 		self.inner.consume(transactions, reply);
+	}
+
+	fn describe_pending(&self) -> String {
+		self.inner.describe_pending()
 	}
 
 	fn overtaken(

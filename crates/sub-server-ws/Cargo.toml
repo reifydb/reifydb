@@ -44,3 +44,4 @@ reifydb-build = { workspace = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
+reifydb-test-harness = { workspace = true }

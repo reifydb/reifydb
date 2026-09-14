@@ -35,7 +35,7 @@ function fakeDb(calls: Call[]): Db {
     batchSubscribeAs: unused,
     unsubscribe: () => undefined,
     batchUnsubscribe: unused,
-    tick: () => ({ envelopes: [], closed: [], batchMemberClosed: [] }),
+    tick: () => ({ envelopes: [], closed: [], batchSubscriptionClosed: [] }),
   }
 }
 

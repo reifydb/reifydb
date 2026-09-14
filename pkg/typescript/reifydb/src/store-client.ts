@@ -10,7 +10,7 @@ import {
   rbcf,
   reportSubscriptionError,
 } from '@reifydb/client'
-import type { BatchSubscription, BatchSubscriptionMember, SubscriptionTarget } from '@reifydb/client'
+import type { BatchSubscription, BatchSubscribeItem, SubscriptionTarget } from '@reifydb/client'
 import type { StoreClient } from '@reifydb/store'
 import type { SubscriptionTick } from '../native'
 import type { Db } from './db'
@@ -22,7 +22,7 @@ export interface BridgeClient extends StoreClient {
    */
   caughtUp(): Promise<void>
 
-  batchSubscribe(members: BatchSubscriptionMember[]): Promise<BatchSubscription>
+  batchSubscribe(subscriptions: BatchSubscribeItem[]): Promise<BatchSubscription>
   batchUnsubscribe(batchId: string): Promise<void>
 }
 
@@ -68,7 +68,7 @@ export function storeClient(db: Db, options: StoreClientOptions = {}): BridgeCli
   const dispatch = (tick: SubscriptionTick) => {
     for (const envelope of tick.envelopes) dispatchEnvelope(envelope)
     for (const subscriptionId of tick.closed) targets.delete(subscriptionId)
-    for (const member of tick.batchMemberClosed) targets.delete(member.subscriptionId)
+    for (const subscription of tick.batchSubscriptionClosed) targets.delete(subscription.subscriptionId)
   }
 
   const reachCaughtUp = async () => {
@@ -107,24 +107,24 @@ export function storeClient(db: Db, options: StoreClientOptions = {}): BridgeCli
       targets.delete(subscriptionId)
       db.unsubscribe(subscriptionId)
     },
-    batchSubscribe: (members) =>
+    batchSubscribe: (subscriptions) =>
       alone(async () => {
-        if (members.length === 0) throw new Error('batchSubscribe requires at least one member')
-        const subscriptions = members.map((member) => ({
-          query: member.rql,
-          params: member.params,
-          options: member.config,
+        if (subscriptions.length === 0) throw new Error('batchSubscribe requires at least one subscription')
+        const inputs = subscriptions.map((subscription) => ({
+          query: subscription.rql,
+          params: subscription.params,
+          options: subscription.config,
         }))
         const ack = identity
-          ? await db.batchSubscribeAs(identity, subscriptions)
-          : await db.batchSubscribeRoot(subscriptions)
+          ? await db.batchSubscribeAs(identity, inputs)
+          : await db.batchSubscribeRoot(inputs)
 
-        const subscriptionIds: string[] = new Array(members.length)
-        for (const acked of ack.members) {
-          const member = members[acked.index]
-          if (!member) continue
+        const subscriptionIds: string[] = new Array(subscriptions.length)
+        for (const acked of ack.subscriptions) {
+          const subscription = subscriptions[acked.index]
+          if (!subscription) continue
           subscriptionIds[acked.index] = acked.subscriptionId
-          targets.set(acked.subscriptionId, { callbacks: member.callbacks, shape: member.shape })
+          targets.set(acked.subscriptionId, { callbacks: subscription.callbacks, shape: subscription.shape })
         }
         batches.set(ack.batchId, subscriptionIds.filter((id) => id !== undefined))
 

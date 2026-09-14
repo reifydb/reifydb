@@ -23,11 +23,9 @@ use reifydb_cdc::consume::{
 	watermark::CdcConsumerWatermark,
 };
 use reifydb_core::{
-	common::CommitVersion,
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
-			id::SubscriptionId,
 			subscription::SubscriptionInspectorRef,
 		},
 		cdc::CdcConsumerId,
@@ -66,7 +64,7 @@ use crate::{
 	store::SubscriptionStore,
 	tracker::{SubscriptionPositionTracker, SubscriptionSourceTracker},
 	watermark::compute_subscription_watermarks,
-	worker::{SubscriptionWorkerActor, SubscriptionWorkerMessage},
+	worker::{SubscriptionWorkerActor, SubscriptionWorkerMessage, worker_name},
 };
 
 pub struct SubscriptionSubsystem {
@@ -112,6 +110,7 @@ impl SubscriptionSubsystem {
 			source_tracker,
 			position_tracker,
 			store.clone(),
+			delivery,
 		);
 
 		let cdc_wake_registry =
@@ -144,10 +143,6 @@ impl SubscriptionSubsystem {
 
 	pub fn store(&self) -> &Arc<SubscriptionStore> {
 		&self.state.store
-	}
-
-	pub fn gate(&self, id: &SubscriptionId) -> Option<CommitVersion> {
-		self.state.gate(id)
 	}
 
 	#[inline]
@@ -203,7 +198,7 @@ impl SubscriptionSubsystem {
 				store.clone(),
 				delivery.clone(),
 			);
-			let handle = spawner.spawn_coordination(&format!("subscription-worker-{}", i), worker);
+			let handle = spawner.spawn_coordination(&worker_name(i), worker);
 			workers.push(handle.actor_ref().clone());
 			worker_handles.push(handle);
 		}

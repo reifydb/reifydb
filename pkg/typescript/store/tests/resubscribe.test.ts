@@ -52,8 +52,8 @@ afterEach(async () => {
 });
 
 describe('batched subscription params', () => {
-    it('sends each member its own params in the batch', async () => {
-        // A batch that drops params runs every member unfiltered, so each must carry its own at its own index.
+    it('sends each subscription its own params in the batch', async () => {
+        // A batch that drops params runs every subscription unfiltered, so each must carry its own at its own index.
         await batchOfTwo();
 
         const [batch] = sockets[0].requests('BatchSubscribe');
@@ -62,7 +62,7 @@ describe('batched subscription params', () => {
     });
 
     it('sends the same params again when the batch is re-established after a reconnect', async () => {
-        // The resubscribe must carry the params again, otherwise a reconnect silently widens every filtered member.
+        // The resubscribe must carry the params again, otherwise a reconnect silently widens every filtered subscription.
         await batchOfTwo(tuned);
         sockets[0].ackBatch('batch-1', ['server-1', 'server-2']);
         await flush();
@@ -94,8 +94,8 @@ describe('a refused resubscribe', () => {
         expect((entry.error as ReifyError).code).toBe('AUTH_REQUIRED');
     });
 
-    it('marks every member of a refused batch errored', async () => {
-        // The whole batch is refused at once, so every member must go to error, not just the first one.
+    it('marks every subscription of a refused batch errored', async () => {
+        // The whole batch is refused at once, so every subscription must go to error, not just the first one.
         const store = await batchOfTwo();
         sockets[0].ackBatch('batch-1', ['server-1', 'server-2']);
         await flush();
@@ -127,8 +127,8 @@ describe('a refused resubscribe', () => {
 });
 
 describe('a partial resubscribe ack', () => {
-    it('marks a member the ack left out errored instead of leaving its stale rows ready', async () => {
-        // A member the server did not re-establish never updates again, so it must not stay ready.
+    it('marks a subscription the ack left out errored instead of leaving its stale rows ready', async () => {
+        // A subscription the server did not re-establish never updates again, so it must not stay ready.
         const store = await batchOfTwo();
         sockets[0].ackBatch('batch-1', ['server-1', 'server-2']);
         await flush();

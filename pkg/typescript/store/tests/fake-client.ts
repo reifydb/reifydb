@@ -4,7 +4,7 @@ import {asFrameResults} from '@reifydb/core';
 import type {FrameResults, ShapeNode} from '@reifydb/core';
 import type {
     BatchSubscription,
-    BatchSubscriptionMember,
+    BatchSubscribeItem,
     SubscriptionCallbacks,
     SubscriptionConfig
 } from '@reifydb/client';
@@ -24,7 +24,7 @@ export interface SubscribeCall extends Deferred<string> {
 }
 
 export interface BatchSubscribeCall extends Deferred<BatchSubscription> {
-    members: BatchSubscriptionMember[];
+    subscriptions: BatchSubscribeItem[];
 }
 
 export interface UnsubscribeCall extends Deferred<void> {
@@ -98,9 +98,9 @@ export class FakeClient implements StoreClient {
 export class BatchingFakeClient extends FakeClient {
     readonly batches: BatchSubscribeCall[] = [];
 
-    batchSubscribe(members: BatchSubscriptionMember[]): Promise<BatchSubscription> {
+    batchSubscribe(subscriptions: BatchSubscribeItem[]): Promise<BatchSubscription> {
         const {promise, ...call} = deferred<BatchSubscription>();
-        this.batches.push({members, ...call});
+        this.batches.push({subscriptions, ...call});
         return promise;
     }
 }

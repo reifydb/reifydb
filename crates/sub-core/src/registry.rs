@@ -164,12 +164,12 @@ impl WarmingBuffer {
 	}
 }
 
-struct MemberPending {
+struct SubscriptionPending {
 	frames: Vec<Frame>,
 	gate: FlushGate,
 }
 
-impl MemberPending {
+impl SubscriptionPending {
 	fn new(linger: Duration, throttle: Duration) -> Self {
 		Self {
 			frames: Vec::new(),
@@ -195,8 +195,8 @@ struct BatchState<S: WireSink> {
 	connection_id: ConnectionId,
 	sink: S,
 	format: S::Format,
-	member_ids: Vec<SubscriptionId>,
-	pending: DashMap<SubscriptionId, MemberPending>,
+	subscription_ids: Vec<SubscriptionId>,
+	pending: DashMap<SubscriptionId, SubscriptionPending>,
 	lingers: HashMap<SubscriptionId, Duration>,
 	throttles: HashMap<SubscriptionId, Duration>,
 }
@@ -308,7 +308,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 			let mut entry = batch
 				.pending
 				.entry(subscription_id)
-				.or_insert_with(|| MemberPending::new(linger, throttle));
+				.or_insert_with(|| SubscriptionPending::new(linger, throttle));
 			for (op, columns) in buffered {
 				entry.push(Frame::from(columns).with_op(op), now);
 			}
@@ -341,7 +341,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	pub fn register_batch(
 		&self,
 		connection_id: ConnectionId,
-		members: Vec<(SubscriptionId, Duration)>,
+		subscription_lingers: Vec<(SubscriptionId, Duration)>,
 		sink: S,
 		format: S::Format,
 		clock: &Clock,
@@ -349,17 +349,17 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	) -> BatchId {
 		let batch_id = BatchId(Uuid7::generate(clock, rng));
 
-		let member_ids: Vec<SubscriptionId> = members.iter().map(|(id, _)| *id).collect();
-		let lingers: HashMap<SubscriptionId, Duration> = members.into_iter().collect();
+		let subscription_ids: Vec<SubscriptionId> = subscription_lingers.iter().map(|(id, _)| *id).collect();
+		let lingers: HashMap<SubscriptionId, Duration> = subscription_lingers.into_iter().collect();
 		let mut throttles: HashMap<SubscriptionId, Duration> = HashMap::new();
 
-		for member_id in &member_ids {
-			if let Some(mut state) = self.subscriptions.get_mut(member_id) {
+		for subscription_id in &subscription_ids {
+			if let Some(mut state) = self.subscriptions.get_mut(subscription_id) {
 				state.batch_id = Some(batch_id);
 				let throttle_millis = state.throttle.gate.throttle_millis;
 				if throttle_millis != 0 {
 					throttles.insert(
-						*member_id,
+						*subscription_id,
 						Duration::from_milliseconds(throttle_millis as i64).unwrap(),
 					);
 				}
@@ -372,7 +372,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 				connection_id,
 				sink,
 				format,
-				member_ids: member_ids.clone(),
+				subscription_ids: subscription_ids.clone(),
 				pending: DashMap::new(),
 				lingers,
 				throttles,
@@ -382,9 +382,9 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		self.connection_batches.entry(connection_id).or_default().push(batch_id);
 
 		debug!(
-			"Registered batch {} with {} members for connection {}",
+			"Registered batch {} with {} subscriptions for connection {}",
 			batch_id,
-			member_ids.len(),
+			subscription_ids.len(),
 			connection_id
 		);
 		batch_id
@@ -393,22 +393,22 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	pub fn unsubscribe_batch(&self, batch_id: BatchId) -> Option<Vec<SubscriptionId>> {
 		let (_, state) = self.batches.remove(&batch_id)?;
 		let connection_id = state.connection_id;
-		let members = state.member_ids.clone();
+		let subscription_ids = state.subscription_ids.clone();
 
-		self.remove_batch_members(&members);
+		self.remove_batch_subscriptions(&subscription_ids);
 		self.prune_empty_connection(connection_id);
 		self.prune_empty_connection_batches(connection_id, batch_id);
 
-		debug!("Unsubscribed batch {} ({} members)", batch_id, members.len());
-		Some(members)
+		debug!("Unsubscribed batch {} ({} subscriptions)", batch_id, subscription_ids.len());
+		Some(subscription_ids)
 	}
 
 	#[inline]
-	fn remove_batch_members(&self, members: &[SubscriptionId]) {
+	fn remove_batch_subscriptions(&self, subscription_ids: &[SubscriptionId]) {
 		let mut removed_by_conn: HashMap<ConnectionId, HashSet<SubscriptionId>> = HashMap::new();
-		for member_id in members {
-			if let Some((_, sub_state)) = self.subscriptions.remove(member_id) {
-				removed_by_conn.entry(sub_state.connection_id).or_default().insert(*member_id);
+		for subscription_id in subscription_ids {
+			if let Some((_, sub_state)) = self.subscriptions.remove(subscription_id) {
+				removed_by_conn.entry(sub_state.connection_id).or_default().insert(*subscription_id);
 			}
 		}
 		for (conn_id, removed) in removed_by_conn {
@@ -466,7 +466,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 			let mut entry = batch
 				.pending
 				.entry(subscription_id)
-				.or_insert_with(|| MemberPending::new(linger, throttle));
+				.or_insert_with(|| SubscriptionPending::new(linger, throttle));
 			for frame in frames {
 				entry.push(frame, now);
 			}
@@ -477,11 +477,14 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		true
 	}
 
-	pub fn emit_batch_member_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> bool {
+	pub fn emit_batch_subscription_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> bool {
 		let Some(batch) = self.batches.get(&batch_id) else {
 			return false;
 		};
-		matches!(batch.sink.send_batch_member_closed(batch_id, subscription_id), DeliveryResult::Delivered)
+		matches!(
+			batch.sink.send_batch_subscription_closed(batch_id, subscription_id),
+			DeliveryResult::Delivered
+		)
 	}
 
 	pub fn unsubscribe(&self, subscription_id: SubscriptionId) -> bool {
@@ -505,7 +508,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 			}
 
 			if let Some(batch_id) = state.batch_id {
-				self.drop_batch_member(batch_id, subscription_id);
+				self.drop_batch_subscription(batch_id, subscription_id);
 			}
 
 			debug!("Unsubscribed subscription {}", subscription_id);
@@ -516,13 +519,13 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	}
 
 	#[inline]
-	fn drop_batch_member(&self, batch_id: BatchId, subscription_id: SubscriptionId) {
+	fn drop_batch_subscription(&self, batch_id: BatchId, subscription_id: SubscriptionId) {
 		let emptied = self.batches.get_mut(&batch_id).and_then(|mut batch| {
-			batch.member_ids.retain(|id| *id != subscription_id);
+			batch.subscription_ids.retain(|id| *id != subscription_id);
 			batch.pending.remove(&subscription_id);
 			batch.lingers.remove(&subscription_id);
 			batch.throttles.remove(&subscription_id);
-			batch.member_ids.is_empty().then_some(batch.connection_id)
+			batch.subscription_ids.is_empty().then_some(batch.connection_id)
 		});
 		if let Some(connection_id) = emptied {
 			self.batches.remove(&batch_id);
@@ -594,7 +597,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	}
 
 	#[inline]
-	fn deliver_to_batch_member(
+	fn deliver_to_batch_subscription(
 		&self,
 		batch_id: BatchId,
 		subscription_id: &SubscriptionId,
@@ -609,7 +612,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		let throttle = batch.throttles.get(subscription_id).copied().unwrap_or(Duration::zero());
 		batch.pending
 			.entry(*subscription_id)
-			.or_insert_with(|| MemberPending::new(linger, throttle))
+			.or_insert_with(|| SubscriptionPending::new(linger, throttle))
 			.push(Frame::from(columns).with_op(op), now);
 		DeliveryResult::Delivered
 	}
@@ -711,16 +714,16 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 			let mut due: Vec<(SubscriptionId, Vec<Frame>)> = Vec::new();
 			for mut e in batch.pending.iter_mut() {
 				let key = *e.key();
-				let member = e.value_mut();
-				if member.frames.is_empty() {
+				let pending = e.value_mut();
+				if pending.frames.is_empty() {
 					continue;
 				}
-				if member.ready(now) {
-					let frames = mem::take(&mut member.frames);
-					member.gate.on_flush(now);
+				if pending.ready(now) {
+					let frames = mem::take(&mut pending.frames);
+					pending.gate.on_flush(now);
 					due.push((key, frames));
 				} else {
-					let rem = member.remaining_millis(now);
+					let rem = pending.remaining_millis(now);
 					*next_deadline = Some(next_deadline.map_or(rem, |d| d.min(rem)));
 				}
 			}
@@ -735,8 +738,12 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		}
 
 		for batch_id in dead_batches {
-			if let Some(members) = self.unsubscribe_batch(batch_id) {
-				debug!("Batch {} push channel closed; cascaded {} members", batch_id, members.len());
+			if let Some(subscription_ids) = self.unsubscribe_batch(batch_id) {
+				debug!(
+					"Batch {} push channel closed; cascaded {} subscriptions",
+					batch_id,
+					subscription_ids.len()
+				);
 			}
 		}
 	}
@@ -745,7 +752,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 impl<S: WireSink> SubscriptionDelivery for SubscriptionRegistry<S> {
 	fn try_deliver(&self, subscription_id: &SubscriptionId, op: DiffType, columns: Columns) -> DeliveryResult {
 		if let Some(batch_id) = self.batch_for(subscription_id) {
-			return self.deliver_to_batch_member(batch_id, subscription_id, op, columns);
+			return self.deliver_to_batch_subscription(batch_id, subscription_id, op, columns);
 		}
 
 		let mut state = match self.subscriptions.get_mut(subscription_id) {

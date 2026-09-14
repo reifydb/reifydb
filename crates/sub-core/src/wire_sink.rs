@@ -8,7 +8,7 @@ use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::column
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_value::value::{diff_type::DiffType, frame::frame::Frame};
 
-pub struct BatchSubscribedMember {
+pub struct BatchSubscribedEntry {
 	pub index: usize,
 	pub subscription_id: SubscriptionId,
 }
@@ -20,7 +20,7 @@ pub trait WireSink: Clone + Send + Sync + 'static {
 
 	fn send_subscribed(&self, sub_id: SubscriptionId) -> DeliveryResult;
 
-	fn send_batch_subscribed(&self, batch_id: BatchId, members: &[BatchSubscribedMember]) -> DeliveryResult;
+	fn send_batch_subscribed(&self, batch_id: BatchId, subscriptions: &[BatchSubscribedEntry]) -> DeliveryResult;
 
 	fn send_change(
 		&self,
@@ -44,7 +44,7 @@ pub trait WireSink: Clone + Send + Sync + 'static {
 		entries: Vec<(SubscriptionId, Vec<Frame>)>,
 	) -> DeliveryResult;
 
-	fn send_batch_member_closed(&self, batch_id: BatchId, sub_id: SubscriptionId) -> DeliveryResult;
+	fn send_batch_subscription_closed(&self, batch_id: BatchId, sub_id: SubscriptionId) -> DeliveryResult;
 
 	fn send_closed(&self, sub_id: SubscriptionId) -> DeliveryResult;
 }

@@ -17,7 +17,10 @@ use reifydb_value::{
 	value::{Value, frame::frame::Frame},
 };
 use serde_json::{Value as JsonValue, from_str as serde_json_from_str};
-use tokio::time::{sleep, timeout};
+use tokio::{
+	sync::Mutex,
+	time::{sleep, timeout},
+};
 use tonic::{
 	Code, Request, Status,
 	codec::Streaming,
@@ -27,7 +30,7 @@ use tonic::{
 
 use super::generated::{
 	AdminRequest as ProtoAdminRequest, AuthenticateRequest as ProtoAuthenticateRequest,
-	BatchSubscribeMember as ProtoBatchSubscribeMember, BatchSubscribeRequest as ProtoBatchSubscribeRequest,
+	BatchSubscribeItem as ProtoBatchSubscribeItem, BatchSubscribeRequest as ProtoBatchSubscribeRequest,
 	BatchSubscriptionEvent, BatchUnsubscribeRequest as ProtoBatchUnsubscribeRequest,
 	CommandRequest as ProtoCommandRequest, HydrationOptions as ProtoHydrationOptions,
 	LogoutRequest as ProtoLogoutRequest, NamedParams, OperationRequest as ProtoOperationRequest,
@@ -38,14 +41,14 @@ use super::generated::{
 	reify_db_client::ReifyDbClient, subscription_event,
 };
 use crate::{
-	AdminResult, BatchChangeEntry, BatchChangePayload, BatchMemberClosedPayload, BatchMemberInfo, BatchPushEvent,
-	ChangePayload, CommandResult, FrameChange, LoginResult, QueryResult, QueueClaimRequest, ReconnectOptions,
-	ResponseMeta, WireFormat,
+	AdminResult, BatchChangeEntry, BatchChangePayload, BatchPushEvent, BatchSubscriptionClosedPayload,
+	BatchSubscriptionInfo, ChangePayload, CommandResult, FrameChange, LoginResult, QueryResult, QueueClaimRequest,
+	ReconnectOptions, ResponseMeta, WireFormat,
 	changes::frames_to_changes,
 	client::{BatchSubscription as ClientBatchSubscription, ReifyClient, Subscription as ClientSubscription},
 	error::ClientError,
 	reconnect::{backoff_millis, fire, millis_to_std},
-	subscription::{BatchItem, SubscriptionConfig},
+	subscription::{BatchSubscribeItem, SubscriptionConfig},
 };
 
 fn extract_meta(metadata: &MetadataMap) -> Option<ResponseMeta> {
@@ -103,6 +106,7 @@ pub struct GrpcClient {
 	url: String,
 	reconnect: ReconnectOptions,
 	sub_id_counter: Arc<AtomicU64>,
+	batch_server_ids: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl GrpcClient {
@@ -127,6 +131,7 @@ impl GrpcClient {
 			url: url.to_string(),
 			reconnect: options.reconnect,
 			sub_id_counter: Arc::new(AtomicU64::new(1)),
+			batch_server_ids: Arc::new(Mutex::new(HashMap::new())),
 		})
 	}
 
@@ -330,12 +335,12 @@ impl GrpcClient {
 		Ok(())
 	}
 
-	pub async fn batch_subscribe(&self, items: &[BatchItem<'_>]) -> Result<BatchGrpcSubscription, Error> {
+	pub async fn batch_subscribe(&self, items: &[BatchSubscribeItem<'_>]) -> Result<BatchGrpcSubscription, Error> {
 		let request = ProtoBatchSubscribeRequest {
 			subscriptions: items
 				.iter()
 				.map(|i| {
-					Ok(ProtoBatchSubscribeMember {
+					Ok(ProtoBatchSubscribeItem {
 						rql: i.rql.to_string(),
 						options: Some(subscription_options_to_proto(&i.config)?),
 					})
@@ -350,12 +355,14 @@ impl GrpcClient {
 
 		let response = client.batch_subscribe(req).await.map_err(status_to_error)?;
 		let mut stream = response.into_inner();
-		let (_, members) = consume_batch_subscribed(&mut stream).await?;
+		let (server_batch_id, acked) = consume_batch_subscribed(&mut stream).await?;
+		self.batch_server_ids.lock().await.insert(client_batch_id.clone(), server_batch_id);
 
 		Ok(BatchGrpcSubscription {
 			client_batch_id,
-			members,
+			acked,
 			stream,
+			batch_server_ids: self.batch_server_ids.clone(),
 			url: self.url.clone(),
 			token: self.token.clone(),
 			request,
@@ -365,8 +372,9 @@ impl GrpcClient {
 	}
 
 	pub async fn batch_unsubscribe(&self, batch_id: &str) -> Result<(), Error> {
+		let server_batch_id = self.batch_server_ids.lock().await.remove(batch_id);
 		let request = ProtoBatchUnsubscribeRequest {
-			batch_id: batch_id.to_string(),
+			batch_id: server_batch_id.unwrap_or_else(|| batch_id.to_string()),
 		};
 		let mut client = self.inner.clone();
 		let mut req = Request::new(request);
@@ -413,21 +421,21 @@ async fn consume_subscribed(stream: &mut Streaming<SubscriptionEvent>) -> Result
 
 async fn consume_batch_subscribed(
 	stream: &mut Streaming<BatchSubscriptionEvent>,
-) -> Result<(String, Vec<BatchMemberHandle>), Error> {
+) -> Result<(String, Vec<BatchSubscriptionHandle>), Error> {
 	let first = stream.message().await.map_err(status_to_error)?.ok_or_else(|| {
 		ClientError::UnexpectedResponse("Stream closed before receiving batch subscribed event".to_string())
 	})?;
 	match first.event {
 		Some(batch_subscription_event::Event::Subscribed(s)) => {
-			let members = s
-				.members
+			let subscriptions = s
+				.subscriptions
 				.into_iter()
-				.map(|m| BatchMemberHandle {
+				.map(|m| BatchSubscriptionHandle {
 					index: m.index as usize,
 					subscription_id: m.subscription_id,
 				})
 				.collect();
-			Ok((s.batch_id, members))
+			Ok((s.batch_id, subscriptions))
 		}
 		_ => Err(ClientError::UnexpectedResponse("Expected BatchSubscribedEvent as first message".to_string())
 			.into()),
@@ -445,15 +453,16 @@ pub struct GrpcSubscription {
 }
 
 #[derive(Debug, Clone)]
-pub struct BatchMemberHandle {
+pub struct BatchSubscriptionHandle {
 	pub index: usize,
 	pub subscription_id: String,
 }
 
 pub struct BatchGrpcSubscription {
 	client_batch_id: String,
-	members: Vec<BatchMemberHandle>,
+	acked: Vec<BatchSubscriptionHandle>,
 	stream: Streaming<BatchSubscriptionEvent>,
+	batch_server_ids: Arc<Mutex<HashMap<String, String>>>,
 	url: String,
 	token: Option<String>,
 	request: ProtoBatchSubscribeRequest,
@@ -470,7 +479,7 @@ pub struct BatchFramesEnvelope {
 #[derive(Debug, Clone)]
 pub enum BatchStreamEvent {
 	Change(BatchFramesEnvelope),
-	MemberClosed {
+	SubscriptionClosed {
 		batch_id: String,
 		subscription_id: String,
 	},
@@ -481,8 +490,8 @@ impl BatchGrpcSubscription {
 		&self.client_batch_id
 	}
 
-	pub fn members(&self) -> &[BatchMemberHandle] {
-		&self.members
+	pub fn subscriptions(&self) -> &[BatchSubscriptionHandle] {
+		&self.acked
 	}
 
 	pub async fn recv(&mut self) -> Option<BatchStreamEvent> {
@@ -515,8 +524,8 @@ impl BatchGrpcSubscription {
 								entries,
 							}));
 						}
-						Some(batch_subscription_event::Event::MemberClosed(m)) => {
-							return Some(BatchStreamEvent::MemberClosed {
+						Some(batch_subscription_event::Event::SubscriptionClosed(m)) => {
+							return Some(BatchStreamEvent::SubscriptionClosed {
 								batch_id: self.client_batch_id.clone(),
 								subscription_id: m.subscription_id,
 							});
@@ -536,14 +545,16 @@ impl BatchGrpcSubscription {
 		}
 	}
 
-	async fn open_stream(&self) -> Option<(Streaming<BatchSubscriptionEvent>, Vec<BatchMemberHandle>)> {
+	async fn open_stream(
+		&self,
+	) -> Option<(Streaming<BatchSubscriptionEvent>, String, Vec<BatchSubscriptionHandle>)> {
 		let channel = open_channel(&self.url).await.ok()?;
 		let mut client = ReifyDbClient::new(channel);
 		let mut req = Request::new(self.request.clone());
 		attach_token(&mut req, &self.token);
 		let mut stream = client.batch_subscribe(req).await.ok()?.into_inner();
-		let (_, members) = consume_batch_subscribed(&mut stream).await.ok()?;
-		Some((stream, members))
+		let (server_batch_id, acked) = consume_batch_subscribed(&mut stream).await.ok()?;
+		Some((stream, server_batch_id, acked))
 	}
 
 	async fn reconnect_stream(&mut self) -> bool {
@@ -553,8 +564,11 @@ impl BatchGrpcSubscription {
 
 			let opened =
 				timeout(millis_to_std(self.reconnect.connect_timeout_ms), self.open_stream()).await;
-			if let Ok(Some((stream, members))) = opened {
-				self.members = members;
+			if let Ok(Some((stream, server_batch_id, acked))) = opened {
+				if let Some(entry) = self.batch_server_ids.lock().await.get_mut(&self.client_batch_id) {
+					*entry = server_batch_id;
+				}
+				self.acked = acked;
 				self.stream = stream;
 				fire(&self.reconnect.on_reconnect);
 				return true;
@@ -719,7 +733,7 @@ impl ClientSubscription for GrpcSubscriptionAdapter {
 
 pub struct BatchGrpcSubscriptionAdapter {
 	inner: BatchGrpcSubscription,
-	members_info: Vec<BatchMemberInfo>,
+	subscription_infos: Vec<BatchSubscriptionInfo>,
 }
 
 #[async_trait::async_trait]
@@ -728,8 +742,8 @@ impl ClientBatchSubscription for BatchGrpcSubscriptionAdapter {
 		self.inner.batch_id()
 	}
 
-	fn members(&self) -> &[BatchMemberInfo] {
-		&self.members_info
+	fn subscriptions(&self) -> &[BatchSubscriptionInfo] {
+		&self.subscription_infos
 	}
 
 	async fn recv(&mut self) -> Option<BatchPushEvent> {
@@ -747,10 +761,10 @@ impl ClientBatchSubscription for BatchGrpcSubscriptionAdapter {
 					entries,
 				})
 			}
-			BatchStreamEvent::MemberClosed {
+			BatchStreamEvent::SubscriptionClosed {
 				batch_id,
 				subscription_id,
-			} => BatchPushEvent::MemberClosed(BatchMemberClosedPayload {
+			} => BatchPushEvent::SubscriptionClosed(BatchSubscriptionClosedPayload {
 				batch_id,
 				subscription_id,
 			}),
@@ -850,20 +864,20 @@ impl ReifyClient for GrpcClient {
 
 	async fn batch_subscribe<'a>(
 		&self,
-		items: &[BatchItem<'a>],
+		items: &[BatchSubscribeItem<'a>],
 	) -> Result<Box<dyn ClientBatchSubscription>, Error> {
 		let inner = GrpcClient::batch_subscribe(self, items).await?;
-		let members_info: Vec<BatchMemberInfo> = inner
-			.members()
+		let subscription_infos: Vec<BatchSubscriptionInfo> = inner
+			.subscriptions()
 			.iter()
-			.map(|m| BatchMemberInfo {
+			.map(|m| BatchSubscriptionInfo {
 				index: m.index,
 				subscription_id: m.subscription_id.clone(),
 			})
 			.collect();
 		Ok(Box::new(BatchGrpcSubscriptionAdapter {
 			inner,
-			members_info,
+			subscription_infos,
 		}))
 	}
 
@@ -921,8 +935,8 @@ mod tests {
 	}
 
 	#[test]
-	fn batch_entry_carries_the_member_decode_error() {
-		// A member's decode error must reach its batch entry, never be replaced by none.
+	fn batch_entry_carries_the_subscription_decode_error() {
+		// A subscription's decode error must reach its batch entry, never be replaced by none.
 		let change = GrpcChange {
 			changes: Vec::new(),
 			decode_error: Some("bad rbcf".to_string()),

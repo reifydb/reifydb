@@ -60,23 +60,23 @@ message SubscribedEvent { string subscription_id = 1; }
 message ChangeEvent { bytes rbcf = 1; }
 
 // BatchSubscribe opens a single stream that delivers coalesced deltas from N RQL queries.
-// Each poller tick emits one BatchChangeEvent containing an entry per member that had data.
-message BatchSubscribeMember { string rql = 1; optional SubscribeOptions options = 2; }
-message BatchSubscribeRequest { repeated BatchSubscribeMember subscriptions = 1; }
+// Each poller tick emits one BatchChangeEvent containing an entry per subscription that had data.
+message BatchSubscribeItem { string rql = 1; optional SubscribeOptions options = 2; }
+message BatchSubscribeRequest { repeated BatchSubscribeItem subscriptions = 1; }
 message BatchUnsubscribeRequest { string batch_id = 1; }
 message BatchUnsubscribeResponse { string batch_id = 1; }
 message BatchSubscriptionEvent {
   oneof event {
     BatchSubscribedEvent subscribed = 1;
     BatchChangeEvent change = 2;
-    BatchMemberClosedEvent member_closed = 3;
+    BatchSubscriptionClosedEvent subscription_closed = 3;
   }
 }
 message BatchSubscribedEvent {
   string batch_id = 1;
-  repeated BatchMember members = 2;
+  repeated BatchSubscriptionInfo subscriptions = 2;
 }
-message BatchMember {
+message BatchSubscriptionInfo {
   uint32 index = 1;
   string subscription_id = 2;
 }
@@ -88,7 +88,7 @@ message BatchChangeEntry {
   string subscription_id = 1;
   ChangeEvent change = 2;
 }
-message BatchMemberClosedEvent {
+message BatchSubscriptionClosedEvent {
   string batch_id = 1;
   string subscription_id = 2;
 }

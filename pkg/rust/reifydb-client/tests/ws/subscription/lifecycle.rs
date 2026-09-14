@@ -245,7 +245,7 @@ fn another_connection_cannot_unsubscribe_a_batch_it_does_not_own() {
 			.unwrap_or_else(|| panic!("the owner's batch subscribe was refused: {subscribed}"))
 			.to_string();
 		let subscription_id =
-			subscribed["payload"]["members"][0]["subscription_id"].as_str().unwrap().to_string();
+			subscribed["payload"]["subscriptions"][0]["subscription_id"].as_str().unwrap().to_string();
 
 		let mut intruder = raw_connect(&url).await;
 		let foreign = raw_request(

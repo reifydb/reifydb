@@ -90,8 +90,8 @@ impl Subscriptions {
 		query: String,
 		params: Params,
 		options: SubscribeOptions,
-	) -> Result<SubscriptionId, SubscribeError<Error>> {
-		let ack = handle_subscribe(
+	) -> ReifyResult<Result<SubscriptionId, SubscribeError<Error>>> {
+		let ack = match handle_subscribe(
 			&self.host,
 			self.connection_id,
 			identity,
@@ -103,19 +103,23 @@ impl Subscriptions {
 			Rbcf,
 			self.shutdown.subscribe(),
 		)
-		.await?;
+		.await?
+		{
+			Ok(ack) => ack,
+			Err(e) => return Ok(Err(e)),
+		};
 		if let Some(handle) = ack.remote_handle {
 			self.remote_tasks.lock().insert(ack.subscription_id, handle);
 		}
-		Ok(ack.subscription_id)
+		Ok(Ok(ack.subscription_id))
 	}
 
 	pub async fn batch_subscribe(
 		&self,
 		identity: IdentityId,
 		queries: &[(String, Params, SubscribeOptions)],
-	) -> Result<BatchAck, BatchSubscribeError<Error>> {
-		let mut ack = handle_batch_subscribe(
+	) -> ReifyResult<Result<BatchAck, BatchSubscribeError<Error>>> {
+		let mut ack = match handle_batch_subscribe(
 			&self.host,
 			self.connection_id,
 			identity,
@@ -125,12 +129,16 @@ impl Subscriptions {
 			Rbcf,
 			self.shutdown.subscribe(),
 		)
-		.await?;
+		.await?
+		{
+			Ok(ack) => ack,
+			Err(e) => return Ok(Err(e)),
+		};
 		if !ack.remote_handles.is_empty() {
 			let handles = mem::take(&mut ack.remote_handles);
 			self.batch_remote_tasks.lock().entry(ack.batch_id).or_default().extend(handles);
 		}
-		Ok(ack)
+		Ok(Ok(ack))
 	}
 
 	/// Drops the subscription and the row that backs it. Unsubscribing twice is not an error: the
@@ -144,14 +152,14 @@ impl Subscriptions {
 		cleanup_subscription_sync(self.host.engine(), subscription_id)
 	}
 
-	pub async fn batch_unsubscribe(&self, batch_id: BatchId) {
+	pub async fn batch_unsubscribe(&self, batch_id: BatchId) -> ReifyResult<()> {
 		if let Some(handles) = self.batch_remote_tasks.lock().remove(&batch_id) {
 			for handle in handles {
 				handle.abort();
 			}
 		}
-		let _ = handle_batch_unsubscribe(self.host.engine(), &self.registry, self.connection_id, batch_id)
-			.await;
+		handle_batch_unsubscribe(self.host.engine(), &self.registry, self.connection_id, batch_id).await?;
+		Ok(())
 	}
 
 	/// Moves whatever the pipeline staged into the sink, then empties it.

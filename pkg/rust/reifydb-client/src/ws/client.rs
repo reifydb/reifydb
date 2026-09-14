@@ -27,18 +27,19 @@ use tokio_tungstenite::{
 };
 
 use crate::{
-	AdminRequest, AdminResult, AuthRequest, BatchChangeEntry, BatchChangePayload, BatchMemberInfo, BatchPushEvent,
-	BatchSubscribeRequest, BatchUnsubscribeRequest, CallRequest, ChangePayload, CommandRequest, CommandResult,
-	ErrResponse, FrameChange, LoginResult, QueryRequest, QueryResult, QueueClaimRequest, ReconnectOptions, Request,
-	RequestPayload, Response, ResponseMeta, ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest,
-	WireBatchChangePayload, WireBatchSubscribeMember, WireChangePayload, WireFormat, WsQueueClaimRequest,
+	AdminRequest, AdminResult, AuthRequest, BatchChangeEntry, BatchChangePayload, BatchPushEvent,
+	BatchSubscribeRequest, BatchSubscriptionInfo, BatchUnsubscribeRequest, CallRequest, ChangePayload,
+	CommandRequest, CommandResult, ErrResponse, FrameChange, LoginResult, QueryRequest, QueryResult,
+	QueueClaimRequest, ReconnectOptions, Request, RequestPayload, Response, ResponseMeta, ResponsePayload,
+	ServerPush, SubscribeRequest, UnsubscribeRequest, WireBatchChangePayload, WireBatchSubscribeItem,
+	WireChangePayload, WireFormat, WsQueueClaimRequest,
 	changes::frames_to_changes,
 	client::{BatchSubscription as ClientBatchSubscription, ReifyClient, Subscription as ClientSubscription},
 	error::ClientError,
 	params_to_wire,
 	reconnect::{backoff_millis, fire, millis_to_std},
 	session::{parse_admin_response, parse_call_response, parse_command_response, parse_query_response},
-	subscription::{BatchItem, SubscriptionConfig},
+	subscription::{BatchSubscribeItem, SubscriptionConfig},
 	subscription_options_to_wire,
 	utils::generate_request_id,
 };
@@ -354,9 +355,10 @@ impl WsClient {
 				let payload = batch_change_from_json(wire);
 				Self::route_batch(shared, &server_batch_id, BatchPushEvent::Change(payload)).await;
 			}
-			ServerPush::BatchMemberClosed(m) => {
+			ServerPush::BatchSubscriptionClosed(m) => {
 				let server_batch_id = m.batch_id.clone();
-				Self::route_batch(shared, &server_batch_id, BatchPushEvent::MemberClosed(m)).await;
+				Self::route_batch(shared, &server_batch_id, BatchPushEvent::SubscriptionClosed(m))
+					.await;
 			}
 			ServerPush::BatchClosed(c) => {
 				let server_batch_id = c.batch_id.clone();
@@ -616,7 +618,7 @@ impl WsClient {
 			}
 		}
 
-		let batches: Vec<(u64, Vec<WireBatchSubscribeMember>)> = {
+		let batches: Vec<(u64, Vec<WireBatchSubscribeItem>)> = {
 			let mut guard = shared.active_batches.lock().await;
 			guard.iter_mut()
 				.map(|(cid, entry)| {
@@ -944,7 +946,7 @@ impl WsClient {
 		entry.server_id
 	}
 
-	pub async fn batch_subscribe(&self, items: &[BatchItem<'_>]) -> Result<WsBatchSubscription, Error> {
+	pub async fn batch_subscribe(&self, items: &[BatchSubscribeItem<'_>]) -> Result<WsBatchSubscription, Error> {
 		let client_id = self.batch_id_counter.fetch_add(1, Ordering::Relaxed);
 		let req_id = generate_request_id();
 		let (push_tx, push_rx) = mpsc::channel::<BatchPushEvent>(100);
@@ -981,7 +983,7 @@ impl WsClient {
 		match response.payload {
 			ResponsePayload::BatchSubscribed(ack) => Ok(WsBatchSubscription {
 				batch_id: client_id.to_string(),
-				members: ack.members,
+				subscriptions: ack.subscriptions,
 				push_rx,
 			}),
 			ResponsePayload::Err(err) => {
@@ -1082,7 +1084,7 @@ impl Drop for WsClient {
 
 pub struct WsBatchSubscription {
 	batch_id: String,
-	members: Vec<BatchMemberInfo>,
+	subscriptions: Vec<BatchSubscriptionInfo>,
 	push_rx: mpsc::Receiver<BatchPushEvent>,
 }
 
@@ -1091,8 +1093,8 @@ impl WsBatchSubscription {
 		&self.batch_id
 	}
 
-	pub fn members(&self) -> &[BatchMemberInfo] {
-		&self.members
+	pub fn subscriptions(&self) -> &[BatchSubscriptionInfo] {
+		&self.subscriptions
 	}
 
 	pub async fn recv(&mut self) -> Option<BatchPushEvent> {
@@ -1100,10 +1102,10 @@ impl WsBatchSubscription {
 	}
 }
 
-fn batch_subscriptions_to_wire(subscriptions: &[(String, SubscriptionConfig)]) -> Vec<WireBatchSubscribeMember> {
+fn batch_subscriptions_to_wire(subscriptions: &[(String, SubscriptionConfig)]) -> Vec<WireBatchSubscribeItem> {
 	subscriptions
 		.iter()
-		.map(|(rql, config)| WireBatchSubscribeMember {
+		.map(|(rql, config)| WireBatchSubscribeItem {
 			rql: rql.clone(),
 			options: subscription_options_to_wire(config),
 		})
@@ -1114,7 +1116,7 @@ fn stamp_batch_id(event: &mut BatchPushEvent, client_id: u64) {
 	let id = client_id.to_string();
 	match event {
 		BatchPushEvent::Change(payload) => payload.batch_id = id,
-		BatchPushEvent::MemberClosed(m) => m.batch_id = id,
+		BatchPushEvent::SubscriptionClosed(m) => m.batch_id = id,
 		BatchPushEvent::Closed(c) => c.batch_id = id,
 	}
 }
@@ -1244,8 +1246,8 @@ impl ClientBatchSubscription for WsBatchSubscription {
 		WsBatchSubscription::batch_id(self)
 	}
 
-	fn members(&self) -> &[BatchMemberInfo] {
-		WsBatchSubscription::members(self)
+	fn subscriptions(&self) -> &[BatchSubscriptionInfo] {
+		WsBatchSubscription::subscriptions(self)
 	}
 
 	async fn recv(&mut self) -> Option<BatchPushEvent> {
@@ -1326,7 +1328,7 @@ impl ReifyClient for WsClient {
 
 	async fn batch_subscribe<'a>(
 		&self,
-		items: &[BatchItem<'a>],
+		items: &[BatchSubscribeItem<'a>],
 	) -> Result<Box<dyn ClientBatchSubscription>, Error> {
 		let sub = WsClient::batch_subscribe(self, items).await?;
 		Ok(Box::new(sub))

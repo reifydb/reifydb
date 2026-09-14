@@ -40,7 +40,7 @@ pub use dst::DstClient;
 pub use error::ClientError;
 #[cfg(feature = "grpc")]
 pub use grpc::{
-	BatchFramesEnvelope, BatchGrpcSubscription, BatchMemberHandle, BatchStreamEvent, GrpcChange, GrpcClient,
+	BatchFramesEnvelope, BatchGrpcSubscription, BatchStreamEvent, BatchSubscriptionHandle, GrpcChange, GrpcClient,
 	GrpcClientOptions, GrpcSubscription, RawChangePayload,
 };
 #[cfg(feature = "http")]
@@ -74,7 +74,7 @@ pub use reifydb_value::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 #[cfg(any(feature = "ws", feature = "grpc", all(feature = "dst", reifydb_single_threaded)))]
-pub use subscription::{BatchItem, HydrationConfig, Linger, SubscriptionConfig, Throttle};
+pub use subscription::{BatchSubscribeItem, HydrationConfig, Linger, SubscriptionConfig, Throttle};
 #[cfg(feature = "ws")]
 pub use ws::{WsBatchSubscription, WsClient, WsClientOptions};
 
@@ -295,7 +295,7 @@ pub struct UnsubscribeRequest {
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
-pub struct WireBatchSubscribeMember {
+pub struct WireBatchSubscribeItem {
 	pub rql: String,
 	pub options: WireSubscribeOptions,
 }
@@ -303,7 +303,7 @@ pub struct WireBatchSubscribeMember {
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BatchSubscribeRequest {
-	pub subscriptions: Vec<WireBatchSubscribeMember>,
+	pub subscriptions: Vec<WireBatchSubscribeItem>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub format: Option<WireFormat>,
 }
@@ -448,12 +448,12 @@ pub struct UnsubscribedResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BatchSubscribedResponse {
 	pub batch_id: String,
-	pub members: Vec<BatchMemberInfo>,
+	pub subscriptions: Vec<BatchSubscriptionInfo>,
 }
 
 #[cfg_attr(any(feature = "http", feature = "ws"), derive(Serialize, Deserialize))]
 #[derive(Debug, Clone)]
-pub struct BatchMemberInfo {
+pub struct BatchSubscriptionInfo {
 	pub index: usize,
 	pub subscription_id: String,
 }
@@ -476,7 +476,7 @@ pub struct LogoutResponsePayload {
 pub enum ServerPush {
 	Change(WireChangePayload),
 	BatchChange(WireBatchChangePayload),
-	BatchMemberClosed(BatchMemberClosedPayload),
+	BatchSubscriptionClosed(BatchSubscriptionClosedPayload),
 	BatchClosed(BatchClosedPayload),
 }
 
@@ -550,7 +550,7 @@ pub struct BatchChangeEntry {
 
 #[cfg_attr(any(feature = "http", feature = "ws"), derive(Serialize, Deserialize))]
 #[derive(Debug, Clone)]
-pub struct BatchMemberClosedPayload {
+pub struct BatchSubscriptionClosedPayload {
 	pub batch_id: String,
 	pub subscription_id: String,
 }
@@ -564,7 +564,7 @@ pub struct BatchClosedPayload {
 #[derive(Debug, Clone)]
 pub enum BatchPushEvent {
 	Change(BatchChangePayload),
-	MemberClosed(BatchMemberClosedPayload),
+	SubscriptionClosed(BatchSubscriptionClosedPayload),
 	Closed(BatchClosedPayload),
 }
 

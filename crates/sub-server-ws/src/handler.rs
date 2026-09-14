@@ -15,6 +15,7 @@ use reifydb_core::{
 	},
 	metrics::execution::ExecutionMetrics,
 };
+use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel, system::ActorHandle};
 use reifydb_sub_core::{
 	cleanup::cleanup_subscription,
@@ -35,6 +36,7 @@ use reifydb_sub_server::{
 };
 use reifydb_subscription::batch::BatchId;
 use reifydb_value::{
+	error::Error,
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
@@ -99,6 +101,8 @@ pub async fn handle_connection(
 
 	let mut claim_tasks: Vec<JoinHandle<()>> = Vec::new();
 
+	let mut shutting_down = false;
+
 	loop {
 		claim_tasks.retain(|handle| !handle.is_finished());
 
@@ -109,6 +113,7 @@ pub async fn handle_connection(
 			result = shutdown.changed() => {
 				if result.is_err() || *shutdown.borrow() {
 					debug!("WebSocket connection {:?} shutting down", peer);
+					shutting_down = true;
 					let _ = sender.send(Message::Close(None)).await;
 					break;
 				}
@@ -165,10 +170,10 @@ pub async fn handle_connection(
 							break;
 						}
 					}
-					PushMessage::BatchMemberClosed { batch_id, subscription_id } => {
-						let msg = ServerPush::batch_member_closed(batch_id.to_string(), subscription_id.to_string()).to_json();
+					PushMessage::BatchSubscriptionClosed { batch_id, subscription_id } => {
+						let msg = ServerPush::batch_subscription_closed(batch_id.to_string(), subscription_id.to_string()).to_json();
 						if sender.send(Message::Text(msg.into())).await.is_err() {
-							debug!("Failed to send BatchMemberClosed to {:?}", peer);
+							debug!("Failed to send BatchSubscriptionClosed to {:?}", peer);
 							break;
 						}
 					}
@@ -202,7 +207,7 @@ pub async fn handle_connection(
 								deferred_tx: deferred_tx.clone(),
 								shutdown: shutdown.clone(),
 							},
-						).await;
+						).await.unwrap_or_else(|error| panic!("websocket connection {connection_id} failed: {error}"));
 						if let Some(resp) = response {
 							let msg = match resp {
 								WsResponse::Text(text) => Message::Text(text.into()),
@@ -252,7 +257,11 @@ pub async fn handle_connection(
 		handle.abort();
 	}
 	abort_remote_tasks(remote_tasks, batch_remote_tasks);
-	cleanup_connection_subscriptions(&state, &registry, connection_id).await;
+	if shutting_down {
+		registry.cleanup_connection(connection_id);
+	} else if let Err(error) = cleanup_connection_subscriptions(state.engine(), &registry, connection_id).await {
+		panic!("websocket connection {connection_id} failed to clean up: {error}");
+	}
 
 	debug!("WebSocket connection {} from {:?} cleaned up", connection_id, peer);
 }
@@ -307,16 +316,15 @@ fn abort_remote_tasks(
 
 #[inline]
 async fn cleanup_connection_subscriptions(
-	state: &AppState,
+	engine: &StandardEngine,
 	registry: &Arc<SubscriptionRegistry>,
 	connection_id: Uuid7,
-) {
+) -> Result<(), Error> {
 	let subscription_ids = registry.cleanup_connection(connection_id);
 	for subscription_id in subscription_ids {
-		if let Err(e) = cleanup_subscription(state.engine(), subscription_id).await {
-			warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
-		}
+		cleanup_subscription(engine, subscription_id).await?;
 	}
+	Ok(())
 }
 
 type ConnectionId = Uuid7;
@@ -336,19 +344,19 @@ pub(crate) struct ConnectionContext<'a> {
 	pub shutdown: watch::Receiver<bool>,
 }
 
-async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option<WsResponse> {
+async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Result<Option<WsResponse>, Error> {
 	let request: Request = match from_str(text) {
 		Ok(r) => r,
 		Err(e) => {
-			return Some(WsResponse::Text(build_error(
+			return Ok(Some(WsResponse::Text(build_error(
 				"0",
 				"PARSE_ERROR",
 				&format!("Invalid JSON: {}", e),
-			)));
+			))));
 		}
 	};
 
-	match request.payload {
+	Ok(match request.payload {
 		RequestPayload::Auth(auth) => handle_auth(&request.id, auth, conn).await,
 		RequestPayload::Admin(_) if !conn.state.admin_enabled() => {
 			Some(WsResponse::Text(build_error(&request.id, "NOT_FOUND", "Unknown request type")))
@@ -363,17 +371,17 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				Err(msg) => Some(WsResponse::Text(msg)),
 			}
 		}
-		RequestPayload::Subscribe(sub) => handle_subscribe(&request.id, sub, conn).await.map(WsResponse::Text),
+		RequestPayload::Subscribe(sub) => handle_subscribe(&request.id, sub, conn).await?.map(WsResponse::Text),
 		RequestPayload::BatchSubscribe(req) => {
-			handle_batch_subscribe(&request.id, req, conn).await.map(WsResponse::Text)
+			handle_batch_subscribe(&request.id, req, conn).await?.map(WsResponse::Text)
 		}
 		RequestPayload::BatchUnsubscribe(req) => {
-			handle_batch_unsubscribe(&request.id, req, conn).await.map(WsResponse::Text)
+			handle_batch_unsubscribe(&request.id, req, conn).await?.map(WsResponse::Text)
 		}
 		RequestPayload::QueueClaim(claim) => handle_queue_claim(&request.id, claim, conn),
 		RequestPayload::Logout => handle_logout(&request.id, conn).await,
-		RequestPayload::Unsubscribe(unsub) => handle_unsubscribe(&request.id, unsub, conn).await,
-	}
+		RequestPayload::Unsubscribe(unsub) => handle_unsubscribe(&request.id, unsub, conn).await?,
+	})
 }
 
 #[inline]
@@ -556,36 +564,34 @@ async fn handle_unsubscribe(
 	request_id: &str,
 	unsub: UnsubscribeRequest,
 	conn: &mut ConnectionContext<'_>,
-) -> Option<WsResponse> {
+) -> Result<Option<WsResponse>, Error> {
 	if let Some(handle) = conn.remote_tasks.remove(&unsub.subscription_id) {
 		handle.abort();
 		debug!("Connection {} unsubscribed from remote {}", conn.connection_id, unsub.subscription_id);
-		return Some(WsResponse::Text(Response::unsubscribed(request_id, unsub.subscription_id).to_json()));
+		return Ok(Some(WsResponse::Text(Response::unsubscribed(request_id, unsub.subscription_id).to_json())));
 	}
 
 	let subscription_id = match unsub.subscription_id.parse::<u64>() {
 		Ok(id) => SubscriptionId(id),
 		Err(_) => {
-			return Some(WsResponse::Text(build_error(
+			return Ok(Some(WsResponse::Text(build_error(
 				request_id,
 				"INVALID_SUBSCRIPTION_ID",
 				"Invalid subscription ID format",
-			)));
+			))));
 		}
 	};
 
 	let removed = conn.registry.unsubscribe_owned(conn.connection_id, subscription_id);
 
 	if removed {
-		if let Err(e) = cleanup_subscription(conn.state.engine(), subscription_id).await {
-			warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
-		}
+		cleanup_subscription(conn.state.engine(), subscription_id).await?;
 
 		debug!("Connection {} unsubscribed from {}", conn.connection_id, subscription_id);
-		Some(WsResponse::Text(Response::unsubscribed(request_id, subscription_id.to_string()).to_json()))
+		Ok(Some(WsResponse::Text(Response::unsubscribed(request_id, subscription_id.to_string()).to_json())))
 	} else {
 		debug!("Connection {} unsubscribe for {} (already removed)", conn.connection_id, subscription_id);
-		Some(WsResponse::Text(Response::unsubscribed(request_id, subscription_id.to_string()).to_json()))
+		Ok(Some(WsResponse::Text(Response::unsubscribed(request_id, subscription_id.to_string()).to_json())))
 	}
 }
 
@@ -907,9 +913,16 @@ fn build_response_body(frames: Vec<Frame>, format: WireFormat, unwrap: bool) -> 
 
 #[cfg(test)]
 mod tests {
-	use reifydb_sub_server::auth::AuthError;
+	use std::sync::Arc;
 
-	use super::auth_error_response;
+	use reifydb_core::interface::catalog::id::SubscriptionId;
+	use reifydb_sub_server::{auth::AuthError, format::WireFormat};
+	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_value::value::{duration::Duration, uuid::Uuid7};
+	use tokio::{runtime::Builder, sync::mpsc};
+
+	use super::{auth_error_response, cleanup_connection_subscriptions};
+	use crate::subscription::registry::{SubscriptionRegistry, WsWireSink};
 
 	#[test]
 	fn storage_failure_reports_an_internal_error_not_a_failed_auth() {
@@ -928,6 +941,38 @@ mod tests {
 			auth_error_response(&AuthError::Internal).0,
 			"INTERNAL_ERROR",
 			"authentication that could not reach storage is the server's fault"
+		);
+	}
+
+	#[test]
+	fn a_closing_connection_that_cannot_unregister_its_subscriptions_fails() {
+		// A closed connection's subscription the engine failed to drop keeps staging, so this must fail.
+		let engine = TestEngine::new();
+		let (clock, rng) = (engine.inner().clock().clone(), engine.inner().rng().clone());
+		let registry = Arc::new(SubscriptionRegistry::new(clock.clone()));
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, _push_rx) = mpsc::unbounded_channel();
+		registry.subscribe(
+			SubscriptionId(11),
+			connection_id,
+			WsWireSink::new(push_tx),
+			WireFormat::Frames,
+			None,
+			Duration::zero(),
+			Duration::zero(),
+		);
+
+		let error = Builder::new_current_thread()
+			.enable_all()
+			.build()
+			.expect("test runtime")
+			.block_on(cleanup_connection_subscriptions(engine.inner(), &registry, connection_id))
+			.expect_err("the engine has no subscription service, so unregistering must fail");
+
+		assert!(
+			error.0.message.contains("could not unregister subscription 11"),
+			"the failure must name the subscription: {}",
+			error.0.message
 		);
 	}
 }

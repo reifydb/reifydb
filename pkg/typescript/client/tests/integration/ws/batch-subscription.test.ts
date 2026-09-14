@@ -89,15 +89,15 @@ describe('WebSocket Batch Subscriptions', () => {
             expect(subToBatch.has(batch.subscriptionIds[0])).toBe(false);
         }, 10000);
 
-        it('should reject batchSubscribe with empty members', async () => {
+        it('should reject batchSubscribe with empty subscriptions', async () => {
             await expect(wsClient.batchSubscribe([])).rejects.toThrow(
-                /at least one member/i
+                /at least one subscription/i
             );
         });
     });
 
-    describe('Per-member Routing', () => {
-        it('should route INSERTs to the correct member callback', async () => {
+    describe('Per-subscription Routing', () => {
+        it('should route INSERTs to the correct subscription callback', async () => {
             const tableA = createTestTableName('batch_route_a');
             const tableB = createTestTableName('batch_route_b');
             await createTestTable(wsClient, tableA, ['id Int4', 'name Utf8']);
@@ -143,7 +143,7 @@ describe('WebSocket Batch Subscriptions', () => {
             await wsClient.batchUnsubscribe(batch.batchId);
         }, 10000);
 
-        it('should dispatch UPDATE and REMOVE to the right members', async () => {
+        it('should dispatch UPDATE and REMOVE to the right subscriptions', async () => {
             const tableA = createTestTableName('batch_upd_a');
             const tableB = createTestTableName('batch_upd_b');
             await createTestTable(wsClient, tableA, ['id Int4', 'name Utf8']);
@@ -217,7 +217,7 @@ describe('WebSocket Batch Subscriptions', () => {
             await wsClient.batchUnsubscribe(batch.batchId);
         }, 15000);
 
-        it('should coalesce simultaneous writes across members', async () => {
+        it('should coalesce simultaneous writes across subscriptions', async () => {
             const tableA = createTestTableName('batch_coal_a');
             const tableB = createTestTableName('batch_coal_b');
             await createTestTable(wsClient, tableA, ['id Int4']);

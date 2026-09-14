@@ -108,21 +108,15 @@ pub enum Phase {
 		latest_version: CommitVersion,
 
 		count: usize,
-
-		generation: u64,
 	},
 
-	WaitingForResync {
-		generation: u64,
-	},
+	WaitingForResync,
 }
 
 pub struct PollState {
 	phase: Phase,
 
 	cached_checkpoint: Option<CommitVersion>,
-
-	consume_generation: u64,
 
 	consume_stall_ticks: u32,
 }
@@ -143,7 +137,6 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 		PollState {
 			phase: Phase::Ready,
 			cached_checkpoint: None,
-			consume_generation: 0,
 			consume_stall_ticks: 0,
 		}
 	}
@@ -153,13 +146,11 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 			CdcPollMessage::Poll => self.on_poll(state, ctx),
 			CdcPollMessage::CheckWatermark => self.on_check_watermark(state, ctx),
 			CdcPollMessage::ConsumeResponse {
-				generation,
 				result,
-			} => self.on_consume_response(state, ctx, generation, result),
+			} => self.on_consume_response(state, ctx, result),
 			CdcPollMessage::ResyncResponse {
-				generation,
 				result,
-			} => self.on_resync_response(state, ctx, generation, result),
+			} => self.on_resync_response(state, ctx, result),
 			CdcPollMessage::Tick => self.on_tick(state, ctx),
 			CdcPollMessage::Shutdown => {
 				debug!("[Consumer {:?}] Shutdown", self.config.consumer_id);
@@ -224,18 +215,13 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		&self,
 		state: &mut PollState,
 		ctx: &Context<CdcPollMessage>,
-		generation: u64,
 		result: Result<()>,
 	) -> Directive {
 		if let Phase::WaitingForConsume {
 			latest_version,
 			count,
-			generation: pending,
 		} = state.phase
 		{
-			if pending != generation {
-				return Directive::Continue;
-			}
 			state.phase = Phase::Ready;
 			self.finish_consume(state, ctx, latest_version, count, result);
 		}
@@ -254,7 +240,8 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		} else if matches!(state.phase, Phase::WaitingForWatermark) {
 			self.on_check_watermark(state, ctx)
 		} else {
-			self.check_consume_stall(state, ctx)
+			self.check_consume_stall(state);
+			Directive::Continue
 		};
 		if matches!(flow, Directive::Stop) {
 			return Directive::Stop;
@@ -265,23 +252,28 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 	}
 
 	#[inline]
-	fn check_consume_stall(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) -> Directive {
-		if !matches!(state.phase, Phase::WaitingForConsume { .. } | Phase::WaitingForResync { .. }) {
-			return Directive::Continue;
-		}
+	fn check_consume_stall(&self, state: &mut PollState) {
+		let batch = match state.phase {
+			Phase::WaitingForConsume {
+				latest_version,
+				..
+			} => latest_version.0.to_string(),
+			Phase::WaitingForResync => "resync".to_string(),
+			Phase::Ready | Phase::WaitingForWatermark => return,
+		};
 		state.consume_stall_ticks = state.consume_stall_ticks.saturating_add(1);
 		if state.consume_stall_ticks < self.stall_tick_threshold() {
-			return Directive::Continue;
+			return;
 		}
-		error!(
-			"[Consumer {:?}] consume reply not received within {:?}; re-dispatching batch",
-			self.config.consumer_id,
-			self.consume_wait_timeout()
-		);
-		state.phase = Phase::Ready;
-		state.consume_stall_ticks = 0;
-		let _ = ctx.self_ref().send(CdcPollMessage::Poll);
-		Directive::Continue
+		fatal(FatalReport::new(
+			FatalKind::Error,
+			format!("consume reply not received within {:?}", self.consume_wait_timeout()),
+		)
+		.component("cdc consumer")
+		.with("consumer", format!("{:?}", self.config.consumer_id))
+		.with("pending", self.consumer.describe_pending())
+		.with("batch", batch)
+		.backtrace(Backtrace::force_capture().to_string()))
 	}
 
 	#[inline]
@@ -336,15 +328,12 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			return;
 		}
 
-		state.consume_generation = state.consume_generation.wrapping_add(1);
-		let generation = state.consume_generation;
 		state.phase = Phase::WaitingForConsume {
 			latest_version,
 			count,
-			generation,
 		};
 		state.consume_stall_ticks = 0;
-		self.dispatch_to_consumer(relevant_cdcs, generation, ctx);
+		self.dispatch_to_consumer(relevant_cdcs, ctx);
 	}
 
 	#[inline]
@@ -427,11 +416,10 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 	}
 
 	#[inline]
-	fn dispatch_to_consumer(&self, cdcs: Vec<Cdc>, generation: u64, ctx: &Context<CdcPollMessage>) {
+	fn dispatch_to_consumer(&self, cdcs: Vec<Cdc>, ctx: &Context<CdcPollMessage>) {
 		let self_ref = ctx.self_ref().clone();
 		let reply: Box<dyn FnOnce(Result<()>) + Send> = Box::new(move |result| {
 			let _ = self_ref.send(CdcPollMessage::ConsumeResponse {
-				generation,
 				result,
 			});
 		});
@@ -476,16 +464,11 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			self.config.consumer_id, cursor.0, truncated_before.0
 		);
 		self.invalidate_durable_checkpoint();
-		state.consume_generation = state.consume_generation.wrapping_add(1);
-		let generation = state.consume_generation;
-		state.phase = Phase::WaitingForResync {
-			generation,
-		};
+		state.phase = Phase::WaitingForResync;
 		state.consume_stall_ticks = 0;
 		let self_ref = ctx.self_ref().clone();
 		let reply: Box<dyn FnOnce(Result<CommitVersion>) + Send> = Box::new(move |result| {
 			let _ = self_ref.send(CdcPollMessage::ResyncResponse {
-				generation,
 				result,
 			});
 		});
@@ -507,18 +490,11 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		&self,
 		state: &mut PollState,
 		ctx: &Context<CdcPollMessage>,
-		generation: u64,
 		result: Result<CommitVersion>,
 	) -> Directive {
-		let Phase::WaitingForResync {
-			generation: pending,
-		} = state.phase
-		else {
+		let Phase::WaitingForResync = state.phase else {
 			return Directive::Continue;
 		};
-		if pending != generation {
-			return Directive::Continue;
-		}
 		state.phase = Phase::Ready;
 		match result {
 			Ok(resume) => {

@@ -216,7 +216,7 @@ export interface BatchSubscribeRequest {
     };
 }
 
-export interface BatchMemberInfo {
+export interface BatchSubscriptionInfo {
     index: number;
     subscriptionId: string;
 }
@@ -226,7 +226,7 @@ export interface BatchSubscribedResponse {
     type: "BatchSubscribed";
     payload: {
         batchId: string;
-        members: BatchMemberInfo[];
+        subscriptions: BatchSubscriptionInfo[];
     };
 }
 
@@ -258,8 +258,8 @@ export interface BatchChangeMessage {
     };
 }
 
-export interface BatchMemberClosedMessage {
-    type: "BatchMemberClosed";
+export interface BatchSubscriptionClosedMessage {
+    type: "BatchSubscriptionClosed";
     payload: {
         batchId: string;
         subscriptionId: string;
@@ -273,7 +273,7 @@ export interface BatchClosedMessage {
     };
 }
 
-export interface BatchSubscriptionMember<T = any> {
+export interface BatchSubscribeItem<T = any> {
     rql: string;
     params?: any;
     shape?: ShapeNode;
@@ -282,7 +282,7 @@ export interface BatchSubscriptionMember<T = any> {
 }
 
 export interface BatchSubscriptionCallbacks {
-    onMemberClosed?: (subscriptionId: string) => void;
+    onSubscriptionClosed?: (subscriptionId: string) => void;
     onClosed?: () => void;
     onEntryError?: (subscriptionId: string, error: Error) => void;
 }

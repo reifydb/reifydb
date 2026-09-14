@@ -84,7 +84,7 @@ pub struct Frame {
 }
 
 #[napi(object)]
-pub struct BatchMember {
+pub struct BatchSubscriptionInfo {
 	pub index: u32,
 	pub subscription_id: String,
 }
@@ -92,11 +92,11 @@ pub struct BatchMember {
 #[napi(object)]
 pub struct BatchSubscribed {
 	pub batch_id: String,
-	pub members: Vec<BatchMember>,
+	pub subscriptions: Vec<BatchSubscriptionInfo>,
 }
 
 #[napi(object)]
-pub struct ClosedMember {
+pub struct ClosedSubscription {
 	pub batch_id: String,
 	pub subscription_id: String,
 }
@@ -110,7 +110,7 @@ pub struct ClosedMember {
 pub struct SubscriptionTick {
 	pub envelopes: Vec<Buffer>,
 	pub closed: Vec<String>,
-	pub batch_member_closed: Vec<ClosedMember>,
+	pub batch_subscription_closed: Vec<ClosedSubscription>,
 }
 
 fn frames_to_napi(frames: &[CoreFrame]) -> Vec<Frame> {
@@ -417,13 +417,16 @@ impl ReifydbNode {
 		self.subscriptions
 			.subscribe(identity, query, params, options)
 			.await
+			.map_err(|e| NapiError::from_reason(format!("{e:?}")))?
 			.map(|id| id.to_string())
 			.map_err(|e| NapiError::from_reason(format!("{e:?}")))
 	}
 
 	async fn batch_unsubscribe_with(&self, batch_id: BatchId) -> Result<()> {
-		self.subscriptions.batch_unsubscribe(batch_id).await;
-		Ok(())
+		self.subscriptions
+			.batch_unsubscribe(batch_id)
+			.await
+			.map_err(|e| NapiError::from_reason(format!("{e:?}")))
 	}
 
 	async fn batch_subscribe_with(
@@ -445,13 +448,14 @@ impl ReifydbNode {
 			.subscriptions
 			.batch_subscribe(identity, &queries)
 			.await
+			.map_err(|e| NapiError::from_reason(format!("{e:?}")))?
 			.map_err(|e| NapiError::from_reason(format!("{e:?}")))?;
 		Ok(BatchSubscribed {
 			batch_id: ack.batch_id.to_string(),
-			members: ack
-				.members
+			subscriptions: ack
+				.subscriptions
 				.into_iter()
-				.map(|m| BatchMember {
+				.map(|m| BatchSubscriptionInfo {
 					index: m.index as u32,
 					subscription_id: m.subscription_id.to_string(),
 				})
@@ -472,7 +476,7 @@ fn to_tick(pushes: Vec<NodePush>) -> SubscriptionTick {
 	let mut tick = SubscriptionTick {
 		envelopes: Vec::new(),
 		closed: Vec::new(),
-		batch_member_closed: Vec::new(),
+		batch_subscription_closed: Vec::new(),
 	};
 	for push in pushes {
 		match push {
@@ -485,10 +489,10 @@ fn to_tick(pushes: Vec<NodePush>) -> SubscriptionTick {
 			NodePush::Closed {
 				subscription_id,
 			} => tick.closed.push(subscription_id.to_string()),
-			NodePush::BatchMemberClosed {
+			NodePush::BatchSubscriptionClosed {
 				batch_id,
 				subscription_id,
-			} => tick.batch_member_closed.push(ClosedMember {
+			} => tick.batch_subscription_closed.push(ClosedSubscription {
 				batch_id: batch_id.to_string(),
 				subscription_id: subscription_id.to_string(),
 			}),

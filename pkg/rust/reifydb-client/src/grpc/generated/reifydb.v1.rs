@@ -132,7 +132,7 @@ pub struct ChangeEvent {
 
 
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct BatchSubscribeMember {
+pub struct BatchSubscribeItem {
     #[prost(string, tag = "1")]
     pub rql: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
@@ -141,7 +141,7 @@ pub struct BatchSubscribeMember {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BatchSubscribeRequest {
     #[prost(message, repeated, tag = "1")]
-    pub subscriptions: ::prost::alloc::vec::Vec<BatchSubscribeMember>,
+    pub subscriptions: ::prost::alloc::vec::Vec<BatchSubscribeItem>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct BatchUnsubscribeRequest {
@@ -167,7 +167,7 @@ pub mod batch_subscription_event {
         #[prost(message, tag = "2")]
         Change(super::BatchChangeEvent),
         #[prost(message, tag = "3")]
-        MemberClosed(super::BatchMemberClosedEvent),
+        SubscriptionClosed(super::BatchSubscriptionClosedEvent),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -175,10 +175,10 @@ pub struct BatchSubscribedEvent {
     #[prost(string, tag = "1")]
     pub batch_id: ::prost::alloc::string::String,
     #[prost(message, repeated, tag = "2")]
-    pub members: ::prost::alloc::vec::Vec<BatchMember>,
+    pub subscriptions: ::prost::alloc::vec::Vec<BatchSubscriptionInfo>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct BatchMember {
+pub struct BatchSubscriptionInfo {
     #[prost(uint32, tag = "1")]
     pub index: u32,
     #[prost(string, tag = "2")]
@@ -199,7 +199,7 @@ pub struct BatchChangeEntry {
     pub change: ::core::option::Option<ChangeEvent>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct BatchMemberClosedEvent {
+pub struct BatchSubscriptionClosedEvent {
     #[prost(string, tag = "1")]
     pub batch_id: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]

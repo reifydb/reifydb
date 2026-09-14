@@ -40,9 +40,9 @@ import type {
     BatchUnsubscribeRequest,
     BatchUnsubscribedResponse,
     BatchChangeMessage,
-    BatchMemberClosedMessage,
+    BatchSubscriptionClosedMessage,
     BatchClosedMessage,
-    BatchSubscriptionMember,
+    BatchSubscribeItem,
     BatchSubscriptionCallbacks,
     BatchSubscription
 } from "./types";
@@ -90,7 +90,7 @@ interface SubscriptionState<T = any> {
 
 interface BatchState {
     batchId: string;
-    membersBySubId: Map<string, SubscriptionState>;
+    subscriptionsById: Map<string, SubscriptionState>;
     batchCallbacks?: BatchSubscriptionCallbacks;
 }
 
@@ -101,13 +101,13 @@ interface Caller<T> {
 
 interface SingleIntent {
     kind: "single";
-    member: BatchSubscriptionMember;
+    subscription: BatchSubscribeItem;
     caller?: Caller<string>;
 }
 
 interface BatchIntent {
     kind: "batch";
-    members: BatchSubscriptionMember[];
+    subscriptions: BatchSubscribeItem[];
     batchCallbacks?: BatchSubscriptionCallbacks;
     caller?: Caller<BatchSubscription>;
 }
@@ -365,7 +365,7 @@ export class WsClient {
         config?: SubscriptionConfig
     ): Promise<string> {
         return new Promise((resolve, reject) => {
-            this.dispatch({kind: "single", member: {rql, params, shape, callbacks, config}, caller: {resolve, reject}});
+            this.dispatch({kind: "single", subscription: {rql, params, shape, callbacks, config}, caller: {resolve, reject}});
         });
     }
 
@@ -407,7 +407,7 @@ export class WsClient {
     private subscribeRequest(intent: SubscribeIntent): SubscribeRequest | BatchSubscribeRequest {
         const subFormat = this.options.format === "rbcf" ? "rbcf" : "frames";
         if (intent.kind === "single") {
-            const {rql, params, config} = intent.member;
+            const {rql, params, config} = intent.subscription;
             return {
                 id: `sub-${this.nextId++}`,
                 type: "Subscribe",
@@ -423,7 +423,7 @@ export class WsClient {
             id: `batch-sub-${this.nextId++}`,
             type: "BatchSubscribe",
             payload: {
-                subscriptions: intent.members.map(m => ({
+                subscriptions: intent.subscriptions.map(m => ({
                     rql: m.rql,
                     params: m.params !== undefined && m.params !== null ? encodeParams(m.params) : undefined,
                     options: encodeSubscribeOptions(m.config)
@@ -439,59 +439,59 @@ export class WsClient {
         } else if (intent.kind === "single" && response.type === "Subscribed") {
             this.attachSingle(intent, response.payload.subscriptionId);
         } else if (intent.kind === "batch" && response.type === "BatchSubscribed") {
-            this.attachBatch(intent, response.payload.batchId, response.payload.members);
+            this.attachBatch(intent, response.payload.batchId, response.payload.subscriptions);
         } else {
             this.failIntent(intent, new Error("Unexpected response type"));
         }
     }
 
     private attachSingle(intent: SingleIntent, subscriptionId: string): void {
-        const {rql, params, shape, callbacks, config} = intent.member;
+        const {rql, params, shape, callbacks, config} = intent.subscription;
         const state: SubscriptionState = {subscriptionId, rql, params, shape, callbacks, config};
         this.subscriptions.set(subscriptionId, state);
         if (intent.caller) {
             intent.caller.resolve(subscriptionId);
-        } else if (this.retire(intent.member)) {
+        } else if (this.retire(intent.subscription)) {
             this.notifyResubscribed(state);
         } else {
             this.giveBack(state);
         }
     }
 
-    private attachBatch(intent: BatchIntent, batchId: string, acked: BatchSubscribedResponse["payload"]["members"]): void {
-        const membersBySubId = new Map<string, SubscriptionState>();
-        const subscriptionIds: string[] = new Array(intent.members.length);
+    private attachBatch(intent: BatchIntent, batchId: string, acked: BatchSubscribedResponse["payload"]["subscriptions"]): void {
+        const subscriptionsById = new Map<string, SubscriptionState>();
+        const subscriptionIds: string[] = new Array(intent.subscriptions.length);
 
         for (const info of acked) {
-            const member = intent.members[info.index];
-            if (!member) continue;
+            const subscription = intent.subscriptions[info.index];
+            if (!subscription) continue;
             subscriptionIds[info.index] = info.subscriptionId;
-            membersBySubId.set(info.subscriptionId, {
+            subscriptionsById.set(info.subscriptionId, {
                 subscriptionId: info.subscriptionId,
                 batchId,
-                rql: member.rql,
-                params: member.params,
-                shape: member.shape,
-                callbacks: member.callbacks,
-                config: member.config
+                rql: subscription.rql,
+                params: subscription.params,
+                shape: subscription.shape,
+                callbacks: subscription.callbacks,
+                config: subscription.config
             });
             this.subToBatch.set(info.subscriptionId, batchId);
         }
 
-        this.batches.set(batchId, {batchId, membersBySubId, batchCallbacks: intent.batchCallbacks});
+        this.batches.set(batchId, {batchId, subscriptionsById, batchCallbacks: intent.batchCallbacks});
 
         if (intent.caller) {
             intent.caller.resolve({batchId, subscriptionIds});
             return;
         }
-        intent.members.forEach((member, index) => {
-            const state = membersBySubId.get(subscriptionIds[index]);
-            if (!this.retire(member)) {
+        intent.subscriptions.forEach((subscription, index) => {
+            const state = subscriptionsById.get(subscriptionIds[index]);
+            if (!this.retire(subscription)) {
                 if (state) this.giveBack(state);
             } else if (state) {
                 this.notifyResubscribed(state);
             } else {
-                reportSubscriptionError(member, new Error("the batch ack named no id for this member"));
+                reportSubscriptionError(subscription, new Error("the batch ack named no id for this subscription"));
             }
         });
     }
@@ -509,16 +509,16 @@ export class WsClient {
             intent.caller.reject(error);
             return;
         }
-        const members = intent.kind === "single" ? [intent.member] : intent.members;
-        members.filter(member => this.retire(member)).forEach(member => reportSubscriptionError(member, error));
+        const subscriptions = intent.kind === "single" ? [intent.subscription] : intent.subscriptions;
+        subscriptions.filter(subscription => this.retire(subscription)).forEach(subscription => reportSubscriptionError(subscription, error));
     }
 
-    private held(member: BatchSubscriptionMember): boolean {
-        return this.resubscribing.get((member as SubscriptionState).subscriptionId) === member;
+    private held(subscription: BatchSubscribeItem): boolean {
+        return this.resubscribing.get((subscription as SubscriptionState).subscriptionId) === subscription;
     }
 
-    private retire(member: BatchSubscriptionMember): boolean {
-        return this.held(member) && this.resubscribing.delete((member as SubscriptionState).subscriptionId);
+    private retire(subscription: BatchSubscribeItem): boolean {
+        return this.held(subscription) && this.resubscribing.delete((subscription as SubscriptionState).subscriptionId);
     }
 
     private stillWanted(intent: SubscribeIntent): SubscribeIntent | undefined {
@@ -526,10 +526,10 @@ export class WsClient {
             return intent;
         }
         if (intent.kind === "single") {
-            return this.held(intent.member) ? intent : undefined;
+            return this.held(intent.subscription) ? intent : undefined;
         }
-        const members = intent.members.filter(member => this.held(member));
-        return members.length > 0 ? {...intent, members} : undefined;
+        const subscriptions = intent.subscriptions.filter(subscription => this.held(subscription));
+        return subscriptions.length > 0 ? {...intent, subscriptions} : undefined;
     }
 
     private giveBack(state: SubscriptionState): void {
@@ -538,7 +538,7 @@ export class WsClient {
 
     private forget(subscriptionId: string): void {
         this.subscriptions.delete(subscriptionId);
-        this.dropBatchMember(subscriptionId);
+        this.dropBatchSubscription(subscriptionId);
     }
 
     async unsubscribe(subscriptionId: string): Promise<void> {
@@ -583,14 +583,14 @@ export class WsClient {
     }
 
     async batchSubscribe(
-        members: BatchSubscriptionMember[],
+        subscriptions: BatchSubscribeItem[],
         batchCallbacks?: BatchSubscriptionCallbacks
     ): Promise<BatchSubscription> {
-        if (members.length === 0) {
-            throw new Error("batchSubscribe requires at least one member");
+        if (subscriptions.length === 0) {
+            throw new Error("batchSubscribe requires at least one subscription");
         }
         return new Promise((resolve, reject) => {
-            this.dispatch({kind: "batch", members, batchCallbacks, caller: {resolve, reject}});
+            this.dispatch({kind: "batch", subscriptions, batchCallbacks, caller: {resolve, reject}});
         });
     }
 
@@ -636,14 +636,14 @@ export class WsClient {
         });
     }
 
-    private dropBatchMember(subscriptionId: string): void {
+    private dropBatchSubscription(subscriptionId: string): void {
         const batchId = this.subToBatch.get(subscriptionId);
         if (batchId === undefined) return;
         this.subToBatch.delete(subscriptionId);
         const batch = this.batches.get(batchId);
         if (!batch) return;
-        batch.membersBySubId.delete(subscriptionId);
-        if (batch.membersBySubId.size === 0) {
+        batch.subscriptionsById.delete(subscriptionId);
+        if (batch.subscriptionsById.size === 0) {
             this.batches.delete(batchId);
         }
     }
@@ -651,7 +651,7 @@ export class WsClient {
     private cleanupBatch(batchId: string): void {
         const batch = this.batches.get(batchId);
         if (!batch) return;
-        for (const subId of batch.membersBySubId.keys()) {
+        for (const subId of batch.subscriptionsById.keys()) {
             this.subToBatch.delete(subId);
         }
         this.batches.delete(batchId);
@@ -1041,19 +1041,19 @@ export class WsClient {
     private async resubscribeAll(): Promise<boolean> {
         const socket = this.socket;
         const intents: SubscribeIntent[] = [
-            ...Array.from(this.subscriptions.values(), (member): SubscribeIntent => ({kind: "single", member})),
+            ...Array.from(this.subscriptions.values(), (subscription): SubscribeIntent => ({kind: "single", subscription})),
             ...Array.from(this.batches.values())
-                .filter(batch => batch.membersBySubId.size > 0)
+                .filter(batch => batch.subscriptionsById.size > 0)
                 .map((batch): SubscribeIntent => ({
                     kind: "batch",
-                    members: Array.from(batch.membersBySubId.values()),
+                    subscriptions: Array.from(batch.subscriptionsById.values()),
                     batchCallbacks: batch.batchCallbacks
                 })),
             ...this.waiting
         ];
 
         this.subscriptions.forEach(state => this.resubscribing.set(state.subscriptionId, state));
-        this.batches.forEach(batch => batch.membersBySubId.forEach(state => this.resubscribing.set(state.subscriptionId, state)));
+        this.batches.forEach(batch => batch.subscriptionsById.forEach(state => this.resubscribing.set(state.subscriptionId, state)));
         this.subscriptions.clear();
         this.batches.clear();
         this.subToBatch.clear();
@@ -1077,7 +1077,7 @@ export class WsClient {
         if (single) return single;
         const batchId = this.subToBatch.get(subscriptionId);
         if (!batchId) return undefined;
-        return this.batches.get(batchId)?.membersBySubId.get(subscriptionId);
+        return this.batches.get(batchId)?.subscriptionsById.get(subscriptionId);
     }
 
     private handleChangeMessage(msg: ChangeMessage): void {
@@ -1106,13 +1106,13 @@ export class WsClient {
         }
     }
 
-    private handleBatchMemberClosed(msg: BatchMemberClosedMessage): void {
+    private handleBatchSubscriptionClosed(msg: BatchSubscriptionClosedMessage): void {
         const {batchId, subscriptionId} = msg.payload;
         const batch = this.batches.get(batchId);
         if (!batch) return;
-        batch.membersBySubId.delete(subscriptionId);
+        batch.subscriptionsById.delete(subscriptionId);
         this.subToBatch.delete(subscriptionId);
-        batch.batchCallbacks?.onMemberClosed?.(subscriptionId);
+        batch.batchCallbacks?.onSubscriptionClosed?.(subscriptionId);
     }
 
     private handleBatchClosed(msg: BatchClosedMessage): void {
@@ -1151,8 +1151,8 @@ export class WsClient {
                     case "BatchChange":
                         this.handleBatchChange(msg);
                         return;
-                    case "BatchMemberClosed":
-                        this.handleBatchMemberClosed(msg);
+                    case "BatchSubscriptionClosed":
+                        this.handleBatchSubscriptionClosed(msg);
                         return;
                     case "BatchClosed":
                         this.handleBatchClosed(msg);

@@ -9,7 +9,7 @@ use reifydb_codec::{
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_sub_core::{
 	envelope::{BinaryKind, encode_rbcf_batch_envelope, encode_rbcf_envelope},
-	wire_sink::{BatchSubscribedMember, WireSink},
+	wire_sink::{BatchSubscribedEntry, WireSink},
 };
 use reifydb_sub_server::{
 	format::WireFormat,
@@ -59,7 +59,7 @@ pub enum PushMessage {
 		envelope: Vec<u8>,
 	},
 
-	BatchMemberClosed {
+	BatchSubscriptionClosed {
 		batch_id: BatchId,
 		subscription_id: SubscriptionId,
 	},
@@ -96,7 +96,7 @@ impl WireSink for WsWireSink {
 		DeliveryResult::Delivered
 	}
 
-	fn send_batch_subscribed(&self, _batch_id: BatchId, _members: &[BatchSubscribedMember]) -> DeliveryResult {
+	fn send_batch_subscribed(&self, _batch_id: BatchId, _subscriptions: &[BatchSubscribedEntry]) -> DeliveryResult {
 		DeliveryResult::Delivered
 	}
 
@@ -270,9 +270,9 @@ impl WireSink for WsWireSink {
 		}
 	}
 
-	fn send_batch_member_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> DeliveryResult {
+	fn send_batch_subscription_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> DeliveryResult {
 		if self.push_tx
-			.send(PushMessage::BatchMemberClosed {
+			.send(PushMessage::BatchSubscriptionClosed {
 				batch_id,
 				subscription_id,
 			})
@@ -560,7 +560,7 @@ pub mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_batch_flush_coalesces_two_members() {
+	async fn test_batch_flush_coalesces_two_subscriptions() {
 		let (_, clock, rng) = test_clock_and_rng();
 		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
@@ -632,7 +632,7 @@ pub mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_batch_flush_merges_repeated_member_deliveries() {
+	async fn test_batch_flush_merges_repeated_subscription_deliveries() {
 		let (_, clock, rng) = test_clock_and_rng();
 		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
@@ -774,7 +774,7 @@ pub mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_linger_respects_each_member_independently_not_max() {
+	async fn test_linger_respects_each_subscription_independently_not_max() {
 		let (mock, clock, rng) = test_clock_and_rng();
 		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
@@ -817,11 +817,11 @@ pub mod tests {
 		registry.try_deliver(&sub_long, DiffType::Insert, single_int_columns("v", 2));
 
 		registry.flush();
-		assert!(push_rx.try_recv().is_err(), "no member is due before its own linger elapses");
+		assert!(push_rx.try_recv().is_err(), "no subscription is due before its own linger elapses");
 
 		mock.advance_millis(5);
 		registry.flush();
-		match push_rx.try_recv().expect("the short-linger member is due") {
+		match push_rx.try_recv().expect("the short-linger subscription is due") {
 			PushMessage::BatchChangeJson {
 				entries,
 				..
@@ -829,7 +829,7 @@ pub mod tests {
 				assert_eq!(
 					entries.len(),
 					1,
-					"only the short-linger member flushes - lingers are respected individually, never max-ed across the batch"
+					"only the short-linger subscription flushes - lingers are respected individually, never max-ed across the batch"
 				);
 				assert_eq!(entries[0].subscription_id, sub_short);
 			}
@@ -837,12 +837,12 @@ pub mod tests {
 		}
 		assert!(
 			push_rx.try_recv().is_err(),
-			"the long-linger member is held back, not dragged out early by the short one"
+			"the long-linger subscription is held back, not dragged out early by the short one"
 		);
 
 		mock.advance_millis(50);
 		registry.flush();
-		match push_rx.try_recv().expect("the long-linger member is now due") {
+		match push_rx.try_recv().expect("the long-linger subscription is now due") {
 			PushMessage::BatchChangeJson {
 				entries,
 				..
@@ -939,7 +939,8 @@ pub mod tests {
 
 		registry.try_deliver(&sub_z, DiffType::Insert, single_int_columns("v", 1));
 		registry.flush();
-		match push_rx.try_recv().expect("a zero-linger member is due immediately, with no added latency") {
+		match push_rx.try_recv().expect("a zero-linger subscription is due immediately, with no added latency")
+		{
 			PushMessage::BatchChangeJson {
 				entries,
 				..
@@ -982,9 +983,8 @@ pub mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_batch_member_honors_throttle() {
-		// A batch member must rate-limit too, holding a second change that lands inside the throttle
-		// interval.
+	async fn test_batch_subscription_honors_throttle() {
+		// A batch subscription must hold a second change that lands inside the throttle interval.
 		let (mock, clock, rng) = test_clock_and_rng();
 		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
@@ -1019,16 +1019,19 @@ pub mod tests {
 		registry.flush();
 		assert!(
 			push_rx.try_recv().is_err(),
-			"throttle must hold a second change that lands inside its interval on a batch member"
+			"throttle must hold a second change that lands inside its interval on a batch subscription"
 		);
 
 		mock.advance_millis(5);
 		registry.flush();
-		assert!(push_rx.try_recv().is_ok(), "the batch member flushes once the throttle interval elapses");
+		assert!(
+			push_rx.try_recv().is_ok(),
+			"the batch subscription flushes once the throttle interval elapses"
+		);
 	}
 
 	#[tokio::test]
-	async fn test_linger_next_deadline_tracks_the_nearest_member() {
+	async fn test_linger_next_deadline_tracks_the_nearest_subscription() {
 		let (mock, clock, rng) = test_clock_and_rng();
 		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
@@ -1073,18 +1076,18 @@ pub mod tests {
 		assert_eq!(
 			registry.flush(),
 			Some(Duration::from_milliseconds(5).unwrap()),
-			"the poller is told to wake at the soonest member deadline, so a low-linger member never starves"
+			"the poller is told to wake at the soonest subscription deadline, so a low-linger subscription never starves"
 		);
 
 		mock.advance_millis(5);
 		assert_eq!(
 			registry.flush(),
 			Some(Duration::from_milliseconds(45).unwrap()),
-			"after the near member drains, the deadline tracks the remaining member"
+			"after the near subscription drains, the deadline tracks the remaining subscription"
 		);
 	}
 
-	fn two_member_batch()
+	fn two_subscription_batch()
 	-> (SubscriptionRegistry, SubscriptionId, SubscriptionId, mpsc::UnboundedReceiver<PushMessage>) {
 		let (_, clock, rng) = test_clock_and_rng();
 		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
@@ -1116,28 +1119,28 @@ pub mod tests {
 	}
 
 	#[tokio::test]
-	async fn unsubscribing_the_last_member_drops_the_batch() {
-		// Clients release batch members one by one, so an emptied batch must not outlive its last member.
-		let (registry, sub_a, sub_b, _push_rx) = two_member_batch();
+	async fn unsubscribing_the_last_subscription_drops_the_batch() {
+		// An emptied batch must never outlive its last subscription.
+		let (registry, sub_a, sub_b, _push_rx) = two_subscription_batch();
 
 		registry.unsubscribe(sub_a);
-		assert_eq!(registry.batch_count(), 1, "a batch with a member left must keep streaming");
+		assert_eq!(registry.batch_count(), 1, "a batch with a subscription left must keep streaming");
 
 		registry.unsubscribe(sub_b);
-		assert_eq!(registry.batch_count(), 0, "a batch with no members left must be dropped");
+		assert_eq!(registry.batch_count(), 0, "a batch with no subscriptions left must be dropped");
 	}
 
 	#[tokio::test]
-	async fn an_unsubscribed_member_sends_none_of_its_queued_changes() {
+	async fn an_unsubscribed_subscription_sends_none_of_its_queued_changes() {
 		// A change queued before the unsubscribe must never reach the client after it was acknowledged.
-		let (registry, sub_a, sub_b, mut push_rx) = two_member_batch();
+		let (registry, sub_a, sub_b, mut push_rx) = two_subscription_batch();
 		registry.try_deliver(&sub_a, DiffType::Insert, single_int_columns("value", 1));
 		registry.try_deliver(&sub_b, DiffType::Insert, single_int_columns("value", 2));
 
 		registry.unsubscribe(sub_a);
 		registry.flush();
 
-		match push_rx.try_recv().expect("the remaining member's change must still be sent") {
+		match push_rx.try_recv().expect("the remaining subscription's change must still be sent") {
 			PushMessage::BatchChangeJson {
 				entries,
 				..

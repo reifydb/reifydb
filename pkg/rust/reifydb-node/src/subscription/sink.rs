@@ -12,7 +12,7 @@ use reifydb::{
 	runtime::sync::mutex::Mutex,
 	sub_core::{
 		envelope::{BinaryKind, encode_rbcf_batch_envelope, encode_rbcf_envelope},
-		wire_sink::{BatchSubscribedMember, WireSink},
+		wire_sink::{BatchSubscribedEntry, WireSink},
 	},
 	subscription::{batch::BatchId, delivery::DeliveryResult},
 	value::value::{diff_type::DiffType, frame::frame::Frame},
@@ -42,7 +42,7 @@ pub enum NodePush {
 	Closed {
 		subscription_id: SubscriptionId,
 	},
-	BatchMemberClosed {
+	BatchSubscriptionClosed {
 		batch_id: BatchId,
 		subscription_id: SubscriptionId,
 	},
@@ -101,7 +101,7 @@ impl WireSink for NodeWireSink {
 		DeliveryResult::Delivered
 	}
 
-	fn send_batch_subscribed(&self, _batch_id: BatchId, _members: &[BatchSubscribedMember]) -> DeliveryResult {
+	fn send_batch_subscribed(&self, _batch_id: BatchId, _subscriptions: &[BatchSubscribedEntry]) -> DeliveryResult {
 		DeliveryResult::Delivered
 	}
 
@@ -161,8 +161,8 @@ impl WireSink for NodeWireSink {
 		})
 	}
 
-	fn send_batch_member_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> DeliveryResult {
-		self.push(NodePush::BatchMemberClosed {
+	fn send_batch_subscription_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> DeliveryResult {
+		self.push(NodePush::BatchSubscriptionClosed {
 			batch_id,
 			subscription_id,
 		})

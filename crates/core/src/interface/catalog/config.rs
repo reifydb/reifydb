@@ -516,8 +516,9 @@ impl ConfigKey {
 			}
 			Self::CdcConsumeWaitTimeout => {
 				"Backstop timeout for the CDC consumer's wait for a consume reply from the downstream \
-				 consumer. A lost reply would otherwise wedge the poll loop forever; on timeout the batch \
-				 is re-dispatched without advancing the checkpoint. Must be > 0."
+				 consumer. A lost reply would otherwise wedge the poll loop forever; on timeout the \
+				 process aborts with a report naming the consumer, the pending work and the batch. \
+				 Must be > 0."
 			}
 			Self::FlowJoinProbeBlockSize => {
 				"Number of opposite-side rows a streaming join pulls per block when probing its stored \

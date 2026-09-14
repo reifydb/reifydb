@@ -3,7 +3,7 @@
 import type {FrameResults, ShapeNode} from '@reifydb/core';
 import type {
     BatchSubscription,
-    BatchSubscriptionMember,
+    BatchSubscribeItem,
     SubscriptionCallbacks,
     SubscriptionConfig
 } from '@reifydb/client';
@@ -26,5 +26,5 @@ export interface StoreClient {
 
     unsubscribe(subscriptionId: string): Promise<void>;
 
-    batchSubscribe?(members: BatchSubscriptionMember[]): Promise<BatchSubscription>;
+    batchSubscribe?(subscriptions: BatchSubscribeItem[]): Promise<BatchSubscription>;
 }

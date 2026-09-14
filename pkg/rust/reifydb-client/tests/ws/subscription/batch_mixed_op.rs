@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_client::{BatchItem, BatchPushEvent, ChangeKind, SubscriptionConfig, Value};
+use reifydb_client::{BatchPushEvent, BatchSubscribeItem, ChangeKind, SubscriptionConfig, Value};
 use reifydb_value::value::duration::Duration;
 use tokio::time::timeout;
 
 use super::SubscriptionTestHarness;
 
 #[test]
-fn test_batch_member_entry_reports_per_frame_changes() {
+fn test_batch_subscription_entry_reports_per_frame_changes() {
 	// The batch path must derive the op from the frame itself, exactly as the single-subscription
 	// path does. The op never appears as a column, so a user column named `_op` would survive.
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("batch", "id: int4, name: utf8").await?;
 
 		let rql = format!("from test::{}", table);
-		let mut sub =
-			ctx.client.batch_subscribe(&[BatchItem::new(&rql, SubscriptionConfig::default())]).await?;
-		let member_id = sub.members()[0].subscription_id.clone();
+		let mut sub = ctx
+			.client
+			.batch_subscribe(&[BatchSubscribeItem::new(&rql, SubscriptionConfig::default())])
+			.await?;
+		let subscription_id = sub.subscriptions()[0].subscription_id.clone();
 
 		ctx.insert(&table, "{ id: 1, name: 'a' }").await?;
 
@@ -28,7 +30,7 @@ fn test_batch_member_entry_reports_per_frame_changes() {
 				.expect("batch stream should not end");
 			match event {
 				BatchPushEvent::Change(payload)
-					if payload.entries.iter().any(|e| e.subscription_id == member_id) =>
+					if payload.entries.iter().any(|e| e.subscription_id == subscription_id) =>
 				{
 					break payload;
 				}
@@ -39,10 +41,10 @@ fn test_batch_member_entry_reports_per_frame_changes() {
 		let entry = payload
 			.entries
 			.iter()
-			.find(|e| e.subscription_id == member_id)
-			.expect("member entry should be present");
+			.find(|e| e.subscription_id == subscription_id)
+			.expect("subscription entry should be present");
 
-		assert!(!entry.changes.is_empty(), "member entry should carry at least one frame change");
+		assert!(!entry.changes.is_empty(), "subscription entry should carry at least one frame change");
 		let insert = entry
 			.changes
 			.iter()

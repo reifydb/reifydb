@@ -100,11 +100,11 @@ pub struct UnsubscribedResponse {
 #[derive(Debug, Serialize)]
 pub struct BatchSubscribedResponse {
 	pub batch_id: String,
-	pub members: Vec<BatchMemberInfo>,
+	pub subscriptions: Vec<BatchSubscriptionInfo>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct BatchMemberInfo {
+pub struct BatchSubscriptionInfo {
 	pub index: usize,
 	pub subscription_id: String,
 }
@@ -124,7 +124,7 @@ pub struct LogoutResponse {
 pub enum ServerPush {
 	Change(ChangePayload),
 	BatchChange(BatchChangePayload),
-	BatchMemberClosed(BatchMemberClosedPayload),
+	BatchSubscriptionClosed(BatchSubscriptionClosedPayload),
 	BatchClosed(BatchClosedPayload),
 }
 
@@ -149,7 +149,7 @@ pub struct BatchChangeEntry {
 }
 
 #[derive(Debug, Serialize)]
-pub struct BatchMemberClosedPayload {
+pub struct BatchSubscriptionClosedPayload {
 	pub batch_id: String,
 	pub subscription_id: String,
 }
@@ -284,13 +284,13 @@ impl Response {
 	pub fn batch_subscribed(
 		id: impl Into<String>,
 		batch_id: impl Into<String>,
-		members: Vec<BatchMemberInfo>,
+		subscriptions: Vec<BatchSubscriptionInfo>,
 	) -> Self {
 		Self {
 			id: id.into(),
 			payload: ResponsePayload::BatchSubscribed(BatchSubscribedResponse {
 				batch_id: batch_id.into(),
-				members,
+				subscriptions,
 			}),
 		}
 	}
@@ -367,8 +367,8 @@ impl ServerPush {
 		})
 	}
 
-	pub fn batch_member_closed(batch_id: impl Into<String>, subscription_id: impl Into<String>) -> Self {
-		Self::BatchMemberClosed(BatchMemberClosedPayload {
+	pub fn batch_subscription_closed(batch_id: impl Into<String>, subscription_id: impl Into<String>) -> Self {
+		Self::BatchSubscriptionClosed(BatchSubscriptionClosedPayload {
 			batch_id: batch_id.into(),
 			subscription_id: subscription_id.into(),
 		})

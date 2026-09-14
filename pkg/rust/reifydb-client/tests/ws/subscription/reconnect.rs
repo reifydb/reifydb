@@ -8,8 +8,8 @@
 use std::{future::Future, sync::Arc};
 
 use reifydb_client::{
-	BatchItem, BatchPushEvent, ChangeKind, HydrationConfig, ReconnectOptions, SubscriptionConfig, WireFormat,
-	WsClientOptions,
+	BatchPushEvent, BatchSubscribeItem, ChangeKind, HydrationConfig, ReconnectOptions, SubscriptionConfig,
+	WireFormat, WsClientOptions,
 };
 use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, sync::mpsc, time::timeout};
@@ -121,7 +121,8 @@ fn reconnect_transparently_resubscribes_batch() {
 		let table = unique_table_name("reconn_batch");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 		let query = format!("from test::{}", table);
-		let mut batch = client.batch_subscribe(&[BatchItem::new(&query, no_hydration())]).await.unwrap();
+		let mut batch =
+			client.batch_subscribe(&[BatchSubscribeItem::new(&query, no_hydration())]).await.unwrap();
 		let batch_id = batch.batch_id().to_string();
 
 		client.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();

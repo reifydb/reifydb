@@ -2,12 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{Params, testing::db::TestDb};
-use reifydb_core::{
-	common::CommitVersion,
-	interface::catalog::{
-		id::SubscriptionId,
-		subscription::{HydrationConfig, SubscribeOptions, SubscribeOutcome},
-	},
+use reifydb_core::interface::catalog::{
+	id::SubscriptionId,
+	subscription::{HydrationConfig, SubscribeOptions, SubscribeOutcome},
 };
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
 use reifydb_value::value::{Value, duration::Duration, identity::IdentityId};
@@ -42,11 +39,6 @@ fn make_db() -> TestDb {
 	db
 }
 
-fn gate(db: &TestDb, sub_id: SubscriptionId) -> Option<CommitVersion> {
-	let subsystem = db.subsystem::<SubscriptionSubsystem>().expect("subscription subsystem present");
-	subsystem.gate(&sub_id)
-}
-
 fn drain(db: &TestDb, sub_id: SubscriptionId) -> Vec<i32> {
 	let subsystem = db.subsystem::<SubscriptionSubsystem>().expect("subscription subsystem present");
 	let mut out = Vec::new();
@@ -76,36 +68,38 @@ fn wait_for_consumer_caught_up(db: &TestDb) {
 }
 
 #[test]
-fn a_subscription_without_hydration_is_gated_at_its_registration_version() {
-	// Without a floor the pre-existing row is delivered whenever the consumer reaches that version after
-	// registration.
+fn a_subscription_without_hydration_delivers_only_rows_after_registration() {
+	// A floor below the seeding version lets the pre-existing row reach the store once the consumer catches up.
 	let db = make_db();
 	db.command("INSERT app::t [{id: 1}]");
-	let seeded_at = db.watermarks().tx().current().expect("current version");
 
 	let sub_id = extract_sub_id(subscribe(&db, false));
 
-	let gate = gate(&db, sub_id).expect("a subscription with hydration disabled must still carry a version floor");
-	assert!(
-		gate >= seeded_at,
-		"the floor must sit at or above the version that seeded the table, otherwise the pre-existing row is \
-		 still deliverable (gate={:?} seeded_at={:?})",
-		gate,
-		seeded_at
+	wait_for_consumer_caught_up(&db);
+
+	assert_eq!(
+		drain(&db, sub_id),
+		Vec::<i32>::new(),
+		"a row committed before registration must never be delivered"
 	);
 }
 
 #[test]
-fn a_subscription_with_hydration_is_gated_at_its_registration_version() {
-	// Both paths must pin the same floor, or the snapshot and the live stream meet with a gap or an overlap.
+fn a_subscription_with_hydration_delivers_only_rows_after_registration() {
+	// Enabling hydration must not move the live floor, or rows before registration leak or rows after it vanish.
 	let db = make_db();
 	db.command("INSERT app::t [{id: 1}]");
-	let seeded_at = db.watermarks().tx().current().expect("current version");
 
 	let sub_id = extract_sub_id(subscribe(&db, true));
 
-	let gate = gate(&db, sub_id).expect("a hydrating subscription must carry a version floor");
-	assert!(gate >= seeded_at, "gate={:?} seeded_at={:?}", gate, seeded_at);
+	db.command("INSERT app::t [{id: 2}]");
+	wait_for_consumer_caught_up(&db);
+
+	assert_eq!(
+		drain(&db, sub_id),
+		vec![2],
+		"a hydrating subscription must deliver exactly the rows committed after registration"
+	);
 }
 
 #[test]

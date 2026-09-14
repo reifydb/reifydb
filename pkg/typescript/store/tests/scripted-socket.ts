@@ -46,10 +46,10 @@ export class ScriptedSocket {
 
     ackBatch(batchId: string, subscriptionIds: (string | null)[]): void {
         const request = this.requests('BatchSubscribe').pop();
-        const members = subscriptionIds
+        const subscriptions = subscriptionIds
             .map((subscription_id, index) => ({index, subscription_id}))
-            .filter(member => member.subscription_id !== null);
-        this.receive({id: request.id, type: 'BatchSubscribed', payload: {batch_id: batchId, members}});
+            .filter(subscription => subscription.subscription_id !== null);
+        this.receive({id: request.id, type: 'BatchSubscribed', payload: {batch_id: batchId, subscriptions}});
     }
 
     ackUnsubscribe(subscriptionId: string): void {

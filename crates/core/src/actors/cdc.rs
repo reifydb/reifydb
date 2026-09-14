@@ -28,12 +28,10 @@ pub enum CdcPollMessage {
 	CheckWatermark,
 
 	ConsumeResponse {
-		generation: u64,
 		result: Result<()>,
 	},
 
 	ResyncResponse {
-		generation: u64,
 		result: Result<CommitVersion>,
 	},
 

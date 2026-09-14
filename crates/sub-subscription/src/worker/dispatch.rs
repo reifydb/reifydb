@@ -54,7 +54,6 @@ impl SubscriptionWorkerActor {
 				self.evaluate_batch(state, &base_query, changes);
 				drop(base_query);
 				drop(protect);
-				self.delivery.commit_batch();
 				return Ok(());
 			}
 			Ok(lease) => {
@@ -64,7 +63,6 @@ impl SubscriptionWorkerActor {
 			Err(e) => return Err(e),
 		}
 		drop(protect);
-		self.delivery.commit_batch();
 		Ok(())
 	}
 

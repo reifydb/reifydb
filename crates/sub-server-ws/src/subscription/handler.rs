@@ -15,12 +15,12 @@ use reifydb_sub_server::{
 	interceptor::{Protocol, RequestMetadata},
 };
 use reifydb_subscription::batch::BatchId;
-use reifydb_value::{params::Params, value::identity::IdentityId};
+use reifydb_value::{error::Error, params::Params, value::identity::IdentityId};
 
 use crate::{
 	handler::{ConnectionContext, build_error, error_to_response},
 	protocol::{BatchSubscribeRequest, BatchUnsubscribeRequest, SubscribeDecodeError, SubscribeRequest},
-	response::{BatchMemberInfo, Response},
+	response::{BatchSubscriptionInfo, Response},
 	subscription::registry::WsWireSink,
 };
 
@@ -32,7 +32,7 @@ pub(crate) async fn handle_subscribe(
 	request_id: &str,
 	sub: SubscribeRequest,
 	conn: &mut ConnectionContext<'_>,
-) -> Option<String> {
+) -> Result<Option<String>, Error> {
 	let identity: IdentityId = subscribe_identity(*conn.identity);
 	let metadata = RequestMetadata::new(Protocol::WebSocket);
 	let sink = WsWireSink::new(conn.push_tx.clone());
@@ -42,10 +42,10 @@ pub(crate) async fn handle_subscribe(
 		Some(wp) => match wp.into_params() {
 			Ok(p) => p,
 			Err(e) => {
-				return Some(decode_error_to_response(
+				return Ok(Some(decode_error_to_response(
 					request_id,
 					SubscribeDecodeError::InvalidParams(e),
-				));
+				)));
 			}
 		},
 	};
@@ -55,10 +55,10 @@ pub(crate) async fn handle_subscribe(
 		Some(wire) => match wire.into_options() {
 			Ok(o) => o,
 			Err(e) => {
-				return Some(decode_error_to_response(
+				return Ok(Some(decode_error_to_response(
 					request_id,
 					SubscribeDecodeError::InvalidOptions(e),
-				));
+				)));
 			}
 		},
 	};
@@ -76,15 +76,15 @@ pub(crate) async fn handle_subscribe(
 		sub.format,
 		conn.shutdown.clone(),
 	)
-	.await
+	.await?
 	{
 		Ok(ack) => {
 			if let Some(handle) = ack.remote_handle {
 				conn.remote_tasks.insert(ack.subscription_id.to_string(), handle);
 			}
-			Some(Response::subscribed(request_id, ack.subscription_id.to_string()).to_json())
+			Ok(Some(Response::subscribed(request_id, ack.subscription_id.to_string()).to_json()))
 		}
-		Err(err) => Some(subscribe_error_to_response(request_id, err)),
+		Err(err) => Ok(Some(subscribe_error_to_response(request_id, err))),
 	}
 }
 
@@ -92,7 +92,7 @@ pub(crate) async fn handle_batch_subscribe(
 	request_id: &str,
 	req: BatchSubscribeRequest,
 	conn: &mut ConnectionContext<'_>,
-) -> Option<String> {
+) -> Result<Option<String>, Error> {
 	let identity: IdentityId = subscribe_identity(*conn.identity);
 	let metadata = RequestMetadata::new(Protocol::WebSocket);
 	let sink = WsWireSink::new(conn.push_tx.clone());
@@ -100,7 +100,7 @@ pub(crate) async fn handle_batch_subscribe(
 	let format = req.format;
 	let queries = match req.into_queries() {
 		Ok(queries) => queries,
-		Err(e) => return Some(decode_error_to_response(request_id, e)),
+		Err(e) => return Ok(Some(decode_error_to_response(request_id, e))),
 	};
 
 	let host = conn.state.subscribe_host(metadata);
@@ -114,23 +114,27 @@ pub(crate) async fn handle_batch_subscribe(
 		format,
 		conn.shutdown.clone(),
 	)
-	.await
+	.await?
 	{
 		Ok(ack) => {
 			let handles = conn.batch_remote_tasks.entry(ack.batch_id).or_default();
 			handles.extend(ack.remote_handles);
-			let members_for_ack: Vec<BatchMemberInfo> = ack
-				.members
+			let subscriptions_for_ack: Vec<BatchSubscriptionInfo> = ack
+				.subscriptions
 				.into_iter()
-				.map(|m| BatchMemberInfo {
+				.map(|m| BatchSubscriptionInfo {
 					index: m.index,
 					subscription_id: m.subscription_id.to_string(),
 				})
 				.collect();
-			Some(Response::batch_subscribed(request_id, ack.batch_id.to_string(), members_for_ack)
-				.to_json())
+			Ok(Some(Response::batch_subscribed(
+				request_id,
+				ack.batch_id.to_string(),
+				subscriptions_for_ack,
+			)
+			.to_json()))
 		}
-		Err(err) => Some(batch_subscribe_error_to_response(request_id, err)),
+		Err(err) => Ok(Some(batch_subscribe_error_to_response(request_id, err))),
 	}
 }
 
@@ -138,17 +142,17 @@ pub(crate) async fn handle_batch_unsubscribe(
 	request_id: &str,
 	req: BatchUnsubscribeRequest,
 	conn: &mut ConnectionContext<'_>,
-) -> Option<String> {
+) -> Result<Option<String>, Error> {
 	let batch_id = match parse_batch_id(request_id, &req.batch_id) {
 		Ok(id) => id,
-		Err(response) => return Some(response),
+		Err(response) => return Ok(Some(response)),
 	};
 
 	abort_local_batch_handles(conn, &batch_id);
 
-	let _ = shared_batch_unsubscribe(conn.state.engine(), conn.registry, conn.connection_id, batch_id).await;
+	shared_batch_unsubscribe(conn.state.engine(), conn.registry, conn.connection_id, batch_id).await?;
 
-	Some(Response::batch_unsubscribed(request_id, batch_id.to_string()).to_json())
+	Ok(Some(Response::batch_unsubscribed(request_id, batch_id.to_string()).to_json()))
 }
 
 #[inline]

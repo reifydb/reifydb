@@ -45,7 +45,7 @@ use tonic::{
 	Code, Request, Response, Status,
 	metadata::{KeyAndValueRef, MetadataMap},
 };
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::{
 	convert::{proto_params_to_params, proto_subscribe_options},
@@ -266,10 +266,15 @@ impl ReifyDbService {
 
 			if client_disconnected {
 				let engine_clone = engine.clone();
-				let _ = spawn_blocking(move || {
-					cleanup_subscription_sync(&engine_clone, subscription_id)
-				})
-				.await;
+				match spawn_blocking(move || cleanup_subscription_sync(&engine_clone, subscription_id))
+					.await
+				{
+					Ok(Ok(())) => {}
+					Ok(Err(e)) => panic!("gRPC subscription stream cleanup failed: {e}"),
+					Err(e) => panic!(
+						"gRPC cleanup task for subscription {subscription_id} failed: {e}"
+					),
+				}
 			}
 		});
 
@@ -317,21 +322,35 @@ impl ReifyDbService {
 				handle.abort();
 			}
 
-			let removed_members = registry.cleanup_connection(connection_id);
+			let removed_subscriptions = registry.cleanup_connection(connection_id);
 			owners.lock().remove(&connection_id);
 
-			if client_disconnected && !removed_members.is_empty() {
-				for member in removed_members {
+			if client_disconnected && !removed_subscriptions.is_empty() {
+				for subscription in removed_subscriptions {
 					let engine_clone = engine.clone();
-					let _ = spawn_blocking(move || {
-						cleanup_subscription_sync(&engine_clone, member)
+					match spawn_blocking(move || {
+						cleanup_subscription_sync(&engine_clone, subscription)
 					})
-					.await;
+					.await
+					{
+						Ok(Ok(())) => {}
+						Ok(Err(e)) => {
+							panic!("gRPC batch {batch_id} stream cleanup failed: {e}")
+						}
+						Err(e) => panic!(
+							"gRPC cleanup task for batch {batch_id} subscription {subscription} failed: {e}"
+						),
+					}
 				}
 			}
 		});
 
-		debug!("gRPC batch {} created ({} members, format={:?})", batch_id, ack.members.len(), format);
+		debug!(
+			"gRPC batch {} created ({} subscriptions, format={:?})",
+			batch_id,
+			ack.subscriptions.len(),
+			format
+		);
 		Response::new(UnboundedReceiverStream::new(batch_rx))
 	}
 
@@ -473,6 +492,7 @@ impl ReifyDb for ReifyDbService {
 			self.shutdown_rx.clone(),
 		)
 		.await
+		.unwrap_or_else(|e| panic!("gRPC subscribe failed: {e}"))
 		{
 			Ok(ack) => Ok(self.spawn_single_cleanup(ack, tx, rx, connection_id, owner)),
 			Err(err) => Err(subscribe_error_to_status(err)),
@@ -503,16 +523,10 @@ impl ReifyDb for ReifyDbService {
 			let result = spawn_blocking(move || cleanup_subscription_sync(&engine, subscription_id)).await;
 			match result {
 				Ok(Ok(())) => debug!("gRPC subscription {} unsubscribed", subscription_id),
-				Ok(Err(e)) => {
-					warn!(
-						"Failed to cleanup subscription {} from database: {:?}",
-						subscription_id, e
-					)
+				Ok(Err(e)) => panic!("gRPC unsubscribe failed: {e}"),
+				Err(e) => {
+					panic!("gRPC unsubscribe task for subscription {subscription_id} failed: {e}")
 				}
-				Err(e) => warn!(
-					"Blocking task error cleaning up subscription {}: {:?}",
-					subscription_id, e
-				),
 			}
 		}
 
@@ -558,6 +572,7 @@ impl ReifyDb for ReifyDbService {
 			self.shutdown_rx.clone(),
 		)
 		.await
+		.unwrap_or_else(|e| panic!("gRPC batch subscribe failed: {e}"))
 		{
 			Ok(ack) => Ok(self.spawn_batch_cleanup(ack, batch_tx, batch_rx, connection_id, format, owner)),
 			Err(err) => Err(batch_subscribe_error_to_status(err)),
@@ -574,18 +589,20 @@ impl ReifyDb for ReifyDbService {
 		let batch_id: BatchId =
 			inner.batch_id.parse().map_err(|_| Status::invalid_argument("Invalid batch ID"))?;
 
-		let members = self
+		let subscriptions = self
 			.registry
 			.batch_connection(&batch_id)
 			.filter(|connection_id| self.owns(caller, connection_id))
 			.and_then(|connection_id| self.registry.unsubscribe_batch_owned(connection_id, batch_id));
-		if let Some(members) = members {
-			for member in members {
+		if let Some(subscriptions) = subscriptions {
+			for subscription in subscriptions {
 				let engine = self.state.engine_clone();
-				match spawn_blocking(move || cleanup_subscription_sync(&engine, member)).await {
+				match spawn_blocking(move || cleanup_subscription_sync(&engine, subscription)).await {
 					Ok(Ok(())) => {}
-					Ok(Err(e)) => warn!("Failed to cleanup batch member {}: {:?}", member, e),
-					Err(e) => warn!("Cleanup task panicked for batch member {}: {:?}", member, e),
+					Ok(Err(e)) => panic!("gRPC batch {batch_id} unsubscribe failed: {e}"),
+					Err(e) => panic!(
+						"gRPC unsubscribe task for batch {batch_id} subscription {subscription} failed: {e}"
+					),
 				}
 			}
 		}

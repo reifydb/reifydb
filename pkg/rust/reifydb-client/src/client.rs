@@ -5,9 +5,9 @@ use async_trait::async_trait;
 use reifydb_value::{error::Error, params::Params, value::frame::frame::Frame};
 
 use crate::{
-	AdminResult, BatchMemberInfo, BatchPushEvent, ChangePayload, CommandResult, LoginResult, QueryResult,
+	AdminResult, BatchPushEvent, BatchSubscriptionInfo, ChangePayload, CommandResult, LoginResult, QueryResult,
 	WireFormat,
-	subscription::{BatchItem, SubscriptionConfig},
+	subscription::{BatchSubscribeItem, SubscriptionConfig},
 };
 
 #[async_trait]
@@ -19,7 +19,7 @@ pub trait Subscription: Send {
 #[async_trait]
 pub trait BatchSubscription: Send {
 	fn batch_id(&self) -> &str;
-	fn members(&self) -> &[BatchMemberInfo];
+	fn subscriptions(&self) -> &[BatchSubscriptionInfo];
 	async fn recv(&mut self) -> Option<BatchPushEvent>;
 }
 
@@ -44,6 +44,9 @@ pub trait ReifyClient: Send {
 
 	async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<Box<dyn Subscription>, Error>;
 	async fn unsubscribe(&self, subscription_id: &str) -> Result<(), Error>;
-	async fn batch_subscribe<'a>(&self, items: &[BatchItem<'a>]) -> Result<Box<dyn BatchSubscription>, Error>;
+	async fn batch_subscribe<'a>(
+		&self,
+		items: &[BatchSubscribeItem<'a>],
+	) -> Result<Box<dyn BatchSubscription>, Error>;
 	async fn batch_unsubscribe(&self, batch_id: &str) -> Result<(), Error>;
 }

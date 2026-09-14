@@ -24,8 +24,8 @@ function build() {
 }
 
 describe('batch subscription params over the native bridge', () => {
-  it('filters each member with its own params, on hydration and on later changes', async () => {
-    // Each member must bind its own params, otherwise every member of a per-monitor batch sees every monitor's rows.
+  it('filters each subscription with its own params, on hydration and on later changes', async () => {
+    // Each subscription must bind its own params, otherwise every subscription of a per-monitor batch sees every monitor's rows.
     const client = storeClient(build())
     await client.command(`insert app::t [{ id: 1, owner: 'a' }]`, null, [])
     await client.caughtUp()

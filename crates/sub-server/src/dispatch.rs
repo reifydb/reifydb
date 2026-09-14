@@ -140,9 +140,10 @@ mod host {
 				});
 			}
 		};
-		metrics.total = Duration::from_nanoseconds(wall_duration.as_nanos() as i64).map_err(duration_error)?;
+		metrics.total =
+			Duration::from_nanoseconds(wall_duration.as_nanos() as i64).map_err(|e| duration_error(*e))?;
 		metrics.compute = Duration::from_nanoseconds(compute_duration.to_std().as_nanos() as i64)
-			.map_err(duration_error)?;
+			.map_err(|e| duration_error(*e))?;
 		Ok((frames, metrics))
 	}
 
@@ -167,14 +168,17 @@ mod host {
 				});
 			}
 		};
-		let mut metrics = ExecutionMetrics::default();
-		metrics.total = Duration::from_nanoseconds(wall_duration.as_nanos() as i64).map_err(duration_error)?;
-		metrics.compute = Duration::from_nanoseconds(compute_duration.to_std().as_nanos() as i64)
-			.map_err(duration_error)?;
+		let metrics = ExecutionMetrics {
+			total: Duration::from_nanoseconds(wall_duration.as_nanos() as i64)
+				.map_err(|e| duration_error(*e))?,
+			compute: Duration::from_nanoseconds(compute_duration.to_std().as_nanos() as i64)
+				.map_err(|e| duration_error(*e))?,
+			..Default::default()
+		};
 		Ok((outcome, metrics))
 	}
 
-	fn duration_error(error: Box<TypeError>) -> ExecuteError {
+	fn duration_error(error: TypeError) -> ExecuteError {
 		ExecuteError::Engine {
 			diagnostic: Arc::from(error.into_diagnostic()),
 			rql: String::new(),

@@ -3,7 +3,7 @@
 
 use std::sync::{
 	Arc,
-	atomic::{AtomicUsize, Ordering},
+	atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 use reifydb_cdc::{consume::consumer::CdcConsume, rebuild::rebuild_changes};
@@ -13,17 +13,22 @@ use reifydb_core::{
 		cdc::Cdc,
 		change::{Change, ChangeOrigin},
 	},
+	internal_error,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{actor::mailbox::ActorRef, sync::mutex::Mutex};
+use reifydb_runtime::{
+	actor::{mailbox::ActorRef, system::ActorSpawner},
+	sync::mutex::Mutex,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, error::Error, value::identity::IdentityId};
 use tracing::{instrument, warn};
 
 use crate::{
+	delivery::DeliveryBuffer,
 	store::SubscriptionStore,
 	tracker::{SubscriptionPositionTracker, SubscriptionSourceTracker},
-	worker::SubscriptionWorkerMessage,
+	worker::{SubscriptionWorkerMessage, worker_name},
 };
 
 type Reply = Box<dyn FnOnce(Result<()>) + Send>;
@@ -34,6 +39,8 @@ pub struct SubscriptionCdcConsumer {
 	source_tracker: SubscriptionSourceTracker,
 	position_tracker: SubscriptionPositionTracker,
 	store: Arc<SubscriptionStore>,
+	delivery: Arc<DeliveryBuffer>,
+	in_flight: Mutex<Vec<(usize, Arc<AtomicBool>)>>,
 }
 
 impl SubscriptionCdcConsumer {
@@ -43,6 +50,7 @@ impl SubscriptionCdcConsumer {
 		source_tracker: SubscriptionSourceTracker,
 		position_tracker: SubscriptionPositionTracker,
 		store: Arc<SubscriptionStore>,
+		delivery: Arc<DeliveryBuffer>,
 	) -> Self {
 		Self {
 			engine,
@@ -50,6 +58,8 @@ impl SubscriptionCdcConsumer {
 			source_tracker,
 			position_tracker,
 			store,
+			delivery,
+			in_flight: Mutex::new(Vec::new()),
 		}
 	}
 
@@ -95,6 +105,56 @@ impl DispatchBarrier {
 	}
 }
 
+pub struct WorkerDone {
+	barrier: Option<Arc<DispatchBarrier>>,
+	worker: usize,
+	spawner: ActorSpawner,
+	outstanding: Arc<AtomicBool>,
+}
+
+impl WorkerDone {
+	fn new(barrier: Arc<DispatchBarrier>, worker: usize, spawner: ActorSpawner) -> Self {
+		Self {
+			barrier: Some(barrier),
+			worker,
+			spawner,
+			outstanding: Arc::new(AtomicBool::new(true)),
+		}
+	}
+
+	fn outstanding(&self) -> (usize, Arc<AtomicBool>) {
+		(self.worker, self.outstanding.clone())
+	}
+
+	pub fn complete(mut self, result: Result<()>) {
+		if let Some(barrier) = self.barrier.take() {
+			self.outstanding.store(false, Ordering::Release);
+			barrier.complete_one(result);
+		}
+	}
+
+	fn unsent(mut self) {
+		self.abandon("could not be sent its message");
+	}
+
+	fn abandon(&mut self, failure: &str) {
+		let Some(barrier) = self.barrier.take() else {
+			return;
+		};
+		self.outstanding.store(false, Ordering::Release);
+		if self.spawner.cancellation_token().is_none_or(|token| token.is_cancelled()) {
+			return;
+		}
+		barrier.complete_one(Err(internal_error!("{} {}", worker_name(self.worker), failure)));
+	}
+}
+
+impl Drop for WorkerDone {
+	fn drop(&mut self) {
+		self.abandon("dropped its done without completing it");
+	}
+}
+
 impl CdcConsume for SubscriptionCdcConsumer {
 	fn overtaken(
 		&self,
@@ -124,18 +184,21 @@ impl CdcConsume for SubscriptionCdcConsumer {
 			barrier.complete_one(Ok(()));
 			return;
 		}
-		for worker in &self.workers {
-			let barrier_for_done = barrier.clone();
-			let done: Box<dyn FnOnce() + Send> = Box::new(move || barrier_for_done.complete_one(Ok(())));
-			if worker
-				.send(SubscriptionWorkerMessage::Terminate {
-					done,
-				})
-				.is_err()
+		let spawner = self.engine.spawner();
+		let mut in_flight = Vec::with_capacity(self.workers.len());
+		for (index, worker) in self.workers.iter().enumerate() {
+			let done = WorkerDone::new(barrier.clone(), index, spawner.clone());
+			in_flight.push(done.outstanding());
+			if let Err(unsent) = worker.send(SubscriptionWorkerMessage::Terminate {
+				done,
+			}) && let SubscriptionWorkerMessage::Terminate {
+				done,
+			} = unsent.into_inner()
 			{
-				barrier.complete_one(Ok(()));
+				done.unsent();
 			}
 		}
+		*self.in_flight.lock() = in_flight;
 	}
 
 	#[instrument(name = "subscription::consume", level = "debug", skip(self, cdcs, reply), fields(cdc_count = cdcs.len()))]
@@ -169,7 +232,9 @@ impl CdcConsume for SubscriptionCdcConsumer {
 
 		let position_tracker = self.position_tracker.clone();
 		let store = self.store.clone();
+		let delivery = self.delivery.clone();
 		let wrapped_reply: Reply = Box::new(move |outcome| {
+			delivery.commit_batch();
 			if outcome.is_ok() {
 				for subscription_id in store.active_subscriptions() {
 					position_tracker.update(subscription_id, max_version);
@@ -184,27 +249,41 @@ impl CdcConsume for SubscriptionCdcConsumer {
 			error: Mutex::new(None),
 		});
 
-		for worker in &self.workers {
-			let barrier_for_done = barrier.clone();
-			let done: Box<dyn FnOnce(Result<()>) + Send> =
-				Box::new(move |result| barrier_for_done.complete_one(result));
-			if worker
-				.send(SubscriptionWorkerMessage::Dispatch {
-					to_version: max_version,
-					changes: changes.clone(),
-					done,
-				})
-				.is_err()
+		let spawner = self.engine.spawner();
+		let mut in_flight = Vec::with_capacity(self.workers.len());
+		for (index, worker) in self.workers.iter().enumerate() {
+			let done = WorkerDone::new(barrier.clone(), index, spawner.clone());
+			in_flight.push(done.outstanding());
+			if let Err(unsent) = worker.send(SubscriptionWorkerMessage::Dispatch {
+				to_version: max_version,
+				changes: changes.clone(),
+				done,
+			}) && let SubscriptionWorkerMessage::Dispatch {
+				done,
+				..
+			} = unsent.into_inner()
 			{
-				barrier.complete_one(Ok(()));
+				done.unsent();
 			}
 		}
+		*self.in_flight.lock() = in_flight;
+	}
+
+	fn describe_pending(&self) -> String {
+		self.in_flight
+			.lock()
+			.iter()
+			.filter(|(_, outstanding)| outstanding.load(Ordering::Acquire))
+			.map(|(worker, _)| worker_name(*worker))
+			.collect::<Vec<_>>()
+			.join(", ")
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use reifydb_core::internal;
+	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 
 	use super::*;
 
@@ -251,5 +330,45 @@ mod tests {
 
 		let outcome = slot.lock().take().expect("the reply fires once the last worker completes");
 		assert!(outcome.is_err(), "a failed worker must fail the whole batch so the consumer retries");
+	}
+
+	#[test]
+	fn a_worker_that_drops_its_done_fails_the_batch_naming_the_worker() {
+		// A done dropped without completing must fail the batch by name, otherwise the barrier waits forever.
+		let (reply, slot) = capture();
+		let barrier = Arc::new(DispatchBarrier {
+			remaining: AtomicUsize::new(2),
+			reply: Mutex::new(Some(reply)),
+			error: Mutex::new(None),
+		});
+		let system = ActorSystem::testing(Clock::Real);
+
+		drop(WorkerDone::new(barrier.clone(), 0, system.spawner()));
+		WorkerDone::new(barrier.clone(), 1, system.spawner()).complete(Ok(()));
+
+		let outcome = slot.lock().take().expect("the reply must fire once the dropped done is accounted for");
+		let error = outcome.expect_err("a batch with a dropped done must not ack Ok");
+		assert!(
+			error.to_string().contains("subscription-worker-0"),
+			"the failure must name the worker that dropped its done: {error}"
+		);
+	}
+
+	#[test]
+	fn a_done_dropped_during_shutdown_neither_replies_nor_panics() {
+		// A done dropped once the actor system is cancelled is shutdown and must never fail the batch.
+		let (reply, slot) = capture();
+		let barrier = Arc::new(DispatchBarrier {
+			remaining: AtomicUsize::new(2),
+			reply: Mutex::new(Some(reply)),
+			error: Mutex::new(None),
+		});
+		let system = ActorSystem::testing(Clock::Real);
+		system.shutdown();
+
+		drop(WorkerDone::new(barrier.clone(), 0, system.spawner()));
+		WorkerDone::new(barrier.clone(), 1, system.spawner()).complete(Ok(()));
+
+		assert!(slot.lock().is_none(), "a done dropped during shutdown must not complete the batch");
 	}
 }

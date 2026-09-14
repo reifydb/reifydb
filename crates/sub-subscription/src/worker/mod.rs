@@ -30,18 +30,25 @@ use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transact
 use reifydb_value::{Result, params::Params, value::identity::IdentityId};
 use tracing::error;
 
-use crate::{delivery::DeliveryBuffer, store::SubscriptionStore, subsystem::registration::register_ephemeral_flow};
+use crate::{
+	consumer::WorkerDone, delivery::DeliveryBuffer, store::SubscriptionStore,
+	subsystem::registration::register_ephemeral_flow,
+};
 
 mod dispatch;
 mod hydrate;
 
 pub type SubscriptionEngineFactory = Box<dyn FnOnce() -> FlowEngineInner + Send>;
 
+pub(crate) fn worker_name(index: usize) -> String {
+	format!("subscription-worker-{}", index)
+}
+
 pub enum SubscriptionWorkerMessage {
 	Dispatch {
 		to_version: CommitVersion,
 		changes: Arc<Vec<Change>>,
-		done: Box<dyn FnOnce(Result<()>) + Send>,
+		done: WorkerDone,
 	},
 
 	Register {
@@ -56,13 +63,8 @@ pub enum SubscriptionWorkerMessage {
 		reply: Box<dyn FnOnce() + Send>,
 	},
 
-	Gate {
-		flow_id: FlowId,
-		reply: Box<dyn FnOnce(Option<CommitVersion>) + Send>,
-	},
-
 	Terminate {
-		done: Box<dyn FnOnce() + Send>,
+		done: WorkerDone,
 	},
 
 	Hydrate {
@@ -154,7 +156,7 @@ impl Actor for SubscriptionWorkerActor {
 					if let Err(e) = &result {
 						error!(error = %e, "subscription worker dispatch failed");
 					}
-					done(result);
+					done.complete(result);
 				}
 				SubscriptionWorkerMessage::Register {
 					flow_id,
@@ -166,10 +168,6 @@ impl Actor for SubscriptionWorkerActor {
 					flow_id,
 					reply,
 				} => self.handle_unregister(state, flow_id, reply),
-				SubscriptionWorkerMessage::Gate {
-					flow_id,
-					reply,
-				} => reply(state.flows.get(&flow_id).map(|flow_state| flow_state.gate)),
 				SubscriptionWorkerMessage::Terminate {
 					done,
 				} => self.handle_terminate(state, done),
@@ -252,13 +250,13 @@ impl SubscriptionWorkerActor {
 		reply();
 	}
 
-	fn handle_terminate(&self, state: &mut SubscriptionWorkerState, done: Box<dyn FnOnce() + Send>) {
+	fn handle_terminate(&self, state: &mut SubscriptionWorkerState, done: WorkerDone) {
 		let flow_ids: Vec<FlowId> = state.flows.keys().copied().collect();
 		for flow_id in flow_ids {
 			state.flows.remove(&flow_id);
 			state.flow_engine.remove_flow(flow_id);
 		}
 		state.carry_lease = None;
-		done();
+		done.complete(Ok(()));
 	}
 }

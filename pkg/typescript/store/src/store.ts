@@ -4,7 +4,7 @@ import {createStore} from 'zustand/vanilla';
 import type {StoreApi} from 'zustand/vanilla';
 import type {FrameResults, InferShape, ShapeNode} from '@reifydb/core';
 import type {
-    BatchSubscriptionMember,
+    BatchSubscribeItem,
     SubscriptionCallbacks,
     SubscriptionConfig,
     SubscriptionRow
@@ -36,7 +36,7 @@ interface Subscription {
 interface Queued {
     key: string;
     sub: Subscription;
-    member: BatchSubscriptionMember;
+    request: BatchSubscribeItem;
 }
 
 // Infinity never reaches zero, so seeded entries are never released or resubscribed on the client.
@@ -165,7 +165,7 @@ export class Store {
             onResubscribe: id => this.attach(key, sub, id, new Map()),
         };
         if (this.batch && this.client.batchSubscribe !== undefined) {
-            this.queued.push({key, sub, member: {rql, params, shape, callbacks, config}});
+            this.queued.push({key, sub, request: {rql, params, shape, callbacks, config}});
             this.scheduleFlush();
             return sub;
         }
@@ -203,12 +203,12 @@ export class Store {
             }
             return;
         }
-        batchSubscribe.call(this.client, live.map(entry => entry.member)).then(
+        batchSubscribe.call(this.client, live.map(entry => entry.request)).then(
             ({subscriptionIds}) => {
                 live.forEach(({key, sub}, index) => {
                     const id = subscriptionIds[index];
                     if (id === undefined) {
-                        this.reject(key, sub, new Error('the batch ack named no id for this member'));
+                        this.reject(key, sub, new Error('the batch ack named no id for this subscription'));
                         return;
                     }
                     this.attach(key, sub, id);

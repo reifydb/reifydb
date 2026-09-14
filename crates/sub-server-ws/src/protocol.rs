@@ -142,7 +142,7 @@ pub struct UnsubscribeRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct WireBatchSubscribeMember {
+pub struct WireBatchSubscribeItem {
 	pub rql: String,
 
 	pub params: Option<WireParams>,
@@ -158,7 +158,7 @@ pub enum SubscribeDecodeError {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BatchSubscribeRequest {
-	pub subscriptions: Vec<WireBatchSubscribeMember>,
+	pub subscriptions: Vec<WireBatchSubscribeItem>,
 
 	#[serde(default)]
 	pub format: WireFormat,
@@ -239,7 +239,7 @@ mod tests {
 
 	#[test]
 	fn an_entry_without_params_runs_its_query_without_params() {
-		// A member without params must never borrow a neighbour's, or its filter binds a foreign value.
+		// A subscription without params must never borrow a neighbour's, or its filter binds a foreign value.
 		let queries = batch(
 			r#"{"id":"b-1","type":"BatchSubscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b","params":[{"type":{"id":"Int4"},"value":"7"}]}]}}"#,
 		)
@@ -268,7 +268,7 @@ mod tests {
 
 	#[test]
 	fn an_invalid_param_names_the_query_it_belongs_to() {
-		// Without the index the client cannot tell which member of the batch carried the bad value.
+		// Without the index the client cannot tell which subscription of the batch carried the bad value.
 		let err = batch(
 			r#"{"id":"b-1","type":"BatchSubscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b","params":{"n":{"type":{"id":"Int4"},"value":"abc"}}}]}}"#,
 		)

@@ -113,9 +113,9 @@ describe('reconnect', () => {
     });
 });
 
-describe('released batch members', () => {
-    it('re-establishes only the members still held after a reconnect', async () => {
-        // A released member must never come back on reconnect, or it streams rows nobody reads forever.
+describe('released batch subscriptions', () => {
+    it('re-establishes only the subscriptions still held after a reconnect', async () => {
+        // A released subscription must never come back on reconnect, or it streams rows nobody reads forever.
         const store = new Store(await connect(), {batch: true});
         const release = store.subscribe(rql, null, shape);
         store.subscribe(other, null, shape, tuned);
@@ -133,7 +133,7 @@ describe('released batch members', () => {
         expect(second.requests('BatchSubscribe').map(request => request.payload.subscriptions)).toEqual([[first.payload.subscriptions[1]]]);
     });
 
-    it('sends no batch at all once every member was released', async () => {
+    it('sends no batch at all once every subscription was released', async () => {
         // An emptied batch must be dropped, otherwise every reconnect re-opens subscriptions nobody holds.
         const store = new Store(await connect(), {batch: true});
         const releaseItems = store.subscribe(rql, null, shape);
@@ -280,8 +280,8 @@ describe('unsubscribing while offline', () => {
         expect(sockets[1].requests('Subscribe')).toEqual([]);
     });
 
-    it('never re-establishes a batch member released while disconnected', async () => {
-        // Pages release batch members one by one, so a member released offline must not come back with its batch.
+    it('never re-establishes a batch subscription released while disconnected', async () => {
+        // Pages release batch subscriptions one by one, so a subscription released offline must not come back with its batch.
         const store = new Store(await connect(), {batch: true});
         const release = store.subscribe(rql, null, shape);
         store.subscribe(other, null, shape, tuned);

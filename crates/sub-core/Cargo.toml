@@ -29,5 +29,8 @@ dashmap = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 
+[dev-dependencies]
+reifydb-test-harness = { workspace = true }
+
 [build-dependencies]
 reifydb-build = { workspace = true }

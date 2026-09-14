@@ -175,10 +175,10 @@ describe('subscriptions over the native bridge', () => {
     expect(second.inserted).toEqual([expect.objectContaining({ id: 2, val: 20 })])
   })
 
-  it('routes each entry of a batch envelope to the member that owns it', async () => {
-    // A batch change is one envelope carrying every member's rows keyed by subscription id, which
-    // is a different frame from the single-subscription one. Two members over two views is the
-    // smallest case that can tell a correct decode from one that hands a member the wrong entry.
+  it('routes each entry of a batch envelope to the subscription that owns it', async () => {
+    // A batch change is one envelope carrying every subscription's rows keyed by subscription id, which
+    // is a different frame from the single-subscription one. Two subscriptions over two views is the
+    // smallest case that can tell a correct decode from one that hands a subscription the wrong entry.
     await secondView(db)
 
     const first = collector()
@@ -199,10 +199,10 @@ describe('subscriptions over the native bridge', () => {
     expect(batch.subscriptionIds).toHaveLength(2)
   })
 
-  it('returns the member ids in the order the members were given', async () => {
-    // The ack reports each member by index, not by position in its own list. If that index were
+  it('returns the subscription ids in the order the subscriptions were given', async () => {
+    // The ack reports each subscription by index, not by position in its own list. If that index were
     // ignored the ids would still all be present and every callback would still fire, so only
-    // unsubscribing one specific member can show the mapping is right.
+    // unsubscribing one specific subscription can show the mapping is right.
     await secondView(db)
 
     const first = collector()
@@ -222,8 +222,8 @@ describe('subscriptions over the native bridge', () => {
     expect(second.inserted).toEqual([expect.objectContaining({ id: 2, val: 20 })])
   })
 
-  it('hydrates every member of a batch from rows that predate it', async () => {
-    // Hydration of a batch member takes its own path: the rows are wrapped into a batch envelope
+  it('hydrates every subscription of a batch from rows that predate it', async () => {
+    // Hydration of a batch subscription takes its own path: the rows are wrapped into a batch envelope
     // rather than sent as a plain change, so a batch can hydrate wrongly while a lone subscription
     // hydrates fine.
     await secondView(db)
@@ -242,9 +242,9 @@ describe('subscriptions over the native bridge', () => {
     expect(second.inserted).toEqual([expect.objectContaining({ id: 2, val: 20 })])
   })
 
-  it('stops delivering to every member once the batch is unsubscribed', async () => {
-    // Unsubscribing the batch has to reach all of its members. Dropping the batch while leaving a
-    // member registered would keep delivering rows to a caller that asked to be done.
+  it('stops delivering to every subscription once the batch is unsubscribed', async () => {
+    // Unsubscribing the batch has to reach all of its subscriptions. Dropping the batch while leaving a
+    // subscription registered would keep delivering rows to a caller that asked to be done.
     await secondView(db)
 
     const first = collector()
@@ -266,8 +266,8 @@ describe('subscriptions over the native bridge', () => {
     expect(second.inserted).toEqual([])
   })
 
-  it('refuses a batch with no members', async () => {
-    await expect(client.batchSubscribe([])).rejects.toThrow(/at least one member/)
+  it('refuses a batch with no subscriptions', async () => {
+    await expect(client.batchSubscribe([])).rejects.toThrow(/at least one subscription/)
   })
 
   it('runs a subscription as the configured identity', async () => {

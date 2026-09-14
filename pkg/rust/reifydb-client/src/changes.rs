@@ -42,7 +42,7 @@ mod tests {
 
 	#[test]
 	fn derives_op_per_frame_and_keeps_every_user_column() {
-		// A batch member entry can concatenate frames of different ops. Each frame must keep its
+		// A batch subscription entry can concatenate frames of different ops. Each frame must keep its
 		// own kind rather than all inheriting the first frame's op, and the op must no longer
 		// occupy a column - a user table with a column named `_op` used to collide with it.
 		let changes = frames_to_changes(vec![

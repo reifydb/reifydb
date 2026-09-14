@@ -5,15 +5,15 @@ use reifydb_codec::{
 	wire::{RawChangePayload, WireFormat as ClientWireFormat},
 };
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-use reifydb_sub_core::wire_sink::{BatchSubscribedMember, WireSink};
+use reifydb_sub_core::wire_sink::{BatchSubscribedEntry, WireSink};
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_value::value::{diff_type::DiffType, frame::frame::Frame};
 use tokio::sync::mpsc;
 use tonic::Status;
 
 use crate::generated::{
-	BatchChangeEntry, BatchChangeEvent, BatchMember, BatchMemberClosedEvent, BatchSubscribedEvent,
-	BatchSubscriptionEvent, ChangeEvent, SubscribedEvent, SubscriptionEvent, batch_subscription_event,
+	BatchChangeEntry, BatchChangeEvent, BatchSubscribedEvent, BatchSubscriptionClosedEvent, BatchSubscriptionEvent,
+	BatchSubscriptionInfo, ChangeEvent, SubscribedEvent, SubscriptionEvent, batch_subscription_event,
 	subscription_event,
 };
 
@@ -56,12 +56,12 @@ impl WireSink for GrpcWireSink {
 		}
 	}
 
-	fn send_batch_subscribed(&self, batch_id: BatchId, members: &[BatchSubscribedMember]) -> DeliveryResult {
+	fn send_batch_subscribed(&self, batch_id: BatchId, subscriptions: &[BatchSubscribedEntry]) -> DeliveryResult {
 		match self {
 			Self::Batch(tx) => {
-				let members_wire: Vec<BatchMember> = members
+				let subscriptions_wire: Vec<BatchSubscriptionInfo> = subscriptions
 					.iter()
-					.map(|m| BatchMember {
+					.map(|m| BatchSubscriptionInfo {
 						index: m.index as u32,
 						subscription_id: m.subscription_id.to_string(),
 					})
@@ -70,7 +70,7 @@ impl WireSink for GrpcWireSink {
 					event: Some(batch_subscription_event::Event::Subscribed(
 						BatchSubscribedEvent {
 							batch_id: batch_id.to_string(),
-							members: members_wire,
+							subscriptions: subscriptions_wire,
 						},
 					)),
 				};
@@ -167,12 +167,12 @@ impl WireSink for GrpcWireSink {
 		}
 	}
 
-	fn send_batch_member_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> DeliveryResult {
+	fn send_batch_subscription_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> DeliveryResult {
 		match self {
 			Self::Batch(tx) => {
 				let event = BatchSubscriptionEvent {
-					event: Some(batch_subscription_event::Event::MemberClosed(
-						BatchMemberClosedEvent {
+					event: Some(batch_subscription_event::Event::SubscriptionClosed(
+						BatchSubscriptionClosedEvent {
 							batch_id: batch_id.to_string(),
 							subscription_id: subscription_id.to_string(),
 						},
@@ -228,7 +228,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_batch_flush_coalesces_two_members() {
+	async fn test_batch_flush_coalesces_two_subscriptions() {
 		let (clock, rng) = test_clock_and_rng();
 		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
@@ -292,7 +292,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_push_batch_frames_for_remote_member() {
+	async fn test_push_batch_frames_for_remote_subscription() {
 		let (clock, rng) = test_clock_and_rng();
 		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
@@ -324,7 +324,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_emit_batch_member_closed() {
+	async fn test_emit_batch_subscription_closed() {
 		let (clock, rng) = test_clock_and_rng();
 		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
@@ -341,15 +341,15 @@ mod tests {
 			&rng,
 		);
 
-		assert!(registry.emit_batch_member_closed(batch_id, sub));
+		assert!(registry.emit_batch_subscription_closed(batch_id, sub));
 
 		let msg = batch_rx.try_recv().expect("event").expect("ok");
 		match msg.event {
-			Some(batch_subscription_event::Event::MemberClosed(m)) => {
+			Some(batch_subscription_event::Event::SubscriptionClosed(m)) => {
 				assert_eq!(m.batch_id, batch_id.to_string());
 				assert_eq!(m.subscription_id, sub.to_string());
 			}
-			_ => panic!("expected MemberClosed"),
+			_ => panic!("expected SubscriptionClosed"),
 		}
 	}
 

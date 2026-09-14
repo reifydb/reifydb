@@ -41,11 +41,11 @@ describe('batched subscription opening', () => {
 
         expect(client.subscribes).toHaveLength(0);
         expect(client.batches).toHaveLength(1);
-        expect(client.batches[0].members.map(member => member.rql)).toEqual([monitors, results, regions]);
+        expect(client.batches[0].subscriptions.map(subscription => subscription.rql)).toEqual([monitors, results, regions]);
     });
 
-    it('turns each entry ready with the id the ack gave that member', async () => {
-        // The ack reports ids positionally against the members that were sent. Reading them in the
+    it('turns each entry ready with the id the ack gave that subscription', async () => {
+        // The ack reports ids positionally against the subscriptions that were sent. Reading them in the
         // wrong order would leave every entry ready and every later unsubscribe aimed elsewhere.
         const {client, store} = batching();
         store.subscribe(monitors, null, shape);
@@ -65,7 +65,7 @@ describe('batched subscription opening', () => {
         ]);
     });
 
-    it('marks every member in error when the batch itself is refused', async () => {
+    it('marks every subscription in error when the batch itself is refused', async () => {
         // One ack covers all of them, so a refusal is not one subscription's problem. An entry left
         // loading would render as a spinner that never resolves.
         const {client, store} = batching();
@@ -82,7 +82,7 @@ describe('batched subscription opening', () => {
         expect(store.getEntry(results, null, shape).status).toBe('error');
     });
 
-    it('marks a member in error when the ack names no id for it', async () => {
+    it('marks a subscription in error when the ack names no id for it', async () => {
         // A short ack is the one failure that looks like success. Without this the entry would stay
         // loading for the life of the page with nothing recorded anywhere.
         const {client, store} = batching();
@@ -97,7 +97,7 @@ describe('batched subscription opening', () => {
         expect(store.getEntry(results, null, shape).status).toBe('error');
     });
 
-    it('unsubscribes a member that was released before its ack came back', async () => {
+    it('unsubscribes a subscription that was released before its ack came back', async () => {
         // A component that mounts and unmounts in one tick, which React does in strict mode, is
         // already in the batch by the time the release lands. Its id has to be given back or the
         // subscription outlives everything holding it.
@@ -136,8 +136,8 @@ describe('batched subscription opening', () => {
         await flush();
 
         expect(client.batches).toHaveLength(2);
-        expect(client.batches[0].members.map(member => member.rql)).toEqual([monitors]);
-        expect(client.batches[1].members.map(member => member.rql)).toEqual([results]);
+        expect(client.batches[0].subscriptions.map(subscription => subscription.rql)).toEqual([monitors]);
+        expect(client.batches[1].subscriptions.map(subscription => subscription.rql)).toEqual([results]);
     });
 
     it('falls back to one subscribe each when the transport has no batch path', async () => {
@@ -152,19 +152,19 @@ describe('batched subscription opening', () => {
         expect(client.subscribes.map(call => call.rql)).toEqual([monitors, results]);
     });
 
-    it('still shares one member between two subscribers of the same rql', async () => {
+    it('still shares one subscription between two subscribers of the same rql', async () => {
         // Deduplication happens before anything is queued, so batching must not turn one shared
-        // subscription into two members that both deliver into the same entry.
+        // subscription into two subscriptions that both deliver into the same entry.
         const {client, store} = batching();
         store.subscribe(monitors, null, shape);
         store.subscribe(monitors, null, shape);
         await flush();
 
-        expect(client.batches[0].members).toHaveLength(1);
+        expect(client.batches[0].subscriptions).toHaveLength(1);
     });
 
-    it('delivers a change to the member that asked for it', async () => {
-        // Every member carries its own callbacks into the batch. If they were shared or mixed up the
+    it('delivers a change to the subscription that asked for it', async () => {
+        // Every subscription carries its own callbacks into the batch. If they were shared or mixed up the
         // rows would land on another entry, which no id check would catch.
         const {client, store} = batching();
         store.subscribe(monitors, null, shape);
@@ -173,7 +173,7 @@ describe('batched subscription opening', () => {
         client.batches[0].resolve({batchId: 'batch-1', subscriptionIds: ['sub-monitors', 'sub-results']});
         await flush();
 
-        client.batches[0].members[1].callbacks.onInsert?.([{'#rownum': 1, id: 7, name: 'r'}]);
+        client.batches[0].subscriptions[1].callbacks.onInsert?.([{'#rownum': 1, id: 7, name: 'r'}]);
 
         expect(store.getEntry(monitors, null, shape).data).toEqual([]);
         expect(store.getEntry(results, null, shape).data).toEqual([{id: 7, name: 'r'}]);

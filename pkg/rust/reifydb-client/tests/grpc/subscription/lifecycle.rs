@@ -4,9 +4,9 @@
 use std::sync::Arc;
 
 use reifydb_client::{
-	GrpcClient, SubscriptionConfig, WireFormat,
+	BatchStreamEvent, GrpcClient, SubscriptionConfig, WireFormat,
 	grpc::generated::{
-		BatchSubscribeMember, BatchSubscribeRequest, BatchSubscriptionEvent, batch_subscription_event,
+		BatchSubscribeItem, BatchSubscribeRequest, BatchSubscriptionEvent, batch_subscription_event,
 		reify_db_client::ReifyDbClient,
 	},
 };
@@ -195,7 +195,7 @@ fn another_stream_cannot_unsubscribe_a_batch_it_does_not_own() {
 
 		let mut owner = ReifyDbClient::connect(format!("http://[::1]:{}", port)).await.unwrap();
 		let mut request = Request::new(BatchSubscribeRequest {
-			subscriptions: vec![BatchSubscribeMember {
+			subscriptions: vec![BatchSubscribeItem {
 				rql: format!("from test::{}", table),
 				options: None,
 			}],
@@ -207,7 +207,7 @@ fn another_stream_cannot_unsubscribe_a_batch_it_does_not_own() {
 		else {
 			panic!("the owner's batch subscribe must be acknowledged first");
 		};
-		let subscription_id = subscribed.members[0].subscription_id.clone();
+		let subscription_id = subscribed.subscriptions[0].subscription_id.clone();
 
 		let intruder = connect_as_root(port).await;
 		let foreign = intruder.batch_unsubscribe(&subscribed.batch_id).await.map_err(|e| e.to_string());
@@ -246,6 +246,40 @@ fn the_owner_still_unsubscribes_its_own_subscription() {
 		assert!(
 			recv_with_timeout(&mut sub, 500).await.is_none(),
 			"the owner's own unsubscribe must end its stream"
+		);
+	});
+
+	cleanup_server(Some(server));
+}
+
+#[test]
+fn the_owner_still_unsubscribes_its_own_batch() {
+	// A batch unsubscribe by the handle's own id must stop delivery, or every member keeps streaming.
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	let mut server = create_server_instance(&runtime);
+	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
+
+	runtime.block_on(async {
+		let owner = connect_as_root(port).await;
+		let table = unique_table_name("sub_own_batch_unsub");
+		create_test_table(&owner, &table, &[("id", "int4")]).await.unwrap();
+		let query = format!("from test::{}", table);
+		let mut batch = owner
+			.batch_subscribe(&[reifydb_client::BatchSubscribeItem::new(
+				&query,
+				SubscriptionConfig::default(),
+			)])
+			.await
+			.unwrap();
+
+		owner.batch_unsubscribe(batch.batch_id()).await.unwrap();
+		owner.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
+
+		let after = timeout(Duration::from_milliseconds(500).unwrap().to_std(), batch.recv()).await;
+		assert!(
+			!matches!(after, Ok(Some(BatchStreamEvent::Change(_)))),
+			"the owner's own batch unsubscribe must stop delivery"
 		);
 	});
 

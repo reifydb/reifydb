@@ -61,7 +61,6 @@ impl SubscriptionWorkerActor {
 		self.apply_source_frames(state, flow_id, version, source_frames, now)?;
 
 		let batches = self.delivery.take_staged(sub_id);
-		self.delivery.commit_batch();
 		drop(outer);
 
 		Ok(self.build_outcome(sub_id, version, hydrate_start, statements, batches))

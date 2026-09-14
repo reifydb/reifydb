@@ -32,7 +32,7 @@ describe('useSubscription against a batching store', () => {
 
         expect(client.subscribes).toHaveLength(0);
         expect(client.batches).toHaveLength(1);
-        expect(client.batches[0].members.map(member => member.rql)).toEqual([monitors, results, regions]);
+        expect(client.batches[0].subscriptions.map(subscription => subscription.rql)).toEqual([monitors, results, regions]);
     });
 
     it('turns the whole page ready off one ack', async () => {
@@ -55,7 +55,7 @@ describe('useSubscription against a batching store', () => {
     });
 
     it('delivers a change to the hook whose rql produced it', async () => {
-        // Every hook reads its own entry, so a batch that handed the rows to the wrong member would
+        // Every hook reads its own entry, so a batch that handed the rows to the wrong subscription would
         // render one panel's data inside another.
         const {client, store} = setupBatching();
         render(<Page />, {wrapper: withStore(store)});
@@ -71,7 +71,7 @@ describe('useSubscription against a batching store', () => {
         });
 
         act(() => {
-            client.batches[0].members[1].callbacks.onInsert?.([{'#rownum': 1, id: 7, name: 'r'}]);
+            client.batches[0].subscriptions[1].callbacks.onInsert?.([{'#rownum': 1, id: 7, name: 'r'}]);
         });
 
         expect(store.getEntry(monitors, null, shape).data).toEqual([]);
@@ -110,6 +110,6 @@ describe('useSubscription against a batching store', () => {
         });
 
         expect(client.batches).toHaveLength(1);
-        expect(client.batches[0].members).toHaveLength(3);
+        expect(client.batches[0].subscriptions).toHaveLength(3);
     });
 });

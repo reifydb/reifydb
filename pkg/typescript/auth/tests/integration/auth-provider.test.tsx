@@ -13,6 +13,7 @@ import {
   type WalletConnector,
 } from "@reifydb/auth";
 
+import { tabScopedNamespace } from "../../src/storage";
 import { WS_URL, waitForDatabase } from "./setup";
 import { makeTestWallet } from "./test-wallet";
 
@@ -122,7 +123,7 @@ describe("AuthProvider — end-to-end against testcontainer", () => {
       { timeout: 10000 },
     );
 
-    const raw = localStorage.getItem(storageKeyFor(ns));
+    const raw = localStorage.getItem(storageKeyFor(tabScopedNamespace(ns)));
     expect(raw).not.toBeNull();
     const stored = JSON.parse(raw!);
     expect(stored.walletAddress).toBe(publicKeyB58);
@@ -144,7 +145,7 @@ describe("AuthProvider — end-to-end against testcontainer", () => {
       () => expect(ref.current?.status).toBe("authenticated"),
       { timeout: 10000 },
     );
-    expect(localStorage.getItem(storageKeyFor(ns))).not.toBeNull();
+    expect(localStorage.getItem(storageKeyFor(tabScopedNamespace(ns)))).not.toBeNull();
 
     await act(async () => {
       await ref.current!.signOut();
@@ -153,7 +154,7 @@ describe("AuthProvider — end-to-end against testcontainer", () => {
     expect(ref.current?.status).toBe("disconnected");
     expect(ref.current?.clientReady).toBe(false);
     expect(ref.current?.token).toBeNull();
-    expect(localStorage.getItem(storageKeyFor(ns))).toBeNull();
+    expect(localStorage.getItem(storageKeyFor(tabScopedNamespace(ns)))).toBeNull();
   });
 
   it("tears down when a different wallet is connected after authentication", async () => {
@@ -180,6 +181,6 @@ describe("AuthProvider — end-to-end against testcontainer", () => {
       () => expect(ref.current?.status).toBe("disconnected"),
       { timeout: 5000 },
     );
-    expect(localStorage.getItem(storageKeyFor(ns))).toBeNull();
+    expect(localStorage.getItem(storageKeyFor(tabScopedNamespace(ns)))).toBeNull();
   });
 });
