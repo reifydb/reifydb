@@ -26,6 +26,7 @@ export default defineConfig({
             }
         },
 
+        fileParallelism: false,
         retry: 2,
         reporters: process.env.CI
             ? ['verbose', 'github-actions', 'junit']
