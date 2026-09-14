@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{ops::Bound, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
@@ -23,6 +23,11 @@ use reifydb_core::{
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
 
 use crate::{
+	persistent::{
+		PersistentTier,
+		testing::{NoFaults, TestingPersistent},
+	},
+	range::OperatorRangeTier,
 	resident::Resident,
 	types::{BufferedState, DropMarker, FlushBatch, LayeredPre, OperatorStateCensus, OperatorWrite, StagedWrite},
 };
@@ -1021,4 +1026,27 @@ fn a_last_page_is_the_exact_reverse_tail_of_a_forward_page() {
 			"a page taken from the back must mirror the tail of the forward page, values included"
 		);
 	}
+}
+
+#[test]
+fn an_idle_flush_over_a_populated_device_never_touches_the_device() {
+	// The flush slice runs under the lock every commit takes, so any device call it makes while idle stalls all writers.
+	let device = TestingPersistent::new(Arc::new(NoFaults));
+	let buffer = Resident::new();
+	buffer.attach_sinks(PersistentTier::Testing(device.clone()), OperatorRangeTier::Absent);
+
+	buffer.record_state_set(OP_A, key("k"), row("v"));
+	buffer.flush_all();
+	let settled = device.calls();
+	assert!(settled > 0, "the first flush must reach the device, otherwise the idle flushes below prove nothing");
+
+	for _ in 0..3 {
+		buffer.flush_all();
+	}
+	assert_eq!(
+		device.calls(),
+		settled,
+		"a flush with nothing staged must not call the device; a census per slice scans every row on disk \
+		 and holds the commit lock for as long as the scan runs"
+	);
 }

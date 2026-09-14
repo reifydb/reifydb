@@ -174,7 +174,7 @@ pub struct Shared {
 	metrics: Mutex<OperatorResidentStateMetrics>,
 	triggered: AtomicBool,
 	filter: Arc<AdaptiveKeyFilter>,
-	filter_armed: AtomicBool,
+	filter_decided: AtomicBool,
 	sweep_cursor: AtomicU64,
 	#[cfg(test)]
 	persist_interlock: Mutex<Option<PersistInterlock>>,
@@ -204,7 +204,7 @@ impl Shared {
 			metrics: Mutex::new(OperatorResidentStateMetrics::default()),
 			triggered: AtomicBool::new(false),
 			filter: Arc::new(AdaptiveKeyFilter::new()),
-			filter_armed: AtomicBool::new(false),
+			filter_decided: AtomicBool::new(false),
 			sweep_cursor: AtomicU64::new(0),
 			#[cfg(test)]
 			persist_interlock: Mutex::new(None),
@@ -766,16 +766,16 @@ impl Resident {
 	/// unarmed filter admits every key and costs a device read, which is the direction that stays
 	/// correct.
 	fn arm_filter(&self) {
+		if self.shared.filter_decided.load(Ordering::Acquire) {
+			return;
+		}
 		let Some(sinks) = self.shared.sinks.get() else {
 			return;
 		};
 		let Ok(census) = sinks.persistent.census() else {
 			return;
 		};
-		if !census.is_empty() {
-			return;
-		}
-		if self.shared.filter_armed.swap(true, Ordering::AcqRel) {
+		if self.shared.filter_decided.swap(true, Ordering::AcqRel) || !census.is_empty() {
 			return;
 		}
 		let handle = self.shared.filter.begin_rebuild(FILTER_KEYS);
