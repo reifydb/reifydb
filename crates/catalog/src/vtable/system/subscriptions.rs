@@ -44,9 +44,9 @@ impl BaseVTable for SystemSubscriptions {
 			return Ok(None);
 		}
 
-		let subscriptions = match self.ioc.resolve::<SubscriptionInspectorRef>() {
-			Ok(inspector) => inspector.active_subscriptions(),
-			Err(_) => vec![],
+		let subscriptions = match self.ioc.try_resolve::<SubscriptionInspectorRef>() {
+			Some(inspector) => inspector.active_subscriptions(),
+			None => vec![],
 		};
 
 		let mut id_col = ColumnBuffer::uint8_with_capacity(subscriptions.len());

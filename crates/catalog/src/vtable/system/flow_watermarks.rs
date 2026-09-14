@@ -44,9 +44,9 @@ impl BaseVTable for SystemFlowWatermarks {
 			return Ok(None);
 		}
 
-		let rows = match self.ioc.resolve::<FlowWatermarkSampler>() {
-			Ok(source) => source.all(),
-			Err(_) => vec![],
+		let rows = match self.ioc.try_resolve::<FlowWatermarkSampler>() {
+			Some(source) => source.all(),
+			None => vec![],
 		};
 
 		let mut flow_ids = ColumnBuffer::uint8_with_capacity(rows.len());

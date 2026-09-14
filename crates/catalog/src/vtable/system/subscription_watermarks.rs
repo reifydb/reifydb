@@ -44,9 +44,9 @@ impl BaseVTable for SystemSubscriptionWatermarks {
 			return Ok(None);
 		}
 
-		let rows = match self.ioc.resolve::<SubscriptionWatermarkSampler>() {
-			Ok(source) => source.all(),
-			Err(_) => vec![],
+		let rows = match self.ioc.try_resolve::<SubscriptionWatermarkSampler>() {
+			Some(source) => source.all(),
+			None => vec![],
 		};
 
 		let mut subscription_ids = ColumnBuffer::uint8_with_capacity(rows.len());

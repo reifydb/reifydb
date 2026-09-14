@@ -44,9 +44,9 @@ impl BaseVTable for SystemVersions {
 			return Ok(None);
 		}
 
-		let versions = match self.ioc.resolve::<SystemCatalog>() {
-			Ok(catalog) => catalog.get_system_versions().to_vec(),
-			Err(_) => vec![],
+		let versions = match self.ioc.try_resolve::<SystemCatalog>() {
+			Some(catalog) => catalog.get_system_versions().to_vec(),
+			None => vec![],
 		};
 
 		let mut names_to_insert = ColumnBuffer::utf8_with_capacity(versions.len());

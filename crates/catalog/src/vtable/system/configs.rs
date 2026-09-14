@@ -46,9 +46,9 @@ impl BaseVTable for SystemConfigs {
 		}
 
 		let version = txn.version();
-		let mut configs = match self.ioc.resolve::<CatalogCache>() {
-			Ok(catalog) => catalog.list_configs_at(version),
-			Err(_) => vec![],
+		let mut configs = match self.ioc.try_resolve::<CatalogCache>() {
+			Some(catalog) => catalog.list_configs_at(version),
+			None => vec![],
 		};
 
 		if let Transaction::Test(t) = txn {
