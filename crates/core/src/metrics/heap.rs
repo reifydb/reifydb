@@ -26,7 +26,6 @@ use reifydb_value::{
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		partition::Partition,
-		percentile::{Centroid, Percentiles},
 		row_number::RowNumber,
 		time::Time,
 		uuid::{Uuid4, Uuid7},
@@ -135,17 +134,11 @@ macro_rules! zero_heap {
 
 zero_heap!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64, bool, char, ());
 zero_heap!(
-	OrderedF32, OrderedF64, Date, DateTime, Time, Duration, IdentityId, Uuid4, Uuid7, RowNumber, Hash128, Centroid
+	OrderedF32, OrderedF64, Date, DateTime, Time, Duration, IdentityId, Uuid4, Uuid7, RowNumber, Hash128
 );
 zero_heap!(Partition, RowShapeFingerprint, TimerKind, ContentVersion);
 
 const BIGNUM_APPROX_HEAP: usize = 32;
-
-impl HeapSize for Percentiles {
-	fn heap_size(&self) -> usize {
-		mem::size_of_val(self.centroids())
-	}
-}
 
 impl HeapSize for String {
 	fn heap_size(&self) -> usize {

@@ -30,7 +30,6 @@ pub mod number;
 pub mod ordered_f32;
 pub mod ordered_f64;
 pub mod partition;
-pub mod percentile;
 pub mod row_number;
 pub mod sumtype;
 pub mod system_columns;
