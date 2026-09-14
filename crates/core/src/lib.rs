@@ -22,6 +22,7 @@ pub mod lifecycle;
 pub mod metrics;
 pub mod partition;
 pub mod profiler;
+pub mod retry;
 pub mod row;
 pub mod sort;
 pub mod state;

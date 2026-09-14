@@ -9,7 +9,7 @@ mod token;
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use reifydb_catalog::{catalog::Catalog, create_token};
-use reifydb_core::interface::catalog::token::Token;
+use reifydb_core::{interface::catalog::token::Token, retry::RetryStrategy};
 use reifydb_runtime::context::{clock::Clock, rng::Rng as SystemRng};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
@@ -190,12 +190,14 @@ impl AuthService {
 	}
 
 	pub(super) fn persist_token(&self, token: &str, identity: IdentityId) -> Result<Token, Error> {
-		let mut admin = self.engine.begin_admin()?;
+		RetryStrategy::default().retry(&self.rng, "auth::persist_token", || {
+			let mut admin = self.engine.begin_admin()?;
 
-		let def = create_token(&mut admin, token, identity, self.expires_at()?, self.now()?)?;
+			let def = create_token(&mut admin, token, identity, self.expires_at()?, self.now()?)?;
 
-		admin.commit()?;
-		Ok(def)
+			admin.commit()?;
+			Ok(def)
+		})
 	}
 
 	pub fn create_token(
@@ -204,10 +206,12 @@ impl AuthService {
 		identity: IdentityId,
 		expires_at: Option<DateTime>,
 	) -> Result<Token, Error> {
-		let mut admin = self.engine.begin_admin()?;
-		let def = create_token(&mut admin, token, identity, expires_at, self.now()?)?;
-		admin.commit()?;
-		Ok(def)
+		RetryStrategy::default().retry(&self.rng, "auth::create_token", || {
+			let mut admin = self.engine.begin_admin()?;
+			let def = create_token(&mut admin, token, identity, expires_at, self.now()?)?;
+			admin.commit()?;
+			Ok(def)
+		})
 	}
 
 	#[instrument(name = "auth::create_session", level = "debug", skip(self))]

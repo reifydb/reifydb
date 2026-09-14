@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{
+	collections::HashMap,
+	sync::{Arc, Barrier},
+	thread,
+};
 
 use reifydb::{auth::service::AuthResponse, testing::db::TestDb, value::value::Value};
 use reifydb_test_harness::{
@@ -10,7 +14,7 @@ use reifydb_test_harness::{
 	lookup::{find_identity_by_attribute, find_identity_by_name},
 };
 
-use crate::auth::solana::{begin_challenge, complete_challenge, keypair, provision_credentials};
+use crate::auth::solana::{begin_challenge, complete_challenge, keypair, provision_credentials, sign};
 
 #[test]
 fn test_failed_verification_creates_no_identity() {
@@ -172,5 +176,53 @@ fn test_provision_cannot_bind_a_registered_wallet_to_a_second_name() {
 		find_identity_by_attribute(&db, "solana_public_key", &Value::Utf8(pubkey)).map(|ident| ident.id),
 		Some(owner.id),
 		"the wallet attribute must still resolve to the identity that proved ownership of it"
+	);
+}
+
+#[test]
+fn test_concurrent_sign_ins_all_authenticate() {
+	// Concurrent sign-ins must never fail on a transaction conflict.
+	let db = TestDb::memory();
+	let service = auth_service(&db).build();
+	let threads = 16;
+	let barrier = Arc::new(Barrier::new(threads));
+
+	let handles: Vec<_> = (0..threads)
+		.map(|i| {
+			let service = service.clone();
+			let barrier = barrier.clone();
+			thread::spawn(move || {
+				let (signing_key, pubkey) = keypair(100 + i as u8);
+				let (challenge_id, message) = begin_challenge(&service, provision_credentials(&pubkey));
+				barrier.wait();
+				service.authenticate(
+					"solana",
+					HashMap::from([
+						("challenge_id".to_string(), challenge_id),
+						("signature".to_string(), sign(&signing_key, &message)),
+						("signed_message".to_string(), message),
+					]),
+				)
+			})
+		})
+		.collect();
+
+	let failures: Vec<String> = handles
+		.into_iter()
+		.map(|handle| handle.join().unwrap())
+		.filter_map(|result| match result {
+			Ok(AuthResponse::Authenticated {
+				..
+			}) => None,
+			other => Some(format!("{other:?}")),
+		})
+		.collect();
+
+	assert!(
+		failures.is_empty(),
+		"every concurrent sign-in must authenticate, {} of {} failed: {:?}",
+		failures.len(),
+		threads,
+		failures
 	);
 }

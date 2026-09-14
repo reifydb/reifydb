@@ -8,6 +8,8 @@ use std::{
 };
 
 use reifydb_cdc::consume::backlog::{BacklogPull, FlowBacklog};
+#[cfg(reifydb_assertions)]
+use reifydb_core::key::tag::KeyTag;
 use reifydb_core::{
 	actors::{flow::FlowActorMessage, pending::Pending},
 	common::{CommitVersion, SourceVersion},
@@ -21,16 +23,14 @@ use reifydb_core::{
 		change::Change,
 	},
 };
-#[cfg(reifydb_assertions)]
-use reifydb_core::key::tag::KeyTag;
 use reifydb_engine::engine::StandardEngine;
+#[cfg(reifydb_assertions)]
+use reifydb_flow::transaction::read::{ReadFrom, read_from};
 use reifydb_flow::{
 	engine::{FlowEngineInner, frontier::WatermarkHolds},
 	operator::metrics::OperatorSampleRegistry,
 	transaction::substrate::FlowSubstrate,
 };
-#[cfg(reifydb_assertions)]
-use reifydb_flow::transaction::read::{ReadFrom, read_from};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{

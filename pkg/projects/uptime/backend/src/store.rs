@@ -4,7 +4,8 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use reifydb::{
-	FromFrame, IdentityId, RetryStrategy, Value,
+	FromFrame, IdentityId, Value,
+	core::retry::RetryStrategy,
 	engine::engine::StandardEngine,
 	runtime::context::rng::Rng,
 	value::{

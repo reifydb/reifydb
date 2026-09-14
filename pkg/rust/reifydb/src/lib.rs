@@ -160,4 +160,4 @@ pub use settle::{SettleBudget, Settled};
 #[cfg(feature = "sub_flow")]
 pub use subscribe::Subscription;
 pub mod test;
-pub use session::{Backoff, RetryStrategy, Session};
+pub use session::Session;

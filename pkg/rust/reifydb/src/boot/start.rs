@@ -4,8 +4,11 @@
 use std::sync::Arc;
 
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_core::key::system::{SystemVersion, SystemVersionKey};
-use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
+use reifydb_core::{
+	key::system::{SystemVersion, SystemVersionKey},
+	retry::RetryStrategy,
+};
+use reifydb_engine::engine::StandardEngine;
 use reifydb_store_multi::MultiStore;
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_value::{

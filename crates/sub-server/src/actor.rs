@@ -10,8 +10,9 @@ use reifydb_core::{
 	},
 	execution::ExecutionResult,
 	interface::catalog::{procedure::Procedure, subscription::SubscribeOptions},
+	retry::RetryStrategy,
 };
-use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
+use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
 	actor::{
 		context::Context,

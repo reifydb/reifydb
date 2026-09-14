@@ -3,7 +3,10 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
+use reifydb_core::{
+	interface::auth::{AuthStep, AuthenticationProvider},
+	retry::RetryStrategy,
+};
 use reifydb_value::{
 	error::Error,
 	reifydb_assertions,
@@ -106,14 +109,22 @@ impl AuthService {
 		public_key: &str,
 		properties: HashMap<String, String>,
 	) -> Result<IdentityId, Error> {
-		let mut admin = self.engine.begin_admin()?;
-		let catalog = self.engine.catalog();
+		let ident = RetryStrategy::default().retry(&self.rng, "auth::create_solana_identity", || {
+			let mut admin = self.engine.begin_admin()?;
+			let catalog = self.engine.catalog();
 
-		let ident =
-			catalog.create_identity(&mut admin, identifier, IdentityKind::User, &self.clock, &self.rng)?;
-		catalog.create_authentication(&mut admin, ident.id, "solana", properties)?;
-		self.set_lookup_attribute(&mut admin, ident.id, SOLANA_PUBLIC_KEY_ATTRIBUTE, public_key)?;
-		admin.commit()?;
+			let ident = catalog.create_identity(
+				&mut admin,
+				identifier,
+				IdentityKind::User,
+				&self.clock,
+				&self.rng,
+			)?;
+			catalog.create_authentication(&mut admin, ident.id, "solana", properties.clone())?;
+			self.set_lookup_attribute(&mut admin, ident.id, SOLANA_PUBLIC_KEY_ATTRIBUTE, public_key)?;
+			admin.commit()?;
+			Ok(ident)
+		})?;
 
 		reifydb_assertions! {
 			assert!(
