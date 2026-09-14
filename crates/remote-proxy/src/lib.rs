@@ -7,11 +7,10 @@
 
 use std::fmt;
 
-use reifydb_client::{GrpcClient, GrpcSubscription, RawChangePayload, SubscriptionConfig, WireFormat};
-use tokio::{
-	select,
-	sync::{mpsc, watch},
+use reifydb_client::{
+	GrpcClient, GrpcSubscription, RawChangePayload, SubscriptionConfig, WireFormat, value::error::Error,
 };
+use tokio::{select, sync::watch};
 
 #[derive(Debug)]
 pub enum RemoteSubscriptionError {
@@ -61,44 +60,18 @@ pub async fn connect_remote(
 	})
 }
 
-pub async fn proxy_remote<T, F>(
-	mut remote_sub: RemoteSubscription,
-	sender: mpsc::UnboundedSender<T>,
-	mut shutdown: watch::Receiver<bool>,
-	convert: F,
-) where
-	T: Send + 'static,
-	F: Fn(RawChangePayload) -> T,
-{
-	loop {
-		select! {
-			payload = remote_sub.inner.recv_raw() => {
-				match payload {
-					Some(payload) => {
-						if sender.send(convert(payload)).is_err() {
-							break;
-						}
-					}
-					None => break,
-				}
-			}
-			_ = sender.closed() => break,
-			_ = shutdown.changed() => break,
-		}
-	}
-}
-
 pub async fn proxy_remote_to_sink<F>(
 	mut remote_sub: RemoteSubscription,
 	mut shutdown: watch::Receiver<bool>,
 	mut sink: F,
-) where
+) -> Result<(), Error>
+where
 	F: FnMut(RawChangePayload) -> bool + Send + 'static,
 {
 	loop {
 		select! {
 			payload = remote_sub.inner.recv_raw() => {
-				match payload {
+				match payload? {
 					Some(payload) => {
 						if !sink(payload) {
 							break;
@@ -110,4 +83,5 @@ pub async fn proxy_remote_to_sink<F>(
 			_ = shutdown.changed() => break,
 		}
 	}
+	Ok(())
 }

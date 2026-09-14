@@ -14,7 +14,10 @@ use std::{collections::HashMap, mem, sync::Arc};
 
 use reifydb::{
 	Database, Error, IdentityId, Params, Result as ReifyResult,
-	core::{interface::catalog::id::SubscriptionId, internal},
+	core::{
+		interface::catalog::{id::SubscriptionId, subscription::SubscribeOptions},
+		internal,
+	},
 	runtime::sync::mutex::Mutex,
 	sub_core::{
 		cleanup::cleanup_subscription_sync,
@@ -84,15 +87,17 @@ impl Subscriptions {
 	pub async fn subscribe(
 		&self,
 		identity: IdentityId,
-		rql: String,
+		query: String,
 		params: Params,
+		options: SubscribeOptions,
 	) -> Result<SubscriptionId, SubscribeError<Error>> {
 		let ack = handle_subscribe(
 			&self.host,
 			self.connection_id,
 			identity,
-			rql,
+			query,
 			params,
+			options,
 			self.sink.clone(),
 			&self.registry,
 			Rbcf,
@@ -108,7 +113,7 @@ impl Subscriptions {
 	pub async fn batch_subscribe(
 		&self,
 		identity: IdentityId,
-		queries: &[(String, Params)],
+		queries: &[(String, Params, SubscribeOptions)],
 	) -> Result<BatchAck, BatchSubscribeError<Error>> {
 		let mut ack = handle_batch_subscribe(
 			&self.host,

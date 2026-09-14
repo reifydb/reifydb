@@ -14,32 +14,21 @@ use reifydb_value::value::frame::frame::Frame;
 pub struct Subscription {
 	id: SubscriptionId,
 	store: Arc<SubscriptionStore>,
-	column_names: Vec<String>,
 	prelude: Mutex<Vec<Frame>>,
 }
 
 impl Subscription {
 	#[cfg(feature = "sub_flow")]
-	pub(crate) fn new(
-		id: SubscriptionId,
-		store: Arc<SubscriptionStore>,
-		column_names: Vec<String>,
-		prelude: Vec<Frame>,
-	) -> Self {
+	pub(crate) fn new(id: SubscriptionId, store: Arc<SubscriptionStore>, prelude: Vec<Frame>) -> Self {
 		Self {
 			id,
 			store,
-			column_names,
 			prelude: Mutex::new(prelude),
 		}
 	}
 
 	pub fn id(&self) -> SubscriptionId {
 		self.id
-	}
-
-	pub fn column_names(&self) -> &[String] {
-		&self.column_names
 	}
 
 	/// Each frame carries its op on `Frame::op` (Insert=1, Update=2, Remove=3). Batches come back

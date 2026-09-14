@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {ReifyError, Shape, encodeParams} from '@reifydb/core';
+import {DurationValue, ReifyError, Shape, encodeParams} from '@reifydb/core';
 import {WsClient} from '@reifydb/client';
+import type {SubscriptionConfig} from '@reifydb/client';
 import {Store} from '../src';
 import {flush} from './fake-client';
 import {ScriptedSocket} from './scripted-socket';
 
 const shape = Shape.object({id: Shape.int4(), name: Shape.string()});
 const rql = 'from test::items filter { owner == $owner }';
+const tuned: SubscriptionConfig = {hydration: {enabled: true, maxRows: 50}, throttle: DurationValue.fromMilliseconds(250), linger: DurationValue.fromMilliseconds(100)};
 
 let sockets: ScriptedSocket[] = [];
 let client: WsClient | undefined;
@@ -24,10 +26,10 @@ async function dropConnection(): Promise<ScriptedSocket> {
     return sockets[sockets.length - 1];
 }
 
-async function batchOfTwo(): Promise<Store> {
+async function batchOfTwo(config?: SubscriptionConfig): Promise<Store> {
     const store = new Store(await connect(), {batch: true});
-    store.subscribe(rql, {owner: 'a'}, shape);
-    store.subscribe(rql, {owner: 'b'}, shape);
+    store.subscribe(rql, {owner: 'a'}, shape, config);
+    store.subscribe(rql, {owner: 'b'}, shape, config);
     await flush();
     return store;
 }
@@ -56,20 +58,20 @@ describe('batched subscription params', () => {
 
         const [batch] = sockets[0].requests('BatchSubscribe');
 
-        expect(batch.payload.params).toEqual([encodeParams({owner: 'a'}), encodeParams({owner: 'b'})]);
+        expect(batch.payload.subscriptions.map((subscription: any) => subscription.params)).toEqual([encodeParams({owner: 'a'}), encodeParams({owner: 'b'})]);
     });
 
     it('sends the same params again when the batch is re-established after a reconnect', async () => {
         // The resubscribe must carry the params again, otherwise a reconnect silently widens every filtered member.
-        await batchOfTwo();
+        await batchOfTwo(tuned);
         sockets[0].ackBatch('batch-1', ['server-1', 'server-2']);
         await flush();
 
         const second = await dropConnection();
         const [batch] = second.requests('BatchSubscribe');
 
-        expect(batch.payload.queries).toEqual(sockets[0].requests('BatchSubscribe')[0].payload.queries);
-        expect(batch.payload.params).toEqual([encodeParams({owner: 'a'}), encodeParams({owner: 'b'})]);
+        expect(batch.payload.subscriptions).toEqual(sockets[0].requests('BatchSubscribe')[0].payload.subscriptions);
+        expect(batch.payload.subscriptions.map((subscription: any) => subscription.params)).toEqual([encodeParams({owner: 'a'}), encodeParams({owner: 'b'})]);
     });
 });
 

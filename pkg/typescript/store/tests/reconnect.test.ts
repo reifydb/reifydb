@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {Shape} from '@reifydb/core';
+import {DurationValue, Shape} from '@reifydb/core';
 import {WsClient} from '@reifydb/client';
+import type {SubscriptionConfig} from '@reifydb/client';
 import {Store} from '../src';
 import {flush} from './fake-client';
 import {ScriptedSocket} from './scripted-socket';
@@ -10,6 +11,7 @@ import {ScriptedSocket} from './scripted-socket';
 const shape = Shape.object({id: Shape.int4(), name: Shape.string()});
 const rql = 'from test::items';
 const other = 'from test::others';
+const tuned: SubscriptionConfig = {hydration: {enabled: true, maxRows: 50}, throttle: DurationValue.fromMilliseconds(250), linger: DurationValue.fromMilliseconds(100)};
 
 let sockets: ScriptedSocket[] = [];
 let client: WsClient | undefined;
@@ -116,7 +118,7 @@ describe('released batch members', () => {
         // A released member must never come back on reconnect, or it streams rows nobody reads forever.
         const store = new Store(await connect(), {batch: true});
         const release = store.subscribe(rql, null, shape);
-        store.subscribe(other, null, shape);
+        store.subscribe(other, null, shape, tuned);
         await flush();
         sockets[0].ackBatch('batch-1', ['server-1', 'server-2']);
         await flush();
@@ -128,7 +130,7 @@ describe('released batch members', () => {
         const second = await dropConnection();
 
         const [first] = sockets[0].requests('BatchSubscribe');
-        expect(second.requests('BatchSubscribe').map(request => request.payload.queries)).toEqual([[first.payload.queries[1]]]);
+        expect(second.requests('BatchSubscribe').map(request => request.payload.subscriptions)).toEqual([[first.payload.subscriptions[1]]]);
     });
 
     it('sends no batch at all once every member was released', async () => {
@@ -282,7 +284,7 @@ describe('unsubscribing while offline', () => {
         // Pages release batch members one by one, so a member released offline must not come back with its batch.
         const store = new Store(await connect(), {batch: true});
         const release = store.subscribe(rql, null, shape);
-        store.subscribe(other, null, shape);
+        store.subscribe(other, null, shape, tuned);
         await flush();
         sockets[0].ackBatch('batch-1', ['server-1', 'server-2']);
         await flush();
@@ -292,7 +294,7 @@ describe('unsubscribing while offline', () => {
         await flush();
 
         const [first] = sockets[0].requests('BatchSubscribe');
-        expect(sockets[1].requests('BatchSubscribe').map(request => request.payload.queries)).toEqual([[first.payload.queries[1]]]);
+        expect(sockets[1].requests('BatchSubscribe').map(request => request.payload.subscriptions)).toEqual([[first.payload.subscriptions[1]]]);
     });
 
     it('never re-establishes a subscription released while a second drop left it waiting', async () => {

@@ -1,29 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::testing::db::TestDb;
-use reifydb_core::{common::CommitVersion, interface::catalog::id::SubscriptionId};
+use reifydb::{Params, testing::db::TestDb};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::{
+		id::SubscriptionId,
+		subscription::{HydrationConfig, SubscribeOptions, SubscribeOutcome},
+	},
+};
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
-use reifydb_value::value::{Value, duration::Duration, frame::frame::Frame};
+use reifydb_value::value::{Value, duration::Duration, identity::IdentityId};
 
-fn extract_sub_id(frames: &[Frame]) -> SubscriptionId {
-	let frame = frames.first().expect("subscription frame");
-	let value = frame
-		.columns
-		.iter()
-		.find(|c| c.name == "subscription_id")
-		.and_then(|c| {
-			if c.data.is_empty() {
-				None
-			} else {
-				Some(c.data.get_value(0))
-			}
-		})
-		.expect("subscription_id column");
-	match value {
-		Value::Uint8(n) => SubscriptionId(n),
-		other => panic!("unexpected subscription_id value: {:?}", other),
+fn extract_sub_id(outcome: SubscribeOutcome) -> SubscriptionId {
+	match outcome {
+		SubscribeOutcome::Local {
+			id,
+		} => id,
+		SubscribeOutcome::Remote {
+			address,
+			..
+		} => panic!("expected a local subscription, got a remote one at {}", address),
 	}
+}
+
+fn subscribe(db: &TestDb, hydration_enabled: bool) -> SubscribeOutcome {
+	let options = SubscribeOptions {
+		hydration: HydrationConfig {
+			enabled: hydration_enabled,
+			max_rows: None,
+		},
+		..SubscribeOptions::default()
+	};
+	db.engine().subscribe_as(IdentityId::root(), "from app::t", Params::None, options).expect("subscribe as root")
 }
 
 fn make_db() -> TestDb {
@@ -74,8 +83,7 @@ fn a_subscription_without_hydration_is_gated_at_its_registration_version() {
 	db.command("INSERT app::t [{id: 1}]");
 	let seeded_at = db.watermarks().tx().current().expect("current version");
 
-	let frames = db.admin("CREATE SUBSCRIPTION WITH { hydration: { enabled: false } } AS { from app::t }");
-	let sub_id = extract_sub_id(&frames);
+	let sub_id = extract_sub_id(subscribe(&db, false));
 
 	let gate = gate(&db, sub_id).expect("a subscription with hydration disabled must still carry a version floor");
 	assert!(
@@ -94,8 +102,7 @@ fn a_subscription_with_hydration_is_gated_at_its_registration_version() {
 	db.command("INSERT app::t [{id: 1}]");
 	let seeded_at = db.watermarks().tx().current().expect("current version");
 
-	let frames = db.admin("CREATE SUBSCRIPTION WITH { hydration: { enabled: true } } AS { from app::t }");
-	let sub_id = extract_sub_id(&frames);
+	let sub_id = extract_sub_id(subscribe(&db, true));
 
 	let gate = gate(&db, sub_id).expect("a hydrating subscription must carry a version floor");
 	assert!(gate >= seeded_at, "gate={:?} seeded_at={:?}", gate, seeded_at);
@@ -107,8 +114,7 @@ fn the_gate_admits_changes_committed_after_registration_and_refuses_the_ones_bef
 	let db = make_db();
 	db.command("INSERT app::t [{id: 1}]");
 
-	let frames = db.admin("CREATE SUBSCRIPTION WITH { hydration: { enabled: false } } AS { from app::t }");
-	let sub_id = extract_sub_id(&frames);
+	let sub_id = extract_sub_id(subscribe(&db, false));
 
 	db.command("INSERT app::t [{id: 2}]");
 	wait_for_consumer_caught_up(&db);

@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::{IndexType, JoinType},
 	sort::SortDirection,
 };
-use reifydb_value::value::{duration::Duration, identity::IdentityKind};
+use reifydb_value::value::identity::IdentityKind;
 
 use crate::{
 	ast::identifier::{
@@ -285,14 +285,6 @@ impl<'bump> Ast<'bump> {
 		)
 	}
 
-	pub fn is_subscription_ddl(&self) -> bool {
-		match self {
-			Ast::Create(node) => matches!(**node, AstCreate::Subscription(_)),
-			Ast::Drop(node) => matches!(*node, AstDrop::Subscription(_)),
-			_ => false,
-		}
-	}
-
 	ast_accessor!(Dispatch, AstDispatch<'bump>, is_dispatch, as_dispatch, "dispatch");
 	ast_accessor!(Assert, AstAssert<'bump>, is_assert, as_assert, "assert");
 	ast_accessor!(Aggregate, AstAggregate<'bump>, is_aggregate, as_aggregate, "aggregate");
@@ -475,7 +467,6 @@ pub enum AstCreate<'bump> {
 	Namespace(AstCreateNamespace<'bump>),
 	RemoteNamespace(AstCreateRemoteNamespace<'bump>),
 	Series(AstCreateSeries<'bump>),
-	Subscription(AstCreateSubscription<'bump>),
 	Table(AstCreateTable<'bump>),
 	RingBuffer(AstCreateRingBuffer<'bump>),
 	Queue(AstCreateQueue<'bump>),
@@ -544,7 +535,6 @@ pub enum AstDrop<'bump> {
 	Namespace(AstDropNamespace<'bump>),
 	Dictionary(AstDropDictionary<'bump>),
 	Enum(AstDropSumType<'bump>),
-	Subscription(AstDropSubscription<'bump>),
 	Series(AstDropSeries<'bump>),
 	Identity(AstDropIdentity<'bump>),
 	IdentityAttribute(AstDropIdentityAttribute<'bump>),
@@ -621,14 +611,6 @@ pub struct AstDropSumType<'bump> {
 	pub token: Token<'bump>,
 	pub if_exists: bool,
 	pub sumtype: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub cascade: bool,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AstDropSubscription<'bump> {
-	pub token: Token<'bump>,
-	pub if_exists: bool,
-	pub identifier: BumpFragment<'bump>,
 	pub cascade: bool,
 }
 
@@ -892,21 +874,6 @@ pub struct AstJoinPick<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstHydrationConfig {
-	pub enabled: bool,
-	pub max_rows: Option<u64>,
-}
-
-impl Default for AstHydrationConfig {
-	fn default() -> Self {
-		Self {
-			enabled: true,
-			max_rows: None,
-		}
-	}
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct AstPersistent<'bump> {
 	pub value: bool,
 	pub token: Token<'bump>,
@@ -947,16 +914,6 @@ pub struct AstCreateSeries<'bump> {
 	pub partition_by: Vec<String>,
 	pub settings: Option<AstRowSettings<'bump>>,
 	pub time_declaration: AstTimeDeclaration<'bump>,
-}
-
-#[derive(Debug)]
-pub struct AstCreateSubscription<'bump> {
-	pub token: Token<'bump>,
-	pub columns: Vec<AstColumnToCreate<'bump>>,
-	pub as_clause: Option<AstStatement<'bump>>,
-	pub hydration: AstHydrationConfig,
-	pub throttle: Option<Duration>,
-	pub linger: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -1226,7 +1183,6 @@ impl_token_for_enum!(AstCreate, 'bump,
 	Dictionary(AstCreateDictionary<'bump>),
 	Enum(AstCreateSumType<'bump>),
 	Index(AstCreateIndex<'bump>),
-	Subscription(AstCreateSubscription<'bump>),
 	PrimaryKey(AstCreatePrimaryKey<'bump>),
 	ColumnProperty(AstCreateColumnProperty<'bump>),
 	Procedure(AstCreateProcedure<'bump>),
@@ -1262,7 +1218,6 @@ impl_token_for_enum!(AstDrop, 'bump,
 	Namespace(AstDropNamespace<'bump>),
 	Dictionary(AstDropDictionary<'bump>),
 	Enum(AstDropSumType<'bump>),
-	Subscription(AstDropSubscription<'bump>),
 	Series(AstDropSeries<'bump>),
 	Identity(AstDropIdentity<'bump>),
 	IdentityAttribute(AstDropIdentityAttribute<'bump>),

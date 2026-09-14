@@ -19,6 +19,8 @@ pub enum ClientError {
 
 	Decode(String),
 
+	Encode(String),
+
 	Transport(String),
 
 	Server(Box<Diagnostic>),
@@ -33,6 +35,7 @@ impl fmt::Display for ClientError {
 			ClientError::UnsupportedWireFormat(msg) => write!(f, "{}", msg),
 			ClientError::UnexpectedResponse(msg) => write!(f, "{}", msg),
 			ClientError::Decode(msg) => write!(f, "{}", msg),
+			ClientError::Encode(msg) => write!(f, "{}", msg),
 			ClientError::Transport(msg) => write!(f, "{}", msg),
 			ClientError::Server(diagnostic) => write!(f, "{}", diagnostic.message),
 		}
@@ -51,6 +54,7 @@ impl From<ClientError> for Error {
 			ClientError::UnsupportedWireFormat(msg) => diag("INVALID_FORMAT", msg),
 			ClientError::UnexpectedResponse(msg) => diag("UNEXPECTED_RESPONSE", msg),
 			ClientError::Decode(msg) => diag("DECODE", msg),
+			ClientError::Encode(msg) => diag("ENCODE", msg),
 			ClientError::Transport(msg) => diag("TRANSPORT", msg),
 		};
 		Error(Box::new(diagnostic))
@@ -92,6 +96,7 @@ mod tests {
 			),
 			(ClientError::UnexpectedResponse("weird".to_string()), "UNEXPECTED_RESPONSE", "weird"),
 			(ClientError::Decode("bad bytes".to_string()), "DECODE", "bad bytes"),
+			(ClientError::Encode("bad value".to_string()), "ENCODE", "bad value"),
 			(ClientError::Transport("socket died".to_string()), "TRANSPORT", "socket died"),
 		];
 

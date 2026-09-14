@@ -135,3 +135,19 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	let found_in_txn3 = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "v").unwrap();
 	assert!(found_in_txn3.is_some());
 }
+
+#[test]
+fn create_with_non_query_body_is_rejected_with_query_005() {
+	// Views must keep QUERY_005 for a non-query body, otherwise the subscription-only SUBS_010 leaked into views.
+	let t = TestEngine::new();
+	t.admin("CREATE NAMESPACE vns_create_e");
+	t.admin("CREATE TABLE vns_create_e::src { id: int4 }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql(
+		"CREATE DEFERRED VIEW vns_create_e::v { id: int4 } AS { CREATE TABLE vns_create_e::other { id: int4 } }",
+		Params::None,
+	);
+	let diagnostic = r.error.expect("a deferred view whose AS body is DDL must be rejected").diagnostic();
+	assert_eq!(diagnostic.code, "QUERY_005", "got: {}", diagnostic.message);
+}

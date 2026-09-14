@@ -47,7 +47,7 @@ import type {
     BatchSubscription
 } from "./types";
 import {
-    buildSubscriptionRql,
+    encodeSubscribeOptions,
     ReifyError
 } from "./types";
 import {jsonResponseToRows} from "./json-decode";
@@ -412,8 +412,9 @@ export class WsClient {
                 id: `sub-${this.nextId++}`,
                 type: "Subscribe",
                 payload: {
-                    rql: buildSubscriptionRql(rql, config),
+                    rql,
                     params: params !== undefined && params !== null ? encodeParams(params) : undefined,
+                    options: encodeSubscribeOptions(config),
                     format: subFormat
                 } as any
             };
@@ -422,8 +423,11 @@ export class WsClient {
             id: `batch-sub-${this.nextId++}`,
             type: "BatchSubscribe",
             payload: {
-                queries: intent.members.map(m => buildSubscriptionRql(m.rql, m.config)),
-                params: intent.members.map(m => m.params !== undefined && m.params !== null ? encodeParams(m.params) : null) as any,
+                subscriptions: intent.members.map(m => ({
+                    rql: m.rql,
+                    params: m.params !== undefined && m.params !== null ? encodeParams(m.params) : undefined,
+                    options: encodeSubscribeOptions(m.config)
+                })) as any,
                 format: subFormat as any
             }
         };

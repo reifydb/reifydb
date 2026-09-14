@@ -222,18 +222,6 @@ pub enum CatalogError {
 		has_junction: bool,
 	},
 
-	#[error("subscription `{name}` already exists")]
-	SubscriptionAlreadyExists {
-		fragment: Fragment,
-		name: String,
-	},
-
-	#[error("subscription `{name}` not found")]
-	SubscriptionNotFound {
-		fragment: Fragment,
-		name: String,
-	},
-
 	#[error("column `{column}` not found in {kind} `{namespace}`.`{name}`")]
 	ColumnNotFound {
 		kind: CatalogObjectKind,
@@ -1116,43 +1104,6 @@ impl IntoDiagnostic for CatalogError {
 				label: Some("invalid relationship cardinality/junction combination".to_string()),
 				help: Some(
 					"use cardinality N:M only with a THROUGH clause, and use THROUGH only with cardinality N:M"
-						.to_string(),
-				),
-				column: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			CatalogError::SubscriptionAlreadyExists {
-				fragment,
-				name,
-			} => Diagnostic {
-				code: "CA_010".to_string(),
-				rql: None,
-				message: format!("subscription `{}` already exists", name),
-				fragment,
-				label: Some("duplicate subscription definition".to_string()),
-				help: Some(
-					"choose a different name or close the existing subscription first".to_string()
-				),
-				column: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			CatalogError::SubscriptionNotFound {
-				fragment,
-				name,
-			} => Diagnostic {
-				code: "CA_011".to_string(),
-				rql: None,
-				message: format!("subscription `{}` not found", name),
-				fragment,
-				label: Some("unknown subscription reference".to_string()),
-				help: Some(
-					"ensure the subscription exists or create it first using `CREATE SUBSCRIPTION`"
 						.to_string(),
 				),
 				column: None,

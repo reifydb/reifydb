@@ -12,8 +12,7 @@ use crate::{
 		ast::{
 			AstDrop, AstDropDictionary, AstDropHandler, AstDropNamespace, AstDropProcedure, AstDropQueue,
 			AstDropRelationship, AstDropRingBuffer, AstDropSeries, AstDropSink, AstDropSource,
-			AstDropSubscription, AstDropSumType, AstDropTable, AstDropTest, AstDropView,
-			AstPolicyTargetType,
+			AstDropSumType, AstDropTable, AstDropTest, AstDropView, AstPolicyTargetType,
 		},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedHandlerIdentifier,
@@ -73,10 +72,8 @@ impl<'bump> Parser<'bump> {
 			return self.parse_drop_enum(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Subscription))?).is_some() {
-			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_drop_policy(token, AstPolicyTargetType::Subscription);
-			}
-			return self.parse_drop_subscription(token);
+			self.consume_keyword(Keyword::Policy)?;
+			return self.parse_drop_policy(token, AstPolicyTargetType::Subscription);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Series))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
@@ -346,18 +343,6 @@ impl<'bump> Parser<'bump> {
 				})
 			},
 		)
-	}
-
-	fn parse_drop_subscription(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
-		let if_exists = self.parse_if_exists()?;
-		let identifier = self.parse_identifier_with_hyphens()?.into_fragment();
-		let cascade = self.parse_cascade()?;
-		Ok(AstDrop::Subscription(AstDropSubscription {
-			token,
-			if_exists,
-			identifier,
-			cascade,
-		}))
 	}
 
 	fn parse_drop_source(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
@@ -715,37 +700,5 @@ pub mod tests {
 		assert_eq!(drop.sumtype.namespace[0].text(), "ns");
 		assert_eq!(drop.sumtype.name.text(), "my_enum");
 		assert!(drop.cascade);
-	}
-
-	#[test]
-	fn test_drop_subscription_basic() {
-		let bump = Bump::new();
-		let source = "DROP SUBSCRIPTION sub_123";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let result = parser.parse_drop().unwrap();
-
-		let AstDrop::Subscription(drop) = result else {
-			panic!("expected Subscription")
-		};
-		assert!(!drop.if_exists);
-		assert_eq!(drop.identifier.text(), "sub_123");
-		assert!(!drop.cascade);
-	}
-
-	#[test]
-	fn test_drop_subscription_if_exists() {
-		let bump = Bump::new();
-		let source = "DROP SUBSCRIPTION IF EXISTS sub_123";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let result = parser.parse_drop().unwrap();
-
-		let AstDrop::Subscription(drop) = result else {
-			panic!("expected Subscription")
-		};
-		assert!(drop.if_exists);
-		assert_eq!(drop.identifier.text(), "sub_123");
-		assert!(!drop.cascade);
 	}
 }

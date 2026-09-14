@@ -16,7 +16,10 @@ use reifydb_catalog::catalog::Catalog;
 #[cfg(feature = "sub_flow")]
 use reifydb_core::{
 	error::diagnostic::{subscription::hydration_row_cap_exceeded, subsystem::feature_disabled},
-	interface::catalog::{id::SubscriptionId, subscription::HydrationConfig},
+	interface::catalog::{
+		id::SubscriptionId,
+		subscription::{HydrationConfig, SubscribeOptions, SubscribeOutcome},
+	},
 	internal,
 };
 use reifydb_engine::engine::StandardEngine;
@@ -46,13 +49,13 @@ use reifydb_sub_server_ws::subsystem::WsSubsystem;
 use reifydb_sub_subscription::{store::SubscriptionStore, subsystem::SubscriptionSubsystem};
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
+#[cfg(feature = "sub_flow")]
+use reifydb_value::error::Error;
 use reifydb_value::{
 	Result,
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
-#[cfg(feature = "sub_flow")]
-use reifydb_value::{error::Error, value::Value};
 use tracing::{info, instrument, warn};
 
 #[cfg(all(feature = "sub_flow", reifydb_dst))]
@@ -432,9 +435,8 @@ impl Database {
 		}
 	}
 
-	/// `query` is the subscription body only, e.g. `from ns::t | map { id, score }`; it is wrapped
-	/// in `CREATE SUBSCRIPTION AS { .. }`. `HydrationConfig::default()` delivers the current
-	/// snapshot before forward changes.
+	/// `query` is the subscription body only, e.g. `from ns::t | map { id, score }`.
+	/// `HydrationConfig::default()` delivers the current snapshot before forward changes.
 	#[cfg(feature = "sub_flow")]
 	pub fn subscribe_as_root(
 		&self,
@@ -457,11 +459,20 @@ impl Database {
 		hydration: HydrationConfig,
 	) -> Result<Subscription> {
 		let store = self.resolve_subscription_store()?;
-		let frames = self.admin_as(identity, &format!("CREATE SUBSCRIPTION AS {{ {query} }}"), params)?;
-		let id = Self::parse_subscription_id(&frames)?;
-		let column_names = store.column_names(&id).unwrap_or_default();
+		let id = match self.engine.subscribe_as(identity, query, params.into(), SubscribeOptions::default())? {
+			SubscribeOutcome::Local {
+				id,
+			} => id,
+			SubscribeOutcome::Remote {
+				..
+			} => {
+				return Err(Error(Box::new(internal!(
+					"subscribe_as does not support remote subscriptions"
+				))));
+			}
+		};
 		let prelude = self.build_hydration_prelude(id, identity, &hydration)?;
-		Ok(Subscription::new(id, store, column_names, prelude))
+		Ok(Subscription::new(id, store, prelude))
 	}
 
 	#[cfg(feature = "sub_flow")]
@@ -471,24 +482,6 @@ impl Database {
 			.ok_or_else(|| Error(Box::new(feature_disabled("subscription"))))?
 			.store()
 			.clone())
-	}
-
-	#[cfg(feature = "sub_flow")]
-	#[inline]
-	fn parse_subscription_id(frames: &[Frame]) -> Result<SubscriptionId> {
-		frames.first()
-			.and_then(|f| f.columns.iter().find(|c| c.name == "subscription_id"))
-			.filter(|c| !c.data.is_empty())
-			.map(|c| c.data.get_value(0))
-			.and_then(|v| match v {
-				Value::Uint8(n) => Some(SubscriptionId(n)),
-				_ => None,
-			})
-			.ok_or_else(|| {
-				Error(Box::new(internal!(
-					"CREATE SUBSCRIPTION succeeded but returned no subscription_id"
-				)))
-			})
 	}
 
 	#[cfg(feature = "sub_flow")]
@@ -520,8 +513,7 @@ impl Database {
 	pub fn subscription(&self, id: SubscriptionId) -> Option<Subscription> {
 		let subsystem = self.subsystem::<SubscriptionSubsystem>()?;
 		let store = subsystem.store().clone();
-		let column_names = store.column_names(&id).unwrap_or_default();
-		Some(Subscription::new(id, store, column_names, Vec::new()))
+		Some(Subscription::new(id, store, Vec::new()))
 	}
 
 	pub fn await_signal(&self) -> Result<()> {

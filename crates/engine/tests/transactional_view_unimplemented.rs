@@ -44,3 +44,19 @@ fn create_transactional_view_panics_unimplemented_at_create_time() {
 		.unwrap_or_default();
 	assert!(!names.iter().any(|n| n == "v"), "no view may exist after the failed create; got {names:?}");
 }
+
+#[test]
+fn create_transactional_view_with_non_query_body_is_rejected_with_query_005() {
+	// A non-query AS body must fail with QUERY_005 before the activation seam, never with SUBS_010.
+	let t = TestEngine::new();
+	t.admin("CREATE NAMESPACE ns");
+	t.admin("CREATE TABLE ns::src { id: int4 }");
+
+	let r = t.inner().admin_as(
+		IdentityId::system(),
+		"CREATE TRANSACTIONAL VIEW ns::v { id: int4 } AS { CREATE TABLE ns::other { id: int4 } }",
+		Params::None,
+	);
+	let diagnostic = r.error.expect("a transactional view whose AS body is DDL must be rejected").diagnostic();
+	assert_eq!(diagnostic.code, "QUERY_005", "got: {}", diagnostic.message);
+}

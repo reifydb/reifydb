@@ -34,6 +34,7 @@ use reifydb_core::{
 		catalog::{
 			column::{Column, ColumnIndex},
 			id::{ColumnId, NamespaceId},
+			subscription::{SubscribeOptions, SubscribeOutcome},
 			vtable::{VTable, VTableId},
 		},
 	},
@@ -74,7 +75,7 @@ use crate::{
 	bulk_insert::builder::{BulkInsertBuilder, Unchecked, Validated},
 	queue::{interceptor::QueueSchedulingInterceptor, wake::QueueWakeRegistry},
 	vm::{
-		Admin, Command, Query, Subscription,
+		Admin, Command, Query,
 		executor::Executor,
 		flow_lineage::ViewLineage,
 		services::{EngineConfig, Services},
@@ -291,26 +292,20 @@ impl StandardEngine {
 		outcome
 	}
 
-	#[instrument(name = "engine::subscribe_as", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn subscribe_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
-		let mut txn = match self.begin_query(identity) {
-			Ok(t) => t,
-			Err(mut e) => {
-				e.with_rql(rql.to_string());
-				return ExecutionResult::from_error(e);
-			}
-		};
-		let mut outcome = self.executor.subscription(
-			&mut txn,
-			Subscription {
-				rql,
-				params,
-			},
-		);
-		if let Some(ref mut e) = outcome.error {
-			e.with_rql(rql.to_string());
-		}
-		outcome
+	#[instrument(name = "engine::subscribe_as", level = "debug", skip(self, params, options), fields(query = %query))]
+	pub fn subscribe_as(
+		&self,
+		identity: IdentityId,
+		query: &str,
+		params: Params,
+		options: SubscribeOptions,
+	) -> Result<SubscribeOutcome> {
+		self.begin_query(identity)
+			.and_then(|mut txn| self.executor.subscribe(&mut txn, query, params, options))
+			.map_err(|mut e| {
+				e.with_rql(query.to_string());
+				e
+			})
 	}
 
 	pub fn register_virtual_table<T: UserVTable>(

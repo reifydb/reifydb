@@ -21,7 +21,6 @@ use reifydb_core::{
 			column::{Column, ColumnIndex},
 			id::{ColumnId, NamespaceId, TableId},
 			namespace::Namespace,
-			subscription::HydrationConfig,
 			table::Table,
 			view::ViewStorageKind,
 		},
@@ -56,8 +55,7 @@ use crate::{
 		CreateRingBufferNode, CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode,
 		GeneratorNode, IndexScanNode, InlineDataNode, QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD,
 		QueueScanNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode,
-		SeriesScanNode, SubscriptionColumnToCreate, TableScanNode, TableVirtualScanNode, VariableNode,
-		ViewScanNode,
+		SeriesScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
 	},
 	plan::{
 		logical,
@@ -81,7 +79,6 @@ pub enum PhysicalPlan<'bump> {
 	CreateRingBuffer(CreateRingBufferNode),
 	CreateDictionary(CreateDictionaryNode),
 	CreateSumType(CreateSumTypeNode),
-	CreateSubscription(CreateSubscriptionNode<'bump>),
 	CreatePrimaryKey(nodes::CreatePrimaryKeyNode),
 	CreateColumnProperty(nodes::CreateColumnPropertyNode),
 	CreateProcedure(nodes::CreateProcedureNode),
@@ -107,7 +104,6 @@ pub enum PhysicalPlan<'bump> {
 	DropRingBuffer(nodes::DropRingBufferNode),
 	DropDictionary(nodes::DropDictionaryNode),
 	DropSumType(nodes::DropSumTypeNode),
-	DropSubscription(nodes::DropSubscriptionNode),
 	DropSeries(nodes::DropSeriesNode),
 	DropSource(nodes::DropSourceNode),
 	DropSink(nodes::DropSinkNode),
@@ -223,15 +219,6 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
-}
-
-#[derive(Debug)]
-pub struct CreateSubscriptionNode<'bump> {
-	pub columns: Vec<SubscriptionColumnToCreate>,
-	pub as_clause: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
-	pub hydration: HydrationConfig,
-	pub throttle: Option<Duration>,
-	pub linger: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -692,10 +679,6 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_create_sumtype(rx, create)?);
 				}
 
-				LogicalPlan::CreateSubscription(create) => {
-					stack.push(self.compile_create_subscription(rx, create)?);
-				}
-
 				LogicalPlan::AlterSequence(alter) => {
 					stack.push(self.compile_alter_sequence(rx, alter)?);
 				}
@@ -882,9 +865,6 @@ impl<'bump> Compiler<'bump> {
 				}
 				LogicalPlan::DropSumType(drop) => {
 					stack.push(self.compile_drop_sumtype(rx, drop)?);
-				}
-				LogicalPlan::DropSubscription(drop) => {
-					stack.push(self.compile_drop_subscription(rx, drop)?);
 				}
 				LogicalPlan::DropSeries(drop) => {
 					stack.push(self.compile_drop_series(rx, drop)?);

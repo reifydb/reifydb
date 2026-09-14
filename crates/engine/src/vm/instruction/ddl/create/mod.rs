@@ -75,7 +75,6 @@ pub mod role;
 pub mod series;
 pub mod sink;
 pub mod source;
-pub mod subscription;
 pub mod sumtype;
 pub mod table;
 pub mod tag;

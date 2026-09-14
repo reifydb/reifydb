@@ -2,7 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 import type { FrameResults, ShapeNode } from '@reifydb/core'
+import type { SubscriptionConfig } from '@reifydb/client'
 import type { BatchSubscribed, SubscriptionTick } from '../native'
+
+export interface SubscriptionInput {
+  query: string
+  params?: any
+  options?: SubscriptionConfig
+}
 
 export interface Db {
   adminRoot<const S extends readonly ShapeNode[]>(rql: string, params: any, shapes: S): Promise<FrameResults<S>>
@@ -14,13 +21,13 @@ export interface Db {
   authenticate(method: string, credentials: Record<string, string>): Promise<string>
 
   /**
-   * `rql` is the whole `CREATE SUBSCRIPTION ... AS { .. }` statement, the same one a client puts on
-   * a socket. Changes are not pushed: they come back from {@link Db.tick}.
+   * `query` is the bare query and `options` carries hydration, throttle and linger, the same as a
+   * client puts on a socket. Changes are not pushed: they come back from {@link Db.tick}.
    */
-  subscribeRoot(rql: string, params: any): Promise<string>
-  subscribeAs(identity: string, rql: string, params: any): Promise<string>
-  batchSubscribeRoot(queries: string[], params: any[]): Promise<BatchSubscribed>
-  batchSubscribeAs(identity: string, queries: string[], params: any[]): Promise<BatchSubscribed>
+  subscribeRoot(query: string, params: any, options?: SubscriptionConfig): Promise<string>
+  subscribeAs(identity: string, query: string, params: any, options?: SubscriptionConfig): Promise<string>
+  batchSubscribeRoot(subscriptions: SubscriptionInput[]): Promise<BatchSubscribed>
+  batchSubscribeAs(identity: string, subscriptions: SubscriptionInput[]): Promise<BatchSubscribed>
   unsubscribe(subscriptionId: string): void
   batchUnsubscribe(batchId: string): Promise<void>
 

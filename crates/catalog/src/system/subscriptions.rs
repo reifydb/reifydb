@@ -20,26 +20,15 @@ pub fn subscriptions() -> Arc<VTable> {
 			id: SUBSCRIPTIONS,
 			namespace: NamespaceId::SYSTEM,
 			name: "subscriptions".to_string(),
-			columns: vec![
-				Column {
-					id: ID,
-					name: "id".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
-					properties: vec![],
-					index: ColumnIndex(0),
-					auto_increment: false,
-					dictionary_id: None,
-				},
-				Column {
-					id: COLUMN_COUNT,
-					name: "column_count".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
-					properties: vec![],
-					index: ColumnIndex(1),
-					auto_increment: false,
-					dictionary_id: None,
-				},
-			],
+			columns: vec![Column {
+				id: ID,
+				name: "id".to_string(),
+				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
+				properties: vec![],
+				index: ColumnIndex(0),
+				auto_increment: false,
+				dictionary_id: None,
+			}],
 		})
 	})
 	.clone()

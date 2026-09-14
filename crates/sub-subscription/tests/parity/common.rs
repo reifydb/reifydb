@@ -10,8 +10,14 @@
 use std::collections::BTreeMap;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb::testing::db::TestDb;
-use reifydb_core::interface::{catalog::id::SubscriptionId, change::StagedBatch};
+use reifydb::{Params, testing::db::TestDb};
+use reifydb_core::interface::{
+	catalog::{
+		id::SubscriptionId,
+		subscription::{SubscribeOptions, SubscribeOutcome},
+	},
+	change::StagedBatch,
+};
 use reifydb_engine::subscription::SubscriptionServiceRef;
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
 use reifydb_value::value::{
@@ -25,23 +31,15 @@ pub struct Row {
 	pub ts_ms: i64,
 }
 
-pub fn extract_sub_id(frames: &[reifydb_value::value::frame::frame::Frame]) -> SubscriptionId {
-	let frame = frames.first().expect("subscription frame");
-	let value = frame
-		.columns
-		.iter()
-		.find(|c| c.name == "subscription_id")
-		.and_then(|c| {
-			if c.data.is_empty() {
-				None
-			} else {
-				Some(c.data.get_value(0))
-			}
-		})
-		.expect("subscription_id column");
-	match value {
-		Value::Uint8(n) => SubscriptionId(n),
-		other => panic!("unexpected subscription_id value: {:?}", other),
+pub fn extract_sub_id(outcome: SubscribeOutcome) -> SubscriptionId {
+	match outcome {
+		SubscribeOutcome::Local {
+			id,
+		} => id,
+		SubscribeOutcome::Remote {
+			address,
+			..
+		} => panic!("expected a local subscription, got a remote one at {}", address),
 	}
 }
 
@@ -174,9 +172,11 @@ pub fn run_path_snapshot(rql: &str, rows: &[Row]) -> Vec<StagedBatch> {
 	let db = make_db();
 	insert_all_at_once(&db, rows);
 
-	let create_stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
-	let frames = db.admin(&create_stmt);
-	let sub_id = extract_sub_id(&frames);
+	let outcome = db
+		.engine()
+		.subscribe_as(IdentityId::root(), rql, Params::None, SubscribeOptions::default())
+		.expect("subscribe as root");
+	let sub_id = extract_sub_id(outcome);
 
 	let engine = db.engine().clone();
 	let (_, lease) = engine.acquire_current_snapshot_lease().expect("acquire lease");
@@ -200,9 +200,11 @@ pub fn run_path_hydrate_then_commands(rql: &str, hydrated: &[Row], commands: &[S
 	let db = make_db();
 	insert_all_at_once(&db, hydrated);
 
-	let create_stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
-	let frames = db.admin(&create_stmt);
-	let sub_id = extract_sub_id(&frames);
+	let outcome = db
+		.engine()
+		.subscribe_as(IdentityId::root(), rql, Params::None, SubscribeOptions::default())
+		.expect("subscribe as root");
+	let sub_id = extract_sub_id(outcome);
 
 	let engine = db.engine().clone();
 	let (_, lease) = engine.acquire_current_snapshot_lease().expect("acquire lease");
@@ -252,9 +254,11 @@ pub fn run_path_incremental(rql: &str, rows: &[Row]) -> Vec<StagedBatch> {
 	// Path B: subscribe on an empty table, insert one row at a time, let CDC catch up.
 	let db = make_db();
 
-	let create_stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
-	let frames = db.admin(&create_stmt);
-	let sub_id = extract_sub_id(&frames);
+	let outcome = db
+		.engine()
+		.subscribe_as(IdentityId::root(), rql, Params::None, SubscribeOptions::default())
+		.expect("subscribe as root");
+	let sub_id = extract_sub_id(outcome);
 
 	insert_one_at_a_time(&db, rows);
 
@@ -264,9 +268,10 @@ pub fn run_path_incremental(rql: &str, rows: &[Row]) -> Vec<StagedBatch> {
 pub fn create_subscription_error(rql: &str) -> reifydb_value::error::Diagnostic {
 	// Negative path: the operator is expected to fall outside the subscription allowlist.
 	let db = make_db();
-	let create_stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
-	db.try_admin(&create_stmt)
-		.expect_err("expected CREATE SUBSCRIPTION to be rejected by the compiler")
+	db.engine()
+		.subscribe_as(IdentityId::root(), rql, Params::None, SubscribeOptions::default())
+		.err()
+		.expect("expected the subscription to be rejected by the compiler")
 		.diagnostic()
 }
 

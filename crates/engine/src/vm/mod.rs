@@ -22,12 +22,6 @@ pub struct Query<'a> {
 }
 
 #[derive(Debug)]
-pub struct Subscription<'a> {
-	pub rql: &'a str,
-	pub params: Params,
-}
-
-#[derive(Debug)]
 pub struct Test<'a> {
 	pub rql: &'a str,
 	pub params: Params,

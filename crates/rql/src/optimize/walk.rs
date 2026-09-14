@@ -206,11 +206,6 @@ pub fn walk_expressions_mut(
 		PhysicalPlan::CreateTransactionalView(n) => {
 			walk_expressions_mut(&mut n.as_clause, internal, projection)
 		}
-		PhysicalPlan::CreateSubscription(n) => {
-			if let Some(as_clause) = n.as_clause.as_mut() {
-				walk_expressions_mut(as_clause, internal, projection);
-			}
-		}
 
 		PhysicalPlan::AssertBlock(_)
 		| PhysicalPlan::IndexScan(_)
@@ -261,7 +256,6 @@ pub fn walk_expressions_mut(
 		| PhysicalPlan::DropQueue(_)
 		| PhysicalPlan::DropDictionary(_)
 		| PhysicalPlan::DropSumType(_)
-		| PhysicalPlan::DropSubscription(_)
 		| PhysicalPlan::DropSeries(_)
 		| PhysicalPlan::DropSource(_)
 		| PhysicalPlan::DropSink(_)

@@ -29,16 +29,17 @@ use tokio_tungstenite::{
 use crate::{
 	AdminRequest, AdminResult, AuthRequest, BatchChangeEntry, BatchChangePayload, BatchMemberInfo, BatchPushEvent,
 	BatchSubscribeRequest, BatchUnsubscribeRequest, CallRequest, ChangePayload, CommandRequest, CommandResult,
-	LoginResult, QueryRequest, QueryResult, QueueClaimRequest, ReconnectOptions, Request, RequestPayload, Response,
-	ResponseMeta, ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest, WireBatchChangePayload,
-	WireChangePayload, WireFormat, WsQueueClaimRequest,
+	ErrResponse, FrameChange, LoginResult, QueryRequest, QueryResult, QueueClaimRequest, ReconnectOptions, Request,
+	RequestPayload, Response, ResponseMeta, ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest,
+	WireBatchChangePayload, WireBatchSubscribeMember, WireChangePayload, WireFormat, WsQueueClaimRequest,
 	changes::frames_to_changes,
 	client::{BatchSubscription as ClientBatchSubscription, ReifyClient, Subscription as ClientSubscription},
 	error::ClientError,
 	params_to_wire,
 	reconnect::{backoff_millis, fire, millis_to_std},
 	session::{parse_admin_response, parse_call_response, parse_command_response, parse_query_response},
-	subscription::{BatchItem, SubscriptionConfig, build_subscription_rql},
+	subscription::{BatchItem, SubscriptionConfig},
+	subscription_options_to_wire,
 	utils::generate_request_id,
 };
 
@@ -60,12 +61,13 @@ enum SubSink {
 
 struct SubEntry {
 	rql: String,
+	config: SubscriptionConfig,
 	sink: SubSink,
 	server_id: Option<String>,
 }
 
 struct BatchEntry {
-	queries: Vec<String>,
+	subscriptions: Vec<(String, SubscriptionConfig)>,
 	sender: mpsc::Sender<BatchPushEvent>,
 	server_batch_id: Option<String>,
 }
@@ -404,22 +406,20 @@ impl WsClient {
 			None
 		};
 		let rbcf_data = &data[meta_start + meta_len..];
-		let frames = match decode_frames(rbcf_data) {
-			Ok(f) => f,
-			Err(_) => return,
-		};
 		match kind {
 			0x00 => {
 				if let Some(tx) = shared.pending.lock().await.remove(&id) {
-					let _ = tx.send(ClientResponse::Frames(frames, meta));
+					let _ = tx.send(query_response_from_rbcf(id, rbcf_data, meta));
 				}
 			}
 			0x01 => {
+				let (changes, decode_error) = changes_from_rbcf(rbcf_data);
 				let payload = ChangePayload {
 					subscription_id: id.clone(),
 					content_type: "application/vnd.reifydb.rbcf".to_string(),
 					body: Value::Null,
-					changes: frames_to_changes(frames),
+					changes,
+					decode_error,
 				};
 				Self::route_change(shared, &id, payload, change_tx).await;
 			}
@@ -591,22 +591,23 @@ impl WsClient {
 		shared.server_to_client_sub.lock().await.clear();
 		shared.server_to_client_batch.lock().await.clear();
 
-		let subs: Vec<(u64, String)> = {
+		let subs: Vec<(u64, String, SubscriptionConfig)> = {
 			let mut guard = shared.active_subs.lock().await;
 			guard.iter_mut()
 				.map(|(cid, entry)| {
 					entry.server_id = None;
-					(*cid, entry.rql.clone())
+					(*cid, entry.rql.clone(), entry.config.clone())
 				})
 				.collect()
 		};
-		for (cid, rql) in subs {
+		for (cid, rql, config) in subs {
 			let req_id = generate_request_id();
 			shared.pending_sub_acks.lock().await.insert(req_id.clone(), cid);
 			let request = Request {
 				id: req_id,
 				payload: RequestPayload::Subscribe(SubscribeRequest {
 					rql,
+					options: subscription_options_to_wire(&config),
 					format: Some(shared.format),
 				}),
 			};
@@ -615,22 +616,22 @@ impl WsClient {
 			}
 		}
 
-		let batches: Vec<(u64, Vec<String>)> = {
+		let batches: Vec<(u64, Vec<WireBatchSubscribeMember>)> = {
 			let mut guard = shared.active_batches.lock().await;
 			guard.iter_mut()
 				.map(|(cid, entry)| {
 					entry.server_batch_id = None;
-					(*cid, entry.queries.clone())
+					(*cid, batch_subscriptions_to_wire(&entry.subscriptions))
 				})
 				.collect()
 		};
-		for (cid, queries) in batches {
+		for (cid, subscriptions) in batches {
 			let req_id = generate_request_id();
 			shared.pending_batch_acks.lock().await.insert(req_id.clone(), cid);
 			let request = Request {
 				id: req_id,
 				payload: RequestPayload::BatchSubscribe(BatchSubscribeRequest {
-					queries,
+					subscriptions,
 					format: Some(shared.format),
 				}),
 			};
@@ -858,14 +859,16 @@ impl WsClient {
 		}
 	}
 
-	async fn subscribe_inner(&self, built_rql: String, sink: SubSink) -> Result<u64, Error> {
+	async fn subscribe_inner(&self, rql: String, config: SubscriptionConfig, sink: SubSink) -> Result<u64, Error> {
 		let client_id = self.sub_id_counter.fetch_add(1, Ordering::Relaxed);
 		let req_id = generate_request_id();
+		let options = subscription_options_to_wire(&config);
 
 		self.shared.active_subs.lock().await.insert(
 			client_id,
 			SubEntry {
-				rql: built_rql.clone(),
+				rql: rql.clone(),
+				config,
 				sink,
 				server_id: None,
 			},
@@ -875,7 +878,8 @@ impl WsClient {
 		let request = Request {
 			id: req_id.clone(),
 			payload: RequestPayload::Subscribe(SubscribeRequest {
-				rql: built_rql,
+				rql,
+				options,
 				format: self.wire_format(),
 			}),
 		};
@@ -907,8 +911,7 @@ impl WsClient {
 	}
 
 	pub async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<String, Error> {
-		let built = build_subscription_rql(rql, &config);
-		let client_id = self.subscribe_inner(built, SubSink::Shared).await?;
+		let client_id = self.subscribe_inner(rql.to_string(), config, SubSink::Shared).await?;
 		Ok(client_id.to_string())
 	}
 
@@ -945,12 +948,14 @@ impl WsClient {
 		let client_id = self.batch_id_counter.fetch_add(1, Ordering::Relaxed);
 		let req_id = generate_request_id();
 		let (push_tx, push_rx) = mpsc::channel::<BatchPushEvent>(100);
-		let queries: Vec<String> = items.iter().map(|i| build_subscription_rql(i.rql, &i.config)).collect();
+		let subscriptions: Vec<(String, SubscriptionConfig)> =
+			items.iter().map(|i| (i.rql.to_string(), i.config.clone())).collect();
+		let wire_subscriptions = batch_subscriptions_to_wire(&subscriptions);
 
 		self.shared.active_batches.lock().await.insert(
 			client_id,
 			BatchEntry {
-				queries: queries.clone(),
+				subscriptions,
 				sender: push_tx,
 				server_batch_id: None,
 			},
@@ -960,7 +965,7 @@ impl WsClient {
 		let request = Request {
 			id: req_id.clone(),
 			payload: RequestPayload::BatchSubscribe(BatchSubscribeRequest {
-				queries,
+				subscriptions: wire_subscriptions,
 				format: self.wire_format(),
 			}),
 		};
@@ -1095,6 +1100,16 @@ impl WsBatchSubscription {
 	}
 }
 
+fn batch_subscriptions_to_wire(subscriptions: &[(String, SubscriptionConfig)]) -> Vec<WireBatchSubscribeMember> {
+	subscriptions
+		.iter()
+		.map(|(rql, config)| WireBatchSubscribeMember {
+			rql: rql.clone(),
+			options: subscription_options_to_wire(config),
+		})
+		.collect()
+}
+
 fn stamp_batch_id(event: &mut BatchPushEvent, client_id: u64) {
 	let id = client_id.to_string();
 	match event {
@@ -1153,6 +1168,28 @@ fn parse_rbcf_batch_envelope(data: &[u8]) -> Option<BatchChangePayload> {
 	})
 }
 
+fn query_response_from_rbcf(id: String, rbcf: &[u8], meta: Option<ResponseMeta>) -> ClientResponse {
+	match decode_frames(rbcf) {
+		Ok(frames) => ClientResponse::Frames(frames, meta),
+		Err(e) => {
+			let error: Error = ClientError::Decode(format!("failed to decode RBCF payload: {}", e)).into();
+			ClientResponse::Json(Box::new(Response {
+				id,
+				payload: ResponsePayload::Err(ErrResponse {
+					diagnostic: *error.0,
+				}),
+			}))
+		}
+	}
+}
+
+fn changes_from_rbcf(rbcf: &[u8]) -> (Vec<FrameChange>, Option<String>) {
+	match decode_frames(rbcf) {
+		Ok(frames) => (frames_to_changes(frames), None),
+		Err(e) => (Vec::new(), Some(e.to_string())),
+	}
+}
+
 fn payload_from_json_change(wire: WireChangePayload) -> ChangePayload {
 	let changes = frames_to_changes(convert_envelope_response(wire.body.clone()));
 	ChangePayload {
@@ -1160,6 +1197,7 @@ fn payload_from_json_change(wire: WireChangePayload) -> ChangePayload {
 		content_type: wire.content_type,
 		body: wire.body,
 		changes,
+		decode_error: None,
 	}
 }
 
@@ -1275,8 +1313,7 @@ impl ReifyClient for WsClient {
 
 	async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<Box<dyn ClientSubscription>, Error> {
 		let (change_tx, change_rx) = mpsc::channel::<ChangePayload>(100);
-		let built = build_subscription_rql(rql, &config);
-		let client_id = self.subscribe_inner(built, SubSink::Dedicated(change_tx)).await?;
+		let client_id = self.subscribe_inner(rql.to_string(), config, SubSink::Dedicated(change_tx)).await?;
 		Ok(Box::new(WsSubscription {
 			subscription_id: client_id.to_string(),
 			change_rx,
@@ -1297,5 +1334,83 @@ impl ReifyClient for WsClient {
 
 	async fn batch_unsubscribe(&self, batch_id: &str) -> Result<(), Error> {
 		WsClient::batch_unsubscribe(self, batch_id).await
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
+	use reifydb_value::value::{
+		Value,
+		container::number::NumberContainer,
+		diff_type::DiffType,
+		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	};
+
+	use super::{ClientResponse, changes_from_rbcf, query_response_from_rbcf};
+	use crate::{ChangeKind, session::parse_query_response};
+
+	fn update_frame(id: i32) -> Frame {
+		Frame::new(vec![FrameColumn {
+			name: "id".to_string(),
+			data: FrameColumnData::Int4(NumberContainer::from_vec(vec![id])),
+		}])
+		.with_op(DiffType::Update)
+	}
+
+	fn rbcf(frames: &[Frame]) -> Vec<u8> {
+		encode_frames(frames, &EncodeOptions::default()).unwrap()
+	}
+
+	fn corrupt_rbcf() -> Vec<u8> {
+		let mut bytes = rbcf(&[update_frame(7)]);
+		bytes.truncate(bytes.len() / 2);
+		bytes
+	}
+
+	#[test]
+	fn corrupt_change_frame_reaches_the_subscriber_as_a_decode_error() {
+		// A change frame that fails to decode must surface its error, never pass as an empty change.
+		let (changes, decode_error) = changes_from_rbcf(&corrupt_rbcf());
+
+		assert!(decode_error.is_some(), "a failed decode must carry its error");
+		assert!(changes.is_empty());
+	}
+
+	#[test]
+	fn valid_change_frame_decodes_to_its_changes_with_no_error() {
+		// A clean change frame must keep its rows and op, otherwise the error path swallowed a good change.
+		let (changes, decode_error) = changes_from_rbcf(&rbcf(&[update_frame(7)]));
+
+		assert_eq!(decode_error, None);
+		assert_eq!(changes.len(), 1);
+		assert_eq!(changes[0].kind, ChangeKind::Update);
+		assert_eq!(changes[0].frame.columns[0].data.get_value(0), Value::Int4(7));
+	}
+
+	#[test]
+	fn corrupt_query_response_completes_the_request_with_a_decode_error() {
+		// A response that fails to decode must fail the waiting request, never leave it waiting forever.
+		let response = match query_response_from_rbcf("req-1".to_string(), &corrupt_rbcf(), None) {
+			ClientResponse::Json(response) => response,
+			ClientResponse::Frames(..) => panic!("a failed decode must not complete as frames"),
+		};
+
+		assert_eq!(response.id, "req-1");
+		match parse_query_response(*response) {
+			Err(error) => assert_eq!(error.0.code, "DECODE"),
+			Ok(_) => panic!("a failed decode must reach the caller as an error"),
+		}
+	}
+
+	#[test]
+	fn valid_query_response_completes_the_request_with_its_frames() {
+		// A clean response must complete as frames, otherwise every binary query would fail.
+		let expected = vec![update_frame(7)];
+
+		match query_response_from_rbcf("req-1".to_string(), &rbcf(&expected), None) {
+			ClientResponse::Frames(frames, _) => assert_eq!(frames, expected),
+			ClientResponse::Json(_) => panic!("a clean decode must complete as frames"),
+		}
 	}
 }

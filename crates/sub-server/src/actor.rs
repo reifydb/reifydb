@@ -9,7 +9,7 @@ use reifydb_core::{
 		ServerAuthResponse, ServerLogoutResponse, ServerMessage, ServerResponse, ServerSubscribeResponse,
 	},
 	execution::ExecutionResult,
-	interface::catalog::procedure::Procedure,
+	interface::catalog::{procedure::Procedure, subscription::SubscribeOptions},
 };
 use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
 use reifydb_runtime::{
@@ -120,21 +120,19 @@ impl ServerActor {
 		identity: IdentityId,
 		rql: String,
 		params: Params,
+		options: SubscribeOptions,
 		reply: Reply<ServerSubscribeResponse>,
 	) {
 		let t = self.clock.instant();
-		let result = self.engine.subscribe_as(identity, &rql, params);
-		if let Some(err) = result.error {
-			reply.send(ServerSubscribeResponse::EngineError {
+		match self.engine.subscribe_as(identity, &rql, params, options) {
+			Err(err) => reply.send(ServerSubscribeResponse::EngineError {
 				diagnostic: Box::new(err.diagnostic()),
 				rql,
-			});
-		} else {
-			reply.send(ServerSubscribeResponse::Subscribed {
-				frames: result.frames,
+			}),
+			Ok(outcome) => reply.send(ServerSubscribeResponse::Subscribed {
+				outcome,
 				duration: Duration::from_std(t.elapsed()),
-				metrics: result.metrics,
-			});
+			}),
 		}
 	}
 
@@ -228,9 +226,10 @@ impl Actor for ServerActor {
 				identity,
 				rql,
 				params,
+				options,
 				reply,
 			} => {
-				self.handle_subscribe(identity, rql, params, reply);
+				self.handle_subscribe(identity, rql, params, options, reply);
 			}
 			ServerMessage::Authenticate {
 				method,

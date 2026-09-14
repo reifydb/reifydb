@@ -3,14 +3,14 @@
 
 use std::sync::Arc;
 
+use reifydb_value::value::duration::Duration;
+
 use crate::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 
 pub trait SubscriptionInspector: Send + Sync {
 	fn inspect(&self, id: SubscriptionId) -> Option<Columns>;
 
 	fn active_subscriptions(&self) -> Vec<SubscriptionId>;
-
-	fn column_count(&self, id: &SubscriptionId) -> Option<usize>;
 }
 
 pub type SubscriptionInspectorRef = Arc<dyn SubscriptionInspector>;
@@ -28,4 +28,22 @@ impl Default for HydrationConfig {
 			max_rows: None,
 		}
 	}
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SubscribeOptions {
+	pub hydration: HydrationConfig,
+	pub throttle: Option<Duration>,
+	pub linger: Option<Duration>,
+}
+
+pub enum SubscribeOutcome {
+	Local {
+		id: SubscriptionId,
+	},
+	Remote {
+		address: String,
+		body: String,
+		token: Option<String>,
+	},
 }

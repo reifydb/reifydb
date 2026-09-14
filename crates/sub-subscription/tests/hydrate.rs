@@ -7,34 +7,30 @@ use std::{
 };
 
 use reifydb::{Params, testing::db::TestDb};
-use reifydb_core::interface::{catalog::id::SubscriptionId, change::StagedBatch};
+use reifydb_core::interface::{
+	catalog::{
+		id::SubscriptionId,
+		subscription::{SubscribeOptions, SubscribeOutcome},
+	},
+	change::StagedBatch,
+};
 use reifydb_engine::{
 	engine::StandardEngine,
 	subscription::{HydrateError, HydrationBound, SubscriptionServiceRef},
 };
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
-use reifydb_value::value::{
-	Value, datetime::DateTime, diff_type::DiffType, duration::Duration, frame::frame::Frame, identity::IdentityId,
-};
+use reifydb_value::value::{Value, datetime::DateTime, diff_type::DiffType, duration::Duration, identity::IdentityId};
 
-fn extract_sub_id(frames: &[Frame]) -> SubscriptionId {
-	let frame = frames.first().expect("subscription frame");
-	let value = frame
-		.columns
-		.iter()
-		.find(|c| c.name == "subscription_id")
-		.and_then(|c| {
-			if c.data.is_empty() {
-				None
-			} else {
-				Some(c.data.get_value(0))
-			}
-		})
-		.expect("subscription_id column");
-	match value {
-		Value::Uint8(n) => SubscriptionId(n),
-		other => panic!("unexpected subscription_id value: {:?}", other),
+fn extract_sub_id(outcome: SubscribeOutcome) -> SubscriptionId {
+	match outcome {
+		SubscribeOutcome::Local {
+			id,
+		} => id,
+		SubscribeOutcome::Remote {
+			address,
+			..
+		} => panic!("expected a local subscription, got a remote one at {}", address),
 	}
 }
 
@@ -61,9 +57,11 @@ fn create_and_setup(
 	db: &TestDb,
 	query: &str,
 ) -> (StandardEngine, SubscriptionId, VersionLeaseGuard, SubscriptionServiceRef) {
-	let stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", query);
-	let frames = db.admin(&stmt);
-	let sub_id = extract_sub_id(&frames);
+	let outcome = db
+		.engine()
+		.subscribe_as(IdentityId::root(), query, Params::None, SubscribeOptions::default())
+		.expect("subscribe as root");
+	let sub_id = extract_sub_id(outcome);
 	let (engine, lease, sub_service) = engine_lease_service(db);
 	thread::sleep(Duration::from_milliseconds(50).unwrap().to_std());
 	(engine, sub_id, lease, sub_service)
@@ -457,10 +455,11 @@ fn subscribe_with_params(
 	query: &str,
 	params: Params,
 ) -> (StandardEngine, SubscriptionId, VersionLeaseGuard, SubscriptionServiceRef) {
-	let stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", query);
-	let result = db.engine().subscribe_as(identity, &stmt, params);
-	assert!(result.error.is_none(), "subscribe failed: {:?}", result.error);
-	let sub_id = extract_sub_id(&result.frames);
+	let outcome = db
+		.engine()
+		.subscribe_as(identity, query, params, SubscribeOptions::default())
+		.expect("subscribe failed");
+	let sub_id = extract_sub_id(outcome);
 	let (engine, lease, sub_service) = engine_lease_service(db);
 	thread::sleep(Duration::from_milliseconds(50).unwrap().to_std());
 	(engine, sub_id, lease, sub_service)
@@ -731,67 +730,5 @@ fn hydrate_returns_subscription_not_found_for_unknown_id() {
 	match err {
 		HydrateError::SubscriptionNotFound => {}
 		other => panic!("unexpected error: {:?}", other),
-	}
-}
-
-fn first_value(frames: &[Frame], name: &str) -> Option<Value> {
-	let frame = frames.first()?;
-	let col = frame.columns.iter().find(|c| c.name == name)?;
-	if col.data.is_empty() {
-		return None;
-	}
-	Some(col.data.get_value(0))
-}
-
-#[test]
-fn create_subscription_default_returns_hydration_enabled_true_with_no_max_rows() {
-	let db = TestDb::memory();
-	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::orders { id: int4, qty: int4 }");
-
-	let frames = db.admin("CREATE SUBSCRIPTION AS { FROM app::orders }");
-
-	match first_value(&frames, "hydration_enabled") {
-		Some(Value::Boolean(b)) => assert!(b, "default hydration should be enabled"),
-		other => panic!("hydration_enabled column missing or wrong type: {:?}", other),
-	}
-	match first_value(&frames, "hydration_max_rows") {
-		Some(Value::None {
-			..
-		})
-		| None => {}
-		other => panic!("hydration_max_rows should be None when not specified, got: {:?}", other),
-	}
-}
-
-#[test]
-fn create_subscription_with_disabled_returns_hydration_enabled_false() {
-	let db = TestDb::memory();
-	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::orders { id: int4, qty: int4 }");
-
-	let frames = db.admin("CREATE SUBSCRIPTION WITH { hydration: { enabled: false } } AS { FROM app::orders }");
-
-	match first_value(&frames, "hydration_enabled") {
-		Some(Value::Boolean(b)) => assert!(!b, "explicit enabled=false should produce false"),
-		other => panic!("hydration_enabled column missing or wrong type: {:?}", other),
-	}
-}
-
-#[test]
-fn create_subscription_with_max_rows_returns_max_rows_uint8() {
-	let db = TestDb::memory();
-	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::orders { id: int4, qty: int4 }");
-
-	let frames = db.admin("CREATE SUBSCRIPTION WITH { hydration: { max_rows: 250 } } AS { FROM app::orders }");
-
-	match first_value(&frames, "hydration_enabled") {
-		Some(Value::Boolean(b)) => assert!(b, "max_rows-only should default enabled to true"),
-		other => panic!("hydration_enabled wrong: {:?}", other),
-	}
-	match first_value(&frames, "hydration_max_rows") {
-		Some(Value::Uint8(n)) => assert_eq!(n, 250, "max_rows should round-trip to 250"),
-		other => panic!("hydration_max_rows wrong: {:?}", other),
 	}
 }

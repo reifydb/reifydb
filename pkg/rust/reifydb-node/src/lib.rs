@@ -16,12 +16,20 @@ use napi::{
 use napi_derive::napi;
 use reifydb::{
 	Database, Frame as CoreFrame, IdentityId, Migration, MigrationSource, Result as ReifyResult, WithSubsystem,
-	auth::service::AuthResponse, core::interface::catalog::id::SubscriptionId, embedded,
+	auth::service::AuthResponse,
+	core::interface::catalog::{
+		id::SubscriptionId,
+		subscription::{HydrationConfig, SubscribeOptions},
+	},
+	embedded,
 	subscription::batch::BatchId,
 };
 use reifydb_codec::json::{to::convert_frames, wire_type::WireValueType};
 use reifydb_sub_server::wire::{WireParams, WireValue};
-use reifydb_value::{params::Params, value::uuid::Uuid7};
+use reifydb_value::{
+	params::Params,
+	value::{duration::Duration, uuid::Uuid7},
+};
 use serde_json::{Value as JsonValue, from_value, json, to_string as json_to_string, to_value};
 use tokio::task::spawn_blocking;
 use uuid::Uuid;
@@ -41,6 +49,26 @@ pub struct ReifydbNode {
 pub struct ParamValue {
 	pub r#type: JsonValue,
 	pub value: String,
+}
+
+#[napi(object)]
+pub struct HydrationInput {
+	pub enabled: Option<bool>,
+	pub max_rows: Option<i64>,
+}
+
+#[napi(object)]
+pub struct SubscribeOptionsInput {
+	pub hydration: Option<HydrationInput>,
+	pub throttle: Option<ParamValue>,
+	pub linger: Option<ParamValue>,
+}
+
+#[napi(object)]
+pub struct SubscriptionInput {
+	pub query: String,
+	pub params: Option<ParamsInput>,
+	pub options: Option<SubscribeOptionsInput>,
 }
 
 #[napi(object)]
@@ -133,6 +161,37 @@ fn to_wire_value(parameter: &str, param: ParamValue) -> Result<WireValue> {
 		r#type,
 		value: param.value,
 	})
+}
+
+fn parse_options(options: Option<SubscribeOptionsInput>) -> Result<SubscribeOptions> {
+	let Some(options) = options else {
+		return Ok(SubscribeOptions::default());
+	};
+	let hydration = match options.hydration {
+		None => HydrationConfig::default(),
+		Some(hydration) => HydrationConfig {
+			enabled: hydration.enabled.unwrap_or(HydrationConfig::default().enabled),
+			max_rows: hydration
+				.max_rows
+				.map(|max_rows| {
+					u64::try_from(max_rows).map_err(|_| {
+						NapiError::from_reason(format!(
+							"option max_rows: must not be negative, got {max_rows}"
+						))
+					})
+				})
+				.transpose()?,
+		},
+	};
+	Ok(SubscribeOptions {
+		hydration,
+		throttle: options.throttle.map(|value| parse_duration("throttle", value)).transpose()?,
+		linger: options.linger.map(|value| parse_duration("linger", value)).transpose()?,
+	})
+}
+
+fn parse_duration(option: &str, value: ParamValue) -> Result<Duration> {
+	to_wire_value(option, value)?.into_duration(option).map_err(NapiError::from_reason)
 }
 
 impl ReifydbNode {
@@ -229,37 +288,41 @@ impl ReifydbNode {
 		offload(move || node.query_as_now(identity, rql, params)).await
 	}
 
-	/// `rql` is the whole `CREATE SUBSCRIPTION ... AS { .. }` statement, exactly as a client sends
-	/// it over a socket. Returns the subscription id; changes arrive from [`Self::tick`].
 	#[napi(js_name = "subscribeRoot")]
-	pub async fn subscribe_root(&self, rql: String, params: Option<ParamsInput>) -> Result<String> {
-		self.subscribe_with(IdentityId::root(), rql, params).await
+	pub async fn subscribe_root(
+		&self,
+		query: String,
+		params: Option<ParamsInput>,
+		options: Option<SubscribeOptionsInput>,
+	) -> Result<String> {
+		self.subscribe_with(IdentityId::root(), query, params, options).await
 	}
 
 	#[napi(js_name = "subscribeAs")]
-	pub async fn subscribe_as(&self, identity: String, rql: String, params: Option<ParamsInput>) -> Result<String> {
+	pub async fn subscribe_as(
+		&self,
+		identity: String,
+		query: String,
+		params: Option<ParamsInput>,
+		options: Option<SubscribeOptionsInput>,
+	) -> Result<String> {
 		let identity = parse_identity(&identity)?;
-		self.subscribe_with(identity, rql, params).await
+		self.subscribe_with(identity, query, params, options).await
 	}
 
 	#[napi(js_name = "batchSubscribeRoot")]
-	pub async fn batch_subscribe_root(
-		&self,
-		queries: Vec<String>,
-		params: Vec<Option<ParamsInput>>,
-	) -> Result<BatchSubscribed> {
-		self.batch_subscribe_with(IdentityId::root(), queries, params).await
+	pub async fn batch_subscribe_root(&self, subscriptions: Vec<SubscriptionInput>) -> Result<BatchSubscribed> {
+		self.batch_subscribe_with(IdentityId::root(), subscriptions).await
 	}
 
 	#[napi(js_name = "batchSubscribeAs")]
 	pub async fn batch_subscribe_as(
 		&self,
 		identity: String,
-		queries: Vec<String>,
-		params: Vec<Option<ParamsInput>>,
+		subscriptions: Vec<SubscriptionInput>,
 	) -> Result<BatchSubscribed> {
 		let identity = parse_identity(&identity)?;
-		self.batch_subscribe_with(identity, queries, params).await
+		self.batch_subscribe_with(identity, subscriptions).await
 	}
 
 	#[napi(js_name = "batchUnsubscribe")]
@@ -345,12 +408,14 @@ impl ReifydbNode {
 	async fn subscribe_with(
 		&self,
 		identity: IdentityId,
-		rql: String,
+		query: String,
 		params: Option<ParamsInput>,
+		options: Option<SubscribeOptionsInput>,
 	) -> Result<String> {
 		let params = parse_params(params)?;
+		let options = parse_options(options)?;
 		self.subscriptions
-			.subscribe(identity, rql, params)
+			.subscribe(identity, query, params, options)
 			.await
 			.map(|id| id.to_string())
 			.map_err(|e| NapiError::from_reason(format!("{e:?}")))
@@ -364,20 +429,17 @@ impl ReifydbNode {
 	async fn batch_subscribe_with(
 		&self,
 		identity: IdentityId,
-		queries: Vec<String>,
-		params: Vec<Option<ParamsInput>>,
+		subscriptions: Vec<SubscriptionInput>,
 	) -> Result<BatchSubscribed> {
-		if params.len() != queries.len() {
-			return Err(NapiError::from_reason(format!(
-				"expected one params entry per query, got {} params for {} queries",
-				params.len(),
-				queries.len()
-			)));
-		}
-		let queries = queries
+		let queries = subscriptions
 			.into_iter()
-			.zip(params)
-			.map(|(rql, params)| Ok((rql, parse_params(params)?)))
+			.map(|subscription| {
+				Ok((
+					subscription.query,
+					parse_params(subscription.params)?,
+					parse_options(subscription.options)?,
+				))
+			})
 			.collect::<Result<Vec<_>>>()?;
 		let ack = self
 			.subscriptions

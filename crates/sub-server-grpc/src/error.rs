@@ -4,7 +4,6 @@
 use std::{error, fmt};
 
 use reifydb_codec::error::DecodeError;
-use reifydb_sub_core::errors::CreateSubscriptionError;
 use reifydb_sub_server::{auth::AuthError, execute::ExecuteError};
 use reifydb_value::error::Diagnostic;
 use serde_json::to_string as to_json;
@@ -23,23 +22,23 @@ pub(crate) fn diagnostic_status(code: Code, diagnostic_code: &str, message: Stri
 pub enum GrpcError {
 	InvalidParamEncoding(DecodeError),
 
+	InvalidSubscribeOptions(String),
+
 	Unauthenticated(AuthError),
 
 	AuthUnavailable(AuthError),
 
 	Execute(ExecuteError),
-
-	SubscriptionFailed(String),
 }
 
 impl fmt::Display for GrpcError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			GrpcError::InvalidParamEncoding(e) => write!(f, "Invalid param encoding: {}", e),
+			GrpcError::InvalidSubscribeOptions(msg) => write!(f, "Invalid subscribe options: {}", msg),
 			GrpcError::Unauthenticated(e) => write!(f, "{}", e),
 			GrpcError::AuthUnavailable(e) => write!(f, "{}", e),
 			GrpcError::Execute(e) => write!(f, "{}", e),
-			GrpcError::SubscriptionFailed(msg) => write!(f, "Subscription failed: {}", msg),
 		}
 	}
 }
@@ -48,10 +47,12 @@ impl fmt::Debug for GrpcError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			GrpcError::InvalidParamEncoding(e) => f.debug_tuple("InvalidParamEncoding").field(e).finish(),
+			GrpcError::InvalidSubscribeOptions(msg) => {
+				f.debug_tuple("InvalidSubscribeOptions").field(msg).finish()
+			}
 			GrpcError::Unauthenticated(e) => f.debug_tuple("Unauthenticated").field(e).finish(),
 			GrpcError::AuthUnavailable(e) => f.debug_tuple("AuthUnavailable").field(e).finish(),
 			GrpcError::Execute(e) => f.debug_tuple("Execute").field(e).finish(),
-			GrpcError::SubscriptionFailed(msg) => f.debug_tuple("SubscriptionFailed").field(msg).finish(),
 		}
 	}
 }
@@ -79,21 +80,11 @@ impl From<DecodeError> for GrpcError {
 	}
 }
 
-impl From<CreateSubscriptionError<ExecuteError>> for GrpcError {
-	fn from(err: CreateSubscriptionError<ExecuteError>) -> Self {
-		match err {
-			CreateSubscriptionError::Execute(e) => GrpcError::Execute(e),
-			CreateSubscriptionError::ExtractionFailed => {
-				GrpcError::SubscriptionFailed("Failed to extract subscription ID".to_string())
-			}
-		}
-	}
-}
-
 impl From<GrpcError> for Status {
 	fn from(err: GrpcError) -> Self {
 		match err {
 			GrpcError::InvalidParamEncoding(_) => Status::invalid_argument(err.to_string()),
+			GrpcError::InvalidSubscribeOptions(_) => Status::invalid_argument(err.to_string()),
 			GrpcError::Unauthenticated(_) => Status::unauthenticated(err.to_string()),
 			GrpcError::AuthUnavailable(_) => Status::internal(err.to_string()),
 			GrpcError::Execute(ref inner) => match inner {
@@ -115,7 +106,6 @@ impl From<GrpcError> for Status {
 					..
 				} => Status::permission_denied(err.to_string()),
 			},
-			GrpcError::SubscriptionFailed(_) => Status::internal(err.to_string()),
 		}
 	}
 }

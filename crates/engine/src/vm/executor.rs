@@ -10,7 +10,11 @@ use reifydb_catalog::{
 use reifydb_core::{
 	error::diagnostic::subscription,
 	execution::ExecutionResult,
-	interface::catalog::policy::SessionOp,
+	interface::catalog::{
+		flow::FlowId,
+		policy::SessionOp,
+		subscription::{SubscribeOptions, SubscribeOutcome},
+	},
 	metrics::execution::{ExecutionMetrics, StatementMetrics},
 	value::column::columns::Columns,
 };
@@ -20,6 +24,8 @@ use reifydb_rql::{
 	ast::parse_str,
 	compiler::{CompilationResult, Compiled, IncrementalCompilation, constrain_policy},
 	fingerprint::request::fingerprint_request,
+	flow::compiler::compile_subscription_flow_ephemeral,
+	query::QueryPlan,
 };
 use reifydb_runtime::context::clock::Instant;
 use reifydb_store_single::SingleStore;
@@ -41,8 +47,9 @@ use crate::remote;
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
+	subscription::{SubscriptionContext, SubscriptionServiceRef},
 	vm::{
-		Admin, Command, Query, Subscription, Test,
+		Admin, Command, Query, Test,
 		services::{EngineConfig, Services},
 		vm::Vm,
 	},
@@ -681,103 +688,82 @@ impl Executor {
 		}
 	}
 
-	#[instrument(name = "executor::subscription", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	pub fn subscription(&self, txn: &mut QueryTransaction, cmd: Subscription<'_>) -> ExecutionResult {
+	#[instrument(name = "executor::subscribe", level = "debug", skip(self, txn, params, options), fields(query = %query))]
+	pub fn subscribe(
+		&self,
+		txn: &mut QueryTransaction,
+		query: &str,
+		params: Params,
+		options: SubscribeOptions,
+	) -> Result<SubscribeOutcome> {
+		if options.hydration.max_rows == Some(0) {
+			return Err(Error(Box::new(subscription::hydration_max_rows_zero())));
+		}
+		if let Some(throttle) = options.throttle.filter(Duration::is_negative) {
+			return Err(Error(Box::new(subscription::negative_throttle(throttle))));
+		}
+		if let Some(linger) = options.linger.filter(Duration::is_negative) {
+			return Err(Error(Box::new(subscription::negative_linger(linger))));
+		}
 		let bump = Bump::new();
-		let statements = match parse_str(&bump, cmd.rql) {
-			Ok(s) => s,
-			Err(e) => {
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: ExecutionMetrics::default(),
-				};
-			}
-		};
-
+		let mut statements = parse_str(&bump, query)?;
 		if statements.len() != 1 {
-			return ExecutionResult {
-				frames: vec![],
-				error: Some(Error(Box::new(subscription::single_statement_required(
-					"Subscription endpoint requires exactly one statement",
-				)))),
-				metrics: ExecutionMetrics::default(),
-			};
+			return Err(Error(Box::new(subscription::single_statement_required(
+				"Subscription endpoint requires exactly one statement",
+			))));
 		}
 
-		let statement = &statements[0];
-		if statement.nodes.len() != 1 || !statement.nodes[0].is_subscription_ddl() {
-			return ExecutionResult {
-				frames: vec![],
-				error: Some(Error(Box::new(subscription::invalid_statement(
-					"Subscription endpoint only supports CREATE SUBSCRIPTION or DROP SUBSCRIPTION",
-				)))),
-				metrics: ExecutionMetrics::default(),
-			};
-		}
-
-		let symbols = match self.setup_symbols(&cmd.params, &mut Transaction::Query(&mut *txn)) {
-			Ok(s) => s,
-			Err(e) => {
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: ExecutionMetrics::default(),
-				};
-			}
-		};
-
-		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
+		let symbols = self.setup_symbols(&params, &mut Transaction::Query(&mut *txn))?;
+		PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
 			&mut Transaction::Query(&mut *txn),
 			SessionOp::Subscription,
 			true,
-		) {
-			return ExecutionResult {
-				frames: vec![],
-				error: Some(e),
-				metrics: ExecutionMetrics::default(),
-			};
-		}
+		)?;
 
-		let start_compile = self.0.runtime_context.clock.instant();
-		let compiled = match self.compiler.compile_with_policy(
-			&mut Transaction::Query(txn),
-			cmd.rql,
+		let mut tx = Transaction::Query(txn);
+		let Some(plan) = self.compiler.compile_query_plan_with_policy(
+			&bump,
+			&mut tx,
+			statements.remove(0),
 			inject_from_policies,
-		) {
-			Ok(CompilationResult::Ready(compiled)) => compiled,
-			Ok(CompilationResult::Incremental(_)) => {
-				unreachable!("Single subscription statement should not require incremental compilation")
-			}
-			Err(err) => {
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(err),
-					metrics: ExecutionMetrics::default(),
-				};
-			}
+		)?
+		else {
+			return Err(Error(Box::new(subscription::single_statement_required(
+				"Subscription endpoint requires exactly one statement",
+			))));
 		};
-		let compile_duration = Duration::from_std(start_compile.elapsed());
 
-		match execute_compiled_units(
-			&self.0,
-			&mut Transaction::Query(txn),
-			&compiled,
-			&cmd.params,
+		let plan = match plan {
+			QueryPlan::RemoteScan(remote) => {
+				return Ok(SubscribeOutcome::Remote {
+					address: remote.address,
+					body: remote.remote_rql,
+					token: remote.token,
+				});
+			}
+			plan => plan,
+		};
+
+		let sub_service = self.ioc.resolve::<SubscriptionServiceRef>()?;
+		let id = sub_service.next_id();
+		let flow_dag = compile_subscription_flow_ephemeral(
+			&self.catalog,
+			&self.routines,
+			&mut tx,
+			plan,
+			id,
+			FlowId(id.0),
+		)?;
+		let ctx = SubscriptionContext {
+			id,
+			identity: tx.identity(),
 			symbols,
-			compile_duration,
-		) {
-			Ok((output, remaining, _, metrics)) => ExecutionResult {
-				frames: merge_results(output, remaining),
-				error: None,
-				metrics: build_metrics(metrics),
-			},
-			Err(f) => ExecutionResult {
-				frames: vec![],
-				error: Some(f.error),
-				metrics: build_metrics(f.partial_metrics),
-			},
-		}
+			params,
+		};
+		sub_service.register_subscription(flow_dag, options.hydration.enabled, ctx, &mut tx)?;
+		Ok(SubscribeOutcome::Local {
+			id,
+		})
 	}
 
 	#[instrument(name = "executor::command", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]

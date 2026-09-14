@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::interface::catalog::subscription::SubscribeOptions;
 use reifydb_engine::subscription::HydrateError;
 use reifydb_sub_core::{
 	errors::CreateSubscriptionError,
@@ -18,7 +19,7 @@ use reifydb_value::{params::Params, value::identity::IdentityId};
 
 use crate::{
 	handler::{ConnectionContext, build_error, error_to_response},
-	protocol::{BatchSubscribeRequest, BatchUnsubscribeRequest, SubscribeRequest},
+	protocol::{BatchSubscribeRequest, BatchUnsubscribeRequest, SubscribeDecodeError, SubscribeRequest},
 	response::{BatchMemberInfo, Response},
 	subscription::registry::WsWireSink,
 };
@@ -40,7 +41,25 @@ pub(crate) async fn handle_subscribe(
 		None => Params::None,
 		Some(wp) => match wp.into_params() {
 			Ok(p) => p,
-			Err(e) => return Some(build_error(request_id, "INVALID_PARAMS", &e)),
+			Err(e) => {
+				return Some(decode_error_to_response(
+					request_id,
+					SubscribeDecodeError::InvalidParams(e),
+				));
+			}
+		},
+	};
+
+	let options = match sub.options {
+		None => SubscribeOptions::default(),
+		Some(wire) => match wire.into_options() {
+			Ok(o) => o,
+			Err(e) => {
+				return Some(decode_error_to_response(
+					request_id,
+					SubscribeDecodeError::InvalidOptions(e),
+				));
+			}
 		},
 	};
 
@@ -51,6 +70,7 @@ pub(crate) async fn handle_subscribe(
 		identity,
 		sub.rql.clone(),
 		params,
+		options,
 		sink,
 		conn.registry,
 		sub.format,
@@ -80,7 +100,7 @@ pub(crate) async fn handle_batch_subscribe(
 	let format = req.format;
 	let queries = match req.into_queries() {
 		Ok(queries) => queries,
-		Err(e) => return Some(build_error(request_id, "INVALID_PARAMS", &e)),
+		Err(e) => return Some(decode_error_to_response(request_id, e)),
 	};
 
 	let host = conn.state.subscribe_host(metadata);
@@ -147,13 +167,16 @@ fn abort_local_batch_handles(conn: &mut ConnectionContext<'_>, batch_id: &BatchI
 	}
 }
 
+fn decode_error_to_response(request_id: &str, err: SubscribeDecodeError) -> String {
+	match err {
+		SubscribeDecodeError::InvalidParams(message) => build_error(request_id, "INVALID_PARAMS", &message),
+		SubscribeDecodeError::InvalidOptions(message) => build_error(request_id, "INVALID_OPTIONS", &message),
+	}
+}
+
 fn subscribe_error_to_response(request_id: &str, err: SubscribeError<ExecuteError>) -> String {
 	match err {
 		SubscribeError::Create(CreateSubscriptionError::Execute(e)) => error_to_response(request_id, e),
-		SubscribeError::Create(CreateSubscriptionError::ExtractionFailed) => {
-			Response::internal_error(request_id, "SUBSCRIPTION_FAILED", "Failed to extract subscription ID")
-				.to_json()
-		}
 		SubscribeError::RemoteConnect(msg) => {
 			Response::internal_error(request_id, "REMOTE_SUBSCRIBE_FAILED", msg).to_json()
 		}
@@ -193,10 +216,6 @@ fn batch_subscribe_error_to_response(request_id: &str, err: BatchSubscribeError<
 		)
 		.to_json(),
 		BatchSubscribeError::Create(CreateSubscriptionError::Execute(e)) => error_to_response(request_id, e),
-		BatchSubscribeError::Create(CreateSubscriptionError::ExtractionFailed) => {
-			Response::internal_error(request_id, "SUBSCRIPTION_FAILED", "Failed to extract subscription ID")
-				.to_json()
-		}
 		BatchSubscribeError::RemoteConnect(msg) => {
 			Response::internal_error(request_id, "REMOTE_SUBSCRIBE_FAILED", msg).to_json()
 		}

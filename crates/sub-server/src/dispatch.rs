@@ -10,10 +10,14 @@ mod host {
 
 	use reifydb_core::{
 		actors::server::{ServerMessage, ServerResponse, ServerSubscribeResponse, build_server_message},
+		interface::catalog::subscription::{SubscribeOptions, SubscribeOutcome},
 		metrics::execution::ExecutionMetrics,
 	};
 	use reifydb_runtime::{actor::reply::reply_channel, context::clock::Instant};
-	use reifydb_value::value::{duration::Duration, frame::frame::Frame};
+	use reifydb_value::{
+		error::{IntoDiagnostic, TypeError},
+		value::{duration::Duration, frame::frame::Frame},
+	};
 	use tokio::time::timeout;
 	use tracing::instrument;
 
@@ -40,13 +44,14 @@ mod host {
 	pub async fn dispatch_subscribe(
 		state: &AppState,
 		mut ctx: RequestContext,
-	) -> Result<(Vec<Frame>, ExecutionMetrics), ExecuteError> {
+		options: SubscribeOptions,
+	) -> Result<SubscribeOutcome, ExecuteError> {
 		run_pre_execute(state, &mut ctx).await?;
 		let start = state.clock().instant();
-		let response = send_subscribe_message(state, &ctx).await?;
-		let (frames, metrics) = finalize_subscribe_metrics(response, start)?;
-		run_post_execute(state, &ctx, &metrics, frames.len()).await;
-		Ok((frames, metrics))
+		let response = send_subscribe_message(state, &ctx, options).await?;
+		let (outcome, metrics) = finalize_subscribe_metrics(response, start)?;
+		run_post_execute(state, &ctx, &metrics, 0).await;
+		Ok(outcome)
 	}
 
 	#[inline]
@@ -95,12 +100,14 @@ mod host {
 	async fn send_subscribe_message(
 		state: &AppState,
 		ctx: &RequestContext,
+		options: SubscribeOptions,
 	) -> Result<ServerSubscribeResponse, ExecuteError> {
 		let (reply, receiver) = reply_channel();
 		let msg = ServerMessage::Subscribe {
 			identity: ctx.identity,
 			rql: ctx.rql.clone(),
 			params: ctx.params.clone(),
+			options,
 			reply,
 		};
 		let (actor_ref, _handle) = state.spawn_server_actor();
@@ -133,9 +140,9 @@ mod host {
 				});
 			}
 		};
-		metrics.total = Duration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default();
-		metrics.compute =
-			Duration::from_nanoseconds(compute_duration.to_std().as_nanos() as i64).unwrap_or_default();
+		metrics.total = Duration::from_nanoseconds(wall_duration.as_nanos() as i64).map_err(duration_error)?;
+		metrics.compute = Duration::from_nanoseconds(compute_duration.to_std().as_nanos() as i64)
+			.map_err(duration_error)?;
 		Ok((frames, metrics))
 	}
 
@@ -143,14 +150,13 @@ mod host {
 	fn finalize_subscribe_metrics(
 		response: ServerSubscribeResponse,
 		start: Instant,
-	) -> Result<(Vec<Frame>, ExecutionMetrics), ExecuteError> {
+	) -> Result<(SubscribeOutcome, ExecutionMetrics), ExecuteError> {
 		let wall_duration = start.elapsed();
-		let (frames, compute_duration, mut metrics) = match response {
+		let (outcome, compute_duration) = match response {
 			ServerSubscribeResponse::Subscribed {
-				frames,
+				outcome,
 				duration,
-				metrics,
-			} => (frames, duration, metrics),
+			} => (outcome, duration),
 			ServerSubscribeResponse::EngineError {
 				diagnostic,
 				rql,
@@ -161,9 +167,17 @@ mod host {
 				});
 			}
 		};
-		metrics.total = Duration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default();
-		metrics.compute =
-			Duration::from_nanoseconds(compute_duration.to_std().as_nanos() as i64).unwrap_or_default();
-		Ok((frames, metrics))
+		let mut metrics = ExecutionMetrics::default();
+		metrics.total = Duration::from_nanoseconds(wall_duration.as_nanos() as i64).map_err(duration_error)?;
+		metrics.compute = Duration::from_nanoseconds(compute_duration.to_std().as_nanos() as i64)
+			.map_err(duration_error)?;
+		Ok((outcome, metrics))
+	}
+
+	fn duration_error(error: Box<TypeError>) -> ExecuteError {
+		ExecuteError::Engine {
+			diagnostic: Arc::from(error.into_diagnostic()),
+			rql: String::new(),
+		}
 	}
 }

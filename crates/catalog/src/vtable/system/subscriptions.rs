@@ -45,27 +45,17 @@ impl BaseVTable for SystemSubscriptions {
 		}
 
 		let subscriptions = match self.ioc.resolve::<SubscriptionInspectorRef>() {
-			Ok(inspector) => {
-				let ids = inspector.active_subscriptions();
-				ids.into_iter()
-					.filter_map(|id| inspector.column_count(&id).map(|count| (id, count)))
-					.collect::<Vec<_>>()
-			}
+			Ok(inspector) => inspector.active_subscriptions(),
 			Err(_) => vec![],
 		};
 
 		let mut id_col = ColumnBuffer::uint8_with_capacity(subscriptions.len());
-		let mut column_count_col = ColumnBuffer::uint8_with_capacity(subscriptions.len());
 
-		for (id, count) in subscriptions {
+		for id in subscriptions {
 			id_col.push(id.0);
-			column_count_col.push(count as u64);
 		}
 
-		let columns = vec![
-			ColumnWithName::new(Fragment::internal("id"), id_col),
-			ColumnWithName::new(Fragment::internal("column_count"), column_count_col),
-		];
+		let columns = vec![ColumnWithName::new(Fragment::internal("id"), id_col)];
 
 		self.exhausted = true;
 		Ok(Some(Batch {

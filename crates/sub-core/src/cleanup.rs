@@ -4,16 +4,15 @@
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_core::error::diagnostic::internal::internal;
 use reifydb_core::interface::catalog::id::SubscriptionId;
-use reifydb_engine::engine::StandardEngine;
+use reifydb_engine::{engine::StandardEngine, subscription::SubscriptionServiceRef};
+use reifydb_value::Result as TypeResult;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_value::error::Error;
-use reifydb_value::{Result as TypeResult, params::Params, value::identity::IdentityId};
 #[cfg(not(reifydb_single_threaded))]
 use tokio::task::spawn_blocking;
 
 pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: SubscriptionId) -> TypeResult<()> {
-	let rql = format!("drop subscription if exists subscription_{};", subscription_id.0);
-	engine.admin_as(IdentityId::system(), &rql, Params::None).check()?;
+	engine.ioc().resolve::<SubscriptionServiceRef>()?.unregister_subscription(&subscription_id)?;
 	Ok(())
 }
 

@@ -35,14 +35,14 @@ pub enum HydrationBound {
 impl HydrationBound {
 	pub fn advice(&self) -> String {
 		match self {
-			Self::Absent => "add `TAKE N` upstream, raise with WITH { hydration: { max_rows: ... } }, or disable with WITH { hydration: { enabled: false } }".to_string(),
+			Self::Absent => "add `TAKE N` upstream, raise the hydration.max_rows subscribe option, or set the hydration.enabled subscribe option to false".to_string(),
 			Self::Blocked {
 				operator,
 			} => format!(
-				"the query's `TAKE` sits below `{}`, which the hydration pushdown cannot see through, so the source was read unbounded; move the `TAKE` above `{}`, raise with WITH {{ hydration: {{ max_rows: ... }} }}, or disable with WITH {{ hydration: {{ enabled: false }} }}",
+				"the query's `TAKE` sits below `{}`, which the hydration pushdown cannot see through, so the source was read unbounded; move the `TAKE` above `{}`, raise the hydration.max_rows subscribe option, or set the hydration.enabled subscribe option to false",
 				operator, operator
 			),
-			Self::Pushed => "the query's `TAKE` was already applied at the source and it still returns more rows than the cap, so raise it with WITH { hydration: { max_rows: ... } } or disable with WITH { hydration: { enabled: false } }".to_string(),
+			Self::Pushed => "the query's `TAKE` was already applied at the source and it still returns more rows than the cap, so raise the hydration.max_rows subscribe option or set the hydration.enabled subscribe option to false".to_string(),
 		}
 	}
 }
@@ -91,7 +91,7 @@ impl HydrateError {
 	pub fn wire_message(&self, rql: &str, cap: u64) -> String {
 		match self {
 			Self::SubscriptionNotFound => "Subscription not found at hydration time".to_string(),
-			Self::UnsupportedSourceType => "hydration is not supported for SourceSeries / SourceInlineData; use WITH { hydration: { enabled: false } } to subscribe without it".to_string(),
+			Self::UnsupportedSourceType => "hydration is not supported for SourceSeries / SourceInlineData; set the hydration.enabled subscribe option to false to subscribe without it".to_string(),
 			Self::RowCapExceeded {
 				bound,
 				..
@@ -126,13 +126,12 @@ pub trait SubscriptionService: Send + Sync {
 	fn register_subscription(
 		&self,
 		flow_dag: FlowDag,
-		column_names: Vec<String>,
 		hydration_enabled: bool,
 		ctx: SubscriptionContext,
 		txn: &mut Transaction<'_>,
 	) -> Result<()>;
 
-	fn unregister_subscription(&self, id: &SubscriptionId) -> Result<()>;
+	fn unregister_subscription(&self, id: &SubscriptionId) -> Result<bool>;
 
 	fn hydrate(
 		&self,

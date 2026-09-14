@@ -4,9 +4,8 @@
 use std::sync::Arc;
 
 use reifydb_core::{internal_error, value::column::columns::Columns};
-use reifydb_evaluate::stack::{SymbolTable, Variable};
+use reifydb_evaluate::stack::Variable;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::params::Params;
 
 use crate::{
 	Result,
@@ -33,20 +32,6 @@ impl<'a> Vm<'a> {
 	{
 		let txn = require_admin_txn(tx)?;
 		let columns = handler(services, txn)?;
-		self.stack.push(Variable::columns(columns));
-		Ok(())
-	}
-
-	pub(crate) fn exec_ddl_sub<F>(
-		&mut self,
-		services: &Arc<Services>,
-		tx: &mut Transaction<'_>,
-		handler: F,
-	) -> Result<()>
-	where
-		F: FnOnce(&Services, &mut Transaction<'_>, &SymbolTable, &Params) -> Result<Columns>,
-	{
-		let columns = handler(services, tx, &self.symbols, self.params)?;
 		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}

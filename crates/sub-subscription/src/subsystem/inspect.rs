@@ -43,17 +43,13 @@ impl SubscriptionInspector for SubscriptionInspectorImpl {
 		self.store.active_subscriptions()
 	}
 
-	fn column_count(&self, id: &SubscriptionId) -> Option<usize> {
-		self.store.column_names(id).map(|v| v.len())
-	}
-
 	fn inspect(&self, id: SubscriptionId) -> Option<Columns> {
 		let batches = self.store.drain(&id, usize::MAX);
 		if batches.is_empty() {
-			let mut names = self.store.column_names(&id)?;
-			names.push(OP_COLUMN.to_string());
-			let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
-			return Some(Columns::from_rows(&name_refs, &[]));
+			if !self.store.contains(&id) {
+				return None;
+			}
+			return Some(Columns::from_rows(&[OP_COLUMN], &[]));
 		}
 		if batches.len() == 1 {
 			let (op, columns) = batches.into_iter().next().unwrap();

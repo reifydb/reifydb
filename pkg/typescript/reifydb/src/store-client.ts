@@ -4,7 +4,6 @@
 import {
   BinaryKind,
   CONTENT_TYPE_RBCF,
-  buildSubscriptionRql,
   decodeBatchEnvelope,
   decodeEnvelope,
   dispatchChange,
@@ -97,10 +96,9 @@ export function storeClient(db: Db, options: StoreClientOptions = {}): BridgeCli
       identity ? db.adminAs(identity, rql, params, shapes) : db.adminRoot(rql, params, shapes),
     subscribe: (rql, params, shape, callbacks, config) =>
       alone(async () => {
-        const statement = buildSubscriptionRql(rql, config)
         const subscriptionId = identity
-          ? await db.subscribeAs(identity, statement, params)
-          : await db.subscribeRoot(statement, params)
+          ? await db.subscribeAs(identity, rql, params, config)
+          : await db.subscribeRoot(rql, params, config)
         targets.set(subscriptionId, { callbacks, shape })
         await reachCaughtUp()
         return subscriptionId
@@ -112,11 +110,14 @@ export function storeClient(db: Db, options: StoreClientOptions = {}): BridgeCli
     batchSubscribe: (members) =>
       alone(async () => {
         if (members.length === 0) throw new Error('batchSubscribe requires at least one member')
-        const queries = members.map((member) => buildSubscriptionRql(member.rql, member.config))
-        const params = members.map((member) => member.params)
+        const subscriptions = members.map((member) => ({
+          query: member.rql,
+          params: member.params,
+          options: member.config,
+        }))
         const ack = identity
-          ? await db.batchSubscribeAs(identity, queries, params)
-          : await db.batchSubscribeRoot(queries, params)
+          ? await db.batchSubscribeAs(identity, subscriptions)
+          : await db.batchSubscribeRoot(subscriptions)
 
         const subscriptionIds: string[] = new Array(members.length)
         for (const acked of ack.members) {

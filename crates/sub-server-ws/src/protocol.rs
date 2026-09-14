@@ -3,7 +3,11 @@
 
 use std::collections::HashMap;
 
-use reifydb_sub_server::{format::WireFormat, wire::WireParams};
+use reifydb_core::interface::catalog::subscription::{HydrationConfig, SubscribeOptions};
+use reifydb_sub_server::{
+	format::WireFormat,
+	wire::{WireParams, WireValue},
+};
 use reifydb_value::params::Params;
 use serde::{Deserialize, Serialize};
 
@@ -92,10 +96,41 @@ pub struct QueryRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct WireHydrationOptions {
+	pub enabled: Option<bool>,
+
+	pub max_rows: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WireSubscribeOptions {
+	pub hydration: Option<WireHydrationOptions>,
+
+	pub throttle: Option<WireValue>,
+
+	pub linger: Option<WireValue>,
+}
+
+impl WireSubscribeOptions {
+	pub fn into_options(self) -> Result<SubscribeOptions, String> {
+		Ok(SubscribeOptions {
+			hydration: self.hydration.map_or_else(HydrationConfig::default, |hydration| HydrationConfig {
+				enabled: hydration.enabled.unwrap_or(HydrationConfig::default().enabled),
+				max_rows: hydration.max_rows,
+			}),
+			throttle: self.throttle.map(|throttle| throttle.into_duration("throttle")).transpose()?,
+			linger: self.linger.map(|linger| linger.into_duration("linger")).transpose()?,
+		})
+	}
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SubscribeRequest {
 	pub rql: String,
 
 	pub params: Option<WireParams>,
+
+	pub options: Option<WireSubscribeOptions>,
 
 	#[serde(default)]
 	pub format: WireFormat,
@@ -107,37 +142,51 @@ pub struct UnsubscribeRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct BatchSubscribeRequest {
-	pub queries: Vec<String>,
+pub struct WireBatchSubscribeMember {
+	pub rql: String,
 
-	pub params: Option<Vec<Option<WireParams>>>,
+	pub params: Option<WireParams>,
+
+	pub options: Option<WireSubscribeOptions>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum SubscribeDecodeError {
+	InvalidParams(String),
+	InvalidOptions(String),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchSubscribeRequest {
+	pub subscriptions: Vec<WireBatchSubscribeMember>,
 
 	#[serde(default)]
 	pub format: WireFormat,
 }
 
 impl BatchSubscribeRequest {
-	pub fn into_queries(self) -> Result<Vec<(String, Params)>, String> {
-		let Some(params) = self.params else {
-			return Ok(self.queries.into_iter().map(|rql| (rql, Params::None)).collect());
-		};
-		if params.len() != self.queries.len() {
-			return Err(format!(
-				"expected one params entry per query, got {} params for {} queries",
-				params.len(),
-				self.queries.len()
-			));
-		}
-		self.queries
+	pub fn into_queries(self) -> Result<Vec<(String, Params, SubscribeOptions)>, SubscribeDecodeError> {
+		self.subscriptions
 			.into_iter()
-			.zip(params)
 			.enumerate()
-			.map(|(index, (rql, wire))| match wire {
-				None => Ok((rql, Params::None)),
-				Some(wire) => wire
-					.into_params()
-					.map(|params| (rql, params))
-					.map_err(|e| format!("query {index}: {e}")),
+			.map(|(index, subscription)| {
+				let params = match subscription.params {
+					None => Params::None,
+					Some(wire) => wire.into_params().map_err(|e| {
+						SubscribeDecodeError::InvalidParams(format!(
+							"subscription {index}: {e}"
+						))
+					})?,
+				};
+				let options = match subscription.options {
+					None => SubscribeOptions::default(),
+					Some(wire) => wire.into_options().map_err(|e| {
+						SubscribeDecodeError::InvalidOptions(format!(
+							"subscription {index}: {e}"
+						))
+					})?,
+				};
+				Ok((subscription.rql, params, options))
 			})
 			.collect()
 	}
@@ -163,7 +212,7 @@ mod tests {
 	use reifydb_value::{params::Params, value::Value};
 	use serde_json::from_str;
 
-	use super::{BatchSubscribeRequest, Request, RequestPayload};
+	use super::{BatchSubscribeRequest, Request, RequestPayload, SubscribeDecodeError};
 
 	fn batch(json: &str) -> BatchSubscribeRequest {
 		match from_str::<Request>(json).expect("a batch subscribe request should deserialise").payload {
@@ -176,7 +225,7 @@ mod tests {
 	fn each_query_runs_with_the_params_at_its_own_position() {
 		// Each query must bind the params at its own index, or a subscription runs with another's id.
 		let queries = batch(
-			r#"{"id":"b-1","type":"BatchSubscribe","payload":{"queries":["from a","from b"],"params":[{"monitor_id":{"type":{"id":"Utf8"},"value":"m-1"}},{"monitor_id":{"type":{"id":"Utf8"},"value":"m-2"}}]}}"#,
+			r#"{"id":"b-1","type":"BatchSubscribe","payload":{"subscriptions":[{"rql":"from a","params":{"monitor_id":{"type":{"id":"Utf8"},"value":"m-1"}}},{"rql":"from b","params":{"monitor_id":{"type":{"id":"Utf8"},"value":"m-2"}}}]}}"#,
 		)
 		.into_queries()
 		.unwrap();
@@ -189,10 +238,10 @@ mod tests {
 	}
 
 	#[test]
-	fn a_null_entry_runs_its_query_without_params() {
+	fn an_entry_without_params_runs_its_query_without_params() {
 		// A member without params must never borrow a neighbour's, or its filter binds a foreign value.
 		let queries = batch(
-			r#"{"id":"b-1","type":"BatchSubscribe","payload":{"queries":["from a","from b"],"params":[null,[{"type":{"id":"Int4"},"value":"7"}]]}}"#,
+			r#"{"id":"b-1","type":"BatchSubscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b","params":[{"type":{"id":"Int4"},"value":"7"}]}]}}"#,
 		)
 		.into_queries()
 		.unwrap();
@@ -204,35 +253,33 @@ mod tests {
 	#[test]
 	fn a_request_without_params_runs_every_query_without_params() {
 		// A client that sends no params field must keep working, otherwise every older batch is refused.
-		let queries =
-			batch(r#"{"id":"b-1","type":"BatchSubscribe","payload":{"queries":["from a","from b"]}}"#)
-				.into_queries()
-				.unwrap();
-
-		assert_eq!(queries, vec![("from a".to_string(), Params::None), ("from b".to_string(), Params::None)]);
-	}
-
-	#[test]
-	fn a_params_list_that_does_not_match_the_queries_is_refused() {
-		// A short params list must be refused, otherwise the unmatched queries silently run without params.
-		let err = batch(
-			r#"{"id":"b-1","type":"BatchSubscribe","payload":{"queries":["from a","from b"],"params":[null]}}"#,
+		let queries = batch(
+			r#"{"id":"b-1","type":"BatchSubscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b"}]}}"#,
 		)
 		.into_queries()
-		.unwrap_err();
+		.unwrap();
 
-		assert_eq!(err, "expected one params entry per query, got 1 params for 2 queries");
+		assert_eq!(queries.len(), 2);
+		assert_eq!(queries[0].0, "from a");
+		assert_eq!(queries[0].1, Params::None);
+		assert_eq!(queries[1].0, "from b");
+		assert_eq!(queries[1].1, Params::None);
 	}
 
 	#[test]
 	fn an_invalid_param_names_the_query_it_belongs_to() {
 		// Without the index the client cannot tell which member of the batch carried the bad value.
 		let err = batch(
-			r#"{"id":"b-1","type":"BatchSubscribe","payload":{"queries":["from a","from b"],"params":[null,{"n":{"type":{"id":"Int4"},"value":"abc"}}]}}"#,
+			r#"{"id":"b-1","type":"BatchSubscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b","params":{"n":{"type":{"id":"Int4"},"value":"abc"}}}]}}"#,
 		)
 		.into_queries()
 		.unwrap_err();
 
-		assert_eq!(err, "query 1: parameter $n: invalid data: cannot parse 'abc' as Int4");
+		assert_eq!(
+			err,
+			SubscribeDecodeError::InvalidParams(
+				"subscription 1: parameter $n: invalid data: cannot parse 'abc' as Int4".to_string()
+			)
+		);
 	}
 }

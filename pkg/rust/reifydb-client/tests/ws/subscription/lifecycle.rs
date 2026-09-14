@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
-use reifydb_client::{GrpcClient, SubscriptionConfig, WireFormat, WsClient, build_subscription_rql};
+use reifydb_client::{GrpcClient, SubscriptionConfig, WireFormat, WsClient};
 use reifydb_value::value::duration::Duration;
 use serde_json::{Value, from_str, json};
 use tokio::{net::TcpStream, runtime::Runtime, time::timeout};
@@ -182,7 +182,7 @@ fn another_connection_cannot_unsubscribe_a_subscription_it_does_not_own() {
 		create_test_table(&setup, &table, &[("id", "int4")]).await.unwrap();
 
 		let mut owner = raw_connect(&url).await;
-		let rql = build_subscription_rql(&format!("from test::{}", table), &SubscriptionConfig::default());
+		let rql = format!("from test::{}", table);
 		let subscribed =
 			raw_request(&mut owner, json!({"id": "sub", "type": "Subscribe", "payload": {"rql": rql}}))
 				.await;
@@ -234,10 +234,10 @@ fn another_connection_cannot_unsubscribe_a_batch_it_does_not_own() {
 		create_test_table(&setup, &table, &[("id", "int4")]).await.unwrap();
 
 		let mut owner = raw_connect(&url).await;
-		let rql = build_subscription_rql(&format!("from test::{}", table), &SubscriptionConfig::default());
+		let rql = format!("from test::{}", table);
 		let subscribed = raw_request(
 			&mut owner,
-			json!({"id": "batch", "type": "BatchSubscribe", "payload": {"queries": [rql]}}),
+			json!({"id": "batch", "type": "BatchSubscribe", "payload": {"subscriptions": [{"rql": rql}]}}),
 		)
 		.await;
 		let batch_id = subscribed["payload"]["batch_id"]
@@ -291,7 +291,7 @@ fn a_grpc_unsubscribe_cannot_end_a_websocket_subscription() {
 		create_test_table(&setup, &table, &[("id", "int4")]).await.unwrap();
 
 		let mut owner = raw_connect(&url).await;
-		let rql = build_subscription_rql(&format!("from test::{}", table), &SubscriptionConfig::default());
+		let rql = format!("from test::{}", table);
 		let subscribed =
 			raw_request(&mut owner, json!({"id": "sub", "type": "Subscribe", "payload": {"rql": rql}}))
 				.await;

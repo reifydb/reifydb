@@ -11,7 +11,10 @@ use reifydb_client::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{id::SubscriptionId, subscription::HydrationConfig},
+		catalog::{
+			id::SubscriptionId,
+			subscription::{HydrationConfig, SubscribeOptions},
+		},
 		change::StagedBatch,
 	},
 	metrics::execution::ExecutionMetrics,
@@ -148,14 +151,15 @@ pub async fn handle_subscribe<S: WireSink, H: SubscribeHost>(
 	host: &H,
 	connection_id: ConnectionId,
 	identity: IdentityId,
-	rql: String,
+	query: String,
 	params: Params,
+	options: SubscribeOptions,
 	sink: S,
 	registry: &Arc<SubscriptionRegistry<S>>,
 	format: S::Format,
 	shutdown: WatchReceiver<bool>,
 ) -> Result<SubscribeAck, SubscribeError<H::Error>> {
-	match create_subscription(host, identity, &rql, params).await {
+	match create_subscription(host, identity, &query, params, options).await {
 		Ok(CreateSubscriptionResult::Local {
 			id: subscription_id,
 			hydration,
@@ -166,7 +170,7 @@ pub async fn handle_subscribe<S: WireSink, H: SubscribeHost>(
 				host,
 				connection_id,
 				identity,
-				rql,
+				query,
 				sink,
 				registry,
 				format,
@@ -362,13 +366,14 @@ async fn handle_subscribe_remote<S: WireSink, E>(
 	let sink_for_proxy = sink.clone();
 	let sink_for_close = sink.clone();
 	let handle = spawn(async move {
-		proxy_remote_to_sink(remote_sub, shutdown, move |payload| {
+		let proxied = proxy_remote_to_sink(remote_sub, shutdown, move |payload| {
 			matches!(
 				sink_for_proxy.send_remote_change(subscription_id, payload, format),
 				DeliveryResult::Delivered
 			)
 		})
 		.await;
+		end_remote_proxy(proxied);
 		let _ = sink_for_close.send_closed(subscription_id);
 	});
 
@@ -385,7 +390,7 @@ pub async fn handle_batch_subscribe<S: WireSink, H: SubscribeHost>(
 	host: &H,
 	connection_id: ConnectionId,
 	identity: IdentityId,
-	queries: &[(String, Params)],
+	queries: &[(String, Params, SubscribeOptions)],
 	sink: S,
 	registry: &Arc<SubscriptionRegistry<S>>,
 	format: S::Format,
@@ -448,7 +453,7 @@ type BatchAckParts = (BatchId, Vec<BatchMemberInfo>, Vec<(SubscriptionId, Remote
 async fn resolve_batch_members<S: WireSink, H: SubscribeHost>(
 	host: &H,
 	identity: IdentityId,
-	queries: &[(String, Params)],
+	queries: &[(String, Params, SubscribeOptions)],
 	format: S::Format,
 ) -> Result<ResolvedBatch, BatchSubscribeError<H::Error>> {
 	let ctx = host.context();
@@ -456,8 +461,8 @@ async fn resolve_batch_members<S: WireSink, H: SubscribeHost>(
 	let mut local_hydrations: Vec<LocalHydration> = Vec::new();
 	let mut member_lingers: HashMap<SubscriptionId, Duration> = HashMap::new();
 
-	for (index, (user_rql, params)) in queries.iter().enumerate() {
-		match create_subscription(host, identity, user_rql, params.clone()).await {
+	for (index, (query, params, options)) in queries.iter().enumerate() {
+		match create_subscription(host, identity, query, params.clone(), options.clone()).await {
 			Ok(CreateSubscriptionResult::Local {
 				id: subscription_id,
 				hydration,
@@ -465,7 +470,7 @@ async fn resolve_batch_members<S: WireSink, H: SubscribeHost>(
 				linger,
 			}) => {
 				member_lingers.insert(subscription_id, ctx.clamp_linger(linger));
-				local_hydrations.push((subscription_id, user_rql.clone(), hydration, throttle));
+				local_hydrations.push((subscription_id, query.clone(), hydration, throttle));
 				resolved.push(ResolvedBatchMember::Local {
 					index,
 					subscription_id,
@@ -816,12 +821,22 @@ async fn run_batch_remote_proxy<S: WireSink>(
 	shutdown: WatchReceiver<bool>,
 ) {
 	let registry_push = Arc::clone(&registry);
-	proxy_remote_to_sink(remote_sub, shutdown, move |payload| {
+	let proxied = proxy_remote_to_sink(remote_sub, shutdown, move |payload| {
 		let frames = payload.into_frames();
 		registry_push.push_batch_frames(batch_id, subscription_id, frames)
 	})
 	.await;
+	end_remote_proxy(proxied);
 	let _ = registry.emit_batch_member_closed(batch_id, subscription_id);
+}
+
+#[cfg(not(reifydb_single_threaded))]
+fn end_remote_proxy(result: Result<(), reifydb_value::error::Error>) {
+	match result {
+		Ok(()) => {}
+		Err(error) if error.0.code == "CONNECTION_LOST" => {}
+		Err(error) => panic!("remote subscription proxy failed: {error}"),
+	}
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -983,5 +998,33 @@ async fn abort_warming<S: WireSink>(
 
 	if let Err(e) = cleaned {
 		warn!("Failed to cleanup subscription {} after hydrate failure: {:?}", subscription_id, e);
+	}
+}
+
+#[cfg(all(test, not(reifydb_single_threaded)))]
+mod tests {
+	use reifydb_value::error::{Diagnostic, Error};
+
+	use super::end_remote_proxy;
+
+	fn error_with_code(code: &str) -> Error {
+		Error(Box::new(Diagnostic {
+			code: code.to_string(),
+			message: "remote stream ended".to_string(),
+			..Default::default()
+		}))
+	}
+
+	#[test]
+	fn a_lost_connection_ends_the_remote_proxy_quietly() {
+		// A remote that went away must close the stream, never panic the proxy task.
+		end_remote_proxy(Err(error_with_code("CONNECTION_LOST")));
+	}
+
+	#[test]
+	#[should_panic(expected = "remote subscription proxy failed")]
+	fn any_other_remote_error_panics_naming_the_proxy() {
+		// An unexpected remote error must stop the proxy loudly, never pass as a normal stream end.
+		end_remote_proxy(Err(error_with_code("TRANSPORT")));
 	}
 }

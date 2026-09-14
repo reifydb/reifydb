@@ -21,8 +21,8 @@ use reifydb_rql::{
 	bump::BumpBox,
 	expression::{ConstantExpression, Expression},
 	plan::logical::{
-		AppendNode, AppendSourcePlan, AssignValue, CreateSubscriptionNode, ElseIfBranch, FilterNode, LetValue,
-		LogicalPlan, ObjectScanNode, PipelineNode, compile_logical, function::ReturnValue,
+		AppendNode, AppendSourcePlan, AssignValue, ElseIfBranch, FilterNode, LetValue, LogicalPlan,
+		ObjectScanNode, PipelineNode, compile_logical, function::ReturnValue,
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -81,16 +81,6 @@ fn inject_plan<'a>(
 			let steps = inject_plans(pipeline.steps, bump, catalog, tx)?;
 			Ok(LogicalPlan::Pipeline(PipelineNode {
 				steps,
-			}))
-		}
-		LogicalPlan::CreateSubscription(node) => {
-			let as_clause = inject_plans(node.as_clause, bump, catalog, tx)?;
-			Ok(LogicalPlan::CreateSubscription(CreateSubscriptionNode {
-				columns: node.columns,
-				as_clause,
-				hydration: node.hydration,
-				throttle: node.throttle,
-				linger: node.linger,
 			}))
 		}
 		LogicalPlan::Declare(mut node) => {

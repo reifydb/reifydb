@@ -6,13 +6,13 @@ use std::{collections::HashSet, fmt, fmt::Debug, sync::Arc};
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	error::diagnostic::query,
+	error::diagnostic::{query, subscription},
 	fingerprint::{CompilationFingerprint, StatementFingerprint},
 	interface::catalog::series::{SeriesKey, TimestampPrecision},
 };
 use reifydb_runtime::cache::sync::SyncLru;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error, fragment::Fragment, util::hash::xxh3_128, value::Value};
+use reifydb_value::{Result, error, error::Diagnostic, fragment::Fragment, util::hash::xxh3_128, value::Value};
 
 use crate::{
 	ast::{
@@ -239,6 +239,28 @@ impl Compiler {
 		Ok(CompilationResult::Ready(plans))
 	}
 
+	pub fn compile_query_plan_with_policy<'b, F>(
+		&self,
+		bump: &'b Bump,
+		tx: &mut Transaction<'_>,
+		statement: AstStatement<'b>,
+		policy: F,
+	) -> Result<Option<QueryPlan>>
+	where
+		F: for<'a> Fn(
+			BumpVec<'a, LogicalPlan<'a>>,
+			&'a Bump,
+			&Catalog,
+			&mut Transaction<'_>,
+		) -> Result<BumpVec<'a, LogicalPlan<'a>>>,
+	{
+		let Some(mut physical) = plan_with_policy(bump, &self.0.catalog, tx, statement, &policy)? else {
+			return Ok(None);
+		};
+		optimize_physical(&mut physical);
+		materialize_query_plan_with(physical, |_| subscription::single_query_required()).map(Some)
+	}
+
 	pub fn compile_next_with_policy<F>(
 		&self,
 		tx: &mut Transaction<'_>,
@@ -335,6 +357,13 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 }
 
 fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
+	materialize_query_plan_with(plan, |kind| query::as_clause_not_query(Fragment::None, kind))
+}
+
+fn materialize_query_plan_with(
+	plan: PhysicalPlan<'_>,
+	not_query: impl FnOnce(&str) -> Diagnostic,
+) -> Result<QueryPlan> {
 	Ok(match plan {
 		PhysicalPlan::TableScan(node) => QueryPlan::TableScan(node),
 		PhysicalPlan::TableVirtualScan(node) => QueryPlan::TableVirtualScan(node),
@@ -476,7 +505,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 
 		other => {
 			let kind = physical_plan_kind_name(&other);
-			return Err(error!(query::as_clause_not_query(Fragment::None, kind)));
+			return Err(error!(not_query(kind)));
 		}
 	})
 }
@@ -492,7 +521,6 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		PhysicalPlan::CreateQueue(_) => "CREATE QUEUE",
 		PhysicalPlan::CreateDictionary(_) => "CREATE DICTIONARY",
 		PhysicalPlan::CreateSumType(_) => "CREATE SUM TYPE",
-		PhysicalPlan::CreateSubscription(_) => "CREATE SUBSCRIPTION",
 		PhysicalPlan::CreatePrimaryKey(_) => "CREATE PRIMARY KEY",
 		PhysicalPlan::CreateColumnProperty(_) => "CREATE COLUMN PROPERTY",
 		PhysicalPlan::CreateProcedure(_) => "CREATE PROCEDURE",
@@ -514,7 +542,6 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		PhysicalPlan::DropQueue(_) => "DROP QUEUE",
 		PhysicalPlan::DropDictionary(_) => "DROP DICTIONARY",
 		PhysicalPlan::DropSumType(_) => "DROP SUM TYPE",
-		PhysicalPlan::DropSubscription(_) => "DROP SUBSCRIPTION",
 		PhysicalPlan::DropSeries(_) => "DROP SERIES",
 		PhysicalPlan::DropSource(_) => "DROP SOURCE",
 		PhysicalPlan::DropSink(_) => "DROP SINK",
@@ -1057,10 +1084,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::DropSumType(node));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::DropSubscription(node) => {
-				self.emit(Instruction::DropSubscription(node));
-				self.emit(Instruction::Emit);
-			}
 			PhysicalPlan::DropSeries(node) => {
 				self.emit(Instruction::DropSeries(node));
 				self.emit(Instruction::Emit);
@@ -1174,19 +1197,6 @@ impl InstructionCompiler {
 					storage_kind: compile_view_storage_kind(node.storage_kind),
 					ttl: node.ttl,
 					persistent: node.persistent,
-				}));
-				self.emit(Instruction::Emit);
-			}
-			PhysicalPlan::CreateSubscription(node) => {
-				self.emit(Instruction::CreateSubscription(nodes::CreateSubscriptionNode {
-					columns: node.columns,
-					as_clause: node
-						.as_clause
-						.map(|a| materialize_query_plan(BumpBox::into_inner(a)).map(Box::new))
-						.transpose()?,
-					hydration: node.hydration,
-					throttle: node.throttle,
-					linger: node.linger,
 				}));
 				self.emit(Instruction::Emit);
 			}

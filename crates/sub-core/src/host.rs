@@ -6,11 +6,12 @@ use std::{
 	future::Future,
 };
 
+use reifydb_core::interface::catalog::subscription::{SubscribeOptions, SubscribeOutcome};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use reifydb_value::{
 	params::Params,
-	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
+	value::{duration::Duration, identity::IdentityId},
 };
 
 #[derive(Clone)]
@@ -100,7 +101,8 @@ pub trait SubscribeHost: Send + Sync {
 	fn execute_subscribe(
 		&self,
 		identity: IdentityId,
-		rql: String,
+		query: String,
 		params: Params,
-	) -> impl Future<Output = Result<Vec<Frame>, Self::Error>> + Send;
+		options: SubscribeOptions,
+	) -> impl Future<Output = Result<SubscribeOutcome, Self::Error>> + Send;
 }

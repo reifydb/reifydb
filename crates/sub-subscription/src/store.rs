@@ -23,8 +23,6 @@ struct SubscriptionBuffer {
 	queue: VecDeque<StagedBatch>,
 	capacity: usize,
 	overrun: Option<u16>,
-
-	column_names: Vec<String>,
 }
 
 fn saturating_u16(value: usize) -> u16 {
@@ -78,20 +76,19 @@ impl SubscriptionStore {
 		SubscriptionId(raw)
 	}
 
-	pub fn register(&self, id: SubscriptionId, column_names: Vec<String>) {
+	pub fn register(&self, id: SubscriptionId) {
 		self.inner.insert(
 			id,
 			SubscriptionBuffer {
 				queue: VecDeque::with_capacity(self.default_capacity),
 				capacity: self.default_capacity,
 				overrun: None,
-				column_names,
 			},
 		);
 	}
 
-	pub fn column_names(&self, id: &SubscriptionId) -> Option<Vec<String>> {
-		self.inner.get(id).map(|buf| buf.column_names.clone())
+	pub fn contains(&self, id: &SubscriptionId) -> bool {
+		self.inner.contains_key(id)
 	}
 
 	pub fn unregister(&self, id: &SubscriptionId) -> bool {
@@ -205,7 +202,7 @@ mod tests {
 	fn test_register_and_commit() {
 		let store = SubscriptionStore::new(16);
 		let id = store.next_id();
-		store.register(id, vec!["test".to_string()]);
+		store.register(id);
 
 		store.commit_staged(stage(id, &[1]));
 
@@ -230,7 +227,7 @@ mod tests {
 		// drives it.
 		let store = SubscriptionStore::new(2);
 		let id = store.next_id();
-		store.register(id, vec!["test".to_string()]);
+		store.register(id);
 
 		store.commit_staged(stage(id, &[1]));
 		store.commit_staged(stage(id, &[2]));
@@ -250,7 +247,7 @@ mod tests {
 		// Delivering a partial prefix would leave the subscriber holding a state the server never had.
 		let store = SubscriptionStore::new(2);
 		let id = store.next_id();
-		store.register(id, vec!["test".to_string()]);
+		store.register(id);
 
 		store.commit_staged(stage(id, &[1]));
 		store.commit_staged(stage(id, &[2]));
@@ -267,7 +264,7 @@ mod tests {
 		// The state is terminal, so a later commit must not refill a queue the subscriber will never read.
 		let store = SubscriptionStore::new(2);
 		let id = store.next_id();
-		store.register(id, vec!["test".to_string()]);
+		store.register(id);
 
 		store.commit_staged(stage(id, &[1]));
 		store.commit_staged(stage(id, &[2]));
@@ -283,7 +280,7 @@ mod tests {
 		// The common path must be untouched by the lag branch.
 		let store = SubscriptionStore::new(16);
 		let id = store.next_id();
-		store.register(id, vec!["test".to_string()]);
+		store.register(id);
 
 		store.commit_staged(stage(id, &[1, 2, 3]));
 
@@ -296,7 +293,7 @@ mod tests {
 		// A count of one would read as a single hiccup rather than the whole queue being surrendered.
 		let store = SubscriptionStore::new(2);
 		let id = store.next_id();
-		store.register(id, vec!["test".to_string()]);
+		store.register(id);
 
 		store.commit_staged(stage(id, &[1]));
 		store.commit_staged(stage(id, &[2]));
@@ -313,7 +310,7 @@ mod tests {
 		// overflow.
 		let store = SubscriptionStore::new(2);
 		let id = store.next_id();
-		store.register(id, vec!["test".to_string()]);
+		store.register(id);
 
 		store.commit_staged(stage(id, &[1]));
 		store.commit_staged(stage(id, &[2]));
@@ -329,7 +326,7 @@ mod tests {
 	fn test_drain_partial_then_full() {
 		let store = SubscriptionStore::new(16);
 		let id = store.next_id();
-		store.register(id, vec!["test".to_string()]);
+		store.register(id);
 
 		store.commit_staged(stage(id, &[1, 2, 3]));
 
@@ -347,7 +344,7 @@ mod tests {
 	fn test_unregister_removes_from_active() {
 		let store = SubscriptionStore::new(16);
 		let id = store.next_id();
-		store.register(id, vec!["test".to_string()]);
+		store.register(id);
 
 		assert!(store.active_subscriptions().contains(&id));
 		assert!(store.unregister(&id));
@@ -360,8 +357,8 @@ mod tests {
 		let store = SubscriptionStore::new(16);
 		let id1 = store.next_id();
 		let id2 = store.next_id();
-		store.register(id1, vec![]);
-		store.register(id2, vec![]);
+		store.register(id1);
+		store.register(id2);
 
 		let active = store.active_subscriptions();
 		assert_eq!(active.len(), 2);
@@ -377,7 +374,7 @@ mod tests {
 		assert_eq!(store.pending_batches(), 0, "a fresh store buffers nothing");
 
 		let id = store.next_id();
-		store.register(id, vec!["test".to_string()]);
+		store.register(id);
 
 		assert_eq!(store.pending_batches(), 0, "registering a subscription queues no work by itself");
 	}
@@ -389,8 +386,8 @@ mod tests {
 		let store = SubscriptionStore::new(16);
 		let first = store.next_id();
 		let second = store.next_id();
-		store.register(first, vec!["test".to_string()]);
-		store.register(second, vec!["test".to_string()]);
+		store.register(first);
+		store.register(second);
 
 		store.commit_staged(stage(first, &[1, 2]));
 		assert_eq!(store.pending_batches(), 2);
@@ -405,7 +402,7 @@ mod tests {
 		// still reported the original depth, and would stop early if it reported zero too soon.
 		let store = SubscriptionStore::new(16);
 		let id = store.next_id();
-		store.register(id, vec!["test".to_string()]);
+		store.register(id);
 
 		store.commit_staged(stage(id, &[1, 2, 3]));
 		assert_eq!(store.pending_batches(), 3);
@@ -424,7 +421,7 @@ mod tests {
 		// progress.
 		let store = SubscriptionStore::new(2);
 		let id = store.next_id();
-		store.register(id, vec!["test".to_string()]);
+		store.register(id);
 
 		store.commit_staged(stage(id, &[1]));
 		store.commit_staged(stage(id, &[2]));

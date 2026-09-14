@@ -22,7 +22,6 @@ use reifydb_core::{
 			queue::{QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 			relationship::RelationshipCardinality,
 			series::SeriesKey,
-			subscription::HydrationConfig,
 		},
 		resolved::{
 			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedQueue,
@@ -47,119 +46,9 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct PrimaryKey {
-	pub columns: Vec<PrimaryKeyColumn>,
-}
-
-#[derive(Debug, Clone)]
 pub struct PrimaryKeyColumn {
 	pub column: Fragment,
 	pub order: Option<SortDirection>,
-}
-
-#[derive(Debug, Clone)]
-pub enum PhysicalPlan {
-	CreateDeferredView(CreateDeferredViewNode),
-	CreateTransactionalView(CreateTransactionalViewNode),
-	CreateNamespace(CreateNamespaceNode),
-	CreateRemoteNamespace(CreateRemoteNamespaceNode),
-	CreateTable(CreateTableNode),
-	CreateRingBuffer(CreateRingBufferNode),
-	CreateDictionary(CreateDictionaryNode),
-	CreateSumType(CreateSumTypeNode),
-	CreateSubscription(CreateSubscriptionNode),
-	CreatePrimaryKey(CreatePrimaryKeyNode),
-	CreateColumnProperty(CreateColumnPropertyNode),
-	CreateProcedure(CreateProcedureNode),
-	CreateSeries(CreateSeriesNode),
-	CreateEvent(CreateEventNode),
-	CreateTag(CreateTagNode),
-	CreateTest(CreateTestNode),
-	RunTests(RunTestsNode),
-
-	CreateMigration(CreateMigrationNode),
-	Migrate(MigrateNode),
-	RollbackMigration(RollbackMigrationNode),
-	Dispatch(DispatchNode),
-
-	AlterSequence(AlterSequenceNode),
-	AlterTable(AlterTableNode),
-	AlterRemoteNamespace(AlterRemoteNamespaceNode),
-	AlterIdentity(AlterIdentityNode),
-
-	Delete(DeleteTableNode),
-	DeleteRingBuffer(DeleteRingBufferNode),
-	InsertTable(InsertTableNode),
-	InsertRingBuffer(InsertRingBufferNode),
-	InsertQueue(InsertQueueNode),
-	InsertDictionary(InsertDictionaryNode),
-	Update(UpdateTableNode),
-	UpdateRingBuffer(UpdateRingBufferNode),
-	UpdateSeries(UpdateSeriesNode),
-
-	Declare(DeclareNode),
-	Assign(AssignNode),
-	Append(AppendPhysicalNode),
-
-	Variable(VariableNode),
-	Environment(EnvironmentNode),
-
-	Conditional(ConditionalNode),
-	Loop(LoopPhysicalNode),
-	While(WhilePhysicalNode),
-	For(ForPhysicalNode),
-	Break,
-	Continue,
-
-	DefineFunction(DefineFunctionNode),
-	Return(ReturnNode),
-	CallFunction(CallFunctionNode),
-
-	Aggregate(AggregateNode),
-	Distinct(DistinctNode),
-	Filter(FilterNode),
-	IndexScan(IndexScanNode),
-
-	RowPointLookup(RowPointLookupNode),
-	RowListLookup(RowListLookupNode),
-	RowRangeScan(RowRangeScanNode),
-	JoinInner(JoinInnerNode),
-	JoinLeft(JoinLeftNode),
-	JoinNatural(JoinNaturalNode),
-	Take(TakeNode),
-	Sort(SortNode),
-	Map(MapNode),
-	Extend(ExtendNode),
-	Patch(PatchNode),
-	Apply(ApplyNode),
-	InlineData(InlineDataNode),
-	RemoteScan(RemoteScanNode),
-	TableScan(TableScanNode),
-	TableVirtualScan(TableVirtualScanNode),
-	ViewScan(ViewScanNode),
-	RingBufferScan(RingBufferScanNode),
-	DictionaryScan(DictionaryScanNode),
-	SeriesScan(SeriesScanNode),
-	QueueScan(QueueScanNode),
-
-	InsertSeries(InsertSeriesNode),
-	DeleteSeries(DeleteSeriesNode),
-	Generator(GeneratorNode),
-	Window(WindowNode),
-
-	Scalarize(ScalarizeNode),
-
-	CreateIdentity(CreateIdentityNode),
-	CreateRole(CreateRoleNode),
-	Grant(GrantNode),
-	Revoke(RevokeNode),
-	DropIdentity(DropIdentityNode),
-	DropRole(DropRoleNode),
-	CreateAuthentication(CreateAuthenticationNode),
-	DropAuthentication(DropAuthenticationNode),
-	CreatePolicy(CreatePolicyNode),
-	AlterPolicy(AlterPolicyNode),
-	DropPolicy(DropPolicyNode),
 }
 
 #[derive(Debug, Clone)]
@@ -286,21 +175,6 @@ pub struct CreateSumTypeVariant {
 pub struct CreateSumTypeColumn {
 	pub name: String,
 	pub column_type: TypeConstraint,
-}
-
-#[derive(Debug, Clone)]
-pub struct SubscriptionColumnToCreate {
-	pub name: String,
-	pub ty: ValueType,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateSubscriptionNode {
-	pub columns: Vec<SubscriptionColumnToCreate>,
-	pub as_clause: Option<Box<QueryPlan>>,
-	pub hydration: HydrationConfig,
-	pub throttle: Option<Duration>,
-	pub linger: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]
@@ -548,50 +422,6 @@ pub struct CreateColumnPropertyNode {
 	pub table: Fragment,
 	pub column: Fragment,
 	pub properties: Vec<ColumnPropertyKind>,
-}
-
-#[derive(Debug, Clone)]
-pub enum LetValue {
-	Expression(Expression),
-	Statement(QueryPlan),
-	EmptyFrame,
-}
-
-impl fmt::Display for LetValue {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			LetValue::Expression(expr) => write!(f, "{}", expr),
-			LetValue::Statement(query) => write!(f, "Statement({:?})", query),
-			LetValue::EmptyFrame => write!(f, "EmptyFrame"),
-		}
-	}
-}
-
-#[derive(Debug, Clone)]
-pub struct DeclareNode {
-	pub name: Fragment,
-	pub value: LetValue,
-}
-
-#[derive(Debug, Clone)]
-pub enum AssignValue {
-	Expression(Expression),
-	Statement(QueryPlan),
-}
-
-impl fmt::Display for AssignValue {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			AssignValue::Expression(expr) => write!(f, "{}", expr),
-			AssignValue::Statement(query) => write!(f, "Statement({:?})", query),
-		}
-	}
-}
-
-#[derive(Debug, Clone)]
-pub struct AssignNode {
-	pub name: Fragment,
-	pub value: AssignValue,
 }
 
 #[derive(Debug, Clone)]
@@ -932,69 +762,6 @@ pub struct RowRangeScanNode {
 }
 
 #[derive(Debug, Clone)]
-pub enum AppendPhysicalNode {
-	IntoVariable {
-		target: Fragment,
-		source: AppendPhysicalSource,
-	},
-	Query {
-		left: Box<QueryPlan>,
-		right: Box<QueryPlan>,
-	},
-}
-
-#[derive(Debug, Clone)]
-pub enum AppendPhysicalSource {
-	Statement(Vec<PhysicalPlan>),
-	Inline(InlineDataNode),
-}
-
-#[derive(Debug, Clone)]
-pub struct ConditionalNode {
-	pub condition: Expression,
-	pub then_branch: Box<PhysicalPlan>,
-	pub else_ifs: Vec<ElseIfBranch>,
-	pub else_branch: Option<Box<PhysicalPlan>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ElseIfBranch {
-	pub condition: Expression,
-	pub then_branch: Box<PhysicalPlan>,
-}
-
-#[derive(Debug, Clone)]
-pub struct LoopPhysicalNode {
-	pub body: Vec<PhysicalPlan>,
-}
-
-#[derive(Debug, Clone)]
-pub struct WhilePhysicalNode {
-	pub condition: Expression,
-	pub body: Vec<PhysicalPlan>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ForPhysicalNode {
-	pub variable_name: Fragment,
-	pub iterable: Box<PhysicalPlan>,
-	pub body: Vec<PhysicalPlan>,
-}
-
-#[derive(Debug, Clone)]
-pub struct DefineFunctionNode {
-	pub name: Fragment,
-	pub parameters: Vec<FunctionParameter>,
-	pub return_type: Option<TypeConstraint>,
-	pub body: Vec<PhysicalPlan>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ReturnNode {
-	pub value: Option<Expression>,
-}
-
-#[derive(Debug, Clone)]
 pub struct CallFunctionNode {
 	pub name: Fragment,
 	pub arguments: Vec<Expression>,
@@ -1059,13 +826,6 @@ pub struct DropSumTypeNode {
 	pub namespace_name: Fragment,
 	pub sumtype_name: Fragment,
 	pub sumtype_id: Option<SumTypeId>,
-	pub if_exists: bool,
-	pub cascade: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct DropSubscriptionNode {
-	pub subscription_name: Fragment,
 	pub if_exists: bool,
 	pub cascade: bool,
 }

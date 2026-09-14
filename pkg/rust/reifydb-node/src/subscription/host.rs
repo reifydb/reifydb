@@ -2,7 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{
-	Database, Error, Frame, IdentityId, Params, Result as ReifyResult,
+	Database, Error, IdentityId, Params, Result as ReifyResult,
+	core::interface::catalog::subscription::{SubscribeOptions, SubscribeOutcome},
 	engine::engine::StandardEngine,
 	runtime::context::rng::Rng,
 	sub_core::host::{SubscribeContext, SubscribeHost},
@@ -53,16 +54,10 @@ impl SubscribeHost for NodeSubscribeHost {
 	async fn execute_subscribe(
 		&self,
 		identity: IdentityId,
-		rql: String,
+		query: String,
 		params: Params,
-	) -> Result<Vec<Frame>, Self::Error> {
-		// `rql` is the whole `CREATE SUBSCRIPTION ... AS { .. }` statement, as it is on the
-		// socket: the client builds it, and the subscribe endpoint rejects anything else. Wrapping
-		// a bare body here instead would accept statements the server refuses.
-		let result = self.engine().subscribe_as(identity, &rql, params);
-		match result.error {
-			Some(e) => Err(e),
-			None => Ok(result.frames),
-		}
+		options: SubscribeOptions,
+	) -> Result<SubscribeOutcome, Self::Error> {
+		self.engine().subscribe_as(identity, &query, params, options)
 	}
 }

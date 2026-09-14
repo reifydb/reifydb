@@ -34,7 +34,6 @@ use reifydb_core::{
 			property::ColumnPropertyKind,
 			queue::{QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 			series::SeriesKey,
-			subscription::HydrationConfig,
 		},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedObject},
 	},
@@ -42,10 +41,7 @@ use reifydb_core::{
 	sort::{SortDirection, SortKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
-use reifydb_value::{
-	fragment::Fragment,
-	value::{duration::Duration, identity::IdentityKind},
-};
+use reifydb_value::{fragment::Fragment, value::identity::IdentityKind};
 use tracing::instrument;
 
 use crate::{
@@ -72,7 +68,7 @@ use crate::{
 	bump::{BumpBox, BumpFragment},
 	diagnostic::AstError,
 	expression::{AliasExpression, Expression, ExpressionCompiler, IdentExpression},
-	nodes::{SubscriptionColumnToCreate, TakeLimit},
+	nodes::TakeLimit,
 	plan::logical::alter::table::AlterTableNode,
 };
 
@@ -367,7 +363,6 @@ pub enum LogicalPlan<'bump> {
 	CreateDictionary(CreateDictionaryNode<'bump>),
 	CreateSumType(CreateSumTypeNode<'bump>),
 	CreateIndex(CreateIndexNode<'bump>),
-	CreateSubscription(CreateSubscriptionNode<'bump>),
 	CreatePrimaryKey(CreatePrimaryKeyNode<'bump>),
 	CreateColumnProperty(CreateColumnPropertyNode<'bump>),
 	CreateProcedure(CreateProcedureNode<'bump>),
@@ -393,7 +388,6 @@ pub enum LogicalPlan<'bump> {
 	DropRingBuffer(DropRingBufferNode<'bump>),
 	DropDictionary(DropDictionaryNode<'bump>),
 	DropSumType(DropSumTypeNode<'bump>),
-	DropSubscription(DropSubscriptionNode<'bump>),
 	DropSeries(DropSeriesNode<'bump>),
 	DropSource(DropSourceNode<'bump>),
 	DropSink(DropSinkNode<'bump>),
@@ -689,15 +683,6 @@ pub struct CreateIndexNode<'bump> {
 	pub columns: Vec<IndexColumn<'bump>>,
 	pub filter: Vec<Expression>,
 	pub map: Option<Expression>,
-}
-
-#[derive(Debug)]
-pub struct CreateSubscriptionNode<'bump> {
-	pub columns: Vec<SubscriptionColumnToCreate>,
-	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
-	pub hydration: HydrationConfig,
-	pub throttle: Option<Duration>,
-	pub linger: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -1052,13 +1037,6 @@ pub struct DropDictionaryNode<'bump> {
 #[derive(Debug)]
 pub struct DropSumTypeNode<'bump> {
 	pub sumtype: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub if_exists: bool,
-	pub cascade: bool,
-}
-
-#[derive(Debug)]
-pub struct DropSubscriptionNode<'bump> {
-	pub identifier: BumpFragment<'bump>,
 	pub if_exists: bool,
 	pub cascade: bool,
 }

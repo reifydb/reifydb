@@ -321,20 +321,6 @@ impl<'bump> Compiler<'bump> {
 		}
 	}
 
-	pub(crate) fn compile_drop_subscription(
-		&mut self,
-		_rx: &mut Transaction<'_>,
-		drop: logical::DropSubscriptionNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
-		let subscription_name = self.interner.intern_fragment(&drop.identifier);
-
-		Ok(PhysicalPlan::DropSubscription(nodes::DropSubscriptionNode {
-			subscription_name,
-			if_exists: drop.if_exists,
-			cascade: drop.cascade,
-		}))
-	}
-
 	pub(crate) fn compile_drop_series(
 		&mut self,
 		rx: &mut Transaction<'_>,

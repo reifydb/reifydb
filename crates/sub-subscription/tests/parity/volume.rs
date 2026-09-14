@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::testing::db::TestDb;
-use reifydb_core::interface::catalog::id::SubscriptionId;
+use reifydb::{Params, testing::db::TestDb};
+use reifydb_core::interface::catalog::{id::SubscriptionId, subscription::SubscribeOptions};
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
+use reifydb_value::value::identity::IdentityId;
 
 use crate::common::{
 	Row, drain_sub, extract_sub_id, insert_one_at_a_time, make_db, normalize, random_rows, run_path_snapshot,
@@ -36,8 +37,11 @@ fn a_live_subscriber_that_falls_behind_is_terminated_not_truncated() {
 	let rows: Vec<Row> = random_rows(7, OVER_RING, 1000);
 	let db = make_db();
 
-	let frames = db.admin("CREATE SUBSCRIPTION AS { from app::t }");
-	let sub_id = extract_sub_id(&frames);
+	let outcome = db
+		.engine()
+		.subscribe_as(IdentityId::root(), "from app::t", Params::None, SubscribeOptions::default())
+		.expect("subscribe as root");
+	let sub_id = extract_sub_id(outcome);
 
 	insert_one_at_a_time(&db, &rows);
 

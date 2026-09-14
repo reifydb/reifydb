@@ -42,13 +42,4 @@ describe('batch subscription params over the native bridge', () => {
     expect(first).toEqual([expect.objectContaining({ id: 1, owner: 'a' })])
     expect(second).toEqual([expect.objectContaining({ id: 2, owner: 'b' })])
   })
-
-  it('refuses a params list that does not pair with the queries', async () => {
-    // A short list must be refused, otherwise the unpaired queries silently run without params.
-    const db = build()
-
-    await expect(db.batchSubscribeRoot(['from app::v', 'from app::v'], [{ owner: 'a' }])).rejects.toThrow(
-      /one params entry per query/,
-    )
-  })
 })

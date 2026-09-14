@@ -15,6 +15,7 @@ mod disabled {
 	use std::fmt;
 
 	use reifydb_client::{RawChangePayload, SubscriptionConfig, WireFormat};
+	use reifydb_value::error::Error;
 	use tokio::sync::watch;
 
 	#[derive(Debug)]
@@ -44,7 +45,11 @@ mod disabled {
 		Err(RemoteSubscriptionError)
 	}
 
-	pub async fn proxy_remote_to_sink<F>(remote_sub: RemoteSubscription, _shutdown: watch::Receiver<bool>, _sink: F)
+	pub async fn proxy_remote_to_sink<F>(
+		remote_sub: RemoteSubscription,
+		_shutdown: watch::Receiver<bool>,
+		_sink: F,
+	) -> Result<(), Error>
 	where
 		F: FnMut(RawChangePayload) -> bool + Send + 'static,
 	{

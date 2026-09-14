@@ -4,8 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::actors::server::{
-	Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage, ServerResponse, ServerSubscribeResponse,
-	build_server_message,
+	Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage, ServerResponse, build_server_message,
 };
 use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel, system::ActorSystem};
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -51,17 +50,6 @@ impl DstClient {
 		self.send(ServerMessage::Call {
 			identity,
 			name,
-			params,
-			reply,
-		});
-		receiver.try_recv().expect("no reply from actor")
-	}
-
-	pub fn subscribe(&self, identity: IdentityId, rql: String, params: Params) -> ServerSubscribeResponse {
-		let (reply, receiver) = reply_channel();
-		self.send(ServerMessage::Subscribe {
-			identity,
-			rql,
 			params,
 			reply,
 		});

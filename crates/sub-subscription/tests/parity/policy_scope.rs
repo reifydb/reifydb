@@ -8,7 +8,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb::{Params, testing::db::TestDb};
-use reifydb_core::interface::change::StagedBatch;
+use reifydb_core::interface::{catalog::subscription::SubscribeOptions, change::StagedBatch};
 use reifydb_value::value::{Value, identity::IdentityId};
 
 use crate::common::{drain_after_consumer_caught_up, extract_sub_id};
@@ -65,9 +65,11 @@ fn from_policy_scopes_live_diffs_per_subscriber() {
 	// bob's rows out of her live diffs.
 	let (db, alice, bob) = setup();
 
-	let result = db.engine().subscribe_as(alice, "create subscription as { from app::docs }", Params::None);
-	assert!(result.error.is_none(), "subscribe as alice failed: {:?}", result.error);
-	let sub_id = extract_sub_id(&result.frames);
+	let outcome = db
+		.engine()
+		.subscribe_as(alice, "from app::docs", Params::None, SubscribeOptions::default())
+		.expect("subscribe as alice failed");
+	let sub_id = extract_sub_id(outcome);
 
 	insert_docs(&db, alice, bob);
 
@@ -84,10 +86,11 @@ fn root_subscription_bypasses_policies() {
 	// Root bypasses policies, so scoping subscriber diffs must not slide into applying default-deny to root.
 	let (db, alice, bob) = setup();
 
-	let result =
-		db.engine().subscribe_as(IdentityId::root(), "create subscription as { from app::docs }", Params::None);
-	assert!(result.error.is_none(), "subscribe as root failed: {:?}", result.error);
-	let sub_id = extract_sub_id(&result.frames);
+	let outcome = db
+		.engine()
+		.subscribe_as(IdentityId::root(), "from app::docs", Params::None, SubscribeOptions::default())
+		.expect("subscribe as root failed");
+	let sub_id = extract_sub_id(outcome);
 
 	insert_docs(&db, alice, bob);
 
@@ -104,9 +107,11 @@ fn non_matching_subscriber_receives_no_diffs() {
 	// A subscriber whose rows never match must receive nothing while other tenants' changes stream past.
 	let (db, alice, bob) = setup();
 
-	let result = db.engine().subscribe_as(bob, "create subscription as { from app::docs }", Params::None);
-	assert!(result.error.is_none(), "subscribe as bob failed: {:?}", result.error);
-	let sub_id = extract_sub_id(&result.frames);
+	let outcome = db
+		.engine()
+		.subscribe_as(bob, "from app::docs", Params::None, SubscribeOptions::default())
+		.expect("subscribe as bob failed");
+	let sub_id = extract_sub_id(outcome);
 
 	db.command(&format!("insert app::docs [{{ owner_id: cast('{alice}', identity_id), content: 'alice-doc' }}]"));
 
@@ -122,13 +127,16 @@ fn subscription_params_resolve_in_flow_filters() {
 
 	let mut named = HashMap::new();
 	named.insert("wanted".to_string(), Value::Utf8("bob-doc".to_string()));
-	let result = db.engine().subscribe_as(
-		IdentityId::root(),
-		"create subscription as { from app::docs filter { content == $wanted } }",
-		Params::Named(Arc::new(named)),
-	);
-	assert!(result.error.is_none(), "subscribe with params failed: {:?}", result.error);
-	let sub_id = extract_sub_id(&result.frames);
+	let outcome = db
+		.engine()
+		.subscribe_as(
+			IdentityId::root(),
+			"from app::docs filter { content == $wanted }",
+			Params::Named(Arc::new(named)),
+			SubscribeOptions::default(),
+		)
+		.expect("subscribe with params failed");
+	let sub_id = extract_sub_id(outcome);
 
 	insert_docs(&db, alice, bob);
 

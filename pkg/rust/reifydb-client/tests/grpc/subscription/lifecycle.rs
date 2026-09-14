@@ -4,9 +4,10 @@
 use std::sync::Arc;
 
 use reifydb_client::{
-	GrpcClient, SubscriptionConfig, WireFormat, build_subscription_rql,
+	GrpcClient, SubscriptionConfig, WireFormat,
 	grpc::generated::{
-		BatchSubscribeRequest, BatchSubscriptionEvent, batch_subscription_event, reify_db_client::ReifyDbClient,
+		BatchSubscribeMember, BatchSubscribeRequest, BatchSubscriptionEvent, batch_subscription_event,
+		reify_db_client::ReifyDbClient,
 	},
 };
 use reifydb_value::value::duration::Duration;
@@ -194,10 +195,10 @@ fn another_stream_cannot_unsubscribe_a_batch_it_does_not_own() {
 
 		let mut owner = ReifyDbClient::connect(format!("http://[::1]:{}", port)).await.unwrap();
 		let mut request = Request::new(BatchSubscribeRequest {
-			rql: vec![build_subscription_rql(
-				&format!("from test::{}", table),
-				&SubscriptionConfig::default(),
-			)],
+			subscriptions: vec![BatchSubscribeMember {
+				rql: format!("from test::{}", table),
+				options: None,
+			}],
 		});
 		request.metadata_mut().insert("authorization", "Bearer mysecrettoken".parse().unwrap());
 		let mut stream = owner.batch_subscribe(request).await.unwrap().into_inner();

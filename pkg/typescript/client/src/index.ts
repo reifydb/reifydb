@@ -72,6 +72,7 @@ export type {
     SubscriptionRow,
     HydrationConfig,
     SubscriptionConfig,
+    SubscribeOptions,
     BatchSubscribeRequest,
     BatchSubscribedResponse,
     BatchUnsubscribeRequest,
@@ -93,5 +94,5 @@ export type {BatchBinaryEnvelope, BinaryEnvelope, SubscriptionTarget} from './su
 export {
     defaultHydrationConfig,
     defaultSubscriptionConfig,
-    buildSubscriptionRql,
+    encodeSubscribeOptions,
 } from './types';

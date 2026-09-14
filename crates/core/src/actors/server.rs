@@ -10,7 +10,10 @@ use reifydb_value::{
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
 
-use crate::metrics::execution::ExecutionMetrics;
+use crate::{
+	interface::catalog::subscription::{SubscribeOptions, SubscribeOutcome},
+	metrics::execution::ExecutionMetrics,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Operation {
@@ -55,6 +58,7 @@ pub enum ServerMessage {
 		identity: IdentityId,
 		rql: String,
 		params: Params,
+		options: SubscribeOptions,
 		reply: Reply<ServerSubscribeResponse>,
 	},
 
@@ -111,9 +115,8 @@ pub enum ServerLogoutResponse {
 
 pub enum ServerSubscribeResponse {
 	Subscribed {
-		frames: Vec<Frame>,
+		outcome: SubscribeOutcome,
 		duration: Duration,
-		metrics: ExecutionMetrics,
 	},
 
 	EngineError {

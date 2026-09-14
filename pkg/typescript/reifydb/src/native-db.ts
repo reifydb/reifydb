@@ -3,8 +3,10 @@
 
 import { encodeParams, columnsToRows, transformFrames, checkFrames, framesFromWire } from '@reifydb/core'
 import type { FrameResults, ShapeNode } from '@reifydb/core'
+import { encodeSubscribeOptions } from '@reifydb/client'
+import type { SubscriptionConfig } from '@reifydb/client'
 import type { BatchSubscribed, Frame, ReifydbNode, SubscriptionTick } from '../native'
-import type { Db } from './db'
+import type { Db, SubscriptionInput } from './db'
 
 export class NativeDb implements Db {
   constructor(private readonly node: ReifydbNode) {}
@@ -37,20 +39,20 @@ export class NativeDb implements Db {
     return this.node.authenticate(method, credentials)
   }
 
-  subscribeRoot(rql: string, params: any): Promise<string> {
-    return this.node.subscribeRoot(rql, toWireParams(params))
+  subscribeRoot(query: string, params: any, options?: SubscriptionConfig): Promise<string> {
+    return this.node.subscribeRoot(query, toWireParams(params), encodeSubscribeOptions(options))
   }
 
-  subscribeAs(identity: string, rql: string, params: any): Promise<string> {
-    return this.node.subscribeAs(identity, rql, toWireParams(params))
+  subscribeAs(identity: string, query: string, params: any, options?: SubscriptionConfig): Promise<string> {
+    return this.node.subscribeAs(identity, query, toWireParams(params), encodeSubscribeOptions(options))
   }
 
-  batchSubscribeRoot(queries: string[], params: any[]): Promise<BatchSubscribed> {
-    return this.node.batchSubscribeRoot(queries, params.map(toWireParams))
+  batchSubscribeRoot(subscriptions: SubscriptionInput[]): Promise<BatchSubscribed> {
+    return this.node.batchSubscribeRoot(subscriptions.map(toNativeSubscription))
   }
 
-  batchSubscribeAs(identity: string, queries: string[], params: any[]): Promise<BatchSubscribed> {
-    return this.node.batchSubscribeAs(identity, queries, params.map(toWireParams))
+  batchSubscribeAs(identity: string, subscriptions: SubscriptionInput[]): Promise<BatchSubscribed> {
+    return this.node.batchSubscribeAs(identity, subscriptions.map(toNativeSubscription))
   }
 
   unsubscribe(subscriptionId: string): void {
@@ -81,4 +83,12 @@ export class NativeDb implements Db {
 
 function toWireParams(params: any) {
   return params !== undefined && params !== null ? encodeParams(params) : undefined
+}
+
+function toNativeSubscription(subscription: SubscriptionInput) {
+  return {
+    query: subscription.query,
+    params: toWireParams(subscription.params),
+    options: encodeSubscribeOptions(subscription.options),
+  }
 }

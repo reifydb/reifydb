@@ -9,7 +9,6 @@ use std::{
 
 use reifydb_core::{
 	common::CommitVersion,
-	error::diagnostic::catalog::subscription_not_found,
 	interface::catalog::{flow::FlowId, id::SubscriptionId},
 	internal,
 };
@@ -26,7 +25,7 @@ use reifydb_transaction::{
 	multi::{lease::VersionLeaseGuard, transaction::MultiTransaction},
 	transaction::Transaction,
 };
-use reifydb_value::{Result, error::Error, fragment::Fragment, value::identity::IdentityId};
+use reifydb_value::{Result, error::Error, value::identity::IdentityId};
 
 use crate::{store::SubscriptionStore, tracker::SubscriptionPositionTracker, worker::SubscriptionWorkerMessage};
 
@@ -92,13 +91,12 @@ impl SubscriptionService for SubscriptionServiceImpl {
 	fn register_subscription(
 		&self,
 		flow_dag: FlowDag,
-		column_names: Vec<String>,
 		_hydration_enabled: bool,
 		ctx: SubscriptionContext,
 		_txn: &mut Transaction<'_>,
 	) -> Result<()> {
 		let id = ctx.id;
-		self.state.store.register(id, column_names);
+		self.state.store.register(id);
 
 		let current = self.state.multi.begin_query()?.version();
 		self.state.position_tracker.update(id, current);
@@ -126,7 +124,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		Ok(())
 	}
 
-	fn unregister_subscription(&self, id: &SubscriptionId) -> Result<()> {
+	fn unregister_subscription(&self, id: &SubscriptionId) -> Result<bool> {
 		let existed = self.state.store.unregister(id);
 		self.state.position_tracker.remove(id);
 
@@ -147,14 +145,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 			}
 		}
 
-		if existed {
-			Ok(())
-		} else {
-			Err(Error(Box::new(subscription_not_found(
-				Fragment::internal(format!("subscription_{}", id.0)),
-				&format!("subscription_{}", id.0),
-			))))
-		}
+		Ok(existed)
 	}
 
 	fn hydrate(

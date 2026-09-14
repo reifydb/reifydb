@@ -3,23 +3,23 @@
 
 use std::time::Duration;
 
-use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
-use reifydb_value::{
-	byte_size::ByteSize,
-	value::{Value, frame::frame::Frame},
+use reifydb::{Params, WithSubsystem, embedded, testing::db::TestDb};
+use reifydb_core::interface::catalog::{
+	id::SubscriptionId,
+	subscription::{SubscribeOptions, SubscribeOutcome},
 };
+use reifydb_engine::subscription::SubscriptionServiceRef;
+use reifydb_value::{byte_size::ByteSize, value::identity::IdentityId};
 
-fn subscription_name(frames: &[Frame]) -> String {
-	let frame = frames.first().expect("subscription frame");
-	let value = frame
-		.columns
-		.iter()
-		.find(|c| c.name == "subscription_id")
-		.map(|c| c.data.get_value(0))
-		.expect("subscription_id column");
-	match value {
-		Value::Uint8(n) => format!("subscription_{}", n),
-		other => panic!("unexpected subscription_id value: {:?}", other),
+fn subscription_id(outcome: SubscribeOutcome) -> SubscriptionId {
+	match outcome {
+		SubscribeOutcome::Local {
+			id,
+		} => id,
+		SubscribeOutcome::Remote {
+			address,
+			..
+		} => panic!("expected a local subscription, got a remote one at {}", address),
 	}
 }
 
@@ -41,9 +41,19 @@ fn dropping_a_subscription_leaves_a_views_operator_state_intact() {
 	let resident = store.total_bytes().unwrap();
 	assert!(resident > ByteSize::ZERO, "precondition: the view's operators hold state to lose");
 
-	let frames = db.admin("CREATE SUBSCRIPTION AS { FROM app::t MAP { id } }");
-	let name = subscription_name(&frames);
-	db.admin(&format!("DROP SUBSCRIPTION {}", name));
+	let outcome = db
+		.engine()
+		.subscribe_as(IdentityId::root(), "FROM app::t MAP { id }", Params::None, SubscribeOptions::default())
+		.expect("subscribe as root");
+	let id = subscription_id(outcome);
+	let dropped = db
+		.engine()
+		.ioc()
+		.resolve::<SubscriptionServiceRef>()
+		.expect("resolve subscription service")
+		.unregister_subscription(&id)
+		.expect("unsubscribe");
+	assert!(dropped, "the subscription was just created, so unsubscribing must find and drop it");
 
 	assert_eq!(
 		store.total_bytes().unwrap(),

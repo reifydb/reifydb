@@ -683,9 +683,8 @@ pub mod ids {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
-			pub const COLUMN_COUNT: ColumnId = ColumnId(2);
 
-			pub const ALL: [ColumnId; 2] = [ID, COLUMN_COUNT];
+			pub const ALL: [ColumnId; 1] = [ID];
 		}
 
 		pub mod shapes {

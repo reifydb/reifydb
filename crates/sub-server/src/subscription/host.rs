@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::actors::server::Operation;
-use reifydb_sub_core::host::{SubscribeContext, SubscribeHost};
-use reifydb_value::{
-	params::Params,
-	value::{frame::frame::Frame, identity::IdentityId},
+use reifydb_core::{
+	actors::server::Operation,
+	interface::catalog::subscription::{SubscribeOptions, SubscribeOutcome},
 };
+use reifydb_sub_core::host::{SubscribeContext, SubscribeHost};
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 use crate::{
 	dispatch::dispatch_subscribe,
@@ -49,18 +49,18 @@ impl SubscribeHost for ServerSubscribeHost<'_> {
 	async fn execute_subscribe(
 		&self,
 		identity: IdentityId,
-		rql: String,
+		query: String,
 		params: Params,
-	) -> Result<Vec<Frame>, Self::Error> {
+		options: SubscribeOptions,
+	) -> Result<SubscribeOutcome, Self::Error> {
 		let ctx = RequestContext {
 			identity,
 			operation: Operation::Subscribe,
-			rql,
+			rql: query,
 			params,
 			metadata: self.metadata.clone(),
 		};
-		let (frames, _metrics) = dispatch_subscribe(self.state, ctx).await?;
-		Ok(frames)
+		dispatch_subscribe(self.state, ctx, options).await
 	}
 }
 

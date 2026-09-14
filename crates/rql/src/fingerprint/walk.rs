@@ -582,13 +582,6 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 					buf.write_str(n.series.name.text());
 					write_column_defs(buf, &n.columns);
 				}
-				AstCreate::Subscription(n) => {
-					buf.write_u8(0x06);
-					write_column_defs(buf, &n.columns);
-					if let Some(stmt) = &n.as_clause {
-						write_statement(buf, stmt);
-					}
-				}
 				AstCreate::RingBuffer(n) => {
 					buf.write_u8(0x07);
 					for ns in &n.ringbuffer.namespace {
@@ -920,10 +913,6 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 						buf.write_str(ns.text());
 					}
 					buf.write_str(n.sumtype.name.text());
-				}
-				AstDrop::Subscription(n) => {
-					buf.write_u8(0x07);
-					buf.write_str(n.identifier.text());
 				}
 				AstDrop::Series(n) => {
 					buf.write_u8(0x08);

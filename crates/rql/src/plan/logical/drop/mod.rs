@@ -8,8 +8,7 @@ use crate::{
 		Compiler, DropAuthenticationNode, DropBindingNode, DropDictionaryNode, DropHandlerNode,
 		DropIdentityAttributeNode, DropIdentityNode, DropNamespaceNode, DropPolicyNode, DropProcedureNode,
 		DropQueueNode, DropRelationshipNode, DropRingBufferNode, DropRoleNode, DropSeriesNode, DropSinkNode,
-		DropSourceNode, DropSubscriptionNode, DropSumTypeNode, DropTableNode, DropTestNode, DropViewNode,
-		LogicalPlan,
+		DropSourceNode, DropSumTypeNode, DropTableNode, DropTestNode, DropViewNode, LogicalPlan,
 	},
 };
 
@@ -48,11 +47,6 @@ impl<'bump> Compiler<'bump> {
 			})),
 			AstDrop::Enum(node) => Ok(LogicalPlan::DropSumType(DropSumTypeNode {
 				sumtype: node.sumtype,
-				if_exists: node.if_exists,
-				cascade: node.cascade,
-			})),
-			AstDrop::Subscription(node) => Ok(LogicalPlan::DropSubscription(DropSubscriptionNode {
-				identifier: node.identifier,
 				if_exists: node.if_exists,
 				cascade: node.cascade,
 			})),

@@ -38,6 +38,7 @@ pub struct QueryResponse {
     #[prost(bytes = "vec", tag = "1")]
     pub rbcf: ::prost::alloc::vec::Vec<u8>,
 }
+
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OperationRequest {
     #[prost(string, tag = "1")]
@@ -50,6 +51,8 @@ pub struct OperationResponse {
     #[prost(bytes = "vec", tag = "1")]
     pub rbcf: ::prost::alloc::vec::Vec<u8>,
 }
+
+
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct QueueClaimRequest {
     #[prost(string, tag = "1")]
@@ -68,19 +71,47 @@ pub struct QueueClaimResponse {
     #[prost(bytes = "vec", tag = "1")]
     pub rbcf: ::prost::alloc::vec::Vec<u8>,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct HydrationOptions {
+    #[prost(bool, optional, tag = "1")]
+    pub enabled: ::core::option::Option<bool>,
+    #[prost(uint64, optional, tag = "2")]
+    pub max_rows: ::core::option::Option<u64>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SubscribeOptions {
+    #[prost(message, optional, tag = "1")]
+    pub hydration: ::core::option::Option<HydrationOptions>,
+    #[prost(message, optional, tag = "2")]
+    pub throttle: ::core::option::Option<TypedValue>,
+    #[prost(message, optional, tag = "3")]
+    pub linger: ::core::option::Option<TypedValue>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SubscribeRequest {
     #[prost(string, tag = "1")]
     pub rql: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub options: ::core::option::Option<SubscribeOptions>,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UnsubscribeRequest {
+    #[prost(string, tag = "1")]
+    pub subscription_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UnsubscribeResponse {
+    #[prost(string, tag = "1")]
+    pub subscription_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SubscriptionEvent {
     #[prost(oneof = "subscription_event::Event", tags = "1, 2")]
     pub event: ::core::option::Option<subscription_event::Event>,
 }
 
 pub mod subscription_event {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Event {
         #[prost(message, tag = "1")]
         Subscribed(super::SubscribedEvent),
@@ -98,10 +129,19 @@ pub struct ChangeEvent {
     #[prost(bytes = "vec", tag = "1")]
     pub rbcf: ::prost::alloc::vec::Vec<u8>,
 }
+
+
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BatchSubscribeMember {
+    #[prost(string, tag = "1")]
+    pub rql: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub options: ::core::option::Option<SubscribeOptions>,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BatchSubscribeRequest {
-    #[prost(string, repeated, tag = "1")]
-    pub rql: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag = "1")]
+    pub subscriptions: ::prost::alloc::vec::Vec<BatchSubscribeMember>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct BatchUnsubscribeRequest {
@@ -151,7 +191,7 @@ pub struct BatchChangeEvent {
     #[prost(message, repeated, tag = "2")]
     pub entries: ::prost::alloc::vec::Vec<BatchChangeEntry>,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct BatchChangeEntry {
     #[prost(string, tag = "1")]
     pub subscription_id: ::prost::alloc::string::String,
@@ -165,24 +205,17 @@ pub struct BatchMemberClosedEvent {
     #[prost(string, tag = "2")]
     pub subscription_id: ::prost::alloc::string::String,
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct UnsubscribeRequest {
-    #[prost(string, tag = "1")]
-    pub subscription_id: ::prost::alloc::string::String,
-}
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct UnsubscribeResponse {
-    #[prost(string, tag = "1")]
-    pub subscription_id: ::prost::alloc::string::String,
-}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AuthenticateRequest {
     #[prost(string, tag = "1")]
     pub method: ::prost::alloc::string::String,
     #[prost(map = "string, string", tag = "2")]
-    pub credentials: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    pub credentials: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct AuthenticateResponse {
     #[prost(string, tag = "1")]
     pub status: ::prost::alloc::string::String,
@@ -195,7 +228,7 @@ pub struct AuthenticateResponse {
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct LogoutRequest {}
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct LogoutResponse {
     #[prost(string, tag = "1")]
     pub status: ::prost::alloc::string::String,
@@ -504,10 +537,7 @@ pub mod reify_db_client {
         pub async fn logout(
             &mut self,
             request: impl tonic::IntoRequest<super::LogoutRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::LogoutResponse>,
-            tonic::Status,
-        > {
+        ) -> std::result::Result<tonic::Response<super::LogoutResponse>, tonic::Status> {
             self.inner
                 .ready()
                 .await
@@ -521,8 +551,52 @@ pub mod reify_db_client {
                 "/reifydb.v1.ReifyDB/Logout",
             );
             let mut req = request.into_request();
+            req.extensions_mut().insert(GrpcMethod::new("reifydb.v1.ReifyDB", "Logout"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn call(
+            &mut self,
+            request: impl tonic::IntoRequest<super::OperationRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::OperationResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/reifydb.v1.ReifyDB/Call");
+            let mut req = request.into_request();
+            req.extensions_mut().insert(GrpcMethod::new("reifydb.v1.ReifyDB", "Call"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn queue_claim(
+            &mut self,
+            request: impl tonic::IntoRequest<super::QueueClaimRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::QueueClaimResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/reifydb.v1.ReifyDB/QueueClaim",
+            );
+            let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("reifydb.v1.ReifyDB", "Logout"));
+                .insert(GrpcMethod::new("reifydb.v1.ReifyDB", "QueueClaim"));
             self.inner.unary(req, path, codec).await
         }
     }
@@ -565,7 +639,10 @@ pub mod reify_db_server {
         async fn unsubscribe(
             &self,
             request: tonic::Request<super::UnsubscribeRequest>,
-        ) -> std::result::Result<tonic::Response<super::UnsubscribeResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::UnsubscribeResponse>,
+            tonic::Status,
+        >;
 
         type BatchSubscribeStream: tonic::codegen::tokio_stream::Stream<
                 Item = std::result::Result<super::BatchSubscriptionEvent, tonic::Status>,
@@ -575,15 +652,24 @@ pub mod reify_db_server {
         async fn batch_subscribe(
             &self,
             request: tonic::Request<super::BatchSubscribeRequest>,
-        ) -> std::result::Result<tonic::Response<Self::BatchSubscribeStream>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<Self::BatchSubscribeStream>,
+            tonic::Status,
+        >;
         async fn batch_unsubscribe(
             &self,
             request: tonic::Request<super::BatchUnsubscribeRequest>,
-        ) -> std::result::Result<tonic::Response<super::BatchUnsubscribeResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::BatchUnsubscribeResponse>,
+            tonic::Status,
+        >;
         async fn authenticate(
             &self,
             request: tonic::Request<super::AuthenticateRequest>,
-        ) -> std::result::Result<tonic::Response<super::AuthenticateResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::AuthenticateResponse>,
+            tonic::Status,
+        >;
         async fn logout(
             &self,
             request: tonic::Request<super::LogoutRequest>,
@@ -591,11 +677,17 @@ pub mod reify_db_server {
         async fn call(
             &self,
             request: tonic::Request<super::OperationRequest>,
-        ) -> std::result::Result<tonic::Response<super::OperationResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::OperationResponse>,
+            tonic::Status,
+        >;
         async fn queue_claim(
             &self,
             request: tonic::Request<super::QueueClaimRequest>,
-        ) -> std::result::Result<tonic::Response<super::QueueClaimResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::QueueClaimResponse>,
+            tonic::Status,
+        >;
     }
     #[derive(Debug)]
     pub struct ReifyDbServer<T> {
@@ -851,7 +943,9 @@ pub mod reify_db_server {
                 "/reifydb.v1.ReifyDB/Unsubscribe" => {
                     #[allow(non_camel_case_types)]
                     struct UnsubscribeSvc<T: ReifyDb>(pub Arc<T>);
-                    impl<T: ReifyDb> tonic::server::UnaryService<super::UnsubscribeRequest>
+                    impl<
+                        T: ReifyDb,
+                    > tonic::server::UnaryService<super::UnsubscribeRequest>
                     for UnsubscribeSvc<T> {
                         type Response = super::UnsubscribeResponse;
                         type Future = BoxFuture<
@@ -940,7 +1034,9 @@ pub mod reify_db_server {
                 "/reifydb.v1.ReifyDB/BatchUnsubscribe" => {
                     #[allow(non_camel_case_types)]
                     struct BatchUnsubscribeSvc<T: ReifyDb>(pub Arc<T>);
-                    impl<T: ReifyDb> tonic::server::UnaryService<super::BatchUnsubscribeRequest>
+                    impl<
+                        T: ReifyDb,
+                    > tonic::server::UnaryService<super::BatchUnsubscribeRequest>
                     for BatchUnsubscribeSvc<T> {
                         type Response = super::BatchUnsubscribeResponse;
                         type Future = BoxFuture<
@@ -983,7 +1079,9 @@ pub mod reify_db_server {
                 "/reifydb.v1.ReifyDB/Authenticate" => {
                     #[allow(non_camel_case_types)]
                     struct AuthenticateSvc<T: ReifyDb>(pub Arc<T>);
-                    impl<T: ReifyDb> tonic::server::UnaryService<super::AuthenticateRequest>
+                    impl<
+                        T: ReifyDb,
+                    > tonic::server::UnaryService<super::AuthenticateRequest>
                     for AuthenticateSvc<T> {
                         type Response = super::AuthenticateResponse;
                         type Future = BoxFuture<
@@ -1066,49 +1164,6 @@ pub mod reify_db_server {
                     };
                     Box::pin(fut)
                 }
-                "/reifydb.v1.ReifyDB/QueueClaim" => {
-                    #[allow(non_camel_case_types)]
-                    struct QueueClaimSvc<T: ReifyDb>(pub Arc<T>);
-                    impl<T: ReifyDb> tonic::server::UnaryService<super::QueueClaimRequest>
-                    for QueueClaimSvc<T> {
-                        type Response = super::QueueClaimResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::QueueClaimRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as ReifyDb>::queue_claim(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = QueueClaimSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
                 "/reifydb.v1.ReifyDB/Call" => {
                     #[allow(non_camel_case_types)]
                     struct CallSvc<T: ReifyDb>(pub Arc<T>);
@@ -1137,6 +1192,51 @@ pub mod reify_db_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = CallSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/reifydb.v1.ReifyDB/QueueClaim" => {
+                    #[allow(non_camel_case_types)]
+                    struct QueueClaimSvc<T: ReifyDb>(pub Arc<T>);
+                    impl<
+                        T: ReifyDb,
+                    > tonic::server::UnaryService<super::QueueClaimRequest>
+                    for QueueClaimSvc<T> {
+                        type Response = super::QueueClaimResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::QueueClaimRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as ReifyDb>::queue_claim(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = QueueClaimSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

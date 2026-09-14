@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::testing::db::TestDb;
-use reifydb_core::interface::change::StagedBatch;
-use reifydb_value::value::{Value, diff_type::DiffType};
+use reifydb::{Params, testing::db::TestDb};
+use reifydb_core::interface::{catalog::subscription::SubscribeOptions, change::StagedBatch};
+use reifydb_value::value::{Value, diff_type::DiffType, identity::IdentityId};
 
 use crate::common::{
 	Row, drain_after_consumer_caught_up, extract_sub_id, make_db, normalize, random_rows, run_path_incremental,
@@ -63,7 +63,11 @@ fn ops_and_qty(batches: Vec<StagedBatch>) -> Vec<(DiffType, i32)> {
 }
 
 fn subscribe(db: &TestDb, rql: &str) -> reifydb_core::interface::catalog::id::SubscriptionId {
-	extract_sub_id(&db.admin(&format!("CREATE SUBSCRIPTION AS {{ {} }}", rql)))
+	extract_sub_id(
+		db.engine()
+			.subscribe_as(IdentityId::root(), rql, Params::None, SubscribeOptions::default())
+			.expect("subscribe as root"),
+	)
 }
 
 #[test]

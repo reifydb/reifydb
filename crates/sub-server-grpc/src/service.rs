@@ -6,7 +6,10 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
-	interface::catalog::{binding::Binding, id::SubscriptionId, namespace::Namespace, procedure::Procedure},
+	interface::catalog::{
+		binding::Binding, id::SubscriptionId, namespace::Namespace, procedure::Procedure,
+		subscription::SubscribeOptions,
+	},
 	metrics::execution::ExecutionMetrics,
 };
 use reifydb_engine::subscription::HydrateError;
@@ -45,7 +48,7 @@ use tonic::{
 use tracing::{debug, warn};
 
 use crate::{
-	convert::proto_params_to_params,
+	convert::{proto_params_to_params, proto_subscribe_options},
 	error::{GrpcError, diagnostic_status},
 	generated::{
 		AdminRequest, AdminResponse, AuthenticateRequest, AuthenticateResponse, BatchSubscribeRequest,
@@ -455,6 +458,7 @@ impl ReifyDb for ReifyDbService {
 
 		let (tx, rx, connection_id, sink) = self.build_single_sink();
 
+		let options = proto_subscribe_options(inner.options).map_err(GrpcError::InvalidSubscribeOptions)?;
 		let host = self.state.subscribe_host(metadata);
 		match shared_subscribe(
 			&host,
@@ -462,6 +466,7 @@ impl ReifyDb for ReifyDbService {
 			identity,
 			inner.rql,
 			Params::None,
+			options,
 			sink,
 			&self.registry,
 			format,
@@ -530,7 +535,17 @@ impl ReifyDb for ReifyDbService {
 
 		let (batch_tx, batch_rx, connection_id, batch_sink) = self.build_batch_sink();
 
-		let queries: Vec<(String, Params)> = inner.rql.into_iter().map(|rql| (rql, Params::None)).collect();
+		let queries: Vec<(String, Params, SubscribeOptions)> = inner
+			.subscriptions
+			.into_iter()
+			.enumerate()
+			.map(|(index, subscription)| {
+				let options = proto_subscribe_options(subscription.options).map_err(|e| {
+					GrpcError::InvalidSubscribeOptions(format!("subscription {index}: {e}"))
+				})?;
+				Ok((subscription.rql, Params::None, options))
+			})
+			.collect::<Result<_, GrpcError>>()?;
 		let host = self.state.subscribe_host(metadata);
 		match shared_batch_subscribe(
 			&host,
@@ -713,9 +728,6 @@ fn insert_meta_headers(metadata: &mut MetadataMap, metrics: &ExecutionMetrics) {
 fn subscribe_error_to_status(err: SubscribeError<ExecuteError>) -> Status {
 	match err {
 		SubscribeError::Create(CreateSubscriptionError::Execute(e)) => Status::from(GrpcError::from(e)),
-		SubscribeError::Create(CreateSubscriptionError::ExtractionFailed) => {
-			Status::internal("Failed to extract subscription ID")
-		}
 		SubscribeError::RemoteConnect(msg) => Status::unavailable(msg),
 		SubscribeError::InvalidRemoteId => Status::internal("Invalid remote subscription ID format"),
 		SubscribeError::LeaseFailed {
@@ -744,9 +756,6 @@ fn batch_subscribe_error_to_status(err: BatchSubscribeError<ExecuteError>) -> St
 	match err {
 		BatchSubscribeError::Empty => Status::invalid_argument("BatchSubscribe requires at least one query"),
 		BatchSubscribeError::Create(CreateSubscriptionError::Execute(e)) => Status::from(GrpcError::from(e)),
-		BatchSubscribeError::Create(CreateSubscriptionError::ExtractionFailed) => {
-			Status::internal("Failed to extract subscription ID")
-		}
 		BatchSubscribeError::RemoteConnect(msg) => Status::unavailable(msg),
 		BatchSubscribeError::InvalidRemoteId => Status::internal("Invalid remote subscription ID format"),
 		BatchSubscribeError::LeaseFailed {

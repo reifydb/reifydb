@@ -10,7 +10,6 @@ pub mod cleanup;
 pub mod create;
 pub mod envelope;
 pub mod errors;
-pub mod extract;
 pub mod handler;
 pub mod host;
 pub mod hydrate;

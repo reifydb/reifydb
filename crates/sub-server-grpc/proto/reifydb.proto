@@ -41,7 +41,13 @@ message QueueClaimRequest {
 }
 message QueueClaimResponse { bytes rbcf = 1; }
 
-message SubscribeRequest { string rql = 1; }
+message HydrationOptions { optional bool enabled = 1; optional uint64 max_rows = 2; }
+message SubscribeOptions {
+  optional HydrationOptions hydration = 1;
+  optional TypedValue throttle = 2;
+  optional TypedValue linger = 3;
+}
+message SubscribeRequest { string rql = 1; optional SubscribeOptions options = 2; }
 message UnsubscribeRequest { string subscription_id = 1; }
 message UnsubscribeResponse { string subscription_id = 1; }
 message SubscriptionEvent {
@@ -55,9 +61,8 @@ message ChangeEvent { bytes rbcf = 1; }
 
 // BatchSubscribe opens a single stream that delivers coalesced deltas from N RQL queries.
 // Each poller tick emits one BatchChangeEvent containing an entry per member that had data.
-message BatchSubscribeRequest {
-  repeated string rql = 1;
-}
+message BatchSubscribeMember { string rql = 1; optional SubscribeOptions options = 2; }
+message BatchSubscribeRequest { repeated BatchSubscribeMember subscriptions = 1; }
 message BatchUnsubscribeRequest { string batch_id = 1; }
 message BatchUnsubscribeResponse { string batch_id = 1; }
 message BatchSubscriptionEvent {

@@ -74,7 +74,7 @@ pub use reifydb_value::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 #[cfg(any(feature = "ws", feature = "grpc", all(feature = "dst", reifydb_single_threaded)))]
-pub use subscription::{BatchItem, HydrationConfig, Linger, SubscriptionConfig, Throttle, build_subscription_rql};
+pub use subscription::{BatchItem, HydrationConfig, Linger, SubscriptionConfig, Throttle};
 #[cfg(feature = "ws")]
 pub use ws::{WsBatchSubscription, WsClient, WsClientOptions};
 
@@ -184,6 +184,18 @@ pub fn params_to_wire(params: Params) -> Option<WireParams> {
 	}
 }
 
+#[cfg(feature = "ws")]
+fn subscription_options_to_wire(config: &SubscriptionConfig) -> WireSubscribeOptions {
+	WireSubscribeOptions {
+		hydration: WireHydrationOptions {
+			enabled: Some(config.hydration.enabled),
+			max_rows: config.hydration.max_rows,
+		},
+		throttle: config.throttle.map(|throttle| value_to_wire(Value::Duration(throttle.duration()))),
+		linger: config.linger.map(|linger| value_to_wire(Value::Duration(linger.duration()))),
+	}
+}
+
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
@@ -249,8 +261,28 @@ pub struct QueryRequest {
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
+pub struct WireHydrationOptions {
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub enabled: Option<bool>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub max_rows: Option<u64>,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WireSubscribeOptions {
+	pub hydration: WireHydrationOptions,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub throttle: Option<WireValue>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub linger: Option<WireValue>,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SubscribeRequest {
 	pub rql: String,
+	pub options: WireSubscribeOptions,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub format: Option<WireFormat>,
 }
@@ -263,8 +295,15 @@ pub struct UnsubscribeRequest {
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
+pub struct WireBatchSubscribeMember {
+	pub rql: String,
+	pub options: WireSubscribeOptions,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BatchSubscribeRequest {
-	pub queries: Vec<String>,
+	pub subscriptions: Vec<WireBatchSubscribeMember>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub format: Option<WireFormat>,
 }
@@ -486,6 +525,8 @@ pub struct ChangePayload {
 	pub body: JsonValue,
 	#[cfg_attr(any(feature = "http", feature = "ws"), serde(skip, default))]
 	pub changes: Vec<FrameChange>,
+	#[cfg_attr(any(feature = "http", feature = "ws"), serde(skip, default))]
+	pub decode_error: Option<String>,
 }
 
 #[cfg_attr(any(feature = "http", feature = "ws"), derive(Serialize, Deserialize))]

@@ -18,7 +18,6 @@ pub mod ringbuffer;
 pub mod series;
 pub mod sink;
 pub mod source;
-pub mod subscription;
 pub mod sumtype;
 pub mod table;
 pub mod tag;
@@ -55,7 +54,6 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Dictionary(node) => self.compile_create_dictionary(node),
 			AstCreate::Enum(node) => self.compile_create_sumtype(node),
 			AstCreate::Index(node) => self.compile_create_index(node),
-			AstCreate::Subscription(node) => self.compile_create_subscription(node, tx),
 			AstCreate::PrimaryKey(node) => self.compile_create_primary_key(node, tx),
 			AstCreate::ColumnProperty(node) => self.compile_create_column_property(node, tx),
 			AstCreate::Procedure(node) => self.compile_create_procedure(node),

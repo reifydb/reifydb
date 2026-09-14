@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-import type { Params, Frame, Column, ErrorResponse, ShapeNode, DurationValue } from "@reifydb/core";
+import type { Params, Frame, Column, ErrorResponse, ShapeNode, DurationValue, WireType } from "@reifydb/core";
 import { ReifyError } from "@reifydb/core";
+import { encodeParams } from "./encoder";
 
 export type { Params, Frame, Column, ErrorResponse } from "@reifydb/core";
 export { ReifyError } from "@reifydb/core";
@@ -100,6 +101,7 @@ export interface SubscribeRequest {
     payload: {
         rql: string;
         params?: Params;
+        options?: SubscribeOptions;
         format?: "json" | "rbcf";
     };
 }
@@ -166,6 +168,12 @@ export interface SubscriptionConfig {
     linger?: DurationValue;
 }
 
+export interface SubscribeOptions {
+    hydration: { enabled?: boolean; maxRows?: number };
+    throttle?: { type: WireType; value: string };
+    linger?: { type: WireType; value: string };
+}
+
 export function defaultHydrationConfig(): HydrationConfig {
     return { enabled: true };
 }
@@ -174,38 +182,36 @@ export function defaultSubscriptionConfig(): SubscriptionConfig {
     return { hydration: defaultHydrationConfig() };
 }
 
-function durationLiteral(knob: string, value: DurationValue): string {
+function durationOption(knob: string, value: DurationValue): { type: WireType; value: string } {
     if (value.isNegative()) {
         throw new Error(`${knob} must not be negative`);
     }
-    const literal = value.toString();
-    if (literal === 'none') {
+    if (value.toString() === 'none') {
         throw new Error(`${knob} must be a duration`);
     }
-    return literal;
+    return (encodeParams([value]) as { type: WireType; value: string }[])[0];
 }
 
-export function buildSubscriptionRql(body: string, config?: SubscriptionConfig): string {
-    const h = config?.hydration ?? defaultHydrationConfig();
-    const enabled = h.enabled;
-    let opts = h.maxRows !== undefined
-        ? `hydration: { enabled: ${enabled}, max_rows: ${h.maxRows} }`
-        : `hydration: { enabled: ${enabled} }`;
+export function encodeSubscribeOptions(config?: SubscriptionConfig): SubscribeOptions {
+    const options: SubscribeOptions = { hydration: config?.hydration ?? defaultHydrationConfig() };
     if (config?.throttle !== undefined) {
-        opts += `, throttle: ${durationLiteral('throttle', config.throttle)}`;
+        options.throttle = durationOption('throttle', config.throttle);
     }
     if (config?.linger !== undefined) {
-        opts += `, linger: ${durationLiteral('linger', config.linger)}`;
+        options.linger = durationOption('linger', config.linger);
     }
-    return `CREATE SUBSCRIPTION WITH { ${opts} } AS { ${body} }`;
+    return options;
 }
 
 export interface BatchSubscribeRequest {
     id: string;
     type: "BatchSubscribe";
     payload: {
-        queries: string[];
-        params?: (Params | null)[];
+        subscriptions: {
+            rql: string;
+            params?: Params;
+            options?: SubscribeOptions;
+        }[];
         format?: "json" | "frames" | "rbcf";
     };
 }
