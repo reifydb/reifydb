@@ -1030,7 +1030,6 @@ fn a_last_page_is_the_exact_reverse_tail_of_a_forward_page() {
 
 #[test]
 fn an_idle_flush_over_a_populated_device_never_touches_the_device() {
-	// The flush slice runs under the lock every commit takes, so any device call it makes while idle stalls all writers.
 	let device = TestingPersistent::new(Arc::new(NoFaults));
 	let buffer = Resident::new();
 	buffer.attach_sinks(PersistentTier::Testing(device.clone()), OperatorRangeTier::Absent);

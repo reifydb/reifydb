@@ -85,7 +85,7 @@ impl EphemeralTransaction {
 	}
 
 	pub fn merge_state(&mut self) {
-		let own = std::mem::take(&mut self.pending);
+		let own = mem::take(&mut self.pending);
 		for (key, write) in own.iter_sorted() {
 			if matches!(read_from(key), ReadFrom::OperatorState | ReadFrom::StateQuery) {
 				match write {

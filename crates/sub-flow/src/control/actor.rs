@@ -21,12 +21,16 @@ use reifydb_core::{
 		change::Change,
 	},
 };
+#[cfg(reifydb_assertions)]
+use reifydb_core::key::tag::KeyTag;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_flow::{
 	engine::{FlowEngineInner, frontier::WatermarkHolds},
 	operator::metrics::OperatorSampleRegistry,
 	transaction::substrate::FlowSubstrate,
 };
+#[cfg(reifydb_assertions)]
+use reifydb_flow::transaction::read::{ReadFrom, read_from};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
@@ -524,10 +528,10 @@ impl FlowActor {
 			);
 			for (key, _) in slice.combined.iter_ordered() {
 				assert!(
-					reifydb_flow::transaction::read::read_from(key) != reifydb_flow::transaction::read::ReadFrom::Query,
+					read_from(key) != ReadFrom::Query,
 					"flow {:?} committed {:?}, a key it reads back through the query pinned at its cursor, which never sees this commit",
 					self.flow_id,
-					reifydb_core::key::tag::KeyTag::of(key)
+					KeyTag::of(key)
 				);
 			}
 		}
@@ -691,10 +695,10 @@ impl FlowActor {
 		reifydb_assertions! {
 			for (key, _) in pending.iter_ordered() {
 				assert!(
-					reifydb_flow::transaction::read::read_from(key) != reifydb_flow::transaction::read::ReadFrom::Query,
+					read_from(key) != ReadFrom::Query,
 					"flow {:?} committed {:?} on a tick, a key it reads back through the query pinned at its cursor, which never sees this commit",
 					self.flow_id,
-					reifydb_core::key::tag::KeyTag::of(key)
+					KeyTag::of(key)
 				);
 			}
 		}

@@ -82,3 +82,7 @@ path = "tests/chaos_regression.rs"
 [[test]]
 name = "operator"
 path = "tests/operator.rs"
+
+[[test]]
+name = "fd_lifecycle"
+path = "tests/fd_lifecycle.rs"

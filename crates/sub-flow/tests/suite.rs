@@ -3,8 +3,6 @@
 
 #[path = "custom_operator_timer.rs"]
 mod custom_operator_timer;
-#[path = "fd_lifecycle.rs"]
-mod fd_lifecycle;
 #[path = "flow_isolation.rs"]
 mod flow_isolation;
 #[path = "flow_materialization.rs"]

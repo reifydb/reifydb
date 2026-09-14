@@ -562,9 +562,9 @@ impl RowAccumulator {
 			}
 			| SlotKind::Sum
 			| SlotKind::Avg => true,
-			SlotKind::Min | SlotKind::Max => immutable.is_none(),
+			SlotKind::Min | SlotKind::Max | SlotKind::WindowLast => immutable.is_none(),
 			SlotKind::WindowStart | SlotKind::WindowEnd | SlotKind::WindowDuration => true,
-			SlotKind::First | SlotKind::Last | SlotKind::WindowLast => false,
+			SlotKind::First | SlotKind::Last => false,
 		})
 	}
 }
@@ -850,7 +850,8 @@ mod tests {
 
 	#[test]
 	fn window_last_stores_one_entry_per_event_time_not_one_per_row() {
-		// An entry per row grows the saved window with its row count, and every batch decodes and re-encodes all of it.
+		// An entry per row grows the saved window with its row count, and every batch decodes and re-encodes
+		// all of it.
 		let mut one = accumulator(&[SlotKind::WindowLast]);
 		one.add(&(at_time(30, 0), vec![Some(dt(30))]));
 		let mut many = accumulator(&[SlotKind::WindowLast]);
@@ -917,14 +918,58 @@ mod tests {
 	}
 
 	#[test]
-	fn a_span_slot_is_invertible_and_window_last_is_not() {
-		// invertible() decides whether a window may retract by unmerging instead of recomputing. A span
-		// slot holds nothing so it can always be unmerged; window_last keeps per-row entries and must not
-		// claim it can, or a retraction would leave the wrong time behind.
+	fn a_span_slot_is_invertible_and_window_last_is_invertible_only_while_unsealed() {
+		// invertible() lets a rolling window unmerge expired rows; claiming it for a slot that cannot unmerge
+		// leaves a stale value.
 		assert!(RowAccumulator::invertible(&[SlotKind::WindowStart], None));
 		assert!(RowAccumulator::invertible(&[SlotKind::WindowEnd], None));
 		assert!(RowAccumulator::invertible(&[SlotKind::WindowDuration], None));
-		assert!(!RowAccumulator::invertible(&[SlotKind::WindowLast], None));
+		assert!(
+			RowAccumulator::invertible(&[SlotKind::WindowLast], None),
+			"an unsealed window last counts each event time, so it unmerges like max"
+		);
+		assert!(
+			!RowAccumulator::invertible(&[SlotKind::WindowLast], Some(Duration::from_seconds(60).unwrap())),
+			"a sealed window last folds old times into one value and cannot give them back"
+		);
+	}
+
+	#[test]
+	fn unmerging_expired_slots_from_window_last_matches_a_rebuild_from_the_slots_left() {
+		// A rolling window subtracts expired slots from a running total; a wrong unmerge reports a time whose
+		// rows already left.
+		let rows: [&[(u64, u64)]; 4] =
+			[&[(10, 1), (30, 2)], &[(30, 3), (30, 4)], &[(20, 5)], &[(30, 6), (25, 7)]];
+		let slots: Vec<RowAccumulator> = rows
+			.iter()
+			.map(|slot| {
+				let mut a = accumulator(&[SlotKind::WindowLast]);
+				for &(secs, seq) in *slot {
+					a.add(&(at_time(secs, seq), vec![Some(dt(secs))]));
+				}
+				a
+			})
+			.collect();
+		let mut running = accumulator(&[SlotKind::WindowLast]);
+		for slot in &slots {
+			running.merge(slot);
+		}
+
+		let mut left: Vec<usize> = (0..slots.len()).collect();
+		for expired in [1, 0, 3, 2] {
+			running.unmerge(&slots[expired]);
+			left.retain(|&index| index != expired);
+			let mut rebuilt = accumulator(&[SlotKind::WindowLast]);
+			for &index in &left {
+				rebuilt.merge(&slots[index]);
+			}
+			assert_eq!(
+				running.finalize(),
+				rebuilt.finalize(),
+				"after expiring slot {expired}, slots {left:?} remain"
+			);
+		}
+		assert!(running.is_empty(), "every slot expired");
 	}
 
 	fn at(seq: u64) -> WindowSlotKey {
