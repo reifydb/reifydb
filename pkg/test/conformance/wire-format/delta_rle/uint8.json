@@ -152,5 +152,43 @@
         "updated_at": []
       }
     ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "9223372036854775807",
+              "9223372036854775808"
+            ],
+            "type": "Uint8"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "9223372036854775808",
+              "9223372036854775807"
+            ],
+            "type": "Uint8"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
   }
 ]

@@ -52,7 +52,7 @@ pub fn try_delta_u64(slice: &[u64]) -> Option<Vec<u8>> {
 		return None;
 	}
 
-	let deltas: Vec<i64> = slice.windows(2).map(|w| w[1] as i64 - w[0] as i64).collect();
+	let deltas: Vec<i64> = slice.windows(2).map(|w| (w[1] as i64).wrapping_sub(w[0] as i64)).collect();
 	let width = delta_width(&deltas);
 
 	let delta_size = 1 + 8 + (slice.len() - 1) * width;
@@ -120,7 +120,7 @@ pub fn try_delta_rle_u64(slice: &[u64]) -> Option<Vec<u8>> {
 		return None;
 	}
 
-	let deltas: Vec<i64> = slice.windows(2).map(|w| w[1] as i64 - w[0] as i64).collect();
+	let deltas: Vec<i64> = slice.windows(2).map(|w| (w[1] as i64).wrapping_sub(w[0] as i64)).collect();
 	let width = delta_width(&deltas);
 	let runs = rle_runs(&deltas);
 

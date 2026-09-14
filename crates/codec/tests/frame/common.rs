@@ -3,7 +3,7 @@
 
 #![allow(dead_code)]
 
-use reifydb_codec::frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions};
+use reifydb_codec::frame::{decode::decode_frames, encode::encode_frames, format::Encoding, options::EncodeOptions};
 use reifydb_value::value::{
 	Value,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
@@ -62,6 +62,25 @@ pub fn assert_compresses_well(name: &str, data: FrameColumnData) {
 		compressed.len(),
 		plain.len()
 	);
+}
+
+pub fn assert_forced_round_trip_beats_plain(name: &str, data: FrameColumnData, encoding: Encoding) {
+	let frame = Frame::new(vec![FrameColumn {
+		name: name.to_string(),
+		data,
+	}]);
+	let forced = encode_frames(&[frame.clone()], &EncodeOptions::forced(encoding)).expect("encode failed");
+	let plain = encode_frames(&[frame.clone()], &EncodeOptions::none()).expect("encode failed");
+	assert!(
+		forced.len() < plain.len(),
+		"expected {:?} to beat plain: forced={} >= plain={}",
+		encoding,
+		forced.len(),
+		plain.len()
+	);
+	let decoded = decode_frames(&forced).expect("decode failed");
+	assert_eq!(decoded.len(), 1);
+	assert_frame_eq(&frame, &decoded[0]);
 }
 
 // The generation macros below use fully-qualified paths throughout, so they cannot collide with
