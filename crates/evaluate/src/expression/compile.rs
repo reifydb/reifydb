@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem::discriminant, slice::from_ref};
+use std::{mem::discriminant, slice::from_ref, str::FromStr};
 
 use reifydb_core::value::column::{
 	ColumnWithName,
@@ -337,11 +337,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 		Expression::Type(e) => {
 			let ty = e.ty.clone();
 			let fragment = e.fragment.clone();
-			CompiledExpr::new(move |ctx| {
-				let row_count = ctx.take.unwrap_or(ctx.row_count);
-				let values: Vec<Value> = (0..row_count).map(|_| Value::Type(ty.clone())).collect();
-				Ok(ColumnWithName::new(fragment.text(), ColumnBuffer::any(values)))
-			})
+			CompiledExpr::new(move |ctx| Ok(type_column(ctx, &ty, &fragment)))
 		}
 
 		Expression::AccessSource(e) => {
@@ -655,11 +651,30 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 		Expression::Call(e) => {
 			let compiled_args: Vec<CompiledExpr> =
 				e.args.iter().map(|arg| compile_expression(_ctx, arg)).collect::<Result<Vec<_>>>()?;
+			let type_named_args: Vec<Option<(ValueType, Fragment)>> =
+				e.args.iter()
+					.map(|arg| match arg {
+						Expression::Column(column) => ValueType::from_str(column.0.name.text())
+							.ok()
+							.map(|ty| (ty, column.0.name.clone())),
+						_ => None,
+					})
+					.collect();
 			let expr = e.clone();
 			CompiledExpr::new(move |ctx| {
+				let type_positions = ctx
+					.routines
+					.get_function(expr.func.0.text())
+					.map(|function| function.type_argument_positions().to_vec())
+					.unwrap_or_default();
 				let mut arg_columns = Vec::with_capacity(compiled_args.len());
-				for compiled_arg in &compiled_args {
-					arg_columns.push(compiled_arg.execute(ctx)?);
+				for (index, compiled_arg) in compiled_args.iter().enumerate() {
+					match &type_named_args[index] {
+						Some((ty, fragment)) if type_positions.contains(&index) => {
+							arg_columns.push(type_column(ctx, ty, fragment));
+						}
+						_ => arg_columns.push(compiled_arg.execute(ctx)?),
+					}
 				}
 				let arguments = Columns::new(arg_columns);
 				call_builtin(ctx, &expr, arguments)
@@ -827,6 +842,12 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 
 fn compile_expressions(ctx: &CompileContext, exprs: &[Expression]) -> Result<Vec<CompiledExpr>> {
 	exprs.iter().map(|e| compile_expression(ctx, e)).collect()
+}
+
+fn type_column(ctx: &EvalContext, ty: &ValueType, fragment: &Fragment) -> ColumnWithName {
+	let row_count = ctx.take.unwrap_or(ctx.row_count);
+	let values: Vec<Value> = (0..row_count).map(|_| Value::Type(ty.clone())).collect();
+	ColumnWithName::new(fragment.text(), ColumnBuffer::any(values))
 }
 
 fn combine_bool_columns(

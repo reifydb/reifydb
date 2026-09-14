@@ -227,6 +227,12 @@ impl AggregateSlot {
 				..
 			} => {
 				if let Some(v) = present(input) {
+					if *n == 0 {
+						#[cfg(reifydb_assertions)]
+						panic!("Sum remove from an empty slot");
+						#[cfg(not(reifydb_assertions))]
+						return;
+					}
 					*n -= 1;
 					*accumulator = if *n == 0 {
 						*compensation = 0.0;
@@ -1373,6 +1379,16 @@ mod tests {
 		running.unmerge(&coord_state);
 		assert!(running.is_empty(), "unmerging the only coord must empty the running accumulator");
 		assert_eq!(running.finalize(), None);
+	}
+
+	#[test]
+	#[cfg(reifydb_assertions)]
+	#[should_panic(expected = "Sum remove from an empty slot")]
+	fn sum_remove_from_an_empty_slot_is_a_named_assertion() {
+		// A retraction with no matching add is a state bug, so it must fail with a name instead of an integer
+		// overflow.
+		let mut a = accumulator(&[SlotKind::Sum]);
+		remove(&mut a, 0, vec![i4(5)]);
 	}
 
 	#[test]

@@ -15,7 +15,6 @@ use crate::{
 	Result,
 	ast::ast::{AstColumnProperty, AstCreateTable, AstType},
 	convert_data_type_with_constraints,
-	diagnostic::AstError,
 	plan::logical::{
 		Compiler, CreateTableNode, LogicalPlan,
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
@@ -65,15 +64,7 @@ impl<'bump> Compiler<'bump> {
 						}
 					}
 				}
-				_ => match convert_data_type_with_constraints(&col.ty) {
-					Ok(c) => c,
-					Err(_) => {
-						return Err(AstError::UnrecognizedType {
-							fragment: col.ty.name_fragment().to_owned(),
-						}
-						.into());
-					}
-				},
+				_ => convert_data_type_with_constraints(&col.ty)?,
 			};
 			let column_type = constraint.get_type();
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashSet, fmt, fmt::Debug, sync::Arc};
+use std::{collections::HashSet, fmt, fmt::Debug, str::FromStr, sync::Arc};
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
@@ -12,7 +12,13 @@ use reifydb_core::{
 };
 use reifydb_runtime::cache::sync::SyncLru;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error, error::Diagnostic, fragment::Fragment, util::hash::xxh3_128, value::Value};
+use reifydb_value::{
+	Result, error,
+	error::Diagnostic,
+	fragment::Fragment,
+	util::hash::xxh3_128,
+	value::{Value, value_type::ValueType},
+};
 
 use crate::{
 	ast::{
@@ -799,7 +805,13 @@ impl InstructionCompiler {
 			Expression::Call(c) => {
 				let arity = c.args.len();
 				for arg in &c.args {
-					self.compile_expression(arg)?;
+					if let Expression::Column(col) = arg
+						&& let Ok(ty) = ValueType::from_str(col.0.name.text())
+					{
+						self.emit(Instruction::PushConst(Value::Type(ty)));
+					} else {
+						self.compile_expression(arg)?;
+					}
 				}
 				self.emit(Instruction::Call {
 					name: c.func.0.clone(),

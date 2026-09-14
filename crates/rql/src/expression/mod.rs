@@ -39,7 +39,6 @@ pub fn parse_expression(rql: &str) -> Result<Vec<Expression>> {
 use std::{
 	fmt,
 	fmt::{Display, Formatter},
-	str::FromStr,
 	sync::Arc,
 };
 
@@ -1004,21 +1003,7 @@ impl ExpressionCompiler {
 
 				let mut arg_expressions = Vec::new();
 				for arg_ast in call.arguments.nodes {
-					let compiled = Self::compile(arg_ast)?;
-					let compiled = match &compiled {
-						Expression::Column(col_expr) => {
-							if let Ok(ty) = ValueType::from_str(col_expr.0.name.text()) {
-								Expression::Type(TypeExpression {
-									fragment: col_expr.0.name.clone(),
-									ty,
-								})
-							} else {
-								compiled
-							}
-						}
-						_ => compiled,
-					};
-					arg_expressions.push(compiled);
+					arg_expressions.push(Self::compile(arg_ast)?);
 				}
 
 				Ok(Expression::Call(CallExpression {
@@ -1954,21 +1939,7 @@ impl ExpressionCompiler {
 
 				let mut arg_expressions = Vec::new();
 				for arg_ast in call.arguments.nodes {
-					let compiled = Self::compile(arg_ast)?;
-					let compiled = match &compiled {
-						Expression::Column(col_expr) => {
-							if let Ok(ty) = ValueType::from_str(col_expr.0.name.text()) {
-								Expression::Type(TypeExpression {
-									fragment: col_expr.0.name.clone(),
-									ty,
-								})
-							} else {
-								compiled
-							}
-						}
-						_ => compiled,
-					};
-					arg_expressions.push(compiled);
+					arg_expressions.push(Self::compile(arg_ast)?);
 				}
 
 				Ok(Expression::Call(CallExpression {

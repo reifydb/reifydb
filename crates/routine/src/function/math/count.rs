@@ -3,11 +3,14 @@
 
 use std::mem;
 
-use reifydb_core::value::column::{
-	ColumnWithName,
-	buffer::ColumnBuffer,
-	columns::Columns,
-	view::group_by::{GroupId, GroupRows, GroupSlots},
+use reifydb_core::{
+	metrics::heap::HeapSize,
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		columns::Columns,
+		view::group_by::{GroupId, GroupRows, GroupSlots},
+	},
 };
 use reifydb_routine_abi::{
 	Accumulator, AggregateFunctionCapability, Function, FunctionKind, Routine, RoutineInfo,
@@ -96,6 +99,10 @@ impl CountAccumulator {
 }
 
 impl Accumulator for CountAccumulator {
+	fn heap_size(&self) -> usize {
+		self.counts.heap_size()
+	}
+
 	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
 		let column = &args[0];
 		let column_name = args.name_at(0);

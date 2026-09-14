@@ -3,11 +3,14 @@
 
 use std::mem;
 
-use reifydb_core::value::column::{
-	ColumnWithName,
-	buffer::ColumnBuffer,
-	columns::Columns,
-	view::group_by::{GroupId, GroupRows, GroupSlots},
+use reifydb_core::{
+	metrics::heap::HeapSize,
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		columns::Columns,
+		view::group_by::{GroupId, GroupRows, GroupSlots},
+	},
 };
 use reifydb_routine_abi::{
 	Accumulator, AggregateFunctionCapability, Function, FunctionKind, Routine, RoutineInfo,
@@ -197,6 +200,10 @@ macro_rules! sub_arm_float {
 }
 
 impl Accumulator for SumAccumulator {
+	fn heap_size(&self) -> usize {
+		self.sums.heap_size()
+	}
+
 	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError> {
 		let column = &args[0];
 		let (data, _bitvec) = column.unwrap_option();

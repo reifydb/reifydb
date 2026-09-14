@@ -127,39 +127,47 @@ pub fn rewrite_aggregates(
 	slots: &mut Vec<(SlotKind, SlotArg)>,
 	context: AggregateContext,
 ) -> bool {
-	if let Some((kind, arg)) = classify_slot(routines, expr, context) {
+	rewrite_aggregate_calls(expr, &mut |e| classify_slot(routines, e, context), slots)
+}
+
+pub fn rewrite_aggregate_calls<T>(
+	expr: &mut Expression,
+	classify: &mut impl FnMut(&Expression) -> Option<T>,
+	slots: &mut Vec<T>,
+) -> bool {
+	if let Some(slot) = classify(expr) {
 		let idx = slots.len();
-		slots.push((kind, arg));
+		slots.push(slot);
 		*expr = synthetic_aggregate_column(idx);
 		return true;
 	}
 	match expr {
-		Expression::Alias(a) => rewrite_aggregates(routines, a.expression.as_mut(), slots, context),
-		Expression::Cast(c) => rewrite_aggregates(routines, c.expression.as_mut(), slots, context),
-		Expression::Prefix(p) => rewrite_aggregates(routines, p.expression.as_mut(), slots, context),
+		Expression::Alias(a) => rewrite_aggregate_calls(a.expression.as_mut(), classify, slots),
+		Expression::Cast(c) => rewrite_aggregate_calls(c.expression.as_mut(), classify, slots),
+		Expression::Prefix(p) => rewrite_aggregate_calls(p.expression.as_mut(), classify, slots),
 		Expression::Add(e) => {
-			let l = rewrite_aggregates(routines, e.left.as_mut(), slots, context);
-			let r = rewrite_aggregates(routines, e.right.as_mut(), slots, context);
+			let l = rewrite_aggregate_calls(e.left.as_mut(), classify, slots);
+			let r = rewrite_aggregate_calls(e.right.as_mut(), classify, slots);
 			l && r
 		}
 		Expression::Sub(e) => {
-			let l = rewrite_aggregates(routines, e.left.as_mut(), slots, context);
-			let r = rewrite_aggregates(routines, e.right.as_mut(), slots, context);
+			let l = rewrite_aggregate_calls(e.left.as_mut(), classify, slots);
+			let r = rewrite_aggregate_calls(e.right.as_mut(), classify, slots);
 			l && r
 		}
 		Expression::Mul(e) => {
-			let l = rewrite_aggregates(routines, e.left.as_mut(), slots, context);
-			let r = rewrite_aggregates(routines, e.right.as_mut(), slots, context);
+			let l = rewrite_aggregate_calls(e.left.as_mut(), classify, slots);
+			let r = rewrite_aggregate_calls(e.right.as_mut(), classify, slots);
 			l && r
 		}
 		Expression::Div(e) => {
-			let l = rewrite_aggregates(routines, e.left.as_mut(), slots, context);
-			let r = rewrite_aggregates(routines, e.right.as_mut(), slots, context);
+			let l = rewrite_aggregate_calls(e.left.as_mut(), classify, slots);
+			let r = rewrite_aggregate_calls(e.right.as_mut(), classify, slots);
 			l && r
 		}
 		Expression::Rem(e) => {
-			let l = rewrite_aggregates(routines, e.left.as_mut(), slots, context);
-			let r = rewrite_aggregates(routines, e.right.as_mut(), slots, context);
+			let l = rewrite_aggregate_calls(e.left.as_mut(), classify, slots);
+			let r = rewrite_aggregate_calls(e.right.as_mut(), classify, slots);
 			l && r
 		}
 		Expression::Constant(_) => true,

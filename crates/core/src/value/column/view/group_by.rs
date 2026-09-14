@@ -3,6 +3,7 @@
 
 use std::{
 	iter::{Enumerate, FilterMap},
+	mem,
 	vec::IntoIter as VecIntoIter,
 };
 
@@ -12,6 +13,7 @@ use reifydb_value::{Result, error::Error, value::Value};
 
 use crate::{
 	error::CoreError,
+	metrics::heap::HeapSize,
 	value::column::{ColumnBuffer, columns::Columns},
 };
 
@@ -110,6 +112,12 @@ impl<T> GroupSlots<T> {
 	}
 }
 
+impl<T: HeapSize> HeapSize for GroupSlots<T> {
+	fn heap_size(&self) -> usize {
+		self.slots.heap_size()
+	}
+}
+
 fn occupied_slot<T>((index, slot): (usize, Option<T>)) -> Option<(GroupId, T)> {
 	slot.map(|value| (GroupId(index as u32), value))
 }
@@ -160,6 +168,14 @@ impl GroupKeyDict {
 		}
 		let (index, _) = self.entries.insert_full(encoded.clone(), materialize());
 		GroupId(index as u32)
+	}
+}
+
+impl HeapSize for GroupKeyDict {
+	fn heap_size(&self) -> usize {
+		self.entries.capacity()
+			* (mem::size_of::<EncodedKey>() + mem::size_of::<GroupKey>() + mem::size_of::<usize>())
+			+ self.entries.iter().map(|(key, values)| key.heap_size() + values.heap_size()).sum::<usize>()
 	}
 }
 

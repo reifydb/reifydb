@@ -95,4 +95,8 @@ impl Function for IsType {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
 	}
+
+	fn type_argument_positions(&self) -> &[usize] {
+		&[1]
+	}
 }

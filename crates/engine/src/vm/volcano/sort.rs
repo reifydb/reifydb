@@ -19,7 +19,7 @@ use tracing::instrument;
 
 use crate::{
 	Result,
-	vm::volcano::query::{QueryContext, QueryNode, charge_query_memory},
+	vm::volcano::query::{QueryContext, QueryNode, charge_query_memory, ensure_sort_key_orderable},
 };
 
 pub(crate) struct SortNode {
@@ -109,6 +109,7 @@ impl Transform for SortNode {
 						.iter()
 						.find(|c| c.name() == name)
 						.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
+					ensure_sort_key_orderable(key, col.data())?;
 					Ok((col.data().clone(), key.direction.clone()))
 				})
 				.collect::<Result<Vec<_>>>()?;

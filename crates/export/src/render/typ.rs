@@ -44,20 +44,27 @@ pub fn render_column_type(
 			})
 		}
 		Some(Constraint::MaxBytes(max)) => {
-			let base = render_value_type(&constraint.get_type(), object)?;
+			let base = render_value_type(constraint.get_type().inner_type(), object)?;
 			Ok(RenderedColumnType {
-				type_text: format!("{}({})", base, max),
+				type_text: wrap_option(&constraint.get_type(), format!("{}({})", base, max)),
 				dictionary: None,
 			})
 		}
 		Some(Constraint::PrecisionScale(precision, scale)) => Ok(RenderedColumnType {
-			type_text: format!("decimal({},{})", precision, scale),
+			type_text: wrap_option(&constraint.get_type(), format!("decimal({},{})", precision, scale)),
 			dictionary: None,
 		}),
 		None => Ok(RenderedColumnType {
 			type_text: render_value_type(&constraint.get_type(), object)?,
 			dictionary: None,
 		}),
+	}
+}
+
+fn wrap_option(ty: &ValueType, text: String) -> String {
+	match ty {
+		ValueType::Option(_) => format!("option({})", text),
+		_ => text,
 	}
 }
 
@@ -140,6 +147,24 @@ mod tests {
 			Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
 		);
 		assert_eq!(render_column_type(&dec, &r, "s").unwrap().type_text, "decimal(10,2)");
+	}
+
+	#[test]
+	fn constrained_option_keeps_the_limit_inside_the_option() {
+		// A re-imported export must declare the same column, so neither the option nor the limit may be
+		// dropped.
+		let r = NameResolver::empty();
+		let utf8 = TypeConstraint::with_constraint(
+			ValueType::Option(Box::new(ValueType::Utf8)),
+			Constraint::MaxBytes(MaxBytes::new(255)),
+		);
+		assert_eq!(render_column_type(&utf8, &r, "s").unwrap().type_text, "option(utf8(255))");
+
+		let dec = TypeConstraint::with_constraint(
+			ValueType::Option(Box::new(ValueType::Decimal)),
+			Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
+		);
+		assert_eq!(render_column_type(&dec, &r, "s").unwrap().type_text, "option(decimal(10,2))");
 	}
 
 	#[test]

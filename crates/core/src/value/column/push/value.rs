@@ -116,6 +116,8 @@ impl ColumnBuffer {
 					Value::Any(_) => ColumnBuffer::any(vec![Value::none(); len]),
 					Value::Record(_) => ColumnBuffer::any(vec![Value::none(); len]),
 					Value::Tuple(_) => ColumnBuffer::any(vec![Value::none(); len]),
+					Value::List(_) => ColumnBuffer::any(vec![Value::none(); len]),
+					Value::Type(_) => ColumnBuffer::any(vec![Value::none(); len]),
 					_ => unreachable!(),
 				};
 				new_inner.push_value(value);
@@ -905,5 +907,30 @@ pub mod tests {
 		assert!(!col.is_defined(0));
 		assert!(col.is_defined(1));
 		assert_eq!(col.get_value(1), Value::DictionaryId(e));
+	}
+
+	#[test]
+	fn test_push_value_to_none_list() {
+		// A list arriving after only none rows must widen the column like a record does, never hit an
+		// unreachable arm.
+		let list = Value::List(vec![Value::Int4(1), Value::Int4(2)]);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
+		col.push_value(list.clone());
+		assert_eq!(col.len(), 2);
+		assert!(!col.is_defined(0));
+		assert!(col.is_defined(1));
+		assert_eq!(col.get_value(1), Value::Any(Box::new(list)));
+	}
+
+	#[test]
+	fn test_push_value_to_none_type() {
+		// A type value arriving after only none rows must widen the column like a record does, never hit an
+		// unreachable arm.
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
+		col.push_value(Value::Type(ValueType::Int4));
+		assert_eq!(col.len(), 2);
+		assert!(!col.is_defined(0));
+		assert!(col.is_defined(1));
+		assert_eq!(col.get_value(1), Value::Any(Box::new(Value::Type(ValueType::Int4))));
 	}
 }

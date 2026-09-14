@@ -154,7 +154,7 @@ pub enum RoutineError {
 		reason: String,
 	},
 
-	#[error("generator function '{}' not found", function.text())]
+	#[error("aggregate function '{}' not found", function.text())]
 	FunctionNotFound {
 		function: Fragment,
 	},
@@ -304,11 +304,11 @@ impl IntoDiagnostic for RoutineError {
 				Diagnostic {
 					code: "FUNCTION_009".to_string(),
 					rql: None,
-					message: format!("Generator function '{}' not found", name),
+					message: format!("Aggregate function '{}' not found", name),
 					column: None,
 					fragment: function,
-					label: Some("unknown generator function".to_string()),
-					help: Some("Check the generator function name and ensure it is registered"
+					label: Some("unknown aggregate function".to_string()),
+					help: Some("Check the aggregate function name and ensure it is registered"
 						.to_string()),
 					notes: vec![],
 					cause: None,

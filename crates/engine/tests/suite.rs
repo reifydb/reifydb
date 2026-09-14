@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[path = "aggregate.rs"]
+mod aggregate;
 #[path = "bulk_insert.rs"]
 mod bulk_insert;
+#[path = "call_argument_named_like_a_type.rs"]
+mod call_argument_named_like_a_type;
 #[path = "callable_call_policy.rs"]
 mod callable_call_policy;
 #[path = "cast_target_diagnostics.rs"]
@@ -10,6 +14,8 @@ mod cast_target_diagnostics;
 
 #[path = "closure.rs"]
 mod closure;
+#[path = "column_type_parameters.rs"]
+mod column_type_parameters;
 #[path = "empty_batch_system_columns.rs"]
 mod empty_batch_system_columns;
 #[path = "empty_result_column_types.rs"]
@@ -50,6 +56,8 @@ mod returning;
 mod ringbuffer;
 #[path = "shutdown.rs"]
 mod shutdown;
+#[path = "sort_unorderable.rs"]
+mod sort_unorderable;
 #[path = "system_reserved_ids.rs"]
 mod system_reserved_ids;
 #[path = "take.rs"]

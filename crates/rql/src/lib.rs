@@ -91,37 +91,43 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 			let constraint = match (base_type.clone(), params.as_slice()) {
 				(ValueType::Utf8, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
-					Some(Constraint::MaxBytes(max_bytes.into()))
+					Constraint::MaxBytes(max_bytes.into())
 				}
 				(ValueType::Blob, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
-					Some(Constraint::MaxBytes(max_bytes.into()))
+					Constraint::MaxBytes(max_bytes.into())
 				}
 				(ValueType::Int, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
-					Some(Constraint::MaxBytes(max_bytes.into()))
+					Constraint::MaxBytes(max_bytes.into())
 				}
 				(ValueType::Uint, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
-					Some(Constraint::MaxBytes(max_bytes.into()))
+					Constraint::MaxBytes(max_bytes.into())
 				}
 				(ValueType::Decimal, [AstLiteral::Number(p), AstLiteral::Number(s)]) => {
 					let precision = parse_number_literal(p.value())? as u8;
 					let scale = parse_number_literal(s.value())? as u8;
-					Some(Constraint::PrecisionScale(precision.into(), scale.into()))
+					Constraint::PrecisionScale(precision.into(), scale.into())
 				}
 
-				_ => None,
+				_ => {
+					return Err(AstError::UnsupportedTypeParameters {
+						fragment: name.to_owned(),
+					}
+					.into());
+				}
 			};
 
-			match constraint {
-				Some(c) => Ok(TypeConstraint::with_constraint(base_type, c)),
-				None => Ok(TypeConstraint::unconstrained(base_type)),
-			}
+			Ok(TypeConstraint::with_constraint(base_type, constraint))
 		}
 		AstType::Optional(inner) => {
 			let inner_tc = convert_data_type_with_constraints(inner)?;
-			Ok(TypeConstraint::unconstrained(ValueType::Option(Box::new(inner_tc.get_type()))))
+			let base_type = ValueType::Option(Box::new(inner_tc.get_type()));
+			Ok(match inner_tc.constraint() {
+				Some(constraint) => TypeConstraint::with_constraint(base_type, constraint.clone()),
+				None => TypeConstraint::unconstrained(base_type),
+			})
 		}
 		AstType::Qualified {
 			name,

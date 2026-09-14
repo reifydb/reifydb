@@ -154,6 +154,10 @@ pub trait Function: for<'a> Routine<context::FunctionContext<'a>> {
 	fn aggregate_capabilities(&self) -> &[AggregateFunctionCapability] {
 		&[]
 	}
+
+	fn type_argument_positions(&self) -> &[usize] {
+		&[]
+	}
 }
 
 pub trait Procedure: for<'a, 'tx> Routine<context::ProcedureContext<'a, 'tx>> {}
@@ -163,6 +167,7 @@ impl<T> Procedure for T where T: for<'a, 'tx> Routine<context::ProcedureContext<
 pub trait Accumulator: Send + Sync {
 	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError>;
 	fn finalize(&mut self) -> Result<(Vec<GroupId>, ColumnBuffer), RoutineError>;
+	fn heap_size(&self) -> usize;
 
 	fn kind_name(&self) -> &'static str {
 		"accumulator"

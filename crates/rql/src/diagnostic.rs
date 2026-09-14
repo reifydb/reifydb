@@ -42,6 +42,11 @@ pub enum AstError {
 		fragment: Fragment,
 	},
 
+	#[error("unsupported type parameters")]
+	UnsupportedTypeParameters {
+		fragment: Fragment,
+	},
+
 	#[error("unsupported query syntax: {node_type}")]
 	UnsupportedAstNode {
 		node_type: String,
@@ -171,6 +176,23 @@ impl IntoDiagnostic for AstError {
 					fragment,
 					label: Some("type not found".to_string()),
 					help: None,
+					column: None,
+					notes: vec![],
+					cause: None,
+					operator_chain: None,
+				}
+			}
+			AstError::UnsupportedTypeParameters {
+				fragment,
+			} => {
+				let type_name = fragment.text().to_string();
+				Diagnostic {
+					code: "AST_012".to_string(),
+					rql: None,
+					message: format!("type `{}` does not accept these parameters", &type_name),
+					fragment,
+					label: Some("unsupported type parameters".to_string()),
+					help: Some("Only utf8, blob, int and uint take a byte limit, e.g. utf8(255), and decimal takes precision and scale, e.g. decimal(10,2)".to_string()),
 					column: None,
 					notes: vec![],
 					cause: None,

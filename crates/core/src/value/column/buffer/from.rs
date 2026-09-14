@@ -9,8 +9,8 @@ impl ColumnBuffer {
 	pub fn from_many(value: Value, row_count: usize) -> Self {
 		match value {
 			Value::Boolean(v) => ColumnBuffer::bool(vec![v; row_count]),
-			Value::Float4(v) => ColumnBuffer::float4([v.value()]),
-			Value::Float8(v) => ColumnBuffer::float8([v.value()]),
+			Value::Float4(v) => ColumnBuffer::float4(vec![v.value(); row_count]),
+			Value::Float8(v) => ColumnBuffer::float8(vec![v.value(); row_count]),
 			Value::Int1(v) => ColumnBuffer::int1(vec![v; row_count]),
 			Value::Int2(v) => ColumnBuffer::int2(vec![v; row_count]),
 			Value::Int4(v) => ColumnBuffer::int4(vec![v; row_count]),
@@ -49,5 +49,26 @@ impl ColumnBuffer {
 impl From<Value> for ColumnBuffer {
 	fn from(value: Value) -> Self {
 		Self::from_many(value, 1)
+	}
+}
+
+#[cfg(test)]
+pub mod tests {
+	use reifydb_value::value::{Value, ordered_f32::OrderedF32, ordered_f64::OrderedF64};
+
+	use crate::value::column::ColumnBuffer;
+
+	#[test]
+	fn test_from_many_float4_repeats_for_every_row() {
+		let col = ColumnBuffer::from_many(Value::Float4(OrderedF32::try_from(1.5).unwrap()), 3);
+		assert_eq!(col.len(), 3);
+		assert_eq!(col.get_value(2), Value::Float4(OrderedF32::try_from(1.5).unwrap()));
+	}
+
+	#[test]
+	fn test_from_many_float8_repeats_for_every_row() {
+		let col = ColumnBuffer::from_many(Value::Float8(OrderedF64::try_from(2.5).unwrap()), 3);
+		assert_eq!(col.len(), 3);
+		assert_eq!(col.get_value(2), Value::Float8(OrderedF64::try_from(2.5).unwrap()));
 	}
 }

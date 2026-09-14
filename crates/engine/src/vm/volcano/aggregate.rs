@@ -1,42 +1,118 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{slice, sync::Arc};
 
 use reifydb_core::{
-	error::{CoreError, diagnostic::query},
+	error::{
+		CoreError,
+		diagnostic::{operation, query},
+	},
+	metrics::heap::HeapSize,
 	value::column::{
 		ColumnWithName,
 		buffer::ColumnBuffer,
 		columns::Columns,
 		headers::ColumnHeaders,
-		view::group_by::{GroupId, GroupKeyDict},
+		view::group_by::{GroupId, GroupKeyDict, GroupRows},
 	},
 };
+use reifydb_evaluate::expression::{compile::compile_expression, context::CompileContext};
 use reifydb_routine_abi::{
 	Accumulator, FunctionKind, context::FunctionContext, error::RoutineError, registry::Routines,
 };
-use reifydb_rql::expression::{Expression, name::display_label};
+use reifydb_rql::{
+	expression::{CallExpression, Expression, name::display_label},
+	flow::aggregate::{rewrite_aggregate_calls, synthetic_aggregate_column_name},
+};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error, fragment::Fragment, reifydb_assertions, value::value_type::ValueType};
+use reifydb_value::{
+	error,
+	error::{FunctionErrorKind, TypeError},
+	fragment::Fragment,
+	reifydb_assertions,
+	value::value_type::ValueType,
+};
 use tracing::instrument;
 
 use crate::{
 	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::query::{
+		QueryContext, QueryNode, charge_query_memory_bytes, eval_context_from_query, is_scalar_type,
+	},
 };
+
+struct AggregateSlot {
+	column: String,
+	column_fragment: Fragment,
+	accumulator: Box<dyn Accumulator>,
+}
+
+impl AggregateSlot {
+	fn update(&mut self, columns: &Columns, groups: &GroupRows) -> Result<()> {
+		let column_ref = columns
+			.column(&self.column)
+			.ok_or_else(|| error!(query::column_not_found(self.column_fragment.clone())))?;
+		let cwn = ColumnWithName::new(column_ref.name().clone(), column_ref.data().clone());
+		self.accumulator.update(&Columns::new(vec![cwn]), groups)?;
+		Ok(())
+	}
+
+	fn finalize(mut self, dict: &GroupKeyDict) -> Result<ColumnBuffer> {
+		let (keys_out, mut data) = self.accumulator.finalize()?;
+		align_column_data(dict, &keys_out, &mut data)?;
+		Ok(data)
+	}
+}
 
 enum Projection {
 	Aggregate {
-		column: String,
-		column_fragment: Fragment,
 		alias: Fragment,
-		accumulator: Box<dyn Accumulator>,
+		slot: AggregateSlot,
 	},
 	Group {
 		column: String,
 		alias: Fragment,
 	},
+	Computed {
+		alias: Fragment,
+		expression: Expression,
+		slots: Vec<AggregateSlot>,
+	},
+}
+
+impl Projection {
+	fn slots(&self) -> &[AggregateSlot] {
+		match self {
+			Projection::Aggregate {
+				slot,
+				..
+			} => slice::from_ref(slot),
+			Projection::Group {
+				..
+			} => &[],
+			Projection::Computed {
+				slots,
+				..
+			} => slots,
+		}
+	}
+
+	fn slots_mut(&mut self) -> &mut [AggregateSlot] {
+		match self {
+			Projection::Aggregate {
+				slot,
+				..
+			} => slice::from_mut(slot),
+			Projection::Group {
+				..
+			} => &mut [],
+			Projection::Computed {
+				slots,
+				..
+			} => slots,
+		}
+	}
 }
 
 pub(crate) struct AggregateNode {
@@ -73,32 +149,50 @@ impl AggregateNode {
 		dict: &mut GroupKeyDict,
 		key_types: &mut Vec<Option<ValueType>>,
 	) -> Result<()> {
+		let mut charged = 0usize;
 		while let Some(columns) = input.next(rx, ctx)? {
 			if key_types.is_empty() {
 				key_types.extend(keys
 					.iter()
 					.map(|key| columns.column(key).map(|c| c.data().get_type())));
+				let aliases = projections.iter().filter_map(|projection| match projection {
+					Projection::Group {
+						alias,
+						..
+					} => Some(alias),
+					Projection::Aggregate {
+						..
+					}
+					| Projection::Computed {
+						..
+					} => None,
+				});
+				for (key_type, alias) in key_types.iter().zip(aliases) {
+					if let Some(ty) = key_type
+						&& !is_scalar_type(ty)
+					{
+						return Err(error!(operation::aggregate_group_by_unkeyable(
+							alias.clone(),
+							ty.clone()
+						)));
+					}
+				}
 			}
 			let groups = columns.group_by_ids(keys, dict)?;
 
 			for projection in projections.iter_mut() {
-				if let Projection::Aggregate {
-					accumulator,
-					column,
-					column_fragment,
-					..
-				} = projection
-				{
-					let column_ref = columns.column(column).ok_or_else(|| {
-						error!(query::column_not_found(column_fragment.clone()))
-					})?;
-					let cwn = ColumnWithName::new(
-						column_ref.name().clone(),
-						column_ref.data().clone(),
-					);
-					accumulator.update(&Columns::new(vec![cwn]), &groups)?;
+				for slot in projection.slots_mut() {
+					slot.update(&columns, &groups)?;
 				}
 			}
+
+			let state = dict.heap_size()
+				+ projections
+					.iter()
+					.flat_map(Projection::slots)
+					.map(|slot| slot.accumulator.heap_size())
+					.sum::<usize>();
+			charge_query_memory_bytes(&ctx.memory, &mut charged, state)?;
 		}
 
 		Ok(())
@@ -110,7 +204,8 @@ impl AggregateNode {
 		keys: &[&str],
 		dict: &GroupKeyDict,
 		key_types: &[Option<ValueType>],
-	) -> Vec<ColumnWithName> {
+		ctx: &QueryContext,
+	) -> Result<Vec<ColumnWithName>> {
 		let mut result_columns = Vec::new();
 
 		for projection in projections {
@@ -137,20 +232,47 @@ impl AggregateNode {
 				}
 				Projection::Aggregate {
 					alias,
-					mut accumulator,
-					..
+					slot,
 				} => {
-					let (keys_out, mut data) = accumulator.finalize().unwrap();
-					align_column_data(dict, &keys_out, &mut data).unwrap();
 					result_columns.push(ColumnWithName {
 						name: Fragment::internal(alias.fragment()),
-						data,
+						data: slot.finalize(dict)?,
+					});
+				}
+				Projection::Computed {
+					alias,
+					expression,
+					slots,
+				} => {
+					let slot_columns = slots
+						.into_iter()
+						.enumerate()
+						.map(|(idx, slot)| {
+							Ok(ColumnWithName::new(
+								Fragment::internal(synthetic_aggregate_column_name(
+									idx,
+								)),
+								slot.finalize(dict)?,
+							))
+						})
+						.collect::<Result<Vec<_>>>()?;
+					let compiled = compile_expression(
+						&CompileContext {
+							symbols: &ctx.symbols,
+						},
+						&expression,
+					)?;
+					let eval_ctx = eval_context_from_query(ctx)
+						.with_eval(Columns::new(slot_columns), dict.len());
+					result_columns.push(ColumnWithName {
+						name: Fragment::internal(alias.fragment()),
+						data: compiled.execute(&eval_ctx)?.data,
 					});
 				}
 			}
 		}
 
-		result_columns
+		Ok(result_columns)
 	}
 }
 
@@ -181,7 +303,7 @@ impl QueryNode for AggregateNode {
 
 		Self::accumulate(&mut self.input, rx, ctx, &keys, &mut projections, &mut dict, &mut key_types)?;
 
-		let result_columns = Self::finalize(projections, &keys, &dict, &key_types);
+		let result_columns = Self::finalize(projections, &keys, &dict, &key_types, stored_ctx)?;
 
 		let columns = Columns::new(result_columns);
 		self.headers = Some(ColumnHeaders::from_columns(&columns));
@@ -220,7 +342,11 @@ fn parse_keys_and_aggregates<'a>(
 				})
 			}
 
-			expr => panic!("Non-column group by not supported: {expr:#?}"),
+			expr => {
+				return Err(error!(operation::aggregate_group_by_not_column(
+					expr.full_fragment_owned()
+				)));
+			}
 		}
 	}
 
@@ -232,76 +358,111 @@ fn parse_keys_and_aggregates<'a>(
 
 		match actual_expr {
 			Expression::Call(call) => {
-				let func_name = call.func.0.text();
-				let function = routines.get_aggregate_function(func_name).ok_or_else(|| {
-					RoutineError::FunctionNotFound {
-						function: call.func.0.clone(),
-					}
-				})?;
-				let _ = FunctionKind::Aggregate;
-
-				let mut fn_ctx = FunctionContext {
-					fragment: call.func.0.clone(),
-					identity: ctx.identity,
-					row_count: 0,
-					runtime_context: &ctx.services.runtime_context,
-				};
-
-				let accumulator = function.accumulator(&mut fn_ctx).ok_or_else(|| {
-					RoutineError::FunctionExecutionFailed {
-						function: call.func.0.clone(),
-						reason: format!("Function {} is not an aggregate", func_name),
-					}
-				})?;
-
-				match call.args.first() {
-					Some(Expression::Column(c)) => {
-						projections.push(Projection::Aggregate {
-							column: c.0.name.text().to_string(),
-							column_fragment: c.0.name.clone(),
-							alias,
-							accumulator,
-						});
-					}
-					Some(Expression::AccessSource(access)) => {
-						projections.push(Projection::Aggregate {
-							column: access.column.name.text().to_string(),
-							column_fragment: access.column.name.clone(),
-							alias,
-							accumulator,
-						});
-					}
-					None => {
-						return Err(RoutineError::FunctionArityMismatch {
-							function: call.func.0.clone(),
-							expected: 1,
-							actual: 0,
-						}
-						.into());
-					}
-					Some(arg) => {
-						let actual_type = arg.infer_type().ok_or_else(|| {
-							RoutineError::FunctionExecutionFailed {
-								function: call.func.0.clone(),
-								reason: "aggregate function arguments must be column references".to_string(),
-							}
-						})?;
-						let expected = function.accepted_types().expected_at(0).to_vec();
-						return Err(RoutineError::FunctionInvalidArgumentType {
-							function: call.func.0.clone(),
-							argument_index: 0,
-							expected,
-							actual: actual_type,
-						}
-						.into());
-					}
-				}
+				let slot = aggregate_slot(call, routines, ctx)?;
+				projections.push(Projection::Aggregate {
+					alias,
+					slot,
+				});
 			}
 
-			_ => panic!("Expected aggregate call expression, got: {actual_expr:#?}"),
+			expr => {
+				let mut expression = expr.clone();
+				let mut calls = Vec::new();
+				let rewritten = rewrite_aggregate_calls(
+					&mut expression,
+					&mut |e| match e {
+						Expression::Call(call) => Some(call.clone()),
+						_ => None,
+					},
+					&mut calls,
+				);
+				if !rewritten || calls.is_empty() {
+					return Err(error!(operation::aggregate_map_without_aggregate(
+						expr.full_fragment_owned()
+					)));
+				}
+				let slots = calls
+					.iter()
+					.map(|call| aggregate_slot(call, routines, ctx))
+					.collect::<Result<Vec<_>>>()?;
+				projections.push(Projection::Computed {
+					alias,
+					expression,
+					slots,
+				});
+			}
 		}
 	}
 	Ok((keys, projections))
+}
+
+fn aggregate_slot(call: &CallExpression, routines: &Routines, ctx: &QueryContext) -> Result<AggregateSlot> {
+	let func_name = call.func.0.text();
+	let function = routines.get_aggregate_function(func_name).ok_or_else(|| RoutineError::FunctionNotFound {
+		function: call.func.0.clone(),
+	})?;
+	let _ = FunctionKind::Aggregate;
+
+	let mut fn_ctx = FunctionContext {
+		fragment: call.func.0.clone(),
+		identity: ctx.identity,
+		row_count: 0,
+		runtime_context: &ctx.services.runtime_context,
+	};
+
+	let accumulator = function.accumulator(&mut fn_ctx).ok_or_else(|| RoutineError::FunctionExecutionFailed {
+		function: call.func.0.clone(),
+		reason: format!("Function {} is not an aggregate", func_name),
+	})?;
+
+	if call.args.len() > 1 {
+		return Err(TypeError::Function {
+			kind: FunctionErrorKind::TooManyArguments {
+				max_args: 1,
+				actual: call.args.len(),
+			},
+			message: format!(
+				"aggregate function {} takes at most 1 argument, got {}",
+				func_name,
+				call.args.len()
+			),
+			fragment: call.func.0.clone(),
+		}
+		.into());
+	}
+
+	match call.args.first() {
+		Some(Expression::Column(c)) => Ok(AggregateSlot {
+			column: c.0.name.text().to_string(),
+			column_fragment: c.0.name.clone(),
+			accumulator,
+		}),
+		Some(Expression::AccessSource(access)) => Ok(AggregateSlot {
+			column: access.column.name.text().to_string(),
+			column_fragment: access.column.name.clone(),
+			accumulator,
+		}),
+		None => Err(RoutineError::FunctionArityMismatch {
+			function: call.func.0.clone(),
+			expected: 1,
+			actual: 0,
+		}
+		.into()),
+		Some(arg) => {
+			let actual_type = arg.infer_type().ok_or_else(|| RoutineError::FunctionExecutionFailed {
+				function: call.func.0.clone(),
+				reason: "aggregate function arguments must be column references".to_string(),
+			})?;
+			let expected = function.accepted_types().expected_at(0).to_vec();
+			Err(RoutineError::FunctionInvalidArgumentType {
+				function: call.func.0.clone(),
+				argument_index: 0,
+				expected,
+				actual: actual_type,
+			}
+			.into())
+		}
+	}
 }
 
 fn align_column_data(dict: &GroupKeyDict, produced: &[GroupId], data: &mut ColumnBuffer) -> Result<()> {

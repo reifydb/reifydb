@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[path = "call_argument_named_like_a_type.rs"]
+mod call_argument_named_like_a_type;
 #[path = "custom_operator_timer.rs"]
 mod custom_operator_timer;
 #[path = "flow_isolation.rs"]
