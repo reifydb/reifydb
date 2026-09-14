@@ -18,9 +18,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_evaluate::expression::{compile::compile_expression, context::CompileContext};
-use reifydb_routine_abi::{
-	Accumulator, FunctionKind, context::FunctionContext, error::RoutineError, registry::Routines,
-};
+use reifydb_routine_abi::{Accumulator, context::FunctionContext, error::RoutineError, registry::Routines};
 use reifydb_rql::{
 	expression::{CallExpression, Expression, name::display_label},
 	flow::aggregate::{rewrite_aggregate_calls, synthetic_aggregate_column_name},
@@ -401,7 +399,6 @@ fn aggregate_slot(call: &CallExpression, routines: &Routines, ctx: &QueryContext
 	let function = routines.get_aggregate_function(func_name).ok_or_else(|| RoutineError::FunctionNotFound {
 		function: call.func.0.clone(),
 	})?;
-	let _ = FunctionKind::Aggregate;
 
 	let mut fn_ctx = FunctionContext {
 		fragment: call.func.0.clone(),

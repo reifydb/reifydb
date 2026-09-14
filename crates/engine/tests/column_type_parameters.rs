@@ -67,7 +67,10 @@ fn an_optional_limited_decimal_keeps_its_scale() {
 	let opt_err = t.command_err("INSERT test::prices [{ plain: 1.23, opt: 1.234 }]");
 
 	assert!(plain_err.contains("exceeds maximum scale"), "decimal(10,2) must reject 3 decimals, got: {plain_err}");
-	assert!(opt_err.contains("exceeds maximum scale"), "Option(decimal(10,2)) must reject 3 decimals, got: {opt_err}");
+	assert!(
+		opt_err.contains("exceeds maximum scale"),
+		"Option(decimal(10,2)) must reject 3 decimals, got: {opt_err}"
+	);
 	t.command("INSERT test::prices [{ plain: 1.23, opt: none }]");
 	t.command("INSERT test::prices [{ plain: 1.23, opt: 1.23 }]");
 }
