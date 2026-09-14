@@ -505,7 +505,7 @@ impl JoinOperator {
 		};
 
 		for group in emptied {
-			if host.state_any_live(join_expiry_range(group))?
+			if host.state_last(join_expiry_range(group))?.is_some()
 				|| state.left.holds_rows(host, group)?
 				|| state.right.holds_rows(host, group)?
 			{
