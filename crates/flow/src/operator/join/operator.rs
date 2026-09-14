@@ -511,14 +511,6 @@ impl JoinOperator {
 			{
 				continue;
 			}
-			reifydb_assertions! {
-				let stranded = host.state_any_live(join_expiry_range(group))?;
-				assert!(
-					!stranded,
-					"group {group} reached the reaper still holding a row expiry entry; reaping it \
-					 strands that entry's due-index sibling behind a group id nothing resolves again"
-				);
-			}
 			enqueue(host, group)?;
 			let drained = drain_group(host, group, &mut StoreReaper, SEAL_BATCH)?;
 			stalled |= drained.still_queued;

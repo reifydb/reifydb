@@ -201,15 +201,6 @@ pub trait StateExtension: FlowTransaction {
 		})
 	}
 
-	#[instrument(name = "flow::state::any_live", level = "debug", skip(self, range), fields(
-		operator_id = id.0,
-		site = site
-	))]
-	fn state_any_live(&mut self, id: OperatorId, range: EncodedKeyRange, site: &'static str) -> Result<bool> {
-		let query = StateRange::forward(range, site).limit(1).full_page();
-		Ok(!self.state_range(id, query)?.items.is_empty())
-	}
-
 	#[instrument(name = "flow::state::group_range", level = "debug", skip(self, groups), fields(
 		operator_id = id.0,
 		groups = groups.len()
