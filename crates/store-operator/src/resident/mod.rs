@@ -963,7 +963,9 @@ impl Resident {
 				let mut inner = slot.inner.lock();
 				inner.buckets.settle_flushing();
 			}
-			self.clear_in_flight(&mut global);
+			global.in_flight_operators.clear();
+			global.in_flight_checkpoints.clear();
+			global.in_flight_drops.clear();
 		}
 		self.shared.triggered.store(false, Ordering::Release);
 
