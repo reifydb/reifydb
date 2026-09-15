@@ -38,6 +38,8 @@ mod interceptor;
 mod join_retention_ddl;
 #[path = "memory_limit.rs"]
 mod memory_limit;
+#[path = "missing_column_lookup.rs"]
+mod missing_column_lookup;
 #[path = "nested_read_policy_bypass.rs"]
 mod nested_read_policy_bypass;
 #[path = "none_operand_expression_types.rs"]

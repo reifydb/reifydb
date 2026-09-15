@@ -34,9 +34,7 @@ fn an_optional_dictionary_column_round_trips_values_and_absences() {
 	db.admin("create namespace app");
 	db.admin("create dictionary app::codes for utf8 as uint4");
 	db.admin("create table app::t { id: int4, code: Option(utf8) with { dictionary: app::codes } }");
-	db.command(
-		"insert app::t [{ id: 1, code: 'aa' }, { id: 2, code: undefined }, { id: 3, code: 'bb' }, { id: 4 }]",
-	);
+	db.command("insert app::t [{ id: 1, code: 'aa' }, { id: 2, code: none }, { id: 3, code: 'bb' }, { id: 4 }]");
 
 	assert_eq!(
 		codes(&db.query("from app::t | sort { id: asc }")),
@@ -56,7 +54,7 @@ fn an_absent_value_does_not_consume_a_dictionary_id() {
 	db.admin("create dictionary app::codes for utf8 as uint4");
 	db.admin("create table app::t { id: int4, code: Option(utf8) with { dictionary: app::codes } }");
 	db.command(
-		"insert app::t [{ id: 1, code: undefined }, { id: 2, code: 'aa' }, { id: 3, code: undefined }, \
+		"insert app::t [{ id: 1, code: none }, { id: 2, code: 'aa' }, { id: 3, code: none }, \
 		 { id: 4, code: 'aa' }, { id: 5 }]",
 	);
 
@@ -80,7 +78,7 @@ fn two_optional_columns_sharing_one_dictionary_intern_one_id_per_value() {
 	db.admin("create dictionary app::syms for utf8 as uint4");
 	db.admin("create table app::t { id: int4, base: Option(utf8) with { dictionary: app::syms }, \
 		 quote: Option(utf8) with { dictionary: app::syms } }");
-	db.command("insert app::t [{ id: 1, base: 'sol', quote: 'usdc' }, { id: 2, base: 'usdc', quote: undefined }]");
+	db.command("insert app::t [{ id: 1, base: 'sol', quote: 'usdc' }, { id: 2, base: 'usdc', quote: none }]");
 
 	let entries = db.query("from app::syms | sort { id: asc }");
 	assert_eq!(
@@ -108,7 +106,7 @@ fn a_filter_on_an_optional_dictionary_column_matches_by_decoded_value() {
 	db.admin("create dictionary app::codes for utf8 as uint4");
 	db.admin("create table app::t { id: int4, code: Option(utf8) with { dictionary: app::codes } }");
 	db.command(
-		"insert app::t [{ id: 1, code: 'aa' }, { id: 2, code: 'bb' }, { id: 3, code: undefined }, \
+		"insert app::t [{ id: 1, code: 'aa' }, { id: 2, code: 'bb' }, { id: 3, code: none }, \
 		 { id: 4, code: 'aa' }]",
 	);
 
@@ -139,7 +137,7 @@ fn optional_dictionary_entries_and_absences_survive_a_reopen() {
 		db.admin("create namespace app");
 		db.admin("create dictionary app::codes for utf8 as uint4");
 		db.admin("create table app::t { id: int4, code: Option(utf8) with { dictionary: app::codes } }");
-		db.command("insert app::t [{ id: 1, code: 'aa' }, { id: 2, code: undefined }, { id: 3, code: 'bb' }]");
+		db.command("insert app::t [{ id: 1, code: 'aa' }, { id: 2, code: none }, { id: 3, code: 'bb' }]");
 
 		assert_eq!(
 			codes(&db.query("from app::t | sort { id: asc }")),

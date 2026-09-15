@@ -48,7 +48,7 @@ use tracing::instrument;
 use super::{
 	context::TableTarget,
 	primary_key,
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 	shape::get_or_create_table_shape,
 };
 use crate::{
@@ -134,6 +134,7 @@ pub(crate) fn insert_table(
 	if let Some(returning_exprs) = &returning {
 		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
 		decode_returning_dictionaries(services, txn, &table.columns, &mut columns)?;
+		let columns = with_absent_pre_image(columns);
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
 	Ok(insert_table_result(namespace.name(), &table.name, total_rows as u64))

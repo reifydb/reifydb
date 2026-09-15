@@ -114,15 +114,6 @@ pub(crate) fn insert_dictionary(
 	}
 
 	if let Some(returning_exprs) = &plan.returning {
-		if ids.is_empty() {
-			return evaluate_returning(
-				services,
-				symbols,
-				returning_exprs,
-				Columns::empty(),
-				txn.identity(),
-			);
-		}
 		let id_column = build_id_column(&ids, dictionary.id_type)?;
 		let value_column = build_value_column(&values, dictionary.value_type)?;
 		let columns = Columns::new(vec![id_column, value_column]);

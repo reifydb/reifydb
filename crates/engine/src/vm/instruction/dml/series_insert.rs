@@ -48,7 +48,7 @@ use tracing::instrument;
 
 use super::{
 	context::SeriesTarget,
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 	shape::get_or_create_series_shape,
 };
 use crate::{
@@ -277,6 +277,7 @@ fn finalize_series_insert(
 	if let Some(returning_exprs) = returning {
 		let mut columns = decode_rows_to_columns(shape, returned_rows);
 		decode_returning_dictionaries(services, txn, &series.columns, &mut columns)?;
+		let columns = with_absent_pre_image(columns);
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
 	Ok(insert_series_result(namespace.name(), &series.name, inserted_count))

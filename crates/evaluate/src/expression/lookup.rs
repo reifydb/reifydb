@@ -1,22 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
+use reifydb_core::{
+	error::diagnostic::query::column_not_found,
+	value::column::{ColumnWithName, buffer::ColumnBuffer},
+};
 use reifydb_rql::expression::ColumnExpression;
-use reifydb_value::value::{
-	Value,
-	blob::Blob,
-	date::Date,
-	datetime::DateTime,
-	decimal::Decimal,
-	dictionary::DictionaryEntryId,
-	duration::Duration,
-	identity::IdentityId,
-	int::Int,
-	time::Time,
-	uint::Uint,
-	uuid::{Uuid4, Uuid7},
-	value_type::ValueType,
+use reifydb_value::{
+	error,
+	value::{
+		Value,
+		blob::Blob,
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		dictionary::DictionaryEntryId,
+		duration::Duration,
+		identity::IdentityId,
+		int::Int,
+		time::Time,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
+	},
 };
 
 use crate::{Result, expression::context::EvalContext, stack::Variable};
@@ -68,7 +74,7 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Res
 		return extract_column_data(&owned, ctx);
 	}
 
-	Ok(ColumnWithName::new(name.to_string(), ColumnBuffer::none_typed(ValueType::Boolean, ctx.row_count)))
+	Err(error!(column_not_found(column.0.name.clone())))
 }
 
 fn extract_column_data(col: &ColumnWithName, ctx: &EvalContext) -> Result<ColumnWithName> {
@@ -174,6 +180,7 @@ pub mod tests {
 
 	#[test]
 	fn test_column_not_found_returns_correct_row_count() {
+		// A missing column must be an error, otherwise a typo silently evaluates to none in every row.
 		let columns = Columns::new(vec![ColumnWithName::new(
 			"existing_col".to_string(),
 			ColumnBuffer::int4([1, 2, 3, 4, 5]),
@@ -195,21 +202,17 @@ pub mod tests {
 		};
 		let ctx = base.with_eval(columns, 5);
 
-		// A missing column resolves to all-none, and its length must match the other columns
-		// or every downstream zip would misalign.
-		let result = column_lookup(
+		let Err(err) = column_lookup(
 			&ctx,
 			&ColumnExpression(ColumnIdentifier {
 				object: ColumnObject::Alias(Fragment::internal("nonexistent_col")),
 				name: Fragment::internal("nonexistent_col"),
 			}),
-		)
-		.unwrap();
+		) else {
+			panic!("a missing column must be an error, not a column of none");
+		};
 
-		assert_eq!(
-			result.data().len(),
-			5,
-			"Column not found should return column with ctx.row_count rows, not 0"
-		);
+		assert_eq!(err.code, "QUERY_001", "a missing column must report column not found: {err:?}");
+		assert_eq!(err.fragment.text(), "nonexistent_col", "the error must name the missing column: {err:?}");
 	}
 }

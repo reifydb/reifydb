@@ -79,6 +79,21 @@ pub(crate) fn with_pre_image(post: Columns, pre: &Columns) -> Columns {
 	)
 }
 
+pub(crate) fn with_absent_pre_image(post: Columns) -> Columns {
+	let row_count = post.row_count();
+	let absent = Columns::new(
+		post.iter()
+			.map(|c| {
+				ColumnWithName::new(
+					c.name().clone(),
+					ColumnBuffer::none_typed(c.data().get_type(), row_count),
+				)
+			})
+			.collect(),
+	);
+	with_pre_image(post, &absent)
+}
+
 pub(crate) fn decode_returning_dictionaries(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
