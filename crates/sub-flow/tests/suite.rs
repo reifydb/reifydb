@@ -7,6 +7,8 @@ mod aggregate_expression_input;
 mod call_argument_named_like_a_type;
 #[path = "custom_operator_timer.rs"]
 mod custom_operator_timer;
+#[path = "digest_view_lifecycle.rs"]
+mod digest_view_lifecycle;
 #[path = "digest_view_sink_write.rs"]
 mod digest_view_sink_write;
 #[path = "flow_isolation.rs"]
