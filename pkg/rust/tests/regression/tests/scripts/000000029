@@ -1,0 +1,264 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+(admin 'create namespace app')
+(admin 'create table app::requests { service: utf8, latency: duration, queue: duration, ts: datetime } with { time: event(ts) }')
+(admin 'create deferred view app::latency_1m { service: utf8, start: datetime, lat: digest(duration, 0.01) } as { from app::requests | window tumbling { start: window::start(), lat: stats::digest(latency, 0.01) } with { duration: 1m } by { service } }')
+(admin 'create deferred view app::latency_1m_late { service: utf8, start: datetime, lat: digest(duration, 0.01) } as { from app::requests | window tumbling { start: window::start(), lat: stats::digest(latency, 0.01) } with { duration: 1m, lateness: 1h } by { service } }')
+(command 'INSERT app::requests [
+  { service: "api", latency: 10ms, queue: 1ms, ts: "2026-01-01T00:00:00Z" },
+  { service: "api", latency: 11ms, queue: 1ms, ts: "2026-01-01T00:00:01Z" },
+  { service: "api", latency: 12ms, queue: 1ms, ts: "2026-01-01T00:00:02Z" },
+  { service: "api", latency: 13ms, queue: 1ms, ts: "2026-01-01T00:00:03Z" },
+  { service: "api", latency: 14ms, queue: 1ms, ts: "2026-01-01T00:00:04Z" },
+  { service: "api", latency: 15ms, queue: 1ms, ts: "2026-01-01T00:00:05Z" },
+  { service: "api", latency: 16ms, queue: 1ms, ts: "2026-01-01T00:00:06Z" },
+  { service: "api", latency: 17ms, queue: 1ms, ts: "2026-01-01T00:00:07Z" },
+  { service: "api", latency: 18ms, queue: 1ms, ts: "2026-01-01T00:00:08Z" },
+  { service: "api", latency: 19ms, queue: 1ms, ts: "2026-01-01T00:00:09Z" },
+  { service: "api", latency: 20ms, queue: 1ms, ts: "2026-01-01T00:00:10Z" },
+  { service: "api", latency: 21ms, queue: 1ms, ts: "2026-01-01T00:00:11Z" },
+  { service: "api", latency: 22ms, queue: 1ms, ts: "2026-01-01T00:00:12Z" },
+  { service: "api", latency: 23ms, queue: 1ms, ts: "2026-01-01T00:00:13Z" },
+  { service: "api", latency: 24ms, queue: 1ms, ts: "2026-01-01T00:00:14Z" },
+  { service: "api", latency: 25ms, queue: 1ms, ts: "2026-01-01T00:00:15Z" },
+  { service: "api", latency: 26ms, queue: 1ms, ts: "2026-01-01T00:00:16Z" },
+  { service: "api", latency: 27ms, queue: 1ms, ts: "2026-01-01T00:00:17Z" },
+  { service: "api", latency: 28ms, queue: 1ms, ts: "2026-01-01T00:00:18Z" },
+  { service: "api", latency: 29ms, queue: 1ms, ts: "2026-01-01T00:00:19Z" },
+  { service: "api", latency: 30ms, queue: 1ms, ts: "2026-01-01T00:00:20Z" },
+  { service: "api", latency: 31ms, queue: 1ms, ts: "2026-01-01T00:00:21Z" },
+  { service: "api", latency: 32ms, queue: 1ms, ts: "2026-01-01T00:00:22Z" },
+  { service: "api", latency: 33ms, queue: 1ms, ts: "2026-01-01T00:00:23Z" },
+  { service: "api", latency: 34ms, queue: 1ms, ts: "2026-01-01T00:00:24Z" },
+  { service: "api", latency: 35ms, queue: 1ms, ts: "2026-01-01T00:00:25Z" },
+  { service: "api", latency: 36ms, queue: 1ms, ts: "2026-01-01T00:00:26Z" },
+  { service: "api", latency: 37ms, queue: 1ms, ts: "2026-01-01T00:00:27Z" },
+  { service: "api", latency: 38ms, queue: 1ms, ts: "2026-01-01T00:00:28Z" },
+  { service: "api", latency: 39ms, queue: 1ms, ts: "2026-01-01T00:00:29Z" },
+  { service: "api", latency: 40ms, queue: 1ms, ts: "2026-01-01T00:00:30Z" },
+  { service: "api", latency: 41ms, queue: 1ms, ts: "2026-01-01T00:00:31Z" },
+  { service: "api", latency: 42ms, queue: 1ms, ts: "2026-01-01T00:00:32Z" },
+  { service: "api", latency: 43ms, queue: 1ms, ts: "2026-01-01T00:00:33Z" },
+  { service: "api", latency: 44ms, queue: 1ms, ts: "2026-01-01T00:00:34Z" },
+  { service: "api", latency: 45ms, queue: 1ms, ts: "2026-01-01T00:00:35Z" },
+  { service: "api", latency: 46ms, queue: 1ms, ts: "2026-01-01T00:00:36Z" },
+  { service: "api", latency: 47ms, queue: 1ms, ts: "2026-01-01T00:00:37Z" },
+  { service: "api", latency: 48ms, queue: 1ms, ts: "2026-01-01T00:00:38Z" },
+  { service: "api", latency: 49ms, queue: 1ms, ts: "2026-01-01T00:00:39Z" }
+]')
+(command 'INSERT app::requests [
+  { service: "auth", latency: 5ms, queue: 1ms, ts: "2026-01-01T00:00:40Z" },
+  { service: "auth", latency: 6ms, queue: 1ms, ts: "2026-01-01T00:00:41Z" },
+  { service: "auth", latency: 7ms, queue: 1ms, ts: "2026-01-01T00:00:42Z" }
+]')
+(command 'INSERT app::requests [
+  { service: "api", latency: 50ms, queue: 1ms, ts: "2026-01-01T00:01:00Z" },
+  { service: "api", latency: 51ms, queue: 1ms, ts: "2026-01-01T00:01:01Z" },
+  { service: "api", latency: 52ms, queue: 1ms, ts: "2026-01-01T00:01:02Z" },
+  { service: "api", latency: 53ms, queue: 1ms, ts: "2026-01-01T00:01:03Z" },
+  { service: "api", latency: 54ms, queue: 1ms, ts: "2026-01-01T00:01:04Z" },
+  { service: "api", latency: 55ms, queue: 1ms, ts: "2026-01-01T00:01:05Z" },
+  { service: "api", latency: 56ms, queue: 1ms, ts: "2026-01-01T00:01:06Z" },
+  { service: "api", latency: 57ms, queue: 1ms, ts: "2026-01-01T00:01:07Z" },
+  { service: "api", latency: 58ms, queue: 1ms, ts: "2026-01-01T00:01:08Z" },
+  { service: "api", latency: 59ms, queue: 1ms, ts: "2026-01-01T00:01:09Z" },
+  { service: "api", latency: 60ms, queue: 1ms, ts: "2026-01-01T00:01:10Z" },
+  { service: "api", latency: 61ms, queue: 1ms, ts: "2026-01-01T00:01:11Z" },
+  { service: "api", latency: 62ms, queue: 1ms, ts: "2026-01-01T00:01:12Z" },
+  { service: "api", latency: 63ms, queue: 1ms, ts: "2026-01-01T00:01:13Z" },
+  { service: "api", latency: 64ms, queue: 1ms, ts: "2026-01-01T00:01:14Z" },
+  { service: "api", latency: 65ms, queue: 1ms, ts: "2026-01-01T00:01:15Z" },
+  { service: "api", latency: 66ms, queue: 1ms, ts: "2026-01-01T00:01:16Z" },
+  { service: "api", latency: 67ms, queue: 1ms, ts: "2026-01-01T00:01:17Z" },
+  { service: "api", latency: 68ms, queue: 1ms, ts: "2026-01-01T00:01:18Z" },
+  { service: "api", latency: 69ms, queue: 1ms, ts: "2026-01-01T00:01:19Z" },
+  { service: "api", latency: 70ms, queue: 1ms, ts: "2026-01-01T00:01:20Z" },
+  { service: "api", latency: 71ms, queue: 1ms, ts: "2026-01-01T00:01:21Z" },
+  { service: "api", latency: 72ms, queue: 1ms, ts: "2026-01-01T00:01:22Z" },
+  { service: "api", latency: 73ms, queue: 1ms, ts: "2026-01-01T00:01:23Z" },
+  { service: "api", latency: 74ms, queue: 1ms, ts: "2026-01-01T00:01:24Z" },
+  { service: "api", latency: 75ms, queue: 1ms, ts: "2026-01-01T00:01:25Z" },
+  { service: "api", latency: 76ms, queue: 1ms, ts: "2026-01-01T00:01:26Z" },
+  { service: "api", latency: 77ms, queue: 1ms, ts: "2026-01-01T00:01:27Z" },
+  { service: "api", latency: 78ms, queue: 1ms, ts: "2026-01-01T00:01:28Z" },
+  { service: "api", latency: 79ms, queue: 1ms, ts: "2026-01-01T00:01:29Z" },
+  { service: "api", latency: 80ms, queue: 1ms, ts: "2026-01-01T00:01:30Z" },
+  { service: "api", latency: 81ms, queue: 1ms, ts: "2026-01-01T00:01:31Z" },
+  { service: "api", latency: 82ms, queue: 1ms, ts: "2026-01-01T00:01:32Z" },
+  { service: "api", latency: 83ms, queue: 1ms, ts: "2026-01-01T00:01:33Z" },
+  { service: "api", latency: 84ms, queue: 1ms, ts: "2026-01-01T00:01:34Z" },
+  { service: "api", latency: 85ms, queue: 1ms, ts: "2026-01-01T00:01:35Z" },
+  { service: "api", latency: 86ms, queue: 1ms, ts: "2026-01-01T00:01:36Z" },
+  { service: "api", latency: 87ms, queue: 1ms, ts: "2026-01-01T00:01:37Z" },
+  { service: "api", latency: 88ms, queue: 1ms, ts: "2026-01-01T00:01:38Z" },
+  { service: "api", latency: 89ms, queue: 1ms, ts: "2026-01-01T00:01:39Z" }
+]')
+(command 'INSERT app::requests [
+  { service: "auth", latency: 8ms, queue: 1ms, ts: "2026-01-01T00:01:40Z" },
+  { service: "auth", latency: 30ms, queue: 1ms, ts: "2026-01-01T00:01:41Z" }
+]')
+(command 'INSERT app::requests [
+  { service: "api", latency: 90ms, queue: 1ms, ts: "2026-01-01T00:02:00Z" },
+  { service: "api", latency: 91ms, queue: 1ms, ts: "2026-01-01T00:02:01Z" },
+  { service: "api", latency: 92ms, queue: 1ms, ts: "2026-01-01T00:02:02Z" },
+  { service: "api", latency: 93ms, queue: 1ms, ts: "2026-01-01T00:02:03Z" },
+  { service: "api", latency: 94ms, queue: 1ms, ts: "2026-01-01T00:02:04Z" },
+  { service: "api", latency: 95ms, queue: 1ms, ts: "2026-01-01T00:02:05Z" },
+  { service: "api", latency: 96ms, queue: 1ms, ts: "2026-01-01T00:02:06Z" },
+  { service: "api", latency: 97ms, queue: 1ms, ts: "2026-01-01T00:02:07Z" },
+  { service: "api", latency: 98ms, queue: 1ms, ts: "2026-01-01T00:02:08Z" },
+  { service: "api", latency: 99ms, queue: 1ms, ts: "2026-01-01T00:02:09Z" },
+  { service: "api", latency: 100ms, queue: 1ms, ts: "2026-01-01T00:02:10Z" },
+  { service: "api", latency: 101ms, queue: 1ms, ts: "2026-01-01T00:02:11Z" },
+  { service: "api", latency: 102ms, queue: 1ms, ts: "2026-01-01T00:02:12Z" },
+  { service: "api", latency: 103ms, queue: 1ms, ts: "2026-01-01T00:02:13Z" },
+  { service: "api", latency: 104ms, queue: 1ms, ts: "2026-01-01T00:02:14Z" },
+  { service: "api", latency: 105ms, queue: 1ms, ts: "2026-01-01T00:02:15Z" },
+  { service: "api", latency: 106ms, queue: 1ms, ts: "2026-01-01T00:02:16Z" },
+  { service: "api", latency: 107ms, queue: 1ms, ts: "2026-01-01T00:02:17Z" },
+  { service: "api", latency: 108ms, queue: 1ms, ts: "2026-01-01T00:02:18Z" },
+  { service: "api", latency: 600ms, queue: 1ms, ts: "2026-01-01T00:02:19Z" },
+  { service: "api", latency: 750ms, queue: 1ms, ts: "2026-01-01T00:02:20Z" }
+]')
+(command 'INSERT app::requests [
+  { service: "auth", latency: 100ms, queue: 1ms, ts: "2026-01-01T00:02:40Z" },
+  { service: "auth", latency: 120ms, queue: 1ms, ts: "2026-01-01T00:02:41Z" },
+  { service: "auth", latency: 150ms, queue: 1ms, ts: "2026-01-01T00:02:42Z" },
+  { service: "auth", latency: 400ms, queue: 1ms, ts: "2026-01-01T00:02:43Z" }
+]')
+await
+query 'from app::latency_1m'
+---
+> +-----------+----------------------------------+----------------------------------+-----------+----------------------------------+-----------------+
+> |  #rownum  |           #created_at            |           #updated_at            |  service  |              start               |       lat       |
+> +-----------+----------------------------------+----------------------------------+-----------+----------------------------------+-----------------+
+> |     6     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |   auth    |  2026-01-01T00:02:00.000000000Z  |  digest(n: 4)   |
+> |     5     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |    api    |  2026-01-01T00:02:00.000000000Z  |  digest(n: 21)  |
+> |     4     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |   auth    |  2026-01-01T00:01:00.000000000Z  |  digest(n: 2)   |
+> |     3     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |    api    |  2026-01-01T00:01:00.000000000Z  |  digest(n: 40)  |
+> |     2     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |   auth    |  2026-01-01T00:00:00.000000000Z  |  digest(n: 3)   |
+> |     1     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |    api    |  2026-01-01T00:00:00.000000000Z  |  digest(n: 40)  |
+> +-----------+----------------------------------+----------------------------------+-----------+----------------------------------+-----------------+
+>
+
+query 'from app::latency_1m | map { service, start, p999: stats::approx_percentile(lat, 0.999) }'
+---
+> +-----------+----------------------------------+----------------------------------+-----------+----------------------------------+-------------------+
+> |  #rownum  |           #created_at            |           #updated_at            |  service  |              start               |       p999        |
+> +-----------+----------------------------------+----------------------------------+-----------+----------------------------------+-------------------+
+> |     6     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |   auth    |  2026-01-01T00:02:00.000000000Z  |  401ms456us752ns  |
+> |     5     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |    api    |  2026-01-01T00:02:00.000000000Z  |  746ms294us639ns  |
+> |     4     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |   auth    |  2026-01-01T00:01:00.000000000Z  |   29ms815us45ns   |
+> |     3     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |    api    |  2026-01-01T00:01:00.000000000Z  |  89ms572us630ns   |
+> |     2     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |   auth    |  2026-01-01T00:00:00.000000000Z  |   7ms63us673ns    |
+> |     1     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |    api    |  2026-01-01T00:00:00.000000000Z  |  49ms157us519ns   |
+> +-----------+----------------------------------+----------------------------------+-----------+----------------------------------+-------------------+
+>
+
+query 'from app::latency_1m | aggregate { p99: stats::approx_percentile(lat, 0.99) } by { service }'
+---
+> +-----------+-------------------+
+> |  service  |        p99        |
+> +-----------+-------------------+
+> |   auth    |  401ms456us752ns  |
+> |    api    |  598ms911us84ns   |
+> +-----------+-------------------+
+>
+
+(admin 'create table app::latency_daily { service: utf8, day: date, lat: digest(duration, 0.01) }')
+command 'LET $daily = from app::latency_1m | map { service, day: datetime::date(start), lat } | aggregate { lat: stats::digest(lat) } by { service, day }; INSERT app::latency_daily $daily'
+query 'from app::latency_daily | map { service, day, lat, p50: stats::approx_percentile(lat, 0.5), p99: stats::approx_percentile(lat, 0.99), p999: stats::approx_percentile(lat, 0.999) }'
+---
+> +-------------+-----------------+------------+
+> |  namespace  |      table      |  inserted  |
+> +-------------+-----------------+------------+
+> |     app     |  latency_daily  |     2      |
+> +-------------+-----------------+------------+
+>
+> +-----------+----------------------------------+----------------------------------+-----------+--------------+------------------+-----------------+-------------------+-------------------+
+> |  #rownum  |           #created_at            |           #updated_at            |  service  |     day      |       lat        |       p50       |        p99        |       p999        |
+> +-----------+----------------------------------+----------------------------------+-----------+--------------+------------------+-----------------+-------------------+-------------------+
+> |     2     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |    api    |  2026-01-01  |  digest(n: 101)  |  60ms41us529ns  |  598ms911us84ns   |  746ms294us639ns  |
+> |     1     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |   auth    |  2026-01-01  |   digest(n: 9)   |  29ms815us45ns  |  401ms456us752ns  |  401ms456us752ns  |
+> +-----------+----------------------------------+----------------------------------+-----------+--------------+------------------+-----------------+-------------------+-------------------+
+>
+
+# a sealed window drops late retractions, so only rows of the open 00:02 window change
+command 'UPDATE app::requests { latency: 20ms } FILTER { service == "api" and latency == 750ms }'
+command 'DELETE app::requests FILTER { service == "auth" and latency >= 100ms }'
+await
+query 'from app::latency_1m | map { service, start, p999: stats::approx_percentile(lat, 0.999) }'
+---
+> +-------------+------------+-----------+
+> |  namespace  |   table    |  updated  |
+> +-------------+------------+-----------+
+> |     app     |  requests  |     1     |
+> +-------------+------------+-----------+
+>
+> +-------------+------------+-----------+
+> |  namespace  |   table    |  deleted  |
+> +-------------+------------+-----------+
+> |     app     |  requests  |     4     |
+> +-------------+------------+-----------+
+>
+> +-----------+----------------------------------+----------------------------------+-----------+----------------------------------+------------------+
+> |  #rownum  |           #created_at            |           #updated_at            |  service  |              start               |       p999       |
+> +-----------+----------------------------------+----------------------------------+-----------+----------------------------------+------------------+
+> |     5     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |    api    |  2026-01-01T00:02:00.000000000Z  |  598ms911us84ns  |
+> |     4     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |   auth    |  2026-01-01T00:01:00.000000000Z  |  29ms815us45ns   |
+> |     3     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |    api    |  2026-01-01T00:01:00.000000000Z  |  89ms572us630ns  |
+> |     2     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |   auth    |  2026-01-01T00:00:00.000000000Z  |   7ms63us673ns   |
+> |     1     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |    api    |  2026-01-01T00:00:00.000000000Z  |  49ms157us519ns  |
+> +-----------+----------------------------------+----------------------------------+-----------+----------------------------------+------------------+
+>
+
+query 'from app::latency_1m | aggregate { p99: stats::approx_percentile(lat, 0.99) } by { service }'
+---
+> +-----------+-------------------+
+> |  service  |        p99        |
+> +-----------+-------------------+
+> |    api    |  107ms238us552ns  |
+> |   auth    |   29ms815us45ns   |
+> +-----------+-------------------+
+>
+
+query 'from app::latency_daily | map { service, day, lat, p50: stats::approx_percentile(lat, 0.5), p99: stats::approx_percentile(lat, 0.99), p999: stats::approx_percentile(lat, 0.999) }'
+---
+> +-----------+----------------------------------+----------------------------------+-----------+--------------+------------------+-----------------+-------------------+-------------------+
+> |  #rownum  |           #created_at            |           #updated_at            |  service  |     day      |       lat        |       p50       |        p99        |       p999        |
+> +-----------+----------------------------------+----------------------------------+-----------+--------------+------------------+-----------------+-------------------+-------------------+
+> |     2     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |    api    |  2026-01-01  |  digest(n: 101)  |  60ms41us529ns  |  598ms911us84ns   |  746ms294us639ns  |
+> |     1     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |   auth    |  2026-01-01  |   digest(n: 9)   |  29ms815us45ns  |  401ms456us752ns  |  401ms456us752ns  |
+> +-----------+----------------------------------+----------------------------------+-----------+--------------+------------------+-----------------+-------------------+-------------------+
+>
+
+# lateness 1h keeps the 00:00 and 00:01 windows open, so a delete there must reach the view
+command 'DELETE app::requests FILTER { (service == "api" and latency == 49ms) or (service == "auth" and latency == 30ms) }'
+await
+query 'from app::latency_1m_late | map { service, start, p999: stats::approx_percentile(lat, 0.999) }'
+query 'from app::latency_1m_late | aggregate { p99: stats::approx_percentile(lat, 0.99) } by { service }'
+---
+> +-------------+------------+-----------+
+> |  namespace  |   table    |  deleted  |
+> +-------------+------------+-----------+
+> |     app     |  requests  |     2     |
+> +-------------+------------+-----------+
+>
+> +-----------+----------------------------------+----------------------------------+-----------+----------------------------------+------------------+
+> |  #rownum  |           #created_at            |           #updated_at            |  service  |              start               |       p999       |
+> +-----------+----------------------------------+----------------------------------+-----------+----------------------------------+------------------+
+> |     5     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |    api    |  2026-01-01T00:02:00.000000000Z  |  598ms911us84ns  |
+> |     4     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |   auth    |  2026-01-01T00:01:00.000000000Z  |  7ms964us301ns   |
+> |     3     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |    api    |  2026-01-01T00:01:00.000000000Z  |  89ms572us630ns  |
+> |     2     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |   auth    |  2026-01-01T00:00:00.000000000Z  |   7ms63us673ns   |
+> |     1     |  1970-01-01T00:00:00.000000000Z  |  1970-01-01T00:00:00.000000000Z  |    api    |  2026-01-01T00:00:00.000000000Z  |  48ms184us102ns  |
+> +-----------+----------------------------------+----------------------------------+-----------+----------------------------------+------------------+
+>
+> +-----------+-------------------+
+> |  service  |        p99        |
+> +-----------+-------------------+
+> |    api    |  107ms238us552ns  |
+> |   auth    |   7ms964us301ns   |
+> +-----------+-------------------+
+>
