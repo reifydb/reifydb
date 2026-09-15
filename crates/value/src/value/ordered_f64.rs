@@ -43,15 +43,20 @@ impl<'de> Deserialize<'de> for OrderedF64 {
 				formatter.write_str("a 64-bit floating point number")
 			}
 
-			fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E> {
-				Ok(OrderedF64(value))
+			fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+			where
+				E: de::Error,
+			{
+				OrderedF64::try_from(value)
+					.map_err(|e| E::custom(format_args!("OrderedF64: {}", e.diagnostic().message)))
 			}
 
 			fn visit_f32<E>(self, value: f32) -> Result<Self::Value, E>
 			where
 				E: de::Error,
 			{
-				Ok(OrderedF64(value as f64))
+				OrderedF64::try_from(value as f64)
+					.map_err(|e| E::custom(format_args!("OrderedF64: {}", e.diagnostic().message)))
 			}
 		}
 
