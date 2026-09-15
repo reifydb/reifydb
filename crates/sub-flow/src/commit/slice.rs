@@ -76,16 +76,20 @@ impl SliceComputer {
 		config: &SliceConfig,
 	) -> Result<SliceStep> {
 		let start = items.partition_point(|c| c.version.commit <= cursor.cursor);
-		let mut relevant: Vec<&Cdc> = items[start..]
-			.iter()
-			.map(Arc::as_ref)
-			.filter(|cdc| is_relevant(cdc, cursor.source_objects))
-			.collect();
 		let (mut advance_to, mut more) = (advance_to, more);
-		if let Some(cut) = relevant.iter().position(|cdc| cdc.version.source != relevant[0].version.source) {
-			advance_to = CommitVersion(relevant[cut].version.source.0 - 1);
-			more = true;
-			relevant.truncate(cut);
+		let mut relevant: Vec<&Cdc> = Vec::new();
+		for cdc in items[start..].iter().map(Arc::as_ref) {
+			if !is_relevant(cdc, cursor.source_objects) {
+				continue;
+			}
+			if let Some(first) = relevant.first()
+				&& cdc.version.source != first.version.source
+			{
+				advance_to = CommitVersion(cdc.version.source.0 - 1);
+				more = true;
+				break;
+			}
+			relevant.push(cdc);
 		}
 		let source = relevant.iter().map(|cdc| cdc.version.source).max();
 		let changes = collect_flow_changes(

@@ -132,6 +132,7 @@ pub struct FlowActorState {
 	view_cursors: HashMap<FlowId, CommitVersion>,
 	pending_view_cursors: HashMap<FlowId, CommitVersion>,
 	read_cache: ReadCache,
+	object_index: ObjectIndex,
 	loading_from: CommitVersion,
 }
 
@@ -251,6 +252,8 @@ impl FlowActor {
 		if state.poisoned || state.committing || state.awaiting_load {
 			return;
 		}
+		state.read_cache.retain_after(state.cursor);
+		state.object_index.retain_after(state.cursor);
 		let safe = self.safe_bound();
 		if safe <= state.cursor {
 			self.checkpoint_if_stale(state, ctx);
@@ -261,14 +264,11 @@ impl FlowActor {
 			self.drain_merged(state, ctx, safe, &upstreams);
 			return;
 		}
-		match self.backlog.pull(state.cursor, safe, self.pull_batch_bytes) {
-			BacklogPull::Hit {
-				items,
-				advance_to,
-				more,
-			} => self.apply_items(state, ctx, &items, advance_to, more),
-			BacklogPull::Behind => self.request_load(state, ctx, state.cursor, safe),
-		}
+		let cursor = state.cursor;
+		let Some(read) = self.read_range(state, ctx, cursor, safe) else {
+			return;
+		};
+		self.apply_items(state, ctx, &read.items, read.read_to, read.more)
 	}
 
 	fn drain_merged(
@@ -284,11 +284,12 @@ impl FlowActor {
 		};
 		let mut upstream_reads = UpstreamReads {
 			reads: HashMap::with_capacity(upstreams.len()),
-			index: ObjectIndex::default(),
+			index: take(&mut state.object_index),
 		};
 		for (producer, views) in upstreams {
 			let from = state.view_cursors.get(producer).copied().unwrap_or(cursor).max(cursor);
 			let Some(read) = self.read_range(state, ctx, from, safe) else {
+				state.object_index = upstream_reads.index;
 				return;
 			};
 			let mut upstream = UpstreamRead {
@@ -298,6 +299,7 @@ impl FlowActor {
 			};
 			while upstream.needs_extension(cursor, &upstream_reads.index) {
 				let Some(next) = self.read_range(state, ctx, upstream.read.read_to, safe) else {
+					state.object_index = upstream_reads.index;
 					return;
 				};
 				upstream.read.items.extend(next.items);
@@ -306,11 +308,10 @@ impl FlowActor {
 			}
 			upstream_reads.reads.insert(*producer, upstream);
 		}
-		state.read_cache.clear();
-
 		let merged = merge(cursor, &tables, &upstream_reads.reads, &upstream_reads.index);
 		if merged.target <= cursor {
 			let moved = self.advance_view_cursors(state, &upstream_reads, cursor);
+			state.object_index = upstream_reads.index;
 			if moved && merged.more {
 				let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 			} else {
@@ -320,6 +321,7 @@ impl FlowActor {
 		}
 		let step = self.compute_step(state, &merged.items, merged.target, merged.more);
 		self.apply_step(state, ctx, step, Some(&upstream_reads));
+		state.object_index = upstream_reads.index;
 	}
 
 	fn read_range(
@@ -487,22 +489,17 @@ impl FlowActor {
 		if state.poisoned {
 			return;
 		}
-		if state.committing {
-			state.drain_after_commit = true;
-			return;
-		}
 		match outcome {
 			Ok((items, advance_to)) => {
-				if !self.flow_tracker.upstreams(self.flow_id).is_empty() {
-					state.read_cache.insert(state.loading_from, items, advance_to);
-					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
+				state.read_cache.insert(state.loading_from, items, advance_to);
+				if state.committing {
+					state.drain_after_commit = true;
 					return;
 				}
-				if advance_to <= state.cursor {
-					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
-					return;
-				}
-				self.apply_items(state, ctx, &items, advance_to, true);
+				let _ = ctx.self_ref().send(FlowActorMessage::Drain);
+			}
+			Err(_) if state.committing => {
+				state.drain_after_commit = true;
 			}
 			Err(e) => {
 				self.retry_or_poison(state, ctx, format!("flow catch-up load failed: {e}"));
@@ -779,6 +776,7 @@ impl Actor for FlowActor {
 			view_cursors: HashMap::new(),
 			pending_view_cursors: HashMap::new(),
 			read_cache: ReadCache::default(),
+			object_index: ObjectIndex::default(),
 			loading_from: self.initial_cursor,
 		};
 
