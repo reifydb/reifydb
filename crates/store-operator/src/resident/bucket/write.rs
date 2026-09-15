@@ -3,9 +3,9 @@
 
 use std::{
 	any::Any,
-	collections::{BTreeMap, btree_map::Entry},
+	collections::{BTreeMap, BTreeSet, btree_map::Entry},
 	iter::Peekable,
-	mem::size_of,
+	mem::{self, size_of},
 	ops::{Bound, RangeBounds},
 	sync::atomic::{AtomicBool, Ordering},
 };
@@ -225,7 +225,8 @@ pub struct StandardBucket<K: Keyspace> {
 	entries: usize,
 	dirty: usize,
 	dirty_bytes: ByteSize,
-	dirty_groups: usize,
+	dirty_groups: BTreeSet<GroupId>,
+	flushing_groups: BTreeSet<GroupId>,
 }
 
 impl<K: Keyspace> StandardBucket<K> {
@@ -237,7 +238,8 @@ impl<K: Keyspace> StandardBucket<K> {
 			entries: 0,
 			dirty: 0,
 			dirty_bytes: ByteSize::ZERO,
-			dirty_groups: 0,
+			dirty_groups: BTreeSet::new(),
+			flushing_groups: BTreeSet::new(),
 		}
 	}
 
@@ -270,18 +272,22 @@ impl<K: Keyspace> StandardBucket<K> {
 	}
 
 	pub fn dirty_footprint(&self) -> ByteSize {
-		self.dirty_bytes.saturating_add(Self::group_bytes() * self.dirty_groups as u64)
+		self.dirty_bytes.saturating_add(Self::group_bytes() * self.dirty_groups.len() as u64)
 	}
 
 	pub fn stage_dirty(&mut self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) -> ByteSize {
 		let mut staged = ByteSize::ZERO;
-		for (group, partition) in self.partitions.iter_mut() {
+		for group in mem::take(&mut self.dirty_groups) {
+			let partition = self
+				.partitions
+				.get_mut(&group)
+				.expect("a dirty group keeps its partition until it is staged");
 			let mut charged_group = false;
 			for (suffix, entry) in partition.live.iter_mut().chain(partition.deleted.iter_mut()) {
 				if !entry.staged.is_dirty() {
 					continue;
 				}
-				visit(*group, &suffix.to_suffix_bytes(), entry);
+				visit(group, &suffix.to_suffix_bytes(), entry);
 				entry.staged = Staged::Flushing;
 				self.dirty -= 1;
 				self.dirty_bytes = self
@@ -294,9 +300,14 @@ impl<K: Keyspace> StandardBucket<K> {
 					charged_group = true;
 				}
 			}
-			if charged_group {
-				partition.dirty = 0;
-				self.dirty_groups -= 1;
+			match charged_group {
+				true => {
+					partition.dirty = 0;
+					self.flushing_groups.insert(group);
+				}
+				false => {
+					self.dirty_groups.insert(group);
+				}
 			}
 		}
 		staged
@@ -305,7 +316,11 @@ impl<K: Keyspace> StandardBucket<K> {
 	pub fn revert_flushing(&mut self) -> usize {
 		let mut reverted = 0usize;
 		let mut restored = ByteSize::ZERO;
-		for partition in self.partitions.values_mut() {
+		for group in mem::take(&mut self.flushing_groups) {
+			let partition = self
+				.partitions
+				.get_mut(&group)
+				.expect("a flushing group keeps its partition until it settles");
 			let mut restored_here = 0usize;
 			for (_, entry) in partition.live.iter_mut().chain(partition.deleted.iter_mut()) {
 				if matches!(entry.staged, Staged::Flushing) {
@@ -317,7 +332,7 @@ impl<K: Keyspace> StandardBucket<K> {
 				}
 			}
 			if restored_here > 0 && partition.dirty == 0 {
-				self.dirty_groups += 1;
+				self.dirty_groups.insert(group);
 			}
 			partition.dirty += restored_here;
 			reverted += restored_here;
@@ -367,7 +382,11 @@ impl<K: Keyspace> StandardBucket<K> {
 	}
 
 	pub fn settle_flushing(&mut self) {
-		for partition in self.partitions.values_mut() {
+		for group in mem::take(&mut self.flushing_groups) {
+			let partition = self
+				.partitions
+				.get_mut(&group)
+				.expect("a flushing group keeps its partition until it settles");
 			for (_, entry) in partition.live.iter_mut().chain(partition.deleted.iter_mut()) {
 				if matches!(entry.staged, Staged::Flushing) {
 					entry.staged = Staged::Clean;
@@ -445,7 +464,7 @@ impl<K: Keyspace> StandardBucket<K> {
 			let partition = self.partitions.get_mut(&group).expect("the partition was just inserted");
 			partition.dirty += dirtied;
 			if partition.dirty == dirtied {
-				self.dirty_groups += 1;
+				self.dirty_groups.insert(group);
 			}
 		}
 		self.dirty += dirtied;
@@ -471,7 +490,7 @@ impl<K: Keyspace> StandardBucket<K> {
 		self.dirty -= 1;
 		partition.dirty -= 1;
 		if partition.dirty == 0 {
-			self.dirty_groups -= 1;
+			self.dirty_groups.remove(&group);
 		}
 		self.dirty_bytes =
 			self.dirty_bytes.saturating_sub(Self::suffix_bytes()).saturating_sub(entry.row_bytes());
@@ -512,15 +531,6 @@ impl<K: Keyspace> StandardBucket<K> {
 		self.partitions.iter().rev().flat_map(|(group, partition)| {
 			partition.merged().map(move |(suffix, entry)| (*group, suffix, entry))
 		})
-	}
-
-	pub fn clear(&mut self) {
-		self.partitions.clear();
-		self.bytes = ByteSize::ZERO;
-		self.entries = 0;
-		self.dirty = 0;
-		self.dirty_bytes = ByteSize::ZERO;
-		self.dirty_groups = 0;
 	}
 }
 
