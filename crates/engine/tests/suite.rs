@@ -40,6 +40,8 @@ mod identity_kind;
 mod inline_data_insert_target;
 #[path = "inline_data_value_types.rs"]
 mod inline_data_value_types;
+#[path = "insert_undefined_value.rs"]
+mod insert_undefined_value;
 #[path = "interceptor.rs"]
 mod interceptor;
 #[path = "join_digest_key.rs"]
@@ -80,6 +82,8 @@ mod sort_unorderable;
 mod system_reserved_ids;
 #[path = "take.rs"]
 mod take;
+#[path = "time_column_undeclared.rs"]
+mod time_column_undeclared;
 #[path = "time_domain_chained_view.rs"]
 mod time_domain_chained_view;
 #[path = "time_domain_recheck.rs"]
