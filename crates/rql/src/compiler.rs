@@ -438,6 +438,7 @@ fn materialize_query_plan_with(
 			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))?),
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))?),
 			join_type: node.join_type,
+			fragment: node.fragment,
 			alias: node.alias,
 			retention: node.retention,
 			snapshot: node.snapshot,

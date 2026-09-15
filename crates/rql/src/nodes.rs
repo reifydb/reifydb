@@ -573,6 +573,7 @@ pub struct JoinNaturalNode {
 	pub left: Box<QueryPlan>,
 	pub right: Box<QueryPlan>,
 	pub join_type: JoinType,
+	pub fragment: Fragment,
 	pub alias: Option<Fragment>,
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,

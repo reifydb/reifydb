@@ -175,6 +175,7 @@ impl<'bump> Compiler<'bump> {
 				}))
 			}
 			AstJoin::NaturalJoin {
+				token,
 				with,
 				join_type,
 				alias,
@@ -194,6 +195,7 @@ impl<'bump> Compiler<'bump> {
 				Ok(LogicalPlan::JoinNatural(JoinNaturalNode {
 					with,
 					join_type: join_type.unwrap_or(JoinType::Inner),
+					fragment: token.fragment,
 					alias: Some(alias),
 					retention,
 					snapshot,

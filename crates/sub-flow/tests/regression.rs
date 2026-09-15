@@ -4,6 +4,7 @@
 #[path = "regression/latest_snapshot_join_republish.rs"]
 mod latest_snapshot_join_republish;
 
+
 #[path = "regression/snapshot_join_retraction.rs"]
 mod snapshot_join_retraction;
 

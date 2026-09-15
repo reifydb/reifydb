@@ -5,10 +5,12 @@ use std::collections::{HashMap, HashSet};
 
 use reifydb_core::{
 	common::JoinType,
+	error::diagnostic::operation,
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error,
 	fragment::Fragment,
 	reifydb_assertions,
 	util::hash::Hash128,
@@ -27,6 +29,8 @@ pub struct NaturalJoinNode {
 	right: Box<dyn QueryNode>,
 	join_type: JoinType,
 	alias: Option<Fragment>,
+	left_name: Option<Fragment>,
+	fragment: Fragment,
 	headers: Option<ColumnHeaders>,
 	context: JoinContext,
 }
@@ -37,12 +41,16 @@ impl NaturalJoinNode {
 		right: Box<dyn QueryNode>,
 		join_type: JoinType,
 		alias: Option<Fragment>,
+		left_name: Option<Fragment>,
+		fragment: Fragment,
 	) -> Self {
 		Self {
 			left,
 			right,
 			join_type,
 			alias,
+			left_name,
+			fragment,
 			headers: None,
 			context: JoinContext::new(),
 		}
@@ -91,7 +99,13 @@ impl QueryNode for NaturalJoinNode {
 		let common_columns = Self::find_common_columns(&left_columns, &right_columns);
 
 		if common_columns.is_empty() {
-			return Ok(None);
+			let left = self.left_name.as_ref().map_or("the left input", |name| name.text());
+			let right = self.alias.as_ref().map_or("the right input", |name| name.text());
+			return Err(error!(operation::natural_join_no_shared_column(
+				self.fragment.clone(),
+				left,
+				right
+			)));
 		}
 
 		let excluded_right_cols: HashSet<usize> =

@@ -81,6 +81,21 @@ pub fn join_key_unkeyable(fragment: Fragment, ty: ValueType) -> Diagnostic {
 	}
 }
 
+pub fn natural_join_no_shared_column(fragment: Fragment, left: &str, right: &str) -> Diagnostic {
+	Diagnostic {
+		code: "JOIN_002".to_string(),
+		rql: None,
+		message: format!("NATURAL JOIN of {} with {} has no shared column", left, right),
+		column: None,
+		fragment,
+		label: Some("no column name appears on both sides".to_string()),
+		help: Some("Rename a column so both sides share it, or join with USING".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn sort_key_not_orderable(fragment: Fragment, ty: ValueType) -> Diagnostic {
 	Diagnostic {
 		code: "SORT_002".to_string(),
