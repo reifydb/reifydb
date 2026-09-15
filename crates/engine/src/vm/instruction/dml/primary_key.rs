@@ -4,24 +4,38 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{
+	error::CoreError,
 	interface::catalog::{key::PrimaryKey, table::Table},
 	sort::SortDirection,
 	value::index::{encoded::EncodedIndexKey, shape::IndexShape},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{
-	date::Date,
-	datetime::DateTime,
-	duration::Duration,
-	identity::IdentityId,
-	time::Time,
-	uuid::{Uuid4, Uuid7},
-	value_type::ValueType,
+use reifydb_value::{
+	fragment::Fragment,
+	value::{
+		date::Date,
+		datetime::DateTime,
+		duration::Duration,
+		identity::IdentityId,
+		time::Time,
+		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
+	},
 };
 
 use crate::Result;
 
 pub fn encode_primary_key(pk_def: &PrimaryKey, row: &[u8], table: &Table, shape: &RowShape) -> Result<EncodedIndexKey> {
+	if let Some(column) =
+		pk_def.columns.iter().find(|c| matches!(c.constraint.get_type().inner_type(), ValueType::Digest { .. }))
+	{
+		return Err(CoreError::PrimaryKeyDigestColumn {
+			fragment: Fragment::internal(&column.name),
+			column: column.name.clone(),
+			ty: column.constraint.get_type(),
+		}
+		.into());
+	}
 	let types: Vec<ValueType> = pk_def.columns.iter().map(|c| c.constraint.get_type()).collect();
 	let directions = vec![SortDirection::Asc; types.len()];
 	let index_shape = IndexShape::new(&types, &directions)?;

@@ -331,3 +331,29 @@ fn a_user_attribute_of_a_digest_type_is_rejected() {
 	assert_eq!(err.message, "user attribute `lat` has unsupported type `Digest(Float8, 0.01)`");
 	reloaded_catalog(&t);
 }
+
+#[test]
+fn a_digest_primary_key_error_names_the_digest() {
+	// A key over a digest must fail naming the digest, never blame UTF8 or BLOB columns the key does not have
+	// (D21).
+	let t = engine();
+	admin(&t, DIGEST_TABLE).expect("create table with digest columns");
+	let mut lat = Digest::new(ValueType::Duration, 10_000).unwrap();
+	lat.add_value(&Value::Duration(Duration::from_milliseconds(5).unwrap())).unwrap();
+	let padded = Digest::new(ValueType::Int4, 10_000).unwrap();
+	let params = Params::from(HashMap::from([
+		("lat".to_string(), Value::Digest(Box::new(lat))),
+		("padded".to_string(), Value::Digest(Box::new(padded))),
+	]));
+
+	let err = match admin(&t, "CREATE PRIMARY KEY ON test::latency { lat }") {
+		Err(err) => err,
+		Ok(_) => {
+			let insert = "INSERT test::latency [{ service: 'a', lat: $lat, opt: none, padded: $padded }]";
+			let r = t.inner().admin_as(TestEngine::identity(), insert, params);
+			r.error.expect("a table keyed by a digest must not take a row").diagnostic()
+		}
+	};
+
+	assert!(err.message.to_lowercase().contains("digest"), "{err:?}");
+}

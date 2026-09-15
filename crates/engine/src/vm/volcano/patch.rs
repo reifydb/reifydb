@@ -160,6 +160,7 @@ impl Transform for PatchNode {
 			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type())
 				&& column.data.get_type() != target_type
 			{
+				column.data.check_digest_write(&target_type, &expr.lazy_fragment())?;
 				let data =
 					cast_column_data(&exec_ctx, &column.data, target_type, &expr.lazy_fragment())?;
 				column = ColumnWithName {

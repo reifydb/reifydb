@@ -20,6 +20,8 @@ mod closure;
 mod column_type_parameters;
 #[path = "digest_column_ddl.rs"]
 mod digest_column_ddl;
+#[path = "digest_column_write.rs"]
+mod digest_column_write;
 #[path = "digest_query.rs"]
 mod digest_query;
 #[path = "digest_row_storage.rs"]

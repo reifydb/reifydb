@@ -169,6 +169,46 @@ impl IntoDiagnostic for CoreError {
 				}
 			}
 
+			CoreError::PrimaryKeyDigestColumn {
+				fragment,
+				column,
+				ty,
+			} => Diagnostic {
+				code: "INDEX_003".to_string(),
+				rql: None,
+				message: format!("cannot use column `{}` in a primary key: a {} value cannot be a key", column, ty),
+				column: None,
+				fragment,
+				label: Some("digest primary key column".to_string()),
+				help: Some(
+					"a digest has no key encoding and no equality, so it cannot identify a row; key the table by a column of another type"
+						.to_string(),
+				),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CoreError::DigestWriteTypeMismatch {
+				fragment,
+				expected,
+				actual,
+			} => Diagnostic {
+				code: "CONSTRAINT_008".to_string(),
+				rql: None,
+				message: format!("expected {}, got {}", expected, actual),
+				column: None,
+				fragment,
+				label: Some(format!("the column holds {}", expected)),
+				help: Some(
+					"a digest is written only into a digest column of the same input type and accuracy, and such a column takes nothing else"
+						.to_string(),
+				),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
 			CoreError::Internal {
 				message,
 				file,

@@ -109,6 +109,13 @@ pub(crate) fn insert_series(
 	let mut verified: HashSet<Partition> = HashSet::new();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		enforce_series_write_policies(services, symbols, txn, &namespace, &series, &columns)?;
+		for column in &series.columns {
+			if let Some(input) = columns.column(&column.name) {
+				input.data().check_digest_write(&column.constraint.get_type(), || {
+					Fragment::internal(&column.name)
+				})?;
+			}
+		}
 		for row_idx in 0..columns.row_count() {
 			insert_series_row(
 				services,

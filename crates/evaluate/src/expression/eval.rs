@@ -20,6 +20,7 @@ pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<ColumnWithName> 
 	let column = compiled.execute(ctx)?;
 
 	if let Some(ty) = ctx.target.as_ref().map(|c| c.column_type()) {
+		column.data().check_digest_write(&ty, &expr.lazy_fragment())?;
 		let data = cast_column_data(ctx, column.data(), ty, &expr.lazy_fragment())?;
 		Ok(ColumnWithName {
 			name: column.name,

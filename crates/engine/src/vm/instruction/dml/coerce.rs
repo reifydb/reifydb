@@ -50,6 +50,7 @@ pub(crate) fn coerce_value_to_column_type(
 	let base = eval_context_from_query(ctx);
 	let mut eval_ctx = base.with_eval_empty();
 	eval_ctx.target = Some(TargetColumn::Resolved(column));
+	temp_column_data.check_digest_write(&target, || Fragment::internal(&value_str))?;
 	let coerced_column = cast_column_data(&eval_ctx, &temp_column_data, target, || Fragment::internal(&value_str))?;
 
 	Ok(coerced_column.get_value(0))

@@ -11,6 +11,7 @@ pub mod reorder;
 pub mod scatter;
 pub mod slice;
 pub mod take;
+pub mod write;
 
 use std::fmt;
 

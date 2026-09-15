@@ -73,6 +73,20 @@ pub enum CoreError {
 		key_columns: Vec<String>,
 	},
 
+	#[error("cannot use column `{column}` in a primary key: a {ty} value cannot be a key")]
+	PrimaryKeyDigestColumn {
+		fragment: Fragment,
+		column: String,
+		ty: ValueType,
+	},
+
+	#[error("expected {expected}, got {actual}")]
+	DigestWriteTypeMismatch {
+		fragment: Fragment,
+		expected: ValueType,
+		actual: ValueType,
+	},
+
 	#[error("Internal error: {message}")]
 	Internal {
 		message: String,
