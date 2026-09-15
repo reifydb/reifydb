@@ -63,7 +63,7 @@ impl Services {
 		metrics_reader: MetricsReader<SingleStore>,
 	) -> Self {
 		Self {
-			compiler: Compiler::new(catalog.clone()),
+			compiler: Compiler::new(catalog.clone(), config.routines.clone()),
 			catalog,
 			runtime_context: config.runtime_context,
 			routines: config.routines,

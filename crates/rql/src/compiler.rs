@@ -10,6 +10,7 @@ use reifydb_core::{
 	fingerprint::{CompilationFingerprint, StatementFingerprint},
 	interface::catalog::series::{SeriesKey, TimestampPrecision},
 };
+use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::cache::sync::SyncLru;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -79,6 +80,7 @@ pub struct Compiler(Arc<CompilerInner>);
 
 struct CompilerInner {
 	catalog: Catalog,
+	routines: Routines,
 	cache: SyncLru<CompilationFingerprint, Arc<Vec<Compiled>>>,
 }
 
@@ -93,9 +95,10 @@ impl Debug for CompilerInner {
 }
 
 impl Compiler {
-	pub fn new(catalog: Catalog) -> Self {
+	pub fn new(catalog: Catalog, routines: Routines) -> Self {
 		Self(Arc::new(CompilerInner {
 			catalog,
+			routines,
 			cache: SyncLru::new(DEFAULT_CAPACITY),
 		}))
 	}
@@ -143,7 +146,7 @@ impl Compiler {
 			if let Some(mut physical) = plan(bump, &self.0.catalog, tx, statement)? {
 				optimize_physical(&mut physical);
 				plans.push(Compiled {
-					instructions: compile_instructions(physical)?,
+					instructions: compile_instructions(physical, &self.0.routines)?,
 					is_output,
 					fingerprint,
 					normalized_rql,
@@ -174,7 +177,7 @@ impl Compiler {
 		if let Some(mut physical) = plan(&bump, &self.0.catalog, tx, statement)? {
 			optimize_physical(&mut physical);
 			Ok(Some(Compiled {
-				instructions: compile_instructions(physical)?,
+				instructions: compile_instructions(physical, &self.0.routines)?,
 				is_output,
 				fingerprint,
 				normalized_rql,
@@ -230,7 +233,7 @@ impl Compiler {
 			if let Some(mut physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, &policy)? {
 				optimize_physical(&mut physical);
 				plans.push(Compiled {
-					instructions: compile_instructions(physical)?,
+					instructions: compile_instructions(physical, &self.0.routines)?,
 					is_output,
 					fingerprint,
 					normalized_rql,
@@ -297,7 +300,7 @@ impl Compiler {
 		if let Some(mut physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, policy)? {
 			optimize_physical(&mut physical);
 			Ok(Some(Compiled {
-				instructions: compile_instructions(physical)?,
+				instructions: compile_instructions(physical, &self.0.routines)?,
 				is_output,
 				fingerprint,
 				normalized_rql,
@@ -583,8 +586,8 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 	}
 }
 
-fn compile_instructions(plan: PhysicalPlan<'_>) -> Result<Vec<Instruction>> {
-	let mut compiler = InstructionCompiler::new();
+fn compile_instructions(plan: PhysicalPlan<'_>, routines: &Routines) -> Result<Vec<Instruction>> {
+	let mut compiler = InstructionCompiler::new(routines.clone());
 	compiler.compile_plan(plan)?;
 	compiler.emit(Instruction::Halt);
 	Ok(compiler.instructions)
@@ -677,14 +680,16 @@ fn scan_free_variables(body: &[Instruction], params: &[nodes::FunctionParameter]
 }
 
 struct InstructionCompiler {
+	routines: Routines,
 	instructions: Vec<Instruction>,
 	loop_stack: Vec<LoopContext>,
 	scope_depth: usize,
 }
 
 impl InstructionCompiler {
-	fn new() -> Self {
+	fn new(routines: Routines) -> Self {
 		Self {
+			routines,
 			instructions: Vec::new(),
 			loop_stack: Vec::new(),
 			scope_depth: 0,
@@ -804,9 +809,12 @@ impl InstructionCompiler {
 			},
 			Expression::Call(c) => {
 				let arity = c.args.len();
-				for arg in &c.args {
+				let function = self.routines.get_function(c.func.0.text());
+				for (index, arg) in c.args.iter().enumerate() {
 					if let Expression::Column(col) = arg
-						&& let Ok(ty) = ValueType::from_str(col.0.name.text())
+						&& function.as_ref().is_some_and(|function| {
+							function.type_argument_positions().contains(&index)
+						}) && let Ok(ty) = ValueType::from_str(col.0.name.text())
 					{
 						self.emit(Instruction::PushConst(Value::Type(ty)));
 					} else {
@@ -1450,7 +1458,7 @@ impl InstructionCompiler {
 			}
 
 			PhysicalPlan::DefineFunction(node) => {
-				let mut body_compiler = InstructionCompiler::new();
+				let mut body_compiler = InstructionCompiler::new(self.routines.clone());
 				for plan in node.body {
 					body_compiler.compile_plan(plan)?;
 				}
@@ -1490,7 +1498,7 @@ impl InstructionCompiler {
 			},
 
 			PhysicalPlan::DefineClosure(node) => {
-				let mut body_compiler = InstructionCompiler::new();
+				let mut body_compiler = InstructionCompiler::new(self.routines.clone());
 				for plan in node.body {
 					body_compiler.compile_plan(plan)?;
 				}

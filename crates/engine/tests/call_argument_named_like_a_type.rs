@@ -52,3 +52,24 @@ fn a_type_argument_stays_a_type_next_to_a_column_of_the_same_name() {
 		"the second argument must stay the duration type even though a duration column exists"
 	);
 }
+
+#[test]
+fn a_script_call_reads_a_variable_named_like_a_type_at_a_value_position() {
+	// Scripts compile calls to VM instructions, so a name at a value position must load the variable, never the
+	// type.
+	let t = TestEngine::new();
+
+	let frames = t.query("let $duration = 'slow'; let $r = is::type(duration, utf8); map { r: $r }");
+
+	assert_eq!(column_text(&frames, "r"), vec!["true"]);
+}
+
+#[test]
+fn a_script_type_argument_stays_a_type_next_to_a_variable_of_the_same_name() {
+	// Only is::type position 1 reads a name as a type, even when a variable of that name exists.
+	let t = TestEngine::new();
+
+	let frames = t.query("let $duration = 'slow'; let $r = is::type(duration, duration); map { r: $r }");
+
+	assert_eq!(column_text(&frames, "r"), vec!["false"]);
+}
