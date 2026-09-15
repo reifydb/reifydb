@@ -16,6 +16,18 @@ pub fn get_line(source: &str, line: u32) -> &str {
 	source.lines().nth((line - 1) as usize).unwrap_or("")
 }
 
+fn fragment_start(line_content: &str, fragment: &str, column: u32) -> usize {
+	let column_start = (column as usize).saturating_sub(1);
+	let at_column = line_content.char_indices().nth(column_start).map(|(byte, _)| &line_content[byte..]);
+	if !fragment.is_empty() && at_column.is_some_and(|rest| rest.starts_with(fragment)) {
+		return column_start;
+	}
+	match line_content.find(fragment) {
+		Some(byte) => line_content[..byte].chars().count(),
+		None => column_start,
+	}
+}
+
 impl DiagnosticRenderer for DefaultRenderer {
 	fn render(&self, diagnostic: &Diagnostic) -> String {
 		let mut output = String::new();
@@ -67,7 +79,7 @@ impl DefaultRenderer {
 
 			let _ = writeln!(output, "RQL");
 			let _ = writeln!(output, "  {} │ {}", line, line_content);
-			let fragment_start = line_content.find(fragment.as_ref()).unwrap_or(col as usize);
+			let fragment_start = fragment_start(line_content, fragment, col);
 			let _ = writeln!(output, "    │ {}{}", " ".repeat(fragment_start), "~".repeat(fragment.len()));
 			let _ = writeln!(output, "    │");
 
@@ -184,7 +196,7 @@ impl DefaultRenderer {
 			let line_content = get_line(rql, line);
 
 			let _ = writeln!(output, "{}  {} │ {}", indent, line, line_content);
-			let fragment_start = line_content.find(fragment.as_ref()).unwrap_or(col as usize);
+			let fragment_start = fragment_start(line_content, fragment, col);
 			let _ = writeln!(
 				output,
 				"{}    │ {}{}",
