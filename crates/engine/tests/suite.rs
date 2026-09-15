@@ -40,6 +40,8 @@ mod inline_data_value_types;
 mod interceptor;
 #[path = "join_digest_key.rs"]
 mod join_digest_key;
+#[path = "join_natural.rs"]
+mod join_natural;
 #[path = "join_retention_ddl.rs"]
 mod join_retention_ddl;
 #[path = "memory_limit.rs"]

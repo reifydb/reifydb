@@ -53,7 +53,7 @@ impl NaturalJoinNode {
 
 		for (left_idx, left_col) in left_columns.iter().enumerate() {
 			for (right_idx, right_col) in right_columns.iter().enumerate() {
-				if left_col.name() == right_col.name() {
+				if left_col.name().text() == right_col.name().text() {
 					common_columns.push((left_col.name().text().to_string(), left_idx, right_idx));
 				}
 			}

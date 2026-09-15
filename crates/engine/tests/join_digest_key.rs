@@ -97,6 +97,17 @@ fn a_digest_key_only_on_the_left_side_reports_join_001() {
 }
 
 #[test]
+fn natural_join_sharing_a_digest_column_reports_join_001() {
+	// A natural join keys on every shared name, so a shared digest column becomes a key without being named.
+	let t = engine();
+
+	let err = query(&t, "FROM test::t | extend { d: $d } NATURAL JOIN { FROM test::t | extend { d: $d } } AS s")
+		.unwrap_err();
+
+	assert_eq!(err.code, "JOIN_001", "got: {err:?}");
+}
+
+#[test]
 fn a_digest_equality_in_a_residual_join_condition_is_an_error_not_a_panic() {
 	// Column to column equality is not a hash key, so it runs as a residual whose evaluation error must propagate.
 	let t = engine();
