@@ -131,9 +131,15 @@ impl WireSink for NodeWireSink {
 		// common case reframes bytes it never decodes.
 		let rbcf = match payload {
 			RawChangePayload::Rbcf(bytes) => bytes,
-			other => match encode(&other.into_frames(), sub_id) {
-				Some(bytes) => bytes,
-				None => return DeliveryResult::Disconnected,
+			other => match other.into_frames() {
+				Ok(frames) => match encode(&frames, sub_id) {
+					Some(bytes) => bytes,
+					None => return DeliveryResult::Disconnected,
+				},
+				Err(e) => {
+					warn!("Failed to decode remote change for {}: {}", sub_id, e);
+					return DeliveryResult::Disconnected;
+				}
 			},
 		};
 		self.push(NodePush::Change {

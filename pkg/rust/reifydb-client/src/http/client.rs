@@ -12,7 +12,7 @@ use reifydb_value::{
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame, temporal::parse::duration::parse_duration},
 };
-use reqwest::{Client as ReqwestClient, header::HeaderMap};
+use reqwest::{Client as ReqwestClient, Error as ReqwestError, header::HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, json};
 
@@ -142,10 +142,11 @@ impl HttpClient {
 		});
 
 		let url = format!("{}/v1/authenticate", self.base_url);
-		let response = self.inner.post(&url).json(&body).send().await.unwrap(); // FIXME better error handling
-		let response_body = response.text().await.unwrap(); // FIXME better error handling
+		let response = self.inner.post(&url).json(&body).send().await.map_err(transport)?;
+		let response_body = response.text().await.map_err(transport)?;
 
-		let auth: HttpAuthenticateResponse = from_str(&response_body).unwrap(); // FIXME better error handling
+		let auth: HttpAuthenticateResponse =
+			from_str(&response_body).map_err(|_| self.parse_error_response(&response_body))?;
 
 		if auth.status == "authenticated" {
 			let token = auth.token.unwrap_or_default();
@@ -168,14 +169,14 @@ impl HttpClient {
 		};
 
 		let url = format!("{}/v1/logout", self.base_url);
-		let response = self.inner.post(&url).bearer_auth(&token).send().await.unwrap(); // FIXME better error handling
+		let response = self.inner.post(&url).bearer_auth(&token).send().await.map_err(transport)?;
 
 		let status = response.status();
 		if status.is_success() {
 			self.token = None;
 			Ok(())
 		} else {
-			let body = response.text().await.unwrap(); // FIXME better error handling
+			let body = response.text().await.map_err(transport)?;
 			Err(self.parse_error_response(&body))
 		}
 	}
@@ -313,15 +314,15 @@ impl HttpClient {
 			request = request.bearer_auth(token);
 		}
 
-		let response = request.send().await.unwrap(); // FIXME better error handling
+		let response = request.send().await.map_err(transport)?;
 
 		if !response.status().is_success() {
-			let body = response.text().await.unwrap();
+			let body = response.text().await.map_err(transport)?;
 			return Err(self.parse_error_response(&body));
 		}
 
 		let meta = extract_meta(response.headers());
-		Ok((response.bytes().await.unwrap().to_vec(), meta)) // FIXME better error handling
+		Ok((response.bytes().await.map_err(transport)?.to_vec(), meta))
 	}
 
 	async fn send_rbcf<T: Serialize>(
@@ -347,9 +348,9 @@ impl HttpClient {
 			request = request.bearer_auth(token);
 		}
 
-		let response = request.send().await.unwrap(); // FIXME better error handling
+		let response = request.send().await.map_err(transport)?;
 		let meta = extract_meta(response.headers());
-		Ok((response.text().await.unwrap(), meta)) // FIXME better error handling
+		Ok((response.text().await.map_err(transport)?, meta))
 	}
 
 	async fn send_request_bytes<T: Serialize>(
@@ -363,15 +364,15 @@ impl HttpClient {
 			request = request.bearer_auth(token);
 		}
 
-		let response = request.send().await.unwrap(); // FIXME better error handling
+		let response = request.send().await.map_err(transport)?;
 
 		if !response.status().is_success() {
-			let body = response.text().await.unwrap();
+			let body = response.text().await.map_err(transport)?;
 			return Err(self.parse_error_response(&body));
 		}
 
 		let meta = extract_meta(response.headers());
-		Ok((response.bytes().await.unwrap().to_vec(), meta)) // FIXME better error handling
+		Ok((response.bytes().await.map_err(transport)?.to_vec(), meta))
 	}
 
 	fn parse_error_response(&self, body: &str) -> Error {
@@ -390,6 +391,10 @@ impl HttpClient {
 
 		ClientError::Decode(format!("failed to parse response: {}", excerpt(body))).into()
 	}
+}
+
+fn transport(error: ReqwestError) -> Error {
+	ClientError::Transport(error.to_string()).into()
 }
 
 #[cfg(test)]

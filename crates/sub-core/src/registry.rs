@@ -11,6 +11,7 @@ use std::{
 };
 
 use dashmap::DashMap;
+use reifydb_codec::wire::RawChangePayload;
 use reifydb_core::{
 	interface::{catalog::id::SubscriptionId, change::StagedBatch},
 	value::column::columns::Columns,
@@ -28,7 +29,7 @@ use reifydb_value::{
 	value::{diff_type::DiffType, duration::Duration, frame::frame::Frame, uuid::Uuid7},
 };
 use tokio::sync::Notify;
-use tracing::{debug, instrument};
+use tracing::{debug, instrument, warn};
 
 use crate::wire_sink::WireSink;
 
@@ -475,6 +476,24 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 			waker.notify_one();
 		}
 		true
+	}
+
+	pub fn push_batch_payload(
+		&self,
+		batch_id: BatchId,
+		subscription_id: SubscriptionId,
+		payload: RawChangePayload,
+	) -> bool {
+		match payload.into_frames() {
+			Ok(frames) => self.push_batch_frames(batch_id, subscription_id, frames),
+			Err(e) => {
+				warn!(
+					"Failed to decode remote change for {} in batch {}, closing it: {}",
+					subscription_id, batch_id, e
+				);
+				false
+			}
+		}
 	}
 
 	pub fn emit_batch_subscription_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> bool {

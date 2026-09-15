@@ -66,6 +66,8 @@ mod join_using_unknown_key_column;
 mod memory_limit;
 #[path = "missing_column_lookup.rs"]
 mod missing_column_lookup;
+#[path = "nested_option_types.rs"]
+mod nested_option_types;
 #[path = "nested_read_policy_bypass.rs"]
 mod nested_read_policy_bypass;
 #[path = "none_operand_expression_types.rs"]

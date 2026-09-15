@@ -99,8 +99,10 @@ fn expand_sumtype_columns(
 
 				for variant in &def.variants {
 					for field in &variant.fields {
-						let field_type =
-							ValueType::Option(Box::new(field.field_type.get_type()));
+						let field_type = match field.field_type.get_type() {
+							optional @ ValueType::Option(_) => optional,
+							other => ValueType::Option(Box::new(other)),
+						};
 						expanded.push(TableColumnToCreate {
 							name: Fragment::internal(format!(
 								"{col_name}_{}_{}",

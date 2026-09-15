@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	frame::{encode::encode_frames, options::EncodeOptions},
+	frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions},
 	json::to::convert_frames,
 	wire::{RawChangePayload, WireFormat as ClientWireFormat},
 };
@@ -110,7 +110,12 @@ impl WireSink for WsWireSink {
 	) -> DeliveryResult {
 		let msg = match encode_change(sub_id, op, columns, format) {
 			Some(m) => m,
-			None => return DeliveryResult::Disconnected,
+			None => {
+				let _ = self.push_tx.send(PushMessage::Closed {
+					subscription_id: sub_id,
+				});
+				return DeliveryResult::Disconnected;
+			}
 		};
 		if self.push_tx.send(msg).is_ok() {
 			DeliveryResult::Delivered
@@ -125,54 +130,11 @@ impl WireSink for WsWireSink {
 		payload: RawChangePayload,
 		format: Self::Format,
 	) -> DeliveryResult {
-		let msg = match (format, payload) {
-			(WireFormat::Rbcf, RawChangePayload::Rbcf(bytes)) => {
-				let envelope =
-					encode_rbcf_envelope(BinaryKind::Change, &sub_id.to_string(), &bytes, None);
-				PushMessage::ChangeRbcf {
-					subscription_id: sub_id,
-					envelope,
-				}
-			}
-			(WireFormat::Rbcf, other) => {
-				let frames = other.into_frames();
-				let rbcf_bytes = match encode_frames(&frames, &EncodeOptions::fast()) {
-					Ok(b) => b,
-					Err(e) => {
-						warn!("Failed to RBCF-encode remote change for {}: {}", sub_id, e);
-						return DeliveryResult::Disconnected;
-					}
-				};
-				let envelope = encode_rbcf_envelope(
-					BinaryKind::Change,
-					&sub_id.to_string(),
-					&rbcf_bytes,
-					None,
-				);
-				PushMessage::ChangeRbcf {
-					subscription_id: sub_id,
-					envelope,
-				}
-			}
-			(WireFormat::Frames, payload) => {
-				let frames = payload.into_frames();
-				PushMessage::ChangeJson {
-					subscription_id: sub_id,
-					content_type: CONTENT_TYPE_FRAMES.to_string(),
-					body: json!({ "frames": convert_frames(&frames) }),
-				}
-			}
-			(WireFormat::Json, payload) => {
-				let frames = payload.into_frames();
-				let body = match resolve_change_json(frames) {
-					Ok(r) => from_str::<JsonValue>(&r.body).unwrap_or(JsonValue::String(r.body)),
-					Err(_) => JsonValue::Array(vec![]),
-				};
-				PushMessage::ChangeJson {
-					subscription_id: sub_id,
-					content_type: CONTENT_TYPE_JSON.to_string(),
-					body,
-				}
+		let msg = match encode_remote_change(sub_id, payload, format) {
+			Ok(m) => m,
+			Err(e) => {
+				warn!("Failed to encode remote change for {}: {}", sub_id, e);
+				return DeliveryResult::Disconnected;
 			}
 		};
 		if self.push_tx.send(msg).is_ok() {
@@ -188,78 +150,14 @@ impl WireSink for WsWireSink {
 		format: Self::Format,
 		entries: Vec<(SubscriptionId, Vec<Frame>)>,
 	) -> DeliveryResult {
-		let msg = match format {
-			WireFormat::Rbcf => {
-				let mut rbcf_entries: Vec<(String, Vec<u8>)> = Vec::with_capacity(entries.len());
-				for (sub_id, frames) in entries {
-					let rbcf_bytes = match encode_frames(&frames, &EncodeOptions::fast()) {
-						Ok(b) => b,
-						Err(e) => {
-							warn!(
-								"Failed to RBCF-encode batch entry for {}/{}: {}",
-								batch_id, sub_id, e
-							);
-							continue;
-						}
-					};
-					rbcf_entries.push((sub_id.to_string(), rbcf_bytes));
-				}
-				if rbcf_entries.is_empty() {
-					return DeliveryResult::Delivered;
-				}
-				let envelope = encode_rbcf_batch_envelope(&batch_id.to_string(), &rbcf_entries);
-				PushMessage::BatchChangeRbcf {
+		let msg = match encode_batch(batch_id, format, entries) {
+			Ok(m) => m,
+			Err(e) => {
+				warn!("Failed to encode batch {}, closing it: {}", batch_id, e);
+				let _ = self.push_tx.send(PushMessage::BatchClosed {
 					batch_id,
-					envelope,
-				}
-			}
-			WireFormat::Frames => {
-				let json_entries = entries
-					.into_iter()
-					.map(|(sub_id, frames)| {
-						let body = json!({ "frames": convert_frames(&frames) });
-						BatchChangeEntryPush {
-							subscription_id: sub_id,
-							content_type: CONTENT_TYPE_FRAMES.to_string(),
-							body,
-						}
-					})
-					.collect();
-				PushMessage::BatchChangeJson {
-					batch_id,
-					entries: json_entries,
-				}
-			}
-			WireFormat::Json => {
-				let json_entries: Vec<BatchChangeEntryPush> = entries
-					.into_iter()
-					.filter_map(|(sub_id, frames)| {
-						let resolved = match resolve_change_json(frames) {
-							Ok(r) => r,
-							Err(e) => {
-								warn!(
-									"Failed to JSON-encode batch entry for {}/{}: {}",
-									batch_id, sub_id, e
-								);
-								return None;
-							}
-						};
-						let body = from_str(&resolved.body)
-							.unwrap_or(JsonValue::String(resolved.body));
-						Some(BatchChangeEntryPush {
-							subscription_id: sub_id,
-							content_type: CONTENT_TYPE_JSON.to_string(),
-							body,
-						})
-					})
-					.collect();
-				if json_entries.is_empty() {
-					return DeliveryResult::Delivered;
-				}
-				PushMessage::BatchChangeJson {
-					batch_id,
-					entries: json_entries,
-				}
+				});
+				return DeliveryResult::Disconnected;
 			}
 		};
 
@@ -296,6 +194,102 @@ impl WireSink for WsWireSink {
 			DeliveryResult::Disconnected
 		}
 	}
+}
+
+fn encode_remote_change(
+	sub_id: SubscriptionId,
+	payload: RawChangePayload,
+	format: WireFormat,
+) -> Result<PushMessage, String> {
+	let frames = match (format, payload) {
+		(WireFormat::Rbcf, RawChangePayload::Rbcf(bytes)) => {
+			return Ok(PushMessage::ChangeRbcf {
+				subscription_id: sub_id,
+				envelope: encode_rbcf_envelope(BinaryKind::Change, &sub_id.to_string(), &bytes, None),
+			});
+		}
+		(_, RawChangePayload::Rbcf(bytes)) => decode_frames(&bytes).map_err(|e| e.to_string())?,
+		(_, RawChangePayload::Empty) => Vec::new(),
+	};
+	Ok(match format {
+		WireFormat::Rbcf => {
+			let rbcf_bytes = encode_frames(&frames, &EncodeOptions::fast()).map_err(|e| e.to_string())?;
+			PushMessage::ChangeRbcf {
+				subscription_id: sub_id,
+				envelope: encode_rbcf_envelope(
+					BinaryKind::Change,
+					&sub_id.to_string(),
+					&rbcf_bytes,
+					None,
+				),
+			}
+		}
+		WireFormat::Frames => PushMessage::ChangeJson {
+			subscription_id: sub_id,
+			content_type: CONTENT_TYPE_FRAMES.to_string(),
+			body: json!({ "frames": convert_frames(&frames) }),
+		},
+		WireFormat::Json => {
+			let resolved = resolve_change_json(frames)?;
+			PushMessage::ChangeJson {
+				subscription_id: sub_id,
+				content_type: CONTENT_TYPE_JSON.to_string(),
+				body: from_str::<JsonValue>(&resolved.body).unwrap_or(JsonValue::String(resolved.body)),
+			}
+		}
+	})
+}
+
+fn encode_batch(
+	batch_id: BatchId,
+	format: WireFormat,
+	entries: Vec<(SubscriptionId, Vec<Frame>)>,
+) -> Result<PushMessage, String> {
+	Ok(match format {
+		WireFormat::Rbcf => {
+			let rbcf_entries = entries
+				.into_iter()
+				.map(|(sub_id, frames)| {
+					encode_frames(&frames, &EncodeOptions::fast())
+						.map(|rbcf_bytes| (sub_id.to_string(), rbcf_bytes))
+						.map_err(|e| format!("subscription {}: {}", sub_id, e))
+				})
+				.collect::<Result<Vec<_>, _>>()?;
+			PushMessage::BatchChangeRbcf {
+				batch_id,
+				envelope: encode_rbcf_batch_envelope(&batch_id.to_string(), &rbcf_entries),
+			}
+		}
+		WireFormat::Frames => PushMessage::BatchChangeJson {
+			batch_id,
+			entries: entries
+				.into_iter()
+				.map(|(sub_id, frames)| BatchChangeEntryPush {
+					subscription_id: sub_id,
+					content_type: CONTENT_TYPE_FRAMES.to_string(),
+					body: json!({ "frames": convert_frames(&frames) }),
+				})
+				.collect(),
+		},
+		WireFormat::Json => {
+			let json_entries = entries
+				.into_iter()
+				.map(|(sub_id, frames)| {
+					let resolved = resolve_change_json(frames)?;
+					Ok(BatchChangeEntryPush {
+						subscription_id: sub_id,
+						content_type: CONTENT_TYPE_JSON.to_string(),
+						body: from_str(&resolved.body)
+							.unwrap_or(JsonValue::String(resolved.body)),
+					})
+				})
+				.collect::<Result<Vec<_>, String>>()?;
+			PushMessage::BatchChangeJson {
+				batch_id,
+				entries: json_entries,
+			}
+		}
+	})
 }
 
 pub fn encode_change_for_handler(

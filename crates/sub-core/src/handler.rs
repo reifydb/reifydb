@@ -844,8 +844,7 @@ async fn run_batch_remote_proxy<S: WireSink>(
 ) {
 	let registry_push = Arc::clone(&registry);
 	let proxied = proxy_remote_to_sink(remote_sub, shutdown, move |payload| {
-		let frames = payload.into_frames();
-		registry_push.push_batch_frames(batch_id, subscription_id, frames)
+		registry_push.push_batch_payload(batch_id, subscription_id, payload)
 	})
 	.await;
 	end_remote_proxy(proxied);

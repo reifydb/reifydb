@@ -4,7 +4,7 @@
 use reifydb_value::value::frame::frame::Frame;
 use serde::{Deserialize, Serialize};
 
-use crate::frame::decode::decode_frames;
+use crate::{error::DecodeError, frame::decode::decode_frames};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -21,10 +21,10 @@ pub enum RawChangePayload {
 }
 
 impl RawChangePayload {
-	pub fn into_frames(self) -> Vec<Frame> {
+	pub fn into_frames(self) -> Result<Vec<Frame>, DecodeError> {
 		match self {
-			Self::Rbcf(bytes) => decode_frames(&bytes).unwrap_or_default(),
-			Self::Empty => Vec::new(),
+			Self::Rbcf(bytes) => decode_frames(&bytes),
+			Self::Empty => Ok(Vec::new()),
 		}
 	}
 }

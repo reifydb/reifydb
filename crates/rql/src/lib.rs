@@ -137,6 +137,12 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 			Ok(TypeConstraint::with_constraint(base_type, constraint))
 		}
 		AstType::Optional(inner) => {
+			if let AstType::Optional(nested) = inner.as_ref() {
+				return Err(AstError::NestedOption {
+					fragment: nested.name_fragment().to_owned(),
+				}
+				.into());
+			}
 			let inner_tc = convert_data_type_with_constraints(inner)?;
 			let base_type = ValueType::Option(Box::new(inner_tc.get_type()));
 			Ok(match inner_tc.constraint() {

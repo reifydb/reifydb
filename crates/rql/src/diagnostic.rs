@@ -95,6 +95,10 @@ pub enum AstError {
 		fragment: Fragment,
 	},
 
+	#[error("Option cannot wrap another Option")]
+	NestedOption {
+		fragment: Fragment,
+	},
 }
 
 impl IntoDiagnostic for AstError {
@@ -361,6 +365,20 @@ impl IntoDiagnostic for AstError {
 				fragment,
 				label: Some("not a type".to_string()),
 				help: Some("Write the input type first, e.g. digest(float8, 0.01)".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::NestedOption {
+				fragment,
+			} => Diagnostic {
+				code: "AST_020".to_string(),
+				rql: None,
+				message: "Option cannot wrap another Option".to_string(),
+				fragment,
+				label: Some("already optional".to_string()),
+				help: Some("Write a single Option, e.g. Option(int4); none is the only missing value".to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,
