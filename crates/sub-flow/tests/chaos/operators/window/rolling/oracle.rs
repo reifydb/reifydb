@@ -42,8 +42,7 @@ impl Oracle {
 	}
 
 	/// Sum stays the default so the pinned rolling corpora keep the oracle they were recorded against.
-	/// Min and max opt in, and they are the reason this exists: only a non-invertible fold reaches the
-	/// sealing accumulator, and only a rolling window ever populates its sealed half.
+	/// Min and max opt in, and seal only under immutable, never by lateness alone, otherwise they stay invertible.
 	pub fn with_fold(mut self, fold: Fold) -> Self {
 		self.fold = fold;
 		self
@@ -147,6 +146,7 @@ impl Model<WindowRow> for Oracle {
 pub struct CapacityOracle {
 	capacity: usize,
 	buffers: BTreeMap<i32, BTreeMap<u64, i64>>,
+	fold: Fold,
 }
 
 impl CapacityOracle {
@@ -154,7 +154,27 @@ impl CapacityOracle {
 		Self {
 			capacity: capacity as usize,
 			buffers: BTreeMap::new(),
+			fold: Fold::Sum,
 		}
+	}
+
+	pub fn with_fold(mut self, fold: Fold) -> Self {
+		self.fold = fold;
+		self
+	}
+
+	fn folded(&self) -> Vec<Vec<Value>> {
+		let mut out: Vec<Vec<Value>> = self
+			.buffers
+			.iter()
+			.filter(|(_, buffer)| !buffer.is_empty())
+			.map(|(group, buffer)| {
+				let values: Vec<i64> = buffer.values().copied().collect();
+				vec![Value::Int4(*group), self.fold.apply(&values)]
+			})
+			.collect();
+		out.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+		out
 	}
 }
 
@@ -195,11 +215,14 @@ impl Model<WindowRow> for CapacityOracle {
 	fn advance_ledger(&mut self, _at_ms: u64) {}
 
 	fn live(&self) -> Vec<Vec<Value>> {
-		render(self
-			.buffers
-			.iter()
-			.filter(|(_, buffer)| !buffer.is_empty())
-			.map(|(group, buffer)| ((*group, 0), buffer.values().sum())))
+		match self.fold {
+			Fold::Sum => render(self
+				.buffers
+				.iter()
+				.filter(|(_, buffer)| !buffer.is_empty())
+				.map(|(group, buffer)| ((*group, 0), buffer.values().sum()))),
+			_ => self.folded(),
+		}
 	}
 
 	fn all(&self) -> Vec<Vec<Value>> {

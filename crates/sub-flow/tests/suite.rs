@@ -31,6 +31,8 @@ mod frontier_shutdown;
 mod lifecycle_coverage;
 #[path = "partitioned_view.rs"]
 mod partitioned_view;
+#[path = "percentile_window_kinds.rs"]
+mod percentile_window_kinds;
 #[path = "regression.rs"]
 mod regression;
 #[path = "replay_determinism.rs"]

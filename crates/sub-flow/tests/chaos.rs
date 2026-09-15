@@ -12,7 +12,8 @@ use std::collections::BTreeSet;
 
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
-	interface::change::Diff,
+	interface::change::{Change, Diff},
+	row::Row,
 	value::column::columns::Columns,
 };
 use reifydb_flow::operator::HostOperator;
@@ -32,7 +33,7 @@ use crate::{
 	framework::{generator, harness::Harness},
 	operators::{
 		aggregate::{
-			Agg,
+			self, Agg,
 			workload::{AggregateRow, AggregateWorkload},
 		},
 		append::workload::{AppendRow, AppendWorkload},
@@ -42,6 +43,7 @@ use crate::{
 			Variant,
 			workload::{JoinRow, JoinWorkload, Side},
 		},
+		percentile,
 		pipeline::Chain,
 		rowwise::{
 			Shape,
@@ -49,7 +51,7 @@ use crate::{
 		},
 		sink::Layout,
 		take::workload::{TakeRow, TakeWorkload},
-		window::{WindowSpec, build, grid::Fold},
+		window::{WindowSpec, build, build_immutable, grid::Fold, rolling, session, sliding, tumbling},
 	},
 };
 
@@ -225,8 +227,7 @@ fn window_fold_params(lateness_secs: u64) -> operators::window::tumbling::Params
 }
 
 chaos_test!(window_tumbling_min_zero_lateness_chaos, |seed| {
-	// Zero lateness keeps min invertible, so it runs on the multiset and a retraction of the current
-	// minimum is what forces the full recompute.
+	// Min seals only under immutable, never by lateness, so retracting the current minimum must still apply.
 	operators::window::tumbling::drive_folded(seed, window_fold_params(0), Fold::Min);
 });
 
@@ -234,13 +235,12 @@ chaos_test!(window_tumbling_max_zero_lateness_chaos, |seed| {
 	operators::window::tumbling::drive_folded(seed, window_fold_params(0), Fold::Max);
 });
 
-chaos_test!(window_tumbling_min_sealed_chaos, |seed| {
-	// Seal makes min non-invertible, so the operator switches to the sealing accumulator. No sweep
-	// reached that path while sum was the only fold: sum is invertible at every lateness setting.
+chaos_test!(window_tumbling_min_lateness_chaos, |seed| {
+	// Lateness seals the window but never the min, only immutable does, so an admitted late retraction must apply.
 	operators::window::tumbling::drive_folded(seed, window_fold_params(45), Fold::Min);
 });
 
-chaos_test!(window_tumbling_max_sealed_chaos, |seed| {
+chaos_test!(window_tumbling_max_lateness_chaos, |seed| {
 	operators::window::tumbling::drive_folded(seed, window_fold_params(45), Fold::Max);
 });
 
@@ -268,20 +268,17 @@ fn rolling_fold_params(lateness_secs: u64) -> operators::window::rolling::Params
 	}
 }
 
-chaos_test!(window_rolling_min_sealed_chaos, |seed| {
-	// The only path that reaches the sealing accumulator's SEALED half. Min is non-invertible under
-	// lateness, so the slot is a SealingMin; rolling is the kind whose seal driver ages entries out of
-	// the seal tail, which is what fills `sealed`. Tumbling reaches the container and its tail only.
+chaos_test!(window_rolling_min_lateness_chaos, |seed| {
+	// Lateness never makes min a sealing min, only immutable does, so a late retraction in the frame must apply.
 	operators::window::rolling::drive_folded(seed, rolling_fold_params(45), Fold::Min);
 });
 
-chaos_test!(window_rolling_max_sealed_chaos, |seed| {
+chaos_test!(window_rolling_max_lateness_chaos, |seed| {
 	operators::window::rolling::drive_folded(seed, rolling_fold_params(45), Fold::Max);
 });
 
 chaos_test!(window_rolling_min_zero_lateness_chaos, |seed| {
-	// Zero lateness keeps min invertible, so this drives the multiset instead and is the control that
-	// says the sealed sweeps above are testing something different.
+	// Without immutable min stays invertible, so zero lateness must change only which late rows are refused.
 	operators::window::rolling::drive_folded(seed, rolling_fold_params(0), Fold::Min);
 });
 
@@ -1960,8 +1957,7 @@ chaos_test!(window_session_zero_gap_chaos, |seed| {
 });
 
 chaos_test!(window_session_min_chaos, |seed| {
-	// Min is not merely different arithmetic: it is non-invertible once the lateness is non-zero and takes
-	// the full-recompute path, so a retraction inside a session is recomputed rather than subtracted.
+	// Without immutable min stays invertible under lateness, so a retraction inside a session must still apply.
 	operators::window::session::drive(seed, operators::window::session::params(2_000, 6_000, Fold::Min));
 });
 
@@ -1971,4 +1967,387 @@ chaos_test!(window_session_max_chaos, |seed| {
 
 chaos_test!(window_session_random_chaos, |seed| {
 	operators::window::session::drive_random(seed);
+});
+
+chaos_test!(aggregate_percentile_chaos, |seed| {
+	aggregate::drive(seed, aggregate_params(Agg::Percentile, AGGREGATE_SPREAD));
+});
+
+chaos_test!(aggregate_percentile_two_values_chaos, |seed| {
+	// Two values per group, so the median flips on how many of each are live and a lost remove reads the wrong one.
+	aggregate::drive(seed, aggregate_params(Agg::Percentile, 2));
+});
+
+chaos_test!(aggregate_percentile_single_group_chaos, |seed| {
+	aggregate::drive(
+		seed,
+		aggregate::Params {
+			groups: 1,
+			..aggregate_params(Agg::Percentile, AGGREGATE_SPREAD)
+		},
+	);
+});
+
+#[test]
+fn the_percentile_oracle_reads_the_bucket_of_the_value_at_the_nearest_rank() {
+	// A rank off by one, or a representative that is not the bucket's, reads a neighbouring value.
+	assert_eq!(percentile::median(&[4, 1, 3, 2]), percentile::bucketed(2));
+	assert_eq!(percentile::median(&[9, 1, 5]), percentile::bucketed(5));
+	assert_eq!(percentile::median(&[7]), percentile::bucketed(7));
+	for value in 1..100i64 {
+		let Value::Float8(read) = percentile::bucketed(value) else {
+			panic!("a percentile of an int8 input must read back as a float8");
+		};
+		assert!(
+			(read.value() - value as f64).abs() <= value as f64 * 0.001 + 1e-12,
+			"{value} must read back within the 0.001 accuracy, got {}",
+			read.value()
+		);
+		assert_ne!(
+			percentile::bucketed(value),
+			percentile::bucketed(value + 1),
+			"{value} and {} must land in different buckets or a wrong rank goes unseen",
+			value + 1
+		);
+	}
+	assert_eq!(Agg::Percentile.fold(&[3, 1, 2]), percentile::bucketed(2));
+	assert_eq!(Fold::Percentile.apply(&[3, 1, 2]), percentile::bucketed(2));
+	assert_eq!(Fold::PercentileNextToMin.apply(&[3, 1, 2]), percentile::bucketed(2));
+}
+
+#[test]
+fn the_percentile_arm_asks_the_operator_for_the_median_at_the_oracle_accuracy() {
+	// A p or an accuracy that differs from the oracle's makes every percentile sweep compare two different
+	// questions.
+	let mut harness = Harness::new(|runtime| aggregate::build(Agg::Percentile, runtime));
+	let workload = AggregateWorkload {
+		groups: 1,
+		value_ceiling: 100,
+	};
+	let values: Vec<i64> = (1..=100).collect();
+	let rows: Vec<AggregateRow> = values
+		.iter()
+		.map(|value| AggregateRow {
+			number: RowNumber(*value as u64),
+			group: 1,
+			value: *value,
+		})
+		.collect();
+
+	let out = harness.apply(workload.insert(&rows)).expect("apply must succeed");
+
+	let post = out.diffs.iter().next_back().and_then(|diff| diff.post()).expect("one group is one aggregate row");
+	let total = post.column("total").expect("the percentile arm publishes total").data().get_value(0);
+	assert_eq!(total, Agg::Percentile.fold(&values), "the operator must answer the arm's own p and accuracy");
+	assert_eq!(total, percentile::bucketed(50), "p 0.5 over 1 to 100 is rank 50; p 0.49 or 0.51 reads 49 or 51");
+}
+
+#[test]
+fn a_percentile_window_publishes_its_total_where_the_projection_reads_it() {
+	// The window sweeps project column 1, so a percentile published after the min would be compared against the
+	// min.
+	for fold in [Fold::Percentile, Fold::PercentileNextToMin] {
+		let spec = WindowSpec {
+			kind: WindowKind::Tumbling {
+				size: WindowSize::Duration(Duration::from_seconds(WINDOW_SECS).unwrap()),
+			},
+			group_by: "g",
+			aggregations: fold.rql(),
+			lateness: Some(Duration::default()),
+		};
+		let mut harness = Harness::new(|runtime| build(&spec, runtime));
+		let at = DateTime::from_epoch_millis(60_000).unwrap();
+		let values = [9, 1, 5];
+		let change = generator::insert(
+			values.iter()
+				.enumerate()
+				.map(|(i, value)| generator::row(RowNumber(i as u64 + 1), 1, *value, at))
+				.collect(),
+		);
+
+		let out = harness.apply(change).expect("apply must succeed");
+
+		let post = out.diffs.iter().next_back().and_then(|diff| diff.post()).expect("one window is one row");
+		let names: Vec<String> = post.names.iter().map(|name| name.text().to_string()).collect();
+		assert_eq!(names[..2], ["g", "total"], "{fold:?} must publish g then total, got {names:?}");
+		assert_eq!(post.columns[1].get_value(0), fold.apply(&values), "{fold:?} total");
+	}
+}
+
+fn totals_and_mins(change: &Change) -> Vec<(Value, Value)> {
+	let rows: Vec<(Value, Value)> = change
+		.diffs
+		.iter()
+		.filter_map(|diff| diff.post())
+		.map(|post| {
+			let cell = |name: &str| {
+				post.column(name)
+					.unwrap_or_else(|| panic!("the window row has no column {name}"))
+					.data()
+					.get_value(0)
+			};
+			(cell("total"), cell("lo"))
+		})
+		.collect();
+	assert!(!rows.is_empty(), "the window must republish the row a retraction touched");
+	rows
+}
+
+fn window_row(number: u64, value: i64, at_ms: u64) -> Row {
+	generator::row(RowNumber(number), 1, value, DateTime::from_epoch_millis(at_ms).unwrap())
+}
+
+#[test]
+fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_sealed_min_beside_it() {
+	// D34: the digest applies every retraction, while a min sealed past immutable drops it and keeps the row alive.
+	let specs = [
+		(
+			"tumbling",
+			WindowKind::Tumbling {
+				size: WindowSize::Duration(Duration::from_seconds(60).unwrap()),
+			},
+		),
+		(
+			"sliding",
+			WindowKind::Sliding {
+				size: WindowSize::Duration(Duration::from_seconds(60).unwrap()),
+				slide: WindowSize::Duration(Duration::from_seconds(20).unwrap()),
+			},
+		),
+		(
+			"session",
+			WindowKind::Session {
+				gap: Duration::from_seconds(60).unwrap(),
+			},
+		),
+	];
+	for (kind, window) in specs {
+		let spec = WindowSpec {
+			kind: window,
+			group_by: "g",
+			aggregations: percentile::MEDIAN_NEXT_TO_MIN,
+			lateness: Some(Duration::default()),
+		};
+		let immutable = Some(Duration::from_seconds(5).unwrap());
+		let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
+		harness.apply(generator::insert(vec![window_row(1, 10, 1_000), window_row(2, 20, 2_000)]))
+			.expect("apply must succeed");
+		harness.apply(generator::insert(vec![window_row(3, 30, 10_000)])).expect("apply must succeed");
+
+		let out = harness.apply(generator::remove(vec![window_row(1, 10, 1_000)])).expect("apply must succeed");
+		for (total, lo) in totals_and_mins(&out) {
+			assert_eq!(
+				total,
+				percentile::median(&[20, 30]),
+				"{kind}: the percentile must drop the retracted row"
+			);
+			assert_eq!(
+				lo,
+				Value::Int8(10),
+				"{kind}: the sealed min must keep the row retracted past immutable"
+			);
+		}
+
+		let out = harness
+			.apply(generator::remove(vec![window_row(2, 20, 2_000), window_row(3, 30, 10_000)]))
+			.expect("apply must succeed");
+		for (total, lo) in totals_and_mins(&out) {
+			assert_eq!(
+				total,
+				percentile::no_rows(),
+				"{kind}: a window with no live rows has no percentile"
+			);
+			assert_eq!(lo, Value::Int8(10), "{kind}: the sealed min keeps the window row alive");
+		}
+	}
+}
+
+#[test]
+fn a_rolling_retraction_older_than_immutable_rebuilds_the_percentile_and_the_min_from_the_rows_left() {
+	// V31: rows in one rolling slot share a timestamp, so nothing seals and the frame is rebuilt from the rows
+	// left.
+	let spec = WindowSpec {
+		kind: WindowKind::Rolling {
+			size: WindowSize::Duration(Duration::from_seconds(30).unwrap()),
+			lag: None,
+		},
+		group_by: "g",
+		aggregations: percentile::MEDIAN_NEXT_TO_MIN,
+		lateness: Some(Duration::default()),
+	};
+	let immutable = Some(Duration::from_seconds(5).unwrap());
+	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
+	harness.apply(generator::insert(vec![
+		window_row(1, 10, 1_000),
+		window_row(2, 20, 20_000),
+		window_row(3, 15, 20_000),
+	]))
+	.expect("apply must succeed");
+
+	let out = harness.apply(generator::remove(vec![window_row(1, 10, 1_000)])).expect("apply must succeed");
+	assert_eq!(totals_and_mins(&out), vec![(percentile::median(&[20, 15]), Value::Int8(15))]);
+
+	let out = harness.apply(generator::remove(vec![window_row(3, 15, 20_000)])).expect("apply must succeed");
+	assert_eq!(totals_and_mins(&out), vec![(percentile::median(&[20]), Value::Int8(20))]);
+}
+
+chaos_test!(window_tumbling_percentile_zero_lateness_chaos, |seed| {
+	tumbling::drive_folded(seed, window_fold_params(0), Fold::Percentile);
+});
+
+chaos_test!(window_tumbling_percentile_lateness_chaos, |seed| {
+	tumbling::drive_folded(seed, window_fold_params(45), Fold::Percentile);
+});
+
+chaos_test!(window_tumbling_percentile_immutable_chaos, |seed| {
+	// D34: a retraction older than immutable leaves the digest, while the sealed min beside it keeps the row alive.
+	tumbling::drive_immutable(
+		seed,
+		tumbling::Params {
+			coord_span_ms: 120_000,
+			..window_fold_params(45)
+		},
+		5_000,
+	);
+});
+
+fn sliding_fold_params(lateness_secs: u64) -> sliding::Params {
+	sliding::Params {
+		size_secs: 30,
+		slide_secs: 10,
+		lateness_secs,
+		groups: 3,
+		steps: 60,
+		max_batch: 4,
+		coord_span_ms: 400_000,
+		remove_pct: 30,
+		update_pct: 25,
+		seal_pct: 20,
+	}
+}
+
+chaos_test!(window_sliding_percentile_zero_lateness_chaos, |seed| {
+	sliding::drive_folded(seed, sliding_fold_params(0), Fold::Percentile);
+});
+
+chaos_test!(window_sliding_percentile_lateness_chaos, |seed| {
+	sliding::drive_folded(seed, sliding_fold_params(45), Fold::Percentile);
+});
+
+chaos_test!(window_sliding_percentile_immutable_chaos, |seed| {
+	// One row in several windows must leave every digest it entered, whichever of them sealed its min.
+	sliding::drive_immutable(
+		seed,
+		sliding::Params {
+			coord_span_ms: 120_000,
+			..sliding_fold_params(45)
+		},
+		5_000,
+	);
+});
+
+const ROLLING_SLOT_GRAIN_MS: u64 = 10_000;
+
+fn rolling_slotted_params(lateness_secs: u64) -> rolling::Params {
+	rolling::Params {
+		size_secs: 30,
+		lateness_secs,
+		groups: 2,
+		steps: 80,
+		max_batch: 4,
+		coord_span_ms: 200_000,
+		remove_pct: 30,
+		update_pct: 25,
+		seal_pct: 30,
+	}
+}
+
+chaos_test!(window_rolling_percentile_zero_lateness_chaos, |seed| {
+	// Rows share slot timestamps, so a percentile folded per slot rather than over the frame reads the wrong rank.
+	rolling::drive_slotted(seed, rolling_slotted_params(0), Fold::Percentile, ROLLING_SLOT_GRAIN_MS, None);
+});
+
+chaos_test!(window_rolling_percentile_seal_chaos, |seed| {
+	rolling::drive_slotted(seed, rolling_slotted_params(45), Fold::Percentile, ROLLING_SLOT_GRAIN_MS, None);
+});
+
+chaos_test!(window_rolling_percentile_next_to_min_chaos, |seed| {
+	// Without immutable the min is invertible, so the digest runs on the running path next to it.
+	rolling::drive_slotted(
+		seed,
+		rolling_slotted_params(45),
+		Fold::PercentileNextToMin,
+		ROLLING_SLOT_GRAIN_MS,
+		None,
+	);
+});
+
+chaos_test!(window_rolling_percentile_immutable_chaos, |seed| {
+	// V31: immutable forces the recombine path, and the frame must equal the rows still in it exactly.
+	rolling::drive_slotted(
+		seed,
+		rolling_slotted_params(45),
+		Fold::PercentileNextToMin,
+		ROLLING_SLOT_GRAIN_MS,
+		Some(5_000),
+	);
+});
+
+chaos_test!(window_session_percentile_chaos, |seed| {
+	session::drive(seed, session::params(2_000, 6_000, Fold::Percentile));
+});
+
+chaos_test!(window_session_percentile_immutable_chaos, |seed| {
+	// Sessions far longer than immutable seal their min, and a retraction behind it must still leave the digest.
+	session::drive_immutable(seed, session::params(3_000, 20_000, Fold::PercentileNextToMin), 2_000);
+});
+
+chaos_test!(window_tumbling_count_percentile_chaos, |seed| {
+	tumbling::drive_count_folded(
+		seed,
+		tumbling::CountParams {
+			size_count: 4,
+			groups: 3,
+			steps: 60,
+			max_batch: 4,
+			coord_span_ms: 400_000,
+			remove_pct: 30,
+			update_pct: 25,
+		},
+		Fold::Percentile,
+	);
+});
+
+chaos_test!(window_sliding_count_percentile_chaos, |seed| {
+	sliding::drive_count_folded(
+		seed,
+		sliding::CountParams {
+			size_count: 8,
+			slide_count: 3,
+			groups: 3,
+			steps: 60,
+			max_batch: 4,
+			coord_span_ms: 400_000,
+			remove_pct: 30,
+			update_pct: 25,
+		},
+		Fold::Percentile,
+	);
+});
+
+chaos_test!(window_rolling_count_percentile_chaos, |seed| {
+	// V32: capacity eviction is destructive, so a retraction must not pull an evicted row back into the digest.
+	rolling::drive_count_folded(
+		seed,
+		rolling::CountParams {
+			size_count: 4,
+			groups: 3,
+			steps: 60,
+			max_batch: 4,
+			coord_span_ms: 400_000,
+			remove_pct: 30,
+			update_pct: 25,
+		},
+		Fold::Percentile,
+	);
 });

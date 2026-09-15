@@ -4,6 +4,7 @@
 pub mod count;
 pub mod grid;
 pub mod rolling;
+pub mod seal;
 pub mod session;
 pub mod sliding;
 pub mod tumbling;
@@ -29,6 +30,10 @@ pub struct WindowSpec {
 use crate::operators::routines;
 
 pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator {
+	build_immutable(spec, None, runtime)
+}
+
+pub fn build_immutable(spec: &WindowSpec, immutable: Option<Duration>, runtime: RuntimeContext) -> WindowOperator {
 	let operator = OperatorId(1);
 
 	WindowOperator::new(WindowConfig {
@@ -40,7 +45,7 @@ pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator {
 		runtime_context: runtime,
 		routines: routines(),
 		lateness: spec.lateness,
-		immutable: None,
+		immutable,
 		ctx: Arc::new(FlowContext::default()),
 	})
 }

@@ -6,20 +6,26 @@ use std::collections::BTreeMap;
 use reifydb_testing_chaos::operator::{expectation::KeyedMultiset, model::Model, view::RowKey};
 use reifydb_value::value::{Value, row_number::RowNumber};
 
-use crate::framework::workload::WindowRow;
+use crate::{
+	framework::workload::WindowRow,
+	operators::{
+		percentile::{MEDIAN, MEDIAN_NEXT_TO_MIN, median, no_rows},
+		window::seal::Seal,
+	},
+};
 
 /// How a window's contributions collapse into the value it publishes.
 ///
 /// Sum is the fold every pinned window corpus was recorded against and stays the default, so adding
-/// this enum does not re-point them. Min and max are here because they are not merely a different
-/// arithmetic: `AggregateSlot::invertible` reports them invertible only when the lateness is zero, so a
-/// window declaring a lateness runs them through the sealing accumulator instead of the multiset - a
-/// different code path that no sweep reached while sum was the only fold.
+/// this enum does not re-point them.
+/// Min and max seal only under immutable, never by lateness alone, otherwise they stay invertible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fold {
 	Sum,
 	Min,
 	Max,
+	Percentile,
+	PercentileNextToMin,
 }
 
 impl Fold {
@@ -28,6 +34,8 @@ impl Fold {
 			Fold::Sum => "total: math::sum(v)",
 			Fold::Min => "total: math::min(v)",
 			Fold::Max => "total: math::max(v)",
+			Fold::Percentile => MEDIAN,
+			Fold::PercentileNextToMin => MEDIAN_NEXT_TO_MIN,
 		}
 	}
 
@@ -40,6 +48,7 @@ impl Fold {
 			Fold::Sum => Value::Int16(values.iter().map(|v| *v as i128).sum()),
 			Fold::Min => Value::Int8(*values.iter().min().expect("non-empty")),
 			Fold::Max => Value::Int8(*values.iter().max().expect("non-empty")),
+			Fold::Percentile | Fold::PercentileNextToMin => median(values),
 		}
 	}
 }
@@ -57,6 +66,8 @@ pub struct GridOracle<G: Grid> {
 	ledger: u64,
 	contributions: Vec<Contribution>,
 	fold: Fold,
+	immutable_ms: Option<u64>,
+	seals: BTreeMap<(i32, u64), Seal>,
 }
 
 struct Contribution {
@@ -75,6 +86,8 @@ impl<G: Grid> GridOracle<G> {
 			ledger: 0,
 			contributions: Vec::new(),
 			fold: Fold::Sum,
+			immutable_ms: None,
+			seals: BTreeMap::new(),
 		}
 	}
 
@@ -82,6 +95,16 @@ impl<G: Grid> GridOracle<G> {
 	/// non-sum sweep opts in here.
 	pub fn with_fold(mut self, fold: Fold) -> Self {
 		self.fold = fold;
+		self
+	}
+
+	pub fn with_immutable(mut self, immutable_ms: u64) -> Self {
+		assert_eq!(
+			self.fold,
+			Fold::PercentileNextToMin,
+			"only a percentile next to a min is modelled under immutable"
+		);
+		self.immutable_ms = Some(immutable_ms);
 		self
 	}
 
@@ -98,10 +121,16 @@ impl<G: Grid> GridOracle<G> {
 	}
 
 	fn folded(&self) -> Vec<Vec<Value>> {
-		let mut out: Vec<Vec<Value>> = self
-			.grouped()
-			.into_iter()
-			.map(|((group, _), values)| vec![Value::Int4(group), self.fold.apply(&values)])
+		let grouped = self.grouped();
+		let frozen = self
+			.seals
+			.iter()
+			.filter(|(key, seal)| seal.holds_a_frozen_row() && !grouped.contains_key(*key))
+			.map(|((group, _), _)| vec![Value::Int4(*group), no_rows()]);
+		let mut out: Vec<Vec<Value>> = grouped
+			.iter()
+			.map(|((group, _), values)| vec![Value::Int4(*group), self.fold.apply(values)])
+			.chain(frozen)
 			.collect();
 		out.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
 		out
@@ -137,6 +166,9 @@ impl<G: Grid> Model<WindowRow> for GridOracle<G> {
 				value,
 				live: true,
 			});
+			if let Some(immutable_ms) = self.immutable_ms {
+				self.seals.entry((group, window)).or_default().push(coord_ms, row, immutable_ms);
+			}
 			admitted = true;
 		}
 		admitted
@@ -165,6 +197,9 @@ impl<G: Grid> Model<WindowRow> for GridOracle<G> {
 					 is meaningless"
 				);
 				c.live = false;
+				if let Some(seal) = self.seals.get_mut(&(group, window)) {
+					seal.remove(coord_ms, row);
+				}
 			}
 		}
 	}

@@ -19,7 +19,13 @@ use std::collections::BTreeMap;
 use reifydb_testing_chaos::operator::{expectation::KeyedMultiset, model::Model, view::RowKey};
 use reifydb_value::value::{Value, row_number::RowNumber};
 
-use crate::{framework::workload::WindowRow, operators::window::grid::Fold};
+use crate::{
+	framework::workload::WindowRow,
+	operators::{
+		percentile::no_rows,
+		window::{grid::Fold, seal::Seal},
+	},
+};
 
 /// Mirrors `SessionTracker`: `opened` is carried rather than inferred from `last == 0`, because the
 /// epoch is a real coordinate a corpus does draw.
@@ -35,6 +41,7 @@ struct Contribution {
 	row: RowNumber,
 	group: i32,
 	session: u64,
+	coord: u64,
 	value: i64,
 	live: bool,
 }
@@ -44,6 +51,8 @@ pub struct SessionOracle {
 	fold: Fold,
 	trackers: BTreeMap<i32, Tracker>,
 	contributions: Vec<Contribution>,
+	immutable_ms: Option<u64>,
+	seals: BTreeMap<(i32, u64), Seal>,
 }
 
 impl SessionOracle {
@@ -53,6 +62,32 @@ impl SessionOracle {
 			fold,
 			trackers: BTreeMap::new(),
 			contributions: Vec::new(),
+			immutable_ms: None,
+			seals: BTreeMap::new(),
+		}
+	}
+
+	pub fn with_immutable(mut self, immutable_ms: u64) -> Self {
+		assert_eq!(
+			self.fold,
+			Fold::PercentileNextToMin,
+			"only a percentile next to a min is modelled under immutable"
+		);
+		self.immutable_ms = Some(immutable_ms);
+		self
+	}
+
+	fn file(&mut self, row: RowNumber, group: i32, session: u64, coord: u64, value: i64) {
+		self.contributions.push(Contribution {
+			row,
+			group,
+			session,
+			coord,
+			value,
+			live: true,
+		});
+		if let Some(immutable_ms) = self.immutable_ms {
+			self.seals.entry((group, session)).or_default().push(coord, row, immutable_ms);
 		}
 	}
 
@@ -87,9 +122,15 @@ impl SessionOracle {
 		for c in self.contributions.iter().filter(|c| c.live) {
 			grouped.entry((c.group, c.session)).or_default().push(c.value);
 		}
+		let frozen = self
+			.seals
+			.iter()
+			.filter(|(key, seal)| seal.holds_a_frozen_row() && !grouped.contains_key(*key))
+			.map(|((group, _), _)| vec![Value::Int4(*group), no_rows()]);
 		let mut out: Vec<Vec<Value>> = grouped
-			.into_iter()
-			.map(|((group, _), values)| vec![Value::Int4(group), self.fold.apply(&values)])
+			.iter()
+			.map(|((group, _), values)| vec![Value::Int4(*group), self.fold.apply(values)])
+			.chain(frozen)
 			.collect();
 		out.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
 		out
@@ -114,13 +155,7 @@ impl Model<WindowRow> for SessionOracle {
 		} = *event;
 		match self.assign(group, coord_ms) {
 			Some(session) => {
-				self.contributions.push(Contribution {
-					row,
-					group,
-					session,
-					value,
-					live: true,
-				});
+				self.file(row, group, session, coord_ms, value);
 				true
 			}
 			None => false,
@@ -147,6 +182,9 @@ impl Model<WindowRow> for SessionOracle {
 				 the oracle and the corpus have diverged"
 			);
 			c.live = false;
+			if let Some(seal) = self.seals.get_mut(&(c.group, c.session)) {
+				seal.remove(c.coord, c.row);
+			}
 		}
 	}
 
@@ -166,6 +204,12 @@ impl Model<WindowRow> for SessionOracle {
 		if let Some(c) = self.contributions.iter_mut().find(|c| c.live && c.row == pre.number) {
 			assert_eq!(c.value, pre.value, "the driver updates from the value it last admitted");
 			c.value = post.value;
+			if let (Some(immutable_ms), Some(seal)) =
+				(self.immutable_ms, self.seals.get_mut(&(c.group, c.session)))
+			{
+				seal.remove(c.coord, c.row);
+				seal.push(c.coord, c.row, immutable_ms);
+			}
 			return;
 		}
 
@@ -173,13 +217,7 @@ impl Model<WindowRow> for SessionOracle {
 		// deciding, and finding nothing sends it back through the assignment - so an update is a
 		// second chance at a session, and the tracker may well have moved on enough to grant one.
 		if let Some(session) = self.assign(post.group, post.coord_ms) {
-			self.contributions.push(Contribution {
-				row: post.number,
-				group: post.group,
-				session,
-				value: post.value,
-				live: true,
-			});
+			self.file(post.number, post.group, session, post.coord_ms, post.value);
 		}
 	}
 

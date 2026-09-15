@@ -6,6 +6,7 @@ pub mod append;
 pub mod distinct;
 pub mod gate;
 pub mod join;
+pub mod percentile;
 pub mod pipeline;
 pub mod rowwise;
 pub mod sink;

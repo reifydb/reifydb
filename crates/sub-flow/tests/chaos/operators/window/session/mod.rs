@@ -28,7 +28,7 @@ use reifydb_value::value::duration::Duration;
 
 use crate::{
 	framework::{harness::Harness, workload::WindowWorkload},
-	operators::window::{WindowSpec, build, grid::Fold, session::oracle::SessionOracle},
+	operators::window::{WindowSpec, build_immutable, grid::Fold, session::oracle::SessionOracle},
 };
 
 #[derive(Debug, Clone)]
@@ -48,6 +48,14 @@ pub struct Params {
 }
 
 pub fn drive(seed: u64, params: Params) -> Corpus {
+	drive_with(seed, params, None)
+}
+
+pub fn drive_immutable(seed: u64, params: Params, immutable_ms: u64) -> Corpus {
+	drive_with(seed, params, Some(immutable_ms))
+}
+
+fn drive_with(seed: u64, params: Params, immutable_ms: Option<u64>) -> Corpus {
 	let spec = WindowSpec {
 		kind: WindowKind::Session {
 			gap: Duration::from_milliseconds(params.gap_ms as i64).expect("a drawn gap is representable"),
@@ -57,12 +65,16 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 		lateness: None,
 	};
 
-	let mut harness = Harness::new(|runtime| build(&spec, runtime));
+	let immutable = immutable_ms.map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
+	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
 	let workload = WindowWorkload {
 		groups: params.groups,
 		coord_span_ms: params.coord_span_ms,
 	};
 	let mut model = SessionOracle::new(params.gap_ms, params.fold);
+	if let Some(immutable_ms) = immutable_ms {
+		model = model.with_immutable(immutable_ms);
+	}
 
 	driver::drive(
 		seed,

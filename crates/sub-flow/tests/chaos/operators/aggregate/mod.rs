@@ -26,6 +26,7 @@ use crate::{
 			oracle::AggregateOracle,
 			workload::{AGGREGATE_OPERATOR, AggregateWorkload},
 		},
+		percentile::{MEDIAN, median},
 		routines,
 	},
 };
@@ -45,10 +46,11 @@ pub enum Agg {
 	Count,
 	Min,
 	Max,
+	Percentile,
 }
 
 /// Every shape, so a new monoid cannot be added without a sweep noticing it has no cell.
-pub const MATRIX: [Agg; 4] = [Agg::Sum, Agg::Count, Agg::Min, Agg::Max];
+pub const MATRIX: [Agg; 5] = [Agg::Sum, Agg::Count, Agg::Min, Agg::Max, Agg::Percentile];
 
 impl Agg {
 	pub fn label(self) -> &'static str {
@@ -57,6 +59,7 @@ impl Agg {
 			Agg::Count => "count",
 			Agg::Min => "min",
 			Agg::Max => "max",
+			Agg::Percentile => "percentile",
 		}
 	}
 
@@ -70,6 +73,7 @@ impl Agg {
 			Agg::Count => "total: math::count(v)",
 			Agg::Min => "total: math::min(v)",
 			Agg::Max => "total: math::max(v)",
+			Agg::Percentile => MEDIAN,
 		}
 	}
 
@@ -87,6 +91,7 @@ impl Agg {
 			Agg::Count => Value::Int8(values.len() as i64),
 			Agg::Min => Value::Int8(*values.iter().min().expect("non-empty")),
 			Agg::Max => Value::Int8(*values.iter().max().expect("non-empty")),
+			Agg::Percentile => median(values),
 		}
 	}
 }

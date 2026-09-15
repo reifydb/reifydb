@@ -78,3 +78,45 @@ impl Workload for WindowWorkload {
 		&[0, 1]
 	}
 }
+
+pub struct SlottedWindowWorkload {
+	pub inner: WindowWorkload,
+	pub grain_ms: u64,
+}
+
+impl Workload for SlottedWindowWorkload {
+	type Row = WindowRow;
+
+	fn sample(&self, rng: &mut StdRng, number: RowNumber) -> WindowRow {
+		// Rows sharing one timestamp land in one rolling slot, which a fold of per-slot percentiles gets wrong.
+		let row = self.inner.sample(rng, number);
+		WindowRow {
+			coord_ms: row.coord_ms - row.coord_ms % self.grain_ms,
+			..row
+		}
+	}
+
+	fn revalue(&self, rng: &mut StdRng, row: &WindowRow) -> WindowRow {
+		self.inner.revalue(rng, row)
+	}
+
+	fn lanes(&self, row: &WindowRow) -> Lanes {
+		self.inner.lanes(row)
+	}
+
+	fn insert(&self, rows: &[WindowRow]) -> Change {
+		self.inner.insert(rows)
+	}
+
+	fn remove(&self, row: &WindowRow) -> Change {
+		self.inner.remove(row)
+	}
+
+	fn update(&self, pre: &WindowRow, post: &WindowRow) -> Change {
+		self.inner.update(pre, post)
+	}
+
+	fn projection(&self) -> &[usize] {
+		self.inner.projection()
+	}
+}

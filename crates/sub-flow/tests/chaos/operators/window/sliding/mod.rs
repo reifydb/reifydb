@@ -13,9 +13,9 @@ use reifydb_value::value::duration::Duration;
 use crate::{
 	framework::{fuzz, harness::Harness, workload::WindowWorkload},
 	operators::window::{
-		WindowSpec, build,
+		WindowSpec, build, build_immutable,
 		count::{CountOracle, Ordinals},
-		grid::{Grid, GridOracle},
+		grid::{Fold, Grid, GridOracle},
 	},
 };
 
@@ -52,6 +52,18 @@ impl Grid for SlidingGrid {
 }
 
 pub fn drive(seed: u64, params: Params) -> Corpus {
+	drive_folded(seed, params, Fold::Sum)
+}
+
+pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
+	drive_with(seed, params, fold, None)
+}
+
+pub fn drive_immutable(seed: u64, params: Params, immutable_ms: u64) -> Corpus {
+	drive_with(seed, params, Fold::PercentileNextToMin, Some(immutable_ms))
+}
+
+fn drive_with(seed: u64, params: Params, fold: Fold, immutable_ms: Option<u64>) -> Corpus {
 	let size_ms = params.size_secs * 1_000;
 	let slide_ms = params.slide_secs * 1_000;
 	let lateness_ms = params.lateness_secs * 1_000;
@@ -63,11 +75,12 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 			slide: WindowSize::Duration(Duration::from_seconds(params.slide_secs as i64).unwrap()),
 		},
 		group_by: "g",
-		aggregations: "total: math::sum(v)",
+		aggregations: fold.rql(),
 		lateness: Some(Duration::from_seconds(params.lateness_secs as i64).unwrap()),
 	};
 
-	let mut harness = Harness::new(|runtime| build(&spec, runtime));
+	let immutable = immutable_ms.map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
+	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
 	let workload = WindowWorkload {
 		groups: params.groups,
 		coord_span_ms: params.coord_span_ms,
@@ -79,7 +92,11 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 		},
 		size_ms,
 		lateness_ms,
-	);
+	)
+	.with_fold(fold);
+	if let Some(immutable_ms) = immutable_ms {
+		model = model.with_immutable(immutable_ms);
+	}
 
 	driver::drive(
 		seed,
@@ -168,6 +185,10 @@ impl Ordinals for SlidingOrdinals {
 }
 
 pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
+	drive_count_folded(seed, params, Fold::Sum)
+}
+
+pub fn drive_count_folded(seed: u64, params: CountParams, fold: Fold) -> Corpus {
 	assert!(
 		params.slide_count < params.size_count,
 		"the sweep only covers overlapping sliding windows; the planner rejects slide >= size"
@@ -179,7 +200,7 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 			slide: WindowSize::Count(params.slide_count),
 		},
 		group_by: "g",
-		aggregations: "total: math::sum(v)",
+		aggregations: fold.rql(),
 		lateness: None,
 	};
 
@@ -191,7 +212,8 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 	let mut model = CountOracle::new(SlidingOrdinals {
 		size_count: params.size_count,
 		slide_count: params.slide_count,
-	});
+	})
+	.with_fold(fold);
 
 	driver::drive(
 		seed,
