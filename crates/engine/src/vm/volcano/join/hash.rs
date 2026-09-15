@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use reifydb_core::{
+	error::diagnostic::query::column_not_found,
+	interface::identifier::ColumnObject,
+	value::column::{columns::Columns, headers::ColumnHeaders},
+};
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::CompileContext,
 };
-use reifydb_rql::expression::Expression;
+use reifydb_rql::expression::{AccessObjectExpression, Expression};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error,
 	fragment::Fragment,
 	reifydb_assertions,
 	util::hash::Hash128,
@@ -30,6 +35,8 @@ use crate::{
 pub(crate) struct EquiKeyPair {
 	pub left_col_name: String,
 	pub right_col_name: String,
+	pub left_fragment: Fragment,
+	pub right_fragment: Fragment,
 }
 
 pub(crate) struct EquiJoinAnalysis {
@@ -90,6 +97,8 @@ fn try_extract_equi_pair(expr: &Expression) -> Option<EquiKeyPair> {
 			return Some(EquiKeyPair {
 				left_col_name: col.0.name.text().to_string(),
 				right_col_name: acc.column.name.text().to_string(),
+				left_fragment: col.0.name.clone(),
+				right_fragment: access_fragment(acc),
 			});
 		}
 
@@ -98,10 +107,31 @@ fn try_extract_equi_pair(expr: &Expression) -> Option<EquiKeyPair> {
 			return Some(EquiKeyPair {
 				left_col_name: col.0.name.text().to_string(),
 				right_col_name: acc.column.name.text().to_string(),
+				left_fragment: col.0.name.clone(),
+				right_fragment: access_fragment(acc),
 			});
 		}
 	}
 	None
+}
+
+fn access_fragment(acc: &AccessObjectExpression) -> Fragment {
+	let source = match &acc.column.object {
+		ColumnObject::Qualified {
+			name,
+			..
+		} => name,
+		ColumnObject::Alias(alias) => alias,
+	};
+	Fragment::Statement {
+		column: acc.column.name.column(),
+		line: acc.column.name.line(),
+		text: Arc::from(format!("{}.{}", source.text(), acc.column.name.text())),
+	}
+}
+
+fn key_index(columns: &Columns, (name, fragment): &(String, Fragment)) -> Result<usize> {
+	columns.iter().position(|c| c.name().text() == name).ok_or_else(|| error!(column_not_found(fragment.clone())))
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -134,8 +164,8 @@ pub(crate) struct HashJoinNode {
 	left: Box<dyn QueryNode>,
 	right: Box<dyn QueryNode>,
 
-	left_key_names: Vec<String>,
-	right_key_names: Vec<String>,
+	left_keys: Vec<(String, Fragment)>,
+	right_keys: Vec<(String, Fragment)>,
 	residual: Vec<Expression>,
 	alias: Option<Fragment>,
 	mode: HashJoinMode,
@@ -157,8 +187,8 @@ impl HashJoinNode {
 		Self {
 			left,
 			right,
-			left_key_names: left_keys,
-			right_key_names: right_keys,
+			left_keys,
+			right_keys,
 			residual: analysis.residual,
 			alias,
 			mode: HashJoinMode::Inner,
@@ -178,8 +208,8 @@ impl HashJoinNode {
 		Self {
 			left,
 			right,
-			left_key_names: left_keys,
-			right_key_names: right_keys,
+			left_keys,
+			right_keys,
 			residual: analysis.residual,
 			alias,
 			mode: HashJoinMode::Left,
@@ -211,15 +241,7 @@ impl HashJoinNode {
 		let right_key_indices: Vec<usize> = if build_columns.is_empty() {
 			Vec::new()
 		} else {
-			self.right_key_names
-				.iter()
-				.map(|name| {
-					build_columns
-						.iter()
-						.position(|c| c.name().text() == name)
-						.unwrap_or_else(|| panic!("right key column '{}' not found", name))
-				})
-				.collect()
+			self.right_keys.iter().map(|key| key_index(&build_columns, key)).collect::<Result<_>>()?
 		};
 		ensure_join_keyable(&build_columns, &right_key_indices)?;
 
@@ -227,7 +249,7 @@ impl HashJoinNode {
 		let mut hash_buf = Vec::with_capacity(256);
 		let row_count = build_columns.row_count();
 		for j in 0..row_count {
-			if let Some(h) = compute_join_hash(&build_columns, &right_key_indices, j, &mut hash_buf) {
+			if let Some(h) = compute_join_hash(&build_columns, &right_key_indices, j, &mut hash_buf)? {
 				hash_table.entry(h).or_default().push(j);
 			}
 		}
@@ -262,9 +284,9 @@ impl HashJoinNode {
 	}
 }
 
-fn split_key_names(pairs: &[EquiKeyPair]) -> (Vec<String>, Vec<String>) {
-	let left: Vec<String> = pairs.iter().map(|p| p.left_col_name.clone()).collect();
-	let right: Vec<String> = pairs.iter().map(|p| p.right_col_name.clone()).collect();
+fn split_key_names(pairs: &[EquiKeyPair]) -> (Vec<(String, Fragment)>, Vec<(String, Fragment)>) {
+	let left = pairs.iter().map(|p| (p.left_col_name.clone(), p.left_fragment.clone())).collect();
+	let right = pairs.iter().map(|p| (p.right_col_name.clone(), p.right_fragment.clone())).collect();
 	(left, right)
 }
 
@@ -276,8 +298,8 @@ fn compute_matches_for_probe_row(
 	left_key_indices: &[usize],
 	right_key_indices: &[usize],
 	buf: &mut Vec<u8>,
-) -> Vec<usize> {
-	match compute_join_hash(probe, left_key_indices, probe_row_idx, buf) {
+) -> Result<Vec<usize>> {
+	Ok(match compute_join_hash(probe, left_key_indices, probe_row_idx, buf)? {
 		Some(h) => hash_table
 			.get(&h)
 			.map(|indices| {
@@ -297,7 +319,7 @@ fn compute_matches_for_probe_row(
 			})
 			.unwrap_or_default(),
 		None => Vec::new(),
-	}
+	})
 }
 
 impl QueryNode for HashJoinNode {
@@ -348,21 +370,17 @@ impl QueryNode for HashJoinNode {
 
 		let resolve_names_and_indices = |state: &mut HashJoinState,
 		                                 probe: &Columns,
-		                                 left_key_names: &[String]| {
+		                                 left_keys: &[(String, Fragment)]|
+		 -> Result<()> {
 			if state.resolved_names.is_empty() {
 				let resolved = resolve_column_names(probe, &state.build_columns, &self.alias, None);
 				state.resolved_names = resolved.qualified_names;
 			}
 			if state.left_key_indices.is_empty() {
-				state.left_key_indices = left_key_names
-					.iter()
-					.map(|name| {
-						probe.iter().position(|c| c.name().text() == name).unwrap_or_else(
-							|| panic!("left key column '{}' not found", name),
-						)
-					})
-					.collect();
+				state.left_key_indices =
+					left_keys.iter().map(|key| key_index(probe, key)).collect::<Result<_>>()?;
 			}
+			Ok(())
 		};
 
 		while result_rows.len() < batch_size {
@@ -372,7 +390,7 @@ impl QueryNode for HashJoinNode {
 				}
 				match self.left.next(rx, ctx)? {
 					Some(batch) => {
-						resolve_names_and_indices(&mut state, &batch, &self.left_key_names);
+						resolve_names_and_indices(&mut state, &batch, &self.left_keys)?;
 						ensure_join_keyable(&batch, &state.left_key_indices)?;
 						state.probe_batch = Some(batch);
 						state.probe_row_idx = 0;
@@ -390,7 +408,7 @@ impl QueryNode for HashJoinNode {
 							&state.left_key_indices,
 							&state.right_key_indices,
 							&mut state.hash_buf,
-						);
+						)?;
 						state.current_match_idx = 0;
 						state.current_row_matched = false;
 					}
@@ -429,7 +447,7 @@ impl QueryNode for HashJoinNode {
 					&state.left_key_indices,
 					&state.right_key_indices,
 					&mut state.hash_buf,
-				);
+				)?;
 				state.current_match_idx = 0;
 				state.current_row_matched = false;
 				continue;

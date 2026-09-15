@@ -60,6 +60,8 @@ mod join_digest_key;
 mod join_natural;
 #[path = "join_retention_ddl.rs"]
 mod join_retention_ddl;
+#[path = "join_using_unknown_key_column.rs"]
+mod join_using_unknown_key_column;
 #[path = "memory_limit.rs"]
 mod memory_limit;
 #[path = "missing_column_lookup.rs"]
@@ -90,6 +92,8 @@ mod returning;
 mod ringbuffer;
 #[path = "shutdown.rs"]
 mod shutdown;
+#[path = "series_tag_constructor_field.rs"]
+mod series_tag_constructor_field;
 #[path = "sort_unorderable.rs"]
 mod sort_unorderable;
 #[path = "system_reserved_ids.rs"]

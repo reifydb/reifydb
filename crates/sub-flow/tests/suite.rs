@@ -13,6 +13,8 @@ mod custom_operator_timer;
 mod digest_view_lifecycle;
 #[path = "digest_view_sink_write.rs"]
 mod digest_view_sink_write;
+#[path = "digest_view_sort_key.rs"]
+mod digest_view_sort_key;
 #[path = "flow_isolation.rs"]
 mod flow_isolation;
 #[path = "flow_materialization.rs"]

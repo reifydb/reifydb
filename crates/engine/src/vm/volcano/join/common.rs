@@ -6,6 +6,7 @@ use std::sync::Arc;
 use postcard::to_stdvec;
 use reifydb_core::{
 	error::diagnostic::operation,
+	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_evaluate::expression::compile::CompiledExpr;
@@ -181,17 +182,18 @@ pub(crate) fn compute_join_hash(
 	col_indices: &[usize],
 	row_idx: usize,
 	buf: &mut Vec<u8>,
-) -> Option<Hash128> {
+) -> Result<Option<Hash128>> {
 	buf.clear();
 	for &idx in col_indices {
 		let value = columns[idx].get_value(row_idx);
 		if matches!(value, Value::None { .. }) {
-			return None;
+			return Ok(None);
 		}
-		let bytes = to_stdvec(&value).ok()?;
+		let bytes =
+			to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize join key value: {}", e))?;
 		buf.extend_from_slice(&bytes);
 	}
-	Some(xxh3_128(buf))
+	Ok(Some(xxh3_128(buf)))
 }
 
 pub(crate) fn keys_equal_by_index(
