@@ -356,6 +356,19 @@ export class HttpClient {
                         payload: {diagnostic: errBody.diagnostic}
                     });
                 }
+                if (typeof errBody.code === 'string') {
+                    throw new ReifyError({
+                        id: '',
+                        type: 'Err',
+                        payload: {
+                            diagnostic: {
+                                code: errBody.code,
+                                message: errBody.error || `HTTP ${response.status}: ${responseBody}`,
+                                notes: []
+                            }
+                        }
+                    });
+                }
                 throw new Error(errBody.error || `HTTP ${response.status}: ${responseBody}`);
             }
 
