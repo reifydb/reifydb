@@ -491,6 +491,7 @@ fn materialize_query_plan_with(
 			aggregations: node.aggregations,
 			lateness: node.lateness,
 			immutable: node.immutable,
+			fragment: node.fragment,
 		}),
 		PhysicalPlan::Scalarize(node) => QueryPlan::Scalarize(nodes::ScalarizeNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),

@@ -737,6 +737,7 @@ pub struct WindowNode {
 	pub aggregations: Vec<Expression>,
 	pub lateness: Option<Duration>,
 	pub immutable: Option<Duration>,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug, Clone)]

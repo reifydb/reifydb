@@ -128,6 +128,22 @@ pub fn join_column_alias_error(fragment: Fragment, message: &str) -> Diagnostic 
 	}
 }
 
+pub fn unknown_apply_operator(fragment: Fragment) -> Diagnostic {
+	let name = fragment.text().to_string();
+	Diagnostic {
+		code: "QUERY_008".to_string(),
+		rql: None,
+		message: format!("unknown operator '{}'", name),
+		fragment,
+		label: Some("no operator with this name is registered".to_string()),
+		help: Some("check the operator name for typos, or register the operator before applying it".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

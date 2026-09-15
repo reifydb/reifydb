@@ -3,6 +3,8 @@
 
 #[path = "aggregate.rs"]
 mod aggregate;
+#[path = "apply_unknown_operator.rs"]
+mod apply_unknown_operator;
 #[path = "bulk_insert.rs"]
 mod bulk_insert;
 #[path = "call_argument_named_like_a_type.rs"]
@@ -112,5 +114,7 @@ mod transactional_view_unimplemented;
 mod udf;
 #[path = "virtual_table_diagnostics.rs"]
 mod virtual_table_diagnostics;
+#[path = "window_batch_query_fragment.rs"]
+mod window_batch_query_fragment;
 #[path = "write_policy_old_row.rs"]
 mod write_policy_old_row;

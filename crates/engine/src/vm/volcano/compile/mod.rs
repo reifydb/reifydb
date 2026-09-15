@@ -22,7 +22,10 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 use tracing::instrument;
 
-use super::{apply_transform::ApplyTransformNode, run_tests::RunTestsQueryNode};
+use super::{
+	apply_transform::{ApplyTransformNode, UnknownTransformNode},
+	run_tests::RunTestsQueryNode,
+};
 use crate::vm::volcano::{
 	aggregate::AggregateNode,
 	assert::{AssertNode, AssertWithoutInputNode},
@@ -225,12 +228,9 @@ pub(crate) fn compile<'a>(
 			Box::new(ScalarizeNode::new(input))
 		}
 		RqlQueryPlan::Apply(node) => {
-			let operator_name = node.operator.text().to_string();
-			let transform = context
-				.services
-				.transforms
-				.get_transform(&operator_name)
-				.unwrap_or_else(|| panic!("Unknown transform: {}", operator_name));
+			let Some(transform) = context.services.transforms.get_transform(node.operator.text()) else {
+				return Box::new(UnknownTransformNode::new(node.operator));
+			};
 			let input = node.input.expect("Apply requires input");
 			let input_node = compile(*input, rx, context);
 			Box::new(ApplyTransformNode::new(input_node, transform))

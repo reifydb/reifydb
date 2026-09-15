@@ -579,6 +579,7 @@ pub struct WindowNode<'bump> {
 	pub aggregations: Vec<Expression>,
 	pub lateness: Option<Duration>,
 	pub immutable: Option<Duration>,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug)]
@@ -2342,6 +2343,7 @@ impl<'bump> Compiler<'bump> {
 						aggregations: window.aggregations,
 						lateness: window.lateness,
 						immutable: window.immutable,
+						fragment: window.fragment,
 						input,
 					}));
 				}
