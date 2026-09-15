@@ -5,6 +5,7 @@ export {BooleanValue} from './boolean';
 export {DateValue} from './date';
 export {DateTimeValue} from './datetime';
 export {DecimalValue} from './decimal';
+export {DigestValue, digestType, digestTypeName} from './digest';
 export {Float4Value} from './float4';
 export {Float8Value} from './float8';
 export {Int1Value} from './int1';
@@ -41,13 +42,25 @@ export type BaseType =
     | "None";
 
 export interface OptionType { Option: Type }
-export type Type = BaseType | OptionType;
+export type DigestInnerType =
+    | "Float4" | "Float8"
+    | "Int1" | "Int2" | "Int4" | "Int8" | "Int16"
+    | "Uint1" | "Uint2" | "Uint4" | "Uint8" | "Uint16"
+    | "Duration"
+    | "Int" | "Uint";
+
+export interface DigestType { Digest: { inner: DigestInnerType; accuracy: number } }
+export type Type = BaseType | OptionType | DigestType;
 
 export function isOptionType(t: Type): t is OptionType {
     return typeof t === 'object' && t !== null && 'Option' in t;
 }
 
-export function unwrapOptionType(t: Type): BaseType {
+export function isDigestType(t: Type): t is DigestType {
+    return typeof t === 'object' && t !== null && 'Digest' in t;
+}
+
+export function unwrapOptionType(t: Type): BaseType | DigestType {
     if (isOptionType(t)) return unwrapOptionType(t.Option);
     return t;
 }

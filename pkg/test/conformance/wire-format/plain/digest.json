@@ -1,0 +1,247 @@
+[
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "0x0103904e01000101460103430122022301",
+              "0x0103904e0000000000",
+              "0x0103904e000100019a1001017e01"
+            ],
+            "type": {
+              "Digest": {
+                "accuracy": 10000,
+                "inner": "Float8"
+              }
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "0x0103e80700000000030001db0201cb0101",
+              "⟪none⟫",
+              "0x0103e80701010001b3050101f93501",
+              "⟪none⟫",
+              "0x0103e8070000000000"
+            ],
+            "type": {
+              "Option": {
+                "Digest": {
+                  "accuracy": 1000,
+                  "inner": "Float8"
+                }
+              }
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "0x0112a08d0600000000039a010104011001",
+              "0x0112a08d060000000002c202010301",
+              "0x0112a08d060100000000",
+              "0x0112a08d060000000000"
+            ],
+            "type": {
+              "Digest": {
+                "accuracy": 100000,
+                "inner": "Duration"
+              }
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "⟪none⟫",
+              "0x0112b96000000001fc0f0101a81401",
+              "⟪none⟫"
+            ],
+            "type": {
+              "Option": {
+                "Digest": {
+                  "accuracy": 12345,
+                  "inner": "Duration"
+                }
+              }
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "0x0103d086030200000000"
+            ],
+            "type": {
+              "Digest": {
+                "accuracy": 50000,
+                "inner": "Float8"
+              }
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [],
+            "type": {
+              "Digest": {
+                "accuracy": 10000,
+                "inner": "Float8"
+              }
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "⟪none⟫"
+            ],
+            "type": {
+              "Option": {
+                "Digest": {
+                  "accuracy": 10000,
+                  "inner": "Float8"
+                }
+              }
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "0x0103904e01000101460103430122022301",
+              "⟪none:1⟫",
+              "⟪none⟫",
+              "0x0103904e0000000000"
+            ],
+            "type": {
+              "Option": {
+                "Option": {
+                  "Digest": {
+                    "accuracy": 10000,
+                    "inner": "Float8"
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "latency",
+            "payload": [
+              "0x0112a08d060000000002c202010301",
+              "0x0112a08d0600000000039a010104011001"
+            ],
+            "type": {
+              "Digest": {
+                "accuracy": 100000,
+                "inner": "Duration"
+              }
+            }
+          },
+          {
+            "name": "score",
+            "payload": [
+              "⟪none⟫",
+              "0x0103e80701010001b3050101f93501"
+            ],
+            "type": {
+              "Option": {
+                "Digest": {
+                  "accuracy": 1000,
+                  "inner": "Float8"
+                }
+              }
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  }
+]

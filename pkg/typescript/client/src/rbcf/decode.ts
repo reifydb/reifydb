@@ -7,13 +7,13 @@ import { noneMarker } from "@reifydb/core";
 import {
     COL_FLAG_HAS_NONES, COLUMN_DESCRIPTOR_SIZE, ColumnEncoding, FRAME_HEADER_SIZE,
     META_HAS_CREATED_AT, META_HAS_ROW_NUMBERS, META_HAS_UPDATED_AT, MESSAGE_HEADER_SIZE,
-    RBCF_MAGIC, RBCF_VERSION, TAG_DEPTH_SHIFT, TAG_KIND_MASK, dictIndexWidthFromFlags, typeNameFromCode,
+    RBCF_MAGIC, RBCF_VERSION, TAG_DEPTH_SHIFT, TAG_KIND_MASK, TYPE_CODE, dictIndexWidthFromFlags, typeNameFromCode,
 } from "./format";
 import { BinaryReader } from "./reader";
 import { decodeBitvec } from "./nones";
 import { formatDateTime } from "./values";
 import type { WireColumn, WireFrame } from "./types";
-import { decodePlain } from "./encoding/plain";
+import { decodeDigestPlain, decodePlain } from "./encoding/plain";
 import { decodeDict } from "./encoding/dict";
 import { decodeRle } from "./encoding/rle";
 import { decodeDelta, decodeDeltaRle } from "./encoding/delta";
@@ -111,18 +111,28 @@ function decodeColumn(r: BinaryReader): WireColumn {
         throw new Error(`RBCF: column '${name}' has-nones flag disagrees with option depth ${depth}`);
     }
 
-    const baseName = typeNameFromCode(typeCode & TAG_KIND_MASK);
+    const kind = typeCode & TAG_KIND_MASK;
+    const baseName = typeNameFromCode(kind);
+    let type: Type = baseName as Type;
     let payload: string[];
 
     try {
-        payload = decodeByStrategy(baseName, encoding, flags, rowCount, dataBytes, offsetsBytes, extraBytes);
+        if (kind === TYPE_CODE.Digest) {
+            if (encoding !== ColumnEncoding.Plain) {
+                throw new Error(`digest column must use plain encoding, found ${ColumnEncoding[encoding] ?? encoding}`);
+            }
+            const digest = decodeDigestPlain(rowCount, dataBytes, offsetsBytes, extraBytes);
+            type = digest.type;
+            payload = digest.payload;
+        } else {
+            payload = decodeByStrategy(baseName, encoding, flags, rowCount, dataBytes, offsetsBytes, extraBytes);
+        }
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         throw new Error(`RBCF: column '${name}' decode failed: ${msg}`);
     }
 
     const defined = new Array<boolean>(rowCount).fill(true);
-    let type: Type = baseName as Type;
     for (let layer = 0; layer < depth; layer++) {
         const bits = decodeBitvec(nonesBytes.subarray(layer * bitmapLen, (layer + 1) * bitmapLen), rowCount);
         const marker = noneMarker(layer);

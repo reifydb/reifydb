@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {NONE_VALUE} from '../constant';
-import {BaseType, Type, isOptionType} from '.';
+import {BaseType, Type, isDigestType, isOptionType} from '.';
+import {digestType} from './digest';
 
 /**
  * The wire rendering of a type: an object whose `id` names it, with anything it wraps under `underlying`.
@@ -13,12 +14,17 @@ import {BaseType, Type, isOptionType} from '.';
 export interface WireType {
     id: string;
     underlying?: WireType;
+    accuracy?: number;
 }
 
 export function typeToWire(type: Type): WireType {
-    return isOptionType(type)
-        ? {id: 'Option', underlying: typeToWire(type.Option)}
-        : {id: type};
+    if (isOptionType(type)) {
+        return {id: 'Option', underlying: typeToWire(type.Option)};
+    }
+    if (isDigestType(type)) {
+        return {id: 'Digest', underlying: {id: type.Digest.inner}, accuracy: type.Digest.accuracy};
+    }
+    return {id: type};
 }
 
 export function typeFromWire(wire: WireType): Type {
@@ -30,6 +36,13 @@ export function typeFromWire(wire: WireType): Type {
             throw new Error('Option type descriptor is missing its underlying type');
         }
         return {Option: typeFromWire(wire.underlying)};
+    }
+    if (wire.id === 'Digest') {
+        const inner = wire.underlying?.id;
+        if (typeof inner !== 'string' || typeof wire.accuracy !== 'number') {
+            throw new Error(`Digest type descriptor needs an underlying type and a numeric accuracy, got ${JSON.stringify(wire)}`);
+        }
+        return digestType(inner, wire.accuracy);
     }
     return wire.id as BaseType;
 }

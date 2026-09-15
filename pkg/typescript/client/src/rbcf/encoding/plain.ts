@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { NONE_VALUE } from "@reifydb/core";
+import { DigestValue, NONE_VALUE, digestTypeName, type DigestType } from "@reifydb/core";
 
 import { TYPE_CODE, type TypeName } from "../format";
 import {
     readF32, readF64, readI8, readI16, readI32, readI64, readI128,
     readU16, readU32, readU64, readU128,
 } from "../reader";
-import { decodeTypeInfo } from "../typeinfo";
+import { DIGEST_PARAMS_SIZE, decodeDigestParams, decodeTypeInfo } from "../typeinfo";
 import {
     formatBlob, formatDate, formatDateTime, formatDuration, formatF32, formatF64,
     formatTime, formatUuid, signedBigIntFromLeBytes,
@@ -125,6 +125,52 @@ function decodeVarlenBlobs(data: Uint8Array, offsets: Uint8Array, rowCount: numb
     return out;
 }
 
+export function decodeDigestPlain(
+    rowCount: number,
+    data: Uint8Array,
+    offsets: Uint8Array,
+    extra: Uint8Array
+): { type: DigestType; payload: string[] } {
+    const type = decodeDigestParams(extra, 0);
+    if (extra.length !== DIGEST_PARAMS_SIZE) {
+        throw new Error(`digest column extra section has ${extra.length - DIGEST_PARAMS_SIZE} trailing bytes`);
+    }
+    if (offsets.length !== (rowCount + 1) * 4) {
+        throw new Error(`digest column offsets length ${offsets.length} does not match row count ${rowCount}`);
+    }
+    const offs = decodeU32Offsets(offsets, rowCount);
+    const payload = new Array<string>(rowCount);
+    for (let i = 0; i < rowCount; i++) {
+        const start = offs[i];
+        const end = offs[i + 1];
+        if (start > end || end > data.length) {
+            throw new Error(`digest row ${i} spans ${start}..${end} outside ${data.length} data bytes`);
+        }
+        const span = data.subarray(start, end);
+        if (span.length === 0) {
+            payload[i] = "";
+            continue;
+        }
+        const digest = decodeDigest(span, `row ${i}`);
+        if (digest.inner !== type.Digest.inner || digest.accuracy !== type.Digest.accuracy) {
+            throw new Error(
+                `digest in row ${i} is ${digestTypeName(digest.type)} but the column is ${digestTypeName(type)}`
+            );
+        }
+        payload[i] = formatBlob(span);
+    }
+    return { type, payload };
+}
+
+function decodeDigest(bytes: Uint8Array, where: string): DigestValue {
+    try {
+        return new DigestValue(bytes);
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new Error(`invalid digest in ${where}: ${msg}`);
+    }
+}
+
 function decodeVarlenBigNumbers(data: Uint8Array, offsets: Uint8Array, rowCount: number): string[] {
     const offs = decodeU32Offsets(offsets, rowCount);
     const out = new Array<string>(rowCount);
@@ -218,6 +264,12 @@ export function decodeAnyValue(data: Uint8Array, pos: number): { value: string; 
         }
         case TYPE_CODE.Any:
             return decodeAnyValue(data, pos);
+        case TYPE_CODE.Digest: {
+            const len = readU32(data, pos);
+            if (pos + 4 + len > data.length) throw new Error("RBCF: digest value truncated");
+            const digest = decodeDigest(data.subarray(pos + 4, pos + 4 + len), "Any value");
+            return { value: digest.toString(), nextPos: pos + 4 + len };
+        }
         case TYPE_CODE.DictionaryId: {
             const width = data[pos];
             pos += 1;

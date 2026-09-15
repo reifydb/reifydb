@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {
-    BlobValue, BooleanValue, DateValue, DateTimeValue, DecimalValue, Float4Value, Float8Value,
+    BlobValue, BooleanValue, DateValue, DateTimeValue, DecimalValue, DigestValue, Float4Value, Float8Value,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, DurationValue,
     TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Uint16Value, NoneValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue,
-    Value, TypeValuePair, Type, isOptionType, unwrapOptionType, optionDepth, innerOfOption
+    Value, TypeValuePair, Type, isDigestType, isOptionType, unwrapOptionType, optionDepth, innerOfOption
 } from './value';
 import {noneMarkerDepth} from './constant';
 import {Column} from './types';
@@ -26,6 +26,10 @@ export function decode(pair: TypeValuePair): Value {
             throw new Error(`none under ${noneAt} Some layers cannot fit an option of depth ${depth}`);
         }
         return new NoneValue(stripOptionLayers(pair.type, noneAt + 1));
+    }
+
+    if (isDigestType(pair.type)) {
+        return DigestValue.parse(pair.value, pair.type);
     }
 
     switch (pair.type) {

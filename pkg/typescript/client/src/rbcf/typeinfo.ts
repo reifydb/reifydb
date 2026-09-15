@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+import { digestType, digestTypeName, type DigestType } from "@reifydb/core";
+
 import {
     EXTENDED_TYPE_TAG, RESERVED_KIND, TAG_DEPTH_SHIFT, TAG_KIND_MASK,
     TYPE_CODE, typeNameFromCode,
 } from "./format";
-import { readU16 } from "./reader";
+import { readU16, readU32 } from "./reader";
+import { BinaryWriter } from "./writer";
+
+export const DIGEST_PARAMS_SIZE = 5;
 
 export interface DecodedTypeInfo {
     name: string;
@@ -67,10 +72,27 @@ export function decodeTypeInfo(data: Uint8Array, pos: number): DecodedTypeInfo {
             base = `Tuple(${elements.join(", ")})`;
             break;
         }
+        case TYPE_CODE.Digest: {
+            base = digestTypeName(decodeDigestParams(data, pos));
+            pos += DIGEST_PARAMS_SIZE;
+            break;
+        }
         default:
             base = kindName;
     }
     return { name: wrapOption(base, depth), nextPos: pos };
+}
+
+export function decodeDigestParams(data: Uint8Array, pos: number): DigestType {
+    if (pos + DIGEST_PARAMS_SIZE > data.length) throw new Error("RBCF: digest params truncated");
+    return digestType(typeNameFromCode(data[pos]), readU32(data, pos + 1));
+}
+
+export function encodeDigestParams(type: DigestType): Uint8Array {
+    const w = new BinaryWriter(DIGEST_PARAMS_SIZE);
+    w.u8(TYPE_CODE[type.Digest.inner]);
+    w.u32(type.Digest.accuracy);
+    return w.finish().slice();
 }
 
 function wrapOption(name: string, depth: number): string {
