@@ -126,6 +126,8 @@ mod read_only;
 mod returning;
 #[path = "ringbuffer.rs"]
 mod ringbuffer;
+#[path = "run_tests_error_quotes_body.rs"]
+mod run_tests_error_quotes_body;
 #[path = "shutdown.rs"]
 mod shutdown;
 #[path = "series_key_write.rs"]
@@ -144,6 +146,8 @@ mod sort_unorderable;
 mod system_reserved_ids;
 #[path = "take.rs"]
 mod take;
+#[path = "testing_dictionary_changed.rs"]
+mod testing_dictionary_changed;
 #[path = "time_column_undeclared.rs"]
 mod time_column_undeclared;
 #[path = "time_domain_chained_view.rs"]

@@ -3,18 +3,26 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
-	interface::{catalog::dictionary::Dictionary, store::SingleVersionGet},
+	common::{ChangeVersion, CommitVersion},
+	interface::{
+		catalog::{dictionary::Dictionary, object::ObjectId},
+		change::{Change, ChangeOrigin, Diff},
+		store::SingleVersionGet,
+	},
 	internal_error,
 	key::catalog::{DictionaryEntryIndexKey, DictionaryEntryKey},
+	value::column::columns::Columns,
 };
 use reifydb_transaction::{
+	dictionary::InternOutcome,
 	interceptor::dictionary_row::DictionaryRowInterceptor,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
 use reifydb_value::{
 	util::hash::xxh3_128,
-	value::{Value, dictionary::DictionaryEntryId},
+	value::{Value, datetime::DateTime, dictionary::DictionaryEntryId},
 };
+use smallvec::smallvec;
 
 use crate::Result;
 
@@ -69,23 +77,41 @@ impl DictionaryOperations for CommandTransaction {
 	}
 }
 
+fn intern_into_admin(
+	txn: &mut AdminTransaction,
+	dictionary: &Dictionary,
+	value: &Value,
+) -> Result<(InternOutcome, Value)> {
+	let mut values_buf = [value.clone()];
+	DictionaryRowInterceptor::pre_insert(txn, dictionary, &mut values_buf)?;
+	let [value] = values_buf;
+
+	let registry = txn
+		.dictionary_allocators()
+		.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
+	let outcome = registry.intern(dictionary, &value)?;
+
+	if outcome.created {
+		let ids = [outcome.id];
+		let values = [value.clone()];
+		DictionaryRowInterceptor::post_insert(txn, dictionary, &ids, &values)?;
+	}
+
+	Ok((outcome, value))
+}
+
+fn dictionary_insert_change(dictionary: &Dictionary, value: Value) -> Change {
+	Change {
+		origin: ChangeOrigin::Object(ObjectId::dictionary(dictionary.id)),
+		version: ChangeVersion::from(CommitVersion(0)),
+		diffs: smallvec![Diff::insert(Columns::single_row([("value", value)]))],
+		changed_at: DateTime::default(),
+	}
+}
+
 impl DictionaryOperations for AdminTransaction {
 	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
-		let mut values_buf = [value.clone()];
-		DictionaryRowInterceptor::pre_insert(self, dictionary, &mut values_buf)?;
-		let [value] = values_buf;
-
-		let registry = self
-			.dictionary_allocators()
-			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-		let outcome = registry.intern(dictionary, &value)?;
-
-		if outcome.created {
-			let ids = [outcome.id];
-			let values = [value.clone()];
-			DictionaryRowInterceptor::post_insert(self, dictionary, &ids, &values)?;
-		}
-
+		let (outcome, _) = intern_into_admin(self, dictionary, value)?;
 		Ok(outcome.id)
 	}
 
@@ -116,7 +142,13 @@ impl DictionaryOperations for Transaction<'_> {
 		match self {
 			Transaction::Command(cmd) => cmd.insert_into_dictionary(dictionary, value),
 			Transaction::Admin(admin) => admin.insert_into_dictionary(dictionary, value),
-			Transaction::Test(t) => t.inner.insert_into_dictionary(dictionary, value),
+			Transaction::Test(t) => {
+				let (outcome, value) = intern_into_admin(t.inner, dictionary, value)?;
+				if outcome.created {
+					t.inner.track_flow_change(dictionary_insert_change(dictionary, value));
+				}
+				Ok(outcome.id)
+			}
 			Transaction::Query(_) => {
 				Err(internal_error!("Cannot insert into dictionary during a query transaction"))
 			}

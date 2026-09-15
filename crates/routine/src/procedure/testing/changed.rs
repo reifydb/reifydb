@@ -49,7 +49,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for TestingChanged {
 		let filter_arg = extract_optional_string_param(ctx.params);
 
 		if self.object_type == "views" {
-			let _ = t.capture_testing_pre_commit();
+			t.capture_testing_pre_commit()?;
 		}
 
 		let entries: Vec<_> =
