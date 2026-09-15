@@ -40,6 +40,18 @@ pub fn to_text(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<
 		ColumnBuffer::Uint16(container) => from_number(container),
 		ColumnBuffer::Float4(container) => from_number(container),
 		ColumnBuffer::Float8(container) => from_number(container),
+		ColumnBuffer::Int {
+			container,
+			..
+		} => from_number(container),
+		ColumnBuffer::Uint {
+			container,
+			..
+		} => from_number(container),
+		ColumnBuffer::Decimal {
+			container,
+			..
+		} => from_number(container),
 		ColumnBuffer::Date(container) => from_temporal(container),
 		ColumnBuffer::DateTime(container) => from_temporal(container),
 		ColumnBuffer::Time(container) => from_temporal(container),
@@ -98,7 +110,7 @@ fn from_bool(container: &BoolContainer) -> Result<ColumnBuffer> {
 #[inline]
 fn from_number<T>(container: &NumberContainer<T>) -> Result<ColumnBuffer>
 where
-	T: Copy + Display + IsNumber + Default,
+	T: Display + IsNumber,
 {
 	let mut out = ColumnBuffer::with_capacity(ValueType::Utf8, container.len());
 	for idx in 0..container.len() {

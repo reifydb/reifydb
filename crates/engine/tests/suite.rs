@@ -9,6 +9,10 @@ mod bulk_insert;
 mod call_argument_named_like_a_type;
 #[path = "callable_call_policy.rs"]
 mod callable_call_policy;
+#[path = "cast_arbitrary_precision_text_round_trip.rs"]
+mod cast_arbitrary_precision_text_round_trip;
+#[path = "cast_arbitrary_precision_to_text.rs"]
+mod cast_arbitrary_precision_to_text;
 #[path = "cast_list_to_text.rs"]
 mod cast_list_to_text;
 #[path = "cast_target_diagnostics.rs"]
