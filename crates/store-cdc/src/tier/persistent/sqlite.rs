@@ -209,8 +209,11 @@ impl SqliteCdcPersistent {
 
 	#[instrument(name = "store::cdc::persistent::summaries_from", level = "trace", skip(self), fields(from = from.0, limit = limit))]
 	pub fn summaries_from(&self, from: CommitVersion, limit: usize) -> Result<Vec<BlockSummary>> {
-		let sql = format!(r#"SELECT {SUMMARY_COLUMNS} FROM "cdc_block"
-			   WHERE max_version >= ?1 ORDER BY max_version ASC LIMIT ?2"#);
+		let sql = format!(
+			r#"SELECT {SUMMARY_COLUMNS} FROM "cdc_block"
+			   WHERE max_version >= ?1 ORDER BY max_version ASC LIMIT {}"#,
+			clamp_limit(limit)
+		);
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Err(error!(internal("cdc persistent tier is closed")));
@@ -220,7 +223,7 @@ impl SqliteCdcPersistent {
 			.prepare_cached(&sql)
 			.map_err(|e| error!(internal(format!("cdc summaries prepare: {e}"))))?;
 		let rows = stmt
-			.query_map(params![from_bytes.as_slice(), clamp_limit(limit)], read_summary_row)
+			.query_map(params![from_bytes.as_slice()], read_summary_row)
 			.map_err(|e| error!(internal(format!("cdc summaries query: {e}"))))?;
 		let mut summaries = Vec::new();
 		for row in rows {
@@ -477,13 +480,13 @@ fn scan_droppable(conn: &Connection, cutoff_bytes: Option<&[u8; 8]>, limit: usiz
 	match cutoff_bytes {
 		Some(bytes) => {
 			let mut stmt = conn
-				.prepare_cached(
+				.prepare_cached(&format!(
 					r#"SELECT max_version, stored_bytes, stats_rollup FROM "cdc_block"
-					   WHERE max_version < ?1 ORDER BY max_version ASC LIMIT ?2"#,
-				)
+					   WHERE max_version < ?1 ORDER BY max_version ASC LIMIT {want}"#
+				))
 				.map_err(|e| error!(internal(format!("cdc drop scan prepare: {e}"))))?;
 			let rows = stmt
-				.query_map(params![bytes.as_slice(), want], read)
+				.query_map(params![bytes.as_slice()], read)
 				.map_err(|e| error!(internal(format!("cdc drop scan query: {e}"))))?;
 			for row in rows {
 				scanned.push(row.map_err(|e| error!(internal(format!("cdc drop scan row: {e}"))))?);
@@ -491,13 +494,13 @@ fn scan_droppable(conn: &Connection, cutoff_bytes: Option<&[u8; 8]>, limit: usiz
 		}
 		None => {
 			let mut stmt = conn
-				.prepare_cached(
+				.prepare_cached(&format!(
 					r#"SELECT max_version, stored_bytes, stats_rollup FROM "cdc_block"
-					   ORDER BY max_version ASC LIMIT ?1"#,
-				)
+					   ORDER BY max_version ASC LIMIT {want}"#
+				))
 				.map_err(|e| error!(internal(format!("cdc drop scan prepare: {e}"))))?;
 			let rows = stmt
-				.query_map(params![want], read)
+				.query_map([], read)
 				.map_err(|e| error!(internal(format!("cdc drop scan query: {e}"))))?;
 			for row in rows {
 				scanned.push(row.map_err(|e| error!(internal(format!("cdc drop scan row: {e}"))))?);
@@ -582,4 +585,94 @@ fn bytes_to_version(bytes: &[u8]) -> Result<CommitVersion> {
 
 fn clamp_limit(limit: usize) -> i64 {
 	limit.min(i64::MAX as usize) as i64
+}
+
+#[cfg(test)]
+mod tests {
+	use std::sync::Arc;
+
+	use reifydb_core::{
+		common::{ChangeVersion, CommitVersion},
+		interface::cdc::Cdc,
+	};
+	use reifydb_value::{byte_size::ByteSize, count::Count, value::datetime::DateTime};
+	use rusqlite::Connection;
+
+	use super::SqliteCdcPersistent;
+	use crate::{
+		storage::Cutoff,
+		types::{Block, BlockId, BlockSummary},
+	};
+
+	fn block(version: u64) -> Block {
+		let commit = CommitVersion(version);
+		Block {
+			summary: BlockSummary {
+				id: BlockId(commit),
+				min_version: commit,
+				max_version: commit,
+				min_timestamp: DateTime::from_nanos(version),
+				max_timestamp: DateTime::from_nanos(version),
+				count: Count::new(1),
+				stored_bytes: ByteSize::ZERO,
+			},
+			entries: vec![Arc::new(Cdc::new(
+				ChangeVersion::from(commit),
+				DateTime::from_nanos(version),
+				vec![],
+			))],
+		}
+	}
+
+	fn reprepares(conn: &Connection) -> i32 {
+		let mut total = 0;
+		// SAFETY: conn is borrowed for the whole walk, so its handle and every statement it owns stay alive
+		unsafe {
+			let db = conn.handle();
+			let mut stmt = rusqlite::ffi::sqlite3_next_stmt(db, std::ptr::null_mut());
+			while !stmt.is_null() {
+				total += rusqlite::ffi::sqlite3_stmt_status(
+					stmt,
+					rusqlite::ffi::SQLITE_STMTSTATUS_REPREPARE,
+					0,
+				);
+				stmt = rusqlite::ffi::sqlite3_next_stmt(db, stmt);
+			}
+		}
+		total
+	}
+
+	fn tier_reprepares(tier: &SqliteCdcPersistent) -> i32 {
+		let mut total = reprepares(tier.inner.conn.lock().as_ref().expect("writer is open"));
+		for slot in &tier.inner.readers.conns {
+			total += reprepares(slot.lock().as_ref().expect("reader is open"));
+		}
+		total
+	}
+
+	#[test]
+	fn a_block_scan_runs_its_cached_statement_without_preparing_it_again() {
+		// a bound limit expires the statement on every bind, so every scan would parse and plan it again
+		let (tier, _guard) = SqliteCdcPersistent::in_memory();
+		for version in 1..=8 {
+			tier.append_block(&block(version)).unwrap();
+		}
+		for round in 1..=3u64 {
+			assert_eq!(tier.summaries_from(CommitVersion(round + 3), 2).unwrap().len(), 2);
+			assert!(!tier
+				.drop_blocks_below(Cutoff::Version(CommitVersion(round + 1)), 1)
+				.unwrap()
+				.more_remaining);
+			assert_eq!(tier.min_version().unwrap(), Some(CommitVersion(round + 1)));
+		}
+		for _ in 0..2 {
+			assert!(tier.drop_blocks_below(Cutoff::Unbounded, 1).unwrap().more_remaining);
+		}
+		assert_eq!(tier.min_version().unwrap(), Some(CommitVersion(6)));
+		assert_eq!(
+			tier_reprepares(&tier),
+			0,
+			"every block scan must reuse its prepared statement on the next call"
+		);
+	}
 }

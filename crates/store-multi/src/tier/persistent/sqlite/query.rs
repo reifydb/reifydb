@@ -47,11 +47,11 @@ pub(super) fn build_get_current_sql(table_name: &str) -> String {
 	format!("SELECT version, value FROM \"{}\" WHERE key = ?1", table_name)
 }
 
-pub(super) fn build_current_keys_sql(table_name: &str, has_cursor: bool) -> String {
+pub(super) fn build_current_keys_sql(table_name: &str, has_cursor: bool, limit: i64) -> String {
 	if has_cursor {
-		format!("SELECT key FROM \"{}\" WHERE key > ?1 ORDER BY key LIMIT ?2", table_name)
+		format!("SELECT key FROM \"{}\" WHERE key > ?1 ORDER BY key LIMIT {}", table_name, limit)
 	} else {
-		format!("SELECT key FROM \"{}\" ORDER BY key LIMIT ?1", table_name)
+		format!("SELECT key FROM \"{}\" ORDER BY key LIMIT {}", table_name, limit)
 	}
 }
 
@@ -254,27 +254,27 @@ pub(super) fn build_delete_keys_sql_partitioned(table_name: &str, key_count: usi
 	format!("DELETE FROM \"{}\" WHERE {}", table_name, clause)
 }
 
-pub(super) fn build_current_keys_sql_row(table_name: &str, has_cursor: bool) -> String {
+pub(super) fn build_current_keys_sql_row(table_name: &str, has_cursor: bool, limit: i64) -> String {
 	if has_cursor {
-		format!("SELECT key FROM \"{}\" WHERE key > ?1 ORDER BY key LIMIT ?2", table_name)
+		format!("SELECT key FROM \"{}\" WHERE key > ?1 ORDER BY key LIMIT {}", table_name, limit)
 	} else {
-		format!("SELECT key FROM \"{}\" ORDER BY key LIMIT ?1", table_name)
+		format!("SELECT key FROM \"{}\" ORDER BY key LIMIT {}", table_name, limit)
 	}
 }
 
-pub(super) fn build_current_keys_sql_partitioned(table_name: &str, has_cursor: bool) -> String {
+pub(super) fn build_current_keys_sql_partitioned(table_name: &str, has_cursor: bool, limit: i64) -> String {
 	if has_cursor {
 		format!(
 			"SELECT partition_hi, partition_lo, row FROM \"{0}\" \
 			 WHERE (partition_hi, partition_lo, row) > (?1, ?2, ?3) \
-			 ORDER BY partition_hi, partition_lo, row LIMIT ?4",
-			table_name
+			 ORDER BY partition_hi, partition_lo, row LIMIT {1}",
+			table_name, limit
 		)
 	} else {
 		format!(
 			"SELECT partition_hi, partition_lo, row FROM \"{0}\" \
-			 ORDER BY partition_hi, partition_lo, row LIMIT ?1",
-			table_name
+			 ORDER BY partition_hi, partition_lo, row LIMIT {1}",
+			table_name, limit
 		)
 	}
 }
@@ -322,6 +322,7 @@ pub(super) fn build_range_current_sql_row(
 	upper: Bound<()>,
 	has_last_key: bool,
 	descending: bool,
+	limit: i64,
 ) -> String {
 	let mut sql = format!("SELECT key, version, value FROM \"{}\" WHERE 1=1", table_name);
 	match lower {
@@ -343,9 +344,9 @@ pub(super) fn build_range_current_sql_row(
 	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
-		sql.push_str(" ORDER BY key DESC LIMIT ?");
+		sql.push_str(&format!(" ORDER BY key DESC LIMIT {limit}"));
 	} else {
-		sql.push_str(" ORDER BY key ASC LIMIT ?");
+		sql.push_str(&format!(" ORDER BY key ASC LIMIT {limit}"));
 	}
 	sql
 }
@@ -356,6 +357,7 @@ pub(super) fn build_range_current_sql_partitioned(
 	upper: Bound<()>,
 	has_last_key: bool,
 	descending: bool,
+	limit: i64,
 ) -> String {
 	let mut sql =
 		format!("SELECT partition_hi, partition_lo, row, version, value FROM \"{}\" WHERE 1=1", table_name);
@@ -378,9 +380,9 @@ pub(super) fn build_range_current_sql_partitioned(
 	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
-		sql.push_str(" ORDER BY partition_hi DESC, partition_lo DESC, row DESC LIMIT ?");
+		sql.push_str(&format!(" ORDER BY partition_hi DESC, partition_lo DESC, row DESC LIMIT {limit}"));
 	} else {
-		sql.push_str(" ORDER BY partition_hi ASC, partition_lo ASC, row ASC LIMIT ?");
+		sql.push_str(&format!(" ORDER BY partition_hi ASC, partition_lo ASC, row ASC LIMIT {limit}"));
 	}
 	sql
 }
@@ -391,6 +393,7 @@ pub(super) fn build_range_current_sql_partitioned_exact(
 	upper_row: Bound<()>,
 	has_last_key: bool,
 	descending: bool,
+	limit: i64,
 ) -> String {
 	let mut sql = format!(
 		"SELECT partition_hi, partition_lo, row, version, value FROM \"{}\" \
@@ -416,9 +419,9 @@ pub(super) fn build_range_current_sql_partitioned_exact(
 	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
-		sql.push_str(" ORDER BY row DESC LIMIT ?");
+		sql.push_str(&format!(" ORDER BY row DESC LIMIT {limit}"));
 	} else {
-		sql.push_str(" ORDER BY row ASC LIMIT ?");
+		sql.push_str(&format!(" ORDER BY row ASC LIMIT {limit}"));
 	}
 	sql
 }
@@ -429,6 +432,7 @@ pub(super) fn build_range_current_sql(
 	end: Bound<()>,
 	has_last_key: bool,
 	descending: bool,
+	limit: i64,
 ) -> String {
 	let mut sql = format!("SELECT key, version, value FROM \"{}\" WHERE 1=1", table_name);
 	match start {
@@ -450,9 +454,9 @@ pub(super) fn build_range_current_sql(
 	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
-		sql.push_str(" ORDER BY key DESC LIMIT ?");
+		sql.push_str(&format!(" ORDER BY key DESC LIMIT {limit}"));
 	} else {
-		sql.push_str(" ORDER BY key ASC LIMIT ?");
+		sql.push_str(&format!(" ORDER BY key ASC LIMIT {limit}"));
 	}
 	sql
 }
@@ -463,6 +467,7 @@ pub(super) fn build_range_current_sql_series(
 	upper: Bound<()>,
 	has_last_key: bool,
 	descending: bool,
+	limit: i64,
 ) -> String {
 	let mut sql = format!("SELECT variant_tag, key, sequence, version, value FROM \"{}\" WHERE 1=1", table_name);
 	match lower {
@@ -484,9 +489,9 @@ pub(super) fn build_range_current_sql_series(
 	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
-		sql.push_str(" ORDER BY variant_tag DESC, key DESC, sequence DESC LIMIT ?");
+		sql.push_str(&format!(" ORDER BY variant_tag DESC, key DESC, sequence DESC LIMIT {limit}"));
 	} else {
-		sql.push_str(" ORDER BY variant_tag ASC, key ASC, sequence ASC LIMIT ?");
+		sql.push_str(&format!(" ORDER BY variant_tag ASC, key ASC, sequence ASC LIMIT {limit}"));
 	}
 	sql
 }
@@ -497,6 +502,7 @@ pub(super) fn build_range_current_sql_partitioned_series(
 	upper: Bound<()>,
 	has_last_key: bool,
 	descending: bool,
+	limit: i64,
 ) -> String {
 	let mut sql = format!(
 		"SELECT partition_hi, partition_lo, variant_tag, key, sequence, version, value FROM \"{}\" WHERE 1=1",
@@ -529,15 +535,11 @@ pub(super) fn build_range_current_sql_partitioned_series(
 	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
-		sql.push_str(
-			" ORDER BY partition_hi DESC, partition_lo DESC, variant_tag DESC, key DESC, \
-			 sequence DESC LIMIT ?",
-		);
+		sql.push_str(&format!(" ORDER BY partition_hi DESC, partition_lo DESC, variant_tag DESC, key DESC, \
+			 sequence DESC LIMIT {limit}"));
 	} else {
-		sql.push_str(
-			" ORDER BY partition_hi ASC, partition_lo ASC, variant_tag ASC, key ASC, \
-			 sequence ASC LIMIT ?",
-		);
+		sql.push_str(&format!(" ORDER BY partition_hi ASC, partition_lo ASC, variant_tag ASC, key ASC, \
+			 sequence ASC LIMIT {limit}"));
 	}
 	sql
 }
@@ -676,17 +678,18 @@ pub(super) fn build_delete_keys_sql_keyed(table_name: &str, columns: &[&str], ke
 	format!("DELETE FROM \"{}\" WHERE {}", table_name, build_keyed_predicate(columns, key_count))
 }
 
-pub(super) fn build_current_keys_sql_keyed(table_name: &str, columns: &[&str], has_cursor: bool) -> String {
+pub(super) fn build_current_keys_sql_keyed(table_name: &str, columns: &[&str], has_cursor: bool, limit: i64) -> String {
 	if has_cursor {
 		format!(
-			"SELECT {1} FROM \"{0}\" WHERE {2} > {3} ORDER BY {1} LIMIT ?",
+			"SELECT {1} FROM \"{0}\" WHERE {2} > {3} ORDER BY {1} LIMIT {4}",
 			table_name,
 			column_list(columns),
 			column_tuple(columns),
-			placeholder_tuple(columns.len())
+			placeholder_tuple(columns.len()),
+			limit
 		)
 	} else {
-		format!("SELECT {1} FROM \"{0}\" ORDER BY {1} LIMIT ?", table_name, column_list(columns))
+		format!("SELECT {1} FROM \"{0}\" ORDER BY {1} LIMIT {2}", table_name, column_list(columns), limit)
 	}
 }
 

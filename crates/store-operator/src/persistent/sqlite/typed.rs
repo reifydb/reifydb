@@ -445,17 +445,14 @@ fn bounded<K: Keyspace>(
 		at += width;
 	}
 	let end = bound_clause::<K>(range.end.as_ref(), "<=", "<", at);
-	if bound_key::<K>(range.end.as_ref()).is_some() {
-		at += width;
-	}
 	let sql = format!(
-		"SELECT {}\"bytes\" FROM \"{}\" WHERE \"operator\" = ?1{}{}{} LIMIT ?{}",
+		"SELECT {}\"bytes\" FROM \"{}\" WHERE \"operator\" = ?1{}{}{} LIMIT {}",
 		K::key_columns(),
 		K::table(),
 		start,
 		end,
 		K::ordering(order),
-		at
+		limit as i64
 	);
 	let mut params = vec![Value::Integer(operator.0 as i64)];
 	if !K::columns().is_empty() {
@@ -465,7 +462,6 @@ fn bounded<K: Keyspace>(
 			}
 		}
 	}
-	params.push(Value::Integer(limit as i64));
 	let mut stmt = conn.prepare_cached(&sql).expect("operator state range could not be prepared");
 	let mut rows = stmt.query(params_from_iter(params)).expect("operator state range failed");
 	let mut out = Vec::new();
@@ -483,22 +479,18 @@ pub fn keys_after<K: Keyspace>(
 	after: Option<&K::GroupedKey>,
 	limit: u64,
 ) -> Vec<K::GroupedKey> {
-	let mut at = 2;
-	let start = bound_clause::<K>(after.map_or(Bound::Unbounded, Bound::Excluded), ">=", ">", at);
-	if after.is_some() && !K::columns().is_empty() {
-		at += K::columns().len();
-	}
+	let start = bound_clause::<K>(after.map_or(Bound::Unbounded, Bound::Excluded), ">=", ">", 2);
 	let columns = match K::columns().is_empty() {
 		true => "1".to_string(),
 		false => K::column_list(),
 	};
 	let sql = format!(
-		"SELECT {} FROM \"{}\" WHERE \"operator\" = ?1{}{} LIMIT ?{}",
+		"SELECT {} FROM \"{}\" WHERE \"operator\" = ?1{}{} LIMIT {}",
 		columns,
 		K::table(),
 		start,
 		K::ordering("ASC"),
-		at
+		limit as i64
 	);
 	let mut params = vec![Value::Integer(operator.0 as i64)];
 	if let Some(key) = after
@@ -506,7 +498,6 @@ pub fn keys_after<K: Keyspace>(
 	{
 		params.extend(K::bind_key(key));
 	}
-	params.push(Value::Integer(limit as i64));
 	let mut stmt = conn.prepare_cached(&sql).expect("operator state key scan could not be prepared");
 	let mut rows = stmt.query(params_from_iter(params)).expect("operator state key scan failed");
 	let mut out = Vec::new();
@@ -552,18 +543,15 @@ pub fn range_in<K: Keyspace>(
 		at += suffix;
 	}
 	let end = suffix_clause::<K>(range.end.as_ref(), "<=", "<", at);
-	if bound_key::<K>(range.end.as_ref()).is_some() {
-		at += suffix;
-	}
 	let sql = format!(
-		"SELECT {}\"bytes\" FROM \"{}\" WHERE \"operator\" = ?1{}{}{}{} LIMIT ?{}",
+		"SELECT {}\"bytes\" FROM \"{}\" WHERE \"operator\" = ?1{}{}{}{} LIMIT {}",
 		K::key_columns(),
 		K::table(),
 		groups_clause,
 		start,
 		end,
 		K::ordering(order),
-		at
+		limit as i64
 	);
 	let mut params = vec![Value::Integer(operator.0 as i64)];
 	params.extend(bind_groups::<K>(groups));
@@ -574,7 +562,6 @@ pub fn range_in<K: Keyspace>(
 			}
 		}
 	}
-	params.push(Value::Integer(limit as i64));
 	let mut stmt = conn.prepare_cached(&sql).expect("operator state group range could not be prepared");
 	let mut rows = stmt.query(params_from_iter(params)).expect("operator state group range failed");
 	let mut out = Vec::new();
@@ -634,7 +621,10 @@ mod tests {
 	use reifydb_value::{util::hash::Hash128, value::row_number::RowNumber};
 	use rusqlite::Connection;
 
-	use super::{SqlKey, census, create_table, get, last, range, remove_chunked, scan, set_chunked, table_of};
+	use super::{
+		SqlKey, census, create_table, get, keys_after, last, range, range_in, remove_chunked, scan,
+		set_chunked, table_of,
+	};
 	use crate::persistent::sqlite::schema::ensure_schema;
 
 	fn set_one<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::GroupedKey, bytes: &[u8]) {
@@ -1047,5 +1037,43 @@ mod tests {
 		let ddl = create_table(KEYSPACES.iter().find(|spec| spec.name == TimerWheel::NAME).unwrap());
 		assert!(ddl.contains("PRIMARY KEY"), "{ddl}");
 		assert!(conn.prepare(&format!(r#"SELECT * FROM "{}""#, <TimerWheel as SqlKey>::table())).is_ok());
+	}
+
+	fn reprepares(conn: &Connection) -> i32 {
+		let mut total = 0;
+		// SAFETY: conn is borrowed for the whole walk, so its handle and every statement it owns stay alive
+		unsafe {
+			let db = conn.handle();
+			let mut stmt = rusqlite::ffi::sqlite3_next_stmt(db, std::ptr::null_mut());
+			while !stmt.is_null() {
+				total += rusqlite::ffi::sqlite3_stmt_status(
+					stmt,
+					rusqlite::ffi::SQLITE_STMTSTATUS_REPREPARE,
+					0,
+				);
+				stmt = rusqlite::ffi::sqlite3_next_stmt(db, stmt);
+			}
+		}
+		total
+	}
+
+	#[test]
+	fn a_range_read_runs_its_cached_statement_without_preparing_it_again() {
+		// a bound limit expires the statement on every bind, so every read would parse and plan it again
+		let conn = seeded();
+		for row in 0u64..3 {
+			let bounds = KeyRange::new(Bound::Included(left(2, row)), Bound::Excluded(left(1, row)));
+			assert!(!range::<JoinLeft>(&conn, OperatorId(1), &bounds, 2).is_empty());
+			assert!(!last::<JoinLeft>(&conn, OperatorId(1), &bounds, 2).is_empty());
+			let suffix = KeyRange::new(Bound::Included(left(1, row)), Bound::Included(left(1, 3)));
+			assert!(!range_in::<JoinLeft>(&conn, OperatorId(1), &[group(1), group(2)], &suffix, 2, "ASC")
+				.is_empty());
+			assert!(!keys_after::<JoinLeft>(&conn, OperatorId(1), Some(&left(2, row)), 2).is_empty());
+		}
+		assert_eq!(
+			reprepares(&conn),
+			0,
+			"every range shape must reuse its prepared statement on the next call"
+		);
 	}
 }

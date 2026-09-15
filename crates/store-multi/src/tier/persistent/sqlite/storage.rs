@@ -297,15 +297,16 @@ impl SqlitePersistentStorage {
 		let limit = budget.min(i64::MAX as usize) as i64;
 
 		let sql = match table_sql.schema {
-			SqliteSchema::Blob => build_current_keys_sql(&table_sql.table_name, cursor.is_some()),
-			SqliteSchema::Row => build_current_keys_sql_row(&table_sql.table_name, cursor.is_some()),
+			SqliteSchema::Blob => build_current_keys_sql(&table_sql.table_name, cursor.is_some(), limit),
+			SqliteSchema::Row => build_current_keys_sql_row(&table_sql.table_name, cursor.is_some(), limit),
 			SqliteSchema::Partitioned => {
-				build_current_keys_sql_partitioned(&table_sql.table_name, cursor.is_some())
+				build_current_keys_sql_partitioned(&table_sql.table_name, cursor.is_some(), limit)
 			}
 			SqliteSchema::Series | SqliteSchema::PartitionedSeries => build_current_keys_sql_keyed(
 				&table_sql.table_name,
 				series_columns(table_sql.schema),
 				cursor.is_some(),
+				limit,
 			),
 		};
 
@@ -327,7 +328,6 @@ impl SqlitePersistentStorage {
 				}
 			}
 		}
-		params.push(Box::new(limit));
 
 		let mut stmt = match conn.prepare_cached(&sql) {
 			Ok(stmt) => stmt,
@@ -818,6 +818,7 @@ impl SqlitePersistentStorage {
 			bound_shape_of(&upper),
 			last_row.is_some(),
 			req.descending,
+			limit_i64,
 		);
 		let mut stmt = match conn.prepare_cached(&sql) {
 			Ok(s) => s,
@@ -841,7 +842,6 @@ impl SqlitePersistentStorage {
 			params.push(Box::new(v));
 		}
 		params.push(Box::new(version_bytes));
-		params.push(Box::new(limit_i64));
 		let flat: Vec<&dyn ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
 		let raw: Vec<RawEntry<StorageRowKey>> = match stmt.query_map(params_from_iter(flat), |row| {
@@ -918,6 +918,7 @@ impl SqlitePersistentStorage {
 			bound_shape_of(&upper),
 			last_triple.is_some(),
 			req.descending,
+			limit_i64,
 		);
 		let mut stmt = match conn.prepare_cached(&sql) {
 			Ok(s) => s,
@@ -947,7 +948,6 @@ impl SqlitePersistentStorage {
 			params.push(Box::new(row));
 		}
 		params.push(Box::new(version_bytes));
-		params.push(Box::new(limit_i64));
 		let flat: Vec<&dyn ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
 		let raw: Vec<RawEntry<StoragePartitionedRowKey>> = match stmt.query_map(params_from_iter(flat), |row| {
@@ -1030,6 +1030,7 @@ impl SqlitePersistentStorage {
 			bound_shape_of(&upper),
 			last_triple.is_some(),
 			req.descending,
+			limit_i64,
 		);
 		let mut stmt = match conn.prepare_cached(&sql) {
 			Ok(s) => s,
@@ -1049,7 +1050,6 @@ impl SqlitePersistentStorage {
 			params.push(Box::new(triple.2));
 		}
 		params.push(Box::new(version_bytes));
-		params.push(Box::new(limit_i64));
 		let flat: Vec<&dyn ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
 		let raw: Vec<RawEntry<StorageSeriesKey>> = match stmt.query_map(params_from_iter(flat), |row| {
@@ -1132,6 +1132,7 @@ impl SqlitePersistentStorage {
 			bound_shape_of(&upper),
 			last_columns.is_some(),
 			req.descending,
+			limit_i64,
 		);
 		let mut stmt = match conn.prepare_cached(&sql) {
 			Ok(s) => s,
@@ -1153,7 +1154,6 @@ impl SqlitePersistentStorage {
 			params.push(Box::new(columns.4));
 		}
 		params.push(Box::new(version_bytes));
-		params.push(Box::new(limit_i64));
 		let flat: Vec<&dyn ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
 		let raw: Vec<RawEntry<StoragePartitionedSeriesKey>> =
@@ -1236,6 +1236,7 @@ impl SqlitePersistentStorage {
 					bound_shape(req.end),
 					cursor.last_key().is_some(),
 					req.descending,
+					limit_i64,
 				);
 				let mut stmt = match conn.prepare_cached(&sql) {
 					Ok(s) => s,
@@ -1263,7 +1264,6 @@ impl SqlitePersistentStorage {
 					params.push(Box::new(k.to_vec()));
 				}
 				params.push(Box::new(version_bytes.clone()));
-				params.push(Box::new(limit_i64));
 				match stmt.query_map(params_from_iter(params), |row| {
 					let key: Vec<u8> = row.get(0)?;
 					let version_blob: Vec<u8> = row.get(1)?;
@@ -1307,6 +1307,7 @@ impl SqlitePersistentStorage {
 					bound_shape_of(&bounds.upper),
 					last_row.is_some(),
 					req.descending,
+					limit_i64,
 				);
 				let mut stmt = match conn.prepare_cached(&sql) {
 					Ok(s) => s,
@@ -1332,7 +1333,6 @@ impl SqlitePersistentStorage {
 					params.push(Box::new(v));
 				}
 				params.push(Box::new(version_bytes.clone()));
-				params.push(Box::new(limit_i64));
 				let storage_id = storage.expect("row schema entry kinds always carry a storage id");
 				let flat: Vec<&dyn ToSql> = params.iter().map(|p| p.as_ref()).collect();
 				match stmt.query_map(params_from_iter(flat), |row| {
@@ -1391,6 +1391,7 @@ impl SqlitePersistentStorage {
 							bound_shape_of(&upper_row),
 							last_row.is_some(),
 							req.descending,
+							limit_i64,
 						);
 						let mut stmt = match conn.prepare_cached(&sql) {
 							Ok(s) => s,
@@ -1417,7 +1418,6 @@ impl SqlitePersistentStorage {
 							params.push(Box::new(v));
 						}
 						params.push(Box::new(version_bytes.clone()));
-						params.push(Box::new(limit_i64));
 						let flat: Vec<&dyn ToSql> = params.iter().map(|p| p.as_ref()).collect();
 						match stmt.query_map(params_from_iter(flat), |row| {
 							let hi: i64 = row.get(0)?;
@@ -1481,6 +1481,7 @@ impl SqlitePersistentStorage {
 							bound_shape_of(&upper),
 							last_triple.is_some(),
 							req.descending,
+							limit_i64,
 						);
 						let mut stmt = match conn.prepare_cached(&sql) {
 							Ok(s) => s,
@@ -1512,7 +1513,6 @@ impl SqlitePersistentStorage {
 							params.push(Box::new(r));
 						}
 						params.push(Box::new(version_bytes.clone()));
-						params.push(Box::new(limit_i64));
 						let flat: Vec<&dyn ToSql> = params.iter().map(|p| p.as_ref()).collect();
 						match stmt.query_map(params_from_iter(flat), |row| {
 							let hi: i64 = row.get(0)?;
@@ -1592,6 +1592,7 @@ impl SqlitePersistentStorage {
 						bound_shape_of(&upper),
 						last_columns.is_some(),
 						req.descending,
+						limit_i64,
 					)
 				} else {
 					build_range_current_sql_series(
@@ -1600,6 +1601,7 @@ impl SqlitePersistentStorage {
 						bound_shape_of(&upper),
 						last_columns.is_some(),
 						req.descending,
+						limit_i64,
 					)
 				};
 				let mut stmt = match conn.prepare_cached(&sql) {
@@ -1625,7 +1627,6 @@ impl SqlitePersistentStorage {
 					}
 				}
 				params.push(Box::new(version_bytes.clone()));
-				params.push(Box::new(limit_i64));
 				let key_columns = table_sql.schema.key_column_count();
 				let flat: Vec<&dyn ToSql> = params.iter().map(|p| p.as_ref()).collect();
 				match stmt.query_map(params_from_iter(flat), |row| {
@@ -3759,5 +3760,160 @@ mod tests {
 			details.iter().any(|d| d.contains(&format!("{table_name}__expiry"))),
 			"expiry discovery must use the partial expiry index; query plan was {details:?}"
 		);
+	}
+
+	fn reader_reprepares(s: &SqlitePersistentStorage) -> i32 {
+		let guard = s.inner.readers.acquire();
+		let conn = guard.as_ref().expect("read connection is present");
+		let mut total = 0;
+		// SAFETY: the guard keeps conn alive for the whole walk, and with it every statement it owns
+		unsafe {
+			let db = conn.handle();
+			let mut stmt = rusqlite::ffi::sqlite3_next_stmt(db, std::ptr::null_mut());
+			while !stmt.is_null() {
+				total += rusqlite::ffi::sqlite3_stmt_status(
+					stmt,
+					rusqlite::ffi::SQLITE_STMTSTATUS_REPREPARE,
+					0,
+				);
+				stmt = rusqlite::ffi::sqlite3_next_stmt(db, stmt);
+			}
+		}
+		total
+	}
+
+	fn one_reader() -> (SqlitePersistentStorage, SqliteTempPathGuard) {
+		let (mut config, guard) = SqliteConfig::in_memory();
+		config.read_pool_size = 1;
+		(SqlitePersistentStorage::new(config), guard)
+	}
+
+	fn drain(s: &SqlitePersistentStorage, t: EntryKind, range: &EncodedKeyRange, reverse: bool) -> usize {
+		let start = range.start.as_ref().map(|k| k.as_slice());
+		let end = range.end.as_ref().map(|k| k.as_slice());
+		let mut cursor = RangeCursor::default();
+		let mut served = 0;
+		while !cursor.is_exhausted() {
+			let scope = MultiVersionScope::AsOf {
+				read: CommitVersion(10),
+			};
+			let batch = if reverse {
+				s.range_rev_next(t, &mut cursor, start, end, scope, 2)
+			} else {
+				s.range_next(t, &mut cursor, start, end, scope, 2)
+			};
+			served += batch.unwrap().entries.len();
+		}
+		served
+	}
+
+	fn typed_pages<K: 'static>(
+		t: EntryKind,
+		mut chunk: impl FnMut(&mut Cursor<RangeStop, K>, NarrowRangeRequest<'static, K>) -> Result<RangeBatch<K>>,
+	) -> usize {
+		let mut served = 0;
+		for descending in [false, true] {
+			let mut cursor = Cursor::default();
+			for _ in 0..2 {
+				let request = NarrowRangeRequest {
+					table: t,
+					start: Bound::Unbounded,
+					end: Bound::Unbounded,
+					scope: MultiVersionScope::AsOf {
+						read: CommitVersion(10),
+					},
+					batch_size: 2,
+					descending,
+				};
+				served += chunk(&mut cursor, request).unwrap().entries.len();
+			}
+		}
+		served
+	}
+
+	fn key_pages(s: &SqlitePersistentStorage, t: EntryKind) -> usize {
+		let first = s.current_key_slice(t, None, 2).unwrap();
+		let second = s.current_key_slice(t, first.last(), 2).unwrap();
+		first.len() + second.len()
+	}
+
+	#[test]
+	fn every_range_shape_runs_its_cached_statement_without_preparing_it_again() {
+		// a bound limit expires the statement on every bind, so every page would parse and plan it again
+		let (s, _guard) = one_reader();
+		let partitioned_rows = [1u128, 2].into_iter().flat_map(|p| (1u64..=3).map(move |n| (p, n)));
+		s.set(
+			CommitVersion(1),
+			HashMap::from([
+				(table(), (1u64..=6).map(|n| (key(n), Some(row(b"v")))).collect::<Vec<_>>()),
+				(
+					partitioned_table(),
+					partitioned_rows
+						.clone()
+						.map(|(p, n)| (partitioned_key(p, n), Some(row(b"v"))))
+						.collect(),
+				),
+				(
+					series_table(),
+					(1u64..=6).map(|n| (series_key(Some(1), n, 0), Some(row(b"v")))).collect(),
+				),
+				(
+					partitioned_series_table(),
+					partitioned_rows
+						.map(|(p, n)| (partitioned_series_key(p, n, 0), Some(row(b"v"))))
+						.collect(),
+				),
+			]),
+		)
+		.unwrap();
+
+		let partitioned_scan = PartitionedRowKey::full_scan(StorageId::Table(TableId(2))).encode();
+		let one_partition =
+			PartitionedRowKey::partition_range(StorageId::Table(TableId(2)), Partition(1)).encode();
+		let scans = [
+			(table(), RowKey::full_scan(StorageId::Table(TableId(1))).encode(), 6),
+			(partitioned_table(), partitioned_scan, 6),
+			(partitioned_table(), one_partition, 3),
+			(series_table(), SeriesRowKeyRange::full_scan(series_storage(), None).encode(), 6),
+			(
+				partitioned_series_table(),
+				PartitionedSeriesRowKeyRange::full_scan(series_storage()).encode(),
+				6,
+			),
+		];
+		for (t, range, rows) in &scans {
+			assert_eq!(drain(&s, *t, range, false), *rows, "{t:?} forward");
+			assert_eq!(drain(&s, *t, range, true), *rows, "{t:?} reverse");
+		}
+		assert_eq!(typed_pages(table(), |c, r| s.range_chunk_row(c, r)), 8);
+		assert_eq!(typed_pages(partitioned_table(), |c, r| s.range_chunk_partitioned(c, r)), 8);
+		assert_eq!(typed_pages(series_table(), |c, r| s.range_chunk_series(c, r)), 8);
+		assert_eq!(typed_pages(partitioned_series_table(), |c, r| s.range_chunk_partitioned_series(c, r)), 8);
+		for t in [table(), partitioned_table(), series_table(), partitioned_series_table()] {
+			assert_eq!(key_pages(&s, t), 4, "{t:?} current keys");
+		}
+		assert_eq!(reader_reprepares(&s), 0, "every narrow range shape must reuse its prepared statement");
+
+		let (blob, _blob_guard) = one_reader();
+		let t = series_table();
+		{
+			let conn_guard = blob.inner.conn.lock();
+			let conn = conn_guard.as_ref().expect("write connection is present");
+			conn.execute_batch(&build_create_current_sql(&current_table_name(t))).unwrap();
+		}
+		blob.set(
+			CommitVersion(1),
+			HashMap::from([(
+				t,
+				(1u64..=6).map(|n| (series_key(Some(1), n, 0), Some(row(b"v")))).collect(),
+			)]),
+		)
+		.unwrap();
+		assert_eq!(resolved_schema(&blob, t), SqliteSchema::Blob);
+		let range = SeriesRowKeyRange::full_scan(series_storage(), None).encode();
+		assert_eq!(drain(&blob, t, &range, false), 6);
+		assert_eq!(drain(&blob, t, &range, true), 6);
+		assert_eq!(key_pages(&blob, t), 4);
+		assert_eq!(reader_reprepares(&blob), 0, "every blob range shape must reuse its prepared statement");
 	}
 }

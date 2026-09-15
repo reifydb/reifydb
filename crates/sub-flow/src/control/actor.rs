@@ -4,7 +4,10 @@
 use std::{
 	collections::{BTreeSet, HashMap},
 	mem::take,
-	sync::Arc,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
 };
 
 use reifydb_cdc::consume::backlog::{BacklogPull, FlowBacklog};
@@ -114,6 +117,7 @@ pub struct FlowActor {
 	initial_source_objects: Arc<BTreeSet<ObjectId>>,
 	initial_completeness_objects: Option<Arc<BTreeSet<u64>>>,
 	initial_cursor: CommitVersion,
+	wake_pending: Arc<AtomicBool>,
 }
 
 pub struct FlowActorState {
@@ -167,7 +171,12 @@ impl FlowActor {
 			initial_source_objects: params.source_objects,
 			initial_completeness_objects: params.completeness_objects,
 			initial_cursor: params.cursor,
+			wake_pending: Arc::new(AtomicBool::new(false)),
 		}
+	}
+
+	pub(crate) fn wake_pending(&self) -> Arc<AtomicBool> {
+		Arc::clone(&self.wake_pending)
 	}
 
 	fn tick_interval(&self) -> Duration {
@@ -249,7 +258,11 @@ impl FlowActor {
 	}
 
 	fn on_drain(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
+		let woken = self.wake_pending.swap(false, Ordering::SeqCst);
 		if state.poisoned || state.committing || state.awaiting_load {
+			if woken && !state.poisoned {
+				state.drain_after_commit = true;
+			}
 			return;
 		}
 		state.read_cache.retain_after(state.cursor);
@@ -2157,7 +2170,10 @@ mod tick_failures {
 	};
 
 	use super::*;
-	use crate::builder::{CustomOperatorEntry, CustomOperators};
+	use crate::{
+		builder::{CustomOperatorEntry, CustomOperators},
+		progress::tracker::FlowWaker,
+	};
 
 	const FLOW: FlowId = FlowId(9_000);
 	const SOURCE: OperatorId = OperatorId(9_001);
@@ -2617,6 +2633,108 @@ mod tick_failures {
 			!harness.state().drain_after_commit,
 			"an unfenced wake drains at once and has nothing to defer, or the assertion above says \
 			 nothing about the latch"
+		);
+	}
+
+	struct WakeRecorder {
+		received: mpsc::Sender<&'static str>,
+	}
+
+	impl Actor for WakeRecorder {
+		type State = ();
+		type Message = FlowActorMessage;
+
+		fn init(&self, _ctx: &Context<Self::Message>) {}
+
+		fn handle(&self, _state: &mut (), msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
+			let kind = match msg {
+				FlowActorMessage::Wake => "wake",
+				FlowActorMessage::Sample => "sample",
+				FlowActorMessage::Tick => "tick",
+				_ => "other",
+			};
+			self.received.send(kind).expect("the test still listens for flow messages");
+			Directive::Continue
+		}
+
+		fn config(&self) -> ActorConfig {
+			ActorConfig::new()
+		}
+	}
+
+	fn wake_recorder(engine: &StandardEngine, received: mpsc::Sender<&'static str>) -> ActorRef<FlowActorMessage> {
+		engine.spawner()
+			.spawn_ephemeral(
+				"wake-recorder",
+				WakeRecorder {
+					received,
+				},
+			)
+			.actor_ref()
+			.clone()
+	}
+
+	fn next_message(received: &mpsc::Receiver<&'static str>) -> &'static str {
+		received.recv_timeout(StdDuration::from_secs(10)).expect("the recorder must receive the next message")
+	}
+
+	#[test]
+	fn wakes_sent_before_the_flow_drains_merge_into_one_message() {
+		// A wake sent while one is still pending must merge, or every commit floods the flow pool with drains.
+		let (te, _health, actor) = quiet_actor();
+		let (sender, received) = mpsc::channel();
+		let recorder = wake_recorder(te.inner(), sender);
+		let waker = FlowWaker::new(recorder.clone(), actor.wake_pending());
+
+		waker.wake();
+		waker.wake();
+		assert!(recorder.send(FlowActorMessage::Sample).is_ok(), "send marker");
+		assert_eq!(next_message(&received), "wake", "the first wake must be delivered");
+		assert_eq!(
+			next_message(&received),
+			"sample",
+			"a second wake before the drain must be merged into the first"
+		);
+
+		let mut harness = TestHarness::new(actor);
+		harness.send(FlowActorMessage::Drain);
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the drain must be handled");
+
+		waker.wake();
+		assert!(recorder.send(FlowActorMessage::Tick).is_ok(), "send marker");
+		assert_eq!(
+			next_message(&received),
+			"wake",
+			"a wake after the drain started must be delivered, or the flow misses data that landed after it read"
+		);
+		assert_eq!(next_message(&received), "tick", "exactly one wake must follow the drain");
+	}
+
+	#[test]
+	fn a_wake_merged_while_a_commit_is_in_flight_drains_after_the_commit() {
+		// A drain that consumes a pending wake during a commit must defer it, or the merged wake is lost.
+		let (_te, _health, actor) = quiet_actor();
+		let pending = actor.wake_pending();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().committing = true;
+
+		harness.send(FlowActorMessage::Drain);
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the drain must be handled");
+		assert!(
+			!harness.state().drain_after_commit,
+			"a busy drain with no pending wake has nothing to defer, or the assertion below says nothing"
+		);
+
+		pending.store(true, Ordering::SeqCst);
+		harness.send(FlowActorMessage::Drain);
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the drain must be handled");
+		assert!(
+			harness.state().drain_after_commit,
+			"a pending wake consumed during a commit must drain after it, or the flow stalls until the next wake"
+		);
+		assert!(
+			!pending.load(Ordering::SeqCst),
+			"the drain must clear the pending wake, or every later wake is merged away and the flow never wakes"
 		);
 	}
 }

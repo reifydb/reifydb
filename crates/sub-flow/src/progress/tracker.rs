@@ -3,7 +3,10 @@
 
 use std::{
 	collections::{BTreeMap, HashMap, HashSet},
-	sync::Arc,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
 };
 
 use reifydb_core::{
@@ -63,6 +66,28 @@ pub struct UpstreamPosition {
 }
 
 #[derive(Clone)]
+pub struct FlowWaker {
+	actor: ActorRef<FlowActorMessage>,
+	pending: Arc<AtomicBool>,
+}
+
+impl FlowWaker {
+	pub fn new(actor: ActorRef<FlowActorMessage>, pending: Arc<AtomicBool>) -> Self {
+		Self {
+			actor,
+			pending,
+		}
+	}
+
+	pub fn wake(&self) {
+		if self.pending.swap(true, Ordering::SeqCst) {
+			return;
+		}
+		let _ = self.actor.send(FlowActorMessage::Wake);
+	}
+}
+
+#[derive(Clone)]
 pub struct FlowPositionTracker {
 	inner: Arc<RwLock<FlowProgress>>,
 }
@@ -73,7 +98,7 @@ struct FlowProgress {
 	last_commits: HashMap<FlowId, CommitVersion>,
 	upstreams: HashMap<FlowId, Arc<FlowUpstreams>>,
 	readers: HashMap<FlowId, HashSet<FlowId>>,
-	wakers: HashMap<FlowId, ActorRef<FlowActorMessage>>,
+	wakers: HashMap<FlowId, FlowWaker>,
 }
 
 impl FlowProgress {
@@ -98,7 +123,7 @@ impl FlowProgress {
 		}
 	}
 
-	fn readers_of(&self, producer: FlowId) -> Vec<ActorRef<FlowActorMessage>> {
+	fn readers_of(&self, producer: FlowId) -> Vec<FlowWaker> {
 		let Some(readers) = self.readers.get(&producer) else {
 			return Vec::new();
 		};
@@ -180,8 +205,16 @@ impl FlowPositionTracker {
 		self.inner.read().upstreams.get(&flow_id).cloned().unwrap_or_default()
 	}
 
-	pub fn set_waker(&self, flow_id: FlowId, waker: ActorRef<FlowActorMessage>) {
+	pub fn set_waker(&self, flow_id: FlowId, waker: FlowWaker) {
 		self.inner.write().wakers.insert(flow_id, waker);
+	}
+
+	pub fn wake_flows(&self, flow_ids: impl IntoIterator<Item = FlowId>) {
+		let wakers: Vec<FlowWaker> = {
+			let progress = self.inner.read();
+			flow_ids.into_iter().filter_map(|flow_id| progress.wakers.get(&flow_id).cloned()).collect()
+		};
+		wake(wakers);
 	}
 
 	pub fn remove(&self, flow_id: FlowId) {
@@ -197,9 +230,9 @@ impl FlowPositionTracker {
 	}
 }
 
-fn wake(readers: Vec<ActorRef<FlowActorMessage>>) {
+fn wake(readers: Vec<FlowWaker>) {
 	for reader in readers {
-		let _ = reader.send(FlowActorMessage::Wake);
+		reader.wake();
 	}
 }
 
@@ -212,5 +245,110 @@ impl ConsumerPositions for FlowPositionTracker {
 impl Default for FlowPositionTracker {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{
+		collections::{HashMap, HashSet},
+		sync::{
+			Arc,
+			atomic::{AtomicBool, Ordering},
+			mpsc,
+		},
+		time::Duration,
+	};
+
+	use reifydb_core::{actors::flow::FlowActorMessage, common::CommitVersion, interface::catalog::flow::FlowId};
+	use reifydb_runtime::{
+		actor::{
+			context::Context,
+			mailbox::ActorRef,
+			system::{ActorConfig, ActorSystem},
+			traits::{Actor, Directive},
+		},
+		context::clock::Clock,
+	};
+
+	use super::{FlowPositionTracker, FlowWaker};
+
+	const PRODUCER: FlowId = FlowId(1);
+	const READER: FlowId = FlowId(2);
+
+	struct WakeRecorder {
+		received: mpsc::Sender<&'static str>,
+	}
+
+	impl Actor for WakeRecorder {
+		type State = ();
+		type Message = FlowActorMessage;
+
+		fn init(&self, _ctx: &Context<Self::Message>) {}
+
+		fn handle(&self, _state: &mut (), msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
+			let kind = match msg {
+				FlowActorMessage::Wake => "wake",
+				FlowActorMessage::Sample => "sample",
+				FlowActorMessage::Tick => "tick",
+				_ => "other",
+			};
+			self.received.send(kind).expect("the test still listens for flow messages");
+			Directive::Continue
+		}
+
+		fn config(&self) -> ActorConfig {
+			ActorConfig::new()
+		}
+	}
+
+	fn next_message(received: &mpsc::Receiver<&'static str>) -> &'static str {
+		received.recv_timeout(Duration::from_secs(10)).expect("the recorder must receive the next message")
+	}
+
+	fn send_marker(reader: &ActorRef<FlowActorMessage>, marker: FlowActorMessage) {
+		assert!(reader.send(marker).is_ok(), "send marker");
+	}
+
+	#[test]
+	fn upstream_steps_to_a_reader_with_a_pending_wake_merge_into_one_message() {
+		// An upstream step must not queue a second wake on a reader already woken, or the flow pool floods.
+		let actor_system = ActorSystem::testing(Clock::testing());
+		let (sender, received) = mpsc::channel();
+		let reader = actor_system
+			.spawner()
+			.spawn_flow(
+				"wake-recorder",
+				WakeRecorder {
+					received: sender,
+				},
+			)
+			.actor_ref()
+			.clone();
+		let pending = Arc::new(AtomicBool::new(false));
+		let tracker = FlowPositionTracker::new();
+		tracker.set_upstreams(READER, HashMap::from([(PRODUCER, HashSet::new())]));
+		tracker.set_waker(READER, FlowWaker::new(reader.clone(), Arc::clone(&pending)));
+
+		tracker.update(PRODUCER, CommitVersion(1));
+		tracker.update(PRODUCER, CommitVersion(2));
+		tracker.update_committed(PRODUCER, CommitVersion(3), CommitVersion(3));
+		send_marker(&reader, FlowActorMessage::Sample);
+		assert_eq!(next_message(&received), "wake", "the first upstream step must wake the reader");
+		assert_eq!(
+			next_message(&received),
+			"sample",
+			"upstream steps before the reader drains must merge into the first wake"
+		);
+
+		pending.store(false, Ordering::SeqCst);
+		tracker.update_committed(PRODUCER, CommitVersion(4), CommitVersion(4));
+		send_marker(&reader, FlowActorMessage::Tick);
+		assert_eq!(
+			next_message(&received),
+			"wake",
+			"a step after the reader cleared its wake must wake it again, or it never sees that step"
+		);
+		assert_eq!(next_message(&received), "tick", "exactly one wake must follow the cleared flag");
 	}
 }
