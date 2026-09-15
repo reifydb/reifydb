@@ -92,6 +92,8 @@ mod returning;
 mod ringbuffer;
 #[path = "shutdown.rs"]
 mod shutdown;
+#[path = "series_scan_column_types.rs"]
+mod series_scan_column_types;
 #[path = "series_tag_constructor_field.rs"]
 mod series_tag_constructor_field;
 #[path = "sort_unorderable.rs"]
