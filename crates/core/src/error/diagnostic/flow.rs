@@ -397,6 +397,15 @@ pub fn extern_create_failed(cause: String) -> Diagnostic {
 	)
 }
 
+pub fn extern_column_type_unsupported(column: &str, ty: ValueType) -> Diagnostic {
+	flow_diagnostic(
+		"EXTERN_001",
+		format!("column '{}' of type {} cannot be passed to an extension", column, ty),
+		"Extensions receive scalar columns only. Read what the extension needs from the column first, e.g., \
+		 'stats::approx_percentile(d, 0.99)', and pass that instead.",
+	)
+}
+
 pub fn flow_sink_missing_system_column(column: &str, row_idx: usize) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_036",

@@ -66,6 +66,21 @@ pub fn distinct_key_unkeyable(fragment: Fragment, ty: ValueType) -> Diagnostic {
 	}
 }
 
+pub fn join_key_unkeyable(fragment: Fragment, ty: ValueType) -> Diagnostic {
+	Diagnostic {
+		code: "JOIN_001".to_string(),
+		rql: None,
+		message: format!("JOIN cannot match rows by a column of type {}", ty),
+		column: None,
+		fragment,
+		label: Some("column cannot be a join key".to_string()),
+		help: Some("Join on a scalar column instead".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn sort_key_not_orderable(fragment: Fragment, ty: ValueType) -> Diagnostic {
 	Diagnostic {
 		code: "SORT_002".to_string(),

@@ -176,7 +176,7 @@ impl KeySerializer {
 		self
 	}
 
-	pub fn extend_value_with_direction(&mut self, value: &Value, direction: SortOrder) -> &mut Self {
+	pub fn extend_value_with_direction(&mut self, value: &Value, direction: SortOrder) -> Result<&mut Self> {
 		let ty = match value {
 			Value::None {
 				inner,
@@ -186,14 +186,14 @@ impl KeySerializer {
 		let ascending = matches!(direction, SortOrder::Asc);
 		if ascending == keycode_type_descending(&ty) {
 			let mut tmp = KeySerializer::new();
-			tmp.extend_value(value);
+			tmp.try_extend_value(value)?;
 			let mut bytes = tmp.to_encoded_key().to_vec();
 			for b in bytes.iter_mut() {
 				*b = !*b;
 			}
-			self.extend_raw(&bytes)
+			Ok(self.extend_raw(&bytes))
 		} else {
-			self.extend_value(value)
+			self.try_extend_value(value)
 		}
 	}
 

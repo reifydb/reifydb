@@ -7,11 +7,11 @@ use reifydb_core::interface::{
 	catalog::object::ObjectId,
 	change::{Change, ChangeOrigin, Diff},
 };
-use reifydb_value::value::diff_type::DiffType;
+use reifydb_value::{Result, value::diff_type::DiffType};
 use tracing::instrument;
 
 use crate::{
-	common::extern_c::wire::columns::ExternCColumns,
+	common::{extern_c::wire::columns::ExternCColumns, extern_wasm::marshal::util::ensure_marshallable},
 	flow::{
 		extern_c::wire::change::{ExternCChange, ExternCDiff, ExternCOrigin},
 		operator::extern_c::binding::arena::Arena,
@@ -20,7 +20,27 @@ use crate::{
 
 impl Arena {
 	#[instrument(name = "flow::marshal::change", level = "trace", skip_all, fields(diff_count = change.diffs.len()))]
-	pub fn marshal_change(&mut self, change: &Change) -> ExternCChange {
+	pub fn marshal_change(&mut self, change: &Change) -> Result<ExternCChange> {
+		for diff in change.diffs.iter() {
+			match diff {
+				Diff::Insert {
+					post,
+					..
+				} => ensure_marshallable(post)?,
+				Diff::Update {
+					pre,
+					post,
+					..
+				} => {
+					ensure_marshallable(pre)?;
+					ensure_marshallable(post)?;
+				}
+				Diff::Remove {
+					pre,
+					..
+				} => ensure_marshallable(pre)?,
+			}
+		}
 		let diffs_count = change.diffs.len();
 		let diffs_ptr = if diffs_count > 0 {
 			let diffs_array = self.alloc(diffs_count * size_of::<ExternCDiff>()) as *mut ExternCDiff;
@@ -42,13 +62,13 @@ impl Arena {
 			ptr::null_mut()
 		};
 
-		ExternCChange {
+		Ok(ExternCChange {
 			origin: Self::marshal_origin(&change.origin),
 			diff_count: diffs_count,
 			diffs: diffs_ptr,
 			version: change.version.source.0,
 			changed_at: change.changed_at.to_nanos(),
-		}
+		})
 	}
 
 	fn marshal_origin(origin: &ChangeOrigin) -> ExternCOrigin {

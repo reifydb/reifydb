@@ -117,7 +117,7 @@ impl QueryNode for NestedLoopJoinNode {
 			left_rows,
 			right_rows,
 			right_width,
-		);
+		)?;
 
 		let columns = Self::materialize(&resolved.qualified_names, result_rows, result_row_numbers);
 
@@ -142,7 +142,7 @@ impl NestedLoopJoinNode {
 		left_rows: usize,
 		right_rows: usize,
 		right_width: usize,
-	) -> (Vec<Vec<Value>>, Vec<RowNumber>) {
+	) -> Result<(Vec<Vec<Value>>, Vec<RowNumber>)> {
 		let mut result_rows = Vec::new();
 		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
@@ -163,10 +163,11 @@ impl NestedLoopJoinNode {
 
 				let exec_ctx = session.with_eval_join(Columns::new(eval_columns));
 
-				let all_true = self.context.compiled.iter().fold(true, |acc, compiled_expr| {
-					let col = compiled_expr.execute(&exec_ctx).unwrap();
-					matches!(col.data().get_value(0), Value::Boolean(true)) && acc
-				});
+				let mut all_true = true;
+				for compiled_expr in &self.context.compiled {
+					let col = compiled_expr.execute(&exec_ctx)?;
+					all_true &= matches!(col.data().get_value(0), Value::Boolean(true));
+				}
 
 				if all_true {
 					let mut combined = left_row.clone();
@@ -189,7 +190,7 @@ impl NestedLoopJoinNode {
 			}
 		}
 
-		(result_rows, result_row_numbers)
+		Ok((result_rows, result_row_numbers))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::materialize")]

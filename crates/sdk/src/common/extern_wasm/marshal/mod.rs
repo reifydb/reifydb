@@ -15,6 +15,7 @@ use reifydb_codec::{
 };
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{
+	Result,
 	fragment::Fragment,
 	util::bitvec::BitVec,
 	value::{
@@ -46,10 +47,11 @@ use uuid::Uuid;
 
 use crate::common::extern_wasm::{
 	layout::{EXTERN_WASM_COLUMN_SIZE, EXTERN_WASM_COLUMNS_HEADER_SIZE, ExternWasmColumn, ExternWasmColumns},
-	marshal::util::column_data_to_type_code,
+	marshal::util::{column_data_to_type_code, ensure_marshallable},
 };
 
-pub fn marshal_columns_to_bytes(columns: &Columns) -> Vec<u8> {
+pub fn marshal_columns_to_bytes(columns: &Columns) -> Result<Vec<u8>> {
+	ensure_marshallable(columns)?;
 	let row_count = columns.row_count();
 	let column_count = columns.len();
 
@@ -124,7 +126,7 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Vec<u8> {
 		desc.write_at(&mut buf, offset);
 	}
 
-	buf
+	Ok(buf)
 }
 
 pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {

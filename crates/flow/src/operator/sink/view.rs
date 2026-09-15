@@ -93,29 +93,35 @@ impl SinkTableViewOperator {
 	}
 
 	#[inline]
-	fn sort_run(&self, cols: &Columns, row_idx: usize) -> SortRun {
+	fn sort_run(&self, cols: &Columns, row_idx: usize) -> Result<SortRun> {
 		let mut serializer = KeySerializer::new();
 		for key in &self.sort {
 			let value = cols.data_at(key.column.0 as usize).get_value(row_idx);
-			serializer.extend_value_with_direction(&value, key.direction.clone().into());
+			serializer.extend_value_with_direction(&value, key.direction.clone().into())?;
 		}
-		SortRun::from_encoded(serializer.to_encoded_key())
+		Ok(SortRun::from_encoded(serializer.to_encoded_key()))
 	}
 
 	#[inline]
-	fn sorted_view_key(&self, cols: &Columns, row_idx: usize, row: RowNumber) -> EncodedKey {
+	fn sorted_view_key(&self, cols: &Columns, row_idx: usize, row: RowNumber) -> Result<EncodedKey> {
 		if self.sort.is_empty() {
-			return self.row_key(row);
+			return Ok(self.row_key(row));
 		}
-		SortedViewRowKey::encoded(self.storage, self.sort_run(cols, row_idx), row)
+		Ok(SortedViewRowKey::encoded(self.storage, self.sort_run(cols, row_idx)?, row))
 	}
 
 	#[inline]
-	fn partitioned_key(&self, cols: &Columns, row_idx: usize, partition: Partition, row: RowNumber) -> EncodedKey {
+	fn partitioned_key(
+		&self,
+		cols: &Columns,
+		row_idx: usize,
+		partition: Partition,
+		row: RowNumber,
+	) -> Result<EncodedKey> {
 		if self.sort.is_empty() {
-			return PartitionedRowKey::encoded(self.storage, partition, row);
+			return Ok(PartitionedRowKey::encoded(self.storage, partition, row));
 		}
-		PartitionedSortedViewRowKey::encoded(self.storage, partition, self.sort_run(cols, row_idx), row)
+		Ok(PartitionedSortedViewRowKey::encoded(self.storage, partition, self.sort_run(cols, row_idx)?, row))
 	}
 }
 
@@ -176,9 +182,9 @@ impl SinkTableViewOperator {
 					&values,
 					&mut self.verified_partitions,
 				)?;
-				self.partitioned_key(source, row_idx, partition, row_number)
+				self.partitioned_key(source, row_idx, partition, row_number)?
 			} else {
-				self.sorted_view_key(source, row_idx, row_number)
+				self.sorted_view_key(source, row_idx, row_number)?
 			};
 			remember_created_at(&mut self.created_at, row_number, read_created_at(&encoded));
 			keys.push(key);
@@ -239,13 +245,13 @@ impl SinkTableViewOperator {
 					&mut self.verified_partitions,
 				)?;
 				(
-					self.partitioned_key(source_pre, row_idx, pre_partition, pre_row_number),
-					self.partitioned_key(source_post, row_idx, post_partition, post_row_number),
+					self.partitioned_key(source_pre, row_idx, pre_partition, pre_row_number)?,
+					self.partitioned_key(source_post, row_idx, post_partition, post_row_number)?,
 				)
 			} else {
 				(
-					self.sorted_view_key(source_pre, row_idx, pre_row_number),
-					self.sorted_view_key(source_post, row_idx, post_row_number),
+					self.sorted_view_key(source_pre, row_idx, pre_row_number)?,
+					self.sorted_view_key(source_post, row_idx, post_row_number)?,
 				)
 			};
 
@@ -319,9 +325,9 @@ impl SinkTableViewOperator {
 			self.created_at.remove(&row_number);
 			let key = if self.is_partitioned() {
 				let (partition, _values) = partition_of(&self.partition_indices, &coerced, row_idx);
-				self.partitioned_key(source, row_idx, partition, row_number)
+				self.partitioned_key(source, row_idx, partition, row_number)?
 			} else {
-				self.sorted_view_key(source, row_idx, row_number)
+				self.sorted_view_key(source, row_idx, row_number)?
 			};
 			keys.push(key);
 		}

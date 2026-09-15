@@ -102,7 +102,7 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 		let origin = input.origin.clone();
 
 		self.input_arena.clear();
-		let extern_c_change = self.input_arena.marshal_change(&input);
+		let extern_c_change = self.input_arena.marshal_change(&input)?;
 		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContextRaw;
 
 		let result: Result<()> = with_registry(&self.builder_registry, || {
@@ -448,7 +448,7 @@ impl<T: ExternCOperator> ExternCOperatorHarnessBuilder<T> {
 	}
 }
 
-pub fn drive_extern_c_apply<O: ExternCOperator + OperatorMetadata>(input: &Change) -> i32 {
+pub fn drive_extern_c_apply<O: ExternCOperator + OperatorMetadata>(input: &Change) -> Result<i32> {
 	let context = Box::new(TestContext::new(CommitVersion(1)));
 	let mut extern_c_context = ExternCContextRaw {
 		txn_ptr: &*context as *const TestContext as *mut c_void,
@@ -461,19 +461,19 @@ pub fn drive_extern_c_apply<O: ExternCOperator + OperatorMetadata>(input: &Chang
 	let mut wrapper = OperatorWrapper::new(operator);
 
 	let mut arena = Arena::new();
-	let extern_c_change = arena.marshal_change(input);
+	let extern_c_change = arena.marshal_change(input)?;
 
 	let registry = TestBuilderRegistry::new();
 	// SAFETY: the wrapper, context and change all outlive the call, and the arena backing the
 	// change's buffers is still alive, so every pointer crossing the boundary is valid for its
 	// whole duration.
-	with_registry(&registry, || unsafe {
+	Ok(with_registry(&registry, || unsafe {
 		extern_c_apply::<O>(
 			wrapper.as_ptr(),
 			&mut extern_c_context as *mut ExternCContextRaw,
 			&extern_c_change as *const _,
 		)
-	})
+	}))
 }
 
 pub struct TestMetadataHarness;

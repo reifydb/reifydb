@@ -18,7 +18,6 @@ use std::{
 use reifydb_value::{
 	util::hash::Hash128,
 	value::{
-		Value,
 		blob::Blob,
 		date::Date,
 		datetime::DateTime,
@@ -329,11 +328,6 @@ impl EncodedKeyBuilder {
 		self.serializer.extend_blob(blob);
 		self
 	}
-
-	pub fn value(mut self, value: &Value) -> Self {
-		self.serializer.extend_value(value);
-		self
-	}
 }
 
 impl Default for EncodedKeyBuilder {
@@ -513,42 +507,6 @@ impl IntoEncodedKey for RowNumber {
 impl IntoEncodedKey for &RowNumber {
 	fn into_encoded_key(self) -> EncodedKey {
 		self.0.into_encoded_key()
-	}
-}
-
-impl IntoEncodedKey for Value {
-	fn into_encoded_key(self) -> EncodedKey {
-		let mut serializer = KeySerializer::new();
-		serializer.extend_value(&self);
-		serializer.to_encoded_key()
-	}
-}
-
-impl IntoEncodedKey for &Value {
-	fn into_encoded_key(self) -> EncodedKey {
-		let mut serializer = KeySerializer::new();
-		serializer.extend_value(self);
-		serializer.to_encoded_key()
-	}
-}
-
-impl IntoEncodedKey for Vec<Value> {
-	fn into_encoded_key(self) -> EncodedKey {
-		let mut serializer = KeySerializer::new();
-		for value in self.iter() {
-			serializer.extend_value(value);
-		}
-		serializer.to_encoded_key()
-	}
-}
-
-impl IntoEncodedKey for &[Value] {
-	fn into_encoded_key(self) -> EncodedKey {
-		let mut serializer = KeySerializer::new();
-		for value in self.iter() {
-			serializer.extend_value(value);
-		}
-		serializer.to_encoded_key()
 	}
 }
 

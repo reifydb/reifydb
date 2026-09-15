@@ -19,8 +19,8 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::common::{
-	JoinContext, compute_join_hash, eval_join_condition, keys_equal_by_index, load_and_merge_all,
-	resolve_column_names,
+	JoinContext, compute_join_hash, ensure_join_keyable, eval_join_condition, keys_equal_by_index,
+	load_and_merge_all, resolve_column_names,
 };
 use crate::{
 	Result,
@@ -221,6 +221,7 @@ impl HashJoinNode {
 				})
 				.collect()
 		};
+		ensure_join_keyable(&build_columns, &right_key_indices)?;
 
 		let mut hash_table: HashMap<Hash128, Vec<usize>> = HashMap::new();
 		let mut hash_buf = Vec::with_capacity(256);
@@ -372,6 +373,7 @@ impl QueryNode for HashJoinNode {
 				match self.left.next(rx, ctx)? {
 					Some(batch) => {
 						resolve_names_and_indices(&mut state, &batch, &self.left_key_names);
+						ensure_join_keyable(&batch, &state.left_key_indices)?;
 						state.probe_batch = Some(batch);
 						state.probe_row_idx = 0;
 
@@ -448,7 +450,7 @@ impl QueryNode for HashJoinNode {
 					&right_row,
 					&self.alias,
 					&stored_ctx,
-				) {
+				)? {
 				continue;
 			}
 

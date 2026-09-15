@@ -34,6 +34,8 @@ mod identity_inject_escalation;
 mod identity_kind;
 #[path = "interceptor.rs"]
 mod interceptor;
+#[path = "join_digest_key.rs"]
+mod join_digest_key;
 #[path = "join_retention_ddl.rs"]
 mod join_retention_ddl;
 #[path = "memory_limit.rs"]

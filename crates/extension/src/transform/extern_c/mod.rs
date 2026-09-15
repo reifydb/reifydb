@@ -7,7 +7,10 @@ use std::{cell::UnsafeCell, ffi::c_void, ptr};
 
 use reifydb_core::value::column::columns::Columns;
 use reifydb_sdk::{
-	common::extern_c::wire::callbacks::{builder::BuilderCallbacks, memory::MemoryCallbacks},
+	common::{
+		extern_c::wire::callbacks::{builder::BuilderCallbacks, memory::MemoryCallbacks},
+		extern_wasm::marshal::util::ensure_marshallable,
+	},
 	error::SdkError,
 	flow::operator::extern_c::binding::arena::Arena,
 	transform::extern_c::wire::{
@@ -89,6 +92,7 @@ impl Transform for ExternCTransform {
 	#[instrument(name = "transform::extern_c::apply", level = "trace", skip_all)]
 	fn apply(&self, ctx: &TransformContext, input: Columns) -> Result<Columns> {
 		// SAFETY: the arena is thread-local and nothing marshalled into it outlives a call.
+		ensure_marshallable(&input)?;
 		EXTERN_C_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
 		let extern_c_input =
 			EXTERN_C_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).marshal_columns(&input) });

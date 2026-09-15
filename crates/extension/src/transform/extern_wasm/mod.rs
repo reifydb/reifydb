@@ -34,7 +34,7 @@ unsafe impl Sync for ExternWasmTransform {}
 
 impl Transform for ExternWasmTransform {
 	fn apply(&self, _ctx: &TransformContext, input: Columns) -> Result<Columns> {
-		let input_bytes = marshal_columns_to_bytes(&input);
+		let input_bytes = marshal_columns_to_bytes(&input)?;
 		let label = format!("WASM transform '{}'", self.name);
 
 		let output_bytes = invoke_extern_wasm_module(&self.wasm_bytes, "transform", &input_bytes, &label)?;

@@ -52,7 +52,7 @@ impl<'a> Routine<FunctionContext<'a>> for ExternWasmScalarFunction {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		let input_bytes = marshal_columns_to_bytes(args);
+		let input_bytes = marshal_columns_to_bytes(args)?;
 		let label = format!("WASM scalar function '{}'", self.info.name);
 
 		let output_bytes = invoke_extern_wasm_module(&self.wasm_bytes, "scalar", &input_bytes, &label)

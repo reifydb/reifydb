@@ -16,7 +16,7 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::common::{JoinContext, compute_join_hash, load_and_merge_all, resolve_column_names};
+use super::common::{JoinContext, compute_join_hash, ensure_join_keyable, load_and_merge_all, resolve_column_names};
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -107,6 +107,8 @@ impl QueryNode for NaturalJoinNode {
 		let hash_table = Self::build(&right_columns, &right_col_indices, &mut hash_buf);
 
 		let left_col_indices: Vec<usize> = common_columns.iter().map(|(_, li, _)| *li).collect();
+		ensure_join_keyable(&left_columns, &left_col_indices)?;
+		ensure_join_keyable(&right_columns, &right_col_indices)?;
 
 		let (result_rows, result_row_numbers) = self.probe(
 			&left_columns,

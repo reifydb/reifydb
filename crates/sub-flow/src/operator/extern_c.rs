@@ -98,7 +98,7 @@ impl Drop for ExternCOperatorHandle {
 
 #[inline]
 #[instrument(name = "flow::extern_c::marshal", level = "trace", skip_all)]
-fn marshal_input(arena: &mut Arena, change: &Change) -> ExternCChange {
+fn marshal_input(arena: &mut Arena, change: &Change) -> Result<ExternCChange> {
 	arena.marshal_change(change)
 }
 
@@ -159,7 +159,7 @@ impl HostOperator for ExternCOperatorHandle {
 		// no pointer into it is still live when it is cleared and re-borrowed.
 		EXTERN_C_MARSHAL_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
 		let extern_c_input =
-			EXTERN_C_MARSHAL_ARENA.with(|cell| marshal_input(unsafe { &mut *cell.get() }, &change));
+			EXTERN_C_MARSHAL_ARENA.with(|cell| marshal_input(unsafe { &mut *cell.get() }, &change))?;
 
 		let version = change.version;
 		let changed_at = change.changed_at;

@@ -2,7 +2,23 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_core::value::column::buffer::ColumnBuffer;
+use reifydb_core::{
+	error::diagnostic::flow::extern_column_type_unsupported,
+	value::column::{buffer::ColumnBuffer, columns::Columns},
+};
+use reifydb_value::{Result, error};
+
+pub fn ensure_marshallable(columns: &Columns) -> Result<()> {
+	for column in columns.iter() {
+		if matches!(column_data_to_type_code(column.data()), ValueKind::Digest) {
+			return Err(error!(extern_column_type_unsupported(
+				column.name().text(),
+				column.data().get_type()
+			)));
+		}
+	}
+	Ok(())
+}
 
 pub(crate) fn column_data_to_type_code(data: &ColumnBuffer) -> ValueKind {
 	match data {

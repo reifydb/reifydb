@@ -87,3 +87,6 @@ mod any;
 
 #[path = "extern_c/option.rs"]
 mod option;
+
+#[path = "extern_c/digest.rs"]
+mod digest;
