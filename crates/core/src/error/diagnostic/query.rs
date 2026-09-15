@@ -128,6 +128,24 @@ pub fn join_column_alias_error(fragment: Fragment, message: &str) -> Diagnostic 
 	}
 }
 
+pub fn window_requires_deferred_view(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_007".to_string(),
+		rql: None,
+		message: "window runs only in deferred views, not in a batch query".to_string(),
+		fragment,
+		label: Some("a batch query cannot run a window".to_string()),
+		help: Some(
+			"define the window in CREATE DEFERRED VIEW ns::name AS { ... } and read the view with FROM ns::name"
+				.to_string(),
+		),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn unknown_apply_operator(fragment: Fragment) -> Diagnostic {
 	let name = fragment.text().to_string();
 	Diagnostic {

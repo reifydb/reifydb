@@ -46,6 +46,7 @@ use crate::vm::volcano::{
 	take::TakeNode,
 	top_k::TopKNode,
 	variable::VariableNode,
+	window::UnsupportedWindowNode,
 };
 
 fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
@@ -238,11 +239,7 @@ pub(crate) fn compile<'a>(
 		RqlQueryPlan::RunTests(node) => Box::new(RunTestsQueryNode::new(node, context.clone())),
 		RqlQueryPlan::CallFunction(node) => Box::new(GeneratorNode::new(node.name, node.arguments)),
 
-		RqlQueryPlan::Window(_) => {
-			unimplemented!(
-				"Window operator is only supported in deferred views and requires the flow engine."
-			)
-		}
+		RqlQueryPlan::Window(node) => Box::new(UnsupportedWindowNode::new(node.fragment)),
 		RqlQueryPlan::Append(_) => {
 			unimplemented!(
 				"Append operator is only supported in deferred views and requires the flow engine."
