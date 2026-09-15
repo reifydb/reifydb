@@ -29,7 +29,7 @@ impl IndexShape {
 		}
 
 		for typ in types {
-			if matches!(typ, ValueType::Utf8 | ValueType::Blob) {
+			if matches!(typ, ValueType::Utf8 | ValueType::Blob | ValueType::Digest { .. }) {
 				return Err(CoreError::IndexVariableLengthNotSupported.into());
 			}
 		}

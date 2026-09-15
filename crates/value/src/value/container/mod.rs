@@ -5,6 +5,7 @@ pub mod any;
 pub mod blob;
 pub mod bool;
 pub mod dictionary;
+pub mod digest;
 pub mod identity_id;
 pub mod number;
 pub mod row;

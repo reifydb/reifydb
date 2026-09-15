@@ -149,6 +149,11 @@ pub fn encode_primary_key(pk_def: &PrimaryKey, row: &[u8], table: &Table, shape:
 			ValueType::Tuple(_) => {
 				panic!("Tuple type cannot be used in primary keys");
 			}
+			ValueType::Digest {
+				..
+			} => {
+				unreachable!("IndexShape::new rejects a Digest primary key column");
+			}
 		}
 	}
 

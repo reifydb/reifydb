@@ -36,6 +36,9 @@ pub fn value_max<'a>(value: ValueType) -> &'a str {
 		ValueType::List(_) => unreachable!(),
 		ValueType::Record(_) => unreachable!(),
 		ValueType::Tuple(_) => unreachable!(),
+		ValueType::Digest {
+			..
+		} => unreachable!(),
 	}
 }
 
@@ -74,6 +77,9 @@ pub fn value_range<'a>(value: ValueType) -> &'a str {
 		ValueType::List(_) => unreachable!(),
 		ValueType::Record(_) => unreachable!(),
 		ValueType::Tuple(_) => unreachable!(),
+		ValueType::Digest {
+			..
+		} => unreachable!(),
 	}
 }
 

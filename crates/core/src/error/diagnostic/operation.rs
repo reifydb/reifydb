@@ -51,6 +51,21 @@ pub fn aggregate_map_without_aggregate(fragment: Fragment) -> Diagnostic {
 	}
 }
 
+pub fn distinct_key_unkeyable(fragment: Fragment, ty: ValueType) -> Diagnostic {
+	Diagnostic {
+		code: "DISTINCT_001".to_string(),
+		rql: None,
+		message: format!("DISTINCT cannot compare rows by a column of type {}", ty),
+		column: None,
+		fragment,
+		label: Some("column cannot be a distinct key".to_string()),
+		help: Some("Remove the column from DISTINCT, or apply DISTINCT before the column is added".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn sort_key_not_orderable(fragment: Fragment, ty: ValueType) -> Diagnostic {
 	Diagnostic {
 		code: "SORT_002".to_string(),

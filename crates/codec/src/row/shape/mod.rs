@@ -325,7 +325,12 @@ impl RowShape {
 		}
 		let field = &self.fields()[index];
 		match field.constraint.get_type().inner_type() {
-			ValueType::Utf8 | ValueType::Blob | ValueType::Any => {
+			ValueType::Utf8
+			| ValueType::Blob
+			| ValueType::Any
+			| ValueType::Digest {
+				..
+			} => {
 				let ref_slice = &row[field.offset as usize..field.offset as usize + 8];
 				let offset =
 					u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]])
@@ -358,7 +363,12 @@ impl RowShape {
 	pub(crate) fn write_dynamic_ref(&self, row: &mut impl RowBuilder, index: usize, offset: usize, length: usize) {
 		let field = &self.fields()[index];
 		match field.constraint.get_type().inner_type() {
-			ValueType::Utf8 | ValueType::Blob | ValueType::Any => {
+			ValueType::Utf8
+			| ValueType::Blob
+			| ValueType::Any
+			| ValueType::Digest {
+				..
+			} => {
 				let ref_slice =
 					&mut row.as_mut_slice()[field.offset as usize..field.offset as usize + 8];
 				ref_slice[0..4].copy_from_slice(&(offset as u32).to_le_bytes());

@@ -39,6 +39,7 @@ fn to_json(value: &Value) -> String {
 		Value::Blob(b) => format!("\"{}\"", b),
 		Value::DictionaryId(id) => format!("\"{}\"", id),
 		Value::Type(t) => format!("\"{}\"", t),
+		Value::Digest(_) => format!("\"{}\"", value),
 		Value::Any(v) => to_json(v),
 		Value::List(items) => {
 			let inner: Vec<String> = items.iter().map(to_json).collect();

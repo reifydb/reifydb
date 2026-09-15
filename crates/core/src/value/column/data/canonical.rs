@@ -110,7 +110,11 @@ impl Canonical {
 fn encoding_for_type(ty: &ValueType) -> EncodingId {
 	match ty {
 		ValueType::Boolean => EncodingId::CANONICAL_BOOL,
-		ValueType::Utf8 | ValueType::Blob => EncodingId::CANONICAL_VARLEN,
+		ValueType::Utf8
+		| ValueType::Blob
+		| ValueType::Digest {
+			..
+		} => EncodingId::CANONICAL_VARLEN,
 		ValueType::Int | ValueType::Uint | ValueType::Decimal => EncodingId::CANONICAL_BIGNUM,
 		_ => EncodingId::CANONICAL_FIXED,
 	}

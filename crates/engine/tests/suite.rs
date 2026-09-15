@@ -16,6 +16,8 @@ mod cast_target_diagnostics;
 mod closure;
 #[path = "column_type_parameters.rs"]
 mod column_type_parameters;
+#[path = "digest_query.rs"]
+mod digest_query;
 #[path = "empty_batch_system_columns.rs"]
 mod empty_batch_system_columns;
 #[path = "empty_result_column_types.rs"]

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{digest::Digest, value_type::ValueType};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as DeError, ser::Error as SerError};
 use serde_json::{Map, Value as JsonValue};
 
@@ -24,6 +24,7 @@ const ID: &str = "id";
 const UNDERLYING: &str = "underlying";
 const NAME: &str = "name";
 const TYPE: &str = "type";
+const ACCURACY: &str = "accuracy";
 
 fn scalar_id(ty: &ValueType) -> Option<&'static str> {
 	Some(match ty {
@@ -54,7 +55,13 @@ fn scalar_id(ty: &ValueType) -> Option<&'static str> {
 		ValueType::Decimal => "Decimal",
 		ValueType::Any => "Any",
 		ValueType::DictionaryId => "DictionaryId",
-		ValueType::Option(_) | ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_) => {
+		ValueType::Option(_)
+		| ValueType::List(_)
+		| ValueType::Record(_)
+		| ValueType::Tuple(_)
+		| ValueType::Digest {
+			..
+		} => {
 			return None;
 		}
 	})
@@ -124,6 +131,16 @@ pub fn to_json(ty: &ValueType) -> JsonValue {
 				.collect();
 			descriptor("Record", Some(JsonValue::Array(entries)))
 		}
+		ValueType::Digest {
+			inner,
+			accuracy,
+		} => {
+			let mut object = descriptor("Digest", Some(to_json(inner)));
+			if let JsonValue::Object(fields) = &mut object {
+				fields.insert(ACCURACY.to_string(), JsonValue::from(*accuracy));
+			}
+			object
+		}
 
 		other => descriptor(&other.to_string(), None),
 	}
@@ -172,6 +189,20 @@ pub fn from_json(value: &JsonValue) -> Result<ValueType, String> {
 				})
 				.collect::<Result<Vec<_>, String>>()
 				.map(ValueType::Record)
+		}
+		"Digest" => {
+			let inner = child()?;
+			let accuracy = object
+				.get(ACCURACY)
+				.and_then(JsonValue::as_u64)
+				.and_then(|accuracy| u32::try_from(accuracy).ok())
+				.ok_or_else(|| format!("`Digest` needs an unsigned 32-bit `{ACCURACY}`: {value}"))?;
+			Digest::new(inner.clone(), accuracy)
+				.map_err(|error| format!("invalid `Digest` type: {error}"))?;
+			Ok(ValueType::Digest {
+				inner: Box::new(inner),
+				accuracy,
+			})
 		}
 		unknown => Err(format!("unknown type id `{unknown}`")),
 	}

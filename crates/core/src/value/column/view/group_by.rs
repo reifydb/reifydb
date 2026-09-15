@@ -189,7 +189,7 @@ impl Columns {
 		for row in 0..row_count {
 			let mut serializer = KeySerializer::new();
 			for column in &key_columns {
-				column.extend_key(row, &mut serializer);
+				column.extend_key(row, &mut serializer)?;
 			}
 			let encoded = serializer.to_encoded_key();
 

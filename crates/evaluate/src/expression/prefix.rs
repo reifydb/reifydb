@@ -332,6 +332,18 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			}
 			.into()),
 		},
+		ColumnBuffer::Digest {
+			..
+		} => match operator {
+			PrefixOperator::Not(_) => Err(CoreError::FrameError {
+				message: "Cannot apply NOT operator to Digest type".to_string(),
+			}
+			.into()),
+			_ => Err(CoreError::FrameError {
+				message: "Cannot apply arithmetic prefix operator to Digest type".to_string(),
+			}
+			.into()),
+		},
 		ColumnBuffer::Option {
 			..
 		} => unreachable!("nested Option after unwrap"),

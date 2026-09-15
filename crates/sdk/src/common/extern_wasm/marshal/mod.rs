@@ -368,6 +368,12 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 
+		ColumnBuffer::Digest {
+			inner,
+			accuracy,
+			..
+		} => panic!("a Digest({inner}, {accuracy}) column cannot be marshalled to a wasm guest"),
+
 		ColumnBuffer::Option {
 			inner,
 			..
@@ -540,7 +546,12 @@ fn unmarshal_column_data(
 				u128_container.iter().map(|v| DictionaryEntryId::U16(v.unwrap_or_default())).collect();
 			ColumnBuffer::DictionaryId(DictionaryContainer::new(entries))
 		}
-		ValueKind::None | ValueKind::Type | ValueKind::List | ValueKind::Record | ValueKind::Tuple => {
+		ValueKind::None
+		| ValueKind::Type
+		| ValueKind::List
+		| ValueKind::Record
+		| ValueKind::Tuple
+		| ValueKind::Digest => {
 			return ColumnBuffer::none_typed(ValueType::Any, row_count);
 		}
 	};

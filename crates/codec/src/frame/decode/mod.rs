@@ -37,7 +37,7 @@ use crate::{
 			RBCF_VERSION, dict_index_width_from_flags,
 		},
 	},
-	tag::TypeTag,
+	tag::{TypeTag, ValueKind},
 };
 
 pub fn decode_frames(data: &[u8]) -> Result<Vec<Frame>, DecodeError> {
@@ -314,6 +314,14 @@ fn decode_column_dispatch(
 	offsets: &[u8],
 	extra: &[u8],
 ) -> Result<FrameColumnData, DecodeError> {
+	if type_code == ValueKind::Digest.byte() {
+		if encoding != Encoding::Plain {
+			return Err(DecodeError::InvalidData(format!(
+				"digest column must use plain encoding, found {encoding:?}"
+			)));
+		}
+		return varlen::decode_digest_plain(row_count, data, offsets, extra);
+	}
 	let ty = column_type_from_code(type_code)?;
 
 	match encoding {

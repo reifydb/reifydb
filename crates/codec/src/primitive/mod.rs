@@ -8,6 +8,7 @@ pub mod date;
 pub mod datetime;
 pub mod decimal;
 pub mod dictionary_id;
+pub mod digest;
 pub mod duration;
 pub mod f32;
 pub mod f64;

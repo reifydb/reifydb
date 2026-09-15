@@ -1131,6 +1131,7 @@ fn test_roundtrip_exhaustiveness_guard() {
 		Value::List(_) => {}
 		Value::Record(_) => {}
 		Value::Tuple(_) => {}
+		Value::Digest(_) => {}
 	}
 }
 

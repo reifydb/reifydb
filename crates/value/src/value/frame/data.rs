@@ -12,8 +12,8 @@ use crate::{
 		Value,
 		container::{
 			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
-			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			digest::DigestContainer, identity_id::IdentityIdContainer, number::NumberContainer,
+			temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -61,6 +61,12 @@ pub enum FrameColumnData {
 		inner: Box<FrameColumnData>,
 		bitvec: BitVec,
 	},
+
+	Digest {
+		container: DigestContainer,
+		inner: ValueType,
+		accuracy: u32,
+	},
 }
 
 impl FrameColumnData {
@@ -97,6 +103,14 @@ impl FrameColumnData {
 				inner,
 				..
 			} => ValueType::Option(Box::new(inner.get_type())),
+			FrameColumnData::Digest {
+				inner,
+				accuracy,
+				..
+			} => ValueType::Digest {
+				inner: Box::new(inner.clone()),
+				accuracy: *accuracy,
+			},
 		}
 	}
 
@@ -133,6 +147,10 @@ impl FrameColumnData {
 				bitvec,
 				..
 			} => idx < bitvec.len() && bitvec.get(idx),
+			FrameColumnData::Digest {
+				container,
+				..
+			} => container.is_defined(idx),
 		}
 	}
 
@@ -212,6 +230,10 @@ impl FrameColumnData {
 				inner,
 				..
 			} => inner.len(),
+			FrameColumnData::Digest {
+				container,
+				..
+			} => container.len(),
 		}
 	}
 
@@ -270,6 +292,10 @@ impl FrameColumnData {
 					"none".to_string()
 				}
 			}
+			FrameColumnData::Digest {
+				container,
+				..
+			} => container.as_string(index),
 		}
 	}
 }
@@ -314,6 +340,10 @@ impl FrameColumnData {
 					Value::none_of(inner.get_type())
 				}
 			}
+			FrameColumnData::Digest {
+				container,
+				..
+			} => container.get_value(index),
 		}
 	}
 }

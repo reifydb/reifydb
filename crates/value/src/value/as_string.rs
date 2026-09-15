@@ -54,6 +54,7 @@ impl AsString for Value {
 					fields.iter().map(|(k, v)| format!("{}: {}", k, v.as_string())).collect();
 				format!("{{{}}}", inner.join(", "))
 			}
+			Value::Digest(_) => self.to_string(),
 		}
 	}
 }

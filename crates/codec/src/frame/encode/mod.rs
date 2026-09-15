@@ -26,6 +26,7 @@ use crate::{
 		options::EncodeOptions,
 	},
 	tag::TypeTag,
+	typeinfo::encode_digest_params,
 };
 
 pub(crate) struct EncodedColumn {
@@ -205,6 +206,15 @@ fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<Enco
 		Some(enc) => enc,
 		None => {
 			let plain = encode_plain(inner)?;
+			let mut extra = Vec::new();
+			if let FrameColumnData::Digest {
+				inner: digest_inner,
+				accuracy,
+				..
+			} = inner
+			{
+				encode_digest_params(digest_inner, *accuracy, &mut extra)?;
+			}
 			EncodedColumn {
 				type_code: plain.type_code,
 				encoding: Encoding::Plain,
@@ -212,7 +222,7 @@ fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<Enco
 				nones: plain.nones,
 				data: plain.data,
 				offsets: plain.offsets,
-				extra: vec![],
+				extra,
 				row_count,
 			}
 		}

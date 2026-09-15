@@ -15,6 +15,7 @@ use reifydb_value::{
 		datetime::DateTime,
 		decimal::Decimal,
 		dictionary::DictionaryEntryId,
+		digest::Digest,
 		duration::Duration,
 		identity::IdentityId,
 		int::Int,
@@ -107,6 +108,7 @@ pub fn encode_value_into(value: &Value, buf: &mut Vec<u8>) -> Result<(), EncodeE
 				encode_value_into(field_value, buf)?;
 			}
 		}
+		Value::Digest(digest) => encode_len_prefixed(&digest.encode(), buf),
 	}
 	Ok(())
 }
@@ -212,6 +214,9 @@ pub fn decode_value_from(r: &mut Reader) -> Result<Value, DecodeError> {
 			}
 			Ok(Value::Record(fields))
 		}
+		ValueKind::Digest => Digest::decode(decode_len_prefixed_bytes(r)?)
+			.map(|digest| Value::Digest(Box::new(digest)))
+			.map_err(|error| DecodeError::InvalidData(format!("invalid digest: {error}"))),
 	}
 }
 

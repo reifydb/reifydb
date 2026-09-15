@@ -100,7 +100,10 @@ pub fn render_value_type(ty: &ValueType, object: &str) -> Result<String, ExportE
 		| ValueType::DictionaryId
 		| ValueType::List(_)
 		| ValueType::Record(_)
-		| ValueType::Tuple(_) => {
+		| ValueType::Tuple(_)
+		| ValueType::Digest {
+			..
+		} => {
 			return Err(ExportError::UnsupportedType {
 				object: object.to_string(),
 				value_type: format!("{}", ty),

@@ -2,21 +2,25 @@
 // Copyright (c) 2026 ReifyDB
 
 use num_bigint::Sign;
-use reifydb_value::value::{
-	Value,
-	blob::Blob,
-	date::Date,
-	datetime::DateTime,
-	decimal::Decimal,
-	dictionary::DictionaryEntryId,
-	duration::Duration,
-	identity::IdentityId,
-	int::Int,
-	row_number::RowNumber,
-	time::Time,
-	uint::Uint,
-	uuid::{Uuid4, Uuid7},
-	value_type::ValueType,
+use reifydb_value::{
+	Result,
+	error::{Error, TypeError},
+	value::{
+		Value,
+		blob::Blob,
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		dictionary::DictionaryEntryId,
+		duration::Duration,
+		identity::IdentityId,
+		int::Int,
+		row_number::RowNumber,
+		time::Time,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
+	},
 };
 
 use super::{
@@ -295,6 +299,13 @@ impl KeySerializer {
 	}
 
 	pub fn extend_value(&mut self, value: &Value) -> &mut Self {
+		if let Err(error) = self.try_extend_value(value) {
+			panic!("key serialization of a {} value failed: {error}", value.get_type());
+		}
+		self
+	}
+
+	pub fn try_extend_value(&mut self, value: &Value) -> Result<&mut Self> {
 		match value {
 			Value::None {
 				inner,
@@ -305,6 +316,13 @@ impl KeySerializer {
 					ValueKind::List | ValueKind::Record | ValueKind::Tuple => unreachable!(
 						"List/Record/Tuple types cannot be encoded as none inner type in keys"
 					),
+					ValueKind::Digest => {
+						return Err(Error::from(TypeError::SerdeKeycode {
+							message: format!(
+								"a none of type {inner} cannot be serialized in a key"
+							),
+						}));
+					}
 					_ => {}
 				}
 				let tag = TypeTag::of_type(inner)
@@ -414,14 +432,14 @@ impl KeySerializer {
 			Value::List(items) => {
 				self.buffer.push(ValueKind::List.byte());
 				for item in items {
-					self.extend_value(item);
+					self.try_extend_value(item)?;
 				}
 				self.buffer.push(CONTAINER_END);
 			}
 			Value::Tuple(items) => {
 				self.buffer.push(ValueKind::Tuple.byte());
 				for item in items {
-					self.extend_value(item);
+					self.try_extend_value(item)?;
 				}
 				self.buffer.push(CONTAINER_END);
 			}
@@ -429,12 +447,17 @@ impl KeySerializer {
 				self.buffer.push(ValueKind::Record.byte());
 				for (name, value) in fields {
 					self.extend_bytes(name.as_bytes());
-					self.extend_value(value);
+					self.try_extend_value(value)?;
 				}
 				self.buffer.push(CONTAINER_END);
 			}
 			Value::Any(_) | Value::Type(_) => {
 				unreachable!("Any/ValueType values cannot be serialized in keys");
+			}
+			Value::Digest(_) => {
+				return Err(Error::from(TypeError::SerdeKeycode {
+					message: "a digest value cannot be serialized in a key".to_string(),
+				}));
 			}
 			Value::DictionaryId(id) => {
 				self.buffer.push(ValueKind::DictionaryId.byte());
@@ -462,7 +485,7 @@ impl KeySerializer {
 				}
 			}
 		}
-		self
+		Ok(self)
 	}
 }
 

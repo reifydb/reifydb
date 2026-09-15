@@ -49,6 +49,7 @@ use date::Date;
 use datetime::DateTime;
 use decimal::Decimal;
 use dictionary::DictionaryEntryId;
+use digest::Digest;
 use duration::Duration;
 use identity::IdentityId;
 use int::Int;
@@ -126,6 +127,8 @@ pub enum Value {
 	Record(Vec<(String, Value)>),
 
 	Tuple(Vec<Value>),
+
+	Digest(Box<Digest>),
 }
 
 impl Value {
@@ -361,6 +364,7 @@ impl PartialEq for Value {
 			(Value::List(l), Value::List(r)) => l == r,
 			(Value::Record(l), Value::Record(r)) => l == r,
 			(Value::Tuple(l), Value::Tuple(r)) => l == r,
+			(Value::Digest(l), Value::Digest(r)) => l == r,
 			_ => false,
 		}
 	}
@@ -434,6 +438,7 @@ impl hash::Hash for Value {
 				}
 			}
 			Value::Tuple(v) => v.hash(state),
+			Value::Digest(v) => v.hash(state),
 		}
 	}
 }
@@ -498,6 +503,7 @@ impl Ord for Value {
 			(Value::Record(_), Value::Record(_)) => unreachable!("Record values are not orderable"),
 			(Value::Tuple(_), Value::Tuple(_)) => unreachable!("Tuple values are not orderable"),
 			(Value::Any(_), Value::Any(_)) => unreachable!("Any values are not orderable"),
+			(Value::Digest(l), Value::Digest(r)) => l.encode().cmp(&r.encode()),
 			_ => unimplemented!(),
 		}
 	}
@@ -568,6 +574,7 @@ impl Display for Value {
 			Value::None {
 				..
 			} => f.write_str("none"),
+			Value::Digest(digest) => write!(f, "digest(n: {})", digest.count()),
 		}
 	}
 }
@@ -614,6 +621,10 @@ impl Value {
 				ValueType::Record(fields.iter().map(|(k, v)| (k.clone(), v.get_type())).collect())
 			}
 			Value::Tuple(items) => ValueType::Tuple(items.iter().map(|v| v.get_type()).collect()),
+			Value::Digest(digest) => ValueType::Digest {
+				inner: Box::new(digest.inner().clone()),
+				accuracy: digest.accuracy(),
+			},
 		}
 	}
 

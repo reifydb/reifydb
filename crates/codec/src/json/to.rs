@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{Value, diff_type::DiffType, frame::frame::Frame};
+use reifydb_value::{
+	util::hex::encode,
+	value::{Value, diff_type::DiffType, frame::frame::Frame},
+};
 use serde_json::{Error, to_string};
 
 use crate::{
@@ -35,6 +38,7 @@ pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 						inner,
 					} => none_marker(column_depth.saturating_sub(peel_options(&inner).1 + 1)),
 					Value::Blob(b) => b.to_hex(),
+					Value::Digest(digest) => format!("0x{}", encode(&digest.encode())),
 					_ => value.to_string(),
 				})
 				.collect();

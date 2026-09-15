@@ -7,8 +7,9 @@ use bigdecimal::BigDecimal;
 use num_bigint::BigInt;
 use reifydb_value::value::{
 	blob::Blob,
-	container::{blob::BlobContainer, number::NumberContainer, utf8::Utf8Container},
+	container::{blob::BlobContainer, digest::DigestContainer, number::NumberContainer, utf8::Utf8Container},
 	decimal::Decimal,
+	digest::Digest,
 	frame::data::FrameColumnData,
 	int::Int,
 	uint::Uint,
@@ -16,7 +17,9 @@ use reifydb_value::value::{
 };
 
 use super::column_type_from_code;
-use crate::{error::DecodeError, frame::encoding::rle::decode_rle_varlen};
+use crate::{
+	error::DecodeError, frame::encoding::rle::decode_rle_varlen, reader::Reader, typeinfo::decode_digest_params,
+};
 
 pub(crate) fn decode_varlen_plain(
 	type_code: u8,
@@ -107,6 +110,59 @@ pub(crate) fn decode_rle_varlen_column(
 		}
 		_ => Err(DecodeError::InvalidData(format!("varlen RLE not supported for type {:?}", ty))),
 	}
+}
+
+pub(crate) fn decode_digest_plain(
+	row_count: usize,
+	data: &[u8],
+	offsets: &[u8],
+	extra: &[u8],
+) -> Result<FrameColumnData, DecodeError> {
+	let mut params = Reader::new(extra);
+	let (inner, accuracy) = decode_digest_params(&mut params)?;
+	if !params.is_empty() {
+		return Err(DecodeError::InvalidData(format!(
+			"digest column extra section has {} trailing bytes",
+			params.remaining()
+		)));
+	}
+	if offsets.len() != (row_count + 1) * 4 {
+		return Err(DecodeError::InvalidData(format!(
+			"digest column offsets length {} does not match row count {row_count}",
+			offsets.len()
+		)));
+	}
+	let offset_arr = decode_u32_offsets(offsets, row_count);
+	let mut container = DigestContainer::with_capacity(row_count);
+	for i in 0..row_count {
+		let start = offset_arr[i] as usize;
+		let end = offset_arr[i + 1] as usize;
+		if start > end || end > data.len() {
+			return Err(DecodeError::InvalidData(format!(
+				"digest row {i} spans {start}..{end} outside {} data bytes",
+				data.len()
+			)));
+		}
+		if start == end {
+			container.push_default();
+			continue;
+		}
+		let digest = Digest::decode(&data[start..end])
+			.map_err(|error| DecodeError::InvalidData(format!("invalid digest in row {i}: {error}")))?;
+		if *digest.inner() != inner || digest.accuracy() != accuracy {
+			return Err(DecodeError::InvalidData(format!(
+				"digest in row {i} is Digest({}, {}) but the column is Digest({inner}, {accuracy})",
+				digest.inner(),
+				digest.accuracy()
+			)));
+		}
+		container.push(Box::new(digest));
+	}
+	Ok(FrameColumnData::Digest {
+		container,
+		inner,
+		accuracy,
+	})
 }
 
 fn decode_decimal(data: &[u8], offsets: &[u8], row_count: usize) -> Result<FrameColumnData, DecodeError> {

@@ -277,6 +277,9 @@ impl Columns {
 						vec![Value::none(); size],
 						BitVec::repeat(size, false),
 					),
+					digest @ ValueType::Digest {
+						..
+					} => ColumnBuffer::none_typed(digest, size),
 				};
 
 				*column = new_data;

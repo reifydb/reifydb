@@ -9,6 +9,15 @@ pub mod wire_type;
 
 pub const NONE_MARKER: &str = "⟪none⟫";
 
+const EXCERPT_CHARS: usize = 64;
+
+pub fn excerpt(text: &str) -> String {
+	match text.char_indices().nth(EXCERPT_CHARS) {
+		Some((cut, _)) => format!("{}...", &text[..cut]),
+		None => text.to_string(),
+	}
+}
+
 fn marker_parts() -> (&'static str, &'static str) {
 	let (close_at, _) = NONE_MARKER.char_indices().last().expect("none marker is not empty");
 	NONE_MARKER.split_at(close_at)
@@ -29,8 +38,4 @@ pub fn none_marker_depth(payload: &str) -> Option<u32> {
 	let (open, close) = marker_parts();
 	let wrapped = payload.strip_prefix(open)?.strip_suffix(close)?.strip_prefix(':')?;
 	wrapped.parse::<u32>().ok().filter(|k| *k >= 1)
-}
-
-pub fn is_none_marker(payload: &str) -> bool {
-	none_marker_depth(payload).is_some()
 }

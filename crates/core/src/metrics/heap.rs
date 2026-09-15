@@ -22,6 +22,7 @@ use reifydb_value::{
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
+		digest::Digest,
 		duration::Duration,
 		identity::IdentityId,
 		ordered_f32::OrderedF32,
@@ -220,6 +221,12 @@ impl<T: HeapSize> HeapSize for VecDeque<T> {
 	}
 }
 
+impl HeapSize for Digest {
+	fn heap_size(&self) -> usize {
+		self.bucket_count() * (mem::size_of::<i32>() + mem::size_of::<u64>())
+	}
+}
+
 impl<T: HeapSize> HeapSize for Box<T> {
 	fn heap_size(&self) -> usize {
 		mem::size_of::<T>() + (**self).heap_size()
@@ -303,6 +310,7 @@ impl HeapSize for Value {
 			Value::Blob(blob) => blob.as_bytes().len(),
 			Value::Int(_) | Value::Uint(_) | Value::Decimal(_) => BIGNUM_APPROX_HEAP,
 			Value::Any(inner) => mem::size_of::<Value>() + inner.heap_size(),
+			Value::Digest(digest) => digest.heap_size(),
 			Value::List(items) | Value::Tuple(items) => items.heap_size(),
 			Value::Record(fields) => {
 				fields.capacity() * mem::size_of::<(String, Value)>()

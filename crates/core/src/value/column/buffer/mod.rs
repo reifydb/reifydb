@@ -21,12 +21,13 @@ use reifydb_value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
 			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
-			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			digest::DigestContainer, identity_id::IdentityIdContainer, number::NumberContainer,
+			temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
 		},
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
+		digest::Digest,
 		duration::Duration,
 		int::Int,
 		time::Time,
@@ -36,6 +37,8 @@ use reifydb_value::{
 	},
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::metrics::heap::HeapSize;
 
 pub enum ColumnBuffer {
 	Bool(BoolContainer),
@@ -87,6 +90,12 @@ pub enum ColumnBuffer {
 	Option {
 		inner: Box<ColumnBuffer>,
 		bitvec: BitVec,
+	},
+
+	Digest {
+		container: DigestContainer,
+		inner: ValueType,
+		accuracy: u32,
 	},
 }
 
@@ -158,6 +167,15 @@ impl Clone for ColumnBuffer {
 			} => ColumnBuffer::Option {
 				inner: inner.clone(),
 				bitvec: bitvec.clone(),
+			},
+			ColumnBuffer::Digest {
+				container,
+				inner,
+				accuracy,
+			} => ColumnBuffer::Digest {
+				container: container.clone(),
+				inner: inner.clone(),
+				accuracy: *accuracy,
 			},
 		}
 	}
@@ -250,6 +268,18 @@ impl PartialEq for ColumnBuffer {
 					bitvec: bb,
 				},
 			) => ai == bi && ab == bb,
+			(
+				ColumnBuffer::Digest {
+					container: a,
+					inner: ai,
+					accuracy: aa,
+				},
+				ColumnBuffer::Digest {
+					container: b,
+					inner: bi,
+					accuracy: ba,
+				},
+			) => a == b && ai == bi && aa == ba,
 			_ => false,
 		}
 	}
@@ -309,6 +339,15 @@ impl fmt::Debug for ColumnBuffer {
 				inner,
 				bitvec,
 			} => f.debug_struct("Option").field("inner", inner).field("bitvec", bitvec).finish(),
+			ColumnBuffer::Digest {
+				container,
+				inner,
+				accuracy,
+			} => f.debug_struct("Digest")
+				.field("container", container)
+				.field("inner", inner)
+				.field("accuracy", accuracy)
+				.finish(),
 		}
 	}
 }
@@ -363,6 +402,11 @@ impl Serialize for ColumnBuffer {
 			Option {
 				inner: &'a ColumnBuffer,
 				bitvec: &'a BitVec,
+			},
+			Digest {
+				container: &'a DigestContainer,
+				inner: &'a ValueType,
+				accuracy: u32,
 			},
 		}
 		let helper = match self {
@@ -432,6 +476,15 @@ impl Serialize for ColumnBuffer {
 				inner: inner.as_ref(),
 				bitvec,
 			},
+			ColumnBuffer::Digest {
+				container,
+				inner,
+				accuracy,
+			} => Helper::Digest {
+				container,
+				inner,
+				accuracy: *accuracy,
+			},
 		};
 		helper.serialize(serializer)
 	}
@@ -487,6 +540,11 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 			Option {
 				inner: Box<ColumnBuffer>,
 				bitvec: BitVec,
+			},
+			Digest {
+				container: DigestContainer,
+				inner: ValueType,
+				accuracy: u32,
 			},
 		}
 		let helper = Helper::deserialize(deserializer)?;
@@ -557,6 +615,15 @@ impl<'de> Deserialize<'de> for ColumnBuffer {
 				inner,
 				bitvec,
 			},
+			Helper::Digest {
+				container,
+				inner,
+				accuracy,
+			} => ColumnBuffer::Digest {
+				container,
+				inner,
+				accuracy,
+			},
 		})
 	}
 }
@@ -606,6 +673,10 @@ macro_rules! with_container {
 			} => $body,
 			ColumnBuffer::Any($c) => $body,
 			ColumnBuffer::DictionaryId($c) => $body,
+			ColumnBuffer::Digest {
+				container: $c,
+				..
+			} => $body,
 			ColumnBuffer::Option {
 				..
 			} => {
@@ -683,6 +754,14 @@ impl ColumnBuffer {
 				inner,
 				..
 			} => ValueType::Option(Box::new(inner.get_type())),
+			ColumnBuffer::Digest {
+				inner,
+				accuracy,
+				..
+			} => ValueType::Digest {
+				inner: Box::new(inner.clone()),
+				accuracy: *accuracy,
+			},
 		}
 	}
 
@@ -734,6 +813,10 @@ impl ColumnBuffer {
 				bitvec,
 				..
 			} => idx < bitvec.len() && bitvec.get(idx),
+			ColumnBuffer::Digest {
+				container,
+				..
+			} => container.is_defined(idx),
 		}
 	}
 
@@ -819,6 +902,17 @@ impl ColumnBuffer {
 				inner,
 				bitvec,
 			} => inner.heap_size() + bitvec.len().div_ceil(8),
+			ColumnBuffer::Digest {
+				container,
+				..
+			} => {
+				container.heap_size()
+					+ container
+						.iter()
+						.flatten()
+						.map(|digest| size_of::<Digest>() + digest.heap_size())
+						.sum::<usize>()
+			}
 			_ => with_container!(self, |c| c.heap_size()),
 		}
 	}
@@ -889,6 +983,14 @@ impl ColumnBuffer {
 			ValueType::Any | ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_) => {
 				Self::any_with_capacity(capacity)
 			}
+			ValueType::Digest {
+				inner,
+				accuracy,
+			} => ColumnBuffer::Digest {
+				container: DigestContainer::with_capacity(capacity),
+				inner: *inner,
+				accuracy,
+			},
 		}
 	}
 

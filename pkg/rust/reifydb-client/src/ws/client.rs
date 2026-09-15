@@ -12,7 +12,7 @@ use futures_util::{
 	SinkExt, StreamExt,
 	stream::{SplitSink, SplitStream},
 };
-use reifydb_codec::{frame::decode::decode_frames, json::from::convert_envelope_response};
+use reifydb_codec::{frame::decode::decode_frames, json::from::frames_from_envelope};
 use reifydb_value::{error::Error, params::Params, value::frame::frame::Frame};
 use serde_json::{Value, from_str, to_string};
 use tokio::{
@@ -1192,14 +1192,21 @@ fn changes_from_rbcf(rbcf: &[u8]) -> (Vec<FrameChange>, Option<String>) {
 	}
 }
 
+fn changes_from_envelope(body: Value) -> (Vec<FrameChange>, Option<String>) {
+	match frames_from_envelope(body) {
+		Ok(frames) => (frames_to_changes(frames), None),
+		Err(e) => (Vec::new(), Some(e.to_string())),
+	}
+}
+
 fn payload_from_json_change(wire: WireChangePayload) -> ChangePayload {
-	let changes = frames_to_changes(convert_envelope_response(wire.body.clone()));
+	let (changes, decode_error) = changes_from_envelope(wire.body.clone());
 	ChangePayload {
 		subscription_id: wire.subscription_id,
 		content_type: wire.content_type,
 		body: wire.body,
 		changes,
-		decode_error: None,
+		decode_error,
 	}
 }
 
@@ -1208,13 +1215,13 @@ fn batch_change_from_json(wire: WireBatchChangePayload) -> BatchChangePayload {
 		.entries
 		.into_iter()
 		.map(|entry| {
-			let changes = frames_to_changes(convert_envelope_response(entry.body.clone()));
+			let (changes, decode_error) = changes_from_envelope(entry.body.clone());
 			BatchChangeEntry {
 				subscription_id: entry.subscription_id,
 				content_type: entry.content_type,
 				body: entry.body,
 				changes,
-				decode_error: None,
+				decode_error,
 			}
 		})
 		.collect();
@@ -1414,5 +1421,71 @@ mod tests {
 			ClientResponse::Frames(frames, _) => assert_eq!(frames, expected),
 			ClientResponse::Json(_) => panic!("a clean decode must complete as frames"),
 		}
+	}
+}
+
+#[cfg(test)]
+mod json_change_tests {
+	use reifydb_codec::json::to::convert_frames;
+	use reifydb_value::value::{
+		container::number::NumberContainer,
+		diff_type::DiffType,
+		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	};
+	use serde_json::{Value, json};
+
+	use super::{batch_change_from_json, payload_from_json_change};
+	use crate::{WireBatchChangeEntry, WireBatchChangePayload, WireChangePayload};
+
+	fn malformed_body() -> Value {
+		json!({ "frames": [{ "columns": "not a column list" }] })
+	}
+
+	fn change(body: Value) -> WireChangePayload {
+		WireChangePayload {
+			subscription_id: "sub-1".to_string(),
+			content_type: "application/vnd.reifydb.frames".to_string(),
+			body,
+		}
+	}
+
+	#[test]
+	fn a_malformed_json_change_reaches_the_subscriber_as_a_decode_error() {
+		// An empty change is a valid delivery, so a body that fails to decode must carry its error.
+		let payload = payload_from_json_change(change(malformed_body()));
+
+		assert!(payload.decode_error.is_some(), "a failed decode must carry its error");
+		assert!(payload.changes.is_empty());
+	}
+
+	#[test]
+	fn a_valid_json_change_decodes_with_no_error() {
+		// A clean change must keep its rows, otherwise the error path swallowed a good change.
+		let frame = Frame::new(vec![FrameColumn {
+			name: "id".to_string(),
+			data: FrameColumnData::Int4(NumberContainer::new(vec![7])),
+		}])
+		.with_op(DiffType::Update);
+
+		let payload = payload_from_json_change(change(json!({ "frames": convert_frames(&[frame]) })));
+
+		assert_eq!(payload.decode_error, None);
+		assert_eq!(payload.changes.len(), 1);
+	}
+
+	#[test]
+	fn a_malformed_json_batch_entry_carries_its_decode_error() {
+		// One entry that fails to decode must say so, never pass as an empty change for its subscription.
+		let payload = batch_change_from_json(WireBatchChangePayload {
+			batch_id: "batch-1".to_string(),
+			entries: vec![WireBatchChangeEntry {
+				subscription_id: "sub-1".to_string(),
+				content_type: "application/vnd.reifydb.frames".to_string(),
+				body: malformed_body(),
+			}],
+		});
+
+		assert!(payload.entries[0].decode_error.is_some(), "a failed decode must carry its error");
+		assert!(payload.entries[0].changes.is_empty());
 	}
 }

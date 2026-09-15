@@ -118,6 +118,9 @@ impl ColumnBuffer {
 					Value::Tuple(_) => ColumnBuffer::any(vec![Value::none(); len]),
 					Value::List(_) => ColumnBuffer::any(vec![Value::none(); len]),
 					Value::Type(_) => ColumnBuffer::any(vec![Value::none(); len]),
+					Value::Digest(_) => {
+						ColumnBuffer::none_typed(value.get_type(), len).into_unwrap_option().0
+					}
 					_ => unreachable!(),
 				};
 				new_inner.push_value(value);
@@ -182,6 +185,23 @@ impl ColumnBuffer {
 			Value::Any(v) => match self {
 				ColumnBuffer::Any(container) => container.push(*v),
 				_ => unreachable!("Cannot push Any value to non-Any column"),
+			},
+			Value::Digest(digest) => match self {
+				ColumnBuffer::Digest {
+					container,
+					inner,
+					accuracy,
+				} => {
+					if digest.inner() != inner || digest.accuracy() != *accuracy {
+						panic!(
+							"cannot push a Digest({}, {}) into a Digest({inner}, {accuracy}) column",
+							digest.inner(),
+							digest.accuracy()
+						);
+					}
+					container.push(digest);
+				}
+				_ => unimplemented!(),
 			},
 		}
 	}

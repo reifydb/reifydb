@@ -262,6 +262,9 @@ pub fn from_any(
 				}
 				ColumnBuffer::Option {
 					..
+				}
+				| ColumnBuffer::Digest {
+					..
 				} => {
 					let value = casted_column.get_value(0);
 					result.push_value(value);

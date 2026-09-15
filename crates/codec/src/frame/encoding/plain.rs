@@ -222,6 +222,17 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 			});
 		}
 		FrameColumnData::DictionaryId(c) => encode_dictionary_ids(c),
+		FrameColumnData::Digest {
+			container,
+			..
+		} => encode_varlen(
+			container.len(),
+			|i| match container.get(i) {
+				Some(digest) => digest.encode(),
+				None => Vec::new(),
+			},
+			col.get_type(),
+		),
 		FrameColumnData::Option {
 			..
 		} => unreachable!("Option handled in encode_plain"),

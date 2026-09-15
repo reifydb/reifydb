@@ -3,7 +3,7 @@
 
 use std::str::from_utf8;
 
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{digest::Digest, value_type::ValueType};
 
 use crate::{
 	error::{DecodeError, EncodeError},
@@ -48,9 +48,28 @@ fn encode_base(base: &ValueType, depth: u8, buf: &mut Vec<u8>) -> Result<(), Enc
 				encode_value_type(element, buf)?;
 			}
 		}
+		ValueType::Digest {
+			inner,
+			accuracy,
+		} => encode_digest_params(inner, *accuracy, buf)?,
 		_ => {}
 	}
 	Ok(())
+}
+
+pub fn encode_digest_params(inner: &ValueType, accuracy: u32, buf: &mut Vec<u8>) -> Result<(), EncodeError> {
+	Digest::new(inner.clone(), accuracy).map_err(|error| EncodeError::UnsupportedType(error.to_string()))?;
+	buf.push(ValueKind::of_type(inner).byte());
+	buf.extend_from_slice(&accuracy.to_le_bytes());
+	Ok(())
+}
+
+pub fn decode_digest_params(r: &mut Reader) -> Result<(ValueType, u32), DecodeError> {
+	let inner = TypeTag::from_byte(r.u8()?)?.to_type()?;
+	let accuracy = r.u32()?;
+	Digest::new(inner.clone(), accuracy)
+		.map_err(|error| DecodeError::InvalidData(format!("invalid digest type: {error}")))?;
+	Ok((inner, accuracy))
 }
 
 pub fn decode_value_type(r: &mut Reader) -> Result<ValueType, DecodeError> {
@@ -87,6 +106,13 @@ pub fn decode_value_type(r: &mut Reader) -> Result<ValueType, DecodeError> {
 				elements.push(decode_value_type(r)?);
 			}
 			ValueType::Tuple(elements)
+		}
+		ValueKind::Digest => {
+			let (inner, accuracy) = decode_digest_params(r)?;
+			ValueType::Digest {
+				inner: Box::new(inner),
+				accuracy,
+			}
 		}
 		_ => return tag.to_type(),
 	};

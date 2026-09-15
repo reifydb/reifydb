@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 use std::collections::HashMap;
 
-use reifydb_codec::{frame::decode::decode_frames, json::types::ResponseFrame};
+use reifydb_codec::{
+	frame::decode::decode_frames,
+	json::{excerpt, types::ResponseFrame},
+};
 use reifydb_value::{
 	error::{Diagnostic, Error},
 	fragment::Fragment,
@@ -385,6 +388,29 @@ impl HttpClient {
 			return Error(Box::new(err_response.diagnostic));
 		}
 
-		panic!("Failed to parse response: {}", body) // FIXME better error handling
+		ClientError::Decode(format!("failed to parse response: {}", excerpt(body))).into()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reqwest::Client as ReqwestClient;
+	use rustls::crypto::ring::default_provider;
+
+	use super::HttpClient;
+	use crate::WireFormat;
+
+	#[test]
+	fn an_unparsable_response_body_is_a_decode_error_not_a_panic() {
+		// A frames body that fails to decode lands here, so it must fail the request, never the process.
+		let _ = default_provider().install_default();
+		let client =
+			HttpClient::with_client(ReqwestClient::new(), "http://localhost", WireFormat::Frames).unwrap();
+		let body = format!(r#"{{"frames":[{{"columns":"{}"}}]}}"#, "x".repeat(10_000));
+
+		let error = client.parse_error_response(&body);
+
+		assert_eq!(error.0.code, "DECODE");
+		assert!(error.0.message.len() < 400, "body not truncated, {} bytes", error.0.message.len());
 	}
 }
