@@ -17,6 +17,7 @@ use crate::{
 	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateTableNode, LogicalPlan,
+		create::reject_digest_partition_columns,
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
 	},
 };
@@ -165,6 +166,10 @@ impl<'bump> Compiler<'bump> {
 				.into());
 			}
 		}
+		reject_digest_partition_columns(
+			columns.iter().map(|c| (c.name.text(), c.constraint.get_type())),
+			&partition_by,
+		)?;
 
 		let table = ast.table;
 		let row_ttl =

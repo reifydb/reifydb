@@ -4,6 +4,7 @@
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
+	value::value_type::ValueType,
 };
 
 use crate::interface::catalog::{column::Column, object::ObjectId};
@@ -32,6 +33,13 @@ pub enum PartitionError {
 	PartitionHashCollision {
 		object: ObjectId,
 		hash: u128,
+	},
+
+	#[error("cannot partition by column `{column}`: a {ty} value cannot be a partition key")]
+	DigestPartitionColumn {
+		column: String,
+		ty: ValueType,
+		fragment: Fragment,
 	},
 }
 
@@ -74,6 +82,26 @@ impl IntoDiagnostic for PartitionError {
 				label: Some("128-bit hash collision".to_string()),
 				help: Some(
 					"two distinct partition value tuples produced the same 128-bit hash; this is astronomically unlikely and points to a hashing bug or data corruption, report it as a bug"
+						.to_string(),
+				),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			PartitionError::DigestPartitionColumn {
+				column,
+				ty,
+				fragment,
+			} => Diagnostic {
+				code: "PART_005".to_string(),
+				rql: None,
+				message: format!("cannot partition by column `{}`: a {} value cannot be a partition key", column, ty),
+				column: None,
+				fragment,
+				label: Some("digest partition column".to_string()),
+				help: Some(
+					"a digest has no key encoding and no equality, so it cannot address a partition; partition by a column of another type"
 						.to_string(),
 				),
 				notes: vec![],

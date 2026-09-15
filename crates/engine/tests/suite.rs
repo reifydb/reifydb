@@ -20,6 +20,8 @@ mod column_type_parameters;
 mod digest_column_ddl;
 #[path = "digest_query.rs"]
 mod digest_query;
+#[path = "digest_row_storage.rs"]
+mod digest_row_storage;
 #[path = "empty_batch_system_columns.rs"]
 mod empty_batch_system_columns;
 #[path = "empty_result_column_types.rs"]

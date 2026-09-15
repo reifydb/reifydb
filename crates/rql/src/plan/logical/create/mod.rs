@@ -25,7 +25,9 @@ pub mod test;
 pub mod transactional;
 pub mod ttl;
 
+use reifydb_core::partition::PartitionError;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -94,4 +96,21 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Relationship(node) => self.compile_create_relationship(node, tx),
 		}
 	}
+}
+
+pub(crate) fn reject_digest_partition_columns<'a>(
+	columns: impl Iterator<Item = (&'a str, ValueType)>,
+	partition_by: &[String],
+) -> Result<()> {
+	for (name, ty) in columns {
+		if matches!(ty.inner_type(), ValueType::Digest { .. }) && partition_by.iter().any(|pb| pb == name) {
+			return Err(PartitionError::DigestPartitionColumn {
+				column: name.to_string(),
+				ty,
+				fragment: Fragment::internal(name),
+			}
+			.into());
+		}
+	}
+	Ok(())
 }

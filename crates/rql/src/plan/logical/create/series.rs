@@ -19,6 +19,7 @@ use crate::{
 	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateSeriesNode, LogicalPlan,
+		create::reject_digest_partition_columns,
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
 	},
 };
@@ -203,6 +204,10 @@ impl<'bump> Compiler<'bump> {
 				.into());
 			}
 		}
+		reject_digest_partition_columns(
+			columns.iter().map(|c| (c.name.text(), c.constraint.get_type())),
+			&partition_by,
+		)?;
 
 		let row_ttl =
 			ast.settings.as_ref().and_then(|s| s.ttl.as_ref()).map(|t| t.duration.fragment.to_owned());

@@ -442,6 +442,19 @@ impl Columns {
 						_ => container.push_default(),
 					}
 				}
+				(
+					ColumnBuffer::Digest {
+						container,
+						inner,
+						accuracy,
+					},
+					ValueType::Digest {
+						inner: field_inner,
+						accuracy: field_accuracy,
+					},
+				) if *inner == *field_inner && *accuracy == field_accuracy => {
+					container.push(Box::new(shape.get_digest(bytes, index)));
+				}
 				(_, v) => {
 					return Err(CoreError::FrameError {
 						message: format!(
@@ -590,6 +603,19 @@ impl Columns {
 						Value::DictionaryId(id) => container.push(id),
 						_ => container.push_default(),
 					}
+				}
+				(
+					ColumnBuffer::Digest {
+						container,
+						inner,
+						accuracy,
+					},
+					ValueType::Digest {
+						inner: field_inner,
+						accuracy: field_accuracy,
+					},
+				) if *inner == *field_inner && *accuracy == field_accuracy => {
+					container.push(Box::new(shape.get_digest(bytes, index)));
 				}
 				(l, r) => unreachable!("{:#?} {:#?}", l, r),
 			}

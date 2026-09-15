@@ -16,7 +16,7 @@ use crate::{
 	ast::ast::{AstColumnProperty, AstCreateTransactionalView, AstViewStorageKind},
 	bump::BumpVec,
 	convert_data_type_with_constraints,
-	plan::logical::{Compiler, CreateTransactionalViewNode, LogicalPlan},
+	plan::logical::{Compiler, CreateTransactionalViewNode, LogicalPlan, create::reject_digest_partition_columns},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -126,6 +126,10 @@ impl<'bump> Compiler<'bump> {
 				.into());
 			}
 		}
+		reject_digest_partition_columns(
+			columns.iter().map(|c| (c.name.text(), c.constraint.get_type())),
+			partition_by,
+		)?;
 
 		let view = ast.view;
 
