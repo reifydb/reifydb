@@ -5,7 +5,6 @@ use postcard::{from_bytes, to_stdvec};
 use reifydb_routine_abi::monoid::{Monoid, MonoidState};
 use reifydb_value::value::{
 	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, int::Int, time::Time, uint::Uint,
-	value_type::ValueType,
 };
 
 use super::math::{count::Count, max::Max, min::Min, sum::Sum};
@@ -370,27 +369,4 @@ fn monoid_state_vec_postcard_roundtrips() {
 	let bytes = to_stdvec(&states).unwrap();
 	let decoded: Vec<MonoidState> = from_bytes(&bytes).unwrap();
 	assert_eq!(states, decoded);
-}
-
-#[test]
-fn accepted_types_reject_non_numeric_for_sum() {
-	let sum = Sum::new();
-	assert!(!sum.accepted_types().accepts(0, &ValueType::Utf8));
-	assert!(sum.accepted_types().accepts(0, &ValueType::Int4));
-}
-
-#[test]
-fn accepted_types_for_min_max_include_temporal_but_not_utf8() {
-	for m in [Box::new(Min::new()) as Box<dyn Monoid>, Box::new(Max::new()) as Box<dyn Monoid>] {
-		assert!(m.accepted_types().accepts(0, &ValueType::Date));
-		assert!(m.accepted_types().accepts(0, &ValueType::Int4));
-		assert!(!m.accepted_types().accepts(0, &ValueType::Utf8));
-	}
-}
-
-#[test]
-fn count_accepts_any_type() {
-	let count = Count::new();
-	assert!(count.accepted_types().accepts(0, &ValueType::Utf8));
-	assert!(count.accepted_types().accepts(0, &ValueType::Boolean));
 }

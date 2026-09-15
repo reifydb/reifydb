@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{Value, value_type::input_types::InputTypes};
+use reifydb_value::value::Value;
 use serde::{Deserialize, Serialize};
 
 use crate::{RoutineInfo, error::RoutineError};
@@ -29,8 +29,6 @@ impl MonoidState {
 
 pub trait Monoid: Send + Sync {
 	fn info(&self) -> &RoutineInfo;
-
-	fn accepted_types(&self) -> InputTypes;
 
 	fn lift(&self, value: &Value) -> MonoidState;
 

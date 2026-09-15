@@ -54,10 +54,6 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 		input_types.first().cloned().unwrap_or(ValueType::Int8)
 	}
 
-	fn accepted_types(&self) -> InputTypes {
-		InputTypes::numeric()
-	}
-
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.is_empty() {
 			return Err(RoutineError::FunctionArityMismatch {

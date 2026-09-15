@@ -98,10 +98,6 @@ impl<'a> Routine<FunctionContext<'a>> for Avg {
 		input_types.first().map(avg_return_type).unwrap_or(ValueType::Decimal)
 	}
 
-	fn accepted_types(&self) -> InputTypes {
-		InputTypes::numeric()
-	}
-
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.is_empty() {
 			return Err(RoutineError::FunctionArityMismatch {

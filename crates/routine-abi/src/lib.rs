@@ -21,10 +21,7 @@ use reifydb_core::value::column::{
 use reifydb_value::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
-	value::{
-		Value,
-		value_type::{ValueType, input_types::InputTypes},
-	},
+	value::{Value, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
 
@@ -62,10 +59,6 @@ pub trait Routine<C: Context>: Send + Sync {
 	fn info(&self) -> &RoutineInfo;
 
 	fn return_type(&self, input_types: &[ValueType]) -> ValueType;
-
-	fn accepted_types(&self) -> InputTypes {
-		InputTypes::any()
-	}
 
 	fn propagates_options(&self) -> bool {
 		true

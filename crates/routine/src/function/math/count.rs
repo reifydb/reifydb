@@ -16,10 +16,7 @@ use reifydb_routine_abi::{
 	Accumulator, AggregateFunctionCapability, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo,
 	context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{
-	Value,
-	value_type::{ValueType, input_types::InputTypes},
-};
+use reifydb_value::value::{Value, value_type::ValueType};
 
 pub struct Count {
 	info: RoutineInfo,
@@ -46,10 +43,6 @@ impl<'a> Routine<FunctionContext<'a>> for Count {
 
 	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
 		ValueType::Int8
-	}
-
-	fn accepted_types(&self) -> InputTypes {
-		InputTypes::any()
 	}
 
 	fn propagates_options(&self) -> bool {
