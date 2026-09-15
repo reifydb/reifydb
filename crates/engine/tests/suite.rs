@@ -32,6 +32,10 @@ mod identity_dml_context;
 mod identity_inject_escalation;
 #[path = "identity_kind.rs"]
 mod identity_kind;
+#[path = "inline_data_insert_target.rs"]
+mod inline_data_insert_target;
+#[path = "inline_data_value_types.rs"]
+mod inline_data_value_types;
 #[path = "interceptor.rs"]
 mod interceptor;
 #[path = "join_digest_key.rs"]

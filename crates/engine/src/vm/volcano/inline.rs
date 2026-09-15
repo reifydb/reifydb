@@ -18,8 +18,8 @@ use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, I
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
-	reifydb_assertions,
-	value::{Value, constraint::Constraint, value_type::ValueType},
+	reifydb_assertions, return_error,
+	value::{Value, constraint::Constraint, sumtype::SumTypeId, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -377,7 +377,7 @@ impl InlineDataNode {
 		session: &EvalContext<'_>,
 		rows_data: &[HashMap<String, &AliasExpression>],
 		column_name: &str,
-	) -> Result<(Vec<Value>, Option<ValueType>, Option<Fragment>)> {
+	) -> Result<(Vec<(Value, Fragment)>, Option<ValueType>, Option<Fragment>)> {
 		let mut all_values = Vec::new();
 		let mut first_value_type: Option<ValueType> = None;
 		let mut column_fragment: Option<Fragment> = None;
@@ -396,12 +396,12 @@ impl InlineDataNode {
 					if first_value_type.is_none() && !matches!(value, Value::None { .. }) {
 						first_value_type = Some(value.get_type());
 					}
-					all_values.push(value);
+					all_values.push((value, alias_expr.expression.full_fragment_owned()));
 				} else {
-					all_values.push(Value::none());
+					all_values.push((Value::none(), Fragment::none()));
 				}
 			} else {
-				all_values.push(Value::none());
+				all_values.push((Value::none(), Fragment::none()));
 			}
 		}
 
@@ -411,9 +411,9 @@ impl InlineDataNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::inline::materialize")]
 	fn materialize_inferred_column(
 		session: &EvalContext<'_>,
-		all_values: &[Value],
+		all_values: &[(Value, Fragment)],
 		first_value_type: Option<ValueType>,
-	) -> ColumnBuffer {
+	) -> Result<ColumnBuffer> {
 		let wide_type = if let Some(ref fvt) = first_value_type {
 			if *fvt == ValueType::Decimal {
 				Some(ValueType::Decimal)
@@ -437,11 +437,20 @@ impl InlineDataNode {
 		};
 
 		let mut column_data = if wide_type.is_none() {
-			ColumnBuffer::none_typed(ValueType::Boolean, all_values.len())
+			let none_type = all_values
+				.iter()
+				.find_map(|(value, _)| match value {
+					Value::None {
+						inner,
+					} if *inner != ValueType::Any => Some(inner.clone()),
+					_ => None,
+				})
+				.unwrap_or(ValueType::Boolean);
+			ColumnBuffer::none_typed(none_type, all_values.len())
 		} else {
 			let mut data = ColumnBuffer::with_capacity(wide_type.clone().unwrap(), 0);
 
-			for value in all_values {
+			for (value, fragment) in all_values {
 				if matches!(value, Value::None { .. }) {
 					data.push_none();
 				} else if wide_type.as_ref().is_some_and(|wt| value.get_type() == *wt) {
@@ -450,22 +459,16 @@ impl InlineDataNode {
 					let temp_data = ColumnBuffer::from(value.clone());
 					let eval_ctx = session.with_eval_empty();
 
-					match cast_column_data(
+					let casted = cast_column_data(
 						&eval_ctx,
 						&temp_data,
 						wide_type.clone().unwrap(),
-						Fragment::none,
-					) {
-						Ok(casted) => {
-							if let Some(casted_value) = casted.iter().next() {
-								data.push_value(casted_value);
-							} else {
-								data.push_none();
-							}
-						}
-						Err(_) => {
-							data.push_none();
-						}
+						fragment,
+					)?;
+					if let Some(casted_value) = casted.iter().next() {
+						data.push_value(casted_value);
+					} else {
+						data.push_none();
 					}
 				}
 			}
@@ -477,16 +480,11 @@ impl InlineDataNode {
 			let optimal_type = Self::find_optimal_integer_type(&column_data);
 			if optimal_type != ValueType::Int16 {
 				let eval_ctx = session.with_eval(Columns::empty(), column_data.len());
-
-				if let Ok(demoted) =
-					cast_column_data(&eval_ctx, &column_data, optimal_type, Fragment::none)
-				{
-					column_data = demoted;
-				}
+				column_data = cast_column_data(&eval_ctx, &column_data, optimal_type, Fragment::none)?;
 			}
 		}
 
-		column_data
+		Ok(column_data)
 	}
 
 	fn next_infer_namespace(&mut self, ctx: &QueryContext) -> Result<Option<Columns>> {
@@ -501,7 +499,7 @@ impl InlineDataNode {
 			let (all_values, first_value_type, column_fragment) =
 				Self::eval_column_values(&session, &rows_data, &column_name)?;
 
-			let column_data = Self::materialize_inferred_column(&session, &all_values, first_value_type);
+			let column_data = Self::materialize_inferred_column(&session, &all_values, first_value_type)?;
 
 			columns.push(ColumnWithName::new(
 				column_fragment.unwrap_or_else(|| Fragment::internal(column_name)),
