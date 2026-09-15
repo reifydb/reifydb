@@ -110,6 +110,16 @@ impl SliceComputer {
 		}
 
 		let (combined, view_changes, holds) = self.compute(flow_engine, cursor.flow_id, advance_to, changes)?;
+		if combined.is_empty()
+			&& view_changes.is_empty()
+			&& !checkpoint_due(advance_to, cursor.durable_cursor, config)
+		{
+			return Ok(SliceStep::Skip {
+				advance_to,
+				more,
+				holds,
+			});
+		}
 
 		Ok(SliceStep::Commit {
 			slice: FlowSlice {
@@ -136,8 +146,7 @@ impl SliceComputer {
 		config: &SliceConfig,
 	) -> Result<SliceStep> {
 		let (holds, folded) = self.resolved_holds(flow_engine, flow_id, advance_to)?;
-		let checkpoint_due = advance_to.0.saturating_sub(durable_cursor.0) > config.checkpoint_lag;
-		if folded.is_empty() && !checkpoint_due {
+		if folded.is_empty() && !checkpoint_due(advance_to, durable_cursor, config) {
 			return Ok(SliceStep::Skip {
 				advance_to,
 				more,
@@ -255,6 +264,10 @@ impl SliceComputer {
 		let view_changes = self.consolidated_view_changes(&mut txn, state_version)?;
 		Ok((txn.take_pending(), view_changes))
 	}
+}
+
+fn checkpoint_due(advance_to: CommitVersion, durable_cursor: CommitVersion, config: &SliceConfig) -> bool {
+	advance_to.0.saturating_sub(durable_cursor.0) > config.checkpoint_lag
 }
 
 fn accepts(object: ObjectId, source_objects: &BTreeSet<ObjectId>) -> bool {
@@ -1102,5 +1115,117 @@ mod integration {
 			"a flow committed keys that it would read back through the version-pinned query: {stale_reads:?}. \
 			 Those reads cannot see the flow's own commit, so the flow reads stale state for them"
 		);
+	}
+	#[test]
+	fn a_step_whose_operators_emit_nothing_skips_the_commit_until_the_checkpoint_is_due() {
+		// A no-output step must skip its commit, yet past the checkpoint lag it must persist one or CDC stalls.
+		let te = TestEngine::builder().with_cdc().build();
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
+		te.admin(
+			"CREATE DEFERRED VIEW app::v { id: int4, val: int4 } AS { FROM app::t FILTER { val > 100 } MAP { id, val } }",
+		);
+		te.command("INSERT app::t [{id: 1, val: 10}, {id: 2, val: 20}]");
+		let inserted = te.inner().done_until();
+
+		let engine = te.inner().clone();
+		let flow_catalog = FlowCatalog::new(engine.catalog());
+
+		let mut query = engine.begin_query(IdentityId::system()).expect("query");
+		let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
+		let flow_id = flows.first().expect("one flow").id;
+		drop(query);
+
+		let mut flow_engine = build_flow_engine(&engine);
+		{
+			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
+			let (flow, _) = flow_catalog
+				.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)
+				.expect("load flow");
+			flow_engine.register(&mut txn, flow).expect("register");
+			txn.rollback().expect("rollback registration probe");
+		}
+
+		let source_objects = {
+			let graph = flow_engine.get_dependency_graph();
+			let registered = |f: FlowId| f == flow_id;
+			let view_kind = |vid| flow_catalog.find_view(vid).map(|v| v.kind());
+			routing::flow_source_objects(&graph, flow_id, &registered, &view_kind)
+		};
+
+		let computer = SliceComputer::new(engine.clone());
+		let far = SliceConfig {
+			checkpoint_lag: 10_000,
+		};
+
+		let mut cursor = CommitVersion(0);
+		for _ in 0..400 {
+			if cursor >= inserted {
+				break;
+			}
+			match pull_step(
+				&engine,
+				&computer,
+				&mut flow_engine,
+				SliceCursor {
+					flow_id,
+					source_objects: &source_objects,
+					completeness_objects: None,
+					cursor,
+					durable_cursor: CommitVersion(0),
+				},
+				&far,
+			) {
+				Some(SliceStep::Commit {
+					slice,
+					..
+				}) => panic!(
+					"a step with no writes and no view changes committed {} writes and {} view changes \
+					 while the checkpoint was not due",
+					slice.combined.len(),
+					slice.view_changes.len()
+				),
+				Some(SliceStep::Skip {
+					advance_to,
+					..
+				}) => cursor = advance_to,
+				None => sleep(StdDuration::from_millis(5)),
+			}
+		}
+		assert!(cursor >= inserted, "the flow never stepped past the filtered insert at {inserted:?}");
+
+		let due = SliceConfig {
+			checkpoint_lag: 0,
+		};
+		match pull_step(
+			&engine,
+			&computer,
+			&mut flow_engine,
+			SliceCursor {
+				flow_id,
+				source_objects: &source_objects,
+				completeness_objects: None,
+				cursor: CommitVersion(0),
+				durable_cursor: CommitVersion(0),
+			},
+			&due,
+		) {
+			Some(SliceStep::Commit {
+				slice,
+				advance_to,
+				..
+			}) => {
+				assert_eq!(slice.checkpoints, vec![(flow_id, advance_to)]);
+				assert!(slice.combined.is_empty(), "the filtered step must carry only its checkpoint");
+			}
+			Some(SliceStep::Skip {
+				advance_to,
+				..
+			}) => panic!(
+				"a step past the checkpoint lag skipped to {advance_to:?} without persisting its checkpoint"
+			),
+			None => panic!("the insert was already visible, so the replay from zero must produce a step"),
+		}
+		assert_eq!(view_row_count(&te, "FROM app::v"), 0);
 	}
 }

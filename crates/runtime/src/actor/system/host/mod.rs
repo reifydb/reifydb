@@ -317,7 +317,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		actor::{context::Context, traits::Directive},
+		actor::{context::Context, mailbox::ActorRef, system::ActorConfig, traits::Directive},
 		pool::{PoolConfig, Pools},
 	};
 
@@ -405,5 +405,120 @@ mod tests {
 		});
 
 		assert!(rx.recv_timeout(Duration::from_millis(200)).is_err());
+	}
+	struct TurnActor {
+		log: Arc<sync::Mutex<Vec<&'static str>>>,
+		name: &'static str,
+		batch: Option<usize>,
+	}
+
+	#[derive(Debug)]
+	enum TurnMessage {
+		Hold(sync::mpsc::Sender<()>, sync::mpsc::Receiver<()>),
+		Kick(ActorRef<TurnMessage>),
+		Log,
+		Done(sync::mpsc::Sender<()>),
+	}
+
+	impl Actor for TurnActor {
+		type State = ();
+		type Message = TurnMessage;
+
+		fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {}
+
+		fn handle(
+			&self,
+			_state: &mut Self::State,
+			msg: Self::Message,
+			_ctx: &Context<Self::Message>,
+		) -> Directive {
+			match msg {
+				TurnMessage::Hold(started, release) => {
+					let _ = started.send(());
+					let _ = release.recv();
+				}
+				TurnMessage::Kick(other) => {
+					let _ = other.send(TurnMessage::Log);
+				}
+				TurnMessage::Log => self.log.lock().unwrap().push(self.name),
+				TurnMessage::Done(tx) => {
+					let _ = tx.send(());
+				}
+			}
+			Directive::Continue
+		}
+
+		fn config(&self) -> ActorConfig {
+			match self.batch {
+				Some(batch) => ActorConfig::new().batch_size(batch),
+				None => ActorConfig::new(),
+			}
+		}
+	}
+
+	fn turn_order(batch: Option<usize>) -> Vec<&'static str> {
+		let system = ActorSystem::new(
+			Pools::new(PoolConfig {
+				flow_threads: 1,
+				..PoolConfig::default()
+			}),
+			Clock::Real,
+		);
+		let log = Arc::new(sync::Mutex::new(Vec::new()));
+		let actor = |name, batch| TurnActor {
+			log: Arc::clone(&log),
+			name,
+			batch,
+		};
+		let holder = system.spawn_flow("holder", actor("holder", None));
+		let busy = system.spawn_flow("busy", actor("busy", batch));
+		let other = system.spawn_flow("other", actor("other", None));
+
+		for handle in [&busy, &other] {
+			let (tx, rx) = sync::mpsc::channel();
+			handle.actor_ref().send(TurnMessage::Done(tx)).unwrap();
+			rx.recv().unwrap();
+		}
+
+		let (started_tx, started_rx) = sync::mpsc::channel();
+		let (release_tx, release_rx) = sync::mpsc::channel();
+		holder.actor_ref().send(TurnMessage::Hold(started_tx, release_rx)).unwrap();
+		started_rx.recv().unwrap();
+
+		busy.actor_ref().send(TurnMessage::Kick(other.actor_ref().clone())).unwrap();
+		for _ in 0..20 {
+			busy.actor_ref().send(TurnMessage::Log).unwrap();
+		}
+		let (busy_done_tx, busy_done_rx) = sync::mpsc::channel();
+		busy.actor_ref().send(TurnMessage::Done(busy_done_tx)).unwrap();
+		release_tx.send(()).unwrap();
+		busy_done_rx.recv().unwrap();
+
+		let (other_done_tx, other_done_rx) = sync::mpsc::channel();
+		other.actor_ref().send(TurnMessage::Done(other_done_tx)).unwrap();
+		other_done_rx.recv().unwrap();
+
+		system.shutdown();
+		system.join().unwrap();
+		let order = log.lock().unwrap().clone();
+		order
+	}
+
+	#[test]
+	fn an_actor_batch_size_holds_its_turn_for_that_many_messages() {
+		// A shared queue that yields after the pool default makes every sender wait behind the whole pool.
+		let own = turn_order(Some(64));
+		assert_eq!(
+			own.iter().position(|name| *name == "other"),
+			Some(20),
+			"a batch of 64 must finish all 20 queued messages before a newly woken actor runs: {own:?}"
+		);
+
+		let pooled = turn_order(None);
+		assert_eq!(
+			pooled.iter().position(|name| *name == "other"),
+			Some(7),
+			"without its own batch size the actor must yield after the flow pool default of 8: {pooled:?}"
+		);
 	}
 }
