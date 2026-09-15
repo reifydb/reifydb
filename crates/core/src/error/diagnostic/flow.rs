@@ -211,8 +211,11 @@ pub fn flow_unsupported_aggregate_expression(output: &str) -> Diagnostic {
 		fragment: Fragment::None,
 		label: None,
 		help: Some("Window and aggregate views support math::count, math::sum, math::avg, math::min and \
-			math::max over a column or scalar expression, optionally combined with arithmetic \
-			(for example math::max(x) - math::min(x)). Every output must reduce to such an aggregate."
+			math::max over a column or scalar expression, and stats::digest over a column or scalar \
+			expression with a literal accuracy (or over a digest without one), and \
+			stats::approx_percentile with a literal p over the same inputs, optionally combined with \
+			arithmetic (for example math::max(x) - math::min(x)). Every output must reduce to such an \
+			aggregate."
 			.to_string()),
 		notes: vec![],
 		cause: None,
@@ -545,4 +548,126 @@ pub fn flow_guest_key_too_wide(len: usize) -> Diagnostic {
 		 to sixteen bytes before passing it; the host refuses it rather than truncating it, because a \
 		 truncated key silently collides with every other key sharing its first sixteen bytes.",
 	)
+}
+
+pub fn flow_digest_accuracy_not_a_literal(output: &str, function: &str) -> Diagnostic {
+	let example = match function {
+		"stats::approx_percentile" => "stats::approx_percentile(latency, 0.99, 0.01)",
+		_ => "stats::digest(latency, 0.01)",
+	};
+	flow_diagnostic(
+		"FLOW_052",
+		format!(
+			"aggregate output '{}' passes {} an accuracy that is not a decimal number literal",
+			output, function
+		),
+		&format!(
+			"The accuracy is part of the digest type, so it is fixed when the view is created: write it as \
+			 a number literal, for example {}.",
+			example
+		),
+	)
+}
+
+pub fn flow_digest_accuracy_out_of_range(output: &str, function: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_053",
+		format!("aggregate output '{}' passes {} an accuracy outside 0.001 to 0.1", output, function),
+		"A digest answers within its accuracy as a relative error; pick an accuracy between 0.001 and 0.1 \
+		 inclusive.",
+	)
+}
+
+pub fn flow_digest_accuracy_not_whole_ppm(output: &str, function: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_054",
+		format!(
+			"aggregate output '{}' passes {} an accuracy that is not a whole number of parts per million",
+			output, function
+		),
+		"A digest stores its accuracy in parts per million, so an accuracy such as 0.0100005 has no exact \
+		 form; use at most six decimal places.",
+	)
+}
+
+pub fn flow_digest_accuracy_required(function: &str, input: ValueType) -> Diagnostic {
+	let example = match function {
+		"stats::approx_percentile" => "stats::approx_percentile(x, 0.99, 0.01)",
+		_ => "stats::digest(x, 0.01)",
+	};
+	flow_diagnostic(
+		"FLOW_055",
+		format!("{} over a {} input needs an accuracy argument", function, input),
+		&format!(
+			"Only a digest input takes no accuracy, because its accuracy comes from its type. Write {} for \
+			 any other input.",
+			example
+		),
+	)
+}
+
+pub fn flow_digest_accuracy_given_for_digest(function: &str, input: ValueType) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_056",
+		format!("{} over a {} input takes no accuracy argument", function, input),
+		"The accuracy of a digest input comes from the digest type; remove the argument.",
+	)
+}
+
+pub fn flow_digest_input_rejected(function: &str, cause: String) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_057",
+		format!("{} cannot take its input: {}", function, cause),
+		"A digest takes ints, floats and durations without a month part, and every value of one input \
+		 must have one type.",
+	)
+}
+
+pub fn flow_percentile_argument_count(output: &str, function: &str, actual: usize) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_058",
+		format!(
+			"aggregate output '{}' calls {} with {} arguments, but it takes 2 or 3",
+			output, function, actual
+		),
+		"Write stats::approx_percentile(x, p, accuracy) over a column or scalar expression, or \
+		 stats::approx_percentile(d, p) over a digest.",
+	)
+}
+
+pub fn flow_percentile_not_a_literal(output: &str, function: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_059",
+		format!("aggregate output '{}' passes {} a p that is not a decimal number literal", output, function),
+		"Inside a window or aggregate the percentile is fixed when the view is created: write p as a number \
+		 literal, for example stats::approx_percentile(latency, 0.99, 0.01).",
+	)
+}
+
+pub fn flow_percentile_out_of_range(output: &str, function: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_060",
+		format!("aggregate output '{}' passes {} a p outside 0 to 1", output, function),
+		"p is the fraction of values at or below the answer: 0.5 is the median and 0.99 the 99th percentile; \
+		 pick a p between 0 and 1 inclusive.",
+	)
+}
+
+pub fn flow_view_calls_script_routine(name: &str, fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_061".to_string(),
+		rql: None,
+		message: format!("a deferred view cannot call '{}', a routine defined by the script", name),
+		column: None,
+		fragment,
+		label: Some("script routine called in a view".to_string()),
+		help: Some(
+			"A view flow keeps running after the script ends, so it only sees built-in routines. Inline the \
+			 routine body into the view query instead."
+				.to_string(),
+		),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
 }

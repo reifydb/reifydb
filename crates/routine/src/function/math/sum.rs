@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::{
-	Accumulator, AggregateFunctionCapability, Function, FunctionKind, Routine, RoutineInfo,
+	Accumulator, AggregateFunctionCapability, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo,
 	context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
@@ -84,8 +84,12 @@ impl Function for Sum {
 		&[FunctionKind::Scalar, FunctionKind::Aggregate]
 	}
 
-	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
-		Some(Box::new(SumAccumulator::new()))
+	fn accumulator(
+		&self,
+		_ctx: &mut FunctionContext<'_>,
+		_literals: &[LiteralArgument],
+	) -> Result<Option<Box<dyn Accumulator>>, RoutineError> {
+		Ok(Some(Box::new(SumAccumulator::new())))
 	}
 
 	fn aggregate_capabilities(&self) -> &[AggregateFunctionCapability] {

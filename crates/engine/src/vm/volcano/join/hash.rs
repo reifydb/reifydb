@@ -257,11 +257,8 @@ impl HashJoinNode {
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
 		};
-		let compiled_residual: Vec<CompiledExpr> = self
-			.residual
-			.iter()
-			.map(|e| compile_expression(&compile_ctx, e).expect("compile residual"))
-			.collect();
+		let compiled_residual: Vec<CompiledExpr> =
+			self.residual.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<_>>()?;
 
 		self.state = Some(HashJoinState {
 			build_columns,

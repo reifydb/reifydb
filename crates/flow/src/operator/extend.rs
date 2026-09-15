@@ -23,7 +23,7 @@ use tracing::instrument;
 
 use crate::{
 	context::FlowContext,
-	operator::{HostOperator, host::HostContext},
+	operator::{HostOperator, host::HostContext, map::schema_column},
 };
 
 pub struct ExtendOperator {
@@ -44,17 +44,14 @@ impl ExtendOperator {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
-	) -> Self {
+	) -> Result<Self> {
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
 		};
-		let compiled_expressions: Vec<CompiledExpr> = expressions
-			.iter()
-			.map(|e| compile_expression(&compile_ctx, e))
-			.collect::<Result<Vec<_>>>()
-			.expect("Failed to compile expressions");
+		let compiled_expressions: Vec<CompiledExpr> =
+			expressions.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
 
-		Self {
+		Ok(Self {
 			parent_schema,
 			operator,
 			expressions,
@@ -62,11 +59,15 @@ impl ExtendOperator {
 			routines,
 			runtime_context,
 			ctx,
-		}
+		})
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
-		self.parent_schema.clone()
+		let parent = self.parent_schema.as_ref()?;
+		let mut columns: Vec<ColumnWithName> =
+			parent.iter().map(|col| ColumnWithName::new(col.name().clone(), col.data().clone())).collect();
+		columns.extend(self.expressions.iter().map(|expr| schema_column(Some(parent), expr)));
+		Some(Columns::new(columns))
 	}
 
 	#[instrument(name = "flow::operator::extend::extend", level = "trace", skip_all, fields(rows = columns.row_count()))]
@@ -142,12 +143,7 @@ impl HostOperator for ExtendOperator {
 					post,
 					..
 				} => {
-					let extended = match self.extend(&post) {
-						Ok(extended) => extended,
-						Err(err) => {
-							panic!("{:#?}", err)
-						}
-					};
+					let extended = self.extend(&post)?;
 
 					if !extended.is_empty() {
 						result.push(Diff::insert(extended));

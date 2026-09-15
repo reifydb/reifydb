@@ -8,7 +8,10 @@ use reifydb_codec::row::{
 	shape::RowShape,
 };
 use reifydb_core::{
-	error::diagnostic::catalog::{namespace_not_found, ringbuffer_not_found},
+	error::diagnostic::{
+		catalog::{namespace_not_found, ringbuffer_not_found},
+		query::column_not_found,
+	},
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -39,7 +42,7 @@ use super::{
 		compute_partition_col_indices, ensure_partition_metadata, evict_oldest_for_partition,
 		save_all_partition_metadata, update_metadata_after_insert,
 	},
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 	shape::get_or_create_ringbuffer_shape,
 };
 use crate::{
@@ -143,6 +146,11 @@ fn drive_ringbuffer_insert(
 			&columns,
 			PolicyTargetType::RingBuffer,
 		)?;
+		if let Some(unknown) =
+			columns.names.iter().find(|name| !ringbuffer.columns.iter().any(|c| c.name == name.text()))
+		{
+			return_error!(column_not_found(unknown.clone()));
+		}
 
 		let row_count = columns.row_count();
 		for row_idx in 0..row_count {
@@ -218,6 +226,7 @@ fn finalize_ringbuffer_insert(
 	if let Some(returning_exprs) = returning {
 		let mut columns = decode_rows_to_columns(shape, returned_rows);
 		decode_returning_dictionaries(services, txn, &ringbuffer.columns, &mut columns)?;
+		let columns = with_absent_pre_image(columns);
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
 	Ok(insert_ringbuffer_result(target_data.namespace.name(), &ringbuffer.name, inserted_count))

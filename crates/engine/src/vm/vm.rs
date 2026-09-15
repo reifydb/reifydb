@@ -13,9 +13,10 @@ use reifydb_rql::instruction::{Instruction, ScopeType};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	fragment::Fragment,
 	params::Params,
 	util::bitvec::BitVec,
-	value::{Value, frame::frame::Frame, identity::IdentityId},
+	value::{Value, constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId},
 };
 
 use super::{
@@ -74,6 +75,12 @@ use crate::{
 
 pub static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 
+#[derive(Clone, Default)]
+pub(crate) struct UdfCall {
+	pub fragment: Fragment,
+	pub return_type: Option<TypeConstraint>,
+}
+
 pub struct Vm<'a> {
 	pub(crate) ip: usize,
 	pub(crate) iteration_count: usize,
@@ -94,6 +101,8 @@ pub struct Vm<'a> {
 
 	pub(crate) pending_return: Option<Variable>,
 
+	pub(crate) udf_call: UdfCall,
+
 	pub(crate) params: &'a Params,
 	pub(crate) routines: &'a Routines,
 	pub(crate) runtime_context: &'a RuntimeContext,
@@ -107,22 +116,40 @@ impl<'a> Vm<'a> {
 		params: &'a Params,
 		identity: IdentityId,
 	) -> Self {
-		Self::build(symbols, 1, params, &services.routines, &services.runtime_context, identity)
+		Self::build(
+			symbols,
+			1,
+			UdfCall::default(),
+			params,
+			&services.routines,
+			&services.runtime_context,
+			identity,
+		)
 	}
 
-	pub fn with_batch_size_from_services(
+	pub(crate) fn with_batch_size_from_services(
 		symbols: SymbolTable,
 		batch_size: usize,
+		udf_call: UdfCall,
 		services: &'a Services,
 		params: &'a Params,
 		identity: IdentityId,
 	) -> Self {
-		Self::build(symbols, batch_size, params, &services.routines, &services.runtime_context, identity)
+		Self::build(
+			symbols,
+			batch_size,
+			udf_call,
+			params,
+			&services.routines,
+			&services.runtime_context,
+			identity,
+		)
 	}
 
 	fn build(
 		symbols: SymbolTable,
 		batch_size: usize,
+		udf_call: UdfCall,
 		params: &'a Params,
 		routines: &'a Routines,
 		runtime_context: &'a RuntimeContext,
@@ -141,6 +168,7 @@ impl<'a> Vm<'a> {
 			loop_mask_stack: Vec::new(),
 			returned_mask: None,
 			pending_return: None,
+			udf_call,
 			params,
 			routines,
 			runtime_context,
@@ -403,7 +431,9 @@ impl<'a> Vm<'a> {
 					self.exec_ddl(services, tx, |s, t| create_queue(s, t, n.clone()))?
 				}
 				Instruction::CreateDeferredView(n) => {
-					self.exec_ddl(services, tx, |s, t| create_deferred_view(s, t, n.clone()))?
+					self.exec_ddl_with_symbols(services, tx, |s, t, sym| {
+						create_deferred_view(s, t, sym, n.clone())
+					})?
 				}
 				Instruction::CreateTransactionalView(n) => {
 					self.exec_ddl(services, tx, |s, t| create_transactional_view(s, t, n.clone()))?

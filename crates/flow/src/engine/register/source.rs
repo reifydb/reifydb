@@ -58,7 +58,10 @@ impl FlowEngineInner {
 	) -> Result<()> {
 		let s = self.catalog.get_series(&mut txn.reborrow(), series)?;
 		self.add_source(flow.id, operator_id, ObjectId::series(s.id));
-		self.operators.insert((flow.id, operator_id), Box::new(SourceSeriesOperator::new(operator_id)));
+		self.operators.insert(
+			(flow.id, operator_id),
+			Box::new(SourceSeriesOperator::new(operator_id).with_series(&s)),
+		);
 		Ok(())
 	}
 

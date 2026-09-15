@@ -219,4 +219,5 @@ pub fn default_in_process_functions(builder: RoutinesConfigurator) -> RoutinesCo
 		.register_builtin_function(Arc::new(series::GenerateSeries::new()))
 		.register_builtin_function(Arc::new(rql::fingerprint::RqlFingerprint::new()))
 		.register_builtin_function(Arc::new(stats::approx_percentile::ApproxPercentile::new()))
+		.register_builtin_function(Arc::new(stats::digest::StatsDigest::new()))
 }

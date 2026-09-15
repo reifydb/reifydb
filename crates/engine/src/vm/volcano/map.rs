@@ -4,7 +4,10 @@
 use std::{mem, sync::Arc};
 
 use reifydb_core::{
-	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
+	interface::{
+		evaluate::TargetColumn,
+		resolved::{ResolvedColumn, ResolvedObject},
+	},
 	value::column::{ColumnWithName, cast::cast_column_data, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_evaluate::expression::{
@@ -21,6 +24,7 @@ use super::NoopNode;
 use crate::{
 	Result,
 	vm::volcano::{
+		inline::{expand_aliases, expand_sumtype_ctor, reject_variant_column_clashes, resolve_is_variants},
 		query::{QueryContext, QueryNode, eval_context_from_query, eval_context_from_transform},
 		udf::{UdfEvalNode, evaluate_udfs_no_input, strip_udf_columns},
 	},
@@ -29,16 +33,18 @@ use crate::{
 pub(crate) struct MapNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
+	source: Option<ResolvedObject>,
 	udf_names: Vec<String>,
 	headers: Option<ColumnHeaders>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
 
 impl MapNode {
-	pub fn new(input: Box<dyn QueryNode>, expressions: Vec<Expression>) -> Self {
+	pub fn new(input: Box<dyn QueryNode>, expressions: Vec<Expression>, source: Option<ResolvedObject>) -> Self {
 		Self {
 			input,
 			expressions,
+			source,
 			udf_names: Vec::new(),
 			headers: None,
 			context: None,
@@ -49,6 +55,17 @@ impl MapNode {
 impl QueryNode for MapNode {
 	#[instrument(name = "volcano::map::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		let (expressions, written) =
+			expand_aliases(mem::take(&mut self.expressions), |alias_expr, expanded| {
+				expand_sumtype_ctor(ctx, rx, ctx.source.as_ref(), alias_expr, expanded)
+			})?;
+		reject_variant_column_clashes(&expressions.iter().map(display_label).collect::<Vec<_>>(), &written)?;
+		self.expressions = expressions;
+		if let Some(source) = self.source.as_ref() {
+			for expr in &mut self.expressions {
+				resolve_is_variants(&ctx.services.catalog, rx, source, expr)?;
+			}
+		}
 		let (input, expressions, udf_names) = UdfEvalNode::wrap_if_needed(
 			mem::replace(&mut self.input, Box::new(NoopNode)),
 			&self.expressions,
@@ -64,8 +81,8 @@ impl QueryNode for MapNode {
 		let compiled = self
 			.expressions
 			.iter()
-			.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
-			.collect();
+			.map(|e| compile_expression(&compile_ctx, e))
+			.collect::<Result<Vec<_>>>()?;
 		self.context = Some((Arc::new(ctx.clone()), compiled));
 		let column_names = self.expressions.iter().map(display_label).collect();
 		self.headers = Some(ColumnHeaders {
@@ -193,6 +210,12 @@ impl MapWithoutInputNode {
 impl QueryNode for MapWithoutInputNode {
 	#[instrument(name = "volcano::map::noinput::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		let (expressions, written) =
+			expand_aliases(mem::take(&mut self.expressions), |alias_expr, expanded| {
+				expand_sumtype_ctor(ctx, rx, ctx.source.as_ref(), alias_expr, expanded)
+			})?;
+		reject_variant_column_clashes(&expressions.iter().map(display_label).collect::<Vec<_>>(), &written)?;
+		self.expressions = expressions;
 		if let Some((rewritten, udf_cols)) = evaluate_udfs_no_input(&self.expressions, ctx, rx)? {
 			self.expressions = rewritten;
 			self.udf_columns = Some(udf_cols);
@@ -204,8 +227,8 @@ impl QueryNode for MapWithoutInputNode {
 		let compiled = self
 			.expressions
 			.iter()
-			.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
-			.collect();
+			.map(|e| compile_expression(&compile_ctx, e))
+			.collect::<Result<Vec<_>>>()?;
 		self.context = Some((Arc::new(ctx.clone()), compiled));
 		Ok(())
 	}

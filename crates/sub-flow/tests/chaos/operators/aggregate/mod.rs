@@ -105,6 +105,7 @@ pub fn build(agg: Agg, runtime: RuntimeContext) -> AggregateOperator {
 		routines(),
 		runtime,
 	)
+	.expect("the aggregate operator must build")
 }
 
 #[derive(Debug, Clone)]

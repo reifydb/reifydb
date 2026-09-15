@@ -80,7 +80,7 @@ impl QueryNode for NestedLoopJoinNode {
 			symbols: &ctx.symbols,
 		};
 		self.context.compiled =
-			self.on.iter().map(|e| compile_expression(&compile_ctx, e).expect("compile")).collect();
+			self.on.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<_>>()?;
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;

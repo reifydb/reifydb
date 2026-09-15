@@ -57,6 +57,8 @@ use std::cmp::PartialOrd;
 use Operator::*;
 use Separator::NewLine;
 use bumpalo::Bump;
+use reifydb_core::error::diagnostic::query::duplicate_field;
+use reifydb_value::return_error;
 
 use crate::{
 	Result,
@@ -119,6 +121,27 @@ pub fn parse<'bump>(
 
 pub(crate) fn is_block_terminated(node: &Ast) -> bool {
 	matches!(node, Ast::If(_) | Ast::Match(_) | Ast::Loop(_) | Ast::While(_) | Ast::For(_) | Ast::DefFunction(_))
+}
+
+pub(crate) fn reject_duplicate_aliases(nodes: &[Ast<'_>]) -> Result<()> {
+	let mut seen: Vec<&str> = Vec::with_capacity(nodes.len());
+	for node in nodes {
+		let Ast::Infix(AstInfix {
+			operator: InfixOperator::As(_),
+			right,
+			..
+		}) = node
+		else {
+			continue;
+		};
+		let fragment = &right.token().fragment;
+		let name = fragment.text().trim_matches('"');
+		if seen.contains(&name) {
+			return_error!(duplicate_field(fragment.to_owned(), fragment.text()));
+		}
+		seen.push(name);
+	}
+	Ok(())
 }
 
 const MAX_PARSE_DEPTH: usize = 128;
@@ -411,7 +434,7 @@ impl<'bump> Parser<'bump> {
 				(name, name)
 			}
 		};
-		let columns = self.parse_inline()?;
+		let columns = self.parse_inline_with_unique_keys()?;
 		Ok(Ast::SumTypeConstructor(AstSumTypeConstructor {
 			token: infix.token,
 			namespace,
@@ -819,7 +842,7 @@ impl<'bump> Parser<'bump> {
 		{
 			let token = ident.token;
 			let variant_name = ident.token.fragment;
-			let columns = self.parse_inline()?;
+			let columns = self.parse_inline_with_unique_keys()?;
 			expression = Ast::SumTypeConstructor(AstSumTypeConstructor {
 				token,
 				namespace: variant_name,

@@ -5,10 +5,12 @@ use std::cmp::Ordering;
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
-	key::operator::state::GroupId, row::JoinPick, sort::SortDirection, value::column::columns::Columns,
+	error::diagnostic::operation::join_pick_column_not_found, key::operator::state::GroupId, row::JoinPick,
+	sort::SortDirection, value::column::columns::Columns,
 };
 use reifydb_value::{
-	Result,
+	Result, error,
+	fragment::Fragment,
 	util::hash::Hash128,
 	value::{Value, datetime::TIME_COLUMN_NAME, row_number::RowNumber},
 };
@@ -27,21 +29,22 @@ fn instant_values(columns: &Columns) -> Option<Vec<Value>> {
 		.collect()
 }
 
-fn ordering_values(columns: &Columns, name: &str) -> Vec<Value> {
+fn ordering_values(columns: &Columns, pick_column: &Fragment) -> Result<Vec<Value>> {
+	let name = pick_column.text();
 	let rows = columns.row_count();
 	if let Some(column) = columns.column(name) {
-		return (0..rows).map(|idx| column.data().get_value(idx)).collect();
+		return Ok((0..rows).map(|idx| column.data().get_value(idx)).collect());
 	}
 	if let Some(buffer) = columns.system_column(name) {
-		return (0..rows).map(|idx| buffer.get_value(idx)).collect();
+		return Ok((0..rows).map(|idx| buffer.get_value(idx)).collect());
 	}
 	if name == TIME_COLUMN_NAME {
 		if let Some(values) = instant_values(columns) {
-			return values;
+			return Ok(values);
 		}
-		return columns.row_numbers().iter().map(|number| Value::Uint8(number.value())).collect();
+		return Ok(columns.row_numbers().iter().map(|number| Value::Uint8(number.value())).collect());
 	}
-	panic!("join pick orders by column {name}, which the right side does not carry")
+	Err(error!(join_pick_column_not_found(pick_column.clone(), "the right side")))
 }
 
 fn prefers(ord: Ordering, direction: &SortDirection) -> bool {
@@ -51,16 +54,16 @@ fn prefers(ord: Ordering, direction: &SortDirection) -> bool {
 	}
 }
 
-pub(crate) fn winner_index(columns: &Columns, pick: &JoinPick) -> Option<usize> {
+pub(crate) fn winner_index(columns: &Columns, pick: &JoinPick) -> Result<Option<usize>> {
 	let rows = columns.row_count();
 	if rows == 0 {
-		return None;
+		return Ok(None);
 	}
 	let ordering: Vec<(Vec<Value>, SortDirection)> = pick
 		.keys
 		.iter()
-		.map(|key| (ordering_values(columns, key.column.text()), key.direction.clone()))
-		.collect();
+		.map(|key| Ok((ordering_values(columns, &key.column)?, key.direction.clone())))
+		.collect::<Result<_>>()?;
 	let tail = ordering.last().map(|(_, direction)| direction.clone()).unwrap_or(SortDirection::Desc);
 	let numbers = columns.row_numbers();
 	let mut winner: Option<usize> = None;
@@ -86,7 +89,7 @@ pub(crate) fn winner_index(columns: &Columns, pick: &JoinPick) -> Option<usize> 
 			winner = Some(idx);
 		}
 	}
-	winner
+	Ok(winner)
 }
 
 fn read_all_rows(host: &mut dyn HostContext, right: &Store, group: GroupId) -> Result<Vec<(RowNumber, EncodedBytes)>> {
@@ -118,7 +121,7 @@ pub(crate) fn winning_right_row(
 		return Ok(None);
 	}
 	let all = columns_from_block(host, right, entries.clone())?;
-	let Some(idx) = winner_index(&all, pick) else {
+	let Some(idx) = winner_index(&all, pick)? else {
 		return Ok(None);
 	};
 	let entry = entries[idx].clone();

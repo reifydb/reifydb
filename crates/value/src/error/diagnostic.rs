@@ -1440,6 +1440,7 @@ impl IntoDiagnostic for TypeError {
 				let fragment = match &kind {
 					RuntimeErrorKind::UndefinedFunction { name } => Fragment::internal(name.clone()),
 					RuntimeErrorKind::AppendColumnMismatch { fragment, .. } => fragment.clone(),
+					RuntimeErrorKind::ConditionalBranchMismatch { fragment, .. } => fragment.clone(),
 					_ => Fragment::None,
 				};
 

@@ -1,0 +1,34 @@
+# The same type errors pass on an empty table today; once the typed plan pass exists these must fail instead.
+
+admin 'create table test::none_yet { g: int4, f: Option(float8), d: Option(duration), ts: Option(datetime) }'
+---
+> +---------+-------------+------------+-----------+
+> |   id    |  namespace  |   table    |  created  |
+> +---------+-------------+------------+-----------+
+> |  16388  |    test     |  none_yet  |   true    |
+> +---------+-------------+------------+-----------+
+>
+
+query 'from test::none_yet aggregate { p: stats::approx_percentile(ts, 0.99, 0.01) } by { g }'
+---
+> +-----+-----+
+> |  g  |  p  |
+> +-----+-----+
+> +-----+-----+
+>
+
+query 'from test::none_yet aggregate { p: stats::approx_percentile(f, 0.99) } by { g }'
+---
+> +-----+-----+
+> |  g  |  p  |
+> +-----+-----+
+> +-----+-----+
+>
+
+query 'from test::none_yet aggregate { lat: stats::digest(d, 0.01) } by { g } aggregate { p: stats::approx_percentile(lat, 0.99, 0.01) } by { g }'
+---
+> +-----+-----+
+> |  g  |  p  |
+> +-----+-----+
+> +-----+-----+
+>

@@ -3,10 +3,16 @@
 
 #[path = "aggregate.rs"]
 mod aggregate;
+#[path = "aggregate_arguments.rs"]
+mod aggregate_arguments;
 #[path = "apply_unknown_operator.rs"]
 mod apply_unknown_operator;
+#[path = "arithmetic_with_none_in_conditional.rs"]
+mod arithmetic_with_none_in_conditional;
 #[path = "bulk_insert.rs"]
 mod bulk_insert;
+#[path = "bulk_insert_mixed_value_types.rs"]
+mod bulk_insert_mixed_value_types;
 #[path = "call_argument_named_like_a_type.rs"]
 mod call_argument_named_like_a_type;
 #[path = "callable_call_policy.rs"]
@@ -24,6 +30,10 @@ mod cast_target_diagnostics;
 mod closure;
 #[path = "column_type_parameters.rs"]
 mod column_type_parameters;
+#[path = "dictionary_insert_value_type.rs"]
+mod dictionary_insert_value_type;
+#[path = "digest_aggregate.rs"]
+mod digest_aggregate;
 #[path = "digest_column_ddl.rs"]
 mod digest_column_ddl;
 #[path = "digest_column_write.rs"]
@@ -32,12 +42,24 @@ mod digest_column_write;
 mod digest_query;
 #[path = "digest_row_storage.rs"]
 mod digest_row_storage;
+#[path = "distinct_row_identity.rs"]
+mod distinct_row_identity;
+#[path = "distinct_typed_key.rs"]
+mod distinct_typed_key;
 #[path = "empty_batch_system_columns.rs"]
 mod empty_batch_system_columns;
 #[path = "empty_result_column_types.rs"]
 mod empty_result_column_types;
+#[path = "enum_variant_in_expression.rs"]
+mod enum_variant_in_expression;
+#[path = "enum_variant_in_query.rs"]
+mod enum_variant_in_query;
+#[path = "enum_variant_update_errors.rs"]
+mod enum_variant_update_errors;
 #[path = "events.rs"]
 mod events;
+#[path = "extend_duplicate_column_fragment.rs"]
+mod extend_duplicate_column_fragment;
 #[path = "flow_dag_load.rs"]
 mod flow_dag_load;
 #[path = "identity_dml_context.rs"]
@@ -46,10 +68,14 @@ mod identity_dml_context;
 mod identity_inject_escalation;
 #[path = "identity_kind.rs"]
 mod identity_kind;
+#[path = "inline_constructor_unknown_column.rs"]
+mod inline_constructor_unknown_column;
 #[path = "inline_data_insert_target.rs"]
 mod inline_data_insert_target;
 #[path = "inline_data_value_types.rs"]
 mod inline_data_value_types;
+#[path = "inline_duplicate_fields.rs"]
+mod inline_duplicate_fields;
 #[path = "insert_undefined_value.rs"]
 mod insert_undefined_value;
 #[path = "interceptor.rs"]
@@ -72,6 +98,10 @@ mod nested_option_types;
 mod nested_read_policy_bypass;
 #[path = "none_operand_expression_types.rs"]
 mod none_operand_expression_types;
+#[path = "percentile_aggregate.rs"]
+mod percentile_aggregate;
+#[path = "percentile_aggregate_errors.rs"]
+mod percentile_aggregate_errors;
 #[path = "plan_cache.rs"]
 mod plan_cache;
 #[path = "positional_insert.rs"]
@@ -94,10 +124,16 @@ mod returning;
 mod ringbuffer;
 #[path = "shutdown.rs"]
 mod shutdown;
+#[path = "series_key_write.rs"]
+mod series_key_write;
 #[path = "series_scan_column_types.rs"]
 mod series_scan_column_types;
 #[path = "series_tag_constructor_field.rs"]
 mod series_tag_constructor_field;
+#[path = "series_update_tag.rs"]
+mod series_update_tag;
+#[path = "series_write_coercion.rs"]
+mod series_write_coercion;
 #[path = "sort_unorderable.rs"]
 mod sort_unorderable;
 #[path = "system_reserved_ids.rs"]
@@ -120,6 +156,22 @@ mod transaction;
 mod transactional_view_unimplemented;
 #[path = "udf.rs"]
 mod udf;
+#[path = "udf_arity.rs"]
+mod udf_arity;
+#[path = "udf_arity_paths.rs"]
+mod udf_arity_paths;
+#[path = "udf_declared_return_type.rs"]
+mod udf_declared_return_type;
+#[path = "udf_declared_return_type_paths.rs"]
+mod udf_declared_return_type_paths;
+#[path = "udf_mixed_return_types.rs"]
+mod udf_mixed_return_types;
+#[path = "udf_mixed_return_types_paths.rs"]
+mod udf_mixed_return_types_paths;
+#[path = "udf_parameter_type.rs"]
+mod udf_parameter_type;
+#[path = "udf_parameter_type_paths.rs"]
+mod udf_parameter_type_paths;
 #[path = "virtual_table_diagnostics.rs"]
 mod virtual_table_diagnostics;
 #[path = "window_batch_query.rs"]

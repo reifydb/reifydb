@@ -1178,6 +1178,7 @@ mod reap_tests {
 			immutable: None,
 			ctx: Arc::new(FlowContext::default()),
 		})
+		.expect("the window operator must build")
 	}
 
 	fn txn_at(engine: &TestEngine, coordinate: u64) -> DeferredTransaction {
@@ -1294,6 +1295,7 @@ mod seal_arm_tests {
 			immutable: None,
 			ctx: Arc::new(FlowContext::default()),
 		})
+		.expect("the window operator must build")
 	}
 
 	fn rule() -> SealRule {

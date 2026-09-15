@@ -197,32 +197,41 @@ pub fn build(chain: Chain, runtime: RuntimeContext) -> Pipeline {
 	let stage: Box<dyn HostOperator + Send> = match chain {
 		Chain::Filter {
 			..
-		} => Box::new(FilterOperator::new(
-			source_schema.clone(),
-			STAGE_OPERATOR,
-			expressions,
-			routines(),
-			runtime.clone(),
-			ctx.clone(),
-		)),
-		Chain::Map => Box::new(MapOperator::new(
-			source_schema.clone(),
-			STAGE_OPERATOR,
-			expressions,
-			routines(),
-			runtime.clone(),
-			ctx.clone(),
-		)),
+		} => Box::new(
+			FilterOperator::new(
+				source_schema.clone(),
+				STAGE_OPERATOR,
+				expressions,
+				routines(),
+				runtime.clone(),
+				ctx.clone(),
+			)
+			.expect("the filter operator must build"),
+		),
+		Chain::Map => Box::new(
+			MapOperator::new(
+				source_schema.clone(),
+				STAGE_OPERATOR,
+				expressions,
+				routines(),
+				runtime.clone(),
+				ctx.clone(),
+			)
+			.expect("the map operator must build"),
+		),
 		Chain::Gate {
 			..
-		} => Box::new(GateOperator::new(
-			source_schema.clone(),
-			STAGE_OPERATOR,
-			expressions,
-			routines(),
-			runtime.clone(),
-			ctx.clone(),
-		)),
+		} => Box::new(
+			GateOperator::new(
+				source_schema.clone(),
+				STAGE_OPERATOR,
+				expressions,
+				routines(),
+				runtime.clone(),
+				ctx.clone(),
+			)
+			.expect("the gate operator must build"),
+		),
 	};
 
 	let terminal = AggregateOperator::new(
@@ -233,7 +242,8 @@ pub fn build(chain: Chain, runtime: RuntimeContext) -> Pipeline {
 			.expect("the aggregation parses"),
 		routines(),
 		runtime,
-	);
+	)
+	.expect("the aggregate operator must build");
 
 	Pipeline {
 		stage,

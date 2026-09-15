@@ -591,6 +591,7 @@ mod tests {
 	use std::{
 		collections::{BTreeMap as TestBTreeMap, HashMap as TestHashMap},
 		ops::Bound,
+		sync::Arc,
 	};
 
 	use reifydb_codec::{
@@ -598,14 +599,25 @@ mod tests {
 		row::pod::EncodedPodRow,
 	};
 	use reifydb_core::{
+		common::{WindowKind, WindowSize},
+		interface::catalog::flow::OperatorId,
 		key::operator::state::{GroupId, GroupStateKey},
 		state::timer::{StateStore, TimerKind, TimerStore},
 	};
-	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
+	use reifydb_routine_abi::registry::Routines;
+	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_value::{
+		Result as ValueResult,
+		value::{datetime::DateTime, digest::Digest, value_type::ValueType},
+	};
 
 	use super::*;
 	use crate::{
-		operator::state::seal::{coord::Coord, rule::EvictionRule},
+		context::FlowContext,
+		operator::{
+			state::seal::{coord::Coord, rule::EvictionRule},
+			window::operator::{WindowConfig, WindowOperator},
+		},
 		window::engine::config::WindowEngineConfig,
 	};
 
@@ -983,5 +995,439 @@ mod tests {
 			runnable_final.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })),
 			"draining past every coord must terminally remove all groups"
 		);
+	}
+
+	const PPM: u32 = 10_000;
+
+	type TimeKey = (u64, u64);
+
+	struct Lcg(u64);
+
+	impl Lcg {
+		fn below(&mut self, bound: u64) -> u64 {
+			self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+			(self.0 >> 33) % bound
+		}
+
+		fn group(&mut self) -> Hash128 {
+			Hash128((self.below(4) + 1) as u128)
+		}
+
+		fn latency(&mut self) -> Option<f64> {
+			match self.below(10) {
+				0 => None,
+				1 => Some(0.0),
+				2 | 3 => Some(-((self.below(1_000_000) + 1) as f64) / 7.0),
+				_ => Some(self.below(1_000_000) as f64 / 3.0),
+			}
+		}
+	}
+
+	fn digest_kind() -> SlotKind {
+		SlotKind::Digest {
+			accuracy: Some(PPM),
+		}
+	}
+
+	fn rolling_operator(size: WindowSize, immutable: Option<Duration>) -> WindowOperator {
+		WindowOperator::new(WindowConfig {
+			parent_schema: None,
+			operator: OperatorId(1),
+			kind: WindowKind::Rolling {
+				size,
+				lag: None,
+			},
+			group_by: Vec::new(),
+			aggregations: Vec::new(),
+			runtime_context: RuntimeContext::testing(0, 1),
+			routines: Routines::empty(),
+			lateness: None,
+			immutable,
+			ctx: Arc::new(FlowContext::default()),
+		})
+		.expect("the window operator must build")
+	}
+
+	fn minute() -> WindowSize {
+		WindowSize::Duration(Duration::from_seconds(60).unwrap())
+	}
+
+	fn inputs(kinds: &[SlotKind], latency: Option<f64>) -> Vec<Option<Value>> {
+		let value = latency.map(Value::float8).unwrap_or_else(Value::none);
+		kinds.iter().map(|_| Some(value.clone())).collect()
+	}
+
+	fn assert_frame(kinds: &[SlotKind], output: &[Value], frame: &[Option<f64>], context: &str) {
+		let present: Vec<f64> = frame.iter().flatten().copied().collect();
+		for (kind, value) in kinds.iter().zip(output) {
+			let expected = match kind {
+				SlotKind::Digest {
+					..
+				} => {
+					let mut digest = Digest::new(ValueType::Float8, PPM).unwrap();
+					for v in &present {
+						digest.add_value(&Value::float8(*v)).unwrap();
+					}
+					if present.is_empty() {
+						Value::none()
+					} else {
+						Value::Digest(Box::new(digest))
+					}
+				}
+				SlotKind::Min => present
+					.iter()
+					.copied()
+					.reduce(f64::min)
+					.map(Value::float8)
+					.unwrap_or_else(Value::none),
+				other => panic!("the frame oracle has no answer for {other:?}"),
+			};
+			assert_eq!(value, &expected, "{kind:?} diverged from a rebuild of the frame at {context}");
+		}
+	}
+
+	fn time_frame_of(
+		live: &TestBTreeMap<Hash128, TestBTreeMap<TimeKey, Option<f64>>>,
+		group: &Hash128,
+	) -> Vec<Option<f64>> {
+		live.get(group).map(|rows| rows.values().copied().collect()).unwrap_or_default()
+	}
+
+	fn drive_time_frame(kinds: &[SlotKind], immutable: Option<Duration>, runnable: bool, seed: u64) {
+		let config = WindowEngineConfig::builder().build();
+		let mut engine = if runnable {
+			RollingEngine::<Hash128, DateTime, RowAccumulator>::new_runnable(config)
+		} else {
+			RollingEngine::<Hash128, DateTime, RowAccumulator>::new(config)
+		};
+		let mut store = MockStore::default();
+		let new_accumulator = || RowAccumulator::new(kinds, immutable);
+		let combine = |_group: &Hash128, buffer: &RollingBuffer<DateTime, RowAccumulator>| {
+			combine_rolling::<DateTime>(buffer, kinds, Duration::zero(), immutable)
+		};
+		let mut rng = Lcg(seed);
+		let mut live: TestBTreeMap<Hash128, TestBTreeMap<TimeKey, Option<f64>>> = TestBTreeMap::new();
+		let mut evicted: Vec<(Hash128, TimeKey, Option<f64>)> = Vec::new();
+		let mut cutoff: Option<u64> = None;
+		let (mut base, mut seq, mut checked, mut shared_slots, mut evictions) =
+			(1_000u64, 0u64, 0usize, 0usize, 0usize);
+
+		for round in 0..300u64 {
+			let mut plan: Vec<(Hash128, TimeKey, Option<f64>, bool)> = Vec::new();
+			if round % 3 == 2 {
+				for _ in 0..=rng.below(2) {
+					let held: Vec<(Hash128, TimeKey)> = live
+						.iter()
+						.flat_map(|(g, rows)| rows.keys().map(move |k| (*g, *k)))
+						.collect();
+					if held.is_empty() {
+						break;
+					}
+					let (group, key) = held[rng.below(held.len() as u64) as usize];
+					let value = live.get_mut(&group).unwrap().remove(&key).unwrap();
+					plan.push((group, key, value, false));
+				}
+			}
+			if round % 7 == 6 && !evicted.is_empty() {
+				let (group, key, value) = evicted.swap_remove(rng.below(evicted.len() as u64) as usize);
+				plan.push((group, key, value, false));
+			}
+			for _ in 0..=rng.below(4) {
+				seq += 1;
+				let group = rng.group();
+				let key = (base + rng.below(6), seq);
+				let value = rng.latency();
+				let rows = live.entry(group).or_default();
+				if rows.keys().any(|(ms, _)| *ms == key.0) {
+					shared_slots += 1;
+				}
+				rows.insert(key, value);
+				plan.push((group, key, value, true));
+			}
+
+			let mut buckets: RollingEngineBuckets<DateTime> = TestBTreeMap::new();
+			for (group, (ms, seq), value, is_add) in &plan {
+				let contribution =
+					(WindowSlotKey::new(DateTime::from_millis(*ms), *seq), inputs(kinds, *value));
+				let event = if *is_add {
+					AccumulatorEvent::Add(contribution)
+				} else {
+					AccumulatorEvent::Remove(contribution)
+				};
+				buckets.entry((*group, DateTime::from_millis(*ms))).or_default().push(event);
+			}
+			let eviction = match cutoff {
+				Some(cutoff) => RollingEviction::Before(DateTime::from_millis(cutoff)),
+				None => RollingEviction::Nothing,
+			};
+			let results = if runnable {
+				engine.apply_running(&mut store, buckets, eviction, group_key, &new_accumulator)
+					.unwrap()
+			} else {
+				engine.apply_evicting(
+					&mut store,
+					buckets,
+					eviction,
+					group_key,
+					&new_accumulator,
+					&combine,
+				)
+				.unwrap()
+			};
+			for result in &results {
+				let frame = time_frame_of(&live, &result.group);
+				match result.kind {
+					EmitKind::Remove => assert!(
+						frame.is_empty(),
+						"a group with rows in its frame was withdrawn at apply round {round}"
+					),
+					_ => assert_frame(
+						kinds,
+						&result.value,
+						&frame,
+						&format!("apply round {round}"),
+					),
+				}
+				checked += 1;
+			}
+
+			if round % 5 == 4 {
+				let next = base.saturating_sub(20);
+				cutoff = Some(next);
+				let at = DateTime::from_millis(next);
+				let expiries = if runnable {
+					engine.expire_before_running(&mut store, at).unwrap()
+				} else {
+					engine.expire_before(&mut store, at, &combine).unwrap()
+				};
+				for (group, rows) in live.iter_mut() {
+					let kept = rows.split_off(&(next + 1, 0));
+					evictions += rows.len();
+					evicted.extend(rows.iter().map(|(key, value)| (*group, *key, *value)));
+					*rows = kept;
+				}
+				for expiry in &expiries {
+					match expiry {
+						RollingExpiry::Update {
+							group,
+							value,
+							..
+						} => assert_frame(
+							kinds,
+							value,
+							&time_frame_of(&live, group),
+							&format!("expiry round {round}"),
+						),
+						RollingExpiry::Remove {
+							group,
+							..
+						} => assert!(
+							time_frame_of(&live, group).is_empty(),
+							"a group with rows in its frame expired at round {round}"
+						),
+					}
+					checked += 1;
+				}
+			}
+			base += rng.below(4) + 1;
+		}
+
+		let past_every_slot = DateTime::from_millis(base + 1_000_000);
+		let drained = if runnable {
+			engine.expire_before_running(&mut store, past_every_slot).unwrap()
+		} else {
+			engine.expire_before(&mut store, past_every_slot, &combine).unwrap()
+		};
+		assert!(
+			drained.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })),
+			"draining past every slot must withdraw every group"
+		);
+		assert!(checked > 500, "the churn must check the frame often, checked {checked}");
+		assert!(
+			shared_slots > 50,
+			"rows must share a slot, or a per-slot answer cannot differ from the frame, shared {shared_slots}"
+		);
+		assert!(
+			evictions > 200,
+			"slots must leave the frame, or unmerge is never exercised, evicted {evictions}"
+		);
+	}
+
+	#[test]
+	fn a_digest_slot_takes_the_running_path_unless_a_sealed_min_or_max_or_a_count_frame_sends_it_to_recombine() {
+		// A sealed extreme on the running path unmerges a slot that cannot unmerge, so it must recombine.
+		let immutable = Some(Duration::from_seconds(30).unwrap());
+		let cases = [
+			(minute(), None, vec![digest_kind()], true),
+			(minute(), None, vec![SlotKind::Min, digest_kind()], true),
+			(minute(), immutable, vec![digest_kind()], true),
+			(minute(), immutable, vec![SlotKind::Min, digest_kind()], false),
+			(minute(), immutable, vec![digest_kind(), SlotKind::Max], false),
+			(WindowSize::Count(8), None, vec![digest_kind()], false),
+		];
+		for (size, immutable, kinds, runnable) in cases {
+			let operator = rolling_operator(size.clone(), immutable);
+			assert_eq!(
+				rolling_runnable(&operator, &kinds),
+				runnable,
+				"{kinds:?} over {size:?} with immutable {immutable:?}"
+			);
+		}
+	}
+
+	#[test]
+	fn a_running_digest_equals_a_digest_rebuilt_from_the_time_frame_across_seeded_add_evict_churn() {
+		// A merge or unmerge that drifts from the frame reports percentiles of rows that already left it.
+		let kinds = [digest_kind()];
+		let runnable = rolling_runnable(&rolling_operator(minute(), None), &kinds);
+		assert!(runnable, "a lone digest slot must take the running path");
+		drive_time_frame(&kinds, None, runnable, 0xD16E_5744_0001);
+	}
+
+	#[test]
+	fn a_digest_next_to_a_min_equals_a_rebuild_of_the_time_frame_on_the_running_and_the_recombine_path() {
+		// Recombine beside a sealed min must answer from exactly the frame the running path answers from.
+		let kinds = [SlotKind::Min, digest_kind()];
+		for (immutable, expected) in [(None, true), (Some(Duration::from_milliseconds(15).unwrap()), false)] {
+			let runnable = rolling_runnable(&rolling_operator(minute(), immutable), &kinds);
+			assert_eq!(runnable, expected, "immutable {immutable:?} picks the wrong rolling path");
+			drive_time_frame(&kinds, immutable, runnable, 0xD16E_5744_0002);
+		}
+	}
+
+	#[test]
+	fn a_count_frame_digest_equals_a_digest_rebuilt_from_the_rows_it_holds_across_seeded_churn() {
+		// A retraction or update that miscounts a capacity frame reports rows the frame no longer holds.
+		const CAPACITY: usize = 6;
+		for kinds in [vec![digest_kind()], vec![SlotKind::Min, digest_kind()]] {
+			assert!(
+				!rolling_runnable(&rolling_operator(WindowSize::Count(CAPACITY as u64), None), &kinds),
+				"a count frame must recombine {kinds:?}"
+			);
+			let mut engine = RollingEngine::<Hash128, OrdinalCoord, RowAccumulator>::new(
+				WindowEngineConfig::builder().build(),
+			);
+			let mut store = MockStore::default();
+			let new_accumulator = || RowAccumulator::new(&kinds, None);
+			let combine = |_group: &Hash128, buffer: &RollingBuffer<OrdinalCoord, RowAccumulator>| {
+				combine_rolling::<OrdinalCoord>(buffer, &kinds, RowSpan::ZERO, None)
+			};
+			let mut rng = Lcg(0xD16E_5744_0003);
+			let mut table: TestBTreeMap<u64, (Hash128, Option<f64>)> = TestBTreeMap::new();
+			let mut frames: TestBTreeMap<Hash128, TestBTreeMap<u64, Vec<Option<f64>>>> =
+				TestBTreeMap::new();
+			let (mut next_row, mut checked, mut evictions, mut reentries) = (0u64, 0usize, 0usize, 0usize);
+
+			for round in 0..400u64 {
+				let mut events: TestBTreeMap<(Hash128, u64), Vec<(Option<f64>, bool)>> =
+					TestBTreeMap::new();
+				for _ in 0..=rng.below(3) {
+					next_row += 1;
+					let (group, value) = (rng.group(), rng.latency());
+					table.insert(next_row, (group, value));
+					events.entry((group, next_row)).or_default().push((value, true));
+				}
+				if round % 3 == 2 {
+					let row = *table.keys().nth(rng.below(table.len() as u64) as usize).unwrap();
+					let (group, value) = table.remove(&row).unwrap();
+					events.entry((group, row)).or_default().push((value, false));
+				}
+				if round % 4 == 3 {
+					let row = *table.keys().nth(rng.below(table.len() as u64) as usize).unwrap();
+					let (group, value) = table[&row];
+					let moved = if rng.below(3) == 0 {
+						rng.group()
+					} else {
+						group
+					};
+					let updated = rng.latency();
+					events.entry((group, row)).or_default().push((value, false));
+					events.entry((moved, row)).or_default().push((updated, true));
+					table.insert(row, (moved, updated));
+				}
+
+				let mut buckets: RollingEngineBuckets<OrdinalCoord> = TestBTreeMap::new();
+				for ((group, row), row_events) in &events {
+					let frame = frames.entry(*group).or_default();
+					let mut held = frame.remove(row).unwrap_or_default();
+					let mut touched = false;
+					for (value, is_add) in row_events {
+						let contribution = (
+							WindowSlotKey::new(DateTime::default(), *row),
+							inputs(&kinds, *value),
+						);
+						let slot = OrdinalCoord::from_row_number(RowNumber(*row));
+						if *is_add {
+							if held.is_empty()
+								&& frame.first_key_value()
+									.is_some_and(|(oldest, _)| oldest > row)
+							{
+								reentries += 1;
+							}
+							held.push(*value);
+							touched = true;
+							buckets.entry((*group, slot))
+								.or_default()
+								.push(AccumulatorEvent::Add(contribution));
+						} else {
+							buckets.entry((*group, slot))
+								.or_default()
+								.push(AccumulatorEvent::Remove(contribution));
+							if held.is_empty() {
+								continue;
+							}
+							let at = held
+								.iter()
+								.position(|v| v == value)
+								.expect("a retraction names the value its row holds");
+							held.swap_remove(at);
+							touched = true;
+						}
+					}
+					if !held.is_empty() {
+						frame.insert(*row, held);
+					}
+					if touched {
+						while frame.len() > CAPACITY {
+							frame.pop_first();
+							evictions += 1;
+						}
+					}
+				}
+
+				let results = engine
+					.apply_evicting(
+						&mut store,
+						buckets,
+						RollingEviction::Capacity(CAPACITY),
+						group_key,
+						&new_accumulator,
+						&combine,
+					)
+					.unwrap();
+				for result in &results {
+					let frame: Vec<Option<f64>> = frames
+						.get(&result.group)
+						.map(|rows| rows.values().flatten().copied().collect())
+						.unwrap_or_default();
+					match result.kind {
+						EmitKind::Remove => assert!(
+							frame.is_empty(),
+							"a group with rows in its frame was withdrawn at round {round}"
+						),
+						_ => assert_frame(
+							&kinds,
+							&result.value,
+							&frame,
+							&format!("{kinds:?} round {round}"),
+						),
+					}
+					checked += 1;
+				}
+			}
+			assert!(checked > 500, "the churn must check the frame often, checked {checked}");
+			assert!(evictions > 200, "rows must leave the frame by capacity, evicted {evictions}");
+			assert!(reentries > 0, "an evicted row updated back into a short frame must be exercised");
+		}
 	}
 }

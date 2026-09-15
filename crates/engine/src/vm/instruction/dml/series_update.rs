@@ -10,7 +10,10 @@ use reifydb_codec::row::{
 };
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
-	error::diagnostic::catalog::{namespace_not_found, series_not_found},
+	error::diagnostic::{
+		catalog::{namespace_not_found, series_not_found},
+		query::column_not_found,
+	},
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -32,7 +35,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_evaluate::stack::SymbolTable;
-use reifydb_rql::nodes::UpdateSeriesNode;
+use reifydb_rql::{expression::Expression, nodes::UpdateSeriesNode, query::QueryPlan};
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
@@ -57,7 +60,11 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
-		instruction::dml::{shape::get_or_create_series_shape, time::resolve_time_for_update},
+		instruction::dml::{
+			coerce::{coerce_series_row, series_key},
+			shape::get_or_create_series_shape,
+			time::resolve_time_for_update,
+		},
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -80,6 +87,7 @@ pub(crate) fn update_series(
 		returning,
 	} = plan;
 	let (namespace, series) = resolve_update_series_target(services, txn, &target)?;
+	reject_series_row_key_assignment(&namespace, &series, &input)?;
 	let target_data = SeriesTarget {
 		namespace: &namespace,
 		series: &series,
@@ -109,10 +117,22 @@ pub(crate) fn update_series(
 			&columns,
 			PolicyTargetType::Series,
 		)?;
+		if let Some(unknown) = columns.names.iter().find(|name| {
+			!(series.columns.iter().any(|c| c.name == name.text()) || (has_tag && name.text() == "tag"))
+		}) {
+			return_error!(column_not_found(unknown.clone()));
+		}
 
 		let row_numbers = columns.row_numbers();
-		let updates_to_apply =
-			build_series_updates_to_apply(services, txn, &series, &columns, row_numbers, has_tag)?;
+		let updates_to_apply = build_series_updates_to_apply(
+			services,
+			txn,
+			&series,
+			&columns,
+			&context,
+			row_numbers,
+			has_tag,
+		)?;
 		enforce_old_row_policies(services, symbols, txn, &target_data, &updates_to_apply, row_numbers)?;
 
 		for (key, row, row_idx) in updates_to_apply {
@@ -138,7 +158,7 @@ pub(crate) fn update_series(
 				builder.set_time(time);
 			}
 
-			let key_value = extract_series_update_key_value(&columns, &series, row_idx);
+			let key_value = extract_series_update_key_value(&columns, &series, row_idx)?;
 			let row_number = RowNumber::from(u64::from(row_numbers[row_idx]));
 
 			let mut rows_buf = [builder];
@@ -220,6 +240,35 @@ fn resolve_update_series_target(
 	Ok((namespace, series))
 }
 
+fn reject_series_row_key_assignment(namespace: &Namespace, series: &Series, input: &QueryPlan) -> Result<()> {
+	let QueryPlan::Patch(patch) = input else {
+		return Err(internal_error!("update of series {} has no patch at the top of its input", series.name));
+	};
+	let key_column = series.key.column();
+	for assignment in &patch.assignments {
+		let Expression::Alias(alias) = assignment else {
+			continue;
+		};
+		let name = alias.alias.name();
+		if series.tag.is_some() && name == "tag" {
+			return Err(EngineError::SeriesTagImmutable {
+				series: format!("{}::{}", namespace.name(), series.name),
+				fragment: alias.expression.full_fragment_owned(),
+			}
+			.into());
+		}
+		if name == key_column {
+			return Err(EngineError::SeriesKeyImmutable {
+				series: format!("{}::{}", namespace.name(), series.name),
+				column: key_column.to_string(),
+				fragment: alias.expression.full_fragment_owned(),
+			}
+			.into());
+		}
+	}
+	Ok(())
+}
+
 #[inline]
 fn build_update_series_query_context(
 	services: &Arc<Services>,
@@ -248,6 +297,7 @@ fn build_series_updates_to_apply(
 	txn: &mut Transaction<'_>,
 	series: &Series,
 	columns: &Columns,
+	context: &QueryContext,
 	row_numbers: &[RowNumber],
 	has_tag: bool,
 ) -> Result<Vec<(TaggedKey, EncodedBytes, usize)>> {
@@ -263,7 +313,7 @@ fn build_series_updates_to_apply(
 	let mut updates_to_apply: Vec<(TaggedKey, EncodedBytes, usize)> = Vec::with_capacity(row_count);
 	for (row_idx, row_number) in row_numbers.iter().enumerate().take(row_count) {
 		let sequence = u64::from(*row_number);
-		let key_value = extract_series_update_key_value(columns, series, row_idx);
+		let key_value = extract_series_update_key_value(columns, series, row_idx)?;
 		let variant_tag = extract_series_update_variant_tag(columns, has_tag, row_idx);
 
 		let key: TaggedKey = if partitioned {
@@ -294,7 +344,7 @@ fn build_series_updates_to_apply(
 		};
 
 		let shape = get_or_create_series_shape(&services.catalog, series, txn)?;
-		let row = build_series_update_bytes(services, txn, series, columns, &shape, row_idx)?;
+		let row = build_series_update_bytes(services, txn, series, columns, &shape, context, row_idx)?;
 		updates_to_apply.push((key, row, row_idx));
 	}
 	Ok(updates_to_apply)
@@ -365,11 +415,13 @@ fn series_partition_of_columns(series: &Series, columns: &Columns, row_idx: usiz
 }
 
 #[inline]
-fn extract_series_update_key_value(columns: &Columns, series: &Series, row_idx: usize) -> u64 {
-	columns.iter()
-		.find(|c| c.name().text() == series.key.column())
-		.and_then(|c| series.key_to_u64(c.data().get_value(row_idx)))
-		.unwrap_or(0)
+fn extract_series_update_key_value(columns: &Columns, series: &Series, row_idx: usize) -> Result<u64> {
+	let key_column = series.key.column();
+	let column = columns.iter().find(|c| c.name().text() == key_column).ok_or_else(|| {
+		internal_error!("update of series {} has no key column {} in its input", series.name, key_column)
+	})?;
+	series_key(series, &column.data().get_value(row_idx))?
+		.ok_or_else(|| internal_error!("update of series {} reads a row without a key", series.name))
 }
 
 #[inline]
@@ -390,23 +442,19 @@ fn build_series_update_bytes(
 	series: &Series,
 	columns: &Columns,
 	shape: &RowShape,
+	context: &QueryContext,
 	row_idx: usize,
 ) -> Result<EncodedBytes> {
 	let mut row = shape.allocate_series();
-	let key_col_value = columns
-		.iter()
-		.find(|c| c.name().text() == series.key.column())
-		.map(|c| c.data().get_value(row_idx))
-		.unwrap_or(Value::Int8(0));
-	shape.set_value(&mut row, 0, &key_col_value);
-
-	let data_columns: Vec<_> = series.data_columns().cloned().collect();
-	for (i, col_def) in data_columns.iter().enumerate() {
-		let value = columns
-			.iter()
-			.find(|c| c.name().text() == col_def.name)
-			.map(|c| c.data().get_value(row_idx))
-			.unwrap_or(Value::none());
+	let key_column = series.key.column();
+	let values = coerce_series_row(series, columns, context, row_idx)?;
+	let mut data_idx = 0;
+	for (col_def, value) in series.columns.iter().zip(values) {
+		if col_def.name == key_column {
+			shape.set_value(&mut row, 0, &value);
+			continue;
+		}
+		data_idx += 1;
 		let value = match col_def.dictionary_id {
 			Some(dict_id) => {
 				let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
@@ -425,7 +473,7 @@ fn build_series_update_bytes(
 			}
 			None => value,
 		};
-		shape.set_value(&mut row, i + 1, &value);
+		shape.set_value(&mut row, data_idx, &value);
 	}
 	Ok(row.freeze_bytes())
 }

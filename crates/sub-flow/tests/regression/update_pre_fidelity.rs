@@ -113,6 +113,7 @@ fn an_aggregate_update_retracts_the_total_it_previously_published() {
 			routines(),
 			runtime,
 		)
+		.expect("the aggregate operator must build")
 	});
 
 	harness.apply(generator::insert(vec![row(1, 1, 10), row(2, 1, 5)])).expect("seed applies");
@@ -138,6 +139,7 @@ fn a_distinct_update_retracts_the_row_it_previously_published() {
 			runtime,
 			Arc::new(FlowContext::default()),
 		)
+		.expect("the distinct operator must build")
 	});
 
 	harness.apply(generator::insert(vec![row(1, 1, 10), row(2, 1, 20)])).expect("seed applies");
@@ -174,6 +176,7 @@ fn a_gate_update_retracts_the_row_it_previously_published() {
 			runtime,
 			Arc::new(FlowContext::default()),
 		)
+		.expect("the gate operator must build")
 	});
 
 	harness.apply(generator::insert(vec![row(1, 1, 60)])).expect("seed applies");
@@ -195,6 +198,7 @@ fn a_filter_update_retracts_the_row_it_previously_published() {
 			runtime,
 			Arc::new(FlowContext::default()),
 		)
+		.expect("the filter operator must build")
 	});
 
 	harness.apply(generator::insert(vec![row(1, 1, 60)])).expect("seed applies");
@@ -216,6 +220,7 @@ fn a_map_update_retracts_the_projection_it_previously_published() {
 		let mut exprs = parse_expression("g").expect("parses");
 		exprs.extend(parse_expression("doubled: v * 2").expect("parses"));
 		MapOperator::new(source(), SUBJECT, exprs, routines(), runtime, Arc::new(FlowContext::default()))
+			.expect("the map operator must build")
 	});
 
 	harness.apply(generator::insert(vec![row(1, 1, 60)])).expect("seed applies");
@@ -242,6 +247,7 @@ fn an_extend_update_retracts_the_row_it_previously_published() {
 			runtime,
 			Arc::new(FlowContext::default()),
 		)
+		.expect("the extend operator must build")
 	});
 
 	harness.apply(generator::insert(vec![row(1, 1, 60)])).expect("seed applies");
@@ -274,6 +280,7 @@ fn a_window_update_retracts_the_total_it_previously_published() {
 			immutable: None,
 			ctx: Arc::new(FlowContext::default()),
 		})
+		.expect("the window operator must build")
 	});
 
 	harness.apply(generator::insert(vec![row(1, 1, 10), row(2, 1, 5)])).expect("seed applies");
@@ -424,6 +431,7 @@ mod join {
 			None,
 			Arc::new(FlowContext::default()),
 		)
+		.expect("the join operator must build")
 	}
 
 	// Seeds a right slot, joins a left row, then updates the left row. Returns what the join first

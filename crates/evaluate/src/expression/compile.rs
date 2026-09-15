@@ -3,16 +3,20 @@
 
 use std::{mem::discriminant, slice::from_ref, str::FromStr};
 
-use reifydb_core::value::column::{
-	ColumnWithName,
-	buffer::ColumnBuffer,
-	cast::{cast_column_data, error::CastError},
-	columns::Columns,
+use reifydb_core::{
+	error::diagnostic::catalog::{variant_enum_not_known, variant_in_expression},
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		cast::{cast_column_data, error::CastError},
+		columns::Columns,
+	},
 };
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_value::{
 	error::{BinaryOp, Error, IntoDiagnostic, LogicalOp, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
+	return_error,
 	value::{Value, value_type::ValueType},
 };
 
@@ -25,6 +29,7 @@ use crate::{
 	expression::{
 		access::access_lookup,
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
+		branch::BranchLayout,
 		call::call_builtin,
 		compare::{Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns},
 		constant::constant_value,
@@ -681,10 +686,8 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			})
 		}
 
-		Expression::SumTypeConstructor(_) => {
-			panic!(
-				"SumTypeConstructor in expression context - constructors should be expanded by InlineDataNode before expression compilation"
-			);
+		Expression::SumTypeConstructor(ctor) => {
+			return_error!(variant_in_expression(ctor.variant_name.clone()));
 		}
 
 		Expression::IsVariant(e) => {
@@ -693,7 +696,9 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 				other => display_label(other).text().to_string(),
 			};
 			let tag_col_name = format!("{}_tag", col_name);
-			let tag = e.tag.expect("IS variant tag must be resolved before compilation");
+			let Some(tag) = e.tag else {
+				return_error!(variant_enum_not_known(e.variant_name.clone(), &col_name));
+			};
 			let fragment = e.fragment.clone();
 			CompiledExpr::new(move |ctx| {
 				if let Some(tag_col) =
@@ -1078,10 +1083,6 @@ fn is_truthy(value: &Value) -> bool {
 	}
 }
 
-fn describe_branch(columns: &[ColumnWithName]) -> Vec<String> {
-	columns.iter().map(|col| format!("{}: {}", col.name.text(), col.data().get_type())).collect()
-}
-
 fn execute_if_multi(
 	ctx: &EvalContext,
 	condition: &CompiledExpr,
@@ -1143,40 +1144,14 @@ fn execute_if_multi(
 		evaluated[branch] = Some(columns);
 	}
 
-	let mut layout: Option<(Vec<ValueType>, Vec<String>)> = None;
+	let mut layout: Option<BranchLayout> = None;
 	for columns in evaluated.iter().flatten() {
-		let Some((expected, expected_names)) = layout.as_mut() else {
-			layout = Some((
-				columns.iter().map(|col| col.data().get_type().inner_type().clone()).collect(),
-				describe_branch(columns),
-			));
+		let named_types = columns.iter().map(|col| (col.name.text(), col.data().get_type()));
+		let Some(expected) = layout.as_mut() else {
+			layout = Some(BranchLayout::new(named_types));
 			continue;
 		};
-
-		let mut disagrees = columns.len() != expected.len();
-		if !disagrees {
-			for (slot, col) in expected.iter_mut().zip(columns.iter()) {
-				let incoming = col.data().get_type().inner_type().clone();
-				if *slot == ValueType::Any {
-					*slot = incoming;
-				} else if incoming != ValueType::Any && incoming != *slot {
-					disagrees = true;
-					break;
-				}
-			}
-		}
-
-		if disagrees {
-			return Err(TypeError::Runtime {
-				kind: RuntimeErrorKind::ConditionalBranchMismatch {
-					expected: expected_names.clone(),
-					actual: describe_branch(columns),
-					fragment: _fragment.clone(),
-				},
-				message: "conditional branches produce different columns".to_string(),
-			}
-			.into());
-		}
+		expected.admit(named_types, _fragment)?;
 	}
 
 	let mut result_data: Option<Vec<ColumnBuffer>> = None;

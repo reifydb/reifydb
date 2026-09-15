@@ -10,7 +10,10 @@ use reifydb_codec::row::{
 };
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
-	error::diagnostic::catalog::{namespace_not_found, series_not_found},
+	error::diagnostic::{
+		catalog::{namespace_not_found, series_not_found, sumtype_variant_not_found},
+		query::column_not_found,
+	},
 	interface::{
 		catalog::{
 			column::Column,
@@ -20,6 +23,7 @@ use reifydb_core::{
 			policy::{DataOp, PolicyTargetType},
 			series::{Series, SeriesKey, SeriesMetadata, TimestampPrecision},
 			storage::StorageId,
+			sumtype::SumType,
 		},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
@@ -57,7 +61,10 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
-		instruction::dml::time::resolve_time,
+		instruction::dml::{
+			coerce::{coerce_series_row, series_key},
+			time::resolve_time,
+		},
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -92,7 +99,7 @@ pub(crate) fn insert_series(
 	);
 	let mut input_node = compile(*input, txn, context.clone());
 
-	let has_tag = series.tag.is_some();
+	let tag = series.tag.map(|tag_id| services.catalog.get_sumtype(txn, tag_id)).transpose()?;
 	let key_column_name = series.key.column();
 	let has_returning = returning.is_some();
 	let mut inserted_count = 0u64;
@@ -109,6 +116,12 @@ pub(crate) fn insert_series(
 	let mut verified: HashSet<Partition> = HashSet::new();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		enforce_series_write_policies(services, symbols, txn, &namespace, &series, &columns)?;
+		if let Some(unknown) = columns.names.iter().find(|name| {
+			!(series.columns.iter().any(|c| c.name == name.text())
+				|| (tag.is_some() && name.text() == "tag"))
+		}) {
+			return_error!(column_not_found(unknown.clone()));
+		}
 		for column in &series.columns {
 			if let Some(input) = columns.column(&column.name) {
 				input.data().check_digest_write(&column.constraint.get_type(), || {
@@ -123,10 +136,11 @@ pub(crate) fn insert_series(
 				&series,
 				&mut metadata,
 				&shape,
+				&context,
 				&columns,
 				row_idx,
 				key_column_name,
-				has_tag,
+				tag.as_ref(),
 				has_returning,
 				&mut returned_rows,
 				&mut verified,
@@ -184,16 +198,28 @@ fn insert_series_row(
 	series: &Series,
 	metadata: &mut SeriesMetadata,
 	shape: &RowShape,
+	context: &QueryContext,
 	columns: &Columns,
 	row_idx: usize,
 	key_column_name: &str,
-	has_tag: bool,
+	tag: Option<&SumType>,
 	has_returning: bool,
 	returned_rows: &mut Vec<(RowNumber, EncodedBytes)>,
 	verified: &mut HashSet<Partition>,
 ) -> Result<()> {
-	let key_value = extract_or_generate_series_key(services, columns, &series.key, metadata, row_idx);
-	let variant_tag = extract_variant_tag(columns, has_tag, row_idx);
+	let values = coerce_series_row(series, columns, context, row_idx)?;
+	let key_input = series
+		.columns
+		.iter()
+		.zip(&values)
+		.find(|(column, _)| column.name == key_column_name)
+		.map(|(_, value)| value.clone())
+		.unwrap_or_else(Value::none);
+	let key_value = match series_key(series, &key_input)? {
+		Some(key_value) => key_value,
+		None => generate_series_key(services, &series.key, metadata),
+	};
+	let variant_tag = extract_variant_tag(columns, tag, row_idx)?;
 
 	metadata.sequence_counter += 1;
 	let sequence = metadata.sequence_counter;
@@ -208,10 +234,10 @@ fn insert_series_row(
 	} else {
 		let mut part_values = Vec::with_capacity(series.partition_by.len());
 		for name in &series.partition_by {
-			let idx = columns.names.iter().position(|n| n.text() == name.as_str()).ok_or_else(|| {
-				internal_error!("partition column {} missing from series insert input", name)
+			let idx = series.columns.iter().position(|c| c.name == *name).ok_or_else(|| {
+				internal_error!("partition column {} missing from series {}", name, series.name)
 			})?;
-			part_values.push(columns[idx].get_value(row_idx));
+			part_values.push(values[idx].clone());
 		}
 		let partition = Partition::of(&part_values);
 		resolve_partition(txn, ObjectId::Series(series.id), partition, &part_values, verified)?;
@@ -220,7 +246,13 @@ fn insert_series_row(
 	};
 
 	let data_columns: Vec<_> = series.data_columns().collect();
-	let data_values = collect_series_data_values(columns, &data_columns, row_idx);
+	let data_values: Vec<Value> = series
+		.columns
+		.iter()
+		.zip(values)
+		.filter(|(column, _)| column.name != key_column_name)
+		.map(|(_, value)| value)
+		.collect();
 	let mut encoded_values = data_values.clone();
 	for (i, col_def) in data_columns.iter().enumerate() {
 		if let Some(dict_id) = col_def.dictionary_id {
@@ -345,54 +377,40 @@ fn build_insert_series_query_context(
 }
 
 #[inline]
-fn extract_or_generate_series_key(
-	services: &Arc<Services>,
-	columns: &Columns,
-	key: &SeriesKey,
-	metadata: &SeriesMetadata,
-	row_idx: usize,
-) -> u64 {
-	match key.extract_key(columns, row_idx) {
-		Some(v) => v,
-		None => match key {
-			SeriesKey::DateTime {
-				precision,
-				..
-			} => generate_timestamp(services, precision),
-			SeriesKey::Integer {
-				..
-			} => metadata.newest_key + 1,
-		},
+fn generate_series_key(services: &Arc<Services>, key: &SeriesKey, metadata: &SeriesMetadata) -> u64 {
+	match key {
+		SeriesKey::DateTime {
+			precision,
+			..
+		} => generate_timestamp(services, precision),
+		SeriesKey::Integer {
+			..
+		} => metadata.newest_key + 1,
 	}
 }
 
 #[inline]
-fn extract_variant_tag(columns: &Columns, has_tag: bool, row_idx: usize) -> Option<u8> {
-	if !has_tag {
-		return None;
-	}
-	let Some(tag_col) = columns.iter().find(|col| col.name().text() == "tag") else {
-		return Some(0);
+fn extract_variant_tag(columns: &Columns, tag: Option<&SumType>, row_idx: usize) -> Result<Option<u8>> {
+	let Some(sumtype) = tag else {
+		return Ok(None);
 	};
-	match tag_col.data().get_value(row_idx) {
-		Value::Uint1(t) => Some(t),
-		Value::Int1(t) => Some(t as u8),
-		_ => Some(0),
+	let Some(tag_col) = columns.iter().find(|col| col.name().text() == "tag") else {
+		return Ok(Some(0));
+	};
+	let value = tag_col.data().get_value(row_idx);
+	match value {
+		Value::None {
+			..
+		} => Ok(Some(0)),
+		value => resolve_variant_tag(sumtype, &value, tag_col.name().with_text(value.to_string())).map(Some),
 	}
 }
 
-#[inline]
-fn collect_series_data_values(columns: &Columns, data_columns: &[&Column], row_idx: usize) -> Vec<Value> {
-	let mut values = Vec::with_capacity(data_columns.len());
-	for col_def in data_columns {
-		let value = if let Some(input_col) = columns.iter().find(|c| c.name().text() == col_def.name) {
-			input_col.data().get_value(row_idx)
-		} else {
-			Value::none()
-		};
-		values.push(value);
+pub(crate) fn resolve_variant_tag(sumtype: &SumType, value: &Value, fragment: Fragment) -> Result<u8> {
+	match value.get_type().is_integer().then(|| value.to_usize()).flatten().and_then(|n| u8::try_from(n).ok()) {
+		Some(tag) if sumtype.variants.iter().any(|v| v.tag == tag) => Ok(tag),
+		_ => return_error!(sumtype_variant_not_found(fragment, &sumtype.name)),
 	}
-	values
 }
 
 #[inline]

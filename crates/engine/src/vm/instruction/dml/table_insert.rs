@@ -16,6 +16,7 @@ use reifydb_core::{
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		index::primary_key_violation,
+		query::column_not_found,
 	},
 	interface::{
 		catalog::{
@@ -209,6 +210,11 @@ fn validate_and_encode_input_rows(
 			&columns,
 			PolicyTargetType::Table,
 		)?;
+		if let Some(unknown) =
+			columns.names.iter().find(|name| !target.table.columns.iter().any(|c| c.name == name.text()))
+		{
+			return_error!(column_not_found(unknown.clone()));
+		}
 		let mut column_map: HashMap<&str, usize> = HashMap::new();
 		for (idx, col) in columns.iter().enumerate() {
 			column_map.insert(col.name().text(), idx);

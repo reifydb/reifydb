@@ -13,7 +13,8 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::{
-	Accumulator, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Accumulator, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::{
 	fragment::Fragment,
@@ -301,8 +302,12 @@ impl Function for Avg {
 		&[FunctionKind::Scalar, FunctionKind::Aggregate]
 	}
 
-	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
-		Some(Box::new(AvgAccumulator::new()))
+	fn accumulator(
+		&self,
+		_ctx: &mut FunctionContext<'_>,
+		_literals: &[LiteralArgument],
+	) -> Result<Option<Box<dyn Accumulator>>, RoutineError> {
+		Ok(Some(Box::new(AvgAccumulator::new())))
 	}
 }
 

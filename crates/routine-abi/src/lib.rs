@@ -144,11 +144,35 @@ pub enum AggregateFunctionCapability {
 	Retractable,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LiteralKind {
+	None,
+	Bool,
+	Number,
+	Text,
+	Temporal,
+	Duration,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LiteralArgument {
+	pub kind: LiteralKind,
+	pub fragment: Fragment,
+}
+
 pub trait Function: for<'a> Routine<context::FunctionContext<'a>> {
 	fn kinds(&self) -> &[FunctionKind];
 
-	fn accumulator(&self, _ctx: &mut context::FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
-		None
+	fn accumulator(
+		&self,
+		_ctx: &mut context::FunctionContext<'_>,
+		_literals: &[LiteralArgument],
+	) -> Result<Option<Box<dyn Accumulator>>, RoutineError> {
+		Ok(None)
+	}
+
+	fn max_literal_arguments(&self) -> usize {
+		0
 	}
 
 	fn aggregate_capabilities(&self) -> &[AggregateFunctionCapability] {

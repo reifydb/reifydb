@@ -282,3 +282,174 @@ fn integer_rows_that_do_not_fit_a_narrow_type_keep_the_wide_type() {
 	assert_eq!(values, vec![Value::Int16(1), Value::Int16(i128::MAX)]);
 }
 
+#[test]
+fn integer_column_does_not_silently_truncate_a_decimal_row() {
+	// A fractional row after an integer row must either fail loud or keep 1.5, never read back as 1.
+	let t = TestEngine::new();
+	let r = t.inner().query_as(TestEngine::identity(), "from [{ v: 1 }, { v: 1.5 }]", Params::None);
+	if r.error.is_some() {
+		return;
+	}
+
+	let (_, values) = column(&r.frames, "v");
+	assert_eq!(values[1].to_string(), "1.5", "got: {values:?}");
+}
+
+fn column_text(frames: &[Frame], name: &str) -> (ValueType, Vec<String>) {
+	let (ty, values) = column(frames, name);
+	(ty, values.iter().map(|value| value.to_string()).collect())
+}
+
+#[test]
+fn integer_then_decimal_rows_widen_to_decimal_and_keep_both_values() {
+	// Decimal holds every integer exactly, so the fractional row must not be cast down to the first row type.
+	let frames = query("from [{ v: 1 }, { v: 1.5 }]", Params::None);
+
+	assert_eq!(column_text(&frames, "v"), (ValueType::Decimal, vec!["1".to_string(), "1.5".to_string()]));
+}
+
+#[test]
+fn decimal_then_integer_rows_widen_to_decimal_and_keep_both_values() {
+	// The widest row type must win in either order, never only the first row type.
+	let frames = query("from [{ v: 1.5 }, { v: 1 }]", Params::None);
+
+	assert_eq!(column_text(&frames, "v"), (ValueType::Decimal, vec!["1.5".to_string(), "1".to_string()]));
+}
+
+#[test]
+fn integer_then_float_rows_widen_to_float8_and_keep_both_values() {
+	// An integer first row must not truncate a later float row to an integer.
+	let frames = query("from [{ v: 1 }, { v: cast(1.5, float8) }]", Params::None);
+
+	assert_eq!(column(&frames, "v"), (ValueType::Float8, vec![Value::float8(1.0), Value::float8(1.5)]));
+}
+
+#[test]
+fn float_then_integer_rows_widen_to_float8_and_keep_both_values() {
+	// A float first row must keep a later integer row at its exact value.
+	let frames = query("from [{ v: cast(1.5, float8) }, { v: 1 }]", Params::None);
+
+	assert_eq!(column(&frames, "v"), (ValueType::Float8, vec![Value::float8(1.5), Value::float8(1.0)]));
+}
+
+#[test]
+fn integer_beyond_float8_precision_before_a_float_row_is_an_error_with_its_fragment() {
+	// 2^53 + 1 has no exact float8, so widening must fail loud instead of storing 2^53.
+	let err = query_err("from [{ v: 9007199254740993 }, { v: cast(1.5, float8) }]", Params::None);
+
+	assert_eq!(err.code, "NUMBER_004", "got: {err:?}");
+	assert_eq!(err.fragment.text(), "9007199254740993", "got: {err:?}");
+}
+
+#[test]
+fn integer_beyond_float8_precision_after_a_float_row_is_an_error_with_its_fragment() {
+	// The precision check must run for a late integer row too, not only for the first row.
+	let err = query_err("from [{ v: cast(1.5, float8) }, { v: 9007199254740993 }]", Params::None);
+
+	assert_eq!(err.code, "NUMBER_004", "got: {err:?}");
+	assert_eq!(err.fragment.text(), "9007199254740993", "got: {err:?}");
+}
+
+#[test]
+fn int16_sized_integer_with_a_decimal_row_widens_to_decimal_and_keeps_every_digit() {
+	// The largest fixed integer must survive widening to decimal digit for digit.
+	let frames = query("from [{ v: 170141183460469231731687303715884105727 }, { v: 1.5 }]", Params::None);
+
+	assert_eq!(
+		column_text(&frames, "v"),
+		(ValueType::Decimal, vec!["170141183460469231731687303715884105727".to_string(), "1.5".to_string()])
+	);
+}
+
+#[test]
+fn int16_sized_integer_with_a_float_row_is_an_error_with_its_fragment() {
+	// A float8 cannot hold i128::MAX exactly, so the row must fail loud instead of rounding.
+	let err = query_err(
+		"from [{ v: 170141183460469231731687303715884105727 }, { v: cast(1.5, float8) }]",
+		Params::None,
+	);
+
+	assert_eq!(err.code, "NUMBER_004", "got: {err:?}");
+	assert_eq!(err.fragment.text(), "170141183460469231731687303715884105727", "got: {err:?}");
+}
+
+#[test]
+fn arbitrary_int_with_a_float_row_widens_to_float8_not_int() {
+	// Promoting to int would truncate 1.5 to 1, so an arbitrary int with a float must widen to float8.
+	let frames = query("from [{ v: cast(5, int) }, { v: cast(1.5, float8) }]", Params::None);
+
+	assert_eq!(column(&frames, "v"), (ValueType::Float8, vec![Value::float8(5.0), Value::float8(1.5)]));
+}
+
+#[test]
+fn float_then_arbitrary_int_rows_widen_to_float8_not_int() {
+	// The arbitrary int rule must hold when the float row comes first.
+	let frames = query("from [{ v: cast(1.5, float8) }, { v: cast(5, int) }]", Params::None);
+
+	assert_eq!(column(&frames, "v"), (ValueType::Float8, vec![Value::float8(1.5), Value::float8(5.0)]));
+}
+
+#[test]
+fn decimal_then_float_rows_widen_to_decimal_and_keep_both_values() {
+	// Decimal must absorb a float row instead of the float row forcing a lossy float8 column.
+	let frames = query("from [{ v: 1.00000000000000000001 }, { v: cast(0.25, float8) }]", Params::None);
+
+	assert_eq!(
+		column_text(&frames, "v"),
+		(ValueType::Decimal, vec!["1.00000000000000000001".to_string(), "0.25".to_string()])
+	);
+}
+
+#[test]
+fn float_then_decimal_rows_widen_to_decimal_and_keep_every_digit() {
+	// A float first row must not round a later high precision decimal row to float8.
+	let frames = query("from [{ v: cast(0.25, float8) }, { v: 1.00000000000000000001 }]", Params::None);
+
+	assert_eq!(
+		column_text(&frames, "v"),
+		(ValueType::Decimal, vec!["0.25".to_string(), "1.00000000000000000001".to_string()])
+	);
+}
+
+#[test]
+fn float4_then_integer_beyond_float4_precision_keeps_the_integer_exact() {
+	// 2^24 + 1 has no exact float4, so the column must widen to float8 rather than stay float4.
+	let frames = query("from [{ v: cast(1.5, float4) }, { v: 16777217 }]", Params::None);
+
+	assert_eq!(column(&frames, "v"), (ValueType::Float8, vec![Value::float8(1.5), Value::float8(16_777_217.0)]));
+}
+
+#[test]
+fn unqualified_constructor_without_a_target_is_an_error_with_its_fragment() {
+	// With no target there is no enum to resolve Foo against, which must fail loud, never panic.
+	let err = query_err("from [{ v: Foo { x: 1 } }]", Params::None);
+
+	assert_eq!(err.code, "CA_101", "got: {err:?}");
+	assert_eq!(err.fragment.text(), "Foo", "got: {err:?}");
+}
+
+#[test]
+fn constructor_without_a_target_names_each_expanded_column() {
+	// A tag and a field column must not both be named after the alias, or one hides the other.
+	let t = TestEngine::new();
+	t.admin("CREATE NAMESPACE s");
+	t.admin("CREATE ENUM s::shape { Circle { radius: float8 }, Square { side: float8 } }");
+	let r = t.inner().query_as(
+		TestEngine::identity(),
+		"from [{ v: s::shape::Square { side: 2.0 } }]",
+		Params::None,
+	);
+	assert!(r.error.is_none(), "got: {:?}", r.error);
+
+	let names: Vec<&str> = r.frames[0].columns.iter().map(|c| c.name.as_str()).collect();
+	assert_eq!(names, vec!["v_square_side", "v_tag"]);
+	assert_eq!(column(&r.frames, "v_tag").1, vec![Value::Int1(1)]);
+}
+
+#[test]
+fn inline_row_with_a_duplicate_column_is_an_error() {
+	// Two values for a in one row are ambiguous, so the first must not be dropped in favour of the last.
+	let err = query_err("from [{ a: 1, a: 2 }]", Params::None);
+
+	assert_eq!(err.fragment.text(), "a", "got: {err:?}");
+}

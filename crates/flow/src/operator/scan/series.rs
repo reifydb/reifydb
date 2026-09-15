@@ -1,27 +1,43 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::iter::once;
+
 use reifydb_core::{
 	interface::{
-		catalog::flow::OperatorId,
+		catalog::{flow::OperatorId, series::Series},
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	value::column::columns::Columns,
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_value::Result;
+use reifydb_value::{Result, fragment::Fragment};
 
 use crate::operator::{HostOperator, host::HostContext, sink::decode_dictionary_columns};
 
 pub struct SourceSeriesOperator {
 	operator: OperatorId,
+	schema: Columns,
 }
 
 impl SourceSeriesOperator {
 	pub fn new(operator: OperatorId) -> Self {
 		Self {
 			operator,
+			schema: Columns::empty(),
 		}
+	}
+
+	pub fn with_series(mut self, series: &Series) -> Self {
+		let key = ColumnWithName::new(Fragment::internal(series.key.column()), series.key_column_data(vec![]));
+		let data = series.data_columns().map(|col| {
+			ColumnWithName::new(
+				Fragment::internal(&col.name),
+				ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
+			)
+		});
+		self.schema = Columns::new(once(key).chain(data).collect());
+		self
 	}
 }
 
@@ -71,6 +87,6 @@ impl HostOperator for SourceSeriesOperator {
 	}
 
 	fn output_schema(&self) -> Option<Columns> {
-		Some(Columns::empty())
+		Some(self.schema.clone())
 	}
 }

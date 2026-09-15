@@ -2,13 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::resolved::ResolvedObject;
+use reifydb_value::value::constraint::Constraint;
 
-use crate::nodes::{
-	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, CallFunctionNode, DictionaryScanNode, DistinctNode,
-	EnvironmentNode, ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode,
-	JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, QueueScanNode, RemoteScanNode, RingBufferScanNode,
-	RowListLookupNode, RowPointLookupNode, RowRangeScanNode, RunTestsNode, ScalarizeNode, SeriesScanNode, SortNode,
-	TableScanNode, TableVirtualScanNode, TakeNode, VariableNode, ViewScanNode, WindowNode,
+use crate::{
+	expression::{Expression, name::display_label},
+	nodes::{
+		AggregateNode, AppendQueryNode, ApplyNode, AssertNode, CallFunctionNode, DictionaryScanNode,
+		DistinctNode, EnvironmentNode, ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode,
+		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, QueueScanNode,
+		RemoteScanNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode,
+		RunTestsNode, ScalarizeNode, SeriesScanNode, SortNode, TableScanNode, TableVirtualScanNode, TakeNode,
+		VariableNode, ViewScanNode, WindowNode,
+	},
 };
 
 #[derive(Debug, Clone)]
@@ -111,9 +116,31 @@ pub fn extract_resolved_source(plan: &QueryPlan) -> Option<ResolvedObject> {
 		QueryPlan::RemoteScan(_) => None,
 		QueryPlan::Filter(node) => extract_resolved_source(&node.input),
 		QueryPlan::Assert(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
-		QueryPlan::Map(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
+		QueryPlan::Map(node) => node
+			.input
+			.as_ref()
+			.and_then(|p| extract_resolved_source(p))
+			.filter(|source| keeps_enum_columns(&node.map, source)),
 		QueryPlan::Take(node) => extract_resolved_source(&node.input),
 		QueryPlan::Sort(node) => extract_resolved_source(&node.input),
 		_ => None,
+	}
+}
+
+fn keeps_enum_columns(map: &[Expression], source: &ResolvedObject) -> bool {
+	source.columns()
+		.iter()
+		.filter(|column| matches!(column.constraint.constraint(), Some(Constraint::SumType(_))))
+		.all(|tag| {
+			let mut outputs = map.iter().filter(|expr| display_label(expr).text() == tag.name).peekable();
+			outputs.peek().is_some() && outputs.all(|expr| reads_column(expr, &tag.name))
+		})
+}
+
+fn reads_column(expr: &Expression, name: &str) -> bool {
+	match expr {
+		Expression::Column(column) => column.0.name.text() == name,
+		Expression::Alias(alias) => reads_column(&alias.expression, name),
+		_ => false,
 	}
 }

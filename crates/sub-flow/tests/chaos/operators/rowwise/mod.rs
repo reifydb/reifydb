@@ -190,30 +190,18 @@ pub fn build(shape: Shape, runtime: RuntimeContext) -> Rowwise {
 	match shape {
 		Shape::Filter {
 			..
-		} => Rowwise::Filter(FilterOperator::new(
-			parent_schema,
-			ROWWISE_OPERATOR,
-			expressions,
-			routines(),
-			runtime,
-			ctx,
-		)),
-		Shape::Map => Rowwise::Map(MapOperator::new(
-			parent_schema,
-			ROWWISE_OPERATOR,
-			expressions,
-			routines(),
-			runtime,
-			ctx,
-		)),
-		Shape::Extend => Rowwise::Extend(ExtendOperator::new(
-			parent_schema,
-			ROWWISE_OPERATOR,
-			expressions,
-			routines(),
-			runtime,
-			ctx,
-		)),
+		} => Rowwise::Filter(
+			FilterOperator::new(parent_schema, ROWWISE_OPERATOR, expressions, routines(), runtime, ctx)
+				.expect("the filter operator must build"),
+		),
+		Shape::Map => Rowwise::Map(
+			MapOperator::new(parent_schema, ROWWISE_OPERATOR, expressions, routines(), runtime, ctx)
+				.expect("the map operator must build"),
+		),
+		Shape::Extend => Rowwise::Extend(
+			ExtendOperator::new(parent_schema, ROWWISE_OPERATOR, expressions, routines(), runtime, ctx)
+				.expect("the extend operator must build"),
+		),
 	}
 }
 

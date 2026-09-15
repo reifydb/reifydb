@@ -71,17 +71,14 @@ impl DistinctOperator {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
-	) -> Self {
+	) -> Result<Self> {
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
 		};
-		let compiled_expressions: Vec<CompiledExpr> = expressions
-			.iter()
-			.map(|e| compile_expression(&compile_ctx, e))
-			.collect::<Result<Vec<_>>>()
-			.expect("Failed to compile expressions");
+		let compiled_expressions: Vec<CompiledExpr> =
+			expressions.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
 
-		Self {
+		Ok(Self {
 			plan: DistinctPlan {
 				parent_schema,
 				operator,
@@ -91,7 +88,7 @@ impl DistinctOperator {
 				ctx,
 				dropped: SealedDrops::new(operator, DROP_REASON),
 			},
-		}
+		})
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {

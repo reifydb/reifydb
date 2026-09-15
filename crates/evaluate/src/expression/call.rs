@@ -40,8 +40,10 @@ pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: 
 	};
 
 	if ctx.is_aggregate_context && routine.kinds().contains(&FunctionKind::Aggregate) {
-		let mut accumulator =
-			routine.accumulator(&mut fn_ctx).ok_or_else(|| RoutineError::FunctionExecutionFailed {
+		let mut accumulator = routine
+			.accumulator(&mut fn_ctx, &[])
+			.map_err(|e| e.with_context(fn_fragment.clone(), false))?
+			.ok_or_else(|| RoutineError::FunctionExecutionFailed {
 				function: fn_fragment.clone(),
 				reason: format!("Function {} is not an aggregate", function_name),
 			})?;

@@ -408,3 +408,36 @@ fn a_table_keyed_by_a_digest_or_optional_digest_column_refuses_rows_naming_the_c
 	assert_eq!(rows(&t, "FROM test::pk"), 0);
 	assert_eq!(rows(&t, "FROM test::opk"), 0);
 }
+
+#[test]
+fn inserting_text_from_a_query_into_a_series_float_column_fails_as_it_does_for_a_table() {
+	// A series takes a query's rows without coercion, so any type mismatch reaches the row encoder and panics.
+	let t = engine();
+	t.admin("CREATE TABLE test::tx { ts: int8, v: utf8 }");
+	t.admin("CREATE TABLE test::tf { ts: int8, v: float8 }");
+	t.admin("CREATE SERIES test::sf { ts: int8, v: float8 } WITH { key: ts }");
+	t.command("INSERT test::tx [{ ts: 1, v: 'abc' }]");
+	let table =
+		command(&t, "LET $rows = FROM test::tx; INSERT test::tf $rows").expect_err("text into a table float");
+	let series =
+		command(&t, "LET $rows = FROM test::tx; INSERT test::sf $rows").expect_err("text into a series float");
+	assert_eq!(series.code, table.code, "{series:?}");
+	assert_eq!(rows(&t, "FROM test::sf"), 0);
+}
+
+#[test]
+fn bulk_inserting_text_after_a_float_into_a_float_column_is_an_error_not_a_panic() {
+	// Bulk rows are gathered into one column first, so a later row of another type must not panic the push.
+	let t = engine();
+	let mut alone = t.bulk_insert(TestEngine::identity());
+	alone.table("test::f").row(row("k", Value::Int4(2), Value::Utf8("abc".to_string()))).done();
+	let alone = alone.execute().expect_err("text into float8").diagnostic();
+	let mut builder = t.bulk_insert(TestEngine::identity());
+	builder.table("test::f")
+		.row(row("k", Value::Int4(1), Value::float8(1.5)))
+		.row(row("k", Value::Int4(2), Value::Utf8("abc".to_string())))
+		.done();
+	let err = builder.execute().expect_err("text after a float into float8").diagnostic();
+	assert_eq!(err.code, alone.code, "{err:?}");
+	assert_eq!(rows(&t, "FROM test::f"), 0);
+}

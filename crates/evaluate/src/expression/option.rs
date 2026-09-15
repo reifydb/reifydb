@@ -45,6 +45,27 @@ pub(crate) fn apply_option_bitvec(result: ColumnBuffer, bitvec: BitVec) -> Colum
 	}
 }
 
+pub(crate) fn arith_op_unwrap_option(
+	left: &ColumnWithName,
+	right: &ColumnWithName,
+	fragment: Fragment,
+	inner: impl FnOnce(&ColumnWithName, &ColumnWithName) -> Result<ColumnWithName>,
+) -> Result<ColumnWithName> {
+	let (left_data, left_bv) = left.data().unwrap_option();
+	let (right_data, right_bv) = right.data().unwrap_option();
+	let typed = match (is_untyped_none(left_data, left_bv), is_untyped_none(right_data, right_bv)) {
+		(true, false) => Some(right_data),
+		(false, true) => Some(left_data),
+		_ => None,
+	};
+	match typed {
+		Some(typed) => {
+			Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(typed.get_type(), left_data.len())))
+		}
+		None => binary_op_unwrap_option(left, right, fragment, inner),
+	}
+}
+
 pub(crate) fn binary_op_unwrap_option(
 	left: &ColumnWithName,
 	right: &ColumnWithName,

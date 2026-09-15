@@ -36,12 +36,12 @@ pub fn column_not_found(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-pub fn extend_duplicate_column(column_name: &str) -> Diagnostic {
+pub fn extend_duplicate_column(fragment: Fragment, column_name: &str) -> Diagnostic {
 	Diagnostic {
 		code: "EXTEND_002".to_string(),
 		rql: None,
 		message: format!("Cannot extend with duplicate column name '{}'", column_name),
-		fragment: Fragment::None,
+		fragment,
 		label: Some("column already exists in the current frame".to_string()),
 		help: Some("Use a different column name or remove the existing column first".to_string()),
 		column: None,
@@ -85,6 +85,21 @@ pub fn system_column_read_only(fragment: Fragment) -> Diagnostic {
 		fragment,
 		label: Some("system columns are managed automatically and cannot be set".to_string()),
 		help: Some("remove this field from the INSERT/UPDATE values".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn duplicate_field(fragment: Fragment, name: &str) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_009".to_string(),
+		rql: None,
+		message: format!("field '{}' is given more than once", name),
+		fragment,
+		label: Some("a row, constructor, MAP or UPDATE may give each field only once".to_string()),
+		help: Some("remove one of the values for this field".to_string()),
 		column: None,
 		notes: vec![],
 		cause: None,

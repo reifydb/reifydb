@@ -9,7 +9,12 @@ use reifydb_core::{
 		config::{ConfigKey, GetConfig},
 		policy::{DataOp, PolicyTargetType},
 	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{
+		ColumnWithName,
+		buffer::{ColumnBuffer, write::check_digest_write_type},
+		cast::cast_value,
+		columns::Columns,
+	},
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::InsertDictionaryNode;
@@ -96,7 +101,7 @@ pub(crate) fn insert_dictionary(
 				continue;
 			}
 
-			let coerced_value = coerce_value_to_dictionary_type(value, dictionary.value_type.clone())?;
+			let coerced_value = coerce_value_to_dictionary_type(value, &dictionary.value_type)?;
 
 			let entry_id = txn.insert_into_dictionary(&dictionary, &coerced_value)?;
 
@@ -115,7 +120,7 @@ pub(crate) fn insert_dictionary(
 
 	if let Some(returning_exprs) = &plan.returning {
 		let id_column = build_id_column(&ids, dictionary.id_type)?;
-		let value_column = build_value_column(&values, dictionary.value_type)?;
+		let value_column = build_value_column(&values, dictionary.value_type);
 		let columns = Columns::new(vec![id_column, value_column]);
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
@@ -136,7 +141,7 @@ pub(crate) fn insert_dictionary(
 
 	let id_column = build_id_column(&ids, dictionary.id_type)?;
 
-	let value_column = build_value_column(&values, dictionary.value_type)?;
+	let value_column = build_value_column(&values, dictionary.value_type);
 
 	Ok(Columns::new(vec![
 		ColumnWithName::new(
@@ -152,33 +157,10 @@ pub(crate) fn insert_dictionary(
 	]))
 }
 
-fn coerce_value_to_dictionary_type(value: Value, target_type: ValueType) -> Result<Value> {
-	match (&value, target_type) {
-		(Value::Utf8(_), ValueType::Utf8) => Ok(value),
-		(Value::Int1(_), ValueType::Int1) => Ok(value),
-		(Value::Int2(_), ValueType::Int2) => Ok(value),
-		(Value::Int4(_), ValueType::Int4) => Ok(value),
-		(Value::Int8(_), ValueType::Int8) => Ok(value),
-		(Value::Int16(_), ValueType::Int16) => Ok(value),
-		(Value::Uint1(_), ValueType::Uint1) => Ok(value),
-		(Value::Uint2(_), ValueType::Uint2) => Ok(value),
-		(Value::Uint4(_), ValueType::Uint4) => Ok(value),
-		(Value::Uint8(_), ValueType::Uint8) => Ok(value),
-		(Value::Uint16(_), ValueType::Uint16) => Ok(value),
-		(Value::Float4(_), ValueType::Float4) => Ok(value),
-		(Value::Float8(_), ValueType::Float8) => Ok(value),
-		(Value::Boolean(_), ValueType::Boolean) => Ok(value),
-		(Value::Date(_), ValueType::Date) => Ok(value),
-		(Value::DateTime(_), ValueType::DateTime) => Ok(value),
-		(Value::Time(_), ValueType::Time) => Ok(value),
-		(Value::Duration(_), ValueType::Duration) => Ok(value),
-		(Value::Uuid4(_), ValueType::Uuid4) => Ok(value),
-		(Value::Uuid7(_), ValueType::Uuid7) => Ok(value),
-		(Value::Blob(_), ValueType::Blob) => Ok(value),
-		(Value::Decimal(_), ValueType::Decimal) => Ok(value),
-		// TODO: Add more coercion cases as needed
-		_ => Ok(value),
-	}
+fn coerce_value_to_dictionary_type(value: Value, target_type: &ValueType) -> Result<Value> {
+	let display = value.to_string();
+	check_digest_write_type(&value.get_type(), target_type, || Fragment::internal(&display))?;
+	Ok(cast_value(value, target_type)?)
 }
 
 fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<ColumnWithName> {
@@ -251,106 +233,13 @@ fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<ColumnWithName> 
 	})
 }
 
-fn build_value_column(values: &[Value], value_type: ValueType) -> Result<ColumnWithName> {
-	let data = match value_type {
-		ValueType::Utf8 => {
-			let vals: Vec<String> = values
-				.iter()
-				.map(|v| match v {
-					Value::Utf8(s) => s.clone(),
-					_ => format!("{:?}", v),
-				})
-				.collect();
-			ColumnBuffer::utf8(vals)
-		}
-		ValueType::Int1 => {
-			let vals: Vec<i8> = values
-				.iter()
-				.map(|v| match v {
-					Value::Int1(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::int1(vals)
-		}
-		ValueType::Int2 => {
-			let vals: Vec<i16> = values
-				.iter()
-				.map(|v| match v {
-					Value::Int2(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::int2(vals)
-		}
-		ValueType::Int4 => {
-			let vals: Vec<i32> = values
-				.iter()
-				.map(|v| match v {
-					Value::Int4(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::int4(vals)
-		}
-		ValueType::Int8 => {
-			let vals: Vec<i64> = values
-				.iter()
-				.map(|v| match v {
-					Value::Int8(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::int8(vals)
-		}
-		ValueType::Uint1 => {
-			let vals: Vec<u8> = values
-				.iter()
-				.map(|v| match v {
-					Value::Uint1(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::uint1(vals)
-		}
-		ValueType::Uint2 => {
-			let vals: Vec<u16> = values
-				.iter()
-				.map(|v| match v {
-					Value::Uint2(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::uint2(vals)
-		}
-		ValueType::Uint4 => {
-			let vals: Vec<u32> = values
-				.iter()
-				.map(|v| match v {
-					Value::Uint4(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::uint4(vals)
-		}
-		ValueType::Uint8 => {
-			let vals: Vec<u64> = values
-				.iter()
-				.map(|v| match v {
-					Value::Uint8(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::uint8(vals)
-		}
-		_ => {
-			let vals: Vec<String> = values.iter().map(|v| format!("{:?}", v)).collect();
-			ColumnBuffer::utf8(vals)
-		}
-	};
-
-	Ok(ColumnWithName {
+fn build_value_column(values: &[Value], value_type: ValueType) -> ColumnWithName {
+	let mut data = ColumnBuffer::with_capacity(value_type, values.len());
+	for value in values {
+		data.push_value(value.clone());
+	}
+	ColumnWithName {
 		name: Fragment::internal("value"),
 		data,
-	})
+	}
 }

@@ -41,17 +41,10 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	fragment::Fragment,
-	params::Params,
 	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber},
 };
 
-use super::{
-	BulkInsertResult, RingBufferInsertResult, SeriesInsertResult, TableInsertResult,
-	validation::{
-		reorder_rows_unvalidated, reorder_rows_unvalidated_rb, reorder_rows_unvalidated_series,
-		validate_and_coerce_rows, validate_and_coerce_rows_rb, validate_and_coerce_rows_series,
-	},
-};
+use super::{BulkInsertResult, RingBufferInsertResult, SeriesInsertResult, TableInsertResult, validation::coerce_rows};
 use crate::{
 	Result,
 	bulk_insert::storage::{
@@ -65,6 +58,7 @@ use crate::{
 		dictionary::DictionaryOperations, ringbuffer::RingBufferOperations, table::TableOperations,
 	},
 	vm::instruction::dml::{
+		coerce::series_key,
 		primary_key,
 		shape::{get_or_create_ringbuffer_shape, get_or_create_series_shape, get_or_create_table_shape},
 		time::resolve_time,
@@ -313,25 +307,12 @@ fn encode_table_rows<V: ValidationMode>(
 	shape: &RowShape,
 	clock: &Clock,
 ) -> Result<Vec<EncodedTableRowBuilder>> {
-	let coerced_rows = coerce_table_rows::<V>(&pending.rows, table, txn.identity)?;
+	let coerced_rows = coerce_rows(&pending.rows, &table.columns, &table.name, txn.identity)?;
 	let mut encoded_bytes_list = Vec::with_capacity(coerced_rows.len());
 	for values in coerced_rows {
 		encoded_bytes_list.push(prepare_table_row::<V>(catalog, txn, table, shape, clock, values)?);
 	}
 	Ok(encoded_bytes_list)
-}
-
-#[inline]
-fn coerce_table_rows<V: ValidationMode>(
-	rows: &[Params],
-	table: &Table,
-	identity: IdentityId,
-) -> Result<Vec<Vec<Value>>> {
-	if V::VALIDATED {
-		validate_and_coerce_rows(rows, table, identity)
-	} else {
-		reorder_rows_unvalidated(rows, table)
-	}
 }
 
 #[inline]
@@ -442,7 +423,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 ) -> Result<RingBufferInsertResult> {
 	let ringbuffer = resolve_ringbuffer(catalog, txn, pending)?;
 	let shape = get_or_create_ringbuffer_shape(catalog, &ringbuffer, &mut Transaction::Command(txn))?;
-	let coerced_rows = coerce_ringbuffer_rows::<V>(pending, &ringbuffer, txn.identity)?;
+	let coerced_rows = coerce_rows(&pending.rows, &ringbuffer.columns, &ringbuffer.name, txn.identity)?;
 	let inserted = insert_ringbuffer_rows::<V>(catalog, txn, &ringbuffer, &shape, coerced_rows, clock)?;
 	Ok(RingBufferInsertResult {
 		namespace: pending.namespace.clone(),
@@ -476,19 +457,6 @@ fn resolve_ringbuffer(
 			}
 			.into()
 		})
-}
-
-#[inline]
-fn coerce_ringbuffer_rows<V: ValidationMode>(
-	pending: &PendingRingBufferInsert,
-	ringbuffer: &RingBuffer,
-	identity: IdentityId,
-) -> Result<Vec<Vec<Value>>> {
-	if V::VALIDATED {
-		validate_and_coerce_rows_rb(&pending.rows, ringbuffer, identity)
-	} else {
-		reorder_rows_unvalidated_rb(&pending.rows, ringbuffer)
-	}
 }
 
 fn insert_ringbuffer_rows<V: ValidationMode>(
@@ -691,7 +659,7 @@ fn execute_series_insert<V: ValidationMode>(
 	let series = resolve_series(catalog, txn, pending)?;
 	let mut metadata = load_series_metadata(catalog, txn, pending, &series)?;
 	let shape = get_or_create_series_shape(catalog, &series, &mut Transaction::Command(txn))?;
-	let coerced_rows = coerce_series_rows::<V>(pending, &series, txn.identity)?;
+	let coerced_rows = coerce_rows(&pending.rows, &series.columns, &series.name, txn.identity)?;
 	let inserted = insert_series_rows::<V>(catalog, txn, &series, &shape, coerced_rows, &mut metadata, clock)?;
 	catalog.update_series_metadata_txn(&mut Transaction::Command(txn), series.id, metadata)?;
 	Ok(SeriesInsertResult {
@@ -741,19 +709,6 @@ fn load_series_metadata(
 	})
 }
 
-#[inline]
-fn coerce_series_rows<V: ValidationMode>(
-	pending: &PendingSeriesInsert,
-	series: &Series,
-	identity: IdentityId,
-) -> Result<Vec<Vec<Value>>> {
-	if V::VALIDATED {
-		validate_and_coerce_rows_series(&pending.rows, series, identity)
-	} else {
-		reorder_rows_unvalidated_series(&pending.rows, series)
-	}
-}
-
 fn insert_series_rows<V: ValidationMode>(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
@@ -782,7 +737,7 @@ fn insert_series_rows<V: ValidationMode>(
 			}
 		}
 
-		let key_value = series.key_to_u64(values[key_col_idx].clone()).unwrap_or(0);
+		let key_value = series_key(series, &values[key_col_idx])?.unwrap_or(0);
 
 		metadata.sequence_counter += 1;
 		let sequence = metadata.sequence_counter;

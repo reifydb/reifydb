@@ -6,7 +6,10 @@ use std::{collections::HashSet, fmt, fmt::Debug, str::FromStr, sync::Arc};
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	error::diagnostic::{query, subscription},
+	error::diagnostic::{
+		catalog::{variant_enum_not_known, variant_in_expression},
+		query, subscription,
+	},
 	fingerprint::{CompilationFingerprint, StatementFingerprint},
 	interface::catalog::series::{SeriesKey, TimestampPrecision},
 };
@@ -28,7 +31,9 @@ use crate::{
 	},
 	bump::BumpBox,
 	error::RqlError,
-	expression::{AliasExpression, Expression, IdentExpression, ParameterExpression, PrefixOperator},
+	expression::{
+		AliasExpression, Expression, IdentExpression, ParameterExpression, PrefixOperator, name::display_label,
+	},
 	fingerprint::statement::{fingerprint_statement, normalize_statement},
 	instruction::{Addr, CompiledClosure, CompiledFunction, Instruction, ScopeType},
 	nodes,
@@ -965,11 +970,19 @@ impl InstructionCompiler {
 			Expression::Column(col) => {
 				self.emit(Instruction::LoadVar(col.0.name.clone()));
 			}
+			Expression::SumTypeConstructor(ctor) => {
+				return Err(error!(variant_in_expression(ctor.variant_name.clone())));
+			}
+			Expression::IsVariant(is) => {
+				let column = match is.expression.as_ref() {
+					Expression::Column(column) => column.0.name.text().to_string(),
+					other => display_label(other).text().to_string(),
+				};
+				return Err(error!(variant_enum_not_known(is.variant_name.clone(), &column)));
+			}
 			Expression::AccessSource(_)
 			| Expression::Alias(_)
 			| Expression::Extend(_)
-			| Expression::SumTypeConstructor(_)
-			| Expression::IsVariant(_)
 			| Expression::Contains(_) => {
 				self.emit(Instruction::PushNone);
 			}

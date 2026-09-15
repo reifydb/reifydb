@@ -46,6 +46,14 @@ pub enum EngineError {
 		fragment: Fragment,
 	},
 
+	#[error("function `{name}` returned a value that cannot be cast to its declared return type {declared}")]
+	ReturnTypeMismatch {
+		name: String,
+		declared: ValueType,
+		fragment: Fragment,
+		cause: Box<Diagnostic>,
+	},
+
 	#[error("Generator function '{name}' not found")]
 	GeneratorNotFound {
 		name: String,
@@ -71,6 +79,26 @@ pub enum EngineError {
 		object: String,
 		column: String,
 		found: String,
+	},
+
+	#[error("cannot update the tag of series `{series}`: the tag is part of the row key")]
+	SeriesTagImmutable {
+		series: String,
+		fragment: Fragment,
+	},
+
+	#[error("cannot update the key column `{column}` of series `{series}`: the key is part of the row key")]
+	SeriesKeyImmutable {
+		series: String,
+		column: String,
+		fragment: Fragment,
+	},
+
+	#[error("series key column `{column}` cannot store {value}")]
+	SeriesKeyOutOfRange {
+		column: String,
+		value: String,
+		fragment: Fragment,
 	},
 }
 
@@ -189,6 +217,29 @@ impl IntoDiagnostic for EngineError {
 				cause: None,
 				operator_chain: None,
 			},
+			EngineError::ReturnTypeMismatch {
+				name,
+				declared,
+				fragment,
+				cause,
+			} => Diagnostic {
+				code: "CALLABLE_002".to_string(),
+				rql: None,
+				message: format!(
+					"function `{}` returned a value that cannot be cast to its declared return type {}",
+					name, declared
+				),
+				column: None,
+				fragment,
+				label: Some(format!("`{}` must return {}", name, declared)),
+				help: Some(format!(
+					"return a value that fits {} from `{}`, or change its declared return type",
+					declared, name
+				)),
+				notes: vec![],
+				cause: Some(cause),
+				operator_chain: None,
+			},
 			EngineError::GeneratorNotFound {
 				name,
 				fragment,
@@ -273,6 +324,62 @@ impl IntoDiagnostic for EngineError {
 					"#time is substrate-owned and cannot fall back to the write clock; silently substituting arrival time would date a replayed row to now"
 						.to_string(),
 				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			EngineError::SeriesTagImmutable {
+				series,
+				fragment,
+			} => Diagnostic {
+				code: "UPDATE_004".to_string(),
+				rql: None,
+				message: format!(
+					"cannot update the tag of series `{}`: the tag is part of the row key",
+					series
+				),
+				column: None,
+				fragment,
+				label: Some("`tag` cannot be updated".to_string()),
+				help: Some("delete the row and insert it again with the new tag".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			EngineError::SeriesKeyImmutable {
+				series,
+				column,
+				fragment,
+			} => Diagnostic {
+				code: "UPDATE_005".to_string(),
+				rql: None,
+				message: format!(
+					"cannot update the key column `{}` of series `{}`: the key is part of the row key",
+					column, series
+				),
+				column: None,
+				fragment,
+				label: Some(format!("`{}` cannot be updated", column)),
+				help: Some("delete the row and insert it again with the new key".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			EngineError::SeriesKeyOutOfRange {
+				column,
+				value,
+				fragment,
+			} => Diagnostic {
+				code: "SERIES_001".to_string(),
+				rql: None,
+				message: format!("series key column `{}` cannot store {}", column, value),
+				column: None,
+				fragment,
+				label: Some("key out of range".to_string()),
+				help: Some(format!("a series key must be between 0 and {}", u64::MAX)),
+				notes: vec![],
 				cause: None,
 				operator_chain: None,
 			},

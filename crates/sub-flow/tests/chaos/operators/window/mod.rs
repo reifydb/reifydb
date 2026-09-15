@@ -48,4 +48,5 @@ pub fn build_immutable(spec: &WindowSpec, immutable: Option<Duration>, runtime: 
 		immutable,
 		ctx: Arc::new(FlowContext::default()),
 	})
+	.expect("the window operator must build")
 }

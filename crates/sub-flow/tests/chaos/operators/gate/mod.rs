@@ -44,6 +44,7 @@ pub fn build(threshold: i64, runtime: RuntimeContext) -> GateOperator {
 		runtime,
 		Arc::new(FlowContext::default()),
 	)
+	.expect("the gate operator must build")
 }
 
 #[derive(Debug, Clone)]

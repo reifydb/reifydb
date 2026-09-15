@@ -153,10 +153,8 @@ pub(crate) fn evaluate_returning(
 		symbols,
 	};
 
-	let compiled: Vec<CompiledExpr> = returning_exprs
-		.iter()
-		.map(|e| compile_expression(&compile_ctx, e).expect("compile returning expression"))
-		.collect();
+	let compiled: Vec<CompiledExpr> =
+		returning_exprs.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
 
 	let row_count = input.row_count();
 	let base = EvalContext {

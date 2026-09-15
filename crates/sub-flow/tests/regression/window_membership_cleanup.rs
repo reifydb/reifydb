@@ -64,6 +64,7 @@ fn harness(kind: WindowKind) -> Harness<WindowOperator> {
 			immutable: None,
 			ctx: Arc::new(FlowContext::default()),
 		})
+		.expect("the window operator must build")
 	})
 }
 

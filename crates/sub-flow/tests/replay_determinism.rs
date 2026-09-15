@@ -166,6 +166,7 @@ mod distinct {
 				runtime,
 				Arc::new(FlowContext::default()),
 			)
+			.expect("the distinct operator must build")
 		});
 		let events = events();
 		let emitted = feed(&mut h, &events, slices);
@@ -556,6 +557,7 @@ mod join {
 				None,
 				Arc::new(FlowContext::default()),
 			)
+			.expect("the join operator must build")
 		});
 		let events = events();
 		let mut emitted = Vec::new();
@@ -617,5 +619,6 @@ fn window_harness(kind: WindowKind, lateness: Option<Duration>, clock_ms: u64) -
 			immutable: None,
 			ctx: Arc::new(FlowContext::default()),
 		})
+		.expect("the window operator must build")
 	})
 }

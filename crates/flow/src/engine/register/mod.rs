@@ -4,6 +4,8 @@
 mod config;
 mod sink;
 mod source;
+#[cfg(test)]
+mod tests;
 mod transform;
 
 use std::{mem, sync::Arc};
