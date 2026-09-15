@@ -100,14 +100,14 @@ fn materialize(schema: &Schema, mut fetch: impl FnMut(usize) -> Result<ColumnBuf
 	let mut row_numbers: Option<Vec<RowNumber>> = None;
 	let mut created_at: Option<Vec<DateTime>> = None;
 	let mut updated_at: Option<Vec<DateTime>> = None;
-	let mut time: Option<Vec<DateTime>> = None;
+	let mut time: Vec<DateTime> = Vec::new();
 	for (i, (name, _ty, _nullable)) in schema.iter().enumerate() {
 		let data = fetch(i)?;
 		match SystemColumn::from_name(name) {
 			Some(SystemColumn::RowNumber) => row_numbers = Some(extract_row_numbers(&data)),
 			Some(SystemColumn::CreatedAt) => created_at = Some(extract_datetimes(&data)),
 			Some(SystemColumn::UpdatedAt) => updated_at = Some(extract_datetimes(&data)),
-			Some(SystemColumn::Time) => time = Some(extract_datetimes(&data)),
+			Some(SystemColumn::Time) => time = extract_datetimes(&data),
 			None => columns.push(ColumnWithName::new(Fragment::internal(name.clone()), data)),
 		}
 	}
@@ -119,7 +119,7 @@ fn materialize(schema: &Schema, mut fetch: impl FnMut(usize) -> Result<ColumnBuf
 			Vec::new(),
 			created_at.unwrap_or_else(|| panic!("{}", missing(SystemColumn::CreatedAt))),
 			updated_at.unwrap_or_else(|| panic!("{}", missing(SystemColumn::UpdatedAt))),
-			time.unwrap_or_else(|| panic!("{}", missing(SystemColumn::Time))),
+			time,
 		),
 	))
 }

@@ -130,12 +130,10 @@ impl SqliteColumnStore {
 		let mut out = Vec::new();
 		for row in rows {
 			let (key, data) = row.map_err(|e| internal_error!("Failed to read column block row: {}", e))?;
-			match decode_snapshot_id(&key) {
-				Some(id) => out.push((id, CowVec::new(data))),
-				None => {
-					warn!("skipping column block with malformed {}-byte snapshot_id key", key.len())
-				}
-			}
+			let id = decode_snapshot_id(&key).ok_or_else(|| {
+				internal_error!("column block has a malformed {}-byte snapshot_id key", key.len())
+			})?;
+			out.push((id, CowVec::new(data)));
 		}
 		Ok(out)
 	}

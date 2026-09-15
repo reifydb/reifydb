@@ -7,16 +7,56 @@ use reifydb_column::{
 	compress::Compressor,
 	snapshot::{ColumnBlock, ColumnChunks, SystemColumn},
 };
-use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns, data::canonical::Canonical};
+use reifydb_core::{
+	common::TimeSource,
+	value::column::{buffer::ColumnBuffer, columns::Columns, data::canonical::Canonical},
+};
 use reifydb_value::{Result, reifydb_assertions, value::value_type::ValueType};
 
 use crate::column::error::SubStoreError;
+
+pub fn system_column_schema(time: &TimeSource) -> Vec<(String, ValueType)> {
+	SystemColumn::ALL
+		.into_iter()
+		.filter(|sc| *sc != SystemColumn::Time || carries_time(time))
+		.map(|sc| (sc.name().to_string(), sc.ty()))
+		.collect()
+}
+
+fn carries_time(time: &TimeSource) -> bool {
+	match time {
+		TimeSource::None => false,
+		TimeSource::Event {
+			..
+		}
+		| TimeSource::Processing => true,
+	}
+}
 
 pub fn column_block_from_batches(
 	schema: Vec<(String, ValueType)>,
 	batches: Vec<Columns>,
 	compressor: &Compressor,
 ) -> Result<ColumnBlock> {
+	let timed = schema.iter().any(|(name, _)| SystemColumn::from_name(name) == Some(SystemColumn::Time));
+	for batch in &batches {
+		let time = batch.time().len();
+		let rows = batch.row_count();
+		let expected = if timed {
+			rows
+		} else {
+			0
+		};
+		if time != expected {
+			return Err(SubStoreError::TimeMismatch {
+				timed,
+				time,
+				rows,
+			}
+			.into());
+		}
+	}
+
 	let mut chunked: Vec<ColumnChunks> = Vec::with_capacity(schema.len());
 
 	#[cfg(reifydb_assertions)]

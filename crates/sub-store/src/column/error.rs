@@ -24,6 +24,13 @@ pub enum SubStoreError {
 		namespace: NamespaceId,
 		series: SeriesId,
 	},
+
+	#[error("{}", time_mismatch_message(*.timed, *.time, *.rows))]
+	TimeMismatch {
+		timed: bool,
+		time: usize,
+		rows: usize,
+	},
 }
 
 impl From<SubStoreError> for Error {
@@ -80,6 +87,32 @@ impl IntoDiagnostic for SubStoreError {
 				cause: None,
 				operator_chain: None,
 			},
+
+			SubStoreError::TimeMismatch {
+				timed,
+				time,
+				rows,
+			} => Diagnostic {
+				code: "SCOL_004".to_string(),
+				rql: None,
+				message: time_mismatch_message(timed, time, rows),
+				column: None,
+				fragment: Fragment::None,
+				label: Some("#time does not match the time declaration".to_string()),
+				help: Some("an object that declares a time source stamps #time on every row, and a timeless object stamps it on none".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 		}
 	}
+}
+
+fn time_mismatch_message(timed: bool, time: usize, rows: usize) -> String {
+	let declaration = if timed {
+		"declares a time source"
+	} else {
+		"declares no time source"
+	};
+	format!("column_block_from_batches: #time holds {time} entries for {rows} rows but the object {declaration}")
 }

@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 #[cfg(feature = "column")]
 use reifydb_column::compress::{CompressConfig, Compressor};
+#[cfg(feature = "column")]
+use reifydb_core::event::{EventBus, transaction::PostCommitEvent};
 use reifydb_core::util::ioc::IocContainer;
 #[cfg(feature = "column")]
 use reifydb_engine::engine::StandardEngine;
@@ -20,7 +22,10 @@ use reifydb_value::Result;
 use crate::column::persistent::sqlite::SqliteColumnStore;
 #[cfg(feature = "column")]
 use crate::column::{
-	actor::{series::SeriesMaterializationActor, table::TableMaterializationActor},
+	actor::{
+		series::SeriesMaterializationActor,
+		table::{TableChanges, TableMaterializationActor},
+	},
 	block_store::ColumnBlockStore,
 };
 use crate::subsystem::{StorageConfig, StorageSubsystem};
@@ -59,6 +64,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let engine = ioc.resolve::<StandardEngine>()?;
+		let event_bus = ioc.resolve::<EventBus>()?;
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let block_store = {
@@ -72,11 +78,15 @@ impl SubsystemFactory for StorageSubsystemFactory {
 
 		ioc.register_service::<Arc<ColumnBlockStore>>(Arc::new(block_store.clone()));
 
+		let table_changes = TableChanges::new();
+		event_bus.register::<PostCommitEvent, _>(table_changes.clone());
+
 		let table_actor = TableMaterializationActor::new(
 			engine.clone(),
 			block_store.clone(),
 			Compressor::new(CompressConfig::default()),
 			self.config.table_tick_interval,
+			table_changes,
 		);
 		let table_handle = spawner.spawn_coordination("storage-materialize-table", table_actor);
 		let table_ref = table_handle.actor_ref().clone();

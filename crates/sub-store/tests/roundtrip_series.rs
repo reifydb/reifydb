@@ -14,7 +14,8 @@ use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
-use reifydb_value::value::{Value, duration::Duration};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::value::{Value, duration::Duration, identity::IdentityId};
 
 #[test]
 fn series_materialization_populates_block_store() {
@@ -51,7 +52,27 @@ fn series_materialization_populates_block_store() {
 
 	let blocks = poll_until(
 		|| {
-			let entries: Vec<_> = block_store.entries();
+			// Without the owner filter, an empty bootstrap table block reads as a bucket of s.
+			let all_entries = block_store.entries();
+			let engine = db.engine();
+			let catalog = engine.catalog();
+			let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
+			let mut tx = Transaction::Query(&mut txn);
+			let namespace = catalog
+				.find_namespace_by_name(&mut tx, "test")
+				.expect("find namespace")
+				.expect("namespace test");
+			let series = catalog
+				.find_series_by_name(&mut tx, namespace.id(), "s")
+				.expect("find series")
+				.expect("series test::s");
+			let owned: Vec<_> = catalog
+				.list_column_snapshots_for_series(&mut tx, series.id)
+				.expect("list series snapshots")
+				.into_iter()
+				.map(|snapshot| snapshot.id)
+				.collect();
+			let entries: Vec<_> = all_entries.into_iter().filter(|(id, _)| owned.contains(id)).collect();
 			if entries.len() >= 2 {
 				Some(entries)
 			} else {
