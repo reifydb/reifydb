@@ -13,6 +13,10 @@ fn is_all_none(bv: Option<&BitVec>) -> bool {
 	}
 }
 
+fn is_untyped_none(data: &ColumnBuffer, bv: Option<&BitVec>) -> bool {
+	is_all_none(bv) && matches!(data.get_type(), ValueType::Any | ValueType::Boolean)
+}
+
 pub(crate) fn combine_option_bitvecs(a: Option<&BitVec>, b: Option<&BitVec>) -> Option<BitVec> {
 	match (a, b) {
 		(Some(a), Some(b)) => Some(a.and(b)),
@@ -51,8 +55,14 @@ pub(crate) fn binary_op_unwrap_option(
 	let (right_data, right_bv) = right.data().unwrap_option();
 
 	if is_all_none(left_bv) || is_all_none(right_bv) {
-		let len = left_data.len();
-		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(ValueType::Boolean, len)));
+		let ty = if is_untyped_none(left_data, left_bv) || is_untyped_none(right_data, right_bv) {
+			ValueType::Boolean
+		} else {
+			let l = ColumnWithName::new(left.name().clone(), left_data.empty_like(0));
+			let r = ColumnWithName::new(right.name().clone(), right_data.empty_like(0));
+			inner(&l, &r)?.data().get_type()
+		};
+		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(ty, left_data.len())));
 	}
 
 	let combined_bv = combine_option_bitvecs(left_bv, right_bv);
@@ -75,8 +85,12 @@ pub(crate) fn unary_op_unwrap_option(
 	let (inner_data, bv) = col.data().unwrap_option();
 
 	if is_all_none(bv) {
-		let len = inner_data.len();
-		return Ok(ColumnWithName::new(col.name().clone(), ColumnBuffer::none_typed(ValueType::Boolean, len)));
+		let ty = if is_untyped_none(inner_data, bv) {
+			ValueType::Boolean
+		} else {
+			inner(&ColumnWithName::new(col.name().clone(), inner_data.empty_like(0)))?.data().get_type()
+		};
+		return Ok(ColumnWithName::new(col.name().clone(), ColumnBuffer::none_typed(ty, inner_data.len())));
 	}
 
 	let unwrapped = ColumnWithName::new(col.name().clone(), inner_data.clone());

@@ -229,10 +229,6 @@ impl QueryNode for UdfEvalNode {
 		let (stored_ctx, compiled_calls) = self.context.as_ref().unwrap();
 		let row_count = columns.row_count();
 
-		if row_count == 0 {
-			return Ok(Some(columns));
-		}
-
 		for call in compiled_calls {
 			let session = eval_context_from_query(stored_ctx);
 			let eval_ctx = session.with_eval(columns.clone(), row_count);

@@ -209,7 +209,7 @@ impl<'a> Vm<'a> {
 	) -> Result<()> {
 		let params = self.params;
 		while self.ip < instructions.len() {
-			let _ = self.batch_size > 1 && self.check_mask_merge_point()?;
+			let _ = self.batch_size != 1 && self.check_mask_merge_point()?;
 
 			match &instructions[self.ip] {
 				Instruction::Halt => {
@@ -225,11 +225,11 @@ impl<'a> Vm<'a> {
 
 				Instruction::LoadVar(f) => self.exec_load_var(f)?,
 				Instruction::StoreVar(f) => {
-					if self.batch_size > 1 && self.is_masked() {
+					if self.batch_size != 1 && self.is_masked() {
 						let name = strip_dollar_prefix(f.text());
 						let value = self.stack.pop()?;
 						self.exec_store_var_masked(name, value)?;
-					} else if self.batch_size > 1 {
+					} else if self.batch_size != 1 {
 						let name = strip_dollar_prefix(f.text());
 						let value = self.stack.pop()?;
 						self.symbols.reassign(name.to_string(), value)?;
@@ -269,7 +269,7 @@ impl<'a> Vm<'a> {
 				Instruction::Cast(target) => self.exec_cast(target)?,
 
 				Instruction::Jump(addr) => {
-					if self.batch_size > 1
+					if self.batch_size != 1
 						&& (!self.mask_stack.is_empty() || !self.loop_mask_stack.is_empty())
 					{
 						if self.exec_jump_masked(*addr)? {
@@ -281,7 +281,7 @@ impl<'a> Vm<'a> {
 					}
 				}
 				Instruction::JumpIfFalsePop(addr) => {
-					if self.batch_size > 1 {
+					if self.batch_size != 1 {
 						let is_while_loop = instructions.get(self.ip + 1).is_some_and(|next| {
 							matches!(next, Instruction::EnterScope(ScopeType::Loop))
 						});
@@ -311,7 +311,7 @@ impl<'a> Vm<'a> {
 					}
 				}
 				Instruction::JumpIfTruePop(addr) => {
-					if self.batch_size > 1 {
+					if self.batch_size != 1 {
 						if self.exec_jump_if_true_pop_columnar(*addr)? {
 							continue;
 						}
@@ -325,7 +325,7 @@ impl<'a> Vm<'a> {
 					exit_scopes,
 					addr,
 				} => {
-					if self.batch_size > 1 && !self.loop_mask_stack.is_empty() {
+					if self.batch_size != 1 && !self.loop_mask_stack.is_empty() {
 						self.exec_break_masked(*exit_scopes, *addr)?;
 					} else {
 						self.exec_break(*exit_scopes, *addr)?;
@@ -336,7 +336,7 @@ impl<'a> Vm<'a> {
 					exit_scopes,
 					addr,
 				} => {
-					if self.batch_size > 1 && !self.loop_mask_stack.is_empty() {
+					if self.batch_size != 1 && !self.loop_mask_stack.is_empty() {
 						self.exec_continue_masked(*exit_scopes, *addr)?;
 					} else {
 						self.exec_continue(*exit_scopes, *addr)?;
@@ -365,7 +365,7 @@ impl<'a> Vm<'a> {
 					self.exec_call(services, tx, name, *arity, *is_procedure_call)?;
 				}
 				Instruction::ReturnValue => {
-					if self.batch_size > 1 && self.has_masked_return() {
+					if self.batch_size != 1 && self.has_masked_return() {
 						let columns = self.pop_as_columns()?;
 						self.exec_return_value_masked(columns)?;
 					} else {

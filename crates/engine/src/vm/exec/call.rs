@@ -166,7 +166,7 @@ impl<'a> Vm<'a> {
 		arity: usize,
 		name: &Fragment,
 	) -> Result<bool> {
-		if self.batch_size <= 1 {
+		if self.batch_size == 1 {
 			return Ok(false);
 		}
 		if let Some(callable) = self.symbols.resolve_callable(func_name) {

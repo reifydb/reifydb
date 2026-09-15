@@ -38,6 +38,8 @@ mod join_retention_ddl;
 mod memory_limit;
 #[path = "nested_read_policy_bypass.rs"]
 mod nested_read_policy_bypass;
+#[path = "none_operand_expression_types.rs"]
+mod none_operand_expression_types;
 #[path = "plan_cache.rs"]
 mod plan_cache;
 #[path = "positional_insert.rs"]

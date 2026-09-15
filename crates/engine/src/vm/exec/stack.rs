@@ -16,7 +16,7 @@ use crate::{Result, vm::vm::Vm};
 
 impl<'a> Vm<'a> {
 	pub(crate) fn exec_push_const(&mut self, value: &Value) {
-		if self.batch_size > 1 {
+		if self.batch_size != 1 {
 			let mut data = ColumnBuffer::with_capacity(value.get_type(), self.batch_size);
 			for _ in 0..self.batch_size {
 				data.push_value(value.clone());
@@ -29,7 +29,7 @@ impl<'a> Vm<'a> {
 	}
 
 	pub(crate) fn exec_push_none(&mut self) {
-		if self.batch_size > 1 {
+		if self.batch_size != 1 {
 			let data = ColumnBuffer::none_typed(ValueType::Any, self.batch_size);
 			let col = ColumnWithName::new(Fragment::internal("none"), data);
 			self.stack.push(Variable::columns(Columns::new(vec![col])));
@@ -84,7 +84,7 @@ impl<'a> Vm<'a> {
 			}
 		};
 
-		if self.batch_size > 1 && (self.active_mask.is_some() || !self.mask_stack.is_empty()) {
+		if self.batch_size != 1 && (self.active_mask.is_some() || !self.mask_stack.is_empty()) {
 			let mask = self.effective_mask();
 			for col in columns.columns.iter_mut() {
 				col.filter(&mask)?;
