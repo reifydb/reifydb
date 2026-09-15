@@ -8,7 +8,7 @@ use std::sync::{
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::cdc::ConsumerClass,
+	interface::{catalog::flow::FlowId, cdc::ConsumerClass},
 	key::{any::TaggedKey, cdc::CdcConsumerKey},
 	lifecycle::watermark::CheckpointFloor,
 };
@@ -41,20 +41,27 @@ impl CdcConsumerWatermark {
 #[derive(Clone)]
 pub struct FlowCaughtUpWatermark {
 	sample: Arc<dyn Fn() -> CommitVersion + Send + Sync>,
+	poisoned: Arc<dyn Fn() -> Vec<(FlowId, String)> + Send + Sync>,
 }
 
 impl FlowCaughtUpWatermark {
-	pub fn new<F>(sample: F) -> Self
+	pub fn new<F, P>(sample: F, poisoned: P) -> Self
 	where
 		F: Fn() -> CommitVersion + Send + Sync + 'static,
+		P: Fn() -> Vec<(FlowId, String)> + Send + Sync + 'static,
 	{
 		Self {
 			sample: Arc::new(sample),
+			poisoned: Arc::new(poisoned),
 		}
 	}
 
 	pub fn get(&self) -> CommitVersion {
 		(self.sample)()
+	}
+
+	pub fn poisoned(&self) -> Vec<(FlowId, String)> {
+		(self.poisoned)()
 	}
 }
 

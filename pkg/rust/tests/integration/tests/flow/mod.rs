@@ -2,3 +2,4 @@
 // Copyright (c) 2026 ReifyDB
 
 mod state;
+mod wait_poisoned;

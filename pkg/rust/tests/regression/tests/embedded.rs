@@ -62,7 +62,7 @@ impl testscript::runner::Runner for Runner {
 				if !watermarks.cdc().wait_for_flow_consumer(
 					target,
 					ValueDuration::from_nanos_infallible(10_000_000_000),
-				) {
+				)? {
 					return Err("flows did not catch up".into());
 				}
 			}

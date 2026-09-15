@@ -109,6 +109,7 @@ impl TestDb {
 		watermarks
 			.cdc()
 			.wait_for_flow_consumer(target, ValueDuration::from_nanos_infallible(timeout.as_nanos() as u64))
+			.unwrap_or_else(|e| panic!("awaiting deferred flows failed: {e}"))
 	}
 
 	pub fn stop(&mut self) {
