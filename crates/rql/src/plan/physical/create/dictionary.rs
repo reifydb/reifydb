@@ -3,10 +3,12 @@
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
-	Result, convert_data_type_with_constraints,
+	Result,
+	ast::ast::AstType,
+	convert_data_type_with_constraints,
 	plan::{
 		logical,
 		physical::{Compiler, CreateDictionaryNode, PhysicalPlan},
@@ -36,8 +38,8 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		};
 
-		let value_type = convert_data_type_with_constraints(&create.value_type)?.get_type();
-		let id_type = convert_data_type_with_constraints(&create.id_type)?.get_type();
+		let value_type = self.dictionary_type(&create, &create.value_type)?;
+		let id_type = self.dictionary_type(&create, &create.id_type)?;
 
 		Ok(PhysicalPlan::CreateDictionary(CreateDictionaryNode {
 			namespace,
@@ -46,5 +48,32 @@ impl<'bump> Compiler<'bump> {
 			value_type,
 			id_type,
 		}))
+	}
+
+	fn dictionary_type(
+		&mut self,
+		create: &logical::CreateDictionaryNode<'_>,
+		ast_type: &AstType<'_>,
+	) -> Result<ValueType> {
+		let ty = convert_data_type_with_constraints(ast_type)?.get_type();
+		if holds_digest(&ty) {
+			return Err(CatalogError::DictionaryTypeUnsupported {
+				dictionary: create.dictionary.name.text().to_string(),
+				ty,
+				fragment: self.interner.intern_fragment(ast_type.name_fragment()),
+			}
+			.into());
+		}
+		Ok(ty)
+	}
+}
+
+fn holds_digest(ty: &ValueType) -> bool {
+	match ty {
+		ValueType::Digest {
+			..
+		} => true,
+		ValueType::Option(inner) => holds_digest(inner),
+		_ => false,
 	}
 }

@@ -11,12 +11,13 @@ use reifydb_value::{
 	Result,
 	value::{
 		constraint::{Constraint, TypeConstraint},
+		digest::{Digest, DigestError, literal::parse_accuracy},
 		value_type::ValueType,
 	},
 };
 
 use crate::{
-	ast::ast::{AstLiteral, AstType},
+	ast::ast::{AstLiteral, AstType, AstTypeParameter},
 	bump::BumpFragment,
 	diagnostic::AstError,
 };
@@ -78,6 +79,10 @@ pub(crate) fn convert_data_type(ast: &BumpFragment<'_>) -> Result<ValueType> {
 
 pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeConstraint> {
 	match ast {
+		AstType::Unconstrained(name) if is_digest(name) => Err(AstError::DigestAccuracyMissing {
+			fragment: name.to_owned(),
+		}
+		.into()),
 		AstType::Unconstrained(name) => {
 			let base_type = convert_data_type(name)?;
 			Ok(TypeConstraint::unconstrained(base_type))
@@ -85,27 +90,37 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 		AstType::Constrained {
 			name,
 			params,
+		} if is_digest(name) => Ok(TypeConstraint::unconstrained(convert_digest_type(name, params)?)),
+		AstType::Constrained {
+			name,
+			params,
 		} => {
 			let base_type = convert_data_type(name)?;
 
 			let constraint = match (base_type.clone(), params.as_slice()) {
-				(ValueType::Utf8, [AstLiteral::Number(n)]) => {
+				(ValueType::Utf8, [AstTypeParameter::Literal(AstLiteral::Number(n))]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
 					Constraint::MaxBytes(max_bytes.into())
 				}
-				(ValueType::Blob, [AstLiteral::Number(n)]) => {
+				(ValueType::Blob, [AstTypeParameter::Literal(AstLiteral::Number(n))]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
 					Constraint::MaxBytes(max_bytes.into())
 				}
-				(ValueType::Int, [AstLiteral::Number(n)]) => {
+				(ValueType::Int, [AstTypeParameter::Literal(AstLiteral::Number(n))]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
 					Constraint::MaxBytes(max_bytes.into())
 				}
-				(ValueType::Uint, [AstLiteral::Number(n)]) => {
+				(ValueType::Uint, [AstTypeParameter::Literal(AstLiteral::Number(n))]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
 					Constraint::MaxBytes(max_bytes.into())
 				}
-				(ValueType::Decimal, [AstLiteral::Number(p), AstLiteral::Number(s)]) => {
+				(
+					ValueType::Decimal,
+					[
+						AstTypeParameter::Literal(AstLiteral::Number(p)),
+						AstTypeParameter::Literal(AstLiteral::Number(s)),
+					],
+				) => {
 					let precision = parse_number_literal(p.value())? as u8;
 					let scale = parse_number_literal(s.value())? as u8;
 					Constraint::PrecisionScale(precision.into(), scale.into())
@@ -141,6 +156,86 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 
 fn parse_number_literal(s: &str) -> Result<usize> {
 	s.parse::<usize>().map_err(|_| internal_error!("Invalid number literal: {}", s))
+}
+
+fn is_digest(name: &BumpFragment<'_>) -> bool {
+	name.text().eq_ignore_ascii_case("digest")
+}
+
+fn convert_digest_type(name: &BumpFragment<'_>, params: &[AstTypeParameter<'_>]) -> Result<ValueType> {
+	let (input, accuracy) = match params {
+		[] => {
+			return Err(AstError::DigestAccuracyMissing {
+				fragment: name.to_owned(),
+			}
+			.into());
+		}
+		[input] => {
+			return Err(AstError::DigestAccuracyMissing {
+				fragment: input.fragment().to_owned(),
+			}
+			.into());
+		}
+		[input, accuracy] => (input, accuracy),
+		[_, _, extra, ..] => {
+			return Err(AstError::DigestTooManyParameters {
+				fragment: extra.fragment().to_owned(),
+			}
+			.into());
+		}
+	};
+
+	let AstTypeParameter::Type(input_type) = input else {
+		return Err(AstError::DigestInputNotAType {
+			fragment: input.fragment().to_owned(),
+		}
+		.into());
+	};
+	let input_constraint = convert_data_type_with_constraints(input_type)?;
+	if input_constraint.constraint().is_some() {
+		return Err(AstError::UnsupportedTypeParameters {
+			fragment: input_type.name_fragment().to_owned(),
+		}
+		.into());
+	}
+
+	let accuracy_fragment = accuracy.fragment().to_owned();
+	let accuracy = match accuracy {
+		AstTypeParameter::Literal(AstLiteral::Number(number)) => parse_accuracy(number.value()),
+		_ => Err(DigestError::AccuracyNotANumber),
+	}
+	.map_err(|failure| match failure {
+		DigestError::AccuracyOutOfRange => AstError::DigestAccuracyOutOfRange {
+			fragment: accuracy_fragment,
+		}
+		.into(),
+		DigestError::AccuracyNotWholePpm => AstError::DigestAccuracyNotWholePpm {
+			fragment: accuracy_fragment,
+		}
+		.into(),
+		DigestError::AccuracyNotANumber => AstError::DigestAccuracyNotANumber {
+			fragment: accuracy_fragment,
+		}
+		.into(),
+		other => internal_error!("digest accuracy parse failed: {}", other),
+	})?;
+
+	let inner = input_constraint.get_type();
+	Digest::new(inner.clone(), accuracy).map_err(|failure| match failure {
+		DigestError::UnsupportedInnerType {
+			inner,
+		} => AstError::DigestInputTypeUnsupported {
+			inner,
+			fragment: input_type.name_fragment().to_owned(),
+		}
+		.into(),
+		other => internal_error!("digest type check failed: {}", other),
+	})?;
+
+	Ok(ValueType::Digest {
+		inner: Box::new(inner),
+		accuracy,
+	})
 }
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};

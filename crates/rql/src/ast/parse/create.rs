@@ -21,8 +21,8 @@ use crate::{
 			AstJoinPick, AstJoinRetention, AstPersistent, AstPolicyTargetType, AstPrimaryKey,
 			AstProcedureParam, AstQueueDeduplicate, AstQueueDispatch, AstQueueFifo, AstQueueRetention,
 			AstQueueRetry, AstRelationshipCardinality, AstRelationshipJunction, AstRowSettings,
-			AstStatement, AstTimeDeclaration, AstTimestampPrecision, AstTtl, AstType, AstVariant,
-			AstViewStorageKind, AstViewWithClause,
+			AstStatement, AstTimeDeclaration, AstTimestampPrecision, AstTtl, AstType, AstTypeParameter,
+			AstVariant, AstViewStorageKind, AstViewWithClause,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -1850,23 +1850,30 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if !self.is_eof() && self.current()?.is_operator(Operator::OpenParen) {
-			self.consume_operator(Operator::OpenParen)?;
-			let mut params = Vec::new();
-
-			params.push(self.parse_literal_number()?);
-
-			while self.consume_if(TokenKind::Separator(Comma))?.is_some() {
-				params.push(self.parse_literal_number()?);
-			}
-
-			self.consume_operator(Operator::CloseParen)?;
-
 			Ok(AstType::Constrained {
 				name: ty_token.fragment,
-				params,
+				params: self.parse_type_parameters()?,
 			})
 		} else {
 			Ok(AstType::Unconstrained(ty_token.fragment))
+		}
+	}
+
+	pub(crate) fn parse_type_parameters(&mut self) -> Result<Vec<AstTypeParameter<'bump>>> {
+		self.consume_operator(Operator::OpenParen)?;
+		let mut params = vec![self.parse_type_parameter()?];
+		while self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+			params.push(self.parse_type_parameter()?);
+		}
+		self.consume_operator(Operator::CloseParen)?;
+		Ok(params)
+	}
+
+	fn parse_type_parameter(&mut self) -> Result<AstTypeParameter<'bump>> {
+		match self.current()?.kind {
+			TokenKind::Identifier | TokenKind::Keyword(_) => Ok(AstTypeParameter::Type(self.parse_type()?)),
+			TokenKind::Literal(kind) => Ok(AstTypeParameter::Literal(self.parse_literal(kind)?)),
+			_ => Ok(AstTypeParameter::Literal(self.parse_literal_number()?)),
 		}
 	}
 
@@ -1915,20 +1922,9 @@ impl<'bump> Parser<'bump> {
 				name: name_token.fragment,
 			}
 		} else if !self.is_eof() && self.current()?.is_operator(Operator::OpenParen) {
-			self.consume_operator(Operator::OpenParen)?;
-			let mut params = Vec::new();
-
-			params.push(self.parse_literal_number()?);
-
-			while self.consume_if(TokenKind::Separator(Comma))?.is_some() {
-				params.push(self.parse_literal_number()?);
-			}
-
-			self.consume_operator(Operator::CloseParen)?;
-
 			AstType::Constrained {
 				name: ty_token.fragment,
-				params,
+				params: self.parse_type_parameters()?,
 			}
 		} else {
 			AstType::Unconstrained(ty_token.fragment)

@@ -158,6 +158,13 @@ pub enum CatalogError {
 		fragment: Fragment,
 	},
 
+	#[error("dictionary `{dictionary}` does not support type `{ty}`")]
+	DictionaryTypeUnsupported {
+		dictionary: String,
+		ty: ValueType,
+		fragment: Fragment,
+	},
+
 	#[error("auto increment is not supported for type `{ty}`")]
 	AutoIncrementInvalidType {
 		column: String,
@@ -644,7 +651,7 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 				label: Some("unsupported user attribute type".to_string()),
 				help: Some(
-					"`any` and `option` types are not supported; attributes are inherently optional (unset reads as none)"
+					"`any`, `option` and `digest` types are not supported; attributes are inherently optional (unset reads as none) and a digest has no user attribute encoding"
 						.to_string(),
 				),
 				column: None,
@@ -807,6 +814,26 @@ impl IntoDiagnostic for CatalogError {
 					"change the column type to `{}` to match the dictionary value type",
 					dictionary_value_type
 				)),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::DictionaryTypeUnsupported {
+				dictionary,
+				ty,
+				fragment,
+			} => Diagnostic {
+				code: "CA_099".to_string(),
+				rql: None,
+				message: format!("dictionary `{}` does not support type `{}`", dictionary, ty),
+				fragment,
+				label: Some("unsupported dictionary type".to_string()),
+				help: Some(
+					"A digest has no key encoding, so a dictionary can neither store nor be keyed by one; keep digests in a table column"
+						.to_string(),
+				),
 				column: None,
 				notes: vec![],
 				cause: None,
