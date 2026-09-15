@@ -140,9 +140,14 @@ impl<'a> Vm<'a> {
 		name: &Fragment,
 		arity: u8,
 		is_procedure_call: bool,
+		type_arguments: &[(usize, Fragment)],
 	) -> Result<()> {
 		let arity = arity as usize;
 		let func_name = name.text();
+
+		if !type_arguments.is_empty() && self.resolves_to_user_routine(services, tx, func_name)? {
+			self.rebind_type_arguments(arity, type_arguments)?;
+		}
 
 		if self.try_call_columnar(services, tx, func_name, arity, name)? {
 			return Ok(());
@@ -155,6 +160,34 @@ impl<'a> Vm<'a> {
 		}
 
 		self.dispatch_resolved_procedure(services, tx, args, name, func_name, is_procedure_call)
+	}
+
+	fn resolves_to_user_routine(
+		&self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		func_name: &str,
+	) -> Result<bool> {
+		if self.symbols.resolve_callable(func_name).is_some() {
+			return Ok(true);
+		}
+		let mut tx_tmp = tx.reborrow();
+		Ok(services.catalog.find_procedure_by_qualified_name(&mut tx_tmp, func_name)?.is_some())
+	}
+
+	fn rebind_type_arguments(&mut self, arity: usize, type_arguments: &[(usize, Fragment)]) -> Result<()> {
+		let mut args = Vec::with_capacity(arity);
+		for _ in 0..arity {
+			args.push(self.stack.pop()?);
+		}
+		args.reverse();
+		for (index, arg) in args.into_iter().enumerate() {
+			match type_arguments.iter().find(|(position, _)| *position == index) {
+				Some((_, name)) => self.exec_load_var(name)?,
+				None => self.stack.push(arg),
+			}
+		}
+		Ok(())
 	}
 
 	#[inline]

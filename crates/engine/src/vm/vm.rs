@@ -361,8 +361,9 @@ impl<'a> Vm<'a> {
 					name,
 					arity,
 					is_procedure_call,
+					type_arguments,
 				} => {
-					self.exec_call(services, tx, name, *arity, *is_procedure_call)?;
+					self.exec_call(services, tx, name, *arity, *is_procedure_call, type_arguments)?;
 				}
 				Instruction::ReturnValue => {
 					if self.batch_size != 1 && self.has_masked_return() {

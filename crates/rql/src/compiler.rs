@@ -811,6 +811,7 @@ impl InstructionCompiler {
 			Expression::Call(c) => {
 				let arity = c.args.len();
 				let function = self.routines.get_function(c.func.0.text());
+				let mut type_arguments = Vec::new();
 				for (index, arg) in c.args.iter().enumerate() {
 					if let Expression::Column(col) = arg
 						&& function.as_ref().is_some_and(|function| {
@@ -818,6 +819,7 @@ impl InstructionCompiler {
 						}) && let Ok(ty) = ValueType::from_str(col.0.name.text())
 					{
 						self.emit(Instruction::PushConst(Value::Type(ty)));
+						type_arguments.push((index, col.0.name.clone()));
 					} else {
 						self.compile_expression(arg)?;
 					}
@@ -826,6 +828,7 @@ impl InstructionCompiler {
 					name: c.func.0.clone(),
 					arity: arity as u8,
 					is_procedure_call: false,
+					type_arguments,
 				});
 			}
 			Expression::Cast(c) => {
@@ -1481,6 +1484,7 @@ impl InstructionCompiler {
 					name: node.name,
 					arity: arity as u8,
 					is_procedure_call: node.is_procedure_call,
+					type_arguments: Vec::new(),
 				});
 				self.emit(Instruction::Emit);
 			}

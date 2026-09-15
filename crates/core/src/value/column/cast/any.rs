@@ -41,9 +41,17 @@ pub fn from_any(
 			continue;
 		}
 
-		let value = &any_container.data()[i];
+		let value = any_container.data()[i].unwrap_any();
 
 		let single_column = ColumnBuffer::from(value.clone());
+		if let ColumnBuffer::Any(_) = single_column {
+			return Err(TypeError::UnsupportedCast {
+				from: data.get_type(),
+				to: target,
+				fragment: lazy_fragment.fragment(),
+			}
+			.into());
+		}
 		match cast_column_data(ctx, &single_column, target.clone(), lazy_fragment.clone()) {
 			Ok(result) => temp_results.push(Some(result)),
 			Err(e) => {

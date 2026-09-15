@@ -9,6 +9,8 @@ mod bulk_insert;
 mod call_argument_named_like_a_type;
 #[path = "callable_call_policy.rs"]
 mod callable_call_policy;
+#[path = "cast_list_to_text.rs"]
+mod cast_list_to_text;
 #[path = "cast_target_diagnostics.rs"]
 mod cast_target_diagnostics;
 
@@ -62,10 +64,14 @@ mod none_operand_expression_types;
 mod plan_cache;
 #[path = "positional_insert.rs"]
 mod positional_insert;
+#[path = "procedure_named_like_a_builtin.rs"]
+mod procedure_named_like_a_builtin;
 #[path = "procedure_param_coercion.rs"]
 mod procedure_param_coercion;
 #[path = "procedure_read_policy_bypass.rs"]
 mod procedure_read_policy_bypass;
+#[path = "procedure_shadowing_type_arguments.rs"]
+mod procedure_shadowing_type_arguments;
 #[path = "queue/main.rs"]
 mod queue;
 #[path = "read_only.rs"]
