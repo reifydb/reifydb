@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine::function::{default_in_process_functions, stats::approx_percentile::ApproxPercentile};
-use reifydb_routine_abi::{Routine, context::FunctionContext, error::RoutineError, registry::Routines};
+use reifydb_routine_abi::{Function, Routine, context::FunctionContext, error::RoutineError, registry::Routines};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	fragment::Fragment,
@@ -298,7 +298,8 @@ fn a_non_numeric_p_and_a_wrong_arity_are_errors() {
 		"got {err:?}"
 	);
 
-	let err = call(vec![digest_column(ValueType::Float8, &digests)]).unwrap_err();
+	let err =
+		ApproxPercentile::new().arity().check(&Fragment::internal("stats::approx_percentile"), 1).unwrap_err();
 	assert!(
 		matches!(
 			err,

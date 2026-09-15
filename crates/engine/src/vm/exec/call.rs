@@ -914,6 +914,7 @@ impl<'a> Vm<'a> {
 		args: Vec<Value>,
 		name: &Fragment,
 	) -> Result<()> {
+		generator.arity().check(name, args.len())?;
 		let arg_columns: Vec<ColumnWithName> = args
 			.into_iter()
 			.enumerate()
@@ -951,6 +952,7 @@ impl<'a> Vm<'a> {
 				fragment: name.clone(),
 			})
 		})?;
+		function.arity().check(name, args.len())?;
 
 		let arg_columns: Vec<ColumnWithName> = args
 			.into_iter()

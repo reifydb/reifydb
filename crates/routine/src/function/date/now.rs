@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{container::temporal::TemporalContainer, datetime::DateTime, value_type::ValueType};
 
@@ -35,14 +35,6 @@ impl<'a> Routine<FunctionContext<'a>> for DateNow {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if !args.is_empty() {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 0,
-				actual: args.len(),
-			});
-		}
-
 		let row_count = args.row_count().max(1);
 
 		let millis = ctx.runtime_context.clock.now().to_millis();
@@ -61,5 +53,9 @@ impl<'a> Routine<FunctionContext<'a>> for DateNow {
 impl Function for DateNow {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(0)
 	}
 }

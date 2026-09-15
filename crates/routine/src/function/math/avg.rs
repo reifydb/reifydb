@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::{
-	Accumulator, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo, context::FunctionContext,
+	Accumulator, Arity, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo, context::FunctionContext,
 	error::RoutineError,
 };
 use reifydb_value::{
@@ -99,14 +99,6 @@ impl<'a> Routine<FunctionContext<'a>> for Avg {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.is_empty() {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 1,
-				actual: 0,
-			});
-		}
-
 		let row_count = args.row_count();
 		let input_type = args[0].get_type();
 		let result_type = avg_return_type(&input_type);
@@ -296,6 +288,10 @@ fn execute_decimal<'a>(
 impl Function for Avg {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar, FunctionKind::Aggregate]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::AtLeast(1)
 	}
 
 	fn accumulator(

@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
 	container::temporal::TemporalContainer, date::Date, duration::Duration, value_type::ValueType,
@@ -37,14 +37,6 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeAge {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.len() != 2 {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 2,
-				actual: args.len(),
-			});
-		}
-
 		let col1 = &args[0];
 		let col2 = &args[1];
 		let (data1, bitvec1) = col1.unwrap_option();
@@ -148,5 +140,9 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeAge {
 impl Function for DateTimeAge {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(2)
 	}
 }

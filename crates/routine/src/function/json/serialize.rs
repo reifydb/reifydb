@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{Value, value_type::ValueType};
 
@@ -89,14 +89,6 @@ impl<'a> Routine<FunctionContext<'a>> for JsonSerialize {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.len() != 1 {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 1,
-				actual: args.len(),
-			});
-		}
-
 		let column = &args[0];
 		let (data, bitvec) = column.unwrap_option();
 		let row_count = data.len();
@@ -119,5 +111,9 @@ impl<'a> Routine<FunctionContext<'a>> for JsonSerialize {
 impl Function for JsonSerialize {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(1)
 	}
 }

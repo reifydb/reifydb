@@ -11,6 +11,8 @@ mod aggregate_invalid_argument_fragment;
 mod apply_unknown_operator;
 #[path = "arithmetic_with_none_in_conditional.rs"]
 mod arithmetic_with_none_in_conditional;
+#[path = "builtin_arity_before_arguments.rs"]
+mod builtin_arity_before_arguments;
 #[path = "bulk_insert.rs"]
 mod bulk_insert;
 #[path = "bulk_insert_mixed_value_types.rs"]

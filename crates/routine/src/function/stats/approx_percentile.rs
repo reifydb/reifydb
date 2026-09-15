@@ -4,7 +4,7 @@
 use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
 	Value,
@@ -95,14 +95,6 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.len() != 2 && args.len() != 3 {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 2,
-				actual: args.len(),
-			});
-		}
-
 		let digest_column = &args[0];
 		let percentile_column = &args[1];
 		let (digest_data, _) = digest_column.unwrap_option();
@@ -176,5 +168,9 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 impl Function for ApproxPercentile {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Range(2, 3)
 	}
 }

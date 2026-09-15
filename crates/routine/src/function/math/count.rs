@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::{
-	Accumulator, AggregateFunctionCapability, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo,
+	Accumulator, AggregateFunctionCapability, Arity, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo,
 	context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{Value, value_type::ValueType};
@@ -68,6 +68,10 @@ impl<'a> Routine<FunctionContext<'a>> for Count {
 impl Function for Count {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar, FunctionKind::Aggregate]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Any
 	}
 
 	fn accumulator(

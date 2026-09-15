@@ -4,7 +4,7 @@
 use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
 	error::TypeError,
@@ -16,7 +16,7 @@ use reifydb_value::{
 };
 
 use crate::function::{
-	math::arith::dispatch::{ensure_arity, ensure_numeric},
+	math::arith::dispatch::ensure_numeric,
 	support::coerce::{CoerceMode, all_rows_none, coerce_column, promote_pair},
 };
 
@@ -56,8 +56,6 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		ensure_arity(ctx, args, 2)?;
-
 		let (base_data, _) = args[0].unwrap_option();
 		let (exp_data, _) = args[1].unwrap_option();
 		ensure_numeric(ctx, base_data, 0)?;
@@ -215,5 +213,9 @@ where
 impl Function for Power {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(2)
 	}
 }

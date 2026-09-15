@@ -667,9 +667,11 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					.collect();
 			let expr = e.clone();
 			CompiledExpr::new(move |ctx| {
-				let type_positions = ctx
-					.routines
-					.get_function(expr.func.0.text())
+				let function = ctx.routines.get_function(expr.func.0.text());
+				if let Some(function) = &function {
+					function.arity().check(&expr.func.0, compiled_args.len())?;
+				}
+				let type_positions = function
 					.map(|function| function.type_argument_positions().to_vec())
 					.unwrap_or_default();
 				let mut arg_columns = Vec::with_capacity(compiled_args.len());

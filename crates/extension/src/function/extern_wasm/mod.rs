@@ -5,7 +5,7 @@ pub mod loader;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_sdk::common::extern_wasm::marshal::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
 use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
@@ -76,5 +76,9 @@ impl<'a> Routine<FunctionContext<'a>> for ExternWasmScalarFunction {
 impl Function for ExternWasmScalarFunction {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Any
 	}
 }

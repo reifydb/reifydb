@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{container::temporal::TemporalContainer, date::Date, value_type::ValueType};
 
@@ -35,14 +35,6 @@ impl<'a> Routine<FunctionContext<'a>> for DateSubtract {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.len() != 2 {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 2,
-				actual: args.len(),
-			});
-		}
-
 		let date_col = &args[0];
 		let dur_col = &args[1];
 		let (date_data, date_bitvec) = date_col.unwrap_option();
@@ -121,6 +113,10 @@ impl<'a> Routine<FunctionContext<'a>> for DateSubtract {
 impl Function for DateSubtract {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(2)
 	}
 }
 

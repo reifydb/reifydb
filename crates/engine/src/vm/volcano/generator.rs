@@ -102,6 +102,7 @@ impl QueryNode for GeneratorNode {
 
 		let name = self.function_name.text();
 		if let Some(func) = ctx.services.routines.get_generator_function(name) {
+			func.arity().check(&self.function_name, self.expressions.len())?;
 			self.generator = Some(GeneratorImpl::Function(func));
 		} else if let Some(proc) = ctx.services.routines.get_procedure(name) {
 			self.generator = Some(GeneratorImpl::Procedure(proc));

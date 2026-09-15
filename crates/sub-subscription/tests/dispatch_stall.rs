@@ -19,7 +19,9 @@ use std::{
 
 use reifydb::{
 	Params, embedded,
-	routine::abi::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError},
+	routine::abi::{
+		Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	},
 	testing::db::TestDb,
 };
 use reifydb_core::{
@@ -73,6 +75,10 @@ impl<'a> Routine<FunctionContext<'a>> for LatchedPass {
 impl Function for LatchedPass {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(1)
 	}
 }
 

@@ -153,8 +153,37 @@ pub struct LiteralArgument {
 	pub fragment: Fragment,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Arity {
+	Exact(usize),
+	Range(usize, usize),
+	AtLeast(usize),
+	Any,
+}
+
+impl Arity {
+	pub fn check(self, function: &Fragment, actual: usize) -> Result<(), RoutineError> {
+		let (accepted, expected) = match self {
+			Arity::Exact(count) => (actual == count, count),
+			Arity::Range(min, max) => ((min..=max).contains(&actual), min),
+			Arity::AtLeast(min) => (actual >= min, min),
+			Arity::Any => (true, 0),
+		};
+		if accepted {
+			return Ok(());
+		}
+		Err(RoutineError::FunctionArityMismatch {
+			function: function.clone(),
+			expected,
+			actual,
+		})
+	}
+}
+
 pub trait Function: for<'a> Routine<context::FunctionContext<'a>> {
 	fn kinds(&self) -> &[FunctionKind];
+
+	fn arity(&self) -> Arity;
 
 	fn accumulator(
 		&self,

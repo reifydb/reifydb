@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::{
-	Accumulator, Function, FunctionKind, LiteralArgument, LiteralKind, Routine, RoutineInfo,
+	Accumulator, Arity, Function, FunctionKind, LiteralArgument, LiteralKind, Routine, RoutineInfo,
 	context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
@@ -68,6 +68,10 @@ impl<'a> Routine<FunctionContext<'a>> for StatsDigest {
 impl Function for StatsDigest {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Aggregate]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Any
 	}
 
 	fn accumulator(

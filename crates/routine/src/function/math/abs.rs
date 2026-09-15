@@ -4,7 +4,7 @@
 use num_traits::sign::Signed;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
 	container::number::NumberContainer, decimal::Decimal, int::Int, uint::Uint, value_type::ValueType,
@@ -38,14 +38,6 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.len() != 1 {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 1,
-				actual: args.len(),
-			});
-		}
-
 		let column = &args[0];
 		let (data, bitvec) = column.unwrap_option();
 		let row_count = data.len();
@@ -314,5 +306,9 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 impl Function for Abs {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(1)
 	}
 }

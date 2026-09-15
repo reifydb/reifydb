@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::value_type::ValueType;
 
@@ -34,15 +34,7 @@ impl<'a> Routine<FunctionContext<'a>> for IsAnonymous {
 		ValueType::Boolean
 	}
 
-	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if !args.is_empty() {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 0,
-				actual: args.len(),
-			});
-		}
-
+	fn execute(&self, ctx: &mut FunctionContext<'a>, _args: &Columns) -> Result<Columns, RoutineError> {
 		let is_anonymous = ctx.identity.is_anonymous();
 		let row_count = ctx.row_count.max(1);
 		let data: Vec<bool> = vec![is_anonymous; row_count];
@@ -54,5 +46,9 @@ impl<'a> Routine<FunctionContext<'a>> for IsAnonymous {
 impl Function for IsAnonymous {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(0)
 	}
 }

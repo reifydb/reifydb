@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
 	util::bitvec::BitVec,
@@ -38,14 +38,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextConcat {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.len() < 2 {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 2,
-				actual: args.len(),
-			});
-		}
-
 		let mut unwrapped: Vec<(&ColumnBuffer, Option<&BitVec>)> = Vec::with_capacity(args.len());
 		for col in args.iter() {
 			unwrapped.push(col.data().unwrap_option());
@@ -126,5 +118,9 @@ impl<'a> Routine<FunctionContext<'a>> for TextConcat {
 impl Function for TextConcat {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::AtLeast(2)
 	}
 }

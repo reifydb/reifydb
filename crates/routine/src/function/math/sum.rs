@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::{
-	Accumulator, AggregateFunctionCapability, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo,
+	Accumulator, AggregateFunctionCapability, Arity, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo,
 	context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
@@ -55,14 +55,6 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.is_empty() {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 1,
-				actual: 0,
-			});
-		}
-
 		let row_count = args.row_count();
 		let mut results = Vec::with_capacity(row_count);
 
@@ -78,6 +70,10 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 impl Function for Sum {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar, FunctionKind::Aggregate]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::AtLeast(1)
 	}
 
 	fn accumulator(
