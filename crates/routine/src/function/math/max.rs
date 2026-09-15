@@ -108,21 +108,23 @@ impl Function for Max {
 
 	fn accumulator(
 		&self,
-		_ctx: &mut FunctionContext<'_>,
+		ctx: &mut FunctionContext<'_>,
 		_literals: &[LiteralArgument],
 	) -> Result<Option<Box<dyn Accumulator>>, RoutineError> {
-		Ok(Some(Box::new(MaxAccumulator::new())))
+		Ok(Some(Box::new(MaxAccumulator::new(ctx.fragment.clone()))))
 	}
 }
 
 struct MaxAccumulator {
+	function: Fragment,
 	pub maxs: GroupSlots<Value>,
 	input_type: Option<ValueType>,
 }
 
 impl MaxAccumulator {
-	pub fn new() -> Self {
+	pub fn new(function: Fragment) -> Self {
 		Self {
+			function,
 			maxs: GroupSlots::new(),
 			input_type: None,
 		}
@@ -349,7 +351,7 @@ impl Accumulator for MaxAccumulator {
 				Ok(())
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
-				function: Fragment::internal("math::max"),
+				function: self.function.clone(),
 				argument_index: 0,
 				expected: InputTypes::numeric().expected_at(0).to_vec(),
 				actual: other.get_type(),

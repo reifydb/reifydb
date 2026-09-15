@@ -5,6 +5,8 @@
 mod aggregate;
 #[path = "aggregate_arguments.rs"]
 mod aggregate_arguments;
+#[path = "aggregate_invalid_argument_fragment.rs"]
+mod aggregate_invalid_argument_fragment;
 #[path = "apply_unknown_operator.rs"]
 mod apply_unknown_operator;
 #[path = "arithmetic_with_none_in_conditional.rs"]

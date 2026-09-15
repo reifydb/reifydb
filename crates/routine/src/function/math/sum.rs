@@ -86,10 +86,10 @@ impl Function for Sum {
 
 	fn accumulator(
 		&self,
-		_ctx: &mut FunctionContext<'_>,
+		ctx: &mut FunctionContext<'_>,
 		_literals: &[LiteralArgument],
 	) -> Result<Option<Box<dyn Accumulator>>, RoutineError> {
-		Ok(Some(Box::new(SumAccumulator::new())))
+		Ok(Some(Box::new(SumAccumulator::new(ctx.fragment.clone()))))
 	}
 
 	fn aggregate_capabilities(&self) -> &[AggregateFunctionCapability] {
@@ -98,13 +98,15 @@ impl Function for Sum {
 }
 
 struct SumAccumulator {
+	function: Fragment,
 	pub sums: GroupSlots<Value>,
 	input_type: Option<ValueType>,
 }
 
 impl SumAccumulator {
-	pub fn new() -> Self {
+	pub fn new(function: Fragment) -> Self {
 		Self {
+			function,
 			sums: GroupSlots::new(),
 			input_type: None,
 		}
@@ -347,7 +349,7 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
-				function: Fragment::internal("math::sum"),
+				function: self.function.clone(),
 				argument_index: 0,
 				expected: InputTypes::numeric().expected_at(0).to_vec(),
 				actual: other.get_type(),
@@ -493,7 +495,7 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
-				function: Fragment::internal("math::sum"),
+				function: self.function.clone(),
 				argument_index: 0,
 				expected: InputTypes::numeric().expected_at(0).to_vec(),
 				actual: other.get_type(),

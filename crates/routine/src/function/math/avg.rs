@@ -304,14 +304,15 @@ impl Function for Avg {
 
 	fn accumulator(
 		&self,
-		_ctx: &mut FunctionContext<'_>,
+		ctx: &mut FunctionContext<'_>,
 		_literals: &[LiteralArgument],
 	) -> Result<Option<Box<dyn Accumulator>>, RoutineError> {
-		Ok(Some(Box::new(AvgAccumulator::new())))
+		Ok(Some(Box::new(AvgAccumulator::new(ctx.fragment.clone()))))
 	}
 }
 
 struct AvgAccumulator {
+	function: Fragment,
 	state: AvgState,
 	counts: GroupSlots<u64>,
 	input_type: Option<ValueType>,
@@ -326,8 +327,9 @@ enum AvgState {
 }
 
 impl AvgAccumulator {
-	pub fn new() -> Self {
+	pub fn new(function: Fragment) -> Self {
 		Self {
+			function,
 			state: AvgState::Unset,
 			counts: GroupSlots::new(),
 			input_type: None,
@@ -531,7 +533,7 @@ impl Accumulator for AvgAccumulator {
 			}
 			(_, other) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
-					function: Fragment::internal("math::avg"),
+					function: self.function.clone(),
 					argument_index: 0,
 					expected: InputTypes::numeric().expected_at(0).to_vec(),
 					actual: other.get_type(),
