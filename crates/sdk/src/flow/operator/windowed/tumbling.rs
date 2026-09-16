@@ -58,7 +58,7 @@ const SEAL_REAP_BATCH: usize = 256;
 type AccumulatorContribution<A> = <<A as TumblingOperator>::Accumulator as WindowAccumulator>::Contribution;
 type AccumulatorValue<A> = <<A as TumblingOperator>::Accumulator as WindowAccumulator>::Output;
 type Anchor<A> = SlotCoord<<A as TumblingOperator>::WindowSlot>;
-type Lateness<A> = <Anchor<A> as SealDomain>::Lateness;
+type SealSpan<A> = <Anchor<A> as SealDomain>::SealSpan;
 type Buckets<A> = TumblingBuckets<<A as TumblingOperator>::GroupKey, Anchor<A>, AccumulatorContribution<A>>;
 type WindowOrder<A> = Vec<(<A as TumblingOperator>::GroupKey, WindowSpan<Anchor<A>>)>;
 
@@ -84,7 +84,7 @@ pub trait TumblingOperator {
 
 	fn window_for(&self, coord: SlotCoord<Self::WindowSlot>) -> WindowSpan<SlotCoord<Self::WindowSlot>>;
 
-	fn lateness(&self) -> Option<<SlotCoord<Self::WindowSlot> as SealDomain>::Lateness> {
+	fn seal_span(&self) -> Option<<SlotCoord<Self::WindowSlot> as SealDomain>::SealSpan> {
 		None
 	}
 
@@ -206,9 +206,9 @@ where
 		reap_queue_empty: &mut bool,
 		store: &mut GuestAsHost<'_, C>,
 		frontier: Anchor<A>,
-		lateness: Lateness<A>,
+		seal_span: SealSpan<A>,
 	) -> Result<()> {
-		let horizon = <Anchor<A> as SealDomain>::horizon(frontier, lateness);
+		let horizon = <Anchor<A> as SealDomain>::horizon(frontier, seal_span);
 		if horizon <= <Anchor<A> as Coord>::from_order(0) {
 			return Ok(());
 		}
@@ -232,7 +232,7 @@ where
 		let drained = drain(store, engine, SEAL_REAP_BATCH)?;
 		*reap_queue_empty = drained.queue_is_empty();
 		if !*reap_queue_empty {
-			observe_batch(store, frontier, lateness)?;
+			observe_batch(store, frontier, seal_span)?;
 		}
 		Ok(())
 	}
@@ -309,7 +309,7 @@ where
 	}
 
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
-		let Some(lateness) = self.aggregator.lateness() else {
+		let Some(seal_span) = self.aggregator.seal_span() else {
 			return Ok(());
 		};
 		let Self {
@@ -321,11 +321,11 @@ where
 		let Some(frontier) = timer_frontier::<Anchor<A>>(&mut store, timer)? else {
 			return Ok(());
 		};
-		Self::expire_through(engine, reap_queue_empty, &mut store, frontier, lateness)
+		Self::expire_through(engine, reap_queue_empty, &mut store, frontier, seal_span)
 	}
 
-	fn lateness(&self) -> Option<Duration> {
-		self.aggregator.lateness().and_then(<Anchor<A> as SealDomain>::lateness_duration)
+	fn seal_span(&self) -> Option<Duration> {
+		self.aggregator.seal_span().and_then(<Anchor<A> as SealDomain>::seal_span_duration)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
@@ -334,8 +334,8 @@ where
 			return Ok(());
 		}
 
-		let lateness = self.aggregator.lateness();
-		if let Some(lateness) = lateness {
+		let seal_span = self.aggregator.seal_span();
+		if let Some(seal_span) = seal_span {
 			let Self {
 				engine,
 				reap_queue_empty,
@@ -344,10 +344,10 @@ where
 			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, span)| span.start).max();
 			if let Some(newest) = newest {
-				observe_batch(&mut store, newest, lateness)?;
+				observe_batch(&mut store, newest, seal_span)?;
 			}
 			let watermark = seal_frontier::<Anchor<A>>(&mut store)?;
-			let horizon = <Anchor<A> as SealDomain>::horizon(watermark, lateness);
+			let horizon = <Anchor<A> as SealDomain>::horizon(watermark, seal_span);
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {
 				if is_sealed(span.start, horizon) {
@@ -360,7 +360,7 @@ where
 			if dropped > 0 {
 				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
-			Self::expire_through(engine, reap_queue_empty, &mut store, watermark, lateness)?;
+			Self::expire_through(engine, reap_queue_empty, &mut store, watermark, seal_span)?;
 			if buckets.is_empty() {
 				return Ok(());
 			}
@@ -392,7 +392,7 @@ where
 			)?
 		};
 
-		if lateness.is_some() {
+		if seal_span.is_some() {
 			let mut store = GuestAsHost(ctx);
 			for r in &results {
 				if r.kind == EmitKind::Insert {

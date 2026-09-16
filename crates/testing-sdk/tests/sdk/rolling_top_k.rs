@@ -314,7 +314,7 @@ impl RollingTopKOperator for SealedTopVolume {
 		TestTopVolume.bucket_size()
 	}
 
-	fn lateness(&self) -> Option<Duration> {
+	fn seal_span(&self) -> Option<Duration> {
 		Some(millis(120))
 	}
 

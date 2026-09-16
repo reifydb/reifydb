@@ -67,7 +67,7 @@ pub trait RollingTopKOperator {
 
 	type Output: Clone + Debug + PartialEq + StateCodec + HeapSize;
 
-	fn lateness(&self) -> Option<<SlotCoord<Self::WindowSlot> as SealDomain>::Lateness> {
+	fn seal_span(&self) -> Option<<SlotCoord<Self::WindowSlot> as SealDomain>::SealSpan> {
 		None
 	}
 	fn capacity(&self) -> usize;
@@ -186,19 +186,19 @@ where
 	}
 
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
-		let Some(lateness) = self.aggregator.lateness() else {
+		let Some(seal_span) = self.aggregator.seal_span() else {
 			return Ok(());
 		};
 		let mut store = GuestAsHost(ctx);
 		let Some(frontier) = timer_frontier::<Anchor<A>>(&mut store, timer)? else {
 			return Ok(());
 		};
-		let horizon = <Anchor<A> as SealDomain>::horizon(frontier, lateness);
+		let horizon = <Anchor<A> as SealDomain>::horizon(frontier, seal_span);
 		Self::expire_through(&mut self.engine, &mut store, horizon)
 	}
 
-	fn lateness(&self) -> Option<Duration> {
-		self.aggregator.lateness().and_then(<Anchor<A> as SealDomain>::lateness_duration)
+	fn seal_span(&self) -> Option<Duration> {
+		self.aggregator.seal_span().and_then(<Anchor<A> as SealDomain>::seal_span_duration)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
@@ -207,15 +207,15 @@ where
 			return Ok(());
 		}
 
-		let lateness = self.aggregator.lateness();
-		if let Some(lateness) = lateness {
+		let seal_span = self.aggregator.seal_span();
+		if let Some(seal_span) = seal_span {
 			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, coord)| *coord).max();
 			if let Some(newest) = newest {
-				observe_batch(&mut store, newest, lateness)?;
+				observe_batch(&mut store, newest, seal_span)?;
 			}
 			let watermark = seal_frontier::<Anchor<A>>(&mut store)?;
-			let horizon = <Anchor<A> as SealDomain>::horizon(watermark, lateness);
+			let horizon = <Anchor<A> as SealDomain>::horizon(watermark, seal_span);
 			Self::expire_through(&mut self.engine, &mut store, horizon)?;
 			let mut dropped = 0u64;
 			buckets.retain(|(_, coord), events| {

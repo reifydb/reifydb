@@ -13,32 +13,32 @@ use reifydb_value::{
 use crate::operator::state::seal::{coord::Coord, ledger::SealLedger, rule::SEAL_GATE_STEP};
 
 pub trait SealDomain: Coord {
-	type Lateness: Copy + Debug + Send + Sync;
+	type SealSpan: Copy + Debug + Send + Sync;
 
 	fn arms_timer() -> bool;
 
-	fn lateness_duration(lateness: Self::Lateness) -> Option<Duration>;
+	fn seal_span_duration(seal_span: Self::SealSpan) -> Option<Duration>;
 
-	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, lateness: Self::Lateness) -> Result<()>;
+	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, seal_span: Self::SealSpan) -> Result<()>;
 
 	fn frontier(store: &mut (impl StateStore + TimerStore)) -> Result<Self>;
 
-	fn horizon(frontier: Self, lateness: Self::Lateness) -> Self;
+	fn horizon(frontier: Self, seal_span: Self::SealSpan) -> Self;
 }
 
 impl SealDomain for DateTime {
-	type Lateness = Duration;
+	type SealSpan = Duration;
 
 	fn arms_timer() -> bool {
 		true
 	}
 
-	fn lateness_duration(lateness: Duration) -> Option<Duration> {
-		Some(lateness)
+	fn seal_span_duration(seal_span: Duration) -> Option<Duration> {
+		Some(seal_span)
 	}
 
-	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, lateness: Duration) -> Result<()> {
-		let at = newest.saturating_add(lateness).saturating_add(SEAL_GATE_STEP);
+	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, seal_span: Duration) -> Result<()> {
+		let at = newest.saturating_add(seal_span).saturating_add(SEAL_GATE_STEP);
 		store.arm_timer(at, TimerKind::Seal, &EncodedKey::new(Vec::new()))
 	}
 
@@ -48,8 +48,8 @@ impl SealDomain for DateTime {
 		Ok(<DateTime as Coord>::from_order(ledger.max(watermark)))
 	}
 
-	fn horizon(frontier: Self, lateness: Duration) -> Self {
-		frontier.saturating_sub(lateness)
+	fn horizon(frontier: Self, seal_span: Duration) -> Self {
+		frontier.saturating_sub(seal_span)
 	}
 }
 
@@ -124,6 +124,6 @@ mod tests {
 	fn the_wall_clock_domain_seals_on_the_wheel_and_declares_its_lateness_to_the_flow() {
 		// the flow frontier reads this as a wall-clock span, so none would stop holding the watermark back
 		assert!(DateTime::arms_timer());
-		assert_eq!(DateTime::lateness_duration(ms(65_000)), Some(ms(65_000)));
+		assert_eq!(DateTime::seal_span_duration(ms(65_000)), Some(ms(65_000)));
 	}
 }

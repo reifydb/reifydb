@@ -110,7 +110,7 @@ impl<C: GuestOperator + 'static> HostOperator for GuestAdapter<C> {
 	}
 
 	fn seal_span(&self) -> Option<Duration> {
-		self.logic.lateness().filter(|span| !span.is_zero())
+		self.logic.seal_span().filter(|span| !span.is_zero())
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
@@ -216,14 +216,14 @@ mod tests {
 			Ok(())
 		}
 
-		fn lateness(&self) -> Option<Duration> {
+		fn seal_span(&self) -> Option<Duration> {
 			self.0.map(Duration::from_milliseconds_const)
 		}
 	}
 
 	#[test]
 	fn a_mounted_guest_forwards_its_seal_span() {
-		// A mount that swallows the lateness span claims a frontier covering buckets still immutable.
+		// A mount that swallows the seal span claims a frontier covering buckets still immutable.
 		let mounted = mount(SealProbe(Some(65_000)), NODE, &[]);
 
 		assert_eq!(HostOperator::seal_span(&*mounted), Some(Duration::from_milliseconds(65_000).unwrap()));

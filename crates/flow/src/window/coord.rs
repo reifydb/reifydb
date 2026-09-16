@@ -156,17 +156,17 @@ impl Coord for OrdinalCoord {
 }
 
 impl SealDomain for OrdinalCoord {
-	type Lateness = RowSpan;
+	type SealSpan = RowSpan;
 
 	fn arms_timer() -> bool {
 		false
 	}
 
-	fn lateness_duration(_lateness: RowSpan) -> Option<Duration> {
+	fn seal_span_duration(_seal_span: RowSpan) -> Option<Duration> {
 		None
 	}
 
-	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, _lateness: RowSpan) -> Result<()> {
+	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, _seal_span: RowSpan) -> Result<()> {
 		SealLedger::observe(store, newest.to_order())?;
 		Ok(())
 	}
@@ -175,8 +175,8 @@ impl SealDomain for OrdinalCoord {
 		Ok(Self::from_order(SealLedger::read_order(store)?.unwrap_or(0)))
 	}
 
-	fn horizon(frontier: Self, lateness: RowSpan) -> Self {
-		frontier.saturating_sub_span(lateness)
+	fn horizon(frontier: Self, seal_span: RowSpan) -> Self {
+		frontier.saturating_sub_span(seal_span)
 	}
 }
 
@@ -271,7 +271,7 @@ mod tests {
 	fn a_row_ordinal_seals_without_the_wheel_and_declares_no_wall_clock_lateness() {
 		// a row count fed to duration arithmetic lands just past the epoch, fires at once and rearms forever
 		assert!(!<OrdinalCoord as SealDomain>::arms_timer());
-		assert_eq!(<OrdinalCoord as SealDomain>::lateness_duration(RowSpan::of(64)), None);
+		assert_eq!(<OrdinalCoord as SealDomain>::seal_span_duration(RowSpan::of(64)), None);
 	}
 
 	#[test]
