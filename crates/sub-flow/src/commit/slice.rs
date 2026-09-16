@@ -1402,7 +1402,11 @@ mod integration {
 		let (flow_id, mut flow_engine, source_objects) = one_view_flow(&te);
 		let mut merging = source_objects.clone();
 		merging.insert(ObjectId::Table(TableId(u64::MAX)));
-		assert_eq!(merging.len(), 2, "the second source must widen the set, otherwise this repeats the fold test");
+		assert_eq!(
+			merging.len(),
+			2,
+			"the second source must widen the set, otherwise this repeats the fold test"
+		);
 
 		let computer = SliceComputer::new(engine.clone());
 		let config = SliceConfig {

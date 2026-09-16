@@ -309,7 +309,6 @@ impl FlowActor {
 		state.stall_reported = false;
 	}
 
-
 	fn on_drain(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		let woken = self.wake_pending.swap(false, Ordering::SeqCst);
 		let safe = self.safe_bound();
@@ -1421,8 +1420,6 @@ mod pull_protocol {
 
 	#[test]
 	fn a_burst_of_commits_loses_no_version_and_commits_none_twice() {
-		// A flow nobody reads may fold several pending source versions into one commit, so the burst count is
-		// an upper bound; every row must still land and no version may be committed twice.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
@@ -2221,11 +2218,14 @@ mod tick_failures {
 		},
 	};
 	use reifydb_rql::flow::operator::{FlowEdge, FlowNode, OperatorDef};
-	use reifydb_runtime::actor::{
-		context::Context,
-		system::ActorConfig,
-		testing::TestHarness,
-		traits::{Actor, Directive},
+	use reifydb_runtime::{
+		actor::{
+			context::Context,
+			system::ActorConfig,
+			testing::TestHarness,
+			traits::{Actor, Directive},
+		},
+		context::clock::MockClock,
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::Transaction;
@@ -2236,8 +2236,6 @@ mod tick_failures {
 	};
 
 	use super::*;
-	use reifydb_runtime::context::clock::MockClock;
-
 	use crate::{
 		builder::{CustomOperatorEntry, CustomOperators},
 		progress::tracker::FlowWaker,
@@ -2751,7 +2749,6 @@ mod tick_failures {
 
 	#[test]
 	fn wakes_sent_before_the_flow_drains_merge_into_one_message() {
-		// A wake sent while one is still pending must merge, or every commit floods the flow pool with drains.
 		let (te, _health, actor) = quiet_actor();
 		let (sender, received) = mpsc::channel();
 		let recorder = wake_recorder(te.inner(), sender);
@@ -2785,7 +2782,6 @@ mod tick_failures {
 
 	#[test]
 	fn a_wake_merged_while_a_commit_is_in_flight_drains_after_the_commit() {
-		// A drain that consumes a pending wake during a commit must defer it, or the merged wake is lost.
 		let (_te, _health, actor) = quiet_actor();
 		let pending = actor.wake_pending();
 		let mut harness = TestHarness::new(actor);

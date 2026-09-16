@@ -65,7 +65,7 @@ struct Completion {
 	position: CommitVersion,
 }
 
-const COMPLETION_HISTORY: usize = 16_384;
+const COMPLETION_HISTORY: usize = 65_536;
 
 const FLOW_WAKE_COALESCE_NANOS: u64 = 20_000_000;
 
@@ -155,6 +155,23 @@ impl FlowProgress {
 	fn record_landed(&mut self, flow_id: FlowId, position: CommitVersion) {
 		let landed = self.last_commits.get(&flow_id).copied().unwrap_or(CommitVersion(0));
 		self.record_completion(flow_id, landed, position);
+		self.prune_completions(flow_id);
+	}
+
+	fn reader_floor(&self, flow_id: FlowId) -> Option<CommitVersion> {
+		let readers = self.readers.get(&flow_id)?;
+		readers.iter().map(|reader| self.positions.get(reader).copied().unwrap_or(CommitVersion(0))).min()
+	}
+
+	fn prune_completions(&mut self, flow_id: FlowId) {
+		let Some(floor) = self.reader_floor(flow_id) else {
+			return;
+		};
+		let Some(history) = self.completions.get_mut(&flow_id) else {
+			return;
+		};
+		let above = history.partition_point(|entry| entry.commit <= floor);
+		history.drain(..above.saturating_sub(1));
 	}
 
 	fn record_completion(&mut self, flow_id: FlowId, commit: CommitVersion, position: CommitVersion) {
@@ -339,6 +356,7 @@ impl Default for FlowPositionTracker {
 mod tests {
 	use std::{
 		collections::{HashMap, HashSet},
+		mem::forget,
 		sync::{
 			Arc,
 			atomic::{AtomicBool, Ordering},
@@ -358,7 +376,7 @@ mod tests {
 		context::clock::{Clock, MockClock},
 	};
 
-	use super::{FlowPositionTracker, FlowProgress, FlowWaker};
+	use super::{COMPLETION_HISTORY, FlowPositionTracker, FlowProgress, FlowWaker};
 
 	const PRODUCER: FlowId = FlowId(1);
 	const READER: FlowId = FlowId(2);
@@ -402,6 +420,43 @@ mod tests {
 	}
 
 	#[test]
+	fn pruning_keeps_the_entry_the_slowest_reader_still_needs() {
+		let mut progress = FlowProgress::default();
+		progress.link_reader(READER, HashMap::from([(PRODUCER, HashSet::new())]));
+		progress.advance_position(READER, cv(25));
+		for version in 1..=5u64 {
+			progress.advance_last_commit(PRODUCER, cv(version * 10));
+			progress.record_landed(PRODUCER, cv(version * 10));
+		}
+
+		assert_eq!(
+			progress.complete_through(PRODUCER, cv(25)),
+			Some(cv(20)),
+			"the entry answering the slowest reader must survive, or pruning recreates the freeze it \
+			 exists to prevent"
+		);
+		let oldest = progress.completions.get(&PRODUCER).and_then(|h| h.front()).map(|e| e.commit.0);
+		assert_eq!(oldest, Some(20), "everything strictly below that entry can never be asked for again");
+	}
+
+	#[test]
+	fn a_reader_that_never_advances_holds_the_whole_history() {
+		let mut progress = FlowProgress::default();
+		progress.link_reader(READER, HashMap::from([(PRODUCER, HashSet::new())]));
+		progress.advance_position(READER, cv(0));
+		for version in 1..=40u64 {
+			progress.advance_last_commit(PRODUCER, cv(version * 10));
+			progress.record_landed(PRODUCER, cv(version * 10));
+		}
+
+		assert_eq!(
+			progress.completions.get(&PRODUCER).map(|h| h.len()),
+			Some(40),
+			"a stuck reader must keep its answers reachable, or it can never resolve and never recover"
+		);
+	}
+
+	#[test]
 	fn an_unknown_producer_resolves_to_nothing() {
 		let progress = FlowProgress::default();
 		assert_eq!(
@@ -414,13 +469,13 @@ mod tests {
 	#[test]
 	fn completion_history_keeps_the_newest_pairs_within_its_bound() {
 		let mut progress = FlowProgress::default();
-		for version in 1..=(super::COMPLETION_HISTORY as u64 + 10) {
+		for version in 1..=(COMPLETION_HISTORY as u64 + 10) {
 			progress.record_completion(PRODUCER, cv(version * 2), cv(version));
 		}
 
 		assert_eq!(
 			progress.completions.get(&PRODUCER).map(|h| h.len()),
-			Some(super::COMPLETION_HISTORY),
+			Some(COMPLETION_HISTORY),
 			"an unbounded history would grow with uptime"
 		);
 		assert_eq!(
@@ -575,7 +630,7 @@ mod tests {
 			)
 			.actor_ref()
 			.clone();
-		std::mem::forget(actor_system);
+		forget(actor_system);
 		let pending = Arc::new(AtomicBool::new(false));
 		let tracker = FlowPositionTracker::new();
 		tracker.set_upstreams(READER, HashMap::from([(PRODUCER, HashSet::new())]));

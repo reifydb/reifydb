@@ -439,7 +439,6 @@ fn staged_row(group: GroupId, n: u64, body: Option<&str>) -> StagedRow {
 
 #[test]
 fn a_group_settled_by_an_earlier_flush_is_staged_again_when_rewritten() {
-	// A settled group must re-enter the next flush when rewritten, or the rewrite is never persisted.
 	let seven = GroupId::hashed(Hash128(7));
 	let nine = GroupId::hashed(Hash128(9));
 	let mut bucket = bucket();
@@ -461,7 +460,6 @@ fn a_group_settled_by_an_earlier_flush_is_staged_again_when_rewritten() {
 
 #[test]
 fn a_row_rewritten_mid_flush_is_left_dirty_by_settle_and_staged_by_the_next_flush() {
-	// Settle must clean only what the flush carried, or a value storage never received is marked clean.
 	let seven = GroupId::hashed(Hash128(7));
 	let mut bucket = bucket();
 	bucket.record(seven, suffix(1), Some(row("carried")));
@@ -483,7 +481,6 @@ fn a_row_rewritten_mid_flush_is_left_dirty_by_settle_and_staged_by_the_next_flus
 
 #[test]
 fn a_reverted_flush_restages_every_row_in_the_same_order() {
-	// A revert must hand back every flushing row, or a missed row stays flushing and is never persisted.
 	let mut bucket = bucket();
 	for n in [3u64, 1, 2] {
 		let group = GroupId::hashed(Hash128(n as u128));
@@ -507,7 +504,6 @@ fn a_reverted_flush_restages_every_row_in_the_same_order() {
 
 #[test]
 fn erasing_the_last_new_row_of_a_group_leaves_nothing_for_the_next_flush_to_find() {
-	// Erasing a group's last row must unmark it, or the next flush looks up a partition that is gone.
 	let seven = GroupId::hashed(Hash128(7));
 	let nine = GroupId::hashed(Hash128(9));
 	let mut bucket = bucket();
@@ -527,7 +523,6 @@ fn erasing_the_last_new_row_of_a_group_leaves_nothing_for_the_next_flush_to_find
 
 #[test]
 fn a_flush_stages_groups_in_ascending_order_with_live_rows_before_tombstones() {
-	// Removes are retracted as runs in this order; any other order places absences over unclaimed keys.
 	let groups: Vec<GroupId> = [9u128, 2, 5].into_iter().map(|n| GroupId::hashed(Hash128(n))).collect();
 	let mut bucket = bucket();
 	bucket.record(groups[0], suffix(3), None);

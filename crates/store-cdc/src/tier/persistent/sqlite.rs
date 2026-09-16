@@ -589,14 +589,17 @@ fn clamp_limit(limit: usize) -> i64 {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::Arc;
+	use std::{ptr::null_mut, sync::Arc};
 
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion},
 		interface::cdc::Cdc,
 	};
 	use reifydb_value::{byte_size::ByteSize, count::Count, value::datetime::DateTime};
-	use rusqlite::Connection;
+	use rusqlite::{
+		Connection,
+		ffi::{SQLITE_STMTSTATUS_REPREPARE, sqlite3_next_stmt, sqlite3_stmt_status},
+	};
 
 	use super::SqliteCdcPersistent;
 	use crate::{
@@ -629,14 +632,10 @@ mod tests {
 		// SAFETY: conn is borrowed for the whole walk, so its handle and every statement it owns stay alive
 		unsafe {
 			let db = conn.handle();
-			let mut stmt = rusqlite::ffi::sqlite3_next_stmt(db, std::ptr::null_mut());
+			let mut stmt = sqlite3_next_stmt(db, null_mut());
 			while !stmt.is_null() {
-				total += rusqlite::ffi::sqlite3_stmt_status(
-					stmt,
-					rusqlite::ffi::SQLITE_STMTSTATUS_REPREPARE,
-					0,
-				);
-				stmt = rusqlite::ffi::sqlite3_next_stmt(db, stmt);
+				total += sqlite3_stmt_status(stmt, SQLITE_STMTSTATUS_REPREPARE, 0);
+				stmt = sqlite3_next_stmt(db, stmt);
 			}
 		}
 		total

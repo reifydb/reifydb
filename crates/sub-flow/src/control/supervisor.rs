@@ -133,6 +133,8 @@ pub struct SupervisorState {
 	full_wake_armed: bool,
 }
 
+type PreparedFlow = (FlowDag, CommitVersion, Arc<BTreeSet<ObjectId>>, Option<Arc<BTreeSet<u64>>>);
+
 impl FlowSupervisor {
 	pub fn new(params: FlowSupervisorParams) -> Self {
 		Self {
@@ -224,8 +226,7 @@ impl FlowSupervisor {
 
 		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _)| f.id).collect();
 		let closure = state.analyzer.get_dependency_graph().upstream_closure();
-		let mut prepared: Vec<(FlowDag, CommitVersion, Arc<BTreeSet<ObjectId>>, Option<Arc<BTreeSet<u64>>>)> =
-			Vec::with_capacity(to_spawn.len());
+		let mut prepared: Vec<PreparedFlow> = Vec::with_capacity(to_spawn.len());
 		for (flow, seed) in to_spawn {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
@@ -395,8 +396,7 @@ impl FlowSupervisor {
 		let registered: BTreeSet<FlowId> =
 			state.flows.keys().copied().chain(to_spawn.iter().map(|(f, _)| f.id)).collect();
 		let closure = state.analyzer.get_dependency_graph().upstream_closure();
-		let mut prepared: Vec<(FlowDag, CommitVersion, Arc<BTreeSet<ObjectId>>, Option<Arc<BTreeSet<u64>>>)> =
-			Vec::with_capacity(to_spawn.len());
+		let mut prepared: Vec<PreparedFlow> = Vec::with_capacity(to_spawn.len());
 		for (flow, seed) in to_spawn {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
@@ -559,7 +559,8 @@ impl FlowSupervisor {
 		let actor = FlowActor::new(params);
 		let pending = actor.wake_pending();
 		let handle = self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), actor);
-		self.flow_tracker.set_waker(flow_id, FlowWaker::new(handle.actor_ref().clone(), pending, self.clock.clone()));
+		self.flow_tracker
+			.set_waker(flow_id, FlowWaker::new(handle.actor_ref().clone(), pending, self.clock.clone()));
 		handle
 	}
 

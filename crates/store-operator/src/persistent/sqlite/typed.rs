@@ -598,7 +598,7 @@ pub fn census<K: Keyspace>(conn: &Connection) -> Vec<(OperatorId, u64, u64)> {
 
 #[cfg(test)]
 mod tests {
-	use std::{collections::HashSet, ops::Bound};
+	use std::{collections::HashSet, ops::Bound, ptr::null_mut};
 
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
@@ -619,7 +619,10 @@ mod tests {
 		},
 	};
 	use reifydb_value::{util::hash::Hash128, value::row_number::RowNumber};
-	use rusqlite::Connection;
+	use rusqlite::{
+		Connection,
+		ffi::{SQLITE_STMTSTATUS_REPREPARE, sqlite3_next_stmt, sqlite3_stmt_status},
+	};
 
 	use super::{
 		SqlKey, census, create_table, get, keys_after, last, range, range_in, remove_chunked, scan,
@@ -1044,14 +1047,10 @@ mod tests {
 		// SAFETY: conn is borrowed for the whole walk, so its handle and every statement it owns stay alive
 		unsafe {
 			let db = conn.handle();
-			let mut stmt = rusqlite::ffi::sqlite3_next_stmt(db, std::ptr::null_mut());
+			let mut stmt = sqlite3_next_stmt(db, null_mut());
 			while !stmt.is_null() {
-				total += rusqlite::ffi::sqlite3_stmt_status(
-					stmt,
-					rusqlite::ffi::SQLITE_STMTSTATUS_REPREPARE,
-					0,
-				);
-				stmt = rusqlite::ffi::sqlite3_next_stmt(db, stmt);
+				total += sqlite3_stmt_status(stmt, SQLITE_STMTSTATUS_REPREPARE, 0);
+				stmt = sqlite3_next_stmt(db, stmt);
 			}
 		}
 		total

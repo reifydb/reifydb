@@ -2354,7 +2354,7 @@ impl Shutdown for SqlitePersistentStorage {
 
 #[cfg(test)]
 mod tests {
-	use std::collections::HashMap;
+	use std::{collections::HashMap, ptr::null_mut};
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{
@@ -2371,6 +2371,7 @@ mod tests {
 		},
 	};
 	use reifydb_value::value::{partition::Partition, row_number::RowNumber};
+	use rusqlite::ffi::{SQLITE_STMTSTATUS_REPREPARE, sqlite3_next_stmt, sqlite3_stmt_status};
 
 	use super::*;
 	use crate::tier::persistent::sqlite::schema::row_from_sql;
@@ -3769,14 +3770,10 @@ mod tests {
 		// SAFETY: the guard keeps conn alive for the whole walk, and with it every statement it owns
 		unsafe {
 			let db = conn.handle();
-			let mut stmt = rusqlite::ffi::sqlite3_next_stmt(db, std::ptr::null_mut());
+			let mut stmt = sqlite3_next_stmt(db, null_mut());
 			while !stmt.is_null() {
-				total += rusqlite::ffi::sqlite3_stmt_status(
-					stmt,
-					rusqlite::ffi::SQLITE_STMTSTATUS_REPREPARE,
-					0,
-				);
-				stmt = rusqlite::ffi::sqlite3_next_stmt(db, stmt);
+				total += sqlite3_stmt_status(stmt, SQLITE_STMTSTATUS_REPREPARE, 0);
+				stmt = sqlite3_next_stmt(db, stmt);
 			}
 		}
 		total

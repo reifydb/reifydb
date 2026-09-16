@@ -16,7 +16,6 @@ use reifydb_core::{
 	},
 };
 
-
 pub struct StreamRead {
 	pub items: Vec<Arc<Cdc>>,
 	pub read_to: CommitVersion,
@@ -429,11 +428,7 @@ mod tests {
 			&read(vec![table_row(5), shared.clone()], 20, false),
 			&two(
 				upstream(Some(6), read(vec![view_row(8, 5)], 20, false)),
-				upstream_of(
-					ViewId(6),
-					Some(6),
-					read(vec![shared, other_view_row(9, 6)], 20, false),
-				),
+				upstream_of(ViewId(6), Some(6), read(vec![shared, other_view_row(9, 6)], 20, false)),
 			),
 			&ObjectIndex::default(),
 		);
