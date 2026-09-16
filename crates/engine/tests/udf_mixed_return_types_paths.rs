@@ -197,6 +197,21 @@ fn an_untyped_per_row_udf_keeps_the_type_it_returns_for_every_row_count() {
 }
 
 #[test]
+fn a_typed_udf_returning_text_and_an_int_casts_both_to_its_declared_type_on_every_path() {
+	// The per-row paths cast each return to utf8, so the batch paths must not fail or depend on the branch order.
+	let t = engine(&[5, 10]);
+
+	for (body, values) in [
+		("IF $x > 7 { RETURN 'big' }; RETURN 1", "[\"1\", \"big\"]"),
+		("IF $x > 7 { RETURN 1 }; RETURN 'big'", "[\"big\", \"1\"]"),
+	] {
+		for (path, rql) in paths(": utf8", body) {
+			assert_eq!(outcome(&t, &rql), format!("ok Utf8 {values}"), "{path}, body {body}");
+		}
+	}
+}
+
+#[test]
 fn a_typed_udf_adding_to_a_conditional_with_mixed_branch_types_never_panics_on_any_path() {
 	// A declared return type must not skip the branch check, otherwise the batch merge of int1 and int2 panics.
 	let t = engine(&[5, 10]);
@@ -271,5 +286,15 @@ fn a_typed_udf_storing_a_wider_int_into_a_variable_returns_its_declared_type_on_
 
 	for (path, rql) in paths(": utf8", "LET $v = $x; IF $x > 7 { $v = $x + 1 }; RETURN $v") {
 		assert_eq!(outcome(&t, &rql), "ok Utf8 [\"5\", \"11\"]", "{path}");
+	}
+}
+
+#[test]
+fn a_typed_udf_storing_an_int_into_a_none_variable_returns_its_declared_type_on_every_path() {
+	// The batch store must pair a none variable with an int, never try to cast int1 to an untyped none.
+	let t = engine(&[5, 10]);
+
+	for (path, rql) in paths(": utf8", "LET $v = none; IF $x > 7 { $v = 1 }; RETURN $v") {
+		assert_eq!(outcome(&t, &rql), "ok Option(Utf8) [\"none\", \"1\"]", "{path}");
 	}
 }

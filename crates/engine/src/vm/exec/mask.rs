@@ -9,12 +9,12 @@ use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	reifydb_assertions,
 	util::bitvec::BitVec,
-	value::{Value, value_type::ValueType},
+	value::{Value, constraint::TypeConstraint, value_type::ValueType},
 };
 
 use crate::{
 	Result,
-	vm::{stack::ControlFlow, vm::Vm},
+	vm::{exec::call::cast_to_declared_return_type, stack::ControlFlow, vm::Vm},
 };
 
 pub(crate) fn value_is_truthy(value: &Value) -> bool {
@@ -233,6 +233,31 @@ impl<'a> Vm<'a> {
 		Ok((Columns::new(aligned_left), Columns::new(aligned_right)))
 	}
 
+	fn cast_to_declared(
+		&self,
+		left: &Columns,
+		right: &Columns,
+		declared: &TypeConstraint,
+	) -> Result<(Columns, Columns)> {
+		let ctx = self.eval_ctx();
+		let fragment = self.udf_call.fragment.clone();
+		let target = declared.get_type();
+		let cast = |columns: &Columns| -> Result<Columns> {
+			let mut out = Vec::with_capacity(columns.columns.len());
+			for (idx, data) in columns.columns.iter().enumerate() {
+				let name = columns.name_at(idx).clone();
+				let casted = if data.get_type().inner_type() == &target {
+					data.clone()
+				} else {
+					cast_to_declared_return_type(&ctx, data, declared, fragment.text(), &fragment)?
+				};
+				out.push(ColumnWithName::new(name, casted));
+			}
+			Ok(Columns::new(out))
+		};
+		Ok((cast(left)?, cast(right)?))
+	}
+
 	fn fill_none_columns(&self, returning: &Columns, pending: &Columns) -> Result<(Columns, Columns)> {
 		let ctx = self.eval_ctx();
 		let mut filled_returning = Vec::with_capacity(returning.columns.len());
@@ -273,8 +298,8 @@ impl<'a> Vm<'a> {
 		let merged = match self.pending_return.take() {
 			Some(pending) => {
 				let pending = variable_to_columns(&pending);
-				let (returning, pending) = if self.udf_call.return_type.is_some() {
-					self.align_types(&columns, &pending)?
+				let (returning, pending) = if let Some(declared) = self.udf_call.return_type.clone() {
+					self.cast_to_declared(&columns, &pending, &declared)?
 				} else {
 					let name = self.udf_call.fragment.text();
 					BranchLayout::new(named_types(&pending, name))
@@ -614,6 +639,8 @@ impl<'a> Vm<'a> {
 				let existing_cols = variable_to_columns(existing);
 				let new_cols = variable_to_columns(&new_value);
 				let (existing_cols, new_cols) = if self.udf_call.return_type.is_some() {
+					let (existing_cols, new_cols) =
+						self.fill_none_columns(&existing_cols, &new_cols)?;
 					self.align_types(&existing_cols, &new_cols)?
 				} else {
 					let name = self.udf_call.fragment.text();
