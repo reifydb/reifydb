@@ -25,6 +25,7 @@ use reifydb_runtime::{
 		system::ActorConfig,
 		traits::{Actor, Directive},
 	},
+	context::clock::{Clock, Instant},
 	fatal::{
 		fatal,
 		report::{FatalKind, FatalReport},
@@ -54,6 +55,7 @@ pub struct PollActorConfig {
 
 pub struct PollActor<H: CdcHost, C: CdcConsume> {
 	config: PollActorConfig,
+	clock: Clock,
 	host: H,
 	consumer: Box<C>,
 	store: CdcStore,
@@ -65,6 +67,7 @@ pub struct PollActor<H: CdcHost, C: CdcConsume> {
 impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 	pub fn new(
 		config: PollActorConfig,
+		clock: Clock,
 		host: H,
 		consumer: C,
 		store: CdcStore,
@@ -77,6 +80,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 
 		Self {
 			config,
+			clock,
 			host,
 			consumer: Box::new(consumer),
 			store,
@@ -118,7 +122,7 @@ pub struct PollState {
 
 	cached_checkpoint: Option<CommitVersion>,
 
-	consume_stall_ticks: u32,
+	waiting_since: Option<Instant>,
 }
 
 impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C> {
@@ -137,7 +141,7 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 		PollState {
 			phase: Phase::Ready,
 			cached_checkpoint: None,
-			consume_stall_ticks: 0,
+			waiting_since: None,
 		}
 	}
 
@@ -261,8 +265,11 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			Phase::WaitingForResync => "resync".to_string(),
 			Phase::Ready | Phase::WaitingForWatermark => return,
 		};
-		state.consume_stall_ticks = state.consume_stall_ticks.saturating_add(1);
-		if state.consume_stall_ticks < self.stall_tick_threshold() {
+		let Some(since) = &state.waiting_since else {
+			state.waiting_since = Some(self.clock.instant());
+			return;
+		};
+		if since.elapsed() < self.consume_wait_timeout().to_std() {
 			return;
 		}
 		fatal(FatalReport::new(
@@ -274,13 +281,6 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		.with("pending", self.consumer.describe_pending())
 		.with("batch", batch)
 		.backtrace(Backtrace::force_capture().to_string()))
-	}
-
-	#[inline]
-	fn stall_tick_threshold(&self) -> u32 {
-		let consume_ms = self.consume_wait_timeout().to_std().as_millis().max(1);
-		let poll_ms = self.config.poll_interval.to_std().as_millis().max(1);
-		consume_ms.div_ceil(poll_ms).max(1) as u32
 	}
 
 	fn start_consume(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) {
@@ -332,7 +332,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			latest_version,
 			count,
 		};
-		state.consume_stall_ticks = 0;
+		state.waiting_since = None;
 		self.dispatch_to_consumer(relevant_cdcs, ctx);
 	}
 
@@ -465,7 +465,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		);
 		self.invalidate_durable_checkpoint();
 		state.phase = Phase::WaitingForResync;
-		state.consume_stall_ticks = 0;
+		state.waiting_since = None;
 		let self_ref = ctx.self_ref().clone();
 		let reply: Box<dyn FnOnce(Result<CommitVersion>) + Send> = Box::new(move |result| {
 			let _ = self_ref.send(CdcPollMessage::ResyncResponse {
