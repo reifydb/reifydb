@@ -377,6 +377,7 @@ pub enum AppendPhysicalNode<'bump> {
 		source: AppendPhysicalSource<'bump>,
 	},
 	Query {
+		fragment: Fragment,
 		left: BumpBox<'bump, PhysicalPlan<'bump>>,
 		right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	},
@@ -2427,11 +2428,13 @@ impl<'bump> Compiler<'bump> {
 						}));
 					}
 					logical::AppendNode::Query {
+						fragment,
 						with,
 					} => {
 						let left = stack.pop().unwrap();
 						let right = self.compile(rx, with)?.unwrap();
 						stack.push(PhysicalPlan::Append(AppendPhysicalNode::Query {
+							fragment: self.interner.intern_fragment(&fragment),
 							left: self.bump_box(left),
 							right: self.bump_box(right),
 						}));

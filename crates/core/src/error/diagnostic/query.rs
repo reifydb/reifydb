@@ -179,6 +179,24 @@ pub fn window_requires_deferred_view(fragment: Fragment) -> Diagnostic {
 	}
 }
 
+pub fn append_requires_deferred_view(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_011".to_string(),
+		rql: None,
+		message: "append runs only in deferred views, not in a batch query".to_string(),
+		fragment,
+		label: Some("a batch query cannot run an append".to_string()),
+		help: Some(
+			"define the append in CREATE DEFERRED VIEW ns::name AS { ... } and read the view with FROM ns::name"
+				.to_string(),
+		),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn unknown_apply_operator(fragment: Fragment) -> Diagnostic {
 	let name = fragment.text().to_string();
 	Diagnostic {

@@ -582,6 +582,7 @@ pub struct JoinNaturalNode {
 
 #[derive(Debug, Clone)]
 pub struct AppendQueryNode {
+	pub fragment: Fragment,
 	pub left: Box<QueryPlan>,
 	pub right: Box<QueryPlan>,
 }

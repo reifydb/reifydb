@@ -46,6 +46,7 @@ use crate::vm::volcano::{
 	take::TakeNode,
 	top_k::TopKNode,
 	variable::VariableNode,
+	append::UnsupportedAppendNode,
 	window::UnsupportedWindowNode,
 };
 
@@ -240,10 +241,6 @@ pub(crate) fn compile<'a>(
 		RqlQueryPlan::CallFunction(node) => Box::new(GeneratorNode::new(node.name, node.arguments)),
 
 		RqlQueryPlan::Window(node) => Box::new(UnsupportedWindowNode::new(node.fragment)),
-		RqlQueryPlan::Append(_) => {
-			unimplemented!(
-				"Append operator is only supported in deferred views and requires the flow engine."
-			)
-		}
+		RqlQueryPlan::Append(node) => Box::new(UnsupportedAppendNode::new(node.fragment)),
 	}
 }

@@ -508,9 +508,11 @@ fn materialize_query_plan_with(
 		}),
 
 		PhysicalPlan::Append(physical::AppendPhysicalNode::Query {
+			fragment,
 			left,
 			right,
 		}) => QueryPlan::Append(nodes::AppendQueryNode {
+			fragment,
 			left: Box::new(materialize_query_plan(BumpBox::into_inner(left))?),
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(right))?),
 		}),
@@ -1447,11 +1449,13 @@ impl InstructionCompiler {
 					self.compile_append(node)?;
 				}
 				physical::AppendPhysicalNode::Query {
+					fragment,
 					left,
 					right,
 				} => {
 					self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Append(
 						physical::AppendPhysicalNode::Query {
+							fragment,
 							left,
 							right,
 						},
@@ -2022,11 +2026,13 @@ impl InstructionCompiler {
 				Ok(())
 			}
 			physical::AppendPhysicalNode::Query {
+				fragment,
 				left,
 				right,
 			} => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Append(
 					physical::AppendPhysicalNode::Query {
+						fragment,
 						left,
 						right,
 					},

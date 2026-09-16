@@ -920,6 +920,7 @@ pub enum AppendNode<'bump> {
 		source: AppendSourcePlan<'bump>,
 	},
 	Query {
+		fragment: BumpFragment<'bump>,
 		with: BumpVec<'bump, LogicalPlan<'bump>>,
 	},
 }

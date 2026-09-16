@@ -60,6 +60,7 @@ impl QueryNode for NoopNode {
 }
 
 pub mod aggregate;
+pub mod append;
 pub mod apply_transform;
 pub mod assert;
 pub mod compile;

@@ -109,8 +109,10 @@ fn inject_plan<'a>(
 			source: AppendSourcePlan::Statement(inject_plans(plans, bump, catalog, tx)?),
 		})),
 		LogicalPlan::Append(AppendNode::Query {
+			fragment,
 			with,
 		}) => Ok(LogicalPlan::Append(AppendNode::Query {
+			fragment,
 			with: inject_plans(with, bump, catalog, tx)?,
 		})),
 		LogicalPlan::Conditional(mut node) => {
