@@ -4,6 +4,7 @@
 use std::{
 	collections::{BTreeSet, HashMap},
 	mem::take,
+	panic::{AssertUnwindSafe, catch_unwind},
 	sync::Arc,
 };
 
@@ -22,6 +23,7 @@ use reifydb_core::{
 		cdc::Cdc,
 		change::Change,
 	},
+	error::diagnostic::flow::flow_step_panicked,
 };
 use reifydb_engine::engine::StandardEngine;
 #[cfg(reifydb_assertions)]
@@ -40,10 +42,12 @@ use reifydb_runtime::{
 		traits::{Actor, Directive},
 	},
 	context::{RuntimeContext, clock::Clock},
+	fatal::describe_payload,
 };
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
+	error::Error,
 	reifydb_assertions,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
@@ -388,20 +392,23 @@ impl FlowActor {
 		advance_to: CommitVersion,
 		more: bool,
 	) -> Result<SliceStep> {
-		self.computer.compute_pulled(
-			&mut state.flow_engine,
-			items,
-			SliceCursor {
-				flow_id: self.flow_id,
-				source_objects: &state.source_objects,
-				completeness_objects: state.completeness_objects.as_deref(),
-				cursor: state.cursor,
-				durable_cursor: state.durable_cursor,
-			},
-			advance_to,
-			more,
-			&self.config,
-		)
+		catch_unwind(AssertUnwindSafe(|| {
+			self.computer.compute_pulled(
+				&mut state.flow_engine,
+				items,
+				SliceCursor {
+					flow_id: self.flow_id,
+					source_objects: &state.source_objects,
+					completeness_objects: state.completeness_objects.as_deref(),
+					cursor: state.cursor,
+					durable_cursor: state.durable_cursor,
+				},
+				advance_to,
+				more,
+				&self.config,
+			)
+		}))
+		.unwrap_or_else(|payload| Err(Error(Box::new(flow_step_panicked(describe_payload(&payload))))))
 	}
 
 	fn apply_step(

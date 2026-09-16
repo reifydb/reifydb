@@ -671,3 +671,13 @@ pub fn flow_view_calls_script_routine(name: &str, fragment: Fragment) -> Diagnos
 		operator_chain: None,
 	}
 }
+
+pub fn flow_step_panicked(reason: String) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_062",
+		format!("a flow step panicked: {}", reason),
+		"An operator in this view panicked instead of returning an error. The flow retries a few times and is \
+		 then poisoned, which the flow subsystem reports as degraded health. Fix the operator so it returns an \
+		 error.",
+	)
+}
