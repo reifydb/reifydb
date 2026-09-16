@@ -386,3 +386,27 @@ fn a_duration_digest_view_keeps_its_slot_state_across_a_restart() {
 	// A reloaded duration slot must keep its inner type, otherwise the first merge after the restart fails.
 	restart(Latency::Duration);
 }
+
+#[test]
+fn a_reopened_database_whose_flows_are_caught_up_reports_them_caught_up() {
+	// A quiet reopened database must report its flows caught up, otherwise every settle wait times out.
+	let path = TempDbPath::new("digest_view_reopen_caught_up");
+	{
+		let mut db = sqlite(&path);
+		db.admin("CREATE NAMESPACE app");
+		db.admin("CREATE TABLE app::t { id: int4, g: int4, weight: float8 }");
+		db.admin(
+			"CREATE DEFERRED VIEW app::sums { g: int4, s: Option(float8) } AS { FROM app::t | aggregate { s: math::sum(weight) } by { g } }",
+		);
+		db.command("INSERT app::t [{ id: 1, g: 1, weight: 1.0 }]");
+		assert!(db.await_all_flows(TIMEOUT), "precondition: the flow catches up before the restart");
+		db.stop();
+	}
+
+	let mut db = sqlite(&path);
+	let caught_up = db.await_all_flows(StdDuration::from_secs(10));
+	let views = rows(&db.query("FROM app::sums"));
+	db.stop();
+	assert_eq!(views.len(), 1, "precondition: the stored view row survives the restart");
+	assert!(caught_up, "a reopened database with no new commits must report its flows caught up");
+}
