@@ -245,10 +245,10 @@ pub fn merge(
 		let table_rows = tables
 			.items
 			.iter()
+			.take_while(|cdc| cdc.version.commit <= target)
 			.filter(|cdc| {
 				cdc.version.commit > cursor
-					&& cdc.version.commit <= target && !index.touches(cdc, &gated)
-					&& index.reads(cdc, cut.source_objects)
+					&& !index.touches(cdc, &gated) && index.reads(cdc, cut.source_objects)
 			})
 			.map(|cdc| (true, cdc));
 		let mut streams: Vec<Rows> = vec![(Box::new(table_rows) as Box<dyn Iterator<Item = _>>).peekable()];
