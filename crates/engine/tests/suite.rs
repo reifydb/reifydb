@@ -36,6 +36,8 @@ mod cast_target_diagnostics;
 mod closure;
 #[path = "closure_parameter_type_arguments.rs"]
 mod closure_parameter_type_arguments;
+#[path = "closure_value_as_rows.rs"]
+mod closure_value_as_rows;
 #[path = "column_type_parameters.rs"]
 mod column_type_parameters;
 #[path = "dictionary_insert_value_type.rs"]

@@ -336,6 +336,9 @@ pub enum RuntimeErrorKind {
 	VariableIsDataframe {
 		name: String,
 	},
+	VariableIsClosure {
+		fragment: Fragment,
+	},
 	VariableIsImmutable {
 		name: String,
 	},

@@ -1360,6 +1360,13 @@ impl IntoDiagnostic for TypeError {
 							Some(format!("Define the variable using 'let {} = <value>' before using it", name)),
 						)
 					}
+					RuntimeErrorKind::VariableIsClosure { fragment } => {
+						let name = fragment.text().strip_prefix('$').unwrap_or(fragment.text());
+						(
+							"RUNTIME_013",
+							Some(format!("Call the closure, like '{}()', a closure value cannot be read as rows", name)),
+						)
+					}
 					RuntimeErrorKind::VariableIsDataframe { name } => (
 						"RUNTIME_002",
 						Some(format!(
@@ -1442,6 +1449,7 @@ impl IntoDiagnostic for TypeError {
 
 				let fragment = match &kind {
 					RuntimeErrorKind::VariableNotFound { fragment } => fragment.clone(),
+					RuntimeErrorKind::VariableIsClosure { fragment } => fragment.clone(),
 					RuntimeErrorKind::UndefinedFunction { name } => Fragment::internal(name.clone()),
 					RuntimeErrorKind::AppendColumnMismatch { fragment, .. } => fragment.clone(),
 					RuntimeErrorKind::ConditionalBranchMismatch { fragment, .. } => fragment.clone(),
