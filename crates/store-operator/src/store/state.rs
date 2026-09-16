@@ -56,10 +56,12 @@ impl StandardOperatorStore {
 			self.verify_classification(writes);
 			verify_group_scope(writes);
 		}
-		let _flushing = self.resident.flush_guard();
+		{
+			let _flushing = self.resident.flush_guard();
+			self.resident.apply_batch(writes);
+		}
 		self.occupancy.record(writes);
 		self.census.record(writes);
-		self.resident.apply_batch(writes);
 		self.invalidate_read_batch(writes);
 	}
 
@@ -74,19 +76,21 @@ impl StandardOperatorStore {
 			self.verify_classification(writes);
 			verify_group_scope(writes);
 		}
-		let _flushing = self.resident.flush_guard();
-		for (flow, version) in checkpoints {
-			if let Some(current) = self.checkpoint_get(*flow)?
-				&& *version < current
-			{
-				return Err(OperatorError::CheckpointOutOfRange {
-					flow: *flow,
-				});
+		{
+			let _flushing = self.resident.flush_guard();
+			for (flow, version) in checkpoints {
+				if let Some(current) = self.checkpoint_get(*flow)?
+					&& *version < current
+				{
+					return Err(OperatorError::CheckpointOutOfRange {
+						flow: *flow,
+					});
+				}
 			}
+			self.resident.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes);
 		}
 		self.occupancy.record(writes);
 		self.census.record(writes);
-		self.resident.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes);
 		self.invalidate_read_batch(writes);
 		Ok(())
 	}

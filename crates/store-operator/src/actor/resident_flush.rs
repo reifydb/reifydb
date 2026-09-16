@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_runtime::actor::system::ActorSpawner;
 use reifydb_runtime::{
@@ -27,10 +26,6 @@ const FLUSH_PENDING_TIMEOUT: Duration = Duration::from_seconds_const(5);
 pub enum FlushMessage {
 	Pressure,
 	Tick,
-	Checkpoint {
-		flow: FlowId,
-		version: CommitVersion,
-	},
 	Shutdown,
 	FlushPending {
 		waiter: Arc<WaiterHandle>,
@@ -119,9 +114,6 @@ impl Actor for ResidentFlushActor {
 				self.drain();
 				self.rearm(state, ctx);
 			}
-			FlushMessage::Checkpoint {
-				..
-			} => {}
 			FlushMessage::Shutdown => {
 				debug!("Operator persistent flush actor shutting down");
 				self.drain();

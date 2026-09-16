@@ -20,6 +20,7 @@ pub use wasm::{ActorHandle, ActorSpawner, ActorSystem, JoinError};
 #[derive(Debug, Clone, Default)]
 pub struct ActorConfig {
 	pub mailbox_capacity: Option<usize>,
+	pub batch_size: Option<usize>,
 }
 
 impl ActorConfig {
@@ -29,6 +30,11 @@ impl ActorConfig {
 
 	pub fn mailbox_capacity(mut self, capacity: usize) -> Self {
 		self.mailbox_capacity = Some(capacity);
+		self
+	}
+
+	pub fn batch_size(mut self, size: usize) -> Self {
+		self.batch_size = Some(size);
 		self
 	}
 }

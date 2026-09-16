@@ -63,5 +63,7 @@ pub enum FlowSupervisorMessage {
 
 	Wake,
 
+	WakeAll,
+
 	PersistFrontiers,
 }

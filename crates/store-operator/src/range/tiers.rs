@@ -41,7 +41,7 @@ pub trait RangeTier: Send + Sync {
 
 	fn mark_deleted(&self, operator: OperatorId, group: GroupId, suffix: &[u8]);
 
-	fn retract(&self, operator: OperatorId, group: GroupId, suffix: &[u8]);
+	fn retract_run(&self, operator: OperatorId, group: GroupId, suffixes: &[&[u8]]);
 
 	fn invalidate_group(&self, operator: OperatorId, group: GroupId);
 
@@ -115,15 +115,16 @@ impl<K: Keyspace> RangeTier for StandardRangeTier<K> {
 		self.mark_deleted_in(partition, partition, &key);
 	}
 
-	fn retract(&self, operator: OperatorId, group: GroupId, suffix: &[u8]) {
-		let Some(key) = <K::Suffix as SuffixBytes>::from_suffix_bytes(suffix) else {
-			return;
-		};
+	fn retract_run(&self, operator: OperatorId, group: GroupId, suffixes: &[&[u8]]) {
+		let keys: Vec<K::Suffix> = suffixes
+			.iter()
+			.filter_map(|suffix| <K::Suffix as SuffixBytes>::from_suffix_bytes(suffix))
+			.collect();
 		let partition = TypedPartition {
 			operator,
 			group,
 		};
-		self.retract_in(partition, partition, &key);
+		StandardRangeTier::<K>::retract_run(self, partition, &keys);
 	}
 
 	fn invalidate_group(&self, operator: OperatorId, group: GroupId) {
@@ -252,12 +253,17 @@ impl RangeTiers {
 		}
 	}
 
-	pub fn retract(&self, operator: OperatorId, key: &EncodedKey) {
-		let Some((group, keyspace, suffix)) = OperatorStateKey::decode_inner(key.as_slice()) else {
-			return;
-		};
-		if let Some(tier) = self.of(keyspace) {
-			tier.retract(operator, group, suffix);
+	pub fn retract_run(&self, operator: OperatorId, keys: &[&EncodedKey]) {
+		let mut decoded =
+			keys.iter().filter_map(|key| OperatorStateKey::decode_inner(key.as_slice())).peekable();
+		while let Some((group, keyspace, suffix)) = decoded.next() {
+			let mut suffixes = vec![suffix];
+			while let Some((_, _, next)) = decoded.next_if(|(g, k, _)| *g == group && *k == keyspace) {
+				suffixes.push(next);
+			}
+			if let Some(tier) = self.of(keyspace) {
+				tier.retract_run(operator, group, &suffixes);
+			}
 		}
 	}
 

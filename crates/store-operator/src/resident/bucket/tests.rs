@@ -21,7 +21,10 @@ use reifydb_core::{
 };
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
 
-use super::{BucketMap, write::StandardBucket};
+use super::{
+	BucketMap,
+	write::{Staged, StandardBucket},
+};
 use crate::types::Scan;
 
 const OP: OperatorId = OperatorId(1);
@@ -418,4 +421,132 @@ fn a_group_data_sweep_stops_at_its_own_group() {
 		.collect();
 
 	assert!(strayed.is_empty(), "a sweep of one group must never return another group's keys, got {strayed:?}");
+}
+
+type StagedRow = (GroupId, Vec<u8>, Option<Vec<u8>>);
+
+fn stage_rows(bucket: &mut StandardBucket<JoinLeft>) -> Vec<StagedRow> {
+	let mut rows = Vec::new();
+	bucket.stage_dirty(&mut |group, suffix, entry| {
+		rows.push((group, suffix.to_vec(), entry.post.as_ref().map(|post| post.body().to_vec())));
+	});
+	rows
+}
+
+fn staged_row(group: GroupId, n: u64, body: Option<&str>) -> StagedRow {
+	(group, suffix(n).to_suffix_bytes().to_vec(), body.map(|body| body.as_bytes().to_vec()))
+}
+
+#[test]
+fn a_group_settled_by_an_earlier_flush_is_staged_again_when_rewritten() {
+	let seven = GroupId::hashed(Hash128(7));
+	let nine = GroupId::hashed(Hash128(9));
+	let mut bucket = bucket();
+	bucket.record(seven, suffix(1), Some(row("first")));
+	bucket.record(nine, suffix(2), Some(row("nine")));
+	assert_eq!(stage_rows(&mut bucket).len(), 2);
+	bucket.settle_flushing();
+
+	bucket.record(seven, suffix(1), Some(row("second")));
+
+	assert_eq!(
+		stage_rows(&mut bucket),
+		vec![staged_row(seven, 1, Some("second"))],
+		"a rewrite of a settled row must be staged exactly once, and the untouched group must not be staged again"
+	);
+	assert_eq!(bucket.dirty_len(), 0);
+	assert_eq!(bucket.dirty_footprint(), ByteSize::ZERO, "a staged group still charged would pin the flush budget");
+}
+
+#[test]
+fn a_row_rewritten_mid_flush_is_left_dirty_by_settle_and_staged_by_the_next_flush() {
+	let seven = GroupId::hashed(Hash128(7));
+	let mut bucket = bucket();
+	bucket.record(seven, suffix(1), Some(row("carried")));
+	bucket.record(seven, suffix(2), Some(row("untouched")));
+	assert_eq!(stage_rows(&mut bucket).len(), 2);
+
+	bucket.record(seven, suffix(1), Some(row("rewritten")));
+	bucket.settle_flushing();
+
+	assert_eq!(bucket.get(seven, &suffix(1)).expect("recorded").staged, Staged::Dirty);
+	assert_eq!(bucket.get(seven, &suffix(2)).expect("recorded").staged, Staged::Clean);
+	assert_eq!(bucket.dirty_len(), 1);
+	assert_eq!(
+		stage_rows(&mut bucket),
+		vec![staged_row(seven, 1, Some("rewritten"))],
+		"the rewrite must reach the next flush, and the row the first flush persisted must not be written twice"
+	);
+}
+
+#[test]
+fn a_reverted_flush_restages_every_row_in_the_same_order() {
+	let mut bucket = bucket();
+	for n in [3u64, 1, 2] {
+		let group = GroupId::hashed(Hash128(n as u128));
+		bucket.record(group, suffix(n), Some(row("live")));
+		bucket.record(group, suffix(n + 10), None);
+	}
+	let first = stage_rows(&mut bucket);
+	assert_eq!(first.len(), 6);
+
+	assert_eq!(bucket.revert_flushing(), 6, "every flushing row must be handed back");
+	assert_eq!(bucket.dirty_len(), 6);
+	for n in [1u64, 2, 3] {
+		let group = GroupId::hashed(Hash128(n as u128));
+		assert_eq!(bucket.get(group, &suffix(n)).expect("recorded").staged, Staged::Dirty);
+		assert_eq!(bucket.get(group, &suffix(n + 10)).expect("recorded").staged, Staged::Dirty);
+	}
+
+	assert_eq!(stage_rows(&mut bucket), first, "the retried flush must carry the same rows in the same order");
+	assert_eq!(bucket.revert_flushing(), 6, "a second revert must find every row the retry staged");
+}
+
+#[test]
+fn erasing_the_last_new_row_of_a_group_leaves_nothing_for_the_next_flush_to_find() {
+	let seven = GroupId::hashed(Hash128(7));
+	let nine = GroupId::hashed(Hash128(9));
+	let mut bucket = bucket();
+	bucket.record_fresh(seven, suffix(1), Some(row("fresh")));
+	assert!(bucket.erase(seven, &suffix(1)));
+	assert_eq!(bucket.dirty_len(), 0);
+	assert_eq!(
+		bucket.dirty_footprint(),
+		ByteSize::ZERO,
+		"an erased group still charged would hold flush budget for a group that no longer exists"
+	);
+
+	bucket.record(nine, suffix(2), Some(row("nine")));
+
+	assert_eq!(stage_rows(&mut bucket), vec![staged_row(nine, 2, Some("nine"))]);
+}
+
+#[test]
+fn a_flush_stages_groups_in_ascending_order_with_live_rows_before_tombstones() {
+	let groups: Vec<GroupId> = [9u128, 2, 5].into_iter().map(|n| GroupId::hashed(Hash128(n))).collect();
+	let mut bucket = bucket();
+	bucket.record(groups[0], suffix(3), None);
+	bucket.record(groups[1], suffix(4), Some(row("b4")));
+	bucket.record(groups[0], suffix(1), Some(row("a1")));
+	bucket.record(groups[2], suffix(2), None);
+	bucket.record(groups[1], suffix(1), None);
+	bucket.record(groups[2], suffix(6), Some(row("c6")));
+	bucket.record(groups[0], suffix(7), Some(row("a7")));
+
+	let mut ascending = groups.clone();
+	ascending.sort();
+	let mut expected = Vec::new();
+	for group in ascending {
+		match group {
+			g if g == groups[0] => expected.extend([
+				staged_row(g, 1, Some("a1")),
+				staged_row(g, 7, Some("a7")),
+				staged_row(g, 3, None),
+			]),
+			g if g == groups[1] => expected.extend([staged_row(g, 4, Some("b4")), staged_row(g, 1, None)]),
+			g => expected.extend([staged_row(g, 6, Some("c6")), staged_row(g, 2, None)]),
+		}
+	}
+
+	assert_eq!(stage_rows(&mut bucket), expected);
 }

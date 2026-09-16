@@ -16,6 +16,7 @@ use reifydb_store_operator::{
 };
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 use reifydb_value::{Result, byte_size::ByteSize};
+use tracing::instrument;
 
 const DEFERRED_SIZING: &str = "deferred write sizing must not fail";
 
@@ -53,6 +54,10 @@ pub fn apply_operator_state(store: &OperatorStore, pending: &Pending) {
 	store.apply_batch(&operator_writes(pending, &deferred));
 }
 
+#[instrument(name = "flow::substrate::apply_operator_state", level = "trace", skip_all, fields(
+	write_count = pending.len(),
+	checkpoint_count = checkpoints.len()
+))]
 pub fn apply_operator_state_with_checkpoints(
 	store: &OperatorStore,
 	pending: &Pending,
@@ -66,6 +71,7 @@ pub fn apply_operator_state_with_checkpoints(
 
 pub type DeferredClassification = HashMap<EncodedKey, Option<ByteSize>>;
 
+#[instrument(name = "flow::substrate::classify_pending", level = "trace", skip_all, fields(pending_count = pending.len()))]
 pub fn classify_pending(store: &OperatorStore, pending: &Pending) -> DeferredClassification {
 	let mut keys = Vec::new();
 	let mut probes = Vec::new();
@@ -90,6 +96,7 @@ pub fn classify_pending(store: &OperatorStore, pending: &Pending) -> DeferredCla
 	keys.into_iter().zip(sizes).collect()
 }
 
+#[instrument(name = "flow::substrate::operator_writes", level = "trace", skip_all, fields(pending_count = pending.len()))]
 pub fn operator_writes(pending: &Pending, deferred: &DeferredClassification) -> Vec<OperatorWrite> {
 	let mut writes = Vec::with_capacity(pending.len());
 	for (key, write) in pending.iter_sorted() {

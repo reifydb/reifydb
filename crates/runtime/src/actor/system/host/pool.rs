@@ -235,6 +235,7 @@ where
 	A::State: Send,
 {
 	let config = actor.config();
+	let batch_size = config.batch_size.unwrap_or(batch_size);
 	let (actor_ref, mailbox) = create_mailbox(config.mailbox_capacity);
 	let ctx = Context::new(actor_ref.clone(), system.clone(), system.cancellation_token());
 	let cancel = system.cancellation_token();

@@ -604,7 +604,7 @@ mod tests {
 		let flow = builder.build();
 		inner.register_flow_dag(flow.clone());
 		inner.sources.insert(object, vec![(FlowId(1), SOURCE)]);
-		inner.sinks.insert(object, vec![(FlowId(2), OperatorId(4))]);
+		inner.add_sink(FlowId(2), OperatorId(4), object);
 		inner.substrate.frontiers.publish(object, at_millis(30_000), CommitVersion(1));
 
 		let mut txn = deferred(&engine);

@@ -103,4 +103,25 @@ impl BucketMap {
 	pub fn footprint(&self) -> ByteSize {
 		ByteSize::from_bytes(self.buckets.values().map(|bucket| bucket.footprint().as_bytes()).sum())
 	}
+
+	pub fn totals(&self) -> BucketTotals {
+		let mut totals = BucketTotals::default();
+		for bucket in self.buckets.values() {
+			totals.footprint = ByteSize::from_bytes(
+				totals.footprint.as_bytes().saturating_add(bucket.footprint().as_bytes()),
+			);
+			totals.entries += bucket.len();
+			totals.dirty += bucket.dirty_len();
+			totals.dirty_footprint = totals.dirty_footprint.saturating_add(bucket.dirty_footprint());
+		}
+		totals
+	}
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub struct BucketTotals {
+	pub footprint: ByteSize,
+	pub entries: usize,
+	pub dirty: usize,
+	pub dirty_footprint: ByteSize,
 }

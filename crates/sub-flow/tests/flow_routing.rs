@@ -93,3 +93,45 @@ fn sequential_writes_materialize_exactly_via_push() {
 		);
 	}
 }
+
+#[test]
+fn every_later_unrelated_write_advances_the_idle_flow_again() {
+	// The full wake must fire after every round, or an idle flow advances once and pins cdc compaction.
+	let db = setup();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::a { id: int4 }");
+	db.admin("CREATE TABLE app::b { id: int4 }");
+	db.admin("CREATE DEFERRED VIEW app::va { id: int4 } AS { FROM app::a MAP { id } }");
+	db.admin("CREATE DEFERRED VIEW app::vb { id: int4 } AS { FROM app::b MAP { id } }");
+
+	db.command("INSERT app::b [{ id: 100 }]");
+	let vb_rows = db.await_row_count("FROM app::vb", 1, StdDuration::from_secs(5));
+	assert_eq!(vb_rows, 1, "vb must materialize a write to its own source table b; got {vb_rows}");
+
+	for id in 1..=3i32 {
+		thread::sleep(StdDuration::from_millis(300));
+		db.command(&format!("INSERT app::a [{{ id: {id} }}]"));
+		let target = db.watermarks().tx().current().expect("current version");
+		let va_rows = db.await_row_count("FROM app::va", id as usize, StdDuration::from_secs(5));
+		assert_eq!(
+			va_rows, id as usize,
+			"va must materialize write {id} to its own source table a; got {va_rows}"
+		);
+
+		let deadline = Instant::now() + StdDuration::from_secs(5);
+		loop {
+			let caught_up = db.watermarks().cdc().flow_consumer();
+			if caught_up >= target {
+				break;
+			}
+			assert!(
+				Instant::now() < deadline,
+				"unrelated write {id} must advance the idle view over table b again: flow_consumer={} never \
+				 reached target={}, so vb stopped advancing after an earlier write and pins cdc compaction",
+				caught_up.0,
+				target.0
+			);
+			thread::sleep(StdDuration::from_millis(20));
+		}
+	}
+}

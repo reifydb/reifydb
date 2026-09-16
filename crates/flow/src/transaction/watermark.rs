@@ -89,10 +89,12 @@ fn raw(source: OperatorId, txn: &mut impl FlowTransaction) -> Result<u64> {
 	if let Some(cached) = txn.source_watermark_cache().get(&source).copied() {
 		return Ok(cached);
 	}
-	let value = match txn.state_get(source, &source_watermark_key())? {
-		Some(row) => decode_payload::<u64>(&row)?,
-		None => 0,
+	let key = source_watermark_key();
+	let (value, pre) = match txn.state_get(source, &key)? {
+		Some(row) => (decode_payload::<u64>(&row)?, Some(row.byte_size())),
+		None => (0, None),
 	};
+	txn.state_classify(source, &key, pre);
 	txn.source_watermark_cache().insert(source, value);
 	Ok(value)
 }

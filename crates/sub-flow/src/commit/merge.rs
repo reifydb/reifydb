@@ -3,7 +3,7 @@
 
 use std::{
 	cell::RefCell,
-	collections::{BTreeSet, HashMap, HashSet},
+	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 	sync::Arc,
 };
 
@@ -16,55 +16,95 @@ use reifydb_core::{
 	},
 };
 
-use crate::progress::tracker::UpstreamPosition;
-
 pub struct StreamRead {
 	pub items: Vec<Arc<Cdc>>,
 	pub read_to: CommitVersion,
 	pub more: bool,
 }
 
+const READ_CACHE_ENTRIES: usize = 6;
+const OBJECT_INDEX_ENTRIES: usize = 16_384;
+
+struct CachedRead {
+	items: Vec<Arc<Cdc>>,
+	read_to: CommitVersion,
+	used: u64,
+}
+
 #[derive(Default)]
 pub struct ReadCache {
-	reads: HashMap<CommitVersion, (Vec<Arc<Cdc>>, CommitVersion)>,
+	reads: HashMap<CommitVersion, CachedRead>,
+	clock: u64,
 }
 
 impl ReadCache {
-	pub fn get(&self, from: CommitVersion, up_to: CommitVersion) -> Option<StreamRead> {
-		let (items, read_to) = self
+	pub fn get(&mut self, from: CommitVersion, up_to: CommitVersion) -> Option<StreamRead> {
+		self.clock += 1;
+		let clock = self.clock;
+		let read = self
 			.reads
-			.iter()
-			.filter(|(start, (_, read_to))| **start == from || (**start < from && from < *read_to))
-			.max_by_key(|(_, (_, read_to))| *read_to)
+			.iter_mut()
+			.filter(|(start, read)| **start <= from && from < read.read_to)
+			.max_by_key(|(_, read)| read.read_to)
 			.map(|(_, read)| read)?;
+		read.used = clock;
+		let read_to = read.read_to.min(up_to);
+		let start = read.items.partition_point(|cdc| cdc.version.commit <= from);
+		let end = read.items.partition_point(|cdc| cdc.version.commit <= read_to);
 		Some(StreamRead {
-			items: items.iter().filter(|cdc| cdc.version.commit > from).cloned().collect(),
-			read_to: *read_to,
-			more: *read_to < up_to,
+			items: read.items[start..end].to_vec(),
+			read_to,
+			more: read_to < up_to,
 		})
 	}
 
 	pub fn insert(&mut self, from: CommitVersion, items: Vec<Arc<Cdc>>, read_to: CommitVersion) {
-		self.reads.insert(from, (items, read_to));
+		if read_to <= from {
+			return;
+		}
+		self.clock += 1;
+		self.reads.insert(
+			from,
+			CachedRead {
+				items,
+				read_to,
+				used: self.clock,
+			},
+		);
+		while self.reads.len() > READ_CACHE_ENTRIES {
+			let Some(oldest) = self.reads.iter().min_by_key(|(_, read)| read.used).map(|(start, _)| *start)
+			else {
+				break;
+			};
+			self.reads.remove(&oldest);
+		}
 	}
 
-	pub fn clear(&mut self) {
-		self.reads.clear();
+	pub fn retain_after(&mut self, cursor: CommitVersion) {
+		self.reads.retain(|_, read| read.read_to > cursor);
 	}
 }
 
 pub struct UpstreamRead {
 	pub views: HashSet<ObjectId>,
-	pub position: Option<UpstreamPosition>,
+	pub position: Option<CommitVersion>,
 	pub read: StreamRead,
 }
 
 #[derive(Default)]
 pub struct ObjectIndex {
-	changed: RefCell<HashMap<CommitVersion, BTreeSet<ObjectId>>>,
+	changed: RefCell<BTreeMap<CommitVersion, BTreeSet<ObjectId>>>,
 }
 
 impl ObjectIndex {
+	pub fn retain_after(&mut self, cursor: CommitVersion) {
+		let changed = self.changed.get_mut();
+		*changed = changed.split_off(&CommitVersion(cursor.0.saturating_add(1)));
+		if changed.len() > OBJECT_INDEX_ENTRIES {
+			changed.clear();
+		}
+	}
+
 	fn touches(&self, cdc: &Cdc, objects: &HashSet<ObjectId>) -> bool {
 		self.changed
 			.borrow_mut()
@@ -82,10 +122,8 @@ impl UpstreamRead {
 
 	fn complete_through(&self, cursor: CommitVersion, index: &ObjectIndex) -> CommitVersion {
 		let mut through = cursor;
-		if let Some(position) = self.position
-			&& self.read.read_to >= position.last_commit
-		{
-			through = through.max(position.position);
+		if let Some(position) = self.position {
+			through = through.max(position);
 		}
 		if let Some(last) = self.view_items(index).last() {
 			through = through.max(CommitVersion(last.version.source.0.saturating_sub(1)));
@@ -226,17 +264,14 @@ mod tests {
 		}
 	}
 
-	fn upstream(position: Option<(u64, u64)>, read: StreamRead) -> UpstreamRead {
+	fn upstream(position: Option<u64>, read: StreamRead) -> UpstreamRead {
 		upstream_of(ViewId(5), position, read)
 	}
 
-	fn upstream_of(view: ViewId, position: Option<(u64, u64)>, read: StreamRead) -> UpstreamRead {
+	fn upstream_of(view: ViewId, position: Option<u64>, read: StreamRead) -> UpstreamRead {
 		UpstreamRead {
 			views: HashSet::from([ObjectId::View(view)]),
-			position: position.map(|(position, last_commit)| UpstreamPosition {
-				position: cv(position),
-				last_commit: cv(last_commit),
-			}),
+			position: position.map(cv),
 			read,
 		}
 	}
@@ -251,29 +286,6 @@ mod tests {
 
 	fn versions(merged: &Merged) -> Vec<(u64, u64)> {
 		merged.items.iter().map(|cdc| (cdc.version.commit.0, cdc.version.source.0)).collect()
-	}
-
-	#[test]
-	fn a_producer_position_holds_the_gate_until_its_last_commit_is_read() {
-		// Trusting the position before its commit is read would pass a version whose view rows are still
-		// unseen.
-		let tables = read(vec![], 20, false);
-
-		let unread = merge(
-			cv(0),
-			&tables,
-			&one(upstream(Some((10, 12)), read(vec![], 11, false))),
-			&ObjectIndex::default(),
-		);
-		assert_eq!(unread.target, cv(0), "the producer commit at 12 is not read yet, so nothing may pass");
-
-		let read_through = merge(
-			cv(0),
-			&tables,
-			&one(upstream(Some((10, 12)), read(vec![], 12, false))),
-			&ObjectIndex::default(),
-		);
-		assert_eq!(read_through.target, cv(10));
 	}
 
 	#[test]
@@ -295,7 +307,7 @@ mod tests {
 		let merged = merge(
 			cv(0),
 			&read(vec![table_row(5)], 20, false),
-			&one(upstream(Some((5, 7)), read(vec![view_row(7, 5)], 20, false))),
+			&one(upstream(Some(5), read(vec![view_row(7, 5)], 20, false))),
 			&ObjectIndex::default(),
 		);
 		assert_eq!(versions(&merged), vec![(7, 5), (5, 5)]);
@@ -307,7 +319,7 @@ mod tests {
 		let merged = merge(
 			cv(0),
 			&read(vec![table_row(4)], 20, false),
-			&one(upstream(Some((4, 6)), read(vec![view_row(6, 3)], 20, false))),
+			&one(upstream(Some(4), read(vec![view_row(6, 3)], 20, false))),
 			&ObjectIndex::default(),
 		);
 		assert_eq!(versions(&merged), vec![(6, 3), (4, 4)]);
@@ -355,7 +367,7 @@ mod tests {
 		let merged = merge(
 			cv(0),
 			&read(vec![table_row(5), view.clone()], 20, false),
-			&one(upstream(Some((5, 7)), read(vec![view], 20, false))),
+			&one(upstream(Some(5), read(vec![view], 20, false))),
 			&ObjectIndex::default(),
 		);
 		assert_eq!(versions(&merged), vec![(7, 5), (5, 5)]);
@@ -367,7 +379,7 @@ mod tests {
 		let merged = merge(
 			cv(5),
 			&read(vec![], 20, false),
-			&one(upstream(Some((9, 9)), read(vec![view_row(7, 5), view_row(9, 8)], 20, false))),
+			&one(upstream(Some(9), read(vec![view_row(7, 5), view_row(9, 8)], 20, false))),
 			&ObjectIndex::default(),
 		);
 		assert_eq!(versions(&merged), vec![(9, 8)]);
@@ -379,7 +391,7 @@ mod tests {
 		let merged = merge(
 			cv(0),
 			&read(vec![table_row(3)], 3, true),
-			&one(upstream(Some((10, 10)), read(vec![], 20, false))),
+			&one(upstream(Some(10), read(vec![], 20, false))),
 			&ObjectIndex::default(),
 		);
 		assert_eq!(merged.target, cv(3));
@@ -394,8 +406,8 @@ mod tests {
 			cv(0),
 			&read(vec![], 20, false),
 			&two(
-				upstream(Some((10, 12)), read(vec![view_row(12, 7)], 20, false)),
-				upstream_of(ViewId(6), Some((4, 6)), read(vec![], 20, false)),
+				upstream(Some(10), read(vec![view_row(12, 7)], 20, false)),
+				upstream_of(ViewId(6), Some(4), read(vec![], 20, false)),
 			),
 			&ObjectIndex::default(),
 		);
@@ -415,12 +427,8 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(5), shared.clone()], 20, false),
 			&two(
-				upstream(Some((6, 8)), read(vec![view_row(8, 5)], 20, false)),
-				upstream_of(
-					ViewId(6),
-					Some((6, 9)),
-					read(vec![shared, other_view_row(9, 6)], 20, false),
-				),
+				upstream(Some(6), read(vec![view_row(8, 5)], 20, false)),
+				upstream_of(ViewId(6), Some(6), read(vec![shared, other_view_row(9, 6)], 20, false)),
 			),
 			&ObjectIndex::default(),
 		);
@@ -430,5 +438,75 @@ mod tests {
 			vec![(6, 5), (8, 5), (5, 5), (9, 6)],
 			"a row of either gated view in the table stream must be dropped, not merged a second time"
 		);
+	}
+
+	fn chunk(from: u64, to: u64) -> Vec<Arc<Cdc>> {
+		(from + 1..=to).map(table_row).collect()
+	}
+
+	fn commits(read: &StreamRead) -> Vec<u64> {
+		read.items.iter().map(|cdc| cdc.version.commit.0).collect()
+	}
+
+	#[test]
+	fn a_cached_chunk_serves_a_later_cursor_cut_at_the_asked_bound() {
+		// A later cursor inside a kept chunk must be served from it, never past the bound it asks for.
+		let mut cache = ReadCache::default();
+		cache.insert(cv(0), chunk(0, 10), cv(10));
+
+		let inside = cache.get(cv(4), cv(7)).expect("cursor 4 lies inside the chunk 0..10");
+		assert_eq!(commits(&inside), vec![5, 6, 7]);
+		assert_eq!(inside.read_to, cv(7));
+		assert!(!inside.more, "the chunk covers the whole asked range");
+
+		let past = cache.get(cv(4), cv(20)).expect("cursor 4 lies inside the chunk 0..10");
+		assert_eq!(commits(&past), vec![5, 6, 7, 8, 9, 10]);
+		assert_eq!(past.read_to, cv(10));
+		assert!(past.more, "versions 11..20 were never read, so the caller must be told to read on");
+	}
+
+	#[test]
+	fn a_cursor_at_a_chunk_end_misses_instead_of_reading_nothing_forever() {
+		// Serving an empty read at a chunk end would pin the stream there and the gate would never open.
+		let mut cache = ReadCache::default();
+		cache.insert(cv(0), chunk(0, 10), cv(10));
+		assert!(cache.get(cv(10), cv(20)).is_none(), "nothing past 10 is cached");
+
+		for start in 1..READ_CACHE_ENTRIES as u64 {
+			cache.insert(cv(start * 100), chunk(start * 100, start * 100 + 10), cv(start * 100 + 10));
+		}
+		cache.insert(cv(10), vec![], cv(10));
+		assert!(cache.get(cv(10), cv(20)).is_none(), "an empty range must never be served");
+		assert!(cache.get(cv(5), cv(10)).is_some(), "an empty range must not take the slot of a real chunk");
+	}
+
+	#[test]
+	fn a_chunk_the_cursor_has_passed_is_dropped() {
+		// Keeping passed chunks would grow the cache with every step of a flow that never reads them again.
+		let mut cache = ReadCache::default();
+		cache.insert(cv(0), chunk(0, 10), cv(10));
+		cache.insert(cv(10), chunk(10, 20), cv(20));
+
+		cache.retain_after(cv(10));
+
+		assert!(cache.get(cv(5), cv(20)).is_none(), "the chunk 0..10 lies wholly at or below the cursor");
+		let kept = cache.get(cv(12), cv(20)).expect("the chunk 10..20 is still ahead of the cursor");
+		assert_eq!(commits(&kept), (13..=20).collect::<Vec<_>>());
+	}
+
+	#[test]
+	fn a_full_cache_evicts_the_chunk_used_longest_ago() {
+		// Evicting a chunk still in use would send its reader back to storage on every drain.
+		let mut cache = ReadCache::default();
+		for start in 0..READ_CACHE_ENTRIES as u64 {
+			cache.insert(cv(start * 10), chunk(start * 10, start * 10 + 10), cv(start * 10 + 10));
+		}
+		assert!(cache.get(cv(5), cv(100)).is_some(), "touch the oldest chunk so it becomes the newest");
+
+		let next = READ_CACHE_ENTRIES as u64 * 10;
+		cache.insert(cv(next), chunk(next, next + 10), cv(next + 10));
+
+		assert!(cache.get(cv(5), cv(100)).is_some(), "the chunk just used must survive the eviction");
+		assert!(cache.get(cv(15), cv(100)).is_none(), "the chunk 10..20 was used longest ago and must go");
 	}
 }

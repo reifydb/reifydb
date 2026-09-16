@@ -83,6 +83,7 @@ impl FlowEngineInner {
 					entries.retain(|(fid, _)| *fid != flow.id);
 				}
 				self.sinks.retain(|_, v| !v.is_empty());
+				self.sinks_by_flow.remove(&flow.id);
 				return Err(err);
 			}
 			added.push(*operator_id);

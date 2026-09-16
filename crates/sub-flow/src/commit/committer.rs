@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, mem::take, sync::Arc};
 
 use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
 use reifydb_core::{
@@ -38,6 +38,8 @@ use crate::{commit::quiescence::FlowMaterialization, progress::tracker::FlowPosi
 
 pub type CommitterHandle = ActorHandle<CommitterMessage>;
 
+const COMMITTER_BATCH_SIZE: usize = 1024;
+
 pub(crate) type SliceCommitReply = Box<dyn FnOnce(Result<CommitVersion>) + Send>;
 pub(crate) type TickCommitReply = Box<dyn FnOnce(Result<()>) + Send>;
 
@@ -54,11 +56,18 @@ pub enum CommitterMessage {
 		view_changes: Vec<Change>,
 		reply: TickCommitReply,
 	},
+
+	Flush,
 }
 
 pub struct CommitterActor {
 	committer: Committer,
 	commit: CommitHandle,
+}
+
+pub struct CommitterState {
+	groups: BTreeMap<SourceVersion, Vec<(FlowSlice, SliceCommitReply)>>,
+	flush_queued: bool,
 }
 
 impl CommitterActor {
@@ -69,49 +78,34 @@ impl CommitterActor {
 		}
 	}
 
-	fn submit_slice(&self, slice: FlowSlice, reply: SliceCommitReply) {
-		let FlowSlice {
-			combined,
-			checkpoints,
-			checkpoint_deletes,
-			view_changes,
-			control_cursor,
-			source,
-		} = slice;
-		let produced_output = combined.iter_sorted().next().is_some() || !view_changes.is_empty();
-		let combined = Arc::new(combined);
+	fn enqueue(
+		&self,
+		state: &mut CommitterState,
+		ctx: &Context<CommitterMessage>,
+		source: SourceVersion,
+		slice: FlowSlice,
+		reply: SliceCommitReply,
+	) {
+		state.groups.entry(source).or_default().push((slice, reply));
+		if state.flush_queued {
+			return;
+		}
+		if ctx.self_ref().send(CommitterMessage::Flush).is_ok() {
+			state.flush_queued = true;
+		} else {
+			self.flush(state);
+		}
+	}
 
-		let apply_committer = self.committer.clone();
-		let apply_combined = Arc::clone(&combined);
-		let apply: CommitApply = Box::new(move |transaction| {
-			apply_committer.apply_slice(transaction, &apply_combined, view_changes, &control_cursor, source)
-		});
-
-		let completion_committer = self.committer.clone();
-		let completion: CommitCompletion = Box::new(move |result| match result {
-			Ok(version) => {
-				if let Err(err) = apply_operator_state_with_checkpoints(
-					&completion_committer.operators,
-					&combined,
-					&checkpoints,
-					&checkpoint_deletes,
-				) {
-					(reply)(Err(err));
-					return;
-				}
-				if produced_output {
-					completion_committer.materialization.record_output(version);
-				}
-				completion_committer.post_commit_slice(version, &checkpoints, &checkpoint_deletes);
-				(reply)(Ok(version));
-			}
-			Err(e) => (reply)(Err(e)),
-		});
-
-		self.commit.submit(CommitSubmission {
-			apply,
-			completion,
-		});
+	fn flush(&self, state: &mut CommitterState) {
+		for (_, group) in take(&mut state.groups) {
+			let (slices, replies): (Vec<FlowSlice>, Vec<SliceCommitReply>) = group.into_iter().unzip();
+			self.committer.commit_slices(
+				&self.commit,
+				Arc::new(slices),
+				replies.into_iter().enumerate().collect(),
+			);
+		}
 	}
 
 	fn submit_tick(
@@ -149,30 +143,52 @@ impl CommitterActor {
 }
 
 impl Actor for CommitterActor {
-	type State = ();
+	type State = CommitterState;
 	type Message = CommitterMessage;
 
-	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {}
+	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
+		CommitterState {
+			groups: BTreeMap::new(),
+			flush_queued: false,
+		}
+	}
 
-	fn handle(&self, _state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
+	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		match msg {
 			CommitterMessage::Slice {
 				slice,
 				reply,
-			} => self.submit_slice(slice, reply),
+			} => match slice.source {
+				Some(source) => self.enqueue(state, ctx, source, slice, reply),
+				None => {
+					self.flush(state);
+					self.committer.commit_slices(
+						&self.commit,
+						Arc::new(vec![slice]),
+						vec![(0, reply)],
+					);
+				}
+			},
 			CommitterMessage::Tick {
 				flow_id,
 				source,
 				pending,
 				view_changes,
 				reply,
-			} => self.submit_tick(flow_id, source, pending, view_changes, reply),
+			} => {
+				self.flush(state);
+				self.submit_tick(flow_id, source, pending, view_changes, reply)
+			}
+			CommitterMessage::Flush => {
+				state.flush_queued = false;
+				self.flush(state);
+			}
 		}
 		Directive::Continue
 	}
 
 	fn config(&self) -> ActorConfig {
-		ActorConfig::new()
+		ActorConfig::new().batch_size(COMMITTER_BATCH_SIZE)
 	}
 }
 
@@ -201,6 +217,10 @@ impl FlowSlice {
 			source: None,
 		}
 	}
+
+	fn produced_output(&self) -> bool {
+		self.combined.iter_sorted().next().is_some() || !self.view_changes.is_empty()
+	}
 }
 
 #[derive(Clone)]
@@ -223,31 +243,90 @@ impl Committer {
 		}
 	}
 
-	#[instrument(name = "flow::committer::apply_slice", level = "debug", skip_all)]
-	fn apply_slice(
+	fn commit_slices(
 		&self,
-		transaction: &mut CommandTransaction,
-		combined: &Pending,
-		view_changes: Vec<Change>,
-		control_cursor: &Option<(CdcConsumerId, CommitVersion)>,
-		source: Option<SourceVersion>,
-	) -> Result<()> {
-		if let Some(source) = source {
+		commit: &CommitHandle,
+		slices: Arc<Vec<FlowSlice>>,
+		members: Vec<(usize, SliceCommitReply)>,
+	) {
+		let indices: Vec<usize> = members.iter().map(|(index, _)| *index).collect();
+
+		let apply_committer = self.clone();
+		let apply_slices = Arc::clone(&slices);
+		let apply: CommitApply = Box::new(move |transaction| {
+			for index in indices {
+				apply_committer.apply_slice(transaction, &apply_slices[index])?;
+			}
+			Ok(())
+		});
+
+		let completion_committer = self.clone();
+		let retry_commit = commit.clone();
+		let completion: CommitCompletion = Box::new(move |result| match result {
+			Ok(version) => {
+				for (index, reply) in members {
+					(reply)(completion_committer.finish_slice(&slices[index], version));
+				}
+			}
+			Err(e) => match <[(usize, SliceCommitReply); 1]>::try_from(members) {
+				Ok([(_, reply)]) => (reply)(Err(e)),
+				Err(members) => {
+					for member in members {
+						completion_committer.commit_slices(
+							&retry_commit,
+							Arc::clone(&slices),
+							vec![member],
+						);
+					}
+				}
+			},
+		});
+
+		commit.submit(CommitSubmission {
+			apply,
+			completion,
+		});
+	}
+
+	#[instrument(name = "flow::committer::apply_slice", level = "debug", skip_all)]
+	fn apply_slice(&self, transaction: &mut CommandTransaction, slice: &FlowSlice) -> Result<()> {
+		if let Some(source) = slice.source {
 			transaction.stamp_source(source)?;
 		}
-		apply_pending_writes(transaction, combined)?;
+		apply_pending_writes(transaction, &slice.combined)?;
 
-		for change in view_changes {
-			transaction.track_flow_change(change);
+		for change in &slice.view_changes {
+			transaction.track_flow_change(change.clone());
 		}
 
-		if let Some((consumer_id, version)) = control_cursor {
+		if let Some((consumer_id, version)) = &slice.control_cursor {
 			CdcCheckpoint::persist(transaction, consumer_id, *version, ConsumerClass::Pinning)?;
 		}
 
 		Ok(())
 	}
 
+	#[instrument(name = "flow::committer::finish_slice", level = "trace", skip_all, fields(
+		write_count = slice.combined.len(),
+		checkpoint_count = slice.checkpoints.len()
+	))]
+	fn finish_slice(&self, slice: &FlowSlice, version: CommitVersion) -> Result<CommitVersion> {
+		apply_operator_state_with_checkpoints(
+			&self.operators,
+			&slice.combined,
+			&slice.checkpoints,
+			&slice.checkpoint_deletes,
+		)?;
+		if slice.produced_output() {
+			self.materialization.record_output(version);
+		}
+		self.post_commit_slice(version, &slice.checkpoints, &slice.checkpoint_deletes);
+		Ok(version)
+	}
+
+	#[instrument(name = "flow::committer::post_commit_slice", level = "trace", skip_all, fields(
+		checkpoint_count = checkpoints.len()
+	))]
 	fn post_commit_slice(
 		&self,
 		commit: CommitVersion,
@@ -332,7 +411,10 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 
 #[cfg(test)]
 mod commit_integration {
-	use std::sync::atomic::{AtomicUsize, Ordering};
+	use std::sync::{
+		atomic::{AtomicUsize, Ordering},
+		mpsc,
+	};
 
 	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 	use reifydb_codec::{
@@ -624,5 +706,183 @@ mod commit_integration {
 				.unwrap(),
 			Some(EncodedPodRow::new(&[2; 4]))
 		);
+	}
+
+	fn gated_committer_actor(engine: &StandardEngine) -> (CommitterHandle, Committer, mpsc::Sender<()>) {
+		let (release, gate) = mpsc::channel::<()>();
+		let gate = Mutex::new(Some(gate));
+		let begin_engine = engine.clone();
+		let begin: CommitBegin = Arc::new(move || {
+			let first = gate.lock().take();
+			if let Some(gate) = first {
+				gate.recv().expect("the test must release the first commit");
+			}
+			begin_engine.begin_command(IdentityId::system())
+		});
+		let (handle, committer) = build_committer_actor(engine, CommitHandle::new(begin));
+		(handle, committer, release)
+	}
+
+	fn send_slice(handle: &CommitterHandle, slice: FlowSlice, reply: SliceCommitReply) {
+		let sent = handle
+			.actor_ref()
+			.send(CommitterMessage::Slice {
+				slice,
+				reply,
+			})
+			.is_ok();
+		assert!(sent, "send slice");
+	}
+
+	fn sourced_slice(index: u64, source: u64) -> FlowSlice {
+		let mut slice = synthetic_slice(index);
+		slice.source = Some(SourceVersion(source));
+		slice
+	}
+
+	#[test]
+	fn slices_of_one_source_queued_together_commit_in_one_version() {
+		// Queued slices of one source must share a commit, or every flow pays its own commit.
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+		let (handle, committer, release) = gated_committer_actor(&engine);
+
+		let replies = SliceReplies::new(4);
+		send_slice(&handle, synthetic_slice(9), replies.reply(0));
+		send_slice(&handle, sourced_slice(1, 7), replies.reply(1));
+		send_slice(&handle, sourced_slice(2, 7), replies.reply(2));
+		send_slice(&handle, sourced_slice(3, 7), replies.reply(3));
+		release.send(()).expect("release the first commit");
+		replies.wait();
+
+		let versions: BTreeMap<usize, CommitVersion> = replies.versions().into_iter().collect();
+		assert!(versions[&0] < versions[&1], "the gate slice must commit on its own first: {versions:?}");
+		assert_eq!(versions[&1], versions[&2], "slices of one source must share a version: {versions:?}");
+		assert_eq!(versions[&1], versions[&3], "slices of one source must share a version: {versions:?}");
+
+		let tracked = committer.flow_tracker.all();
+		for i in 1..=3u64 {
+			assert_eq!(
+				tracked.get(&FlowId(i)).copied(),
+				Some(CommitVersion(100 + i)),
+				"every slice in the group must still advance its own flow"
+			);
+		}
+
+		let mut query = engine.begin_query(IdentityId::system()).expect("begin query");
+		for i in 1..=3u64 {
+			let key = TaggedKey::decode(&synthetic_key(i)).expect("the fixture key must decode");
+			assert!(
+				Transaction::Query(&mut query).get(&key).expect("read grouped write").is_some(),
+				"every slice in the group must land its writes, not only the first"
+			);
+		}
+	}
+
+	#[test]
+	fn a_group_queued_after_a_flush_still_commits() {
+		// Every group must get its own flush, or slices queued after the first flush never commit.
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+		let begin_engine = engine.clone();
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+
+		for (round, source) in [(1u64, 7u64), (2, 8), (3, 8)] {
+			let replies = SliceReplies::new(1);
+			send_slice(&handle, sourced_slice(round, source), replies.reply(0));
+			replies.wait();
+			assert!(replies.versions()[0].1 > CommitVersion(0), "round {round} must commit its write");
+		}
+		assert_eq!(committer.flow_tracker.all().get(&FlowId(3)).copied(), Some(CommitVersion(103)));
+	}
+
+	#[test]
+	fn slices_of_different_sources_never_share_a_version() {
+		// A commit carries exactly one source stamp, so slices of different sources must never share one.
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+		let (handle, _committer, release) = gated_committer_actor(&engine);
+
+		let replies = SliceReplies::new(4);
+		send_slice(&handle, synthetic_slice(9), replies.reply(0));
+		send_slice(&handle, sourced_slice(1, 7), replies.reply(1));
+		send_slice(&handle, sourced_slice(2, 8), replies.reply(2));
+		send_slice(&handle, sourced_slice(3, 7), replies.reply(3));
+		release.send(()).expect("release the first commit");
+		replies.wait();
+
+		let versions: BTreeMap<usize, CommitVersion> = replies.versions().into_iter().collect();
+		assert_eq!(
+			versions[&1], versions[&3],
+			"slices of source 7 must still group around source 8: {versions:?}"
+		);
+		assert_ne!(versions[&1], versions[&2], "source 8 must not join the source 7 commit: {versions:?}");
+	}
+
+	#[test]
+	fn a_checkpoint_delete_commits_after_the_slices_queued_before_it() {
+		// A delete that overtakes its flow's queued slice lets that slice write the stopped flow back.
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+		let (handle, committer, release) = gated_committer_actor(&engine);
+
+		let mut delete = FlowSlice::empty();
+		delete.checkpoint_deletes.push(FlowId(1));
+
+		let replies = SliceReplies::new(3);
+		send_slice(&handle, synthetic_slice(9), replies.reply(0));
+		send_slice(&handle, sourced_slice(1, 7), replies.reply(1));
+		send_slice(&handle, delete, replies.reply(2));
+		release.send(()).expect("release the first commit");
+		replies.wait();
+		replies.versions();
+
+		assert_eq!(
+			committer.flow_tracker.all().get(&FlowId(1)).copied(),
+			None,
+			"the deleted flow must not come back in the tracker"
+		);
+		assert_eq!(
+			committer.operators.checkpoint_get(FlowId(1)).unwrap(),
+			None,
+			"the deleted flow must not come back in the operator store"
+		);
+	}
+
+	#[test]
+	fn a_slice_that_cannot_commit_fails_alone_and_its_group_still_commits() {
+		// One bad slice must not fail the healthy flows grouped with it, or they get poisoned for its error.
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+		let (handle, committer, release) = gated_committer_actor(&engine);
+
+		let mut bad = sourced_slice(2, 7);
+		bad.combined.insert(EncodedKey::new([]), EncodedBytes(CowVec::new(vec![1u8; 4])));
+
+		let replies = SliceReplies::new(4);
+		send_slice(&handle, synthetic_slice(9), replies.reply(0));
+		send_slice(&handle, sourced_slice(1, 7), replies.reply(1));
+		send_slice(&handle, bad, replies.reply(2));
+		send_slice(&handle, sourced_slice(3, 7), replies.reply(3));
+		release.send(()).expect("release the first commit");
+		replies.wait();
+
+		{
+			let results = replies.results.lock();
+			let result = |index: usize| &results.iter().find(|(i, _)| *i == index).expect("reply").1;
+			assert!(result(2).is_err(), "the slice with an undecodable key must fail");
+			for healthy in [1, 3] {
+				assert!(
+					matches!(result(healthy), Ok(version) if *version > CommitVersion(0)),
+					"a healthy slice grouped with a bad one must still commit"
+				);
+			}
+		}
+
+		let tracked = committer.flow_tracker.all();
+		assert_eq!(tracked.get(&FlowId(1)).copied(), Some(CommitVersion(101)));
+		assert_eq!(tracked.get(&FlowId(3)).copied(), Some(CommitVersion(103)));
+		assert_eq!(tracked.get(&FlowId(2)).copied(), None, "the failed slice must not advance its flow");
 	}
 }

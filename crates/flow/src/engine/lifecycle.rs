@@ -40,6 +40,12 @@ impl FlowEngineInner {
 		if !operators.contains(&entry) {
 			operators.push(entry);
 		}
+
+		let registered = self.sinks_by_flow.entry(flow).or_default();
+		let entry = (sink, operator);
+		if !registered.contains(&entry) {
+			registered.push(entry);
+		}
 	}
 
 	pub fn clear(&mut self) {
@@ -49,6 +55,7 @@ impl FlowEngineInner {
 		self.flows.clear();
 		self.sources.clear();
 		self.sinks.clear();
+		self.sinks_by_flow.clear();
 		self.analyzer.clear();
 	}
 
@@ -81,6 +88,7 @@ impl FlowEngineInner {
 			entries.retain(|(fid, _)| *fid != flow_id);
 		}
 		self.sinks.retain(|_, v| !v.is_empty());
+		self.sinks_by_flow.remove(&flow_id);
 
 		self.flows.remove(&flow_id);
 

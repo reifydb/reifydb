@@ -59,7 +59,7 @@ use crate::{
 	progress::{
 		frontier::ControlFrontier,
 		output_frontier,
-		tracker::{FlowPositionTracker, ObjectVersionTracker},
+		tracker::{FlowPositionTracker, FlowWaker, ObjectVersionTracker},
 	},
 };
 
@@ -67,10 +67,15 @@ const FLOW_RETRY_LIMIT: u32 = 3;
 
 const FLOW_RETRY_BACKOFF_MS: u64 = 50;
 
+const FLOW_STALL_TIMEOUT_MS: i64 = 30_000;
+
+const FLOW_FULL_WAKE_INTERVAL_MS: i64 = 100;
+
 pub struct FlowSupervisorParams {
 	pub engine: StandardEngine,
 	pub flow_catalog: FlowCatalog,
 	pub committer: ActorRef<CommitterMessage>,
+	pub terminal_committer: ActorRef<CommitterMessage>,
 	pub backlog: FlowBacklog,
 	pub loader: ActorRef<LoaderMessage>,
 	pub control: ControlFrontier,
@@ -96,6 +101,7 @@ pub struct FlowSupervisor {
 	engine: StandardEngine,
 	flow_catalog: FlowCatalog,
 	committer: ActorRef<CommitterMessage>,
+	terminal_committer: ActorRef<CommitterMessage>,
 	backlog: FlowBacklog,
 	loader: ActorRef<LoaderMessage>,
 	control: ControlFrontier,
@@ -123,7 +129,11 @@ pub struct SupervisorState {
 	sources: BTreeMap<FlowId, Arc<BTreeSet<ObjectId>>>,
 	scan_cursor: CommitVersion,
 	last_control_commit_at: DateTime,
+	wake_sets: BTreeMap<ObjectId, BTreeSet<FlowId>>,
+	full_wake_armed: bool,
 }
+
+type PreparedFlow = (FlowDag, CommitVersion, Arc<BTreeSet<ObjectId>>, Option<Arc<BTreeSet<u64>>>);
 
 impl FlowSupervisor {
 	pub fn new(params: FlowSupervisorParams) -> Self {
@@ -131,6 +141,7 @@ impl FlowSupervisor {
 			engine: params.engine,
 			flow_catalog: params.flow_catalog,
 			committer: params.committer,
+			terminal_committer: params.terminal_committer,
 			backlog: params.backlog,
 			loader: params.loader,
 			control: params.control,
@@ -215,16 +226,23 @@ impl FlowSupervisor {
 
 		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _)| f.id).collect();
 		let closure = state.analyzer.get_dependency_graph().upstream_closure();
+		let mut prepared: Vec<PreparedFlow> = Vec::with_capacity(to_spawn.len());
 		for (flow, seed) in to_spawn {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
+			self.flow_tracker.set_source_count(flow_id, source_objects.len());
 			self.publish_upstreams(state, flow_id);
+			prepared.push((flow, seed, source_objects, completeness_objects));
+		}
+		for (flow, seed, source_objects, completeness_objects) in prepared {
+			let flow_id = flow.id;
 			let handle = self.spawn_flow(flow, source_objects, completeness_objects, seed);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned deferred flow actor");
 		}
+		state.wake_sets = wake_sets(&state.sources, &self.flow_tracker);
 	}
 
 	fn hydrate_frontiers(&self) {
@@ -280,7 +298,7 @@ impl FlowSupervisor {
 			}
 		};
 
-		self.update_tracker(&items);
+		let changed = self.update_tracker(&items);
 		let seeds = self.process_ddl(state, &items, bound);
 
 		state.scan_cursor = bound;
@@ -303,9 +321,19 @@ impl FlowSupervisor {
 			state.last_control_commit_at = now;
 		}
 
-		for handle in state.flows.values() {
-			let _ = handle.actor_ref().send(FlowActorMessage::Wake);
+		let targets = wake_targets(&state.wake_sets, &changed);
+		self.flow_tracker.wake_flows(targets);
+		if !state.full_wake_armed {
+			state.full_wake_armed = true;
+			ctx.schedule_once(Duration::from_milliseconds(FLOW_FULL_WAKE_INTERVAL_MS).unwrap(), || {
+				FlowSupervisorMessage::WakeAll
+			});
 		}
+	}
+
+	fn handle_wake_all(&self, state: &mut SupervisorState) {
+		state.full_wake_armed = false;
+		self.flow_tracker.wake_flows_now(state.flows.keys().copied());
 	}
 
 	fn process_ddl(
@@ -368,12 +396,18 @@ impl FlowSupervisor {
 		let registered: BTreeSet<FlowId> =
 			state.flows.keys().copied().chain(to_spawn.iter().map(|(f, _)| f.id)).collect();
 		let closure = state.analyzer.get_dependency_graph().upstream_closure();
+		let mut prepared: Vec<PreparedFlow> = Vec::with_capacity(to_spawn.len());
 		for (flow, seed) in to_spawn {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
+			self.flow_tracker.set_source_count(flow_id, source_objects.len());
 			self.publish_upstreams(state, flow_id);
+			prepared.push((flow, seed, source_objects, completeness_objects));
+		}
+		for (flow, seed, source_objects, completeness_objects) in prepared {
+			let flow_id = flow.id;
 			let handle = self.spawn_flow(flow, source_objects, completeness_objects, seed);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned new deferred flow actor");
@@ -386,6 +420,7 @@ impl FlowSupervisor {
 				let source_objects = self.compute_source_objects(state, flow_id, &registered);
 				let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 				state.sources.insert(flow_id, source_objects.clone());
+				self.flow_tracker.set_source_count(flow_id, source_objects.len());
 				self.publish_upstreams(state, flow_id);
 				if let Some(handle) = state.flows.get(&flow_id) {
 					let _ = handle.actor_ref().send(FlowActorMessage::UpdateSources {
@@ -394,6 +429,10 @@ impl FlowSupervisor {
 					});
 				}
 			}
+		}
+
+		if lineage_dirty || changed {
+			state.wake_sets = wake_sets(&state.sources, &self.flow_tracker);
 		}
 
 		seeds
@@ -495,6 +534,7 @@ impl FlowSupervisor {
 		let params = FlowActorParams {
 			engine: self.engine.clone(),
 			committer: self.committer.clone(),
+			terminal_committer: self.terminal_committer.clone(),
 			backlog: self.backlog.clone(),
 			loader: self.loader.clone(),
 			control: self.control.clone(),
@@ -514,9 +554,13 @@ impl FlowSupervisor {
 			checkpoint_max_age: self.checkpoint_max_age,
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
+			stall_timeout: Duration::from_milliseconds(FLOW_STALL_TIMEOUT_MS).unwrap(),
 		};
-		let handle = self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), FlowActor::new(params));
-		self.flow_tracker.set_waker(flow_id, handle.actor_ref().clone());
+		let actor = FlowActor::new(params);
+		let pending = actor.wake_pending();
+		let handle = self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), actor);
+		self.flow_tracker
+			.set_waker(flow_id, FlowWaker::new(handle.actor_ref().clone(), pending, self.clock.clone()));
 		handle
 	}
 
@@ -540,12 +584,15 @@ impl FlowSupervisor {
 		});
 	}
 
-	fn update_tracker(&self, cdcs: &[Arc<Cdc>]) {
+	fn update_tracker(&self, cdcs: &[Arc<Cdc>]) -> BTreeSet<ObjectId> {
+		let mut changed = BTreeSet::new();
 		for cdc in cdcs {
 			for object in changed_objects(cdc) {
 				self.tracker.update(object, cdc.version.commit);
+				changed.insert(object);
 			}
 		}
+		changed
 	}
 
 	fn fetch_ddl_cursor(&self) -> Result<CommitVersion> {
@@ -571,6 +618,32 @@ fn retire_flow(operators: &OperatorStore, flows: &mut BTreeMap<FlowId, FlowActor
 		remove_checkpoint(operators, flow_id);
 	}
 	true
+}
+
+fn wake_sets(
+	sources: &BTreeMap<FlowId, Arc<BTreeSet<ObjectId>>>,
+	tracker: &FlowPositionTracker,
+) -> BTreeMap<ObjectId, BTreeSet<FlowId>> {
+	let mut sets: BTreeMap<ObjectId, BTreeSet<FlowId>> = BTreeMap::new();
+	for (flow_id, objects) in sources {
+		let mut closure = BTreeSet::from([*flow_id]);
+		let mut pending = vec![*flow_id];
+		while let Some(reader) = pending.pop() {
+			for producer in tracker.upstreams(reader).keys() {
+				if closure.insert(*producer) {
+					pending.push(*producer);
+				}
+			}
+		}
+		for object in objects.iter() {
+			sets.entry(*object).or_default().extend(closure.iter().copied());
+		}
+	}
+	sets
+}
+
+fn wake_targets(sets: &BTreeMap<ObjectId, BTreeSet<FlowId>>, changed: &BTreeSet<ObjectId>) -> BTreeSet<FlowId> {
+	changed.iter().filter_map(|object| sets.get(object)).flatten().copied().collect()
 }
 
 fn remove_checkpoint(operators: &OperatorStore, flow_id: FlowId) {
@@ -603,6 +676,8 @@ impl Actor for FlowSupervisor {
 			sources: BTreeMap::new(),
 			scan_cursor: CommitVersion(0),
 			last_control_commit_at: self.clock.now(),
+			wake_sets: BTreeMap::new(),
+			full_wake_armed: false,
 		}
 	}
 
@@ -613,6 +688,7 @@ impl Actor for FlowSupervisor {
 				scan_from,
 			} => self.handle_bootstrap(state, flows, scan_from),
 			FlowSupervisorMessage::Wake => self.handle_wake(state, ctx),
+			FlowSupervisorMessage::WakeAll => self.handle_wake_all(state),
 			FlowSupervisorMessage::PersistFrontiers => self.handle_persist_frontiers(ctx),
 		}
 		Directive::Continue
@@ -626,14 +702,22 @@ impl Actor for FlowSupervisor {
 #[cfg(test)]
 mod tests {
 	use std::{
-		collections::{BTreeMap, BTreeSet},
+		collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 		sync::{
 			Arc,
 			atomic::{AtomicBool, Ordering},
 		},
 	};
 
-	use reifydb_core::{actors::flow::FlowActorMessage, common::CommitVersion, interface::catalog::flow::FlowId};
+	use reifydb_core::{
+		actors::flow::FlowActorMessage,
+		common::CommitVersion,
+		interface::catalog::{
+			flow::FlowId,
+			id::{TableId, ViewId},
+			object::ObjectId,
+		},
+	};
 	use reifydb_runtime::{
 		actor::{
 			context::Context,
@@ -646,7 +730,8 @@ mod tests {
 	use reifydb_store_operator::store::OperatorStore;
 	use reifydb_value::value::duration::Duration;
 
-	use super::{reap_orphan_checkpoints, retire_flow};
+	use super::{reap_orphan_checkpoints, retire_flow, wake_sets, wake_targets};
+	use crate::progress::tracker::FlowPositionTracker;
 
 	struct StopRecorder {
 		deleted: Arc<AtomicBool>,
@@ -749,6 +834,50 @@ mod tests {
 			store.checkpoint_get(FlowId(1)).unwrap().is_none(),
 			"the delete must not be conditional on the handle; leaving the row behind turns every such \
 			 drop into a permanent pin on cdc retention"
+		);
+	}
+
+	#[test]
+	fn a_changed_input_wakes_its_readers_and_every_flow_upstream_of_them_and_no_other_flow() {
+		// A reader waits on its upstream flow's position, so an idle upstream must be woken with the reader.
+		let tracker = FlowPositionTracker::new();
+		let (a, b, c, d) = (FlowId(1), FlowId(2), FlowId(3), FlowId(4));
+		let (table_a, table_b, table_c, table_d) = (
+			ObjectId::Table(TableId(11)),
+			ObjectId::Table(TableId(12)),
+			ObjectId::Table(TableId(13)),
+			ObjectId::Table(TableId(14)),
+		);
+		let (view_a, view_b) = (ObjectId::View(ViewId(21)), ObjectId::View(ViewId(22)));
+		tracker.set_upstreams(b, HashMap::from([(a, HashSet::from([view_a]))]));
+		tracker.set_upstreams(d, HashMap::from([(b, HashSet::from([view_b]))]));
+		let sources = BTreeMap::from([
+			(a, Arc::new(BTreeSet::from([table_a]))),
+			(b, Arc::new(BTreeSet::from([table_b, view_a]))),
+			(c, Arc::new(BTreeSet::from([table_c]))),
+			(d, Arc::new(BTreeSet::from([table_d, view_b]))),
+		]);
+
+		let sets = wake_sets(&sources, &tracker);
+
+		assert_eq!(
+			wake_targets(&sets, &BTreeSet::from([table_b])),
+			BTreeSet::from([a, b]),
+			"a changed input must wake its reader and the reader's upstream flow and nothing else, or the reader stays gated on the idle upstream"
+		);
+		assert_eq!(
+			wake_targets(&sets, &BTreeSet::from([table_d])),
+			BTreeSet::from([a, b, d]),
+			"the upstream walk must be transitive, or a reader two hops down stays gated until the full wake"
+		);
+		assert_eq!(
+			wake_targets(&sets, &BTreeSet::from([table_c, view_a])),
+			BTreeSet::from([a, b, c]),
+			"every changed input must add its own readers"
+		);
+		assert!(
+			wake_targets(&sets, &BTreeSet::from([ObjectId::Table(TableId(99))])).is_empty(),
+			"an input no flow reads must wake nobody, or every round wakes flows with nothing to do"
 		);
 	}
 }
