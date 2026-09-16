@@ -30,15 +30,9 @@ impl FlowEngineInner {
 			return Ok(Vec::new());
 		};
 
-		let sinks: Vec<(ObjectId, OperatorId)> = self
-			.sinks
-			.iter()
-			.flat_map(|(object, registrations)| {
-				registrations.iter().filter_map(move |(registered, operator)| {
-					(*registered == flow_id).then_some((*object, *operator))
-				})
-			})
-			.collect();
+		let Some(sinks) = self.sinks_by_flow.get(&flow_id) else {
+			return Ok(Vec::new());
+		};
 
 		if sinks.is_empty() {
 			return Ok(Vec::new());
@@ -48,7 +42,7 @@ impl FlowEngineInner {
 		let frontiers = output_frontiers(txn, flow, &self.operators, topo)?;
 
 		let mut held: WatermarkHolds = Vec::with_capacity(sinks.len());
-		for (object, operator_id) in sinks {
+		for (object, operator_id) in sinks.iter().copied() {
 			let Some(frontier) = frontiers.get(&operator_id) else {
 				continue;
 			};
@@ -300,7 +294,7 @@ mod tests {
 		}
 
 		fn registered_sink(mut self, id: u64, flow: FlowId) -> Self {
-			self.inner.sinks.insert(ObjectId::View(ViewId(id)), vec![(flow, OperatorId(id))]);
+			self.inner.add_sink(flow, OperatorId(id), ObjectId::View(ViewId(id)));
 			self
 		}
 
