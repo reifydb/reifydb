@@ -19,6 +19,8 @@ mod bulk_insert;
 mod bulk_insert_mixed_value_types;
 #[path = "call_argument_named_like_a_type.rs"]
 mod call_argument_named_like_a_type;
+#[path = "call_argument_undefined_variable.rs"]
+mod call_argument_undefined_variable;
 #[path = "callable_call_policy.rs"]
 mod callable_call_policy;
 #[path = "cast_arbitrary_precision_text_round_trip.rs"]

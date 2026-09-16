@@ -331,7 +331,7 @@ pub enum ProcedureErrorKind {
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeErrorKind {
 	VariableNotFound {
-		name: String,
+		fragment: Fragment,
 	},
 	VariableIsDataframe {
 		name: String,

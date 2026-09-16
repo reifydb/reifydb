@@ -61,7 +61,7 @@ impl<'a> Vm<'a> {
 			None => {
 				return Err(TypeError::Runtime {
 					kind: RuntimeErrorKind::VariableNotFound {
-						name: name.to_string(),
+						fragment: fragment.clone(),
 					},
 					message: format!("Variable '{}' is not defined", name),
 				}
@@ -184,7 +184,7 @@ impl<'a> Vm<'a> {
 			None => {
 				return Err(TypeError::Runtime {
 					kind: RuntimeErrorKind::VariableNotFound {
-						name: var_name.to_string(),
+						fragment: object.clone(),
 					},
 					message: format!("Variable '{}' is not defined", var_name),
 				}

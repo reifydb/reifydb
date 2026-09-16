@@ -1353,10 +1353,13 @@ impl IntoDiagnostic for TypeError {
 
 			TypeError::Runtime { kind, message } => {
 				let (code, help) = match &kind {
-					RuntimeErrorKind::VariableNotFound { name } => (
-						"RUNTIME_001",
-						Some(format!("Define the variable using 'let {} = <value>' before using it", name)),
-					),
+					RuntimeErrorKind::VariableNotFound { fragment } => {
+						let name = fragment.text().strip_prefix('$').unwrap_or(fragment.text());
+						(
+							"RUNTIME_001",
+							Some(format!("Define the variable using 'let {} = <value>' before using it", name)),
+						)
+					}
 					RuntimeErrorKind::VariableIsDataframe { name } => (
 						"RUNTIME_002",
 						Some(format!(
@@ -1438,6 +1441,7 @@ impl IntoDiagnostic for TypeError {
 				};
 
 				let fragment = match &kind {
+					RuntimeErrorKind::VariableNotFound { fragment } => fragment.clone(),
 					RuntimeErrorKind::UndefinedFunction { name } => Fragment::internal(name.clone()),
 					RuntimeErrorKind::AppendColumnMismatch { fragment, .. } => fragment.clone(),
 					RuntimeErrorKind::ConditionalBranchMismatch { fragment, .. } => fragment.clone(),

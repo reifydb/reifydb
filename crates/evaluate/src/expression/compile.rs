@@ -236,7 +236,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 						}
 						Err(TypeError::Runtime {
 							kind: RuntimeErrorKind::VariableNotFound {
-								name: variable_name.to_string(),
+								fragment: expr.fragment.clone(),
 							},
 							message: format!("Variable '{}' is not defined", variable_name),
 						}
@@ -742,6 +742,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 				Expression::Variable(var_expr) => Some(var_expr.name().to_string()),
 				_ => None,
 			};
+			let var_fragment = match e.object.as_ref() {
+				Expression::Variable(var_expr) => var_expr.fragment.clone(),
+				_ => Fragment::None,
+			};
 			let object = compile_expression(_ctx, &e.object)?;
 			CompiledExpr::new(move |ctx| {
 				if let Some(ref variable_name) = var_name {
@@ -821,7 +825,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 						.into()),
 						None => Err(TypeError::Runtime {
 							kind: RuntimeErrorKind::VariableNotFound {
-								name: variable_name.to_string(),
+								fragment: var_fragment.clone(),
 							},
 							message: format!("Variable '{}' is not defined", variable_name),
 						}
