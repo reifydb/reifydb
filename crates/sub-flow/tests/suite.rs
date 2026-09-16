@@ -5,6 +5,8 @@
 mod aggregate_expression_input;
 #[path = "apply_unknown_operator_view.rs"]
 mod apply_unknown_operator_view;
+#[path = "apply_unknown_operator_view_create.rs"]
+mod apply_unknown_operator_view_create;
 #[path = "call_argument_named_like_a_type.rs"]
 mod call_argument_named_like_a_type;
 #[path = "custom_operator_timer.rs"]

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_catalog::catalog::{Catalog, flow::FlowToCreate, view::ViewColumnToCreate};
+use reifydb_catalog::{
+	catalog::{Catalog, flow::FlowToCreate, view::ViewColumnToCreate},
+	vtable::system::operator_libary::OperatorLibrary,
+};
 use reifydb_core::{
-	error::diagnostic::flow::flow_view_calls_script_routine,
+	error::diagnostic::{flow::flow_view_calls_script_routine, query},
 	interface::catalog::{
 		column::ColumnIndex,
 		flow::FlowStatus,
@@ -206,15 +209,27 @@ fn ensure_flow_expressions_compile(plan: &mut QueryPlan, symbols: &SymbolTable) 
 	inputs.into_iter().try_for_each(|input| ensure_flow_expressions_compile(input, symbols))
 }
 
+fn ensure_apply_operators_registered(plan: &mut QueryPlan, operators: &OperatorLibrary) -> Result<()> {
+	if let QueryPlan::Apply(node) = plan
+		&& operators.get(node.operator.text()).is_none()
+	{
+		return Err(error!(query::unknown_apply_operator(node.operator.clone())));
+	}
+	let (_, inputs) = plan_expressions_and_inputs(plan);
+	inputs.into_iter().try_for_each(|input| ensure_apply_operators_registered(input, operators))
+}
+
 pub(crate) fn create_deferred_view_flow(
 	catalog: &Catalog,
 	routines: &Routines,
+	operators: &OperatorLibrary,
 	txn: &mut AdminTransaction,
 	symbols: &SymbolTable,
 	view: &View,
 	mut plan: QueryPlan,
 ) -> Result<()> {
 	ensure_no_script_routine_call(&mut plan, symbols)?;
+	ensure_apply_operators_registered(&mut plan, operators)?;
 	resolve_flow_variants(catalog, txn, &mut plan)?;
 	ensure_flow_expressions_compile(&mut plan, symbols)?;
 	let flow = catalog.create_flow(

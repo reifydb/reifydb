@@ -7,6 +7,8 @@ pub mod extern_c;
 pub mod extern_rust;
 pub mod factory;
 pub mod shutdown;
+#[cfg(test)]
+mod tests;
 
 use std::{
 	any::Any,
