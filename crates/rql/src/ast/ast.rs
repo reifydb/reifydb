@@ -1482,6 +1482,7 @@ pub struct AstJoinExpressionPair<'bump> {
 	pub first: BumpBox<'bump, Ast<'bump>>,
 	pub second: BumpBox<'bump, Ast<'bump>>,
 	pub connector: Option<JoinConnector>,
+	pub fragment: BumpFragment<'bump>,
 }
 
 #[derive(Debug)]

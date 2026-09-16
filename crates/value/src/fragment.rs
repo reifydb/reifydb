@@ -553,6 +553,10 @@ impl Fragment {
 
 		fragments.sort();
 
+		if let Some(spanning) = Self::spanning(&fragments) {
+			return spanning;
+		}
+
 		let first = fragments.first().unwrap();
 
 		let mut text = String::with_capacity(fragments.iter().map(|f| f.text().len()).sum());
@@ -577,6 +581,38 @@ impl Fragment {
 				text: Arc::from(text),
 			},
 		}
+	}
+
+	fn spanning(fragments: &[Fragment]) -> Option<Fragment> {
+		let mut line: Option<u32> = None;
+		let mut start = u32::MAX;
+		let mut end = 0;
+		for fragment in fragments {
+			let Fragment::Statement {
+				text,
+				line: fragment_line,
+				column,
+			} = fragment
+			else {
+				return None;
+			};
+			if *line.get_or_insert(fragment_line.0) != fragment_line.0 {
+				return None;
+			}
+			start = start.min(column.0);
+			end = end.max(column.0 + text.chars().count() as u32);
+		}
+
+		fragments.iter()
+			.find(|fragment| match fragment {
+				Fragment::Statement {
+					text,
+					column,
+					..
+				} => column.0 == start && column.0 + text.chars().count() as u32 >= end,
+				_ => false,
+			})
+			.cloned()
 	}
 
 	pub fn fragment(&self) -> &str {

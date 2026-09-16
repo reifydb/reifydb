@@ -34,12 +34,13 @@ fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -
 
 	let mut eq_exprs: Vec<Expression> = Vec::new();
 	for pair in using.pairs {
+		let pair_fragment = pair.fragment.to_owned();
 		let left_expr = compiler.compile(BumpBox::into_inner(pair.first))?;
 		let right_expr = compiler.compile(BumpBox::into_inner(pair.second))?;
 		eq_exprs.push(Expression::Equal(EqExpression {
 			left: Box::new(left_expr),
 			right: Box::new(right_expr),
-			fragment: fragment.clone(),
+			fragment: pair_fragment,
 		}));
 	}
 

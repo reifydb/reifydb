@@ -90,6 +90,8 @@ mod join_digest_key;
 mod join_natural;
 #[path = "join_retention_ddl.rs"]
 mod join_retention_ddl;
+#[path = "join_using_condition_fragment.rs"]
+mod join_using_condition_fragment;
 #[path = "join_using_unknown_key_column.rs"]
 mod join_using_unknown_key_column;
 #[path = "memory_limit.rs"]
