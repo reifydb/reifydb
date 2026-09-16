@@ -93,19 +93,19 @@ describe('IdentityIdValue', () => {
                 expect(identityId.value).toBe(uuid);
             });
 
-            it('should return undefined for empty string', () => {
-                const identityId = IdentityIdValue.parse('');
-                expect(identityId.value).toBeUndefined();
+            it('should reject an empty string', () => {
+                // a non-option value must always be defined, so blank text is not a value
+                expect(() => IdentityIdValue.parse('')).toThrow();
             });
 
-            it('should return undefined for whitespace-only string', () => {
-                const identityId = IdentityIdValue.parse('   ');
-                expect(identityId.value).toBeUndefined();
+            it('should reject a whitespace-only string', () => {
+                // a non-option value must always be defined, so blank text is not a value
+                expect(() => IdentityIdValue.parse('   ')).toThrow();
             });
 
-            it('should return undefined for NONE_VALUE', () => {
-                const identityId = IdentityIdValue.parse('⟪none⟫');
-                expect(identityId.value).toBeUndefined();
+            it('should reject the none marker', () => {
+                // a non-option value must always be defined, so the none marker is not a value
+                expect(() => IdentityIdValue.parse('⟪none⟫')).toThrow();
             });
 
             it('should throw error for invalid UUID format', () => {

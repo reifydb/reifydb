@@ -26,7 +26,7 @@ export class Uint8Value implements Value {
     static parse(str: string): Uint8Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new Uint8Value(undefined);
+            throw new Error(`Cannot parse "${str}" as Uint8`);
         }
         
         let value: bigint;

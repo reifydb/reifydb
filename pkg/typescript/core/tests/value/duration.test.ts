@@ -284,13 +284,15 @@ describe('DurationValue', () => {
             expect(DurationValue.parse('-P1D').toIsoString()).toBe('P-1D');
         });
 
-        it('should return undefined for empty string', () => {
-            expect(DurationValue.parse('').value).toBeUndefined();
-            expect(DurationValue.parse('   ').value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => DurationValue.parse('')).toThrow();
+            expect(() => DurationValue.parse('   ')).toThrow();
         });
 
-        it('should return undefined for NONE_VALUE', () => {
-            expect(DurationValue.parse('⟪none⟫').value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option value must always be defined, so the none marker is not a value
+            expect(() => DurationValue.parse('⟪none⟫')).toThrow();
         });
 
         it('should parse human-readable duration strings', () => {

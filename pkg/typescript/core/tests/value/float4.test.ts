@@ -132,14 +132,14 @@ describe('Float4Value', () => {
             expect(float4.value).toBeCloseTo(3.14, 5);
         });
 
-        it('should return undefined for empty string', () => {
-            const float4 = Float4Value.parse('');
-            expect(float4.value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Float4Value.parse('')).toThrow();
         });
 
-        it('should return undefined for whitespace-only string', () => {
-            const float4 = Float4Value.parse('   ');
-            expect(float4.value).toBeUndefined();
+        it('should reject a whitespace-only string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Float4Value.parse('   ')).toThrow();
         });
 
         it('should throw error for non-numeric string', () => {

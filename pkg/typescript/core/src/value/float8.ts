@@ -21,7 +21,7 @@ export class Float8Value implements Value {
     static parse(str: string): Float8Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new Float8Value(undefined);
+            throw new Error(`Cannot parse "${str}" as Float8`);
         }
 
         const num = Number(trimmed);

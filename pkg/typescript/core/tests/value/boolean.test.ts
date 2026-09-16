@@ -61,19 +61,19 @@ describe('BooleanValue', () => {
             expect(bool.value).toBe(true);
         });
 
-        it('should return undefined for empty string', () => {
-            const bool = BooleanValue.parse('');
-            expect(bool.value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => BooleanValue.parse('')).toThrow();
         });
 
-        it('should return undefined for whitespace-only string', () => {
-            const bool = BooleanValue.parse('   ');
-            expect(bool.value).toBeUndefined();
+        it('should reject a whitespace-only string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => BooleanValue.parse('   ')).toThrow();
         });
 
-        it('should return undefined for NONE_VALUE', () => {
-            const bool = BooleanValue.parse('⟪none⟫');
-            expect(bool.value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option value must always be defined, so the none marker is not a value
+            expect(() => BooleanValue.parse('⟪none⟫')).toThrow();
         });
 
         it('should throw error for invalid string', () => {

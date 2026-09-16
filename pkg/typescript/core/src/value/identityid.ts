@@ -55,7 +55,7 @@ export class IdentityIdValue implements Value {
         const trimmed = str.trim();
         
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new IdentityIdValue(undefined);
+            throw new Error(`Cannot parse "${str}" as IdentityId`);
         }
 
         // Try to parse as UUID

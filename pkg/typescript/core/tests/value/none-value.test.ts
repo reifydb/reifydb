@@ -24,109 +24,109 @@ import {
 describe('NONE_VALUE parsing', () => {
     const noneString = "⟪none⟫";
 
-    it('should parse NONE_VALUE as undefined for Blob', () => {
-        const blob = BlobValue.parse(noneString);
-        expect(blob.value).toBeUndefined();
+    it('should reject NONE_VALUE for Blob', () => {
+        // a non-option Blob must always be defined, so the none marker is not a Blob value
+        expect(() => BlobValue.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Boolean', () => {
-        const bool = BooleanValue.parse(noneString);
-        expect(bool.value).toBeUndefined();
+    it('should reject NONE_VALUE for Boolean', () => {
+        // a non-option Boolean must always be defined, so the none marker is not a Boolean value
+        expect(() => BooleanValue.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Utf8', () => {
-        const utf8 = Utf8Value.parse(noneString);
-        expect(utf8.value).toBeUndefined();
+    it('should reject NONE_VALUE for Utf8', () => {
+        // a non-option Utf8 must always be defined, so the none marker is not a Utf8 value
+        expect(() => Utf8Value.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Float4', () => {
-        const float4 = Float4Value.parse(noneString);
-        expect(float4.value).toBeUndefined();
+    it('should reject NONE_VALUE for Float4', () => {
+        // a non-option Float4 must always be defined, so the none marker is not a Float4 value
+        expect(() => Float4Value.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Float8', () => {
-        const float8 = Float8Value.parse(noneString);
-        expect(float8.value).toBeUndefined();
+    it('should reject NONE_VALUE for Float8', () => {
+        // a non-option Float8 must always be defined, so the none marker is not a Float8 value
+        expect(() => Float8Value.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Int1', () => {
-        const int1 = Int1Value.parse(noneString);
-        expect(int1.value).toBeUndefined();
+    it('should reject NONE_VALUE for Int1', () => {
+        // a non-option Int1 must always be defined, so the none marker is not a Int1 value
+        expect(() => Int1Value.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Int2', () => {
-        const int2 = Int2Value.parse(noneString);
-        expect(int2.value).toBeUndefined();
+    it('should reject NONE_VALUE for Int2', () => {
+        // a non-option Int2 must always be defined, so the none marker is not a Int2 value
+        expect(() => Int2Value.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Int4', () => {
-        const int4 = Int4Value.parse(noneString);
-        expect(int4.value).toBeUndefined();
+    it('should reject NONE_VALUE for Int4', () => {
+        // a non-option Int4 must always be defined, so the none marker is not a Int4 value
+        expect(() => Int4Value.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Int8', () => {
-        const int8 = Int8Value.parse(noneString);
-        expect(int8.value).toBeUndefined();
+    it('should reject NONE_VALUE for Int8', () => {
+        // a non-option Int8 must always be defined, so the none marker is not a Int8 value
+        expect(() => Int8Value.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Int16', () => {
-        const int16 = Int16Value.parse(noneString);
-        expect(int16.value).toBeUndefined();
+    it('should reject NONE_VALUE for Int16', () => {
+        // a non-option Int16 must always be defined, so the none marker is not a Int16 value
+        expect(() => Int16Value.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Uint1', () => {
-        const uint1 = Uint1Value.parse(noneString);
-        expect(uint1.value).toBeUndefined();
+    it('should reject NONE_VALUE for Uint1', () => {
+        // a non-option Uint1 must always be defined, so the none marker is not a Uint1 value
+        expect(() => Uint1Value.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Uint2', () => {
-        const uint2 = Uint2Value.parse(noneString);
-        expect(uint2.value).toBeUndefined();
+    it('should reject NONE_VALUE for Uint2', () => {
+        // a non-option Uint2 must always be defined, so the none marker is not a Uint2 value
+        expect(() => Uint2Value.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Uint4', () => {
-        const uint4 = Uint4Value.parse(noneString);
-        expect(uint4.value).toBeUndefined();
+    it('should reject NONE_VALUE for Uint4', () => {
+        // a non-option Uint4 must always be defined, so the none marker is not a Uint4 value
+        expect(() => Uint4Value.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Uint8', () => {
-        const uint8 = Uint8Value.parse(noneString);
-        expect(uint8.value).toBeUndefined();
+    it('should reject NONE_VALUE for Uint8', () => {
+        // a non-option Uint8 must always be defined, so the none marker is not a Uint8 value
+        expect(() => Uint8Value.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Uint16', () => {
-        const uint16 = Uint16Value.parse(noneString);
-        expect(uint16.value).toBeUndefined();
+    it('should reject NONE_VALUE for Uint16', () => {
+        // a non-option Uint16 must always be defined, so the none marker is not a Uint16 value
+        expect(() => Uint16Value.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Date', () => {
-        const date = DateValue.parse(noneString);
-        expect(date.value).toBeUndefined();
+    it('should reject NONE_VALUE for Date', () => {
+        // a non-option Date must always be defined, so the none marker is not a Date value
+        expect(() => DateValue.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Time', () => {
-        const time = TimeValue.parse(noneString);
-        expect(time.value).toBeUndefined();
+    it('should reject NONE_VALUE for Time', () => {
+        // a non-option Time must always be defined, so the none marker is not a Time value
+        expect(() => TimeValue.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for DateTime', () => {
-        const datetime = DateTimeValue.parse(noneString);
-        expect(datetime.value).toBeUndefined();
+    it('should reject NONE_VALUE for DateTime', () => {
+        // a non-option DateTime must always be defined, so the none marker is not a DateTime value
+        expect(() => DateTimeValue.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Duration', () => {
-        const duration = DurationValue.parse(noneString);
-        expect(duration.value).toBeUndefined();
+    it('should reject NONE_VALUE for Duration', () => {
+        // a non-option Duration must always be defined, so the none marker is not a Duration value
+        expect(() => DurationValue.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Uuid4', () => {
-        const uuid4 = Uuid4Value.parse(noneString);
-        expect(uuid4.value).toBeUndefined();
+    it('should reject NONE_VALUE for Uuid4', () => {
+        // a non-option Uuid4 must always be defined, so the none marker is not a Uuid4 value
+        expect(() => Uuid4Value.parse(noneString)).toThrow();
     });
 
-    it('should parse NONE_VALUE as undefined for Uuid7', () => {
-        const uuid7 = Uuid7Value.parse(noneString);
-        expect(uuid7.value).toBeUndefined();
+    it('should reject NONE_VALUE for Uuid7', () => {
+        // a non-option Uuid7 must always be defined, so the none marker is not a Uuid7 value
+        expect(() => Uuid7Value.parse(noneString)).toThrow();
     });
 
     it('should parse NONE_VALUE for NoneValue', () => {

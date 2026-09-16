@@ -109,13 +109,15 @@ describe('Uuid7Value', () => {
             expect(value2.asString()).toBe(uuid);
         });
 
-        it('should return undefined for empty string', () => {
-            expect(Uuid7Value.parse('').value).toBeUndefined();
-            expect(Uuid7Value.parse('   ').value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Uuid7Value.parse('')).toThrow();
+            expect(() => Uuid7Value.parse('   ')).toThrow();
         });
 
-        it('should return undefined for NONE_VALUE', () => {
-            expect(Uuid7Value.parse('⟪none⟫').value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option value must always be defined, so the none marker is not a value
+            expect(() => Uuid7Value.parse('⟪none⟫')).toThrow();
         });
 
         it('should throw error for invalid UUID', () => {

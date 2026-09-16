@@ -261,13 +261,15 @@ describe('TimeValue', () => {
             expect(TimeValue.parse('  14:30:45  ').toString()).toBe('14:30:45.000000000');
         });
 
-        it('should return undefined for empty string', () => {
-            expect(TimeValue.parse('').value).toBeUndefined();
-            expect(TimeValue.parse('   ').value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => TimeValue.parse('')).toThrow();
+            expect(() => TimeValue.parse('   ')).toThrow();
         });
 
-        it('should return undefined for NONE_VALUE', () => {
-            expect(TimeValue.parse('⟪none⟫').value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option value must always be defined, so the none marker is not a value
+            expect(() => TimeValue.parse('⟪none⟫')).toThrow();
         });
 
         it('should throw error for invalid formats', () => {

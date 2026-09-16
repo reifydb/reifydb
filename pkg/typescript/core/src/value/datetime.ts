@@ -206,7 +206,7 @@ export class DateTimeValue implements Value {
         const trimmed = str.trim();
 
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new DateTimeValue(undefined);
+            throw new Error(`Cannot parse "${str}" as DateTime`);
         }
 
         const parsed = DateTimeValue.parseDateTime(trimmed);

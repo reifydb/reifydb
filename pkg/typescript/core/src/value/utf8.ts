@@ -20,7 +20,7 @@ export class Utf8Value implements Value {
 
     static parse(str: string): Utf8Value {
         if (str === NONE_VALUE) {
-            return new Utf8Value(undefined);
+            throw new Error(`Cannot parse "${str}" as Utf8`);
         }
         
         return new Utf8Value(str);

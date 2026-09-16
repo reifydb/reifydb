@@ -136,7 +136,7 @@ export class DurationValue implements Value {
         const trimmed = str.trim();
         
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new DurationValue(undefined);
+            throw new Error(`Cannot parse "${str}" as Duration`);
         }
 
         const parsed = DurationValue.parseDuration(trimmed);

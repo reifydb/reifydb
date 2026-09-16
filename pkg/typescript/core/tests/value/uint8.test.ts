@@ -84,14 +84,14 @@ describe('Uint8Value', () => {
             expect(uint8.value).toBe(BigInt(1000000));
         });
 
-        it('should return undefined for empty string', () => {
-            const uint8 = Uint8Value.parse('');
-            expect(uint8.value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Uint8Value.parse('')).toThrow();
         });
 
-        it('should return undefined for whitespace-only string', () => {
-            const uint8 = Uint8Value.parse('   ');
-            expect(uint8.value).toBeUndefined();
+        it('should reject a whitespace-only string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Uint8Value.parse('   ')).toThrow();
         });
 
         it('should throw error for non-numeric string', () => {

@@ -38,7 +38,7 @@ export class Int16Value implements Value {
     static parse(str: string): Int16Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new Int16Value(undefined);
+            throw new Error(`Cannot parse "${str}" as Int16`);
         }
         
         let value: bigint;

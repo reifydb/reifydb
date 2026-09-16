@@ -26,7 +26,7 @@ export class Int8Value implements Value {
     static parse(str: string): Int8Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new Int8Value(undefined);
+            throw new Error(`Cannot parse "${str}" as Int8`);
         }
         
         let value: bigint;

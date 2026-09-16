@@ -82,7 +82,7 @@ export class DateValue implements Value {
         const trimmed = str.trim();
         
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new DateValue(undefined);
+            throw new Error(`Cannot parse "${str}" as Date`);
         }
 
         const parsed = DateValue.parseDate(trimmed);

@@ -67,23 +67,44 @@ export function framesFromWire(frames: any[]): any[] {
  * the caller whatever JSON happened to arrive.
  */
 export function envelopeToColumns(envelope: any): {name: string, type: Type, payload: string[]}[] {
-    const types = envelope?.types ?? {};
+    const types = envelope?.types;
     const rows: any[] = envelope?.rows ?? [];
-    return Object.keys(types).map(name => ({
-        name,
-        type: typeFromWire(types[name]),
-        payload: rows.map(row => payloadOf(row?.[name])),
-    }));
+    if (!types || typeof types !== 'object') {
+        if (rows.length > 0) {
+            throw new Error(`Frame envelope carries rows but no column types, got ${JSON.stringify(envelope)}`);
+        }
+        return [];
+    }
+    return Object.keys(types).map(name => {
+        const type = typeFromWire(types[name]);
+        return {
+            name,
+            type,
+            payload: rows.map(row => payloadOf(row, name, type)),
+        };
+    });
 }
 
 export function envelopesToFrames(envelopes: any): {columns: {name: string, type: Type, payload: string[]}[]}[] {
-    return Array.isArray(envelopes) ? envelopes.map(envelope => ({columns: envelopeToColumns(envelope)})) : [];
+    if (!Array.isArray(envelopes)) {
+        throw new Error(`Expected a list of frame envelopes, got ${JSON.stringify(envelopes)}`);
+    }
+    return envelopes.map(envelope => ({columns: envelopeToColumns(envelope)}));
 }
 
-function payloadOf(value: any): string {
-    // A none at the outermost layer is JSON's own null; deeper ones already arrive as a marker.
+function payloadOf(row: any, name: string, type: Type): string {
+    if (!row || typeof row !== 'object' || !(name in row)) {
+        throw new Error(`Row is missing a cell for column ${name}`);
+    }
+    const value = row[name];
     if (value === null || value === undefined) {
+        if (!isOptionType(type)) {
+            throw new Error(`A none cell cannot fit the non-option column ${name}`);
+        }
         return NONE_VALUE;
     }
-    return typeof value === 'string' ? value : String(value);
+    if (typeof value !== 'string') {
+        throw new Error(`Cell for column ${name} must arrive as text, got ${typeof value}`);
+    }
+    return value;
 }

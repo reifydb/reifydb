@@ -99,14 +99,14 @@ describe('Uint16Value', () => {
             expect(uint16.value).toBe(BigInt(1000000));
         });
 
-        it('should return undefined for empty string', () => {
-            const uint16 = Uint16Value.parse('');
-            expect(uint16.value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Uint16Value.parse('')).toThrow();
         });
 
-        it('should return undefined for whitespace-only string', () => {
-            const uint16 = Uint16Value.parse('   ');
-            expect(uint16.value).toBeUndefined();
+        it('should reject a whitespace-only string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Uint16Value.parse('   ')).toThrow();
         });
 
         it('should throw error for non-numeric string', () => {

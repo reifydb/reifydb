@@ -3,6 +3,8 @@
 import {Type, Value, TypeValuePair} from ".";
 import {NONE_VALUE} from "../constant";
 
+const DECIMAL_PATTERN = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/;
+
 export class DecimalValue implements Value {
     readonly type: Type = "Decimal" as const;
     public readonly value?: string;
@@ -19,10 +21,10 @@ export class DecimalValue implements Value {
     }
 
     static parse(str: string): DecimalValue {
-        if (str === NONE_VALUE) {
-            return new DecimalValue(undefined);
+        if (!DECIMAL_PATTERN.test(str)) {
+            throw new Error(`Cannot parse "${str}" as Decimal`);
         }
-        
+
         return new DecimalValue(str);
     }
 

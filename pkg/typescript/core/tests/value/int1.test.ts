@@ -86,14 +86,14 @@ describe('Int1Value', () => {
             expect(int1.value).toBe(42);
         });
 
-        it('should return undefined for empty string', () => {
-            const int1 = Int1Value.parse('');
-            expect(int1.value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Int1Value.parse('')).toThrow();
         });
 
-        it('should return undefined for whitespace-only string', () => {
-            const int1 = Int1Value.parse('   ');
-            expect(int1.value).toBeUndefined();
+        it('should reject a whitespace-only string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Int1Value.parse('   ')).toThrow();
         });
 
         it('should throw error for non-numeric string', () => {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {describe, expect, it} from 'vitest';
-import {DecimalValue} from '../../src';
+import {DecimalValue, NoneValue, decode} from '../../src';
 
 describe('DecimalValue', () => {
     describe('constructor', () => {
@@ -130,29 +130,29 @@ describe('DecimalValue', () => {
             expect(decimal.value).toBe('123.45600');
         });
 
-        it('should parse empty string', () => {
-            const decimal = DecimalValue.parse('');
-            expect(decimal.value).toBe('');
+        it('should reject an empty string', () => {
+            // a non-option Decimal must always be defined, so blank text is not a value
+            expect(() => DecimalValue.parse('')).toThrow();
         });
 
-        it('should return undefined for undefined marker', () => {
-            const decimal = DecimalValue.parse('⟪none⟫');
-            expect(decimal.value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option Decimal must always be defined, so the marker is not a value
+            expect(() => DecimalValue.parse('⟪none⟫')).toThrow();
         });
 
-        it('should parse whitespace string as-is', () => {
-            const decimal = DecimalValue.parse('   ');
-            expect(decimal.value).toBe('   ');
+        it('should reject a whitespace string', () => {
+            // blank text is not a number and must not be carried through as the value
+            expect(() => DecimalValue.parse('   ')).toThrow();
         });
 
-        it('should parse non-numeric string as-is', () => {
-            const decimal = DecimalValue.parse('abc');
-            expect(decimal.value).toBe('abc');
+        it('should reject a non-numeric string', () => {
+            // an unparsable Decimal must fail loud instead of being carried through as text
+            expect(() => DecimalValue.parse('abc')).toThrow();
         });
 
-        it('should parse mixed string as-is', () => {
-            const decimal = DecimalValue.parse('123abc');
-            expect(decimal.value).toBe('123abc');
+        it('should reject a mixed string', () => {
+            // a trailing tail makes the number ambiguous, so it must not parse as its numeric prefix
+            expect(() => DecimalValue.parse('123abc')).toThrow();
         });
     });
 
@@ -336,12 +336,11 @@ describe('DecimalValue', () => {
             expect(parsed.equals(original)).toBe(true);
         });
 
-        it('should handle round-trip with undefined', () => {
-            const original = new DecimalValue(undefined);
-            const encoded = original.encode();
-            const parsed = DecimalValue.parse(encoded.value);
-            expect(parsed.value).toBe(original.value);
-            expect(parsed.equals(original)).toBe(true);
+        it('should round-trip a none through NoneValue', () => {
+            // a none travels as an option type, so a bare Decimal can never carry the marker
+            const encoded = new NoneValue('Decimal').encode();
+            expect(encoded.type).toEqual({Option: 'Decimal'});
+            expect(decode(encoded)).toBeInstanceOf(NoneValue);
         });
 
         it('should handle round-trip with negative value', () => {

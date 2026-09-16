@@ -25,7 +25,7 @@ export class Int1Value implements Value {
     static parse(str: string): Int1Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new Int1Value(undefined);
+            throw new Error(`Cannot parse "${str}" as Int1`);
         }
         
         const num = Number(trimmed);

@@ -69,7 +69,7 @@ export class Uuid4Value implements Value {
         const trimmed = str.trim();
         
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new Uuid4Value(undefined);
+            throw new Error(`Cannot parse "${str}" as Uuid4`);
         }
 
         // Try to parse as UUID

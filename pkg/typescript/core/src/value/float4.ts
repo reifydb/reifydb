@@ -44,7 +44,7 @@ export class Float4Value implements Value {
     static parse(str: string): Float4Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new Float4Value(undefined);
+            throw new Error(`Cannot parse "${str}" as Float4`);
         }
 
         const num = Number(trimmed);

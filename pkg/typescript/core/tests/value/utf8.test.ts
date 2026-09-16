@@ -112,9 +112,9 @@ describe('Utf8Value', () => {
             expect(utf8False.value).toBe('false');
         });
 
-        it('should return undefined for NONE_VALUE', () => {
-            const utf8 = Utf8Value.parse('⟪none⟫');
-            expect(utf8.value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option value must always be defined, so the none marker is not a value
+            expect(() => Utf8Value.parse('⟪none⟫')).toThrow();
         });
 
         it('should not return undefined for string containing NONE_VALUE', () => {

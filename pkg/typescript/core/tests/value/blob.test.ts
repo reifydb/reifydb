@@ -234,13 +234,15 @@ describe('BlobValue', () => {
             expect(blob.asBytes()).toEqual(new Uint8Array([0xDE, 0xAD, 0xBE, 0xEF]));
         });
 
-        it('should return undefined for empty string', () => {
-            expect(BlobValue.parse('').value).toBeUndefined();
-            expect(BlobValue.parse('   ').value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => BlobValue.parse('')).toThrow();
+            expect(() => BlobValue.parse('   ')).toThrow();
         });
 
-        it('should return undefined for NONE_VALUE', () => {
-            expect(BlobValue.parse('⟪none⟫').value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option value must always be defined, so the none marker is not a value
+            expect(() => BlobValue.parse('⟪none⟫')).toThrow();
         });
 
         it('should throw error for invalid string', () => {

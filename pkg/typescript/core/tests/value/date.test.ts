@@ -162,13 +162,15 @@ describe('DateValue', () => {
             expect(DateValue.parse('  2024-03-15  ').toString()).toBe('2024-03-15');
         });
 
-        it('should return undefined for empty string', () => {
-            expect(DateValue.parse('').value).toBeUndefined();
-            expect(DateValue.parse('   ').value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => DateValue.parse('')).toThrow();
+            expect(() => DateValue.parse('   ')).toThrow();
         });
 
-        it('should return undefined for NONE_VALUE', () => {
-            expect(DateValue.parse('⟪none⟫').value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option value must always be defined, so the none marker is not a value
+            expect(() => DateValue.parse('⟪none⟫')).toThrow();
         });
 
         it('should throw error for invalid formats', () => {

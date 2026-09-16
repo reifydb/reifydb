@@ -25,7 +25,7 @@ export class Uint1Value implements Value {
     static parse(str: string): Uint1Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new Uint1Value(undefined);
+            throw new Error(`Cannot parse "${str}" as Uint1`);
         }
         
         const num = Number(trimmed);

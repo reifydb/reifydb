@@ -25,7 +25,7 @@ export class Uint4Value implements Value {
     static parse(str: string): Uint4Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new Uint4Value(undefined);
+            throw new Error(`Cannot parse "${str}" as Uint4`);
         }
         
         const num = Number(trimmed);

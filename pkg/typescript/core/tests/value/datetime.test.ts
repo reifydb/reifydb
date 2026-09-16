@@ -261,13 +261,15 @@ describe('DateTimeValue', () => {
                 .toBe('2024-03-15T14:30:45.000000000Z');
         });
 
-        it('should return undefined for empty string', () => {
-            expect(DateTimeValue.parse('').value).toBeUndefined();
-            expect(DateTimeValue.parse('   ').value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => DateTimeValue.parse('')).toThrow();
+            expect(() => DateTimeValue.parse('   ')).toThrow();
         });
 
-        it('should return undefined for NONE_VALUE', () => {
-            expect(DateTimeValue.parse('⟪none⟫').value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option value must always be defined, so the none marker is not a value
+            expect(() => DateTimeValue.parse('⟪none⟫')).toThrow();
         });
 
         it('should throw error for invalid formats', () => {

@@ -22,7 +22,7 @@ export class BooleanValue implements Value {
         const trimmed = str.trim().toLowerCase();
 
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new BooleanValue(undefined);
+            throw new Error(`Cannot parse "${str}" as Boolean`);
         }
 
         if (trimmed === 'true') {

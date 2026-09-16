@@ -100,7 +100,7 @@ export class TimeValue implements Value {
         const trimmed = str.trim();
         
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new TimeValue(undefined);
+            throw new Error(`Cannot parse "${str}" as Time`);
         }
 
         const parsed = TimeValue.parseTime(trimmed);

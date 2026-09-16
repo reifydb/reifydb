@@ -127,7 +127,7 @@ export class BlobValue implements Value {
         const trimmed = str.trim();
 
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new BlobValue(undefined);
+            throw new Error(`Cannot parse "${str}" as Blob`);
         }
 
         const parsed = BlobValue.parseString(trimmed);

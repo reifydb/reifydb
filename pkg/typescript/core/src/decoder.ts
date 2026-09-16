@@ -88,6 +88,13 @@ export function decode(pair: TypeValuePair): Value {
 
 export function columnsToRows(columns: Column[]): Record<string, Value>[] {
     const rowCount = columns[0]?.payload.length ?? 0;
+    for (const column of columns) {
+        if (column.payload.length !== rowCount) {
+            throw new Error(
+                `column ${column.name} carries ${column.payload.length} cells where ${columns[0].name} carries ${rowCount}`
+            );
+        }
+    }
     return Array.from({length: rowCount}, (_, i) => {
         const row: Record<string, Value> = {};
         for (const col of columns) {
