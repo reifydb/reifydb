@@ -24,7 +24,6 @@ use reifydb_value::{
 	Result,
 	value::{Value, identity::IdentityId},
 };
-
 use tracing::instrument;
 
 use crate::commit::committer::FlowSlice;
