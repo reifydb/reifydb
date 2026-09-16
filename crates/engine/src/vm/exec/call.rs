@@ -302,7 +302,60 @@ impl<'a> Vm<'a> {
 			self.call_callable_columnar(services, tx, &callable, arity, name)?;
 			return Ok(true);
 		}
-		Ok(false)
+		if !self.resolves_to_plain_function(services, tx, func_name)? {
+			return Ok(false);
+		}
+		self.call_plain_function_columnar(services, tx, arity, name, func_name)?;
+		Ok(true)
+	}
+
+	fn resolves_to_plain_function(
+		&self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		func_name: &str,
+	) -> Result<bool> {
+		if services.routines.get_function(func_name).is_none() {
+			return Ok(false);
+		}
+		if services.routines.get_procedure(func_name).is_some()
+			|| services.routines.get_generator_function(func_name).is_some()
+		{
+			return Ok(false);
+		}
+		let mut tx_tmp = tx.reborrow();
+		Ok(services.catalog.find_procedure_by_qualified_name(&mut tx_tmp, func_name)?.is_none())
+	}
+
+	fn call_plain_function_columnar(
+		&mut self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		arity: usize,
+		name: &Fragment,
+		func_name: &str,
+	) -> Result<()> {
+		let function = services.routines.get_function(func_name).ok_or_else(|| {
+			ReifyError::from(EngineError::UnknownCallable {
+				name: func_name.to_string(),
+				fragment: name.clone(),
+			})
+		})?;
+		function.arity().check(name, arity)?;
+
+		let arg_columns = self.pop_args_as_columns(arity)?;
+		let columns_args = Columns::new(arg_columns);
+		let identity = tx.identity();
+		let mut fn_ctx = RoutineFunctionContext {
+			fragment: name.clone(),
+			identity,
+			row_count: columns_args.row_count(),
+			runtime_context: &services.runtime_context,
+		};
+		let result_columns =
+			function.call(&mut fn_ctx, &columns_args).map_err(|e| e.with_context(name.clone(), false))?;
+		self.stack.push(Variable::columns(result_columns));
+		Ok(())
 	}
 
 	#[inline]

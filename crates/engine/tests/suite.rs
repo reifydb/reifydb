@@ -178,6 +178,8 @@ mod udf;
 mod udf_arity;
 #[path = "udf_arity_paths.rs"]
 mod udf_arity_paths;
+#[path = "udf_body_builtin_call_over_rows.rs"]
+mod udf_body_builtin_call_over_rows;
 #[path = "udf_declared_return_type.rs"]
 mod udf_declared_return_type;
 #[path = "udf_declared_return_type_paths.rs"]
