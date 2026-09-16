@@ -80,6 +80,8 @@ mod inline_data_insert_target;
 mod inline_data_value_types;
 #[path = "inline_duplicate_fields.rs"]
 mod inline_duplicate_fields;
+#[path = "insert_piped_source_diagnostic.rs"]
+mod insert_piped_source_diagnostic;
 #[path = "insert_undefined_value.rs"]
 mod insert_undefined_value;
 #[path = "interceptor.rs"]

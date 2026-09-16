@@ -371,6 +371,10 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 }
 
 fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
+	materialize_query_plan_with(plan, |kind| query::not_a_query_input(Fragment::None, kind))
+}
+
+fn materialize_as_clause_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 	materialize_query_plan_with(plan, |kind| query::as_clause_not_query(Fragment::None, kind))
 }
 
@@ -1214,7 +1218,7 @@ impl InstructionCompiler {
 					view: node.view,
 					if_not_exists: node.if_not_exists,
 					columns: node.columns,
-					as_clause: Box::new(materialize_query_plan(BumpBox::into_inner(
+					as_clause: Box::new(materialize_as_clause_plan(BumpBox::into_inner(
 						node.as_clause,
 					))?),
 					storage_kind: compile_view_storage_kind(node.storage_kind),
@@ -1229,7 +1233,7 @@ impl InstructionCompiler {
 					view: node.view,
 					if_not_exists: node.if_not_exists,
 					columns: node.columns,
-					as_clause: Box::new(materialize_query_plan(BumpBox::into_inner(
+					as_clause: Box::new(materialize_as_clause_plan(BumpBox::into_inner(
 						node.as_clause,
 					))?),
 					storage_kind: compile_view_storage_kind(node.storage_kind),

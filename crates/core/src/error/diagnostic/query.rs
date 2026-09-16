@@ -125,6 +125,24 @@ pub fn as_clause_not_query(fragment: Fragment, kind: &str) -> Diagnostic {
 	}
 }
 
+pub fn not_a_query_input(fragment: Fragment, kind: &str) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_010".to_string(),
+		rql: None,
+		message: format!("{} cannot be the input of a query step", kind),
+		fragment,
+		label: Some("a query was expected here".to_string()),
+		help: Some(format!(
+			"a step such as MAP or FILTER reads from a query; run the {} as its own statement",
+			kind
+		)),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn join_column_alias_error(fragment: Fragment, message: &str) -> Diagnostic {
 	Diagnostic {
 		code: "QUERY_003".to_string(),
