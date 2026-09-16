@@ -89,7 +89,7 @@ fn expand_sumtype_columns(
 					name: Fragment::internal(format!("{col_name}_tag")),
 					fragment: col.fragment.clone(),
 					constraint: TypeConstraint::with_constraint(
-						ValueType::Uint1,
+						col.constraint.get_type(),
 						Constraint::SumType(*id),
 					),
 					properties: vec![],

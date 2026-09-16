@@ -133,7 +133,15 @@ impl InlineDataNode {
 							&mut expanded,
 						)?;
 					}
-					_ => expanded.push(alias_expr),
+					_ => {
+						expand_optional_sumtype_none(
+							&ctx,
+							txn,
+							ctx.source.as_ref(),
+							alias_expr,
+							&mut expanded,
+						)?;
+					}
 				}
 				written.resize(expanded.len(), name);
 			}
@@ -151,7 +159,9 @@ fn rows_need_sumtype_expansion(rows: &[Vec<AliasExpression>]) -> bool {
 		for alias_expr in row {
 			if matches!(
 				alias_expr.expression.as_ref(),
-				Expression::SumTypeConstructor(_) | Expression::Column(_)
+				Expression::SumTypeConstructor(_)
+					| Expression::Column(_)
+					| Expression::Constant(ConstantExpression::None { .. })
 			) {
 				return true;
 			}
@@ -219,6 +229,59 @@ pub(crate) fn expand_sumtype_ctor(
 	}
 
 	Ok(())
+}
+
+fn expand_optional_sumtype_none(
+	ctx: &QueryContext,
+	txn: &mut Transaction<'_>,
+	source: Option<&ResolvedObject>,
+	alias_expr: AliasExpression,
+	expanded: &mut Vec<AliasExpression>,
+) -> Result<()> {
+	let col_name = alias_expr.alias.0.text();
+	let is_none = matches!(alias_expr.expression.as_ref(), Expression::Constant(ConstantExpression::None { .. }));
+	let declared = source.and_then(|source| optional_sumtype_id(source, col_name));
+
+	let (true, Some(id)) = (is_none, declared) else {
+		expanded.push(alias_expr);
+		return Ok(());
+	};
+
+	let sumtype = ctx.services.catalog.get_sumtype(txn, id)?;
+	let fragment = alias_expr.fragment.clone();
+	let none = || {
+		Box::new(Expression::Constant(ConstantExpression::None {
+			fragment: fragment.clone(),
+		}))
+	};
+
+	expanded.push(AliasExpression {
+		alias: IdentExpression(Fragment::internal(format!("{col_name}_tag"))),
+		expression: none(),
+		fragment: fragment.clone(),
+	});
+	for variant in &sumtype.variants {
+		for field in &variant.fields {
+			let phys_col_name =
+				format!("{}_{}_{}", col_name, variant.name.to_lowercase(), field.name.to_lowercase());
+			expanded.push(AliasExpression {
+				alias: IdentExpression(Fragment::internal(phys_col_name)),
+				expression: none(),
+				fragment: fragment.clone(),
+			});
+		}
+	}
+
+	Ok(())
+}
+
+fn optional_sumtype_id(source: &ResolvedObject, col_name: &str) -> Option<SumTypeId> {
+	let tag_col_name = format!("{}_tag", col_name);
+	let tag_col = source.columns().iter().find(|c| c.name == tag_col_name)?;
+	match (tag_col.constraint.get_type(), tag_col.constraint.constraint()) {
+		(ValueType::Option(_), Some(Constraint::SumType(id))) => Some(*id),
+		_ => None,
+	}
 }
 
 pub(crate) fn expand_sumtype_assignment(

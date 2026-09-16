@@ -62,6 +62,8 @@ mod distinct_typed_key;
 mod empty_batch_system_columns;
 #[path = "empty_result_column_types.rs"]
 mod empty_result_column_types;
+#[path = "enum_column_optional.rs"]
+mod enum_column_optional;
 #[path = "enum_variant_in_expression.rs"]
 mod enum_variant_in_expression;
 #[path = "enum_variant_in_query.rs"]
