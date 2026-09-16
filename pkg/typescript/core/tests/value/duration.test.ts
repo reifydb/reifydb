@@ -332,12 +332,6 @@ describe('DurationValue', () => {
             expect(duration.getNanos()).toBe(123456789n);
         });
 
-        it('should return undefined for undefined duration', () => {
-            const duration = new DurationValue(undefined);
-            expect(duration.getMonths()).toBeUndefined();
-            expect(duration.getDays()).toBeUndefined();
-            expect(duration.getNanos()).toBeUndefined();
-        });
     });
 
     describe('conversion methods', () => {
@@ -381,11 +375,6 @@ describe('DurationValue', () => {
             expect(zero.isNegative()).toBe(false);
         });
 
-        it('should handle undefined duration', () => {
-            const undef = new DurationValue(undefined);
-            expect(undef.isPositive()).toBe(false);
-            expect(undef.isNegative()).toBe(false);
-        });
     });
 
     describe('valueOf', () => {
@@ -395,10 +384,6 @@ describe('DurationValue', () => {
             expect(value).toEqual({ months: 1, days: 2, nanos: 3n });
         });
 
-        it('should return undefined when value is undefined', () => {
-            const duration = new DurationValue(undefined);
-            expect(duration.valueOf()).toBeUndefined();
-        });
     });
 
     describe('toString', () => {

@@ -11,16 +11,14 @@ describe('Float4Value', () => {
             expect(float4.type).toBe('Float4');
         });
 
-        it('should create instance with undefined value', () => {
-            const float4 = new Float4Value(undefined);
-            expect(float4.value).toBeUndefined();
-            expect(float4.type).toBe('Float4');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Float4Value(undefined)).toThrow();
         });
 
-        it('should create instance with no arguments', () => {
-            const float4 = new Float4Value();
-            expect(float4.value).toBeUndefined();
-            expect(float4.type).toBe('Float4');
+        it('should reject no arguments', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Float4Value()).toThrow();
         });
 
         it('should accept zero', () => {
@@ -42,19 +40,19 @@ describe('Float4Value', () => {
             expect(float4.value).toBeCloseTo(3.1415927, 6);
         });
 
-        it('should handle positive infinity', () => {
-            const float4 = new Float4Value(Infinity);
-            expect(float4.value).toBeUndefined();
+        it('should handle positive infinity, rejected', () => {
+            // the database forbids a non-finite float, so one must never become a value
+            expect(() => new Float4Value(Infinity)).toThrow();
         });
 
-        it('should handle negative infinity', () => {
-            const float4 = new Float4Value(-Infinity);
-            expect(float4.value).toBeUndefined();
+        it('should handle negative infinity, rejected', () => {
+            // the database forbids a non-finite float, so one must never become a value
+            expect(() => new Float4Value(-Infinity)).toThrow();
         });
 
-        it('should handle NaN', () => {
-            const float4 = new Float4Value(NaN);
-            expect(float4.value).toBeUndefined();
+        it('should handle NaN, rejected', () => {
+            // the database forbids a non-finite float, so one must never become a value
+            expect(() => new Float4Value(NaN)).toThrow();
         });
 
         it('should throw error for values above max', () => {
@@ -112,19 +110,19 @@ describe('Float4Value', () => {
             expect(float4.value).approximately(1.5e10, 512);
         });
 
-        it('should parse infinity string', () => {
-            const float4 = Float4Value.parse('Infinity');
-            expect(float4.value).toBeUndefined();
+        it('should parse infinity string, rejected', () => {
+            // the database forbids a non-finite float, so one must never become a value
+            expect(() => Float4Value.parse('Infinity')).toThrow();
         });
 
-        it('should parse negative infinity string', () => {
-            const float4 = Float4Value.parse('-Infinity');
-            expect(float4.value).toBeUndefined();
+        it('should parse negative infinity string, rejected', () => {
+            // the database forbids a non-finite float, so one must never become a value
+            expect(() => Float4Value.parse('-Infinity')).toThrow();
         });
 
-        it('should parse NaN string', () => {
-            const float4 = Float4Value.parse('NaN');
-            expect(float4.value).toBeUndefined();
+        it('should parse NaN string, rejected', () => {
+            // the database forbids a non-finite float, so one must never become a value
+            expect(() => Float4Value.parse('NaN')).toThrow();
         });
 
         it('should trim whitespace', () => {
@@ -155,11 +153,6 @@ describe('Float4Value', () => {
         it('should return the numeric value', () => {
             const float4 = new Float4Value(3.14);
             expect(float4.valueOf()).toBeCloseTo(3.14, 5);
-        });
-
-        it('should return undefined when value is undefined', () => {
-            const float4 = new Float4Value(undefined);
-            expect(float4.valueOf()).toBeUndefined();
         });
 
         it('should return zero', () => {

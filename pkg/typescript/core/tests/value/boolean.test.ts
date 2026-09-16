@@ -17,16 +17,14 @@ describe('BooleanValue', () => {
             expect(bool.type).toBe('Boolean');
         });
 
-        it('should create instance with undefined value', () => {
-            const bool = new BooleanValue(undefined);
-            expect(bool.value).toBeUndefined();
-            expect(bool.type).toBe('Boolean');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new BooleanValue(undefined)).toThrow();
         });
 
-        it('should create instance with no arguments', () => {
-            const bool = new BooleanValue();
-            expect(bool.value).toBeUndefined();
-            expect(bool.type).toBe('Boolean');
+        it('should reject no arguments', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new BooleanValue()).toThrow();
         });
 
         it('should throw error for non-boolean value', () => {
@@ -94,9 +92,5 @@ describe('BooleanValue', () => {
             expect(bool.valueOf()).toBe(false);
         });
 
-        it('should return undefined when value is undefined', () => {
-            const bool = new BooleanValue(undefined);
-            expect(bool.valueOf()).toBeUndefined();
-        });
     });
 });

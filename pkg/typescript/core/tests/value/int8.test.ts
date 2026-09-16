@@ -22,16 +22,14 @@ describe('Int8Value', () => {
             expect(int8.value).toBe(BigInt(42));
         });
 
-        it('should create instance with undefined value', () => {
-            const int8 = new Int8Value(undefined);
-            expect(int8.value).toBeUndefined();
-            expect(int8.type).toBe('Int8');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Int8Value(undefined)).toThrow();
         });
 
-        it('should create instance with no arguments', () => {
-            const int8 = new Int8Value();
-            expect(int8.value).toBeUndefined();
-            expect(int8.type).toBe('Int8');
+        it('should reject no arguments', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Int8Value()).toThrow();
         });
 
         it('should accept minimum value -9223372036854775808', () => {
@@ -140,11 +138,6 @@ describe('Int8Value', () => {
         it('should return the bigint value', () => {
             const int8 = new Int8Value(BigInt(100000));
             expect(int8.valueOf()).toBe(BigInt(100000));
-        });
-
-        it('should return undefined when value is undefined', () => {
-            const int8 = new Int8Value(undefined);
-            expect(int8.valueOf()).toBeUndefined();
         });
 
         it('should return negative value', () => {

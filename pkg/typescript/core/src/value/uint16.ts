@@ -5,34 +5,33 @@ import {NONE_VALUE} from "../constant";
 
 export class Uint16Value implements Value {
     readonly type: Type = "Uint16" as const;
-    public readonly value?: bigint;
+    public readonly value: bigint;
 
     private static readonly MIN_VALUE = BigInt(0);
     private static readonly MAX_VALUE = BigInt("340282366920938463463374607431768211455");
 
-    constructor(value?: bigint | number | string) {
-        if (value !== undefined) {
-            let bigintValue: bigint;
-            
-            if (typeof value === 'string') {
-                try {
-                    bigintValue = BigInt(value);
-                } catch (e) {
-                    throw new Error(`Uint16 value must be a valid integer, got ${value}`);
-                }
-            } else if (typeof value === 'number') {
-                bigintValue = BigInt(Math.trunc(value));
-            } else {
-                bigintValue = value;
-            }
-            
-            if (bigintValue < Uint16Value.MIN_VALUE || bigintValue > Uint16Value.MAX_VALUE) {
-                throw new Error(`Uint16 value must be between ${Uint16Value.MIN_VALUE} and ${Uint16Value.MAX_VALUE}, got ${bigintValue}`);
-            }
-            this.value = bigintValue;
-        } else {
-            this.value = undefined;
+    constructor(value: bigint | number | string) {
+        if (value === undefined) {
+            throw new Error(`Uint16 value must be defined, a none is carried by NoneValue`);
         }
+        let bigintValue: bigint;
+        
+        if (typeof value === 'string') {
+            try {
+                bigintValue = BigInt(value);
+            } catch (e) {
+                throw new Error(`Uint16 value must be a valid integer, got ${value}`);
+            }
+        } else if (typeof value === 'number') {
+            bigintValue = BigInt(Math.trunc(value));
+        } else {
+            bigintValue = value;
+        }
+        
+        if (bigintValue < Uint16Value.MIN_VALUE || bigintValue > Uint16Value.MAX_VALUE) {
+            throw new Error(`Uint16 value must be between ${Uint16Value.MIN_VALUE} and ${Uint16Value.MAX_VALUE}, got ${bigintValue}`);
+        }
+        this.value = bigintValue;
     }
 
     static parse(str: string): Uint16Value {
@@ -55,12 +54,12 @@ export class Uint16Value implements Value {
         return new Uint16Value(value);
     }
 
-    valueOf(): bigint | undefined {
+    valueOf(): bigint {
         return this.value;
     }
 
     toString(): string {
-        return this.value === undefined ? 'none' : this.value.toString();
+        return this.value.toString();
     }
 
     /**
@@ -75,14 +74,14 @@ export class Uint16Value implements Value {
         return this.value === otherUint.value;
     }
 
-    toJSON(): string | null {
-        return this.value === undefined ? null : this.value.toString();
+    toJSON(): string {
+        return this.value.toString();
     }
 
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? NONE_VALUE : this.toString()
+            value: this.toString()
         };
     }
 }

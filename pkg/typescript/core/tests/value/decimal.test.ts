@@ -53,16 +53,14 @@ describe('DecimalValue', () => {
             expect(decimal.type).toBe('Decimal');
         });
 
-        it('should create instance with undefined value', () => {
-            const decimal = new DecimalValue(undefined);
-            expect(decimal.value).toBeUndefined();
-            expect(decimal.type).toBe('Decimal');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new DecimalValue(undefined)).toThrow();
         });
 
-        it('should create instance with no arguments', () => {
-            const decimal = new DecimalValue();
-            expect(decimal.value).toBeUndefined();
-            expect(decimal.type).toBe('Decimal');
+        it('should reject no arguments', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new DecimalValue()).toThrow();
         });
 
         it('should accept empty string', () => {
@@ -162,11 +160,6 @@ describe('DecimalValue', () => {
             expect(decimal.valueOf()).toBe('123.456');
         });
 
-        it('should return undefined when value is undefined', () => {
-            const decimal = new DecimalValue(undefined);
-            expect(decimal.valueOf()).toBeUndefined();
-        });
-
         it('should return negative value', () => {
             const decimal = new DecimalValue('-123.456');
             expect(decimal.valueOf()).toBe('-123.456');
@@ -192,11 +185,6 @@ describe('DecimalValue', () => {
         it('should return string representation of value', () => {
             const decimal = new DecimalValue('123.456');
             expect(decimal.toString()).toBe('123.456');
-        });
-
-        it('should return "none" when value is undefined', () => {
-            const decimal = new DecimalValue(undefined);
-            expect(decimal.toString()).toBe('none');
         });
 
         it('should return negative value as string', () => {
@@ -225,18 +213,6 @@ describe('DecimalValue', () => {
         it('should return false for different decimal values', () => {
             const decimal1 = new DecimalValue('123.456');
             const decimal2 = new DecimalValue('123.457');
-            expect(decimal1.equals(decimal2)).toBe(false);
-        });
-
-        it('should return true for both undefined', () => {
-            const decimal1 = new DecimalValue(undefined);
-            const decimal2 = new DecimalValue(undefined);
-            expect(decimal1.equals(decimal2)).toBe(true);
-        });
-
-        it('should return false when one is undefined', () => {
-            const decimal1 = new DecimalValue('123.456');
-            const decimal2 = new DecimalValue(undefined);
             expect(decimal1.equals(decimal2)).toBe(false);
         });
 
@@ -278,15 +254,6 @@ describe('DecimalValue', () => {
             expect(encoded).toEqual({
                 type: 'Decimal',
                 value: '123.456'
-            });
-        });
-
-        it('should encode undefined to undefined marker', () => {
-            const decimal = new DecimalValue(undefined);
-            const encoded = decimal.encode();
-            expect(encoded).toEqual({
-                type: 'Decimal',
-                value: '⟪none⟫'
             });
         });
 

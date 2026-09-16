@@ -5,19 +5,20 @@ import {NONE_VALUE} from "../constant";
 
 export class Uint1Value implements Value {
     readonly type: Type = "Uint1" as const;
-    public readonly value?: number;
+    public readonly value: number;
 
     private static readonly MIN_VALUE = 0;
     private static readonly MAX_VALUE = 255;
 
-    constructor(value?: number) {
-        if (value !== undefined) {
-            if (!Number.isInteger(value)) {
-                throw new Error(`Uint1 value must be an integer, got ${value}`);
-            }
-            if (value < Uint1Value.MIN_VALUE || value > Uint1Value.MAX_VALUE) {
-                throw new Error(`Uint1 value must be between ${Uint1Value.MIN_VALUE} and ${Uint1Value.MAX_VALUE}, got ${value}`);
-            }
+    constructor(value: number) {
+        if (value === undefined) {
+            throw new Error(`Uint1 value must be defined, a none is carried by NoneValue`);
+        }
+        if (!Number.isInteger(value)) {
+            throw new Error(`Uint1 value must be an integer, got ${value}`);
+        }
+        if (value < Uint1Value.MIN_VALUE || value > Uint1Value.MAX_VALUE) {
+            throw new Error(`Uint1 value must be between ${Uint1Value.MIN_VALUE} and ${Uint1Value.MAX_VALUE}, got ${value}`);
         }
         this.value = value;
     }
@@ -37,12 +38,12 @@ export class Uint1Value implements Value {
         return new Uint1Value(num);
     }
 
-    valueOf(): number | undefined {
+    valueOf(): number {
         return this.value;
     }
 
     toString(): string {
-        return this.value === undefined ? 'none' : this.value.toString();
+        return this.value.toString();
     }
 
     /**
@@ -57,14 +58,14 @@ export class Uint1Value implements Value {
         return this.value === otherUint.value;
     }
 
-    toJSON(): string | null {
-        return this.value === undefined ? null : this.value.toString();
+    toJSON(): string {
+        return this.value.toString();
     }
 
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? NONE_VALUE : this.toString()
+            value: this.toString()
         };
     }
 }

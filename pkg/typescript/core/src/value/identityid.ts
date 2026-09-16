@@ -9,29 +9,28 @@ import { NONE_VALUE } from "../constant";
  */
 export class IdentityIdValue implements Value {
     readonly type: Type = "IdentityId" as const;
-    public readonly value?: string;
+    public readonly value: string;
 
-    constructor(value?: string) {
-        if (value !== undefined) {
-            if (typeof value !== 'string') {
-                throw new Error(`IdentityId value must be a string, got ${typeof value}`);
-            }
-            
-            // Validate UUID format
-            if (!validate(value)) {
-                throw new Error(`Invalid UUID format for IdentityId: ${value}`);
-            }
-            
-            // Check version (allow v7 or nil UUID)
-            const ver = version(value);
-            if (value !== NIL_UUID && ver !== 7) {
-                throw new Error(`Invalid UUID version for IdentityId: expected v7, got v${ver}`);
-            }
-            
-            this.value = value.toLowerCase();
-        } else {
-            this.value = undefined;
+    constructor(value: string) {
+        if (value === undefined) {
+            throw new Error(`IdentityId value must be defined, a none is carried by NoneValue`);
         }
+        if (typeof value !== 'string') {
+            throw new Error(`IdentityId value must be a string, got ${typeof value}`);
+        }
+        
+        // Validate UUID format
+        if (!validate(value)) {
+            throw new Error(`Invalid UUID format for IdentityId: ${value}`);
+        }
+        
+        // Check version (allow v7 or nil UUID)
+        const ver = version(value);
+        if (value !== NIL_UUID && ver !== 7) {
+            throw new Error(`Invalid UUID version for IdentityId: expected v7, got v${ver}`);
+        }
+        
+        this.value = value.toLowerCase();
     }
 
     /**
@@ -74,7 +73,7 @@ export class IdentityIdValue implements Value {
     /**
      * Get the UUID string value
      */
-    valueOf(): string | undefined {
+    valueOf(): string {
         return this.value;
     }
 
@@ -82,7 +81,7 @@ export class IdentityIdValue implements Value {
      * Format as string
      */
     toString(): string {
-        return this.value === undefined ? 'none' : this.value;
+        return this.value;
     }
 
     /**
@@ -117,14 +116,14 @@ export class IdentityIdValue implements Value {
         return this.value === otherIdentityId.value;
     }
 
-    toJSON(): string | null {
+    toJSON(): string {
         return this.value ?? null;
     }
 
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? NONE_VALUE : this.toString()
+            value: this.toString()
         };
     }
 }

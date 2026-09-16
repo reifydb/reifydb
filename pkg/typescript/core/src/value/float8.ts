@@ -5,17 +5,19 @@ import {NONE_VALUE} from "../constant";
 
 export class Float8Value implements Value {
     readonly type: Type = "Float8" as const;
-    public readonly value?: number;
+    public readonly value: number;
 
-    constructor(value?: number) {
-        if (value !== undefined) {
-            if (typeof value !== 'number') {
-                throw new Error(`Float8 value must be a number, got ${typeof value}`);
-            }
-            this.value = value;
-        } else {
-            this.value = undefined;
+    constructor(value: number) {
+        if (value === undefined) {
+            throw new Error(`Float8 value must be defined, a none is carried by NoneValue`);
         }
+        if (typeof value !== 'number') {
+            throw new Error(`Float8 value must be a number, got ${typeof value}`);
+        }
+        if (Number.isNaN(value) || !Number.isFinite(value)) {
+            throw new Error(`Float8 value must be finite, got ${value}`);
+        }
+        this.value = value;
     }
 
     static parse(str: string): Float8Value {
@@ -26,19 +28,19 @@ export class Float8Value implements Value {
 
         const num = Number(trimmed);
 
-        if (Number.isNaN(num) && trimmed.toLowerCase() !== 'nan') {
+        if (Number.isNaN(num)) {
             throw new Error(`Cannot parse "${str}" as Float8`);
         }
 
         return new Float8Value(num);
     }
 
-    valueOf(): number | undefined {
+    valueOf(): number {
         return this.value;
     }
 
     toString(): string {
-        return this.value === undefined ? 'none' : this.value.toString();
+        return this.value.toString();
     }
 
     /**
@@ -57,14 +59,14 @@ export class Float8Value implements Value {
         return Math.abs(this.value - otherFloat.value) <= epsilon;
     }
 
-    toJSON(): string | null {
-        return this.value === undefined ? null : this.value.toString();
+    toJSON(): string {
+        return this.value.toString();
     }
 
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? NONE_VALUE : this.toString()
+            value: this.toString()
         };
     }
 }

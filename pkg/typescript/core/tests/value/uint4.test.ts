@@ -11,16 +11,14 @@ describe('Uint4Value', () => {
             expect(uint4.type).toBe('Uint4');
         });
 
-        it('should create instance with undefined value', () => {
-            const uint4 = new Uint4Value(undefined);
-            expect(uint4.value).toBeUndefined();
-            expect(uint4.type).toBe('Uint4');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Uint4Value(undefined)).toThrow();
         });
 
-        it('should create instance with no arguments', () => {
-            const uint4 = new Uint4Value();
-            expect(uint4.value).toBeUndefined();
-            expect(uint4.type).toBe('Uint4');
+        it('should reject no arguments', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Uint4Value()).toThrow();
         });
 
         it('should accept minimum value 0', () => {
@@ -98,11 +96,6 @@ describe('Uint4Value', () => {
         it('should return the numeric value', () => {
             const uint4 = new Uint4Value(1000000);
             expect(uint4.valueOf()).toBe(1000000);
-        });
-
-        it('should return undefined when value is undefined', () => {
-            const uint4 = new Uint4Value(undefined);
-            expect(uint4.valueOf()).toBeUndefined();
         });
 
         it('should return zero', () => {

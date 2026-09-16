@@ -3,6 +3,11 @@
 import {Type, Value, TypeValuePair} from ".";
 import {NONE_VALUE} from "../constant";
 
+interface DateComponents {
+    months: number;
+    days: number;
+}
+
 /**
  * A date value representing a calendar date (year, month, day) without time information.
  * Always interpreted in UTC.
@@ -10,41 +15,39 @@ import {NONE_VALUE} from "../constant";
  */
 export class DateValue implements Value {
     readonly type: Type = "Date" as const;
-    private readonly months?: number; // years*12 + months
-    private readonly days?: number;   // day of month (1-31)
+    private readonly months: number;
+    private readonly days: number;
 
-    constructor(value?: Date | string | number) {
-        if (value !== undefined) {
-            if (value instanceof Date) {
-                // Remove time component - set to UTC midnight
-                const year = value.getUTCFullYear();
-                const month = value.getUTCMonth() + 1; // Convert to 1-based
-                const day = value.getUTCDate();
-                
-                this.months = year * 12 + (month - 1);
-                this.days = day;
-            } else if (typeof value === 'string') {
-                // Parse YYYY-MM-DD format
-                const parsed = DateValue.parseDate(value);
-                if (!parsed) {
-                    throw new Error(`Invalid date string: ${value}`);
-                }
-                this.months = parsed.months;
-                this.days = parsed.days;
-            } else if (typeof value === 'number') {
-                // Interpret as days since epoch
-                const date = DateValue.fromDaysSinceEpochToComponents(value);
-                if (!date) {
-                    throw new Error(`Invalid days since epoch: ${value}`);
-                }
-                this.months = date.months;
-                this.days = date.days;
-            } else {
-                throw new Error(`Date value must be a Date, string, or number, got ${typeof value}`);
+    constructor(value: Date | string | number | DateComponents) {
+        if (value === undefined) {
+            throw new Error(`Date value must be defined, a none is carried by NoneValue`);
+        }
+        if (value instanceof Date) {
+            const year = value.getUTCFullYear();
+            const month = value.getUTCMonth() + 1;
+            const day = value.getUTCDate();
+
+            this.months = year * 12 + (month - 1);
+            this.days = day;
+        } else if (typeof value === 'string') {
+            const parsed = DateValue.parseDate(value);
+            if (!parsed) {
+                throw new Error(`Invalid date string: ${value}`);
             }
+            this.months = parsed.months;
+            this.days = parsed.days;
+        } else if (typeof value === 'number') {
+            const date = DateValue.fromDaysSinceEpochToComponents(value);
+            if (!date) {
+                throw new Error(`Invalid days since epoch: ${value}`);
+            }
+            this.months = date.months;
+            this.days = date.days;
+        } else if (typeof value === 'object' && 'months' in value && 'days' in value) {
+            this.months = value.months;
+            this.days = value.days;
         } else {
-            this.months = undefined;
-            this.days = undefined;
+            throw new Error(`Date value must be a Date, string, or number, got ${typeof value}`);
         }
     }
 
@@ -57,10 +60,7 @@ export class DateValue implements Value {
             throw new Error(`Invalid date: ${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
         }
         
-        const result = new DateValue(undefined);
-        (result as any).months = year * 12 + (month - 1);
-        (result as any).days = day;
-        return result;
+        return new DateValue({months: year * 12 + (month - 1), days: day});
     }
 
     /**
@@ -90,10 +90,7 @@ export class DateValue implements Value {
             throw new Error(`Cannot parse "${str}" as Date`);
         }
 
-        const result = new DateValue(undefined);
-        (result as any).months = parsed.months;
-        (result as any).days = parsed.days;
-        return result;
+        return new DateValue(parsed);
     }
 
     /**

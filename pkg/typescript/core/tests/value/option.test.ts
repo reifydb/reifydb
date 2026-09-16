@@ -123,7 +123,7 @@ describe('Option', () => {
             expect(JSON.stringify({a: Option.some(Option.none('Int4')), b: Option.some(Option.some(2))})).toBe('{"a":null,"b":2}');
             expect(Option.some(new Int4Value(5)).toJSON()).toBe('5');
             expect(JSON.stringify(Option.some(new Int4Value(5)))).toBe('"5"');
-            expect(JSON.stringify(Option.some(Option.some(new Int4Value(undefined))))).toBe('null');
+            expect(JSON.stringify(Option.some(Option.some(new NoneValue('Int4'))))).toBe('null');
         });
     });
 });

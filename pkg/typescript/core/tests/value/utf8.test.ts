@@ -17,16 +17,14 @@ describe('Utf8Value', () => {
             expect(utf8.type).toBe('Utf8');
         });
 
-        it('should create instance with undefined value', () => {
-            const utf8 = new Utf8Value(undefined);
-            expect(utf8.value).toBeUndefined();
-            expect(utf8.type).toBe('Utf8');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Utf8Value(undefined)).toThrow();
         });
 
-        it('should create instance with no arguments', () => {
-            const utf8 = new Utf8Value();
-            expect(utf8.value).toBeUndefined();
-            expect(utf8.type).toBe('Utf8');
+        it('should reject no arguments', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Utf8Value()).toThrow();
         });
 
         it('should handle UTF-8 characters', () => {
@@ -140,11 +138,6 @@ line 3`;
         it('should return empty string', () => {
             const utf8 = new Utf8Value('');
             expect(utf8.valueOf()).toBe('');
-        });
-
-        it('should return undefined when value is undefined', () => {
-            const utf8 = new Utf8Value(undefined);
-            expect(utf8.valueOf()).toBeUndefined();
         });
 
         it('should return UTF-8 string', () => {

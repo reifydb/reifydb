@@ -9,40 +9,39 @@ import { NONE_VALUE } from "../constant";
  */
 export class TimeValue implements Value {
     readonly type: Type = "Time" as const;
-    public readonly value?: bigint; // nanoseconds since midnight
+    public readonly value: bigint; // nanoseconds since midnight
 
     private static readonly NANOS_PER_SECOND = 1_000_000_000n;
     private static readonly NANOS_PER_MINUTE = 60_000_000_000n;
     private static readonly NANOS_PER_HOUR = 3_600_000_000_000n;
     private static readonly NANOS_PER_DAY = 86_400_000_000_000n;
 
-    constructor(value?: bigint | string | number) {
-        if (value !== undefined) {
-            if (typeof value === 'bigint') {
-                // Validate range (0 to 24 hours in nanoseconds)
-                if (value < 0n || value >= TimeValue.NANOS_PER_DAY) {
-                    throw new Error(`Time value must be between 0 and ${TimeValue.NANOS_PER_DAY - 1n} nanoseconds`);
-                }
-                this.value = value;
-            } else if (typeof value === 'string') {
-                // Parse HH:MM:SS[.nnnnnnnnn] format
-                const parsed = TimeValue.parseTime(value);
-                if (parsed === null) {
-                    throw new Error(`Invalid time string: ${value}`);
-                }
-                this.value = parsed;
-            } else if (typeof value === 'number') {
-                // Accept number as nanoseconds since midnight
-                const bigintValue = BigInt(Math.floor(value));
-                if (bigintValue < 0n || bigintValue >= TimeValue.NANOS_PER_DAY) {
-                    throw new Error(`Time value must be between 0 and ${TimeValue.NANOS_PER_DAY - 1n} nanoseconds`);
-                }
-                this.value = bigintValue;
-            } else {
-                throw new Error(`Time value must be a bigint, string, or number, got ${typeof value}`);
+    constructor(value: bigint | string | number) {
+        if (value === undefined) {
+            throw new Error(`Time value must be defined, a none is carried by NoneValue`);
+        }
+        if (typeof value === 'bigint') {
+            // Validate range (0 to 24 hours in nanoseconds)
+            if (value < 0n || value >= TimeValue.NANOS_PER_DAY) {
+                throw new Error(`Time value must be between 0 and ${TimeValue.NANOS_PER_DAY - 1n} nanoseconds`);
             }
+            this.value = value;
+        } else if (typeof value === 'string') {
+            // Parse HH:MM:SS[.nnnnnnnnn] format
+            const parsed = TimeValue.parseTime(value);
+            if (parsed === null) {
+                throw new Error(`Invalid time string: ${value}`);
+            }
+            this.value = parsed;
+        } else if (typeof value === 'number') {
+            // Accept number as nanoseconds since midnight
+            const bigintValue = BigInt(Math.floor(value));
+            if (bigintValue < 0n || bigintValue >= TimeValue.NANOS_PER_DAY) {
+                throw new Error(`Time value must be between 0 and ${TimeValue.NANOS_PER_DAY - 1n} nanoseconds`);
+            }
+            this.value = bigintValue;
         } else {
-            this.value = undefined;
+            throw new Error(`Time value must be a bigint, string, or number, got ${typeof value}`);
         }
     }
 
@@ -164,10 +163,6 @@ export class TimeValue implements Value {
      * Format as HH:MM:SS.nnnnnnnnn string
      */
     toString(): string {
-        if (this.value === undefined) {
-            return 'none';
-        }
-
         const hour = this.hour()!;
         const minute = this.minute()!;
         const second = this.second()!;
@@ -181,7 +176,7 @@ export class TimeValue implements Value {
         return `${hourStr}:${minuteStr}:${secondStr}.${nanoStr}`;
     }
 
-    valueOf(): bigint | undefined {
+    valueOf(): bigint {
         return this.value;
     }
 
@@ -238,14 +233,14 @@ export class TimeValue implements Value {
         return this.value === otherTime.value;
     }
 
-    toJSON(): string | null {
-        return this.value === undefined ? null : this.toString();
+    toJSON(): string {
+        return this.toString();
     }
 
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? NONE_VALUE : this.toString()
+            value: this.toString()
         };
     }
 }

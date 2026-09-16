@@ -9,29 +9,28 @@ import { NONE_VALUE } from "../constant";
  */
 export class Uuid7Value implements Value {
     readonly type: Type = "Uuid7" as const;
-    private readonly uuid?: string;
+    private readonly uuid: string;
 
-    constructor(value?: string) {
-        if (value !== undefined) {
-            if (typeof value !== 'string') {
-                throw new Error(`Uuid7 value must be a string, got ${typeof value}`);
-            }
-            
-            // Validate UUID format
-            if (!validate(value)) {
-                throw new Error(`Invalid UUID format: ${value}`);
-            }
-            
-            // Check version (allow v7 or nil UUID)
-            const ver = version(value);
-            if (value !== NIL_UUID && ver !== 7) {
-                throw new Error(`Invalid UUID version for Uuid7: expected v7, got v${ver}`);
-            }
-            
-            this.uuid = value.toLowerCase();
-        } else {
-            this.uuid = undefined;
+    constructor(value: string) {
+        if (value === undefined) {
+            throw new Error(`Uuid7 value must be defined, a none is carried by NoneValue`);
         }
+        if (typeof value !== 'string') {
+            throw new Error(`Uuid7 value must be a string, got ${typeof value}`);
+        }
+        
+        // Validate UUID format
+        if (!validate(value)) {
+            throw new Error(`Invalid UUID format: ${value}`);
+        }
+        
+        // Check version (allow v7 or nil UUID)
+        const ver = version(value);
+        if (value !== NIL_UUID && ver !== 7) {
+            throw new Error(`Invalid UUID version for Uuid7: expected v7, got v${ver}`);
+        }
+        
+        this.uuid = value.toLowerCase();
     }
 
     /**
@@ -145,7 +144,7 @@ export class Uuid7Value implements Value {
         return this.uuid;
     }
 
-    valueOf(): string | undefined {
+    valueOf(): string {
         return this.uuid;
     }
 
@@ -191,14 +190,14 @@ export class Uuid7Value implements Value {
         return 0;
     }
 
-    toJSON(): string | null {
+    toJSON(): string {
         return this.uuid ?? null;
     }
 
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? NONE_VALUE : this.toString()
+            value: this.toString()
         };
     }
 }
