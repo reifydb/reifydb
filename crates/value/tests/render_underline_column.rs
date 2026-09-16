@@ -88,3 +88,32 @@ fn an_empty_fragment_renders_no_indent_on_the_underline_line() {
 		.unwrap_or_else(|| panic!("the source line must be rendered, got:\n{rendered}"));
 	assert_eq!(lines[source + 1], "    │ ", "an empty fragment must add no indent, got:\n{rendered}");
 }
+
+#[test]
+fn a_flat_diagnostic_without_a_label_renders_no_padded_blank_line() {
+	// An empty label must drop the line entirely; padding it to the fragment column writes trailing whitespace into every golden.
+	let mut d = diagnostic(Fragment::statement("$f", 1, 32), None);
+	d.label = None;
+	let rendered = DefaultRenderer::render_string(&d);
+	assert!(
+		!rendered.lines().any(|line| line.ends_with(' ')),
+		"no rendered line may end in whitespace, got:\n{rendered:?}"
+	);
+}
+
+#[test]
+fn a_nested_diagnostic_without_a_label_renders_no_padded_blank_line() {
+	// The nested path already guards this; the assertion pins both paths to the same shape.
+	let cause = Diagnostic {
+		code: "CAUSE".to_string(),
+		message: "inner".to_string(),
+		..Default::default()
+	};
+	let mut d = diagnostic(Fragment::statement("$f", 1, 32), Some(cause));
+	d.label = None;
+	let rendered = DefaultRenderer::render_string(&d);
+	assert!(
+		!rendered.lines().any(|line| line.ends_with(' ')),
+		"no rendered line may end in whitespace, got:\n{rendered:?}"
+	);
+}

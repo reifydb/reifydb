@@ -84,14 +84,16 @@ impl DefaultRenderer {
 			let _ = writeln!(output, "    │");
 
 			let label_text = diagnostic.label.as_deref().unwrap_or("");
-			let fragment_center = fragment_start + fragment.len() / 2;
-			let label_center_offset = if label_text.len() / 2 > fragment_center {
-				0
-			} else {
-				fragment_center - label_text.len() / 2
-			};
+			if !label_text.is_empty() {
+				let fragment_center = fragment_start + fragment.len() / 2;
+				let label_center_offset = if label_text.len() / 2 > fragment_center {
+					0
+				} else {
+					fragment_center - label_text.len() / 2
+				};
 
-			let _ = writeln!(output, "    │ {}{}", " ".repeat(label_center_offset), label_text);
+				let _ = writeln!(output, "    │ {}{}", " ".repeat(label_center_offset), label_text);
+			}
 			let _ = writeln!(output);
 		}
 	}
