@@ -5,7 +5,7 @@ use std::{
 	collections::{BTreeMap, HashMap, HashSet},
 	sync::{
 		Arc,
-		atomic::{AtomicBool, Ordering},
+		atomic::{AtomicBool, AtomicU64, Ordering},
 	},
 };
 
@@ -15,7 +15,7 @@ use reifydb_core::{
 	interface::catalog::{flow::FlowId, object::ObjectId},
 	lifecycle::watermark::ConsumerPositions,
 };
-use reifydb_runtime::{actor::mailbox::ActorRef, sync::rwlock::RwLock};
+use reifydb_runtime::{actor::mailbox::ActorRef, context::clock::Clock, sync::rwlock::RwLock};
 
 #[derive(Clone)]
 pub struct ObjectVersionTracker {
@@ -65,21 +65,46 @@ pub struct UpstreamPosition {
 	pub last_commit: CommitVersion,
 }
 
+const FLOW_WAKE_COALESCE_NANOS: u64 = 20_000_000;
+
 #[derive(Clone)]
 pub struct FlowWaker {
 	actor: ActorRef<FlowActorMessage>,
 	pending: Arc<AtomicBool>,
+	clock: Clock,
+	next_wake_nanos: Arc<AtomicU64>,
 }
 
 impl FlowWaker {
-	pub fn new(actor: ActorRef<FlowActorMessage>, pending: Arc<AtomicBool>) -> Self {
+	pub fn new(actor: ActorRef<FlowActorMessage>, pending: Arc<AtomicBool>, clock: Clock) -> Self {
 		Self {
 			actor,
 			pending,
+			clock,
+			next_wake_nanos: Arc::new(AtomicU64::new(0)),
 		}
 	}
 
 	pub fn wake(&self) {
+		let now = self.clock.now().to_nanos();
+		let next = self.next_wake_nanos.load(Ordering::Relaxed);
+		if now < next {
+			return;
+		}
+		let deadline = now.saturating_add(FLOW_WAKE_COALESCE_NANOS);
+		if self.next_wake_nanos.compare_exchange(next, deadline, Ordering::SeqCst, Ordering::Relaxed).is_err() {
+			return;
+		}
+		self.send();
+	}
+
+	pub fn wake_now(&self) {
+		let deadline = self.clock.now().to_nanos().saturating_add(FLOW_WAKE_COALESCE_NANOS);
+		self.next_wake_nanos.store(deadline, Ordering::SeqCst);
+		self.send();
+	}
+
+	fn send(&self) {
 		if self.pending.swap(true, Ordering::SeqCst) {
 			return;
 		}
@@ -99,6 +124,7 @@ struct FlowProgress {
 	upstreams: HashMap<FlowId, Arc<FlowUpstreams>>,
 	readers: HashMap<FlowId, HashSet<FlowId>>,
 	wakers: HashMap<FlowId, FlowWaker>,
+	source_counts: HashMap<FlowId, usize>,
 }
 
 impl FlowProgress {
@@ -123,11 +149,18 @@ impl FlowProgress {
 		}
 	}
 
-	fn readers_of(&self, producer: FlowId) -> Vec<FlowWaker> {
+	fn folds(&self, flow_id: FlowId) -> bool {
+		!self.readers.contains_key(&flow_id)
+			&& self.source_counts.get(&flow_id).copied().unwrap_or(usize::MAX) <= 1
+	}
+
+	fn readers_of(&self, producer: FlowId) -> Vec<(FlowWaker, bool)> {
 		let Some(readers) = self.readers.get(&producer) else {
 			return Vec::new();
 		};
-		readers.iter().filter_map(|reader| self.wakers.get(reader).cloned()).collect()
+		readers.iter()
+			.filter_map(|reader| self.wakers.get(reader).map(|waker| (waker.clone(), self.folds(*reader))))
+			.collect()
 	}
 
 	fn link_reader(&mut self, reader: FlowId, upstreams: FlowUpstreams) {
@@ -214,11 +247,26 @@ impl FlowPositionTracker {
 	}
 
 	pub fn wake_flows(&self, flow_ids: impl IntoIterator<Item = FlowId>) {
-		let wakers: Vec<FlowWaker> = {
-			let progress = self.inner.read();
-			flow_ids.into_iter().filter_map(|flow_id| progress.wakers.get(&flow_id).cloned()).collect()
-		};
-		wake(wakers);
+		wake(self.wakers_of(flow_ids));
+	}
+
+	pub fn wake_flows_now(&self, flow_ids: impl IntoIterator<Item = FlowId>) {
+		for (waker, _) in self.wakers_of(flow_ids) {
+			waker.wake_now();
+		}
+	}
+
+	pub fn set_source_count(&self, flow_id: FlowId, count: usize) {
+		self.inner.write().source_counts.insert(flow_id, count);
+	}
+
+	fn wakers_of(&self, flow_ids: impl IntoIterator<Item = FlowId>) -> Vec<(FlowWaker, bool)> {
+		let progress = self.inner.read();
+		flow_ids.into_iter()
+			.filter_map(|flow_id| {
+				progress.wakers.get(&flow_id).map(|waker| (waker.clone(), progress.folds(flow_id)))
+			})
+			.collect()
 	}
 
 	pub fn remove(&self, flow_id: FlowId) {
@@ -227,6 +275,7 @@ impl FlowPositionTracker {
 		progress.last_commits.remove(&flow_id);
 		progress.unlink_reader(flow_id);
 		progress.wakers.remove(&flow_id);
+		progress.source_counts.remove(&flow_id);
 	}
 
 	pub fn all(&self) -> HashMap<FlowId, CommitVersion> {
@@ -234,9 +283,13 @@ impl FlowPositionTracker {
 	}
 }
 
-fn wake(readers: Vec<FlowWaker>) {
-	for reader in readers {
-		reader.wake();
+fn wake(readers: Vec<(FlowWaker, bool)>) {
+	for (reader, folds) in readers {
+		if folds {
+			reader.wake();
+		} else {
+			reader.wake_now();
+		}
 	}
 }
 
@@ -272,7 +325,7 @@ mod tests {
 			system::{ActorConfig, ActorSystem},
 			traits::{Actor, Directive},
 		},
-		context::clock::Clock,
+		context::clock::{Clock, MockClock},
 	};
 
 	use super::{FlowPositionTracker, FlowWaker};
@@ -317,7 +370,8 @@ mod tests {
 	#[test]
 	fn upstream_steps_to_a_reader_with_a_pending_wake_merge_into_one_message() {
 		// An upstream step must not queue a second wake on a reader already woken, or the flow pool floods.
-		let actor_system = ActorSystem::testing(Clock::testing());
+		let clock = Clock::testing();
+		let actor_system = ActorSystem::testing(clock.clone());
 		let (sender, received) = mpsc::channel();
 		let reader = actor_system
 			.spawner()
@@ -332,7 +386,7 @@ mod tests {
 		let pending = Arc::new(AtomicBool::new(false));
 		let tracker = FlowPositionTracker::new();
 		tracker.set_upstreams(READER, HashMap::from([(PRODUCER, HashSet::new())]));
-		tracker.set_waker(READER, FlowWaker::new(reader.clone(), Arc::clone(&pending)));
+		tracker.set_waker(READER, FlowWaker::new(reader.clone(), Arc::clone(&pending), clock));
 
 		tracker.update(PRODUCER, CommitVersion(1));
 		tracker.update(PRODUCER, CommitVersion(2));
@@ -354,6 +408,101 @@ mod tests {
 			"a step after the reader cleared its wake must wake it again, or it never sees that step"
 		);
 		assert_eq!(next_message(&received), "tick", "exactly one wake must follow the cleared flag");
+	}
+
+	fn coalescing_harness(
+		source_count: usize,
+	) -> (Clock, FlowPositionTracker, ActorRef<FlowActorMessage>, Arc<AtomicBool>, mpsc::Receiver<&'static str>) {
+		let clock = Clock::Mock(MockClock::from_millis(0));
+		let actor_system = ActorSystem::testing(Clock::testing());
+		let (sender, received) = mpsc::channel();
+		let reader = actor_system
+			.spawner()
+			.spawn_flow(
+				"wake-recorder",
+				WakeRecorder {
+					received: sender,
+				},
+			)
+			.actor_ref()
+			.clone();
+		std::mem::forget(actor_system);
+		let pending = Arc::new(AtomicBool::new(false));
+		let tracker = FlowPositionTracker::new();
+		tracker.set_upstreams(READER, HashMap::from([(PRODUCER, HashSet::new())]));
+		tracker.set_source_count(READER, source_count);
+		tracker.set_waker(READER, FlowWaker::new(reader.clone(), Arc::clone(&pending), clock.clone()));
+		(clock, tracker, reader, pending, received)
+	}
+
+	#[test]
+	fn a_reader_that_folds_drops_upstream_wakes_inside_the_coalesce_window() {
+		// A folding reader woken on every producer commit never accumulates a backlog worth folding, so
+		// wakes inside the window must be dropped rather than queued.
+		let (clock, tracker, reader, pending, received) = coalescing_harness(1);
+
+		tracker.update(PRODUCER, CommitVersion(1));
+		assert_eq!(next_message(&received), "wake", "the first upstream step must wake a folding reader");
+
+		pending.store(false, Ordering::SeqCst);
+		tracker.update(PRODUCER, CommitVersion(2));
+		send_marker(&reader, FlowActorMessage::Sample);
+		assert_eq!(
+			next_message(&received),
+			"sample",
+			"a step inside the coalesce window must be dropped, or the reader never folds"
+		);
+
+		pending.store(false, Ordering::SeqCst);
+		clock.as_mock().expect("the harness drives a mock clock").advance_millis(21);
+		tracker.update(PRODUCER, CommitVersion(3));
+		send_marker(&reader, FlowActorMessage::Tick);
+		assert_eq!(
+			next_message(&received),
+			"wake",
+			"a step after the window elapses must wake the reader, or it stalls until the full wake"
+		);
+		assert_eq!(next_message(&received), "tick", "exactly one wake must follow the elapsed window");
+	}
+
+	#[test]
+	fn a_reader_that_cuts_per_source_is_woken_on_every_upstream_step() {
+		// Delaying a reader that cuts one source version per step buys no folding, so it must never be
+		// coalesced or it pays latency for nothing.
+		let (_clock, tracker, reader, pending, received) = coalescing_harness(2);
+
+		tracker.update(PRODUCER, CommitVersion(1));
+		assert_eq!(next_message(&received), "wake", "the first upstream step must wake a cutting reader");
+
+		pending.store(false, Ordering::SeqCst);
+		tracker.update(PRODUCER, CommitVersion(2));
+		send_marker(&reader, FlowActorMessage::Sample);
+		assert_eq!(
+			next_message(&received),
+			"wake",
+			"a cutting reader must be woken inside the window too, or it lags for no gain"
+		);
+		assert_eq!(next_message(&received), "sample", "exactly one wake must follow the second step");
+	}
+
+	#[test]
+	fn the_full_wake_ignores_the_coalesce_window() {
+		// The periodic full wake is the liveness backstop that makes dropping a wake safe, so it must never
+		// itself be dropped.
+		let (_clock, tracker, reader, pending, received) = coalescing_harness(1);
+
+		tracker.update(PRODUCER, CommitVersion(1));
+		assert_eq!(next_message(&received), "wake", "the first upstream step must wake a folding reader");
+
+		pending.store(false, Ordering::SeqCst);
+		tracker.wake_flows_now([READER]);
+		send_marker(&reader, FlowActorMessage::Sample);
+		assert_eq!(
+			next_message(&received),
+			"wake",
+			"the full wake must reach a reader inside its coalesce window, or liveness rests on nothing"
+		);
+		assert_eq!(next_message(&received), "sample", "exactly one wake must follow the full wake");
 	}
 
 	#[test]

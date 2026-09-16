@@ -229,6 +229,7 @@ impl FlowSupervisor {
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
+			self.flow_tracker.set_source_count(flow_id, source_objects.len());
 			self.publish_upstreams(state, flow_id);
 			prepared.push((flow, seed, source_objects, completeness_objects));
 		}
@@ -329,7 +330,7 @@ impl FlowSupervisor {
 
 	fn handle_wake_all(&self, state: &mut SupervisorState) {
 		state.full_wake_armed = false;
-		self.flow_tracker.wake_flows(state.flows.keys().copied());
+		self.flow_tracker.wake_flows_now(state.flows.keys().copied());
 	}
 
 	fn process_ddl(
@@ -399,6 +400,7 @@ impl FlowSupervisor {
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
+			self.flow_tracker.set_source_count(flow_id, source_objects.len());
 			self.publish_upstreams(state, flow_id);
 			prepared.push((flow, seed, source_objects, completeness_objects));
 		}
@@ -416,6 +418,7 @@ impl FlowSupervisor {
 				let source_objects = self.compute_source_objects(state, flow_id, &registered);
 				let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 				state.sources.insert(flow_id, source_objects.clone());
+				self.flow_tracker.set_source_count(flow_id, source_objects.len());
 				self.publish_upstreams(state, flow_id);
 				if let Some(handle) = state.flows.get(&flow_id) {
 					let _ = handle.actor_ref().send(FlowActorMessage::UpdateSources {
@@ -553,7 +556,7 @@ impl FlowSupervisor {
 		let actor = FlowActor::new(params);
 		let pending = actor.wake_pending();
 		let handle = self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), actor);
-		self.flow_tracker.set_waker(flow_id, FlowWaker::new(handle.actor_ref().clone(), pending));
+		self.flow_tracker.set_waker(flow_id, FlowWaker::new(handle.actor_ref().clone(), pending, self.clock.clone()));
 		handle
 	}
 

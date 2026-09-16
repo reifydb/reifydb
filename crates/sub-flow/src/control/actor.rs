@@ -1371,7 +1371,9 @@ mod pull_protocol {
 	}
 
 	#[test]
-	fn a_burst_of_commits_gets_one_flow_commit_per_insert() {
+	fn a_burst_of_commits_loses_no_version_and_commits_none_twice() {
+		// A flow nobody reads may fold several pending source versions into one commit, so the burst count is
+		// an upper bound; every row must still land and no version may be committed twice.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
@@ -1390,10 +1392,10 @@ mod pull_protocol {
 
 		h.await_safe_watermark(h.engine.current_version().expect("current version"));
 		let commits = h.view_bearing_records(v0);
-		assert_eq!(
-			commits, total,
-			"every insert is its own source version, so the flow must commit once per insert: fewer means \
-			 versions were merged into one commit, more means a version was committed twice"
+		assert!(
+			commits > 0 && commits <= total,
+			"a flow with no readers folds pending source versions into one commit, so {total} inserts must \
+			 yield between one and {total} commits: more means a version was committed twice, got {commits}"
 		);
 		drop(actor);
 	}
@@ -2184,6 +2186,8 @@ mod tick_failures {
 	};
 
 	use super::*;
+	use reifydb_runtime::context::clock::MockClock;
+
 	use crate::{
 		builder::{CustomOperatorEntry, CustomOperators},
 		progress::tracker::FlowWaker,
@@ -2700,7 +2704,8 @@ mod tick_failures {
 		let (te, _health, actor) = quiet_actor();
 		let (sender, received) = mpsc::channel();
 		let recorder = wake_recorder(te.inner(), sender);
-		let waker = FlowWaker::new(recorder.clone(), actor.wake_pending());
+		let clock = Clock::Mock(MockClock::from_millis(0));
+		let waker = FlowWaker::new(recorder.clone(), actor.wake_pending(), clock.clone());
 
 		waker.wake();
 		waker.wake();
@@ -2716,6 +2721,7 @@ mod tick_failures {
 		harness.send(FlowActorMessage::Drain);
 		assert_eq!(harness.process_one(), Some(Directive::Continue), "the drain must be handled");
 
+		clock.as_mock().expect("the harness drives a mock clock").advance_millis(21);
 		waker.wake();
 		assert!(recorder.send(FlowActorMessage::Tick).is_ok(), "send marker");
 		assert_eq!(
