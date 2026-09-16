@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, HashMap, HashSet},
+	collections::{BTreeMap, HashMap, HashSet, VecDeque},
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -60,10 +60,12 @@ impl Default for ObjectVersionTracker {
 pub type FlowUpstreams = HashMap<FlowId, HashSet<ObjectId>>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct UpstreamPosition {
-	pub position: CommitVersion,
-	pub last_commit: CommitVersion,
+struct Completion {
+	commit: CommitVersion,
+	position: CommitVersion,
 }
+
+const COMPLETION_HISTORY: usize = 16_384;
 
 const FLOW_WAKE_COALESCE_NANOS: u64 = 20_000_000;
 
@@ -121,6 +123,7 @@ pub struct FlowPositionTracker {
 struct FlowProgress {
 	positions: HashMap<FlowId, CommitVersion>,
 	last_commits: HashMap<FlowId, CommitVersion>,
+	completions: HashMap<FlowId, VecDeque<Completion>>,
 	upstreams: HashMap<FlowId, Arc<FlowUpstreams>>,
 	readers: HashMap<FlowId, HashSet<FlowId>>,
 	wakers: HashMap<FlowId, FlowWaker>,
@@ -147,6 +150,36 @@ impl FlowProgress {
 		if version > *current {
 			*current = version;
 		}
+	}
+
+	fn record_landed(&mut self, flow_id: FlowId, position: CommitVersion) {
+		let landed = self.last_commits.get(&flow_id).copied().unwrap_or(CommitVersion(0));
+		self.record_completion(flow_id, landed, position);
+	}
+
+	fn record_completion(&mut self, flow_id: FlowId, commit: CommitVersion, position: CommitVersion) {
+		let history = self.completions.entry(flow_id).or_default();
+		match history.back_mut() {
+			Some(last) if commit < last.commit => return,
+			Some(last) if commit == last.commit => {
+				last.position = last.position.max(position);
+				return;
+			}
+			_ => {}
+		}
+		history.push_back(Completion {
+			commit,
+			position,
+		});
+		if history.len() > COMPLETION_HISTORY {
+			history.pop_front();
+		}
+	}
+
+	fn complete_through(&self, flow_id: FlowId, read_to: CommitVersion) -> Option<CommitVersion> {
+		let history = self.completions.get(&flow_id)?;
+		let above = history.partition_point(|entry| entry.commit <= read_to);
+		history.get(above.checked_sub(1)?).map(|entry| entry.position)
 	}
 
 	fn folds(&self, flow_id: FlowId) -> bool {
@@ -198,6 +231,7 @@ impl FlowPositionTracker {
 			if !progress.advance_position(flow_id, version) {
 				return;
 			}
+			progress.record_landed(flow_id, version);
 			progress.readers_of(flow_id)
 		};
 		wake(readers);
@@ -210,6 +244,7 @@ impl FlowPositionTracker {
 			if !progress.advance_position(flow_id, version) {
 				return;
 			}
+			progress.record_landed(flow_id, version);
 			progress.readers_of(flow_id)
 		};
 		wake(readers);
@@ -219,13 +254,8 @@ impl FlowPositionTracker {
 		self.inner.write().advance_last_commit(flow_id, commit);
 	}
 
-	pub fn upstream_position(&self, flow_id: FlowId) -> Option<UpstreamPosition> {
-		let progress = self.inner.read();
-		let position = *progress.positions.get(&flow_id)?;
-		Some(UpstreamPosition {
-			position,
-			last_commit: progress.last_commits.get(&flow_id).copied().unwrap_or(CommitVersion(0)),
-		})
+	pub fn upstream_complete_through(&self, flow_id: FlowId, read_to: CommitVersion) -> Option<CommitVersion> {
+		self.inner.read().complete_through(flow_id, read_to)
 	}
 
 	pub fn set_upstreams(&self, flow_id: FlowId, upstreams: FlowUpstreams) {
@@ -328,10 +358,129 @@ mod tests {
 		context::clock::{Clock, MockClock},
 	};
 
-	use super::{FlowPositionTracker, FlowWaker};
+	use super::{FlowPositionTracker, FlowProgress, FlowWaker};
 
 	const PRODUCER: FlowId = FlowId(1);
 	const READER: FlowId = FlowId(2);
+
+	fn cv(version: u64) -> CommitVersion {
+		CommitVersion(version)
+	}
+
+	#[test]
+	fn a_producer_position_is_not_trusted_until_its_commit_is_read() {
+		let mut progress = FlowProgress::default();
+		progress.record_completion(PRODUCER, cv(12), cv(10));
+
+		assert_eq!(
+			progress.complete_through(PRODUCER, cv(11)),
+			None,
+			"the commit carrying the output for position 10 is not read yet, so nothing may pass"
+		);
+		assert_eq!(progress.complete_through(PRODUCER, cv(12)), Some(cv(10)));
+	}
+
+	#[test]
+	fn a_reader_behind_the_newest_commit_still_resolves_an_older_position() {
+		let mut progress = FlowProgress::default();
+		progress.record_completion(PRODUCER, cv(10), cv(4));
+		progress.record_completion(PRODUCER, cv(20), cv(9));
+		progress.record_completion(PRODUCER, cv(30), cv(15));
+
+		assert_eq!(
+			progress.complete_through(PRODUCER, cv(25)),
+			Some(cv(9)),
+			"a reader must get the newest position it has fully read, or an active producer freezes it \
+			 forever at its cursor"
+		);
+		assert_eq!(progress.complete_through(PRODUCER, cv(20)), Some(cv(9)), "an exact commit must resolve");
+		assert_eq!(
+			progress.complete_through(PRODUCER, cv(9)),
+			None,
+			"below every recorded commit nothing is proven, and claiming a position would skip output"
+		);
+	}
+
+	#[test]
+	fn an_unknown_producer_resolves_to_nothing() {
+		let progress = FlowProgress::default();
+		assert_eq!(
+			progress.complete_through(PRODUCER, cv(100)),
+			None,
+			"a producer that has never committed proves nothing about what it will emit"
+		);
+	}
+
+	#[test]
+	fn completion_history_keeps_the_newest_pairs_within_its_bound() {
+		let mut progress = FlowProgress::default();
+		for version in 1..=(super::COMPLETION_HISTORY as u64 + 10) {
+			progress.record_completion(PRODUCER, cv(version * 2), cv(version));
+		}
+
+		assert_eq!(
+			progress.completions.get(&PRODUCER).map(|h| h.len()),
+			Some(super::COMPLETION_HISTORY),
+			"an unbounded history would grow with uptime"
+		);
+		assert_eq!(
+			progress.complete_through(PRODUCER, cv(20)),
+			None,
+			"a reader that falls off the retained window must not be handed a position it cannot prove"
+		);
+	}
+
+	#[test]
+	fn a_repeated_or_regressing_commit_does_not_extend_the_history() {
+		let mut progress = FlowProgress::default();
+		progress.record_completion(PRODUCER, cv(20), cv(9));
+		progress.record_completion(PRODUCER, cv(20), cv(11));
+		progress.record_completion(PRODUCER, cv(15), cv(12));
+
+		assert_eq!(
+			progress.completions.get(&PRODUCER).map(|h| h.len()),
+			Some(1),
+			"the lookup scans for the largest commit at or below a bound, so the history must stay sorted"
+		);
+		assert_eq!(
+			progress.complete_through(PRODUCER, cv(20)),
+			Some(cv(11)),
+			"consuming further without emitting anything new is still progress the reader may use"
+		);
+		assert_eq!(
+			progress.complete_through(PRODUCER, cv(19)),
+			None,
+			"a commit that went backwards must not lower the bound a reader already resolved"
+		);
+	}
+
+	#[test]
+	fn a_checkpoint_carrying_no_output_records_at_the_commit_that_last_landed() {
+		let tracker = FlowPositionTracker::new();
+		tracker.update_committed(PRODUCER, cv(34), cv(22));
+		tracker.update_committed(PRODUCER, cv(38), cv(0));
+
+		assert_eq!(
+			tracker.upstream_complete_through(PRODUCER, cv(38)),
+			Some(cv(38)),
+			"an empty slice commits at version none, and taking that literally drops the advance and \
+			 pins every reader at the last version that carried rows"
+		);
+	}
+
+	#[test]
+	fn a_position_published_without_a_commit_still_reaches_readers() {
+		let tracker = FlowPositionTracker::new();
+		tracker.update_committed(PRODUCER, cv(4), cv(10));
+		tracker.update(PRODUCER, cv(7));
+
+		assert_eq!(
+			tracker.upstream_complete_through(PRODUCER, cv(10)),
+			Some(cv(7)),
+			"a producer that consumed further and emitted nothing has nothing left to land, so a reader \
+			 at its last commit must not be held back"
+		);
+	}
 
 	struct WakeRecorder {
 		received: mpsc::Sender<&'static str>,

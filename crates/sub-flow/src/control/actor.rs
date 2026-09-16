@@ -361,7 +361,7 @@ impl FlowActor {
 			};
 			let mut upstream = UpstreamRead {
 				views: views.clone(),
-				position: self.flow_tracker.upstream_position(*producer),
+				position: None,
 				read,
 			};
 			while upstream.needs_extension(cursor, &upstream_reads.index) {
@@ -373,6 +373,8 @@ impl FlowActor {
 				upstream.read.read_to = next.read_to;
 				upstream.read.more = next.more;
 			}
+			upstream.position =
+				self.flow_tracker.upstream_complete_through(*producer, upstream.read.read_to);
 			upstream_reads.reads.insert(*producer, upstream);
 		}
 		let merged = merge(cursor, &tables, &upstream_reads.reads, &upstream_reads.index);

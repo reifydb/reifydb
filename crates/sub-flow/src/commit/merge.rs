@@ -16,7 +16,6 @@ use reifydb_core::{
 	},
 };
 
-use crate::progress::tracker::UpstreamPosition;
 
 pub struct StreamRead {
 	pub items: Vec<Arc<Cdc>>,
@@ -89,7 +88,7 @@ impl ReadCache {
 
 pub struct UpstreamRead {
 	pub views: HashSet<ObjectId>,
-	pub position: Option<UpstreamPosition>,
+	pub position: Option<CommitVersion>,
 	pub read: StreamRead,
 }
 
@@ -124,10 +123,8 @@ impl UpstreamRead {
 
 	fn complete_through(&self, cursor: CommitVersion, index: &ObjectIndex) -> CommitVersion {
 		let mut through = cursor;
-		if let Some(position) = self.position
-			&& self.read.read_to >= position.last_commit
-		{
-			through = through.max(position.position);
+		if let Some(position) = self.position {
+			through = through.max(position);
 		}
 		if let Some(last) = self.view_items(index).last() {
 			through = through.max(CommitVersion(last.version.source.0.saturating_sub(1)));
@@ -268,17 +265,14 @@ mod tests {
 		}
 	}
 
-	fn upstream(position: Option<(u64, u64)>, read: StreamRead) -> UpstreamRead {
+	fn upstream(position: Option<u64>, read: StreamRead) -> UpstreamRead {
 		upstream_of(ViewId(5), position, read)
 	}
 
-	fn upstream_of(view: ViewId, position: Option<(u64, u64)>, read: StreamRead) -> UpstreamRead {
+	fn upstream_of(view: ViewId, position: Option<u64>, read: StreamRead) -> UpstreamRead {
 		UpstreamRead {
 			views: HashSet::from([ObjectId::View(view)]),
-			position: position.map(|(position, last_commit)| UpstreamPosition {
-				position: cv(position),
-				last_commit: cv(last_commit),
-			}),
+			position: position.map(cv),
 			read,
 		}
 	}
@@ -293,29 +287,6 @@ mod tests {
 
 	fn versions(merged: &Merged) -> Vec<(u64, u64)> {
 		merged.items.iter().map(|cdc| (cdc.version.commit.0, cdc.version.source.0)).collect()
-	}
-
-	#[test]
-	fn a_producer_position_holds_the_gate_until_its_last_commit_is_read() {
-		// Trusting the position before its commit is read would pass a version whose view rows are still
-		// unseen.
-		let tables = read(vec![], 20, false);
-
-		let unread = merge(
-			cv(0),
-			&tables,
-			&one(upstream(Some((10, 12)), read(vec![], 11, false))),
-			&ObjectIndex::default(),
-		);
-		assert_eq!(unread.target, cv(0), "the producer commit at 12 is not read yet, so nothing may pass");
-
-		let read_through = merge(
-			cv(0),
-			&tables,
-			&one(upstream(Some((10, 12)), read(vec![], 12, false))),
-			&ObjectIndex::default(),
-		);
-		assert_eq!(read_through.target, cv(10));
 	}
 
 	#[test]
@@ -337,7 +308,7 @@ mod tests {
 		let merged = merge(
 			cv(0),
 			&read(vec![table_row(5)], 20, false),
-			&one(upstream(Some((5, 7)), read(vec![view_row(7, 5)], 20, false))),
+			&one(upstream(Some(5), read(vec![view_row(7, 5)], 20, false))),
 			&ObjectIndex::default(),
 		);
 		assert_eq!(versions(&merged), vec![(7, 5), (5, 5)]);
@@ -349,7 +320,7 @@ mod tests {
 		let merged = merge(
 			cv(0),
 			&read(vec![table_row(4)], 20, false),
-			&one(upstream(Some((4, 6)), read(vec![view_row(6, 3)], 20, false))),
+			&one(upstream(Some(4), read(vec![view_row(6, 3)], 20, false))),
 			&ObjectIndex::default(),
 		);
 		assert_eq!(versions(&merged), vec![(6, 3), (4, 4)]);
@@ -397,7 +368,7 @@ mod tests {
 		let merged = merge(
 			cv(0),
 			&read(vec![table_row(5), view.clone()], 20, false),
-			&one(upstream(Some((5, 7)), read(vec![view], 20, false))),
+			&one(upstream(Some(5), read(vec![view], 20, false))),
 			&ObjectIndex::default(),
 		);
 		assert_eq!(versions(&merged), vec![(7, 5), (5, 5)]);
@@ -409,7 +380,7 @@ mod tests {
 		let merged = merge(
 			cv(5),
 			&read(vec![], 20, false),
-			&one(upstream(Some((9, 9)), read(vec![view_row(7, 5), view_row(9, 8)], 20, false))),
+			&one(upstream(Some(9), read(vec![view_row(7, 5), view_row(9, 8)], 20, false))),
 			&ObjectIndex::default(),
 		);
 		assert_eq!(versions(&merged), vec![(9, 8)]);
@@ -421,7 +392,7 @@ mod tests {
 		let merged = merge(
 			cv(0),
 			&read(vec![table_row(3)], 3, true),
-			&one(upstream(Some((10, 10)), read(vec![], 20, false))),
+			&one(upstream(Some(10), read(vec![], 20, false))),
 			&ObjectIndex::default(),
 		);
 		assert_eq!(merged.target, cv(3));
@@ -436,8 +407,8 @@ mod tests {
 			cv(0),
 			&read(vec![], 20, false),
 			&two(
-				upstream(Some((10, 12)), read(vec![view_row(12, 7)], 20, false)),
-				upstream_of(ViewId(6), Some((4, 6)), read(vec![], 20, false)),
+				upstream(Some(10), read(vec![view_row(12, 7)], 20, false)),
+				upstream_of(ViewId(6), Some(4), read(vec![], 20, false)),
 			),
 			&ObjectIndex::default(),
 		);
@@ -457,10 +428,10 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(5), shared.clone()], 20, false),
 			&two(
-				upstream(Some((6, 8)), read(vec![view_row(8, 5)], 20, false)),
+				upstream(Some(6), read(vec![view_row(8, 5)], 20, false)),
 				upstream_of(
 					ViewId(6),
-					Some((6, 9)),
+					Some(6),
 					read(vec![shared, other_view_row(9, 6)], 20, false),
 				),
 			),
