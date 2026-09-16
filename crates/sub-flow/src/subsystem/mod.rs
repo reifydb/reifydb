@@ -130,8 +130,10 @@ impl FlowSubsystem {
 		);
 		let committer_handle = flow_scope
 			.spawn_flow("flow-committer", CommitterActor::new(committer.clone(), commit_handle.clone()));
-		let terminal_committer_handle =
-			flow_scope.spawn_flow("flow-committer-terminal", CommitterActor::new(committer, commit_handle));
+		let terminal_committer_handle = flow_scope.spawn_flow(
+			"flow-committer-terminal",
+			CommitterActor::new(committer, commit_handle).named("flow-committer-terminal"),
+		);
 		let committer_ref = committer_handle.actor_ref().clone();
 		let terminal_committer_ref = terminal_committer_handle.actor_ref().clone();
 

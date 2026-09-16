@@ -98,7 +98,7 @@ pub struct MultiWriteTransaction {
 }
 
 impl MultiWriteTransaction {
-	#[instrument(name = "transaction::command::new", level = "debug", skip(engine))]
+	#[instrument(name = "transaction::multi::new", level = "debug", skip(engine))]
 	pub fn new(engine: MultiTransaction) -> Result<Self> {
 		let oracle = engine.tm.oracle().clone();
 		let version = oracle.query.register_in_flight_with(|| oracle.version())?;
@@ -398,7 +398,7 @@ impl MultiWriteTransaction {
 		self.remove_silent_any(key.clone().into())
 	}
 
-	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self), fields(txn_id = %self.id))]
+	#[instrument(name = "transaction::multi::rollback", level = "debug", skip(self), fields(txn_id = %self.id))]
 	pub fn rollback(&mut self) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
@@ -619,7 +619,7 @@ impl MultiWriteTransaction {
 }
 
 impl MultiWriteTransaction {
-	#[instrument(name = "transaction::command::commit", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
+	#[instrument(name = "transaction::multi::commit", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
 	pub fn commit(&mut self, flow_changes: Vec<Change>) -> Result<CommitVersion> {
 		if self.pending_writes.is_empty() {
 			self.discard();
@@ -630,7 +630,7 @@ impl MultiWriteTransaction {
 		self.finalize_commit(commit_version, deltas, flow_changes)
 	}
 
-	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
+	#[instrument(name = "transaction::multi::commit_unchecked", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
 	pub(crate) fn commit_unchecked(&mut self, flow_changes: Vec<Change>) -> Result<CommitVersion> {
 		if self.pending_writes.is_empty() {
 			self.discard();
