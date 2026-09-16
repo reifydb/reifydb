@@ -1113,12 +1113,11 @@ impl ExpressionCompiler {
 				Ok(Expression::Column(ColumnExpression(column)))
 			}
 			Ast::SystemColumn(node) => {
-				let name = node
-					.token
-					.fragment
-					.text()
-					.strip_prefix('#')
-					.unwrap_or(node.token.fragment.text());
+				let token = node.token.fragment.to_owned();
+				let name = match token.text().strip_prefix('#') {
+					Some(stripped) => token.sub_fragment(1, stripped.len()),
+					None => token,
+				};
 				let column = ColumnIdentifier {
 					object: ColumnObject::Qualified {
 						namespace: Fragment::Internal {
@@ -1128,9 +1127,7 @@ impl ExpressionCompiler {
 							text: Arc::from("_context"),
 						},
 					},
-					name: Fragment::Internal {
-						text: Arc::from(name),
-					},
+					name,
 				};
 				Ok(Expression::Column(ColumnExpression(column)))
 			}
