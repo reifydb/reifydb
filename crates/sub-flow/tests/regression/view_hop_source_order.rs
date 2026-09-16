@@ -299,16 +299,15 @@ fn rungs_before_header_pair_through_two_view_hops() {
 
 #[test]
 fn a_header_pairs_with_the_rung_value_as_of_its_own_commit() {
-	// One stamp per batch fails here: curve replays both rung commits in one slice, so the header sees 40 or
-	// nothing, never 20.
+	// A snapshot join pairs by source version, so the two rung commits must reach curve as two commits; folded
+	// into one the header sees the later px or nothing.
 	let db = memory_db();
 	create_tables(&db);
+	create_curve(&db);
+	create_cost(&db, "curve");
 	insert_rung(&db, "a", 10);
 	insert_header(&db, "a");
 	db.command("UPDATE app::level { px: 20 } FILTER { pool == 'a' }");
-
-	create_curve(&db);
-	create_cost(&db, "curve");
 	settle(&db);
 	assert_curve_rows(&db, 1);
 
@@ -491,8 +490,9 @@ fn a_view_with_downstream_readers_commits_once_per_source_version() {
 }
 
 #[test]
-fn a_view_with_no_readers_still_commits_once_per_source_version() {
-	// A reader created later replays this history, so a batched commit would erase a state it must pair with.
+fn a_view_with_no_readers_folds_its_backlog_into_one_commit() {
+	// Nothing merges this view by source version, so a backlog must drain in one commit; one commit per source
+	// version caps the view at its producer's commit rate and it can never catch up once behind.
 	let db = memory_db();
 	create_tables(&db);
 	insert_rung(&db, "a", 10);
@@ -507,8 +507,8 @@ fn a_view_with_no_readers_still_commits_once_per_source_version() {
 		stamps(&db, view(&db, "curve")).iter().map(|version| version.source).collect();
 	assert_eq!(
 		sources,
-		vec![SourceVersion::from(level[0].commit), SourceVersion::from(level[1].commit)],
-		"curve must commit once per rung commit even with no readers, each stamped with that rung's version"
+		vec![SourceVersion::from(level[1].commit)],
+		"both rungs must land in one commit stamped with the newest rung version they folded"
 	);
 }
 

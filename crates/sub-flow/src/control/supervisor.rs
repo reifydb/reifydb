@@ -73,6 +73,7 @@ pub struct FlowSupervisorParams {
 	pub engine: StandardEngine,
 	pub flow_catalog: FlowCatalog,
 	pub committer: ActorRef<CommitterMessage>,
+	pub terminal_committer: ActorRef<CommitterMessage>,
 	pub backlog: FlowBacklog,
 	pub loader: ActorRef<LoaderMessage>,
 	pub control: ControlFrontier,
@@ -98,6 +99,7 @@ pub struct FlowSupervisor {
 	engine: StandardEngine,
 	flow_catalog: FlowCatalog,
 	committer: ActorRef<CommitterMessage>,
+	terminal_committer: ActorRef<CommitterMessage>,
 	backlog: FlowBacklog,
 	loader: ActorRef<LoaderMessage>,
 	control: ControlFrontier,
@@ -135,6 +137,7 @@ impl FlowSupervisor {
 			engine: params.engine,
 			flow_catalog: params.flow_catalog,
 			committer: params.committer,
+			terminal_committer: params.terminal_committer,
 			backlog: params.backlog,
 			loader: params.loader,
 			control: params.control,
@@ -219,12 +222,18 @@ impl FlowSupervisor {
 
 		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _)| f.id).collect();
 		let closure = state.analyzer.get_dependency_graph().upstream_closure();
+		let mut prepared: Vec<(FlowDag, CommitVersion, Arc<BTreeSet<ObjectId>>, Option<Arc<BTreeSet<u64>>>)> =
+			Vec::with_capacity(to_spawn.len());
 		for (flow, seed) in to_spawn {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
 			self.publish_upstreams(state, flow_id);
+			prepared.push((flow, seed, source_objects, completeness_objects));
+		}
+		for (flow, seed, source_objects, completeness_objects) in prepared {
+			let flow_id = flow.id;
 			let handle = self.spawn_flow(flow, source_objects, completeness_objects, seed);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned deferred flow actor");
@@ -383,12 +392,18 @@ impl FlowSupervisor {
 		let registered: BTreeSet<FlowId> =
 			state.flows.keys().copied().chain(to_spawn.iter().map(|(f, _)| f.id)).collect();
 		let closure = state.analyzer.get_dependency_graph().upstream_closure();
+		let mut prepared: Vec<(FlowDag, CommitVersion, Arc<BTreeSet<ObjectId>>, Option<Arc<BTreeSet<u64>>>)> =
+			Vec::with_capacity(to_spawn.len());
 		for (flow, seed) in to_spawn {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
 			self.publish_upstreams(state, flow_id);
+			prepared.push((flow, seed, source_objects, completeness_objects));
+		}
+		for (flow, seed, source_objects, completeness_objects) in prepared {
+			let flow_id = flow.id;
 			let handle = self.spawn_flow(flow, source_objects, completeness_objects, seed);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned new deferred flow actor");
@@ -514,6 +529,7 @@ impl FlowSupervisor {
 		let params = FlowActorParams {
 			engine: self.engine.clone(),
 			committer: self.committer.clone(),
+			terminal_committer: self.terminal_committer.clone(),
 			backlog: self.backlog.clone(),
 			loader: self.loader.clone(),
 			control: self.control.clone(),

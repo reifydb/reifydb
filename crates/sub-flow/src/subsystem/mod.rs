@@ -89,6 +89,7 @@ pub struct FlowSubsystem {
 	flow_scope: ActorSpawner,
 	loader_handle: Mutex<Option<LoaderHandle>>,
 	committer_handle: Mutex<Option<CommitterHandle>>,
+	terminal_committer_handle: Mutex<Option<CommitterHandle>>,
 	supervisor_handle: Mutex<Option<FlowSupervisorHandle>>,
 	view_lineage: ViewLineage,
 	health: FlowHealthRegistry,
@@ -127,9 +128,14 @@ impl FlowSubsystem {
 			materialization.clone(),
 			substrate.operators.clone().expect("the flow substrate is built with an operator store"),
 		);
-		let committer_handle =
-			flow_scope.spawn_flow("flow-committer", CommitterActor::new(committer, commit_handle));
+		let committer_handle = flow_scope.spawn_flow(
+			"flow-committer",
+			CommitterActor::new(committer.clone(), commit_handle.clone()),
+		);
+		let terminal_committer_handle = flow_scope
+			.spawn_flow("flow-committer-terminal", CommitterActor::new(committer, commit_handle));
 		let committer_ref = committer_handle.actor_ref().clone();
+		let terminal_committer_ref = terminal_committer_handle.actor_ref().clone();
 
 		let health = FlowHealthRegistry::new();
 		let operator_samples = OperatorSampleRegistry::new();
@@ -157,6 +163,7 @@ impl FlowSubsystem {
 				engine: engine.clone(),
 				flow_catalog: flow_catalog.clone(),
 				committer: committer_ref,
+				terminal_committer: terminal_committer_ref,
 				backlog: backlog.clone(),
 				loader: loader_handle.actor_ref().clone(),
 				control,
@@ -211,6 +218,7 @@ impl FlowSubsystem {
 			flow_scope,
 			loader_handle: Mutex::new(Some(loader_handle)),
 			committer_handle: Mutex::new(Some(committer_handle)),
+			terminal_committer_handle: Mutex::new(Some(terminal_committer_handle)),
 			supervisor_handle: Mutex::new(Some(supervisor_handle)),
 			view_lineage,
 			health,
@@ -317,6 +325,10 @@ impl Shutdown for FlowSubsystem {
 		}
 
 		if let Some(handle) = self.committer_handle.lock().take() {
+			let _ = handle.join();
+		}
+
+		if let Some(handle) = self.terminal_committer_handle.lock().take() {
 			let _ = handle.join();
 		}
 

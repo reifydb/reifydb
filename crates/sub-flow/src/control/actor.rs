@@ -71,6 +71,7 @@ use crate::{
 pub struct FlowActorParams {
 	pub engine: StandardEngine,
 	pub committer: ActorRef<CommitterMessage>,
+	pub terminal_committer: ActorRef<CommitterMessage>,
 	pub backlog: FlowBacklog,
 	pub loader: ActorRef<LoaderMessage>,
 	pub control: ControlFrontier,
@@ -95,6 +96,7 @@ pub struct FlowActorParams {
 pub struct FlowActor {
 	engine: StandardEngine,
 	committer: ActorRef<CommitterMessage>,
+	terminal_committer: ActorRef<CommitterMessage>,
 	backlog: FlowBacklog,
 	loader: ActorRef<LoaderMessage>,
 	control: ControlFrontier,
@@ -153,6 +155,7 @@ impl FlowActor {
 			load_batch_bytes: params.load_batch_bytes,
 			engine: params.engine,
 			committer: params.committer,
+			terminal_committer: params.terminal_committer,
 			backlog: params.backlog,
 			loader: params.loader,
 			control: params.control,
@@ -217,6 +220,14 @@ impl FlowActor {
 			"flow error, rebuilt operators and retrying after backoff"
 		);
 		ctx.schedule_once(backoff, || FlowActorMessage::Drain);
+	}
+
+	fn commit_target(&self) -> &ActorRef<CommitterMessage> {
+		if self.flow_tracker.has_readers(self.flow_id) {
+			&self.committer
+		} else {
+			&self.terminal_committer
+		}
 	}
 
 	fn build_flow_engine(&self) -> FlowEngineInner {
@@ -412,6 +423,7 @@ impl FlowActor {
 				completeness_objects: state.completeness_objects.as_deref(),
 				cursor: state.cursor,
 				durable_cursor: state.durable_cursor,
+				has_readers: self.flow_tracker.has_readers(self.flow_id),
 			},
 			advance_to,
 			more,
@@ -560,7 +572,7 @@ impl FlowActor {
 				committed,
 			});
 		});
-		if self.committer
+		if self.commit_target()
 			.send(CommitterMessage::Slice {
 				slice,
 				reply,
@@ -720,7 +732,7 @@ impl FlowActor {
 				result,
 			});
 		});
-		if self.committer
+		if self.commit_target()
 			.send(CommitterMessage::Tick {
 				flow_id: self.flow_id,
 				source: SourceVersion(state.cursor.0 + 1),
@@ -1083,6 +1095,7 @@ mod pull_protocol {
 				FlowActor::new(FlowActorParams {
 					engine: self.engine.clone(),
 					committer: self.committer_handle.actor_ref().clone(),
+					terminal_committer: self.committer_handle.actor_ref().clone(),
 					backlog: self.backlog.clone(),
 					loader: self.loader_handle.actor_ref().clone(),
 					control: self.control.clone(),
@@ -2006,6 +2019,7 @@ mod pull_protocol {
 			FlowActor::new(FlowActorParams {
 				engine: h.engine.clone(),
 				committer: committer2_handle.actor_ref().clone(),
+				terminal_committer: committer2_handle.actor_ref().clone(),
 				backlog: h.backlog.clone(),
 				loader: h.loader_handle.actor_ref().clone(),
 				control: h.control.clone(),
@@ -2429,9 +2443,11 @@ mod tick_failures {
 		assert!(flow.ticks(), "precondition: the flow must tick, otherwise on_tick returns without working");
 
 		let health = FlowHealthRegistry::new();
+		let committer_ref = committer(&engine);
 		let actor = FlowActor::new(FlowActorParams {
 			engine: engine.clone(),
-			committer: committer(&engine),
+			committer: committer_ref.clone(),
+			terminal_committer: committer_ref,
 			backlog: FlowBacklog::new(ByteSize::from_mib(8)),
 			loader: idle(&engine, "tick-failures-loader"),
 			control: ControlFrontier::new(),

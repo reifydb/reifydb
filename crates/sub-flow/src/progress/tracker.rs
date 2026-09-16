@@ -205,6 +205,10 @@ impl FlowPositionTracker {
 		self.inner.read().upstreams.get(&flow_id).cloned().unwrap_or_default()
 	}
 
+	pub fn has_readers(&self, flow_id: FlowId) -> bool {
+		self.inner.read().readers.contains_key(&flow_id)
+	}
+
 	pub fn set_waker(&self, flow_id: FlowId, waker: FlowWaker) {
 		self.inner.write().wakers.insert(flow_id, waker);
 	}
@@ -350,5 +354,24 @@ mod tests {
 			"a step after the reader cleared its wake must wake it again, or it never sees that step"
 		);
 		assert_eq!(next_message(&received), "tick", "exactly one wake must follow the cleared flag");
+	}
+
+	#[test]
+	fn a_flow_has_readers_only_while_another_flow_lists_it_upstream() {
+		// The slice cut and the committer split both key off this flag, so a stale true caps a terminal flow
+		// at one commit per source version and a stale false lets a read producer fold out of order.
+		let tracker = FlowPositionTracker::new();
+		assert!(!tracker.has_readers(PRODUCER), "an unlinked flow must have no readers");
+
+		tracker.set_upstreams(READER, HashMap::from([(PRODUCER, HashSet::new())]));
+		assert!(tracker.has_readers(PRODUCER), "a linked producer must have readers");
+		assert!(!tracker.has_readers(READER), "the reader itself is read by nobody");
+
+		tracker.set_upstreams(READER, HashMap::new());
+		assert!(!tracker.has_readers(PRODUCER), "relinking the reader without the producer must clear it");
+
+		tracker.set_upstreams(READER, HashMap::from([(PRODUCER, HashSet::new())]));
+		tracker.remove(READER);
+		assert!(!tracker.has_readers(PRODUCER), "removing the last reader must clear it");
 	}
 }

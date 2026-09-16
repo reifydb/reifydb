@@ -37,6 +37,7 @@ pub struct SliceCursor<'a> {
 	pub completeness_objects: Option<&'a BTreeSet<u64>>,
 	pub cursor: CommitVersion,
 	pub durable_cursor: CommitVersion,
+	pub has_readers: bool,
 }
 
 pub enum SliceStep {
@@ -78,12 +79,14 @@ impl SliceComputer {
 		let start = items.partition_point(|c| c.version.commit <= cursor.cursor);
 		let (mut advance_to, mut more) = (advance_to, more);
 		let mut relevant: Vec<&Cdc> = Vec::new();
+		let cut_per_source = cursor.has_readers || cursor.source_objects.len() > 1;
 		for cdc in items[start..].iter().map(Arc::as_ref) {
 			if !is_relevant(cdc, cursor.source_objects) {
 				continue;
 			}
 			if let Some(first) = relevant.first()
 				&& cdc.version.source != first.version.source
+				&& cut_per_source
 			{
 				advance_to = CommitVersion(cdc.version.source.0 - 1);
 				more = true;
@@ -530,7 +533,7 @@ mod integration {
 		common::TimeDomain,
 		interface::catalog::{
 			flow::OperatorId,
-			id::{SeriesId, ViewId},
+			id::{SeriesId, TableId, ViewId},
 		},
 		key::tag::KeyTag,
 	};
@@ -828,6 +831,7 @@ mod integration {
 					completeness_objects: None,
 					cursor,
 					durable_cursor: durable,
+					has_readers: true,
 				},
 				&config,
 			) {
@@ -919,6 +923,7 @@ mod integration {
 					completeness_objects: None,
 					cursor,
 					durable_cursor: cursor,
+					has_readers: true,
 				},
 				&config,
 			) {
@@ -1041,6 +1046,7 @@ mod integration {
 					completeness_objects: None,
 					cursor,
 					durable_cursor: durable,
+					has_readers: true,
 				},
 				&config,
 			) {
@@ -1173,6 +1179,7 @@ mod integration {
 					completeness_objects: None,
 					cursor,
 					durable_cursor: CommitVersion(0),
+					has_readers: true,
 				},
 				&far,
 			) {
@@ -1207,6 +1214,7 @@ mod integration {
 				completeness_objects: None,
 				cursor: CommitVersion(0),
 				durable_cursor: CommitVersion(0),
+				has_readers: true,
 			},
 			&due,
 		) {
@@ -1227,5 +1235,205 @@ mod integration {
 			None => panic!("the insert was already visible, so the replay from zero must produce a step"),
 		}
 		assert_eq!(view_row_count(&te, "FROM app::v"), 0);
+	}
+
+	fn one_view_flow(te: &TestEngine) -> (FlowId, FlowEngineInner, BTreeSet<ObjectId>) {
+		let engine = te.inner().clone();
+		let flow_catalog = FlowCatalog::new(engine.catalog());
+
+		let mut query = engine.begin_query(IdentityId::system()).expect("query");
+		let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
+		let flow_id = flows.first().expect("one flow").id;
+		drop(query);
+
+		let mut flow_engine = build_flow_engine(&engine);
+		{
+			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
+			let (flow, _) = flow_catalog
+				.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)
+				.expect("load flow");
+			flow_engine.register(&mut txn, flow).expect("register");
+			txn.rollback().expect("rollback registration probe");
+		}
+
+		let source_objects = {
+			let graph = flow_engine.get_dependency_graph();
+			let registered = |f: FlowId| f == flow_id;
+			let view_kind = |vid| flow_catalog.find_view(vid).map(|v| v.kind());
+			routing::flow_source_objects(&graph, flow_id, &registered, &view_kind)
+		};
+		(flow_id, flow_engine, source_objects)
+	}
+
+	fn three_separate_inserts(te: &TestEngine) -> CommitVersion {
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
+		te.admin("CREATE DEFERRED VIEW app::v { id: int4, val: int4 } AS { FROM app::t MAP { id, val } }");
+		te.command("INSERT app::t [{id: 1, val: 10}]");
+		te.command("INSERT app::t [{id: 2, val: 20}]");
+		te.command("INSERT app::t [{id: 3, val: 30}]");
+		let inserted = te.inner().current_version().expect("current version");
+		for _ in 0..400 {
+			let safe = te.inner().cdc_producer_watermark().min(te.inner().done_until());
+			if safe >= inserted {
+				return inserted;
+			}
+			sleep(StdDuration::from_millis(5));
+		}
+		panic!("the cdc producer never caught up to {inserted:?}");
+	}
+
+	#[test]
+	fn a_flow_with_readers_takes_one_source_version_per_step() {
+		// A reader merges its producers by source version, so a step that spans two of them would let one
+		// producer run ahead of the other inside a single commit and reorder what the reader sees.
+		let te = TestEngine::builder().with_cdc().build();
+		three_separate_inserts(&te);
+		let engine = te.inner().clone();
+		let (flow_id, mut flow_engine, source_objects) = one_view_flow(&te);
+
+		let computer = SliceComputer::new(engine.clone());
+		let committer = spawn_committer(&engine);
+		let config = SliceConfig {
+			checkpoint_lag: 10_000,
+		};
+
+		let step = pull_step(
+			&engine,
+			&computer,
+			&mut flow_engine,
+			SliceCursor {
+				flow_id,
+				source_objects: &source_objects,
+				completeness_objects: None,
+				cursor: CommitVersion(0),
+				durable_cursor: CommitVersion(0),
+				has_readers: true,
+			},
+			&config,
+		)
+		.expect("the inserts are visible, so the flow must step");
+
+		match step {
+			SliceStep::Commit {
+				slice,
+				more,
+				..
+			} => {
+				assert!(more, "a step cut at a source boundary must report more work");
+				commit(&committer, slice);
+				assert_eq!(
+					view_row_count(&te, "FROM app::v"),
+					1,
+					"the step must carry only the first of the three source versions"
+				);
+			}
+			SliceStep::Skip {
+				advance_to,
+				..
+			} => panic!("the first insert must produce view rows, not a skip to {advance_to:?}"),
+		}
+	}
+
+	#[test]
+	fn a_flow_with_no_readers_folds_every_pending_source_version_into_one_step() {
+		// Nothing reads this flow's output by source version, so a flow that fell behind must catch up in
+		// one step; cutting per source version caps it at one commit per source version forever.
+		let te = TestEngine::builder().with_cdc().build();
+		let inserted = three_separate_inserts(&te);
+		let engine = te.inner().clone();
+		let (flow_id, mut flow_engine, source_objects) = one_view_flow(&te);
+
+		let computer = SliceComputer::new(engine.clone());
+		let committer = spawn_committer(&engine);
+		let config = SliceConfig {
+			checkpoint_lag: 10_000,
+		};
+
+		let step = pull_step(
+			&engine,
+			&computer,
+			&mut flow_engine,
+			SliceCursor {
+				flow_id,
+				source_objects: &source_objects,
+				completeness_objects: None,
+				cursor: CommitVersion(0),
+				durable_cursor: CommitVersion(0),
+				has_readers: false,
+			},
+			&config,
+		)
+		.expect("the inserts are visible, so the flow must step");
+
+		match step {
+			SliceStep::Commit {
+				slice,
+				advance_to,
+				more,
+				..
+			} => {
+				assert!(!more, "the fold consumed the whole batch, so nothing must be left over");
+				assert!(
+					advance_to >= inserted,
+					"the folded step must advance past the last insert, got {advance_to:?} for {inserted:?}"
+				);
+				commit(&committer, slice);
+				assert_eq!(
+					view_row_count(&te, "FROM app::v"),
+					3,
+					"all three source versions must materialize in the single folded step"
+				);
+			}
+			SliceStep::Skip {
+				advance_to,
+				..
+			} => panic!("the inserts must produce view rows, not a skip to {advance_to:?}"),
+		}
+	}
+
+	#[test]
+	fn a_flow_with_no_readers_that_merges_two_sources_still_takes_one_source_version_per_step() {
+		// A flow that merges two inputs pairs them by source version inside its own join, so folding would let
+		// one input run ahead of the other within a step even though nothing downstream reads this flow.
+		let te = TestEngine::builder().with_cdc().build();
+		three_separate_inserts(&te);
+		let engine = te.inner().clone();
+		let (flow_id, mut flow_engine, source_objects) = one_view_flow(&te);
+		let mut merging = source_objects.clone();
+		merging.insert(ObjectId::Table(TableId(u64::MAX)));
+		assert_eq!(merging.len(), 2, "the second source must widen the set, otherwise this repeats the fold test");
+
+		let computer = SliceComputer::new(engine.clone());
+		let config = SliceConfig {
+			checkpoint_lag: 10_000,
+		};
+
+		let step = pull_step(
+			&engine,
+			&computer,
+			&mut flow_engine,
+			SliceCursor {
+				flow_id,
+				source_objects: &merging,
+				completeness_objects: None,
+				cursor: CommitVersion(0),
+				durable_cursor: CommitVersion(0),
+				has_readers: false,
+			},
+			&config,
+		)
+		.expect("the inserts are visible, so the flow must step");
+
+		match step {
+			SliceStep::Commit {
+				more,
+				..
+			} => assert!(more, "a merging flow must stop at the first source boundary"),
+			SliceStep::Skip {
+				advance_to,
+				..
+			} => panic!("the first insert must produce view rows, not a skip to {advance_to:?}"),
+		}
 	}
 }
