@@ -51,6 +51,7 @@ function decodeFrame(r: BinaryReader): WireFrame {
 
     const frame: WireFrame = { columns: [] };
     if (op === 1 || op === 2 || op === 3) frame.op = op;
+    else if (op !== 0) throw new Error(`RBCF: unknown frame op ${op}`);
 
     if (metaFlags & META_HAS_ROW_NUMBERS) {
         const rows = new Array<string>(rowCount);

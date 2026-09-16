@@ -117,7 +117,13 @@ fn read_frame_header(data: &[u8], start: usize) -> Result<(FrameHeader, usize), 
 	pos += 2;
 	let meta_flags = data[pos];
 	pos += 1;
-	let op = DiffType::from_u8(data[pos]);
+	let op = match data[pos] {
+		0 => None,
+		raw => Some(
+			DiffType::from_u8(raw)
+				.ok_or_else(|| DecodeError::InvalidData(format!("unknown frame op {raw}")))?,
+		),
+	};
 	pos += 1;
 	let _frame_size = read_u32(data, pos);
 	pos += 4;

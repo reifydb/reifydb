@@ -27,6 +27,20 @@ fn encode(op: Option<DiffType>) -> Vec<u8> {
 }
 
 #[test]
+fn an_unknown_rbcf_frame_op_is_a_decode_error_not_an_absent_op() {
+	// An absent op reads as a query frame, so an unknown op byte must not silently drop the change kind.
+	let without_op = encode(None);
+	let mut bytes = encode(Some(DiffType::Insert));
+	let op_at: Vec<usize> = (0..bytes.len()).filter(|at| bytes[*at] != without_op[*at]).collect();
+	assert_eq!(op_at.len(), 1, "the op must live in exactly one header byte");
+	bytes[op_at[0]] = 9;
+
+	let result = decode_frames(&bytes).map(|frames| frames[0].op);
+
+	assert!(result.is_err(), "expected a decode error, got {result:?}");
+}
+
+#[test]
 fn a_corrupt_raw_change_payload_is_not_read_as_zero_frames() {
 	// An empty change is a valid delivery, so bytes that fail to decode must never look like one.
 	let mut bytes = encode(Some(DiffType::Insert));
