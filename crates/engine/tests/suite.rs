@@ -34,6 +34,8 @@ mod cast_target_diagnostics;
 
 #[path = "closure.rs"]
 mod closure;
+#[path = "closure_parameter_type_arguments.rs"]
+mod closure_parameter_type_arguments;
 #[path = "column_type_parameters.rs"]
 mod column_type_parameters;
 #[path = "dictionary_insert_value_type.rs"]

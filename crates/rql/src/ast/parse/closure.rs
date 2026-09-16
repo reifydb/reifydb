@@ -69,6 +69,31 @@ impl<'bump> Parser<'bump> {
 		Ok(parameters)
 	}
 
+	fn skip_type_annotation(&self, mut pos: usize) -> Option<usize> {
+		if pos >= self.tokens.len() {
+			return None;
+		}
+		pos += 1;
+
+		if pos >= self.tokens.len() || !self.tokens[pos].is_operator(Operator::OpenParen) {
+			return Some(pos);
+		}
+
+		let mut depth = 0;
+		while pos < self.tokens.len() {
+			if self.tokens[pos].is_operator(Operator::OpenParen) {
+				depth += 1;
+			} else if self.tokens[pos].is_operator(Operator::CloseParen) {
+				depth -= 1;
+				if depth == 0 {
+					return Some(pos + 1);
+				}
+			}
+			pos += 1;
+		}
+		None
+	}
+
 	pub(crate) fn is_closure_pattern(&self) -> bool {
 		if self.position >= self.tokens.len() {
 			return false;
@@ -91,8 +116,9 @@ impl<'bump> Parser<'bump> {
 			if pos < self.tokens.len() && self.tokens[pos].is_operator(Operator::Colon) {
 				pos += 1;
 
-				if pos < self.tokens.len() {
-					pos += 1;
+				match self.skip_type_annotation(pos) {
+					Some(next) => pos = next,
+					None => return false,
 				}
 			}
 
@@ -119,8 +145,9 @@ impl<'bump> Parser<'bump> {
 							&& self.tokens[pos].is_operator(Operator::Colon)
 						{
 							pos += 1;
-							if pos < self.tokens.len() {
-								pos += 1;
+							match self.skip_type_annotation(pos) {
+								Some(next) => pos = next,
+								None => return false,
 							}
 						}
 						continue;
