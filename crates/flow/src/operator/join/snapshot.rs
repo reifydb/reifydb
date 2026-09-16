@@ -779,7 +779,7 @@ pub(crate) fn publish_slot(
 	let group = ctx.right_store.group_of(key_hash);
 	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
 
-	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group, ctx.operator.pick())?
+	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group)?
 	else {
 		if !outer {
 			return Ok(None);
@@ -815,7 +815,10 @@ pub(crate) fn withdraw_slot(
 		let released = ctx.ledger.release(host, group, left_number, right_number)?;
 		let content = match released {
 			Some(retired) => Some(retired),
-			None => ctx.right_store.get_row_in(host, group, right_number)?,
+			None => match winning_right_row(host, ctx.right_store, group)? {
+				Some((held, content, _)) if held == right_number => Some(content),
+				_ => None,
+			},
 		};
 		let Some(content) = content else {
 			continue;
@@ -832,7 +835,7 @@ pub(crate) fn retain_published_slot(
 	group: GroupId,
 	left: RowNumber,
 ) -> Result<Option<Columns>> {
-	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group, ctx.operator.pick())?
+	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group)?
 	else {
 		return Ok(None);
 	};
@@ -851,8 +854,8 @@ pub(crate) fn retain_published_slot(
 
 pub(crate) fn retire_slot(host: &mut dyn HostContext, ctx: &SnapshotJoinContext, key_hash: &Hash128) -> Result<()> {
 	let group = ctx.right_store.group_of(key_hash);
-	match winning_right_row(host, ctx.right_store, group, ctx.operator.pick())? {
-		Some((number, _, _)) => retire_right(host, ctx, key_hash, number),
+	match winning_right_row(host, ctx.right_store, group)? {
+		Some((number, content, _)) => ctx.ledger.retire(host, group, number, &content),
 		None => Ok(()),
 	}
 }

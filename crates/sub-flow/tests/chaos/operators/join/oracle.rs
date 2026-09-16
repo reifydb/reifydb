@@ -254,14 +254,31 @@ impl Model<JoinRow> for HashOracle {
 	}
 }
 
-/// Resolved on every read rather than kept as a slot, so a retraction falls back to the next-best live
-/// row and an arrival late to the input but early on the clock loses.
+/// The pick a latest join applies to the rows held under one key: newest event position first, ties
+/// broken by row number.
 fn winner(right: &BTreeMap<u64, JoinRow>, key: i32) -> Option<&JoinRow> {
 	right.values().filter(|row| row.key == Some(key)).max_by_key(|row| (row.coord_ms, row.number.0))
 }
 
-/// The two latest strategies. Like the hash oracle this is a function of the live sets: nothing about
-/// the order the right rows arrived in survives, only the event position each one carries.
+/// One row per key, decided when the row arrives. The loser is never stored, so it cannot be promoted
+/// when the winner is later retracted, and a row rewritten in place always replaces what it held even
+/// when the pick ranks it lower.
+fn hold_latest_right(right: &mut BTreeMap<u64, JoinRow>, row: &JoinRow) {
+	right.remove(&row.number.0);
+	if let Some(key) = row.key
+		&& let Some(held) = winner(right, key).map(|held| (held.coord_ms, held.number.0))
+	{
+		if held > (row.coord_ms, row.number.0) {
+			return;
+		}
+		right.remove(&held.1);
+	}
+	right.insert(row.number.0, row.clone());
+}
+
+/// The two latest strategies. The right side holds one row per key, chosen as each row arrives, so the
+/// arrival order decides which rows were ever stored and a retraction empties the key rather than
+/// falling back to a runner-up.
 pub struct LatestOracle {
 	left_outer: bool,
 	left: BTreeMap<u64, JoinRow>,
@@ -301,11 +318,8 @@ impl Model<JoinRow> for LatestOracle {
 			Side::Left => {
 				self.left.insert(row.number.0, row.clone());
 			}
-			// Stored whatever its key: a row updated onto an undefined one has to leave the key
-			// it held, which dropping the write here would hide.
-			Side::Right => {
-				self.right.insert(row.number.0, row.clone());
-			}
+			// A row updated onto an undefined key must leave the key it held, never keep both.
+			Side::Right => hold_latest_right(&mut self.right, row),
 		}
 		true
 	}
@@ -424,11 +438,13 @@ impl Model<JoinRow> for SnapshotOracle {
 
 	fn admit(&mut self, row: &JoinRow) -> bool {
 		match row.side {
-			// A right arrival moves the state the NEXT left touch will read, and nothing else. Not
-			// republishing here is the whole of what `snapshot` means.
-			Side::Right => {
-				self.right.insert(row.number.0, row.clone());
-			}
+			// Not republishing on a right arrival is the whole of what `snapshot` means.
+			Side::Right => match self.latest {
+				true => hold_latest_right(&mut self.right, row),
+				false => {
+					self.right.insert(row.number.0, row.clone());
+				}
+			},
 			Side::Left => self.deferred.push(LeftOp::Republish(row.clone())),
 		}
 		true

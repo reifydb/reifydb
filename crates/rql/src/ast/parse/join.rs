@@ -881,4 +881,34 @@ pub mod tests {
 		let err = parse_err(&join("latest: { o.total }, earliest: { o.seq }"));
 		assert!(err.contains("earliest"), "the rejection must name the clash, got: {err}");
 	}
+
+	#[test]
+	fn test_join_rejects_a_column_ordered_pick_with_a_right_retention() {
+		// The pick can crown a row that seals before one it outranked, which was never stored to fall back to.
+		for source in [
+			join("latest: { o.total }, retention: { right: 2s }"),
+			join("earliest: { o.total }, retention: { right: 2s }"),
+			join("latest: { o.total }, retention: { left: 1h, right: 2s }"),
+		] {
+			let err = parse_err(&source);
+			assert!(
+				err.contains("right"),
+				"the rejection must name the side that cannot be retained, got: {err}"
+			);
+		}
+	}
+
+	#[test]
+	fn test_join_accepts_a_column_ordered_pick_without_a_right_retention() {
+		// Only the right side clashes, so a left retention must never be swept up by the rejection.
+		let (_, pick) = parse_inner(&join("latest: { o.total }, retention: { left: 1h }"));
+		assert!(pick.is_some(), "a left retention alone must stay legal beside a column-ordered pick");
+	}
+
+	#[test]
+	fn test_join_accepts_a_time_ordered_pick_with_a_right_retention() {
+		// A pick by time crowns the newest row, which seals last, so no row it outranked can outlive it.
+		let (_, pick) = parse_inner(&join("latest: true, retention: { left: 1h, right: 2s }"));
+		assert_eq!(pick, Some(vec![]), "latest: true must stay legal beside a right retention");
+	}
 }

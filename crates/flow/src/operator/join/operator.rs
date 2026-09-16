@@ -1239,6 +1239,25 @@ mod seal_tests {
 		.len()
 	}
 
+	fn slot_row(op: &JoinOperator, txn: &mut DeferredTransaction, group: GroupId) -> Option<(RowNumber, Vec<u8>)> {
+		// Reads through the production store, so a slot addressed under the wrong suffix fails here too.
+		let state = JoinState::new();
+		state.right
+			.rows_for_group(&mut TxnHostContext::new(txn, op.operator), group, None, 2)
+			.unwrap()
+			.into_iter()
+			.next()
+			.map(|(number, content)| (number, content.as_slice().to_vec()))
+	}
+
+	fn slot_holder(op: &JoinOperator, txn: &mut DeferredTransaction, group: GroupId) -> Option<u64> {
+		slot_row(op, txn, group).map(|(number, _)| number.value())
+	}
+
+	fn slot_content(op: &JoinOperator, txn: &mut DeferredTransaction, group: GroupId) -> Vec<u8> {
+		slot_row(op, txn, group).expect("the slot must hold a row").1
+	}
+
 	fn group_rows(op: &JoinOperator, txn: &mut DeferredTransaction, group: GroupId) -> usize {
 		// no single range spans a group's keyspaces, so the group filter has to happen after the scan
 		txn.state_scan_all(op.operator)
@@ -1738,8 +1757,7 @@ mod seal_tests {
 
 	#[test]
 	fn a_latest_join_expires_both_sides_on_their_own_retentions() {
-		// A latest join keeps every right row per key, so a right retention must arm or that growth is
-		// unbounded.
+		// A latest join holds one right row per key, and that row must still arm its own retention.
 		let engine = TestEngine::new();
 		let mut op = join_with(12, false, Some(JoinPick::latest()), Some(seconds(10)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);
@@ -1760,6 +1778,81 @@ mod seal_tests {
 			"the right row is an ordinary kept row and must expire on its own retention"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 1, "and one timer covers the group's earliest join expiry");
+	}
+
+	#[test]
+	fn a_latest_join_keeps_only_the_winning_right_row_per_key() {
+		// Keeping every right row per key is what grew the right side to one row per source row.
+		let engine = TestEngine::new();
+		let mut op = join_with(15, false, Some(JoinPick::latest()), None, None);
+		let mut txn = txn_at(&engine, 100);
+
+		let older = rows(&[7], &[99], at_millis(9_000));
+		insert(&mut op, &mut txn, JoinSide::Right, &older);
+		let newer = rows(&[7], &[100], at_millis(12_000));
+		insert(&mut op, &mut txn, JoinSide::Right, &newer);
+
+		let group = group_of(&hash_of(&op, JoinSide::Right, &older, 0));
+		assert_eq!(
+			side_rows(&op, &mut txn, group, JoinSide::Right),
+			1,
+			"a second right row under one key must replace the slot, never accumulate beside it"
+		);
+		assert_eq!(
+			slot_holder(&op, &mut txn, group),
+			Some(100),
+			"the row the pick selects must be the one left in the slot, not whichever arrived first"
+		);
+	}
+
+	#[test]
+	fn a_latest_join_slot_takes_a_rewrite_of_the_row_it_already_holds() {
+		// A row updated in place cannot outrank itself on the pick, so the tie must go to the rewrite.
+		let engine = TestEngine::new();
+		let mut op = join_with(17, false, Some(JoinPick::latest()), None, None);
+		let mut txn = txn_at(&engine, 100);
+
+		let first = rows(&[7], &[99], at_millis(9_000));
+		insert(&mut op, &mut txn, JoinSide::Right, &first);
+		let group = group_of(&hash_of(&op, JoinSide::Right, &first, 0));
+		let before = slot_content(&op, &mut txn, group);
+
+		let rewritten = rows(&[7], &[99], at_millis(3_000));
+		insert(&mut op, &mut txn, JoinSide::Right, &rewritten);
+
+		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Right), 1, "a rewrite must not add a second row");
+		assert_ne!(
+			slot_content(&op, &mut txn, group),
+			before,
+			"a rewrite of the held row must replace its content even when the pick ranks it lower"
+		);
+	}
+
+	#[test]
+	fn a_latest_join_clears_its_slot_only_for_the_row_it_holds() {
+		// Clearing the slot for a row it never held would silently unmatch every left row under that key.
+		let engine = TestEngine::new();
+		let mut op = join_with(16, false, Some(JoinPick::latest()), None, None);
+		let mut txn = txn_at(&engine, 100);
+
+		let held = rows(&[7], &[99], at_millis(9_000));
+		insert(&mut op, &mut txn, JoinSide::Right, &held);
+		let group = group_of(&hash_of(&op, JoinSide::Right, &held, 0));
+
+		let stranger = rows(&[7], &[42], at_millis(5_000));
+		remove(&mut op, &mut txn, JoinSide::Right, &stranger);
+		assert_eq!(
+			slot_holder(&op, &mut txn, group),
+			Some(99),
+			"retracting a row number the slot does not hold must leave the slot untouched"
+		);
+
+		remove(&mut op, &mut txn, JoinSide::Right, &held);
+		assert_eq!(
+			side_rows(&op, &mut txn, group, JoinSide::Right),
+			0,
+			"retracting the row the slot does hold must clear it"
+		);
 	}
 
 	#[test]

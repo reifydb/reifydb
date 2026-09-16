@@ -2892,6 +2892,23 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::CloseCurly)?;
 
+		if let Some(chosen) = &pick
+			&& !chosen.columns.is_empty()
+			&& retention.as_ref().is_some_and(|retention| retention.right.is_some())
+		{
+			let fragment = chosen.token.fragment.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "a pick by time, or a retention without 'right'".to_string(),
+				},
+				message: "a column-ordered pick holds one right row per key, and a right retention can \
+					  free that row while a row it outranked is still live, leaving the join with \
+					  nothing to fall back to"
+					.to_string(),
+				fragment,
+			}));
+		}
+
 		Ok((retention, snapshot.unwrap_or(false), pick))
 	}
 
