@@ -51,12 +51,6 @@ fn a_none_in_a_non_optional_enum_column_is_rejected_as_a_none_not_a_missing_colu
 
 	let error = t.command_err("INSERT s::e [{ id: 2, status: none }]");
 
-	assert!(
-		!error.contains("column not found"),
-		"a none must not be reported as an unknown column, got {error}"
-	);
-	assert!(
-		error.contains("non-optional"),
-		"the error must say the column is not optional, got {error}"
-	);
+	assert!(!error.contains("column not found"), "a none must not be reported as an unknown column, got {error}");
+	assert!(error.contains("non-optional"), "the error must say the column is not optional, got {error}");
 }

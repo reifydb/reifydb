@@ -91,7 +91,8 @@ fn an_empty_fragment_renders_no_indent_on_the_underline_line() {
 
 #[test]
 fn a_flat_diagnostic_without_a_label_renders_no_padded_blank_line() {
-	// An empty label must drop the line entirely; padding it to the fragment column writes trailing whitespace into every golden.
+	// An empty label must drop the line entirely; padding it to the fragment column writes trailing whitespace into
+	// every golden.
 	let mut d = diagnostic(Fragment::statement("$f", 1, 32), None);
 	d.label = None;
 	let rendered = DefaultRenderer::render_string(&d);

@@ -97,7 +97,6 @@ fn description(status: &HealthStatus) -> Option<&str> {
 
 #[test]
 fn a_flow_step_that_panics_leaves_the_flow_subsystem_not_healthy_and_names_the_failure() {
-	// A panicked flow worker writes nothing again, so a Healthy report hides a view that has stopped for good.
 	let db = TestDb::from(
 		embedded::memory()
 			.with_runtime_config(RuntimeConfig::default().fatal(FatalConfig::disarmed()))
@@ -133,7 +132,6 @@ fn a_flow_step_that_panics_leaves_the_flow_subsystem_not_healthy_and_names_the_f
 
 #[test]
 fn a_registered_custom_operator_is_in_the_operator_catalog_before_any_view_is_created() {
-	// Create-time operator validation reads this catalog, so a late publish would reject every valid view.
 	let db = TestDb::from(
 		embedded::memory()
 			.with_runtime_config(RuntimeConfig::default().fatal(FatalConfig::disarmed()))

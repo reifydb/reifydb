@@ -160,7 +160,7 @@ pub(crate) fn insert_dictionary(
 fn coerce_value_to_dictionary_type(value: Value, target_type: &ValueType) -> Result<Value> {
 	let display = value.to_string();
 	check_digest_write_type(&value.get_type(), target_type, || Fragment::internal(&display))?;
-	Ok(cast_value(value, target_type)?)
+	cast_value(value, target_type)
 }
 
 fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<ColumnWithName> {

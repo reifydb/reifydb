@@ -146,8 +146,6 @@ mod returning;
 mod ringbuffer;
 #[path = "run_tests_error_quotes_body.rs"]
 mod run_tests_error_quotes_body;
-#[path = "shutdown.rs"]
-mod shutdown;
 #[path = "series_key_write.rs"]
 mod series_key_write;
 #[path = "series_scan_column_types.rs"]
@@ -158,6 +156,8 @@ mod series_tag_constructor_field;
 mod series_update_tag;
 #[path = "series_write_coercion.rs"]
 mod series_write_coercion;
+#[path = "shutdown.rs"]
+mod shutdown;
 #[path = "sort_unorderable.rs"]
 mod sort_unorderable;
 #[path = "system_reserved_ids.rs"]

@@ -119,7 +119,8 @@ mod tests {
 
 	#[test]
 	fn a_seed_reports_the_resumed_version_and_stays_contiguous_with_the_next_commit() {
-		// Versions below the resumed block were never committed, so without the seed no cdc can ever lift the watermark off 0.
+		// Versions below the resumed block were never committed, so without the seed no cdc can ever lift the
+		// watermark off 0.
 		let w = wm();
 		w.seed(v(100_001));
 		assert_eq!(w.get(), v(100_001));
@@ -129,7 +130,8 @@ mod tests {
 
 	#[test]
 	fn a_seed_of_zero_leaves_the_base_unset() {
-		// A fresh database resumes at 0 while the producer's first version is 2 or more, so seeding 0 would turn that first advance into a permanent gap.
+		// A fresh database resumes at 0 while the producer's first version is 2 or more, so seeding 0 would
+		// turn that first advance into a permanent gap.
 		let w = wm();
 		w.seed(v(0));
 		w.advance(v(2));

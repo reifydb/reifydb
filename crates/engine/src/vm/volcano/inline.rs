@@ -160,8 +160,7 @@ fn rows_need_sumtype_expansion(rows: &[Vec<AliasExpression>]) -> bool {
 			if matches!(
 				alias_expr.expression.as_ref(),
 				Expression::SumTypeConstructor(_)
-					| Expression::Column(_)
-					| Expression::Constant(ConstantExpression::None { .. })
+					| Expression::Column(_) | Expression::Constant(ConstantExpression::None { .. })
 			) {
 				return true;
 			}
@@ -388,6 +387,7 @@ pub(crate) fn resolve_is_variants(
 	})
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_all_variant_columns(
 	source: &ResolvedObject,
 	field_types: Option<&ResolvedObject>,
@@ -619,6 +619,8 @@ impl QueryNode for InlineDataNode {
 	}
 }
 
+type EvaluatedColumnValues = (Vec<(Value, Fragment)>, Option<ValueType>, Option<Fragment>);
+
 impl InlineDataNode {
 	fn find_optimal_integer_type(column: &ColumnBuffer) -> ValueType {
 		let mut min_val = i128::MAX;
@@ -701,7 +703,7 @@ impl InlineDataNode {
 		session: &EvalContext<'_>,
 		rows_data: &[HashMap<String, &AliasExpression>],
 		column_name: &str,
-	) -> Result<(Vec<(Value, Fragment)>, Option<ValueType>, Option<Fragment>)> {
+	) -> Result<EvaluatedColumnValues> {
 		let mut all_values = Vec::new();
 		let mut first_value_type: Option<ValueType> = None;
 		let mut column_fragment: Option<Fragment> = None;

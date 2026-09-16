@@ -181,7 +181,11 @@ impl CdcWatermarks<'_> {
 		}
 		let flows: Vec<String> =
 			poisoned.iter().map(|(id, reason)| format!("flow {}: {}", id.0, reason)).collect();
-		Err(Error(Box::new(flow_error(format!("{} deferred flow(s) poisoned: {}", poisoned.len(), flows.join("; "))))))
+		Err(Error(Box::new(flow_error(format!(
+			"{} deferred flow(s) poisoned: {}",
+			poisoned.len(),
+			flows.join("; ")
+		)))))
 	}
 }
 

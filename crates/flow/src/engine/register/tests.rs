@@ -32,7 +32,6 @@ const AGGREGATE: OperatorId = OperatorId(3);
 
 #[test]
 fn registering_a_filter_with_a_variant_inside_an_expression_returns_the_compile_error_instead_of_panicking() {
-	// The worker registers a flow outside any request, so a panic here aborts it instead of poisoning the flow.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE s");
 	engine.admin("CREATE ENUM s::status { Active, Inactive }");
@@ -84,8 +83,6 @@ fn registering_a_filter_with_a_variant_inside_an_expression_returns_the_compile_
 
 #[test]
 fn registering_an_aggregate_with_a_bad_percentile_literal_returns_the_create_error_instead_of_panicking() {
-	// A stored flow is registered again at startup, so a call its create check once let through must poison, not
-	// abort.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE s");
 	engine.admin("CREATE TABLE s::t { g: int4, latency: Option(float8) }");

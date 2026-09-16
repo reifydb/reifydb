@@ -7,7 +7,8 @@ use reifydb::{WithSubsystem, embedded, testing::db::TestDb, value::value::durati
 
 #[test]
 fn waiting_on_a_poisoned_flow_fails_fast_naming_the_cause() {
-	// A poisoned flow never moves the watermark, so the wait must stop with its cause instead of burning the timeout.
+	// A poisoned flow never moves the watermark, so the wait must stop with its cause instead of burning the
+	// timeout.
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().unwrap());
 	db.admin("create namespace test");
 	db.admin("create table test::src { id: int4 }");

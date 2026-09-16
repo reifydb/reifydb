@@ -113,8 +113,7 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> CdcConsumer for PollCons
 		let (host, consumer, store) = self.take_resources();
 		let watermark = self.config.consumer_watermark.clone();
 		let wake_armed = Arc::new(AtomicBool::new(false));
-		let actor =
-			PollActor::new(
+		let actor = PollActor::new(
 			self.build_actor_config(),
 			self.spawner.clock().clone(),
 			host,

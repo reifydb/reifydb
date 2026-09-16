@@ -28,6 +28,7 @@ use super::{
 };
 use crate::vm::volcano::{
 	aggregate::AggregateNode,
+	append::UnsupportedAppendNode,
 	assert::{AssertNode, AssertWithoutInputNode},
 	distinct::DistinctNode,
 	environment::EnvironmentNode,
@@ -46,7 +47,6 @@ use crate::vm::volcano::{
 	take::TakeNode,
 	top_k::TopKNode,
 	variable::VariableNode,
-	append::UnsupportedAppendNode,
 	window::UnsupportedWindowNode,
 };
 

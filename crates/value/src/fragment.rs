@@ -603,7 +603,8 @@ impl Fragment {
 			end = end.max(column.0 + text.chars().count() as u32);
 		}
 
-		fragments.iter()
+		fragments
+			.iter()
 			.find(|fragment| match fragment {
 				Fragment::Statement {
 					text,

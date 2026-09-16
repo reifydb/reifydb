@@ -702,7 +702,10 @@ impl WsClient {
 				Ok(())
 			}
 			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
-			_ => Err(ClientError::UnexpectedResponse("unexpected response type for auth".to_string()).into()),
+			_ => {
+				Err(ClientError::UnexpectedResponse("unexpected response type for auth".to_string())
+					.into())
+			}
 		}
 	}
 
@@ -756,7 +759,8 @@ impl WsClient {
 				}
 			}
 			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
-			_ => Err(ClientError::UnexpectedResponse("unexpected response type for login".to_string()).into()),
+			_ => Err(ClientError::UnexpectedResponse("unexpected response type for login".to_string())
+				.into()),
 		}
 	}
 
@@ -780,7 +784,8 @@ impl WsClient {
 				Ok(())
 			}
 			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
-			_ => Err(ClientError::UnexpectedResponse("unexpected response type for logout".to_string()).into()),
+			_ => Err(ClientError::UnexpectedResponse("unexpected response type for logout".to_string())
+				.into()),
 		}
 	}
 
@@ -972,9 +977,10 @@ impl WsClient {
 		match response.payload {
 			ResponsePayload::Unsubscribed(_) => Ok(()),
 			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
-			_ => Err(
-				ClientError::UnexpectedResponse("unexpected response type for unsubscribe".to_string()).into()
-			),
+			_ => Err(ClientError::UnexpectedResponse(
+				"unexpected response type for unsubscribe".to_string(),
+			)
+			.into()),
 		}
 	}
 

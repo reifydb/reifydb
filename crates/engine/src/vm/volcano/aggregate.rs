@@ -332,12 +332,14 @@ impl QueryNode for AggregateNode {
 	}
 }
 
+type ParsedKeysAndAggregates = (Vec<String>, Vec<Projection>, Vec<AggregateSlot>, Vec<Expression>);
+
 fn parse_keys_and_aggregates(
 	by: &[Expression],
 	project: &[Expression],
 	routines: &Routines,
 	ctx: &QueryContext,
-) -> Result<(Vec<String>, Vec<Projection>, Vec<AggregateSlot>, Vec<Expression>)> {
+) -> Result<ParsedKeysAndAggregates> {
 	let mut keys = Vec::new();
 	let mut projections = Vec::new();
 	let mut inputs = Vec::new();
@@ -390,7 +392,7 @@ fn parse_keys_and_aggregates(
 			&mut digests,
 		)
 		.map_err(percentile_call_error)?;
-		if !reads.is_some_and(|reads| reads > 0) {
+		if reads.is_none_or(|reads| reads == 0) {
 			return Err(error!(operation::aggregate_map_without_aggregate(
 				actual_expr.full_fragment_owned()
 			)));

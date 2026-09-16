@@ -14,6 +14,7 @@ use reifydb_core::key::tag::KeyTag;
 use reifydb_core::{
 	actors::{flow::FlowActorMessage, pending::Pending},
 	common::{CommitVersion, SourceVersion},
+	error::diagnostic::flow::flow_step_panicked,
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -23,7 +24,6 @@ use reifydb_core::{
 		cdc::Cdc,
 		change::Change,
 	},
-	error::diagnostic::flow::flow_step_panicked,
 };
 use reifydb_engine::engine::StandardEngine;
 #[cfg(reifydb_assertions)]

@@ -33,7 +33,8 @@ fn assert_points_at_function(diagnostic: &Diagnostic, function: &str) {
 
 #[test]
 fn a_text_literal_argument_to_a_numeric_aggregate_reports_the_call_position() {
-	// Without the call fragment the error renders with no LOCATION and no RQL, so a user cannot see which aggregate failed.
+	// Without the call fragment the error renders with no LOCATION and no RQL, so a user cannot see which aggregate
+	// failed.
 	let t = engine();
 	for function in FUNCTIONS {
 		let rql = format!("from test::t aggregate {{ v: {function}('hello') }} by {{ g }}");

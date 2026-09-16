@@ -72,7 +72,10 @@ impl QueryNode for VariableNode {
 				kind: RuntimeErrorKind::VariableIsClosure {
 					fragment: self.variable_expr.fragment.clone(),
 				},
-				message: format!("Variable '{}' holds a closure and cannot be read as rows", variable_name),
+				message: format!(
+					"Variable '{}' holds a closure and cannot be read as rows",
+					variable_name
+				),
 			}
 			.into()),
 			None => Err(EvaluateError::VariableNotFound {

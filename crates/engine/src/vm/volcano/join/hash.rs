@@ -281,7 +281,9 @@ impl HashJoinNode {
 	}
 }
 
-fn split_key_names(pairs: &[EquiKeyPair]) -> (Vec<(String, Fragment)>, Vec<(String, Fragment)>) {
+type KeyNamePairs = Vec<(String, Fragment)>;
+
+fn split_key_names(pairs: &[EquiKeyPair]) -> (KeyNamePairs, KeyNamePairs) {
 	let left = pairs.iter().map(|p| (p.left_col_name.clone(), p.left_fragment.clone())).collect();
 	let right = pairs.iter().map(|p| (p.right_col_name.clone(), p.right_fragment.clone())).collect();
 	(left, right)
