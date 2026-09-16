@@ -134,7 +134,7 @@ impl InlineDataNode {
 						)?;
 					}
 					_ => {
-						expand_optional_sumtype_none(
+						expand_sumtype_none(
 							&ctx,
 							txn,
 							ctx.source.as_ref(),
@@ -231,7 +231,7 @@ pub(crate) fn expand_sumtype_ctor(
 	Ok(())
 }
 
-fn expand_optional_sumtype_none(
+fn expand_sumtype_none(
 	ctx: &QueryContext,
 	txn: &mut Transaction<'_>,
 	source: Option<&ResolvedObject>,
@@ -240,7 +240,7 @@ fn expand_optional_sumtype_none(
 ) -> Result<()> {
 	let col_name = alias_expr.alias.0.text();
 	let is_none = matches!(alias_expr.expression.as_ref(), Expression::Constant(ConstantExpression::None { .. }));
-	let declared = source.and_then(|source| optional_sumtype_id(source, col_name));
+	let declared = source.and_then(|source| declared_sumtype_id(source, col_name));
 
 	let (true, Some(id)) = (is_none, declared) else {
 		expanded.push(alias_expr);
@@ -273,15 +273,6 @@ fn expand_optional_sumtype_none(
 	}
 
 	Ok(())
-}
-
-fn optional_sumtype_id(source: &ResolvedObject, col_name: &str) -> Option<SumTypeId> {
-	let tag_col_name = format!("{}_tag", col_name);
-	let tag_col = source.columns().iter().find(|c| c.name == tag_col_name)?;
-	match (tag_col.constraint.get_type(), tag_col.constraint.constraint()) {
-		(ValueType::Option(_), Some(Constraint::SumType(id))) => Some(*id),
-		_ => None,
-	}
 }
 
 pub(crate) fn expand_sumtype_assignment(

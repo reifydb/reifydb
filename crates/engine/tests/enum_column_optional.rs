@@ -43,3 +43,20 @@ fn an_optional_enum_column_stores_and_reads_back_a_variant_and_a_none() {
 		rows[1]
 	);
 }
+
+#[test]
+fn a_none_in_a_non_optional_enum_column_is_rejected_as_a_none_not_a_missing_column() {
+	// the tag column is physical, so a none must be refused for being non-optional, never reported as a typo.
+	let t = engine();
+
+	let error = t.command_err("INSERT s::e [{ id: 2, status: none }]");
+
+	assert!(
+		!error.contains("column not found"),
+		"a none must not be reported as an unknown column, got {error}"
+	);
+	assert!(
+		error.contains("non-optional"),
+		"the error must say the column is not optional, got {error}"
+	);
+}
