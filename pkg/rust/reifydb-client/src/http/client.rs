@@ -2,14 +2,17 @@
 // Copyright (c) 2026 ReifyDB
 use std::collections::HashMap;
 
-use reifydb_codec::{frame::decode::decode_frames, json::types::ResponseFrame};
+use reifydb_codec::{
+	frame::decode::decode_frames,
+	json::{excerpt, types::ResponseFrame},
+};
 use reifydb_value::{
 	error::{Diagnostic, Error},
 	fragment::Fragment,
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame, temporal::parse::duration::parse_duration},
 };
-use reqwest::{Client as ReqwestClient, header::HeaderMap};
+use reqwest::{Client as ReqwestClient, Error as ReqwestError, header::HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, json};
 
@@ -139,10 +142,11 @@ impl HttpClient {
 		});
 
 		let url = format!("{}/v1/authenticate", self.base_url);
-		let response = self.inner.post(&url).json(&body).send().await.unwrap(); // FIXME better error handling
-		let response_body = response.text().await.unwrap(); // FIXME better error handling
+		let response = self.inner.post(&url).json(&body).send().await.map_err(transport)?;
+		let response_body = response.text().await.map_err(transport)?;
 
-		let auth: HttpAuthenticateResponse = from_str(&response_body).unwrap(); // FIXME better error handling
+		let auth: HttpAuthenticateResponse =
+			from_str(&response_body).map_err(|_| self.parse_error_response(&response_body))?;
 
 		if auth.status == "authenticated" {
 			let token = auth.token.unwrap_or_default();
@@ -165,14 +169,14 @@ impl HttpClient {
 		};
 
 		let url = format!("{}/v1/logout", self.base_url);
-		let response = self.inner.post(&url).bearer_auth(&token).send().await.unwrap(); // FIXME better error handling
+		let response = self.inner.post(&url).bearer_auth(&token).send().await.map_err(transport)?;
 
 		let status = response.status();
 		if status.is_success() {
 			self.token = None;
 			Ok(())
 		} else {
-			let body = response.text().await.unwrap(); // FIXME better error handling
+			let body = response.text().await.map_err(transport)?;
 			Err(self.parse_error_response(&body))
 		}
 	}
@@ -310,15 +314,15 @@ impl HttpClient {
 			request = request.bearer_auth(token);
 		}
 
-		let response = request.send().await.unwrap(); // FIXME better error handling
+		let response = request.send().await.map_err(transport)?;
 
 		if !response.status().is_success() {
-			let body = response.text().await.unwrap();
+			let body = response.text().await.map_err(transport)?;
 			return Err(self.parse_error_response(&body));
 		}
 
 		let meta = extract_meta(response.headers());
-		Ok((response.bytes().await.unwrap().to_vec(), meta)) // FIXME better error handling
+		Ok((response.bytes().await.map_err(transport)?.to_vec(), meta))
 	}
 
 	async fn send_rbcf<T: Serialize>(
@@ -344,9 +348,9 @@ impl HttpClient {
 			request = request.bearer_auth(token);
 		}
 
-		let response = request.send().await.unwrap(); // FIXME better error handling
+		let response = request.send().await.map_err(transport)?;
 		let meta = extract_meta(response.headers());
-		Ok((response.text().await.unwrap(), meta)) // FIXME better error handling
+		Ok((response.text().await.map_err(transport)?, meta))
 	}
 
 	async fn send_request_bytes<T: Serialize>(
@@ -360,15 +364,15 @@ impl HttpClient {
 			request = request.bearer_auth(token);
 		}
 
-		let response = request.send().await.unwrap(); // FIXME better error handling
+		let response = request.send().await.map_err(transport)?;
 
 		if !response.status().is_success() {
-			let body = response.text().await.unwrap();
+			let body = response.text().await.map_err(transport)?;
 			return Err(self.parse_error_response(&body));
 		}
 
 		let meta = extract_meta(response.headers());
-		Ok((response.bytes().await.unwrap().to_vec(), meta)) // FIXME better error handling
+		Ok((response.bytes().await.map_err(transport)?.to_vec(), meta))
 	}
 
 	fn parse_error_response(&self, body: &str) -> Error {
@@ -385,6 +389,33 @@ impl HttpClient {
 			return Error(Box::new(err_response.diagnostic));
 		}
 
-		panic!("Failed to parse response: {}", body) // FIXME better error handling
+		ClientError::Decode(format!("failed to parse response: {}", excerpt(body))).into()
+	}
+}
+
+fn transport(error: ReqwestError) -> Error {
+	ClientError::Transport(error.to_string()).into()
+}
+
+#[cfg(test)]
+mod tests {
+	use reqwest::Client as ReqwestClient;
+	use rustls::crypto::ring::default_provider;
+
+	use super::HttpClient;
+	use crate::WireFormat;
+
+	#[test]
+	fn an_unparsable_response_body_is_a_decode_error_not_a_panic() {
+		// A frames body that fails to decode lands here, so it must fail the request, never the process.
+		let _ = default_provider().install_default();
+		let client =
+			HttpClient::with_client(ReqwestClient::new(), "http://localhost", WireFormat::Frames).unwrap();
+		let body = format!(r#"{{"frames":[{{"columns":"{}"}}]}}"#, "x".repeat(10_000));
+
+		let error = client.parse_error_response(&body);
+
+		assert_eq!(error.0.code, "DECODE");
+		assert!(error.0.message.len() < 400, "body not truncated, {} bytes", error.0.message.len());
 	}
 }

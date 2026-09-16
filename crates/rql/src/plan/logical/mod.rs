@@ -835,6 +835,7 @@ pub struct JoinLeftNode<'bump> {
 pub struct JoinNaturalNode<'bump> {
 	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub join_type: JoinType,
+	pub fragment: BumpFragment<'bump>,
 	pub alias: Option<BumpFragment<'bump>>,
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
@@ -919,6 +920,7 @@ pub enum AppendNode<'bump> {
 		source: AppendSourcePlan<'bump>,
 	},
 	Query {
+		fragment: BumpFragment<'bump>,
 		with: BumpVec<'bump, LogicalPlan<'bump>>,
 	},
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {Column, Frame} from '../types';
-import {Type, isOptionType} from '../value';
+import {Type, digestTypeName, isDigestType, isOptionType} from '../value';
 import {ShapeNode} from '.';
 import {widens} from './widen';
 
@@ -60,7 +60,7 @@ function matches(shape: ShapeNode, type: Type): boolean {
             if (shape.type === 'None') {
                 return type === 'None' || isOptionType(type);
             }
-            return !isOptionType(type) && familyOf(shape.type).includes(type);
+            return typeof type === 'string' && familyOf(shape.type).includes(type);
         case 'value':
             if (shape.type === 'None') {
                 return type === 'None' || isOptionType(type);
@@ -88,5 +88,8 @@ function describe(shape: ShapeNode): string {
 }
 
 function typeName(type: Type): string {
+    if (isDigestType(type)) {
+        return digestTypeName(type);
+    }
     return isOptionType(type) ? `Option(${typeName(type.Option)})` : type;
 }

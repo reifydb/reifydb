@@ -11,8 +11,12 @@ use reifydb_codec::row::{
 	shape::RowShape,
 };
 use reifydb_core::{
-	error::diagnostic::catalog::{
-		namespace_not_found, queue_deduplication_key_not_utf8, queue_not_before_not_datetime, queue_not_found,
+	error::diagnostic::{
+		catalog::{
+			namespace_not_found, queue_deduplication_key_not_utf8, queue_not_before_not_datetime,
+			queue_not_found,
+		},
+		query::column_not_found,
 	},
 	interface::{
 		catalog::{
@@ -43,7 +47,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::{
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 	shape::get_or_create_queue_shape,
 };
 use crate::{
@@ -288,6 +292,7 @@ fn project_returning(
 	let mut columns = decode_rows_to_columns(shape, &rows);
 	truncate_to_declared(&mut columns, queue.columns.len());
 	decode_returning_dictionaries(services, txn, &queue.columns, &mut columns)?;
+	let mut columns = with_absent_pre_image(columns);
 
 	let mut created = ColumnBuffer::bool_with_capacity(returned.len());
 	for row in returned {
@@ -388,6 +393,13 @@ fn validate_and_encode_input_rows(
 			&columns,
 			PolicyTargetType::Queue,
 		)?;
+		if let Some(unknown) = columns.names.iter().find(|name| {
+			!(target.queue.columns.iter().any(|c| c.name == name.text())
+				|| (has_deduplication && name.text() == QUEUE_DEDUPLICATION_KEY_FIELD)
+				|| (has_not_before && name.text() == QUEUE_NOT_BEFORE_FIELD))
+		}) {
+			return_error!(column_not_found(unknown.clone()));
+		}
 
 		let mut column_map: HashMap<&str, usize> = HashMap::new();
 		for (idx, col) in columns.iter().enumerate() {

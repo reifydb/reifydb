@@ -251,6 +251,7 @@ pub mod tests {
 		(clock.clone(), clock, TestRng)
 	}
 
+	#[cfg(feature = "host")]
 	#[test]
 	fn test_uuid4_container() {
 		let uuid1 = Uuid4::generate();
@@ -289,6 +290,7 @@ pub mod tests {
 		assert!(container.capacity() >= 10);
 	}
 
+	#[cfg(feature = "host")]
 	#[test]
 	fn test_push_with_default() {
 		let mut container: UuidContainer<Uuid4> = UuidContainer::with_capacity(3);

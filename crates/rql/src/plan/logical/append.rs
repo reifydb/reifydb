@@ -43,11 +43,13 @@ impl<'bump> Compiler<'bump> {
 				}))
 			}
 			AstAppend::Query {
+				token,
 				with,
-				..
 			} => {
+				let fragment = token.fragment;
 				let with = self.compile(with.statement, tx)?;
 				Ok(LogicalPlan::Append(AppendNode::Query {
+					fragment,
 					with,
 				}))
 			}

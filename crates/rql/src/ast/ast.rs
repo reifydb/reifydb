@@ -1087,13 +1087,28 @@ pub enum AstType<'bump> {
 	Unconstrained(BumpFragment<'bump>),
 	Constrained {
 		name: BumpFragment<'bump>,
-		params: Vec<AstLiteral<'bump>>,
+		params: Vec<AstTypeParameter<'bump>>,
 	},
 	Optional(Box<AstType<'bump>>),
 	Qualified {
 		namespace: BumpFragment<'bump>,
 		name: BumpFragment<'bump>,
 	},
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstTypeParameter<'bump> {
+	Type(AstType<'bump>),
+	Literal(AstLiteral<'bump>),
+}
+
+impl<'bump> AstTypeParameter<'bump> {
+	pub fn fragment(&self) -> BumpFragment<'bump> {
+		match self {
+			AstTypeParameter::Type(ty) => *ty.name_fragment(),
+			AstTypeParameter::Literal(literal) => literal.clone().fragment(),
+		}
+	}
 }
 
 impl<'bump> AstType<'bump> {
@@ -1467,6 +1482,7 @@ pub struct AstJoinExpressionPair<'bump> {
 	pub first: BumpBox<'bump, Ast<'bump>>,
 	pub second: BumpBox<'bump, Ast<'bump>>,
 	pub connector: Option<JoinConnector>,
+	pub fragment: BumpFragment<'bump>,
 }
 
 #[derive(Debug)]

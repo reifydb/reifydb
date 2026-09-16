@@ -68,6 +68,7 @@ pub(crate) fn parameter_lookup(ctx: &EvalContext, expr: &ParameterExpression) ->
 		Value::None {
 			..
 		} => ColumnBuffer::none_typed(ValueType::Boolean, ctx.row_count),
+		Value::Digest(_) => ColumnBuffer::from_many(value.clone(), ctx.row_count),
 		Value::Type(_) | Value::Any(_) | Value::List(_) | Value::Record(_) | Value::Tuple(_) => {
 			unreachable!("Any/ValueType/List/Record/Tuple not supported as parameter")
 		}

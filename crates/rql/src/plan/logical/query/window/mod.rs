@@ -56,14 +56,16 @@ pub struct WindowNode {
 	pub aggregations: Vec<Expression>,
 	pub lateness: Option<Duration>,
 	pub immutable: Option<Duration>,
+	pub fragment: Fragment,
 	pub rql: String,
 }
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_window(&self, ast: AstWindow<'bump>) -> Result<LogicalPlan<'bump>> {
 		let rql = ast.rql.to_string();
+		let fragment = ast.token.fragment.to_owned();
 
-		let parsed = Self::parse_config(&ast.config, ast.token.fragment.to_owned())?;
+		let parsed = Self::parse_config(&ast.config, fragment.clone())?;
 		let group_by = Self::compile_expressions(ast.group_by)?;
 		let aggregations = Self::compile_expressions(ast.aggregations)?;
 		let kind = Self::build_window_kind(ast.kind, &parsed)?;
@@ -77,6 +79,7 @@ impl<'bump> Compiler<'bump> {
 			aggregations,
 			lateness: Declared::value_of(&parsed.lateness),
 			immutable: Declared::value_of(&parsed.immutable),
+			fragment,
 			rql,
 		}))
 	}

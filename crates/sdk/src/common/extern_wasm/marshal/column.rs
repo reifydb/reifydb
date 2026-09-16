@@ -254,7 +254,10 @@ impl Arena {
 				)
 			}
 
-			_ => unreachable!("marshal_column_data_zerocopy received non-zerocopy column type"),
+			other => unreachable!(
+				"marshal_column_data_zerocopy received a non-zerocopy {} column",
+				other.get_type()
+			),
 		}
 	}
 

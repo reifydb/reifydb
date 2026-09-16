@@ -16,7 +16,7 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	expression::{context::EvalContext, option::binary_op_unwrap_option},
+	expression::{context::EvalContext, option::arith_op_unwrap_option},
 };
 
 pub fn sub_columns(
@@ -25,7 +25,7 @@ pub fn sub_columns(
 	right: &ColumnWithName,
 	fragment: impl LazyFragment + Copy,
 ) -> Result<ColumnWithName> {
-	binary_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
+	arith_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
 		let target = ValueType::promote(left.get_type(), right.get_type());
 
 		dispatch_arith!(

@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
 	util::bitvec::BitVec,
@@ -115,5 +115,9 @@ impl<'a> Routine<FunctionContext<'a>> for JsonObject {
 impl Function for JsonObject {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Any
 	}
 }

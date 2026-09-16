@@ -356,13 +356,29 @@ export class HttpClient {
                         payload: {diagnostic: errBody.diagnostic}
                     });
                 }
+                if (typeof errBody.code === 'string') {
+                    throw new ReifyError({
+                        id: '',
+                        type: 'Err',
+                        payload: {
+                            diagnostic: {
+                                code: errBody.code,
+                                message: errBody.error || `HTTP ${response.status}: ${responseBody}`,
+                                notes: []
+                            }
+                        }
+                    });
+                }
                 throw new Error(errBody.error || `HTTP ${response.status}: ${responseBody}`);
             }
 
             if (format === "json") {
                 return { result: jsonResponseToRows(parsed ?? [], shapes), meta };
             }
-            const frames = framesFromWire(parsed.frames || []);
+            if (!Array.isArray(parsed?.frames)) {
+                throw new Error(`A frames response must carry a list of frames, got ${responseBody}`);
+            }
+            const frames = framesFromWire(parsed.frames);
             checkFrames(frames, shapes);
             return {
                 result: frames.map((frame: any) => columnsToRows(frame.columns)),

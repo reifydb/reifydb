@@ -7,14 +7,18 @@ use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{pick, run_reported, split},
-	operator::{drive as driver, scenario::Scenario},
+	operator::{drive as driver, scenario::Scenario, workload::Workload},
 };
 use reifydb_value::value::duration::Duration;
 
 use crate::{
-	framework::{fuzz, harness::Harness, workload::WindowWorkload},
+	framework::{
+		fuzz,
+		harness::Harness,
+		workload::{SlottedWindowWorkload, WindowRow, WindowWorkload},
+	},
 	operators::window::{
-		WindowSpec, build,
+		WindowSpec, build, build_immutable,
 		grid::Fold,
 		rolling::oracle::{CapacityOracle, Oracle},
 	},
@@ -37,10 +41,34 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 	drive_folded(seed, params, Fold::Sum)
 }
 
-/// The rolling family under a different fold. Min and max are non-invertible whenever the lateness is
-/// non-zero, and rolling is the only kind whose seal driver ages entries out of the seal tail, so
-/// this is the one path that populates the sealing accumulator's sealed half.
+/// The rolling family under a different fold.
+/// Min and max seal only under immutable, never by lateness alone, otherwise they stay invertible.
 pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
+	let workload = WindowWorkload {
+		groups: params.groups,
+		coord_span_ms: params.coord_span_ms,
+	};
+	drive_with(seed, params, fold, &workload, None)
+}
+
+pub fn drive_slotted(seed: u64, params: Params, fold: Fold, grain_ms: u64, immutable_ms: Option<u64>) -> Corpus {
+	let workload = SlottedWindowWorkload {
+		inner: WindowWorkload {
+			groups: params.groups,
+			coord_span_ms: params.coord_span_ms,
+		},
+		grain_ms,
+	};
+	drive_with(seed, params, fold, &workload, immutable_ms)
+}
+
+fn drive_with<W: Workload<Row = WindowRow>>(
+	seed: u64,
+	params: Params,
+	fold: Fold,
+	workload: &W,
+	immutable_ms: Option<u64>,
+) -> Corpus {
 	let size_ms = params.size_secs * 1_000;
 	let lateness_ms = params.lateness_secs * 1_000;
 
@@ -54,11 +82,8 @@ pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 		lateness: Some(Duration::from_seconds(params.lateness_secs as i64).unwrap()),
 	};
 
-	let mut harness = Harness::new(|runtime| build(&spec, runtime));
-	let workload = WindowWorkload {
-		groups: params.groups,
-		coord_span_ms: params.coord_span_ms,
-	};
+	let immutable = immutable_ms.map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
+	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
 	let mut model = Oracle::new(size_ms, lateness_ms).with_fold(fold);
 
 	driver::drive(
@@ -71,7 +96,7 @@ pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 		)
 		.with_mix(params.remove_pct, params.update_pct, params.seal_pct),
 		&mut harness,
-		&workload,
+		workload,
 		&mut model,
 	)
 	.assert_clean()
@@ -120,13 +145,17 @@ pub struct CountParams {
 }
 
 pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
+	drive_count_folded(seed, params, Fold::Sum)
+}
+
+pub fn drive_count_folded(seed: u64, params: CountParams, fold: Fold) -> Corpus {
 	let spec = WindowSpec {
 		kind: WindowKind::Rolling {
 			size: WindowSize::Count(params.size_count),
 			lag: None,
 		},
 		group_by: "g",
-		aggregations: "total: math::sum(v)",
+		aggregations: fold.rql(),
 		lateness: None,
 	};
 
@@ -135,7 +164,7 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		groups: params.groups,
 		coord_span_ms: params.coord_span_ms,
 	};
-	let mut model = CapacityOracle::new(params.size_count);
+	let mut model = CapacityOracle::new(params.size_count).with_fold(fold);
 
 	driver::drive(
 		seed,

@@ -3,10 +3,13 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use reifydb_core::{
+	error::diagnostic::query::unknown_apply_operator,
+	value::column::{columns::Columns, headers::ColumnHeaders},
+};
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::reifydb_assertions;
+use reifydb_value::{error::Error, fragment::Fragment, reifydb_assertions};
 use tracing::instrument;
 
 use crate::{
@@ -60,5 +63,31 @@ impl QueryNode for ApplyTransformNode {
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		self.input.headers()
+	}
+}
+
+pub(crate) struct UnknownTransformNode {
+	operator: Fragment,
+}
+
+impl UnknownTransformNode {
+	pub fn new(operator: Fragment) -> Self {
+		Self {
+			operator,
+		}
+	}
+}
+
+impl QueryNode for UnknownTransformNode {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+		Err(Error(Box::new(unknown_apply_operator(self.operator.clone()))))
+	}
+
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+		Err(Error(Box::new(unknown_apply_operator(self.operator.clone()))))
+	}
+
+	fn headers(&self) -> Option<ColumnHeaders> {
+		None
 	}
 }

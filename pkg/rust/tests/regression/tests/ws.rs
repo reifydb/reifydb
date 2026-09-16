@@ -3,9 +3,10 @@
 
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
-use reifydb::{Database, RuntimeConfig, core::util::retry::retry, server};
+use reifydb::{Database, RuntimeConfig, WithSubsystem, core::util::retry::retry, server};
 use reifydb_client::{WireFormat, WsClient};
 use reifydb_testing::{testscript, testscript::command::Command};
+use reifydb_value::value::duration::Duration as ValueDuration;
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 
@@ -20,6 +21,7 @@ impl WsRunner {
 	pub fn new(runtime: Arc<Runtime>) -> Self {
 		let instance = server::memory()
 			.with_runtime_config(RuntimeConfig::default().seeded(0))
+			.with_flow(|c| c)
 			.with_ws(|ws| ws.bind_addr("::1:0").admin_bind_addr("::1:0"))
 			.build()
 			.unwrap();
@@ -71,6 +73,17 @@ impl testscript::runner::Runner for WsRunner {
 				let result = self.runtime.block_on(client.query(&rql, None))?;
 				for frame in result {
 					writeln!(output, "{}", frame).unwrap();
+				}
+			}
+			"await" => {
+				let instance = self.instance.as_ref().ok_or("No instance available")?;
+				let watermarks = instance.watermarks();
+				let target = watermarks.tx().current()?;
+				if !watermarks.cdc().wait_for_flow_consumer(
+					target,
+					ValueDuration::from_nanos_infallible(10_000_000_000),
+				)? {
+					return Err("flows did not catch up".into());
 				}
 			}
 			name => {

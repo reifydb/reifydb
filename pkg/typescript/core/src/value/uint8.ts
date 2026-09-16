@@ -5,28 +5,27 @@ import {NONE_VALUE} from "../constant";
 
 export class Uint8Value implements Value {
     readonly type: Type = "Uint8" as const;
-    public readonly value?: bigint;
+    public readonly value: bigint;
 
     private static readonly MIN_VALUE = BigInt(0);
     private static readonly MAX_VALUE = BigInt("18446744073709551615");
 
-    constructor(value?: bigint | number) {
-        if (value !== undefined) {
-            const bigintValue = typeof value === 'number' ? BigInt(Math.trunc(value)) : value;
-            
-            if (bigintValue < Uint8Value.MIN_VALUE || bigintValue > Uint8Value.MAX_VALUE) {
-                throw new Error(`Uint8 value must be between ${Uint8Value.MIN_VALUE} and ${Uint8Value.MAX_VALUE}, got ${bigintValue}`);
-            }
-            this.value = bigintValue;
-        } else {
-            this.value = undefined;
+    constructor(value: bigint | number) {
+        if (value === undefined) {
+            throw new Error(`Uint8 value must be defined, a none is carried by NoneValue`);
         }
+        const bigintValue = typeof value === 'number' ? BigInt(Math.trunc(value)) : value;
+        
+        if (bigintValue < Uint8Value.MIN_VALUE || bigintValue > Uint8Value.MAX_VALUE) {
+            throw new Error(`Uint8 value must be between ${Uint8Value.MIN_VALUE} and ${Uint8Value.MAX_VALUE}, got ${bigintValue}`);
+        }
+        this.value = bigintValue;
     }
 
     static parse(str: string): Uint8Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new Uint8Value(undefined);
+            throw new Error(`Cannot parse "${str}" as Uint8`);
         }
         
         let value: bigint;
@@ -43,7 +42,7 @@ export class Uint8Value implements Value {
         return new Uint8Value(value);
     }
 
-    valueOf(): bigint | undefined {
+    valueOf(): bigint {
         return this.value;
     }
 
@@ -53,7 +52,7 @@ export class Uint8Value implements Value {
     }
 
     toString(): string {
-        return this.value === undefined ? 'none' : this.value.toString();
+        return this.value.toString();
     }
 
     /**
@@ -68,14 +67,14 @@ export class Uint8Value implements Value {
         return this.value === otherUint.value;
     }
 
-    toJSON(): string | null {
-        return this.value === undefined ? null : this.value.toString();
+    toJSON(): string {
+        return this.value.toString();
     }
 
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? NONE_VALUE : this.toString()
+            value: this.toString()
         };
     }
 }

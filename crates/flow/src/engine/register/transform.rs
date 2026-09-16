@@ -62,7 +62,7 @@ impl FlowEngineInner {
 				self.routines.clone(),
 				self.runtime_context.clone(),
 				Arc::clone(ctx),
-			)),
+			)?),
 		);
 		Ok(())
 	}
@@ -86,7 +86,7 @@ impl FlowEngineInner {
 				self.routines.clone(),
 				self.runtime_context.clone(),
 				Arc::clone(ctx),
-			)),
+			)?),
 		);
 		Ok(())
 	}
@@ -110,7 +110,7 @@ impl FlowEngineInner {
 				self.routines.clone(),
 				self.runtime_context.clone(),
 				Arc::clone(ctx),
-			)),
+			)?),
 		);
 		Ok(())
 	}
@@ -134,7 +134,7 @@ impl FlowEngineInner {
 				self.routines.clone(),
 				self.runtime_context.clone(),
 				Arc::clone(ctx),
-			)),
+			)?),
 		);
 		Ok(())
 	}
@@ -256,7 +256,7 @@ impl FlowEngineInner {
 				left_retention,
 				right_retention,
 				Arc::clone(ctx),
-			)),
+			)?),
 		);
 		Ok(())
 	}
@@ -280,7 +280,7 @@ impl FlowEngineInner {
 				self.routines.clone(),
 				self.runtime_context.clone(),
 				Arc::clone(ctx),
-			)),
+			)?),
 		);
 		Ok(())
 	}
@@ -374,7 +374,7 @@ impl FlowEngineInner {
 			lateness,
 			immutable,
 			ctx: Arc::clone(ctx),
-		});
+		})?;
 		self.operators.insert((flow_id, operator_id), Box::new(operator));
 		Ok(())
 	}
@@ -396,7 +396,7 @@ impl FlowEngineInner {
 			map,
 			self.routines.clone(),
 			self.runtime_context.clone(),
-		);
+		)?;
 		self.operators.insert((flow_id, operator_id), Box::new(operator));
 		Ok(())
 	}

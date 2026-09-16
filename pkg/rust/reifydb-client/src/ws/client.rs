@@ -12,7 +12,7 @@ use futures_util::{
 	SinkExt, StreamExt,
 	stream::{SplitSink, SplitStream},
 };
-use reifydb_codec::{frame::decode::decode_frames, json::from::convert_envelope_response};
+use reifydb_codec::{frame::decode::decode_frames, json::from::frames_from_envelope};
 use reifydb_value::{error::Error, params::Params, value::frame::frame::Frame};
 use serde_json::{Value, from_str, to_string};
 use tokio::{
@@ -294,6 +294,14 @@ impl WsClient {
 					Self::handle_response(response, shared).await;
 				} else if let Ok(push) = from_str::<ServerPush>(&text) {
 					Self::handle_push(push, shared, change_tx).await;
+				} else if let Some(id) = request_id_of(&text) {
+					Self::fail_pending(
+						shared,
+						id,
+						"server sent a text reply that is neither a response nor a push"
+							.to_string(),
+					)
+					.await;
 				}
 				Flow::Continue
 			}
@@ -309,6 +317,19 @@ impl WsClient {
 			Err(_) => Flow::Closed,
 			_ => Flow::Continue,
 		}
+	}
+
+	async fn fail_pending(shared: &Shared, id: String, reason: String) {
+		let Some(tx) = shared.pending.lock().await.remove(&id) else {
+			return;
+		};
+		let error: Error = ClientError::Decode(reason).into();
+		let _ = tx.send(ClientResponse::Json(Box::new(Response {
+			id,
+			payload: ResponsePayload::Err(ErrResponse {
+				diagnostic: *error.0,
+			}),
+		})));
 	}
 
 	async fn handle_response(response: Response, shared: &Shared) {
@@ -399,11 +420,25 @@ impl WsClient {
 		]) as usize;
 		let meta_start = meta_len_pos + 4;
 		if data.len() < meta_start + meta_len {
+			Self::fail_pending(shared, id, "binary reply truncated inside its meta section".to_string())
+				.await;
 			return;
 		}
 		let meta = if meta_len > 0 {
-			from_str::<ResponseMeta>(&String::from_utf8_lossy(&data[meta_start..meta_start + meta_len]))
-				.ok()
+			match from_str::<ResponseMeta>(&String::from_utf8_lossy(
+				&data[meta_start..meta_start + meta_len],
+			)) {
+				Ok(meta) => Some(meta),
+				Err(e) => {
+					Self::fail_pending(
+						shared,
+						id,
+						format!("failed to parse the reply meta: {}", e),
+					)
+					.await;
+					return;
+				}
+			}
 		} else {
 			None
 		};
@@ -667,7 +702,10 @@ impl WsClient {
 				Ok(())
 			}
 			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
-			_ => panic!("Unexpected response type for auth"), // FIXME better error handling
+			_ => {
+				Err(ClientError::UnexpectedResponse("unexpected response type for auth".to_string())
+					.into())
+			}
 		}
 	}
 
@@ -713,11 +751,16 @@ impl WsClient {
 						identity,
 					})
 				} else {
-					panic!("Authentication failed") // FIXME better error handling
+					Err(ClientError::NotAuthenticated(format!(
+						"login was not accepted, server reported status {:?}",
+						auth.status
+					))
+					.into())
 				}
 			}
 			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
-			_ => panic!("Unexpected response type for login"), // FIXME better error handling
+			_ => Err(ClientError::UnexpectedResponse("unexpected response type for login".to_string())
+				.into()),
 		}
 	}
 
@@ -741,7 +784,8 @@ impl WsClient {
 				Ok(())
 			}
 			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
-			_ => panic!("Unexpected response type for logout"), // FIXME better error handling
+			_ => Err(ClientError::UnexpectedResponse("unexpected response type for logout".to_string())
+				.into()),
 		}
 	}
 
@@ -933,7 +977,10 @@ impl WsClient {
 		match response.payload {
 			ResponsePayload::Unsubscribed(_) => Ok(()),
 			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
-			_ => panic!("Unexpected response type for unsubscribe"), // FIXME better error handling
+			_ => Err(ClientError::UnexpectedResponse(
+				"unexpected response type for unsubscribe".to_string(),
+			)
+			.into()),
 		}
 	}
 
@@ -1057,8 +1104,10 @@ impl WsClient {
 	async fn send_request_json(&self, request: Request) -> Result<Response, Error> {
 		match self.send_request(request).await? {
 			ClientResponse::Json(resp) => Ok(*resp),
-			ClientResponse::Frames(_, _) => panic!("unexpected binary response"), /* FIXME better error
-			                                                                       * handling */
+			ClientResponse::Frames(_, _) => Err(ClientError::UnexpectedResponse(
+				"expected a json response, got binary frames".to_string(),
+			)
+			.into()),
 		}
 	}
 
@@ -1121,6 +1170,10 @@ fn stamp_batch_id(event: &mut BatchPushEvent, client_id: u64) {
 	}
 }
 
+fn request_id_of(text: &str) -> Option<String> {
+	from_str::<Value>(text).ok()?.get("id")?.as_str().map(str::to_string)
+}
+
 fn parse_rbcf_batch_envelope(data: &[u8]) -> Option<BatchChangePayload> {
 	if data.len() < 5 || data[0] != 0x02 {
 		return None;
@@ -1148,7 +1201,18 @@ fn parse_rbcf_batch_envelope(data: &[u8]) -> Option<BatchChangePayload> {
 		let rbcf_len = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?) as usize;
 		pos += 4;
 		if data.len() < pos + rbcf_len {
-			return None;
+			entries.push(BatchChangeEntry {
+				subscription_id: sub_id,
+				content_type: "application/vnd.reifydb.rbcf".to_string(),
+				body: Value::Null,
+				changes: Vec::new(),
+				decode_error: Some(format!(
+					"batch entry truncated: declared {} payload bytes, {} remain",
+					rbcf_len,
+					data.len() - pos
+				)),
+			});
+			break;
 		}
 		let rbcf_bytes = &data[pos..pos + rbcf_len];
 		pos += rbcf_len;
@@ -1192,14 +1256,21 @@ fn changes_from_rbcf(rbcf: &[u8]) -> (Vec<FrameChange>, Option<String>) {
 	}
 }
 
+fn changes_from_envelope(body: Value) -> (Vec<FrameChange>, Option<String>) {
+	match frames_from_envelope(body) {
+		Ok(frames) => (frames_to_changes(frames), None),
+		Err(e) => (Vec::new(), Some(e.to_string())),
+	}
+}
+
 fn payload_from_json_change(wire: WireChangePayload) -> ChangePayload {
-	let changes = frames_to_changes(convert_envelope_response(wire.body.clone()));
+	let (changes, decode_error) = changes_from_envelope(wire.body.clone());
 	ChangePayload {
 		subscription_id: wire.subscription_id,
 		content_type: wire.content_type,
 		body: wire.body,
 		changes,
-		decode_error: None,
+		decode_error,
 	}
 }
 
@@ -1208,13 +1279,13 @@ fn batch_change_from_json(wire: WireBatchChangePayload) -> BatchChangePayload {
 		.entries
 		.into_iter()
 		.map(|entry| {
-			let changes = frames_to_changes(convert_envelope_response(entry.body.clone()));
+			let (changes, decode_error) = changes_from_envelope(entry.body.clone());
 			BatchChangeEntry {
 				subscription_id: entry.subscription_id,
 				content_type: entry.content_type,
 				body: entry.body,
 				changes,
-				decode_error: None,
+				decode_error,
 			}
 		})
 		.collect();
@@ -1414,5 +1485,71 @@ mod tests {
 			ClientResponse::Frames(frames, _) => assert_eq!(frames, expected),
 			ClientResponse::Json(_) => panic!("a clean decode must complete as frames"),
 		}
+	}
+}
+
+#[cfg(test)]
+mod json_change_tests {
+	use reifydb_codec::json::to::convert_frames;
+	use reifydb_value::value::{
+		container::number::NumberContainer,
+		diff_type::DiffType,
+		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	};
+	use serde_json::{Value, json};
+
+	use super::{batch_change_from_json, payload_from_json_change};
+	use crate::{WireBatchChangeEntry, WireBatchChangePayload, WireChangePayload};
+
+	fn malformed_body() -> Value {
+		json!({ "frames": [{ "columns": "not a column list" }] })
+	}
+
+	fn change(body: Value) -> WireChangePayload {
+		WireChangePayload {
+			subscription_id: "sub-1".to_string(),
+			content_type: "application/vnd.reifydb.frames".to_string(),
+			body,
+		}
+	}
+
+	#[test]
+	fn a_malformed_json_change_reaches_the_subscriber_as_a_decode_error() {
+		// An empty change is a valid delivery, so a body that fails to decode must carry its error.
+		let payload = payload_from_json_change(change(malformed_body()));
+
+		assert!(payload.decode_error.is_some(), "a failed decode must carry its error");
+		assert!(payload.changes.is_empty());
+	}
+
+	#[test]
+	fn a_valid_json_change_decodes_with_no_error() {
+		// A clean change must keep its rows, otherwise the error path swallowed a good change.
+		let frame = Frame::new(vec![FrameColumn {
+			name: "id".to_string(),
+			data: FrameColumnData::Int4(NumberContainer::new(vec![7])),
+		}])
+		.with_op(DiffType::Update);
+
+		let payload = payload_from_json_change(change(json!({ "frames": convert_frames(&[frame]) })));
+
+		assert_eq!(payload.decode_error, None);
+		assert_eq!(payload.changes.len(), 1);
+	}
+
+	#[test]
+	fn a_malformed_json_batch_entry_carries_its_decode_error() {
+		// One entry that fails to decode must say so, never pass as an empty change for its subscription.
+		let payload = batch_change_from_json(WireBatchChangePayload {
+			batch_id: "batch-1".to_string(),
+			entries: vec![WireBatchChangeEntry {
+				subscription_id: "sub-1".to_string(),
+				content_type: "application/vnd.reifydb.frames".to_string(),
+				body: malformed_body(),
+			}],
+		});
+
+		assert!(payload.entries[0].decode_error.is_some(), "a failed decode must carry its error");
+		assert!(payload.entries[0].changes.is_empty());
 	}
 }

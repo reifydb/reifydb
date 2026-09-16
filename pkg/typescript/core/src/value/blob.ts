@@ -8,34 +8,33 @@ import {NONE_VALUE} from "../constant";
  */
 export class BlobValue implements Value {
     readonly type: Type = "Blob" as const;
-    private readonly bytes?: Uint8Array;
+    private readonly bytes: Uint8Array;
 
-    constructor(value?: Uint8Array | ArrayBuffer | string | number[]) {
-        if (value !== undefined) {
-            if (value instanceof Uint8Array) {
-                this.bytes = new Uint8Array(value);
-            } else if (value instanceof ArrayBuffer) {
-                this.bytes = new Uint8Array(value);
-            } else if (typeof value === 'string') {
-                // Try to parse as hex or base64
-                const parsed = BlobValue.parseString(value);
-                if (parsed === null) {
-                    throw new Error(`Invalid blob string: ${value}`);
-                }
-                this.bytes = parsed;
-            } else if (Array.isArray(value)) {
-                // Array of numbers (bytes)
-                for (const byte of value) {
-                    if (!Number.isInteger(byte) || byte < 0 || byte > 255) {
-                        throw new Error(`Invalid byte value: ${byte}`);
-                    }
-                }
-                this.bytes = new Uint8Array(value);
-            } else {
-                throw new Error(`Blob value must be a Uint8Array, ArrayBuffer, string, or number[], got ${typeof value}`);
+    constructor(value: Uint8Array | ArrayBuffer | string | number[]) {
+        if (value === undefined) {
+            throw new Error(`Blob value must be defined, a none is carried by NoneValue`);
+        }
+        if (value instanceof Uint8Array) {
+            this.bytes = new Uint8Array(value);
+        } else if (value instanceof ArrayBuffer) {
+            this.bytes = new Uint8Array(value);
+        } else if (typeof value === 'string') {
+            // Try to parse as hex or base64
+            const parsed = BlobValue.parseString(value);
+            if (parsed === null) {
+                throw new Error(`Invalid blob string: ${value}`);
             }
+            this.bytes = parsed;
+        } else if (Array.isArray(value)) {
+            // Array of numbers (bytes)
+            for (const byte of value) {
+                if (!Number.isInteger(byte) || byte < 0 || byte > 255) {
+                    throw new Error(`Invalid byte value: ${byte}`);
+                }
+            }
+            this.bytes = new Uint8Array(value);
         } else {
-            this.bytes = undefined;
+            throw new Error(`Blob value must be a Uint8Array, ArrayBuffer, string, or number[], got ${typeof value}`);
         }
     }
 
@@ -127,7 +126,7 @@ export class BlobValue implements Value {
         const trimmed = str.trim();
 
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new BlobValue(undefined);
+            throw new Error(`Cannot parse "${str}" as Blob`);
         }
 
         const parsed = BlobValue.parseString(trimmed);
@@ -203,14 +202,11 @@ export class BlobValue implements Value {
      * Format as hex string with 0x prefix
      */
     toString(): string {
-        if (this.bytes === undefined) {
-            return 'none';
-        }
         return this.toHex()!;
     }
 
-    valueOf(): Uint8Array | undefined {
-        return this.bytes ? new Uint8Array(this.bytes) : undefined;
+    valueOf(): Uint8Array {
+        return new Uint8Array(this.bytes);
     }
 
     /**
@@ -271,14 +267,14 @@ export class BlobValue implements Value {
         return null;
     }
 
-    toJSON(): string | null {
-        return this.bytes === undefined ? null : this.toHex()!;
+    toJSON(): string {
+        return this.toHex()!;
     }
 
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? NONE_VALUE : this.toString()
+            value: this.toString()
         };
     }
 }

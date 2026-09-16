@@ -3,8 +3,9 @@
 
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
-use reifydb::{Database, Params, RuntimeConfig, embedded as db_embedded};
+use reifydb::{Database, Params, RuntimeConfig, WithSubsystem, embedded as db_embedded};
 use reifydb_testing::{testscript, testscript::command::Command};
+use reifydb_value::value::duration::Duration as ValueDuration;
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 
@@ -17,6 +18,7 @@ impl Runner {
 		Self {
 			instance: db_embedded::memory()
 				.with_runtime_config(RuntimeConfig::default().seeded(0))
+				.with_flow(|c| c)
 				.build()
 				.unwrap(),
 		}
@@ -52,6 +54,16 @@ impl testscript::runner::Runner for Runner {
 
 				for frame in self.instance.query_as_root(rql.as_str(), Params::None)? {
 					writeln!(output, "{}", frame).unwrap();
+				}
+			}
+			"await" => {
+				let watermarks = self.instance.watermarks();
+				let target = watermarks.tx().current()?;
+				if !watermarks.cdc().wait_for_flow_consumer(
+					target,
+					ValueDuration::from_nanos_infallible(10_000_000_000),
+				)? {
+					return Err("flows did not catch up".into());
 				}
 			}
 			name => {

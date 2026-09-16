@@ -377,6 +377,7 @@ pub enum AppendPhysicalNode<'bump> {
 		source: AppendPhysicalSource<'bump>,
 	},
 	Query {
+		fragment: Fragment,
 		left: BumpBox<'bump, PhysicalPlan<'bump>>,
 		right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	},
@@ -527,6 +528,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub left: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub join_type: JoinType,
+	pub fragment: Fragment,
 	pub alias: Option<Fragment>,
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
@@ -578,6 +580,7 @@ pub struct WindowNode<'bump> {
 	pub aggregations: Vec<Expression>,
 	pub lateness: Option<Duration>,
 	pub immutable: Option<Duration>,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug)]
@@ -2021,6 +2024,7 @@ impl<'bump> Compiler<'bump> {
 						left: self.bump_box(left),
 						right: self.bump_box(right),
 						join_type: join.join_type,
+						fragment: self.interner.intern_fragment(&join.fragment),
 						alias,
 						retention: join.retention,
 						snapshot: join.snapshot,
@@ -2340,6 +2344,7 @@ impl<'bump> Compiler<'bump> {
 						aggregations: window.aggregations,
 						lateness: window.lateness,
 						immutable: window.immutable,
+						fragment: window.fragment,
 						input,
 					}));
 				}
@@ -2423,11 +2428,13 @@ impl<'bump> Compiler<'bump> {
 						}));
 					}
 					logical::AppendNode::Query {
+						fragment,
 						with,
 					} => {
 						let left = stack.pop().unwrap();
 						let right = self.compile(rx, with)?.unwrap();
 						stack.push(PhysicalPlan::Append(AppendPhysicalNode::Query {
+							fragment: self.interner.intern_fragment(&fragment),
 							left: self.bump_box(left),
 							right: self.bump_box(right),
 						}));

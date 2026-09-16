@@ -380,6 +380,8 @@ impl DatabaseBuilder {
 		// for commits that produce no CDC row (e.g. ConfigStorage-only
 		// commits filtered out by `should_exclude_from_cdc`).
 		let cdc_producer_watermark = CdcProducerWatermark::new();
+		let resumed_at = multi.current_version()?;
+		cdc_producer_watermark.seed(resumed_at);
 		self.ioc = self.ioc.register(cdc_producer_watermark.clone());
 
 		let cdc_wake_registry = CdcWakeRegistry::new();

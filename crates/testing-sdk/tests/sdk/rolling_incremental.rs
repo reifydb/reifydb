@@ -279,7 +279,7 @@ impl RollingOperator for SealedVelocity {
 		millis(1)
 	}
 
-	fn lateness(&self) -> Option<Duration> {
+	fn seal_span(&self) -> Option<Duration> {
 		Some(millis(120))
 	}
 

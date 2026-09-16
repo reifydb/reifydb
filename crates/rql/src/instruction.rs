@@ -124,6 +124,7 @@ pub enum Instruction {
 		name: Fragment,
 		arity: u8,
 		is_procedure_call: bool,
+		type_arguments: Vec<(usize, Fragment)>,
 	},
 	ReturnValue,
 	ReturnVoid,

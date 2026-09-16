@@ -61,6 +61,10 @@ fn run_single(
 
 				vm.ip = saved_ip;
 
+				if let Some(ref mut e) = exec_error {
+					e.with_rql(body.to_string());
+				}
+
 				match classify_outcome(match exec_error {
 					None => Ok(()),
 					Some(ref e) => Err(e),
@@ -74,7 +78,10 @@ fn run_single(
 				("error".to_string(), "test body requires incremental compilation".to_string())
 			}
 		},
-		Err(e) => ("error".to_string(), format!("{}", e)),
+		Err(mut e) => {
+			e.with_rql(body.to_string());
+			("error".to_string(), format!("{}", e))
+		}
 	}
 }
 

@@ -95,12 +95,19 @@ fn hand_written_markers_parse_into_one_bitmap_per_layer() {
 }
 
 #[test]
-fn a_marker_deeper_than_the_column_stays_a_none_at_the_innermost_layer() {
+fn a_marker_deeper_than_the_column_is_a_decode_error() {
+	// Clamping a deeper marker to the innermost none would hand back a value the server never sent.
 	let json = r#"[{"columns":[{"name":"c","type":{"id":"Option","underlying":{"id":"Int4"}},"payload":["⟪none:3⟫","5"]}]}]"#;
-	let decoded = decode_single(json);
-	assert_eq!(layers(&decoded), vec![vec![false, true]]);
-	assert_eq!(decoded.get_value(0), Value::none_of(ValueType::Int4));
-	assert_eq!(decoded.get_value(1), Value::Int4(5));
+	let result = frames_from_json(json).map(|frames| frames.len());
+	let message = result.expect_err("a marker deeper than the column must not decode").to_string();
+	assert!(
+		message.contains("none marker depth 3 exceeds the 1 Option layers of type Option(Int4)"),
+		"unexpected error: {message}"
+	);
+	assert!(
+		message.contains("column 'c'") && message.contains("at row 0"),
+		"error must name column c row 0: {message}"
+	);
 }
 
 #[test]

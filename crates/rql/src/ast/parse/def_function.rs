@@ -91,20 +91,9 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if !self.is_eof() && self.current()?.is_operator(Operator::OpenParen) {
-			self.consume_operator(Operator::OpenParen)?;
-			let mut params = Vec::new();
-
-			params.push(self.parse_literal_number()?);
-
-			while self.consume_if(TokenKind::Separator(Separator::Comma))?.is_some() {
-				params.push(self.parse_literal_number()?);
-			}
-
-			self.consume_operator(Operator::CloseParen)?;
-
 			Ok(AstType::Constrained {
 				name: ty_token.fragment,
-				params,
+				params: self.parse_type_parameters()?,
 			})
 		} else {
 			Ok(AstType::Unconstrained(ty_token.fragment))

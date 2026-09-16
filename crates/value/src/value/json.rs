@@ -4,6 +4,7 @@
 use serde_json::{Map, Value as JsonValue};
 
 use super::Value;
+use crate::util::hex::encode;
 
 impl Value {
 	pub fn to_json_value(&self) -> JsonValue {
@@ -60,6 +61,7 @@ impl Value {
 				JsonValue::Object(map)
 			}
 			Value::Tuple(items) => JsonValue::Array(items.iter().map(|v| v.to_json_value()).collect()),
+			Value::Digest(digest) => JsonValue::String(format!("0x{}", encode(&digest.encode()))),
 		}
 	}
 }

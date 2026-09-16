@@ -13,7 +13,8 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::{
-	Accumulator, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Accumulator, Arity, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::{
 	fragment::Fragment,
@@ -53,19 +54,7 @@ impl<'a> Routine<FunctionContext<'a>> for Min {
 		input_types.first().cloned().unwrap_or(ValueType::Float8)
 	}
 
-	fn accepted_types(&self) -> InputTypes {
-		InputTypes::numeric()
-	}
-
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.is_empty() {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 1,
-				actual: 0,
-			});
-		}
-
 		for (i, col) in args.iter().enumerate() {
 			if !col.get_type().is_number() {
 				return Err(RoutineError::FunctionInvalidArgumentType {
@@ -105,19 +94,29 @@ impl Function for Min {
 		&[FunctionKind::Scalar, FunctionKind::Aggregate]
 	}
 
-	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
-		Some(Box::new(MinAccumulator::new()))
+	fn arity(&self) -> Arity {
+		Arity::AtLeast(1)
+	}
+
+	fn accumulator(
+		&self,
+		ctx: &mut FunctionContext<'_>,
+		_literals: &[LiteralArgument],
+	) -> Result<Option<Box<dyn Accumulator>>, RoutineError> {
+		Ok(Some(Box::new(MinAccumulator::new(ctx.fragment.clone()))))
 	}
 }
 
 struct MinAccumulator {
+	function: Fragment,
 	pub mins: GroupSlots<Value>,
 	input_type: Option<ValueType>,
 }
 
 impl MinAccumulator {
-	pub fn new() -> Self {
+	pub fn new(function: Fragment) -> Self {
 		Self {
+			function,
 			mins: GroupSlots::new(),
 			input_type: None,
 		}
@@ -344,7 +343,7 @@ impl Accumulator for MinAccumulator {
 				Ok(())
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
-				function: Fragment::internal("math::min"),
+				function: self.function.clone(),
 				argument_index: 0,
 				expected: InputTypes::numeric().expected_at(0).to_vec(),
 				actual: other.get_type(),

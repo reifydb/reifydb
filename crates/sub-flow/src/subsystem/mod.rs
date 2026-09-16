@@ -7,6 +7,8 @@ pub mod extern_c;
 pub mod extern_rust;
 pub mod factory;
 pub mod shutdown;
+#[cfg(test)]
+mod tests;
 
 use std::{
 	any::Any,
@@ -196,9 +198,11 @@ impl FlowSubsystem {
 			&materialization,
 		);
 
-		ioc.register_service::<FlowCaughtUpWatermark>(FlowCaughtUpWatermark::new(move || {
-			materialization.caught_up()
-		}));
+		let poisoned_health = health.clone();
+		ioc.register_service::<FlowCaughtUpWatermark>(FlowCaughtUpWatermark::new(
+			move || materialization.caught_up(),
+			move || poisoned_health.poisoned(),
+		));
 
 		ioc.register_service::<Arc<dyn ConsumerPositions>>(Arc::new(flow_tracker.clone()));
 

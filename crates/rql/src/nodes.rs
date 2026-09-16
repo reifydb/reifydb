@@ -573,6 +573,7 @@ pub struct JoinNaturalNode {
 	pub left: Box<QueryPlan>,
 	pub right: Box<QueryPlan>,
 	pub join_type: JoinType,
+	pub fragment: Fragment,
 	pub alias: Option<Fragment>,
 	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
@@ -581,6 +582,7 @@ pub struct JoinNaturalNode {
 
 #[derive(Debug, Clone)]
 pub struct AppendQueryNode {
+	pub fragment: Fragment,
 	pub left: Box<QueryPlan>,
 	pub right: Box<QueryPlan>,
 }
@@ -736,6 +738,7 @@ pub struct WindowNode {
 	pub aggregations: Vec<Expression>,
 	pub lateness: Option<Duration>,
 	pub immutable: Option<Duration>,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug, Clone)]

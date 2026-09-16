@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{row::catalog::EncodedCatalogRow, tag::value_type_from_tag_byte};
+use reifydb_codec::{
+	constraint::{EncodedTypeConstraint, decode_type_constraint},
+	row::catalog::EncodedCatalogRow,
+	tag::value_type_from_tag_byte,
+};
 use reifydb_core::{internal, key::column::ColumnsKey};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -12,6 +16,20 @@ use reifydb_value::{
 		sumtype::SumTypeId,
 	},
 };
+
+fn decode_digest_type(type_byte: u8, bytes: &[u8]) -> Option<TypeConstraint> {
+	let [5, p1_0, p1_1, p1_2, p1_3, p2_0, p2_1, p2_2, p2_3] = *bytes else {
+		return None;
+	};
+	let encoded = EncodedTypeConstraint {
+		base_type: type_byte,
+		constraint_type: 5,
+		constraint_param1: u32::from_le_bytes([p1_0, p1_1, p1_2, p1_3]),
+		constraint_param2: u32::from_le_bytes([p2_0, p2_1, p2_2, p2_3]),
+	};
+	Some(decode_type_constraint(&encoded)
+		.unwrap_or_else(|error| panic!("invalid persisted digest column type {encoded:?}: {error}")))
+}
 
 fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
 	if bytes.is_empty() {
@@ -66,12 +84,11 @@ impl CatalogStore {
 
 		let id = ColumnId(column::get_id(&bytes));
 		let name = column::get_name(&bytes).to_string();
-		let base_type = value_type_from_tag_byte(column::get_value(&bytes));
+		let type_byte = column::get_value(&bytes);
 		let index = ColumnIndex(column::get_index(&bytes));
 		let auto_increment = column::get_auto_increment(&bytes);
 
 		let constraint_bytes = column::get_constraint(&bytes);
-		let decoded_constraint = decode_constraint(constraint_bytes.as_bytes());
 
 		let dict_id_raw = column::get_dictionary_id(&bytes);
 		let dictionary_id = if dict_id_raw == 0 {
@@ -80,28 +97,37 @@ impl CatalogStore {
 			Some(DictionaryId(dict_id_raw))
 		};
 
-		let constraint = match (&decoded_constraint, dictionary_id) {
-			(Some(c @ Constraint::Dictionary(..)), _) => {
-				TypeConstraint::with_constraint(base_type, c.clone())
-			}
-
-			(_, Some(dict_id)) => {
-				if let Some(dict) = Self::find_dictionary(rx, dict_id)? {
-					TypeConstraint::with_constraint(
-						base_type,
-						Constraint::Dictionary(dict_id, dict.id_type),
-					)
-				} else {
-					match decoded_constraint {
-						Some(c) => TypeConstraint::with_constraint(base_type, c),
-						None => TypeConstraint::unconstrained(base_type),
+		let constraint = match decode_digest_type(type_byte, constraint_bytes.as_bytes()) {
+			Some(digest) => digest,
+			None => {
+				let base_type = value_type_from_tag_byte(type_byte);
+				let decoded_constraint = decode_constraint(constraint_bytes.as_bytes());
+				match (&decoded_constraint, dictionary_id) {
+					(Some(c @ Constraint::Dictionary(..)), _) => {
+						TypeConstraint::with_constraint(base_type, c.clone())
 					}
+
+					(_, Some(dict_id)) => {
+						if let Some(dict) = Self::find_dictionary(rx, dict_id)? {
+							TypeConstraint::with_constraint(
+								base_type,
+								Constraint::Dictionary(dict_id, dict.id_type),
+							)
+						} else {
+							match decoded_constraint {
+								Some(c) => {
+									TypeConstraint::with_constraint(base_type, c)
+								}
+								None => TypeConstraint::unconstrained(base_type),
+							}
+						}
+					}
+
+					(Some(c), None) => TypeConstraint::with_constraint(base_type, c.clone()),
+
+					(None, None) => TypeConstraint::unconstrained(base_type),
 				}
 			}
-
-			(Some(c), None) => TypeConstraint::with_constraint(base_type, c.clone()),
-
-			(None, None) => TypeConstraint::unconstrained(base_type),
 		};
 
 		let properties = Self::list_column_properties(rx, id)?;
@@ -120,7 +146,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::id::ColumnId;
+	use reifydb_core::interface::catalog::id::{ColumnId, TableId};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
@@ -153,5 +179,32 @@ pub mod tests {
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("ColumnId(4)"));
 		assert!(err.message.contains("not found in catalog"));
+	}
+
+	#[test]
+	fn test_digest_column_type_round_trips() {
+		// Reading only the type tag byte either panics on kind 32 or loses inner type and accuracy.
+		let mut txn = create_test_admin_transaction();
+		let plain = ValueType::Digest {
+			inner: Box::new(ValueType::Duration),
+			accuracy: 10_000,
+		};
+		let optional = ValueType::Option(Box::new(ValueType::Digest {
+			inner: Box::new(ValueType::Float8),
+			accuracy: 12_500,
+		}));
+		create_test_column(&mut txn, "plain", TypeConstraint::unconstrained(plain.clone()), vec![]);
+		create_test_column(&mut txn, "optional", TypeConstraint::unconstrained(optional.clone()), vec![]);
+
+		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), TableId(1)).unwrap();
+
+		let types: Vec<_> = columns.iter().map(|c| (c.name.as_str(), c.constraint.clone())).collect();
+		assert_eq!(
+			types,
+			vec![
+				("plain", TypeConstraint::unconstrained(plain)),
+				("optional", TypeConstraint::unconstrained(optional))
+			]
+		);
 	}
 }

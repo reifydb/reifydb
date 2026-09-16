@@ -5,7 +5,10 @@ use std::{mem, sync::Arc};
 
 use reifydb_core::{
 	error::diagnostic::query::extend_duplicate_column,
-	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
+	interface::{
+		evaluate::TargetColumn,
+		resolved::{ResolvedColumn, ResolvedObject},
+	},
 	value::column::{ColumnWithName, cast::cast_column_data, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_evaluate::expression::{
@@ -22,6 +25,7 @@ use super::NoopNode;
 use crate::{
 	Result,
 	vm::volcano::{
+		inline::{expand_aliases, expand_sumtype_ctor, resolve_is_variants},
 		query::{QueryContext, QueryNode, eval_context_from_query, eval_context_from_transform},
 		udf::{UdfEvalNode, evaluate_udfs_no_input, strip_udf_columns},
 	},
@@ -30,16 +34,20 @@ use crate::{
 pub(crate) struct ExtendNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
+	written: Vec<Fragment>,
+	source: Option<ResolvedObject>,
 	udf_names: Vec<String>,
 	headers: Option<ColumnHeaders>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
 
 impl ExtendNode {
-	pub fn new(input: Box<dyn QueryNode>, expressions: Vec<Expression>) -> Self {
+	pub fn new(input: Box<dyn QueryNode>, expressions: Vec<Expression>, source: Option<ResolvedObject>) -> Self {
 		Self {
 			input,
 			expressions,
+			written: Vec::new(),
+			source,
 			udf_names: Vec::new(),
 			headers: None,
 			context: None,
@@ -64,6 +72,15 @@ impl ExtendNode {
 impl QueryNode for ExtendNode {
 	#[instrument(name = "volcano::extend::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		(self.expressions, self.written) =
+			expand_aliases(mem::take(&mut self.expressions), |alias_expr, expanded| {
+				expand_sumtype_ctor(ctx, rx, ctx.source.as_ref(), alias_expr, expanded)
+			})?;
+		if let Some(source) = self.source.as_ref() {
+			for expr in &mut self.expressions {
+				resolve_is_variants(&ctx.services.catalog, rx, source, expr)?;
+			}
+		}
 		let (input, expressions, udf_names) = UdfEvalNode::wrap_if_needed(
 			mem::replace(&mut self.input, Box::new(NoopNode)),
 			&self.expressions,
@@ -79,8 +96,8 @@ impl QueryNode for ExtendNode {
 		let compiled = self
 			.expressions
 			.iter()
-			.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
-			.collect();
+			.map(|e| compile_expression(&compile_ctx, e))
+			.collect::<Result<Vec<_>>>()?;
 		self.context = Some((Arc::new(ctx.clone()), compiled));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
@@ -126,21 +143,7 @@ impl QueryNode for ExtendNode {
 		{
 			let mut all_headers = input_headers.columns.clone();
 			let new_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
-
-			for new_name in &new_names {
-				for existing_name in &all_headers {
-					if new_name.text() == existing_name.text() {
-						return_error!(extend_duplicate_column(new_name.text()));
-					}
-				}
-			}
-			for i in 0..new_names.len() {
-				for j in (i + 1)..new_names.len() {
-					if new_names[i].text() == new_names[j].text() {
-						return_error!(extend_duplicate_column(new_names[i].text()));
-					}
-				}
-			}
+			reject_duplicate_columns(&all_headers, &new_names, &self.written)?;
 
 			all_headers.extend(new_names);
 			self.headers = Some(ColumnHeaders {
@@ -204,21 +207,7 @@ impl Transform for ExtendNode {
 			new_names.push(display_label(expr));
 		}
 
-		for new_name in &new_names {
-			for existing_name in &existing_names {
-				if new_name.text() == existing_name.text() {
-					return_error!(extend_duplicate_column(new_name.text()));
-				}
-			}
-		}
-
-		for i in 0..new_names.len() {
-			for j in (i + 1)..new_names.len() {
-				if new_names[i].text() == new_names[j].text() {
-					return_error!(extend_duplicate_column(new_names[i].text()));
-				}
-			}
-		}
+		reject_duplicate_columns(&existing_names, &new_names, &self.written)?;
 
 		let mut names_vec = Vec::with_capacity(new_columns.len());
 		let mut buffers_vec = Vec::with_capacity(new_columns.len());
@@ -236,6 +225,7 @@ impl Transform for ExtendNode {
 
 pub(crate) struct ExtendWithoutInputNode {
 	expressions: Vec<Expression>,
+	written: Vec<Fragment>,
 	headers: Option<ColumnHeaders>,
 
 	udf_columns: Option<Columns>,
@@ -246,6 +236,7 @@ impl ExtendWithoutInputNode {
 	pub fn new(expressions: Vec<Expression>) -> Self {
 		Self {
 			expressions,
+			written: Vec::new(),
 			headers: None,
 			udf_columns: None,
 			context: None,
@@ -256,6 +247,10 @@ impl ExtendWithoutInputNode {
 impl QueryNode for ExtendWithoutInputNode {
 	#[instrument(name = "volcano::extend::noinput::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		(self.expressions, self.written) =
+			expand_aliases(mem::take(&mut self.expressions), |alias_expr, expanded| {
+				expand_sumtype_ctor(ctx, rx, ctx.source.as_ref(), alias_expr, expanded)
+			})?;
 		if let Some((rewritten, udf_cols)) = evaluate_udfs_no_input(&self.expressions, ctx, rx)? {
 			self.expressions = rewritten;
 			self.udf_columns = Some(udf_cols);
@@ -267,8 +262,8 @@ impl QueryNode for ExtendWithoutInputNode {
 		let compiled = self
 			.expressions
 			.iter()
-			.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
-			.collect();
+			.map(|e| compile_expression(&compile_ctx, e))
+			.collect::<Result<Vec<_>>>()?;
 		self.context = Some((Arc::new(ctx.clone()), compiled));
 		Ok(())
 	}
@@ -298,14 +293,7 @@ impl QueryNode for ExtendWithoutInputNode {
 		}
 
 		let column_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
-
-		for i in 0..column_names.len() {
-			for j in (i + 1)..column_names.len() {
-				if column_names[i].text() == column_names[j].text() {
-					return_error!(extend_duplicate_column(column_names[i].text()));
-				}
-			}
-		}
+		reject_duplicate_columns(&[], &column_names, &self.written)?;
 
 		self.headers = Some(ColumnHeaders {
 			columns: column_names,
@@ -317,4 +305,13 @@ impl QueryNode for ExtendWithoutInputNode {
 	fn headers(&self) -> Option<ColumnHeaders> {
 		self.headers.clone()
 	}
+}
+
+fn reject_duplicate_columns(existing: &[Fragment], new_names: &[Fragment], written: &[Fragment]) -> Result<()> {
+	for (index, name) in new_names.iter().enumerate() {
+		if existing.iter().chain(&new_names[..index]).any(|other| other.text() == name.text()) {
+			return_error!(extend_duplicate_column(written[index].clone(), name.text()));
+		}
+	}
+	Ok(())
 }

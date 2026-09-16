@@ -29,13 +29,9 @@ describe('decode', () => {
         expect(result.valueOf()).toBe(false);
     });
 
-    it('should decode Boolean type with empty value', () => {
-        const pair = { type: 'Boolean' as const, value: '' };
-        const result = decode(pair);
-
-        expect(result).toBeInstanceOf(BooleanValue);
-        expect(result.type).toBe('Boolean');
-        expect(result.valueOf()).toBeUndefined();
+    it('should reject a Boolean cell that is empty', () => {
+        // the server never renders a Boolean as empty text, so an empty cell is malformed
+        expect(() => decode({ type: 'Boolean' as const, value: '' })).toThrow();
     });
 
     it('should decode Int4 type with positive number', () => {
@@ -56,13 +52,9 @@ describe('decode', () => {
         expect(result.valueOf()).toBe(-123);
     });
 
-    it('should decode Int4 type with empty value', () => {
-        const pair = { type: 'Int4' as const, value: '' };
-        const result = decode(pair);
-
-        expect(result).toBeInstanceOf(Int4Value);
-        expect(result.type).toBe('Int4');
-        expect(result.valueOf()).toBeUndefined();
+    it('should reject an Int4 cell that is empty', () => {
+        // an empty cell must never decode as zero, which is what Number('') would give
+        expect(() => decode({ type: 'Int4' as const, value: '' })).toThrow();
     });
 
     it('should decode Utf8 type with string value', () => {
@@ -161,13 +153,9 @@ describe('decode', () => {
         expect(result.valueOf()).toBe('999999999999999999999.123456789');
     });
 
-    it('should decode Decimal type with empty value', () => {
-        const pair = { type: 'Decimal' as const, value: '' };
-        const result = decode(pair);
-
-        expect(result).toBeInstanceOf(DecimalValue);
-        expect(result.type).toBe('Decimal');
-        expect(result.valueOf()).toBe('');
+    it('should reject a Decimal cell that is empty', () => {
+        // an empty cell is not a number, so it must not be carried through as text
+        expect(() => decode({ type: 'Decimal' as const, value: '' })).toThrow();
     });
 
     it('should handle round-trip encoding/decoding for Decimal', () => {
@@ -248,12 +236,9 @@ describe('decode', () => {
             expect(result.valueOf()).toBeUndefined();
         });
 
-        it('should not read an empty Option<Int4> payload as none', () => {
-            const pair = { type: { Option: 'Int4' as const }, value: '' };
-            const result = decode(pair);
-
-            expect(result).not.toBeInstanceOf(NoneValue);
-            expect(result).toBeInstanceOf(Int4Value);
+        it('should reject an empty Option<Int4> payload instead of reading it as none', () => {
+            // a none arrives as the marker, so an empty payload is malformed rather than a none
+            expect(() => decode({ type: { Option: 'Int4' as const }, value: '' })).toThrow();
         });
 
         it('should decode Option<Boolean> with true value', () => {
@@ -304,11 +289,9 @@ describe('decode', () => {
             expect((result as NoneValue).innerType).toBe('Date');
         });
 
-        it('should not read an empty Option<Date> payload as none', () => {
-            const pair = { type: { Option: 'Date' as const }, value: '' };
-            const result = decode(pair);
-
-            expect(result).not.toBeInstanceOf(NoneValue);
+        it('should reject an empty Option<Date> payload instead of reading it as none', () => {
+            // a none arrives as the marker, so an empty payload is malformed rather than a none
+            expect(() => decode({ type: { Option: 'Date' as const }, value: '' })).toThrow();
         });
 
         it('should decode Option<DateTime> with value', () => {

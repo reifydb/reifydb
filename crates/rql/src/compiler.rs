@@ -6,10 +6,14 @@ use std::{collections::HashSet, fmt, fmt::Debug, str::FromStr, sync::Arc};
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	error::diagnostic::{query, subscription},
+	error::diagnostic::{
+		catalog::{variant_enum_not_known, variant_in_expression},
+		query, subscription,
+	},
 	fingerprint::{CompilationFingerprint, StatementFingerprint},
 	interface::catalog::series::{SeriesKey, TimestampPrecision},
 };
+use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::cache::sync::SyncLru;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -27,7 +31,9 @@ use crate::{
 	},
 	bump::BumpBox,
 	error::RqlError,
-	expression::{AliasExpression, Expression, IdentExpression, ParameterExpression, PrefixOperator},
+	expression::{
+		AliasExpression, Expression, IdentExpression, ParameterExpression, PrefixOperator, name::display_label,
+	},
 	fingerprint::statement::{fingerprint_statement, normalize_statement},
 	instruction::{Addr, CompiledClosure, CompiledFunction, Instruction, ScopeType},
 	nodes,
@@ -79,6 +85,7 @@ pub struct Compiler(Arc<CompilerInner>);
 
 struct CompilerInner {
 	catalog: Catalog,
+	routines: Routines,
 	cache: SyncLru<CompilationFingerprint, Arc<Vec<Compiled>>>,
 }
 
@@ -93,9 +100,10 @@ impl Debug for CompilerInner {
 }
 
 impl Compiler {
-	pub fn new(catalog: Catalog) -> Self {
+	pub fn new(catalog: Catalog, routines: Routines) -> Self {
 		Self(Arc::new(CompilerInner {
 			catalog,
+			routines,
 			cache: SyncLru::new(DEFAULT_CAPACITY),
 		}))
 	}
@@ -143,7 +151,7 @@ impl Compiler {
 			if let Some(mut physical) = plan(bump, &self.0.catalog, tx, statement)? {
 				optimize_physical(&mut physical);
 				plans.push(Compiled {
-					instructions: compile_instructions(physical)?,
+					instructions: compile_instructions(physical, &self.0.routines)?,
 					is_output,
 					fingerprint,
 					normalized_rql,
@@ -174,7 +182,7 @@ impl Compiler {
 		if let Some(mut physical) = plan(&bump, &self.0.catalog, tx, statement)? {
 			optimize_physical(&mut physical);
 			Ok(Some(Compiled {
-				instructions: compile_instructions(physical)?,
+				instructions: compile_instructions(physical, &self.0.routines)?,
 				is_output,
 				fingerprint,
 				normalized_rql,
@@ -230,7 +238,7 @@ impl Compiler {
 			if let Some(mut physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, &policy)? {
 				optimize_physical(&mut physical);
 				plans.push(Compiled {
-					instructions: compile_instructions(physical)?,
+					instructions: compile_instructions(physical, &self.0.routines)?,
 					is_output,
 					fingerprint,
 					normalized_rql,
@@ -297,7 +305,7 @@ impl Compiler {
 		if let Some(mut physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, policy)? {
 			optimize_physical(&mut physical);
 			Ok(Some(Compiled {
-				instructions: compile_instructions(physical)?,
+				instructions: compile_instructions(physical, &self.0.routines)?,
 				is_output,
 				fingerprint,
 				normalized_rql,
@@ -363,6 +371,10 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 }
 
 fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
+	materialize_query_plan_with(plan, |kind| query::not_a_query_input(Fragment::None, kind))
+}
+
+fn materialize_as_clause_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 	materialize_query_plan_with(plan, |kind| query::as_clause_not_query(Fragment::None, kind))
 }
 
@@ -435,6 +447,7 @@ fn materialize_query_plan_with(
 			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))?),
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))?),
 			join_type: node.join_type,
+			fragment: node.fragment,
 			alias: node.alias,
 			retention: node.retention,
 			snapshot: node.snapshot,
@@ -487,6 +500,7 @@ fn materialize_query_plan_with(
 			aggregations: node.aggregations,
 			lateness: node.lateness,
 			immutable: node.immutable,
+			fragment: node.fragment,
 		}),
 		PhysicalPlan::Scalarize(node) => QueryPlan::Scalarize(nodes::ScalarizeNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
@@ -494,9 +508,11 @@ fn materialize_query_plan_with(
 		}),
 
 		PhysicalPlan::Append(physical::AppendPhysicalNode::Query {
+			fragment,
 			left,
 			right,
 		}) => QueryPlan::Append(nodes::AppendQueryNode {
+			fragment,
 			left: Box::new(materialize_query_plan(BumpBox::into_inner(left))?),
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(right))?),
 		}),
@@ -583,8 +599,8 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 	}
 }
 
-fn compile_instructions(plan: PhysicalPlan<'_>) -> Result<Vec<Instruction>> {
-	let mut compiler = InstructionCompiler::new();
+fn compile_instructions(plan: PhysicalPlan<'_>, routines: &Routines) -> Result<Vec<Instruction>> {
+	let mut compiler = InstructionCompiler::new(routines.clone());
 	compiler.compile_plan(plan)?;
 	compiler.emit(Instruction::Halt);
 	Ok(compiler.instructions)
@@ -677,14 +693,16 @@ fn scan_free_variables(body: &[Instruction], params: &[nodes::FunctionParameter]
 }
 
 struct InstructionCompiler {
+	routines: Routines,
 	instructions: Vec<Instruction>,
 	loop_stack: Vec<LoopContext>,
 	scope_depth: usize,
 }
 
 impl InstructionCompiler {
-	fn new() -> Self {
+	fn new(routines: Routines) -> Self {
 		Self {
+			routines,
 			instructions: Vec::new(),
 			loop_stack: Vec::new(),
 			scope_depth: 0,
@@ -804,11 +822,16 @@ impl InstructionCompiler {
 			},
 			Expression::Call(c) => {
 				let arity = c.args.len();
-				for arg in &c.args {
+				let function = self.routines.get_function(c.func.0.text());
+				let mut type_arguments = Vec::new();
+				for (index, arg) in c.args.iter().enumerate() {
 					if let Expression::Column(col) = arg
-						&& let Ok(ty) = ValueType::from_str(col.0.name.text())
+						&& function.as_ref().is_some_and(|function| {
+							function.type_argument_positions().contains(&index)
+						}) && let Ok(ty) = ValueType::from_str(col.0.name.text())
 					{
 						self.emit(Instruction::PushConst(Value::Type(ty)));
+						type_arguments.push((index, col.0.name.clone()));
 					} else {
 						self.compile_expression(arg)?;
 					}
@@ -817,6 +840,7 @@ impl InstructionCompiler {
 					name: c.func.0.clone(),
 					arity: arity as u8,
 					is_procedure_call: false,
+					type_arguments,
 				});
 			}
 			Expression::Cast(c) => {
@@ -952,11 +976,19 @@ impl InstructionCompiler {
 			Expression::Column(col) => {
 				self.emit(Instruction::LoadVar(col.0.name.clone()));
 			}
+			Expression::SumTypeConstructor(ctor) => {
+				return Err(error!(variant_in_expression(ctor.variant_name.clone())));
+			}
+			Expression::IsVariant(is) => {
+				let column = match is.expression.as_ref() {
+					Expression::Column(column) => column.0.name.text().to_string(),
+					other => display_label(other).text().to_string(),
+				};
+				return Err(error!(variant_enum_not_known(is.variant_name.clone(), &column)));
+			}
 			Expression::AccessSource(_)
 			| Expression::Alias(_)
 			| Expression::Extend(_)
-			| Expression::SumTypeConstructor(_)
-			| Expression::IsVariant(_)
 			| Expression::Contains(_) => {
 				self.emit(Instruction::PushNone);
 			}
@@ -1188,7 +1220,7 @@ impl InstructionCompiler {
 					view: node.view,
 					if_not_exists: node.if_not_exists,
 					columns: node.columns,
-					as_clause: Box::new(materialize_query_plan(BumpBox::into_inner(
+					as_clause: Box::new(materialize_as_clause_plan(BumpBox::into_inner(
 						node.as_clause,
 					))?),
 					storage_kind: compile_view_storage_kind(node.storage_kind),
@@ -1203,7 +1235,7 @@ impl InstructionCompiler {
 					view: node.view,
 					if_not_exists: node.if_not_exists,
 					columns: node.columns,
-					as_clause: Box::new(materialize_query_plan(BumpBox::into_inner(
+					as_clause: Box::new(materialize_as_clause_plan(BumpBox::into_inner(
 						node.as_clause,
 					))?),
 					storage_kind: compile_view_storage_kind(node.storage_kind),
@@ -1417,11 +1449,13 @@ impl InstructionCompiler {
 					self.compile_append(node)?;
 				}
 				physical::AppendPhysicalNode::Query {
+					fragment,
 					left,
 					right,
 				} => {
 					self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Append(
 						physical::AppendPhysicalNode::Query {
+							fragment,
 							left,
 							right,
 						},
@@ -1450,7 +1484,7 @@ impl InstructionCompiler {
 			}
 
 			PhysicalPlan::DefineFunction(node) => {
-				let mut body_compiler = InstructionCompiler::new();
+				let mut body_compiler = InstructionCompiler::new(self.routines.clone());
 				for plan in node.body {
 					body_compiler.compile_plan(plan)?;
 				}
@@ -1472,6 +1506,7 @@ impl InstructionCompiler {
 					name: node.name,
 					arity: arity as u8,
 					is_procedure_call: node.is_procedure_call,
+					type_arguments: Vec::new(),
 				});
 				self.emit(Instruction::Emit);
 			}
@@ -1490,7 +1525,7 @@ impl InstructionCompiler {
 			},
 
 			PhysicalPlan::DefineClosure(node) => {
-				let mut body_compiler = InstructionCompiler::new();
+				let mut body_compiler = InstructionCompiler::new(self.routines.clone());
 				for plan in node.body {
 					body_compiler.compile_plan(plan)?;
 				}
@@ -1991,11 +2026,13 @@ impl InstructionCompiler {
 				Ok(())
 			}
 			physical::AppendPhysicalNode::Query {
+				fragment,
 				left,
 				right,
 			} => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Append(
 					physical::AppendPhysicalNode::Query {
+						fragment,
 						left,
 						right,
 					},

@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, value_type::ValueType};
 
@@ -39,14 +39,6 @@ impl<'a> Routine<FunctionContext<'a>> for Type {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.len() != 1 {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 1,
-				actual: args.len(),
-			});
-		}
-
 		let column = &args[0];
 		let col_type = column.get_type();
 		let type_name = col_type.to_string();
@@ -66,5 +58,9 @@ impl<'a> Routine<FunctionContext<'a>> for Type {
 impl Function for Type {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(1)
 	}
 }

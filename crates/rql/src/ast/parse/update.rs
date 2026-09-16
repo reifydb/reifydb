@@ -6,7 +6,7 @@ use crate::{
 	ast::{
 		ast::{Ast, AstUpdate},
 		identifier::UnresolvedObjectIdentifier,
-		parse::Parser,
+		parse::{Parser, reject_duplicate_aliases},
 	},
 	bump::BumpBox,
 	error::{OperationKind, RqlError},
@@ -40,6 +40,7 @@ impl<'bump> Parser<'bump> {
 			.into());
 		}
 		let (assignments, _) = self.parse_expressions(true, false, None)?;
+		reject_duplicate_aliases(&assignments)?;
 		if assignments.is_empty() {
 			return Err(RqlError::UpdateEmptyAssignmentsBlock {
 				fragment: token.fragment.to_owned(),

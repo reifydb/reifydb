@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
 	util::bitvec::BitVec,
@@ -38,14 +38,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextReplace {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.len() != 3 {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 3,
-				actual: args.len(),
-			});
-		}
-
 		let str_col = &args[0];
 		let from_col = &args[1];
 		let to_col = &args[2];
@@ -146,5 +138,9 @@ impl<'a> Routine<FunctionContext<'a>> for TextReplace {
 impl Function for TextReplace {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(3)
 	}
 }

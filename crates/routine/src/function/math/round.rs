@@ -4,7 +4,7 @@
 use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
 	container::number::NumberContainer,
@@ -40,14 +40,6 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.is_empty() {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 1,
-				actual: 0,
-			});
-		}
-
 		let value_column = &args[0];
 		let precision_column = args.get(1);
 
@@ -183,5 +175,9 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 impl Function for Round {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::AtLeast(1)
 	}
 }

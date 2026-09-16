@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::error::diagnostic::query::duplicate_field;
+use reifydb_value::return_error;
+
 use crate::{
 	Result,
 	ast::{
@@ -39,7 +42,7 @@ impl<'bump> Parser<'bump> {
 			{
 				let token = ident.token;
 				let variant_name = ident.token.fragment;
-				let columns = self.parse_inline()?;
+				let columns = self.parse_inline_with_unique_keys()?;
 				value_ast = Ast::SumTypeConstructor(AstSumTypeConstructor {
 					token,
 					namespace: variant_name,
@@ -65,6 +68,19 @@ impl<'bump> Parser<'bump> {
 			token,
 			keyed_values,
 		})
+	}
+
+	pub(crate) fn parse_inline_with_unique_keys(&mut self) -> Result<AstInline<'bump>> {
+		let inline = self.parse_inline()?;
+		for (idx, keyed) in inline.keyed_values.iter().enumerate() {
+			if inline.keyed_values[..idx].iter().any(|earlier| earlier.key.text() == keyed.key.text()) {
+				return_error!(duplicate_field(
+					keyed.key.token.fragment.to_owned(),
+					keyed.key.token.fragment.text()
+				));
+			}
+		}
+		Ok(inline)
 	}
 }
 

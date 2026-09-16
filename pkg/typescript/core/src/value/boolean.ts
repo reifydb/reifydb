@@ -5,24 +5,23 @@ import {NONE_VALUE} from "../constant";
 
 export class BooleanValue implements Value {
     readonly type: Type = "Boolean" as const;
-    public readonly value?: boolean;
+    public readonly value: boolean;
 
-    constructor(value?: boolean) {
-        if (value !== undefined) {
-            if (typeof value !== 'boolean') {
-                throw new Error(`Boolean value must be a boolean, got ${typeof value}`);
-            }
-            this.value = value;
-        } else {
-            this.value = undefined;
+    constructor(value: boolean) {
+        if (value === undefined) {
+            throw new Error(`Boolean value must be defined, a none is carried by NoneValue`);
         }
+        if (typeof value !== 'boolean') {
+            throw new Error(`Boolean value must be a boolean, got ${typeof value}`);
+        }
+        this.value = value;
     }
 
     static parse(str: string): BooleanValue {
         const trimmed = str.trim().toLowerCase();
 
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new BooleanValue(undefined);
+            throw new Error(`Cannot parse "${str}" as Boolean`);
         }
 
         if (trimmed === 'true') {
@@ -36,12 +35,12 @@ export class BooleanValue implements Value {
         throw new Error(`Cannot parse "${str}" as Boolean`);
     }
 
-    valueOf(): boolean | undefined {
+    valueOf(): boolean {
         return this.value;
     }
 
     toString(): string {
-        return this.value === undefined ? 'none' : this.value.toString();
+        return this.value.toString();
     }
 
     /**
@@ -56,14 +55,14 @@ export class BooleanValue implements Value {
         return this.value === otherBoolean.value;
     }
 
-    toJSON(): boolean | null {
+    toJSON(): boolean {
         return this.value ?? null;
     }
 
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? NONE_VALUE : this.toString()
+            value: this.toString()
         };
     }
 }

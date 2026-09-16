@@ -15,6 +15,7 @@ use reifydb_codec::{
 };
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{
+	Result,
 	fragment::Fragment,
 	util::bitvec::BitVec,
 	value::{
@@ -46,10 +47,11 @@ use uuid::Uuid;
 
 use crate::common::extern_wasm::{
 	layout::{EXTERN_WASM_COLUMN_SIZE, EXTERN_WASM_COLUMNS_HEADER_SIZE, ExternWasmColumn, ExternWasmColumns},
-	marshal::util::column_data_to_type_code,
+	marshal::util::{column_data_to_type_code, ensure_marshallable},
 };
 
-pub fn marshal_columns_to_bytes(columns: &Columns) -> Vec<u8> {
+pub fn marshal_columns_to_bytes(columns: &Columns) -> Result<Vec<u8>> {
+	ensure_marshallable(columns)?;
 	let row_count = columns.row_count();
 	let column_count = columns.len();
 
@@ -124,7 +126,7 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Vec<u8> {
 		desc.write_at(&mut buf, offset);
 	}
 
-	buf
+	Ok(buf)
 }
 
 pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
@@ -368,6 +370,12 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 
+		ColumnBuffer::Digest {
+			inner,
+			accuracy,
+			..
+		} => panic!("a Digest({inner}, {accuracy}) column cannot be marshalled to a wasm guest"),
+
 		ColumnBuffer::Option {
 			inner,
 			..
@@ -540,7 +548,12 @@ fn unmarshal_column_data(
 				u128_container.iter().map(|v| DictionaryEntryId::U16(v.unwrap_or_default())).collect();
 			ColumnBuffer::DictionaryId(DictionaryContainer::new(entries))
 		}
-		ValueKind::None | ValueKind::Type | ValueKind::List | ValueKind::Record | ValueKind::Tuple => {
+		ValueKind::None
+		| ValueKind::Type
+		| ValueKind::List
+		| ValueKind::Record
+		| ValueKind::Tuple
+		| ValueKind::Digest => {
 			return ColumnBuffer::none_typed(ValueType::Any, row_count);
 		}
 	};

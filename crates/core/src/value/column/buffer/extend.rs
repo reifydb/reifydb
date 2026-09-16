@@ -85,6 +85,18 @@ impl ColumnBuffer {
 			) => l.extend(&r)?,
 			(ColumnBuffer::DictionaryId(l), ColumnBuffer::DictionaryId(r)) => l.extend(&r)?,
 			(ColumnBuffer::Any(l), ColumnBuffer::Any(r)) => l.extend(&r)?,
+			(
+				ColumnBuffer::Digest {
+					container: l,
+					inner: l_inner,
+					accuracy: l_accuracy,
+				},
+				ColumnBuffer::Digest {
+					container: r,
+					inner: r_inner,
+					accuracy: r_accuracy,
+				},
+			) if *l_inner == r_inner && *l_accuracy == r_accuracy => l.extend(&r)?,
 
 			(
 				ColumnBuffer::Option {

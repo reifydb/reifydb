@@ -96,7 +96,7 @@ impl JoinConditionCompiler {
 			&& left.token.fragment.text() == alias.text()
 		{
 			let column = ColumnIdentifier {
-				object: ColumnObject::Alias(alias.clone()),
+				object: ColumnObject::Alias(left.token.fragment.to_owned()),
 				name: right.token.fragment.to_owned(),
 			};
 			return Ok(Expression::AccessSource(AccessObjectExpression {

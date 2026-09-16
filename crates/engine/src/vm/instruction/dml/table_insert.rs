@@ -16,6 +16,7 @@ use reifydb_core::{
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		index::primary_key_violation,
+		query::column_not_found,
 	},
 	interface::{
 		catalog::{
@@ -48,7 +49,7 @@ use tracing::instrument;
 use super::{
 	context::TableTarget,
 	primary_key,
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 	shape::get_or_create_table_shape,
 };
 use crate::{
@@ -134,6 +135,7 @@ pub(crate) fn insert_table(
 	if let Some(returning_exprs) = &returning {
 		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
 		decode_returning_dictionaries(services, txn, &table.columns, &mut columns)?;
+		let columns = with_absent_pre_image(columns);
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
 	Ok(insert_table_result(namespace.name(), &table.name, total_rows as u64))
@@ -208,6 +210,11 @@ fn validate_and_encode_input_rows(
 			&columns,
 			PolicyTargetType::Table,
 		)?;
+		if let Some(unknown) =
+			columns.names.iter().find(|name| !target.table.columns.iter().any(|c| c.name == name.text()))
+		{
+			return_error!(column_not_found(unknown.clone()));
+		}
 		let mut column_map: HashMap<&str, usize> = HashMap::new();
 		for (idx, col) in columns.iter().enumerate() {
 			column_map.insert(col.name().text(), idx);

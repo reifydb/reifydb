@@ -309,6 +309,8 @@ pub fn merge(
 
 #[cfg(test)]
 mod tests {
+	use std::ptr;
+
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		common::{ChangeVersion, SourceVersion},
@@ -680,8 +682,8 @@ mod tests {
 		let mut cache = ReadCache::default();
 		let first = cache.insert(cv(0), chunk(0, 10), cv(10));
 		let served = cache.get(cv(4), cv(10)).expect("cursor 4 lies inside the chunk 0..10");
-		assert!(std::ptr::eq(&served.items[0], &first[4]), "the served read must point into the cached chunk");
-		assert!(std::ptr::eq(&cache.get(cv(0), cv(10)).expect("chunk 0..10").items[0], &first[0]));
+		assert!(ptr::eq(&served.items[0], &first[4]), "the served read must point into the cached chunk");
+		assert!(ptr::eq(&cache.get(cv(0), cv(10)).expect("chunk 0..10").items[0], &first[0]));
 	}
 
 	#[test]

@@ -4,6 +4,7 @@
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
+	value::value_type::ValueType,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -55,6 +56,47 @@ pub enum AstError {
 
 	#[error("maximum nesting depth exceeded")]
 	MaxDepthExceeded {
+		fragment: Fragment,
+	},
+
+	#[error("digest not supported for {inner}")]
+	DigestInputTypeUnsupported {
+		inner: ValueType,
+		fragment: Fragment,
+	},
+
+	#[error("accuracy must be between 0.001 and 0.1")]
+	DigestAccuracyOutOfRange {
+		fragment: Fragment,
+	},
+
+	#[error("accuracy must be a whole number of parts per million")]
+	DigestAccuracyNotWholePpm {
+		fragment: Fragment,
+	},
+
+	#[error("accuracy must be a number")]
+	DigestAccuracyNotANumber {
+		fragment: Fragment,
+	},
+
+	#[error("digest needs an input type and an accuracy")]
+	DigestAccuracyMissing {
+		fragment: Fragment,
+	},
+
+	#[error("digest takes an input type and an accuracy only")]
+	DigestTooManyParameters {
+		fragment: Fragment,
+	},
+
+	#[error("digest input must be a type")]
+	DigestInputNotAType {
+		fragment: Fragment,
+	},
+
+	#[error("Option cannot wrap another Option")]
+	NestedOption {
 		fragment: Fragment,
 	},
 }
@@ -192,7 +234,7 @@ impl IntoDiagnostic for AstError {
 					message: format!("type `{}` does not accept these parameters", &type_name),
 					fragment,
 					label: Some("unsupported type parameters".to_string()),
-					help: Some("Only utf8, blob, int and uint take a byte limit, e.g. utf8(255), and decimal takes precision and scale, e.g. decimal(10,2)".to_string()),
+					help: Some("Only utf8, blob, int and uint take a byte limit, e.g. utf8(255), decimal takes precision and scale, e.g. decimal(10,2), and digest takes an input type and an accuracy, e.g. digest(float8, 0.01)".to_string()),
 					column: None,
 					notes: vec![],
 					cause: None,
@@ -224,6 +266,119 @@ impl IntoDiagnostic for AstError {
 				fragment,
 				label: Some("expression is too deeply nested".to_string()),
 				help: Some("Reduce the nesting depth of your expression".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::DigestInputTypeUnsupported {
+				inner,
+				fragment,
+			} => Diagnostic {
+				code: "AST_013".to_string(),
+				rql: None,
+				message: format!("digest not supported for {}", inner),
+				fragment,
+				label: Some("unsupported digest input type".to_string()),
+				help: Some("A digest takes an int, uint, float or duration input, e.g. digest(float8, 0.01)".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::DigestAccuracyOutOfRange {
+				fragment,
+			} => Diagnostic {
+				code: "AST_014".to_string(),
+				rql: None,
+				message: "accuracy must be between 0.001 and 0.1".to_string(),
+				fragment,
+				label: Some("accuracy out of range".to_string()),
+				help: Some("Write an accuracy from 0.001 to 0.1, e.g. digest(float8, 0.01)".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::DigestAccuracyNotWholePpm {
+				fragment,
+			} => Diagnostic {
+				code: "AST_015".to_string(),
+				rql: None,
+				message: "accuracy must be a whole number of parts per million".to_string(),
+				fragment,
+				label: Some("accuracy has too many decimal places".to_string()),
+				help: Some("Write the accuracy with at most six decimal places, e.g. digest(float8, 0.0125)".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::DigestAccuracyNotANumber {
+				fragment,
+			} => Diagnostic {
+				code: "AST_016".to_string(),
+				rql: None,
+				message: "accuracy must be a number".to_string(),
+				fragment,
+				label: Some("not a number".to_string()),
+				help: Some("Write the accuracy as a number literal, e.g. digest(float8, 0.01)".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::DigestAccuracyMissing {
+				fragment,
+			} => Diagnostic {
+				code: "AST_017".to_string(),
+				rql: None,
+				message: "digest needs an input type and an accuracy".to_string(),
+				fragment,
+				label: Some("accuracy missing".to_string()),
+				help: Some("Write digest(<input type>, <accuracy>), e.g. digest(float8, 0.01)".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::DigestTooManyParameters {
+				fragment,
+			} => Diagnostic {
+				code: "AST_018".to_string(),
+				rql: None,
+				message: "digest takes an input type and an accuracy only".to_string(),
+				fragment,
+				label: Some("unexpected parameter".to_string()),
+				help: Some("Remove the extra parameter, e.g. digest(float8, 0.01)".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::DigestInputNotAType {
+				fragment,
+			} => Diagnostic {
+				code: "AST_019".to_string(),
+				rql: None,
+				message: "digest input must be a type".to_string(),
+				fragment,
+				label: Some("not a type".to_string()),
+				help: Some("Write the input type first, e.g. digest(float8, 0.01)".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::NestedOption {
+				fragment,
+			} => Diagnostic {
+				code: "AST_020".to_string(),
+				rql: None,
+				message: "Option cannot wrap another Option".to_string(),
+				fragment,
+				label: Some("already optional".to_string()),
+				help: Some("Write a single Option, e.g. Option(int4); none is the only missing value".to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,

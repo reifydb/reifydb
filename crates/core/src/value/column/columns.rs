@@ -173,6 +173,7 @@ fn value_to_buffer(value: Value) -> ColumnBuffer {
 		Value::List(v) => ColumnBuffer::any(vec![Value::List(v)]),
 		Value::Record(v) => ColumnBuffer::any(vec![Value::Record(v)]),
 		Value::Tuple(v) => ColumnBuffer::any(vec![Value::Tuple(v)]),
+		Value::Digest(v) => ColumnBuffer::from(Value::Digest(v)),
 	}
 }
 

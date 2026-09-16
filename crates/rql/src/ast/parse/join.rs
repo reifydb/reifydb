@@ -9,7 +9,7 @@ use crate::{
 		ast::{AstJoin, AstJoinExpressionPair, AstUsingClause, JoinConnector},
 		parse::{Parser, Precedence},
 	},
-	bump::BumpBox,
+	bump::{BumpBox, BumpFragment},
 	diagnostic::AstError,
 	token::{
 		keyword::Keyword::{Inner, Join, Left, Natural, Using},
@@ -131,7 +131,7 @@ impl<'bump> Parser<'bump> {
 		let mut pairs = Vec::new();
 
 		loop {
-			self.consume_operator(OpenParen)?;
+			let open = self.consume_operator(OpenParen)?;
 			let first = self.parse_node(Precedence::None)?;
 
 			if !self.current()?.is_separator(Comma) {
@@ -142,7 +142,16 @@ impl<'bump> Parser<'bump> {
 			}
 			self.advance()?;
 			let second = self.parse_node(Precedence::None)?;
-			self.consume_operator(CloseParen)?;
+			let close = self.consume_operator(CloseParen)?;
+			let start = open.fragment.offset();
+			let end = close.fragment.source_end();
+			let fragment = BumpFragment::Statement {
+				text: &self.source[start..end],
+				offset: start,
+				source_end: end,
+				line: open.fragment.line(),
+				column: open.fragment.column(),
+			};
 
 			let connector = if !self.is_eof() {
 				if self.current()?.is_operator(And) {
@@ -163,6 +172,7 @@ impl<'bump> Parser<'bump> {
 				first: BumpBox::new_in(first, self.bump()),
 				second: BumpBox::new_in(second, self.bump()),
 				connector,
+				fragment,
 			});
 
 			if !has_more {

@@ -17,6 +17,8 @@ pub struct ExtractedUdf {
 	pub callable: Callable,
 	pub arg_expressions: Vec<Expression>,
 	pub result_column: Fragment,
+	pub name: String,
+	pub fragment: Fragment,
 }
 
 pub fn extract_udf_calls(
@@ -56,6 +58,8 @@ fn rewrite_expr(
 					callable,
 					arg_expressions: rewritten_args,
 					result_column: col_name.clone(),
+					name: function_name.to_string(),
+					fragment: call.func.0.clone(),
 				});
 
 				Expression::Column(ColumnExpression(ColumnIdentifier {

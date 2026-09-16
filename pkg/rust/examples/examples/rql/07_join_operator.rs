@@ -166,7 +166,7 @@ natural join { from company::departments } as departments"#,
 inner join {
   from company::departments
 } as departments using (dept_id, departments.dept_id)
-filter location == "Building A""#,
+filter departments_location == "Building A""#,
 	);
 	for frame in db
 		.query_as_root(
@@ -175,7 +175,7 @@ filter location == "Building A""#,
 			inner join {
 				from company::departments
 			} as departments using (dept_id, departments.dept_id)
-			filter location == "Building A"
+			filter departments_location == "Building A"
 			"#,
 			Params::None,
 		)

@@ -12,6 +12,7 @@ use reifydb_core::{
 	error::diagnostic::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
 		engine,
+		query::column_not_found,
 	},
 	interface::{
 		catalog::{
@@ -104,6 +105,11 @@ pub(crate) fn update_ringbuffer(
 			&columns,
 			PolicyTargetType::RingBuffer,
 		)?;
+		if let Some(unknown) =
+			columns.names.iter().find(|name| !ringbuffer.columns.iter().any(|c| c.name == name.text()))
+		{
+			return_error!(column_not_found(unknown.clone()));
+		}
 		if columns.row_numbers().is_empty() {
 			return_error!(engine::missing_row_number_column());
 		}

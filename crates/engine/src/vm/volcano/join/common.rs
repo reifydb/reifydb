@@ -4,13 +4,18 @@
 use std::sync::Arc;
 
 use postcard::to_stdvec;
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::{
+	error::diagnostic::operation,
+	internal_error,
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+};
 use reifydb_evaluate::expression::compile::CompiledExpr;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error,
 	fragment::Fragment,
 	util::hash::{Hash128, xxh3_128},
-	value::Value,
+	value::{Value, value_type::ValueType},
 };
 
 use crate::{
@@ -162,22 +167,33 @@ impl JoinContext {
 	}
 }
 
+pub(crate) fn ensure_join_keyable(columns: &Columns, key_indices: &[usize]) -> Result<()> {
+	for &idx in key_indices {
+		let ty = columns[idx].get_type();
+		if matches!(ty.inner_type(), ValueType::Digest { .. }) {
+			return Err(error!(operation::join_key_unkeyable(columns.name_at(idx).clone(), ty)));
+		}
+	}
+	Ok(())
+}
+
 pub(crate) fn compute_join_hash(
 	columns: &Columns,
 	col_indices: &[usize],
 	row_idx: usize,
 	buf: &mut Vec<u8>,
-) -> Option<Hash128> {
+) -> Result<Option<Hash128>> {
 	buf.clear();
 	for &idx in col_indices {
 		let value = columns[idx].get_value(row_idx);
 		if matches!(value, Value::None { .. }) {
-			return None;
+			return Ok(None);
 		}
-		let bytes = to_stdvec(&value).ok()?;
+		let bytes =
+			to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize join key value: {}", e))?;
 		buf.extend_from_slice(&bytes);
 	}
-	Some(xxh3_128(buf))
+	Ok(Some(xxh3_128(buf)))
 }
 
 pub(crate) fn keys_equal_by_index(
@@ -206,15 +222,18 @@ pub(crate) fn eval_join_condition(
 	right_row: &[Value],
 	alias: &Option<Fragment>,
 	ctx: &QueryContext,
-) -> bool {
+) -> Result<bool> {
 	if compiled.is_empty() {
-		return true;
+		return Ok(true);
 	}
 	let eval_columns = build_eval_columns(left_columns, right_columns, left_row, right_row, alias);
 	let session = eval_context_from_query(ctx);
 	let exec_ctx = session.with_eval_join(Columns::new(eval_columns));
-	compiled.iter().all(|compiled_expr| {
-		let col = compiled_expr.execute(&exec_ctx).unwrap();
-		matches!(col.data().get_value(0), Value::Boolean(true))
-	})
+	for compiled_expr in compiled {
+		let col = compiled_expr.execute(&exec_ctx)?;
+		if !matches!(col.data().get_value(0), Value::Boolean(true)) {
+			return Ok(false);
+		}
+	}
+	Ok(true)
 }

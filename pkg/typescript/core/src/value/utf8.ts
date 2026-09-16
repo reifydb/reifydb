@@ -5,33 +5,32 @@ import {NONE_VALUE} from "../constant";
 
 export class Utf8Value implements Value {
     readonly type: Type = "Utf8" as const;
-    public readonly value?: string;
+    public readonly value: string;
 
-    constructor(value?: string) {
-        if (value !== undefined) {
-            if (typeof value !== 'string') {
-                throw new Error(`Utf8 value must be a string, got ${typeof value}`);
-            }
-            this.value = value;
-        } else {
-            this.value = undefined;
+    constructor(value: string) {
+        if (value === undefined) {
+            throw new Error(`Utf8 value must be defined, a none is carried by NoneValue`);
         }
+        if (typeof value !== 'string') {
+            throw new Error(`Utf8 value must be a string, got ${typeof value}`);
+        }
+        this.value = value;
     }
 
     static parse(str: string): Utf8Value {
         if (str === NONE_VALUE) {
-            return new Utf8Value(undefined);
+            throw new Error(`Cannot parse "${str}" as Utf8`);
         }
         
         return new Utf8Value(str);
     }
 
-    valueOf(): string | undefined {
+    valueOf(): string {
         return this.value;
     }
 
     toString(): string {
-        return this.value === undefined ? 'none' : this.value;
+        return this.value;
     }
 
     /**
@@ -46,14 +45,14 @@ export class Utf8Value implements Value {
         return this.value === otherUtf8.value;
     }
 
-    toJSON(): string | null {
+    toJSON(): string {
         return this.value ?? null;
     }
 
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? NONE_VALUE : this.toString()
+            value: this.toString()
         };
     }
 }

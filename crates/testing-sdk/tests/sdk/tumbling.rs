@@ -182,7 +182,7 @@ impl TumblingOperator for SealedVolume {
 		})
 	}
 
-	fn lateness(&self) -> Option<Duration> {
+	fn seal_span(&self) -> Option<Duration> {
 		Some(millis(120))
 	}
 }

@@ -38,9 +38,9 @@ pub(crate) fn seal_frontier<C: SealDomain>(store: &mut (impl StateStore + TimerS
 pub(crate) fn observe_batch<C: SealDomain>(
 	store: &mut (impl StateStore + TimerStore),
 	newest: C,
-	lateness: C::Lateness,
+	seal_span: C::SealSpan,
 ) -> Result<()> {
-	C::observe(store, newest, lateness)
+	C::observe(store, newest, seal_span)
 }
 
 pub(crate) fn timer_frontier<C: SealDomain>(

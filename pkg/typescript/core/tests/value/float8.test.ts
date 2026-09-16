@@ -11,16 +11,14 @@ describe('Float8Value', () => {
             expect(float8.type).toBe('Float8');
         });
 
-        it('should create instance with undefined value', () => {
-            const float8 = new Float8Value(undefined);
-            expect(float8.value).toBeUndefined();
-            expect(float8.type).toBe('Float8');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Float8Value(undefined)).toThrow();
         });
 
-        it('should create instance with no arguments', () => {
-            const float8 = new Float8Value();
-            expect(float8.value).toBeUndefined();
-            expect(float8.type).toBe('Float8');
+        it('should reject no arguments', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Float8Value()).toThrow();
         });
 
         it('should accept zero', () => {
@@ -39,19 +37,19 @@ describe('Float8Value', () => {
             expect(float8.value).toBe(3.141592653589793);
         });
 
-        it('should handle positive infinity', () => {
-            const float8 = new Float8Value(Infinity);
-            expect(float8.value).toBe(Infinity);
+        it('should handle positive infinity, rejected', () => {
+            // the database forbids a non-finite float, so one must never become a value
+            expect(() => new Float8Value(Infinity)).toThrow();
         });
 
-        it('should handle negative infinity', () => {
-            const float8 = new Float8Value(-Infinity);
-            expect(float8.value).toBe(-Infinity);
+        it('should handle negative infinity, rejected', () => {
+            // the database forbids a non-finite float, so one must never become a value
+            expect(() => new Float8Value(-Infinity)).toThrow();
         });
 
-        it('should handle NaN', () => {
-            const float8 = new Float8Value(NaN);
-            expect(float8.value).toBeNaN();
+        it('should handle NaN, rejected', () => {
+            // the database forbids a non-finite float, so one must never become a value
+            expect(() => new Float8Value(NaN)).toThrow();
         });
 
         it('should handle Number.MAX_VALUE', () => {
@@ -100,19 +98,19 @@ describe('Float8Value', () => {
             expect(float8.value).toBe(1.5e308);
         });
 
-        it('should parse infinity string', () => {
-            const float8 = Float8Value.parse('Infinity');
-            expect(float8.value).toBe(Infinity);
+        it('should parse infinity string, rejected', () => {
+            // the database forbids a non-finite float, so one must never become a value
+            expect(() => Float8Value.parse('Infinity')).toThrow();
         });
 
-        it('should parse negative infinity string', () => {
-            const float8 = Float8Value.parse('-Infinity');
-            expect(float8.value).toBe(-Infinity);
+        it('should parse negative infinity string, rejected', () => {
+            // the database forbids a non-finite float, so one must never become a value
+            expect(() => Float8Value.parse('-Infinity')).toThrow();
         });
 
-        it('should parse NaN string', () => {
-            const float8 = Float8Value.parse('NaN');
-            expect(float8.value).toBeNaN();
+        it('should parse NaN string, rejected', () => {
+            // the database forbids a non-finite float, so one must never become a value
+            expect(() => Float8Value.parse('NaN')).toThrow();
         });
 
         it('should trim whitespace', () => {
@@ -120,14 +118,14 @@ describe('Float8Value', () => {
             expect(float8.value).toBe(3.14);
         });
 
-        it('should return undefined for empty string', () => {
-            const float8 = Float8Value.parse('');
-            expect(float8.value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Float8Value.parse('')).toThrow();
         });
 
-        it('should return undefined for whitespace-only string', () => {
-            const float8 = Float8Value.parse('   ');
-            expect(float8.value).toBeUndefined();
+        it('should reject a whitespace-only string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Float8Value.parse('   ')).toThrow();
         });
 
         it('should throw error for non-numeric string', () => {
@@ -143,11 +141,6 @@ describe('Float8Value', () => {
         it('should return the numeric value', () => {
             const float8 = new Float8Value(3.141592653589793);
             expect(float8.valueOf()).toBe(3.141592653589793);
-        });
-
-        it('should return undefined when value is undefined', () => {
-            const float8 = new Float8Value(undefined);
-            expect(float8.valueOf()).toBeUndefined();
         });
 
         it('should return zero', () => {

@@ -22,16 +22,14 @@ describe('Uint8Value', () => {
             expect(uint8.value).toBe(BigInt(42));
         });
 
-        it('should create instance with undefined value', () => {
-            const uint8 = new Uint8Value(undefined);
-            expect(uint8.value).toBeUndefined();
-            expect(uint8.type).toBe('Uint8');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Uint8Value(undefined)).toThrow();
         });
 
-        it('should create instance with no arguments', () => {
-            const uint8 = new Uint8Value();
-            expect(uint8.value).toBeUndefined();
-            expect(uint8.type).toBe('Uint8');
+        it('should reject no arguments', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Uint8Value()).toThrow();
         });
 
         it('should accept minimum value 0', () => {
@@ -84,14 +82,14 @@ describe('Uint8Value', () => {
             expect(uint8.value).toBe(BigInt(1000000));
         });
 
-        it('should return undefined for empty string', () => {
-            const uint8 = Uint8Value.parse('');
-            expect(uint8.value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Uint8Value.parse('')).toThrow();
         });
 
-        it('should return undefined for whitespace-only string', () => {
-            const uint8 = Uint8Value.parse('   ');
-            expect(uint8.value).toBeUndefined();
+        it('should reject a whitespace-only string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Uint8Value.parse('   ')).toThrow();
         });
 
         it('should throw error for non-numeric string', () => {
@@ -117,11 +115,6 @@ describe('Uint8Value', () => {
             expect(uint8.valueOf()).toBe(BigInt(1000000));
         });
 
-        it('should return undefined when value is undefined', () => {
-            const uint8 = new Uint8Value(undefined);
-            expect(uint8.valueOf()).toBeUndefined();
-        });
-
         it('should return zero', () => {
             const uint8 = new Uint8Value(0);
             expect(uint8.valueOf()).toBe(BigInt(0));
@@ -132,11 +125,6 @@ describe('Uint8Value', () => {
         it('should convert bigint to number', () => {
             const uint8 = new Uint8Value(BigInt(1000000));
             expect(uint8.toNumber()).toBe(1000000);
-        });
-
-        it('should return undefined when value is undefined', () => {
-            const uint8 = new Uint8Value(undefined);
-            expect(uint8.toNumber()).toBeUndefined();
         });
 
         it('should convert zero to number', () => {

@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-import {OptionType, Type, isOptionType} from '.';
+import {OptionType, Type, digestTypeName, isDigestType, isOptionType} from '.';
 import {NONE_PRESENTATION} from '../present/value';
 
 type State<T> = {some: true; value: T} | {some: false; inner: Type};
 
 function describeType(t: Type): string {
+    if (isDigestType(t)) {
+        return digestTypeName(t);
+    }
     return isOptionType(t) ? `Option(${describeType(t.Option)})` : t;
 }
 

@@ -156,7 +156,12 @@ fn elem_size_for(type_code: ValueKind) -> usize {
 		| ValueKind::DictionaryId => 16,
 		ValueKind::Utf8 | ValueKind::Blob => 1,
 		ValueKind::Int | ValueKind::Uint | ValueKind::Decimal | ValueKind::Any => 1,
-		ValueKind::None | ValueKind::Type | ValueKind::List | ValueKind::Record | ValueKind::Tuple => 1,
+		ValueKind::None
+		| ValueKind::Type
+		| ValueKind::List
+		| ValueKind::Record
+		| ValueKind::Tuple
+		| ValueKind::Digest => 1,
 	}
 }
 

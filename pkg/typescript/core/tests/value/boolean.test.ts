@@ -17,16 +17,14 @@ describe('BooleanValue', () => {
             expect(bool.type).toBe('Boolean');
         });
 
-        it('should create instance with undefined value', () => {
-            const bool = new BooleanValue(undefined);
-            expect(bool.value).toBeUndefined();
-            expect(bool.type).toBe('Boolean');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new BooleanValue(undefined)).toThrow();
         });
 
-        it('should create instance with no arguments', () => {
-            const bool = new BooleanValue();
-            expect(bool.value).toBeUndefined();
-            expect(bool.type).toBe('Boolean');
+        it('should reject no arguments', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new BooleanValue()).toThrow();
         });
 
         it('should throw error for non-boolean value', () => {
@@ -61,19 +59,19 @@ describe('BooleanValue', () => {
             expect(bool.value).toBe(true);
         });
 
-        it('should return undefined for empty string', () => {
-            const bool = BooleanValue.parse('');
-            expect(bool.value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => BooleanValue.parse('')).toThrow();
         });
 
-        it('should return undefined for whitespace-only string', () => {
-            const bool = BooleanValue.parse('   ');
-            expect(bool.value).toBeUndefined();
+        it('should reject a whitespace-only string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => BooleanValue.parse('   ')).toThrow();
         });
 
-        it('should return undefined for NONE_VALUE', () => {
-            const bool = BooleanValue.parse('⟪none⟫');
-            expect(bool.value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option value must always be defined, so the none marker is not a value
+            expect(() => BooleanValue.parse('⟪none⟫')).toThrow();
         });
 
         it('should throw error for invalid string', () => {
@@ -94,9 +92,5 @@ describe('BooleanValue', () => {
             expect(bool.valueOf()).toBe(false);
         });
 
-        it('should return undefined when value is undefined', () => {
-            const bool = new BooleanValue(undefined);
-            expect(bool.valueOf()).toBeUndefined();
-        });
     });
 });

@@ -23,8 +23,11 @@ use tracing::instrument;
 use crate::{
 	Result,
 	vm::{
-		exec::call::collect_call_result,
-		vm::{EMPTY_PARAMS, Vm},
+		exec::call::{
+			cast_to_declared_return_type, cast_to_parameter_type, check_arity, collect_call_result,
+			declared_return_column, untyped_return_column,
+		},
+		vm::{EMPTY_PARAMS, UdfCall, Vm},
 		volcano::query::{QueryContext, QueryNode, eval_context_from_query},
 	},
 };
@@ -78,8 +81,12 @@ impl UdfEvalNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::udf_eval::args")]
 	fn eval_args(call: &CompiledUdfCall, eval_ctx: &EvalContext) -> Result<Vec<ColumnWithName>> {
 		let mut arg_columns = Vec::with_capacity(call.compiled_args.len());
-		for compiled_arg in &call.compiled_args {
-			arg_columns.push(compiled_arg.execute(eval_ctx)?);
+		for (compiled_arg, parameter) in call.compiled_args.iter().zip(call.udf.callable.parameters.iter()) {
+			let argument = compiled_arg.execute(eval_ctx)?;
+			arg_columns.push(ColumnWithName::new(
+				argument.name,
+				cast_to_parameter_type(eval_ctx, parameter, argument.data)?,
+			));
 		}
 		Ok(arg_columns)
 	}
@@ -88,6 +95,7 @@ impl UdfEvalNode {
 	fn run_vectorized<'a>(
 		rx: &mut Transaction<'a>,
 		stored_ctx: &QueryContext,
+		eval_ctx: &EvalContext,
 		call: &CompiledUdfCall,
 		arg_columns: &[ColumnWithName],
 		row_count: usize,
@@ -108,6 +116,10 @@ impl UdfEvalNode {
 		let mut vm = Vm::with_batch_size_from_services(
 			func_symbols,
 			row_count,
+			UdfCall {
+				fragment: call.udf.fragment.clone(),
+				return_type: call.udf.callable.return_type.clone(),
+			},
 			&stored_ctx.services,
 			&EMPTY_PARAMS,
 			stored_ctx.identity,
@@ -116,7 +128,7 @@ impl UdfEvalNode {
 		vm.run(&stored_ctx.services, rx, &call.udf.callable.body, &mut func_result)?;
 
 		let result_var = collect_call_result(&mut vm, &mut func_result);
-		Ok(match result_var {
+		let column = match result_var {
 			Variable::Columns {
 				columns: c,
 				..
@@ -132,13 +144,27 @@ impl UdfEvalNode {
 					data,
 				}
 			}
-		})
+		};
+		match &call.udf.callable.return_type {
+			Some(declared) => {
+				let data = cast_to_declared_return_type(
+					eval_ctx,
+					&column.data,
+					declared,
+					&call.udf.name,
+					&call.udf.fragment,
+				)?;
+				Ok(ColumnWithName::new(column.name, data))
+			}
+			None => Ok(column),
+		}
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::udf_eval::scalar")]
 	fn run_scalar<'a>(
 		rx: &mut Transaction<'a>,
 		stored_ctx: &QueryContext,
+		eval_ctx: &EvalContext,
 		call: &CompiledUdfCall,
 		arg_columns: &[ColumnWithName],
 		row_count: usize,
@@ -180,11 +206,12 @@ impl UdfEvalNode {
 			results.push(result);
 		}
 
-		let col_type = results.first().map(|v| v.get_type()).unwrap_or(ValueType::Any);
-		let mut data = ColumnBuffer::none_typed(col_type, 0);
-		for value in &results {
-			data.push_value(value.clone());
-		}
+		let data = match &call.udf.callable.return_type {
+			Some(declared) => {
+				declared_return_column(eval_ctx, results, declared, &call.udf.name, &call.udf.fragment)?
+			}
+			None => untyped_return_column(results, &call.udf.name, &call.udf.fragment)?,
+		};
 		Ok(ColumnWithName {
 			name: call.udf.result_column.clone(),
 			data,
@@ -195,6 +222,10 @@ impl UdfEvalNode {
 impl QueryNode for UdfEvalNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::udf_eval::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		for udf in &self.udf_calls {
+			check_arity(&udf.callable.parameters, udf.arg_expressions.len(), &udf.name, &udf.fragment)?;
+		}
+
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
 		};
@@ -206,14 +237,14 @@ impl QueryNode for UdfEvalNode {
 				let compiled_args = udf
 					.arg_expressions
 					.iter()
-					.map(|e| compile_expression(&compile_ctx, e).expect("compile UDF arg"))
-					.collect();
-				CompiledUdfCall {
+					.map(|e| compile_expression(&compile_ctx, e))
+					.collect::<Result<Vec<_>>>()?;
+				Ok(CompiledUdfCall {
 					udf,
 					compiled_args,
-				}
+				})
 			})
-			.collect();
+			.collect::<Result<Vec<_>>>()?;
 
 		self.context = Some((Arc::new(ctx.clone()), compiled));
 		self.input.initialize(rx, ctx)?;
@@ -229,10 +260,6 @@ impl QueryNode for UdfEvalNode {
 		let (stored_ctx, compiled_calls) = self.context.as_ref().unwrap();
 		let row_count = columns.row_count();
 
-		if row_count == 0 {
-			return Ok(Some(columns));
-		}
-
 		for call in compiled_calls {
 			let session = eval_context_from_query(stored_ctx);
 			let eval_ctx = session.with_eval(columns.clone(), row_count);
@@ -240,9 +267,9 @@ impl QueryNode for UdfEvalNode {
 			let arg_columns = Self::eval_args(call, &eval_ctx)?;
 
 			let result_column = if is_vectorizable(&call.udf.callable.body) {
-				Self::run_vectorized(rx, stored_ctx, call, &arg_columns, row_count)?
+				Self::run_vectorized(rx, stored_ctx, &eval_ctx, call, &arg_columns, row_count)?
 			} else {
-				Self::run_scalar(rx, stored_ctx, call, &arg_columns, row_count)?
+				Self::run_scalar(rx, stored_ctx, &eval_ctx, call, &arg_columns, row_count)?
 			};
 
 			columns.columns.push(result_column.data);
@@ -345,6 +372,7 @@ pub(crate) fn evaluate_udfs_no_input(
 	let mut result_columns = Vec::new();
 
 	for udf in &all_udfs {
+		check_arity(&udf.callable.parameters, udf.arg_expressions.len(), &udf.name, &udf.fragment)?;
 		let mut func_symbols = ctx.symbols.clone();
 		func_symbols.enter_scope(ScopeType::Function);
 
@@ -353,10 +381,10 @@ pub(crate) fn evaluate_udfs_no_input(
 		}
 
 		for (param, arg_expr) in udf.callable.parameters.iter().zip(udf.arg_expressions.iter()) {
-			let compiled_arg = compile_expression(&compile_ctx, arg_expr).expect("compile UDF arg");
+			let compiled_arg = compile_expression(&compile_ctx, arg_expr)?;
 			let eval_ctx = session.with_eval_empty();
 			let arg_col = compiled_arg.execute(&eval_ctx)?;
-			let value = arg_col.data().get_value(0);
+			let value = cast_to_parameter_type(&eval_ctx, param, arg_col.data)?.get_value(0);
 			let param_name = strip_dollar_prefix(param.name.text()).to_string();
 			func_symbols.set(param_name, Variable::scalar(value), true)?;
 		}
@@ -372,8 +400,20 @@ pub(crate) fn evaluate_udfs_no_input(
 			_ => Value::none(),
 		};
 
-		let mut data = ColumnBuffer::none_typed(value.get_type(), 0);
-		data.push_value(value);
+		let data = match &udf.callable.return_type {
+			Some(declared) => declared_return_column(
+				&session.with_eval_empty(),
+				vec![value],
+				declared,
+				&udf.name,
+				&udf.fragment,
+			)?,
+			None => {
+				let mut data = ColumnBuffer::none_typed(value.get_type(), 0);
+				data.push_value(value);
+				data
+			}
+		};
 		result_columns.push(ColumnWithName {
 			name: udf.result_column.clone(),
 			data,

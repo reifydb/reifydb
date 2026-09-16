@@ -101,7 +101,7 @@ impl DictionaryScanNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::dictionary::assemble")]
 	fn assemble(ids: &[DictionaryEntryId], values: &[Value], dict_def: &Dictionary) -> Result<Option<Columns>> {
 		let id_column = build_id_column(ids, dict_def.id_type.clone())?;
-		let value_column = build_value_column(values, dict_def.value_type.clone())?;
+		let value_column = build_value_column(values, dict_def.value_type.clone());
 
 		Ok(Some(Columns::new(vec![id_column, value_column])))
 	}
@@ -180,106 +180,13 @@ fn build_id_column(ids: &[DictionaryEntryId], id_type: ValueType) -> Result<Colu
 	})
 }
 
-fn build_value_column(values: &[Value], value_type: ValueType) -> Result<ColumnWithName> {
-	let data = match value_type {
-		ValueType::Utf8 => {
-			let vals: Vec<String> = values
-				.iter()
-				.map(|v| match v {
-					Value::Utf8(s) => s.clone(),
-					_ => format!("{:?}", v),
-				})
-				.collect();
-			ColumnBuffer::utf8(vals)
-		}
-		ValueType::Int1 => {
-			let vals: Vec<i8> = values
-				.iter()
-				.map(|v| match v {
-					Value::Int1(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::int1(vals)
-		}
-		ValueType::Int2 => {
-			let vals: Vec<i16> = values
-				.iter()
-				.map(|v| match v {
-					Value::Int2(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::int2(vals)
-		}
-		ValueType::Int4 => {
-			let vals: Vec<i32> = values
-				.iter()
-				.map(|v| match v {
-					Value::Int4(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::int4(vals)
-		}
-		ValueType::Int8 => {
-			let vals: Vec<i64> = values
-				.iter()
-				.map(|v| match v {
-					Value::Int8(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::int8(vals)
-		}
-		ValueType::Uint1 => {
-			let vals: Vec<u8> = values
-				.iter()
-				.map(|v| match v {
-					Value::Uint1(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::uint1(vals)
-		}
-		ValueType::Uint2 => {
-			let vals: Vec<u16> = values
-				.iter()
-				.map(|v| match v {
-					Value::Uint2(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::uint2(vals)
-		}
-		ValueType::Uint4 => {
-			let vals: Vec<u32> = values
-				.iter()
-				.map(|v| match v {
-					Value::Uint4(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::uint4(vals)
-		}
-		ValueType::Uint8 => {
-			let vals: Vec<u64> = values
-				.iter()
-				.map(|v| match v {
-					Value::Uint8(n) => *n,
-					_ => 0,
-				})
-				.collect();
-			ColumnBuffer::uint8(vals)
-		}
-		_ => {
-			let vals: Vec<String> = values.iter().map(|v| format!("{:?}", v)).collect();
-			ColumnBuffer::utf8(vals)
-		}
-	};
-
-	Ok(ColumnWithName {
+fn build_value_column(values: &[Value], value_type: ValueType) -> ColumnWithName {
+	let mut data = ColumnBuffer::with_capacity(value_type, values.len());
+	for value in values {
+		data.push_value(value.clone());
+	}
+	ColumnWithName {
 		name: Fragment::internal("value"),
 		data,
-	})
+	}
 }

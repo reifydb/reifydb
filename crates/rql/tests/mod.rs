@@ -112,6 +112,7 @@ test_each_path! { in "crates/rql/tests/scripts/ast" as ast => test_embedded }
 test_each_path! { in "crates/rql/tests/scripts/logical" as logical => test_embedded }
 test_each_path! { in "crates/rql/tests/scripts/explain" as explain => test_embedded }
 test_each_path! { in "crates/rql/tests/scripts/memory_limit" as memory_limit => test_embedded }
+test_each_path! { in "crates/rql/tests/scripts/aggregate" as aggregate => test_embedded }
 
 fn test_embedded(path: &Path) {
 	let runtime = Arc::new(Runtime::new().unwrap());

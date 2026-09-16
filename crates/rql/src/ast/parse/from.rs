@@ -171,7 +171,7 @@ impl<'bump> Parser<'bump> {
 			if current.is_operator(OpenParen) {
 				nodes.push(Ast::Tuple(self.parse_tuple()?));
 			} else if current.is_operator(OpenCurly) {
-				nodes.push(Ast::Inline(self.parse_inline()?));
+				nodes.push(Ast::Inline(self.parse_inline_with_unique_keys()?));
 			} else {
 				return Err(AstError::UnexpectedToken {
 					expected: "expected '{' or '(' in inline data".to_string(),

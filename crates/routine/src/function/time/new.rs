@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{container::temporal::TemporalContainer, time::Time, value_type::ValueType};
 
@@ -67,14 +67,6 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.len() != 3 && args.len() != 4 {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 3,
-				actual: args.len(),
-			});
-		}
-
 		let hour_col = &args[0];
 		let min_col = &args[1];
 		let sec_col = &args[2];
@@ -201,5 +193,9 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 impl Function for TimeNew {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Range(3, 4)
 	}
 }

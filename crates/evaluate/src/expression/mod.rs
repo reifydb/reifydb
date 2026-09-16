@@ -3,6 +3,7 @@
 
 pub mod access;
 pub mod arith;
+pub mod branch;
 pub mod call;
 pub mod compare;
 pub mod compile;

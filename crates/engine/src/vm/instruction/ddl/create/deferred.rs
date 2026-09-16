@@ -11,6 +11,7 @@ use reifydb_core::{
 	row::RowSettings,
 	value::column::columns::Columns,
 };
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::{CompiledViewStorageKind, CreateDeferredViewNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{return_error, value::Value};
@@ -21,6 +22,7 @@ use crate::{Result, vm::services::Services};
 pub(crate) fn create_deferred_view(
 	services: &Services,
 	txn: &mut AdminTransaction,
+	symbols: &SymbolTable,
 	plan: CreateDeferredViewNode,
 ) -> Result<Columns> {
 	if let Some(view) = services.catalog.find_view_by_name(
@@ -88,7 +90,15 @@ pub(crate) fn create_deferred_view(
 		)?;
 	}
 
-	create_deferred_view_flow(&services.catalog, &services.routines, txn, &result, *plan.as_clause)?;
+	create_deferred_view_flow(
+		&services.catalog,
+		&services.routines,
+		&services.operators,
+		txn,
+		symbols,
+		&result,
+		*plan.as_clause,
+	)?;
 
 	Ok(Columns::single_row([
 		("id", Value::Uint8(result.id().0)),

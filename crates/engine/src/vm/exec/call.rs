@@ -10,9 +10,17 @@ use reifydb_core::{
 		procedure::{Procedure, ProcedureParam},
 	},
 	internal_error,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
+	value::column::{
+		ColumnWithName,
+		buffer::ColumnBuffer,
+		cast::{cast_column_data, convert::Convert},
+		columns::Columns,
+	},
 };
-use reifydb_evaluate::stack::{Callable, ClosureValue, Variable, strip_dollar_prefix};
+use reifydb_evaluate::{
+	expression::branch::BranchLayout,
+	stack::{Callable, ClosureValue, Variable, strip_dollar_prefix},
+};
 use reifydb_policy::inject_from_policies;
 use reifydb_routine_abi::{
 	Function as RoutineFunction, Procedure as RoutineProcedure,
@@ -41,7 +49,7 @@ use crate::{
 		exec::broadcast::broadcast_many,
 		services::Services,
 		stack::ControlFlow,
-		vm::{EMPTY_PARAMS, Vm},
+		vm::{EMPTY_PARAMS, UdfCall, Vm},
 		volcano::udf::is_vectorizable,
 	},
 };
@@ -56,11 +64,11 @@ impl<'a> Vm<'a> {
 		&self,
 		result: Variable,
 		return_type: Option<&TypeConstraint>,
+		name: &Fragment,
 	) -> Result<Variable> {
-		let Some(tc) = return_type else {
+		let Some(declared) = return_type else {
 			return Ok(result);
 		};
-		let target = tc.get_type();
 		match result {
 			Variable::Columns {
 				columns,
@@ -70,10 +78,15 @@ impl<'a> Vm<'a> {
 					.names
 					.iter()
 					.zip(columns.columns.iter())
-					.map(|(name, data)| {
-						let casted =
-							cast_column_data(&ctx, data, target.clone(), name.clone())?;
-						Ok(ColumnWithName::new(name.clone(), casted))
+					.map(|(column_name, data)| {
+						let casted = cast_to_declared_return_type(
+							&ctx,
+							data,
+							declared,
+							name.text(),
+							name,
+						)?;
+						Ok(ColumnWithName::new(column_name.clone(), casted))
 					})
 					.collect::<Result<Vec<_>>>()?;
 				Ok(Variable::columns(Columns::new(coerced)))
@@ -89,6 +102,89 @@ impl<'a> Vm<'a> {
 		let cast = cast_column_data(&ctx, &data, target.clone(), fragment)?;
 		Ok(cast.get_value(0))
 	}
+}
+
+pub(crate) fn cast_to_declared_return_type(
+	ctx: impl Convert + Copy,
+	data: &ColumnBuffer,
+	declared: &TypeConstraint,
+	name: &str,
+	fragment: &Fragment,
+) -> Result<ColumnBuffer> {
+	let target = declared.get_type();
+	cast_column_data(ctx, data, target.clone(), fragment.clone()).map_err(|err| {
+		EngineError::ReturnTypeMismatch {
+			name: name.to_string(),
+			declared: target,
+			fragment: fragment.clone(),
+			cause: Box::new(err.diagnostic()),
+		}
+		.into()
+	})
+}
+
+pub(crate) fn cast_to_parameter_type(
+	ctx: impl Convert + Copy,
+	parameter: &FunctionParameter,
+	argument: ColumnBuffer,
+) -> Result<ColumnBuffer> {
+	let Some(declared) = &parameter.type_constraint else {
+		return Ok(argument);
+	};
+	let fragment = Fragment::internal(strip_dollar_prefix(parameter.name.text()));
+	cast_column_data(ctx, &argument, declared.get_type(), fragment)
+}
+
+pub(crate) fn declared_return_column(
+	ctx: impl Convert + Copy,
+	values: Vec<Value>,
+	declared: &TypeConstraint,
+	name: &str,
+	fragment: &Fragment,
+) -> Result<ColumnBuffer> {
+	let mut data = ColumnBuffer::with_capacity(declared.get_type(), values.len());
+	for value in values {
+		data.extend(cast_to_declared_return_type(ctx, &ColumnBuffer::from(value), declared, name, fragment)?)?;
+	}
+	Ok(data)
+}
+
+pub(crate) fn untyped_return_column(values: Vec<Value>, name: &str, fragment: &Fragment) -> Result<ColumnBuffer> {
+	let mut layout: Option<BranchLayout> = None;
+	for value in &values {
+		let named_type = [(name, value.get_type())];
+		let Some(expected) = layout.as_mut() else {
+			layout = Some(BranchLayout::new(named_type));
+			continue;
+		};
+		expected.admit(named_type, fragment)?;
+	}
+	let column_type = values.first().map(Value::get_type).unwrap_or(ValueType::Any);
+	let mut data = ColumnBuffer::none_typed(column_type, 0);
+	for value in values {
+		data.push_value(value);
+	}
+	Ok(data)
+}
+
+pub(crate) fn check_arity(
+	parameters: &[FunctionParameter],
+	given: usize,
+	name: &str,
+	fragment: &Fragment,
+) -> Result<()> {
+	if given == parameters.len() {
+		return Ok(());
+	}
+	Err(TypeError::Function {
+		kind: FunctionErrorKind::ArityMismatch {
+			expected: parameters.len(),
+			actual: given,
+		},
+		message: format!("function {} expects {} arguments, got {}", name, parameters.len(), given),
+		fragment: fragment.clone(),
+	}
+	.into())
 }
 
 fn unknown_procedure_error(func_name: &str, name: &Fragment) -> ReifyError {
@@ -140,9 +236,14 @@ impl<'a> Vm<'a> {
 		name: &Fragment,
 		arity: u8,
 		is_procedure_call: bool,
+		type_arguments: &[(usize, Fragment)],
 	) -> Result<()> {
 		let arity = arity as usize;
 		let func_name = name.text();
+
+		if !type_arguments.is_empty() && self.resolves_to_user_routine(services, tx, func_name)? {
+			self.rebind_type_arguments(arity, type_arguments)?;
+		}
 
 		if self.try_call_columnar(services, tx, func_name, arity, name)? {
 			return Ok(());
@@ -151,10 +252,38 @@ impl<'a> Vm<'a> {
 		let args = self.pop_scalar_args(arity)?;
 
 		if let Some(callable) = self.symbols.resolve_callable(func_name) {
-			return self.call_callable(services, tx, &callable, args);
+			return self.call_callable(services, tx, &callable, args, name);
 		}
 
 		self.dispatch_resolved_procedure(services, tx, args, name, func_name, is_procedure_call)
+	}
+
+	fn resolves_to_user_routine(
+		&self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		func_name: &str,
+	) -> Result<bool> {
+		if self.symbols.resolve_callable(func_name).is_some() {
+			return Ok(true);
+		}
+		let mut tx_tmp = tx.reborrow();
+		Ok(services.catalog.find_procedure_by_qualified_name(&mut tx_tmp, func_name)?.is_some())
+	}
+
+	fn rebind_type_arguments(&mut self, arity: usize, type_arguments: &[(usize, Fragment)]) -> Result<()> {
+		let mut args = Vec::with_capacity(arity);
+		for _ in 0..arity {
+			args.push(self.stack.pop()?);
+		}
+		args.reverse();
+		for (index, arg) in args.into_iter().enumerate() {
+			match type_arguments.iter().find(|(position, _)| *position == index) {
+				Some((_, name)) => self.exec_load_var(name)?,
+				None => self.stack.push(arg),
+			}
+		}
+		Ok(())
 	}
 
 	#[inline]
@@ -166,14 +295,67 @@ impl<'a> Vm<'a> {
 		arity: usize,
 		name: &Fragment,
 	) -> Result<bool> {
-		if self.batch_size <= 1 {
+		if self.batch_size == 1 {
 			return Ok(false);
 		}
 		if let Some(callable) = self.symbols.resolve_callable(func_name) {
 			self.call_callable_columnar(services, tx, &callable, arity, name)?;
 			return Ok(true);
 		}
-		Ok(false)
+		if !self.resolves_to_plain_function(services, tx, func_name)? {
+			return Ok(false);
+		}
+		self.call_plain_function_columnar(services, tx, arity, name, func_name)?;
+		Ok(true)
+	}
+
+	fn resolves_to_plain_function(
+		&self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		func_name: &str,
+	) -> Result<bool> {
+		if services.routines.get_function(func_name).is_none() {
+			return Ok(false);
+		}
+		if services.routines.get_procedure(func_name).is_some()
+			|| services.routines.get_generator_function(func_name).is_some()
+		{
+			return Ok(false);
+		}
+		let mut tx_tmp = tx.reborrow();
+		Ok(services.catalog.find_procedure_by_qualified_name(&mut tx_tmp, func_name)?.is_none())
+	}
+
+	fn call_plain_function_columnar(
+		&mut self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		arity: usize,
+		name: &Fragment,
+		func_name: &str,
+	) -> Result<()> {
+		let function = services.routines.get_function(func_name).ok_or_else(|| {
+			ReifyError::from(EngineError::UnknownCallable {
+				name: func_name.to_string(),
+				fragment: name.clone(),
+			})
+		})?;
+		function.arity().check(name, arity)?;
+
+		let arg_columns = self.pop_args_as_columns(arity)?;
+		let columns_args = Columns::new(arg_columns);
+		let identity = tx.identity();
+		let mut fn_ctx = RoutineFunctionContext {
+			fragment: name.clone(),
+			identity,
+			row_count: columns_args.row_count(),
+			runtime_context: &services.runtime_context,
+		};
+		let result_columns =
+			function.call(&mut fn_ctx, &columns_args).map_err(|e| e.with_context(name.clone(), false))?;
+		self.stack.push(Variable::columns(result_columns));
+		Ok(())
 	}
 
 	#[inline]
@@ -260,6 +442,7 @@ impl<'a> Vm<'a> {
 		name: &Fragment,
 	) -> Result<()> {
 		let arg_columns = self.pop_args_as_columns(arity)?;
+		check_arity(&callable.parameters, arity, name.text(), name)?;
 
 		if is_vectorizable(&callable.body) {
 			let row_count = arg_columns.first().map(|c| c.data.len()).unwrap_or(self.batch_size);
@@ -272,6 +455,7 @@ impl<'a> Vm<'a> {
 				row_count,
 				&callable.captured,
 				callable.return_type.as_ref(),
+				name,
 			)
 		} else {
 			self.run_function_body_per_row(
@@ -285,6 +469,22 @@ impl<'a> Vm<'a> {
 				callable.return_type.as_ref(),
 			)
 		}
+	}
+
+	fn cast_arguments(
+		&self,
+		parameters: &[FunctionParameter],
+		arguments: Vec<ColumnWithName>,
+	) -> Result<Vec<ColumnWithName>> {
+		let ctx = self.eval_ctx();
+		parameters
+			.iter()
+			.zip(arguments)
+			.map(|(parameter, argument)| {
+				let data = cast_to_parameter_type(&ctx, parameter, argument.data)?;
+				Ok(ColumnWithName::new(argument.name, data))
+			})
+			.collect()
 	}
 
 	fn pop_args_as_columns(&mut self, arity: usize) -> Result<Vec<ColumnWithName>> {
@@ -307,17 +507,26 @@ impl<'a> Vm<'a> {
 		_row_count: usize,
 		captured: &HashMap<String, Variable>,
 		return_type: Option<&TypeConstraint>,
+		name: &Fragment,
 	) -> Result<()> {
+		let arguments = self.cast_arguments(parameters, arg_columns)?;
 		let saved_ip = self.ip;
 		let saved_pending_return = self.pending_return.take();
 		let saved_returned_mask = self.returned_mask.take();
+		let saved_udf_call = mem::replace(
+			&mut self.udf_call,
+			UdfCall {
+				fragment: name.clone(),
+				return_type: return_type.cloned(),
+			},
+		);
 		self.symbols.enter_scope(ScopeType::Function);
 
 		for (cap_name, cap_var) in captured {
 			self.symbols.set(cap_name.clone(), cap_var.clone(), true)?;
 		}
 
-		for (param, arg_col) in parameters.iter().zip(arg_columns.into_iter()) {
+		for (param, arg_col) in parameters.iter().zip(arguments.into_iter()) {
 			let param_name = strip_dollar_prefix(param.name.text()).to_string();
 			let col_var = Variable::columns(Columns::new(vec![arg_col]));
 			self.symbols.set(param_name, col_var, true)?;
@@ -331,8 +540,9 @@ impl<'a> Vm<'a> {
 		self.ip = saved_ip;
 		self.pending_return = saved_pending_return;
 		self.returned_mask = saved_returned_mask;
+		self.udf_call = saved_udf_call;
 		let _ = self.symbols.exit_scope();
-		let coerced = self.coerce_return_value(stack_value, return_type)?;
+		let coerced = self.coerce_return_value(stack_value, return_type, name)?;
 		self.stack.push(coerced);
 		Ok(())
 	}
@@ -349,6 +559,7 @@ impl<'a> Vm<'a> {
 		name: &Fragment,
 		return_type: Option<&TypeConstraint>,
 	) -> Result<()> {
+		let arg_columns = self.cast_arguments(parameters, arg_columns)?;
 		let row_count = arg_columns.first().map(|c| c.data.len()).unwrap_or(0);
 		let mut results: Vec<Value> = Vec::with_capacity(row_count);
 		let mut func_symbols = self.symbols.clone();
@@ -384,16 +595,12 @@ impl<'a> Vm<'a> {
 			results.push(value);
 		}
 
-		let col_type = match return_type {
-			Some(tc) => tc.get_type(),
-			None => ValueType::super_type_of(results.iter().map(|v| v.get_type())),
+		let data = match return_type {
+			Some(declared) => {
+				declared_return_column(&self.eval_ctx(), results, declared, name.text(), name)?
+			}
+			None => untyped_return_column(results, name.text(), name)?,
 		};
-
-		let mut data = ColumnBuffer::with_capacity(col_type.clone(), row_count);
-		for value in results {
-			let coerced = self.coerce_value(value, &col_type, Fragment::internal("coerce_return"))?;
-			data.push_value(coerced);
-		}
 		let result_col = ColumnWithName::new(name.clone(), data);
 		self.stack.push(Variable::columns(Columns::new(vec![result_col])));
 		Ok(())
@@ -405,7 +612,15 @@ impl<'a> Vm<'a> {
 		tx: &mut Transaction<'_>,
 		callable: &Callable,
 		args: Vec<Value>,
+		name: &Fragment,
 	) -> Result<()> {
+		check_arity(&callable.parameters, args.len(), name.text(), name)?;
+		let ctx = self.eval_ctx();
+		let mut arguments = Vec::with_capacity(args.len());
+		for (param, arg) in callable.parameters.iter().zip(args.into_iter()) {
+			arguments.push(cast_to_parameter_type(&ctx, param, ColumnBuffer::from(arg))?.get_value(0));
+		}
+
 		let saved_ip = self.ip;
 		self.symbols.enter_scope(ScopeType::Function);
 
@@ -413,7 +628,7 @@ impl<'a> Vm<'a> {
 			self.symbols.set(name.clone(), var.clone(), true)?;
 		}
 
-		for (param, arg) in callable.parameters.iter().zip(args.into_iter()) {
+		for (param, arg) in callable.parameters.iter().zip(arguments.into_iter()) {
 			let param_name = strip_dollar_prefix(param.name.text()).to_string();
 			self.symbols.set(param_name.clone(), Variable::scalar_named(&param_name, arg), true)?;
 		}
@@ -425,7 +640,7 @@ impl<'a> Vm<'a> {
 		let stack_value = collect_call_result(self, &mut result);
 		self.ip = saved_ip;
 		let _ = self.symbols.exit_scope();
-		let coerced = self.coerce_return_value(stack_value, callable.return_type.as_ref())?;
+		let coerced = self.coerce_return_value(stack_value, callable.return_type.as_ref(), name)?;
 		self.stack.push(coerced);
 		Ok(())
 	}
@@ -752,6 +967,7 @@ impl<'a> Vm<'a> {
 		args: Vec<Value>,
 		name: &Fragment,
 	) -> Result<()> {
+		generator.arity().check(name, args.len())?;
 		let arg_columns: Vec<ColumnWithName> = args
 			.into_iter()
 			.enumerate()
@@ -789,6 +1005,7 @@ impl<'a> Vm<'a> {
 				fragment: name.clone(),
 			})
 		})?;
+		function.arity().check(name, args.len())?;
 
 		let arg_columns: Vec<ColumnWithName> = args
 			.into_iter()

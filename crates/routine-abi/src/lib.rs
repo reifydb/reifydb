@@ -21,10 +21,7 @@ use reifydb_core::value::column::{
 use reifydb_value::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
-	value::{
-		Value,
-		value_type::{ValueType, input_types::InputTypes},
-	},
+	value::{Value, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
 
@@ -62,10 +59,6 @@ pub trait Routine<C: Context>: Send + Sync {
 	fn info(&self) -> &RoutineInfo;
 
 	fn return_type(&self, input_types: &[ValueType]) -> ValueType;
-
-	fn accepted_types(&self) -> InputTypes {
-		InputTypes::any()
-	}
 
 	fn propagates_options(&self) -> bool {
 		true
@@ -144,11 +137,64 @@ pub enum AggregateFunctionCapability {
 	Retractable,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LiteralKind {
+	None,
+	Bool,
+	Number,
+	Text,
+	Temporal,
+	Duration,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LiteralArgument {
+	pub kind: LiteralKind,
+	pub fragment: Fragment,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Arity {
+	Exact(usize),
+	Range(usize, usize),
+	AtLeast(usize),
+	Any,
+}
+
+impl Arity {
+	pub fn check(self, function: &Fragment, actual: usize) -> Result<(), RoutineError> {
+		let (accepted, expected) = match self {
+			Arity::Exact(count) => (actual == count, count),
+			Arity::Range(min, max) => ((min..=max).contains(&actual), min),
+			Arity::AtLeast(min) => (actual >= min, min),
+			Arity::Any => (true, 0),
+		};
+		if accepted {
+			return Ok(());
+		}
+		Err(RoutineError::FunctionArityMismatch {
+			function: function.clone(),
+			expected,
+			actual,
+		})
+	}
+}
+
 pub trait Function: for<'a> Routine<context::FunctionContext<'a>> {
 	fn kinds(&self) -> &[FunctionKind];
 
-	fn accumulator(&self, _ctx: &mut context::FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
-		None
+	fn arity(&self) -> Arity;
+
+	fn accumulator(
+		&self,
+		_ctx: &mut context::FunctionContext<'_>,
+		_literals: &[LiteralArgument],
+	) -> Result<Option<Box<dyn Accumulator>>, RoutineError> {
+		Ok(None)
+	}
+
+	fn max_literal_arguments(&self) -> usize {
+		0
 	}
 
 	fn aggregate_capabilities(&self) -> &[AggregateFunctionCapability] {

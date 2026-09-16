@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 pub mod get;
 pub mod input_types;
 pub mod promote;
+pub mod scalar;
 pub mod super_type;
 
 use std::fmt;
@@ -92,6 +93,11 @@ pub enum ValueType {
 	Record(Vec<(String, ValueType)>),
 
 	Tuple(Vec<ValueType>),
+
+	Digest {
+		inner: Box<ValueType>,
+		accuracy: u32,
+	},
 }
 
 impl ValueType {
@@ -252,6 +258,9 @@ impl ValueType {
 			ValueType::Record(_) => 8,
 			ValueType::Tuple(_) => 8,
 			ValueType::DictionaryId => 16,
+			ValueType::Digest {
+				..
+			} => 8,
 		}
 	}
 
@@ -291,6 +300,9 @@ impl ValueType {
 			ValueType::List(_) => 8,
 			ValueType::Record(_) => 8,
 			ValueType::Tuple(_) => 8,
+			ValueType::Digest {
+				..
+			} => 4,
 		}
 	}
 }
@@ -347,6 +359,19 @@ impl Display for ValueType {
 				}
 				f.write_str(")")
 			}
+			ValueType::Digest {
+				inner,
+				accuracy,
+			} => {
+				let whole = accuracy / 1_000_000;
+				let fraction = accuracy % 1_000_000;
+				if fraction == 0 {
+					write!(f, "Digest({inner}, {whole})")
+				} else {
+					let fraction = format!("{fraction:06}");
+					write!(f, "Digest({inner}, {whole}.{})", fraction.trim_end_matches('0'))
+				}
+			}
 		}
 	}
 }
@@ -393,6 +418,10 @@ impl From<&Value> for ValueType {
 				ValueType::Record(fields.iter().map(|(k, v)| (k.clone(), ValueType::from(v))).collect())
 			}
 			Value::Tuple(items) => ValueType::Tuple(items.iter().map(ValueType::from).collect()),
+			Value::Digest(digest) => ValueType::Digest {
+				inner: Box::new(digest.inner().clone()),
+				accuracy: digest.accuracy(),
+			},
 		}
 	}
 }

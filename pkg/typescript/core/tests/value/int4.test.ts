@@ -11,16 +11,14 @@ describe('Int4Value', () => {
             expect(int4.type).toBe('Int4');
         });
 
-        it('should create instance with undefined value', () => {
-            const int4 = new Int4Value(undefined);
-            expect(int4.value).toBeUndefined();
-            expect(int4.type).toBe('Int4');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Int4Value(undefined)).toThrow();
         });
 
-        it('should create instance with no arguments', () => {
-            const int4 = new Int4Value();
-            expect(int4.value).toBeUndefined();
-            expect(int4.type).toBe('Int4');
+        it('should reject no arguments', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Int4Value()).toThrow();
         });
 
         it('should accept minimum value -2147483648', () => {
@@ -86,14 +84,14 @@ describe('Int4Value', () => {
             expect(int4.value).toBe(100000);
         });
 
-        it('should return undefined for empty string', () => {
-            const int4 = Int4Value.parse('');
-            expect(int4.value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Int4Value.parse('')).toThrow();
         });
 
-        it('should return undefined for whitespace-only string', () => {
-            const int4 = Int4Value.parse('   ');
-            expect(int4.value).toBeUndefined();
+        it('should reject a whitespace-only string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Int4Value.parse('   ')).toThrow();
         });
 
         it('should throw error for non-numeric string', () => {
@@ -117,11 +115,6 @@ describe('Int4Value', () => {
         it('should return the numeric value', () => {
             const int4 = new Int4Value(100000);
             expect(int4.valueOf()).toBe(100000);
-        });
-
-        it('should return undefined when value is undefined', () => {
-            const int4 = new Int4Value(undefined);
-            expect(int4.valueOf()).toBeUndefined();
         });
 
         it('should return negative value', () => {

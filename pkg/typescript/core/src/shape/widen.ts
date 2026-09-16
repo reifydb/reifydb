@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {decode} from '../decoder';
-import {Type, Value, isOptionType} from '../value';
+import {Type, Value} from '../value';
 
 // A value shape names the type the caller wants to hold, so it has to accept a column whose type the
 // requested one can represent in full. The server picks the narrowest type a literal fits, so
@@ -34,7 +34,7 @@ const NUMERIC: Readonly<Record<string, Numeric>> = {
 
 /** Whether every value of `actual` is representable as `target`, the type a value shape names. */
 export function widens(target: string, actual: Type): boolean {
-    if (isOptionType(actual)) {
+    if (typeof actual !== 'string') {
         return false;
     }
     const t = NUMERIC[target];

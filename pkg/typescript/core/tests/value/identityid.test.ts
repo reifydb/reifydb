@@ -19,16 +19,14 @@ describe('IdentityIdValue', () => {
             expect(identityId.type).toBe('IdentityId');
         });
 
-        it('should create instance with undefined value', () => {
-            const identityId = new IdentityIdValue(undefined);
-            expect(identityId.value).toBeUndefined();
-            expect(identityId.type).toBe('IdentityId');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new IdentityIdValue(undefined)).toThrow();
         });
 
-        it('should create instance with no arguments', () => {
-            const identityId = new IdentityIdValue();
-            expect(identityId.value).toBeUndefined();
-            expect(identityId.type).toBe('IdentityId');
+        it('should reject no arguments', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new IdentityIdValue()).toThrow();
         });
 
         it('should convert UUID to lowercase', () => {
@@ -93,19 +91,19 @@ describe('IdentityIdValue', () => {
                 expect(identityId.value).toBe(uuid);
             });
 
-            it('should return undefined for empty string', () => {
-                const identityId = IdentityIdValue.parse('');
-                expect(identityId.value).toBeUndefined();
+            it('should reject an empty string', () => {
+                // a non-option value must always be defined, so blank text is not a value
+                expect(() => IdentityIdValue.parse('')).toThrow();
             });
 
-            it('should return undefined for whitespace-only string', () => {
-                const identityId = IdentityIdValue.parse('   ');
-                expect(identityId.value).toBeUndefined();
+            it('should reject a whitespace-only string', () => {
+                // a non-option value must always be defined, so blank text is not a value
+                expect(() => IdentityIdValue.parse('   ')).toThrow();
             });
 
-            it('should return undefined for NONE_VALUE', () => {
-                const identityId = IdentityIdValue.parse('⟪none⟫');
-                expect(identityId.value).toBeUndefined();
+            it('should reject the none marker', () => {
+                // a non-option value must always be defined, so the none marker is not a value
+                expect(() => IdentityIdValue.parse('⟪none⟫')).toThrow();
             });
 
             it('should throw error for invalid UUID format', () => {
@@ -127,10 +125,6 @@ describe('IdentityIdValue', () => {
                 expect(identityId.valueOf()).toBe(uuid);
             });
 
-            it('should return undefined when value is undefined', () => {
-                const identityId = new IdentityIdValue(undefined);
-                expect(identityId.valueOf()).toBeUndefined();
-            });
         });
 
         describe('toString', () => {
@@ -140,10 +134,6 @@ describe('IdentityIdValue', () => {
                 expect(identityId.toString()).toBe(uuid);
             });
 
-            it('should return "none" when value is undefined', () => {
-                const identityId = new IdentityIdValue(undefined);
-                expect(identityId.toString()).toBe('none');
-            });
         });
 
         describe('getTimestamp', () => {
@@ -163,10 +153,6 @@ describe('IdentityIdValue', () => {
                 expect(identityId.getTimestamp()).toBeUndefined();
             });
 
-            it('should return undefined for undefined value', () => {
-                const identityId = new IdentityIdValue(undefined);
-                expect(identityId.getTimestamp()).toBeUndefined();
-            });
         });
 
         describe('isNil', () => {
@@ -180,10 +166,6 @@ describe('IdentityIdValue', () => {
                 expect(identityId.isNil()).toBe(false);
             });
 
-            it('should return false for undefined value', () => {
-                const identityId = new IdentityIdValue(undefined);
-                expect(identityId.isNil()).toBe(false);
-            });
         });
 
         describe('equals', () => {
@@ -198,12 +180,6 @@ describe('IdentityIdValue', () => {
                 const id1 = IdentityIdValue.generate();
                 const id2 = IdentityIdValue.generate();
                 expect(id1.equals(id2)).toBe(false);
-            });
-
-            it('should return true for both undefined values', () => {
-                const id1 = new IdentityIdValue(undefined);
-                const id2 = new IdentityIdValue(undefined);
-                expect(id1.equals(id2)).toBe(true);
             });
 
             it('should return false for different types', () => {
@@ -222,12 +198,6 @@ describe('IdentityIdValue', () => {
                 expect(encoded.value).toBe(uuid);
             });
 
-            it('should encode undefined value', () => {
-                const identityId = new IdentityIdValue(undefined);
-                const encoded = identityId.encode();
-                expect(encoded.type).toBe('IdentityId');
-                expect(encoded.value).toBe('⟪none⟫');
-            });
         });
     });
 });

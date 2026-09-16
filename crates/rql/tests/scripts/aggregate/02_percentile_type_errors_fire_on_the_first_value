@@ -1,0 +1,31 @@
+# Until the typed plan pass exists, a type error on stats::approx_percentile fires once the first value arrives.
+
+admin 'create table test::rows { g: int4, f: Option(float8), d: Option(duration), ts: Option(datetime) }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |  rows   |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+command "insert test::rows [{ g: 1, f: 1.5, d: 5ms, ts: '2024-01-01T00:00:00Z' }]"
+---
+> +-------------+---------+------------+
+> |  namespace  |  table  |  inserted  |
+> +-------------+---------+------------+
+> |    test     |  rows   |     1      |
+> +-------------+---------+------------+
+>
+
+query_fails 'from test::rows aggregate { p: stats::approx_percentile(ts, 0.99, 0.01) } by { g }'
+---
+Error AGGREGATE_016
+
+query_fails 'from test::rows aggregate { p: stats::approx_percentile(f, 0.99) } by { g }'
+---
+Error AGGREGATE_014
+
+query_fails 'from test::rows aggregate { lat: stats::digest(d, 0.01) } by { g } aggregate { p: stats::approx_percentile(lat, 0.99, 0.01) } by { g }'
+---
+Error AGGREGATE_015

@@ -244,6 +244,76 @@ pub fn sumtype_not_found(fragment: Fragment, namespace: &str, name: &str) -> Dia
 	}
 }
 
+pub fn sumtype_variant_not_found(fragment: Fragment, sumtype: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_100".to_string(),
+		rql: None,
+		message: format!("`{}` is not a variant of `{}`", fragment.text(), sumtype),
+		fragment,
+		label: Some("unknown variant".to_string()),
+		help: Some(format!("use a variant name or tag declared by `{}`", sumtype)),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn column_not_sumtype(fragment: Fragment, column: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_101".to_string(),
+		rql: None,
+		message: format!("`{}` is a variant, but column `{}` is not an enum", fragment.text(), column),
+		fragment,
+		label: Some("variant for a column that is not an enum".to_string()),
+		help: Some(format!("declare `{}` with an enum type, or write a value of its type", column)),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn variant_in_expression(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "CA_102".to_string(),
+		rql: None,
+		message: format!("`{}` is an enum variant, which cannot be used inside an expression", fragment.text()),
+		fragment,
+		label: Some("enum variant inside an expression".to_string()),
+		help: Some(
+			"give the variant as a whole column value, or compare a column with it as `column == variant` in a filter"
+				.to_string(),
+		),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn variant_enum_not_known(fragment: Fragment, column: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_103".to_string(),
+		rql: None,
+		message: format!(
+			"`{}` cannot be matched, because the enum of `{}` is not known here",
+			fragment.text(),
+			column
+		),
+		fragment,
+		label: Some("enum not known here".to_string()),
+		help: Some(format!(
+			"match `{}` right after reading its table, view or ringbuffer, before steps such as extend, join or aggregate",
+			column
+		)),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn dictionary_already_exists(fragment: Fragment, namespace: &str, dictionary: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_006".to_string(),

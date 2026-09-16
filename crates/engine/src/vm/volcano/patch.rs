@@ -4,7 +4,10 @@
 use std::{mem, sync::Arc};
 
 use reifydb_core::{
-	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
+	interface::{
+		evaluate::TargetColumn,
+		resolved::{ResolvedColumn, ResolvedObject},
+	},
 	value::column::{ColumnWithName, cast::cast_column_data, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_evaluate::expression::{
@@ -21,6 +24,7 @@ use super::NoopNode;
 use crate::{
 	Result,
 	vm::volcano::{
+		inline::{expand_aliases, expand_sumtype_assignment, resolve_is_variants},
 		query::{QueryContext, QueryNode, eval_context_from_transform},
 		udf::{UdfEvalNode, strip_udf_columns},
 	},
@@ -29,16 +33,18 @@ use crate::{
 pub(crate) struct PatchNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
+	source: Option<ResolvedObject>,
 	udf_names: Vec<String>,
 	headers: Option<ColumnHeaders>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
 
 impl PatchNode {
-	pub fn new(input: Box<dyn QueryNode>, expressions: Vec<Expression>) -> Self {
+	pub fn new(input: Box<dyn QueryNode>, expressions: Vec<Expression>, source: Option<ResolvedObject>) -> Self {
 		Self {
 			input,
 			expressions,
+			source,
 			udf_names: Vec::new(),
 			headers: None,
 			context: None,
@@ -49,6 +55,17 @@ impl PatchNode {
 impl QueryNode for PatchNode {
 	#[instrument(name = "volcano::patch::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		if let Some(source) = ctx.source.as_ref().or(self.source.as_ref()) {
+			(self.expressions, _) =
+				expand_aliases(mem::take(&mut self.expressions), |alias_expr, expanded| {
+					expand_sumtype_assignment(ctx, rx, source, alias_expr, expanded)
+				})?;
+		}
+		if let Some(source) = self.source.as_ref() {
+			for expr in &mut self.expressions {
+				resolve_is_variants(&ctx.services.catalog, rx, source, expr)?;
+			}
+		}
 		let (input, expressions, udf_names) = UdfEvalNode::wrap_if_needed(
 			mem::replace(&mut self.input, Box::new(NoopNode)),
 			&self.expressions,
@@ -64,8 +81,8 @@ impl QueryNode for PatchNode {
 		let compiled = self
 			.expressions
 			.iter()
-			.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
-			.collect();
+			.map(|e| compile_expression(&compile_ctx, e))
+			.collect::<Result<Vec<_>>>()?;
 		self.context = Some((Arc::new(ctx.clone()), compiled));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
@@ -160,6 +177,7 @@ impl Transform for PatchNode {
 			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type())
 				&& column.data.get_type() != target_type
 			{
+				column.data.check_digest_write(&target_type, expr.lazy_fragment())?;
 				let data =
 					cast_column_data(&exec_ctx, &column.data, target_type, &expr.lazy_fragment())?;
 				column = ColumnWithName {

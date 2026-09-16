@@ -10,84 +10,91 @@ import {TimeValue} from "./time";
  * Always in UTC timezone.
  * Internally stored as months, days, and nanoseconds.
  */
+interface DateTimeComponents {
+    months: number;
+    days: number;
+    nanos: bigint;
+}
+
 export class DateTimeValue implements Value {
     readonly type: Type = "DateTime" as const;
-    private readonly months?: number;  // years*12 + months  
-    private readonly days?: number;    // day of month (1-31)
-    private readonly nanos?: bigint;   // nanoseconds since midnight
+    private readonly months: number;  
+    private readonly days: number;    // day of month (1-31)
+    private readonly nanos: bigint;   // nanoseconds since midnight
 
-    constructor(value?: Date | string | number | bigint) {
-        if (value !== undefined) {
-            if (value instanceof Date) {
-                // Store as UTC with millisecond precision from Date
-                const year = value.getUTCFullYear();
-                const month = value.getUTCMonth() + 1;
-                const day = value.getUTCDate();
-                const hour = value.getUTCHours();
-                const minute = value.getUTCMinutes();
-                const second = value.getUTCSeconds();
-                const millis = value.getUTCMilliseconds();
+    constructor(value: Date | string | number | bigint | DateTimeComponents) {
+        if (value === undefined) {
+            throw new Error(`DateTime value must be defined, a none is carried by NoneValue`);
+        }
+        if (value instanceof Date) {
+            // Store as UTC with millisecond precision from Date
+            const year = value.getUTCFullYear();
+            const month = value.getUTCMonth() + 1;
+            const day = value.getUTCDate();
+            const hour = value.getUTCHours();
+            const minute = value.getUTCMinutes();
+            const second = value.getUTCSeconds();
+            const millis = value.getUTCMilliseconds();
 
-                this.months = year * 12 + (month - 1);
-                this.days = day;
-                this.nanos = BigInt(hour) * 3_600_000_000_000n +
-                    BigInt(minute) * 60_000_000_000n +
-                    BigInt(second) * 1_000_000_000n +
-                    BigInt(millis) * 1_000_000n;
-            } else if (typeof value === 'string') {
-                // Parse ISO 8601 format
-                const parsed = DateTimeValue.parseDateTime(value);
-                if (!parsed) {
-                    throw new Error(`Invalid datetime string: ${value}`);
-                }
-                this.months = parsed.months;
-                this.days = parsed.days;
-                this.nanos = parsed.nanos;
-            } else if (typeof value === 'number') {
-                // Interpret as milliseconds since epoch
-                const date = new Date(value);
-                const year = date.getUTCFullYear();
-                const month = date.getUTCMonth() + 1;
-                const day = date.getUTCDate();
-                const hour = date.getUTCHours();
-                const minute = date.getUTCMinutes();
-                const second = date.getUTCSeconds();
-                const millis = date.getUTCMilliseconds();
-
-                this.months = year * 12 + (month - 1);
-                this.days = day;
-                this.nanos = BigInt(hour) * 3_600_000_000_000n +
-                    BigInt(minute) * 60_000_000_000n +
-                    BigInt(second) * 1_000_000_000n +
-                    BigInt(millis) * 1_000_000n;
-            } else if (typeof value === 'bigint') {
-                // Interpret as nanoseconds since epoch
-                const millis = Number(value / 1_000_000n);
-                const extraNanos = value % 1_000_000n;
-                const date = new Date(millis);
-
-                const year = date.getUTCFullYear();
-                const month = date.getUTCMonth() + 1;
-                const day = date.getUTCDate();
-                const hour = date.getUTCHours();
-                const minute = date.getUTCMinutes();
-                const second = date.getUTCSeconds();
-                const dateMillis = date.getUTCMilliseconds();
-
-                this.months = year * 12 + (month - 1);
-                this.days = day;
-                this.nanos = BigInt(hour) * 3_600_000_000_000n +
-                    BigInt(minute) * 60_000_000_000n +
-                    BigInt(second) * 1_000_000_000n +
-                    BigInt(dateMillis) * 1_000_000n +
-                    extraNanos;
-            } else {
-                throw new Error(`DateTime value must be a Date, string, number, or bigint, got ${typeof value}`);
+            this.months = year * 12 + (month - 1);
+            this.days = day;
+            this.nanos = BigInt(hour) * 3_600_000_000_000n +
+                BigInt(minute) * 60_000_000_000n +
+                BigInt(second) * 1_000_000_000n +
+                BigInt(millis) * 1_000_000n;
+        } else if (typeof value === 'string') {
+            // Parse ISO 8601 format
+            const parsed = DateTimeValue.parseDateTime(value);
+            if (!parsed) {
+                throw new Error(`Invalid datetime string: ${value}`);
             }
+            this.months = parsed.months;
+            this.days = parsed.days;
+            this.nanos = parsed.nanos;
+        } else if (typeof value === 'number') {
+            // Interpret as milliseconds since epoch
+            const date = new Date(value);
+            const year = date.getUTCFullYear();
+            const month = date.getUTCMonth() + 1;
+            const day = date.getUTCDate();
+            const hour = date.getUTCHours();
+            const minute = date.getUTCMinutes();
+            const second = date.getUTCSeconds();
+            const millis = date.getUTCMilliseconds();
+
+            this.months = year * 12 + (month - 1);
+            this.days = day;
+            this.nanos = BigInt(hour) * 3_600_000_000_000n +
+                BigInt(minute) * 60_000_000_000n +
+                BigInt(second) * 1_000_000_000n +
+                BigInt(millis) * 1_000_000n;
+        } else if (typeof value === 'bigint') {
+            // Interpret as nanoseconds since epoch
+            const millis = Number(value / 1_000_000n);
+            const extraNanos = value % 1_000_000n;
+            const date = new Date(millis);
+
+            const year = date.getUTCFullYear();
+            const month = date.getUTCMonth() + 1;
+            const day = date.getUTCDate();
+            const hour = date.getUTCHours();
+            const minute = date.getUTCMinutes();
+            const second = date.getUTCSeconds();
+            const dateMillis = date.getUTCMilliseconds();
+
+            this.months = year * 12 + (month - 1);
+            this.days = day;
+            this.nanos = BigInt(hour) * 3_600_000_000_000n +
+                BigInt(minute) * 60_000_000_000n +
+                BigInt(second) * 1_000_000_000n +
+                BigInt(dateMillis) * 1_000_000n +
+                extraNanos;
+        } else if (typeof value === 'object' && 'months' in value && 'days' in value && 'nanos' in value) {
+            this.months = value.months;
+            this.days = value.days;
+            this.nanos = value.nanos;
         } else {
-            this.months = undefined;
-            this.days = undefined;
-            this.nanos = undefined;
+            throw new Error(`DateTime value must be a Date, string, number, or bigint, got ${typeof value}`);
         }
     }
 
@@ -122,14 +129,14 @@ export class DateTimeValue implements Value {
             throw new Error(`Invalid datetime: ${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}`);
         }
 
-        const result = new DateTimeValue(undefined);
-        (result as any).months = year * 12 + (month - 1);
-        (result as any).days = day;
-        (result as any).nanos = BigInt(hour) * 3_600_000_000_000n +
-            BigInt(minute) * 60_000_000_000n +
-            BigInt(second) * 1_000_000_000n +
-            BigInt(nano);
-        return result;
+        return new DateTimeValue({
+            months: year * 12 + (month - 1),
+            days: day,
+            nanos: BigInt(hour) * 3_600_000_000_000n +
+                BigInt(minute) * 60_000_000_000n +
+                BigInt(second) * 1_000_000_000n +
+                BigInt(nano),
+        });
     }
 
     /**
@@ -178,11 +185,11 @@ export class DateTimeValue implements Value {
         const extraNanos = nanos % 1_000_000;
         const result = new DateTimeValue(millis);
 
-        // Add the extra nanoseconds
-        if (result.nanos !== undefined) {
-            (result as any).nanos = result.nanos + BigInt(extraNanos);
-        }
-        return result;
+        return new DateTimeValue({
+            months: result.months,
+            days: result.days,
+            nanos: result.nanos + BigInt(extraNanos),
+        });
     }
 
     /**
@@ -206,7 +213,7 @@ export class DateTimeValue implements Value {
         const trimmed = str.trim();
 
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new DateTimeValue(undefined);
+            throw new Error(`Cannot parse "${str}" as DateTime`);
         }
 
         const parsed = DateTimeValue.parseDateTime(trimmed);
@@ -214,11 +221,7 @@ export class DateTimeValue implements Value {
             throw new Error(`Cannot parse "${str}" as DateTime`);
         }
 
-        const result = new DateTimeValue(undefined);
-        (result as any).months = parsed.months;
-        (result as any).days = parsed.days;
-        (result as any).nanos = parsed.nanos;
-        return result;
+        return new DateTimeValue(parsed);
     }
 
     /**
@@ -330,11 +333,7 @@ export class DateTimeValue implements Value {
         return `${yearStr}-${month}-${day}T${hour}:${minute}:${second}.${nanoStr}Z`;
     }
 
-    valueOf(): Date | undefined {
-        if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
-            return undefined;
-        }
-
+    valueOf(): Date {
         const year = Math.floor(this.months / 12);
         // Handle negative months correctly
         let m = this.months % 12;
@@ -464,17 +463,14 @@ export class DateTimeValue implements Value {
                this.nanos === otherDateTime.nanos;
     }
 
-    toJSON(): string | null {
-        if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
-            return null;
-        }
+    toJSON(): string {
         return this.toString();
     }
 
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? NONE_VALUE : this.toString()
+            value: this.toString()
         };
     }
 }

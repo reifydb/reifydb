@@ -429,7 +429,7 @@ fn test_extend_value_with_direction_ascending() {
 	// Ascending: a smaller value must encode to smaller bytes so a forward scan returns it first.
 	let enc = |v: i32| {
 		let mut s = KeySerializer::new();
-		s.extend_value_with_direction(&Value::Int4(v), SortOrder::Asc);
+		s.extend_value_with_direction(&Value::Int4(v), SortOrder::Asc).unwrap();
 		s.finish()
 	};
 	assert!(enc(1) < enc(100), "asc: encode(1) should sort before encode(100)");
@@ -442,7 +442,7 @@ fn test_extend_value_with_direction_descending() {
 	// Descending: a larger value must encode to smaller bytes so a forward scan returns it first.
 	let enc = |v: i32| {
 		let mut s = KeySerializer::new();
-		s.extend_value_with_direction(&Value::Int4(v), SortOrder::Desc);
+		s.extend_value_with_direction(&Value::Int4(v), SortOrder::Desc).unwrap();
 		s.finish()
 	};
 	assert!(enc(1000) < enc(100), "desc: encode(1000) should sort before encode(100)");
@@ -454,7 +454,7 @@ fn test_extend_value_with_direction_none_policy() {
 	// none sorts last under ascending and first under descending.
 	let enc = |v: &Value, d: SortOrder| {
 		let mut s = KeySerializer::new();
-		s.extend_value_with_direction(v, d);
+		s.extend_value_with_direction(v, d).unwrap();
 		s.finish()
 	};
 	let none = Value::none_of(ValueType::Int4);
@@ -469,7 +469,7 @@ fn test_extend_value_with_direction_utf8() {
 	// lexicographic order and only desc inverts it.
 	let enc = |s: &str, d: SortOrder| {
 		let mut ser = KeySerializer::new();
-		ser.extend_value_with_direction(&Value::Utf8(s.to_string()), d);
+		ser.extend_value_with_direction(&Value::Utf8(s.to_string()), d).unwrap();
 		ser.finish()
 	};
 	assert!(enc("apple", SortOrder::Asc) < enc("banana", SortOrder::Asc), "asc: apple < banana");
@@ -1131,6 +1131,7 @@ fn test_roundtrip_exhaustiveness_guard() {
 		Value::List(_) => {}
 		Value::Record(_) => {}
 		Value::Tuple(_) => {}
+		Value::Digest(_) => {}
 	}
 }
 

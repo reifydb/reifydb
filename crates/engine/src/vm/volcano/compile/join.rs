@@ -75,7 +75,8 @@ pub(crate) fn compile_natural_join<'a>(
 	context: Arc<QueryContext>,
 ) -> Box<dyn QueryNode> {
 	let effective_alias = effective_alias(node.alias, &node.right);
+	let left_name = extract_source_name_from_query(&node.left);
 	let left_node = compile(*node.left, rx, context.clone());
 	let right_node = compile(*node.right, rx, context.clone());
-	Box::new(NaturalJoinNode::new(left_node, right_node, node.join_type, effective_alias))
+	Box::new(NaturalJoinNode::new(left_node, right_node, node.join_type, effective_alias, left_name, node.fragment))
 }

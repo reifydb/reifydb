@@ -52,8 +52,8 @@ impl AggregateOperator {
 		map: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
-	) -> Self {
-		Self {
+	) -> Result<Self> {
+		Ok(Self {
 			core: Aggregation::new(
 				operator,
 				parent_schema,
@@ -63,12 +63,12 @@ impl AggregateOperator {
 				runtime_context,
 				AggregateContext::Grouped,
 				Arc::new(FlowContext::default()),
-			),
-		}
+			)?,
+		})
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
-		self.core.parent_schema.clone()
+		Some(self.core.output_schema.clone())
 	}
 }
 

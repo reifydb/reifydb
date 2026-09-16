@@ -7,9 +7,16 @@
 
 use std::time::Duration as StdDuration;
 
-use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
+use reifydb::{
+	WithSubsystem, embedded,
+	testing::db::{TestDb, await_value},
+};
+use reifydb_test_harness::assert::rows;
+use reifydb_value::value::{Value, digest::Digest, value_type::ValueType};
 
 const TIMEOUT: StdDuration = StdDuration::from_secs(5);
+
+const PPM: u32 = 10_000;
 
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
@@ -268,5 +275,200 @@ fn retracting_a_row_that_has_already_left_the_window_leaves_the_group_intact() {
 		"retracting a contribution that already left the window is a no-op, so the group must keep \
 		 its total rather than be withdrawn; view now: {:?}",
 		db.query_as_root("FROM app::r", ())
+	);
+}
+
+fn bucketed(value: f64) -> Value {
+	let mut one = Digest::new(ValueType::Float8, PPM).expect("the accuracy is in range");
+	one.add_value(&Value::float8(value)).expect("a float8 is a digest input");
+	one.percentile_value(1.0).expect("a one-value digest has a percentile")
+}
+
+fn median(values: &[f64]) -> Value {
+	let mut sorted = values.to_vec();
+	sorted.sort_by(f64::total_cmp);
+	bucketed(sorted[sorted.len().div_ceil(2) - 1])
+}
+
+fn group_rows(db: &TestDb, view: &str, g: i32, columns: &[&str]) -> Vec<Vec<Value>> {
+	rows(&db.query(&format!("FROM {view} | filter {{ g == {g} }}")))
+		.into_iter()
+		.map(|row| {
+			columns.iter()
+				.map(|name| {
+					row.iter()
+						.find(|(column, _)| column == name)
+						.map(|(_, value)| value.clone())
+						.unwrap_or_else(|| panic!("{view} row has no column {name}: {row:?}"))
+				})
+				.collect()
+		})
+		.collect()
+}
+
+fn await_group(db: &TestDb, view: &str, g: i32, columns: &[&str], want: Vec<Vec<Value>>, step: &str) {
+	let got = await_value(want.clone(), TIMEOUT, || group_rows(db, view, g, columns));
+	assert_eq!(
+		got,
+		want,
+		"{step}: group {g} of {view}; view now: {:?}",
+		db.query_as_root(&format!("FROM {view}"), ())
+	);
+}
+
+fn percentile_view(db: &TestDb, calls: &str, columns: &str, with: &str) {
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { time: event(ts) }");
+	db.admin(&format!(
+		"CREATE DEFERRED VIEW app::r {{ g: int4, {columns} }} AS {{ FROM app::t | window rolling {{ {calls} }} with {{ {with} }} by {{ g }} }}"
+	));
+}
+
+fn insert(db: &TestDb, rows: &[(i32, i32, f64, &str)]) {
+	let literals: Vec<String> = rows
+		.iter()
+		.map(|(id, g, v, at)| format!(r#"{{ id: {id}, g: {g}, v: {v:?}, ts: "2026-01-01T{at}Z" }}"#))
+		.collect();
+	db.command(&format!("INSERT app::t [{}]", literals.join(", ")));
+}
+
+#[test]
+fn a_rolling_percentile_across_separate_commits_reads_one_digest_over_every_row_in_the_frame() {
+	// A median of per-slot medians differs from the frame median on these rows, so a slot fold must fail.
+	let db = setup();
+	percentile_view(
+		&db,
+		"p50: stats::approx_percentile(v, 0.5, 0.01)",
+		"p50: Option(float8)",
+		"duration: 1h, lateness: 5m",
+	);
+
+	let slots = [("12:00:00", [1.0, 2.0, 3.0]), ("12:01:00", [40.0, 50.0, 60.0]), ("12:02:00", [7.0, 80.0, 90.0])];
+	let mut frame = Vec::new();
+	let mut id = 0;
+	for (at, values) in slots {
+		for v in values {
+			id += 1;
+			insert(&db, &[(id, 1, v, at)]);
+			frame.push(v);
+		}
+		await_group(
+			&db,
+			"app::r",
+			1,
+			&["p50"],
+			vec![vec![median(&frame)]],
+			&format!("commits into the {at} slot"),
+		);
+	}
+	assert_ne!(
+		median(&frame),
+		median(&[2.0, 50.0, 80.0]),
+		"the frame median must differ from the slot medians' median"
+	);
+
+	insert(&db, &[(10, 1, 5.0, "13:01:30")]);
+	await_group(
+		&db,
+		"app::r",
+		1,
+		&["p50"],
+		vec![vec![median(&[7.0, 80.0, 90.0, 5.0])]],
+		"a row an hour on evicts the 12:00 and 12:01 slots",
+	);
+}
+
+#[test]
+fn a_row_too_late_to_admit_leaves_the_rolling_percentile_intact() {
+	// A late 1.0 taken into the digest moves the median from 30 to 20, and a withdrawn group reads nothing.
+	let db = setup();
+	percentile_view(
+		&db,
+		"p50: stats::approx_percentile(v, 0.5, 0.01)",
+		"p50: Option(float8)",
+		"duration: 1h, lateness: 5m",
+	);
+
+	insert(&db, &[(1, 1, 10.0, "12:00:00")]);
+	await_group(&db, "app::r", 1, &["p50"], vec![vec![bucketed(10.0)]], "the first row");
+
+	insert(&db, &[(2, 1, 20.0, "14:00:00"), (3, 1, 30.0, "14:00:00"), (4, 1, 40.0, "14:00:00")]);
+	await_group(&db, "app::r", 1, &["p50"], vec![vec![median(&[20.0, 30.0, 40.0])]], "the 12:00 row rolled out");
+	assert_ne!(median(&[20.0, 30.0, 40.0]), median(&[1.0, 20.0, 30.0, 40.0]), "the late row must be observable");
+
+	insert(&db, &[(5, 1, 1.0, "09:00:00"), (6, 2, 1.0, "14:00:00")]);
+	assert!(db.await_all_flows(TIMEOUT), "the flows must process the late row");
+	await_group(&db, "app::r", 2, &["p50"], vec![vec![bucketed(1.0)]], "the row batched with the late one");
+	await_group(&db, "app::r", 1, &["p50"], vec![vec![median(&[20.0, 30.0, 40.0])]], "a refused late row");
+}
+
+#[test]
+fn retracting_a_row_that_already_left_the_frame_leaves_the_rolling_percentile_intact() {
+	// Taking an evicted value out of the digest removes a value the frame does not hold and moves the median.
+	let db = setup();
+	percentile_view(
+		&db,
+		"p50: stats::approx_percentile(v, 0.5, 0.01)",
+		"p50: Option(float8)",
+		"duration: 1h, lateness: 5m",
+	);
+
+	insert(&db, &[(1, 1, 1.0, "11:30:00")]);
+	await_group(&db, "app::r", 1, &["p50"], vec![vec![bucketed(1.0)]], "the first row");
+
+	insert(&db, &[(2, 1, 6.0, "13:00:00"), (3, 1, 8.0, "13:00:00"), (4, 1, 9.0, "13:00:00")]);
+	await_group(&db, "app::r", 1, &["p50"], vec![vec![median(&[6.0, 8.0, 9.0])]], "the 11:30 row rolled out");
+	assert_ne!(median(&[6.0, 8.0, 9.0]), median(&[1.0, 6.0, 8.0, 9.0]), "the eviction must be observable");
+
+	db.command("DELETE app::t FILTER { id == 1 }");
+	insert(&db, &[(5, 2, 3.0, "13:00:00")]);
+	assert!(db.await_all_flows(TIMEOUT), "the flows must process the delete");
+	await_group(&db, "app::r", 2, &["p50"], vec![vec![bucketed(3.0)]], "the commit after the delete");
+	await_group(&db, "app::r", 1, &["p50"], vec![vec![median(&[6.0, 8.0, 9.0])]], "a retraction of an evicted row");
+}
+
+#[test]
+fn a_late_retraction_older_than_immutable_applies_to_a_rolling_percentile_and_the_min_beside_it() {
+	// V31: rows in one rolling slot share a timestamp, so the min never seals and the frame is rebuilt from the
+	// rows left.
+	let db = setup();
+	percentile_view(
+		&db,
+		"p50: stats::approx_percentile(v, 0.5, 0.01), lo: math::min(v)",
+		"p50: Option(float8), lo: Option(float8)",
+		"duration: 1h, lateness: 1h, immutable: 5m",
+	);
+	let columns = ["p50", "lo"];
+
+	insert(&db, &[(1, 1, 1.0, "12:00:00"), (2, 1, 50.0, "12:00:00")]);
+	insert(&db, &[(3, 1, 20.0, "12:30:00")]);
+	insert(&db, &[(4, 1, 30.0, "12:40:00")]);
+	await_group(
+		&db,
+		"app::r",
+		1,
+		&columns,
+		vec![vec![median(&[1.0, 50.0, 20.0, 30.0]), Value::float8(1.0)]],
+		"four rows forty minutes apart",
+	);
+
+	db.command("DELETE app::t FILTER { id == 1 }");
+	await_group(
+		&db,
+		"app::r",
+		1,
+		&columns,
+		vec![vec![median(&[50.0, 20.0, 30.0]), Value::float8(20.0)]],
+		"a delete forty minutes older than the newest row",
+	);
+
+	db.command("UPDATE app::t { v: 2.0 } FILTER { id == 2 }");
+	await_group(
+		&db,
+		"app::r",
+		1,
+		&columns,
+		vec![vec![median(&[2.0, 20.0, 30.0]), Value::float8(2.0)]],
+		"an update forty minutes older than the newest row",
 	);
 }

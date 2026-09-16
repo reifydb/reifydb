@@ -63,6 +63,15 @@ impl From<ColumnBuffer> for FrameColumnData {
 				inner: Box::new(FrameColumnData::from(*inner)),
 				bitvec,
 			},
+			ColumnBuffer::Digest {
+				container,
+				inner,
+				accuracy,
+			} => FrameColumnData::Digest {
+				container,
+				inner,
+				accuracy,
+			},
 		}
 	}
 }
@@ -147,6 +156,15 @@ impl From<FrameColumnData> for ColumnBuffer {
 			} => ColumnBuffer::Option {
 				inner: Box::new(ColumnBuffer::from(*inner)),
 				bitvec,
+			},
+			FrameColumnData::Digest {
+				container,
+				inner,
+				accuracy,
+			} => ColumnBuffer::Digest {
+				container,
+				inner,
+				accuracy,
 			},
 		}
 	}

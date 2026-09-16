@@ -49,7 +49,7 @@ use crate::{
 type AccumulatorContribution<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Contribution;
 type AccumulatorValue<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Output;
 type Anchor<A> = SlotCoord<<A as TumblingCarryOperator>::WindowSlot>;
-type Lateness<A> = <Anchor<A> as SealDomain>::Lateness;
+type SealSpan<A> = <Anchor<A> as SealDomain>::SealSpan;
 type CarryEngine<A> = TumblingCarryEngine<
 	<A as TumblingCarryOperator>::GroupKey,
 	Anchor<A>,
@@ -85,7 +85,7 @@ pub trait TumblingCarryOperator {
 
 	fn window_for(&self, coord: SlotCoord<Self::WindowSlot>) -> WindowSpan<SlotCoord<Self::WindowSlot>>;
 
-	fn lateness(&self) -> Option<<SlotCoord<Self::WindowSlot> as SealDomain>::Lateness> {
+	fn seal_span(&self) -> Option<<SlotCoord<Self::WindowSlot> as SealDomain>::SealSpan> {
 		None
 	}
 
@@ -260,14 +260,19 @@ where
 	}
 
 	#[instrument(name = "flow::operator::tumbling::seal", level = "trace", skip_all, fields(operator = A::NAME))]
-	fn seal(&mut self, ctx: &mut impl GuestContext, buckets: &mut Buckets<A>, lateness: Lateness<A>) -> Result<()> {
+	fn seal(
+		&mut self,
+		ctx: &mut impl GuestContext,
+		buckets: &mut Buckets<A>,
+		seal_span: SealSpan<A>,
+	) -> Result<()> {
 		let mut store = GuestAsHost(ctx);
 		let newest = buckets.keys().map(|(_, span)| span.start).max();
 		if let Some(newest) = newest {
-			observe_batch(&mut store, newest, lateness)?;
+			observe_batch(&mut store, newest, seal_span)?;
 		}
 		let watermark = seal_frontier::<Anchor<A>>(&mut store)?;
-		let horizon = <Anchor<A> as SealDomain>::horizon(watermark, lateness);
+		let horizon = <Anchor<A> as SealDomain>::horizon(watermark, seal_span);
 		Self::expire_through(&mut self.engine, &mut store, horizon)?;
 		let mut dropped = 0u64;
 		buckets.retain(|(_, span), events| {
@@ -346,19 +351,19 @@ where
 	}
 
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
-		let Some(lateness) = self.aggregator.lateness() else {
+		let Some(seal_span) = self.aggregator.seal_span() else {
 			return Ok(());
 		};
 		let mut store = GuestAsHost(ctx);
 		let Some(frontier) = timer_frontier::<Anchor<A>>(&mut store, timer)? else {
 			return Ok(());
 		};
-		let horizon = <Anchor<A> as SealDomain>::horizon(frontier, lateness);
+		let horizon = <Anchor<A> as SealDomain>::horizon(frontier, seal_span);
 		Self::expire_through(&mut self.engine, &mut store, horizon)
 	}
 
-	fn lateness(&self) -> Option<Duration> {
-		self.aggregator.lateness().and_then(<Anchor<A> as SealDomain>::lateness_duration)
+	fn seal_span(&self) -> Option<Duration> {
+		self.aggregator.seal_span().and_then(<Anchor<A> as SealDomain>::seal_span_duration)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
@@ -367,9 +372,9 @@ where
 			return Ok(());
 		}
 
-		let lateness = self.aggregator.lateness();
-		if let Some(lateness) = lateness {
-			self.seal(ctx, &mut buckets, lateness)?;
+		let seal_span = self.aggregator.seal_span();
+		if let Some(seal_span) = seal_span {
+			self.seal(ctx, &mut buckets, seal_span)?;
 			if buckets.is_empty() {
 				return Ok(());
 			}

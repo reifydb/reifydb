@@ -5,7 +5,7 @@ use std::fmt::Display;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
 	util::bitvec::BitVec,
@@ -13,7 +13,7 @@ use reifydb_value::{
 };
 
 use crate::function::{
-	math::arith::dispatch::{ensure_arity, ensure_numeric},
+	math::arith::dispatch::ensure_numeric,
 	support::coerce::{CoerceMode, all_rows_none, coerce_column, promote_all},
 };
 
@@ -57,8 +57,6 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		ensure_arity(ctx, args, 3)?;
-
 		for i in 0..3 {
 			let (data, _) = args[i].unwrap_option();
 			ensure_numeric(ctx, data, i)?;
@@ -239,5 +237,9 @@ where
 impl Function for Clamp {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(3)
 	}
 }

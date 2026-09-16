@@ -68,6 +68,15 @@ macro_rules! map_container {
 				scale: *scale,
 			},
 			ColumnBuffer::Any($c) => ColumnBuffer::Any($body),
+			ColumnBuffer::Digest {
+				container: $c,
+				inner,
+				accuracy,
+			} => ColumnBuffer::Digest {
+				container: $body,
+				inner: inner.clone(),
+				accuracy: *accuracy,
+			},
 			ColumnBuffer::Option {
 				..
 			} => {

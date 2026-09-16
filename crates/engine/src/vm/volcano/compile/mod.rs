@@ -22,9 +22,13 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 use tracing::instrument;
 
-use super::{apply_transform::ApplyTransformNode, run_tests::RunTestsQueryNode};
+use super::{
+	apply_transform::{ApplyTransformNode, UnknownTransformNode},
+	run_tests::RunTestsQueryNode,
+};
 use crate::vm::volcano::{
 	aggregate::AggregateNode,
+	append::UnsupportedAppendNode,
 	assert::{AssertNode, AssertWithoutInputNode},
 	distinct::DistinctNode,
 	environment::EnvironmentNode,
@@ -43,6 +47,7 @@ use crate::vm::volcano::{
 	take::TakeNode,
 	top_k::TopKNode,
 	variable::VariableNode,
+	window::UnsupportedWindowNode,
 };
 
 fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
@@ -225,12 +230,9 @@ pub(crate) fn compile<'a>(
 			Box::new(ScalarizeNode::new(input))
 		}
 		RqlQueryPlan::Apply(node) => {
-			let operator_name = node.operator.text().to_string();
-			let transform = context
-				.services
-				.transforms
-				.get_transform(&operator_name)
-				.unwrap_or_else(|| panic!("Unknown transform: {}", operator_name));
+			let Some(transform) = context.services.transforms.get_transform(node.operator.text()) else {
+				return Box::new(UnknownTransformNode::new(node.operator));
+			};
 			let input = node.input.expect("Apply requires input");
 			let input_node = compile(*input, rx, context);
 			Box::new(ApplyTransformNode::new(input_node, transform))
@@ -238,15 +240,7 @@ pub(crate) fn compile<'a>(
 		RqlQueryPlan::RunTests(node) => Box::new(RunTestsQueryNode::new(node, context.clone())),
 		RqlQueryPlan::CallFunction(node) => Box::new(GeneratorNode::new(node.name, node.arguments)),
 
-		RqlQueryPlan::Window(_) => {
-			unimplemented!(
-				"Window operator is only supported in deferred views and requires the flow engine."
-			)
-		}
-		RqlQueryPlan::Append(_) => {
-			unimplemented!(
-				"Append operator is only supported in deferred views and requires the flow engine."
-			)
-		}
+		RqlQueryPlan::Window(node) => Box::new(UnsupportedWindowNode::new(node.fragment)),
+		RqlQueryPlan::Append(node) => Box::new(UnsupportedAppendNode::new(node.fragment)),
 	}
 }

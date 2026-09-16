@@ -9,32 +9,29 @@ import { NONE_VALUE } from "../constant";
  */
 export class DurationValue implements Value {
     readonly type: Type = "Duration" as const;
-    private readonly months?: number;  // years*12 + months
-    private readonly days?: number;    // separate days (don't normalize due to variable month length)
-    private readonly nanos?: bigint;   // all time components as nanoseconds
+    private readonly months: number;  // years*12 + months
+    private readonly days: number;    // separate days (don't normalize due to variable month length)
+    private readonly nanos: bigint;   // all time components as nanoseconds
 
-    constructor(value?: { months: number; days: number; nanos: bigint } | string) {
-        if (value !== undefined) {
-            if (typeof value === 'string') {
-                // Parse ISO 8601 duration format
-                const parsed = DurationValue.parseDuration(value);
-                if (!parsed) {
-                    throw new Error(`Invalid duration string: ${value}`);
-                }
-                this.months = parsed.months;
-                this.days = parsed.days;
-                this.nanos = parsed.nanos;
-            } else if (typeof value === 'object' && value !== null) {
-                this.months = value.months;
-                this.days = value.days;
-                this.nanos = value.nanos;
-            } else {
-                throw new Error(`Duration value must be an object or string, got ${typeof value}`);
+    constructor(value: { months: number; days: number; nanos: bigint } | string) {
+        if (value === undefined) {
+            throw new Error(`Duration value must be defined, a none is carried by NoneValue`);
+        }
+        if (typeof value === 'string') {
+            // Parse ISO 8601 duration format
+            const parsed = DurationValue.parseDuration(value);
+            if (!parsed) {
+                throw new Error(`Invalid duration string: ${value}`);
             }
+            this.months = parsed.months;
+            this.days = parsed.days;
+            this.nanos = parsed.nanos;
+        } else if (typeof value === 'object' && value !== null) {
+            this.months = value.months;
+            this.days = value.days;
+            this.nanos = value.nanos;
         } else {
-            this.months = undefined;
-            this.days = undefined;
-            this.nanos = undefined;
+            throw new Error(`Duration value must be an object or string, got ${typeof value}`);
         }
     }
 
@@ -136,7 +133,7 @@ export class DurationValue implements Value {
         const trimmed = str.trim();
         
         if (trimmed === '' || trimmed === NONE_VALUE) {
-            return new DurationValue(undefined);
+            throw new Error(`Cannot parse "${str}" as Duration`);
         }
 
         const parsed = DurationValue.parseDuration(trimmed);
@@ -223,9 +220,6 @@ export class DurationValue implements Value {
      * Get absolute value of duration
      */
     abs(): DurationValue {
-        if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
-            return new DurationValue(undefined);
-        }
         return new DurationValue({
             months: Math.abs(this.months),
             days: Math.abs(this.days),
@@ -237,9 +231,6 @@ export class DurationValue implements Value {
      * Negate the duration
      */
     negate(): DurationValue {
-        if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
-            return new DurationValue(undefined);
-        }
         return new DurationValue({
             months: -this.months,
             days: -this.days,
@@ -511,8 +502,8 @@ export class DurationValue implements Value {
                this.nanos === otherDuration.nanos;
     }
 
-    toJSON(): string | null {
-        return this.months === undefined ? null : this.toIsoString();
+    toJSON(): string {
+        return this.toIsoString();
     }
 
     encode(): TypeValuePair {

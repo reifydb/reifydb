@@ -75,7 +75,7 @@ pub struct WindowOperator {
 }
 
 impl WindowOperator {
-	pub fn new(config: WindowConfig) -> Self {
+	pub fn new(config: WindowConfig) -> Result<Self> {
 		let core = Aggregation::new(
 			config.operator,
 			config.parent_schema,
@@ -85,8 +85,8 @@ impl WindowOperator {
 			config.runtime_context,
 			AggregateContext::Windowed,
 			config.ctx,
-		);
-		Self {
+		)?;
+		Ok(Self {
 			core,
 			kind: config.kind,
 			lateness: config.lateness,
@@ -94,7 +94,7 @@ impl WindowOperator {
 			sealed_drops: SealedDrops::new(config.operator, "mutations targeting sealed windows"),
 			rolling_engine: None,
 			meta: WindowMeta::new(),
-		}
+		})
 	}
 
 	pub(super) fn meta_slot(&mut self) -> &mut WindowMeta {
@@ -239,6 +239,6 @@ impl HostOperator for WindowOperator {
 	}
 
 	fn output_schema(&self) -> Option<Columns> {
-		self.core.parent_schema.clone()
+		Some(self.core.output_schema.clone())
 	}
 }

@@ -84,6 +84,12 @@ restore_cargo_config() {
         mv "$ROOT_DIR/.cargo/config.toml.disabled" "$ROOT_DIR/.cargo/config.toml"
         echo -e "${GREEN}✓ Cargo config restored${NC}"
     fi
+    if [ -f "$ROOT_DIR/Cargo.lock.publish-bak" ]; then
+        if ! cmp -s "$ROOT_DIR/Cargo.lock" "$ROOT_DIR/Cargo.lock.publish-bak"; then
+            echo -e "${YELLOW}Cargo.lock changed during publish, restoring...${NC}"
+        fi
+        mv "$ROOT_DIR/Cargo.lock.publish-bak" "$ROOT_DIR/Cargo.lock"
+    fi
 }
 
 # Set up cleanup trap to always restore config
@@ -119,6 +125,7 @@ if [ $SKIP_CRATES -eq 0 ]; then
     fi
 
     cd "$ROOT_DIR"
+    cp "$ROOT_DIR/Cargo.lock" "$ROOT_DIR/Cargo.lock.publish-bak"
 
     # Temporarily disable .cargo/config.toml to allow publishing to crates.io
     if [ -f "$ROOT_DIR/.cargo/config.toml" ]; then

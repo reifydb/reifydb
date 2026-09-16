@@ -261,6 +261,20 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 			(ValueType::Any, Value::Any(inner)) => self.set_any(row, index, inner),
+			(
+				ValueType::Digest {
+					..
+				},
+				Value::Digest(v),
+			) => self.set_digest(row, index, v),
+			(
+				ValueType::Digest {
+					..
+				},
+				Value::None {
+					..
+				},
+			) => self.set_none(row, index),
 			(ty, val) => unreachable!(
 				"set_value type mismatch at index {index}: column name={:?} declared_type={ty:?}, value={val:?}",
 				field.name,
@@ -314,6 +328,9 @@ impl RowShape {
 			ValueType::List(_) => unreachable!("List type cannot be stored in database"),
 			ValueType::Record(_) => unreachable!("Record type cannot be stored in database"),
 			ValueType::Tuple(_) => unreachable!("Tuple type cannot be stored in database"),
+			ValueType::Digest {
+				..
+			} => Value::Digest(Box::new(self.get_digest(row, index))),
 		}
 	}
 }

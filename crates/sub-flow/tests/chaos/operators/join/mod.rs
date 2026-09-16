@@ -146,6 +146,7 @@ pub fn build(
 		right_ttl,
 		Arc::new(FlowContext::default()),
 	)
+	.expect("the join operator must build")
 }
 
 #[derive(Debug, Clone)]

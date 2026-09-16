@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{
-	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{uuid::Uuid7, value_type::ValueType};
 use uuid::Uuid;
@@ -36,14 +36,6 @@ impl<'a> Routine<FunctionContext<'a>> for UuidV7 {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.len() > 1 {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 0,
-				actual: args.len(),
-			});
-		}
-
 		if args.is_empty() {
 			let uuid = Uuid7::generate(&ctx.runtime_context.clock, &ctx.runtime_context.rng);
 			let result_data = ColumnBuffer::uuid7(vec![uuid]);
@@ -102,5 +94,9 @@ impl<'a> Routine<FunctionContext<'a>> for UuidV7 {
 impl Function for UuidV7 {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Range(0, 1)
 	}
 }

@@ -3,18 +3,36 @@
 
 use std::collections::HashSet;
 
+use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_core::{
+	error::diagnostic::operation,
 	interface::resolved::ResolvedColumn,
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::util::hash::{Hash128, xxh3_128};
+use reifydb_value::{error, fragment::Fragment};
 use tracing::instrument;
 
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode, charge_query_memory},
 };
+
+fn ensure_distinct_keyable(name: &Fragment, data: &ColumnBuffer) -> Result<()> {
+	let ty = data.get_type();
+	if !ty.is_scalar() {
+		return Err(error!(operation::distinct_key_unkeyable(name.clone(), ty)));
+	}
+	Ok(())
+}
+
+fn row_key(key_columns: &[&ColumnBuffer], row_idx: usize) -> Result<EncodedKey> {
+	let mut serializer = KeySerializer::new();
+	for column in key_columns {
+		column.extend_key(row_idx, &mut serializer)?;
+	}
+	Ok(serializer.to_encoded_key())
+}
 
 pub(crate) struct DistinctNode {
 	input: Box<dyn QueryNode>,
@@ -50,43 +68,32 @@ impl DistinctNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::distinct::dedupe")]
-	fn dedupe(&self, all_columns: &Columns) -> Vec<usize> {
-		let row_count = all_columns.row_count();
-		let mut seen = HashSet::<Hash128>::new();
-		let mut kept_indices = Vec::new();
-
+	fn dedupe(&self, all_columns: &Columns) -> Result<Vec<usize>> {
+		let mut key_columns: Vec<&ColumnBuffer> = Vec::new();
 		if self.columns.is_empty() {
-			for row_idx in 0..row_count {
-				let mut data = Vec::new();
-				for col in all_columns.iter() {
-					let value = col.data().get_value(row_idx);
-					let value_str = value.to_string();
-					data.extend_from_slice(value_str.as_bytes());
-				}
-				let hash = xxh3_128(&data);
-				if seen.insert(hash) {
-					kept_indices.push(row_idx);
-				}
+			for col in all_columns.iter() {
+				ensure_distinct_keyable(col.name(), col.data())?;
+				key_columns.push(col.data());
 			}
 		} else {
-			let distinct_col_names: Vec<&str> = self.columns.iter().map(|c| c.name()).collect();
-			for row_idx in 0..row_count {
-				let mut data = Vec::new();
-				for col_name in &distinct_col_names {
-					if let Some(col) = all_columns.column(col_name) {
-						let value = col.data().get_value(row_idx);
-						let value_str = value.to_string();
-						data.extend_from_slice(value_str.as_bytes());
-					}
-				}
-				let hash = xxh3_128(&data);
-				if seen.insert(hash) {
-					kept_indices.push(row_idx);
+			for column in &self.columns {
+				if let Some(col) = all_columns.column(column.name()) {
+					ensure_distinct_keyable(column.identifier(), col.data())?;
+					key_columns.push(col.data());
 				}
 			}
 		}
 
-		kept_indices
+		let mut seen = HashSet::<EncodedKey>::new();
+		let mut kept_indices = Vec::new();
+		for row_idx in 0..all_columns.row_count() {
+			let key = row_key(&key_columns, row_idx)?;
+			if seen.insert(key) {
+				kept_indices.push(row_idx);
+			}
+		}
+
+		Ok(kept_indices)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::distinct::extract")]
@@ -118,7 +125,7 @@ impl QueryNode for DistinctNode {
 			}
 		};
 
-		let kept_indices = self.dedupe(&all_columns);
+		let kept_indices = self.dedupe(&all_columns)?;
 
 		let result = if kept_indices.is_empty() {
 			all_columns

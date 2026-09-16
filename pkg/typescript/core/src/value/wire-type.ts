@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {NONE_VALUE} from '../constant';
-import {BaseType, Type, isOptionType} from '.';
+import {BaseType, Type, isDigestType, isOptionType} from '.';
+import {digestType} from './digest';
 
 /**
  * The wire rendering of a type: an object whose `id` names it, with anything it wraps under `underlying`.
@@ -13,12 +14,17 @@ import {BaseType, Type, isOptionType} from '.';
 export interface WireType {
     id: string;
     underlying?: WireType;
+    accuracy?: number;
 }
 
 export function typeToWire(type: Type): WireType {
-    return isOptionType(type)
-        ? {id: 'Option', underlying: typeToWire(type.Option)}
-        : {id: type};
+    if (isOptionType(type)) {
+        return {id: 'Option', underlying: typeToWire(type.Option)};
+    }
+    if (isDigestType(type)) {
+        return {id: 'Digest', underlying: {id: type.Digest.inner}, accuracy: type.Digest.accuracy};
+    }
+    return {id: type};
 }
 
 export function typeFromWire(wire: WireType): Type {
@@ -30,6 +36,13 @@ export function typeFromWire(wire: WireType): Type {
             throw new Error('Option type descriptor is missing its underlying type');
         }
         return {Option: typeFromWire(wire.underlying)};
+    }
+    if (wire.id === 'Digest') {
+        const inner = wire.underlying?.id;
+        if (typeof inner !== 'string' || typeof wire.accuracy !== 'number') {
+            throw new Error(`Digest type descriptor needs an underlying type and a numeric accuracy, got ${JSON.stringify(wire)}`);
+        }
+        return digestType(inner, wire.accuracy);
     }
     return wire.id as BaseType;
 }
@@ -54,23 +67,44 @@ export function framesFromWire(frames: any[]): any[] {
  * the caller whatever JSON happened to arrive.
  */
 export function envelopeToColumns(envelope: any): {name: string, type: Type, payload: string[]}[] {
-    const types = envelope?.types ?? {};
+    const types = envelope?.types;
     const rows: any[] = envelope?.rows ?? [];
-    return Object.keys(types).map(name => ({
-        name,
-        type: typeFromWire(types[name]),
-        payload: rows.map(row => payloadOf(row?.[name])),
-    }));
+    if (!types || typeof types !== 'object') {
+        if (rows.length > 0) {
+            throw new Error(`Frame envelope carries rows but no column types, got ${JSON.stringify(envelope)}`);
+        }
+        return [];
+    }
+    return Object.keys(types).map(name => {
+        const type = typeFromWire(types[name]);
+        return {
+            name,
+            type,
+            payload: rows.map(row => payloadOf(row, name, type)),
+        };
+    });
 }
 
 export function envelopesToFrames(envelopes: any): {columns: {name: string, type: Type, payload: string[]}[]}[] {
-    return Array.isArray(envelopes) ? envelopes.map(envelope => ({columns: envelopeToColumns(envelope)})) : [];
+    if (!Array.isArray(envelopes)) {
+        throw new Error(`Expected a list of frame envelopes, got ${JSON.stringify(envelopes)}`);
+    }
+    return envelopes.map(envelope => ({columns: envelopeToColumns(envelope)}));
 }
 
-function payloadOf(value: any): string {
-    // A none at the outermost layer is JSON's own null; deeper ones already arrive as a marker.
+function payloadOf(row: any, name: string, type: Type): string {
+    if (!row || typeof row !== 'object' || !(name in row)) {
+        throw new Error(`Row is missing a cell for column ${name}`);
+    }
+    const value = row[name];
     if (value === null || value === undefined) {
+        if (!isOptionType(type)) {
+            throw new Error(`A none cell cannot fit the non-option column ${name}`);
+        }
         return NONE_VALUE;
     }
-    return typeof value === 'string' ? value : String(value);
+    if (typeof value !== 'string') {
+        throw new Error(`Cell for column ${name} must arrive as text, got ${typeof value}`);
+    }
+    return value;
 }

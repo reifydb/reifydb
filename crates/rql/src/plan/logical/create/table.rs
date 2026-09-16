@@ -8,15 +8,20 @@ use reifydb_catalog::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
-	value::constraint::{Constraint, TypeConstraint},
+	value::{
+		constraint::{Constraint, TypeConstraint},
+		value_type::ValueType,
+	},
 };
 
 use crate::{
 	Result,
 	ast::ast::{AstColumnProperty, AstCreateTable, AstType},
+	bump::BumpFragment,
 	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateTableNode, LogicalPlan,
+		create::reject_digest_partition_columns,
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
 	},
 };
@@ -37,33 +42,14 @@ impl<'bump> Compiler<'bump> {
 				AstType::Qualified {
 					namespace,
 					name,
-				} => {
-					let ns_name = namespace.text();
-					let type_name = name.text();
-					let ns = self.catalog.find_namespace_by_segments(tx, &[ns_name])?;
-					let sumtype = ns
-						.and_then(|ns| {
-							self.catalog
-								.find_sumtype_by_name(tx, ns.id(), type_name)
-								.transpose()
-						})
-						.transpose()?;
-					match sumtype {
-						Some(def) => TypeConstraint::sumtype(def.id),
-						None => {
-							return Err(CatalogError::NotFound {
-								kind: CatalogObjectKind::Enum,
-								namespace: ns_name.to_string(),
-								name: type_name.to_string(),
-								fragment: Fragment::merge_all([
-									namespace.to_owned(),
-									name.to_owned(),
-								]),
-							}
-							.into());
-						}
-					}
-				}
+				} => self.resolve_sumtype_constraint(tx, namespace, name, false)?,
+				AstType::Optional(inner) => match inner.as_ref() {
+					AstType::Qualified {
+						namespace,
+						name,
+					} => self.resolve_sumtype_constraint(tx, namespace, name, true)?,
+					_ => convert_data_type_with_constraints(&col.ty)?,
+				},
 				_ => convert_data_type_with_constraints(&col.ty)?,
 			};
 			let column_type = constraint.get_type();
@@ -165,6 +151,10 @@ impl<'bump> Compiler<'bump> {
 				.into());
 			}
 		}
+		reject_digest_partition_columns(
+			columns.iter().map(|c| (c.name.text(), c.constraint.get_type())),
+			&partition_by,
+		)?;
 
 		let table = ast.table;
 		let row_ttl =
@@ -193,5 +183,38 @@ impl<'bump> Compiler<'bump> {
 			persistent,
 			time,
 		}))
+	}
+
+	fn resolve_sumtype_constraint(
+		&self,
+		tx: &mut Transaction<'_>,
+		namespace: &BumpFragment<'bump>,
+		name: &BumpFragment<'bump>,
+		optional: bool,
+	) -> Result<TypeConstraint> {
+		let ns_name = namespace.text();
+		let type_name = name.text();
+		let ns = self.catalog.find_namespace_by_segments(tx, &[ns_name])?;
+		let sumtype = ns
+			.and_then(|ns| self.catalog.find_sumtype_by_name(tx, ns.id(), type_name).transpose())
+			.transpose()?;
+
+		let Some(def) = sumtype else {
+			return Err(CatalogError::NotFound {
+				kind: CatalogObjectKind::Enum,
+				namespace: ns_name.to_string(),
+				name: type_name.to_string(),
+				fragment: Fragment::merge_all([namespace.to_owned(), name.to_owned()]),
+			}
+			.into());
+		};
+
+		Ok(match optional {
+			true => TypeConstraint::with_constraint(
+				ValueType::Option(Box::new(ValueType::Uint1)),
+				Constraint::SumType(def.id),
+			),
+			false => TypeConstraint::sumtype(def.id),
+		})
 	}
 }

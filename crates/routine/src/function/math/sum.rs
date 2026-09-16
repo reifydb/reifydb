@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::{
-	Accumulator, AggregateFunctionCapability, Function, FunctionKind, Routine, RoutineInfo,
+	Accumulator, AggregateFunctionCapability, Arity, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo,
 	context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
@@ -54,19 +54,7 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 		input_types.first().cloned().unwrap_or(ValueType::Int8)
 	}
 
-	fn accepted_types(&self) -> InputTypes {
-		InputTypes::numeric()
-	}
-
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.is_empty() {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 1,
-				actual: 0,
-			});
-		}
-
 		let row_count = args.row_count();
 		let mut results = Vec::with_capacity(row_count);
 
@@ -84,8 +72,16 @@ impl Function for Sum {
 		&[FunctionKind::Scalar, FunctionKind::Aggregate]
 	}
 
-	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
-		Some(Box::new(SumAccumulator::new()))
+	fn arity(&self) -> Arity {
+		Arity::AtLeast(1)
+	}
+
+	fn accumulator(
+		&self,
+		ctx: &mut FunctionContext<'_>,
+		_literals: &[LiteralArgument],
+	) -> Result<Option<Box<dyn Accumulator>>, RoutineError> {
+		Ok(Some(Box::new(SumAccumulator::new(ctx.fragment.clone()))))
 	}
 
 	fn aggregate_capabilities(&self) -> &[AggregateFunctionCapability] {
@@ -94,13 +90,15 @@ impl Function for Sum {
 }
 
 struct SumAccumulator {
+	function: Fragment,
 	pub sums: GroupSlots<Value>,
 	input_type: Option<ValueType>,
 }
 
 impl SumAccumulator {
-	pub fn new() -> Self {
+	pub fn new(function: Fragment) -> Self {
 		Self {
+			function,
 			sums: GroupSlots::new(),
 			input_type: None,
 		}
@@ -343,7 +341,7 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
-				function: Fragment::internal("math::sum"),
+				function: self.function.clone(),
 				argument_index: 0,
 				expected: InputTypes::numeric().expected_at(0).to_vec(),
 				actual: other.get_type(),
@@ -489,7 +487,7 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
-				function: Fragment::internal("math::sum"),
+				function: self.function.clone(),
 				argument_index: 0,
 				expected: InputTypes::numeric().expected_at(0).to_vec(),
 				actual: other.get_type(),

@@ -3,18 +3,21 @@
 
 use num_traits::NumCast;
 use reifydb_codec::{key::serializer::KeySerializer, tag::ValueKind};
-use reifydb_value::value::{
-	Value,
-	date::Date,
-	datetime::DateTime,
-	decimal::Decimal,
-	duration::Duration,
-	identity::IdentityId,
-	int::Int,
-	time::Time,
-	uint::Uint,
-	uuid::{Uuid4, Uuid7},
-	value_type::ValueType,
+use reifydb_value::{
+	Result,
+	value::{
+		Value,
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
+		identity::IdentityId,
+		int::Int,
+		time::Time,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
+	},
 };
 
 use crate::value::column::{ColumnBuffer, buffer::with_container};
@@ -46,18 +49,18 @@ impl ColumnBuffer {
 		T::from_column_buffer(self, index)
 	}
 
-	pub fn extend_key(&self, index: usize, serializer: &mut KeySerializer) {
+	pub fn extend_key(&self, index: usize, serializer: &mut KeySerializer) -> Result<()> {
 		match self {
 			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
 				if index < bitvec.len() && bitvec.get(index) {
-					inner.extend_key(index, serializer);
+					inner.extend_key(index, serializer)?;
 				} else {
-					serializer.extend_value(&Value::None {
+					serializer.try_extend_value(&Value::None {
 						inner: inner.get_type(),
-					});
+					})?;
 				}
 			}
 			ColumnBuffer::Utf8 {
@@ -83,9 +86,10 @@ impl ColumnBuffer {
 				}
 			},
 			other => {
-				serializer.extend_value(&other.get_value(index));
+				serializer.try_extend_value(&other.get_value(index))?;
 			}
 		}
+		Ok(())
 	}
 
 	pub fn get_str(&self, index: usize) -> Option<&str> {

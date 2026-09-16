@@ -24,7 +24,7 @@ fn single(db: &TestDb, rql: &str, column: &str) -> Value {
 #[test]
 fn an_update_on_a_processing_time_object_carries_time_forward() {
 	let db = db();
-	db.admin("CREATE TABLE st::t { id: int4, n: int4 }");
+	db.admin("CREATE TABLE st::t { id: int4, n: int4 } with { time: processing }");
 	db.command("INSERT st::t [{ id: 1, n: 10 }]");
 
 	let before = single(&db, "FROM st::t | MAP { #time }", "time");

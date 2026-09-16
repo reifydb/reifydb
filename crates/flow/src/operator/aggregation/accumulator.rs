@@ -11,6 +11,7 @@ use reifydb_value::{
 	value::{
 		Value,
 		datetime::DateTime,
+		digest::Digest,
 		duration::Duration,
 		number::safe::{add::SafeAdd, div::SafeDiv, sub::SafeSub},
 	},
@@ -90,6 +91,102 @@ pub enum AggregateSlot {
 	Span {
 		n: i64,
 	},
+	Digest(Box<DigestSlot>),
+}
+
+#[operator_state]
+#[derive(Clone, Debug)]
+pub struct DigestSlot {
+	accuracy: Option<u32>,
+	digest: Option<Digest>,
+}
+
+impl DigestSlot {
+	fn add(&mut self, value: &Value) {
+		match (self.accuracy, value) {
+			(None, Value::Digest(part)) => self.merge_digest(part),
+			(Some(accuracy), value) => {
+				let digest = self.digest.get_or_insert_with(|| {
+					Digest::new(value.get_type(), accuracy).unwrap_or_else(|err| {
+						panic!(
+							"digest slot cannot start from {value}, which passed input checks: {err}"
+						)
+					})
+				});
+				digest.add_value(value).unwrap_or_else(|err| {
+					panic!("digest slot add of {value} failed after input checks: {err}")
+				});
+			}
+			(None, value) => panic!("digest slot without an accuracy takes only digests, got {value}"),
+		}
+		self.reset_when_empty();
+	}
+
+	fn remove(&mut self, value: &Value) {
+		match (self.accuracy, value) {
+			(None, Value::Digest(part)) => self.unmerge_digest(part),
+			(Some(_), value) => {
+				let Some(digest) = self.digest.as_mut() else {
+					panic!("digest slot remove of {value} from an empty slot");
+				};
+				digest.remove_value(value).unwrap_or_else(|err| {
+					panic!("digest slot remove of {value} failed after input checks: {err}")
+				});
+			}
+			(None, value) => panic!("digest slot without an accuracy takes only digests, got {value}"),
+		}
+		self.reset_when_empty();
+	}
+
+	fn merge(&mut self, other: &DigestSlot) {
+		if let Some(part) = &other.digest {
+			self.merge_digest(part);
+			self.reset_when_empty();
+		}
+	}
+
+	fn unmerge(&mut self, other: &DigestSlot) {
+		if let Some(part) = &other.digest {
+			self.unmerge_digest(part);
+			self.reset_when_empty();
+		}
+	}
+
+	fn merge_digest(&mut self, part: &Digest) {
+		match &mut self.digest {
+			Some(digest) => {
+				digest.merge(part).unwrap_or_else(|err| panic!("digest slot merge failed: {err}"))
+			}
+			None => self.digest = Some(part.clone()),
+		}
+	}
+
+	fn unmerge_digest(&mut self, part: &Digest) {
+		match &mut self.digest {
+			Some(digest) => {
+				digest.unmerge(part).unwrap_or_else(|err| panic!("digest slot unmerge failed: {err}"))
+			}
+			None if part.count() == 0 => {}
+			None => panic!("digest slot unmerge of {} values from an empty slot", part.count()),
+		}
+	}
+
+	fn reset_when_empty(&mut self) {
+		if self.digest.as_ref().is_some_and(|digest| digest.bucket_count() == 0 && digest.count() == 0) {
+			self.digest = None;
+		}
+	}
+
+	fn finalize(&self) -> Value {
+		match &self.digest {
+			Some(digest) => Value::Digest(Box::new(digest.clone())),
+			None => Value::none(),
+		}
+	}
+
+	fn is_empty(&self) -> bool {
+		self.digest.is_none()
+	}
 }
 
 fn endpoint(immutable: Option<Duration>) -> SealingEndpoint<WindowSlotKey, Value> {
@@ -133,6 +230,12 @@ impl AggregateSlot {
 			SlotKind::WindowStart | SlotKind::WindowEnd | SlotKind::WindowDuration => AggregateSlot::Span {
 				n: 0,
 			},
+			SlotKind::Digest {
+				accuracy,
+			} => AggregateSlot::Digest(Box::new(DigestSlot {
+				accuracy,
+				digest: None,
+			})),
 		}
 	}
 
@@ -207,6 +310,11 @@ impl AggregateSlot {
 			AggregateSlot::Span {
 				n,
 			} => *n += 1,
+			AggregateSlot::Digest(slot) => {
+				if let Some(v) = present(input) {
+					slot.add(v);
+				}
+			}
 		}
 	}
 
@@ -281,6 +389,11 @@ impl AggregateSlot {
 			AggregateSlot::Span {
 				n,
 			} => *n -= 1,
+			AggregateSlot::Digest(slot) => {
+				if let Some(v) = present(input) {
+					slot.remove(v);
+				}
+			}
 		}
 	}
 
@@ -376,6 +489,7 @@ impl AggregateSlot {
 					n: on,
 				},
 			) => *n += *on,
+			(AggregateSlot::Digest(a), AggregateSlot::Digest(b)) => a.merge(b),
 			_ => {}
 		}
 	}
@@ -466,6 +580,7 @@ impl AggregateSlot {
 					n: on,
 				},
 			) => *n = (*n - *on).max(0),
+			(AggregateSlot::Digest(a), AggregateSlot::Digest(b)) => a.unmerge(b),
 			_ => {
 				#[cfg(reifydb_assertions)]
 				panic!("unmerge on non-invertible aggregate slot");
@@ -502,6 +617,7 @@ impl AggregateSlot {
 			AggregateSlot::Span {
 				..
 			} => Value::none(),
+			AggregateSlot::Digest(slot) => slot.finalize(),
 		}
 	}
 
@@ -526,6 +642,7 @@ impl AggregateSlot {
 			AggregateSlot::Span {
 				n,
 			} => *n == 0,
+			AggregateSlot::Digest(slot) => slot.is_empty(),
 		}
 	}
 }
@@ -534,6 +651,7 @@ impl AggregateSlot {
 #[derive(Clone, Debug, Default)]
 pub struct RowAccumulator {
 	slots: Vec<AggregateSlot>,
+	rows: u64,
 }
 
 impl HeapSize for RowAccumulator {
@@ -546,6 +664,7 @@ impl RowAccumulator {
 	pub fn new(kinds: &[SlotKind], immutable: Option<Duration>) -> Self {
 		Self {
 			slots: kinds.iter().map(|k| AggregateSlot::empty(*k, immutable)).collect(),
+			rows: 0,
 		}
 	}
 
@@ -553,12 +672,16 @@ impl RowAccumulator {
 		for (slot, other_slot) in self.slots.iter_mut().zip(other.slots.iter()) {
 			slot.merge(other_slot);
 		}
+		self.rows += other.rows;
 	}
 
 	pub fn unmerge(&mut self, other: &RowAccumulator) {
 		for (slot, other_slot) in self.slots.iter_mut().zip(other.slots.iter()) {
 			slot.unmerge(other_slot);
 		}
+		self.rows = self.rows.checked_sub(other.rows).unwrap_or_else(|| {
+			panic!("RowAccumulator unmerge of {} rows from {} rows", other.rows, self.rows)
+		});
 	}
 
 	pub fn invertible(kinds: &[SlotKind], immutable: Option<Duration>) -> bool {
@@ -571,6 +694,9 @@ impl RowAccumulator {
 			SlotKind::Min | SlotKind::Max | SlotKind::WindowLast => immutable.is_none(),
 			SlotKind::WindowStart | SlotKind::WindowEnd | SlotKind::WindowDuration => true,
 			SlotKind::First | SlotKind::Last => false,
+			SlotKind::Digest {
+				..
+			} => true,
 		})
 	}
 }
@@ -595,6 +721,7 @@ impl WindowAccumulator for RowAccumulator {
 		for (slot, input) in self.slots.iter_mut().zip(values.iter()) {
 			slot.add(*coord, input);
 		}
+		self.rows += 1;
 	}
 
 	fn remove(&mut self, contribution: &Self::Contribution) {
@@ -613,6 +740,7 @@ impl WindowAccumulator for RowAccumulator {
 		for (slot, input) in self.slots.iter_mut().zip(values.iter()) {
 			slot.remove(*coord, input);
 		}
+		self.rows = self.rows.checked_sub(1).expect("RowAccumulator remove of a row it never added");
 	}
 
 	fn finalize(&self) -> Option<Self::Output> {
@@ -623,7 +751,7 @@ impl WindowAccumulator for RowAccumulator {
 	}
 
 	fn is_empty(&self) -> bool {
-		self.slots.iter().all(AggregateSlot::is_empty)
+		self.rows == 0 && self.slots.iter().all(AggregateSlot::is_empty)
 	}
 
 	fn merge(&mut self, other: &Self) {
@@ -721,9 +849,16 @@ fn finalize_compensated(accumulator: &Value, compensation: f64, seen_negative: b
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::row::operator::state::{OperatorState, decode};
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
-	use crate::{operator::state::seal::coord::Coord, window::span::WindowSpan};
+	use crate::{
+		operator::state::seal::coord::Coord,
+		window::{
+			accumulator::testkit::{Op, drive},
+			span::WindowSpan,
+		},
+	};
 
 	fn i4(v: i32) -> Option<Value> {
 		Some(Value::Int4(v))
@@ -1406,5 +1541,240 @@ mod tests {
 		);
 		assert!(!RowAccumulator::invertible(&[SlotKind::Sum, SlotKind::First], None));
 		assert!(!RowAccumulator::invertible(&[SlotKind::Last], None));
+	}
+
+	const PPM: u32 = 10_000;
+
+	fn digest_kind(accuracy: Option<u32>) -> SlotKind {
+		SlotKind::Digest {
+			accuracy,
+		}
+	}
+
+	fn f8(v: f64) -> Option<Value> {
+		Some(Value::float8(v))
+	}
+
+	fn oracle(inner: ValueType, accuracy: u32, values: &[Value]) -> Digest {
+		let mut digest = Digest::new(inner, accuracy).unwrap();
+		for value in values {
+			digest.add_value(value).unwrap();
+		}
+		digest
+	}
+
+	fn digest_value(digest: Digest) -> Value {
+		Value::Digest(Box::new(digest))
+	}
+
+	fn state_bytes(a: &RowAccumulator) -> Vec<u8> {
+		a.encode_state().unwrap().as_slice().to_vec()
+	}
+
+	struct Lcg(u64);
+
+	impl Lcg {
+		fn next(&mut self) -> u64 {
+			self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+			self.0 >> 33
+		}
+	}
+
+	#[test]
+	fn a_digest_slot_is_none_until_a_value_and_add_then_remove_restores_the_empty_state() {
+		// A slot that keeps an emptied digest encodes unlike a fresh one, so stored state drifts from a
+		// rebuild.
+		let fresh = accumulator(&[digest_kind(Some(PPM))]);
+		assert_eq!(fresh.slots[0].finalize(), Value::none(), "a slot with no value must finalize none");
+		let mut a = fresh.clone();
+		let probe = (at(0), vec![f8(5.0)]);
+		drive(&mut a, &[Op::Add(probe.clone())]);
+		assert_eq!(
+			a.finalize(),
+			Some(vec![digest_value(oracle(ValueType::Float8, PPM, &[Value::float8(5.0)]))])
+		);
+		drive(&mut a, &[Op::Remove(probe)]);
+		assert!(a.is_empty());
+		assert_eq!(a.finalize(), None);
+		assert_eq!(
+			state_bytes(&a),
+			state_bytes(&fresh),
+			"add then remove must encode exactly as the empty slot"
+		);
+	}
+
+	#[test]
+	fn a_digest_slot_skips_none_and_equals_an_oracle_through_seeded_add_remove_churn() {
+		// A dropped retraction or a counted none shifts every rank, so the answer drifts from the rows present.
+		let mut a = accumulator(&[digest_kind(Some(PPM))]);
+		let mut live: Vec<(u64, f64)> = Vec::new();
+		let mut rng = Lcg(0x5EED_D16E_57u64);
+		for seq in 0..3_000u64 {
+			let roll = rng.next();
+			if roll % 5 == 0 {
+				a.add(&(at(seq), vec![Some(Value::none())]));
+				continue;
+			}
+			if roll % 3 == 0 && !live.is_empty() {
+				let (old_seq, old) = live.swap_remove((rng.next() % live.len() as u64) as usize);
+				a.remove(&(at(old_seq), vec![f8(old)]));
+			} else {
+				let v = match rng.next() % 4 {
+					0 => 0.0,
+					1 => -((rng.next() % 1_000_000) as f64) / 7.0,
+					_ => (rng.next() % 1_000_000) as f64 / 3.0,
+				};
+				a.add(&(at(seq), vec![f8(v)]));
+				live.push((seq, v));
+			}
+			if seq % 97 == 0 {
+				let values: Vec<Value> = live.iter().map(|(_, v)| Value::float8(*v)).collect();
+				let expected = if values.is_empty() {
+					Value::none()
+				} else {
+					digest_value(oracle(ValueType::Float8, PPM, &values))
+				};
+				assert_eq!(
+					a.slots[0].finalize(),
+					expected,
+					"digest diverged from the live rows at step {seq}"
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn unmerging_a_digest_slot_restores_the_running_state_and_merge_equals_one_accumulator() {
+		// Rolling keeps a running digest by merge and unmerge, so a lossy inverse reports rows that left the
+		// frame.
+		let kinds = [digest_kind(Some(PPM)), SlotKind::Sum];
+		let mut base = accumulator(&kinds);
+		let mut other = accumulator(&kinds);
+		let mut whole = accumulator(&kinds);
+		for (seq, v) in [(0, 1.5), (1, -2.0), (2, 0.0)] {
+			base.add(&(at(seq), vec![f8(v), f8(v)]));
+			whole.add(&(at(seq), vec![f8(v), f8(v)]));
+		}
+		for (seq, v) in [(3, 900.0), (4, 1.5)] {
+			other.add(&(at(seq), vec![f8(v), f8(v)]));
+			whole.add(&(at(seq), vec![f8(v), f8(v)]));
+		}
+		let snapshot = state_bytes(&base);
+		base.merge(&other);
+		assert_eq!(base.finalize(), whole.finalize(), "merge must equal accumulating every row into one");
+		base.unmerge(&other);
+		assert_eq!(state_bytes(&base), snapshot, "unmerge must restore the pre-merge state byte for byte");
+
+		let lone_kinds = [digest_kind(Some(PPM))];
+		let mut lone = accumulator(&lone_kinds);
+		for (seq, v) in [(0, 1.5), (1, -2.0), (2, 0.0)] {
+			lone.add(&(at(seq), vec![f8(v)]));
+		}
+		let mut running = accumulator(&lone_kinds);
+		running.merge(&lone);
+		running.unmerge(&lone);
+		assert_eq!(
+			state_bytes(&running),
+			state_bytes(&accumulator(&lone_kinds)),
+			"unmerging the only part must empty it"
+		);
+	}
+
+	#[test]
+	fn a_digest_input_merges_on_add_and_unmerges_on_remove() {
+		// A digest input added as one value instead of merged counts each stored digest once, not its rows.
+		let first = oracle(ValueType::Int4, PPM, &[Value::Int4(1), Value::Int4(2), Value::Int4(3)]);
+		let second = oracle(ValueType::Int4, PPM, &[Value::Int4(10), Value::Int4(2_000)]);
+		let fresh = accumulator(&[digest_kind(None)]);
+		let mut a = fresh.clone();
+		a.add(&(at(0), vec![Some(digest_value(first.clone()))]));
+		a.add(&(at(1), vec![Some(digest_value(second.clone()))]));
+		let all = [1, 2, 3, 10, 2_000].map(Value::Int4);
+		assert_eq!(a.finalize(), Some(vec![digest_value(oracle(ValueType::Int4, PPM, &all))]));
+		a.remove(&(at(0), vec![Some(digest_value(first))]));
+		assert_eq!(a.finalize(), Some(vec![digest_value(second.clone())]));
+		a.remove(&(at(1), vec![Some(digest_value(second))]));
+		assert_eq!(
+			state_bytes(&a),
+			state_bytes(&fresh),
+			"removing every merged digest must return the empty slot"
+		);
+	}
+
+	#[test]
+	#[should_panic(expected = "cannot merge digest(Float8, 10000 ppm) with digest(Float8, 50000 ppm)")]
+	fn merging_digests_of_different_accuracy_in_one_slot_is_a_named_failure() {
+		// Summing counts of buckets with different widths gives answers that match neither accuracy.
+		let mut a = accumulator(&[digest_kind(None)]);
+		a.add(&(at(0), vec![Some(digest_value(oracle(ValueType::Float8, PPM, &[Value::float8(1.0)])))]));
+		a.add(&(at(1), vec![Some(digest_value(oracle(ValueType::Float8, 50_000, &[Value::float8(1.0)])))]));
+	}
+
+	#[test]
+	fn a_duration_digest_slot_keeps_its_duration_inner_type_through_remove() {
+		// A slot that loses its inner type reads a latency percentile back as a bare float instead of a
+		// duration.
+		let values: Vec<Value> = [3, 7_200, 25 * 3_600]
+			.iter()
+			.map(|s| Value::Duration(Duration::from_seconds(*s).unwrap()))
+			.collect();
+		let mut a = accumulator(&[digest_kind(Some(1_000))]);
+		for (seq, value) in values.iter().enumerate() {
+			a.add(&(at(seq as u64), vec![Some(value.clone())]));
+		}
+		a.remove(&(at(0), vec![Some(values[0].clone())]));
+		let out = a.finalize().expect("two durations remain");
+		let Value::Digest(digest) = &out[0] else {
+			panic!("a digest slot must finalize a digest, got {:?}", out[0]);
+		};
+		assert_eq!(digest.inner(), &ValueType::Duration);
+		assert_eq!(**digest, oracle(ValueType::Duration, 1_000, &values[1..]));
+	}
+
+	#[test]
+	fn a_digest_slot_is_invertible_with_or_without_an_immutable_span() {
+		// A digest keeps no per-row history, so sealing cannot fold it; refusing the running path costs every
+		// frame.
+		let immutable = Some(Duration::from_seconds(60).unwrap());
+		assert!(RowAccumulator::invertible(&[digest_kind(Some(PPM))], None));
+		assert!(RowAccumulator::invertible(&[digest_kind(None)], immutable));
+		assert!(!RowAccumulator::invertible(&[digest_kind(Some(PPM)), SlotKind::First], None));
+		assert!(!RowAccumulator::invertible(&[digest_kind(Some(PPM)), SlotKind::Max], immutable));
+	}
+
+	#[test]
+	fn a_row_of_only_none_values_keeps_its_group_until_the_row_is_retracted() {
+		// Batch returns an all-none group with sum none and count 0; a flow that drops it disagrees with the
+		// query.
+		let kinds = [
+			SlotKind::Sum,
+			SlotKind::Count {
+				count_star: false,
+			},
+			digest_kind(Some(PPM)),
+		];
+		let mut a = accumulator(&kinds);
+		let row = (at(0), vec![Some(Value::none()), Some(Value::none()), Some(Value::none())]);
+		a.add(&row);
+		assert!(!a.is_empty(), "a group holding a row must not report empty");
+		assert_eq!(a.finalize(), Some(vec![Value::none(), Value::Int8(0), Value::none()]));
+		let mut running = accumulator(&kinds);
+		running.merge(&a);
+		assert_eq!(running.finalize(), a.finalize(), "a merged all-none part must keep the running group");
+		running.unmerge(&a);
+		assert!(running.is_empty(), "unmerging the only all-none part must empty the running group");
+		a.remove(&row);
+		assert!(a.is_empty(), "a group whose rows were all retracted must disappear");
+		assert_eq!(a.finalize(), None);
+	}
+
+	#[test]
+	#[should_panic(expected = "RowAccumulator remove of a row it never added")]
+	fn removing_a_row_that_was_never_added_is_a_named_failure() {
+		// A retraction with no matching add is a state bug; wrapping the row count would resurrect the group.
+		let mut a = accumulator(&[SlotKind::Count {
+			count_star: true,
+		}]);
+		a.remove(&(at(0), vec![None]));
 	}
 }

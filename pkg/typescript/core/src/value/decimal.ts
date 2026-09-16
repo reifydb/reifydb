@@ -3,35 +3,36 @@
 import {Type, Value, TypeValuePair} from ".";
 import {NONE_VALUE} from "../constant";
 
+const DECIMAL_PATTERN = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/;
+
 export class DecimalValue implements Value {
     readonly type: Type = "Decimal" as const;
-    public readonly value?: string;
+    public readonly value: string;
 
-    constructor(value?: string) {
-        if (value !== undefined) {
-            if (typeof value !== 'string') {
-                throw new Error(`Decimal value must be a string, got ${typeof value}`);
-            }
-            this.value = value;
-        } else {
-            this.value = undefined;
+    constructor(value: string) {
+        if (value === undefined) {
+            throw new Error(`Decimal value must be defined, a none is carried by NoneValue`);
         }
+        if (typeof value !== 'string') {
+            throw new Error(`Decimal value must be a string, got ${typeof value}`);
+        }
+        this.value = value;
     }
 
     static parse(str: string): DecimalValue {
-        if (str === NONE_VALUE) {
-            return new DecimalValue(undefined);
+        if (!DECIMAL_PATTERN.test(str)) {
+            throw new Error(`Cannot parse "${str}" as Decimal`);
         }
-        
+
         return new DecimalValue(str);
     }
 
-    valueOf(): string | undefined {
+    valueOf(): string {
         return this.value;
     }
 
     toString(): string {
-        return this.value === undefined ? 'none' : this.value;
+        return this.value;
     }
 
     equals(other: Value): boolean {
@@ -43,14 +44,14 @@ export class DecimalValue implements Value {
         return this.value === otherDecimal.value;
     }
 
-    toJSON(): string | null {
+    toJSON(): string {
         return this.value ?? null;
     }
 
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? NONE_VALUE : this.toString()
+            value: this.toString()
         };
     }
 }

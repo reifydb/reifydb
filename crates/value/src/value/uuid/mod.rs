@@ -147,12 +147,14 @@ pub mod tests {
 		(clock.clone(), clock, TestRng)
 	}
 
+	#[cfg(feature = "host")]
 	#[test]
 	fn test_uuid4_generate() {
 		let uuid4 = Uuid4::generate();
 		assert_eq!(uuid4.get_version_num(), 4);
 	}
 
+	#[cfg(feature = "host")]
 	#[test]
 	fn test_uuid4_equality() {
 		let std_uuid = StdUuid::new_v4();
@@ -164,6 +166,7 @@ pub mod tests {
 		assert_ne!(uuid4_a, uuid4_c);
 	}
 
+	#[cfg(feature = "host")]
 	#[test]
 	fn test_uuid4_ordering() {
 		let uuid4_a = Uuid4::generate();
@@ -176,6 +179,7 @@ pub mod tests {
 		assert_eq!(uuid4_a.cmp(&uuid4_a), Ordering::Equal);
 	}
 
+	#[cfg(feature = "host")]
 	#[test]
 	fn test_uuid4_display() {
 		let std_uuid = StdUuid::new_v4();

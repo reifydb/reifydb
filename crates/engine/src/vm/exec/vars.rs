@@ -20,7 +20,7 @@ impl<'a> Vm<'a> {
 			Some(Variable::Columns {
 				columns: c,
 			}) if c.is_scalar() => {
-				if self.batch_size > 1 {
+				if self.batch_size != 1 {
 					let value = c.scalar_value();
 					let mut data = ColumnBuffer::with_capacity(value.get_type(), self.batch_size);
 					for _ in 0..self.batch_size {
@@ -38,7 +38,7 @@ impl<'a> Vm<'a> {
 			Some(Variable::Columns {
 				columns: c,
 			}) => {
-				if self.batch_size > 1 {
+				if self.batch_size != 1 {
 					self.stack.push(Variable::columns(c.clone()));
 				} else {
 					return Err(TypeError::Runtime {
@@ -61,7 +61,7 @@ impl<'a> Vm<'a> {
 			None => {
 				return Err(TypeError::Runtime {
 					kind: RuntimeErrorKind::VariableNotFound {
-						name: name.to_string(),
+						fragment: fragment.clone(),
 					},
 					message: format!("Variable '{}' is not defined", name),
 				}
@@ -184,7 +184,7 @@ impl<'a> Vm<'a> {
 			None => {
 				return Err(TypeError::Runtime {
 					kind: RuntimeErrorKind::VariableNotFound {
-						name: var_name.to_string(),
+						fragment: object.clone(),
 					},
 					message: format!("Variable '{}' is not defined", var_name),
 				}

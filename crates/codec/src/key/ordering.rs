@@ -456,7 +456,7 @@ fn extend_value_with_direction_flips_the_encoded_order() {
 
 	let encode = |value: &Value, direction: SortOrder| {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_value_with_direction(value, direction);
+		serializer.extend_value_with_direction(value, direction).unwrap();
 		serializer.finish().to_vec()
 	};
 

@@ -10,6 +10,7 @@ use postcard::to_extend;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::JoinType,
+	error::diagnostic::operation::{join_key_unkeyable, natural_join_no_shared_column},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
@@ -32,8 +33,9 @@ use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result,
+	Result, error,
 	error::Error,
+	fragment::Fragment,
 	reifydb_assertions,
 	util::hash::{Hash128, xxh3_128},
 	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber, value_type::ValueType},
@@ -152,6 +154,7 @@ pub struct JoinOperator {
 	compiled_left_exprs: Vec<CompiledExpr>,
 	compiled_right_exprs: Vec<CompiledExpr>,
 	alias: Option<String>,
+	left_schema: Columns,
 	right_schema: Columns,
 	routines: Routines,
 	runtime_context: RuntimeContext,
@@ -181,11 +184,12 @@ impl JoinOperator {
 		left_retention: Option<Duration>,
 		right_retention: Option<Duration>,
 		ctx: Arc<FlowContext>,
-	) -> Self {
+	) -> Result<Self> {
 		let left_node = left.operator;
 		let right_node = right.operator;
 		let left_exprs = left.exprs;
 		let right_exprs = right.exprs;
+		let left_schema = left.schema;
 		let right_schema = right.schema;
 		let strategy = JoinStrategy::from(join_type, pick.is_some());
 
@@ -193,19 +197,13 @@ impl JoinOperator {
 			symbols: &ctx.symbols,
 		};
 
-		let compiled_left_exprs: Vec<CompiledExpr> = left_exprs
-			.iter()
-			.map(|e| compile_expression(&compile_ctx, e))
-			.collect::<Result<Vec<_>>>()
-			.expect("Failed to compile left expressions");
+		let compiled_left_exprs: Vec<CompiledExpr> =
+			left_exprs.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
 
-		let compiled_right_exprs: Vec<CompiledExpr> = right_exprs
-			.iter()
-			.map(|e| compile_expression(&compile_ctx, e))
-			.collect::<Result<Vec<_>>>()
-			.expect("Failed to compile right expressions");
+		let compiled_right_exprs: Vec<CompiledExpr> =
+			right_exprs.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
 
-		Self {
+		Ok(Self {
 			operator,
 			strategy,
 			left_node,
@@ -213,6 +211,7 @@ impl JoinOperator {
 			compiled_left_exprs,
 			compiled_right_exprs,
 			alias,
+			left_schema,
 			right_schema,
 			routines,
 			runtime_context,
@@ -224,7 +223,7 @@ impl JoinOperator {
 			ctx,
 			seal_fires: Counter::new("flow.operator.join.seal_fires_total", "Join seal timer fires"),
 			expiry: JoinExpiryIndex::default(),
-		}
+		})
 	}
 
 	pub(crate) fn retention_of(&self, side: JoinSide) -> Option<Duration> {
@@ -575,6 +574,13 @@ impl JoinOperator {
 			expr_columns.push(col);
 		}
 
+		for col in &expr_columns {
+			let ty = col.data().get_type();
+			if matches!(ty.inner_type(), ValueType::Digest { .. }) {
+				return Err(error!(join_key_unkeyable(col.name().clone(), ty)));
+			}
+		}
+
 		let mut hashes = Vec::with_capacity(row_count);
 		let mut buf: Vec<u8> = Vec::with_capacity(256);
 		for row_idx in 0..row_count {
@@ -857,6 +863,12 @@ impl HostOperator for JoinOperator {
 		InputOrder::Reversed
 	}
 
+	fn output_schema(&self) -> Option<Columns> {
+		let builder =
+			JoinedColumnsBuilder::new(&self.left_schema, &self.right_schema, &self.alias, self.natural);
+		Some(builder.unmatched_left_batch(&[], &self.left_schema, &[], &self.right_schema))
+	}
+
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.operator
@@ -865,7 +877,11 @@ impl HostOperator for JoinOperator {
 		}
 
 		if self.natural && self.compiled_left_exprs.is_empty() {
-			return Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at));
+			return Err(error!(natural_join_no_shared_column(
+				Fragment::None,
+				"the left input",
+				self.alias.as_deref().unwrap_or("the right input")
+			)));
 		}
 
 		let mut state = JoinState::new();
@@ -1143,6 +1159,7 @@ mod seal_tests {
 			right_retention,
 			Arc::new(FlowContext::default()),
 		)
+		.expect("the join operator must build")
 	}
 
 	fn seconds(value: i64) -> Duration {

@@ -13,13 +13,10 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::{
-	Accumulator, AggregateFunctionCapability, Function, FunctionKind, Routine, RoutineInfo,
+	Accumulator, AggregateFunctionCapability, Arity, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo,
 	context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{
-	Value,
-	value_type::{ValueType, input_types::InputTypes},
-};
+use reifydb_value::value::{Value, value_type::ValueType};
 
 pub struct Count {
 	info: RoutineInfo,
@@ -48,10 +45,6 @@ impl<'a> Routine<FunctionContext<'a>> for Count {
 		ValueType::Int8
 	}
 
-	fn accepted_types(&self) -> InputTypes {
-		InputTypes::any()
-	}
-
 	fn propagates_options(&self) -> bool {
 		false
 	}
@@ -77,8 +70,16 @@ impl Function for Count {
 		&[FunctionKind::Scalar, FunctionKind::Aggregate]
 	}
 
-	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
-		Some(Box::new(CountAccumulator::new()))
+	fn arity(&self) -> Arity {
+		Arity::Any
+	}
+
+	fn accumulator(
+		&self,
+		_ctx: &mut FunctionContext<'_>,
+		_literals: &[LiteralArgument],
+	) -> Result<Option<Box<dyn Accumulator>>, RoutineError> {
+		Ok(Some(Box::new(CountAccumulator::new())))
 	}
 
 	fn aggregate_capabilities(&self) -> &[AggregateFunctionCapability] {

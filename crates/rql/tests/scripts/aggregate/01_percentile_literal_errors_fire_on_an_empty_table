@@ -1,0 +1,50 @@
+# Every literal error on stats::approx_percentile must fire on an empty table, so it runs before any row is read.
+
+admin 'create table test::empty { g: int4, f: Option(float8), a: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |  empty  |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+query_fails 'from test::empty aggregate { p: stats::approx_percentile(f, 1.5, 0.01) } by { g }'
+---
+Error AGGREGATE_020
+
+query_fails 'from test::empty aggregate { p: stats::approx_percentile(f, -0.5, 0.01) }'
+---
+Error AGGREGATE_020
+
+query_fails 'from test::empty aggregate { p: stats::approx_percentile(f, a, 0.01) } by { g }'
+---
+Error AGGREGATE_010
+
+query_fails "from test::empty aggregate { p: stats::approx_percentile(f, '0.99', 0.01) }"
+---
+Error AGGREGATE_021
+
+query_fails 'from test::empty aggregate { p: stats::approx_percentile(f, 0.99, 0.5) } by { g }'
+---
+Error AGGREGATE_011
+
+query_fails 'from test::empty aggregate { p: stats::approx_percentile(f, 0.99, 0.0000005) }'
+---
+Error AGGREGATE_012
+
+query_fails 'from test::empty aggregate { p: stats::approx_percentile(f, 0.99, a) } by { g }'
+---
+Error AGGREGATE_010
+
+query_fails "from test::empty aggregate { p: stats::approx_percentile(f, 0.99, '0.01') }"
+---
+Error AGGREGATE_013
+
+query_fails 'from test::empty aggregate { p: stats::approx_percentile(f, 0.99, 0.01, 0.01) }'
+---
+Error FUNCTION_003
+
+query_fails 'from test::empty aggregate { p: stats::approx_percentile(f) }'
+---
+Error FUNCTION_002

@@ -9,7 +9,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	value::column::{ColumnWithName, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -18,7 +18,11 @@ use reifydb_evaluate::expression::{
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, fragment::Fragment, value::system_columns::SystemColumns};
+use reifydb_value::{
+	Result,
+	fragment::Fragment,
+	value::{system_columns::SystemColumns, value_type::ValueType},
+};
 use tracing::instrument;
 
 use crate::{
@@ -44,17 +48,14 @@ impl MapOperator {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
-	) -> Self {
+	) -> Result<Self> {
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
 		};
-		let compiled_expressions: Vec<CompiledExpr> = expressions
-			.iter()
-			.map(|e| compile_expression(&compile_ctx, e))
-			.collect::<Result<Vec<_>>>()
-			.expect("Failed to compile expressions");
+		let compiled_expressions: Vec<CompiledExpr> =
+			expressions.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
 
-		Self {
+		Ok(Self {
 			parent_schema,
 			operator,
 			expressions,
@@ -62,11 +63,13 @@ impl MapOperator {
 			routines,
 			runtime_context,
 			ctx,
-		}
+		})
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
-		self.parent_schema.clone()
+		Some(Columns::new(
+			self.expressions.iter().map(|expr| schema_column(self.parent_schema.as_ref(), expr)).collect(),
+		))
 	}
 
 	#[instrument(name = "flow::operator::map::project", level = "trace", skip_all, fields(rows = columns.row_count()))]
@@ -123,6 +126,23 @@ impl MapOperator {
 	}
 }
 
+pub(crate) fn schema_column(parent: Option<&Columns>, expression: &Expression) -> ColumnWithName {
+	let source = match expression {
+		Expression::Alias(alias) => alias.expression.as_ref(),
+		other => other,
+	};
+	let ty = match (parent, source) {
+		(Some(parent), Expression::Column(column)) => {
+			parent.column(column.0.name.text()).map(|col| col.data().get_type())
+		}
+		_ => None,
+	};
+	ColumnWithName::new(
+		Fragment::internal(display_label(expression).text()),
+		ColumnBuffer::with_capacity(ty.unwrap_or(ValueType::Any), 0),
+	)
+}
+
 impl HostOperator for MapOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
@@ -141,12 +161,7 @@ impl HostOperator for MapOperator {
 					post,
 					..
 				} => {
-					let projected = match self.project(&post) {
-						Ok(projected) => projected,
-						Err(err) => {
-							panic!("{:#?}", err)
-						}
-					};
+					let projected = self.project(&post)?;
 
 					if !projected.is_empty() {
 						result.push(Diff::insert(projected));

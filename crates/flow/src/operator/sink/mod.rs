@@ -129,6 +129,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 		});
 
 		if let Some(source_col) = columns.column(&target_col.name) {
+			source_col.data().check_digest_write(&target_type, Fragment::internal(&target_col.name))?;
 			let casted = cast_column_data(
 				&ctx,
 				source_col.data(),

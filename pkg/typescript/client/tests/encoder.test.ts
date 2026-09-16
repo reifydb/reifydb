@@ -43,9 +43,10 @@ describe('encodeValue', () => {
         expect(encodeValue(Option.none({Option: 'Int4'}))).toEqual({type: {Option: {Option: 'Int4'}}, value: NONE_VALUE});
     });
 
-    it('should encode Int4Value(undefined) as Int4 with NONE_VALUE', () => {
-        const result = encodeValue(new Int4Value(undefined));
-        expect(result.type).toBe('Int4');
+    it('should encode a none Int4 as an option carrying NONE_VALUE', () => {
+        // a none travels as an option type, so a bare Int4 can never carry the marker
+        const result = encodeValue(new NoneValue('Int4'));
+        expect(result.type).toEqual({Option: 'Int4'});
         expect(result.value).toBe(NONE_VALUE);
     });
 
@@ -61,9 +62,10 @@ describe('encodeValue', () => {
         expect(result.value).toBe('true');
     });
 
-    it('should encode BooleanValue(undefined) as Boolean with NONE_VALUE', () => {
-        const result = encodeValue(new BooleanValue(undefined));
-        expect(result.type).toBe('Boolean');
+    it('should encode a none Boolean as an option carrying NONE_VALUE', () => {
+        // a none travels as an option type, so a bare Boolean can never carry the marker
+        const result = encodeValue(new NoneValue('Boolean'));
+        expect(result.type).toEqual({Option: 'Boolean'});
         expect(result.value).toBe(NONE_VALUE);
     });
 

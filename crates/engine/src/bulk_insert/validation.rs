@@ -3,119 +3,52 @@
 
 use std::iter;
 
-use reifydb_core::{
-	interface::catalog::{column::Column, ringbuffer::RingBuffer, series::Series, table::Table},
-	value::column::buffer::ColumnBuffer,
-};
+use reifydb_core::{interface::catalog::column::Column, value::column::buffer::ColumnBuffer};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	value::{Value, identity::IdentityId},
 };
 
-use super::coerce::coerce_columns;
+use super::coerce::RowCoercer;
 use crate::{Result, error::EngineError};
 
-pub fn validate_and_coerce_rows(rows: &[Params], table: &Table, identity: IdentityId) -> Result<Vec<Vec<Value>>> {
-	if rows.is_empty() {
-		return Ok(Vec::new());
-	}
-
-	let num_cols = table.columns.len();
-	let num_rows = rows.len();
-
-	let column_data = collect_rows_to_columns(rows, &table.columns, &table.name)?;
-	let coerced_columns = coerce_columns(&column_data, &table.columns, num_rows, identity)?;
-
-	Ok(columns_to_rows(&coerced_columns, num_rows, num_cols))
-}
-
-pub fn validate_and_coerce_rows_rb(
+pub fn coerce_rows(
 	rows: &[Params],
-	ringbuffer: &RingBuffer,
+	columns: &[Column],
+	source_name: &str,
 	identity: IdentityId,
 ) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
 	}
 
-	let num_cols = ringbuffer.columns.len();
-	let num_rows = rows.len();
+	let column_data = collect_rows_to_columns(rows, columns, source_name, &RowCoercer::new(identity))?;
 
-	let column_data = collect_rows_to_columns(rows, &ringbuffer.columns, &ringbuffer.name)?;
-	let coerced_columns = coerce_columns(&column_data, &ringbuffer.columns, num_rows, identity)?;
-
-	Ok(columns_to_rows(&coerced_columns, num_rows, num_cols))
+	Ok(columns_to_rows(&column_data, rows.len(), columns.len()))
 }
 
-pub fn reorder_rows_unvalidated(rows: &[Params], table: &Table) -> Result<Vec<Vec<Value>>> {
-	if rows.is_empty() {
-		return Ok(Vec::new());
-	}
-
-	let num_cols = table.columns.len();
-	let num_rows = rows.len();
-
-	let column_data = collect_rows_to_columns(rows, &table.columns, &table.name)?;
-
-	Ok(columns_to_rows(&column_data, num_rows, num_cols))
-}
-
-pub fn reorder_rows_unvalidated_rb(rows: &[Params], ringbuffer: &RingBuffer) -> Result<Vec<Vec<Value>>> {
-	if rows.is_empty() {
-		return Ok(Vec::new());
-	}
-
-	let num_cols = ringbuffer.columns.len();
-	let num_rows = rows.len();
-
-	let column_data = collect_rows_to_columns(rows, &ringbuffer.columns, &ringbuffer.name)?;
-
-	Ok(columns_to_rows(&column_data, num_rows, num_cols))
-}
-
-pub fn validate_and_coerce_rows_series(
+fn collect_rows_to_columns(
 	rows: &[Params],
-	series: &Series,
-	identity: IdentityId,
-) -> Result<Vec<Vec<Value>>> {
-	if rows.is_empty() {
-		return Ok(Vec::new());
-	}
-
-	let num_cols = series.columns.len();
-	let num_rows = rows.len();
-
-	let column_data = collect_rows_to_columns(rows, &series.columns, &series.name)?;
-	let coerced_columns = coerce_columns(&column_data, &series.columns, num_rows, identity)?;
-
-	Ok(columns_to_rows(&coerced_columns, num_rows, num_cols))
-}
-
-pub fn reorder_rows_unvalidated_series(rows: &[Params], series: &Series) -> Result<Vec<Vec<Value>>> {
-	if rows.is_empty() {
-		return Ok(Vec::new());
-	}
-
-	let num_cols = series.columns.len();
-	let num_rows = rows.len();
-
-	let column_data = collect_rows_to_columns(rows, &series.columns, &series.name)?;
-
-	Ok(columns_to_rows(&column_data, num_rows, num_cols))
-}
-
-fn collect_rows_to_columns(rows: &[Params], columns: &[Column], source_name: &str) -> Result<Vec<ColumnBuffer>> {
+	columns: &[Column],
+	source_name: &str,
+	coercer: &RowCoercer,
+) -> Result<Vec<ColumnBuffer>> {
 	let num_cols = columns.len();
 	let mut column_data: Vec<ColumnBuffer> =
 		columns.iter().map(|col| ColumnBuffer::none_typed(col.constraint.get_type(), 0)).collect();
 
-	for params in rows {
+	for (row_idx, params) in rows.iter().enumerate() {
 		match params {
 			Params::Named(map) => {
 				for (col_idx, col) in columns.iter().enumerate() {
 					let value = map.get(&col.name).cloned().unwrap_or(Value::none());
-					column_data[col_idx].push_value(value);
+					column_data[col_idx].push_value(coercer.coerce(
+						value,
+						col,
+						source_name,
+						row_idx,
+					)?);
 				}
 			}
 			Params::Positional(vals) => {
@@ -127,10 +60,13 @@ fn collect_rows_to_columns(rows: &[Params], columns: &[Column], source_name: &st
 					}
 					.into());
 				}
-				for (col_data, val) in
-					column_data.iter_mut().zip(vals.iter().map(Some).chain(iter::repeat(None)))
+				for ((col_data, col), val) in column_data
+					.iter_mut()
+					.zip(columns.iter())
+					.zip(vals.iter().map(Some).chain(iter::repeat(None)))
 				{
-					col_data.push_value(val.cloned().unwrap_or(Value::none()));
+					let value = val.cloned().unwrap_or(Value::none());
+					col_data.push_value(coercer.coerce(value, col, source_name, row_idx)?);
 				}
 			}
 			Params::None => {

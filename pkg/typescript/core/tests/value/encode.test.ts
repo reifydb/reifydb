@@ -33,14 +33,15 @@ describe('Value encode method', () => {
             expect(decoded.valueOf()).toBe(false);
         });
 
-        it('should encode undefined as NONE_VALUE', () => {
-            const value = new BooleanValue(undefined);
-            const encoded = value.encode();
+        it('should encode a none Boolean through NoneValue', () => {
+            // a none travels as an option type, so a bare Boolean can never carry the marker
+            const encoded = new NoneValue('Boolean').encode();
 
-            expect(encoded.type).toBe('Boolean');
+            expect(encoded.type).toEqual({Option: 'Boolean'});
             expect(encoded.value).toBe(NONE_VALUE);
 
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
             expect(decoded.valueOf()).toBeUndefined();
         });
     });
@@ -79,14 +80,15 @@ describe('Value encode method', () => {
             expect(decoded.valueOf()).toBe(0);
         });
 
-        it('should encode undefined as NONE_VALUE', () => {
-            const value = new Int4Value(undefined);
-            const encoded = value.encode();
+        it('should encode a none Int4 through NoneValue', () => {
+            // a none travels as an option type, so a bare Int4 can never carry the marker
+            const encoded = new NoneValue('Int4').encode();
 
-            expect(encoded.type).toBe('Int4');
+            expect(encoded.type).toEqual({Option: 'Int4'});
             expect(encoded.value).toBe(NONE_VALUE);
 
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
             expect(decoded.valueOf()).toBeUndefined();
         });
     });
@@ -294,121 +296,139 @@ describe('Value encode method', () => {
     });
 
     describe('None value encoding for all types', () => {
-        it('should encode undefined BlobValue', () => {
-            const value = new BlobValue(undefined);
-            const encoded = value.encode();
+        it('should encode a none Blob through NoneValue', () => {
+            // a none travels as an option type, so a bare Blob can never carry the marker
+            const encoded = new NoneValue('Blob').encode();
+            expect(encoded.type).toEqual({Option: 'Blob'});
             expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
             expect(decoded.valueOf()).toBeUndefined();
         });
 
-        it('should encode undefined DateValue', () => {
-            const value = new DateValue(undefined);
-            const encoded = value.encode();
+        it('should encode a none Date through NoneValue', () => {
+            // a none travels as an option type, so a bare Date can never carry the marker
+            const encoded = new NoneValue('Date').encode();
+            expect(encoded.type).toEqual({Option: 'Date'});
             expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
             expect(decoded.valueOf()).toBeUndefined();
         });
 
-        it('should encode undefined DateTimeValue', () => {
-            const value = new DateTimeValue(undefined);
-            const encoded = value.encode();
+        it('should encode a none DateTime through NoneValue', () => {
+            // a none travels as an option type, so a bare DateTime can never carry the marker
+            const encoded = new NoneValue('DateTime').encode();
+            expect(encoded.type).toEqual({Option: 'DateTime'});
             expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
             expect(decoded.valueOf()).toBeUndefined();
         });
 
-        it('should encode undefined Float4Value', () => {
-            const value = new Float4Value(undefined);
-            const encoded = value.encode();
+        it('should encode a none Float4 through NoneValue', () => {
+            // a none travels as an option type, so a bare Float4 can never carry the marker
+            const encoded = new NoneValue('Float4').encode();
+            expect(encoded.type).toEqual({Option: 'Float4'});
             expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
             expect(decoded.valueOf()).toBeUndefined();
         });
 
-        it('should encode undefined Float8Value', () => {
-            const value = new Float8Value(undefined);
-            const encoded = value.encode();
+        it('should encode a none Float8 through NoneValue', () => {
+            // a none travels as an option type, so a bare Float8 can never carry the marker
+            const encoded = new NoneValue('Float8').encode();
+            expect(encoded.type).toEqual({Option: 'Float8'});
             expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
             expect(decoded.valueOf()).toBeUndefined();
         });
 
-        it('should encode undefined DurationValue', () => {
-            const value = new DurationValue(undefined);
-            const encoded = value.encode();
+        it('should encode a none Duration through NoneValue', () => {
+            // a none travels as an option type, so a bare Duration can never carry the marker
+            const encoded = new NoneValue('Duration').encode();
+            expect(encoded.type).toEqual({Option: 'Duration'});
             expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
             expect(decoded.valueOf()).toBeUndefined();
         });
 
-        it('should encode undefined TimeValue', () => {
-            const value = new TimeValue(undefined);
-            const encoded = value.encode();
+        it('should encode a none Time through NoneValue', () => {
+            // a none travels as an option type, so a bare Time can never carry the marker
+            const encoded = new NoneValue('Time').encode();
+            expect(encoded.type).toEqual({Option: 'Time'});
             expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
             expect(decoded.valueOf()).toBeUndefined();
         });
 
-        it('should encode undefined Utf8Value', () => {
-            const value = new Utf8Value(undefined);
-            const encoded = value.encode();
+        it('should encode a none Utf8 through NoneValue', () => {
+            // a none travels as an option type, so a bare Utf8 can never carry the marker
+            const encoded = new NoneValue('Utf8').encode();
+            expect(encoded.type).toEqual({Option: 'Utf8'});
             expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
             expect(decoded.valueOf()).toBeUndefined();
         });
 
-        it('should encode undefined Uuid4Value', () => {
-            const value = new Uuid4Value(undefined);
-            const encoded = value.encode();
+        it('should encode a none Uuid4 through NoneValue', () => {
+            // a none travels as an option type, so a bare Uuid4 can never carry the marker
+            const encoded = new NoneValue('Uuid4').encode();
+            expect(encoded.type).toEqual({Option: 'Uuid4'});
             expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
             expect(decoded.valueOf()).toBeUndefined();
         });
 
-        it('should encode undefined Uuid7Value', () => {
-            const value = new Uuid7Value(undefined);
-            const encoded = value.encode();
+        it('should encode a none Uuid7 through NoneValue', () => {
+            // a none travels as an option type, so a bare Uuid7 can never carry the marker
+            const encoded = new NoneValue('Uuid7').encode();
+            expect(encoded.type).toEqual({Option: 'Uuid7'});
             expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
             expect(decoded.valueOf()).toBeUndefined();
         });
 
-        it('should encode undefined DecimalValue', () => {
-            const value = new DecimalValue(undefined);
-            const encoded = value.encode();
+        it('should encode a none Decimal through NoneValue', () => {
+            // a none travels as an option type, so a bare Decimal can never carry the marker
+            const encoded = new NoneValue('Decimal').encode();
+            expect(encoded.type).toEqual({Option: 'Decimal'});
             expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
             expect(decoded.valueOf()).toBeUndefined();
         });
 
-        it('should encode undefined IdentityIdValue', () => {
-            const value = new IdentityIdValue(undefined);
-            const encoded = value.encode();
+        it('should encode a none IdentityId through NoneValue', () => {
+            // a none travels as an option type, so a bare IdentityId can never carry the marker
+            const encoded = new NoneValue('IdentityId').encode();
+            expect(encoded.type).toEqual({Option: 'IdentityId'});
             expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
+            expect(decoded).toBeInstanceOf(NoneValue);
             expect(decoded.valueOf()).toBeUndefined();
         });
 
         const allIntTypes = [
-            {name: 'Int1Value', constructor: Int1Value},
-            {name: 'Int2Value', constructor: Int2Value},
-            {name: 'Int4Value', constructor: Int4Value},
-            {name: 'Int8Value', constructor: Int8Value},
-            {name: 'Int16Value', constructor: Int16Value},
-            {name: 'Uint1Value', constructor: Uint1Value},
-            {name: 'Uint2Value', constructor: Uint2Value},
-            {name: 'Uint4Value', constructor: Uint4Value},
-            {name: 'Uint8Value', constructor: Uint8Value},
-            {name: 'Uint16Value', constructor: Uint16Value}
+            'Int1', 'Int2', 'Int4', 'Int8', 'Int16',
+            'Uint1', 'Uint2', 'Uint4', 'Uint8', 'Uint16'
         ] as const;
 
-        allIntTypes.forEach(({name, constructor}) => {
-            it(`should encode undefined ${name}`, () => {
-                const value = new constructor(undefined);
-                const encoded = value.encode();
+        allIntTypes.forEach(name => {
+            it(`should encode a none ${name} through NoneValue`, () => {
+                // a none travels as an option type, so a bare integer type can never carry the marker
+                const encoded = new NoneValue(name).encode();
+                expect(encoded.type).toEqual({Option: name});
                 expect(encoded.value).toBe(NONE_VALUE);
                 const decoded = decode(encoded);
+                expect(decoded).toBeInstanceOf(NoneValue);
                 expect(decoded.valueOf()).toBeUndefined();
             });
         });

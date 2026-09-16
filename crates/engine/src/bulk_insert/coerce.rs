@@ -3,47 +3,70 @@
 
 use reifydb_core::{
 	interface::catalog::column::Column,
-	value::column::{buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
+	value::column::{
+		buffer::{ColumnBuffer, write::check_digest_write_type},
+		cast::cast_column_data,
+		columns::Columns,
+	},
 };
 use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
-use reifydb_value::{fragment::Fragment, params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	fragment::Fragment,
+	params::Params,
+	value::{Value, identity::IdentityId},
+};
 
 use crate::Result;
 
-pub(super) fn coerce_columns(
-	column_data: &[ColumnBuffer],
-	columns: &[Column],
-	num_rows: usize,
+pub(super) struct RowCoercer {
+	runtime_context: RuntimeContext,
+	routines: Routines,
+	symbols: SymbolTable,
 	identity: IdentityId,
-) -> Result<Vec<ColumnBuffer>> {
-	let runtime_ctx = RuntimeContext::with_clock(Clock::Real);
-	let routines = Routines::empty();
-	let ctx = EvalContext {
-		params: &Params::None,
-		symbols: &SymbolTable::new(),
-		routines: &routines,
-		runtime_context: &runtime_ctx,
-		identity,
-		is_aggregate_context: false,
-		columns: Columns::empty(),
-		row_count: num_rows,
-		target: None,
-		take: None,
-	};
+}
 
-	let mut coerced_columns: Vec<ColumnBuffer> = Vec::with_capacity(columns.len());
-
-	for (col_idx, col) in columns.iter().enumerate() {
-		let target = col.constraint.get_type();
-
-		let cast_target = target.inner_type().clone();
-		let source_data = &column_data[col_idx];
-
-		let coerced = cast_column_data(&ctx, source_data, cast_target, || Fragment::internal(&col.name))?;
-		coerced_columns.push(coerced);
+impl RowCoercer {
+	pub(super) fn new(identity: IdentityId) -> Self {
+		Self {
+			runtime_context: RuntimeContext::with_clock(Clock::Real),
+			routines: Routines::empty(),
+			symbols: SymbolTable::new(),
+			identity,
+		}
 	}
 
-	Ok(coerced_columns)
+	pub(super) fn coerce(&self, value: Value, column: &Column, source_name: &str, row_idx: usize) -> Result<Value> {
+		if matches!(value, Value::None { .. }) {
+			return Ok(value);
+		}
+		self.cast(value, column).map_err(|mut e| {
+			e.0.notes.push(format!("row {} of the bulk insert into `{}`", row_idx + 1, source_name));
+			e
+		})
+	}
+
+	fn cast(&self, value: Value, column: &Column) -> Result<Value> {
+		let target = column.constraint.get_type();
+		let fragment = || Fragment::internal(&column.name);
+		check_digest_write_type(&value.get_type(), &target, fragment)?;
+		let cast_target = target.inner_type().clone();
+		if value.get_type() == cast_target {
+			return Ok(value);
+		}
+		let ctx = EvalContext {
+			params: &Params::None,
+			symbols: &self.symbols,
+			routines: &self.routines,
+			runtime_context: &self.runtime_context,
+			identity: self.identity,
+			is_aggregate_context: false,
+			columns: Columns::empty(),
+			row_count: 1,
+			target: None,
+			take: None,
+		};
+		Ok(cast_column_data(&ctx, &ColumnBuffer::from(value), cast_target, fragment)?.get_value(0))
+	}
 }

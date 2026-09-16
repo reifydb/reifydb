@@ -9,8 +9,8 @@ use reifydb_value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
 			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
-			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			digest::DigestContainer, identity_id::IdentityIdContainer, number::NumberContainer,
+			temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -836,6 +836,20 @@ impl ColumnBuffer {
 			ValueType::Record(_) => Self::any(vec![Value::Record(vec![]); len]),
 			ValueType::Tuple(_) => Self::any(vec![Value::Tuple(vec![]); len]),
 			ValueType::Option(inner) => return Self::none_typed(*inner, len),
+			ValueType::Digest {
+				inner,
+				accuracy,
+			} => {
+				let mut container = DigestContainer::with_capacity(len);
+				for _ in 0..len {
+					container.push_default();
+				}
+				ColumnBuffer::Digest {
+					container,
+					inner: *inner,
+					accuracy,
+				}
+			}
 		};
 		ColumnBuffer::Option {
 			inner: Box::new(inner),

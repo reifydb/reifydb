@@ -336,7 +336,7 @@ impl Database {
 		let cdc = watermarks.cdc();
 
 		if self.engine().ioc().try_resolve::<FlowCaughtUpWatermark>().is_some()
-			&& !cdc.wait_for_flow_consumer(target, DEFAULT_WAIT)
+			&& !cdc.wait_for_flow_consumer(target, DEFAULT_WAIT)?
 		{
 			return Err(Error(Box::new(internal!(
 				"caught_up timed out waiting for deferred flows to materialize version {}: \

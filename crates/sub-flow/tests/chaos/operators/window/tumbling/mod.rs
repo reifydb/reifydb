@@ -15,7 +15,7 @@ use reifydb_value::value::duration::Duration;
 use crate::{
 	framework::{fuzz, harness::Harness, workload::WindowWorkload},
 	operators::window::{
-		WindowSpec, build,
+		WindowSpec, build, build_immutable,
 		count::{CountOracle, Ordinals},
 		grid::{Fold, Grid, GridOracle},
 	},
@@ -50,10 +50,16 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 
 /// The same corpus and grid under a different fold.
 ///
-/// Min and max are not just different arithmetic here: `AggregateSlot::invertible` calls them
-/// invertible only when the lateness is zero, so a sealed window runs them through the sealing accumulator
-/// rather than the multiset. Driving both lateness settings is what reaches both.
+/// Min and max seal only under immutable, never by lateness alone, otherwise they stay invertible.
 pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
+	drive_with(seed, params, fold, None)
+}
+
+pub fn drive_immutable(seed: u64, params: Params, immutable_ms: u64) -> Corpus {
+	drive_with(seed, params, Fold::PercentileNextToMin, Some(immutable_ms))
+}
+
+fn drive_with(seed: u64, params: Params, fold: Fold, immutable_ms: Option<u64>) -> Corpus {
 	let size_ms = params.size_secs * 1_000;
 	let lateness_ms = params.lateness_secs * 1_000;
 
@@ -66,7 +72,8 @@ pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 		lateness: Some(Duration::from_seconds(params.lateness_secs as i64).unwrap()),
 	};
 
-	let mut harness = Harness::new(|runtime| build(&spec, runtime));
+	let immutable = immutable_ms.map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
+	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
 	let workload = WindowWorkload {
 		groups: params.groups,
 		coord_span_ms: params.coord_span_ms,
@@ -79,6 +86,9 @@ pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 		lateness_ms,
 	)
 	.with_fold(fold);
+	if let Some(immutable_ms) = immutable_ms {
+		model = model.with_immutable(immutable_ms);
+	}
 
 	driver::drive(
 		seed,
@@ -152,12 +162,16 @@ impl Ordinals for TumblingOrdinals {
 }
 
 pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
+	drive_count_folded(seed, params, Fold::Sum)
+}
+
+pub fn drive_count_folded(seed: u64, params: CountParams, fold: Fold) -> Corpus {
 	let spec = WindowSpec {
 		kind: WindowKind::Tumbling {
 			size: WindowSize::Count(params.size_count),
 		},
 		group_by: "g",
-		aggregations: "total: math::sum(v)",
+		aggregations: fold.rql(),
 		// A count window forces the lateness absent through its own accessor, so it is never a knob here.
 		lateness: None,
 	};
@@ -169,7 +183,8 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 	};
 	let mut model = CountOracle::new(TumblingOrdinals {
 		size_count: params.size_count,
-	});
+	})
+	.with_fold(fold);
 
 	driver::drive(
 		seed,

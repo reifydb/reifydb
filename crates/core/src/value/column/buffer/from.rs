@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, container::digest::DigestContainer};
 
 use crate::value::column::ColumnBuffer;
 
@@ -42,6 +42,19 @@ impl ColumnBuffer {
 			Value::List(v) => ColumnBuffer::any(vec![Value::List(v); row_count]),
 			Value::Record(v) => ColumnBuffer::any(vec![Value::Record(v); row_count]),
 			Value::Tuple(v) => ColumnBuffer::any(vec![Value::Tuple(v); row_count]),
+			Value::Digest(digest) => {
+				let inner = digest.inner().clone();
+				let accuracy = digest.accuracy();
+				let mut container = DigestContainer::with_capacity(row_count);
+				for _ in 0..row_count {
+					container.push(digest.clone());
+				}
+				ColumnBuffer::Digest {
+					container,
+					inner,
+					accuracy,
+				}
+			}
 		}
 	}
 }

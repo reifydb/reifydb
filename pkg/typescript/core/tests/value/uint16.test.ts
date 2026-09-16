@@ -28,16 +28,14 @@ describe('Uint16Value', () => {
             expect(uint16.value).toBe(BigInt(42));
         });
 
-        it('should create instance with undefined value', () => {
-            const uint16 = new Uint16Value(undefined);
-            expect(uint16.value).toBeUndefined();
-            expect(uint16.type).toBe('Uint16');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Uint16Value(undefined)).toThrow();
         });
 
-        it('should create instance with no arguments', () => {
-            const uint16 = new Uint16Value();
-            expect(uint16.value).toBeUndefined();
-            expect(uint16.type).toBe('Uint16');
+        it('should reject no arguments', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Uint16Value()).toThrow();
         });
 
         it('should accept minimum value 0', () => {
@@ -99,14 +97,14 @@ describe('Uint16Value', () => {
             expect(uint16.value).toBe(BigInt(1000000));
         });
 
-        it('should return undefined for empty string', () => {
-            const uint16 = Uint16Value.parse('');
-            expect(uint16.value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Uint16Value.parse('')).toThrow();
         });
 
-        it('should return undefined for whitespace-only string', () => {
-            const uint16 = Uint16Value.parse('   ');
-            expect(uint16.value).toBeUndefined();
+        it('should reject a whitespace-only string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Uint16Value.parse('   ')).toThrow();
         });
 
         it('should throw error for non-numeric string', () => {
@@ -136,11 +134,6 @@ describe('Uint16Value', () => {
             expect(uint16.valueOf()).toBe(BigInt(1000000));
         });
 
-        it('should return undefined when value is undefined', () => {
-            const uint16 = new Uint16Value(undefined);
-            expect(uint16.valueOf()).toBeUndefined();
-        });
-
         it('should return zero', () => {
             const uint16 = new Uint16Value(0);
             expect(uint16.valueOf()).toBe(BigInt(0));
@@ -151,11 +144,6 @@ describe('Uint16Value', () => {
         it('should convert bigint to string', () => {
             const uint16 = new Uint16Value(BigInt(1000000));
             expect(uint16.toString()).toBe('1000000');
-        });
-
-        it('should return "none" when value is undefined', () => {
-            const uint16 = new Uint16Value(undefined);
-            expect(uint16.toString()).toBe('none');
         });
 
         it('should convert zero to string', () => {

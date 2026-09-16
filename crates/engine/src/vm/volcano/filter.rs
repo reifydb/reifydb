@@ -3,13 +3,17 @@
 
 use std::{mem, sync::Arc};
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
+use reifydb_catalog::catalog::Catalog;
+use reifydb_core::{
+	interface::resolved::ResolvedObject,
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+};
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::{CompileContext, EvalContext},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
-use reifydb_rql::expression::Expression;
+use reifydb_rql::expression::{Expression, IsVariantExpression};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{reifydb_assertions, util::bitvec::BitVec};
 use tracing::instrument;
@@ -18,6 +22,7 @@ use super::NoopNode;
 use crate::{
 	Result,
 	vm::volcano::{
+		inline::{resolve_is_variants, resolve_sumtype_ctor},
 		query::{QueryContext, QueryNode, eval_context_from_transform},
 		udf::{UdfEvalNode, strip_udf_columns},
 	},
@@ -26,6 +31,7 @@ use crate::{
 pub(crate) struct FilterNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
+	source: Option<ResolvedObject>,
 	udf_names: Vec<String>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 	emitted: bool,
@@ -35,9 +41,18 @@ pub(crate) struct FilterNode {
 
 impl FilterNode {
 	pub fn new(input: Box<dyn QueryNode>, expressions: Vec<Expression>) -> Self {
+		Self::with_source(input, expressions, None)
+	}
+
+	pub fn with_source(
+		input: Box<dyn QueryNode>,
+		expressions: Vec<Expression>,
+		source: Option<ResolvedObject>,
+	) -> Self {
 		Self {
 			input,
 			expressions,
+			source,
 			udf_names: Vec::new(),
 			context: None,
 			emitted: false,
@@ -99,6 +114,12 @@ impl FilterNode {
 impl QueryNode for FilterNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		if let Some(source) = self.source.as_ref() {
+			for expr in &mut self.expressions {
+				resolve_is_variants(&ctx.services.catalog, rx, source, expr)?;
+				resolve_variant_equality(&ctx.services.catalog, rx, source, expr)?;
+			}
+		}
 		let (input, expressions, udf_names) = UdfEvalNode::wrap_if_needed(
 			mem::replace(&mut self.input, Box::new(NoopNode)),
 			&self.expressions,
@@ -114,8 +135,8 @@ impl QueryNode for FilterNode {
 		let compiled = self
 			.expressions
 			.iter()
-			.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
-			.collect();
+			.map(|e| compile_expression(&compile_ctx, e))
+			.collect::<Result<Vec<_>>>()?;
 		self.context = Some((Arc::new(ctx.clone()), compiled));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
@@ -185,5 +206,46 @@ impl Transform for FilterNode {
 		}
 
 		Ok(columns)
+	}
+}
+
+pub(crate) fn resolve_variant_equality(
+	catalog: &Catalog,
+	rx: &mut Transaction<'_>,
+	source: &ResolvedObject,
+	expr: &mut Expression,
+) -> Result<()> {
+	match expr {
+		Expression::And(e) => {
+			resolve_variant_equality(catalog, rx, source, &mut e.left)?;
+			resolve_variant_equality(catalog, rx, source, &mut e.right)
+		}
+		Expression::Or(e) => {
+			resolve_variant_equality(catalog, rx, source, &mut e.left)?;
+			resolve_variant_equality(catalog, rx, source, &mut e.right)
+		}
+		Expression::Prefix(e) => resolve_variant_equality(catalog, rx, source, &mut e.expression),
+		Expression::Equal(e) => {
+			let (Expression::Column(column), Expression::SumTypeConstructor(ctor)) =
+				(e.left.as_ref(), e.right.as_ref())
+			else {
+				return Ok(());
+			};
+			if !ctor.columns.is_empty() {
+				return Ok(());
+			}
+			let (sumtype, variant) = resolve_sumtype_ctor(catalog, rx, Some(source), &column.0.name, ctor)?;
+			let is_variant = Expression::IsVariant(IsVariantExpression {
+				expression: e.left.clone(),
+				namespace: Some(ctor.namespace.clone()),
+				sumtype_name: ctor.sumtype_name.clone(),
+				variant_name: ctor.variant_name.clone(),
+				tag: Some(sumtype.variants[variant].tag),
+				fragment: e.fragment.clone(),
+			});
+			*expr = is_variant;
+			Ok(())
+		}
+		_ => Ok(()),
 	}
 }

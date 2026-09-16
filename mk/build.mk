@@ -5,7 +5,7 @@
 # Build Targets - Build all packages
 # =============================================================================
 
-.PHONY: build build-workspace build-pkg-typescript build-wasm
+.PHONY: build build-workspace build-pkg-typescript build-wasm check-value-no-features
 
 # Main build target - builds everything
 build: build-workspace build-wasm build-pkg-typescript
@@ -23,6 +23,10 @@ build-workspace:
 	fi
 	@echo "🔍 Checking all-features compile..."
 	@MAKEFLAGS= cargo check --workspace --all-features
+
+check-value-no-features:
+	@echo "Checking reifydb-value tests compile without features..."
+	@MAKEFLAGS= cargo test -p reifydb-value --no-run $(CARGO_OFFLINE)
 
 # Build pkg/typescript packages
 build-pkg-typescript:

@@ -23,10 +23,9 @@ describe('DateValue', () => {
             expect(date.toString()).toBe('1970-01-01');
         });
 
-        it('should create instance with undefined', () => {
-            const date = new DateValue(undefined);
-            expect(date.value).toBeUndefined();
-            expect(date.toString()).toBe('none');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new DateValue(undefined)).toThrow();
         });
 
         it('should remove time component from Date', () => {
@@ -162,13 +161,15 @@ describe('DateValue', () => {
             expect(DateValue.parse('  2024-03-15  ').toString()).toBe('2024-03-15');
         });
 
-        it('should return undefined for empty string', () => {
-            expect(DateValue.parse('').value).toBeUndefined();
-            expect(DateValue.parse('   ').value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => DateValue.parse('')).toThrow();
+            expect(() => DateValue.parse('   ')).toThrow();
         });
 
-        it('should return undefined for NONE_VALUE', () => {
-            expect(DateValue.parse('⟪none⟫').value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option value must always be defined, so the none marker is not a value
+            expect(() => DateValue.parse('⟪none⟫')).toThrow();
         });
 
         it('should throw error for invalid formats', () => {
@@ -206,11 +207,6 @@ describe('DateValue', () => {
 
             const date2 = DateValue.fromYMD(1969, 12, 30);
             expect(date2.toDaysSinceEpoch()).toBe(-2);
-        });
-
-        it('should return undefined for undefined value', () => {
-            const date = new DateValue(undefined);
-            expect(date.toDaysSinceEpoch()).toBeUndefined();
         });
 
         it('should round-trip correctly', () => {
@@ -256,12 +252,6 @@ describe('DateValue', () => {
             expect(date.day()).toBe(15);
         });
 
-        it('should return undefined for undefined date', () => {
-            const date = new DateValue(undefined);
-            expect(date.year()).toBeUndefined();
-            expect(date.month()).toBeUndefined();
-            expect(date.day()).toBeUndefined();
-        });
     });
 
     describe('valueOf', () => {
@@ -272,9 +262,5 @@ describe('DateValue', () => {
             expect(date.valueOf()?.getUTCFullYear()).toBe(2024);
         });
 
-        it('should return undefined when value is undefined', () => {
-            const date = new DateValue(undefined);
-            expect(date.valueOf()).toBeUndefined();
-        });
     });
 });

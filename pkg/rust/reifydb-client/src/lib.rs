@@ -51,6 +51,8 @@ use reifydb_codec::json::{NONE_MARKER, wire_type::WireValueType};
 pub use reifydb_value as value;
 #[cfg(any(feature = "ws", feature = "grpc"))]
 use reifydb_value::error::Error;
+#[cfg(any(feature = "http", feature = "ws"))]
+use reifydb_value::util::hex::encode;
 pub use reifydb_value::{
 	params::Params,
 	value::{
@@ -162,6 +164,7 @@ fn value_to_wire(value: Value) -> WireValue {
 		} => NONE_MARKER.to_string(),
 		Value::Duration(d) => d.to_iso_string(),
 		Value::Blob(b) => b.to_hex(),
+		Value::Digest(digest) => format!("0x{}", encode(&digest.encode())),
 		Value::Any(v) => return value_to_wire(*v.clone()),
 		other => other.to_string(),
 	};

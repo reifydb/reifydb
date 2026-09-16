@@ -58,6 +58,18 @@ impl CdcProducerWatermark {
 		self.published.store(hi, Ordering::SeqCst);
 	}
 
+	pub fn seed(&self, version: CommitVersion) {
+		if version.0 == 0 {
+			return;
+		}
+		let mut state = self.state.lock();
+		if state.hi.is_some() {
+			return;
+		}
+		state.hi = Some(version.0);
+		self.published.store(version.0, Ordering::SeqCst);
+	}
+
 	pub fn get(&self) -> CommitVersion {
 		CommitVersion(self.published.load(Ordering::SeqCst))
 	}
@@ -103,6 +115,36 @@ mod tests {
 		assert_eq!(w.get(), v(7));
 		w.advance(v(8));
 		assert_eq!(w.get(), v(8));
+	}
+
+	#[test]
+	fn a_seed_reports_the_resumed_version_and_stays_contiguous_with_the_next_commit() {
+		// Versions below the resumed block were never committed, so without the seed no cdc can ever lift the
+		// watermark off 0.
+		let w = wm();
+		w.seed(v(100_001));
+		assert_eq!(w.get(), v(100_001));
+		w.advance(v(100_002));
+		assert_eq!(w.get(), v(100_002), "the commit after the seed must be contiguous, not buffered");
+	}
+
+	#[test]
+	fn a_seed_of_zero_leaves_the_base_unset() {
+		// A fresh database resumes at 0 while the producer's first version is 2 or more, so seeding 0 would
+		// turn that first advance into a permanent gap.
+		let w = wm();
+		w.seed(v(0));
+		w.advance(v(2));
+		assert_eq!(w.get(), v(2));
+	}
+
+	#[test]
+	fn a_seed_after_the_base_is_established_is_ignored() {
+		// Seeding is startup-only; applying it later would jump the watermark over cdc that is not written yet.
+		let w = wm();
+		w.advance(v(5));
+		w.seed(v(900));
+		assert_eq!(w.get(), v(5));
 	}
 
 	#[test]

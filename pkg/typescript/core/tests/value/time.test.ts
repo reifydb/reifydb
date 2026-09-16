@@ -21,10 +21,9 @@ describe('TimeValue', () => {
             expect(time.toString()).toBe('14:30:45.123456789');
         });
 
-        it('should create instance with undefined', () => {
-            const time = new TimeValue(undefined);
-            expect(time.value).toBeUndefined();
-            expect(time.toString()).toBe('none');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new TimeValue(undefined)).toThrow();
         });
 
         it('should throw error for negative nanoseconds', () => {
@@ -261,13 +260,15 @@ describe('TimeValue', () => {
             expect(TimeValue.parse('  14:30:45  ').toString()).toBe('14:30:45.000000000');
         });
 
-        it('should return undefined for empty string', () => {
-            expect(TimeValue.parse('').value).toBeUndefined();
-            expect(TimeValue.parse('   ').value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => TimeValue.parse('')).toThrow();
+            expect(() => TimeValue.parse('   ')).toThrow();
         });
 
-        it('should return undefined for NONE_VALUE', () => {
-            expect(TimeValue.parse('⟪none⟫').value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option value must always be defined, so the none marker is not a value
+            expect(() => TimeValue.parse('⟪none⟫')).toThrow();
         });
 
         it('should throw error for invalid formats', () => {
@@ -292,13 +293,6 @@ describe('TimeValue', () => {
             expect(time.nanosecond()).toBe(123456789);
         });
 
-        it('should return undefined for undefined time', () => {
-            const time = new TimeValue(undefined);
-            expect(time.hour()).toBeUndefined();
-            expect(time.minute()).toBeUndefined();
-            expect(time.second()).toBeUndefined();
-            expect(time.nanosecond()).toBeUndefined();
-        });
     });
 
     describe('toNanosSinceMidnight and fromNanosSinceMidnight', () => {
@@ -317,11 +311,6 @@ describe('TimeValue', () => {
         it('should handle last nanosecond of day', () => {
             const time = TimeValue.fromHMSN(23, 59, 59, 999999999);
             expect(time.toNanosSinceMidnight()).toBe(86_399_999_999_999n);
-        });
-
-        it('should return undefined for undefined value', () => {
-            const time = new TimeValue(undefined);
-            expect(time.toNanosSinceMidnight()).toBeUndefined();
         });
 
         it('should round-trip correctly', () => {
@@ -348,9 +337,5 @@ describe('TimeValue', () => {
             expect(time.valueOf()).toBe(1_000_000_000n);
         });
 
-        it('should return undefined when value is undefined', () => {
-            const time = new TimeValue(undefined);
-            expect(time.valueOf()).toBeUndefined();
-        });
     });
 });

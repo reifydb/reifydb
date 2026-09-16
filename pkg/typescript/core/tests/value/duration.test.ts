@@ -284,13 +284,15 @@ describe('DurationValue', () => {
             expect(DurationValue.parse('-P1D').toIsoString()).toBe('P-1D');
         });
 
-        it('should return undefined for empty string', () => {
-            expect(DurationValue.parse('').value).toBeUndefined();
-            expect(DurationValue.parse('   ').value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => DurationValue.parse('')).toThrow();
+            expect(() => DurationValue.parse('   ')).toThrow();
         });
 
-        it('should return undefined for NONE_VALUE', () => {
-            expect(DurationValue.parse('⟪none⟫').value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option value must always be defined, so the none marker is not a value
+            expect(() => DurationValue.parse('⟪none⟫')).toThrow();
         });
 
         it('should parse human-readable duration strings', () => {
@@ -330,12 +332,6 @@ describe('DurationValue', () => {
             expect(duration.getNanos()).toBe(123456789n);
         });
 
-        it('should return undefined for undefined duration', () => {
-            const duration = new DurationValue(undefined);
-            expect(duration.getMonths()).toBeUndefined();
-            expect(duration.getDays()).toBeUndefined();
-            expect(duration.getNanos()).toBeUndefined();
-        });
     });
 
     describe('conversion methods', () => {
@@ -379,11 +375,6 @@ describe('DurationValue', () => {
             expect(zero.isNegative()).toBe(false);
         });
 
-        it('should handle undefined duration', () => {
-            const undef = new DurationValue(undefined);
-            expect(undef.isPositive()).toBe(false);
-            expect(undef.isNegative()).toBe(false);
-        });
     });
 
     describe('valueOf', () => {
@@ -393,10 +384,6 @@ describe('DurationValue', () => {
             expect(value).toEqual({ months: 1, days: 2, nanos: 3n });
         });
 
-        it('should return undefined when value is undefined', () => {
-            const duration = new DurationValue(undefined);
-            expect(duration.valueOf()).toBeUndefined();
-        });
     });
 
     describe('toString', () => {

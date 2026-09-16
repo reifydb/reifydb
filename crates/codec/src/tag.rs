@@ -44,10 +44,11 @@ pub enum ValueKind {
 	List = 29,
 	Record = 30,
 	Tuple = 31,
+	Digest = 32,
 }
 
 impl ValueKind {
-	pub const ALL: [ValueKind; 32] = [
+	pub const ALL: [ValueKind; 33] = [
 		ValueKind::None,
 		ValueKind::Boolean,
 		ValueKind::Float4,
@@ -80,6 +81,7 @@ impl ValueKind {
 		ValueKind::List,
 		ValueKind::Record,
 		ValueKind::Tuple,
+		ValueKind::Digest,
 	];
 
 	pub const fn byte(self) -> u8 {
@@ -130,6 +132,7 @@ impl ValueKind {
 			Value::List(_) => ValueKind::List,
 			Value::Record(_) => ValueKind::Record,
 			Value::Tuple(_) => ValueKind::Tuple,
+			Value::Digest(_) => ValueKind::Digest,
 		}
 	}
 
@@ -166,6 +169,9 @@ impl ValueKind {
 			ValueType::List(_) => ValueKind::List,
 			ValueType::Record(_) => ValueKind::Record,
 			ValueType::Tuple(_) => ValueKind::Tuple,
+			ValueType::Digest {
+				..
+			} => ValueKind::Digest,
 		}
 	}
 }
@@ -236,6 +242,12 @@ impl TypeTag {
 					"kind {:?} has no standalone value type",
 					self.kind()
 				)));
+			}
+			ValueKind::Digest => {
+				return Err(DecodeError::UnsupportedType(
+					"kind Digest needs its inner type and accuracy, which a type tag does not carry"
+						.to_string(),
+				));
 			}
 			ValueKind::Boolean => ValueType::Boolean,
 			ValueKind::Float4 => ValueType::Float4,

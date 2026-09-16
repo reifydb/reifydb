@@ -6,7 +6,10 @@ use std::collections::{BTreeMap, HashMap};
 use reifydb_testing_chaos::operator::model::Model;
 use reifydb_value::value::{Value, row_number::RowNumber};
 
-use crate::{framework::workload::WindowRow, operators::window::grid::render};
+use crate::{
+	framework::workload::WindowRow,
+	operators::window::grid::{Fold, render},
+};
 
 /// Which windows the n-th admitted row of a group belongs to. The ordinal is 0-based and handed out
 /// on arrival rather than carried by the row, which is the whole difference from the time-based kinds.
@@ -19,6 +22,7 @@ pub struct CountOracle<O: Ordinals> {
 	next_ordinal: HashMap<i32, u64>,
 	assigned: HashMap<RowNumber, Vec<u64>>,
 	contributions: Vec<Contribution>,
+	fold: Fold,
 }
 
 struct Contribution {
@@ -36,7 +40,26 @@ impl<O: Ordinals> CountOracle<O> {
 			next_ordinal: HashMap::new(),
 			assigned: HashMap::new(),
 			contributions: Vec::new(),
+			fold: Fold::Sum,
 		}
+	}
+
+	pub fn with_fold(mut self, fold: Fold) -> Self {
+		self.fold = fold;
+		self
+	}
+
+	fn folded(&self) -> Vec<Vec<Value>> {
+		let mut grouped: BTreeMap<(i32, u64), Vec<i64>> = BTreeMap::new();
+		for c in self.contributions.iter().filter(|c| c.live) {
+			grouped.entry((c.group, c.window)).or_default().push(c.value);
+		}
+		let mut out: Vec<Vec<Value>> = grouped
+			.into_iter()
+			.map(|((group, _), values)| vec![Value::Int4(group), self.fold.apply(&values)])
+			.collect();
+		out.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+		out
 	}
 
 	fn totals(&self) -> BTreeMap<(i32, u64), i64> {
@@ -119,7 +142,10 @@ impl<O: Ordinals> Model<WindowRow> for CountOracle<O> {
 	}
 
 	fn live(&self) -> Vec<Vec<Value>> {
-		render(self.totals().into_iter())
+		match self.fold {
+			Fold::Sum => render(self.totals().into_iter()),
+			_ => self.folded(),
+		}
 	}
 
 	fn all(&self) -> Vec<Vec<Value>> {

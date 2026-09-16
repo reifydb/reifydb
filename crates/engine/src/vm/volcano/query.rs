@@ -16,12 +16,7 @@ use reifydb_core::{
 use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
 use reifydb_extension::transform::context::TransformContext;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	byte_size::ByteSize,
-	error,
-	params::Params,
-	value::{identity::IdentityId, value_type::ValueType},
-};
+use reifydb_value::{byte_size::ByteSize, error, params::Params, value::identity::IdentityId};
 
 use crate::{Result, vm::services::Services};
 
@@ -30,13 +25,9 @@ pub fn query_budget(services: &Services) -> Arc<MemoryBudget> {
 	Arc::new(MemoryBudget::new(ByteSize::from_bytes(limit)))
 }
 
-pub(crate) fn is_scalar_type(ty: &ValueType) -> bool {
-	!matches!(ty.inner_type(), ValueType::Any | ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_))
-}
-
 pub(crate) fn ensure_sort_key_orderable(key: &SortKey, data: &ColumnBuffer) -> Result<()> {
 	let ty = data.get_type();
-	if is_scalar_type(&ty) {
+	if ty.is_scalar() {
 		Ok(())
 	} else {
 		Err(error!(operation::sort_key_not_orderable(key.column.clone(), ty)))

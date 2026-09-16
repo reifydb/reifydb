@@ -153,34 +153,6 @@ describe('toJSON', () => {
     });
 
     describe('unset values serialize as null', () => {
-        it('every numeric class returns null for undefined', () => {
-            expect(new Int1Value(undefined).toJSON()).toBeNull();
-            expect(new Int2Value(undefined).toJSON()).toBeNull();
-            expect(new Int4Value(undefined).toJSON()).toBeNull();
-            expect(new Int8Value(undefined).toJSON()).toBeNull();
-            expect(new Int16Value(undefined).toJSON()).toBeNull();
-            expect(new Uint1Value(undefined).toJSON()).toBeNull();
-            expect(new Uint2Value(undefined).toJSON()).toBeNull();
-            expect(new Uint4Value(undefined).toJSON()).toBeNull();
-            expect(new Uint8Value(undefined).toJSON()).toBeNull();
-            expect(new Uint16Value(undefined).toJSON()).toBeNull();
-            expect(new Float4Value(undefined).toJSON()).toBeNull();
-            expect(new Float8Value(undefined).toJSON()).toBeNull();
-            expect(new DecimalValue(undefined).toJSON()).toBeNull();
-        });
-
-        it('every non-numeric class returns null for undefined', () => {
-            expect(new BooleanValue(undefined).toJSON()).toBeNull();
-            expect(new Utf8Value(undefined).toJSON()).toBeNull();
-            expect(new Uuid4Value(undefined).toJSON()).toBeNull();
-            expect(new Uuid7Value(undefined).toJSON()).toBeNull();
-            expect(new IdentityIdValue(undefined).toJSON()).toBeNull();
-            expect(new BlobValue(undefined).toJSON()).toBeNull();
-            expect(new DateValue(undefined).toJSON()).toBeNull();
-            expect(new DateTimeValue(undefined).toJSON()).toBeNull();
-            expect(new TimeValue(undefined).toJSON()).toBeNull();
-            expect(new DurationValue(undefined).toJSON()).toBeNull();
-        });
 
         it('NoneValue returns null', () => {
             expect(new NoneValue().toJSON()).toBeNull();
@@ -211,7 +183,7 @@ describe('toJSON', () => {
                 big: new Uint8Value(BigInt('18446744073709551615')),
                 ratio: new Float8Value(34.244235695986326),
                 zero: new Float8Value(0),
-                nothing: new Uint8Value(undefined),
+                nothing: new NoneValue('Uint8'),
                 label: new Utf8Value('hello'),
             };
             expect(JSON.stringify(row)).toBe(

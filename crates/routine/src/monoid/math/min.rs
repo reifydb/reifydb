@@ -6,10 +6,7 @@ use reifydb_routine_abi::{
 	error::RoutineError,
 	monoid::{Monoid, MonoidState},
 };
-use reifydb_value::value::{
-	Value,
-	value_type::{ValueType, input_types::InputTypes},
-};
+use reifydb_value::value::Value;
 
 pub struct Min {
 	info: RoutineInfo,
@@ -32,30 +29,6 @@ impl Min {
 impl Monoid for Min {
 	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn accepted_types(&self) -> InputTypes {
-		InputTypes::single(vec![
-			ValueType::Int1,
-			ValueType::Int2,
-			ValueType::Int4,
-			ValueType::Int8,
-			ValueType::Int16,
-			ValueType::Uint1,
-			ValueType::Uint2,
-			ValueType::Uint4,
-			ValueType::Uint8,
-			ValueType::Uint16,
-			ValueType::Float4,
-			ValueType::Float8,
-			ValueType::Int,
-			ValueType::Uint,
-			ValueType::Decimal,
-			ValueType::Date,
-			ValueType::DateTime,
-			ValueType::Time,
-			ValueType::Duration,
-		])
 	}
 
 	fn lift(&self, value: &Value) -> MonoidState {

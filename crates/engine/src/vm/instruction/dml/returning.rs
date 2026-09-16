@@ -79,6 +79,21 @@ pub(crate) fn with_pre_image(post: Columns, pre: &Columns) -> Columns {
 	)
 }
 
+pub(crate) fn with_absent_pre_image(post: Columns) -> Columns {
+	let row_count = post.row_count();
+	let absent = Columns::new(
+		post.iter()
+			.map(|c| {
+				ColumnWithName::new(
+					c.name().clone(),
+					ColumnBuffer::none_typed(c.data().get_type(), row_count),
+				)
+			})
+			.collect(),
+	);
+	with_pre_image(post, &absent)
+}
+
 pub(crate) fn decode_returning_dictionaries(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
@@ -138,10 +153,8 @@ pub(crate) fn evaluate_returning(
 		symbols,
 	};
 
-	let compiled: Vec<CompiledExpr> = returning_exprs
-		.iter()
-		.map(|e| compile_expression(&compile_ctx, e).expect("compile returning expression"))
-		.collect();
+	let compiled: Vec<CompiledExpr> =
+		returning_exprs.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
 
 	let row_count = input.row_count();
 	let base = EvalContext {

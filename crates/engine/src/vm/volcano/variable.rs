@@ -7,7 +7,10 @@ use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_evaluate::{error::EvaluateError, stack::Variable};
 use reifydb_rql::expression::VariableExpression;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::reifydb_assertions;
+use reifydb_value::{
+	error::{RuntimeErrorKind, TypeError},
+	reifydb_assertions,
+};
 use tracing::instrument;
 
 use crate::{
@@ -65,8 +68,14 @@ impl QueryNode for VariableNode {
 
 				Ok(Some(columns.clone()))
 			}
-			Some(Variable::Closure(_)) => Err(EvaluateError::VariableNotFound {
-				name: variable_name.to_string(),
+			Some(Variable::Closure(_)) => Err(TypeError::Runtime {
+				kind: RuntimeErrorKind::VariableIsClosure {
+					fragment: self.variable_expr.fragment.clone(),
+				},
+				message: format!(
+					"Variable '{}' holds a closure and cannot be read as rows",
+					variable_name
+				),
 			}
 			.into()),
 			None => Err(EvaluateError::VariableNotFound {

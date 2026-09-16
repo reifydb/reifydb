@@ -3,14 +3,17 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use reifydb_codec::key::serializer::KeySerializer;
 use reifydb_core::{
+	error::diagnostic::operation::distinct_key_unkeyable,
 	interface::change::Diff,
 	key::operator::state::GroupId,
-	value::column::{ColumnWithName, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_evaluate::expression::context::EvalContext;
 use reifydb_value::{
-	Result,
+	Result, error,
+	fragment::Fragment,
 	util::hash::{Hash128, xxh3_128},
 	value::{datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
 };
@@ -29,6 +32,30 @@ fn row_time(host: &dyn HostContext, columns: &Columns, row_idx: usize) -> DateTi
 	} else {
 		columns.time()[row_idx]
 	}
+}
+
+fn ensure_distinct_keyable(name: &Fragment, data: &ColumnBuffer) -> Result<()> {
+	let ty = data.get_type();
+	if !ty.is_scalar() {
+		return Err(error!(distinct_key_unkeyable(name.clone(), ty)));
+	}
+	Ok(())
+}
+
+fn row_hashes(key_columns: &[(&Fragment, &ColumnBuffer)], row_count: usize) -> Result<Vec<Hash128>> {
+	for (name, data) in key_columns {
+		ensure_distinct_keyable(name, data)?;
+	}
+	let mut hashes = Vec::with_capacity(row_count);
+	for row_idx in 0..row_count {
+		let mut serializer = KeySerializer::new();
+		for (_, data) in key_columns {
+			data.extend_key(row_idx, &mut serializer)?;
+		}
+		let key = serializer.to_encoded_key();
+		hashes.push(xxh3_128(key.as_bytes()));
+	}
+	Ok(hashes)
 }
 
 impl DistinctPlan {
@@ -67,17 +94,9 @@ impl DistinctPlan {
 		}
 
 		if self.compiled_expressions.is_empty() {
-			let mut hashes = Vec::with_capacity(row_count);
-			for row_idx in 0..row_count {
-				let mut data = Vec::new();
-				for col in columns.iter() {
-					let value = col.data().get_value(row_idx);
-					let value_str = value.to_string();
-					data.extend_from_slice(value_str.as_bytes());
-				}
-				hashes.push(xxh3_128(&data));
-			}
-			Ok(hashes)
+			let key_columns: Vec<(&Fragment, &ColumnBuffer)> =
+				columns.iter().map(|c| (c.name(), c.data())).collect();
+			row_hashes(&key_columns, row_count)
 		} else {
 			let session = EvalContext {
 				params: &self.ctx.params,
@@ -97,18 +116,9 @@ impl DistinctPlan {
 				let col = compiled_expr.execute(&exec_ctx)?;
 				expr_columns.push(col);
 			}
-
-			let mut hashes = Vec::with_capacity(row_count);
-			for row_idx in 0..row_count {
-				let mut data = Vec::new();
-				for col in &expr_columns {
-					let value = col.data().get_value(row_idx);
-					let value_str = value.to_string();
-					data.extend_from_slice(value_str.as_bytes());
-				}
-				hashes.push(xxh3_128(&data));
-			}
-			Ok(hashes)
+			let key_columns: Vec<(&Fragment, &ColumnBuffer)> =
+				expr_columns.iter().map(|c| (c.name(), c.data())).collect();
+			row_hashes(&key_columns, row_count)
 		}
 	}
 

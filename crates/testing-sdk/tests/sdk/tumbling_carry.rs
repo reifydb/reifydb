@@ -289,7 +289,7 @@ impl TumblingCarryOperator for SealedCarry {
 		TestCarry.carry_forward(value, prev_carry)
 	}
 
-	fn lateness(&self) -> Option<Duration> {
+	fn seal_span(&self) -> Option<Duration> {
 		Some(millis(120))
 	}
 }

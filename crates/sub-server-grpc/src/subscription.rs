@@ -92,14 +92,7 @@ impl WireSink for GrpcWireSink {
 		_format: Self::Format,
 	) -> DeliveryResult {
 		match self {
-			Self::Single(tx) => {
-				let event = encode_change_event(op, columns, WireFormat::Rbcf);
-				if tx.send(Ok(event)).is_ok() {
-					DeliveryResult::Delivered
-				} else {
-					DeliveryResult::Disconnected
-				}
-			}
+			Self::Single(tx) => deliver(tx, encode_change_event(op, columns, WireFormat::Rbcf)),
 			Self::Batch(_) => DeliveryResult::Disconnected,
 		}
 	}
@@ -108,27 +101,28 @@ impl WireSink for GrpcWireSink {
 		&self,
 		_sub_id: SubscriptionId,
 		payload: RawChangePayload,
-		_format: Self::Format,
+		format: Self::Format,
 	) -> DeliveryResult {
 		match self {
 			Self::Single(tx) => {
 				let rbcf = match payload {
-					RawChangePayload::Rbcf(bytes) => bytes,
-					other => {
-						let frames = other.into_frames();
-						encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default()
-					}
+					RawChangePayload::Rbcf(bytes) => Ok(bytes),
+					other => other
+						.into_frames()
+						.map_err(|e| {
+							Status::internal(format!(
+								"failed to decode remote change: {}",
+								e
+							))
+						})
+						.and_then(|frames| encode_change_payload(frames, format)),
 				};
-				let event = SubscriptionEvent {
+				let event = rbcf.map(|rbcf| SubscriptionEvent {
 					event: Some(subscription_event::Event::Change(ChangeEvent {
 						rbcf,
 					})),
-				};
-				if tx.send(Ok(event)).is_ok() {
-					DeliveryResult::Delivered
-				} else {
-					DeliveryResult::Disconnected
-				}
+				});
+				deliver(tx, event)
 			}
 			Self::Batch(_) => DeliveryResult::Disconnected,
 		}
@@ -142,26 +136,24 @@ impl WireSink for GrpcWireSink {
 	) -> DeliveryResult {
 		match self {
 			Self::Batch(tx) => {
-				let proto_entries: Vec<BatchChangeEntry> = entries
+				let proto_entries = entries
 					.into_iter()
-					.map(|(sub_id, frames)| BatchChangeEntry {
-						subscription_id: sub_id.to_string(),
-						change: Some(ChangeEvent {
-							rbcf: encode_change_payload(frames, format),
-						}),
+					.map(|(sub_id, frames)| {
+						Ok(BatchChangeEntry {
+							subscription_id: sub_id.to_string(),
+							change: Some(ChangeEvent {
+								rbcf: encode_change_payload(frames, format)?,
+							}),
+						})
 					})
-					.collect();
-				let event = BatchSubscriptionEvent {
+					.collect::<Result<Vec<_>, Status>>();
+				let event = proto_entries.map(|entries| BatchSubscriptionEvent {
 					event: Some(batch_subscription_event::Event::Change(BatchChangeEvent {
 						batch_id: batch_id.to_string(),
-						entries: proto_entries,
+						entries,
 					})),
-				};
-				if tx.send(Ok(event)).is_ok() {
-					DeliveryResult::Delivered
-				} else {
-					DeliveryResult::Disconnected
-				}
+				});
+				deliver(tx, event)
 			}
 			Self::Single(_) => DeliveryResult::Disconnected,
 		}
@@ -193,16 +185,26 @@ impl WireSink for GrpcWireSink {
 	}
 }
 
-pub fn encode_change_event(op: DiffType, columns: Columns, format: WireFormat) -> SubscriptionEvent {
-	SubscriptionEvent {
+pub fn encode_change_event(op: DiffType, columns: Columns, format: WireFormat) -> Result<SubscriptionEvent, Status> {
+	Ok(SubscriptionEvent {
 		event: Some(subscription_event::Event::Change(ChangeEvent {
-			rbcf: encode_change_payload(vec![Frame::from(columns).with_op(op)], format),
+			rbcf: encode_change_payload(vec![Frame::from(columns).with_op(op)], format)?,
 		})),
-	}
+	})
 }
 
-pub fn encode_change_payload(frames: Vec<Frame>, _format: WireFormat) -> Vec<u8> {
-	encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default()
+pub fn encode_change_payload(frames: Vec<Frame>, _format: WireFormat) -> Result<Vec<u8>, Status> {
+	encode_frames(&frames, &EncodeOptions::fast())
+		.map_err(|e| Status::internal(format!("failed to RBCF-encode change: {}", e)))
+}
+
+fn deliver<T>(tx: &mpsc::UnboundedSender<Result<T, Status>>, event: Result<T, Status>) -> DeliveryResult {
+	let encoded = event.is_ok();
+	if tx.send(event).is_ok() && encoded {
+		DeliveryResult::Delivered
+	} else {
+		DeliveryResult::Disconnected
+	}
 }
 
 #[cfg(test)]

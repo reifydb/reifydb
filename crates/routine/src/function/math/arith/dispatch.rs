@@ -57,17 +57,6 @@ impl BasicStrategy {
 	}
 }
 
-pub(crate) fn ensure_arity(ctx: &mut FunctionContext, args: &Columns, expected: usize) -> Result<(), RoutineError> {
-	if args.len() != expected {
-		return Err(RoutineError::FunctionArityMismatch {
-			function: ctx.fragment.clone(),
-			expected,
-			actual: args.len(),
-		});
-	}
-	Ok(())
-}
-
 pub(crate) fn ensure_numeric(
 	ctx: &mut FunctionContext,
 	data: &ColumnBuffer,
@@ -103,19 +92,16 @@ pub fn dispatch_two<Op: ArithOp>(
 	args: &Columns,
 	strategy: BasicStrategy,
 ) -> Result<Columns, RoutineError> {
-	ensure_arity(ctx, args, 2)?;
 	execute_arith::<Op>(ctx, &args[0], &args[1], strategy.row_mode(), strategy.coerce_mode(), None, None)
 }
 
 pub fn dispatch_fallback<Op: ArithOp>(ctx: &mut FunctionContext, args: &Columns) -> Result<Columns, RoutineError> {
-	ensure_arity(ctx, args, 3)?;
 	let (d_data, _) = args[2].unwrap_option();
 	ensure_numeric(ctx, d_data, 2)?;
 	execute_arith::<Op>(ctx, &args[0], &args[1], RowMode::Fallback, CoerceMode::Error, Some(&args[2]), None)
 }
 
 pub fn dispatch_strict<Op: ArithOp>(ctx: &mut FunctionContext, args: &Columns) -> Result<Columns, RoutineError> {
-	ensure_arity(ctx, args, 3)?;
 	let (msg_data, _) = args[2].unwrap_option();
 	if msg_data.get_type() != ValueType::Utf8 {
 		return Err(RoutineError::FunctionInvalidArgumentType {

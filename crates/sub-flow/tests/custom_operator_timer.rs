@@ -92,7 +92,7 @@ impl GuestOperator for Alarm {
 		})
 	}
 
-	fn lateness(&self) -> Option<Duration> {
+	fn seal_span(&self) -> Option<Duration> {
 		Some(Duration::from_milliseconds_const(self.lateness_ms as i64))
 	}
 
@@ -294,7 +294,7 @@ impl GuestOperator for Snooze {
 		})
 	}
 
-	fn lateness(&self) -> Option<Duration> {
+	fn seal_span(&self) -> Option<Duration> {
 		Some(Duration::from_milliseconds_const(LATENESS_MS as i64))
 	}
 

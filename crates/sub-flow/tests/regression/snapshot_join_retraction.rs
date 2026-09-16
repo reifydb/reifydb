@@ -111,6 +111,7 @@ fn join(engine: &TestEngine) -> JoinOperator {
 		None,
 		Arc::new(FlowContext::default()),
 	)
+	.expect("the join operator must build")
 }
 
 /// The right-side value carried by a single-row `Columns`, looked up by name so a change in column

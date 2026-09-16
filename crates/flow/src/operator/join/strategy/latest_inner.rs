@@ -169,15 +169,14 @@ impl LatestInnerHashJoin {
 					}
 					return Ok(withdrawn);
 				}
-				let result =
-					match read_right_slot(host, &ctx.state.right, key_hash)? {
-						Some(slot) => {
-							vec![Diff::remove(
-								ctx.operator.join_left_with_slot(pre, indices, &slot),
-							)]
-						}
-						None => Vec::new(),
-					};
+				let result = match read_right_slot(host, &ctx.state.right, key_hash)? {
+					Some(slot) => {
+						vec![Diff::remove(
+							ctx.operator.join_left_with_slot(pre, indices, &slot),
+						)]
+					}
+					None => Vec::new(),
+				};
 				let group = ctx.state.left.group_of(key_hash);
 				for &idx in indices {
 					ctx.state.left.remove_row_in(host, group, pre.row_numbers()[idx])?;

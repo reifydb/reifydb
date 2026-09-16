@@ -19,9 +19,9 @@ describe('Uuid7Value', () => {
             expect(value.isNil()).toBe(true);
         });
 
-        it('should create instance with undefined', () => {
-            const value = new Uuid7Value(undefined);
-            expect(value.asString()).toBeUndefined();
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Uuid7Value(undefined)).toThrow();
         });
 
         it('should convert to lowercase', () => {
@@ -109,13 +109,15 @@ describe('Uuid7Value', () => {
             expect(value2.asString()).toBe(uuid);
         });
 
-        it('should return undefined for empty string', () => {
-            expect(Uuid7Value.parse('').value).toBeUndefined();
-            expect(Uuid7Value.parse('   ').value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Uuid7Value.parse('')).toThrow();
+            expect(() => Uuid7Value.parse('   ')).toThrow();
         });
 
-        it('should return undefined for NONE_VALUE', () => {
-            expect(Uuid7Value.parse('⟪none⟫').value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option value must always be defined, so the none marker is not a value
+            expect(() => Uuid7Value.parse('⟪none⟫')).toThrow();
         });
 
         it('should throw error for invalid UUID', () => {
@@ -138,10 +140,6 @@ describe('Uuid7Value', () => {
             expect(bytes?.length).toBe(16);
         });
 
-        it('should return undefined for undefined UUID', () => {
-            const value = new Uuid7Value(undefined);
-            expect(value.asBytes()).toBeUndefined();
-        });
     });
 
     describe('getTimestamp', () => {
@@ -163,10 +161,6 @@ describe('Uuid7Value', () => {
             expect(value.getTimestamp()).toBeUndefined();
         });
 
-        it('should return undefined for undefined UUID', () => {
-            const value = new Uuid7Value(undefined);
-            expect(value.getTimestamp()).toBeUndefined();
-        });
     });
 
     describe('getVersion', () => {
@@ -180,10 +174,6 @@ describe('Uuid7Value', () => {
             expect(value.getVersion()).toBe(0);
         });
 
-        it('should return undefined for undefined UUID', () => {
-            const value = new Uuid7Value(undefined);
-            expect(value.getVersion()).toBeUndefined();
-        });
     });
 
     describe('toString', () => {
@@ -193,10 +183,6 @@ describe('Uuid7Value', () => {
             expect(value.toString()).toBe(uuid);
         });
 
-        it('should format undefined as "undefined"', () => {
-            const value = new Uuid7Value(undefined);
-            expect(value.toString()).toBe('none');
-        });
     });
 
     describe('equals', () => {
@@ -213,11 +199,6 @@ describe('Uuid7Value', () => {
             expect(value1.equals(value2)).toBe(false);
         });
 
-        it('should compare undefined UUIDs', () => {
-            const value1 = new Uuid7Value(undefined);
-            const value2 = new Uuid7Value(undefined);
-            expect(value1.equals(value2)).toBe(true);
-        });
     });
 
     describe('compare', () => {
@@ -235,16 +216,6 @@ describe('Uuid7Value', () => {
             const uuid = value1.asString()!;
             const value2 = new Uuid7Value(uuid);
             expect(value1.compare(value2)).toBe(0);
-        });
-
-        it('should handle undefined values', () => {
-            const value1 = new Uuid7Value(undefined);
-            const value2 = Uuid7Value.generate();
-            const value3 = new Uuid7Value(undefined);
-            
-            expect(value1.compare(value2)).toBe(-1);
-            expect(value2.compare(value1)).toBe(1);
-            expect(value1.compare(value3)).toBe(0);
         });
 
         it('should order by timestamp for sequential UUIDs', async () => {
@@ -265,9 +236,5 @@ describe('Uuid7Value', () => {
             expect(value.valueOf()).toBe(uuid);
         });
 
-        it('should return undefined when value is undefined', () => {
-            const value = new Uuid7Value(undefined);
-            expect(value.valueOf()).toBeUndefined();
-        });
     });
 });

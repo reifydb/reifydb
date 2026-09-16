@@ -11,7 +11,6 @@ use reifydb_value::{
 	value::{
 		Value,
 		number::safe::{add::SafeAdd, sub::SafeSub},
-		value_type::input_types::InputTypes,
 	},
 };
 
@@ -36,10 +35,6 @@ impl Sum {
 impl Monoid for Sum {
 	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn accepted_types(&self) -> InputTypes {
-		InputTypes::numeric()
 	}
 
 	fn lift(&self, value: &Value) -> MonoidState {

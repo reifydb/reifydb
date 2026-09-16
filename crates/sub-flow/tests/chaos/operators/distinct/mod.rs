@@ -40,6 +40,7 @@ pub fn build(runtime: RuntimeContext) -> DistinctOperator {
 		runtime,
 		Arc::new(FlowContext::default()),
 	)
+	.expect("the distinct operator must build")
 }
 
 #[derive(Debug, Clone)]

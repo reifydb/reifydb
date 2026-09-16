@@ -6,7 +6,7 @@ use reifydb_routine_abi::{
 	error::RoutineError,
 	monoid::{Monoid, MonoidState},
 };
-use reifydb_value::value::{Value, value_type::input_types::InputTypes};
+use reifydb_value::value::Value;
 
 pub struct Count {
 	info: RoutineInfo,
@@ -29,10 +29,6 @@ impl Count {
 impl Monoid for Count {
 	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn accepted_types(&self) -> InputTypes {
-		InputTypes::any()
 	}
 
 	fn lift(&self, _value: &Value) -> MonoidState {

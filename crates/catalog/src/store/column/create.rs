@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::tag::type_tag_byte;
+use reifydb_codec::{constraint::encode_type_constraint, tag::type_tag_byte};
 use reifydb_core::{
 	interface::catalog::{object::ObjectId, property::ColumnPropertyKind},
 	key::column::{ColumnKey, ColumnsKey},
@@ -17,8 +17,17 @@ use reifydb_value::{
 	},
 };
 
-fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
-	match constraint {
+fn encode_constraint(type_constraint: &TypeConstraint) -> Vec<u8> {
+	let encoded = encode_type_constraint(type_constraint).unwrap_or_else(|error| {
+		panic!("column type {} cannot be encoded: {error}", type_constraint.get_type())
+	});
+	match type_constraint.constraint() {
+		None if encoded.constraint_type == 5 => {
+			let mut bytes = vec![5];
+			bytes.extend_from_slice(&encoded.constraint_param1.to_le_bytes());
+			bytes.extend_from_slice(&encoded.constraint_param2.to_le_bytes());
+			bytes
+		}
 		None => vec![0],
 		Some(Constraint::MaxBytes(max_bytes)) => {
 			let mut bytes = vec![1];
@@ -165,7 +174,7 @@ impl CatalogStore {
 		column::set_index(&mut row, u8::from(column_to_create.index));
 		column::set_auto_increment(&mut row, column_to_create.auto_increment);
 
-		let constraint_bytes = encode_constraint(column_to_create.constraint.constraint());
+		let constraint_bytes = encode_constraint(&column_to_create.constraint);
 		let blob = Blob::from(constraint_bytes);
 		column::set_constraint(&mut row, &blob);
 
@@ -211,15 +220,23 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod test {
-	use reifydb_core::interface::catalog::{
-		column::ColumnIndex,
-		id::{ColumnId, TableId},
+	use reifydb_codec::row::catalog::EncodedCatalogRow;
+	use reifydb_core::{
+		interface::catalog::{
+			column::ColumnIndex,
+			id::{ColumnId, TableId},
+		},
+		key::column::ColumnsKey,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
-	use reifydb_transaction::transaction::Transaction;
+	use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
-	use crate::{CatalogStore, store::column::create::ColumnToCreate, test_utils::ensure_test_table};
+	use crate::{
+		CatalogStore,
+		store::column::{create::ColumnToCreate, shape::column},
+		test_utils::ensure_test_table,
+	};
 
 	#[test]
 	fn test_create_column() {
@@ -411,5 +428,60 @@ pub mod test {
 
 		let diagnostic = err.diagnostic();
 		assert_eq!(diagnostic.code, "CA_005");
+	}
+
+	fn stored_type_and_constraint(txn: &mut AdminTransaction, id: ColumnId) -> (u8, Vec<u8>) {
+		let multi = Transaction::Admin(&mut *txn).get(&ColumnsKey::new(id)).unwrap().unwrap();
+		let row = EncodedCatalogRow::try_from(multi.bytes).unwrap();
+		(column::get_value(&row), column::get_constraint(&row).as_bytes().to_vec())
+	}
+
+	#[test]
+	fn test_digest_column_constraint_bytes_are_pinned() {
+		// Tag 5, ppm then inner type tag as u32 LE is on disk; any change strands stored digest columns.
+		let mut txn = create_test_admin_transaction();
+		ensure_test_table(&mut txn);
+
+		let mut create = |name: &str, index: u8, ty: ValueType| {
+			CatalogStore::create_column(
+				&mut txn,
+				TableId(1),
+				ColumnToCreate {
+					fragment: None,
+					namespace_name: "test_namespace".to_string(),
+					object_name: "test_table".to_string(),
+					column: name.to_string(),
+					constraint: TypeConstraint::unconstrained(ty),
+					properties: vec![],
+					index: ColumnIndex(index),
+					auto_increment: false,
+					dictionary_id: None,
+				},
+			)
+			.unwrap()
+			.id
+		};
+		let plain = create(
+			"plain",
+			0,
+			ValueType::Digest {
+				inner: Box::new(ValueType::Duration),
+				accuracy: 10_000,
+			},
+		);
+		let optional = create(
+			"optional",
+			1,
+			ValueType::Option(Box::new(ValueType::Digest {
+				inner: Box::new(ValueType::Uint16),
+				accuracy: 100_000,
+			})),
+		);
+
+		assert_eq!(stored_type_and_constraint(&mut txn, plain), (32, vec![5, 0x10, 0x27, 0, 0, 18, 0, 0, 0]));
+		assert_eq!(
+			stored_type_and_constraint(&mut txn, optional),
+			(0x40 | 32, vec![5, 0xa0, 0x86, 0x01, 0x00, 14, 0, 0, 0])
+		);
 	}
 }

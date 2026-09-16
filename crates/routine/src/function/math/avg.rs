@@ -13,7 +13,8 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::{
-	Accumulator, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Accumulator, Arity, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::{
 	fragment::Fragment,
@@ -97,19 +98,7 @@ impl<'a> Routine<FunctionContext<'a>> for Avg {
 		input_types.first().map(avg_return_type).unwrap_or(ValueType::Decimal)
 	}
 
-	fn accepted_types(&self) -> InputTypes {
-		InputTypes::numeric()
-	}
-
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.is_empty() {
-			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 1,
-				actual: 0,
-			});
-		}
-
 		let row_count = args.row_count();
 		let input_type = args[0].get_type();
 		let result_type = avg_return_type(&input_type);
@@ -301,12 +290,21 @@ impl Function for Avg {
 		&[FunctionKind::Scalar, FunctionKind::Aggregate]
 	}
 
-	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
-		Some(Box::new(AvgAccumulator::new()))
+	fn arity(&self) -> Arity {
+		Arity::AtLeast(1)
+	}
+
+	fn accumulator(
+		&self,
+		ctx: &mut FunctionContext<'_>,
+		_literals: &[LiteralArgument],
+	) -> Result<Option<Box<dyn Accumulator>>, RoutineError> {
+		Ok(Some(Box::new(AvgAccumulator::new(ctx.fragment.clone()))))
 	}
 }
 
 struct AvgAccumulator {
+	function: Fragment,
 	state: AvgState,
 	counts: GroupSlots<u64>,
 	input_type: Option<ValueType>,
@@ -321,8 +319,9 @@ enum AvgState {
 }
 
 impl AvgAccumulator {
-	pub fn new() -> Self {
+	pub fn new(function: Fragment) -> Self {
 		Self {
+			function,
 			state: AvgState::Unset,
 			counts: GroupSlots::new(),
 			input_type: None,
@@ -526,7 +525,7 @@ impl Accumulator for AvgAccumulator {
 			}
 			(_, other) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
-					function: Fragment::internal("math::avg"),
+					function: self.function.clone(),
 					argument_index: 0,
 					expected: InputTypes::numeric().expected_at(0).to_vec(),
 					actual: other.get_type(),

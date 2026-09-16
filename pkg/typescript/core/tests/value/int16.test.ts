@@ -28,16 +28,14 @@ describe('Int16Value', () => {
             expect(int16.value).toBe(BigInt(42));
         });
 
-        it('should create instance with undefined value', () => {
-            const int16 = new Int16Value(undefined);
-            expect(int16.value).toBeUndefined();
-            expect(int16.type).toBe('Int16');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Int16Value(undefined)).toThrow();
         });
 
-        it('should create instance with no arguments', () => {
-            const int16 = new Int16Value();
-            expect(int16.value).toBeUndefined();
-            expect(int16.type).toBe('Int16');
+        it('should reject no arguments', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Int16Value()).toThrow();
         });
 
         it('should accept minimum value -170141183460469231731687303715884105728', () => {
@@ -124,14 +122,14 @@ describe('Int16Value', () => {
             expect(int16.value).toBe(BigInt(100000));
         });
 
-        it('should return undefined for empty string', () => {
-            const int16 = Int16Value.parse('');
-            expect(int16.value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Int16Value.parse('')).toThrow();
         });
 
-        it('should return undefined for whitespace-only string', () => {
-            const int16 = Int16Value.parse('   ');
-            expect(int16.value).toBeUndefined();
+        it('should reject a whitespace-only string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Int16Value.parse('   ')).toThrow();
         });
 
         it('should throw error for non-numeric string', () => {
@@ -155,11 +153,6 @@ describe('Int16Value', () => {
         it('should return the bigint value', () => {
             const int16 = new Int16Value(BigInt(100000));
             expect(int16.valueOf()).toBe(BigInt(100000));
-        });
-
-        it('should return undefined when value is undefined', () => {
-            const int16 = new Int16Value(undefined);
-            expect(int16.valueOf()).toBeUndefined();
         });
 
         it('should return negative value', () => {

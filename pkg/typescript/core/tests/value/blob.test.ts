@@ -36,10 +36,9 @@ describe('BlobValue', () => {
             expect(blob.asBytes()).toEqual(new Uint8Array([0xDE, 0xAD, 0xBE, 0xEF]));
         });
 
-        it('should create instance with undefined', () => {
-            const blob = new BlobValue(undefined);
-            expect(blob.asBytes()).toBeUndefined();
-            expect(blob.length()).toBe(0);
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new BlobValue(undefined)).toThrow();
         });
 
         it('should throw error for invalid byte value in array', () => {
@@ -155,10 +154,6 @@ describe('BlobValue', () => {
             expect(blob.toHex()).toBe('0x0f01');
         });
 
-        it('should return undefined for undefined blob', () => {
-            const blob = new BlobValue(undefined);
-            expect(blob.toHex()).toBeUndefined();
-        });
     });
 
     describe('toBase64', () => {
@@ -172,10 +167,6 @@ describe('BlobValue', () => {
             expect(blob.toBase64()).toBe('');
         });
 
-        it('should return undefined for undefined blob', () => {
-            const blob = new BlobValue(undefined);
-            expect(blob.toBase64()).toBeUndefined();
-        });
     });
 
     describe('toUtf8', () => {
@@ -195,10 +186,6 @@ describe('BlobValue', () => {
             expect(blob.toUtf8()).toBe('');
         });
 
-        it('should return undefined for undefined blob', () => {
-            const blob = new BlobValue(undefined);
-            expect(blob.toUtf8()).toBeUndefined();
-        });
     });
 
     describe('toString', () => {
@@ -212,10 +199,6 @@ describe('BlobValue', () => {
             expect(blob.toString()).toBe('0x');
         });
 
-        it('should format undefined blob', () => {
-            const blob = new BlobValue(undefined);
-            expect(blob.toString()).toBe('none');
-        });
     });
 
     describe('parse', () => {
@@ -234,13 +217,15 @@ describe('BlobValue', () => {
             expect(blob.asBytes()).toEqual(new Uint8Array([0xDE, 0xAD, 0xBE, 0xEF]));
         });
 
-        it('should return undefined for empty string', () => {
-            expect(BlobValue.parse('').value).toBeUndefined();
-            expect(BlobValue.parse('   ').value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => BlobValue.parse('')).toThrow();
+            expect(() => BlobValue.parse('   ')).toThrow();
         });
 
-        it('should return undefined for NONE_VALUE', () => {
-            expect(BlobValue.parse('⟪none⟫').value).toBeUndefined();
+        it('should reject the none marker', () => {
+            // a non-option value must always be defined, so the none marker is not a value
+            expect(() => BlobValue.parse('⟪none⟫')).toThrow();
         });
 
         it('should throw error for invalid string', () => {
@@ -274,17 +259,6 @@ describe('BlobValue', () => {
             expect(blob1.equals(blob2)).toBe(true);
         });
 
-        it('should compare undefined blobs', () => {
-            const blob1 = new BlobValue(undefined);
-            const blob2 = new BlobValue(undefined);
-            expect(blob1.equals(blob2)).toBe(true);
-        });
-
-        it('should compare undefined with defined blob', () => {
-            const blob1 = new BlobValue(undefined);
-            const blob2 = BlobValue.fromBytes([1, 2, 3]);
-            expect(blob1.equals(blob2)).toBe(false);
-        });
     });
 
     describe('valueOf', () => {
@@ -292,11 +266,6 @@ describe('BlobValue', () => {
             const data = new Uint8Array([1, 2, 3]);
             const blob = new BlobValue(data);
             expect(blob.valueOf()).toEqual(data);
-        });
-
-        it('should return undefined when value is undefined', () => {
-            const blob = new BlobValue(undefined);
-            expect(blob.valueOf()).toBeUndefined();
         });
 
         it('should return a copy of the bytes', () => {

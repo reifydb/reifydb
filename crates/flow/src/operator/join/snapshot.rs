@@ -779,8 +779,7 @@ pub(crate) fn publish_slot(
 	let group = ctx.right_store.group_of(key_hash);
 	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
 
-	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group)?
-	else {
+	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group)? else {
 		if !outer {
 			return Ok(None);
 		}
@@ -835,8 +834,7 @@ pub(crate) fn retain_published_slot(
 	group: GroupId,
 	left: RowNumber,
 ) -> Result<Option<Columns>> {
-	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group)?
-	else {
+	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group)? else {
 		return Ok(None);
 	};
 	let mut records = ctx.ledger.published(host, group, left)?;

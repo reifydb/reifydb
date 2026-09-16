@@ -135,6 +135,7 @@ help:
 	@echo "  📊 Code Quality"
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@printf "  %-25s %s\n" "check-code-quality" "Validate code quality standards"
+	@printf "  %-25s %s\n" "check-value-no-features" "Build reifydb-value tests with no features"
 	@printf "  %-25s %s\n" "check" "Check for uncommitted changes"
 	@printf "  %-25s %s\n" "push" "Push changes to git (after check)"
 	@echo ""
@@ -165,6 +166,7 @@ check-code-quality:
 	@./scripts/check-license-headers.sh
 	@./scripts/check-section-comments.sh
 	@./scripts/check-em-dashes.sh
+	@$(MAKE) --no-print-directory check-value-no-features
 	@MAKEFLAGS= cargo clippy --release --workspace -- -D warnings
 
 .PHONY: check

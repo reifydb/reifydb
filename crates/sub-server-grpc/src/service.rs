@@ -436,8 +436,9 @@ impl ReifyDbService {
 	}
 }
 
-fn encode_rbcf(frames: Vec<Frame>) -> Vec<u8> {
-	encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default()
+fn encode_rbcf(frames: Vec<Frame>) -> Result<Vec<u8>, Status> {
+	encode_frames(&frames, &EncodeOptions::fast())
+		.map_err(|e| Status::internal(format!("failed to RBCF-encode response: {}", e)))
 }
 
 #[tonic::async_trait]
@@ -448,19 +449,19 @@ impl ReifyDb for ReifyDbService {
 		}
 		let ctx = self.admin_context(request)?;
 		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
-		Ok(Self::build_admin_response(encode_rbcf(frames), &metrics))
+		Ok(Self::build_admin_response(encode_rbcf(frames)?, &metrics))
 	}
 
 	async fn command(&self, request: Request<CommandRequest>) -> Result<Response<CommandResponse>, Status> {
 		let ctx = self.command_context(request)?;
 		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
-		Ok(Self::build_command_response(encode_rbcf(frames), &metrics))
+		Ok(Self::build_command_response(encode_rbcf(frames)?, &metrics))
 	}
 
 	async fn query(&self, request: Request<QueryRequest>) -> Result<Response<QueryResponse>, Status> {
 		let ctx = self.query_context(request)?;
 		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
-		Ok(Self::build_query_response(encode_rbcf(frames), &metrics))
+		Ok(Self::build_query_response(encode_rbcf(frames)?, &metrics))
 	}
 
 	type SubscribeStream = UnboundedReceiverStream<Result<SubscriptionEvent, Status>>;
@@ -705,7 +706,7 @@ impl ReifyDb for ReifyDbService {
 			dispatch_binding(&self.state, namespace.name(), procedure.name(), params, identity, metadata)
 				.await
 				.map_err(GrpcError::from)?;
-		Ok(Self::build_call_response(encode_rbcf(frames), &metrics))
+		Ok(Self::build_call_response(encode_rbcf(frames)?, &metrics))
 	}
 
 	async fn queue_claim(
@@ -730,7 +731,7 @@ impl ReifyDb for ReifyDbService {
 			dispatch_claim(&self.state, identity, claim, metadata).await.map_err(GrpcError::from)?;
 
 		let mut response = Response::new(QueueClaimResponse {
-			rbcf: encode_rbcf(frames),
+			rbcf: encode_rbcf(frames)?,
 		});
 		insert_meta_headers(response.metadata_mut(), &metrics);
 		Ok(response)
@@ -809,5 +810,42 @@ fn hydrate_error_to_status(err: HydrateError, rql: &str, cap: u64) -> Status {
 		HydrateError::Engine(_) if evicted => Status::out_of_range(msg),
 		HydrateError::Engine(_) => Status::internal(msg),
 		HydrateError::Internal(_) => Status::internal(msg),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_value::{
+		util::bitvec::BitVec,
+		value::{
+			container::number::NumberContainer,
+			frame::{column::FrameColumn, data::FrameColumnData},
+		},
+	};
+
+	use super::*;
+
+	#[test]
+	fn a_response_that_fails_to_rbcf_encode_is_an_error_not_an_empty_body() {
+		// Empty rbcf bytes leave the client decoding nothing, so an encode failure must travel as a status.
+		let deep = (0..4).fold(FrameColumnData::Int4(NumberContainer::new(vec![7])), |inner, _| {
+			FrameColumnData::Option {
+				inner: Box::new(inner),
+				bitvec: BitVec::from_slice(&[true]),
+			}
+		});
+		let frames = vec![Frame::new(vec![FrameColumn {
+			name: "v".to_string(),
+			data: deep,
+		}])];
+
+		let result = encode_rbcf(frames);
+
+		let status = result.expect_err("a result with four Option layers cannot be RBCF encoded");
+		assert_eq!(status.code(), Code::Internal, "the server failed, not the request: {status:?}");
+		assert!(
+			status.message().contains("option nesting depth 4"),
+			"status must name the encode failure: {status:?}"
+		);
 	}
 }

@@ -1,0 +1,455 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::collections::HashMap;
+
+use reifydb_test_harness::engine::TestEngine;
+use reifydb_value::{
+	error::Diagnostic,
+	params::Params,
+	value::{
+		Value, blob::Blob, date::Date, datetime::DateTime, digest::Digest, duration::Duration,
+		frame::frame::Frame, identity::IdentityId, time::Time, uuid::Uuid4, value_type::ValueType,
+	},
+};
+
+fn query(rql: &str, params: Params) -> Vec<Frame> {
+	let t = TestEngine::new();
+	let r = t.inner().query_as(TestEngine::identity(), rql, params);
+	if let Some(e) = r.error {
+		panic!("query failed: {e:?}\nrql: {rql}")
+	}
+	r.frames
+}
+
+fn query_err(rql: &str, params: Params) -> Diagnostic {
+	let t = TestEngine::new();
+	let r = t.inner().query_as(TestEngine::identity(), rql, params);
+	match r.error {
+		Some(e) => e.diagnostic(),
+		None => panic!("expected an error, got columns {:?}\nrql: {rql}", r.frames[0].columns),
+	}
+}
+
+fn column(frames: &[Frame], name: &str) -> (ValueType, Vec<Value>) {
+	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
+	let column = frames[0]
+		.columns
+		.iter()
+		.find(|c| c.name == name)
+		.unwrap_or_else(|| panic!("column {name} missing from {:?}", frames[0].columns));
+	(column.data.get_type(), (0..column.data.len()).map(|row| column.data.get_value(row)).collect())
+}
+
+fn assert_values_between_none_rows_keep_type(first: Value, second: Value, expected: ValueType) {
+	// Rows are value, none, value so a type lost on either value or on the none row shows up.
+	let params = Params::from(HashMap::from([("a".to_string(), first.clone()), ("b".to_string(), second.clone())]));
+
+	let frames = query("from [{ v: $a }, { v: none }, { v: $b }]", params);
+
+	let (ty, values) = column(&frames, "v");
+	assert_eq!(ty, ValueType::Option(Box::new(expected.clone())));
+	assert_eq!(values, vec![first, Value::none_of(expected), second]);
+}
+
+fn digest_of(values: &[f64]) -> Value {
+	let mut digest = Digest::new(ValueType::Float8, 10_000).unwrap();
+	for value in values {
+		digest.add_value(&Value::float8(*value)).unwrap();
+	}
+	Value::Digest(Box::new(digest))
+}
+
+#[test]
+fn duration_literal_reads_back_as_a_duration_column() {
+	// The inferred column must not fall back to a none Boolean for a type outside the numeric and text set.
+	let frames = query("from [{ d: duration::hours(25) }]", Params::None);
+
+	let (ty, values) = column(&frames, "d");
+	assert_eq!(ty, ValueType::Duration);
+	assert_eq!(values, vec![Value::Duration(Duration::from_hours(25).unwrap())]);
+}
+
+#[test]
+fn datetime_literal_reads_back_as_a_datetime_column() {
+	// A temporal literal must keep its instant, not become none.
+	let frames = query("from [{ ts: cast('2024-01-02T03:04:05Z', datetime) }]", Params::None);
+
+	let (ty, values) = column(&frames, "ts");
+	assert_eq!(ty, ValueType::DateTime);
+	assert_eq!(values, vec![Value::DateTime(DateTime::new(2024, 1, 2, 3, 4, 5, 0).unwrap())]);
+}
+
+#[test]
+fn leading_none_row_does_not_erase_a_later_duration() {
+	// The first non-none row decides the type, so a leading none must not turn the column into Boolean.
+	let frames = query("from [{ d: none }, { d: duration::hours(1) }]", Params::None);
+
+	let (ty, values) = column(&frames, "d");
+	assert_eq!(ty, ValueType::Option(Box::new(ValueType::Duration)));
+	assert_eq!(
+		values,
+		vec![Value::none_of(ValueType::Duration), Value::Duration(Duration::from_hours(1).unwrap())]
+	);
+}
+
+#[test]
+fn inline_duration_feeds_arithmetic_in_a_later_step() {
+	// A dropped value would reach the map as none and the sum would silently be none too.
+	let frames = query("from [{ d: duration::hours(1) }] map { w: d + duration::hours(1) }", Params::None);
+
+	let (ty, values) = column(&frames, "w");
+	assert_eq!(ty, ValueType::Duration);
+	assert_eq!(values, vec![Value::Duration(Duration::from_hours(2).unwrap())]);
+}
+
+#[test]
+fn duration_values_mixed_with_none_keep_their_type() {
+	// Durations on both sides of a none row must not read back as none.
+	assert_values_between_none_rows_keep_type(
+		Value::Duration(Duration::from_minutes(90).unwrap()),
+		Value::Duration(Duration::new(1, 2, 3).unwrap()),
+		ValueType::Duration,
+	);
+}
+
+#[test]
+fn datetime_values_mixed_with_none_keep_their_type() {
+	// Instants on both sides of a none row must not read back as none.
+	assert_values_between_none_rows_keep_type(
+		Value::DateTime(DateTime::new(2024, 2, 29, 23, 59, 59, 999_999_999).unwrap()),
+		Value::DateTime(DateTime::new(1970, 1, 1, 0, 0, 0, 0).unwrap()),
+		ValueType::DateTime,
+	);
+}
+
+#[test]
+fn date_values_mixed_with_none_keep_their_type() {
+	// Dates on both sides of a none row must not read back as none.
+	assert_values_between_none_rows_keep_type(
+		Value::Date(Date::new(2024, 2, 29).unwrap()),
+		Value::Date(Date::new(1999, 12, 31).unwrap()),
+		ValueType::Date,
+	);
+}
+
+#[test]
+fn time_values_mixed_with_none_keep_their_type() {
+	// Times on both sides of a none row must not read back as none.
+	assert_values_between_none_rows_keep_type(
+		Value::Time(Time::new(3, 4, 5, 6).unwrap()),
+		Value::Time(Time::new(23, 59, 59, 0).unwrap()),
+		ValueType::Time,
+	);
+}
+
+#[test]
+fn uuid4_values_mixed_with_none_keep_their_type() {
+	// Uuids on both sides of a none row must not read back as none.
+	assert_values_between_none_rows_keep_type(
+		Value::Uuid4(Uuid4::generate()),
+		Value::Uuid4(Uuid4::generate()),
+		ValueType::Uuid4,
+	);
+}
+
+#[test]
+fn uuid7_values_mixed_with_none_keep_their_type() {
+	// Uuids on both sides of a none row must not read back as none.
+	assert_values_between_none_rows_keep_type(
+		Value::Uuid7(IdentityId::root().value()),
+		Value::Uuid7(IdentityId::anonymous().value()),
+		ValueType::Uuid7,
+	);
+}
+
+#[test]
+fn identity_id_values_mixed_with_none_keep_their_type() {
+	// Identities on both sides of a none row must not read back as none.
+	assert_values_between_none_rows_keep_type(
+		Value::IdentityId(IdentityId::root()),
+		Value::IdentityId(IdentityId::system()),
+		ValueType::IdentityId,
+	);
+}
+
+#[test]
+fn blob_values_mixed_with_none_keep_their_type() {
+	// Blobs on both sides of a none row, the empty one included, must not read back as none.
+	assert_values_between_none_rows_keep_type(
+		Value::Blob(Blob::new(vec![0xde, 0xad, 0xbe, 0xef])),
+		Value::Blob(Blob::new(vec![])),
+		ValueType::Blob,
+	);
+}
+
+#[test]
+fn digest_values_mixed_with_none_keep_their_type() {
+	// The column type must carry the digest inner type and accuracy, not a none Boolean.
+	let first = digest_of(&[1.0, 2.0, 3.0]);
+	let second = digest_of(&[100.0]);
+	let expected = first.get_type();
+	assert_eq!(expected, second.get_type());
+
+	assert_values_between_none_rows_keep_type(first, second, expected);
+}
+
+#[test]
+fn list_values_mixed_with_none_keep_their_type() {
+	// A list arrives as an Any value and must stay one instead of becoming none.
+	assert_values_between_none_rows_keep_type(
+		Value::Any(Box::new(Value::List(vec![Value::int4(1), Value::int4(2)]))),
+		Value::Any(Box::new(Value::List(vec![]))),
+		ValueType::Any,
+	);
+}
+
+#[test]
+fn typed_none_only_column_keeps_its_declared_type() {
+	// A column of typed nones must report that type, not the Boolean used for untyped nones.
+	let frames = query("from [{ d: cast(none, duration) }, { d: none }]", Params::None);
+
+	let (ty, values) = column(&frames, "d");
+	assert_eq!(ty, ValueType::Option(Box::new(ValueType::Duration)));
+	assert_eq!(values, vec![Value::none_of(ValueType::Duration), Value::none_of(ValueType::Duration)]);
+}
+
+#[test]
+fn untyped_none_only_column_stays_boolean() {
+	// With no typed value or typed none to go on, the column keeps the Boolean none convention.
+	let frames = query("from [{ v: none }, { v: none }]", Params::None);
+
+	let (ty, values) = column(&frames, "v");
+	assert_eq!(ty, ValueType::Option(Box::new(ValueType::Boolean)));
+	assert_eq!(values, vec![Value::none_of(ValueType::Boolean), Value::none_of(ValueType::Boolean)]);
+}
+
+#[test]
+fn integer_column_with_an_uncastable_text_row_is_an_error_with_its_fragment() {
+	// A row that cannot take the column type must fail loud instead of reading back as none.
+	let err = query_err("from [{ v: 1 }, { v: 'abc' }]", Params::None);
+
+	assert_eq!(err.fragment.text(), "abc", "got: {err:?}");
+}
+
+#[test]
+fn uuid_column_with_an_uncastable_text_row_is_an_error_with_its_fragment() {
+	// A kept uuid type must not turn a text row it cannot parse into a silent none.
+	let err = query_err("from [{ v: uuid::v4() }, { v: 'not-a-uuid' }]", Params::None);
+
+	assert_eq!(err.fragment.text(), "not-a-uuid", "got: {err:?}");
+}
+
+#[test]
+fn integer_column_with_an_int_row_too_large_for_int16_is_an_error_with_its_fragment() {
+	// An arbitrary precision int beyond the widest fixed integer must not vanish into a none.
+	let err =
+		query_err("from [{ v: 1 }, { v: cast('170141183460469231731687303715884105728', int) }]", Params::None);
+
+	assert!(err.fragment.text().contains("170141183460469231731687303715884105728"), "got: {err:?}");
+}
+
+#[test]
+fn digest_rows_with_different_accuracy_are_an_error_with_the_second_fragment() {
+	// Two digests of different accuracy cannot share a column, so the second must fail loud, not become none.
+	let mut other = Digest::new(ValueType::Float8, 20_000).unwrap();
+	other.add_value(&Value::float8(2.0)).unwrap();
+	let params = Params::from(HashMap::from([
+		("a".to_string(), digest_of(&[1.0])),
+		("b".to_string(), Value::Digest(Box::new(other))),
+	]));
+
+	let err = query_err("from [{ v: $a }, { v: $b }]", params);
+
+	assert_eq!(err.fragment.text(), "$b", "got: {err:?}");
+}
+
+#[test]
+fn integer_rows_that_do_not_fit_a_narrow_type_keep_the_wide_type() {
+	// Narrowing picks the smallest type holding every row, so a large row must keep a wide type and its value.
+	let frames = query("from [{ v: 1 }, { v: 100000 }]", Params::None);
+	let (ty, values) = column(&frames, "v");
+	assert_eq!(ty, ValueType::Int4);
+	assert_eq!(values, vec![Value::Int4(1), Value::Int4(100_000)]);
+
+	let params = Params::from(HashMap::from([
+		("a".to_string(), Value::Int1(1)),
+		("b".to_string(), Value::Int16(i128::MAX)),
+	]));
+	let frames = query("from [{ v: $a }, { v: $b }]", params);
+	let (ty, values) = column(&frames, "v");
+	assert_eq!(ty, ValueType::Int16);
+	assert_eq!(values, vec![Value::Int16(1), Value::Int16(i128::MAX)]);
+}
+
+#[test]
+fn integer_column_does_not_silently_truncate_a_decimal_row() {
+	// A fractional row after an integer row must either fail loud or keep 1.5, never read back as 1.
+	let t = TestEngine::new();
+	let r = t.inner().query_as(TestEngine::identity(), "from [{ v: 1 }, { v: 1.5 }]", Params::None);
+	if r.error.is_some() {
+		return;
+	}
+
+	let (_, values) = column(&r.frames, "v");
+	assert_eq!(values[1].to_string(), "1.5", "got: {values:?}");
+}
+
+fn column_text(frames: &[Frame], name: &str) -> (ValueType, Vec<String>) {
+	let (ty, values) = column(frames, name);
+	(ty, values.iter().map(|value| value.to_string()).collect())
+}
+
+#[test]
+fn integer_then_decimal_rows_widen_to_decimal_and_keep_both_values() {
+	// Decimal holds every integer exactly, so the fractional row must not be cast down to the first row type.
+	let frames = query("from [{ v: 1 }, { v: 1.5 }]", Params::None);
+
+	assert_eq!(column_text(&frames, "v"), (ValueType::Decimal, vec!["1".to_string(), "1.5".to_string()]));
+}
+
+#[test]
+fn decimal_then_integer_rows_widen_to_decimal_and_keep_both_values() {
+	// The widest row type must win in either order, never only the first row type.
+	let frames = query("from [{ v: 1.5 }, { v: 1 }]", Params::None);
+
+	assert_eq!(column_text(&frames, "v"), (ValueType::Decimal, vec!["1.5".to_string(), "1".to_string()]));
+}
+
+#[test]
+fn integer_then_float_rows_widen_to_float8_and_keep_both_values() {
+	// An integer first row must not truncate a later float row to an integer.
+	let frames = query("from [{ v: 1 }, { v: cast(1.5, float8) }]", Params::None);
+
+	assert_eq!(column(&frames, "v"), (ValueType::Float8, vec![Value::float8(1.0), Value::float8(1.5)]));
+}
+
+#[test]
+fn float_then_integer_rows_widen_to_float8_and_keep_both_values() {
+	// A float first row must keep a later integer row at its exact value.
+	let frames = query("from [{ v: cast(1.5, float8) }, { v: 1 }]", Params::None);
+
+	assert_eq!(column(&frames, "v"), (ValueType::Float8, vec![Value::float8(1.5), Value::float8(1.0)]));
+}
+
+#[test]
+fn integer_beyond_float8_precision_before_a_float_row_is_an_error_with_its_fragment() {
+	// 2^53 + 1 has no exact float8, so widening must fail loud instead of storing 2^53.
+	let err = query_err("from [{ v: 9007199254740993 }, { v: cast(1.5, float8) }]", Params::None);
+
+	assert_eq!(err.code, "NUMBER_004", "got: {err:?}");
+	assert_eq!(err.fragment.text(), "9007199254740993", "got: {err:?}");
+}
+
+#[test]
+fn integer_beyond_float8_precision_after_a_float_row_is_an_error_with_its_fragment() {
+	// The precision check must run for a late integer row too, not only for the first row.
+	let err = query_err("from [{ v: cast(1.5, float8) }, { v: 9007199254740993 }]", Params::None);
+
+	assert_eq!(err.code, "NUMBER_004", "got: {err:?}");
+	assert_eq!(err.fragment.text(), "9007199254740993", "got: {err:?}");
+}
+
+#[test]
+fn int16_sized_integer_with_a_decimal_row_widens_to_decimal_and_keeps_every_digit() {
+	// The largest fixed integer must survive widening to decimal digit for digit.
+	let frames = query("from [{ v: 170141183460469231731687303715884105727 }, { v: 1.5 }]", Params::None);
+
+	assert_eq!(
+		column_text(&frames, "v"),
+		(ValueType::Decimal, vec!["170141183460469231731687303715884105727".to_string(), "1.5".to_string()])
+	);
+}
+
+#[test]
+fn int16_sized_integer_with_a_float_row_is_an_error_with_its_fragment() {
+	// A float8 cannot hold i128::MAX exactly, so the row must fail loud instead of rounding.
+	let err = query_err(
+		"from [{ v: 170141183460469231731687303715884105727 }, { v: cast(1.5, float8) }]",
+		Params::None,
+	);
+
+	assert_eq!(err.code, "NUMBER_004", "got: {err:?}");
+	assert_eq!(err.fragment.text(), "170141183460469231731687303715884105727", "got: {err:?}");
+}
+
+#[test]
+fn arbitrary_int_with_a_float_row_widens_to_float8_not_int() {
+	// Promoting to int would truncate 1.5 to 1, so an arbitrary int with a float must widen to float8.
+	let frames = query("from [{ v: cast(5, int) }, { v: cast(1.5, float8) }]", Params::None);
+
+	assert_eq!(column(&frames, "v"), (ValueType::Float8, vec![Value::float8(5.0), Value::float8(1.5)]));
+}
+
+#[test]
+fn float_then_arbitrary_int_rows_widen_to_float8_not_int() {
+	// The arbitrary int rule must hold when the float row comes first.
+	let frames = query("from [{ v: cast(1.5, float8) }, { v: cast(5, int) }]", Params::None);
+
+	assert_eq!(column(&frames, "v"), (ValueType::Float8, vec![Value::float8(1.5), Value::float8(5.0)]));
+}
+
+#[test]
+fn decimal_then_float_rows_widen_to_decimal_and_keep_both_values() {
+	// Decimal must absorb a float row instead of the float row forcing a lossy float8 column.
+	let frames = query("from [{ v: 1.00000000000000000001 }, { v: cast(0.25, float8) }]", Params::None);
+
+	assert_eq!(
+		column_text(&frames, "v"),
+		(ValueType::Decimal, vec!["1.00000000000000000001".to_string(), "0.25".to_string()])
+	);
+}
+
+#[test]
+fn float_then_decimal_rows_widen_to_decimal_and_keep_every_digit() {
+	// A float first row must not round a later high precision decimal row to float8.
+	let frames = query("from [{ v: cast(0.25, float8) }, { v: 1.00000000000000000001 }]", Params::None);
+
+	assert_eq!(
+		column_text(&frames, "v"),
+		(ValueType::Decimal, vec!["0.25".to_string(), "1.00000000000000000001".to_string()])
+	);
+}
+
+#[test]
+fn float4_then_integer_beyond_float4_precision_keeps_the_integer_exact() {
+	// 2^24 + 1 has no exact float4, so the column must widen to float8 rather than stay float4.
+	let frames = query("from [{ v: cast(1.5, float4) }, { v: 16777217 }]", Params::None);
+
+	assert_eq!(column(&frames, "v"), (ValueType::Float8, vec![Value::float8(1.5), Value::float8(16_777_217.0)]));
+}
+
+#[test]
+fn unqualified_constructor_without_a_target_is_an_error_with_its_fragment() {
+	// With no target there is no enum to resolve Foo against, which must fail loud, never panic.
+	let err = query_err("from [{ v: Foo { x: 1 } }]", Params::None);
+
+	assert_eq!(err.code, "CA_101", "got: {err:?}");
+	assert_eq!(err.fragment.text(), "Foo", "got: {err:?}");
+}
+
+#[test]
+fn constructor_without_a_target_names_each_expanded_column() {
+	// A tag and a field column must not both be named after the alias, or one hides the other.
+	let t = TestEngine::new();
+	t.admin("CREATE NAMESPACE s");
+	t.admin("CREATE ENUM s::shape { Circle { radius: float8 }, Square { side: float8 } }");
+	let r = t.inner().query_as(
+		TestEngine::identity(),
+		"from [{ v: s::shape::Square { side: 2.0 } }]",
+		Params::None,
+	);
+	assert!(r.error.is_none(), "got: {:?}", r.error);
+
+	let names: Vec<&str> = r.frames[0].columns.iter().map(|c| c.name.as_str()).collect();
+	assert_eq!(names, vec!["v_square_side", "v_tag"]);
+	assert_eq!(column(&r.frames, "v_tag").1, vec![Value::Int1(1)]);
+}
+
+#[test]
+fn inline_row_with_a_duplicate_column_is_an_error() {
+	// Two values for a in one row are ambiguous, so the first must not be dropped in favour of the last.
+	let err = query_err("from [{ a: 1, a: 2 }]", Params::None);
+
+	assert_eq!(err.fragment.text(), "a", "got: {err:?}");
+}

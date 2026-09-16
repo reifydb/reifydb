@@ -26,7 +26,7 @@ pub trait ExternCOperator: 'static {
 		Ok(())
 	}
 
-	fn lateness(&self) -> Option<Duration> {
+	fn seal_span(&self) -> Option<Duration> {
 		None
 	}
 
@@ -63,8 +63,8 @@ impl<C: GuestOperator + OperatorMetadata + 'static> ExternCOperator for ExternCO
 		self.core.on_timer(ctx, timer)
 	}
 
-	fn lateness(&self) -> Option<Duration> {
-		self.core.lateness()
+	fn seal_span(&self) -> Option<Duration> {
+		self.core.seal_span()
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

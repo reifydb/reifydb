@@ -10,7 +10,7 @@ use reifydb_catalog::{
 use reifydb_column::{
 	bucket::{Bucket, BucketId, bucket_for, is_closed},
 	compress::Compressor,
-	snapshot::{ColumnBlock, SystemColumn},
+	snapshot::ColumnBlock,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -46,10 +46,13 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::column::{
-	actor::{SeriesMessage, batches::column_block_from_batches},
+	actor::{
+		SeriesMessage,
+		batches::{column_block_from_batches, system_column_schema},
+	},
 	block_store::ColumnBlockStore,
 	error::SubStoreError,
 };
@@ -96,44 +99,31 @@ impl SeriesMaterializationActor {
 	}
 
 	fn run_tick(&self, state: &mut SeriesMaterializationState, _now: DateTime) {
-		let Some(mut query_txn) = self.begin_query_or_warn() else {
-			return;
+		let mut query_txn = match self.engine.begin_query(IdentityId::system()) {
+			Ok(txn) => txn,
+			Err(e) => panic!("series materialization: begin_query failed: {e}"),
 		};
 		let catalog = self.engine.catalog();
 		let now_wall = self.wall_clock_now();
-		let Some(series_list) = self.list_series_or_warn(&mut query_txn, &catalog) else {
-			return;
+		let series_list = match catalog.list_series(&mut Transaction::Query(&mut query_txn)) {
+			Ok(series_list) => series_list,
+			Err(e) => panic!("series materialization: list_series failed: {e}"),
 		};
 		for series in series_list {
-			self.materialize_series_buckets(state, &mut query_txn, &catalog, &series, now_wall);
+			if let Err(e) =
+				self.materialize_series_buckets(state, &mut query_txn, &catalog, &series, now_wall)
+			{
+				panic!(
+					"series materialization failed for series {:?} ({}): {e}",
+					series.id, series.name
+				);
+			}
 		}
 	}
 
 	#[inline]
 	fn wall_clock_now(&self) -> DateTime {
 		self.engine.clock().now()
-	}
-
-	#[inline]
-	fn list_series_or_warn(&self, query_txn: &mut QueryTransaction, catalog: &Catalog) -> Option<Vec<Series>> {
-		match catalog.list_series(&mut Transaction::Query(query_txn)) {
-			Ok(s) => Some(s),
-			Err(e) => {
-				warn!("series materialization: list_series failed: {e}");
-				None
-			}
-		}
-	}
-
-	#[inline]
-	fn begin_query_or_warn(&self) -> Option<QueryTransaction> {
-		match self.engine.begin_query(IdentityId::system()) {
-			Ok(t) => Some(t),
-			Err(e) => {
-				warn!("series materialization: begin_query failed: {e}");
-				None
-			}
-		}
 	}
 
 	fn materialize_series_buckets(
@@ -143,12 +133,14 @@ impl SeriesMaterializationActor {
 		catalog: &Catalog,
 		series: &Series,
 		now_wall: DateTime,
-	) {
-		let Some(metadata) = self.load_series_metadata_or_warn(query_txn, catalog, series) else {
-			return;
+	) -> Result<()> {
+		let Some(metadata) =
+			catalog.find_series_metadata(&mut Transaction::Query(&mut *query_txn), series.id)?
+		else {
+			return Ok(());
 		};
 		if metadata.row_count == 0 {
-			return;
+			return Ok(());
 		}
 		let first = bucket_for(metadata.oldest_key, self.bucket_width);
 		let last = bucket_for(metadata.newest_key, self.bucket_width);
@@ -160,26 +152,9 @@ impl SeriesMaterializationActor {
 				width: self.bucket_width,
 			};
 			start = start.saturating_add(self.bucket_width);
-			self.maybe_materialize_bucket(state, query_txn, series, &metadata, &bucket, now_wall);
+			self.maybe_materialize_bucket(state, query_txn, series, &metadata, &bucket, now_wall)?;
 		}
-	}
-
-	#[inline]
-	fn load_series_metadata_or_warn(
-		&self,
-		query_txn: &mut QueryTransaction,
-		catalog: &Catalog,
-		series: &Series,
-	) -> Option<SeriesMetadata> {
-		let mut tx: Transaction<'_> = query_txn.into();
-		match catalog.find_series_metadata(&mut tx, series.id) {
-			Ok(Some(m)) => Some(m),
-			Ok(None) => None,
-			Err(e) => {
-				warn!("series materialization: find_series_metadata failed for {:?}: {e}", series.id);
-				None
-			}
-		}
+		Ok(())
 	}
 
 	fn maybe_materialize_bucket(
@@ -190,9 +165,9 @@ impl SeriesMaterializationActor {
 		metadata: &SeriesMetadata,
 		bucket: &Bucket,
 		now_wall: DateTime,
-	) {
+	) -> Result<()> {
 		if !is_closed(bucket, series, metadata, now_wall, self.grace) {
-			return;
+			return Ok(());
 		}
 		let key = (series.id, bucket.id());
 		let need_remat = match state.bucket_state.get(&key) {
@@ -200,25 +175,16 @@ impl SeriesMaterializationActor {
 			Some(s) => s.materialized_at_sequence < metadata.sequence_counter,
 		};
 		if !need_remat {
-			return;
+			return Ok(());
 		}
-		match self.materialize_bucket(query_txn, series, metadata, bucket) {
-			Ok(()) => {
-				state.bucket_state.insert(
-					key,
-					SeriesBucketState {
-						materialized_at_sequence: metadata.sequence_counter,
-					},
-				);
-			}
-			Err(e) => {
-				warn!(
-					"series materialization skipped for {:?} bucket {:?}: {e}",
-					series.id,
-					bucket.id()
-				);
-			}
-		}
+		self.materialize_bucket(query_txn, series, metadata, bucket)?;
+		state.bucket_state.insert(
+			key,
+			SeriesBucketState {
+				materialized_at_sequence: metadata.sequence_counter,
+			},
+		);
+		Ok(())
 	}
 
 	fn materialize_bucket(
@@ -364,7 +330,8 @@ fn scan_output_schema(series: &Series) -> Vec<(String, ValueType)> {
 		.map(|c| c.constraint.get_type())
 		.unwrap_or(ValueType::Uint8);
 
-	let mut schema = Vec::with_capacity(series.columns.len() + 1 + SystemColumn::ALL.len());
+	let system = system_column_schema(&series.time);
+	let mut schema = Vec::with_capacity(series.columns.len() + 1 + system.len());
 	schema.push((key_name.clone(), key_ty));
 	if series.tag.is_some() {
 		schema.push(("tag".to_string(), ValueType::Uint1));
@@ -372,9 +339,7 @@ fn scan_output_schema(series: &Series) -> Vec<(String, ValueType)> {
 	for col in series.data_columns() {
 		schema.push((col.name.clone(), col.constraint.get_type()));
 	}
-	for sc in SystemColumn::ALL {
-		schema.push((sc.name().to_string(), sc.ty()));
-	}
+	schema.extend(system);
 	schema
 }
 

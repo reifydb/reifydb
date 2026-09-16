@@ -5,10 +5,12 @@ use std::collections::{HashMap, HashSet};
 
 use reifydb_core::{
 	common::JoinType,
+	error::diagnostic::operation,
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error,
 	fragment::Fragment,
 	reifydb_assertions,
 	util::hash::Hash128,
@@ -16,7 +18,7 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::common::{JoinContext, compute_join_hash, load_and_merge_all, resolve_column_names};
+use super::common::{JoinContext, compute_join_hash, ensure_join_keyable, load_and_merge_all, resolve_column_names};
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -27,6 +29,8 @@ pub struct NaturalJoinNode {
 	right: Box<dyn QueryNode>,
 	join_type: JoinType,
 	alias: Option<Fragment>,
+	left_name: Option<Fragment>,
+	fragment: Fragment,
 	headers: Option<ColumnHeaders>,
 	context: JoinContext,
 }
@@ -37,12 +41,16 @@ impl NaturalJoinNode {
 		right: Box<dyn QueryNode>,
 		join_type: JoinType,
 		alias: Option<Fragment>,
+		left_name: Option<Fragment>,
+		fragment: Fragment,
 	) -> Self {
 		Self {
 			left,
 			right,
 			join_type,
 			alias,
+			left_name,
+			fragment,
 			headers: None,
 			context: JoinContext::new(),
 		}
@@ -53,7 +61,7 @@ impl NaturalJoinNode {
 
 		for (left_idx, left_col) in left_columns.iter().enumerate() {
 			for (right_idx, right_col) in right_columns.iter().enumerate() {
-				if left_col.name() == right_col.name() {
+				if left_col.name().text() == right_col.name().text() {
 					common_columns.push((left_col.name().text().to_string(), left_idx, right_idx));
 				}
 			}
@@ -91,7 +99,13 @@ impl QueryNode for NaturalJoinNode {
 		let common_columns = Self::find_common_columns(&left_columns, &right_columns);
 
 		if common_columns.is_empty() {
-			return Ok(None);
+			let left = self.left_name.as_ref().map_or("the left input", |name| name.text());
+			let right = self.alias.as_ref().map_or("the right input", |name| name.text());
+			return Err(error!(operation::natural_join_no_shared_column(
+				self.fragment.clone(),
+				left,
+				right
+			)));
 		}
 
 		let excluded_right_cols: HashSet<usize> =
@@ -103,10 +117,12 @@ impl QueryNode for NaturalJoinNode {
 			resolve_column_names(&left_columns, &right_columns, &self.alias, Some(&excluded_indices));
 
 		let right_col_indices: Vec<usize> = common_columns.iter().map(|(_, _, ri)| *ri).collect();
-		let mut hash_buf = Vec::with_capacity(256);
-		let hash_table = Self::build(&right_columns, &right_col_indices, &mut hash_buf);
-
 		let left_col_indices: Vec<usize> = common_columns.iter().map(|(_, li, _)| *li).collect();
+		ensure_join_keyable(&left_columns, &left_col_indices)?;
+		ensure_join_keyable(&right_columns, &right_col_indices)?;
+
+		let mut hash_buf = Vec::with_capacity(256);
+		let hash_table = Self::build(&right_columns, &right_col_indices, &mut hash_buf)?;
 
 		let (result_rows, result_row_numbers) = self.probe(
 			&left_columns,
@@ -118,7 +134,7 @@ impl QueryNode for NaturalJoinNode {
 			&left_row_numbers,
 			left_rows,
 			&mut hash_buf,
-		);
+		)?;
 
 		let columns = Self::materialize(&resolved.qualified_names, result_rows, result_row_numbers);
 
@@ -137,15 +153,15 @@ impl NaturalJoinNode {
 		right_columns: &Columns,
 		right_col_indices: &[usize],
 		hash_buf: &mut Vec<u8>,
-	) -> HashMap<Hash128, Vec<usize>> {
+	) -> Result<HashMap<Hash128, Vec<usize>>> {
 		let mut hash_table: HashMap<Hash128, Vec<usize>> = HashMap::new();
 		let right_rows = right_columns.row_count();
 		for j in 0..right_rows {
-			if let Some(h) = compute_join_hash(right_columns, right_col_indices, j, hash_buf) {
+			if let Some(h) = compute_join_hash(right_columns, right_col_indices, j, hash_buf)? {
 				hash_table.entry(h).or_default().push(j);
 			}
 		}
-		hash_table
+		Ok(hash_table)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -161,7 +177,7 @@ impl NaturalJoinNode {
 		left_row_numbers: &[RowNumber],
 		left_rows: usize,
 		hash_buf: &mut Vec<u8>,
-	) -> (Vec<Vec<Value>>, Vec<RowNumber>) {
+	) -> Result<(Vec<Vec<Value>>, Vec<RowNumber>)> {
 		let mut result_rows = Vec::new();
 		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
@@ -169,7 +185,7 @@ impl NaturalJoinNode {
 			let left_row = left_columns.get_row(i);
 			let mut matched = false;
 
-			let candidates = compute_join_hash(left_columns, left_col_indices, i, hash_buf)
+			let candidates = compute_join_hash(left_columns, left_col_indices, i, hash_buf)?
 				.and_then(|h| hash_table.get(&h));
 
 			if let Some(indices) = candidates {
@@ -208,7 +224,7 @@ impl NaturalJoinNode {
 			}
 		}
 
-		(result_rows, result_row_numbers)
+		Ok((result_rows, result_row_numbers))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::natural::materialize")]

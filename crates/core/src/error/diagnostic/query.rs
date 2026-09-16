@@ -36,12 +36,12 @@ pub fn column_not_found(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-pub fn extend_duplicate_column(column_name: &str) -> Diagnostic {
+pub fn extend_duplicate_column(fragment: Fragment, column_name: &str) -> Diagnostic {
 	Diagnostic {
 		code: "EXTEND_002".to_string(),
 		rql: None,
 		message: format!("Cannot extend with duplicate column name '{}'", column_name),
-		fragment: Fragment::None,
+		fragment,
 		label: Some("column already exists in the current frame".to_string()),
 		help: Some("Use a different column name or remove the existing column first".to_string()),
 		column: None,
@@ -92,6 +92,21 @@ pub fn system_column_read_only(fragment: Fragment) -> Diagnostic {
 	}
 }
 
+pub fn duplicate_field(fragment: Fragment, name: &str) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_009".to_string(),
+		rql: None,
+		message: format!("field '{}' is given more than once", name),
+		fragment,
+		label: Some("a row, constructor, MAP or UPDATE may give each field only once".to_string()),
+		help: Some("remove one of the values for this field".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn as_clause_not_query(fragment: Fragment, kind: &str) -> Diagnostic {
 	Diagnostic {
 		code: "QUERY_005".to_string(),
@@ -103,6 +118,24 @@ pub fn as_clause_not_query(fragment: Fragment, kind: &str) -> Diagnostic {
 			"AS { ... } accepts only query expressions (FROM, MAP, FILTER, JOIN, ...); nested DDL statements such as CREATE/DROP/ALTER are not allowed"
 				.to_string(),
 		),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn not_a_query_input(fragment: Fragment, kind: &str) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_010".to_string(),
+		rql: None,
+		message: format!("{} cannot be the input of a query step", kind),
+		fragment,
+		label: Some("a query was expected here".to_string()),
+		help: Some(format!(
+			"a step such as MAP or FILTER reads from a query; run the {} as its own statement",
+			kind
+		)),
 		column: None,
 		notes: vec![],
 		cause: None,
@@ -123,6 +156,58 @@ pub fn join_column_alias_error(fragment: Fragment, message: &str) -> Diagnostic 
 			"Example: using (id, orders.user_id) where 'orders' is the join alias".to_string(),
 			"Unqualified columns refer to the current dataframe".to_string(),
 		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn window_requires_deferred_view(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_007".to_string(),
+		rql: None,
+		message: "window runs only in deferred views, not in a batch query".to_string(),
+		fragment,
+		label: Some("a batch query cannot run a window".to_string()),
+		help: Some(
+			"define the window in CREATE DEFERRED VIEW ns::name AS { ... } and read the view with FROM ns::name"
+				.to_string(),
+		),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn append_requires_deferred_view(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_011".to_string(),
+		rql: None,
+		message: "append runs only in deferred views, not in a batch query".to_string(),
+		fragment,
+		label: Some("a batch query cannot run an append".to_string()),
+		help: Some(
+			"define the append in CREATE DEFERRED VIEW ns::name AS { ... } and read the view with FROM ns::name"
+				.to_string(),
+		),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn unknown_apply_operator(fragment: Fragment) -> Diagnostic {
+	let name = fragment.text().to_string();
+	Diagnostic {
+		code: "QUERY_008".to_string(),
+		rql: None,
+		message: format!("unknown operator '{}'", name),
+		fragment,
+		label: Some("no operator with this name is registered".to_string()),
+		help: Some("check the operator name for typos, or register the operator before applying it".to_string()),
+		column: None,
+		notes: vec![],
 		cause: None,
 		operator_chain: None,
 	}

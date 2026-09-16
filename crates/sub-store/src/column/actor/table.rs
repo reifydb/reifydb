@@ -3,14 +3,17 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use dashmap::DashMap;
 use reifydb_catalog::store::column_snapshot::create::ColumnSnapshotToCreate;
-use reifydb_column::{
-	compress::Compressor,
-	snapshot::{ColumnBlock, SystemColumn},
-};
+use reifydb_column::{compress::Compressor, snapshot::ColumnBlock};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{column_snapshot::ColumnSnapshotSource, id::TableId, table::Table},
+	event::{EventListener, transaction::PostCommitEvent},
+	interface::catalog::{column_snapshot::ColumnSnapshotSource, id::TableId, storage::StorageId, table::Table},
+	key::{
+		any::TaggedKey,
+		row::{PartitionedRowKey, RowKey},
+	},
 	value::column::columns::Columns,
 };
 use reifydb_engine::{
@@ -34,12 +37,59 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::column::{
-	actor::{TableMessage, batches::column_block_from_batches},
+	actor::{
+		TableMessage,
+		batches::{column_block_from_batches, system_column_schema},
+	},
 	block_store::ColumnBlockStore,
 };
+
+#[derive(Clone, Default)]
+pub struct TableChanges {
+	versions: Arc<DashMap<TableId, CommitVersion>>,
+}
+
+impl TableChanges {
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	fn record(&self, table: TableId, version: CommitVersion) {
+		self.versions.entry(table).and_modify(|changed| *changed = (*changed).max(version)).or_insert(version);
+	}
+
+	fn changed_at(&self, table: TableId) -> Option<CommitVersion> {
+		self.versions.get(&table).map(|changed| *changed)
+	}
+}
+
+impl EventListener<PostCommitEvent> for TableChanges {
+	fn on(&self, event: &PostCommitEvent) {
+		let version = event.version().commit;
+		for delta in event.deltas().iter() {
+			if let Some(table) = changed_table(delta.key()) {
+				self.record(table, version);
+			}
+		}
+	}
+}
+
+fn changed_table(key: &TaggedKey) -> Option<TableId> {
+	match key {
+		TaggedKey::Row(RowKey {
+			storage: StorageId::Table(table),
+			..
+		})
+		| TaggedKey::PartitionedRow(PartitionedRowKey {
+			storage: StorageId::Table(table),
+			..
+		}) => Some(*table),
+		_ => None,
+	}
+}
 
 pub struct TableMaterializationState {
 	pub last_seen: HashMap<TableId, CommitVersion>,
@@ -51,6 +101,7 @@ pub struct TableMaterializationActor {
 	block_store: ColumnBlockStore,
 	compressor: Compressor,
 	tick_interval: Duration,
+	changes: TableChanges,
 }
 
 impl TableMaterializationActor {
@@ -59,12 +110,14 @@ impl TableMaterializationActor {
 		block_store: ColumnBlockStore,
 		compressor: Compressor,
 		tick_interval: Duration,
+		changes: TableChanges,
 	) -> Self {
 		Self {
 			engine,
 			block_store,
 			compressor,
 			tick_interval,
+			changes,
 		}
 	}
 
@@ -73,36 +126,18 @@ impl TableMaterializationActor {
 	}
 
 	fn run_tick(&self, state: &mut TableMaterializationState, _now: DateTime) {
-		let Some(mut query_txn) = self.begin_query_or_warn() else {
-			return;
+		let mut query_txn = match self.engine.begin_query(IdentityId::system()) {
+			Ok(txn) => txn,
+			Err(e) => panic!("table materialization: begin_query failed: {e}"),
 		};
 		let current = query_txn.version();
-		let Some(tables) = self.list_tables_or_warn(&mut query_txn) else {
-			return;
+		let tables = match self.engine.catalog().list_tables(&mut Transaction::Query(&mut query_txn)) {
+			Ok(tables) => tables,
+			Err(e) => panic!("table materialization: list_tables failed: {e}"),
 		};
 		for table in tables {
-			self.materialize_unseen_table(state, &mut query_txn, &table, current);
-		}
-	}
-
-	#[inline]
-	fn begin_query_or_warn(&self) -> Option<QueryTransaction> {
-		match self.engine.begin_query(IdentityId::system()) {
-			Ok(t) => Some(t),
-			Err(e) => {
-				warn!("table materialization: begin_query failed: {e}");
-				None
-			}
-		}
-	}
-
-	#[inline]
-	fn list_tables_or_warn(&self, query_txn: &mut QueryTransaction) -> Option<Vec<Table>> {
-		match self.engine.catalog().list_tables(&mut Transaction::Query(query_txn)) {
-			Ok(t) => Some(t),
-			Err(e) => {
-				warn!("table materialization: list_tables failed: {e}");
-				None
+			if let Err(e) = self.materialize_unseen_table(state, &mut query_txn, &table, current) {
+				panic!("table materialization failed for table {:?} ({}): {e}", table.id, table.name);
 			}
 		}
 	}
@@ -114,18 +149,16 @@ impl TableMaterializationActor {
 		query_txn: &mut QueryTransaction,
 		table: &Table,
 		current: CommitVersion,
-	) {
-		if state.last_seen.get(&table.id).copied() == Some(current) {
-			return;
-		}
-		match self.materialize_table(query_txn, table, current) {
-			Ok(()) => {
-				state.last_seen.insert(table.id, current);
-			}
-			Err(e) => {
-				warn!("table materialization skipped for {:?}: {e}", table.id);
+	) -> Result<()> {
+		if let Some(materialized) = state.last_seen.get(&table.id).copied() {
+			let changed = self.changes.changed_at(table.id);
+			if materialized == current || changed.is_none_or(|changed| changed <= materialized) {
+				return Ok(());
 			}
 		}
+		self.materialize_table(query_txn, table, current)?;
+		state.last_seen.insert(table.id, current);
+		Ok(())
 	}
 
 	fn materialize_table(
@@ -188,9 +221,7 @@ impl TableMaterializationActor {
 	fn build_column_block(&self, table: &Table, batches: Vec<Columns>) -> Result<ColumnBlock> {
 		let mut schema: Vec<(String, ValueType)> =
 			table.columns.iter().map(|c| (c.name.clone(), c.constraint.get_type())).collect();
-		for sc in SystemColumn::ALL {
-			schema.push((sc.name().to_string(), sc.ty()));
-		}
+		schema.extend(system_column_schema(&table.time));
 		column_block_from_batches(schema, batches, &self.compressor)
 	}
 

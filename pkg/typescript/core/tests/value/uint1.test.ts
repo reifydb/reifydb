@@ -11,16 +11,14 @@ describe('Uint1Value', () => {
             expect(uint1.type).toBe('Uint1');
         });
 
-        it('should create instance with undefined value', () => {
-            const uint1 = new Uint1Value(undefined);
-            expect(uint1.value).toBeUndefined();
-            expect(uint1.type).toBe('Uint1');
+        it('should reject undefined', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Uint1Value(undefined)).toThrow();
         });
 
-        it('should create instance with no arguments', () => {
-            const uint1 = new Uint1Value();
-            expect(uint1.value).toBeUndefined();
-            expect(uint1.type).toBe('Uint1');
+        it('should reject no arguments', () => {
+            // a non-option value must always be defined, a none is carried by NoneValue
+            expect(() => new Uint1Value()).toThrow();
         });
 
         it('should accept minimum value 0', () => {
@@ -67,14 +65,14 @@ describe('Uint1Value', () => {
             expect(uint1.value).toBe(100);
         });
 
-        it('should return undefined for empty string', () => {
-            const uint1 = Uint1Value.parse('');
-            expect(uint1.value).toBeUndefined();
+        it('should reject an empty string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Uint1Value.parse('')).toThrow();
         });
 
-        it('should return undefined for whitespace-only string', () => {
-            const uint1 = Uint1Value.parse('   ');
-            expect(uint1.value).toBeUndefined();
+        it('should reject a whitespace-only string', () => {
+            // a non-option value must always be defined, so blank text is not a value
+            expect(() => Uint1Value.parse('   ')).toThrow();
         });
 
         it('should throw error for non-numeric string', () => {
@@ -98,11 +96,6 @@ describe('Uint1Value', () => {
         it('should return the numeric value', () => {
             const uint1 = new Uint1Value(100);
             expect(uint1.valueOf()).toBe(100);
-        });
-
-        it('should return undefined when value is undefined', () => {
-            const uint1 = new Uint1Value(undefined);
-            expect(uint1.valueOf()).toBeUndefined();
         });
 
         it('should return zero', () => {

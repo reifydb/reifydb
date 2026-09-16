@@ -13,9 +13,10 @@ use reifydb_rql::instruction::{Instruction, ScopeType};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	fragment::Fragment,
 	params::Params,
 	util::bitvec::BitVec,
-	value::{Value, frame::frame::Frame, identity::IdentityId},
+	value::{Value, constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId},
 };
 
 use super::{
@@ -74,6 +75,12 @@ use crate::{
 
 pub static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 
+#[derive(Clone, Default)]
+pub(crate) struct UdfCall {
+	pub fragment: Fragment,
+	pub return_type: Option<TypeConstraint>,
+}
+
 pub struct Vm<'a> {
 	pub(crate) ip: usize,
 	pub(crate) iteration_count: usize,
@@ -94,6 +101,8 @@ pub struct Vm<'a> {
 
 	pub(crate) pending_return: Option<Variable>,
 
+	pub(crate) udf_call: UdfCall,
+
 	pub(crate) params: &'a Params,
 	pub(crate) routines: &'a Routines,
 	pub(crate) runtime_context: &'a RuntimeContext,
@@ -107,22 +116,40 @@ impl<'a> Vm<'a> {
 		params: &'a Params,
 		identity: IdentityId,
 	) -> Self {
-		Self::build(symbols, 1, params, &services.routines, &services.runtime_context, identity)
+		Self::build(
+			symbols,
+			1,
+			UdfCall::default(),
+			params,
+			&services.routines,
+			&services.runtime_context,
+			identity,
+		)
 	}
 
-	pub fn with_batch_size_from_services(
+	pub(crate) fn with_batch_size_from_services(
 		symbols: SymbolTable,
 		batch_size: usize,
+		udf_call: UdfCall,
 		services: &'a Services,
 		params: &'a Params,
 		identity: IdentityId,
 	) -> Self {
-		Self::build(symbols, batch_size, params, &services.routines, &services.runtime_context, identity)
+		Self::build(
+			symbols,
+			batch_size,
+			udf_call,
+			params,
+			&services.routines,
+			&services.runtime_context,
+			identity,
+		)
 	}
 
 	fn build(
 		symbols: SymbolTable,
 		batch_size: usize,
+		udf_call: UdfCall,
 		params: &'a Params,
 		routines: &'a Routines,
 		runtime_context: &'a RuntimeContext,
@@ -141,6 +168,7 @@ impl<'a> Vm<'a> {
 			loop_mask_stack: Vec::new(),
 			returned_mask: None,
 			pending_return: None,
+			udf_call,
 			params,
 			routines,
 			runtime_context,
@@ -209,7 +237,7 @@ impl<'a> Vm<'a> {
 	) -> Result<()> {
 		let params = self.params;
 		while self.ip < instructions.len() {
-			let _ = self.batch_size > 1 && self.check_mask_merge_point()?;
+			let _ = self.batch_size != 1 && self.check_mask_merge_point()?;
 
 			match &instructions[self.ip] {
 				Instruction::Halt => {
@@ -225,11 +253,11 @@ impl<'a> Vm<'a> {
 
 				Instruction::LoadVar(f) => self.exec_load_var(f)?,
 				Instruction::StoreVar(f) => {
-					if self.batch_size > 1 && self.is_masked() {
+					if self.batch_size != 1 && self.is_masked() {
 						let name = strip_dollar_prefix(f.text());
 						let value = self.stack.pop()?;
 						self.exec_store_var_masked(name, value)?;
-					} else if self.batch_size > 1 {
+					} else if self.batch_size != 1 {
 						let name = strip_dollar_prefix(f.text());
 						let value = self.stack.pop()?;
 						self.symbols.reassign(name.to_string(), value)?;
@@ -269,7 +297,7 @@ impl<'a> Vm<'a> {
 				Instruction::Cast(target) => self.exec_cast(target)?,
 
 				Instruction::Jump(addr) => {
-					if self.batch_size > 1
+					if self.batch_size != 1
 						&& (!self.mask_stack.is_empty() || !self.loop_mask_stack.is_empty())
 					{
 						if self.exec_jump_masked(*addr)? {
@@ -281,7 +309,7 @@ impl<'a> Vm<'a> {
 					}
 				}
 				Instruction::JumpIfFalsePop(addr) => {
-					if self.batch_size > 1 {
+					if self.batch_size != 1 {
 						let is_while_loop = instructions.get(self.ip + 1).is_some_and(|next| {
 							matches!(next, Instruction::EnterScope(ScopeType::Loop))
 						});
@@ -311,7 +339,7 @@ impl<'a> Vm<'a> {
 					}
 				}
 				Instruction::JumpIfTruePop(addr) => {
-					if self.batch_size > 1 {
+					if self.batch_size != 1 {
 						if self.exec_jump_if_true_pop_columnar(*addr)? {
 							continue;
 						}
@@ -325,7 +353,7 @@ impl<'a> Vm<'a> {
 					exit_scopes,
 					addr,
 				} => {
-					if self.batch_size > 1 && !self.loop_mask_stack.is_empty() {
+					if self.batch_size != 1 && !self.loop_mask_stack.is_empty() {
 						self.exec_break_masked(*exit_scopes, *addr)?;
 					} else {
 						self.exec_break(*exit_scopes, *addr)?;
@@ -336,7 +364,7 @@ impl<'a> Vm<'a> {
 					exit_scopes,
 					addr,
 				} => {
-					if self.batch_size > 1 && !self.loop_mask_stack.is_empty() {
+					if self.batch_size != 1 && !self.loop_mask_stack.is_empty() {
 						self.exec_continue_masked(*exit_scopes, *addr)?;
 					} else {
 						self.exec_continue(*exit_scopes, *addr)?;
@@ -361,11 +389,12 @@ impl<'a> Vm<'a> {
 					name,
 					arity,
 					is_procedure_call,
+					type_arguments,
 				} => {
-					self.exec_call(services, tx, name, *arity, *is_procedure_call)?;
+					self.exec_call(services, tx, name, *arity, *is_procedure_call, type_arguments)?;
 				}
 				Instruction::ReturnValue => {
-					if self.batch_size > 1 && self.has_masked_return() {
+					if self.batch_size != 1 && self.has_masked_return() {
 						let columns = self.pop_as_columns()?;
 						self.exec_return_value_masked(columns)?;
 					} else {
@@ -402,7 +431,9 @@ impl<'a> Vm<'a> {
 					self.exec_ddl(services, tx, |s, t| create_queue(s, t, n.clone()))?
 				}
 				Instruction::CreateDeferredView(n) => {
-					self.exec_ddl(services, tx, |s, t| create_deferred_view(s, t, n.clone()))?
+					self.exec_ddl_with_symbols(services, tx, |s, t, sym| {
+						create_deferred_view(s, t, sym, n.clone())
+					})?
 				}
 				Instruction::CreateTransactionalView(n) => {
 					self.exec_ddl(services, tx, |s, t| create_transactional_view(s, t, n.clone()))?

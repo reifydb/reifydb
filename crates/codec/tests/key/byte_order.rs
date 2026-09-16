@@ -259,7 +259,7 @@ fn enc_value(value: &Value) -> Vec<u8> {
 
 fn enc_value_dir(value: &Value, direction: SortOrder) -> Vec<u8> {
 	let mut s = KeySerializer::new();
-	s.extend_value_with_direction(value, direction);
+	s.extend_value_with_direction(value, direction).unwrap();
 	s.to_encoded_key().to_vec()
 }
 

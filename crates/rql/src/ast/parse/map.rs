@@ -3,7 +3,10 @@
 
 use crate::{
 	Result,
-	ast::{ast::AstMap, parse::Parser},
+	ast::{
+		ast::AstMap,
+		parse::{Parser, reject_duplicate_aliases},
+	},
 	error::OperationKind,
 	token::keyword::Keyword,
 };
@@ -12,6 +15,7 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_map(&mut self) -> Result<AstMap<'bump>> {
 		let (token, nodes, rql) =
 			self.parse_keyword_with_braced_expressions(Keyword::Map, OperationKind::Map)?;
+		reject_duplicate_aliases(&nodes)?;
 		Ok(AstMap {
 			token,
 			nodes,

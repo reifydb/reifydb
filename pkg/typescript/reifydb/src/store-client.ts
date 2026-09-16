@@ -55,12 +55,11 @@ export function storeClient(db: Db, options: StoreClientOptions = {}): BridgeCli
   const dispatchEnvelope = (bytes: Uint8Array) => {
     if (bytes.length > 0 && bytes[0] === BinaryKind.BatchChange) {
       const batch = decodeBatchEnvelope(bytes)
-      if (!batch) return
       for (const entry of batch.entries) deliver(entry.subscriptionId, entry.rbcf)
       return
     }
     const envelope = decodeEnvelope(bytes)
-    if (!envelope || envelope.kind !== BinaryKind.Change) return
+    if (envelope.kind !== BinaryKind.Change) return
     deliver(envelope.id, envelope.rbcf)
   }
 

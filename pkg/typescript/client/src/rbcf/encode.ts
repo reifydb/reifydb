@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { noneMarkerDepth, optionDepth, unwrapOptionType } from "@reifydb/core";
+import { DigestValue, isDigestType, noneMarkerDepth, optionDepth, unwrapOptionType, type DigestType } from "@reifydb/core";
 
 import {
     COL_FLAG_HAS_NONES, COLUMN_DESCRIPTOR_SIZE, ColumnEncoding, FRAME_HEADER_SIZE,
@@ -10,6 +10,7 @@ import {
 } from "./format";
 import { BinaryWriter } from "./writer";
 import { encodeBitvec } from "./nones";
+import { encodeDigestParams } from "./typeinfo";
 import type { WireColumn, WireFrame } from "./types";
 
 export function encode(frames: WireFrame[]): Uint8Array {
@@ -58,7 +59,8 @@ function encodeFrame(w: BinaryWriter, frame: WireFrame): void {
 }
 
 function encodeColumn(w: BinaryWriter, col: WireColumn): void {
-    const base = unwrapOptionType(col.type) as TypeName;
+    const unwrapped = unwrapOptionType(col.type);
+    const base = (isDigestType(unwrapped) ? "Digest" : unwrapped) as TypeName;
     const depth = optionDepth(col.type);
     const rowCount = col.payload.length;
 
@@ -84,7 +86,9 @@ function encodeColumn(w: BinaryWriter, col: WireColumn): void {
 
     const nonesBytes = concat(layers.map(encodeBitvec));
 
-    const { data, offsets } = encodePlainData(base, definedPayload);
+    const { data, offsets, extra } = isDigestType(unwrapped)
+        ? encodeDigestData(unwrapped, definedPayload, (i) => depth > 0 && !layers[depth - 1][i])
+        : { ...encodePlainData(base, definedPayload), extra: new Uint8Array(0) };
 
     w.u8(typeCode);
     w.u8(ColumnEncoding.Plain);
@@ -97,7 +101,7 @@ function encodeColumn(w: BinaryWriter, col: WireColumn): void {
     w.u32(nonesBytes.length);
     w.u32(data.length);
     w.u32(offsets.length);
-    w.u32(0);
+    w.u32(extra.length);
     void COLUMN_DESCRIPTOR_SIZE;
 
     w.bytes(nameBytes);
@@ -107,6 +111,7 @@ function encodeColumn(w: BinaryWriter, col: WireColumn): void {
     w.bytes(nonesBytes);
     w.bytes(data);
     w.bytes(offsets);
+    w.bytes(extra);
 }
 
 function concat(parts: Uint8Array[]): Uint8Array {
@@ -198,6 +203,17 @@ function encodePlainData(base: TypeName, cells: string[]): EncodedData {
         default:
             throw new Error(`RBCF encode: type ${base} not supported by the pure-TS encoder (Plain-only)`);
     }
+}
+
+function encodeDigestData(
+    type: DigestType,
+    cells: string[],
+    isNone: (row: number) => boolean
+): EncodedData & { extra: Uint8Array } {
+    const entries = cells.map((cell, row) =>
+        isNone(row) ? new Uint8Array(0) : DigestValue.parse(cell, type).asBytes()
+    );
+    return { ...encodeVarlen(entries), extra: encodeDigestParams(type) };
 }
 
 function empty(w: BinaryWriter): EncodedData {

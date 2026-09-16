@@ -47,23 +47,21 @@ impl FilterOperator {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
-	) -> Self {
+	) -> Result<Self> {
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
 		};
-		let compiled_conditions: Vec<CompiledExpr> = conditions
-			.iter()
-			.map(|e| compile_expression(&compile_ctx, e).expect("Failed to compile filter condition"))
-			.collect();
+		let compiled_conditions: Vec<CompiledExpr> =
+			conditions.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
 
-		Self {
+		Ok(Self {
 			parent_schema,
 			operator,
 			compiled_conditions,
 			routines,
 			runtime_context,
 			ctx,
-		}
+		})
 	}
 
 	#[instrument(name = "flow::operator::filter::evaluate", level = "trace", skip_all, fields(rows = columns.row_count()))]
