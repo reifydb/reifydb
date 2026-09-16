@@ -55,7 +55,7 @@ import {encodeParams} from "./encoder";
 import {rbcf} from "./rbcf";
 import {CONTENT_TYPE_RBCF} from "./content-types";
 import {toCamelCaseKeys, toSnakeCaseKeys, WIRE_PASSTHROUGH_KEYS} from "./case";
-import {BinaryKind, decodeBatchEnvelope, decodeEnvelope, dispatchChange, reportSubscriptionError} from "./subscription-decode";
+import {BinaryKind, decodeBatchEnvelope, decodeEnvelope, dispatchChange, envelopeIdOf, reportSubscriptionError} from "./subscription-decode";
 
 export interface WsClientOptions {
     url: string;
@@ -721,7 +721,10 @@ export class WsClient {
         }
         // An rbcf response was decoded from bytes and already carries the client's own types; a frames
         // response carries the wire's rendering and has to be read into them first.
-        const raw = response.payload.body?.frames || [];
+        const raw = response.payload.body?.frames;
+        if (!Array.isArray(raw)) {
+            throw new Error(`A frames response must carry a list of frames, got ${JSON.stringify(response.payload.body)}`);
+        }
         const contentType = (response.payload as any).contentType;
         const frames = contentType === CONTENT_TYPE_RBCF ? raw : framesFromWire(raw);
         if (shapes) checkFrames(frames, shapes);
@@ -1192,14 +1195,37 @@ export class WsClient {
         this.pending.clear();
     }
 
+    private failBinaryEnvelope(bytes: Uint8Array, error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        const id = envelopeIdOf(bytes);
+        const entry = id === undefined ? undefined : this.pending.get(id);
+        if (entry === undefined) {
+            console.error(`Failed to decode a binary envelope: ${message}`);
+            return;
+        }
+        this.pending.delete(id!);
+        entry.handler({
+            id: id!,
+            type: "Err",
+            payload: {
+                diagnostic: { code: "RBCF_DECODE", message, notes: [] }
+            }
+        } as ErrorResponse);
+    }
+
     private handleBinaryMessage(bytes: Uint8Array) {
         if (bytes.length > 0 && bytes[0] === BinaryKind.BatchChange) {
             this.handleBinaryBatchMessage(bytes);
             return;
         }
 
-        const envelope = decodeEnvelope(bytes);
-        if (!envelope) return;
+        let envelope;
+        try {
+            envelope = decodeEnvelope(bytes);
+        } catch (e) {
+            this.failBinaryEnvelope(bytes, e);
+            return;
+        }
         const {kind, id, rbcf: rbcfBytes} = envelope;
 
         let frames: any[];
@@ -1253,8 +1279,13 @@ export class WsClient {
     }
 
     private handleBinaryBatchMessage(bytes: Uint8Array) {
-        const envelope = decodeBatchEnvelope(bytes);
-        if (!envelope) return;
+        let envelope;
+        try {
+            envelope = decodeBatchEnvelope(bytes);
+        } catch (e) {
+            console.error(`Failed to decode a binary batch envelope: ${e instanceof Error ? e.message : String(e)}`);
+            return;
+        }
 
         const batch = this.batches.get(envelope.batchId);
 
