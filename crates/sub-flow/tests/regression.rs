@@ -6,6 +6,8 @@ mod flow_aggregate_digest_key;
 
 #[path = "regression/flow_aggregate_output_schema.rs"]
 mod flow_aggregate_output_schema;
+#[path = "regression/flow_aggregate_unkeyable_key.rs"]
+mod flow_aggregate_unkeyable_key;
 
 #[path = "regression/flow_digest_group_key.rs"]
 mod flow_digest_group_key;

@@ -248,7 +248,7 @@ impl Aggregation {
 		for compiled_expr in &self.compiled_group_by {
 			let column = compiled_expr.execute(&exec_ctx)?;
 			let ty = column.data().get_type();
-			if matches!(ty.inner_type(), ValueType::Digest { .. }) {
+			if !ty.is_scalar() {
 				return Err(Error(Box::new(aggregate_group_by_unkeyable(column.name_owned(), ty))));
 			}
 			group_columns.push(column);
