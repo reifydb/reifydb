@@ -148,6 +148,7 @@ impl FlowSubsystem {
 		metrics_registry.register_collector(Arc::new(backlog.clone()));
 		let loader_metrics = LoaderMetrics::default();
 		metrics_registry.register_collector(Arc::new(loader_metrics.clone()));
+		metrics_registry.register_collector(Arc::new(health.clone()));
 		let control = ControlFrontier::new();
 		let loader_handle =
 			flow_scope.spawn_flow("flow-loader", LoaderActor::new(cdc_store.clone(), loader_metrics));

@@ -67,6 +67,8 @@ const FLOW_RETRY_LIMIT: u32 = 3;
 
 const FLOW_RETRY_BACKOFF_MS: u64 = 50;
 
+const FLOW_STALL_TIMEOUT_MS: i64 = 30_000;
+
 const FLOW_FULL_WAKE_INTERVAL_MS: i64 = 100;
 
 pub struct FlowSupervisorParams {
@@ -552,6 +554,7 @@ impl FlowSupervisor {
 			checkpoint_max_age: self.checkpoint_max_age,
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
+			stall_timeout: Duration::from_milliseconds(FLOW_STALL_TIMEOUT_MS).unwrap(),
 		};
 		let actor = FlowActor::new(params);
 		let pending = actor.wake_pending();
