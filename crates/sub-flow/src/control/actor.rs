@@ -56,8 +56,8 @@ use crate::{
 	builder::CustomOperators,
 	commit::{
 		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply},
-		merge::{ObjectIndex, ReadCache, StreamRead, UpstreamRead, UpstreamReads, merge},
-		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep},
+		merge::{ObjectIndex, ReadCache, StepCut, StreamRead, UpstreamRead, UpstreamReads, merge},
+		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep, cuts_per_source},
 	},
 	control::health::FlowHealthRegistry,
 	discovery::loader::{LoaderMessage, LoaderReply},
@@ -368,7 +368,14 @@ impl FlowActor {
 					state.object_index = upstream_reads.index;
 					return;
 				};
-				upstream.read.items.extend(next.items);
+				upstream.read.items = upstream
+					.read
+					.items
+					.iter()
+					.chain(next.items.iter())
+					.cloned()
+					.collect::<Vec<_>>()
+					.into();
 				upstream.read.read_to = next.read_to;
 				upstream.read.more = next.more;
 			}
@@ -376,7 +383,11 @@ impl FlowActor {
 				self.flow_tracker.upstream_complete_through(*producer, upstream.read.read_to);
 			upstream_reads.reads.insert(*producer, upstream);
 		}
-		let merged = merge(cursor, &tables, &upstream_reads.reads, &upstream_reads.index);
+		let cut = StepCut {
+			source_objects: &state.source_objects,
+			per_source: cuts_per_source(self.flow_tracker.has_readers(self.flow_id), &state.source_objects),
+		};
+		let merged = merge(cursor, &tables, &upstream_reads.reads, &upstream_reads.index, &cut);
 		if merged.target <= cursor {
 			let moved = self.advance_view_cursors(state, &upstream_reads, cursor);
 			state.object_index = upstream_reads.index;
@@ -408,7 +419,7 @@ impl FlowActor {
 				advance_to,
 				more,
 			} => {
-				state.read_cache.insert(from, items.clone(), advance_to);
+				let items = state.read_cache.insert(from, items, advance_to);
 				Some(StreamRead {
 					items,
 					read_to: advance_to,

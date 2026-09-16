@@ -81,7 +81,7 @@ impl SliceComputer {
 		let start = items.partition_point(|c| c.version.commit <= cursor.cursor);
 		let (mut advance_to, mut more) = (advance_to, more);
 		let mut relevant: Vec<&Cdc> = Vec::new();
-		let cut_per_source = cursor.has_readers || cursor.source_objects.len() > 1;
+		let cut_per_source = cuts_per_source(cursor.has_readers, cursor.source_objects);
 		for cdc in items[start..].iter().map(Arc::as_ref) {
 			if !is_relevant(cdc, cursor.source_objects) {
 				continue;
@@ -276,7 +276,11 @@ fn checkpoint_due(advance_to: CommitVersion, durable_cursor: CommitVersion, conf
 	advance_to.0.saturating_sub(durable_cursor.0) > config.checkpoint_lag
 }
 
-fn accepts(object: ObjectId, source_objects: &BTreeSet<ObjectId>) -> bool {
+pub(crate) fn cuts_per_source(has_readers: bool, source_objects: &BTreeSet<ObjectId>) -> bool {
+	has_readers || source_objects.len() > 1
+}
+
+pub(crate) fn accepts(object: ObjectId, source_objects: &BTreeSet<ObjectId>) -> bool {
 	object == COMPLETENESS_OBJECT || source_objects.contains(&object)
 }
 
