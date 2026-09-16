@@ -353,6 +353,11 @@ impl<'bump> Parser<'bump> {
 			let node = self.parse_node(Precedence::None)?;
 			body.push(node);
 
+			if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
+				self.advance()?;
+				continue;
+			}
+
 			self.consume_if(TokenKind::Separator(Separator::NewLine))?;
 			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
 		}
@@ -408,6 +413,11 @@ impl<'bump> Parser<'bump> {
 
 			let node = self.parse_node(Precedence::None)?;
 			body.push(node);
+
+			if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
+				self.advance()?;
+				continue;
+			}
 
 			self.consume_if(TokenKind::Separator(Separator::NewLine))?;
 			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
@@ -2169,6 +2179,11 @@ impl<'bump> Parser<'bump> {
 
 			let node = self.parse_node(Precedence::None)?;
 			body.push(node);
+
+			if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
+				self.advance()?;
+				continue;
+			}
 
 			self.consume_if(TokenKind::Separator(Separator::NewLine))?;
 			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;

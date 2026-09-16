@@ -7,6 +7,8 @@ mod aggregate;
 mod aggregate_arguments;
 #[path = "aggregate_invalid_argument_fragment.rs"]
 mod aggregate_invalid_argument_fragment;
+#[path = "append_batch_query.rs"]
+mod append_batch_query;
 #[path = "apply_unknown_operator.rs"]
 mod apply_unknown_operator;
 #[path = "arithmetic_with_none_in_conditional.rs"]
@@ -72,6 +74,8 @@ mod events;
 mod extend_duplicate_column_fragment;
 #[path = "flow_dag_load.rs"]
 mod flow_dag_load;
+#[path = "handler_body_pipe.rs"]
+mod handler_body_pipe;
 #[path = "identity_dml_context.rs"]
 mod identity_dml_context;
 #[path = "identity_inject_escalation.rs"]
@@ -120,6 +124,8 @@ mod percentile_aggregate_errors;
 mod plan_cache;
 #[path = "positional_insert.rs"]
 mod positional_insert;
+#[path = "procedure_body_pipe.rs"]
+mod procedure_body_pipe;
 #[path = "procedure_named_like_a_builtin.rs"]
 mod procedure_named_like_a_builtin;
 #[path = "procedure_param_coercion.rs"]
