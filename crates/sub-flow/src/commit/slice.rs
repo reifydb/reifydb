@@ -25,6 +25,8 @@ use reifydb_value::{
 	value::{Value, identity::IdentityId},
 };
 
+use tracing::instrument;
+
 use crate::commit::committer::FlowSlice;
 
 pub struct SliceConfig {
@@ -67,6 +69,7 @@ impl SliceComputer {
 	}
 
 	#[allow(clippy::too_many_arguments)]
+	#[instrument(name = "flow::slice::compute_pulled", level = "trace", skip_all, fields(item_count = items.len()))]
 	pub fn compute_pulled(
 		&self,
 		flow_engine: &mut FlowEngineInner,
@@ -192,6 +195,7 @@ impl SliceComputer {
 		Ok((holds, txn.take_pending()))
 	}
 
+	#[instrument(name = "flow::slice::compute", level = "trace", skip_all, fields(change_count = changes.len()))]
 	fn compute(
 		&self,
 		flow_engine: &mut FlowEngineInner,

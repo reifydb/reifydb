@@ -471,9 +471,6 @@ impl Resident {
 					global.checkpoints.insert(*flow, None);
 				}
 			}
-			for (flow, version) in checkpoints {
-				self.wake_checkpoint(*flow, *version);
-			}
 		}
 		self.observe_write();
 	}
@@ -487,25 +484,19 @@ impl Resident {
 		for (operator, group) in grouped {
 			let slot = self.shared.slot_or_create(operator);
 			let mut inner = slot.inner.lock();
-			let before = inner.buckets.footprint();
-			let before_entries = inner.buckets.entry_count();
-			let before_dirty = inner.buckets.dirty_count();
-			let before_dirty_bytes = inner.buckets.dirty_footprint();
+			let before = inner.buckets.totals();
 			for write in group {
 				self.apply_write(&mut inner, write);
 			}
-			let after = inner.buckets.footprint();
-			let after_entries = inner.buckets.entry_count();
-			let after_dirty = inner.buckets.dirty_count();
-			let after_dirty_bytes = inner.buckets.dirty_footprint();
-			self.shared.budget.charge(after.saturating_sub(before));
-			self.shared.budget.release(before.saturating_sub(after));
-			self.shared.charge_entries(after_entries.saturating_sub(before_entries));
-			self.shared.release_entries(before_entries.saturating_sub(after_entries));
-			self.shared.charge_dirty(after_dirty.saturating_sub(before_dirty));
-			self.shared.release_dirty(before_dirty.saturating_sub(after_dirty));
-			self.shared.charge_dirty_bytes(after_dirty_bytes.saturating_sub(before_dirty_bytes));
-			self.shared.release_dirty_bytes(before_dirty_bytes.saturating_sub(after_dirty_bytes));
+			let after = inner.buckets.totals();
+			self.shared.budget.charge(after.footprint.saturating_sub(before.footprint));
+			self.shared.budget.release(before.footprint.saturating_sub(after.footprint));
+			self.shared.charge_entries(after.entries.saturating_sub(before.entries));
+			self.shared.release_entries(before.entries.saturating_sub(after.entries));
+			self.shared.charge_dirty(after.dirty.saturating_sub(before.dirty));
+			self.shared.release_dirty(before.dirty.saturating_sub(after.dirty));
+			self.shared.charge_dirty_bytes(after.dirty_footprint.saturating_sub(before.dirty_footprint));
+			self.shared.release_dirty_bytes(before.dirty_footprint.saturating_sub(after.dirty_footprint));
 			if flow.is_some() {
 				inner.flow = flow;
 			}
@@ -1023,16 +1014,6 @@ impl Resident {
 			None => {
 				self.evict_to_capacity();
 			}
-		}
-	}
-
-	fn wake_checkpoint(&self, flow: FlowId, version: CommitVersion) {
-		let waker = self.shared.waker.lock().clone();
-		if let Some(waker) = waker {
-			waker.wake(FlushMessage::Checkpoint {
-				flow,
-				version,
-			});
 		}
 	}
 

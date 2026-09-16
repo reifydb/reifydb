@@ -10,7 +10,6 @@ use crate::resident::Resident;
 impl Resident {
 	pub fn record_checkpoint_set(&self, flow: FlowId, version: CommitVersion) {
 		self.shared().global.lock().checkpoints.insert(flow, Some(version));
-		self.wake_checkpoint(flow, version);
 	}
 
 	pub fn record_checkpoint_delete(&self, flow: FlowId) {

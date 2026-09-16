@@ -306,6 +306,10 @@ impl Committer {
 		Ok(())
 	}
 
+	#[instrument(name = "flow::committer::finish_slice", level = "trace", skip_all, fields(
+		write_count = slice.combined.len(),
+		checkpoint_count = slice.checkpoints.len()
+	))]
 	fn finish_slice(&self, slice: &FlowSlice, version: CommitVersion) -> Result<CommitVersion> {
 		apply_operator_state_with_checkpoints(
 			&self.operators,
@@ -320,6 +324,9 @@ impl Committer {
 		Ok(version)
 	}
 
+	#[instrument(name = "flow::committer::post_commit_slice", level = "trace", skip_all, fields(
+		checkpoint_count = checkpoints.len()
+	))]
 	fn post_commit_slice(
 		&self,
 		commit: CommitVersion,
