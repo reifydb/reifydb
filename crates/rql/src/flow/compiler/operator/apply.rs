@@ -41,6 +41,8 @@ impl CompileOperator for ApplyCompiler {
 			None
 		};
 
+		let retention = self.with.retention;
+
 		let node_id = compiler.add_node(
 			txn,
 			Apply {
@@ -50,7 +52,7 @@ impl CompileOperator for ApplyCompiler {
 			},
 		)?;
 
-		compiler.write_operator_retention(txn, node_id, self.with.retention)?;
+		compiler.write_operator_retention(txn, node_id, retention)?;
 
 		if let Some(input) = input_node {
 			compiler.add_edge(txn, &input, &node_id)?;

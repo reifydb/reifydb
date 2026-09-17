@@ -319,8 +319,8 @@ where
 	C: GuestOperator + OperatorMetadata + 'static,
 {
 	for (name, inputs) in scenarios {
-		let extern_c = run_extern_c::<C>(&params, with, inputs);
-		let host = run_guest::<C>(&params, with, inputs);
+		let extern_c = run_extern_c::<C>(&params, with.clone(), inputs);
+		let host = run_guest::<C>(&params, with.clone(), inputs);
 
 		assert_eq!(
 			extern_c.len(),

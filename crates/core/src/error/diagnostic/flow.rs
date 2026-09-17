@@ -701,3 +701,51 @@ pub fn flow_operator_with_immutable_not_below_lateness(immutable: Duration, late
 		"A window becomes immutable before it seals, so immutable must be shorter than lateness.",
 	)
 }
+
+pub fn flow_operator_with_window_missing() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_065",
+		"this operator needs 'window' in its with block".to_string(),
+		"Add a window to the apply, for example with { window: tumbling, duration: 1m }.",
+	)
+}
+
+pub fn flow_operator_with_window_kind_unsupported(kind: &str, supported: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_066",
+		format!("window '{}' is not supported by this operator, use '{}'", kind, supported),
+		"Change the window kind in the apply's with block.",
+	)
+}
+
+pub fn flow_operator_with_window_not_supported(kind: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_067",
+		format!("this operator takes no window, but window '{}' was given", kind),
+		"Remove window and its size keys from the apply's with block.",
+	)
+}
+
+pub fn flow_operator_with_window_size_count(count: u64) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_068",
+		format!("the window size is a count ({}), but this operator windows by time", count),
+		"Declare the size as a duration, for example duration: 1m.",
+	)
+}
+
+pub fn flow_operator_with_window_size_duration(size: Duration) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_069",
+		format!("the window size is a duration ({}), but this operator counts slots", size),
+		"Declare the size as a slot count, for example slots: 1.",
+	)
+}
+
+pub fn flow_operator_with_duration_span(key: &str, duration: Duration) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_070",
+		format!("operator setting '{}' is a duration ({}), but this operator seals by count", key, duration),
+		"Declare the setting as a count, for example lateness: 150.",
+	)
+}

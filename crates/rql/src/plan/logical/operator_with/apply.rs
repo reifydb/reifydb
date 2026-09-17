@@ -61,6 +61,7 @@ impl<'bump> Compiler<'bump> {
 		reject_immutable_not_smaller_than_lateness_in_its_unit(immutable.as_ref(), lateness.as_ref())?;
 
 		Ok(ApplyWith {
+			window: None,
 			lateness: Declared::value_of(&lateness),
 			immutable: Declared::value_of(&immutable),
 			retention,
@@ -159,6 +160,7 @@ mod tests {
 		assert_eq!(
 			apply_with("apply op { } with { lateness: 30s, immutable: 10s }").unwrap(),
 			ApplyWith {
+				window: None,
 				lateness: seconds(30),
 				immutable: seconds(10),
 				retention: None,

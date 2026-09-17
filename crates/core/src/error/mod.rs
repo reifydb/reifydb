@@ -70,6 +70,36 @@ pub enum CoreError {
 		lateness: Duration,
 	},
 
+	#[error("this operator needs 'window' in its with block")]
+	OperatorWithWindowMissing,
+
+	#[error("window '{kind}' is not supported by this operator, use '{supported}'")]
+	OperatorWithWindowKindUnsupported {
+		kind: &'static str,
+		supported: &'static str,
+	},
+
+	#[error("this operator takes no window, but window '{kind}' was given")]
+	OperatorWithWindowNotSupported {
+		kind: &'static str,
+	},
+
+	#[error("the window size is a count ({count}), but this operator windows by time")]
+	OperatorWithWindowSizeCount {
+		count: u64,
+	},
+
+	#[error("the window size is a duration ({size}), but this operator counts slots")]
+	OperatorWithWindowSizeDuration {
+		size: Duration,
+	},
+
+	#[error("operator setting '{key}' is a duration ({duration}), but this operator seals by count")]
+	OperatorWithDurationSpan {
+		key: &'static str,
+		duration: Duration,
+	},
+
 	#[error("Primary key violation in table '{table_name}'")]
 	PrimaryKeyViolation {
 		fragment: Fragment,

@@ -138,7 +138,7 @@ pub enum IndexType {
 	Primary,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WindowSize {
 	Duration(Duration),
 	Count(u64),
@@ -227,7 +227,7 @@ impl TimeSource {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WindowKind {
 	Tumbling {
 		size: WindowSize,
@@ -267,6 +267,23 @@ impl WindowKind {
 			WindowKind::Session {
 				..
 			} => None,
+		}
+	}
+
+	pub fn name(&self) -> &'static str {
+		match self {
+			WindowKind::Tumbling {
+				..
+			} => "tumbling",
+			WindowKind::Sliding {
+				..
+			} => "sliding",
+			WindowKind::Rolling {
+				..
+			} => "rolling",
+			WindowKind::Session {
+				..
+			} => "session",
 		}
 	}
 }

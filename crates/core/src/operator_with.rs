@@ -12,7 +12,7 @@ use reifydb_value::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	common::WindowKind,
+	common::{WindowKind, WindowSize},
 	error::CoreError,
 	internal_error,
 	row::{JoinPick, JoinRetention},
@@ -38,8 +38,9 @@ pub struct JoinWith {
 	pub pick: Option<JoinPick>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApplyWith {
+	pub window: Option<WindowKind>,
 	pub lateness: Option<WithSpan>,
 	pub immutable: Option<WithSpan>,
 	pub retention: Option<Duration>,
@@ -76,8 +77,123 @@ impl WindowSealing {
 	}
 }
 
+impl ApplyWith {
+	pub fn window_duration(&self) -> Result<Duration> {
+		let Some(kind) = &self.window else {
+			return Err(CoreError::OperatorWithWindowMissing.into());
+		};
+		match kind.size() {
+			None => Err(CoreError::OperatorWithWindowKindUnsupported {
+				kind: kind.name(),
+				supported: "tumbling, sliding or rolling",
+			}
+			.into()),
+			Some(WindowSize::Duration(d)) => Ok(*d),
+			Some(WindowSize::Count(count)) => Err(CoreError::OperatorWithWindowSizeCount {
+				count: *count,
+			}
+			.into()),
+		}
+	}
+
+	pub fn window_slots(&self) -> Result<u64> {
+		let Some(kind) = &self.window else {
+			return Err(CoreError::OperatorWithWindowMissing.into());
+		};
+		match kind.size() {
+			None => Err(CoreError::OperatorWithWindowKindUnsupported {
+				kind: kind.name(),
+				supported: "tumbling, sliding or rolling",
+			}
+			.into()),
+			Some(WindowSize::Count(n)) => Ok(*n),
+			Some(WindowSize::Duration(d)) => Err(CoreError::OperatorWithWindowSizeDuration {
+				size: *d,
+			}
+			.into()),
+		}
+	}
+
+	pub fn reject_window(&self) -> Result<()> {
+		match &self.window {
+			None => Ok(()),
+			Some(kind) => Err(CoreError::OperatorWithWindowNotSupported {
+				kind: kind.name(),
+			}
+			.into()),
+		}
+	}
+
+	pub fn require_window(&self, supported: &'static str) -> Result<&WindowKind> {
+		let Some(kind) = &self.window else {
+			return Err(CoreError::OperatorWithWindowMissing.into());
+		};
+		if kind.name() != supported {
+			return Err(CoreError::OperatorWithWindowKindUnsupported {
+				kind: kind.name(),
+				supported,
+			}
+			.into());
+		}
+		Ok(kind)
+	}
+
+	pub fn lateness_duration(&self) -> Result<Option<Duration>> {
+		match self.lateness {
+			None => Ok(None),
+			Some(WithSpan::Duration(d)) => Ok(Some(d)),
+			Some(WithSpan::Count(count)) => Err(CoreError::OperatorWithCountSpan {
+				key: "lateness",
+				count,
+			}
+			.into()),
+		}
+	}
+
+	pub fn lateness_count(&self) -> Result<Option<u64>> {
+		match self.lateness {
+			None => Ok(None),
+			Some(WithSpan::Count(n)) => Ok(Some(n)),
+			Some(WithSpan::Duration(duration)) => Err(CoreError::OperatorWithDurationSpan {
+				key: "lateness",
+				duration,
+			}
+			.into()),
+		}
+	}
+}
+
 pub fn encode_apply_with(with: &ApplyWith) -> Result<Vec<u8>> {
 	let mut values = HashMap::new();
+	if let Some(window) = &with.window {
+		values.insert("window".to_string(), Value::Utf8(window.name().to_string()));
+		match window {
+			WindowKind::Tumbling {
+				size,
+			} => insert_window_size(&mut values, size),
+			WindowKind::Sliding {
+				size,
+				slide,
+			} => {
+				insert_window_size(&mut values, size);
+				values.insert("slide".to_string(), window_size_value(slide));
+			}
+			WindowKind::Rolling {
+				size,
+				lag,
+			} => {
+				insert_window_size(&mut values, size);
+				if let Some(lag) = lag {
+					values.insert("lag".to_string(), Value::Duration(*lag));
+				}
+			}
+			WindowKind::Session {
+				gap,
+			} => {
+				values.insert("gap".to_string(), Value::Duration(*gap));
+			}
+		}
+	}
 	if let Some(lateness) = with.lateness {
 		values.insert("lateness".to_string(), span_value(lateness));
 	}
@@ -98,15 +214,117 @@ pub fn decode_apply_with(bytes: &[u8]) -> Result<ApplyWith> {
 		Params::Positional(_) => return Err(internal_error!("apply with must be named params")),
 	};
 	let mut with = ApplyWith::default();
+	let mut window_name: Option<String> = None;
+	let mut duration: Option<Duration> = None;
+	let mut slots: Option<u64> = None;
+	let mut slide: Option<WindowSize> = None;
+	let mut gap: Option<Duration> = None;
+	let mut lag: Option<Duration> = None;
 	for (key, value) in values.iter() {
 		match (key.as_str(), value) {
+			("window", Value::Utf8(name)) => window_name = Some(name.clone()),
+			("duration", Value::Duration(d)) => duration = Some(*d),
+			("slots", Value::Uint8(n)) => slots = Some(*n),
+			("slide", Value::Duration(d)) => slide = Some(WindowSize::Duration(*d)),
+			("slide", Value::Uint8(n)) => slide = Some(WindowSize::Count(*n)),
+			("gap", Value::Duration(d)) => gap = Some(*d),
+			("lag", Value::Duration(d)) => lag = Some(*d),
 			("lateness", value) => with.lateness = Some(value_span(key, value)?),
 			("immutable", value) => with.immutable = Some(value_span(key, value)?),
 			("retention", Value::Duration(retention)) => with.retention = Some(*retention),
 			_ => return Err(internal_error!("unexpected apply with entry {}: {:?}", key, value)),
 		}
 	}
+	with.window = decode_window_kind(window_name, duration, slots, slide, gap, lag)?;
 	Ok(with)
+}
+
+fn decode_window_kind(
+	window_name: Option<String>,
+	duration: Option<Duration>,
+	slots: Option<u64>,
+	slide: Option<WindowSize>,
+	gap: Option<Duration>,
+	lag: Option<Duration>,
+) -> Result<Option<WindowKind>> {
+	let Some(window_name) = window_name else {
+		if duration.is_some() || slots.is_some() || slide.is_some() || gap.is_some() || lag.is_some() {
+			return Err(internal_error!("apply with has a window size key without 'window'"));
+		}
+		return Ok(None);
+	};
+	match window_name.as_str() {
+		"tumbling" => {
+			if slide.is_some() || gap.is_some() || lag.is_some() {
+				return Err(internal_error!("apply with has a key the tumbling window does not use"));
+			}
+			Ok(Some(WindowKind::Tumbling {
+				size: decode_window_size(duration, slots)?,
+			}))
+		}
+		"sliding" => {
+			let size = decode_window_size(duration, slots)?;
+			let Some(slide) = slide else {
+				return Err(internal_error!("apply with is missing 'slide' for a sliding window"));
+			};
+			if gap.is_some() || lag.is_some() {
+				return Err(internal_error!("apply with has a key the sliding window does not use"));
+			}
+			Ok(Some(WindowKind::Sliding {
+				size,
+				slide,
+			}))
+		}
+		"rolling" => {
+			let size = decode_window_size(duration, slots)?;
+			if slide.is_some() || gap.is_some() {
+				return Err(internal_error!("apply with has a key the rolling window does not use"));
+			}
+			Ok(Some(WindowKind::Rolling {
+				size,
+				lag,
+			}))
+		}
+		"session" => {
+			let Some(gap) = gap else {
+				return Err(internal_error!("apply with is missing 'gap' for a session window"));
+			};
+			if duration.is_some() || slots.is_some() || slide.is_some() || lag.is_some() {
+				return Err(internal_error!("apply with has a key the session window does not use"));
+			}
+			Ok(Some(WindowKind::Session {
+				gap,
+			}))
+		}
+		other => Err(internal_error!("apply with has an unknown window kind {}", other)),
+	}
+}
+
+fn decode_window_size(duration: Option<Duration>, slots: Option<u64>) -> Result<WindowSize> {
+	match (duration, slots) {
+		(Some(d), None) => Ok(WindowSize::Duration(d)),
+		(None, Some(n)) => Ok(WindowSize::Count(n)),
+		(None, None) => Err(internal_error!("apply with is missing 'duration' or 'slots' for its window")),
+		(Some(_), Some(_)) => Err(internal_error!("apply with has both 'duration' and 'slots'")),
+	}
+}
+
+fn insert_window_size(values: &mut HashMap<String, Value>, size: &WindowSize) {
+	match size {
+		WindowSize::Duration(d) => {
+			values.insert("duration".to_string(), Value::Duration(*d));
+		}
+		WindowSize::Count(n) => {
+			values.insert("slots".to_string(), Value::Uint8(*n));
+		}
+	}
+}
+
+fn window_size_value(size: &WindowSize) -> Value {
+	match size {
+		WindowSize::Duration(d) => Value::Duration(*d),
+		WindowSize::Count(n) => Value::Uint8(*n),
+	}
 }
 
 fn span_value(span: WithSpan) -> Value {
@@ -146,7 +364,7 @@ mod tests {
 		value::{Value, duration::Duration},
 	};
 
-	use super::{ApplyWith, WindowSealing, WithSpan, decode_apply_with, encode_apply_with};
+	use super::{ApplyWith, WindowKind, WindowSealing, WindowSize, WithSpan, decode_apply_with, encode_apply_with};
 
 	fn secs(n: i64) -> Duration {
 		Duration::from_seconds(n).unwrap()
@@ -154,6 +372,7 @@ mod tests {
 
 	fn with(lateness: Option<i64>, immutable: Option<i64>) -> ApplyWith {
 		ApplyWith {
+			window: None,
 			lateness: lateness.map(|n| WithSpan::Duration(secs(n))),
 			immutable: immutable.map(|n| WithSpan::Duration(secs(n))),
 			retention: None,
@@ -274,6 +493,7 @@ mod tests {
 	fn a_count_span_is_rejected_for_a_time_sealed_operator() {
 		// A count read as a duration would seal after that many nanoseconds instead of that many rows.
 		let with = ApplyWith {
+			window: None,
 			lateness: Some(WithSpan::Count(150)),
 			immutable: None,
 			retention: None,
@@ -289,6 +509,7 @@ mod tests {
 			ApplyWith::default(),
 			with(Some(30), Some(10)),
 			ApplyWith {
+				window: None,
 				lateness: Some(WithSpan::Count(150)),
 				immutable: Some(WithSpan::Count(0)),
 				retention: Some(secs(3600)),
@@ -317,5 +538,152 @@ mod tests {
 	fn positional_params_fail_to_decode() {
 		let bytes = encode_params(&Params::Positional(Arc::new(vec![Value::Duration(secs(1))]))).unwrap();
 		assert!(decode_apply_with(&bytes).is_err());
+	}
+
+	#[test]
+	fn every_window_kind_round_trips_through_the_create_buffer() {
+		// A kind that decodes into the wrong shape would run the guest with a size or slide in the wrong unit.
+		let lateness = Some(WithSpan::Duration(secs(30)));
+		let kinds = [
+			WindowKind::Tumbling {
+				size: WindowSize::Duration(secs(60)),
+			},
+			WindowKind::Tumbling {
+				size: WindowSize::Count(10),
+			},
+			WindowKind::Sliding {
+				size: WindowSize::Duration(secs(60)),
+				slide: WindowSize::Duration(secs(30)),
+			},
+			WindowKind::Sliding {
+				size: WindowSize::Count(10),
+				slide: WindowSize::Count(5),
+			},
+			WindowKind::Rolling {
+				size: WindowSize::Duration(secs(60)),
+				lag: Some(secs(5)),
+			},
+			WindowKind::Rolling {
+				size: WindowSize::Duration(secs(60)),
+				lag: None,
+			},
+			WindowKind::Session {
+				gap: secs(30),
+			},
+		];
+		for kind in kinds {
+			let with = ApplyWith {
+				window: Some(kind),
+				lateness,
+				immutable: None,
+				retention: None,
+			};
+			assert_eq!(decode_apply_with(&encode_apply_with(&with).unwrap()).unwrap(), with);
+		}
+	}
+
+	#[test]
+	fn a_size_key_without_a_window_fails_to_decode() {
+		// A size with no 'window' has nothing to build a WindowKind against.
+		let values = HashMap::from([("duration".to_string(), Value::Duration(secs(60)))]);
+		let bytes = encode_params(&Params::Named(Arc::new(values))).unwrap();
+		assert!(decode_apply_with(&bytes).is_err());
+	}
+
+	#[test]
+	fn window_duration_rejects_a_missing_window_a_count_size_and_a_session() {
+		assert!(ApplyWith::default().window_duration().is_err());
+
+		let count = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Count(10),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+		assert!(count.window_duration().is_err());
+
+		let session = ApplyWith {
+			window: Some(WindowKind::Session {
+				gap: secs(30),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+		assert!(session.window_duration().is_err());
+	}
+
+	#[test]
+	fn window_slots_rejects_a_missing_window_and_a_duration_size() {
+		assert!(ApplyWith::default().window_slots().is_err());
+
+		let duration = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(secs(60)),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+		assert!(duration.window_slots().is_err());
+	}
+
+	#[test]
+	fn reject_window_refuses_any_window() {
+		assert!(ApplyWith::default().reject_window().is_ok());
+
+		let windowed = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(secs(60)),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+		assert!(windowed.reject_window().is_err());
+	}
+
+	#[test]
+	fn require_window_refuses_a_missing_window_and_another_kind() {
+		assert!(ApplyWith::default().require_window("tumbling").is_err());
+
+		let rolling = ApplyWith {
+			window: Some(WindowKind::Rolling {
+				size: WindowSize::Duration(secs(60)),
+				lag: None,
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+		assert!(rolling.require_window("tumbling").is_err());
+		assert!(rolling.require_window("rolling").is_ok());
+	}
+
+	#[test]
+	fn lateness_readers_refuse_the_other_unit() {
+		let none = ApplyWith::default();
+		assert_eq!(none.lateness_duration().unwrap(), None);
+		assert_eq!(none.lateness_count().unwrap(), None);
+
+		let duration = ApplyWith {
+			window: None,
+			lateness: Some(WithSpan::Duration(secs(30))),
+			immutable: None,
+			retention: None,
+		};
+		assert_eq!(duration.lateness_duration().unwrap(), Some(secs(30)));
+		assert!(duration.lateness_count().is_err());
+
+		let count = ApplyWith {
+			window: None,
+			lateness: Some(WithSpan::Count(5)),
+			immutable: None,
+			retention: None,
+		};
+		assert_eq!(count.lateness_count().unwrap(), Some(5));
+		assert!(count.lateness_duration().is_err());
 	}
 }
