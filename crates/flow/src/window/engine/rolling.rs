@@ -33,7 +33,7 @@ use crate::{
 		state_access::{get, get_classified, put, remove},
 	},
 	window::{
-		accumulator::WindowAccumulator,
+		accumulator::{MergeAccumulator, UnmergeAccumulator, WindowAccumulator},
 		engine::{
 			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep,
 			RunningKey, config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for,
@@ -123,7 +123,7 @@ where
 	prior_output: Option<Accumulator::Output>,
 }
 
-fn merge_into<A: WindowAccumulator>(running: &mut A, other: &A) {
+fn merge_into<A: MergeAccumulator>(running: &mut A, other: &A) {
 	if running.is_empty() {
 		*running = other.clone();
 	} else {
@@ -143,7 +143,7 @@ fn is_merged_coord<C: Coord>(coord: C, frontier: Option<C>) -> bool {
 	frontier.is_some_and(|f| coord <= f)
 }
 
-fn running_below<S: Slot, A: WindowAccumulator>(buffer: &RollingBuffer<S, A>, frontier: Option<S::Coord>) -> A {
+fn running_below<S: Slot, A: MergeAccumulator>(buffer: &RollingBuffer<S, A>, frontier: Option<S::Coord>) -> A {
 	let mut running = A::default();
 	let Some(frontier) = frontier else {
 		return running;
@@ -487,6 +487,126 @@ where
 		Ok(results)
 	}
 
+	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
+		self.meta_sweep.sweep::<GroupMeta<S>>(store, threshold)
+	}
+
+	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
+		self.expiry.earliest(store)
+	}
+
+	pub fn expire_before<CB, Output>(
+		&mut self,
+		store: &mut dyn StateStore,
+		cutoff: S,
+		combine: CB,
+	) -> Result<Vec<RollingExpiry<G, Output>>>
+	where
+		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
+	{
+		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
+			self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
+
+		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
+		let mut pending: Vec<(G, Option<Output>)> = Vec::new();
+		for (index_key, entry) in due {
+			let slot_key = EncodedKey::new(&entry.slot_key);
+			let group_id = entry.group_id;
+			expiry_drop(store, &index_key)?;
+			let mut buffer: RollingBuffer<S, Accumulator> =
+				get_classified(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?
+					.unwrap_or_default();
+			if buffer.is_empty() {
+				continue;
+			}
+			let before = buffer.len();
+			buffer.retain(|&slot, _| slot > cutoff);
+			if buffer.len() == before {
+				if let Some(new) = coord_min_key(&buffer) {
+					self.expiry.set(
+						store,
+						rolling_expiry_key(new, group_hash(&entry.group)?),
+						RollingIndexEntry {
+							group: entry.group.clone(),
+							slot_key: entry.slot_key.clone(),
+							group_id: entry.group_id,
+						},
+					)?;
+				}
+				continue;
+			}
+			match combine(&entry.group, &buffer) {
+				Some(value) if !buffer.is_empty() => {
+					if let Some(new) = coord_min_key(&buffer) {
+						self.expiry.set(
+							store,
+							rolling_expiry_key(new, group_hash(&entry.group)?),
+							RollingIndexEntry {
+								group: entry.group.clone(),
+								slot_key: entry.slot_key.clone(),
+								group_id: entry.group_id,
+							},
+						)?;
+					}
+					put(store, &BufferKey::new(self.family, group_id, slot_key.clone()), buffer)?;
+					pairs.push((group_id, slot_key));
+					pending.push((entry.group, Some(value)));
+				}
+				_ => {
+					remove(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?;
+					pairs.push((group_id, slot_key));
+					pending.push((entry.group, None));
+				}
+			}
+		}
+
+		self.expiry.settle(store)?;
+
+		let mut out: Vec<RollingExpiry<G, Output>> = Vec::with_capacity(pending.len());
+		if !pairs.is_empty() {
+			let rows = store.get_or_create_row_numbers_for_groups(
+				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?;
+			for (((group, value), (group_id, _key)), (row_number, _)) in
+				pending.into_iter().zip(pairs).zip(rows)
+			{
+				match value {
+					Some(value) => out.push(RollingExpiry::Update {
+						row_number,
+						group,
+						group_id,
+						value,
+					}),
+					None => {
+						store.remove_row_number_for_group(group_id)?;
+						out.push(RollingExpiry::Remove {
+							row_number,
+							group,
+							group_id,
+						});
+					}
+				}
+			}
+		}
+		note_when_expiry_capped(out.len(), self.expire_batch);
+		Ok(out)
+	}
+
+	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, S>) -> Result<()> {
+		persist_batch_meta(store, meta_loaded)
+	}
+}
+
+impl<G, S, Accumulator> RollingEngine<G, S, Accumulator>
+where
+	G: Clone + Eq + Ord + Hash + Debug,
+	S: Slot + Hash + HeapSize,
+	Accumulator: UnmergeAccumulator,
+	G: StateCodec,
+	GroupMeta<S>: OperatorState,
+	RollingIndexEntry<G>: OperatorState,
+	RollingBuffer<S, Accumulator>: OperatorState,
+{
 	fn load_running(
 		&mut self,
 		store: &mut dyn StateStore,
@@ -885,115 +1005,6 @@ where
 		}
 		note_when_expiry_capped(out.len(), self.expire_batch);
 		Ok(out)
-	}
-
-	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		self.meta_sweep.sweep::<GroupMeta<S>>(store, threshold)
-	}
-
-	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
-		self.expiry.earliest(store)
-	}
-
-	pub fn expire_before<CB, Output>(
-		&mut self,
-		store: &mut dyn StateStore,
-		cutoff: S,
-		combine: CB,
-	) -> Result<Vec<RollingExpiry<G, Output>>>
-	where
-		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
-	{
-		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
-			self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
-
-		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
-		let mut pending: Vec<(G, Option<Output>)> = Vec::new();
-		for (index_key, entry) in due {
-			let slot_key = EncodedKey::new(&entry.slot_key);
-			let group_id = entry.group_id;
-			expiry_drop(store, &index_key)?;
-			let mut buffer: RollingBuffer<S, Accumulator> =
-				get_classified(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?
-					.unwrap_or_default();
-			if buffer.is_empty() {
-				continue;
-			}
-			let before = buffer.len();
-			buffer.retain(|&slot, _| slot > cutoff);
-			if buffer.len() == before {
-				if let Some(new) = coord_min_key(&buffer) {
-					self.expiry.set(
-						store,
-						rolling_expiry_key(new, group_hash(&entry.group)?),
-						RollingIndexEntry {
-							group: entry.group.clone(),
-							slot_key: entry.slot_key.clone(),
-							group_id: entry.group_id,
-						},
-					)?;
-				}
-				continue;
-			}
-			match combine(&entry.group, &buffer) {
-				Some(value) if !buffer.is_empty() => {
-					if let Some(new) = coord_min_key(&buffer) {
-						self.expiry.set(
-							store,
-							rolling_expiry_key(new, group_hash(&entry.group)?),
-							RollingIndexEntry {
-								group: entry.group.clone(),
-								slot_key: entry.slot_key.clone(),
-								group_id: entry.group_id,
-							},
-						)?;
-					}
-					put(store, &BufferKey::new(self.family, group_id, slot_key.clone()), buffer)?;
-					pairs.push((group_id, slot_key));
-					pending.push((entry.group, Some(value)));
-				}
-				_ => {
-					remove(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?;
-					pairs.push((group_id, slot_key));
-					pending.push((entry.group, None));
-				}
-			}
-		}
-
-		self.expiry.settle(store)?;
-
-		let mut out: Vec<RollingExpiry<G, Output>> = Vec::with_capacity(pending.len());
-		if !pairs.is_empty() {
-			let rows = store.get_or_create_row_numbers_for_groups(
-				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
-			)?;
-			for (((group, value), (group_id, _key)), (row_number, _)) in
-				pending.into_iter().zip(pairs).zip(rows)
-			{
-				match value {
-					Some(value) => out.push(RollingExpiry::Update {
-						row_number,
-						group,
-						group_id,
-						value,
-					}),
-					None => {
-						store.remove_row_number_for_group(group_id)?;
-						out.push(RollingExpiry::Remove {
-							row_number,
-							group,
-							group_id,
-						});
-					}
-				}
-			}
-		}
-		note_when_expiry_capped(out.len(), self.expire_batch);
-		Ok(out)
-	}
-
-	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, S>) -> Result<()> {
-		persist_batch_meta(store, meta_loaded)
 	}
 }
 

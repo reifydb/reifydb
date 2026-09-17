@@ -7,8 +7,9 @@ use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
+use super::base::SealingBase;
 use crate::window::{
-	accumulator::{WindowAccumulator, sealing::base::SealingBase},
+	accumulator::{MergeAccumulator, WindowAccumulator},
 	span::{Slot, SlotSpan},
 };
 
@@ -57,18 +58,6 @@ impl<S: Slot, V: Clone> SealingEndpoint<S, V> {
 		}
 	}
 
-	pub fn absorb(&mut self, other: &Self) {
-		if let Some((c, v)) = other.sealed_open.clone() {
-			self.seal(c, v);
-		}
-		if let Some((c, v)) = other.sealed_close.clone() {
-			self.seal(c, v);
-		}
-		for (c, v) in self.base.absorb(&other.base, |_mine, theirs| theirs.clone()) {
-			self.seal(c, v);
-		}
-	}
-
 	fn seal(&mut self, c: S, v: V) {
 		self.sealed_open = Some(match self.sealed_open.take() {
 			Some((sc, sv)) if sc <= c => (sc, sv),
@@ -78,6 +67,25 @@ impl<S: Slot, V: Clone> SealingEndpoint<S, V> {
 			Some((sc, sv)) if sc >= c => (sc, sv),
 			_ => (c, v),
 		});
+	}
+}
+
+impl<S, V> MergeAccumulator for SealingEndpoint<S, V>
+where
+	S: Slot + Hash,
+	V: Clone + Debug + PartialEq,
+	SealingEndpoint<S, V>: OperatorState + StateCodec + HeapSize,
+{
+	fn merge(&mut self, other: &Self) {
+		if let Some((c, v)) = other.sealed_open.clone() {
+			self.seal(c, v);
+		}
+		if let Some((c, v)) = other.sealed_close.clone() {
+			self.seal(c, v);
+		}
+		for (c, v) in self.base.absorb(&other.base, |_mine, theirs| theirs.clone()) {
+			self.seal(c, v);
+		}
 	}
 }
 
@@ -203,9 +211,8 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_endpoint_absorb_keeps_a_branch_open_that_predates_the_seal_line() {
-		// absorb combines two parallel histories, never late arrivals, so the receiver's seal line must not
-		// swallow the other branch.
+	fn sealing_endpoint_merge_keeps_a_branch_open_that_predates_the_seal_line() {
+		// merge combines two parallel histories, never late arrivals, so the receiver's seal line must not swallow the other branch.
 		let mut left: SealingEndpoint<DateTime, i64> = SealingEndpoint::immutable(millis(10));
 		left.add(&(at_millis(0), 1));
 
@@ -214,12 +221,12 @@ mod tests {
 		right.add(&(at_millis(70), 7));
 
 		let mut left_first = left.clone();
-		left_first.absorb(&right);
+		left_first.merge(&right);
 		let mut right_first = right.clone();
-		right_first.absorb(&left);
+		right_first.merge(&left);
 
 		assert_eq!(left_first.open(), Some(&1));
-		assert_eq!(right_first.open(), left_first.open(), "absorb must not depend on which branch receives");
+		assert_eq!(right_first.open(), left_first.open(), "merge must not depend on which branch receives");
 	}
 
 	#[test]

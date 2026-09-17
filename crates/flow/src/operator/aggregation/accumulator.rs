@@ -17,13 +17,12 @@ use reifydb_value::{
 	},
 };
 
-use crate::window::{
-	accumulator::{
-		WindowAccumulator,
-		invertible::multiset::Multiset,
-		sealing::{endpoint::SealingEndpoint, max::SealingMax, min::SealingMin},
+use crate::{
+	operator::state::sealing::{endpoint::SealingEndpoint, max::SealingMax, min::SealingMin},
+	window::{
+		accumulator::{MergeAccumulator, UnmergeAccumulator, WindowAccumulator, invertible::multiset::Multiset},
+		span::Slot,
 	},
-	span::Slot,
 };
 
 #[operator_state]
@@ -475,12 +474,12 @@ impl AggregateSlot {
 				AggregateSlot::Min(set) | AggregateSlot::Max(set),
 				AggregateSlot::Min(oset) | AggregateSlot::Max(oset),
 			) => set.merge(oset),
-			(AggregateSlot::MinSealed(a), AggregateSlot::MinSealed(b)) => a.absorb(b),
-			(AggregateSlot::MaxSealed(a), AggregateSlot::MaxSealed(b)) => a.absorb(b),
+			(AggregateSlot::MinSealed(a), AggregateSlot::MinSealed(b)) => a.merge(b),
+			(AggregateSlot::MaxSealed(a), AggregateSlot::MaxSealed(b)) => a.merge(b),
 			(
 				AggregateSlot::First(a) | AggregateSlot::Last(a),
 				AggregateSlot::First(b) | AggregateSlot::Last(b),
-			) => a.absorb(b),
+			) => a.merge(b),
 			(
 				AggregateSlot::Span {
 					n,
@@ -753,11 +752,15 @@ impl WindowAccumulator for RowAccumulator {
 	fn is_empty(&self) -> bool {
 		self.rows == 0 && self.slots.iter().all(AggregateSlot::is_empty)
 	}
+}
 
+impl MergeAccumulator for RowAccumulator {
 	fn merge(&mut self, other: &Self) {
 		RowAccumulator::merge(self, other);
 	}
+}
 
+impl UnmergeAccumulator for RowAccumulator {
 	fn unmerge(&mut self, other: &Self) {
 		RowAccumulator::unmerge(self, other);
 	}

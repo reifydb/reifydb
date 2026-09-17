@@ -11,8 +11,9 @@ use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
+use super::base::SealingBase;
 use crate::window::{
-	accumulator::{WindowAccumulator, sealing::base::SealingBase},
+	accumulator::WindowAccumulator,
 	span::{Slot, SlotSpan},
 };
 

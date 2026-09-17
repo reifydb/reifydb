@@ -7,7 +7,6 @@ use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 
 pub mod invertible;
-pub mod sealing;
 
 #[cfg(test)]
 pub(crate) mod mock;
@@ -26,12 +25,12 @@ pub trait WindowAccumulator: Clone + Debug + Default + OperatorState + StateCode
 	fn finalize(&self) -> Option<Self::Output>;
 
 	fn is_empty(&self) -> bool;
+}
 
-	fn merge(&mut self, _other: &Self) {
-		unimplemented!("this accumulator does not support merge")
-	}
+pub trait MergeAccumulator: WindowAccumulator {
+	fn merge(&mut self, other: &Self);
+}
 
-	fn unmerge(&mut self, _other: &Self) {
-		unimplemented!("this accumulator does not support unmerge")
-	}
+pub trait UnmergeAccumulator: MergeAccumulator {
+	fn unmerge(&mut self, other: &Self);
 }

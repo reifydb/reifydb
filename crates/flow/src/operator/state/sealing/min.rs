@@ -7,8 +7,9 @@ use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
+use super::base::SealingBase;
 use crate::window::{
-	accumulator::{WindowAccumulator, sealing::base::SealingBase},
+	accumulator::{MergeAccumulator, WindowAccumulator},
 	span::{Slot, SlotSpan},
 };
 
@@ -50,20 +51,27 @@ impl<S: Slot, V: Ord + Clone> SealingMin<S, V> {
 		}
 	}
 
-	pub fn absorb(&mut self, other: &Self) {
+	fn seal(&mut self, v: V) {
+		self.sealed = Some(match self.sealed.take() {
+			Some(s) => s.min(v),
+			None => v,
+		});
+	}
+}
+
+impl<S, V> MergeAccumulator for SealingMin<S, V>
+where
+	S: Slot + Hash,
+	V: Ord + Clone + Debug,
+	SealingMin<S, V>: OperatorState + StateCodec + HeapSize,
+{
+	fn merge(&mut self, other: &Self) {
 		if let Some(s) = other.sealed.clone() {
 			self.seal(s);
 		}
 		for (_, aged) in self.base.absorb(&other.base, |mine, theirs| mine.clone().min(theirs.clone())) {
 			self.seal(aged);
 		}
-	}
-
-	fn seal(&mut self, v: V) {
-		self.sealed = Some(match self.sealed.take() {
-			Some(s) => s.min(v),
-			None => v,
-		});
 	}
 }
 
@@ -140,35 +148,35 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_min_absorb_keeps_the_smaller_value_at_a_shared_coordinate() {
+	fn sealing_min_merge_keeps_the_smaller_value_at_a_shared_coordinate() {
 		// Two branches holding the same slot must never let the incoming value replace a smaller one.
 		let mut accumulator: SealingMin<DateTime, i64> = SealingMin::default();
 		accumulator.add(&(at_millis(0), 1));
 		let mut other: SealingMin<DateTime, i64> = SealingMin::default();
 		other.add(&(at_millis(0), 9));
 
-		accumulator.absorb(&other);
+		accumulator.merge(&other);
 		assert_eq!(
 			accumulator.min(),
 			Some(1),
-			"absorbing a larger value at the same coordinate must not raise the min"
+			"merging a larger value at the same coordinate must not raise the min"
 		);
 	}
 
 	#[test]
-	fn sealing_min_default_absorb_leaves_nothing_sealed() {
-		// absorb is the only path that can seal without an immutable span, and a sealed minimum never retracts.
+	fn sealing_min_default_merge_leaves_nothing_sealed() {
+		// merge is the only path that can seal without an immutable span, and a sealed minimum never retracts.
 		let mut left: SealingMin<DateTime, i64> = SealingMin::default();
 		left.add(&(at_millis(0), 5));
 		let mut right: SealingMin<DateTime, i64> = SealingMin::default();
 		right.add(&(at_millis(1_000_000), 8));
 
-		left.absorb(&right);
+		left.merge(&right);
 		assert_eq!(left.min(), Some(5));
 
 		left.remove(&(at_millis(0), 5));
 		left.remove(&(at_millis(1_000_000), 8));
-		assert!(left.is_empty(), "every absorbed row stays retractable while nothing seals");
+		assert!(left.is_empty(), "every merged row stays retractable while nothing seals");
 		assert_eq!(left.finalize(), None);
 	}
 
@@ -224,9 +232,8 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_min_absorb_keeps_a_branch_minimum_that_predates_the_seal_line() {
-		// absorb combines two parallel histories, never late arrivals, so the receiver's seal line must not
-		// swallow the other branch.
+	fn sealing_min_merge_keeps_a_branch_minimum_that_predates_the_seal_line() {
+		// merge combines two parallel histories, never late arrivals, so the receiver's seal line must not swallow the other branch.
 		let mut left: SealingMin<DateTime, i64> = SealingMin::immutable(millis(10));
 		left.add(&(at_millis(0), 5));
 
@@ -235,11 +242,11 @@ mod tests {
 		right.add(&(at_millis(70), 9));
 
 		let mut left_first = left.clone();
-		left_first.absorb(&right);
+		left_first.merge(&right);
 		let mut right_first = right.clone();
-		right_first.absorb(&left);
+		right_first.merge(&left);
 
 		assert_eq!(left_first.min(), Some(5));
-		assert_eq!(right_first.min(), left_first.min(), "absorb must not depend on which branch receives");
+		assert_eq!(right_first.min(), left_first.min(), "merge must not depend on which branch receives");
 	}
 }

@@ -7,8 +7,9 @@ use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
+use super::base::SealingBase;
 use crate::window::{
-	accumulator::{WindowAccumulator, sealing::base::SealingBase},
+	accumulator::{MergeAccumulator, WindowAccumulator},
 	span::{Slot, SlotSpan},
 };
 
@@ -50,20 +51,27 @@ impl<S: Slot, V: Ord + Clone> SealingMax<S, V> {
 		}
 	}
 
-	pub fn absorb(&mut self, other: &Self) {
+	fn seal(&mut self, v: V) {
+		self.sealed = Some(match self.sealed.take() {
+			Some(s) => s.max(v),
+			None => v,
+		});
+	}
+}
+
+impl<S, V> MergeAccumulator for SealingMax<S, V>
+where
+	S: Slot + Hash,
+	V: Ord + Clone + Debug,
+	SealingMax<S, V>: OperatorState + StateCodec + HeapSize,
+{
+	fn merge(&mut self, other: &Self) {
 		if let Some(s) = other.sealed.clone() {
 			self.seal(s);
 		}
 		for (_, aged) in self.base.absorb(&other.base, |mine, theirs| mine.clone().max(theirs.clone())) {
 			self.seal(aged);
 		}
-	}
-
-	fn seal(&mut self, v: V) {
-		self.sealed = Some(match self.sealed.take() {
-			Some(s) => s.max(v),
-			None => v,
-		});
 	}
 }
 
@@ -144,35 +152,35 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_max_absorb_keeps_the_larger_value_at_a_shared_coordinate() {
+	fn sealing_max_merge_keeps_the_larger_value_at_a_shared_coordinate() {
 		// Two branches holding the same slot must never let the incoming value replace a larger one.
 		let mut accumulator: SealingMax<DateTime, i64> = SealingMax::default();
 		accumulator.add(&(at_millis(0), 9));
 		let mut other: SealingMax<DateTime, i64> = SealingMax::default();
 		other.add(&(at_millis(0), 1));
 
-		accumulator.absorb(&other);
+		accumulator.merge(&other);
 		assert_eq!(
 			accumulator.max(),
 			Some(9),
-			"absorbing a smaller value at the same coordinate must not lower the max"
+			"merging a smaller value at the same coordinate must not lower the max"
 		);
 	}
 
 	#[test]
-	fn sealing_max_default_absorb_leaves_nothing_sealed() {
-		// absorb is the only path that can seal without an immutable span, and a sealed maximum never retracts.
+	fn sealing_max_default_merge_leaves_nothing_sealed() {
+		// merge is the only path that can seal without an immutable span, and a sealed maximum never retracts.
 		let mut left: SealingMax<DateTime, i64> = SealingMax::default();
 		left.add(&(at_millis(0), 9));
 		let mut right: SealingMax<DateTime, i64> = SealingMax::default();
 		right.add(&(at_millis(1_000_000), 3));
 
-		left.absorb(&right);
+		left.merge(&right);
 		assert_eq!(left.max(), Some(9));
 
 		left.remove(&(at_millis(0), 9));
 		left.remove(&(at_millis(1_000_000), 3));
-		assert!(left.is_empty(), "every absorbed row stays retractable while nothing seals");
+		assert!(left.is_empty(), "every merged row stays retractable while nothing seals");
 		assert_eq!(left.finalize(), None);
 	}
 
@@ -209,9 +217,8 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_max_absorb_keeps_a_branch_maximum_that_predates_the_seal_line() {
-		// absorb combines two parallel histories, never late arrivals, so the receiver's seal line must not
-		// swallow the other branch.
+	fn sealing_max_merge_keeps_a_branch_maximum_that_predates_the_seal_line() {
+		// merge combines two parallel histories, never late arrivals, so the receiver's seal line must not swallow the other branch.
 		let mut left: SealingMax<DateTime, i64> = SealingMax::immutable(millis(10));
 		left.add(&(at_millis(0), 9));
 
@@ -220,12 +227,12 @@ mod tests {
 		right.add(&(at_millis(70), 3));
 
 		let mut left_first = left.clone();
-		left_first.absorb(&right);
+		left_first.merge(&right);
 		let mut right_first = right.clone();
-		right_first.absorb(&left);
+		right_first.merge(&left);
 
 		assert_eq!(left_first.max(), Some(9));
-		assert_eq!(right_first.max(), left_first.max(), "absorb must not depend on which branch receives");
+		assert_eq!(right_first.max(), left_first.max(), "merge must not depend on which branch receives");
 	}
 
 	#[test]

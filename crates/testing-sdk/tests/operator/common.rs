@@ -22,7 +22,10 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 };
 use reifydb_flow::{
-	operator::state::seal::coord::Coord,
+	operator::state::{
+		seal::coord::Coord,
+		sealing::{endpoint::SealingEndpoint, max::SealingMax, min::SealingMin},
+	},
 	window::{
 		accumulator::{
 			WindowAccumulator,
@@ -30,7 +33,6 @@ use reifydb_flow::{
 				keyed::KeyedInvertibleAccumulator, last_value::LastValue, moments::Moments,
 				multiset::Multiset, ordf64::OrdF64, retained_map::RetainedAccumulator,
 			},
-			sealing::{endpoint::SealingEndpoint, max::SealingMax, min::SealingMin},
 		},
 		span::WindowSpan,
 	},

@@ -4,7 +4,7 @@
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
-use crate::window::accumulator::WindowAccumulator;
+use crate::window::accumulator::{MergeAccumulator, UnmergeAccumulator, WindowAccumulator};
 
 #[operator_state]
 #[derive(Clone, Debug, Default)]
@@ -41,10 +41,16 @@ impl WindowAccumulator for SumAccumulator {
 	fn is_empty(&self) -> bool {
 		self.count == 0
 	}
+}
+
+impl MergeAccumulator for SumAccumulator {
 	fn merge(&mut self, other: &Self) {
 		self.sum += other.sum;
 		self.count += other.count;
 	}
+}
+
+impl UnmergeAccumulator for SumAccumulator {
 	fn unmerge(&mut self, other: &Self) {
 		self.sum -= other.sum;
 		self.count = self.count.saturating_sub(other.count);
