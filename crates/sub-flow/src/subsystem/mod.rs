@@ -199,9 +199,11 @@ impl FlowSubsystem {
 		);
 
 		let poisoned_health = health.clone();
+		let stalled_health = health.clone();
 		ioc.register_service::<FlowCaughtUpWatermark>(FlowCaughtUpWatermark::new(
 			move || materialization.caught_up(),
 			move || poisoned_health.poisoned(),
+			move || stalled_health.stalled(),
 		));
 
 		ioc.register_service::<Arc<dyn ConsumerPositions>>(Arc::new(flow_tracker.clone()));

@@ -14,7 +14,7 @@ use crate::{
 	config::CdcStoreConfig,
 	flush::{
 		actor::{CdcFlushActor, FlushMessage, flush_pending},
-		block::{flush_now, flush_with},
+		block::flush_now,
 	},
 	tier::{commit::CdcCommitBufferTier, persistent::CdcPersistentTier, read::CdcReadBufferTier},
 };
@@ -41,7 +41,7 @@ impl CdcStore {
 	#[instrument(name = "store::cdc::new", level = "debug", skip(config))]
 	pub fn new(config: CdcStoreConfig) -> Self {
 		let commit = config.commit.storage.clone();
-		let read = config.read.and_then(CdcReadBufferTier::new);
+		let read = config.read;
 		let persistent = config.persistent.storage.clone();
 		if let Ok(Some(sealed)) = persistent.max_version() {
 			commit.seal_floor(sealed);
@@ -65,11 +65,6 @@ impl CdcStore {
 	#[instrument(name = "store::cdc::flush_pending", level = "debug", skip(self))]
 	pub fn flush_pending(&self) -> bool {
 		flush_pending(&self.flusher)
-	}
-
-	#[instrument(name = "store::cdc::flush_staged", level = "debug", skip_all)]
-	pub fn flush_staged(&self, staged: &mut dyn FnMut()) {
-		flush_with(&self.commit, &self.persistent, self.read.as_ref(), staged);
 	}
 
 	#[instrument(name = "store::cdc::shutdown", level = "debug", skip(self))]

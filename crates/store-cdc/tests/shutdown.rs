@@ -269,6 +269,7 @@ mod cases {
 			store,
 			persistent,
 			guard,
+			..
 		} = fixture;
 		write_all(&store, 1..=3);
 		drop(store);

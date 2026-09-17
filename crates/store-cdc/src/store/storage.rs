@@ -12,6 +12,7 @@ use tracing::instrument;
 
 use crate::{
 	error::CdcError,
+	flush::block::flush_now,
 	storage::{CdcStorage, CdcStorageResult, Cutoff, DropBeforeResult},
 	store::CdcStore,
 };
@@ -19,6 +20,9 @@ use crate::{
 impl CdcStorage for CdcStore {
 	#[instrument(name = "store::cdc::write", level = "debug", skip(self, cdc), fields(version = cdc.version.commit.0, change_count = cdc.changes.len()))]
 	fn write(&self, cdc: &Cdc) -> CdcStorageResult<()> {
+		if self.commit.stall_above_ceiling() {
+			flush_now(&self.commit, &self.persistent, self.read.as_ref());
+		}
 		if self.commit.append(Arc::new(cdc.clone())) {
 			return Ok(());
 		}

@@ -19,9 +19,6 @@ impl CdcCommitBufferTier {
 		if !inner.accepts(cdc.version.commit) {
 			return false;
 		}
-		if !self.stall_above_ceiling(&mut inner, cdc.version.commit) {
-			return false;
-		}
 		inner.append(cdc);
 		self.request_flush_when_full(&mut inner);
 		true
@@ -54,7 +51,6 @@ impl CdcCommitBufferTier {
 		if cut {
 			self.shared.blocks_cut.fetch_add(1, Ordering::Relaxed);
 		}
-		self.shared.idle.notify_all();
 	}
 
 	#[instrument(name = "store::cdc::commit::flush_acquire", level = "debug", skip_all)]
@@ -63,16 +59,11 @@ impl CdcCommitBufferTier {
 	}
 
 	#[instrument(name = "store::cdc::commit::stall_above_ceiling", level = "debug", skip_all)]
-
-	fn stall_above_ceiling(&self, inner: &mut MutexGuard<'_, BufferInner>, version: CommitVersion) -> bool {
-		while inner.resident_bytes() > self.shared.ceiling && self.shared.flusher.get().is_some() {
-			self.request_flush(inner);
-			self.shared.stalls.fetch_add(1, Ordering::Relaxed);
-			self.shared.idle.wait(inner);
-			if !inner.accepts(version) {
-				return false;
-			}
+	pub fn stall_above_ceiling(&self) -> bool {
+		if self.shared.inner.lock().resident_bytes() <= self.shared.ceiling {
+			return false;
 		}
+		self.shared.stalls.fetch_add(1, Ordering::Relaxed);
 		true
 	}
 

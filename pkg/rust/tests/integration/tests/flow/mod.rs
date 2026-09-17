@@ -3,3 +3,4 @@
 
 mod state;
 mod wait_poisoned;
+mod wait_stalled;

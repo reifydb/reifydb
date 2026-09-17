@@ -13,7 +13,7 @@ use reifydb_sqlite::{DbPath, JournalMode, SqliteConfig};
 use reifydb_store_cdc::{
 	config::{CdcCommitConfig, CdcPersistentConfig, CdcStoreConfig},
 	store::CdcStore,
-	tier::read::CdcReadConfig,
+	tier::read::{CdcReadBufferTier, CdcReadConfig},
 };
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::{
@@ -189,7 +189,7 @@ fn create_memory_store_with(
 	let cdc_store = CdcStore::new(CdcStoreConfig {
 		commit: cdc_commit,
 		persistent: CdcPersistentConfig::memory(),
-		read: cdc_read,
+		read: cdc_read.and_then(CdcReadBufferTier::new),
 		spawner: spawner.clone(),
 		clock: Clock::Real,
 	});
@@ -273,7 +273,7 @@ fn create_sqlite_store_with(
 	let cdc_store = CdcStore::new(CdcStoreConfig {
 		commit: cdc_commit,
 		persistent: cdc_persistent,
-		read: cdc_read,
+		read: cdc_read.and_then(CdcReadBufferTier::new),
 		spawner: spawner.clone(),
 		clock: Clock::Real,
 	});

@@ -20,6 +20,7 @@ use reifydb_core::{
 };
 use reifydb_store_cdc::{
 	error::CdcError,
+	flush::block::flush_with,
 	storage::{CdcStorage, Cutoff},
 	store::CdcStore,
 };
@@ -767,7 +768,7 @@ mod cases {
 
 		let mut next = 2u64;
 		let mut refused: Vec<String> = Vec::new();
-		store.flush_staged(&mut || {
+		flush_with(&fixture.commit, &fixture.persistent, fixture.read.as_ref(), &mut || {
 			if next > INFLIGHT_APPENDS {
 				return;
 			}

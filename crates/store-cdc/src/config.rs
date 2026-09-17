@@ -6,7 +6,11 @@ use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
-use crate::tier::{commit::CdcCommitBufferTier, persistent::CdcPersistentTier, read::CdcReadConfig};
+use crate::tier::{
+	commit::CdcCommitBufferTier,
+	persistent::CdcPersistentTier,
+	read::{CdcReadBufferTier, CdcReadConfig},
+};
 
 pub const BLOCK_CUT_BYTES: ByteSize = ByteSize::from_mib(4);
 
@@ -70,7 +74,7 @@ impl CdcPersistentConfig {
 pub struct CdcStoreConfig {
 	pub commit: CdcCommitConfig,
 	pub persistent: CdcPersistentConfig,
-	pub read: Option<CdcReadConfig>,
+	pub read: Option<CdcReadBufferTier>,
 	pub spawner: ActorSpawner,
 	pub clock: Clock,
 }
@@ -91,7 +95,7 @@ impl CdcStoreConfig {
 		Self {
 			commit: CdcCommitConfig::default(),
 			persistent,
-			read: Some(CdcReadConfig::default()),
+			read: CdcReadBufferTier::new(CdcReadConfig::default()),
 			spawner,
 			clock,
 		}

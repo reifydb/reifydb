@@ -42,17 +42,20 @@ impl CdcConsumerWatermark {
 pub struct FlowCaughtUpWatermark {
 	sample: Arc<dyn Fn() -> CommitVersion + Send + Sync>,
 	poisoned: Arc<dyn Fn() -> Vec<(FlowId, String)> + Send + Sync>,
+	stalled: Arc<dyn Fn() -> Vec<FlowId> + Send + Sync>,
 }
 
 impl FlowCaughtUpWatermark {
-	pub fn new<F, P>(sample: F, poisoned: P) -> Self
+	pub fn new<F, P, S>(sample: F, poisoned: P, stalled: S) -> Self
 	where
 		F: Fn() -> CommitVersion + Send + Sync + 'static,
 		P: Fn() -> Vec<(FlowId, String)> + Send + Sync + 'static,
+		S: Fn() -> Vec<FlowId> + Send + Sync + 'static,
 	{
 		Self {
 			sample: Arc::new(sample),
 			poisoned: Arc::new(poisoned),
+			stalled: Arc::new(stalled),
 		}
 	}
 
@@ -62,6 +65,10 @@ impl FlowCaughtUpWatermark {
 
 	pub fn poisoned(&self) -> Vec<(FlowId, String)> {
 		(self.poisoned)()
+	}
+
+	pub fn stalled(&self) -> Vec<FlowId> {
+		(self.stalled)()
 	}
 }
 

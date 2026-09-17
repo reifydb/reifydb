@@ -51,7 +51,7 @@ use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_cdc::{
 	config::{CdcCommitConfig, CdcPersistentConfig, CdcStoreConfig},
 	store::CdcStore,
-	tier::read::CdcReadConfig,
+	tier::read::{CdcReadBufferTier, CdcReadConfig},
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_operator::store::OperatorStore;
@@ -268,7 +268,7 @@ impl TestEngineBuilder {
 		let cdc_store = CdcStore::new(CdcStoreConfig {
 			commit: CdcCommitConfig::default(),
 			persistent: cdc_persistent,
-			read: Some(CdcReadConfig::default()),
+			read: CdcReadBufferTier::new(CdcReadConfig::default()),
 			spawner: spawner.clone(),
 			clock: clock.clone(),
 		});
