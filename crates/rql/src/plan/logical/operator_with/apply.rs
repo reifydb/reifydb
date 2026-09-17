@@ -1,25 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::operator_with::{ApplyWith, WithSpan};
-use reifydb_value::value::duration::Duration;
+use reifydb_core::{
+	common::WindowSize,
+	operator_with::{ApplyWith, WithSpan},
+};
+use reifydb_value::{fragment::Fragment, value::duration::Duration};
 
 use crate::{
 	Result,
-	ast::ast::{AstOperatorWith, AstOperatorWithEntry},
+	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue, AstWindowKind},
 	diagnostic::AstError,
 	duration::{DurationBound, compile_duration},
+	error::RqlError,
 	plan::logical::{
 		Compiler,
 		operator_with::{
 			Declared, declared_count, declared_duration, entries, is_duration, is_number, literal,
-			literal_boolean, reject_immutable_not_smaller_than_lateness, unknown_key,
+			literal_boolean, reject_immutable_not_smaller_than_lateness, unknown_key, window::ParsedConfig,
 		},
 	},
 	token::token::Token,
 };
 
-const APPLY_WITH_KEYS: &str = "lateness, immutable, or retention";
+const APPLY_WITH_KEYS: &str = "window, duration, slots, slide, gap, lag, lateness, immutable, or retention";
 
 enum Immutable {
 	Zero(Declared<()>),
@@ -30,18 +34,77 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_apply_with(with: Option<&AstOperatorWith<'bump>>) -> Result<ApplyWith> {
 		let mut lateness: Option<Declared<WithSpan>> = None;
 		let mut immutable: Option<Immutable> = None;
-		let mut retention: Option<Duration> = None;
+		let mut retention: Option<Declared<Duration>> = None;
+		let mut window_kind: Option<AstWindowKind> = None;
+		let mut parsed = ParsedConfig::default();
+		let mut size_keys_seen: Vec<(&'static str, Fragment)> = Vec::new();
 
 		for entry in entries(with) {
 			match entry.key.word() {
+				Some("window") => {
+					let (kind, fragment) = match entry.value.as_ref() {
+						Some(AstOperatorWithValue::Word(token)) => {
+							match token.fragment.text().to_lowercase().as_str() {
+								"tumbling" => (AstWindowKind::Tumbling, token.fragment.to_owned()),
+								"sliding" => (AstWindowKind::Sliding, token.fragment.to_owned()),
+								"rolling" => (AstWindowKind::Rolling, token.fragment.to_owned()),
+								"session" => (AstWindowKind::Session, token.fragment.to_owned()),
+								_ => {
+									return Err(AstError::UnexpectedToken {
+										expected: "tumbling, sliding, rolling or session"
+											.to_string(),
+										fragment: token.fragment.to_owned(),
+									}
+									.into());
+								}
+							}
+						}
+						Some(AstOperatorWithValue::Literal(token)) => {
+							return Err(AstError::UnexpectedToken {
+								expected: "tumbling, sliding, rolling or session".to_string(),
+								fragment: token.fragment.to_owned(),
+							}
+							.into());
+						}
+						Some(AstOperatorWithValue::Block(_)) | None => {
+							return Err(AstError::UnexpectedToken {
+								expected: "tumbling, sliding, rolling or session".to_string(),
+								fragment: entry.key.fragment(),
+							}
+							.into());
+						}
+					};
+					window_kind = Some(kind);
+					parsed.window = fragment;
+				}
+				Some("slots") => {
+					parsed.count = Some(declared_count(literal(entry)?)?);
+					size_keys_seen.push(("slots", entry.key.fragment()));
+				}
+				Some("duration") => {
+					Self::parse_config_item(entry, &mut parsed)?;
+					size_keys_seen.push(("duration", entry.key.fragment()));
+				}
+				Some("slide") => {
+					Self::parse_config_item(entry, &mut parsed)?;
+					size_keys_seen.push(("slide", entry.key.fragment()));
+				}
+				Some("gap") => {
+					Self::parse_config_item(entry, &mut parsed)?;
+					size_keys_seen.push(("gap", entry.key.fragment()));
+				}
+				Some("lag") => {
+					Self::parse_config_item(entry, &mut parsed)?;
+					size_keys_seen.push(("lag", entry.key.fragment()));
+				}
 				Some("lateness") => lateness = Some(declared_span(literal(entry)?, "'lateness'")?),
 				Some("immutable") => immutable = declared_immutable(entry)?,
 				Some("retention") => {
-					retention = Some(compile_duration(
-						literal(entry)?,
-						DurationBound::Positive,
-						"a retention",
-					)?);
+					let token = literal(entry)?;
+					retention = Some(Declared {
+						value: compile_duration(token, DurationBound::Positive, "a retention")?,
+						fragment: token.fragment.to_owned(),
+					});
 				}
 				_ => return Err(unknown_key(entry, APPLY_WITH_KEYS)),
 			}
@@ -50,9 +113,15 @@ impl<'bump> Compiler<'bump> {
 		let immutable = immutable.map(|immutable| match immutable {
 			Immutable::Span(span) => span,
 			Immutable::Zero(zero) => Declared {
-				value: match lateness.as_ref().map(|lateness| lateness.value) {
-					Some(WithSpan::Count(_)) => WithSpan::Count(0),
-					_ => WithSpan::Duration(Duration::zero()),
+				value: if parsed.count.is_some() {
+					WithSpan::Count(0)
+				} else if parsed.duration.is_some() {
+					WithSpan::Duration(Duration::zero())
+				} else {
+					match lateness.as_ref().map(|lateness| lateness.value) {
+						Some(WithSpan::Count(_)) => WithSpan::Count(0),
+						_ => WithSpan::Duration(Duration::zero()),
+					}
 				},
 				fragment: zero.fragment,
 			},
@@ -60,12 +129,115 @@ impl<'bump> Compiler<'bump> {
 
 		reject_immutable_not_smaller_than_lateness_in_its_unit(immutable.as_ref(), lateness.as_ref())?;
 
+		if window_kind.is_none() {
+			if let Some((_, fragment)) = size_keys_seen.first() {
+				return Err(AstError::UnexpectedToken {
+					expected: "window before duration, slots, slide, gap or lag".to_string(),
+					fragment: fragment.clone(),
+				}
+				.into());
+			}
+		}
+
+		let kind = match window_kind {
+			None => None,
+			Some(ast_kind) => {
+				if let Some(retention) = &retention {
+					return Err(AstError::UnexpectedToken {
+						expected: "no retention on a windowed apply".to_string(),
+						fragment: retention.fragment.clone(),
+					}
+					.into());
+				}
+
+				let kind_name = match ast_kind {
+					AstWindowKind::Tumbling => "tumbling",
+					AstWindowKind::Sliding => "sliding",
+					AstWindowKind::Rolling => "rolling",
+					AstWindowKind::Session => "session",
+				};
+				for (key_name, fragment) in &size_keys_seen {
+					if !window_reads(ast_kind, key_name) {
+						return Err(AstError::UnexpectedToken {
+							expected: format!("a key the {} window reads", kind_name),
+							fragment: fragment.clone(),
+						}
+						.into());
+					}
+				}
+
+				let kind = Self::build_window_kind(ast_kind, &parsed)?;
+
+				let size_is_count = matches!(kind.size(), Some(WindowSize::Count(_)));
+				if let Some(lateness) = &lateness
+					&& matches!(lateness.value, WithSpan::Count(_)) != size_is_count
+				{
+					return Err(AstError::UnexpectedToken {
+						expected: "lateness in the unit of the window size".to_string(),
+						fragment: lateness.fragment.clone(),
+					}
+					.into());
+				}
+				if let Some(immutable) = &immutable
+					&& matches!(immutable.value, WithSpan::Count(_)) != size_is_count
+				{
+					return Err(AstError::UnexpectedToken {
+						expected: "lateness in the unit of the window size".to_string(),
+						fragment: immutable.fragment.clone(),
+					}
+					.into());
+				}
+
+				match kind.size() {
+					Some(WindowSize::Count(slots)) => {
+						if let Some(immutable) = &immutable
+							&& let WithSpan::Count(imm_count) = immutable.value
+							&& imm_count >= *slots
+						{
+							return Err(RqlError::WindowImmutableNotSmallerThanWindow {
+								immutable_value: immutable.fragment.text().to_string(),
+								window_value: parsed
+									.count
+									.as_ref()
+									.map(|declared| declared.fragment.text().to_string())
+									.unwrap_or_default(),
+								fragment: immutable.fragment.clone(),
+							}
+							.into());
+						}
+					}
+					_ => {
+						if let Some(immutable) = &immutable
+							&& let WithSpan::Duration(duration) = immutable.value
+						{
+							parsed.immutable = Some(Declared {
+								value: duration,
+								fragment: immutable.fragment.clone(),
+							});
+						}
+						Self::reject_immutable_not_smaller_than_window(&parsed, &kind)?;
+					}
+				}
+
+				Some(kind)
+			}
+		};
+
 		Ok(ApplyWith {
-			window: None,
+			window: kind,
 			lateness: Declared::value_of(&lateness),
 			immutable: Declared::value_of(&immutable),
-			retention,
+			retention: retention.map(|declared| declared.value),
 		})
+	}
+}
+
+fn window_reads(kind: AstWindowKind, key: &str) -> bool {
+	match kind {
+		AstWindowKind::Tumbling => matches!(key, "duration" | "slots"),
+		AstWindowKind::Sliding => matches!(key, "duration" | "slots" | "slide"),
+		AstWindowKind::Rolling => matches!(key, "duration" | "slots" | "lag"),
+		AstWindowKind::Session => matches!(key, "gap"),
 	}
 }
 
@@ -140,7 +312,10 @@ fn retag<T>(declared: &Declared<WithSpan>, value: T) -> Declared<T> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::operator_with::{ApplyWith, WithSpan};
+	use reifydb_core::{
+		common::{WindowKind, WindowSize},
+		operator_with::{ApplyWith, WithSpan},
+	};
 	use reifydb_value::value::duration::Duration;
 
 	use crate::{Result, ast::parse_str, bump::Bump, plan::logical::Compiler};
@@ -227,8 +402,7 @@ mod tests {
 
 	#[test]
 	fn immutable_true_reads_as_zero_in_the_unit_of_lateness() {
-		// A zero duration next to a count lateness would fail the unit check for a knob the author wrote as a
-		// flag.
+		// A zero duration next to a count lateness would fail the unit check for a boolean flag.
 		assert_eq!(
 			apply_with("apply op { } with { lateness: 30s, immutable: true }").unwrap().immutable,
 			seconds(0)
@@ -251,5 +425,91 @@ mod tests {
 	#[test]
 	fn no_with_block_leaves_every_setting_absent() {
 		assert_eq!(apply_with("apply op { }").unwrap(), ApplyWith::default());
+	}
+
+	#[test]
+	fn a_tumbling_window_parses_into_apply_with() {
+		assert_eq!(
+			apply_with("apply op { } with { window: tumbling, duration: 1m, lateness: 30s }")
+				.unwrap()
+				.window,
+			Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(Duration::from_minutes(1).unwrap()),
+			})
+		);
+	}
+
+	#[test]
+	fn a_window_key_without_window_fails() {
+		// A size key with no window has nothing to build a WindowKind against.
+		for source in [
+			"apply op { } with { duration: 1m }",
+			"apply op { } with { slots: 1 }",
+			"apply op { } with { slide: 30s }",
+			"apply op { } with { gap: 1m }",
+			"apply op { } with { lag: 30s }",
+		] {
+			assert!(apply_with(source).is_err(), "must be rejected: {source}");
+		}
+	}
+
+	#[test]
+	fn a_unit_mix_fails() {
+		for source in [
+			"apply op { } with { window: tumbling, slots: 1, lateness: 30s }",
+			"apply op { } with { window: tumbling, duration: 1m, lateness: 150 }",
+			"apply op { } with { window: tumbling, duration: 1m, immutable: 150 }",
+		] {
+			assert!(apply_with(source).is_err(), "must be rejected: {source}");
+		}
+	}
+
+	#[test]
+	fn immutable_not_smaller_than_the_window_fails() {
+		assert!(apply_with("apply op { } with { window: tumbling, duration: 1m, immutable: 1m }").is_err());
+	}
+
+	#[test]
+	fn slot_immutable_not_smaller_than_the_window_fails() {
+		assert!(apply_with("apply op { } with { window: tumbling, slots: 4, immutable: 4 }").is_err());
+	}
+
+	#[test]
+	fn retention_with_a_window_fails() {
+		assert!(
+			apply_with("apply op { } with { window: tumbling, duration: 1m, retention: 1h }").is_err()
+		);
+	}
+
+	#[test]
+	fn pane_is_an_unknown_key() {
+		assert!(apply_with("apply op { } with { window: rolling, duration: 1m, pane: 1s }").is_err());
+	}
+
+	#[test]
+	fn a_key_the_kind_ignores_fails() {
+		for source in [
+			"apply op { } with { window: tumbling, duration: 1m, slide: 30s }",
+			"apply op { } with { window: tumbling, duration: 1m, gap: 30s }",
+			"apply op { } with { window: session, gap: 1m, duration: 30s }",
+		] {
+			assert!(apply_with(source).is_err(), "must be rejected: {source}");
+		}
+	}
+
+	#[test]
+	fn immutable_true_takes_the_window_size_unit() {
+		assert_eq!(
+			apply_with("apply op { } with { window: tumbling, duration: 1m, immutable: true }")
+				.unwrap()
+				.immutable,
+			seconds(0)
+		);
+		assert_eq!(
+			apply_with("apply op { } with { window: tumbling, slots: 4, immutable: true }")
+				.unwrap()
+				.immutable,
+			Some(WithSpan::Count(0))
+		);
 	}
 }

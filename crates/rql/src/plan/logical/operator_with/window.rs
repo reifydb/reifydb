@@ -25,7 +25,7 @@ use crate::{
 const WINDOW_CONFIG_KEYS: &str = "duration, count, slide, gap, lag, lateness, or immutable";
 
 #[derive(Debug, Default)]
-struct ParsedConfig {
+pub(super) struct ParsedConfig {
 	pub duration: Option<Declared<Duration>>,
 	pub count: Option<Declared<u64>>,
 	pub slide_duration: Option<Declared<Duration>>,
@@ -66,7 +66,7 @@ impl<'bump> Compiler<'bump> {
 		Ok(parsed)
 	}
 
-	fn parse_config_item(entry: &AstOperatorWithEntry<'bump>, config: &mut ParsedConfig) -> Result<()> {
+	pub(super) fn parse_config_item(entry: &AstOperatorWithEntry<'bump>, config: &mut ParsedConfig) -> Result<()> {
 		let Some(key) = entry.key.word() else {
 			return Err(unknown_key(entry, WINDOW_CONFIG_KEYS));
 		};
@@ -184,7 +184,7 @@ impl<'bump> Compiler<'bump> {
 		}
 	}
 
-	fn reject_immutable_not_smaller_than_window(parsed: &ParsedConfig, kind: &WindowKind) -> Result<()> {
+	pub(super) fn reject_immutable_not_smaller_than_window(parsed: &ParsedConfig, kind: &WindowKind) -> Result<()> {
 		let Some(immutable) = parsed.immutable.as_ref() else {
 			return Ok(());
 		};
@@ -286,7 +286,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline]
-	fn build_window_kind(kind: AstWindowKind, parsed: &ParsedConfig) -> Result<WindowKind> {
+	pub(super) fn build_window_kind(kind: AstWindowKind, parsed: &ParsedConfig) -> Result<WindowKind> {
 		if let Some(lag) = parsed.lag.as_ref()
 			&& !matches!(kind, AstWindowKind::Rolling)
 		{
