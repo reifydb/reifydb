@@ -60,7 +60,10 @@ use crate::{
 	builder::CustomOperators,
 	commit::{
 		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply},
-		merge::{ObjectIndex, ReadCache, StepCut, StreamRead, UpstreamRead, UpstreamReads, merge},
+		merge::{
+			HeldReads, ObjectIndex, ReadCache, ReadStream, StepCut, StreamRead, UpstreamRead, UpstreamReads,
+			merge,
+		},
 		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep, cuts_per_source},
 	},
 	control::health::FlowHealthRegistry,
@@ -147,6 +150,7 @@ pub struct FlowActorState {
 	view_cursors: HashMap<FlowId, CommitVersion>,
 	pending_view_cursors: HashMap<FlowId, CommitVersion>,
 	read_cache: ReadCache,
+	held_reads: HeldReads,
 	object_index: ObjectIndex,
 	loading_from: CommitVersion,
 }
@@ -349,19 +353,21 @@ impl FlowActor {
 		upstreams: &FlowUpstreams,
 	) {
 		let cursor = state.cursor;
-		let Some(tables) = self.read_range(state, ctx, cursor, safe) else {
+		let Some(tables) = self.read_stream(state, ctx, ReadStream::Tables, cursor, safe) else {
 			return;
 		};
 		let mut upstream_reads = UpstreamReads {
 			reads: HashMap::with_capacity(upstreams.len()),
 			index: take(&mut state.object_index),
 		};
+		let mut froms: HashMap<FlowId, CommitVersion> = HashMap::with_capacity(upstreams.len());
 		for (producer, views) in upstreams {
 			let from = state.view_cursors.get(producer).copied().unwrap_or(cursor).max(cursor);
-			let Some(read) = self.read_range(state, ctx, from, safe) else {
-				state.object_index = upstream_reads.index;
+			let Some(read) = self.read_stream(state, ctx, ReadStream::Upstream(*producer), from, safe) else {
+				hold_reads(state, cursor, tables, upstream_reads, &froms);
 				return;
 			};
+			froms.insert(*producer, from);
 			let mut upstream = UpstreamRead {
 				views: views.clone(),
 				position: None,
@@ -369,7 +375,8 @@ impl FlowActor {
 			};
 			while upstream.needs_extension(cursor, &upstream_reads.index) {
 				let Some(next) = self.read_range(state, ctx, upstream.read.read_to, safe) else {
-					state.object_index = upstream_reads.index;
+					upstream_reads.reads.insert(*producer, upstream);
+					hold_reads(state, cursor, tables, upstream_reads, &froms);
 					return;
 				};
 				upstream.read.items = upstream
@@ -387,6 +394,7 @@ impl FlowActor {
 				self.flow_tracker.upstream_complete_through(*producer, upstream.read.read_to);
 			upstream_reads.reads.insert(*producer, upstream);
 		}
+		state.held_reads.clear();
 		let cut = StepCut {
 			source_objects: &state.source_objects,
 			per_source: cuts_per_source(self.flow_tracker.has_readers(self.flow_id), &state.source_objects),
@@ -435,6 +443,20 @@ impl FlowActor {
 				None
 			}
 		}
+	}
+
+	fn read_stream(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		stream: ReadStream,
+		from: CommitVersion,
+		up_to: CommitVersion,
+	) -> Option<StreamRead> {
+		if let Some(read) = state.held_reads.take(stream, from, up_to) {
+			return Some(read);
+		}
+		self.read_range(state, ctx, from, up_to)
 	}
 
 	fn advance_view_cursors(
@@ -822,6 +844,22 @@ impl FlowActor {
 	}
 }
 
+fn hold_reads(
+	state: &mut FlowActorState,
+	cursor: CommitVersion,
+	tables: StreamRead,
+	reads: UpstreamReads,
+	froms: &HashMap<FlowId, CommitVersion>,
+) {
+	state.held_reads.hold(ReadStream::Tables, cursor, tables);
+	for (producer, upstream) in reads.reads {
+		if let Some(from) = froms.get(&producer) {
+			state.held_reads.hold(ReadStream::Upstream(producer), *from, upstream.read);
+		}
+	}
+	state.object_index = reads.index;
+}
+
 impl Actor for FlowActor {
 	type State = FlowActorState;
 	type Message = FlowActorMessage;
@@ -866,6 +904,7 @@ impl Actor for FlowActor {
 			view_cursors: HashMap::new(),
 			pending_view_cursors: HashMap::new(),
 			read_cache: ReadCache::default(),
+			held_reads: HeldReads::default(),
 			object_index: ObjectIndex::default(),
 			loading_from: self.initial_cursor,
 		};

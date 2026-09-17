@@ -128,6 +128,36 @@ impl ReadCache {
 	}
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ReadStream {
+	Tables,
+	Upstream(FlowId),
+}
+
+#[derive(Default)]
+pub struct HeldReads {
+	reads: HashMap<ReadStream, (CommitVersion, StreamRead)>,
+}
+
+impl HeldReads {
+	pub fn take(&mut self, stream: ReadStream, from: CommitVersion, up_to: CommitVersion) -> Option<StreamRead> {
+		let (held_from, mut read) = self.reads.remove(&stream)?;
+		if held_from != from {
+			return None;
+		}
+		read.more = read.read_to < up_to;
+		Some(read)
+	}
+
+	pub fn hold(&mut self, stream: ReadStream, from: CommitVersion, read: StreamRead) {
+		self.reads.insert(stream, (from, read));
+	}
+
+	pub fn clear(&mut self) {
+		self.reads.clear();
+	}
+}
+
 pub struct UpstreamRead {
 	pub views: HashSet<ObjectId>,
 	pub position: Option<CommitVersion>,
