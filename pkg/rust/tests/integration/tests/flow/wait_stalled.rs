@@ -12,7 +12,7 @@ use std::{
 
 use reifydb::{
 	RuntimeConfig, WithSubsystem,
-	core::interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	core::{interface::{catalog::flow::OperatorId, flow::OperatorCapability}, operator_with::ApplyWith},
 	embedded,
 	runtime::context::clock::{Clock, MockClock},
 	sdk::{
@@ -24,12 +24,9 @@ use reifydb::{
 	},
 	sub::subsystem::HealthStatus,
 	testing::db::TestDb,
-	value::value::duration::Duration as ValueDuration,
+	value::{config::ExtensionParams, value::duration::Duration as ValueDuration},
 };
-use reifydb_value::{
-	config::Config,
-	value::{constraint::TypeConstraint, value_type::ValueType},
-};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 const TICK: Duration = Duration::from_millis(20);
 
@@ -104,7 +101,7 @@ impl OperatorMetadata for Wedged {
 }
 
 impl GuestOperator for Wedged {
-	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(Wedged)
 	}
 
