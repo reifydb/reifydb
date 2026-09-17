@@ -68,9 +68,6 @@ pub trait RollingTopKOperator {
 
 	type Output: Clone + Debug + PartialEq + StateCodec + HeapSize;
 
-	fn seal_span(&self) -> Option<<SlotCoord<Self::WindowSlot> as SealDomain>::SealSpan> {
-		None
-	}
 	fn capacity(&self) -> usize;
 
 	fn bucket_size(&self) -> SlotSpan<Self::WindowSlot>;
@@ -122,6 +119,7 @@ where
 	aggregator: A,
 	#[allow(clippy::type_complexity)]
 	engine: RollingTopKEngine<A::GroupKey, Anchor<A>, A::Accumulator, A::SecondaryKey, A::Output>,
+	seal_span: Option<<Anchor<A> as SealDomain>::SealSpan>,
 }
 
 impl<A> RollingTopKDriver<A>
@@ -178,16 +176,19 @@ where
 	}
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+		with.require_window("rolling")?;
+		let seal_span = <Anchor<A> as SealDomain>::seal_span_of(with)?;
 		let aggregator = A::from_operator_params(operator_id, params, with)?;
 		let engine_config = window_engine_config(params);
 		Ok(Self {
 			aggregator,
 			engine: RollingTopKEngine::new(engine_config),
+			seal_span,
 		})
 	}
 
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
-		let Some(seal_span) = self.aggregator.seal_span() else {
+		let Some(seal_span) = self.seal_span else {
 			return Ok(());
 		};
 		let mut store = GuestAsHost(ctx);
@@ -204,7 +205,7 @@ where
 			return Ok(());
 		}
 
-		let seal_span = self.aggregator.seal_span();
+		let seal_span = self.seal_span;
 		if let Some(seal_span) = seal_span {
 			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, coord)| *coord).max();

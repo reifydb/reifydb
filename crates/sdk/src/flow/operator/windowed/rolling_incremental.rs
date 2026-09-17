@@ -76,6 +76,7 @@ where
 {
 	aggregator: A,
 	engine: RollingIncrementalEngine<A::GroupKey, Anchor<A>, A::Accumulator, A::Running>,
+	seal_span: Option<<Anchor<A> as SealDomain>::SealSpan>,
 }
 
 impl<A> RollingIncrementalDriver<A>
@@ -131,16 +132,19 @@ where
 	}
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+		with.require_window("rolling")?;
+		let seal_span = <Anchor<A> as SealDomain>::seal_span_of(with)?;
 		let aggregator = A::from_operator_params(operator_id, params, with)?;
 		let engine_config = window_engine_config(params);
 		Ok(Self {
 			aggregator,
 			engine: RollingIncrementalEngine::new(engine_config),
+			seal_span,
 		})
 	}
 
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
-		let Some(seal_span) = self.aggregator.seal_span() else {
+		let Some(seal_span) = self.seal_span else {
 			return Ok(());
 		};
 		let mut store = GuestAsHost(ctx);
@@ -157,7 +161,7 @@ where
 			return Ok(());
 		}
 
-		if let Some(seal_span) = self.aggregator.seal_span() {
+		if let Some(seal_span) = self.seal_span {
 			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, coord)| *coord).max();
 			if let Some(newest) = newest {

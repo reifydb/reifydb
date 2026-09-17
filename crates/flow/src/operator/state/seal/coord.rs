@@ -23,8 +23,6 @@ pub trait Coord: Copy + Ord + Debug {
 	fn to_order(self) -> u64;
 
 	fn from_order(order: u64) -> Self;
-
-	fn span_millis(span: Self::Span) -> Option<u64>;
 }
 
 impl Coord for DateTime {
@@ -58,10 +56,6 @@ impl Coord for DateTime {
 
 	fn from_order(order: u64) -> Self {
 		DateTime::from_bits(order)
-	}
-
-	fn span_millis(span: Duration) -> Option<u64> {
-		span.milliseconds().ok().and_then(|ms| u64::try_from(ms).ok())
 	}
 }
 

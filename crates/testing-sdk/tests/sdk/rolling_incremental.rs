@@ -5,8 +5,9 @@ use std::collections::BTreeMap;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShapeField};
 use reifydb_core::{
+	common::{WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	operator_with::ApplyWith,
+	operator_with::{ApplyWith, WithSpan},
 	row::Row as CoreRow,
 };
 use reifydb_flow::window::accumulator::invertible::{last_value::LastValue, moments::Moments};
@@ -184,10 +185,35 @@ fn input_row(rn: u64, group: &str, window_start: u64, value: f64) -> CoreRow {
 		.build()
 }
 
+fn window_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Rolling {
+			size: WindowSize::Duration(millis(3)),
+			lag: None,
+		}),
+		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		immutable: None,
+		retention: None,
+	}
+}
+
+fn sealed_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Rolling {
+			size: WindowSize::Duration(millis(3)),
+			lag: None,
+		}),
+		lateness: Some(WithSpan::Duration(millis(117))),
+		immutable: None,
+		retention: None,
+	}
+}
+
 #[test]
 fn baseline_excludes_newest_window() {
 	let mut h =
 		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
+			.with(window_with())
 			.build()
 			.expect("harness");
 	// The newest window must be excluded from its own baseline: mean(10, 20) = 15, not 30.
@@ -210,6 +236,7 @@ fn remove_clears_buffer_emits_remove() {
 	// what breaks reorg retraction.
 	let mut h =
 		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
+			.with(window_with())
 			.build()
 			.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -224,6 +251,7 @@ fn remove_clears_buffer_emits_remove() {
 fn update_window_value_keeps_running_consistent() {
 	let mut h =
 		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
+			.with(window_with())
 			.build()
 			.expect("harness");
 	let _ = h
@@ -248,6 +276,7 @@ fn update_window_value_keeps_running_consistent() {
 fn eviction_drops_oldest_from_running() {
 	let mut h =
 		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
+			.with(window_with())
 			.build()
 			.expect("harness");
 	// A fourth window evicts window 0, and the running moments have to drop it too or the
@@ -282,10 +311,6 @@ impl RollingOperator for SealedVelocity {
 
 	fn bucket_size(&self) -> Duration {
 		millis(1)
-	}
-
-	fn seal_span(&self) -> Option<Duration> {
-		Some(millis(120))
 	}
 
 	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
@@ -356,6 +381,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	let mut h =
 		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<SealedVelocity>>>::new(
 		)
+		.with(sealed_with())
 		.build()
 		.expect("harness");
 	let _ = h
@@ -384,6 +410,7 @@ fn a_sealed_incremental_window_drops_a_mutation_for_a_sealed_coordinate() {
 	let mut h =
 		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<SealedVelocity>>>::new(
 		)
+		.with(sealed_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 600, 10.0)).build()).expect("apply");
@@ -395,13 +422,48 @@ fn a_sealed_incremental_window_drops_a_mutation_for_a_sealed_coordinate() {
 }
 
 #[test]
-fn an_ungated_incremental_operator_arms_no_seal_timer() {
-	// An operator that never opted into sealing must not acquire a retention policy.
+fn an_incremental_time_window_arms_a_seal_timer() {
+	// a driver with a required window must always acquire a seal retention policy
 	let mut h =
 		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
+			.with(window_with())
 			.build()
 			.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 
-	assert!(h.armed_timers().is_empty(), "an operator with lateness = None must arm no timer");
+	assert!(!h.armed_timers().is_empty(), "a windowed operator must arm a seal timer on its first insert");
+}
+
+#[test]
+fn create_without_a_window_reports_flow_065() {
+	// require_window must refuse a missing window before any row reaches the aggregator
+	let Err(err) =
+		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
+			.with(ApplyWith::default())
+			.build()
+	else {
+		panic!("create must refuse a missing window");
+	};
+	assert!(err.to_string().contains("FLOW_065"), "expected FLOW_065, got: {err}");
+}
+
+#[test]
+fn create_with_the_wrong_window_kind_reports_flow_066() {
+	// require_window must refuse a window kind this driver does not support
+	let with = ApplyWith {
+		window: Some(WindowKind::Tumbling {
+			size: WindowSize::Duration(millis(60)),
+		}),
+		lateness: None,
+		immutable: None,
+		retention: None,
+	};
+	let Err(err) =
+		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
+			.with(with)
+			.build()
+	else {
+		panic!("create must refuse an unsupported window kind");
+	};
+	assert!(err.to_string().contains("FLOW_066"), "expected FLOW_066, got: {err}");
 }

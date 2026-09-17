@@ -168,7 +168,6 @@ mod tests {
 			DateTime::from_epoch_millis(6_000_000).expect("representable"),
 			"a minute behind the watermark is a minute, not a million times less"
 		);
-		assert_eq!(<DateTime as Coord>::span_millis(one_minute), Some(60_000));
 	}
 
 	#[test]

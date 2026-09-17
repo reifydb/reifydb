@@ -86,10 +86,6 @@ pub trait TumblingCarryOperator {
 
 	fn window_for(&self, coord: SlotCoord<Self::WindowSlot>) -> WindowSpan<SlotCoord<Self::WindowSlot>>;
 
-	fn seal_span(&self) -> Option<<SlotCoord<Self::WindowSlot> as SealDomain>::SealSpan> {
-		None
-	}
-
 	fn build_output(
 		&self,
 		group: &Self::GroupKey,
@@ -138,6 +134,7 @@ where
 {
 	aggregator: A,
 	engine: CarryEngine<A>,
+	seal_span: Option<SealSpan<A>>,
 }
 
 impl<A> TumblingCarryDriver<A>
@@ -340,6 +337,8 @@ where
 	}
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+		with.require_window("tumbling")?;
+		let seal_span = <Anchor<A> as SealDomain>::seal_span_of(with)?;
 		let aggregator = A::from_operator_params(operator_id, params, with)?;
 		let retention = aggregator.retention();
 		let engine_config = window_engine_config(params);
@@ -348,11 +347,12 @@ where
 			engine: TumblingCarryEngine::new(
 				TumblingCarryConfig::builder(engine_config).retention(retention).build(),
 			),
+			seal_span,
 		})
 	}
 
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
-		let Some(seal_span) = self.aggregator.seal_span() else {
+		let Some(seal_span) = self.seal_span else {
 			return Ok(());
 		};
 		let mut store = GuestAsHost(ctx);
@@ -369,7 +369,7 @@ where
 			return Ok(());
 		}
 
-		let seal_span = self.aggregator.seal_span();
+		let seal_span = self.seal_span;
 		if let Some(seal_span) = seal_span {
 			self.seal(ctx, &mut buckets, seal_span)?;
 			if buckets.is_empty() {

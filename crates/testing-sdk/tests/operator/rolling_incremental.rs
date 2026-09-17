@@ -6,6 +6,10 @@
 //! `combine`. Any drift between the incrementally maintained running state and a from-scratch
 //! recomputation is a mismatch here, which is the bug class the incremental path exists to risk.
 
+use reifydb_core::{
+	common::{WindowKind, WindowSize},
+	operator_with::{ApplyWith, WithSpan},
+};
 use reifydb_sdk::flow::operator::{
 	extern_c::binding::operator::ExternCOperatorAdapter, windowed::rolling_incremental::RollingIncrementalDriver,
 };
@@ -17,12 +21,27 @@ use reifydb_testing_sdk::chaos::{
 	schema::KeyStrategy,
 	strategy::{ColumnSampler, samplers},
 };
-use reifydb_value::value::{Value, value_type::ValueType};
+use reifydb_value::{
+	factory::time::millis,
+	value::{Value, value_type::ValueType},
+};
 
 use super::common::{self, VelocityIncremental};
 
 fn group_key() -> Vec<String> {
 	vec!["group".to_string()]
+}
+
+fn window_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Rolling {
+			size: WindowSize::Duration(millis(common::ROLLING_CAPACITY as u64 * common::ROLLING_BUCKET)),
+			lag: None,
+		}),
+		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		immutable: None,
+		retention: None,
+	}
 }
 
 fn value_sampler(none_values: bool) -> ColumnSampler {
@@ -51,6 +70,7 @@ fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.with_column("ts", samplers::u64_range(0..100))
 		.with_column("value", value_sampler(none_values))
 		.with_scenario(scenario)
+		.with(window_with())
 		.with_oracle(move |ctx, batches| {
 			rolling_accumulator_oracle(&common::velocity_incremental(), ctx, batches, &group_key())
 		})

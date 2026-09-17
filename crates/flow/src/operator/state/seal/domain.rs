@@ -4,20 +4,29 @@
 use std::fmt::Debug;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::state::timer::{StateStore, TimerKind, TimerStore};
+use reifydb_core::{
+	common::WindowSize,
+	error::CoreError,
+	operator_with::ApplyWith,
+	state::timer::{StateStore, TimerKind, TimerStore},
+};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::operator::state::seal::{coord::Coord, ledger::SealLedger, rule::SEAL_GATE_STEP};
+use crate::operator::state::seal::{
+	coord::Coord,
+	ledger::SealLedger,
+	rule::{SEAL_GATE_STEP, SealRule},
+};
 
 pub trait SealDomain: Coord {
 	type SealSpan: Copy + Debug + Send + Sync;
 
 	fn arms_timer() -> bool;
 
-	fn seal_span_duration(seal_span: Self::SealSpan) -> Option<Duration>;
+	fn seal_span_of(with: &ApplyWith) -> Result<Option<Self::SealSpan>>;
 
 	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, seal_span: Self::SealSpan) -> Result<()>;
 
@@ -33,8 +42,18 @@ impl SealDomain for DateTime {
 		true
 	}
 
-	fn seal_span_duration(seal_span: Duration) -> Option<Duration> {
-		Some(seal_span)
+	fn seal_span_of(with: &ApplyWith) -> Result<Option<Duration>> {
+		let Some(kind) = &with.window else {
+			return Err(CoreError::OperatorWithWindowMissing.into());
+		};
+		if let Some(WindowSize::Count(count)) = kind.size() {
+			return Err(CoreError::OperatorWithWindowSizeCount {
+				count: *count,
+			}
+			.into());
+		}
+		let lateness = with.lateness_duration()?.unwrap_or_else(Duration::zero);
+		Ok(SealRule::for_window(kind, lateness).map(|rule| rule.admissible().duration()))
 	}
 
 	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, seal_span: Duration) -> Result<()> {
@@ -55,6 +74,7 @@ impl SealDomain for DateTime {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::common::WindowKind;
 	use reifydb_value::factory::time::at_millis;
 
 	use super::*;
@@ -121,9 +141,23 @@ mod tests {
 	}
 
 	#[test]
-	fn the_wall_clock_domain_seals_on_the_wheel_and_declares_its_lateness_to_the_flow() {
-		// the flow frontier reads this as a wall-clock span, so none would stop holding the watermark back
+	fn the_wall_clock_domain_seals_on_the_wheel() {
+		// the flow frontier reads this domain's span in wall-clock time, so it must arm off the timer wheel
 		assert!(DateTime::arms_timer());
-		assert_eq!(DateTime::seal_span_duration(ms(65_000)), Some(ms(65_000)));
+	}
+
+	#[test]
+	fn the_wall_clock_domain_rejects_a_count_size() {
+		// a count-sized window has no wall-clock span, so the wheel domain must refuse rather than guess one
+		let with = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Count(10),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+
+		assert!(DateTime::seal_span_of(&with).is_err());
 	}
 }

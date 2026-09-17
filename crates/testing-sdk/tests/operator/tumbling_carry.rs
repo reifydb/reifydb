@@ -5,6 +5,10 @@
 //! window's carried close, so the carry must rotate exactly once per boundary crossing and
 //! survive Updates and Removes inside the current window.
 
+use reifydb_core::{
+	common::{WindowKind, WindowSize},
+	operator_with::{ApplyWith, WithSpan},
+};
 use reifydb_sdk::flow::operator::{
 	extern_c::binding::operator::ExternCOperatorAdapter, windowed::tumbling_carry::TumblingCarryDriver,
 };
@@ -22,6 +26,17 @@ use super::common::{self, TwapCarry};
 
 fn window_key() -> Vec<String> {
 	vec!["group".to_string(), "window_start".to_string()]
+}
+
+fn window_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Tumbling {
+			size: WindowSize::Duration(millis(common::WINDOW)),
+		}),
+		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		immutable: None,
+		retention: None,
+	}
 }
 
 fn price_sampler(none_values: bool) -> ColumnSampler {
@@ -48,6 +63,7 @@ fn run(none_values: bool, scenario: Scenario, seed: u64, retention: Option<u64>)
 		.with_column("price", price_sampler(none_values))
 		.with_params(config)
 		.with_scenario(scenario)
+		.with(window_with())
 		.with_oracle(move |ctx, batches| {
 			tumbling_carry_accumulator_oracle(
 				&common::twap_carry(retention),

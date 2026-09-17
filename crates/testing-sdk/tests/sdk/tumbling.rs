@@ -3,12 +3,13 @@
 
 use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShapeField};
 use reifydb_core::{
+	common::{WindowKind, WindowSize},
 	interface::{
 		catalog::flow::OperatorId,
 		flow::{OperatorCapability, from_bitmask},
 	},
 	metrics::heap::HeapSize,
-	operator_with::ApplyWith,
+	operator_with::{ApplyWith, WithSpan},
 	row::Row as CoreRow,
 };
 use reifydb_flow::{
@@ -39,7 +40,7 @@ use reifydb_testing_sdk::{
 use reifydb_value::{
 	config::ExtensionParams,
 	factory::time::millis,
-	value::{Value, datetime::DateTime, diff_type::DiffType, duration::Duration, value_type::ValueType},
+	value::{Value, datetime::DateTime, diff_type::DiffType, value_type::ValueType},
 };
 
 #[test]
@@ -186,10 +187,6 @@ impl TumblingOperator for SealedVolume {
 			volume: value.get(),
 		})
 	}
-
-	fn seal_span(&self) -> Option<Duration> {
-		Some(millis(120))
-	}
 }
 
 impl TumblingRegistration for SealedVolume {
@@ -333,9 +330,32 @@ fn input_row(rn: u64, group: &str, slot: u64, size: f64) -> CoreRow {
 		.build()
 }
 
+fn window_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Tumbling {
+			size: WindowSize::Duration(millis(60)),
+		}),
+		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		immutable: None,
+		retention: None,
+	}
+}
+
+fn sealed_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Tumbling {
+			size: WindowSize::Duration(millis(60)),
+		}),
+		lateness: Some(WithSpan::Duration(millis(60))),
+		immutable: None,
+		retention: None,
+	}
+}
+
 #[test]
 fn single_insert_emits_insert() {
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -352,6 +372,7 @@ fn single_insert_emits_insert() {
 fn update_applies_post_minus_pre_no_double_count() {
 	// An update routed as remove(pre)+add(post) lands on 25; folding only post would give 35.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -372,6 +393,7 @@ fn two_contributions_then_remove_subtracts_pre() {
 	// The diff's pre value is what gets subtracted, so no per-slot key is needed to find the
 	// contribution being withdrawn.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h
@@ -393,6 +415,7 @@ fn remove_clears_window_emits_remove() {
 	// The accumulator finalizes to nothing, so the prior value has to come from the engine for
 	// the driver to withdraw the stale row instead of leaking it.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -406,6 +429,7 @@ fn remove_clears_window_emits_remove() {
 #[test]
 fn boundary_slot_belongs_to_next_window() {
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let out = h
@@ -426,6 +450,7 @@ fn late_event_for_sealed_window_dropped() {
 	// A window seals once the watermark passes start + lateness, and a sealed window must
 	// refuse further inserts rather than reopen.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
+		.with(sealed_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 180, 5.0)).build()).expect("apply");
@@ -440,6 +465,7 @@ fn late_event_within_seal_is_accepted() {
 	// window is still open. The watermark must be advanced explicitly, or the gate never
 	// closes and the assertion would hold under any boundary rule.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
+		.with(sealed_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 120, 5.0)).build()).expect("apply");
@@ -456,6 +482,7 @@ fn a_gated_driver_admits_a_late_event_while_the_watermark_has_not_moved() {
 	// flow that has reported no progress has nothing to measure lateness against. If this ever
 	// starts dropping, the frontier is being derived from the batch again.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
+		.with(sealed_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 180, 5.0)).build()).expect("apply");
@@ -467,10 +494,10 @@ fn a_gated_driver_admits_a_late_event_while_the_watermark_has_not_moved() {
 }
 
 #[test]
-fn late_event_without_sealing_is_accepted() {
-	// Without a gate, drivers accept arbitrarily late mutations and state lives until the
-	// operator TTL.
+fn late_event_while_lateness_is_open_is_accepted() {
+	// while the lateness window has not elapsed, a driver must accept an arbitrarily late mutation
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 180, 5.0)).build()).expect("apply");
@@ -484,6 +511,7 @@ fn remove_within_seal_is_applied_and_sealed_remove_is_dropped() {
 	// remove is honored while the window is open and dropped once it seals, because the sealed
 	// value is final by contract.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
+		.with(sealed_with())
 		.build()
 		.expect("harness");
 	let _ = h
@@ -509,6 +537,7 @@ fn remove_within_seal_is_applied_and_sealed_remove_is_dropped() {
 #[test]
 fn multiple_groups_isolate_state() {
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let out = h
@@ -531,6 +560,7 @@ fn min_update_replacing_minimum_raises_window_min() {
 	// Raising the minimum away is what a running scalar min cannot do; the multiset has to
 	// surface the next-smallest value instead.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<TestMin>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h
@@ -557,6 +587,7 @@ fn sealing_frees_window_state_from_the_store() {
 	// Sealing has to reclaim the window's accumulator state, not just gate its mutations;
 	// state left behind is only reaped by the wall-clock operator-state TTL backstop.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
+		.with(sealed_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -569,19 +600,21 @@ fn sealing_frees_window_state_from_the_store() {
 
 	// Control: reclamation may only come from the seal sweep, never from ordinary apply churn.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	let before = h.snapshot_state();
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 240, 2.0)).build()).expect("apply");
 	let after = h.snapshot_state();
-	assert!(before.keys().all(|k| after.contains_key(k)), "an ungated driver must not reclaim any state");
+	assert!(before.keys().all(|k| after.contains_key(k)), "a window whose lateness has not passed must not reclaim any state");
 }
 
 #[test]
 fn min_remove_duplicate_keeps_value_until_last_removed() {
 	// Removing one of two equal values must not evict the value itself from the multiset.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<TestMin>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h
@@ -594,4 +627,37 @@ fn min_remove_duplicate_keeps_value_until_last_removed() {
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 5.0)).build()).expect("apply");
 	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
 	assert_eq!(r.f64("min"), Some(5.0), "one occurrence of 5 remains, min stays 5");
+}
+
+#[test]
+fn create_without_a_window_reports_flow_065() {
+	// require_window must refuse a missing window before any row reaches the aggregator
+	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+		.with(ApplyWith::default())
+		.build()
+	else {
+		panic!("create must refuse a missing window");
+	};
+	assert!(err.to_string().contains("FLOW_065"), "expected FLOW_065, got: {err}");
+}
+
+#[test]
+fn create_with_the_wrong_window_kind_reports_flow_066() {
+	// require_window must refuse a window kind this driver does not support
+	let with = ApplyWith {
+		window: Some(WindowKind::Rolling {
+			size: WindowSize::Duration(millis(3)),
+			lag: None,
+		}),
+		lateness: None,
+		immutable: None,
+		retention: None,
+	};
+	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+		.with(with)
+		.build()
+	else {
+		panic!("create must refuse an unsupported window kind");
+	};
+	assert!(err.to_string().contains("FLOW_066"), "expected FLOW_066, got: {err}");
 }

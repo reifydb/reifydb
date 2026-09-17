@@ -5,6 +5,10 @@
 //! the real operator and through `tumbling_accumulator_oracle`, and the materialized tables
 //! must agree. Covers an invertible sum, a removal-safe multiset min, and sealing OHLCV.
 
+use reifydb_core::{
+	common::{WindowKind, WindowSize},
+	operator_with::{ApplyWith, WithSpan},
+};
 use reifydb_sdk::flow::operator::{
 	extern_c::binding::operator::ExternCOperatorAdapter, windowed::tumbling::TumblingDriver,
 };
@@ -16,11 +20,23 @@ use reifydb_testing_sdk::chaos::{
 	schema::KeyStrategy,
 	strategy::{ColumnSampler, samplers},
 };
+use reifydb_value::factory::time::millis;
 
 use super::common::{self, MinTumbling, OhlcvSealingTumbling, VolumeTumbling};
 
 fn window_key() -> Vec<String> {
 	vec!["group".to_string(), "window_start".to_string()]
+}
+
+fn window_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Tumbling {
+			size: WindowSize::Duration(millis(common::WINDOW)),
+		}),
+		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		immutable: None,
+		retention: None,
+	}
 }
 
 fn size_sampler(none_values: bool) -> ColumnSampler {
@@ -42,6 +58,7 @@ fn run_volume(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome 
 		.with_column("slot", samplers::u64_range(0..300))
 		.with_column("size", size_sampler(none_values))
 		.with_scenario(scenario)
+		.with(window_with())
 		.with_oracle(move |ctx, batches| {
 			tumbling_accumulator_oracle(&VolumeTumbling, ctx, batches, &window_key())
 		})
@@ -63,6 +80,7 @@ fn run_min(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		// Tight value set so duplicate minima exercise multiset removal.
 		.with_column("size", size_sampler(none_values))
 		.with_scenario(scenario)
+		.with(window_with())
 		.with_oracle(move |ctx, batches| {
 			tumbling_accumulator_oracle(&MinTumbling, ctx, batches, &window_key())
 		})
@@ -89,6 +107,7 @@ fn run_ohlcv(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.with_column("slot", samplers::u64_range(0..180))
 		.with_column("price", price)
 		.with_scenario(scenario)
+		.with(window_with())
 		.with_oracle(move |ctx, batches| {
 			tumbling_accumulator_oracle(&OhlcvSealingTumbling, ctx, batches, &window_key())
 		})

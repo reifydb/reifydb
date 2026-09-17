@@ -5,9 +5,10 @@ use std::{cmp::Ordering, collections::BTreeMap};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShapeField};
 use reifydb_core::{
+	common::{WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
-	operator_with::ApplyWith,
+	operator_with::{ApplyWith, WithSpan},
 	row::Row as CoreRow,
 };
 use reifydb_flow::window::accumulator::{
@@ -163,9 +164,34 @@ fn input_row(rn: u64, group: &str, window_start: u64, trader: u64, volume: f64) 
 		.build()
 }
 
+fn window_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Rolling {
+			size: WindowSize::Duration(millis(3)),
+			lag: None,
+		}),
+		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		immutable: None,
+		retention: None,
+	}
+}
+
+fn sealed_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Rolling {
+			size: WindowSize::Duration(millis(3)),
+			lag: None,
+		}),
+		lateness: Some(WithSpan::Duration(millis(117))),
+		immutable: None,
+		retention: None,
+	}
+}
+
 #[test]
 fn same_window_volume_accumulates_per_trader() {
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	// Two trades for the same trader in one window must sum, not overwrite each other.
@@ -190,6 +216,7 @@ fn same_window_volume_accumulates_per_trader() {
 #[test]
 fn update_subtracts_old_volume_no_double_count() {
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h
@@ -219,6 +246,7 @@ fn update_subtracts_old_volume_no_double_count() {
 #[test]
 fn top_2_across_three_windows() {
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let out = h
@@ -243,6 +271,7 @@ fn top_2_across_three_windows() {
 #[test]
 fn vanishing_rank_emits_remove_at_high_water() {
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h
@@ -262,6 +291,7 @@ fn vanishing_rank_emits_remove_at_high_water() {
 #[test]
 fn capacity_eviction_drops_oldest_window() {
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	// A fourth window exceeds the capacity of 3, so window 0 and trader 100 with it must go.
@@ -289,10 +319,10 @@ fn capacity_eviction_drops_oldest_window() {
 }
 
 #[test]
-fn buried_window_insert_accepted_without_sealing() {
-	// Without a lateness envelope there is no implicit high-water drop, so an insert into an older
-	// coordinate merges rather than being discarded.
+fn buried_window_insert_accepted_while_lateness_is_open() {
+	// while the lateness window has not elapsed, an insert into an older coordinate must still merge
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 100, 5.0)).build()).expect("apply");
@@ -317,10 +347,6 @@ impl RollingTopKOperator for SealedTopVolume {
 
 	fn bucket_size(&self) -> Duration {
 		TestTopVolume.bucket_size()
-	}
-
-	fn seal_span(&self) -> Option<Duration> {
-		Some(millis(120))
 	}
 
 	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
@@ -370,6 +396,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// A group that stops reporting must still be reclaimed, or a high-cardinality group key
 	// grows without bound; nothing moves here after the initial batch except the watermark.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<SealedTopVolume>>>::new()
+		.with(sealed_with())
 		.build()
 		.expect("harness");
 	let _ = h
@@ -392,12 +419,45 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 }
 
 #[test]
-fn an_ungated_rolling_top_k_operator_arms_no_seal_timer() {
-	// An operator that never opted into sealing must not acquire a retention policy.
+fn a_rolling_top_k_time_window_arms_a_seal_timer() {
+	// a driver with a required window must always acquire a seal retention policy
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 7, 10.0)).build()).expect("apply");
 
-	assert!(h.armed_timers().is_empty(), "an operator with lateness = None must arm no timer");
+	assert!(!h.armed_timers().is_empty(), "a windowed operator must arm a seal timer on its first insert");
+}
+
+#[test]
+fn create_without_a_window_reports_flow_065() {
+	// require_window must refuse a missing window before any row reaches the aggregator
+	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+		.with(ApplyWith::default())
+		.build()
+	else {
+		panic!("create must refuse a missing window");
+	};
+	assert!(err.to_string().contains("FLOW_065"), "expected FLOW_065, got: {err}");
+}
+
+#[test]
+fn create_with_the_wrong_window_kind_reports_flow_066() {
+	// require_window must refuse a window kind this driver does not support
+	let with = ApplyWith {
+		window: Some(WindowKind::Tumbling {
+			size: WindowSize::Duration(millis(60)),
+		}),
+		lateness: None,
+		immutable: None,
+		retention: None,
+	};
+	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+		.with(with)
+		.build()
+	else {
+		panic!("create must refuse an unsupported window kind");
+	};
+	assert!(err.to_string().contains("FLOW_066"), "expected FLOW_066, got: {err}");
 }

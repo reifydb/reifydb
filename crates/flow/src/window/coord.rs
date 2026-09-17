@@ -5,12 +5,13 @@ use std::fmt::Debug;
 
 use reifydb_core::{
 	metrics::heap::HeapSize,
+	operator_with::ApplyWith,
 	state::timer::{StateStore, TimerStore},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
-	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{datetime::DateTime, row_number::RowNumber},
 };
 
 use crate::{
@@ -149,10 +150,6 @@ impl Coord for OrdinalCoord {
 			ordinal: order,
 		}
 	}
-
-	fn span_millis(_span: RowSpan) -> Option<u64> {
-		None
-	}
 }
 
 impl SealDomain for OrdinalCoord {
@@ -162,8 +159,12 @@ impl SealDomain for OrdinalCoord {
 		false
 	}
 
-	fn seal_span_duration(_seal_span: RowSpan) -> Option<Duration> {
-		None
+	fn seal_span_of(with: &ApplyWith) -> Result<Option<RowSpan>> {
+		let count = with.window_slots()?;
+		let Some(lateness) = with.lateness_count()? else {
+			return Ok(None);
+		};
+		Ok(Some(RowSpan::of(count.saturating_add(lateness))))
 	}
 
 	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, _seal_span: RowSpan) -> Result<()> {
@@ -195,9 +196,18 @@ impl Slot for OrdinalCoord {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::row::operator::state::encode;
+	use reifydb_core::{
+		common::{WindowKind, WindowSize},
+		operator_with::WithSpan,
+	};
+	use reifydb_value::value::duration::Duration;
 
 	use super::*;
 	use crate::operator::state::mock::MockStore;
+
+	fn secs(n: i64) -> Duration {
+		Duration::from_seconds(n).unwrap()
+	}
 
 	struct Row {
 		time: DateTime,
@@ -246,15 +256,12 @@ mod tests {
 	}
 
 	#[test]
-	fn ordinal_arithmetic_counts_rows_and_refuses_to_answer_in_milliseconds() {
-		// A span here is rows, not milliseconds. span_millis answering Some would let a row count
-		// reach the seal horizon as a duration.
+	fn ordinal_arithmetic_counts_rows() {
 		let coord = OrdinalCoord::from_arrival_counter(100);
 
 		assert_eq!(coord.saturating_sub_span(RowSpan::of(64)), OrdinalCoord::from_arrival_counter(36));
 		assert_eq!(coord.add_span(RowSpan::of(5)), OrdinalCoord::from_arrival_counter(105));
 		assert_eq!(coord.span_since(OrdinalCoord::from_arrival_counter(60)), RowSpan::of(40));
-		assert_eq!(<OrdinalCoord as Coord>::span_millis(RowSpan::of(64)), None);
 	}
 
 	#[test]
@@ -268,10 +275,54 @@ mod tests {
 	}
 
 	#[test]
-	fn a_row_ordinal_seals_without_the_wheel_and_declares_no_wall_clock_lateness() {
-		// a row count fed to duration arithmetic lands just past the epoch, fires at once and rearms forever
+	fn a_row_ordinal_seals_without_the_wheel() {
+		// a row count fed to the timer wheel lands just past the epoch, fires at once and rearms forever
 		assert!(!<OrdinalCoord as SealDomain>::arms_timer());
-		assert_eq!(<OrdinalCoord as SealDomain>::seal_span_duration(RowSpan::of(64)), None);
+	}
+
+	#[test]
+	fn a_row_window_seals_after_its_count_plus_lateness() {
+		// the seal span must hold both the slots the window keeps and the rows it still admits late
+		let with = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Count(64),
+			}),
+			lateness: Some(WithSpan::Count(6)),
+			immutable: None,
+			retention: None,
+		};
+
+		assert_eq!(OrdinalCoord::seal_span_of(&with).unwrap(), Some(RowSpan::of(70)));
+	}
+
+	#[test]
+	fn a_row_window_without_lateness_never_seals() {
+		// with no lateness bound, a row window has nothing to seal against and must never hold state
+		let with = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Count(64),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+
+		assert_eq!(OrdinalCoord::seal_span_of(&with).unwrap(), None);
+	}
+
+	#[test]
+	fn a_row_window_rejects_a_duration_lateness() {
+		// a row window counts rows, so a duration lateness has no count to add to its span
+		let with = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Count(64),
+			}),
+			lateness: Some(WithSpan::Duration(secs(30))),
+			immutable: None,
+			retention: None,
+		};
+
+		assert!(OrdinalCoord::seal_span_of(&with).is_err());
 	}
 
 	#[test]

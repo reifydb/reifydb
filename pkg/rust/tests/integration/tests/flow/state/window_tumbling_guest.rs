@@ -29,7 +29,7 @@ use reifydb_test_harness::assert::column_values;
 use reifydb_value::{
 	config::ExtensionParams,
 	factory::time::secs,
-	value::{constraint::TypeConstraint, datetime::DateTime, duration::Duration, value_type::ValueType},
+	value::{constraint::TypeConstraint, datetime::DateTime, value_type::ValueType},
 };
 
 use crate::flow::state::{await_state_keys, state_keys};
@@ -74,10 +74,6 @@ impl TumblingOperator for GuestTumbling {
 
 	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {
 		WindowSpan::for_coord(coord, secs(1))
-	}
-
-	fn seal_span(&self) -> Option<Duration> {
-		Some(secs(1))
 	}
 
 	fn build_output(&self, group: &i32, _span: WindowSpan<DateTime>, value: Moments) -> Option<GuestWindow> {

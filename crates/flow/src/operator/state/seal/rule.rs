@@ -240,9 +240,7 @@ mod tests {
 
 	#[test]
 	fn no_lateness_can_make_the_admissible_span_shorter_than_the_window() {
-		// An admissible span below the window size seals live windows on arrival - silent data loss.
-		// Two ways to break it: the sum failing back to something smaller than the base, and
-		// span_millis answering none for a months/days Duration, which i64::MAX nanoseconds becomes.
+		// the admissible span must never fall below the window size, or a live window seals on arrival
 		let enormous = Duration::from_nanoseconds_const(i64::MAX);
 
 		for lateness in [ms(0), ms(1), enormous] {
