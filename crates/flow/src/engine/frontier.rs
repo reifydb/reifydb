@@ -111,6 +111,7 @@ mod tests {
 			change::Change,
 			flow::OperatorCapability,
 		},
+		operator_with::{ApplyWith, WithSpan},
 	};
 	use reifydb_routine_abi::registry::Routines;
 	use reifydb_rql::flow::{
@@ -133,6 +134,7 @@ mod tests {
 		context::FlowContext,
 		operator::{
 			HostOperator,
+			apply::ApplyOperator,
 			host::HostContext,
 			metrics::OperatorSampleRegistry,
 			provider::EmptyOperatorProvider,
@@ -292,6 +294,22 @@ mod tests {
 			self
 		}
 
+		fn apply(mut self, id: u64, with: ApplyWith) -> Self {
+			self.inner.operators.insert(
+				(FLOW, OperatorId(id)),
+				Box::new(ApplyOperator::new(
+					None,
+					OperatorId(id),
+					Box::new(Sealing {
+						operator: OperatorId(id),
+						horizon: None,
+					}),
+					&with,
+				)),
+			);
+			self
+		}
+
 		fn tumbling_window(mut self, id: u64, size: Duration, lateness: Duration) -> Self {
 			let window = WindowOperator::new(WindowConfig {
 				parent_schema: None,
@@ -383,6 +401,30 @@ mod tests {
 			.edge(1, 2)
 			.edge(2, 3)
 			.tumbling_window(2, seconds(60), seconds(30))
+			.registered_sink(3, FLOW)
+			.holds(vec![advance(1, 120_000)]);
+
+		assert_eq!(held, vec![hold(3, 30_000)]);
+	}
+
+	#[test]
+	fn an_apply_with_a_window_holds_its_output_although_the_guest_declares_none() {
+		// The engine computes the seal span from the window in `with`, independent of what the guest reports.
+		let with = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(seconds(60)),
+			}),
+			lateness: Some(WithSpan::Duration(seconds(30))),
+			immutable: None,
+			retention: None,
+		};
+		let held = Harness::new()
+			.node(source(1))
+			.node(stage(2))
+			.node(sink(3))
+			.edge(1, 2)
+			.edge(2, 3)
+			.apply(2, with)
 			.registered_sink(3, FLOW)
 			.holds(vec![advance(1, 120_000)]);
 

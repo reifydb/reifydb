@@ -15,6 +15,7 @@ use reifydb_core::{
 		flow::OperatorCapability,
 	},
 	key::{any::TaggedKey, tag::KeyTag},
+	operator_with::ApplyWith,
 	state::timer::TimerKind,
 };
 use reifydb_flow::{
@@ -153,7 +154,9 @@ impl Harness<ApplyOperator> {
 		operator: OperatorId,
 		capabilities: &'static [OperatorCapability],
 	) -> Self {
-		Self::new(|_| ApplyOperator::new(None, operator, mount(logic, operator, capabilities)))
+		Self::new(|_| {
+			ApplyOperator::new(None, operator, mount(logic, operator, capabilities), &ApplyWith::default())
+		})
 	}
 }
 

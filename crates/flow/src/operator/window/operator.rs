@@ -39,7 +39,6 @@ use crate::{
 	window::{
 		coord::OrdinalCoord,
 		engine::{config::WindowEngineConfig, rolling::RollingEngine},
-		kind::rolling::RollingOverTime,
 		meta::WindowMeta,
 	},
 };
@@ -240,25 +239,8 @@ impl HostOperator for WindowOperator {
 	}
 
 	fn seal_span(&self) -> Option<Duration> {
-		if self.is_count_based() {
-			return None;
-		}
-		let lateness = self.lateness().unwrap_or_else(Duration::zero);
-		let rule = match &self.kind {
-			WindowKind::Tumbling {
-				..
-			} => SealRule::tumbling(self.size_duration()?, lateness),
-			WindowKind::Sliding {
-				..
-			} => SealRule::sliding(self.size_duration()?, lateness),
-			WindowKind::Rolling {
-				..
-			} => RollingOverTime::new(self.size_duration()?, self.rolling_lag()).seal_rule(lateness),
-			WindowKind::Session {
-				..
-			} => self.session_rule(),
-		};
-		Some(rule.admissible().duration())
+		SealRule::for_window(&self.kind, self.lateness().unwrap_or_else(Duration::zero))
+			.map(|rule| rule.admissible().duration())
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

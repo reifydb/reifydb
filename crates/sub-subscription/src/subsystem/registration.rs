@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_core::operator_with::ApplyWith;
 use reifydb_engine::subscription::SubscriptionContext;
 use reifydb_flow::{context::FlowContext, engine::FlowEngineInner, operator::apply::ApplyOperator};
 use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
@@ -37,7 +38,12 @@ pub(crate) fn register_ephemeral_flow(
 				engine.insert_operator(
 					flow.id,
 					*operator_id,
-					Box::new(ApplyOperator::new(parent_schema, *operator_id, Box::new(op))),
+					Box::new(ApplyOperator::new(
+						parent_schema,
+						*operator_id,
+						Box::new(op),
+						&ApplyWith::default(),
+					)),
 				);
 			}
 			_ => {

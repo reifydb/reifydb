@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
-use crate::operator::state::seal::coord::Coord;
+use crate::{
+	operator::state::seal::coord::Coord,
+	window::kind::{rolling::RollingOverTime, session::SessionKind},
+};
 
 pub const SEAL_GATE_STEP: Duration = Duration::from_milliseconds_const(1);
 
@@ -72,6 +76,26 @@ impl SealRule {
 	pub fn of(admissible: Duration) -> Self {
 		Self {
 			admissible: AdmissibleSpan(admissible),
+		}
+	}
+
+	pub fn for_window(kind: &WindowKind, lateness: Duration) -> Option<Self> {
+		match kind {
+			WindowKind::Tumbling {
+				size: WindowSize::Duration(size),
+			} => Some(Self::tumbling(*size, lateness)),
+			WindowKind::Sliding {
+				size: WindowSize::Duration(size),
+				..
+			} => Some(Self::sliding(*size, lateness)),
+			WindowKind::Rolling {
+				size: WindowSize::Duration(size),
+				lag,
+			} => Some(RollingOverTime::new(*size, lag.unwrap_or_default()).seal_rule(lateness)),
+			WindowKind::Session {
+				gap,
+			} => Some(SessionKind::with_gap(*gap).seal_rule(lateness)),
+			_ => None,
 		}
 	}
 
@@ -228,6 +252,63 @@ mod tests {
 				"admissible {:?} fell below the 1000ms window for lateness {lateness:?}",
 				rule.admissible().duration()
 			);
+		}
+	}
+
+	#[test]
+	fn for_window_matches_each_kinds_own_rule() {
+		// for_window must reproduce each kind's own constructor exactly, not approximate it.
+		let lateness = ms(50);
+
+		let tumbling = WindowKind::Tumbling {
+			size: WindowSize::Duration(ms(1_000)),
+		};
+		assert_eq!(SealRule::for_window(&tumbling, lateness), Some(SealRule::tumbling(ms(1_000), lateness)));
+
+		let sliding = WindowKind::Sliding {
+			size: WindowSize::Duration(ms(1_000)),
+			slide: WindowSize::Duration(ms(500)),
+		};
+		assert_eq!(SealRule::for_window(&sliding, lateness), Some(SealRule::sliding(ms(1_000), lateness)));
+
+		let rolling = WindowKind::Rolling {
+			size: WindowSize::Duration(ms(2_000)),
+			lag: Some(ms(300)),
+		};
+		assert_eq!(
+			SealRule::for_window(&rolling, lateness),
+			Some(RollingOverTime::new(ms(2_000), ms(300)).seal_rule(lateness))
+		);
+
+		let session = WindowKind::Session {
+			gap: ms(300),
+		};
+		assert_eq!(
+			SealRule::for_window(&session, lateness),
+			Some(SessionKind::with_gap(ms(300)).seal_rule(lateness))
+		);
+	}
+
+	#[test]
+	fn for_window_gives_no_rule_for_a_count_size() {
+		// A count size seals in a row coordinate the engine has no duration for, so it gets no rule.
+		let lateness = ms(50);
+
+		let kinds = [
+			WindowKind::Tumbling {
+				size: WindowSize::Count(10),
+			},
+			WindowKind::Sliding {
+				size: WindowSize::Count(10),
+				slide: WindowSize::Count(5),
+			},
+			WindowKind::Rolling {
+				size: WindowSize::Count(10),
+				lag: None,
+			},
+		];
+		for kind in kinds {
+			assert_eq!(SealRule::for_window(&kind, lateness), None);
 		}
 	}
 }

@@ -170,7 +170,7 @@ fn guest_window(db: &TestDb) {
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } AS {
 				FROM app::t
-					| apply tumbling_guest{}
+					| apply tumbling_guest{} with { window: tumbling, duration: 1s }
 			}"#);
 }
 

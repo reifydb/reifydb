@@ -339,7 +339,7 @@ impl FlowEngineInner {
 
 		self.operators.insert(
 			(flow_id, operator_id),
-			Box::new(ApplyOperator::new(parent_schema, operator_id, inner)),
+			Box::new(ApplyOperator::new(parent_schema, operator_id, inner, &with)),
 		);
 		Ok(())
 	}
