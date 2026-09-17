@@ -22,6 +22,7 @@ use reifydb::{
 			view::ChangeView,
 		},
 	},
+	sub::subsystem::HealthStatus,
 	testing::db::TestDb,
 	value::value::duration::Duration as ValueDuration,
 };
@@ -157,5 +158,18 @@ fn waiting_on_a_flow_wedged_inside_an_operator_fails_fast_naming_the_stall() {
 	assert!(
 		message.contains("stalled with input pending"),
 		"the error must name the stall rather than some other failure, got: {message}"
+	);
+
+	// a monitor that only reads health status must see the same wedge the wait just reported
+	let status = db.get_all_component_health().remove("flow").expect("the flow subsystem is registered").status;
+	let HealthStatus::Degraded {
+		description,
+	} = &status
+	else {
+		panic!("a wedged flow must degrade the flow subsystem, got {status:?}");
+	};
+	assert!(
+		description.contains("stalled with input pending"),
+		"the degraded status must name the stall, got: {description}"
 	);
 }

@@ -6,11 +6,9 @@ use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
-use crate::tier::{
-	commit::CdcCommitBufferTier,
-	persistent::CdcPersistentTier,
-	read::{CdcReadBufferTier, CdcReadConfig},
-};
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::tier::read::CdcReadConfig;
+use crate::tier::{commit::CdcCommitBufferTier, persistent::CdcPersistentTier, read::CdcReadBufferTier};
 
 pub const BLOCK_CUT_BYTES: ByteSize = ByteSize::from_mib(4);
 

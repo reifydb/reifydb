@@ -357,13 +357,26 @@ impl Subsystem for FlowSubsystem {
 			return HealthStatus::Unknown;
 		}
 		let poisoned = self.health.poisoned();
-		if poisoned.is_empty() {
+		let stalled = self.health.stalled();
+		if poisoned.is_empty() && stalled.is_empty() {
 			return HealthStatus::Healthy;
 		}
-		let flows: Vec<String> =
-			poisoned.iter().map(|(id, reason)| format!("flow {}: {}", id.0, reason)).collect();
+		let mut problems: Vec<String> = Vec::new();
+		if !poisoned.is_empty() {
+			let flows: Vec<String> =
+				poisoned.iter().map(|(id, reason)| format!("flow {}: {}", id.0, reason)).collect();
+			problems.push(format!("{} deferred flow(s) poisoned: {}", poisoned.len(), flows.join("; ")));
+		}
+		if !stalled.is_empty() {
+			let flows: Vec<String> = stalled.iter().map(|id| format!("flow {}", id.0)).collect();
+			problems.push(format!(
+				"{} deferred flow(s) stalled with input pending: {}",
+				stalled.len(),
+				flows.join("; ")
+			));
+		}
 		HealthStatus::Degraded {
-			description: format!("{} deferred flow(s) poisoned: {}", poisoned.len(), flows.join("; ")),
+			description: problems.join("; "),
 		}
 	}
 
