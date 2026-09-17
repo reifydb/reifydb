@@ -114,9 +114,8 @@ fn view_rv(db: &TestDb) -> Vec<Value> {
 }
 
 #[test]
-fn two_right_rows_under_one_key_are_both_kept_until_the_loser_seals() {
-	// A latest join keeps every arrival, so only a right retention bounds it, and sealing the loser must spare
-	// the winner.
+fn the_losing_right_row_is_dropped_on_arrival_and_the_winner_still_seals() {
+	// The loser must go the moment the winner replaces it, and the winner must still arm its own retention.
 	let db = setup();
 	latest_left_join_with_right_retention(&db);
 	insert_left(&db);
@@ -125,9 +124,9 @@ fn two_right_rows_under_one_key_are_both_kept_until_the_loser_seals() {
 	db.await_row_count("FROM app::j FILTER { rv == 8 }", 1, TIMEOUT);
 
 	assert_eq!(
-		await_state_keys(&db, RIGHT, 2, TIMEOUT),
-		2,
-		"both arrivals must be kept, or a retracted winner has no runner-up to promote; surface now: {:?}",
+		await_state_keys(&db, RIGHT, 1, TIMEOUT),
+		1,
+		"the loser must not survive the write that replaced it; surface now: {:?}",
 		db.query(SURFACE)
 	);
 	assert_eq!(db.row_count("FROM app::j"), 1, "and one left row must publish exactly one joined row");
@@ -137,13 +136,22 @@ fn two_right_rows_under_one_key_are_both_kept_until_the_loser_seals() {
 	assert_eq!(
 		await_state_keys(&db, RIGHT, 1, TIMEOUT),
 		1,
-		"the sealed loser must be freed, or the right side grows without bound; surface now: {:?}",
+		"a seal that would have taken the loser must spare the winner that outlived it; surface now: {:?}",
 		db.query(SURFACE)
 	);
 	assert!(
 		matches!(view_rv(&db).as_slice(), [Value::Int4(8)]),
 		"while the unsealed winner keeps the row it published, found {:?}",
 		view_rv(&db)
+	);
+
+	advance_past_the_seal(&db);
+
+	assert_eq!(
+		await_state_keys(&db, RIGHT, 0, TIMEOUT),
+		0,
+		"and the winner's own right retention must free it, or the held row is never reclaimed; surface now: {:?}",
+		db.query(SURFACE)
 	);
 }
 

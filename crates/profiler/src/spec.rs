@@ -95,6 +95,34 @@ static SPECS: &[SpanSpec] = &[
 		render: Some(render_state_range),
 	},
 	SpanSpec {
+		name: "flow::committer::flush",
+		duration_override: None,
+		dims: &[DimSource::Text("committer")],
+		extras: &["groups", "slices"],
+		render: Some(render_committer_flush),
+	},
+	SpanSpec {
+		name: "flow::committer::commit_slices",
+		duration_override: None,
+		dims: &[DimSource::Text("committer")],
+		extras: &["slices"],
+		render: Some(render_committer_slices),
+	},
+	SpanSpec {
+		name: "flow::committer::retry_slice",
+		duration_override: None,
+		dims: &[DimSource::Text("committer")],
+		extras: &[],
+		render: None,
+	},
+	SpanSpec {
+		name: "flow::committer::submit_tick",
+		duration_override: None,
+		dims: &[DimSource::Text("committer")],
+		extras: &[],
+		render: None,
+	},
+	SpanSpec {
 		name: "lifecycle::actor::tick",
 		duration_override: None,
 		dims: &[DimSource::Text("class")],
@@ -110,6 +138,24 @@ pub fn spec_for(name: &str) -> Option<&'static SpanSpec> {
 fn render_apply(record: &AggregateRecord, out: &mut String) {
 	let e = record.extras();
 	let _ = write!(out, " lock={} io={}->{}", fmt_us(e[2]), e[0], e[1]);
+}
+
+fn render_committer_flush(record: &AggregateRecord, out: &mut String) {
+	let e = record.extras();
+	let (per_flush, per_group) = match (record.calls, e[0]) {
+		(0, _) | (_, 0) => (0, 0),
+		(calls, groups) => (e[0] / calls, e[1] / groups),
+	};
+	let _ = write!(out, " groups={} slices={} groups/flush={} slices/group={}", e[0], e[1], per_flush, per_group);
+}
+
+fn render_committer_slices(record: &AggregateRecord, out: &mut String) {
+	let e = record.extras();
+	let per_call = match record.calls {
+		0 => 0,
+		calls => e[0] / calls,
+	};
+	let _ = write!(out, " slices={} slices/commit={}", e[0], per_call);
 }
 
 fn render_state_range(record: &AggregateRecord, out: &mut String) {

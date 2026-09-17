@@ -23,8 +23,13 @@ use reifydb_runtime::{
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_cdc::{
 	config::{CdcCommitConfig, CdcPersistentConfig, CdcStoreConfig},
+	flush::block::flush_with,
 	store::CdcStore,
-	tier::{commit::CdcCommitBufferTier, persistent::CdcPersistentTier, read::CdcReadConfig},
+	tier::{
+		commit::CdcCommitBufferTier,
+		persistent::CdcPersistentTier,
+		read::{CdcReadBufferTier, CdcReadConfig},
+	},
 	types::cdc_resident_bytes,
 };
 use reifydb_value::{
@@ -55,16 +60,33 @@ pub struct Config {
 	pub cut_bytes: ByteSize,
 	pub oracle: Oracle,
 	pub floor_seen: u64,
+	tiers: Tiers,
 	read: Option<CdcReadConfig>,
 	spawner: ActorSpawner,
 	_guard: Option<SqliteTempPathGuard>,
+}
+
+/// The live store's own buffers, so a staged flush drains exactly what the store serves from.
+struct Tiers {
+	commit: CdcCommitBufferTier,
+	read: Option<CdcReadBufferTier>,
+}
+
+impl Tiers {
+	fn new(read: Option<CdcReadConfig>, cut_bytes: ByteSize) -> Self {
+		Self {
+			commit: CdcCommitBufferTier::new(cut_bytes, CEILING),
+			read: read.and_then(CdcReadBufferTier::new),
+		}
+	}
 }
 
 impl Config {
 	/// Rebuilds the facade with a fresh commit buffer and a cold read buffer, matching what a boot sees: nothing
 	/// still buffered survives.
 	pub fn reopen(&mut self) {
-		self.store = build_store(&self.spawner, &self.persistent, self.read, self.cut_bytes);
+		self.tiers = Tiers::new(self.read, self.cut_bytes);
+		self.store = build_store(&self.spawner, &self.persistent, &self.tiers, self.cut_bytes);
 		self.oracle.reopen();
 	}
 
@@ -139,7 +161,7 @@ pub fn flush(config: &mut Config) {
 pub fn flush_staged(config: &mut Config, observe: impl Fn(&Config)) {
 	{
 		let view: &Config = config;
-		view.store.flush_staged(&mut || observe(view));
+		flush_with(&view.tiers.commit, &view.persistent, view.tiers.read.as_ref(), &mut || observe(view));
 	}
 	config.oracle.flush();
 }
@@ -188,7 +210,8 @@ pub fn config(
 	cut_bytes: ByteSize,
 ) -> Config {
 	let (persistent, guard) = tier;
-	let store = build_store(spawner, &persistent, read, cut_bytes);
+	let tiers = Tiers::new(read, cut_bytes);
+	let store = build_store(spawner, &persistent, &tiers, cut_bytes);
 	Config {
 		name,
 		store,
@@ -196,27 +219,23 @@ pub fn config(
 		cut_bytes,
 		oracle: Oracle::new(cut_bytes.as_bytes()),
 		floor_seen: 0,
+		tiers,
 		read,
 		spawner: spawner.clone(),
 		_guard: guard,
 	}
 }
 
-pub fn build_store(
-	spawner: &ActorSpawner,
-	persistent: &CdcPersistentTier,
-	read: Option<CdcReadConfig>,
-	cut_bytes: ByteSize,
-) -> CdcStore {
+fn build_store(spawner: &ActorSpawner, persistent: &CdcPersistentTier, tiers: &Tiers, cut_bytes: ByteSize) -> CdcStore {
 	CdcStore::new(CdcStoreConfig {
 		commit: CdcCommitConfig {
-			storage: CdcCommitBufferTier::new(cut_bytes, CEILING),
+			storage: tiers.commit.clone(),
 			cut_bytes,
 			ceiling: CEILING,
 		},
 		persistent: CdcPersistentConfig::opened(persistent.clone())
 			.flush_interval(Duration::from_hours_const(1)),
-		read,
+		read: tiers.read.clone(),
 		spawner: spawner.clone(),
 		clock: Clock::Real,
 	})

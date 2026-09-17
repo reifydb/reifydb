@@ -12,10 +12,7 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_runtime::{
-	actor::mailbox::ActorRef,
-	sync::{condvar::Condvar, mutex::Mutex},
-};
+use reifydb_runtime::{actor::mailbox::ActorRef, sync::mutex::Mutex};
 use reifydb_value::{byte_size::ByteSize, count::Count};
 use tracing::instrument;
 
@@ -31,7 +28,6 @@ pub struct CdcCommitMetrics {
 
 struct CdcCommitBufferTierInner {
 	inner: Mutex<BufferInner>,
-	idle: Condvar,
 	flush: Mutex<()>,
 	flusher: OnceLock<ActorRef<FlushMessage>>,
 	cut_bytes: ByteSize,
@@ -44,7 +40,6 @@ impl CdcCommitBufferTierInner {
 	fn new(cut_bytes: ByteSize, ceiling: ByteSize) -> Self {
 		Self {
 			inner: Default::default(),
-			idle: Default::default(),
 			flush: Default::default(),
 			flusher: OnceLock::new(),
 			cut_bytes,

@@ -121,6 +121,9 @@ impl FlushEngine {
 			Some(cutoff) => self.sweep_once(&mut state, cutoff, budget),
 			None => (Progress::Exhausted, 0),
 		};
+		if let Some(range) = &self.range {
+			range.relieve();
+		}
 		SweepOutcome {
 			progress,
 			reclaimed,
@@ -259,6 +262,9 @@ impl FlushEngine {
 			if let Some(count) = self.drop_from_commit(kind, to_drop) {
 				dropped += count;
 			}
+		}
+		if let Some(range) = &self.range {
+			range.relieve();
 		}
 
 		if !evictions.is_empty() || !persists.is_empty() {

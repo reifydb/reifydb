@@ -49,7 +49,7 @@ use crate::{
 	commit::committer::{CommitterMessage, FlowSlice, SliceCommitReply},
 	control::{
 		actor::{FlowActor, FlowActorParams},
-		health::FlowHealthRegistry,
+		health::{FlowHealthRegistry, StallWatch},
 	},
 	discovery::{
 		ddl::{extract_deleted_flow_ids, extract_new_flows},
@@ -68,6 +68,8 @@ const FLOW_RETRY_LIMIT: u32 = 3;
 const FLOW_RETRY_BACKOFF_MS: u64 = 50;
 
 const FLOW_STALL_TIMEOUT_MS: i64 = 30_000;
+
+const FLOW_STALL_CHECK_INTERVAL_MS: i64 = 1_000;
 
 const FLOW_FULL_WAKE_INTERVAL_MS: i64 = 100;
 
@@ -131,6 +133,7 @@ pub struct SupervisorState {
 	last_control_commit_at: DateTime,
 	wake_sets: BTreeMap<ObjectId, BTreeSet<FlowId>>,
 	full_wake_armed: bool,
+	stall_watches: BTreeMap<FlowId, StallWatch>,
 }
 
 type PreparedFlow = (FlowDag, CommitVersion, Arc<BTreeSet<ObjectId>>, Option<Arc<BTreeSet<u64>>>);
@@ -331,6 +334,32 @@ impl FlowSupervisor {
 		}
 	}
 
+	fn handle_check_stalls(&self, state: &mut SupervisorState, ctx: &Context<FlowSupervisorMessage>) {
+		ctx.schedule_once(Duration::from_milliseconds(FLOW_STALL_CHECK_INTERVAL_MS).unwrap(), || {
+			FlowSupervisorMessage::CheckStalls
+		});
+		let timeout = Duration::from_milliseconds(FLOW_STALL_TIMEOUT_MS).unwrap();
+		let safe = self.engine.cdc_producer_watermark().min(self.engine.done_until()).min(self.control.get());
+		let positions = self.flow_tracker.all();
+		let now = self.clock.now();
+		for flow_id in state.flows.keys() {
+			let Some(cursor) = positions.get(flow_id).copied() else {
+				continue;
+			};
+			let watch = state
+				.stall_watches
+				.entry(*flow_id)
+				.or_insert_with(|| StallWatch::new(*flow_id, cursor, timeout));
+			let Some(stall) = watch.observe(&self.health, cursor, safe, now) else {
+				continue;
+			};
+			error!(
+				"flow {} has not advanced past version {} for {} while {} versions of input are available",
+				flow_id.0, stall.cursor.0, timeout, stall.pending,
+			);
+		}
+	}
+
 	fn handle_wake_all(&self, state: &mut SupervisorState) {
 		state.full_wake_armed = false;
 		self.flow_tracker.wake_flows_now(state.flows.keys().copied());
@@ -351,6 +380,7 @@ impl FlowSupervisor {
 				changed = true;
 			}
 			state.sources.remove(flow_id);
+			state.stall_watches.remove(flow_id);
 			self.health.clear(*flow_id);
 			self.flow_catalog.remove(*flow_id);
 			state.analyzer.remove(*flow_id);
@@ -554,7 +584,6 @@ impl FlowSupervisor {
 			checkpoint_max_age: self.checkpoint_max_age,
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
-			stall_timeout: Duration::from_milliseconds(FLOW_STALL_TIMEOUT_MS).unwrap(),
 		};
 		let actor = FlowActor::new(params);
 		let pending = actor.wake_pending();
@@ -670,6 +699,9 @@ impl Actor for FlowSupervisor {
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
 		ctx.schedule_once(self.frontier_persist, || FlowSupervisorMessage::PersistFrontiers);
+		ctx.schedule_once(Duration::from_milliseconds(FLOW_STALL_CHECK_INTERVAL_MS).unwrap(), || {
+			FlowSupervisorMessage::CheckStalls
+		});
 		SupervisorState {
 			analyzer: FlowGraphAnalyzer::new(),
 			flows: BTreeMap::new(),
@@ -678,6 +710,7 @@ impl Actor for FlowSupervisor {
 			last_control_commit_at: self.clock.now(),
 			wake_sets: BTreeMap::new(),
 			full_wake_armed: false,
+			stall_watches: BTreeMap::new(),
 		}
 	}
 
@@ -690,6 +723,7 @@ impl Actor for FlowSupervisor {
 			FlowSupervisorMessage::Wake => self.handle_wake(state, ctx),
 			FlowSupervisorMessage::WakeAll => self.handle_wake_all(state),
 			FlowSupervisorMessage::PersistFrontiers => self.handle_persist_frontiers(ctx),
+			FlowSupervisorMessage::CheckStalls => self.handle_check_stalls(state, ctx),
 		}
 		Directive::Continue
 	}

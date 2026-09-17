@@ -132,8 +132,10 @@ impl FlowSubsystem {
 		);
 		let committer_handle = flow_scope
 			.spawn_flow("flow-committer", CommitterActor::new(committer.clone(), commit_handle.clone()));
-		let terminal_committer_handle =
-			flow_scope.spawn_flow("flow-committer-terminal", CommitterActor::new(committer, commit_handle));
+		let terminal_committer_handle = flow_scope.spawn_flow(
+			"flow-committer-terminal",
+			CommitterActor::new(committer, commit_handle).named("flow-committer-terminal"),
+		);
 		let committer_ref = committer_handle.actor_ref().clone();
 		let terminal_committer_ref = terminal_committer_handle.actor_ref().clone();
 
@@ -197,9 +199,11 @@ impl FlowSubsystem {
 		);
 
 		let poisoned_health = health.clone();
+		let stalled_health = health.clone();
 		ioc.register_service::<FlowCaughtUpWatermark>(FlowCaughtUpWatermark::new(
 			move || materialization.caught_up(),
 			move || poisoned_health.poisoned(),
+			move || stalled_health.stalled(),
 		));
 
 		ioc.register_service::<Arc<dyn ConsumerPositions>>(Arc::new(flow_tracker.clone()));
@@ -353,13 +357,26 @@ impl Subsystem for FlowSubsystem {
 			return HealthStatus::Unknown;
 		}
 		let poisoned = self.health.poisoned();
-		if poisoned.is_empty() {
+		let stalled = self.health.stalled();
+		if poisoned.is_empty() && stalled.is_empty() {
 			return HealthStatus::Healthy;
 		}
-		let flows: Vec<String> =
-			poisoned.iter().map(|(id, reason)| format!("flow {}: {}", id.0, reason)).collect();
+		let mut problems: Vec<String> = Vec::new();
+		if !poisoned.is_empty() {
+			let flows: Vec<String> =
+				poisoned.iter().map(|(id, reason)| format!("flow {}: {}", id.0, reason)).collect();
+			problems.push(format!("{} deferred flow(s) poisoned: {}", poisoned.len(), flows.join("; ")));
+		}
+		if !stalled.is_empty() {
+			let flows: Vec<String> = stalled.iter().map(|id| format!("flow {}", id.0)).collect();
+			problems.push(format!(
+				"{} deferred flow(s) stalled with input pending: {}",
+				stalled.len(),
+				flows.join("; ")
+			));
+		}
 		HealthStatus::Degraded {
-			description: format!("{} deferred flow(s) poisoned: {}", poisoned.len(), flows.join("; ")),
+			description: problems.join("; "),
 		}
 	}
 

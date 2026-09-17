@@ -80,7 +80,7 @@ impl LatestInnerHashJoin {
 						.unwrap_or_default());
 				}
 				add_to_state_entry_batch(host, &mut ctx.state.left, key_hash, post, indices)?;
-				match read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())? {
+				match read_right_slot(host, &ctx.state.right, key_hash)? {
 					Some(slot) => Ok(vec![Diff::insert(
 						ctx.operator.join_left_with_slot(post, indices, &slot),
 					)]),
@@ -108,10 +108,10 @@ impl LatestInnerHashJoin {
 				right_store: &ctx.state.right,
 			};
 			retire_slot(host, &snapshot_ctx, key_hash)?;
-			write_right_rows(host, &ctx.state.right, key_hash, post, indices)?;
+			write_right_rows(host, &ctx.state.right, key_hash, post, indices, ctx.operator.pick())?;
 			return Ok(Vec::new());
 		}
-		let old = read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())?;
+		let old = read_right_slot(host, &ctx.state.right, key_hash)?;
 		let new = overwrite_right_slot(host, &ctx.state.right, key_hash, post, indices, ctx.operator.pick())?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
@@ -169,15 +169,14 @@ impl LatestInnerHashJoin {
 					}
 					return Ok(withdrawn);
 				}
-				let result =
-					match read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())? {
-						Some(slot) => {
-							vec![Diff::remove(
-								ctx.operator.join_left_with_slot(pre, indices, &slot),
-							)]
-						}
-						None => Vec::new(),
-					};
+				let result = match read_right_slot(host, &ctx.state.right, key_hash)? {
+					Some(slot) => {
+						vec![Diff::remove(
+							ctx.operator.join_left_with_slot(pre, indices, &slot),
+						)]
+					}
+					None => Vec::new(),
+				};
 				let group = ctx.state.left.group_of(key_hash);
 				for &idx in indices {
 					ctx.state.left.remove_row_in(host, group, pre.row_numbers()[idx])?;
@@ -208,9 +207,9 @@ impl LatestInnerHashJoin {
 			remove_right_rows(host, &ctx.state.right, key_hash, &numbers)?;
 			return Ok(Vec::new());
 		}
-		let old = read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())?;
+		let old = read_right_slot(host, &ctx.state.right, key_hash)?;
 		remove_right_rows(host, &ctx.state.right, key_hash, &numbers)?;
-		let new = read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())?;
+		let new = read_right_slot(host, &ctx.state.right, key_hash)?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
 		let Some(old_slot) = old else {
@@ -308,7 +307,7 @@ impl LatestInnerHashJoin {
 						idx,
 					)?;
 				}
-				match read_right_slot(host, &ctx.state.right, keys.pre, ctx.operator.pick())? {
+				match read_right_slot(host, &ctx.state.right, keys.pre)? {
 					Some(slot) => {
 						let pre_joined = ctx.operator.join_left_with_slot(pre, indices, &slot);
 						let post_joined =

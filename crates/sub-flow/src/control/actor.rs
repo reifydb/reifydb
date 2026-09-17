@@ -60,8 +60,11 @@ use crate::{
 	builder::CustomOperators,
 	commit::{
 		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply},
-		merge::{ObjectIndex, ReadCache, StreamRead, UpstreamRead, UpstreamReads, merge},
-		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep},
+		merge::{
+			HeldReads, ObjectIndex, ReadCache, ReadStream, StepCut, StreamRead, UpstreamRead,
+			UpstreamReads, merge,
+		},
+		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep, cuts_per_source},
 	},
 	control::health::FlowHealthRegistry,
 	discovery::loader::{LoaderMessage, LoaderReply},
@@ -95,7 +98,6 @@ pub struct FlowActorParams {
 	pub checkpoint_max_age: Duration,
 	pub retry_limit: u32,
 	pub retry_backoff: Duration,
-	pub stall_timeout: Duration,
 }
 
 pub struct FlowActor {
@@ -121,7 +123,6 @@ pub struct FlowActor {
 	retry_limit: u32,
 	retry_backoff: Duration,
 	checkpoint_max_age: Duration,
-	stall_timeout: Duration,
 	initial_source_objects: Arc<BTreeSet<ObjectId>>,
 	initial_completeness_objects: Option<Arc<BTreeSet<u64>>>,
 	initial_cursor: CommitVersion,
@@ -141,12 +142,10 @@ pub struct FlowActorState {
 	pending_holds: WatermarkHolds,
 	drain_after_commit: bool,
 	last_checkpoint_at: DateTime,
-	stall_cursor: CommitVersion,
-	stall_since: Option<DateTime>,
-	stall_reported: bool,
 	view_cursors: HashMap<FlowId, CommitVersion>,
 	pending_view_cursors: HashMap<FlowId, CommitVersion>,
 	read_cache: ReadCache,
+	held_reads: HeldReads,
 	object_index: ObjectIndex,
 	loading_from: CommitVersion,
 }
@@ -180,7 +179,6 @@ impl FlowActor {
 			retry_limit: params.retry_limit,
 			retry_backoff: params.retry_backoff,
 			checkpoint_max_age: params.checkpoint_max_age,
-			stall_timeout: params.stall_timeout,
 			initial_source_objects: params.source_objects,
 			initial_completeness_objects: params.completeness_objects,
 			initial_cursor: params.cursor,
@@ -278,45 +276,9 @@ impl FlowActor {
 		self.engine.cdc_producer_watermark().min(self.engine.done_until()).min(self.control.get())
 	}
 
-	fn note_stall(&self, state: &mut FlowActorState, safe: CommitVersion) {
-		if safe <= state.cursor || state.poisoned {
-			self.clear_stall(state);
-			return;
-		}
-		if state.cursor != state.stall_cursor {
-			state.stall_cursor = state.cursor;
-			self.clear_stall(state);
-		}
-		let now = self.clock.now();
-		let since = *state.stall_since.get_or_insert(now);
-		if state.stall_reported || now - since < self.stall_timeout {
-			return;
-		}
-		state.stall_reported = true;
-		self.health.mark_stalled(self.flow_id);
-		error!(
-			"flow {} has not advanced past version {} for {} while {} versions of input are available: committing={} awaiting_load={}",
-			self.flow_id.0,
-			state.cursor.0,
-			self.stall_timeout,
-			safe.0.saturating_sub(state.cursor.0),
-			state.committing,
-			state.awaiting_load,
-		);
-	}
-
-	fn clear_stall(&self, state: &mut FlowActorState) {
-		if state.stall_reported {
-			self.health.clear_stall(self.flow_id);
-		}
-		state.stall_since = None;
-		state.stall_reported = false;
-	}
-
 	fn on_drain(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		let woken = self.wake_pending.swap(false, Ordering::SeqCst);
 		let safe = self.safe_bound();
-		self.note_stall(state, safe);
 		if state.poisoned || state.committing || state.awaiting_load {
 			if woken && !state.poisoned {
 				state.drain_after_commit = true;
@@ -349,19 +311,22 @@ impl FlowActor {
 		upstreams: &FlowUpstreams,
 	) {
 		let cursor = state.cursor;
-		let Some(tables) = self.read_range(state, ctx, cursor, safe) else {
+		let Some(tables) = self.read_stream(state, ctx, ReadStream::Tables, cursor, safe) else {
 			return;
 		};
 		let mut upstream_reads = UpstreamReads {
 			reads: HashMap::with_capacity(upstreams.len()),
 			index: take(&mut state.object_index),
 		};
+		let mut froms: HashMap<FlowId, CommitVersion> = HashMap::with_capacity(upstreams.len());
 		for (producer, views) in upstreams {
 			let from = state.view_cursors.get(producer).copied().unwrap_or(cursor).max(cursor);
-			let Some(read) = self.read_range(state, ctx, from, safe) else {
-				state.object_index = upstream_reads.index;
+			let Some(read) = self.read_stream(state, ctx, ReadStream::Upstream(*producer), from, safe)
+			else {
+				hold_reads(state, cursor, tables, upstream_reads, &froms);
 				return;
 			};
+			froms.insert(*producer, from);
 			let mut upstream = UpstreamRead {
 				views: views.clone(),
 				position: None,
@@ -369,10 +334,18 @@ impl FlowActor {
 			};
 			while upstream.needs_extension(cursor, &upstream_reads.index) {
 				let Some(next) = self.read_range(state, ctx, upstream.read.read_to, safe) else {
-					state.object_index = upstream_reads.index;
+					upstream_reads.reads.insert(*producer, upstream);
+					hold_reads(state, cursor, tables, upstream_reads, &froms);
 					return;
 				};
-				upstream.read.items.extend(next.items);
+				upstream.read.items = upstream
+					.read
+					.items
+					.iter()
+					.chain(next.items.iter())
+					.cloned()
+					.collect::<Vec<_>>()
+					.into();
 				upstream.read.read_to = next.read_to;
 				upstream.read.more = next.more;
 			}
@@ -380,7 +353,12 @@ impl FlowActor {
 				self.flow_tracker.upstream_complete_through(*producer, upstream.read.read_to);
 			upstream_reads.reads.insert(*producer, upstream);
 		}
-		let merged = merge(cursor, &tables, &upstream_reads.reads, &upstream_reads.index);
+		state.held_reads.clear();
+		let cut = StepCut {
+			source_objects: &state.source_objects,
+			per_source: cuts_per_source(self.flow_tracker.has_readers(self.flow_id), &state.source_objects),
+		};
+		let merged = merge(cursor, &tables, &upstream_reads.reads, &upstream_reads.index, &cut);
 		if merged.target <= cursor {
 			let moved = self.advance_view_cursors(state, &upstream_reads, cursor);
 			state.object_index = upstream_reads.index;
@@ -412,7 +390,7 @@ impl FlowActor {
 				advance_to,
 				more,
 			} => {
-				state.read_cache.insert(from, items.clone(), advance_to);
+				let items = state.read_cache.insert(from, items, advance_to);
 				Some(StreamRead {
 					items,
 					read_to: advance_to,
@@ -424,6 +402,20 @@ impl FlowActor {
 				None
 			}
 		}
+	}
+
+	fn read_stream(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		stream: ReadStream,
+		from: CommitVersion,
+		up_to: CommitVersion,
+	) -> Option<StreamRead> {
+		if let Some(read) = state.held_reads.take(stream, from, up_to) {
+			return Some(read);
+		}
+		self.read_range(state, ctx, from, up_to)
 	}
 
 	fn advance_view_cursors(
@@ -811,6 +803,22 @@ impl FlowActor {
 	}
 }
 
+fn hold_reads(
+	state: &mut FlowActorState,
+	cursor: CommitVersion,
+	tables: StreamRead,
+	reads: UpstreamReads,
+	froms: &HashMap<FlowId, CommitVersion>,
+) {
+	state.held_reads.hold(ReadStream::Tables, cursor, tables);
+	for (producer, upstream) in reads.reads {
+		if let Some(from) = froms.get(&producer) {
+			state.held_reads.hold(ReadStream::Upstream(producer), *from, upstream.read);
+		}
+	}
+	state.object_index = reads.index;
+}
+
 impl Actor for FlowActor {
 	type State = FlowActorState;
 	type Message = FlowActorMessage;
@@ -849,12 +857,10 @@ impl Actor for FlowActor {
 			pending_holds: WatermarkHolds::new(),
 			drain_after_commit: false,
 			last_checkpoint_at: self.clock.now(),
-			stall_cursor: self.initial_cursor,
-			stall_since: None,
-			stall_reported: false,
 			view_cursors: HashMap::new(),
 			pending_view_cursors: HashMap::new(),
 			read_cache: ReadCache::default(),
+			held_reads: HeldReads::default(),
 			object_index: ObjectIndex::default(),
 			loading_from: self.initial_cursor,
 		};
@@ -1169,7 +1175,6 @@ mod pull_protocol {
 					checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 					retry_limit: 3,
 					retry_backoff: Duration::from_milliseconds(50).unwrap(),
-					stall_timeout: Duration::from_milliseconds(30_000).unwrap(),
 				}),
 			);
 
@@ -2094,7 +2099,6 @@ mod pull_protocol {
 				checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 				retry_limit: 3,
 				retry_backoff: Duration::from_milliseconds(50).unwrap(),
-				stall_timeout: Duration::from_milliseconds(30_000).unwrap(),
 			}),
 		);
 
@@ -2528,7 +2532,6 @@ mod tick_failures {
 			checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 			retry_limit: RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(50).unwrap(),
-			stall_timeout: Duration::from_milliseconds(30_000).unwrap(),
 		});
 
 		(te, health, actor)
@@ -2813,265 +2816,6 @@ mod tick_failures {
 		assert!(
 			!pending.load(Ordering::SeqCst),
 			"the drain must clear the pending wake, or every later wake is merged away and the flow never wakes"
-		);
-	}
-}
-
-#[cfg(all(test, not(target_arch = "wasm32")))]
-mod stall_watchdog {
-	use std::{collections::HashMap, marker::PhantomData};
-
-	use reifydb_engine::engine::StandardEngine;
-	use reifydb_flow::transaction::substrate::FlowSubstrate;
-	use reifydb_runtime::{
-		actor::{
-			context::Context,
-			system::ActorConfig,
-			testing::TestHarness,
-			traits::{Actor, Directive},
-		},
-		context::clock::MockClock,
-	};
-	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::transaction::Transaction;
-
-	use super::*;
-	use crate::{builder::CustomOperators, catalog::FlowCatalog};
-
-	const STALL_MS: u64 = 1_000;
-
-	struct Idle<M> {
-		_marker: PhantomData<fn() -> M>,
-	}
-
-	impl<M: Send + 'static> Actor for Idle<M> {
-		type State = ();
-		type Message = M;
-
-		fn init(&self, _ctx: &Context<Self::Message>) {}
-
-		fn handle(&self, _state: &mut (), _msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
-			Directive::Continue
-		}
-
-		fn config(&self) -> ActorConfig {
-			ActorConfig::new()
-		}
-	}
-
-	fn idle<M: Send + 'static>(engine: &StandardEngine, name: &str) -> ActorRef<M> {
-		engine.spawner()
-			.spawn_ephemeral(
-				name,
-				Idle::<M> {
-					_marker: PhantomData,
-				},
-			)
-			.actor_ref()
-			.clone()
-	}
-
-	struct Fixture {
-		_te: TestEngine,
-		health: FlowHealthRegistry,
-		clock: MockClock,
-		actor: FlowActor,
-	}
-
-	fn fixture() -> Fixture {
-		let te = TestEngine::builder().with_cdc().build();
-		let engine = te.inner().clone();
-
-		te.admin("CREATE NAMESPACE app");
-		te.admin("CREATE TABLE app::t { id: int4 }");
-		te.admin("CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
-
-		let flow_catalog = FlowCatalog::new(engine.catalog());
-		let flow_id = {
-			let mut query = engine.begin_query(IdentityId::system()).expect("query");
-			let flows = engine
-				.catalog()
-				.list_flows_all(&mut Transaction::Query(&mut query))
-				.expect("list flows");
-			flows.first().expect("one flow").id
-		};
-		let flow = {
-			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
-			let (flow, _) = flow_catalog
-				.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)
-				.expect("load flow");
-			txn.rollback().expect("rollback");
-			flow
-		};
-
-		let health = FlowHealthRegistry::new();
-		let clock = MockClock::from_millis(0);
-		let control = ControlFrontier::new();
-		control.store(CommitVersion(u64::MAX));
-
-		let actor = FlowActor::new(FlowActorParams {
-			engine: engine.clone(),
-			committer: idle(&engine, "stall-committer"),
-			terminal_committer: idle(&engine, "stall-terminal-committer"),
-			backlog: FlowBacklog::new(ByteSize::from_mib(8)),
-			loader: idle(&engine, "stall-loader"),
-			control,
-			custom_operators: CustomOperators::new(HashMap::new()),
-			substrate: FlowSubstrate::with_dictionary(
-				engine.dictionary_allocators(),
-				engine.operator_state(),
-			),
-			operator_samples: OperatorSampleRegistry::new(),
-			clock: Clock::Mock(clock.clone()),
-			health: health.clone(),
-			flow_tracker: FlowPositionTracker::new(),
-			flow,
-			source_objects: Arc::new(BTreeSet::new()),
-			completeness_objects: None,
-			cursor: CommitVersion(0),
-			pull_batch_bytes: ByteSize::from_mib(8),
-			load_batch_bytes: ByteSize::from_mib(8),
-			checkpoint_lag: 10_000,
-			checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
-			retry_limit: 3,
-			retry_backoff: Duration::from_milliseconds(50).unwrap(),
-			stall_timeout: Duration::from_milliseconds(STALL_MS as i64).unwrap(),
-		});
-
-		Fixture {
-			_te: te,
-			health,
-			clock,
-			actor,
-		}
-	}
-
-	fn drain(harness: &mut TestHarness<FlowActor>) {
-		harness.send(FlowActorMessage::Drain);
-		assert_eq!(harness.process_one(), Some(Directive::Continue), "the drain must be handled");
-	}
-
-	#[test]
-	fn a_cursor_that_never_advances_while_input_is_available_is_reported_stalled() {
-		let f = fixture();
-		let health = f.health.clone();
-		let clock = f.clock.clone();
-		let mut harness = TestHarness::new(f.actor);
-
-		harness.state_mut().committing = true;
-		harness.state_mut().cursor = CommitVersion(0);
-
-		drain(&mut harness);
-		assert_eq!(
-			health.stalled_count(),
-			0,
-			"the first drain only starts the clock, or every transient pause reports a stall"
-		);
-
-		clock.set_millis(STALL_MS + 1);
-		drain(&mut harness);
-
-		assert_eq!(
-			health.stalled_count(),
-			1,
-			"a cursor pinned below the safe bound past the timeout must reach the registry, or the \
-			 freeze stays invisible"
-		);
-		assert_eq!(health.stalls(), 1, "the stall must count once so a recovered freeze is still evidence");
-	}
-
-	#[test]
-	fn a_stall_is_reported_even_while_a_commit_latch_is_held() {
-		let f = fixture();
-		let health = f.health.clone();
-		let clock = f.clock.clone();
-		let mut harness = TestHarness::new(f.actor);
-
-		harness.state_mut().committing = true;
-		harness.state_mut().awaiting_load = true;
-
-		drain(&mut harness);
-		clock.set_millis(STALL_MS + 1);
-		drain(&mut harness);
-
-		assert_eq!(
-			health.stalled_count(),
-			1,
-			"a latch that never clears is exactly the wedge worth reporting, so the check must run \
-			 before the latch gate returns"
-		);
-	}
-
-	#[test]
-	fn a_cursor_that_advances_restarts_the_stall_clock() {
-		let f = fixture();
-		let health = f.health.clone();
-		let clock = f.clock.clone();
-		let mut harness = TestHarness::new(f.actor);
-
-		harness.state_mut().committing = true;
-
-		drain(&mut harness);
-		clock.set_millis(STALL_MS - 1);
-		harness.state_mut().cursor = CommitVersion(1);
-		drain(&mut harness);
-
-		clock.set_millis(STALL_MS + 1);
-		drain(&mut harness);
-		assert_eq!(
-			health.stalled_count(),
-			0,
-			"progress must restart the window, otherwise a slow but living flow is reported dead"
-		);
-
-		clock.set_millis(2 * STALL_MS + 2);
-		drain(&mut harness);
-		assert_eq!(
-			health.stalled_count(),
-			1,
-			"the restarted window must still expire, or one advance buys permanent immunity"
-		);
-	}
-
-	#[test]
-	fn a_flow_that_recovers_clears_its_stall() {
-		let f = fixture();
-		let health = f.health.clone();
-		let clock = f.clock.clone();
-		let mut harness = TestHarness::new(f.actor);
-
-		harness.state_mut().committing = true;
-
-		drain(&mut harness);
-		clock.set_millis(STALL_MS + 1);
-		drain(&mut harness);
-		assert_eq!(health.stalled_count(), 1, "precondition: the flow must be reported stalled");
-
-		harness.state_mut().cursor = CommitVersion(1);
-		drain(&mut harness);
-
-		assert_eq!(health.stalled_count(), 0, "a flow that moves again must leave the registry");
-		assert_eq!(health.stalls(), 1, "clearing must not erase the record that it happened");
-	}
-
-	#[test]
-	fn a_caught_up_flow_is_never_reported_stalled() {
-		let f = fixture();
-		let health = f.health.clone();
-		let clock = f.clock.clone();
-		let mut harness = TestHarness::new(f.actor);
-
-		harness.state_mut().committing = true;
-		harness.state_mut().cursor = CommitVersion(u64::MAX);
-
-		drain(&mut harness);
-		clock.set_millis(10 * STALL_MS);
-		drain(&mut harness);
-
-		assert_eq!(
-			health.stalled_count(),
-			0,
-			"an idle flow with nothing to read is not stalled, and reporting it would bury the real ones"
 		);
 	}
 }

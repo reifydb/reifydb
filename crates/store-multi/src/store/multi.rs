@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(test)]
+use std::cell::RefCell;
 use std::{
 	collections::{BTreeMap, HashMap, btree_map::Entry},
 	ops::{Bound, RangeBounds},
@@ -52,6 +54,38 @@ use crate::{
 };
 
 const TIER_SCAN_CHUNK_SIZE: usize = 32;
+
+#[cfg(test)]
+thread_local! {
+	static PASS_INTERLOCK: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
+	static READ_INTERLOCK: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn arm_pass_interlock(hook: impl Fn() + 'static) {
+	PASS_INTERLOCK.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+}
+
+#[cfg(test)]
+fn pass_interlock() {
+	let hook = PASS_INTERLOCK.with(|slot| slot.borrow_mut().take());
+	if let Some(hook) = hook {
+		hook();
+	}
+}
+
+#[cfg(test)]
+fn arm_read_interlock(hook: impl Fn() + 'static) {
+	READ_INTERLOCK.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+}
+
+#[cfg(test)]
+fn read_interlock() {
+	let hook = READ_INTERLOCK.with(|slot| slot.borrow_mut().take());
+	if let Some(hook) = hook {
+		hook();
+	}
+}
 
 #[derive(Clone, Copy)]
 struct ClassifiedKey<'a> {
@@ -774,6 +808,11 @@ impl StandardMultiStore {
 				self.step_persistent_cached(&scan, cursor, &mut collected, false)?;
 			}
 
+			apply_forward_horizon(cursor, &mut collected, self.persistent.is_some());
+
+			#[cfg(test)]
+			pass_interlock();
+
 			if cursor.commit.is_exhausted() && cursor.persistent.is_exhausted() {
 				if reread_persistent_absent_before_its_table(cursor) {
 					continue;
@@ -782,8 +821,6 @@ impl StandardMultiStore {
 				break;
 			}
 		}
-
-		apply_forward_horizon(cursor, &mut collected);
 
 		let items = decode_range_rows(collected)?;
 
@@ -897,6 +934,11 @@ impl StandardMultiStore {
 				self.step_persistent_cached(&scan, cursor, &mut collected, true)?;
 			}
 
+			apply_reverse_horizon(cursor, &mut collected, self.persistent.is_some());
+
+			#[cfg(test)]
+			pass_interlock();
+
 			if cursor.commit.is_exhausted() && cursor.persistent.is_exhausted() {
 				if reread_persistent_absent_before_its_table(cursor) {
 					continue;
@@ -905,8 +947,6 @@ impl StandardMultiStore {
 				break;
 			}
 		}
-
-		apply_reverse_horizon(cursor, &mut collected);
 
 		let mut items = decode_range_rows(collected)?;
 		items.reverse();
@@ -974,6 +1014,7 @@ impl StandardMultiStore {
 	) -> Result<()> {
 		let resumed_at = cursor.persistent.last_key().cloned();
 		let head_token = self.range.as_ref().map(|range| range.head_token());
+		let retractions = self.range.as_ref().map(|range| range.retractions());
 		let batch = if descending {
 			persistent.range_rev_next(
 				scan.table,
@@ -993,12 +1034,15 @@ impl StandardMultiStore {
 				TIER_SCAN_CHUNK_SIZE,
 			)?
 		};
+		#[cfg(test)]
+		read_interlock();
 		if !descending && cursor.materialize {
 			self.materialize_scanned_chunk(
 				persistent,
 				scan,
 				resumed_at.as_ref(),
 				head_token,
+				retractions,
 				&cursor.persistent,
 				&batch,
 			)?;
@@ -1007,16 +1051,19 @@ impl StandardMultiStore {
 	}
 
 	#[inline]
+	#[allow(clippy::too_many_arguments)]
 	fn materialize_scanned_chunk(
 		&self,
 		persistent: &MultiPersistentTier,
 		scan: &TierScanQuery,
 		resumed_at: Option<&EncodedKey>,
 		head_token: Option<u64>,
+		retractions: Option<u64>,
 		cursor: &RangeCursor,
 		batch: &RangeBatch,
 	) -> Result<()> {
-		let (Some(range), Some(head_token), true) = (&self.range, head_token, scan.table.caches_ranges())
+		let (Some(range), Some(head_token), Some(retractions), true) =
+			(&self.range, head_token, retractions, scan.table.caches_ranges())
 		else {
 			return Ok(());
 		};
@@ -1043,7 +1090,7 @@ impl StandardMultiStore {
 			(false, false, Some(last)) => last.clone(),
 			(false, false, None) => return Ok(()),
 		};
-		range.materialize_scanned_chunk(scan.table, &lo, &through, &batch.entries, head_token);
+		range.materialize_scanned_chunk(scan.table, &lo, &through, &batch.entries, head_token, retractions);
 		Ok(())
 	}
 }
@@ -1066,22 +1113,36 @@ fn mark_unconfigured_exhausted(store: &StandardMultiStore, cursor: &mut MultiVer
 fn apply_forward_horizon(
 	cursor: &mut MultiVersionRangeCursor,
 	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
+	persistent_configured: bool,
 ) {
 	let horizon = forward_horizon(cursor);
 	if let Some(h) = horizon {
 		collected.retain(|k, _| k.as_slice() <= h.as_slice());
 		rewind_over_advanced_forward(cursor, &h);
+		if persistent_configured {
+			rewind_finished_persistent(cursor, &h);
+		}
 	}
 }
 
 fn apply_reverse_horizon(
 	cursor: &mut MultiVersionRangeCursor,
 	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
+	persistent_configured: bool,
 ) {
 	let horizon = reverse_horizon(cursor);
 	if let Some(h) = horizon {
 		collected.retain(|k, _| k.as_slice() >= h.as_slice());
 		rewind_over_advanced_reverse(cursor, &h);
+		if persistent_configured {
+			rewind_finished_persistent(cursor, &h);
+		}
+	}
+}
+
+fn rewind_finished_persistent(cursor: &mut MultiVersionRangeCursor, horizon: &EncodedKey) {
+	if cursor.persistent.is_exhausted() && !cursor.commit.is_exhausted() {
+		cursor.persistent.resume(horizon.clone());
 	}
 }
 
@@ -1473,9 +1534,17 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod cache_tests {
-	use std::{collections::HashMap, ops::Bound};
+	use std::{
+		cell::Cell,
+		collections::HashMap,
+		ops::{Bound, RangeInclusive},
+		rc::Rc,
+	};
 
-	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+	use reifydb_codec::{
+		key::encoded::{EncodedKey, EncodedKeyRange},
+		row::bytes::EncodedBytes,
+	};
 	use reifydb_core::{
 		common::CommitVersion,
 		delta::Delta,
@@ -1491,10 +1560,12 @@ mod cache_tests {
 			row::{RowKey, RowKeyRange, StorageRowKey},
 		},
 	};
-	use reifydb_store_commit::{MultiVersionScope, RangeStop, RawEntry, VersionedGetResult};
+	use reifydb_store_commit::{MultiVersionScope, RangeCursor, RangeStop, RawEntry, VersionedGetResult};
 	use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
 
-	use super::{MultiVersionRangeCursor, RowRangeCursor};
+	use super::{
+		MultiVersionRangeCursor, RowRangeCursor, TIER_SCAN_CHUNK_SIZE, arm_pass_interlock, arm_read_interlock,
+	};
 	use crate::{
 		store::StandardMultiStore,
 		tier::{
@@ -1781,6 +1852,7 @@ mod cache_tests {
 					value: Some(CowVec::new(b"neighbor".to_vec())),
 				}],
 				range.head_token(),
+				range.retractions(),
 			),
 			"the seeding chunk must publish its claim"
 		);
@@ -1866,6 +1938,24 @@ mod cache_tests {
 				..MultiRangeConfig::testing()
 			},
 		)
+	}
+
+	fn persistent_table_stop(store: &StandardMultiStore) -> Option<RangeStop> {
+		let persistent = store.persistent.as_ref().expect("the store must have a persistent tier");
+		let mut probe = RangeCursor::new();
+		persistent
+			.range_next(
+				EntryKind::Source(STORAGE, EntryLayout::Row),
+				&mut probe,
+				Bound::Unbounded,
+				Bound::Unbounded,
+				MultiVersionScope::AsOf {
+					read: CommitVersion(1),
+				},
+				TIER_SCAN_CHUNK_SIZE,
+			)
+			.unwrap();
+		probe.stop().copied()
 	}
 
 	const PERSISTED: u64 = 200;
@@ -1988,8 +2078,8 @@ mod cache_tests {
 			.unwrap();
 		assert!(first.has_more, "two hundred rows cannot fit in one tier chunk, so the scan must continue");
 		assert_eq!(
-			cursor.persistent.stop(),
-			Some(&RangeStop::AbsentTable),
+			persistent_table_stop(&store),
+			Some(RangeStop::AbsentTable),
 			"nothing is flushed yet, so this test is not exercising the interleaving it exists for"
 		);
 
@@ -2027,8 +2117,8 @@ mod cache_tests {
 			.unwrap();
 		assert!(first.has_more, "two hundred rows cannot fit in one tier chunk, so the scan must continue");
 		assert_eq!(
-			cursor.persistent.stop(),
-			Some(&RangeStop::AbsentTable),
+			persistent_table_stop(&store),
+			Some(RangeStop::AbsentTable),
 			"nothing is flushed yet, so this test is not exercising the interleaving it exists for"
 		);
 
@@ -2043,6 +2133,365 @@ mod cache_tests {
 			seen,
 			(1..=ROWS).collect::<Vec<_>>(),
 			"the reverse scan dropped rows the flush moved out from under it"
+		);
+	}
+
+	const WHOLE_SCAN: u64 = 1_000;
+
+	fn seed_split(store: &StandardMultiStore, persisted: RangeInclusive<u64>, buffered: RangeInclusive<u64>) {
+		for n in persisted {
+			commit_row(store, n, 1);
+		}
+		flush(store, CommitVersion(1));
+		for n in buffered {
+			commit_row(store, n, 2);
+		}
+	}
+
+	fn flush_between_passes_loses_nothing(
+		persisted: RangeInclusive<u64>,
+		buffered: RangeInclusive<u64>,
+		persistent_finishes_in_one_read: bool,
+		scan: fn(&StandardMultiStore) -> Vec<u64>,
+	) {
+		assert!(
+			buffered.clone().count() > TIER_SCAN_CHUNK_SIZE,
+			"the buffer must outlast its first chunk, or the scan ends before a second pass reads it"
+		);
+		assert_eq!(
+			persisted.clone().count() < TIER_SCAN_CHUNK_SIZE,
+			persistent_finishes_in_one_read,
+			"the persisted rows decide whether the first read finishes, so they must match the case under test"
+		);
+		let (store, _g) = store_without_read_tier();
+		seed_split(&store, persisted.clone(), buffered.clone());
+
+		let fired = Rc::new(Cell::new(false));
+		{
+			let store = store.clone();
+			let fired = fired.clone();
+			arm_pass_interlock(move || {
+				flush(&store, CommitVersion(2));
+				fired.set(true);
+			});
+		}
+
+		let seen = scan(&store);
+
+		assert!(fired.get(), "the flush never ran between two passes, so nothing moved under the scan");
+		let mut expected: Vec<u64> = persisted.chain(buffered).collect();
+		expected.sort_unstable();
+		assert_eq!(
+			seen, expected,
+			"the merge dropped rows a flush moved into persistent between two passes of one batch"
+		);
+	}
+
+	fn scan_forward_in_one_batch(store: &StandardMultiStore) -> Vec<u64> {
+		let batch = store
+			.range_next(
+				&mut MultiVersionRangeCursor::new(),
+				RowKey::full_scan(STORAGE).encode(),
+				MultiVersionScope::AsOf {
+					read: CommitVersion(2),
+				},
+				WHOLE_SCAN,
+			)
+			.unwrap();
+		assert!(
+			!batch.has_more,
+			"the scan must end inside one batch, or the flush lands between batches instead"
+		);
+		rows_of(batch.items.into_iter().map(|row| row.key).collect())
+	}
+
+	fn scan_reverse_in_one_batch(store: &StandardMultiStore) -> Vec<u64> {
+		let batch = store
+			.range_rev_next(
+				&mut MultiVersionRangeCursor::new(),
+				RowKey::full_scan(STORAGE).encode(),
+				MultiVersionScope::AsOf {
+					read: CommitVersion(2),
+				},
+				WHOLE_SCAN,
+			)
+			.unwrap();
+		assert!(
+			!batch.has_more,
+			"the scan must end inside one batch, or the flush lands between batches instead"
+		);
+		rows_of(batch.items.into_iter().map(|row| row.key).collect())
+	}
+
+	fn scan_rows_in_one_batch(store: &StandardMultiStore) -> Vec<u64> {
+		let batch = store
+			.range_next_row(
+				&mut RowRangeCursor::default(),
+				STORAGE,
+				Bound::Unbounded,
+				Bound::Unbounded,
+				MultiVersionScope::AsOf {
+					read: CommitVersion(2),
+				},
+				WHOLE_SCAN,
+			)
+			.unwrap();
+		assert!(
+			!batch.has_more,
+			"the scan must end inside one batch, or the flush lands between batches instead"
+		);
+		let mut rows: Vec<u64> = batch.items.iter().map(|item| item.key.row().0).collect();
+		rows.sort_unstable();
+		rows
+	}
+
+	#[test]
+	fn a_scan_whose_persistent_read_ran_past_the_buffer_loses_nothing_to_a_flush_between_passes() {
+		flush_between_passes_loses_nothing(1..=40, 41..=120, false, scan_forward_in_one_batch);
+	}
+
+	#[test]
+	fn a_reverse_scan_whose_persistent_read_ran_past_the_buffer_loses_nothing_to_a_flush_between_passes() {
+		flush_between_passes_loses_nothing(81..=120, 1..=80, false, scan_reverse_in_one_batch);
+	}
+
+	#[test]
+	fn a_row_scan_whose_persistent_read_ran_past_the_buffer_loses_nothing_to_a_flush_between_passes() {
+		flush_between_passes_loses_nothing(1..=40, 41..=120, false, scan_rows_in_one_batch);
+	}
+
+	#[test]
+	fn a_scan_whose_persistent_read_finished_short_of_the_buffer_rereads_it_after_a_flush_between_passes() {
+		flush_between_passes_loses_nothing(81..=100, 1..=80, true, scan_forward_in_one_batch);
+	}
+
+	#[test]
+	fn a_reverse_scan_whose_persistent_read_finished_short_of_the_buffer_rereads_it_after_a_flush_between_passes() {
+		flush_between_passes_loses_nothing(1..=20, 21..=100, true, scan_reverse_in_one_batch);
+	}
+
+	#[test]
+	fn a_row_scan_whose_persistent_read_finished_short_of_the_buffer_rereads_it_after_a_flush_between_passes() {
+		flush_between_passes_loses_nothing(81..=100, 1..=80, true, scan_rows_in_one_batch);
+	}
+
+	#[test]
+	fn a_materialize_whose_read_predates_a_flush_and_eviction_never_claims_the_flushed_row_away() {
+		const FLUSHED: u64 = 21;
+		const RESUMED: u64 = 30;
+		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		for n in (1..=40).filter(|n| *n != FLUSHED) {
+			commit_row(&store, n, 1);
+		}
+		flush(&store, CommitVersion(1));
+		commit_row(&store, FLUSHED, 2);
+
+		let range = store.range.clone().expect("range tier configured");
+		let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
+		let fired = Rc::new(Cell::new(false));
+		{
+			let store = store.clone();
+			let fired = fired.clone();
+			arm_read_interlock(move || {
+				assert_eq!(
+					range.complete_partitions().iter().sum::<usize>(),
+					0,
+					"the read must land before its own claim, or clearing ram wipes the claim and the rescan proves nothing"
+				);
+				store.flush_all_blocking();
+				assert!(
+					matches!(
+						store.commit()
+							.get(
+								kind,
+								RowKey::encoded(STORAGE, FLUSHED).as_slice(),
+								CommitVersion(u64::MAX)
+							)
+							.unwrap(),
+						VersionedGetResult::NotFound
+					),
+					"the flush must move the row out of the buffer, or the rescan reads it from there"
+				);
+				store.clear_read();
+				fired.set(true);
+			});
+		}
+
+		let first = drain_forward(&store, &mut MultiVersionRangeCursor::new(), u64::MAX);
+		assert!(fired.get(), "the flush and eviction never ran between the read and its claim");
+		assert_eq!(first, (1..=40).collect::<Vec<_>>(), "the buffer still held row 21 when the scan read it");
+
+		let inside_the_claim = EncodedKeyRange::new(
+			Bound::Included(RowKey::encoded(STORAGE, RESUMED)),
+			RowKey::full_scan(STORAGE).encode().end,
+		);
+		let mut cursor = MultiVersionRangeCursor::new();
+		let mut rescan = Vec::new();
+		loop {
+			let batch = store
+				.range_next(
+					&mut cursor,
+					inside_the_claim.clone(),
+					MultiVersionScope::AsOf {
+						read: CommitVersion(u64::MAX),
+					},
+					2,
+				)
+				.unwrap();
+			rescan.extend(batch.items.into_iter().map(|row| row.key));
+			if !batch.has_more {
+				break;
+			}
+		}
+		assert_eq!(
+			rows_of(rescan),
+			(1..=RESUMED).collect::<Vec<_>>(),
+			"a claim published from a read older than the eviction hides a row every tier now agrees exists"
+		);
+	}
+
+	#[test]
+	fn flushed_writes_that_fill_ram_to_its_limit_never_lock_out_a_claim() {
+		const TARGETS: RangeInclusive<u64> = 100..=107;
+		const FILL: u64 = 1_000_000;
+		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(
+			MultiPointConfig::testing(),
+			MultiRangeConfig {
+				shards: 1,
+				..MultiRangeConfig::testing()
+			},
+		);
+		let budget = |store: &StandardMultiStore| {
+			let shards = store.range_shard_metrics();
+			assert_eq!(shards.len(), 1, "the fill and the claim must charge the same budget");
+			(shards[0].used.as_bytes(), shards[0].limit.as_bytes(), shards[0].counters.materializes)
+		};
+
+		for n in TARGETS {
+			commit_row(&store, n, 1);
+		}
+		store.flush_all_blocking();
+		store.clear_read();
+
+		commit_row(&store, FILL, 2);
+		store.flush_all_blocking();
+		let (first, _, _) = budget(&store);
+		commit_row(&store, FILL + 1, 3);
+		store.flush_all_blocking();
+		let (second, limit, _) = budget(&store);
+		let row = second - first;
+		assert!(row > 0, "flushed writes must land in ram, or nothing fills it and the test proves nothing");
+		let fill = (limit - second) / row;
+		for n in 0..fill {
+			commit_row(&store, FILL + 2 + n, 4 + n);
+		}
+		store.flush_all_blocking();
+		let (_, _, before) = budget(&store);
+
+		let targets = EncodedKeyRange::new(
+			Bound::Included(RowKey::encoded(STORAGE, *TARGETS.end())),
+			Bound::Included(RowKey::encoded(STORAGE, *TARGETS.start())),
+		);
+		let mut cursor = MultiVersionRangeCursor::new();
+		let mut seen = Vec::new();
+		loop {
+			let batch = store
+				.range_next(
+					&mut cursor,
+					targets.clone(),
+					MultiVersionScope::AsOf {
+						read: CommitVersion(u64::MAX),
+					},
+					2,
+				)
+				.unwrap();
+			seen.extend(batch.items.into_iter().map(|row| row.key));
+			if !batch.has_more {
+				break;
+			}
+		}
+		assert_eq!(rows_of(seen), TARGETS.collect::<Vec<_>>(), "the scan must read every target row");
+
+		let (_, _, after) = budget(&store);
+		assert!(
+			after > before,
+			"a ram tier held at its limit by flushed writes refused the claim, so coverage is never proven again"
+		);
+	}
+
+	fn rows_between(store: &StandardMultiStore, rows: RangeInclusive<u64>) -> Vec<u64> {
+		let range = EncodedKeyRange::new(
+			Bound::Included(RowKey::encoded(STORAGE, *rows.end())),
+			Bound::Included(RowKey::encoded(STORAGE, *rows.start())),
+		);
+		let mut cursor = MultiVersionRangeCursor::new();
+		let mut seen = Vec::new();
+		loop {
+			let batch = store
+				.range_next(
+					&mut cursor,
+					range.clone(),
+					MultiVersionScope::AsOf {
+						read: CommitVersion(u64::MAX),
+					},
+					2,
+				)
+				.unwrap();
+			seen.extend(batch.items.into_iter().map(|row| row.key));
+			if !batch.has_more {
+				break;
+			}
+		}
+		rows_of(seen)
+	}
+
+	#[test]
+	fn an_idle_flush_tick_frees_ram_that_claims_filled_to_its_limit() {
+		const FILLERS: RangeInclusive<u64> = 1_000_000..=1_000_639;
+		const TARGETS: RangeInclusive<u64> = 2_000_000..=2_000_031;
+		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(
+			MultiPointConfig::testing(),
+			MultiRangeConfig {
+				shards: 1,
+				..MultiRangeConfig::testing()
+			},
+		);
+		let shard = |store: &StandardMultiStore| {
+			let shards = store.range_shard_metrics();
+			assert_eq!(shards.len(), 1, "the fillers and the targets must charge the same budget");
+			shards[0]
+		};
+
+		for n in FILLERS.chain(TARGETS) {
+			commit_row(&store, n, 1);
+		}
+		store.flush_all_blocking();
+		store.clear_read();
+
+		assert_eq!(
+			rows_between(&store, FILLERS),
+			FILLERS.collect::<Vec<_>>(),
+			"the scan must read every filler row"
+		);
+		let full = shard(&store);
+		assert!(
+			full.counters.materializes_refused > 0,
+			"the fillers must claim ram until a claim is refused, or the tier never reached its limit"
+		);
+
+		store.flush_engine
+			.as_ref()
+			.expect("the store must have a flush engine")
+			.sweep_slice(ByteSize::from_bytes(u64::MAX));
+
+		assert_eq!(
+			rows_between(&store, TARGETS),
+			TARGETS.collect::<Vec<_>>(),
+			"the scan must read every target row"
+		);
+		assert!(
+			shard(&store).counters.materializes > full.counters.materializes,
+			"an idle tick left ram full of claims, so no new range is ever cached"
 		);
 	}
 }
@@ -2437,21 +2886,27 @@ impl StandardMultiStore {
 				}
 			}
 
+			if let Some(h) = forward_horizon_narrow(table, cursor) {
+				collected.retain(|k, _| *k <= h);
+				if let Some(last) = cursor.commit.last_key()
+					&& L::narrow(table, last).is_some_and(|n| n > h)
+				{
+					cursor.commit.resume(L::widen(storage, &h));
+				}
+				if cursor.persistent.last_key().is_some_and(|last| *last > h)
+					|| (self.persistent.is_some()
+						&& cursor.persistent.is_exhausted() && !cursor.commit.is_exhausted())
+				{
+					cursor.persistent.resume(h);
+				}
+			}
+
+			#[cfg(test)]
+			pass_interlock();
+
 			if cursor.commit.is_exhausted() && cursor.persistent.is_exhausted() {
 				cursor.exhausted = true;
 				break;
-			}
-		}
-
-		if let Some(h) = forward_horizon_narrow(table, cursor) {
-			collected.retain(|k, _| *k <= h);
-			if let Some(last) = cursor.commit.last_key()
-				&& L::narrow(table, last).is_some_and(|n| n > h)
-			{
-				cursor.commit.resume(L::widen(storage, &h));
-			}
-			if cursor.persistent.last_key().is_some_and(|last| *last > h) {
-				cursor.persistent.resume(h);
 			}
 		}
 

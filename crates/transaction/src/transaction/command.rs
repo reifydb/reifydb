@@ -88,6 +88,7 @@ use crate::{
 	},
 	multi::{
 		RangeScope,
+		lease::VersionLeaseGuard,
 		pending::PendingWrites,
 		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
@@ -213,7 +214,7 @@ impl CommandTransaction {
 		self.finalize_commit(ctx, false)
 	}
 
-	#[inline]
+	#[instrument(name = "transaction::command::pre_commit_context", level = "trace", skip_all)]
 	fn build_pre_commit_context(&mut self) -> Result<PreCommitContext> {
 		let transaction_writes = collect_transaction_writes(self.pending_writes());
 		Ok(PreCommitContext {
@@ -287,9 +288,15 @@ impl CommandTransaction {
 		} else {
 			multi.commit(flow_changes)?
 		};
-		let _self_lease = multi.take_self_lease();
-		self.interceptors.post_commit.execute(PostCommitContext::new(id, version, changes, row_changes))?;
+		let self_lease = multi.take_self_lease();
+		self.run_post_commit(PostCommitContext::new(id, version, changes, row_changes))?;
+		release_multi(self_lease, multi);
 		Ok(version)
+	}
+
+	#[instrument(name = "transaction::command::post_commit", level = "trace", skip_all)]
+	fn run_post_commit(&self, ctx: PostCommitContext) -> Result<()> {
+		self.interceptors.post_commit.execute(ctx)
 	}
 
 	pub fn execute_bulk_unchecked<F, R>(&mut self, body: F) -> Result<R>
@@ -312,8 +319,13 @@ impl CommandTransaction {
 	pub fn commit_unchecked(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
 		let mut ctx = self.build_pre_commit_context()?;
-		self.interceptors.pre_commit.execute(&mut ctx)?;
+		self.run_pre_commit(&mut ctx)?;
 		self.finalize_commit(ctx, true)
+	}
+
+	#[instrument(name = "transaction::command::pre_commit", level = "trace", skip_all)]
+	fn run_pre_commit(&self, ctx: &mut PreCommitContext) -> Result<()> {
+		self.interceptors.pre_commit.execute(ctx)
 	}
 
 	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self))]
@@ -591,6 +603,12 @@ impl Write for CommandTransaction {
 	fn track_flow_change(&mut self, change: Change) {
 		CommandTransaction::track_flow_change(self, change)
 	}
+}
+
+#[instrument(name = "transaction::command::release_multi", level = "trace", skip_all)]
+fn release_multi(self_lease: Option<VersionLeaseGuard>, multi: MultiWriteTransaction) {
+	drop(self_lease);
+	drop(multi);
 }
 
 impl WithInterceptors for CommandTransaction {

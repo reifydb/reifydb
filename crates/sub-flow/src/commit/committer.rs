@@ -63,6 +63,7 @@ pub enum CommitterMessage {
 pub struct CommitterActor {
 	committer: Committer,
 	commit: CommitHandle,
+	name: &'static str,
 }
 
 pub struct CommitterState {
@@ -75,7 +76,13 @@ impl CommitterActor {
 		Self {
 			committer,
 			commit,
+			name: "flow-committer",
 		}
+	}
+
+	pub fn named(mut self, name: &'static str) -> Self {
+		self.name = name;
+		self
 	}
 
 	fn enqueue(
@@ -98,9 +105,22 @@ impl CommitterActor {
 	}
 
 	fn flush(&self, state: &mut CommitterState) {
-		for (_, group) in take(&mut state.groups) {
+		if state.groups.is_empty() {
+			return;
+		}
+		self.flush_groups(take(&mut state.groups));
+	}
+
+	#[instrument(name = "flow::committer::flush", level = "debug", skip_all, fields(
+		committer = self.name,
+		groups = groups.len(),
+		slices = groups.values().map(Vec::len).sum::<usize>()
+	))]
+	fn flush_groups(&self, groups: BTreeMap<SourceVersion, Vec<(FlowSlice, SliceCommitReply)>>) {
+		for (_, group) in groups {
 			let (slices, replies): (Vec<FlowSlice>, Vec<SliceCommitReply>) = group.into_iter().unzip();
 			self.committer.commit_slices(
+				self.name,
 				&self.commit,
 				Arc::new(slices),
 				replies.into_iter().enumerate().collect(),
@@ -108,6 +128,7 @@ impl CommitterActor {
 		}
 	}
 
+	#[instrument(name = "flow::committer::submit_tick", level = "debug", skip_all, fields(committer = self.name))]
 	fn submit_tick(
 		&self,
 		flow_id: FlowId,
@@ -163,6 +184,7 @@ impl Actor for CommitterActor {
 				None => {
 					self.flush(state);
 					self.committer.commit_slices(
+						self.name,
 						&self.commit,
 						Arc::new(vec![slice]),
 						vec![(0, reply)],
@@ -243,8 +265,34 @@ impl Committer {
 		}
 	}
 
+	#[instrument(name = "flow::committer::commit_slices", level = "debug", skip_all, fields(
+		committer = name,
+		slices = members.len()
+	))]
 	fn commit_slices(
 		&self,
+		name: &'static str,
+		commit: &CommitHandle,
+		slices: Arc<Vec<FlowSlice>>,
+		members: Vec<(usize, SliceCommitReply)>,
+	) {
+		self.submit_slices(name, commit, slices, members)
+	}
+
+	#[instrument(name = "flow::committer::retry_slice", level = "debug", skip_all, fields(committer = name))]
+	fn retry_slice(
+		&self,
+		name: &'static str,
+		commit: &CommitHandle,
+		slices: Arc<Vec<FlowSlice>>,
+		member: (usize, SliceCommitReply),
+	) {
+		self.submit_slices(name, commit, slices, vec![member])
+	}
+
+	fn submit_slices(
+		&self,
+		name: &'static str,
 		commit: &CommitHandle,
 		slices: Arc<Vec<FlowSlice>>,
 		members: Vec<(usize, SliceCommitReply)>,
@@ -267,15 +315,17 @@ impl Committer {
 				for (index, reply) in members {
 					(reply)(completion_committer.finish_slice(&slices[index], version));
 				}
+				release_slices(slices);
 			}
 			Err(e) => match <[(usize, SliceCommitReply); 1]>::try_from(members) {
 				Ok([(_, reply)]) => (reply)(Err(e)),
 				Err(members) => {
 					for member in members {
-						completion_committer.commit_slices(
+						completion_committer.retry_slice(
+							name,
 							&retry_commit,
 							Arc::clone(&slices),
-							vec![member],
+							member,
 						);
 					}
 				}
@@ -359,6 +409,11 @@ impl Committer {
 
 		Ok(())
 	}
+}
+
+#[instrument(name = "flow::committer::release_slices", level = "trace", skip_all)]
+fn release_slices(slices: Arc<Vec<FlowSlice>>) {
+	drop(slices);
 }
 
 #[instrument(name = "flow::committer::apply_pending", level = "debug", skip_all)]

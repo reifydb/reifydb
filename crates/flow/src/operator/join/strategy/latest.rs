@@ -3,7 +3,7 @@
 
 use std::cmp::Ordering;
 
-use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow};
 use reifydb_core::{
 	error::diagnostic::operation::join_pick_column_not_found, key::operator::state::GroupId, row::JoinPick,
 	sort::SortDirection, value::column::columns::Columns,
@@ -11,6 +11,7 @@ use reifydb_core::{
 use reifydb_value::{
 	Result, error,
 	fragment::Fragment,
+	reifydb_assertions,
 	util::hash::Hash128,
 	value::{Value, datetime::TIME_COLUMN_NAME, row_number::RowNumber},
 };
@@ -18,8 +19,6 @@ use tracing::instrument;
 
 use super::hash::{build_shape, columns_from_block, encode_row};
 use crate::operator::{host::HostContext, join::store::Store};
-
-const PAGE: usize = 256;
 
 fn instant_values(columns: &Columns) -> Option<Vec<Value>> {
 	let time = columns.time();
@@ -92,21 +91,18 @@ pub(crate) fn winner_index(columns: &Columns, pick: &JoinPick) -> Result<Option<
 	Ok(winner)
 }
 
-fn read_all_rows(host: &mut dyn HostContext, right: &Store, group: GroupId) -> Result<Vec<(RowNumber, EncodedBytes)>> {
-	let mut entries = Vec::new();
-	let mut after: Option<RowNumber> = None;
-	loop {
-		let block = right.rows_for_group(host, group, after.as_ref(), PAGE)?;
-		let short = block.len() < PAGE;
-		if let Some(last) = block.last() {
-			after = Some(last.0);
-		}
-		entries.extend(block);
-		if short {
-			break;
-		}
+fn read_slot(host: &mut dyn HostContext, right: &Store, group: GroupId) -> Result<Option<(RowNumber, EncodedBytes)>> {
+	let held = right.rows_for_group(host, group, None, 2)?;
+	reifydb_assertions! {
+		assert!(
+			held.len() <= 1,
+			"a latest join holds {} right rows under group {:?}, so the slot no longer names one winner and \
+			 the loser is never freed",
+			held.len(),
+			group
+		);
 	}
-	Ok(entries)
+	Ok(held.into_iter().next())
 }
 
 #[instrument(name = "flow::operator::join::latest::winning_right_row", level = "trace", skip_all)]
@@ -114,20 +110,12 @@ pub(crate) fn winning_right_row(
 	host: &mut dyn HostContext,
 	right: &Store,
 	group: GroupId,
-	pick: &JoinPick,
 ) -> Result<Option<(RowNumber, EncodedBytes, Columns)>> {
-	let entries = read_all_rows(host, right, group)?;
-	if entries.is_empty() {
-		return Ok(None);
-	}
-	let all = columns_from_block(host, right, entries.clone())?;
-	let Some(idx) = winner_index(&all, pick)? else {
+	let Some((number, content)) = read_slot(host, right, group)? else {
 		return Ok(None);
 	};
-	let entry = entries[idx].clone();
-	let number = entry.0;
-	let content = entry.1.clone();
-	Ok(Some((number, content, columns_from_block(host, right, vec![entry])?)))
+	let columns = columns_from_block(host, right, vec![(number, content.clone())])?;
+	Ok(Some((number, content, columns)))
 }
 
 #[instrument(name = "flow::operator::join::latest::read_right_slot", level = "trace", skip_all)]
@@ -135,9 +123,8 @@ pub(crate) fn read_right_slot(
 	host: &mut dyn HostContext,
 	right: &Store,
 	key_hash: &Hash128,
-	pick: &JoinPick,
 ) -> Result<Option<Columns>> {
-	Ok(winning_right_row(host, right, right.group_of(key_hash), pick)?.map(|(_, _, columns)| columns))
+	Ok(winning_right_row(host, right, right.group_of(key_hash))?.map(|(_, _, columns)| columns))
 }
 
 #[instrument(name = "flow::operator::join::latest::store_right_rows", level = "trace", skip_all, fields(rows = indices.len()))]
@@ -147,6 +134,7 @@ pub(crate) fn write_right_rows(
 	key_hash: &Hash128,
 	columns: &Columns,
 	indices: &[usize],
+	pick: &JoinPick,
 ) -> Result<()> {
 	if indices.is_empty() {
 		return Ok(());
@@ -154,11 +142,30 @@ pub(crate) fn write_right_rows(
 	let shape = build_shape(columns);
 	right.set_row_shape(host, &shape)?;
 	let group = right.group_of(key_hash);
+
+	let mut candidates: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(indices.len() + 1);
 	for &idx in indices {
 		let row = encode_row(&shape, columns, idx, host.written_at());
-		right.write_row(host, group, columns.row_numbers()[idx], &row)?;
+		candidates.push((columns.row_numbers()[idx], row.into_bytes()));
 	}
-	Ok(())
+	let held = read_slot(host, right, group)?;
+	if let Some(held) = &held
+		&& !candidates.iter().any(|(number, _)| *number == held.0)
+	{
+		candidates.push(held.clone());
+	}
+
+	let all = columns_from_block(host, right, candidates.clone())?;
+	let Some(winner) = winner_index(&all, pick)? else {
+		return Ok(());
+	};
+	let (number, content) = candidates[winner].clone();
+	if let Some((previous, _)) = held
+		&& previous != number
+	{
+		right.remove_row_in(host, group, previous)?;
+	}
+	right.write_row(host, group, number, &EncodedPodRow::from(content))
 }
 
 pub(crate) fn overwrite_right_slot(
@@ -172,8 +179,8 @@ pub(crate) fn overwrite_right_slot(
 	if indices.is_empty() {
 		return Ok(None);
 	}
-	write_right_rows(host, right, key_hash, columns, indices)?;
-	read_right_slot(host, right, key_hash, pick)
+	write_right_rows(host, right, key_hash, columns, indices, pick)?;
+	read_right_slot(host, right, key_hash)
 }
 
 #[instrument(name = "flow::operator::join::latest::remove_right_rows", level = "trace", skip_all)]
@@ -183,8 +190,12 @@ pub(crate) fn remove_right_rows(
 	key_hash: &Hash128,
 	numbers: &[RowNumber],
 ) -> Result<()> {
-	for number in numbers {
-		right.remove_row(host, key_hash, *number)?;
+	let group = right.group_of(key_hash);
+	let Some((held, _)) = read_slot(host, right, group)? else {
+		return Ok(());
+	};
+	if numbers.contains(&held) {
+		right.remove_row_in(host, group, held)?;
 	}
 	Ok(())
 }

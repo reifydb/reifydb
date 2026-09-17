@@ -4,20 +4,61 @@
 use std::{
 	cell::RefCell,
 	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+	iter::Peekable,
+	ops::Deref,
 	sync::Arc,
 };
 
 use reifydb_cdc::rebuild::changed_objects;
 use reifydb_core::{
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	interface::{
 		catalog::{flow::FlowId, object::ObjectId},
 		cdc::Cdc,
 	},
 };
+use reifydb_value::reifydb_assertions;
+
+use crate::commit::slice::accepts;
+
+#[derive(Clone)]
+pub struct ReadWindow {
+	chunk: Arc<[Arc<Cdc>]>,
+	start: usize,
+	end: usize,
+}
+
+impl ReadWindow {
+	fn slice(&self, start: usize, end: usize) -> Self {
+		Self {
+			chunk: self.chunk.clone(),
+			start: self.start + start,
+			end: self.start + end,
+		}
+	}
+}
+
+impl Deref for ReadWindow {
+	type Target = [Arc<Cdc>];
+
+	fn deref(&self) -> &[Arc<Cdc>] {
+		&self.chunk[self.start..self.end]
+	}
+}
+
+impl From<Vec<Arc<Cdc>>> for ReadWindow {
+	fn from(items: Vec<Arc<Cdc>>) -> Self {
+		let end = items.len();
+		Self {
+			chunk: items.into(),
+			start: 0,
+			end,
+		}
+	}
+}
 
 pub struct StreamRead {
-	pub items: Vec<Arc<Cdc>>,
+	pub items: ReadWindow,
 	pub read_to: CommitVersion,
 	pub more: bool,
 }
@@ -26,7 +67,7 @@ const READ_CACHE_ENTRIES: usize = 6;
 const OBJECT_INDEX_ENTRIES: usize = 16_384;
 
 struct CachedRead {
-	items: Vec<Arc<Cdc>>,
+	items: ReadWindow,
 	read_to: CommitVersion,
 	used: u64,
 }
@@ -52,21 +93,22 @@ impl ReadCache {
 		let start = read.items.partition_point(|cdc| cdc.version.commit <= from);
 		let end = read.items.partition_point(|cdc| cdc.version.commit <= read_to);
 		Some(StreamRead {
-			items: read.items[start..end].to_vec(),
+			items: read.items.slice(start, end),
 			read_to,
 			more: read_to < up_to,
 		})
 	}
 
-	pub fn insert(&mut self, from: CommitVersion, items: Vec<Arc<Cdc>>, read_to: CommitVersion) {
+	pub fn insert(&mut self, from: CommitVersion, items: Vec<Arc<Cdc>>, read_to: CommitVersion) -> ReadWindow {
+		let items = ReadWindow::from(items);
 		if read_to <= from {
-			return;
+			return items;
 		}
 		self.clock += 1;
 		self.reads.insert(
 			from,
 			CachedRead {
-				items,
+				items: items.clone(),
 				read_to,
 				used: self.clock,
 			},
@@ -78,10 +120,41 @@ impl ReadCache {
 			};
 			self.reads.remove(&oldest);
 		}
+		items
 	}
 
 	pub fn retain_after(&mut self, cursor: CommitVersion) {
 		self.reads.retain(|_, read| read.read_to > cursor);
+	}
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ReadStream {
+	Tables,
+	Upstream(FlowId),
+}
+
+#[derive(Default)]
+pub struct HeldReads {
+	reads: HashMap<ReadStream, (CommitVersion, StreamRead)>,
+}
+
+impl HeldReads {
+	pub fn take(&mut self, stream: ReadStream, from: CommitVersion, up_to: CommitVersion) -> Option<StreamRead> {
+		let (held_from, mut read) = self.reads.remove(&stream)?;
+		if held_from != from {
+			return None;
+		}
+		read.more = read.read_to < up_to;
+		Some(read)
+	}
+
+	pub fn hold(&mut self, stream: ReadStream, from: CommitVersion, read: StreamRead) {
+		self.reads.insert(stream, (from, read));
+	}
+
+	pub fn clear(&mut self) {
+		self.reads.clear();
 	}
 }
 
@@ -105,18 +178,26 @@ impl ObjectIndex {
 		}
 	}
 
-	fn touches(&self, cdc: &Cdc, objects: &HashSet<ObjectId>) -> bool {
+	fn changes_any(&self, cdc: &Cdc, hit: impl Fn(ObjectId) -> bool) -> bool {
 		self.changed
 			.borrow_mut()
 			.entry(cdc.version.commit)
 			.or_insert_with(|| changed_objects(cdc))
 			.iter()
-			.any(|object| objects.contains(object))
+			.any(|object| hit(*object))
+	}
+
+	fn touches(&self, cdc: &Cdc, objects: &HashSet<ObjectId>) -> bool {
+		self.changes_any(cdc, |object| objects.contains(&object))
+	}
+
+	fn reads(&self, cdc: &Cdc, source_objects: &BTreeSet<ObjectId>) -> bool {
+		self.changes_any(cdc, |object| accepts(object, source_objects))
 	}
 }
 
 impl UpstreamRead {
-	fn view_items<'a>(&'a self, index: &'a ObjectIndex) -> impl Iterator<Item = &'a Arc<Cdc>> {
+	fn view_items<'a>(&'a self, index: &'a ObjectIndex) -> impl DoubleEndedIterator<Item = &'a Arc<Cdc>> {
 		self.read.items.iter().filter(move |cdc| index.touches(cdc, &self.views))
 	}
 
@@ -125,7 +206,7 @@ impl UpstreamRead {
 		if let Some(position) = self.position {
 			through = through.max(position);
 		}
-		if let Some(last) = self.view_items(index).last() {
+		if let Some(last) = self.view_items(index).next_back() {
 			through = through.max(CommitVersion(last.version.source.0.saturating_sub(1)));
 		}
 		through
@@ -171,47 +252,103 @@ pub struct Merged {
 	pub more: bool,
 }
 
+pub struct StepCut<'a> {
+	pub source_objects: &'a BTreeSet<ObjectId>,
+	pub per_source: bool,
+}
+
+type Rows<'a> = Peekable<Box<dyn Iterator<Item = (bool, &'a Arc<Cdc>)> + 'a>>;
+
 pub fn merge(
 	cursor: CommitVersion,
 	tables: &StreamRead,
 	upstreams: &HashMap<FlowId, UpstreamRead>,
 	index: &ObjectIndex,
+	cut: &StepCut,
 ) -> Merged {
 	let gated: HashSet<ObjectId> = upstreams.values().flat_map(|upstream| upstream.views.iter().copied()).collect();
 	let target = upstreams
 		.values()
 		.map(|upstream| upstream.complete_through(cursor, index))
 		.fold(tables.read_to, CommitVersion::min);
+	let streams = || {
+		let table_rows = tables
+			.items
+			.iter()
+			.take_while(|cdc| cdc.version.commit <= target)
+			.filter(|cdc| {
+				cdc.version.commit > cursor
+					&& !index.touches(cdc, &gated) && index.reads(cdc, cut.source_objects)
+			})
+			.map(|cdc| (true, cdc));
+		let mut streams: Vec<Rows> = vec![(Box::new(table_rows) as Box<dyn Iterator<Item = _>>).peekable()];
+		for upstream in upstreams.values() {
+			let view_rows = upstream
+				.view_items(index)
+				.filter(move |cdc| cdc.version.source.0 > cursor.0 && cdc.version.source.0 <= target.0)
+				.map(|cdc| (false, cdc));
+			streams.push((Box::new(view_rows) as Box<dyn Iterator<Item = _>>).peekable());
+		}
+		streams
+	};
 
-	let mut ordered: Vec<(u64, bool, CommitVersion, Arc<Cdc>)> = Vec::new();
-	for cdc in &tables.items {
-		if cdc.version.commit > cursor && cdc.version.commit <= target && !index.touches(cdc, &gated) {
-			ordered.push((cdc.version.source.0, true, cdc.version.commit, cdc.clone()));
+	reifydb_assertions! {
+		for rows in streams() {
+			let sources: Vec<SourceVersion> = rows.map(|(_, cdc)| cdc.version.source).collect();
+			assert!(
+				sources.is_sorted(),
+				"source versions went down within one stream {sources:?}; a per-source step would stop \
+				 before the lower source and never handle it"
+			);
 		}
 	}
-	for upstream in upstreams.values() {
-		for cdc in upstream.view_items(index) {
-			if cdc.version.source.0 > cursor.0 && cdc.version.source.0 <= target.0 {
-				ordered.push((cdc.version.source.0, false, cdc.version.commit, cdc.clone()));
+
+	let mut ordered: Vec<(bool, CommitVersion, Arc<Cdc>)> = Vec::new();
+	let mut next: Option<SourceVersion> = None;
+	let mut streams = streams();
+	if cut.per_source {
+		let first = streams.iter_mut().filter_map(|rows| rows.peek().map(|(_, cdc)| cdc.version.source)).min();
+		if let Some(first) = first {
+			for rows in &mut streams {
+				while let Some((table, cdc)) = rows.next_if(|(_, cdc)| cdc.version.source == first) {
+					ordered.push((table, cdc.version.commit, cdc.clone()));
+				}
+				if let Some((_, cdc)) = rows.peek() {
+					next =
+						Some(next.map_or(cdc.version.source, |next| {
+							next.min(cdc.version.source)
+						}));
+				}
+			}
+		}
+	} else {
+		for rows in streams {
+			for (table, cdc) in rows {
+				ordered.push((table, cdc.version.commit, cdc.clone()));
 			}
 		}
 	}
-	ordered.sort_by_key(|(source, table, version, _)| (*source, *table, *version));
+	ordered.sort_by_key(|(table, version, cdc)| (cdc.version.source, *table, *version));
 
 	Merged {
-		items: ordered.into_iter().map(|(_, _, _, cdc)| cdc).collect(),
-		target,
-		more: tables.more || upstreams.values().any(|upstream| upstream.read.more),
+		items: ordered.into_iter().map(|(_, _, cdc)| cdc).collect(),
+		target: next.map_or(target, |next| CommitVersion(next.0 - 1)),
+		more: next.is_some() || tables.more || upstreams.values().any(|upstream| upstream.read.more),
 	}
 }
 
 #[cfg(test)]
 mod tests {
+	use std::ptr;
+
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		common::{ChangeVersion, SourceVersion},
 		interface::{
-			catalog::{id::ViewId, storage::StorageId},
+			catalog::{
+				id::{TableId, ViewId},
+				storage::StorageId,
+			},
 			cdc::CdcChange,
 		},
 		key::row::RowKey,
@@ -258,7 +395,7 @@ mod tests {
 
 	fn read(items: Vec<Arc<Cdc>>, read_to: u64, more: bool) -> StreamRead {
 		StreamRead {
-			items,
+			items: items.into(),
 			read_to: cv(read_to),
 			more,
 		}
@@ -284,6 +421,17 @@ mod tests {
 		HashMap::from([(PRODUCER, first), (OTHER_PRODUCER, second)])
 	}
 
+	fn sources() -> BTreeSet<ObjectId> {
+		BTreeSet::from([ObjectId::Table(TableId(1)), ObjectId::View(ViewId(5)), ObjectId::View(ViewId(6))])
+	}
+
+	fn whole(source_objects: &BTreeSet<ObjectId>) -> StepCut<'_> {
+		StepCut {
+			source_objects,
+			per_source: false,
+		}
+	}
+
 	fn versions(merged: &Merged) -> Vec<(u64, u64)> {
 		merged.items.iter().map(|cdc| (cdc.version.commit.0, cdc.version.source.0)).collect()
 	}
@@ -296,6 +444,7 @@ mod tests {
 			&read(vec![table_row(4)], 20, false),
 			&one(upstream(None, read(vec![], 20, false))),
 			&ObjectIndex::default(),
+			&whole(&sources()),
 		);
 		assert_eq!(merged.target, cv(3));
 		assert!(merged.items.is_empty(), "a held reader must not hand out table rows beyond its cursor");
@@ -309,6 +458,7 @@ mod tests {
 			&read(vec![table_row(5)], 20, false),
 			&one(upstream(Some(5), read(vec![view_row(7, 5)], 20, false))),
 			&ObjectIndex::default(),
+			&whole(&sources()),
 		);
 		assert_eq!(versions(&merged), vec![(7, 5), (5, 5)]);
 	}
@@ -321,6 +471,7 @@ mod tests {
 			&read(vec![table_row(4)], 20, false),
 			&one(upstream(Some(4), read(vec![view_row(6, 3)], 20, false))),
 			&ObjectIndex::default(),
+			&whole(&sources()),
 		);
 		assert_eq!(versions(&merged), vec![(6, 3), (4, 4)]);
 	}
@@ -333,6 +484,7 @@ mod tests {
 			&read(vec![], 20, false),
 			&one(upstream(None, read(vec![view_row(8, 3), view_row(9, 6)], 9, true))),
 			&ObjectIndex::default(),
+			&whole(&sources()),
 		);
 		assert_eq!(merged.target, cv(5));
 		assert_eq!(versions(&merged), vec![(8, 3)], "the row stamped 6 may have siblings beyond the read");
@@ -369,6 +521,7 @@ mod tests {
 			&read(vec![table_row(5), view.clone()], 20, false),
 			&one(upstream(Some(5), read(vec![view], 20, false))),
 			&ObjectIndex::default(),
+			&whole(&sources()),
 		);
 		assert_eq!(versions(&merged), vec![(7, 5), (5, 5)]);
 	}
@@ -381,6 +534,7 @@ mod tests {
 			&read(vec![], 20, false),
 			&one(upstream(Some(9), read(vec![view_row(7, 5), view_row(9, 8)], 20, false))),
 			&ObjectIndex::default(),
+			&whole(&sources()),
 		);
 		assert_eq!(versions(&merged), vec![(9, 8)]);
 	}
@@ -393,6 +547,7 @@ mod tests {
 			&read(vec![table_row(3)], 3, true),
 			&one(upstream(Some(10), read(vec![], 20, false))),
 			&ObjectIndex::default(),
+			&whole(&sources()),
 		);
 		assert_eq!(merged.target, cv(3));
 		assert!(merged.more);
@@ -410,6 +565,7 @@ mod tests {
 				upstream_of(ViewId(6), Some(4), read(vec![], 20, false)),
 			),
 			&ObjectIndex::default(),
+			&whole(&sources()),
 		);
 		assert_eq!(merged.target, cv(4));
 		assert!(
@@ -431,12 +587,97 @@ mod tests {
 				upstream_of(ViewId(6), Some(6), read(vec![shared, other_view_row(9, 6)], 20, false)),
 			),
 			&ObjectIndex::default(),
+			&whole(&sources()),
 		);
 		assert_eq!(merged.target, cv(6));
 		assert_eq!(
 			versions(&merged),
 			vec![(6, 5), (8, 5), (5, 5), (9, 6)],
 			"a row of either gated view in the table stream must be dropped, not merged a second time"
+		);
+	}
+
+	fn per_source(source_objects: &BTreeSet<ObjectId>) -> StepCut<'_> {
+		StepCut {
+			source_objects,
+			per_source: true,
+		}
+	}
+
+	#[test]
+	fn a_per_source_step_hands_out_one_source_and_stops_below_the_next() {
+		// Handing out the whole tail makes every drain rework rows the step drops at its first source change.
+		let objects = sources();
+		let merged = merge(
+			cv(0),
+			&read(vec![table_row(5), table_row(6), table_row(7)], 20, false),
+			&one(upstream(Some(10), read(vec![view_row(8, 5), view_row(9, 7)], 20, false))),
+			&ObjectIndex::default(),
+			&per_source(&objects),
+		);
+		assert_eq!(versions(&merged), vec![(8, 5), (5, 5)]);
+		assert_eq!(merged.target, cv(5), "the step must stop just below source 6, the lowest one left");
+		assert!(merged.more, "sources 6 and 7 are still unhandled");
+	}
+
+	#[test]
+	fn the_lowest_source_of_any_stream_runs_first() {
+		// Taking the table stream's first source would run the header at 5 before the view row made from 3.
+		let objects = sources();
+		let merged = merge(
+			cv(0),
+			&read(vec![table_row(5)], 20, false),
+			&one(upstream(Some(10), read(vec![view_row(8, 3)], 20, false))),
+			&ObjectIndex::default(),
+			&per_source(&objects),
+		);
+		assert_eq!(versions(&merged), vec![(8, 3)]);
+		assert_eq!(merged.target, cv(4));
+	}
+
+	#[test]
+	fn a_row_the_flow_does_not_read_neither_runs_nor_cuts_the_step() {
+		// Cutting at an unread source turns every foreign commit into a step of its own.
+		let objects = sources();
+		let merged = merge(
+			cv(0),
+			&read(vec![table_row(5), row(StorageId::table(2), 6, 6), table_row(7)], 20, false),
+			&one(upstream(Some(10), read(vec![], 20, false))),
+			&ObjectIndex::default(),
+			&per_source(&objects),
+		);
+		assert_eq!(versions(&merged), vec![(5, 5)]);
+		assert_eq!(merged.target, cv(6), "the unread commit 6 must be passed together with source 5");
+	}
+
+	#[test]
+	fn a_per_source_step_with_one_source_left_runs_to_the_target() {
+		// Stopping below a source that does not exist would never let the reader reach the gate.
+		let objects = sources();
+		let merged = merge(
+			cv(0),
+			&read(vec![table_row(5)], 20, false),
+			&one(upstream(Some(20), read(vec![view_row(8, 5)], 20, false))),
+			&ObjectIndex::default(),
+			&per_source(&objects),
+		);
+		assert_eq!(versions(&merged), vec![(8, 5), (5, 5)]);
+		assert_eq!(merged.target, cv(20));
+		assert!(!merged.more, "nothing is left beyond the target");
+	}
+
+	#[cfg(reifydb_assertions)]
+	#[test]
+	#[should_panic(expected = "source versions went down")]
+	fn a_stream_whose_sources_go_down_is_rejected() {
+		// A per-source step stops before the lower source, so its rows would never run.
+		let objects = sources();
+		merge(
+			cv(0),
+			&read(vec![row(StorageId::table(1), 5, 5), row(StorageId::table(1), 6, 3)], 20, false),
+			&one(upstream(Some(10), read(vec![], 20, false))),
+			&ObjectIndex::default(),
+			&per_source(&objects),
 		);
 	}
 
@@ -463,6 +704,16 @@ mod tests {
 		assert_eq!(commits(&past), vec![5, 6, 7, 8, 9, 10]);
 		assert_eq!(past.read_to, cv(10));
 		assert!(past.more, "versions 11..20 were never read, so the caller must be told to read on");
+	}
+
+	#[test]
+	fn a_served_read_shares_the_cached_chunk_instead_of_copying_it() {
+		// A copy per serve costs the whole unhandled tail on every drain of a lagging flow.
+		let mut cache = ReadCache::default();
+		let first = cache.insert(cv(0), chunk(0, 10), cv(10));
+		let served = cache.get(cv(4), cv(10)).expect("cursor 4 lies inside the chunk 0..10");
+		assert!(ptr::eq(&served.items[0], &first[4]), "the served read must point into the cached chunk");
+		assert!(ptr::eq(&cache.get(cv(0), cv(10)).expect("chunk 0..10").items[0], &first[0]));
 	}
 
 	#[test]

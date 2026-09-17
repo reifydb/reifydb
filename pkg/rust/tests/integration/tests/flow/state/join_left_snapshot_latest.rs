@@ -161,9 +161,9 @@ fn a_left_row_joins_only_the_newest_right_row_and_keeps_it_through_the_seal() {
 		view_rv(&db)
 	);
 	assert_eq!(
-		await_state_keys(&db, RIGHT, 2, TIMEOUT),
-		2,
-		"both right rows must be kept, or a retracted winner has no runner-up; surface now: {:?}",
+		await_state_keys(&db, RIGHT, 1, TIMEOUT),
+		1,
+		"only the row the left side read may be kept, or the right side grows per arrival; surface now: {:?}",
 		db.query(SURFACE)
 	);
 	assert_eq!(

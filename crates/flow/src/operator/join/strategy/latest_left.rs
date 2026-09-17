@@ -94,11 +94,10 @@ impl LatestLeftHashJoin {
 						.unwrap_or_default());
 				}
 				add_to_state_entry_batch(host, &mut ctx.state.left, key_hash, post, indices)?;
-				let joined =
-					match read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())? {
-						Some(slot) => ctx.operator.join_left_with_slot(post, indices, &slot),
-						None => ctx.operator.unmatched_left_latest(post, indices),
-					};
+				let joined = match read_right_slot(host, &ctx.state.right, key_hash)? {
+					Some(slot) => ctx.operator.join_left_with_slot(post, indices, &slot),
+					None => ctx.operator.unmatched_left_latest(post, indices),
+				};
 				Ok(vec![Diff::insert(joined)])
 			}
 			JoinSide::Right => self.handle_right_insert(host, post, indices, key_hash, ctx),
@@ -122,10 +121,10 @@ impl LatestLeftHashJoin {
 				right_store: &ctx.state.right,
 			};
 			retire_slot(host, &snapshot_ctx, key_hash)?;
-			write_right_rows(host, &ctx.state.right, key_hash, post, indices)?;
+			write_right_rows(host, &ctx.state.right, key_hash, post, indices, ctx.operator.pick())?;
 			return Ok(Vec::new());
 		}
-		let old = read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())?;
+		let old = read_right_slot(host, &ctx.state.right, key_hash)?;
 		let new = overwrite_right_slot(host, &ctx.state.right, key_hash, post, indices, ctx.operator.pick())?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
@@ -181,11 +180,10 @@ impl LatestLeftHashJoin {
 					}
 					return Ok(withdrawn);
 				}
-				let removed =
-					match read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())? {
-						Some(slot) => ctx.operator.join_left_with_slot(pre, indices, &slot),
-						None => ctx.operator.unmatched_left_latest(pre, indices),
-					};
+				let removed = match read_right_slot(host, &ctx.state.right, key_hash)? {
+					Some(slot) => ctx.operator.join_left_with_slot(pre, indices, &slot),
+					None => ctx.operator.unmatched_left_latest(pre, indices),
+				};
 				let result = vec![Diff::remove(removed)];
 				let group = ctx.state.left.group_of(key_hash);
 				for &idx in indices {
@@ -217,9 +215,9 @@ impl LatestLeftHashJoin {
 			remove_right_rows(host, &ctx.state.right, key_hash, &numbers)?;
 			return Ok(Vec::new());
 		}
-		let old = read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())?;
+		let old = read_right_slot(host, &ctx.state.right, key_hash)?;
 		remove_right_rows(host, &ctx.state.right, key_hash, &numbers)?;
-		let new = read_right_slot(host, &ctx.state.right, key_hash, ctx.operator.pick())?;
+		let new = read_right_slot(host, &ctx.state.right, key_hash)?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
 		let Some(old_slot) = old else {
@@ -315,17 +313,17 @@ impl LatestLeftHashJoin {
 						idx,
 					)?;
 				}
-				let (pre_joined, post_joined) =
-					match read_right_slot(host, &ctx.state.right, keys.pre, ctx.operator.pick())? {
-						Some(slot) => (
-							ctx.operator.join_left_with_slot(pre, indices, &slot),
-							ctx.operator.join_left_with_slot(post, indices, &slot),
-						),
-						None => (
-							ctx.operator.unmatched_left_latest(pre, indices),
-							ctx.operator.unmatched_left_latest(post, indices),
-						),
-					};
+				let (pre_joined, post_joined) = match read_right_slot(host, &ctx.state.right, keys.pre)?
+				{
+					Some(slot) => (
+						ctx.operator.join_left_with_slot(pre, indices, &slot),
+						ctx.operator.join_left_with_slot(post, indices, &slot),
+					),
+					None => (
+						ctx.operator.unmatched_left_latest(pre, indices),
+						ctx.operator.unmatched_left_latest(post, indices),
+					),
+				};
 				Ok(vec![Diff::update(pre_joined, post_joined)])
 			}
 			JoinSide::Right => self.handle_right_insert(host, post, indices, keys.post, ctx),

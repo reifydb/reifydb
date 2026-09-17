@@ -43,14 +43,27 @@ impl CommitHandle {
 }
 
 fn apply_and_commit(begin: &CommitBegin, apply: CommitApply) -> Result<CommitVersion> {
+	let mut transaction = begin_unchecked(begin)?;
+	if let Err(e) = (apply)(&mut transaction) {
+		let _ = transaction.rollback();
+		return Err(e);
+	}
+	let result = transaction.commit_unchecked();
+	release(transaction);
+	result
+}
+
+#[instrument(name = "transaction::commit::begin", level = "debug", skip_all)]
+fn begin_unchecked(begin: &CommitBegin) -> Result<CommandTransaction> {
 	let mut transaction = (begin)()?;
 	if let Err(e) = transaction.disable_conflict_tracking() {
 		let _ = transaction.rollback();
 		return Err(e);
 	}
-	if let Err(e) = (apply)(&mut transaction) {
-		let _ = transaction.rollback();
-		return Err(e);
-	}
-	transaction.commit_unchecked()
+	Ok(transaction)
+}
+
+#[instrument(name = "transaction::commit::release", level = "debug", skip_all)]
+fn release(transaction: CommandTransaction) {
+	drop(transaction);
 }

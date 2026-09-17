@@ -16,9 +16,19 @@ use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	interface::cdc::{Cdc, CdcChange},
 };
-use reifydb_runtime::sync::waiter::WaiterHandle;
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		system::ActorSystem,
+		traits::{Actor, Directive},
+	},
+	context::clock::Clock,
+	pool::{PoolConfig, Pools},
+	sync::waiter::WaiterHandle,
+};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_cdc::{
+	config::{CdcPersistentConfig, CdcStoreConfig},
 	error::CdcError,
 	storage::CdcStorage,
 	store::CdcStore,
@@ -273,9 +283,9 @@ fn crossing_cut_bytes_never_parks_the_writer() {
 }
 
 #[test]
-fn the_ceiling_parks_the_writer_until_the_flusher_drains() {
+fn the_ceiling_parks_the_writer_until_the_buffer_drains() {
 	// the counter must prove the stall: from outside, a slow flusher and a parked writer look identical
-	let _watchdog = Watchdog::arm("the_ceiling_parks_the_writer_until_the_flusher_drains");
+	let _watchdog = Watchdog::arm("the_ceiling_parks_the_writer_until_the_buffer_drains");
 	for_each_tier(budget(CUT_RECORDS), budget(CEILING_RECORDS), |case| {
 		let frozen = case.buffer.flush_guard();
 		case.write_all(1..=CEILING_RECORDS + 1);
@@ -444,8 +454,7 @@ fn ceiling_pressure_loses_and_reorders_nothing() {
 
 #[test]
 fn a_parked_write_must_lose_to_a_version_that_landed_while_it_slept() {
-	// both writers clear the acceptance check before parking, so a wakeup that skips the re-check admits one
-	// version twice
+	// both writers park before the acceptance check, so checking before the park admits one version twice
 	let _watchdog = Watchdog::arm("a_parked_write_must_lose_to_a_version_that_landed_while_it_slept");
 	for_each_tier(budget(CUT_RECORDS), budget(CEILING_RECORDS), |case| {
 		let frozen = case.buffer.flush_guard();
@@ -492,7 +501,7 @@ fn a_parked_write_must_lose_to_a_version_that_landed_while_it_slept() {
 
 #[test]
 fn every_writer_at_the_ceiling_completes() {
-	// one flush wakes them all at once, so a notify that reached a single waiter leaves the rest parked
+	// each writer over the ceiling must get its turn at the flush, otherwise the rest stay parked
 	let _watchdog = Watchdog::arm("every_writer_at_the_ceiling_completes");
 	let writers = 8;
 	let per_writer = 60;
@@ -588,21 +597,89 @@ fn commit_metrics_follow_the_run() {
 	});
 }
 
+struct CoordinationWriter {
+	store: CdcStore,
+	total: u64,
+	done: Arc<WaiterHandle>,
+}
+
+impl Actor for CoordinationWriter {
+	type State = ();
+	type Message = ();
+
+	fn init(&self, _ctx: &Context<()>) {}
+
+	fn handle(&self, _state: &mut (), _msg: (), _ctx: &Context<()>) -> Directive {
+		for version in 1..=self.total {
+			self.store.write(&record(version)).unwrap();
+		}
+		self.done.notify();
+		Directive::Stop
+	}
+}
+
 #[test]
-fn a_buffer_with_no_flusher_never_parks_and_never_stops_growing() {
-	// the ceiling only parks while a flusher is attached, so an unattached buffer must grow without bound
-	let _watchdog = Watchdog::arm("a_buffer_with_no_flusher_never_parks_and_never_stops_growing");
+fn a_writer_on_a_one_thread_coordination_pool_gets_past_the_ceiling() {
+	// the flusher shares that one thread, so a writer that waits for it over the ceiling deadlocks the pool
+	let _watchdog = Watchdog::arm("a_writer_on_a_one_thread_coordination_pool_gets_past_the_ceiling");
+	let pools = Pools::new(PoolConfig {
+		coordination_threads: 1,
+		..PoolConfig::default()
+	});
+	let system = ActorSystem::new(pools, Clock::Real);
+	let spawner = system.spawner();
+	// a deadlocked pool never joins, so dropping the system would hang the failure instead of reporting it
+	std::mem::forget(system);
+
+	let commit = common::commit_config(budget(CUT_RECORDS), budget(CEILING_RECORDS));
+	let buffer = commit.storage.clone();
+	let store = CdcStore::new(CdcStoreConfig {
+		commit,
+		persistent: CdcPersistentConfig::opened(CdcPersistentTier::memory())
+			.flush_interval(Duration::from_hours_const(1)),
+		read: None,
+		spawner: spawner.clone(),
+		clock: Clock::Real,
+	});
+
+	let total = CEILING_RECORDS * 4;
+	let done = Arc::new(WaiterHandle::new());
+	let writer = spawner.spawn_coordination(
+		"ceiling-writer",
+		CoordinationWriter {
+			store: store.clone(),
+			total,
+			done: Arc::clone(&done),
+		},
+	);
+	assert!(writer.actor_ref().send(()).is_ok(), "the writer actor refused its start message");
+
+	assert!(done.wait_timeout(JOIN), "a writer on the only coordination thread never came back from the ceiling");
+	assert!(
+		buffer.metrics().stalls >= 1,
+		"the writer never crossed the ceiling, so the deadlock path went unexercised"
+	);
+	assert!(store.flush_pending(), "the flusher did not answer once the writer released the thread");
+	let batch = store.read_range(Bound::Unbounded, Bound::Unbounded, 1_000_000).unwrap();
+	assert_eq!(
+		batch.items.iter().map(|cdc| cdc.version.commit.0).collect::<Vec<_>>(),
+		(1..=total).collect::<Vec<_>>()
+	);
+}
+
+#[test]
+fn a_bare_buffer_never_parks_and_never_stops_growing() {
+	// only a store write drains over the ceiling, so a buffer appended to directly must never park and grow
+	// unbounded
+	let _watchdog = Watchdog::arm("a_bare_buffer_never_parks_and_never_stops_growing");
 	let buffer = CdcCommitBufferTier::new(budget(CUT_RECORDS), budget(CEILING_RECORDS));
 	let total = 200;
 	for version in 1..=total {
 		assert!(buffer.append(Arc::new(record(version))), "v{version} was refused");
 	}
 
-	assert_eq!(buffer.metrics().stalls, 0, "an unattached buffer cannot be drained, so it must not park");
+	assert_eq!(buffer.metrics().stalls, 0, "a bare buffer has nothing to drain it, so it must not park");
 	assert_eq!(buffer.metrics().entries, Count::new(total));
 	assert_eq!(buffer.resident_bytes(), budget(total));
-	assert!(
-		buffer.resident_bytes() > budget(CEILING_RECORDS * 20),
-		"the ceiling held a buffer with no flusher attached"
-	);
+	assert!(buffer.resident_bytes() > budget(CEILING_RECORDS * 20), "the ceiling held a bare buffer");
 }

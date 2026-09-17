@@ -14,7 +14,11 @@ use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_cdc::{
 	config::{CdcCommitConfig, CdcPersistentConfig, CdcStoreConfig},
 	store::CdcStore,
-	tier::{commit::CdcCommitBufferTier, persistent::CdcPersistentTier, read::CdcReadConfig},
+	tier::{
+		commit::CdcCommitBufferTier,
+		persistent::CdcPersistentTier,
+		read::{CdcReadBufferTier, CdcReadConfig},
+	},
 };
 use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
@@ -22,7 +26,9 @@ use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 /// growing an accessor no production caller wants.
 pub struct Fixture {
 	pub store: CdcStore,
+	pub commit: CdcCommitBufferTier,
 	pub persistent: CdcPersistentTier,
+	pub read: Option<CdcReadBufferTier>,
 	pub guard: Option<SqliteTempPathGuard>,
 }
 
@@ -48,17 +54,20 @@ pub fn custom(
 ) -> Fixture {
 	// an hour-long interval keeps the timer from racing the test, so every block boundary comes from an explicit
 	// flush
+	let read = read.and_then(CdcReadBufferTier::new);
 	let store = CdcStore::new(CdcStoreConfig {
-		commit,
+		commit: commit.clone(),
 		persistent: CdcPersistentConfig::opened(persistent.clone())
 			.flush_interval(Duration::from_hours_const(1)),
-		read,
+		read: read.clone(),
 		spawner: spawner(),
 		clock: Clock::Real,
 	});
 	Fixture {
 		store,
+		commit: commit.storage,
 		persistent,
+		read,
 		guard,
 	}
 }
