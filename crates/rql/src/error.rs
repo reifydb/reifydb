@@ -71,9 +71,9 @@ pub enum RqlError {
 		fragment: Fragment,
 	},
 
-	#[error("{kind} takes no WITH clause")]
-	OperatorNoWithClause {
-		kind: OperationKind,
+	#[error("WITH key `{key}` is given more than once")]
+	OperatorWithDuplicateKey {
+		key: String,
 		fragment: Fragment,
 	},
 
@@ -523,26 +523,18 @@ impl IntoDiagnostic for RqlError {
 				}
 			}
 
-			RqlError::OperatorNoWithClause { kind, fragment } => {
-				let code = match kind {
-					OperationKind::Aggregate => "AGGREGATE_006",
-					OperationKind::Distinct => "DISTINCT_003",
-					OperationKind::Apply => "APPLY_003",
-					_ => "OP_002",
-				};
-				Diagnostic {
-					code: code.to_string(),
-					rql: None,
-					message: format!("{kind} takes no WITH clause"),
-					column: None,
-					fragment,
-					label: Some("unexpected WITH clause".to_string()),
-					help: Some(format!("Remove the WITH clause: {kind} does not accept one")),
-					notes: vec![],
-					cause: None,
-					operator_chain: None,
-				}
-			}
+			RqlError::OperatorWithDuplicateKey { key, fragment } => Diagnostic {
+				code: "OP_003".to_string(),
+				rql: None,
+				message: format!("WITH key `{}` is given more than once", key),
+				column: None,
+				fragment,
+				label: Some("key given twice".to_string()),
+				help: Some("Each WITH key may appear at most once in its block".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 
 			RqlError::WindowMissingSlideParameter { fragment } => Diagnostic {
 				code: "WINDOW_002".to_string(),

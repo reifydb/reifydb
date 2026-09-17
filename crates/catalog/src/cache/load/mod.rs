@@ -15,7 +15,7 @@ pub mod identity_attribute;
 pub mod identity_attribute_value;
 pub mod namespace;
 pub mod operator;
-pub mod operator_settings;
+pub mod operator_retention;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;
@@ -46,7 +46,7 @@ use identity_attribute::load_identity_attributes;
 use identity_attribute_value::load_identity_attribute_values;
 use namespace::load_namespaces;
 use operator::load_operators;
-use operator_settings::load_operator_settings;
+use operator_retention::load_operator_retention;
 use policy::load_policies;
 use primary_key::load_primary_keys;
 use procedure::load_procedures;
@@ -88,7 +88,7 @@ impl CatalogCacheLoader {
 		load_series(rx, catalog)?;
 
 		load_row_settings(rx, catalog)?;
-		load_operator_settings(rx, catalog)?;
+		load_operator_retention(rx, catalog)?;
 
 		load_dictionaries(rx, catalog)?;
 		load_column_snapshots(rx, catalog)?;

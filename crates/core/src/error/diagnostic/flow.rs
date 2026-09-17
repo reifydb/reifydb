@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{error::Diagnostic, fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::{
+	error::Diagnostic,
+	fragment::Fragment,
+	value::{duration::Duration, value_type::ValueType},
+};
 
 pub fn flow_error(message: String) -> Diagnostic {
 	Diagnostic {
@@ -679,5 +683,21 @@ pub fn flow_step_panicked(reason: String) -> Diagnostic {
 		"An operator in this view panicked instead of returning an error. The flow retries a few times and is \
 		 then poisoned, which the flow subsystem reports as degraded health. Fix the operator so it returns an \
 		 error.",
+	)
+}
+
+pub fn flow_operator_with_count_span(key: &str, count: u64) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_063",
+		format!("operator setting '{}' is a count ({}), but this operator seals by time", key, count),
+		"Declare the setting as a duration, for example 30s, or use an operator that seals by row count.",
+	)
+}
+
+pub fn flow_operator_with_immutable_not_below_lateness(immutable: Duration, lateness: Duration) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_064",
+		format!("immutable {} must be strictly less than lateness {}", immutable, lateness),
+		"A window becomes immutable before it seals, so immutable must be shorter than lateness.",
 	)
 }

@@ -17,7 +17,7 @@ pub mod identity;
 pub mod metric;
 pub mod namespace;
 pub mod operator;
-pub mod operator_settings;
+pub mod operator_retention;
 pub mod output_frontier;
 pub mod partition;
 pub mod procedure;

@@ -124,7 +124,7 @@ impl TransformLoader {
 		Ok(Some(info))
 	}
 
-	pub fn load_transform(&mut self, path: &Path, config: &[u8]) -> ExternCResult<Option<ExternCTransform>> {
+	pub fn load_transform(&mut self, path: &Path, params: &[u8]) -> ExternCResult<Option<ExternCTransform>> {
 		if !self.load_transform_library(path)? {
 			return Ok(None);
 		}
@@ -143,7 +143,7 @@ impl TransformLoader {
 			*create_symbol
 		};
 
-		let instance = create_fn(config.as_ptr(), config.len());
+		let instance = create_fn(params.as_ptr(), params.len());
 		if instance.is_null() {
 			return Err(SdkError::Other("Failed to create transform instance".to_string()));
 		}
@@ -151,14 +151,14 @@ impl TransformLoader {
 		Ok(Some(ExternCTransform::new(descriptor, instance)))
 	}
 
-	pub fn create_transform_by_name(&mut self, name: &str, config: &[u8]) -> ExternCResult<ExternCTransform> {
+	pub fn create_transform_by_name(&mut self, name: &str, params: &[u8]) -> ExternCResult<ExternCTransform> {
 		let path = self
 			.transform_paths
 			.get(name)
 			.ok_or_else(|| SdkError::Other(format!("Transform not found: {}", name)))?
 			.clone();
 
-		self.load_transform(&path, config)?
+		self.load_transform(&path, params)?
 			.ok_or_else(|| SdkError::Other(format!("Transform library no longer valid: {}", name)))
 	}
 

@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::ast::{
-	ast::*,
-	identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedFunctionIdentifier, UnresolvedObjectIdentifier},
+use crate::{
+	ast::{
+		ast::*,
+		identifier::{
+			MaybeQualifiedColumnIdentifier, MaybeQualifiedFunctionIdentifier, UnresolvedObjectIdentifier,
+		},
+	},
+	token::token::{Literal, TokenKind},
 };
 
 pub(crate) struct FingerprintBuffer(Vec<u8>);
@@ -254,6 +259,7 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 			for col in &node.columns {
 				write_column_id(buf, col);
 			}
+			write_operator_with(buf, &node.with);
 		}
 		Ast::From(node) => match node {
 			AstFrom::Source {
@@ -292,6 +298,7 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 			buf.write_u8(tag::AGGREGATE);
 			fingerprint_ast_slice(buf, &node.by);
 			fingerprint_ast_slice(buf, &node.map);
+			write_operator_with(buf, &node.with);
 		}
 		Ast::Gate(node) => {
 			buf.write_u8(tag::GATE);
@@ -308,17 +315,15 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 		Ast::Window(node) => {
 			buf.write_u8(tag::WINDOW);
 			buf.write_u8(node.kind as u8);
-			for cfg in &node.config {
-				buf.write_str(cfg.key.text());
-				fingerprint_ast(buf, &cfg.value);
-			}
+			write_operator_with(buf, &node.with);
 			fingerprint_ast_slice(buf, &node.aggregations);
 			fingerprint_ast_slice(buf, &node.group_by);
 		}
 		Ast::Apply(node) => {
 			buf.write_u8(tag::APPLY);
 			buf.write_str(node.operator.text());
-			fingerprint_ast_slice(buf, &node.expressions);
+			fingerprint_ast_slice(buf, &node.params);
+			write_operator_with(buf, &node.with);
 		}
 
 		Ast::List(node) => {
@@ -396,37 +401,43 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 
 		Ast::Join(node) => match &**node {
 			AstJoin::InnerJoin {
-				with,
+				subquery,
 				using_clause,
 				alias,
+				with,
 				..
 			} => {
 				buf.write_u8(tag::JOIN_INNER);
 				buf.write_str(alias.text());
-				write_statement(buf, &with.statement);
+				write_statement(buf, &subquery.statement);
 				write_using_clause(buf, using_clause);
+				write_operator_with(buf, with);
 			}
 			AstJoin::LeftJoin {
-				with,
+				subquery,
 				using_clause,
 				alias,
+				with,
 				..
 			} => {
 				buf.write_u8(tag::JOIN_LEFT);
 				buf.write_str(alias.text());
-				write_statement(buf, &with.statement);
+				write_statement(buf, &subquery.statement);
 				write_using_clause(buf, using_clause);
+				write_operator_with(buf, with);
 			}
 			AstJoin::NaturalJoin {
-				with,
+				subquery,
 				join_type,
 				alias,
+				with,
 				..
 			} => {
 				buf.write_u8(tag::JOIN_NATURAL);
 				buf.write_u8(join_type.map_or(0, |jt| jt as u8));
 				buf.write_str(alias.text());
-				write_statement(buf, &with.statement);
+				write_statement(buf, &subquery.statement);
+				write_operator_with(buf, with);
 			}
 		},
 
@@ -1307,5 +1318,33 @@ fn write_variants(buf: &mut FingerprintBuffer, variants: &[AstVariant<'_>]) {
 	for v in variants {
 		buf.write_str(v.name.text());
 		write_column_defs(buf, &v.columns);
+	}
+}
+
+fn write_operator_with(buf: &mut FingerprintBuffer, with: &Option<AstOperatorWith<'_>>) {
+	if let Some(with) = with {
+		write_operator_with_entries(buf, &with.entries);
+	}
+}
+
+fn write_operator_with_entries(buf: &mut FingerprintBuffer, entries: &[AstOperatorWithEntry<'_>]) {
+	for entry in entries {
+		buf.write_str(entry.key.fragment().text());
+		match &entry.value {
+			Some(AstOperatorWithValue::Literal(token)) => buf.write_u8(match token.kind {
+				TokenKind::Literal(Literal::Number) => tag::LIT_NUMBER,
+				TokenKind::Literal(Literal::Text) => tag::LIT_TEXT,
+				TokenKind::Literal(Literal::True | Literal::False) => tag::LIT_BOOLEAN,
+				TokenKind::Literal(Literal::Temporal) => tag::LIT_TEMPORAL,
+				TokenKind::Literal(Literal::Duration) => tag::LIT_DURATION,
+				_ => tag::LIT_NONE,
+			}),
+			Some(AstOperatorWithValue::Word(token)) => {
+				buf.write_u8(tag::IDENTIFIER);
+				buf.write_str(token.fragment.text());
+			}
+			Some(AstOperatorWithValue::Block(entries)) => write_operator_with_entries(buf, entries),
+			None => {}
+		}
 	}
 }

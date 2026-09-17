@@ -8,6 +8,7 @@ use reifydb_core::{
 		flow::{OperatorCapability, from_bitmask},
 	},
 	metrics::heap::HeapSize,
+	operator_with::ApplyWith,
 	row::Row as CoreRow,
 };
 use reifydb_flow::{
@@ -36,7 +37,7 @@ use reifydb_testing_sdk::{
 	harness::ExternCOperatorHarnessBuilder,
 };
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	factory::time::millis,
 	value::{Value, datetime::DateTime, diff_type::DiffType, duration::Duration, value_type::ValueType},
 };
@@ -139,7 +140,11 @@ impl TumblingRegistration for TestVolume {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn from_operator_params(
+		_operator_id: OperatorId,
+		_params: &ExtensionParams,
+		_with: &ApplyWith,
+	) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -195,7 +200,11 @@ impl TumblingRegistration for SealedVolume {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn from_operator_params(
+		_operator_id: OperatorId,
+		_params: &ExtensionParams,
+		_with: &ApplyWith,
+	) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -288,7 +297,11 @@ impl TumblingRegistration for TestMin {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn from_operator_params(
+		_operator_id: OperatorId,
+		_params: &ExtensionParams,
+		_with: &ApplyWith,
+	) -> Result<Self> {
 		Ok(Self)
 	}
 

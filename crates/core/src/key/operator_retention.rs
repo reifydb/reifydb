@@ -15,12 +15,12 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, KeyCodec, Hash)]
-#[key(tag = OperatorSettings)]
-pub struct OperatorSettingsKey {
+#[key(tag = OperatorRetention)]
+pub struct OperatorRetentionKey {
 	pub operator: OperatorId,
 }
 
-impl OperatorSettingsKey {
+impl OperatorRetentionKey {
 	pub fn new(operator: impl Into<OperatorId>) -> Self {
 		Self {
 			operator: operator.into(),
@@ -45,28 +45,28 @@ pub mod tests {
 	};
 
 	#[test]
-	fn test_operator_settings_key_roundtrip() {
-		let key = OperatorSettingsKey {
+	fn test_operator_retention_key_roundtrip() {
+		let key = OperatorRetentionKey {
 			operator: OperatorId(12345),
 		};
 
 		let encoded = key.encode();
-		let decoded = OperatorSettingsKey::decode(&encoded).unwrap();
+		let decoded = OperatorRetentionKey::decode(&encoded).unwrap();
 		assert_eq!(key, decoded);
 	}
 
 	#[test]
-	fn test_operator_settings_key_rejects_other_kind() {
+	fn test_operator_retention_key_rejects_other_kind() {
 		let other = RowSettingsKey::encoded(StorageId::Table(TableId(1)));
-		assert!(OperatorSettingsKey::decode(&other).is_none());
+		assert!(OperatorRetentionKey::decode(&other).is_none());
 	}
 
 	#[test]
 	fn test_order_preserving() {
-		let key1 = OperatorSettingsKey {
+		let key1 = OperatorRetentionKey {
 			operator: OperatorId(1),
 		};
-		let key2 = OperatorSettingsKey {
+		let key2 = OperatorRetentionKey {
 			operator: OperatorId(2),
 		};
 
@@ -81,19 +81,19 @@ pub mod tests {
 mod verify_byte_identical {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::OperatorSettingsKey;
+	use super::OperatorRetentionKey;
 	use crate::interface::catalog::flow::OperatorId;
 
-	fn legacy_encode(key: &OperatorSettingsKey) -> Vec<u8> {
+	fn legacy_encode(key: &OperatorRetentionKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(OperatorSettingsKey::TAG as u8).extend_u64(key.operator);
+		serializer.extend_u8(OperatorRetentionKey::TAG as u8).extend_u64(key.operator);
 		serializer.to_encoded_key().as_slice().to_vec()
 	}
 
 	#[test]
 	fn matches_legacy_byte_layout() {
 		for operator in [0u64, 1, 42, 12345, u64::MAX] {
-			let key = OperatorSettingsKey {
+			let key = OperatorRetentionKey {
 				operator: OperatorId(operator),
 			};
 			assert_eq!(legacy_encode(&key), key.encode().as_slice().to_vec(), "operator={operator:#x}");

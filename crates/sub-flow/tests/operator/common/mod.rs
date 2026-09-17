@@ -7,6 +7,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::GroupId,
+	operator_with::ApplyWith,
 };
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
@@ -20,7 +21,7 @@ use reifydb_sdk::{
 	row,
 };
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	value::{constraint::TypeConstraint, diff_type::DiffType, row_number::RowNumber, value_type::ValueType},
 };
 
@@ -71,7 +72,7 @@ impl OperatorMetadata for ParityWindow {
 }
 
 impl GuestOperator for ParityWindow {
-	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(ParityWindow)
 	}
 
@@ -154,7 +155,7 @@ impl OperatorMetadata for RowNumberProbe {
 }
 
 impl GuestOperator for RowNumberProbe {
-	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(RowNumberProbe)
 	}
 
@@ -185,7 +186,7 @@ impl OperatorMetadata for NoopOperator {
 }
 
 impl GuestOperator for NoopOperator {
-	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(NoopOperator)
 	}
 
@@ -207,7 +208,7 @@ impl OperatorMetadata for ErroringOperator {
 }
 
 impl GuestOperator for ErroringOperator {
-	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(ErroringOperator)
 	}
 

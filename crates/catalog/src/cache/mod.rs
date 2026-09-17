@@ -17,7 +17,7 @@ pub mod load;
 pub mod migration;
 pub mod namespace;
 pub mod operator;
-pub mod operator_settings;
+pub mod operator_retention;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;
@@ -81,7 +81,7 @@ use reifydb_core::{
 		view::View,
 		vtable::{VTable, VTableId},
 	},
-	row::{OperatorSettings, RowSettings},
+	row::{OperatorRetention, RowSettings},
 	util::multi::MultiVersionContainer,
 };
 use reifydb_runtime::sync::mutex::Mutex;
@@ -129,7 +129,7 @@ pub type MultiVersionPolicy = MultiVersionContainer<Policy>;
 pub type MultiVersionSource = MultiVersionContainer<Source>;
 pub type MultiVersionSink = MultiVersionContainer<Sink>;
 pub type MultiVersionRowSettings = MultiVersionContainer<RowSettings>;
-pub type MultiVersionOperatorSettings = MultiVersionContainer<OperatorSettings>;
+pub type MultiVersionOperatorRetention = MultiVersionContainer<OperatorRetention>;
 pub type MultiVersionConfig = MultiVersionContainer<Value>;
 pub type MultiVersionAuthentication = MultiVersionContainer<Authentication>;
 
@@ -203,7 +203,7 @@ pub struct CatalogCacheInner {
 
 	pub(crate) relationships_by_source: SkipMap<TableId, Vec<RelationshipId>>,
 
-	pub(crate) operator_settings: SkipMap<OperatorId, MultiVersionOperatorSettings>,
+	pub(crate) operator_retention: SkipMap<OperatorId, MultiVersionOperatorRetention>,
 
 	pub(crate) dictionaries: SkipMap<DictionaryId, MultiVersionDictionary>,
 
@@ -352,7 +352,7 @@ impl CatalogCache {
 			relationships_by_name: SkipMap::new(),
 			relationships_by_source: SkipMap::new(),
 			row_settings: SkipMap::new(),
-			operator_settings: SkipMap::new(),
+			operator_retention: SkipMap::new(),
 			dictionaries: SkipMap::new(),
 			dictionaries_by_name: SkipMap::new(),
 			sumtypes: SkipMap::new(),

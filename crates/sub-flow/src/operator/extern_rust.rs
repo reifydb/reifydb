@@ -8,11 +8,11 @@ use std::{
 };
 
 use libloading::Symbol;
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::{interface::catalog::flow::OperatorId, operator_with::ApplyWith};
 use reifydb_extension::loader::extern_load::ExternLoad;
 use reifydb_flow::operator::BoxedHostOperator;
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_value::{Result, config::Config, error::Error, value::constraint::TypeConstraint};
+use reifydb_value::{Result, config::ExtensionParams, error::Error, value::constraint::TypeConstraint};
 
 use crate::error::ExternOperatorError;
 
@@ -20,7 +20,7 @@ pub const EXTERN_RUST_OPERATOR_MAGIC: u32 = 0x5244_424E;
 
 pub const EXTERN_RUST_ABI_TAG: u32 = 0x0308;
 
-pub type ExternRustOperatorCreateFn = fn(OperatorId, &Config) -> Result<BoxedHostOperator>;
+pub type ExternRustOperatorCreateFn = fn(OperatorId, &ExtensionParams, &ApplyWith) -> Result<BoxedHostOperator>;
 
 pub struct ExternRustOperatorColumn {
 	pub name: String,
@@ -146,7 +146,8 @@ impl ExternRustOperatorLoader {
 		&mut self,
 		operator: &str,
 		operator_id: OperatorId,
-		config: &Config,
+		params: &ExtensionParams,
+		with: &ApplyWith,
 	) -> Result<BoxedHostOperator> {
 		let path = self
 			.operator_paths
@@ -185,7 +186,7 @@ impl ExternRustOperatorLoader {
 			*create_symbol
 		};
 
-		create(operator_id, config)
+		create(operator_id, params, with)
 	}
 }
 

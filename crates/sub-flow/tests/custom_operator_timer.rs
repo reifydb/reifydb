@@ -12,6 +12,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::GroupId,
+	operator_with::{ApplyWith, WindowSealing},
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{
@@ -27,7 +28,7 @@ use reifydb_sdk::{
 	row,
 };
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	value::{
 		constraint::TypeConstraint, datetime::DateTime, diff_type::DiffType, duration::Duration,
 		value_type::ValueType,
@@ -67,7 +68,7 @@ const ALARM_COLUMNS: &[OperatorColumn] = &[
 ];
 
 struct Alarm {
-	lateness_ms: u64,
+	lateness: Duration,
 }
 
 impl GuestRawOperator for Alarm {}
@@ -86,14 +87,15 @@ fn group_key(g: i32) -> EncodedKey {
 }
 
 impl GuestOperator for Alarm {
-	fn create(_operator_id: OperatorId, config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, with: &ApplyWith) -> SdkResult<Self> {
+		let sealing = WindowSealing::from_operator_with(with).expect("alarm lateness must be a duration");
 		Ok(Alarm {
-			lateness_ms: config.u64_or("lateness", LATENESS_MS),
+			lateness: sealing.lateness.unwrap_or(Duration::from_milliseconds_const(LATENESS_MS as i64)),
 		})
 	}
 
 	fn seal_span(&self) -> Option<Duration> {
-		Some(Duration::from_milliseconds_const(self.lateness_ms as i64))
+		Some(self.lateness)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> SdkResult<()> {
@@ -256,7 +258,7 @@ fn interning_inside_a_callback_stamps_the_firing_instant_not_the_change_that_wok
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(
-		"CREATE DEFERRED VIEW app::v { g: int4, fired_at: int8 } AS { FROM app::t APPLY alarm{ lateness: 1000 } }",
+		"CREATE DEFERRED VIEW app::v { g: int4, fired_at: int8 } AS { FROM app::t APPLY alarm{} WITH { lateness: 1s } }",
 	);
 
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
@@ -288,9 +290,9 @@ impl OperatorMetadata for Snooze {
 }
 
 impl GuestOperator for Snooze {
-	fn create(_operator_id: OperatorId, config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(Snooze {
-			disarm_offset_ms: config.u64_or("disarm_offset", 0),
+			disarm_offset_ms: params.u64_or("disarm_offset", 0),
 		})
 	}
 

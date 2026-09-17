@@ -5,6 +5,7 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::{GroupStateKey, IntoGroupStateKey, custom_not_cached_key},
 	metrics::heap::HeapSize,
+	operator_with::ApplyWith,
 };
 use reifydb_flow::operator::state_access::{get, get_or_default, set, update};
 use reifydb_macro::operator_state;
@@ -19,7 +20,7 @@ use reifydb_sdk::{
 	},
 };
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
-use reifydb_value::{config::Config, value::Value};
+use reifydb_value::{config::ExtensionParams, value::Value};
 
 /// A bare `String` cannot be a state key: `IntoGroupStateKey` exists to force every key through the operator-state
 /// framing, so this wrapper frames the test's keys exactly as an operator would.
@@ -102,7 +103,7 @@ impl OperatorMetadata for PassthroughOperator {
 }
 
 impl ExternCOperator for PassthroughOperator {
-	fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn new(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 

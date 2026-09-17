@@ -16,8 +16,9 @@ pub mod windowed;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
+	operator_with::ApplyWith,
 };
-use reifydb_value::{config::Config, value::duration::Duration};
+use reifydb_value::{config::ExtensionParams, value::duration::Duration};
 
 use crate::{
 	error::Result,
@@ -34,7 +35,7 @@ pub trait OperatorMetadata {
 }
 
 pub trait GuestOperator: Send + Sync {
-	fn create(operator_id: OperatorId, config: &Config) -> Result<Self>
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>
 	where
 		Self: Sized;
 

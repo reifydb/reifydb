@@ -9,8 +9,10 @@ use crate::{
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_distinct(&self, ast: AstDistinct<'bump>) -> Result<LogicalPlan<'bump>> {
+		let with = Self::compile_distinct_with(ast.with.as_ref())?;
 		Ok(LogicalPlan::Distinct(DistinctNode {
 			columns: ast.columns,
+			with,
 			rql: ast.rql.to_string(),
 		}))
 	}

@@ -122,7 +122,7 @@ impl ProcedureLoader {
 		Ok(Some(info))
 	}
 
-	pub fn load_procedure(&mut self, path: &Path, config: &[u8]) -> ExternCResult<Option<ExternCProcedure>> {
+	pub fn load_procedure(&mut self, path: &Path, params: &[u8]) -> ExternCResult<Option<ExternCProcedure>> {
 		if !self.load_procedure_library(path)? {
 			return Ok(None);
 		}
@@ -141,7 +141,7 @@ impl ProcedureLoader {
 			*create_symbol
 		};
 
-		let instance = create_fn(config.as_ptr(), config.len());
+		let instance = create_fn(params.as_ptr(), params.len());
 		if instance.is_null() {
 			return Err(SdkError::Other("Failed to create procedure instance".to_string()));
 		}
@@ -151,14 +151,14 @@ impl ProcedureLoader {
 		Ok(Some(ExternCProcedure::new(name, descriptor, instance)))
 	}
 
-	pub fn create_procedure_by_name(&mut self, name: &str, config: &[u8]) -> ExternCResult<ExternCProcedure> {
+	pub fn create_procedure_by_name(&mut self, name: &str, params: &[u8]) -> ExternCResult<ExternCProcedure> {
 		let path = self
 			.procedure_paths
 			.get(name)
 			.ok_or_else(|| SdkError::Other(format!("Procedure not found: {}", name)))?
 			.clone();
 
-		self.load_procedure(&path, config)?
+		self.load_procedure(&path, params)?
 			.ok_or_else(|| SdkError::Other(format!("Procedure library no longer valid: {}", name)))
 	}
 

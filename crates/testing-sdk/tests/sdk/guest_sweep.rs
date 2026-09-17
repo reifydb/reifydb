@@ -7,6 +7,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+	operator_with::ApplyWith,
 	state::timer::StateStore,
 };
 use reifydb_sdk::{
@@ -21,7 +22,7 @@ use reifydb_sdk::{
 };
 use reifydb_testing_sdk::harness::ExternCOperatorHarnessBuilder;
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	util::{cowvec::CowVec, hash::Hash128},
 };
 
@@ -37,7 +38,7 @@ impl OperatorMetadata for SweepOp {
 }
 
 impl ExternCOperator for SweepOp {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 

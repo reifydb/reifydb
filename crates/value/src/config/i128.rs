@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::Config;
+use super::ExtensionParams;
 
-impl Config {
+impl ExtensionParams {
 	pub fn i128(&self, key: &str) -> Option<i128> {
 		self.opt_coerce(key)
 	}

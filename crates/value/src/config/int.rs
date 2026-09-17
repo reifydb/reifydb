@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::Config;
+use super::ExtensionParams;
 use crate::value::int::Int;
 
-impl Config {
+impl ExtensionParams {
 	pub fn int(&self, key: &str) -> Option<Int> {
 		self.opt(key)
 	}

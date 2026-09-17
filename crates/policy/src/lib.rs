@@ -166,15 +166,15 @@ fn inject_plan<'a>(
 			Ok(LogicalPlan::Scalarize(node))
 		}
 		LogicalPlan::JoinInner(mut node) => {
-			node.with = inject_plans(node.with, bump, catalog, tx)?;
+			node.subquery = inject_plans(node.subquery, bump, catalog, tx)?;
 			Ok(LogicalPlan::JoinInner(node))
 		}
 		LogicalPlan::JoinLeft(mut node) => {
-			node.with = inject_plans(node.with, bump, catalog, tx)?;
+			node.subquery = inject_plans(node.subquery, bump, catalog, tx)?;
 			Ok(LogicalPlan::JoinLeft(node))
 		}
 		LogicalPlan::JoinNatural(mut node) => {
-			node.with = inject_plans(node.with, bump, catalog, tx)?;
+			node.subquery = inject_plans(node.subquery, bump, catalog, tx)?;
 			Ok(LogicalPlan::JoinNatural(node))
 		}
 		LogicalPlan::InsertTable(mut node) => {

@@ -113,18 +113,18 @@ impl LogicalWalker {
 				}
 			}
 			LogicalPlan::JoinInner(JoinInnerNode {
-				with,
+				subquery,
 				..
 			})
 			| LogicalPlan::JoinLeft(JoinLeftNode {
-				with,
+				subquery,
 				..
 			})
 			| LogicalPlan::JoinNatural(JoinNaturalNode {
-				with,
+				subquery,
 				..
 			}) => {
-				for child in with.iter() {
+				for child in subquery.iter() {
 					self.walk(child, depth, parent);
 				}
 			}
@@ -454,7 +454,7 @@ fn describe(plan: &LogicalPlan<'_>) -> (&'static str, String) {
 			("Distinct", detail)
 		}
 		LogicalPlan::Apply(apply) => {
-			("Apply", format!("operator={} arguments={}", apply.operator.text(), apply.arguments.len()))
+			("Apply", format!("operator={} params={}", apply.operator.text(), apply.params.len()))
 		}
 		LogicalPlan::Pipeline(_) => ("Pipeline", String::new()),
 		LogicalPlan::CreatePrimaryKey(CreatePrimaryKeyNode {
@@ -476,7 +476,7 @@ fn describe(plan: &LogicalPlan<'_>) -> (&'static str, String) {
 		LogicalPlan::Window(window) => {
 			let group = window.group_by.len();
 			let agg = window.aggregations.len();
-			("Window", format!("kind={:?} group_by={} aggregations={}", window.kind, group, agg))
+			("Window", format!("kind={:?} group_by={} aggregations={}", window.with.kind, group, agg))
 		}
 		LogicalPlan::Declare(node) => ("Declare", format!("{} = {}", node.name.text(), node.value)),
 		LogicalPlan::Assign(node) => ("Assign", format!("{} = {}", node.name.text(), node.value)),

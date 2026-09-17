@@ -12,7 +12,7 @@ use crate::error::{
 	CoreError,
 	diagnostic::flow::{
 		flow_already_registered, flow_backfill_timeout, flow_dispatcher_unavailable, flow_error,
-		flow_version_corrupted,
+		flow_operator_with_count_span, flow_operator_with_immutable_not_below_lateness, flow_version_corrupted,
 	},
 };
 
@@ -107,6 +107,16 @@ impl IntoDiagnostic for CoreError {
 			} => flow_backfill_timeout(flow_id, timeout_secs),
 
 			CoreError::FlowDispatcherUnavailable => flow_dispatcher_unavailable(),
+
+			CoreError::OperatorWithCountSpan {
+				key,
+				count,
+			} => flow_operator_with_count_span(key, count),
+
+			CoreError::OperatorWithImmutableNotBelowLateness {
+				immutable,
+				lateness,
+			} => flow_operator_with_immutable_not_below_lateness(immutable, lateness),
 
 			CoreError::PrimaryKeyViolation {
 				fragment,

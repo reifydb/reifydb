@@ -126,6 +126,7 @@ mod tests {
 		key::operator::state::{
 			GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, custom_not_cached_key_in,
 		},
+		operator_with::ApplyWith,
 		state::timer::StateStore,
 	};
 	use reifydb_flow::{
@@ -141,7 +142,7 @@ mod tests {
 	};
 	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 	use reifydb_value::{
-		config::Config,
+		config::ExtensionParams,
 		value::{datetime::DateTime, duration::Duration},
 	};
 
@@ -208,7 +209,7 @@ mod tests {
 	struct SealProbe(Option<i64>);
 
 	impl GuestOperator for SealProbe {
-		fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
+		fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 			Ok(Self(None))
 		}
 

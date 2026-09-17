@@ -6,7 +6,10 @@ use std::time::Duration as StdDuration;
 use reifydb::{
 	ConfigKey, Value, WithSubsystem,
 	codec::key::encoded::EncodedKey,
-	core::interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	core::{
+		interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+		operator_with::ApplyWith,
+	},
 	embedded,
 	sdk::{
 		error::Result as SdkResult,
@@ -24,7 +27,7 @@ use reifydb::{
 };
 use reifydb_test_harness::assert::column_values;
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	factory::time::secs,
 	value::{constraint::TypeConstraint, datetime::DateTime, duration::Duration, value_type::ValueType},
 };
@@ -115,7 +118,11 @@ impl TumblingRegistration for GuestTumbling {
 	];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
+	fn from_operator_params(
+		_operator_id: OperatorId,
+		_params: &ExtensionParams,
+		_with: &ApplyWith,
+	) -> SdkResult<Self> {
 		Ok(Self)
 	}
 

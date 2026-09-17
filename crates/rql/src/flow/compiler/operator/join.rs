@@ -5,7 +5,8 @@ use reifydb_core::{
 	common::JoinType::{self, Inner, Left},
 	error::diagnostic::operation::{join_pick_column_not_found, natural_join_no_shared_column},
 	interface::catalog::flow::OperatorId,
-	row::{JoinPick, JoinRetention},
+	operator_with::JoinWith,
+	row::JoinPick,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -33,11 +34,9 @@ pub(crate) struct JoinCompiler {
 	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<String>,
-	pub retention: Option<JoinRetention>,
-	pub snapshot: bool,
 	pub natural: bool,
 	pub fragment: Fragment,
-	pub pick: Option<JoinPick>,
+	pub with: JoinWith,
 }
 
 impl From<JoinInnerNode> for JoinCompiler {
@@ -48,11 +47,9 @@ impl From<JoinInnerNode> for JoinCompiler {
 			right: node.right,
 			on: node.on,
 			alias: node.alias.map(|f| f.text().to_string()),
-			retention: node.retention,
-			snapshot: node.snapshot,
 			natural: false,
 			fragment: Fragment::None,
-			pick: node.pick,
+			with: node.with,
 		}
 	}
 }
@@ -65,11 +62,9 @@ impl From<JoinLeftNode> for JoinCompiler {
 			right: node.right,
 			on: node.on,
 			alias: node.alias.map(|f| f.text().to_string()),
-			retention: node.retention,
-			snapshot: node.snapshot,
 			natural: false,
 			fragment: Fragment::None,
-			pick: node.pick,
+			with: node.with,
 		}
 	}
 }
@@ -82,11 +77,9 @@ impl From<JoinNaturalNode> for JoinCompiler {
 			right: node.right,
 			on: Vec::new(),
 			alias: node.alias.map(|f| f.text().to_string()),
-			retention: node.retention,
-			snapshot: node.snapshot,
 			natural: true,
 			fragment: node.fragment,
-			pick: node.pick,
+			with: node.with,
 		}
 	}
 }
@@ -221,7 +214,7 @@ impl CompileOperator for JoinCompiler {
 		if self.natural {
 			ensure_natural_join_shares_a_column(&self.fragment, &self.left, &self.right, &effective_alias)?;
 		}
-		ensure_pick_columns_exist(self.pick.as_ref(), &self.right, &effective_alias)?;
+		ensure_pick_columns_exist(self.with.pick.as_ref(), &self.right, &effective_alias)?;
 
 		let left_node = compiler.compile_plan(txn, *self.left)?;
 		let right_node = compiler.compile_plan(txn, *self.right)?;
@@ -235,13 +228,15 @@ impl CompileOperator for JoinCompiler {
 				left: left_keys,
 				right: right_keys,
 				alias: Some(effective_alias),
-				snapshot: self.snapshot,
 				natural: self.natural,
-				pick: self.pick,
+				with: self.with.clone(),
 			},
 		)?;
 
-		compiler.write_operator_settings_join(txn, node_id, self.retention)?;
+		let longest_side = self.with.retention.as_ref().and_then(|retention| {
+			retention.left.iter().chain(&retention.right).map(|side| side.duration).max()
+		});
+		compiler.write_operator_retention(txn, node_id, longest_side)?;
 
 		compiler.add_edge(txn, &left_node, &node_id)?;
 		compiler.add_edge(txn, &right_node, &node_id)?;

@@ -110,7 +110,7 @@ fn plan_expressions_and_inputs(plan: &mut QueryPlan) -> (Vec<&mut Expression>, V
 			(node.assignments.iter_mut().collect(), node.input.as_deref_mut().into_iter().collect())
 		}
 		QueryPlan::Apply(node) => {
-			(node.expressions.iter_mut().collect(), node.input.as_deref_mut().into_iter().collect())
+			(node.params.iter_mut().collect(), node.input.as_deref_mut().into_iter().collect())
 		}
 		QueryPlan::Assert(node) => {
 			(node.conditions.iter_mut().collect(), node.input.as_deref_mut().into_iter().collect())

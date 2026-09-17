@@ -56,7 +56,7 @@ impl SubsystemFactory for FlowWithAPanickingOperator {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let entry = CustomOperatorEntry {
-			factory: Arc::new(|operator, _config| {
+			factory: Arc::new(|operator, _params, _with| {
 				Ok(Box::new(PanicsOnApply {
 					operator,
 				}) as BoxedHostOperator)

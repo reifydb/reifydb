@@ -4,8 +4,11 @@
 use std::{collections::HashMap, ffi::c_void, ptr, slice, sync::Arc};
 
 use reifydb_codec::{constraint::encode_type_constraint, value::decode_params};
-use reifydb_core::interface::{catalog::flow::OperatorId, flow::to_bitmask};
-use reifydb_value::{config::Config, params::Params};
+use reifydb_core::{
+	interface::{catalog::flow::OperatorId, flow::to_bitmask},
+	operator_with::{ApplyWith, decode_apply_with},
+};
+use reifydb_value::{config::ExtensionParams, params::Params};
 
 use crate::{
 	common::extern_c::wire::buffer::ExternCBuffer,
@@ -80,40 +83,58 @@ pub fn create_descriptor<O: ExternCOperator + OperatorMetadata>() -> ExternCOper
 }
 
 /// # Safety
-/// - config_ptr must be valid for config_len bytes or null
+/// - params_ptr must be valid for params_len bytes or null
+/// - with_ptr must be valid for with_len bytes or null
 /// - The returned pointer must be freed by calling the destroy function
 pub unsafe extern "C" fn create_operator_instance<O: ExternCOperator + OperatorMetadata>(
-	config_ptr: *const u8,
-	config_len: usize,
+	params_ptr: *const u8,
+	params_len: usize,
+	with_ptr: *const u8,
+	with_len: usize,
 	operator_id: u64,
 ) -> *mut c_void {
-	let config = if config_ptr.is_null() || config_len == 0 {
+	let params = if params_ptr.is_null() || params_len == 0 {
 		HashMap::new()
 	} else {
-		// SAFETY: the null and zero-length cases are handled above, and the caller guarantees config_ptr is
-		// valid for config_len initialised bytes for the duration of this call.
-		let config_bytes = unsafe { slice::from_raw_parts(config_ptr, config_len) };
+		// SAFETY: the null and zero-length cases are handled above, and the caller guarantees params_ptr is
+		// valid for params_len initialised bytes for the duration of this call.
+		let params_bytes = unsafe { slice::from_raw_parts(params_ptr, params_len) };
 
-		match decode_params(config_bytes) {
+		match decode_params(params_bytes) {
 			Ok(Params::Named(map)) => Arc::try_unwrap(map).unwrap_or_else(|map| (*map).clone()),
 			Ok(Params::None) => HashMap::new(),
 			Ok(Params::Positional(_)) => {
 				panic!(
-					"Failed to deserialize operator config for operator {}: expected named params",
+					"Failed to deserialize operator params for operator {}: expected named params",
 					operator_id
 				);
 			}
 			Err(e) => {
 				panic!(
-					"Failed to deserialize operator config for operator {}: {}. Using empty config.",
+					"Failed to deserialize operator params for operator {}: {}. Using empty params.",
 					operator_id, e
 				);
 			}
 		}
 	};
 
-	let config = Config::new(O::NAME, config.into_iter().collect());
-	let operator = match O::new(OperatorId(operator_id), &config) {
+	let with = if with_ptr.is_null() || with_len == 0 {
+		ApplyWith::default()
+	} else {
+		// SAFETY: the null and zero-length cases are handled above, and the caller guarantees with_ptr is
+		// valid for with_len initialised bytes for the duration of this call.
+		let with_bytes = unsafe { slice::from_raw_parts(with_ptr, with_len) };
+
+		match decode_apply_with(with_bytes) {
+			Ok(with) => with,
+			Err(e) => {
+				panic!("Failed to deserialize operator with for operator {}: {}", operator_id, e);
+			}
+		}
+	};
+
+	let params = ExtensionParams::new(O::NAME, params.into_iter().collect());
+	let operator = match O::new(OperatorId(operator_id), &params, &with) {
 		Ok(op) => op,
 		Err(e) => {
 			eprintln!("Failed to create operator: {}", e);

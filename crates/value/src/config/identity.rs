@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::Config;
+use super::ExtensionParams;
 use crate::value::identity::IdentityId;
 
-impl Config {
+impl ExtensionParams {
 	pub fn identity_id(&self, key: &str) -> Option<IdentityId> {
 		self.opt(key)
 	}

@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShapeField};
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	operator_with::ApplyWith,
 	row::Row as CoreRow,
 };
 use reifydb_flow::window::accumulator::invertible::{last_value::LastValue, moments::Moments};
@@ -28,7 +29,7 @@ use reifydb_testing_sdk::{
 	harness::ExternCOperatorHarnessBuilder,
 };
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	factory::time::millis,
 	value::{Value, datetime::DateTime, diff_type::DiffType, duration::Duration, value_type::ValueType},
 };
@@ -149,7 +150,11 @@ impl RollingRegistration for TestVelocity {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn from_operator_params(
+		_operator_id: OperatorId,
+		_params: &ExtensionParams,
+		_with: &ApplyWith,
+	) -> Result<Self> {
 		Ok(Self {
 			capacity: 3,
 		})
@@ -331,7 +336,11 @@ impl RollingRegistration for SealedVelocity {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn from_operator_params(
+		_operator_id: OperatorId,
+		_params: &ExtensionParams,
+		_with: &ApplyWith,
+	) -> Result<Self> {
 		Ok(Self)
 	}
 

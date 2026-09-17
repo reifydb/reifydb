@@ -4,7 +4,7 @@
 use reifydb_value::{
 	error::{Error, IntoDiagnostic, TypeError},
 	fragment::Fragment,
-	value::value_type::ValueType,
+	value::{duration::Duration, value_type::ValueType},
 };
 
 pub mod diagnostic;
@@ -57,6 +57,18 @@ pub enum CoreError {
 
 	#[error("Flow dispatcher is unavailable")]
 	FlowDispatcherUnavailable,
+
+	#[error("operator setting '{key}' is a count ({count}), but this operator seals by time")]
+	OperatorWithCountSpan {
+		key: &'static str,
+		count: u64,
+	},
+
+	#[error("immutable {immutable} must be strictly less than lateness {lateness}")]
+	OperatorWithImmutableNotBelowLateness {
+		immutable: Duration,
+		lateness: Duration,
+	},
 
 	#[error("Primary key violation in table '{table_name}'")]
 	PrimaryKeyViolation {

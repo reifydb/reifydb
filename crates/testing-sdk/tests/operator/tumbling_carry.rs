@@ -46,7 +46,7 @@ fn run(none_values: bool, scenario: Scenario, seed: u64, retention: Option<u64>)
 		.with_column("group", samplers::utf8_choices(&["BTC", "ETH", "SOL"]))
 		.with_column("ts", samplers::u64_range(0..300))
 		.with_column("price", price_sampler(none_values))
-		.with_config(config)
+		.with_params(config)
 		.with_scenario(scenario)
 		.with_oracle(move |ctx, batches| {
 			tumbling_carry_accumulator_oracle(

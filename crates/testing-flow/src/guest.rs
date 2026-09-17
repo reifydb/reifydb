@@ -11,6 +11,7 @@ use reifydb_core::{
 	delta::RemoveVisibility,
 	interface::{catalog::flow::OperatorId, change::Change},
 	key::{operator::state::GroupStateKey, tag::KeyTag},
+	operator_with::ApplyWith,
 	row::Row,
 	value::column::columns::Columns,
 };
@@ -34,7 +35,7 @@ use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorH
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	Result,
-	config::Config,
+	config::ExtensionParams,
 	value::{Value, datetime::DateTime, diff_type::DiffType, row_number::RowNumber},
 };
 
@@ -175,7 +176,8 @@ impl<C: GuestOperator + OperatorMetadata + 'static> Index<usize> for GuestOperat
 }
 
 pub struct GuestOperatorHarnessBuilder<C> {
-	config: HashMap<String, Value>,
+	params: HashMap<String, Value>,
+	with: ApplyWith,
 	operator_id: OperatorId,
 	version: CommitVersion,
 	_phantom: PhantomData<C>,
@@ -190,24 +192,30 @@ impl<C: GuestOperator + OperatorMetadata + 'static> Default for GuestOperatorHar
 impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilder<C> {
 	pub fn new() -> Self {
 		Self {
-			config: HashMap::new(),
+			params: HashMap::new(),
+			with: ApplyWith::default(),
 			operator_id: OperatorId(1),
 			version: CommitVersion(1),
 			_phantom: PhantomData,
 		}
 	}
 
-	pub fn with_config<I, K>(mut self, config: I) -> Self
+	pub fn with_params<I, K>(mut self, params: I) -> Self
 	where
 		I: IntoIterator<Item = (K, Value)>,
 		K: Into<String>,
 	{
-		self.config = config.into_iter().map(|(k, v)| (k.into(), v)).collect();
+		self.params = params.into_iter().map(|(k, v)| (k.into(), v)).collect();
 		self
 	}
 
-	pub fn add_config(mut self, key: impl Into<String>, value: Value) -> Self {
-		self.config.insert(key.into(), value);
+	pub fn add_param(mut self, key: impl Into<String>, value: Value) -> Self {
+		self.params.insert(key.into(), value);
+		self
+	}
+
+	pub fn with(mut self, with: ApplyWith) -> Self {
+		self.with = with;
 		self
 	}
 
@@ -225,7 +233,8 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilder<
 		let engine = TestEngine::new();
 		let core = C::create(
 			self.operator_id,
-			&Config::new(<C as OperatorMetadata>::NAME, self.config.clone().into_iter().collect()),
+			&ExtensionParams::new(<C as OperatorMetadata>::NAME, self.params.clone()),
+			&self.with,
 		)?;
 		let capabilities = <C as OperatorMetadata>::CAPABILITIES;
 		let operator = mount(core, self.operator_id, capabilities);
@@ -281,35 +290,37 @@ fn render_change(change: &Change) -> Vec<DiffRender> {
 		.collect()
 }
 
-fn run_extern_c<C>(config: &[(&str, Value)], inputs: &[Change]) -> Vec<Change>
+fn run_extern_c<C>(params: &[(&str, Value)], with: ApplyWith, inputs: &[Change]) -> Vec<Change>
 where
 	C: GuestOperator + OperatorMetadata + 'static,
 {
 	let mut harness = ExternCOperatorHarness::<ExternCOperatorAdapter<C>>::builder()
-		.with_config(config.iter().cloned())
+		.with_params(params.iter().cloned())
+		.with(with)
 		.build()
 		.expect("extern-C harness build");
 	inputs.iter().map(|input| harness.apply(input.clone()).expect("extern-C apply")).collect()
 }
 
-fn run_guest<C>(config: &[(&str, Value)], inputs: &[Change]) -> Vec<Change>
+fn run_guest<C>(params: &[(&str, Value)], with: ApplyWith, inputs: &[Change]) -> Vec<Change>
 where
 	C: GuestOperator + OperatorMetadata + 'static,
 {
 	let mut harness = GuestOperatorHarness::<C>::builder()
-		.with_config(config.iter().cloned())
+		.with_params(params.iter().cloned())
+		.with(with)
 		.build()
 		.expect("host harness build");
 	inputs.iter().map(|input| harness.apply(input.clone()).expect("host apply")).collect()
 }
 
-pub fn assert_backend_parity<C>(config: Vec<(&str, Value)>, scenarios: &[(&str, Vec<Change>)])
+pub fn assert_backend_parity<C>(params: Vec<(&str, Value)>, with: ApplyWith, scenarios: &[(&str, Vec<Change>)])
 where
 	C: GuestOperator + OperatorMetadata + 'static,
 {
 	for (name, inputs) in scenarios {
-		let extern_c = run_extern_c::<C>(&config, inputs);
-		let host = run_guest::<C>(&config, inputs);
+		let extern_c = run_extern_c::<C>(&params, with, inputs);
+		let host = run_guest::<C>(&params, with, inputs);
 
 		assert_eq!(
 			extern_c.len(),

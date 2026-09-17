@@ -4,13 +4,13 @@
 use crate::{
 	Result,
 	ast::{
-		ast::{Ast, AstWindow, AstWindowConfig, AstWindowKind},
+		ast::{Ast, AstWindow, AstWindowKind},
 		parse::{Parser, Precedence},
 	},
 	diagnostic::AstError,
 	token::{
 		keyword::Keyword::{By, Window, With},
-		operator::Operator::{CloseCurly, Colon, OpenCurly},
+		operator::Operator::{CloseCurly, OpenCurly},
 		separator::Separator::Comma,
 	},
 };
@@ -88,7 +88,7 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(CloseCurly)?;
 
-		let mut config = Vec::new();
+		let mut with = None;
 		let mut group_by = Vec::new();
 
 		loop {
@@ -98,9 +98,14 @@ impl<'bump> Parser<'bump> {
 
 			let current = self.current()?;
 			if current.is_keyword(With) {
-				let _ = self.advance()?;
-				let with_config = self.parse_with_clause()?;
-				config.extend(with_config);
+				if with.is_some() {
+					return Err(AstError::UnexpectedToken {
+						expected: "a single WITH block".to_string(),
+						fragment: current.fragment.to_owned(),
+					}
+					.into());
+				}
+				with = self.parse_operator_with()?;
 			} else if current.is_keyword(By) {
 				let _ = self.advance()?;
 				let by_exprs = self.parse_by_clause()?;
@@ -113,63 +118,11 @@ impl<'bump> Parser<'bump> {
 		Ok(AstWindow {
 			token,
 			kind,
-			config,
+			with,
 			aggregations,
 			group_by,
 			rql: self.source_since(start),
 		})
-	}
-
-	fn parse_with_clause(&mut self) -> Result<Vec<AstWindowConfig<'bump>>> {
-		self.consume_operator(OpenCurly)?;
-
-		let mut config = Vec::new();
-
-		loop {
-			if self.is_eof() {
-				return Err(AstError::UnexpectedToken {
-					expected: "}".to_string(),
-					fragment: self.current()?.fragment.to_owned(),
-				}
-				.into());
-			}
-
-			if self.current()?.is_operator(CloseCurly) {
-				break;
-			}
-
-			if !self.current()?.is_identifier() {
-				return Err(AstError::UnexpectedToken {
-					expected: "configuration parameter name".to_string(),
-					fragment: self.current()?.fragment.to_owned(),
-				}
-				.into());
-			}
-
-			let key = self.parse_identifier_with_hyphens()?;
-			self.consume_operator(Colon)?;
-			let value = self.parse_node(Precedence::None)?;
-
-			config.push(AstWindowConfig {
-				key,
-				value,
-			});
-
-			if self.current()?.is_separator(Comma) {
-				let _ = self.advance()?;
-			} else if self.current()?.is_operator(CloseCurly) {
-				break;
-			} else {
-				return Err(AstError::UnexpectedToken {
-					expected: ", or }".to_string(),
-					fragment: self.current()?.fragment.to_owned(),
-				}
-				.into());
-			}
-		}
-
-		self.consume_operator(CloseCurly)?;
-		Ok(config)
 	}
 
 	fn parse_by_clause(&mut self) -> Result<Vec<Ast<'bump>>> {
@@ -231,8 +184,8 @@ pub mod tests {
 		let window = result[0].first_unchecked().as_window();
 
 		assert_eq!(window.kind, AstWindowKind::Tumbling);
-		assert_eq!(window.config.len(), 1);
-		assert_eq!(window.config[0].key.text(), "duration");
+		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
+		assert_eq!(window.with.as_ref().unwrap().entries[0].key.word(), Some("duration"));
 		assert_eq!(window.aggregations.len(), 1);
 	}
 
@@ -248,8 +201,8 @@ pub mod tests {
 		let window = result[0].first_unchecked().as_window();
 
 		assert_eq!(window.kind, AstWindowKind::Tumbling);
-		assert_eq!(window.config.len(), 1);
-		assert_eq!(window.config[0].key.text(), "count");
+		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
+		assert_eq!(window.with.as_ref().unwrap().entries[0].key.word(), Some("count"));
 		assert_eq!(window.aggregations.len(), 1);
 	}
 
@@ -265,7 +218,7 @@ pub mod tests {
 		let window = result[0].first_unchecked().as_window();
 
 		assert_eq!(window.kind, AstWindowKind::Sliding);
-		assert_eq!(window.config.len(), 2);
+		assert_eq!(window.with.as_ref().unwrap().entries.len(), 2);
 		assert_eq!(window.aggregations.len(), 2);
 	}
 
@@ -281,7 +234,7 @@ pub mod tests {
 		let window = result[0].first_unchecked().as_window();
 
 		assert_eq!(window.kind, AstWindowKind::Tumbling);
-		assert_eq!(window.config.len(), 1);
+		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
 		assert_eq!(window.group_by.len(), 1);
 		assert_eq!(window.aggregations.len(), 1);
 	}
@@ -298,7 +251,7 @@ pub mod tests {
 		let window = result[0].first_unchecked().as_window();
 
 		assert_eq!(window.kind, AstWindowKind::Tumbling);
-		assert_eq!(window.config.len(), 1);
+		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
 		assert_eq!(window.group_by.len(), 2);
 		assert_eq!(window.aggregations.len(), 1);
 	}
@@ -315,7 +268,7 @@ pub mod tests {
 		let window = result[0].first_unchecked().as_window();
 
 		assert_eq!(window.kind, AstWindowKind::Sliding);
-		assert_eq!(window.config.len(), 2);
+		assert_eq!(window.with.as_ref().unwrap().entries.len(), 2);
 		assert_eq!(window.group_by.len(), 2);
 		assert_eq!(window.aggregations.len(), 3);
 	}
@@ -332,8 +285,8 @@ pub mod tests {
 		let window = result[0].first_unchecked().as_window();
 
 		assert_eq!(window.kind, AstWindowKind::Rolling);
-		assert_eq!(window.config.len(), 1);
-		assert_eq!(window.config[0].key.text(), "count");
+		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
+		assert_eq!(window.with.as_ref().unwrap().entries[0].key.word(), Some("count"));
 		assert_eq!(window.group_by.len(), 1);
 		assert_eq!(window.aggregations.len(), 2);
 	}
@@ -350,8 +303,8 @@ pub mod tests {
 		let window = result[0].first_unchecked().as_window();
 
 		assert_eq!(window.kind, AstWindowKind::Rolling);
-		assert_eq!(window.config.len(), 1);
-		assert_eq!(window.config[0].key.text(), "duration");
+		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
+		assert_eq!(window.with.as_ref().unwrap().entries[0].key.word(), Some("duration"));
 		assert_eq!(window.aggregations.len(), 1);
 	}
 
@@ -367,8 +320,8 @@ pub mod tests {
 		let window = result[0].first_unchecked().as_window();
 
 		assert_eq!(window.kind, AstWindowKind::Session);
-		assert_eq!(window.config.len(), 1);
-		assert_eq!(window.config[0].key.text(), "gap");
+		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
+		assert_eq!(window.with.as_ref().unwrap().entries[0].key.word(), Some("gap"));
 		assert_eq!(window.group_by.len(), 1);
 		assert_eq!(window.aggregations.len(), 1);
 	}

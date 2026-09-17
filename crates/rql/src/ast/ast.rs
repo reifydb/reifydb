@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::{IndexType, JoinType},
 	sort::SortDirection,
 };
-use reifydb_value::value::identity::IdentityKind;
+use reifydb_value::{fragment::Fragment, value::identity::IdentityKind};
 
 use crate::{
 	ast::identifier::{
@@ -394,7 +394,8 @@ pub struct AstCast<'bump> {
 pub struct AstApply<'bump> {
 	pub token: Token<'bump>,
 	pub operator: UnqualifiedIdentifier<'bump>,
-	pub expressions: Vec<Ast<'bump>>,
+	pub params: Vec<Ast<'bump>>,
+	pub with: Option<AstOperatorWith<'bump>>,
 	pub rql: &'bump str,
 }
 
@@ -854,26 +855,6 @@ pub struct AstTtl<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstOperatorRetention<'bump> {
-	pub duration: Token<'bump>,
-	pub anchor: Option<Token<'bump>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AstJoinRetention<'bump> {
-	pub left: Option<Token<'bump>>,
-	pub right: Option<Token<'bump>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AstJoinPick<'bump> {
-	pub token: Token<'bump>,
-	pub default_direction: SortDirection,
-	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
-	pub directions: Vec<Option<SortDirection>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct AstPersistent<'bump> {
 	pub value: bool,
 	pub token: Token<'bump>,
@@ -1288,7 +1269,7 @@ pub struct AstAggregate<'bump> {
 	pub token: Token<'bump>,
 	pub by: Vec<Ast<'bump>>,
 	pub map: Vec<Ast<'bump>>,
-	pub retention: Option<AstOperatorRetention<'bump>>,
+	pub with: Option<AstOperatorWith<'bump>>,
 	pub rql: &'bump str,
 }
 
@@ -1495,32 +1476,26 @@ pub struct AstUsingClause<'bump> {
 pub enum AstJoin<'bump> {
 	InnerJoin {
 		token: Token<'bump>,
-		with: AstSubQuery<'bump>,
+		subquery: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
-		retention: Option<AstJoinRetention<'bump>>,
-		snapshot: bool,
-		pick: Option<AstJoinPick<'bump>>,
+		with: Option<AstOperatorWith<'bump>>,
 		rql: &'bump str,
 	},
 	LeftJoin {
 		token: Token<'bump>,
-		with: AstSubQuery<'bump>,
+		subquery: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
-		retention: Option<AstJoinRetention<'bump>>,
-		snapshot: bool,
-		pick: Option<AstJoinPick<'bump>>,
+		with: Option<AstOperatorWith<'bump>>,
 		rql: &'bump str,
 	},
 	NaturalJoin {
 		token: Token<'bump>,
-		with: AstSubQuery<'bump>,
+		subquery: AstSubQuery<'bump>,
 		join_type: Option<JoinType>,
 		alias: BumpFragment<'bump>,
-		retention: Option<AstJoinRetention<'bump>>,
-		snapshot: bool,
-		pick: Option<AstJoinPick<'bump>>,
+		with: Option<AstOperatorWith<'bump>>,
 		rql: &'bump str,
 	},
 }
@@ -1583,7 +1558,7 @@ impl<'bump> AstLiteralNone<'bump> {
 pub struct AstDistinct<'bump> {
 	pub token: Token<'bump>,
 	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
-	pub retention: Option<AstOperatorRetention<'bump>>,
+	pub with: Option<AstOperatorWith<'bump>>,
 	pub rql: &'bump str,
 }
 
@@ -2049,16 +2024,51 @@ pub enum AstWindowKind {
 pub struct AstWindow<'bump> {
 	pub token: Token<'bump>,
 	pub kind: AstWindowKind,
-	pub config: Vec<AstWindowConfig<'bump>>,
+	pub with: Option<AstOperatorWith<'bump>>,
 	pub aggregations: Vec<Ast<'bump>>,
 	pub group_by: Vec<Ast<'bump>>,
 	pub rql: &'bump str,
 }
 
-#[derive(Debug)]
-pub struct AstWindowConfig<'bump> {
-	pub key: UnqualifiedIdentifier<'bump>,
-	pub value: Ast<'bump>,
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstOperatorWith<'bump> {
+	pub token: Token<'bump>,
+	pub entries: Vec<AstOperatorWithEntry<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstOperatorWithEntry<'bump> {
+	pub key: AstOperatorWithKey<'bump>,
+	pub value: Option<AstOperatorWithValue<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstOperatorWithKey<'bump> {
+	Word(Token<'bump>),
+	Column(MaybeQualifiedColumnIdentifier<'bump>),
+}
+
+impl<'bump> AstOperatorWithKey<'bump> {
+	pub fn word(&self) -> Option<&str> {
+		match self {
+			AstOperatorWithKey::Word(token) => Some(token.fragment.text()),
+			AstOperatorWithKey::Column(_) => None,
+		}
+	}
+
+	pub fn fragment(&self) -> Fragment {
+		match self {
+			AstOperatorWithKey::Word(token) => token.fragment.to_owned(),
+			AstOperatorWithKey::Column(column) => column.name.to_owned(),
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstOperatorWithValue<'bump> {
+	Literal(Token<'bump>),
+	Word(Token<'bump>),
+	Block(Vec<AstOperatorWithEntry<'bump>>),
 }
 
 #[derive(Debug)]

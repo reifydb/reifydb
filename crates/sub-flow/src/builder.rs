@@ -5,18 +5,19 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_core::interface::flow::to_bitmask;
-use reifydb_core::{event::operator::OperatorColumn, interface::catalog::flow::OperatorId};
+use reifydb_core::{event::operator::OperatorColumn, interface::catalog::flow::OperatorId, operator_with::ApplyWith};
 use reifydb_flow::operator::BoxedHostOperator;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::GuestOperator;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::{OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn};
-use reifydb_value::{Result, config::Config};
+use reifydb_value::{Result, config::ExtensionParams};
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use crate::operator::mount::mount;
 
-pub(crate) type OperatorFactory = Arc<dyn Fn(OperatorId, &Config) -> Result<BoxedHostOperator> + Send + Sync>;
+pub(crate) type OperatorFactory =
+	Arc<dyn Fn(OperatorId, &ExtensionParams, &ApplyWith) -> Result<BoxedHostOperator> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct CustomOperatorEntry {
@@ -93,8 +94,8 @@ impl FlowConfigurator {
 		self.custom_operators.insert(
 			O::NAME.to_string(),
 			CustomOperatorEntry {
-				factory: Arc::new(|operator, config| {
-					let logic = O::create(operator, config)?;
+				factory: Arc::new(|operator, params, with| {
+					let logic = O::create(operator, params, with)?;
 					Ok(mount(logic, operator, O::CAPABILITIES))
 				}),
 				abi: None,

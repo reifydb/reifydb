@@ -11,7 +11,7 @@ use std::{
 };
 
 use reifydb_codec::row::shape::RowShape;
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
+use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId, operator_with::ApplyWith};
 use reifydb_value::value::Value;
 
 pub mod accumulator_oracle;
@@ -91,7 +91,8 @@ pub struct ChaosHarnessBuilder<T: ExternCOperator> {
 	supported_ops: SupportedOps,
 	operator_id: OperatorId,
 	version: CommitVersion,
-	operator_config: Vec<(String, Value)>,
+	operator_params: Vec<(String, Value)>,
+	operator_with: ApplyWith,
 	input_shape: Option<RowShape>,
 	output_shape: Option<RowShape>,
 	key_strategy: Option<KeyStrategy>,
@@ -117,7 +118,8 @@ impl<T: ExternCOperator> ChaosHarnessBuilder<T> {
 			supported_ops: SupportedOps::default(),
 			operator_id: OperatorId(1),
 			version: CommitVersion(1),
-			operator_config: Vec::new(),
+			operator_params: Vec::new(),
+			operator_with: ApplyWith::default(),
 			input_shape: None,
 			output_shape: None,
 			key_strategy: None,
@@ -156,12 +158,17 @@ impl<T: ExternCOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	pub fn with_config<I, K>(mut self, config: I) -> Self
+	pub fn with_params<I, K>(mut self, params: I) -> Self
 	where
 		I: IntoIterator<Item = (K, Value)>,
 		K: Into<String>,
 	{
-		self.operator_config = config.into_iter().map(|(k, v)| (k.into(), v)).collect();
+		self.operator_params = params.into_iter().map(|(k, v)| (k.into(), v)).collect();
+		self
+	}
+
+	pub fn with(mut self, with: ApplyWith) -> Self {
+		self.operator_with = with;
 		self
 	}
 
@@ -243,9 +250,10 @@ impl<T: ExternCOperator> ChaosHarnessBuilder<T> {
 		let mut builder = ExternCOperatorHarness::<T>::builder()
 			.with_node_id(self.operator_id)
 			.with_version(self.version)
-			.with_clock(context.clock.clone());
-		for (k, v) in self.operator_config {
-			builder = builder.add_config(k, v);
+			.with_clock(context.clock.clone())
+			.with(self.operator_with);
+		for (k, v) in self.operator_params {
+			builder = builder.add_param(k, v);
 		}
 		let harness = builder.build().map_err(|e| ChaosError::HarnessBuild(format!("{e:?}")))?;
 
@@ -306,7 +314,7 @@ impl IntoColumnSampler for Range<f64> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
-	use reifydb_core::interface::flow::OperatorCapability;
+	use reifydb_core::{interface::flow::OperatorCapability, operator_with::ApplyWith};
 	use reifydb_sdk::{
 		error::Result,
 		flow::operator::{
@@ -317,7 +325,7 @@ mod tests {
 		},
 	};
 	use reifydb_testing_chaos::operator::scenario::BatchSize;
-	use reifydb_value::{config::Config, value::value_type::ValueType};
+	use reifydb_value::{config::ExtensionParams, value::value_type::ValueType};
 
 	use super::*;
 
@@ -335,7 +343,7 @@ mod tests {
 	}
 
 	impl ExternCOperator for NoOpOperator {
-		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+		fn new(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 			Ok(Self)
 		}
 

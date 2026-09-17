@@ -2,17 +2,16 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	common::{JoinType, TimeDomain, WindowKind},
+	common::{JoinType, TimeDomain},
 	interface::catalog::{
 		flow::{FlowEdgeId, OperatorId},
 		id::{RingBufferId, SeriesId, SubscriptionId, TableId, ViewId},
 		object::ObjectId,
 		series::SeriesKey,
 	},
-	row::JoinPick,
+	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, WindowWith},
 	sort::SortKey,
 };
-use reifydb_value::value::duration::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::expression::Expression;
@@ -53,15 +52,13 @@ pub enum OperatorDef {
 		right: Vec<Expression>,
 		alias: Option<String>,
 		#[serde(default)]
-		snapshot: bool,
-		#[serde(default)]
 		natural: bool,
-		#[serde(default)]
-		pick: Option<JoinPick>,
+		with: JoinWith,
 	},
 	Aggregate {
 		by: Vec<Expression>,
 		map: Vec<Expression>,
+		with: AggregateWith,
 	},
 	Append {},
 	Sort {
@@ -72,10 +69,12 @@ pub enum OperatorDef {
 	},
 	Distinct {
 		expressions: Vec<Expression>,
+		with: DistinctWith,
 	},
 	Apply {
 		operator: String,
-		expressions: Vec<Expression>,
+		params: Vec<Expression>,
+		with: ApplyWith,
 	},
 	SinkTableView {
 		view: ViewId,
@@ -92,11 +91,9 @@ pub enum OperatorDef {
 		subscription: SubscriptionId,
 	},
 	Window {
-		kind: WindowKind,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
-		lateness: Option<Duration>,
-		immutable: Option<Duration>,
+		with: WindowWith,
 	},
 }
 
@@ -391,7 +388,11 @@ impl FlowEdge {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{common::JoinType, interface::catalog::id::ViewId};
+	use reifydb_core::{
+		common::JoinType,
+		interface::catalog::id::ViewId,
+		operator_with::{ApplyWith, DistinctWith, JoinWith},
+	};
 
 	use super::OperatorDef;
 
@@ -401,16 +402,14 @@ mod tests {
 			left: vec![],
 			right: vec![],
 			alias: None,
-			snapshot: false,
 			natural: false,
-			pick: None,
+			with: JoinWith::default(),
 		}
 	}
 
 	#[test]
 	fn join_always_requests_ticks() {
-		// A join's per-side TTL lives in OperatorSettings, where the graph-level gate cannot see it, so the
-		// node requests ticks unconditionally and the runtime operator decides.
+		// The graph-level gate never reads the join's per-side TTL, so only the runtime operator can decide.
 		assert!(join().ticks());
 	}
 
@@ -420,18 +419,19 @@ mod tests {
 		// the operator decide; without that a tick-capable custom operator could never be ticked at all.
 		let apply = OperatorDef::Apply {
 			operator: "compute_swap_volumes".to_string(),
-			expressions: vec![],
+			params: vec![],
+			with: ApplyWith::default(),
 		};
 		assert!(apply.ticks());
 	}
 
 	#[test]
 	fn append_and_distinct_always_request_ticks() {
-		// Their TTL lives in OperatorSettings rather than the node, where the graph-level gate cannot see it,
-		// so they have to request ticks unconditionally and let the runtime operator decide.
+		// The graph-level gate cannot see their TTL, so only the runtime operator can decide.
 		assert!(OperatorDef::Append {}.ticks());
 		assert!(OperatorDef::Distinct {
-			expressions: vec![]
+			expressions: vec![],
+			with: DistinctWith {},
 		}
 		.ticks());
 	}

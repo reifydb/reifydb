@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::WindowKind, interface::catalog::flow::OperatorId};
+use reifydb_core::{interface::catalog::flow::OperatorId, operator_with::WindowWith};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::Result;
 
 use crate::{
 	expression::Expression,
@@ -18,22 +18,18 @@ use crate::{
 
 pub(crate) struct WindowCompiler {
 	pub input: Option<Box<QueryPlan>>,
-	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub lateness: Option<Duration>,
-	pub immutable: Option<Duration>,
+	pub with: WindowWith,
 }
 
 impl From<WindowNode> for WindowCompiler {
 	fn from(node: WindowNode) -> Self {
 		Self {
 			input: node.input,
-			kind: node.kind,
 			group_by: node.group_by,
 			aggregations: node.aggregations,
-			lateness: node.lateness,
-			immutable: node.immutable,
+			with: node.with,
 		}
 	}
 }
@@ -44,7 +40,7 @@ impl CompileOperator for WindowCompiler {
 			&compiler.routines,
 			&self.aggregations,
 			AggregateContext::Windowed,
-			Some(&self.kind),
+			Some(&self.with.kind),
 		)?;
 
 		let input_node = if let Some(input) = self.input {
@@ -56,11 +52,9 @@ impl CompileOperator for WindowCompiler {
 		let node_id = compiler.add_node(
 			txn,
 			Window {
-				kind: self.kind,
 				group_by: self.group_by,
 				aggregations: self.aggregations,
-				lateness: self.lateness,
-				immutable: self.immutable,
+				with: self.with,
 			},
 		)?;
 

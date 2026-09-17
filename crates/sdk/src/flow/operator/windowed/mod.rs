@@ -27,7 +27,7 @@ use reifydb_flow::{
 		span::WindowSpan,
 	},
 };
-use reifydb_value::{Result, config::Config};
+use reifydb_value::{Result, config::ExtensionParams};
 
 use crate::flow::operator::timer::Timer;
 
@@ -81,7 +81,7 @@ where
 	groups.get(&(group.clone(), coord)).copied().expect("every routed window is interned before the engine runs")
 }
 
-pub(crate) fn window_engine_config(_config: &Config) -> WindowEngineConfig {
+pub(crate) fn window_engine_config(_params: &ExtensionParams) -> WindowEngineConfig {
 	WindowEngineConfig::builder().family(KeyspaceFamily::Guest).build()
 }
 

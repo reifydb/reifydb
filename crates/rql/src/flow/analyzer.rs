@@ -343,6 +343,7 @@ pub mod tests {
 			flow::{FlowId, OperatorId},
 			id::{TableId, ViewId},
 		},
+		operator_with::JoinWith,
 	};
 
 	use super::*;
@@ -435,9 +436,8 @@ pub mod tests {
 					left: vec![],
 					right: vec![],
 					alias: None,
-					snapshot: false,
 					natural: false,
-					pick: None,
+					with: JoinWith::default(),
 				},
 				SinkTableView {
 					view: ViewId(700),

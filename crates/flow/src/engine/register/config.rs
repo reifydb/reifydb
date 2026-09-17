@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, sync::LazyLock};
+use std::{collections::HashMap, sync::LazyLock};
 
 use reifydb_core::value::column::columns::Columns;
 use reifydb_evaluate::{
@@ -23,12 +23,12 @@ use reifydb_value::{
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
-pub fn evaluate_operator_config(
+pub fn evaluate_operator_params(
 	expressions: &[Expression],
 	routines: &Routines,
 	runtime_context: &RuntimeContext,
-) -> Result<BTreeMap<String, Value>> {
-	let mut result = BTreeMap::new();
+) -> Result<HashMap<String, Value>> {
+	let mut result = HashMap::new();
 
 	let compile_ctx = CompileContext {
 		symbols: &EMPTY_SYMBOL_TABLE,
@@ -76,7 +76,7 @@ pub mod tests {
 	use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 	use reifydb_value::{fragment::Fragment, value::Value};
 
-	use super::evaluate_operator_config;
+	use super::evaluate_operator_params;
 
 	fn create_alias_expression(alias_name: &str, inner_expression: Expression) -> Expression {
 		Expression::Alias(AliasExpression {
@@ -116,7 +116,7 @@ pub mod tests {
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
 		let expressions: Vec<Expression> = vec![];
 
-		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
+		let result = evaluate_operator_params(&expressions, &routines, &runtime_context).unwrap();
 
 		assert!(result.is_empty());
 	}
@@ -127,7 +127,7 @@ pub mod tests {
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
 		let expressions = vec![create_alias_expression("key1", create_constant_text("value1"))];
 
-		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
+		let result = evaluate_operator_params(&expressions, &routines, &runtime_context).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("key1"), Some(&Value::Utf8("value1".into())));
@@ -139,7 +139,7 @@ pub mod tests {
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
 		let expressions = vec![create_alias_expression("count", create_constant_number(42))];
 
-		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
+		let result = evaluate_operator_params(&expressions, &routines, &runtime_context).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("count"), Some(&Value::Int1(42)));
@@ -151,7 +151,7 @@ pub mod tests {
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
 		let expressions = vec![create_alias_expression("enabled", create_constant_bool(true))];
 
-		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
+		let result = evaluate_operator_params(&expressions, &routines, &runtime_context).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("enabled"), Some(&Value::Boolean(true)));
@@ -163,7 +163,7 @@ pub mod tests {
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
 		let expressions = vec![create_alias_expression("optional", create_constant_undefined())];
 
-		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
+		let result = evaluate_operator_params(&expressions, &routines, &runtime_context).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("optional"), Some(&Value::none()));
@@ -179,7 +179,7 @@ pub mod tests {
 			create_alias_expression("key3", create_constant_bool(false)),
 		];
 
-		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
+		let result = evaluate_operator_params(&expressions, &routines, &runtime_context).unwrap();
 
 		assert_eq!(result.len(), 3);
 		assert_eq!(result.get("key1"), Some(&Value::Utf8("value1".into())));
@@ -197,7 +197,7 @@ pub mod tests {
 			create_constant_number(999),
 		];
 
-		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
+		let result = evaluate_operator_params(&expressions, &routines, &runtime_context).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("valid"), Some(&Value::Utf8("included".into())));
@@ -213,7 +213,7 @@ pub mod tests {
 			create_constant_bool(true),
 		];
 
-		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
+		let result = evaluate_operator_params(&expressions, &routines, &runtime_context).unwrap();
 
 		assert!(result.is_empty());
 	}
@@ -224,7 +224,7 @@ pub mod tests {
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
 		let expressions = vec![create_alias_expression("custom_function", create_constant_text("data"))];
 
-		let result = evaluate_operator_config(&expressions, &routines, &runtime_context);
+		let result = evaluate_operator_params(&expressions, &routines, &runtime_context);
 
 		assert!(result.is_ok());
 	}

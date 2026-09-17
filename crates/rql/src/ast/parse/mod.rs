@@ -39,6 +39,7 @@ pub mod loop_construct;
 pub mod map;
 pub mod match_expr;
 pub mod migrate;
+pub mod operator_with;
 pub mod patch;
 pub mod policy;
 pub mod prefix;

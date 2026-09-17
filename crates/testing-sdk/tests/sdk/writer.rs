@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::{catalog::flow::OperatorId, flow::OperatorCapability};
+use reifydb_core::{
+	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	operator_with::ApplyWith,
+};
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
@@ -14,7 +17,7 @@ use reifydb_sdk::{
 };
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	value::{
 		date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber, time::Time,
 	},
@@ -37,7 +40,7 @@ impl OperatorMetadata for OpU8 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpU8 {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -82,7 +85,7 @@ impl OperatorMetadata for OpU16 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpU16 {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -127,7 +130,7 @@ impl OperatorMetadata for OpU32 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpU32 {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -172,7 +175,7 @@ impl OperatorMetadata for OpU64 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpU64 {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -217,7 +220,7 @@ impl OperatorMetadata for OpI8 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpI8 {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -262,7 +265,7 @@ impl OperatorMetadata for OpI16 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpI16 {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -307,7 +310,7 @@ impl OperatorMetadata for OpI32 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpI32 {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -352,7 +355,7 @@ impl OperatorMetadata for OpI64 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpI64 {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -397,7 +400,7 @@ impl OperatorMetadata for OpF32 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpF32 {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -442,7 +445,7 @@ impl OperatorMetadata for OpF64 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpF64 {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -487,7 +490,7 @@ impl OperatorMetadata for OpBool {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpBool {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -532,7 +535,7 @@ impl OperatorMetadata for OpUtf8 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpUtf8 {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -571,7 +574,7 @@ impl OperatorMetadata for OpUtf8Growth {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpUtf8Growth {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -617,7 +620,7 @@ impl OperatorMetadata for OpBlob {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpBlob {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -668,7 +671,7 @@ impl OperatorMetadata for OpDecimal {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpDecimal {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -725,7 +728,7 @@ impl OperatorMetadata for OpWide {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpWide {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -768,7 +771,7 @@ impl OperatorMetadata for OpDate {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpDate {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -815,7 +818,7 @@ impl OperatorMetadata for OpDateTime {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpDateTime {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -865,7 +868,7 @@ impl OperatorMetadata for OpTime {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpTime {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -915,7 +918,7 @@ impl OperatorMetadata for OpDuration {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl ExternCOperator for OpDuration {
-	fn new(_: OperatorId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {

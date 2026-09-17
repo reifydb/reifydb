@@ -39,7 +39,7 @@ use reifydb_core::{
 		test::Test,
 		view::View,
 	},
-	row::{OperatorSettings, RowSettings},
+	row::{OperatorRetention, RowSettings},
 };
 use reifydb_value::value::{
 	datetime::DateTime, dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId,
@@ -74,7 +74,6 @@ pub trait TransactionalChanges:
 	+ TransactionalIdentityAttributeValueChanges
 	+ TransactionalViewChanges
 	+ TransactionalRowSettingsChanges
-	+ TransactionalOperatorSettingsChanges
 {
 }
 
@@ -90,10 +89,6 @@ pub trait TransactionalBindingChanges {
 
 pub trait TransactionalRowSettingsChanges {
 	fn find_row_settings(&self, storage: StorageId) -> Option<&RowSettings>;
-}
-
-pub trait TransactionalOperatorSettingsChanges {
-	fn find_operator_settings(&self, operator: OperatorId) -> Option<&OperatorSettings>;
 }
 
 pub trait TransactionalDictionaryChanges {
@@ -394,7 +389,7 @@ pub struct TransactionalCatalogChanges {
 
 	pub row_settings: Vec<Change<(StorageId, RowSettings)>>,
 
-	pub operator_settings: Vec<Change<(OperatorId, OperatorSettings)>>,
+	pub operator_retention: Vec<Change<(OperatorId, OperatorRetention)>>,
 
 	pub primary_key: Vec<Change<(ObjectId, PrimaryKey)>>,
 
@@ -432,7 +427,7 @@ pub struct CatalogChangesSavepoint {
 	policy_len: usize,
 	view_len: usize,
 	row_settings_len: usize,
-	operator_settings_len: usize,
+	operator_retention_len: usize,
 	primary_key_len: usize,
 	log_len: usize,
 }
@@ -470,7 +465,7 @@ impl TransactionalCatalogChanges {
 			policy_len: self.policy.len(),
 			view_len: self.view.len(),
 			row_settings_len: self.row_settings.len(),
-			operator_settings_len: self.operator_settings.len(),
+			operator_retention_len: self.operator_retention.len(),
 			primary_key_len: self.primary_key.len(),
 			log_len: self.log.len(),
 		}
@@ -507,7 +502,7 @@ impl TransactionalCatalogChanges {
 		self.policy.truncate(sp.policy_len);
 		self.view.truncate(sp.view_len);
 		self.row_settings.truncate(sp.row_settings_len);
-		self.operator_settings.truncate(sp.operator_settings_len);
+		self.operator_retention.truncate(sp.operator_retention_len);
 		self.primary_key.truncate(sp.primary_key_len);
 		self.log.truncate(sp.log_len);
 	}
@@ -991,7 +986,7 @@ impl TransactionalCatalogChanges {
 		});
 	}
 
-	pub fn add_operator_settings_change(&mut self, change: Change<(OperatorId, OperatorSettings)>) {
+	pub fn add_operator_retention_change(&mut self, change: Change<(OperatorId, OperatorRetention)>) {
 		let operator = change
 			.post
 			.as_ref()
@@ -999,7 +994,7 @@ impl TransactionalCatalogChanges {
 			.map(|(o, _)| *o)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.operator_settings.push(change);
+		self.operator_retention.push(change);
 		self.log.push(Operation::OperatorRetention {
 			operator,
 			op,
@@ -1191,7 +1186,7 @@ impl TransactionalCatalogChanges {
 			policy: Vec::new(),
 			view: Vec::new(),
 			row_settings: Vec::new(),
-			operator_settings: Vec::new(),
+			operator_retention: Vec::new(),
 			primary_key: Vec::new(),
 			log: Vec::new(),
 		}

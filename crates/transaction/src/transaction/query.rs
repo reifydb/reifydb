@@ -13,7 +13,7 @@ use reifydb_core::{
 			binding::Binding,
 			column_snapshot::ColumnSnapshot,
 			dictionary::Dictionary,
-			flow::{Flow, FlowId, OperatorId},
+			flow::{Flow, FlowId},
 			handler::Handler,
 			id::{
 				BindingId, ColumnSnapshotId, HandlerId, NamespaceId, ProcedureId, QueueId,
@@ -46,7 +46,7 @@ use reifydb_core::{
 		bound::TaggedKeyBoundRange,
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
-	row::{OperatorSettings, RowSettings},
+	row::RowSettings,
 };
 use reifydb_value::{
 	Result,
@@ -62,12 +62,12 @@ use crate::{
 		TransactionalColumnSnapshotChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
 		TransactionalGrantedRoleChanges, TransactionalHandlerChanges, TransactionalIdentityAttributeChanges,
 		TransactionalIdentityAttributeValueChanges, TransactionalIdentityChanges,
-		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalOperatorSettingsChanges,
-		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalQueueChanges,
-		TransactionalRelationshipChanges, TransactionalRingBufferChanges, TransactionalRoleChanges,
-		TransactionalRowSettingsChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
-		TransactionalSourceChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
-		TransactionalTestChanges, TransactionalViewChanges,
+		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalPolicyChanges,
+		TransactionalProcedureChanges, TransactionalQueueChanges, TransactionalRelationshipChanges,
+		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalRowSettingsChanges,
+		TransactionalSeriesChanges, TransactionalSinkChanges, TransactionalSourceChanges,
+		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
+		TransactionalViewChanges,
 	},
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -616,12 +616,6 @@ impl TransactionalSinkChanges for QueryTransaction {
 
 impl TransactionalRowSettingsChanges for QueryTransaction {
 	fn find_row_settings(&self, _storage: StorageId) -> Option<&RowSettings> {
-		None
-	}
-}
-
-impl TransactionalOperatorSettingsChanges for QueryTransaction {
-	fn find_operator_settings(&self, _operator: OperatorId) -> Option<&OperatorSettings> {
 		None
 	}
 }

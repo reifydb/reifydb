@@ -10,13 +10,12 @@ use crate::{
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_apply(&self, ast: AstApply<'bump>) -> Result<LogicalPlan<'bump>> {
+		let params = ast.params.into_iter().map(ExpressionCompiler::compile).collect::<Result<Vec<_>>>()?;
+		let with = Self::compile_apply_with(ast.with.as_ref())?;
 		Ok(LogicalPlan::Apply(ApplyNode {
 			operator: ast.operator.into_fragment(),
-			arguments: ast
-				.expressions
-				.into_iter()
-				.map(ExpressionCompiler::compile)
-				.collect::<Result<Vec<_>>>()?,
+			params,
+			with,
 			rql: ast.rql.to_string(),
 		}))
 	}

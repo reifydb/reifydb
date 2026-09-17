@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, HashMap},
-	ffi::c_void,
-	marker::PhantomData,
-	ops::Index,
-};
+use std::{collections::HashMap, ffi::c_void, marker::PhantomData, ops::Index};
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
@@ -26,6 +21,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	},
+	operator_with::ApplyWith,
 	row::Row,
 	state::timer::TimerKind,
 };
@@ -50,7 +46,7 @@ use reifydb_sdk::{
 use reifydb_testing_chaos::operator::subject::Subject;
 use reifydb_value::{
 	Result as ValueResult,
-	config::Config,
+	config::ExtensionParams,
 	count::Count,
 	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime, value_type::ValueType},
@@ -76,7 +72,8 @@ pub struct ExternCOperatorHarness<T: ExternCOperator> {
 	operator: T,
 	context: Box<TestContext>,
 	extern_c_context: Box<ExternCContextRaw>,
-	config: HashMap<String, Value>,
+	params: HashMap<String, Value>,
+	with: ApplyWith,
 	operator_id: OperatorId,
 	clock: Clock,
 	history: Vec<Change>,
@@ -306,7 +303,7 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 		self.history.clear();
 
 		self.operator =
-			T::new(self.operator_id, &Config::new("operator", self.config.clone().into_iter().collect()))?;
+			T::new(self.operator_id, &ExtensionParams::new("operator", self.params.clone()), &self.with)?;
 		Ok(())
 	}
 
@@ -337,7 +334,8 @@ impl<T: ExternCOperator> Index<usize> for ExternCOperatorHarness<T> {
 }
 
 pub struct ExternCOperatorHarnessBuilder<T: ExternCOperator> {
-	config: HashMap<String, Value>,
+	params: HashMap<String, Value>,
+	with: ApplyWith,
 	operator_id: OperatorId,
 	version: CommitVersion,
 	clock: Clock,
@@ -355,7 +353,8 @@ impl<T: ExternCOperator> Default for ExternCOperatorHarnessBuilder<T> {
 impl<T: ExternCOperator> ExternCOperatorHarnessBuilder<T> {
 	pub fn new() -> Self {
 		Self {
-			config: HashMap::new(),
+			params: HashMap::new(),
+			with: ApplyWith::default(),
 			operator_id: OperatorId(1),
 			version: CommitVersion(1),
 			clock: Clock::Mock(MockClock::new(0)),
@@ -370,17 +369,22 @@ impl<T: ExternCOperator> ExternCOperatorHarnessBuilder<T> {
 		self
 	}
 
-	pub fn with_config<I, K>(mut self, config: I) -> Self
+	pub fn with_params<I, K>(mut self, params: I) -> Self
 	where
 		I: IntoIterator<Item = (K, Value)>,
 		K: Into<String>,
 	{
-		self.config = config.into_iter().map(|(k, v)| (k.into(), v)).collect();
+		self.params = params.into_iter().map(|(k, v)| (k.into(), v)).collect();
 		self
 	}
 
-	pub fn add_config(mut self, key: impl Into<String>, value: Value) -> Self {
-		self.config.insert(key.into(), value);
+	pub fn add_param(mut self, key: impl Into<String>, value: Value) -> Self {
+		self.params.insert(key.into(), value);
+		self
+	}
+
+	pub fn with(mut self, with: ApplyWith) -> Self {
+		self.with = with;
 		self
 	}
 
@@ -432,13 +436,14 @@ impl<T: ExternCOperator> ExternCOperatorHarnessBuilder<T> {
 		});
 
 		let operator =
-			T::new(self.operator_id, &Config::new("operator", self.config.clone().into_iter().collect()))?;
+			T::new(self.operator_id, &ExtensionParams::new("operator", self.params.clone()), &self.with)?;
 
 		Ok(ExternCOperatorHarness {
 			operator,
 			context,
 			extern_c_context,
-			config: self.config,
+			params: self.params,
+			with: self.with,
 			operator_id: self.operator_id,
 			clock: self.clock,
 			history: Vec::new(),
@@ -457,7 +462,8 @@ pub fn drive_extern_c_apply<O: ExternCOperator + OperatorMetadata>(input: &Chang
 		callbacks: create_test_callbacks(),
 	};
 
-	let operator = O::new(OperatorId(1), &Config::new("operator", BTreeMap::new())).expect("create operator");
+	let operator = O::new(OperatorId(1), &ExtensionParams::new("operator", HashMap::new()), &ApplyWith::default())
+		.expect("create operator");
 	let mut wrapper = OperatorWrapper::new(operator);
 
 	let mut arena = Arena::new();
@@ -528,7 +534,7 @@ pub mod tests {
 
 	struct TestOperator {
 		_node_id: OperatorId,
-		_config: Config,
+		_params: ExtensionParams,
 	}
 
 	impl OperatorMetadata for TestOperator {
@@ -541,10 +547,10 @@ pub mod tests {
 	}
 
 	impl ExternCOperator for TestOperator {
-		fn new(operator_id: OperatorId, config: &Config) -> Result<Self> {
+		fn new(operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 			Ok(Self {
 				_node_id: operator_id,
-				_config: config.clone(),
+				_params: params.clone(),
 			})
 		}
 
@@ -565,7 +571,7 @@ pub mod tests {
 	}
 
 	impl ExternCOperator for StatefulTestOperator {
-		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+		fn new(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 			Ok(Self)
 		}
 
@@ -694,7 +700,7 @@ pub mod tests {
 		let result = ExternCOperatorHarnessBuilder::<TestOperator>::new()
 			.with_node_id(OperatorId(42))
 			.with_version(CommitVersion(10))
-			.add_config("key", Value::Utf8("value".into()))
+			.add_param("key", Value::Utf8("value".into()))
 			.build();
 
 		assert!(result.is_ok());
@@ -801,7 +807,7 @@ pub mod tests {
 	}
 
 	impl ExternCOperator for TimerTestOperator {
-		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+		fn new(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 			Ok(Self)
 		}
 
@@ -852,7 +858,7 @@ pub mod tests {
 	}
 
 	impl ExternCOperator for SealEmittingOperator {
-		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+		fn new(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 			Ok(Self)
 		}
 
@@ -917,7 +923,7 @@ pub mod tests {
 	}
 
 	impl ExternCOperator for RearmingTimerTestOperator {
-		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+		fn new(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 			Ok(Self {
 				fires: 0,
 			})

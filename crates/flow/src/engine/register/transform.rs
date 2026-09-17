@@ -4,26 +4,25 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	common::{JoinType, WindowKind},
+	common::JoinType,
 	interface::{
 		catalog::flow::{FlowId, OperatorId},
 		identifier::{ColumnIdentifier, ColumnObject},
 	},
-	row::JoinPick,
+	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, WindowWith},
 	value::column::columns::Columns,
 };
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
 	flow::flow::FlowDag,
 };
-use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, config::Config, error::Error, fragment::Fragment, value::duration::Duration};
+use reifydb_value::{Result, config::ExtensionParams, error::Error, fragment::Fragment};
 
 use crate::{
 	context::FlowContext,
 	engine::{
 		FlowEngineInner,
-		register::{config::evaluate_operator_config, first_input},
+		register::{config::evaluate_operator_params, first_input},
 	},
 	error::FlowGraphError,
 	operator::{
@@ -172,7 +171,6 @@ impl FlowEngineInner {
 	#[allow(clippy::too_many_arguments)]
 	pub(super) fn add_join(
 		&mut self,
-		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
@@ -180,9 +178,8 @@ impl FlowEngineInner {
 		left: Vec<Expression>,
 		right: Vec<Expression>,
 		alias: Option<String>,
-		snapshot: bool,
 		natural: bool,
-		pick: Option<JoinPick>,
+		with: JoinWith,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		if inputs.len() != 2 {
@@ -226,11 +223,8 @@ impl FlowEngineInner {
 			(left, right)
 		};
 
-		let join_retention = self.catalog.find_operator_settings(txn, operator_id)?.and_then(|s| s.join);
-		let left = join_retention.as_ref().and_then(|j| j.left.as_ref());
-		let left_retention = left.map(|t| t.duration);
-		let right = join_retention.as_ref().and_then(|j| j.right.as_ref());
-		let right_retention = right.map(|t| t.duration);
+		let left_retention = with.retention.as_ref().and_then(|j| j.left.as_ref()).map(|t| t.duration);
+		let right_retention = with.retention.as_ref().and_then(|j| j.right.as_ref()).map(|t| t.duration);
 
 		self.operators.insert(
 			(flow_id, operator_id),
@@ -250,9 +244,9 @@ impl FlowEngineInner {
 				alias,
 				self.routines.clone(),
 				self.runtime_context.clone(),
-				snapshot,
+				with.snapshot,
 				natural,
-				pick,
+				with.pick,
 				left_retention,
 				right_retention,
 				Arc::clone(ctx),
@@ -268,6 +262,7 @@ impl FlowEngineInner {
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
+		_with: DistinctWith,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
@@ -332,14 +327,15 @@ impl FlowEngineInner {
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		operator: String,
-		expressions: Vec<Expression>,
+		params: Vec<Expression>,
+		with: ApplyWith,
 	) -> Result<()> {
-		let config = evaluate_operator_config(expressions.as_slice(), &self.routines, &self.runtime_context)?;
-		let cfg = Config::new(operator.as_str(), config);
+		let values = evaluate_operator_params(params.as_slice(), &self.routines, &self.runtime_context)?;
+		let params = ExtensionParams::new(operator.as_str(), values);
 		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 
 		let provider = self.operator_provider.clone();
-		let inner = provider.provide(operator_id, &cfg)?;
+		let inner = provider.provide(operator_id, &params, &with)?;
 
 		self.operators.insert(
 			(flow_id, operator_id),
@@ -355,24 +351,22 @@ impl FlowEngineInner {
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
-		kind: WindowKind,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
-		lateness: Option<Duration>,
-		immutable: Option<Duration>,
+		with: WindowWith,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		let operator = WindowOperator::new(WindowConfig {
 			parent_schema,
 			operator: operator_id,
-			kind: kind.clone(),
-			group_by: group_by.clone(),
-			aggregations: aggregations.clone(),
+			kind: with.kind,
+			group_by,
+			aggregations,
 			runtime_context: self.runtime_context.clone(),
 			routines: self.routines.clone(),
-			lateness,
-			immutable,
+			lateness: with.lateness,
+			immutable: with.immutable,
 			ctx: Arc::clone(ctx),
 		})?;
 		self.operators.insert((flow_id, operator_id), Box::new(operator));
@@ -387,6 +381,7 @@ impl FlowEngineInner {
 		inputs: &[OperatorId],
 		by: Vec<Expression>,
 		map: Vec<Expression>,
+		_with: AggregateWith,
 	) -> Result<()> {
 		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		let operator = AggregateOperator::new(

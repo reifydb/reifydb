@@ -2213,6 +2213,7 @@ mod tick_failures {
 			flow::OperatorCapability,
 		},
 		internal_error,
+		operator_with::ApplyWith,
 		state::timer::TimerKind,
 	};
 	use reifydb_engine::engine::StandardEngine;
@@ -2377,7 +2378,7 @@ mod tick_failures {
 		map.insert(
 			"boom".to_string(),
 			CustomOperatorEntry {
-				factory: Arc::new(|id, _config| {
+				factory: Arc::new(|id, _params, _with| {
 					Ok(Box::new(Boom {
 						id,
 					}) as BoxedHostOperator)
@@ -2393,7 +2394,7 @@ mod tick_failures {
 		map.insert(
 			"silent".to_string(),
 			CustomOperatorEntry {
-				factory: Arc::new(|id, _config| {
+				factory: Arc::new(|id, _params, _with| {
 					Ok(Box::new(Silent {
 						id,
 					}) as BoxedHostOperator)
@@ -2494,7 +2495,8 @@ mod tick_failures {
 			TIMED,
 			OperatorDef::Apply {
 				operator: operator.to_string(),
-				expressions: Vec::new(),
+				params: Vec::new(),
+				with: ApplyWith::default(),
 			},
 		));
 		builder.add_edge(FlowEdge::new(1, SOURCE, TIMED)).expect("edge");

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::Config;
+use super::ExtensionParams;
 use crate::value::duration::Duration;
 
-impl Config {
+impl ExtensionParams {
 	pub fn duration(&self, key: &str) -> Option<Duration> {
 		self.opt(key)
 	}

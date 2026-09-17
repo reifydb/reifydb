@@ -8,7 +8,10 @@
 use std::{thread, time::Duration as StdDuration};
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
-use reifydb_core::interface::{catalog::flow::OperatorId, flow::OperatorCapability};
+use reifydb_core::{
+	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	operator_with::ApplyWith,
+};
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	flow::operator::{
@@ -21,7 +24,7 @@ use reifydb_sdk::{
 	row,
 };
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	value::{constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType},
 };
 
@@ -57,7 +60,7 @@ impl OperatorMetadata for SlowCounter {
 }
 
 impl GuestOperator for SlowCounter {
-	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(SlowCounter)
 	}
 

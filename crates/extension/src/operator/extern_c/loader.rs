@@ -137,7 +137,8 @@ impl ExternCOperatorLoader {
 	pub fn load_operator(
 		&mut self,
 		path: &Path,
-		config: &[u8],
+		params: &[u8],
+		with: &[u8],
 		operator_id: OperatorId,
 	) -> ExternCResult<Option<(ExternCOperatorDescriptor, *mut c_void)>> {
 		if !self.load_operator_library(path)? {
@@ -158,7 +159,7 @@ impl ExternCOperatorLoader {
 			*create_symbol
 		};
 
-		let instance = create_fn(config.as_ptr(), config.len(), operator_id.0);
+		let instance = create_fn(params.as_ptr(), params.len(), with.as_ptr(), with.len(), operator_id.0);
 		if instance.is_null() {
 			return Err(SdkError::Other("Failed to create operator instance".to_string()));
 		}
@@ -170,7 +171,8 @@ impl ExternCOperatorLoader {
 		&mut self,
 		operator: &str,
 		operator_id: OperatorId,
-		config: &[u8],
+		params: &[u8],
+		with: &[u8],
 	) -> ExternCResult<(ExternCOperatorDescriptor, *mut c_void)> {
 		let path = self
 			.operator_paths
@@ -178,7 +180,7 @@ impl ExternCOperatorLoader {
 			.ok_or_else(|| SdkError::Other(format!("Operator not found: {}", operator)))?
 			.clone();
 
-		self.load_operator(&path, config, operator_id)?
+		self.load_operator(&path, params, with, operator_id)?
 			.ok_or_else(|| SdkError::Other(format!("Operator library no longer valid: {}", operator)))
 	}
 

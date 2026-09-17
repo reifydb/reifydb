@@ -10,6 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::{HeapSize, OperatorSample},
+	operator_with::ApplyWith,
 };
 use reifydb_flow::{
 	operator::state::seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
@@ -23,7 +24,7 @@ use reifydb_flow::{
 	},
 };
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	value::{diff_type::DiffType, duration::Duration, row_number::RowNumber},
 };
 use tracing::{debug, instrument};
@@ -124,7 +125,7 @@ where
 	const OUTPUT_COLUMNS: &'static [OperatorColumn];
 	const CAPABILITIES: &'static [OperatorCapability];
 
-	fn from_config(operator_id: OperatorId, config: &Config) -> Result<Self>;
+	fn from_operator_params(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
 
 	fn encode_row_key(&self, group: &Self::GroupKey, window_start: SlotCoord<Self::WindowSlot>) -> EncodedKey;
 }
@@ -260,7 +261,12 @@ where
 	}
 
 	#[instrument(name = "flow::operator::tumbling::seal", level = "trace", skip_all, fields(operator = A::NAME))]
-	fn seal(&mut self, ctx: &mut impl GuestContext, buckets: &mut Buckets<A>, seal_span: SealSpan<A>) -> Result<()> {
+	fn seal(
+		&mut self,
+		ctx: &mut impl GuestContext,
+		buckets: &mut Buckets<A>,
+		seal_span: SealSpan<A>,
+	) -> Result<()> {
 		let mut store = GuestAsHost(ctx);
 		let newest = buckets.keys().map(|(_, span)| span.start).max();
 		if let Some(newest) = newest {
@@ -333,10 +339,10 @@ where
 		None
 	}
 
-	fn create(operator_id: OperatorId, config: &Config) -> Result<Self> {
-		let aggregator = A::from_config(operator_id, config)?;
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+		let aggregator = A::from_operator_params(operator_id, params, with)?;
 		let retention = aggregator.retention();
-		let engine_config = window_engine_config(config);
+		let engine_config = window_engine_config(params);
 		Ok(Self {
 			aggregator,
 			engine: TumblingCarryEngine::new(

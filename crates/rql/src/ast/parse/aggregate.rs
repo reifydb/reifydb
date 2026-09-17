@@ -42,13 +42,13 @@ impl<'bump> Parser<'bump> {
 			Vec::new()
 		};
 
-		self.reject_with_clause(OperationKind::Aggregate)?;
+		let with = self.parse_operator_with()?;
 
 		Ok(AstAggregate {
 			token,
 			by,
 			map: projections,
-			retention: None,
+			with,
 			rql: self.source_since(start),
 		})
 	}
@@ -61,6 +61,7 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		ast::ast::{Ast, InfixOperator},
+		plan::logical::Compiler,
 		token::tokenize,
 	};
 
@@ -265,8 +266,14 @@ pub mod tests {
 		let source = "AGGREGATE { count(value) } BY { slot } WITH { lateness: 1m }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
-		let result = parser.parse();
-		assert!(result.is_err(), "expected error: AGGREGATE takes no WITH clause");
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let aggregate = result.first_unchecked().as_aggregate();
+		assert!(
+			Compiler::compile_aggregate_with(aggregate.with.as_ref()).is_err(),
+			"expected error: AGGREGATE takes no WITH clause"
+		);
 	}
 
 	#[test]
@@ -280,7 +287,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		assert!(result.first_unchecked().as_aggregate().retention.is_none());
+		assert!(result.first_unchecked().as_aggregate().with.is_none());
 	}
 
 	#[test]

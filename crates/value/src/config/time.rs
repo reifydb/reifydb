@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::Config;
+use super::ExtensionParams;
 use crate::value::time::Time;
 
-impl Config {
+impl ExtensionParams {
 	pub fn time(&self, key: &str) -> Option<Time> {
 		self.opt_coerce(key)
 	}

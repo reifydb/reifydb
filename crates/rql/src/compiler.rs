@@ -404,10 +404,12 @@ fn materialize_query_plan_with(
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			by: node.by,
 			map: node.map,
+			with: node.with,
 		}),
 		PhysicalPlan::Distinct(node) => QueryPlan::Distinct(nodes::DistinctNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			columns: node.columns,
+			with: node.with,
 		}),
 		PhysicalPlan::Assert(node) => QueryPlan::Assert(nodes::AssertNode {
 			input: node
@@ -430,18 +432,14 @@ fn materialize_query_plan_with(
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))?),
 			on: node.on,
 			alias: node.alias,
-			retention: node.retention,
-			snapshot: node.snapshot,
-			pick: node.pick,
+			with: node.with,
 		}),
 		PhysicalPlan::JoinLeft(node) => QueryPlan::JoinLeft(nodes::JoinLeftNode {
 			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))?),
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))?),
 			on: node.on,
 			alias: node.alias,
-			retention: node.retention,
-			snapshot: node.snapshot,
-			pick: node.pick,
+			with: node.with,
 		}),
 		PhysicalPlan::JoinNatural(node) => QueryPlan::JoinNatural(nodes::JoinNaturalNode {
 			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))?),
@@ -449,9 +447,7 @@ fn materialize_query_plan_with(
 			join_type: node.join_type,
 			fragment: node.fragment,
 			alias: node.alias,
-			retention: node.retention,
-			snapshot: node.snapshot,
-			pick: node.pick,
+			with: node.with,
 		}),
 		PhysicalPlan::Take(node) => QueryPlan::Take(nodes::TakeNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
@@ -488,18 +484,17 @@ fn materialize_query_plan_with(
 				.map(|i| materialize_query_plan(BumpBox::into_inner(i)).map(Box::new))
 				.transpose()?,
 			operator: node.operator,
-			expressions: node.expressions,
+			params: node.params,
+			with: node.with,
 		}),
 		PhysicalPlan::Window(node) => QueryPlan::Window(nodes::WindowNode {
 			input: node
 				.input
 				.map(|i| materialize_query_plan(BumpBox::into_inner(i)).map(Box::new))
 				.transpose()?,
-			kind: node.kind,
 			group_by: node.group_by,
 			aggregations: node.aggregations,
-			lateness: node.lateness,
-			immutable: node.immutable,
+			with: node.with,
 			fragment: node.fragment,
 		}),
 		PhysicalPlan::Scalarize(node) => QueryPlan::Scalarize(nodes::ScalarizeNode {

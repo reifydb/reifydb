@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::{
-	catalog::flow::OperatorId,
-	identifier::{ColumnIdentifier, ColumnObject},
-	resolved::{ResolvedColumn, ResolvedObject},
+use reifydb_core::{
+	interface::{
+		catalog::flow::OperatorId,
+		identifier::{ColumnIdentifier, ColumnObject},
+		resolved::{ResolvedColumn, ResolvedObject},
+	},
+	operator_with::DistinctWith,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, fragment::Fragment};
@@ -22,6 +25,7 @@ use crate::{
 pub(crate) struct DistinctCompiler {
 	pub input: Box<QueryPlan>,
 	pub columns: Vec<ResolvedColumn>,
+	pub with: DistinctWith,
 }
 
 impl From<DistinctNode> for DistinctCompiler {
@@ -29,6 +33,7 @@ impl From<DistinctNode> for DistinctCompiler {
 		Self {
 			input: node.input,
 			columns: node.columns.into_iter().collect(),
+			with: node.with,
 		}
 	}
 }
@@ -70,6 +75,7 @@ impl CompileOperator for DistinctCompiler {
 			txn,
 			Distinct {
 				expressions,
+				with: self.with,
 			},
 		)?;
 

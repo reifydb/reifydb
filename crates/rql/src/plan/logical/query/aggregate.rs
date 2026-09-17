@@ -10,9 +10,13 @@ use crate::{
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_aggregate(&self, ast: AstAggregate<'bump>) -> Result<LogicalPlan<'bump>> {
+		let by = ast.by.into_iter().map(ExpressionCompiler::compile).collect::<Result<Vec<_>>>()?;
+		let map = ast.map.into_iter().map(ExpressionCompiler::compile).collect::<Result<Vec<_>>>()?;
+		let with = Self::compile_aggregate_with(ast.with.as_ref())?;
 		Ok(LogicalPlan::Aggregate(AggregateNode {
-			by: ast.by.into_iter().map(ExpressionCompiler::compile).collect::<Result<Vec<_>>>()?,
-			map: ast.map.into_iter().map(ExpressionCompiler::compile).collect::<Result<Vec<_>>>()?,
+			by,
+			map,
+			with,
 			rql: ast.rql.to_string(),
 		}))
 	}

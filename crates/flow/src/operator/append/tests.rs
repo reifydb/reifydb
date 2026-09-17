@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use reifydb_core::{
 	common::TimeDomain,
 	interface::catalog::{flow::FlowId, id::TableId},
+	operator_with::DistinctWith,
 	value::column::columns::Columns,
 };
 use reifydb_rql::flow::{
@@ -304,6 +305,7 @@ fn a_distinct_between_two_appends_splits_them_into_separate_chains() {
 		20,
 		OperatorDef::Distinct {
 			expressions: Vec::new(),
+			with: DistinctWith {},
 		},
 	);
 	dag.edge(inner, distinct);

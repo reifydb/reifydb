@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use crate::value::{
 	Value,
@@ -32,16 +32,15 @@ pub mod u64;
 pub mod u8;
 pub mod uint;
 pub mod usize;
-pub mod window;
 
 #[derive(Debug, Clone)]
-pub struct Config {
+pub struct ExtensionParams {
 	name: String,
-	values: BTreeMap<String, Value>,
+	values: HashMap<String, Value>,
 }
 
-impl Config {
-	pub fn new(name: impl Into<String>, values: BTreeMap<String, Value>) -> Self {
+impl ExtensionParams {
+	pub fn new(name: impl Into<String>, values: HashMap<String, Value>) -> Self {
 		Self {
 			name: name.into(),
 			values,
@@ -79,13 +78,13 @@ impl Config {
 
 #[cfg(test)]
 pub(super) mod testutil {
-	use std::collections::BTreeMap;
+	use std::collections::HashMap;
 
-	use super::Config;
+	use super::ExtensionParams;
 	use crate::value::Value;
 
-	pub fn config(pairs: Vec<(&str, Value)>) -> Config {
-		let values: BTreeMap<String, Value> = pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
-		Config::new("test_op", values)
+	pub fn config(pairs: Vec<(&str, Value)>) -> ExtensionParams {
+		let values: HashMap<String, Value> = pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+		ExtensionParams::new("test_op", values)
 	}
 }

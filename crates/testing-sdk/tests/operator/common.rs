@@ -19,6 +19,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
+	operator_with::ApplyWith,
 };
 use reifydb_flow::{
 	operator::state::seal::coord::Coord,
@@ -53,7 +54,7 @@ use reifydb_sdk::{
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::strategy::{ColumnSampler, samplers};
 use reifydb_value::{
-	config::Config,
+	config::ExtensionParams,
 	factory::time::{at_millis, millis},
 	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
 };
@@ -210,7 +211,11 @@ impl TumblingRegistration for VolumeTumbling {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn from_operator_params(
+		_operator_id: OperatorId,
+		_params: &ExtensionParams,
+		_with: &ApplyWith,
+	) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -300,7 +305,11 @@ impl TumblingRegistration for MinTumbling {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn from_operator_params(
+		_operator_id: OperatorId,
+		_params: &ExtensionParams,
+		_with: &ApplyWith,
+	) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -434,7 +443,11 @@ impl TumblingRegistration for OhlcvSealingTumbling {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn from_operator_params(
+		_operator_id: OperatorId,
+		_params: &ExtensionParams,
+		_with: &ApplyWith,
+	) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -540,7 +553,11 @@ impl RollingRegistration for RollingSum {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn from_operator_params(
+		_operator_id: OperatorId,
+		_params: &ExtensionParams,
+		_with: &ApplyWith,
+	) -> Result<Self> {
 		Ok(rolling_sum())
 	}
 
@@ -637,7 +654,11 @@ impl RollingTopKRegistration for TopVolumeRollingTopK {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn from_operator_params(
+		_operator_id: OperatorId,
+		_params: &ExtensionParams,
+		_with: &ApplyWith,
+	) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -735,9 +756,9 @@ impl TumblingCarryRegistration for TwapCarry {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: OperatorId, config: &Config) -> Result<Self> {
+	fn from_operator_params(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(TwapCarry {
-			retention: config.u64("__retention"),
+			retention: params.u64("__retention"),
 		})
 	}
 
@@ -864,7 +885,11 @@ impl RollingRegistration for VelocityIncremental {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
+	fn from_operator_params(
+		_operator_id: OperatorId,
+		_params: &ExtensionParams,
+		_with: &ApplyWith,
+	) -> Result<Self> {
 		Ok(velocity_incremental())
 	}
 

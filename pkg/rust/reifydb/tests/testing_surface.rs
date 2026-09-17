@@ -14,6 +14,7 @@ use reifydb::{
 			change::{Change, Diffs},
 			flow::OperatorCapability,
 		},
+		operator_with::ApplyWith,
 	},
 	sdk::{
 		error::Result as SdkResult,
@@ -23,7 +24,7 @@ use reifydb::{
 		},
 	},
 	testing::flow::harness::Harness,
-	value::{config::Config, value::datetime::DateTime},
+	value::{config::ExtensionParams, value::datetime::DateTime},
 };
 
 const NODE: OperatorId = OperatorId(1);
@@ -40,7 +41,7 @@ impl OperatorMetadata for Counting {
 }
 
 impl GuestOperator for Counting {
-	fn create(_node: OperatorId, _config: &Config) -> SdkResult<Self> {
+	fn create(_node: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(Counting(Arc::new(AtomicUsize::new(0))))
 	}
 

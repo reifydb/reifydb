@@ -42,8 +42,7 @@ use reifydb_transaction::{
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
-	config::Config,
-	value::{Value, datetime::DateTime, identity::IdentityId},
+	value::{datetime::DateTime, identity::IdentityId},
 };
 
 pub struct Harness<O> {
@@ -155,15 +154,6 @@ impl Harness<ApplyOperator> {
 		capabilities: &'static [OperatorCapability],
 	) -> Self {
 		Self::new(|_| ApplyOperator::new(None, operator, mount(logic, operator, capabilities)))
-	}
-
-	pub fn guest_from_config<C: GuestOperator + 'static>(
-		operator: OperatorId,
-		capabilities: &'static [OperatorCapability],
-		config: Vec<(&str, Value)>,
-	) -> Result<Self> {
-		let config = Config::new("operator", config.into_iter().map(|(k, v)| (k.to_string(), v)).collect());
-		Ok(Self::guest(C::create(operator, &config)?, operator, capabilities))
 	}
 }
 

@@ -4,12 +4,14 @@
 // Deferred views write their operator TTL into the same create-view commit as transactional
 // views, but register through a separate path, so the read contract is covered twice.
 
+use reifydb_catalog::catalog::Catalog;
+use reifydb_core::{interface::catalog::flow::OperatorId, lifecycle::operator::ListOperatorRetention};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{duration::Duration, identity::IdentityId};
 
 #[test]
-fn deferred_append_view_persists_no_operator_settings() {
+fn deferred_append_view_persists_no_operator_retention() {
 	// Append is stateless, so it must reach the catalog carrying nothing a reaper could act on.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
@@ -32,14 +34,7 @@ fn deferred_append_view_persists_no_operator_settings() {
 		.map(|n| n.id)
 		.collect();
 
-	let mut ttls = Vec::new();
-	for id in node_ids {
-		if let Some(settings) = catalog.find_operator_settings(&mut Transaction::Admin(&mut txn), id).unwrap() {
-			if let Some(ttl) = settings.retention {
-				ttls.push(ttl.duration);
-			}
-		}
-	}
+	let ttls = retentions_of(&catalog, &node_ids);
 
 	assert!(ttls.is_empty(), "no operator in an append flow may carry a retention, found {ttls:?}");
 }
@@ -84,20 +79,20 @@ fn deferred_join_view_persists_join_ttl() {
 		.map(|n| n.id)
 		.collect();
 
-	let mut left_ttls = Vec::new();
-	for id in node_ids {
-		if let Some(settings) = catalog.find_operator_settings(&mut Transaction::Admin(&mut txn), id).unwrap() {
-			if let Some(join) = settings.join {
-				if let Some(left) = join.left {
-					left_ttls.push(left.duration);
-				}
-			}
-		}
-	}
+	let ttls = retentions_of(&catalog, &node_ids);
 
 	assert_eq!(
-		left_ttls,
+		ttls,
 		vec![Duration::from_seconds(1).unwrap()],
-		"the join operator must carry its left-side 1s TTL"
+		"the join operator must carry its longest side, the left-side 1s TTL"
 	);
+}
+
+fn retentions_of(catalog: &Catalog, operators: &[OperatorId]) -> Vec<Duration> {
+	// Reads the list the lifecycle horizon reads, so a retention missing here never bounds history.
+	catalog.list_operator_retention()
+		.into_iter()
+		.filter(|(operator, _)| operators.contains(operator))
+		.map(|(_, retention)| retention.duration)
+		.collect()
 }
