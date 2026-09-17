@@ -91,7 +91,7 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic(expected = "test_op: required config 'window_duration' is missing or not an unsigned integer")]
+	#[should_panic(expected = "test_op: required param 'window_duration' is missing or not an unsigned integer")]
 	fn require_panics_when_missing() {
 		let cfg = config(vec![]);
 		cfg.require_u64("window_duration");

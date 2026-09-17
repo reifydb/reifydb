@@ -72,7 +72,7 @@ impl ExtensionParams {
 	}
 
 	fn missing(&self, key: &str, expected: &str) -> ! {
-		panic!("{}: required config '{}' is missing or not {}", self.name, key, expected)
+		panic!("{}: required param '{}' is missing or not {}", self.name, key, expected)
 	}
 }
 

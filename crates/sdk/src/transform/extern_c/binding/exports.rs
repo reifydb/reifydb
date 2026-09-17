@@ -56,10 +56,10 @@ pub unsafe extern "C" fn create_transform_instance<T: ExternCTransformWithMetada
 			Ok(Params::Named(map)) => Arc::try_unwrap(map).unwrap_or_else(|map| (*map).clone()),
 			Ok(Params::None) => HashMap::new(),
 			Ok(Params::Positional(_)) => {
-				panic!("Failed to deserialize transform config: expected named params");
+				panic!("Failed to deserialize transform params: expected named params");
 			}
 			Err(e) => {
-				panic!("Failed to deserialize transform config: {}", e);
+				panic!("Failed to deserialize transform params: {}", e);
 			}
 		}
 	};
