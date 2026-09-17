@@ -13,7 +13,6 @@ use std::{
 };
 
 use reifydb_core::{metrics::heap::OperatorSample, state::timer::TimerKind};
-use reifydb_flow::operator::state::seal::coord::Coord;
 use reifydb_value::value::{datetime::DateTime, diff_type::DiffType};
 use tracing::{error, instrument, warn};
 
@@ -302,34 +301,6 @@ pub unsafe extern "C" fn extern_c_on_timer<O: ExternCOperator>(
 
 /// # Safety
 ///
-/// - `instance` must be a valid pointer to an `OperatorWrapper<O>` originally created by `Box::new`.
-pub unsafe extern "C" fn extern_c_seal_span_ms<O: ExternCOperator>(instance: *mut c_void) -> u64 {
-	let result = catch_unwind(AssertUnwindSafe(|| {
-		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
-		wrapper.operator.seal_span().and_then(<DateTime as Coord>::span_millis).unwrap_or(0)
-	}));
-
-	match result {
-		Ok(span) => span,
-		Err(payload) => {
-			let bt = Backtrace::force_capture();
-			let detail = describe_panic_payload(&payload);
-			error!("Panic in extern_c_seal_span_ms - aborting");
-			print_extern_c_fatal(
-				"extern_c_seal_span_ms",
-				any::type_name::<O>(),
-				-99,
-				&detail,
-				None,
-				Some(&bt),
-			);
-			abort();
-		}
-	}
-}
-
-/// # Safety
-///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>` originally created by `Box::new`, or null (in which
 ///   case this is a no-op).
 pub unsafe extern "C" fn extern_c_destroy<O: ExternCOperator>(instance: *mut c_void) {
@@ -412,7 +383,6 @@ pub fn create_vtable<O: ExternCOperator>() -> ExternCOperatorVTable {
 		on_timer: extern_c_on_timer::<O>,
 		destroy: extern_c_destroy::<O>,
 		sample: extern_c_sample::<O>,
-		seal_span_ms: extern_c_seal_span_ms::<O>,
 	}
 }
 

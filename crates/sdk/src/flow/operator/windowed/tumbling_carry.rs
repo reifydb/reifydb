@@ -25,7 +25,7 @@ use reifydb_flow::{
 };
 use reifydb_value::{
 	config::ExtensionParams,
-	value::{diff_type::DiffType, duration::Duration, row_number::RowNumber},
+	value::{diff_type::DiffType, row_number::RowNumber},
 };
 use tracing::{debug, instrument};
 
@@ -361,10 +361,6 @@ where
 		};
 		let horizon = <Anchor<A> as SealDomain>::horizon(frontier, seal_span);
 		Self::expire_through(&mut self.engine, &mut store, horizon)
-	}
-
-	fn seal_span(&self) -> Option<Duration> {
-		self.aggregator.seal_span().and_then(<Anchor<A> as SealDomain>::seal_span_duration)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {

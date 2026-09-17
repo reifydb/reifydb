@@ -6,7 +6,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	operator_with::ApplyWith,
 };
-use reifydb_value::{config::ExtensionParams, value::duration::Duration};
+use reifydb_value::config::ExtensionParams;
 
 use crate::{
 	error::Result,
@@ -25,10 +25,6 @@ pub trait ExternCOperator: 'static {
 
 	fn on_timer(&mut self, _ctx: &mut ExternCContext, _timer: Timer<'_>) -> Result<()> {
 		Ok(())
-	}
-
-	fn seal_span(&self) -> Option<Duration> {
-		None
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
@@ -62,10 +58,6 @@ impl<C: GuestOperator + OperatorMetadata + 'static> ExternCOperator for ExternCO
 
 	fn on_timer(&mut self, ctx: &mut ExternCContext, timer: Timer<'_>) -> Result<()> {
 		self.core.on_timer(ctx, timer)
-	}
-
-	fn seal_span(&self) -> Option<Duration> {
-		self.core.seal_span()
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

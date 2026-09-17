@@ -18,7 +18,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	operator_with::ApplyWith,
 };
-use reifydb_value::{config::ExtensionParams, value::duration::Duration};
+use reifydb_value::config::ExtensionParams;
 
 use crate::{
 	error::Result,
@@ -43,10 +43,6 @@ pub trait GuestOperator: Send + Sync {
 
 	fn on_timer(&mut self, _ctx: &mut impl GuestContext, _timer: Timer<'_>) -> Result<()> {
 		Ok(())
-	}
-
-	fn seal_span(&self) -> Option<Duration> {
-		None
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

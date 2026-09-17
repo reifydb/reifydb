@@ -12,7 +12,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::GroupId,
-	operator_with::{ApplyWith, WindowSealing},
+	operator_with::ApplyWith,
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{
@@ -30,8 +30,7 @@ use reifydb_sdk::{
 use reifydb_value::{
 	config::ExtensionParams,
 	value::{
-		constraint::TypeConstraint, datetime::DateTime, diff_type::DiffType, duration::Duration,
-		value_type::ValueType,
+		constraint::TypeConstraint, datetime::DateTime, diff_type::DiffType, value_type::ValueType,
 	},
 };
 
@@ -39,10 +38,6 @@ const TIMEOUT: StdDuration = StdDuration::from_secs(20);
 
 // How long after a row's own event time the operator asks to be woken.
 const DELAY_MS: u64 = 1_000;
-
-// Far beyond anything these event times reach, so retention never reclaims a group underneath an
-// assertion. It is declared only because declaring it is what puts the node in the event domain.
-const LATENESS_MS: u64 = 3_600_000;
 
 struct AlarmRow {
 	g: i32,
@@ -67,9 +62,7 @@ const ALARM_COLUMNS: &[OperatorColumn] = &[
 	},
 ];
 
-struct Alarm {
-	lateness: Duration,
-}
+struct Alarm;
 
 impl GuestRawOperator for Alarm {}
 
@@ -87,15 +80,8 @@ fn group_key(g: i32) -> EncodedKey {
 }
 
 impl GuestOperator for Alarm {
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, with: &ApplyWith) -> SdkResult<Self> {
-		let sealing = WindowSealing::from_operator_with(with).expect("alarm lateness must be a duration");
-		Ok(Alarm {
-			lateness: sealing.lateness.unwrap_or(Duration::from_milliseconds_const(LATENESS_MS as i64)),
-		})
-	}
-
-	fn seal_span(&self) -> Option<Duration> {
-		Some(self.lateness)
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+		Ok(Alarm)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> SdkResult<()> {
@@ -294,10 +280,6 @@ impl GuestOperator for Snooze {
 		Ok(Snooze {
 			disarm_offset_ms: params.u64_or("disarm_offset", 0),
 		})
-	}
-
-	fn seal_span(&self) -> Option<Duration> {
-		Some(Duration::from_milliseconds_const(LATENESS_MS as i64))
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> SdkResult<()> {

@@ -23,7 +23,7 @@ use reifydb_sdk::{
 	error::Result as SdkResult,
 	flow::operator::{GuestOperator, timer::Timer as SdkTimer, view::in_process::InProcessChangeView},
 };
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::Result;
 
 use crate::operator::context::in_process::InProcessContext;
 
@@ -109,10 +109,6 @@ impl<C: GuestOperator + 'static> HostOperator for GuestAdapter<C> {
 		Ok(Some(Change::from_flow(self.operator, version, diffs, due)))
 	}
 
-	fn seal_span(&self) -> Option<Duration> {
-		self.logic.seal_span().filter(|span| !span.is_zero())
-	}
-
 	fn sample(&self) -> Option<OperatorSample> {
 		self.logic.sample()
 	}
@@ -126,27 +122,16 @@ mod tests {
 		key::operator::state::{
 			GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, custom_not_cached_key_in,
 		},
-		operator_with::ApplyWith,
 		state::timer::StateStore,
 	};
 	use reifydb_flow::{
-		operator::{
-			HostOperator,
-			host::{HostContext, TxnHostContext},
-		},
+		operator::host::{HostContext, TxnHostContext},
 		transaction::{ChangeCoordinate, FlowTransaction},
 	};
-	use reifydb_sdk::{
-		error::Result as SdkResult,
-		flow::operator::{GuestOperator, context::GuestContext, view::ChangeView},
-	};
 	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
-	use reifydb_value::{
-		config::ExtensionParams,
-		value::{datetime::DateTime, duration::Duration},
-	};
+	use reifydb_value::value::datetime::DateTime;
 
-	use super::{OperatorId, mount};
+	use super::OperatorId;
 
 	const NODE: OperatorId = OperatorId(1);
 
@@ -206,35 +191,4 @@ mod tests {
 		assert_eq!(visited, vec![written], "state_get_many_visit must visit the key that was written");
 	}
 
-	struct SealProbe(Option<i64>);
-
-	impl GuestOperator for SealProbe {
-		fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
-			Ok(Self(None))
-		}
-
-		fn apply(&mut self, _ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
-			Ok(())
-		}
-
-		fn seal_span(&self) -> Option<Duration> {
-			self.0.map(Duration::from_milliseconds_const)
-		}
-	}
-
-	#[test]
-	fn a_mounted_guest_forwards_its_seal_span() {
-		// A mount that swallows the seal span claims a frontier covering buckets still immutable.
-		let mounted = mount(SealProbe(Some(65_000)), NODE, &[]);
-
-		assert_eq!(HostOperator::seal_span(&*mounted), Some(Duration::from_milliseconds(65_000).unwrap()));
-	}
-
-	#[test]
-	fn a_mounted_guest_reports_no_seal_span_for_a_zero_span() {
-		// A zero span seals instantly, claiming a frontier over buckets that are still immutable.
-		let mounted = mount(SealProbe(Some(0)), NODE, &[]);
-
-		assert_eq!(HostOperator::seal_span(&*mounted), None);
-	}
 }

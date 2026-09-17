@@ -11,18 +11,11 @@ use reifydb_core::{
 #[cfg(feature = "runtime")]
 use reifydb_value::Result;
 use reifydb_value::value::datetime::DateTime;
-#[cfg(any(feature = "runtime", all(reifydb_target = "host", not(reifydb_dst))))]
+#[cfg(feature = "runtime")]
 use reifydb_value::value::duration::Duration;
 
 #[cfg(feature = "runtime")]
 use crate::{operator::host::HostContext, timer::Timer};
-
-#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-pub fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
-	span.filter(|millis| *millis > 0)
-		.and_then(|millis| i64::try_from(millis).ok())
-		.and_then(|millis| Duration::from_milliseconds(millis).ok())
-}
 
 #[cfg(feature = "runtime")]
 pub mod aggregation;

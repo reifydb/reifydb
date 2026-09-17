@@ -29,6 +29,4 @@ pub struct ExternCOperatorVTable {
 	pub destroy: unsafe extern "C" fn(instance: *mut c_void),
 
 	pub sample: unsafe extern "C" fn(instance: *mut c_void, out: *mut ExternCStateUsage) -> i32,
-
-	pub seal_span_ms: unsafe extern "C" fn(instance: *mut c_void) -> u64,
 }

@@ -26,7 +26,7 @@ use reifydb_extension::{
 	},
 };
 use reifydb_flow::{
-	operator::{HostOperator, host::HostContext, scale_from_millis},
+	operator::{HostOperator, host::HostContext},
 	timer::Timer,
 };
 use reifydb_sdk::{
@@ -50,7 +50,7 @@ use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
 	count::Count,
-	value::{datetime::DateTime, duration::Duration},
+	value::datetime::DateTime,
 };
 use tracing::{Span, error, field, instrument};
 
@@ -141,12 +141,6 @@ impl HostOperator for ExternCOperatorHandle {
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		&self.capabilities
-	}
-
-	fn seal_span(&self) -> Option<Duration> {
-		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
-		// Drop calls destroy; the call passes no host pointers.
-		scale_from_millis(Some(unsafe { (self.vtable.seal_span_ms)(self.instance) }))
 	}
 
 	#[instrument(name = "flow::extern_c::apply", level = "trace", skip_all, fields(
