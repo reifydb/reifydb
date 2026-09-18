@@ -70,4 +70,13 @@ describe('encodeParams', () => {
         expect(() => encodeValue(regions)).not.toThrow();
         expect(() => encodeParams({regions})).not.toThrow();
     });
+
+    // a list-of-records positional param must stay one param, never one param per row
+    it('encodes a list of records as a single positional param, not one param per row', () => {
+        const regions = [{id: 'us', label: 'US'}, {id: 'eu', label: 'EU'}];
+        const positional = encodeParams([regions]) as {type: unknown; value: unknown}[];
+        expect(positional).toHaveLength(1);
+        const named = encodeParams({regions}) as Record<string, {type: unknown; value: unknown}>;
+        expect(positional[0]).toEqual(named.regions);
+    });
 });

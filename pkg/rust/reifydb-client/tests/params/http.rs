@@ -90,6 +90,14 @@ fn a_list_of_records_param_echoes_as_list_of_records() {
 }
 
 #[test]
+fn a_positional_list_of_records_param_echoes_as_list_of_records() {
+	run(|client| async move {
+		let frames = client.query("MAP { v: $1 }", Some(positional(regions()))).await.unwrap();
+		assert_echoed(&frames, regions_type(), regions());
+	});
+}
+
+#[test]
 fn a_list_of_records_param_inserts_one_row_per_element() {
 	run(|client| async move {
 		client.admin(
@@ -102,6 +110,38 @@ fn a_list_of_records_param_inserts_one_row_per_element() {
 		client.command("INSERT test::monitor_regions $regions", Some(named_as("regions", regions())))
 			.await
 			.unwrap();
+
+		let frames = client.query("FROM test::monitor_regions", None).await.unwrap();
+		assert_eq!(frames.len(), 1, "expected one frame, got {}", frames.len());
+		let id_col = frames[0].columns.iter().find(|c| c.name == "id").unwrap();
+		let label_col = frames[0].columns.iter().find(|c| c.name == "label").unwrap();
+		assert_eq!(id_col.data.len(), 2, "expected one row per list element");
+
+		let mut rows: Vec<(Value, Value)> = (0..id_col.data.len())
+			.map(|i| (id_col.data.get_value(i), label_col.data.get_value(i)))
+			.collect();
+		rows.sort_by_key(|(id, _)| id.to_string());
+		assert_eq!(
+			rows,
+			vec![
+				(Value::Utf8("eu".to_string()), Value::Utf8("EU".to_string())),
+				(Value::Utf8("us".to_string()), Value::Utf8("US".to_string())),
+			]
+		);
+	});
+}
+
+#[test]
+fn a_positional_list_of_records_param_inserts_one_row_per_element() {
+	run(|client| async move {
+		client.admin(
+			"CREATE NAMESPACE test; CREATE TABLE test::monitor_regions { id: utf8, label: utf8 }",
+			None,
+		)
+		.await
+		.unwrap();
+
+		client.command("INSERT test::monitor_regions $1", Some(positional(regions()))).await.unwrap();
 
 		let frames = client.query("FROM test::monitor_regions", None).await.unwrap();
 		assert_eq!(frames.len(), 1, "expected one frame, got {}", frames.len());
