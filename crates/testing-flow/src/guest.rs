@@ -15,7 +15,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
-	operator::{BoxedHostOperator, host::TxnHostContext},
+	operator::{BoxedHostOperator, apply::engine_seal_span, host::TxnHostContext},
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
@@ -33,13 +33,14 @@ use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	Result,
 	config::ExtensionParams,
-	value::{Value, datetime::DateTime, diff_type::DiffType, row_number::RowNumber},
+	value::{Value, datetime::DateTime, diff_type::DiffType, duration::Duration, row_number::RowNumber},
 };
 
 pub struct GuestOperatorHarness<C: MountedOperator + OperatorMetadata + 'static> {
 	engine: TestEngine,
 	operator: BoxedHostOperator,
 	operator_id: OperatorId,
+	seal_span: Option<Duration>,
 	version: u64,
 	pending: Pending,
 	substrate: FlowSubstrate,
@@ -103,7 +104,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 		let operator = self.operator_id;
 		let mut txn = self.begin_txn();
 		let output = {
-			let mut host = TxnHostContext::new(&mut txn, operator);
+			let mut host = TxnHostContext::with_seal_span(&mut txn, operator, self.seal_span);
 			self.operator.apply(&mut host, input)?
 		};
 		self.end_txn(txn);
@@ -226,6 +227,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilde
 			engine,
 			operator,
 			operator_id: self.operator_id,
+			seal_span: engine_seal_span(&self.with),
 			version: self.version.0,
 			pending: Pending::new(),
 			substrate,
@@ -315,5 +317,68 @@ where
 				"scenario '{name}' apply #{i}: extern-C vs host emitted-output mismatch"
 			);
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_core::{
+		interface::flow::OperatorCapability,
+		key::operator::state::{GroupId, managed_key_in},
+		operator_with::WithSpan,
+	};
+	use reifydb_sdk::{
+		error::Result as SdkResult,
+		flow::operator::{
+			ManagedMount, ManagedOperator,
+			column::operator::OperatorColumn,
+			context::{ClassState, GuestContext, Managed},
+			view::ChangeView,
+		},
+	};
+	use reifydb_testing_sdk::builders::TestRowBuilder;
+	use reifydb_value::factory::time::secs;
+
+	use super::*;
+
+	struct ManagedWriter;
+
+	impl OperatorMetadata for ManagedWriter {
+		const NAME: &'static str = "managed_writer";
+		const VERSION: &'static str = "0.0.1";
+		const DESCRIPTION: &'static str = "Writes one managed key per apply";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+	}
+
+	impl ManagedOperator for ManagedWriter {
+		fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+			Ok(ManagedWriter)
+		}
+
+		fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, _change: impl ChangeView) -> SdkResult<()> {
+			let group = GroupId::of(&EncodedKey::new("group".as_bytes()));
+			ctx.state().set(&managed_key_in(group, &[]).expect("an empty id fits the keyspace"), &1i64)?;
+			Ok(())
+		}
+	}
+
+	#[test]
+	fn a_managed_operator_can_write_state_through_the_harness() {
+		// Without a seal span the first managed write aborts the harness.
+		let with = ApplyWith {
+			lateness: Some(WithSpan::Duration(secs(120))),
+			..ApplyWith::default()
+		};
+		let mut harness = GuestOperatorHarness::<ManagedMount<ManagedWriter>>::builder()
+			.with(with)
+			.build()
+			.expect("harness build");
+
+		harness.insert(TestRowBuilder::new(1u64).with_values(vec![Value::Int8(1)]).build());
+
+		assert_eq!(harness.history_len(), 1, "the managed write must complete and be recorded");
 	}
 }

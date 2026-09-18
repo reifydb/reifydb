@@ -98,7 +98,7 @@ impl HostOperator for ApplyOperator {
 	}
 }
 
-fn engine_seal_span(with: &ApplyWith) -> Option<Duration> {
+pub fn engine_seal_span(with: &ApplyWith) -> Option<Duration> {
 	let span = match &with.window {
 		Some(kind) => {
 			let lateness = match with.lateness {
