@@ -504,13 +504,27 @@ fn base_indexes_of<F: Filesystem + Open>(
 		out[at] = match header(fs, &dir.join(index_name(bases[at]))) {
 			Ok(found) => found.base_index,
 			Err(error) if !rebuildable(&error) => return Err(error),
-			Err(_) => match scan(fs, &dir.join(log_name(bases[at])))?.records.first() {
-				Some(record) => record.index,
-				None => out[at + 1],
-			},
+			Err(_) => rescanned_base_index(fs, dir, bases[at], out[at + 1])?,
 		};
 	}
+	if !out.windows(2).all(|pair| pair[0] < pair[1]) {
+		for at in (0..bases.len() - 1).rev() {
+			out[at] = rescanned_base_index(fs, dir, bases[at], out[at + 1])?;
+		}
+	}
 	Ok(out)
+}
+
+fn rescanned_base_index<F: Filesystem + Open>(
+	fs: &F,
+	dir: &Path,
+	base: LogVersion,
+	fallback: LogIndex,
+) -> Result<LogIndex> {
+	Ok(match scan(fs, &dir.join(log_name(base)))?.records.first() {
+		Some(record) => record.index,
+		None => fallback,
+	})
 }
 
 #[cfg(test)]
@@ -535,7 +549,7 @@ pub fn base_of(name: &str) -> Option<LogVersion> {
 	base_from(name, LOG_SUFFIX)
 }
 
-fn index_base_of(name: &str) -> Option<LogVersion> {
+pub(crate) fn index_base_of(name: &str) -> Option<LogVersion> {
 	base_from(name, INDEX_SUFFIX)
 }
 
@@ -588,8 +602,11 @@ fn expired<F: Filesystem + Open>(fs: &F, dir: &Path, base: LogVersion, deadline:
 	}
 }
 
-fn rebuildable(error: &LogError) -> bool {
-	matches!(error, LogError::NotFound(_) | LogError::IndexShort { .. } | LogError::IndexMagic { .. })
+pub(crate) fn rebuildable(error: &LogError) -> bool {
+	matches!(
+		error,
+		LogError::NotFound(_) | LogError::IndexShort { .. } | LogError::IndexMagic { .. } | LogError::IndexCorrupt(_)
+	)
 }
 
 fn remove<F: Unlink>(fs: &F, path: &Path) -> Result<()> {

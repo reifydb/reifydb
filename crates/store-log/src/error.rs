@@ -32,6 +32,7 @@ pub enum LogError {
 		path: PathBuf,
 		found: u32,
 	},
+	IndexCorrupt(PathBuf),
 	VoteShort {
 		path: PathBuf,
 		len: u64,
@@ -156,6 +157,7 @@ impl LogError {
 				path,
 				..
 			} => path,
+			LogError::IndexCorrupt(path) => path,
 			LogError::VoteShort {
 				path,
 				..
@@ -258,6 +260,9 @@ impl Display for LogError {
 				path,
 				found,
 			} => write!(f, "log index {} has magic 0x{:08x}, not an index", path.display(), found),
+			LogError::IndexCorrupt(path) => {
+				write!(f, "log index {} does not verify against its checksum", path.display())
+			}
 			LogError::VoteShort {
 				path,
 				len,

@@ -18,6 +18,7 @@ use reifydb_value::byte_size::ByteSize;
 
 use crate::{
 	error::{LogError, Result},
+	partition::index_base_of,
 	segment::{Scan, discard, read_exact, scan_from, staging, write_all},
 };
 
@@ -213,12 +214,17 @@ fn head<H: Pread>(file: &H, path: &Path, len: u64) -> Result<Header> {
 			len,
 		});
 	}
-	let header = Header::decode(&raw);
-	if header.magic != MAGIC {
+	let found = u32::from_le_bytes(raw[0..4].try_into().unwrap());
+	if found != MAGIC {
 		return Err(LogError::IndexMagic {
 			path: path.to_path_buf(),
-			found: header.magic,
+			found,
 		});
+	}
+	let header = Header::decode(&raw).ok_or_else(|| LogError::IndexCorrupt(path.to_path_buf()))?;
+	let named = path.file_name().and_then(|name| name.to_str()).and_then(index_base_of);
+	if named.is_some_and(|named| named != header.base_version) {
+		return Err(LogError::IndexCorrupt(path.to_path_buf()));
 	}
 	Ok(header)
 }

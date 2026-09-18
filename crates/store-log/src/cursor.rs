@@ -9,7 +9,7 @@ use reifydb_runtime::io::fs::{Filesystem, Len, Open, ReadDir};
 use crate::{
 	error::{LogError, Result},
 	index::{position_of, read},
-	partition::{bases_in, index_name, log_name},
+	partition::{bases_in, index_name, log_name, rebuildable},
 	segment::{Stop, scan_upto},
 };
 
@@ -39,7 +39,11 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 		}
 		let at = bases.partition_point(|base| *base <= after).saturating_sub(1);
 		let path = dir.join(log_name(bases[at]));
-		let (_, entries) = read(fs, &dir.join(index_name(bases[at])))?;
+		let entries = match read(fs, &dir.join(index_name(bases[at]))) {
+			Ok((_, entries)) => entries,
+			Err(error) if rebuildable(&error) => Vec::new(),
+			Err(error) => return Err(error),
+		};
 		let (position, last) = seek(fs, &path, position_of(&entries, after), after)?;
 		Ok(Self {
 			fs,
