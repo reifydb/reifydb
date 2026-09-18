@@ -33,6 +33,7 @@ chaos = []
 reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-macro = { workspace = true }
 reifydb-testing-macro = { workspace = true }
+trybuild = { workspace = true }
 
 [[test]]
 name = "chaos"
