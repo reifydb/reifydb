@@ -193,7 +193,18 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					Some(Variable::Columns {
 						columns,
 					}) if columns.is_scalar() => {
-						let value = columns.scalar_value();
+						let value = match columns.scalar_value() {
+							Value::Any(inner)
+								if matches!(
+									inner.as_ref(),
+									Value::List(items)
+										if items.iter().all(|v| matches!(v, Value::Record(_)))
+								) =>
+							{
+								*inner
+							}
+							other => other,
+						};
 						let mut data =
 							ColumnBuffer::with_capacity(value.get_type(), ctx.row_count);
 						for _ in 0..ctx.row_count {

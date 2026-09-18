@@ -108,6 +108,8 @@ mod join_retention_ddl;
 mod join_using_condition_fragment;
 #[path = "join_using_unknown_key_column.rs"]
 mod join_using_unknown_key_column;
+#[path = "list_param_insert.rs"]
+mod list_param_insert;
 #[path = "memory_limit.rs"]
 mod memory_limit;
 #[path = "missing_column_lookup.rs"]
