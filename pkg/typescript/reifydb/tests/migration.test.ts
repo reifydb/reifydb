@@ -26,7 +26,7 @@ describe('migration', () => {
       [Shape.object({ id: Shape.int4Value(), label: Shape.utf8Value() })],
     )
 
-    expect(rows).toEqual([{ id: new Int4Value(1), label: new Utf8Value('hello') }])
+    expect(rows).toEqual([{ '#rownum': 1, id: new Int4Value(1), label: new Utf8Value('hello') }])
   })
 
   it('builds with no migrations at all', async () => {

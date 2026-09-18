@@ -8,7 +8,7 @@ import {
     ListValue, RecordValue,
     Value, TypeValuePair, Type, isDigestType, isListType, isOptionType, isRecordType, unwrapOptionType, optionDepth, innerOfOption
 } from './value';
-import {noneMarkerDepth} from './constant';
+import {noneMarkerDepth, ROW_NUMBER_KEY} from './constant';
 import {Column} from './types';
 
 
@@ -115,7 +115,7 @@ export function decode(pair: TypeValuePair): Value {
     }
 }
 
-export function columnsToRows(columns: Column[]): Record<string, Value>[] {
+export function columnsToRows(columns: Column[], rowNumbers?: (string | number)[]): Record<string, Value>[] {
     const rowCount = columns[0]?.payload.length ?? 0;
     for (const column of columns) {
         if (column.payload.length !== rowCount) {
@@ -124,10 +124,17 @@ export function columnsToRows(columns: Column[]): Record<string, Value>[] {
             );
         }
     }
+    const hasRowNumbers = rowNumbers !== undefined && rowNumbers.length > 0;
+    if (hasRowNumbers && rowNumbers.length !== rowCount) {
+        throw new Error(`row numbers cover ${rowNumbers.length} of ${rowCount} rows`);
+    }
     return Array.from({length: rowCount}, (_, i) => {
         const row: Record<string, Value> = {};
         for (const col of columns) {
             row[col.name] = decode({type: col.type, value: col.payload[i]});
+        }
+        if (hasRowNumbers) {
+            (row as any)[ROW_NUMBER_KEY] = Number(rowNumbers![i]);
         }
         return row;
     });

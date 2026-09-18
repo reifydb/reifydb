@@ -10,17 +10,17 @@ const other = Shape.object({total: Shape.int8()});
 const rql = 'from test::items';
 
 describe('query', () => {
-    it('creates a loading entry, then replaces its rows with the result keyed by index and marks ready', async () => {
+    it('creates a loading entry, then replaces its rows with the result keyed by row number and marks ready', async () => {
         const client = new FakeClient();
         const store = new Store(client);
         const promise = store.query(rql, null, shape);
         expect(store.getEntry(rql, null, shape).status).toBe('loading');
         expect(client.queries[0].shapes).toEqual([shape]);
-        client.queries[0].resolve([[{id: 1, name: 'a'}, {id: 2, name: 'b'}]]);
-        expect(await promise).toEqual([{id: 1, name: 'a'}, {id: 2, name: 'b'}]);
+        client.queries[0].resolve([[{'#rownum': 5, id: 1, name: 'a'}, {'#rownum': 9, id: 2, name: 'b'}]]);
+        expect(await promise).toEqual([{'#rownum': 5, id: 1, name: 'a'}, {'#rownum': 9, id: 2, name: 'b'}]);
         const entry = store.getEntry(rql, null, shape);
         expect(entry.status).toBe('ready');
-        expect(Array.from(entry.rows.entries())).toEqual([[0, {id: 1, name: 'a'}], [1, {id: 2, name: 'b'}]]);
+        expect(Array.from(entry.rows.entries())).toEqual([[5, {id: 1, name: 'a'}], [9, {id: 2, name: 'b'}]]);
         expect(entry.data).toEqual([{id: 1, name: 'a'}, {id: 2, name: 'b'}]);
     });
 

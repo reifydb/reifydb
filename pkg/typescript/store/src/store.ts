@@ -91,7 +91,7 @@ export class Store {
         try {
             const frames: readonly unknown[][] = await this.client.query(rql, params, [shape] as readonly ShapeNode[]);
             const rows = frames[0] as InferShape<S>[];
-            this.setEntry(key, withStatus(withRows(LOADING, indexRows(rows)), 'ready'));
+            this.setEntry(key, withStatus(upsertRows(LOADING, rows as SubscriptionRow<InferShape<S>>[]), 'ready'));
             return rows;
         } catch (error) {
             this.update(key, entry => withStatus(entry, 'error', toError(error)));

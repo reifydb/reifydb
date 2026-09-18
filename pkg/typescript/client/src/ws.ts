@@ -729,7 +729,7 @@ export class WsClient {
         const frames = contentType === CONTENT_TYPE_RBCF ? raw : framesFromWire(raw);
         if (shapes) checkFrames(frames, shapes);
         return {
-            result: frames.map((frame: any) => columnsToRows(frame.columns)),
+            result: frames.map((frame: any) => columnsToRows(frame.columns, frame.row_numbers)),
             meta,
         };
     }

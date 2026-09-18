@@ -76,6 +76,7 @@ describe('create monitor flow', () => {
     )
     expect(rows).toEqual([
       {
+        '#rownum': 1,
         name: new Utf8Value('reifydb.com'),
         kind: new Utf8Value('http'),
         target: new Utf8Value('https://reifydb.com/health'),
@@ -96,6 +97,7 @@ describe('create monitor flow', () => {
     const [rows] = await db.queryRoot(OPTIONALS_RQL, { name: 'db-port' }, [OPTIONALS])
     expect(rows).toEqual([
       {
+        '#rownum': 1,
         httpMethod: Option.none('Utf8'),
         expectedStatus: Option.none('Int2'),
         keyword: Option.none('Utf8'),
@@ -118,6 +120,7 @@ describe('create monitor flow', () => {
     const [rows] = await db.queryRoot(OPTIONALS_RQL, { name: 'api-health' }, [OPTIONALS])
     expect(rows).toEqual([
       {
+        '#rownum': 1,
         httpMethod: Option.some('HEAD'),
         expectedStatus: Option.some(204),
         keyword: Option.some('ok'),
@@ -139,6 +142,7 @@ describe('create monitor flow', () => {
     const [rows] = await db.queryRoot(OPTIONALS_RQL, { name: 'dns-check' }, [OPTIONALS])
     expect(rows).toEqual([
       {
+        '#rownum': 1,
         httpMethod: Option.none('Utf8'),
         expectedStatus: Option.none('Int2'),
         keyword: Option.none('Utf8'),
@@ -164,7 +168,7 @@ describe('create monitor flow', () => {
       { id: params.monitorId },
       [Shape.object({ name: Shape.utf8(), keyword: Shape.option(Shape.utf8()) })],
     )
-    expect(rows).toEqual([{ name: uuidLike, keyword: Option.some(uuidLike) }])
+    expect(rows).toEqual([{ '#rownum': 1, name: uuidLike, keyword: Option.some(uuidLike) }])
   })
 
   it('saves every selected region with the monitor, under the id the page navigates to', async () => {

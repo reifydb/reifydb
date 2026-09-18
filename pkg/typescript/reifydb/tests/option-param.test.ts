@@ -29,7 +29,7 @@ describe('procedure with an Option(utf8) parameter', () => {
     await db.commandRoot(ADD, { id: 1, label: Option.none('Utf8') }, [])
     const [rows] = await db.queryRoot(STORED, { id: 1 }, [LABEL])
 
-    expect(rows).toEqual([{ label: Option.none('Utf8') }])
+    expect(rows).toEqual([{ '#rownum': 1, label: Option.none('Utf8') }])
   })
 
   it('binds a some and stores the value', async () => {
@@ -38,7 +38,7 @@ describe('procedure with an Option(utf8) parameter', () => {
     await db.commandRoot(ADD, { id: 2, label: Option.some('x') }, [])
     const [rows] = await db.queryRoot(STORED, { id: 2 }, [LABEL])
 
-    expect(rows).toEqual([{ label: Option.some('x') }])
+    expect(rows).toEqual([{ '#rownum': 1, label: Option.some('x') }])
   })
 
   it('rejects null for the parameter in the encoder before the bridge is reached', async () => {

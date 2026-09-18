@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-import {NONE_VALUE} from '../constant';
+import {NONE_VALUE, ROW_NUMBER_KEY} from '../constant';
 import {BaseType, Type, WireCellValue, isDigestType, isListType, isOptionType, isRecordType} from '.';
 import {digestType} from './digest';
 
@@ -112,11 +112,17 @@ export function envelopeToColumns(envelope: any): {name: string, type: Type, pay
     });
 }
 
-export function envelopesToFrames(envelopes: any): {columns: {name: string, type: Type, payload: WireCellValue[]}[]}[] {
+export function envelopesToFrames(envelopes: any): {columns: {name: string, type: Type, payload: WireCellValue[]}[], row_numbers?: number[]}[] {
     if (!Array.isArray(envelopes)) {
         throw new Error(`Expected a list of frame envelopes, got ${JSON.stringify(envelopes)}`);
     }
-    return envelopes.map(envelope => ({columns: envelopeToColumns(envelope)}));
+    return envelopes.map(envelope => {
+        const rows: any[] = envelope?.rows ?? [];
+        return {
+            columns: envelopeToColumns(envelope),
+            row_numbers: rows.length > 0 && ROW_NUMBER_KEY in rows[0] ? rows.map(row => row[ROW_NUMBER_KEY]) : undefined,
+        };
+    });
 }
 
 function payloadOf(row: any, name: string, type: Type): WireCellValue {

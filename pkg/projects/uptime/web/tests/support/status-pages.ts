@@ -31,7 +31,7 @@ export async function readPages(db: TestDb): Promise<{ id: string; slug: string;
   const [rows] = await db.queryRoot('from uptime::status_pages map { id, slug, title }', {}, [
     Shape.object({ id: Shape.uuid7(), slug: Shape.utf8(), title: Shape.utf8() }),
   ])
-  return [...rows].sort((a, b) => a.slug.localeCompare(b.slug))
+  return rows.map(({ '#rownum': _, ...row }) => row).sort((a, b) => a.slug.localeCompare(b.slug))
 }
 
 export async function readMembers(
@@ -43,7 +43,7 @@ export async function readMembers(
     { id: new Uuid7Value(pageId) },
     [Shape.object({ monitor_id: Shape.uuid7(), position: Shape.int2() })],
   )
-  return [...rows].sort((a, b) => a.position - b.position)
+  return rows.map(({ '#rownum': _, ...row }) => row).sort((a, b) => a.position - b.position)
 }
 
 export async function countMembers(db: TestDb): Promise<number> {

@@ -81,6 +81,7 @@ pub struct Column {
 #[napi(object)]
 pub struct Frame {
 	pub columns: Vec<Column>,
+	pub row_numbers: Vec<String>,
 }
 
 #[napi(object)]
@@ -117,6 +118,7 @@ fn frames_to_napi(frames: &[CoreFrame]) -> Vec<Frame> {
 	convert_frames(frames)
 		.into_iter()
 		.map(|frame| Frame {
+			row_numbers: frame.row_numbers.into_iter().map(|rn| rn.to_string()).collect(),
 			columns: frame
 				.columns
 				.into_iter()
