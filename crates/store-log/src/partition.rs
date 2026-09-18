@@ -12,7 +12,7 @@ use reifydb_codec::log::{
 	record::Record,
 	vote::State,
 };
-use reifydb_runtime::io::fs::{Create, Filesystem, FsError, Mkdir, Open, OpenMut, ReadDir, Rename, SyncDir, Unlink};
+use reifydb_runtime::io::fs::{Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, ReadDir, Rename, SyncDir, Unlink};
 use reifydb_value::{
 	byte_size::ByteSize,
 	clock::ClockNow,
@@ -237,15 +237,34 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		let Some(deadline) = self.clock.now().checked_sub(ttl) else {
 			return Ok(Vec::new());
 		};
-		let pinned = floor(&self.fs, &self.dir)?;
 		let snapshot = self.vote.state().snapshot_index;
+		self.drop_bases(snapshot, Some(deadline))
+	}
+
+	pub fn drop_below(&mut self, index: LogIndex) -> Result<Vec<LogVersion>> {
+		self.drop_bases(index, None)
+	}
+
+	pub fn bytes(&self) -> Result<ByteSize> {
+		let mut total = ByteSize::from_bytes(self.segment.head().as_u64());
+		for base in &self.bases[..self.bases.len() - 1] {
+			let len = self.fs.open(&self.dir.join(log_name(*base)))?.len()?;
+			total = total.saturating_add(ByteSize::from_bytes(len));
+		}
+		Ok(total)
+	}
+
+	fn drop_bases(&mut self, ceiling: LogIndex, deadline: Option<DateTime>) -> Result<Vec<LogVersion>> {
+		let pinned = floor(&self.fs, &self.dir)?;
 		let mut dropped = Vec::new();
 		while self.bases.len() > 1 {
 			let base = self.bases[0];
-			if self.base_indexes[1] > after(snapshot) {
+			if self.base_indexes[1] > after(ceiling) {
 				break;
 			}
-			if !expired(&self.fs, &self.dir, base, deadline)? {
+			if let Some(deadline) = deadline
+				&& !expired(&self.fs, &self.dir, base, deadline)?
+			{
 				break;
 			}
 			if pinned.is_some_and(|low| self.bases[1] > low) {

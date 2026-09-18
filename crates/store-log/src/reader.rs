@@ -64,6 +64,27 @@ pub fn floor<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Optio
 	Ok(lowest)
 }
 
+pub fn readers<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Vec<(String, LogVersion)>> {
+	let entries = match fs.read_dir(&dir.join(DIR_NAME)) {
+		Ok(entries) => entries,
+		Err(FsError::NotFound(_)) => return Ok(Vec::new()),
+		Err(error) => return Err(error.into()),
+	};
+	let mut out = Vec::new();
+	for path in entries {
+		if path.as_os_str().as_encoded_bytes().ends_with(STAGING_SUFFIX.as_bytes()) {
+			continue;
+		}
+		let Some(id) = path.file_name().and_then(|name| name.to_str()) else {
+			continue;
+		};
+		let hint = read(fs, &path)?.unwrap_or(LogVersion::ZERO);
+		out.push((id.to_string(), hint));
+	}
+	out.sort_by(|a, b| a.0.cmp(&b.0));
+	Ok(out)
+}
+
 pub fn clamp<F: Filesystem + Create + Open + ReadDir + Rename + Unlink>(
 	fs: &F,
 	dir: &Path,

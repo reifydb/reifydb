@@ -17,7 +17,7 @@ use crate::{
 	cursor::Cursor,
 	error::{LogError, Result},
 	partition::{Config, Partition, sync},
-	reader::{record, register, unregister, version_of},
+	reader::{readers, record, register, unregister, version_of},
 	segment::{Scan, discard, staging, write_all},
 	writer::Writer,
 };
@@ -139,6 +139,18 @@ where
 		self.with(partition, |found| found.compact_to(index))?
 	}
 
+	pub fn drop_below(&self, partition: u32, index: LogIndex) -> Result<Vec<LogVersion>> {
+		self.with(partition, |found| {
+			found.commit(index)?;
+			found.compact_to(index)?;
+			found.drop_below(index)
+		})?
+	}
+
+	pub fn flush(&self, partition: u32) -> Result<()> {
+		self.writer(partition)?.flush()
+	}
+
 	pub fn rebase(&self, partition: u32, index: LogIndex, term: Term) -> Result<()> {
 		self.writer(partition)?.rebase(index, term)
 	}
@@ -185,6 +197,16 @@ where
 		Cursor::open(&self.fs, &dir, after)
 	}
 
+	pub fn read_from(&self, partition: u32, version: LogVersion) -> Result<Cursor<'_, F>> {
+		let dir = self.dir_of(partition)?;
+		let after = LogVersion::new(version.as_u64().saturating_sub(1));
+		Cursor::open(&self.fs, &dir, after)
+	}
+
+	pub fn readers(&self, partition: u32) -> Result<Vec<(String, LogVersion)>> {
+		readers(&self.fs, &self.dir_of(partition)?)
+	}
+
 	pub fn head(&self) -> Option<LogVersion> {
 		self.writers.iter().filter_map(Writer::written).max()
 	}
@@ -212,6 +234,10 @@ where
 
 	pub fn segment_bytes(&self, partition: u32) -> Result<ByteSize> {
 		Ok(self.writer(partition)?.with(|partition| partition.segment().capacity()))
+	}
+
+	pub fn bytes(&self, partition: u32) -> Result<ByteSize> {
+		self.with(partition, |found| found.bytes())?
 	}
 
 	pub fn with<R>(&self, partition: u32, act: impl FnOnce(&mut Partition<F, C>) -> R) -> Result<R> {
