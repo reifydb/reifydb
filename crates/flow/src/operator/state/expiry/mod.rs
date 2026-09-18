@@ -8,9 +8,13 @@ use reifydb_codec::{
 	row::operator::state::{OperatorState, decode},
 };
 use reifydb_core::{
+	internal_err,
 	key::{
 		operator::{
-			keyspace::expiry::{Expiry, ExpiryKey, TumblingExpiry, TumblingExpirySuffix},
+			keyspace::expiry::{
+				CustomManagedDue, CustomManagedDueKey, Expiry, ExpiryKey, TumblingExpiry,
+				TumblingExpirySuffix,
+			},
 			state::{
 				GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range, keyspace_inner_range_in,
 			},
@@ -23,7 +27,7 @@ use reifydb_core::{
 		typed::{SuffixBytes, typed_key},
 	},
 };
-use reifydb_value::{Result, reifydb_assertions, util::hash::Hash128};
+use reifydb_value::{Result, reifydb_assertions, util::hash::Hash128, value::datetime::DateTime};
 use tracing::instrument;
 
 pub(crate) fn expiry_range<K: Keyspace>() -> EncodedKeyRange {
@@ -51,6 +55,26 @@ pub(crate) fn tumbling_expiry_key(threshold: u64, owner: Hash128, window_start: 
 	)
 }
 
+pub(crate) fn managed_due_key(due: DateTime, group: GroupId) -> GroupStateKey {
+	typed_key::<CustomManagedDue>(
+		GroupId::ROOT,
+		&CustomManagedDueKey {
+			threshold: Desc(due.to_order()),
+			group: Desc(group),
+		},
+	)
+}
+
+pub(crate) fn managed_due_group(key: &GroupStateKey) -> Result<GroupId> {
+	let Some((_, _, suffix)) = OperatorStateKey::decode_inner(key.as_bytes()) else {
+		return internal_err!("a managed due key must decode");
+	};
+	let Some(due) = CustomManagedDueKey::from_suffix_bytes(suffix) else {
+		return internal_err!("a managed due key must carry its group");
+	};
+	Ok(due.group.0)
+}
+
 pub(crate) trait ExpirySuffix: SuffixBytes {
 	fn at_threshold(threshold: u64) -> Self;
 
@@ -76,6 +100,19 @@ impl ExpirySuffix for TumblingExpirySuffix {
 			threshold: Desc(threshold),
 			owner: BoundedKey::low(),
 			window_start: BoundedKey::low(),
+		}
+	}
+
+	fn threshold(&self) -> u64 {
+		self.threshold.0
+	}
+}
+
+impl ExpirySuffix for CustomManagedDueKey {
+	fn at_threshold(threshold: u64) -> Self {
+		Self {
+			threshold: Desc(threshold),
+			group: BoundedKey::low(),
 		}
 	}
 

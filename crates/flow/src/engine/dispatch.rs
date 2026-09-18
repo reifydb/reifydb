@@ -138,7 +138,7 @@ impl FlowEngineInner {
 		let result = match node {
 			Node::Operator(operator) => {
 				enforce_apply_capabilities(operator.id(), operator.capabilities(), &change);
-				let mut host = TxnHostContext::new(txn, operator.id());
+				let mut host = TxnHostContext::with_seal_span(txn, operator.id(), operator.seal_span());
 				operator.apply(&mut host, change)?
 			}
 			Node::DurableSink(sink) => {
