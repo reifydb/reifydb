@@ -5,12 +5,15 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_core::interface::flow::to_bitmask;
-use reifydb_core::{event::operator::OperatorColumn, interface::catalog::flow::OperatorId, operator_with::ApplyWith};
+use reifydb_core::{
+	common::OperatorClass, event::operator::OperatorColumn, interface::catalog::flow::OperatorId,
+	operator_with::ApplyWith,
+};
 use reifydb_flow::operator::BoxedHostOperator;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::{
 	ManagedMount, ManagedOperator, MountedOperator, NostateMount, NostateOperator, UnmanagedMount,
-	UnmanagedOperator, WindowedDriver,
+	UnmanagedOperator, WindowedDriver, context::ClassValue,
 };
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::{OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn};
@@ -31,6 +34,7 @@ pub struct CustomOperatorEntry {
 	pub capabilities: u32,
 	pub input: Vec<OperatorColumn>,
 	pub output: Vec<OperatorColumn>,
+	pub class: OperatorClass,
 }
 
 #[derive(Clone, Default)]
@@ -139,6 +143,7 @@ impl FlowConfigurator {
 				capabilities: to_bitmask(<M as OperatorMetadata>::CAPABILITIES),
 				input: describe_columns(<M as OperatorMetadata>::INPUT_COLUMNS),
 				output: describe_columns(<M as OperatorMetadata>::OUTPUT_COLUMNS),
+				class: <M::Class as ClassValue>::CLASS,
 			},
 		);
 		self

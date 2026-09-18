@@ -61,6 +61,7 @@ pub fn load_extern_rust_operators(dir: &PathBuf, event_bus: &EventBus) -> Result
 			convert_columns(&info.input_columns),
 			convert_columns(&info.output_columns),
 			info.capabilities,
+			None,
 		);
 
 		event_bus.emit(event);

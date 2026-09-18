@@ -43,7 +43,6 @@ pub struct ApplyWith {
 	pub window: Option<WindowKind>,
 	pub lateness: Option<WithSpan>,
 	pub immutable: Option<WithSpan>,
-	pub retention: Option<Duration>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -200,9 +199,6 @@ pub fn encode_apply_with(with: &ApplyWith) -> Result<Vec<u8>> {
 	if let Some(immutable) = with.immutable {
 		values.insert("immutable".to_string(), span_value(immutable));
 	}
-	if let Some(retention) = with.retention {
-		values.insert("retention".to_string(), Value::Duration(retention));
-	}
 	encode_params(&Params::Named(Arc::new(values)))
 		.map_err(|e| internal_error!("failed to encode apply with: {}", e))
 }
@@ -231,7 +227,6 @@ pub fn decode_apply_with(bytes: &[u8]) -> Result<ApplyWith> {
 			("lag", Value::Duration(d)) => lag = Some(*d),
 			("lateness", value) => with.lateness = Some(value_span(key, value)?),
 			("immutable", value) => with.immutable = Some(value_span(key, value)?),
-			("retention", Value::Duration(retention)) => with.retention = Some(*retention),
 			_ => return Err(internal_error!("unexpected apply with entry {}: {:?}", key, value)),
 		}
 	}
@@ -375,7 +370,6 @@ mod tests {
 			window: None,
 			lateness: lateness.map(|n| WithSpan::Duration(secs(n))),
 			immutable: immutable.map(|n| WithSpan::Duration(secs(n))),
-			retention: None,
 		}
 	}
 
@@ -496,7 +490,6 @@ mod tests {
 			window: None,
 			lateness: Some(WithSpan::Count(150)),
 			immutable: None,
-			retention: None,
 		};
 		let err = WindowSealing::from_operator_with(&with).unwrap_err();
 		assert!(err.to_string().contains("lateness"), "{err}");
@@ -512,7 +505,6 @@ mod tests {
 				window: None,
 				lateness: Some(WithSpan::Count(150)),
 				immutable: Some(WithSpan::Count(0)),
-				retention: Some(secs(3600)),
 			},
 		] {
 			assert_eq!(decode_apply_with(&encode_apply_with(&with).unwrap()).unwrap(), with);
@@ -576,7 +568,6 @@ mod tests {
 				window: Some(kind),
 				lateness,
 				immutable: None,
-				retention: None,
 			};
 			assert_eq!(decode_apply_with(&encode_apply_with(&with).unwrap()).unwrap(), with);
 		}
@@ -600,7 +591,6 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
-			retention: None,
 		};
 		assert!(count.window_duration().is_err());
 
@@ -610,7 +600,6 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
-			retention: None,
 		};
 		assert!(session.window_duration().is_err());
 	}
@@ -625,7 +614,6 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
-			retention: None,
 		};
 		assert!(duration.window_slots().is_err());
 	}
@@ -640,7 +628,6 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
-			retention: None,
 		};
 		assert!(windowed.reject_window().is_err());
 	}
@@ -656,7 +643,6 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
-			retention: None,
 		};
 		assert!(rolling.require_window("tumbling").is_err());
 		assert!(rolling.require_window("rolling").is_ok());
@@ -672,7 +658,6 @@ mod tests {
 			window: None,
 			lateness: Some(WithSpan::Duration(secs(30))),
 			immutable: None,
-			retention: None,
 		};
 		assert_eq!(duration.lateness_duration().unwrap(), Some(secs(30)));
 		assert!(duration.lateness_count().is_err());
@@ -681,7 +666,6 @@ mod tests {
 			window: None,
 			lateness: Some(WithSpan::Count(5)),
 			immutable: None,
-			retention: None,
 		};
 		assert_eq!(count.lateness_count().unwrap(), Some(5));
 		assert!(count.lateness_duration().is_err());

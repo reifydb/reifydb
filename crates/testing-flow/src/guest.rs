@@ -24,8 +24,7 @@ use reifydb_flow::{
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::flow::operator::{
-	MountedOperator, OperatorMetadata,
-	extern_c::binding::operator::ExternCOperatorAdapter,
+	MountedOperator, OperatorMetadata, extern_c::binding::operator::ExternCOperatorAdapter,
 };
 use reifydb_sub_flow::operator::mount::mount;
 use reifydb_test_harness::engine::TestEngine;

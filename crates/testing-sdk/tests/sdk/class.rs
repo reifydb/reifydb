@@ -93,6 +93,18 @@ fn a_managed_operator_refuses_a_missing_lateness() {
 }
 
 #[test]
+fn a_managed_operator_refuses_a_zero_lateness() {
+	// A zero lateness frees managed state on the same write that made it.
+	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<ManagedMount<ManagedProbe>>>::new()
+		.with(lateness_of(0))
+		.build()
+	else {
+		panic!("create must refuse a zero lateness");
+	};
+	assert!(err.to_string().contains("FLOW_072"), "expected FLOW_072, got: {err}");
+}
+
+#[test]
 fn a_managed_operator_refuses_a_window() {
 	// A window on a managed operator must be refused, never silently ignored.
 	let with = ApplyWith {

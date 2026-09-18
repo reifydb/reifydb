@@ -253,6 +253,7 @@ impl FlowSubsystem {
 				entry.input.clone(),
 				entry.output.clone(),
 				entry.capabilities,
+				Some(entry.class),
 			));
 		}
 		event_bus.wait_for_completion();

@@ -761,7 +761,25 @@ pub fn flow_operator_with_not_accepted() -> Diagnostic {
 pub fn flow_operator_lateness_required() -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_072",
-		"a managed operator needs 'lateness'".to_string(),
+		"a managed operator needs a positive 'lateness'".to_string(),
 		"Declare lateness in the with block.",
+	)
+}
+
+pub fn flow_managed_operator_requires_event_time(flow: &str, operator: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_073",
+		format!("{flow} applies managed operator '{operator}' but its sources supply no event time"),
+		"a managed operator's state is freed once the watermark passes its last write plus lateness, which only \
+		 has meaning against a source-supplied event time. Declare `with { time: event(<column>) }` on the \
+		 source object this flow reads.",
+	)
+}
+
+pub fn flow_operator_timer_kind_reserved(kind: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_074",
+		format!("timer kind '{kind}' is reserved for the engine"),
+		"Arm a Seal, Grace, RowTtl or Maintenance timer instead.",
 	)
 }

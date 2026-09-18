@@ -6,7 +6,11 @@ use reifydb_catalog::{
 	vtable::system::operator_libary::OperatorLibrary,
 };
 use reifydb_core::{
-	error::diagnostic::{flow::flow_view_calls_script_routine, query},
+	common::{OperatorClass, TimeDomain},
+	error::diagnostic::{
+		flow::{flow_managed_operator_requires_event_time, flow_view_calls_script_routine},
+		query,
+	},
 	interface::catalog::{
 		column::ColumnIndex,
 		flow::FlowStatus,
@@ -23,7 +27,9 @@ use reifydb_rql::{
 	expression::Expression,
 	flow::{
 		compiler::compile_flow,
-		time_domain::{check_join_retention_requirements, check_window_time_requirements},
+		flow::FlowDag,
+		operator::OperatorDef,
+		time_domain::{check_join_retention_requirements, check_window_time_requirements, source_time_domain},
 	},
 	query::{QueryPlan, extract_resolved_source},
 };
@@ -219,6 +225,35 @@ fn ensure_apply_operators_registered(plan: &mut QueryPlan, operators: &OperatorL
 	inputs.into_iter().try_for_each(|input| ensure_apply_operators_registered(input, operators))
 }
 
+fn check_managed_time_requirements(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	flow: &FlowDag,
+	operators: &OperatorLibrary,
+) -> Result<()> {
+	let flow_name = format!("flow {}", flow.id.0);
+	for operator_id in flow.topological_order() {
+		let Some(node) = flow.get_operator(operator_id) else {
+			continue;
+		};
+		let OperatorDef::Apply {
+			operator,
+			..
+		} = &node.ty
+		else {
+			continue;
+		};
+		if operators.get(operator).and_then(|info| info.class) != Some(OperatorClass::Managed) {
+			continue;
+		}
+		if source_time_domain(catalog, txn, flow)? != TimeDomain::Event {
+			return Err(error!(flow_managed_operator_requires_event_time(&flow_name, operator)));
+		}
+		return Ok(());
+	}
+	Ok(())
+}
+
 pub(crate) fn create_deferred_view_flow(
 	catalog: &Catalog,
 	routines: &Routines,
@@ -243,5 +278,6 @@ pub(crate) fn create_deferred_view_flow(
 
 	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow.id)?;
 	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
-	check_join_retention_requirements(catalog, &mut Transaction::Admin(txn), &dag)
+	check_join_retention_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
+	check_managed_time_requirements(catalog, &mut Transaction::Admin(txn), &dag, operators)
 }

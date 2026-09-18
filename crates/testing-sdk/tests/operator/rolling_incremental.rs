@@ -40,7 +40,6 @@ fn window_with() -> ApplyWith {
 		}),
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
-		retention: None,
 	}
 }
 

@@ -8,6 +8,7 @@ use reifydb_codec::{
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
+	common::OperatorClass,
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, ManagedKey, UnmanagedKey},
 	state::timer::TimerKind,
@@ -173,6 +174,26 @@ pub struct Unmanaged;
 pub struct Nostate;
 
 pub struct Windowed;
+
+pub trait ClassValue {
+	const CLASS: OperatorClass;
+}
+
+impl ClassValue for Managed {
+	const CLASS: OperatorClass = OperatorClass::Managed;
+}
+
+impl ClassValue for Unmanaged {
+	const CLASS: OperatorClass = OperatorClass::Unmanaged;
+}
+
+impl ClassValue for Nostate {
+	const CLASS: OperatorClass = OperatorClass::Nostate;
+}
+
+impl ClassValue for Windowed {
+	const CLASS: OperatorClass = OperatorClass::Windowed;
+}
 
 pub trait CustomClass {
 	type Key: AsRef<GroupStateKey>;

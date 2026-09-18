@@ -21,8 +21,10 @@ use reifydb::{
 	sdk::{
 		error::Result as SdkResult,
 		flow::operator::{
-			NostateOperator, OperatorMetadata, column::operator::OperatorColumn,
-			context::{GuestContext, Nostate}, view::ChangeView,
+			NostateOperator, OperatorMetadata,
+			column::operator::OperatorColumn,
+			context::{GuestContext, Nostate},
+			view::ChangeView,
 		},
 	},
 	sub::subsystem::HealthStatus,

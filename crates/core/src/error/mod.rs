@@ -103,8 +103,13 @@ pub enum CoreError {
 	#[error("a nostate operator takes no 'with'")]
 	OperatorWithNotAccepted,
 
-	#[error("a managed operator needs 'lateness'")]
+	#[error("a managed operator needs a positive 'lateness'")]
 	OperatorLatenessRequired,
+
+	#[error("timer kind '{kind}' is reserved for the engine")]
+	OperatorTimerKindReserved {
+		kind: &'static str,
+	},
 
 	#[error("Primary key violation in table '{table_name}'")]
 	PrimaryKeyViolation {

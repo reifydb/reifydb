@@ -345,7 +345,7 @@ impl KeyScalar for DateTime {
 
 impl KeyScalar for TimerKind {
 	const MIN: Self = TimerKind::Seal;
-	const MAX: Self = TimerKind::Maintenance;
+	const MAX: Self = TimerKind::Reclaim;
 	const COLUMN_TYPE: KeyColumnType = KeyColumnType::U8;
 
 	fn successor(&self) -> Option<Self> {
@@ -497,16 +497,23 @@ mod tests {
 	fn timer_kind_orders_by_its_repr_discriminant() {
 		// the key column stores the discriminant byte, so an Ord that disagreed with `as u8` would sort
 		// the wheel index differently in memory than in sqlite
-		let mut kinds = vec![TimerKind::Maintenance, TimerKind::Seal, TimerKind::RowTtl, TimerKind::Grace];
+		let mut kinds = vec![
+			TimerKind::Reclaim,
+			TimerKind::Maintenance,
+			TimerKind::Seal,
+			TimerKind::RowTtl,
+			TimerKind::Grace,
+		];
 		kinds.sort();
 		let discriminants: Vec<u8> = kinds.iter().map(|kind| *kind as u8).collect();
-		assert_eq!(discriminants, vec![0, 1, 2, 3]);
+		assert_eq!(discriminants, vec![0, 1, 2, 3, 4]);
 	}
 
 	#[test]
 	fn timer_kind_successor_stops_at_the_last_declared_variant() {
 		// from_u8 is what bounds the walk; a wider MAX would hand out a variant that does not exist
-		assert_eq!(TimerKind::Maintenance.successor(), None);
+		assert_eq!(TimerKind::Maintenance.successor(), Some(TimerKind::Reclaim));
+		assert_eq!(TimerKind::Reclaim.successor(), None);
 		assert_eq!(TimerKind::Seal.predecessor(), None);
 		assert_eq!(TimerKind::Seal.successor(), Some(TimerKind::Grace));
 	}
@@ -527,7 +534,7 @@ mod tests {
 		assert_eq!(<Desc<Hash128> as BoundedKey>::low(), Desc(Hash128(u128::MAX)));
 		assert_eq!(<Desc<Partition> as BoundedKey>::low(), Desc(Partition(u128::MAX)));
 		assert_eq!(<Desc<ContentVersion> as BoundedKey>::low(), Desc(ContentVersion(u64::MAX)));
-		assert_eq!(<Desc<TimerKind> as BoundedKey>::low(), Desc(TimerKind::Maintenance));
+		assert_eq!(<Desc<TimerKind> as BoundedKey>::low(), Desc(TimerKind::Reclaim));
 	}
 
 	#[test]

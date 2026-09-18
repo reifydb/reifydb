@@ -19,8 +19,10 @@ use reifydb::{
 	sdk::{
 		error::Result as SdkResult,
 		flow::operator::{
-			NostateMount, NostateOperator, OperatorMetadata, column::operator::OperatorColumn,
-			context::{GuestContext, Nostate}, view::ChangeView,
+			NostateMount, NostateOperator, OperatorMetadata,
+			column::operator::OperatorColumn,
+			context::{GuestContext, Nostate},
+			view::ChangeView,
 		},
 	},
 	testing::flow::harness::Harness,
@@ -55,7 +57,8 @@ impl NostateOperator for Counting {
 fn a_guest_operator_is_driven_through_the_published_testing_surface() {
 	// The counter is the assertion, never the Ok: mounting can succeed while the guest is never invoked.
 	let calls = Arc::new(AtomicUsize::new(0));
-	let mut harness = Harness::guest(NostateMount::new(Counting(calls.clone())), NODE, OperatorCapability::STANDARD);
+	let mut harness =
+		Harness::guest(NostateMount::new(Counting(calls.clone())), NODE, OperatorCapability::STANDARD);
 
 	let changed_at = DateTime::from_epoch_millis(0).expect("the epoch is representable");
 	let out = harness

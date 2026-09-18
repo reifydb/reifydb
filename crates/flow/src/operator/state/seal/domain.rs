@@ -155,7 +155,6 @@ mod tests {
 			}),
 			lateness: None,
 			immutable: None,
-			retention: None,
 		};
 
 		assert!(DateTime::seal_span_of(&with).is_err());

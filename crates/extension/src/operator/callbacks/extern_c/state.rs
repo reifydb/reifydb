@@ -545,7 +545,7 @@ pub(super) extern "C" fn host_arm_timer(
 	if key_len > 0 && key.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
-	let Some(kind) = TimerKind::from_u8(kind) else {
+	let Some(kind) = TimerKind::from_u8(kind).filter(|kind| *kind != TimerKind::Reclaim) else {
 		return EXTERN_C_ERROR_INTERNAL;
 	};
 
@@ -672,7 +672,7 @@ pub(super) extern "C" fn host_disarm_timer(
 	if key_len > 0 && key.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
-	let Some(kind) = TimerKind::from_u8(kind) else {
+	let Some(kind) = TimerKind::from_u8(kind).filter(|kind| *kind != TimerKind::Reclaim) else {
 		return EXTERN_C_ERROR_INTERNAL;
 	};
 
@@ -795,10 +795,12 @@ mod join_row_expiry_guard_tests {
 
 	impl TimerStore for RecordingHost {
 		fn arm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+			self.reached.set(true);
 			Ok(())
 		}
 
 		fn disarm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+			self.reached.set(true);
 			Ok(())
 		}
 
@@ -1231,6 +1233,39 @@ mod join_row_expiry_guard_tests {
 		assert_eq!(removed, EXTERN_C_OK);
 		assert!(set_reached, "a guest keyspace must still reach the host");
 		assert!(remove_reached);
+	}
+
+	#[test]
+	fn a_guest_cannot_arm_or_disarm_the_reclaim_timer() {
+		// A guest that arms the engine's reclaim kind would free managed state on its own schedule.
+		let key = [7u8; 4];
+		let reclaim = TimerKind::Reclaim as u8;
+
+		let (armed, arm_reached) =
+			with_context(|ctx| host_arm_timer(1, ctx, 0, reclaim, key.as_ptr(), key.len()));
+		let (disarmed, disarm_reached) =
+			with_context(|ctx| host_disarm_timer(1, ctx, 0, reclaim, key.as_ptr(), key.len()));
+
+		assert_eq!(armed, EXTERN_C_ERROR_INTERNAL, "a guest must not arm the reclaim kind");
+		assert_eq!(disarmed, EXTERN_C_ERROR_INTERNAL, "nor disarm it");
+		assert!(!arm_reached, "and the refusal must land before the host is touched");
+		assert!(!disarm_reached);
+	}
+
+	#[test]
+	fn a_guest_seal_timer_still_reaches_the_host() {
+		// A guard wider than the one kind would silently stop every guest timer.
+		let key = [7u8; 4];
+		let seal = TimerKind::Seal as u8;
+
+		let (armed, arm_reached) = with_context(|ctx| host_arm_timer(1, ctx, 0, seal, key.as_ptr(), key.len()));
+		let (disarmed, disarm_reached) =
+			with_context(|ctx| host_disarm_timer(1, ctx, 0, seal, key.as_ptr(), key.len()));
+
+		assert_eq!(armed, EXTERN_C_OK);
+		assert_eq!(disarmed, EXTERN_C_OK);
+		assert!(arm_reached, "a guest timer must still reach the host");
+		assert!(disarm_reached);
 	}
 }
 

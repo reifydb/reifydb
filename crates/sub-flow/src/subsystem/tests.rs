@@ -10,6 +10,7 @@ use std::{
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::{
+	common::OperatorClass,
 	interface::{
 		catalog::flow::OperatorId,
 		change::Change,
@@ -67,6 +68,7 @@ impl SubsystemFactory for FlowWithAPanickingOperator {
 			capabilities: to_bitmask(OperatorCapability::STANDARD),
 			input: Vec::new(),
 			output: Vec::new(),
+			class: OperatorClass::Unmanaged,
 		};
 		let config = FlowConfig {
 			operators_dir: None,

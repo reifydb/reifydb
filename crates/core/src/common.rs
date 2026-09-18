@@ -197,6 +197,14 @@ impl TimeDomain {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OperatorClass {
+	Managed,
+	Unmanaged,
+	Nostate,
+	Windowed,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TimeSource {
 	None,

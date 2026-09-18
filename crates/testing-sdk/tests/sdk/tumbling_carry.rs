@@ -154,7 +154,6 @@ fn window_with() -> ApplyWith {
 		}),
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
-		retention: None,
 	}
 }
 
@@ -165,7 +164,6 @@ fn sealed_with() -> ApplyWith {
 		}),
 		lateness: Some(WithSpan::Duration(millis(60))),
 		immutable: None,
-		retention: None,
 	}
 }
 
@@ -463,7 +461,6 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 		}),
 		lateness: None,
 		immutable: None,
-		retention: None,
 	};
 	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.with(with)

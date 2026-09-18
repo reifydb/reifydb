@@ -11,7 +11,7 @@ use crate::{
 	Result,
 	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue, AstWindowKind},
 	diagnostic::AstError,
-	duration::{DurationBound, compile_duration},
+	duration::DurationBound,
 	error::RqlError,
 	plan::logical::{
 		Compiler,
@@ -23,7 +23,7 @@ use crate::{
 	token::token::Token,
 };
 
-const APPLY_WITH_KEYS: &str = "window, duration, slots, slide, gap, lag, lateness, immutable, or retention";
+const APPLY_WITH_KEYS: &str = "window, duration, slots, slide, gap, lag, lateness, or immutable";
 
 enum Immutable {
 	Zero(Declared<()>),
@@ -34,7 +34,6 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_apply_with(with: Option<&AstOperatorWith<'bump>>) -> Result<ApplyWith> {
 		let mut lateness: Option<Declared<WithSpan>> = None;
 		let mut immutable: Option<Immutable> = None;
-		let mut retention: Option<Declared<Duration>> = None;
 		let mut window_kind: Option<AstWindowKind> = None;
 		let mut parsed = ParsedConfig::default();
 		let mut size_keys_seen: Vec<(&'static str, Fragment)> = Vec::new();
@@ -113,13 +112,6 @@ impl<'bump> Compiler<'bump> {
 				}
 				Some("lateness") => lateness = Some(declared_span(literal(entry)?, "'lateness'")?),
 				Some("immutable") => immutable = declared_immutable(entry)?,
-				Some("retention") => {
-					let token = literal(entry)?;
-					retention = Some(Declared {
-						value: compile_duration(token, DurationBound::Positive, "a retention")?,
-						fragment: token.fragment.to_owned(),
-					});
-				}
 				_ => return Err(unknown_key(entry, APPLY_WITH_KEYS)),
 			}
 		}
@@ -156,14 +148,6 @@ impl<'bump> Compiler<'bump> {
 		let kind = match window_kind {
 			None => None,
 			Some(ast_kind) => {
-				if let Some(retention) = &retention {
-					return Err(AstError::UnexpectedToken {
-						expected: "no retention on a windowed apply".to_string(),
-						fragment: retention.fragment.clone(),
-					}
-					.into());
-				}
-
 				let kind_name = match ast_kind {
 					AstWindowKind::Tumbling => "tumbling",
 					AstWindowKind::Sliding => "sliding",
@@ -243,7 +227,6 @@ impl<'bump> Compiler<'bump> {
 			window: kind,
 			lateness: Declared::value_of(&lateness),
 			immutable: Declared::value_of(&immutable),
-			retention: retention.map(|declared| declared.value),
 		})
 	}
 }
@@ -354,7 +337,6 @@ mod tests {
 				window: None,
 				lateness: seconds(30),
 				immutable: seconds(10),
-				retention: None,
 			}
 		);
 	}
@@ -369,11 +351,19 @@ mod tests {
 	}
 
 	#[test]
-	fn retention_parses_as_a_duration() {
-		assert_eq!(
-			apply_with("apply op { } with { retention: 1h }").unwrap().retention,
-			Some(Duration::from_hours(1).unwrap())
-		);
+	fn retention_is_an_unknown_key() {
+		// A retention nothing reads is a setting the author believes is in force.
+		for source in [
+			"apply op { } with { retention: 1h }",
+			"apply op { } with { retention: 0s }",
+			"apply op { } with { window: tumbling, duration: 1m, retention: 1h }",
+		] {
+			let err = apply_with(source).expect_err("must be rejected").to_string();
+			assert!(
+				err.contains("lateness, or immutable"),
+				"{source} must fail as an unknown key, got: {err}"
+			);
+		}
 	}
 
 	#[test]
@@ -386,12 +376,6 @@ mod tests {
 		] {
 			assert!(apply_with(source).is_err(), "must be rejected: {source}");
 		}
-	}
-
-	#[test]
-	fn a_zero_retention_is_rejected() {
-		// A zero retention frees state on the write that created it.
-		assert!(apply_with("apply op { } with { retention: 0s }").is_err());
 	}
 
 	#[test]
@@ -488,11 +472,6 @@ mod tests {
 	#[test]
 	fn slot_immutable_not_smaller_than_the_window_fails() {
 		assert!(apply_with("apply op { } with { window: tumbling, slots: 4, immutable: 4 }").is_err());
-	}
-
-	#[test]
-	fn retention_with_a_window_fails() {
-		assert!(apply_with("apply op { } with { window: tumbling, duration: 1m, retention: 1h }").is_err());
 	}
 
 	#[test]

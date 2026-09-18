@@ -94,7 +94,8 @@ impl UnmanagedOperator for ParityWindow {
 					continue;
 				};
 				let window_bucket = (timestamp / WINDOW_SIZE) * WINDOW_SIZE;
-				let key = unmanaged_key(&window_bucket.to_be_bytes()).expect("an eight byte bucket fits the keyspace");
+				let key = unmanaged_key(&window_bucket.to_be_bytes())
+					.expect("an eight byte bucket fits the keyspace");
 				let new_count = ctx.state().get::<i64>(&key)?.unwrap_or(0) + 1;
 				ctx.state().set(&key, &new_count)?;
 				emissions.push((window_bucket, new_count));

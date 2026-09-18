@@ -25,7 +25,7 @@ use crate::{
 	error::Result,
 	flow::operator::{
 		column::operator::OperatorColumn,
-		context::{GuestContext, Managed, Nostate, Unmanaged, Windowed},
+		context::{ClassValue, GuestContext, Managed, Nostate, Unmanaged, Windowed},
 		timer::Timer,
 		view::ChangeView,
 	},
@@ -84,7 +84,7 @@ pub trait NostateOperator: OperatorMetadata + Send + Sync + Sized {
 
 #[doc(hidden)]
 pub trait MountedOperator: Send + Sync + Sized {
-	type Class;
+	type Class: ClassValue;
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
 
@@ -123,7 +123,7 @@ impl<T: ManagedOperator> MountedOperator for ManagedMount<T> {
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
 		with.reject_window()?;
-		if with.lateness_duration()?.is_none() {
+		if with.lateness_duration()?.is_none_or(|lateness| lateness.is_zero()) {
 			return Err(ValueError::from(CoreError::OperatorLatenessRequired).into());
 		}
 		Ok(Self(T::create(operator_id, params, with)?))

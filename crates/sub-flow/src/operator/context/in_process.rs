@@ -8,6 +8,7 @@ use reifydb_codec::{
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
+	error::CoreError,
 	interface::{catalog::flow::OperatorId, change::Diff},
 	key::operator::state::{
 		GroupId, GroupStateKey, KeyspaceId, group_data_inner_range, group_inner_range, is_guest_framed_inner,
@@ -27,11 +28,14 @@ use reifydb_sdk::{
 		state::{decode_payload, encode_payload},
 	},
 };
-use reifydb_value::value::{
-	Value,
-	datetime::DateTime,
-	dictionary::{DictionaryEntryId, DictionaryId},
-	row_number::RowNumber,
+use reifydb_value::{
+	error::Error as ValueError,
+	value::{
+		Value,
+		datetime::DateTime,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		row_number::RowNumber,
+	},
 };
 
 fn guest_addressable(key: &GroupStateKey) -> SdkResult<()> {
@@ -46,6 +50,16 @@ fn guest_addressable(key: &GroupStateKey) -> SdkResult<()> {
 
 fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 	SdkError::Other(e.to_string())
+}
+
+fn reject_reserved_kind(kind: TimerKind) -> SdkResult<()> {
+	if kind == TimerKind::Reclaim {
+		return Err(ValueError::from(CoreError::OperatorTimerKindReserved {
+			kind: "Reclaim",
+		})
+		.into());
+	}
+	Ok(())
 }
 
 fn decode<T: OperatorState>(row: &EncodedPodRow) -> SdkResult<T> {
@@ -312,11 +326,13 @@ impl GuestEmitContext for InProcessContext<'_> {
 		}
 	}
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
+		reject_reserved_kind(kind)?;
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).arm_timer(due, kind, key) }.map_err(to_sdk_err)
 	}
 	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
+		reject_reserved_kind(kind)?;
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).disarm_timer(due, kind, key) }.map_err(to_sdk_err)
