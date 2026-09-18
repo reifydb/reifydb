@@ -87,20 +87,18 @@ pub(crate) fn window_engine_config(_params: &ExtensionParams) -> WindowEngineCon
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::key::operator::state::group_data_of_inner;
-
-	use crate::flow::operator::state::utils::empty_key;
+	use reifydb_core::key::operator::state::{GroupId, group_data_of_inner, unmanaged_key};
 
 	#[test]
 	fn state_a_driver_addresses_without_a_group_can_never_be_reclaimed() {
-		// State addressed without a group carries no group id, so reclamation must never attribute or touch it.
-		let key = empty_key();
+		// A key built without a group must carry ROOT, never another group id, or reclaiming that group frees
+		// it.
+		let key = unmanaged_key(&[]).expect("an empty id fits the keyspace");
 
-		assert!(key.as_bytes().is_empty());
 		assert_eq!(
-			group_data_of_inner(key.as_bytes()),
-			None,
-			"state addressed without a group must not be attributable to any group"
+			group_data_of_inner(key.as_ref().as_slice()),
+			Some(GroupId::ROOT),
+			"state addressed without a group must belong to the ROOT group"
 		);
 	}
 }

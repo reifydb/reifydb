@@ -33,13 +33,13 @@ use tracing::debug;
 use crate::{
 	error::Result,
 	flow::operator::{
-		GuestOperator, OperatorMetadata,
+		MountedOperator, OperatorMetadata, WindowedDriver,
 		column::{
 			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
 			row::Row,
 		},
-		context::GuestContext,
+		context::{GuestContext, Windowed},
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
@@ -160,7 +160,7 @@ where
 	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
 }
 
-impl<A> GuestOperator for RollingTopKDriver<A>
+impl<A> MountedOperator for RollingTopKDriver<A>
 where
 	A: RollingTopKRegistration + Send + Sync + 'static,
 	A::Output: Row + Send + Sync + HeapSize,
@@ -171,6 +171,8 @@ where
 	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
+	type Class = Windowed;
+
 	fn sample(&self) -> Option<OperatorSample> {
 		None
 	}
@@ -274,6 +276,19 @@ where
 
 		Ok(())
 	}
+}
+
+impl<A> WindowedDriver for RollingTopKDriver<A>
+where
+	A: RollingTopKRegistration + Send + Sync + 'static,
+	A::Output: Row + Send + Sync + HeapSize,
+	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
+	A::Accumulator: Send + Sync,
+	A::SecondaryKey: Send + Sync + HeapSize,
+	AccumulatorContribution<A>: Send + Sync,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
 }
 
 impl<A> RollingTopKDriver<A>

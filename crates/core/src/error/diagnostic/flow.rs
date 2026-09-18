@@ -749,3 +749,19 @@ pub fn flow_operator_with_duration_span(key: &str, duration: Duration) -> Diagno
 		"Declare the setting as a count, for example lateness: 150.",
 	)
 }
+
+pub fn flow_operator_with_not_accepted() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_071",
+		"a nostate operator takes no 'with'".to_string(),
+		"Remove the with block from this apply.",
+	)
+}
+
+pub fn flow_operator_lateness_required() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_072",
+		"a managed operator needs 'lateness'".to_string(),
+		"Declare lateness in the with block.",
+	)
+}

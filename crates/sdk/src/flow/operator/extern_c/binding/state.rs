@@ -192,40 +192,6 @@ pub(crate) fn get_many(ctx: &ExternCContext, keys: &[EncodedKey]) -> Result<Vec<
 	}
 }
 
-#[instrument(name = "flow::operator::state::extern_c:prefix", level = "debug", skip(ctx), fields(
-	operator_id = ctx.operator_id().0,
-	prefix_len = prefix.as_bytes().len(),
-	result_count
-))]
-pub(crate) fn prefix(
-	ctx: &ExternCContext,
-	prefix: &EncodedKey,
-	limit: usize,
-) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
-	let prefix_bytes = prefix.as_bytes();
-	let mut iterator: *mut ExternCStateIterator = null_mut();
-
-	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; prefix_bytes outlives the callback. The handle the host opens is passed once to
-	// collect_iterator_results, discharging its precondition that the handle is fresh and freed exactly there.
-	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.prefix)(
-			(*ctx.ctx).operator_id,
-			ctx.ctx,
-			prefix_bytes.as_ptr(),
-			prefix_bytes.len(),
-			limit,
-			&mut iterator,
-		);
-
-		if result != EXTERN_C_OK {
-			return Err(SdkError::Other(format!("host_state_prefix failed with code {}", result)));
-		}
-
-		collect_iterator_results(ctx, iterator)
-	}
-}
-
 const BOUND_UNBOUNDED: u8 = 0;
 const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
@@ -360,23 +326,6 @@ unsafe fn collect_iterator_results(
 	unsafe { ((*ctx.ctx).callbacks.state.iterator_free)(iterator) };
 	Span::current().record("result_count", results.len());
 	Ok(results)
-}
-
-#[instrument(name = "flow::operator::extern_c::binding::state::clear", level = "trace", skip(ctx), fields(
-	operator_id = ctx.operator_id().0
-))]
-pub(crate) fn clear(ctx: &mut ExternCContext) -> Result<()> {
-	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; no guest pointer crosses the boundary here.
-	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.clear)((*ctx.ctx).operator_id, ctx.ctx);
-
-		if result == EXTERN_C_OK {
-			Ok(())
-		} else {
-			Err(SdkError::Other(format!("host_state_clear failed with code {}", result)))
-		}
-	}
 }
 
 fn key_refs(keys: &[EncodedKey]) -> Vec<ExternCKeyRef> {

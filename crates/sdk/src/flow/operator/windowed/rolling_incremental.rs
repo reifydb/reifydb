@@ -29,13 +29,13 @@ use tracing::debug;
 use crate::{
 	error::Result,
 	flow::operator::{
-		GuestOperator, OperatorMetadata,
+		MountedOperator, OperatorMetadata, WindowedDriver,
 		column::{
 			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
 			row::Row,
 		},
-		context::GuestContext,
+		context::{GuestContext, Windowed},
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
@@ -116,7 +116,7 @@ where
 	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
 }
 
-impl<A> GuestOperator for RollingIncrementalDriver<A>
+impl<A> MountedOperator for RollingIncrementalDriver<A>
 where
 	A: RollingIncrementalOperator + RollingRegistration + Send + Sync + 'static,
 	A::Output: Row,
@@ -127,6 +127,8 @@ where
 	WindowContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
+	type Class = Windowed;
+
 	fn sample(&self) -> Option<OperatorSample> {
 		None
 	}
@@ -221,6 +223,19 @@ where
 
 		Ok(())
 	}
+}
+
+impl<A> WindowedDriver for RollingIncrementalDriver<A>
+where
+	A: RollingIncrementalOperator + RollingRegistration + Send + Sync + 'static,
+	A::Output: Row,
+	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
+	A::Accumulator: Send + Sync + HeapSize,
+	A::Running: Send + Sync + HeapSize,
+	WindowContribution<A>: Send + Sync,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
 }
 
 type EventBuckets<A> = RollingBuckets<<A as RollingOperator>::GroupKey, Anchor<A>, WindowContribution<A>>;

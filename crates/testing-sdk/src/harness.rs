@@ -516,7 +516,7 @@ pub mod tests {
 			OperatorMetadata,
 			change::{BorrowedChange, BorrowedColumns},
 			column::operator::OperatorColumn,
-			context::GuestContext,
+			context::GuestEmitContext,
 			extern_c::binding::{context::ExternCContext, operator::ExternCOperator},
 		},
 		row,

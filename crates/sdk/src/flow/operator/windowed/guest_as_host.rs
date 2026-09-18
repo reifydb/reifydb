@@ -62,7 +62,7 @@ impl<C: GuestContext> IdentityReclaim for GuestAsHost<'_, C> {
 
 impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		Ok(self.0.state().get_bytes(key)?)
+		Ok(self.0.window_state().get_bytes(key)?)
 	}
 
 	fn state_get_many_visit(
@@ -70,17 +70,17 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		keys: &[GroupStateKey],
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
-		self.0.state().get_many_bytes_visit(keys, &mut |k, v| visit(k, v).map_err(Into::into))?;
+		self.0.window_state().get_many_bytes_visit(keys, &mut |k, v| visit(k, v).map_err(Into::into))?;
 		Ok(())
 	}
 
 	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
-		self.0.state().set_bytes(key, payload)?;
+		self.0.window_state().set_bytes(key, payload)?;
 		Ok(())
 	}
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		self.0.state().remove_bytes(key)?;
+		self.0.window_state().remove_bytes(key)?;
 		Ok(())
 	}
 
@@ -91,7 +91,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let (group, keyspace, start, end) = confine(&range);
 		let mut out = Vec::new();
-		self.0.state().range_bytes_visit(
+		self.0.window_state().range_bytes_visit(
 			group,
 			keyspace,
 			GuestBound::of(&start),
@@ -112,7 +112,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let mut swept = Vec::new();
-		self.0.state().sweep_bytes_visit(group, data_only, limit, &mut |key, row| {
+		self.0.window_state().sweep_bytes_visit(group, data_only, limit, &mut |key, row| {
 			swept.push((key, row));
 			Ok(())
 		})?;
@@ -120,7 +120,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 	}
 
 	fn group_sweep_many(&mut self, groups: &[GroupId], limit: usize) -> Result<GroupSweep> {
-		let (rows, complete) = self.0.state().sweep_many_bytes(&sweep_order(groups), limit)?;
+		let (rows, complete) = self.0.window_state().sweep_many_bytes(&sweep_order(groups), limit)?;
 		Ok(GroupSweep {
 			rows,
 			complete,
@@ -129,7 +129,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 		let (group, keyspace, start, end) = confine(&range);
-		Ok(self.0.state().last_bytes(group, keyspace, GuestBound::of(&start), GuestBound::of(&end))?)
+		Ok(self.0.window_state().last_bytes(group, keyspace, GuestBound::of(&start), GuestBound::of(&end))?)
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {

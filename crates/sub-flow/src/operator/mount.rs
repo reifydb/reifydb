@@ -21,7 +21,9 @@ use reifydb_runtime::fatal::{
 };
 use reifydb_sdk::{
 	error::Result as SdkResult,
-	flow::operator::{GuestOperator, timer::Timer as SdkTimer, view::in_process::InProcessChangeView},
+	flow::operator::{
+		MountedOperator, OperatorMetadata, timer::Timer as SdkTimer, view::in_process::InProcessChangeView,
+	},
 };
 use reifydb_value::Result;
 
@@ -45,7 +47,7 @@ fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -
 	}
 }
 
-pub fn mount<C: GuestOperator + 'static>(
+pub fn mount<C: MountedOperator + OperatorMetadata + 'static>(
 	logic: C,
 	operator: OperatorId,
 	capabilities: &'static [OperatorCapability],
@@ -63,7 +65,7 @@ struct GuestAdapter<C> {
 	capabilities: &'static [OperatorCapability],
 }
 
-impl<C: GuestOperator + 'static> HostOperator for GuestAdapter<C> {
+impl<C: MountedOperator + 'static> HostOperator for GuestAdapter<C> {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}

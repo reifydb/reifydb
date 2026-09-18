@@ -100,6 +100,12 @@ pub enum CoreError {
 		duration: Duration,
 	},
 
+	#[error("a nostate operator takes no 'with'")]
+	OperatorWithNotAccepted,
+
+	#[error("a managed operator needs 'lateness'")]
+	OperatorLatenessRequired,
+
 	#[error("Primary key violation in table '{table_name}'")]
 	PrimaryKeyViolation {
 		fragment: Fragment,

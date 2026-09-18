@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod utils;
-
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
@@ -16,7 +14,7 @@ use reifydb_value::error::Error as ValueError;
 use crate::{
 	error::{Result, SdkError},
 	flow::operator::{
-		context::{GuestBound, GuestContext, GuestState},
+		context::GuestBound,
 		extern_c::binding::{context::ExternCContext, state as extern_c},
 	},
 };
@@ -50,45 +48,6 @@ impl<'a> State<'a> {
 
 	pub fn contains(&self, key: &GroupStateKey) -> Result<bool> {
 		Ok(extern_c::get(self.ctx, key.as_encoded())?.is_some())
-	}
-
-	pub fn clear(&mut self) -> Result<()> {
-		extern_c::clear(self.ctx)
-	}
-
-	pub fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> Result<Vec<(GroupStateKey, T)>> {
-		extern_c::prefix(self.ctx, prefix.as_encoded(), usize::MAX)?
-			.into_iter()
-			.map(|(k, row)| Ok((framed(k)?, decode_payload(&EncodedPodRow::from(row))?)))
-			.collect()
-	}
-
-	pub fn get_many<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, T)>> {
-		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
-		extern_c::get_many(self.ctx, &raw)?
-			.into_iter()
-			.map(|(k, row)| Ok((framed(k)?, decode_payload(&EncodedPodRow::from(row))?)))
-			.collect()
-	}
-
-	pub fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>> {
-		extern_c::prefix(self.ctx, prefix.as_encoded(), usize::MAX)?
-			.into_iter()
-			.map(|(k, _)| framed(k))
-			.collect()
-	}
-
-	pub fn range<T: OperatorState>(
-		&self,
-		group: GroupId,
-		keyspace: KeyspaceId,
-		start: GuestBound<'_>,
-		end: GuestBound<'_>,
-	) -> Result<Vec<(GroupStateKey, T)>> {
-		extern_c::range(self.ctx, group, keyspace, start, end, usize::MAX)?
-			.into_iter()
-			.map(|(k, row)| Ok((framed(k)?, decode_payload(&EncodedPodRow::from(row))?)))
-			.collect()
 	}
 
 	pub fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
@@ -153,27 +112,4 @@ pub fn encode_payload<T: OperatorState>(value: &T) -> Result<EncodedPodRow> {
 #[inline]
 pub fn decode_payload<T: OperatorState>(row: &EncodedPodRow) -> Result<T> {
 	Ok(decode(row).map_err(ValueError::from)?)
-}
-
-pub trait GuestRawOperator {
-	fn state_get<T: OperatorState>(&self, ctx: &mut impl GuestContext, key: &GroupStateKey) -> Result<Option<T>> {
-		ctx.state().get(key)
-	}
-
-	fn state_set<T: OperatorState>(
-		&self,
-		ctx: &mut impl GuestContext,
-		key: &GroupStateKey,
-		value: &T,
-	) -> Result<()> {
-		ctx.state().set(key, value)
-	}
-
-	fn state_remove(&self, ctx: &mut impl GuestContext, key: &GroupStateKey) -> Result<()> {
-		ctx.state().remove(key)
-	}
-
-	fn state_clear(&self, ctx: &mut impl GuestContext) -> Result<()> {
-		ctx.state().clear()
-	}
 }

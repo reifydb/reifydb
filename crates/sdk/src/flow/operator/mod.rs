@@ -14,15 +14,21 @@ pub mod view_column;
 pub mod windowed;
 
 use reifydb_core::{
+	error::CoreError,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
 	operator_with::ApplyWith,
 };
-use reifydb_value::config::ExtensionParams;
+use reifydb_value::{config::ExtensionParams, error::Error as ValueError};
 
 use crate::{
 	error::Result,
-	flow::operator::{column::operator::OperatorColumn, context::GuestContext, timer::Timer, view::ChangeView},
+	flow::operator::{
+		column::operator::OperatorColumn,
+		context::{GuestContext, Managed, Nostate, Unmanaged, Windowed},
+		timer::Timer,
+		view::ChangeView,
+	},
 };
 
 pub trait OperatorMetadata {
@@ -34,18 +40,181 @@ pub trait OperatorMetadata {
 	const CAPABILITIES: &'static [OperatorCapability];
 }
 
-pub trait GuestOperator: Send + Sync {
-	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>
-	where
-		Self: Sized;
+pub trait ManagedOperator: OperatorMetadata + Send + Sync + Sized {
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
 
-	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()>;
+	fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, change: impl ChangeView) -> Result<()>;
 
-	fn on_timer(&mut self, _ctx: &mut impl GuestContext, _timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, _ctx: &mut impl GuestContext<Managed>, _timer: Timer<'_>) -> Result<()> {
 		Ok(())
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
 		None
+	}
+}
+
+pub trait UnmanagedOperator: OperatorMetadata + Send + Sync + Sized {
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
+
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<()>;
+
+	fn on_timer(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _timer: Timer<'_>) -> Result<()> {
+		Ok(())
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		None
+	}
+}
+
+pub trait NostateOperator: OperatorMetadata + Send + Sync + Sized {
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
+
+	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<()>;
+
+	fn on_timer(&mut self, _ctx: &mut impl GuestContext<Nostate>, _timer: Timer<'_>) -> Result<()> {
+		Ok(())
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		None
+	}
+}
+
+#[doc(hidden)]
+pub trait MountedOperator: Send + Sync + Sized {
+	type Class;
+
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
+
+	fn apply(&mut self, ctx: &mut impl GuestContext<Self::Class>, change: impl ChangeView) -> Result<()>;
+
+	fn on_timer(&mut self, _ctx: &mut impl GuestContext<Self::Class>, _timer: Timer<'_>) -> Result<()> {
+		Ok(())
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		None
+	}
+}
+
+pub trait WindowedDriver: MountedOperator<Class = Windowed> + OperatorMetadata {}
+
+pub struct ManagedMount<T>(T);
+
+impl<T> ManagedMount<T> {
+	pub fn new(operator: T) -> Self {
+		Self(operator)
+	}
+}
+
+impl<T: OperatorMetadata> OperatorMetadata for ManagedMount<T> {
+	const NAME: &'static str = T::NAME;
+	const VERSION: &'static str = T::VERSION;
+	const DESCRIPTION: &'static str = T::DESCRIPTION;
+	const INPUT_COLUMNS: &'static [OperatorColumn] = T::INPUT_COLUMNS;
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = T::OUTPUT_COLUMNS;
+	const CAPABILITIES: &'static [OperatorCapability] = T::CAPABILITIES;
+}
+
+impl<T: ManagedOperator> MountedOperator for ManagedMount<T> {
+	type Class = Managed;
+
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+		with.reject_window()?;
+		if with.lateness_duration()?.is_none() {
+			return Err(ValueError::from(CoreError::OperatorLatenessRequired).into());
+		}
+		Ok(Self(T::create(operator_id, params, with)?))
+	}
+
+	fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, change: impl ChangeView) -> Result<()> {
+		self.0.apply(ctx, change)
+	}
+
+	fn on_timer(&mut self, ctx: &mut impl GuestContext<Managed>, timer: Timer<'_>) -> Result<()> {
+		self.0.on_timer(ctx, timer)
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		self.0.sample()
+	}
+}
+
+pub struct UnmanagedMount<T>(T);
+
+impl<T> UnmanagedMount<T> {
+	pub fn new(operator: T) -> Self {
+		Self(operator)
+	}
+}
+
+impl<T: OperatorMetadata> OperatorMetadata for UnmanagedMount<T> {
+	const NAME: &'static str = T::NAME;
+	const VERSION: &'static str = T::VERSION;
+	const DESCRIPTION: &'static str = T::DESCRIPTION;
+	const INPUT_COLUMNS: &'static [OperatorColumn] = T::INPUT_COLUMNS;
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = T::OUTPUT_COLUMNS;
+	const CAPABILITIES: &'static [OperatorCapability] = T::CAPABILITIES;
+}
+
+impl<T: UnmanagedOperator> MountedOperator for UnmanagedMount<T> {
+	type Class = Unmanaged;
+
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+		Ok(Self(T::create(operator_id, params, with)?))
+	}
+
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<()> {
+		self.0.apply(ctx, change)
+	}
+
+	fn on_timer(&mut self, ctx: &mut impl GuestContext<Unmanaged>, timer: Timer<'_>) -> Result<()> {
+		self.0.on_timer(ctx, timer)
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		self.0.sample()
+	}
+}
+
+pub struct NostateMount<T>(T);
+
+impl<T> NostateMount<T> {
+	pub fn new(operator: T) -> Self {
+		Self(operator)
+	}
+}
+
+impl<T: OperatorMetadata> OperatorMetadata for NostateMount<T> {
+	const NAME: &'static str = T::NAME;
+	const VERSION: &'static str = T::VERSION;
+	const DESCRIPTION: &'static str = T::DESCRIPTION;
+	const INPUT_COLUMNS: &'static [OperatorColumn] = T::INPUT_COLUMNS;
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = T::OUTPUT_COLUMNS;
+	const CAPABILITIES: &'static [OperatorCapability] = T::CAPABILITIES;
+}
+
+impl<T: NostateOperator> MountedOperator for NostateMount<T> {
+	type Class = Nostate;
+
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+		if *with != ApplyWith::default() {
+			return Err(ValueError::from(CoreError::OperatorWithNotAccepted).into());
+		}
+		Ok(Self(T::create(operator_id, params, with)?))
+	}
+
+	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<()> {
+		self.0.apply(ctx, change)
+	}
+
+	fn on_timer(&mut self, ctx: &mut impl GuestContext<Nostate>, timer: Timer<'_>) -> Result<()> {
+		self.0.on_timer(ctx, timer)
+	}
+
+	fn sample(&self) -> Option<OperatorSample> {
+		self.0.sample()
 	}
 }

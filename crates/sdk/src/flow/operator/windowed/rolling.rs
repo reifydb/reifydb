@@ -37,13 +37,13 @@ use tracing::debug;
 use crate::{
 	error::Result,
 	flow::operator::{
-		GuestOperator, OperatorMetadata,
+		MountedOperator, OperatorMetadata, WindowedDriver,
 		column::{
 			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
 			row::Row,
 		},
-		context::GuestContext,
+		context::{GuestContext, Windowed},
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
@@ -276,7 +276,7 @@ where
 	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
 }
 
-impl<A> GuestOperator for RollingDriver<A>
+impl<A> MountedOperator for RollingDriver<A>
 where
 	A: RollingRegistration + Send + Sync + 'static,
 	A::Output: Row,
@@ -286,6 +286,8 @@ where
 	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
+	type Class = Windowed;
+
 	fn sample(&self) -> Option<OperatorSample> {
 		None
 	}
@@ -401,4 +403,16 @@ where
 
 		Ok(())
 	}
+}
+
+impl<A> WindowedDriver for RollingDriver<A>
+where
+	A: RollingRegistration + Send + Sync + 'static,
+	A::Output: Row,
+	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
+	A::Accumulator: Send + Sync + HeapSize,
+	AccumulatorContribution<A>: Send + Sync,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
 }

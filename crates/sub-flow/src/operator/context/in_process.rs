@@ -4,7 +4,7 @@
 use std::{marker::PhantomData, mem};
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
@@ -20,7 +20,10 @@ use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
 		column::{row::Row, sink::in_process::InProcessRowSink},
-		context::{GuestBound, GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit},
+		context::{
+			ClassState, CustomClass, GuestBound, GuestContext, GuestDictionary, GuestEmit,
+			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass,
+		},
 		state::{decode_payload, encode_payload},
 	},
 };
@@ -170,44 +173,6 @@ impl GuestState for InProcessState<'_> {
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		Ok(unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)?.is_some())
 	}
-	fn clear(&mut self) -> SdkResult<()> {
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.host).state_clear() }.map_err(to_sdk_err)
-	}
-	fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> SdkResult<Vec<(GroupStateKey, T)>> {
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let rows = unsafe { (*self.host).state_range(EncodedKeyRange::prefix(prefix.as_slice())) }
-			.map_err(to_sdk_err)?;
-		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
-	}
-	fn get_many<T: OperatorState>(&self, keys: &[GroupStateKey]) -> SdkResult<Vec<(GroupStateKey, T)>> {
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let rows = unsafe { (*self.host).state_get_many(keys) }.map_err(to_sdk_err)?;
-		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
-	}
-	fn keys_with_prefix(&self, prefix: &GroupStateKey) -> SdkResult<Vec<GroupStateKey>> {
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let rows = unsafe { (*self.host).state_range(EncodedKeyRange::prefix(prefix.as_slice())) }
-			.map_err(to_sdk_err)?;
-		Ok(rows.into_iter().map(|(k, _)| k).collect())
-	}
-	fn range<T: OperatorState>(
-		&self,
-		group: GroupId,
-		keyspace: KeyspaceId,
-		start: GuestBound<'_>,
-		end: GuestBound<'_>,
-	) -> SdkResult<Vec<(GroupStateKey, T)>> {
-		let range = keyspace_inner_range_in(group, keyspace, start.to_bound(), end.to_bound());
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let rows = unsafe { (*self.host).state_range(range) }.map_err(to_sdk_err)?;
-		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
-	}
 	fn get_bytes(&self, key: &GroupStateKey) -> SdkResult<Option<EncodedPodRow>> {
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
@@ -320,7 +285,7 @@ impl GuestDictionary for InProcessDictionary<'_> {
 	}
 }
 
-impl GuestContext for InProcessContext<'_> {
+impl GuestEmitContext for InProcessContext<'_> {
 	type InsertEmit<'a>
 		= InProcessInsertEmit<'a>
 	where
@@ -339,12 +304,6 @@ impl GuestContext for InProcessContext<'_> {
 	}
 	fn written_at(&self) -> DateTime {
 		self.now
-	}
-	fn state(&mut self) -> impl GuestState + '_ {
-		InProcessState {
-			host: self.host,
-			_marker: PhantomData,
-		}
 	}
 	fn dictionary(&mut self) -> impl GuestDictionary + '_ {
 		InProcessDictionary {
@@ -391,16 +350,6 @@ impl GuestContext for InProcessContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).remove_row_number(group, key) }.map_err(to_sdk_err)
 	}
-	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> SdkResult<ReclaimOutcome> {
-		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
-		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).reclaim_group_identity(group, limit) }.map_err(to_sdk_err)
-	}
-	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> SdkResult<ReclaimOutcome> {
-		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
-		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).reclaim_group_identity_keys(group, keys) }.map_err(to_sdk_err)
-	}
 	fn insert_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<InProcessInsertEmit<'_>> {
 		let now = self.now;
 		Ok(InProcessInsertEmit {
@@ -425,5 +374,42 @@ impl GuestContext for InProcessContext<'_> {
 			diffs: &mut self.diffs,
 			now,
 		})
+	}
+}
+
+impl<C> GuestContext<C> for InProcessContext<'_> {
+	fn state(&mut self) -> impl ClassState<C> + '_
+	where
+		C: CustomClass,
+	{
+		InProcessState {
+			host: self.host,
+			_marker: PhantomData,
+		}
+	}
+	fn window_state(&mut self) -> impl GuestState + '_
+	where
+		C: WindowClass,
+	{
+		InProcessState {
+			host: self.host,
+			_marker: PhantomData,
+		}
+	}
+	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> SdkResult<ReclaimOutcome>
+	where
+		C: WindowClass,
+	{
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		unsafe { (*self.host).reclaim_group_identity(group, limit) }.map_err(to_sdk_err)
+	}
+	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> SdkResult<ReclaimOutcome>
+	where
+		C: WindowClass,
+	{
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		unsafe { (*self.host).reclaim_group_identity_keys(group, keys) }.map_err(to_sdk_err)
 	}
 }

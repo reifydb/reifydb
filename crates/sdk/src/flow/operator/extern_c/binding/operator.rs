@@ -11,7 +11,7 @@ use reifydb_value::config::ExtensionParams;
 use crate::{
 	error::Result,
 	flow::operator::{
-		GuestOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
+		MountedOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
 		extern_c::binding::context::ExternCContext, timer::Timer,
 	},
 };
@@ -45,7 +45,7 @@ impl<C: OperatorMetadata> OperatorMetadata for ExternCOperatorAdapter<C> {
 	const CAPABILITIES: &'static [OperatorCapability] = C::CAPABILITIES;
 }
 
-impl<C: GuestOperator + OperatorMetadata + 'static> ExternCOperator for ExternCOperatorAdapter<C> {
+impl<C: MountedOperator + OperatorMetadata + 'static> ExternCOperator for ExternCOperatorAdapter<C> {
 	fn new(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
 		Ok(Self {
 			core: C::create(operator_id, params, with)?,
