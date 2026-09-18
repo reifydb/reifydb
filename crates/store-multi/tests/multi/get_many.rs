@@ -19,7 +19,7 @@ use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::util::cowvec::CowVec;
 
 fn fns(node: u64, payload: &[u8]) -> TaggedKey {
-	OperatorStateKey::new(OperatorId(node), GroupId::ROOT, KeyspaceId::CUSTOM_NOT_CACHED, payload.to_vec()).into()
+	OperatorStateKey::new(OperatorId(node), GroupId::ROOT, KeyspaceId::CUSTOM_UNMANAGED, payload.to_vec()).into()
 }
 
 fn multi(payload: &[u8]) -> TaggedKey {

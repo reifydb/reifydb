@@ -29,9 +29,7 @@ use reifydb_sdk::{
 };
 use reifydb_value::{
 	config::ExtensionParams,
-	value::{
-		constraint::TypeConstraint, datetime::DateTime, diff_type::DiffType, value_type::ValueType,
-	},
+	value::{constraint::TypeConstraint, datetime::DateTime, diff_type::DiffType, value_type::ValueType},
 };
 
 const TIMEOUT: StdDuration = StdDuration::from_secs(20);
@@ -149,7 +147,9 @@ fn setup() -> TestDb {
 fn declare(db: &TestDb) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
-	db.admin("CREATE DEFERRED VIEW app::v { g: int4, fired_at: int8 } AS { FROM app::t APPLY alarm{} WITH { lateness: 1h } }");
+	db.admin(
+		"CREATE DEFERRED VIEW app::v { g: int4, fired_at: int8 } AS { FROM app::t APPLY alarm{} WITH { lateness: 1h } }",
+	);
 }
 
 #[test]

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator::state::{GroupStateKey, IntoGroupStateKey, custom_not_cached_key},
+	key::operator::state::{GroupStateKey, IntoGroupStateKey, unmanaged_key},
 	metrics::heap::HeapSize,
 	operator_with::ApplyWith,
 };
@@ -55,13 +55,13 @@ impl IntoGroupStateKey for &TestPair {
 		suffix.extend_from_slice(self.0.0.as_bytes());
 		suffix.push(0xFF);
 		suffix.extend_from_slice(self.1.0.as_bytes());
-		custom_not_cached_key(&suffix).expect("a fixture pair must fit the keyspace's id width")
+		unmanaged_key(&suffix).expect("a fixture pair must fit the keyspace's id width").into()
 	}
 }
 
 impl IntoGroupStateKey for &TestKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		custom_not_cached_key(self.0.as_bytes()).expect("a fixture name must fit the keyspace's id width")
+		unmanaged_key(self.0.as_bytes()).expect("a fixture name must fit the keyspace's id width").into()
 	}
 }
 

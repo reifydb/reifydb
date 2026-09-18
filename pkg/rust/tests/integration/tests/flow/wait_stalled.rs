@@ -12,7 +12,10 @@ use std::{
 
 use reifydb::{
 	RuntimeConfig, WithSubsystem,
-	core::{interface::{catalog::flow::OperatorId, flow::OperatorCapability}, operator_with::ApplyWith},
+	core::{
+		interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+		operator_with::ApplyWith,
+	},
 	embedded,
 	runtime::context::clock::{Clock, MockClock},
 	sdk::{

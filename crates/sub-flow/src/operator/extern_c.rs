@@ -46,12 +46,7 @@ use reifydb_sdk::{
 		},
 	},
 };
-use reifydb_value::{
-	Result,
-	byte_size::ByteSize,
-	count::Count,
-	value::datetime::DateTime,
-};
+use reifydb_value::{Result, byte_size::ByteSize, count::Count, value::datetime::DateTime};
 use tracing::{Span, error, field, instrument};
 
 thread_local! {

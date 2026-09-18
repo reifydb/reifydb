@@ -26,7 +26,10 @@ use crate::{
 		operator::{
 			keyspace::{
 				KeyspaceVisitor, REGISTERED, dispatch,
-				root::{CustomNotCachedSuffix, NodeCounter, NodeCounterKey, NodeCounterKind},
+				root::{
+					CustomManagedSuffix, CustomUnmanagedSuffix, NodeCounter, NodeCounterKey,
+					NodeCounterKind,
+				},
 				suffix_width_of,
 			},
 			traits::Keyspace,
@@ -194,7 +197,7 @@ pub fn group_data_of_inner(inner: &[u8]) -> Option<GroupId> {
 pub struct KeyspaceId(pub u8);
 
 impl KeyspaceId {
-	pub const HIGHEST_DATA: u8 = 0x24;
+	pub const HIGHEST_DATA: u8 = 0x25;
 
 	pub const NODE_COUNTER: Self = Self(0xFF);
 
@@ -280,9 +283,11 @@ impl KeyspaceId {
 
 	pub const PARTITIONED_RINGBUFFER_META: Self = Self(0x22);
 
-	pub const CUSTOM_NOT_CACHED: Self = Self(0x23);
+	pub const CUSTOM_UNMANAGED: Self = Self(0x23);
 
 	pub const JOIN_EXPIRY_DUE: Self = Self(0x24);
+
+	pub const CUSTOM_MANAGED: Self = Self(0x25);
 
 	pub fn name(&self) -> Cow<'static, str> {
 		match *self {
@@ -329,7 +334,8 @@ impl KeyspaceId {
 			Self::PARTITIONED_RINGBUFFER_EXPIRY => "PARTITIONED_RINGBUFFER_EXPIRY",
 			Self::PARTITIONED_RINGBUFFER_TTL_ARM => "PARTITIONED_RINGBUFFER_TTL_ARM",
 			Self::PARTITIONED_RINGBUFFER_META => "PARTITIONED_RINGBUFFER_META",
-			Self::CUSTOM_NOT_CACHED => "CUSTOM_NOT_CACHED",
+			Self::CUSTOM_UNMANAGED => "CUSTOM_UNMANAGED",
+			Self::CUSTOM_MANAGED => "CUSTOM_MANAGED",
 			_ => return Cow::Owned(format!("{:#04x}", self.0)),
 		}
 		.into()
@@ -343,12 +349,8 @@ impl KeyspaceId {
 		!self.is_data()
 	}
 
-	pub fn caches_ranges(&self) -> bool {
-		*self != Self::CUSTOM_NOT_CACHED
-	}
-
-	pub fn is_guest_owned(&self) -> bool {
-		matches!(*self, Self::CUSTOM_NOT_CACHED)
+	pub fn is_custom(&self) -> bool {
+		matches!(*self, Self::CUSTOM_UNMANAGED | Self::CUSTOM_MANAGED)
 	}
 
 	pub const fn is_known(&self) -> bool {
@@ -362,7 +364,7 @@ pub fn is_framed_inner(inner: &[u8]) -> bool {
 
 pub fn is_guest_framed_inner(inner: &[u8]) -> bool {
 	OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, suffix)| {
-		keyspace.is_guest_owned() && suffix_width_of(keyspace) == Some(suffix.len())
+		keyspace.is_custom() && suffix_width_of(keyspace) == Some(suffix.len())
 	})
 }
 
@@ -544,6 +546,36 @@ impl GroupStateKey {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ManagedKey(GroupStateKey);
+
+impl AsRef<GroupStateKey> for ManagedKey {
+	fn as_ref(&self) -> &GroupStateKey {
+		&self.0
+	}
+}
+
+impl From<ManagedKey> for GroupStateKey {
+	fn from(key: ManagedKey) -> Self {
+		key.0
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct UnmanagedKey(GroupStateKey);
+
+impl AsRef<GroupStateKey> for UnmanagedKey {
+	fn as_ref(&self) -> &GroupStateKey {
+		&self.0
+	}
+}
+
+impl From<UnmanagedKey> for GroupStateKey {
+	fn from(key: UnmanagedKey) -> Self {
+		key.0
+	}
+}
+
 impl AsRef<[u8]> for GroupStateKey {
 	fn as_ref(&self) -> &[u8] {
 		self.0.as_slice()
@@ -695,13 +727,24 @@ pub fn group_inner_range_split(range: &EncodedKeyRange) -> Option<GroupId> {
 	None
 }
 
-pub fn custom_not_cached_key_in(group: GroupId, id: &[u8]) -> Option<GroupStateKey> {
-	CustomNotCachedSuffix::of(id)
-		.map(|key| OperatorStateKey::inner_encoded(group, KeyspaceId::CUSTOM_NOT_CACHED, key.to_suffix_bytes()))
+pub fn unmanaged_key_in(group: GroupId, id: &[u8]) -> Option<UnmanagedKey> {
+	CustomUnmanagedSuffix::of(id).map(|key| {
+		UnmanagedKey(OperatorStateKey::inner_encoded(
+			group,
+			KeyspaceId::CUSTOM_UNMANAGED,
+			key.to_suffix_bytes(),
+		))
+	})
 }
 
-pub fn custom_not_cached_key(id: &[u8]) -> Option<GroupStateKey> {
-	custom_not_cached_key_in(GroupId::ROOT, id)
+pub fn unmanaged_key(id: &[u8]) -> Option<UnmanagedKey> {
+	unmanaged_key_in(GroupId::ROOT, id)
+}
+
+pub fn managed_key_in(group: GroupId, id: &[u8]) -> Option<ManagedKey> {
+	CustomManagedSuffix::of(id).map(|key| {
+		ManagedKey(OperatorStateKey::inner_encoded(group, KeyspaceId::CUSTOM_MANAGED, key.to_suffix_bytes()))
+	})
 }
 
 pub fn node_counter_key(kind: NodeCounterKind) -> GroupStateKey {
@@ -821,17 +864,22 @@ mod tests {
 
 	use super::{
 		EncodedKey, EncodedKeyRange, GroupId, GroupSet, GroupStateKey, KeySerializer, KeyspaceId,
-		OperatorStateKey, custom_not_cached_key_in, group_data_inner_range, group_data_of_inner,
-		group_data_range, group_identity_inner_range, group_identity_range, group_inner_prefix,
-		group_inner_range, group_range, is_framed_inner, is_guest_framed_inner, keyspace_range, node_prefix,
-		node_range,
+		OperatorStateKey, group_data_inner_range, group_data_of_inner, group_data_range,
+		group_identity_inner_range, group_identity_range, group_inner_prefix, group_inner_range, group_range,
+		is_framed_inner, is_guest_framed_inner, keyspace_range, managed_key_in, node_prefix, node_range,
+		unmanaged_key_in,
 	};
-	use crate::interface::catalog::flow::OperatorId;
+	use crate::{interface::catalog::flow::OperatorId, key::operator::keyspace::KEYSPACES};
 
 	const NODES: [u64; 4] = [1, 17, 300, 70_000];
 	const GROUPS: [u128; 8] = [1, 2, 127, 128, 1000, 100_000, 1 << 30, u128::MAX];
-	const DATA_KEYSPACES: [KeyspaceId; 4] =
-		[KeyspaceId::ACCUMULATOR, KeyspaceId::BUFFER, KeyspaceId::RUNNING, KeyspaceId::CUSTOM_NOT_CACHED];
+	const DATA_KEYSPACES: [KeyspaceId; 5] = [
+		KeyspaceId::ACCUMULATOR,
+		KeyspaceId::BUFFER,
+		KeyspaceId::RUNNING,
+		KeyspaceId::CUSTOM_UNMANAGED,
+		KeyspaceId::CUSTOM_MANAGED,
+	];
 	const IDENTITY_KEYSPACES: [KeyspaceId; 1] = [KeyspaceId::GUEST_ROW_MAPPING];
 
 	#[derive(Clone, Copy, PartialEq, Debug)]
@@ -841,9 +889,9 @@ mod tests {
 	}
 
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
-	/// be cached in. Both are written down rather than read back from `is_data` and `caches_ranges`, or
+	/// be cached in. Both are written down rather than read back from `is_data` and the `KEYSPACES` table, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, bool); 44] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, bool); 45] = [
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, true),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, true),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, true),
@@ -887,7 +935,8 @@ mod tests {
 		("PARTITIONED_RINGBUFFER_EXPIRY", KeyspaceId::PARTITIONED_RINGBUFFER_EXPIRY, Phase::Data, true),
 		("PARTITIONED_RINGBUFFER_TTL_ARM", KeyspaceId::PARTITIONED_RINGBUFFER_TTL_ARM, Phase::Data, true),
 		("PARTITIONED_RINGBUFFER_META", KeyspaceId::PARTITIONED_RINGBUFFER_META, Phase::Data, true),
-		("CUSTOM_NOT_CACHED", KeyspaceId::CUSTOM_NOT_CACHED, Phase::Data, false),
+		("CUSTOM_UNMANAGED", KeyspaceId::CUSTOM_UNMANAGED, Phase::Data, false),
+		("CUSTOM_MANAGED", KeyspaceId::CUSTOM_MANAGED, Phase::Data, false),
 	];
 
 	/// Counts `KeyspaceId` constants from the source text. There is no reflection over associated
@@ -923,7 +972,7 @@ mod tests {
 
 		let framed = OperatorStateKey::inner_encoded(
 			GroupId::ROOT,
-			KeyspaceId::CUSTOM_NOT_CACHED,
+			KeyspaceId::CUSTOM_UNMANAGED,
 			7u64.to_be_bytes(),
 		);
 		assert!(is_framed_inner(framed.as_slice()));
@@ -959,15 +1008,16 @@ mod tests {
 		assert!(GroupStateKey::from_guest_framed(EncodedKey::new(Vec::new())).is_none());
 
 		assert!(is_guest_framed_inner(
-			custom_not_cached_key_in(GroupId::hashed(Hash128(3)), &[])
+			unmanaged_key_in(GroupId::hashed(Hash128(3)), &[])
 				.expect("an empty id fits the keyspace")
+				.as_ref()
 				.as_slice()
 		));
 		assert!(
 			!is_guest_framed_inner(
 				OperatorStateKey::inner_encoded(
 					GroupId::hashed(Hash128(3)),
-					KeyspaceId::CUSTOM_NOT_CACHED,
+					KeyspaceId::CUSTOM_UNMANAGED,
 					[]
 				)
 				.as_slice()
@@ -1150,21 +1200,22 @@ mod tests {
 		}
 
 		assert_eq!(
-			KeyspaceId::CUSTOM_NOT_CACHED.name(),
-			"CUSTOM_NOT_CACHED",
+			KeyspaceId::CUSTOM_UNMANAGED.name(),
+			"CUSTOM_UNMANAGED",
 			"a custom keyspace names the admission side it sits on; there is no unnamed fallback to absorb it"
 		);
 	}
 
 	#[test]
 	fn every_declared_keyspace_states_whether_it_may_be_range_cached() {
-		// The census names the policy so a keyspace moving out of the range tier has to be moved here
-		// too. A wrong side is silent: the tier just declines every span and the keyspace reads sqlite
-		// forever, which reads as a cold cache rather than as a policy mistake.
+		// A keyspace on the wrong side never gets its range cached, and the miss reads as a cold cache, not a
+		// policy bug.
 		for (name, keyspace, _, policy) in CENSUS {
+			let range_cached =
+				KEYSPACES.iter().find(|spec| spec.id == keyspace).map(|spec| spec.range_cached);
 			assert_eq!(
-				keyspace.caches_ranges(),
-				policy,
+				range_cached,
+				Some(policy),
 				"{name} ({:#04x}) is cached on a different side than the census records",
 				keyspace.0
 			);
@@ -1173,15 +1224,9 @@ mod tests {
 		let uncached: Vec<&str> = CENSUS.iter().filter(|(_, _, _, p)| !*p).map(|(n, ..)| *n).collect();
 		assert_eq!(
 			uncached,
-			["CUSTOM_NOT_CACHED"],
+			["CUSTOM_UNMANAGED", "CUSTOM_MANAGED"],
 			"widening the set the tier refuses turns that tier into an off switch and only shows up as a \
 			 throughput loss in a replay, so every move in or out is a measured decision"
-		);
-
-		assert!(
-			KeyspaceId(0x43).caches_ranges(),
-			"an undeclared keyspace must default to cacheable, or a custom operator silently loses the \
-			 range tier"
 		);
 	}
 
@@ -1291,7 +1336,7 @@ mod tests {
 		let key = OperatorStateKey::new(
 			OperatorId(0xDEAD_BEEF),
 			GroupId::hashed(Hash128(123_456)),
-			KeyspaceId::CUSTOM_NOT_CACHED,
+			KeyspaceId::CUSTOM_UNMANAGED,
 			vec![1, 2, 3, 4],
 		);
 		assert_eq!(OperatorStateKey::decode(&key.encode()), Some(key));
@@ -1504,6 +1549,29 @@ mod tests {
 
 		assert!(set.is_empty());
 		assert!(!set.contains(GroupId::FIRST_NON_ROOT));
+	}
+
+	#[test]
+	fn a_managed_key_is_guest_framed_in_the_managed_keyspace() {
+		// A managed key framed in any other keyspace is freed by the wrong owner, or never.
+		let group = GroupId::hashed(Hash128(3));
+		let key = managed_key_in(group, b"id").expect("a two byte id fits the keyspace");
+		let (decoded, keyspace, _) =
+			OperatorStateKey::decode_inner(key.as_ref().as_slice()).expect("a managed key decodes");
+		assert_eq!(decoded, group);
+		assert_eq!(keyspace, KeyspaceId::CUSTOM_MANAGED);
+		assert!(is_guest_framed_inner(key.as_ref().as_slice()));
+		assert!(
+			managed_key_in(group, &[0u8; 17]).is_none(),
+			"an id wider than the suffix must be refused, not cut"
+		);
+	}
+
+	#[test]
+	fn only_the_two_custom_keyspaces_are_guest_owned() {
+		// A third guest-owned keyspace lets a guest write engine state past the host check.
+		let owned: Vec<&str> = CENSUS.iter().filter(|(_, id, ..)| id.is_custom()).map(|(n, ..)| *n).collect();
+		assert_eq!(owned, ["CUSTOM_UNMANAGED", "CUSTOM_MANAGED"]);
 	}
 }
 

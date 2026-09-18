@@ -424,7 +424,7 @@ mod tests {
 	const OP_B: OperatorId = OperatorId(2);
 	const CACHED: KeyspaceId = KeyspaceId::ACCUMULATOR;
 	const OTHER: KeyspaceId = KeyspaceId::BUFFER;
-	const UNCACHED: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
+	const UNCACHED: KeyspaceId = KeyspaceId::CUSTOM_UNMANAGED;
 
 	fn group_a() -> GroupId {
 		GroupId::hashed(Hash128(10))

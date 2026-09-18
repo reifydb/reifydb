@@ -119,9 +119,7 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator::state::{
-			GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, custom_not_cached_key_in,
-		},
+		key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, unmanaged_key_in},
 		state::timer::StateStore,
 	};
 	use reifydb_flow::{
@@ -158,7 +156,7 @@ mod tests {
 
 	fn stored_key(id: &str) -> GroupStateKey {
 		// the guest owns only this keyspace, and its id column is what the round trip must hand back intact
-		custom_not_cached_key_in(GroupId::ROOT, id.as_bytes()).expect("a fixture id fits the keyspace")
+		unmanaged_key_in(GroupId::ROOT, id.as_bytes()).expect("a fixture id fits the keyspace").into()
 	}
 
 	#[test]
@@ -190,5 +188,4 @@ mod tests {
 		.unwrap();
 		assert_eq!(visited, vec![written], "state_get_many_visit must visit the key that was written");
 	}
-
 }

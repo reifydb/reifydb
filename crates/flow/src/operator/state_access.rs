@@ -137,7 +137,7 @@ mod tests {
 		row::pod::EncodedPodRow,
 	};
 	use reifydb_core::{
-		key::operator::state::{GroupId, GroupStateKey, custom_not_cached_key},
+		key::operator::state::{GroupId, GroupStateKey, unmanaged_key},
 		state::timer::{TimerKind, TimerStore},
 	};
 	use reifydb_macro::operator_state;
@@ -167,8 +167,9 @@ mod tests {
 
 	impl IntoGroupStateKey for &Key {
 		fn into_group_state_key(self) -> GroupStateKey {
-			custom_not_cached_key(self.0.as_bytes())
+			unmanaged_key(self.0.as_bytes())
 				.expect("a custom state key must be at most sixteen bytes")
+				.into()
 		}
 	}
 

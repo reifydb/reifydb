@@ -84,17 +84,43 @@ pub struct GuestRowMappingSuffix {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct CustomNotCachedKey {
+pub struct CustomUnmanagedKey {
 	pub group: Desc<GroupId>,
 	pub id: Asc<[u8; 16]>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct CustomNotCachedSuffix {
+pub struct CustomUnmanagedSuffix {
 	pub id: Asc<[u8; 16]>,
 }
 
-impl CustomNotCachedSuffix {
+impl CustomUnmanagedSuffix {
+	pub const ID_LEN: usize = 16;
+
+	pub fn of(id: &[u8]) -> Option<Self> {
+		if id.len() > Self::ID_LEN {
+			return None;
+		}
+		let mut bytes = [0u8; Self::ID_LEN];
+		bytes[..id.len()].copy_from_slice(id);
+		Some(Self {
+			id: Asc(bytes),
+		})
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
+pub struct CustomManagedKey {
+	pub group: Desc<GroupId>,
+	pub id: Asc<[u8; 16]>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
+pub struct CustomManagedSuffix {
+	pub id: Asc<[u8; 16]>,
+}
+
+impl CustomManagedSuffix {
 	pub const ID_LEN: usize = 16;
 
 	pub fn of(id: &[u8]) -> Option<Self> {
@@ -242,27 +268,55 @@ impl Keyspace for GuestRowMapping {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CustomNotCached;
+pub struct CustomUnmanaged;
 
-impl Keyspace for CustomNotCached {
-	const ID: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
-	const NAME: &'static str = "CUSTOM_NOT_CACHED";
+impl Keyspace for CustomUnmanaged {
+	const ID: KeyspaceId = KeyspaceId::CUSTOM_UNMANAGED;
+	const NAME: &'static str = "CUSTOM_UNMANAGED";
 	const RANGE_CACHED: bool = false;
 
-	type GroupedKey = CustomNotCachedKey;
-	type Suffix = CustomNotCachedSuffix;
+	type GroupedKey = CustomUnmanagedKey;
+	type Suffix = CustomUnmanagedSuffix;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(
 			key.group.0,
-			CustomNotCachedSuffix {
+			CustomUnmanagedSuffix {
 				id: key.id,
 			},
 		)
 	}
 
 	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
-		CustomNotCachedKey {
+		CustomUnmanagedKey {
+			group: Desc(group),
+			id: suffix.id,
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CustomManaged;
+
+impl Keyspace for CustomManaged {
+	const ID: KeyspaceId = KeyspaceId::CUSTOM_MANAGED;
+	const NAME: &'static str = "CUSTOM_MANAGED";
+	const RANGE_CACHED: bool = false;
+
+	type GroupedKey = CustomManagedKey;
+	type Suffix = CustomManagedSuffix;
+
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
+		(
+			key.group.0,
+			CustomManagedSuffix {
+				id: key.id,
+			},
+		)
+	}
+
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
+		CustomManagedKey {
 			group: Desc(group),
 			id: suffix.id,
 		}

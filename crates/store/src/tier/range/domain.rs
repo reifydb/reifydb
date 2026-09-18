@@ -74,7 +74,7 @@ impl TestPartition {
 	}
 
 	pub fn caches_ranges(&self) -> bool {
-		self.keyspace.caches_ranges()
+		self.keyspace != KeyspaceId::CUSTOM_UNMANAGED
 	}
 }
 
@@ -82,7 +82,10 @@ static CACHE_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 	let mut floor = [0u8; 256];
 	let mut lowest = 0u8;
 	for keyspace in 0..=u8::MAX {
-		if keyspace > 0 && KeyspaceId(keyspace).caches_ranges() != KeyspaceId(keyspace - 1).caches_ranges() {
+		if keyspace > 0
+			&& (keyspace == KeyspaceId::CUSTOM_UNMANAGED.0)
+				!= (keyspace - 1 == KeyspaceId::CUSTOM_UNMANAGED.0)
+		{
 			lowest = keyspace;
 		}
 		floor[keyspace as usize] = lowest;

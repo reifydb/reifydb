@@ -393,7 +393,8 @@ mod tests {
 
 	#[test]
 	fn a_window_holds_its_output_back_by_its_size_plus_lateness() {
-		// A window that published its input watermark would let a consumer read a bucket still open to late rows.
+		// A window that published its input watermark would let a consumer read a bucket still open to late
+		// rows.
 		let held = Harness::new()
 			.node(source(1))
 			.node(stage(2))

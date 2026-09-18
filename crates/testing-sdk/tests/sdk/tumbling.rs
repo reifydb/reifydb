@@ -607,7 +607,10 @@ fn sealing_frees_window_state_from_the_store() {
 	let before = h.snapshot_state();
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 240, 2.0)).build()).expect("apply");
 	let after = h.snapshot_state();
-	assert!(before.keys().all(|k| after.contains_key(k)), "a window whose lateness has not passed must not reclaim any state");
+	assert!(
+		before.keys().all(|k| after.contains_key(k)),
+		"a window whose lateness has not passed must not reclaim any state"
+	);
 }
 
 #[test]

@@ -45,10 +45,22 @@ impl<'bump> Compiler<'bump> {
 					let (kind, fragment) = match entry.value.as_ref() {
 						Some(AstOperatorWithValue::Word(token)) => {
 							match token.fragment.text().to_lowercase().as_str() {
-								"tumbling" => (AstWindowKind::Tumbling, token.fragment.to_owned()),
-								"sliding" => (AstWindowKind::Sliding, token.fragment.to_owned()),
-								"rolling" => (AstWindowKind::Rolling, token.fragment.to_owned()),
-								"session" => (AstWindowKind::Session, token.fragment.to_owned()),
+								"tumbling" => (
+									AstWindowKind::Tumbling,
+									token.fragment.to_owned(),
+								),
+								"sliding" => (
+									AstWindowKind::Sliding,
+									token.fragment.to_owned(),
+								),
+								"rolling" => (
+									AstWindowKind::Rolling,
+									token.fragment.to_owned(),
+								),
+								"session" => (
+									AstWindowKind::Session,
+									token.fragment.to_owned(),
+								),
 								_ => {
 									return Err(AstError::UnexpectedToken {
 										expected: "tumbling, sliding, rolling or session"
@@ -61,14 +73,16 @@ impl<'bump> Compiler<'bump> {
 						}
 						Some(AstOperatorWithValue::Literal(token)) => {
 							return Err(AstError::UnexpectedToken {
-								expected: "tumbling, sliding, rolling or session".to_string(),
+								expected: "tumbling, sliding, rolling or session"
+									.to_string(),
 								fragment: token.fragment.to_owned(),
 							}
 							.into());
 						}
 						Some(AstOperatorWithValue::Block(_)) | None => {
 							return Err(AstError::UnexpectedToken {
-								expected: "tumbling, sliding, rolling or session".to_string(),
+								expected: "tumbling, sliding, rolling or session"
+									.to_string(),
 								fragment: entry.key.fragment(),
 							}
 							.into());
@@ -199,7 +213,9 @@ impl<'bump> Compiler<'bump> {
 								window_value: parsed
 									.count
 									.as_ref()
-									.map(|declared| declared.fragment.text().to_string())
+									.map(|declared| {
+										declared.fragment.text().to_string()
+									})
 									.unwrap_or_default(),
 								fragment: immutable.fragment.clone(),
 							}
@@ -476,9 +492,7 @@ mod tests {
 
 	#[test]
 	fn retention_with_a_window_fails() {
-		assert!(
-			apply_with("apply op { } with { window: tumbling, duration: 1m, retention: 1h }").is_err()
-		);
+		assert!(apply_with("apply op { } with { window: tumbling, duration: 1m, retention: 1h }").is_err());
 	}
 
 	#[test]

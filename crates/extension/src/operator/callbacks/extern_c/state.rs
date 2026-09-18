@@ -291,7 +291,7 @@ pub(super) extern "C" fn host_state_get_many(
 }
 
 fn guest_may_address(_operator: OperatorId, keyspace: KeyspaceId) -> bool {
-	keyspace.is_guest_owned()
+	keyspace.is_custom()
 }
 
 const _: () = assert!(
@@ -1113,7 +1113,7 @@ mod join_row_expiry_guard_tests {
 	}
 
 	fn padded(prefix: &[u8], fill: u8) -> Vec<u8> {
-		let width = suffix_width_of(KeyspaceId::CUSTOM_NOT_CACHED)
+		let width = suffix_width_of(KeyspaceId::CUSTOM_UNMANAGED)
 			.expect("a fixture keyspace must appear in the catalogue");
 		let mut bytes = prefix.to_vec();
 		bytes.resize(width, fill);
@@ -1137,7 +1137,7 @@ mod join_row_expiry_guard_tests {
 	fn a_guest_range_in_its_own_keyspace_reaches_the_host() {
 		// A guard keyed on anything wider than the one keyspace would silently break every guest operator.
 		let (status, reached, seen) =
-			with_recording_context(|ctx| guest_range(ctx, KeyspaceId::CUSTOM_NOT_CACHED, None, None));
+			with_recording_context(|ctx| guest_range(ctx, KeyspaceId::CUSTOM_UNMANAGED, None, None));
 
 		assert_eq!(status, EXTERN_C_OK);
 		assert!(reached, "a guest keyspace must still reach the host");
@@ -1150,17 +1150,17 @@ mod join_row_expiry_guard_tests {
 		// is still one keyspace of one group. Bounds no longer decide the span, so no choice of bounds can
 		// reach a neighbouring keyspace or a neighbouring group.
 		let (_, _, seen) =
-			with_recording_context(|ctx| guest_range(ctx, KeyspaceId::CUSTOM_NOT_CACHED, None, None));
+			with_recording_context(|ctx| guest_range(ctx, KeyspaceId::CUSTOM_UNMANAGED, None, None));
 		let range = seen.expect("an allowed guest range must reach the host");
 
-		let whole = keyspace_inner_range(group_id(), KeyspaceId::CUSTOM_NOT_CACHED);
+		let whole = keyspace_inner_range(group_id(), KeyspaceId::CUSTOM_UNMANAGED);
 		assert_eq!(range.start, whole.start, "an unbounded start is the keyspace's own first key");
 		assert_eq!(range.end, whole.end, "and an unbounded end is the keyspace's own last key");
 
 		let (group, keyspace, _, _) =
 			keyspace_inner_range_split(&range).expect("a guest range must confine to one keyspace");
 		assert_eq!(group, group_id());
-		assert_eq!(keyspace, KeyspaceId::CUSTOM_NOT_CACHED);
+		assert_eq!(keyspace, KeyspaceId::CUSTOM_UNMANAGED);
 	}
 
 	#[test]
@@ -1170,7 +1170,7 @@ mod join_row_expiry_guard_tests {
 		// prefix, so each bound pads to the keyspace's full width at the edge that keeps that prefix whole:
 		// an included start and an excluded end both pad low, so both sit before every key under the prefix.
 		let (status, _, seen) = with_recording_context(|ctx| {
-			guest_range(ctx, KeyspaceId::CUSTOM_NOT_CACHED, Some(&[1u8; 4]), Some(&[9u8; 4]))
+			guest_range(ctx, KeyspaceId::CUSTOM_UNMANAGED, Some(&[1u8; 4]), Some(&[9u8; 4]))
 		});
 		let range = seen.expect("an allowed guest range must reach the host");
 
@@ -1178,7 +1178,7 @@ mod join_row_expiry_guard_tests {
 		let (group, keyspace, start, end) =
 			keyspace_inner_range_split(&range).expect("a guest range must confine to one keyspace");
 		assert_eq!(group, group_id());
-		assert_eq!(keyspace, KeyspaceId::CUSTOM_NOT_CACHED);
+		assert_eq!(keyspace, KeyspaceId::CUSTOM_UNMANAGED);
 		assert_eq!(start, Bound::Included(padded(&[1u8; 4], 0x00)));
 		assert_eq!(end, Bound::Excluded(padded(&[9u8; 4], 0x00)));
 	}
@@ -1189,7 +1189,7 @@ mod join_row_expiry_guard_tests {
 		// padding it low would leak back the very rows the guest excluded; the other three bounds pad low,
 		// which makes this the edge a copy-paste silently gets wrong.
 		let (status, _, seen) = with_recording_context(|ctx| {
-			guest_range_bounds(ctx, KeyspaceId::CUSTOM_NOT_CACHED, Some((&[1u8; 4], BOUND_EXCLUDED)), None)
+			guest_range_bounds(ctx, KeyspaceId::CUSTOM_UNMANAGED, Some((&[1u8; 4], BOUND_EXCLUDED)), None)
 		});
 		let range = seen.expect("an allowed guest range must reach the host");
 
@@ -1219,7 +1219,7 @@ mod join_row_expiry_guard_tests {
 	#[test]
 	fn a_guest_write_to_its_own_keyspace_still_reaches_the_host() {
 		// A guard keyed on anything wider than the one keyspace would silently break every guest operator.
-		let key = framed(KeyspaceId::CUSTOM_NOT_CACHED);
+		let key = framed(KeyspaceId::CUSTOM_UNMANAGED);
 		let value = EncodedPodRow::new(&[0u8; 4]);
 
 		let (set, set_reached) = with_context(|ctx| {

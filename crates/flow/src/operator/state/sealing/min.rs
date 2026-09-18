@@ -233,7 +233,8 @@ mod tests {
 
 	#[test]
 	fn sealing_min_merge_keeps_a_branch_minimum_that_predates_the_seal_line() {
-		// merge combines two parallel histories, never late arrivals, so the receiver's seal line must not swallow the other branch.
+		// merge combines two parallel histories, never late arrivals, so the receiver's seal line must not
+		// swallow the other branch.
 		let mut left: SealingMin<DateTime, i64> = SealingMin::immutable(millis(10));
 		left.add(&(at_millis(0), 5));
 

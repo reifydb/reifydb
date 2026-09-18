@@ -10,7 +10,7 @@ use reifydb_core::{
 		operator::{
 			keyspace::{
 				join::{JoinLeft, JoinRight},
-				root::CustomNotCached,
+				root::CustomUnmanaged,
 			},
 			state::{GroupId, GroupStateKey, KeyspaceId},
 			traits::Keyspace,
@@ -341,13 +341,13 @@ fn a_keyspace_that_caches_no_ranges_owns_no_tier_at_all() {
 	let tiers = roomy();
 
 	assert!(
-		tiers.typed::<CustomNotCached>().is_none(),
+		tiers.typed::<CustomUnmanaged>().is_none(),
 		"{} caches nothing, so it must never be given a tier; a tier that exists only to refuse every call \
         still costs a budget, a lock and a metrics row",
-		CustomNotCached::NAME
+		CustomUnmanaged::NAME
 	);
 	assert!(
-		tiers.of(KeyspaceId::CUSTOM_NOT_CACHED).is_none(),
+		tiers.of(KeyspaceId::CUSTOM_UNMANAGED).is_none(),
 		"and the runtime lookup must agree with the typed one, or a byte-keyed caller admits what the typed \
         caller refuses"
 	);

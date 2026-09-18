@@ -11,8 +11,8 @@ use reifydb_value::{Result, value::duration::Duration};
 
 use crate::{
 	operator::{
-		BoxedHostOperator, HostOperator, host::HostContext, max_input_time,
-		state::seal::rule::SealRule, stamp_output_time,
+		BoxedHostOperator, HostOperator, host::HostContext, max_input_time, stamp_output_time,
+		state::seal::rule::SealRule,
 	},
 	timer::Timer,
 };

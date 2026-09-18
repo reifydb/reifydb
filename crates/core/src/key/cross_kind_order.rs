@@ -167,7 +167,7 @@ fn representative(kind: KeyTag) -> EncodedKey {
 		KeyTag::OperatorState => OperatorStateKey {
 			operator: OperatorId(1),
 			group: GroupId::ROOT,
-			keyspace: KeyspaceId::CUSTOM_NOT_CACHED,
+			keyspace: KeyspaceId::CUSTOM_UNMANAGED,
 			suffix: vec![1],
 		}
 		.encode(),

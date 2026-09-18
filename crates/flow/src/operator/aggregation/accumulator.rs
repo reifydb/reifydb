@@ -20,7 +20,9 @@ use reifydb_value::{
 use crate::{
 	operator::state::sealing::{endpoint::SealingEndpoint, max::SealingMax, min::SealingMin},
 	window::{
-		accumulator::{MergeAccumulator, UnmergeAccumulator, WindowAccumulator, invertible::multiset::Multiset},
+		accumulator::{
+			MergeAccumulator, UnmergeAccumulator, WindowAccumulator, invertible::multiset::Multiset,
+		},
 		span::Slot,
 	},
 };
