@@ -1594,6 +1594,12 @@ mod pull_protocol {
 		);
 		let produced = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(produced);
+		h.wake(&producer);
+		assert!(
+			h.await_position_at_least(produced, seconds(30)).is_some(),
+			"precondition: the producer must publish a position through every version the reader reads, or \
+			 the reader parks below it and this harness has no waker to move it on"
+		);
 		assert_eq!(
 			h.flow_position(reader_id),
 			Some(v0),
