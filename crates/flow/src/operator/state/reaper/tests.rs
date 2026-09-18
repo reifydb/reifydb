@@ -104,6 +104,32 @@ fn draining_frees_a_queued_group_and_clears_its_queue_entry() {
 }
 
 #[test]
+fn draining_named_groups_never_consults_the_queue() {
+	// A caller that just enqueued its groups in this transaction already knows them; scanning the queue
+	// to rediscover them walks every tombstone the keyspace still holds. The named drain must reap
+	// exactly what it was given and leave the rest queued, otherwise it is a scan in disguise.
+	let mut store = MockStore::default();
+	let named = key(doomed_group(), KeyspaceId::ACCUMULATOR, 1);
+	let unnamed = key(bystander_group(), KeyspaceId::ACCUMULATOR, 1);
+	seed(&mut store, &named);
+	seed(&mut store, &unnamed);
+	enqueue(&mut store, doomed_group()).unwrap();
+	enqueue(&mut store, bystander_group()).unwrap();
+
+	let drained = drain_groups(&mut store, &[doomed_group()], &mut StoreReaper, 256).unwrap();
+
+	assert_eq!(drained.freed, 1);
+	assert!(drained.queue_is_empty(), "a named drain has no scan cut, so it must not report leftovers");
+	assert!(!present(&mut store, &named), "the named group's data must be gone");
+	assert!(present(&mut store, &unnamed), "a group the caller did not name must be left alone");
+	assert_eq!(
+		queued(&mut store, 256).unwrap().groups,
+		vec![bystander_group()],
+		"only the named group may leave the queue"
+	);
+}
+
+#[test]
 fn a_group_that_hits_the_budget_stays_queued_for_the_next_tick() {
 	let mut store = MockStore::default();
 	for i in 0..5 {

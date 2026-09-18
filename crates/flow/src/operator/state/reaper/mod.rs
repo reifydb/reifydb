@@ -207,7 +207,21 @@ where
 	R: Reaper,
 {
 	let scan = queued(store, budget)?;
-	let ordered = sweep_order(&scan.groups);
+	let mut outcome = drain_groups(store, &scan.groups, reaper, budget)?;
+	outcome.more = scan.more;
+	Ok(outcome)
+}
+
+pub fn drain_groups<R>(
+	store: &mut dyn IdentityReclaim,
+	groups: &[GroupId],
+	reaper: &mut R,
+	budget: usize,
+) -> Result<DrainOutcome>
+where
+	R: Reaper,
+{
+	let ordered = sweep_order(groups);
 	let sweep = store.group_sweep_many(&ordered, budget)?;
 	let (mut buckets, last) = bucket(sweep.rows);
 	let cut = match sweep.complete {
@@ -238,7 +252,7 @@ where
 	Ok(DrainOutcome {
 		freed: spent,
 		still_queued,
-		more: scan.more,
+		more: false,
 	})
 }
 

@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_flow::operator::state::reaper::queued;
 use reifydb_flow::{
 	operator::state::{
-		reaper::{drain, enqueue},
+		reaper::{drain, drain_groups, enqueue},
 		seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 	},
 	window::{
@@ -212,8 +212,11 @@ where
 		if horizon <= <Anchor<A> as Coord>::from_order(0) {
 			return Ok(());
 		}
+		let store_queue_empty = *reap_queue_empty;
+		let mut expired = Vec::new();
 		for window in engine.expire(store, horizon.to_order().saturating_sub(1))? {
 			enqueue(store, window.group_id)?;
+			expired.push(window.group_id);
 			*reap_queue_empty = false;
 		}
 		engine.expire_meta(store, horizon.to_order())?;
@@ -229,7 +232,10 @@ where
 			}
 			return Ok(());
 		}
-		let drained = drain(store, engine, SEAL_REAP_BATCH)?;
+		let drained = match store_queue_empty {
+			true => drain_groups(store, &expired, engine, SEAL_REAP_BATCH)?,
+			false => drain(store, engine, SEAL_REAP_BATCH)?,
+		};
 		*reap_queue_empty = drained.queue_is_empty();
 		if !*reap_queue_empty {
 			observe_batch(store, frontier, seal_span)?;
