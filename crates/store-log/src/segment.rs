@@ -66,6 +66,7 @@ impl<F: Filesystem> Segment<F> {
 		F: OpenMut,
 	{
 		let file = fs.open_mut(path)?;
+		file.sync_data()?;
 		let capacity = ByteSize::from_bytes(file.len()?);
 		let scan = walk(&file, capacity, Position::ZERO, None, None)?;
 		let segment = Self {
