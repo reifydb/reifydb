@@ -253,7 +253,7 @@ pub fn discard<F: Unlink>(fs: &F, path: &Path) -> Result<()> {
 	}
 }
 
-fn parent(path: &Path) -> &Path {
+pub(crate) fn parent(path: &Path) -> &Path {
 	match path.parent() {
 		Some(parent) if !parent.as_os_str().is_empty() => parent,
 		_ => Path::new("."),

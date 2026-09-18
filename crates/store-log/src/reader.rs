@@ -7,17 +7,23 @@ use reifydb_codec::log::{
 	LogVersion,
 	reader::{HINT_BYTES, Hint},
 };
-use reifydb_runtime::io::fs::{Create, Filesystem, FsError, Len, Mkdir, Open, ReadDir, Rename, Unlink};
+use reifydb_runtime::io::fs::{
+	Create, Filesystem, FsError, Len, Mkdir, Open, ReadDir, Rename, SyncData, SyncDir, Unlink,
+};
 
 use crate::{
 	error::{LogError, Result},
-	segment::{STAGING_SUFFIX, discard, read_exact, staging, write_all},
+	segment::{STAGING_SUFFIX, discard, parent, read_exact, staging, write_all},
 };
 
 pub const DIR_NAME: &str = "readers";
 pub const MAX_ID: usize = 64;
 
-pub fn register<F: Filesystem + Create + Mkdir + Open + Rename + Unlink>(fs: &F, dir: &Path, id: &str) -> Result<()> {
+pub fn register<F: Filesystem + Create + Mkdir + Open + Rename + SyncDir + Unlink>(
+	fs: &F,
+	dir: &Path,
+	id: &str,
+) -> Result<()> {
 	let path = path_of(dir, id)?;
 	make_dir(fs, &dir.join(DIR_NAME))?;
 	if fs.open(&path).is_ok() {
@@ -30,7 +36,7 @@ pub fn unregister<F: Filesystem + Unlink>(fs: &F, dir: &Path, id: &str) -> Resul
 	discard(fs, &path_of(dir, id)?)
 }
 
-pub fn record<F: Filesystem + Create + Open + Rename + Unlink>(
+pub fn record<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(
 	fs: &F,
 	dir: &Path,
 	id: &str,
@@ -85,7 +91,7 @@ pub fn readers<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Vec
 	Ok(out)
 }
 
-pub fn clamp<F: Filesystem + Create + Open + ReadDir + Rename + Unlink>(
+pub fn clamp<F: Filesystem + Create + Open + ReadDir + Rename + SyncDir + Unlink>(
 	fs: &F,
 	dir: &Path,
 	ceiling: LogVersion,
@@ -138,12 +144,14 @@ fn read<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<Option<LogVersion>>
 	Ok(Hint::decode(&raw).map(|hint| hint.version))
 }
 
-fn publish<F: Filesystem + Create + Rename + Unlink>(fs: &F, path: &Path, version: LogVersion) -> Result<()> {
+fn publish<F: Filesystem + Create + Rename + SyncDir + Unlink>(fs: &F, path: &Path, version: LogVersion) -> Result<()> {
 	let staged = staging(path);
 	discard(fs, &staged)?;
 	let file = fs.create(&staged, HINT_BYTES as u64)?;
 	write_all(&file, &staged, 0, &Hint::new(version).encode())?;
-	Ok(fs.rename(&staged, path)?)
+	file.sync_data()?;
+	fs.rename(&staged, path)?;
+	Ok(fs.sync_dir(parent(path))?)
 }
 
 fn make_dir<F: Filesystem + Mkdir>(fs: &F, path: &Path) -> Result<()> {
