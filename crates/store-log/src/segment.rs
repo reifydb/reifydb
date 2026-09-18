@@ -37,6 +37,7 @@ pub struct Segment<F: Filesystem> {
 	file: F::FileMut,
 	capacity: ByteSize,
 	head: Position,
+	torn: bool,
 }
 
 impl<F: Filesystem> Segment<F> {
@@ -58,6 +59,7 @@ impl<F: Filesystem> Segment<F> {
 			file,
 			capacity,
 			head: Position::ZERO,
+			torn: false,
 		})
 	}
 
@@ -69,11 +71,13 @@ impl<F: Filesystem> Segment<F> {
 		file.sync_data()?;
 		let capacity = ByteSize::from_bytes(file.len()?);
 		let scan = walk(&file, capacity, Position::ZERO, None, None)?;
+		let torn = matches!(scan.stop, Stop::Corrupt(_) | Stop::Stale(_));
 		let segment = Self {
 			path: path.to_path_buf(),
 			file,
 			capacity,
 			head: scan.end,
+			torn,
 		};
 		Ok((segment, scan))
 	}
@@ -89,6 +93,12 @@ impl<F: Filesystem> Segment<F> {
 				remaining,
 			});
 		}
+		if self.torn {
+			// only a write reaching past head may erase a decodable leftover there, or a mere reopen would violate read only recovery.
+			self.file.truncate(self.head.as_u64())?;
+			self.file.truncate(self.capacity.as_bytes())?;
+			self.torn = false;
+		}
 		let offset = self.head;
 		write_all(&self.file, &self.path, offset.as_u64(), &bytes)?;
 		self.head = self.head.advance(needed);
@@ -101,6 +111,7 @@ impl<F: Filesystem> Segment<F> {
 		self.file.sync_data()?;
 		self.head = Position::ZERO;
 		self.capacity = capacity;
+		self.torn = false;
 		Ok(())
 	}
 
