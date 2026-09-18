@@ -199,6 +199,7 @@ impl MemoryFileState {
 struct State {
 	files: BTreeMap<PathBuf, Arc<MemoryFileState>>,
 	dirs: BTreeSet<PathBuf>,
+	dirty_dirs: BTreeSet<PathBuf>,
 	sector_bytes: usize,
 }
 
@@ -207,6 +208,7 @@ impl Default for State {
 		Self {
 			files: BTreeMap::new(),
 			dirs: BTreeSet::from([PathBuf::from("/")]),
+			dirty_dirs: BTreeSet::new(),
 			sector_bytes: SECTOR_BYTES,
 		}
 	}
@@ -249,6 +251,14 @@ impl MemoryFs {
 
 	#[cfg(any(test, feature = "testing"))]
 	pub fn crash(&self) {
+		{
+			let mut state = self.0.state.lock();
+			let dirty: Vec<PathBuf> = std::mem::take(&mut state.dirty_dirs).into_iter().collect();
+			for path in dirty {
+				state.dirs.retain(|dir| !dir.starts_with(&path));
+				state.files.retain(|key, _| !key.starts_with(&path));
+			}
+		}
 		let files: Vec<Arc<MemoryFileState>> = self.0.state.lock().files.values().cloned().collect();
 		for file in files {
 			file.revert();
@@ -325,6 +335,7 @@ impl Mkdir for MemoryFs {
 			return Err(FsError::AlreadyExists(path.to_path_buf()));
 		}
 		state.dirs.insert(path.to_path_buf());
+		state.dirty_dirs.insert(path.to_path_buf());
 		Ok(())
 	}
 }
@@ -418,10 +429,11 @@ impl Unlink for MemoryFs {
 
 impl SyncDir for MemoryFs {
 	fn sync_dir(&self, path: &Path) -> Result<()> {
-		let state = self.0.state.lock();
+		let mut state = self.0.state.lock();
 		if !state.dirs.contains(path) {
 			return Err(FsError::NotFound(path.to_path_buf()));
 		}
+		state.dirty_dirs.retain(|dirty| dirty.parent() != Some(path));
 		Ok(())
 	}
 }

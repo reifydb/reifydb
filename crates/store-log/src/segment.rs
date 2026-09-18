@@ -70,7 +70,7 @@ impl<F: Filesystem> Segment<F> {
 		let file = fs.open_mut(path)?;
 		file.sync_data()?;
 		let capacity = ByteSize::from_bytes(file.len()?);
-		let scan = walk(&file, capacity, Position::ZERO, None, None)?;
+		let scan = walk(&file, path, capacity, Position::ZERO, None, None, false)?;
 		let torn = matches!(scan.stop, Stop::Corrupt(_) | Stop::Stale(_));
 		let segment = Self {
 			path: path.to_path_buf(),
@@ -149,7 +149,7 @@ pub fn scan<F: Open>(fs: &F, path: &Path) -> Result<Scan> {
 pub fn scan_from<F: Open>(fs: &F, path: &Path, from: Position) -> Result<Scan> {
 	let file = fs.open(path)?;
 	let capacity = ByteSize::from_bytes(file.len()?);
-	walk(&file, capacity, from, None, None)
+	walk(&file, path, capacity, from, None, None, true)
 }
 
 pub fn scan_upto<F: Open>(
@@ -161,49 +161,69 @@ pub fn scan_upto<F: Open>(
 ) -> Result<Scan> {
 	let file = fs.open(path)?;
 	let capacity = ByteSize::from_bytes(file.len()?);
-	walk(&file, capacity, from, after, Some(limit))
+	walk(&file, path, capacity, from, after, Some(limit), true)
 }
 
 fn walk<H: Pread>(
 	file: &H,
+	path: &Path,
 	capacity: ByteSize,
 	from: Position,
 	after: Option<LogVersion>,
 	limit: Option<usize>,
+	strict: bool,
 ) -> Result<Scan> {
 	let mut records = Vec::new();
 	let mut position = from;
 	let mut previous = after;
+	let mut first_corrupt: Option<Position> = None;
 	loop {
 		if limit.is_some_and(|max| records.len() >= max) {
-			return Ok(stopped(records, position, Stop::Limit));
+			return Ok(clean(records, position, Stop::Limit, first_corrupt));
 		}
 		if capacity.as_bytes().saturating_sub(position.as_u64()) < HEADER_BYTES as u64 {
-			return Ok(stopped(records, position, Stop::Eof));
+			return Ok(clean(records, position, Stop::Eof, first_corrupt));
 		}
 		let mut header = [0u8; HEADER_BYTES];
 		if !read_exact(file, position.as_u64(), &mut header)? {
-			return Ok(stopped(records, position, Stop::Eof));
+			return Ok(clean(records, position, Stop::Eof, first_corrupt));
 		}
 		let header = Header::decode(&header);
 		if header.is_end() {
-			return Ok(stopped(records, position, Stop::Unwritten));
+			return Ok(clean(records, position, Stop::Unwritten, first_corrupt));
 		}
 		let Some(payload_len) = header.payload_len() else {
+			if let Some(result) = escalated(path, first_corrupt) {
+				return result;
+			}
 			return Ok(stopped(records, position, Stop::Corrupt(position)));
 		};
 		let total = HEADER_BYTES as u64 + payload_len as u64;
 		if capacity.as_bytes().saturating_sub(position.as_u64()) < total {
+			if let Some(result) = escalated(path, first_corrupt) {
+				return result;
+			}
 			return Ok(stopped(records, position, Stop::Corrupt(position)));
 		}
 		let mut payload = vec![0u8; payload_len];
 		read_exact(file, position.as_u64() + HEADER_BYTES as u64, &mut payload)?;
 		if !header.verify(&payload) {
-			return Ok(stopped(records, position, Stop::Corrupt(position)));
+			if !strict {
+				return Ok(stopped(records, position, Stop::Corrupt(position)));
+			}
+			first_corrupt.get_or_insert(position);
+			position = position.advance(total);
+			continue;
 		}
 		let record = header.into_record(payload);
 		if previous.is_some_and(|earlier| record.version <= earlier) {
+			if let Some(result) = escalated(path, first_corrupt) {
+				return result;
+			}
 			return Ok(stopped(records, position, Stop::Stale(position)));
+		}
+		if let Some(result) = escalated(path, first_corrupt) {
+			return result;
 		}
 		previous = Some(record.version);
 		records.push(record);
@@ -217,6 +237,22 @@ fn stopped(records: Vec<Record>, end: Position, stop: Stop) -> Scan {
 		end,
 		stop,
 	}
+}
+
+fn clean(records: Vec<Record>, position: Position, stop: Stop, first_corrupt: Option<Position>) -> Scan {
+	match first_corrupt {
+		Some(first) => stopped(records, first, Stop::Corrupt(first)),
+		None => stopped(records, position, stop),
+	}
+}
+
+fn escalated(path: &Path, first_corrupt: Option<Position>) -> Option<Result<Scan>> {
+	first_corrupt.map(|first| {
+		Err(LogError::SegmentCorrupt {
+			path: path.to_path_buf(),
+			position: first,
+		})
+	})
 }
 
 pub(crate) fn read_exact<H: Pread>(file: &H, mut offset: u64, buf: &mut [u8]) -> Result<bool> {

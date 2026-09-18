@@ -154,10 +154,11 @@ fn publish<F: Filesystem + Create + Rename + SyncDir + Unlink>(fs: &F, path: &Pa
 	Ok(fs.sync_dir(parent(path))?)
 }
 
-fn make_dir<F: Filesystem + Mkdir>(fs: &F, path: &Path) -> Result<()> {
+fn make_dir<F: Filesystem + Mkdir + SyncDir>(fs: &F, path: &Path) -> Result<()> {
 	match fs.mkdir(path) {
+		Ok(()) => Ok(fs.sync_dir(parent(path))?),
 		Err(FsError::AlreadyExists(_)) => Ok(()),
-		other => Ok(other?),
+		Err(error) => Err(error.into()),
 	}
 }
 

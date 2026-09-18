@@ -45,6 +45,10 @@ pub enum LogError {
 		end: Position,
 		len: u64,
 	},
+	SegmentCorrupt {
+		path: PathBuf,
+		position: Position,
+	},
 	SegmentOutOfOrder {
 		path: PathBuf,
 		previous: LogVersion,
@@ -169,6 +173,10 @@ impl LogError {
 				path,
 				..
 			} => path,
+			LogError::SegmentCorrupt {
+				path,
+				..
+			} => path,
 			LogError::SegmentOutOfOrder {
 				path,
 				..
@@ -283,6 +291,10 @@ impl Display for LogError {
 				found,
 				previous
 			),
+			LogError::SegmentCorrupt {
+				path,
+				position,
+			} => write!(f, "log segment {} is corrupt at {}, but valid records follow it", path.display(), position),
 			LogError::VoteCorrupt {
 				path,
 			} => write!(

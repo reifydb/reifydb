@@ -26,7 +26,7 @@ use crate::{
 	error::{LogError, Result},
 	index::{Index, find_at, header, read},
 	reader::{clamp, floor, record, register, unregister, version_of},
-	segment::{STAGING_SUFFIX, Scan, Segment, scan, sync_path},
+	segment::{STAGING_SUFFIX, Scan, Segment, parent, scan, sync_path},
 	vote::Vote,
 };
 
@@ -79,6 +79,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		base_index: LogIndex,
 	) -> Result<Self> {
 		fs.mkdir(dir)?;
+		fs.sync_dir(parent(dir))?;
 		let opened_at = clock.now();
 		let vote = Vote::create(&fs, dir)?;
 		let (segment, index) = new_pair(&fs, dir, config, base, base_index)?;

@@ -18,7 +18,7 @@ use crate::{
 	error::{LogError, Result},
 	partition::{Config, Partition, sync},
 	reader::{readers, record, register, unregister, version_of},
-	segment::{Scan, discard, staging, write_all},
+	segment::{Scan, discard, parent, staging, write_all},
 	writer::Writer,
 };
 
@@ -62,6 +62,7 @@ where
 			return Err(LogError::MetaCorrupt(dir.join(META_NAME)));
 		}
 		fs.mkdir(dir)?;
+		fs.sync_dir(parent(dir))?;
 		let meta = Meta {
 			version: FORMAT_VERSION,
 			partitions,
@@ -208,7 +209,7 @@ where
 	}
 
 	pub fn head(&self) -> Option<LogVersion> {
-		self.writers.iter().filter_map(Writer::written).max()
+		self.writers.iter().filter_map(Writer::durable).max()
 	}
 
 	pub fn meta(&self) -> Meta {
@@ -454,6 +455,28 @@ mod tests {
 
 		assert_eq!(versions(&reopened, 0), vec![2, 3, 4, 5, 6, 7, 8]);
 		assert_eq!(versions(&reopened, 1), vec![1]);
+	}
+
+	#[test]
+	fn a_synced_log_reports_its_appends_durable() {
+		// flush is what raises durable without a syncer thread; sync alone only fsyncs files.
+		let fs = MemoryFs::new();
+		let log = Log::create_detached(fs, clock(), Path::new(DIR), config(), 2).unwrap();
+		log.append(0, &record(1, 1)).unwrap();
+
+		log.flush(0).unwrap();
+
+		assert_eq!(log.durable(0).unwrap(), Some(LogVersion::new(1)));
+	}
+
+	#[test]
+	fn the_head_never_runs_ahead_of_what_is_durable() {
+		// head seeds the version allocator, so it must never claim a version that was only written, never fsynced.
+		let fs = MemoryFs::new();
+		let log = Log::create_detached(fs, clock(), Path::new(DIR), config(), 2).unwrap();
+		log.append(0, &record(10, 1)).unwrap();
+
+		assert!(log.head() <= log.durable(0).unwrap());
 	}
 
 	#[test]
