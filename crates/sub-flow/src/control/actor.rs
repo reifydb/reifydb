@@ -1566,6 +1566,57 @@ mod pull_protocol {
 	}
 
 	#[test]
+	fn a_gated_reader_far_behind_the_backlog_converges_through_the_loader() {
+		let h = harness_with(
+			"CREATE TABLE app::t { id: int4, pad: utf8 }",
+			"CREATE DEFERRED VIEW app::v { id: int4, pad: utf8 } AS { FROM app::t MAP { id, pad } }",
+		);
+		h.te.admin("CREATE DEFERRED VIEW app::w { id: int4, pad: utf8 } AS { FROM app::v MAP { id, pad } }");
+		let (reader, reader_sources, upstreams) = h.reader_flow();
+		let reader_id = reader.id;
+		h.tracker.set_upstreams(reader_id, upstreams);
+
+		let v0 = h.engine.current_version().expect("current version");
+		let producer = h.spawn_actor(v0);
+		let consumer = h.spawn_flow_actor(reader, reader_sources, v0, h.substrate.clone());
+
+		let total = 16;
+		let pad = "x".repeat(700 * 1024);
+		for id in 0..total {
+			h.te.command(&format!("INSERT app::t [{{ id: {id}, pad: \"{pad}\" }}]"));
+		}
+		let target = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(target);
+		h.wake(&producer);
+		assert!(
+			h.await_position_at_least(target, seconds(30)).is_some(),
+			"the producer must consume every insert before the reader is exercised"
+		);
+		let produced = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(produced);
+		assert_eq!(
+			h.flow_position(reader_id),
+			Some(v0),
+			"precondition: the reader must not have consumed anything yet, or the eviction below proves nothing"
+		);
+
+		h.backlog.evict_below(produced);
+		h.wake(&consumer);
+
+		assert!(
+			h.poll_until(seconds(30), || h
+				.flow_position(reader_id)
+				.filter(|position| *position >= produced))
+				.is_some(),
+			"a reader far behind the backlog must converge through the loader; a merged drain that drops \
+			 its partial reads on every loader round trip reloads the same windows forever and never \
+			 advances its cursor"
+		);
+		drop(consumer);
+		drop(producer);
+	}
+
+	#[test]
 	fn the_control_frontier_bounds_how_far_a_flow_may_pull() {
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");

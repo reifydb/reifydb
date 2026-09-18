@@ -35,6 +35,8 @@ pub trait Bucket: Any + Send + Sync {
 
 	fn len(&self) -> usize;
 
+	fn tombstone_len(&self) -> usize;
+
 	fn dirty_len(&self) -> usize;
 
 	fn dirty_footprint(&self) -> ByteSize;
@@ -43,7 +45,7 @@ pub trait Bucket: Any + Send + Sync {
 
 	fn revert_flushing(&mut self) -> usize;
 
-	fn evict_clean(&mut self, bytes: &mut ByteSize, entries: &mut usize) -> (usize, ByteSize);
+	fn evict_clean(&mut self, bytes: &mut ByteSize, tombstones: &mut usize) -> (usize, ByteSize);
 
 	fn settle_flushing(&mut self);
 
@@ -100,6 +102,10 @@ impl BucketMap {
 		self.buckets.values().map(|bucket| bucket.len()).sum()
 	}
 
+	pub fn tombstone_count(&self) -> usize {
+		self.buckets.values().map(|bucket| bucket.tombstone_len()).sum()
+	}
+
 	pub fn footprint(&self) -> ByteSize {
 		ByteSize::from_bytes(self.buckets.values().map(|bucket| bucket.footprint().as_bytes()).sum())
 	}
@@ -111,6 +117,7 @@ impl BucketMap {
 				totals.footprint.as_bytes().saturating_add(bucket.footprint().as_bytes()),
 			);
 			totals.entries += bucket.len();
+			totals.tombstones += bucket.tombstone_len();
 			totals.dirty += bucket.dirty_len();
 			totals.dirty_footprint = totals.dirty_footprint.saturating_add(bucket.dirty_footprint());
 		}
@@ -122,6 +129,7 @@ impl BucketMap {
 pub struct BucketTotals {
 	pub footprint: ByteSize,
 	pub entries: usize,
+	pub tombstones: usize,
 	pub dirty: usize,
 	pub dirty_footprint: ByteSize,
 }

@@ -66,6 +66,12 @@ pub const FLUSH_ENTRY_LIMIT: u64 = if default::TESTING {
 	default::store::OPERATOR_RESIDENT_ENTRIES
 };
 
+pub const TOMBSTONE_LIMIT: u64 = if default::TESTING {
+	default::store::OPERATOR_RESIDENT_TOMBSTONES_TESTING
+} else {
+	default::store::OPERATOR_RESIDENT_TOMBSTONES
+};
+
 pub const DIRTY_BUDGET_BYTES: ByteSize = if default::TESTING {
 	default::store::OPERATOR_DIRTY_BUDGET_TESTING
 } else {
@@ -94,6 +100,7 @@ pub const SLICE_BYTES: ByteSize = if default::TESTING {
 pub struct ResidentLimits {
 	pub budget: ByteSize,
 	pub entries: u64,
+	pub tombstones: u64,
 	pub dirty_budget: ByteSize,
 	pub slice: ByteSize,
 }
@@ -103,6 +110,7 @@ impl Default for ResidentLimits {
 		Self {
 			budget: FLUSH_BUDGET_BYTES,
 			entries: FLUSH_ENTRY_LIMIT,
+			tombstones: TOMBSTONE_LIMIT,
 			dirty_budget: DIRTY_BUDGET_BYTES,
 			slice: SLICE_BYTES,
 		}
@@ -164,9 +172,11 @@ pub struct Shared {
 	sinks: OnceLock<OperatorSinks>,
 	budget: Arc<MemoryBudget>,
 	entries: AtomicU64,
+	tombstones: AtomicU64,
 	dirty: AtomicU64,
 	dirty_bytes: AtomicU64,
 	entry_limit: u64,
+	tombstone_limit: u64,
 	slice: ByteSize,
 	dirty_budget: ByteSize,
 	waker: Mutex<Option<Waker<FlushMessage>>>,
@@ -194,9 +204,11 @@ impl Shared {
 			sinks: OnceLock::new(),
 			budget: Arc::new(MemoryBudget::new(limits.budget)),
 			entries: AtomicU64::new(0),
+			tombstones: AtomicU64::new(0),
 			dirty: AtomicU64::new(0),
 			dirty_bytes: AtomicU64::new(0),
 			entry_limit: limits.entries,
+			tombstone_limit: limits.tombstones,
 			slice: limits.slice.min(limits.budget),
 			dirty_budget: limits.dirty_budget,
 			waker: Mutex::new(None),
@@ -227,8 +239,25 @@ impl Shared {
 		}
 	}
 
-	fn over_entry_limit(&self) -> bool {
-		self.entries.load(Ordering::Relaxed) > self.entry_limit
+	fn charge_tombstones(&self, count: usize) {
+		self.tombstones.fetch_add(count as u64, Ordering::Relaxed);
+	}
+
+	fn release_tombstones(&self, count: usize) {
+		let amount = count as u64;
+		let mut current = self.tombstones.load(Ordering::Relaxed);
+		loop {
+			let next = current.saturating_sub(amount);
+			match self.tombstones.compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed)
+			{
+				Ok(_) => return,
+				Err(observed) => current = observed,
+			}
+		}
+	}
+
+	fn over_tombstone_limit(&self) -> bool {
+		self.tombstones.load(Ordering::Relaxed) > self.tombstone_limit
 	}
 
 	fn charge_dirty(&self, count: usize) {
@@ -442,6 +471,17 @@ impl Resident {
 		total
 	}
 
+	pub fn resident_tombstones(&self) -> usize {
+		let mut total = 0usize;
+		for operator in self.shared.operators() {
+			let Some(slot) = self.shared.slot(operator) else {
+				continue;
+			};
+			total = total.saturating_add(slot.inner.lock().buckets.tombstone_count());
+		}
+		total
+	}
+
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
 		if writes.is_empty() {
 			return;
@@ -493,6 +533,8 @@ impl Resident {
 			self.shared.budget.release(before.footprint.saturating_sub(after.footprint));
 			self.shared.charge_entries(after.entries.saturating_sub(before.entries));
 			self.shared.release_entries(before.entries.saturating_sub(after.entries));
+			self.shared.charge_tombstones(after.tombstones.saturating_sub(before.tombstones));
+			self.shared.release_tombstones(before.tombstones.saturating_sub(after.tombstones));
 			self.shared.charge_dirty(after.dirty.saturating_sub(before.dirty));
 			self.shared.release_dirty(before.dirty.saturating_sub(after.dirty));
 			self.shared.charge_dirty_bytes(after.dirty_footprint.saturating_sub(before.dirty_footprint));
@@ -520,17 +562,21 @@ impl Resident {
 			let mut inner = slot.inner.lock();
 			let before = inner.buckets.footprint();
 			let before_entries = inner.buckets.entry_count();
+			let before_tombstones = inner.buckets.tombstone_count();
 			let before_dirty = inner.buckets.dirty_count();
 			let before_dirty_bytes = inner.buckets.dirty_footprint();
 			let out = mutate(&mut inner);
 			let after = inner.buckets.footprint();
 			let after_entries = inner.buckets.entry_count();
+			let after_tombstones = inner.buckets.tombstone_count();
 			let after_dirty = inner.buckets.dirty_count();
 			let after_dirty_bytes = inner.buckets.dirty_footprint();
 			self.shared.budget.charge(after.saturating_sub(before));
 			self.shared.budget.release(before.saturating_sub(after));
 			self.shared.charge_entries(after_entries.saturating_sub(before_entries));
 			self.shared.release_entries(before_entries.saturating_sub(after_entries));
+			self.shared.charge_tombstones(after_tombstones.saturating_sub(before_tombstones));
+			self.shared.release_tombstones(before_tombstones.saturating_sub(after_tombstones));
 			self.shared.charge_dirty(after_dirty.saturating_sub(before_dirty));
 			self.shared.release_dirty(before_dirty.saturating_sub(after_dirty));
 			self.shared.charge_dirty_bytes(after_dirty_bytes.saturating_sub(before_dirty_bytes));
@@ -555,15 +601,18 @@ impl Resident {
 		let mut inner = slot.inner.lock();
 		let before = inner.buckets.footprint();
 		let before_entries = inner.buckets.entry_count();
+		let before_tombstones = inner.buckets.tombstone_count();
 		let before_dirty = inner.buckets.dirty_count();
 		let before_dirty_bytes = inner.buckets.dirty_footprint();
 		clear_drop(&mut inner, marker);
 		let after = inner.buckets.footprint();
 		let after_entries = inner.buckets.entry_count();
+		let after_tombstones = inner.buckets.tombstone_count();
 		let after_dirty = inner.buckets.dirty_count();
 		let after_dirty_bytes = inner.buckets.dirty_footprint();
 		self.shared.budget.release(before.saturating_sub(after));
 		self.shared.release_entries(before_entries.saturating_sub(after_entries));
+		self.shared.release_tombstones(before_tombstones.saturating_sub(after_tombstones));
 		self.shared.release_dirty(before_dirty.saturating_sub(after_dirty));
 		self.shared.release_dirty_bytes(before_dirty_bytes.saturating_sub(after_dirty_bytes));
 		self.mark_pending(&mut inner);
@@ -591,12 +640,13 @@ impl Resident {
 
 	fn overshoot(&self) -> (ByteSize, usize) {
 		let bytes = self.shared.budget.used().saturating_sub(self.shared.budget.limit());
-		let entries = self.shared.entries.load(Ordering::Relaxed).saturating_sub(self.shared.entry_limit);
-		(bytes, entries as usize)
+		let tombstones =
+			self.shared.tombstones.load(Ordering::Relaxed).saturating_sub(self.shared.tombstone_limit);
+		(bytes, tombstones as usize)
 	}
 
-	#[instrument(name = "store::operator::resident::sweep", level = "trace", skip(self, bytes, entries))]
-	fn sweep(&self, bytes: &mut ByteSize, entries: &mut usize) -> (usize, ByteSize) {
+	#[instrument(name = "store::operator::resident::sweep", level = "trace", skip(self, bytes, tombstones))]
+	fn sweep(&self, bytes: &mut ByteSize, tombstones: &mut usize) -> (usize, ByteSize) {
 		let operators = self.shared.operators();
 		if operators.is_empty() {
 			return (0, ByteSize::ZERO);
@@ -606,7 +656,7 @@ impl Resident {
 		let mut evicted = 0usize;
 		let mut freed = ByteSize::ZERO;
 		for offset in 0..operators.len() {
-			if bytes.as_bytes() == 0 && *entries == 0 {
+			if bytes.as_bytes() == 0 && *tombstones == 0 {
 				break;
 			}
 			let operator = operators[(start + offset) % operators.len()];
@@ -614,9 +664,12 @@ impl Resident {
 				continue;
 			};
 			let mut inner = slot.inner.lock();
-			let (count, released) = inner.buckets.evict_clean(bytes, entries);
+			let before_tombstones = inner.buckets.tombstone_count();
+			let (count, released) = inner.buckets.evict_clean(bytes, tombstones);
 			self.shared.budget.release(released);
 			self.shared.release_entries(count);
+			self.shared
+				.release_tombstones(before_tombstones.saturating_sub(inner.buckets.tombstone_count()));
 			evicted += count;
 			freed = freed.saturating_add(released);
 		}
@@ -952,7 +1005,11 @@ impl Resident {
 					continue;
 				};
 				let mut inner = slot.inner.lock();
+				let before_tombstones = inner.buckets.tombstone_count();
 				inner.buckets.settle_flushing();
+				self.shared.charge_tombstones(
+					inner.buckets.tombstone_count().saturating_sub(before_tombstones),
+				);
 			}
 			global.in_flight_operators.clear();
 			global.in_flight_checkpoints.clear();
@@ -983,6 +1040,13 @@ impl Resident {
 				"store::operator::resident resident state entry counter drifted: the budget carries {}, the resident set walks to {}",
 				counted, walked
 			);
+			let counted = self.shared.tombstones.load(Ordering::Relaxed) as usize;
+			let walked = self.resident_tombstones();
+			assert_eq!(
+				counted, walked,
+				"store::operator::resident tombstone counter drifted: the budget carries {}, the resident set walks to {}",
+				counted, walked
+			);
 			let counted = self.shared.dirty.load(Ordering::Relaxed) as usize;
 			let walked = self.dirty_entries();
 			assert_eq!(
@@ -1005,7 +1069,7 @@ impl Resident {
 	}
 
 	fn wake_evictor(&self) {
-		if !self.shared.budget.over_budget() && !self.shared.over_entry_limit() {
+		if !self.shared.budget.over_budget() && !self.shared.over_tombstone_limit() {
 			return;
 		}
 		let evictor = self.shared.evictor.lock().clone();

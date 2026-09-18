@@ -107,6 +107,9 @@ pub mod store {
 	pub const OPERATOR_RESIDENT_ENTRIES: u64 = 1_000_000;
 	pub const OPERATOR_RESIDENT_ENTRIES_TESTING: u64 = 640;
 
+	pub const OPERATOR_RESIDENT_TOMBSTONES: u64 = 128_000;
+	pub const OPERATOR_RESIDENT_TOMBSTONES_TESTING: u64 = 640;
+
 	pub const OPERATOR_DIRTY_BUDGET: ByteSize = ByteSize::from_mib(128);
 	pub const OPERATOR_DIRTY_BUDGET_TESTING: ByteSize = ByteSize::from_kib(64);
 
