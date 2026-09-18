@@ -219,6 +219,11 @@ pub fn parse_named_params(command: &Command) -> (String, Params) {
 
 #[allow(dead_code)]
 fn parse_param_value(s: &str) -> Value {
+	let trimmed = s.trim();
+	if trimmed.starts_with('[') {
+		return parse_list_of_records(trimmed);
+	}
+
 	if let Ok(i) = s.parse::<i32>() {
 		return Value::Int4(i);
 	}
@@ -246,6 +251,42 @@ fn parse_param_value(s: &str) -> Value {
 	}
 
 	Value::Utf8(s.to_string())
+}
+
+#[allow(dead_code)]
+fn parse_list_of_records(s: &str) -> Value {
+	let json: serde_json::Value = serde_json::from_str(s).expect("malformed list-of-records param literal");
+	let serde_json::Value::Array(items) = json else {
+		panic!("list-of-records param literal must be a JSON array, got: {s}");
+	};
+	Value::List(items.into_iter().map(json_object_to_record).collect())
+}
+
+#[allow(dead_code)]
+fn json_object_to_record(json: serde_json::Value) -> Value {
+	let serde_json::Value::Object(fields) = json else {
+		panic!("list-of-records element must be a JSON object, got: {json}");
+	};
+	Value::Record(fields.into_iter().map(|(name, value)| (name, json_scalar_to_value(value))).collect())
+}
+
+#[allow(dead_code)]
+fn json_scalar_to_value(json: serde_json::Value) -> Value {
+	match json {
+		serde_json::Value::String(s) => Value::Utf8(s),
+		serde_json::Value::Bool(b) => Value::Boolean(b),
+		serde_json::Value::Number(n) => {
+			if let Some(i) = n.as_i64() {
+				Value::Int8(i)
+			} else {
+				Value::Float8(
+					reifydb_client::OrderedF64::try_from(n.as_f64().unwrap())
+						.expect("param literal float is not NaN"),
+				)
+			}
+		}
+		other => panic!("unsupported field value in list-of-records param literal: {other}"),
+	}
 }
 
 #[allow(dead_code)]

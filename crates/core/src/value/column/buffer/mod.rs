@@ -750,7 +750,7 @@ impl ColumnBuffer {
 				..
 			} => ValueType::Decimal,
 			ColumnBuffer::DictionaryId(_) => ValueType::DictionaryId,
-			ColumnBuffer::Any(_) => ValueType::Any,
+			ColumnBuffer::Any(container) => container.declared_type().cloned().unwrap_or(ValueType::Any),
 			ColumnBuffer::Option {
 				inner,
 				..
@@ -981,8 +981,9 @@ impl ColumnBuffer {
 				inner: Box::new(ColumnBuffer::with_capacity(*inner, capacity)),
 				bitvec: BitVec::with_capacity(capacity),
 			},
-			ValueType::Any | ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_) => {
-				Self::any_with_capacity(capacity)
+			ValueType::Any | ValueType::Tuple(_) => Self::any_with_capacity(capacity),
+			declared @ (ValueType::List(_) | ValueType::Record(_)) => {
+				Self::any_with_capacity_typed(capacity, declared)
 			}
 			ValueType::Digest {
 				inner,

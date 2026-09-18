@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {Column, Frame} from '../types';
-import {Type, digestTypeName, isDigestType, isOptionType} from '../value';
+import {Type, digestTypeName, isDigestType, isListType, isOptionType, isRecordType} from '../value';
 import {ShapeNode} from '.';
 import {widens} from './widen';
 
@@ -91,5 +91,14 @@ function typeName(type: Type): string {
     if (isDigestType(type)) {
         return digestTypeName(type);
     }
-    return isOptionType(type) ? `Option(${typeName(type.Option)})` : type;
+    if (isOptionType(type)) {
+        return `Option(${typeName(type.Option)})`;
+    }
+    if (isListType(type)) {
+        return `List(${typeName(type.List)})`;
+    }
+    if (isRecordType(type)) {
+        return `Record(${type.Record.map(field => `${field.name}: ${typeName(field.type)}`).join(', ')})`;
+    }
+    return type;
 }

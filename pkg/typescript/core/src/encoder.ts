@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {NONE_VALUE, noneMarker, noneMarkerDepth} from "./constant";
-import {NoneValue, TypeValuePair, WireType, isOption, typeToWire} from "./value";
+import {NoneValue, TypeValuePair, WireCellValue, WireType, isOption, typeToWire} from "./value";
 
 export function encodeValue(value: any, name: string = '$1'): TypeValuePair {
 
@@ -18,7 +18,7 @@ export function encodeValue(value: any, name: string = '$1'): TypeValuePair {
             return { type: value.type, value: NONE_VALUE };
         }
         const inner = encodeValue(value.unwrap(), name);
-        const noneAt = noneMarkerDepth(inner.value);
+        const noneAt = typeof inner.value === 'string' ? noneMarkerDepth(inner.value) : undefined;
         return {
             type: { Option: inner.type },
             value: noneAt === undefined ? inner.value : noneMarker(noneAt + 1),
@@ -27,6 +27,17 @@ export function encodeValue(value: any, name: string = '$1'): TypeValuePair {
 
     if (value && typeof value === 'object' && 'encode' in value && typeof value.encode === 'function') {
         return value.encode();
+    }
+
+    if (Array.isArray(value)) {
+        if (value.length === 0) {
+            throw new Error(`parameter ${name} is an empty array with no element type to infer, use new ListValue([], elementType)`);
+        }
+        const items = value.map((item, i) => encodeValue(item, `${name}[${i}]`));
+        return {
+            type: {List: items[0].type},
+            value: items.map(item => item.value),
+        };
     }
 
     if (typeof value === 'boolean') {
@@ -105,13 +116,29 @@ export function encodeValue(value: any, name: string = '$1'): TypeValuePair {
         return { type: 'Blob', value: '0x' + hex };
     }
 
+    if (typeof value === 'object' && value.constructor === Object) {
+        const rawEntries = Object.entries(value);
+        // a method-bearing object is shaped like a Value or Option impostor, never a data record
+        if (rawEntries.length > 0 && rawEntries.every(([, v]) => typeof v !== 'function')) {
+            const entries = rawEntries.map(([key, v]) => [key, encodeValue(v, `${name}.${key}`)] as const);
+            const fields: {[key: string]: WireCellValue} = {};
+            for (const [key, pair] of entries) {
+                fields[key] = pair.value;
+            }
+            return {
+                type: {Record: entries.map(([key, pair]) => ({name: key, type: pair.type}))},
+                value: fields,
+            };
+        }
+    }
+
     throw new Error(`Cannot encode value of type ${typeof value}: ${value}`);
 }
 
 /** A parameter as it goes on the wire: the same value, with the type in the wire's own rendering. */
 export interface WireValue {
     type: WireType;
-    value: string;
+    value: WireCellValue;
 }
 
 function toWire(pair: TypeValuePair): WireValue {

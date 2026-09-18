@@ -63,4 +63,11 @@ describe('encodeParams', () => {
         expect(value).toBeInstanceOf(Utf8Value);
         expect(value.valueOf()).toBe('x');
     });
+
+    // a plain array must never fall through to the generic "Cannot encode value" throw
+    it('encodes a plain array of plain row objects instead of throwing', () => {
+        const regions = [{id: 'us', label: 'US'}, {id: 'eu', label: 'EU'}];
+        expect(() => encodeValue(regions)).not.toThrow();
+        expect(() => encodeParams({regions})).not.toThrow();
+    });
 });

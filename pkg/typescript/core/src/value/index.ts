@@ -26,6 +26,8 @@ export {Utf8Value} from './utf8';
 export {Uuid4Value} from './uuid4';
 export {Uuid7Value} from './uuid7';
 export {IdentityIdValue} from './identityid';
+export {ListValue} from './list';
+export {RecordValue} from './record';
 export {WireType, typeToWire, typeFromWire, columnsFromWire, framesFromWire, envelopeToColumns, envelopesToFrames} from './wire-type';
 
 export type BaseType =
@@ -50,7 +52,10 @@ export type DigestInnerType =
     | "Int" | "Uint";
 
 export interface DigestType { Digest: { inner: DigestInnerType; accuracy: number } }
-export type Type = BaseType | OptionType | DigestType;
+export interface RecordField { name: string; type: Type }
+export interface ListType { List: Type }
+export interface RecordType { Record: RecordField[] }
+export type Type = BaseType | OptionType | DigestType | ListType | RecordType;
 
 export function isOptionType(t: Type): t is OptionType {
     return typeof t === 'object' && t !== null && 'Option' in t;
@@ -60,7 +65,15 @@ export function isDigestType(t: Type): t is DigestType {
     return typeof t === 'object' && t !== null && 'Digest' in t;
 }
 
-export function unwrapOptionType(t: Type): BaseType | DigestType {
+export function isListType(t: Type): t is ListType {
+    return typeof t === 'object' && t !== null && 'List' in t;
+}
+
+export function isRecordType(t: Type): t is RecordType {
+    return typeof t === 'object' && t !== null && 'Record' in t;
+}
+
+export function unwrapOptionType(t: Type): BaseType | DigestType | ListType | RecordType {
     if (isOptionType(t)) return unwrapOptionType(t.Option);
     return t;
 }
@@ -73,9 +86,12 @@ export function innerOfOption(t: OptionType): Type {
     return t.Option;
 }
 
+/** A wire cell: a plain string for every scalar type, or a real JSON array/object for List/Record. */
+export type WireCellValue = string | WireCellValue[] | {[key: string]: WireCellValue};
+
 export interface TypeValuePair {
     type: Type;
-    value: string;
+    value: WireCellValue;
 }
 
 export abstract class Value {

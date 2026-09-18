@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 
 use crate::json::wire_type::WireValueType;
 
@@ -25,5 +26,5 @@ pub struct ResponseColumn {
 	pub name: String,
 	#[serde(rename = "type")]
 	pub r#type: WireValueType,
-	pub payload: Vec<String>,
+	pub payload: Vec<JsonValue>,
 }

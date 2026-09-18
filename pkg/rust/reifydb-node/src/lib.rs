@@ -48,7 +48,7 @@ pub struct ReifydbNode {
 #[napi(object)]
 pub struct ParamValue {
 	pub r#type: JsonValue,
-	pub value: String,
+	pub value: JsonValue,
 }
 
 #[napi(object)]
@@ -75,7 +75,7 @@ pub struct SubscriptionInput {
 pub struct Column {
 	pub name: String,
 	pub r#type: JsonValue,
-	pub payload: Vec<String>,
+	pub payload: Vec<JsonValue>,
 }
 
 #[napi(object)]

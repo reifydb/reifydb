@@ -3,18 +3,19 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_codec::json::{from::parse_value, wire_type::WireValueType};
+use reifydb_codec::json::{from::parse_json_value, wire_type::WireValueType};
 use reifydb_value::{
 	params::Params,
 	value::{Value, duration::Duration},
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WireValue {
 	#[serde(rename = "type")]
 	pub r#type: WireValueType,
-	pub value: String,
+	pub value: JsonValue,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -25,12 +26,12 @@ pub enum WireParams {
 }
 
 fn wire_value_to_value(parameter: &str, wire: WireValue) -> Result<Value, String> {
-	parse_value(&wire.r#type.0, &wire.value).map_err(|e| format!("parameter {parameter}: {e}"))
+	parse_json_value(&wire.r#type.0, &wire.value).map_err(|e| format!("parameter {parameter}: {e}"))
 }
 
 impl WireValue {
 	pub fn into_duration(self, option: &str) -> Result<Duration, String> {
-		match parse_value(&self.r#type.0, &self.value).map_err(|e| format!("option {option}: {e}"))? {
+		match parse_json_value(&self.r#type.0, &self.value).map_err(|e| format!("option {option}: {e}"))? {
 			Value::Duration(duration) => Ok(duration),
 			other => Err(format!("option {option}: expected Duration, got {}", other.get_type())),
 		}

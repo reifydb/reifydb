@@ -8,7 +8,7 @@ use reifydb_value::{
 		Value,
 		blob::Blob,
 		container::{
-			blob::BlobContainer, bool::BoolContainer, digest::DigestContainer,
+			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, digest::DigestContainer,
 			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
 			utf8::Utf8Container, uuid::UuidContainer,
 		},
@@ -133,6 +133,58 @@ pub fn parse_value(ty: &ValueType, text: &str) -> Result<Value, DecodeError> {
 		}),
 		None => parse_base(base, text)
 			.ok_or_else(|| DecodeError::InvalidData(format!("cannot parse '{text}' as {ty}"))),
+	}
+}
+
+pub fn parse_json_value(ty: &ValueType, json: &JsonValue) -> Result<Value, DecodeError> {
+	let (base, depth) = peel_options(ty);
+	if let Some(wrapped) = json.as_str().and_then(none_marker_depth) {
+		return match wrapped {
+			_ if depth == 0 => {
+				Err(DecodeError::InvalidData(format!("none marker for non-Option type {ty}")))
+			}
+			wrapped if wrapped >= depth => Err(DecodeError::InvalidData(format!(
+				"none marker depth {wrapped} exceeds the {depth} Option layers of type {ty}"
+			))),
+			wrapped => Ok(Value::None {
+				inner: strip_options(ty, wrapped + 1),
+			}),
+		};
+	}
+	match base {
+		ValueType::List(inner) => {
+			let items = json
+				.as_array()
+				.ok_or_else(|| DecodeError::InvalidData(format!("cannot parse '{json}' as {ty}")))?;
+			let values = items
+				.iter()
+				.map(|item| parse_json_value(inner, item))
+				.collect::<Result<Vec<_>, _>>()?;
+			Ok(Value::List(values))
+		}
+		ValueType::Record(fields) => {
+			let obj = json
+				.as_object()
+				.ok_or_else(|| DecodeError::InvalidData(format!("cannot parse '{json}' as {ty}")))?;
+			let values = fields
+				.iter()
+				.map(|(name, field_ty)| {
+					let item = obj.get(name).ok_or_else(|| {
+						DecodeError::InvalidData(format!(
+							"record is missing field '{name}' for {ty}"
+						))
+					})?;
+					Ok((name.clone(), parse_json_value(field_ty, item)?))
+				})
+				.collect::<Result<Vec<_>, DecodeError>>()?;
+			Ok(Value::Record(values))
+		}
+		_ => {
+			let text = json.as_str().ok_or_else(|| {
+				DecodeError::InvalidData(format!("expected a JSON string for {ty}, got {json}"))
+			})?;
+			parse_value(ty, text)
+		}
 	}
 }
 
@@ -265,9 +317,24 @@ fn cells<T: Clone>(
 pub fn convert_column_to_data(
 	name: &str,
 	target: ValueType,
-	data: Vec<String>,
+	data: Vec<JsonValue>,
 ) -> Result<FrameColumnData, DecodeError> {
 	let (base, depth) = peel_options(&target);
+	if matches!(base, ValueType::List(_) | ValueType::Record(_)) {
+		return convert_list_or_record_column(name, &target, base, depth, data);
+	}
+	let data: Vec<String> = data
+		.into_iter()
+		.enumerate()
+		.map(|(row, payload)| match payload {
+			JsonValue::String(text) => Ok(text),
+			other => Err(column_error(
+				name,
+				row,
+				format!("expected a JSON string for {target}, got {other}"),
+			)),
+		})
+		.collect::<Result<_, _>>()?;
 	let mut layers = vec![vec![true; data.len()]; depth as usize];
 	let mut rows = Vec::with_capacity(data.len());
 	for (row, payload) in data.into_iter().enumerate() {
@@ -300,6 +367,53 @@ pub fn convert_column_to_data(
 	}
 	let base = base_column(name, base, rows)?;
 	Ok(layers.into_iter().rev().fold(base, |inner, layer| FrameColumnData::Option {
+		inner: Box::new(inner),
+		bitvec: BitVec::from_slice(&layer),
+	}))
+}
+
+fn convert_list_or_record_column(
+	name: &str,
+	target: &ValueType,
+	base: &ValueType,
+	depth: u32,
+	data: Vec<JsonValue>,
+) -> Result<FrameColumnData, DecodeError> {
+	let mut layers = vec![vec![true; data.len()]; depth as usize];
+	let mut values = Vec::with_capacity(data.len());
+	for (row, payload) in data.into_iter().enumerate() {
+		match payload.as_str().and_then(none_marker_depth) {
+			None => {
+				let value = parse_json_value(base, &payload)
+					.map_err(|e| column_error(name, row, e.to_string()))?;
+				values.push(value);
+			}
+			Some(wrapped) if wrapped < depth => {
+				for layer in &mut layers[wrapped as usize..] {
+					layer[row] = false;
+				}
+				values.push(Value::none());
+			}
+			Some(_) if depth == 0 => {
+				return Err(column_error(
+					name,
+					row,
+					format!("none marker for non-Option type {target}"),
+				));
+			}
+			Some(wrapped) => {
+				return Err(column_error(
+					name,
+					row,
+					format!(
+						"none marker depth {wrapped} exceeds the {depth} Option layers of type {target}"
+					),
+				));
+			}
+		}
+	}
+	let base_col = FrameColumnData::Any(AnyContainer::from_vec(values).with_declared_type(base.clone()));
+	Ok(layers.into_iter().rev().fold(base_col, |inner, layer| FrameColumnData::Option {
 		inner: Box::new(inner),
 		bitvec: BitVec::from_slice(&layer),
 	}))

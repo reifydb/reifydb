@@ -116,6 +116,22 @@ impl TestEngine {
 		r.frames
 	}
 
+	pub fn command_with_params(&self, rql: &str, params: Params) -> Vec<Frame> {
+		let r = self.engine.command_as(IdentityId::system(), rql, params);
+		if let Some(e) = r.error {
+			panic!("command failed: {e:?}\nrql: {rql}")
+		}
+		r.frames
+	}
+
+	pub fn command_with_params_err(&self, rql: &str, params: Params) -> String {
+		let r = self.engine.command_as(IdentityId::system(), rql, params);
+		match r.error {
+			Some(e) => format!("{e:?}"),
+			None => panic!("Expected error but command succeeded\nrql: {rql}"),
+		}
+	}
+
 	pub fn set_config(&self, key: ConfigKey, value: Value) {
 		let catalog = self.engine.catalog();
 		let mut admin = self.engine.begin_admin(IdentityId::system()).unwrap();
