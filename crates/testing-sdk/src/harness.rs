@@ -7,7 +7,6 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
 		bytes::EncodedBytes,
-		operator::state::OperatorState,
 		shape::{RowFamily, RowShape},
 	},
 };
@@ -19,7 +18,7 @@ use reifydb_core::{
 	},
 	key::{
 		any::TaggedKey,
-		operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 	},
 	operator_with::ApplyWith,
 	row::Row,
@@ -211,11 +210,6 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 			decoded.group.is_root() || !groups.contains(&decoded.group) || !erase(decoded.keyspace)
 		});
 		before - state.len()
-	}
-
-	pub fn state_value<V: OperatorState>(&mut self, key: &GroupStateKey) -> Option<V> {
-		let mut ctx = self.create_operator_context();
-		ctx.state().get::<V>(key).expect("state get")
 	}
 
 	pub fn insert(&mut self, row: Row) -> &mut Self {

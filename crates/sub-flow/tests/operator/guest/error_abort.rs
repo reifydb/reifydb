@@ -3,6 +3,7 @@
 
 use std::{env, process::Command};
 
+use reifydb_sdk::flow::operator::NostateMount;
 use reifydb_test_harness::operator::change::trigger;
 
 use super::Harness;
@@ -16,7 +17,7 @@ fn apply_error_aborts() {
 	// An `Err` from a guest operator's apply must abort, never propagate as a Result; forked because abort kills
 	// the process.
 	if env::var(CHILD_ENV).is_ok() {
-		let mut harness = Harness::<ErroringOperator>::builder().build().expect("harness build");
+		let mut harness = Harness::<NostateMount<ErroringOperator>>::builder().build().expect("harness build");
 		let _ = harness.apply(trigger());
 		eprintln!("guest apply returned instead of aborting");
 		return;

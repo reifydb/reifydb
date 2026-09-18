@@ -6,16 +6,15 @@
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator::state::GroupId,
+	key::operator::state::{GroupId, unmanaged_key},
 	operator_with::ApplyWith,
 };
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
-		GuestOperator, OperatorMetadata,
+		NostateOperator, OperatorMetadata, UnmanagedOperator,
 		column::operator::OperatorColumn,
-		context::GuestContext,
-		state::{GuestRawOperator, utils::custom_state_key},
+		context::{ClassState, GuestContext, Nostate, Unmanaged},
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
 	row,
@@ -60,8 +59,6 @@ const WINDOW_OUTPUT_COLUMNS: &[OperatorColumn] = &[
 /// Exercises keyed window state accumulating across applies.
 pub struct ParityWindow;
 
-impl GuestRawOperator for ParityWindow {}
-
 impl OperatorMetadata for ParityWindow {
 	const NAME: &'static str = "parity_window";
 	const VERSION: &'static str = "0.0.1";
@@ -71,12 +68,12 @@ impl OperatorMetadata for ParityWindow {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl GuestOperator for ParityWindow {
+impl UnmanagedOperator for ParityWindow {
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(ParityWindow)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
 		let mut emissions: Vec<(i64, i64)> = Vec::new();
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
@@ -97,9 +94,9 @@ impl GuestOperator for ParityWindow {
 					continue;
 				};
 				let window_bucket = (timestamp / WINDOW_SIZE) * WINDOW_SIZE;
-				let key = custom_state_key(&window_bucket.to_be_bytes())?;
-				let new_count = self.state_get::<i64>(ctx, &key)?.unwrap_or(0) + 1;
-				self.state_set(ctx, &key, &new_count)?;
+				let key = unmanaged_key(&window_bucket.to_be_bytes()).expect("an eight byte bucket fits the keyspace");
+				let new_count = ctx.state().get::<i64>(&key)?.unwrap_or(0) + 1;
+				ctx.state().set(&key, &new_count)?;
 				emissions.push((window_bucket, new_count));
 			}
 		}
@@ -154,12 +151,12 @@ impl OperatorMetadata for RowNumberProbe {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl GuestOperator for RowNumberProbe {
+impl NostateOperator for RowNumberProbe {
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(RowNumberProbe)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> SdkResult<()> {
 		// A row-number key is a SUFFIX - the host frames it under the guest row mapping itself.
 		let key = EncodedKey::new(b"fixed-window-key");
 		let (rn, is_new) = ctx.get_or_create_row_numbers(GroupId::ROOT, &[key])?.remove(0);
@@ -185,12 +182,12 @@ impl OperatorMetadata for NoopOperator {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl GuestOperator for NoopOperator {
+impl NostateOperator for NoopOperator {
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(NoopOperator)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> SdkResult<()> {
 		Ok(())
 	}
 }
@@ -207,12 +204,12 @@ impl OperatorMetadata for ErroringOperator {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl GuestOperator for ErroringOperator {
+impl NostateOperator for ErroringOperator {
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(ErroringOperator)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> SdkResult<()> {
 		Err(SdkError::Other("operator apply must abort, not return Err".to_string()))
 	}
 }

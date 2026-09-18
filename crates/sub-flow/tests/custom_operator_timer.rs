@@ -11,17 +11,16 @@ use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator::state::GroupId,
+	key::operator::state::{GroupId, unmanaged_key_in},
 	operator_with::ApplyWith,
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	flow::operator::{
-		GuestOperator, OperatorMetadata,
+		OperatorMetadata, UnmanagedOperator,
 		column::operator::OperatorColumn,
-		context::GuestContext,
-		state::{GuestRawOperator, utils::custom_state_key_in},
+		context::{ClassState, GuestContext, Unmanaged},
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
@@ -62,8 +61,6 @@ const ALARM_COLUMNS: &[OperatorColumn] = &[
 
 struct Alarm;
 
-impl GuestRawOperator for Alarm {}
-
 impl OperatorMetadata for Alarm {
 	const NAME: &'static str = "alarm";
 	const VERSION: &'static str = "0.0.1";
@@ -77,12 +74,12 @@ fn group_key(g: i32) -> EncodedKey {
 	EncodedKey::new(g.to_be_bytes())
 }
 
-impl GuestOperator for Alarm {
+impl UnmanagedOperator for Alarm {
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(Alarm)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
 		// Emits nothing. Every row this operator produces comes out of on_timer, so a view row is
 		// proof that a callback ran - not that a change passed through.
 		for i in 0..change.diff_count() {
@@ -110,7 +107,7 @@ impl GuestOperator for Alarm {
 		Ok(())
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> SdkResult<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext<Unmanaged>, timer: Timer<'_>) -> SdkResult<()> {
 		let g = i32::from_be_bytes(timer.key.try_into().expect("the timer key round-trips the group key"));
 		let key = group_key(g);
 		let group = GroupId::of(&key);
@@ -118,7 +115,7 @@ impl GuestOperator for Alarm {
 		// Per-group state, so the group has something for the retention pass to erase once it ages
 		// past its horizon. Without it a group is nothing but an identity and reclaim has no work.
 		let fired_at = timer.due.to_millis() as i64;
-		self.state_set(ctx, &custom_state_key_in(group, &[])?, &fired_at)?;
+		ctx.state().set(&unmanaged_key_in(group, &[]).expect("an empty id fits the keyspace"), &fired_at)?;
 
 		let (row_number, _is_new) = ctx.get_or_create_row_numbers(group, &[key])?.remove(0);
 		ctx.emit_insert(
@@ -135,7 +132,7 @@ impl GuestOperator for Alarm {
 fn setup() -> TestDb {
 	TestDb::from(
 		embedded::memory()
-			.with_flow(|f| f.register_operator::<Alarm>())
+			.with_flow(|f| f.register_unmanaged_operator::<Alarm>())
 			// The retention ledger is the only surface that reports what the reclaim pass
 			// actually erased; a short sample cadence keeps the polls inside their timeouts.
 			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
@@ -263,8 +260,6 @@ struct Snooze {
 	disarm_offset_ms: u64,
 }
 
-impl GuestRawOperator for Snooze {}
-
 impl OperatorMetadata for Snooze {
 	const NAME: &'static str = "snooze";
 	const VERSION: &'static str = "0.0.1";
@@ -275,14 +270,14 @@ impl OperatorMetadata for Snooze {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl GuestOperator for Snooze {
+impl UnmanagedOperator for Snooze {
 	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(Snooze {
 			disarm_offset_ms: params.u64_or("disarm_offset", 0),
 		})
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
 		// The session-window shape reduced to essentials: every row pushes the group's wake-up
 		// later, so the instant armed a moment ago must be cancelled rather than left to fire.
 		for i in 0..change.diff_count() {
@@ -303,9 +298,10 @@ impl GuestOperator for Snooze {
 					.expect("the substrate must populate #time on an event-time source");
 				let key = group_key(g);
 				let group = GroupId::of(&key);
-				let armed_key = custom_state_key_in(group, &[])?;
+				let armed_key = unmanaged_key_in(group, &[]).expect("an empty id fits the keyspace");
 
-				if let Some(prior) = self.state_get::<i64>(ctx, &armed_key)? {
+				let prior = ctx.state().get::<i64>(&armed_key)?;
+				if let Some(prior) = prior {
 					// Zero in the honest case; non-zero aims the disarm past what
 					// was armed, which is how the control test proves the wheel
 					// matches on the exact instant.
@@ -315,13 +311,13 @@ impl GuestOperator for Snooze {
 
 				let wake = at.to_millis() + DELAY_MS;
 				ctx.arm_timer(DateTime::from_millis(wake), TimerKind::Seal, &key)?;
-				self.state_set(ctx, &armed_key, &(wake as i64))?;
+				ctx.state().set(&armed_key, &(wake as i64))?;
 			}
 		}
 		Ok(())
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> SdkResult<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext<Unmanaged>, timer: Timer<'_>) -> SdkResult<()> {
 		let g = i32::from_be_bytes(timer.key.try_into().expect("the timer key round-trips the group key"));
 		let group = GroupId::of(&group_key(g));
 		let fired_at = timer.due.to_millis() as i64;
@@ -344,7 +340,7 @@ impl GuestOperator for Snooze {
 fn setup_snooze() -> TestDb {
 	TestDb::from(
 		embedded::memory()
-			.with_flow(|f| f.register_operator::<Snooze>())
+			.with_flow(|f| f.register_unmanaged_operator::<Snooze>())
 			.build()
 			.expect("build memory db with flow"),
 	)

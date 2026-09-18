@@ -21,8 +21,8 @@ use reifydb::{
 	sdk::{
 		error::Result as SdkResult,
 		flow::operator::{
-			GuestOperator, OperatorMetadata, column::operator::OperatorColumn, context::GuestContext,
-			view::ChangeView,
+			NostateOperator, OperatorMetadata, column::operator::OperatorColumn,
+			context::{GuestContext, Nostate}, view::ChangeView,
 		},
 	},
 	sub::subsystem::HealthStatus,
@@ -103,12 +103,12 @@ impl OperatorMetadata for Wedged {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl GuestOperator for Wedged {
+impl NostateOperator for Wedged {
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(Wedged)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> SdkResult<()> {
 		GATE.pass();
 		Ok(())
 	}
@@ -121,7 +121,7 @@ fn waiting_on_a_flow_wedged_inside_an_operator_fails_fast_naming_the_stall() {
 	let db = TestDb::from(
 		embedded::memory()
 			.with_runtime_config(RuntimeConfig::default().clock(Clock::Mock(clock.clone())))
-			.with_flow(|f| f.register_operator::<Wedged>())
+			.with_flow(|f| f.register_nostate_operator::<Wedged>())
 			.build()
 			.unwrap(),
 	);

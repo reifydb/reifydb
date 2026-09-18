@@ -27,3 +27,6 @@ mod rolling_incremental;
 
 #[path = "sdk/guest_sweep.rs"]
 mod guest_sweep;
+
+#[path = "sdk/class.rs"]
+mod class;

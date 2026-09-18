@@ -32,7 +32,7 @@ use reifydb_runtime::context::{
 	RuntimeContext,
 	clock::{Clock, MockClock},
 };
-use reifydb_sdk::flow::operator::GuestOperator;
+use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata};
 use reifydb_sub_flow::operator::mount::mount;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
@@ -149,7 +149,7 @@ impl<O: DurableSink> Harness<O> {
 }
 
 impl Harness<ApplyOperator> {
-	pub fn guest<C: GuestOperator + 'static>(
+	pub fn guest<C: MountedOperator + OperatorMetadata + 'static>(
 		logic: C,
 		operator: OperatorId,
 		capabilities: &'static [OperatorCapability],

@@ -4,13 +4,12 @@
 use std::{collections::HashMap, marker::PhantomData, mem, ops::Index};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::row::operator::state::OperatorState;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	delta::RemoveVisibility,
 	interface::{catalog::flow::OperatorId, change::Change},
-	key::{operator::state::GroupStateKey, tag::KeyTag},
+	key::tag::KeyTag,
 	operator_with::ApplyWith,
 	row::Row,
 	value::column::columns::Columns,
@@ -25,11 +24,10 @@ use reifydb_flow::{
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::flow::operator::{
-	GuestOperator, OperatorMetadata,
-	context::{GuestContext, GuestState},
+	MountedOperator, OperatorMetadata,
 	extern_c::binding::operator::ExternCOperatorAdapter,
 };
-use reifydb_sub_flow::operator::{context::in_process::InProcessContext, mount::mount};
+use reifydb_sub_flow::operator::mount::mount;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarness};
 use reifydb_transaction::interceptor::interceptors::Interceptors;
@@ -39,19 +37,18 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, diff_type::DiffType, row_number::RowNumber},
 };
 
-pub struct GuestOperatorHarness<C: GuestOperator + OperatorMetadata + 'static> {
+pub struct GuestOperatorHarness<C: MountedOperator + OperatorMetadata + 'static> {
 	engine: TestEngine,
 	operator: BoxedHostOperator,
 	operator_id: OperatorId,
 	version: u64,
 	pending: Pending,
 	substrate: FlowSubstrate,
-	current: Option<DeferredTransaction>,
 	history: Vec<Change>,
 	_phantom: PhantomData<C>,
 }
 
-impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
+impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 	pub fn builder() -> GuestOperatorHarnessBuilder<C> {
 		GuestOperatorHarnessBuilder::new()
 	}
@@ -115,23 +112,6 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 		Ok(output)
 	}
 
-	pub fn state_value<V: OperatorState>(&mut self, key: &GroupStateKey) -> Option<V> {
-		let operator = self.operator_id;
-		if let Some(txn) = self.current.as_mut() {
-			let mut host = TxnHostContext::new(txn, operator);
-			let mut ctx = InProcessContext::new(&mut host, operator);
-			return ctx.state().get::<V>(key).expect("state get");
-		}
-		let mut txn = self.begin_txn();
-		let value = {
-			let mut host = TxnHostContext::new(&mut txn, operator);
-			let mut ctx = InProcessContext::new(&mut host, operator);
-			ctx.state().get::<V>(key).expect("state get")
-		};
-		self.end_txn(txn);
-		value
-	}
-
 	pub fn insert(&mut self, row: Row) -> &mut Self {
 		let change = TestChangeBuilder::new().insert(row).build();
 		self.apply(change).expect("insert failed");
@@ -167,7 +147,7 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 	}
 }
 
-impl<C: GuestOperator + OperatorMetadata + 'static> Index<usize> for GuestOperatorHarness<C> {
+impl<C: MountedOperator + OperatorMetadata + 'static> Index<usize> for GuestOperatorHarness<C> {
 	type Output = Change;
 
 	fn index(&self, index: usize) -> &Self::Output {
@@ -183,13 +163,13 @@ pub struct GuestOperatorHarnessBuilder<C> {
 	_phantom: PhantomData<C>,
 }
 
-impl<C: GuestOperator + OperatorMetadata + 'static> Default for GuestOperatorHarnessBuilder<C> {
+impl<C: MountedOperator + OperatorMetadata + 'static> Default for GuestOperatorHarnessBuilder<C> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilder<C> {
+impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilder<C> {
 	pub fn new() -> Self {
 		Self {
 			params: HashMap::new(),
@@ -250,7 +230,6 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilder<
 			version: self.version.0,
 			pending: Pending::new(),
 			substrate,
-			current: None,
 			history: Vec::new(),
 			_phantom: PhantomData,
 		})
@@ -292,7 +271,7 @@ fn render_change(change: &Change) -> Vec<DiffRender> {
 
 fn run_extern_c<C>(params: &[(&str, Value)], with: ApplyWith, inputs: &[Change]) -> Vec<Change>
 where
-	C: GuestOperator + OperatorMetadata + 'static,
+	C: MountedOperator + OperatorMetadata + 'static,
 {
 	let mut harness = ExternCOperatorHarness::<ExternCOperatorAdapter<C>>::builder()
 		.with_params(params.iter().cloned())
@@ -304,7 +283,7 @@ where
 
 fn run_guest<C>(params: &[(&str, Value)], with: ApplyWith, inputs: &[Change]) -> Vec<Change>
 where
-	C: GuestOperator + OperatorMetadata + 'static,
+	C: MountedOperator + OperatorMetadata + 'static,
 {
 	let mut harness = GuestOperatorHarness::<C>::builder()
 		.with_params(params.iter().cloned())
@@ -316,7 +295,7 @@ where
 
 pub fn assert_backend_parity<C>(params: Vec<(&str, Value)>, with: ApplyWith, scenarios: &[(&str, Vec<Change>)])
 where
-	C: GuestOperator + OperatorMetadata + 'static,
+	C: MountedOperator + OperatorMetadata + 'static,
 {
 	for (name, inputs) in scenarios {
 		let extern_c = run_extern_c::<C>(&params, with.clone(), inputs);

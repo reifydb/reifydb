@@ -10,15 +10,15 @@ use std::{thread, time::Duration as StdDuration};
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	key::operator::state::unmanaged_key,
 	operator_with::ApplyWith,
 };
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	flow::operator::{
-		GuestOperator, OperatorMetadata,
+		OperatorMetadata, UnmanagedOperator,
 		column::operator::OperatorColumn,
-		context::GuestContext,
-		state::{GuestRawOperator, utils::empty_state_key},
+		context::{ClassState, GuestContext, Unmanaged},
 		view::{ChangeView, ColumnsView, DiffView},
 	},
 	row,
@@ -33,8 +33,6 @@ const SLOW_APPLY: StdDuration = StdDuration::from_secs(5);
 // Sleeps SLOW_APPLY inside apply, then tallies the rows it has seen. The sleep blocks only this
 // flow's actor; the fast view's actor runs elsewhere.
 struct SlowCounter;
-
-impl GuestRawOperator for SlowCounter {}
 
 struct CountRow {
 	seen: i64,
@@ -59,12 +57,12 @@ impl OperatorMetadata for SlowCounter {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl GuestOperator for SlowCounter {
+impl UnmanagedOperator for SlowCounter {
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(SlowCounter)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
 		thread::sleep(SLOW_APPLY);
 
 		let mut seen = 0i64;
@@ -74,9 +72,9 @@ impl GuestOperator for SlowCounter {
 			}
 		}
 
-		let key = empty_state_key();
-		let total = self.state_get::<i64>(ctx, &key)?.unwrap_or(0) + seen;
-		self.state_set(ctx, &key, &total)?;
+		let key = unmanaged_key(&[]).expect("an empty id fits the keyspace");
+		let total = ctx.state().get::<i64>(&key)?.unwrap_or(0) + seen;
+		ctx.state().set(&key, &total)?;
 		ctx.emit_insert(
 			&[CountRow {
 				seen: total,
@@ -89,7 +87,7 @@ impl GuestOperator for SlowCounter {
 fn setup() -> TestDb {
 	TestDb::from(
 		embedded::memory()
-			.with_flow(|f| f.register_operator::<SlowCounter>())
+			.with_flow(|f| f.register_unmanaged_operator::<SlowCounter>())
 			.build()
 			.expect("build memory db with flow"),
 	)

@@ -131,7 +131,7 @@ fn setup() -> TestDb {
 	// The guest operator is registered in process, so no dylib is built and the ABI plays no part here.
 	TestDb::from(
 		embedded::memory()
-			.with_flow(|f| f.register_operator::<TumblingDriver<GuestTumbling>>())
+			.with_flow(|f| f.register_windowed_operator::<TumblingDriver<GuestTumbling>>())
 			.with_config(ConfigKey::MetricsFlushInterval, Value::duration_milliseconds(10))
 			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 			.build()
