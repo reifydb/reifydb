@@ -12,6 +12,7 @@ publish = false
 name = "bridge"
 crate-type = ["cdylib"]
 test = false
+bench = false
 doctest = false
 
 [dependencies]
