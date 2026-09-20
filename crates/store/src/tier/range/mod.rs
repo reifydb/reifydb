@@ -11,7 +11,7 @@ mod scan;
 mod tests;
 mod write;
 
-use std::{borrow::Cow, collections::{BTreeMap, HashMap}, fmt::Debug, hash::Hash, mem::size_of, ops::Bound, sync::Arc};
+use std::{borrow::Cow, collections::BTreeMap, fmt::Debug, hash::Hash, mem::size_of, ops::Bound, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -23,6 +23,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 use reifydb_value::byte_size::ByteSize;
+use rustc_hash::FxHashMap;
 
 use crate::coverage::{
 	entry::{Entry, PinnedCount},
@@ -170,7 +171,7 @@ impl<K, R> Partition<K, R> {
 }
 
 struct Shard<D: RangeDomain> {
-	partitions: HashMap<D::Partition, Partition<D::Key, D::Row>>,
+	partitions: FxHashMap<D::Partition, Partition<D::Key, D::Row>>,
 	budget: MemoryBudget,
 	reserve: u64,
 	next_tick: u64,

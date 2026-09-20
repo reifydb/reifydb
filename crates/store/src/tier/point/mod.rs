@@ -11,7 +11,6 @@ mod tests;
 
 use std::{
 	borrow::Cow,
-	collections::{HashMap, hash_map::DefaultHasher},
 	fmt::Debug,
 	hash::{Hash, Hasher},
 	mem::size_of,
@@ -22,6 +21,7 @@ use hashbrown::HashTable;
 use reifydb_core::{key::typed::Key, metrics::heap::HeapSize, util::budget::MemoryBudget};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::byte_size::ByteSize;
+use rustc_hash::{FxHashMap, FxHasher};
 
 use crate::tier::range::RowBytes;
 
@@ -92,7 +92,7 @@ fn entry_footprint<D: PointDomain>(key: &PointKey<D::Dimension, D::Key>, row: &O
 const BUCKET_SEED: u64 = 0xD6E8_FEB8_6659_FD93;
 
 fn bucket_hash<D: Hash, K: Hash>(dimension: &D, key: &K) -> u64 {
-	let mut hasher = DefaultHasher::new();
+	let mut hasher = FxHasher::default();
 	hasher.write_u64(BUCKET_SEED);
 	dimension.hash(&mut hasher);
 	key.hash(&mut hasher);
@@ -157,7 +157,7 @@ type BucketCounters = Box<[PointMetrics]>;
 struct Shard<D: PointDomain> {
 	index: HashTable<u32>,
 	entries: Vec<Entry<D>>,
-	filling: HashMap<PointKey<D::Dimension, D::Key>, bool>,
+	filling: FxHashMap<PointKey<D::Dimension, D::Key>, bool>,
 	budget: Arc<MemoryBudget>,
 	next_tick: u64,
 	rng: u64,

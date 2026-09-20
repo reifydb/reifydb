@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{HashMap, hash_map::DefaultHasher},
 	hash::{Hash, Hasher},
 	sync::Arc,
 };
@@ -13,6 +12,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 use reifydb_value::byte_size::ByteSize;
+use rustc_hash::{FxHashMap, FxHasher};
 
 #[cfg(test)]
 use crate::tier::range::{MaterializeInterlock, ServeInterlock};
@@ -97,7 +97,7 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	pub fn shard_index(&self, partition: &D::Partition) -> usize {
-		let mut hasher = DefaultHasher::new();
+		let mut hasher = FxHasher::default();
 		partition.hash(&mut hasher);
 		(hasher.finish() % self.inner.shards.len() as u64) as usize
 	}
@@ -514,7 +514,7 @@ fn build_shards<D: RangeDomain>(config: RangeConfig, shard_bytes: ByteSize) -> B
 	(0..shard_count)
 		.map(|_| {
 			Mutex::new(Shard {
-				partitions: HashMap::new(),
+				partitions: FxHashMap::default(),
 				budget: MemoryBudget::new(byte_cap),
 				reserve: byte_cap.as_bytes() - byte_cap.as_bytes() / RESERVE_DIVISOR,
 				next_tick: 0,

@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{HashMap, hash_map::DefaultHasher},
 	hash::{Hash, Hasher},
 	sync::Arc,
 };
@@ -14,6 +13,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::byte_size::ByteSize;
+use rustc_hash::{FxHashMap, FxHasher};
 
 #[cfg(test)]
 use crate::tier::point::FillInterlock;
@@ -55,7 +55,7 @@ impl<D: PointDomain> PointTier<D> {
 	}
 
 	pub fn shard_index(&self, dimension: D::Dimension, key: &D::Key) -> usize {
-		let mut hasher = DefaultHasher::new();
+		let mut hasher = FxHasher::default();
 		dimension.hash(&mut hasher);
 		key.hash(&mut hasher);
 		(hasher.finish() % self.inner.shards.len() as u64) as usize
@@ -251,7 +251,7 @@ fn build_shards<D: PointDomain>(config: PointConfig, budgets: &[Arc<MemoryBudget
 			Mutex::new(Shard {
 				index: HashTable::new(),
 				entries: Vec::new(),
-				filling: HashMap::new(),
+				filling: FxHashMap::default(),
 				budget: budgets[index].clone(),
 				next_tick: 0,
 				rng: 0x9E37_79B9_7F4A_7C15 ^ (index as u64 + 1),
