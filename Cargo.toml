@@ -46,6 +46,7 @@ members = [
     "crates/test-harness",
     "crates/transaction",
     "crates/value",
+    "crates/wal",
     "crates/wasm",
     "crates/benches",
     # Subsystem crates
@@ -134,6 +135,7 @@ default-members = [
     "crates/test-harness",
     "crates/transaction",
     "crates/value",
+    "crates/wal",
     "crates/wasm",
     # Subsystem crates
     "crates/sub-api",
@@ -261,6 +263,7 @@ reifydb-routine-abi = { version = "0.9.3", path = "crates/routine-abi" }
 reifydb-test-harness = { version = "0.9.3", path = "crates/test-harness" }
 reifydb-transaction = { version = "0.9.3", path = "crates/transaction" }
 reifydb-value = { version = "0.9.3", path = "crates/value" }
+reifydb-wal = { version = "0.9.3", path = "crates/wal" }
 reifydb-wasm = { version = "0.9.3", path = "crates/wasm" }
 reifydb-macro = { version = "0.9.3", path = "crates/macro" }
 reifydb-macro-impl = { version = "0.9.3", path = "crates/macro-impl" }

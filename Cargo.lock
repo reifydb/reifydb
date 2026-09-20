@@ -4119,6 +4119,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-wal"
+version = "0.9.3"
+dependencies = [
+ "reifydb-build",
+ "reifydb-codec",
+ "reifydb-runtime",
+ "reifydb-store-log",
+ "reifydb-value",
+]
+
+[[package]]
 name = "reifydb-wasi-bridge"
 version = "0.9.3"
 dependencies = [
