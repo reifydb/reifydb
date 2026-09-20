@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
-
-use reifydb_core::metrics::heap::HeapSize;
+use reifydb_core::{metrics::heap::HeapSize, util::sorted::SortedVecMap};
 use reifydb_macro::operator_state;
 
 use crate::{
@@ -18,7 +16,7 @@ pub struct SealingBase<S: Slot, V> {
 	high_water: Option<S>,
 	sealed_high: Option<S>,
 	sealed_count: u64,
-	tail: BTreeMap<S, V>,
+	tail: SortedVecMap<S, V>,
 }
 
 impl<S: Slot, V> Default for SealingBase<S, V> {
@@ -28,7 +26,7 @@ impl<S: Slot, V> Default for SealingBase<S, V> {
 			high_water: None,
 			sealed_high: None,
 			sealed_count: 0,
-			tail: BTreeMap::new(),
+			tail: SortedVecMap::new(),
 		}
 	}
 }
@@ -44,7 +42,7 @@ impl<S: Slot, V> SealingBase<S, V> {
 			high_water: None,
 			sealed_high: None,
 			sealed_count: 0,
-			tail: BTreeMap::new(),
+			tail: SortedVecMap::new(),
 		}
 	}
 
@@ -102,7 +100,7 @@ impl<S: Slot, V> SealingBase<S, V> {
 		self.tail.remove(slot);
 	}
 
-	pub fn tail(&self) -> &BTreeMap<S, V> {
+	pub fn tail(&self) -> &SortedVecMap<S, V> {
 		&self.tail
 	}
 
