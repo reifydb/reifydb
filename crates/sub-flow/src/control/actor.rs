@@ -60,10 +60,7 @@ use crate::{
 	builder::CustomOperators,
 	commit::{
 		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply},
-		merge::{
-			HeldReads, ObjectIndex, ReadCache, ReadStream, StepCut, StreamRead, UpstreamRead,
-			UpstreamReads, merge,
-		},
+		merge::{HeldReads, ReadCache, ReadStream, StepCut, StreamRead, UpstreamRead, UpstreamReads, merge},
 		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep, cuts_per_source},
 	},
 	control::health::FlowHealthRegistry,
@@ -146,7 +143,6 @@ pub struct FlowActorState {
 	pending_view_cursors: HashMap<FlowId, CommitVersion>,
 	read_cache: ReadCache,
 	held_reads: HeldReads,
-	object_index: ObjectIndex,
 	loading_from: CommitVersion,
 }
 
@@ -286,7 +282,6 @@ impl FlowActor {
 			return;
 		}
 		state.read_cache.retain_after(state.cursor);
-		state.object_index.retain_after(state.cursor);
 		if safe <= state.cursor {
 			self.checkpoint_if_stale(state, ctx);
 			return;
@@ -316,7 +311,6 @@ impl FlowActor {
 		};
 		let mut upstream_reads = UpstreamReads {
 			reads: HashMap::with_capacity(upstreams.len()),
-			index: take(&mut state.object_index),
 		};
 		let mut froms: HashMap<FlowId, CommitVersion> = HashMap::with_capacity(upstreams.len());
 		for (producer, views) in upstreams {
@@ -332,7 +326,7 @@ impl FlowActor {
 				position: None,
 				read,
 			};
-			while upstream.needs_extension(cursor, &upstream_reads.index) {
+			while upstream.needs_extension(cursor) {
 				let Some(next) = self.read_range(state, ctx, upstream.read.read_to, safe) else {
 					upstream_reads.reads.insert(*producer, upstream);
 					hold_reads(state, cursor, tables, upstream_reads, &froms);
@@ -358,10 +352,9 @@ impl FlowActor {
 			source_objects: &state.source_objects,
 			per_source: cuts_per_source(self.flow_tracker.has_readers(self.flow_id), &state.source_objects),
 		};
-		let merged = merge(cursor, &tables, &upstream_reads.reads, &upstream_reads.index, &cut);
+		let merged = merge(cursor, &tables, &upstream_reads.reads, &cut);
 		if merged.target <= cursor {
 			let moved = self.advance_view_cursors(state, &upstream_reads, cursor);
-			state.object_index = upstream_reads.index;
 			if moved && merged.more {
 				let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 			} else {
@@ -371,7 +364,6 @@ impl FlowActor {
 		}
 		let step = self.compute_step(state, &merged.items, merged.target, merged.more);
 		self.apply_step(state, ctx, step, Some(&upstream_reads));
-		state.object_index = upstream_reads.index;
 	}
 
 	fn read_range(
@@ -816,7 +808,6 @@ fn hold_reads(
 			state.held_reads.hold(ReadStream::Upstream(producer), *from, upstream.read);
 		}
 	}
-	state.object_index = reads.index;
 }
 
 impl Actor for FlowActor {
@@ -861,7 +852,6 @@ impl Actor for FlowActor {
 			pending_view_cursors: HashMap::new(),
 			read_cache: ReadCache::default(),
 			held_reads: HeldReads::default(),
-			object_index: ObjectIndex::default(),
 			loading_from: self.initial_cursor,
 		};
 

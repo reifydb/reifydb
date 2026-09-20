@@ -2,8 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	cell::RefCell,
-	collections::{BTreeMap, BTreeSet, HashMap},
+	collections::{BTreeSet, HashMap},
 	iter::Peekable,
 	ops::Deref,
 	sync::Arc,
@@ -65,7 +64,6 @@ pub struct StreamRead {
 }
 
 const READ_CACHE_ENTRIES: usize = 6;
-const OBJECT_INDEX_ENTRIES: usize = 16_384;
 
 struct CachedRead {
 	items: ReadWindow,
@@ -165,68 +163,43 @@ pub struct UpstreamRead {
 	pub read: StreamRead,
 }
 
-#[derive(Default)]
-pub struct ObjectIndex {
-	changed: RefCell<BTreeMap<CommitVersion, BTreeSet<ObjectId>>>,
+fn touches(cdc: &Cdc, objects: &FxHashSet<ObjectId>) -> bool {
+	changed_objects(cdc).iter().any(|object| objects.contains(object))
 }
 
-impl ObjectIndex {
-	pub fn retain_after(&mut self, cursor: CommitVersion) {
-		let changed = self.changed.get_mut();
-		*changed = changed.split_off(&CommitVersion(cursor.0.saturating_add(1)));
-		if changed.len() > OBJECT_INDEX_ENTRIES {
-			changed.clear();
-		}
-	}
-
-	fn changes_any(&self, cdc: &Cdc, hit: impl Fn(ObjectId) -> bool) -> bool {
-		self.changed
-			.borrow_mut()
-			.entry(cdc.version.commit)
-			.or_insert_with(|| changed_objects(cdc))
-			.iter()
-			.any(|object| hit(*object))
-	}
-
-	fn touches(&self, cdc: &Cdc, objects: &FxHashSet<ObjectId>) -> bool {
-		self.changes_any(cdc, |object| objects.contains(&object))
-	}
-
-	fn reads(&self, cdc: &Cdc, source_objects: &BTreeSet<ObjectId>) -> bool {
-		self.changes_any(cdc, |object| accepts(object, source_objects))
-	}
+fn reads(cdc: &Cdc, source_objects: &BTreeSet<ObjectId>) -> bool {
+	changed_objects(cdc).iter().any(|object| accepts(*object, source_objects))
 }
 
 impl UpstreamRead {
-	fn view_items<'a>(&'a self, index: &'a ObjectIndex) -> impl DoubleEndedIterator<Item = &'a Arc<Cdc>> {
-		self.read.items.iter().filter(move |cdc| index.touches(cdc, &self.views))
+	fn view_items(&self) -> impl DoubleEndedIterator<Item = &Arc<Cdc>> {
+		self.read.items.iter().filter(move |cdc| touches(cdc, &self.views))
 	}
 
-	fn complete_through(&self, cursor: CommitVersion, index: &ObjectIndex) -> CommitVersion {
+	fn complete_through(&self, cursor: CommitVersion) -> CommitVersion {
 		let mut through = cursor;
 		if let Some(position) = self.position {
 			through = through.max(position);
 		}
-		if let Some(last) = self.view_items(index).next_back() {
+		if let Some(last) = self.view_items().next_back() {
 			through = through.max(CommitVersion(last.version.source.0.saturating_sub(1)));
 		}
 		through
 	}
 
-	pub fn needs_extension(&self, cursor: CommitVersion, index: &ObjectIndex) -> bool {
+	pub fn needs_extension(&self, cursor: CommitVersion) -> bool {
 		if !self.read.more {
 			return false;
 		}
-		let mut stamps =
-			self.view_items(index).map(|cdc| cdc.version.source.0).filter(|source| *source > cursor.0);
+		let mut stamps = self.view_items().map(|cdc| cdc.version.source.0).filter(|source| *source > cursor.0);
 		match stamps.next() {
 			Some(first) => stamps.all(|source| source == first),
 			None => false,
 		}
 	}
 
-	pub fn cursor_after(&self, advance_to: CommitVersion, index: &ObjectIndex) -> CommitVersion {
-		self.view_items(index)
+	pub fn cursor_after(&self, advance_to: CommitVersion) -> CommitVersion {
+		self.view_items()
 			.find(|cdc| cdc.version.source.0 > advance_to.0)
 			.map(|cdc| CommitVersion(cdc.version.commit.0 - 1))
 			.unwrap_or(self.read.read_to)
@@ -235,15 +208,11 @@ impl UpstreamRead {
 
 pub struct UpstreamReads {
 	pub reads: HashMap<FlowId, UpstreamRead>,
-	pub index: ObjectIndex,
 }
 
 impl UpstreamReads {
 	pub fn cursors_after(&self, advance_to: CommitVersion) -> HashMap<FlowId, CommitVersion> {
-		self.reads
-			.iter()
-			.map(|(producer, read)| (*producer, read.cursor_after(advance_to, &self.index)))
-			.collect()
+		self.reads.iter().map(|(producer, read)| (*producer, read.cursor_after(advance_to))).collect()
 	}
 }
 
@@ -264,14 +233,13 @@ pub fn merge(
 	cursor: CommitVersion,
 	tables: &StreamRead,
 	upstreams: &HashMap<FlowId, UpstreamRead>,
-	index: &ObjectIndex,
 	cut: &StepCut,
 ) -> Merged {
 	let gated: FxHashSet<ObjectId> =
 		upstreams.values().flat_map(|upstream| upstream.views.iter().copied()).collect();
 	let target = upstreams
 		.values()
-		.map(|upstream| upstream.complete_through(cursor, index))
+		.map(|upstream| upstream.complete_through(cursor))
 		.fold(tables.read_to, CommitVersion::min);
 	let streams = || {
 		let table_rows = tables
@@ -279,14 +247,13 @@ pub fn merge(
 			.iter()
 			.take_while(|cdc| cdc.version.commit <= target)
 			.filter(|cdc| {
-				cdc.version.commit > cursor
-					&& !index.touches(cdc, &gated) && index.reads(cdc, cut.source_objects)
+				cdc.version.commit > cursor && !touches(cdc, &gated) && reads(cdc, cut.source_objects)
 			})
 			.map(|cdc| (true, cdc));
 		let mut streams: Vec<Rows> = vec![(Box::new(table_rows) as Box<dyn Iterator<Item = _>>).peekable()];
 		for upstream in upstreams.values() {
 			let view_rows = upstream
-				.view_items(index)
+				.view_items()
 				.filter(move |cdc| cdc.version.source.0 > cursor.0 && cdc.version.source.0 <= target.0)
 				.map(|cdc| (false, cdc));
 			streams.push((Box::new(view_rows) as Box<dyn Iterator<Item = _>>).peekable());
@@ -445,7 +412,6 @@ mod tests {
 			cv(3),
 			&read(vec![table_row(4)], 20, false),
 			&one(upstream(None, read(vec![], 20, false))),
-			&ObjectIndex::default(),
 			&whole(&sources()),
 		);
 		assert_eq!(merged.target, cv(3));
@@ -459,7 +425,6 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(5)], 20, false),
 			&one(upstream(Some(5), read(vec![view_row(7, 5)], 20, false))),
-			&ObjectIndex::default(),
 			&whole(&sources()),
 		);
 		assert_eq!(versions(&merged), vec![(7, 5), (5, 5)]);
@@ -472,7 +437,6 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(4)], 20, false),
 			&one(upstream(Some(4), read(vec![view_row(6, 3)], 20, false))),
-			&ObjectIndex::default(),
 			&whole(&sources()),
 		);
 		assert_eq!(versions(&merged), vec![(6, 3), (4, 4)]);
@@ -485,7 +449,6 @@ mod tests {
 			cv(0),
 			&read(vec![], 20, false),
 			&one(upstream(None, read(vec![view_row(8, 3), view_row(9, 6)], 9, true))),
-			&ObjectIndex::default(),
 			&whole(&sources()),
 		);
 		assert_eq!(merged.target, cv(5));
@@ -496,13 +459,10 @@ mod tests {
 	fn a_truncated_read_whose_rows_share_one_stamp_must_extend() {
 		// Without extending, the gate stops one below that stamp and the reader never moves again.
 		let cursor = cv(2);
-		assert!(upstream(None, read(vec![view_row(8, 4), view_row(9, 4)], 9, true))
-			.needs_extension(cursor, &ObjectIndex::default()));
-		assert!(!upstream(None, read(vec![view_row(8, 4), view_row(9, 5)], 9, true))
-			.needs_extension(cursor, &ObjectIndex::default()));
-		assert!(!upstream(None, read(vec![view_row(8, 4)], 9, false))
-			.needs_extension(cursor, &ObjectIndex::default()));
-		assert!(!upstream(None, read(vec![], 9, true)).needs_extension(cursor, &ObjectIndex::default()));
+		assert!(upstream(None, read(vec![view_row(8, 4), view_row(9, 4)], 9, true)).needs_extension(cursor));
+		assert!(!upstream(None, read(vec![view_row(8, 4), view_row(9, 5)], 9, true)).needs_extension(cursor));
+		assert!(!upstream(None, read(vec![view_row(8, 4)], 9, false)).needs_extension(cursor));
+		assert!(!upstream(None, read(vec![], 9, true)).needs_extension(cursor));
 	}
 
 	#[test]
@@ -510,8 +470,8 @@ mod tests {
 		// A position past an unhandled row skips it forever; one at the start re-reads the whole range each
 		// step.
 		let up = upstream(None, read(vec![view_row(8, 3), view_row(9, 6)], 12, false));
-		assert_eq!(up.cursor_after(cv(4), &ObjectIndex::default()), cv(8));
-		assert_eq!(up.cursor_after(cv(6), &ObjectIndex::default()), cv(12));
+		assert_eq!(up.cursor_after(cv(4)), cv(8));
+		assert_eq!(up.cursor_after(cv(6)), cv(12));
 	}
 
 	#[test]
@@ -522,7 +482,6 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(5), view.clone()], 20, false),
 			&one(upstream(Some(5), read(vec![view], 20, false))),
-			&ObjectIndex::default(),
 			&whole(&sources()),
 		);
 		assert_eq!(versions(&merged), vec![(7, 5), (5, 5)]);
@@ -535,7 +494,6 @@ mod tests {
 			cv(5),
 			&read(vec![], 20, false),
 			&one(upstream(Some(9), read(vec![view_row(7, 5), view_row(9, 8)], 20, false))),
-			&ObjectIndex::default(),
 			&whole(&sources()),
 		);
 		assert_eq!(versions(&merged), vec![(9, 8)]);
@@ -548,7 +506,6 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(3)], 3, true),
 			&one(upstream(Some(10), read(vec![], 20, false))),
-			&ObjectIndex::default(),
 			&whole(&sources()),
 		);
 		assert_eq!(merged.target, cv(3));
@@ -566,7 +523,6 @@ mod tests {
 				upstream(Some(10), read(vec![view_row(12, 7)], 20, false)),
 				upstream_of(ViewId(6), Some(4), read(vec![], 20, false)),
 			),
-			&ObjectIndex::default(),
 			&whole(&sources()),
 		);
 		assert_eq!(merged.target, cv(4));
@@ -588,7 +544,6 @@ mod tests {
 				upstream(Some(6), read(vec![view_row(8, 5)], 20, false)),
 				upstream_of(ViewId(6), Some(6), read(vec![shared, other_view_row(9, 6)], 20, false)),
 			),
-			&ObjectIndex::default(),
 			&whole(&sources()),
 		);
 		assert_eq!(merged.target, cv(6));
@@ -614,7 +569,6 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(5), table_row(6), table_row(7)], 20, false),
 			&one(upstream(Some(10), read(vec![view_row(8, 5), view_row(9, 7)], 20, false))),
-			&ObjectIndex::default(),
 			&per_source(&objects),
 		);
 		assert_eq!(versions(&merged), vec![(8, 5), (5, 5)]);
@@ -630,7 +584,6 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(5)], 20, false),
 			&one(upstream(Some(10), read(vec![view_row(8, 3)], 20, false))),
-			&ObjectIndex::default(),
 			&per_source(&objects),
 		);
 		assert_eq!(versions(&merged), vec![(8, 3)]);
@@ -645,7 +598,6 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(5), row(StorageId::table(2), 6, 6), table_row(7)], 20, false),
 			&one(upstream(Some(10), read(vec![], 20, false))),
-			&ObjectIndex::default(),
 			&per_source(&objects),
 		);
 		assert_eq!(versions(&merged), vec![(5, 5)]);
@@ -660,7 +612,6 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(5)], 20, false),
 			&one(upstream(Some(20), read(vec![view_row(8, 5)], 20, false))),
-			&ObjectIndex::default(),
 			&per_source(&objects),
 		);
 		assert_eq!(versions(&merged), vec![(8, 5), (5, 5)]);
@@ -678,7 +629,6 @@ mod tests {
 			cv(0),
 			&read(vec![row(StorageId::table(1), 5, 5), row(StorageId::table(1), 6, 3)], 20, false),
 			&one(upstream(Some(10), read(vec![], 20, false))),
-			&ObjectIndex::default(),
 			&per_source(&objects),
 		);
 	}

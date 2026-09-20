@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::{collections::BTreeSet, sync::OnceLock};
+
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_value::value::datetime::DateTime;
 use serde::{Deserialize, Serialize};
 
-use crate::common::{ChangeVersion, CommitVersion};
+use crate::{
+	common::{ChangeVersion, CommitVersion},
+	interface::catalog::object::ObjectId,
+};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -144,6 +149,9 @@ pub struct Cdc {
 	pub timestamp: DateTime,
 
 	pub changes: Vec<CdcChange>,
+
+	#[serde(skip)]
+	changed_objects: OnceLock<BTreeSet<ObjectId>>,
 }
 
 impl Cdc {
@@ -152,7 +160,12 @@ impl Cdc {
 			version,
 			timestamp,
 			changes,
+			changed_objects: OnceLock::new(),
 		}
+	}
+
+	pub fn changed_objects_with(&self, compute: impl FnOnce(&Cdc) -> BTreeSet<ObjectId>) -> &BTreeSet<ObjectId> {
+		self.changed_objects.get_or_init(|| compute(self))
 	}
 }
 
@@ -179,5 +192,35 @@ impl CdcBatch {
 
 	pub fn is_empty(&self) -> bool {
 		self.items.is_empty()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::cell::Cell;
+
+	use super::*;
+	use crate::interface::catalog::id::TableId;
+
+	#[test]
+	fn changed_objects_are_computed_once_per_commit() {
+		// Every flow actor asks the same shared commit for its objects; a second compute would redo the key
+		// decode per flow.
+		let cdc = Cdc::new(ChangeVersion::from(CommitVersion(1)), DateTime::from_nanos(1), Vec::new());
+		let calls = Cell::new(0);
+		let first = BTreeSet::from([ObjectId::Table(TableId(1))]);
+
+		let a = cdc.changed_objects_with(|_| {
+			calls.set(calls.get() + 1);
+			first.clone()
+		});
+		assert_eq!(a, &first);
+		let b = cdc.changed_objects_with(|_| {
+			calls.set(calls.get() + 1);
+			BTreeSet::from([ObjectId::Table(TableId(2))])
+		});
+
+		assert_eq!(calls.get(), 1, "the second call recomputed instead of reading the memo");
+		assert_eq!(b, &first, "the memoised set was replaced by the second compute");
 	}
 }

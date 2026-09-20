@@ -285,7 +285,7 @@ pub(crate) fn accepts(object: ObjectId, source_objects: &BTreeSet<ObjectId>) -> 
 }
 
 fn is_relevant(cdc: &Cdc, source_objects: &BTreeSet<ObjectId>) -> bool {
-	changed_objects(cdc).into_iter().any(|object| accepts(object, source_objects))
+	changed_objects(cdc).iter().any(|object| accepts(*object, source_objects))
 }
 
 pub(crate) fn collect_flow_changes(

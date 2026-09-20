@@ -204,6 +204,8 @@ impl SubscriptionStore {
 
 #[cfg(test)]
 mod tests {
+	use std::panic::{AssertUnwindSafe, catch_unwind};
+
 	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 	use reifydb_value::{fragment::Fragment, value::diff_type::DiffType};
 
@@ -506,7 +508,7 @@ mod tests {
 		let id = store.next_id();
 		store.register(id);
 
-		let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+		let panicked = catch_unwind(AssertUnwindSafe(|| {
 			let _hydration = HydrationGuard::new(&store, id);
 			panic!("hydration failed");
 		}));

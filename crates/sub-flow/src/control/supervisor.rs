@@ -620,7 +620,7 @@ impl FlowSupervisor {
 	fn update_tracker(&self, cdcs: &[Arc<Cdc>]) -> BTreeSet<ObjectId> {
 		let mut changed = BTreeSet::new();
 		for cdc in cdcs {
-			for object in changed_objects(cdc) {
+			for &object in changed_objects(cdc) {
 				self.tracker.update(object, cdc.version.commit);
 				changed.insert(object);
 			}
