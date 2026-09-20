@@ -425,7 +425,11 @@ impl FlowSupervisor {
 
 		let registered: BTreeSet<FlowId> =
 			state.flows.keys().copied().chain(to_spawn.iter().map(|(f, _)| f.id)).collect();
-		let closure = state.analyzer.get_dependency_graph().upstream_closure();
+		let closure = if changed || !to_spawn.is_empty() {
+			state.analyzer.get_dependency_graph().upstream_closure()
+		} else {
+			BTreeMap::new()
+		};
 		let mut prepared: Vec<PreparedFlow> = Vec::with_capacity(to_spawn.len());
 		for (flow, seed) in to_spawn {
 			let flow_id = flow.id;
