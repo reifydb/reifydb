@@ -15,6 +15,7 @@ pub mod log;
 pub mod lsn;
 pub mod recovered;
 pub mod replay;
+pub mod sync;
 #[cfg(feature = "testing")]
 pub mod testing;
 pub mod wal;
