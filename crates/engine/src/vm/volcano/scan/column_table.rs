@@ -3,10 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_column::{
-	reader::SnapshotReader,
-	snapshot::{Schema, SystemColumn},
-};
+use reifydb_column::snapshot::{Schema, SystemColumn};
 use reifydb_core::{
 	error::diagnostic::{internal::internal, query::no_column_snapshot},
 	interface::resolved::ResolvedTable,
@@ -18,14 +15,16 @@ use reifydb_value::{error::Error, fragment::Fragment};
 
 use crate::{
 	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::{
+		query::{QueryContext, QueryNode},
+		scan::column_block_sequence::BlockSequenceReader,
+	},
 };
 
 enum ScanState {
 	Unopened,
 	Reading {
-		reader: SnapshotReader,
-		schema: Schema,
+		reader: BlockSequenceReader,
 		emitted: bool,
 	},
 	Done,
@@ -66,18 +65,12 @@ impl ColumnTableScanNode {
 			Error(Box::new(internal(format!("column store is not registered, cannot read table {}", name))))
 		})?;
 
-		let block = store.get(snapshot.id).ok_or_else(|| {
-			Error(Box::new(internal(format!(
-				"column block for snapshot {} of table {} is missing from the column store",
-				snapshot.id, name
-			))))
-		})?;
-
-		let schema = Arc::clone(&block.schema);
-		let reader = SnapshotReader::new(block, self.context.batch_size as usize);
 		Ok(ScanState::Reading {
-			reader,
-			schema,
+			reader: BlockSequenceReader::new(
+				store,
+				vec![snapshot.id],
+				self.context.batch_size as usize,
+			),
 			emitted: false,
 		})
 	}
@@ -105,19 +98,18 @@ impl QueryNode for ColumnTableScanNode {
 		}
 		let ScanState::Reading {
 			reader,
-			schema,
 			emitted,
 		} = &mut self.state
 		else {
 			return Ok(None);
 		};
-		match reader.next() {
+		match reader.next()? {
 			Some(batch) => {
 				*emitted = true;
-				batch.map(Some)
+				Ok(Some(batch))
 			}
 			None => {
-				let empty = (!*emitted).then(|| empty_columns(schema));
+				let empty = (!*emitted).then(|| reader.schema().map(empty_columns)).flatten();
 				self.state = ScanState::Done;
 				Ok(empty)
 			}

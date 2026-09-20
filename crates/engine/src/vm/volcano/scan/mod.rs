@@ -15,6 +15,7 @@ use reifydb_transaction::{error::TransactionError, transaction::Transaction};
 
 use crate::{Result, vm::services::Services};
 
+pub mod column_block_sequence;
 pub mod column_table;
 pub mod column_unsupported;
 pub mod dictionary;
