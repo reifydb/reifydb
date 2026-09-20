@@ -13,6 +13,8 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 #[cfg(feature = "column")]
 use reifydb_runtime::actor::mailbox::ActorRef;
 use reifydb_runtime::shutdown::Shutdown;
+#[cfg(feature = "column")]
+use reifydb_store_column::ColumnStore;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::value::duration::Duration;
 use tracing::debug;
@@ -20,10 +22,7 @@ use tracing::debug;
 use tracing::info;
 
 #[cfg(feature = "column")]
-use crate::column::{
-	actor::{SeriesMessage, TableMessage},
-	block_store::ColumnBlockStore,
-};
+use crate::column::actor::{SeriesMessage, TableMessage};
 
 #[derive(Clone, Debug)]
 pub struct StorageConfig {
@@ -49,7 +48,7 @@ impl Default for StorageConfig {
 
 pub struct StorageSubsystem {
 	#[cfg(feature = "column")]
-	block_store: ColumnBlockStore,
+	block_store: ColumnStore,
 	#[cfg(feature = "column")]
 	table_ref: ActorRef<TableMessage>,
 	#[cfg(feature = "column")]
@@ -60,7 +59,7 @@ pub struct StorageSubsystem {
 impl StorageSubsystem {
 	#[cfg(feature = "column")]
 	pub fn new(
-		block_store: ColumnBlockStore,
+		block_store: ColumnStore,
 		table_ref: ActorRef<TableMessage>,
 		series_ref: ActorRef<SeriesMessage>,
 	) -> Self {
@@ -81,7 +80,7 @@ impl StorageSubsystem {
 	}
 
 	#[cfg(feature = "column")]
-	pub fn block_store(&self) -> ColumnBlockStore {
+	pub fn block_store(&self) -> ColumnStore {
 		self.block_store.clone()
 	}
 }

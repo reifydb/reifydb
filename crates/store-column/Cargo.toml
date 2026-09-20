@@ -1,0 +1,34 @@
+[package]
+name = "reifydb-store-column"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Columnar block storage for materialized snapshots"
+
+[lib]
+doctest = false
+
+[features]
+default = []
+sqlite = ["rusqlite", "reifydb-sqlite"]
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[dependencies]
+reifydb-column = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-sqlite = { workspace = true, optional = true }
+reifydb-value = { workspace = true }
+
+dashmap = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rusqlite = { workspace = true, features = ["bundled"], optional = true }
+
+[dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }

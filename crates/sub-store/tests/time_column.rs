@@ -15,15 +15,13 @@ use reifydb_column::{
 	snapshot::ColumnBlock,
 };
 use reifydb_core::{
-	common::TimeSource,
+	common::{CommitVersion, TimeSource},
 	interface::catalog::id::ColumnSnapshotId,
 	value::column::{ColumnWithName, columns::Columns},
 };
+use reifydb_store_column::ColumnStore;
 use reifydb_sub_store::{
-	column::{
-		actor::batches::{column_block_from_batches, system_column_schema},
-		block_store::ColumnBlockStore,
-	},
+	column::actor::batches::{column_block_from_batches, system_column_schema},
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
@@ -59,7 +57,7 @@ fn at(second: u64) -> DateTime {
 	DateTime::from_ymd_hms(2020, 1, 1, 0, 0, second as u32).unwrap()
 }
 
-fn owned_blocks(db: &TestDb, store: &ColumnBlockStore, object: &Object, name: &str) -> Vec<Arc<ColumnBlock>> {
+fn owned_blocks(db: &TestDb, store: &ColumnStore, object: &Object, name: &str) -> Vec<Arc<ColumnBlock>> {
 	// Entries are read before the catalog so a block put after its snapshot commit is never missed.
 	let entries = store.entries();
 	let engine = db.engine();
@@ -128,9 +126,9 @@ fn a_timed_table_block_carries_time_and_a_timeless_one_does_not() {
 		.unwrap_or_else(|| panic!("a 3-row block of test::{name} did not materialize within 5 seconds"));
 
 		let expected_schema: &[&str] = if timed {
-			&["id", "at", "#rownum", "#created_at", "#updated_at", "#time"]
+			&["id", "at", "#rownum", "#created_at", "#updated_at", "#time", "#commit_version"]
 		} else {
-			&["id", "at", "#rownum", "#created_at", "#updated_at"]
+			&["id", "at", "#rownum", "#created_at", "#updated_at", "#commit_version"]
 		};
 		for block in &blocks {
 			assert_eq!(schema_names(block), expected_schema, "test::{name}");
@@ -196,9 +194,9 @@ fn a_timed_series_block_carries_time_and_a_timeless_one_does_not() {
 		.unwrap_or_else(|| panic!("two buckets of test::{name} did not materialize within 5 seconds"));
 
 		let expected_schema: &[&str] = if timed {
-			&["k", "at", "value", "#rownum", "#created_at", "#updated_at", "#time"]
+			&["k", "at", "value", "#rownum", "#created_at", "#updated_at", "#time", "#commit_version"]
 		} else {
-			&["k", "at", "value", "#rownum", "#created_at", "#updated_at"]
+			&["k", "at", "value", "#rownum", "#created_at", "#updated_at", "#commit_version"]
 		};
 		let mut keys = BTreeSet::new();
 		for block in blocks {
@@ -263,7 +261,7 @@ fn a_timed_block_refuses_a_batch_without_time() {
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
 	schema.extend(system_column_schema(&TimeSource::Processing));
 
-	let err = column_block_from_batches(schema, vec![batch], &Compressor::new(CompressConfig::default()))
+	let err = column_block_from_batches(schema, vec![batch], CommitVersion(1), &Compressor::new(CompressConfig::default()))
 		.err()
 		.expect("a timed block must not be built from a batch with no #time");
 
@@ -287,7 +285,7 @@ fn a_timeless_block_refuses_a_batch_that_carries_time() {
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
 	schema.extend(system_column_schema(&TimeSource::None));
 
-	let err = column_block_from_batches(schema, vec![batch], &Compressor::new(CompressConfig::default()))
+	let err = column_block_from_batches(schema, vec![batch], CommitVersion(1), &Compressor::new(CompressConfig::default()))
 		.err()
 		.expect("a timeless block must not be built from a batch that carries #time");
 

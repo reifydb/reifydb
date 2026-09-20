@@ -10,8 +10,8 @@ use reifydb::{
 	testing::db::{TestDb, poll_until},
 };
 use reifydb_column::reader::SnapshotReader;
+use reifydb_store_column::ColumnStore;
 use reifydb_sub_store::{
-	column::block_store::ColumnBlockStore,
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
@@ -35,11 +35,11 @@ fn db() -> TestDb {
 	db
 }
 
-fn block_store(db: &TestDb) -> ColumnBlockStore {
+fn block_store(db: &TestDb) -> ColumnStore {
 	db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered").block_store()
 }
 
-fn latest_rows(db: &TestDb, store: &ColumnBlockStore) -> Option<BTreeMap<i32, i32>> {
+fn latest_rows(db: &TestDb, store: &ColumnStore) -> Option<BTreeMap<i32, i32>> {
 	// Entries are read before the catalog so a block put after its snapshot commit is never missed.
 	let entries = store.entries();
 	let engine = db.engine();
@@ -76,7 +76,7 @@ fn latest_rows(db: &TestDb, store: &ColumnBlockStore) -> Option<BTreeMap<i32, i3
 	Some(rows)
 }
 
-fn await_latest(db: &TestDb, store: &ColumnBlockStore, expected: &[(i32, i32)], what: &str) {
+fn await_latest(db: &TestDb, store: &ColumnStore, expected: &[(i32, i32)], what: &str) {
 	let expected: BTreeMap<i32, i32> = expected.iter().copied().collect();
 	let seen = poll_until(
 		|| latest_rows(db, store).filter(|rows| *rows == expected),

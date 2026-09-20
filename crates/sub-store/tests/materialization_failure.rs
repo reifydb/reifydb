@@ -18,9 +18,8 @@ use reifydb_sqlite::{
 	SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
 };
-use reifydb_sub_store::{
-	column::persistent::sqlite::SqliteColumnStore, factory::StorageSubsystemFactory, subsystem::StorageConfig,
-};
+use reifydb_store_column::persistent::sqlite::SqliteColumnStore;
+use reifydb_sub_store::{factory::StorageSubsystemFactory, subsystem::StorageConfig};
 use reifydb_value::value::duration::Duration;
 
 const CHILD: &str = "REIFYDB_SUB_STORE_FAILURE_CHILD";

@@ -108,7 +108,9 @@ fn materialize(schema: &Schema, mut fetch: impl FnMut(usize) -> Result<ColumnBuf
 			Some(SystemColumn::CreatedAt) => created_at = Some(extract_datetimes(&data)),
 			Some(SystemColumn::UpdatedAt) => updated_at = Some(extract_datetimes(&data)),
 			Some(SystemColumn::Time) => time = extract_datetimes(&data),
-			None => columns.push(ColumnWithName::new(Fragment::internal(name.clone()), data)),
+			Some(SystemColumn::CommitVersion) | None => {
+				columns.push(ColumnWithName::new(Fragment::internal(name.clone()), data))
+			}
 		}
 	}
 	let missing = |column: SystemColumn| format!("snapshot block missing {} system column", column.name());

@@ -33,6 +33,7 @@ reifydb-runtime = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-sqlite = { workspace = true }
 reifydb-store-cdc = { workspace = true }
+reifydb-store-column = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-operator = { workspace = true }
 reifydb-store-single = { workspace = true }

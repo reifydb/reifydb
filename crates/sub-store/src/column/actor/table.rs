@@ -30,6 +30,7 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor, Directive},
 };
+use reifydb_store_column::ColumnStore;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
 	Result,
@@ -39,12 +40,9 @@ use reifydb_value::{
 };
 use tracing::debug;
 
-use crate::column::{
-	actor::{
-		TableMessage,
-		batches::{column_block_from_batches, system_column_schema},
-	},
-	block_store::ColumnBlockStore,
+use crate::column::actor::{
+	TableMessage,
+	batches::{column_block_from_batches, system_column_schema},
 };
 
 #[derive(Clone, Default)]
@@ -98,7 +96,7 @@ pub struct TableMaterializationState {
 
 pub struct TableMaterializationActor {
 	engine: StandardEngine,
-	block_store: ColumnBlockStore,
+	block_store: ColumnStore,
 	compressor: Compressor,
 	tick_interval: Duration,
 	changes: TableChanges,
@@ -107,7 +105,7 @@ pub struct TableMaterializationActor {
 impl TableMaterializationActor {
 	pub fn new(
 		engine: StandardEngine,
-		block_store: ColumnBlockStore,
+		block_store: ColumnStore,
 		compressor: Compressor,
 		tick_interval: Duration,
 		changes: TableChanges,
@@ -121,7 +119,7 @@ impl TableMaterializationActor {
 		}
 	}
 
-	pub fn block_store(&self) -> &ColumnBlockStore {
+	pub fn block_store(&self) -> &ColumnStore {
 		&self.block_store
 	}
 
@@ -179,7 +177,7 @@ impl TableMaterializationActor {
 		}
 		let context = self.build_query_context();
 		let batches = self.scan_table_batches(query_txn, table, &context)?;
-		let block_arc = Arc::new(self.build_column_block(table, batches)?);
+		let block_arc = Arc::new(self.build_column_block(table, batches, version)?);
 		self.store_table_snapshot(table, version, block_arc)
 	}
 
@@ -218,11 +216,16 @@ impl TableMaterializationActor {
 	}
 
 	#[inline]
-	fn build_column_block(&self, table: &Table, batches: Vec<Columns>) -> Result<ColumnBlock> {
+	fn build_column_block(
+		&self,
+		table: &Table,
+		batches: Vec<Columns>,
+		version: CommitVersion,
+	) -> Result<ColumnBlock> {
 		let mut schema: Vec<(String, ValueType)> =
 			table.columns.iter().map(|c| (c.name.clone(), c.constraint.get_type())).collect();
 		schema.extend(system_column_schema(&table.time));
-		column_block_from_batches(schema, batches, &self.compressor)
+		column_block_from_batches(schema, batches, version, &self.compressor)
 	}
 
 	#[inline]

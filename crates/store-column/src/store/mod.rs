@@ -13,16 +13,16 @@ use reifydb_value::Result;
 use tracing::warn;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::column::persistent::sqlite::SqliteColumnStore;
+use crate::persistent::sqlite::SqliteColumnStore;
 
 #[derive(Clone, Default)]
-pub struct ColumnBlockStore {
+pub struct ColumnStore {
 	blocks: Arc<DashMap<ColumnSnapshotId, Arc<ColumnBlock>>>,
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	persistent: Option<Arc<SqliteColumnStore>>,
 }
 
-impl ColumnBlockStore {
+impl ColumnStore {
 	pub fn new() -> Self {
 		Self::default()
 	}

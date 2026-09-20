@@ -8,7 +8,7 @@ use reifydb_column::{
 	snapshot::{ColumnBlock, ColumnChunks, SystemColumn},
 };
 use reifydb_core::{
-	common::TimeSource,
+	common::{CommitVersion, TimeSource},
 	value::column::{buffer::ColumnBuffer, columns::Columns, data::canonical::Canonical},
 };
 use reifydb_value::{Result, reifydb_assertions, value::value_type::ValueType};
@@ -36,6 +36,7 @@ fn carries_time(time: &TimeSource) -> bool {
 pub fn column_block_from_batches(
 	schema: Vec<(String, ValueType)>,
 	batches: Vec<Columns>,
+	version: CommitVersion,
 	compressor: &Compressor,
 ) -> Result<ColumnBlock> {
 	let timed = schema.iter().any(|(name, _)| SystemColumn::from_name(name) == Some(SystemColumn::Time));
@@ -64,7 +65,7 @@ pub fn column_block_from_batches(
 
 	for (name, ty) in &schema {
 		let combined = match SystemColumn::from_name(name) {
-			Some(sc) => system_column_buffer(sc, &batches)?,
+			Some(sc) => system_column_buffer(sc, &batches, version)?,
 			None => user_column_buffer(name, &batches)?,
 		};
 		let canonical = Canonical::from_column_buffer(&combined)?;
@@ -120,7 +121,7 @@ fn user_column_buffer(name: &str, batches: &[Columns]) -> Result<ColumnBuffer> {
 	})
 }
 
-fn system_column_buffer(sc: SystemColumn, batches: &[Columns]) -> Result<ColumnBuffer> {
+fn system_column_buffer(sc: SystemColumn, batches: &[Columns], version: CommitVersion) -> Result<ColumnBuffer> {
 	if batches.is_empty() {
 		return Err(SubStoreError::NoBatchesForMaterialization {
 			column: sc.name().to_string(),
@@ -167,6 +168,10 @@ fn system_column_buffer(sc: SystemColumn, batches: &[Columns]) -> Result<ColumnB
 				}
 			}
 			Ok(ColumnBuffer::datetime(values))
+		}
+		SystemColumn::CommitVersion => {
+			let total: usize = batches.iter().map(|b| b.row_count()).sum();
+			Ok(ColumnBuffer::uint8(vec![version.0; total]))
 		}
 	}
 }

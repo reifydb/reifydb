@@ -13,11 +13,17 @@ pub enum SystemColumn {
 	CreatedAt = 1,
 	UpdatedAt = 2,
 	Time = 3,
+	CommitVersion = 4,
 }
 
 impl SystemColumn {
-	pub const ALL: [SystemColumn; 4] =
-		[SystemColumn::RowNumber, SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time];
+	pub const ALL: [SystemColumn; 5] = [
+		SystemColumn::RowNumber,
+		SystemColumn::CreatedAt,
+		SystemColumn::UpdatedAt,
+		SystemColumn::Time,
+		SystemColumn::CommitVersion,
+	];
 
 	pub const fn name(self) -> &'static str {
 		match self {
@@ -25,6 +31,7 @@ impl SystemColumn {
 			SystemColumn::CreatedAt => "#created_at",
 			SystemColumn::UpdatedAt => "#updated_at",
 			SystemColumn::Time => "#time",
+			SystemColumn::CommitVersion => "#commit_version",
 		}
 	}
 
@@ -34,6 +41,7 @@ impl SystemColumn {
 			SystemColumn::CreatedAt => ValueType::DateTime,
 			SystemColumn::UpdatedAt => ValueType::DateTime,
 			SystemColumn::Time => ValueType::DateTime,
+			SystemColumn::CommitVersion => ValueType::Uint8,
 		}
 	}
 
@@ -43,6 +51,7 @@ impl SystemColumn {
 			"#created_at" => Some(SystemColumn::CreatedAt),
 			"#updated_at" => Some(SystemColumn::UpdatedAt),
 			"#time" => Some(SystemColumn::Time),
+			"#commit_version" => Some(SystemColumn::CommitVersion),
 			_ => None,
 		}
 	}

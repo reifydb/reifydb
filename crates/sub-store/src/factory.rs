@@ -15,18 +15,17 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::system::ActorSpawner;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteConfig;
+#[cfg(feature = "column")]
+use reifydb_store_column::ColumnStore;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_store_column::persistent::sqlite::SqliteColumnStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::column::persistent::sqlite::SqliteColumnStore;
 #[cfg(feature = "column")]
-use crate::column::{
-	actor::{
-		series::SeriesMaterializationActor,
-		table::{TableChanges, TableMaterializationActor},
-	},
-	block_store::ColumnBlockStore,
+use crate::column::actor::{
+	series::SeriesMaterializationActor,
+	table::{TableChanges, TableMaterializationActor},
 };
 use crate::subsystem::{StorageConfig, StorageSubsystem};
 
@@ -69,14 +68,14 @@ impl SubsystemFactory for StorageSubsystemFactory {
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let block_store = {
 			let tier = self.column_sqlite.clone().map(|cfg| Arc::new(SqliteColumnStore::new(cfg)));
-			let store = ColumnBlockStore::with_persistent(tier);
+			let store = ColumnStore::with_persistent(tier);
 			store.warm()?;
 			store
 		};
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let block_store = ColumnBlockStore::new();
+		let block_store = ColumnStore::new();
 
-		ioc.register_service::<Arc<ColumnBlockStore>>(Arc::new(block_store.clone()));
+		ioc.register_service::<Arc<ColumnStore>>(Arc::new(block_store.clone()));
 
 		let table_changes = TableChanges::new();
 		event_bus.register::<PostCommitEvent, _>(table_changes.clone());

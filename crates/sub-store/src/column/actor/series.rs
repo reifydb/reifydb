@@ -38,6 +38,7 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor, Directive},
 };
+use reifydb_store_column::ColumnStore;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
 	Result,
@@ -53,7 +54,6 @@ use crate::column::{
 		SeriesMessage,
 		batches::{column_block_from_batches, system_column_schema},
 	},
-	block_store::ColumnBlockStore,
 	error::SubStoreError,
 };
 
@@ -68,7 +68,7 @@ pub struct SeriesMaterializationState {
 
 pub struct SeriesMaterializationActor {
 	engine: StandardEngine,
-	block_store: ColumnBlockStore,
+	block_store: ColumnStore,
 	compressor: Compressor,
 	tick_interval: Duration,
 	bucket_width: u64,
@@ -78,7 +78,7 @@ pub struct SeriesMaterializationActor {
 impl SeriesMaterializationActor {
 	pub fn new(
 		engine: StandardEngine,
-		block_store: ColumnBlockStore,
+		block_store: ColumnStore,
 		compressor: Compressor,
 		tick_interval: Duration,
 		bucket_width: u64,
@@ -94,7 +94,7 @@ impl SeriesMaterializationActor {
 		}
 	}
 
-	pub fn block_store(&self) -> &ColumnBlockStore {
+	pub fn block_store(&self) -> &ColumnStore {
 		&self.block_store
 	}
 
@@ -209,7 +209,7 @@ impl SeriesMaterializationActor {
 			);
 		}
 
-		let block = Arc::new(self.build_column_block(series, batches)?);
+		let block = Arc::new(self.build_column_block(series, batches, sealed_at_commit_version)?);
 		self.upsert_snapshot_and_store(series, metadata, bucket, sealed_at_commit_version, block)
 	}
 
@@ -263,9 +263,14 @@ impl SeriesMaterializationActor {
 	}
 
 	#[inline]
-	fn build_column_block(&self, series: &Series, batches: Vec<Columns>) -> Result<ColumnBlock> {
+	fn build_column_block(
+		&self,
+		series: &Series,
+		batches: Vec<Columns>,
+		version: CommitVersion,
+	) -> Result<ColumnBlock> {
 		let schema = scan_output_schema(series);
-		column_block_from_batches(schema, batches, &self.compressor)
+		column_block_from_batches(schema, batches, version, &self.compressor)
 	}
 
 	#[inline]
