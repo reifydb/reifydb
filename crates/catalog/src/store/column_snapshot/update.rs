@@ -4,12 +4,13 @@
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
-		column_snapshot::{ColumnSnapshot, ColumnSnapshotSource},
+		column_snapshot::{ColumnSnapshot, ColumnSnapshotSource, ColumnStats},
 		id::ColumnSnapshotId,
 	},
 	key::column::ColumnSnapshotKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::value::Value;
 
 use crate::{
 	CatalogStore, Result,
@@ -21,6 +22,8 @@ pub struct ColumnSnapshotToUpdate {
 	pub sequence_counter: u64,
 	pub read_version: CommitVersion,
 	pub row_count: u64,
+	pub partition_values: Vec<Value>,
+	pub stats: Vec<ColumnStats>,
 }
 
 impl CatalogStore {
@@ -99,11 +102,8 @@ impl CatalogStore {
 
 		column_snapshot::set_read_version(&mut row, patch.read_version.0);
 		column_snapshot::set_row_count(&mut row, patch.row_count);
-		column_snapshot::set_partition_values(
-			&mut row,
-			&serialize_partition_values(&existing.partition_values),
-		);
-		column_snapshot::set_stats(&mut row, &serialize_stats(&existing.stats));
+		column_snapshot::set_partition_values(&mut row, &serialize_partition_values(&patch.partition_values));
+		column_snapshot::set_stats(&mut row, &serialize_stats(&patch.stats));
 
 		txn.set(&ColumnSnapshotKey::new(existing.id), row.freeze())?;
 
@@ -112,8 +112,8 @@ impl CatalogStore {
 			namespace: existing.namespace,
 			source: updated_source,
 			row_count: patch.row_count,
-			partition_values: existing.partition_values,
-			stats: existing.stats,
+			partition_values: patch.partition_values,
+			stats: patch.stats,
 		})
 	}
 }
@@ -123,10 +123,11 @@ pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::catalog::{
-			column_snapshot::ColumnSnapshotSource,
+			column_snapshot::{ColumnSnapshotSource, ColumnStats},
 			id::{ColumnSnapshotId, NamespaceId, SeriesId, TableId},
 		},
 	};
+	use reifydb_value::value::{Value, partition::Partition};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
@@ -164,6 +165,8 @@ pub mod tests {
 				sequence_counter: 17,
 				read_version: CommitVersion(42),
 				row_count: 99,
+				partition_values: Vec::new(),
+				stats: Vec::new(),
 			},
 		)
 		.unwrap();
@@ -225,6 +228,8 @@ pub mod tests {
 				sequence_counter: 0,
 				read_version: CommitVersion(99),
 				row_count: 7,
+				partition_values: Vec::new(),
+				stats: Vec::new(),
 			},
 		)
 		.unwrap();
@@ -243,6 +248,65 @@ pub mod tests {
 	}
 
 	#[test]
+	fn test_update_overwrites_partition_values_and_stats() {
+		// A re-materialized bucket rewrites its block, so its statistics must be rewritten with it.
+		// If an update carried the old min/max forward, pruning would drop a block that does hold
+		// matching rows, which is a silent wrong answer rather than a slow one.
+		let mut txn = create_test_admin_transaction();
+		let created = CatalogStore::create_column_snapshot(
+			&mut txn,
+			ColumnSnapshotToCreate {
+				namespace: NamespaceId(1),
+				source: ColumnSnapshotSource::SeriesBucket {
+					series_id: SeriesId(303),
+					bucket_start: 0,
+					bucket_width: 100,
+					partition: Some(Partition(7)),
+					sequence_counter: 1,
+					sealed_at_commit_version: CommitVersion(1),
+				},
+				row_count: 2,
+				partition_values: vec![Value::Utf8("eu".to_string())],
+				stats: vec![ColumnStats {
+					column: "v".to_string(),
+					min: Some(Value::Int4(10)),
+					max: Some(Value::Int4(20)),
+					none_count: 0,
+				}],
+			},
+		)
+		.unwrap();
+
+		let updated = CatalogStore::update_column_snapshot(
+			&mut txn,
+			created.id,
+			ColumnSnapshotToUpdate {
+				sequence_counter: 2,
+				read_version: CommitVersion(2),
+				row_count: 3,
+				partition_values: vec![Value::Utf8("eu".to_string())],
+				stats: vec![ColumnStats {
+					column: "v".to_string(),
+					min: Some(Value::Int4(10)),
+					max: Some(Value::Int4(999)),
+					none_count: 1,
+				}],
+			},
+		)
+		.unwrap();
+
+		assert_eq!(updated.stats[0].max, Some(Value::Int4(999)), "the new max must replace the old one");
+		assert_eq!(updated.stats[0].none_count, 1, "the new none_count must replace the old one");
+
+		let reread = CatalogStore::find_column_snapshot(&mut Transaction::Admin(&mut txn), created.id)
+			.unwrap()
+			.expect("snapshot still present");
+		assert_eq!(reread.stats[0].max, Some(Value::Int4(999)), "the overwrite must reach storage");
+		assert_eq!(reread.stats[0].none_count, 1);
+		assert_eq!(reread.partition_values, vec![Value::Utf8("eu".to_string())]);
+	}
+
+	#[test]
 	fn test_update_nonexistent_column_snapshot_errors() {
 		let mut txn = create_test_admin_transaction();
 		let err = CatalogStore::update_column_snapshot(
@@ -252,6 +316,8 @@ pub mod tests {
 				sequence_counter: 1,
 				read_version: CommitVersion(1),
 				row_count: 0,
+				partition_values: Vec::new(),
+				stats: Vec::new(),
 			},
 		)
 		.expect_err("update of missing id must error");

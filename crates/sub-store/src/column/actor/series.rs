@@ -11,21 +11,25 @@ use reifydb_column::{
 	bucket::{Bucket, BucketId, bucket_for, is_closed},
 	compress::Compressor,
 	snapshot::ColumnBlock,
+	stats::block_stats,
 };
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{
-			column_snapshot::ColumnSnapshotSource,
+			column_snapshot::{ColumnSnapshotSource, ColumnStats},
 			id::SeriesId,
+			object::ObjectId,
 			series::{Series, SeriesPartitionMetadata},
 		},
 		resolved::{ResolvedNamespace, ResolvedSeries},
 	},
+	key::{any::TaggedKey, partition::PartitionKey},
 	value::column::columns::Columns,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
+	partition::decode_partition_values,
 	vm::volcano::{
 		query::{QueryContext, QueryNode, query_budget},
 		scan::series::SeriesScanNode,
@@ -39,15 +43,23 @@ use reifydb_runtime::actor::{
 	traits::{Actor, Directive},
 };
 use reifydb_store_column::ColumnStore;
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
+use reifydb_transaction::{
+	multi::RangeScope,
+	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
+};
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions,
-	value::{datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition, value_type::ValueType},
+	value::{
+		Value, datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
+		value_type::ValueType,
+	},
 };
-use tracing::debug;
+use tracing::{debug, warn};
+
+const PARTITION_CARDINALITY_WARN: usize = 1000;
 
 use crate::column::{
 	actor::{
@@ -62,7 +74,8 @@ pub struct SeriesBucketState {
 }
 
 pub struct SeriesMaterializationState {
-	pub bucket_state: HashMap<(SeriesId, BucketId), SeriesBucketState>,
+	pub bucket_state: HashMap<(SeriesId, Partition, BucketId), SeriesBucketState>,
+	pub partitions: HashMap<SeriesId, Vec<(Partition, Vec<Value>)>>,
 	_timer_handle: Option<TimerHandle>,
 }
 
@@ -109,6 +122,7 @@ impl SeriesMaterializationActor {
 			Ok(series_list) => series_list,
 			Err(e) => panic!("series materialization: list_series failed: {e}"),
 		};
+		state.partitions.clear();
 		for series in series_list {
 			if let Err(e) =
 				self.materialize_series_buckets(state, &mut query_txn, &catalog, &series, now_wall)
@@ -134,30 +148,86 @@ impl SeriesMaterializationActor {
 		series: &Series,
 		now_wall: DateTime,
 	) -> Result<()> {
-		let Some(metadata) = catalog.find_series_metadata(
-			&mut Transaction::Query(&mut *query_txn),
-			series.id,
-			Partition::default(),
-		)?
-		else {
-			return Ok(());
-		};
-		if metadata.row_count == 0 {
-			return Ok(());
-		}
-		let first = bucket_for(metadata.oldest_key, self.bucket_width);
-		let last = bucket_for(metadata.newest_key, self.bucket_width);
-		let mut start = first.start;
-		while start <= last.start {
-			let bucket = Bucket {
-				start,
-				end: start + self.bucket_width,
-				width: self.bucket_width,
+		let partitions = self.partitions_of(state, query_txn, series)?;
+		for (partition, partition_values) in partitions {
+			let Some(metadata) = catalog.find_series_metadata(
+				&mut Transaction::Query(&mut *query_txn),
+				series.id,
+				partition,
+			)?
+			else {
+				continue;
 			};
-			start = start.saturating_add(self.bucket_width);
-			self.maybe_materialize_bucket(state, query_txn, series, &metadata, &bucket, now_wall)?;
+			if metadata.row_count == 0 {
+				continue;
+			}
+			let first = bucket_for(metadata.oldest_key, self.bucket_width);
+			let last = bucket_for(metadata.newest_key, self.bucket_width);
+			let mut start = first.start;
+			while start <= last.start {
+				let bucket = Bucket {
+					start,
+					end: start + self.bucket_width,
+					width: self.bucket_width,
+				};
+				start = start.saturating_add(self.bucket_width);
+				self.maybe_materialize_bucket(
+					state,
+					query_txn,
+					series,
+					partition,
+					&partition_values,
+					&metadata,
+					&bucket,
+					now_wall,
+				)?;
+			}
 		}
 		Ok(())
+	}
+
+	fn partitions_of(
+		&self,
+		state: &mut SeriesMaterializationState,
+		query_txn: &mut QueryTransaction,
+		series: &Series,
+	) -> Result<Vec<(Partition, Vec<Value>)>> {
+		if let Some(cached) = state.partitions.get(&series.id) {
+			return Ok(cached.clone());
+		}
+		let partitions = if series.partition_by.is_empty() {
+			vec![(Partition::default(), Vec::new())]
+		} else {
+			self.read_partition_registry(query_txn, series)?
+		};
+		if partitions.len() > PARTITION_CARDINALITY_WARN {
+			warn!(
+				series = %series.name,
+				series_id = ?series.id,
+				partitions = partitions.len(),
+				"series exceeds {} partitions; the column store writes one block per bucket per partition",
+				PARTITION_CARDINALITY_WARN
+			);
+		}
+		state.partitions.insert(series.id, partitions.clone());
+		Ok(partitions)
+	}
+
+	fn read_partition_registry(
+		&self,
+		query_txn: &mut QueryTransaction,
+		series: &Series,
+	) -> Result<Vec<(Partition, Vec<Value>)>> {
+		let mut partitions = Vec::new();
+		let mut tx = Transaction::Query(query_txn);
+		let stream = tx.range(PartitionKey::full_scan(ObjectId::Series(series.id)), RangeScope::All, 1024)?;
+		for entry in stream {
+			let entry = entry?;
+			if let TaggedKey::Partition(key) = entry.key {
+				partitions.push((key.partition, decode_partition_values(&entry.bytes)));
+			}
+		}
+		Ok(partitions)
 	}
 
 	fn maybe_materialize_bucket(
@@ -165,6 +235,8 @@ impl SeriesMaterializationActor {
 		state: &mut SeriesMaterializationState,
 		query_txn: &mut QueryTransaction,
 		series: &Series,
+		partition: Partition,
+		partition_values: &[Value],
 		metadata: &SeriesPartitionMetadata,
 		bucket: &Bucket,
 		now_wall: DateTime,
@@ -172,7 +244,7 @@ impl SeriesMaterializationActor {
 		if !is_closed(bucket, series, metadata, now_wall, self.grace) {
 			return Ok(());
 		}
-		let key = (series.id, bucket.id());
+		let key = (series.id, partition, bucket.id());
 		let need_remat = match state.bucket_state.get(&key) {
 			None => true,
 			Some(s) => s.materialized_at_sequence < metadata.sequence_counter,
@@ -180,7 +252,7 @@ impl SeriesMaterializationActor {
 		if !need_remat {
 			return Ok(());
 		}
-		self.materialize_bucket(query_txn, series, metadata, bucket)?;
+		self.materialize_bucket(query_txn, series, partition, partition_values, metadata, bucket)?;
 		state.bucket_state.insert(
 			key,
 			SeriesBucketState {
@@ -194,12 +266,14 @@ impl SeriesMaterializationActor {
 		&self,
 		query_txn: &mut QueryTransaction,
 		series: &Series,
+		partition: Partition,
+		partition_values: &[Value],
 		metadata: &SeriesPartitionMetadata,
 		bucket: &Bucket,
 	) -> Result<()> {
 		let sealed_at_commit_version = query_txn.version();
 		let resolved_series = self.resolve_series_target(query_txn, series)?;
-		let batches = self.scan_bucket_batches(query_txn, resolved_series, bucket)?;
+		let batches = self.scan_bucket_batches(query_txn, resolved_series, partition, series, bucket)?;
 
 		reifydb_assertions! {
 			let after_scan = query_txn.version();
@@ -213,7 +287,17 @@ impl SeriesMaterializationActor {
 		}
 
 		let block = Arc::new(self.build_column_block(series, batches, sealed_at_commit_version)?);
-		self.upsert_snapshot_and_store(series, metadata, bucket, sealed_at_commit_version, block)
+		let stats = block_stats(block.as_ref())?;
+		self.upsert_snapshot_and_store(
+			series,
+			partition,
+			partition_values,
+			&stats,
+			metadata,
+			bucket,
+			sealed_at_commit_version,
+			block,
+		)
 	}
 
 	#[inline]
@@ -232,6 +316,8 @@ impl SeriesMaterializationActor {
 		&self,
 		query_txn: &mut QueryTransaction,
 		resolved_series: ResolvedSeries,
+		partition: Partition,
+		series: &Series,
 		bucket: &Bucket,
 	) -> Result<Vec<Columns>> {
 		let services = self.engine.services();
@@ -246,12 +332,13 @@ impl SeriesMaterializationActor {
 			memory,
 		});
 
+		let scan_partition = if series.partition_by.is_empty() { None } else { Some(partition) };
 		let mut scan = SeriesScanNode::new(
 			resolved_series,
 			Some(bucket.start),
 			Some(bucket.end),
 			None,
-			None,
+			scan_partition,
 			Arc::clone(&context),
 		)?;
 
@@ -277,21 +364,26 @@ impl SeriesMaterializationActor {
 	}
 
 	#[inline]
+	#[allow(clippy::too_many_arguments)]
 	fn upsert_snapshot_and_store(
 		&self,
 		series: &Series,
+		partition: Partition,
+		partition_values: &[Value],
+		stats: &[ColumnStats],
 		metadata: &SeriesPartitionMetadata,
 		bucket: &Bucket,
 		sealed_at_commit_version: CommitVersion,
 		block: Arc<ColumnBlock>,
 	) -> Result<()> {
 		let row_count = block.len() as u64;
+		let stored_partition = if series.partition_by.is_empty() { None } else { Some(partition) };
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let cat = self.engine.catalog();
 		let column_snapshot = match cat.find_column_snapshot_for_series_bucket(
 			&mut Transaction::Admin(&mut admin),
 			series.id,
-			None,
+			stored_partition,
 			bucket.start,
 		)? {
 			Some(existing) => cat.update_column_snapshot(
@@ -301,6 +393,8 @@ impl SeriesMaterializationActor {
 					sequence_counter: metadata.sequence_counter,
 					read_version: sealed_at_commit_version,
 					row_count,
+					partition_values: partition_values.to_vec(),
+					stats: stats.to_vec(),
 				},
 			)?,
 			None => cat.create_column_snapshot(
@@ -311,13 +405,13 @@ impl SeriesMaterializationActor {
 						series_id: series.id,
 						bucket_start: bucket.start,
 						bucket_width: bucket.width,
-						partition: None,
+						partition: stored_partition,
 						sequence_counter: metadata.sequence_counter,
 						sealed_at_commit_version,
 					},
 					row_count,
-					partition_values: Vec::new(),
-					stats: Vec::new(),
+					partition_values: partition_values.to_vec(),
+					stats: stats.to_vec(),
 				},
 			)?,
 		};
@@ -375,6 +469,7 @@ impl Actor for SeriesMaterializationActor {
 			ctx.schedule_tick(self.tick_interval, |nanos| SeriesMessage::Tick(DateTime::from_nanos(nanos)));
 		SeriesMaterializationState {
 			bucket_state: HashMap::new(),
+			partitions: HashMap::new(),
 			_timer_handle: Some(handle),
 		}
 	}

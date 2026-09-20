@@ -67,9 +67,6 @@ pub enum ColumnError {
 	#[error("min_max: all rows are None")]
 	MinMaxAllNone,
 
-	#[error("min_max: float min/max not yet implemented (NaN handling)")]
-	MinMaxFloatUnsupported,
-
 	#[error("persist: failed to serialize column block: {reason}")]
 	PersistSerialize {
 		reason: String,
@@ -284,19 +281,6 @@ impl IntoDiagnostic for ColumnError {
 				code: "COL_016".to_string(),
 				rql: None,
 				message: "min_max: all rows are None".to_string(),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::MinMaxFloatUnsupported => Diagnostic {
-				code: "COL_017".to_string(),
-				rql: None,
-				message: "min_max: float min/max not yet implemented (NaN handling)".to_string(),
 				column: None,
 				fragment: Fragment::None,
 				label: None,

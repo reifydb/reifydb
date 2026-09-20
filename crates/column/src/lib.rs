@@ -12,3 +12,4 @@ pub mod reader;
 pub mod scan;
 pub mod selection;
 pub mod snapshot;
+pub mod stats;
