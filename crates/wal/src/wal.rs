@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::marker::PhantomData;
+use std::{collections::BTreeSet, marker::PhantomData};
 
 use reifydb_codec::log::{RecordKind, Term, record::Record};
 use reifydb_runtime::sync::{Arc, condvar::Condvar, mutex::Mutex};
-use reifydb_store_log::segment::Scan;
+use reifydb_store_log::{error::LogError, segment::Scan};
 use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
 
 use crate::{
 	body::Body,
 	device::{Append, Flush, Mark, ReadFrom, Reclaim},
 	error::{Result, WalError},
+	floor::Floor,
 	lsn::Lsn,
 	recovered::Recovered,
 };
@@ -22,6 +23,7 @@ struct Inner<T, L> {
 	device: L,
 	appender: Mutex<Appender>,
 	progress: Mutex<Progress>,
+	held: Mutex<BTreeSet<String>>,
 	flushed: Condvar,
 	body: PhantomData<T>,
 }
@@ -63,6 +65,7 @@ impl<T: Body, L: Append + Flush + ReadFrom + Reclaim + Mark> Wal<T, L> {
 				durable,
 				failed: None,
 			}),
+			held: Mutex::new(BTreeSet::new()),
 			flushed: Condvar::new(),
 			body: PhantomData,
 		}));
@@ -76,6 +79,41 @@ impl<T: Body, L: Append + Flush + ReadFrom + Reclaim + Mark> Wal<T, L> {
 				stop,
 			},
 		))
+	}
+}
+
+impl<T, L> Wal<T, L> {
+	pub(crate) fn device(&self) -> &L {
+		&self.0.device
+	}
+
+	pub(crate) fn release(&self, name: &str) {
+		self.0.held.lock().remove(name);
+	}
+}
+
+impl<T, L: Mark> Wal<T, L> {
+	pub fn floor(&self, name: &str) -> Result<Floor<T, L>> {
+		if !self.0.held.lock().insert(name.to_string()) {
+			return Err(WalError::FloorHeld(name.to_string()));
+		}
+		match self.position_of(name) {
+			Ok(position) => Ok(Floor::new(self.clone(), name.to_string(), position)),
+			Err(error) => {
+				self.release(name);
+				Err(error)
+			}
+		}
+	}
+
+	fn position_of(&self, name: &str) -> Result<Option<Lsn>> {
+		match self.0.device.register(name) {
+			Ok(()) => return Ok(None),
+			Err(WalError::Log(LogError::AlreadyExists(_))) => {}
+			Err(error) => return Err(error),
+		}
+		let stored = self.0.device.readers()?.into_iter().find(|(id, _)| id == name).map(|(_, hint)| hint);
+		Ok(stored.and_then(Lsn::from_version))
 	}
 }
 

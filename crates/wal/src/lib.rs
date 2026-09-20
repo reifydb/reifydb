@@ -9,6 +9,7 @@
 pub mod body;
 pub mod device;
 pub mod error;
+pub mod floor;
 pub mod log;
 pub mod lsn;
 pub mod recovered;
