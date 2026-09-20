@@ -298,7 +298,8 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 	}
 
 	pub fn cursor(&self, id: &str) -> Result<Cursor<'_, F>> {
-		Cursor::open(&self.fs, &self.dir, version_of(&self.fs, &self.dir, id)?)
+		let after = version_of(&self.fs, &self.dir, id)?;
+		Cursor::open(&self.fs, &self.dir, (after != LogVersion::ZERO).then_some(after))
 	}
 
 	pub fn record_at(&self, index: LogIndex) -> Result<Option<Record>> {

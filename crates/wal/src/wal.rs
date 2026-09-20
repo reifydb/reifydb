@@ -187,7 +187,6 @@ impl<T: Body, L: ReadFrom + Reclaim> Wal<T, L> {
 					oldest,
 				});
 			}
-			Some(oldest) if from == oldest => Lsn::FIRST,
 			_ => from,
 		};
 		match self.0.device.read_from(at.into()) {
