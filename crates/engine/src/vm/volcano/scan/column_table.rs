@@ -60,7 +60,7 @@ impl ColumnTableScanNode {
 		let snapshot = services
 			.catalog
 			.find_latest_column_snapshot_for_table(rx, self.table.def().id)?
-			.ok_or_else(|| Error(Box::new(no_column_snapshot(self.table.identifier().clone(), &name))))?;
+			.ok_or_else(|| Error(Box::new(no_column_snapshot(self.table.identifier().clone(), "table", &name))))?;
 
 		let store = services.ioc.try_resolve::<Arc<ColumnStore>>().ok_or_else(|| {
 			Error(Box::new(internal(format!("column store is not registered, cannot read table {}", name))))
