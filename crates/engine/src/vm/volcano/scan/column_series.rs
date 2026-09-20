@@ -7,13 +7,18 @@ use reifydb_column::snapshot::{Schema, SystemColumn};
 use reifydb_core::{
 	error::diagnostic::{internal::internal, query::no_column_snapshot},
 	interface::{
-		catalog::column_snapshot::{ColumnSnapshot, ColumnSnapshotSource},
+		catalog::{
+			column_snapshot::{ColumnSnapshot, ColumnSnapshotSource},
+			object::ObjectId,
+			series::Series,
+		},
 		resolved::ResolvedSeries,
 	},
+	key::{any::TaggedKey, partition::PartitionKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_store_column::ColumnStore;
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{error::Error, fragment::Fragment, value::partition::Partition};
 
 use crate::{
@@ -79,6 +84,37 @@ impl ColumnSeriesScanNode {
 		}
 	}
 
+	fn series_reads_as_empty(&self, rx: &mut Transaction<'_>, def: &Series) -> Result<bool> {
+		let catalog = &self.context.services.catalog;
+		let partitions = match self.partition {
+			Some(partition) => vec![partition],
+			None if def.partition_by.is_empty() => vec![Partition::default()],
+			None => self.registered_partitions(rx, def)?,
+		};
+		let mut written = false;
+		for partition in partitions {
+			let Some(metadata) = catalog.find_series_metadata(rx, def.id, partition)? else {
+				continue;
+			};
+			if metadata.row_count > 0 {
+				return Ok(false);
+			}
+			written |= metadata.sequence_counter > 0;
+		}
+		Ok(written)
+	}
+
+	fn registered_partitions(&self, rx: &mut Transaction<'_>, def: &Series) -> Result<Vec<Partition>> {
+		let mut partitions = Vec::new();
+		let stream = rx.range(PartitionKey::full_scan(ObjectId::Series(def.id)), RangeScope::All, 1024)?;
+		for entry in stream {
+			if let TaggedKey::Partition(key) = entry?.key {
+				partitions.push(key.partition);
+			}
+		}
+		Ok(partitions)
+	}
+
 	fn open(&self, rx: &mut Transaction<'_>) -> Result<ScanState> {
 		let services = &self.context.services;
 		let name = self.series.fully_qualified_name();
@@ -91,15 +127,16 @@ impl ColumnSeriesScanNode {
 			None => services.catalog.list_column_snapshots_for_series(rx, def.id)?,
 		};
 
-		let predicate =
-			series_scan_predicate(def, self.key_range_start, self.key_range_end, self.variant_tag);
+		let snapshots_were_empty = snapshots.is_empty();
 
-		let mut pruned = prune_series_snapshots(
-			snapshots,
-			self.key_range_start,
-			self.key_range_end,
-			predicate.as_ref(),
-		);
+		let predicate = series_scan_predicate(def, self.key_range_start, self.key_range_end, self.variant_tag);
+
+		let mut pruned =
+			prune_series_snapshots(snapshots, self.key_range_start, self.key_range_end, predicate.as_ref());
+		if snapshots_were_empty && self.series_reads_as_empty(rx, def)? {
+			return Ok(ScanState::Done);
+		}
+
 		if pruned.is_empty() {
 			return Err(Error(Box::new(no_column_snapshot(
 				self.series.identifier().clone(),
@@ -110,7 +147,10 @@ impl ColumnSeriesScanNode {
 		pruned.sort_by(|a, b| bucket_order(b).cmp(&bucket_order(a)));
 
 		let store = services.ioc.try_resolve::<Arc<ColumnStore>>().ok_or_else(|| {
-			Error(Box::new(internal(format!("column store is not registered, cannot read series {}", name))))
+			Error(Box::new(internal(format!(
+				"column store is not registered, cannot read series {}",
+				name
+			))))
 		})?;
 
 		Ok(ScanState::Reading {
@@ -141,9 +181,14 @@ fn bucket_order(snapshot: &ColumnSnapshot) -> (u64, Option<Partition>) {
 fn empty_columns(schema: &Schema) -> Columns {
 	let columns = schema
 		.iter()
-		.filter(|(name, _, _)| matches!(SystemColumn::from_name(name), None | Some(SystemColumn::CommitVersion)))
+		.filter(|(name, _, _)| {
+			matches!(SystemColumn::from_name(name), None | Some(SystemColumn::CommitVersion))
+		})
 		.map(|(name, ty, _)| {
-			ColumnWithName::new(Fragment::internal(name.clone()), ColumnBuffer::with_capacity(ty.clone(), 0))
+			ColumnWithName::new(
+				Fragment::internal(name.clone()),
+				ColumnBuffer::with_capacity(ty.clone(), 0),
+			)
 		})
 		.collect();
 	Columns::new(columns)

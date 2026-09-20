@@ -127,9 +127,9 @@ pub mod tests {
 			id::{ColumnSnapshotId, NamespaceId, SeriesId, TableId},
 		},
 	};
-	use reifydb_value::value::{Value, partition::Partition};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::value::{Value, partition::Partition};
 
 	use crate::{
 		CatalogStore,

@@ -239,8 +239,11 @@ mod tests {
 
 	#[test]
 	fn a_boolean_column_gets_min_and_max() {
-		let chunks =
-			ColumnChunks::new(ValueType::Boolean, false, vec![chunk(ColumnBuffer::bool(vec![true, false]))]);
+		let chunks = ColumnChunks::new(
+			ValueType::Boolean,
+			false,
+			vec![chunk(ColumnBuffer::bool(vec![true, false]))],
+		);
 		let t = block(vec![("flag", ValueType::Boolean, chunks)]);
 		let stats = block_stats(&t).unwrap();
 		assert_eq!(stats[0].min, Some(Value::Boolean(false)));

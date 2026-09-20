@@ -203,6 +203,7 @@ pub struct SeriesPartitionMetadata {
 	pub sequence_counter: u64,
 	pub last_write_at: DateTime,
 	pub dirty_from_key: u64,
+	pub dirty_to_key: u64,
 }
 
 impl SeriesPartitionMetadata {
@@ -214,6 +215,7 @@ impl SeriesPartitionMetadata {
 			sequence_counter: 0,
 			last_write_at: DateTime::default(),
 			dirty_from_key: u64::MAX,
+			dirty_to_key: 0,
 		}
 	}
 }
@@ -224,7 +226,7 @@ impl Default for SeriesPartitionMetadata {
 	}
 }
 
-const SERIES_PARTITION_METADATA_WIDTH: usize = 48;
+const SERIES_PARTITION_METADATA_WIDTH: usize = 56;
 
 pub fn encode_series_partition_metadata(metadata: &SeriesPartitionMetadata) -> EncodedPodRow {
 	let mut bytes = Vec::with_capacity(SERIES_PARTITION_METADATA_WIDTH);
@@ -234,6 +236,7 @@ pub fn encode_series_partition_metadata(metadata: &SeriesPartitionMetadata) -> E
 	bytes.extend_from_slice(&metadata.sequence_counter.to_be_bytes());
 	bytes.extend_from_slice(&metadata.last_write_at.to_bits().to_be_bytes());
 	bytes.extend_from_slice(&metadata.dirty_from_key.to_be_bytes());
+	bytes.extend_from_slice(&metadata.dirty_to_key.to_be_bytes());
 	EncodedPodRow::new(&bytes)
 }
 
@@ -253,6 +256,7 @@ pub fn decode_series_partition_metadata(row: &EncodedPodRow) -> Result<SeriesPar
 		sequence_counter: u64::from_be_bytes(bytes[24..32].try_into().unwrap()),
 		last_write_at: DateTime::from_bits(u64::from_be_bytes(bytes[32..40].try_into().unwrap())),
 		dirty_from_key: u64::from_be_bytes(bytes[40..48].try_into().unwrap()),
+		dirty_to_key: u64::from_be_bytes(bytes[48..56].try_into().unwrap()),
 	})
 }
 
@@ -269,6 +273,7 @@ mod series_partition_metadata_tests {
 			sequence_counter: 7,
 			last_write_at: DateTime::from_bits(1_700_000_000_000_000_000),
 			dirty_from_key: 512,
+			dirty_to_key: 1024,
 		};
 
 		let row = encode_series_partition_metadata(&metadata);
@@ -286,10 +291,10 @@ mod series_partition_metadata_tests {
 			sequence_counter: 0,
 			last_write_at: DateTime::default(),
 			dirty_from_key: u64::MAX,
+			dirty_to_key: 0,
 		};
 
-		let decoded =
-			decode_series_partition_metadata(&encode_series_partition_metadata(&metadata)).unwrap();
+		let decoded = decode_series_partition_metadata(&encode_series_partition_metadata(&metadata)).unwrap();
 
 		assert_eq!(decoded.oldest_key, 1);
 		assert_eq!(decoded.newest_key, u64::MAX);
@@ -298,8 +303,8 @@ mod series_partition_metadata_tests {
 	#[test]
 	fn a_row_of_the_wrong_width_is_rejected_rather_than_rewinding_the_sequence_counter() {
 		assert!(decode_series_partition_metadata(&EncodedPodRow::new(&[0u8; 32])).is_err());
-		assert!(decode_series_partition_metadata(&EncodedPodRow::new(&[0u8; 47])).is_err());
-		assert!(decode_series_partition_metadata(&EncodedPodRow::new(&[0u8; 49])).is_err());
+		assert!(decode_series_partition_metadata(&EncodedPodRow::new(&[0u8; 55])).is_err());
+		assert!(decode_series_partition_metadata(&EncodedPodRow::new(&[0u8; 57])).is_err());
 	}
 
 	#[test]
@@ -313,10 +318,10 @@ mod series_partition_metadata_tests {
 			sequence_counter: u64::MAX,
 			last_write_at: DateTime::from_bits(1),
 			dirty_from_key: u64::MAX,
+			dirty_to_key: 0,
 		};
 
-		let decoded =
-			decode_series_partition_metadata(&encode_series_partition_metadata(&metadata)).unwrap();
+		let decoded = decode_series_partition_metadata(&encode_series_partition_metadata(&metadata)).unwrap();
 
 		assert_eq!(decoded.sequence_counter, u64::MAX);
 		assert_eq!(decoded.last_write_at, DateTime::from_bits(1));

@@ -42,7 +42,13 @@ pub fn bucket_for(key: u64, width: u64) -> Bucket {
 	}
 }
 
-pub fn is_closed(bucket: &Bucket, series: &Series, metadata: &SeriesPartitionMetadata, now: DateTime, grace: Duration) -> bool {
+pub fn is_closed(
+	bucket: &Bucket,
+	series: &Series,
+	metadata: &SeriesPartitionMetadata,
+	now: DateTime,
+	grace: Duration,
+) -> bool {
 	match &series.key {
 		SeriesKey::DateTime {
 			precision,

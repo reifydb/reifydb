@@ -40,10 +40,9 @@ use crate::vm::volcano::{
 	scalarize::ScalarizeNode,
 	scan::{
 		column_series::ColumnSeriesScanNode, column_table::ColumnTableScanNode,
-		column_unsupported::UnsupportedColumnScanNode,
-		dictionary::DictionaryScanNode, index::IndexScanNode, queue::QueueScan, remote::RemoteFetchNode,
-		ringbuffer::RingBufferScan, series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode,
-		view::ViewScanNode,
+		column_unsupported::UnsupportedColumnScanNode, dictionary::DictionaryScanNode, index::IndexScanNode,
+		queue::QueueScan, remote::RemoteFetchNode, ringbuffer::RingBufferScan,
+		series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode, view::ViewScanNode,
 	},
 	sort::SortNode,
 	take::TakeNode,
@@ -173,10 +172,9 @@ pub(crate) fn compile<'a>(
 			ScanLayout::Row => {
 				Box::new(TableScanNode::new(node.source.clone(), node.partition, context, rx).unwrap())
 			}
-			ScanLayout::Column if node.partition.is_some() => Box::new(UnsupportedColumnScanNode::new(format!(
-				"a partition scan of table '{}'",
-				node.source.fully_qualified_name()
-			))),
+			ScanLayout::Column if node.partition.is_some() => Box::new(UnsupportedColumnScanNode::new(
+				format!("a partition scan of table '{}'", node.source.fully_qualified_name()),
+			)),
 			ScanLayout::Column => Box::new(ColumnTableScanNode::new(node.source.clone(), context)),
 		},
 		RqlQueryPlan::ViewScan(node) => {

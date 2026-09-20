@@ -8,7 +8,6 @@ use reifydb_core::{
 		id::{ColumnSnapshotId, SeriesId, TableId},
 	},
 };
-
 use reifydb_value::value::partition::Partition;
 
 use crate::cache::{CatalogCache, MultiVersionColumnSnapshot};
@@ -34,8 +33,7 @@ impl CatalogCache {
 
 		for (bs, p, snap_id) in buckets.iter() {
 			if *bs == bucket_start
-				&& *p == partition
-				&& let Some(snap) = self.find_column_snapshot_at(*snap_id, version)
+				&& *p == partition && let Some(snap) = self.find_column_snapshot_at(*snap_id, version)
 			{
 				return Some(snap);
 			}
@@ -295,7 +293,9 @@ mod tests {
 			.expect("should find");
 		assert_eq!(found.id, ColumnSnapshotId(1));
 
-		assert!(cat.find_column_snapshot_for_series_bucket_at(SeriesId(7), None, 999, CommitVersion(1)).is_none());
+		assert!(cat
+			.find_column_snapshot_for_series_bucket_at(SeriesId(7), None, 999, CommitVersion(1))
+			.is_none());
 	}
 
 	#[test]
@@ -398,9 +398,13 @@ mod tests {
 	fn delete_removes_secondary_indexes() {
 		let cat = CatalogCache::new();
 		cat.set_column_snapshot(ColumnSnapshotId(1), CommitVersion(1), Some(series_snap(1, 7, 100, 1)));
-		assert!(cat.find_column_snapshot_for_series_bucket_at(SeriesId(7), None, 100, CommitVersion(1)).is_some());
+		assert!(cat
+			.find_column_snapshot_for_series_bucket_at(SeriesId(7), None, 100, CommitVersion(1))
+			.is_some());
 		cat.set_column_snapshot(ColumnSnapshotId(1), CommitVersion(2), None);
-		assert!(cat.find_column_snapshot_for_series_bucket_at(SeriesId(7), None, 100, CommitVersion(2)).is_none());
+		assert!(cat
+			.find_column_snapshot_for_series_bucket_at(SeriesId(7), None, 100, CommitVersion(2))
+			.is_none());
 	}
 
 	#[test]

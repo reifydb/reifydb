@@ -579,7 +579,8 @@ mod series_bound_tests {
 		// anything but the lowest byte would drop the first rows of the tag the caller asked for.
 		let universe = series_universe();
 		for tag in [0u8, 1, 7, 255] {
-			let range = SeriesRowKeyRange::scan_range(storage(), true, Some(tag), None, None, None).encode();
+			let range =
+				SeriesRowKeyRange::scan_range(storage(), true, Some(tag), None, None, None).encode();
 			let selected = assert_agrees(
 				SqliteSchema::Series,
 				&universe,

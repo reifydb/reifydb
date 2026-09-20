@@ -5,14 +5,21 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-use reifydb::{Database, allocator, server, value::params::Params};
+use std::thread::sleep;
+
+use reifydb::{
+	Database, Frame, IdentityId, Result, allocator, server,
+	value::{params::Params, value::duration::Duration},
+};
 
 allocator::set_global_allocator!();
 
-fn admin(db: &Database, label: &str, cmd: &str) {
+const POLL_ATTEMPTS: usize = 100;
+
+fn show(label: &str, rql: &str, outcome: Result<Vec<Frame>>) {
 	println!("\n--- {label} ---");
-	println!("> {cmd}");
-	match db.admin_as_root(cmd, Params::None) {
+	println!("> {rql}");
+	match outcome {
 		Ok(frames) => {
 			for frame in &frames {
 				println!("{frame}");
@@ -22,17 +29,43 @@ fn admin(db: &Database, label: &str, cmd: &str) {
 	}
 }
 
-fn query(db: &Database, label: &str, cmd: &str) {
-	println!("\n--- {label} ---");
-	println!("> {cmd}");
-	match db.query_as_root(cmd, Params::None) {
-		Ok(frames) => {
-			for frame in &frames {
-				println!("{frame}");
-			}
-		}
-		Err(e) => println!("ERROR: {e}"),
+fn column_result(db: &Database, rql: &str) -> Result<Vec<Frame>> {
+	let result = db.engine().query_column_as(IdentityId::root(), rql, Params::None);
+	match result.error {
+		Some(e) => Err(e),
+		None => Ok(result.frames),
 	}
+}
+
+fn admin(db: &Database, label: &str, rql: &str) {
+	show(label, rql, db.admin_as_root(rql, Params::None));
+}
+
+fn command(db: &Database, label: &str, rql: &str) {
+	show(label, rql, db.command_as_root(rql, Params::None));
+}
+
+fn column_query(db: &Database, label: &str, rql: &str) {
+	show(label, rql, column_result(db, rql));
+}
+
+fn count_rows(frames: &[Frame]) -> usize {
+	frames.iter().map(|frame| frame.row_count()).sum()
+}
+
+fn await_column_rows(db: &Database, label: &str, rql: &str, want: usize) {
+	println!("\n--- {label} ---");
+	println!("> {rql}");
+	for attempt in 1..=POLL_ATTEMPTS {
+		if let Ok(frames) = column_result(db, rql)
+			&& count_rows(&frames) == want
+		{
+			println!("column store holds {want} rows after {attempt} polls");
+			return;
+		}
+		sleep(Duration::from_milliseconds(100).unwrap().to_std());
+	}
+	panic!("column store did not reach {want} rows for `{rql}` within {POLL_ATTEMPTS} polls");
 }
 
 fn main() {
@@ -40,60 +73,41 @@ fn main() {
 
 	let db = server::memory().build().unwrap();
 
-	admin(&db, "Create namespace", "CREATE NAMESPACE demo");
-	admin(&db, "Create table", "CREATE TABLE demo::users { id: Int4, name: Text, active: Boolean }");
-	admin(
+	admin(&db, "1. Create namespace", "CREATE NAMESPACE demo");
+	admin(&db, "1. Create table", "CREATE TABLE demo::users { id: Int4, name: Text, active: Boolean }");
+	command(
 		&db,
-		"Insert seed data",
+		"1. Insert seed data (5 rows)",
 		r#"INSERT demo::users [
 			{ id: 1, name: "Alice",   active: true  },
 			{ id: 2, name: "Bob",     active: true  },
-			{ id: 3, name: "Charlie", active: false }
+			{ id: 3, name: "Charlie", active: false },
+			{ id: 4, name: "Dana",    active: true  },
+			{ id: 5, name: "Eve",     active: false }
 		]"#,
 	);
 
-	admin(
+	column_query(&db, "2. Column query before the table is materialized (expect QUERY_012)", "FROM demo::users");
+
+	await_column_rows(&db, "3. Wait for the column snapshot", "FROM demo::users", 5);
+
+	column_query(&db, "4. Column query (rows plus #commit_version)", "FROM demo::users");
+
+	column_query(
 		&db,
-		"CREATE TEST - checks Alice is present",
-		r#"CREATE TEST demo::alice_exists {
-			FROM demo::users | FILTER name == "Alice" | ASSERT { name == "Alice" }
-		}"#,
+		"5. Filter and map run on top of the column scan",
+		"FROM demo::users | FILTER active == true | MAP { id, name }",
 	);
 
-	admin(
+	command(
 		&db,
-		"CREATE TEST - checks Bob is active",
-		r#"CREATE TEST demo::bob_active {
-			FROM demo::users | FILTER name == "Bob" | ASSERT { active == true }
-		}"#,
+		"6. Insert 2 more rows",
+		r#"INSERT demo::users [
+			{ id: 6, name: "Frank", active: true },
+			{ id: 7, name: "Grace", active: true }
+		]"#,
 	);
-
-	admin(
-		&db,
-		"CREATE TEST - deliberately failing (Charlie is inactive)",
-		r#"CREATE TEST demo::charlie_is_active {
-			FROM demo::users | FILTER name == "Charlie" | ASSERT { active == true }
-		}"#,
-	);
-
-	admin(&db, "RUN TESTS demo (all in namespace)", "RUN TESTS demo");
-
-	admin(&db, "RUN TEST (single passing)", "RUN TEST demo::alice_exists");
-
-	admin(&db, "RUN TEST (single failing)", "RUN TEST demo::charlie_is_active");
-
-	admin(
-		&db,
-		"CREATE TEST - inserts inside test body",
-		r#"CREATE TEST demo::insert_in_test {
-			INSERT demo::users [{ id: 99, name: "Ghost", active: true }];
-			FROM demo::users | FILTER id == 99 | ASSERT { name == "Ghost" }
-		}"#,
-	);
-
-	admin(&db, "Run the insert test", "RUN TEST demo::insert_in_test");
-
-	query(&db, "Verify Ghost row exists (no per-test rollback yet)", "FROM demo::users | FILTER id == 99");
-
-	admin(&db, "RUN TESTS (all tests in database)", "RUN TESTS");
+	column_query(&db, "6. Column query right after the insert (serves the last snapshot)", "FROM demo::users");
+	await_column_rows(&db, "6. Wait for the next snapshot", "FROM demo::users", 7);
+	column_query(&db, "6. Column query after the next snapshot", "FROM demo::users");
 }

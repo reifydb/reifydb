@@ -8,8 +8,8 @@ use reifydb_core::{
 	},
 	key::series::SeriesPartitionMetadataKey,
 };
-use reifydb_value::value::partition::Partition;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::value::partition::Partition;
 
 use crate::{CatalogStore, Result};
 

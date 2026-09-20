@@ -237,7 +237,9 @@ fn series_db() -> TestDb {
 	let db = TestDb::from(
 		db_embedded::memory()
 			.with_subsystem(Box::new(StorageSubsystemFactory::new(config)))
-			.with_runtime_config(RuntimeConfig::default().clock(Clock::Mock(MockClock::new(MOCK_EPOCH_NANOS))))
+			.with_runtime_config(
+				RuntimeConfig::default().clock(Clock::Mock(MockClock::new(MOCK_EPOCH_NANOS))),
+			)
 			.build()
 			.expect("build"),
 	);
@@ -251,8 +253,7 @@ fn insert_keys(db: &TestDb, target: &str, keys: impl IntoIterator<Item = u64>) {
 }
 
 fn insert_partition_keys(db: &TestDb, target: &str, region: &str, keys: impl IntoIterator<Item = u64>) {
-	let rows: Vec<String> =
-		keys.into_iter().map(|k| format!("{{ k: {k}, region: '{region}', n: {k} }}")).collect();
+	let rows: Vec<String> = keys.into_iter().map(|k| format!("{{ k: {k}, region: '{region}', n: {k} }}")).collect();
 	db.command(&format!("INSERT {target} [{}]", rows.join(", ")));
 }
 
@@ -336,6 +337,41 @@ fn each_sealed_bucket_carries_its_own_commit_version() {
 }
 
 #[test]
+fn a_delete_rebuilds_the_sealed_bucket_it_touched() {
+	// A delete drops the row from the row store but the sealed block still holds a copy. The
+	// dirty range has to widen downwards on delete, not just upwards on insert, or the column
+	// path keeps serving a row that no longer exists with nothing to signal the divergence.
+	let db = series_db();
+	plain_series(&db);
+	insert_keys(&db, "test::s", 1..=15);
+	await_column_rows(&db, "from test::s", 9);
+
+	db.command("DELETE test::s FILTER { k == 5 }");
+
+	let result = await_column_rows(&db, "from test::s", 8);
+	let keys = uint8_cells(&result.frames, "k");
+	assert!(!keys.contains(&5), "the deleted key must not survive the rebuild: {keys:?}");
+}
+
+#[test]
+fn an_emptied_series_returns_no_rows_instead_of_raising_query_012() {
+	// Emptying a series drops its blocks, which leaves the scan with no snapshot to read. That
+	// state also means "rows exist but none are sealed yet", and the two must not collapse into
+	// one answer: a series that genuinely holds nothing reads as empty, not as a missing snapshot.
+	let db = series_db();
+	plain_series(&db);
+	insert_keys(&db, "test::s", 1..=15);
+	await_column_rows(&db, "from test::s", 9);
+
+	db.command("DELETE test::s FILTER { k > 0 }");
+
+	let result = await_column_rows(&db, "from test::s", 0);
+	assert!(result.error.is_none(), "an emptied series must not raise a diagnostic");
+	let names = column_names(&result.frames[0]);
+	assert!(names.contains(&"k".to_string()), "the headers must survive an empty result: {names:?}");
+}
+
+#[test]
 fn a_series_whose_only_bucket_is_open_raises_query_012_naming_the_series() {
 	// Rows exist but none are readable yet. Returning them empty would be indistinguishable from
 	// a series that genuinely holds nothing, so the diagnostic has to fire and has to say which
@@ -370,8 +406,18 @@ fn a_tagged_series_puts_the_tag_column_after_the_key() {
 	let db = series_db();
 	db.admin("CREATE ENUM test::status { Active, Inactive }");
 	db.admin("CREATE SERIES test::tg { k: uint8, value: float8 } WITH { key: k, tag: test::status }");
-	let rows: Vec<String> =
-		(1..=25).map(|k| format!("{{ k: {k}, value: {k}.5, tag: {} }}", if k % 2 == 0 { 1 } else { 0 })).collect();
+	let rows: Vec<String> = (1..=25)
+		.map(|k| {
+			format!(
+				"{{ k: {k}, value: {k}.5, tag: {} }}",
+				if k % 2 == 0 {
+					1
+				} else {
+					0
+				}
+			)
+		})
+		.collect();
 	db.command(&format!("INSERT test::tg [{}]", rows.join(", ")));
 
 	let result = await_column_rows(&db, "from test::tg", 19);
@@ -386,8 +432,18 @@ fn a_variant_tag_filter_returns_only_that_tag() {
 	let db = series_db();
 	db.admin("CREATE ENUM test::status { Active, Inactive }");
 	db.admin("CREATE SERIES test::tg { k: uint8, value: float8 } WITH { key: k, tag: test::status }");
-	let rows: Vec<String> =
-		(1..=25).map(|k| format!("{{ k: {k}, value: {k}.5, tag: {} }}", if k % 2 == 0 { 1 } else { 0 })).collect();
+	let rows: Vec<String> = (1..=25)
+		.map(|k| {
+			format!(
+				"{{ k: {k}, value: {k}.5, tag: {} }}",
+				if k % 2 == 0 {
+					1
+				} else {
+					0
+				}
+			)
+		})
+		.collect();
 	db.command(&format!("INSERT test::tg [{}]", rows.join(", ")));
 	await_column_rows(&db, "from test::tg", 19);
 
@@ -434,7 +490,9 @@ fn a_partition_filter_returns_only_that_partition() {
 	// returns another partition's rows under the asked partition's name. The other partition
 	// carries values that are obviously wrong if they appear.
 	let db = series_db();
-	db.admin("CREATE SERIES test::p { k: uint8, region: utf8, n: int4 } WITH { key: k, partition: { by: { region } } }");
+	db.admin(
+		"CREATE SERIES test::p { k: uint8, region: utf8, n: int4 } WITH { key: k, partition: { by: { region } } }",
+	);
 	insert_partition_keys(&db, "test::p", "us", 1..=25);
 	insert_partition_keys(&db, "test::p", "eu", 1..=25);
 	await_column_rows(&db, "from test::p", 38);
@@ -452,10 +510,13 @@ fn a_quiet_partition_seals_once_grace_elapses() {
 	// has no key based path to sealing. Without the grace backstop these rows stay unreadable
 	// forever, which is the failure this design introduced.
 	let db = series_db();
-	db.admin("CREATE SERIES test::p { k: uint8, region: utf8, n: int4 } WITH { key: k, partition: { by: { region } } }");
+	db.admin(
+		"CREATE SERIES test::p { k: uint8, region: utf8, n: int4 } WITH { key: k, partition: { by: { region } } }",
+	);
 	insert_partition_keys(&db, "test::p", "us", 1..=5);
 
-	let err = column_query(&db, "from test::p").error.expect("a bucket below the key rule must not seal on its own");
+	let err =
+		column_query(&db, "from test::p").error.expect("a bucket below the key rule must not seal on its own");
 	assert_eq!(err.code, "QUERY_012");
 
 	db.mock_clock().advance_millis((SERIES_GRACE_MS * 2) as u64);
@@ -471,7 +532,9 @@ fn a_fast_partition_does_not_seal_a_slow_one() {
 	// that are still being written to. The clock never moves, so the quiet partition can only
 	// seal through that bug.
 	let db = series_db();
-	db.admin("CREATE SERIES test::p { k: uint8, region: utf8, n: int4 } WITH { key: k, partition: { by: { region } } }");
+	db.admin(
+		"CREATE SERIES test::p { k: uint8, region: utf8, n: int4 } WITH { key: k, partition: { by: { region } } }",
+	);
 	insert_partition_keys(&db, "test::p", "us", 1..=25);
 	insert_partition_keys(&db, "test::p", "eu", 1..=5);
 
@@ -480,4 +543,3 @@ fn a_fast_partition_does_not_seal_a_slow_one() {
 
 	assert!(regions.iter().all(|r| r == "us"), "the quiet partition's open bucket was published: {regions:?}");
 }
-

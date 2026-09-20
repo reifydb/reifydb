@@ -52,7 +52,8 @@ impl CatalogStore {
 					bucket_start: bs,
 					partition: p,
 					..
-				} = snap.source && bs == bucket_start && p == partition
+				} = snap.source && bs == bucket_start
+				&& p == partition
 			{
 				return Ok(Some(snap));
 			}
@@ -304,12 +305,16 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let us = Partition::of(&[Value::Utf8("us".to_string())]);
 		let eu = Partition::of(&[Value::Utf8("eu".to_string())]);
-		let us_snap =
-			CatalogStore::create_column_snapshot(&mut txn, partitioned_series_to_create(202, 1000, us, "us"))
-				.unwrap();
-		let eu_snap =
-			CatalogStore::create_column_snapshot(&mut txn, partitioned_series_to_create(202, 1000, eu, "eu"))
-				.unwrap();
+		let us_snap = CatalogStore::create_column_snapshot(
+			&mut txn,
+			partitioned_series_to_create(202, 1000, us, "us"),
+		)
+		.unwrap();
+		let eu_snap = CatalogStore::create_column_snapshot(
+			&mut txn,
+			partitioned_series_to_create(202, 1000, eu, "eu"),
+		)
+		.unwrap();
 		assert_ne!(us_snap.id, eu_snap.id, "each partition must get its own snapshot");
 
 		let found_us = CatalogStore::find_column_snapshot_for_series_bucket(
@@ -358,9 +363,11 @@ pub mod tests {
 		// loses any of them leaves pruning with nothing to prune on
 		let mut txn = create_test_admin_transaction();
 		let us = Partition::of(&[Value::Utf8("us".to_string())]);
-		let created =
-			CatalogStore::create_column_snapshot(&mut txn, partitioned_series_to_create(202, 1000, us, "us"))
-				.unwrap();
+		let created = CatalogStore::create_column_snapshot(
+			&mut txn,
+			partitioned_series_to_create(202, 1000, us, "us"),
+		)
+		.unwrap();
 
 		let found = CatalogStore::find_column_snapshot(&mut Transaction::Admin(&mut txn), created.id)
 			.unwrap()

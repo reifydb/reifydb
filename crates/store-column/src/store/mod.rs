@@ -87,8 +87,12 @@ impl ColumnStore {
 		Ok(())
 	}
 
-	pub fn remove(&self, id: ColumnSnapshotId) -> Option<Arc<ColumnBlock>> {
-		self.blocks.remove(&id).map(|(_, v)| v)
+	pub fn remove(&self, id: ColumnSnapshotId) -> Result<Option<Arc<ColumnBlock>>> {
+		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+		if let Some(tier) = &self.persistent {
+			tier.delete(id)?;
+		}
+		Ok(self.blocks.remove(&id).map(|(_, v)| v))
 	}
 
 	pub fn len(&self) -> usize {

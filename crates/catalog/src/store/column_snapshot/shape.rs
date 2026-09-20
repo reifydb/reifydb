@@ -56,9 +56,7 @@ pub mod tests {
 	use reifydb_core::interface::catalog::column_snapshot::ColumnStats;
 	use reifydb_value::value::Value;
 
-	use super::{
-		deserialize_partition_values, deserialize_stats, serialize_partition_values, serialize_stats,
-	};
+	use super::{deserialize_partition_values, deserialize_stats, serialize_partition_values, serialize_stats};
 
 	#[test]
 	fn test_partition_values_round_trip_preserves_value_types() {

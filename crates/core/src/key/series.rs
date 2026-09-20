@@ -70,9 +70,7 @@ impl SeriesPartitionMetadataKey {
 
 #[cfg(test)]
 mod series_metadata_key_tests {
-	use reifydb_codec::key::serializer::KeySerializer;
-
-	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 
 	use super::{KeyTag, Partition, SeriesKey, SeriesPartitionMetadataKey};
 	use crate::key::bound::TaggedKeyBoundRange;
@@ -647,8 +645,15 @@ mod row_key_range_tests {
 		// A range bounded on one side only must still pin its tag class: the untagged flag encodes 0xFF and
 		// the tagged flag 0xFE, so omitting the flag from the start bound lets every tagged row of the series
 		// sort into the window regardless of its key.
-		let range = SeriesRowKeyRange::scan_range(StorageId::Series(SeriesId(7)), false, None, Some(100), None, None)
-			.encode();
+		let range = SeriesRowKeyRange::scan_range(
+			StorageId::Series(SeriesId(7)),
+			false,
+			None,
+			Some(100),
+			None,
+			None,
+		)
+		.encode();
 
 		let untagged = SeriesRowKey {
 			storage: StorageId::Series(SeriesId(7)),
@@ -1089,9 +1094,16 @@ mod partitioned_row_key_tests {
 		// The range must contain a key inside the window and exclude ones outside, or eviction skips live rows.
 		let storage = StorageId::Series(SeriesId(1));
 		let partition = part("us");
-		let range =
-			PartitionedSeriesRowKeyRange::scan_range(storage, partition, false, None, Some(100), Some(200), None)
-				.encode();
+		let range = PartitionedSeriesRowKeyRange::scan_range(
+			storage,
+			partition,
+			false,
+			None,
+			Some(100),
+			Some(200),
+			None,
+		)
+		.encode();
 		let inside = PartitionedSeriesRowKey::encoded(storage, partition, None, 150, 1);
 		let below = PartitionedSeriesRowKey::encoded(storage, partition, None, 99, 1);
 		let above = PartitionedSeriesRowKey::encoded(storage, partition, None, 201, 1);
@@ -1105,9 +1117,16 @@ mod partitioned_row_key_tests {
 	fn test_scan_range_never_crosses_into_another_partition() {
 		// Bounding only the key span would let a neighbouring partition's rows be evicted with this one.
 		let storage = StorageId::Series(SeriesId(1));
-		let range =
-			PartitionedSeriesRowKeyRange::scan_range(storage, part("us"), false, None, Some(100), Some(200), None)
-				.encode();
+		let range = PartitionedSeriesRowKeyRange::scan_range(
+			storage,
+			part("us"),
+			false,
+			None,
+			Some(100),
+			Some(200),
+			None,
+		)
+		.encode();
 		let other = PartitionedSeriesRowKey::encoded(storage, part("eu"), None, 150, 1);
 
 		assert!(!range.contains(&other), "an in-bounds key of another partition must stay outside");

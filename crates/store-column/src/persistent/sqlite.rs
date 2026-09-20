@@ -69,6 +69,20 @@ impl SqliteColumnStore {
 		.map_err(|e| internal_error!("Failed to ensure column_blocks table: {}", e))
 	}
 
+	#[instrument(name = "store_column::persistent::delete", level = "debug", skip(self), fields(snapshot_id = id.0))]
+	pub fn delete(&self, id: ColumnSnapshotId) -> Result<()> {
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(());
+		};
+
+		let key = id.0.to_be_bytes();
+		conn.prepare_cached(&format!("DELETE FROM \"{}\" WHERE snapshot_id = ?1", TABLE_NAME))
+			.and_then(|mut stmt| stmt.execute(params![key.as_slice()]))
+			.map(|_| ())
+			.map_err(|e| internal_error!("Failed to delete column block: {}", e))
+	}
+
 	#[instrument(name = "store_column::persistent::put", level = "debug", skip(self, data), fields(snapshot_id = id.0, data_len = data.len()))]
 	pub fn put(&self, id: ColumnSnapshotId, data: &[u8]) -> Result<()> {
 		let guard = self.inner.conn.lock();

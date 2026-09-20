@@ -90,7 +90,10 @@ fn series_materialization_populates_block_store() {
 		assert!(block.len() > 0);
 
 		let schema_names: Vec<&str> = block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
-		assert_eq!(schema_names, vec!["k", "value", "#rownum", "#created_at", "#updated_at", "#commit_version"]);
+		assert_eq!(
+			schema_names,
+			vec!["k", "value", "#rownum", "#created_at", "#updated_at", "#commit_version"]
+		);
 
 		let mut reader = SnapshotReader::new(Arc::clone(block), 100);
 		let batch = reader.next().expect("batch present").expect("read batch");

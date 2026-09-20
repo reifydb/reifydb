@@ -261,9 +261,14 @@ fn a_timed_block_refuses_a_batch_without_time() {
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
 	schema.extend(system_column_schema(&TimeSource::Processing));
 
-	let err = column_block_from_batches(schema, vec![batch], CommitVersion(1), &Compressor::new(CompressConfig::default()))
-		.err()
-		.expect("a timed block must not be built from a batch with no #time");
+	let err = column_block_from_batches(
+		schema,
+		vec![batch],
+		CommitVersion(1),
+		&Compressor::new(CompressConfig::default()),
+	)
+	.err()
+	.expect("a timed block must not be built from a batch with no #time");
 
 	assert_eq!(err.diagnostic().code, "SCOL_004");
 }
@@ -285,9 +290,14 @@ fn a_timeless_block_refuses_a_batch_that_carries_time() {
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
 	schema.extend(system_column_schema(&TimeSource::None));
 
-	let err = column_block_from_batches(schema, vec![batch], CommitVersion(1), &Compressor::new(CompressConfig::default()))
-		.err()
-		.expect("a timeless block must not be built from a batch that carries #time");
+	let err = column_block_from_batches(
+		schema,
+		vec![batch],
+		CommitVersion(1),
+		&Compressor::new(CompressConfig::default()),
+	)
+	.err()
+	.expect("a timeless block must not be built from a batch that carries #time");
 
 	assert_eq!(err.diagnostic().code, "SCOL_004");
 }

@@ -35,7 +35,7 @@ use reifydb_engine::{
 	engine::StandardEngine,
 	transaction::operation::{
 		ringbuffer::apply_ringbuffer_partition_metadata_after_delete,
-		series::apply_series_metadata_after_delete,
+		series::{SeriesDeleteTally, apply_series_metadata_after_delete},
 	},
 };
 use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
@@ -631,16 +631,17 @@ impl Evictor {
 		}
 
 		let deleted = expired.len() as u64;
-		let mut deleted_by_partition: HashMap<Partition, u64> = HashMap::new();
+		let mut deleted_by_partition: HashMap<Partition, SeriesDeleteTally> = HashMap::new();
 		for key in &expired {
-			let partition = match key {
-				TaggedKey::PartitionedSeriesRow(key) => key.partition,
-				_ => Partition::default(),
+			let (partition, key_value) = match key {
+				TaggedKey::PartitionedSeriesRow(key) => (key.partition, key.key),
+				TaggedKey::SeriesRow(key) => (Partition::default(), key.key),
+				_ => (Partition::default(), 0),
 			};
-			*deleted_by_partition.entry(partition).or_insert(0) += 1;
+			deleted_by_partition.entry(partition).or_default().record(key_value);
 			txn.remove_silent(key)?;
 		}
-		for (partition, deleted) in deleted_by_partition {
+		for (partition, tally) in deleted_by_partition {
 			let Some(mut metadata) = catalog.find_series_metadata(
 				&mut Transaction::Command(&mut txn),
 				series.id,
@@ -649,7 +650,7 @@ impl Evictor {
 			else {
 				continue;
 			};
-			apply_series_metadata_after_delete(&mut metadata, deleted);
+			apply_series_metadata_after_delete(&mut metadata, &tally);
 			catalog.update_series_metadata_txn(
 				&mut Transaction::Command(&mut txn),
 				series.id,

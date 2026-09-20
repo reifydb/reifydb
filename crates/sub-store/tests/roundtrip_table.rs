@@ -52,7 +52,10 @@ fn table_materialization_populates_block_store() {
 	.expect("block with 3 rows did not appear in block_store within 5 seconds");
 
 	let schema_names: Vec<&str> = block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
-	assert_eq!(schema_names, vec!["id", "name", "score", "#rownum", "#created_at", "#updated_at", "#commit_version"]);
+	assert_eq!(
+		schema_names,
+		vec!["id", "name", "score", "#rownum", "#created_at", "#updated_at", "#commit_version"]
+	);
 
 	let mut reader = SnapshotReader::new(block, 100);
 	let batch = reader.next().expect("batch present").expect("read batch");

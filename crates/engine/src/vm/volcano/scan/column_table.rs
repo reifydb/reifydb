@@ -56,21 +56,17 @@ impl ColumnTableScanNode {
 		let services = &self.context.services;
 		let name = self.table.fully_qualified_name();
 
-		let snapshot = services
-			.catalog
-			.find_latest_column_snapshot_for_table(rx, self.table.def().id)?
-			.ok_or_else(|| Error(Box::new(no_column_snapshot(self.table.identifier().clone(), "table", &name))))?;
+		let snapshot =
+			services.catalog.find_latest_column_snapshot_for_table(rx, self.table.def().id)?.ok_or_else(
+				|| Error(Box::new(no_column_snapshot(self.table.identifier().clone(), "table", &name))),
+			)?;
 
 		let store = services.ioc.try_resolve::<Arc<ColumnStore>>().ok_or_else(|| {
 			Error(Box::new(internal(format!("column store is not registered, cannot read table {}", name))))
 		})?;
 
 		Ok(ScanState::Reading {
-			reader: BlockSequenceReader::new(
-				store,
-				vec![snapshot.id],
-				self.context.batch_size as usize,
-			),
+			reader: BlockSequenceReader::new(store, vec![snapshot.id], self.context.batch_size as usize),
 			emitted: false,
 		})
 	}
@@ -79,9 +75,14 @@ impl ColumnTableScanNode {
 fn empty_columns(schema: &Schema) -> Columns {
 	let columns = schema
 		.iter()
-		.filter(|(name, _, _)| matches!(SystemColumn::from_name(name), None | Some(SystemColumn::CommitVersion)))
+		.filter(|(name, _, _)| {
+			matches!(SystemColumn::from_name(name), None | Some(SystemColumn::CommitVersion))
+		})
 		.map(|(name, ty, _)| {
-			ColumnWithName::new(Fragment::internal(name.clone()), ColumnBuffer::with_capacity(ty.clone(), 0))
+			ColumnWithName::new(
+				Fragment::internal(name.clone()),
+				ColumnBuffer::with_capacity(ty.clone(), 0),
+			)
 		})
 		.collect();
 	Columns::new(columns)

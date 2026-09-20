@@ -49,8 +49,8 @@ pub mod tests {
 		key::column::{SeriesColumnSnapshotKey, TableColumnSnapshotKey},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
-	use reifydb_value::value::partition::Partition;
 	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::value::partition::Partition;
 
 	use crate::{CatalogStore, store::column_snapshot::create::ColumnSnapshotToCreate};
 
@@ -106,7 +106,9 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let link_pre = txn.get(&SeriesColumnSnapshotKey::new(SeriesId(202), Partition::default(), created.id)).unwrap();
+		let link_pre = txn
+			.get(&SeriesColumnSnapshotKey::new(SeriesId(202), Partition::default(), created.id))
+			.unwrap();
 		assert!(link_pre.is_some());
 
 		CatalogStore::drop_column_snapshot(&mut txn, created.id).unwrap();
@@ -114,7 +116,9 @@ pub mod tests {
 		let found = CatalogStore::find_column_snapshot(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_none());
 
-		let link_post = txn.get(&SeriesColumnSnapshotKey::new(SeriesId(202), Partition::default(), created.id)).unwrap();
+		let link_post = txn
+			.get(&SeriesColumnSnapshotKey::new(SeriesId(202), Partition::default(), created.id))
+			.unwrap();
 		assert!(link_post.is_none(), "series link row should be removed");
 	}
 

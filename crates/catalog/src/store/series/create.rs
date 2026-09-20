@@ -14,11 +14,10 @@ use reifydb_core::{
 		series::{SeriesKey as SeriesStorageKey, SeriesPartitionMetadataKey},
 	},
 };
-use reifydb_value::value::partition::Partition;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, dictionary::DictionaryId, sumtype::SumTypeId},
+	value::{constraint::TypeConstraint, dictionary::DictionaryId, partition::Partition, sumtype::SumTypeId},
 };
 
 use crate::{

@@ -58,9 +58,7 @@ use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::{lease::VersionLeaseGuard, transaction::MultiTransaction},
 	single::SingleTransaction,
-	transaction::{
-		ScanLayout, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
-	},
+	transaction::{ScanLayout, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
 };
 use reifydb_value::{
 	error,

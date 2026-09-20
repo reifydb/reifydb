@@ -31,8 +31,7 @@ use reifydb_value::{
 	params::Params,
 	reifydb_assertions, return_error,
 	value::{
-		Value, identity::IdentityId, partition::Partition, row_number::RowNumber,
-		system_columns::SystemColumns,
+		Value, identity::IdentityId, partition::Partition, row_number::RowNumber, system_columns::SystemColumns,
 	},
 };
 use tracing::instrument;
@@ -45,7 +44,7 @@ use crate::{
 	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
-	transaction::operation::series::{apply_series_metadata_after_delete, remove_series_row},
+	transaction::operation::series::{SeriesDeleteTally, apply_series_metadata_after_delete, remove_series_row},
 	vm::{
 		instruction::dml::shape::get_or_create_series_shape,
 		services::Services,
@@ -85,12 +84,12 @@ pub(crate) fn delete_series(
 	let (deleted_by_partition, returned_rows) =
 		run_series_delete_with_input(&exec, txn, *input_plan, &target_data, &params, has_tag, has_returning)?;
 
-	let deleted_count: u64 = deleted_by_partition.values().sum();
-	for (partition, deleted) in deleted_by_partition {
+	let deleted_count: u64 = deleted_by_partition.values().map(|tally| tally.count).sum();
+	for (partition, tally) in deleted_by_partition {
 		let Some(mut metadata) = services.catalog.find_series_metadata(txn, series.id, partition)? else {
 			continue;
 		};
-		apply_series_metadata_after_delete(&mut metadata, deleted);
+		apply_series_metadata_after_delete(&mut metadata, &tally);
 		services.catalog.update_series_metadata_txn(txn, series.id, partition, metadata)?;
 	}
 
@@ -130,7 +129,7 @@ fn run_series_delete_with_input(
 	params: &Params,
 	has_tag: bool,
 	has_returning: bool,
-) -> Result<(HashMap<Partition, u64>, Vec<(RowNumber, EncodedBytes)>)> {
+) -> Result<(HashMap<Partition, SeriesDeleteTally>, Vec<(RowNumber, EncodedBytes)>)> {
 	let context = build_series_delete_query_context(exec, target, params, txn.identity());
 	let mut input_node = compile_series_delete_input(txn, input_plan, &context)?;
 	drive_series_delete_input(exec, txn, &mut input_node, &context, target, has_tag, has_returning)
@@ -179,9 +178,9 @@ fn drive_series_delete_input(
 	target: &SeriesTarget<'_>,
 	has_tag: bool,
 	has_returning: bool,
-) -> Result<(HashMap<Partition, u64>, Vec<(RowNumber, EncodedBytes)>)> {
+) -> Result<(HashMap<Partition, SeriesDeleteTally>, Vec<(RowNumber, EncodedBytes)>)> {
 	let series = target.series;
-	let mut deleted_by_partition: HashMap<Partition, u64> = HashMap::new();
+	let mut deleted_by_partition: HashMap<Partition, SeriesDeleteTally> = HashMap::new();
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let mut mutable_context = context.clone();
 
@@ -220,8 +219,11 @@ fn drive_series_delete_input(
 			let sequence = u64::from(row_number);
 			let key_value = extract_series_delete_key_value(&columns, series, row_idx);
 			let variant_tag = extract_series_delete_variant_tag(&columns, has_tag, row_idx);
-			let partition =
-				if partitioned { columns.partitions()[row_idx] } else { Partition::default() };
+			let partition = if partitioned {
+				columns.partitions()[row_idx]
+			} else {
+				Partition::default()
+			};
 			let key: TaggedKey = if partitioned {
 				PartitionedSeriesRowKey::new(
 					StorageId::series(series.id),
@@ -262,7 +264,7 @@ fn drive_series_delete_input(
 			if has_returning {
 				returned_rows.push((row_number, encoded_bytes));
 			}
-			*deleted_by_partition.entry(partition).or_insert(0) += 1;
+			deleted_by_partition.entry(partition).or_default().record(key_value);
 		}
 	}
 

@@ -215,8 +215,9 @@ pub mod tests {
 		.unwrap();
 		assert_eq!(series_bucket_starts(&scoped), vec![0u64, 100]);
 
-		let all = CatalogStore::list_column_snapshots_for_series(&mut Transaction::Admin(&mut txn), SeriesId(7))
-			.unwrap();
+		let all =
+			CatalogStore::list_column_snapshots_for_series(&mut Transaction::Admin(&mut txn), SeriesId(7))
+				.unwrap();
 		assert_eq!(all.len(), 3, "the unscoped listing still spans every partition");
 	}
 

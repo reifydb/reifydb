@@ -199,14 +199,8 @@ pub fn append_requires_deferred_view(fragment: Fragment) -> Diagnostic {
 
 pub fn no_column_snapshot(fragment: Fragment, kind: &str, name: &str) -> Diagnostic {
 	let help = match kind {
-		"series" => format!(
-			"wait for the bucket to seal, or read the {} with a regular query",
-			kind
-		),
-		_ => format!(
-			"wait for the column store to materialize the {}, or read it with a regular query",
-			kind
-		),
+		"series" => format!("wait for the bucket to seal, or read the {} with a regular query", kind),
+		_ => format!("wait for the column store to materialize the {}, or read it with a regular query", kind),
 	};
 	Diagnostic {
 		code: "QUERY_012".to_string(),

@@ -62,7 +62,9 @@ fn stats_admit(snapshot: &ColumnSnapshot, predicate: &Predicate) -> bool {
 			None => true,
 		},
 		Predicate::And(clauses) => clauses.iter().all(|clause| stats_admit(snapshot, clause)),
-		Predicate::Or(clauses) => clauses.is_empty() || clauses.iter().any(|clause| stats_admit(snapshot, clause)),
+		Predicate::Or(clauses) => {
+			clauses.is_empty() || clauses.iter().any(|clause| stats_admit(snapshot, clause))
+		}
 		_ => true,
 	}
 }
@@ -78,12 +80,7 @@ fn bounds<'a>(snapshot: &'a ColumnSnapshot, column: &ColRef, probe: &Value) -> O
 }
 
 fn comparable(bound: &Value, probe: &Value) -> bool {
-	if matches!(
-		bound,
-		Value::None {
-			..
-		} | Value::Any(_) | Value::List(_) | Value::Record(_) | Value::Tuple(_)
-	) {
+	if matches!(bound, Value::None { .. } | Value::Any(_) | Value::List(_) | Value::Record(_) | Value::Tuple(_)) {
 		return false;
 	}
 	discriminant(bound) == discriminant(probe)
@@ -129,7 +126,8 @@ mod tests {
 	}
 
 	fn starts(snapshots: &[ColumnSnapshot]) -> Vec<u64> {
-		snapshots.iter()
+		snapshots
+			.iter()
 			.map(|snapshot| match snapshot.source {
 				ColumnSnapshotSource::SeriesBucket {
 					bucket_start,
@@ -277,12 +275,8 @@ mod tests {
 			(Predicate::Gt(ColRef::from("value"), Value::Int4(30)), vec![]),
 		];
 		for (predicate, expected) in cases {
-			let kept = prune_series_snapshots(
-				vec![low.clone(), high.clone()],
-				None,
-				None,
-				Some(&predicate),
-			);
+			let kept =
+				prune_series_snapshots(vec![low.clone(), high.clone()], None, None, Some(&predicate));
 			assert_eq!(starts(&kept), expected, "{predicate:?}");
 		}
 	}
@@ -337,12 +331,7 @@ mod tests {
 			Predicate::IsNotNone(ColRef::from("value")),
 		];
 		for predicate in cases {
-			let kept = prune_series_snapshots(
-				vec![snapshots[0].clone()],
-				None,
-				None,
-				Some(&predicate),
-			);
+			let kept = prune_series_snapshots(vec![snapshots[0].clone()], None, None, Some(&predicate));
 			assert_eq!(starts(&kept), vec![0], "{predicate:?}");
 		}
 	}

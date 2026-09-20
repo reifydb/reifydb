@@ -21,7 +21,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			column_snapshot::{ColumnSnapshotSource, ColumnStats},
-			id::SeriesId,
+			id::{ColumnSnapshotId, SeriesId},
 			object::ObjectId,
 			series::{Series, SeriesPartitionMetadata},
 		},
@@ -158,6 +158,7 @@ impl SeriesMaterializationActor {
 				continue;
 			};
 			if metadata.row_count == 0 {
+				self.drop_partition_snapshots(state, series, partition)?;
 				continue;
 			}
 			let first = bucket_for(metadata.oldest_key, self.bucket_width);
@@ -183,14 +184,80 @@ impl SeriesMaterializationActor {
 				)?;
 			}
 			if !deferred {
-				self.clear_dirty_mark(series, partition, metadata.dirty_from_key)?;
+				self.clear_dirty_mark(
+					series,
+					partition,
+					metadata.dirty_from_key,
+					metadata.dirty_to_key,
+				)?;
 			}
 		}
 		Ok(())
 	}
 
-	fn clear_dirty_mark(&self, series: &Series, partition: Partition, observed: u64) -> Result<()> {
-		if observed == u64::MAX {
+	fn drop_partition_snapshots(
+		&self,
+		state: &mut SeriesMaterializationState,
+		series: &Series,
+		partition: Partition,
+	) -> Result<()> {
+		let stored_partition = if series.partition_by.is_empty() {
+			None
+		} else {
+			Some(partition)
+		};
+		let mut admin = self.engine.begin_admin(IdentityId::system())?;
+		let catalog = self.engine.catalog();
+		let stale: Vec<ColumnSnapshotId> = catalog
+			.list_column_snapshots_for_series(&mut Transaction::Admin(&mut admin), series.id)?
+			.into_iter()
+			.filter(|snapshot| match snapshot.source {
+				ColumnSnapshotSource::SeriesBucket {
+					partition,
+					..
+				} => partition == stored_partition,
+				_ => false,
+			})
+			.map(|snapshot| snapshot.id)
+			.collect();
+		if stale.is_empty() {
+			return Ok(());
+		}
+		for id in &stale {
+			catalog.drop_column_snapshot(&mut admin, *id)?;
+		}
+		commit_admin(admin)?;
+		for id in &stale {
+			self.block_store.remove(*id)?;
+		}
+		state.bucket_state.retain(|(id, part, _)| *id != series.id || *part != partition);
+		self.reset_dirty_mark(series, partition)
+	}
+
+	fn reset_dirty_mark(&self, series: &Series, partition: Partition) -> Result<()> {
+		let mut admin = self.engine.begin_admin(IdentityId::system())?;
+		let catalog = self.engine.catalog();
+		let mut tx = Transaction::Admin(&mut admin);
+		let Some(mut metadata) = catalog.find_series_metadata(&mut tx, series.id, partition)? else {
+			return Ok(());
+		};
+		if metadata.dirty_from_key == u64::MAX && metadata.dirty_to_key == 0 {
+			return Ok(());
+		}
+		metadata.dirty_from_key = u64::MAX;
+		metadata.dirty_to_key = 0;
+		catalog.update_series_metadata_txn(&mut tx, series.id, partition, metadata)?;
+		commit_admin(admin)
+	}
+
+	fn clear_dirty_mark(
+		&self,
+		series: &Series,
+		partition: Partition,
+		observed_from: u64,
+		observed_to: u64,
+	) -> Result<()> {
+		if observed_from >= observed_to {
 			return Ok(());
 		}
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
@@ -199,10 +266,11 @@ impl SeriesMaterializationActor {
 		let Some(mut metadata) = catalog.find_series_metadata(&mut tx, series.id, partition)? else {
 			return Ok(());
 		};
-		if metadata.dirty_from_key < observed {
+		if metadata.dirty_from_key < observed_from || metadata.dirty_to_key > observed_to {
 			return Ok(());
 		}
 		metadata.dirty_from_key = u64::MAX;
+		metadata.dirty_to_key = 0;
 		catalog.update_series_metadata_txn(&mut tx, series.id, partition, metadata)?;
 		commit_admin(admin)
 	}
@@ -264,7 +332,7 @@ impl SeriesMaterializationActor {
 	) -> Result<bool> {
 		let key = (series.id, partition, bucket.id());
 		let built = state.bucket_state.contains(&key);
-		let dirty = bucket.end > metadata.dirty_from_key;
+		let dirty = bucket.start < metadata.dirty_to_key && bucket.end > metadata.dirty_from_key;
 		if !is_closed(bucket, series, metadata, now_wall, self.grace) {
 			return Ok(built && dirty);
 		}
@@ -346,7 +414,11 @@ impl SeriesMaterializationActor {
 			memory,
 		});
 
-		let scan_partition = if series.partition_by.is_empty() { None } else { Some(partition) };
+		let scan_partition = if series.partition_by.is_empty() {
+			None
+		} else {
+			Some(partition)
+		};
 		let tags = self.bucket_scan_tags(query_txn, series)?;
 
 		let mut tx: Transaction<'_> = query_txn.into();
@@ -374,14 +446,13 @@ impl SeriesMaterializationActor {
 		let Some(sumtype) = series.tag else {
 			return Ok(vec![None]);
 		};
-		let definition = self
-			.engine
-			.catalog()
-			.find_sumtype(&mut Transaction::Query(query_txn), sumtype)?
-			.ok_or(SubStoreError::SumTypeMissing {
-				sumtype,
-				series: series.id,
-			})?;
+		let definition =
+			self.engine.catalog().find_sumtype(&mut Transaction::Query(query_txn), sumtype)?.ok_or(
+				SubStoreError::SumTypeMissing {
+					sumtype,
+					series: series.id,
+				},
+			)?;
 		let mut tags: Vec<u8> = definition.variants.iter().map(|variant| variant.tag).collect();
 		tags.sort_unstable_by(|left, right| right.cmp(left));
 		Ok(tags.into_iter().map(Some).collect())
@@ -412,7 +483,11 @@ impl SeriesMaterializationActor {
 		block: Arc<ColumnBlock>,
 	) -> Result<()> {
 		let row_count = block.len() as u64;
-		let stored_partition = if series.partition_by.is_empty() { None } else { Some(partition) };
+		let stored_partition = if series.partition_by.is_empty() {
+			None
+		} else {
+			Some(partition)
+		};
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let cat = self.engine.catalog();
 		let column_snapshot = match cat.find_column_snapshot_for_series_bucket(
