@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::Arc,
+};
 
 use reifydb_catalog::{
 	catalog::Catalog,
@@ -69,12 +72,8 @@ use crate::column::{
 	error::SubStoreError,
 };
 
-pub struct SeriesBucketState {
-	pub materialized_at_sequence: u64,
-}
-
 pub struct SeriesMaterializationState {
-	pub bucket_state: HashMap<(SeriesId, Partition, BucketId), SeriesBucketState>,
+	pub bucket_state: HashSet<(SeriesId, Partition, BucketId)>,
 	pub partitions: HashMap<SeriesId, Vec<(Partition, Vec<Value>)>>,
 	_timer_handle: Option<TimerHandle>,
 }
@@ -164,6 +163,7 @@ impl SeriesMaterializationActor {
 			let first = bucket_for(metadata.oldest_key, self.bucket_width);
 			let last = bucket_for(metadata.newest_key, self.bucket_width);
 			let mut start = first.start;
+			let mut deferred = false;
 			while start <= last.start {
 				let bucket = Bucket {
 					start,
@@ -171,7 +171,7 @@ impl SeriesMaterializationActor {
 					width: self.bucket_width,
 				};
 				start = start.saturating_add(self.bucket_width);
-				self.maybe_materialize_bucket(
+				deferred |= self.maybe_materialize_bucket(
 					state,
 					query_txn,
 					series,
@@ -182,8 +182,29 @@ impl SeriesMaterializationActor {
 					now_wall,
 				)?;
 			}
+			if !deferred {
+				self.clear_dirty_mark(series, partition, metadata.dirty_from_key)?;
+			}
 		}
 		Ok(())
+	}
+
+	fn clear_dirty_mark(&self, series: &Series, partition: Partition, observed: u64) -> Result<()> {
+		if observed == u64::MAX {
+			return Ok(());
+		}
+		let mut admin = self.engine.begin_admin(IdentityId::system())?;
+		let catalog = self.engine.catalog();
+		let mut tx = Transaction::Admin(&mut admin);
+		let Some(mut metadata) = catalog.find_series_metadata(&mut tx, series.id, partition)? else {
+			return Ok(());
+		};
+		if metadata.dirty_from_key < observed {
+			return Ok(());
+		}
+		metadata.dirty_from_key = u64::MAX;
+		catalog.update_series_metadata_txn(&mut tx, series.id, partition, metadata)?;
+		commit_admin(admin)
 	}
 
 	fn partitions_of(
@@ -240,26 +261,19 @@ impl SeriesMaterializationActor {
 		metadata: &SeriesPartitionMetadata,
 		bucket: &Bucket,
 		now_wall: DateTime,
-	) -> Result<()> {
-		if !is_closed(bucket, series, metadata, now_wall, self.grace) {
-			return Ok(());
-		}
+	) -> Result<bool> {
 		let key = (series.id, partition, bucket.id());
-		let need_remat = match state.bucket_state.get(&key) {
-			None => true,
-			Some(s) => s.materialized_at_sequence < metadata.sequence_counter,
-		};
-		if !need_remat {
-			return Ok(());
+		let built = state.bucket_state.contains(&key);
+		let dirty = bucket.end > metadata.dirty_from_key;
+		if !is_closed(bucket, series, metadata, now_wall, self.grace) {
+			return Ok(built && dirty);
+		}
+		if built && !dirty {
+			return Ok(false);
 		}
 		self.materialize_bucket(query_txn, series, partition, partition_values, metadata, bucket)?;
-		state.bucket_state.insert(
-			key,
-			SeriesBucketState {
-				materialized_at_sequence: metadata.sequence_counter,
-			},
-		);
-		Ok(())
+		state.bucket_state.insert(key);
+		Ok(false)
 	}
 
 	fn materialize_bucket(
@@ -333,23 +347,44 @@ impl SeriesMaterializationActor {
 		});
 
 		let scan_partition = if series.partition_by.is_empty() { None } else { Some(partition) };
-		let mut scan = SeriesScanNode::new(
-			resolved_series,
-			Some(bucket.start),
-			Some(bucket.end),
-			None,
-			scan_partition,
-			Arc::clone(&context),
-		)?;
+		let tags = self.bucket_scan_tags(query_txn, series)?;
 
 		let mut tx: Transaction<'_> = query_txn.into();
-		scan.initialize(&mut tx, &context)?;
 		let mut ctx = (*context).clone();
 		let mut batches = Vec::new();
-		while let Some(batch) = scan.next(&mut tx, &mut ctx)? {
-			batches.push(batch);
+		for tag in tags {
+			let mut scan = SeriesScanNode::new(
+				resolved_series.clone(),
+				Some(bucket.start),
+				Some(bucket.end),
+				tag,
+				scan_partition,
+				Arc::clone(&context),
+			)?;
+			scan.initialize(&mut tx, &context)?;
+			while let Some(batch) = scan.next(&mut tx, &mut ctx)? {
+				batches.push(batch);
+			}
 		}
 		Ok(batches)
+	}
+
+	#[inline]
+	fn bucket_scan_tags(&self, query_txn: &mut QueryTransaction, series: &Series) -> Result<Vec<Option<u8>>> {
+		let Some(sumtype) = series.tag else {
+			return Ok(vec![None]);
+		};
+		let definition = self
+			.engine
+			.catalog()
+			.find_sumtype(&mut Transaction::Query(query_txn), sumtype)?
+			.ok_or(SubStoreError::SumTypeMissing {
+				sumtype,
+				series: series.id,
+			})?;
+		let mut tags: Vec<u8> = definition.variants.iter().map(|variant| variant.tag).collect();
+		tags.sort_unstable_by(|left, right| right.cmp(left));
+		Ok(tags.into_iter().map(Some).collect())
 	}
 
 	#[inline]
@@ -468,7 +503,7 @@ impl Actor for SeriesMaterializationActor {
 		let handle =
 			ctx.schedule_tick(self.tick_interval, |nanos| SeriesMessage::Tick(DateTime::from_nanos(nanos)));
 		SeriesMaterializationState {
-			bucket_state: HashMap::new(),
+			bucket_state: HashSet::new(),
 			partitions: HashMap::new(),
 			_timer_handle: Some(handle),
 		}

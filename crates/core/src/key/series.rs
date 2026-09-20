@@ -198,11 +198,17 @@ impl SeriesRowKeyRange {
 
 	pub fn scan_range(
 		storage: StorageId,
+		tagged: bool,
 		variant_tag: Option<u8>,
 		key_start: Option<u64>,
 		key_end: Option<u64>,
 		last: Option<&TaggedKey>,
 	) -> TaggedKeyBoundRange {
+		assert!(
+			!(tagged && variant_tag.is_none() && (key_start.is_some() || key_end.is_some())),
+			"a key range over a tagged series needs a variant tag: the key sits after the tag in the row \
+			 key, so no single range spans every tag and the range would silently match nothing"
+		);
 		if matches!(key_end, Some(0)) {
 			return TaggedKeyBoundRange::empty(SeriesRowKey::TAG);
 		}
@@ -559,7 +565,7 @@ mod row_key_range_tests {
 	fn test_scan_range_brackets_the_rows_it_selects() {
 		// The range must contain a key inside the window and exclude one outside, or eviction skips live rows.
 		let storage = StorageId::Series(SeriesId(1));
-		let range = SeriesRowKeyRange::scan_range(storage, None, Some(100), Some(200), None).encode();
+		let range = SeriesRowKeyRange::scan_range(storage, false, None, Some(100), Some(200), None).encode();
 		let inside = SeriesRowKey {
 			storage,
 			variant_tag: None,
@@ -641,7 +647,7 @@ mod row_key_range_tests {
 		// A range bounded on one side only must still pin its tag class: the untagged flag encodes 0xFF and
 		// the tagged flag 0xFE, so omitting the flag from the start bound lets every tagged row of the series
 		// sort into the window regardless of its key.
-		let range = SeriesRowKeyRange::scan_range(StorageId::Series(SeriesId(7)), None, Some(100), None, None)
+		let range = SeriesRowKeyRange::scan_range(StorageId::Series(SeriesId(7)), false, None, Some(100), None, None)
 			.encode();
 
 		let untagged = SeriesRowKey {
@@ -760,11 +766,17 @@ impl PartitionedSeriesRowKeyRange {
 	pub fn scan_range(
 		storage: impl Into<StorageId>,
 		partition: Partition,
+		tagged: bool,
 		variant_tag: Option<u8>,
 		key_start: Option<u64>,
 		key_end: Option<u64>,
 		last: Option<&TaggedKey>,
 	) -> TaggedKeyBoundRange {
+		assert!(
+			!(tagged && variant_tag.is_none() && (key_start.is_some() || key_end.is_some())),
+			"a key range over a tagged series needs a variant tag: the key sits after the tag in the row \
+			 key, so no single range spans every tag and the range would silently match nothing"
+		);
 		if matches!(key_end, Some(0)) {
 			return TaggedKeyBoundRange::empty(PartitionedSeriesRowKey::TAG);
 		}
@@ -1078,7 +1090,7 @@ mod partitioned_row_key_tests {
 		let storage = StorageId::Series(SeriesId(1));
 		let partition = part("us");
 		let range =
-			PartitionedSeriesRowKeyRange::scan_range(storage, partition, None, Some(100), Some(200), None)
+			PartitionedSeriesRowKeyRange::scan_range(storage, partition, false, None, Some(100), Some(200), None)
 				.encode();
 		let inside = PartitionedSeriesRowKey::encoded(storage, partition, None, 150, 1);
 		let below = PartitionedSeriesRowKey::encoded(storage, partition, None, 99, 1);
@@ -1094,7 +1106,7 @@ mod partitioned_row_key_tests {
 		// Bounding only the key span would let a neighbouring partition's rows be evicted with this one.
 		let storage = StorageId::Series(SeriesId(1));
 		let range =
-			PartitionedSeriesRowKeyRange::scan_range(storage, part("us"), None, Some(100), Some(200), None)
+			PartitionedSeriesRowKeyRange::scan_range(storage, part("us"), false, None, Some(100), Some(200), None)
 				.encode();
 		let other = PartitionedSeriesRowKey::encoded(storage, part("eu"), None, 150, 1);
 
@@ -1183,6 +1195,7 @@ mod partitioned_row_key_tests {
 		let range = PartitionedSeriesRowKeyRange::scan_range(
 			StorageId::Series(SeriesId(7)),
 			part("us"),
+			false,
 			None,
 			Some(100),
 			None,

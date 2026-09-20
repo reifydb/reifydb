@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::id::{NamespaceId, SeriesId};
+use reifydb_value::value::sumtype::SumTypeId;
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -22,6 +23,12 @@ pub enum SubStoreError {
 	#[error("series materialization: namespace {namespace:?} missing for series {series:?}")]
 	NamespaceMissing {
 		namespace: NamespaceId,
+		series: SeriesId,
+	},
+
+	#[error("series materialization: sum type {sumtype:?} missing for series {series:?}")]
+	SumTypeMissing {
+		sumtype: SumTypeId,
 		series: SeriesId,
 	},
 
@@ -83,6 +90,22 @@ impl IntoDiagnostic for SubStoreError {
 				fragment: Fragment::None,
 				label: Some("namespace not found in catalog".to_string()),
 				help: Some("the series references a namespace that is no longer present; catalog may be out of sync".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			SubStoreError::SumTypeMissing {
+				sumtype,
+				series,
+			} => Diagnostic {
+				code: "SCOL_005".to_string(),
+				rql: None,
+				message: format!("series materialization: sum type {sumtype:?} missing for series {series:?}"),
+				column: None,
+				fragment: Fragment::None,
+				label: Some("sum type not found in catalog".to_string()),
+				help: Some("the series declares a tag whose sum type is no longer present; catalog may be out of sync".to_string()),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

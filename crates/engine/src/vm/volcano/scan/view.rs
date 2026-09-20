@@ -332,7 +332,7 @@ impl QueryNode for ViewScanNode {
 						PartitionedSeriesRowKeyRange::full_scan_range(storage, last.as_ref())
 					}
 					(true, false, _) => {
-						SeriesRowKeyRange::scan_range(storage, None, None, None, last.as_ref())
+						SeriesRowKeyRange::scan_range(storage, false, None, None, None, last.as_ref())
 					}
 					(false, true, Some(partition)) if self.sorted => {
 						PartitionedSortedViewRowKey::partition_scan_range(

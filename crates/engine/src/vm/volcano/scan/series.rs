@@ -293,6 +293,7 @@ impl QueryNode for SeriesScanNode {
 				Some(partition) => PartitionedSeriesRowKeyRange::scan_range(
 					storage,
 					partition,
+					has_tag,
 					self.variant_tag,
 					self.key_range_start,
 					self.key_range_end,
@@ -303,6 +304,7 @@ impl QueryNode for SeriesScanNode {
 		} else {
 			SeriesRowKeyRange::scan_range(
 				storage,
+				has_tag,
 				self.variant_tag,
 				self.key_range_start,
 				self.key_range_end,

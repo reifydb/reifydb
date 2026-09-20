@@ -107,7 +107,7 @@ impl ColumnSeriesScanNode {
 				&name,
 			))));
 		}
-		pruned.sort_by_key(bucket_order);
+		pruned.sort_by(|a, b| bucket_order(b).cmp(&bucket_order(a)));
 
 		let store = services.ioc.try_resolve::<Arc<ColumnStore>>().ok_or_else(|| {
 			Error(Box::new(internal(format!("column store is not registered, cannot read series {}", name))))

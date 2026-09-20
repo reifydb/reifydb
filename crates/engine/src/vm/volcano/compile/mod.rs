@@ -39,7 +39,8 @@ use crate::vm::volcano::{
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 	scalarize::ScalarizeNode,
 	scan::{
-		column_table::ColumnTableScanNode, column_unsupported::UnsupportedColumnScanNode,
+		column_series::ColumnSeriesScanNode, column_table::ColumnTableScanNode,
+		column_unsupported::UnsupportedColumnScanNode,
 		dictionary::DictionaryScanNode, index::IndexScanNode, queue::QueueScan, remote::RemoteFetchNode,
 		ringbuffer::RingBufferScan, series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode,
 		view::ViewScanNode,
@@ -74,7 +75,6 @@ fn row_store_scan(plan: &RqlQueryPlan) -> Option<String> {
 		RqlQueryPlan::RingBufferScan(node) => Some(format!("ring buffer '{}'", node.source.def().name)),
 		RqlQueryPlan::QueueScan(node) => Some(format!("queue '{}'", node.source.def().name)),
 		RqlQueryPlan::DictionaryScan(node) => Some(format!("dictionary '{}'", node.source.def().name)),
-		RqlQueryPlan::SeriesScan(node) => Some(format!("series '{}'", node.source.def().name)),
 		RqlQueryPlan::IndexScan(node) => Some(format!("index scan of table '{}'", node.source.def().name)),
 		RqlQueryPlan::RowPointLookup(node) => Some(format!("row lookup on '{}'", node.source.name())),
 		RqlQueryPlan::RowListLookup(node) => Some(format!("row lookup on '{}'", node.source.name())),
@@ -189,17 +189,27 @@ pub(crate) fn compile<'a>(
 		RqlQueryPlan::DictionaryScan(node) => {
 			Box::new(DictionaryScanNode::new(node.source.clone(), context).unwrap())
 		}
-		RqlQueryPlan::SeriesScan(node) => Box::new(
-			VolcanoSeriesScanNode::new(
+		RqlQueryPlan::SeriesScan(node) => match rx.layout() {
+			ScanLayout::Row => Box::new(
+				VolcanoSeriesScanNode::new(
+					node.source.clone(),
+					node.key_range_start,
+					node.key_range_end,
+					node.variant_tag,
+					node.partition,
+					context,
+				)
+				.unwrap(),
+			),
+			ScanLayout::Column => Box::new(ColumnSeriesScanNode::new(
 				node.source.clone(),
 				node.key_range_start,
 				node.key_range_end,
 				node.variant_tag,
 				node.partition,
 				context,
-			)
-			.unwrap(),
-		),
+			)),
+		},
 		RqlQueryPlan::IndexScan(node) => {
 			let table = node.source.def().clone();
 			let Some(pk) = table.primary_key.clone() else {

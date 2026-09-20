@@ -840,6 +840,7 @@ fn update_series_metadata_for_insert(metadata: &mut SeriesPartitionMetadata, key
 			metadata.newest_key = key_value;
 		}
 	}
+	metadata.dirty_from_key = metadata.dirty_from_key.min(key_value);
 	metadata.row_count += 1;
 }
 
