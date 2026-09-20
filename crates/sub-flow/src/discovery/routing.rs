@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind};
 use reifydb_rql::flow::analyzer::FlowDependencyGraph;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 pub fn flow_completeness_objects(
 	graph: &FlowDependencyGraph,
@@ -26,8 +27,8 @@ pub fn flow_upstreams(
 	graph: &FlowDependencyGraph,
 	flow: FlowId,
 	view_kind: &dyn Fn(ViewId) -> Option<ViewKind>,
-) -> HashMap<FlowId, HashSet<ObjectId>> {
-	let mut upstreams: HashMap<FlowId, HashSet<ObjectId>> = HashMap::new();
+) -> FxHashMap<FlowId, FxHashSet<ObjectId>> {
+	let mut upstreams: FxHashMap<FlowId, FxHashSet<ObjectId>> = FxHashMap::default();
 	for (view_id, consumer_flows) in &graph.source_views {
 		if !consumer_flows.contains(&flow) {
 			continue;
@@ -245,9 +246,9 @@ mod tests {
 
 		assert_eq!(
 			flow_upstreams(&graph, FlowId(20), &view_kind),
-			HashMap::from([(
+			FxHashMap::from_iter([(
 				FlowId(10),
-				HashSet::from([ObjectId::View(ViewId(5)), ObjectId::View(ViewId(6))])
+				FxHashSet::from_iter([ObjectId::View(ViewId(5)), ObjectId::View(ViewId(6))])
 			)]),
 			"both views of one producer must share one stream, or a commit that writes both is read twice"
 		);

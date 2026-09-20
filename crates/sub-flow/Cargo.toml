@@ -39,6 +39,7 @@ reifydb-sub-api = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
 
+rustc-hash = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 postcard = { workspace = true }

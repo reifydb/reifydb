@@ -45,6 +45,7 @@ reifydb-macro = { workspace = true }
 
 dashmap = { workspace = true, optional = true }
 indexmap = { workspace = true, optional = true }
+rustc-hash = { workspace = true }
 postcard = { workspace = true, optional = true }
 smallvec = { workspace = true, optional = true }
 tracing = { workspace = true }

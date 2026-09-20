@@ -3,7 +3,7 @@
 
 use std::{
 	cell::RefCell,
-	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+	collections::{BTreeMap, BTreeSet, HashMap},
 	iter::Peekable,
 	ops::Deref,
 	sync::Arc,
@@ -18,6 +18,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::reifydb_assertions;
+use rustc_hash::FxHashSet;
 
 use crate::commit::slice::accepts;
 
@@ -159,7 +160,7 @@ impl HeldReads {
 }
 
 pub struct UpstreamRead {
-	pub views: HashSet<ObjectId>,
+	pub views: FxHashSet<ObjectId>,
 	pub position: Option<CommitVersion>,
 	pub read: StreamRead,
 }
@@ -187,7 +188,7 @@ impl ObjectIndex {
 			.any(|object| hit(*object))
 	}
 
-	fn touches(&self, cdc: &Cdc, objects: &HashSet<ObjectId>) -> bool {
+	fn touches(&self, cdc: &Cdc, objects: &FxHashSet<ObjectId>) -> bool {
 		self.changes_any(cdc, |object| objects.contains(&object))
 	}
 
@@ -266,7 +267,7 @@ pub fn merge(
 	index: &ObjectIndex,
 	cut: &StepCut,
 ) -> Merged {
-	let gated: HashSet<ObjectId> = upstreams.values().flat_map(|upstream| upstream.views.iter().copied()).collect();
+	let gated: FxHashSet<ObjectId> = upstreams.values().flat_map(|upstream| upstream.views.iter().copied()).collect();
 	let target = upstreams
 		.values()
 		.map(|upstream| upstream.complete_through(cursor, index))
@@ -407,7 +408,7 @@ mod tests {
 
 	fn upstream_of(view: ViewId, position: Option<u64>, read: StreamRead) -> UpstreamRead {
 		UpstreamRead {
-			views: HashSet::from([ObjectId::View(view)]),
+			views: FxHashSet::from_iter([ObjectId::View(view)]),
 			position: position.map(cv),
 			read,
 		}

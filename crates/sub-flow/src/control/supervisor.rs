@@ -736,7 +736,7 @@ impl Actor for FlowSupervisor {
 #[cfg(test)]
 mod tests {
 	use std::{
-		collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+		collections::{BTreeMap, BTreeSet},
 		sync::{
 			Arc,
 			atomic::{AtomicBool, Ordering},
@@ -763,6 +763,7 @@ mod tests {
 	};
 	use reifydb_store_operator::store::OperatorStore;
 	use reifydb_value::value::duration::Duration;
+	use rustc_hash::{FxHashMap, FxHashSet};
 
 	use super::{reap_orphan_checkpoints, retire_flow, wake_sets, wake_targets};
 	use crate::progress::tracker::FlowPositionTracker;
@@ -883,8 +884,8 @@ mod tests {
 			ObjectId::Table(TableId(14)),
 		);
 		let (view_a, view_b) = (ObjectId::View(ViewId(21)), ObjectId::View(ViewId(22)));
-		tracker.set_upstreams(b, HashMap::from([(a, HashSet::from([view_a]))]));
-		tracker.set_upstreams(d, HashMap::from([(b, HashSet::from([view_b]))]));
+		tracker.set_upstreams(b, FxHashMap::from_iter([(a, FxHashSet::from_iter([view_a]))]));
+		tracker.set_upstreams(d, FxHashMap::from_iter([(b, FxHashSet::from_iter([view_b]))]));
 		let sources = BTreeMap::from([
 			(a, Arc::new(BTreeSet::from([table_a]))),
 			(b, Arc::new(BTreeSet::from([table_b, view_a]))),

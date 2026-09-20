@@ -16,6 +16,7 @@ use reifydb_core::{
 	lifecycle::watermark::ConsumerPositions,
 };
 use reifydb_runtime::{actor::mailbox::ActorRef, context::clock::Clock, sync::rwlock::RwLock};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Clone)]
 pub struct ObjectVersionTracker {
@@ -57,7 +58,7 @@ impl Default for ObjectVersionTracker {
 	}
 }
 
-pub type FlowUpstreams = HashMap<FlowId, HashSet<ObjectId>>;
+pub type FlowUpstreams = FxHashMap<FlowId, FxHashSet<ObjectId>>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Completion {
@@ -355,7 +356,6 @@ impl Default for FlowPositionTracker {
 #[cfg(test)]
 mod tests {
 	use std::{
-		collections::{HashMap, HashSet},
 		mem::forget,
 		sync::{
 			Arc,
@@ -375,6 +375,7 @@ mod tests {
 		},
 		context::clock::{Clock, MockClock},
 	};
+	use rustc_hash::{FxHashMap, FxHashSet};
 
 	use super::{COMPLETION_HISTORY, FlowPositionTracker, FlowProgress, FlowWaker};
 
@@ -422,7 +423,7 @@ mod tests {
 	#[test]
 	fn pruning_keeps_the_entry_the_slowest_reader_still_needs() {
 		let mut progress = FlowProgress::default();
-		progress.link_reader(READER, HashMap::from([(PRODUCER, HashSet::new())]));
+		progress.link_reader(READER, FxHashMap::from_iter([(PRODUCER, FxHashSet::default())]));
 		progress.advance_position(READER, cv(25));
 		for version in 1..=5u64 {
 			progress.advance_last_commit(PRODUCER, cv(version * 10));
@@ -442,7 +443,7 @@ mod tests {
 	#[test]
 	fn a_reader_that_never_advances_holds_the_whole_history() {
 		let mut progress = FlowProgress::default();
-		progress.link_reader(READER, HashMap::from([(PRODUCER, HashSet::new())]));
+		progress.link_reader(READER, FxHashMap::from_iter([(PRODUCER, FxHashSet::default())]));
 		progress.advance_position(READER, cv(0));
 		for version in 1..=40u64 {
 			progress.advance_last_commit(PRODUCER, cv(version * 10));
@@ -589,7 +590,7 @@ mod tests {
 			.clone();
 		let pending = Arc::new(AtomicBool::new(false));
 		let tracker = FlowPositionTracker::new();
-		tracker.set_upstreams(READER, HashMap::from([(PRODUCER, HashSet::new())]));
+		tracker.set_upstreams(READER, FxHashMap::from_iter([(PRODUCER, FxHashSet::default())]));
 		tracker.set_waker(READER, FlowWaker::new(reader.clone(), Arc::clone(&pending), clock));
 
 		tracker.update(PRODUCER, CommitVersion(1));
@@ -633,7 +634,7 @@ mod tests {
 		forget(actor_system);
 		let pending = Arc::new(AtomicBool::new(false));
 		let tracker = FlowPositionTracker::new();
-		tracker.set_upstreams(READER, HashMap::from([(PRODUCER, HashSet::new())]));
+		tracker.set_upstreams(READER, FxHashMap::from_iter([(PRODUCER, FxHashSet::default())]));
 		tracker.set_source_count(READER, source_count);
 		tracker.set_waker(READER, FlowWaker::new(reader.clone(), Arc::clone(&pending), clock.clone()));
 		(clock, tracker, reader, pending, received)
@@ -716,14 +717,14 @@ mod tests {
 		let tracker = FlowPositionTracker::new();
 		assert!(!tracker.has_readers(PRODUCER), "an unlinked flow must have no readers");
 
-		tracker.set_upstreams(READER, HashMap::from([(PRODUCER, HashSet::new())]));
+		tracker.set_upstreams(READER, FxHashMap::from_iter([(PRODUCER, FxHashSet::default())]));
 		assert!(tracker.has_readers(PRODUCER), "a linked producer must have readers");
 		assert!(!tracker.has_readers(READER), "the reader itself is read by nobody");
 
-		tracker.set_upstreams(READER, HashMap::new());
+		tracker.set_upstreams(READER, FxHashMap::default());
 		assert!(!tracker.has_readers(PRODUCER), "relinking the reader without the producer must clear it");
 
-		tracker.set_upstreams(READER, HashMap::from([(PRODUCER, HashSet::new())]));
+		tracker.set_upstreams(READER, FxHashMap::from_iter([(PRODUCER, FxHashSet::default())]));
 		tracker.remove(READER);
 		assert!(!tracker.has_readers(PRODUCER), "removing the last reader must clear it");
 	}
