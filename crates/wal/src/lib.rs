@@ -7,6 +7,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod body;
+pub mod cursors;
 pub mod device;
 pub mod error;
 pub mod floor;

@@ -10,6 +10,7 @@ use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
 
 use crate::{
 	body::Body,
+	cursors::Cursors,
 	device::{Append, Flush, Mark, ReadFrom, Reclaim},
 	error::{Result, WalError},
 	floor::Floor,
@@ -115,6 +116,48 @@ impl<T, L: Mark> Wal<T, L> {
 		}
 		let stored = self.0.device.readers()?.into_iter().find(|(id, _)| id == name).map(|(_, hint)| hint);
 		Ok(stored.and_then(Lsn::from_version))
+	}
+}
+
+impl<T, L: Reclaim + Mark> Wal<T, L> {
+	pub fn gc(&self) -> Result<Option<Lsn>> {
+		let lowest =
+			self.0.device.readers()?.into_iter().map(|(_, hint)| Lsn::from_version(hint)).min().flatten();
+		if let Some(lowest) = lowest {
+			reifydb_assertions! {
+				let appended = self.0.appender.lock().last;
+				assert!(
+					appended.is_some_and(|last| lowest <= last),
+					"the lowest floor is past the last appended lsn, so gc would drop every sealed \
+					 segment under a reader position no record ever had (floor={lowest:?}, \
+					 appended={appended:?})"
+				);
+			}
+			self.0.device.drop_below(lowest.into())?;
+		}
+		self.start()
+	}
+
+	pub fn cursors(&self) -> Result<Cursors> {
+		let appended = self.0.appender.lock().last;
+		let durable = self.0.progress.lock().durable;
+		let floors =
+			self.0.device
+				.readers()?
+				.into_iter()
+				.map(|(name, hint)| (name, Lsn::from_version(hint)))
+				.collect();
+		Ok(Cursors {
+			appended,
+			durable,
+			start: self.start()?,
+			floors,
+			bytes: self.0.device.bytes()?,
+		})
+	}
+
+	fn start(&self) -> Result<Option<Lsn>> {
+		Ok(self.0.device.start()?.and_then(Lsn::from_version))
 	}
 }
 
