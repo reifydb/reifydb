@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeSet, marker::PhantomData};
 
-use reifydb_codec::log::{RecordKind, Term, record::Record};
+use reifydb_codec::log::{LogIndex, RecordKind, Term, record::Record};
 use reifydb_runtime::sync::{Arc, condvar::Condvar, mutex::Mutex};
 use reifydb_store_log::{error::LogError, segment::Scan};
 use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
@@ -133,7 +133,8 @@ impl<T, L: Reclaim + Mark> Wal<T, L> {
 					 appended={appended:?})"
 				);
 			}
-			self.0.device.drop_below(lowest.into())?;
+			let ceiling = LogIndex::from(lowest).max(self.0.device.committed()?);
+			self.0.device.drop_below(ceiling)?;
 		}
 		self.start()
 	}

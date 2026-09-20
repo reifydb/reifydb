@@ -35,6 +35,8 @@ pub trait ReadFrom: Device {
 pub trait Reclaim: Device {
 	fn start(&self) -> Result<Option<LogVersion>>;
 
+	fn committed(&self) -> Result<LogIndex>;
+
 	fn drop_below(&self, index: LogIndex) -> Result<()>;
 
 	fn bytes(&self) -> Result<ByteSize>;

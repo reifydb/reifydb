@@ -149,6 +149,10 @@ where
 		Ok(head.map(|_| Lsn::FIRST.into()))
 	}
 
+	fn committed(&self) -> Result<LogIndex> {
+		Ok(self.commit_index(0)?)
+	}
+
 	fn drop_below(&self, index: LogIndex) -> Result<()> {
 		let _dropped = self.drop_below(0, index)?;
 		Ok(())

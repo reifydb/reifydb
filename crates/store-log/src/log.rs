@@ -233,6 +233,10 @@ where
 		Ok(self.writer(partition)?.with(|partition| partition.bases().to_vec()))
 	}
 
+	pub fn commit_index(&self, partition: u32) -> Result<LogIndex> {
+		Ok(self.writer(partition)?.with(|partition| partition.commit_index()))
+	}
+
 	pub fn segment_bytes(&self, partition: u32) -> Result<ByteSize> {
 		Ok(self.writer(partition)?.with(|partition| partition.segment().capacity()))
 	}
