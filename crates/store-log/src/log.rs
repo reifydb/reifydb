@@ -9,7 +9,7 @@ use reifydb_codec::log::{
 	record::Record,
 };
 use reifydb_runtime::io::fs::{
-	Create, Filesystem, Len, Mkdir, Open, OpenMut, Pread, ReadDir, Rename, SyncData, SyncDir, Unlink,
+	Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, Pread, ReadDir, Rename, SyncData, SyncDir, Unlink,
 };
 use reifydb_value::{byte_size::ByteSize, clock::ClockNow, value::duration::Duration};
 
@@ -287,8 +287,10 @@ fn publish<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(fs: &F, pa
 where
 	F::FileMut: SyncData,
 {
-	if fs.open(path).is_ok() {
-		return Err(LogError::AlreadyExists(path.to_path_buf()));
+	match fs.open(path) {
+		Ok(_) => return Err(LogError::AlreadyExists(path.to_path_buf())),
+		Err(FsError::NotFound(_)) => {}
+		Err(error) => return Err(error.into()),
 	}
 	let staging = staging(path);
 	discard(fs, &staging)?;

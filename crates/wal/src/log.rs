@@ -9,6 +9,7 @@ use reifydb_value::{byte_size::ByteSize, clock::ClockNow};
 use crate::{
 	device::{Append, Device, Flush, Mark, ReadFrom, Reclaim, RecordCursor},
 	error::Result,
+	lsn::Lsn,
 };
 
 impl<F, C> Device for Log<F, C>
@@ -138,7 +139,14 @@ where
 	Partition<F, C>: Send,
 {
 	fn start(&self) -> Result<Option<LogVersion>> {
-		Ok(self.bases(0)?.first().copied().filter(|base| *base != LogVersion::ZERO))
+		let Some(base) = self.bases(0)?.first().copied() else {
+			return Ok(None);
+		};
+		if base != LogVersion::ZERO {
+			return Ok(Some(base));
+		}
+		let head = self.with(0, |partition| partition.head())?;
+		Ok(head.map(|_| Lsn::FIRST.into()))
 	}
 
 	fn drop_below(&self, index: LogIndex) -> Result<()> {

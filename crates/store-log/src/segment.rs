@@ -45,8 +45,10 @@ impl<F: Filesystem> Segment<F> {
 	where
 		F: Create + Open + Rename + SyncDir + Unlink,
 	{
-		if fs.open(path).is_ok() {
-			return Err(LogError::AlreadyExists(path.to_path_buf()));
+		match fs.open(path) {
+			Ok(_) => return Err(LogError::AlreadyExists(path.to_path_buf())),
+			Err(FsError::NotFound(_)) => {}
+			Err(error) => return Err(error.into()),
 		}
 		let staging = staging(path);
 		discard(fs, &staging)?;

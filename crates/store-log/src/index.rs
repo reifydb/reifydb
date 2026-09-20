@@ -12,7 +12,7 @@ use reifydb_codec::log::{
 	record::Record,
 };
 use reifydb_runtime::io::fs::{
-	Create, Filesystem, Len, Open, OpenMut, Pread, Rename, SyncData, SyncDir, Truncate, Unlink,
+	Create, Filesystem, FsError, Len, Open, OpenMut, Pread, Rename, SyncData, SyncDir, Truncate, Unlink,
 };
 use reifydb_value::byte_size::ByteSize;
 
@@ -48,8 +48,10 @@ impl<F: Filesystem> Index<F> {
 	where
 		F: Create + Open + Rename + SyncDir + Unlink,
 	{
-		if fs.open(path).is_ok() {
-			return Err(LogError::AlreadyExists(path.to_path_buf()));
+		match fs.open(path) {
+			Ok(_) => return Err(LogError::AlreadyExists(path.to_path_buf())),
+			Err(FsError::NotFound(_)) => {}
+			Err(error) => return Err(error.into()),
 		}
 		let header = Header::new(base_version, base_index);
 		let staging = staging(path);

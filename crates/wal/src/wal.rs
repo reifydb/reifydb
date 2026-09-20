@@ -128,9 +128,13 @@ impl<T: Body, L: Append + Flush> Wal<T, L> {
 				 that was never framed (durable={found:?}, appended={appended:?})"
 			);
 		}
-		self.0.progress.lock().durable = found;
+		let durable = {
+			let mut progress = self.0.progress.lock();
+			progress.durable = progress.durable.max(found);
+			progress.durable
+		};
 		self.0.flushed.notify_all();
-		Ok(found)
+		Ok(durable)
 	}
 
 	pub fn durable(&self) -> Option<Lsn> {

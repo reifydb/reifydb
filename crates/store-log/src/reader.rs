@@ -26,8 +26,10 @@ pub fn register<F: Filesystem + Create + Mkdir + Open + Rename + SyncDir + Unlin
 ) -> Result<()> {
 	let path = path_of(dir, id)?;
 	make_dir(fs, &dir.join(DIR_NAME))?;
-	if fs.open(&path).is_ok() {
-		return Err(LogError::AlreadyExists(path));
+	match fs.open(&path) {
+		Ok(_) => return Err(LogError::AlreadyExists(path)),
+		Err(FsError::NotFound(_)) => {}
+		Err(error) => return Err(error.into()),
 	}
 	publish(fs, &path, LogVersion::ZERO)
 }
@@ -43,14 +45,16 @@ pub fn record<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(
 	version: LogVersion,
 ) -> Result<()> {
 	let path = path_of(dir, id)?;
-	if fs.open(&path).is_err() {
-		return Err(LogError::NotFound(path));
+	match fs.open(&path) {
+		Ok(_) => {}
+		Err(FsError::NotFound(_)) => return Err(LogError::NotFound(path)),
+		Err(error) => return Err(error.into()),
 	}
 	publish(fs, &path, version)
 }
 
 pub fn version_of<F: Filesystem + Open>(fs: &F, dir: &Path, id: &str) -> Result<LogVersion> {
-	Ok(read(fs, &path_of(dir, id)?)?.unwrap_or(LogVersion::ZERO))
+	hint_or_start(fs, &path_of(dir, id)?)
 }
 
 pub fn floor<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Option<LogVersion>> {
@@ -64,7 +68,7 @@ pub fn floor<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Optio
 		if path.as_os_str().as_encoded_bytes().ends_with(STAGING_SUFFIX.as_bytes()) {
 			continue;
 		}
-		let pinned = read(fs, &path)?.unwrap_or(LogVersion::ZERO);
+		let pinned = hint_or_start(fs, &path)?;
 		lowest = Some(lowest.map_or(pinned, |low| low.min(pinned)));
 	}
 	Ok(lowest)
@@ -84,7 +88,7 @@ pub fn readers<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Vec
 		let Some(id) = path.file_name().and_then(|name| name.to_str()) else {
 			continue;
 		};
-		let hint = read(fs, &path)?.unwrap_or(LogVersion::ZERO);
+		let hint = hint_or_start(fs, &path)?;
 		out.push((id.to_string(), hint));
 	}
 	out.sort_by(|a, b| a.0.cmp(&b.0));
@@ -130,6 +134,10 @@ fn valid(id: &str) -> bool {
 		return false;
 	}
 	id.chars().all(|at| at.is_ascii_alphanumeric() || at == '-' || at == '_' || at == '.')
+}
+
+fn hint_or_start<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<LogVersion> {
+	Ok(read(fs, path)?.unwrap_or(LogVersion::ZERO))
 }
 
 fn read<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<Option<LogVersion>> {
