@@ -22,7 +22,6 @@ use reifydb_core::{
 		typed::layout::KeyLayout,
 	},
 	state::typed::SuffixBytes,
-	util::sorted::SortedVecMap,
 };
 use reifydb_value::byte_size::ByteSize;
 
@@ -108,16 +107,16 @@ impl WriteEntry {
 }
 
 struct Partition<K: Keyspace> {
-	live: SortedVecMap<K::Suffix, WriteEntry>,
-	deleted: SortedVecMap<K::Suffix, WriteEntry>,
+	live: BTreeMap<K::Suffix, WriteEntry>,
+	deleted: BTreeMap<K::Suffix, WriteEntry>,
 	dirty: usize,
 }
 
 impl<K: Keyspace> Partition<K> {
 	fn new() -> Self {
 		Self {
-			live: SortedVecMap::new(),
-			deleted: SortedVecMap::new(),
+			live: BTreeMap::new(),
+			deleted: BTreeMap::new(),
 			dirty: 0,
 		}
 	}
