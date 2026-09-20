@@ -119,6 +119,8 @@ impl<D: RangeDomain> RangeTier<D> {
 
 #[cfg(test)]
 mod tests {
+	use std::collections::BTreeMap;
+
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
@@ -127,7 +129,6 @@ mod tests {
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 			typed::Edge,
 		},
-		util::sorted::SortedVecMap,
 	};
 	use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
@@ -186,7 +187,7 @@ mod tests {
 		shard.partitions.insert(
 			id,
 			Partition {
-				entries: SortedVecMap::new(),
+				entries: BTreeMap::new(),
 				pinned: PinnedCount::new(),
 				bytes: PARTITION_OVERHEAD,
 				tick: 0,

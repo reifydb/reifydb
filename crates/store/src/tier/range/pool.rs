@@ -530,6 +530,7 @@ fn build_shards<D: RangeDomain>(config: RangeConfig, shard_bytes: ByteSize) -> B
 
 #[cfg(test)]
 mod tests {
+	use std::collections::BTreeMap;
 	use std::sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering as AtomicOrdering},
@@ -546,7 +547,6 @@ mod tests {
 			collect::MetricsCollector,
 			sample::{MetricsSample, Reading},
 		},
-		util::sorted::SortedVecMap,
 	};
 	use reifydb_value::{byte_size::ByteSize, count::Count, util::hash::Hash128};
 
@@ -623,7 +623,7 @@ mod tests {
 			let slot = partitions.entry(id).or_insert_with(|| {
 				budget.charge(ByteSize::from_bytes(PARTITION_OVERHEAD as u64));
 				Partition {
-					entries: SortedVecMap::new(),
+					entries: BTreeMap::new(),
 					pinned: PinnedCount::new(),
 					bytes: PARTITION_OVERHEAD,
 					tick,

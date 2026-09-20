@@ -11,7 +11,7 @@ mod scan;
 mod tests;
 mod write;
 
-use std::{borrow::Cow, collections::HashMap, fmt::Debug, hash::Hash, mem::size_of, ops::Bound, sync::Arc};
+use std::{borrow::Cow, collections::{BTreeMap, HashMap}, fmt::Debug, hash::Hash, mem::size_of, ops::Bound, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -19,7 +19,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::typed::{BoundedKey, Edge, Key, OpaqueKey},
-	util::{budget::MemoryBudget, sorted::SortedVecMap},
+	util::budget::MemoryBudget,
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 use reifydb_value::byte_size::ByteSize;
@@ -142,7 +142,7 @@ pub fn proven_span<D: RangeDomain>(
 }
 
 struct Partition<K, R> {
-	entries: SortedVecMap<K, Entry<R>>,
+	entries: BTreeMap<K, Entry<R>>,
 	pinned: PinnedCount,
 	bytes: usize,
 	tick: u64,

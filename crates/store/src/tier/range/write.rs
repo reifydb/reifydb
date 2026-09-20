@@ -3,9 +3,9 @@
 
 #[cfg(test)]
 use std::cell::RefCell;
-use std::slice;
+use std::{collections::BTreeMap, slice};
 
-use reifydb_core::{key::typed::Edge, util::sorted::SortedVecMap};
+use reifydb_core::key::typed::Edge;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
@@ -154,7 +154,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			} = &mut *shard;
 			let fresh = !partitions.contains_key(partition);
 			let target = partitions.entry(*partition).or_insert_with(|| Partition {
-				entries: SortedVecMap::new(),
+				entries: BTreeMap::new(),
 				pinned: PinnedCount::new(),
 				bytes: partition_overhead::<D>(),
 				tick: next,
@@ -294,7 +294,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			} = &mut *shard;
 			let fresh = !partitions.contains_key(partition);
 			let target = partitions.entry(*partition).or_insert_with(|| Partition {
-				entries: SortedVecMap::new(),
+				entries: BTreeMap::new(),
 				pinned: PinnedCount::new(),
 				bytes: partition_overhead::<D>(),
 				tick: next,
@@ -389,6 +389,7 @@ fn supersedes<D: RangeDomain>(resident: &Entry<D::Row>, incoming: &Entry<D::Row>
 
 #[cfg(test)]
 mod tests {
+	use std::collections::BTreeMap;
 	use std::sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -401,7 +402,6 @@ mod tests {
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 			typed::{Edge, OpaqueKey},
 		},
-		util::sorted::SortedVecMap,
 	};
 	use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
 
@@ -465,7 +465,7 @@ mod tests {
 		shard.partitions.insert(
 			id,
 			Partition {
-				entries: SortedVecMap::new(),
+				entries: BTreeMap::new(),
 				pinned: PinnedCount::new(),
 				bytes: PARTITION_OVERHEAD,
 				tick: 0,
@@ -796,7 +796,7 @@ mod tests {
 		shard.partitions.insert(
 			id,
 			Partition {
-				entries: SortedVecMap::new(),
+				entries: BTreeMap::new(),
 				pinned: PinnedCount::new(),
 				bytes: PARTITION_OVERHEAD,
 				tick: 0,
