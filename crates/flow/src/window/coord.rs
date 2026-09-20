@@ -3,7 +3,9 @@
 
 use std::fmt::Debug;
 
+use reifydb_codec::key::encoded::EncodedKeyBuilder;
 use reifydb_core::{
+	error::CoreError,
 	metrics::heap::HeapSize,
 	operator_with::ApplyWith,
 	state::timer::{StateStore, TimerStore},
@@ -20,7 +22,7 @@ use crate::{
 		domain::SealDomain,
 		ledger::SealLedger,
 	},
-	window::span::Slot,
+	window::{settings::WindowSettings, span::Slot},
 };
 
 pub trait TimeStamped {
@@ -150,6 +152,10 @@ impl Coord for OrdinalCoord {
 			ordinal: order,
 		}
 	}
+
+	fn extend_key(self, builder: EncodedKeyBuilder) -> EncodedKeyBuilder {
+		builder.u64(self.ordinal)
+	}
 }
 
 impl SealDomain for OrdinalCoord {
@@ -165,6 +171,19 @@ impl SealDomain for OrdinalCoord {
 			return Ok(None);
 		};
 		Ok(Some(RowSpan::of(count.saturating_add(lateness))))
+	}
+
+	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>> {
+		let Some(kind) = &with.window else {
+			return Err(CoreError::OperatorWithWindowMissing.into());
+		};
+		Ok(WindowSettings {
+			kind: kind.clone(),
+			size: RowSpan::of(with.window_slots()?),
+			pane: None,
+			lateness: RowSpan::of(with.lateness_count()?.unwrap_or(0)),
+			immutable: with.immutable_count()?.map(RowSpan::of),
+		})
 	}
 
 	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, _seal_span: RowSpan) -> Result<()> {
@@ -348,5 +367,50 @@ mod tests {
 
 		assert_eq!(minted, from_row);
 		assert_eq!(minted.value(), 7);
+	}
+
+	#[test]
+	fn the_ordinal_settings_read_counts_and_default_lateness_to_zero_rows() {
+		// a slot-domain window is sized in rows; an omitted lateness must be zero rows and an omitted
+		// immutable none, or a plain window would silently start refusing retractions
+		let declared = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Count(10),
+			}),
+			lateness: Some(WithSpan::Count(4)),
+			immutable: Some(WithSpan::Count(2)),
+		};
+		let omitted = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Count(10),
+			}),
+			lateness: None,
+			immutable: None,
+		};
+
+		let declared = OrdinalCoord::window_settings_of(&declared).unwrap();
+		let omitted = OrdinalCoord::window_settings_of(&omitted).unwrap();
+
+		assert_eq!(declared.size, RowSpan::of(10));
+		assert_eq!(declared.lateness, RowSpan::of(4));
+		assert_eq!(declared.immutable, Some(RowSpan::of(2)));
+		assert_eq!(declared.pane, None);
+		assert_eq!(omitted.lateness, RowSpan::ZERO);
+		assert_eq!(omitted.immutable, None);
+	}
+
+	#[test]
+	fn the_ordinal_settings_refuse_a_missing_window_and_a_duration_size() {
+		// a duration has no row count, so the ordinal domain must fail loud rather than guess a size
+		let duration = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(secs(60)),
+			}),
+			lateness: None,
+			immutable: None,
+		};
+
+		assert!(OrdinalCoord::window_settings_of(&ApplyWith::default()).is_err());
+		assert!(OrdinalCoord::window_settings_of(&duration).is_err());
 	}
 }

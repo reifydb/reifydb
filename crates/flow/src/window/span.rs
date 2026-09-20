@@ -3,7 +3,7 @@
 
 use std::fmt::Debug;
 
-use reifydb_codec::row::operator::state::StateCodec;
+use reifydb_codec::{key::encoded::EncodedKey, row::operator::state::StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::value::datetime::DateTime;
@@ -92,6 +92,10 @@ where
 			end: self.end.add_span(span),
 		}
 	}
+}
+
+pub fn window_row_key<C: Coord>(group: EncodedKey, start: C) -> EncodedKey {
+	start.extend_key(EncodedKey::builder().raw(group.as_slice())).build()
 }
 
 #[cfg(test)]
@@ -191,5 +195,17 @@ mod tests {
 
 		assert!(!is_sealed(at_boundary, horizon), "the boundary window is still live");
 		assert!(is_sealed(before_boundary, horizon), "anything older is sealed");
+	}
+
+	#[test]
+	fn window_row_key_puts_the_group_before_the_coordinate() {
+		// A coordinate ahead of the group would interleave every group's windows in one key range.
+		let start = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap();
+		let group = EncodedKey::builder().u32(3u32).u32(9u32).build();
+
+		let expected = EncodedKey::builder().u32(3u32).u32(9u32).datetime(&start).build();
+		assert_eq!(window_row_key(group.clone(), start), expected);
+
+		assert!(window_row_key(group.clone(), start).as_slice().starts_with(group.as_slice()));
 	}
 }

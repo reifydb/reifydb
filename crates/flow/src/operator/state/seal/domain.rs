@@ -5,9 +5,9 @@ use std::fmt::Debug;
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	common::WindowSize,
+	common::{WindowKind, WindowSize},
 	error::CoreError,
-	operator_with::ApplyWith,
+	operator_with::{ApplyWith, WindowSealing},
 	state::timer::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_value::{
@@ -15,10 +15,13 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::operator::state::seal::{
-	coord::Coord,
-	ledger::SealLedger,
-	rule::{SEAL_GATE_STEP, SealRule},
+use crate::{
+	operator::state::seal::{
+		coord::Coord,
+		ledger::SealLedger,
+		rule::{SEAL_GATE_STEP, SealRule},
+	},
+	window::settings::WindowSettings,
 };
 
 pub trait SealDomain: Coord {
@@ -27,6 +30,8 @@ pub trait SealDomain: Coord {
 	fn arms_timer() -> bool;
 
 	fn seal_span_of(with: &ApplyWith) -> Result<Option<Self::SealSpan>>;
+
+	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>>;
 
 	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, seal_span: Self::SealSpan) -> Result<()>;
 
@@ -56,6 +61,28 @@ impl SealDomain for DateTime {
 		Ok(SealRule::for_window(kind, lateness).map(|rule| rule.admissible().duration()))
 	}
 
+	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>> {
+		let Some(kind) = &with.window else {
+			return Err(CoreError::OperatorWithWindowMissing.into());
+		};
+		let size = with.window_duration()?;
+		let sealing = WindowSealing::from_operator_with(with)?;
+		let pane = match kind {
+			WindowKind::Rolling {
+				pane,
+				..
+			} => *pane,
+			_ => None,
+		};
+		Ok(WindowSettings {
+			kind: kind.clone(),
+			size,
+			pane,
+			lateness: sealing.lateness.unwrap_or_else(Duration::zero),
+			immutable: sealing.immutable,
+		})
+	}
+
 	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, seal_span: Duration) -> Result<()> {
 		let at = newest.saturating_add(seal_span).saturating_add(SEAL_GATE_STEP);
 		store.arm_timer(at, TimerKind::Seal, &EncodedKey::new(Vec::new()))
@@ -74,7 +101,7 @@ impl SealDomain for DateTime {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::common::WindowKind;
+	use reifydb_core::{common::WindowSize, operator_with::WithSpan};
 	use reifydb_value::factory::time::at_millis;
 
 	use super::*;
@@ -158,5 +185,53 @@ mod tests {
 		};
 
 		assert!(DateTime::seal_span_of(&with).is_err());
+	}
+
+	#[test]
+	fn the_wall_clock_settings_carry_the_rolling_pane_and_none_for_a_tumbling_window() {
+		// the pane lives only on a rolling window; a tumbling one that reported a pane would make the engine
+		// merge panes it never built
+		let rolling = ApplyWith {
+			window: Some(WindowKind::Rolling {
+				size: WindowSize::Duration(Duration::from_seconds(3600).unwrap()),
+				lag: None,
+				pane: Some(Duration::from_seconds(1).unwrap()),
+			}),
+			lateness: Some(WithSpan::Duration(Duration::from_seconds(20).unwrap())),
+			immutable: Some(WithSpan::Duration(Duration::from_seconds(15).unwrap())),
+		};
+		let tumbling = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(Duration::from_seconds(60).unwrap()),
+			}),
+			lateness: None,
+			immutable: None,
+		};
+
+		let rolling = DateTime::window_settings_of(&rolling).unwrap();
+		let tumbling = DateTime::window_settings_of(&tumbling).unwrap();
+
+		assert_eq!(rolling.size, Duration::from_seconds(3600).unwrap());
+		assert_eq!(rolling.pane, Some(Duration::from_seconds(1).unwrap()));
+		assert_eq!(rolling.lateness, Duration::from_seconds(20).unwrap());
+		assert_eq!(rolling.immutable, Some(Duration::from_seconds(15).unwrap()));
+		assert_eq!(tumbling.pane, None);
+		assert_eq!(tumbling.lateness, Duration::zero());
+		assert_eq!(tumbling.immutable, None);
+	}
+
+	#[test]
+	fn the_wall_clock_settings_refuse_a_missing_window_and_a_count_size() {
+		// without a window there is nothing to size, and a count has no wall-clock span; both must fail loud
+		let count = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Count(10),
+			}),
+			lateness: None,
+			immutable: None,
+		};
+
+		assert!(DateTime::window_settings_of(&ApplyWith::default()).is_err());
+		assert!(DateTime::window_settings_of(&count).is_err());
 	}
 }

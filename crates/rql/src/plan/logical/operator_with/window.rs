@@ -32,6 +32,7 @@ pub(super) struct ParsedConfig {
 	pub slide_count: Option<Declared<u64>>,
 	pub gap: Option<Declared<Duration>>,
 	pub lag: Option<Declared<Duration>>,
+	pub pane: Option<Declared<Duration>>,
 	pub lateness: Option<Declared<Duration>>,
 	pub immutable: Option<Declared<Duration>>,
 	pub window: Fragment,
@@ -336,9 +337,19 @@ impl<'bump> Compiler<'bump> {
 					}
 					.into());
 				}
+				if let Some(pane) = parsed.pane.as_ref()
+					&& !matches!(size, WindowSize::Duration(_))
+				{
+					return Err(AstError::UnexpectedToken {
+						expected: "pane is only supported with a duration size".to_string(),
+						fragment: pane.fragment.clone(),
+					}
+					.into());
+				}
 				Ok(WindowKind::Rolling {
 					size,
 					lag: Declared::value_of(&parsed.lag),
+					pane: Declared::value_of(&parsed.pane),
 				})
 			}
 			AstWindowKind::Session => {

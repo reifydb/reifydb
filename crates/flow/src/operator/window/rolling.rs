@@ -1036,6 +1036,7 @@ mod tests {
 			kind: WindowKind::Rolling {
 				size,
 				lag: None,
+				pane: None,
 			},
 			group_by: Vec::new(),
 			aggregations: Vec::new(),

@@ -65,6 +65,7 @@ fn rolling_window(immutable: Option<Duration>, aggregations: &'static [&'static 
 			kind: WindowKind::Rolling {
 				size: WindowSize::Duration(Duration::from_milliseconds(SIZE_MS as i64).unwrap()),
 				lag: None,
+				pane: None,
 			},
 			group_by: parse_expression("g").expect("group_by parses"),
 			aggregations: aggregations

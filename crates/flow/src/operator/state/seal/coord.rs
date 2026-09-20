@@ -3,6 +3,7 @@
 
 use std::fmt::Debug;
 
+use reifydb_codec::key::encoded::EncodedKeyBuilder;
 use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 pub trait Coord: Copy + Ord + Debug {
@@ -23,6 +24,8 @@ pub trait Coord: Copy + Ord + Debug {
 	fn to_order(self) -> u64;
 
 	fn from_order(order: u64) -> Self;
+
+	fn extend_key(self, builder: EncodedKeyBuilder) -> EncodedKeyBuilder;
 }
 
 impl Coord for DateTime {
@@ -56,6 +59,10 @@ impl Coord for DateTime {
 
 	fn from_order(order: u64) -> Self {
 		DateTime::from_bits(order)
+	}
+
+	fn extend_key(self, builder: EncodedKeyBuilder) -> EncodedKeyBuilder {
+		builder.datetime(&self)
 	}
 }
 
@@ -95,5 +102,27 @@ impl IsZero for Time {
 	#[inline]
 	fn is_zero(&self) -> bool {
 		*self == Time::default()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_value::value::datetime::DateTime;
+
+	use super::Coord;
+
+	#[test]
+	fn datetime_extend_key_matches_the_datetime_key_encoding() {
+		// The engine key must stay byte-identical to the hand-written datetime encoding, or every stored window
+		// is orphaned.
+		let dt = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap();
+
+		let bare = dt.extend_key(EncodedKey::builder()).build();
+		assert_eq!(bare, EncodedKey::builder().datetime(&dt).build());
+
+		let prefixed = dt.extend_key(EncodedKey::builder().u32(7u32)).build();
+		assert_eq!(prefixed, EncodedKey::builder().u32(7u32).datetime(&dt).build());
+		assert_eq!(prefixed.len(), bare.len() + 4, "the prefix must not be re-encoded or dropped");
 	}
 }

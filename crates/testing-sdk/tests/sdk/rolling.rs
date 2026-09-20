@@ -163,6 +163,7 @@ fn window_with() -> ApplyWith {
 		window: Some(WindowKind::Rolling {
 			size: WindowSize::Duration(millis(3)),
 			lag: None,
+			pane: None,
 		}),
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
@@ -174,6 +175,7 @@ fn sealed_with() -> ApplyWith {
 		window: Some(WindowKind::Rolling {
 			size: WindowSize::Duration(millis(3)),
 			lag: None,
+			pane: None,
 		}),
 		lateness: Some(WithSpan::Duration(millis(117))),
 		immutable: None,

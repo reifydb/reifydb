@@ -250,6 +250,8 @@ pub enum WindowKind {
 		size: WindowSize,
 		#[serde(default)]
 		lag: Option<Duration>,
+		#[serde(default)]
+		pane: Option<Duration>,
 	},
 
 	Session {

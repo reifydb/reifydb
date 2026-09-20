@@ -7,4 +7,5 @@ pub mod engine;
 pub mod kind;
 pub mod meta;
 pub mod mint;
+pub mod settings;
 pub mod span;

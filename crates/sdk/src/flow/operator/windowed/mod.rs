@@ -2,8 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod guest_as_host;
+pub mod operator;
+pub mod plain;
 pub mod rolling;
-pub mod rolling_incremental;
 pub mod rolling_top_k;
 pub mod tumbling;
 pub mod tumbling_carry;

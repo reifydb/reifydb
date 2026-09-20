@@ -33,6 +33,7 @@ fn window_with() -> ApplyWith {
 		window: Some(WindowKind::Rolling {
 			size: WindowSize::Duration(millis(common::ROLLING_CAPACITY as u64 * common::ROLLING_BUCKET)),
 			lag: None,
+			pane: None,
 		}),
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,

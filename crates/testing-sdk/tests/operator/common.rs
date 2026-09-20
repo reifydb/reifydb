@@ -30,8 +30,8 @@ use reifydb_flow::{
 		accumulator::{
 			WindowAccumulator,
 			invertible::{
-				keyed::KeyedInvertibleAccumulator, last_value::LastValue, moments::Moments,
-				multiset::Multiset, ordf64::OrdF64, retained_map::RetainedAccumulator,
+				keyed::KeyedInvertibleAccumulator, moments::Moments, multiset::Multiset,
+				ordf64::OrdF64, retained_map::RetainedAccumulator,
 			},
 		},
 		span::WindowSpan,
@@ -45,7 +45,6 @@ use reifydb_sdk::{
 		view::RowView,
 		windowed::{
 			rolling::{RollingOperator, RollingRegistration},
-			rolling_incremental::RollingIncrementalOperator,
 			rolling_top_k::{RollingTopKOperator, RollingTopKRegistration},
 			tumbling::{TumblingOperator, TumblingRegistration},
 			tumbling_carry::{TumblingCarryOperator, TumblingCarryRegistration},
@@ -766,137 +765,6 @@ impl TumblingCarryRegistration for TwapCarry {
 
 	fn encode_row_key(&self, group: &String, window_start: DateTime) -> EncodedKey {
 		EncodedKey::builder().str(group).u64(window_start.to_order()).build()
-	}
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct VelocityOut {
-	pub group: String,
-	pub recent: f64,
-	pub baseline: f64,
-	pub windows: u32,
-}
-
-row!(VelocityOut {
-	group: String,
-	recent: f64,
-	baseline: f64,
-	windows: u32
-});
-
-pub struct VelocityIncremental {
-	capacity: usize,
-}
-
-pub fn velocity_incremental() -> VelocityIncremental {
-	VelocityIncremental {
-		capacity: ROLLING_CAPACITY,
-	}
-}
-
-impl RollingOperator for VelocityIncremental {
-	type GroupKey = String;
-
-	type WindowSlot = DateTime;
-
-	type Accumulator = LastValue<f64>;
-	type Output = VelocityOut;
-
-	fn capacity(&self) -> usize {
-		self.capacity
-	}
-
-	fn bucket_size(&self) -> Duration {
-		millis(ROLLING_BUCKET)
-	}
-
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
-	}
-
-	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
-		let group = row.utf8("group")?.to_string();
-		let value = row.f64("value")?;
-		Some((group, value))
-	}
-
-	fn combine(&self, group: &String, buffer: &BTreeMap<DateTime, LastValue<f64>>) -> Option<VelocityOut> {
-		let (_, newest) = buffer.iter().next_back()?;
-		let newest = *newest.get()?;
-		let total = buffer.len();
-		let mut sum = 0.0_f64;
-		let mut count = 0u32;
-		for (i, accumulator) in buffer.values().enumerate() {
-			if i + 1 == total {
-				continue;
-			}
-			if let Some(v) = accumulator.get() {
-				sum += *v;
-				count += 1;
-			}
-		}
-		let baseline = if count > 0 {
-			sum / count as f64
-		} else {
-			0.0
-		};
-		Some(VelocityOut {
-			group: group.clone(),
-			recent: newest,
-			baseline,
-			windows: total as u32,
-		})
-	}
-}
-
-impl RollingIncrementalOperator for VelocityIncremental {
-	type Running = Moments;
-
-	fn window_contribution(&self, window_value: &f64) -> f64 {
-		*window_value
-	}
-
-	fn combine_running(
-		&self,
-		group: &String,
-		running: &Moments,
-		newest_value: &f64,
-		_newest_coord: DateTime,
-	) -> Option<VelocityOut> {
-		let total_count = running.count();
-		let baseline_count = total_count.saturating_sub(1);
-		let baseline = if baseline_count > 0 {
-			(running.sum() - *newest_value) / baseline_count as f64
-		} else {
-			0.0
-		};
-		Some(VelocityOut {
-			group: group.clone(),
-			recent: *newest_value,
-			baseline,
-			windows: total_count as u32,
-		})
-	}
-}
-
-impl RollingRegistration for VelocityIncremental {
-	const NAME: &'static str = "operator_test_velocity";
-	const VERSION: &'static str = "0.0.1";
-	const DESCRIPTION: &'static str = "chaos fixture: rolling velocity via running moments";
-	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
-
-	fn from_operator_params(
-		_operator_id: OperatorId,
-		_params: &ExtensionParams,
-		_with: &ApplyWith,
-	) -> Result<Self> {
-		Ok(velocity_incremental())
-	}
-
-	fn encode_row_key(&self, group: &String) -> EncodedKey {
-		EncodedKey::builder().str(group).build()
 	}
 }
 

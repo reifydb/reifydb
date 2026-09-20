@@ -91,6 +91,7 @@ impl SealRule {
 			WindowKind::Rolling {
 				size: WindowSize::Duration(size),
 				lag,
+				..
 			} => Some(RollingOverTime::new(*size, lag.unwrap_or_default()).seal_rule(lateness)),
 			WindowKind::Session {
 				gap,
@@ -272,6 +273,7 @@ mod tests {
 		let rolling = WindowKind::Rolling {
 			size: WindowSize::Duration(ms(2_000)),
 			lag: Some(ms(300)),
+			pane: None,
 		};
 		assert_eq!(
 			SealRule::for_window(&rolling, lateness),
@@ -303,6 +305,7 @@ mod tests {
 			WindowKind::Rolling {
 				size: WindowSize::Count(10),
 				lag: None,
+				pane: None,
 			},
 		];
 		for kind in kinds {

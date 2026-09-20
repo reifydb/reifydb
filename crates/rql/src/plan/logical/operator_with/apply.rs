@@ -23,7 +23,7 @@ use crate::{
 	token::token::Token,
 };
 
-const APPLY_WITH_KEYS: &str = "window, duration, slots, slide, gap, lag, lateness, or immutable";
+const APPLY_WITH_KEYS: &str = "window, duration, slots, slide, gap, lag, pane, lateness, or immutable";
 
 enum Immutable {
 	Zero(Declared<()>),
@@ -110,6 +110,14 @@ impl<'bump> Compiler<'bump> {
 					Self::parse_config_item(entry, &mut parsed)?;
 					size_keys_seen.push(("lag", entry.key.fragment()));
 				}
+				Some("pane") => {
+					parsed.pane = Some(declared_duration(
+						literal(entry)?,
+						"'pane'",
+						DurationBound::Positive,
+					)?);
+					size_keys_seen.push(("pane", entry.key.fragment()));
+				}
 				Some("lateness") => lateness = Some(declared_span(literal(entry)?, "'lateness'")?),
 				Some("immutable") => immutable = declared_immutable(entry)?,
 				_ => return Err(unknown_key(entry, APPLY_WITH_KEYS)),
@@ -186,6 +194,18 @@ impl<'bump> Compiler<'bump> {
 					.into());
 				}
 
+				if let Some(pane) = &parsed.pane
+					&& let Some(immutable) = &immutable && let WithSpan::Duration(immutable_duration) =
+					immutable.value && pane.value > immutable_duration
+				{
+					return Err(RqlError::WindowPaneWiderThanImmutable {
+						pane_value: pane.fragment.text().to_string(),
+						immutable_value: immutable.fragment.text().to_string(),
+						fragment: pane.fragment.clone(),
+					}
+					.into());
+				}
+
 				match kind.size() {
 					Some(WindowSize::Count(slots)) => {
 						if let Some(immutable) = &immutable
@@ -235,7 +255,7 @@ fn window_reads(kind: AstWindowKind, key: &str) -> bool {
 	match kind {
 		AstWindowKind::Tumbling => matches!(key, "duration" | "slots"),
 		AstWindowKind::Sliding => matches!(key, "duration" | "slots" | "slide"),
-		AstWindowKind::Rolling => matches!(key, "duration" | "slots" | "lag"),
+		AstWindowKind::Rolling => matches!(key, "duration" | "slots" | "lag" | "pane"),
 		AstWindowKind::Session => matches!(key, "gap"),
 	}
 }
@@ -475,11 +495,6 @@ mod tests {
 	}
 
 	#[test]
-	fn pane_is_an_unknown_key() {
-		assert!(apply_with("apply op { } with { window: rolling, duration: 1m, pane: 1s }").is_err());
-	}
-
-	#[test]
 	fn a_key_the_kind_ignores_fails() {
 		for source in [
 			"apply op { } with { window: tumbling, duration: 1m, slide: 30s }",
@@ -504,5 +519,60 @@ mod tests {
 				.immutable,
 			Some(WithSpan::Count(0))
 		);
+	}
+
+	#[test]
+	fn pane_parses_on_a_rolling_window() {
+		assert_eq!(
+			apply_with("apply op { } with { window: rolling, duration: 1h, pane: 1s }").unwrap().window,
+			Some(WindowKind::Rolling {
+				size: WindowSize::Duration(Duration::from_hours(1).unwrap()),
+				lag: None,
+				pane: Some(Duration::from_seconds(1).unwrap()),
+			})
+		);
+	}
+
+	#[test]
+	fn pane_on_a_window_that_is_not_rolling_fails() {
+		// A pane the kind never reads is a setting the author believes is in force.
+		for source in [
+			"apply op { } with { window: tumbling, duration: 1m, pane: 1s }",
+			"apply op { } with { window: sliding, duration: 1m, slide: 30s, pane: 1s }",
+			"apply op { } with { window: session, gap: 1m, pane: 1s }",
+			"apply op { } with { pane: 1s }",
+		] {
+			assert!(apply_with(source).is_err(), "must be rejected: {source}");
+		}
+	}
+
+	#[test]
+	fn pane_on_a_slot_sized_rolling_window_fails() {
+		// A pane is a time width; a slot count has no width to divide.
+		assert!(apply_with("apply op { } with { window: rolling, slots: 4, pane: 1s }").is_err());
+	}
+
+	#[test]
+	fn a_zero_pane_fails() {
+		// A zero-width pane would need unbounded panes to cover the window.
+		assert!(apply_with("apply op { } with { window: rolling, duration: 1h, pane: 0s }").is_err());
+	}
+
+	#[test]
+	fn pane_wider_than_immutable_fails() {
+		// A wider pane folds rows that can still be retracted and loses their retractions.
+		let err = apply_with("apply op { } with { window: rolling, duration: 1h, pane: 10s, immutable: 1s }")
+			.expect_err("must be rejected")
+			.to_string();
+		assert!(err.contains("must not be wider than immutable"), "got: {err}");
+	}
+
+	#[test]
+	fn pane_equal_to_immutable_parses() {
+		// Only a wider pane loses retractions; equal must stay allowed.
+		assert!(apply_with("apply op { } with { window: rolling, duration: 1h, pane: 1s, immutable: 1s }")
+			.is_ok());
+		assert!(apply_with("apply op { } with { window: rolling, duration: 1h, pane: 1s, immutable: 5s }")
+			.is_ok());
 	}
 }

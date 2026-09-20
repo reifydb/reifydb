@@ -105,6 +105,7 @@ pub struct RollingEngine<G, S: Slot, Accumulator> {
 	meta_sweep: MetaSweep,
 	expire_batch: usize,
 	lag: <S::Coord as Coord>::Span,
+	immutable: Option<<S::Coord as Coord>::Span>,
 	expiry: ExpiryIndex<Expiry>,
 	_pd: PhantomData<(G, S, Accumulator)>,
 }
@@ -174,6 +175,7 @@ where
 			meta_sweep: MetaSweep::default(),
 			expire_batch: config.expire_batch(),
 			lag: Default::default(),
+			immutable: None,
 			expiry: ExpiryIndex::default(),
 			_pd: PhantomData,
 		}
@@ -187,6 +189,11 @@ where
 
 	pub fn with_lag(mut self, lag: <S::Coord as Coord>::Span) -> Self {
 		self.lag = lag;
+		self
+	}
+
+	pub fn with_immutable(mut self, immutable: <S::Coord as Coord>::Span) -> Self {
+		self.immutable = Some(immutable);
 		self
 	}
 
@@ -642,6 +649,11 @@ where
 				self.runnable,
 				"apply_running requires an engine constructed with new_runnable"
 			);
+			assert!(
+				self.immutable.is_none(),
+				"a rolling window with immutable must rebuild from panes: sealed values merge but never \
+				 unmerge, so the running path would unmerge a folded value"
+			);
 		}
 		let evict_cutoff = match eviction {
 			RollingEviction::Before(cutoff) => Some(cutoff),
@@ -1008,6 +1020,21 @@ where
 	}
 }
 
+impl<G, S, Accumulator> RollingEngine<G, S, Accumulator>
+where
+	G: Clone + Eq + Ord + Hash + Debug,
+	S: Slot + Hash + HeapSize,
+	Accumulator: MergeAccumulator,
+	G: StateCodec,
+	GroupMeta<S>: OperatorState,
+	RollingIndexEntry<G>: OperatorState,
+	RollingBuffer<S, Accumulator>: OperatorState,
+{
+	pub fn merge_buffer(&self, buffer: &RollingBuffer<S, Accumulator>) -> Accumulator {
+		running_below::<S, Accumulator>(buffer, Some(<S::Coord as Coord>::MAX))
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use std::collections::{BTreeMap, BTreeSet};
@@ -1022,7 +1049,7 @@ mod tests {
 	use crate::{
 		operator::state::{mock::MockStore, seal::coord::Coord},
 		window::{
-			accumulator::mock::SumAccumulator,
+			accumulator::{WindowAccumulator, invertible::last_value::LastValue, mock::SumAccumulator},
 			engine::{
 				AccumulatorEvent, EmitKind,
 				config::WindowEngineConfig,
@@ -1916,5 +1943,84 @@ mod tests {
 			vec![(1u32, EmitKind::Insert, 7i64)],
 			"the retained coord 115 crosses the frontier at high water 130 and surfaces"
 		);
+	}
+
+	fn sum_pane(contributions: &[i64]) -> SumAccumulator {
+		let mut pane = SumAccumulator::default();
+		for contribution in contributions {
+			pane.add(contribution);
+		}
+		pane
+	}
+
+	#[test]
+	fn merge_buffer_over_one_pane_equals_that_pane() {
+		// A merge that alters a lone pane would change every rolling window with a single bucket.
+		let engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buffer: RollingBuffer<DateTime, SumAccumulator> = BTreeMap::new();
+		buffer.insert(at_millis(10), sum_pane(&[3, 4]));
+
+		let merged = engine.merge_buffer(&buffer);
+		assert_eq!(merged.finalize(), sum_pane(&[3, 4]).finalize());
+		assert_eq!(merged.finalize(), Some(7));
+	}
+
+	#[test]
+	fn merge_buffer_over_three_panes_equals_one_accumulator_fed_the_same_contributions() {
+		// The engine merge must equal the flat fold the guest used to do, or rolling values shift.
+		let engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buffer: RollingBuffer<DateTime, SumAccumulator> = BTreeMap::new();
+		buffer.insert(at_millis(10), sum_pane(&[1]));
+		buffer.insert(at_millis(20), sum_pane(&[2, 3]));
+		buffer.insert(at_millis(30), sum_pane(&[4]));
+
+		let merged = engine.merge_buffer(&buffer);
+		assert_eq!(merged.finalize(), sum_pane(&[1, 2, 3, 4]).finalize());
+	}
+
+	#[test]
+	fn merge_buffer_merges_panes_oldest_first() {
+		// A last-value window keeps the newest pane's value only if panes merge oldest first.
+		let engine = RollingEngine::<u32, DateTime, LastValue<i64>>::new(test_config());
+		let mut buffer: RollingBuffer<DateTime, LastValue<i64>> = BTreeMap::new();
+		for (millis, value) in [(30, 3), (10, 1), (20, 2)] {
+			let mut pane: LastValue<i64> = LastValue::default();
+			pane.add(&value);
+			buffer.insert(at_millis(millis), pane);
+		}
+
+		assert_eq!(engine.merge_buffer(&buffer).finalize(), Some(3));
+	}
+
+	#[test]
+	fn merge_buffer_over_an_empty_buffer_is_the_default_accumulator() {
+		// An empty window must fold to nothing, not to a stale or garbage value.
+		let engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let buffer: RollingBuffer<DateTime, SumAccumulator> = BTreeMap::new();
+
+		let merged = engine.merge_buffer(&buffer);
+		assert!(merged.is_empty());
+		assert_eq!(merged.finalize(), SumAccumulator::default().finalize());
+	}
+
+	#[cfg(reifydb_assertions)]
+	#[test]
+	#[should_panic(expected = "must rebuild from panes")]
+	fn apply_running_refuses_an_engine_declared_with_immutable() {
+		// Sealed values merge but never unmerge, so the running path must not run under immutable.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config())
+			.with_immutable(millis(5));
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+
+		engine.apply_running(
+			&mut store,
+			buckets,
+			RollingEviction::Before(at_millis(0)),
+			row_key,
+			SumAccumulator::default,
+		)
+		.unwrap();
 	}
 }

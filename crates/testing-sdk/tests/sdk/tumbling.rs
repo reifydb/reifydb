@@ -649,6 +649,7 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 		window: Some(WindowKind::Rolling {
 			size: WindowSize::Duration(millis(3)),
 			lag: None,
+			pane: None,
 		}),
 		lateness: None,
 		immutable: None,

@@ -218,6 +218,7 @@ mod tests {
 			window: Some(WindowKind::Rolling {
 				size: WindowSize::Duration(seconds(120)),
 				lag: Some(seconds(10)),
+				pane: None,
 			}),
 			lateness: Some(WithSpan::Duration(seconds(5))),
 			immutable: None,
