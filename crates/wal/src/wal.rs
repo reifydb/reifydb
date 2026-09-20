@@ -15,6 +15,7 @@ use crate::{
 	floor::Floor,
 	lsn::Lsn,
 	recovered::Recovered,
+	replay::Replay,
 };
 
 pub struct Wal<T, L>(Arc<Inner<T, L>>);
@@ -114,6 +115,33 @@ impl<T, L: Mark> Wal<T, L> {
 		}
 		let stored = self.0.device.readers()?.into_iter().find(|(id, _)| id == name).map(|(_, hint)| hint);
 		Ok(stored.and_then(Lsn::from_version))
+	}
+}
+
+impl<T: Body, L: ReadFrom + Reclaim> Wal<T, L> {
+	pub fn replay(&self, from: Lsn) -> Result<Replay<'_, T, L>> {
+		let oldest = self.0.device.start()?.and_then(Lsn::from_version);
+		let at = match oldest {
+			Some(oldest) if from < oldest => {
+				return Err(WalError::Purged {
+					requested: from,
+					oldest,
+				});
+			}
+			Some(oldest) if from == oldest => Lsn::FIRST,
+			_ => from,
+		};
+		match self.0.device.read_from(at.into()) {
+			Ok(cursor) => Ok(Replay::new(cursor)),
+			Err(WalError::Log(LogError::Purged {
+				oldest,
+				..
+			})) => Err(WalError::Purged {
+				requested: from,
+				oldest: Lsn::from_version(oldest).unwrap_or(Lsn::FIRST),
+			}),
+			Err(error) => Err(error),
+		}
 	}
 }
 

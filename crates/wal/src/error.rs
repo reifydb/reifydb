@@ -21,6 +21,10 @@ pub enum WalError {
 	Partitions {
 		found: u32,
 	},
+	Purged {
+		requested: Lsn,
+		oldest: Lsn,
+	},
 	SyncStopped,
 }
 
@@ -43,6 +47,15 @@ impl Display for WalError {
 			Self::Partitions {
 				found,
 			} => write!(f, "the wal needs exactly one partition scan, found {found}"),
+			Self::Purged {
+				requested,
+				oldest,
+			} => write!(
+				f,
+				"a replay from {} is below the oldest record the log still keeps, {}",
+				requested.as_u64(),
+				oldest.as_u64()
+			),
 			Self::SyncStopped => write!(f, "the wal sync loop has stopped"),
 		}
 	}

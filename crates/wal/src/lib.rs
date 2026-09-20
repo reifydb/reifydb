@@ -13,4 +13,5 @@ pub mod floor;
 pub mod log;
 pub mod lsn;
 pub mod recovered;
+pub mod replay;
 pub mod wal;
