@@ -105,9 +105,6 @@ fn draining_frees_a_queued_group_and_clears_its_queue_entry() {
 
 #[test]
 fn draining_named_groups_never_consults_the_queue() {
-	// A caller that just enqueued its groups in this transaction already knows them; scanning the queue
-	// to rediscover them walks every tombstone the keyspace still holds. The named drain must reap
-	// exactly what it was given and leave the rest queued, otherwise it is a scan in disguise.
 	let mut store = MockStore::default();
 	let named = key(doomed_group(), KeyspaceId::ACCUMULATOR, 1);
 	let unnamed = key(bystander_group(), KeyspaceId::ACCUMULATOR, 1);

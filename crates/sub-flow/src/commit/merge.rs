@@ -267,7 +267,8 @@ pub fn merge(
 	index: &ObjectIndex,
 	cut: &StepCut,
 ) -> Merged {
-	let gated: FxHashSet<ObjectId> = upstreams.values().flat_map(|upstream| upstream.views.iter().copied()).collect();
+	let gated: FxHashSet<ObjectId> =
+		upstreams.values().flat_map(|upstream| upstream.views.iter().copied()).collect();
 	let target = upstreams
 		.values()
 		.map(|upstream| upstream.complete_through(cursor, index))

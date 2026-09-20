@@ -389,10 +389,12 @@ fn supersedes<D: RangeDomain>(resident: &Entry<D::Row>, incoming: &Entry<D::Row>
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeMap;
-	use std::sync::{
-		Arc,
-		atomic::{AtomicBool, Ordering},
+	use std::{
+		collections::BTreeMap,
+		sync::{
+			Arc,
+			atomic::{AtomicBool, Ordering},
+		},
 	};
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};

@@ -6,9 +6,7 @@ use std::{
 	ops::Bound::{Excluded, Included, Unbounded},
 };
 
-use reifydb_core::{
-	key::typed::{Edge, range::KeyRange},
-};
+use reifydb_core::key::typed::{Edge, range::KeyRange};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{

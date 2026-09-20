@@ -24,6 +24,7 @@ use reifydb_value::{
 use super::{SubscriptionWorkerActor, SubscriptionWorkerState};
 use crate::{
 	delivery::hydration::{collect_source_descriptors, run_source_queries},
+	store::HydrationGuard,
 	transaction::EphemeralTransaction,
 };
 
@@ -55,7 +56,7 @@ impl SubscriptionWorkerActor {
 		let (source_frames, statements) =
 			run_source_queries(&self.engine, &mut outer, sources, &params, max_rows)?;
 
-		self.store.begin_hydration(sub_id);
+		let _hydration = HydrationGuard::new(&self.store, sub_id);
 
 		let now = self.engine.clock().now();
 		self.apply_source_frames(state, flow_id, version, source_frames, now)?;
@@ -63,7 +64,7 @@ impl SubscriptionWorkerActor {
 		let batches = self.delivery.take_staged(sub_id);
 		drop(outer);
 
-		Ok(self.build_outcome(sub_id, version, hydrate_start, statements, batches))
+		Ok(self.build_outcome(version, hydrate_start, statements, batches))
 	}
 
 	fn apply_source_frames(
@@ -112,7 +113,6 @@ impl SubscriptionWorkerActor {
 
 	fn build_outcome(
 		&self,
-		sub_id: SubscriptionId,
 		version: CommitVersion,
 		hydrate_start: Instant,
 		statements: Vec<StatementMetrics>,
@@ -129,7 +129,6 @@ impl SubscriptionWorkerActor {
 			compute: total,
 		};
 
-		self.store.end_hydration(&sub_id);
 		HydrateOutcome {
 			version,
 			batches,

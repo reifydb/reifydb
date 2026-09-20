@@ -40,6 +40,27 @@ pub struct SubscriptionStore {
 	hydrating: DashSet<SubscriptionId>,
 }
 
+pub struct HydrationGuard<'a> {
+	store: &'a SubscriptionStore,
+	id: SubscriptionId,
+}
+
+impl<'a> HydrationGuard<'a> {
+	pub fn new(store: &'a SubscriptionStore, id: SubscriptionId) -> Self {
+		store.begin_hydration(id);
+		Self {
+			store,
+			id,
+		}
+	}
+}
+
+impl Drop for HydrationGuard<'_> {
+	fn drop(&mut self) {
+		self.store.end_hydration(&self.id);
+	}
+}
+
 impl SubscriptionStore {
 	pub fn new(default_capacity: usize) -> Self {
 		Self {
@@ -439,5 +460,58 @@ mod tests {
 		let id3 = store.next_id();
 		assert_ne!(id1, id2);
 		assert_ne!(id2, id3);
+	}
+
+	#[test]
+	fn the_hydration_guard_marks_the_subscription_for_exactly_its_scope() {
+		// The poller skips a hydrating subscription every cycle, so the flag must be set while the
+		// hydrate runs and clear the moment it stops, or the subscription is either delivered to
+		// mid-hydrate or never delivered to again.
+		let store = SubscriptionStore::new(16);
+		let id = store.next_id();
+		store.register(id);
+
+		assert!(!store.is_hydrating(&id), "a fresh subscription is not hydrating");
+		{
+			let _hydration = HydrationGuard::new(&store, id);
+			assert!(store.is_hydrating(&id), "the guard must mark the subscription while it lives");
+		}
+		assert!(!store.is_hydrating(&id), "leaving the scope must clear the flag");
+	}
+
+	#[test]
+	fn the_hydration_guard_clears_the_flag_when_the_scope_returns_early() {
+		// This is the defect the guard exists for: the hydrate body returns early on a failed source
+		// apply, and a cleanup that only ran on the happy path left the subscription marked hydrating
+		// for the life of the process, silently unpollable.
+		let store = SubscriptionStore::new(16);
+		let id = store.next_id();
+		store.register(id);
+
+		let outcome = (|| -> Option<()> {
+			let _hydration = HydrationGuard::new(&store, id);
+			assert!(store.is_hydrating(&id), "the guard marks the subscription before the failure");
+			None
+		})();
+
+		assert!(outcome.is_none(), "the body must have taken the early-return path");
+		assert!(!store.is_hydrating(&id), "an early return must still clear the hydrating flag");
+	}
+
+	#[test]
+	fn the_hydration_guard_clears_the_flag_when_the_scope_panics() {
+		// A hydrate that panics must not strand the subscription either; the worker survives the
+		// panic and the subscription has to stay pollable.
+		let store = SubscriptionStore::new(16);
+		let id = store.next_id();
+		store.register(id);
+
+		let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			let _hydration = HydrationGuard::new(&store, id);
+			panic!("hydration failed");
+		}));
+
+		assert!(panicked.is_err(), "the body must have panicked");
+		assert!(!store.is_hydrating(&id), "a panic must still clear the hydrating flag");
 	}
 }

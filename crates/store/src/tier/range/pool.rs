@@ -530,10 +530,12 @@ fn build_shards<D: RangeDomain>(config: RangeConfig, shard_bytes: ByteSize) -> B
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeMap;
-	use std::sync::{
-		Arc,
-		atomic::{AtomicBool, Ordering as AtomicOrdering},
+	use std::{
+		collections::BTreeMap,
+		sync::{
+			Arc,
+			atomic::{AtomicBool, Ordering as AtomicOrdering},
+		},
 	};
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
