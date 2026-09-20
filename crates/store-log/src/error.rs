@@ -97,10 +97,6 @@ pub enum LogError {
 		last: Term,
 		found: Term,
 	},
-	Truncated {
-		dir: PathBuf,
-		version: LogVersion,
-	},
 	TruncateCommitted {
 		dir: PathBuf,
 		commit: LogIndex,
@@ -215,10 +211,6 @@ impl LogError {
 				..
 			} => dir,
 			LogError::TermRegression {
-				dir,
-				..
-			} => dir,
-			LogError::Truncated {
 				dir,
 				..
 			} => dir,
@@ -386,15 +378,6 @@ impl Display for LogError {
 				dir.display(),
 				last.as_u64(),
 				found.as_u64()
-			),
-			LogError::Truncated {
-				dir,
-				version,
-			} => write!(
-				f,
-				"log {} no longer holds version {}, so it can never become durable",
-				dir.display(),
-				version.as_u64()
 			),
 			LogError::TruncateCommitted {
 				dir,
