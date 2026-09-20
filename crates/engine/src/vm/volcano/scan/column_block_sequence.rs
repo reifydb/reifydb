@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_column::{reader::SnapshotReader, snapshot::Schema};
+use reifydb_column::{predicate::Predicate, reader::SnapshotReader, snapshot::Schema};
 use reifydb_core::{
 	error::diagnostic::internal::internal, interface::catalog::id::ColumnSnapshotId,
 	value::column::columns::Columns,
@@ -20,6 +20,7 @@ pub(crate) struct BlockSequenceReader {
 	index: usize,
 	current: Option<SnapshotReader>,
 	schema: Option<Schema>,
+	predicate: Option<Predicate>,
 }
 
 impl BlockSequenceReader {
@@ -31,7 +32,13 @@ impl BlockSequenceReader {
 			index: 0,
 			current: None,
 			schema: None,
+			predicate: None,
 		}
+	}
+
+	pub(crate) fn with_predicate(mut self, predicate: Option<Predicate>) -> Self {
+		self.predicate = predicate;
+		self
 	}
 
 	pub(crate) fn schema(&self) -> Option<&Schema> {
@@ -65,7 +72,11 @@ impl BlockSequenceReader {
 				self.schema = Some(Arc::clone(&block.schema));
 			}
 
-			self.current = Some(SnapshotReader::new(block, self.batch_size));
+			let reader = SnapshotReader::new(block, self.batch_size);
+			self.current = Some(match self.predicate.clone() {
+				Some(predicate) => reader.with_predicate(predicate),
+				None => reader,
+			});
 		}
 	}
 }

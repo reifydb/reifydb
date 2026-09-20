@@ -1,0 +1,184 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::sync::Arc;
+
+use reifydb_column::snapshot::{Schema, SystemColumn};
+use reifydb_core::{
+	error::diagnostic::{internal::internal, query::no_column_snapshot},
+	interface::{
+		catalog::column_snapshot::{ColumnSnapshot, ColumnSnapshotSource},
+		resolved::ResolvedSeries,
+	},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+};
+use reifydb_store_column::ColumnStore;
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{error::Error, fragment::Fragment, value::partition::Partition};
+
+use crate::{
+	Result,
+	vm::volcano::{
+		query::{QueryContext, QueryNode},
+		scan::{
+			column_block_sequence::BlockSequenceReader, column_predicate::series_scan_predicate,
+			column_prune::prune_series_snapshots,
+		},
+	},
+};
+
+enum ScanState {
+	Unopened,
+	Reading {
+		reader: BlockSequenceReader,
+		emitted: bool,
+	},
+	Done,
+}
+
+pub struct ColumnSeriesScanNode {
+	series: ResolvedSeries,
+	key_range_start: Option<u64>,
+	key_range_end: Option<u64>,
+	variant_tag: Option<u8>,
+	partition: Option<Partition>,
+	context: Arc<QueryContext>,
+	headers: ColumnHeaders,
+	state: ScanState,
+}
+
+impl ColumnSeriesScanNode {
+	pub fn new(
+		series: ResolvedSeries,
+		key_range_start: Option<u64>,
+		key_range_end: Option<u64>,
+		variant_tag: Option<u8>,
+		partition: Option<Partition>,
+		context: Arc<QueryContext>,
+	) -> Self {
+		let def = series.def();
+		let mut columns = vec![Fragment::internal(def.key.column())];
+		if def.tag.is_some() {
+			columns.push(Fragment::internal("tag"));
+		}
+		for col in def.data_columns() {
+			columns.push(Fragment::internal(&col.name));
+		}
+		columns.push(Fragment::internal(SystemColumn::CommitVersion.name()));
+		Self {
+			series,
+			key_range_start,
+			key_range_end,
+			variant_tag,
+			partition,
+			context,
+			headers: ColumnHeaders {
+				columns,
+			},
+			state: ScanState::Unopened,
+		}
+	}
+
+	fn open(&self, rx: &mut Transaction<'_>) -> Result<ScanState> {
+		let services = &self.context.services;
+		let name = self.series.fully_qualified_name();
+		let def = self.series.def();
+
+		let snapshots = match self.partition {
+			Some(partition) => {
+				services.catalog.list_column_snapshots_for_series_partition(rx, def.id, partition)?
+			}
+			None => services.catalog.list_column_snapshots_for_series(rx, def.id)?,
+		};
+
+		let predicate =
+			series_scan_predicate(def, self.key_range_start, self.key_range_end, self.variant_tag);
+
+		let mut pruned = prune_series_snapshots(
+			snapshots,
+			self.key_range_start,
+			self.key_range_end,
+			predicate.as_ref(),
+		);
+		if pruned.is_empty() {
+			return Err(Error(Box::new(no_column_snapshot(
+				self.series.identifier().clone(),
+				"series",
+				&name,
+			))));
+		}
+		pruned.sort_by_key(bucket_order);
+
+		let store = services.ioc.try_resolve::<Arc<ColumnStore>>().ok_or_else(|| {
+			Error(Box::new(internal(format!("column store is not registered, cannot read series {}", name))))
+		})?;
+
+		Ok(ScanState::Reading {
+			reader: BlockSequenceReader::new(
+				store,
+				pruned.iter().map(|snapshot| snapshot.id).collect(),
+				self.context.batch_size as usize,
+			)
+			.with_predicate(predicate),
+			emitted: false,
+		})
+	}
+}
+
+fn bucket_order(snapshot: &ColumnSnapshot) -> (u64, Option<Partition>) {
+	match snapshot.source {
+		ColumnSnapshotSource::SeriesBucket {
+			bucket_start,
+			partition,
+			..
+		} => (bucket_start, partition),
+		ColumnSnapshotSource::Table {
+			..
+		} => (0, None),
+	}
+}
+
+fn empty_columns(schema: &Schema) -> Columns {
+	let columns = schema
+		.iter()
+		.filter(|(name, _, _)| matches!(SystemColumn::from_name(name), None | Some(SystemColumn::CommitVersion)))
+		.map(|(name, ty, _)| {
+			ColumnWithName::new(Fragment::internal(name.clone()), ColumnBuffer::with_capacity(ty.clone(), 0))
+		})
+		.collect();
+	Columns::new(columns)
+}
+
+impl QueryNode for ColumnSeriesScanNode {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+		Ok(())
+	}
+
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+		if matches!(self.state, ScanState::Unopened) {
+			self.state = self.open(rx)?;
+		}
+		let ScanState::Reading {
+			reader,
+			emitted,
+		} = &mut self.state
+		else {
+			return Ok(None);
+		};
+		match reader.next()? {
+			Some(batch) => {
+				*emitted = true;
+				Ok(Some(batch))
+			}
+			None => {
+				let empty = (!*emitted).then(|| reader.schema().map(empty_columns)).flatten();
+				self.state = ScanState::Done;
+				Ok(empty)
+			}
+		}
+	}
+
+	fn headers(&self) -> Option<ColumnHeaders> {
+		Some(self.headers.clone())
+	}
+}
