@@ -94,7 +94,6 @@ impl<F: Filesystem> Segment<F> {
 			});
 		}
 		if self.torn {
-			// only a write reaching past head may erase a decodable leftover there, or a mere reopen would violate read only recovery.
 			self.file.truncate(self.head.as_u64())?;
 			self.file.truncate(self.capacity.as_bytes())?;
 			self.torn = false;

@@ -294,7 +294,12 @@ impl Display for LogError {
 			LogError::SegmentCorrupt {
 				path,
 				position,
-			} => write!(f, "log segment {} is corrupt at {}, but valid records follow it", path.display(), position),
+			} => write!(
+				f,
+				"log segment {} is corrupt at {}, but valid records follow it",
+				path.display(),
+				position
+			),
 			LogError::VoteCorrupt {
 				path,
 			} => write!(

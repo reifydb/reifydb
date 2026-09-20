@@ -12,7 +12,9 @@ use reifydb_codec::log::{
 	record::Record,
 	vote::State,
 };
-use reifydb_runtime::io::fs::{Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, ReadDir, Rename, SyncDir, Unlink};
+use reifydb_runtime::io::fs::{
+	Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, ReadDir, Rename, SyncDir, Unlink,
+};
 use reifydb_value::{
 	byte_size::ByteSize,
 	clock::ClockNow,
@@ -606,7 +608,10 @@ fn expired<F: Filesystem + Open>(fs: &F, dir: &Path, base: LogVersion, deadline:
 pub(crate) fn rebuildable(error: &LogError) -> bool {
 	matches!(
 		error,
-		LogError::NotFound(_) | LogError::IndexShort { .. } | LogError::IndexMagic { .. } | LogError::IndexCorrupt(_)
+		LogError::NotFound(_)
+			| LogError::IndexShort { .. }
+			| LogError::IndexMagic { .. }
+			| LogError::IndexCorrupt(_)
 	)
 }
 

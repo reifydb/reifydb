@@ -123,6 +123,19 @@ impl Inner {
 		FileId(self.next_file_id.fetch_add(1, Ordering::SeqCst))
 	}
 
+	fn settle(&self, dir: &Path) {
+		self.undone.lock().retain(|undo| match undo {
+			Undo::Rename {
+				to,
+				..
+			} => to.parent() != Some(dir),
+			Undo::Unlink {
+				path,
+				..
+			} => path.parent() != Some(dir),
+		});
+	}
+
 	fn crash(&self) {
 		let undone: Vec<Undo> = self.undone.lock().drain(..).collect();
 		for undo in undone.into_iter().rev() {
@@ -340,7 +353,9 @@ impl Unlink for TestingFs {
 impl SyncDir for TestingFs {
 	fn sync_dir(&self, path: &Path) -> Result<()> {
 		self.0.syscall();
-		self.0.inner.sync_dir(path)
+		self.0.inner.sync_dir(path)?;
+		self.0.settle(path);
+		Ok(())
 	}
 }
 

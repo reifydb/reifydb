@@ -471,7 +471,8 @@ mod tests {
 
 	#[test]
 	fn the_head_never_runs_ahead_of_what_is_durable() {
-		// head seeds the version allocator, so it must never claim a version that was only written, never fsynced.
+		// head seeds the version allocator, so it must never claim a version that was only written, never
+		// fsynced.
 		let fs = MemoryFs::new();
 		let log = Log::create_detached(fs, clock(), Path::new(DIR), config(), 2).unwrap();
 		log.append(0, &record(10, 1)).unwrap();
