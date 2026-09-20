@@ -3121,6 +3121,7 @@ dependencies = [
  "reifydb-cdc",
  "reifydb-client",
  "reifydb-codec",
+ "reifydb-column",
  "reifydb-core",
  "reifydb-evaluate",
  "reifydb-extension",

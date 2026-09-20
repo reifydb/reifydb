@@ -197,6 +197,39 @@ pub fn append_requires_deferred_view(fragment: Fragment) -> Diagnostic {
 	}
 }
 
+pub fn no_column_snapshot(fragment: Fragment, table: &str) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_012".to_string(),
+		rql: None,
+		message: format!("no column snapshot for table '{}'", table),
+		fragment,
+		label: Some("this table has not been materialized into the column store yet".to_string()),
+		help: Some(
+			"wait for the column store to materialize the table, or read it with a regular query"
+				.to_string(),
+		),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn unsupported_in_column_layout(what: &str) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_013".to_string(),
+		rql: None,
+		message: format!("{} cannot be read from the column store", what),
+		fragment: Fragment::None,
+		label: Some("a column query reads only materialized table snapshots".to_string()),
+		help: Some("run this query with a regular query instead".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn unknown_apply_operator(fragment: Fragment) -> Diagnostic {
 	let name = fragment.text().to_string();
 	Diagnostic {

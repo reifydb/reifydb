@@ -18,7 +18,7 @@ use reifydb_rql::{
 	},
 	query::QueryPlan as RqlQueryPlan,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::transaction::{ScanLayout, Transaction};
 use reifydb_value::fragment::Fragment;
 use tracing::instrument;
 
@@ -39,6 +39,7 @@ use crate::vm::volcano::{
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 	scalarize::ScalarizeNode,
 	scan::{
+		column_table::ColumnTableScanNode, column_unsupported::UnsupportedColumnScanNode,
 		dictionary::DictionaryScanNode, index::IndexScanNode, queue::QueueScan, remote::RemoteFetchNode,
 		ringbuffer::RingBufferScan, series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode,
 		view::ViewScanNode,
@@ -67,12 +68,32 @@ fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 	}
 }
 
+fn row_store_scan(plan: &RqlQueryPlan) -> Option<String> {
+	match plan {
+		RqlQueryPlan::ViewScan(node) => Some(format!("view '{}'", node.source.def().name())),
+		RqlQueryPlan::RingBufferScan(node) => Some(format!("ring buffer '{}'", node.source.def().name)),
+		RqlQueryPlan::QueueScan(node) => Some(format!("queue '{}'", node.source.def().name)),
+		RqlQueryPlan::DictionaryScan(node) => Some(format!("dictionary '{}'", node.source.def().name)),
+		RqlQueryPlan::SeriesScan(node) => Some(format!("series '{}'", node.source.def().name)),
+		RqlQueryPlan::IndexScan(node) => Some(format!("index scan of table '{}'", node.source.def().name)),
+		RqlQueryPlan::RowPointLookup(node) => Some(format!("row lookup on '{}'", node.source.name())),
+		RqlQueryPlan::RowListLookup(node) => Some(format!("row lookup on '{}'", node.source.name())),
+		RqlQueryPlan::RowRangeScan(node) => Some(format!("row range scan on '{}'", node.source.name())),
+		_ => None,
+	}
+}
+
 #[instrument(name = "volcano::compile", level = "debug", skip_all)]
 pub(crate) fn compile<'a>(
 	plan: RqlQueryPlan,
 	rx: &mut Transaction<'a>,
 	context: Arc<QueryContext>,
 ) -> Box<dyn QueryNode> {
+	if rx.layout() == ScanLayout::Column
+		&& let Some(what) = row_store_scan(&plan)
+	{
+		return Box::new(UnsupportedColumnScanNode::new(what));
+	}
 	match plan {
 		RqlQueryPlan::Aggregate(RqlAggregateNode {
 			by,
@@ -148,9 +169,16 @@ pub(crate) fn compile<'a>(
 			}
 		}
 
-		RqlQueryPlan::TableScan(node) => {
-			Box::new(TableScanNode::new(node.source.clone(), node.partition, context, rx).unwrap())
-		}
+		RqlQueryPlan::TableScan(node) => match rx.layout() {
+			ScanLayout::Row => {
+				Box::new(TableScanNode::new(node.source.clone(), node.partition, context, rx).unwrap())
+			}
+			ScanLayout::Column if node.partition.is_some() => Box::new(UnsupportedColumnScanNode::new(format!(
+				"a partition scan of table '{}'",
+				node.source.fully_qualified_name()
+			))),
+			ScanLayout::Column => Box::new(ColumnTableScanNode::new(node.source.clone(), context)),
+		},
 		RqlQueryPlan::ViewScan(node) => {
 			Box::new(ViewScanNode::new(node.source.clone(), node.partition, context, rx).unwrap())
 		}

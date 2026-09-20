@@ -71,7 +71,7 @@ use crate::{
 	},
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	single::{SingleTransaction, read::SingleReadTransaction},
-	transaction::{RqlExecutor, Transaction},
+	transaction::{RqlExecutor, ScanLayout, Transaction},
 };
 
 pub struct QueryTransaction {
@@ -79,6 +79,7 @@ pub struct QueryTransaction {
 	pub(crate) single: Option<SingleTransaction>,
 
 	pub identity: IdentityId,
+	pub layout: ScanLayout,
 
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
 }
@@ -90,6 +91,7 @@ impl QueryTransaction {
 			multi,
 			single: Some(single),
 			identity,
+			layout: ScanLayout::Row,
 			executor: None,
 		}
 	}
@@ -100,6 +102,7 @@ impl QueryTransaction {
 			multi,
 			single: None,
 			identity,
+			layout: ScanLayout::Row,
 			executor: None,
 		}
 	}
