@@ -9,9 +9,7 @@ use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	operator_with::{ApplyWith, WithSpan},
 };
-use reifydb_sdk::flow::operator::{
-	extern_c::binding::operator::ExternCOperatorAdapter, windowed::rolling::RollingDriver,
-};
+use reifydb_sdk::flow::operator::{extern_c::binding::operator::ExternCOperatorAdapter, windowed::plain::PlainDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,
@@ -33,7 +31,7 @@ fn window_with() -> ApplyWith {
 		window: Some(WindowKind::Rolling {
 			size: WindowSize::Duration(millis(common::ROLLING_CAPACITY as u64 * common::ROLLING_BUCKET)),
 			lag: None,
-			pane: None,
+			pane: Some(millis(common::ROLLING_BUCKET)),
 		}),
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
@@ -49,7 +47,7 @@ fn value_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<ExternCOperatorAdapter<RollingDriver<RollingSum>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<PlainDriver<RollingSum>>>::builder()
 		.with_input_shape(common::rolling_shape())
 		.with_output_shape(common::rolling_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -62,7 +60,7 @@ fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.with_scenario(scenario)
 		.with(window_with())
 		.with_oracle(move |ctx, batches| {
-			rolling_accumulator_oracle(&common::rolling_sum(), ctx, batches, &group_key())
+			rolling_accumulator_oracle(&RollingSum, &common::settings(&window_with()), ctx, batches, &group_key())
 		})
 		.seed(seed)
 		.build()

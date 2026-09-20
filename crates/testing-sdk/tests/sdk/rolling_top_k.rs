@@ -3,7 +3,7 @@
 
 use std::{cmp::Ordering, collections::BTreeMap};
 
-use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShapeField};
+use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
@@ -11,15 +11,22 @@ use reifydb_core::{
 	operator_with::{ApplyWith, WithSpan},
 	row::Row as CoreRow,
 };
-use reifydb_flow::window::accumulator::{
-	WindowAccumulator,
-	invertible::{keyed::KeyedInvertibleAccumulator, moments::Moments},
+use reifydb_flow::window::{
+	accumulator::invertible::{keyed::KeyedInvertibleAccumulator, moments::Moments},
+	span::WindowSpan,
 };
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
-		column::operator::OperatorColumn, context::GuestContext,
-		extern_c::binding::operator::ExternCOperatorAdapter, view::RowView, windowed::rolling_top_k::*,
+		OperatorMetadata,
+		column::operator::OperatorColumn,
+		context::{GuestContext, Windowed},
+		extern_c::binding::operator::ExternCOperatorAdapter,
+		view::RowView,
+		windowed::{
+			operator::{AllKinds, Emit, WindowSettings, WindowedOperator},
+			top_k::TopKDriver,
+		},
 	},
 	row,
 };
@@ -30,7 +37,7 @@ use reifydb_testing_sdk::{
 use reifydb_value::{
 	config::ExtensionParams,
 	factory::time::millis,
-	value::{Value, datetime::DateTime, diff_type::DiffType, duration::Duration, value_type::ValueType},
+	value::{Value, datetime::DateTime, diff_type::DiffType, value_type::ValueType},
 };
 
 // Rolling top-2 traders by summed volume. Each window cell is keyed and invertible so an
@@ -54,48 +61,52 @@ row!(TopOut {
 
 struct TestTopVolume;
 
-impl RollingTopKOperator for TestTopVolume {
+impl OperatorMetadata for TestTopVolume {
+	const NAME: &'static str = "test_top_volume";
+	const VERSION: &'static str = "0.0.1";
+	const DESCRIPTION: &'static str = "test fixture";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
+
+impl WindowedOperator for TestTopVolume {
+	type Coord = DateTime;
 	type GroupKey = String;
-
-	type WindowSlot = DateTime;
-
 	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
-	type SecondaryKey = u32;
-	type Output = TopOut;
+	type Output = BTreeMap<u32, TopOut>;
 
-	fn capacity(&self) -> usize {
-		3
-	}
-
-	fn bucket_size(&self) -> Duration {
-		millis(1)
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+		Ok(Self)
 	}
 
 	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
 		row.row_time()
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, (u64, f64))> {
 		let group = row.utf8("group")?.to_string();
 		let trader = row.u64("trader")?;
 		let volume = row.f64("volume")?;
 		Some((group, (trader, volume)))
 	}
 
-	fn combine(
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> KeyedInvertibleAccumulator<u64, Moments> {
+		KeyedInvertibleAccumulator::default()
+	}
+}
+
+impl Emit for TestTopVolume {
+	type Kinds = AllKinds;
+
+	fn build_output(
 		&self,
 		group: &String,
-		buffer: &BTreeMap<DateTime, KeyedInvertibleAccumulator<u64, Moments>>,
-	) -> BTreeMap<u32, TopOut> {
-		let mut totals: BTreeMap<u64, f64> = BTreeMap::new();
-		for window in buffer.values() {
-			if let Some(per_trader) = window.finalize() {
-				for (trader, moments) in per_trader {
-					*totals.entry(trader).or_insert(0.0) += moments.sum();
-				}
-			}
-		}
-		let mut ranked: Vec<(u64, f64)> = totals.into_iter().collect();
+		_span: WindowSpan<DateTime>,
+		value: &BTreeMap<u64, Moments>,
+	) -> Option<BTreeMap<u32, TopOut>> {
+		let mut ranked: Vec<(u64, f64)> =
+			value.iter().map(|(trader, moments)| (*trader, moments.sum())).collect();
 		ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal).then_with(|| a.0.cmp(&b.0)));
 		let mut out = BTreeMap::new();
 		for (i, (trader, volume)) in ranked.into_iter().take(2).enumerate() {
@@ -110,32 +121,7 @@ impl RollingTopKOperator for TestTopVolume {
 				},
 			);
 		}
-		out
-	}
-}
-
-impl RollingTopKRegistration for TestTopVolume {
-	const NAME: &'static str = "test_top_volume";
-	const VERSION: &'static str = "0.0.1";
-	const DESCRIPTION: &'static str = "test fixture";
-	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
-
-	fn from_operator_params(
-		_operator_id: OperatorId,
-		_params: &ExtensionParams,
-		_with: &ApplyWith,
-	) -> Result<Self> {
-		Ok(Self)
-	}
-
-	fn encode_state_key(&self, group: &String) -> EncodedKey {
-		EncodedKey::builder().str("state").str(group).build()
-	}
-
-	fn encode_row_key(&self, group: &String, secondary: &u32) -> EncodedKey {
-		EncodedKey::builder().str("row").str(group).u32(*secondary).build()
+		Some(out)
 	}
 }
 
@@ -169,7 +155,7 @@ fn window_with() -> ApplyWith {
 		window: Some(WindowKind::Rolling {
 			size: WindowSize::Duration(millis(3)),
 			lag: None,
-			pane: None,
+			pane: Some(millis(1)),
 		}),
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
@@ -181,7 +167,7 @@ fn sealed_with() -> ApplyWith {
 		window: Some(WindowKind::Rolling {
 			size: WindowSize::Duration(millis(3)),
 			lag: None,
-			pane: None,
+			pane: Some(millis(1)),
 		}),
 		lateness: Some(WithSpan::Duration(millis(117))),
 		immutable: None,
@@ -190,7 +176,7 @@ fn sealed_with() -> ApplyWith {
 
 #[test]
 fn same_window_volume_accumulates_per_trader() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -215,7 +201,7 @@ fn same_window_volume_accumulates_per_trader() {
 
 #[test]
 fn update_subtracts_old_volume_no_double_count() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -245,15 +231,15 @@ fn update_subtracts_old_volume_no_double_count() {
 
 #[test]
 fn top_2_across_three_windows() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
 	let out = h
 		.apply(TestChangeBuilder::new()
 			.insert(input_row(1, "BTC", 0, 100, 5.0))
-			.insert(input_row(2, "BTC", 60, 200, 9.0))
-			.insert(input_row(3, "BTC", 120, 300, 7.0))
+			.insert(input_row(2, "BTC", 1, 200, 9.0))
+			.insert(input_row(3, "BTC", 2, 300, 7.0))
 			.build())
 		.expect("apply");
 	let post = out.diffs[0].post().expect("post");
@@ -270,31 +256,31 @@ fn top_2_across_three_windows() {
 
 #[test]
 fn vanishing_rank_emits_remove_at_high_water() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
 	let _ = h
 		.apply(TestChangeBuilder::new()
 			.insert(input_row(1, "BTC", 0, 100, 5.0))
-			.insert(input_row(2, "BTC", 60, 200, 9.0))
+			.insert(input_row(2, "BTC", 1, 200, 9.0))
 			.build())
 		.expect("apply");
 	// Emptying the newest window drops it from the buffer, which shifts rank 1 and leaves
 	// rank 2 with nothing to name - that vacancy has to surface as a Remove.
-	let out = h.apply(TestChangeBuilder::new().remove(input_row(2, "BTC", 60, 200, 9.0)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().remove(input_row(2, "BTC", 1, 200, 9.0)).build()).expect("apply");
 	let kinds: Vec<DiffType> = out.diffs.iter().map(|d| d.kind()).collect();
 	assert!(kinds.contains(&DiffType::Update), "rank-1 changed identity, expect Update");
 	assert!(kinds.contains(&DiffType::Remove), "rank-2 vanished, expect Remove");
 }
 
 #[test]
-fn capacity_eviction_drops_oldest_window() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+fn time_eviction_drops_oldest_window() {
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
-	// A fourth window exceeds the capacity of 3, so window 0 and trader 100 with it must go.
+	// A fourth window pushes window 0 out of the 3 ms span, so window 0 and trader 100 with it must go.
 	// Trader 100 carries the largest volume of the four on purpose: it outranks everyone while
 	// window 0 is still buffered, so the assertions below can only hold once eviction has run.
 	// With a smaller volume the expected top-2 would be identical whether or not anything was
@@ -302,9 +288,9 @@ fn capacity_eviction_drops_oldest_window() {
 	let out = h
 		.apply(TestChangeBuilder::new()
 			.insert(input_row(1, "BTC", 0, 100, 9.0))
-			.insert(input_row(2, "BTC", 60, 200, 8.0))
-			.insert(input_row(3, "BTC", 120, 300, 2.0))
-			.insert(input_row(4, "BTC", 180, 400, 5.0))
+			.insert(input_row(2, "BTC", 1, 200, 8.0))
+			.insert(input_row(3, "BTC", 2, 300, 2.0))
+			.insert(input_row(4, "BTC", 3, 400, 5.0))
 			.build())
 		.expect("apply");
 	let post = out.diffs[0].post().expect("post");
@@ -321,73 +307,59 @@ fn capacity_eviction_drops_oldest_window() {
 #[test]
 fn buried_window_insert_accepted_while_lateness_is_open() {
 	// while the lateness window has not elapsed, an insert into an older coordinate must still merge
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
-	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 100, 5.0)).build()).expect("apply");
-	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 999, 999.0)).build()).expect("apply");
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 2, 100, 5.0)).build()).expect("apply");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 1, 999, 999.0)).build()).expect("apply");
 	assert!(!out.diffs.is_empty(), "ungated rolling-top-k driver accepts late events");
 }
 
 struct SealedTopVolume;
 
-impl RollingTopKOperator for SealedTopVolume {
-	type GroupKey = String;
-
-	type WindowSlot = DateTime;
-
-	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
-	type SecondaryKey = u32;
-	type Output = TopOut;
-
-	fn capacity(&self) -> usize {
-		3
-	}
-
-	fn bucket_size(&self) -> Duration {
-		TestTopVolume.bucket_size()
-	}
-
-	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
-		row.row_time()
-	}
-
-	fn extract(&self, ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
-		TestTopVolume.extract(ctx, row)
-	}
-
-	fn combine(
-		&self,
-		group: &String,
-		buffer: &BTreeMap<DateTime, KeyedInvertibleAccumulator<u64, Moments>>,
-	) -> BTreeMap<u32, TopOut> {
-		TestTopVolume.combine(group, buffer)
-	}
-}
-
-impl RollingTopKRegistration for SealedTopVolume {
+impl OperatorMetadata for SealedTopVolume {
 	const NAME: &'static str = "sealed_top_volume";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
 
-	fn from_operator_params(
-		_operator_id: OperatorId,
-		_params: &ExtensionParams,
-		_with: &ApplyWith,
-	) -> Result<Self> {
+impl WindowedOperator for SealedTopVolume {
+	type Coord = DateTime;
+	type GroupKey = String;
+	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
+	type Output = BTreeMap<u32, TopOut>;
+
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 		Ok(Self)
 	}
 
-	fn encode_state_key(&self, group: &String) -> EncodedKey {
-		EncodedKey::builder().str("state").str(group).build()
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
 	}
 
-	fn encode_row_key(&self, group: &String, secondary: &u32) -> EncodedKey {
-		EncodedKey::builder().str("row").str(group).u32(*secondary).build()
+	fn extract(&self, ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Option<(String, (u64, f64))> {
+		TestTopVolume.extract(ctx, row)
+	}
+
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> KeyedInvertibleAccumulator<u64, Moments> {
+		KeyedInvertibleAccumulator::default()
+	}
+}
+
+impl Emit for SealedTopVolume {
+	type Kinds = AllKinds;
+
+	fn build_output(
+		&self,
+		group: &String,
+		span: WindowSpan<DateTime>,
+		value: &BTreeMap<u64, Moments>,
+	) -> Option<BTreeMap<u32, TopOut>> {
+		TestTopVolume.build_output(group, span, value)
 	}
 }
 
@@ -395,7 +367,7 @@ impl RollingTopKRegistration for SealedTopVolume {
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// A group that stops reporting must still be reclaimed, or a high-cardinality group key
 	// grows without bound; nothing moves here after the initial batch except the watermark.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<SealedTopVolume>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<SealedTopVolume>>>::new()
 		.with(sealed_with())
 		.build()
 		.expect("harness");
@@ -421,7 +393,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 #[test]
 fn a_rolling_top_k_time_window_arms_a_seal_timer() {
 	// a driver with a required window must always acquire a seal retention policy
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -433,7 +405,7 @@ fn a_rolling_top_k_time_window_arms_a_seal_timer() {
 #[test]
 fn create_without_a_window_reports_flow_065() {
 	// require_window must refuse a missing window before any row reaches the aggregator
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
 		.with(ApplyWith::default())
 		.build()
 	else {
@@ -452,7 +424,7 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 		lateness: None,
 		immutable: None,
 	};
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
+	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
 		.with(with)
 		.build()
 	else {

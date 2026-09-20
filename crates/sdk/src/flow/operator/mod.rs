@@ -25,7 +25,7 @@ use crate::{
 	error::Result,
 	flow::operator::{
 		column::operator::OperatorColumn,
-		context::{ClassValue, GuestContext, Managed, Nostate, Unmanaged, Windowed},
+		context::{ClassValue, GuestContext, Managed, Nostate, Unmanaged},
 		timer::Timer,
 		view::ChangeView,
 	},
@@ -98,8 +98,6 @@ pub trait MountedOperator: Send + Sync + Sized {
 		None
 	}
 }
-
-pub trait WindowedDriver: MountedOperator<Class = Windowed> + OperatorMetadata {}
 
 pub struct ManagedMount<T>(T);
 

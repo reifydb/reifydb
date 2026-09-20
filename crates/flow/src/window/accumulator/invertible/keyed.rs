@@ -7,7 +7,7 @@ use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
-use crate::window::accumulator::WindowAccumulator;
+use crate::window::accumulator::{MergeAccumulator, WindowAccumulator};
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
@@ -65,6 +65,19 @@ where
 	}
 }
 
+impl<K, A> MergeAccumulator for KeyedInvertibleAccumulator<K, A>
+where
+	K: Ord + Clone + Debug,
+	A: MergeAccumulator,
+	KeyedInvertibleAccumulator<K, A>: OperatorState + StateCodec + HeapSize,
+{
+	fn merge(&mut self, other: &Self) {
+		for (key, sub) in &other.subs {
+			self.subs.entry(key.clone()).or_default().merge(sub);
+		}
+	}
+}
+
 impl<K: Ord + HeapSize, A: HeapSize> HeapSize for KeyedInvertibleAccumulator<K, A> {
 	fn heap_size(&self) -> usize {
 		self.subs.heap_size()
@@ -118,6 +131,59 @@ mod tests {
 		assert_eq!(accumulator.entries().len(), 1, "the unknown key must never materialise");
 		let out = accumulator.finalize().expect("non-empty");
 		assert_eq!(out.get(&1).map(|m| m.sum()), Some(10.0), "the live key must be untouched");
+	}
+
+	#[test]
+	fn keyed_merge_combines_overlapping_keys_and_keeps_disjoint_ones() {
+		// A rolling top-k window folds pane accumulators, so a trader seen in two panes must be summed.
+		let mut older: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
+		older.add(&(1, 10.0));
+		older.add(&(2, 5.0));
+		let mut newer: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
+		newer.add(&(2, 7.0));
+		newer.add(&(3, 1.0));
+		let mut whole: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
+		for c in [(1, 10.0), (2, 5.0), (2, 7.0), (3, 1.0)] {
+			whole.add(&c);
+		}
+
+		older.merge(&newer);
+
+		assert_eq!(older, whole);
+		let out = older.finalize().expect("non-empty");
+		assert_eq!(out.get(&1).map(|m| m.sum()), Some(10.0), "a key only in self must survive");
+		assert_eq!(out.get(&2).map(|m| m.sum()), Some(12.0), "a key in both must be summed");
+		assert_eq!(out.get(&3).map(|m| m.sum()), Some(1.0), "a key only in other must be adopted");
+		assert_eq!(newer.entries().len(), 2, "the merged-in accumulator must be left untouched");
+	}
+
+	#[test]
+	fn keyed_merge_with_an_empty_side_is_the_identity() {
+		let mut filled: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
+		filled.add(&(1, 10.0));
+		let before = filled.clone();
+
+		filled.merge(&KeyedInvertibleAccumulator::default());
+		assert_eq!(filled, before);
+
+		let mut empty: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
+		empty.merge(&before);
+		assert_eq!(empty, before);
+	}
+
+	#[test]
+	fn keyed_merge_then_remove_drops_a_key_that_drains() {
+		// Eviction retracts contributions from the folded window; a key merged in must drain and vanish.
+		let mut folded: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
+		folded.add(&(1, 10.0));
+		let mut pane: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
+		pane.add(&(2, 4.0));
+		folded.merge(&pane);
+
+		folded.remove(&(2, 4.0));
+
+		assert_eq!(folded.entries().len(), 1, "key 2 drained to empty and was dropped");
+		assert!(folded.entries().get(&2).is_none());
 	}
 
 	#[test]

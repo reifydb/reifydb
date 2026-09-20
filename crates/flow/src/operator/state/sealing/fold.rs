@@ -77,10 +77,6 @@ impl<S: Slot, F: SealFold> SealingFold<S, F> {
 		Self::maybe_immutable(Some(immutable), params)
 	}
 
-	pub fn not_immutable(params: F::Params) -> Self {
-		Self::maybe_immutable(None, params)
-	}
-
 	pub fn maybe_immutable(immutable: Option<SlotSpan<S>>, params: F::Params) -> Self {
 		Self {
 			base: SealingBase::maybe_immutable(immutable),
@@ -274,11 +270,11 @@ mod tests {
 	#[test]
 	fn sealing_fold_unsealed_is_independent_of_arrival_order() {
 		// Nothing seals, so no distance behind the high water may keep a row out of the fold.
-		let mut forward: SealingFold<DateTime, SumFold> = SealingFold::not_immutable(());
+		let mut forward: SealingFold<DateTime, SumFold> = SealingFold::maybe_immutable(None, ());
 		forward.add(&(at_millis(0), 10.0));
 		forward.add(&(at_millis(1_000_000), 15.0));
 
-		let mut reversed: SealingFold<DateTime, SumFold> = SealingFold::not_immutable(());
+		let mut reversed: SealingFold<DateTime, SumFold> = SealingFold::maybe_immutable(None, ());
 		reversed.add(&(at_millis(1_000_000), 15.0));
 		reversed.add(&(at_millis(0), 10.0));
 
@@ -311,7 +307,7 @@ mod tests {
 		// path.
 		assert_arms_agree(
 			SealingFold::<DateTime, AbsPathFold>::new(millis(1), ()),
-			SealingFold::<DateTime, AbsPathFold>::not_immutable(()),
+			SealingFold::<DateTime, AbsPathFold>::maybe_immutable(None, ()),
 			&[
 				Op::Add((at_millis(0), 10.0)),
 				Op::Add((at_millis(1), 20.0)),
@@ -333,7 +329,7 @@ mod tests {
 		];
 		let mut sealed: SealingFold<DateTime, SumFold> = SealingFold::new(millis(1), ());
 		drive(&mut sealed, &ops);
-		let mut unsealed: SealingFold<DateTime, SumFold> = SealingFold::not_immutable(());
+		let mut unsealed: SealingFold<DateTime, SumFold> = SealingFold::maybe_immutable(None, ());
 		drive(&mut unsealed, &ops);
 
 		assert_eq!(unsealed.finalize(), Some(67.0), "retaining everything folds all four rows");
@@ -413,7 +409,7 @@ mod tests {
 	#[test]
 	fn sealing_fold_unsealed_carries_params_and_never_ages() {
 		// Without an immutable bound nothing seals, so a live removal must still be exact.
-		let mut accumulator: SealingFold<DateTime, ScaledPathFold> = SealingFold::not_immutable(3.0);
+		let mut accumulator: SealingFold<DateTime, ScaledPathFold> = SealingFold::maybe_immutable(None, 3.0);
 		accumulator.add(&(at_millis(0), 10.0));
 		accumulator.add(&(at_millis(100), 20.0));
 		assert_eq!(accumulator.finalize(), Some(30.0));

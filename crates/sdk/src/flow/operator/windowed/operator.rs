@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{fmt::Debug, hash::Hash};
+use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 
-use reifydb_codec::row::operator::state::StateCodec;
+use reifydb_codec::{key::encoded::IntoEncodedKey, row::operator::state::StateCodec};
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, operator_with::ApplyWith};
 pub use reifydb_flow::window::settings::WindowSettings;
 use reifydb_flow::{
 	operator::state::seal::domain::SealDomain,
 	window::{
 		accumulator::{MergeAccumulator, WindowAccumulator},
+		engine::rolling::{RollingBuffer, merge_panes},
 		span::{WindowAnchor, WindowSpan},
 	},
 };
@@ -19,9 +20,10 @@ use crate::{
 	error::Result,
 	flow::operator::{
 		OperatorMetadata,
-		column::row::OutputRows,
+		column::row::{OutputRows, Row},
 		context::{GuestContext, Windowed},
 		view::RowView,
+		windowed::{carry::CarryDriver, plain::PlainDriver, top_k::TopKDriver},
 	},
 };
 
@@ -77,18 +79,64 @@ pub struct AllKinds;
 
 pub struct NoRolling;
 
-pub trait KindSet<T: Emit> {}
+pub trait KindSet<T: Emit> {
+	const ROLLING: bool;
 
-impl<T: Emit> KindSet<T> for AllKinds where T::Accumulator: MergeAccumulator {}
+	fn merge_panes(buffer: &RollingBuffer<T::Coord, T::Accumulator>) -> T::Accumulator;
+}
 
-impl<T: Emit> KindSet<T> for NoRolling {}
+impl<T: Emit> KindSet<T> for AllKinds
+where
+	T::Accumulator: MergeAccumulator,
+{
+	const ROLLING: bool = true;
+
+	fn merge_panes(buffer: &RollingBuffer<T::Coord, T::Accumulator>) -> T::Accumulator {
+		merge_panes(buffer)
+	}
+}
+
+impl<T: Emit> KindSet<T> for NoRolling {
+	const ROLLING: bool = false;
+
+	fn merge_panes(_buffer: &RollingBuffer<T::Coord, T::Accumulator>) -> T::Accumulator {
+		unreachable!("a NoRolling operator never runs a rolling window; create refuses it first")
+	}
+}
 
 pub struct PlainMarker;
 
 pub struct CarryMarker;
 
-pub trait WindowDriver<M>: WindowedOperator {}
+pub struct TopKMarker;
 
-impl<T: Emit> WindowDriver<PlainMarker> for T {}
+pub trait WindowDriver<M>: WindowedOperator {
+	type Driver;
+}
 
-impl<T: CarryEmit> WindowDriver<CarryMarker> for T {}
+impl<T: Emit> WindowDriver<PlainMarker> for T
+where
+	T::Output: Row,
+	for<'a> &'a T::GroupKey: IntoEncodedKey,
+{
+	type Driver = PlainDriver<T>;
+}
+
+impl<T: CarryEmit> WindowDriver<CarryMarker> for T
+where
+	T::Output: Row,
+	for<'a> &'a T::GroupKey: IntoEncodedKey,
+{
+	type Driver = CarryDriver<T>;
+}
+
+impl<T, SK, R> WindowDriver<TopKMarker> for T
+where
+	T: Emit<Kinds = AllKinds, Output = BTreeMap<SK, R>>,
+	SK: Ord,
+	R: Row,
+	for<'a> &'a T::GroupKey: IntoEncodedKey,
+	for<'a> &'a SK: IntoEncodedKey,
+{
+	type Driver = TopKDriver<T>;
+}

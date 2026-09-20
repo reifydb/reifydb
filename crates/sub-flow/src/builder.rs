@@ -13,7 +13,9 @@ use reifydb_flow::operator::BoxedHostOperator;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::{
 	ManagedMount, ManagedOperator, MountedOperator, NostateMount, NostateOperator, UnmanagedMount,
-	UnmanagedOperator, WindowedDriver, context::ClassValue,
+	UnmanagedOperator,
+	context::{ClassValue, Windowed},
+	windowed::operator::WindowDriver,
 };
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::{OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn};
@@ -118,11 +120,12 @@ impl FlowConfigurator {
 	}
 
 	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-	pub fn register_windowed_operator<T>(self) -> Self
+	pub fn register_windowed_operator<T, M>(self) -> Self
 	where
-		T: WindowedDriver + 'static,
+		T: WindowDriver<M> + 'static,
+		<T as WindowDriver<M>>::Driver: MountedOperator<Class = Windowed> + OperatorMetadata + 'static,
 	{
-		self.register_mounted::<T>()
+		self.register_mounted::<<T as WindowDriver<M>>::Driver>()
 	}
 
 	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]

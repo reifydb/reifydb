@@ -73,6 +73,9 @@ pub enum CoreError {
 	#[error("this operator needs 'window' in its with block")]
 	OperatorWithWindowMissing,
 
+	#[error("this operator needs 'pane' in its rolling window's with block")]
+	OperatorWithPaneMissing,
+
 	#[error("window '{kind}' is not supported by this operator, use '{supported}'")]
 	OperatorWithWindowKindUnsupported {
 		kind: &'static str,

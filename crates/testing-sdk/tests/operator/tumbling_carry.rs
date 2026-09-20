@@ -9,9 +9,7 @@ use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	operator_with::{ApplyWith, WithSpan},
 };
-use reifydb_sdk::flow::operator::{
-	extern_c::binding::operator::ExternCOperatorAdapter, windowed::tumbling_carry::TumblingCarryDriver,
-};
+use reifydb_sdk::flow::operator::{extern_c::binding::operator::ExternCOperatorAdapter, windowed::carry::CarryDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,
@@ -28,13 +26,13 @@ fn window_key() -> Vec<String> {
 	vec!["group".to_string(), "window_start".to_string()]
 }
 
-fn window_with() -> ApplyWith {
+fn window_with(retention: Option<u64>) -> ApplyWith {
 	ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(common::WINDOW)),
 		}),
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
-		immutable: None,
+		immutable: retention.map(|span| WithSpan::Duration(millis(span))),
 	}
 }
 
@@ -47,11 +45,7 @@ fn price_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run(none_values: bool, scenario: Scenario, seed: u64, retention: Option<u64>) -> ChaosOutcome {
-	let mut config: Vec<(&str, Value)> = vec![];
-	if let Some(l) = retention {
-		config.push(("__retention", Value::Uint8(l)));
-	}
-	ChaosHarness::<ExternCOperatorAdapter<TumblingCarryDriver<TwapCarry>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<CarryDriver<TwapCarry>>>::builder()
 		.with_input_shape(common::carry_shape())
 		.with_output_shape(common::carry_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -60,16 +54,15 @@ fn run(none_values: bool, scenario: Scenario, seed: u64, retention: Option<u64>)
 		.with_column("group", samplers::utf8_choices(&["BTC", "ETH", "SOL"]))
 		.with_column("ts", samplers::u64_range(0..300))
 		.with_column("price", price_sampler(none_values))
-		.with_params(config)
 		.with_scenario(scenario)
-		.with(window_with())
+		.with(window_with(retention))
 		.with_oracle(move |ctx, batches| {
 			tumbling_carry_accumulator_oracle(
-				&common::twap_carry(retention),
+				&TwapCarry,
+				&common::settings(&window_with(retention)),
 				ctx,
 				batches,
 				&window_key(),
-				retention.map(millis),
 			)
 		})
 		.seed(seed)

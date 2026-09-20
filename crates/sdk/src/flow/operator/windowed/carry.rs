@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
+use std::{collections::BTreeMap, fmt::Debug};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
@@ -15,12 +15,12 @@ use reifydb_core::{
 use reifydb_flow::{
 	operator::state::seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 	window::{
-		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind, WindowResult, config::TumblingCarryConfig,
 			tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine,
 		},
-		span::{Slot, SlotCoord, SlotSpan, WindowAnchor, WindowSpan},
+		settings::WindowSettings,
+		span::{WindowSpan, window_row_key},
 	},
 };
 use reifydb_value::{
@@ -32,7 +32,7 @@ use tracing::{debug, instrument};
 use crate::{
 	error::Result,
 	flow::operator::{
-		MountedOperator, OperatorMetadata, WindowedDriver,
+		MountedOperator, OperatorMetadata,
 		column::{
 			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
@@ -40,109 +40,59 @@ use crate::{
 		},
 		context::{GuestContext, Windowed},
 		timer::Timer,
-		view::{ChangeView, ColumnsView, DiffView, RowView},
+		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
-			guest_as_host::GuestAsHost, observe_batch, seal_frontier, timer_frontier, window_engine_config,
+			guest_as_host::GuestAsHost,
+			observe_batch,
+			operator::{CarryEmit, Contribution, WindowedOperator},
+			seal_frontier, timer_frontier, window_engine_config,
 		},
 	},
 };
 
-type AccumulatorContribution<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Contribution;
-type AccumulatorValue<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Output;
-type Anchor<A> = SlotCoord<<A as TumblingCarryOperator>::WindowSlot>;
-type SealSpan<A> = <Anchor<A> as SealDomain>::SealSpan;
+type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
 type CarryEngine<A> = TumblingCarryEngine<
-	<A as TumblingCarryOperator>::GroupKey,
-	Anchor<A>,
-	<A as TumblingCarryOperator>::Accumulator,
-	<A as TumblingCarryOperator>::Carry,
-	<A as TumblingCarryOperator>::Output,
+	<A as WindowedOperator>::GroupKey,
+	<A as WindowedOperator>::Coord,
+	<A as WindowedOperator>::Accumulator,
+	<A as CarryEmit>::Carry,
+	<A as WindowedOperator>::Output,
 >;
-type Buckets<A> = TumblingBuckets<<A as TumblingCarryOperator>::GroupKey, Anchor<A>, AccumulatorContribution<A>>;
-type WindowResults<A> =
-	Vec<WindowResult<<A as TumblingCarryOperator>::GroupKey, Anchor<A>, <A as TumblingCarryOperator>::Output>>;
+type Buckets<A> = TumblingBuckets<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contribution<A>>;
+type WindowResults<A> = Vec<
+	WindowResult<
+		<A as WindowedOperator>::GroupKey,
+		<A as WindowedOperator>::Coord,
+		<A as WindowedOperator>::Output,
+	>,
+>;
 
-pub trait TumblingCarryOperator {
-	type GroupKey: Clone + Eq + Ord + Hash + Debug + StateCodec;
-
-	type WindowSlot: Slot<Coord: WindowAnchor + SealDomain + Hash + StateCodec + HeapSize + Send + Sync>
-		+ Hash
-		+ StateCodec
-		+ HeapSize;
-
-	type Accumulator: WindowAccumulator;
-
-	type Output: Clone + Debug + PartialEq + StateCodec + HeapSize;
-
-	type Carry: Clone + Debug + StateCodec + HeapSize;
-
-	fn coord(&self, row: &impl RowView) -> Option<Self::WindowSlot>;
-
-	fn extract(
-		&self,
-		ctx: &mut impl GuestContext,
-		row: &impl RowView,
-	) -> Option<(Self::GroupKey, AccumulatorContribution<Self>)>;
-
-	fn window_for(&self, coord: SlotCoord<Self::WindowSlot>) -> WindowSpan<SlotCoord<Self::WindowSlot>>;
-
-	fn build_output(
-		&self,
-		group: &Self::GroupKey,
-		span: WindowSpan<SlotCoord<Self::WindowSlot>>,
-		value: &AccumulatorValue<Self>,
-		prev_carry: Option<&Self::Carry>,
-	) -> Option<Self::Output>;
-
-	fn carry_forward(
-		&self,
-		value: &AccumulatorValue<Self>,
-		prev_carry: Option<&Self::Carry>,
-	) -> Option<Self::Carry>;
-
-	fn new_accumulator(&self) -> Self::Accumulator {
-		Self::Accumulator::default()
-	}
-
-	fn retention(&self) -> Option<SlotSpan<Self::WindowSlot>> {
-		None
-	}
-}
-
-pub trait TumblingCarryRegistration: TumblingCarryOperator + Sized
+pub struct CarryDriver<A>
 where
-	Self::Output: Row,
-	for<'a> &'a Self::GroupKey: IntoEncodedKey,
-{
-	const NAME: &'static str;
-	const VERSION: &'static str;
-	const DESCRIPTION: &'static str;
-	const INPUT_COLUMNS: &'static [OperatorColumn];
-	const OUTPUT_COLUMNS: &'static [OperatorColumn];
-	const CAPABILITIES: &'static [OperatorCapability];
-
-	fn from_operator_params(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
-
-	fn encode_row_key(&self, group: &Self::GroupKey, window_start: SlotCoord<Self::WindowSlot>) -> EncodedKey;
-}
-
-pub struct TumblingCarryDriver<A>
-where
-	A: TumblingCarryRegistration,
+	A: CarryEmit,
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
 	engine: CarryEngine<A>,
 	seal_span: Option<SealSpan<A>>,
+	settings: WindowSettings<A::Coord>,
 }
 
-impl<A> TumblingCarryDriver<A>
+impl<A> CarryDriver<A>
 where
-	A: TumblingCarryRegistration,
+	A: CarryEmit,
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
+	fn window_span(&self, coord: A::Coord) -> WindowSpan<A::Coord> {
+		WindowSpan::for_coord(coord, self.settings.size)
+	}
+
+	fn row_key(group: &A::GroupKey, window_start: A::Coord) -> EncodedKey {
+		window_row_key(group.into_encoded_key(), window_start)
+	}
+
 	#[instrument(name = "flow::operator::tumbling::route", level = "trace", skip_all, fields(operator = A::NAME))]
 	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Buckets<A> {
 		let mut buckets: Buckets<A> = BTreeMap::new();
@@ -184,13 +134,13 @@ where
 			let Some(row) = cols.row(i) else {
 				continue;
 			};
-			let Some(slot) = self.aggregator.coord(&row) else {
+			let Some(coord) = self.aggregator.coord(&row) else {
 				continue;
 			};
 			let Some((group, contribution)) = self.aggregator.extract(ctx, &row) else {
 				continue;
 			};
-			let span = self.aggregator.window_for(slot.order_key());
+			let span = self.window_span(coord);
 			let event = if is_add {
 				AccumulatorEvent::Add(contribution)
 			} else {
@@ -234,25 +184,24 @@ where
 	}
 }
 
-impl<A> TumblingCarryDriver<A>
+impl<A> CarryDriver<A>
 where
-	A: TumblingCarryRegistration + Send + Sync + 'static,
+	A: CarryEmit + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	A::Carry: Send + Sync + HeapSize,
-	A::Output: Send + Sync + HeapSize,
-	AccumulatorContribution<A>: Send + Sync,
+	A::Output: Clone + Debug + StateCodec + Send + Sync + HeapSize,
+	Contribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn expire_through<C: GuestContext>(
 		engine: &mut CarryEngine<A>,
 		store: &mut GuestAsHost<'_, C>,
-		horizon: Anchor<A>,
+		horizon: A::Coord,
 	) -> Result<()> {
-		if horizon > <Anchor<A> as Coord>::from_order(0) {
-			engine.expire_meta(store, horizon.to_order())?;
+		if horizon > <A::Coord as Coord>::from_order(0) {
+			engine.expire(store, horizon, |group, window_start| Self::row_key(group, window_start))?;
 		}
 		Ok(())
 	}
@@ -269,8 +218,8 @@ where
 		if let Some(newest) = newest {
 			observe_batch(&mut store, newest, seal_span)?;
 		}
-		let watermark = seal_frontier::<Anchor<A>>(&mut store)?;
-		let horizon = <Anchor<A> as SealDomain>::horizon(watermark, seal_span);
+		let watermark = seal_frontier::<A::Coord>(&mut store)?;
+		let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
 		Self::expire_through(&mut self.engine, &mut store, horizon)?;
 		let mut dropped = 0u64;
 		buckets.retain(|(_, span), events| {
@@ -292,23 +241,24 @@ where
 		let Self {
 			aggregator,
 			engine,
+			settings,
 			..
 		} = &mut *self;
 		let mut store = GuestAsHost(ctx);
 		Ok(engine.apply(
 			&mut store,
 			buckets,
-			|group, window_start| aggregator.encode_row_key(group, window_start),
-			|| aggregator.new_accumulator(),
+			|group, window_start| Self::row_key(group, window_start),
+			|| aggregator.new_accumulator(settings),
 			|group, span, value, prev_carry| aggregator.build_output(group, span, value, prev_carry),
 			|value, prev_carry| aggregator.carry_forward(value, prev_carry),
 		)?)
 	}
 }
 
-impl<A> OperatorMetadata for TumblingCarryDriver<A>
+impl<A> OperatorMetadata for CarryDriver<A>
 where
-	A: TumblingCarryRegistration + 'static,
+	A: CarryEmit + 'static,
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
@@ -320,16 +270,15 @@ where
 	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
 }
 
-impl<A> MountedOperator for TumblingCarryDriver<A>
+impl<A> MountedOperator for CarryDriver<A>
 where
-	A: TumblingCarryRegistration + Send + Sync + 'static,
+	A: CarryEmit + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	A::Carry: Send + Sync + HeapSize,
-	A::Output: Send + Sync + HeapSize,
-	AccumulatorContribution<A>: Send + Sync,
+	A::Output: Clone + Debug + StateCodec + Send + Sync + HeapSize,
+	Contribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	type Class = Windowed;
@@ -340,16 +289,17 @@ where
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
 		with.require_window("tumbling")?;
-		let seal_span = <Anchor<A> as SealDomain>::seal_span_of(with)?;
-		let aggregator = A::from_operator_params(operator_id, params, with)?;
-		let retention = aggregator.retention();
+		let seal_span = <A::Coord as SealDomain>::seal_span_of(with)?;
+		let settings = <A::Coord as SealDomain>::window_settings_of(with)?;
+		let aggregator = A::create(operator_id, params, with)?;
 		let engine_config = window_engine_config(params);
 		Ok(Self {
 			aggregator,
 			engine: TumblingCarryEngine::new(
-				TumblingCarryConfig::builder(engine_config).retention(retention).build(),
+				TumblingCarryConfig::builder(engine_config).retention(settings.immutable).build(),
 			),
 			seal_span,
+			settings,
 		})
 	}
 
@@ -358,10 +308,10 @@ where
 			return Ok(());
 		};
 		let mut store = GuestAsHost(ctx);
-		let Some(frontier) = timer_frontier::<Anchor<A>>(&mut store, timer)? else {
+		let Some(frontier) = timer_frontier::<A::Coord>(&mut store, timer)? else {
 			return Ok(());
 		};
-		let horizon = <Anchor<A> as SealDomain>::horizon(frontier, seal_span);
+		let horizon = <A::Coord as SealDomain>::horizon(frontier, seal_span);
 		Self::expire_through(&mut self.engine, &mut store, horizon)
 	}
 
@@ -395,18 +345,4 @@ where
 
 		Ok(())
 	}
-}
-
-impl<A> WindowedDriver for TumblingCarryDriver<A>
-where
-	A: TumblingCarryRegistration + Send + Sync + 'static,
-	A::Output: Row,
-	A::GroupKey: Send + Sync,
-	A::WindowSlot: Send + Sync,
-	A::Accumulator: Send + Sync + HeapSize,
-	A::Carry: Send + Sync + HeapSize,
-	A::Output: Send + Sync + HeapSize,
-	AccumulatorContribution<A>: Send + Sync,
-	for<'a> &'a A::GroupKey: IntoEncodedKey,
-{
 }

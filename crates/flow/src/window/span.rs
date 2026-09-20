@@ -10,8 +10,6 @@ use reifydb_value::value::datetime::DateTime;
 
 use crate::operator::state::seal::coord::{Coord, IsZero};
 
-pub type SlotCoord<S> = <S as Slot>::Coord;
-
 pub trait WindowAnchor: Slot<Coord = Self> + Coord {}
 
 impl<T> WindowAnchor for T where T: Slot<Coord = T> + Coord {}

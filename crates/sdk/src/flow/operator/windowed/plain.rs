@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_core::{
+	error::CoreError,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
+	state::timer::StateStore,
 };
 #[cfg(reifydb_assertions)]
 use reifydb_flow::operator::state::reaper::queued;
@@ -17,8 +19,10 @@ use reifydb_flow::{
 		seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 	},
 	window::{
+		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind,
+			rolling::{RollingBuckets, RollingBuffer, RollingEngine, RollingEviction},
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
 		settings::WindowSettings,
@@ -27,6 +31,7 @@ use reifydb_flow::{
 };
 use reifydb_value::{
 	config::ExtensionParams,
+	error::Error,
 	reifydb_assertions,
 	value::{diff_type::DiffType, row_number::RowNumber},
 };
@@ -35,7 +40,7 @@ use tracing::debug;
 use crate::{
 	error::Result,
 	flow::operator::{
-		MountedOperator, OperatorMetadata, WindowedDriver,
+		MountedOperator, OperatorMetadata,
 		column::{
 			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
@@ -48,7 +53,7 @@ use crate::{
 			group_of,
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
-			operator::{Contribution, Emit, WindowedOperator},
+			operator::{Contribution, Emit, KindSet, WindowedOperator},
 			seal_frontier, timer_frontier, window_engine_config,
 		},
 	},
@@ -59,6 +64,13 @@ const SEAL_REAP_BATCH: usize = 256;
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
 type Buckets<A> = TumblingBuckets<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contribution<A>>;
 type WindowOrder<A> = Vec<(<A as WindowedOperator>::GroupKey, WindowSpan<<A as WindowedOperator>::Coord>)>;
+type Rows<A> = Vec<(RowNumber, <A as WindowedOperator>::Output)>;
+type Emitted<A> = (Rows<A>, Rows<A>, Rows<A>);
+
+struct RollingMode<A: Emit> {
+	engine: RollingEngine<A::GroupKey, A::Coord, A::Accumulator>,
+	pane: <A::Coord as Coord>::Span,
+}
 
 pub struct PlainDriver<A>
 where
@@ -68,6 +80,7 @@ where
 {
 	aggregator: A,
 	engine: TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
+	rolling: Option<RollingMode<A>>,
 	reap_queue_empty: bool,
 	seal_span: Option<SealSpan<A>>,
 	settings: WindowSettings<A::Coord>,
@@ -81,6 +94,13 @@ where
 {
 	fn window_span(&self, coord: A::Coord) -> WindowSpan<A::Coord> {
 		WindowSpan::for_coord(coord, self.settings.size)
+	}
+
+	fn bucket_span(&self, coord: A::Coord) -> WindowSpan<A::Coord> {
+		match &self.rolling {
+			Some(mode) => WindowSpan::for_coord(coord, mode.pane),
+			None => self.window_span(coord),
+		}
 	}
 
 	fn row_key(group: &A::GroupKey, window_start: A::Coord) -> EncodedKey {
@@ -133,7 +153,7 @@ where
 			let Some((group, contribution)) = self.aggregator.extract(ctx, &row) else {
 				continue;
 			};
-			let span = self.window_span(coord);
+			let span = self.bucket_span(coord);
 			let event = if is_add {
 				AccumulatorEvent::Add(contribution)
 			} else {
@@ -187,6 +207,203 @@ where
 			observe_batch(store, frontier, seal_span)?;
 		}
 		Ok(())
+	}
+
+	fn expire_rolling<C: GuestContext>(
+		engine: &mut RollingEngine<A::GroupKey, A::Coord, A::Accumulator>,
+		store: &mut GuestAsHost<'_, C>,
+		horizon: A::Coord,
+	) -> Result<()> {
+		if horizon > <A::Coord as Coord>::from_order(0) {
+			engine.expire_meta(store, horizon.to_order())?;
+		}
+		Ok(())
+	}
+
+	fn combine_panes(
+		aggregator: &A,
+		settings: &WindowSettings<A::Coord>,
+		pane: <A::Coord as Coord>::Span,
+		group: &A::GroupKey,
+		buffer: &RollingBuffer<A::Coord, A::Accumulator>,
+	) -> Option<A::Output> {
+		let value = <A::Kinds as KindSet<A>>::merge_panes(buffer).finalize()?;
+		let (newest, _) = buffer.last_key_value()?;
+		let end = newest.add_span(pane);
+		let span = WindowSpan::new(end.saturating_sub_span(settings.size), end);
+		aggregator.build_output(group, span, &value)
+	}
+
+	fn apply_rolling<C: GuestContext>(
+		aggregator: &A,
+		mode: &mut RollingMode<A>,
+		seal_span: Option<SealSpan<A>>,
+		settings: &WindowSettings<A::Coord>,
+		ctx: &mut C,
+		windows: Buckets<A>,
+	) -> Result<Emitted<A>> {
+		let mut buckets: RollingBuckets<A::GroupKey, A::Coord, Contribution<A>> =
+			windows.into_iter().map(|((group, span), events)| ((group, span.start), events)).collect();
+
+		if let Some(seal_span) = seal_span {
+			let mut store = GuestAsHost(ctx);
+			let newest = buckets.keys().map(|(_, coord)| *coord).max();
+			if let Some(newest) = newest {
+				observe_batch(&mut store, newest, seal_span)?;
+			}
+			let watermark = seal_frontier::<A::Coord>(&mut store)?;
+			let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
+			Self::expire_rolling(&mut mode.engine, &mut store, horizon)?;
+			let mut dropped = 0u64;
+			buckets.retain(|(_, coord), events| {
+				if is_sealed(*coord, horizon) {
+					dropped += events.len() as u64;
+					false
+				} else {
+					true
+				}
+			});
+			if dropped > 0 {
+				debug!(operator = A::NAME, dropped, "mutations targeting sealed panes were dropped");
+			}
+			if buckets.is_empty() {
+				return Ok((Vec::new(), Vec::new(), Vec::new()));
+			}
+		}
+
+		let groups = intern_window_groups(
+			buckets.keys().map(|(group, _)| group.clone()).collect::<BTreeSet<_>>().into_iter().map(
+				|group| {
+					let key = (&group).into_encoded_key();
+					((group, ()), key)
+				},
+			),
+		);
+
+		let pane = mode.pane;
+		let results = {
+			let mut store = GuestAsHost(ctx);
+			mode.engine.apply_evicting(
+				&mut store,
+				buckets,
+				RollingEviction::Span(settings.size),
+				|group| (group_of(&groups, group, ()), group.into_encoded_key()),
+				|| aggregator.new_accumulator(settings),
+				|group, buffer| Self::combine_panes(aggregator, settings, pane, group, buffer),
+			)?
+		};
+
+		let mut inserts: Rows<A> = Vec::new();
+		let mut updates: Rows<A> = Vec::new();
+		let mut removes: Rows<A> = Vec::new();
+		let mut removed_groups: Vec<A::GroupKey> = Vec::new();
+		for r in results {
+			match r.kind {
+				EmitKind::Insert => inserts.push((r.row_number, r.value)),
+				EmitKind::Update => updates.push((r.row_number, r.value)),
+				EmitKind::Remove => {
+					removed_groups.push(r.group);
+					removes.push((r.row_number, r.value));
+				}
+			}
+		}
+
+		if !removed_groups.is_empty() {
+			let mut store = GuestAsHost(ctx);
+			for group in &removed_groups {
+				store.remove_row_number(group_of(&groups, group, ()), &group.into_encoded_key())?;
+			}
+		}
+
+		Ok((inserts, updates, removes))
+	}
+
+	fn apply_tumbling<C: GuestContext>(
+		aggregator: &A,
+		engine: &mut TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
+		reap_queue_empty: &mut bool,
+		seal_span: Option<SealSpan<A>>,
+		settings: &WindowSettings<A::Coord>,
+		ctx: &mut C,
+		mut buckets: Buckets<A>,
+	) -> Result<Emitted<A>> {
+		if let Some(seal_span) = seal_span {
+			let mut store = GuestAsHost(ctx);
+			let newest = buckets.keys().map(|(_, span)| span.start).max();
+			if let Some(newest) = newest {
+				observe_batch(&mut store, newest, seal_span)?;
+			}
+			let watermark = seal_frontier::<A::Coord>(&mut store)?;
+			let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
+			let mut dropped = 0u64;
+			buckets.retain(|(_, span), events| {
+				if is_sealed(span.start, horizon) {
+					dropped += events.len() as u64;
+					false
+				} else {
+					true
+				}
+			});
+			if dropped > 0 {
+				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
+			}
+			Self::expire_through(engine, reap_queue_empty, &mut store, watermark, seal_span)?;
+			if buckets.is_empty() {
+				return Ok((Vec::new(), Vec::new(), Vec::new()));
+			}
+		}
+
+		let groups = intern_window_groups(
+			buckets.keys()
+				.map(|(group, span)| ((group.clone(), span.start), Self::row_key(group, span.start))),
+		);
+
+		let results = {
+			let mut store = GuestAsHost(ctx);
+			let order: WindowOrder<A> = buckets.keys().cloned().collect();
+			engine.apply(
+				&mut store,
+				buckets,
+				&order,
+				|group, window_start| {
+					(group_of(&groups, group, window_start), Self::row_key(group, window_start))
+				},
+				|| aggregator.new_accumulator(settings),
+			)?
+		};
+
+		if seal_span.is_some() {
+			let mut store = GuestAsHost(ctx);
+			for r in &results {
+				if r.kind == EmitKind::Insert {
+					let group = group_of(&groups, &r.group, r.span.start);
+					engine.reindex_window(
+						&mut store,
+						&r.group,
+						r.span.start,
+						group,
+						&Self::row_key(&r.group, r.span.start),
+						None,
+						Some(r.span.start.to_order()),
+					)?;
+				}
+			}
+		}
+
+		let mut inserts: Rows<A> = Vec::new();
+		let mut updates: Rows<A> = Vec::new();
+		let mut removes: Rows<A> = Vec::new();
+		for r in results {
+			let Some(out) = aggregator.build_output(&r.group, r.span, &r.value) else {
+				continue;
+			};
+			match r.kind {
+				EmitKind::Insert => inserts.push((r.row_number, out)),
+				EmitKind::Update => updates.push((r.row_number, out)),
+				EmitKind::Remove => removes.push((r.row_number, out)),
+			}
+		}
+		Ok((inserts, updates, removes))
 	}
 
 	#[inline]
@@ -252,14 +469,29 @@ where
 	}
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
-		with.require_window("tumbling")?;
+		let rolls = <A::Kinds as KindSet<A>>::ROLLING
+			&& with.window.as_ref().is_some_and(|kind| kind.name() == "rolling");
+		if !rolls {
+			with.require_window("tumbling")?;
+		}
 		let seal_span = <A::Coord as SealDomain>::seal_span_of(with)?;
 		let settings = <A::Coord as SealDomain>::window_settings_of(with)?;
 		let aggregator = A::create(operator_id, params, with)?;
-		let engine_config = window_engine_config(params);
+		let rolling = if rolls {
+			let Some(pane) = settings.pane else {
+				return Err(Error::from(CoreError::OperatorWithPaneMissing).into());
+			};
+			Some(RollingMode {
+				engine: RollingEngine::new(window_engine_config(params)),
+				pane,
+			})
+		} else {
+			None
+		};
 		Ok(Self {
 			aggregator,
-			engine: TumblingEngine::new(engine_config),
+			engine: TumblingEngine::new(window_engine_config(params)),
+			rolling,
 			reap_queue_empty: false,
 			seal_span,
 			settings,
@@ -272,6 +504,7 @@ where
 		};
 		let Self {
 			engine,
+			rolling,
 			reap_queue_empty,
 			..
 		} = &mut *self;
@@ -279,118 +512,50 @@ where
 		let Some(frontier) = timer_frontier::<A::Coord>(&mut store, timer)? else {
 			return Ok(());
 		};
-		Self::expire_through(engine, reap_queue_empty, &mut store, frontier, seal_span)
+		match rolling {
+			Some(mode) => Self::expire_rolling(
+				&mut mode.engine,
+				&mut store,
+				<A::Coord as SealDomain>::horizon(frontier, seal_span),
+			),
+			None => Self::expire_through(engine, reap_queue_empty, &mut store, frontier, seal_span),
+		}
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
-		let mut buckets = self.route(ctx, &change);
+		let buckets = self.route(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());
 		}
 
-		let seal_span = self.seal_span;
-		if let Some(seal_span) = seal_span {
-			let Self {
-				engine,
-				reap_queue_empty,
-				..
-			} = &mut *self;
-			let mut store = GuestAsHost(ctx);
-			let newest = buckets.keys().map(|(_, span)| span.start).max();
-			if let Some(newest) = newest {
-				observe_batch(&mut store, newest, seal_span)?;
-			}
-			let watermark = seal_frontier::<A::Coord>(&mut store)?;
-			let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
-			let mut dropped = 0u64;
-			buckets.retain(|(_, span), events| {
-				if is_sealed(span.start, horizon) {
-					dropped += events.len() as u64;
-					false
-				} else {
-					true
-				}
-			});
-			if dropped > 0 {
-				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
-			}
-			Self::expire_through(engine, reap_queue_empty, &mut store, watermark, seal_span)?;
-			if buckets.is_empty() {
-				return Ok(());
-			}
-		}
-
-		let groups = intern_window_groups(
-			buckets.keys()
-				.map(|(group, span)| ((group.clone(), span.start), Self::row_key(group, span.start))),
-		);
-
-		let results = {
+		let (inserts, updates, removes) = {
 			let Self {
 				aggregator,
 				engine,
+				rolling,
+				reap_queue_empty,
+				seal_span,
 				settings,
-				..
 			} = &mut *self;
-			let mut store = GuestAsHost(ctx);
-			let order: WindowOrder<A> = buckets.keys().cloned().collect();
-			engine.apply(
-				&mut store,
-				buckets,
-				&order,
-				|group, window_start| {
-					(group_of(&groups, group, window_start), Self::row_key(group, window_start))
-				},
-				|| aggregator.new_accumulator(settings),
-			)?
-		};
-
-		if seal_span.is_some() {
-			let mut store = GuestAsHost(ctx);
-			for r in &results {
-				if r.kind == EmitKind::Insert {
-					let group = group_of(&groups, &r.group, r.span.start);
-					self.engine.reindex_window(
-						&mut store,
-						&r.group,
-						r.span.start,
-						group,
-						&Self::row_key(&r.group, r.span.start),
-						None,
-						Some(r.span.start.to_order()),
-					)?;
+			match rolling {
+				Some(mode) => {
+					Self::apply_rolling(aggregator, mode, *seal_span, settings, ctx, buckets)?
 				}
+				None => Self::apply_tumbling(
+					aggregator,
+					engine,
+					reap_queue_empty,
+					*seal_span,
+					settings,
+					ctx,
+					buckets,
+				)?,
 			}
-		}
-
-		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
-		let mut updates: Vec<(RowNumber, A::Output)> = Vec::new();
-		let mut removes: Vec<(RowNumber, A::Output)> = Vec::new();
-		for r in results {
-			let Some(out) = self.aggregator.build_output(&r.group, r.span, &r.value) else {
-				continue;
-			};
-			match r.kind {
-				EmitKind::Insert => inserts.push((r.row_number, out)),
-				EmitKind::Update => updates.push((r.row_number, out)),
-				EmitKind::Remove => removes.push((r.row_number, out)),
-			}
-		}
+		};
 		self.emit_batches(ctx, &inserts, &updates, &removes)?;
 
 		Ok(())
 	}
-}
-
-impl<A> WindowedDriver for PlainDriver<A>
-where
-	A: Emit + Send + Sync + 'static,
-	A::Output: Row,
-	A::GroupKey: Send + Sync,
-	A::Accumulator: Send + Sync + HeapSize,
-	Contribution<A>: Send + Sync,
-	for<'a> &'a A::GroupKey: IntoEncodedKey,
-{
 }
 
 #[cfg(test)]
@@ -590,8 +755,7 @@ mod tests {
 
 	#[test]
 	fn create_refuses_a_window_that_is_not_tumbling() {
-		// this driver has no rolling or session engine; accepting one would run tumbling buckets under a
-		// rolling declaration
+		// a NoRolling operator must refuse a rolling window, and no window at all must be refused too
 		let rolling = ApplyWith {
 			window: Some(WindowKind::Rolling {
 				size: WindowSize::Duration(secs(60)),

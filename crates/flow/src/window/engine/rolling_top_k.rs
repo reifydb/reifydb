@@ -16,7 +16,10 @@ use reifydb_core::{key::operator::state::GroupId, metrics::heap::HeapSize, state
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	operator::state_access::{get_classified, put, remove},
+	operator::{
+		state::seal::coord::Coord,
+		state_access::{get_classified, put, remove},
+	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -24,7 +27,7 @@ use crate::{
 			config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for, persist_batch_meta,
 			rolling::RollingBuckets,
 		},
-		span::Slot,
+		span::{Slot, SlotSpan},
 	},
 };
 
@@ -97,7 +100,7 @@ where
 		&mut self,
 		store: &mut dyn StateStore,
 		buckets: RollingBuckets<G, S, Accumulator::Contribution>,
-		capacity: usize,
+		window: SlotSpan<S>,
 		state_key: SKF,
 		row_key: RKF,
 		combine: CB,
@@ -118,7 +121,7 @@ where
 			&mut meta_loaded,
 			&state_rows,
 			&state_key,
-			capacity,
+			window,
 		)?;
 		let emits = self.diff_emits(store, group_slots, &row_key, &combine)?;
 		self.persist_meta(store, meta_loaded)?;
@@ -241,7 +244,7 @@ where
 		meta_loaded: &mut MetaLoaded<G, S>,
 		state_rows: &StateRows<G>,
 		state_key: &SKF,
-		capacity: usize,
+		window: SlotSpan<S>,
 	) -> Result<BTreeMap<G, GroupSlot<S, Accumulator, SK, Output>>>
 	where
 		SKF: Fn(&G) -> EncodedKey,
@@ -306,8 +309,19 @@ where
 			if !touched {
 				continue;
 			}
-			while group_slot.buffer.len() > capacity {
-				group_slot.buffer.pop_first();
+			let cutoff = group_slot
+				.buffer
+				.last_key_value()
+				.and_then(|(newest, _)| newest.order_key().checked_sub_span(window))
+				.map(S::from_order_key);
+			if let Some(cutoff) = cutoff {
+				while let Some((&oldest, _)) = group_slot.buffer.first_key_value() {
+					if oldest <= cutoff {
+						group_slot.buffer.pop_first();
+					} else {
+						break;
+					}
+				}
 			}
 			group_slot.buffer_changed = true;
 
@@ -440,7 +454,10 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::key::operator::state::GroupId;
-	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
+	use reifydb_value::{
+		factory::time::at_millis,
+		value::{datetime::DateTime, duration::Duration},
+	};
 
 	use super::{RollingTopKBuffer, RollingTopKEmit, RollingTopKEngine, TopKEmit};
 	use crate::{
@@ -453,6 +470,10 @@ mod tests {
 
 	fn test_config() -> WindowEngineConfig {
 		WindowEngineConfig::builder().build()
+	}
+
+	fn window() -> Duration {
+		Duration::from_seconds_const(1)
 	}
 
 	fn state_key(group: &u32) -> EncodedKey {
@@ -481,7 +502,7 @@ mod tests {
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
-		let published = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+		let published = engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
 		assert_eq!(published.len(), 1);
 		let published_row = match &published[0] {
 			TopKEmit::Insert {
@@ -498,7 +519,7 @@ mod tests {
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
-		let withdrawn = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+		let withdrawn = engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the group emits exactly one terminal diff");
 		match &withdrawn[0] {
@@ -530,7 +551,7 @@ mod tests {
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
-		let published = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+		let published = engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
 		let published_row = match &published[0] {
 			TopKEmit::Insert {
 				row_number,
@@ -549,7 +570,7 @@ mod tests {
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(3)]);
-		let republished = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+		let republished = engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
 
 		assert_eq!(republished.len(), 1);
 		match &republished[0] {
@@ -577,7 +598,7 @@ mod tests {
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
-		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+		engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
 		// the mapping is scoped to the group, not ROOT, and reclamation deletes by group prefix
 		let group = GroupId::of(&state_key(&1));
 		assert!(
@@ -587,7 +608,7 @@ mod tests {
 
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
-		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+		engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
 		assert!(
 			!store.contains_guest_row_mapping(group, &ranked_key),
 			"withdrawing the ranking must reclaim its row-number mapping, not leak it"
@@ -605,7 +626,7 @@ mod tests {
 		for group in 1u32..=11u32 {
 			let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 			buckets.insert((group, at_millis(10)), vec![AccumulatorEvent::Add(i64::from(group))]);
-			let out = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+			let out = engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
 			if group == 1 {
 				assert_eq!(out.len(), 1);
 				published_row_1 = match &out[0] {
@@ -626,7 +647,7 @@ mod tests {
 		// re-read its GroupState from the store to apply this retraction.
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(1)]);
-		let withdrawn = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+		let withdrawn = engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the evicted group emits exactly one terminal diff");
 		match &withdrawn[0] {
@@ -648,7 +669,7 @@ mod tests {
 		// The buffer lives as per-slot entries and the ranking as a separate last_emit entry, but
 		// the engine must still emit what a from-scratch recombine would. A single ranked key
 		// reduces the visible state to one value, checked against a live-buffer oracle each batch.
-		const CAP: usize = 4;
+		const WINDOW_MILLIS: u64 = 15;
 		let mut store = MockStore::default();
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 
@@ -691,9 +712,13 @@ mod tests {
 					live.remove(&slot);
 				}
 			}
-			while live.len() > CAP {
-				let &lowest = live.keys().next().unwrap();
-				live.remove(&lowest);
+			if let Some(&newest) = live.keys().next_back() {
+				while let Some(&lowest) = live.keys().next() {
+					if lowest + WINDOW_MILLIS > newest {
+						break;
+					}
+					live.remove(&lowest);
+				}
 			}
 
 			let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
@@ -705,7 +730,14 @@ mod tests {
 				};
 				buckets.entry((1u32, at_millis(slot))).or_default().push(ev);
 			}
-			let emits = engine.apply(&mut store, buckets, CAP, state_key, row_key, combine).unwrap();
+			let emits = engine.apply(
+				&mut store,
+				buckets,
+				Duration::from_milliseconds_const(WINDOW_MILLIS as i64),
+				state_key,
+				row_key,
+				combine,
+			).unwrap();
 			for e in &emits {
 				match e {
 					TopKEmit::Insert {

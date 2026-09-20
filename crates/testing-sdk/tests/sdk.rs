@@ -22,6 +22,15 @@ mod rolling_top_k;
 #[path = "sdk/tumbling_carry.rs"]
 mod tumbling_carry;
 
+#[path = "sdk/carry.rs"]
+mod carry;
+
+#[path = "sdk/plain_rolling.rs"]
+mod plain_rolling;
+
+#[path = "sdk/plain_top_k.rs"]
+mod plain_top_k;
+
 #[path = "sdk/guest_sweep.rs"]
 mod guest_sweep;
 

@@ -5,7 +5,7 @@ use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::reifydb_assertions;
 
-use crate::window::accumulator::WindowAccumulator;
+use crate::window::accumulator::{MergeAccumulator, WindowAccumulator};
 
 #[operator_state]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -36,6 +36,12 @@ impl WindowAccumulator for Moments {
 	}
 }
 
+impl MergeAccumulator for Moments {
+	fn merge(&mut self, other: &Moments) {
+		Moments::merge(self, other);
+	}
+}
+
 impl Moments {
 	#[inline]
 	pub fn add(&mut self, x: f64) {
@@ -57,6 +63,13 @@ impl Moments {
 		}
 		self.sum -= x;
 		self.sum_sq -= x * x;
+	}
+
+	#[inline]
+	pub fn merge(&mut self, other: &Moments) {
+		self.n += other.n;
+		self.sum += other.sum;
+		self.sum_sq += other.sum_sq;
 	}
 
 	#[inline]
@@ -186,6 +199,60 @@ mod tests {
 		assert_eq!(m.count(), 1);
 		assert_eq!(m.variance_pop(), Some(0.0));
 		assert_eq!(m.stddev_pop(), Some(0.0));
+	}
+
+	#[test]
+	fn merge_equals_adding_every_contribution() {
+		// A rolling window folds pane accumulators, so the fold must equal one accumulator fed all values.
+		let mut first = Moments::default();
+		let mut second = Moments::default();
+		let mut whole = Moments::default();
+		for x in [1.5, 2.5, 4.0] {
+			first.add(x);
+			whole.add(x);
+		}
+		for x in [10.0, 0.25] {
+			second.add(x);
+			whole.add(x);
+		}
+
+		first.merge(&second);
+
+		assert_eq!(first, whole);
+		assert_eq!(first.count(), 5);
+		assert_eq!(second.count(), 2, "the merged-in accumulator must be left untouched");
+	}
+
+	#[test]
+	fn merge_with_an_empty_side_is_the_identity() {
+		let mut filled = Moments::default();
+		filled.add(3.0);
+		filled.add(4.0);
+		let before = filled;
+
+		filled.merge(&Moments::default());
+		assert_eq!(filled, before, "merging an empty pane must not change the fold");
+
+		let mut empty = Moments::default();
+		empty.merge(&before);
+		assert_eq!(empty, before, "merging into an empty fold must copy the pane");
+	}
+
+	#[test]
+	fn merged_moments_can_still_be_retracted() {
+		// Rolling eviction removes single contributions from a folded window; merge must keep n consistent.
+		let mut folded = Moments::default();
+		folded.add(2.0);
+		let mut pane = Moments::default();
+		pane.add(3.0);
+		pane.add(5.0);
+		folded.merge(&pane);
+
+		folded.remove(3.0);
+		folded.remove(5.0);
+
+		assert_eq!(folded.count(), 1);
+		assert_eq!(folded.sum(), 2.0);
 	}
 
 	#[test]

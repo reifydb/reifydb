@@ -4,7 +4,9 @@
 use std::fmt::Debug;
 
 use reifydb_codec::key::encoded::EncodedKeyBuilder;
-use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
+use reifydb_value::{
+	value::{date::Date, datetime::DateTime, duration::Duration, time::Time},
+};
 
 pub trait Coord: Copy + Ord + Debug {
 	type Span: Copy + Ord + Debug + IsZero + Default + Send + Sync;
@@ -108,7 +110,7 @@ impl IsZero for Time {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_value::value::datetime::DateTime;
+	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	use super::Coord;
 

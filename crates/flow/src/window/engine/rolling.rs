@@ -39,7 +39,7 @@ use crate::{
 			RunningKey, config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for,
 			note_when_expiry_capped, persist_batch_meta,
 		},
-		span::Slot,
+		span::{Slot, SlotSpan},
 	},
 };
 
@@ -57,6 +57,7 @@ pub struct RollingResult<G, Output> {
 
 pub enum RollingEviction<S: Slot> {
 	Capacity(usize),
+	Span(SlotSpan<S>),
 	Before(S),
 	Nothing,
 }
@@ -105,7 +106,6 @@ pub struct RollingEngine<G, S: Slot, Accumulator> {
 	meta_sweep: MetaSweep,
 	expire_batch: usize,
 	lag: <S::Coord as Coord>::Span,
-	immutable: Option<<S::Coord as Coord>::Span>,
 	expiry: ExpiryIndex<Expiry>,
 	_pd: PhantomData<(G, S, Accumulator)>,
 }
@@ -144,6 +144,10 @@ fn is_merged_coord<C: Coord>(coord: C, frontier: Option<C>) -> bool {
 	frontier.is_some_and(|f| coord <= f)
 }
 
+pub fn merge_panes<S: Slot, A: MergeAccumulator>(buffer: &RollingBuffer<S, A>) -> A {
+	running_below::<S, A>(buffer, Some(<S::Coord as Coord>::MAX))
+}
+
 fn running_below<S: Slot, A: MergeAccumulator>(buffer: &RollingBuffer<S, A>, frontier: Option<S::Coord>) -> A {
 	let mut running = A::default();
 	let Some(frontier) = frontier else {
@@ -175,7 +179,6 @@ where
 			meta_sweep: MetaSweep::default(),
 			expire_batch: config.expire_batch(),
 			lag: Default::default(),
-			immutable: None,
 			expiry: ExpiryIndex::default(),
 			_pd: PhantomData,
 		}
@@ -189,11 +192,6 @@ where
 
 	pub fn with_lag(mut self, lag: <S::Coord as Coord>::Span) -> Self {
 		self.lag = lag;
-		self
-	}
-
-	pub fn with_immutable(mut self, immutable: <S::Coord as Coord>::Span) -> Self {
-		self.immutable = Some(immutable);
 		self
 	}
 
@@ -379,6 +377,22 @@ where
 				RollingEviction::Capacity(cap) => {
 					while group_slot.buffer.len() > *cap {
 						group_slot.buffer.pop_first();
+					}
+				}
+				RollingEviction::Span(size) => {
+					let cutoff = group_slot
+						.buffer
+						.last_key_value()
+						.and_then(|(newest, _)| newest.order_key().checked_sub_span(*size))
+						.map(S::from_order_key);
+					if let Some(cutoff) = cutoff {
+						while let Some((&oldest, _)) = group_slot.buffer.first_key_value() {
+							if oldest <= cutoff {
+								group_slot.buffer.pop_first();
+							} else {
+								break;
+							}
+						}
 					}
 				}
 				RollingEviction::Before(cutoff) => {
@@ -649,16 +663,11 @@ where
 				self.runnable,
 				"apply_running requires an engine constructed with new_runnable"
 			);
-			assert!(
-				self.immutable.is_none(),
-				"a rolling window with immutable must rebuild from panes: sealed values merge but never \
-				 unmerge, so the running path would unmerge a folded value"
-			);
 		}
 		let evict_cutoff = match eviction {
 			RollingEviction::Before(cutoff) => Some(cutoff),
 			RollingEviction::Nothing => None,
-			RollingEviction::Capacity(_) => {
+			RollingEviction::Capacity(_) | RollingEviction::Span(_) => {
 				unimplemented!("apply_running supports only Before eviction")
 			}
 		};
@@ -1020,21 +1029,6 @@ where
 	}
 }
 
-impl<G, S, Accumulator> RollingEngine<G, S, Accumulator>
-where
-	G: Clone + Eq + Ord + Hash + Debug,
-	S: Slot + Hash + HeapSize,
-	Accumulator: MergeAccumulator,
-	G: StateCodec,
-	GroupMeta<S>: OperatorState,
-	RollingIndexEntry<G>: OperatorState,
-	RollingBuffer<S, Accumulator>: OperatorState,
-{
-	pub fn merge_buffer(&self, buffer: &RollingBuffer<S, Accumulator>) -> Accumulator {
-		running_below::<S, Accumulator>(buffer, Some(<S::Coord as Coord>::MAX))
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use std::collections::{BTreeMap, BTreeSet};
@@ -1055,7 +1049,7 @@ mod tests {
 				config::WindowEngineConfig,
 				rolling::{
 					RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
-					RollingResult,
+					RollingResult, merge_panes,
 				},
 			},
 		},
@@ -1954,34 +1948,31 @@ mod tests {
 	}
 
 	#[test]
-	fn merge_buffer_over_one_pane_equals_that_pane() {
+	fn merge_panes_over_one_pane_equals_that_pane() {
 		// A merge that alters a lone pane would change every rolling window with a single bucket.
-		let engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buffer: RollingBuffer<DateTime, SumAccumulator> = BTreeMap::new();
 		buffer.insert(at_millis(10), sum_pane(&[3, 4]));
 
-		let merged = engine.merge_buffer(&buffer);
+		let merged = merge_panes(&buffer);
 		assert_eq!(merged.finalize(), sum_pane(&[3, 4]).finalize());
 		assert_eq!(merged.finalize(), Some(7));
 	}
 
 	#[test]
-	fn merge_buffer_over_three_panes_equals_one_accumulator_fed_the_same_contributions() {
+	fn merge_panes_over_three_panes_equals_one_accumulator_fed_the_same_contributions() {
 		// The engine merge must equal the flat fold the guest used to do, or rolling values shift.
-		let engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buffer: RollingBuffer<DateTime, SumAccumulator> = BTreeMap::new();
 		buffer.insert(at_millis(10), sum_pane(&[1]));
 		buffer.insert(at_millis(20), sum_pane(&[2, 3]));
 		buffer.insert(at_millis(30), sum_pane(&[4]));
 
-		let merged = engine.merge_buffer(&buffer);
+		let merged = merge_panes(&buffer);
 		assert_eq!(merged.finalize(), sum_pane(&[1, 2, 3, 4]).finalize());
 	}
 
 	#[test]
-	fn merge_buffer_merges_panes_oldest_first() {
+	fn merge_panes_merges_panes_oldest_first() {
 		// A last-value window keeps the newest pane's value only if panes merge oldest first.
-		let engine = RollingEngine::<u32, DateTime, LastValue<i64>>::new(test_config());
 		let mut buffer: RollingBuffer<DateTime, LastValue<i64>> = BTreeMap::new();
 		for (millis, value) in [(30, 3), (10, 1), (20, 2)] {
 			let mut pane: LastValue<i64> = LastValue::default();
@@ -1989,38 +1980,16 @@ mod tests {
 			buffer.insert(at_millis(millis), pane);
 		}
 
-		assert_eq!(engine.merge_buffer(&buffer).finalize(), Some(3));
+		assert_eq!(merge_panes(&buffer).finalize(), Some(3));
 	}
 
 	#[test]
-	fn merge_buffer_over_an_empty_buffer_is_the_default_accumulator() {
+	fn merge_panes_over_an_empty_buffer_is_the_default_accumulator() {
 		// An empty window must fold to nothing, not to a stale or garbage value.
-		let engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let buffer: RollingBuffer<DateTime, SumAccumulator> = BTreeMap::new();
 
-		let merged = engine.merge_buffer(&buffer);
+		let merged = merge_panes(&buffer);
 		assert!(merged.is_empty());
 		assert_eq!(merged.finalize(), SumAccumulator::default().finalize());
-	}
-
-	#[cfg(reifydb_assertions)]
-	#[test]
-	#[should_panic(expected = "must rebuild from panes")]
-	fn apply_running_refuses_an_engine_declared_with_immutable() {
-		// Sealed values merge but never unmerge, so the running path must not run under immutable.
-		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config())
-			.with_immutable(millis(5));
-		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
-		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
-
-		engine.apply_running(
-			&mut store,
-			buckets,
-			RollingEviction::Before(at_millis(0)),
-			row_key,
-			SumAccumulator::default,
-		)
-		.unwrap();
 	}
 }

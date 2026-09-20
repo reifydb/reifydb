@@ -710,6 +710,14 @@ pub fn flow_operator_with_window_missing() -> Diagnostic {
 	)
 }
 
+pub fn flow_operator_with_pane_missing() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_075",
+		"this operator needs 'pane' in its rolling window's with block".to_string(),
+		"Add a pane to the apply, for example with { window: rolling, duration: 1h, pane: 1s }.",
+	)
+}
+
 pub fn flow_operator_with_window_kind_unsupported(kind: &str, supported: &str) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_066",

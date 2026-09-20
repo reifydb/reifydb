@@ -9,9 +9,7 @@ use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	operator_with::{ApplyWith, WithSpan},
 };
-use reifydb_sdk::flow::operator::{
-	extern_c::binding::operator::ExternCOperatorAdapter, windowed::tumbling::TumblingDriver,
-};
+use reifydb_sdk::flow::operator::{extern_c::binding::operator::ExternCOperatorAdapter, windowed::plain::PlainDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,
@@ -47,7 +45,7 @@ fn size_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run_volume(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<ExternCOperatorAdapter<TumblingDriver<VolumeTumbling>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<PlainDriver<VolumeTumbling>>>::builder()
 		.with_input_shape(common::tumbling_shape())
 		.with_output_shape(common::volume_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -59,7 +57,13 @@ fn run_volume(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome 
 		.with_scenario(scenario)
 		.with(window_with())
 		.with_oracle(move |ctx, batches| {
-			tumbling_accumulator_oracle(&VolumeTumbling, ctx, batches, &window_key())
+			tumbling_accumulator_oracle(
+				&VolumeTumbling,
+				&common::settings(&window_with()),
+				ctx,
+				batches,
+				&window_key(),
+			)
 		})
 		.seed(seed)
 		.build()
@@ -68,7 +72,7 @@ fn run_volume(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome 
 }
 
 fn run_min(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<ExternCOperatorAdapter<TumblingDriver<MinTumbling>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<PlainDriver<MinTumbling>>>::builder()
 		.with_input_shape(common::tumbling_shape())
 		.with_output_shape(common::min_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -81,7 +85,7 @@ fn run_min(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.with_scenario(scenario)
 		.with(window_with())
 		.with_oracle(move |ctx, batches| {
-			tumbling_accumulator_oracle(&MinTumbling, ctx, batches, &window_key())
+			tumbling_accumulator_oracle(&MinTumbling, &common::settings(&window_with()), ctx, batches, &window_key())
 		})
 		.seed(seed)
 		.build()
@@ -95,7 +99,7 @@ fn run_ohlcv(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 	} else {
 		samplers::f64_range(10.0..500.0)
 	};
-	ChaosHarness::<ExternCOperatorAdapter<TumblingDriver<OhlcvSealingTumbling>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<PlainDriver<OhlcvSealingTumbling>>>::builder()
 		.with_input_shape(common::ohlcv_shape())
 		.with_output_shape(common::ohlcv_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -108,7 +112,7 @@ fn run_ohlcv(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.with_scenario(scenario)
 		.with(window_with())
 		.with_oracle(move |ctx, batches| {
-			tumbling_accumulator_oracle(&OhlcvSealingTumbling, ctx, batches, &window_key())
+			tumbling_accumulator_oracle(&OhlcvSealingTumbling, &common::settings(&window_with()), ctx, batches, &window_key())
 		})
 		.seed(seed)
 		.build()

@@ -10,7 +10,10 @@ use std::{
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::operator::state::{OperatorState, StateCodec, decode},
+	row::{
+		operator::state::{OperatorState, StateCodec, decode, decode_body, encode},
+		pod::EncodedPodRow,
+	},
 };
 use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
@@ -21,11 +24,14 @@ use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
 
 use crate::{
-	operator::state_access::{get, get_classified, put, remove},
+	operator::{
+		state::seal::rule::is_sealed,
+		state_access::{get, get_classified, put, remove},
+	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, KeyspaceFamily, MetaHighWater, MetaSweep, WindowResult,
+			AccumulatorEvent, EmitKind, KeyspaceFamily, MetaFate, MetaHighWater, MetaSweep, WindowResult,
 			WindowStateKey, config::TumblingCarryConfig, group_hash, meta_key_for,
 			tumbling::TumblingBuckets,
 		},
@@ -50,6 +56,7 @@ impl<S: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for WindowEntry<S,
 #[operator_state]
 #[derive(Debug, Clone)]
 pub struct CarryMeta<S, Carry, Output> {
+	group: Option<Vec<u8>>,
 	high_water: Option<S>,
 	sealed_up_to: Option<S>,
 	sealed_carry: Option<Carry>,
@@ -58,7 +65,8 @@ pub struct CarryMeta<S, Carry, Output> {
 
 impl<S: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for CarryMeta<S, Carry, Output> {
 	fn heap_size(&self) -> usize {
-		self.high_water.heap_size()
+		self.group.heap_size()
+			+ self.high_water.heap_size()
 			+ self.sealed_up_to.heap_size()
 			+ self.sealed_carry.heap_size()
 			+ self.windows.heap_size()
@@ -68,6 +76,7 @@ impl<S: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for CarryMeta<S, C
 impl<S, Carry, Output> Default for CarryMeta<S, Carry, Output> {
 	fn default() -> Self {
 		Self {
+			group: None,
 			high_water: None,
 			sealed_up_to: None,
 			sealed_carry: None,
@@ -125,8 +134,60 @@ where
 		}
 	}
 
-	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		self.meta_sweep.sweep::<CarryMeta<S, Carry, Output>>(store, threshold)
+	pub fn expire<K>(&mut self, store: &mut dyn StateStore, horizon: S, row_key: K) -> Result<usize>
+	where
+		K: Fn(&G, S) -> EncodedKey,
+	{
+		let family = self.family;
+		let threshold = horizon.to_order();
+		self.meta_sweep.sweep_with(store, threshold, |store, key, bytes| {
+			let mut meta = decode::<CarryMeta<S, Carry, Output>>(bytes)?;
+			let sealed: Vec<S> =
+				meta.windows.keys().copied().take_while(|first| is_sealed(*first, horizon)).collect();
+			let folded = !sealed.is_empty();
+			if folded {
+				let recorded =
+					meta.group.clone().expect("a carry meta with live windows records its group");
+				let group: G = decode_body(&EncodedPodRow::new(&recorded))?;
+				Self::fold_windows(family, store, &mut meta, &group, sealed, &row_key)?;
+			}
+			let Some(hw) = meta.high_water_order() else {
+				return Ok(MetaFate::Ignored);
+			};
+			if hw < threshold {
+				return Ok(MetaFate::Stale);
+			}
+			let earliest = meta.windows.keys().next().map_or(hw, |first| first.to_order());
+			if folded {
+				put(store, &key, meta)?;
+			}
+			Ok(MetaFate::Survives(earliest))
+		})
+	}
+
+	fn fold_windows<K>(
+		family: KeyspaceFamily,
+		store: &mut dyn StateStore,
+		meta: &mut CarryMeta<S, Carry, Output>,
+		group: &G,
+		sealed: Vec<S>,
+		row_key: &K,
+	) -> Result<()>
+	where
+		K: Fn(&G, S) -> EncodedKey,
+	{
+		let sealed_keys: Vec<EncodedKey> = sealed.iter().map(|first| row_key(group, *first)).collect();
+		for (first, sealed_key) in sealed.into_iter().zip(sealed_keys) {
+			let carry_out =
+				meta.windows.get(&first).expect("sealed window entry present").carry_out.clone();
+			meta.windows.remove(&first);
+			meta.sealed_up_to = Some(first);
+			meta.sealed_carry = carry_out;
+			let sealed_group = GroupId::of(&sealed_key);
+			remove(store, &WindowStateKey::new(family, sealed_group, sealed_key.clone()))?;
+			store.remove_row_number_for_group(sealed_group)?;
+		}
+		Ok(())
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -155,6 +216,9 @@ where
 		let mut earliest_affected: HashMap<G, S> = HashMap::new();
 		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
 			let entry = meta_loaded.entry(group.clone()).or_default();
+			if entry.group.is_none() {
+				entry.group = Some(encode(&group)?.body().to_vec());
+			}
 			if matches!(entry.sealed_up_to, Some(s) if span.start <= s) {
 				continue;
 			}
@@ -311,25 +375,7 @@ where
 					.copied()
 					.take_while(|first| hw.span_since(*first) > retention)
 					.collect();
-				let sealed_keys: Vec<EncodedKey> =
-					to_seal.iter().map(|first| row_key(&group, *first)).collect();
-				for (first, sealed_key) in to_seal.into_iter().zip(sealed_keys) {
-					let carry_out = meta
-						.windows
-						.get(&first)
-						.expect("sealed window entry present")
-						.carry_out
-						.clone();
-					meta.windows.remove(&first);
-					meta.sealed_up_to = Some(first);
-					meta.sealed_carry = carry_out;
-					let sealed_group = GroupId::of(&sealed_key);
-					remove(
-						store,
-						&WindowStateKey::new(self.family, sealed_group, sealed_key.clone()),
-					)?;
-					store.remove_row_number_for_group(sealed_group)?;
-				}
+				Self::fold_windows(self.family, store, meta, &group, to_seal, &row_key)?;
 			}
 		}
 
@@ -733,35 +779,142 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn meta_survives_while_group_high_water_at_or_after_threshold() {
-		// An active group whose high water is at or beyond the threshold must keep its meta: the
-		// carry it holds still seeds the next window.
-		let mut store = CountingStore::default();
-		let mut engine = Engine::new(carry_config(Some(millis(2 * WINDOW))));
-		for i in 0..3u64 {
-			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
-		}
-		let dropped = engine.expire_meta(&mut store, WINDOW).unwrap();
-		assert_eq!(dropped, 0, "high water (2*WINDOW) is not below the threshold (WINDOW)");
-		assert_eq!(store.meta_entry_count(), 1, "an active group within the horizon keeps its meta");
-		assert!(store.accumulator_count() > 0, "live windows within retention keep their accumulators");
+	fn seal_key(group: &String, window: DateTime) -> EncodedKey {
+		EncodedKey::builder().str(group).u64(window.to_order()).build()
+	}
+
+	fn feed_carrying(
+		engine: &mut Engine,
+		store: &mut CountingStore,
+		window_start: DateTime,
+		ts: u64,
+		price: f64,
+	) -> Vec<WindowResult<String, DateTime, f64>> {
+		let mut buckets: TumblingBuckets<String, DateTime, (u64, f64)> = BTreeMap::new();
+		let span = WindowSpan::for_coord(window_start, millis(WINDOW));
+		buckets.insert(("BTC".to_string(), span), vec![AccumulatorEvent::Add((ts, price))]);
+		engine.apply(
+			store,
+			buckets,
+			seal_key,
+			RetainedAccumulator::<u64, f64>::default,
+			|_g: &String, _s: WindowSpan<DateTime>, v: &BTreeMap<u64, f64>, p: Option<&f64>| {
+				Some(v.values().sum::<f64>() + p.copied().unwrap_or(1000.0))
+			},
+			|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
+		)
+		.expect("apply")
 	}
 
 	#[test]
-	fn meta_reclaimed_when_group_stale_past_threshold() {
-		// A carry group whose high water falls below the threshold is dead, and the sweep reclaims
-		// its meta and sealed carry; otherwise `persist_meta` leaks one key per group forever.
+	fn a_seal_folds_every_window_below_the_horizon_of_every_group_and_frees_its_rows() {
+		// Without retention only the seal can free a window; every group's windows below the horizon must
+		// lose both the accumulator row and the row-number mapping, and later windows must be left alone.
 		let mut store = CountingStore::default();
-		let mut engine = Engine::new(carry_config(Some(millis(2 * WINDOW))));
+		let mut engine = Engine::new(carry_config(None));
+		for i in 0..10u64 {
+			feed_group(&mut engine, &mut store, "BTC", at_millis(i * WINDOW), i as f64);
+			feed_group(&mut engine, &mut store, "ETH", at_millis(i * WINDOW), i as f64);
+		}
+		assert_eq!((store.accumulator_count(), store.row_mapping_count()), (20, 20));
+
+		let dropped = engine.expire(&mut store, at_millis(5 * WINDOW), seal_key).unwrap();
+
+		assert_eq!(dropped, 0, "both groups still have windows at or past the horizon");
+		assert_eq!(store.accumulator_count(), 10, "windows 5..9 of each group must keep their accumulators");
+		assert_eq!(store.row_mapping_count(), 10, "a folded window must give back its row-number mapping");
+		assert_eq!(store.meta_entry_count(), 2, "a group with live windows keeps its meta");
+	}
+
+	#[test]
+	fn a_seal_keeps_the_window_that_starts_exactly_at_the_horizon() {
+		// A window is sealed only when it starts strictly below the horizon, the same test the driver applies
+		// to incoming rows; folding the boundary window would drop a window that still takes rows.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(carry_config(None));
 		for i in 0..3u64 {
 			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
 		}
-		assert_eq!(store.meta_entry_count(), 1);
 
-		let dropped = engine.expire_meta(&mut store, order(100 * WINDOW)).unwrap();
-		assert_eq!(dropped, 1, "the quiet group's high water is far below the threshold");
-		assert_eq!(store.meta_entry_count(), 0, "a dead carry group must not leak its meta");
+		engine.expire(&mut store, at_millis(WINDOW), seal_key).unwrap();
+
+		assert_eq!(store.accumulator_count(), 2, "only the window below the horizon folds");
+	}
+
+	#[test]
+	fn a_seal_frees_the_windows_of_a_dead_group_before_it_drops_the_meta() {
+		// Dropping the meta first would orphan every accumulator row the group still holds, with nothing left
+		// that can find them.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(carry_config(None));
+		for i in 0..10u64 {
+			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
+		}
+
+		let dropped = engine.expire(&mut store, at_millis(100 * WINDOW), seal_key).unwrap();
+
+		assert_eq!(dropped, 1);
+		assert_eq!(store.accumulator_count(), 0, "a dead group must not leave accumulator rows behind");
+		assert_eq!(store.row_mapping_count(), 0, "a dead group must not leave row-number mappings behind");
+		assert_eq!(store.meta_entry_count(), 0);
+	}
+
+	#[test]
+	fn a_window_after_the_seal_still_carries_in_from_the_folded_windows() {
+		// The carry a folded window produced is what its successor starts from; a fold that lost it would make
+		// the first live window compute as if the group had just begun.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(carry_config(None));
+		for i in 0..10u64 {
+			feed_carrying(&mut engine, &mut store, at_millis(i * WINDOW), i * WINDOW, i as f64);
+		}
+		engine.expire(&mut store, at_millis(9 * WINDOW), seal_key).unwrap();
+
+		let results = feed_carrying(&mut engine, &mut store, at_millis(9 * WINDOW), 9 * WINDOW + 1, 100.0);
+
+		let window_9 =
+			results.iter().find(|r| r.span.start == at_millis(9 * WINDOW)).expect("window 9 recomputed");
+		assert_eq!(window_9.value, 109.0 + 8.0, "window 9 must carry in window 8's close, not restart");
+	}
+
+	#[test]
+	fn a_window_folded_by_a_seal_takes_no_further_events() {
+		// Without the fold persisted, a late event recreates the folded window's rows and nothing frees them.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(carry_config(None));
+		for i in 0..10u64 {
+			feed_carrying(&mut engine, &mut store, at_millis(i * WINDOW), i * WINDOW, i as f64);
+		}
+		engine.expire(&mut store, at_millis(5 * WINDOW), seal_key).unwrap();
+		let before = (store.accumulator_count(), store.row_mapping_count());
+
+		let results = feed_carrying(&mut engine, &mut store, at_millis(2 * WINDOW), 2 * WINDOW + 1, 100.0);
+
+		assert!(results.is_empty(), "a folded window must not publish again");
+		assert_eq!(
+			(store.accumulator_count(), store.row_mapping_count()),
+			before,
+			"a late event for a folded window must not recreate its rows"
+		);
+	}
+
+	#[test]
+	fn successive_seals_keep_folding_as_the_horizon_rises() {
+		// A pass that found nothing more to fold must not stop later passes: the horizon only moves up, and
+		// each move seals more of the same group's windows.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(carry_config(None));
+		for i in 0..10u64 {
+			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
+		}
+
+		engine.expire(&mut store, at_millis(3 * WINDOW), seal_key).unwrap();
+		assert_eq!(store.accumulator_count(), 7);
+		engine.expire(&mut store, at_millis(3 * WINDOW), seal_key).unwrap();
+		assert_eq!(store.accumulator_count(), 7, "a repeat at the same horizon changes nothing");
+		engine.expire(&mut store, at_millis(6 * WINDOW), seal_key).unwrap();
+
+		assert_eq!(store.accumulator_count(), 4, "a higher horizon must fold the newly sealed windows");
 	}
 
 	#[test]

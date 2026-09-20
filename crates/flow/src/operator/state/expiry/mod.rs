@@ -7,13 +7,13 @@ use reifydb_codec::{
 	key::encoded::EncodedKeyRange,
 	row::operator::state::{OperatorState, decode},
 };
+#[cfg(feature = "runtime")]
+use reifydb_core::{internal_err, key::operator::keyspace::expiry::CustomManagedDue};
 use reifydb_core::{
-	internal_err,
 	key::{
 		operator::{
 			keyspace::expiry::{
-				CustomManagedDue, CustomManagedDueKey, Expiry, ExpiryKey, TumblingExpiry,
-				TumblingExpirySuffix,
+				CustomManagedDueKey, Expiry, ExpiryKey, TumblingExpiry, TumblingExpirySuffix,
 			},
 			state::{
 				GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range, keyspace_inner_range_in,
@@ -27,7 +27,9 @@ use reifydb_core::{
 		typed::{SuffixBytes, typed_key},
 	},
 };
-use reifydb_value::{Result, reifydb_assertions, util::hash::Hash128, value::datetime::DateTime};
+#[cfg(feature = "runtime")]
+use reifydb_value::value::datetime::DateTime;
+use reifydb_value::{Result, reifydb_assertions, util::hash::Hash128};
 use tracing::instrument;
 
 pub(crate) fn expiry_range<K: Keyspace>() -> EncodedKeyRange {
@@ -55,6 +57,7 @@ pub(crate) fn tumbling_expiry_key(threshold: u64, owner: Hash128, window_start: 
 	)
 }
 
+#[cfg(feature = "runtime")]
 pub(crate) fn managed_due_key(due: DateTime, group: GroupId) -> GroupStateKey {
 	typed_key::<CustomManagedDue>(
 		GroupId::ROOT,
@@ -65,6 +68,7 @@ pub(crate) fn managed_due_key(due: DateTime, group: GroupId) -> GroupStateKey {
 	)
 }
 
+#[cfg(feature = "runtime")]
 pub(crate) fn managed_due_group(key: &GroupStateKey) -> Result<GroupId> {
 	let Some((_, _, suffix)) = OperatorStateKey::decode_inner(key.as_bytes()) else {
 		return internal_err!("a managed due key must decode");
