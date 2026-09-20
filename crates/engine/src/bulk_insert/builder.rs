@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{HashMap, HashSet},
+	collections::{HashMap, HashSet, hash_map::Entry},
 	marker::PhantomData,
 };
 
@@ -21,7 +21,7 @@ use reifydb_core::{
 		key::PrimaryKey,
 		object::ObjectId,
 		ringbuffer::{RingBuffer, RingBufferMetadata},
-		series::{Series, SeriesMetadata},
+		series::{Series, SeriesPartitionMetadata},
 		storage::StorageId,
 		table::Table,
 	},
@@ -657,11 +657,23 @@ fn execute_series_insert<V: ValidationMode>(
 	clock: &Clock,
 ) -> Result<SeriesInsertResult> {
 	let series = resolve_series(catalog, txn, pending)?;
-	let mut metadata = load_series_metadata(catalog, txn, pending, &series)?;
+	let mut metadata_by_partition: HashMap<Partition, SeriesPartitionMetadata> = HashMap::new();
 	let shape = get_or_create_series_shape(catalog, &series, &mut Transaction::Command(txn))?;
 	let coerced_rows = coerce_rows(&pending.rows, &series.columns, &series.name, txn.identity)?;
-	let inserted = insert_series_rows::<V>(catalog, txn, &series, &shape, coerced_rows, &mut metadata, clock)?;
-	catalog.update_series_metadata_txn(&mut Transaction::Command(txn), series.id, metadata)?;
+	let inserted = insert_series_rows::<V>(
+		catalog,
+		txn,
+		&series,
+		&shape,
+		coerced_rows,
+		&mut metadata_by_partition,
+		clock,
+	)?;
+	let now = clock.now();
+	for (partition, mut metadata) in metadata_by_partition {
+		metadata.last_write_at = now;
+		catalog.update_series_metadata_txn(&mut Transaction::Command(txn), series.id, partition, metadata)?;
+	}
 	Ok(SeriesInsertResult {
 		namespace: pending.namespace.clone(),
 		series: pending.series.clone(),
@@ -691,31 +703,13 @@ fn resolve_series(catalog: &Catalog, txn: &mut CommandTransaction, pending: &Pen
 	})
 }
 
-#[inline]
-fn load_series_metadata(
-	catalog: &Catalog,
-	txn: &mut CommandTransaction,
-	pending: &PendingSeriesInsert,
-	series: &Series,
-) -> Result<SeriesMetadata> {
-	catalog.find_series_metadata(&mut Transaction::Command(txn), series.id)?.ok_or_else(|| {
-		CatalogError::NotFound {
-			kind: CatalogObjectKind::Series,
-			namespace: pending.namespace.to_string(),
-			name: pending.series.to_string(),
-			fragment: Fragment::None,
-		}
-		.into()
-	})
-}
-
 fn insert_series_rows<V: ValidationMode>(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	series: &Series,
 	shape: &RowShape,
 	coerced_rows: Vec<Vec<Value>>,
-	metadata: &mut SeriesMetadata,
+	metadata_by_partition: &mut HashMap<Partition, SeriesPartitionMetadata>,
 	clock: &Clock,
 ) -> Result<u64> {
 	let key_col_name = series.key.column();
@@ -737,11 +731,28 @@ fn insert_series_rows<V: ValidationMode>(
 			}
 		}
 
+		let partition_values: Vec<Value> =
+			partition_col_indices.iter().map(|&idx| values[idx].clone()).collect();
+		let partition = if partition_values.is_empty() {
+			Partition::default()
+		} else {
+			Partition::of(&partition_values)
+		};
+		let metadata = match metadata_by_partition.entry(partition) {
+			Entry::Occupied(entry) => entry.into_mut(),
+			Entry::Vacant(entry) => {
+				let loaded = catalog
+					.find_series_metadata(&mut Transaction::Command(txn), series.id, partition)?
+					.unwrap_or_default();
+				entry.insert(loaded)
+			}
+		};
+
 		let key_value = series_key(series, &values[key_col_idx])?.unwrap_or(0);
 
 		metadata.sequence_counter += 1;
 		let sequence = metadata.sequence_counter;
-		let key: TaggedKey = if partition_col_indices.is_empty() {
+		let key: TaggedKey = if partition_values.is_empty() {
 			SeriesRowKey {
 				storage,
 				variant_tag: None,
@@ -750,9 +761,6 @@ fn insert_series_rows<V: ValidationMode>(
 			}
 			.into()
 		} else {
-			let partition_values: Vec<Value> =
-				partition_col_indices.iter().map(|&idx| values[idx].clone()).collect();
-			let partition = Partition::of(&partition_values);
 			resolve_partition(
 				&mut Transaction::Command(txn),
 				ObjectId::Series(series.id),
@@ -820,7 +828,7 @@ fn encode_series_row(
 }
 
 #[inline]
-fn update_series_metadata_for_insert(metadata: &mut SeriesMetadata, key_value: u64) {
+fn update_series_metadata_for_insert(metadata: &mut SeriesPartitionMetadata, key_value: u64) {
 	if metadata.row_count == 0 {
 		metadata.oldest_key = key_value;
 		metadata.newest_key = key_value;

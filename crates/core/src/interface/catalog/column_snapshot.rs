@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::error::Error;
+use reifydb_value::{
+	error::Error,
+	value::{Value, partition::Partition},
+};
 use serde::{Deserialize, Serialize, de};
 
 use crate::{
@@ -45,6 +48,7 @@ pub enum ColumnSnapshotSource {
 		series_id: SeriesId,
 		bucket_start: u64,
 		bucket_width: u64,
+		partition: Option<Partition>,
 		sequence_counter: u64,
 		sealed_at_commit_version: CommitVersion,
 	},
@@ -90,11 +94,21 @@ impl ColumnSnapshotSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ColumnStats {
+	pub column: String,
+	pub min: Option<Value>,
+	pub max: Option<Value>,
+	pub none_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnSnapshot {
 	pub id: ColumnSnapshotId,
 	pub namespace: NamespaceId,
 	pub source: ColumnSnapshotSource,
 	pub row_count: u64,
+	pub partition_values: Vec<Value>,
+	pub stats: Vec<ColumnStats>,
 }
 
 impl ColumnSnapshot {

@@ -246,6 +246,8 @@ impl TableMaterializationActor {
 					commit_version: version,
 				},
 				row_count,
+				partition_values: Vec::new(),
+				stats: Vec::new(),
 			},
 		)?;
 		self.block_store.persist(column_snapshot.id, block_arc.as_ref())?;

@@ -6,10 +6,13 @@ use reifydb_core::interface::catalog::{
 	id::{SeriesId, TableId},
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::value::partition::Partition;
 
 use crate::{
 	CatalogStore, Result,
-	store::column_snapshot::find::{collect_series_snapshot_ids, collect_table_snapshot_ids},
+	store::column_snapshot::find::{
+		collect_series_partition_snapshot_ids, collect_series_snapshot_ids, collect_table_snapshot_ids,
+	},
 };
 
 impl CatalogStore {
@@ -18,6 +21,29 @@ impl CatalogStore {
 		series_id: SeriesId,
 	) -> Result<Vec<ColumnSnapshot>> {
 		let ids = collect_series_snapshot_ids(rx, series_id)?;
+		let mut out = Vec::with_capacity(ids.len());
+		for id in ids {
+			if let Some(snap) = Self::find_column_snapshot(rx, id)? {
+				out.push(snap);
+			}
+		}
+
+		out.sort_by_key(|s| match s.source {
+			ColumnSnapshotSource::SeriesBucket {
+				bucket_start,
+				..
+			} => bucket_start,
+			_ => 0,
+		});
+		Ok(out)
+	}
+
+	pub(crate) fn list_column_snapshots_for_series_partition(
+		rx: &mut Transaction<'_>,
+		series_id: SeriesId,
+		partition: Partition,
+	) -> Result<Vec<ColumnSnapshot>> {
+		let ids = collect_series_partition_snapshot_ids(rx, series_id, partition)?;
 		let mut out = Vec::with_capacity(ids.len());
 		for id in ids {
 			if let Some(snap) = Self::find_column_snapshot(rx, id)? {
@@ -63,8 +89,30 @@ pub mod tests {
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::value::{Value, partition::Partition};
 
 	use crate::{CatalogStore, store::column_snapshot::create::ColumnSnapshotToCreate};
+
+	fn partitioned_series_to_create(
+		series: u64,
+		bucket_start: u64,
+		partition: Partition,
+	) -> ColumnSnapshotToCreate {
+		ColumnSnapshotToCreate {
+			namespace: NamespaceId(1),
+			source: ColumnSnapshotSource::SeriesBucket {
+				series_id: SeriesId(series),
+				bucket_start,
+				bucket_width: 100,
+				partition: Some(partition),
+				sequence_counter: 0,
+				sealed_at_commit_version: CommitVersion(1),
+			},
+			row_count: 0,
+			partition_values: Vec::new(),
+			stats: Vec::new(),
+		}
+	}
 
 	fn series_to_create(series: u64, bucket_start: u64, sealed_at: u64) -> ColumnSnapshotToCreate {
 		ColumnSnapshotToCreate {
@@ -73,10 +121,13 @@ pub mod tests {
 				series_id: SeriesId(series),
 				bucket_start,
 				bucket_width: 100,
+				partition: None,
 				sequence_counter: 0,
 				sealed_at_commit_version: CommitVersion(sealed_at),
 			},
 			row_count: 0,
+			partition_values: Vec::new(),
+			stats: Vec::new(),
 		}
 	}
 
@@ -88,6 +139,8 @@ pub mod tests {
 				commit_version: CommitVersion(commit_version),
 			},
 			row_count: 0,
+			partition_values: Vec::new(),
+			stats: Vec::new(),
 		}
 	}
 
@@ -141,6 +194,48 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(s1.len(), 1);
 		assert_eq!(s2.len(), 2);
+	}
+
+	#[test]
+	fn test_partition_scoped_listing_reads_only_its_own_partition() {
+		// the unscoped listing loads every snapshot of the series before anything can
+		// filter, so a partitioned query that used it would pay for every other partition
+		let mut txn = create_test_admin_transaction();
+		let us = Partition::of(&[Value::Utf8("us".to_string())]);
+		let eu = Partition::of(&[Value::Utf8("eu".to_string())]);
+		CatalogStore::create_column_snapshot(&mut txn, partitioned_series_to_create(7, 0, us)).unwrap();
+		CatalogStore::create_column_snapshot(&mut txn, partitioned_series_to_create(7, 100, us)).unwrap();
+		CatalogStore::create_column_snapshot(&mut txn, partitioned_series_to_create(7, 0, eu)).unwrap();
+
+		let scoped = CatalogStore::list_column_snapshots_for_series_partition(
+			&mut Transaction::Admin(&mut txn),
+			SeriesId(7),
+			us,
+		)
+		.unwrap();
+		assert_eq!(series_bucket_starts(&scoped), vec![0u64, 100]);
+
+		let all = CatalogStore::list_column_snapshots_for_series(&mut Transaction::Admin(&mut txn), SeriesId(7))
+			.unwrap();
+		assert_eq!(all.len(), 3, "the unscoped listing still spans every partition");
+	}
+
+	#[test]
+	fn test_partition_scoped_listing_orders_by_bucket_start() {
+		// within one partition the block order is the key order the reader relies on
+		let mut txn = create_test_admin_transaction();
+		let us = Partition::of(&[Value::Utf8("us".to_string())]);
+		CatalogStore::create_column_snapshot(&mut txn, partitioned_series_to_create(7, 200, us)).unwrap();
+		CatalogStore::create_column_snapshot(&mut txn, partitioned_series_to_create(7, 0, us)).unwrap();
+		CatalogStore::create_column_snapshot(&mut txn, partitioned_series_to_create(7, 100, us)).unwrap();
+
+		let scoped = CatalogStore::list_column_snapshots_for_series_partition(
+			&mut Transaction::Admin(&mut txn),
+			SeriesId(7),
+			us,
+		)
+		.unwrap();
+		assert_eq!(series_bucket_starts(&scoped), vec![0u64, 100, 200]);
 	}
 
 	#[test]

@@ -8,7 +8,7 @@ use reifydb_core::{
 		change::CatalogTrackSeriesChangeOperations,
 		id::{ColumnId, NamespaceId, SeriesId},
 		property::ColumnPropertyKind,
-		series::{Series, SeriesKey, SeriesMetadata},
+		series::{Series, SeriesKey, SeriesPartitionMetadata},
 	},
 	internal,
 	row::row_shape_from_columns,
@@ -20,7 +20,7 @@ use reifydb_transaction::{
 use reifydb_value::{
 	error,
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, dictionary::DictionaryId, sumtype::SumTypeId},
+	value::{constraint::TypeConstraint, dictionary::DictionaryId, partition::Partition, sumtype::SumTypeId},
 };
 use tracing::{instrument, warn};
 
@@ -292,8 +292,13 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::series::find_metadata", level = "trace", skip(self, txn))]
-	pub fn find_series_metadata(&self, txn: &mut Transaction<'_>, id: SeriesId) -> Result<Option<SeriesMetadata>> {
-		CatalogStore::find_series_metadata(txn, id)
+	pub fn find_series_metadata(
+		&self,
+		txn: &mut Transaction<'_>,
+		id: SeriesId,
+		partition: Partition,
+	) -> Result<Option<SeriesPartitionMetadata>> {
+		CatalogStore::find_series_metadata(txn, id, partition)
 	}
 
 	#[instrument(name = "catalog::series::update_metadata_txn", level = "debug", skip(self, txn))]
@@ -301,8 +306,9 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		series_id: SeriesId,
-		metadata: SeriesMetadata,
+		partition: Partition,
+		metadata: SeriesPartitionMetadata,
 	) -> Result<()> {
-		CatalogStore::update_series_metadata_txn(txn, series_id, metadata)
+		CatalogStore::update_series_metadata_txn(txn, series_id, partition, metadata)
 	}
 }

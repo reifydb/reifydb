@@ -9,6 +9,8 @@ use reifydb_core::{
 	},
 };
 
+use reifydb_value::value::partition::Partition;
+
 use crate::cache::{CatalogCache, MultiVersionColumnSnapshot};
 
 impl CatalogCache {
@@ -23,14 +25,16 @@ impl CatalogCache {
 	pub fn find_column_snapshot_for_series_bucket_at(
 		&self,
 		series_id: SeriesId,
+		partition: Option<Partition>,
 		bucket_start: u64,
 		version: CommitVersion,
 	) -> Option<ColumnSnapshot> {
 		let entry = self.column_snapshots_for_series.get(&series_id)?;
 		let buckets = entry.value();
 
-		for (bs, snap_id) in buckets.iter() {
+		for (bs, p, snap_id) in buckets.iter() {
 			if *bs == bucket_start
+				&& *p == partition
 				&& let Some(snap) = self.find_column_snapshot_at(*snap_id, version)
 			{
 				return Some(snap);
@@ -65,8 +69,29 @@ impl CatalogCache {
 		};
 		let buckets = entry.value();
 		let mut out = Vec::with_capacity(buckets.len());
-		for (_bs, snap_id) in buckets.iter() {
+		for (_bs, _p, snap_id) in buckets.iter() {
 			if let Some(snap) = self.find_column_snapshot_at(*snap_id, version) {
+				out.push(snap);
+			}
+		}
+		out
+	}
+
+	pub fn list_column_snapshots_for_series_partition_at(
+		&self,
+		series_id: SeriesId,
+		partition: Partition,
+		version: CommitVersion,
+	) -> Vec<ColumnSnapshot> {
+		let Some(entry) = self.column_snapshots_for_series.get(&series_id) else {
+			return Vec::new();
+		};
+		let buckets = entry.value();
+		let mut out = Vec::new();
+		for (_bs, p, snap_id) in buckets.iter() {
+			if p.unwrap_or_default() == partition
+				&& let Some(snap) = self.find_column_snapshot_at(*snap_id, version)
+			{
 				out.push(snap);
 			}
 		}
@@ -121,6 +146,7 @@ impl CatalogCache {
 			ColumnSnapshotSource::SeriesBucket {
 				series_id,
 				bucket_start,
+				partition,
 				..
 			} => {
 				let mut existing = self
@@ -128,7 +154,7 @@ impl CatalogCache {
 					.get(series_id)
 					.map(|e| e.value().clone())
 					.unwrap_or_default();
-				existing.insert((*bucket_start, snap.id));
+				existing.insert((*bucket_start, *partition, snap.id));
 				self.column_snapshots_for_series.insert(*series_id, existing);
 			}
 			ColumnSnapshotSource::Table {
@@ -151,11 +177,12 @@ impl CatalogCache {
 			ColumnSnapshotSource::SeriesBucket {
 				series_id,
 				bucket_start,
+				partition,
 				..
 			} => {
 				if let Some(entry) = self.column_snapshots_for_series.get(series_id) {
 					let mut updated = entry.value().clone();
-					updated.remove(&(*bucket_start, snap.id));
+					updated.remove(&(*bucket_start, *partition, snap.id));
 					if updated.is_empty() {
 						self.column_snapshots_for_series.remove(series_id);
 					} else {
@@ -184,6 +211,7 @@ impl CatalogCache {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
+	use reifydb_value::value::Value;
 
 	use super::*;
 
@@ -195,10 +223,31 @@ mod tests {
 				series_id: SeriesId(series_id),
 				bucket_start,
 				bucket_width: 100,
+				partition: None,
 				sequence_counter: 0,
 				sealed_at_commit_version: CommitVersion(sealed_at),
 			},
 			row_count: 0,
+			partition_values: Vec::new(),
+			stats: Vec::new(),
+		}
+	}
+
+	fn partitioned_series_snap(id: u64, series_id: u64, bucket_start: u64, partition: Partition) -> ColumnSnapshot {
+		ColumnSnapshot {
+			id: ColumnSnapshotId(id),
+			namespace: NamespaceId(1),
+			source: ColumnSnapshotSource::SeriesBucket {
+				series_id: SeriesId(series_id),
+				bucket_start,
+				bucket_width: 100,
+				partition: Some(partition),
+				sequence_counter: 0,
+				sealed_at_commit_version: CommitVersion(1),
+			},
+			row_count: 0,
+			partition_values: Vec::new(),
+			stats: Vec::new(),
 		}
 	}
 
@@ -211,6 +260,8 @@ mod tests {
 				commit_version: CommitVersion(commit_version),
 			},
 			row_count: 0,
+			partition_values: Vec::new(),
+			stats: Vec::new(),
 		}
 	}
 
@@ -240,11 +291,96 @@ mod tests {
 		let cat = CatalogCache::new();
 		cat.set_column_snapshot(ColumnSnapshotId(1), CommitVersion(1), Some(series_snap(1, 7, 100, 1)));
 		let found = cat
-			.find_column_snapshot_for_series_bucket_at(SeriesId(7), 100, CommitVersion(1))
+			.find_column_snapshot_for_series_bucket_at(SeriesId(7), None, 100, CommitVersion(1))
 			.expect("should find");
 		assert_eq!(found.id, ColumnSnapshotId(1));
 
-		assert!(cat.find_column_snapshot_for_series_bucket_at(SeriesId(7), 999, CommitVersion(1)).is_none());
+		assert!(cat.find_column_snapshot_for_series_bucket_at(SeriesId(7), None, 999, CommitVersion(1)).is_none());
+	}
+
+	#[test]
+	fn find_for_series_bucket_distinguishes_partitions() {
+		// the cache is consulted before the store, so a cache that ignores the partition
+		// hands back another partition's block while the store would have been right
+		let cat = CatalogCache::new();
+		let us = Partition::of(&[Value::Utf8("us".to_string())]);
+		let eu = Partition::of(&[Value::Utf8("eu".to_string())]);
+		cat.set_column_snapshot(
+			ColumnSnapshotId(1),
+			CommitVersion(1),
+			Some(partitioned_series_snap(1, 7, 100, us)),
+		);
+		cat.set_column_snapshot(
+			ColumnSnapshotId(2),
+			CommitVersion(1),
+			Some(partitioned_series_snap(2, 7, 100, eu)),
+		);
+
+		let found_us = cat
+			.find_column_snapshot_for_series_bucket_at(SeriesId(7), Some(us), 100, CommitVersion(1))
+			.expect("the us partition must be found");
+		let found_eu = cat
+			.find_column_snapshot_for_series_bucket_at(SeriesId(7), Some(eu), 100, CommitVersion(1))
+			.expect("the eu partition must be found");
+		assert_eq!(found_us.id, ColumnSnapshotId(1));
+		assert_eq!(found_eu.id, ColumnSnapshotId(2));
+
+		assert!(
+			cat.find_column_snapshot_for_series_bucket_at(SeriesId(7), None, 100, CommitVersion(1))
+				.is_none(),
+			"an unpartitioned lookup must not match a partitioned bucket"
+		);
+	}
+
+	#[test]
+	fn partition_scoped_listing_reads_only_its_own_partition() {
+		let cat = CatalogCache::new();
+		let us = Partition::of(&[Value::Utf8("us".to_string())]);
+		let eu = Partition::of(&[Value::Utf8("eu".to_string())]);
+		cat.set_column_snapshot(
+			ColumnSnapshotId(1),
+			CommitVersion(1),
+			Some(partitioned_series_snap(1, 7, 0, us)),
+		);
+		cat.set_column_snapshot(
+			ColumnSnapshotId(2),
+			CommitVersion(1),
+			Some(partitioned_series_snap(2, 7, 100, us)),
+		);
+		cat.set_column_snapshot(
+			ColumnSnapshotId(3),
+			CommitVersion(1),
+			Some(partitioned_series_snap(3, 7, 0, eu)),
+		);
+
+		let scoped = cat.list_column_snapshots_for_series_partition_at(SeriesId(7), us, CommitVersion(1));
+		assert_eq!(scoped.len(), 2);
+		assert_eq!(
+			cat.list_column_snapshots_for_series_at(SeriesId(7), CommitVersion(1)).len(),
+			3,
+			"the unscoped listing still spans every partition"
+		);
+	}
+
+	#[test]
+	fn two_partitions_of_one_bucket_do_not_evict_each_other() {
+		// the secondary index is keyed on the bucket, so without the partition the second
+		// insert replaces the first and one partition's block becomes unreachable
+		let cat = CatalogCache::new();
+		let us = Partition::of(&[Value::Utf8("us".to_string())]);
+		let eu = Partition::of(&[Value::Utf8("eu".to_string())]);
+		cat.set_column_snapshot(
+			ColumnSnapshotId(1),
+			CommitVersion(1),
+			Some(partitioned_series_snap(1, 7, 100, us)),
+		);
+		cat.set_column_snapshot(
+			ColumnSnapshotId(2),
+			CommitVersion(1),
+			Some(partitioned_series_snap(2, 7, 100, eu)),
+		);
+
+		assert_eq!(cat.list_column_snapshots_for_series_at(SeriesId(7), CommitVersion(1)).len(), 2);
 	}
 
 	#[test]
@@ -262,9 +398,9 @@ mod tests {
 	fn delete_removes_secondary_indexes() {
 		let cat = CatalogCache::new();
 		cat.set_column_snapshot(ColumnSnapshotId(1), CommitVersion(1), Some(series_snap(1, 7, 100, 1)));
-		assert!(cat.find_column_snapshot_for_series_bucket_at(SeriesId(7), 100, CommitVersion(1)).is_some());
+		assert!(cat.find_column_snapshot_for_series_bucket_at(SeriesId(7), None, 100, CommitVersion(1)).is_some());
 		cat.set_column_snapshot(ColumnSnapshotId(1), CommitVersion(2), None);
-		assert!(cat.find_column_snapshot_for_series_bucket_at(SeriesId(7), 100, CommitVersion(2)).is_none());
+		assert!(cat.find_column_snapshot_for_series_bucket_at(SeriesId(7), None, 100, CommitVersion(2)).is_none());
 	}
 
 	#[test]

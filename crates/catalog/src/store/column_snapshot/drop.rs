@@ -21,9 +21,14 @@ impl CatalogStore {
 				}
 				ColumnSnapshotSource::SeriesBucket {
 					series_id,
+					partition,
 					..
 				} => {
-					txn.remove(&SeriesColumnSnapshotKey::new(series_id, id))?;
+					txn.remove(&SeriesColumnSnapshotKey::new(
+						series_id,
+						partition.unwrap_or_default(),
+						id,
+					))?;
 				}
 			}
 		}
@@ -44,6 +49,7 @@ pub mod tests {
 		key::column::{SeriesColumnSnapshotKey, TableColumnSnapshotKey},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
+	use reifydb_value::value::partition::Partition;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{CatalogStore, store::column_snapshot::create::ColumnSnapshotToCreate};
@@ -60,6 +66,8 @@ pub mod tests {
 					commit_version: CommitVersion(7),
 				},
 				row_count: 0,
+				partition_values: Vec::new(),
+				stats: Vec::new(),
 			},
 		)
 		.unwrap();
@@ -87,15 +95,18 @@ pub mod tests {
 					series_id: SeriesId(202),
 					bucket_start: 1000,
 					bucket_width: 100,
+					partition: None,
 					sequence_counter: 0,
 					sealed_at_commit_version: CommitVersion(11),
 				},
 				row_count: 0,
+				partition_values: Vec::new(),
+				stats: Vec::new(),
 			},
 		)
 		.unwrap();
 
-		let link_pre = txn.get(&SeriesColumnSnapshotKey::new(SeriesId(202), created.id)).unwrap();
+		let link_pre = txn.get(&SeriesColumnSnapshotKey::new(SeriesId(202), Partition::default(), created.id)).unwrap();
 		assert!(link_pre.is_some());
 
 		CatalogStore::drop_column_snapshot(&mut txn, created.id).unwrap();
@@ -103,7 +114,7 @@ pub mod tests {
 		let found = CatalogStore::find_column_snapshot(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_none());
 
-		let link_post = txn.get(&SeriesColumnSnapshotKey::new(SeriesId(202), created.id)).unwrap();
+		let link_post = txn.get(&SeriesColumnSnapshotKey::new(SeriesId(202), Partition::default(), created.id)).unwrap();
 		assert!(link_post.is_none(), "series link row should be removed");
 	}
 
@@ -126,6 +137,8 @@ pub mod tests {
 					commit_version: CommitVersion(5),
 				},
 				row_count: 0,
+				partition_values: Vec::new(),
+				stats: Vec::new(),
 			},
 		)
 		.unwrap();
@@ -138,6 +151,8 @@ pub mod tests {
 					commit_version: CommitVersion(10),
 				},
 				row_count: 0,
+				partition_values: Vec::new(),
+				stats: Vec::new(),
 			},
 		)
 		.unwrap();

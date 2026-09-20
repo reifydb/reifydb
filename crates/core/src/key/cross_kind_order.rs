@@ -66,7 +66,7 @@ use crate::{
 			PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, RowSequenceKey, RowSettingsKey,
 			RowShapeFieldKey, RowShapeKey, SortedViewRowKey,
 		},
-		series::{PartitionedSeriesRowKey, SeriesKey, SeriesMetadataKey, SeriesRowKey},
+		series::{PartitionedSeriesRowKey, SeriesKey, SeriesPartitionMetadataKey, SeriesRowKey},
 		system::{
 			MigrationEventKey, MigrationKey, SystemSequenceKey, SystemVersion, SystemVersionKey,
 			TransactionVersionKey, VersionEpochKey,
@@ -283,10 +283,6 @@ fn representative(kind: KeyTag) -> EncodedKey {
 			series: SeriesId(1),
 		}
 		.encode(),
-		KeyTag::SeriesMetadata => SeriesMetadataKey {
-			storage: StorageId::series(SeriesId(1)),
-		}
-		.encode(),
 		KeyTag::Identity => IdentityKey {
 			identity: IdentityId::root(),
 		}
@@ -384,6 +380,7 @@ fn representative(kind: KeyTag) -> EncodedKey {
 		.encode(),
 		KeyTag::SeriesColumnSnapshot => SeriesColumnSnapshotKey {
 			series: SeriesId(1),
+			partition: Partition(1),
 			snapshot: ColumnSnapshotId(1),
 		}
 		.encode(),
@@ -477,6 +474,11 @@ fn representative(kind: KeyTag) -> EncodedKey {
 		}
 		.encode(),
 		KeyTag::SortedViewRow => SortedViewRowKey::storage_start(StorageId::view(ViewId(1))),
+		KeyTag::SeriesPartitionMetadata => SeriesPartitionMetadataKey {
+			storage: StorageId::series(SeriesId(1)),
+			partition: Partition(1),
+		}
+		.encode(),
 		KeyTag::PartitionedSortedViewRow => {
 			PartitionedSortedViewRowKey::storage_start(StorageId::view(ViewId(1)))
 		}

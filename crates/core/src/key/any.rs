@@ -53,7 +53,7 @@ use crate::{
 			PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, RowSequenceKey, RowSettingsKey,
 			RowShapeFieldKey, RowShapeKey, SortedViewRowKey, encode_sort_run,
 		},
-		series::{PartitionedSeriesRowKey, SeriesKey, SeriesMetadataKey, SeriesRowKey},
+		series::{PartitionedSeriesRowKey, SeriesKey, SeriesPartitionMetadataKey, SeriesRowKey},
 		system::{
 			MigrationEventKey, MigrationKey, SystemSequenceKey, SystemVersionKey, TransactionVersionKey,
 			VersionEpochKey,
@@ -114,7 +114,7 @@ pub enum TaggedKey {
 	VariantHandler(VariantHandlerKey),
 	Series(SeriesKey),
 	NamespaceSeries(NamespaceSeriesKey),
-	SeriesMetadata(SeriesMetadataKey),
+	SeriesPartitionMetadata(SeriesPartitionMetadataKey),
 	Identity(IdentityKey),
 	Role(RoleKey),
 	GrantedRole(GrantedRoleKey),
@@ -206,7 +206,7 @@ impl TaggedKey {
 			Self::VariantHandler(_) => KeyTag::VariantHandler,
 			Self::Series(_) => KeyTag::Series,
 			Self::NamespaceSeries(_) => KeyTag::NamespaceSeries,
-			Self::SeriesMetadata(_) => KeyTag::SeriesMetadata,
+			Self::SeriesPartitionMetadata(_) => KeyTag::SeriesPartitionMetadata,
 			Self::Identity(_) => KeyTag::Identity,
 			Self::Role(_) => KeyTag::Role,
 			Self::GrantedRole(_) => KeyTag::GrantedRole,
@@ -299,7 +299,7 @@ impl TaggedKey {
 			Self::VariantHandler(key) => key.encode(),
 			Self::Series(key) => key.encode(),
 			Self::NamespaceSeries(key) => key.encode(),
-			Self::SeriesMetadata(key) => key.encode(),
+			Self::SeriesPartitionMetadata(key) => key.encode(),
 			Self::Identity(key) => key.encode(),
 			Self::Role(key) => key.encode(),
 			Self::GrantedRole(key) => key.encode(),
@@ -397,7 +397,9 @@ impl TaggedKey {
 			KeyTag::VariantHandler => VariantHandlerKey::decode(key).map(Self::VariantHandler),
 			KeyTag::Series => SeriesKey::decode(key).map(Self::Series),
 			KeyTag::NamespaceSeries => NamespaceSeriesKey::decode(key).map(Self::NamespaceSeries),
-			KeyTag::SeriesMetadata => SeriesMetadataKey::decode(key).map(Self::SeriesMetadata),
+			KeyTag::SeriesPartitionMetadata => {
+				SeriesPartitionMetadataKey::decode(key).map(Self::SeriesPartitionMetadata)
+			}
 			KeyTag::Identity => IdentityKey::decode(key).map(Self::Identity),
 			KeyTag::Role => RoleKey::decode(key).map(Self::Role),
 			KeyTag::GrantedRole => GrantedRoleKey::decode(key).map(Self::GrantedRole),
@@ -719,9 +721,9 @@ impl From<NamespaceSeriesKey> for TaggedKey {
 	}
 }
 
-impl From<SeriesMetadataKey> for TaggedKey {
-	fn from(key: SeriesMetadataKey) -> Self {
-		Self::SeriesMetadata(key)
+impl From<SeriesPartitionMetadataKey> for TaggedKey {
+	fn from(key: SeriesPartitionMetadataKey) -> Self {
+		Self::SeriesPartitionMetadata(key)
 	}
 }
 
@@ -1224,7 +1226,7 @@ impl KeyFields for TaggedKey {
 			Self::VariantHandler(key) => key.fields(),
 			Self::Series(key) => key.fields(),
 			Self::NamespaceSeries(key) => key.fields(),
-			Self::SeriesMetadata(key) => key.fields(),
+			Self::SeriesPartitionMetadata(key) => key.fields(),
 			Self::Identity(key) => key.fields(),
 			Self::Role(key) => key.fields(),
 			Self::GrantedRole(key) => key.fields(),
@@ -1355,7 +1357,7 @@ mod tests {
 				PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, RowSequenceKey, RowSettingsKey,
 				RowShapeFieldKey, RowShapeKey, SortedViewRowKey,
 			},
-			series::{PartitionedSeriesRowKey, SeriesKey, SeriesMetadataKey, SeriesRowKey},
+			series::{PartitionedSeriesRowKey, SeriesKey, SeriesPartitionMetadataKey, SeriesRowKey},
 			sort_run::SortRun,
 			system::{
 				MigrationEventKey, MigrationKey, SystemSequenceKey, SystemVersion, SystemVersionKey,
@@ -2161,8 +2163,9 @@ mod tests {
 				namespace: NamespaceId(60),
 				series: SeriesId(61),
 			}),
-			probe(SeriesMetadataKey {
+			probe(SeriesPartitionMetadataKey {
 				storage: StorageId::series(62),
+				partition: Partition(0x0000_0001_0000_0002_0000_0003_0000_0004),
 			}),
 			probe(IdentityKey {
 				identity: IdentityId::anonymous(),
@@ -2237,6 +2240,7 @@ mod tests {
 			}),
 			probe(SeriesColumnSnapshotKey {
 				series: SeriesId(89),
+				partition: Partition(0xDEAD_BEEF_0000_0001_0000_0000_0000_0002),
 				snapshot: ColumnSnapshotId(90),
 			}),
 			probe(TableColumnSnapshotKey {

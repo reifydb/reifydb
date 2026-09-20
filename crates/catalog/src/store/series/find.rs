@@ -5,15 +5,15 @@ use reifydb_codec::row::{catalog::EncodedCatalogRow, pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, SeriesId},
-		series::{Series, SeriesKey, SeriesMetadata, decode_series_metadata},
+		series::{Series, SeriesKey, SeriesPartitionMetadata, decode_series_partition_metadata},
 	},
 	key::{
 		namespace::NamespaceSeriesKey,
-		series::{SeriesKey as SeriesStorageKey, SeriesMetadataKey},
+		series::{SeriesKey as SeriesStorageKey, SeriesPartitionMetadataKey},
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::sumtype::SumTypeId;
+use reifydb_value::value::{partition::Partition, sumtype::SumTypeId};
 
 use crate::{
 	CatalogStore, Result,
@@ -65,12 +65,13 @@ impl CatalogStore {
 	pub(crate) fn find_series_metadata(
 		rx: &mut Transaction<'_>,
 		series_id: SeriesId,
-	) -> Result<Option<SeriesMetadata>> {
-		let Some(multi) = rx.get(&SeriesMetadataKey::new(series_id))? else {
+		partition: Partition,
+	) -> Result<Option<SeriesPartitionMetadata>> {
+		let Some(multi) = rx.get(&SeriesPartitionMetadataKey::new(series_id, partition))? else {
 			return Ok(None);
 		};
 
-		Ok(Some(decode_series_metadata(EncodedPodRow::view(&multi.bytes))?))
+		Ok(Some(decode_series_partition_metadata(EncodedPodRow::view(&multi.bytes))?))
 	}
 
 	pub(crate) fn find_series_by_name(

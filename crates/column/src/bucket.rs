@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::series::{Series, SeriesKey, SeriesMetadata, TimestampPrecision};
+use reifydb_core::interface::catalog::series::{Series, SeriesKey, SeriesPartitionMetadata, TimestampPrecision};
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -42,7 +42,7 @@ pub fn bucket_for(key: u64, width: u64) -> Bucket {
 	}
 }
 
-pub fn is_closed(bucket: &Bucket, series: &Series, metadata: &SeriesMetadata, now: DateTime, grace: Duration) -> bool {
+pub fn is_closed(bucket: &Bucket, series: &Series, metadata: &SeriesPartitionMetadata, now: DateTime, grace: Duration) -> bool {
 	match &series.key {
 		SeriesKey::DateTime {
 			precision,
@@ -111,7 +111,7 @@ mod tests {
 			end: 100,
 			width: 100,
 		};
-		let mut meta = SeriesMetadata::new();
+		let mut meta = SeriesPartitionMetadata::new();
 		meta.newest_key = 99;
 		assert!(!is_closed(&b, &s, &meta, DateTime::from_nanos(0), Duration::zero()));
 		meta.newest_key = 100;
@@ -130,7 +130,7 @@ mod tests {
 			end: 1000,
 			width: 1000,
 		};
-		let meta = SeriesMetadata::new();
+		let meta = SeriesPartitionMetadata::new();
 		let bucket_end = DateTime::from_nanos(1_000_000_000);
 		assert!(!is_closed(&b, &s, &meta, bucket_end, Duration::from_milliseconds(100).unwrap()));
 		let past_grace = DateTime::from_nanos(1_000_000_000 + 250_000_000);

@@ -4,11 +4,15 @@
 use reifydb_core::{
 	interface::catalog::id::SeriesId,
 	key::{
+		any::TaggedKey,
 		namespace::NamespaceSeriesKey,
-		series::{SeriesKey, SeriesMetadataKey},
+		series::{SeriesKey, SeriesPartitionMetadataKey},
 	},
 };
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::{
+	multi::RangeScope,
+	transaction::{Transaction, admin::AdminTransaction},
+};
 
 use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
 
@@ -23,10 +27,27 @@ impl CatalogStore {
 
 		drop_object_metadata(txn, series.into(), pk_id)?;
 
-		txn.remove(&SeriesMetadataKey::new(series))?;
+		Self::drop_series_partition_metadata(txn, series)?;
 
 		txn.remove(&SeriesKey::new(series))?;
 
+		Ok(())
+	}
+
+	fn drop_series_partition_metadata(txn: &mut AdminTransaction, series: SeriesId) -> Result<()> {
+		let mut keys: Vec<SeriesPartitionMetadataKey> = Vec::new();
+		{
+			let stream = txn.range(SeriesPartitionMetadataKey::full_scan(series), RangeScope::All, 1024)?;
+			for entry in stream {
+				let entry = entry?;
+				if let TaggedKey::SeriesPartitionMetadata(k) = entry.key {
+					keys.push(k);
+				}
+			}
+		}
+		for key in keys {
+			txn.remove(&key)?;
+		}
 		Ok(())
 	}
 }

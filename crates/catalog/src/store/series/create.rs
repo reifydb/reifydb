@@ -7,13 +7,14 @@ use reifydb_core::{
 		column::ColumnIndex,
 		id::{ColumnId, NamespaceId, SeriesId},
 		property::ColumnPropertyKind,
-		series::{Series, SeriesKey, SeriesMetadata, encode_series_metadata},
+		series::{Series, SeriesKey, SeriesPartitionMetadata, encode_series_partition_metadata},
 	},
 	key::{
 		namespace::NamespaceSeriesKey,
-		series::{SeriesKey as SeriesStorageKey, SeriesMetadataKey},
+		series::{SeriesKey as SeriesStorageKey, SeriesPartitionMetadataKey},
 	},
 };
+use reifydb_value::value::partition::Partition;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
 	fragment::Fragment,
@@ -175,8 +176,8 @@ impl CatalogStore {
 	}
 
 	fn initialize_series_metadata(txn: &mut AdminTransaction, series_id: SeriesId) -> Result<()> {
-		let row = encode_series_metadata(&SeriesMetadata::new());
-		txn.set(&SeriesMetadataKey::new(series_id), row.into_bytes())?;
+		let row = encode_series_partition_metadata(&SeriesPartitionMetadata::new());
+		txn.set(&SeriesPartitionMetadataKey::new(series_id, Partition::default()), row.into_bytes())?;
 		Ok(())
 	}
 

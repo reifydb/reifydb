@@ -45,20 +45,26 @@ impl SeriesKey {
 }
 
 #[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
-#[key(tag = SeriesMetadata)]
-pub struct SeriesMetadataKey {
+#[key(tag = SeriesPartitionMetadata)]
+pub struct SeriesPartitionMetadataKey {
 	pub storage: StorageId,
+	pub partition: Partition,
 }
 
-impl SeriesMetadataKey {
-	pub fn new(storage: impl Into<StorageId>) -> Self {
+impl SeriesPartitionMetadataKey {
+	pub fn new(storage: impl Into<StorageId>, partition: Partition) -> Self {
 		Self {
 			storage: storage.into(),
+			partition,
 		}
 	}
 
-	pub fn encoded(storage: impl Into<StorageId>) -> EncodedKey {
-		Self::new(storage).encode()
+	pub fn encoded(storage: impl Into<StorageId>, partition: Partition) -> EncodedKey {
+		Self::new(storage, partition).encode()
+	}
+
+	pub fn full_scan(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(ObjectId::from(storage.into())))
 	}
 }
 
@@ -66,7 +72,25 @@ impl SeriesMetadataKey {
 mod series_metadata_key_tests {
 	use reifydb_codec::key::serializer::KeySerializer;
 
-	use super::{KeyTag, SeriesKey, SeriesMetadataKey};
+	use reifydb_codec::key::encoded::EncodedKey;
+
+	use super::{KeyTag, Partition, SeriesKey, SeriesPartitionMetadataKey};
+	use crate::key::bound::TaggedKeyBoundRange;
+
+	fn in_range(range: &TaggedKeyBoundRange, key: &EncodedKey) -> bool {
+		use std::collections::Bound;
+		let start = match &range.start {
+			Bound::Included(b) => *key >= b.encode(),
+			Bound::Excluded(b) => *key > b.encode(),
+			Bound::Unbounded => true,
+		};
+		let end = match &range.end {
+			Bound::Included(b) => *key <= b.encode(),
+			Bound::Excluded(b) => *key < b.encode(),
+			Bound::Unbounded => true,
+		};
+		start && end
+	}
 	use crate::interface::catalog::{
 		id::{SeriesId, ViewId},
 		storage::StorageId,
@@ -75,25 +99,55 @@ mod series_metadata_key_tests {
 	#[test]
 	fn test_metadata_key_roundtrip_series() {
 		// The tag byte is what keeps a series' metadata out of a view's; a bare id would collide.
-		let key = SeriesMetadataKey {
+		let key = SeriesPartitionMetadataKey {
 			storage: StorageId::Series(SeriesId(7)),
+			partition: Partition(0x0123_4567_89AB_CDEF_FEDC_BA98_7654_3210),
 		};
-		assert_eq!(SeriesMetadataKey::decode(&key.encode()).unwrap(), key);
+		assert_eq!(SeriesPartitionMetadataKey::decode(&key.encode()).unwrap(), key);
 	}
 
 	#[test]
 	fn test_metadata_key_roundtrip_view() {
 		// A series-backed view must keep its metadata under its own id, never a backing object's.
-		let key = SeriesMetadataKey {
+		let key = SeriesPartitionMetadataKey {
 			storage: StorageId::View(ViewId(7)),
+			partition: Partition::default(),
 		};
-		assert_eq!(SeriesMetadataKey::decode(&key.encode()).unwrap(), key);
+		assert_eq!(SeriesPartitionMetadataKey::decode(&key.encode()).unwrap(), key);
 	}
 
 	#[test]
 	fn test_metadata_key_separates_a_series_from_a_view_with_the_same_id() {
 		// Both narrow from the same numeric id, so identical bytes would silently share one row.
-		assert_ne!(SeriesMetadataKey::encoded(SeriesId(7)), SeriesMetadataKey::encoded(ViewId(7)));
+		assert_ne!(
+			SeriesPartitionMetadataKey::encoded(SeriesId(7), Partition::default()),
+			SeriesPartitionMetadataKey::encoded(ViewId(7), Partition::default())
+		);
+	}
+
+	#[test]
+	fn test_metadata_full_scan_covers_every_partition_of_one_series() {
+		// dropping a series must remove all of its partitions' metadata; a prefix that
+		// missed one would leave a row keeping the series' sequence counter alive
+		let range = SeriesPartitionMetadataKey::full_scan(SeriesId(7));
+		for partition in [Partition::default(), Partition(1), Partition(u128::MAX)] {
+			let key = SeriesPartitionMetadataKey::encoded(SeriesId(7), partition);
+			assert!(in_range(&range, &key), "partition {:?} must be inside the scan", partition);
+		}
+		assert!(
+			!in_range(&range, &SeriesPartitionMetadataKey::encoded(SeriesId(8), Partition::default())),
+			"another series must fall outside"
+		);
+	}
+
+	#[test]
+	fn test_metadata_key_separates_two_partitions_of_one_series() {
+		// each partition carries its own sequence counter and key bounds; a shared row
+		// would let one partition's insert rewind another's counter
+		assert_ne!(
+			SeriesPartitionMetadataKey::encoded(SeriesId(7), Partition(1)),
+			SeriesPartitionMetadataKey::encoded(SeriesId(7), Partition(2))
+		);
 	}
 
 	#[test]

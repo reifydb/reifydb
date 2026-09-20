@@ -122,7 +122,7 @@ fn pinned() -> Vec<Pin> {
 		(
 			"column_snapshot::column_snapshot",
 			&*COLUMN_SNAPSHOT_SHAPE,
-			0x2864525861aa7c41,
+			0xd08779fec50bf830,
 			&[
 				"id",
 				"namespace",
@@ -130,9 +130,13 @@ fn pinned() -> Vec<Pin> {
 				"source_id",
 				"bucket_start",
 				"bucket_width",
+				"partition_hi",
+				"partition_lo",
 				"sequence_counter",
 				"read_version",
 				"row_count",
+				"partition_values",
+				"stats",
 			],
 		),
 		("config::config", &*CONFIG_SHAPE, 0xefc802db77165323, &["value"]),

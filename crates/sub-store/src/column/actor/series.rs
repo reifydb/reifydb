@@ -18,7 +18,7 @@ use reifydb_core::{
 		catalog::{
 			column_snapshot::ColumnSnapshotSource,
 			id::SeriesId,
-			series::{Series, SeriesMetadata},
+			series::{Series, SeriesPartitionMetadata},
 		},
 		resolved::{ResolvedNamespace, ResolvedSeries},
 	},
@@ -45,7 +45,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions,
-	value::{datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
+	value::{datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition, value_type::ValueType},
 };
 use tracing::debug;
 
@@ -134,8 +134,11 @@ impl SeriesMaterializationActor {
 		series: &Series,
 		now_wall: DateTime,
 	) -> Result<()> {
-		let Some(metadata) =
-			catalog.find_series_metadata(&mut Transaction::Query(&mut *query_txn), series.id)?
+		let Some(metadata) = catalog.find_series_metadata(
+			&mut Transaction::Query(&mut *query_txn),
+			series.id,
+			Partition::default(),
+		)?
 		else {
 			return Ok(());
 		};
@@ -162,7 +165,7 @@ impl SeriesMaterializationActor {
 		state: &mut SeriesMaterializationState,
 		query_txn: &mut QueryTransaction,
 		series: &Series,
-		metadata: &SeriesMetadata,
+		metadata: &SeriesPartitionMetadata,
 		bucket: &Bucket,
 		now_wall: DateTime,
 	) -> Result<()> {
@@ -191,7 +194,7 @@ impl SeriesMaterializationActor {
 		&self,
 		query_txn: &mut QueryTransaction,
 		series: &Series,
-		metadata: &SeriesMetadata,
+		metadata: &SeriesPartitionMetadata,
 		bucket: &Bucket,
 	) -> Result<()> {
 		let sealed_at_commit_version = query_txn.version();
@@ -277,7 +280,7 @@ impl SeriesMaterializationActor {
 	fn upsert_snapshot_and_store(
 		&self,
 		series: &Series,
-		metadata: &SeriesMetadata,
+		metadata: &SeriesPartitionMetadata,
 		bucket: &Bucket,
 		sealed_at_commit_version: CommitVersion,
 		block: Arc<ColumnBlock>,
@@ -288,6 +291,7 @@ impl SeriesMaterializationActor {
 		let column_snapshot = match cat.find_column_snapshot_for_series_bucket(
 			&mut Transaction::Admin(&mut admin),
 			series.id,
+			None,
 			bucket.start,
 		)? {
 			Some(existing) => cat.update_column_snapshot(
@@ -307,10 +311,13 @@ impl SeriesMaterializationActor {
 						series_id: series.id,
 						bucket_start: bucket.start,
 						bucket_width: bucket.width,
+						partition: None,
 						sequence_counter: metadata.sequence_counter,
 						sealed_at_commit_version,
 					},
 					row_count,
+					partition_values: Vec::new(),
+					stats: Vec::new(),
 				},
 			)?,
 		};

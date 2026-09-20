@@ -47,6 +47,8 @@ pub mod tests {
 					commit_version: CommitVersion(7),
 				},
 				row_count: 42,
+				partition_values: Vec::new(),
+				stats: Vec::new(),
 			},
 		)
 		.unwrap();

@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			object::ObjectId,
-			series::{Series, SeriesMetadata},
+			series::{Series, SeriesPartitionMetadata},
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
@@ -50,7 +50,7 @@ pub fn remove_series_row(
 	Ok(())
 }
 
-pub fn apply_series_metadata_after_delete(metadata: &mut SeriesMetadata, deleted_count: u64) {
+pub fn apply_series_metadata_after_delete(metadata: &mut SeriesPartitionMetadata, deleted_count: u64) {
 	metadata.row_count = metadata.row_count.saturating_sub(deleted_count);
 	if metadata.row_count == 0 {
 		metadata.oldest_key = 0;
