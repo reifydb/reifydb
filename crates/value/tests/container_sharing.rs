@@ -271,7 +271,7 @@ slice_backed_suite!(
 	identity_id,
 	IdentityIdContainer,
 	IdentityId,
-	|i| IdentityId(Uuid7(Uuid::from_u128(i as u128 + 1))),
+	|i| IdentityId(Uuid7(Uuid::from_u128(((i as u128 + 1) << 80) | (0x7 << 76) | (0x2 << 62)))),
 	IdentityId::root()
 );
 slice_backed_suite!(row_number, RowNumberContainer, RowNumber, |i| RowNumber(i as u64 + 1), RowNumber(u64::MAX));

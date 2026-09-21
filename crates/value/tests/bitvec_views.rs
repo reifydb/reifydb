@@ -301,8 +301,8 @@ fn writes_on_a_view_never_leak_into_the_parent() {
 		set.set(0, !model[0]);
 		set.set(len - 1, !model[len - 1]);
 		let mut expected = model.to_vec();
-		expected[0] = !expected[0];
-		expected[len - 1] = !expected[len - 1];
+		expected[0] = !model[0];
+		expected[len - 1] = !model[len - 1];
 		assert_eq!(set.to_vec(), expected, "{ctx}: set");
 		assert_eq!(parent.to_vec(), bits, "{ctx}: set must never write through to the parent");
 
