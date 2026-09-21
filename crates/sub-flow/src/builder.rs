@@ -40,6 +40,7 @@ pub struct CustomOperatorEntry {
 	pub output: Vec<OperatorColumn>,
 	pub class: OperatorClass,
 	pub window: WindowRequirements,
+	pub unmanaged_because: Option<String>,
 }
 
 #[derive(Clone, Default)]
@@ -151,6 +152,7 @@ impl FlowConfigurator {
 				output: describe_columns(<M as OperatorMetadata>::OUTPUT_COLUMNS),
 				class: <M::Class as ClassValue>::CLASS,
 				window: <M as MountedOperator>::WINDOW,
+				unmanaged_because: <M as MountedOperator>::UNMANAGED_BECAUSE.map(str::to_string),
 			},
 		);
 		self

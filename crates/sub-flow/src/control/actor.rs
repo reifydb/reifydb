@@ -2448,6 +2448,7 @@ mod tick_failures {
 					domain: WindowSizeDomain::Time,
 					needs_pane: false,
 				},
+				unmanaged_because: None,
 			},
 		);
 		map.insert(
@@ -2472,6 +2473,7 @@ mod tick_failures {
 					domain: WindowSizeDomain::Time,
 					needs_pane: false,
 				},
+				unmanaged_because: None,
 			},
 		);
 		CustomOperators::new(map)

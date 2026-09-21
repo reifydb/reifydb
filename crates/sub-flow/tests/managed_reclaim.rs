@@ -93,6 +93,8 @@ impl OperatorMetadata for Untracked {
 }
 
 impl UnmanagedOperator for Untracked {
+	const UNMANAGED_BECAUSE: &'static str = "test operator";
+
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(Untracked)
 	}

@@ -8,7 +8,11 @@ use std::{
 };
 
 use libloading::Symbol;
-use reifydb_core::{interface::catalog::flow::OperatorId, operator_with::ApplyWith};
+use reifydb_core::{
+	common::{OperatorClass, WindowRequirements},
+	interface::catalog::flow::OperatorId,
+	operator_with::ApplyWith,
+};
 use reifydb_extension::loader::extern_load::ExternLoad;
 use reifydb_flow::operator::BoxedHostOperator;
 use reifydb_runtime::sync::rwlock::RwLock;
@@ -36,6 +40,9 @@ pub struct ExternRustOperatorDescriptor {
 	pub capabilities: u32,
 	pub input_columns: Vec<ExternRustOperatorColumn>,
 	pub output_columns: Vec<ExternRustOperatorColumn>,
+	pub class: OperatorClass,
+	pub window: WindowRequirements,
+	pub unmanaged_because: Option<&'static str>,
 }
 
 pub fn extern_rust_operator_magic() -> u32 {
@@ -61,6 +68,9 @@ pub struct LoadedExternRustOperatorInfo {
 	pub input_columns: Vec<ExternRustOperatorColumn>,
 	pub output_columns: Vec<ExternRustOperatorColumn>,
 	pub capabilities: u32,
+	pub class: OperatorClass,
+	pub window: WindowRequirements,
+	pub unmanaged_because: Option<&'static str>,
 }
 
 static GLOBAL_EXTERN_RUST_OPERATOR_LOADER: OnceLock<RwLock<ExternRustOperatorLoader>> = OnceLock::new();
@@ -126,16 +136,7 @@ impl ExternRustOperatorLoader {
 		let descriptor = self.descriptor(path)?;
 		self.operator_paths.insert(descriptor.name.clone(), path.to_path_buf());
 
-		Ok(Some(LoadedExternRustOperatorInfo {
-			operator: descriptor.name,
-			library_path: path.to_path_buf(),
-			abi_tag: descriptor.abi_tag,
-			version: descriptor.version,
-			description: descriptor.description,
-			input_columns: descriptor.input_columns,
-			output_columns: descriptor.output_columns,
-			capabilities: descriptor.capabilities,
-		}))
+		Ok(Some(loaded_info(descriptor, path)))
 	}
 
 	pub fn has_operator(&self, operator: &str) -> bool {
@@ -190,6 +191,22 @@ impl ExternRustOperatorLoader {
 	}
 }
 
+fn loaded_info(descriptor: ExternRustOperatorDescriptor, path: &Path) -> LoadedExternRustOperatorInfo {
+	LoadedExternRustOperatorInfo {
+		operator: descriptor.name,
+		library_path: path.to_path_buf(),
+		abi_tag: descriptor.abi_tag,
+		version: descriptor.version,
+		description: descriptor.description,
+		input_columns: descriptor.input_columns,
+		output_columns: descriptor.output_columns,
+		capabilities: descriptor.capabilities,
+		class: descriptor.class,
+		window: descriptor.window,
+		unmanaged_because: descriptor.unmanaged_because,
+	}
+}
+
 impl Default for ExternRustOperatorLoader {
 	fn default() -> Self {
 		Self::new()
@@ -198,10 +215,13 @@ impl Default for ExternRustOperatorLoader {
 
 #[cfg(test)]
 mod tests {
+	use std::path::Path;
+
+	use reifydb_core::common::{OperatorClass, WindowRequirements, WindowSizeDomain};
 	use reifydb_extension::operator::extern_c::loader::check_operator_abi_tag;
 	use reifydb_sdk::flow::operator::extern_c::wire::types::OPERATOR_ABI_TAG;
 
-	use super::{EXTERN_RUST_ABI_TAG, check_extern_rust_abi_tag};
+	use super::{EXTERN_RUST_ABI_TAG, ExternRustOperatorDescriptor, check_extern_rust_abi_tag, loaded_info};
 
 	#[test]
 	fn extern_rust_abi_tag_accepts_match_rejects_mismatch() {
@@ -224,5 +244,32 @@ mod tests {
 		assert_ne!(EXTERN_RUST_ABI_TAG, OPERATOR_ABI_TAG);
 		assert!(check_extern_rust_abi_tag(OPERATOR_ABI_TAG).is_err());
 		assert!(check_operator_abi_tag(EXTERN_RUST_ABI_TAG).is_err());
+	}
+
+	#[test]
+	fn the_loaded_info_carries_the_descriptor_class_window_and_reason() {
+		// A field dropped here reaches CREATE as some other class or window and skips its checks.
+		let window = WindowRequirements {
+			takes_window: true,
+			kinds: &["sliding"],
+			domain: WindowSizeDomain::Slots,
+			needs_pane: true,
+		};
+		let descriptor = ExternRustOperatorDescriptor {
+			abi_tag: EXTERN_RUST_ABI_TAG,
+			name: "probe".to_string(),
+			version: "0.0.1".to_string(),
+			description: String::new(),
+			capabilities: 0,
+			input_columns: Vec::new(),
+			output_columns: Vec::new(),
+			class: OperatorClass::Unmanaged,
+			window,
+			unmanaged_because: Some("frees its own rows"),
+		};
+		let info = loaded_info(descriptor, Path::new("/probe.so"));
+		assert_eq!(info.class, OperatorClass::Unmanaged);
+		assert_eq!(info.window, window);
+		assert_eq!(info.unmanaged_because, Some("frees its own rows"));
 	}
 }

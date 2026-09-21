@@ -250,7 +250,7 @@ fn check_managed_time_requirements(
 		else {
 			continue;
 		};
-		if operators.get(operator).and_then(|info| info.class) != Some(OperatorClass::Managed) {
+		if operators.get(operator).map(|info| info.class) != Some(OperatorClass::Managed) {
 			continue;
 		}
 		if source_time_domain(catalog, txn, flow)? != TimeDomain::Event {
@@ -278,21 +278,19 @@ fn check_operator_with_requirements(flow: &FlowDag, operators: &OperatorLibrary)
 			continue;
 		};
 		match info.class {
-			Some(OperatorClass::Nostate) => {
+			OperatorClass::Nostate => {
 				if with != &ApplyWith::default() {
 					return Err(error!(flow_operator_with_not_accepted()));
 				}
 			}
-			Some(OperatorClass::Managed) => {
+			OperatorClass::Managed => {
 				if with.lateness_duration()?.is_none_or(|lateness| lateness.is_zero()) {
 					return Err(error!(flow_operator_lateness_required()));
 				}
 			}
-			Some(OperatorClass::Unmanaged | OperatorClass::Windowed) | None => {}
+			OperatorClass::Unmanaged | OperatorClass::Windowed => {}
 		}
-		if let Some(requirements) = info.window {
-			check_window_requirements(requirements, with)?;
-		}
+		check_window_requirements(info.window, with)?;
 	}
 	Ok(())
 }

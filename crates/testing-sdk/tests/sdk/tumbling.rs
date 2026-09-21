@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::{OperatorClass, WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
 	interface::{
 		catalog::flow::OperatorId,
 		flow::{OperatorCapability, from_bitmask},
@@ -53,12 +53,25 @@ fn a_declared_capability_reaches_the_host_through_the_descriptor() {
 	// silently gates the wrong methods while the operator's source still looks correct.
 	assert!(TestVolume::CAPABILITIES.contains(&OperatorCapability::Delete));
 
-	let descriptor = create_descriptor::<ExternCOperatorAdapter<PlainDriver<TestVolume>>>();
+	let descriptor = create_descriptor::<PlainDriver<TestVolume>>();
 
 	assert!(
 		from_bitmask(descriptor.capabilities).contains(&OperatorCapability::Delete),
 		"a declared capability must survive the descriptor round trip"
 	);
+}
+
+#[test]
+fn a_windowed_driver_descriptor_carries_its_class_and_window_and_no_reason() {
+	// The host reads only these fields: one left at its default makes CREATE check the wrong class or window.
+	let descriptor = create_descriptor::<PlainDriver<TestVolume>>();
+
+	assert_eq!(OperatorClass::from_u8(descriptor.class), Some(OperatorClass::Windowed));
+	assert!(descriptor.unmanaged_because.ptr.is_null());
+	assert_eq!(descriptor.window.takes_window, 1);
+	assert_eq!(WindowRequirements::kinds_from_bitmask(descriptor.window.kinds), Some(&["tumbling", "sliding"][..]));
+	assert_eq!(WindowSizeDomain::from_u8(descriptor.window.domain), Some(WindowSizeDomain::Time));
+	assert_eq!(descriptor.window.needs_pane, 0);
 }
 
 // An invertible volume aggregator holding only running moments: the driver routes an Update

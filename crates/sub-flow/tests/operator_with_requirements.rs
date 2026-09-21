@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, path::PathBuf};
+use std::collections::BTreeMap;
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::{
-	common::{WindowRequirements, WindowSizeDomain},
-	event::operator::OperatorLoadedEvent,
-	interface::{WithEventBus, catalog::flow::OperatorId, flow::OperatorCapability},
+	common::{OperatorClass, WindowRequirements, WindowSizeDomain},
+	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
 	operator_with::ApplyWith,
 };
@@ -97,6 +96,8 @@ impl OperatorMetadata for UnmanagedProbe {
 }
 
 impl UnmanagedOperator for UnmanagedProbe {
+	const UNMANAGED_BECAUSE: &'static str = "test operator";
+
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(UnmanagedProbe)
 	}
@@ -223,6 +224,17 @@ fn nostate_managed_and_unmanaged_operators_each_publish_takes_window_false() {
 	assert_eq!(<NostateMount<NostateProbe> as MountedOperator>::WINDOW, no_window);
 	assert_eq!(<ManagedMount<ManagedProbe> as MountedOperator>::WINDOW, no_window);
 	assert_eq!(<UnmanagedMount<UnmanagedProbe> as MountedOperator>::WINDOW, no_window);
+}
+
+#[test]
+fn only_an_unmanaged_operator_reaches_the_library_with_its_reason() {
+	// a reason lost on the way, or one published for another class, makes the census name the wrong owner
+	let db = memory();
+	let library = db.engine().operator_store();
+	let published = |name: &str| library.get(name).map(|info| (info.class, info.unmanaged_because));
+	assert_eq!(published("unmanaged_probe"), Some((OperatorClass::Unmanaged, Some("test operator".to_string()))));
+	assert_eq!(published("managed_probe"), Some((OperatorClass::Managed, None)));
+	assert_eq!(published("nostate_probe"), Some((OperatorClass::Nostate, None)));
 }
 
 struct GRow {
@@ -441,32 +453,6 @@ fn well_formed_time_and_slot_windows_create() {
 		if let Err(err) = db.try_admin(&statement) {
 			panic!("a well formed window must create: {statement}: {:?}", err.diagnostic());
 		}
-	}
-}
-
-#[test]
-fn an_operator_with_no_published_window_creates_without_a_window_check() {
-	// Extern operators publish no window metadata, so absent metadata must skip the check rather than refuse.
-	let db = windowed_memory();
-	event_time_source(&db);
-	let bus = db.engine().event_bus();
-	bus.emit(OperatorLoadedEvent::new(
-		"time_window_probe".to_string(),
-		PathBuf::new(),
-		None,
-		"0.0.1".to_string(),
-		String::new(),
-		Vec::new(),
-		Vec::new(),
-		0,
-		None,
-		None,
-	));
-	bus.wait_for_completion();
-
-	let statement = view("v", "time_window_probe{}");
-	if let Err(err) = db.try_admin(&statement) {
-		panic!("absent window metadata must skip the window check: {:?}", err.diagnostic());
 	}
 }
 

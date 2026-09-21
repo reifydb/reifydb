@@ -75,6 +75,8 @@ fn group_key(g: i32) -> EncodedKey {
 }
 
 impl UnmanagedOperator for Alarm {
+	const UNMANAGED_BECAUSE: &'static str = "test operator";
+
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(Alarm)
 	}
@@ -271,6 +273,8 @@ impl OperatorMetadata for Snooze {
 }
 
 impl UnmanagedOperator for Snooze {
+	const UNMANAGED_BECAUSE: &'static str = "test operator";
+
 	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(Snooze {
 			disarm_offset_ms: params.u64_or("disarm_offset", 0),

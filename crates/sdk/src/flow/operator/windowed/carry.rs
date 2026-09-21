@@ -291,6 +291,8 @@ where
 		needs_pane: false,
 	};
 
+	const UNMANAGED_BECAUSE: Option<&'static str> = None;
+
 	fn sample(&self) -> Option<OperatorSample> {
 		None
 	}

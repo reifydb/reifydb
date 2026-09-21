@@ -69,6 +69,8 @@ impl OperatorMetadata for ParityWindow {
 }
 
 impl UnmanagedOperator for ParityWindow {
+	const UNMANAGED_BECAUSE: &'static str = "test operator";
+
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
 		Ok(ParityWindow)
 	}

@@ -75,6 +75,7 @@ impl SubsystemFactory for FlowWithAPanickingOperator {
 				domain: WindowSizeDomain::Time,
 				needs_pane: false,
 			},
+			unmanaged_because: None,
 		};
 		let config = FlowConfig {
 			operators_dir: None,

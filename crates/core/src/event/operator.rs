@@ -39,8 +39,10 @@ define_event! {
 
 		pub capabilities: u32,
 
-		pub class: Option<OperatorClass>,
+		pub class: OperatorClass,
 
-		pub window: Option<WindowRequirements>,
+		pub window: WindowRequirements,
+
+		pub unmanaged_because: Option<String>,
 	}
 }

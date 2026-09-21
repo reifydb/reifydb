@@ -5,6 +5,7 @@ use std::{collections::HashMap, ffi::c_void, ptr, slice, sync::Arc};
 
 use reifydb_codec::{constraint::encode_type_constraint, value::decode_params};
 use reifydb_core::{
+	common::WindowRequirements,
 	interface::{catalog::flow::OperatorId, flow::to_bitmask},
 	operator_with::{ApplyWith, decode_apply_with},
 };
@@ -15,15 +16,16 @@ use crate::{
 	flow::{
 		extern_c::wire::schema::{ExternCOperatorColumn, ExternCOperatorColumns},
 		operator::{
-			OperatorMetadata,
+			MountedOperator, OperatorMetadata,
 			column::operator::OperatorColumn,
+			context::ClassValue,
 			extern_c::{
 				binding::{
-					operator::ExternCOperator,
+					operator::{ExternCOperator, ExternCOperatorAdapter},
 					wrapper::{OperatorWrapper, create_vtable},
 				},
 				wire::{
-					descriptor::ExternCOperatorDescriptor,
+					descriptor::{ExternCOperatorDescriptor, ExternCWindowRequirements},
 					types::{OPERATOR_ABI_TAG, OPERATOR_MAGIC},
 				},
 			},
@@ -69,16 +71,31 @@ fn columns_to_extern_c(columns: &'static [OperatorColumn]) -> ExternCOperatorCol
 	}
 }
 
-pub fn create_descriptor<O: ExternCOperator + OperatorMetadata>() -> ExternCOperatorDescriptor {
+fn window_to_extern_c(operator: &str, window: WindowRequirements) -> ExternCWindowRequirements {
+	let Some(kinds) = window.kinds_bitmask() else {
+		panic!("{}: window kinds {:?} include one the C ABI cannot carry", operator, window.kinds);
+	};
+	ExternCWindowRequirements {
+		takes_window: u8::from(window.takes_window),
+		kinds,
+		domain: window.domain.to_u8(),
+		needs_pane: u8::from(window.needs_pane),
+	}
+}
+
+pub fn create_descriptor<C: MountedOperator + OperatorMetadata + 'static>() -> ExternCOperatorDescriptor {
 	ExternCOperatorDescriptor {
 		abi_tag: OPERATOR_ABI_TAG,
-		operator: str_to_buffer(O::NAME),
-		version: str_to_buffer(O::VERSION),
-		description: str_to_buffer(O::DESCRIPTION),
-		input_columns: columns_to_extern_c(O::INPUT_COLUMNS),
-		output_columns: columns_to_extern_c(O::OUTPUT_COLUMNS),
-		capabilities: to_bitmask(O::CAPABILITIES),
-		vtable: create_vtable::<O>(),
+		operator: str_to_buffer(C::NAME),
+		version: str_to_buffer(C::VERSION),
+		description: str_to_buffer(C::DESCRIPTION),
+		input_columns: columns_to_extern_c(C::INPUT_COLUMNS),
+		output_columns: columns_to_extern_c(C::OUTPUT_COLUMNS),
+		capabilities: to_bitmask(C::CAPABILITIES),
+		class: <C::Class as ClassValue>::CLASS.to_u8(),
+		unmanaged_because: C::UNMANAGED_BECAUSE.map_or(ExternCBuffer::empty(), str_to_buffer),
+		window: window_to_extern_c(C::NAME, C::WINDOW),
+		vtable: create_vtable::<ExternCOperatorAdapter<C>>(),
 	}
 }
 
@@ -86,7 +103,7 @@ pub fn create_descriptor<O: ExternCOperator + OperatorMetadata>() -> ExternCOper
 /// - params_ptr must be valid for params_len bytes or null
 /// - with_ptr must be valid for with_len bytes or null
 /// - The returned pointer must be freed by calling the destroy function
-pub unsafe extern "C" fn create_operator_instance<O: ExternCOperator + OperatorMetadata>(
+pub unsafe extern "C" fn create_operator_instance<C: MountedOperator + OperatorMetadata + 'static>(
 	params_ptr: *const u8,
 	params_len: usize,
 	with_ptr: *const u8,
@@ -133,8 +150,8 @@ pub unsafe extern "C" fn create_operator_instance<O: ExternCOperator + OperatorM
 		}
 	};
 
-	let params = ExtensionParams::new(O::NAME, params.into_iter().collect());
-	let operator = match O::new(OperatorId(operator_id), &params, &with) {
+	let params = ExtensionParams::new(C::NAME, params.into_iter().collect());
+	let operator = match ExternCOperatorAdapter::<C>::new(OperatorId(operator_id), &params, &with) {
 		Ok(op) => op,
 		Err(e) => {
 			eprintln!("Failed to create operator: {}", e);
@@ -148,4 +165,42 @@ pub unsafe extern "C" fn create_operator_instance<O: ExternCOperator + OperatorM
 
 pub extern "C" fn operator_magic() -> u32 {
 	OPERATOR_MAGIC
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::common::{WindowRequirements, WindowSizeDomain};
+
+	use super::window_to_extern_c;
+
+	#[test]
+	fn every_window_field_reaches_the_c_descriptor() {
+		// A field pinned to its default passes every time-domain driver and breaks only slot or pane ones.
+		let window = window_to_extern_c(
+			"probe",
+			WindowRequirements {
+				takes_window: true,
+				kinds: &["rolling"],
+				domain: WindowSizeDomain::Slots,
+				needs_pane: true,
+			},
+		);
+		assert_eq!((window.takes_window, window.kinds, window.needs_pane), (1, 0b1000, 1));
+		assert_eq!(WindowSizeDomain::from_u8(window.domain), Some(WindowSizeDomain::Slots));
+	}
+
+	#[test]
+	#[should_panic(expected = "probe: window kinds")]
+	fn a_kind_the_c_abi_cannot_carry_fails_the_export() {
+		// An unknown kind dropped from the mask would publish a window the guest never agreed to.
+		window_to_extern_c(
+			"probe",
+			WindowRequirements {
+				takes_window: true,
+				kinds: &["hopping"],
+				domain: WindowSizeDomain::Time,
+				needs_pane: false,
+			},
+		);
+	}
 }

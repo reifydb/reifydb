@@ -2,17 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::{OperatorClass, WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	operator_with::{ApplyWith, WithSpan},
 };
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
-		ManagedMount, ManagedOperator, NostateMount, NostateOperator, OperatorMetadata,
+		ManagedMount, ManagedOperator, NostateMount, NostateOperator, OperatorMetadata, UnmanagedMount,
+		UnmanagedOperator,
 		column::operator::OperatorColumn,
-		context::{GuestContext, Managed, Nostate},
-		extern_c::binding::operator::ExternCOperatorAdapter,
+		context::{GuestContext, Managed, Nostate, Unmanaged},
+		extern_c::binding::{exports::create_descriptor, operator::ExternCOperatorAdapter},
 		view::ChangeView,
 	},
 };
@@ -57,6 +58,29 @@ impl ManagedOperator for ManagedProbe {
 	}
 
 	fn apply(&mut self, _ctx: &mut impl GuestContext<Managed>, _change: impl ChangeView) -> Result<()> {
+		Ok(())
+	}
+}
+
+struct UnmanagedProbe;
+
+impl OperatorMetadata for UnmanagedProbe {
+	const NAME: &'static str = "unmanaged_probe";
+	const VERSION: &'static str = "0.0.1";
+	const DESCRIPTION: &'static str = "Holds unmanaged state";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
+
+impl UnmanagedOperator for UnmanagedProbe {
+	const UNMANAGED_BECAUSE: &'static str = "frees its own rows";
+
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+		Ok(UnmanagedProbe)
+	}
+
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> Result<()> {
 		Ok(())
 	}
 }
@@ -129,4 +153,25 @@ fn a_managed_operator_builds_with_a_duration_lateness() {
 		.with(lateness_of(60))
 		.build()
 		.expect("a duration lateness is all a managed operator needs");
+}
+
+#[test]
+fn only_an_unmanaged_descriptor_carries_a_reason_and_each_carries_its_class() {
+	// A reason dropped or published for another class makes the census name the wrong owner.
+	let unmanaged = create_descriptor::<UnmanagedMount<UnmanagedProbe>>();
+	assert_eq!(OperatorClass::from_u8(unmanaged.class), Some(OperatorClass::Unmanaged));
+	assert!(!unmanaged.unmanaged_because.ptr.is_null());
+	// SAFETY: the reason is non-null and points at a `&'static str` of exactly `len` bytes.
+	let reason =
+		unsafe { std::slice::from_raw_parts(unmanaged.unmanaged_because.ptr, unmanaged.unmanaged_because.len) };
+	assert_eq!(reason, b"frees its own rows");
+	assert_eq!((unmanaged.window.takes_window, unmanaged.window.kinds), (0, 0));
+
+	let managed = create_descriptor::<ManagedMount<ManagedProbe>>();
+	assert_eq!(OperatorClass::from_u8(managed.class), Some(OperatorClass::Managed));
+	assert!(managed.unmanaged_because.ptr.is_null());
+
+	let nostate = create_descriptor::<NostateMount<NostateProbe>>();
+	assert_eq!(OperatorClass::from_u8(nostate.class), Some(OperatorClass::Nostate));
+	assert!(nostate.unmanaged_because.ptr.is_null());
 }
