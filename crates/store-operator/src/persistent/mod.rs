@@ -434,7 +434,7 @@ impl Checkpoint for PersistentTier {
 			Self::Memory(memory) => Checkpoint::checkpoint_get(memory, flow),
 			Self::Testing(testing) => Checkpoint::checkpoint_get(testing, flow),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => Ok(storage.checkpoint_get(flow)),
+			Self::Sqlite(storage) => storage.checkpoint_get(flow),
 		}
 	}
 
@@ -474,7 +474,7 @@ impl Checkpoint for PersistentTier {
 			Self::Memory(memory) => Checkpoint::checkpoint_floor(memory),
 			Self::Testing(testing) => Checkpoint::checkpoint_floor(testing),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => Ok(storage.checkpoint_floor()),
+			Self::Sqlite(storage) => storage.checkpoint_floor(),
 		}
 	}
 
@@ -484,7 +484,7 @@ impl Checkpoint for PersistentTier {
 			Self::Memory(memory) => Checkpoint::checkpoint_list(memory),
 			Self::Testing(testing) => Checkpoint::checkpoint_list(testing),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => Ok(storage.checkpoint_list()),
+			Self::Sqlite(storage) => storage.checkpoint_list(),
 		}
 	}
 }
