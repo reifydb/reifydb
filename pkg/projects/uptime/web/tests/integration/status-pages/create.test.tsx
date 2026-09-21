@@ -4,9 +4,11 @@
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Uuid7Value, type Store } from '@reifydb/react'
+import { Store, Uuid7Value, type StoreClient } from '@reifydb/react'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { StatusPageNewPage } from '@/pages/status-pages/form.tsx'
+import { STORE_OPTIONS } from '@/store/client'
+import { monitors } from '@/store/queries'
 import { loadBackend } from '../../support/backend'
 import { bridgeStore, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
@@ -133,5 +135,23 @@ describe('create status page flow', () => {
     expect(await screen.findByText('Select at least one monitor')).toBeInTheDocument()
     expect(client.command).not.toHaveBeenCalled()
     expect(await readPages(db)).toEqual([])
+  })
+
+  it('says the monitors failed to load instead of spinning forever', async () => {
+    // A refused monitors subscription would otherwise leave the page spinning with nothing saying why.
+    const refused: StoreClient = {
+      ...client,
+      batchSubscribe: async (subscriptions) => {
+        if (subscriptions.some((subscription) => subscription.rql === monitors.rql)) {
+          throw new Error('monitors subscription refused')
+        }
+        return client.batchSubscribe(subscriptions)
+      },
+    }
+    renderWithProviders(<StatusPageNewPage />, new Store(refused, STORE_OPTIONS))
+    await caughtUp()
+
+    expect(await screen.findByText('Failed to load monitors: monitors subscription refused')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
   })
 })

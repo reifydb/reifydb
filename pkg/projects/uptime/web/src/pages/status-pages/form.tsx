@@ -155,7 +155,13 @@ function StatusPageForm({
 
 export function StatusPageNewPage() {
   const navigate = useNavigate()
+  const { data: monitors, error: monitorsError } = useLiveMonitors()
   const { create, isPending, error } = useCreateStatusPage()
+
+  if (monitorsError != null) {
+    return <p className="text-sm text-status-error">Failed to load monitors: {errorMessage(monitorsError)}</p>
+  }
+  if (monitors == null) return <Loading />
 
   return (
     <div className="space-y-6">

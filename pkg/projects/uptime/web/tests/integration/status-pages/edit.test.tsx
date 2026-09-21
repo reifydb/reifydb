@@ -5,10 +5,12 @@ import type { ReactNode } from 'react'
 import { act, renderHook, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { IdentityIdValue, Int2Value, StoreProvider, Uuid7Value, type Store } from '@reifydb/react'
+import { IdentityIdValue, Int2Value, Store, StoreProvider, Uuid7Value, type StoreClient } from '@reifydb/react'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { useCreateStatusPage, useUpdateStatusPage } from '@/hooks/use-status-pages'
 import { StatusPageEditPage } from '@/pages/status-pages/form.tsx'
+import { STORE_OPTIONS } from '@/store/client'
+import { monitors } from '@/store/queries'
 import { loadBackend } from '../../support/backend'
 import { bridgeStore, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
@@ -180,6 +182,26 @@ describe('edit status page flow', () => {
     expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
     expect(client.command).not.toHaveBeenCalled()
     expect(await readMembers(db, id)).toEqual([{ monitorId: theirs, position: 0 }])
+  })
+
+  it('says the monitors failed to load instead of spinning forever', async () => {
+    // A refused monitors subscription would otherwise leave the page spinning with nothing saying why.
+    const id = await createStatusPage(client, 'acme', 'Acme', [alpha])
+    const refused: StoreClient = {
+      ...client,
+      batchSubscribe: async (subscriptions) => {
+        if (subscriptions.some((subscription) => subscription.rql === monitors.rql)) {
+          throw new Error('monitors subscription refused')
+        }
+        return client.batchSubscribe(subscriptions)
+      },
+    }
+    route.pageId = id
+    renderWithProviders(<StatusPageEditPage />, new Store(refused, STORE_OPTIONS))
+    await caughtUp()
+
+    expect(await screen.findByText('Failed to load monitors: monitors subscription refused')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
   })
 })
 
