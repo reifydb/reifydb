@@ -37,6 +37,8 @@ mod frontier_shutdown;
 mod lifecycle_coverage;
 #[path = "managed_reclaim.rs"]
 mod managed_reclaim;
+#[path = "operator_with_requirements.rs"]
+mod operator_with_requirements;
 #[path = "partitioned_view.rs"]
 mod partitioned_view;
 #[path = "percentile_rolling_view.rs"]

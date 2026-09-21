@@ -8,7 +8,10 @@ use reifydb_catalog::{
 use reifydb_core::{
 	common::{OperatorClass, TimeDomain},
 	error::diagnostic::{
-		flow::{flow_managed_operator_requires_event_time, flow_view_calls_script_routine},
+		flow::{
+			flow_managed_operator_requires_event_time, flow_operator_lateness_required,
+			flow_operator_with_not_accepted, flow_view_calls_script_routine,
+		},
 		query,
 	},
 	interface::catalog::{
@@ -16,6 +19,7 @@ use reifydb_core::{
 		flow::FlowStatus,
 		view::{View, ViewSortKey},
 	},
+	operator_with::ApplyWith,
 	sort::SortKey,
 };
 use reifydb_evaluate::{
@@ -254,6 +258,39 @@ fn check_managed_time_requirements(
 	Ok(())
 }
 
+fn check_operator_with_requirements(flow: &FlowDag, operators: &OperatorLibrary) -> Result<()> {
+	for operator_id in flow.topological_order() {
+		let Some(node) = flow.get_operator(operator_id) else {
+			continue;
+		};
+		let OperatorDef::Apply {
+			operator,
+			with,
+			..
+		} = &node.ty
+		else {
+			continue;
+		};
+		let Some(class) = operators.get(operator).and_then(|info| info.class) else {
+			continue;
+		};
+		match class {
+			OperatorClass::Nostate => {
+				if with != &ApplyWith::default() {
+					return Err(error!(flow_operator_with_not_accepted()));
+				}
+			}
+			OperatorClass::Managed => {
+				if with.lateness_duration()?.is_none_or(|lateness| lateness.is_zero()) {
+					return Err(error!(flow_operator_lateness_required()));
+				}
+			}
+			OperatorClass::Unmanaged | OperatorClass::Windowed => {}
+		}
+	}
+	Ok(())
+}
+
 pub(crate) fn create_deferred_view_flow(
 	catalog: &Catalog,
 	routines: &Routines,
@@ -279,5 +316,6 @@ pub(crate) fn create_deferred_view_flow(
 	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow.id)?;
 	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
 	check_join_retention_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
-	check_managed_time_requirements(catalog, &mut Transaction::Admin(txn), &dag, operators)
+	check_managed_time_requirements(catalog, &mut Transaction::Admin(txn), &dag, operators)?;
+	check_operator_with_requirements(&dag, operators)
 }
