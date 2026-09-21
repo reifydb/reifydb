@@ -133,13 +133,6 @@ pub enum RqlError {
 		window_value: String,
 	},
 
-	#[error("Pane must not be wider than immutable")]
-	WindowPaneWiderThanImmutable {
-		fragment: Fragment,
-		pane_value: String,
-		immutable_value: String,
-	},
-
 	#[error("UPDATE requires an assignments block")]
 	UpdateMissingAssignmentsBlock {
 		fragment: Fragment,
@@ -683,25 +676,6 @@ impl IntoDiagnostic for RqlError {
 					"Lateness already bounds the window, so an immutable at or beyond it promises nothing".to_string(),
 					"Immutable is how long a row may still be updated or deleted, lateness is how long a late insert is still accepted".to_string(),
 					"Example: WINDOW TUMBLING { count(*) } WITH { duration: 1h, lateness: 20s, immutable: 15s }".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
-
-			RqlError::WindowPaneWiderThanImmutable { fragment, pane_value, immutable_value } => Diagnostic {
-				code: "WINDOW_011".to_string(),
-				rql: None,
-				message: format!("Pane ({}) must not be wider than immutable ({})", pane_value, immutable_value),
-				column: None,
-				fragment,
-				label: Some("pane too wide".to_string()),
-				help: Some(
-					"Reduce pane to at most the immutable span, or raise immutable to at least the pane".to_string(),
-				),
-				notes: vec![
-					"A pane folds every row it holds into one partial value, so a row inside it can no longer be taken back out".to_string(),
-					"Rows younger than immutable may still be updated or deleted, so a pane wider than immutable would merge rows that can still change".to_string(),
-					"Example: apply op { } with { window: rolling, duration: 1h, pane: 1s, immutable: 5s }".to_string(),
 				],
 				cause: None,
 				operator_chain: None,

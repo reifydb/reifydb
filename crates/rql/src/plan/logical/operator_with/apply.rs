@@ -37,6 +37,7 @@ impl<'bump> Compiler<'bump> {
 		let mut window_kind: Option<AstWindowKind> = None;
 		let mut parsed = ParsedConfig::default();
 		let mut size_keys_seen: Vec<(&'static str, Fragment)> = Vec::new();
+		let mut immutable_key: Option<Fragment> = None;
 
 		for entry in entries(with) {
 			match entry.key.word() {
@@ -119,7 +120,10 @@ impl<'bump> Compiler<'bump> {
 					size_keys_seen.push(("pane", entry.key.fragment()));
 				}
 				Some("lateness") => lateness = Some(declared_span(literal(entry)?, "'lateness'")?),
-				Some("immutable") => immutable = declared_immutable(entry)?,
+				Some("immutable") => {
+					immutable_key = Some(entry.key.fragment());
+					immutable = declared_immutable(entry)?;
+				}
 				_ => return Err(unknown_key(entry, APPLY_WITH_KEYS)),
 			}
 		}
@@ -171,6 +175,15 @@ impl<'bump> Compiler<'bump> {
 						.into());
 					}
 				}
+				if matches!(ast_kind, AstWindowKind::Rolling)
+					&& let Some(fragment) = &immutable_key
+				{
+					return Err(AstError::UnexpectedToken {
+						expected: format!("a key the {} window reads", kind_name),
+						fragment: fragment.clone(),
+					}
+					.into());
+				}
 
 				let kind = Self::build_window_kind(ast_kind, &parsed)?;
 
@@ -190,18 +203,6 @@ impl<'bump> Compiler<'bump> {
 					return Err(AstError::UnexpectedToken {
 						expected: "lateness in the unit of the window size".to_string(),
 						fragment: immutable.fragment.clone(),
-					}
-					.into());
-				}
-
-				if let Some(pane) = &parsed.pane
-					&& let Some(immutable) = &immutable && let WithSpan::Duration(immutable_duration) =
-					immutable.value && pane.value > immutable_duration
-				{
-					return Err(RqlError::WindowPaneWiderThanImmutable {
-						pane_value: pane.fragment.text().to_string(),
-						immutable_value: immutable.fragment.text().to_string(),
-						fragment: pane.fragment.clone(),
 					}
 					.into());
 				}
@@ -255,7 +256,7 @@ fn window_reads(kind: AstWindowKind, key: &str) -> bool {
 	match kind {
 		AstWindowKind::Tumbling => matches!(key, "duration" | "slots"),
 		AstWindowKind::Sliding => matches!(key, "duration" | "slots" | "slide"),
-		AstWindowKind::Rolling => matches!(key, "duration" | "slots" | "lag" | "pane"),
+		AstWindowKind::Rolling => matches!(key, "duration" | "slots" | "pane"),
 		AstWindowKind::Session => matches!(key, "gap"),
 	}
 }
@@ -560,19 +561,20 @@ mod tests {
 
 	#[test]
 	fn pane_wider_than_immutable_fails() {
-		// A wider pane folds rows that can still be retracted and loses their retractions.
+		// No rolling driver reads immutable, so accepting it leaves a setting that silently does nothing.
 		let err = apply_with("apply op { } with { window: rolling, duration: 1h, pane: 10s, immutable: 1s }")
 			.expect_err("must be rejected")
 			.to_string();
-		assert!(err.contains("must not be wider than immutable"), "got: {err}");
+		assert!(err.contains("expected a key the rolling window reads, got immutable"), "got: {err}");
 	}
 
 	#[test]
-	fn pane_equal_to_immutable_parses() {
-		// Only a wider pane loses retractions; equal must stay allowed.
-		assert!(apply_with("apply op { } with { window: rolling, duration: 1h, pane: 1s, immutable: 1s }")
-			.is_ok());
-		assert!(apply_with("apply op { } with { window: rolling, duration: 1h, pane: 1s, immutable: 5s }")
-			.is_ok());
+	fn lag_on_a_rolling_window_fails() {
+		// No rolling driver shifts its output by lag, so accepting it leaves a setting that silently does
+		// nothing.
+		let err = apply_with("apply op { } with { window: rolling, duration: 1h, pane: 1s, lag: 30s }")
+			.expect_err("must be rejected")
+			.to_string();
+		assert!(err.contains("expected a key the rolling window reads, got lag"), "got: {err}");
 	}
 }
