@@ -195,7 +195,11 @@ impl FlowSupervisor {
 			};
 			self.reject_transactional_flow(&flow);
 			state.analyzer.add(flow.clone());
-			let seed = operators.checkpoint_get(flow_id).ok().flatten().unwrap_or(migration_base);
+			let seed = match operators.checkpoint_get(flow_id) {
+				Ok(Some(version)) => version,
+				Ok(None) => migration_base,
+				Err(err) => panic!("flow {} checkpoint unreadable at bootstrap: {err}", flow_id.0),
+			};
 			seeds.push((flow_id, seed));
 			to_spawn.push((flow, seed));
 		}
