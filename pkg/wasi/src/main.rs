@@ -300,11 +300,7 @@ fn main() {
 				match b.engine.command_as(IdentityId::root(), rql, Params::None).check() {
 					Ok(result) => {
 						let mut output = String::new();
-						for mut frame in result.frames {
-							if matches!(b.profile, BridgeProfile::Testing) {
-								frame.system.set_created_at(Vec::new());
-								frame.system.set_updated_at(Vec::new());
-							}
+						for frame in result.frames {
 							let _ = writeln!(output, "{}", frame);
 						}
 						respond(&json!({"ok": output}));
@@ -323,11 +319,7 @@ fn main() {
 				match b.engine.admin_as(IdentityId::root(), rql, Params::None).check() {
 					Ok(result) => {
 						let mut output = String::new();
-						for mut frame in result.frames {
-							if matches!(b.profile, BridgeProfile::Testing) {
-								frame.system.set_created_at(Vec::new());
-								frame.system.set_updated_at(Vec::new());
-							}
+						for frame in result.frames {
 							let _ = writeln!(output, "{}", frame);
 						}
 						respond(&json!({"ok": output}));
@@ -346,11 +338,7 @@ fn main() {
 				match b.engine.query_as(IdentityId::root(), rql, Params::None).check() {
 					Ok(result) => {
 						let mut output = String::new();
-						for mut frame in result.frames {
-							if matches!(b.profile, BridgeProfile::Testing) {
-								frame.system.set_created_at(Vec::new());
-								frame.system.set_updated_at(Vec::new());
-							}
+						for frame in result.frames {
 							let _ = writeln!(output, "{}", frame);
 						}
 						respond(&json!({"ok": output}));
