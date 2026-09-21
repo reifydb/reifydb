@@ -29,6 +29,7 @@ uuid = { workspace = true }
 num-bigint = { workspace = true, features = ["serde"] }
 bigdecimal = { workspace = true, features = ["serde"] }
 num-traits = { workspace = true }
+arrow-buffer = { workspace = true }
 libm = { workspace = true }
 
 [dev-dependencies]

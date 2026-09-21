@@ -1,3 +1,41 @@
+# Release 0.5.1 (2026-07-04)
+
+- [Fixed a regression in the B-Z division algorithm.][348]
+
+[348]: https://github.com/rust-num/num-bigint/pull/338
+
+**Contributors**: @cuviper
+
+# Release 0.5.0 (2026-07-02)
+
+- [Upgrade to `rand` v0.10 and/or v0.9, and split `rand_core`][338].
+  - The former `rand` feature is now split into multiple features, `rand_0_9`,
+    `rand_core_0_9`, `rand_0_10`, and `rand_core_0_10`, depending on the
+    version and feature set you need.
+  - The `RandBigInt` extension trait is now split into `BigRng09` and
+    `BigRng010` for each version.
+  - The `gen_*` methods are deprecated in favor of new `random_*` methods.
+  - This is also a [value-breaking] release, as `rand` defines it.
+
+[338]: https://github.com/rust-num/num-bigint/pull/338
+[value-breaking]: https://rust-random.github.io/book/crate-reprod.html#api-breaking-value-breaking-and-semver
+
+**Contributors**: @bionicles, @cuviper, @divergentdave
+
+# Release 0.4.7 (2026-07-02)
+
+- [Inline single-digit values.][307] This reduces heap allocations, and
+  also enables `const ONE`, `const NEG_ONE`, and `const fn new_const`.
+- [Use divide and conquer in `to_radix_digits`,][316] also implementing
+  the Burnikel-Ziegler algorithm to speed up large divisions in general.
+- [Implement `LowerBounded` for `BigUint`.][330]
+
+[307]: https://github.com/rust-num/num-bigint/pull/307
+[316]: https://github.com/rust-num/num-bigint/pull/316
+[330]: https://github.com/rust-num/num-bigint/pull/330
+
+**Contributors**: @cp289, @cuviper, @hkalbasi, @mikem8891, @pRizz, @tyilo, @xtqqczze
+
 # Release 0.4.6 (2024-06-27)
 
 - [Fixed compilation on `x86_64-unknown-linux-gnux32`.][312]
