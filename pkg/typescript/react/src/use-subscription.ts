@@ -1,32 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {useEffect} from 'react';
-import type {InferShape, ShapeNode} from '@reifydb/core';
-import type {SubscriptionConfig} from '@reifydb/client';
+import type {ShapeNode} from '@reifydb/core';
 import {entryKey} from '@reifydb/store';
-import type {Entry} from '@reifydb/store';
+import type {Entry, ReadSpec, SpecData} from '@reifydb/store';
 import {useStore} from './provider';
 import {useEntry} from './use-entry';
 
 export interface UseSubscriptionOptions {
-    config?: SubscriptionConfig;
     enabled?: boolean;
 }
 
-export function useSubscription<S extends ShapeNode>(
-    rql: string,
-    params: any,
-    shape: S,
+export function useSubscription<S extends ShapeNode, P extends object | null>(
+    spec: ReadSpec<S, P>,
+    params: NoInfer<P>,
     options: UseSubscriptionOptions = {}
-): Entry<InferShape<S>> {
+): Entry<SpecData<ReadSpec<S, P>>> {
     const store = useStore();
-    const {config, enabled = true} = options;
-    const key = entryKey(rql, params, shape);
+    const {enabled = true} = options;
+    const key = entryKey(spec.rql, params, spec.shape);
     useEffect(() => {
         if (!enabled) {
             return;
         }
-        return store.subscribe(rql, params, shape, config);
+        return store.subscribe(spec, params);
     }, [store, key, enabled]);
-    return useEntry(store, rql, params, shape) as Entry<InferShape<S>>;
+    return useEntry(store, spec, params);
 }

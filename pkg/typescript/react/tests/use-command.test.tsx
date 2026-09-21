@@ -4,26 +4,25 @@ import {describe, expect, it} from 'vitest';
 import {act, renderHook} from '@testing-library/react';
 import {Shape} from '@reifydb/core';
 import type {FrameResults} from '@reifydb/core';
-import {useCommand} from '../src';
+import {rql, useCommand} from '../src';
 import {setup} from './support';
 
 const shape = Shape.object({id: Shape.int4()});
-const shapes = [shape] as const;
-const rql = "insert test::items [{ id: 1 }]";
+const insert = rql.write([shape])`insert test::items [{ id: 1 }]`;
 
 describe('useCommand', () => {
     it('isPending is true while the promise is open and false after', async () => {
         const {client, wrapper} = setup();
-        const {result} = renderHook(() => useCommand(shapes), {wrapper});
+        const {result} = renderHook(() => useCommand(insert), {wrapper});
         expect(result.current.isPending).toBe(false);
         let promise!: Promise<unknown>;
         act(() => {
-            promise = result.current.run(rql);
+            promise = result.current.run(null);
         });
         expect(result.current.isPending).toBe(true);
-        expect(client.commands[0].rql).toBe(rql);
+        expect(client.commands[0].rql).toBe(insert.rql);
         expect(client.commands[0].params).toBeNull();
-        expect(client.commands[0].shapes).toBe(shapes);
+        expect(client.commands[0].shapes).toBe(insert.shape);
         await act(async () => {
             client.commands[0].resolve([[]]);
             await promise;
@@ -33,12 +32,12 @@ describe('useCommand', () => {
 
     it('two overlapping runs keep isPending true until the last one settles', async () => {
         const {client, wrapper} = setup();
-        const {result} = renderHook(() => useCommand(shapes), {wrapper});
+        const {result} = renderHook(() => useCommand(insert), {wrapper});
         let first!: Promise<unknown>;
         let second!: Promise<unknown>;
         act(() => {
-            first = result.current.run(rql);
-            second = result.current.run(rql, {n: 2});
+            first = result.current.run(null);
+            second = result.current.run(null);
         });
         expect(result.current.isPending).toBe(true);
         await act(async () => {
@@ -55,11 +54,11 @@ describe('useCommand', () => {
 
     it('a rejection sets error and the next successful run clears it', async () => {
         const {client, wrapper} = setup();
-        const {result} = renderHook(() => useCommand(shapes), {wrapper});
+        const {result} = renderHook(() => useCommand(insert), {wrapper});
         const error = new Error('denied');
         let failing!: Promise<unknown>;
         act(() => {
-            failing = result.current.run(rql);
+            failing = result.current.run(null);
         });
         await act(async () => {
             client.commands[0].reject(error);
@@ -69,7 +68,7 @@ describe('useCommand', () => {
         expect(result.current.isPending).toBe(false);
         let succeeding!: Promise<unknown>;
         act(() => {
-            succeeding = result.current.run(rql);
+            succeeding = result.current.run(null);
         });
         await act(async () => {
             client.commands[1].resolve([[]]);
@@ -80,10 +79,10 @@ describe('useCommand', () => {
 
     it('the resolved value is the tuple typed by the shapes', async () => {
         const {client, wrapper} = setup();
-        const {result} = renderHook(() => useCommand(shapes), {wrapper});
-        let promise!: Promise<FrameResults<typeof shapes>>;
+        const {result} = renderHook(() => useCommand(insert), {wrapper});
+        let promise!: Promise<FrameResults<typeof insert.shape>>;
         act(() => {
-            promise = result.current.run(rql);
+            promise = result.current.run(null);
         });
         client.commands[0].resolve([[{id: 1}]]);
         const [rows] = await act(() => promise);
