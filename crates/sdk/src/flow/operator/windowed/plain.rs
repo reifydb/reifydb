@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_core::{
+	common::WindowRequirements,
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::{HeapSize, OperatorSample},
@@ -470,6 +471,17 @@ where
 {
 	type Class = Windowed;
 
+	const WINDOW: WindowRequirements = WindowRequirements {
+		takes_window: true,
+		kinds: if <A::Kinds as KindSet<A>>::ROLLING {
+			&["tumbling", "rolling"]
+		} else {
+			&["tumbling"]
+		},
+		domain: <A::Coord as SealDomain>::SIZE_DOMAIN,
+		needs_pane: false,
+	};
+
 	fn sample(&self) -> Option<OperatorSample> {
 		None
 	}
@@ -570,7 +582,7 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
-		common::{WindowKind, WindowSize},
+		common::{WindowKind, WindowSize, WindowSizeDomain},
 		operator_with::WithSpan,
 	};
 	use reifydb_flow::window::{
@@ -774,5 +786,26 @@ mod tests {
 
 		assert!(PlainDriver::<TimeProbe>::create(OperatorId(1), &params(), &rolling).is_err());
 		assert!(PlainDriver::<TimeProbe>::create(OperatorId(1), &params(), &ApplyWith::default()).is_err());
+	}
+
+	#[test]
+	fn a_plain_operator_with_no_rolling_kinds_publishes_tumbling_only() {
+		// a NoRolling operator that published rolling would let a rolling view past the create check
+		assert_eq!(
+			<PlainDriver<TimeProbe> as MountedOperator>::WINDOW,
+			WindowRequirements {
+				takes_window: true,
+				kinds: &["tumbling"],
+				domain: WindowSizeDomain::Time,
+				needs_pane: false,
+			}
+		);
+	}
+
+	#[test]
+	fn a_slot_coordinate_operator_publishes_slots_and_a_time_one_publishes_time() {
+		// a wrong domain makes the create check read the window size in the wrong unit
+		assert_eq!(<PlainDriver<SlotProbe> as MountedOperator>::WINDOW.domain, WindowSizeDomain::Slots);
+		assert_eq!(<PlainDriver<TimeProbe> as MountedOperator>::WINDOW.domain, WindowSizeDomain::Time);
 	}
 }

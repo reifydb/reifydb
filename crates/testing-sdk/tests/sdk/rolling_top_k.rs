@@ -5,7 +5,7 @@ use std::{cmp::Ordering, collections::BTreeMap};
 
 use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::{WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
@@ -18,7 +18,7 @@ use reifydb_flow::window::{
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
-		OperatorMetadata,
+		MountedOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
 		extern_c::binding::operator::ExternCOperatorAdapter,
@@ -431,4 +431,18 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 		panic!("create must refuse an unsupported window kind");
 	};
 	assert!(err.to_string().contains("FLOW_066"), "expected FLOW_066, got: {err}");
+}
+
+#[test]
+fn a_top_k_operator_publishes_rolling_only_and_needs_pane() {
+	// a top-k that hid its pane need would pass create and then fail every window at runtime
+	assert_eq!(
+		<TopKDriver<TestTopVolume> as MountedOperator>::WINDOW,
+		WindowRequirements {
+			takes_window: true,
+			kinds: &["rolling"],
+			domain: WindowSizeDomain::Time,
+			needs_pane: true,
+		}
+	);
 }

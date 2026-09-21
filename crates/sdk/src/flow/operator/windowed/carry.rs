@@ -8,6 +8,7 @@ use reifydb_codec::{
 	row::operator::state::StateCodec,
 };
 use reifydb_core::{
+	common::WindowRequirements,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
@@ -282,6 +283,13 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	type Class = Windowed;
+
+	const WINDOW: WindowRequirements = WindowRequirements {
+		takes_window: true,
+		kinds: &["tumbling"],
+		domain: <A::Coord as SealDomain>::SIZE_DOMAIN,
+		needs_pane: false,
+	};
 
 	fn sample(&self) -> Option<OperatorSample> {
 		None

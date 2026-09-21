@@ -5,6 +5,7 @@ use std::fmt::Debug;
 
 use reifydb_codec::key::encoded::EncodedKeyBuilder;
 use reifydb_core::{
+	common::WindowSizeDomain,
 	error::CoreError,
 	metrics::heap::HeapSize,
 	operator_with::ApplyWith,
@@ -160,6 +161,8 @@ impl Coord for OrdinalCoord {
 
 impl SealDomain for OrdinalCoord {
 	type SealSpan = RowSpan;
+
+	const SIZE_DOMAIN: WindowSizeDomain = WindowSizeDomain::Slots;
 
 	fn arms_timer() -> bool {
 		false

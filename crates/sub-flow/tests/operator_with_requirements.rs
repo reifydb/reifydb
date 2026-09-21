@@ -3,6 +3,7 @@
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::{
+	common::{WindowRequirements, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	operator_with::ApplyWith,
 };
@@ -10,7 +11,8 @@ use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	flow::operator::{
-		ManagedOperator, NostateOperator, OperatorMetadata, UnmanagedOperator,
+		ManagedMount, ManagedOperator, MountedOperator, NostateMount, NostateOperator, OperatorMetadata,
+		UnmanagedMount, UnmanagedOperator,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Managed, Nostate, Unmanaged},
 		view::ChangeView,
@@ -197,4 +199,18 @@ fn a_rejected_create_registers_no_flow() {
 		.sum();
 
 	assert_eq!(rows, 0, "a refused create must leave no flow row, found {rows}");
+}
+
+#[test]
+fn nostate_managed_and_unmanaged_operators_each_publish_takes_window_false() {
+	// a mount that claimed a window would let a view give it one at create, which the mount then refuses
+	let no_window = WindowRequirements {
+		takes_window: false,
+		kinds: &[],
+		domain: WindowSizeDomain::Time,
+		needs_pane: false,
+	};
+	assert_eq!(<NostateMount<NostateProbe> as MountedOperator>::WINDOW, no_window);
+	assert_eq!(<ManagedMount<ManagedProbe> as MountedOperator>::WINDOW, no_window);
+	assert_eq!(<UnmanagedMount<UnmanagedProbe> as MountedOperator>::WINDOW, no_window);
 }

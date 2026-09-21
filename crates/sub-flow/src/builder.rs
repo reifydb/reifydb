@@ -6,7 +6,9 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_core::interface::flow::to_bitmask;
 use reifydb_core::{
-	common::OperatorClass, event::operator::OperatorColumn, interface::catalog::flow::OperatorId,
+	common::{OperatorClass, WindowRequirements},
+	event::operator::OperatorColumn,
+	interface::catalog::flow::OperatorId,
 	operator_with::ApplyWith,
 };
 use reifydb_flow::operator::BoxedHostOperator;
@@ -37,6 +39,7 @@ pub struct CustomOperatorEntry {
 	pub input: Vec<OperatorColumn>,
 	pub output: Vec<OperatorColumn>,
 	pub class: OperatorClass,
+	pub window: WindowRequirements,
 }
 
 #[derive(Clone, Default)]
@@ -147,6 +150,7 @@ impl FlowConfigurator {
 				input: describe_columns(<M as OperatorMetadata>::INPUT_COLUMNS),
 				output: describe_columns(<M as OperatorMetadata>::OUTPUT_COLUMNS),
 				class: <M::Class as ClassValue>::CLASS,
+				window: <M as MountedOperator>::WINDOW,
 			},
 		);
 		self

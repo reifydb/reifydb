@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::{WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
@@ -16,7 +16,7 @@ use reifydb_flow::window::{
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
-		OperatorMetadata,
+		MountedOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
 		extern_c::binding::operator::ExternCOperatorAdapter,
@@ -418,4 +418,18 @@ fn create_without_a_window_reports_flow_065() {
 		panic!("create must refuse a missing window");
 	};
 	assert!(err.to_string().contains("FLOW_065"), "expected FLOW_065, got: {err}");
+}
+
+#[test]
+fn a_plain_operator_with_all_kinds_publishes_tumbling_and_rolling() {
+	// an AllKinds operator that hid rolling would have every rolling view refused at create
+	assert_eq!(
+		<PlainDriver<TestRollingSum> as MountedOperator>::WINDOW,
+		WindowRequirements {
+			takes_window: true,
+			kinds: &["tumbling", "rolling"],
+			domain: WindowSizeDomain::Time,
+			needs_pane: false,
+		}
+	);
 }

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::{WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
@@ -18,7 +18,7 @@ use reifydb_flow::{
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
-		OperatorMetadata,
+		MountedOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
 		extern_c::binding::operator::ExternCOperatorAdapter,
@@ -235,4 +235,18 @@ fn a_seal_frees_every_window_of_a_stopped_carry_group_that_declared_no_immutable
 	let (short_after, long_after) = (short.snapshot_state().len(), long.snapshot_state().len());
 	assert_eq!(long_after, short_after, "a sealed group must leave the same state however many windows it crossed");
 	assert!(long_after * 10 < before, "the seal must free the windows: {before} rows before, {long_after} after");
+}
+
+#[test]
+fn a_carry_operator_publishes_tumbling_only() {
+	// a carry operator that published rolling would admit views it cannot run
+	assert_eq!(
+		<CarryDriver<Probe> as MountedOperator>::WINDOW,
+		WindowRequirements {
+			takes_window: true,
+			kinds: &["tumbling"],
+			domain: WindowSizeDomain::Time,
+			needs_pane: false,
+		}
+	);
 }

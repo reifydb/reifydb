@@ -14,6 +14,7 @@ pub mod view_column;
 pub mod windowed;
 
 use reifydb_core::{
+	common::{WindowRequirements, WindowSizeDomain},
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
@@ -86,6 +87,8 @@ pub trait NostateOperator: OperatorMetadata + Send + Sync + Sized {
 pub trait MountedOperator: Send + Sync + Sized {
 	type Class: ClassValue;
 
+	const WINDOW: WindowRequirements;
+
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
 
 	fn apply(&mut self, ctx: &mut impl GuestContext<Self::Class>, change: impl ChangeView) -> Result<()>;
@@ -118,6 +121,13 @@ impl<T: OperatorMetadata> OperatorMetadata for ManagedMount<T> {
 
 impl<T: ManagedOperator> MountedOperator for ManagedMount<T> {
 	type Class = Managed;
+
+	const WINDOW: WindowRequirements = WindowRequirements {
+		takes_window: false,
+		kinds: &[],
+		domain: WindowSizeDomain::Time,
+		needs_pane: false,
+	};
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
 		with.reject_window()?;
@@ -160,6 +170,13 @@ impl<T: OperatorMetadata> OperatorMetadata for UnmanagedMount<T> {
 impl<T: UnmanagedOperator> MountedOperator for UnmanagedMount<T> {
 	type Class = Unmanaged;
 
+	const WINDOW: WindowRequirements = WindowRequirements {
+		takes_window: false,
+		kinds: &[],
+		domain: WindowSizeDomain::Time,
+		needs_pane: false,
+	};
+
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
 		Ok(Self(T::create(operator_id, params, with)?))
 	}
@@ -196,6 +213,13 @@ impl<T: OperatorMetadata> OperatorMetadata for NostateMount<T> {
 
 impl<T: NostateOperator> MountedOperator for NostateMount<T> {
 	type Class = Nostate;
+
+	const WINDOW: WindowRequirements = WindowRequirements {
+		takes_window: false,
+		kinds: &[],
+		domain: WindowSizeDomain::Time,
+		needs_pane: false,
+	};
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
 		if *with != ApplyWith::default() {

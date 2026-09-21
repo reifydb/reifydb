@@ -61,6 +61,7 @@ pub fn load_extern_c_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()
 			convert_columns(&info.output_columns),
 			info.capabilities,
 			None,
+			None,
 		);
 
 		event_bus.emit(event);

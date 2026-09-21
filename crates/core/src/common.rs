@@ -205,6 +205,20 @@ pub enum OperatorClass {
 	Windowed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowSizeDomain {
+	Time,
+	Slots,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WindowRequirements {
+	pub takes_window: bool,
+	pub kinds: &'static [&'static str],
+	pub domain: WindowSizeDomain,
+	pub needs_pane: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TimeSource {
 	None,

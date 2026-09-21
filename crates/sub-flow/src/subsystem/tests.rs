@@ -10,7 +10,7 @@ use std::{
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::{
-	common::OperatorClass,
+	common::{OperatorClass, WindowRequirements, WindowSizeDomain},
 	interface::{
 		catalog::flow::OperatorId,
 		change::Change,
@@ -69,6 +69,12 @@ impl SubsystemFactory for FlowWithAPanickingOperator {
 			input: Vec::new(),
 			output: Vec::new(),
 			class: OperatorClass::Unmanaged,
+			window: WindowRequirements {
+				takes_window: false,
+				kinds: &[],
+				domain: WindowSizeDomain::Time,
+				needs_pane: false,
+			},
 		};
 		let config = FlowConfig {
 			operators_dir: None,

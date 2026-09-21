@@ -2258,7 +2258,7 @@ mod tick_failures {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		actors::pending::Pending,
-		common::OperatorClass,
+		common::{OperatorClass, WindowRequirements, WindowSizeDomain},
 		interface::{
 			catalog::{flow::OperatorId, id::ViewId},
 			change::Change,
@@ -2442,6 +2442,12 @@ mod tick_failures {
 				input: Vec::new(),
 				output: Vec::new(),
 				class: OperatorClass::Unmanaged,
+				window: WindowRequirements {
+					takes_window: false,
+					kinds: &[],
+					domain: WindowSizeDomain::Time,
+					needs_pane: false,
+				},
 			},
 		);
 		map.insert(
@@ -2460,6 +2466,12 @@ mod tick_failures {
 				input: Vec::new(),
 				output: Vec::new(),
 				class: OperatorClass::Unmanaged,
+				window: WindowRequirements {
+					takes_window: false,
+					kinds: &[],
+					domain: WindowSizeDomain::Time,
+					needs_pane: false,
+				},
 			},
 		);
 		CustomOperators::new(map)

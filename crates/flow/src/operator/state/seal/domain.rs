@@ -5,7 +5,7 @@ use std::fmt::Debug;
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::{WindowKind, WindowSize, WindowSizeDomain},
 	error::CoreError,
 	operator_with::{ApplyWith, WindowSealing},
 	state::timer::{StateStore, TimerKind, TimerStore},
@@ -27,6 +27,8 @@ use crate::{
 pub trait SealDomain: Coord {
 	type SealSpan: Copy + Debug + Send + Sync;
 
+	const SIZE_DOMAIN: WindowSizeDomain;
+
 	fn arms_timer() -> bool;
 
 	fn seal_span_of(with: &ApplyWith) -> Result<Option<Self::SealSpan>>;
@@ -42,6 +44,8 @@ pub trait SealDomain: Coord {
 
 impl SealDomain for DateTime {
 	type SealSpan = Duration;
+
+	const SIZE_DOMAIN: WindowSizeDomain = WindowSizeDomain::Time;
 
 	fn arms_timer() -> bool {
 		true

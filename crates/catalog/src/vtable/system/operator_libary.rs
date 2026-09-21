@@ -4,7 +4,7 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use reifydb_core::{
-	common::OperatorClass,
+	common::{OperatorClass, WindowRequirements},
 	event::{EventListener, operator::OperatorLoadedEvent},
 };
 use reifydb_runtime::sync::rwlock::RwLock;
@@ -26,6 +26,7 @@ pub struct OperatorLibraryInfo {
 	pub input_columns: Vec<OperatorLibraryColumnInfo>,
 	pub output_columns: Vec<OperatorLibraryColumnInfo>,
 	pub class: Option<OperatorClass>,
+	pub window: Option<WindowRequirements>,
 }
 
 #[derive(Clone)]
@@ -97,6 +98,7 @@ impl EventListener<OperatorLoadedEvent> for OperatorLibraryEventListener {
 				})
 				.collect(),
 			class: *event.class(),
+			window: *event.window(),
 		});
 	}
 }
