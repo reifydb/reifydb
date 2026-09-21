@@ -471,7 +471,7 @@ fn a_row_older_than_the_seal_horizon_is_dropped_and_a_recent_one_is_kept() {
 	let mut h = harness!(TopVolume, rolling(3, Some(1), 10)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 7, 1.0)).build()).expect("apply");
 	let kept = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 98, 8, 2.0)).build()).expect("apply");
-	h.advance_watermark(DateTime::from_millis(200)).expect("watermark");
+	h.advance_watermark(DateTime::from_millis(110)).expect("watermark");
 
 	let dropped = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 50, 9, 4.0)).build()).expect("apply");
 

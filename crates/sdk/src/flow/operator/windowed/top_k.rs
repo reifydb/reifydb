@@ -167,13 +167,19 @@ where
 {
 	fn expire_through<C: GuestContext>(
 		engine: &mut TopKEngine<A>,
+		settings: &WindowSettings<A::Coord>,
 		store: &mut GuestAsHost<'_, C>,
 		horizon: A::Coord,
-	) -> Result<()> {
+	) -> Result<Vec<(RowNumber, Rw<A>)>> {
 		if horizon > <A::Coord as Coord>::from_order(0) {
 			engine.expire_meta(store, horizon.to_order())?;
 		}
-		Ok(())
+		if horizon < <A::Coord as Coord>::from_order(0).add_span(settings.size) {
+			return Ok(Vec::new());
+		}
+		Ok(engine.expire_dead(store, horizon.saturating_sub_span(settings.size), |group, secondary| {
+			Self::row_key(group, secondary)
+		})?)
 	}
 
 	fn combine(
@@ -294,7 +300,11 @@ where
 			return Ok(());
 		};
 		let horizon = <A::Coord as SealDomain>::horizon(frontier, seal_span);
-		Self::expire_through(&mut self.engine, &mut store, horizon)
+		let before = self.engine.earliest_expiry(&mut store)?;
+		let removes = Self::expire_through(&mut self.engine, &self.settings, &mut store, horizon)?;
+		let after = self.engine.earliest_expiry(&mut store)?;
+		<A::Coord as SealDomain>::rearm_dead(&mut store, self.settings.size, seal_span, before, after)?;
+		Self::emit_three_batches(ctx, &[], &[], &removes)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
@@ -304,6 +314,8 @@ where
 		}
 
 		let seal_span = self.seal_span;
+		let mut before: Option<u64> = None;
+		let mut removes: Vec<(RowNumber, Rw<A>)> = Vec::new();
 		if let Some(seal_span) = seal_span {
 			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, coord)| *coord).max();
@@ -312,7 +324,8 @@ where
 			}
 			let watermark = seal_frontier::<A::Coord>(&mut store)?;
 			let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
-			Self::expire_through(&mut self.engine, &mut store, horizon)?;
+			before = self.engine.earliest_expiry(&mut store)?;
+			removes = Self::expire_through(&mut self.engine, &self.settings, &mut store, horizon)?;
 			let mut dropped = 0u64;
 			buckets.retain(|(_, coord), events| {
 				if is_sealed(*coord, horizon) {
@@ -326,6 +339,15 @@ where
 				debug!(operator = A::NAME, dropped, "mutations targeting sealed panes were dropped");
 			}
 			if buckets.is_empty() {
+				let after = self.engine.earliest_expiry(&mut store)?;
+				<A::Coord as SealDomain>::rearm_dead(
+					&mut store,
+					self.settings.size,
+					seal_span,
+					before,
+					after,
+				)?;
+				Self::emit_three_batches(ctx, &[], &[], &removes)?;
 				return Ok(());
 			}
 		}
@@ -352,7 +374,6 @@ where
 
 		let mut inserts: Vec<(RowNumber, Rw<A>)> = Vec::new();
 		let mut updates: Vec<(RowNumber, Rw<A>, Rw<A>)> = Vec::new();
-		let mut removes: Vec<(RowNumber, Rw<A>)> = Vec::new();
 		for emit in emits {
 			match emit {
 				TopKEmit::Insert {
@@ -369,6 +390,11 @@ where
 					value,
 				} => removes.push((row_number, value)),
 			}
+		}
+		if let Some(seal_span) = seal_span {
+			let mut store = GuestAsHost(ctx);
+			let after = self.engine.earliest_expiry(&mut store)?;
+			<A::Coord as SealDomain>::rearm_dead(&mut store, self.settings.size, seal_span, before, after)?;
 		}
 		Self::emit_three_batches(ctx, &inserts, &updates, &removes)?;
 

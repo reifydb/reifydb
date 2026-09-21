@@ -10,6 +10,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
 	row::Row as CoreRow,
+	state::timer::TimerKind,
 };
 use reifydb_flow::window::{
 	accumulator::invertible::{keyed::KeyedInvertibleAccumulator, moments::Moments},
@@ -170,6 +171,18 @@ fn sealed_with() -> ApplyWith {
 			pane: Some(millis(1)),
 		}),
 		lateness: Some(WithSpan::Duration(millis(117))),
+		immutable: None,
+	}
+}
+
+fn dead_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Rolling {
+			size: WindowSize::Duration(millis(3)),
+			lag: None,
+			pane: Some(millis(1)),
+		}),
+		lateness: Some(WithSpan::Duration(millis(10))),
 		immutable: None,
 	}
 }
@@ -445,4 +458,56 @@ fn a_top_k_operator_publishes_rolling_only_and_needs_pane() {
 			needs_pane: true,
 		}
 	);
+}
+
+#[test]
+fn a_dead_top_k_group_removes_every_ranked_row_on_its_timer() {
+	// A dead group must remove every ranked row, otherwise the sink keeps a ranking nobody updates.
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
+		.with(dead_with())
+		.build()
+		.expect("harness");
+	h.apply(TestChangeBuilder::new()
+		.insert(input_row(1, "BTC", 100, 7, 10.0))
+		.insert(input_row(2, "BTC", 100, 8, 5.0))
+		.build())
+		.expect("apply");
+	let dead: Vec<(DateTime, TimerKind)> =
+		h.armed_timers().into_iter().filter(|t| t.key == b"rolling-dead").map(|t| (t.due, t.kind)).collect();
+	assert_eq!(dead, vec![(DateTime::from_millis(117), TimerKind::Seal)]);
+
+	let out = h
+		.on_timer(DateTime::from_millis(117), TimerKind::Seal, b"rolling-dead")
+		.expect("timer")
+		.expect("the dead group must emit");
+
+	let kinds: Vec<DiffType> = out.diffs.iter().map(|d| d.kind()).collect();
+	assert_eq!(kinds, vec![DiffType::Remove]);
+	let pre = out.diffs[0].pre().expect("pre");
+	let by_rank: BTreeMap<u32, (u64, f64)> = (0..pre.row_count())
+		.map(|i| {
+			let r = pre.row_ref(i).expect("row");
+			(r.u32("rank").unwrap(), (r.u64("trader").unwrap(), r.f64("volume").unwrap()))
+		})
+		.collect();
+	assert_eq!(by_rank, BTreeMap::from([(1, (7, 10.0)), (2, (8, 5.0))]));
+}
+
+#[test]
+fn a_top_k_group_revived_inside_its_window_keeps_its_old_panes() {
+	// A group must live one size past its horizon, otherwise a revived row loses the panes still in its window.
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<TestTopVolume>>>::new()
+		.with(dead_with())
+		.build()
+		.expect("harness");
+	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 7, 1.0)).build()).expect("apply");
+	h.advance_watermark(DateTime::from_millis(115)).expect("watermark");
+
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 102, 7, 2.0)).build()).expect("apply");
+
+	let kinds: Vec<DiffType> = out.diffs.iter().map(|d| d.kind()).collect();
+	assert_eq!(kinds, vec![DiffType::Update]);
+	let post = out.diffs[0].post().expect("post");
+	let r = post.row_ref(0).expect("row");
+	assert_eq!((post.row_count(), r.u64("trader").unwrap(), r.f64("volume").unwrap()), (1, 7, 3.0));
 }
