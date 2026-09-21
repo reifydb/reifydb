@@ -12,20 +12,33 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::operator::state::{OperatorState, StateCodec},
 };
-use reifydb_core::{key::operator::state::GroupId, metrics::heap::HeapSize, state::timer::StateStore};
+use reifydb_core::{
+	internal_err,
+	key::operator::{
+		keyspace::expiry::Expiry,
+		state::{GroupId, GroupStateKey},
+	},
+	metrics::heap::HeapSize,
+	state::timer::StateStore,
+};
+use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
 	operator::{
-		state::seal::coord::Coord,
+		state::{
+			expiry::{ExpiryIndex, expiry_drop, rolling_expiry_key},
+			seal::coord::Coord,
+		},
 		state_access::{get_classified, put, remove},
 	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, KeyspaceFamily, MetaSweep,
-			config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for, persist_batch_meta,
-			rolling::RollingBuckets,
+			config::WindowEngineConfig,
+			group_hash, load_batch_meta, meta_key_for, note_when_expiry_capped, persist_batch_meta,
+			rolling::{RollingBuckets, coord_max_key},
 		},
 		span::{Slot, SlotSpan},
 	},
@@ -51,6 +64,14 @@ pub enum TopKEmit<Output> {
 	},
 }
 
+#[operator_state]
+#[derive(Clone)]
+pub struct RollingTopKIndexEntry<G> {
+	group: G,
+	group_id: GroupId,
+	state_row_number: RowNumber,
+}
+
 type MetaLoaded<G, S> = HashMap<G, BatchMeta<S>>;
 type StateRows<G> = HashMap<G, (GroupId, RowNumber)>;
 
@@ -60,11 +81,14 @@ struct GroupSlot<S, Accumulator, SK, Output> {
 	buffer: RollingTopKBuffer<S, Accumulator>,
 	prior_emit: RollingTopKEmit<SK, Output>,
 	buffer_changed: bool,
+	prior_index_key: Option<u64>,
 }
 
 pub struct RollingTopKEngine<G, S, Accumulator, SK, Output> {
 	family: KeyspaceFamily,
 	meta_sweep: MetaSweep,
+	expire_batch: usize,
+	expiry: ExpiryIndex<Expiry>,
 	_pd: PhantomData<(G, S, Accumulator, SK, Output)>,
 }
 
@@ -87,12 +111,67 @@ where
 		Self {
 			family: config.family(),
 			meta_sweep: MetaSweep::default(),
+			expire_batch: config.expire_batch(),
+			expiry: ExpiryIndex::default(),
 			_pd: PhantomData,
 		}
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
 		self.meta_sweep.sweep::<GroupMeta<S>>(store, threshold)
+	}
+
+	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
+		self.expiry.earliest(store)
+	}
+
+	pub fn expire_dead<RKF>(
+		&mut self,
+		store: &mut dyn StateStore,
+		cutoff: S,
+		row_key: RKF,
+	) -> Result<Vec<(RowNumber, Output)>>
+	where
+		RKF: Fn(&G, &SK) -> EncodedKey,
+	{
+		let due: Vec<(GroupStateKey, RollingTopKIndexEntry<G>)> =
+			self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
+		note_when_expiry_capped(due.len(), self.expire_batch);
+
+		let mut out: Vec<(RowNumber, Output)> = Vec::new();
+		for (index_key, entry) in due {
+			let buffer_key = BufferKey::of_row(self.family, entry.group_id, entry.state_row_number);
+			let buffer: RollingTopKBuffer<S, Accumulator> = match get_classified::<
+				_,
+				RollingTopKBuffer<S, Accumulator>,
+			>(store, &buffer_key)?
+			{
+				Some(buffer) if !buffer.is_empty() => buffer,
+				_ => return internal_err!("a rolling top-k expiry row names a group with no buffer"),
+			};
+			if buffer.last_key_value().is_some_and(|(newest, _)| *newest > cutoff) {
+				return internal_err!("a rolling top-k expiry row lags its group's newest pane");
+			}
+			let emit_key = EmitKey::new(entry.group_id, entry.state_row_number);
+			if let Some(snapshot) = get_classified::<_, RollingTopKEmit<SK, Output>>(store, &emit_key)? {
+				let keys: Vec<EncodedKey> =
+					snapshot.keys().map(|sk| row_key(&entry.group, sk)).collect();
+				let rows = store.get_or_create_row_numbers(entry.group_id, &keys)?;
+				for ((_, value), (row_number, _)) in snapshot.into_iter().zip(rows) {
+					out.push((row_number, value));
+				}
+				for key in &keys {
+					store.remove_row_number(entry.group_id, key)?;
+				}
+			}
+			remove(store, &buffer_key)?;
+			remove(store, &emit_key)?;
+			store.remove_row_number_for_group(entry.group_id)?;
+			expiry_drop(store, &index_key)?;
+		}
+
+		self.expiry.settle(store)?;
+		Ok(out)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -272,6 +351,7 @@ where
 					let prior_emit: RollingTopKEmit<SK, Output> =
 						get_classified(store, &EmitKey::new(group_id, state_row_number))?
 							.unwrap_or_default();
+					let prior_index_key = coord_max_key(&buffer);
 					group_slots.insert(
 						group.clone(),
 						GroupSlot {
@@ -280,6 +360,7 @@ where
 							buffer,
 							prior_emit,
 							buffer_changed: false,
+							prior_index_key,
 						},
 					);
 					group_slots.get_mut(&group).expect("just inserted")
@@ -369,6 +450,23 @@ where
 			if !group_slot.buffer_changed {
 				continue;
 			}
+			let new_index_key = coord_max_key(&group_slot.buffer);
+			if new_index_key != group_slot.prior_index_key {
+				if let Some(old) = group_slot.prior_index_key {
+					expiry_drop(store, &rolling_expiry_key(old, group_hash(&group)?))?;
+				}
+				if let Some(new) = new_index_key {
+					self.expiry.set(
+						store,
+						rolling_expiry_key(new, group_hash(&group)?),
+						RollingTopKIndexEntry {
+							group: group.clone(),
+							group_id: group_slot.group_id,
+							state_row_number: group_slot.state_row_number,
+						},
+					)?;
+				}
+			}
 			let new_emit = combine(&group, &group_slot.buffer);
 
 			let new_keys: Vec<EncodedKey> = new_emit.keys().map(|sk| row_key(&group, sk)).collect();
@@ -422,6 +520,7 @@ where
 						group_slot.state_row_number,
 					),
 				)?;
+				store.remove_row_number_for_group(group_slot.group_id)?;
 			} else {
 				put(
 					store,
@@ -456,12 +555,12 @@ mod tests {
 	use reifydb_core::key::operator::state::GroupId;
 	use reifydb_value::{
 		factory::time::at_millis,
-		value::{datetime::DateTime, duration::Duration},
+		value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
 	};
 
 	use super::{RollingTopKBuffer, RollingTopKEmit, RollingTopKEngine, TopKEmit};
 	use crate::{
-		operator::state::mock::MockStore,
+		operator::state::{mock::MockStore, seal::coord::Coord},
 		window::{
 			accumulator::mock::SumAccumulator,
 			engine::{AccumulatorEvent, config::WindowEngineConfig, rolling::RollingBuckets},
@@ -730,14 +829,16 @@ mod tests {
 				};
 				buckets.entry((1u32, at_millis(slot))).or_default().push(ev);
 			}
-			let emits = engine.apply(
-				&mut store,
-				buckets,
-				Duration::from_milliseconds_const(WINDOW_MILLIS as i64),
-				state_key,
-				row_key,
-				combine,
-			).unwrap();
+			let emits = engine
+				.apply(
+					&mut store,
+					buckets,
+					Duration::from_milliseconds_const(WINDOW_MILLIS as i64),
+					state_key,
+					row_key,
+					combine,
+				)
+				.unwrap();
 			for e in &emits {
 				match e {
 					TopKEmit::Insert {
@@ -762,5 +863,139 @@ mod tests {
 			assert_eq!(visible, oracle, "visible ranking diverged from the oracle after round {round}");
 			slot_base += roll(10);
 		}
+	}
+
+	#[test]
+	fn span_keys_the_top_k_expiry_row_on_the_newest_pane() {
+		// A dead group is found by its newest pane, so the row must key there, never on the oldest.
+		let mut store = MockStore::default();
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
+		engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+
+		assert_eq!(
+			engine.earliest_expiry(&mut store).unwrap(),
+			Some(<DateTime as Coord>::to_order(at_millis(20)))
+		);
+		assert_eq!(store.index_entry_count(), 1);
+	}
+
+	#[test]
+	fn expire_dead_removes_every_ranked_row_and_frees_the_group() {
+		// Every ranked row must leave with its last value and free its mapping, otherwise a revived group
+		// reuses them.
+		let rank_panes =
+			|_: &u32, buffer: &RollingTopKBuffer<DateTime, SumAccumulator>| -> RollingTopKEmit<u32, i64> {
+				buffer.values().enumerate().map(|(rank, a)| (rank as u32, a.sum)).collect()
+			};
+		let mut store = MockStore::default();
+		let group = GroupId::of(&state_key(&1));
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
+		let published: Vec<(RowNumber, i64)> = engine
+			.apply(&mut store, buckets, window(), state_key, row_key, rank_panes)
+			.unwrap()
+			.into_iter()
+			.map(|emit| match emit {
+				TopKEmit::Insert {
+					row_number,
+					value,
+				} => (row_number, value),
+				_ => panic!("precondition: a first ranking only inserts"),
+			})
+			.collect();
+		assert_eq!(published.len(), 2);
+
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let out = engine.expire_dead(&mut store, at_millis(20), row_key).unwrap();
+
+		assert_eq!(out, published);
+		assert!(!store.contains_guest_row_mapping(group, &row_key(&1, &0)));
+		assert!(!store.contains_guest_row_mapping(group, &row_key(&1, &1)));
+		assert!(!store.contains_row_mapping(group));
+		assert_eq!(store.index_entry_count(), 0);
+		assert_eq!(store.buffer_entry_count(), 0);
+	}
+
+	#[test]
+	fn expire_dead_on_an_empty_ranking_frees_without_emitting() {
+		// A group that ranked nothing has no rows to remove, so it must be freed without an error.
+		let rank_nothing =
+			|_: &u32, _: &RollingTopKBuffer<DateTime, SumAccumulator>| RollingTopKEmit::<u32, i64>::new();
+		let mut store = MockStore::default();
+		let group = GroupId::of(&state_key(&1));
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		assert!(engine
+			.apply(&mut store, buckets, window(), state_key, row_key, rank_nothing)
+			.unwrap()
+			.is_empty());
+
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let out = engine.expire_dead(&mut store, at_millis(10), row_key).unwrap();
+
+		assert!(out.is_empty());
+		assert!(!store.contains_row_mapping(group));
+		assert_eq!(store.index_entry_count(), 0);
+		assert_eq!(store.buffer_entry_count(), 0);
+	}
+
+	#[test]
+	fn a_due_top_k_row_with_no_buffer_is_an_error() {
+		// A due row with no buffer is broken state and must fail loud, never be skipped.
+		let mut store = MockStore::default();
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+		store.drop_group_data_entries();
+
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let err = engine.expire_dead(&mut store, at_millis(10), row_key).unwrap_err();
+
+		assert!(err.to_string().contains("a rolling top-k expiry row names a group with no buffer"), "{err}");
+	}
+
+	#[test]
+	fn a_due_top_k_row_behind_its_newest_pane_is_an_error() {
+		// A row behind its newest pane means the index went stale; it must fail loud, never re-index.
+		let mut store = MockStore::default();
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let mut first: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		first.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		engine.apply(&mut store, first, window(), state_key, row_key, combine).unwrap();
+		store.drop_group_data_entries();
+		let mut later: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		later.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
+		engine.apply(&mut store, later, window(), state_key, row_key, combine).unwrap();
+
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let err = engine.expire_dead(&mut store, at_millis(10), row_key).unwrap_err();
+
+		assert!(err.to_string().contains("a rolling top-k expiry row lags its group's newest pane"), "{err}");
+	}
+
+	#[test]
+	fn a_withdrawn_ranking_frees_its_group_row_mapping() {
+		// Without freeing the group row mapping, an emptied group leaks it forever.
+		let mut store = MockStore::default();
+		let group = GroupId::of(&state_key(&1));
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
+		engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+		assert!(store.contains_row_mapping(group), "precondition: the group row is mapped while it ranks");
+
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
+		engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+
+		assert!(!store.contains_row_mapping(group));
+		assert_eq!(store.index_entry_count(), 0);
 	}
 }
