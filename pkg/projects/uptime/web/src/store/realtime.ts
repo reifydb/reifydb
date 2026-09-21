@@ -92,12 +92,15 @@ function byRegionId(a: MonitorRegion, b: MonitorRegion): number {
   return a.region_id < b.region_id ? -1 : 1
 }
 
-export function useLiveMonitors(): Monitor[] | null {
+export function useLiveMonitors(): { data: Monitor[] | null; error: Error | undefined } {
   const entry = useSubscription(monitors, null)
   return useMemo(() => {
-    if (entry.status !== 'ready') return null
-    return entry.data.map(toMonitor).sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
-  }, [entry.status, entry.data])
+    if (entry.status !== 'ready') return { data: null, error: entry.error }
+    return {
+      data: entry.data.map(toMonitor).sort((a, b) => (a.created_at < b.created_at ? 1 : -1)),
+      error: undefined,
+    }
+  }, [entry.status, entry.data, entry.error])
 }
 
 export function useLiveMonitor(id: string): { monitor: Monitor | undefined; ready: boolean; error: Error | undefined } {
