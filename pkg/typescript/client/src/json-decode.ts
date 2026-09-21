@@ -32,7 +32,7 @@ export function decodeJsonResponse(data: any, shapes?: readonly ShapeNode[]): an
     if (shapes && shapes.length > 0) {
         checkFrames(frames, shapes);
     }
-    return transformFrames(frames.map(frame => columnsToRows(frame.columns)), shapes ?? []);
+    return transformFrames(frames.map(frame => columnsToRows(frame.columns, frame.row_numbers)), shapes ?? []);
 }
 
 /**
@@ -59,5 +59,5 @@ export function jsonResponseToRows(data: any, shapes?: readonly ShapeNode[]): an
     if (shapes && shapes.length > 0) {
         checkFrames(frames, shapes);
     }
-    return frames.map(frame => columnsToRows(frame.columns));
+    return frames.map(frame => columnsToRows(frame.columns, frame.row_numbers));
 }

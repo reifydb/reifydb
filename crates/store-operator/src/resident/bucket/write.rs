@@ -223,6 +223,7 @@ pub struct StandardBucket<K: Keyspace> {
 	partitions: BTreeMap<GroupId, Partition<K>>,
 	bytes: ByteSize,
 	entries: usize,
+	tombstones: usize,
 	dirty: usize,
 	dirty_bytes: ByteSize,
 	dirty_groups: BTreeSet<GroupId>,
@@ -236,6 +237,7 @@ impl<K: Keyspace> StandardBucket<K> {
 			partitions: BTreeMap::new(),
 			bytes: ByteSize::ZERO,
 			entries: 0,
+			tombstones: 0,
 			dirty: 0,
 			dirty_bytes: ByteSize::ZERO,
 			dirty_groups: BTreeSet::new(),
@@ -257,6 +259,10 @@ impl<K: Keyspace> StandardBucket<K> {
 
 	pub fn len(&self) -> usize {
 		self.entries
+	}
+
+	pub fn tombstone_len(&self) -> usize {
+		self.tombstones
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -342,18 +348,19 @@ impl<K: Keyspace> StandardBucket<K> {
 		reverted
 	}
 
-	pub fn evict_clean(&mut self, bytes: &mut ByteSize, entries: &mut usize) -> (usize, ByteSize) {
+	pub fn evict_clean(&mut self, bytes: &mut ByteSize, tombstones: &mut usize) -> (usize, ByteSize) {
 		let mut evicted = 0usize;
+		let mut evicted_tombstones = 0usize;
 		let mut freed = ByteSize::ZERO;
 		let suffix_cost = Self::suffix_bytes();
 		let group_cost = Self::group_bytes();
 		self.partitions.retain(|_, partition| {
 			{
-				let mut sweep = |_: &K::Suffix, entry: &mut WriteEntry| {
+				let mut sweep = |entry: &mut WriteEntry, tombstone: bool| {
 					if !matches!(entry.staged, Staged::Clean) {
 						return true;
 					}
-					if bytes.as_bytes() == 0 && *entries == 0 {
+					if bytes.as_bytes() == 0 && (!tombstone || *tombstones == 0) {
 						return true;
 					}
 					if entry.take_reference() {
@@ -362,12 +369,15 @@ impl<K: Keyspace> StandardBucket<K> {
 					let cost = entry.row_bytes().saturating_add(suffix_cost);
 					freed = freed.saturating_add(cost);
 					*bytes = bytes.saturating_sub(cost);
-					*entries = entries.saturating_sub(1);
+					if tombstone {
+						*tombstones = tombstones.saturating_sub(1);
+						evicted_tombstones += 1;
+					}
 					evicted += 1;
 					false
 				};
-				partition.live.retain(&mut sweep);
-				partition.deleted.retain(&mut sweep);
+				partition.live.retain(|_: &K::Suffix, entry: &mut WriteEntry| sweep(entry, false));
+				partition.deleted.retain(|_: &K::Suffix, entry: &mut WriteEntry| sweep(entry, true));
 			}
 			if partition.is_empty() {
 				freed = freed.saturating_add(group_cost);
@@ -377,6 +387,7 @@ impl<K: Keyspace> StandardBucket<K> {
 			true
 		});
 		self.entries -= evicted;
+		self.tombstones -= evicted_tombstones;
 		self.bytes = self.bytes.saturating_sub(freed);
 		(evicted, freed)
 	}
@@ -387,9 +398,15 @@ impl<K: Keyspace> StandardBucket<K> {
 				.partitions
 				.get_mut(&group)
 				.expect("a flushing group keeps its partition until it settles");
-			for (_, entry) in partition.live.iter_mut().chain(partition.deleted.iter_mut()) {
+			for (_, entry) in partition.live.iter_mut() {
 				if matches!(entry.staged, Staged::Flushing) {
 					entry.staged = Staged::Clean;
+				}
+			}
+			for (_, entry) in partition.deleted.iter_mut() {
+				if matches!(entry.staged, Staged::Flushing) {
+					entry.staged = Staged::Clean;
+					self.tombstones += 1;
 				}
 			}
 		}
@@ -410,6 +427,7 @@ impl<K: Keyspace> StandardBucket<K> {
 		}
 		let partition = self.partitions.get_mut(&group).expect("the partition was just inserted");
 		let incoming = WriteEntry::bytes_of(&post);
+		let tombstone = post.is_none();
 		let (target, other) = match post.is_some() {
 			true => (&mut partition.live, &mut partition.deleted),
 			false => (&mut partition.deleted, &mut partition.live),
@@ -425,6 +443,9 @@ impl<K: Keyspace> StandardBucket<K> {
 					}
 					false => dirtied += 1,
 				}
+				if tombstone && matches!(entry.staged, Staged::Clean) {
+					self.tombstones -= 1;
+				}
 				entry.post = post;
 				entry.staged = entry.staged.dirtied();
 				entry.touch();
@@ -438,6 +459,9 @@ impl<K: Keyspace> StandardBucket<K> {
 								moved.row_bytes().saturating_add(Self::suffix_bytes());
 						}
 						false => dirtied += 1,
+					}
+					if !tombstone && matches!(moved.staged, Staged::Clean) {
+						self.tombstones -= 1;
 					}
 					target.insert(suffix, WriteEntry::new(post, moved.staged.dirtied()));
 					moved.row_bytes()
@@ -543,6 +567,10 @@ impl<K: Keyspace> Bucket for StandardBucket<K> {
 		StandardBucket::len(self)
 	}
 
+	fn tombstone_len(&self) -> usize {
+		StandardBucket::tombstone_len(self)
+	}
+
 	fn dirty_len(&self) -> usize {
 		StandardBucket::dirty_len(self)
 	}
@@ -559,8 +587,8 @@ impl<K: Keyspace> Bucket for StandardBucket<K> {
 		StandardBucket::revert_flushing(self)
 	}
 
-	fn evict_clean(&mut self, bytes: &mut ByteSize, entries: &mut usize) -> (usize, ByteSize) {
-		StandardBucket::evict_clean(self, bytes, entries)
+	fn evict_clean(&mut self, bytes: &mut ByteSize, tombstones: &mut usize) -> (usize, ByteSize) {
+		StandardBucket::evict_clean(self, bytes, tombstones)
 	}
 
 	fn settle_flushing(&mut self) {

@@ -24,6 +24,7 @@ reifydb-filter = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sqlite = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
+rustc-hash = { workspace = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }

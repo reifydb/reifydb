@@ -3219,6 +3219,7 @@ dependencies = [
  "reifydb-testing-sdk",
  "reifydb-transaction",
  "reifydb-value",
+ "rustc-hash",
  "serde",
  "serde_bytes",
  "smallvec",
@@ -3462,6 +3463,7 @@ dependencies = [
  "reifydb-sqlite",
  "reifydb-value",
  "rusqlite",
+ "rustc-hash",
 ]
 
 [[package]]
@@ -3642,6 +3644,7 @@ dependencies = [
  "reifydb-testing-sdk",
  "reifydb-transaction",
  "reifydb-value",
+ "rustc-hash",
  "serde",
  "serde_bytes",
  "smallvec",

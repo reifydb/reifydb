@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-import {Type, TypeValuePair} from './value';
+import {Type, TypeValuePair, WireCellValue} from './value';
 import {ShapeNode, InferShape} from './shape';
 
 export type Params = (TypeValuePair | null)[] | Record<string, TypeValuePair | null>;
@@ -35,7 +35,7 @@ export interface Diagnostic {
 export interface Column {
     name: string;
     type: Type;
-    payload: string[];
+    payload: WireCellValue[];
 }
 
 export interface ErrorResponse {

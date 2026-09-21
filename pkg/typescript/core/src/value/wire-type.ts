@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-import {NONE_VALUE} from '../constant';
-import {BaseType, Type, isDigestType, isOptionType} from '.';
+import {NONE_VALUE, ROW_NUMBER_KEY} from '../constant';
+import {BaseType, Type, WireCellValue, isDigestType, isListType, isOptionType, isRecordType} from '.';
 import {digestType} from './digest';
+
+function peelOption(type: Type): Type {
+    return isOptionType(type) ? peelOption(type.Option) : type;
+}
 
 /**
  * The wire rendering of a type: an object whose `id` names it, with anything it wraps under `underlying`.
@@ -11,9 +15,14 @@ import {digestType} from './digest';
  * functions are the only crossing between the two, so a wire descriptor never reaches code that expects
  * `{Option: ...}` and a client type never reaches the server expecting `{id, underlying}`.
  */
+export interface WireRecordField {
+    name: string;
+    type: WireType;
+}
+
 export interface WireType {
     id: string;
-    underlying?: WireType;
+    underlying?: WireType | WireRecordField[];
     accuracy?: number;
 }
 
@@ -24,6 +33,12 @@ export function typeToWire(type: Type): WireType {
     if (isDigestType(type)) {
         return {id: 'Digest', underlying: {id: type.Digest.inner}, accuracy: type.Digest.accuracy};
     }
+    if (isListType(type)) {
+        return {id: 'List', underlying: typeToWire(type.List)};
+    }
+    if (isRecordType(type)) {
+        return {id: 'Record', underlying: type.Record.map(field => ({name: field.name, type: typeToWire(field.type)}))};
+    }
     return {id: type};
 }
 
@@ -32,17 +47,29 @@ export function typeFromWire(wire: WireType): Type {
         throw new Error(`Expected a type descriptor object, got ${JSON.stringify(wire)}`);
     }
     if (wire.id === 'Option') {
-        if (!wire.underlying) {
+        if (!wire.underlying || Array.isArray(wire.underlying)) {
             throw new Error('Option type descriptor is missing its underlying type');
         }
         return {Option: typeFromWire(wire.underlying)};
     }
     if (wire.id === 'Digest') {
-        const inner = wire.underlying?.id;
+        const inner = !Array.isArray(wire.underlying) ? wire.underlying?.id : undefined;
         if (typeof inner !== 'string' || typeof wire.accuracy !== 'number') {
             throw new Error(`Digest type descriptor needs an underlying type and a numeric accuracy, got ${JSON.stringify(wire)}`);
         }
         return digestType(inner, wire.accuracy);
+    }
+    if (wire.id === 'List') {
+        if (!wire.underlying || Array.isArray(wire.underlying)) {
+            throw new Error('List type descriptor is missing its underlying type');
+        }
+        return {List: typeFromWire(wire.underlying)};
+    }
+    if (wire.id === 'Record') {
+        if (!Array.isArray(wire.underlying)) {
+            throw new Error('Record type descriptor needs an underlying array of fields');
+        }
+        return {Record: wire.underlying.map(field => ({name: field.name, type: typeFromWire(field.type)}))};
     }
     return wire.id as BaseType;
 }
@@ -66,7 +93,7 @@ export function framesFromWire(frames: any[]): any[] {
  * transports run the same decode and the same shape check as every other transport, instead of handing
  * the caller whatever JSON happened to arrive.
  */
-export function envelopeToColumns(envelope: any): {name: string, type: Type, payload: string[]}[] {
+export function envelopeToColumns(envelope: any): {name: string, type: Type, payload: WireCellValue[]}[] {
     const types = envelope?.types;
     const rows: any[] = envelope?.rows ?? [];
     if (!types || typeof types !== 'object') {
@@ -85,14 +112,20 @@ export function envelopeToColumns(envelope: any): {name: string, type: Type, pay
     });
 }
 
-export function envelopesToFrames(envelopes: any): {columns: {name: string, type: Type, payload: string[]}[]}[] {
+export function envelopesToFrames(envelopes: any): {columns: {name: string, type: Type, payload: WireCellValue[]}[], row_numbers?: number[]}[] {
     if (!Array.isArray(envelopes)) {
         throw new Error(`Expected a list of frame envelopes, got ${JSON.stringify(envelopes)}`);
     }
-    return envelopes.map(envelope => ({columns: envelopeToColumns(envelope)}));
+    return envelopes.map(envelope => {
+        const rows: any[] = envelope?.rows ?? [];
+        return {
+            columns: envelopeToColumns(envelope),
+            row_numbers: rows.length > 0 && ROW_NUMBER_KEY in rows[0] ? rows.map(row => row[ROW_NUMBER_KEY]) : undefined,
+        };
+    });
 }
 
-function payloadOf(row: any, name: string, type: Type): string {
+function payloadOf(row: any, name: string, type: Type): WireCellValue {
     if (!row || typeof row !== 'object' || !(name in row)) {
         throw new Error(`Row is missing a cell for column ${name}`);
     }
@@ -102,6 +135,10 @@ function payloadOf(row: any, name: string, type: Type): string {
             throw new Error(`A none cell cannot fit the non-option column ${name}`);
         }
         return NONE_VALUE;
+    }
+    const base = peelOption(type);
+    if (isListType(base) || isRecordType(base)) {
+        return value as WireCellValue;
     }
     if (typeof value !== 'string') {
         throw new Error(`Cell for column ${name} must arrive as text, got ${typeof value}`);

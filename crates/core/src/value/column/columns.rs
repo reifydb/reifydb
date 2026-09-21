@@ -13,6 +13,7 @@ use reifydb_codec::row::{
 };
 use reifydb_value::{
 	Result,
+	error::{Diagnostic, Error},
 	fragment::Fragment,
 	reifydb_assertions,
 	value::{
@@ -416,6 +417,39 @@ impl Columns {
 		}
 	}
 
+	pub fn try_from_records(param: &str, records: &[Value]) -> Result<Columns> {
+		let Some(Value::Record(first_fields)) = records.first() else {
+			return Ok(Columns::empty());
+		};
+		let names: Vec<String> = first_fields.iter().map(|(name, _)| name.clone()).collect();
+
+		let mut rows = Vec::with_capacity(records.len());
+		for (row, record) in records.iter().enumerate() {
+			let Value::Record(fields) = record else {
+				return Err(record_shape_error(param, row, "is not a record"));
+			};
+			if let Some((extra, _)) = fields.iter().find(|(name, _)| !names.contains(name)) {
+				return Err(record_shape_error(param, row, &format!("has unexpected field `{extra}`")));
+			}
+			let mut ordered = Vec::with_capacity(names.len());
+			for name in &names {
+				let value = fields
+					.iter()
+					.find(|(field_name, _)| field_name == name)
+					.ok_or_else(|| {
+						record_shape_error(param, row, &format!("is missing field `{name}`"))
+					})?
+					.1
+					.clone();
+				ordered.push(value);
+			}
+			rows.push(ordered);
+		}
+
+		let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+		Ok(Columns::from_rows(&name_refs, &rows))
+	}
+
 	pub fn from_encoded_bytes(shape: &RowShape, ids: &[RowNumber], bytes_slice: &[EncodedBytes]) -> Self {
 		assert_eq!(ids.len(), bytes_slice.len(), "ids length must match rows length");
 		let fields = shape.fields();
@@ -457,6 +491,16 @@ impl Columns {
 			SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
 		)
 	}
+}
+
+fn record_shape_error(param: &str, row: usize, detail: &str) -> Error {
+	Error(Box::new(Diagnostic {
+		code: "PARAM_001".to_string(),
+		message: format!("parameter `{param}` row {row} {detail}"),
+		label: Some("row shape mismatch".to_string()),
+		help: Some("every row in a list-of-records parameter must share the same fields as row 0".to_string()),
+		..Default::default()
+	}))
 }
 
 impl Columns {

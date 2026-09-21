@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
-
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
@@ -16,6 +14,7 @@ use reifydb_store_operator::{
 };
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 use reifydb_value::{Result, byte_size::ByteSize};
+use rustc_hash::FxHashMap;
 use tracing::instrument;
 
 const DEFERRED_SIZING: &str = "deferred write sizing must not fail";
@@ -69,7 +68,7 @@ pub fn apply_operator_state_with_checkpoints(
 	Ok(())
 }
 
-pub type DeferredClassification = HashMap<EncodedKey, Option<ByteSize>>;
+pub type DeferredClassification = FxHashMap<EncodedKey, Option<ByteSize>>;
 
 #[instrument(name = "flow::substrate::classify_pending", level = "trace", skip_all, fields(pending_count = pending.len()))]
 pub fn classify_pending(store: &OperatorStore, pending: &Pending) -> DeferredClassification {
@@ -90,7 +89,7 @@ pub fn classify_pending(store: &OperatorStore, pending: &Pending) -> DeferredCla
 		probes.push((operator, GroupStateKey::bound_unchecked(inner)));
 	}
 	if probes.is_empty() {
-		return DeferredClassification::new();
+		return DeferredClassification::default();
 	}
 	let sizes = store.state_sizes(&probes).expect(DEFERRED_SIZING);
 	keys.into_iter().zip(sizes).collect()

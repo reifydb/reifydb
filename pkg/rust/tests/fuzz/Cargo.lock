@@ -1051,6 +1051,7 @@ name = "reifydb-value"
 version = "0.9.3"
 dependencies = [
  "bigdecimal",
+ "libm",
  "num-bigint",
  "num-traits",
  "postcard",

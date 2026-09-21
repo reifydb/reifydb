@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound::{Excluded, Included, Unbounded};
-
-use reifydb_core::{
-	key::typed::{Edge, range::KeyRange},
-	util::sorted::SortedVecMap,
+use std::{
+	collections::BTreeMap,
+	ops::Bound::{Excluded, Included, Unbounded},
 };
+
+use reifydb_core::key::typed::{Edge, range::KeyRange};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
@@ -494,7 +494,7 @@ impl<D: RangeDomain> RangeTier<D> {
 
 			let fresh = !partitions.contains_key(&partition);
 			let resident = partitions.entry(partition).or_insert_with(|| Partition {
-				entries: SortedVecMap::new(),
+				entries: BTreeMap::new(),
 				pinned: PinnedCount::new(),
 				bytes: partition_overhead::<D>(),
 				tick,

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::json::{from::parse_value, none_marker, to::convert_frames};
+use reifydb_codec::json::{
+	from::{parse_json_value, parse_value},
+	none_marker,
+	to::convert_frames,
+};
 use reifydb_value::{
 	util::bitvec::BitVec,
 	value::{
@@ -56,6 +60,6 @@ fn an_empty_string_and_a_none_survive_the_render_and_parse_round_trip() {
 	let frames = convert_frames(&[frame_with(vec!["", ""], &[true, false])]);
 	let column = &frames[0].columns[0];
 
-	assert_eq!(parse_value(&column.r#type.0, &column.payload[0]), Ok(Value::Utf8(String::new())));
-	assert_eq!(parse_value(&column.r#type.0, &column.payload[1]), Ok(Value::none_of(ValueType::Utf8)));
+	assert_eq!(parse_json_value(&column.r#type.0, &column.payload[0]), Ok(Value::Utf8(String::new())));
+	assert_eq!(parse_json_value(&column.r#type.0, &column.payload[1]), Ok(Value::none_of(ValueType::Utf8)));
 }

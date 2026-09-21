@@ -97,7 +97,7 @@ impl FrameColumnData {
 			FrameColumnData::Int(_) => ValueType::Int,
 			FrameColumnData::Uint(_) => ValueType::Uint,
 			FrameColumnData::Decimal(_) => ValueType::Decimal,
-			FrameColumnData::Any(_) => ValueType::Any,
+			FrameColumnData::Any(container) => container.declared_type().cloned().unwrap_or(ValueType::Any),
 			FrameColumnData::DictionaryId(_) => ValueType::DictionaryId,
 			FrameColumnData::Option {
 				inner,

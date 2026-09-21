@@ -10,6 +10,14 @@ use web_sys::console;
 
 use crate::error::JsError;
 
+fn cell_to_js(payload: &JsonValue) -> Result<JsValue, JsValue> {
+	match payload {
+		JsonValue::String(s) => Ok(JsValue::from_str(s)),
+		other => JSON::parse(&other.to_string())
+			.map_err(|_| JsError::from_message("failed to parse cell payload")),
+	}
+}
+
 pub fn frames_to_js(frames: &[Frame]) -> Result<JsValue, JsValue> {
 	let response_frames = convert_frames(frames);
 
@@ -22,7 +30,7 @@ pub fn frames_to_js(frames: &[Frame]) -> Result<JsValue, JsValue> {
 			let row_obj = Object::new();
 
 			for column in &response_frame.columns {
-				let js_value = JsValue::from_str(&column.payload[row_idx]);
+				let js_value = cell_to_js(&column.payload[row_idx])?;
 				Reflect::set(&row_obj, &JsValue::from_str(&column.name), &js_value)?;
 			}
 

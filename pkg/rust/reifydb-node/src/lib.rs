@@ -48,7 +48,7 @@ pub struct ReifydbNode {
 #[napi(object)]
 pub struct ParamValue {
 	pub r#type: JsonValue,
-	pub value: String,
+	pub value: JsonValue,
 }
 
 #[napi(object)]
@@ -75,12 +75,13 @@ pub struct SubscriptionInput {
 pub struct Column {
 	pub name: String,
 	pub r#type: JsonValue,
-	pub payload: Vec<String>,
+	pub payload: Vec<JsonValue>,
 }
 
 #[napi(object)]
 pub struct Frame {
 	pub columns: Vec<Column>,
+	pub row_numbers: Vec<String>,
 }
 
 #[napi(object)]
@@ -117,6 +118,7 @@ fn frames_to_napi(frames: &[CoreFrame]) -> Vec<Frame> {
 	convert_frames(frames)
 		.into_iter()
 		.map(|frame| Frame {
+			row_numbers: frame.row_numbers.into_iter().map(|rn| rn.to_string()).collect(),
 			columns: frame
 				.columns
 				.into_iter()

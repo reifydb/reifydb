@@ -173,9 +173,16 @@ fn frames_to_json_rows(frames: &[Frame]) -> Vec<Vec<JsonValue>> {
 	frames.iter()
 		.map(|frame| {
 			let row_count = frame.columns.first().map(|c| c.data.len()).unwrap_or(0);
+			let row_numbers = frame.row_numbers();
 			(0..row_count)
 				.map(|i| {
 					let mut obj = Map::new();
+					if let Some(rn) = row_numbers.get(i) {
+						obj.insert(
+							SystemColumn::RowNumbers.name().to_string(),
+							JsonValue::from(rn.value()),
+						);
+					}
 					for col in frame.iter() {
 						obj.insert(
 							col.name.clone(),

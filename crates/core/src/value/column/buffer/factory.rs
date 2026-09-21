@@ -689,6 +689,11 @@ impl ColumnBuffer {
 		ColumnBuffer::Any(AnyContainer::from_vec(data))
 	}
 
+	pub fn any_typed(data: impl IntoIterator<Item = Value>, declared_type: ValueType) -> Self {
+		let data = data.into_iter().collect::<Vec<_>>();
+		ColumnBuffer::Any(AnyContainer::from_vec(data).with_declared_type(declared_type))
+	}
+
 	pub fn any_optional(data: impl IntoIterator<Item = Option<Value>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
@@ -723,11 +728,34 @@ impl ColumnBuffer {
 		ColumnBuffer::Any(AnyContainer::with_capacity(capacity))
 	}
 
+	pub fn any_with_capacity_typed(capacity: usize, declared_type: ValueType) -> Self {
+		ColumnBuffer::Any(AnyContainer::with_capacity(capacity).with_declared_type(declared_type))
+	}
+
 	pub fn any_with_bitvec(data: impl IntoIterator<Item = Value>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
 		let inner = ColumnBuffer::Any(AnyContainer::from_vec(data));
+		if bitvec.all_ones() {
+			inner
+		} else {
+			ColumnBuffer::Option {
+				inner: Box::new(inner),
+				bitvec,
+			}
+		}
+	}
+
+	pub fn any_with_bitvec_typed(
+		data: impl IntoIterator<Item = Value>,
+		bitvec: impl Into<BitVec>,
+		declared_type: ValueType,
+	) -> Self {
+		let data = data.into_iter().collect::<Vec<_>>();
+		let bitvec = bitvec.into();
+		assert_eq!(bitvec.len(), data.len());
+		let inner = ColumnBuffer::Any(AnyContainer::from_vec(data).with_declared_type(declared_type));
 		if bitvec.all_ones() {
 			inner
 		} else {
@@ -832,8 +860,10 @@ impl ColumnBuffer {
 			ValueType::Decimal => Self::decimal(vec![Decimal::from(0); len]),
 			ValueType::Any => Self::any(vec![Value::none(); len]),
 			ValueType::DictionaryId => Self::dictionary_id(vec![DictionaryEntryId::default(); len]),
-			ValueType::List(_) => Self::any(vec![Value::List(vec![]); len]),
-			ValueType::Record(_) => Self::any(vec![Value::Record(vec![]); len]),
+			list_ty @ ValueType::List(_) => Self::any_typed(vec![Value::List(vec![]); len], list_ty),
+			record_ty @ ValueType::Record(_) => {
+				Self::any_typed(vec![Value::Record(vec![]); len], record_ty)
+			}
 			ValueType::Tuple(_) => Self::any(vec![Value::Tuple(vec![]); len]),
 			ValueType::Option(inner) => return Self::none_typed(*inner, len),
 			ValueType::Digest {

@@ -7,6 +7,8 @@ mod fixture;
 
 mod json_roundtrip;
 
+mod list_record;
+
 mod nested_option;
 
 mod scalar;

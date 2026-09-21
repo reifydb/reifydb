@@ -76,7 +76,7 @@ export class NativeDb implements Db {
     // wire's rendering and have to be read into the client's own before anything decodes them.
     const frames = framesFromWire(await pending)
     checkFrames(frames, shapes)
-    const rows = frames.map((frame) => columnsToRows(frame.columns))
+    const rows = frames.map((frame) => columnsToRows(frame.columns, frame.rowNumbers))
     return transformFrames(rows, shapes)
   }
 }

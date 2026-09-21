@@ -10,6 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	reifydb_assertions,
+	value::Value,
 };
 use tracing::instrument;
 
@@ -54,6 +55,21 @@ impl QueryNode for VariableNode {
 		let variable_name = self.variable_expr.name();
 
 		match ctx.symbols.get(variable_name) {
+			Some(Variable::Columns {
+				columns,
+			}) if columns.is_scalar() => {
+				self.executed = true;
+				let mut value = columns.scalar_value();
+				while let Value::Any(inner) = value {
+					value = *inner;
+				}
+				match value {
+					Value::List(items) if items.iter().all(|v| matches!(v, Value::Record(_))) => {
+						Ok(Some(Columns::try_from_records(variable_name, &items)?))
+					}
+					_ => Ok(Some(columns.clone())),
+				}
+			}
 			Some(Variable::Columns {
 				columns,
 			}) => {

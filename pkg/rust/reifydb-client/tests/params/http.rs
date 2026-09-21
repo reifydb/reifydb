@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_client::{HttpClient, Value, ValueType, WireFormat};
 use tokio::runtime::Runtime;
 
-use super::{assert_echoed, named, option, positional};
+use super::{assert_echoed, list_of_records, named, named_as, option, positional};
 use crate::common::{cleanup_server, create_server_instance, start_server_and_get_http_port};
 
 fn run<F, Fut>(test_fn: F)
@@ -64,5 +64,101 @@ fn a_none_of_option_int4_param_echoes_as_a_none_of_int4() {
 
 		let frames = client.query("MAP { v: $v }", Some(named(none))).await.unwrap();
 		assert_echoed(&frames, option(ValueType::Int4), Value::none_of(ValueType::Int4));
+	});
+}
+
+fn regions() -> Value {
+	list_of_records(vec![
+		vec![("id", Value::Utf8("us".to_string())), ("label", Value::Utf8("US".to_string()))],
+		vec![("id", Value::Utf8("eu".to_string())), ("label", Value::Utf8("EU".to_string()))],
+	])
+}
+
+fn regions_type() -> ValueType {
+	ValueType::List(Box::new(ValueType::Record(vec![
+		("id".to_string(), ValueType::Utf8),
+		("label".to_string(), ValueType::Utf8),
+	])))
+}
+
+#[test]
+fn a_list_of_records_param_echoes_as_list_of_records() {
+	run(|client| async move {
+		let frames = client.query("MAP { v: $v }", Some(named_as("v", regions()))).await.unwrap();
+		assert_echoed(&frames, regions_type(), regions());
+	});
+}
+
+#[test]
+fn a_positional_list_of_records_param_echoes_as_list_of_records() {
+	run(|client| async move {
+		let frames = client.query("MAP { v: $1 }", Some(positional(regions()))).await.unwrap();
+		assert_echoed(&frames, regions_type(), regions());
+	});
+}
+
+#[test]
+fn a_list_of_records_param_inserts_one_row_per_element() {
+	run(|client| async move {
+		client.admin(
+			"CREATE NAMESPACE test; CREATE TABLE test::monitor_regions { id: utf8, label: utf8 }",
+			None,
+		)
+		.await
+		.unwrap();
+
+		client.command("INSERT test::monitor_regions $regions", Some(named_as("regions", regions())))
+			.await
+			.unwrap();
+
+		let frames = client.query("FROM test::monitor_regions", None).await.unwrap();
+		assert_eq!(frames.len(), 1, "expected one frame, got {}", frames.len());
+		let id_col = frames[0].columns.iter().find(|c| c.name == "id").unwrap();
+		let label_col = frames[0].columns.iter().find(|c| c.name == "label").unwrap();
+		assert_eq!(id_col.data.len(), 2, "expected one row per list element");
+
+		let mut rows: Vec<(Value, Value)> = (0..id_col.data.len())
+			.map(|i| (id_col.data.get_value(i), label_col.data.get_value(i)))
+			.collect();
+		rows.sort_by_key(|(id, _)| id.to_string());
+		assert_eq!(
+			rows,
+			vec![
+				(Value::Utf8("eu".to_string()), Value::Utf8("EU".to_string())),
+				(Value::Utf8("us".to_string()), Value::Utf8("US".to_string())),
+			]
+		);
+	});
+}
+
+#[test]
+fn a_positional_list_of_records_param_inserts_one_row_per_element() {
+	run(|client| async move {
+		client.admin(
+			"CREATE NAMESPACE test; CREATE TABLE test::monitor_regions { id: utf8, label: utf8 }",
+			None,
+		)
+		.await
+		.unwrap();
+
+		client.command("INSERT test::monitor_regions $1", Some(positional(regions()))).await.unwrap();
+
+		let frames = client.query("FROM test::monitor_regions", None).await.unwrap();
+		assert_eq!(frames.len(), 1, "expected one frame, got {}", frames.len());
+		let id_col = frames[0].columns.iter().find(|c| c.name == "id").unwrap();
+		let label_col = frames[0].columns.iter().find(|c| c.name == "label").unwrap();
+		assert_eq!(id_col.data.len(), 2, "expected one row per list element");
+
+		let mut rows: Vec<(Value, Value)> = (0..id_col.data.len())
+			.map(|i| (id_col.data.get_value(i), label_col.data.get_value(i)))
+			.collect();
+		rows.sort_by_key(|(id, _)| id.to_string());
+		assert_eq!(
+			rows,
+			vec![
+				(Value::Utf8("eu".to_string()), Value::Utf8("EU".to_string())),
+				(Value::Utf8("us".to_string()), Value::Utf8("US".to_string())),
+			]
+		);
 	});
 }

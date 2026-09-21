@@ -18,7 +18,7 @@ describe('smoke', () => {
     await db.commandRoot('insert smoke::items [{ id: 1, label: "hello" }]', {}, [])
     const [rows] = await db.queryRoot('from smoke::items map { id, label }', {}, [itemsShape])
 
-    expect(rows).toEqual([{ id: new Int4Value(1), label: new Utf8Value('hello') }])
+    expect(rows).toEqual([{ '#rownum': 1, id: new Int4Value(1), label: new Utf8Value('hello') }])
   })
 
   it('queryRoot on an empty table returns no rows', async () => {

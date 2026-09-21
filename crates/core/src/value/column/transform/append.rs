@@ -270,13 +270,17 @@ impl Columns {
 						}
 						col_data
 					}
-					ValueType::Any
-					| ValueType::List(_)
-					| ValueType::Record(_)
-					| ValueType::Tuple(_) => ColumnBuffer::any_with_bitvec(
+					ValueType::Any | ValueType::Tuple(_) => ColumnBuffer::any_with_bitvec(
 						vec![Value::none(); size],
 						BitVec::repeat(size, false),
 					),
+					declared @ (ValueType::List(_) | ValueType::Record(_)) => {
+						ColumnBuffer::any_with_bitvec_typed(
+							vec![Value::none(); size],
+							BitVec::repeat(size, false),
+							declared,
+						)
+					}
 					digest @ ValueType::Digest {
 						..
 					} => ColumnBuffer::none_typed(digest, size),

@@ -31,14 +31,14 @@ impl BucketMap {
 		}
 	}
 
-	pub fn evict_clean(&mut self, bytes: &mut ByteSize, entries: &mut usize) -> (usize, ByteSize) {
+	pub fn evict_clean(&mut self, bytes: &mut ByteSize, tombstones: &mut usize) -> (usize, ByteSize) {
 		let mut evicted = 0usize;
 		let mut freed = ByteSize::ZERO;
 		for bucket in self.buckets.values_mut() {
-			if bytes.as_bytes() == 0 && *entries == 0 {
+			if bytes.as_bytes() == 0 && *tombstones == 0 {
 				break;
 			}
-			let (count, released) = bucket.evict_clean(bytes, entries);
+			let (count, released) = bucket.evict_clean(bytes, tombstones);
 			evicted += count;
 			freed = freed.saturating_add(released);
 		}

@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, hash::Hash, mem};
+use std::{hash::Hash, mem};
 
 use reifydb_core::{
 	key::typed::{DenseKey, Edge, Key},
 	metrics::heap::HeapSize,
 };
+use rustc_hash::FxHashMap;
 
 use crate::coverage::interval::CoverageSet;
 
 pub struct CoverageIndex<D, K> {
-	sets: HashMap<D, CoverageSet<K>>,
-	heads: HashMap<D, Edge<K>>,
+	sets: FxHashMap<D, CoverageSet<K>>,
+	heads: FxHashMap<D, Edge<K>>,
 	clock: u64,
 	sets_bytes: u64,
 }
@@ -20,8 +21,8 @@ pub struct CoverageIndex<D, K> {
 impl<D, K> Default for CoverageIndex<D, K> {
 	fn default() -> Self {
 		Self {
-			sets: HashMap::new(),
-			heads: HashMap::new(),
+			sets: FxHashMap::default(),
+			heads: FxHashMap::default(),
 			clock: 0,
 			sets_bytes: 0,
 		}

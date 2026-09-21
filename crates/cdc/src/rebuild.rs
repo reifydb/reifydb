@@ -104,8 +104,10 @@ fn tracked_target(key: &EncodedKey) -> Option<RowTarget> {
 	Some(target)
 }
 
-pub fn changed_objects(cdc: &Cdc) -> BTreeSet<ObjectId> {
-	cdc.changes.iter().filter_map(|change| tracked_target(change.key())).map(|t| t.object).collect()
+pub fn changed_objects(cdc: &Cdc) -> &BTreeSet<ObjectId> {
+	cdc.changed_objects_with(|cdc| {
+		cdc.changes.iter().filter_map(|change| tracked_target(change.key())).map(|t| t.object).collect()
+	})
 }
 
 pub fn rebuild_changes(cdc: &Cdc, catalog: &Catalog, txn: &mut Transaction<'_>) -> Result<Vec<Change>> {

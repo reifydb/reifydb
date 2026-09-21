@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-import {OptionType, Type, digestTypeName, isDigestType, isOptionType} from '.';
+import {OptionType, Type, digestTypeName, isDigestType, isListType, isOptionType, isRecordType} from '.';
 import {NONE_PRESENTATION} from '../present/value';
 
 type State<T> = {some: true; value: T} | {some: false; inner: Type};
@@ -9,7 +9,16 @@ function describeType(t: Type): string {
     if (isDigestType(t)) {
         return digestTypeName(t);
     }
-    return isOptionType(t) ? `Option(${describeType(t.Option)})` : t;
+    if (isOptionType(t)) {
+        return `Option(${describeType(t.Option)})`;
+    }
+    if (isListType(t)) {
+        return `List(${describeType(t.List)})`;
+    }
+    if (isRecordType(t)) {
+        return `Record(${t.Record.map(field => `${field.name}: ${describeType(field.type)}`).join(', ')})`;
+    }
+    return t;
 }
 
 function hasType(value: unknown): value is {type: Type} {

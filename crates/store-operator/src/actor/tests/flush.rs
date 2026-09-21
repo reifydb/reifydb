@@ -830,6 +830,7 @@ fn a_buffer_that_fills_with_tombstones_flushes_even_though_they_cost_almost_no_b
 	let (storage, _guard) = SqlitePersistent::in_memory();
 	let buffer = Resident::with_limits(ResidentLimits {
 		entries: limit,
+		tombstones: limit,
 		..ResidentLimits::default()
 	});
 	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
@@ -887,6 +888,99 @@ fn a_tombstone_count_resting_on_the_entry_limit_does_not_flush() {
 		limit as usize,
 		"the entry limit is the window, exactly as the byte budget is; a trigger that fires on it stops the \
 		 buffer batching at all"
+	);
+}
+
+#[test]
+fn live_clean_entries_past_the_tombstone_ceiling_stay_resident_while_under_the_byte_budget() {
+	// The entry count must never evict live state: a join or window working set that is small in bytes but
+	// large in rows would otherwise be thrown out at the ceiling and re-read from sqlite on every batch.
+	// Only tombstones are count-bounded, because they are nearly free in bytes and would otherwise pile up.
+	let limit = 8u64;
+	let live = limit * 4;
+	let (storage, _guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::with_limits(ResidentLimits {
+		entries: limit,
+		tombstones: limit,
+		..ResidentLimits::default()
+	});
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+
+	for index in 0..live as u8 {
+		buffer.record_state_set(OP_A, key(index), row("live"));
+	}
+	buffer.flush_all();
+	assert!(
+		bucket_bytes(live, "live") < buffer.budget(),
+		"the live set must sit far under the byte budget, or this test proves nothing about the entry count"
+	);
+
+	buffer.evict_to_capacity();
+	assert_eq!(
+		buffer.resident_entries(),
+		live as usize,
+		"clean live entries beyond the tombstone ceiling but under the byte budget were evicted; the ceiling \
+		 must count tombstones only"
+	);
+
+	for index in 0..=limit as u8 {
+		buffer.record_state_remove(OP_A, key(live as u8 + index));
+	}
+	buffer.flush_all();
+	buffer.evict_to_capacity();
+	assert!(
+		buffer.resident_tombstones() <= limit as usize,
+		"tombstones past the ceiling must be evicted; the buffer holds {} against a ceiling of {}",
+		buffer.resident_tombstones(),
+		limit
+	);
+	assert_eq!(
+		buffer.resident_entries() - buffer.resident_tombstones(),
+		live as usize,
+		"evicting tombstones must leave every live entry resident"
+	);
+}
+
+#[test]
+fn dirty_tombstones_past_the_ceiling_do_not_count_until_they_settle_clean() {
+	// The evictor can only drop clean entries, so a ceiling that counted dirty tombstones would wake it on
+	// every write while it walks the whole resident set and frees nothing. Tombstones must enter the count
+	// when they settle clean and leave it again the moment a rewrite dirties them.
+	let limit = 8u64;
+	let (storage, _guard) = SqlitePersistent::in_memory();
+	let buffer = Resident::with_limits(ResidentLimits {
+		tombstones: limit,
+		..ResidentLimits::default()
+	});
+	buffer.attach_sinks(tier(&storage), OperatorRangeTier::Absent);
+
+	let pending = limit as u8 * 4;
+	for index in 0..pending {
+		buffer.record_state_remove(OP_A, key(index));
+	}
+	assert_eq!(
+		buffer.resident_tombstones(),
+		0,
+		"unflushed tombstones counted toward the ceiling; the evictor cannot drop them, so they must not count"
+	);
+	assert_eq!(buffer.metrics().evicted, 0, "dirty tombstones above the ceiling must not trigger eviction");
+	assert_eq!(buffer.resident_entries(), pending as usize, "dirty tombstones must all stay resident");
+
+	buffer.flush_all();
+	assert!(
+		buffer.resident_tombstones() <= limit as usize,
+		"settled tombstones must count and be trimmed to the ceiling, the buffer holds {}",
+		buffer.resident_tombstones()
+	);
+	assert!(buffer.resident_tombstones() > 0, "the ceiling must keep a graveyard of clean tombstones resident");
+
+	for index in 0..pending {
+		buffer.record_state_remove(OP_A, key(index));
+	}
+	assert_eq!(
+		buffer.resident_tombstones(),
+		0,
+		"rewriting a clean tombstone dirties it, so it must leave the count until the next flush"
 	);
 }
 

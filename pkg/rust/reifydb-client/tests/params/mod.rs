@@ -20,6 +20,22 @@ pub fn named(value: Value) -> Params {
 	Params::Named(Arc::new(HashMap::from([("v".to_string(), value)])))
 }
 
+pub fn named_as(name: &str, value: Value) -> Params {
+	Params::Named(Arc::new(HashMap::from([(name.to_string(), value)])))
+}
+
+pub fn list_of_records(rows: Vec<Vec<(&str, Value)>>) -> Value {
+	Value::List(
+		rows.into_iter()
+			.map(|fields| {
+				Value::Record(
+					fields.into_iter().map(|(name, value)| (name.to_string(), value)).collect(),
+				)
+			})
+			.collect(),
+	)
+}
+
 /// The echoed column must come back with the parameter's type, not just a value that
 /// prints the same, so the type is asserted separately from the single row.
 pub fn assert_echoed(frames: &[Frame], expected_type: ValueType, expected: Value) {

@@ -3,9 +3,9 @@
 
 use reifydb_value::{
 	util::hex::encode,
-	value::{Value, diff_type::DiffType, frame::frame::Frame},
+	value::{Value, diff_type::DiffType, frame::frame::Frame, value_type::ValueType},
 };
-use serde_json::{Error, to_string};
+use serde_json::{Error, Value as JsonValue, to_string};
 
 use crate::{
 	json::{
@@ -15,6 +15,43 @@ use crate::{
 	},
 	tag::peel_options,
 };
+
+pub fn value_to_json(value: &Value, declared: &ValueType) -> JsonValue {
+	let depth = peel_options(declared).1;
+	match value {
+		Value::None {
+			inner,
+		} => JsonValue::String(none_marker(depth.saturating_sub(peel_options(inner).1 + 1))),
+		Value::Blob(b) => JsonValue::String(b.to_hex()),
+		Value::Digest(digest) => JsonValue::String(format!("0x{}", encode(&digest.encode()))),
+		Value::List(items) => {
+			let elem_ty = match peel_options(declared).0 {
+				ValueType::List(inner) => inner.as_ref(),
+				_ => &ValueType::Any,
+			};
+			JsonValue::Array(items.iter().map(|item| value_to_json(item, elem_ty)).collect())
+		}
+		Value::Record(fields) => {
+			let field_types: &[(String, ValueType)] = match peel_options(declared).0 {
+				ValueType::Record(f) => f.as_slice(),
+				_ => &[],
+			};
+			JsonValue::Object(
+				fields.iter()
+					.map(|(name, item)| {
+						let field_ty = field_types
+							.iter()
+							.find(|(n, _)| n == name)
+							.map(|(_, t)| t)
+							.unwrap_or(&ValueType::Any);
+						(name.clone(), value_to_json(item, field_ty))
+					})
+					.collect(),
+			)
+		}
+		_ => JsonValue::String(value.to_string()),
+	}
+}
 
 pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 	let mut result = Vec::new();
@@ -29,19 +66,8 @@ pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 
 		for column in frame.iter() {
 			let column_type = column.data.get_type();
-			let column_depth = peel_options(&column_type).1;
-			let column_data: Vec<String> = column
-				.data
-				.iter()
-				.map(|value| match value {
-					Value::None {
-						inner,
-					} => none_marker(column_depth.saturating_sub(peel_options(&inner).1 + 1)),
-					Value::Blob(b) => b.to_hex(),
-					Value::Digest(digest) => format!("0x{}", encode(&digest.encode())),
-					_ => value.to_string(),
-				})
-				.collect();
+			let column_data: Vec<JsonValue> =
+				column.data.iter().map(|value| value_to_json(&value, &column_type)).collect();
 
 			columns.push(ResponseColumn {
 				name: column.name.clone(),

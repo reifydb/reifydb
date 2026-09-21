@@ -9,29 +9,38 @@ use std::{
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{Result, util::bitvec::BitVec, value::Value};
+use crate::{
+	Result,
+	util::bitvec::BitVec,
+	value::{Value, value_type::ValueType},
+};
 
 pub struct AnyContainer {
 	data: Vec<Value>,
+	declared_type: Option<ValueType>,
 }
 
 impl Clone for AnyContainer {
 	fn clone(&self) -> Self {
 		Self {
 			data: self.data.clone(),
+			declared_type: self.declared_type.clone(),
 		}
 	}
 }
 
 impl Debug for AnyContainer {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("AnyContainer").field("data", &self.data).finish()
+		f.debug_struct("AnyContainer")
+			.field("data", &self.data)
+			.field("declared_type", &self.declared_type)
+			.finish()
 	}
 }
 
 impl PartialEq for AnyContainer {
 	fn eq(&self, other: &Self) -> bool {
-		self.data == other.data
+		self.data == other.data && self.declared_type == other.declared_type
 	}
 }
 
@@ -40,9 +49,12 @@ impl Serialize for AnyContainer {
 		#[derive(Serialize)]
 		struct Helper<'a> {
 			data: &'a Vec<Value>,
+			#[serde(default, skip_serializing_if = "Option::is_none")]
+			declared_type: &'a Option<ValueType>,
 		}
 		Helper {
 			data: &self.data,
+			declared_type: &self.declared_type,
 		}
 		.serialize(serializer)
 	}
@@ -53,10 +65,13 @@ impl<'de> Deserialize<'de> for AnyContainer {
 		#[derive(Deserialize)]
 		struct Helper {
 			data: Vec<Value>,
+			#[serde(default)]
+			declared_type: Option<ValueType>,
 		}
 		let h = Helper::deserialize(deserializer)?;
 		Ok(AnyContainer {
 			data: h.data,
+			declared_type: h.declared_type,
 		})
 	}
 }
@@ -73,19 +88,31 @@ impl AnyContainer {
 	pub fn new(data: Vec<Value>) -> Self {
 		Self {
 			data,
+			declared_type: None,
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
 			data: Vec::with_capacity(capacity),
+			declared_type: None,
 		}
 	}
 
 	pub fn from_vec(data: Vec<Value>) -> Self {
 		Self {
 			data,
+			declared_type: None,
 		}
+	}
+
+	pub fn with_declared_type(mut self, ty: ValueType) -> Self {
+		self.declared_type = Some(ty);
+		self
+	}
+
+	pub fn declared_type(&self) -> Option<&ValueType> {
+		self.declared_type.as_ref()
 	}
 }
 
@@ -93,6 +120,7 @@ impl AnyContainer {
 	pub fn from_parts(data: Vec<Value>) -> Self {
 		Self {
 			data,
+			declared_type: None,
 		}
 	}
 
@@ -154,7 +182,10 @@ impl AnyContainer {
 
 	pub fn get_value(&self, index: usize) -> Value {
 		if index < self.len() {
-			Value::Any(Box::new(self.data[index].clone()))
+			match &self.declared_type {
+				Some(ValueType::List(_)) | Some(ValueType::Record(_)) => self.data[index].clone(),
+				_ => Value::Any(Box::new(self.data[index].clone())),
+			}
 		} else {
 			Value::none()
 		}
@@ -167,6 +198,7 @@ impl AnyContainer {
 	pub fn take(&self, num: usize) -> Self {
 		Self {
 			data: self.data[..num.min(self.data.len())].to_vec(),
+			declared_type: self.declared_type.clone(),
 		}
 	}
 
@@ -178,6 +210,7 @@ impl AnyContainer {
 		}
 		Self {
 			data: new_data,
+			declared_type: self.declared_type.clone(),
 		}
 	}
 
