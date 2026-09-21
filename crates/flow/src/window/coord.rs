@@ -184,6 +184,7 @@ impl SealDomain for OrdinalCoord {
 			kind: kind.clone(),
 			size: RowSpan::of(with.window_slots()?),
 			pane: None,
+			slide: with.window_slide_slots()?.map(RowSpan::of),
 			lateness: RowSpan::of(with.lateness_count()?.unwrap_or(0)),
 			immutable: with.immutable_count()?.map(RowSpan::of),
 		})
@@ -425,5 +426,23 @@ mod tests {
 
 		assert!(OrdinalCoord::window_settings_of(&ApplyWith::default()).is_err());
 		assert!(OrdinalCoord::window_settings_of(&duration).is_err());
+	}
+
+	#[test]
+	fn the_ordinal_settings_carry_the_slide_of_a_sliding_window() {
+		// a slide that came back as none would make create panic on every slot sliding view
+		let sliding = ApplyWith {
+			window: Some(WindowKind::Sliding {
+				size: WindowSize::Count(10),
+				slide: WindowSize::Count(4),
+			}),
+			lateness: None,
+			immutable: None,
+		};
+
+		let settings = OrdinalCoord::window_settings_of(&sliding).unwrap();
+
+		assert_eq!(settings.size, RowSpan::of(10));
+		assert_eq!(settings.slide, Some(RowSpan::of(4)));
 	}
 }

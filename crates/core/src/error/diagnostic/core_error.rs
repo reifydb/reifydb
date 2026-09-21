@@ -17,7 +17,8 @@ use crate::error::{
 		flow_operator_with_not_accepted, flow_operator_with_pane_missing,
 		flow_operator_with_window_kind_unsupported, flow_operator_with_window_missing,
 		flow_operator_with_window_not_supported, flow_operator_with_window_size_count,
-		flow_operator_with_window_size_duration, flow_version_corrupted,
+		flow_operator_with_window_size_duration, flow_operator_with_window_slide_count,
+		flow_operator_with_window_slide_duration, flow_version_corrupted,
 	},
 };
 
@@ -143,6 +144,14 @@ impl IntoDiagnostic for CoreError {
 			CoreError::OperatorWithWindowSizeDuration {
 				size,
 			} => flow_operator_with_window_size_duration(size),
+
+			CoreError::OperatorWithWindowSlideCount {
+				count,
+			} => flow_operator_with_window_slide_count(count),
+
+			CoreError::OperatorWithWindowSlideDuration {
+				slide,
+			} => flow_operator_with_window_slide_duration(slide),
 
 			CoreError::OperatorWithDurationSpan {
 				key,

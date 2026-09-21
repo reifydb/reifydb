@@ -750,6 +750,22 @@ pub fn flow_operator_with_window_size_duration(size: Duration) -> Diagnostic {
 	)
 }
 
+pub fn flow_operator_with_window_slide_count(count: u64) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_076",
+		format!("the window slide is a count ({}), but this operator windows by time", count),
+		"Declare the slide as a duration, for example slide: 30s.",
+	)
+}
+
+pub fn flow_operator_with_window_slide_duration(slide: Duration) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_077",
+		format!("the window slide is a duration ({}), but this operator counts slots", slide),
+		"Declare the slide as a slot count, for example slide: 1.",
+	)
+}
+
 pub fn flow_operator_with_duration_span(key: &str, duration: Duration) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_070",

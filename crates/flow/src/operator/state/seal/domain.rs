@@ -93,6 +93,7 @@ impl SealDomain for DateTime {
 			kind: kind.clone(),
 			size,
 			pane,
+			slide: with.window_slide_duration()?,
 			lateness: sealing.lateness.unwrap_or_else(Duration::zero),
 			immutable: sealing.immutable,
 		})
@@ -264,5 +265,23 @@ mod tests {
 
 		assert!(DateTime::window_settings_of(&ApplyWith::default()).is_err());
 		assert!(DateTime::window_settings_of(&count).is_err());
+	}
+
+	#[test]
+	fn the_wall_clock_settings_carry_the_slide_of_a_sliding_window() {
+		// a slide that came back as none would make create panic on every sliding view
+		let sliding = ApplyWith {
+			window: Some(WindowKind::Sliding {
+				size: WindowSize::Duration(Duration::from_seconds(600).unwrap()),
+				slide: WindowSize::Duration(Duration::from_seconds(300).unwrap()),
+			}),
+			lateness: None,
+			immutable: None,
+		};
+
+		let settings = DateTime::window_settings_of(&sliding).unwrap();
+
+		assert_eq!(settings.size, Duration::from_seconds(600).unwrap());
+		assert_eq!(settings.slide, Some(Duration::from_seconds(300).unwrap()));
 	}
 }

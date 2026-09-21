@@ -9,6 +9,7 @@ pub struct WindowSettings<C: Coord> {
 	pub kind: WindowKind,
 	pub size: C::Span,
 	pub pane: Option<C::Span>,
+	pub slide: Option<C::Span>,
 	pub lateness: C::Span,
 	pub immutable: Option<C::Span>,
 }
@@ -30,6 +31,7 @@ mod tests {
 			},
 			size: hour,
 			pane,
+			slide: None,
 			lateness: Duration::from_seconds(30).unwrap(),
 			immutable: None,
 		}

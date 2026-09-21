@@ -113,6 +113,38 @@ impl ApplyWith {
 		}
 	}
 
+	pub fn window_slide_duration(&self) -> Result<Option<Duration>> {
+		match &self.window {
+			Some(WindowKind::Sliding {
+				slide,
+				..
+			}) => match slide {
+				WindowSize::Duration(d) => Ok(Some(*d)),
+				WindowSize::Count(count) => Err(CoreError::OperatorWithWindowSlideCount {
+					count: *count,
+				}
+				.into()),
+			},
+			_ => Ok(None),
+		}
+	}
+
+	pub fn window_slide_slots(&self) -> Result<Option<u64>> {
+		match &self.window {
+			Some(WindowKind::Sliding {
+				slide,
+				..
+			}) => match slide {
+				WindowSize::Count(n) => Ok(Some(*n)),
+				WindowSize::Duration(d) => Err(CoreError::OperatorWithWindowSlideDuration {
+					slide: *d,
+				}
+				.into()),
+			},
+			_ => Ok(None),
+		}
+	}
+
 	pub fn reject_window(&self) -> Result<()> {
 		match &self.window {
 			None => Ok(()),
@@ -642,6 +674,42 @@ mod tests {
 			immutable: None,
 		};
 		assert!(duration.window_slots().is_err());
+	}
+
+	#[test]
+	fn window_slide_reads_only_a_sliding_window_and_only_in_its_unit() {
+		// a slide read from another kind or in the wrong unit would size every sliding window wrong with no
+		// error
+		let by_time = ApplyWith {
+			window: Some(WindowKind::Sliding {
+				size: WindowSize::Duration(secs(60)),
+				slide: WindowSize::Duration(secs(15)),
+			}),
+			lateness: None,
+			immutable: None,
+		};
+		let by_slots = ApplyWith {
+			window: Some(WindowKind::Sliding {
+				size: WindowSize::Count(10),
+				slide: WindowSize::Count(4),
+			}),
+			lateness: None,
+			immutable: None,
+		};
+		let tumbling = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(secs(60)),
+			}),
+			lateness: None,
+			immutable: None,
+		};
+
+		assert_eq!(by_time.window_slide_duration().unwrap(), Some(secs(15)));
+		assert_eq!(by_slots.window_slide_slots().unwrap(), Some(4));
+		assert!(by_time.window_slide_slots().is_err());
+		assert!(by_slots.window_slide_duration().is_err());
+		assert_eq!(tumbling.window_slide_duration().unwrap(), None);
+		assert_eq!(tumbling.window_slide_slots().unwrap(), None);
 	}
 
 	#[test]

@@ -41,7 +41,7 @@ use reifydb_value::{
 
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, Default, PartialEq, HeapSize)]
-struct PaneSum {
+pub(crate) struct PaneSum {
 	sum: f64,
 	count: u64,
 }
@@ -77,7 +77,7 @@ impl MergeAccumulator for PaneSum {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct SumOut {
+pub(crate) struct SumOut {
 	group: String,
 	sum: f64,
 	start: u64,
@@ -93,7 +93,7 @@ row!(SumOut {
 
 macro_rules! sum_operator {
 	($name:ident, $kinds:ty) => {
-		struct $name;
+		pub(crate) struct $name;
 
 		impl OperatorMetadata for $name {
 			const NAME: &'static str = "sum";
@@ -162,7 +162,7 @@ fn input_fields() -> Vec<RowShapeField> {
 	]
 }
 
-fn input_row(rn: u64, group: &str, ts: u64, value: f64) -> CoreRow {
+pub(crate) fn input_row(rn: u64, group: &str, ts: u64, value: f64) -> CoreRow {
 	TestOperatorRowBuilder::new(rn)
 		.with_values(vec![Value::Utf8(group.into()), Value::Uint8(ts), Value::float8(value)])
 		.with_fields(input_fields())
@@ -194,7 +194,7 @@ fn tumbling(size: u64) -> ApplyWith {
 
 type Emitted = Vec<(DiffType, f64, u64, u64)>;
 
-fn render(out: &Change) -> Emitted {
+pub(crate) fn render(out: &Change) -> Emitted {
 	let mut rendered = Vec::new();
 	for diff in &out.diffs {
 		let rows = match diff.kind() {
@@ -219,6 +219,8 @@ macro_rules! harness {
 		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<$driver>>>::new().with($with).build()
 	};
 }
+
+pub(crate) use harness;
 
 fn sums_after(size: u64, pane: u64, feed: &[(u64, f64)]) -> Vec<f64> {
 	let mut h = harness!(SumAnyKind, rolling(size, Some(pane), 3_600_000)).expect("harness");

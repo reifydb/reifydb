@@ -4,6 +4,7 @@
 pub mod config;
 pub mod rolling;
 pub mod rolling_top_k;
+pub mod sliding;
 pub mod tumbling;
 pub mod tumbling_carry;
 

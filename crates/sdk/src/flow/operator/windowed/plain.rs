@@ -23,6 +23,7 @@ use reifydb_flow::{
 		engine::{
 			AccumulatorEvent, EmitKind,
 			rolling::{RollingBuckets, RollingBuffer, RollingEngine, RollingEviction},
+			sliding::SlidingEngine,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
 		settings::WindowSettings,
@@ -72,6 +73,10 @@ struct RollingMode<A: Emit> {
 	pane: <A::Coord as Coord>::Span,
 }
 
+struct SlidingMode<A: Emit> {
+	engine: SlidingEngine<A::GroupKey, A::Coord, A::Accumulator>,
+}
+
 pub struct PlainDriver<A>
 where
 	A: Emit,
@@ -81,6 +86,7 @@ where
 	aggregator: A,
 	engine: TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
 	rolling: Option<RollingMode<A>>,
+	sliding: Option<SlidingMode<A>>,
 	reap_queue_empty: bool,
 	seal_span: Option<SealSpan<A>>,
 	settings: WindowSettings<A::Coord>,
@@ -153,13 +159,27 @@ where
 			let Some((group, contribution)) = self.aggregator.extract(ctx, &row) else {
 				continue;
 			};
-			let span = self.bucket_span(coord);
-			let event = if is_add {
-				AccumulatorEvent::Add(contribution)
-			} else {
-				AccumulatorEvent::Remove(contribution)
-			};
-			buckets.entry((group, span)).or_default().push(event);
+			match &self.sliding {
+				Some(mode) => {
+					for span in mode.engine.spans(coord) {
+						let event = if is_add {
+							AccumulatorEvent::Add(contribution.clone())
+						} else {
+							AccumulatorEvent::Remove(contribution.clone())
+						};
+						buckets.entry((group.clone(), span)).or_default().push(event);
+					}
+				}
+				None => {
+					let span = self.bucket_span(coord);
+					let event = if is_add {
+						AccumulatorEvent::Add(contribution)
+					} else {
+						AccumulatorEvent::Remove(contribution)
+					};
+					buckets.entry((group, span)).or_default().push(event);
+				}
+			}
 		}
 	}
 }
@@ -490,9 +510,9 @@ where
 	const WINDOW: WindowRequirements = WindowRequirements {
 		takes_window: true,
 		kinds: if <A::Kinds as KindSet<A>>::ROLLING {
-			&["tumbling", "rolling"]
+			&["tumbling", "sliding", "rolling"]
 		} else {
-			&["tumbling"]
+			&["tumbling", "sliding"]
 		},
 		domain: <A::Coord as SealDomain>::SIZE_DOMAIN,
 		needs_pane: false,
@@ -505,7 +525,8 @@ where
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
 		let rolls = <A::Kinds as KindSet<A>>::ROLLING
 			&& with.window.as_ref().is_some_and(|kind| kind.name() == "rolling");
-		if !rolls {
+		let slides = with.window.as_ref().is_some_and(|kind| kind.name() == "sliding");
+		if !rolls && !slides {
 			with.require_window("tumbling")?;
 		}
 		let seal_span = <A::Coord as SealDomain>::seal_span_of(with)?;
@@ -522,10 +543,21 @@ where
 		} else {
 			None
 		};
+		let sliding = if slides {
+			let Some(slide) = settings.slide else {
+				panic!("{}: a sliding window reached create without a slide", A::NAME);
+			};
+			Some(SlidingMode {
+				engine: SlidingEngine::new(window_engine_config(params), settings.size, slide),
+			})
+		} else {
+			None
+		};
 		Ok(Self {
 			aggregator,
 			engine: TumblingEngine::new(window_engine_config(params)),
 			rolling,
+			sliding,
 			reap_queue_empty: false,
 			seal_span,
 			settings,
@@ -540,6 +572,7 @@ where
 			aggregator,
 			engine,
 			rolling,
+			sliding,
 			reap_queue_empty,
 			settings,
 			..
@@ -569,7 +602,11 @@ where
 				removes
 			}
 			None => {
-				Self::expire_through(engine, reap_queue_empty, &mut store, frontier, seal_span)?;
+				let tumbling = match sliding {
+					Some(mode) => mode.engine.tumbling_mut(),
+					None => engine,
+				};
+				Self::expire_through(tumbling, reap_queue_empty, &mut store, frontier, seal_span)?;
 				Vec::new()
 			}
 		};
@@ -587,6 +624,7 @@ where
 				aggregator,
 				engine,
 				rolling,
+				sliding,
 				reap_queue_empty,
 				seal_span,
 				settings,
@@ -595,15 +633,21 @@ where
 				Some(mode) => {
 					Self::apply_rolling(aggregator, mode, *seal_span, settings, ctx, buckets)?
 				}
-				None => Self::apply_tumbling(
-					aggregator,
-					engine,
-					reap_queue_empty,
-					*seal_span,
-					settings,
-					ctx,
-					buckets,
-				)?,
+				None => {
+					let tumbling = match sliding {
+						Some(mode) => mode.engine.tumbling_mut(),
+						None => engine,
+					};
+					Self::apply_tumbling(
+						aggregator,
+						tumbling,
+						reap_queue_empty,
+						*seal_span,
+						settings,
+						ctx,
+						buckets,
+					)?
+				}
 			}
 		};
 		self.emit_batches(ctx, &inserts, &updates, &removes)?;
@@ -808,6 +852,37 @@ mod tests {
 	}
 
 	#[test]
+	fn a_count_sliding_window_slides_by_slots() {
+		// a slide swapped for the size or read in the wrong unit would put each slot in the wrong windows
+		let with = ApplyWith {
+			window: Some(WindowKind::Sliding {
+				size: WindowSize::Count(10),
+				slide: WindowSize::Count(4),
+			}),
+			lateness: None,
+			immutable: None,
+		};
+
+		let driver = PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).unwrap();
+		let sliding = driver.sliding.as_ref().expect("a sliding view builds a sliding engine");
+
+		assert_eq!(driver.settings.slide, Some(RowSpan::of(4)));
+		assert_eq!(
+			sliding.engine.spans(OrdinalCoord::from_arrival_counter(23)),
+			vec![
+				WindowSpan::new(
+					OrdinalCoord::from_arrival_counter(16),
+					OrdinalCoord::from_arrival_counter(26)
+				),
+				WindowSpan::new(
+					OrdinalCoord::from_arrival_counter(20),
+					OrdinalCoord::from_arrival_counter(30)
+				),
+			]
+		);
+	}
+
+	#[test]
 	fn create_refuses_a_window_that_is_not_tumbling() {
 		// a NoRolling operator must refuse a rolling window, and no window at all must be refused too
 		let rolling = ApplyWith {
@@ -825,13 +900,14 @@ mod tests {
 	}
 
 	#[test]
-	fn a_plain_operator_with_no_rolling_kinds_publishes_tumbling_only() {
-		// a NoRolling operator that published rolling would let a rolling view past the create check
+	fn a_plain_operator_with_no_rolling_kinds_publishes_tumbling_and_sliding() {
+		// a NoRolling operator must publish sliding but never rolling, or the create check admits the wrong
+		// views
 		assert_eq!(
 			<PlainDriver<TimeProbe> as MountedOperator>::WINDOW,
 			WindowRequirements {
 				takes_window: true,
-				kinds: &["tumbling"],
+				kinds: &["tumbling", "sliding"],
 				domain: WindowSizeDomain::Time,
 				needs_pane: false,
 			}

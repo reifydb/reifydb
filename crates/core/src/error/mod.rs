@@ -97,6 +97,16 @@ pub enum CoreError {
 		size: Duration,
 	},
 
+	#[error("the window slide is a count ({count}), but this operator windows by time")]
+	OperatorWithWindowSlideCount {
+		count: u64,
+	},
+
+	#[error("the window slide is a duration ({slide}), but this operator counts slots")]
+	OperatorWithWindowSlideDuration {
+		slide: Duration,
+	},
+
 	#[error("operator setting '{key}' is a duration ({duration}), but this operator seals by count")]
 	OperatorWithDurationSpan {
 		key: &'static str,

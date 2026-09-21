@@ -36,3 +36,6 @@ mod guest_sweep;
 
 #[path = "sdk/class.rs"]
 mod class;
+
+#[path = "sdk/plain_sliding.rs"]
+mod plain_sliding;
