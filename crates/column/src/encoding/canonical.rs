@@ -6,9 +6,16 @@ use reifydb_core::value::column::{
 	encoding::EncodingId,
 	stats::{Stat, StatsSet},
 };
-use reifydb_value::{Result, value::Value};
+use reifydb_value::{
+	Result,
+	value::{Value, value_type::ValueType},
+};
 
-use crate::{compress::CompressConfig, encoding::Encoding};
+use crate::{
+	compress::CompressConfig,
+	encoding::Encoding,
+	persist::{PersistedArray, unexpected_payload},
+};
 
 pub struct CanonicalEncoding {
 	pub id: EncodingId,
@@ -41,6 +48,22 @@ impl Encoding for CanonicalEncoding {
 	fn canonicalize(&self, array: &Column) -> Result<Canonical> {
 		let arc = array.to_canonical()?;
 		Ok((*arc).clone())
+	}
+
+	fn persist(&self, array: &Column) -> Result<PersistedArray> {
+		let canonical = array.to_canonical()?;
+		Ok(PersistedArray::Canonical {
+			buffer: canonical.to_buffer(),
+		})
+	}
+
+	fn load(&self, persisted: PersistedArray, _ty: &ValueType) -> Result<Column> {
+		match persisted {
+			PersistedArray::Canonical {
+				buffer,
+			} => Ok(Column::from_canonical(Canonical::from_buffer(buffer))),
+			_ => Err(unexpected_payload(self.id)),
+		}
 	}
 
 	fn derive_stats(&self, array: &Column) -> StatsSet {

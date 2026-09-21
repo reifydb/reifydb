@@ -68,6 +68,9 @@ fn pool_config_from_sources(
 	))
 }
 
+#[cfg(feature = "column")]
+use reifydb_sub_store::subsystem::StorageConfig;
+
 use super::{DatabaseBuilder, WithInterceptorBuilder, startup::resolve_startup_configs, traits::WithSubsystem};
 use crate::{
 	Database, MigrationSource, Result,
@@ -138,6 +141,12 @@ impl EmbeddedBuilder {
 
 	pub fn with_dependency<T: Clone + Send + Sync + 'static>(mut self, value: T) -> Self {
 		self.dependencies.push(Box::new(move |builder| builder.with_dependency(value)));
+		self
+	}
+
+	#[cfg(feature = "column")]
+	pub fn with_storage_config(mut self, config: StorageConfig) -> Self {
+		self.dependencies.push(Box::new(move |builder| builder.with_storage_config(config)));
 		self
 	}
 
@@ -227,6 +236,11 @@ impl EmbeddedBuilder {
 			operator_resident,
 			operator_flush_interval,
 		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs, self.cdc_memory)?;
+		#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
+		let column_sqlite = match &self.storage_factory {
+			StorageFactory::Sqlite(config) => Some(config.clone()),
+			StorageFactory::Memory => None,
+		};
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		install_fatal(runtime_config.fatal);
 		let runtime = Runtime::from_config(runtime_config, pool_config);
@@ -266,6 +280,11 @@ impl EmbeddedBuilder {
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime)
 			.with_stores(multi_store, single_store, operator_store, cdc_store);
+
+		#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
+		{
+			builder = builder.with_column_sqlite(column_sqlite);
+		}
 
 		for dependency in self.dependencies {
 			builder = dependency(builder);

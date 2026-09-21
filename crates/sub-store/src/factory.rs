@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 #[cfg(feature = "column")]
-use reifydb_column::compress::{CompressConfig, Compressor};
+use reifydb_column::compress::Compressor;
 #[cfg(feature = "column")]
 use reifydb_core::event::{EventBus, transaction::PostCommitEvent};
 use reifydb_core::util::ioc::IocContainer;
@@ -77,13 +77,18 @@ impl SubsystemFactory for StorageSubsystemFactory {
 
 		ioc.register_service::<Arc<ColumnStore>>(Arc::new(block_store.clone()));
 
+		let compressor = || match self.config.compress.clone() {
+			Some(cfg) => Compressor::new(cfg),
+			None => Compressor::disabled(),
+		};
+
 		let table_changes = TableChanges::new();
 		event_bus.register::<PostCommitEvent, _>(table_changes.clone());
 
 		let table_actor = TableMaterializationActor::new(
 			engine.clone(),
 			block_store.clone(),
-			Compressor::new(CompressConfig::default()),
+			compressor(),
 			self.config.table_tick_interval,
 			table_changes,
 		);
@@ -93,7 +98,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 		let series_actor = SeriesMaterializationActor::new(
 			engine,
 			block_store.clone(),
-			Compressor::new(CompressConfig::default()),
+			compressor(),
 			self.config.series_tick_interval,
 			self.config.series_bucket_width,
 			self.config.series_grace,

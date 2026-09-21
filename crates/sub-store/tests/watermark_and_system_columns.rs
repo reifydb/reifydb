@@ -26,6 +26,7 @@ fn series_snapshot_records_sealed_at_commit_version() {
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_bucket_width: 5,
 		series_grace: Duration::from_milliseconds(0).unwrap(),
+		..StorageConfig::default()
 	};
 
 	let mut db = TestDb::from(
@@ -86,6 +87,7 @@ fn series_snapshot_system_columns_match_row_metadata() {
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_bucket_width: 5,
 		series_grace: Duration::from_milliseconds(0).unwrap(),
+		..StorageConfig::default()
 	};
 
 	let mut db = TestDb::from(

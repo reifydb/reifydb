@@ -192,8 +192,8 @@ impl Database {
 
 	/// The spawner every subsystem was built from, so `settle` can reach the one actor system
 	/// that owns them.
-	#[cfg(all(feature = "sub_flow", reifydb_dst))]
-	pub(crate) fn spawner(&self) -> &ActorSpawner {
+	#[cfg(reifydb_dst)]
+	pub fn spawner(&self) -> &ActorSpawner {
 		&self.spawner
 	}
 
@@ -402,6 +402,15 @@ impl Database {
 	/// Read-only; rejects DDL and DML.
 	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
 		let r = self.engine.query_as(IdentityId::root(), rql, params.into());
+		match r.error {
+			Some(e) => Err(e),
+			None => Ok(r.frames),
+		}
+	}
+
+	/// Read-only; rejects DDL and DML. Scans through the column layout.
+	pub fn query_column_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
+		let r = self.engine.query_column_as(IdentityId::root(), rql, params.into());
 		match r.error {
 			Some(e) => Err(e),
 			None => Ok(r.frames),

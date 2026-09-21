@@ -9,6 +9,8 @@ use std::{
 	},
 };
 
+#[cfg(feature = "column")]
+use reifydb_column::compress::CompressConfig;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 #[cfg(feature = "column")]
 use reifydb_runtime::actor::mailbox::ActorRef;
@@ -32,6 +34,9 @@ pub struct StorageConfig {
 	pub series_bucket_width: u64,
 
 	pub series_grace: Duration,
+
+	#[cfg(feature = "column")]
+	pub compress: Option<CompressConfig>,
 }
 
 impl Default for StorageConfig {
@@ -42,6 +47,9 @@ impl Default for StorageConfig {
 
 			series_bucket_width: 3_600 * 1_000_000_000,
 			series_grace: Duration::from_seconds(5).unwrap(),
+
+			#[cfg(feature = "column")]
+			compress: Some(CompressConfig::default()),
 		}
 	}
 }

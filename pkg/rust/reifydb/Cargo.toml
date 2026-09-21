@@ -91,7 +91,7 @@ alloc-jemalloc = ["reifydb-allocator/alloc-jemalloc"]
 wasm = ["reifydb-extension/wasm"]
 
 # Subsystem features
-column = ["reifydb-sub-store/column"]
+column = ["reifydb-sub-store/column", "reifydb-sub-store/sqlite"]
 sub_flow = ["dep:reifydb-flow", "dep:reifydb-sub-flow", "dep:reifydb-sub-subscription"]
 flow_testing = ["testing", "sub_flow", "dep:reifydb-testing-flow"]
 sub_tracing = ["dep:reifydb-sub-tracing"]

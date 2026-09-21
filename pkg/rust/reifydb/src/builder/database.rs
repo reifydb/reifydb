@@ -65,7 +65,9 @@ use reifydb_sub_metrics::profiler::{builder::ProfilerConfigurator, factory::Prof
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_server::interceptor::RequestInterceptorChain;
 #[cfg(feature = "column")]
-use reifydb_sub_store::factory::StorageSubsystemFactory;
+#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
+use reifydb_sqlite::SqliteConfig;
+use reifydb_sub_store::{factory::StorageSubsystemFactory, subsystem::StorageConfig};
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystemFactory;
 #[cfg(not(reifydb_single_threaded))]
@@ -120,6 +122,10 @@ pub struct DatabaseBuilder {
 	migrations: Vec<MigrationStatement>,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
 	fast_shutdown: bool,
+	#[cfg(feature = "column")]
+	storage_config: Option<StorageConfig>,
+	#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
+	column_sqlite: Option<SqliteConfig>,
 }
 
 impl DatabaseBuilder {
@@ -167,7 +173,23 @@ impl DatabaseBuilder {
 			migrations: Vec::new(),
 			bootstrap_configs: Vec::new(),
 			fast_shutdown: false,
+			#[cfg(feature = "column")]
+			storage_config: None,
+			#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
+			column_sqlite: None,
 		}
+	}
+
+	#[cfg(feature = "column")]
+	pub fn with_storage_config(mut self, config: StorageConfig) -> Self {
+		self.storage_config = Some(config);
+		self
+	}
+
+	#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
+	pub fn with_column_sqlite(mut self, config: Option<SqliteConfig>) -> Self {
+		self.column_sqlite = config;
+		self
 	}
 
 	pub fn with_fast_shutdown(mut self) -> Self {
@@ -596,7 +618,13 @@ impl DatabaseBuilder {
 
 		#[cfg(feature = "column")]
 		{
-			let factory: Box<dyn SubsystemFactory> = Box::new(StorageSubsystemFactory::default());
+			let storage = match self.storage_config.take() {
+				Some(config) => StorageSubsystemFactory::new(config),
+				None => StorageSubsystemFactory::default(),
+			};
+			#[cfg(not(target_arch = "wasm32"))]
+			let storage = storage.with_column_sqlite(self.column_sqlite.take());
+			let factory: Box<dyn SubsystemFactory> = Box::new(storage);
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);

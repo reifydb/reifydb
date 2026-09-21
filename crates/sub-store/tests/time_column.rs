@@ -42,6 +42,7 @@ fn db() -> TestDb {
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_bucket_width: 5,
 		series_grace: Duration::from_milliseconds(0).unwrap(),
+		..StorageConfig::default()
 	};
 	let db = TestDb::from(
 		db_embedded::memory()

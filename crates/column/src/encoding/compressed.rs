@@ -5,9 +5,9 @@ use reifydb_core::value::column::{
 	data::{Column, canonical::Canonical},
 	encoding::EncodingId,
 };
-use reifydb_value::Result;
+use reifydb_value::{Result, value::value_type::ValueType};
 
-use crate::{compress::CompressConfig, encoding::Encoding};
+use crate::{compress::CompressConfig, encoding::Encoding, persist::PersistedArray};
 
 macro_rules! declare_compressed {
 	($ty:ident, $id:ident) => {
@@ -29,12 +29,18 @@ macro_rules! declare_compressed {
 			fn canonicalize(&self, _array: &Column) -> Result<Canonical> {
 				todo!(concat!(stringify!($ty), "::canonicalize not yet implemented"))
 			}
+
+			fn persist(&self, _array: &Column) -> Result<PersistedArray> {
+				todo!(concat!(stringify!($ty), "::persist not yet implemented"))
+			}
+
+			fn load(&self, _persisted: PersistedArray, _ty: &ValueType) -> Result<Column> {
+				todo!(concat!(stringify!($ty), "::load not yet implemented"))
+			}
 		}
 	};
 }
 
-declare_compressed!(ConstantEncoding, CONSTANT);
-declare_compressed!(AllNoneEncoding, ALL_NONE);
 declare_compressed!(DictEncoding, DICT);
 declare_compressed!(RleEncoding, RLE);
 declare_compressed!(DeltaEncoding, DELTA);

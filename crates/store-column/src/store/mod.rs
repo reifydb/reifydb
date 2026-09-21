@@ -80,8 +80,14 @@ impl ColumnStore {
 	pub fn warm(&self) -> Result<()> {
 		if let Some(tier) = &self.persistent {
 			for (id, bytes) in tier.load_all()? {
-				let block = deserialize_block(&bytes)?;
-				self.blocks.insert(id, Arc::new(block));
+				match deserialize_block(&bytes) {
+					Ok(block) => {
+						self.blocks.insert(id, Arc::new(block));
+					}
+					Err(e) => {
+						warn!(snapshot_id = id.0, error = %e, "skipping undecodable column block during warm")
+					}
+				}
 			}
 		}
 		Ok(())

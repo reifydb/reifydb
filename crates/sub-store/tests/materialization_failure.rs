@@ -54,6 +54,7 @@ fn db_whose_column_store_cannot_persist(table_tick: Duration, series_tick: Durat
 		series_tick_interval: series_tick,
 		series_bucket_width: 5,
 		series_grace: Duration::from_milliseconds(0).unwrap(),
+		..StorageConfig::default()
 	};
 	let factory = StorageSubsystemFactory::new(config).with_column_sqlite(Some(column_cfg.clone()));
 	let db = TestDb::from(db_embedded::memory().with_subsystem(Box::new(factory)).build().expect("build"));
