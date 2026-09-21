@@ -72,7 +72,7 @@ fn row(spec: &[(&str, ValueType); 3], number: u64, key: i32, value: i64) -> Colu
 	let at = DateTime::from_millis(1_000_000 + number);
 	Columns::with_system(
 		columns,
-		SystemColumns::new(vec![RowNumber(number)], Vec::new(), vec![at], vec![at], vec![at]),
+		SystemColumns::new(vec![RowNumber(number)], Vec::new(), vec![at], vec![at], vec![at], Vec::new()),
 	)
 }
 

@@ -117,7 +117,7 @@ fn column_scan_returns_the_same_rows_as_the_row_scan() {
 }
 
 #[test]
-fn column_scan_headers_are_the_row_scan_headers_plus_commit_version() {
+fn column_scan_headers_are_the_row_scan_headers() {
 	// A drifting header would make the two entry points return differently shaped frames.
 	let db = materializing_db();
 	db.admin("CREATE TABLE test::t { id: int4, name: utf8, score: float8 }");
@@ -126,9 +126,7 @@ fn column_scan_headers_are_the_row_scan_headers_plus_commit_version() {
 	let column = await_column_rows(&db, "from test::t", 3);
 	let row = db.query("from test::t");
 
-	let mut expected = column_names(&row[0]);
-	expected.push("#commit_version".to_string());
-	assert_eq!(column_names(&column.frames[0]), expected);
+	assert_eq!(column_names(&column.frames[0]), column_names(&row[0]));
 }
 
 #[test]
@@ -138,10 +136,10 @@ fn commit_version_column_equals_the_snapshot_read_version() {
 	db.admin("CREATE TABLE test::t { id: int4, name: utf8, score: float8 }");
 	db.command(INSERT_THREE);
 
-	let column = await_column_rows(&db, "from test::t", 3);
+	let column = await_column_rows(&db, "from test::t map { id, #commit_version }", 3);
 	let recorded = latest_snapshot_version(&db, "t");
 
-	let versions = cells(&column.frames[0], "#commit_version");
+	let versions = cells(&column.frames[0], "commit_version");
 	assert_eq!(versions.len(), 3);
 	for (i, v) in versions.iter().enumerate() {
 		assert_eq!(v, &Value::Uint8(recorded), "row {i} carries a version other than the snapshot's");
@@ -158,9 +156,20 @@ fn empty_table_keeps_its_headers_on_the_column_path() {
 	let row = db.query("from test::t");
 
 	assert_eq!(column.frames.len(), 1, "an empty result still yields one frame");
-	let mut expected = column_names(&row[0]);
-	expected.push("#commit_version".to_string());
-	assert_eq!(column_names(&column.frames[0]), expected);
+	assert_eq!(column_names(&column.frames[0]), column_names(&row[0]));
+}
+
+#[test]
+fn an_empty_column_table_scan_keeps_rownum() {
+	// A never-written table must show #rownum on the column path as the row path does, or layouts disagree.
+	let db = materializing_db();
+	db.admin("CREATE TABLE test::t { id: int4, name: utf8, score: float8 }");
+
+	let column = await_column_rows(&db, "from test::t", 0);
+	let row = db.query("from test::t");
+
+	assert!(row[0].has_row_numbers(), "the row path shows #rownum on an empty table");
+	assert!(column.frames[0].has_row_numbers(), "the column path must match the row path on an empty table");
 }
 
 #[test]
@@ -180,16 +189,19 @@ fn missing_snapshot_raises_query_012_naming_the_table() {
 }
 
 #[test]
-fn series_without_a_sealed_bucket_raises_query_012() {
-	// Nothing was inserted, so no bucket ever sealed and the series has no block to read. Coming
-	// back empty would be indistinguishable from a series whose rows are simply not materialized
-	// yet, and would let a stale read pass as a complete one.
+fn a_never_written_series_reads_as_empty_on_the_column_path() {
+	// A never-written series has no rows, so the column path must answer empty like the row path.
 	let db = TestDb::memory();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE SERIES test::s { k: uint8, value: float8 } WITH { key: k }");
 
-	let err = column_query(&db, "from test::s").error.expect("a series with no sealed bucket must fail");
-	assert_eq!(err.code, "QUERY_012");
+	let result = column_query(&db, "from test::s");
+
+	assert!(result.error.is_none(), "a never-written series must not raise: {:?}", result.error);
+	assert_eq!(result.frames.len(), 1, "an empty result still yields one frame");
+	assert_eq!(result.frames[0].row_count(), 0);
+	assert_eq!(column_names(&result.frames[0]), vec!["k", "value"]);
+	assert!(result.frames[0].has_row_numbers(), "the empty answer must show #rownum like the row path");
 }
 
 #[test]
@@ -326,10 +338,10 @@ fn each_sealed_bucket_carries_its_own_commit_version() {
 	await_column_rows(&db, "from test::s", 9);
 	insert_keys(&db, "test::s", 11..=20);
 
-	let result = await_column_rows(&db, "from test::s", 19);
-	let mut versions = cells(&result.frames[0], "#commit_version");
+	let result = await_column_rows(&db, "from test::s map { k, #commit_version }", 19);
+	let mut versions = cells(&result.frames[0], "commit_version");
 	for frame in &result.frames[1..] {
-		versions.extend(cells(frame, "#commit_version"));
+		versions.extend(cells(frame, "commit_version"));
 	}
 	versions.sort();
 	versions.dedup();
@@ -373,6 +385,22 @@ fn an_emptied_series_returns_no_rows_instead_of_raising_query_012() {
 }
 
 #[test]
+fn an_empty_column_series_scan_keeps_rownum() {
+	// An emptied series has no blocks to read and must still answer with the #rownum its full scans carry.
+	let db = series_db();
+	plain_series(&db);
+	insert_keys(&db, "test::s", 1..=15);
+	let full = await_column_rows(&db, "from test::s", 9);
+	assert!(full.frames[0].has_row_numbers(), "a sealed series scan carries row numbers");
+
+	db.command("DELETE test::s FILTER { k > 0 }");
+
+	let empty = await_column_rows(&db, "from test::s", 0);
+	assert!(empty.frames[0].has_row_numbers(), "an emptied series must keep #rownum on the column path");
+	assert!(db.query("from test::s")[0].has_row_numbers(), "the row path shows #rownum on an emptied series");
+}
+
+#[test]
 fn a_series_whose_only_bucket_is_open_raises_query_012_naming_the_series() {
 	// Rows exist but none are readable yet. Returning them empty would be indistinguishable from
 	// a series that genuinely holds nothing, so the diagnostic has to fire and has to say which
@@ -387,7 +415,7 @@ fn a_series_whose_only_bucket_is_open_raises_query_012_naming_the_series() {
 }
 
 #[test]
-fn series_headers_are_the_key_the_data_columns_and_commit_version() {
+fn series_headers_are_the_key_and_the_data_columns() {
 	// The frame is built from the block schema, so a header list that drifts from it hands back
 	// columns whose names do not match their data.
 	let db = series_db();
@@ -396,7 +424,7 @@ fn series_headers_are_the_key_the_data_columns_and_commit_version() {
 
 	let result = await_column_rows(&db, "from test::s", 19);
 
-	assert_eq!(column_names(&result.frames[0]), vec!["k", "value", "#commit_version"]);
+	assert_eq!(column_names(&result.frames[0]), vec!["k", "value"]);
 }
 
 #[test]
@@ -423,7 +451,7 @@ fn a_tagged_series_puts_the_tag_column_after_the_key() {
 
 	let result = await_column_rows(&db, "from test::tg", 19);
 
-	assert_eq!(column_names(&result.frames[0]), vec!["k", "tag", "value", "#commit_version"]);
+	assert_eq!(column_names(&result.frames[0]), vec!["k", "tag", "value"]);
 }
 
 #[test]

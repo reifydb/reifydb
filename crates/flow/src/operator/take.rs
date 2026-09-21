@@ -126,6 +126,7 @@ fn decode_take_bytes(shape: &RowShape, row_number: RowNumber, encoded: &EncodedB
 		vec![envelope.created_at().unwrap_or_default()],
 		vec![envelope.updated_at().unwrap_or_default()],
 		envelope.time().into_iter().collect(),
+		Vec::new(),
 	);
 	Ok(decoded)
 }
@@ -456,7 +457,7 @@ mod tests {
 		let at = DateTime::from_nanos(born_nanos);
 		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("n"), ColumnBuffer::int4(vec![n]))],
-			SystemColumns::new(vec![RowNumber(rn)], Vec::new(), vec![at], vec![at], vec![at]),
+			SystemColumns::new(vec![RowNumber(rn)], Vec::new(), vec![at], vec![at], vec![at], Vec::new()),
 		)
 	}
 
@@ -470,6 +471,7 @@ mod tests {
 				vec![DateTime::from_nanos(created)],
 				vec![DateTime::from_nanos(updated)],
 				time.map(DateTime::from_nanos).into_iter().collect(),
+				Vec::new(),
 			),
 		)
 	}

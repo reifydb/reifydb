@@ -57,7 +57,7 @@ fn build_insert(value: i64, row_num: u64) -> Change {
 	let now = DateTime::default();
 	let columns = Columns::with_system(
 		cols,
-		SystemColumns::new(vec![RowNumber(row_num)], Vec::new(), vec![now], vec![now], vec![now]),
+		SystemColumns::new(vec![RowNumber(row_num)], Vec::new(), vec![now], vec![now], vec![now], Vec::new()),
 	);
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::insert(columns));
@@ -72,7 +72,7 @@ fn build_remove(value: i64, row_num: u64) -> Change {
 	let now = DateTime::default();
 	let columns = Columns::with_system(
 		cols,
-		SystemColumns::new(vec![RowNumber(row_num)], Vec::new(), vec![now], vec![now], vec![now]),
+		SystemColumns::new(vec![RowNumber(row_num)], Vec::new(), vec![now], vec![now], vec![now], Vec::new()),
 	);
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::remove(columns));

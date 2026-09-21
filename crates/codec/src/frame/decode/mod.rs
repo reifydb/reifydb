@@ -96,10 +96,14 @@ fn decode_frame(data: &[u8], start: usize) -> Result<(Frame, usize), DecodeError
 		read_datetime_array(data, pos, header.row_count, header.meta_flags, META_HAS_UPDATED_AT)?;
 	let (time, pos) = read_datetime_array(data, pos, header.row_count, header.meta_flags, META_HAS_TIME)?;
 	let (columns, pos) = read_frame_columns(data, pos, header.column_count)?;
+	let mut system = SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new());
+	if header.meta_flags & META_HAS_ROW_NUMBERS != 0 {
+		system.mark_row_numbers();
+	}
 
 	Ok((
 		Frame {
-			system: SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
+			system,
 			columns,
 			op: header.op,
 		},

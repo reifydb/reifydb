@@ -7,7 +7,7 @@ use std::{
 	cmp::Ordering as CmpOrdering,
 	collections::{BinaryHeap, VecDeque},
 	error, fmt, mem,
-	panic::{AssertUnwindSafe, catch_unwind},
+	panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
 	rc::{Rc, Weak},
 };
 
@@ -430,6 +430,25 @@ impl ActorSystem {
 				StepResult::Idle => break,
 				_ => {}
 			}
+		}
+	}
+
+	pub fn run_until_idle_or_panic(&self) {
+		let mut first_panic = None;
+		loop {
+			match self.step() {
+				StepResult::Idle => break,
+				StepResult::Panicked {
+					payload,
+					..
+				} => {
+					first_panic.get_or_insert(payload);
+				}
+				_ => {}
+			}
+		}
+		if let Some(payload) = first_panic {
+			resume_unwind(payload);
 		}
 	}
 

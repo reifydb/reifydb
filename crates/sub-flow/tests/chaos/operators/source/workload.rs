@@ -97,6 +97,7 @@ impl SourceWorkload {
 				stamps.clone(),
 				stamps.clone(),
 				stamps,
+				Vec::new(),
 			),
 		)
 	}

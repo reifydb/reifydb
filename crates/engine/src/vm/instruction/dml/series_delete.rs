@@ -321,6 +321,7 @@ fn build_series_delete_pre_columns_from_input(
 			vec![EncodedSeriesRow::view(encoded_bytes).created_at()],
 			vec![EncodedSeriesRow::view(encoded_bytes).updated_at()],
 			EncodedSeriesRow::view(encoded_bytes).time().into_iter().collect(),
+			Vec::new(),
 		),
 	)
 }

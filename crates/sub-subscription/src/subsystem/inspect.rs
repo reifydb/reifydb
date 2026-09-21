@@ -33,6 +33,7 @@ impl SubscriptionInspectorImpl {
 				columns.created_at().to_vec(),
 				columns.updated_at().to_vec(),
 				columns.time().to_vec(),
+				Vec::new(),
 			),
 		)
 	}

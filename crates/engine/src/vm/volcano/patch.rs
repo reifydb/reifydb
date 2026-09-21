@@ -107,6 +107,7 @@ impl QueryNode for PatchNode {
 				let result_headers: Vec<Fragment> = result.iter().map(|c| c.name().clone()).collect();
 				self.headers = Some(ColumnHeaders {
 					columns: result_headers,
+					row_numbers: result.system.has_row_numbers(),
 				});
 			}
 
@@ -143,6 +144,7 @@ impl QueryNode for PatchNode {
 
 		Some(ColumnHeaders {
 			columns: result,
+			row_numbers: input_headers.row_numbers,
 		})
 	}
 }

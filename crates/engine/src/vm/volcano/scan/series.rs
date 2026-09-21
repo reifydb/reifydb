@@ -71,6 +71,7 @@ impl SeriesScanNode {
 		}
 		let headers = ColumnHeaders {
 			columns,
+			row_numbers: true,
 		};
 
 		Ok(Self {
@@ -243,6 +244,7 @@ impl SeriesScanNode {
 				batch.created_at_values,
 				batch.updated_at_values,
 				batch.time_values,
+				Vec::new(),
 			),
 		);
 		if partitioned {
@@ -336,7 +338,9 @@ impl QueryNode for SeriesScanNode {
 		if batch.key_values.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
-				return Ok(Some(Columns::new(self.empty_columns(has_tag))));
+				let mut columns = Columns::new(self.empty_columns(has_tag));
+				columns.system.mark_row_numbers();
+				return Ok(Some(columns));
 			}
 			return Ok(None);
 		}

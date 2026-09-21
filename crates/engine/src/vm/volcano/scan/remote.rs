@@ -89,6 +89,7 @@ impl QueryNode for RemoteFetchNode {
 								.iter()
 								.map(|n| Fragment::internal(n.text()))
 								.collect(),
+							row_numbers: cols.system.has_row_numbers(),
 						});
 					}
 					self.batches.push_back(cols);

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{
+	panic::{AssertUnwindSafe, catch_unwind},
+	sync::Arc,
+};
 
 use reifydb_runtime::{actor::system::dst::StepResult, sync::mutex::Mutex};
 
@@ -108,6 +111,32 @@ fn panic_does_not_kill_system() {
 	// One actor's panic must not take the system or its siblings down with it.
 	assert_eq!(log_contents(&log), vec!["still_alive"]);
 	assert_eq!(system.alive_count(), 1);
+}
+
+#[test]
+fn run_until_idle_or_panic_reraises_the_actor_panic_after_siblings_run() {
+	// A caller that must not run on after a failed actor needs the panic back, never a silently dead actor.
+	let system = test_system();
+	let log = new_log();
+
+	let panicker = system.spawn_coordination("panicker", PanicActor);
+	let logger = system.spawn_coordination(
+		"logger",
+		LogActor {
+			log: log.clone(),
+		},
+	);
+
+	panicker.actor_ref.send(PanicMessage::Boom).unwrap();
+	logger.actor_ref.send("still_alive".into()).unwrap();
+
+	let outcome = catch_unwind(AssertUnwindSafe(|| system.run_until_idle_or_panic()));
+
+	let payload = outcome.expect_err("an actor panicked, so the run must panic too");
+	let message = payload.downcast_ref::<&str>().copied().expect("the payload must be the actor's own panic message");
+	assert_eq!(message, "actor boom", "the re-raised panic must be the actor's own");
+	// The sibling still runs before the panic comes back, so isolation between actors holds.
+	assert_eq!(log_contents(&log), vec!["still_alive"]);
 }
 
 #[test]

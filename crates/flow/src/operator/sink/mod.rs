@@ -333,6 +333,7 @@ mod tests {
 				vec![DateTime::from_nanos(1)],
 				vec![DateTime::from_nanos(1)],
 				vec![DateTime::from_nanos(1)],
+				Vec::new(),
 			),
 		)
 	}
@@ -352,6 +353,7 @@ mod tests {
 				vec![DateTime::from_nanos(created_at)],
 				vec![DateTime::from_nanos(updated_at)],
 				vec![DateTime::from_nanos(time)],
+				Vec::new(),
 			),
 		)
 	}

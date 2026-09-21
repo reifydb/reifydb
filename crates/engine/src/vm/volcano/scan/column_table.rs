@@ -39,14 +39,14 @@ pub struct ColumnTableScanNode {
 
 impl ColumnTableScanNode {
 	pub fn new(table: ResolvedTable, context: Arc<QueryContext>) -> Self {
-		let mut columns: Vec<Fragment> =
+		let columns: Vec<Fragment> =
 			table.columns().iter().map(|col| Fragment::internal(&col.name)).collect();
-		columns.push(Fragment::internal(SystemColumn::CommitVersion.name()));
 		Self {
 			table,
 			context,
 			headers: ColumnHeaders {
 				columns,
+				row_numbers: true,
 			},
 			state: ScanState::Unopened,
 		}
@@ -75,9 +75,7 @@ impl ColumnTableScanNode {
 fn empty_columns(schema: &Schema) -> Columns {
 	let columns = schema
 		.iter()
-		.filter(|(name, _, _)| {
-			matches!(SystemColumn::from_name(name), None | Some(SystemColumn::CommitVersion))
-		})
+		.filter(|(name, _, _)| SystemColumn::from_name(name).is_none())
 		.map(|(name, ty, _)| {
 			ColumnWithName::new(
 				Fragment::internal(name.clone()),
@@ -85,7 +83,9 @@ fn empty_columns(schema: &Schema) -> Columns {
 			)
 		})
 		.collect();
-	Columns::new(columns)
+	let mut columns = Columns::new(columns);
+	columns.system.mark_row_numbers();
+	columns
 }
 
 impl QueryNode for ColumnTableScanNode {

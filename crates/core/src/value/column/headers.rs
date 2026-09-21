@@ -8,18 +8,21 @@ use crate::value::column::columns::Columns;
 #[derive(Debug, Clone)]
 pub struct ColumnHeaders {
 	pub columns: Vec<Fragment>,
+	pub row_numbers: bool,
 }
 
 impl ColumnHeaders {
 	pub fn from_columns(columns: &Columns) -> Self {
 		Self {
 			columns: columns.iter().map(|c| c.name().clone()).collect(),
+			row_numbers: columns.system.has_row_numbers(),
 		}
 	}
 
 	pub fn empty() -> Self {
 		Self {
 			columns: Vec::new(),
+			row_numbers: false,
 		}
 	}
 }

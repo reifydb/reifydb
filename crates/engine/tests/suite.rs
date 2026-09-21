@@ -62,6 +62,8 @@ mod distinct_typed_key;
 mod empty_batch_system_columns;
 #[path = "empty_result_column_types.rs"]
 mod empty_result_column_types;
+#[path = "empty_result_rownum.rs"]
+mod empty_result_rownum;
 #[path = "enum_column_optional.rs"]
 mod enum_column_optional;
 #[path = "enum_variant_in_expression.rs"]
@@ -110,6 +112,8 @@ mod join_using_condition_fragment;
 mod join_using_unknown_key_column;
 #[path = "list_param_insert.rs"]
 mod list_param_insert;
+#[path = "map_ends_in_a_comment.rs"]
+mod map_ends_in_a_comment;
 #[path = "memory_limit.rs"]
 mod memory_limit;
 #[path = "missing_column_lookup.rs"]

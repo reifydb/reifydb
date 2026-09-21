@@ -114,7 +114,7 @@ fn columns_of(rows: &[&JoinRow]) -> Columns {
 	// alongside the numbers or the harness reads the whole batch as arriving at time zero.
 	let numbers: Vec<RowNumber> = rows.iter().map(|row| row.number).collect();
 	let times: Vec<DateTime> = rows.iter().map(|row| row.at()).collect();
-	Columns::with_system(columns, SystemColumns::new(numbers, Vec::new(), times.clone(), times.clone(), times))
+	Columns::with_system(columns, SystemColumns::new(numbers, Vec::new(), times.clone(), times.clone(), times, Vec::new()))
 }
 
 fn tagged(mut diff: Diff, side: Side) -> Diff {

@@ -135,6 +135,7 @@ impl Columns {
 				created_at,
 				updated_at,
 				time: shape.time(row),
+				commit_version: None,
 			});
 		}
 	}

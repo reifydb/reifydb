@@ -104,6 +104,7 @@ impl SerializedRow {
 				vec![self.created_at],
 				vec![self.updated_at],
 				vec![self.time],
+				Vec::new(),
 			),
 		)
 	}

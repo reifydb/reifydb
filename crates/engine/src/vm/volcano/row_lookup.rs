@@ -409,6 +409,7 @@ fn build_headers_and_storage_types(source: &ResolvedObject) -> Result<(ColumnHea
 
 	let headers = ColumnHeaders {
 		columns: columns.iter().map(|col| Fragment::internal(&col.name)).collect(),
+		row_numbers: true,
 	};
 
 	Ok((headers, storage_types))

@@ -95,7 +95,7 @@ fn encode_frame(frame: &Frame, buf: &mut Vec<u8>, options: &EncodeOptions) -> Re
 #[inline]
 fn compute_meta_flags(frame: &Frame) -> u8 {
 	let mut flags = 0u8;
-	if !frame.row_numbers().is_empty() {
+	if frame.has_row_numbers() {
 		flags |= META_HAS_ROW_NUMBERS;
 	}
 	if !frame.created_at().is_empty() {

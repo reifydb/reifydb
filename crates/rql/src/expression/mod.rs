@@ -1230,6 +1230,7 @@ impl ExpressionCompiler {
 			}) => Ok(Expression::Variable(VariableExpression {
 				fragment: variable.token.fragment.to_owned(),
 			})),
+			Ast::Nop => Err(AstError::UnexpectedEof.into()),
 			ast => {
 				let node_type = format!("{:?}", ast).split('(').next().unwrap_or("Unknown").to_string();
 				Err(AstError::UnsupportedAstNode {

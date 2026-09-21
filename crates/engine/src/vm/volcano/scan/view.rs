@@ -105,6 +105,7 @@ impl ViewScanNode {
 
 		let headers = ColumnHeaders {
 			columns: view.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
+			row_numbers: true,
 		};
 		let series = view.def().storage_kind() == ViewStorageKind::Series;
 		let sorted = !view.def().sort().is_empty() && view.def().storage_kind() == ViewStorageKind::Table;

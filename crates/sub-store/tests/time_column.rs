@@ -257,6 +257,7 @@ fn a_timed_block_refuses_a_batch_without_time() {
 			vec![created; 2],
 			vec![created; 2],
 			Vec::new(),
+			Vec::new(),
 		),
 	);
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
@@ -286,6 +287,7 @@ fn a_timeless_block_refuses_a_batch_that_carries_time() {
 			vec![created; 2],
 			vec![created; 2],
 			vec![created; 2],
+			Vec::new(),
 		),
 	);
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];

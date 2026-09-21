@@ -72,7 +72,7 @@ fn a_system_timestamp_that_does_not_parse_is_a_decode_error_not_a_dropped_entry(
 	// Dropping one created_at entry shifts every later timestamp onto the wrong row.
 	let mut frame = int4_frame();
 	let at = DateTime::from_nanos(1_000);
-	frame.system = SystemColumns::new(vec![RowNumber(1)], Vec::new(), vec![at], vec![at], vec![at]);
+	frame.system = SystemColumns::new(vec![RowNumber(1)], Vec::new(), vec![at], vec![at], vec![at], Vec::new());
 	let mut json: JsonValue = from_str(&frames_to_json(&[frame]).unwrap()).unwrap();
 	json[0]["created_at"][0] = JsonValue::String("not a datetime".to_string());
 

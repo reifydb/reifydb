@@ -69,7 +69,6 @@ impl ColumnSeriesScanNode {
 		for col in def.data_columns() {
 			columns.push(Fragment::internal(&col.name));
 		}
-		columns.push(Fragment::internal(SystemColumn::CommitVersion.name()));
 		Self {
 			series,
 			key_range_start,
@@ -79,6 +78,7 @@ impl ColumnSeriesScanNode {
 			context,
 			headers: ColumnHeaders {
 				columns,
+				row_numbers: true,
 			},
 			state: ScanState::Unopened,
 		}
@@ -91,7 +91,6 @@ impl ColumnSeriesScanNode {
 			None if def.partition_by.is_empty() => vec![Partition::default()],
 			None => self.registered_partitions(rx, def)?,
 		};
-		let mut written = false;
 		for partition in partitions {
 			let Some(metadata) = catalog.find_series_metadata(rx, def.id, partition)? else {
 				continue;
@@ -99,9 +98,8 @@ impl ColumnSeriesScanNode {
 			if metadata.row_count > 0 {
 				return Ok(false);
 			}
-			written |= metadata.sequence_counter > 0;
 		}
-		Ok(written)
+		Ok(true)
 	}
 
 	fn registered_partitions(&self, rx: &mut Transaction<'_>, def: &Series) -> Result<Vec<Partition>> {
@@ -181,9 +179,7 @@ fn bucket_order(snapshot: &ColumnSnapshot) -> (u64, Option<Partition>) {
 fn empty_columns(schema: &Schema) -> Columns {
 	let columns = schema
 		.iter()
-		.filter(|(name, _, _)| {
-			matches!(SystemColumn::from_name(name), None | Some(SystemColumn::CommitVersion))
-		})
+		.filter(|(name, _, _)| SystemColumn::from_name(name).is_none())
 		.map(|(name, ty, _)| {
 			ColumnWithName::new(
 				Fragment::internal(name.clone()),
@@ -191,7 +187,9 @@ fn empty_columns(schema: &Schema) -> Columns {
 			)
 		})
 		.collect();
-	Columns::new(columns)
+	let mut columns = Columns::new(columns);
+	columns.system.mark_row_numbers();
+	columns
 }
 
 impl QueryNode for ColumnSeriesScanNode {

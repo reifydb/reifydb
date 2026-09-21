@@ -22,7 +22,7 @@ use reifydb_value::{
 		datetime::{CREATED_AT_COLUMN_NAME, DateTime, TIME_COLUMN_NAME, UPDATED_AT_COLUMN_NAME},
 		partition::Partition,
 		row_number::{ROW_NUMBER_COLUMN_NAME, RowNumber},
-		system_columns::{RowStamps, SystemColumns},
+		system_columns::{RowStamps, SystemColumn, SystemColumns},
 		value_type::ValueType,
 	},
 };
@@ -84,6 +84,11 @@ impl Columns {
 		}
 		if name == TIME_COLUMN_NAME && self.time().len() == row_count {
 			return Some(ColumnBuffer::datetime(self.time().to_vec()));
+		}
+		if name == SystemColumn::CommitVersion.name().trim_start_matches('#')
+			&& self.system.commit_versions().len() == row_count
+		{
+			return Some(ColumnBuffer::uint8(self.system.commit_versions().to_vec()));
 		}
 		None
 	}
@@ -251,6 +256,7 @@ impl Columns {
 			self.system.created_at().to_vec(),
 			self.system.updated_at().to_vec(),
 			self.system.time().to_vec(),
+			Vec::new(),
 		);
 		self.system.assert_invariants(n, "Columns::with_row_numbers");
 		self
@@ -488,7 +494,7 @@ impl Columns {
 
 		Self::with_system(
 			columns_vec,
-			SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
+			SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new()),
 		)
 	}
 }
@@ -677,6 +683,7 @@ impl Columns {
 			created_at,
 			updated_at,
 			time: row.shape.time(&row.encoded),
+			commit_version: None,
 		});
 
 		for (idx, field) in row.shape.fields().iter().enumerate() {
@@ -1058,7 +1065,7 @@ pub mod tests {
 		let time = created_at.clone();
 		let original = Columns::with_system(
 			columns,
-			SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
+			SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new()),
 		);
 
 		let extracted = original.extract_by_indices(&[3, 0]);
@@ -1376,6 +1383,7 @@ pub mod tests {
 				Vec::new(),
 				Vec::new(),
 				stamps.clone(),
+				Vec::new(),
 			),
 		)
 		.with_row_numbers(vec![RowNumber(1), RowNumber(2)]);
@@ -1396,6 +1404,7 @@ pub mod tests {
 				Vec::new(),
 				Vec::new(),
 				vec![DateTime::from_nanos(10), DateTime::from_nanos(20), DateTime::from_nanos(30)],
+				Vec::new(),
 			),
 		);
 

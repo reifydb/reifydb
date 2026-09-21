@@ -74,6 +74,7 @@ mod tests {
 				Vec::new(),
 				Vec::new(),
 				time.into_iter().collect(),
+				Vec::new(),
 			),
 		)
 	}
@@ -383,7 +384,7 @@ fn decode_run(
 		.map(|envelope| envelope.time().or_else(|| envelope.created_at()).unwrap_or_default())
 		.collect();
 	let time: Vec<DateTime> = envelopes.iter().filter_map(|envelope| envelope.time()).collect();
-	decoded.system = SystemColumns::new(ids.to_vec(), Vec::new(), instants.clone(), instants, time);
+	decoded.system = SystemColumns::new(ids.to_vec(), Vec::new(), instants.clone(), instants, time, Vec::new());
 
 	Ok(decoded)
 }
@@ -430,7 +431,7 @@ fn merge_runs(runs: Vec<Columns>) -> Columns {
 	let updated_at: Vec<DateTime> = runs.iter().flat_map(|run| run.updated_at().iter().copied()).collect();
 	let time: Vec<DateTime> = runs.iter().flat_map(|run| run.time().iter().copied()).collect();
 
-	Columns::with_system(result_columns, SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time))
+	Columns::with_system(result_columns, SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new()))
 }
 
 #[instrument(name = "flow::operator::join::columns_from_block", level = "trace", skip_all, fields(rows = block.len()))]

@@ -479,6 +479,7 @@ fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, s
 			vec![EncodedSeriesRow::view(snapshot.row).created_at()],
 			vec![EncodedSeriesRow::view(snapshot.row).updated_at()],
 			EncodedSeriesRow::view(snapshot.row).time().into_iter().collect(),
+			Vec::new(),
 		),
 	);
 	txn.track_flow_change(Change {
