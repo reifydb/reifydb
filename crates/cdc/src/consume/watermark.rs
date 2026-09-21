@@ -14,6 +14,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::Result;
+use tracing::warn;
 
 use super::checkpoint::CheckpointRow;
 
@@ -91,8 +92,17 @@ pub fn compute_pinning_watermark(
 		min_version = Some(min_version.map_or(bytes.version, |m| m.min(bytes.version)));
 	}
 
-	if let Some(durable) = floor.and_then(|floor| floor.floor()) {
-		min_version = Some(min_version.map_or(durable, |m| m.min(durable)));
+	if let Some(floor) = floor {
+		match floor.floor() {
+			Ok(Some(durable)) => {
+				min_version = Some(min_version.map_or(durable, |m| m.min(durable)));
+			}
+			Ok(None) => {}
+			Err(err) => {
+				warn!(error = %err, "checkpoint floor unavailable, pinning cdc retention at version zero");
+				min_version = Some(CommitVersion(0));
+			}
+		}
 	}
 
 	Ok(min_version)
