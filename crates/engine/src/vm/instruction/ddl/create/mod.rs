@@ -6,11 +6,14 @@ use reifydb_catalog::{
 	vtable::system::operator_libary::OperatorLibrary,
 };
 use reifydb_core::{
-	common::{OperatorClass, TimeDomain},
+	common::{OperatorClass, TimeDomain, WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
 	error::diagnostic::{
 		flow::{
 			flow_managed_operator_requires_event_time, flow_operator_lateness_required,
-			flow_operator_with_not_accepted, flow_view_calls_script_routine,
+			flow_operator_with_not_accepted, flow_operator_with_pane_missing,
+			flow_operator_with_window_kind_unsupported, flow_operator_with_window_missing,
+			flow_operator_with_window_not_supported, flow_operator_with_window_size_count,
+			flow_operator_with_window_size_duration, flow_view_calls_script_routine,
 		},
 		query,
 	},
@@ -271,22 +274,60 @@ fn check_operator_with_requirements(flow: &FlowDag, operators: &OperatorLibrary)
 		else {
 			continue;
 		};
-		let Some(class) = operators.get(operator).and_then(|info| info.class) else {
+		let Some(info) = operators.get(operator) else {
 			continue;
 		};
-		match class {
-			OperatorClass::Nostate => {
+		match info.class {
+			Some(OperatorClass::Nostate) => {
 				if with != &ApplyWith::default() {
 					return Err(error!(flow_operator_with_not_accepted()));
 				}
 			}
-			OperatorClass::Managed => {
+			Some(OperatorClass::Managed) => {
 				if with.lateness_duration()?.is_none_or(|lateness| lateness.is_zero()) {
 					return Err(error!(flow_operator_lateness_required()));
 				}
 			}
-			OperatorClass::Unmanaged | OperatorClass::Windowed => {}
+			Some(OperatorClass::Unmanaged | OperatorClass::Windowed) | None => {}
 		}
+		if let Some(requirements) = info.window {
+			check_window_requirements(requirements, with)?;
+		}
+	}
+	Ok(())
+}
+
+fn check_window_requirements(requirements: WindowRequirements, with: &ApplyWith) -> Result<()> {
+	let kind = match (&with.window, requirements.takes_window) {
+		(Some(kind), true) => kind,
+		(Some(kind), false) => return Err(error!(flow_operator_with_window_not_supported(kind.name()))),
+		(None, true) => return Err(error!(flow_operator_with_window_missing())),
+		(None, false) => return Ok(()),
+	};
+	if !requirements.kinds.contains(&kind.name()) {
+		return Err(error!(flow_operator_with_window_kind_unsupported(
+			kind.name(),
+			&requirements.kinds.join(", ")
+		)));
+	}
+	match (requirements.domain, kind.size()) {
+		(WindowSizeDomain::Time, Some(WindowSize::Count(count))) => {
+			return Err(error!(flow_operator_with_window_size_count(*count)));
+		}
+		(WindowSizeDomain::Slots, Some(WindowSize::Duration(size))) => {
+			return Err(error!(flow_operator_with_window_size_duration(*size)));
+		}
+		_ => {}
+	}
+	if requirements.needs_pane
+		&& matches!(
+			kind,
+			WindowKind::Rolling {
+				pane: None,
+				..
+			}
+		) {
+		return Err(error!(flow_operator_with_pane_missing()));
 	}
 	Ok(())
 }

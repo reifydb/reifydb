@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::{collections::BTreeMap, path::PathBuf};
+
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::{
 	common::{WindowRequirements, WindowSizeDomain},
-	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	event::operator::OperatorLoadedEvent,
+	interface::{WithEventBus, catalog::flow::OperatorId, flow::OperatorCapability},
+	metrics::heap::HeapSize,
 	operator_with::ApplyWith,
 };
+use reifydb_flow::window::{accumulator::invertible::last_value::LastValue, coord::OrdinalCoord, span::WindowSpan};
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_sdk::{
 	error::Result as SdkResult,
@@ -14,14 +19,19 @@ use reifydb_sdk::{
 		ManagedMount, ManagedOperator, MountedOperator, NostateMount, NostateOperator, OperatorMetadata,
 		UnmanagedMount, UnmanagedOperator,
 		column::operator::OperatorColumn,
-		context::{GuestContext, Managed, Nostate, Unmanaged},
-		view::ChangeView,
+		context::{GuestContext, Managed, Nostate, Unmanaged, Windowed},
+		view::{ChangeView, RowView},
+		windowed::operator::{
+			AllKinds, Emit, NoRolling, PlainMarker, TopKMarker, WindowSettings, WindowedOperator,
+		},
 	},
+	row,
 };
+use reifydb_sub_api::subsystem::HealthStatus;
 use reifydb_test_harness::assert::column_values;
 use reifydb_value::{
 	config::ExtensionParams,
-	value::{constraint::TypeConstraint, value_type::ValueType},
+	value::{constraint::TypeConstraint, datetime::DateTime, value_type::ValueType},
 };
 
 const G_COLUMNS: &[OperatorColumn] = &[OperatorColumn {
@@ -213,4 +223,272 @@ fn nostate_managed_and_unmanaged_operators_each_publish_takes_window_false() {
 	assert_eq!(<NostateMount<NostateProbe> as MountedOperator>::WINDOW, no_window);
 	assert_eq!(<ManagedMount<ManagedProbe> as MountedOperator>::WINDOW, no_window);
 	assert_eq!(<UnmanagedMount<UnmanagedProbe> as MountedOperator>::WINDOW, no_window);
+}
+
+struct GRow {
+	g: i32,
+}
+
+row!(GRow {
+	g: i32
+});
+
+#[reifydb_macro::operator_state]
+#[derive(Clone, Debug, PartialEq, HeapSize)]
+struct RankedRow {
+	g: i32,
+}
+
+row!(RankedRow {
+	g: i32
+});
+
+macro_rules! window_probe {
+	($probe:ident, $name:literal, $coord:ty, $kinds:ty, $output:ty) => {
+		struct $probe;
+
+		impl OperatorMetadata for $probe {
+			const NAME: &'static str = $name;
+			const VERSION: &'static str = "0.0.1";
+			const DESCRIPTION: &'static str = "test-only windowed operator that emits nothing";
+			const INPUT_COLUMNS: &'static [OperatorColumn] = G_COLUMNS;
+			const OUTPUT_COLUMNS: &'static [OperatorColumn] = G_COLUMNS;
+			const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+		}
+
+		impl WindowedOperator for $probe {
+			type Coord = $coord;
+			type GroupKey = u32;
+			type Accumulator = LastValue<i64>;
+			type Output = $output;
+
+			fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> SdkResult<Self> {
+				Ok(Self)
+			}
+
+			fn coord(&self, _: &impl RowView) -> Option<$coord> {
+				None
+			}
+
+			fn extract(&self, _: &mut impl GuestContext<Windowed>, _: &impl RowView) -> Option<(u32, i64)> {
+				None
+			}
+
+			fn new_accumulator(&self, _: &WindowSettings<$coord>) -> LastValue<i64> {
+				LastValue::default()
+			}
+		}
+
+		impl Emit for $probe {
+			type Kinds = $kinds;
+
+			fn build_output(&self, _: &u32, _: WindowSpan<$coord>, _: &i64) -> Option<$output> {
+				None
+			}
+		}
+	};
+}
+
+window_probe!(TimeWindowProbe, "time_window_probe", DateTime, NoRolling, GRow);
+window_probe!(SlotWindowProbe, "slot_window_probe", OrdinalCoord, NoRolling, GRow);
+window_probe!(RollingProbe, "rolling_probe", DateTime, AllKinds, GRow);
+window_probe!(TopKProbe, "top_k_probe", DateTime, AllKinds, BTreeMap<u32, RankedRow>);
+
+fn windowed_memory() -> TestDb {
+	// Every window shape the create check branches on must be registered, or a skipped branch would read as a pass.
+	TestDb::from(
+		embedded::memory()
+			.with_runtime_config(runtime())
+			.with_flow(|f| {
+				f.register_nostate_operator::<NostateProbe>()
+					.register_managed_operator::<ManagedProbe>()
+					.register_unmanaged_operator::<UnmanagedProbe>()
+					.register_windowed_operator::<TimeWindowProbe, PlainMarker>()
+					.register_windowed_operator::<SlotWindowProbe, PlainMarker>()
+					.register_windowed_operator::<RollingProbe, PlainMarker>()
+					.register_windowed_operator::<TopKProbe, TopKMarker>()
+			})
+			.build()
+			.expect("build memory db with flow"),
+	)
+}
+
+fn view(name: &str, apply: &str) -> String {
+	format!("CREATE DEFERRED VIEW app::{name} {{ g: int4 }} AS {{ FROM app::t APPLY {apply} }}")
+}
+
+fn refused_code(db: &TestDb, apply: &str) -> String {
+	let statement = view("v", apply);
+	let Err(err) = db.try_admin(&statement) else {
+		panic!("the create must be refused: {statement}");
+	};
+	err.diagnostic().code
+}
+
+fn flow_rows(db: &TestDb, name: &str) -> usize {
+	db.query(&format!("from system::flows filter {{ name == '{name}' }}"))
+		.iter()
+		.map(|frame| column_values(frame, "name").len())
+		.sum()
+}
+
+fn poisoned(db: &TestDb) -> Option<String> {
+	match db.get_all_component_health().remove("flow").expect("the flow subsystem is registered").status {
+		HealthStatus::Degraded {
+			description,
+		} if description.contains("poisoned") => Some(description),
+		_ => None,
+	}
+}
+
+#[test]
+fn a_windowed_apply_without_a_window_fails_the_create() {
+	// A windowed operator with no window has nothing to bucket by, and flow start is too late to say so.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	assert_eq!(refused_code(&db, "time_window_probe{}"), "FLOW_065");
+}
+
+#[test]
+fn a_no_rolling_operator_on_a_rolling_window_fails_the_create() {
+	// A tumbling-only operator given a rolling window would otherwise poison its flow at start.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	assert_eq!(
+		refused_code(&db, "time_window_probe{} WITH { window: rolling, duration: 1h, pane: 1s, lateness: 2s }"),
+		"FLOW_066"
+	);
+}
+
+#[test]
+fn a_window_on_an_operator_that_takes_none_fails_the_create() {
+	// An unmanaged operator never reads a window, so accepting one would silently ignore the view's intent.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	assert_eq!(refused_code(&db, "unmanaged_probe{} WITH { window: tumbling, duration: 1m }"), "FLOW_067");
+}
+
+#[test]
+fn a_time_operator_given_a_slot_size_fails_the_create() {
+	// A count read as a duration would size every window in the wrong unit.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	assert_eq!(
+		refused_code(&db, "time_window_probe{} WITH { window: tumbling, slots: 4, lateness: 2 }"),
+		"FLOW_068"
+	);
+}
+
+#[test]
+fn a_slot_operator_given_a_duration_size_fails_the_create() {
+	// A duration read as a slot count would size every window in the wrong unit.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	assert_eq!(
+		refused_code(&db, "slot_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s }"),
+		"FLOW_069"
+	);
+}
+
+#[test]
+fn a_slot_operator_given_a_duration_lateness_fails_the_create() {
+	// A slot operator can only count late slots, so a duration lateness must be refused, not truncated.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	assert_eq!(
+		refused_code(&db, "slot_window_probe{} WITH { window: tumbling, slots: 4, lateness: 30s }"),
+		"AST_005"
+	);
+}
+
+#[test]
+fn a_rolling_window_without_a_pane_fails_the_create_on_a_top_k_operator() {
+	// A top-k operator buckets rows by pane, so without one it fails every window at runtime.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	assert_eq!(refused_code(&db, "top_k_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }"), "FLOW_075");
+}
+
+#[test]
+fn a_rolling_window_without_a_pane_creates_on_an_operator_that_needs_none() {
+	// The pane check must key on the operator's need, or every paneless rolling view would be refused.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	let statement = view("v", "rolling_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }");
+	assert!(db.try_admin(&statement).is_ok(), "a plain rolling operator needs no pane: {statement}");
+}
+
+#[test]
+fn well_formed_time_and_slot_windows_create() {
+	// The window checks must not refuse a view that matches its operator exactly.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	for (name, apply) in [
+		("time_v", "time_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s }"),
+		("slot_v", "slot_window_probe{} WITH { window: tumbling, slots: 4, lateness: 2 }"),
+		("top_v", "top_k_probe{} WITH { window: rolling, duration: 1h, pane: 1s, lateness: 2s }"),
+	] {
+		let statement = view(name, apply);
+		if let Err(err) = db.try_admin(&statement) {
+			panic!("a well formed window must create: {statement}: {:?}", err.diagnostic());
+		}
+	}
+}
+
+#[test]
+fn an_operator_with_no_published_window_creates_without_a_window_check() {
+	// Extern operators publish no window metadata, so absent metadata must skip the check rather than refuse.
+	let db = windowed_memory();
+	event_time_source(&db);
+	let bus = db.engine().event_bus();
+	bus.emit(OperatorLoadedEvent::new(
+		"time_window_probe".to_string(),
+		PathBuf::new(),
+		None,
+		"0.0.1".to_string(),
+		String::new(),
+		Vec::new(),
+		Vec::new(),
+		0,
+		None,
+		None,
+	));
+	bus.wait_for_completion();
+
+	let statement = view("v", "time_window_probe{}");
+	if let Err(err) = db.try_admin(&statement) {
+		panic!("absent window metadata must skip the window check: {:?}", err.diagnostic());
+	}
+}
+
+#[test]
+fn every_create_time_refusal_leaves_no_flow_and_no_poison() {
+	// A refusal that still registered a flow would poison it at start, the exact failure these checks replace.
+	let db = windowed_memory();
+	event_time_source(&db);
+
+	for (code, apply) in [
+		("FLOW_065", "time_window_probe{}"),
+		("FLOW_066", "time_window_probe{} WITH { window: rolling, duration: 1h, pane: 1s, lateness: 2s }"),
+		("FLOW_067", "unmanaged_probe{} WITH { window: tumbling, duration: 1m }"),
+		("FLOW_068", "time_window_probe{} WITH { window: tumbling, slots: 4, lateness: 2 }"),
+		("FLOW_069", "slot_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s }"),
+		("AST_005", "slot_window_probe{} WITH { window: tumbling, slots: 4, lateness: 30s }"),
+		("FLOW_071", "nostate_probe{} WITH { lateness: 2s }"),
+		("FLOW_072", "managed_probe{}"),
+		("FLOW_075", "top_k_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }"),
+	] {
+		assert_eq!(refused_code(&db, apply), code, "{apply}");
+		assert_eq!(flow_rows(&db, "v"), 0, "{code}: a refused create must register no flow");
+		assert_eq!(poisoned(&db), None, "{code}: a refused create must poison nothing");
+	}
 }
