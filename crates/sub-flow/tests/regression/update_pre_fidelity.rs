@@ -377,7 +377,14 @@ mod join {
 		let at = DateTime::from_millis(1_000_000 + number);
 		Columns::with_system(
 			columns,
-			SystemColumns::new(vec![RowNumber(number)], Vec::new(), vec![at], vec![at], vec![at], Vec::new()),
+			SystemColumns::new(
+				vec![RowNumber(number)],
+				Vec::new(),
+				vec![at],
+				vec![at],
+				vec![at],
+				Vec::new(),
+			),
 		)
 	}
 

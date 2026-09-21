@@ -9,11 +9,7 @@ use reifydb_value::{
 };
 
 use crate::value::column::{
-	buffer::ColumnBuffer,
-	data::ColumnData,
-	encoding::EncodingId,
-	nones::NoneBitmap,
-	stats::StatsSet,
+	buffer::ColumnBuffer, data::ColumnData, encoding::EncodingId, nones::NoneBitmap, stats::StatsSet,
 };
 
 #[derive(Clone, Debug)]

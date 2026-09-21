@@ -4,9 +4,7 @@
 use std::sync::Arc;
 
 use postcard::{from_bytes, to_stdvec};
-use reifydb_core::value::column::{
-	buffer::ColumnBuffer, data::canonical::encoding_for_type, encoding::EncodingId,
-};
+use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::encoding_for_type, encoding::EncodingId};
 use reifydb_value::{
 	Result,
 	error::Error,

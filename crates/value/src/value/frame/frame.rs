@@ -104,7 +104,14 @@ impl Frame {
 
 	pub fn with_row_numbers(columns: Vec<FrameColumn>, row_numbers: Vec<RowNumber>) -> Self {
 		Self {
-			system: SystemColumns::new(row_numbers, Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+			system: SystemColumns::new(
+				row_numbers,
+				Vec::new(),
+				Vec::new(),
+				Vec::new(),
+				Vec::new(),
+				Vec::new(),
+			),
 			columns,
 			op: None,
 		}

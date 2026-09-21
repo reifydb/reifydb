@@ -12,7 +12,7 @@ use reifydb::{
 use reifydb_column::{reader::SnapshotReader, snapshot::ColumnBlock};
 use reifydb_core::value::column::encoding::EncodingId;
 use reifydb_sqlite::SqliteConfig;
-use reifydb_store_column::{ColumnStore, persistent::sqlite::SqliteColumnStore};
+use reifydb_store_column::{persistent::sqlite::SqliteColumnStore, store::ColumnStore};
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},

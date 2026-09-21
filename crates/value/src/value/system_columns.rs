@@ -143,20 +143,8 @@ impl SystemColumns {
 		Self::new(row_numbers, Vec::new(), vec![now; n], vec![now; n], vec![now; n], Vec::new())
 	}
 
-	pub fn set_row_numbers(&mut self, row_numbers: Vec<RowNumber>) {
-		self.row_numbers = row_numbers;
-	}
-
 	pub fn set_partitions(&mut self, partitions: Vec<Partition>) {
 		self.partitions = partitions;
-	}
-
-	pub fn set_created_at(&mut self, created_at: Vec<DateTime>) {
-		self.created_at = created_at;
-	}
-
-	pub fn set_updated_at(&mut self, updated_at: Vec<DateTime>) {
-		self.updated_at = updated_at;
 	}
 
 	pub fn set_time(&mut self, time: Vec<DateTime>) {
@@ -214,9 +202,16 @@ impl SystemColumns {
 			time,
 			commit_versions,
 		} = self;
-		[row_numbers.len(), partitions.len(), created_at.len(), updated_at.len(), time.len(), commit_versions.len()]
-			.into_iter()
-			.find(|&len| len > 0)
+		[
+			row_numbers.len(),
+			partitions.len(),
+			created_at.len(),
+			updated_at.len(),
+			time.len(),
+			commit_versions.len(),
+		]
+		.into_iter()
+		.find(|&len| len > 0)
 	}
 
 	pub fn is_empty(&self) -> bool {

@@ -161,7 +161,14 @@ pub fn round_trip_column(name: &str, input: ColumnBuffer) -> ColumnBuffer {
 	let cols = vec![ColumnWithName::new(Fragment::internal(name), input)];
 	let columns = Columns::with_system(
 		cols,
-		SystemColumns::new(row_numbers, Vec::new(), timestamps.clone(), timestamps.clone(), timestamps, Vec::new()),
+		SystemColumns::new(
+			row_numbers,
+			Vec::new(),
+			timestamps.clone(),
+			timestamps.clone(),
+			timestamps,
+			Vec::new(),
+		),
 	);
 
 	let mut diffs: Diffs = Diffs::new();

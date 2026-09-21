@@ -52,7 +52,14 @@ impl InProcessRowSink {
 		let timestamps = vec![now; row_count];
 		Ok(Columns::with_system(
 			out,
-			SystemColumns::new(row_numbers, Vec::new(), timestamps.clone(), timestamps.clone(), timestamps, Vec::new()),
+			SystemColumns::new(
+				row_numbers,
+				Vec::new(),
+				timestamps.clone(),
+				timestamps.clone(),
+				timestamps,
+				Vec::new(),
+			),
 		))
 	}
 

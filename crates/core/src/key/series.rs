@@ -70,13 +70,14 @@ impl SeriesPartitionMetadataKey {
 
 #[cfg(test)]
 mod series_metadata_key_tests {
+	use std::collections::Bound;
+
 	use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 
 	use super::{KeyTag, Partition, SeriesKey, SeriesPartitionMetadataKey};
 	use crate::key::bound::TaggedKeyBoundRange;
 
 	fn in_range(range: &TaggedKeyBoundRange, key: &EncodedKey) -> bool {
-		use std::collections::Bound;
 		let start = match &range.start {
 			Bound::Included(b) => *key >= b.encode(),
 			Bound::Excluded(b) => *key > b.encode(),

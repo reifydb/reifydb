@@ -113,7 +113,7 @@ impl Encoding for AllNoneEncoding {
 	}
 
 	fn try_compress(&self, input: &Canonical, _cfg: &CompressConfig) -> Result<Option<Column>> {
-		if input.len() == 0 {
+		if input.is_empty() {
 			return Ok(None);
 		}
 		match &input.nones {
@@ -130,7 +130,8 @@ impl Encoding for AllNoneEncoding {
 	}
 
 	fn persist(&self, array: &Column) -> Result<PersistedArray> {
-		let data = array.data().as_any().downcast_ref::<AllNoneData>().ok_or_else(|| unexpected_data(Self::ID))?;
+		let data =
+			array.data().as_any().downcast_ref::<AllNoneData>().ok_or_else(|| unexpected_data(Self::ID))?;
 		Ok(PersistedArray::AllNone {
 			len: data.len as u64,
 		})

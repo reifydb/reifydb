@@ -121,7 +121,7 @@ impl Encoding for ConstantEncoding {
 	}
 
 	fn try_compress(&self, input: &Canonical, _cfg: &CompressConfig) -> Result<Option<Column>> {
-		if input.len() == 0 || input.nullable {
+		if input.is_empty() || input.nullable {
 			return Ok(None);
 		}
 		let first = input.buffer.get_value(0);
@@ -139,7 +139,11 @@ impl Encoding for ConstantEncoding {
 	}
 
 	fn persist(&self, array: &Column) -> Result<PersistedArray> {
-		let data = array.data().as_any().downcast_ref::<ConstantData>().ok_or_else(|| unexpected_data(Self::ID))?;
+		let data = array
+			.data()
+			.as_any()
+			.downcast_ref::<ConstantData>()
+			.ok_or_else(|| unexpected_data(Self::ID))?;
 		Ok(PersistedArray::Constant {
 			value: data.value.clone(),
 			len: data.len as u64,

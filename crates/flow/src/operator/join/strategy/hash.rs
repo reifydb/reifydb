@@ -431,7 +431,10 @@ fn merge_runs(runs: Vec<Columns>) -> Columns {
 	let updated_at: Vec<DateTime> = runs.iter().flat_map(|run| run.updated_at().iter().copied()).collect();
 	let time: Vec<DateTime> = runs.iter().flat_map(|run| run.time().iter().copied()).collect();
 
-	Columns::with_system(result_columns, SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new()))
+	Columns::with_system(
+		result_columns,
+		SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new()),
+	)
 }
 
 #[instrument(name = "flow::operator::join::columns_from_block", level = "trace", skip_all, fields(rows = block.len()))]

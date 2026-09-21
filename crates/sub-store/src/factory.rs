@@ -15,10 +15,10 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::system::ActorSpawner;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteConfig;
-#[cfg(feature = "column")]
-use reifydb_store_column::ColumnStore;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_store_column::persistent::sqlite::SqliteColumnStore;
+#[cfg(feature = "column")]
+use reifydb_store_column::store::ColumnStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::pod::EncodedPodRow;
+use reifydb_codec::row::{catalog::EncodedCatalogRowBuilder, pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::{
 		column_snapshot::{ColumnSnapshot, ColumnSnapshotKind, ColumnSnapshotSource, ColumnStats},
@@ -131,7 +131,7 @@ impl CatalogStore {
 	}
 }
 
-fn set_partition(row: &mut reifydb_codec::row::catalog::EncodedCatalogRowBuilder, partition: Option<Partition>) {
+fn set_partition(row: &mut EncodedCatalogRowBuilder, partition: Option<Partition>) {
 	match partition {
 		Some(partition) => {
 			column_snapshot::set_partition_hi(row, (partition.0 >> 64) as u64);

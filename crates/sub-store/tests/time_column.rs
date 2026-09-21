@@ -19,7 +19,7 @@ use reifydb_core::{
 	interface::catalog::id::ColumnSnapshotId,
 	value::column::{ColumnWithName, columns::Columns},
 };
-use reifydb_store_column::ColumnStore;
+use reifydb_store_column::store::ColumnStore;
 use reifydb_sub_store::{
 	column::actor::batches::{column_block_from_batches, system_column_schema},
 	factory::StorageSubsystemFactory,

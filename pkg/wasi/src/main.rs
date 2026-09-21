@@ -68,20 +68,14 @@ use reifydb_transaction::{
 use reifydb_value::{byte_size::ByteSize, params::Params, value::identity::IdentityId};
 use serde_json::{Value as JsonValue, from_str as json_from_str, json, to_writer as json_to_writer};
 
-enum BridgeProfile {
-	Default,
-	Testing,
-}
-
 struct Bridge {
 	engine: StandardEngine,
 	flow_subsystem: FlowSubsystem,
-	profile: BridgeProfile,
 	_runtime: Runtime,
 }
 
 impl Bridge {
-	fn new(profile: BridgeProfile) -> Result<Self, Box<dyn Error>> {
+	fn new() -> Result<Self, Box<dyn Error>> {
 		let runtime = Runtime::from_config(
 			RuntimeConfig::default().seeded(0),
 			PoolConfig {
@@ -230,7 +224,6 @@ impl Bridge {
 		Ok(Bridge {
 			engine,
 			flow_subsystem,
-			profile,
 			_runtime: runtime,
 		})
 	}
@@ -276,21 +269,15 @@ fn main() {
 		let cmd = msg.get("cmd").and_then(|v| v.as_str()).unwrap_or("");
 
 		match cmd {
-			"new" => {
-				let profile = match msg.get("profile").and_then(|v| v.as_str()) {
-					Some("testing") => BridgeProfile::Testing,
-					_ => BridgeProfile::Default,
-				};
-				match Bridge::new(profile) {
-					Ok(b) => {
-						bridge = Some(b);
-						respond(&json!({"ok": "ready"}));
-					}
-					Err(e) => {
-						respond(&json!({"err": format!("{}", e)}));
-					}
+			"new" => match Bridge::new() {
+				Ok(b) => {
+					bridge = Some(b);
+					respond(&json!({"ok": "ready"}));
 				}
-			}
+				Err(e) => {
+					respond(&json!({"err": format!("{}", e)}));
+				}
+			},
 			"command" => {
 				let Some(b) = bridge.as_ref() else {
 					respond(&json!({"err": "no database instance"}));

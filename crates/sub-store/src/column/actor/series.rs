@@ -45,7 +45,7 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor, Directive},
 };
-use reifydb_store_column::ColumnStore;
+use reifydb_store_column::store::ColumnStore;
 use reifydb_transaction::{
 	multi::RangeScope,
 	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
@@ -85,6 +85,13 @@ pub struct SeriesMaterializationActor {
 	tick_interval: Duration,
 	bucket_width: u64,
 	grace: Duration,
+}
+
+#[derive(Clone, Copy)]
+struct PartitionScope<'a> {
+	partition: Partition,
+	values: &'a [Value],
+	metadata: &'a SeriesPartitionMetadata,
 }
 
 impl SeriesMaterializationActor {
@@ -165,6 +172,11 @@ impl SeriesMaterializationActor {
 			let last = bucket_for(metadata.newest_key, self.bucket_width);
 			let mut start = first.start;
 			let mut deferred = false;
+			let scope = PartitionScope {
+				partition,
+				values: &partition_values,
+				metadata: &metadata,
+			};
 			while start <= last.start {
 				let bucket = Bucket {
 					start,
@@ -172,16 +184,8 @@ impl SeriesMaterializationActor {
 					width: self.bucket_width,
 				};
 				start = start.saturating_add(self.bucket_width);
-				deferred |= self.maybe_materialize_bucket(
-					state,
-					query_txn,
-					series,
-					partition,
-					&partition_values,
-					&metadata,
-					&bucket,
-					now_wall,
-				)?;
+				deferred |= self
+					.maybe_materialize_bucket(state, query_txn, series, scope, &bucket, now_wall)?;
 			}
 			if !deferred {
 				self.clear_dirty_mark(
@@ -324,22 +328,20 @@ impl SeriesMaterializationActor {
 		state: &mut SeriesMaterializationState,
 		query_txn: &mut QueryTransaction,
 		series: &Series,
-		partition: Partition,
-		partition_values: &[Value],
-		metadata: &SeriesPartitionMetadata,
+		scope: PartitionScope<'_>,
 		bucket: &Bucket,
 		now_wall: DateTime,
 	) -> Result<bool> {
-		let key = (series.id, partition, bucket.id());
+		let key = (series.id, scope.partition, bucket.id());
 		let built = state.bucket_state.contains(&key);
-		let dirty = bucket.start < metadata.dirty_to_key && bucket.end > metadata.dirty_from_key;
-		if !is_closed(bucket, series, metadata, now_wall, self.grace) {
+		let dirty = bucket.start < scope.metadata.dirty_to_key && bucket.end > scope.metadata.dirty_from_key;
+		if !is_closed(bucket, series, scope.metadata, now_wall, self.grace) {
 			return Ok(built && dirty);
 		}
 		if built && !dirty {
 			return Ok(false);
 		}
-		self.materialize_bucket(query_txn, series, partition, partition_values, metadata, bucket)?;
+		self.materialize_bucket(query_txn, series, scope, bucket)?;
 		state.bucket_state.insert(key);
 		Ok(false)
 	}
@@ -348,14 +350,12 @@ impl SeriesMaterializationActor {
 		&self,
 		query_txn: &mut QueryTransaction,
 		series: &Series,
-		partition: Partition,
-		partition_values: &[Value],
-		metadata: &SeriesPartitionMetadata,
+		scope: PartitionScope<'_>,
 		bucket: &Bucket,
 	) -> Result<()> {
 		let sealed_at_commit_version = query_txn.version();
 		let resolved_series = self.resolve_series_target(query_txn, series)?;
-		let batches = self.scan_bucket_batches(query_txn, resolved_series, partition, series, bucket)?;
+		let batches = self.scan_bucket_batches(query_txn, resolved_series, scope.partition, series, bucket)?;
 
 		reifydb_assertions! {
 			let after_scan = query_txn.version();
@@ -370,16 +370,7 @@ impl SeriesMaterializationActor {
 
 		let block = Arc::new(self.build_column_block(series, batches, sealed_at_commit_version)?);
 		let stats = block_stats(block.as_ref())?;
-		self.upsert_snapshot_and_store(
-			series,
-			partition,
-			partition_values,
-			&stats,
-			metadata,
-			bucket,
-			sealed_at_commit_version,
-			block,
-		)
+		self.upsert_snapshot_and_store(series, scope, &stats, bucket, sealed_at_commit_version, block)
 	}
 
 	#[inline]
@@ -470,14 +461,11 @@ impl SeriesMaterializationActor {
 	}
 
 	#[inline]
-	#[allow(clippy::too_many_arguments)]
 	fn upsert_snapshot_and_store(
 		&self,
 		series: &Series,
-		partition: Partition,
-		partition_values: &[Value],
+		scope: PartitionScope<'_>,
 		stats: &[ColumnStats],
-		metadata: &SeriesPartitionMetadata,
 		bucket: &Bucket,
 		sealed_at_commit_version: CommitVersion,
 		block: Arc<ColumnBlock>,
@@ -486,7 +474,7 @@ impl SeriesMaterializationActor {
 		let stored_partition = if series.partition_by.is_empty() {
 			None
 		} else {
-			Some(partition)
+			Some(scope.partition)
 		};
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let cat = self.engine.catalog();
@@ -500,10 +488,10 @@ impl SeriesMaterializationActor {
 				&mut admin,
 				existing.id,
 				ColumnSnapshotToUpdate {
-					sequence_counter: metadata.sequence_counter,
+					sequence_counter: scope.metadata.sequence_counter,
 					read_version: sealed_at_commit_version,
 					row_count,
-					partition_values: partition_values.to_vec(),
+					partition_values: scope.values.to_vec(),
 					stats: stats.to_vec(),
 				},
 			)?,
@@ -516,11 +504,11 @@ impl SeriesMaterializationActor {
 						bucket_start: bucket.start,
 						bucket_width: bucket.width,
 						partition: stored_partition,
-						sequence_counter: metadata.sequence_counter,
+						sequence_counter: scope.metadata.sequence_counter,
 						sealed_at_commit_version,
 					},
 					row_count,
-					partition_values: partition_values.to_vec(),
+					partition_values: scope.values.to_vec(),
 					stats: stats.to_vec(),
 				},
 			)?,

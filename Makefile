@@ -10,6 +10,7 @@ TEST_SUITE_DIR ?= ../testsuite
 TEST_REFERENCE_DIR ?= ../testreference
 TEST_CHAOS_DIR ?= ../testchaos
 TEST_CRATE_DIR ?= ../testcrate
+TEST_QUERY_DIR ?= ../testquery
 EXTERNAL_DIR ?= ../external
 TEST_PKG_DIR := ./pkg
 
@@ -77,6 +78,8 @@ help:
 	@printf "  %-25s %s\n" "test-crate" "Run the crate mirror tests (../testcrate; REPEAT=K to repeat K times)"
 	@printf "  %-25s %s\n" "test-crate-dev" "Run fast crate mirror tests, loom excluded"
 	@printf "  %-25s %s\n" "test-crate-loom" "Run crate mirror loom tests (part of all)"
+	@printf "  %-25s %s\n" "test-query" "Run the query layout tests (../testquery; MATRIX=full, FILTER=, CONFIG=)"
+	@printf "  %-25s %s\n" "test-query-dev" "Run fast query layout tests (MATRIX=dev)"
 	@printf "  %-25s %s\n" "test-reference" "Run the reference conformance suites (../testreference)"
 	@printf "  %-25s %s\n" "test-reference-dev" "Run fast reference conformance tests"
 	@printf "  %-25s %s\n" "test-pkg-rust" "Run test packages (rust)"
@@ -208,10 +211,10 @@ push: check
 .PHONY: test test-full test-dev
 test: test-full
 
-test-full: test-workspace test-dst test-pkg-rust test-examples test-suite test-crate test-chaos test-external test-pkg-typescript test-projects fuzz-regression
+test-full: test-workspace test-dst test-pkg-rust test-examples test-suite test-crate test-query test-chaos test-external test-pkg-typescript test-projects fuzz-regression
 	@echo "✅ All tests completed successfully!"
 
-test-dev: test-workspace test-dst test-pkg-rust test-examples test-suite-dev test-crate-dev
+test-dev: test-workspace test-dst test-pkg-rust test-examples test-suite-dev test-crate-dev test-query-dev
 	@echo "🚀 Development tests completed!"
 
 # Include testing sub-makefiles
@@ -219,6 +222,7 @@ include mk/test-workspace.mk
 include mk/test-dst.mk
 include mk/test-suites.mk
 include mk/test-crate.mk
+include mk/test-query.mk
 include mk/test-reference.mk
 include mk/test-external.mk
 include mk/test-pkg-rust.mk

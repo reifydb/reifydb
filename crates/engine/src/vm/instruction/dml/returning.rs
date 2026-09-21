@@ -55,7 +55,10 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 		}
 	}
 
-	Columns::with_system(columns_vec, SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new()))
+	Columns::with_system(
+		columns_vec,
+		SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time, Vec::new()),
+	)
 }
 
 pub(crate) fn with_pre_image(post: Columns, pre: &Columns) -> Columns {

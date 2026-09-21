@@ -121,6 +121,8 @@ fn resolve_delete_series_target(
 	Ok((namespace, series))
 }
 
+type SeriesDeleteOutcome = (HashMap<Partition, SeriesDeleteTally>, Vec<(RowNumber, EncodedBytes)>);
+
 fn run_series_delete_with_input(
 	exec: &WriteExecCtx<'_>,
 	txn: &mut Transaction<'_>,
@@ -129,7 +131,7 @@ fn run_series_delete_with_input(
 	params: &Params,
 	has_tag: bool,
 	has_returning: bool,
-) -> Result<(HashMap<Partition, SeriesDeleteTally>, Vec<(RowNumber, EncodedBytes)>)> {
+) -> Result<SeriesDeleteOutcome> {
 	let context = build_series_delete_query_context(exec, target, params, txn.identity());
 	let mut input_node = compile_series_delete_input(txn, input_plan, &context)?;
 	drive_series_delete_input(exec, txn, &mut input_node, &context, target, has_tag, has_returning)
@@ -178,7 +180,7 @@ fn drive_series_delete_input(
 	target: &SeriesTarget<'_>,
 	has_tag: bool,
 	has_returning: bool,
-) -> Result<(HashMap<Partition, SeriesDeleteTally>, Vec<(RowNumber, EncodedBytes)>)> {
+) -> Result<SeriesDeleteOutcome> {
 	let series = target.series;
 	let mut deleted_by_partition: HashMap<Partition, SeriesDeleteTally> = HashMap::new();
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();

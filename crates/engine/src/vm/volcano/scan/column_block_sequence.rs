@@ -8,7 +8,7 @@ use reifydb_core::{
 	error::diagnostic::internal::internal, interface::catalog::id::ColumnSnapshotId,
 	value::column::columns::Columns,
 };
-use reifydb_store_column::ColumnStore;
+use reifydb_store_column::store::ColumnStore;
 use reifydb_value::error::Error;
 
 use crate::Result;

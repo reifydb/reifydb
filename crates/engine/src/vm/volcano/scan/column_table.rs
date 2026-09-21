@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::resolved::ResolvedTable,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_store_column::ColumnStore;
+use reifydb_store_column::store::ColumnStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{error::Error, fragment::Fragment};
 
@@ -24,7 +24,7 @@ use crate::{
 enum ScanState {
 	Unopened,
 	Reading {
-		reader: BlockSequenceReader,
+		reader: Box<BlockSequenceReader>,
 		emitted: bool,
 	},
 	Done,
@@ -39,8 +39,7 @@ pub struct ColumnTableScanNode {
 
 impl ColumnTableScanNode {
 	pub fn new(table: ResolvedTable, context: Arc<QueryContext>) -> Self {
-		let columns: Vec<Fragment> =
-			table.columns().iter().map(|col| Fragment::internal(&col.name)).collect();
+		let columns: Vec<Fragment> = table.columns().iter().map(|col| Fragment::internal(&col.name)).collect();
 		Self {
 			table,
 			context,
@@ -66,7 +65,11 @@ impl ColumnTableScanNode {
 		})?;
 
 		Ok(ScanState::Reading {
-			reader: BlockSequenceReader::new(store, vec![snapshot.id], self.context.batch_size as usize),
+			reader: Box::new(BlockSequenceReader::new(
+				store,
+				vec![snapshot.id],
+				self.context.batch_size as usize,
+			)),
 			emitted: false,
 		})
 	}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{cmp::Reverse, sync::Arc};
 
 use reifydb_column::snapshot::{Schema, SystemColumn};
 use reifydb_core::{
@@ -17,7 +17,7 @@ use reifydb_core::{
 	key::{any::TaggedKey, partition::PartitionKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_store_column::ColumnStore;
+use reifydb_store_column::store::ColumnStore;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{error::Error, fragment::Fragment, value::partition::Partition};
 
@@ -35,7 +35,7 @@ use crate::{
 enum ScanState {
 	Unopened,
 	Reading {
-		reader: BlockSequenceReader,
+		reader: Box<BlockSequenceReader>,
 		emitted: bool,
 	},
 	Done,
@@ -142,7 +142,7 @@ impl ColumnSeriesScanNode {
 				&name,
 			))));
 		}
-		pruned.sort_by(|a, b| bucket_order(b).cmp(&bucket_order(a)));
+		pruned.sort_by_key(|b| Reverse(bucket_order(b)));
 
 		let store = services.ioc.try_resolve::<Arc<ColumnStore>>().ok_or_else(|| {
 			Error(Box::new(internal(format!(
@@ -152,12 +152,14 @@ impl ColumnSeriesScanNode {
 		})?;
 
 		Ok(ScanState::Reading {
-			reader: BlockSequenceReader::new(
-				store,
-				pruned.iter().map(|snapshot| snapshot.id).collect(),
-				self.context.batch_size as usize,
-			)
-			.with_predicate(predicate),
+			reader: Box::new(
+				BlockSequenceReader::new(
+					store,
+					pruned.iter().map(|snapshot| snapshot.id).collect(),
+					self.context.batch_size as usize,
+				)
+				.with_predicate(predicate),
+			),
 			emitted: false,
 		})
 	}

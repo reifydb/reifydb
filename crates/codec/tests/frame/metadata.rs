@@ -211,7 +211,14 @@ fn metadata_combinations() {
 	// Each metadata array is independently present, so the flag byte has to be read per array
 	// rather than as all-or-nothing.
 	let frame1 = Frame {
-		system: SystemColumns::new(vec![RowNumber::new(1)], Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+		system: SystemColumns::new(
+			vec![RowNumber::new(1)],
+			Vec::new(),
+			Vec::new(),
+			Vec::new(),
+			Vec::new(),
+			Vec::new(),
+		),
 		op: None,
 		columns: vec![FrameColumn {
 			name: "v".to_string(),

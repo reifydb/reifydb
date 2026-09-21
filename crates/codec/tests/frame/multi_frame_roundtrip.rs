@@ -165,7 +165,14 @@ fn two_frames_only_created_at() {
 		}],
 	};
 	let frame2 = Frame {
-		system: SystemColumns::new(vec![], Vec::new(), vec![DateTime::from_nanos(300)], vec![], vec![], Vec::new()),
+		system: SystemColumns::new(
+			vec![],
+			Vec::new(),
+			vec![DateTime::from_nanos(300)],
+			vec![],
+			vec![],
+			Vec::new(),
+		),
 		op: None,
 		columns: vec![FrameColumn {
 			name: "w".to_string(),

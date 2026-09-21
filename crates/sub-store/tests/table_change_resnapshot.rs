@@ -10,7 +10,7 @@ use reifydb::{
 	testing::db::{TestDb, poll_until},
 };
 use reifydb_column::reader::SnapshotReader;
-use reifydb_store_column::ColumnStore;
+use reifydb_store_column::store::ColumnStore;
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},

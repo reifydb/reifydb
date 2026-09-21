@@ -133,7 +133,8 @@ fn run_until_idle_or_panic_reraises_the_actor_panic_after_siblings_run() {
 	let outcome = catch_unwind(AssertUnwindSafe(|| system.run_until_idle_or_panic()));
 
 	let payload = outcome.expect_err("an actor panicked, so the run must panic too");
-	let message = payload.downcast_ref::<&str>().copied().expect("the payload must be the actor's own panic message");
+	let message =
+		payload.downcast_ref::<&str>().copied().expect("the payload must be the actor's own panic message");
 	assert_eq!(message, "actor boom", "the re-raised panic must be the actor's own");
 	// The sibling still runs before the panic comes back, so isolation between actors holds.
 	assert_eq!(log_contents(&log), vec!["still_alive"]);

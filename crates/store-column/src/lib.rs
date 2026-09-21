@@ -12,8 +12,6 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 pub mod persistent;
 pub mod store;
 
-pub use store::ColumnStore;
-
 pub struct ColumnStoreVersion;
 
 impl HasVersion for ColumnStoreVersion {

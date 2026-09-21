@@ -51,6 +51,9 @@ use reifydb_routine::{
 use reifydb_routine_abi::registry::{Routines, RoutinesConfigurator};
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{Runtime, context::RuntimeContext, version_epoch::VersionEpoch};
+#[cfg(feature = "column")]
+#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
+use reifydb_sqlite::SqliteConfig;
 use reifydb_store_cdc::{CdcStoreVersion, store::CdcStore};
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_operator::{OperatorStoreVersion, store::OperatorStore};
@@ -64,9 +67,6 @@ use reifydb_sub_metrics::factory::MetricsSubsystemFactory;
 use reifydb_sub_metrics::profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_server::interceptor::RequestInterceptorChain;
-#[cfg(feature = "column")]
-#[cfg(all(feature = "column", not(target_arch = "wasm32")))]
-use reifydb_sqlite::SqliteConfig;
 use reifydb_sub_store::{factory::StorageSubsystemFactory, subsystem::StorageConfig};
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystemFactory;

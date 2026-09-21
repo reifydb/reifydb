@@ -610,8 +610,8 @@ mod series_bound_tests {
 		// ascending would select the complement window.
 		let universe = series_universe();
 		for key_end in [1u64, 5, 100, u64::MAX] {
-			let range =
-				SeriesRowKeyRange::scan_range(storage(), true, Some(7), None, Some(key_end), None).encode();
+			let range = SeriesRowKeyRange::scan_range(storage(), true, Some(7), None, Some(key_end), None)
+				.encode();
 			let selected = assert_agrees(
 				SqliteSchema::Series,
 				&universe,
@@ -628,8 +628,8 @@ mod series_bound_tests {
 		// the descending order. Translating it exclusively would drop the caller's own boundary row.
 		let universe = series_universe();
 		for (key_start, key_end) in [(Some(1u64), None), (Some(5), Some(100)), (Some(0), Some(u64::MAX))] {
-			let range =
-				SeriesRowKeyRange::scan_range(storage(), true, Some(7), key_start, key_end, None).encode();
+			let range = SeriesRowKeyRange::scan_range(storage(), true, Some(7), key_start, key_end, None)
+				.encode();
 			let selected = assert_agrees(
 				SqliteSchema::Series,
 				&universe,

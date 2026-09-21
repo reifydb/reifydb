@@ -16,7 +16,7 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 use reifydb_runtime::actor::mailbox::ActorRef;
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(feature = "column")]
-use reifydb_store_column::ColumnStore;
+use reifydb_store_column::store::ColumnStore;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::value::duration::Duration;
 use tracing::debug;
