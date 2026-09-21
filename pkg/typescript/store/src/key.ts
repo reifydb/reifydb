@@ -15,6 +15,6 @@ function stable(value: unknown): string {
     return JSON.stringify(value);
 }
 
-export function entryKey(rql: string, params: any, shape: ShapeNode): string {
+export function entryKey(rql: string, params: any, shape: ShapeNode | readonly ShapeNode[]): string {
     return rql + '\n' + stable(encodeParams(params)) + '\n' + stable(shape);
 }

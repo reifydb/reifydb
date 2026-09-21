@@ -5,7 +5,7 @@ import {Shape} from '@reifydb/core';
 import type {WsClient} from '@reifydb/client';
 import {Store} from '../../src';
 import {connect, namespace, waitFor} from './setup';
-import {createTable, rowsOf, tableName, waitForReady, waitForRows} from './subscription-helpers';
+import {createTable, readSpec, rowsOf, tableName, waitForReady, waitForRows} from './subscription-helpers';
 
 const ns = namespace('sub_vo');
 
@@ -28,7 +28,7 @@ describe.each(['frames', 'rbcf'] as const)('subscription value object shapes (%s
         const name = `${ns}::${tableName(`${prefix}_${format}`)}`;
         await createTable(client, name, columns);
         const rql = `from ${name}`;
-        const release = store.subscribe(rql, null, shape);
+        const release = store.subscribe(readSpec(shape, rql), null);
         await waitForReady(store, rql, shape);
         await client.command(`insert ${name} [${values}]`, null, []);
         await waitForRows(store, rql, shape, 1);
@@ -177,7 +177,7 @@ describe.each(['frames', 'rbcf'] as const)('subscription value object shapes (%s
             await createTable(client, name, 'id: int4, value: int4');
             const shape = Shape.object({id: Shape.int4(), value: Shape.int4Value()});
             const rql = `from ${name}`;
-            const release = store.subscribe(rql, null, shape);
+            const release = store.subscribe(readSpec(shape, rql), null);
             await waitForReady(store, rql, shape);
 
             await client.command(`insert ${name} [{ id: 1, value: 1 }]`, null, []);
@@ -195,7 +195,7 @@ describe.each(['frames', 'rbcf'] as const)('subscription value object shapes (%s
             await createTable(client, name, 'id: int4, value: int4');
             const shape = Shape.object({id: Shape.int4(), value: Shape.int4Value()});
             const rql = `from ${name}`;
-            const release = store.subscribe(rql, null, shape);
+            const release = store.subscribe(readSpec(shape, rql), null);
             await waitForReady(store, rql, shape);
 
             const rows = Array.from({length: 20}, (_, i) => `{ id: ${i}, value: ${i * 2} }`).join(', ');

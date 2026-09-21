@@ -11,11 +11,12 @@ import type {
 } from '@reifydb/client';
 import type {StoreClient} from './client';
 import {entryKey} from './key';
-import {LOADING, indexRows, removeRows, upsertRows, withRows, withStatus} from './entry';
+import {LOADING, indexRows, removeRows, tupleLoading, upsertFrames, upsertRows, withRows, withStatus} from './entry';
 import type {Entry} from './entry';
+import type {ReadSpec, SpecData, WriteSpec} from './rql';
 
 export interface StoreState {
-    entries: Record<string, Entry<unknown>>;
+    entries: Record<string, Entry<unknown[]>>;
 }
 
 export interface StoreOptions {
@@ -62,9 +63,9 @@ export class Store {
         this.batch = options.batch ?? false;
     }
 
-    subscribe<S extends ShapeNode>(rql: string, params: any, shape: S, config?: SubscriptionConfig): Release {
-        const key = entryKey(rql, params, shape);
-        const sub = this.subscriptions.get(key) ?? this.open(key, rql, params, shape, config);
+    subscribe<S extends ShapeNode, P extends object | null>(spec: ReadSpec<S, P>, params: NoInfer<P>): Release {
+        const key = entryKey(spec.rql, params, spec.shape);
+        const sub = this.subscriptions.get(key) ?? this.open(key, spec.rql, params, spec.shape, spec.config);
         sub.refcount += 1;
         let released = false;
         return () => {
@@ -83,33 +84,49 @@ export class Store {
         };
     }
 
-    async query<S extends ShapeNode>(rql: string, params: any, shape: S): Promise<InferShape<S>[]> {
-        const key = entryKey(rql, params, shape);
+    async query<S extends ShapeNode | readonly ShapeNode[], P extends object | null>(
+        spec: ReadSpec<S, P>,
+        params: NoInfer<P>
+    ): Promise<SpecData<ReadSpec<S, P>>> {
+        const key = entryKey(spec.rql, params, spec.shape);
+        const tuple = Array.isArray(spec.shape);
+        const shapes = (tuple ? spec.shape : [spec.shape]) as readonly ShapeNode[];
         if (this.state.getState().entries[key] === undefined) {
-            this.setEntry(key, LOADING);
+            this.setEntry(key, tuple ? tupleLoading(shapes.length) : LOADING);
         }
         try {
-            const frames: readonly unknown[][] = await this.client.query(rql, params, [shape] as readonly ShapeNode[]);
-            const rows = frames[0] as InferShape<S>[];
-            this.setEntry(key, withStatus(upsertRows(LOADING, rows as SubscriptionRow<InferShape<S>>[]), 'ready'));
-            return rows;
+            const frames = await this.client.query(spec.rql, params, shapes) as SubscriptionRow<unknown>[][];
+            this.setEntry(key, tuple ? upsertFrames(frames) : withStatus(upsertRows(LOADING, frames[0]), 'ready'));
+            return (tuple ? frames : frames[0]) as SpecData<ReadSpec<S, P>>;
         } catch (error) {
             this.update(key, entry => withStatus(entry, 'error', toError(error)));
             throw error;
         }
     }
 
-    command<const S extends readonly ShapeNode[]>(rql: string, params: any, shapes: S): Promise<FrameResults<S>> {
-        return this.client.command(rql, params, shapes);
+    async command<S extends readonly ShapeNode[], P extends object | null>(
+        spec: WriteSpec<S, P>,
+        params: NoInfer<P>
+    ): Promise<FrameResults<S>> {
+        const frames = await this.client.command(spec.rql, params, spec.shape);
+        return spec.shape.length === 0 ? [] as FrameResults<S> : frames;
     }
 
-    admin<const S extends readonly ShapeNode[]>(rql: string, params: any, shapes: S): Promise<FrameResults<S>> {
-        return this.client.admin(rql, params, shapes);
+    async admin<S extends readonly ShapeNode[], P extends object | null>(
+        spec: WriteSpec<S, P>,
+        params: NoInfer<P>
+    ): Promise<FrameResults<S>> {
+        const frames = await this.client.admin(spec.rql, params, spec.shape);
+        return spec.shape.length === 0 ? [] as FrameResults<S> : frames;
     }
 
-    getEntry<S extends ShapeNode>(rql: string, params: any, shape: S): Entry<InferShape<S>> {
-        const entry = this.state.getState().entries[entryKey(rql, params, shape)] ?? LOADING;
-        return entry as Entry<InferShape<S>>;
+    getEntry<S extends ShapeNode | readonly ShapeNode[], P extends object | null>(
+        spec: ReadSpec<S, P>,
+        params: NoInfer<P>
+    ): Entry<SpecData<ReadSpec<S, P>>> {
+        const entry = this.state.getState().entries[entryKey(spec.rql, params, spec.shape)]
+            ?? (Array.isArray(spec.shape) ? tupleLoading(spec.shape.length) : LOADING);
+        return entry as Entry<SpecData<ReadSpec<S, P>>>;
     }
 
     subscribeState(listener: () => void): () => void {
@@ -120,14 +137,14 @@ export class Store {
         return this.state.getState();
     }
 
-    seed<S extends ShapeNode>(rql: string, params: any, shape: S, rows: SeedRows<S>): void {
-        const key = entryKey(rql, params, shape);
+    seed<S extends ShapeNode, P extends object | null>(spec: ReadSpec<S, P>, params: NoInfer<P>, rows: SeedRows<S>): void {
+        const key = entryKey(spec.rql, params, spec.shape);
         this.subscriptions.set(key, {refcount: SEEDED, id: undefined, closed: false});
         this.setEntry(key, withStatus(withRows(LOADING, indexRows(rows)), 'ready'));
     }
 
-    fail(rql: string, params: any, shape: ShapeNode, error: Error): void {
-        const key = entryKey(rql, params, shape);
+    fail<S extends ShapeNode, P extends object | null>(spec: ReadSpec<S, P>, params: NoInfer<P>, error: Error): void {
+        const key = entryKey(spec.rql, params, spec.shape);
         this.subscriptions.set(key, {refcount: SEEDED, id: undefined, closed: false});
         this.setEntry(key, withStatus(this.state.getState().entries[key] ?? LOADING, 'error', error));
     }
@@ -249,11 +266,11 @@ export class Store {
         }
     }
 
-    private setEntry(key: string, entry: Entry<unknown>): void {
-        this.state.setState({entries: {...this.state.getState().entries, [key]: entry}});
+    private setEntry(key: string, entry: Entry<unknown[]> | Entry<unknown[][]>): void {
+        this.state.setState({entries: {...this.state.getState().entries, [key]: entry as Entry<unknown[]>}});
     }
 
-    private update(key: string, fn: (entry: Entry<unknown>) => Entry<unknown>): void {
+    private update(key: string, fn: (entry: Entry<unknown[]>) => Entry<unknown[]>): void {
         const entries = this.state.getState().entries;
         const current = entries[key];
         if (current === undefined) {

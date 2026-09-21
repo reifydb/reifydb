@@ -4,12 +4,12 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {DurationValue, ReifyError, Shape, encodeParams} from '@reifydb/core';
 import {WsClient} from '@reifydb/client';
 import type {SubscriptionConfig} from '@reifydb/client';
-import {Store} from '../src';
+import {Store, rql} from '../src';
 import {flush} from './fake-client';
 import {ScriptedSocket} from './scripted-socket';
 
 const shape = Shape.object({id: Shape.int4(), name: Shape.string()});
-const rql = 'from test::items filter { owner == $owner }';
+const items = rql(shape)<{owner: string}>`from test::items filter { owner == $owner }`;
 const tuned: SubscriptionConfig = {hydration: {enabled: true, maxRows: 50}, throttle: DurationValue.fromMilliseconds(250), linger: DurationValue.fromMilliseconds(100)};
 
 let sockets: ScriptedSocket[] = [];
@@ -28,8 +28,9 @@ async function dropConnection(): Promise<ScriptedSocket> {
 
 async function batchOfTwo(config?: SubscriptionConfig): Promise<Store> {
     const store = new Store(await connect(), {batch: true});
-    store.subscribe(rql, {owner: 'a'}, shape, config);
-    store.subscribe(rql, {owner: 'b'}, shape, config);
+    const spec = config === undefined ? items : items.options({config});
+    store.subscribe(spec, {owner: 'a'});
+    store.subscribe(spec, {owner: 'b'});
     await flush();
     return store;
 }
@@ -79,7 +80,7 @@ describe('a refused resubscribe', () => {
     it('marks the entry errored with the refusal instead of leaving the stale rows ready', async () => {
         // The old rows stop updating once the resubscribe is refused, so the entry must never stay ready.
         const store = new Store(await connect());
-        store.subscribe(rql, {owner: 'a'}, shape);
+        store.subscribe(items, {owner: 'a'});
         sockets[0].ackSubscribe('server-1');
         sockets[0].insert('server-1', [[1, 1, 'a']]);
         await flush();
@@ -88,7 +89,7 @@ describe('a refused resubscribe', () => {
         second.refuse('Subscribe', 'AUTH_REQUIRED');
         await flush();
 
-        const entry = store.getEntry(rql, {owner: 'a'}, shape);
+        const entry = store.getEntry(items, {owner: 'a'});
         expect(entry.status).toBe('error');
         expect(entry.error).toBeInstanceOf(ReifyError);
         expect((entry.error as ReifyError).code).toBe('AUTH_REQUIRED');
@@ -104,16 +105,16 @@ describe('a refused resubscribe', () => {
         second.refuse('BatchSubscribe', 'AUTH_REQUIRED');
         await flush();
 
-        expect(store.getEntry(rql, {owner: 'a'}, shape).status).toBe('error');
-        expect(store.getEntry(rql, {owner: 'b'}, shape).status).toBe('error');
-        expect((store.getEntry(rql, {owner: 'b'}, shape).error as ReifyError).code).toBe('AUTH_REQUIRED');
+        expect(store.getEntry(items, {owner: 'a'}).status).toBe('error');
+        expect(store.getEntry(items, {owner: 'b'}).status).toBe('error');
+        expect((store.getEntry(items, {owner: 'b'}).error as ReifyError).code).toBe('AUTH_REQUIRED');
     });
 
     it('hands the refusal to the subscription onError, the only path left to the caller', async () => {
         // The subscribe promise settled long before the reconnect, so without onError the refusal never reaches the app.
         const ws = await connect();
         const errors: Error[] = [];
-        const subscribed = ws.subscribe(rql, {owner: 'a'}, shape, {onError: error => errors.push(error)});
+        const subscribed = ws.subscribe(items.rql, {owner: 'a'}, shape, {onError: error => errors.push(error)});
         sockets[0].ackSubscribe('server-1');
         await subscribed;
 
@@ -137,8 +138,8 @@ describe('a partial resubscribe ack', () => {
         second.ackBatch('batch-2', ['server-3', null]);
         await flush();
 
-        expect(store.getEntry(rql, {owner: 'a'}, shape).status).toBe('ready');
-        expect(store.getEntry(rql, {owner: 'b'}, shape).status).toBe('error');
+        expect(store.getEntry(items, {owner: 'a'}).status).toBe('ready');
+        expect(store.getEntry(items, {owner: 'b'}).status).toBe('error');
     });
 });
 
@@ -148,14 +149,14 @@ describe('a throwing onResubscribe', () => {
         const ws = await connect();
         const errors: Error[] = [];
         const thrown = new Error('onResubscribe failed');
-        ws.subscribe(rql, {owner: 'a'}, shape, {
+        ws.subscribe(items.rql, {owner: 'a'}, shape, {
             onError: error => errors.push(error),
             onResubscribe: () => {
                 throw thrown;
             },
         });
         sockets[0].ackSubscribe('server-1');
-        ws.subscribe(rql, {owner: 'b'}, shape, {});
+        ws.subscribe(items.rql, {owner: 'b'}, shape, {});
         sockets[0].ackSubscribe('server-2');
         await flush();
 

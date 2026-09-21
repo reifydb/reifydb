@@ -5,7 +5,7 @@ import {Shape} from '@reifydb/core';
 import type {WsClient} from '@reifydb/client';
 import {Store} from '../../src';
 import {connect, namespace, poll, waitFor} from './setup';
-import {createTable, rowsOf, tableName, waitForReady, waitForRows} from './subscription-helpers';
+import {createTable, readSpec, rowsOf, tableName, waitForReady, waitForRows} from './subscription-helpers';
 
 const ns = namespace('sub_life');
 const items = Shape.object({id: Shape.int4(), name: Shape.utf8()});
@@ -39,7 +39,7 @@ describe('subscription lifecycle against a live server', () => {
 
     describe('initial state', () => {
         it('an entry that was never subscribed reads as loading with no rows and no error', () => {
-            const entry = store.getEntry(`from ${ns}::never_subscribed`, null, items);
+            const entry = store.getEntry(readSpec(items, `from ${ns}::never_subscribed`), null);
             expect(entry.status).toBe('loading');
             expect(entry.data).toEqual([]);
             expect(entry.rows.size).toBe(0);
@@ -48,8 +48,8 @@ describe('subscription lifecycle against a live server', () => {
 
         it('a fresh subscribe is loading before the server acknowledges', async () => {
             const rql = `from ${await table('initial')}`;
-            const release = store.subscribe(rql, null, items);
-            expect(store.getEntry(rql, null, items).status).toBe('loading');
+            const release = store.subscribe(readSpec(items, rql), null);
+            expect(store.getEntry(readSpec(items, rql), null).status).toBe('loading');
             await waitForReady(store, rql, items);
             release();
         });
@@ -59,7 +59,7 @@ describe('subscription lifecycle against a live server', () => {
         it('subscribing registers exactly one subscription on the server', async () => {
             const rql = `from ${await table('register')}`;
             const before = await subscriptionCount();
-            const release = store.subscribe(rql, null, items);
+            const release = store.subscribe(readSpec(items, rql), null);
             await waitForReady(store, rql, items);
             expect(await subscriptionCount()).toBe(before + 1);
             release();
@@ -69,13 +69,13 @@ describe('subscription lifecycle against a live server', () => {
         it('releasing removes the server subscription and stops further callbacks reaching the entry', async () => {
             const name = await table('release');
             const rql = `from ${name}`;
-            const release = store.subscribe(rql, null, items);
+            const release = store.subscribe(readSpec(items, rql), null);
             await waitForReady(store, rql, items);
             await client.command(`insert ${name} [{ id: 1, name: 'a' }]`, null, []);
             await waitForRows(store, rql, items, 1);
 
             release();
-            await poll(async () => store.getEntry(rql, null, items).status === 'loading');
+            await poll(async () => store.getEntry(readSpec(items, rql), null).status === 'loading');
             await client.command(`insert ${name} [{ id: 2, name: 'b' }]`, null, []);
             await new Promise(resolve => setTimeout(resolve, 300));
             expect(rowsOf(store, rql, items)).toEqual([]);
@@ -84,23 +84,23 @@ describe('subscription lifecycle against a live server', () => {
         it('releasing drops the entry, so rows are not served stale to the next reader', async () => {
             const name = await table('drop');
             const rql = `from ${name}`;
-            const release = store.subscribe(rql, null, items);
+            const release = store.subscribe(readSpec(items, rql), null);
             await waitForReady(store, rql, items);
             await client.command(`insert ${name} [{ id: 1, name: 'a' }]`, null, []);
             await waitForRows(store, rql, items, 1);
             release();
-            await poll(async () => store.getEntry(rql, null, items).status === 'loading');
-            expect(store.getEntry(rql, null, items).data).toEqual([]);
+            await poll(async () => store.getEntry(readSpec(items, rql), null).status === 'loading');
+            expect(store.getEntry(readSpec(items, rql), null).data).toEqual([]);
         });
 
         it('a second subscribe after a full release opens a new server subscription', async () => {
             const rql = `from ${await table('reopen')}`;
             const before = await subscriptionCount();
-            const first = store.subscribe(rql, null, items);
+            const first = store.subscribe(readSpec(items, rql), null);
             await waitForReady(store, rql, items);
             first();
             await poll(async () => (await subscriptionCount()) === before);
-            const second = store.subscribe(rql, null, items);
+            const second = store.subscribe(readSpec(items, rql), null);
             await waitForReady(store, rql, items);
             expect(await subscriptionCount()).toBe(before + 1);
             second();
@@ -112,7 +112,7 @@ describe('subscription lifecycle against a live server', () => {
         it('an INSERT reaches the entry', async () => {
             const name = await table('insert');
             const rql = `from ${name}`;
-            const release = store.subscribe(rql, null, items);
+            const release = store.subscribe(readSpec(items, rql), null);
             await waitForReady(store, rql, items);
             await client.command(`insert ${name} [{ id: 1, name: 'a' }]`, null, []);
             await waitForRows(store, rql, items, 1);
@@ -123,23 +123,23 @@ describe('subscription lifecycle against a live server', () => {
         it('an UPDATE replaces the row in place rather than adding a second one', async () => {
             const name = await table('update');
             const rql = `from ${name}`;
-            const release = store.subscribe(rql, null, items);
+            const release = store.subscribe(readSpec(items, rql), null);
             await waitForReady(store, rql, items);
             await client.command(`insert ${name} [{ id: 1, name: 'a' }]`, null, []);
             await waitForRows(store, rql, items, 1);
-            const [rownum] = Array.from(store.getEntry(rql, null, items).rows.keys());
+            const [rownum] = Array.from(store.getEntry(readSpec(items, rql), null).rows.keys());
 
             await client.command(`update ${name} { name: 'b' } filter id == 1`, null, []);
             await waitFor(store, () => rowsOf(store, rql, items)[0]?.name === 'b');
             expect(rowsOf(store, rql, items)).toHaveLength(1);
-            expect(Array.from(store.getEntry(rql, null, items).rows.keys())).toEqual([rownum]);
+            expect(Array.from(store.getEntry(readSpec(items, rql), null).rows.keys())).toEqual([rownum]);
             release();
         });
 
         it('a REMOVE drops the row', async () => {
             const name = await table('remove');
             const rql = `from ${name}`;
-            const release = store.subscribe(rql, null, items);
+            const release = store.subscribe(readSpec(items, rql), null);
             await waitForReady(store, rql, items);
             await client.command(`insert ${name} [{ id: 1, name: 'a' }]`, null, []);
             await waitForRows(store, rql, items, 1);
@@ -151,7 +151,7 @@ describe('subscription lifecycle against a live server', () => {
         it('insert, update and remove arriving in sequence leave the entry consistent', async () => {
             const name = await table('sequence');
             const rql = `from ${name}`;
-            const release = store.subscribe(rql, null, items);
+            const release = store.subscribe(readSpec(items, rql), null);
             await waitForReady(store, rql, items);
 
             await client.command(`insert ${name} [{ id: 1, name: 'a' }, { id: 2, name: 'b' }]`, null, []);
@@ -167,7 +167,7 @@ describe('subscription lifecycle against a live server', () => {
         it('a batch of rows in one statement all reach the entry', async () => {
             const name = await table('batch');
             const rql = `from ${name}`;
-            const release = store.subscribe(rql, null, items);
+            const release = store.subscribe(readSpec(items, rql), null);
             await waitForReady(store, rql, items);
             const rows = Array.from({length: 25}, (_, i) => `{ id: ${i}, name: 'n${i}' }`).join(', ');
             await client.command(`insert ${name} [${rows}]`, null, []);
@@ -182,25 +182,25 @@ describe('subscription lifecycle against a live server', () => {
     describe('error handling', () => {
         it('a syntactically invalid query turns the entry to error and never to ready', async () => {
             const rql = 'this is not rql';
-            store.subscribe(rql, null, items);
-            await waitFor(store, () => store.getEntry(rql, null, items).status === 'error');
-            const entry = store.getEntry(rql, null, items);
+            store.subscribe(readSpec(items, rql), null);
+            await waitFor(store, () => store.getEntry(readSpec(items, rql), null).status === 'error');
+            const entry = store.getEntry(readSpec(items, rql), null);
             expect(entry.error).toBeInstanceOf(Error);
             expect(entry.data).toEqual([]);
         });
 
         it('a subscription to a table that does not exist turns the entry to error', async () => {
             const rql = `from ${ns}::definitely_missing`;
-            store.subscribe(rql, null, items);
-            await waitFor(store, () => store.getEntry(rql, null, items).status === 'error');
-            expect(store.getEntry(rql, null, items).error).toBeInstanceOf(Error);
+            store.subscribe(readSpec(items, rql), null);
+            await waitFor(store, () => store.getEntry(readSpec(items, rql), null).status === 'error');
+            expect(store.getEntry(readSpec(items, rql), null).error).toBeInstanceOf(Error);
         });
 
         it('a failed subscription does not register on the server', async () => {
             const before = await subscriptionCount();
             const rql = `from ${ns}::also_missing`;
-            store.subscribe(rql, null, items);
-            await waitFor(store, () => store.getEntry(rql, null, items).status === 'error');
+            store.subscribe(readSpec(items, rql), null);
+            await waitFor(store, () => store.getEntry(readSpec(items, rql), null).status === 'error');
             expect(await subscriptionCount()).toBe(before);
         });
     });
@@ -211,8 +211,8 @@ describe('subscription lifecycle against a live server', () => {
             const second = await table('indep_b');
             const rqlA = `from ${first}`;
             const rqlB = `from ${second}`;
-            const releaseA = store.subscribe(rqlA, null, items);
-            const releaseB = store.subscribe(rqlB, null, items);
+            const releaseA = store.subscribe(readSpec(items, rqlA), null);
+            const releaseB = store.subscribe(readSpec(items, rqlB), null);
             await waitForReady(store, rqlA, items);
             await waitForReady(store, rqlB, items);
 
@@ -225,7 +225,7 @@ describe('subscription lifecycle against a live server', () => {
 
         it('a subscription over an empty table becomes ready with no rows', async () => {
             const rql = `from ${await table('empty')}`;
-            const release = store.subscribe(rql, null, items);
+            const release = store.subscribe(readSpec(items, rql), null);
             await waitForReady(store, rql, items);
             expect(rowsOf(store, rql, items)).toEqual([]);
             release();
@@ -234,7 +234,7 @@ describe('subscription lifecycle against a live server', () => {
         it('reset clears every entry and unsubscribes everything it opened', async () => {
             const rql = `from ${await table('reset')}`;
             const before = await subscriptionCount();
-            store.subscribe(rql, null, items);
+            store.subscribe(readSpec(items, rql), null);
             await waitForReady(store, rql, items);
             store.reset();
             expect(store.getSnapshot().entries).toEqual({});
