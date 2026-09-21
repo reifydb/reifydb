@@ -12,6 +12,7 @@
     "test:integration": "vitest run --config vitest.config.ts",
     "test:integration:watch": "vitest --config vitest.config.ts",
     "test:integration:coverage": "vitest run --coverage --config vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.types.json",
     "test:coverage": "pnpm test:integration:coverage",
     "pretest:integration": "pnpm build",
     "prepublishOnly": "pnpm build",
