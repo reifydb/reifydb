@@ -1,141 +1,95 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::reifydb_assertions;
+use reifydb_value::{reifydb_assertions, util::bitvec::BitVec};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RowMask {
-	words: Vec<u64>,
-	len: usize,
+	bits: BitVec,
 }
+
+impl Eq for RowMask {}
 
 impl RowMask {
 	pub fn all_set(len: usize) -> Self {
-		let word_count = len.div_ceil(64);
-		let mut words = vec![u64::MAX; word_count];
-		let trailing = len % 64;
-		if trailing != 0 && word_count > 0 {
-			words[word_count - 1] = (1u64 << trailing) - 1;
-		}
 		Self {
-			words,
-			len,
+			bits: BitVec::repeat(len, true),
 		}
 	}
 
 	pub fn none_set(len: usize) -> Self {
 		Self {
-			words: vec![0u64; len.div_ceil(64)],
-			len,
+			bits: BitVec::repeat(len, false),
 		}
 	}
 
 	pub fn len(&self) -> usize {
-		self.len
+		self.bits.len()
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.len == 0
+		self.bits.is_empty()
 	}
 
 	pub fn get(&self, row: usize) -> bool {
 		reifydb_assertions! {
-			assert!(row < self.len);
+			assert!(row < self.len());
 		}
-		(self.words[row / 64] >> (row % 64)) & 1 == 1
+		self.bits.get(row)
 	}
 
 	pub fn set(&mut self, row: usize, value: bool) {
 		reifydb_assertions! {
-			assert!(row < self.len);
+			assert!(row < self.len());
 		}
-		let word = &mut self.words[row / 64];
-		let bit = 1u64 << (row % 64);
-		if value {
-			*word |= bit;
-		} else {
-			*word &= !bit;
-		}
+		self.bits.set(row, value);
 	}
 
 	pub fn popcount(&self) -> usize {
-		let word_count = self.words.len();
-		if word_count == 0 {
-			return 0;
-		}
-		let mut count = 0usize;
-		for &w in &self.words[..word_count - 1] {
-			count += w.count_ones() as usize;
-		}
-		let trailing = self.len - 64 * (word_count - 1);
-		let mask = if trailing == 64 {
-			u64::MAX
-		} else {
-			(1u64 << trailing) - 1
-		};
-		count += (self.words[word_count - 1] & mask).count_ones() as usize;
-		count
+		self.bits.count_ones()
 	}
 
 	pub fn and(&self, other: &Self) -> Self {
-		assert_eq!(self.len, other.len, "RowMask::and length mismatch");
-		let words = self.words.iter().zip(&other.words).map(|(a, b)| a & b).collect();
+		assert_eq!(self.len(), other.len(), "RowMask::and length mismatch");
 		Self {
-			words,
-			len: self.len,
+			bits: self.bits.and(&other.bits),
 		}
 	}
 
 	pub fn or(&self, other: &Self) -> Self {
-		assert_eq!(self.len, other.len, "RowMask::or length mismatch");
-		let words = self.words.iter().zip(&other.words).map(|(a, b)| a | b).collect();
+		assert_eq!(self.len(), other.len(), "RowMask::or length mismatch");
 		Self {
-			words,
-			len: self.len,
+			bits: self.bits.or(&other.bits),
 		}
 	}
 
 	pub fn not(&self) -> Self {
-		let word_count = self.words.len();
-		let mut words: Vec<u64> = self.words.iter().map(|w| !w).collect();
-		let trailing = self.len % 64;
-		if trailing != 0 && word_count > 0 {
-			words[word_count - 1] &= (1u64 << trailing) - 1;
-		}
 		Self {
-			words,
-			len: self.len,
+			bits: self.bits.not(),
 		}
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		reifydb_assertions! {
-			assert!(start <= end, "RowMask::slice: start {start} > end {end}");
-			assert!(end <= self.len, "RowMask::slice: end {end} > len {}", self.len);
+		assert!(start <= end, "RowMask::slice: start {start} > end {end}");
+		assert!(end <= self.len(), "RowMask::slice: end {end} > len {}", self.len());
+		Self {
+			bits: self.bits.slice(start, end),
 		}
-		let new_len = end - start;
-		let mut out = Self::none_set(new_len);
-		for i in 0..new_len {
-			if self.get(start + i) {
-				out.set(i, true);
-			}
-		}
-		out
 	}
 
 	pub fn concat(parts: &[Self]) -> Self {
-		let total: usize = parts.iter().map(|m| m.len).sum();
-		let mut out = Self::none_set(total);
-		let mut row_offset = 0;
+		let total: usize = parts.iter().map(|m| m.len()).sum();
+		let mut bits = BitVec::with_capacity(total);
 		for part in parts {
-			for i in 0..part.len {
-				if part.get(i) {
-					out.set(row_offset + i, true);
-				}
-			}
-			row_offset += part.len;
+			bits.extend(&part.bits);
 		}
-		out
+		Self {
+			bits,
+		}
+	}
+
+	pub fn as_bitvec(&self) -> &BitVec {
+		&self.bits
 	}
 }
 

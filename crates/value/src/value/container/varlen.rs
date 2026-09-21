@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	borrow::Cow,
 	fmt::{self, Debug},
 	result::Result as StdResult,
 };
@@ -9,11 +10,11 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeSeq};
 use serde_bytes::{ByteBuf, Bytes};
 
-use crate::reifydb_assertions;
+use crate::{reifydb_assertions, util::shared_vec::SharedVec};
 
 pub struct VarlenContainer {
-	data: Vec<u8>,
-	offsets: Vec<u64>,
+	data: SharedVec<u8>,
+	offsets: SharedVec<u64>,
 }
 
 impl Clone for VarlenContainer {
@@ -29,7 +30,7 @@ impl Debug for VarlenContainer {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("VarlenContainer")
 			.field("len", &self.len())
-			.field("data_bytes", &self.data.len())
+			.field("data_bytes", &self.data_byte_len())
 			.finish()
 	}
 }
@@ -60,8 +61,8 @@ impl VarlenContainer {
 			offsets.push(data.len() as u64);
 		}
 		Self {
-			data,
-			offsets,
+			data: SharedVec::from_vec(data),
+			offsets: SharedVec::from_vec(offsets),
 		}
 	}
 
@@ -74,8 +75,8 @@ impl VarlenContainer {
 			offsets.push(data.len() as u64);
 		}
 		Self {
-			data,
-			offsets,
+			data: SharedVec::from_vec(data),
+			offsets: SharedVec::from_vec(offsets),
 		}
 	}
 
@@ -83,15 +84,15 @@ impl VarlenContainer {
 		let mut offsets = Vec::with_capacity(item_capacity + 1);
 		offsets.push(0);
 		Self {
-			data: Vec::with_capacity(data_capacity),
-			offsets,
+			data: SharedVec::with_capacity(data_capacity),
+			offsets: SharedVec::from_vec(offsets),
 		}
 	}
 
 	pub fn empty() -> Self {
 		Self {
-			data: Vec::new(),
-			offsets: vec![0],
+			data: SharedVec::new(),
+			offsets: SharedVec::from_vec(vec![0]),
 		}
 	}
 
@@ -102,26 +103,13 @@ impl VarlenContainer {
 			assert_eq!(*offsets.last().unwrap() as usize, data.len(), "offsets[len] must equal data.len()");
 		}
 		Self {
-			data,
-			offsets,
+			data: SharedVec::from_vec(data),
+			offsets: SharedVec::from_vec(offsets),
 		}
 	}
 }
 
 impl VarlenContainer {
-	pub fn from_storage_parts(data: Vec<u8>, offsets: Vec<u64>) -> Self {
-		reifydb_assertions! {
-			assert!(
-				!offsets.is_empty(),
-				"offsets must always include the leading 0; got empty offsets"
-			);
-		}
-		Self {
-			data,
-			offsets,
-		}
-	}
-
 	pub fn len(&self) -> usize {
 		self.offsets.len().saturating_sub(1)
 	}
@@ -131,24 +119,28 @@ impl VarlenContainer {
 	}
 
 	pub fn data_byte_len(&self) -> usize {
-		self.data.len()
+		let (first, last) = self.bounds();
+		(last - first) as usize
 	}
 
-	pub fn data_bytes(&self) -> &[u8] {
-		self.data.as_slice()
-	}
-
-	pub fn offsets(&self) -> &[u64] {
-		self.offsets.as_slice()
+	pub fn compact_parts(&self) -> (&[u8], Cow<'_, [u64]>) {
+		let (first, last) = self.bounds();
+		let data = &self.data[first as usize..last as usize];
+		let offsets = if first == 0 {
+			Cow::Borrowed(self.offsets.as_slice())
+		} else {
+			Cow::Owned(self.offsets.iter().map(|offset| offset - first).collect())
+		};
+		(data, offsets)
 	}
 
 	pub fn get_bytes(&self, idx: usize) -> Option<&[u8]> {
 		if idx >= self.len() {
 			return None;
 		}
-		let start = self.offsets.as_slice()[idx] as usize;
-		let end = self.offsets.as_slice()[idx + 1] as usize;
-		self.data.as_slice().get(start..end)
+		let start = self.offsets[idx] as usize;
+		let end = self.offsets[idx + 1] as usize;
+		self.data.get(start..end)
 	}
 
 	pub fn capacity(&self) -> usize {
@@ -159,48 +151,56 @@ impl VarlenContainer {
 		self.data.capacity() + self.offsets.capacity() * size_of::<u64>()
 	}
 
-	pub fn data(&self) -> &Vec<u8> {
-		&self.data
+	pub fn freeze(&mut self) {
+		self.data.freeze();
+		self.offsets.freeze();
 	}
 
-	pub fn offsets_data(&self) -> &Vec<u64> {
-		&self.offsets
+	pub fn is_shared(&self) -> bool {
+		self.data.is_shared() || self.offsets.is_shared()
 	}
 
-	pub fn clear_generic(&mut self) {
-		self.data.clear();
-		self.offsets.clear();
-		self.offsets.push(0u64);
+	fn bounds(&self) -> (u64, u64) {
+		match (self.offsets.first(), self.offsets.last()) {
+			(Some(&first), Some(&last)) => (first, last),
+			_ => panic!("varlen offsets must hold at least the leading offset"),
+		}
+	}
+
+	fn make_mut(&mut self) -> (&mut Vec<u8>, &mut Vec<u64>) {
+		let (first, last) = self.bounds();
+		if first != 0 || last as usize != self.data.len() {
+			self.data = SharedVec::from_vec(self.data[first as usize..last as usize].to_vec());
+			for offset in self.offsets.make_mut() {
+				*offset -= first;
+			}
+		}
+		(self.data.make_mut(), self.offsets.make_mut())
 	}
 }
 
 impl VarlenContainer {
 	pub fn clear(&mut self) {
-		let data_mut = &mut self.data;
-		data_mut.clear();
-		let offsets_mut = &mut self.offsets;
-		offsets_mut.clear();
-		offsets_mut.push(0);
+		self.data.clear();
+		self.offsets.clear();
+		self.offsets.push(0);
 	}
 
 	pub fn push_bytes(&mut self, bytes: &[u8]) {
-		let data_mut = &mut self.data;
-		data_mut.extend_from_slice(bytes);
-		let new_end = data_mut.len() as u64;
-		self.offsets.push(new_end);
+		let (data, offsets) = self.make_mut();
+		data.extend_from_slice(bytes);
+		offsets.push(data.len() as u64);
 	}
 
 	pub fn extend_from(&mut self, other: &Self) {
-		let base = self.data.len() as u64;
+		let (other_first, other_last) = other.bounds();
+		let other_data = &other.data[other_first as usize..other_last as usize];
 		let other_offsets = other.offsets.as_slice();
-		let other_data = other.data.as_slice();
 
-		let data_mut = &mut self.data;
-		data_mut.extend_from_slice(other_data);
-
-		let offsets_mut = &mut self.offsets;
-
-		offsets_mut.extend(other_offsets.iter().skip(1).map(|&o| base + o));
+		let (data, offsets) = self.make_mut();
+		let base = data.len() as u64;
+		data.extend_from_slice(other_data);
+		offsets.extend(other_offsets.iter().skip(1).map(|&o| base + (o - other_first)));
 	}
 
 	pub fn filter_in_place<F: FnMut(usize) -> bool>(&mut self, mut keep: F) {
@@ -215,8 +215,8 @@ impl VarlenContainer {
 				new_offsets.push(new_data.len() as u64);
 			}
 		}
-		self.data = new_data;
-		self.offsets = new_offsets;
+		self.data = SharedVec::from_vec(new_data);
+		self.offsets = SharedVec::from_vec(new_offsets);
 	}
 
 	pub fn reorder_in_place(&mut self, indices: &[usize]) {
@@ -228,16 +228,12 @@ impl VarlenContainer {
 			new_data.extend_from_slice(bytes);
 			new_offsets.push(new_data.len() as u64);
 		}
-		self.data = new_data;
-		self.offsets = new_offsets;
+		self.data = SharedVec::from_vec(new_data);
+		self.offsets = SharedVec::from_vec(new_offsets);
 	}
 
 	pub fn take_n(&self, n: usize) -> Self {
-		let n = n.min(self.len());
-		let end_byte = self.offsets.as_slice()[n] as usize;
-		let new_data: Vec<u8> = self.data.as_slice()[..end_byte].to_vec();
-		let new_offsets: Vec<u64> = self.offsets.as_slice()[..=n].to_vec();
-		Self::from_raw_parts(new_data, new_offsets)
+		self.slice(0, n)
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
@@ -247,12 +243,16 @@ impl VarlenContainer {
 		if start >= end {
 			return Self::empty();
 		}
-		let start_byte = self.offsets.as_slice()[start] as usize;
-		let end_byte = self.offsets.as_slice()[end] as usize;
-		let new_data: Vec<u8> = self.data.as_slice()[start_byte..end_byte].to_vec();
-
-		let new_offsets: Vec<u64> =
-			self.offsets.as_slice()[start..=end].iter().map(|o| *o - start_byte as u64).collect();
+		if self.data.is_frozen() && self.offsets.is_frozen() {
+			return Self {
+				data: self.data.clone(),
+				offsets: self.offsets.slice(start, end + 1),
+			};
+		}
+		let start_byte = self.offsets[start];
+		let end_byte = self.offsets[end];
+		let new_data = self.data[start_byte as usize..end_byte as usize].to_vec();
+		let new_offsets = self.offsets[start..=end].iter().map(|offset| offset - start_byte).collect();
 		Self::from_raw_parts(new_data, new_offsets)
 	}
 }
@@ -299,8 +299,8 @@ mod tests {
 	fn empty_has_zero_len_and_offsets_with_one_zero() {
 		let c = VarlenContainer::empty();
 		assert_eq!(c.len(), 0);
-		assert_eq!(c.offsets(), &[0u64]);
-		assert!(c.data_bytes().is_empty());
+		assert_eq!(&*c.compact_parts().1, &[0u64]);
+		assert!(c.compact_parts().0.is_empty());
 	}
 
 	#[test]
@@ -310,8 +310,8 @@ mod tests {
 		c.push_bytes(b"");
 		c.push_bytes(b"world");
 		assert_eq!(c.len(), 3);
-		assert_eq!(c.offsets(), &[0u64, 5, 5, 10]);
-		assert_eq!(c.data_bytes(), b"helloworld");
+		assert_eq!(&*c.compact_parts().1, &[0u64, 5, 5, 10]);
+		assert_eq!(c.compact_parts().0, b"helloworld");
 		assert_eq!(c.get_bytes(0), Some(b"hello".as_slice()));
 		assert_eq!(c.get_bytes(1), Some(b"".as_slice()));
 		assert_eq!(c.get_bytes(2), Some(b"world".as_slice()));
@@ -322,8 +322,8 @@ mod tests {
 	fn from_byte_slices_round_trip() {
 		let c = VarlenContainer::from_byte_slices([b"a".as_slice(), b"bc", b"def"]);
 		assert_eq!(c.len(), 3);
-		assert_eq!(c.data_bytes(), b"abcdef");
-		assert_eq!(c.offsets(), &[0u64, 1, 3, 6]);
+		assert_eq!(c.compact_parts().0, b"abcdef");
+		assert_eq!(&*c.compact_parts().1, &[0u64, 1, 3, 6]);
 	}
 
 	#[test]
@@ -332,16 +332,16 @@ mod tests {
 		let explicit = VarlenContainer::from_byte_slices([b"abc".as_slice(), b"abc", b"abc"]);
 		assert_eq!(repeated, explicit);
 		assert_eq!(repeated.len(), 3);
-		assert_eq!(repeated.data_bytes(), b"abcabcabc");
-		assert_eq!(repeated.offsets(), &[0u64, 3, 6, 9]);
+		assert_eq!(repeated.compact_parts().0, b"abcabcabc");
+		assert_eq!(&*repeated.compact_parts().1, &[0u64, 3, 6, 9]);
 	}
 
 	#[test]
 	fn from_repeated_bytes_zero_count_is_empty() {
 		let c = VarlenContainer::from_repeated_bytes(b"abc", 0);
 		assert_eq!(c.len(), 0);
-		assert_eq!(c.offsets(), &[0u64]);
-		assert!(c.data_bytes().is_empty());
+		assert_eq!(&*c.compact_parts().1, &[0u64]);
+		assert!(c.compact_parts().0.is_empty());
 	}
 
 	#[test]
@@ -350,7 +350,7 @@ mod tests {
 		assert_eq!(c.len(), 4);
 		assert_eq!(c.get_bytes(0), Some(b"".as_slice()));
 		assert_eq!(c.get_bytes(3), Some(b"".as_slice()));
-		assert!(c.data_bytes().is_empty());
+		assert!(c.compact_parts().0.is_empty());
 	}
 
 	#[test]
@@ -358,8 +358,8 @@ mod tests {
 		let mut c = VarlenContainer::from_byte_slices([b"x".as_slice(), b"y"]);
 		c.clear();
 		assert_eq!(c.len(), 0);
-		assert_eq!(c.offsets(), &[0u64]);
-		assert!(c.data_bytes().is_empty());
+		assert_eq!(&*c.compact_parts().1, &[0u64]);
+		assert!(c.compact_parts().0.is_empty());
 	}
 
 	#[test]
@@ -368,8 +368,8 @@ mod tests {
 		let b = VarlenContainer::from_byte_slices([b"bar".as_slice(), b"baz"]);
 		a.extend_from(&b);
 		assert_eq!(a.len(), 3);
-		assert_eq!(a.data_bytes(), b"foobarbaz");
-		assert_eq!(a.offsets(), &[0u64, 3, 6, 9]);
+		assert_eq!(a.compact_parts().0, b"foobarbaz");
+		assert_eq!(&*a.compact_parts().1, &[0u64, 3, 6, 9]);
 	}
 
 	#[test]
@@ -407,7 +407,7 @@ mod tests {
 		assert_eq!(s.len(), 2);
 		assert_eq!(s.get_bytes(0), Some(b"bb".as_slice()));
 		assert_eq!(s.get_bytes(1), Some(b"cc".as_slice()));
-		assert_eq!(s.offsets(), &[0u64, 2, 4]);
+		assert_eq!(&*s.compact_parts().1, &[0u64, 2, 4]);
 	}
 
 	#[test]
@@ -439,5 +439,120 @@ mod tests {
 		let a = VarlenContainer::from_byte_slices([b"x".as_slice(), b"y"]);
 		let b = VarlenContainer::from_byte_slices([b"x".as_slice(), b"y"]);
 		assert_eq!(a, b);
+	}
+
+	fn frozen_abcd() -> VarlenContainer {
+		let mut c = VarlenContainer::from_byte_slices([b"aa".as_slice(), b"bb", b"cc", b"dd"]);
+		c.freeze();
+		c
+	}
+
+	#[test]
+	fn frozen_slice_shares_both_buffers() {
+		// A slice that copies instead of sharing would leave both handles unshared.
+		let c = frozen_abcd();
+		let s = c.slice(1, 3);
+		assert!(c.is_shared());
+		assert!(s.is_shared());
+		assert_eq!(s.len(), 2);
+		assert_eq!(s.get_bytes(0), Some(b"bb".as_slice()));
+		assert_eq!(s.get_bytes(1), Some(b"cc".as_slice()));
+		assert_eq!(s.get_bytes(2), None);
+		assert_eq!(s.data_byte_len(), 4);
+	}
+
+	#[test]
+	fn frozen_slice_compact_parts_are_rebased() {
+		// A guest must see only the referenced bytes and a first offset of 0, never the parent buffer.
+		let c = frozen_abcd();
+		let s = c.slice(1, 3);
+		let (data, offsets) = s.compact_parts();
+		assert_eq!(data, b"bbcc");
+		assert_eq!(&*offsets, &[0u64, 2, 4]);
+		assert!(matches!(offsets, Cow::Owned(_)));
+	}
+
+	#[test]
+	fn unsliced_compact_parts_borrow_offsets() {
+		// Unsliced containers must stay zero-copy across the ABI.
+		let c = frozen_abcd();
+		let (data, offsets) = c.compact_parts();
+		assert_eq!(data, b"aabbccdd");
+		assert_eq!(&*offsets, &[0u64, 2, 4, 6, 8]);
+		assert!(matches!(offsets, Cow::Borrowed(_)));
+	}
+
+	#[test]
+	fn push_after_frozen_slice_does_not_expose_parent_bytes() {
+		// Appending at the shared buffer's end would make the new row start with the parent's "dd".
+		let c = frozen_abcd();
+		let mut s = c.slice(1, 3);
+		s.push_bytes(b"xy");
+		assert_eq!(s.len(), 3);
+		assert_eq!(s.get_bytes(2), Some(b"xy".as_slice()));
+		let (data, offsets) = s.compact_parts();
+		assert_eq!(data, b"bbccxy");
+		assert_eq!(&*offsets, &[0u64, 2, 4, 6]);
+		assert_eq!(c.get_bytes(3), Some(b"dd".as_slice()));
+		assert_eq!(c.len(), 4);
+	}
+
+	#[test]
+	fn extend_from_frozen_slice_rebases_other_offsets() {
+		// Copying the other side's absolute offsets unrebased would point past the appended bytes.
+		let mut a = VarlenContainer::from_byte_slices([b"foo".as_slice()]);
+		let s = frozen_abcd().slice(2, 4);
+		a.extend_from(&s);
+		assert_eq!(a.len(), 3);
+		assert_eq!(a.get_bytes(1), Some(b"cc".as_slice()));
+		assert_eq!(a.get_bytes(2), Some(b"dd".as_slice()));
+		let (data, offsets) = a.compact_parts();
+		assert_eq!(data, b"fooccdd");
+		assert_eq!(&*offsets, &[0u64, 3, 5, 7]);
+	}
+
+	#[test]
+	fn take_n_of_frozen_container_shares_buffers() {
+		// take_n must be an O(1) view once frozen, not a copy.
+		let c = frozen_abcd();
+		let t = c.take_n(3);
+		assert!(t.is_shared());
+		assert_eq!(t.len(), 3);
+		assert_eq!(t.get_bytes(2), Some(b"cc".as_slice()));
+		assert_eq!(t.data_byte_len(), 6);
+	}
+
+	#[test]
+	fn empty_range_slice_of_frozen_container_is_empty() {
+		// An empty range must yield len 0 with no referenced bytes, even when the clamp lands mid-buffer.
+		let c = frozen_abcd();
+		for (start, end) in [(2, 2), (3, 1), (10, 20)] {
+			let s = c.slice(start, end);
+			assert_eq!(s.len(), 0);
+			assert_eq!(s.data_byte_len(), 0);
+			assert_eq!(s.compact_parts().0, b"");
+		}
+	}
+
+	#[test]
+	fn filter_on_frozen_slice_keeps_right_rows() {
+		// filter must read rows through absolute offsets, not assume the buffer starts at the slice.
+		let mut s = frozen_abcd().slice(1, 4);
+		s.filter_in_place(|i| i != 1);
+		assert_eq!(s.len(), 2);
+		assert_eq!(s.get_bytes(0), Some(b"bb".as_slice()));
+		assert_eq!(s.get_bytes(1), Some(b"dd".as_slice()));
+		assert!(!s.is_shared());
+	}
+
+	#[test]
+	fn clear_on_frozen_slice_leaves_parent_intact() {
+		// Clearing a shared handle must never clear the buffer other handles still read.
+		let c = frozen_abcd();
+		let mut s = c.slice(0, 2);
+		s.clear();
+		assert_eq!(s.len(), 0);
+		assert_eq!(c.len(), 4);
+		assert_eq!(c.get_bytes(0), Some(b"aa".as_slice()));
 	}
 }

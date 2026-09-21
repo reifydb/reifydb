@@ -931,6 +931,26 @@ impl ColumnBuffer {
 		}
 	}
 
+	pub fn freeze(&mut self) {
+		match self {
+			ColumnBuffer::Option {
+				inner,
+				..
+			} => inner.freeze(),
+			_ => with_container!(self, |c| c.freeze()),
+		}
+	}
+
+	pub fn is_shared(&self) -> bool {
+		match self {
+			ColumnBuffer::Option {
+				inner,
+				bitvec,
+			} => inner.is_shared() || bitvec.is_shared(),
+			_ => with_container!(self, |c| c.is_shared()),
+		}
+	}
+
 	pub fn as_string(&self, index: usize) -> String {
 		match self {
 			ColumnBuffer::Option {

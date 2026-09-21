@@ -1,23 +1,40 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{fmt, ops::Deref, sync::Arc};
+use std::{borrow::Cow, fmt, sync::Arc};
 
+use arrow_buffer::{
+	bit_chunk_iterator::{BitChunks, UnalignedBitChunk},
+	bit_mask::set_bits,
+	bit_util::{get_bit, set_bit, unset_bit},
+};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Clone, Debug, PartialEq)]
 pub struct BitVec {
 	inner: Arc<BitVecInner>,
+	offset: usize,
+	len: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct BitVecInner {
+	bits: Vec<u8>,
+	len: usize,
+}
+
+impl Clone for BitVec {
+	fn clone(&self) -> Self {
+		Self {
+			inner: Arc::clone(&self.inner),
+			offset: self.offset,
+			len: self.len,
+		}
+	}
 }
 
 impl Default for BitVec {
 	fn default() -> Self {
-		Self {
-			inner: Arc::new(BitVecInner {
-				bits: vec![],
-				len: 0,
-			}),
-		}
+		Self::empty()
 	}
 }
 
@@ -39,219 +56,260 @@ impl<const N: usize> From<[bool; N]> for BitVec {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct BitVecInner {
-	bits: Vec<u8>,
-	len: usize,
-}
-
 pub struct BitVecIter {
 	inner: Arc<BitVecInner>,
 	pos: usize,
+	end: usize,
 }
 
 impl Iterator for BitVecIter {
 	type Item = bool;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if self.pos >= self.inner.len {
+		if self.pos >= self.end {
 			return None;
 		}
-
-		let byte = self.inner.bits[self.pos / 8];
-		let bit = (byte >> (self.pos % 8)) & 1;
+		let bit = get_bit(&self.inner.bits, self.pos);
 		self.pos += 1;
-		Some(bit != 0)
+		Some(bit)
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let remaining = self.end - self.pos;
+		(remaining, Some(remaining))
+	}
+}
+
+impl ExactSizeIterator for BitVecIter {}
+
+fn clear_trailing(bits: &mut [u8], len: usize) {
+	let used = len % 8;
+	if used != 0
+		&& let Some(last) = bits.get_mut(len / 8)
+	{
+		*last &= (1u8 << used) - 1;
 	}
 }
 
 impl BitVec {
-	pub fn repeat(len: usize, value: bool) -> Self {
-		if value {
-			BitVec::from_fn(len, |_| true)
-		} else {
-			let byte_count = len.div_ceil(8);
-			BitVec {
-				inner: Arc::new(BitVecInner {
-					bits: vec![0x00; byte_count],
-					len,
-				}),
-			}
-		}
-	}
-
-	pub fn from_slice(slice: &[bool]) -> Self {
-		let mut bv = BitVec::repeat(slice.len(), false);
-		for (i, &val) in slice.iter().enumerate() {
-			if val {
-				bv.set(i, true);
-			}
-		}
-		bv
-	}
-
-	pub fn empty() -> Self {
+	fn from_inner(bits: Vec<u8>, len: usize) -> Self {
 		Self {
-			inner: Arc::new(BitVecInner {
-				bits: Vec::new(),
-				len: 0,
-			}),
-		}
-	}
-
-	pub fn from_fn(len: usize, mut f: impl FnMut(usize) -> bool) -> Self {
-		let mut bv = BitVec::repeat(len, false);
-		for i in 0..len {
-			if f(i) {
-				bv.set(i, true);
-			}
-		}
-		bv
-	}
-
-	pub fn take(&self, n: usize) -> BitVec {
-		let len = n.min(self.inner.len);
-
-		let byte_len = len.div_ceil(8);
-		let mut bits = vec![0u8; byte_len];
-
-		for i in 0..len {
-			let orig_byte = self.inner.bits[i / 8];
-			let bit = (orig_byte >> (i % 8)) & 1;
-			if bit != 0 {
-				bits[i / 8] |= 1 << (i % 8);
-			}
-		}
-
-		BitVec {
 			inner: Arc::new(BitVecInner {
 				bits,
 				len,
 			}),
+			offset: 0,
+			len,
 		}
 	}
 
+	fn is_whole(&self) -> bool {
+		self.offset == 0 && self.len == self.inner.len
+	}
+
+	pub fn repeat(len: usize, value: bool) -> Self {
+		let fill = if value {
+			0xFF
+		} else {
+			0x00
+		};
+		let mut bits = vec![fill; len.div_ceil(8)];
+		clear_trailing(&mut bits, len);
+		Self::from_inner(bits, len)
+	}
+
+	pub fn from_slice(slice: &[bool]) -> Self {
+		Self::from_fn(slice.len(), |i| slice[i])
+	}
+
+	pub fn empty() -> Self {
+		Self::from_inner(Vec::new(), 0)
+	}
+
+	pub fn from_fn(len: usize, mut f: impl FnMut(usize) -> bool) -> Self {
+		let mut bits = vec![0u8; len.div_ceil(8)];
+		for i in 0..len {
+			if f(i) {
+				set_bit(&mut bits, i);
+			}
+		}
+		Self::from_inner(bits, len)
+	}
+
+	pub fn with_capacity(capacity: usize) -> Self {
+		Self::from_inner(Vec::with_capacity(capacity.div_ceil(8)), 0)
+	}
+
+	pub fn from_raw(bits: Vec<u8>, len: usize) -> Self {
+		Self::from_inner(bits, len)
+	}
+
+	pub fn slice(&self, start: usize, end: usize) -> BitVec {
+		let end = end.min(self.len);
+		let start = start.min(end);
+		Self {
+			inner: Arc::clone(&self.inner),
+			offset: self.offset + start,
+			len: end - start,
+		}
+	}
+
+	pub fn take(&self, n: usize) -> BitVec {
+		self.slice(0, n)
+	}
+
+	fn packed_copy(&self) -> Vec<u8> {
+		let mut bits = vec![0u8; self.len.div_ceil(8)];
+		set_bits(&mut bits, &self.inner.bits, 0, self.offset, self.len);
+		bits
+	}
+
+	fn normalize(&mut self) {
+		let len = self.len;
+		if self.offset == 0
+			&& let Some(inner) = Arc::get_mut(&mut self.inner)
+		{
+			inner.bits.truncate(len.div_ceil(8));
+			clear_trailing(&mut inner.bits, len);
+			inner.len = len;
+			return;
+		}
+		self.inner = Arc::new(BitVecInner {
+			bits: self.packed_copy(),
+			len,
+		});
+		self.offset = 0;
+	}
+
 	fn make_mut(&mut self) -> &mut BitVecInner {
+		if !self.is_whole() {
+			self.normalize();
+		}
 		Arc::make_mut(&mut self.inner)
 	}
 
 	pub fn extend(&mut self, other: &BitVec) {
-		let start_len = self.len();
-		let other_len = other.len();
-		let total_len = start_len + other_len;
-		let total_byte_len = total_len.div_ceil(8);
-
+		let start = self.len;
+		let total = start + other.len;
 		let inner = self.make_mut();
-		inner.bits.resize(total_byte_len, 0);
-
-		for i in 0..other_len {
-			let bit = other.get(i);
-			if bit {
-				let idx = start_len + i;
-				let byte = &mut inner.bits[idx / 8];
-				let bit_pos = idx % 8;
-				*byte |= 1 << bit_pos;
-			}
-		}
-
-		inner.len = total_len;
+		inner.bits.resize(total.div_ceil(8), 0);
+		set_bits(&mut inner.bits, &other.inner.bits, start, other.offset, other.len);
+		inner.len = total;
+		self.len = total;
 	}
 
 	pub fn clear(&mut self) {
-		let inner = self.make_mut();
-		inner.bits.clear();
-		inner.len = 0;
+		match Arc::get_mut(&mut self.inner) {
+			Some(inner) => {
+				inner.bits.clear();
+				inner.len = 0;
+			}
+			None => {
+				self.inner = Arc::new(BitVecInner {
+					bits: Vec::new(),
+					len: 0,
+				})
+			}
+		}
+		self.offset = 0;
+		self.len = 0;
 	}
 
 	pub fn push(&mut self, bit: bool) {
+		let len = self.len;
 		let inner = self.make_mut();
-		let byte_index = inner.len / 8;
-		let bit_index = inner.len % 8;
-
-		if byte_index >= inner.bits.len() {
+		if len / 8 >= inner.bits.len() {
 			inner.bits.push(0);
 		}
-
 		if bit {
-			inner.bits[byte_index] |= 1 << bit_index;
+			set_bit(&mut inner.bits, len);
+		} else {
+			unset_bit(&mut inner.bits, len);
 		}
-
-		inner.len += 1;
+		inner.len = len + 1;
+		self.len = len + 1;
 	}
 
 	pub fn len(&self) -> usize {
-		self.inner.len
+		self.len
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.len() == 0
+		self.len == 0
 	}
 
 	pub fn capacity(&self) -> usize {
 		self.inner.bits.capacity() * 8
 	}
 
-	pub fn as_packed_bytes(&self) -> &[u8] {
-		&self.inner.bits
+	pub fn to_packed_bytes(&self) -> Cow<'_, [u8]> {
+		if self.offset == 0 {
+			Cow::Borrowed(&self.inner.bits[..self.len.div_ceil(8)])
+		} else {
+			Cow::Owned(self.packed_copy())
+		}
 	}
 
 	pub fn get(&self, idx: usize) -> bool {
-		assert!(idx < self.inner.len);
-		let byte = self.inner.bits[idx / 8];
-		let bit = idx % 8;
-		(byte >> bit) & 1 != 0
+		assert!(idx < self.len);
+		get_bit(&self.inner.bits, self.offset + idx)
 	}
 
 	pub fn set(&mut self, idx: usize, value: bool) {
-		assert!(idx < self.inner.len);
+		assert!(idx < self.len);
 		let inner = self.make_mut();
-		let byte = &mut inner.bits[idx / 8];
-		let bit = idx % 8;
 		if value {
-			*byte |= 1 << bit;
+			set_bit(&mut inner.bits, idx);
 		} else {
-			*byte &= !(1 << bit);
+			unset_bit(&mut inner.bits, idx);
 		}
 	}
 
 	pub fn iter(&self) -> BitVecIter {
 		BitVecIter {
-			inner: self.inner.clone(),
-			pos: 0,
+			inner: Arc::clone(&self.inner),
+			pos: self.offset,
+			end: self.offset + self.len,
 		}
 	}
 
-	pub fn and(&self, other: &Self) -> Self {
+	fn chunks(&self) -> BitChunks<'_> {
+		BitChunks::new(&self.inner.bits, self.offset, self.len)
+	}
+
+	fn from_chunks(len: usize, chunks: impl Iterator<Item = u64>, remainder: Option<u64>) -> Self {
+		let mut bits = Vec::with_capacity(len.div_ceil(64) * 8);
+		for chunk in chunks {
+			bits.extend_from_slice(&chunk.to_le_bytes());
+		}
+		if let Some(remainder) = remainder {
+			bits.extend_from_slice(&remainder.to_le_bytes());
+		}
+		bits.truncate(len.div_ceil(8));
+		clear_trailing(&mut bits, len);
+		Self::from_inner(bits, len)
+	}
+
+	fn zip_with(&self, other: &Self, op: impl Fn(u64, u64) -> u64) -> Self {
 		assert_eq!(self.len(), other.len());
-		let len = self.len();
-		let byte_count = len.div_ceil(8);
-		let mut result_bits = vec![0u8; byte_count];
+		let left = self.chunks();
+		let right = other.chunks();
+		let remainder = (left.remainder_len() > 0).then(|| op(left.remainder_bits(), right.remainder_bits()));
+		Self::from_chunks(self.len, left.iter().zip(right.iter()).map(|(a, b)| op(a, b)), remainder)
+	}
 
-		let full_chunks = byte_count / 8 * 8;
-		for ((a_chunk, b_chunk), out_chunk) in self.inner.bits[..full_chunks]
-			.chunks_exact(8)
-			.zip(other.inner.bits[..full_chunks].chunks_exact(8))
-			.zip(result_bits[..full_chunks].chunks_exact_mut(8))
-		{
-			let a = u64::from_le_bytes(a_chunk.try_into().unwrap());
-			let b = u64::from_le_bytes(b_chunk.try_into().unwrap());
-			out_chunk.copy_from_slice(&(a & b).to_le_bytes());
-		}
+	pub fn and(&self, other: &Self) -> Self {
+		self.zip_with(other, |a, b| a & b)
+	}
 
-		for ((out, a), b) in result_bits[full_chunks..byte_count]
-			.iter_mut()
-			.zip(&self.inner.bits[full_chunks..byte_count])
-			.zip(&other.inner.bits[full_chunks..byte_count])
-		{
-			*out = a & b;
-		}
+	pub fn or(&self, other: &Self) -> Self {
+		self.zip_with(other, |a, b| a | b)
+	}
 
-		BitVec {
-			inner: Arc::new(BitVecInner {
-				bits: result_bits,
-				len,
-			}),
-		}
+	pub fn not(&self) -> Self {
+		let chunks = self.chunks();
+		let remainder = (chunks.remainder_len() > 0).then(|| !chunks.remainder_bits());
+		Self::from_chunks(self.len, chunks.iter().map(|a| !a), remainder)
 	}
 
 	pub fn to_vec(&self) -> Vec<bool> {
@@ -259,172 +317,65 @@ impl BitVec {
 	}
 
 	pub fn count_ones(&self) -> usize {
-		let mut count = self.inner.bits.iter().map(|&byte| byte.count_ones() as usize).sum();
-
-		let full_bytes = self.inner.len / 8;
-		let remainder_bits = self.inner.len % 8;
-
-		if remainder_bits > 0 && full_bytes < self.inner.bits.len() {
-			let last_byte = self.inner.bits[full_bytes];
-
-			let mask = (1u8 << remainder_bits) - 1;
-
-			count -= (last_byte & !mask).count_ones() as usize;
-		}
-
-		count
+		UnalignedBitChunk::new(&self.inner.bits, self.offset, self.len).count_ones()
 	}
 
 	pub fn all_ones(&self) -> bool {
-		self.count_ones() == self.inner.len
+		self.count_ones() == self.len
 	}
 
 	pub fn count_zeros(&self) -> usize {
-		self.inner.len - self.count_ones()
+		self.len - self.count_ones()
 	}
 
 	pub fn any(&self) -> bool {
-		let full_bytes = self.inner.len / 8;
-		for i in 0..full_bytes {
-			if self.inner.bits[i] != 0 {
-				return true;
-			}
-		}
-
-		let remainder_bits = self.inner.len % 8;
-		if remainder_bits > 0 && full_bytes < self.inner.bits.len() {
-			let last_byte = self.inner.bits[full_bytes];
-			let mask = (1u8 << remainder_bits) - 1;
-			return (last_byte & mask) != 0;
-		}
-
-		false
+		let chunks = self.chunks();
+		chunks.iter().any(|chunk| chunk != 0) || chunks.remainder_bits() != 0
 	}
 
 	pub fn none(&self) -> bool {
 		!self.any()
 	}
 
-	pub fn not(&self) -> Self {
-		let len = self.len();
-		let byte_count = len.div_ceil(8);
-		let mut result_bits = vec![0u8; byte_count];
-
-		let full_chunks = byte_count / 8 * 8;
-		for (chunk, out_chunk) in self.inner.bits[..full_chunks]
-			.chunks_exact(8)
-			.zip(result_bits[..full_chunks].chunks_exact_mut(8))
-		{
-			let a = u64::from_le_bytes(chunk.try_into().unwrap());
-			out_chunk.copy_from_slice(&(!a).to_le_bytes());
-		}
-
-		for (out, a) in
-			result_bits[full_chunks..byte_count].iter_mut().zip(&self.inner.bits[full_chunks..byte_count])
-		{
-			*out = !a;
-		}
-
-		let remainder_bits = len % 8;
-		if remainder_bits > 0 && !result_bits.is_empty() {
-			let mask = (1u8 << remainder_bits) - 1;
-			let last_idx = result_bits.len() - 1;
-			result_bits[last_idx] &= mask;
-		}
-
-		BitVec {
-			inner: Arc::new(BitVecInner {
-				bits: result_bits,
-				len,
-			}),
-		}
-	}
-
-	pub fn or(&self, other: &Self) -> Self {
-		assert_eq!(self.len(), other.len());
-		let len = self.len();
-		let byte_count = len.div_ceil(8);
-		let mut result_bits = vec![0u8; byte_count];
-
-		let full_chunks = byte_count / 8 * 8;
-		for ((a_chunk, b_chunk), out_chunk) in self.inner.bits[..full_chunks]
-			.chunks_exact(8)
-			.zip(other.inner.bits[..full_chunks].chunks_exact(8))
-			.zip(result_bits[..full_chunks].chunks_exact_mut(8))
-		{
-			let a = u64::from_le_bytes(a_chunk.try_into().unwrap());
-			let b = u64::from_le_bytes(b_chunk.try_into().unwrap());
-			out_chunk.copy_from_slice(&(a | b).to_le_bytes());
-		}
-
-		for ((out, a), b) in result_bits[full_chunks..byte_count]
-			.iter_mut()
-			.zip(&self.inner.bits[full_chunks..byte_count])
-			.zip(&other.inner.bits[full_chunks..byte_count])
-		{
-			*out = a | b;
-		}
-
-		BitVec {
-			inner: Arc::new(BitVecInner {
-				bits: result_bits,
-				len,
-			}),
-		}
-	}
-
-	pub fn is_owned(&self) -> bool {
-		Arc::strong_count(&self.inner) == 1
-	}
-
 	pub fn is_shared(&self) -> bool {
 		Arc::strong_count(&self.inner) > 1
 	}
 
-	pub fn with_capacity(capacity: usize) -> Self {
-		let byte_capacity = capacity.div_ceil(8);
-		Self {
-			inner: Arc::new(BitVecInner {
-				bits: Vec::with_capacity(byte_capacity),
-				len: 0,
-			}),
-		}
-	}
-
-	pub fn try_into_raw(self) -> Result<(Vec<u8>, usize), Self> {
-		match Arc::try_unwrap(self.inner) {
-			Ok(inner) => Ok((inner.bits, inner.len)),
-			Err(arc) => Err(BitVec {
-				inner: arc,
-			}),
-		}
-	}
-
-	pub fn from_raw(bits: Vec<u8>, len: usize) -> Self {
-		BitVec {
-			inner: Arc::new(BitVecInner {
-				bits,
-				len,
-			}),
-		}
-	}
-
 	pub fn reorder(&mut self, indices: &[usize]) {
 		assert_eq!(self.len(), indices.len());
-		let len = self.len();
-		let byte_count = len.div_ceil(8);
-		let mut new_bits = vec![0u8; byte_count];
-
+		let len = self.len;
+		let mut bits = vec![0u8; len.div_ceil(8)];
 		for (new_idx, &old_idx) in indices.iter().enumerate() {
 			if self.get(old_idx) {
-				let byte_idx = new_idx / 8;
-				let bit_idx = new_idx % 8;
-				new_bits[byte_idx] |= 1 << bit_idx;
+				set_bit(&mut bits, new_idx);
 			}
 		}
+		*self = Self::from_inner(bits, len);
+	}
+}
 
-		let inner = self.make_mut();
-		inner.bits = new_bits;
+impl PartialEq for BitVec {
+	fn eq(&self, other: &Self) -> bool {
+		if self.len != other.len {
+			return false;
+		}
+		let left = self.chunks();
+		let right = other.chunks();
+		left.iter().eq(right.iter()) && left.remainder_bits() == right.remainder_bits()
+	}
+}
+
+impl fmt::Debug for BitVec {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let inner = if self.is_whole() {
+			Cow::Borrowed(&*self.inner)
+		} else {
+			Cow::Owned(BitVecInner {
+				bits: self.packed_copy(),
+				len: self.len,
+			})
+		};
+		f.debug_struct("BitVec").field("inner", &inner).finish()
 	}
 }
 
@@ -445,20 +396,20 @@ impl fmt::Display for BitVec {
 	}
 }
 
-impl Deref for BitVec {
-	type Target = BitVecInner;
-
-	fn deref(&self) -> &Self::Target {
-		&self.inner
-	}
-}
-
 impl Serialize for BitVec {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{
-		self.inner.serialize(serializer)
+		if self.is_whole() {
+			self.inner.serialize(serializer)
+		} else {
+			BitVecInner {
+				bits: self.packed_copy(),
+				len: self.len,
+			}
+			.serialize(serializer)
+		}
 	}
 }
 
@@ -468,9 +419,7 @@ impl<'de> Deserialize<'de> for BitVec {
 		D: Deserializer<'de>,
 	{
 		let inner = BitVecInner::deserialize(deserializer)?;
-		Ok(BitVec {
-			inner: Arc::new(inner),
-		})
+		Ok(Self::from_inner(inner.bits, inner.len))
 	}
 }
 
@@ -1379,23 +1328,6 @@ pub mod tests {
 
 	mod cow_behavior {
 		use crate::util::bitvec::BitVec;
-
-		#[test]
-		fn test_is_owned() {
-			let mut owned = BitVec::with_capacity(16);
-			owned.push(true);
-			owned.push(false);
-
-			assert!(owned.is_owned());
-
-			let shared = owned.clone();
-			assert!(!owned.is_owned());
-			assert!(!shared.is_owned());
-
-			drop(shared);
-
-			assert!(owned.is_owned());
-		}
 
 		#[test]
 		fn test_is_shared() {

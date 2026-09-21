@@ -50,7 +50,7 @@ impl ColumnBufferPool {
 
 	pub fn release(&self, mut buffer: ColumnBuffer) {
 		let buffer_type = buffer.get_type();
-		if !is_poolable(&buffer_type) {
+		if !is_poolable(&buffer_type) || buffer.is_shared() {
 			return;
 		}
 		buffer.clear();

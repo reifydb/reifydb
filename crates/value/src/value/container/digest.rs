@@ -7,24 +7,32 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	Result,
-	util::bitvec::BitVec,
+	util::{bitvec::BitVec, shared_vec::SharedVec},
 	value::{Value, digest::Digest},
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct DigestContainer {
-	data: Vec<Option<Box<Digest>>>,
+	data: SharedVec<Option<Box<Digest>>>,
 }
 
 impl DigestContainer {
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			data: Vec::with_capacity(capacity),
+			data: SharedVec::with_capacity(capacity),
 		}
 	}
 
 	pub fn len(&self) -> usize {
 		self.data.len()
+	}
+
+	pub fn freeze(&mut self) {
+		self.data.freeze();
+	}
+
+	pub fn is_shared(&self) -> bool {
+		self.data.is_shared()
 	}
 
 	pub fn capacity(&self) -> usize {
@@ -75,26 +83,24 @@ impl DigestContainer {
 	}
 
 	pub fn extend(&mut self, other: &Self) -> Result<()> {
-		self.data.extend(other.data.iter().cloned());
+		self.data.make_mut().extend(other.data.iter().cloned());
 		Ok(())
 	}
 
 	pub fn take(&self, num: usize) -> Self {
 		Self {
-			data: self.data[..num.min(self.data.len())].to_vec(),
+			data: self.data.slice(0, num),
 		}
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let end = end.min(self.data.len());
-		let start = start.min(end);
 		Self {
-			data: self.data[start..end].to_vec(),
+			data: self.data.slice(start, end),
 		}
 	}
 
 	pub fn filter(&mut self, mask: &BitVec) {
-		let data = mem::take(&mut self.data);
+		let data = mem::take(self.data.make_mut());
 		self.data = data.into_iter().zip(mask.iter()).filter_map(|(slot, keep)| keep.then_some(slot)).collect();
 	}
 

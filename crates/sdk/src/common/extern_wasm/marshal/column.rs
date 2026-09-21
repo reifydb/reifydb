@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem, mem::size_of, ptr};
+use std::{borrow::Cow, mem, mem::size_of, ptr};
 
 use reifydb_codec::extern_c::cells::{
 	encode_any_cell, encode_decimal_cell, encode_dictionary_id_cell, encode_int_cell, encode_uint_cell,
@@ -12,6 +12,7 @@ use reifydb_value::{
 	util::bitvec::BitVec,
 	value::{
 		Value,
+		container::varlen::VarlenContainer,
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
@@ -159,15 +160,7 @@ impl Arena {
 	pub(super) fn marshal_column_data_zerocopy(&mut self, data: &ColumnBuffer) -> (ExternCBuffer, ExternCBuffer) {
 		match data {
 			ColumnBuffer::Bool(container) => {
-				let bytes = container.data().as_packed_bytes();
-				(
-					ExternCBuffer {
-						ptr: bytes.as_ptr(),
-						len: bytes.len(),
-						cap: 0,
-					},
-					ExternCBuffer::empty(),
-				)
+				(self.marshal_packed_bits(container.data()), ExternCBuffer::empty())
 			}
 
 			ColumnBuffer::Float4(container) => self.marshal_numeric_slice::<f32>(container),
@@ -216,43 +209,11 @@ impl Arena {
 			ColumnBuffer::Utf8 {
 				container,
 				..
-			} => {
-				let data_bytes = container.data_bytes();
-				let offsets = container.offsets();
-				let offsets_byte_len = mem::size_of_val(offsets);
-				(
-					ExternCBuffer {
-						ptr: data_bytes.as_ptr(),
-						len: data_bytes.len(),
-						cap: 0,
-					},
-					ExternCBuffer {
-						ptr: offsets.as_ptr() as *const u8,
-						len: offsets_byte_len,
-						cap: 0,
-					},
-				)
-			}
+			} => self.marshal_varlen(container.inner()),
 			ColumnBuffer::Blob {
 				container,
 				..
-			} => {
-				let data_bytes = container.data_bytes();
-				let offsets = container.offsets();
-				let offsets_byte_len = mem::size_of_val(offsets);
-				(
-					ExternCBuffer {
-						ptr: data_bytes.as_ptr(),
-						len: data_bytes.len(),
-						cap: 0,
-					},
-					ExternCBuffer {
-						ptr: offsets.as_ptr() as *const u8,
-						len: offsets_byte_len,
-						cap: 0,
-					},
-				)
-			}
+			} => self.marshal_varlen(container.inner()),
 
 			other => unreachable!(
 				"marshal_column_data_zerocopy received a non-zerocopy {} column",
@@ -334,17 +295,73 @@ impl Arena {
 		)
 	}
 
-	pub(super) fn marshal_with_offsets(&mut self, data: &[u8], offsets: &[u64]) -> (ExternCBuffer, ExternCBuffer) {
-		let data_ptr = self.copy_bytes(data);
-		let offsets_byte_len = mem::size_of_val(offsets);
-		let offsets_ptr = self.alloc(offsets_byte_len) as *mut u64;
+	fn marshal_varlen(&mut self, container: &VarlenContainer) -> (ExternCBuffer, ExternCBuffer) {
+		let (data, offsets) = container.compact_parts();
+		let offsets_byte_len = mem::size_of_val(offsets.as_ref());
+		let offsets_buffer = match offsets {
+			Cow::Borrowed(offsets) => ExternCBuffer {
+				ptr: offsets.as_ptr() as *const u8,
+				len: offsets_byte_len,
+				cap: 0,
+			},
+			Cow::Owned(offsets) => ExternCBuffer {
+				ptr: self.copy_offsets(&offsets) as *const u8,
+				len: offsets_byte_len,
+				cap: offsets_byte_len,
+			},
+		};
+		(
+			ExternCBuffer {
+				ptr: data.as_ptr(),
+				len: data.len(),
+				cap: 0,
+			},
+			offsets_buffer,
+		)
+	}
+
+	fn marshal_packed_bits(&mut self, bitvec: &BitVec) -> ExternCBuffer {
+		let tail = bitvec.len() % 8;
+		match bitvec.to_packed_bytes() {
+			Cow::Borrowed(bytes) if tail == 0 || bytes[bytes.len() - 1] >> tail == 0 => ExternCBuffer {
+				ptr: bytes.as_ptr(),
+				len: bytes.len(),
+				cap: 0,
+			},
+			bytes => {
+				let ptr = self.copy_bytes(&bytes);
+				if tail != 0 {
+					// SAFETY: `tail != 0` makes `bytes` non-empty, so `ptr` is a non-null arena
+					// copy of it and its last byte is in bounds.
+					unsafe {
+						*ptr.add(bytes.len() - 1) &= (1u8 << tail) - 1;
+					}
+				}
+				ExternCBuffer {
+					ptr,
+					len: bytes.len(),
+					cap: bytes.len(),
+				}
+			}
+		}
+	}
+
+	fn copy_offsets(&mut self, offsets: &[u64]) -> *mut u64 {
+		let offsets_ptr = self.alloc(mem::size_of_val(offsets)) as *mut u64;
 		if !offsets_ptr.is_null() {
-			// SAFETY: the arena returned a non-null 8-aligned block of `size_of_val(offsets)` bytes,
-			// exactly `offsets.len()` u64, which cannot overlap the caller's slice.
+			// SAFETY: `offsets_ptr` is a non-null 8-aligned arena block of exactly `offsets.len()` u64 that
+			// cannot overlap `offsets`.
 			unsafe {
 				ptr::copy_nonoverlapping(offsets.as_ptr(), offsets_ptr, offsets.len());
 			}
 		}
+		offsets_ptr
+	}
+
+	pub(super) fn marshal_with_offsets(&mut self, data: &[u8], offsets: &[u64]) -> (ExternCBuffer, ExternCBuffer) {
+		let data_ptr = self.copy_bytes(data);
+		let offsets_byte_len = mem::size_of_val(offsets);
+		let offsets_ptr = self.copy_offsets(offsets);
 
 		(
 			ExternCBuffer {
@@ -393,8 +410,8 @@ mod tests {
 	use reifydb_value::{
 		fragment::Fragment,
 		value::{
-			container::temporal::TemporalContainer, date::Date, datetime::DateTime, duration::Duration,
-			time::Time,
+			blob::Blob, container::temporal::TemporalContainer, date::Date, datetime::DateTime,
+			duration::Duration, time::Time,
 		},
 	};
 
@@ -413,6 +430,75 @@ mod tests {
 		(0..columns.row_count())
 			.map(|row| read(&column, row).expect("every marshalled row must read back"))
 			.collect()
+	}
+
+	fn marshalled_parts(data: ColumnBuffer) -> (Vec<u8>, Vec<u64>, usize) {
+		let columns = Columns::new(vec![ColumnWithName::new(Fragment::internal("c"), data)]);
+		let mut arena = Arena::new();
+		let ffi = arena.marshal_columns(&columns);
+		// SAFETY: `ffi` points into `arena` and `columns`, and both outlive every read below.
+		let borrowed = unsafe { BorrowedColumns::from_extern_c(&ffi) };
+		let column = borrowed.column_at_index(0).expect("one column was marshalled");
+		(column.data_bytes().to_vec(), column.offsets().to_vec(), column.row_count())
+	}
+
+	#[test]
+	fn frozen_utf8_slice_hands_guest_compact_parts() {
+		// A guest must never see the parent byte buffer or a non-zero first offset.
+		let mut parent = ColumnBuffer::utf8(["aa", "bb", "cc", "dd"]);
+		parent.freeze();
+		let (data, offsets, rows) = marshalled_parts(parent.slice(1, 3));
+		assert_eq!(rows, 2);
+		assert_eq!(data, b"bbcc");
+		assert_eq!(offsets, vec![0u64, 2, 4]);
+	}
+
+	#[test]
+	fn frozen_utf8_slice_reads_back_the_sliced_rows() {
+		// Absolute offsets leaking to the guest would read rows shifted by the slice start.
+		let mut parent = ColumnBuffer::utf8(["aa", "bb", "cc", "dd"]);
+		parent.freeze();
+		let got = read_back(parent.slice(2, 4), |column, row| column.utf8_at(row).map(str::to_string));
+		assert_eq!(got, vec!["cc".to_string(), "dd".to_string()]);
+	}
+
+	#[test]
+	fn unsliced_utf8_column_bytes_match_container_layout() {
+		// Unsliced input must reach the guest byte for byte as before the shared storage change.
+		let (data, offsets, rows) = marshalled_parts(ColumnBuffer::utf8(["a", "bc", "def"]));
+		assert_eq!(rows, 3);
+		assert_eq!(data, b"abcdef");
+		assert_eq!(offsets, vec![0u64, 1, 3, 6]);
+	}
+
+	#[test]
+	fn frozen_blob_slice_hands_guest_compact_parts() {
+		// The blob arm must rebase exactly like utf8, or blob_at reads the parent's bytes.
+		let mut parent =
+			ColumnBuffer::blob([Blob::new(vec![1, 2]), Blob::new(vec![3]), Blob::new(vec![4, 5, 6])]);
+		parent.freeze();
+		let (data, offsets, rows) = marshalled_parts(parent.slice(1, 3));
+		assert_eq!(rows, 2);
+		assert_eq!(data, vec![3u8, 4, 5, 6]);
+		assert_eq!(offsets, vec![0u64, 1, 4]);
+	}
+
+	#[test]
+	fn taken_bool_column_hands_guest_clean_tail_bits() {
+		// A prefix view borrows the parent's last byte, whose bits past the row count must read as zero.
+		let (data, offsets, rows) = marshalled_parts(ColumnBuffer::bool([true; 8]).take(3));
+		assert_eq!(rows, 3);
+		assert_eq!(data, vec![0b0000_0111u8]);
+		assert!(offsets.is_empty());
+	}
+
+	#[test]
+	fn sliced_bool_column_starts_at_bit_zero() {
+		// A slice with a bit offset must reach the guest with row 0 at bit 0.
+		let (data, _, rows) =
+			marshalled_parts(ColumnBuffer::bool([false, true, true, false, true]).slice(1, 4));
+		assert_eq!(rows, 3);
+		assert_eq!(data, vec![0b0000_0011u8]);
 	}
 
 	#[test]

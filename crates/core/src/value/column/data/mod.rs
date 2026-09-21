@@ -8,7 +8,6 @@ use std::{any::Any, sync::Arc};
 use canonical::Canonical;
 use reifydb_value::{
 	Result,
-	util::bitvec::BitVec,
 	value::{Value, value_type::ValueType},
 };
 
@@ -171,38 +170,16 @@ impl Column {
 
 fn canonical_filter(canon: &Canonical, mask: &RowMask) -> Result<Canonical> {
 	assert_eq!(canon.len(), mask.len(), "filter: length mismatch");
-	let kept = mask.popcount();
-
-	let new_nones = canon.nones.as_ref().map(|n| {
-		let mut out = NoneBitmap::all_present(kept);
-		let mut j = 0usize;
-		for i in 0..n.len() {
-			if mask.get(i) {
-				if n.is_none(i) {
-					out.set_none(j);
-				}
-				j += 1;
-			}
-		}
-		out
-	});
+	let new_nones = canon.nones.as_ref().map(|n| n.filter(mask));
 
 	let mut new_buffer = canon.buffer.clone();
-	new_buffer.filter(&row_mask_to_bitvec(mask))?;
+	new_buffer.filter(mask.as_bitvec())?;
 
 	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_nones, new_buffer))
 }
 
 fn canonical_take(canon: &Canonical, indices: &[usize]) -> Result<Canonical> {
-	let new_nones = canon.nones.as_ref().map(|n| {
-		let mut out = NoneBitmap::all_present(indices.len());
-		for (j, &i) in indices.iter().enumerate() {
-			if n.is_none(i) {
-				out.set_none(j);
-			}
-		}
-		out
-	});
+	let new_nones = canon.nones.as_ref().map(|n| n.gather(indices));
 	let new_buffer = canon.buffer.gather(indices);
 	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_nones, new_buffer))
 }
@@ -210,26 +187,9 @@ fn canonical_take(canon: &Canonical, indices: &[usize]) -> Result<Canonical> {
 fn canonical_slice(canon: &Canonical, start: usize, end: usize) -> Result<Canonical> {
 	assert!(start <= end);
 	assert!(end <= canon.len());
-	let new_nones = canon.nones.as_ref().map(|n| {
-		let count = end - start;
-		let mut out = NoneBitmap::all_present(count);
-		for i in 0..count {
-			if n.is_none(start + i) {
-				out.set_none(i);
-			}
-		}
-		out
-	});
+	let new_nones = canon.nones.as_ref().map(|n| n.slice(start, end));
 	let new_buffer = canon.buffer.slice(start, end);
 	Ok(Canonical::new(canon.ty.clone(), canon.nullable, new_nones, new_buffer))
-}
-
-fn row_mask_to_bitvec(mask: &RowMask) -> BitVec {
-	let mut bits = Vec::with_capacity(mask.len());
-	for i in 0..mask.len() {
-		bits.push(mask.get(i));
-	}
-	BitVec::from(bits)
 }
 
 fn canon_indices(indices: &Column) -> Result<Vec<usize>> {

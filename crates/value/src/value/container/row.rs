@@ -11,12 +11,12 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	util::bitvec::BitVec,
+	util::{bitvec::BitVec, shared_vec::SharedVec},
 	value::{Value, row_number::RowNumber, value_type::ValueType},
 };
 
 pub struct RowNumberContainer {
-	data: Vec<RowNumber>,
+	data: SharedVec<RowNumber>,
 }
 
 impl Clone for RowNumberContainer {
@@ -43,11 +43,11 @@ impl Serialize for RowNumberContainer {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
-			data: &'a Vec<RowNumber>,
+			data: &'a [RowNumber],
 		}
 
 		Helper {
-			data: &self.data,
+			data: self.data.as_slice(),
 		}
 		.serialize(serializer)
 	}
@@ -61,7 +61,7 @@ impl<'de> Deserialize<'de> for RowNumberContainer {
 		}
 		let h = Helper::deserialize(deserializer)?;
 		Ok(RowNumberContainer {
-			data: h.data,
+			data: SharedVec::from_vec(h.data),
 		})
 	}
 }
@@ -77,19 +77,19 @@ impl Deref for RowNumberContainer {
 impl RowNumberContainer {
 	pub fn new(data: Vec<RowNumber>) -> Self {
 		Self {
-			data,
+			data: SharedVec::from_vec(data),
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			data: Vec::with_capacity(capacity),
+			data: SharedVec::with_capacity(capacity),
 		}
 	}
 
 	pub fn from_vec(data: Vec<RowNumber>) -> Self {
 		Self {
-			data,
+			data: SharedVec::from_vec(data),
 		}
 	}
 }
@@ -97,12 +97,20 @@ impl RowNumberContainer {
 impl RowNumberContainer {
 	pub fn from_parts(data: Vec<RowNumber>) -> Self {
 		Self {
-			data,
+			data: SharedVec::from_vec(data),
 		}
 	}
 
 	pub fn len(&self) -> usize {
 		self.data.len()
+	}
+
+	pub fn freeze(&mut self) {
+		self.data.freeze();
+	}
+
+	pub fn is_shared(&self) -> bool {
+		self.data.is_shared()
 	}
 
 	pub fn capacity(&self) -> usize {
@@ -133,12 +141,12 @@ impl RowNumberContainer {
 		idx < self.len()
 	}
 
-	pub fn data(&self) -> &Vec<RowNumber> {
-		&self.data
+	pub fn data(&self) -> &[RowNumber] {
+		self.data.as_slice()
 	}
 
 	pub fn data_mut(&mut self) -> &mut Vec<RowNumber> {
-		&mut self.data
+		self.data.make_mut()
 	}
 
 	pub fn as_string(&self, index: usize) -> String {
@@ -158,7 +166,7 @@ impl RowNumberContainer {
 	}
 
 	pub fn extend(&mut self, other: &Self) -> Result<()> {
-		self.data.extend(other.data.iter().cloned());
+		self.data.make_mut().extend(other.data.iter().cloned());
 		Ok(())
 	}
 
@@ -167,13 +175,8 @@ impl RowNumberContainer {
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let count = (end - start).min(self.len().saturating_sub(start));
-		let mut new_data = Vec::with_capacity(count);
-		for i in start..(start + count) {
-			new_data.push(self.data[i]);
-		}
 		Self {
-			data: new_data,
+			data: self.data.slice(start, end),
 		}
 	}
 
@@ -186,7 +189,7 @@ impl RowNumberContainer {
 			}
 		}
 
-		self.data = new_data;
+		self.data = SharedVec::from_vec(new_data);
 	}
 
 	pub fn reorder(&mut self, indices: &[usize]) {
@@ -200,12 +203,12 @@ impl RowNumberContainer {
 			}
 		}
 
-		self.data = new_data;
+		self.data = SharedVec::from_vec(new_data);
 	}
 
 	pub fn take(&self, num: usize) -> Self {
 		Self {
-			data: self.data[..num.min(self.data.len())].to_vec(),
+			data: self.data.slice(0, num),
 		}
 	}
 }

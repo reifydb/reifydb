@@ -22,13 +22,14 @@ pub struct Canonical {
 }
 
 impl Canonical {
-	pub fn new(ty: ValueType, nullable: bool, nones: Option<NoneBitmap>, buffer: ColumnBuffer) -> Self {
+	pub fn new(ty: ValueType, nullable: bool, nones: Option<NoneBitmap>, mut buffer: ColumnBuffer) -> Self {
 		reifydb_assertions! {
 			assert!(
 				!matches!(buffer, ColumnBuffer::Option { .. }),
 				"Canonical.buffer must not be a ColumnBuffer::Option; nullability is lifted"
 			);
 		}
+		buffer.freeze();
 		Self {
 			ty,
 			nullable,
@@ -49,7 +50,8 @@ impl Canonical {
 				inner_c.nones = Some(NoneBitmap::from_defined_bitvec(&bitvec));
 				inner_c
 			}
-			other => {
+			mut other => {
+				other.freeze();
 				let ty = other.get_type();
 				Self {
 					ty,
@@ -64,16 +66,6 @@ impl Canonical {
 
 	pub fn from_column_buffer(cd: &ColumnBuffer) -> Result<Self> {
 		Ok(Self::from_buffer(cd.clone()))
-	}
-
-	pub fn into_buffer(self) -> ColumnBuffer {
-		match self.nones {
-			None => self.buffer,
-			Some(nones) => ColumnBuffer::Option {
-				inner: Box::new(self.buffer),
-				bitvec: nones.to_defined_bitvec(),
-			},
-		}
 	}
 
 	pub fn to_buffer(&self) -> ColumnBuffer {

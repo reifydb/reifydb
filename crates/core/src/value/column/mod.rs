@@ -58,7 +58,8 @@ impl fmt::Debug for ColumnWithName {
 }
 
 impl ColumnWithName {
-	pub fn new(name: impl Into<Fragment>, data: ColumnBuffer) -> Self {
+	pub fn new(name: impl Into<Fragment>, mut data: ColumnBuffer) -> Self {
+		data.freeze();
 		Self {
 			name: name.into(),
 			data,
@@ -105,10 +106,6 @@ impl ColumnWithName {
 
 	pub fn column(&self) -> Column {
 		Column::from_column_buffer(self.data.clone())
-	}
-
-	pub fn to_static(&self) -> ColumnWithName {
-		self.clone()
 	}
 }
 

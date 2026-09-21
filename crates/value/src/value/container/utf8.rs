@@ -84,10 +84,6 @@ impl Utf8Container {
 		}
 	}
 
-	pub fn from_raw_parts(data: Vec<String>) -> Self {
-		Self::from_vec(data)
-	}
-
 	pub fn from_bytes_offsets(data: Vec<u8>, offsets: Vec<u64>) -> Self {
 		reifydb_assertions! {
 			assert!(str::from_utf8(&data).is_ok(), "Utf8Container data must be valid UTF-8");
@@ -96,33 +92,9 @@ impl Utf8Container {
 			inner: VarlenContainer::from_raw_parts(data, offsets),
 		}
 	}
-
-	pub fn try_into_raw_parts(self) -> Option<Vec<String>> {
-		Some(self.iter().map(|s| s.unwrap().to_string()).collect())
-	}
 }
 
 impl Utf8Container {
-	pub fn from_inner(inner: VarlenContainer) -> Self {
-		Self {
-			inner,
-		}
-	}
-
-	pub fn from_storage_parts(data: Vec<u8>, offsets: Vec<u64>) -> Self {
-		Self {
-			inner: VarlenContainer::from_storage_parts(data, offsets),
-		}
-	}
-
-	pub fn data_storage(&self) -> &Vec<u8> {
-		self.inner.data()
-	}
-
-	pub fn offsets_storage(&self) -> &Vec<u64> {
-		self.inner.offsets_data()
-	}
-
 	pub fn len(&self) -> usize {
 		self.inner.len()
 	}
@@ -140,7 +112,15 @@ impl Utf8Container {
 	}
 
 	pub fn clear(&mut self) {
-		self.inner.clear_generic();
+		self.inner.clear();
+	}
+
+	pub fn freeze(&mut self) {
+		self.inner.freeze();
+	}
+
+	pub fn is_shared(&self) -> bool {
+		self.inner.is_shared()
 	}
 
 	pub fn get(&self, index: usize) -> Option<&str> {
@@ -152,18 +132,6 @@ impl Utf8Container {
 
 	pub fn is_defined(&self, idx: usize) -> bool {
 		idx < self.len()
-	}
-
-	pub fn is_fully_defined(&self) -> bool {
-		true
-	}
-
-	pub fn data_bytes(&self) -> &[u8] {
-		self.inner.data_bytes()
-	}
-
-	pub fn offsets(&self) -> &[u64] {
-		self.inner.offsets()
 	}
 
 	pub fn inner(&self) -> &VarlenContainer {
@@ -415,8 +383,8 @@ pub mod tests {
 	#[test]
 	fn test_data_bytes_and_offsets_match_zero_copy_layout() {
 		let container = Utf8Container::from_vec(vec!["aa".to_string(), "bb".to_string()]);
-		assert_eq!(container.data_bytes(), b"aabb");
-		assert_eq!(container.offsets(), &[0u64, 2, 4]);
+		assert_eq!(container.inner().compact_parts().0, b"aabb");
+		assert_eq!(&*container.inner().compact_parts().1, &[0u64, 2, 4]);
 	}
 
 	#[test]

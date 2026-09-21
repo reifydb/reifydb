@@ -104,6 +104,12 @@ impl BoolContainer {
 		self.data.len()
 	}
 
+	pub fn freeze(&mut self) {}
+
+	pub fn is_shared(&self) -> bool {
+		self.data.is_shared()
+	}
+
 	pub fn capacity(&self) -> usize {
 		self.data.capacity()
 	}
@@ -140,10 +146,6 @@ impl BoolContainer {
 		idx < self.len()
 	}
 
-	pub fn is_fully_defined(&self) -> bool {
-		true
-	}
-
 	pub fn data(&self) -> &BitVec {
 		&self.data
 	}
@@ -178,13 +180,8 @@ impl BoolContainer {
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let count = (end - start).min(self.len().saturating_sub(start));
-		let mut new_data = BitVec::with_capacity(count);
-		for i in start..(start + count) {
-			new_data.push(self.data.get(i));
-		}
 		Self {
-			data: new_data,
+			data: self.data.slice(start, end),
 		}
 	}
 

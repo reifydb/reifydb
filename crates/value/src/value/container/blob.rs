@@ -85,26 +85,6 @@ impl BlobContainer {
 }
 
 impl BlobContainer {
-	pub fn from_inner(inner: VarlenContainer) -> Self {
-		Self {
-			inner,
-		}
-	}
-
-	pub fn from_storage_parts(data: Vec<u8>, offsets: Vec<u64>) -> Self {
-		Self {
-			inner: VarlenContainer::from_storage_parts(data, offsets),
-		}
-	}
-
-	pub fn data_storage(&self) -> &Vec<u8> {
-		self.inner.data()
-	}
-
-	pub fn offsets_storage(&self) -> &Vec<u64> {
-		self.inner.offsets_data()
-	}
-
 	pub fn len(&self) -> usize {
 		self.inner.len()
 	}
@@ -122,7 +102,15 @@ impl BlobContainer {
 	}
 
 	pub fn clear(&mut self) {
-		self.inner.clear_generic();
+		self.inner.clear();
+	}
+
+	pub fn freeze(&mut self) {
+		self.inner.freeze();
+	}
+
+	pub fn is_shared(&self) -> bool {
+		self.inner.is_shared()
 	}
 
 	pub fn get(&self, index: usize) -> Option<&[u8]> {
@@ -131,14 +119,6 @@ impl BlobContainer {
 
 	pub fn is_defined(&self, idx: usize) -> bool {
 		idx < self.len()
-	}
-
-	pub fn data_bytes(&self) -> &[u8] {
-		self.inner.data_bytes()
-	}
-
-	pub fn offsets(&self) -> &[u64] {
-		self.inner.offsets()
 	}
 
 	pub fn inner(&self) -> &VarlenContainer {
@@ -286,8 +266,8 @@ pub mod tests {
 	#[test]
 	fn test_data_bytes_and_offsets_match_zero_copy_layout() {
 		let container = BlobContainer::from_vec(vec![Blob::new(vec![0xAA, 0xBB]), Blob::new(vec![0xCC])]);
-		assert_eq!(container.data_bytes(), &[0xAAu8, 0xBB, 0xCC]);
-		assert_eq!(container.offsets(), &[0u64, 2, 3]);
+		assert_eq!(container.inner().compact_parts().0, &[0xAAu8, 0xBB, 0xCC]);
+		assert_eq!(&*container.inner().compact_parts().1, &[0u64, 2, 3]);
 	}
 
 	#[test]

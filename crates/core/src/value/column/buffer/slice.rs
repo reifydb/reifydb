@@ -38,7 +38,7 @@ macro_rules! impl_as_slice {
 		impl AsSlice<$t> for ColumnBuffer {
 			fn as_slice(&self) -> &[$t] {
 				match self {
-					ColumnBuffer::$variant(container) => container.data().as_slice(),
+					ColumnBuffer::$variant(container) => container.data(),
 					ColumnBuffer::Option {
 						inner,
 						..
@@ -61,7 +61,7 @@ macro_rules! impl_as_slice {
 					ColumnBuffer::$variant {
 						container,
 						..
-					} => container.data().as_slice(),
+					} => container.data(),
 					ColumnBuffer::Option {
 						inner,
 						..
@@ -118,7 +118,7 @@ impl_as_slice!(
 impl AsSlice<Value> for ColumnBuffer {
 	fn as_slice(&self) -> &[Value] {
 		match self {
-			ColumnBuffer::Any(container) => container.data().as_slice(),
+			ColumnBuffer::Any(container) => container.data(),
 			ColumnBuffer::Option {
 				inner,
 				..

@@ -275,7 +275,7 @@ pub mod tests {
 		let ColumnBuffer::Float4(container) = col else {
 			panic!("Expected Float4");
 		};
-		assert_eq!(container.data().as_slice(), &[1.0, 2.0]);
+		assert_eq!(container.data(), &[1.0, 2.0]);
 	}
 
 	#[test]
@@ -303,7 +303,7 @@ pub mod tests {
 		let ColumnBuffer::Float8(container) = col else {
 			panic!("Expected Float8");
 		};
-		assert_eq!(container.data().as_slice(), &[1.0, 2.0]);
+		assert_eq!(container.data(), &[1.0, 2.0]);
 	}
 
 	#[test]
@@ -331,7 +331,7 @@ pub mod tests {
 		let ColumnBuffer::Int1(container) = col else {
 			panic!("Expected Int1");
 		};
-		assert_eq!(container.data().as_slice(), &[1, 2]);
+		assert_eq!(container.data(), &[1, 2]);
 	}
 
 	#[test]
@@ -360,7 +360,7 @@ pub mod tests {
 		let ColumnBuffer::Int2(container) = col else {
 			panic!("Expected Int2");
 		};
-		assert_eq!(container.data().as_slice(), &[1, 3]);
+		assert_eq!(container.data(), &[1, 3]);
 	}
 
 	#[test]
@@ -389,7 +389,7 @@ pub mod tests {
 		let ColumnBuffer::Int4(container) = col else {
 			panic!("Expected Int4");
 		};
-		assert_eq!(container.data().as_slice(), &[10, 20]);
+		assert_eq!(container.data(), &[10, 20]);
 	}
 
 	#[test]
@@ -418,7 +418,7 @@ pub mod tests {
 		let ColumnBuffer::Int8(container) = col else {
 			panic!("Expected Int8");
 		};
-		assert_eq!(container.data().as_slice(), &[100, 200]);
+		assert_eq!(container.data(), &[100, 200]);
 	}
 
 	#[test]
@@ -447,7 +447,7 @@ pub mod tests {
 		let ColumnBuffer::Int16(container) = col else {
 			panic!("Expected Int16");
 		};
-		assert_eq!(container.data().as_slice(), &[1000, 2000]);
+		assert_eq!(container.data(), &[1000, 2000]);
 	}
 
 	#[test]
@@ -476,7 +476,7 @@ pub mod tests {
 		let ColumnBuffer::Uint1(container) = col else {
 			panic!("Expected Uint1");
 		};
-		assert_eq!(container.data().as_slice(), &[1, 2]);
+		assert_eq!(container.data(), &[1, 2]);
 	}
 
 	#[test]
@@ -505,7 +505,7 @@ pub mod tests {
 		let ColumnBuffer::Uint2(container) = col else {
 			panic!("Expected Uint2");
 		};
-		assert_eq!(container.data().as_slice(), &[10, 20]);
+		assert_eq!(container.data(), &[10, 20]);
 	}
 
 	#[test]
@@ -534,7 +534,7 @@ pub mod tests {
 		let ColumnBuffer::Uint4(container) = col else {
 			panic!("Expected Uint4");
 		};
-		assert_eq!(container.data().as_slice(), &[100, 200]);
+		assert_eq!(container.data(), &[100, 200]);
 	}
 
 	#[test]
@@ -563,7 +563,7 @@ pub mod tests {
 		let ColumnBuffer::Uint8(container) = col else {
 			panic!("Expected Uint8");
 		};
-		assert_eq!(container.data().as_slice(), &[1000, 2000]);
+		assert_eq!(container.data(), &[1000, 2000]);
 	}
 
 	#[test]
@@ -592,7 +592,7 @@ pub mod tests {
 		let ColumnBuffer::Uint16(container) = col else {
 			panic!("Expected Uint16");
 		};
-		assert_eq!(container.data().as_slice(), &[10000, 20000]);
+		assert_eq!(container.data(), &[10000, 20000]);
 	}
 
 	#[test]
@@ -666,7 +666,7 @@ pub mod tests {
 		let ColumnBuffer::Date(container) = col else {
 			panic!("Expected Date");
 		};
-		assert_eq!(container.data().as_slice(), &[date1, date2]);
+		assert_eq!(container.data(), &[date1, date2]);
 	}
 
 	#[test]
@@ -699,7 +699,7 @@ pub mod tests {
 		let ColumnBuffer::DateTime(container) = col else {
 			panic!("Expected DateTime");
 		};
-		assert_eq!(container.data().as_slice(), &[dt1, dt2]);
+		assert_eq!(container.data(), &[dt1, dt2]);
 	}
 
 	#[test]
@@ -732,7 +732,7 @@ pub mod tests {
 		let ColumnBuffer::Time(container) = col else {
 			panic!("Expected Time");
 		};
-		assert_eq!(container.data().as_slice(), &[time1, time2]);
+		assert_eq!(container.data(), &[time1, time2]);
 	}
 
 	#[test]
@@ -765,7 +765,7 @@ pub mod tests {
 		let ColumnBuffer::Duration(container) = col else {
 			panic!("Expected Duration");
 		};
-		assert_eq!(container.data().as_slice(), &[duration1, duration2]);
+		assert_eq!(container.data(), &[duration1, duration2]);
 	}
 
 	#[test]
@@ -800,7 +800,7 @@ pub mod tests {
 		let ColumnBuffer::IdentityId(container) = col else {
 			panic!("Expected IdentityId");
 		};
-		assert_eq!(container.data().as_slice(), &[id1, id2]);
+		assert_eq!(container.data(), &[id1, id2]);
 	}
 
 	#[test]
@@ -835,7 +835,7 @@ pub mod tests {
 		let ColumnBuffer::Uuid4(container) = col else {
 			panic!("Expected Uuid4");
 		};
-		assert_eq!(container.data().as_slice(), &[uuid1, uuid2]);
+		assert_eq!(container.data(), &[uuid1, uuid2]);
 	}
 
 	#[test]
@@ -870,7 +870,7 @@ pub mod tests {
 		let ColumnBuffer::Uuid7(container) = col else {
 			panic!("Expected Uuid7");
 		};
-		assert_eq!(container.data().as_slice(), &[uuid1, uuid2]);
+		assert_eq!(container.data(), &[uuid1, uuid2]);
 	}
 
 	#[test]
@@ -905,7 +905,7 @@ pub mod tests {
 		let ColumnBuffer::DictionaryId(container) = col else {
 			panic!("Expected DictionaryId");
 		};
-		assert_eq!(container.data().as_slice(), &[e1, e2]);
+		assert_eq!(container.data(), &[e1, e2]);
 	}
 
 	#[test]

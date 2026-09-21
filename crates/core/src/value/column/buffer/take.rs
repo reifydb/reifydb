@@ -116,15 +116,11 @@ impl ColumnBuffer {
 				inner,
 				bitvec,
 			} => {
-				let len = end - start;
-				let mut new_bits = Vec::with_capacity(len);
-				for row in start..end {
-					new_bits.push(bitvec.get(row));
-				}
-				let new_bitvec = BitVec::from(new_bits);
+				assert!(start <= end, "ColumnBuffer::slice: start {start} > end {end}");
+				assert!(end <= bitvec.len(), "ColumnBuffer::slice: end {end} > len {}", bitvec.len());
 				ColumnBuffer::Option {
 					inner: Box::new(inner.slice(start, end)),
-					bitvec: new_bitvec,
+					bitvec: bitvec.slice(start, end),
 				}
 			}
 			_ => map_container!(self, |c| c.slice(start, end)),
@@ -136,17 +132,10 @@ impl ColumnBuffer {
 			ColumnBuffer::Option {
 				inner,
 				bitvec,
-			} => {
-				let mut new_bits = Vec::with_capacity(indices.len());
-				for &i in indices {
-					new_bits.push(bitvec.get(i));
-				}
-				let new_bitvec = BitVec::from(new_bits);
-				ColumnBuffer::Option {
-					inner: Box::new(inner.gather(indices)),
-					bitvec: new_bitvec,
-				}
-			}
+			} => ColumnBuffer::Option {
+				inner: Box::new(inner.gather(indices)),
+				bitvec: BitVec::from_fn(indices.len(), |row| bitvec.get(indices[row])),
+			},
 			_ => {
 				let mut cloned = self.clone();
 				cloned.reorder(indices);

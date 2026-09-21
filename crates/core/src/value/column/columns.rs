@@ -1,12 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	hash::Hash,
-	ops::{Index, IndexMut},
-};
+use std::ops::{Index, IndexMut};
 
-use indexmap::IndexMap;
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	shape::{RowFamily, RowShape},
@@ -32,7 +28,7 @@ use crate::{
 	interface::catalog::column::Column as CatalogColumn,
 	return_internal_error,
 	row::Row,
-	value::column::{ColumnBuffer, ColumnWithName, data::Column, headers::ColumnHeaders},
+	value::column::{ColumnBuffer, ColumnWithName, data::Column},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,8 +200,10 @@ impl Columns {
 		let mut names = Vec::with_capacity(columns.len());
 		let mut buffers = Vec::with_capacity(columns.len());
 		for c in columns {
+			let mut data = c.data;
+			data.freeze();
 			names.push(c.name);
-			buffers.push(c.data);
+			buffers.push(data);
 		}
 
 		Self {
@@ -223,8 +221,10 @@ impl Columns {
 		let mut names = Vec::with_capacity(columns.len());
 		let mut buffers = Vec::with_capacity(columns.len());
 		for c in columns {
+			let mut data = c.data;
+			data.freeze();
 			names.push(c.name);
-			buffers.push(c.data);
+			buffers.push(data);
 		}
 
 		Self {
@@ -273,16 +273,6 @@ impl Columns {
 			system: SystemColumns::empty(),
 			columns: buffers,
 			names,
-		}
-	}
-
-	pub fn apply_headers(&mut self, headers: &ColumnHeaders) {
-		let n = self.len();
-		let names = &mut self.names;
-		for (i, name) in headers.columns.iter().enumerate() {
-			if i < n {
-				names[i] = name.clone();
-			}
 		}
 	}
 }
@@ -351,10 +341,6 @@ impl Columns {
 
 	pub fn data_at(&self, index: usize) -> &ColumnBuffer {
 		&self.columns[index]
-	}
-
-	pub fn data_at_mut(&mut self, index: usize) -> &mut ColumnBuffer {
-		&mut self.columns[index]
 	}
 
 	pub fn row(&self, i: usize) -> Vec<Value> {
@@ -610,50 +596,6 @@ impl Columns {
 			return Ok(None);
 		}
 		Ok(Some(merged))
-	}
-
-	pub fn remove_row(&mut self, row_number: RowNumber) -> bool {
-		let pos = self.row_numbers().iter().position(|&r| r == row_number);
-		let Some(idx) = pos else {
-			return false;
-		};
-
-		let kept_indices: Vec<usize> = (0..self.row_count()).filter(|&i| i != idx).collect();
-		*self = self.extract_by_indices(&kept_indices);
-		true
-	}
-
-	pub fn project_by_names(&self, names: &[String]) -> Columns {
-		let mut new_names = Vec::new();
-		let mut new_buffers = Vec::new();
-
-		for name in names {
-			if let Some(pos) = self.names.iter().position(|n| n.text() == name.as_str()) {
-				new_names.push(self.names[pos].clone());
-				new_buffers.push(self.columns[pos].clone());
-			}
-		}
-
-		if new_buffers.is_empty() {
-			return Columns::empty();
-		}
-
-		Columns {
-			system: self.system.clone(),
-			columns: new_buffers,
-			names: new_names,
-		}
-	}
-
-	pub fn partition_by_keys<K: Hash + Eq + Clone>(&self, keys: &[K]) -> IndexMap<K, Columns> {
-		assert_eq!(keys.len(), self.row_count(), "keys length must match row count");
-
-		let mut key_to_indices: IndexMap<K, Vec<usize>> = IndexMap::new();
-		for (idx, key) in keys.iter().enumerate() {
-			key_to_indices.entry(key.clone()).or_default().push(idx);
-		}
-
-		key_to_indices.into_iter().map(|(key, indices)| (key, self.extract_by_indices(&indices))).collect()
 	}
 
 	pub fn from_row(row: &Row) -> Self {
