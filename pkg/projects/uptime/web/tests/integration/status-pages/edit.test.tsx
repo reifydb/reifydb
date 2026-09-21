@@ -5,14 +5,14 @@ import type { ReactNode } from 'react'
 import { act, renderHook, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Int2Value, StoreProvider, Uuid7Value, type Store } from '@reifydb/react'
+import { IdentityIdValue, Int2Value, StoreProvider, Uuid7Value, type Store } from '@reifydb/react'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { useCreateStatusPage, useUpdateStatusPage } from '@/hooks/use-status-pages'
 import { StatusPageEditPage } from '@/pages/status-pages/form.tsx'
 import { loadBackend } from '../../support/backend'
 import { bridgeStore, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
-import { createMonitor } from '../../support/monitors'
+import { createMonitor, identityOf } from '../../support/monitors'
 import { createStatusPage, readMembers, readPages } from '../../support/status-pages'
 
 const route = vi.hoisted(() => ({ pageId: '' }))
@@ -91,10 +91,12 @@ describe('edit status page flow', () => {
   it('keeps the member order when an untouched page is saved, whatever order the rows arrived in', async () => {
     // Members read in arrival order instead of by position would silently reorder the public page on save.
     const id = await createStatusPage(client, 'acme', 'Acme', [])
-    const add = 'CALL uptime::add_status_page_monitor($id, $monitor_id, $position)'
-    await client.command(add, { id, monitor_id: gamma, position: new Int2Value(1) }, [])
-    await client.command(add, { id, monitor_id: alpha, position: new Int2Value(0) }, [])
-    await client.command(add, { id, monitor_id: beta, position: new Int2Value(2) }, [])
+    const owner = new IdentityIdValue(await identityOf(db, 'tester'))
+    const plant =
+      'INSERT uptime::status_page_monitors [{ status_page_id: $id, owner: $owner, monitor_id: $monitor_id, position: $position }]'
+    await db.commandRoot(plant, { id, owner, monitor_id: gamma, position: new Int2Value(1) }, [])
+    await db.commandRoot(plant, { id, owner, monitor_id: alpha, position: new Int2Value(0) }, [])
+    await db.commandRoot(plant, { id, owner, monitor_id: beta, position: new Int2Value(2) }, [])
     await renderPage(id)
 
     await userEvent.click(await screen.findByRole('button', { name: /save changes/i }))

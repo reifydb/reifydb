@@ -1,14 +1,16 @@
 CREATE MIGRATION 'uptime_remove_monitor_region' {
-    create procedure uptime::remove_monitor_region { monitor_id: uuid7, region_id: uuid7 } as {
-        let $monitor = from uptime::monitors filter { id == $monitor_id and owner == $identity.id }
-            map { id, owner };
-        assert { is::some($monitor.id) } "monitor not found";
-        delete uptime::monitor_regions
-            filter { monitor_id == $monitor_id and region_id == $region_id and owner == $identity.id };
-        delete uptime::results
-            filter { monitor_id == $monitor_id and region_id == $region_id and owner == $identity.id }
+    create procedure uptime::remove_monitor_regions { monitor_id: uuid7, region_ids: list(uuid7) } as {
+        for $region_id in $region_ids {
+            let $monitor = from uptime::monitors filter { id == $monitor_id and owner == $identity.id }
+                map { id, owner };
+            assert { is::some($monitor.id) } "monitor not found";
+            delete uptime::monitor_regions
+                filter { monitor_id == $monitor_id and region_id == $region_id and owner == $identity.id };
+            delete uptime::results
+                filter { monitor_id == $monitor_id and region_id == $region_id and owner == $identity.id }
+        }
     };
-    create procedure policy uptime_call_remove_monitor_region on uptime::remove_monitor_region {
+    create procedure policy uptime_call_remove_monitor_regions on uptime::remove_monitor_regions {
         call: { filter { $identity.kind == "user" or $identity.kind == "guest" } }
     }
 };

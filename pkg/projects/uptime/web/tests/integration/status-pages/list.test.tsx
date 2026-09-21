@@ -4,7 +4,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Store } from '@reifydb/react'
+import { ListValue, Uuid7Value, type Store } from '@reifydb/react'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { StatusPagesPage } from '@/pages/status-pages'
 import { loadBackend } from '../../support/backend'
@@ -81,8 +81,8 @@ describe('status pages list over a live subscription', () => {
     expect(within(await screen.findByRole('row', { name: /Acme status/ })).getByText('1')).toBeInTheDocument()
 
     await client.command(
-      'CALL uptime::add_status_page_monitor($id, $monitor_id, 1)',
-      { id, monitor_id: beta },
+      'CALL uptime::add_status_page_monitors($id, $monitor_ids)',
+      { id, monitor_ids: new ListValue([new Uuid7Value(beta)], 'Uuid7') },
       [],
     )
     await caughtUp()

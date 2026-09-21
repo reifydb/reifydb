@@ -93,7 +93,7 @@ function byRegionId(a: MonitorRegion, b: MonitorRegion): number {
 }
 
 export function useLiveMonitors(): Monitor[] | null {
-  const entry = useSubscription(monitors.rql, null, monitors.shape, { config: monitors.config })
+  const entry = useSubscription(monitors, null)
   return useMemo(() => {
     if (entry.status !== 'ready') return null
     return entry.data.map(toMonitor).sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
@@ -101,7 +101,7 @@ export function useLiveMonitors(): Monitor[] | null {
 }
 
 export function useLiveMonitor(id: string): { monitor: Monitor | undefined; ready: boolean; error: Error | undefined } {
-  const entry = useSubscription(monitors.rql, null, monitors.shape, { config: monitors.config })
+  const entry = useSubscription(monitors, null)
   return useMemo(() => {
     const row = entry.data.find((r) => r.id === id)
     return { monitor: row == null ? undefined : toMonitor(row), ready: entry.status === 'ready', error: entry.error }
@@ -109,7 +109,7 @@ export function useLiveMonitor(id: string): { monitor: Monitor | undefined; read
 }
 
 export function useLiveResults(id: string): { data: Result[]; error: Error | undefined } {
-  const entry = useSubscription(results.rql, { monitor_id: id }, results.shape, { config: results.config })
+  const entry = useSubscription(results, { monitor_id: id })
   const data = useMemo(
     () =>
       entry.data
@@ -122,8 +122,8 @@ export function useLiveResults(id: string): { data: Result[]; error: Error | und
 }
 
 export function useLiveDaily(): Map<string, DailyUptime[]> {
-  const totals = useSubscription(dailyTotals.rql, null, dailyTotals.shape, { config: dailyTotals.config })
-  const ups = useSubscription(dailyUps.rql, null, dailyUps.shape, { config: dailyUps.config })
+  const totals = useSubscription(dailyTotals, null)
+  const ups = useSubscription(dailyUps, null)
   return useMemo(() => {
     const byMonitor = new Map<string, Map<string, DailyUptime>>()
     const bucket = (row: DailyRow): DailyUptime => {
@@ -154,7 +154,7 @@ export function useLiveDaily(): Map<string, DailyUptime[]> {
 }
 
 export function useRegions(): Region[] {
-  const entry = useSubscription(regions.rql, null, regions.shape, { config: regions.config })
+  const entry = useSubscription(regions, null)
   return useMemo(
     () => entry.data.map(toRegion).sort((a, b) => a.label.localeCompare(b.label)),
     [entry.data],
@@ -162,7 +162,7 @@ export function useRegions(): Region[] {
 }
 
 export function useRegionLabels(): Record<string, string> {
-  const entry = useSubscription(regions.rql, null, regions.shape, { config: regions.config })
+  const entry = useSubscription(regions, null)
   return useMemo(() => {
     const labels: Record<string, string> = {}
     for (const region of entry.data) labels[region.id] = region.label
@@ -171,9 +171,7 @@ export function useRegionLabels(): Record<string, string> {
 }
 
 export function useMonitorRegions(monitorId: string): { data: MonitorRegion[]; ready: boolean; error: Error | undefined } {
-  const entry = useSubscription(monitorRegions.rql, null, monitorRegions.shape, {
-    config: monitorRegions.config,
-  })
+  const entry = useSubscription(monitorRegions, null)
   const data = useMemo(
     () =>
       entry.data
@@ -186,9 +184,7 @@ export function useMonitorRegions(monitorId: string): { data: MonitorRegion[]; r
 }
 
 export function useAllMonitorRegions(): Map<string, MonitorRegion[]> {
-  const entry = useSubscription(monitorRegions.rql, null, monitorRegions.shape, {
-    config: monitorRegions.config,
-  })
+  const entry = useSubscription(monitorRegions, null)
   return useMemo(() => {
     const byMonitor = new Map<string, MonitorRegion[]>()
     for (const row of entry.data) {

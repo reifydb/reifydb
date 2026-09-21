@@ -180,12 +180,11 @@ mod tests {
 			db,
 			owner,
 			"CALL uptime::create_status_page($id, $slug, $slug); \
-			 CALL uptime::add_status_page_monitor($id, $monitor_id, $position)",
+			 CALL uptime::add_status_page_monitors($id, $monitor_ids)",
 			params(&[
 				("id", id.into_value()),
 				("slug", Value::Utf8(slug.to_string())),
-				("monitor_id", monitor_id.into_value()),
-				("position", Value::Int2(0)),
+				("monitor_ids", Value::List(vec![monitor_id.into_value()])),
 			]),
 		);
 		id

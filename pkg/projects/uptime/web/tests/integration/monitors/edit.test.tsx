@@ -100,7 +100,7 @@ describe('edit monitor flow', () => {
     // The update and every region call must share one transaction, otherwise the rename and the EU removal would stick.
     const id = await createMonitor(client, 'alpha', [usEast, euWest])
     const gone = Uuid7Value.generate().toString()
-    store.seed(regions.rql, null, regions.shape, [...(await realRegions(db)), { id: gone, label: 'Zanzibar' }])
+    store.seed(regions, null, [...(await realRegions(db)), { id: gone, label: 'Zanzibar' }])
     const name = await renderEdit(id)
 
     await userEvent.clear(name)
@@ -121,8 +121,7 @@ describe('edit monitor flow', () => {
   ] as const)('says the %s failed to load instead of spinning forever', async (_, query, message) => {
     // A failed subscription never turns ready, so a page that only waits for ready would spin with nothing saying why.
     const id = await createMonitor(client, 'alpha', [usEast])
-    const { rql, shape } = query()
-    store.fail(rql, null, shape, new Error(message))
+    store.fail(query(), null, new Error(message))
     routeParams.monitorId = id
     renderWithProviders(<MonitorEditPage />, store)
     await caughtUp(client)
@@ -147,11 +146,11 @@ describe('edit monitor flow', () => {
     }
     const gated = new Store(slowRegions, STORE_OPTIONS)
     const held = [
-      gated.subscribe(monitors.rql, null, monitors.shape, monitors.config),
-      gated.subscribe(regions.rql, null, regions.shape, regions.config),
+      gated.subscribe(monitors, null),
+      gated.subscribe(regions, null),
     ]
     await caughtUp(client)
-    expect(gated.getEntry(monitors.rql, null, monitors.shape).status).toBe('ready')
+    expect(gated.getEntry(monitors, null).status).toBe('ready')
     routeParams.monitorId = id
     renderWithProviders(<MonitorEditPage />, gated)
     await caughtUp(client)
@@ -219,7 +218,9 @@ describe('the at-least-one-region check', () => {
       await expect(result.current.update(input([]))).rejects.toThrow(/a monitor must use at least one region/)
     })
 
-    expect(vi.mocked(client.command).mock.lastCall?.[0]).toMatch(/remove_monitor_region.*remove_monitor_region/)
+    expect(vi.mocked(client.command).mock.lastCall?.[1].removed_region_ids.items.map(String).sort()).toEqual(
+      [usEast, euWest].sort(),
+    )
     expect(await monitorInDb(db, id)).toMatchObject([{ name: 'alpha' }])
     expect(await monitorRegionsInDb(db, id)).toEqual({ [usEast]: 'unknown', [euWest]: 'unknown' })
     expect(result.current.error?.message).toMatch(/a monitor must use at least one region/)

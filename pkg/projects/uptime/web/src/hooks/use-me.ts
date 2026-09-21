@@ -12,17 +12,17 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react'
-import { ReifyError, Shape, type InferShape, type Store } from '@reifydb/react'
+import { ReifyError, Shape, rql, type InferShape, type Store } from '@reifydb/react'
 import type { Me } from '@/lib/types'
 import { isAuthError } from '@/store/client'
-
-const ME_RQL = 'map { id: $identity.id, name: $identity.name, kind: $identity.kind }'
 
 const meShape = Shape.object({
   id: Shape.identityid(),
   name: Shape.utf8(),
   kind: Shape.utf8(),
 })
+
+const identity = rql(meShape)`map { id: $identity.id, name: $identity.name, kind: $identity.kind }`
 
 type MeRow = InferShape<typeof meShape>
 
@@ -40,7 +40,7 @@ function toMe(row: MeRow): Me {
 }
 
 export function isGuestSession(store: Store): boolean {
-  const entry = store.getEntry(ME_RQL, null, meShape)
+  const entry = store.getEntry(identity, null)
   return entry.status === 'ready' && entry.data[0]?.kind === 'guest'
 }
 
@@ -49,14 +49,14 @@ export function MeProvider({ store, children }: { store: Store | undefined; chil
     (listener: () => void) => (store == null ? () => undefined : store.subscribeState(listener)),
     [store],
   )
-  const entry = useSyncExternalStore(subscribe, () => store?.getEntry(ME_RQL, null, meShape))
+  const entry = useSyncExternalStore(subscribe, () => store?.getEntry(identity, null))
   const [failure, setFailure] = useState<Error | undefined>(undefined)
   useEffect(() => {
     if (store == null) return
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
     const load = (attempt: number) => {
-      store.query(ME_RQL, null, meShape).catch((err: unknown) => {
+      store.query(identity, null).catch((err: unknown) => {
         if (cancelled || isAuthError(err)) return
         if (isConnectionLost(err) && attempt < MAX_RETRIES) {
           timer = setTimeout(() => load(attempt + 1), 1000 * 2 ** attempt)

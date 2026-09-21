@@ -23,7 +23,7 @@ function renderForm(regionId: string) {
   const pending = () => new Promise<never>(() => undefined)
   command = vi.fn(async () => [])
   const store = new Store({ query: pending, command, subscribe: pending, unsubscribe: pending })
-  store.seed(regions.rql, null, regions.shape, [{ id: regionId, label: 'US East' }])
+  store.seed(regions, null, [{ id: regionId, label: 'US East' }])
   renderWithProviders(<MonitorNewPage />, store)
 }
 

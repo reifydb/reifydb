@@ -5,7 +5,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IdentityIdValue, StoreProvider, type Store } from '@reifydb/react'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
-import { PROBES_RQL, probeShape, useProbeNames, useProbes } from '@/hooks/use-probes'
+import { probes, useProbeNames, useProbes } from '@/hooks/use-probes'
 import { ProbesPage } from '@/pages/probes'
 import { loadBackend } from '../../support/backend'
 import { identityNamed } from '../../support/identity'
@@ -151,7 +151,7 @@ describe('the probes page without new data', () => {
     // Nothing polls and a dead probe sends nothing, so only the clock can flip it; otherwise it stays online forever.
     vi.useFakeTimers({ now: new Date('2026-09-11T12:00:00Z') })
     const store = seededStore()
-    store.seed(PROBES_RQL, null, probeShape, [
+    store.seed(probes, null, [
       { id: '01928f00-0000-7000-8000-0000000000aa', name: 'eu-west', lastSeen: new Date('2026-09-11T11:59:50Z') },
     ])
     renderWithProviders(<ProbesPage />, store)
@@ -167,7 +167,7 @@ describe('the probes page without new data', () => {
   it('shows why the probes failed to load', () => {
     // A failed subscription must say so; an empty table would claim no probes are registered.
     const store = seededStore()
-    store.fail(PROBES_RQL, null, probeShape, new Error('policy denied'))
+    store.fail(probes, null, new Error('policy denied'))
 
     renderWithProviders(<ProbesPage />, store)
 

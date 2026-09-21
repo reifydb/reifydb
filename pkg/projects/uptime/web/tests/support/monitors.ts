@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 import { act } from '@testing-library/react'
-import { DurationValue, IdentityIdValue, Option, Shape, Uuid7Value } from '@reifydb/react'
+import { DurationValue, IdentityIdValue, ListValue, Option, Shape, Uuid7Value } from '@reifydb/react'
 import type { BridgeClient, TestDb } from '@reifydb/reifydb'
 import { routerMock } from './router-mock'
 
@@ -66,10 +66,7 @@ export async function createMonitor(
   regionIds: string[] = [],
 ): Promise<string> {
   const id = Uuid7Value.generate().toString()
-  const statements = [
-    CREATE_MONITOR,
-    ...regionIds.map((_, i) => `CALL uptime::add_monitor_region($id, $region_${i})`),
-  ]
+  const statements = [CREATE_MONITOR, 'CALL uptime::add_monitor_regions($id, $region_ids)']
   await client.command(
     statements.join('; '),
     {
@@ -85,7 +82,7 @@ export async function createMonitor(
       expected_ip: Option.none('Utf8'),
       failure_threshold: 3,
       enabled: true,
-      ...Object.fromEntries(regionIds.map((regionId, i) => [`region_${i}`, regionId])),
+      region_ids: new ListValue(regionIds.map((regionId) => new Uuid7Value(regionId)), 'Uuid7'),
     },
     [],
   )

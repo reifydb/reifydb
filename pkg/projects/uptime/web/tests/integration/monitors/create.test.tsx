@@ -42,7 +42,7 @@ describe('create monitor flow', () => {
   beforeEach(async () => {
     db = create()
     ;({ store, client } = await bridgeStore(db, 'tester'))
-    store.seed(regions.rql, null, regions.shape, await realRegions(db))
+    store.seed(regions, null, await realRegions(db))
     navigate.mockClear()
   })
 
@@ -194,7 +194,7 @@ describe('create monitor flow', () => {
   it('rolls the monitor back and shows the RQL error when a selected region no longer exists', async () => {
     // create_monitor and every add_monitor_region must share one transaction, otherwise a half-saved monitor remains.
     const gone = Uuid7Value.generate().toString()
-    store.seed(regions.rql, null, regions.shape, [...(await realRegions(db)), { id: gone, label: 'Zanzibar' }])
+    store.seed(regions, null, [...(await realRegions(db)), { id: gone, label: 'Zanzibar' }])
     renderPage()
 
     await userEvent.type(screen.getByLabelText('Name'), 'reifydb.com')
@@ -215,7 +215,7 @@ describe('create monitor flow', () => {
   })
 
   it('blocks submission client-side when no region is selected, never touching the network', async () => {
-    store.seed(regions.rql, null, regions.shape, [])
+    store.seed(regions, null, [])
     renderPage()
 
     await userEvent.type(screen.getByLabelText('Name'), 'reifydb.com')

@@ -116,7 +116,7 @@ describe('per-monitor results over the batched store', () => {
     // A failed results subscription read as empty would show a checking monitor with no latency and no history.
     await reportResult(db, { monitorId: alpha, owner, regionId: usEast, success: true, statusCode: 200, responseMs: 100 })
     await reportResult(db, { monitorId: beta, owner, regionId: usEast, success: true, statusCode: 200, responseMs: 300 })
-    store.fail(results.rql, { monitor_id: alpha }, results.shape, new Error('results subscription refused'))
+    store.fail(results, { monitor_id: alpha }, new Error('results subscription refused'))
 
     renderWithProviders(<DashboardPage />, store)
     await caughtUp(client)

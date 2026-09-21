@@ -20,9 +20,9 @@ const CREATE: &str = "CALL uptime::create_monitor($id, $name, $kind, $target, $i
 const UPDATE: &str = "CALL uptime::update_monitor($id, $name, $kind, $target, $interval, $timeout, \
 	 $http_method, $expected_status, $keyword, $expected_ip, $failure_threshold, $enabled)";
 
-const ADD_REGION: &str = "CALL uptime::add_monitor_region($monitor_id, $region_id)";
+const ADD_REGION: &str = "CALL uptime::add_monitor_regions($monitor_id, $region_ids)";
 
-const REMOVE_REGION: &str = "CALL uptime::remove_monitor_region($monitor_id, $region_id)";
+const REMOVE_REGION: &str = "CALL uptime::remove_monitor_regions($monitor_id, $region_ids)";
 
 const DELETE: &str = "CALL uptime::delete_monitor($id)";
 
@@ -186,7 +186,7 @@ fn region(db: &Database, label: &str) -> Uuid7 {
 }
 
 fn region_params(monitor_id: Uuid7, region_id: Uuid7) -> Params {
-	params(&[("monitor_id", monitor_id.into_value()), ("region_id", region_id.into_value())])
+	params(&[("monitor_id", monitor_id.into_value()), ("region_ids", Value::List(vec![region_id.into_value()]))])
 }
 
 fn id_params(id: Uuid7) -> Params {
@@ -473,16 +473,12 @@ fn owner_deletes_a_monitor_with_its_regions_results_and_page_memberships() {
 		&db,
 		alice,
 		"CALL uptime::create_status_page($page, $slug, $title); \
-		 CALL uptime::add_status_page_monitor($page, $m0, $p0); \
-		 CALL uptime::add_status_page_monitor($page, $m1, $p1)",
+		 CALL uptime::add_status_page_monitors($page, $monitor_ids)",
 		params(&[
 			("page", page.into_value()),
 			("slug", text("status")),
 			("title", text("Status")),
-			("m0", id.into_value()),
-			("p0", Value::Int2(0)),
-			("m1", kept.into_value()),
-			("p1", Value::Int2(1)),
+			("monitor_ids", Value::List(vec![id.into_value(), kept.into_value()])),
 		]),
 	)
 	.expect("page with both monitors");
@@ -839,7 +835,7 @@ fn a_monitor_command_ending_in_the_region_check_rolls_back_without_a_region() {
 	command_as(&db, alice, ADD_REGION, region_params(id, us)).expect("add region");
 	let mut input = with(monitor_input(id), "name", text("renamed"));
 	input.push(("monitor_id", id.into_value()));
-	input.push(("region_id", us.into_value()));
+	input.push(("region_ids", Value::List(vec![us.into_value()])));
 	expect_error(
 		command_as(&db, alice, &format!("{UPDATE}; {REMOVE_REGION}; {CHECK_REGIONS}"), params(&input)),
 		"ASSERT",

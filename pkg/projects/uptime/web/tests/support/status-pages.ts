@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { Int2Value, Shape, Utf8Value, Uuid7Value, type StoreClient } from '@reifydb/react'
+import { ListValue, Shape, Utf8Value, Uuid7Value, type StoreClient } from '@reifydb/react'
 import type { TestDb } from '@reifydb/reifydb'
 
 export async function createStatusPage(
@@ -17,13 +17,11 @@ export async function createStatusPage(
     { id, slug: new Utf8Value(slug), title: new Utf8Value(title) },
     [],
   )
-  for (const [position, monitorId] of monitorIds.entries()) {
-    await client.command(
-      'CALL uptime::add_status_page_monitor($id, $monitor_id, $position)',
-      { id, monitor_id: new Uuid7Value(monitorId), position: new Int2Value(position) },
-      [],
-    )
-  }
+  await client.command(
+    'CALL uptime::add_status_page_monitors($id, $monitor_ids)',
+    { id, monitor_ids: new ListValue(monitorIds.map((monitorId) => new Uuid7Value(monitorId)), 'Uuid7') },
+    [],
+  )
   return id.toString()
 }
 
