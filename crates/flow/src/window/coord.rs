@@ -201,6 +201,16 @@ impl SealDomain for OrdinalCoord {
 	fn horizon(frontier: Self, seal_span: RowSpan) -> Self {
 		frontier.saturating_sub_span(seal_span)
 	}
+
+	fn rearm_dead(
+		_store: &mut (impl StateStore + TimerStore),
+		_size: RowSpan,
+		_seal_span: RowSpan,
+		_before: Option<u64>,
+		_after: Option<u64>,
+	) -> Result<()> {
+		Ok(())
+	}
 }
 
 impl Slot for OrdinalCoord {

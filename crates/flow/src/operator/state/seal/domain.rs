@@ -18,6 +18,7 @@ use reifydb_value::{
 use crate::{
 	operator::state::seal::{
 		coord::Coord,
+		gate::rearm_seal,
 		ledger::SealLedger,
 		rule::{SEAL_GATE_STEP, SealRule},
 	},
@@ -40,7 +41,17 @@ pub trait SealDomain: Coord {
 	fn frontier(store: &mut (impl StateStore + TimerStore)) -> Result<Self>;
 
 	fn horizon(frontier: Self, seal_span: Self::SealSpan) -> Self;
+
+	fn rearm_dead(
+		store: &mut (impl StateStore + TimerStore),
+		size: Self::Span,
+		seal_span: Self::SealSpan,
+		before: Option<u64>,
+		after: Option<u64>,
+	) -> Result<()>;
 }
+
+const ROLLING_DEAD_TIMER_KEY: &[u8] = b"rolling-dead";
 
 impl SealDomain for DateTime {
 	type SealSpan = Duration;
@@ -100,6 +111,22 @@ impl SealDomain for DateTime {
 
 	fn horizon(frontier: Self, seal_span: Duration) -> Self {
 		frontier.saturating_sub(seal_span)
+	}
+
+	fn rearm_dead(
+		store: &mut (impl StateStore + TimerStore),
+		size: Duration,
+		seal_span: Duration,
+		before: Option<u64>,
+		after: Option<u64>,
+	) -> Result<()> {
+		rearm_seal(
+			store,
+			SealRule::of(size.try_add(seal_span)?),
+			&EncodedKey::new(ROLLING_DEAD_TIMER_KEY),
+			before,
+			after,
+		)
 	}
 }
 
