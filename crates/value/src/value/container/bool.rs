@@ -106,10 +106,6 @@ impl BoolContainer {
 
 	pub fn freeze(&mut self) {}
 
-	pub fn is_shared(&self) -> bool {
-		self.data.is_shared()
-	}
-
 	pub fn capacity(&self) -> usize {
 		self.data.capacity()
 	}

@@ -337,10 +337,6 @@ impl BitVec {
 		!self.any()
 	}
 
-	pub fn is_shared(&self) -> bool {
-		Arc::strong_count(&self.inner) > 1
-	}
-
 	pub fn reorder(&mut self, indices: &[usize]) {
 		assert_eq!(self.len(), indices.len());
 		let len = self.len;
@@ -1328,23 +1324,6 @@ pub mod tests {
 
 	mod cow_behavior {
 		use crate::util::bitvec::BitVec;
-
-		#[test]
-		fn test_is_shared() {
-			let mut owned = BitVec::with_capacity(16);
-			owned.push(true);
-			owned.push(false);
-
-			assert!(!owned.is_shared());
-
-			let shared = owned.clone();
-			assert!(owned.is_shared());
-			assert!(shared.is_shared());
-
-			drop(shared);
-
-			assert!(!owned.is_shared());
-		}
 
 		#[test]
 		fn test_push_cow() {

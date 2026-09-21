@@ -119,10 +119,6 @@ impl Utf8Container {
 		self.inner.freeze();
 	}
 
-	pub fn is_shared(&self) -> bool {
-		self.inner.is_shared()
-	}
-
 	pub fn get(&self, index: usize) -> Option<&str> {
 		let bytes = self.inner.get_bytes(index)?;
 		// SAFETY: every constructor and push path takes `String`/`&str` and from_bytes_offsets asserts

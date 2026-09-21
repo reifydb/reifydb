@@ -109,10 +109,6 @@ impl BlobContainer {
 		self.inner.freeze();
 	}
 
-	pub fn is_shared(&self) -> bool {
-		self.inner.is_shared()
-	}
-
 	pub fn get(&self, index: usize) -> Option<&[u8]> {
 		self.inner.get_bytes(index)
 	}

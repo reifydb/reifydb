@@ -132,10 +132,6 @@ impl AnyContainer {
 		self.data.freeze();
 	}
 
-	pub fn is_shared(&self) -> bool {
-		self.data.is_shared()
-	}
-
 	pub fn capacity(&self) -> usize {
 		self.data.capacity()
 	}

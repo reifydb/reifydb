@@ -156,10 +156,6 @@ impl VarlenContainer {
 		self.offsets.freeze();
 	}
 
-	pub fn is_shared(&self) -> bool {
-		self.data.is_shared() || self.offsets.is_shared()
-	}
-
 	fn bounds(&self) -> (u64, u64) {
 		match (self.offsets.first(), self.offsets.last()) {
 			(Some(&first), Some(&last)) => (first, last),
@@ -452,8 +448,8 @@ mod tests {
 		// A slice that copies instead of sharing would leave both handles unshared.
 		let c = frozen_abcd();
 		let s = c.slice(1, 3);
-		assert!(c.is_shared());
-		assert!(s.is_shared());
+		assert_eq!(s.data.as_ptr(), c.data.as_ptr());
+		assert_eq!(s.offsets.as_ptr(), c.offsets[1..].as_ptr());
 		assert_eq!(s.len(), 2);
 		assert_eq!(s.get_bytes(0), Some(b"bb".as_slice()));
 		assert_eq!(s.get_bytes(1), Some(b"cc".as_slice()));
@@ -516,7 +512,8 @@ mod tests {
 		// take_n must be an O(1) view once frozen, not a copy.
 		let c = frozen_abcd();
 		let t = c.take_n(3);
-		assert!(t.is_shared());
+		assert_eq!(t.data.as_ptr(), c.data.as_ptr());
+		assert_eq!(t.offsets.as_ptr(), c.offsets.as_ptr());
 		assert_eq!(t.len(), 3);
 		assert_eq!(t.get_bytes(2), Some(b"cc".as_slice()));
 		assert_eq!(t.data_byte_len(), 6);
@@ -542,7 +539,8 @@ mod tests {
 		assert_eq!(s.len(), 2);
 		assert_eq!(s.get_bytes(0), Some(b"bb".as_slice()));
 		assert_eq!(s.get_bytes(1), Some(b"dd".as_slice()));
-		assert!(!s.is_shared());
+		assert_eq!(s.data.as_slice(), b"bbdd");
+		assert_eq!(s.offsets.as_slice(), &[0u64, 2, 4]);
 	}
 
 	#[test]

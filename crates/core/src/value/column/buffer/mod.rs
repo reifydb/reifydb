@@ -6,7 +6,6 @@ pub mod factory;
 pub mod filter;
 pub mod from;
 pub mod get;
-pub mod pool;
 pub mod reorder;
 pub mod scatter;
 pub mod slice;
@@ -938,16 +937,6 @@ impl ColumnBuffer {
 				..
 			} => inner.freeze(),
 			_ => with_container!(self, |c| c.freeze()),
-		}
-	}
-
-	pub fn is_shared(&self) -> bool {
-		match self {
-			ColumnBuffer::Option {
-				inner,
-				bitvec,
-			} => inner.is_shared() || bitvec.is_shared(),
-			_ => with_container!(self, |c| c.is_shared()),
 		}
 	}
 

@@ -98,16 +98,6 @@ impl<T> SharedVec<T> {
 		matches!(self.repr, Repr::Shared { .. })
 	}
 
-	pub fn is_shared(&self) -> bool {
-		match &self.repr {
-			Repr::Owned(_) => false,
-			Repr::Shared {
-				data,
-				..
-			} => Arc::strong_count(data) > 1,
-		}
-	}
-
 	pub fn freeze(&mut self) {
 		if let Repr::Owned(vec) = &mut self.repr {
 			let vec = mem::take(vec);
