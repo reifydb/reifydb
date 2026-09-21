@@ -75,7 +75,7 @@ describe.each([
 
         it('mixed empty and non empty', async () => {
             const frames = await wsClient.admin(
-                ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}',
+                ';OUTPUT MAP {one: 1} ;;;OUTPUT MAP {two: 2}',
                 {},
                 [
                     Shape.object({one: Shape.int4Value()}),
@@ -108,7 +108,7 @@ describe.each([
             const frames = await wsClient.admin(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP {result: 2};' +
-                'MAP {result: 3};',
+                'OUTPUT MAP {result: 3};',
                 {},
                 [
                     Shape.object({result: Shape.int4Value()}),
@@ -132,7 +132,7 @@ describe.each([
             const frames = await wsClient.admin(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP { a: 2, b: 3 };' +
-                "MAP {result: 'ReifyDB'};",
+                "OUTPUT MAP {result: 'ReifyDB'};",
                 {},
                 [
                     Shape.object({result: Shape.int4Value()}),
@@ -188,7 +188,7 @@ describe.each([
 
         it('mixed empty and non empty', async () => {
             const frames = await wsClient.command(
-                ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}',
+                ';OUTPUT MAP {one: 1} ;;;OUTPUT MAP {two: 2}',
                 {},
                 [
                     Shape.object({one: Shape.int4Value()}),
@@ -221,7 +221,7 @@ describe.each([
             const frames = await wsClient.command(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP {result: 2};' +
-                'MAP {result: 3};',
+                'OUTPUT MAP {result: 3};',
                 {},
                 [
                     Shape.object({result: Shape.int4Value()}),
@@ -245,7 +245,7 @@ describe.each([
             const frames = await wsClient.command(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP { a: 2, b: 3 };' +
-                "MAP {result: 'ReifyDB'};",
+                "OUTPUT MAP {result: 'ReifyDB'};",
                 {},
                 [
                     Shape.object({result: Shape.int4Value()}),
@@ -302,7 +302,7 @@ describe.each([
 
         it('mixed empty and non empty', async () => {
             const frames = await wsClient.query(
-                ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}',
+                ';OUTPUT MAP {one: 1} ;;;OUTPUT MAP {two: 2}',
                 {},
                 [
                     Shape.object({one: Shape.int4Value()}),
@@ -335,7 +335,7 @@ describe.each([
             const frames = await wsClient.query(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP {result: 2};' +
-                'MAP {result: 3};',
+                'OUTPUT MAP {result: 3};',
                 {},
                 [
                     Shape.object({result: Shape.int4Value()}),
@@ -359,7 +359,7 @@ describe.each([
             const frames = await wsClient.query(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP { a: 2, b: 3 };' +
-                "MAP {result: 'ReifyDB'};",
+                "OUTPUT MAP {result: 'ReifyDB'};",
                 {},
                 [
                     Shape.object({result: Shape.int4Value()}),

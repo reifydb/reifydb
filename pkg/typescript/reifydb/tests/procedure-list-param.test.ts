@@ -34,6 +34,14 @@ describe('procedure list parameter over the native bridge', () => {
     expect(rows.map(row => row.id).sort((a, b) => a - b)).toEqual([10, 20, 30])
   })
 
+  it('accepts an empty typed list and runs the loop zero times', async () => {
+    // An update that removes no regions sends an empty list, so rejecting it would fail every edit that only adds.
+    const client = storeClient(build('for $id in $ids { insert app::t [{ id: $id, position: 0 }] }'))
+    await client.command('call app::add_all($ids)', { ids: new ListValue([], 'Int4') }, [])
+    const [rows] = await client.query('from app::t map { id, position }', null, [rowShape])
+    expect(rows).toEqual([])
+  })
+
   it('keeps a counter across iterations so each row gets its list position', async () => {
     // Status page monitors are ordered by position, so a loop without an index loses the order the caller chose.
     const client = storeClient(
@@ -42,9 +50,9 @@ describe('procedure list parameter over the native bridge', () => {
     await client.command('call app::add_all($ids)', { ids: ids(30, 10, 20) }, [])
     const [rows] = await client.query('from app::t map { id, position }', null, [rowShape])
     expect([...rows].sort((a, b) => a.position - b.position)).toEqual([
-      { id: 30, position: 0 },
-      { id: 10, position: 1 },
-      { id: 20, position: 2 },
+      { '#rownum': 1, id: 30, position: 0 },
+      { '#rownum': 2, id: 10, position: 1 },
+      { '#rownum': 3, id: 20, position: 2 },
     ])
   })
 })

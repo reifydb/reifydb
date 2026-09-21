@@ -6,7 +6,10 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_evaluate::stack::Variable;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{Value, value_type::ValueType},
+};
 
 use crate::{Result, vm::vm::Vm};
 
@@ -24,6 +27,21 @@ impl<'a> Vm<'a> {
 			Variable::Closure(_) => {
 				return Err(internal_error!("ForInit expects Columns on data stack, got Scalar"));
 			}
+		};
+		let columns = if columns.is_scalar() {
+			let mut value = columns.scalar_value();
+			while let Value::Any(inner) = value {
+				value = *inner;
+			}
+			match value {
+				Value::List(items) => {
+					let rows: Vec<Vec<Value>> = items.into_iter().map(|item| vec![item]).collect();
+					Columns::from_rows(&[columns.names[0].text()], &rows)
+				}
+				_ => columns,
+			}
+		} else {
+			columns
 		};
 		let var_name = variable_name.text();
 		let iter_key = format!("__for_{}", var_name);
