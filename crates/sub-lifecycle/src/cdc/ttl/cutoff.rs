@@ -64,6 +64,7 @@ mod tests {
 		common::ChangeVersion,
 		error::diagnostic::internal::internal,
 		interface::cdc::{Cdc, CdcChange, CdcConsumerId, ConsumerClass},
+		key::cdc::ToConsumerKey,
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, pool::Pools};
 	use reifydb_store_cdc::{config::CdcStoreConfig, store::CdcStore};
@@ -127,6 +128,24 @@ mod tests {
 			find_eviction_target(&storage, &host, &clock, None).unwrap(),
 			Some(Cutoff::Version(CommitVersion(5))),
 			"eviction cutoff must be bounded by Pinning checkpoints only"
+		);
+	}
+
+	#[test]
+	fn a_consumer_checkpoint_row_that_cannot_be_decoded_stops_the_watermark_instead_of_being_skipped() {
+		// a row that will not decode may be the lowest pin in the store, so skipping it raises the
+		// watermark over a consumer that has not read that far and cdc reaps what it still needs.
+		let host = TestCdcHost::new();
+		let mut cmd = host.begin_command().unwrap();
+		CdcCheckpoint::persist(&mut cmd, &CdcConsumerId::new("ddl"), CommitVersion(40), ConsumerClass::Pinning)
+			.unwrap();
+		cmd.set(&CdcConsumerId::new("torn").to_consumer_key(), make_bytes("bad")).unwrap();
+		cmd.commit().unwrap();
+
+		assert!(
+			consumer_watermark(&host, None).is_err(),
+			"an undecodable checkpoint row must stop the scan; skipping it answers 40 as if the torn row \
+			 pinned nothing, and every version below it becomes reapable"
 		);
 	}
 

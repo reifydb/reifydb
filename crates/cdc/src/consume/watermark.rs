@@ -8,12 +8,13 @@ use std::sync::{
 
 use reifydb_core::{
 	common::CommitVersion,
+	error::diagnostic::internal::internal,
 	interface::{catalog::flow::FlowId, cdc::ConsumerClass},
 	key::{any::TaggedKey, cdc::CdcConsumerKey},
 	lifecycle::watermark::CheckpointFloor,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::Result;
+use reifydb_value::{Result, error::Error};
 use tracing::warn;
 
 use super::checkpoint::CheckpointRow;
@@ -84,7 +85,7 @@ pub fn compute_pinning_watermark(
 			continue;
 		}
 		let Some(bytes) = CheckpointRow::decode(&multi.bytes) else {
-			continue;
+			return Err(Error(Box::new(internal("a cdc consumer checkpoint row could not be decoded"))));
 		};
 		if bytes.class != ConsumerClass::Pinning {
 			continue;
