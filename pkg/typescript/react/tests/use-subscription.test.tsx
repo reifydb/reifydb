@@ -15,13 +15,22 @@ const items = rql(shape)`from test::items`;
 const other = rql(shape)`from test::others`;
 
 describe('useSubscription', () => {
-    it('returns a seeded entry synchronously on first render', () => {
+    it('an entry another subscriber already made ready renders ready on the first render, with no second subscribe', async () => {
+        // Going back to a page whose data is already live must not flash loading or open a duplicate subscription.
         const {client, store, wrapper} = setup();
-        store.seed(items, null, [{id: 1, name: 'a'}]);
-        const {result} = renderHook(() => useSubscription(items, null), {wrapper});
-        expect(result.current.status).toBe('ready');
+        store.subscribe(items, null);
+        client.subscribes[0].callbacks.onInsert?.([{'#rownum': 1, id: 1, name: 'a'}]);
+        client.subscribes[0].resolve('sub-1');
+        await flush();
+        const statuses: string[] = [];
+        const {result} = renderHook(() => {
+            const entry = useSubscription(items, null);
+            statuses.push(entry.status);
+            return entry;
+        }, {wrapper});
+        expect(statuses[0]).toBe('ready');
         expect(result.current.data).toEqual([{id: 1, name: 'a'}]);
-        expect(client.subscribes).toHaveLength(0);
+        expect(client.subscribes).toHaveLength(1);
     });
 
     it('with a fake client it renders loading, then ready after the acknowledgement', async () => {

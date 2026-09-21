@@ -3,11 +3,14 @@
 
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Store, Uuid7Value } from '@reifydb/react'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Store } from '@reifydb/react'
+import type { BridgeClient, TestFactory } from '@reifydb/reifydb'
 import { MonitorNewPage } from '@/pages/monitors/new.tsx'
 import { regions } from '@/store/queries'
-import { renderWithProviders } from '../../support/store'
+import { loadBackend } from '../../support/backend'
+import { bridgeStore, renderWithProviders } from '../../support/store'
+import { caughtUp } from '../../support/monitors'
 import { navigate } from '../../support/router-mock'
 
 vi.mock('@reifydb/auth', async () => (await import('../../support/auth-mock')).authMock())
@@ -17,23 +20,31 @@ const TARGET_LABEL = { http: 'URL', tcp: 'Host and port', ping: 'Host', dns: 'Ho
 
 type Kind = keyof typeof TARGET_LABEL
 
-let command: ReturnType<typeof vi.fn>
+let create: TestFactory
+let client: BridgeClient
 
-function renderForm(regionId: string) {
-  const pending = () => new Promise<never>(() => undefined)
-  command = vi.fn(async () => [])
-  const store = new Store({ query: pending, command, subscribe: pending, unsubscribe: pending })
-  store.seed(regions, null, [{ id: regionId, label: 'US East' }])
+beforeAll(() => {
+  create = loadBackend()
+})
+
+async function renderForm() {
+  let store
+  ;({ store, client } = await bridgeStore(create(), 'tester'))
   renderWithProviders(<MonitorNewPage />, store)
+  await caughtUp(client)
 }
 
-async function submit(kind: Kind, target: string, regionId = Uuid7Value.generate().toString()) {
-  renderForm(regionId)
+async function fillAndSubmit(kind: Kind, target: string) {
   await userEvent.type(screen.getByLabelText('Name'), 'check')
   if (kind !== 'http') await userEvent.selectOptions(screen.getByLabelText('Type'), kind)
   await userEvent.click(screen.getByLabelText(TARGET_LABEL[kind]))
   await userEvent.paste(target)
   await userEvent.click(screen.getByRole('button', { name: /create monitor/i }))
+}
+
+async function submit(kind: Kind, target: string) {
+  await renderForm()
+  await fillAndSubmit(kind, target)
 }
 
 describe('monitor form target checks', () => {
@@ -56,7 +67,7 @@ describe('monitor form target checks', () => {
     await submit(kind, target)
 
     expect(await screen.findByText(message)).toBeInTheDocument()
-    expect(command).not.toHaveBeenCalled()
+    expect(client.command).not.toHaveBeenCalled()
     expect(navigate).not.toHaveBeenCalled()
   })
 
@@ -70,9 +81,9 @@ describe('monitor form target checks', () => {
     // A check stricter than the probe would refuse targets it can monitor, leaving the user no way to add them.
     await submit(kind, target)
 
-    await waitFor(() => expect(command).toHaveBeenCalledTimes(1))
-    expect(command.mock.calls[0][1].target.value).toBe(target)
-    expect(command.mock.calls[0][1].kind.value).toBe(kind)
+    await waitFor(() => expect(client.command).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(client.command).mock.calls[0][1].target.value).toBe(target)
+    expect(vi.mocked(client.command).mock.calls[0][1].kind.value).toBe(kind)
   })
 })
 
@@ -98,7 +109,21 @@ describe('a create error the command runner did not record', () => {
 
   it('is rethrown out of the submit instead of being swallowed', async () => {
     // The form only shows errors the runner recorded, so swallowing any other one would leave a failed create with no trace anywhere.
-    await submit('http', 'https://example.com', 'not-a-uuid')
+    const pending = () => new Promise<never>(() => undefined)
+    const command = vi.fn(async () => [])
+    // Only a hand-built row can carry an id that is not a uuid; the engine never returns one.
+    const store = new Store({
+      query: pending,
+      command,
+      unsubscribe: async () => undefined,
+      subscribe: async (rql, _params, _shape, callbacks) => {
+        if (rql !== regions.rql) return pending()
+        callbacks.onInsert?.([{ '#rownum': 1, id: 'not-a-uuid', label: 'US East' }])
+        return 'regions'
+      },
+    })
+    renderWithProviders(<MonitorNewPage />, store)
+    await fillAndSubmit('http', 'https://example.com')
 
     await waitFor(() => expect(unhandled).toEqual([expect.objectContaining({ message: 'Invalid UUID format: not-a-uuid' })]))
     expect(command).not.toHaveBeenCalled()

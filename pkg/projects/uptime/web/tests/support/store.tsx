@@ -3,20 +3,19 @@
 
 import type { ReactElement } from 'react'
 import { render } from '@testing-library/react'
-import { Shape, Store, StoreProvider, type StoreClient, type StoreOptions } from '@reifydb/react'
+import {
+  entryKey,
+  Shape,
+  Store,
+  StoreProvider,
+  type ReadSpec,
+  type ShapeNode,
+  type StoreClient,
+  type StoreOptions,
+} from '@reifydb/react'
 import { storeClient, type BridgeClient, type TestDb } from '@reifydb/reifydb'
 import { vi } from 'vitest'
 import { STORE_OPTIONS } from '@/store/client'
-
-// Never settles, so a subscription the test did not seed stays loading instead of flipping state outside act().
-function pendingClient(): StoreClient {
-  const pending = () => new Promise<never>(() => undefined)
-  return { query: pending, command: pending, subscribe: pending, unsubscribe: pending }
-}
-
-export function seededStore(): Store {
-  return new Store(pendingClient())
-}
 
 // The engine leaves $identity unset for root and uptime::create_monitor reads $identity.id, so the bridge runs as a real user.
 export async function bridgeStore(
@@ -35,6 +34,27 @@ export async function bridgeStore(
   vi.spyOn(client, 'subscribe')
   vi.spyOn(client, 'batchSubscribe')
   return { store: new Store(client, { ...STORE_OPTIONS, ...overrides }), client }
+}
+
+// A batch refusal would fail every subscription the page opens, so batching is off and only this subscribe is refused.
+export function refusingStore<S extends ShapeNode, P extends object | null>(
+  client: StoreClient,
+  spec: ReadSpec<S, P>,
+  params: NoInfer<P>,
+  error: Error,
+): Store {
+  const refused = entryKey(spec.rql, params, spec.shape)
+  return new Store(
+    {
+      ...client,
+      batchSubscribe: undefined,
+      subscribe: (rql, subscriptionParams, shape, callbacks, config) =>
+        entryKey(rql, subscriptionParams, shape) === refused
+          ? Promise.reject(error)
+          : client.subscribe(rql, subscriptionParams, shape, callbacks, config),
+    },
+    { ...STORE_OPTIONS, batch: false },
+  )
 }
 
 export function renderWithProviders(ui: ReactElement, store: Store) {

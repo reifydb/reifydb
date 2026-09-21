@@ -18,7 +18,6 @@ const byId = rql(monitor)<{id: Uuid7Value}>`from uptime::monitors filter { id ==
 const all = rql(monitor)`from uptime::monitors`;
 const pair = rql([monitor, monitorRegion])`output from uptime::monitors; output from uptime::monitor_regions`;
 const create = rql.write([monitor])<{id: Uuid7Value}>`CALL uptime::create_monitor($id); output from uptime::monitors filter { id == $id }`;
-const failure = new Error('down');
 
 function unknownParamKeysFailOnEveryMethod() {
     // An extra key the RQL never reads is dropped silently, so a typo in a filter param would go unnoticed.
@@ -29,10 +28,6 @@ function unknownParamKeysFailOnEveryMethod() {
     store.query(byId, {id, name: id});
     // @ts-expect-error
     store.getEntry(byId, {id, name: id});
-    // @ts-expect-error
-    store.seed(byId, {id, name: id}, []);
-    // @ts-expect-error
-    store.fail(byId, {id, name: id}, failure);
     // @ts-expect-error
     store.command(create, {id, name: id});
     // @ts-expect-error
@@ -52,15 +47,11 @@ function paramsMustMatchTheSpecExactly() {
     store.query(all, {id});
 }
 
-function tupleSpecsCannotBeSubscribedOrSeeded() {
+function tupleSpecsCannotBeSubscribed() {
     // The engine allows one statement per subscription, so a tuple spec there could never hydrate.
 
     // @ts-expect-error
     store.subscribe(pair, null);
-    // @ts-expect-error
-    store.seed(pair, null, []);
-    // @ts-expect-error
-    store.fail(pair, null, failure);
 }
 
 function specKindsStayOnTheirOwnMethods() {
@@ -72,10 +63,6 @@ function specKindsStayOnTheirOwnMethods() {
     store.getEntry(create, {id});
     // @ts-expect-error
     store.subscribe(create, {id});
-    // @ts-expect-error
-    store.seed(create, {id}, []);
-    // @ts-expect-error
-    store.fail(create, {id}, failure);
     // @ts-expect-error
     store.command(rql([monitor])`from uptime::monitors`, null);
     // @ts-expect-error

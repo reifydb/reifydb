@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { act, renderHook, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Shape, Store, StoreProvider, Uuid7Value, type StoreClient } from '@reifydb/react'
+import { Shape, Store, StoreProvider, type StoreClient } from '@reifydb/react'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { useCreateMonitor, useUpdateMonitor } from '@/hooks/use-monitors'
 import type { MonitorInput } from '@/lib/types'
@@ -13,7 +13,7 @@ import { MonitorEditPage } from '@/pages/monitors/edit.tsx'
 import { STORE_OPTIONS } from '@/store/client'
 import { monitorRegions, monitors, regions } from '@/store/queries'
 import { loadBackend } from '../../support/backend'
-import { bridgeStore, renderWithProviders } from '../../support/store'
+import { bridgeStore, refusingStore, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
 import {
   addRegion,
@@ -22,7 +22,6 @@ import {
   identityOf,
   monitorInDb,
   monitorRegionsInDb,
-  realRegions,
   regionNamed,
   reportResult,
   resultRegionsInDb,
@@ -99,14 +98,16 @@ describe('edit monitor flow', () => {
   it('rolls the whole edit back and shows the RQL error when a region call fails', async () => {
     // The update and every region call must share one transaction, otherwise the rename and the EU removal would stick.
     const id = await createMonitor(client, 'alpha', [usEast, euWest])
-    const gone = Uuid7Value.generate().toString()
-    store.seed(regions, null, [...(await realRegions(db)), { id: gone, label: 'Zanzibar' }])
+    const gone = await addRegion(db, 'Zanzibar')
     const name = await renderEdit(id)
 
     await userEvent.clear(name)
     await userEvent.type(name, 'alpha-renamed')
     await userEvent.click(screen.getByRole('button', { name: 'EU West' }))
     await userEvent.click(screen.getByRole('button', { name: 'Zanzibar' }))
+    // Removed after ticking, so the form still sends the id and only the server can refuse it.
+    await db.commandRoot('delete uptime::regions filter { id == $id }', { id: gone }, [])
+    await caughtUp(client)
     await userEvent.click(screen.getByRole('button', { name: /save changes/i }))
 
     expect(await screen.findByText(/unknown region/)).toBeInTheDocument()
@@ -121,7 +122,7 @@ describe('edit monitor flow', () => {
   ] as const)('says the %s failed to load instead of spinning forever', async (_, query, message) => {
     // A failed subscription never turns ready, so a page that only waits for ready would spin with nothing saying why.
     const id = await createMonitor(client, 'alpha', [usEast])
-    store.fail(query(), null, new Error(message))
+    store = refusingStore(client, query(), null, new Error(message))
     routeParams.monitorId = id
     renderWithProviders(<MonitorEditPage />, store)
     await caughtUp(client)

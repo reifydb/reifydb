@@ -71,7 +71,3 @@ export function upsertFrames(frames: SubscriptionRow<unknown>[][]): Entry<unknow
         error: undefined,
     };
 }
-
-export function indexRows<T>(rows: readonly T[]): Map<number, T> {
-    return new Map(rows.map((row, index) => [index, row]));
-}

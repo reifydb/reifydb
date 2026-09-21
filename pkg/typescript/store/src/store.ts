@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 import {createStore} from 'zustand/vanilla';
 import type {StoreApi} from 'zustand/vanilla';
-import type {FrameResults, InferShape, ShapeNode} from '@reifydb/core';
+import type {FrameResults, ShapeNode} from '@reifydb/core';
 import type {
     BatchSubscribeItem,
     SubscriptionCallbacks,
@@ -11,7 +11,7 @@ import type {
 } from '@reifydb/client';
 import type {StoreClient} from './client';
 import {entryKey} from './key';
-import {LOADING, indexRows, removeRows, tupleLoading, upsertFrames, upsertRows, withRows, withStatus} from './entry';
+import {LOADING, removeRows, tupleLoading, upsertFrames, upsertRows, withRows, withStatus} from './entry';
 import type {Entry} from './entry';
 import type {ReadSpec, SpecData, WriteSpec} from './rql';
 
@@ -39,12 +39,6 @@ interface Queued {
     sub: Subscription;
     request: BatchSubscribeItem;
 }
-
-// Infinity never reaches zero, so seeded entries are never released or resubscribed on the client.
-const SEEDED = Number.POSITIVE_INFINITY;
-
-// The local infer stops TypeScript inferring S backwards through InferShape, which recurses without limit.
-type SeedRows<S extends ShapeNode> = [InferShape<S>] extends [infer R] ? R[] : never;
 
 function toError(error: unknown): Error {
     return error instanceof Error ? error : new Error(String(error));
@@ -135,18 +129,6 @@ export class Store {
 
     getSnapshot(): StoreState {
         return this.state.getState();
-    }
-
-    seed<S extends ShapeNode, P extends object | null>(spec: ReadSpec<S, P>, params: NoInfer<P>, rows: SeedRows<S>): void {
-        const key = entryKey(spec.rql, params, spec.shape);
-        this.subscriptions.set(key, {refcount: SEEDED, id: undefined, closed: false});
-        this.setEntry(key, withStatus(withRows(LOADING, indexRows(rows)), 'ready'));
-    }
-
-    fail<S extends ShapeNode, P extends object | null>(spec: ReadSpec<S, P>, params: NoInfer<P>, error: Error): void {
-        const key = entryKey(spec.rql, params, spec.shape);
-        this.subscriptions.set(key, {refcount: SEEDED, id: undefined, closed: false});
-        this.setEntry(key, withStatus(this.state.getState().entries[key] ?? LOADING, 'error', error));
     }
 
     reset(): void {

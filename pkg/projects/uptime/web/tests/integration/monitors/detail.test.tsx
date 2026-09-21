@@ -10,7 +10,7 @@ import { probes } from '@/hooks/use-probes'
 import { MonitorDetailPage } from '@/pages/monitors/detail.tsx'
 import { monitors, results } from '@/store/queries'
 import { loadBackend } from '../../support/backend'
-import { bridgeStore, renderWithProviders } from '../../support/store'
+import { bridgeStore, refusingStore, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
 import {
   caughtUp,
@@ -165,7 +165,7 @@ describe('monitor detail writes', () => {
   it('says the monitor failed to load instead of spinning forever', async () => {
     // A failed monitors subscription never turns ready, so a page that only waits for ready would spin with nothing saying why.
     const id = await createMonitor(client, 'alpha', [usEast])
-    store.fail(monitors, null, new Error('monitors subscription refused'))
+    store = refusingStore(client, monitors, null, new Error('monitors subscription refused'))
     await renderDetail(id)
 
     expect(await screen.findByText('Failed to load monitor: monitors subscription refused')).toBeInTheDocument()
@@ -177,7 +177,7 @@ describe('monitor detail writes', () => {
     // A failed results subscription read as empty would tell the user a monitor that is checking was never checked.
     const id = await createMonitor(client, 'alpha', [usEast])
     await reportResult(db, { monitorId: id, owner, regionId: usEast, success: true, statusCode: 200, responseMs: 40 })
-    store.fail(results, { monitor_id: id }, new Error('results subscription refused'))
+    store = refusingStore(client, results, { monitor_id: id }, new Error('results subscription refused'))
     await renderDetail(id)
 
     expect(await screen.findByText('Failed to load checks: results subscription refused')).toBeInTheDocument()
@@ -188,7 +188,7 @@ describe('monitor detail writes', () => {
     // A failed probes subscription must say so; otherwise every check silently shows no probe as if none ran it.
     const id = await createMonitor(client, 'alpha', [usEast])
     await reportResult(db, { monitorId: id, owner, regionId: usEast, success: true, statusCode: 207, responseMs: 40 })
-    store.fail(probes, null, new Error('probes subscription refused'))
+    store = refusingStore(client, probes, null, new Error('probes subscription refused'))
     await renderDetail(id)
 
     expect(await screen.findByText('Failed to load probes: probes subscription refused')).toBeInTheDocument()
