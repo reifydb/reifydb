@@ -771,9 +771,9 @@ mod tests {
 			traits::{Actor, Directive},
 		},
 		context::clock::Clock,
+		shutdown::Shutdown,
 		sync::waiter::WaiterHandle,
 	};
-	use reifydb_runtime::shutdown::Shutdown;
 	use reifydb_store_operator::store::OperatorStore;
 	use reifydb_value::value::duration::Duration;
 	use rustc_hash::{FxHashMap, FxHashSet};

@@ -42,7 +42,7 @@ fn the_seed_environment_variable_is_still_named_seed() {
 		"a pinned SEED must reach the failure report, but it read:\n{report}"
 	);
 	assert!(
-		report.contains("FILTER=probe_0"),
+		report.contains("test(=probe_0)"),
 		"the report must name the test so the printed replay command actually targets it:\n{report}"
 	);
 }

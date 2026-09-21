@@ -976,6 +976,7 @@ dependencies = [
  "reifydb-sqlite",
  "reifydb-value",
  "rusqlite",
+ "rustc-hash",
 ]
 
 [[package]]

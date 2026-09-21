@@ -8,6 +8,8 @@ use std::{
 
 use reifydb_core::{error::diagnostic::internal::internal, interface::catalog::flow::FlowId};
 use reifydb_value::error::Error;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use rusqlite::Error as RusqliteError;
 
 pub type Result<T> = std::result::Result<T, OperatorError>;
 
@@ -39,8 +41,8 @@ impl Display for OperatorError {
 impl StdError for OperatorError {}
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-impl From<rusqlite::Error> for OperatorError {
-	fn from(err: rusqlite::Error) -> Self {
+impl From<RusqliteError> for OperatorError {
+	fn from(err: RusqliteError) -> Self {
 		OperatorError::Backend {
 			message: err.to_string(),
 		}

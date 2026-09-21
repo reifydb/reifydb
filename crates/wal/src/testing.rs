@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{
+	Arc as StdArc,
+	atomic::{AtomicU64, Ordering},
+};
 
 use reifydb_codec::log::{LogIndex, LogVersion, Position, record::Record};
 use reifydb_runtime::{
@@ -65,7 +68,7 @@ impl WalHooks for NoFaults {}
 
 struct Inner<F: Filesystem, C: ClockNow> {
 	log: Log<F, C>,
-	hooks: Arc<dyn WalHooks>,
+	hooks: StdArc<dyn WalHooks>,
 	calls: AtomicU64,
 }
 
@@ -78,7 +81,7 @@ impl<F: Filesystem, C: ClockNow> Clone for TestingLog<F, C> {
 }
 
 impl<F: Filesystem, C: ClockNow> TestingLog<F, C> {
-	pub fn over(log: Log<F, C>, hooks: Arc<dyn WalHooks>) -> Self {
+	pub fn over(log: Log<F, C>, hooks: StdArc<dyn WalHooks>) -> Self {
 		Self(Arc::new(Inner {
 			log,
 			hooks,

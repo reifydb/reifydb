@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(any(test, feature = "testing"))]
+use std::mem;
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	path::{Path, PathBuf},
@@ -253,7 +255,7 @@ impl MemoryFs {
 	pub fn crash(&self) {
 		{
 			let mut state = self.0.state.lock();
-			let dirty: Vec<PathBuf> = std::mem::take(&mut state.dirty_dirs).into_iter().collect();
+			let dirty: Vec<PathBuf> = mem::take(&mut state.dirty_dirs).into_iter().collect();
 			for path in dirty {
 				state.dirs.retain(|dir| !dir.starts_with(&path));
 				state.files.retain(|key, _| !key.starts_with(&path));
