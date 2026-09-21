@@ -10,7 +10,6 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
-	state::timer::StateStore,
 };
 #[cfg(reifydb_assertions)]
 use reifydb_flow::operator::state::reaper::queued;
@@ -217,14 +216,26 @@ where
 	}
 
 	fn expire_rolling<C: GuestContext>(
-		engine: &mut RollingEngine<A::GroupKey, A::Coord, A::Accumulator>,
+		aggregator: &A,
+		mode: &mut RollingMode<A>,
+		settings: &WindowSettings<A::Coord>,
 		store: &mut GuestAsHost<'_, C>,
 		horizon: A::Coord,
-	) -> Result<()> {
+	) -> Result<Rows<A>> {
 		if horizon > <A::Coord as Coord>::from_order(0) {
-			engine.expire_meta(store, horizon.to_order())?;
+			mode.engine.expire_meta(store, horizon.to_order())?;
 		}
-		Ok(())
+		if horizon < <A::Coord as Coord>::from_order(0).add_span(settings.size) {
+			return Ok(Vec::new());
+		}
+		let pane = mode.pane;
+		Ok(mode.engine
+			.expire_dead(store, horizon.saturating_sub_span(settings.size), |group, buffer| {
+				Self::combine_panes(aggregator, settings, pane, group, buffer)
+			})?
+			.into_iter()
+			.map(|r| (r.row_number, r.value))
+			.collect())
 	}
 
 	fn combine_panes(
@@ -251,6 +262,8 @@ where
 	) -> Result<Emitted<A>> {
 		let mut buckets: RollingBuckets<A::GroupKey, A::Coord, Contribution<A>> =
 			windows.into_iter().map(|((group, span), events)| ((group, span.start), events)).collect();
+		let mut before: Option<u64> = None;
+		let mut removes: Rows<A> = Vec::new();
 
 		if let Some(seal_span) = seal_span {
 			let mut store = GuestAsHost(ctx);
@@ -260,7 +273,8 @@ where
 			}
 			let watermark = seal_frontier::<A::Coord>(&mut store)?;
 			let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
-			Self::expire_rolling(&mut mode.engine, &mut store, horizon)?;
+			before = mode.engine.earliest_expiry(&mut store)?;
+			removes = Self::expire_rolling(aggregator, mode, settings, &mut store, horizon)?;
 			let mut dropped = 0u64;
 			buckets.retain(|(_, coord), events| {
 				if is_sealed(*coord, horizon) {
@@ -274,7 +288,15 @@ where
 				debug!(operator = A::NAME, dropped, "mutations targeting sealed panes were dropped");
 			}
 			if buckets.is_empty() {
-				return Ok((Vec::new(), Vec::new(), Vec::new()));
+				let after = mode.engine.earliest_expiry(&mut store)?;
+				<A::Coord as SealDomain>::rearm_dead(
+					&mut store,
+					settings.size,
+					seal_span,
+					before,
+					after,
+				)?;
+				return Ok((Vec::new(), Vec::new(), removes));
 			}
 		}
 
@@ -302,24 +324,18 @@ where
 
 		let mut inserts: Rows<A> = Vec::new();
 		let mut updates: Rows<A> = Vec::new();
-		let mut removes: Rows<A> = Vec::new();
-		let mut removed_groups: Vec<A::GroupKey> = Vec::new();
 		for r in results {
 			match r.kind {
 				EmitKind::Insert => inserts.push((r.row_number, r.value)),
 				EmitKind::Update => updates.push((r.row_number, r.value)),
-				EmitKind::Remove => {
-					removed_groups.push(r.group);
-					removes.push((r.row_number, r.value));
-				}
+				EmitKind::Remove => removes.push((r.row_number, r.value)),
 			}
 		}
 
-		if !removed_groups.is_empty() {
+		if let Some(seal_span) = seal_span {
 			let mut store = GuestAsHost(ctx);
-			for group in &removed_groups {
-				store.remove_row_number(group_of(&groups, group, ()), &group.into_encoded_key())?;
-			}
+			let after = mode.engine.earliest_expiry(&mut store)?;
+			<A::Coord as SealDomain>::rearm_dead(&mut store, settings.size, seal_span, before, after)?;
 		}
 
 		Ok((inserts, updates, removes))
@@ -521,23 +537,43 @@ where
 			return Ok(());
 		};
 		let Self {
+			aggregator,
 			engine,
 			rolling,
 			reap_queue_empty,
+			settings,
 			..
 		} = &mut *self;
 		let mut store = GuestAsHost(ctx);
 		let Some(frontier) = timer_frontier::<A::Coord>(&mut store, timer)? else {
 			return Ok(());
 		};
-		match rolling {
-			Some(mode) => Self::expire_rolling(
-				&mut mode.engine,
-				&mut store,
-				<A::Coord as SealDomain>::horizon(frontier, seal_span),
-			),
-			None => Self::expire_through(engine, reap_queue_empty, &mut store, frontier, seal_span),
-		}
+		let removes = match rolling {
+			Some(mode) => {
+				let before = mode.engine.earliest_expiry(&mut store)?;
+				let removes = Self::expire_rolling(
+					aggregator,
+					mode,
+					settings,
+					&mut store,
+					<A::Coord as SealDomain>::horizon(frontier, seal_span),
+				)?;
+				let after = mode.engine.earliest_expiry(&mut store)?;
+				<A::Coord as SealDomain>::rearm_dead(
+					&mut store,
+					settings.size,
+					seal_span,
+					before,
+					after,
+				)?;
+				removes
+			}
+			None => {
+				Self::expire_through(engine, reap_queue_empty, &mut store, frontier, seal_span)?;
+				Vec::new()
+			}
+		};
+		self.emit_batches(ctx, &[], &[], &removes)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {

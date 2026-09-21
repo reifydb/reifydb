@@ -8,6 +8,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
 	row::Row as CoreRow,
+	state::timer::TimerKind,
 };
 use reifydb_flow::{
 	operator::state::seal::coord::Coord,
@@ -313,7 +314,7 @@ fn a_row_older_than_the_seal_horizon_is_dropped_and_a_recent_one_is_kept() {
 	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 10)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
 	let kept = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 95, 2.0)).build()).expect("apply");
-	h.advance_watermark(DateTime::from_millis(200)).expect("watermark");
+	h.advance_watermark(DateTime::from_millis(110)).expect("watermark");
 
 	let dropped = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 50, 4.0)).build()).expect("apply");
 
@@ -379,4 +380,75 @@ fn a_withdrawn_rolling_group_leaves_only_its_meta_behind() {
 	};
 
 	assert!(state_after(20) <= state_after(5) + 15, "state must grow by at most one row per withdrawn group");
+}
+
+#[test]
+fn a_dead_rolling_group_arms_its_timer_one_size_past_the_seal() {
+	// The timer must wait one size past the seal, otherwise it frees a group whose window still holds live panes.
+	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 10)).expect("harness");
+
+	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 5.0)).build()).expect("apply");
+
+	let dead: Vec<(DateTime, TimerKind)> =
+		h.armed_timers().into_iter().filter(|t| t.key == b"rolling-dead").map(|t| (t.due, t.kind)).collect();
+	assert_eq!(dead, vec![(DateTime::from_millis(117), TimerKind::Seal)]);
+}
+
+#[test]
+fn a_dead_rolling_group_is_removed_on_its_timer_with_its_last_value() {
+	// Without a Remove on the timer, a quiet group's last total stays visible forever.
+	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 10)).expect("harness");
+	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 5.0)).build()).expect("apply");
+
+	let out = h
+		.on_timer(DateTime::from_millis(117), TimerKind::Seal, b"rolling-dead")
+		.expect("timer")
+		.expect("the dead group must emit");
+
+	let start = DateTime::from_millis(98).to_order();
+	let end = DateTime::from_millis(101).to_order();
+	assert_eq!(render(&out), vec![(DiffType::Remove, 5.0, start, end)]);
+}
+
+#[test]
+fn a_group_revived_inside_its_window_keeps_its_old_panes() {
+	// A group must live one size past its horizon, otherwise a revived row loses the panes still in its window.
+	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 10)).expect("harness");
+	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
+	h.advance_watermark(DateTime::from_millis(115)).expect("watermark");
+
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 102, 2.0)).build()).expect("apply");
+
+	let trace: Vec<(DiffType, f64)> = render(&out).into_iter().map(|(kind, sum, _, _)| (kind, sum)).collect();
+	assert_eq!(trace, vec![(DiffType::Update, 3.0)]);
+}
+
+#[test]
+fn a_quiet_stream_frees_every_dead_group() {
+	// Each dead timer must re-arm for the next group, otherwise a quiet stream strands all but the first.
+	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 10)).expect("harness");
+	h.apply(TestChangeBuilder::new()
+		.insert(input_row(1, "A", 100, 1.0))
+		.insert(input_row(2, "B", 110, 2.0))
+		.build())
+		.expect("apply");
+
+	h.advance_watermark(DateTime::from_millis(125)).expect("watermark");
+	let dead: Vec<(DateTime, TimerKind)> =
+		h.armed_timers().into_iter().filter(|t| t.key == b"rolling-dead").map(|t| (t.due, t.kind)).collect();
+	assert_eq!(
+		dead,
+		vec![(DateTime::from_millis(127), TimerKind::Seal)],
+		"the timer must re-arm on B after A dies"
+	);
+
+	assert_eq!(
+		h.advance_watermark(DateTime::from_millis(130)).expect("watermark"),
+		1,
+		"only B's dead timer is due"
+	);
+
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "C", 200, 7.0)).build()).expect("apply");
+	let trace: Vec<(DiffType, f64)> = render(&out).into_iter().map(|(kind, sum, _, _)| (kind, sum)).collect();
+	assert_eq!(trace, vec![(DiffType::Remove, 1.0), (DiffType::Remove, 2.0), (DiffType::Insert, 7.0)]);
 }
