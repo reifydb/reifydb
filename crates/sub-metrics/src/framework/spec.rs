@@ -764,6 +764,8 @@ impl MetricsDomain {
 				shape: DomainShape::Wide,
 				dimensions: vec![
 					dim("operator", ValueType::Uint8),
+					dim_optional("name", ValueType::Utf8),
+					dim_optional("unmanaged_because", ValueType::Utf8),
 					dim("keyspace", ValueType::Utf8),
 					dim("phase", ValueType::Utf8),
 				],

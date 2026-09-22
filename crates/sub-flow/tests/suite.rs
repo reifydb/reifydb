@@ -9,6 +9,8 @@ mod apply_unknown_operator_view;
 mod apply_unknown_operator_view_create;
 #[path = "call_argument_named_like_a_type.rs"]
 mod call_argument_named_like_a_type;
+#[path = "census_owner.rs"]
+mod census_owner;
 #[path = "custom_operator_timer.rs"]
 mod custom_operator_timer;
 #[path = "digest_view.rs"]

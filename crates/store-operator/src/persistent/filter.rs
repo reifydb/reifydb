@@ -6,7 +6,6 @@ use std::fmt::{self, Debug, Formatter};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::KeyspaceId};
 use reifydb_filter::source::{FilterSlice, KeyFilterSource};
-use tracing::warn;
 
 use crate::{
 	bound::parts,
@@ -33,13 +32,12 @@ impl OperatorStateKeySource {
 	}
 
 	fn occupied(&self) -> Vec<OperatorStateCensus> {
-		match self.persistent.census() {
-			Ok(entries) => entries.into_iter().filter(|entry| entry.keys > 0).collect(),
-			Err(error) => {
-				warn!(error = %error, "operator census failed; filtering no keyspaces");
-				Vec::new()
-			}
-		}
+		self.persistent
+			.census()
+			.expect("operator census must complete; a filter built on a partial one misses live keys")
+			.into_iter()
+			.filter(|entry| entry.keys > 0)
+			.collect()
 	}
 }
 

@@ -48,7 +48,6 @@ use reifydb_runtime::{
 };
 use reifydb_store_commit::VersionedGetResult;
 use reifydb_store_multi::MultiStore;
-use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -56,7 +55,7 @@ use reifydb_value::{
 	byte_size::ByteSize,
 	count::Count,
 	params::Params,
-	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId},
+	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
 use tracing::{error, trace};
 
@@ -348,10 +347,12 @@ impl MetricsFlushActor {
 			surface: Surface::Current,
 			rows: cdc,
 		});
+		let flow_state = flow_state_rows(engine, &mut txn)
+			.expect("flow state census must complete; a partial one evicts live rows");
 		let _ = sampler.send(SamplerMessage::Push {
 			domain: MetricsDomain::FlowState,
 			surface: Surface::Current,
-			rows: flow_state_rows(&engine.operator_state()),
+			rows: flow_state,
 		});
 	}
 
@@ -512,24 +513,43 @@ fn level_count(metric: &'static str, count: u64) -> Measure {
 	}
 }
 
-fn flow_state_rows(store: &OperatorStore) -> Vec<MetricsRow> {
-	store.census()
-		.unwrap_or_default()
+fn flow_state_rows(engine: &StandardEngine, txn: &mut Transaction<'_>) -> Result<Vec<MetricsRow>> {
+	let names = engine.apply_operator_names(txn)?;
+	let library = engine.operator_store();
+	Ok(engine
+		.operator_state()
+		.census()?
 		.into_iter()
-		.map(|entry| MetricsRow {
-			dimensions: vec![
-				Value::Uint8(entry.operator.0),
-				Value::Utf8(entry.keyspace.name().to_string()),
-				Value::Utf8(phase_name(entry.keyspace).to_string()),
-			],
-			measures: vec![
-				level_count("keys", entry.keys),
-				level_bytes("key_bytes", entry.key_bytes.as_bytes()),
-				level_bytes("value_bytes", entry.value_bytes.as_bytes()),
-				level_bytes("total_bytes", (entry.key_bytes + entry.value_bytes).as_bytes()),
-			],
+		.map(|entry| {
+			let name = names.get(&entry.operator).cloned();
+			let unmanaged_because = name
+				.as_deref()
+				.and_then(|name| library.get(name))
+				.and_then(|info| info.unmanaged_because);
+			MetricsRow {
+				dimensions: vec![
+					Value::Uint8(entry.operator.0),
+					utf8_or_none(name),
+					utf8_or_none(unmanaged_because),
+					Value::Utf8(entry.keyspace.name().to_string()),
+					Value::Utf8(phase_name(entry.keyspace).to_string()),
+				],
+				measures: vec![
+					level_count("keys", entry.keys),
+					level_bytes("key_bytes", entry.key_bytes.as_bytes()),
+					level_bytes("value_bytes", entry.value_bytes.as_bytes()),
+					level_bytes("total_bytes", (entry.key_bytes + entry.value_bytes).as_bytes()),
+				],
+			}
 		})
-		.collect()
+		.collect())
+}
+
+fn utf8_or_none(value: Option<String>) -> Value {
+	match value {
+		Some(value) => Value::Utf8(value),
+		None => Value::none_of(ValueType::Utf8),
+	}
 }
 
 fn phase_name(keyspace: KeyspaceId) -> &'static str {
