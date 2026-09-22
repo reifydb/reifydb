@@ -11,7 +11,11 @@ use reifydb_testing_chaos::{
 use reifydb_value::value::duration::Duration;
 
 use crate::{
-	framework::{fuzz, harness::Harness, workload::WindowWorkload},
+	framework::{
+		fuzz,
+		harness::Harness,
+		workload::{MovingWindowWorkload, WindowWorkload},
+	},
 	operators::window::{
 		WindowSpec, build, build_immutable,
 		count::{CountOracle, Ordinals},
@@ -56,14 +60,18 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 }
 
 pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
-	drive_with(seed, params, fold, None)
+	drive_with(seed, params, fold, None, 0)
 }
 
 pub fn drive_immutable(seed: u64, params: Params, immutable_ms: u64) -> Corpus {
-	drive_with(seed, params, Fold::PercentileNextToMin, Some(immutable_ms))
+	drive_with(seed, params, Fold::PercentileNextToMin, Some(immutable_ms), 0)
 }
 
-fn drive_with(seed: u64, params: Params, fold: Fold, immutable_ms: Option<u64>) -> Corpus {
+pub fn drive_moving(seed: u64, params: Params, fold: Fold, move_pct: u32) -> Corpus {
+	drive_with(seed, params, fold, None, move_pct)
+}
+
+fn drive_with(seed: u64, params: Params, fold: Fold, immutable_ms: Option<u64>, move_pct: u32) -> Corpus {
 	let size_ms = params.size_secs * 1_000;
 	let slide_ms = params.slide_secs * 1_000;
 	let lateness_ms = params.lateness_secs * 1_000;
@@ -81,9 +89,12 @@ fn drive_with(seed: u64, params: Params, fold: Fold, immutable_ms: Option<u64>) 
 
 	let immutable = immutable_ms.map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
 	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
-	let workload = WindowWorkload {
-		groups: params.groups,
-		coord_span_ms: params.coord_span_ms,
+	let workload = MovingWindowWorkload {
+		inner: WindowWorkload {
+			groups: params.groups,
+			coord_span_ms: params.coord_span_ms,
+		},
+		move_pct,
 	};
 	let mut model = GridOracle::new(
 		SlidingGrid {

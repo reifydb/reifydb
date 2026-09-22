@@ -7,8 +7,8 @@
 //! The assignment rule is restated here rather than called, but `SessionKind::assign` is not what
 //! this is aiming at - that has its own unit tests. What no test covers is the threading: one tracker
 //! per group, shared across a batch and reloaded between them, with removes that must not move a
-//! boundary and updates that must not reassign a row. A rule this short is worth restating to get at
-//! that.
+//! boundary and updates that reassign a row only when its time moves. A rule this short is worth
+//! restating to get at that.
 //!
 //! A group with three sessions is three rows sharing a group value, each with its own end. Starts
 //! can repeat (a late row can pull a new session back onto the closed one's start), ends cannot,
@@ -190,26 +190,39 @@ impl Model<WindowRow> for SessionOracle {
 	}
 
 	fn update(&mut self, pre: &WindowRow, post: &WindowRow) {
-		// Not retract-then-admit. A row already filed into a session has its contribution swapped in
-		// place and keeps that session; re-running the assignment would let an update rotate a
-		// session, which the operator never does for a row it can still find.
+		// A filed row changes session only on a moved time the tracker files; a refused time must stay put.
 		assert_eq!(pre.number, post.number, "an update must not change a row's number");
-		assert_eq!(
-			pre.coord_ms, post.coord_ms,
-			"this oracle holds a filed row's session fixed across an update, which is only sound while \
-			 the workload leaves the coordinate alone"
-		);
 
 		// `c.live` is load-bearing: a row the corpus retracted and re-admitted has more than one
 		// contribution under the same number, and the dead one comes first.
-		if let Some(c) = self.contributions.iter_mut().find(|c| c.live && c.row == pre.number) {
-			assert_eq!(c.value, pre.value, "the driver updates from the value it last admitted");
-			c.value = post.value;
-			if let (Some(immutable_ms), Some(seal)) =
-				(self.immutable_ms, self.seals.get_mut(&(c.group, c.session)))
-			{
+		if let Some(idx) = self.contributions.iter().position(|c| c.live && c.row == pre.number) {
+			assert_eq!(
+				self.contributions[idx].value, pre.value,
+				"the driver updates from the value it last admitted"
+			);
+			let moved_to = if pre.coord_ms != post.coord_ms {
+				self.assign(post.group, post.coord_ms)
+			} else {
+				None
+			};
+			let c = &mut self.contributions[idx];
+			if let Some(seal) = self.seals.get_mut(&(c.group, c.session)) {
 				seal.remove(c.coord, c.row);
-				seal.push(c.coord, c.row, immutable_ms);
+			}
+			match moved_to {
+				Some(session) => {
+					c.live = false;
+					self.file(post.number, post.group, session, post.coord_ms, post.value);
+				}
+				None => {
+					c.value = post.value;
+					c.coord = post.coord_ms;
+					if let (Some(immutable_ms), Some(seal)) =
+						(self.immutable_ms, self.seals.get_mut(&(c.group, c.session)))
+					{
+						seal.push(c.coord, c.row, immutable_ms);
+					}
+				}
 			}
 			return;
 		}
