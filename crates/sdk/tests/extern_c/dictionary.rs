@@ -165,3 +165,20 @@ fn dictionary_id_with_undefined() {
 	let output = round_trip_column("d", input.clone());
 	assert_column_eq("dict_id_with_undefined", &input, &output);
 }
+
+#[test]
+fn sliced_dictionary_column_keeps_every_width() {
+	// A byte offset slip when reading 17 byte rows after a slice decodes the wrong width or value.
+	let entries = vec![
+		DictionaryEntryId::U1(0),
+		DictionaryEntryId::U1(u8::MAX),
+		DictionaryEntryId::U2(u16::MAX),
+		DictionaryEntryId::U4(u32::MAX),
+		DictionaryEntryId::U8(u64::MAX),
+		DictionaryEntryId::U16(u128::MAX),
+		DictionaryEntryId::U16(0),
+	];
+	let parent = ColumnBuffer::dictionary_id(entries.clone());
+	let output = round_trip_column("d", parent.slice(1, 6));
+	assert_column_eq("sliced_dict_id", &ColumnBuffer::dictionary_id(entries[1..6].to_vec()), &output);
+}

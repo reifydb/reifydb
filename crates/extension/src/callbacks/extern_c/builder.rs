@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::Cell, collections::HashMap, ffi::c_void, fmt, mem, ptr, slice, str};
+use std::{cell::Cell, collections::HashMap, ffi::c_void, mem, ptr, slice, str};
 
 use arrow_array::{BooleanArray, LargeBinaryArray, LargeStringArray};
 use arrow_buffer::{BooleanBuffer, Buffer, OffsetBuffer, ScalarBuffer};
@@ -28,7 +28,6 @@ use reifydb_value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
 			any::AnyContainer,
-			dictionary::DictionaryContainer,
 			number::NumberContainer,
 			temporal_array::{date_array, datetime_array, duration_array, time_array},
 			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
@@ -40,7 +39,6 @@ use reifydb_value::{
 		duration::Duration,
 		identity::IdentityId,
 		int::Int,
-		is::IsNumber,
 		row_number::RowNumber,
 		system_columns::SystemColumns,
 		time::Time,
@@ -646,8 +644,9 @@ fn finalize_buffer(
 		ValueKind::Int8 => ColumnBuffer::int8(
 			numeric_bytes_to_vec::<i64>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
 		),
-		ValueKind::Int16 => from_numeric_bytes::<i128>(&data, written_count, ColumnBuffer::Int16)
-			.ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		ValueKind::Int16 => ColumnBuffer::int16(
+			numeric_bytes_to_vec::<i128>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		),
 		ValueKind::Uint1 => ColumnBuffer::uint1(
 			numeric_bytes_to_vec::<u8>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
 		),
@@ -660,8 +659,9 @@ fn finalize_buffer(
 		ValueKind::Uint8 => ColumnBuffer::uint8(
 			numeric_bytes_to_vec::<u64>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
 		),
-		ValueKind::Uint16 => from_numeric_bytes::<u128>(&data, written_count, ColumnBuffer::Uint16)
-			.ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		ValueKind::Uint16 => ColumnBuffer::uint16(
+			numeric_bytes_to_vec::<u128>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?,
+		),
 		ValueKind::Date => {
 			let v = numeric_bytes_to_vec::<Date>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?;
 			ColumnBuffer::Date(date_array(v))
@@ -760,7 +760,7 @@ fn finalize_buffer(
 					decode_dictionary_id_cell(bytes).ok()
 				})
 				.ok_or(EXTERN_C_ERROR_INTERNAL)?;
-			ColumnBuffer::DictionaryId(DictionaryContainer::from_vec(entries))
+			ColumnBuffer::dictionary_id(entries)
 		}
 		_ => return Err(EXTERN_C_ERROR_INTERNAL),
 	};
@@ -809,40 +809,42 @@ fn numeric_bytes_to_vec<T: Copy>(data: &[u8], count: usize) -> Option<Vec<T>> {
 		return None;
 	}
 	let mut v: Vec<T> = Vec::with_capacity(count);
-	// SAFETY: bounds checked above and `v` is fresh, so no overlap; `data` must be aligned for T.
+	// SAFETY: bounds checked above and `v` is fresh, so no overlap; bytes are copied, so `data` needs no alignment.
 	unsafe {
-		ptr::copy_nonoverlapping(data.as_ptr() as *const T, v.as_mut_ptr(), count);
+		ptr::copy_nonoverlapping(data.as_ptr(), v.as_mut_ptr() as *mut u8, needed);
 		v.set_len(count);
 	}
 	Some(v)
-}
-
-fn from_numeric_bytes<T: Copy + IsNumber + fmt::Debug + Default>(
-	data: &[u8],
-	count: usize,
-	wrap: fn(NumberContainer<T>) -> ColumnBuffer,
-) -> Option<ColumnBuffer> {
-	let v = numeric_bytes_to_vec::<T>(data, count)?;
-	Some(wrap(NumberContainer::from_parts(v)))
 }
 
 #[cfg(test)]
 mod tests {
 	use std::ptr;
 
+	use arrow_array::Array;
 	use postcard::to_allocvec;
 	use reifydb_codec::tag::ValueKind;
-	use reifydb_core::value::column::buffer::ColumnBuffer;
-	use reifydb_sdk::common::extern_c::wire::{
-		callbacks::builder::ColumnBufferHandle,
-		status::{EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_MARSHAL, EXTERN_C_OK},
+	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+	use reifydb_sdk::{
+		common::extern_c::wire::{
+			callbacks::builder::ColumnBufferHandle,
+			status::{EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_MARSHAL, EXTERN_C_OK},
+		},
+		flow::operator::{change::BorrowedColumns, extern_c::binding::arena::Arena},
 	};
-	use reifydb_value::value::blob::Blob;
+	use reifydb_value::{
+		fragment::Fragment,
+		value::{
+			blob::Blob,
+			container::decimal_array::{INT16_DATA_TYPE, UINT16_DATA_TYPE, u128s},
+			dictionary::DictionaryEntryId,
+		},
+	};
 	use serde_json::to_string;
 
 	use super::{
 		BuilderRegistry, BuilderSlot, Handle, finalize_buffer, host_builder_acquire, host_builder_commit,
-		host_builder_data_ptr, host_builder_offsets_ptr, with_registry,
+		host_builder_data_ptr, host_builder_offsets_ptr, numeric_bytes_to_vec, with_registry,
 	};
 
 	fn commit_varlen(
@@ -873,6 +875,78 @@ mod tests {
 			Some(BuilderSlot::Committed(committed)) => committed.buffer,
 			_ => panic!("a successful commit must leave a committed column behind"),
 		}
+	}
+
+	fn host_to_guest_to_host(input: ColumnBuffer) -> ColumnBuffer {
+		let columns = Columns::new(vec![ColumnWithName::new(Fragment::internal("c"), input)]);
+		let mut arena = Arena::new();
+		let ffi = arena.marshal_columns(&columns);
+		// SAFETY: `ffi` points into `arena` and `columns`, and both outlive every read below.
+		let borrowed = unsafe { BorrowedColumns::from_extern_c(&ffi) };
+		let column = borrowed.column_at_index(0).expect("one column was marshalled");
+		let (data, offsets, rows) = (column.data_bytes(), column.offsets(), column.row_count());
+		let registry = BuilderRegistry::new();
+		let (code, handle) = with_registry(&registry, || {
+			// SAFETY: a registry is installed and both copies stay within the capacity acquired for them.
+			unsafe {
+				let handle =
+					host_builder_acquire(ptr::null_mut(), column.type_code(), data.len().max(rows));
+				ptr::copy_nonoverlapping(data.as_ptr(), host_builder_data_ptr(handle), data.len());
+				if !offsets.is_empty() {
+					ptr::copy_nonoverlapping(
+						offsets.as_ptr(),
+						host_builder_offsets_ptr(handle),
+						offsets.len(),
+					);
+				}
+				(host_builder_commit(handle, rows), handle)
+			}
+		});
+		assert_eq!(code, EXTERN_C_OK);
+		committed_buffer(&registry, handle)
+	}
+
+	#[test]
+	fn int16_extremes_round_trip_through_the_host_builder() {
+		// A narrowed row or an arrow default scale 10 on the rebuilt column corrupts every 128 bit value.
+		let values = [i128::MIN, i128::MAX, 0, -1];
+		let output = host_to_guest_to_host(ColumnBuffer::int16(values));
+		let ColumnBuffer::Int16(array) = &output else {
+			panic!("expected a plain Int16 column, got {:?}", output.get_type())
+		};
+		assert_eq!(&array.values()[..], &values);
+		assert_eq!(array.data_type(), &INT16_DATA_TYPE);
+	}
+
+	#[test]
+	fn uint16_past_64_bits_round_trip_through_the_host_builder() {
+		// Any hop through a 64 bit conversion of the 256 bit native loses 2^64 and u128::MAX.
+		let values = [1u128 << 64, u128::MAX, (1u128 << 64) - 1, 1u128 << 127, 0];
+		let output = host_to_guest_to_host(ColumnBuffer::uint16(values));
+		let ColumnBuffer::Uint16(array) = &output else {
+			panic!("expected a plain Uint16 column, got {:?}", output.get_type())
+		};
+		assert_eq!(u128s(array), values);
+		assert_eq!(array.data_type(), &UINT16_DATA_TYPE);
+	}
+
+	#[test]
+	fn every_dictionary_width_round_trips_through_the_host_builder() {
+		// A slip between the cell's byte count width and the row's width tag changes the entry id.
+		let entries = vec![
+			DictionaryEntryId::U1(0),
+			DictionaryEntryId::U1(u8::MAX),
+			DictionaryEntryId::U2(0),
+			DictionaryEntryId::U2(u16::MAX),
+			DictionaryEntryId::U4(0),
+			DictionaryEntryId::U4(u32::MAX),
+			DictionaryEntryId::U8(0),
+			DictionaryEntryId::U8(u64::MAX),
+			DictionaryEntryId::U16(0),
+			DictionaryEntryId::U16(u128::MAX),
+		];
+		let output = host_to_guest_to_host(ColumnBuffer::dictionary_id(entries.clone()));
+		assert_eq!(output, ColumnBuffer::dictionary_id(entries));
 	}
 
 	#[test]
@@ -964,5 +1038,13 @@ mod tests {
 			panic!("expected a Bool column, got {:?}", guest.get_type())
 		};
 		assert_eq!(bits.values().inner().len(), 1, "3 rows must pack into exactly ceil(3 / 8) bytes");
+	}
+
+	#[test]
+	fn int16_rows_copy_out_of_a_byte_buffer_at_any_alignment() {
+		// A Vec<u8> only promises alignment 1, so a typed i128 copy out of it is a misaligned read.
+		let values = [i128::MIN, 1, i128::MAX];
+		let bytes: Vec<u8> = [0u8].into_iter().chain(values.iter().flat_map(|v| v.to_ne_bytes())).collect();
+		assert_eq!(numeric_bytes_to_vec::<i128>(&bytes[1..], values.len()), Some(values.to_vec()));
 	}
 }

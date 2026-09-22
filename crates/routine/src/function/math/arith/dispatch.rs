@@ -7,7 +7,7 @@ use reifydb_routine_abi::{context::FunctionContext, error::RoutineError};
 use reifydb_value::{
 	error::TypeError,
 	value::{
-		container::varlen_array,
+		container::{decimal_array::u128s, varlen_array},
 		is::IsNumber,
 		number::safe::div::SafeDiv,
 		value_type::{ValueType, input_types::InputTypes},
@@ -246,7 +246,24 @@ fn execute_arith<Op: ArithOp>(
 			ColumnBuffer::uint8_with_bitvec(values, bits)
 		}
 		ValueType::Uint16 => {
-			let (values, bits) = run!(Uint16);
+			let (ColumnBuffer::Uint16(l), ColumnBuffer::Uint16(r)) = (a_inner, b_inner) else {
+				unreachable!()
+			};
+			let d = d_parts.as_ref().map(|(inner, bv)| {
+				let ColumnBuffer::Uint16(c) = inner else {
+					unreachable!()
+				};
+				(u128s(c), *bv)
+			});
+			let (values, bits) = compute_rows::<_, Op>(
+				ctx,
+				&promoted,
+				(&u128s(l), a_bv),
+				(&u128s(r), b_bv),
+				&mode,
+				d.as_ref().map(|(values, bv)| (&values[..], *bv)),
+				strict_msg,
+			)?;
 			ColumnBuffer::uint16_with_bitvec(values, bits)
 		}
 		ValueType::Float4 => {

@@ -7,6 +7,7 @@ use reifydb_value::{
 	fragment::LazyFragment,
 	reifydb_assertions,
 	value::{
+		container::decimal_array::u128s,
 		is::IsNumber,
 		number::{promote::Promote, safe::mul::SafeMul},
 		value_type::{ValueType, get::GetType},

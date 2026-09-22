@@ -6,7 +6,10 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::value_type::{ValueType, input_types::InputTypes};
+use reifydb_value::value::{
+	container::decimal_array::u128_at,
+	value_type::{ValueType, input_types::InputTypes},
+};
 
 pub struct Log2 {
 	info: RoutineInfo,
@@ -32,12 +35,12 @@ fn numeric_to_f64(data: &ColumnBuffer, i: usize) -> Option<f64> {
 		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as f64),
 		ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as f64),
 		ColumnBuffer::Int8(c) => c.values().get(i).map(|&v| v as f64),
-		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Int16(c) => c.values().get(i).map(|&v| v as f64),
 		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as f64),
 		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as f64),
 		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as f64),
 		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as f64),
-		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Uint16(c) => u128_at(c, i).map(|v| v as f64),
 		ColumnBuffer::Float4(c) => c.values().get(i).map(|&v| v as f64),
 		ColumnBuffer::Float8(c) => c.values().get(i).copied(),
 		ColumnBuffer::Int {

@@ -20,6 +20,7 @@ use reifydb_routine_abi::{
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
+		container::decimal_array::u128s,
 		decimal::Decimal,
 		value_type::{ValueType, input_types::InputTypes},
 	},
@@ -217,12 +218,15 @@ fn execute_decimal<'a>(
 			ColumnBuffer::Int2(container) => exec_int_arm!(container.values(), row_count, sums, counts),
 			ColumnBuffer::Int4(container) => exec_int_arm!(container.values(), row_count, sums, counts),
 			ColumnBuffer::Int8(container) => exec_int_arm!(container.values(), row_count, sums, counts),
-			ColumnBuffer::Int16(container) => exec_int_arm!(container, row_count, sums, counts),
+			ColumnBuffer::Int16(container) => exec_int_arm!(container.values(), row_count, sums, counts),
 			ColumnBuffer::Uint1(container) => exec_int_arm!(container.values(), row_count, sums, counts),
 			ColumnBuffer::Uint2(container) => exec_int_arm!(container.values(), row_count, sums, counts),
 			ColumnBuffer::Uint4(container) => exec_int_arm!(container.values(), row_count, sums, counts),
 			ColumnBuffer::Uint8(container) => exec_int_arm!(container.values(), row_count, sums, counts),
-			ColumnBuffer::Uint16(container) => exec_int_arm!(container, row_count, sums, counts),
+			ColumnBuffer::Uint16(container) => {
+				let values = u128s(container);
+				exec_int_arm!(values, row_count, sums, counts)
+			}
 			ColumnBuffer::Int {
 				container,
 				..
@@ -370,7 +374,7 @@ impl Accumulator for AvgAccumulator {
 				acc_int_arm!(sums, self.counts, column, groups, container.values());
 			}
 			(AvgState::Int(sums), ColumnBuffer::Int16(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container);
+				acc_int_arm!(sums, self.counts, column, groups, container.values());
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint1(container)) => {
 				acc_int_arm!(sums, self.counts, column, groups, container.values());
@@ -385,7 +389,8 @@ impl Accumulator for AvgAccumulator {
 				acc_int_arm!(sums, self.counts, column, groups, container.values());
 			}
 			(AvgState::Int(sums), ColumnBuffer::Uint16(container)) => {
-				acc_int_arm!(sums, self.counts, column, groups, container);
+				let values = u128s(container);
+				acc_int_arm!(sums, self.counts, column, groups, values);
 			}
 			(
 				AvgState::Int(sums),

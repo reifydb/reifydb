@@ -9,7 +9,7 @@ use reifydb_rql::expression::PrefixOperator;
 use reifydb_value::{
 	error::{LogicalOp, OperandCategory, TypeError},
 	fragment::Fragment,
-	value::{decimal::Decimal, int::Int, uint::Uint},
+	value::{container::decimal_array::u128s, decimal::Decimal, int::Int, uint::Uint},
 };
 
 use crate::{Result, expression::option::unary_op_unwrap_option};
@@ -42,8 +42,8 @@ macro_rules! prefix_signed_int {
 }
 
 macro_rules! prefix_unsigned_int {
-	($column:expr, $container:expr, $operator:expr, $fragment:expr, $signed_ty:ty, $constructor:ident) => {{
-		let values: &[_] = $container.values();
+	($column:expr, $values:expr, $operator:expr, $fragment:expr, $signed_ty:ty, $constructor:ident) => {{
+		let values: &[_] = $values;
 		let mut result = Vec::with_capacity(values.len());
 		for val in values.iter() {
 			let signed = *val as $signed_ty;
@@ -173,23 +173,23 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 		},
 
 		ColumnBuffer::Uint1(container) => {
-			prefix_unsigned_int!(column, container, operator, fragment.clone(), i8, int1)
+			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i8, int1)
 		}
 
 		ColumnBuffer::Uint2(container) => {
-			prefix_unsigned_int!(column, container, operator, fragment.clone(), i16, int2)
+			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i16, int2)
 		}
 
 		ColumnBuffer::Uint4(container) => {
-			prefix_unsigned_int!(column, container, operator, fragment.clone(), i32, int4)
+			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i32, int4)
 		}
 
 		ColumnBuffer::Uint8(container) => {
-			prefix_unsigned_int!(column, container, operator, fragment.clone(), i64, int8)
+			prefix_unsigned_int!(column, container.values(), operator, fragment.clone(), i64, int8)
 		}
 
 		ColumnBuffer::Uint16(container) => {
-			prefix_unsigned_int!(column, container, operator, fragment.clone(), i128, int16)
+			prefix_unsigned_int!(column, &u128s(container), operator, fragment.clone(), i128, int16)
 		}
 
 		ColumnBuffer::Date(_) => {
@@ -315,7 +315,9 @@ pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment
 			let new_data = ColumnBuffer::decimal(result);
 			Ok(column.with_new_data(new_data))
 		}
-		ColumnBuffer::DictionaryId(_) => match operator {
+		ColumnBuffer::DictionaryId {
+			..
+		} => match operator {
 			PrefixOperator::Not(_) => Err(CoreError::FrameError {
 				message: "Cannot apply NOT operator to DictionaryId type".to_string(),
 			}

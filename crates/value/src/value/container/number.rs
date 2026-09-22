@@ -104,12 +104,6 @@ impl<T> NumberContainer<T>
 where
 	T: IsNumber + Clone + Debug + Default,
 {
-	pub fn from_parts(data: Vec<T>) -> Self {
-		Self {
-			data: SharedVec::from_vec(data),
-		}
-	}
-
 	pub fn len(&self) -> usize {
 		self.data.len()
 	}

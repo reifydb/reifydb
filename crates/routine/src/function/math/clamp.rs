@@ -8,7 +8,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{is::IsNumber, value_type::ValueType};
+use reifydb_value::value::{container::decimal_array::u128s, is::IsNumber, value_type::ValueType};
 
 use crate::function::{
 	math::arith::dispatch::ensure_numeric,
@@ -151,7 +151,13 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 				ColumnBuffer::uint8_with_bitvec(values, bits)
 			}
 			ValueType::Uint16 => {
-				let (values, bits) = run!(Uint16);
+				let (ColumnBuffer::Uint16(v), ColumnBuffer::Uint16(lo), ColumnBuffer::Uint16(hi)) =
+					(v_inner, lo_inner, hi_inner)
+				else {
+					unreachable!()
+				};
+				let (values, bits) =
+					clamp_rows(ctx, &u128s(v), v_bv, &u128s(lo), lo_bv, &u128s(hi), hi_bv)?;
 				ColumnBuffer::uint16_with_bitvec(values, bits)
 			}
 			ValueType::Float4 => {

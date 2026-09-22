@@ -17,7 +17,6 @@ use reifydb_value::{
 		container::{
 			any::AnyContainer,
 			bool_array,
-			dictionary::DictionaryContainer,
 			number::NumberContainer,
 			primitive,
 			row::RowNumberContainer,
@@ -27,7 +26,6 @@ use reifydb_value::{
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
-		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
 		int::Int,
@@ -239,13 +237,6 @@ slice_backed_suite!(int, NumberContainer<Int>, Int, |i| Int::from_i64(i as i64 *
 slice_backed_suite!(uint, NumberContainer<Uint>, Uint, |i| Uint::from_u64(i as u64 * 7), Uint::from_u64(u64::MAX));
 slice_backed_suite!(decimal, NumberContainer<Decimal>, Decimal, |i| Decimal::from_i64(i as i64), Decimal::from_i64(-1));
 slice_backed_suite!(row_number, RowNumberContainer, RowNumber, |i| RowNumber(i as u64 + 1), RowNumber(u64::MAX));
-slice_backed_suite!(
-	dictionary,
-	DictionaryContainer,
-	DictionaryEntryId,
-	|i| DictionaryEntryId::U4(i as u32),
-	DictionaryEntryId::U4(u32::MAX)
-);
 slice_backed_suite!(
 	any,
 	AnyContainer,

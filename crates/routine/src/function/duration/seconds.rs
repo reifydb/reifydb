@@ -5,7 +5,11 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal_array::duration_array, duration::Duration, value_type::ValueType};
+use reifydb_value::value::{
+	container::{decimal_array::u128_at, temporal_array::duration_array},
+	duration::Duration,
+	value_type::ValueType,
+};
 
 pub struct DurationSeconds {
 	info: RoutineInfo,
@@ -31,12 +35,12 @@ fn extract_i64(data: &ColumnBuffer, i: usize) -> Option<i64> {
 		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i64),
 		ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as i64),
 		ColumnBuffer::Int8(c) => c.values().get(i).copied(),
-		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int16(c) => c.values().get(i).map(|&v| v as i64),
 		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i64),
 		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i64),
 		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i64),
 		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as i64),
-		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint16(c) => u128_at(c, i).map(|v| v as i64),
 		_ => None,
 	}
 }

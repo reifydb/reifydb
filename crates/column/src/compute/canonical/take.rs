@@ -59,8 +59,34 @@ fn extract_indices(indices: &Canonical) -> Result<Vec<usize>> {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::value::column::buffer::ColumnBuffer;
+	use reifydb_value::value::{
+		container::dictionary_array::dictionary_array,
+		dictionary::{DictionaryEntryId, DictionaryId},
+	};
 
 	use super::*;
+
+	fn dictionary_column() -> ColumnBuffer {
+		ColumnBuffer::DictionaryId {
+			container: dictionary_array([
+				DictionaryEntryId::U4(1),
+				DictionaryEntryId::U4(2),
+				DictionaryEntryId::U4(3),
+			]),
+			dictionary_id: Some(DictionaryId(42)),
+		}
+	}
+
+	fn kept_dictionary_id(buffer: &ColumnBuffer) -> Option<DictionaryId> {
+		let ColumnBuffer::DictionaryId {
+			dictionary_id,
+			..
+		} = buffer
+		else {
+			panic!("expected a DictionaryId column, got {:?}", buffer.get_type());
+		};
+		*dictionary_id
+	}
 
 	#[test]
 	fn take_gathers_rows_by_index() {
@@ -70,5 +96,18 @@ mod tests {
 		let idx = Canonical::from_column_buffer(&idx_cd).unwrap();
 		let out = take(&ca, &idx).unwrap();
 		assert_eq!(out.buffer.as_slice::<i32>(), &[50, 10, 30]);
+	}
+
+	#[test]
+	fn take_dictionary_keeps_dictionary_id() {
+		// Without copying the id, a gathered dictionary column has none and can no longer be decoded.
+		let ca = Canonical::from_column_buffer(&dictionary_column()).unwrap();
+		let idx_cd = ColumnBuffer::uint4([2u32, 0]);
+		let idx = Canonical::from_column_buffer(&idx_cd).unwrap();
+		let out = take(&ca, &idx).unwrap();
+		assert_eq!(kept_dictionary_id(&out.buffer), Some(DictionaryId(42)));
+		assert_eq!(out.len(), 2);
+		assert_eq!(out.buffer.get_value(0), Value::DictionaryId(DictionaryEntryId::U4(3)));
+		assert_eq!(out.buffer.get_value(1), Value::DictionaryId(DictionaryEntryId::U4(1)));
 	}
 }

@@ -7,7 +7,10 @@ use reifydb_value::{
 	fragment::LazyFragment,
 	reifydb_assertions,
 	value::{
-		container::temporal_array::{duration_array, durations},
+		container::{
+			decimal_array::u128s,
+			temporal_array::{duration_array, durations},
+		},
 		duration::Duration,
 		is::IsNumber,
 		number::{promote::Promote, safe::sub::SafeSub},

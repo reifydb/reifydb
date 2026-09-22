@@ -135,12 +135,6 @@ impl SystemColumns {
 		self.has_row_numbers = true;
 	}
 
-	pub fn from_row_numbers(row_numbers: Vec<RowNumber>) -> Self {
-		let n = row_numbers.len();
-		let now = DateTime::default();
-		Self::new(row_numbers, Vec::new(), vec![now; n], vec![now; n], vec![now; n], Vec::new())
-	}
-
 	pub fn set_partitions(&mut self, partitions: Vec<Partition>) {
 		self.partitions = partitions;
 	}

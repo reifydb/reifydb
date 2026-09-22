@@ -11,6 +11,7 @@ use reifydb_value::{
 	reifydb_assertions, return_error,
 	value::{
 		container::{
+			decimal_array::u128s,
 			temporal_array::{dates, datetimes, durations, times},
 			uuid_array::{identity_ids, uuid4s, uuid7s},
 		},
@@ -55,21 +56,21 @@ macro_rules! dispatch_compare {
 			{$($extra)*}
 			{
 				$($acc)*
-				(ColumnBuffer::$L(l), ColumnBuffer::Float4(r)) => { return Ok(compare_number::<Op, $Lt, f32>(l.values(), r.values(), $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Float8(r)) => { return Ok(compare_number::<Op, $Lt, f64>(l.values(), r.values(), $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Int1(r)) => { return Ok(compare_number::<Op, $Lt, i8>(l.values(), r.values(), $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Int2(r)) => { return Ok(compare_number::<Op, $Lt, i16>(l.values(), r.values(), $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Int4(r)) => { return Ok(compare_number::<Op, $Lt, i32>(l.values(), r.values(), $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Int8(r)) => { return Ok(compare_number::<Op, $Lt, i64>(l.values(), r.values(), $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Int16(r)) => { return Ok(compare_number::<Op, $Lt, i128>(l.values(), r.values(), $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Uint1(r)) => { return Ok(compare_number::<Op, $Lt, u8>(l.values(), r.values(), $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Uint2(r)) => { return Ok(compare_number::<Op, $Lt, u16>(l.values(), r.values(), $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Uint4(r)) => { return Ok(compare_number::<Op, $Lt, u32>(l.values(), r.values(), $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Uint8(r)) => { return Ok(compare_number::<Op, $Lt, u64>(l.values(), r.values(), $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, $Lt, u128>(l.values(), r.values(), $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Int { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Int>(l.values(), r.values(), $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Uint>(l.values(), r.values(), $fragment)); },
-				(ColumnBuffer::$L(l), ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Decimal>(l.values(), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Float4(r)) => { return Ok(compare_number::<Op, $Lt, f32>(dispatch_compare!(@values $L l), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Float8(r)) => { return Ok(compare_number::<Op, $Lt, f64>(dispatch_compare!(@values $L l), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Int1(r)) => { return Ok(compare_number::<Op, $Lt, i8>(dispatch_compare!(@values $L l), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Int2(r)) => { return Ok(compare_number::<Op, $Lt, i16>(dispatch_compare!(@values $L l), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Int4(r)) => { return Ok(compare_number::<Op, $Lt, i32>(dispatch_compare!(@values $L l), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Int8(r)) => { return Ok(compare_number::<Op, $Lt, i64>(dispatch_compare!(@values $L l), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Int16(r)) => { return Ok(compare_number::<Op, $Lt, i128>(dispatch_compare!(@values $L l), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint1(r)) => { return Ok(compare_number::<Op, $Lt, u8>(dispatch_compare!(@values $L l), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint2(r)) => { return Ok(compare_number::<Op, $Lt, u16>(dispatch_compare!(@values $L l), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint4(r)) => { return Ok(compare_number::<Op, $Lt, u32>(dispatch_compare!(@values $L l), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint8(r)) => { return Ok(compare_number::<Op, $Lt, u64>(dispatch_compare!(@values $L l), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, $Lt, u128>(dispatch_compare!(@values $L l), &u128s(r), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Int { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Int>(dispatch_compare!(@values $L l), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Uint>(dispatch_compare!(@values $L l), r.values(), $fragment)); },
+				(ColumnBuffer::$L(l), ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Decimal>(dispatch_compare!(@values $L l), r.values(), $fragment)); },
 			}
 		)
 	};
@@ -97,7 +98,7 @@ macro_rules! dispatch_compare {
 			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint2(r)) => { return Ok(compare_number::<Op, Int, u16>(l.values(), r.values(), $fragment)); },
 			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint4(r)) => { return Ok(compare_number::<Op, Int, u32>(l.values(), r.values(), $fragment)); },
 			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint8(r)) => { return Ok(compare_number::<Op, Int, u64>(l.values(), r.values(), $fragment)); },
-			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, Int, u128>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, Int, u128>(l.values(), &u128s(r), $fragment)); },
 			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int { container: r, .. }) => { return Ok(compare_number::<Op, Int, Int>(l.values(), r.values(), $fragment)); },
 			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Int, Uint>(l.values(), r.values(), $fragment)); },
 			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Int, Decimal>(l.values(), r.values(), $fragment)); },
@@ -114,7 +115,7 @@ macro_rules! dispatch_compare {
 			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint2(r)) => { return Ok(compare_number::<Op, Uint, u16>(l.values(), r.values(), $fragment)); },
 			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint4(r)) => { return Ok(compare_number::<Op, Uint, u32>(l.values(), r.values(), $fragment)); },
 			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint8(r)) => { return Ok(compare_number::<Op, Uint, u64>(l.values(), r.values(), $fragment)); },
-			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, Uint, u128>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, Uint, u128>(l.values(), &u128s(r), $fragment)); },
 			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int { container: r, .. }) => { return Ok(compare_number::<Op, Uint, Int>(l.values(), r.values(), $fragment)); },
 			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Uint, Uint>(l.values(), r.values(), $fragment)); },
 			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Uint, Decimal>(l.values(), r.values(), $fragment)); },
@@ -131,7 +132,7 @@ macro_rules! dispatch_compare {
 			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint2(r)) => { return Ok(compare_number::<Op, Decimal, u16>(l.values(), r.values(), $fragment)); },
 			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint4(r)) => { return Ok(compare_number::<Op, Decimal, u32>(l.values(), r.values(), $fragment)); },
 			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint8(r)) => { return Ok(compare_number::<Op, Decimal, u64>(l.values(), r.values(), $fragment)); },
-			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, Decimal, u128>(l.values(), r.values(), $fragment)); },
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint16(r)) => { return Ok(compare_number::<Op, Decimal, u128>(l.values(), &u128s(r), $fragment)); },
 			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int { container: r, .. }) => { return Ok(compare_number::<Op, Decimal, Int>(l.values(), r.values(), $fragment)); },
 			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Decimal, Uint>(l.values(), r.values(), $fragment)); },
 			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Decimal, Decimal>(l.values(), r.values(), $fragment)); },
@@ -139,6 +140,16 @@ macro_rules! dispatch_compare {
 
 			$($extra)*
 		}
+	};
+
+
+	(@values Uint16 $array:ident) => {
+		&u128s($array)
+	};
+
+
+	(@values $L:ident $array:ident) => {
+		$array.values()
 	};
 }
 

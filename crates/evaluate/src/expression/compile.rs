@@ -1303,6 +1303,7 @@ mod tests {
 		value::{Value, value_type::ValueType},
 	};
 
+	use super::combine_bool_columns;
 	use crate::expression::{context::EvalContext, eval::evaluate};
 
 	fn column(name: &str) -> Expression {
@@ -1576,5 +1577,20 @@ mod tests {
 		let err = evaluate(&ctx, &multi(["a", "b"])).expect_err("a two column value must not be truncated");
 
 		assert_eq!(err.0.code, "RUNTIME_010");
+	}
+
+	#[test]
+	fn combining_boolean_columns_of_different_lengths_is_an_error() {
+		// A length mismatch in one batch must be an error, never padded none rows or an out of range read.
+		let left = ColumnWithName::new(Fragment::internal("l"), ColumnBuffer::bool([true, true, false]));
+		let right = ColumnWithName::new(Fragment::internal("r"), ColumnBuffer::bool([true, false]));
+
+		let result = combine_bool_columns(left, right, Fragment::internal("and"), |l, r| l && r);
+
+		assert!(
+			result.is_err(),
+			"a right side shorter than the left must be an error, got {:?}",
+			result.map(|c| c.data().clone())
+		);
 	}
 }

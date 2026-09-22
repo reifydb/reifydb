@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::Cell, collections::HashMap, ffi::c_void, fmt, mem, ptr, slice, str};
+use std::{cell::Cell, collections::HashMap, ffi::c_void, mem, ptr, slice, str};
 
 use arrow_array::{BooleanArray, LargeBinaryArray, LargeStringArray};
 use arrow_buffer::{BooleanBuffer, Buffer, OffsetBuffer, ScalarBuffer};
@@ -24,7 +24,6 @@ use reifydb_value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
 			any::AnyContainer,
-			dictionary::DictionaryContainer,
 			number::NumberContainer,
 			temporal_array::{date_array, datetime_array, duration_array, time_array},
 			uuid_array::{identity_id_array, uuid4_array, uuid7_array},
@@ -36,7 +35,6 @@ use reifydb_value::{
 		duration::Duration,
 		identity::IdentityId,
 		int::Int,
-		is::IsNumber,
 		row_number::RowNumber,
 		system_columns::SystemColumns,
 		time::Time,
@@ -566,12 +564,12 @@ pub(crate) fn finalize_buffer(
 		ValueKind::Int2 => ColumnBuffer::int2(bytes_to_vec::<i16>(&data, written_count)?),
 		ValueKind::Int4 => ColumnBuffer::int4(bytes_to_vec::<i32>(&data, written_count)?),
 		ValueKind::Int8 => ColumnBuffer::int8(bytes_to_vec::<i64>(&data, written_count)?),
-		ValueKind::Int16 => to_numeric::<i128>(&data, written_count, ColumnBuffer::Int16)?,
+		ValueKind::Int16 => ColumnBuffer::int16(bytes_to_vec::<i128>(&data, written_count)?),
 		ValueKind::Uint1 => ColumnBuffer::uint1(bytes_to_vec::<u8>(&data, written_count)?),
 		ValueKind::Uint2 => ColumnBuffer::uint2(bytes_to_vec::<u16>(&data, written_count)?),
 		ValueKind::Uint4 => ColumnBuffer::uint4(bytes_to_vec::<u32>(&data, written_count)?),
 		ValueKind::Uint8 => ColumnBuffer::uint8(bytes_to_vec::<u64>(&data, written_count)?),
-		ValueKind::Uint16 => to_numeric::<u128>(&data, written_count, ColumnBuffer::Uint16)?,
+		ValueKind::Uint16 => ColumnBuffer::uint16(bytes_to_vec::<u128>(&data, written_count)?),
 		ValueKind::Date => {
 			let v = bytes_to_vec::<Date>(&data, written_count)?;
 			ColumnBuffer::Date(date_array(v))
@@ -660,7 +658,7 @@ pub(crate) fn finalize_buffer(
 				decode_per_element::<DictionaryEntryId>(&data, &offsets, written_count, |bytes| {
 					decode_dictionary_id_cell(bytes).ok()
 				})?;
-			ColumnBuffer::DictionaryId(DictionaryContainer::from_vec(entries))
+			ColumnBuffer::dictionary_id(entries)
 		}
 		_ => return None,
 	};
@@ -710,19 +708,10 @@ fn bytes_to_vec<T: Copy>(data: &[u8], count: usize) -> Option<Vec<T>> {
 	// dropped; this also relies on every bit pattern being a valid T, which holds for the numeric
 	// and fixed-width temporal types the call sites instantiate.
 	unsafe {
-		ptr::copy_nonoverlapping(data.as_ptr() as *const T, v.as_mut_ptr(), count);
+		ptr::copy_nonoverlapping(data.as_ptr(), v.as_mut_ptr() as *mut u8, needed);
 		v.set_len(count);
 	}
 	Some(v)
-}
-
-fn to_numeric<T: Copy + IsNumber + fmt::Debug + Default>(
-	data: &[u8],
-	count: usize,
-	wrap: fn(NumberContainer<T>) -> ColumnBuffer,
-) -> Option<ColumnBuffer> {
-	let v = bytes_to_vec::<T>(data, count)?;
-	Some(wrap(NumberContainer::from_parts(v)))
 }
 
 pub fn into_diffs(emitted: Vec<EmittedDiff>) -> Diffs {
@@ -750,8 +739,8 @@ mod tests {
 	use serde_json::to_string;
 
 	use super::{
-		Handle, Slot, TestBuilderRegistry, finalize_buffer, test_acquire, test_commit, test_data_ptr,
-		test_offsets_ptr, with_registry,
+		Handle, Slot, TestBuilderRegistry, bytes_to_vec, finalize_buffer, test_acquire, test_commit,
+		test_data_ptr, test_offsets_ptr, with_registry,
 	};
 
 	fn commit_varlen(
@@ -866,5 +855,13 @@ mod tests {
 			panic!("expected a Bool column, got {:?}", guest.get_type())
 		};
 		assert_eq!(bits.values().inner().len(), 1, "3 rows must pack into exactly ceil(3 / 8) bytes");
+	}
+
+	#[test]
+	fn int16_rows_copy_out_of_a_byte_buffer_at_any_alignment() {
+		// A Vec<u8> only promises alignment 1, so a typed i128 copy out of it is a misaligned read.
+		let values = [i128::MIN, 1, i128::MAX];
+		let bytes: Vec<u8> = [0u8].into_iter().chain(values.iter().flat_map(|v| v.to_ne_bytes())).collect();
+		assert_eq!(bytes_to_vec::<i128>(&bytes[1..], values.len()), Some(values.to_vec()));
 	}
 }

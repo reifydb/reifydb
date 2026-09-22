@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical};
-use reifydb_value::{Result, value::Value};
+use reifydb_value::{
+	Result,
+	value::{Value, container::decimal_array::u128s},
+};
 
 use crate::error::ColumnError;
 
@@ -53,7 +56,7 @@ pub fn min_max(array: &Canonical) -> Result<(Value, Value)> {
 		ColumnBuffer::Uint2(_) => reduce_int!(array.buffer.as_slice::<u16>(), Uint2),
 		ColumnBuffer::Uint4(_) => reduce_int!(array.buffer.as_slice::<u32>(), Uint4),
 		ColumnBuffer::Uint8(_) => reduce_int!(array.buffer.as_slice::<u64>(), Uint8),
-		ColumnBuffer::Uint16(_) => reduce_int!(array.buffer.as_slice::<u128>(), Uint16),
+		ColumnBuffer::Uint16(c) => reduce_int!(u128s(c), Uint16),
 		ColumnBuffer::Any(_) => Err(ColumnError::FixedArrayRequired {
 			operation: "min_max",
 		}
@@ -97,6 +100,26 @@ mod tests {
 		let (min, max) = min_max(&ca).unwrap();
 		assert_eq!(min, Value::Int4(10));
 		assert_eq!(max, Value::Int4(50));
+	}
+
+	#[test]
+	fn min_max_uint16_above_u64() {
+		// A lossy i256 cast collapses rows above u64 MAX to none or equal values and picks the wrong bounds.
+		let cd = ColumnBuffer::uint16([u128::MAX, (1u128 << 64) + 1, 1u128 << 64]);
+		let ca = Canonical::from_column_buffer(&cd).unwrap();
+		let (min, max) = min_max(&ca).unwrap();
+		assert_eq!(min, Value::Uint16(1u128 << 64));
+		assert_eq!(max, Value::Uint16(u128::MAX));
+	}
+
+	#[test]
+	fn min_max_int16_at_i128_bounds() {
+		// A truncating read of the i128 rows breaks the order at the extremes and picks the wrong bounds.
+		let cd = ColumnBuffer::int16([0i128, i128::MAX, -1, i128::MIN, 1]);
+		let ca = Canonical::from_column_buffer(&cd).unwrap();
+		let (min, max) = min_max(&ca).unwrap();
+		assert_eq!(min, Value::Int16(i128::MIN));
+		assert_eq!(max, Value::Int16(i128::MAX));
 	}
 
 	#[test]

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::Array;
 use reifydb_core::value::column::buffer::ColumnBuffer;
+use reifydb_value::value::container::decimal_array::INT16_DATA_TYPE;
 
 use super::common::{assert_column_eq, round_trip_column};
 
@@ -41,4 +43,25 @@ fn int16_with_undefined() {
 	let input = ColumnBuffer::int16_optional([Some(i128::MIN), None, Some(0i128), None, Some(i128::MAX)]);
 	let output = round_trip_column("i", input.clone());
 	assert_column_eq("int16_with_undefined", &input, &output);
+}
+
+#[test]
+fn int16_min_max_come_back_with_the_int16_data_type() {
+	// A guest-built column left on the arrow default scale 10 reads every value 10^10 off at export.
+	let input = ColumnBuffer::int16([i128::MIN, i128::MAX]);
+	let output = round_trip_column("i", input.clone());
+	assert_column_eq("int16_min_max_data_type", &input, &output);
+	let ColumnBuffer::Int16(array) = &output else {
+		panic!("expected a plain Int16 column, got {:?}", output.get_type())
+	};
+	assert_eq!(array.data_type(), &INT16_DATA_TYPE);
+	assert_eq!(&array.values()[..], &[i128::MIN, i128::MAX]);
+}
+
+#[test]
+fn sliced_int16_column_reaches_the_guest_from_the_slice_start() {
+	// Borrowing from the parent buffer start instead of the slice offset hands the guest the wrong rows.
+	let parent = ColumnBuffer::int16([7, i128::MIN, i128::MAX, -7]);
+	let output = round_trip_column("i", parent.slice(1, 3));
+	assert_column_eq("sliced_int16", &ColumnBuffer::int16([i128::MIN, i128::MAX]), &output);
 }

@@ -26,10 +26,14 @@ impl Arena {
 	}
 
 	pub fn alloc(&self, size: usize) -> *mut u8 {
+		self.alloc_aligned(size, 8)
+	}
+
+	pub fn alloc_aligned(&self, size: usize, align: usize) -> *mut u8 {
 		if size == 0 {
 			return null_mut();
 		}
-		let layout = Layout::from_size_align(size, 8).unwrap();
+		let layout = Layout::from_size_align(size, align).unwrap();
 		self.bump.alloc_layout(layout).as_ptr()
 	}
 

@@ -2,11 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::value::{
-	container::dictionary::DictionaryContainer, dictionary::DictionaryEntryId, frame::data::FrameColumnData,
+	container::dictionary_array::dictionary_array, dictionary::DictionaryEntryId, frame::data::FrameColumnData,
 };
 
 fn make(v: Vec<DictionaryEntryId>) -> FrameColumnData {
-	FrameColumnData::DictionaryId(DictionaryContainer::new(v))
+	FrameColumnData::DictionaryId {
+		container: dictionary_array(v),
+		dictionary_id: None,
+	}
 }
 
 crate::plain_tests! {

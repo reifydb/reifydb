@@ -5,7 +5,11 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_value::value::{container::temporal_array::time_array, time::Time, value_type::ValueType};
+use reifydb_value::value::{
+	container::{decimal_array::u128_at, temporal_array::time_array},
+	time::Time,
+	value_type::ValueType,
+};
 
 pub struct TimeNew {
 	info: RoutineInfo,
@@ -31,12 +35,12 @@ fn extract_i32(data: &ColumnBuffer, i: usize) -> Option<i32> {
 		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i32),
 		ColumnBuffer::Int4(c) => c.values().get(i).copied(),
 		ColumnBuffer::Int8(c) => c.values().get(i).map(|&v| v as i32),
-		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as i32),
+		ColumnBuffer::Int16(c) => c.values().get(i).map(|&v| v as i32),
 		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i32),
 		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i32),
 		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i32),
 		ColumnBuffer::Uint8(c) => c.values().get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as i32),
+		ColumnBuffer::Uint16(c) => u128_at(c, i).map(|v| v as i32),
 		_ => None,
 	}
 }

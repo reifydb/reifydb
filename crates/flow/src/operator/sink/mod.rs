@@ -238,8 +238,12 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, host: &mut dyn Ho
 			.iter()
 			.enumerate()
 			.filter_map(|(pos, col)| {
-				if let ColumnBuffer::DictionaryId(container) = col.data() {
-					Some((pos, container.dictionary_id()?))
+				if let ColumnBuffer::DictionaryId {
+					dictionary_id,
+					..
+				} = col.data()
+				{
+					Some((pos, (*dictionary_id)?))
 				} else {
 					None
 				}

@@ -7,7 +7,7 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::number::NumberContainer,
+	container::{decimal_array::u128_at, number::NumberContainer},
 	decimal::Decimal,
 	value_type::{ValueType, input_types::InputTypes},
 };
@@ -63,7 +63,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
 					ColumnBuffer::Int16(prec_container) => {
-						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
+						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
 					ColumnBuffer::Uint1(prec_container) => {
 						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
@@ -78,7 +78,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 						prec_container.values().get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
 					ColumnBuffer::Uint16(prec_container) => {
-						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
+						u128_at(prec_container, row_idx).map(|v| v as i32).unwrap_or(0)
 					}
 					_ => 0,
 				}

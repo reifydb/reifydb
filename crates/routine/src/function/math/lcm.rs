@@ -31,7 +31,7 @@ fn numeric_to_i64(data: &ColumnBuffer, i: usize) -> Option<i64> {
 		ColumnBuffer::Int2(c) => c.values().get(i).map(|&v| v as i64),
 		ColumnBuffer::Int4(c) => c.values().get(i).map(|&v| v as i64),
 		ColumnBuffer::Int8(c) => c.values().get(i).copied(),
-		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int16(c) => c.values().get(i).map(|&v| v as i64),
 		ColumnBuffer::Uint1(c) => c.values().get(i).map(|&v| v as i64),
 		ColumnBuffer::Uint2(c) => c.values().get(i).map(|&v| v as i64),
 		ColumnBuffer::Uint4(c) => c.values().get(i).map(|&v| v as i64),

@@ -21,6 +21,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
+		container::decimal_array::u128s,
 		decimal::Decimal,
 		int::Int,
 		uint::Uint,
@@ -229,7 +230,7 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Int16(container) => {
-				sum_arm!(self, column, groups, container, i128, Int16);
+				sum_arm!(self, column, groups, container.values(), i128, Int16);
 				Ok(())
 			}
 			ColumnBuffer::Uint1(container) => {
@@ -249,7 +250,8 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Uint16(container) => {
-				sum_arm!(self, column, groups, container, u128, Uint16);
+				let values = u128s(container);
+				sum_arm!(self, column, groups, values, u128, Uint16);
 				Ok(())
 			}
 			ColumnBuffer::Float4(container) => {
@@ -393,7 +395,7 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Int16(container) => {
-				sub_arm!(self, column, groups, container, i128, Int16);
+				sub_arm!(self, column, groups, container.values(), i128, Int16);
 				Ok(())
 			}
 			ColumnBuffer::Uint1(container) => {
@@ -413,7 +415,8 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Uint16(container) => {
-				sub_arm!(self, column, groups, container, u128, Uint16);
+				let values = u128s(container);
+				sub_arm!(self, column, groups, values, u128, Uint16);
 				Ok(())
 			}
 			ColumnBuffer::Float4(container) => {

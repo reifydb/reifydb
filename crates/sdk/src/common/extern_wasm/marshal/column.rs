@@ -15,6 +15,8 @@ use reifydb_value::{
 	value::{
 		Value,
 		container::{
+			decimal_array::u128s,
+			dictionary_array,
 			temporal_array::{dates, datetimes, durations, times},
 			uuid_array::{identity_ids, uuid4s, uuid7s},
 			varlen_array::compact_parts,
@@ -22,6 +24,7 @@ use reifydb_value::{
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
+		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
 		int::Int,
@@ -156,7 +159,9 @@ impl Arena {
 				..
 			}
 			| ColumnBuffer::Any(_)
-			| ColumnBuffer::DictionaryId(_) => self.marshal_column_data_serialize(data),
+			| ColumnBuffer::DictionaryId {
+				..
+			} => self.marshal_column_data_serialize(data),
 			_ => self.marshal_column_data_zerocopy(data),
 		}
 	}
@@ -175,12 +180,12 @@ impl Arena {
 			ColumnBuffer::Int2(container) => self.marshal_numeric_slice::<i16>(container.values()),
 			ColumnBuffer::Int4(container) => self.marshal_numeric_slice::<i32>(container.values()),
 			ColumnBuffer::Int8(container) => self.marshal_numeric_slice::<i64>(container.values()),
-			ColumnBuffer::Int16(container) => self.marshal_numeric_slice::<i128>(container),
+			ColumnBuffer::Int16(container) => self.marshal_numeric_slice::<i128>(container.values()),
 			ColumnBuffer::Uint1(container) => self.marshal_numeric_slice::<u8>(container.values()),
 			ColumnBuffer::Uint2(container) => self.marshal_numeric_slice::<u16>(container.values()),
 			ColumnBuffer::Uint4(container) => self.marshal_numeric_slice::<u32>(container.values()),
 			ColumnBuffer::Uint8(container) => self.marshal_numeric_slice::<u64>(container.values()),
-			ColumnBuffer::Uint16(container) => self.marshal_numeric_slice::<u128>(container),
+			ColumnBuffer::Uint16(container) => self.marshal_copied_u128s(&u128s(container)),
 
 			ColumnBuffer::Date(container) => self.marshal_numeric_slice::<Date>(dates(container)),
 			ColumnBuffer::DateTime(container) => {
@@ -244,8 +249,11 @@ impl Arena {
 				encode_any_cell(value, buf).expect("unsupported value in any column cell");
 			}),
 
-			ColumnBuffer::DictionaryId(container) => {
-				let values = container.data();
+			ColumnBuffer::DictionaryId {
+				container,
+				..
+			} => {
+				let values: Vec<DictionaryEntryId> = dictionary_array::iter(container).collect();
 				self.marshal_encoded_cells(values.len(), |i, buf| {
 					encode_dictionary_id_cell(&values[i], buf)
 				})
@@ -281,6 +289,27 @@ impl Arena {
 				ptr: slice.as_ptr() as *const u8,
 				len: byte_len,
 				cap: 0,
+			},
+			ExternCBuffer::empty(),
+		)
+	}
+
+	fn marshal_copied_u128s(&mut self, values: &[u128]) -> (ExternCBuffer, ExternCBuffer) {
+		let byte_len = mem::size_of_val(values);
+		if byte_len == 0 {
+			return (ExternCBuffer::empty(), ExternCBuffer::empty());
+		}
+		let ptr = self.alloc_aligned(byte_len, 16);
+		// SAFETY: `ptr` is a fresh non-null arena block of `byte_len == values.len() * 16` writable bytes at
+		// alignment 16, so it holds exactly `values.len()` aligned u128 and cannot overlap `values`.
+		unsafe {
+			ptr::copy_nonoverlapping(values.as_ptr(), ptr as *mut u128, values.len());
+		}
+		(
+			ExternCBuffer {
+				ptr,
+				len: byte_len,
+				cap: byte_len,
 			},
 			ExternCBuffer::empty(),
 		)
@@ -488,6 +517,46 @@ mod tests {
 			marshalled_parts(ColumnBuffer::bool([false, true, true, false, true]).slice(1, 4));
 		assert_eq!(rows, 3);
 		assert_eq!(data, vec![0b0000_0011u8]);
+	}
+
+	#[test]
+	fn uint16_rows_reach_the_guest_16_aligned() {
+		// An 8-aligned copy makes the guest's &[u128] view of the rows undefined behaviour.
+		let values = [1u128 << 64, u128::MAX, 0, (1u128 << 64) - 1];
+		let inputs = [
+			ColumnBuffer::uint16(values),
+			ColumnBuffer::uint16_optional(values.iter().copied().map(Some).chain([None])),
+		];
+		for padding in [0usize, 8, 16, 24] {
+			for input in inputs.clone() {
+				let columns = Columns::new(vec![ColumnWithName::new(Fragment::internal("c"), input)]);
+				let mut arena = Arena::new();
+				arena.alloc(padding);
+				let ffi = arena.marshal_columns(&columns);
+				// SAFETY: `ffi` points into `arena` and `columns`, and both outlive every read below.
+				let borrowed = unsafe { BorrowedColumns::from_extern_c(&ffi) };
+				let column = borrowed.column_at_index(0).expect("one column was marshalled");
+				let data = column.data_bytes();
+				assert_eq!(
+					data.as_ptr() as usize % 16,
+					0,
+					"padding {padding}: rows handed over 8-aligned"
+				);
+				assert_eq!(
+					data.len(),
+					column.row_count() * 16,
+					"padding {padding}: u128 rows must stay 16 bytes"
+				);
+				for (row, value) in values.iter().enumerate() {
+					assert_eq!(
+						data[row * 16..(row + 1) * 16],
+						value.to_le_bytes(),
+						"padding {padding}"
+					);
+					assert_eq!(column.u128_at(row), Some(*value), "padding {padding}");
+				}
+			}
+		}
 	}
 
 	#[test]

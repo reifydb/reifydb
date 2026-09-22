@@ -7,7 +7,11 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::{
-	container::number::NumberContainer, decimal::Decimal, int::Int, uint::Uint, value_type::ValueType,
+	container::{decimal_array::u128_at, number::NumberContainer},
+	decimal::Decimal,
+	int::Int,
+	uint::Uint,
+	value_type::ValueType,
 };
 
 pub struct Abs {
@@ -103,7 +107,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.get(i) {
+					if let Some(&value) = container.values().get(i) {
 						data.push(value.abs());
 						res_bitvec.push(true);
 					} else {
@@ -173,7 +177,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.get(i) {
+					if let Some(value) = u128_at(container, i) {
 						data.push(value);
 						res_bitvec.push(true);
 					} else {

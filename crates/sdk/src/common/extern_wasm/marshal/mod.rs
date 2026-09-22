@@ -28,7 +28,8 @@ use reifydb_value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
 			any::AnyContainer,
-			dictionary::DictionaryContainer,
+			decimal_array::u128s,
+			dictionary_array,
 			number::NumberContainer,
 			temporal_array::{
 				date_array, dates, datetime_array, datetimes, duration_array, durations, time_array,
@@ -294,12 +295,12 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 		ColumnBuffer::Int2(container) => marshal_numeric_to_buf(buf, container.values()),
 		ColumnBuffer::Int4(container) => marshal_numeric_to_buf(buf, container.values()),
 		ColumnBuffer::Int8(container) => marshal_numeric_to_buf(buf, container.values()),
-		ColumnBuffer::Int16(container) => marshal_numeric_to_buf(buf, container),
+		ColumnBuffer::Int16(container) => marshal_numeric_to_buf(buf, container.values()),
 		ColumnBuffer::Uint1(container) => marshal_numeric_to_buf(buf, container.values()),
 		ColumnBuffer::Uint2(container) => marshal_numeric_to_buf(buf, container.values()),
 		ColumnBuffer::Uint4(container) => marshal_numeric_to_buf(buf, container.values()),
 		ColumnBuffer::Uint8(container) => marshal_numeric_to_buf(buf, container.values()),
-		ColumnBuffer::Uint16(container) => marshal_numeric_to_buf(buf, container),
+		ColumnBuffer::Uint16(container) => marshal_numeric_to_buf(buf, &u128s(container)),
 
 		ColumnBuffer::Date(container) => {
 			let encoded: Vec<i32> = dates(container).iter().map(|d| d.to_days_since_epoch()).collect();
@@ -377,8 +378,11 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			marshal_data_with_offsets_to_buf(buf, &data_bytes, &offsets)
 		}
 
-		ColumnBuffer::DictionaryId(container) => {
-			let encoded: Vec<u128> = container.data().iter().map(|id| id.to_u128()).collect();
+		ColumnBuffer::DictionaryId {
+			container,
+			..
+		} => {
+			let encoded: Vec<u128> = dictionary_array::iter(container).map(|id| id.to_u128()).collect();
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 
@@ -502,16 +506,12 @@ fn unmarshal_column_data(
 		ValueKind::Int2 => ColumnBuffer::int2(unmarshal_numeric::<i16>(data, row_count)),
 		ValueKind::Int4 => ColumnBuffer::int4(unmarshal_numeric::<i32>(data, row_count)),
 		ValueKind::Int8 => ColumnBuffer::int8(unmarshal_numeric::<i64>(data, row_count)),
-		ValueKind::Int16 => {
-			ColumnBuffer::Int16(NumberContainer::new(unmarshal_numeric::<i128>(data, row_count)))
-		}
+		ValueKind::Int16 => ColumnBuffer::int16(unmarshal_numeric::<i128>(data, row_count)),
 		ValueKind::Uint1 => ColumnBuffer::uint1(unmarshal_numeric::<u8>(data, row_count)),
 		ValueKind::Uint2 => ColumnBuffer::uint2(unmarshal_numeric::<u16>(data, row_count)),
 		ValueKind::Uint4 => ColumnBuffer::uint4(unmarshal_numeric::<u32>(data, row_count)),
 		ValueKind::Uint8 => ColumnBuffer::uint8(unmarshal_numeric::<u64>(data, row_count)),
-		ValueKind::Uint16 => {
-			ColumnBuffer::Uint16(NumberContainer::new(unmarshal_numeric::<u128>(data, row_count)))
-		}
+		ValueKind::Uint16 => ColumnBuffer::uint16(unmarshal_numeric::<u128>(data, row_count)),
 		ValueKind::Utf8 => {
 			let container = unmarshal_utf8(data, row_count, offsets_bytes);
 			ColumnBuffer::Utf8 {
@@ -563,7 +563,7 @@ fn unmarshal_column_data(
 				.into_iter()
 				.map(DictionaryEntryId::U16)
 				.collect();
-			ColumnBuffer::DictionaryId(DictionaryContainer::new(entries))
+			ColumnBuffer::dictionary_id(entries)
 		}
 		ValueKind::None
 		| ValueKind::Type

@@ -21,6 +21,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
+		container::decimal_array::u128s,
 		decimal::Decimal,
 		int::Int,
 		uint::Uint,
@@ -183,7 +184,7 @@ impl Accumulator for MaxAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Int16(container) => {
-				max_arm!(self, column, groups, container, Int16);
+				max_arm!(self, column, groups, container.values(), Int16);
 				Ok(())
 			}
 			ColumnBuffer::Uint1(container) => {
@@ -203,7 +204,8 @@ impl Accumulator for MaxAccumulator {
 				Ok(())
 			}
 			ColumnBuffer::Uint16(container) => {
-				max_arm!(self, column, groups, container, Uint16);
+				let values = u128s(container);
+				max_arm!(self, column, groups, values, Uint16);
 				Ok(())
 			}
 			ColumnBuffer::Float4(container) => {

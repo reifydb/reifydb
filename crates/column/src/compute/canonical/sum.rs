@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical};
-use reifydb_value::{Result, value::Value};
+use reifydb_value::{
+	Result,
+	value::{Value, container::decimal_array::u128s},
+};
 
 use crate::error::ColumnError;
 
@@ -31,7 +34,7 @@ pub fn sum(array: &Canonical) -> Result<Value> {
 		ColumnBuffer::Uint2(_) => sum_int_slice!(array.buffer.as_slice::<u16>(), u64, Uint8),
 		ColumnBuffer::Uint4(_) => sum_int_slice!(array.buffer.as_slice::<u32>(), u64, Uint8),
 		ColumnBuffer::Uint8(_) => sum_int_slice!(array.buffer.as_slice::<u64>(), u64, Uint8),
-		ColumnBuffer::Uint16(_) => sum_int_slice!(array.buffer.as_slice::<u128>(), u128, Uint16),
+		ColumnBuffer::Uint16(c) => sum_int_slice!(u128s(c), u128, Uint16),
 		ColumnBuffer::Float4(_) => {
 			let slice = array.buffer.as_slice::<f32>();
 			let mut acc = 0f64;
@@ -74,6 +77,46 @@ mod tests {
 		let cd = ColumnBuffer::int4([10i32, 20, 30, 40]);
 		let ca = Canonical::from_column_buffer(&cd).unwrap();
 		assert_eq!(sum(&ca).unwrap(), Value::Int8(100));
+	}
+
+	#[test]
+	fn sum_uint16_keeps_bits_above_u64() {
+		// A lossy i256 cast drops the bits above 64 and sums these rows to 5 or none.
+		let cd = ColumnBuffer::uint16([1u128 << 64, (1u128 << 64) + 5]);
+		let ca = Canonical::from_column_buffer(&cd).unwrap();
+		assert_eq!(sum(&ca).unwrap(), Value::Uint16((1u128 << 65) + 5));
+	}
+
+	#[test]
+	fn sum_uint16_at_u128_max_wraps() {
+		// The sum must stay u128 and wrap, otherwise u128 MAX plus 2 panics or saturates instead of 1.
+		let single = ColumnBuffer::uint16([u128::MAX]);
+		let ca = Canonical::from_column_buffer(&single).unwrap();
+		assert_eq!(sum(&ca).unwrap(), Value::Uint16(u128::MAX));
+
+		let wrapping = ColumnBuffer::uint16([u128::MAX, 2]);
+		let ca = Canonical::from_column_buffer(&wrapping).unwrap();
+		assert_eq!(sum(&ca).unwrap(), Value::Uint16(1));
+	}
+
+	#[test]
+	fn sum_int16_at_i128_bounds() {
+		// The sum must stay i128 and wrap, otherwise i128 MAX plus 1 panics instead of giving i128 MIN.
+		let min = ColumnBuffer::int16([i128::MIN]);
+		let ca = Canonical::from_column_buffer(&min).unwrap();
+		assert_eq!(sum(&ca).unwrap(), Value::Int16(i128::MIN));
+
+		let max = ColumnBuffer::int16([i128::MAX]);
+		let ca = Canonical::from_column_buffer(&max).unwrap();
+		assert_eq!(sum(&ca).unwrap(), Value::Int16(i128::MAX));
+
+		let both = ColumnBuffer::int16([i128::MIN, i128::MAX]);
+		let ca = Canonical::from_column_buffer(&both).unwrap();
+		assert_eq!(sum(&ca).unwrap(), Value::Int16(-1));
+
+		let wrapping = ColumnBuffer::int16([i128::MAX, 1]);
+		let ca = Canonical::from_column_buffer(&wrapping).unwrap();
+		assert_eq!(sum(&ca).unwrap(), Value::Int16(i128::MIN));
 	}
 
 	#[test]

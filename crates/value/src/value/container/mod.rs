@@ -4,7 +4,6 @@
 pub mod any;
 pub mod bool_array;
 pub mod decimal_array;
-pub mod dictionary;
 pub mod dictionary_array;
 pub mod digest;
 pub mod number;

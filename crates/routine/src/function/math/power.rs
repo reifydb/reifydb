@@ -9,7 +9,10 @@ use reifydb_routine_abi::{
 };
 use reifydb_value::{
 	error::TypeError,
-	value::{decimal::Decimal, int::Int, is::IsNumber, uint::Uint, value_type::ValueType},
+	value::{
+		container::decimal_array::u128s, decimal::Decimal, int::Int, is::IsNumber, uint::Uint,
+		value_type::ValueType,
+	},
 };
 
 use crate::function::{
@@ -142,7 +145,14 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 			ValueType::Uint2 => run!(Uint2, uint2_with_bitvec, unsigned_pow_op!()),
 			ValueType::Uint4 => run!(Uint4, uint4_with_bitvec, unsigned_pow_op!()),
 			ValueType::Uint8 => run!(Uint8, uint8_with_bitvec, unsigned_pow_op!()),
-			ValueType::Uint16 => run!(Uint16, uint16_with_bitvec, unsigned_pow_op!()),
+			ValueType::Uint16 => {
+				let (ColumnBuffer::Uint16(b), ColumnBuffer::Uint16(e)) = (base_inner, exp_inner) else {
+					unreachable!()
+				};
+				let (values, bits) =
+					pow_rows(&u128s(b), base_bv, &u128s(e), exp_bv, unsigned_pow_op!(), &overflow)?;
+				ColumnBuffer::uint16_with_bitvec(values, bits)
+			}
 			ValueType::Float4 => run!(Float4, float4_with_bitvec, |b: &f32, e: &f32| Some(b.powf(*e))),
 			ValueType::Float8 => run!(Float8, float8_with_bitvec, |b: &f64, e: &f64| Some(b.powf(*e))),
 			ValueType::Int => run!(Int { .. }, int_with_bitvec, |b: &Int, e: &Int| {
