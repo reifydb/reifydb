@@ -419,6 +419,64 @@ fn an_update_moving_time_back_inside_a_sliding_window_takes_back_the_old_time() 
 }
 
 #[test]
+fn an_update_moving_time_out_of_a_sliding_window_leaves_it_and_joins_the_new_ones() {
+	// Without re-routing the moved row stays counted in 00:30 and 01:00 and never reaches 02:00 or 02:30.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
+			FROM app::t
+				| window sliding { n: math::count(), s: window::start() }
+					by { g } with { duration: 60s, slide: 30s, lateness: 1h }
+		}"#);
+
+	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 9, "2026-01-01T00:01:20Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 2, TIMEOUT);
+	db.command(r#"UPDATE app::t { ts: "2026-01-01T00:02:40Z" } FILTER { id == 2 }"#);
+	db.await_exact_row_count("FROM app::w", 4, TIMEOUT);
+
+	let windows = |db: &TestDb| {
+		let frames = db.query("FROM app::w");
+		let mut rows: Vec<(String, String)> = text(&column_values(&frames[0], "s"))
+			.into_iter()
+			.zip(text(&column_values(&frames[0], "n")))
+			.collect();
+		rows.sort();
+		rows
+	};
+	let window = |s: &str| (format!("2026-01-01T00:{s}.000000000Z"), "1".to_string());
+	assert_eq!(windows(&db), vec![window("00:30"), window("01:00"), window("02:00"), window("02:30")]);
+
+	// The delete must follow the row index to the new windows, or 02:00 and 02:30 would keep the row.
+	db.command("DELETE app::t FILTER { id == 2 }");
+	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
+	assert_eq!(windows(&db), vec![window("00:30"), window("01:00")]);
+}
+
+#[test]
+fn a_row_counted_sliding_window_keeps_an_updated_row_in_place_when_its_time_moves() {
+	// Row-counted windows place rows by arrival, so re-routing by time would give 2, 6, 8, 12.
+	let db = setup();
+	source(&db);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, x: int4 } AS {
+			FROM app::t
+				| window sliding { x: math::sum(v) } by { g } with { count: 2, slide: 1 }
+		}"#);
+
+	insert(&db, 1, 1, 1, "2026-01-01T00:01:10Z");
+	insert(&db, 2, 1, 2, "2026-01-01T00:01:20Z");
+	insert(&db, 3, 1, 4, "2026-01-01T00:01:30Z");
+	db.await_exact_row_count("FROM app::w", 3, TIMEOUT);
+	db.command(r#"UPDATE app::t { v: 8, ts: "2026-01-01T00:01:05Z" } FILTER { id == 1 }"#);
+	db.await_row_count("FROM app::w | filter { x >= 8 }", 1, TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	let mut sums = text(&column_values(&frames[0], "x"));
+	sums.sort();
+	assert_eq!(sums, vec!["10".to_string(), "4".to_string(), "6".to_string()]);
+}
+
+#[test]
 fn an_update_moving_time_back_inside_a_session_takes_back_the_old_time() {
 	// Taking the old row back under its new time misses the stored entry, so 01:20 and v 9 would linger.
 	let db = setup();

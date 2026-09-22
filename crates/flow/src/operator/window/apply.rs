@@ -603,6 +603,22 @@ pub fn apply_sliding_engine(
 						let pre_coord =
 							slot_coord(is_count, pre_timestamps[row_idx], row_number.0);
 						let post_coord = slot_coord(is_count, event_ts, row_number.0);
+						let targets = if !is_count
+							&& pre_timestamps[row_idx] != timestamps[row_idx]
+						{
+							operator.drop_row_index(host, *hash, row_number)?;
+							let window_ids = sliding_insert_anchors(
+								operator, host, *hash, event_ts, false,
+							)?;
+							for wid in &window_ids {
+								operator.store_row_index(
+									host, *hash, row_number, *wid,
+								)?;
+							}
+							window_ids
+						} else {
+							existing.clone()
+						};
 						for wid in existing {
 							push_count_event(
 								&mut buckets,
@@ -617,6 +633,8 @@ pub fn apply_sliding_engine(
 								AccumulatorEvent::Remove(pre_contrib.clone()),
 								pre_timestamps[row_idx],
 							);
+						}
+						for wid in targets {
 							push_count_event(
 								&mut buckets,
 								&mut group_values,
