@@ -1,13 +1,19 @@
-error[E0277]: the trait bound `RetainedAccumulator<u64, f64>: MergeAccumulator` is not satisfied
-  --> tests/class_compile_fail/all_kinds_needs_a_merge_accumulator.rs:63:15
+error[E0277]: the trait bound `NoMerge: MergeAccumulator` is not satisfied
+  --> tests/class_compile_fail/all_kinds_needs_a_merge_accumulator.rs:95:15
    |
-63 |     type Kinds = AllKinds;
-   |                  ^^^^^^^^ the trait `MergeAccumulator` is not implemented for `RetainedAccumulator<u64, f64>`
+95 |     type Kinds = AllKinds;
+   |                  ^^^^^^^^ unsatisfied trait bound
    |
+help: the trait `MergeAccumulator` is not implemented for `NoMerge`
+  --> tests/class_compile_fail/all_kinds_needs_a_merge_accumulator.rs:29:1
+   |
+29 | struct NoMerge {
+   | ^^^^^^^^^^^^^^
    = help: the following other types implement trait `MergeAccumulator`:
              KeyedInvertibleAccumulator<K, A>
              LastValue<V>
              Moments
+             RetainedAccumulator<K, V>
              SealingEndpoint<S, V>
              SealingMax<S, V>
              SealingMin<S, V>

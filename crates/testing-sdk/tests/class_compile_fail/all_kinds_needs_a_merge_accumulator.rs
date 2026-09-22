@@ -1,10 +1,9 @@
-use std::collections::BTreeMap;
-
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	metrics::heap::HeapSize,
 	operator_with::ApplyWith,
 };
-use reifydb_flow::window::{accumulator::invertible::retained_map::RetainedAccumulator, span::WindowSpan};
+use reifydb_flow::window::{accumulator::WindowAccumulator, span::WindowSpan};
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
@@ -25,6 +24,39 @@ struct Out {
 
 row!(Out { group: String });
 
+#[reifydb_macro::operator_state]
+#[derive(Clone, Debug, Default)]
+struct NoMerge {
+	total: f64,
+}
+
+impl HeapSize for NoMerge {
+	fn heap_size(&self) -> usize {
+		0
+	}
+}
+
+impl WindowAccumulator for NoMerge {
+	type Contribution = f64;
+	type Output = f64;
+
+	fn add(&mut self, contribution: &f64) {
+		self.total += contribution;
+	}
+
+	fn remove(&mut self, contribution: &f64) {
+		self.total -= contribution;
+	}
+
+	fn finalize(&self) -> Option<f64> {
+		Some(self.total)
+	}
+
+	fn is_empty(&self) -> bool {
+		self.total == 0.0
+	}
+}
+
 struct Unmergeable;
 
 impl OperatorMetadata for Unmergeable {
@@ -39,7 +71,7 @@ impl OperatorMetadata for Unmergeable {
 impl WindowedOperator for Unmergeable {
 	type Coord = DateTime;
 	type GroupKey = String;
-	type Accumulator = RetainedAccumulator<u64, f64>;
+	type Accumulator = NoMerge;
 	type Output = Out;
 
 	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
@@ -50,19 +82,19 @@ impl WindowedOperator for Unmergeable {
 		row.row_time()
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, _row: &impl RowView) -> Option<(String, (u64, f64))> {
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, _row: &impl RowView) -> Option<(String, f64)> {
 		None
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> RetainedAccumulator<u64, f64> {
-		RetainedAccumulator::default()
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> NoMerge {
+		NoMerge::default()
 	}
 }
 
 impl Emit for Unmergeable {
 	type Kinds = AllKinds;
 
-	fn build_output(&self, group: &String, _span: WindowSpan<DateTime>, _value: &BTreeMap<u64, f64>) -> Option<Out> {
+	fn build_output(&self, group: &String, _span: WindowSpan<DateTime>, _value: &f64) -> Option<Out> {
 		Some(Out {
 			group: group.clone(),
 		})
