@@ -107,6 +107,14 @@ pub enum CoreError {
 		slide: Duration,
 	},
 
+	#[error("a session window seals on its gap and takes no lateness (lateness: {lateness})")]
+	OperatorWithSessionLateness {
+		lateness: Duration,
+	},
+
+	#[error("a session window needs a gap above zero")]
+	OperatorWithSessionZeroGap,
+
 	#[error("operator setting '{key}' is a duration ({duration}), but this operator seals by count")]
 	OperatorWithDurationSpan {
 		key: &'static str,

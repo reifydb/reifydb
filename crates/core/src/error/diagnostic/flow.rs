@@ -766,6 +766,22 @@ pub fn flow_operator_with_window_slide_duration(slide: Duration) -> Diagnostic {
 	)
 }
 
+pub fn flow_operator_with_session_lateness(lateness: Duration) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_078",
+		format!("a session window seals on its gap and takes no lateness (lateness: {})", lateness),
+		"Remove lateness, or set lateness: 0s.",
+	)
+}
+
+pub fn flow_operator_with_session_zero_gap() -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_079",
+		"a session window needs a gap above zero".to_string(),
+		"Set gap to a positive duration.",
+	)
+}
+
 pub fn flow_operator_with_duration_span(key: &str, duration: Duration) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_070",

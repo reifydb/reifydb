@@ -154,6 +154,22 @@ impl ApplyWith {
 		}
 	}
 
+	pub fn check_session_window(&self) -> Result<()> {
+		let Some(gap) = self.window_session_gap() else {
+			return Ok(());
+		};
+		if !gap.is_positive() {
+			return Err(CoreError::OperatorWithSessionZeroGap.into());
+		}
+		match self.lateness_duration()? {
+			Some(lateness) if lateness.is_positive() => Err(CoreError::OperatorWithSessionLateness {
+				lateness,
+			}
+			.into()),
+			_ => Ok(()),
+		}
+	}
+
 	pub fn reject_window(&self) -> Result<()> {
 		match &self.window {
 			None => Ok(()),
@@ -758,6 +774,44 @@ mod tests {
 			};
 			assert_eq!(with.window_session_gap(), None, "a {name} window has no session gap");
 		}
+	}
+
+	#[test]
+	fn check_session_window_refuses_a_zero_gap_and_a_positive_lateness_only_on_a_session() {
+		// A zero gap spans no row and a lateness misfiles late rows; any other kind must keep its lateness.
+		let session = |gap: Duration, lateness: Option<WithSpan>| ApplyWith {
+			window: Some(WindowKind::Session {
+				gap,
+			}),
+			lateness,
+			immutable: None,
+		};
+		let code = |with: ApplyWith| with.check_session_window().unwrap_err().0.code;
+
+		assert!(session(secs(30), None).check_session_window().is_ok());
+		assert!(session(secs(30), Some(WithSpan::Duration(secs(0)))).check_session_window().is_ok());
+		assert_eq!(code(session(secs(30), Some(WithSpan::Duration(secs(1))))), "FLOW_078");
+		assert_eq!(code(session(secs(0), None)), "FLOW_079");
+		assert_eq!(
+			code(session(secs(0), Some(WithSpan::Duration(secs(1))))),
+			"FLOW_079",
+			"the gap is checked first"
+		);
+		assert_eq!(
+			code(session(secs(30), Some(WithSpan::Count(5)))),
+			"FLOW_063",
+			"a session seals by time, so a count lateness is the wrong unit"
+		);
+
+		let tumbling = ApplyWith {
+			window: Some(WindowKind::Tumbling {
+				size: WindowSize::Duration(secs(60)),
+			}),
+			lateness: Some(WithSpan::Duration(secs(1))),
+			immutable: None,
+		};
+		assert!(tumbling.check_session_window().is_ok());
+		assert!(ApplyWith::default().check_session_window().is_ok());
 	}
 
 	#[test]
