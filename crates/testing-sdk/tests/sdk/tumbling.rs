@@ -69,7 +69,10 @@ fn a_windowed_driver_descriptor_carries_its_class_and_window_and_no_reason() {
 	assert_eq!(OperatorClass::from_u8(descriptor.class), Some(OperatorClass::Windowed));
 	assert!(descriptor.unmanaged_because.ptr.is_null());
 	assert_eq!(descriptor.window.takes_window, 1);
-	assert_eq!(WindowRequirements::kinds_from_bitmask(descriptor.window.kinds), Some(&["tumbling", "sliding"][..]));
+	assert_eq!(
+		WindowRequirements::kinds_from_bitmask(descriptor.window.kinds),
+		Some(&["tumbling", "sliding", "session"][..])
+	);
 	assert_eq!(WindowSizeDomain::from_u8(descriptor.window.domain), Some(WindowSizeDomain::Time));
 	assert_eq!(descriptor.window.needs_pane, 0);
 }

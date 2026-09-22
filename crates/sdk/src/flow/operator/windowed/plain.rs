@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_core::{
-	common::WindowRequirements,
+	common::{WindowRequirements, WindowSizeDomain},
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::GroupId,
@@ -963,10 +963,14 @@ where
 
 	const WINDOW: WindowRequirements = WindowRequirements {
 		takes_window: true,
-		kinds: if <A::Kinds as KindSet<A>>::ROLLING {
-			&["tumbling", "sliding", "rolling"]
-		} else {
-			&["tumbling", "sliding"]
+		kinds: match (
+			<A::Kinds as KindSet<A>>::ROLLING,
+			matches!(<A::Coord as SealDomain>::SIZE_DOMAIN, WindowSizeDomain::Time),
+		) {
+			(true, true) => &["tumbling", "sliding", "session", "rolling"],
+			(true, false) => &["tumbling", "sliding", "rolling"],
+			(false, true) => &["tumbling", "sliding", "session"],
+			(false, false) => &["tumbling", "sliding"],
 		},
 		domain: <A::Coord as SealDomain>::SIZE_DOMAIN,
 		needs_pane: false,
@@ -1384,18 +1388,24 @@ mod tests {
 	}
 
 	#[test]
-	fn a_plain_operator_with_no_rolling_kinds_publishes_tumbling_and_sliding() {
+	fn a_plain_operator_with_no_rolling_kinds_publishes_tumbling_sliding_and_session() {
 		// a NoRolling operator must publish sliding but never rolling, or the create check admits the wrong
 		// views
 		assert_eq!(
 			<PlainDriver<TimeProbe> as MountedOperator>::WINDOW,
 			WindowRequirements {
 				takes_window: true,
-				kinds: &["tumbling", "sliding"],
+				kinds: &["tumbling", "sliding", "session"],
 				domain: WindowSizeDomain::Time,
 				needs_pane: false,
 			}
 		);
+	}
+
+	#[test]
+	fn a_slot_coordinate_plain_operator_does_not_publish_session() {
+		// a session needs a time gap; publishing it for slots lets CREATE pass and the flow fail at start
+		assert_eq!(<PlainDriver<SlotProbe> as MountedOperator>::WINDOW.kinds, &["tumbling", "sliding"]);
 	}
 
 	#[test]

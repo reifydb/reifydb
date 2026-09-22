@@ -429,6 +429,7 @@ mod tests {
 			&["rolling"],
 			&["tumbling", "sliding"],
 			&["tumbling", "sliding", "rolling"],
+			&["tumbling", "sliding", "session"],
 			&["tumbling", "sliding", "session", "rolling"],
 			&[],
 		] {
