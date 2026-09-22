@@ -49,7 +49,7 @@ use crate::{
 		bucket::write::Staged,
 		slot::{Slot, SlotInner},
 	},
-	types::{Applied, DropMarker, FlushBatch, OperatorWrite, StagedWrite},
+	types::{DropMarker, FlushBatch, OperatorWrite, StagedWrite},
 };
 
 const CLOCK_PASSES: usize = 2;
@@ -696,33 +696,6 @@ impl Resident {
 		self.settle(Arc::new(batch));
 	}
 
-	#[instrument(name = "store::operator::resident::drain", level = "debug", skip(self))]
-	pub fn drain(&self, slice: ByteSize) -> Result<Applied> {
-		let _flusher = self.shared.flusher.lock();
-		if self.device_absent() {
-			return Ok(Applied::default());
-		}
-		let batch = {
-			let _staging = self.flush_guard();
-			match self.take_drain_slice(slice) {
-				Some(batch) => batch,
-				None => return Ok(Applied::default()),
-			}
-		};
-		match self.persist_applied(&batch) {
-			Ok(applied) => {
-				let _staging = self.flush_guard();
-				self.settle(batch);
-				Ok(applied)
-			}
-			Err(error) => {
-				let _staging = self.flush_guard();
-				self.revert_batch(&batch);
-				Err(error)
-			}
-		}
-	}
-
 	#[instrument(name = "store::operator::resident::pending", level = "trace", skip(self))]
 	pub fn pending(&self) -> bool {
 		let staged = {
@@ -745,7 +718,7 @@ impl Resident {
 					None => return,
 				}
 			};
-			self.persist_applied(&batch)
+			self.persist(&batch)
 				.expect("operator state flush must persist; a dropped batch loses buffered rows");
 			let _staging = self.flush_guard();
 			self.settle(batch);
@@ -940,12 +913,12 @@ impl Resident {
 		global.in_flight_drops.clear();
 	}
 
-	#[instrument(name = "store::operator::resident::persist_applied", level = "debug", skip_all)]
 	fn device_absent(&self) -> bool {
 		self.shared.sinks.get().is_some_and(|sinks| sinks.persistent.is_absent())
 	}
 
-	fn persist_applied(&self, batch: &Arc<FlushBatch>) -> Result<Applied> {
+	#[instrument(name = "store::operator::resident::persist", level = "debug", skip_all)]
+	fn persist(&self, batch: &Arc<FlushBatch>) -> Result<()> {
 		#[cfg(test)]
 		{
 			let interlock = self.shared.persist_interlock.lock().take();
@@ -958,25 +931,9 @@ impl Resident {
 			.sinks
 			.get()
 			.expect("the operator resident state flushed before its sinks were attached");
-		let applied = Apply::apply(&sinks.persistent, batch)?;
+		Apply::apply(&sinks.persistent, batch)?;
 		invalidate_flushed(&sinks.range, batch);
-		Ok(applied)
-	}
-
-	#[instrument(name = "store::operator::resident::revert_batch", level = "debug", skip_all)]
-	fn revert_batch(&self, batch: &Arc<FlushBatch>) {
-		{
-			let mut global = self.shared.global.lock();
-			for (flow, version) in &batch.checkpoints {
-				global.checkpoints.entry(*flow).or_insert(*version);
-			}
-			let mut restored = batch.drops.clone();
-			restored.append(&mut global.drops);
-			global.drops = restored;
-			self.clear_in_flight(&mut global);
-			global.flushing = false;
-		}
-		self.shared.idle.notify_all();
+		Ok(())
 	}
 
 	#[instrument(name = "store::operator::resident::settle", level = "debug", skip_all)]
